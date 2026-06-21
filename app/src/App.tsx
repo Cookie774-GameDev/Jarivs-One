@@ -39,6 +39,7 @@ import { useBridgeLifecycle } from '@/lib/bridge/useBridgeLifecycle';
 import { useIdleDetection, AmbientAudioHost } from '@/features/ambient';
 import { useLinkHotkeys } from '@/features/launcher';
 import { startWorkspaceAnalyticsClock } from '@/features/inspector/workspaceAnalytics';
+import { GlobalSttHost } from '@/features/composer-stt';
 import { Toaster, toast } from '@/components/ui/toast';
 import { startRuntimeListener } from '@/lib/ai/runtime';
 import { messageRepo, agentRepo, chatRepo, openDb, db } from '@/lib/db';
@@ -782,6 +783,8 @@ function WorkspaceRoot() {
           built-in actions and saved custom tools. Sibling to the
           AI-proposed approval cards rendered inline in chat bubbles. */}
       <ActionsPaletteHost />
+
+      <GlobalSttHost />
 
       {/* Toast outlet */}
       <JarvisContextMenu />

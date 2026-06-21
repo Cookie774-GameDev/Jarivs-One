@@ -70,7 +70,9 @@ import {
   shouldAutoFollowTerminalOutput,
   terminalUserHasScrolled,
 } from './terminalViewport';
+import { COMPOSER_STT_STOP_EVENT, COMPOSER_STT_TOGGLE_EVENT } from '@/features/composer-stt';
 import { VoiceService } from '@/features/voice/VoiceService';
+import { useUIStore } from '@/stores/ui';
 import {
   CONTEXT_MIME,
   formatContextAttachmentForTerminal,
@@ -255,6 +257,7 @@ export function TerminalView({
   const [activeSessionId, setActiveSessionId] = useState<string | null>(existingSessionId ?? null);
   const [isFocused, setIsFocused] = useState(false);
   const [dictating, setDictating] = useState(false);
+  const setComposerSttListening = useUIStore((s) => s.setComposerSttListening);
   const [dropKind, setDropKind] = useState<'file' | 'context' | null>(null);
   const [powerUpTitle, setPowerUpTitle] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -1223,12 +1226,28 @@ export function TerminalView({
 
   useEffect(() => {
     dictatingRef.current = dictating;
-  }, [dictating]);
+    if (dictating) {
+      setComposerSttListening(true);
+    } else if (!VoiceService.isListening()) {
+      setComposerSttListening(false);
+    }
+  }, [dictating, setComposerSttListening]);
 
   useEffect(() => {
     return () => {
       if (dictatingRef.current) VoiceService.stopListening();
     };
+  }, []);
+
+  useEffect(() => {
+    const onStop = () => {
+      if (dictatingRef.current) {
+        VoiceService.stopListening();
+        setDictating(false);
+      }
+    };
+    window.addEventListener(COMPOSER_STT_STOP_EVENT, onStop);
+    return () => window.removeEventListener(COMPOSER_STT_STOP_EVENT, onStop);
   }, []);
 
   useEffect(() => {
@@ -1252,8 +1271,8 @@ export function TerminalView({
         setDictating(false);
       }
     };
-    window.addEventListener('jarvis:stt:toggle', onGlobalSttToggle);
-    return () => window.removeEventListener('jarvis:stt:toggle', onGlobalSttToggle);
+    window.addEventListener(COMPOSER_STT_TOGGLE_EVENT, onGlobalSttToggle);
+    return () => window.removeEventListener(COMPOSER_STT_TOGGLE_EVENT, onGlobalSttToggle);
   }, []);
 
   useEffect(() => {

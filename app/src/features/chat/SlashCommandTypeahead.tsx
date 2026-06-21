@@ -12,7 +12,6 @@ import {
   MessageSquare,
   Network,
   Plug,
-  Settings,
   Sparkles,
   Terminal,
   Users,
@@ -23,56 +22,99 @@ import {
 
 export interface SlashCommandDef {
   cmd: string;
+  /** Legacy spellings that resolve to this command (e.g. terminal → terminals). */
+  aliases?: string[];
   description: string;
   icon: LucideIcon;
-  category?: 'navigation' | 'action' | 'utility';
+  category?: 'chat' | 'navigation' | 'utility';
   takesArg?: boolean;
   argPlaceholder?: string;
   hasOptions?: boolean;
 }
 
+export const SLASH_CMD_ALIASES: Record<string, string> = {
+  terminal: 'terminals',
+  contextmap: 'context',
+  contexts: 'context',
+};
+
+export function normalizeSlashCmd(raw: string): string {
+  const cmd = raw.toLowerCase();
+  return SLASH_CMD_ALIASES[cmd] ?? cmd;
+}
+
+export const CHAT_ATTACH_SLASH_CMDS = new Set(['terminals', 'context', 'plug', 'skills']);
+
+export function isChatAttachSlashCmd(cmd: string): boolean {
+  return CHAT_ATTACH_SLASH_CMDS.has(normalizeSlashCmd(cmd));
+}
+
+export function findSlashCommandDef(cmd: string): SlashCommandDef | undefined {
+  const canonical = normalizeSlashCmd(cmd);
+  return SLASH_COMMANDS.find((entry) => entry.cmd === canonical);
+}
+
+function fuzzyTokenScore(query: string, target: string): number {
+  const t = target.toLowerCase();
+  if (!query) return 1;
+  if (t === query) return 100;
+  if (t.startsWith(query)) return 80;
+  if (t.includes(query)) return 40;
+  return 0;
+}
+
+export function slashCmdMatchScore(query: string, def: SlashCommandDef): number {
+  const q = query.toLowerCase();
+  return Math.max(
+    fuzzyTokenScore(q, def.cmd),
+    ...(def.aliases ?? []).map((alias) => fuzzyTokenScore(q, alias)),
+    fuzzyTokenScore(q, def.description) * 0.5,
+  );
+}
+
 export const SLASH_COMMANDS: SlashCommandDef[] = [
-  // Actions
   {
-    cmd: 'contextmap',
-    description: 'Attach a context map',
-    icon: Network,
-    category: 'action',
+    cmd: 'terminals',
+    aliases: ['terminal'],
+    description: 'Attach a terminal session to this chat',
+    icon: Terminal,
+    category: 'chat',
     hasOptions: true,
   },
   {
-    cmd: 'terminal',
-    description: 'Attach a terminal',
-    icon: Terminal,
-    category: 'action',
+    cmd: 'context',
+    aliases: ['contextmap'],
+    description: 'Attach a context map to this chat',
+    icon: Network,
+    category: 'chat',
     hasOptions: true,
   },
   {
     cmd: 'plug',
-    description: 'Attach a connected plugin',
+    description: 'Attach a connected plugin to this chat',
     icon: Plug,
-    category: 'action',
+    category: 'chat',
     hasOptions: true,
   },
   {
     cmd: 'skills',
     description: 'Add a skill to this chat turn',
     icon: Sparkles,
-    category: 'action',
+    category: 'chat',
     hasOptions: true,
   },
   {
     cmd: 'hive',
     description: 'Summon Hive model stacks',
     icon: Sparkles,
-    category: 'action',
+    category: 'chat',
     hasOptions: true,
   },
   {
     cmd: 'file',
     description: 'Attach a project file',
     icon: FileText,
-    category: 'action',
+    category: 'chat',
     takesArg: true,
     argPlaceholder: '<filename>',
   },
@@ -80,7 +122,7 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
     cmd: 'model',
     description: 'Switch AI model',
     icon: Zap,
-    category: 'action',
+    category: 'chat',
     takesArg: true,
     argPlaceholder: '<provider>',
     hasOptions: true,
@@ -89,37 +131,31 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
     cmd: 'attach',
     description: 'Attach by path',
     icon: FileText,
-    category: 'action',
+    category: 'chat',
     takesArg: true,
     argPlaceholder: '<path>',
   },
-  { cmd: 'clearfiles', description: 'Clear attachments', icon: FileText, category: 'action' },
+  { cmd: 'clearfiles', description: 'Clear file attachments', icon: FileText, category: 'chat' },
 
-  // Navigation
-  { cmd: 'terminals', description: 'Open Terminals', icon: Terminal, category: 'navigation' },
-  { cmd: 'files', description: 'Open Files', icon: FileText, category: 'navigation' },
   { cmd: 'kanban', description: 'Open Kanban', icon: ListTodo, category: 'navigation' },
-  { cmd: 'context', description: 'Open Context', icon: Network, category: 'navigation' },
   { cmd: 'history', description: 'Open History', icon: History, category: 'navigation' },
   { cmd: 'tools', description: 'Open Tools', icon: Wrench, category: 'navigation' },
-  { cmd: 'skillspage', description: 'Open Skills', icon: Users, category: 'navigation' },
   { cmd: 'agents', description: 'Open Agents', icon: Users, category: 'navigation' },
   { cmd: 'schedule', description: 'Open Schedule', icon: CalendarDays, category: 'navigation' },
   { cmd: 'chat', description: 'Back to Chat', icon: MessageSquare, category: 'navigation' },
 
-  // Utility
   { cmd: 'usage', description: 'Show usage info', icon: BarChart3, category: 'utility' },
   { cmd: 'commands', description: 'Command catalog', icon: Zap, category: 'utility' },
   { cmd: 'help', description: 'Show help', icon: HelpCircle, category: 'utility' },
 ];
 
 const CATEGORY_LABELS: Record<string, string> = {
-  action: 'Actions',
+  chat: 'Chat context',
   navigation: 'Navigation',
   utility: 'Utility',
 };
 
-const CATEGORY_ORDER = ['action', 'navigation', 'utility'];
+const CATEGORY_ORDER = ['chat', 'navigation', 'utility'];
 
 export function orderSlashCommandsForDisplay(commands: SlashCommandDef[]): SlashCommandDef[] {
   const grouped = commands.reduce<Record<string, SlashCommandDef[]>>((acc, cmd) => {
@@ -197,7 +233,6 @@ export const SlashCommandTypeahead = forwardRef<
         'font-mono text-[11px]',
       )}
     >
-      {/* Header */}
       <div className="border-b border-border bg-panel/90 px-3 py-2">
         <div className="flex items-center gap-1.5">
           <Zap className="h-3 w-3 text-accent-copper" />
@@ -207,7 +242,6 @@ export const SlashCommandTypeahead = forwardRef<
         </div>
       </div>
 
-      {/* List */}
       <div ref={listRef} className="max-h-[200px] overflow-y-auto py-0.5 scrollbar-hidden">
         {commands.length === 0 ? (
           <div className="px-2 py-3 text-center text-[10px] text-muted-foreground">
@@ -259,7 +293,6 @@ export const SlashCommandTypeahead = forwardRef<
         )}
       </div>
 
-      {/* Footer */}
       <div className="flex items-center gap-2 border-t border-border bg-panel/90 px-3 py-1.5 text-[9px] text-muted-foreground">
         <span>
           <kbd className="jarvis-kbd">up/down</kbd> nav

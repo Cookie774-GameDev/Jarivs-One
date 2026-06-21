@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Send, ChevronDown, Sparkles, Mic, MicOff, FileText, X, Network, Terminal } from 'lucide-react';
 import { PLUGIN_CATALOG } from '@/features/plugins/catalog';
 import { extractPluginMentions } from '@/features/plugins/mentions';
@@ -24,6 +24,8 @@ import { MicWaveform } from './MicWaveform';
 import {
   cleanupAudioRecorder,
   encodeWav,
+  COMPOSER_STT_STOP_EVENT,
+  COMPOSER_STT_TOGGLE_EVENT,
   FasterWhisperManager,
   getAudioContextCtor,
   getComposerSttProvider,
@@ -62,7 +64,17 @@ import {
   type ContextMapRecord,
 } from '@/features/context/tree';
 import { MentionTypeahead } from './MentionTypeahead';
-import { SlashCommandTypeahead, SLASH_COMMANDS, orderSlashCommandsForDisplay, type SlashCommandDef, type SlashCommandTypeaheadRef } from './SlashCommandTypeahead';
+import {
+  SlashCommandTypeahead,
+  SLASH_COMMANDS,
+  orderSlashCommandsForDisplay,
+  findSlashCommandDef,
+  isChatAttachSlashCmd,
+  normalizeSlashCmd,
+  slashCmdMatchScore,
+  type SlashCommandDef,
+  type SlashCommandTypeaheadRef,
+} from './SlashCommandTypeahead';
 import { SlashCommandOptionPicker, type SlashCommandOption, type SlashCommandOptionPickerRef } from './SlashCommandOptionPicker';
 import {
   ModelPickerTypeahead,
@@ -276,7 +288,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
   const [attachedPlugins, setAttachedPlugins] = useState<string[]>([]);
   const [attachedContexts, setAttachedContexts] = useState<ContextAttachment[]>([]);
   const [dragOver, setDragOver] = useState(false);
-  // V2 ������ speech-to-text in the composer.
+  // V2 ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ speech-to-text in the composer.
   const [sttListening, setSttListening] = useState(false);
   const [sttInterim, setSttInterim] = useState('');
   const composerSttEnabled = useUIStore((s) => s.composerStt);
@@ -314,7 +326,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
   const offlineMode = useAuthStore((s) => s.offlineMode);
   const plan = useAuthStore((s) => s.plan);
   const projectId = useAuthStore((s) => s.projectId);
-  const terminalPickerActive = optionPickerCtx?.cmd.cmd === 'terminal';
+  const terminalPickerActive = normalizeSlashCmd(optionPickerCtx?.cmd.cmd ?? '') === 'terminals';
   const pluginPickerActive = optionPickerCtx?.cmd.cmd === 'plug';
   const pluginConnections = usePluginStore((s) =>
     pluginPickerActive ? s.connections : COMPOSER_IDLE_PLUGIN_CONNECTIONS,
@@ -342,8 +354,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     if (!optionPickerCtx) return [];
     const cmd = optionPickerCtx.cmd.cmd;
 
-    if (cmd === 'terminal') {
-      // Get list of active terminal sessions for the current project
+    if (normalizeSlashCmd(cmd) === 'terminals') {
       const sessions = Object.values(terminalSessions)
         .filter((s) => !projectId || s.projectId === projectId)
         .sort((a, b) => b.lastWriteAt - a.lastWriteAt);
@@ -355,7 +366,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       }));
     }
 
-    if (cmd === 'contextmap') {
+    if (normalizeSlashCmd(cmd) === 'context') {
       const maps = projectId ? loadStoredContextMaps(projectId) : [];
       return contextMapSlashOptions(maps);
     }
@@ -498,10 +509,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     if (!slashCtx) return [];
     const scored = SLASH_COMMANDS.map((c) => ({
       cmd: c,
-      score: Math.max(
-        fuzzyScore(q, c.cmd),
-        fuzzyScore(q, c.description) * 0.5,
-      ),
+      score: slashCmdMatchScore(q, c),
     }))
       .filter((s) => s.score > 0)
       .sort((a, b) => b.score - a.score || a.cmd.cmd.localeCompare(b.cmd.cmd))
@@ -550,7 +558,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     const after = text.slice(ta.selectionStart);
 
     // If command has options (like /terminal or /contextmap), show option picker
-    if (cmd.hasOptions && (cmd.cmd === 'terminal' || cmd.cmd === 'contextmap' || cmd.cmd === 'plug' || cmd.cmd === 'skills')) {
+    if (cmd.hasOptions && isChatAttachSlashCmd(cmd.cmd)) {
       // Remove the typed slash command from text
       setText(before + after);
       setSlashCtx(null);
@@ -642,11 +650,21 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
   const handleSlashCommand = async (trimmed: string): Promise<boolean | string> => {
     if (!trimmed.startsWith('/')) return false;
     const [cmdRaw, ...restParts] = trimmed.slice(1).split(/\s+/);
-    const cmd = (cmdRaw ?? '').toLowerCase();
+    const cmd = normalizeSlashCmd(cmdRaw ?? '');
     const rest = restParts.join(' ').trim();
     const addSystem = async (msg: string) => {
       await messageRepo.create({ chat_id: chatId as ChatId, role: 'system', parts: [{ kind: 'text', text: msg }] });
       setText('');
+    };
+    const openAttachPicker = (canonicalCmd: string) => {
+      const def = findSlashCommandDef(canonicalCmd);
+      if (!def) return false;
+      setText('');
+      setSlashCtx(null);
+      setSelectedOptionId('');
+      setOptionPickerCtx({ cmd: def, query: '' });
+      requestAnimationFrame(() => textareaRef.current?.focus());
+      return true;
     };
     if (cmd === 'usage') {
       const apiKey = useAuthStore.getState().apiKeys[provider];
@@ -685,11 +703,11 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       await addSystem(
         [
           'Hive modes:',
-          '- /Hive fast   Gemini draft ��! Opus quick check',
-          '- /Hive balanced   Grok X High orient ��! Opus draft ��! Gemini polish',
+          '- /Hive fast   Gemini draft ï¿½ï¿½! Opus quick check',
+          '- /Hive balanced   Grok X High orient ï¿½ï¿½! Opus draft ï¿½ï¿½! Gemini polish',
           '- /Hive quality   confirmed simulated Fable-beating stack (94.4)',
           '- /Hive ultra   5-step Supernova stack for critical work',
-          '- /Hive custom   your Settings ��! Hive custom stack (max 5 models)',
+          '- /Hive custom   your Settings ï¿½ï¿½! Hive custom stack (max 5 models)',
           '',
           'Use it like: /Hive quality review this plan',
         ].join('\n'),
@@ -697,14 +715,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       return true;
     }
     const routes: Record<string, string> = {
-      files: 'files',
-      explorer: 'files',
-      terminals: 'terminal',
-      terminal: 'terminal',
       kanban: 'kanban',
-      context: 'context',
-      contexts: 'context',
-      skillspage: 'skills',
       history: 'history',
       tools: 'tools',
       agents: 'agents',
@@ -718,11 +729,55 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       }
       useUIStore.getState().setRoute(routes[cmd] as never);
       if (rest) {
-        // Navigate to the surface as a side-effect, then continue the send with
-        // the remainder text so Jarvis can act on the stated task.
         return rest;
       }
       await addSystem(`Opened ${cmd}.`);
+      return true;
+    }
+    if (cmd === 'terminals') {
+      if (rest) {
+        return rest;
+      }
+      if (openAttachPicker('terminals')) return true;
+      await addSystem('No terminal sessions yet. Open Terminals, start a pane, then use /terminals to attach its transcript to this chat.');
+      return true;
+    }
+    if (cmd === 'context') {
+      if (rest) {
+        const projectId = useAuthStore.getState().projectId;
+        const maps = projectId ? loadStoredContextMaps(projectId) : [];
+        const target = rest.toLowerCase();
+        const matched = maps.find((m: ContextMapRecord) => (m.name ?? '').toLowerCase().includes(target));
+        if (!matched) {
+          await addSystem(`No context map matching '${rest}'. Use /context to pick from the list.`);
+          return true;
+        }
+        const root = matched.tree?.nodes?.[0];
+        if (!root) {
+          await addSystem(`Context map '${matched.name}' has no nodes.`);
+          return true;
+        }
+        const attachment: ContextAttachment = {
+          projectId: matched.projectId,
+          rootDir: matched.rootDir,
+          generatedAt: matched.tree?.generatedAt ?? Date.now(),
+          nodeId: root.id ?? `map:${matched.name}`,
+          title: matched.name ?? 'Context Map',
+          summary: matched.tree?.summary ?? '',
+          path: '',
+          kind: 'root',
+        };
+        setAttachedContexts((cur) =>
+          cur.some((item) => item.nodeId === attachment.nodeId)
+            ? cur
+            : [...cur, attachment].slice(0, 8),
+        );
+        setText('');
+        await addSystem(`Attached context map '${matched.name}' to this chat.`);
+        return true;
+      }
+      if (openAttachPicker('context')) return true;
+      await addSystem('No context maps yet. Open Context and press "Make Context Map", then use /context here.');
       return true;
     }
     if (cmd === 'skills') {
@@ -743,65 +798,18 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       return true;
     }
     if (cmd === 'help') {
-      await addSystem('Slash commands: /usage, /model <provider>, /files, /terminals, /kanban, /context, /skills, /history, /tools, /agents, /schedule, /attach <absolute path>, /clearfiles, /commands.');
+      await addSystem(
+        'Chat slash commands attach context to this conversation (not page navigation). '
+          + '/terminals, /context, /plug, /skills open pickers. '
+          + '/file <path>, /attach <path>. Navigation: /kanban, /history, /tools, /agents, /schedule. '
+          + '/usage, /model, /commands, /clearfiles.',
+      );
       return true;
     }
     if (cmd === 'commands') {
       await addSystem(`Jarvis command catalog (${JARVIS_COMMAND_CATALOG.length}):\n${JARVIS_COMMAND_CATALOG.map((c, i) => `${i + 1}. ${c}`).join('\n')}`);
       return true;
     }
-    // V3 ������ attach a context map to this chat.
-    // /contextmap           ������ list available maps
-    // /contextmap <name>    ������ attach the named map (prefix match)
-    if (cmd === 'contextmap') {
-      const projectId = useAuthStore.getState().projectId;
-      const maps = projectId ? loadStoredContextMaps(projectId) : [];
-      if (!rest) {
-        if (maps.length === 0) {
-          await addSystem('No context maps yet. Open the Context page and press "Make Context Map" to generate one.');
-        } else {
-          const active = maps.filter((m: ContextMapRecord) => m.status !== 'deleted');
-          const list = active
-            .map((m: ContextMapRecord, i: number) => `${i + 1}. ${m.name ?? 'Untitled'} (${(m.tree?.nodes ?? []).length} nodes)`)
-            .join('\n');
-          await addSystem(`Available context maps (${active.length}):\n${list}\n\nUse /contextmap <name> to attach one.`);
-        }
-        return true;
-      }
-      // Find by prefix match on name
-      const target = rest.toLowerCase();
-      const matched = maps.find((m: ContextMapRecord) => (m.name ?? '').toLowerCase().includes(target));
-      if (!matched) {
-        await addSystem(`No context map matching '${rest}'. Try /contextmap to see available maps.`);
-        return true;
-      }
-      // Attach the map's root node as a context attachment
-      const root = matched.tree?.nodes?.[0];
-      if (!root) {
-        await addSystem(`Context map '${matched.name}' has no nodes.`);
-        return true;
-      }
-      const attachment: ContextAttachment = {
-        projectId: matched.projectId,
-        rootDir: matched.rootDir,
-        generatedAt: matched.tree?.generatedAt ?? Date.now(),
-        nodeId: root.id ?? `map:${matched.name}`,
-        title: matched.name ?? 'Context Map',
-        summary: matched.tree?.summary ?? '',
-        path: '',
-        kind: 'root',
-      };
-      setAttachedContexts((cur) =>
-        cur.some((item) => item.nodeId === attachment.nodeId)
-          ? cur
-          : [...cur, attachment].slice(0, 8),
-      );
-      setText('');
-      await addSystem(`Attached context map '${matched.name}'.`);
-      return true;
-    }
-    // V3 ������ attach a project file to this chat.
-    // /file <absolute path>  ������ attach the file
     if (cmd === 'file') {
       if (rest) {
         setAttachedFiles((cur) => (cur.includes(rest) ? cur : [...cur, rest]).slice(0, 8));
@@ -847,7 +855,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     let nextAttachedPlugins = attachedPlugins;
     let nextAttachedContexts = attachedContexts;
     for (const confirmed of confirmedCommands) {
-      if (confirmed.cmd === 'terminal' && confirmed.value) {
+      if (normalizeSlashCmd(confirmed.cmd) === 'terminals' && confirmed.value) {
         const session = useTerminalTranscriptStore.getState().sessions[confirmed.value];
         if (session) {
           const ref: TerminalRef = {
@@ -867,7 +875,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
         nextAttachedPlugins = nextAttachedPlugins.includes(confirmed.value!)
           ? nextAttachedPlugins
           : [...nextAttachedPlugins, confirmed.value!].slice(0, 8);
-      } else if (confirmed.cmd === 'contextmap' && confirmed.value) {
+      } else if (normalizeSlashCmd(confirmed.cmd) === 'context' && confirmed.value) {
         const maps = projectId ? loadStoredContextMaps(projectId) : [];
         const matched = resolveContextMapRecord(maps, confirmed.value);
         if (matched?.tree?.nodes?.[0]) {
@@ -910,7 +918,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       }
       // Repo stamps id + timestamps + bumps parent chat.updated_at.
       // The runtime listener (started in App.tsx) will read history
-      // from the same store after we dispatch the event below ������ so it
+      // from the same store after we dispatch the event below ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ so it
       // sees the user turn we just wrote and skips creating its own
       // user message. (See runtime.ts: prior versions wrote a second
       // copy here, producing the duplicate-bubble bug surfaced in the
@@ -1177,7 +1185,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     return () => window.removeEventListener('jarvis:composer:insert-text', onInsertText as EventListener);
   }, [chatId]);
 
-  // ---------- V2 ������ speech-to-text wiring ----------
+  // ---------- V2 ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ speech-to-text wiring ----------
   // Subscribe to VoiceService events when the user toggles STT on. We keep
   // partials in a separate state so they show as a faded preview without
   // mutating the saved draft until they finalize.
@@ -1185,7 +1193,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     if (!sttListening) return;
 
     const offStart = VoiceService.on('voice:start', () => {
-      // intentionally empty ������ UI already reflects sttListening=true
+      // intentionally empty ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ UI already reflects sttListening=true
     });
     const offPartial = VoiceService.on('voice:partial', ({ text: partial }) => {
       setSttInterim(partial);
@@ -1213,7 +1221,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       }
     });
     const offEnd = VoiceService.on('voice:end', () => {
-      // Engine ended ������ sync our flag if the user didn't already turn off.
+      // Engine ended ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ sync our flag if the user didn't already turn off.
       if (!VoiceService.isListening() && !VoiceService.wantsListening()) {
         setSttListening(false);
         stopWebSpeechVolumeMeter();
@@ -1332,7 +1340,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     }
     toast.warning(
       'Voice unsupported',
-      'Free built-in speech recognition is not available. Add a Groq key or download a local model in Settings ��! Speech to Text.',
+      'Free built-in speech recognition is not available. Add a Groq key or download a local model in Settings ï¿½ï¿½! Speech to Text.',
     );
   };
 
@@ -1342,7 +1350,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     if (!installed) {
       toast.warning(
         'Local model missing',
-        `Download the ${modelId} model in Settings ��! Speech to Text, or switch to system dictation.`,
+        `Download the ${modelId} model in Settings ï¿½ï¿½! Speech to Text, or switch to system dictation.`,
       );
       void startSystemStt();
       return;
@@ -1420,7 +1428,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       if (!AudioCtor) throw new Error('Audio recording is not available in this runtime.');
       const context = new AudioCtor();
       const source = context.createMediaStreamSource(stream);
-      // Use smaller buffer for lower latency ������ 2048 samples at 44.1kHz ������ 46ms
+      // Use smaller buffer for lower latency ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ 2048 samples at 44.1kHz ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ 46ms
       // instead of 4096 samples at ~92ms. Shorter buffers mean faster activity
       // detection and smoother waveform updates.
       const processor = context.createScriptProcessor(2048, 1, 1);
@@ -1510,7 +1518,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     try {
       VoiceService.stopListening();
     } catch {
-      // ignore ������ engine may already be torn down
+      // ignore ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ engine may already be torn down
     }
   };
 
@@ -1530,19 +1538,23 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     };
   }, [sttListening]);
 
-  // Ctrl+CapsLock is dispatched globally; composer or top-bar mic consume it.
+  // Ctrl+CapsLock is dispatched globally; focused surfaces decide whether to consume it.
   useEffect(() => {
     const onToggle = (event: Event) => {
       if (!composerSttEnabled) return;
-      const detail = (event as CustomEvent<{ source?: string }>).detail;
-      const fromToolbar = detail?.source === 'toolbar';
-      if (!fromToolbar && document.activeElement !== textareaRef.current) return;
+      if (document.activeElement !== textareaRef.current) return;
       event.preventDefault?.();
-      if (fromToolbar) textareaRef.current?.focus();
       toggleStt();
     };
-    window.addEventListener('jarvis:stt:toggle', onToggle);
-    return () => window.removeEventListener('jarvis:stt:toggle', onToggle);
+    const onStop = () => {
+      if (sttListening) stopStt();
+    };
+    window.addEventListener(COMPOSER_STT_TOGGLE_EVENT, onToggle);
+    window.addEventListener(COMPOSER_STT_STOP_EVENT, onStop);
+    return () => {
+      window.removeEventListener(COMPOSER_STT_TOGGLE_EVENT, onToggle);
+      window.removeEventListener(COMPOSER_STT_STOP_EVENT, onStop);
+    };
   }, [composerSttEnabled, sttListening]);
 
   useEffect(() => {
@@ -1572,7 +1584,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
             rel="noreferrer"
             className="text-accent-copper underline-offset-4 hover:underline"
           >
-            Get key ������
+            Get key ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
           </a>
           <button
             type="button"

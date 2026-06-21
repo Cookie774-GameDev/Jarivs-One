@@ -17,6 +17,7 @@ export const GROQ_STT_MODEL = 'whisper-large-v3-turbo';
 export const STT_INACTIVITY_MS = 30_000;
 export const STT_ACTIVITY_RMS = 0.015;
 export const COMPOSER_STT_TOGGLE_EVENT = 'jarvis:stt:toggle';
+export const COMPOSER_STT_STOP_EVENT = 'jarvis:stt:stop';
 
 export type ComposerSttToggleSource = 'hotkey' | 'toolbar' | 'composer';
 
@@ -26,20 +27,24 @@ export function requestComposerSttToggle(source: ComposerSttToggleSource = 'comp
   window.dispatchEvent(new CustomEvent(COMPOSER_STT_TOGGLE_EVENT, { detail: { source } }));
 }
 
+/** Stop any in-app speech-to-text session (composer, terminal, or generic field). */
+export function requestComposerSttStop(): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(COMPOSER_STT_STOP_EVENT));
+}
+
 /**
- * Top-bar mic: route to chat if needed, then toggle composer dictation.
+ * Top-bar mic: toggle dictation in the focused text field app-wide.
  * Returns false when composer STT is disabled in settings.
  */
 export function requestComposerSttFromToolbar(): boolean {
   const ui = useUIStore.getState();
   if (!ui.composerStt) return false;
-  const fire = () => requestComposerSttToggle('toolbar');
-  if (ui.route !== 'chat') {
-    ui.setRoute('chat');
-    window.setTimeout(fire, 50);
+  if (ui.composerSttListening) {
+    requestComposerSttStop();
     return true;
   }
-  fire();
+  requestComposerSttToggle('toolbar');
   return true;
 }
 

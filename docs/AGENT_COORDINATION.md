@@ -321,6 +321,19 @@ Append new entries at the **bottom** of the relevant agent section. Use [How to 
 | `app/src/features/chat/Composer.tsx` (/skills only) | VibeSpace Worker (skills) | v0.1.44 | in-progress | /skills picker reads unified catalog |
 | `app/src/lib/ai/runtime.ts` (skills block) | VibeSpace Worker (skills) | v0.1.44 | in-progress | getSelectedSkillsBlock via resolveCatalogSkills |
 | `app/src/lib/actions/promptAddendum.ts` (skills list) | VibeSpace Worker (skills) | v0.1.44 | in-progress | Available skills section from catalog |
+| `app/src/features/chat/SlashCommandTypeahead.tsx` | VibeSpace Worker (chat slash) | v0.1.44 | in-progress | Unified chat-context slash commands (no nav duplicates) |
+| `app/src/features/chat/Composer.tsx` (slash handlers) | VibeSpace Worker (chat slash) | v0.1.44 | in-progress | /terminals /context attach-to-chat; alias normalization |
+
+#### 2026-06-21 — Unified chat slash commands (no action/nav duplicates)
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-06-21 |
+| **Version** | v0.1.44 |
+| **Plan** | Merge duplicate slash entries (terminal/terminals, context/contextmap, files, skillspage). Chat attach commands open pickers; `/terminals task` passes remainder to AI without navigating. |
+| **Files touched** | `SlashCommandTypeahead.tsx`, `Composer.tsx`, `SlashCommandTypeahead.test.ts`, `promptAddendum.ts` (one bullet) |
+| **Status** | complete (uncommitted); 15/15 tests GREEN, typecheck clean |
+| **Commit** | — |
 
 #### 2026-06-18 — Skills system unification
 
