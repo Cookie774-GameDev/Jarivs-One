@@ -19,13 +19,34 @@ import type { Agent, ProviderId } from '@/types';
 export type LLMRole = 'system' | 'user' | 'assistant';
 
 /**
- * One message in the conversation passed to the model. We deliberately keep this
- * a flat string so providers don't have to negotiate part schemas. The runtime
- * is responsible for flattening Message[] -> LLMMessage[].
+ * Typed content sent to the model. Text-only messages keep using a flat string
+ * for compatibility; multimodal messages use ordered parts.
  */
+export type LLMContentPart =
+  | { type: 'text'; text: string }
+  | {
+      type: 'image';
+      /** Base64 payload with no data: prefix. */
+      data: string;
+      /** MIME type such as image/png. */
+      mimeType: string;
+      /** Optional user-facing filename/path label. */
+      name?: string;
+    };
+
 export interface LLMMessage {
   role: LLMRole;
-  content: string;
+  content: string | LLMContentPart[];
+}
+
+export function llmContentToText(content: LLMMessage['content']): string {
+  if (typeof content === 'string') return content;
+  return content
+    .map((part) => {
+      if (part.type === 'text') return part.text;
+      return `[Image: ${part.name ?? part.mimeType}]`;
+    })
+    .join('\n');
 }
 
 /**

@@ -461,7 +461,7 @@ export async function deliverAgentTerminalContext(opts: {
 
   try {
     const existingReads = await Promise.all(
-      instructionPaths.map(async (path) => ({ path, result: await readTextFile(path) })),
+      instructionPaths.map(async (path) => ({ path, result: await readTextFile(path, { root: opts.cwd }) })),
     );
     const unavailable = existingReads.find(
       ({ result }) => !result.ok && result.error.code === 'unavailable',
@@ -475,7 +475,7 @@ export async function deliverAgentTerminalContext(opts: {
         const existing = result.ok ? result.content : null;
         const merged = mergeManagedBlock(existing, null);
         if (merged == null) continue;
-        const write = await writeTextFile(path, merged);
+        const write = await writeTextFile(path, merged, { root: opts.cwd });
         if (!write.ok) return { ...base, error: write.error.raw ?? write.error.code };
       }
       return { ...base, ok: true };
@@ -510,9 +510,9 @@ export async function deliverAgentTerminalContext(opts: {
 
     if (payload.shouldEnsureCoordinationDoc) {
       // Ensure the shared coordination document exists (never overwrite).
-      const coordinationRead = await readTextFile(coordinationPath);
+      const coordinationRead = await readTextFile(coordinationPath, { root: opts.cwd });
       if (!coordinationRead.ok && coordinationRead.error.code === 'not_found') {
-        await writeTextFile(coordinationPath, defaultCoordinationDoc(opts.projectName));
+        await writeTextFile(coordinationPath, defaultCoordinationDoc(opts.projectName), { root: opts.cwd });
       }
     }
 
@@ -522,7 +522,7 @@ export async function deliverAgentTerminalContext(opts: {
       const existing = result.ok ? result.content : null;
       const merged = mergeManagedBlock(existing, block);
       if (merged == null || existing === merged) continue;
-      const write = await writeTextFile(path, merged);
+      const write = await writeTextFile(path, merged, { root: opts.cwd });
       if (!write.ok) return { ...base, error: write.error.raw ?? write.error.code };
     }
     return { ...base, ok: true };

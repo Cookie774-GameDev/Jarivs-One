@@ -8,23 +8,35 @@ import type { SkillManifest } from './loader';
 import { readSkillsStore, type CustomSkillRecord, type PresetOverride } from './skillsStore';
 
 const PRESET_EMOJI: Record<string, string> = {
-  coding: '💻',
-  research: '🔍',
-  writing: '✍️',
-  planning: '📋',
-  scheduling: '📅',
-  terminal: '⌨️',
-  web: '🌐',
-  files: '📁',
-  voice: '🎙️',
-  music: '🎵',
-  calendar: '🗓️',
-  github: '🐙',
-  supabase: '⚡',
-  opencode: '🧩',
-  memory: '🧠',
-  summarization: '📝',
+  build: '◆',
+  research: '◇',
+  operate: '⬡',
+  create: '✦',
+  analyze: '✧',
 };
+
+const LEGACY_SKILL_ALIASES: Record<string, keyof typeof SKILLS> = {
+  coding: 'build',
+  files: 'build',
+  github: 'build',
+  opencode: 'build',
+  terminal: 'operate',
+  scheduling: 'operate',
+  calendar: 'operate',
+  supabase: 'operate',
+  voice: 'operate',
+  music: 'operate',
+  web: 'research',
+  writing: 'create',
+  planning: 'analyze',
+  memory: 'analyze',
+  summarization: 'analyze',
+};
+
+export function normalizePresetSkillId(id: string): string {
+  const trimmed = id.trim();
+  return LEGACY_SKILL_ALIASES[trimmed] ?? trimmed;
+}
 
 export interface SkillPickerOption {
   id: string;
@@ -71,17 +83,23 @@ export function customRecordToSkill(record: CustomSkillRecord): Skill {
 }
 
 export function resolvePresetSkill(id: string): Skill | undefined {
-  const base = SKILLS[id];
+  const normalized = normalizePresetSkillId(id);
+  const base = SKILLS[normalized];
   if (!base) return undefined;
   const store = readSkillsStore();
-  if (store.deletedPresets.includes(id)) return undefined;
-  return applyPresetOverride(base, store.presetOverrides[id]);
+  if (store.deletedPresets.includes(normalized)) return undefined;
+  const override = store.presetOverrides[normalized];
+  if (override?.enabled === false) return undefined;
+  return applyPresetOverride(base, override);
 }
 
 export function resolveCatalogSkill(id: string): Skill | undefined {
-  const preset = resolvePresetSkill(id);
+  const normalized = normalizePresetSkillId(id);
+  const preset = resolvePresetSkill(normalized);
   if (preset) return preset;
-  const custom = readSkillsStore().customSkills.find((s) => s.id === id);
+  const custom = readSkillsStore().customSkills.find((s) =>
+    (s.id === normalized || s.id === id.trim()) && s.enabled !== false,
+  );
   return custom ? customRecordToSkill(custom) : undefined;
 }
 
@@ -90,7 +108,7 @@ export function resolveCatalogSkills(ids: string[]): Skill[] {
   const out: Skill[] = [];
   const seen = new Set<string>();
   for (const raw of ids) {
-    const id = raw.trim();
+    const id = normalizePresetSkillId(raw);
     if (!id || seen.has(id)) continue;
     seen.add(id);
     const skill = resolveCatalogSkill(id);

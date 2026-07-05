@@ -27,9 +27,10 @@
 //!     while prompt callers use `fs_read_text_sample` so huge logs do
 //!     not get copied wholesale into the WebView heap.
 
+use base64::Engine;
 use serde::Serialize;
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Hard ceiling on a single file. Anything bigger is rejected with
 /// `too_large` so callers don't accidentally force a multi-GB read
@@ -39,6 +40,7 @@ const MAX_FILE_BYTES: u64 = 100 * 1024 * 1024;
 const MAX_WRITE_BYTES: usize = 1024 * 1024;
 const MAX_DIR_ENTRIES: usize = 500;
 const MAX_SAMPLE_BYTES: u64 = 512 * 1024;
+const MAX_IMAGE_BYTES: u64 = 8 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -51,11 +53,77 @@ pub struct FsEntry {
     pub modified_ms: Option<u128>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FsImageData {
+    pub data: String,
+    pub mime_type: String,
+    pub size: u64,
+}
+
 fn require_absolute(path: &str) -> Result<PathBuf, String> {
     let p = PathBuf::from(path);
     if !p.is_absolute() {
         return Err("not_absolute".to_string());
     }
+    Ok(p)
+}
+
+fn canonical_root(root: Option<&str>) -> Result<Option<PathBuf>, String> {
+    let Some(root) = root.filter(|value| !value.trim().is_empty()) else {
+        return Ok(None);
+    };
+    let root_path = require_absolute(root)?;
+    let canonical = std::fs::canonicalize(&root_path).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            "root_not_found".to_string()
+        } else {
+            format!("io: {}", e)
+        }
+    })?;
+    if !canonical.is_dir() {
+        return Err("root_not_dir".to_string());
+    }
+    Ok(Some(canonical))
+}
+
+fn ensure_inside_root(path: &Path, root: Option<&PathBuf>) -> Result<(), String> {
+    if let Some(root) = root {
+        if !path.starts_with(root) {
+            return Err("outside_root".to_string());
+        }
+    }
+    Ok(())
+}
+
+fn existing_path(path: &str, root: Option<&str>) -> Result<PathBuf, String> {
+    let p = require_absolute(path)?;
+    let root = canonical_root(root)?;
+    let canonical = std::fs::canonicalize(&p).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            "not_found".to_string()
+        } else {
+            format!("io: {}", e)
+        }
+    })?;
+    ensure_inside_root(&canonical, root.as_ref())?;
+    Ok(canonical)
+}
+
+fn writable_path(path: &str, root: Option<&str>) -> Result<PathBuf, String> {
+    let p = require_absolute(path)?;
+    let root = canonical_root(root)?;
+    if p.exists() {
+        let canonical = std::fs::canonicalize(&p).map_err(|e| format!("io: {}", e))?;
+        ensure_inside_root(&canonical, root.as_ref())?;
+        return Ok(canonical);
+    }
+    let parent = p.parent().ok_or_else(|| "parent_not_found".to_string())?;
+    if !parent.exists() {
+        return Err("parent_not_found".to_string());
+    }
+    let canonical_parent = std::fs::canonicalize(parent).map_err(|e| format!("io: {}", e))?;
+    ensure_inside_root(&canonical_parent, root.as_ref())?;
     Ok(p)
 }
 
@@ -71,8 +139,8 @@ fn require_absolute(path: &str) -> Result<PathBuf, String> {
 ///   - `not_utf8` — bytes are not valid UTF-8.
 ///   - `io: <message>` — anything else, prefixed for grep-ability.
 #[tauri::command]
-pub fn fs_read_text(path: String) -> Result<String, String> {
-    let p = require_absolute(&path)?;
+pub fn fs_read_text(path: String, root: Option<String>) -> Result<String, String> {
+    let p = existing_path(&path, root.as_deref())?;
     let meta = match std::fs::metadata(&p) {
         Ok(m) => m,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -91,8 +159,8 @@ pub fn fs_read_text(path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn fs_read_text_sample(path: String, max_bytes: Option<u64>) -> Result<String, String> {
-    let p = require_absolute(&path)?;
+pub fn fs_read_text_sample(path: String, max_bytes: Option<u64>, root: Option<String>) -> Result<String, String> {
+    let p = existing_path(&path, root.as_deref())?;
     let meta = match std::fs::metadata(&p) {
         Ok(m) => m,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -116,9 +184,46 @@ pub fn fs_read_text_sample(path: String, max_bytes: Option<u64>) -> Result<Strin
     Ok(String::from_utf8_lossy(&bytes).to_string())
 }
 
+fn image_mime_for_path(path: &std::path::Path) -> Option<&'static str> {
+    match path.extension().and_then(|ext| ext.to_str()).map(|ext| ext.to_ascii_lowercase()) {
+        Some(ext) if ext == "png" => Some("image/png"),
+        Some(ext) if ext == "jpg" || ext == "jpeg" => Some("image/jpeg"),
+        Some(ext) if ext == "webp" => Some("image/webp"),
+        Some(ext) if ext == "gif" => Some("image/gif"),
+        _ => None,
+    }
+}
+
 #[tauri::command]
-pub fn fs_list_dir(path: String) -> Result<Vec<FsEntry>, String> {
-    let p = require_absolute(&path)?;
+pub fn fs_read_image_base64(path: String, root: Option<String>) -> Result<FsImageData, String> {
+    let p = existing_path(&path, root.as_deref())?;
+    let mime_type = image_mime_for_path(&p)
+        .ok_or_else(|| "unsupported_type".to_string())?
+        .to_string();
+    let meta = match std::fs::metadata(&p) {
+        Ok(m) => m,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Err("not_found".to_string());
+        }
+        Err(e) => return Err(format!("io: {}", e)),
+    };
+    if !meta.is_file() {
+        return Err("not_a_file".to_string());
+    }
+    if meta.len() > MAX_IMAGE_BYTES {
+        return Err("too_large".to_string());
+    }
+    let bytes = std::fs::read(&p).map_err(|e| format!("io: {}", e))?;
+    Ok(FsImageData {
+        data: base64::engine::general_purpose::STANDARD.encode(bytes),
+        mime_type,
+        size: meta.len(),
+    })
+}
+
+#[tauri::command]
+pub fn fs_list_dir(path: String, root: Option<String>) -> Result<Vec<FsEntry>, String> {
+    let p = existing_path(&path, root.as_deref())?;
     let meta = match std::fs::metadata(&p) {
         Ok(m) => m,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -163,29 +268,19 @@ pub fn fs_list_dir(path: String) -> Result<Vec<FsEntry>, String> {
 }
 
 #[tauri::command]
-pub fn fs_write_text(path: String, content: String) -> Result<(), String> {
-    let p = require_absolute(&path)?;
+pub fn fs_write_text(path: String, content: String, root: Option<String>) -> Result<(), String> {
+    let p = writable_path(&path, root.as_deref())?;
     if content.len() > MAX_WRITE_BYTES {
         return Err("too_large".to_string());
-    }
-    if let Some(parent) = p.parent() {
-        if !parent.exists() {
-            return Err("parent_not_found".to_string());
-        }
     }
     std::fs::write(&p, content.as_bytes()).map_err(|e| format!("io: {}", e))
 }
 
 #[tauri::command]
-pub fn fs_create_text_file(path: String) -> Result<(), String> {
-    let p = require_absolute(&path)?;
+pub fn fs_create_text_file(path: String, root: Option<String>) -> Result<(), String> {
+    let p = writable_path(&path, root.as_deref())?;
     if p.exists() {
         return Err("already_exists".to_string());
-    }
-    if let Some(parent) = p.parent() {
-        if !parent.exists() {
-            return Err("parent_not_found".to_string());
-        }
     }
     std::fs::write(&p, b"").map_err(|e| format!("io: {}", e))
 }

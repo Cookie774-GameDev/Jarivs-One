@@ -71,6 +71,7 @@ import {
   terminalUserHasScrolled,
 } from './terminalViewport';
 import { COMPOSER_STT_STOP_EVENT, COMPOSER_STT_TOGGLE_EVENT } from '@/features/composer-stt';
+import { startSttVolumeMeter, stopSttVolumeMeter } from '@/features/composer-stt/sttVolume';
 import { VoiceService } from '@/features/voice/VoiceService';
 import { useUIStore } from '@/stores/ui';
 import {
@@ -1264,6 +1265,9 @@ export function TerminalView({
         return;
       }
       try {
+        if (VoiceService.isListening() || VoiceService.wantsListening()) {
+          VoiceService.interruptListening();
+        }
         VoiceService.startListening();
         setDictating(true);
       } catch (err) {
@@ -1274,6 +1278,15 @@ export function TerminalView({
     window.addEventListener(COMPOSER_STT_TOGGLE_EVENT, onGlobalSttToggle);
     return () => window.removeEventListener(COMPOSER_STT_TOGGLE_EVENT, onGlobalSttToggle);
   }, []);
+
+  useEffect(() => {
+    if (!dictating) {
+      stopSttVolumeMeter();
+      return;
+    }
+    void startSttVolumeMeter();
+    return () => stopSttVolumeMeter();
+  }, [dictating]);
 
   useEffect(() => {
     if (!dictating) return;

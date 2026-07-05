@@ -19,7 +19,7 @@
  * a backend or bundle a 2GB local model in the installer.
  */
 import type { LLMProvider, LLMRequest, LLMResponse } from '../types';
-import { estimateCost, estimateInputTokens } from '../types';
+import { estimateCost, estimateInputTokens, llmContentToText } from '../types';
 import { useAuthStore } from '@/stores/auth';
 import { parseSSE } from './sse';
 
@@ -52,7 +52,10 @@ export const groqProvider: LLMProvider = {
     // entries from the user list so we don't end up with duplicates.
     const messages = [
       { role: 'system' as const, content: req.agent.system_prompt },
-      ...req.messages.filter((m) => m.role !== 'system'),
+      ...req.messages.filter((m) => m.role !== 'system').map((m) => ({
+        role: m.role,
+        content: llmContentToText(m.content),
+      })),
     ];
 
     const body = {

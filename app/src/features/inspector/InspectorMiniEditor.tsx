@@ -8,10 +8,11 @@ import { cn } from '@/lib/utils';
 
 interface InspectorMiniEditorProps {
   filePath: string;
+  rootDir?: string | null;
   onClose: () => void;
 }
 
-export function InspectorMiniEditor({ filePath, onClose }: InspectorMiniEditorProps) {
+export function InspectorMiniEditor({ filePath, rootDir, onClose }: InspectorMiniEditorProps) {
   const [content, setContent] = React.useState('');
   const [savedContent, setSavedContent] = React.useState('');
   const [loading, setLoading] = React.useState(true);
@@ -23,7 +24,7 @@ export function InspectorMiniEditor({ filePath, onClose }: InspectorMiniEditorPr
     let cancelled = false;
     setLoading(true);
     setError(null);
-    void readTextFile(filePath).then((result) => {
+    void readTextFile(filePath, { root: rootDir }).then((result) => {
       if (cancelled) return;
       if (!result.ok) {
         setError(result.error.code === 'too_large' ? 'File too large for mini editor' : 'Could not read file');
@@ -38,14 +39,14 @@ export function InspectorMiniEditor({ filePath, onClose }: InspectorMiniEditorPr
     return () => {
       cancelled = true;
     };
-  }, [filePath]);
+  }, [filePath, rootDir]);
 
   const dirty = content !== savedContent;
 
   const onSave = async () => {
     if (readOnly || !dirty) return;
     setSaving(true);
-    const result = await writeTextFile(filePath, content);
+    const result = await writeTextFile(filePath, content, { root: rootDir });
     setSaving(false);
     if (!result.ok) {
       toast.error('Save failed', result.error.raw ?? result.error.code);

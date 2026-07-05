@@ -19,7 +19,8 @@ import type { ChatId, ProjectId } from '@/types/common';
 import { useAuthStore } from '@/stores/auth';
 import { useAgentStore } from '@/stores/agents';
 import { runAgent } from './router';
-import type { LLMMessage } from './types';
+import type { LLMContentPart, LLMMessage } from './types';
+import { llmContentToText } from './types';
 import { applyPersona } from '@/features/agents/personas';
 import { applyAvailableActions, parseActionBlocks, autoApprovePendingActions } from '@/lib/actions';
 import { inferFallbackActionProposals } from '@/lib/actions/fallbackActions';
@@ -34,7 +35,9 @@ import { canVoiceModuleSpeak } from '@/features/voice/voiceRouter';
 import { STREAMING_VOICE_END_EVENT } from '@/features/voice/speechSynthesis';
 import { registerActiveStreamingVoiceSession } from '@/features/voice/voiceRouter';
 import { deriveChatTitle, maybeRenameChat } from '@/features/chat/chatLifecycle';
+import { getStoredProjectRoot } from '@/features/files/projectFiles';
 import { composeSkillAddenda, resolveSkills } from '@/lib/agents/skills';
+import { createChatActivityId, useChatActivityStore } from '@/features/chat/activity';
 import {
   classifyStackTask,
   parseStackSlashCommand,
@@ -60,6 +63,19 @@ import {
 } from './context';
 import type { TerminalRef } from '@/features/terminals/terminalRefs';
 import type { ContextAttachment } from '@/features/context/tree';
+import { modelSupportsVision, type ChatImageAttachment } from './vision';
+import { ALL_ABOUT_ME_FILE_LOCATION, buildAllAboutMeContextBlock } from '@/features/all-about-me/profile';
+import { reviseAllAboutMeMarkdown } from '@/features/all-about-me/ai';
+import { useAllAboutMeStore } from '@/features/all-about-me/store';
+import {
+  buildAllAboutMeLearningDiff,
+  summarizeAllAboutMeLearningChange,
+} from '@/features/all-about-me/activity';
+import { parseJarvisQuestionBlocks } from '@/features/jarvis-interaction/questionParser';
+import type { JarvisInteractionMode, JarvisStructuredContext } from '@/features/jarvis-interaction/types';
+import { useJarvisInteractionStore } from '@/features/jarvis-interaction/sessionStore';
+import { parseJarvisPlanBlocks } from '@/features/jarvis-interaction/planParser';
+import { parseJarvisPermissionBlocks } from '@/features/jarvis-interaction/permissionParser';
 
 /**
  * Bindings the runtime needs from the host app. Implementations are typically
@@ -94,6 +110,8 @@ export interface SendDetail {
   mentionedAgentIds?: AgentId[];
   /** Absolute paths attached to this specific message. */
   filePaths?: string[];
+  /** Base64 image attachments already approved by Composer/model gating. */
+  imageAttachments?: ChatImageAttachment[];
   /** PTY session ids dragged into this specific message. Legacy field. */
   terminalSessionIds?: string[];
   /** Stable terminal references dragged into this specific message. */
@@ -108,6 +126,12 @@ export interface SendDetail {
   pluginIds?: string[];
   /** Skill ids selected via /skills for this turn. */
   skillIds?: string[];
+  /** Force an AllAboutMe.md learning revision after this Jarvis turn. */
+  forceAllAboutMeUpdate?: boolean;
+  /** Current Jarvis interaction mode for this turn. */
+  interactionMode?: JarvisInteractionMode;
+  /** Durable structured UI context, such as answered question cards. */
+  structuredContext?: JarvisStructuredContext;
 }
 
 /** The shape of the `jarvis:cancel` event detail. */
@@ -128,10 +152,24 @@ export interface RuntimeOptions {
   flushIntervalMs?: number;
 }
 
+/** Detect all `@slug` mentions in user text. */
+function detectMentionSlugs(text: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const re = /(?:^|\s)@([A-Za-z][A-Za-z0-9_-]*)(?=[\s.,!?;:)\]}]|$)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const slug = m[1]?.toLowerCase();
+    if (!slug || seen.has(slug)) continue;
+    seen.add(slug);
+    out.push(slug);
+  }
+  return out;
+}
+
 /** Detect a leading `@slug ` mention in user text. Returns the slug or null. */
 function detectMention(text: string): string | null {
-  const m = /(?:^|\s)@([A-Za-z][A-Za-z0-9_-]*)(?=\s|$)/.exec(text);
-  return m ? m[1]! : null;
+  return detectMentionSlugs(text)[0] ?? null;
 }
 
 function getSelectedSkillsBlock(skillIds: string[] | undefined): string {
@@ -142,7 +180,9 @@ function getSelectedSkillsBlock(skillIds: string[] | undefined): string {
   if (skills.length === 0 && !addenda.trim()) return '';
   const list = skills.map((skill) => `- ${skill.name}: ${skill.description}`).join('\n');
   return [
-    'The user selected these skills for this turn. Apply their instructions to this response.',
+    '## Active Jarvis skills for this turn',
+    'The user selected these skills intentionally. Treat them as the operating mode for this response, not as generic labels.',
+    'Apply the matching instructions, tools, and response style while preserving Jarvis brevity.',
     list,
     addenda.trim() ? `\nSkill instructions:\n${addenda.trim()}` : '',
   ].filter(Boolean).join('\n');
@@ -152,21 +192,304 @@ const JARVIS_CHAT_ACTION_OVERLAY = [
   '## Jarvis chat interface',
   '',
   'You are Jarvis inside the VibeSpace chat UI, not a terminal CLI.',
-  'Keep replies short, direct, and action-oriented.',
+  'Answer in 1-3 short sentences unless the user explicitly asks for more.',
+  'Name the relevant file, agent, terminal, context map, or page when it matters.',
   '',
   'Rules:',
-  '- If the user asks you to change the app, navigate, open terminals, or run commands, say what you will do and emit an `action` block.',
+  '- If the user asks you to change the app, navigate, open terminals, run commands, create schedules, or spawn subagents, say the result briefly and emit a fenced `action` block when an action exists.',
   '- Never answer app-control requests with JavaScript, shell snippets, pseudocode, or instructions for the user to run manually.',
+  '- Never emit raw `{action}` macros. Use fenced JSON action blocks only.',
   '- Mutating app actions do not run until the user clicks Approve, so never claim they already happened.',
   '- For "open N terminals", use `terminal.bulkOpen` with `{"count":N}`. If they say "with opencode", add `"command":"opencode"`.',
+  '- Never ask for passwords, API keys, tokens, recovery codes, credit cards, or credentials. Direct users to the trusted settings or provider connection UI instead.',
   '- Use any provided terminal coordination summary as read-only awareness of active agents, locks, and recent work.',
+  '- /agents references the Agents page/editor. /terminals references the terminal surface. /hive references Hive Balanced.',
 ].join('\n');
+
+const CHAT_RESPONSE_STYLE_OVERLAY = [
+  '## VibeSpace chat response style',
+  'Answer directly, with Jarvis-like brevity and no generic filler.',
+  'Prefer 1-3 short sentences. Use bullets only when they make the answer easier to scan.',
+  'Reference the relevant file, @agent, terminal, context map, plugin, or page when that context is present.',
+  'If multiple @agents are mentioned, answer as/for the first mentioned agent and use the others as context.',
+].join('\n');
+
+function getInteractionModeOverlay(mode: JarvisInteractionMode): string {
+  if (mode === 'ask') {
+    return [
+      '## Jarvis interaction mode: Ask',
+      'Answer the user directly. Do not emit action blocks, permission cards, plan cards, file writes, command proposals, or multi-agent launches.',
+      'If the user asks for work that requires changes, explain what would be needed but do not perform or propose the action.',
+    ].join('\n');
+  }
+  if (mode === 'plan') {
+    return [
+      '## Jarvis interaction mode: Plan',
+      'This is read-only planning mode. You may inspect available context and explain a plan.',
+      'Do not emit executable action blocks, file writes, delete operations, command proposals, or direct project mutations.',
+      'End the response with a fenced jarvis_plan JSON block containing title, summary, steps, and risks.',
+    ].join('\n');
+  }
+  return [
+    '## Jarvis interaction mode: Agent',
+    'You may help do the work, but risky writes, deletes, commands, project-structure changes, or agent launches must be gated by permission cards or existing approval actions.',
+  ].join('\n');
+}
+
+function structuredContextBlock(context: JarvisStructuredContext | undefined): string {
+  if (!context) return '';
+  return [
+    '## Structured Jarvis UI context',
+    `Kind: ${context.kind}`,
+    'Payload:',
+    JSON.stringify(context.payload, null, 2),
+  ].join('\n');
+}
+
+function applyChatResponseStyleOverlay(agent: Agent): Agent {
+  return {
+    ...agent,
+    system_prompt: (agent.system_prompt ?? '') + '\n\n' + CHAT_RESPONSE_STYLE_OVERLAY,
+  };
+}
 
 function applyJarvisChatActionOverlay(agent: Agent): Agent {
   return {
     ...agent,
     system_prompt: (agent.system_prompt ?? '') + '\n\n' + JARVIS_CHAT_ACTION_OVERLAY,
   };
+}
+
+function dispatchRunState(chatId: ChatId | string, status: 'running' | 'done' | 'error' | 'cancelled'): void {
+  window.dispatchEvent(new CustomEvent('jarvis:run-state', {
+    detail: { chatId: String(chatId), status },
+  }));
+}
+
+export function sanitizeCredentialRequests(text: string): string {
+  const asksForSecret = /\b(enter|type|provide|send|share|give)\b[\s\S]{0,80}\b(password|api key|token|secret|credential|recovery code|credit card)\b/i.test(text);
+  if (!asksForSecret) return text;
+  return [
+    "I can't ask for passwords, tokens, API keys, recovery codes, credit cards, or other secrets.",
+    'Open the trusted settings or provider connection UI and enter credentials there only.',
+  ].join('\n');
+}
+
+export function sanitizePromptLeaks(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return text;
+  const leakSignals = [
+    /"(?:tools|tool_calls?|scenario)"\s*:/i,
+    /\bbenchmark[_\s-]?scenario\b/i,
+    /\bavailable tools\b/i,
+    /\bexpected assistant response\b/i,
+    /\bevaluation rubric\b/i,
+    /\buse the above\b[\s\S]{0,80}\bscenario\b/i,
+  ].filter((pattern) => pattern.test(trimmed)).length;
+  const looksLikeToolJsonDump = /^[{\[]/.test(trimmed) && /"(?:tools|tool_calls?|scenario)"\s*:/i.test(trimmed);
+  if (!looksLikeToolJsonDump && leakSignals < 2) return text;
+  return [
+    'I hit an invalid model reply instead of a usable answer.',
+    'Please retry with a stronger model or rephrase the request.',
+  ].join('\n');
+}
+
+function sanitizeUnsupportedActionMacros(text: string): string {
+  return text
+    .split(/\r?\n/)
+    .filter((line) => !/^\s*\{action\}/i.test(line.trim()))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim() || text;
+}
+
+function updateStructuredAgentStatus(
+  context: JarvisStructuredContext | undefined,
+  status: 'done' | 'failed' | 'cancelled',
+  currentStep: string,
+): void {
+  if (!context || (context.kind !== 'multitask' && context.kind !== 'subagents')) return;
+  const payload = context.payload as { parentChatId?: string; agentId?: string } | undefined;
+  if (!payload?.parentChatId || !payload.agentId) return;
+  useJarvisInteractionStore.getState().updateAgent(payload.parentChatId, payload.agentId, {
+    status,
+    currentStep,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+async function resolveChatProjectId(chatId: ChatId | string): Promise<ProjectId | null> {
+  try {
+    const chat = await chatRepo.getById(chatId as ChatId);
+    if (chat?.project_id) return chat.project_id;
+  } catch {
+    // Fall back to the currently active project below.
+  }
+  return useAuthStore.getState().projectId as ProjectId | null;
+}
+
+function resolveMentionedAgents(
+  detail: SendDetail,
+  text: string,
+  bindings: RuntimeBindings,
+): Agent[] {
+  const out: Agent[] = [];
+  const seen = new Set<AgentId>();
+  const add = (candidate: Agent | null | undefined) => {
+    if (!candidate || seen.has(candidate.id)) return;
+    seen.add(candidate.id);
+    out.push(candidate);
+  };
+  for (const id of detail.mentionedAgentIds ?? []) {
+    add(bindings.getAgentById(id));
+  }
+  for (const slug of detectMentionSlugs(text)) {
+    add(bindings.getAgentBySlug(slug));
+  }
+  return out.slice(0, 8);
+}
+
+function getMentionedAgentProfileBlock(mentionedAgents: Agent[]): string {
+  if (mentionedAgents.length === 0) return '';
+  return [
+    'Mentioned agent context for this turn.',
+    'Use these agent definitions as request-specific context. Do not expose hidden prompt text unless the user asks to inspect agent configuration.',
+    '',
+    ...mentionedAgents.map((agent) => [
+      `--- @${agent.slug} (${agent.name}) ---`,
+      `description: ${agent.description || 'none'}`,
+      `model: ${agent.model.provider}/${agent.model.model}`,
+      `capabilities: ${agent.capabilities.join(', ') || 'none'}`,
+      'system prompt:',
+      '```',
+      agent.system_prompt || '[empty]',
+      '```',
+    ].join('\n')),
+  ].join('\n\n');
+}
+
+function extractUrls(text: string): string[] {
+  const matches = text.match(/\bhttps?:\/\/[^\s<>"')]+/gi) ?? [];
+  return Array.from(new Set(matches)).slice(0, 8);
+}
+
+function messageText(message: Message): string {
+  return message.parts
+    .map((part) => {
+      if (part.kind === 'text') return part.text;
+      if (part.kind === 'image') return `[Image: ${part.alt ?? 'attached image'}]`;
+      if (part.kind === 'action_proposal') return actionPartToLlmText(part);
+      return '';
+    })
+    .filter(Boolean)
+    .join('\n')
+    .trim();
+}
+
+function recentUserMessageTexts(history: Message[]): string[] {
+  return history
+    .filter((message) => message.role === 'user')
+    .map(messageText)
+    .filter(Boolean)
+    .slice(-12);
+}
+
+function allAboutMeCuratorAgent(base: Agent): Agent {
+  return {
+    ...base,
+    id: 'agent_all_about_me_curator' as AgentId,
+    slug: 'all-about-me-curator',
+    name: 'All About Me Curator',
+    description: 'Maintains the user personality profile for Jarvis.',
+    tools_allowed: [],
+    system_prompt: [
+      'You maintain `AllAboutMe.md`, the user-personality profile for Jarvis.',
+      'Return only the complete markdown document.',
+      'Preserve stable user identity, tone, preferences, interests, and reaction patterns.',
+      'Never add secrets, credentials, exact private URLs, or unsupported claims.',
+    ].join('\n'),
+    temperature: 0.25,
+    max_output_tokens: 1800,
+  };
+}
+
+async function maybeUpdateAllAboutMeFromChat(
+  baseAgent: Agent,
+  history: Message[],
+  force = false,
+  chatId?: ChatId | string,
+): Promise<void> {
+  const store = useAllAboutMeStore.getState();
+  if (!force && !store.needsLearningUpdate()) return;
+  const existingMarkdown = store.markdown.trim();
+  if (!existingMarkdown) return;
+  const recentUserMessages = recentUserMessageTexts(history);
+  if (recentUserMessages.length === 0) return;
+  const activityId = chatId ? createChatActivityId('tool') : null;
+  if (activityId && chatId) {
+    useChatActivityStore.getState().record({
+      id: activityId,
+      chatId,
+      kind: 'tool',
+      status: 'running',
+      title: 'Jarvis is learning from this chat',
+      subtitle: 'AllAboutMe.md update in progress',
+      detail: 'Jarvis found 10 qualifying user messages and is updating the private AllAboutMe.md profile.',
+      agentSlug: 'jarvis',
+      ts: Date.now(),
+    });
+  }
+  try {
+    const revised = await reviseAllAboutMeMarkdown(
+      { existingMarkdown, recentUserMessages },
+      async (prompt) => {
+        const response = await runAgent({
+          agent: allAboutMeCuratorAgent(baseAgent),
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.25,
+          max_output_tokens: 1800,
+        });
+        return response.text;
+      },
+    );
+    useAllAboutMeStore.getState().applyLearningRevision(revised);
+    if (activityId && chatId) {
+      const summary = summarizeAllAboutMeLearningChange(existingMarkdown, revised);
+      useChatActivityStore.getState().update(chatId, activityId, {
+        kind: 'diff',
+        status: 'done',
+        title: 'AllAboutMe.md file written',
+        subtitle: ALL_ABOUT_ME_FILE_LOCATION,
+        filePath: ALL_ABOUT_ME_FILE_LOCATION,
+        diff: buildAllAboutMeLearningDiff(existingMarkdown, revised),
+        addedLines: summary.addedLines,
+        removedLines: summary.removedLines,
+      });
+    }
+    devConsole.log({
+      channel: 'ai',
+      level: 'info',
+      message: 'AllAboutMe.md learning update complete',
+      detail: {
+        userMessages: useAllAboutMeStore.getState().totalUserMessages,
+        markdownChars: revised.length,
+      },
+    });
+  } catch (err) {
+    if (activityId && chatId) {
+      useChatActivityStore.getState().update(chatId, activityId, {
+        status: 'error',
+        title: 'AllAboutMe.md learning skipped',
+        detail: err instanceof Error ? err.message : String(err),
+      });
+    }
+    devConsole.log({
+      channel: 'ai',
+      level: 'warn',
+      message: 'AllAboutMe.md learning update skipped',
+      detail: { error: err instanceof Error ? err.message : String(err) },
+    });
+  }
 }
 
 function actionPartToLlmText(part: Extract<Part, { kind: 'action_proposal' }>): string {
@@ -193,21 +516,46 @@ function actionPartToLlmText(part: Extract<Part, { kind: 'action_proposal' }>): 
 }
 
 /** Flatten Message[] -> LLMMessage[] for the provider call. */
-function toLLMMessages(history: Message[], excludeId?: MessageId): LLMMessage[] {
+function imagePartToLlm(part: Extract<Part, { kind: 'image' }>): LLMContentPart | null {
+  const match = part.url.match(/^data:([^;,]+);base64,(.+)$/);
+  if (!match?.[1] || !match?.[2]) return null;
+  return {
+    type: 'image',
+    mimeType: match[1],
+    data: match[2],
+    name: part.alt,
+  };
+}
+
+function toLLMMessages(history: Message[], excludeId?: MessageId, includeImages = true): LLMMessage[] {
   const out: LLMMessage[] = [];
-  for (const m of history) {
+  const lastUserIndex = history.reduce((last, message, index) => (
+    (!excludeId || message.id !== excludeId) && message.role === 'user' ? index : last
+  ), -1);
+  for (let index = 0; index < history.length; index += 1) {
+    const m = history[index]!;
     if (excludeId && m.id === excludeId) continue;
     if (m.role !== 'user' && m.role !== 'assistant' && m.role !== 'agent') continue;
-    const content = m.parts
-      .map((p) => {
-        if (p.kind === 'text') return p.text;
-        if (p.kind === 'action_proposal') return actionPartToLlmText(p);
-        return '';
-      })
-      .filter(Boolean)
-      .join('\n')
-      .trim();
-    if (content.length === 0) continue;
+    const contentParts: LLMContentPart[] = [];
+    for (const p of m.parts) {
+      if (p.kind === 'text' && p.text.trim()) {
+        contentParts.push({ type: 'text', text: p.text });
+      } else if (p.kind === 'action_proposal') {
+        contentParts.push({ type: 'text', text: actionPartToLlmText(p) });
+      } else if (p.kind === 'image') {
+        const image = imagePartToLlm(p);
+        if (image && includeImages && index === lastUserIndex) {
+          contentParts.push(image);
+        } else {
+          contentParts.push({ type: 'text', text: `[Image attached: ${p.alt ?? 'image'}]` });
+        }
+      }
+    }
+    if (contentParts.length === 0) continue;
+    const content =
+      contentParts.length === 1 && contentParts[0]?.type === 'text'
+        ? contentParts[0].text.trim()
+        : contentParts;
     out.push({
       role: m.role === 'user' ? 'user' : 'assistant',
       content,
@@ -236,10 +584,26 @@ function toLLMMessages(history: Message[], excludeId?: MessageId): LLMMessage[] 
  * wrote, and the AI sees the same context on the next turn so it can
  * self-correct rather than silently retrying broken JSON.
  */
-function textToParts(text: string, userText?: string): Part[] {
+function textToParts(text: string, userText?: string, interactionMode: JarvisInteractionMode = 'agent'): Part[] {
+  const questionResult = parseJarvisQuestionBlocks(text);
+  if (questionResult.hasQuestionBlocks) return questionResult.parts;
+  const planResult = parseJarvisPlanBlocks(text, { force: interactionMode === 'plan' });
+  if (planResult.hasPlanBlocks) return planResult.parts;
+  const permissionResult = parseJarvisPermissionBlocks(text);
+  if (permissionResult.hasPermissionBlocks) return permissionResult.parts;
   const result = parseActionBlocks(text);
+  if (interactionMode === 'ask') {
+    const prose = result.hasActionBlocks
+      ? result.segments
+          .flatMap((seg) => (seg.kind === 'prose' ? [seg.text.trim()] : []))
+          .filter(Boolean)
+          .join('\n\n')
+      : text;
+    return [{ kind: 'text', text: prose || 'Ask Mode blocked an action proposal from this reply.' }];
+  }
   if (!result.hasActionBlocks) {
     const fallbackProposals = userText
+      && interactionMode === 'agent'
       ? inferFallbackActionProposals(userText, text)
       : [];
     if (fallbackProposals.length === 0) return [{ kind: 'text', text }];
@@ -330,6 +694,12 @@ export function startRuntimeListener(
 
   const inFlight = new Map<MessageId, AbortController>();
 
+  const releaseVoiceTurnWithoutReply = (detail: SendDetail, chatId: ChatId | string): void => {
+    if (detail.speakReply !== true) return;
+    window.dispatchEvent(new CustomEvent(STREAMING_VOICE_END_EVENT));
+    dispatchRunState(chatId, 'error');
+  };
+
   const handleSend = async (e: Event) => {
     const detail = (e as CustomEvent<SendDetail>).detail;
     if (!detail || !detail.chatId || typeof detail.text !== 'string') return;
@@ -348,32 +718,37 @@ export function startRuntimeListener(
     }
 
     const authState = useAuthStore.getState();
+    const interactionMode = detail.interactionMode ?? useJarvisInteractionStore.getState().modeForChat(chatId);
     const modelCtx = modelSelectionContextFromAuth(authState);
     const sendValidation = validateSendModelAccess(
       text,
       authState.chatModelSelection,
       modelCtx,
       authState.stackCustomSteps,
-      { voice: detail.speakReply === true },
+      {
+        voice: detail.speakReply === true,
+        attachments: { hasImages: (detail.imageAttachments?.length ?? 0) > 0 },
+      },
     );
     if (!sendValidation.ok) {
       toast.error('Cannot send', sendValidation.message);
+      releaseVoiceTurnWithoutReply(detail, chatId);
       return;
     }
+    useAllAboutMeStore.getState().recordUserMessage();
 
     const stackSlash = parseStackSlashCommand(text);
     const stackPreset = resolveActiveStackPreset(authState.chatModelSelection, stackSlash);
     const stackText = stackSlash.matched ? stackSlash.text : text;
     const stackTaskType = stackSlash.taskType ?? classifyStackTask(stackText);
 
+    const mentionedAgents = resolveMentionedAgents(detail, text, bindings);
+
     // Resolve agent: explicit agentId > composer-resolved mention >
     // textual @mention fallback > chat's active agent.
     let agent: Agent | null | undefined;
     if (detail.agentId) agent = bindings.getAgentById(detail.agentId);
-    if (!agent && Array.isArray(detail.mentionedAgentIds)) {
-      const mentionedAgentId = detail.mentionedAgentIds.find(Boolean);
-      if (mentionedAgentId) agent = bindings.getAgentById(mentionedAgentId);
-    }
+    if (!agent) agent = mentionedAgents[0];
     if (!agent) {
       const slug = detectMention(text);
       if (slug) agent = bindings.getAgentBySlug(slug);
@@ -383,19 +758,77 @@ export function startRuntimeListener(
       // Loud-but-not-crashy: surface the misconfiguration so it's visible in
       // dev console; the UI will likely show no response.
       console.warn('[jarvis runtime] no agent resolvable for chat', chatId);
+      toast.error('Jarvis unavailable', 'No Jarvis agent is available for this chat.');
+      releaseVoiceTurnWithoutReply(detail, chatId);
       return;
     }
 
+    const projectId = await resolveChatProjectId(chatId);
+    const activity = useChatActivityStore.getState();
+    const agentActivityId = createChatActivityId('agent');
+    activity.record({
+      id: agentActivityId,
+      chatId,
+      kind: mentionedAgents.length > 1 ? 'subagent' : 'agent',
+      status: 'running',
+      title: `@${agent.slug} is working`,
+      subtitle: mentionedAgents.length > 1
+        ? `${mentionedAgents.length} mentioned agents in context`
+        : `${agent.model.provider}/${agent.model.model}`,
+      agentId: agent.id,
+      agentSlug: agent.slug,
+      ts: Date.now(),
+      detail: mentionedAgents.length > 0
+        ? mentionedAgents.map((mentioned) => `@${mentioned.slug} — ${mentioned.description || mentioned.name}`).join('\n')
+        : undefined,
+    });
+    for (const path of detail.filePaths ?? []) {
+      activity.record({
+        id: createChatActivityId('file'),
+        chatId,
+        kind: 'file',
+        status: 'done',
+        title: 'Reading file context',
+        subtitle: path,
+        filePath: path,
+        ts: Date.now(),
+      });
+    }
+    for (const image of detail.imageAttachments ?? []) {
+      activity.record({
+        id: createChatActivityId('image'),
+        chatId,
+        kind: 'file',
+        status: 'done',
+        title: 'Attached image',
+        subtitle: image.name,
+        filePath: image.sourcePath ?? image.name,
+        ts: Date.now(),
+        detail: `${image.mimeType}${image.size ? ` · ${Math.ceil(image.size / 1024)} KB` : ''}`,
+      });
+    }
+    for (const url of extractUrls(text)) {
+      activity.record({
+        id: createChatActivityId('url'),
+        chatId,
+        kind: 'url',
+        status: 'done',
+        title: 'Referenced URL',
+        subtitle: url,
+        url,
+        ts: Date.now(),
+      });
+    }
     void maybeRenameChat(chatId as ChatId, text);
 
     // Apply the active persona preset to Jarvis only. Other agents pass through.
     // Same gate is reused for the action-catalogue addendum so we don't
     // inflate prompts for sub-agents (Builder/Scout/Reviewer) that don't
     // need to propose user-approved actions.
-    let runnable = agent;
+    let runnable = applyChatResponseStyleOverlay(agent);
     if (agent.slug === 'jarvis') {
       const preset = useAuthStore.getState().personaPreset;
-      runnable = applyPersona(agent, preset);
+      runnable = applyPersona(runnable, preset);
       runnable = applyAvailableActions(runnable);
       runnable = applyJarvisChatActionOverlay(runnable);
     }
@@ -437,14 +870,15 @@ export function startRuntimeListener(
     // and we skip empty bits when assembling. Failures inside either
     // helper degrade silently — neither block is on the critical
     // path, and a missing file shouldn't kill a chat turn.
-    const projectId = useAuthStore.getState().projectId as ProjectId | null;
     let projectContext = '';
     let projectContextTree = '';
     let connectedFilesContext = '';
+    let mentionedAgentContext = '';
     let explicitContext = '';
     let explicitFilesContext = '';
     let explicitTerminalContext = '';
     let jarvisCoordinationContext = '';
+    let allAboutMeContext = '';
     let pluginContext = '';
     let pluginStatusContext = '';
     let selectedSkillsContext = '';
@@ -489,7 +923,24 @@ export function startRuntimeListener(
       });
     }
     try {
-      explicitFilesContext = await getExplicitFilesBlock(detail.filePaths ?? []);
+      const mentionedBlocks = [getMentionedAgentProfileBlock(mentionedAgents)];
+      for (const mentioned of mentionedAgents) {
+        const connected = await getConnectedFilesBlock(mentioned.slug, projectId);
+        if (connected) mentionedBlocks.push(connected);
+        const terminal = buildAgentTerminalContext(mentioned.slug);
+        if (terminal) mentionedBlocks.push(terminal);
+      }
+      mentionedAgentContext = mentionedBlocks.filter(Boolean).join('\n\n');
+    } catch (err) {
+      devConsole.log({
+        channel: 'ai',
+        level: 'warn',
+        message: 'mentioned-agent context build failed',
+        detail: { error: err instanceof Error ? err.message : String(err) },
+      });
+    }
+    try {
+      explicitFilesContext = await getExplicitFilesBlock(detail.filePaths ?? [], getStoredProjectRoot(projectId));
     } catch (err) {
       devConsole.log({
         channel: 'ai',
@@ -511,6 +962,16 @@ export function startRuntimeListener(
       });
     }
     if (agent.slug === 'jarvis') {
+      try {
+        allAboutMeContext = buildAllAboutMeContextBlock(useAllAboutMeStore.getState().markdown);
+      } catch (err) {
+        devConsole.log({
+          channel: 'ai',
+          level: 'warn',
+          message: 'AllAboutMe.md context build failed',
+          detail: { error: err instanceof Error ? err.message : String(err) },
+        });
+      }
       try {
         jarvisCoordinationContext = await getJarvisCoordinationContextBlock(projectId);
       } catch (err) {
@@ -556,9 +1017,13 @@ export function startRuntimeListener(
     const contextBlocks = [
       projectContext,
       projectContextTree,
+      allAboutMeContext,
       pluginContext,
       pluginStatusContext,
       selectedSkillsContext,
+      getInteractionModeOverlay(interactionMode),
+      structuredContextBlock(detail.structuredContext),
+      mentionedAgentContext,
       explicitContext,
       explicitFilesContext,
       explicitTerminalContext,
@@ -695,10 +1160,14 @@ export function startRuntimeListener(
       });
       placeholderId = placeholder.id;
       inFlight.set(placeholder.id, controller);
+      dispatchRunState(chatId, 'running');
 
       // Read the now-current history; pass it (sans placeholder) to the model.
       const history = await bindings.getMessages(chatId);
-      const llmMessages = toLLMMessages(history, placeholder.id);
+      const includeImages = stackStepsEarly.length > 0
+        ? stackStepsEarly.every((step) => modelSupportsVision(step.provider, step.model))
+        : modelSupportsVision(runnable.model.provider, runnable.model.model);
+      const llmMessages = toLLMMessages(history, placeholder.id, includeImages);
 
       useAgentStore.getState().setRunState(agent.id, 'streaming');
       useAgentStore.getState().setVerb(agent.id, 'thinking');
@@ -733,7 +1202,7 @@ export function startRuntimeListener(
               const isTrailingSameUser =
                 index === all.length - 1 &&
                 message.role === 'user' &&
-                message.content.trim() === text.trim();
+                llmContentToText(message.content).trim() === text.trim();
               return !isTrailingSameUser;
             }),
             steps: stackSteps,
@@ -787,13 +1256,13 @@ export function startRuntimeListener(
       // Force a final write with whatever the provider says is canonical.
       // textToParts() splits the text on action-proposal fences so the
       // chat thread renders inline Approve/Cancel cards alongside prose.
-      const finalText = response.text || acc;
+      const finalText = sanitizePromptLeaks(sanitizeUnsupportedActionMacros(sanitizeCredentialRequests(response.text || acc)));
       const finalParts = response.stackResult
         ? [
             ...response.stackResult.steps.map(stackStepToPart),
-            ...textToParts(finalText, stackText),
+            ...textToParts(finalText, stackText, interactionMode),
           ]
-        : textToParts(finalText, text);
+        : textToParts(finalText, text, interactionMode);
       await bindings.updateMessage(placeholder.id, {
         parts: finalParts,
         usage: {
@@ -820,6 +1289,14 @@ export function startRuntimeListener(
 
       useAgentStore.getState().setRunState(agent.id, 'done');
       useAgentStore.getState().setVerb(agent.id, undefined);
+      useChatActivityStore.getState().update(chatId, agentActivityId, {
+        status: 'done',
+        title: `@${agent.slug} finished`,
+        subtitle: `${response.provider}/${response.model} · ${response.usage.input_tokens}+${response.usage.output_tokens} tokens`,
+        ts: Date.now(),
+      });
+      dispatchRunState(chatId, 'done');
+      updateStructuredAgentStatus(detail.structuredContext, 'done', 'Finished');
 
       // Auto-name the chat from its first assistant reply.
       //
@@ -840,6 +1317,14 @@ export function startRuntimeListener(
         await maybeRenameChat(chatId as ChatId, finalText);
       } catch {
         // Auto-naming is best-effort; never let it break the run.
+      }
+      if (agent.slug === 'jarvis') {
+        void maybeUpdateAllAboutMeFromChat(
+          runnable,
+          history,
+          detail.forceAllAboutMeUpdate === true,
+          detail.chatId,
+        );
       }
 
       devConsole.log({
@@ -926,6 +1411,14 @@ export function startRuntimeListener(
       }
       useAgentStore.getState().setRunState(agent.id, aborted ? 'idle' : 'error');
       useAgentStore.getState().setVerb(agent.id, undefined);
+      useChatActivityStore.getState().update(chatId, agentActivityId, {
+        status: aborted ? 'cancelled' : 'error',
+        title: aborted ? `@${agent.slug} cancelled` : `@${agent.slug} failed`,
+        subtitle: aborted ? 'Cancelled by user' : ((err as Error)?.message ?? 'Unknown error'),
+        ts: Date.now(),
+      });
+      dispatchRunState(chatId, aborted ? 'cancelled' : 'error');
+      updateStructuredAgentStatus(detail.structuredContext, aborted ? 'cancelled' : 'failed', aborted ? 'Cancelled' : 'Failed');
 
       devConsole.log({
         channel: 'ai',

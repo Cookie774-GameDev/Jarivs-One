@@ -170,13 +170,13 @@ server-side. The Edge Function does not currently read this table — BYOK
 keys live on the client. The column exists so a future "hosted BYOK" mode
 can lift them server-side without another migration.
 
-## Stripe (out of scope here)
+## Stripe billing
 
-The settings panel ships an "Upgrade" button that points at the
-`VITE_STRIPE_CHECKOUT_*` env vars when defined; otherwise it shows a
-"coming soon" toast. Wire a Stripe Checkout session + webhook
-(`customer.subscription.*`) to upsert into `public.subscriptions`. The
-`subscriptions_sync_profile` trigger handles the rest.
+The desktop app creates checkout sessions through the signed-in
+`create-checkout-session` Edge Function. Static payment links are not used
+because purchases must map back to the Supabase user. Stripe webhooks upsert
+`public.subscriptions`, and `subscriptions_sync_profile` handles profile tier
+sync.
 
 ## Local testing
 

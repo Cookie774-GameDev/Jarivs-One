@@ -351,6 +351,39 @@ class VoiceServiceImpl extends VoiceEmitter {
     }
   }
 
+  /**
+   * Synchronously release the current recognizer so another STT surface can
+   * take mic ownership in the same user gesture.
+   */
+  interruptListening(): void {
+    this.wantsActive = false;
+    this.clearInactivityTimer();
+    const r = this.recognition;
+    const wasActive = this.active || Boolean(r);
+    this.recognition = null;
+    this.active = false;
+    if (r) {
+      r.onresult = null;
+      r.onerror = null;
+      r.onstart = null;
+      r.onend = null;
+      r.onnomatch = null;
+      try {
+        r.abort();
+      } catch {
+        try {
+          r.stop();
+        } catch {
+          // ignore
+        }
+      }
+    }
+    if (wasActive) {
+      this.emit('voice:end', undefined);
+      dispatchExclusiveEvent(VOICE_EXCLUSIVE_STOP_EVENT);
+    }
+  }
+
   /** Hard cancel: abort the session and discard any pending result. */
   abort(): void {
     this.wantsActive = false;

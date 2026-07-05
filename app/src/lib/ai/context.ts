@@ -221,7 +221,8 @@ export async function getConnectedFilesBlock(
   const paths = collectConnectedFilePaths(agentSlug, projectId);
   if (paths.length === 0) return '';
 
-  const results = await readPromptFileSamples(paths);
+  const projectRoot = getStoredProjectRoot(projectId);
+  const results = await readPromptFileSamples(paths, projectRoot);
 
   let used = 0;
   const blocks: string[] = [];
@@ -262,10 +263,10 @@ export async function getConnectedFilesBlock(
   return `${intro}\n\n${blocks.join('\n\n')}`;
 }
 
-export async function getExplicitFilesBlock(paths: string[]): Promise<string> {
+export async function getExplicitFilesBlock(paths: string[], root?: string | null): Promise<string> {
   const unique = Array.from(new Set(paths.map((p) => p.trim()).filter(Boolean))).slice(0, 8);
   if (unique.length === 0) return '';
-  const results = await readPromptFileSamples(unique);
+  const results = await readPromptFileSamples(unique, root);
   let used = 0;
   const blocks: string[] = [];
   for (const r of results) {
@@ -294,12 +295,12 @@ export async function getExplicitFilesBlock(paths: string[]): Promise<string> {
   ].join('\n');
 }
 
-async function readPromptFileSamples(paths: string[]): Promise<FsReadResult[]> {
+async function readPromptFileSamples(paths: string[], root?: string | null): Promise<FsReadResult[]> {
   const settled = await Promise.allSettled(paths.map(async (path): Promise<FsReadResult> => {
     if (isMediaPromptFile(path)) {
       return { ok: true, path, content: mediaPromptMetadata(path) };
     }
-    return readTextFileSample(path, FILE_SAMPLE_READ_BYTES);
+    return readTextFileSample(path, FILE_SAMPLE_READ_BYTES, { root });
   }));
   return settled.map((result, index) => {
     const path = paths[index] ?? '';

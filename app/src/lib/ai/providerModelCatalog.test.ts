@@ -38,9 +38,9 @@ describe('providerModelCatalog', () => {
     expect(next).not.toBe('gemini-3.5-flash');
   });
 
-  it('preserves unknown saved model as custom option', () => {
+  it('does not expose unknown saved models as dropdown options', () => {
     const models = getModelsForProvider('google', ctx, 'my-old-custom-model');
-    expect(models.some((model) => model.id === 'my-old-custom-model' && model.isCustom)).toBe(true);
+    expect(models.some((model) => model.id === 'my-old-custom-model')).toBe(false);
   });
 
   it('blocks provider/model mismatch validation', () => {
@@ -48,11 +48,10 @@ describe('providerModelCatalog', () => {
     expect(result.ok).toBe(false);
   });
 
-  it('allows advanced custom model ids when enabled', () => {
+  it('rejects custom model ids even when a legacy caller asks for custom allowance', () => {
     const result = validateProviderModelSelection('google', 'totally-custom-id', ctx, {
       allowCustom: true,
     });
-    expect(result.ok).toBe(true);
-    expect(result.isCustomModel).toBe(true);
+    expect(result.ok).toBe(false);
   });
 });

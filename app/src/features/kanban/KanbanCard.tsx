@@ -1,5 +1,5 @@
-import type { DragEvent, KeyboardEvent } from 'react';
-import { Check, Clock, GripVertical } from 'lucide-react';
+import type { DragEvent, KeyboardEvent, MouseEvent } from 'react';
+import { CalendarClock, Check, Clock, GripVertical } from 'lucide-react';
 import { cn, formatRelative } from '@/lib/utils';
 import type { MilestoneItem } from '@/features/inspector/types';
 
@@ -10,7 +10,10 @@ export interface KanbanCardProps {
   onDragStart: (e: DragEvent<HTMLDivElement>) => void;
   onDragEnd: () => void;
   onClick: () => void;
+  onToggleDone?: () => void;
 }
+
+export const MILESTONE_DRAG_MIME = 'text/jarvis-milestone';
 
 const STATUS_LABEL = {
   todo: 'Todo',
@@ -25,6 +28,7 @@ export function KanbanCard({
   onDragStart,
   onDragEnd,
   onClick,
+  onToggleDone,
 }: KanbanCardProps) {
   const done = item.status === 'done';
 
@@ -35,6 +39,16 @@ export function KanbanCard({
     }
   };
 
+  const allowDrop = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const onCheck = (e: MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    onToggleDone?.();
+  };
+
   return (
     <div
       role="button"
@@ -42,6 +56,7 @@ export function KanbanCard({
       draggable
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
+      onDragOver={allowDrop}
       onClick={onClick}
       onKeyDown={onKey}
       aria-label={`Milestone: ${item.title}`}
@@ -77,6 +92,22 @@ export function KanbanCard({
       </div>
 
       <div className="flex items-start gap-1.5">
+        {onToggleDone ? (
+          <button
+            type="button"
+            onClick={onCheck}
+            onMouseDown={(e) => e.stopPropagation()}
+            className={cn(
+              'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition-colors',
+              done
+                ? 'border-accent-copper bg-accent-copper/20 text-accent-copper'
+                : 'border-border hover:border-accent-copper/50',
+            )}
+            aria-label={done ? 'Mark milestone todo' : 'Complete milestone'}
+          >
+            {done ? <Check className="h-3 w-3" /> : null}
+          </button>
+        ) : null}
         <GripVertical
           className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/40 group-hover:text-muted-foreground/70"
           aria-hidden
@@ -93,6 +124,12 @@ export function KanbanCard({
           {item.description ? (
             <div className="mt-1 line-clamp-2 text-secondary text-muted-foreground">
               {item.description}
+            </div>
+          ) : null}
+          {item.deadlineAt ? (
+            <div className="mt-1 inline-flex items-center gap-1 text-metadata text-muted-foreground">
+              <CalendarClock className="h-3 w-3" />
+              Target {new Date(item.deadlineAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
             </div>
           ) : null}
         </div>

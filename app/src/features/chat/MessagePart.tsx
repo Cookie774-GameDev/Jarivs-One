@@ -5,6 +5,18 @@ import { StackTimeline } from './StackTimeline';
 import { parseActionBlocks } from '@/lib/actions';
 import type { Part } from '@/types';
 import type { MessageId } from '@/types/common';
+import {
+  JARVIS_CREATOR_APPLY_AGENT_EVENT,
+  JARVIS_CREATOR_APPLY_SKILL_EVENT,
+  parseLooseJarvisCreatorAgentDraft,
+  parseLooseJarvisCreatorSkillDraft,
+  parseJarvisCreatorDraft,
+  type JarvisCreatorKind,
+} from '@/features/jarvis-creator/contracts';
+import { QuestionBlockCard } from '@/features/jarvis-interaction/QuestionBlockCard';
+import { PlanReviewCard } from '@/features/jarvis-interaction/PlanReviewCard';
+import { PermissionRequestCard } from '@/features/jarvis-interaction/PermissionRequestCard';
+import { AgentActivityCard } from '@/features/jarvis-interaction/AgentActivityCard';
 
 function textForDisplay(text: string): string {
   if (!text.includes('```')) return text;
@@ -16,6 +28,64 @@ function textForDisplay(text: string): string {
     .join('')
     .trim();
   return prose;
+}
+
+function CreatorDraftApply({ text, kind }: { text: string; kind?: JarvisCreatorKind }) {
+  if (!kind) return null;
+
+  if (kind === 'agent') {
+    const agent = parseJarvisCreatorDraft('agent', text);
+    if (agent.ok) {
+      return (
+        <button
+          type="button"
+          className="mt-2 w-fit rounded-md border border-accent-copper/45 bg-accent-copper/10 px-2 py-1 text-metadata text-foreground hover:border-accent-copper/70"
+          onClick={() => window.dispatchEvent(new CustomEvent(JARVIS_CREATOR_APPLY_AGENT_EVENT, { detail: agent.draft }))}
+        >
+          Apply agent draft
+        </button>
+      );
+    }
+    const looseAgent = parseLooseJarvisCreatorAgentDraft(text);
+    if (looseAgent.ok) {
+      return (
+        <button
+          type="button"
+          className="mt-2 w-fit rounded-md border border-accent-copper/45 bg-accent-copper/10 px-2 py-1 text-metadata text-foreground hover:border-accent-copper/70"
+          onClick={() => window.dispatchEvent(new CustomEvent(JARVIS_CREATOR_APPLY_AGENT_EVENT, { detail: looseAgent.draft }))}
+        >
+          Push to agent
+        </button>
+      );
+    }
+    return null;
+  }
+
+  const skill = parseJarvisCreatorDraft('skill', text);
+  if (skill.ok) {
+    return (
+      <button
+        type="button"
+        className="mt-2 w-fit rounded-md border border-accent-copper/45 bg-accent-copper/10 px-2 py-1 text-metadata text-foreground hover:border-accent-copper/70"
+        onClick={() => window.dispatchEvent(new CustomEvent(JARVIS_CREATOR_APPLY_SKILL_EVENT, { detail: skill.draft }))}
+      >
+        Apply skill draft
+      </button>
+    );
+  }
+  const looseSkill = parseLooseJarvisCreatorSkillDraft(text);
+  if (looseSkill.ok) {
+    return (
+      <button
+        type="button"
+        className="mt-2 w-fit rounded-md border border-accent-copper/45 bg-accent-copper/10 px-2 py-1 text-metadata text-foreground hover:border-accent-copper/70"
+        onClick={() => window.dispatchEvent(new CustomEvent(JARVIS_CREATOR_APPLY_SKILL_EVENT, { detail: looseSkill.draft }))}
+      >
+        Push to skill
+      </button>
+    );
+  }
+  return null;
 }
 
 export interface MessagePartProps {
@@ -34,6 +104,10 @@ export interface MessagePartProps {
   messageId?: MessageId;
   /** Parent chat id. Same rationale as `messageId`. */
   chatId?: string;
+  /** When true, prose renders with the flowing warm Hive gradient. */
+  hiveWords?: boolean;
+  /** Enables Make-with-Jarvis apply/push controls for the matching creator thread only. */
+  creatorDraftKind?: JarvisCreatorKind;
 }
 
 /**
@@ -45,6 +119,8 @@ export function MessagePart({
   allParts,
   messageId,
   chatId,
+  hiveWords,
+  creatorDraftKind,
 }: MessagePartProps) {
   switch (part.kind) {
     case 'text': {
@@ -60,8 +136,17 @@ export function MessagePart({
         );
       }
       return (
-        <div className="text-body text-foreground whitespace-pre-wrap break-words [overflow-wrap:anywhere] leading-relaxed">
-          {display || part.text}
+        <div className="flex flex-col">
+          <div
+            className={
+              hiveWords
+                ? 'hive-words text-body font-medium whitespace-pre-wrap break-words [overflow-wrap:anywhere] leading-relaxed'
+                : 'text-body text-foreground whitespace-pre-wrap break-words [overflow-wrap:anywhere] leading-relaxed'
+            }
+          >
+            {display || part.text}
+          </div>
+          <CreatorDraftApply text={part.text} kind={creatorDraftKind} />
         </div>
       );
     }
@@ -132,6 +217,30 @@ export function MessagePart({
           chatId={chatId}
         />
       );
+    }
+
+    case 'question_block': {
+      return <QuestionBlockCard part={part} messageId={messageId} chatId={chatId} />;
+    }
+
+    case 'question_answer': {
+      return (
+        <div className="rounded-md border border-border bg-elevated px-3 py-2 text-secondary text-muted-foreground">
+          Jarvis question answers saved.
+        </div>
+      );
+    }
+
+    case 'plan_review': {
+      return <PlanReviewCard part={part} messageId={messageId} chatId={chatId} />;
+    }
+
+    case 'permission_request': {
+      return <PermissionRequestCard part={part} messageId={messageId} chatId={chatId} />;
+    }
+
+    case 'agent_card': {
+      return <AgentActivityCard part={part} />;
     }
 
     case 'image': {

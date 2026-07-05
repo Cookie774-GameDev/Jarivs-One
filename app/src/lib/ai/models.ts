@@ -33,7 +33,6 @@ export const REAL_CHAT_PROVIDERS: readonly ProviderId[] = [
   'xai',
   'ollama',
   'local',
-  'mock',
 ];
 
 const CLOUD_KEY_PROVIDERS: readonly ProviderId[] = [
@@ -75,7 +74,6 @@ export const CHAT_MODEL_OPTIONS: readonly ModelOption[] = [
   { provider: 'together', id: TOGETHER_DEFAULT_MODEL, label: 'Llama 3.3 70B (Together)' },
   { provider: 'xai', id: XAI_DEFAULT_MODEL, label: 'Grok 2' },
   { provider: 'xai', id: 'grok-4.3', label: 'Grok 4.3' },
-  { provider: 'mock', id: 'mock-default', label: 'Mock demo' },
 ];
 
 // ── Dynamic Ollama model discovery ──────────────────────────────────────
@@ -173,7 +171,6 @@ export function getAccessibleProviders(
       if (!providers.includes(provider)) providers.push(provider);
     }
   }
-  if (hasCloudApiKey('mock', apiKeys)) providers.push('mock');
   if (localModelsAvailable(localDefault)) {
     providers.push('ollama', 'local');
   }

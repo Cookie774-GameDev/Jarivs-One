@@ -27,7 +27,7 @@
  * vectors before any network call is made.
  */
 import type { LLMProvider, LLMRequest, LLMResponse } from '../types';
-import { estimateCost, estimateInputTokens } from '../types';
+import { estimateCost, estimateInputTokens, llmContentToText } from '../types';
 import { useAuthStore } from '@/stores/auth';
 import { parseSSE } from './sse';
 import { nativeFetch } from '@/lib/nativeFetch';
@@ -75,7 +75,7 @@ function compactOllamaMessages(messages: LLMRequest['messages']): LLMRequest['me
 
   for (let i = tail.length - 1; i >= 0; i--) {
     const message = tail[i]!;
-    const nextTotal = totalChars + message.content.length;
+    const nextTotal = totalChars + llmContentToText(message.content).length;
     if (compacted.length > 0 && nextTotal > OLLAMA_CHAT_HISTORY_CHARS) break;
     compacted.unshift(message);
     totalChars = nextTotal;
@@ -131,10 +131,22 @@ export interface OllamaEnsureStatus {
 }
 
 /** Resolve the configured base URL, trimming any trailing slash. */
+export function normalizeStoredOllamaEndpoint(raw: string | undefined): string {
+  const trimmed = raw?.trim() ?? '';
+  if (!trimmed) return OLLAMA_DEFAULT_BASE;
+  // Users sometimes paste API keys into the Ollama URL field in Providers.
+  if (/^(sk-|AIza|xai-|gsk_)/i.test(trimmed)) return OLLAMA_DEFAULT_BASE;
+  try {
+    assertAllowedOllamaEndpoint(trimmed);
+    return trimmed.replace(/\/+$/, '');
+  } catch {
+    return OLLAMA_DEFAULT_BASE;
+  }
+}
+
+/** Resolve the configured base URL, trimming any trailing slash. */
 export function ollamaBaseUrl(): string {
-  const raw = useAuthStore.getState().apiKeys.ollama?.trim();
-  const base = raw && raw.length > 0 ? raw : OLLAMA_DEFAULT_BASE;
-  return base.replace(/\/+$/, '');
+  return normalizeStoredOllamaEndpoint(useAuthStore.getState().apiKeys.ollama);
 }
 
 /** Restrict Ollama endpoints to loopback hosts unless advanced mode is added later. */
@@ -204,18 +216,39 @@ export async function listOllamaModels(signal?: AbortSignal): Promise<string[]> 
   return models.map((model) => model.name);
 }
 
+function mapInvokeModels(
+  models: Array<{ name: string; size?: number; modifiedAt?: string }>,
+): OllamaModelInfo[] {
+  return (models ?? []).map((m) => ({
+    name: m.name,
+    size: typeof m.size === 'number' ? m.size : undefined,
+    modifiedAt: typeof m.modifiedAt === 'string' ? m.modifiedAt : undefined,
+  }));
+}
+
+async function listOllamaModelsViaInvoke(signal?: AbortSignal): Promise<OllamaModelInfo[]> {
+  if (signal?.aborted) return [];
+  const { invoke } = await import('@tauri-apps/api/core');
+  const models = await invoke<Array<{ name: string; size?: number; modifiedAt?: string }>>(
+    'ollama_list_models',
+    { baseUrl: resolvedOllamaBaseUrl() },
+  );
+  return mapInvokeModels(models);
+}
+
 export async function listOllamaModelInfo(signal?: AbortSignal): Promise<OllamaModelInfo[]> {
-  // In packaged Tauri builds, go through the Rust reqwest command (no Origin
-  // header → Ollama never 403s). Browser fetch is only used in the dev server.
+  // Packaged Tauri: reqwest in Rust (no WebView Origin → no Ollama 403).
   if (isTauri) {
     try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      const models = await invoke<Array<{ name: string; size?: number; modifiedAt?: string }>>(
-        'ollama_list_models',
-      );
-      return (models ?? []).map((m) => ({ name: m.name, size: m.size, modifiedAt: m.modifiedAt }));
+      return await listOllamaModelsViaInvoke(signal);
     } catch {
-      return [];
+      const ready = await ensureOllamaReadySilent(signal);
+      if (!ready.ready) return [];
+      try {
+        return await listOllamaModelsViaInvoke(signal);
+      } catch {
+        return [];
+      }
     }
   }
   try {
@@ -241,10 +274,21 @@ export async function listOllamaModelInfo(signal?: AbortSignal): Promise<OllamaM
 
 /** Quick reachability probe for the local daemon via /api/version. */
 export async function isOllamaReachable(signal?: AbortSignal): Promise<boolean> {
+  if (signal?.aborted) return false;
+
+  if (isTauri) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      return await invoke<boolean>('ollama_ping', { baseUrl: resolvedOllamaBaseUrl() });
+    } catch {
+      return false;
+    }
+  }
+
   try {
     const res = await nativeFetch(`${resolvedOllamaBaseUrl()}/api/version`, {
       signal,
-      timeoutMs: 5_000,
+      timeoutMs: 8_000,
       headers: ollamaHeaders(),
     });
     return res.ok;
@@ -302,6 +346,11 @@ function bootstrapStatusMessage(phase: string, detail?: string | null): string {
   }
 }
 
+export interface EnsureOllamaOptions {
+  /** Max time to poll /api/version when the daemon is not up yet (web dev). */
+  waitTimeoutMs?: number;
+}
+
 /**
  * Ensure Ollama is installed, the background server is running, and the API
  * responds on /api/version. Uses the native backend in Tauri for silent
@@ -310,6 +359,7 @@ function bootstrapStatusMessage(phase: string, detail?: string | null): string {
 export async function ensureOllamaReadySilent(
   signal?: AbortSignal,
   onStatus?: (status: OllamaEnsureStatus) => void,
+  options?: EnsureOllamaOptions,
 ): Promise<OllamaEnsureStatus> {
   if (
     readyCache &&
@@ -388,7 +438,8 @@ export async function ensureOllamaReadySilent(
     statusMsg: bootstrapStatusMessage('waiting'),
   });
 
-  const ready = await waitForOllamaReachable(120_000, 1500, signal, (msg) => {
+  const waitTimeoutMs = options?.waitTimeoutMs ?? 120_000;
+  const ready = await waitForOllamaReachable(waitTimeoutMs, 1500, signal, (msg) => {
     emit({
       ready: false,
       apiReachable: false,
@@ -413,7 +464,7 @@ export async function ensureOllamaReadySilent(
         apiReachable: false,
         installed: installStatus.installed ?? false,
         phase: 'error',
-        detail: `Could not reach Ollama at ${resolvedOllamaBaseUrl()} after 120 seconds.`,
+        detail: `Could not reach Ollama at ${resolvedOllamaBaseUrl()} after ${Math.round(waitTimeoutMs / 1000)} seconds.`,
         statusMsg: bootstrapStatusMessage('error'),
       };
 
@@ -565,7 +616,7 @@ export async function pullOllamaModel(
         }
         unlisten = un;
         // Start the pull only after the listener is attached (no missed events).
-        invoke('ollama_pull_model', { model: name }).catch((err) =>
+        invoke('ollama_pull_model', { model: name, baseUrl: resolvedOllamaBaseUrl() }).catch((err) =>
           finish(() => reject(err instanceof Error ? err : new Error(String(err)))),
         );
       });
@@ -792,7 +843,10 @@ export const ollamaProvider: LLMProvider = {
 
     const messages = [
       { role: 'system' as const, content: buildOllamaSystemPrompt(req.agent.system_prompt) },
-      ...compactOllamaMessages(req.messages),
+      ...compactOllamaMessages(req.messages).map((m) => ({
+        role: m.role,
+        content: llmContentToText(m.content),
+      })),
     ];
 
     // Packaged Tauri build: stream chat through the Rust reqwest command (no
@@ -845,6 +899,7 @@ export const ollamaProvider: LLMProvider = {
             model,
             messages,
             temperature: ollamaChatTemperature(req),
+            baseUrl: resolvedOllamaBaseUrl(),
           }).catch((err) =>
             finish(() => reject(err instanceof Error ? err : new Error(String(err)))),
           );

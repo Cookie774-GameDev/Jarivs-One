@@ -79,6 +79,21 @@ const RATE_WINDOW_MS = 60_000;
 const RATE_MAX = 40;
 const PROVIDER_TIMEOUT_MS = 90_000;
 const EST_COMPLETION_TOKENS = 1200;
+const MAX_COMPLETION_TOKENS = 2048;
+
+type ProviderUsage = {
+  prompt_tokens: number;
+  completion_tokens: number;
+};
+
+function boundedNumber(value: unknown, fallback: number, min: number, max: number): number {
+  const n = typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+  return Math.min(max, Math.max(min, n));
+}
+
+function boundedInteger(value: unknown, fallback: number, min: number, max: number): number {
+  return Math.round(boundedNumber(value, fallback, min, max));
+}
 
 function timeoutSignal(ms: number): AbortSignal {
   const c = new AbortController();
@@ -94,6 +109,7 @@ async function streamOpenAICompatible(
   url: string,
   apiKey: string,
   body: Record<string, unknown>,
+  onUsage?: (usage: ProviderUsage) => Promise<void>,
 ): Promise<ReadableStream<Uint8Array>> {
   const upstream = await fetch(url, {
     method: 'POST',
@@ -105,8 +121,7 @@ async function streamOpenAICompatible(
     signal: timeoutSignal(PROVIDER_TIMEOUT_MS),
   });
   if (!upstream.ok || !upstream.body) {
-    const err = upstream.body ? await upstream.text() : 'upstream_error';
-    throw new Error(err.slice(0, 200));
+    throw new Error('upstream_error');
   }
 
   const reader = upstream.body.getReader();
@@ -120,12 +135,14 @@ async function streamOpenAICompatible(
       while (true) {
         const { done, value } = await reader.read();
         if (done) {
+          const usage = { prompt_tokens: promptTokens, completion_tokens: completionTokens };
           controller.enqueue(new TextEncoder().encode(
             sseLine({
               done: true,
-              usage: { prompt_tokens: promptTokens, completion_tokens: completionTokens },
+              usage,
             }),
           ));
+          if (onUsage) void onUsage(usage);
           controller.close();
           return;
         }
@@ -183,10 +200,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   const messages = Array.isArray(body.messages) ? body.messages : [];
   const system = String(body.system ?? '');
-  const providerOptions =
-    body.provider_options && typeof body.provider_options === 'object'
-      ? body.provider_options as Record<string, unknown>
-      : {};
   const chatMessages = system
     ? [{ role: 'system', content: system }, ...messages]
     : messages;
@@ -211,6 +224,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   const estPromptTokens = Math.ceil(promptChars / 4);
   const estCost = estimateMessageCostUsd(estPromptTokens, EST_COMPLETION_TOKENS);
+  let settled = false;
+  const settle = async (actualCost: number) => {
+    if (appAdmin || settled) return;
+    settled = true;
+    await admin.rpc('settle_message_budget', {
+      p_user_id: userId,
+      p_reserved: estCost,
+      p_actual: Math.max(0, actualCost),
+    });
+  };
   if (!appAdmin) {
     const { data: reservation, error: reserveErr } = await admin
       .rpc('reserve_message_budget', { p_user_id: userId, p_estimate_usd: estCost });
@@ -225,20 +248,31 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (!url) return json({ error: 'provider_not_implemented' }, 501, origin);
 
   try {
+    const maxTokens = boundedInteger(body.max_tokens, EST_COMPLETION_TOKENS, 1, MAX_COMPLETION_TOKENS);
+    const temperature = boundedNumber(body.temperature, 0.5, 0, 1);
     const stream = await streamOpenAICompatible(url, apiKey, {
       model,
       messages: chatMessages,
-      temperature: body.temperature ?? 0.5,
-      max_tokens: body.max_tokens ?? 4096,
-      ...providerOptions,
-    });
-    if (!appAdmin) {
-      await admin.rpc('settle_message_budget', { p_user_id: userId, p_reserved: estCost, p_actual: estCost });
-    }
-    await admin.rpc('record_usage_event', {
-      p_kind: 'stack',
-      p_user_id: userId,
-      p_payload: { provider, model, status: 'ok', estimated_cost_usd: estCost },
+      temperature,
+      max_tokens: maxTokens,
+    }, async (usage) => {
+      const actualCost = usage.prompt_tokens || usage.completion_tokens
+        ? estimateMessageCostUsd(usage.prompt_tokens, usage.completion_tokens)
+        : estCost;
+      await settle(actualCost);
+      await admin.rpc('record_usage_event', {
+        p_kind: 'stack',
+        p_user_id: userId,
+        p_payload: {
+          provider,
+          model,
+          status: 'ok',
+          estimated_cost_usd: estCost,
+          actual_cost_usd: actualCost,
+          prompt_tokens: usage.prompt_tokens,
+          completion_tokens: usage.completion_tokens,
+        },
+      });
     });
 
     return new Response(stream, {
@@ -250,9 +284,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
       },
     });
   } catch (e) {
-    if (!appAdmin) {
-      await admin.rpc('settle_message_budget', { p_user_id: userId, p_reserved: estCost, p_actual: 0 });
-    }
-    return json({ error: 'provider_unavailable', message: String(e) }, 502, origin);
+    await settle(0);
+    await admin.rpc('record_usage_event', {
+      p_kind: 'stack',
+      p_user_id: userId,
+      p_payload: { provider, model, status: 'error', estimated_cost_usd: estCost },
+    });
+    return json({ error: 'provider_unavailable' }, 502, origin);
   }
 });

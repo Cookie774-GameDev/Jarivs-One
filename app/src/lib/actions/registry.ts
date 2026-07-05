@@ -20,6 +20,7 @@
 
 import {
   type LucideIcon,
+  CalendarClock,
   MessageSquare,
   Terminal as TerminalIcon,
   KanbanSquare,
@@ -57,7 +58,7 @@ import {
   enqueueTerminalClose,
 } from '@/features/terminals/terminalCommandQueue';
 import type { TerminalRef } from '@/features/terminals/terminalRefs';
-import { taskRepo } from '@/lib/db/repositories';
+import { eventRepo, taskRepo } from '@/lib/db/repositories';
 import { openExternal } from '@/lib/tauri';
 import {
   CLOCK_SOUNDS,
@@ -71,6 +72,12 @@ import type { CustomToolStep } from '@/features/tools/toolStore';
 import { getExplicitTerminalBlock } from '@/lib/ai/context';
 import { PRESET_ACTIONS } from './registryPresets';
 import { APP_CONTROL_ACTIONS } from './registryAppControl';
+import {
+  buildJarvisScheduleEventInput,
+  scheduleActionSummary,
+  type JarvisScheduleRecurrence,
+} from '@/features/schedule/jarvisSchedules';
+import { formatChatModelSelectionLabel, modelSelectionContextFromAuth } from '@/lib/ai/modelSelection';
 
 /* --------------------------------------------------------------------------
  * Helpers
@@ -1027,6 +1034,182 @@ const CLOCK_ACTIONS: ActionDef[] = [
   },
 ];
 
+const SCHEDULE_ACTIONS: ActionDef[] = [
+  {
+    id: 'schedule.create',
+    category: 'schedule',
+    label: 'Create Jarvis schedule',
+    description:
+      'Create a real Jarvis scheduled task on the Schedule page using the current connected chat model selection.',
+    icon: CalendarClock,
+    destructive: true,
+    params: [
+      { key: 'title', label: 'Title', type: 'string', required: true, help: 'Short schedule title.' },
+      { key: 'prompt', label: 'Prompt', type: 'string', required: true, help: 'The Jarvis prompt/instruction to run on schedule.' },
+      { key: 'startAtMs', label: 'Start time', type: 'number', required: true, help: 'Unix milliseconds for the first run.' },
+      {
+        key: 'recurrence',
+        label: 'Recurrence',
+        type: 'select',
+        default: 'once',
+        options: [
+          { value: 'once', label: 'Once' },
+          { value: 'daily', label: 'Daily' },
+          { value: 'weekly', label: 'Weekly' },
+          { value: 'monthly', label: 'Monthly' },
+          { value: 'weekdays', label: 'Weekdays' },
+          { value: 'custom_interval', label: 'Custom interval' },
+          { value: 'custom_days', label: 'Custom days' },
+        ],
+      },
+      { key: 'agentId', label: 'Agent id', type: 'string', required: false, help: 'Real agent id to use. Omit to use Jarvis/default chat agent.' },
+    ],
+    run: async (params) => {
+      const auth = useAuthStore.getState();
+      if (!auth.workspaceId) return fail('No workspace is active.');
+      const title = typeof params.title === 'string' ? params.title.trim() : '';
+      const prompt = typeof params.prompt === 'string' ? params.prompt.trim() : '';
+      const startAtMs = typeof params.startAtMs === 'number' ? params.startAtMs : Number(params.startAtMs);
+      if (!title) return fail('Schedule title is required.');
+      if (!prompt) return fail('Schedule prompt is required.');
+      if (!Number.isFinite(startAtMs)) return fail('A valid startAtMs time is required.');
+      const recurrence = (
+        typeof params.recurrence === 'string' && params.recurrence
+          ? params.recurrence
+          : 'once'
+      ) as JarvisScheduleRecurrence;
+      const modelLabel = formatChatModelSelectionLabel(auth.chatModelSelection, modelSelectionContextFromAuth(auth));
+      const event = await eventRepo.create(buildJarvisScheduleEventInput({
+        workspaceId: auth.workspaceId,
+        projectId: auth.projectId ?? undefined,
+        createdBy: 'agent_jarvis',
+        title,
+        prompt,
+        startAt: startAtMs,
+        recurrence,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+        modelSelection: auth.chatModelSelection,
+        agentId: typeof params.agentId === 'string' && params.agentId.trim() ? params.agentId.trim() : 'agent_jarvis',
+      }));
+      useUIStore.getState().setRoute('schedule');
+      return ok(`${scheduleActionSummary('created', event)} Model: ${modelLabel}`, { eventId: event.id });
+    },
+  },
+  {
+    id: 'schedule.list',
+    category: 'schedule',
+    label: 'List schedules',
+    description: 'List upcoming scheduled events and Jarvis scheduled tasks.',
+    icon: CalendarClock,
+    params: [],
+    run: async () => {
+      const auth = useAuthStore.getState();
+      if (!auth.workspaceId) return fail('No workspace is active.');
+      const rows = await eventRepo.listUpcoming(auth.workspaceId, 20);
+      return ok(`Found ${rows.length} upcoming schedule item${rows.length === 1 ? '' : 's'}.`, rows.map((event) => ({
+        id: event.id,
+        title: event.title,
+        start_at: event.start_at,
+        recurrence_rule: event.recurrence_rule,
+        status: event.status,
+      })));
+    },
+  },
+  {
+    id: 'schedule.pause',
+    category: 'schedule',
+    label: 'Pause schedule',
+    description: 'Pause a schedule by marking it cancelled without deleting history.',
+    icon: CalendarClock,
+    destructive: true,
+    params: [{ key: 'eventId', label: 'Schedule id', type: 'string', required: true }],
+    run: async (params) => {
+      const eventId = typeof params.eventId === 'string' ? params.eventId.trim() : '';
+      if (!eventId) return fail('eventId is required.');
+      const event = await eventRepo.update(eventId as never, { status: 'cancelled' });
+      return ok(scheduleActionSummary('paused', event), { eventId });
+    },
+  },
+  {
+    id: 'schedule.resume',
+    category: 'schedule',
+    label: 'Resume schedule',
+    description: 'Resume a paused schedule.',
+    icon: CalendarClock,
+    params: [{ key: 'eventId', label: 'Schedule id', type: 'string', required: true }],
+    run: async (params) => {
+      const eventId = typeof params.eventId === 'string' ? params.eventId.trim() : '';
+      if (!eventId) return fail('eventId is required.');
+      const event = await eventRepo.update(eventId as never, { status: 'scheduled' });
+      return ok(scheduleActionSummary('resumed', event), { eventId });
+    },
+  },
+  {
+    id: 'schedule.delete',
+    category: 'schedule',
+    label: 'Delete schedule',
+    description: 'Delete a schedule permanently after approval.',
+    icon: Trash2,
+    destructive: true,
+    params: [{ key: 'eventId', label: 'Schedule id', type: 'string', required: true }],
+    run: async (params) => {
+      const eventId = typeof params.eventId === 'string' ? params.eventId.trim() : '';
+      if (!eventId) return fail('eventId is required.');
+      const event = await eventRepo.getById(eventId as never);
+      if (!event) return fail(`Schedule ${eventId} was not found.`);
+      await eventRepo.delete(eventId as never);
+      return ok(scheduleActionSummary('deleted', event), { eventId });
+    },
+  },
+  {
+    id: 'schedule.history',
+    category: 'schedule',
+    label: 'Schedule history',
+    description: 'Show stored run and error history for a Jarvis schedule.',
+    icon: HistoryIcon,
+    params: [{ key: 'eventId', label: 'Schedule id', type: 'string', required: true }],
+    run: async (params) => {
+      const eventId = typeof params.eventId === 'string' ? params.eventId.trim() : '';
+      if (!eventId) return fail('eventId is required.');
+      const event = await eventRepo.getById(eventId as never);
+      if (!event) return fail(`Schedule ${eventId} was not found.`);
+      return ok(`History for ${event.title}.`, event.source_ref?.context ?? null);
+    },
+  },
+];
+
+const CREATOR_ACTIONS: ActionDef[] = [
+  {
+    id: 'creator.start',
+    category: 'custom',
+    label: 'Make with Jarvis',
+    description:
+      'Open the right-panel Make with Jarvis creator for an agent or skill. It drafts only after user approval; the user still applies and saves explicitly.',
+    icon: Sparkles,
+    destructive: true,
+    params: [
+      {
+        key: 'kind',
+        label: 'Creator type',
+        type: 'select',
+        required: true,
+        default: 'agent',
+        options: [
+          { value: 'agent', label: 'Agent' },
+          { value: 'skill', label: 'Skill' },
+        ],
+      },
+    ],
+    run: async (params) => {
+      const kind = params.kind === 'skill' ? 'skill' : params.kind === 'agent' ? 'agent' : null;
+      if (!kind) return fail('Creator kind must be either agent or skill.');
+      const { startJarvisCreator } = await import('@/features/jarvis-creator/launcher');
+      startJarvisCreator({ kind });
+      return ok(`Opened Make with Jarvis for ${kind === 'agent' ? 'an agent' : 'a skill'}.`);
+    },
+  },
+];
+
 const PRODUCTIVITY_ACTIONS: ActionDef[] = [
   {
     id: 'kanban.createTask',
@@ -1196,9 +1379,11 @@ export function getBuiltinActions(): ActionDef[] {
     ...THEME_ACTIONS,
     ...VOICE_ACTIONS,
     ...TERMINAL_ACTIONS,
+    ...SCHEDULE_ACTIONS,
     ...CHAT_ACTIONS,
     ...HOST_ACTIONS,
     ...PLUGIN_ACTIONS,
+    ...CREATOR_ACTIONS,
     ...PRODUCTIVITY_ACTIONS,
     ...APP_CONTROL_ACTIONS,
     ...PRESET_ACTIONS,
@@ -1233,6 +1418,7 @@ export const CATEGORY_LABELS: Record<
   | 'theme'
   | 'voice'
   | 'terminal'
+  | 'schedule'
   | 'clock'
   | 'chat'
   | 'wellness'
@@ -1245,6 +1431,7 @@ export const CATEGORY_LABELS: Record<
   theme: 'Appearance',
   voice: 'Voice',
   terminal: 'Terminal',
+  schedule: 'Schedule',
   clock: 'Clock',
   chat: 'Chat',
   wellness: 'Wellness',
@@ -1259,6 +1446,7 @@ export const CATEGORY_ICON: Record<string, LucideIcon> = {
   theme: Sparkles,
   voice: Mic,
   terminal: TerminalIcon,
+  schedule: CalendarClock,
   clock: Clock,
   chat: Bot,
   wellness: Eye,

@@ -95,6 +95,46 @@ function extractBulkCloseTerminalRequest(text: string): { count: number } | null
   return { count };
 }
 
+function nextWholeHour(): number {
+  const date = new Date();
+  date.setHours(date.getHours() + 1, 0, 0, 0);
+  return date.getTime();
+}
+
+function extractScheduleCreateRequest(text: string): { title: string; prompt: string; startAtMs: number; recurrence: string } | null {
+  if (!/\b(schedule|scheduled|every|daily|weekly|monthly|morning|evening|night)\b/.test(text)) return null;
+  if (!/\b(make|create|schedule|run|remind|check|summarize|review)\b/.test(text)) return null;
+  const recurrence = /\bmonthly\b/.test(text)
+    ? 'monthly'
+    : /\bweekly|friday|monday|tuesday|wednesday|thursday|saturday|sunday\b/.test(text)
+      ? 'weekly'
+      : /\bdaily|every morning|every day|morning|evening|night\b/.test(text)
+        ? 'daily'
+        : 'once';
+  const title = text
+    .replace(/\b(make|create)\s+(?:a\s+)?schedule\s+(?:to|for)?\b/i, '')
+    .replace(/\bevery\s+(morning|day|evening|night|week|month|friday|monday|tuesday|wednesday|thursday|saturday|sunday)\b/i, '')
+    .trim()
+    .slice(0, 80) || 'Jarvis task';
+  return {
+    title: title.charAt(0).toUpperCase() + title.slice(1),
+    prompt: text,
+    startAtMs: nextWholeHour(),
+    recurrence,
+  };
+}
+
+function extractCreatorStartRequest(text: string): { kind: 'agent' | 'skill' } | null {
+  if (!/\b(make|create|build|draft|write|generate)\b/.test(text)) return null;
+  const agentIndex = text.search(/\bagents?\b/);
+  const skillIndex = text.search(/\bskills?\b/);
+  if (agentIndex < 0 && skillIndex < 0) return null;
+  if (agentIndex >= 0 && skillIndex >= 0) {
+    return agentIndex <= skillIndex ? { kind: 'agent' } : { kind: 'skill' };
+  }
+  return agentIndex >= 0 ? { kind: 'agent' } : { kind: 'skill' };
+}
+
 /**
  * Deterministic safety net for tiny/local models that describe app actions in
  * prose but fail to emit the fenced `action` JSON needed to show approval cards.
@@ -124,6 +164,18 @@ export function inferFallbackActionProposals(
   if (asksToOpenSettings(user) && /\b(open|settings)\b/.test(assistant)) {
     proposals.push(
       proposal('settings.open', {}, 'Open Settings because the user asked to see it.'),
+    );
+    return proposals;
+  }
+
+  const creatorStart = extractCreatorStartRequest(user);
+  if (creatorStart) {
+    proposals.push(
+      proposal(
+        'creator.start',
+        { kind: creatorStart.kind },
+        `Open the Make with Jarvis ${creatorStart.kind} creator after user approval.`,
+      ),
     );
     return proposals;
   }
@@ -160,6 +212,17 @@ export function inferFallbackActionProposals(
         'terminal.sendAll',
         { command: 'opencode' },
         'Send opencode to every existing terminal pane after user approval.',
+      ),
+    );
+  }
+
+  const scheduleCreate = extractScheduleCreateRequest(user);
+  if (scheduleCreate) {
+    proposals.push(
+      proposal(
+        'schedule.create',
+        scheduleCreate,
+        'Create a real Jarvis schedule after user approval.',
       ),
     );
   }

@@ -3,7 +3,11 @@ import { motion } from 'motion/react';
 import { Cpu, Sparkles, type LucideIcon } from 'lucide-react';
 import type { ProviderId } from '@/types';
 import { cn } from '@/lib/utils';
+import { HiveModelIcon } from '@/components/brand';
 import type { ModelPickerGroup } from '@/lib/ai/useAccessibleChatModels';
+
+/** Sentinel id for the pinned Hive entry (keyboard nav + selection state). */
+export const HIVE_OPTION_ID = 'hive:balanced';
 
 const PROVIDER_ICONS: Partial<Record<ProviderId, LucideIcon>> = {
   ollama: Cpu,
@@ -20,8 +24,12 @@ export interface ModelPickerTypeaheadProps {
   selectedId: string;
   activeProvider?: ProviderId;
   activeModel?: string;
+  /** Whether the Hive ensemble is the active chat selection. */
+  hiveActive?: boolean;
   onHoverId?: (id: string) => void;
   onSelect: (provider: ProviderId, modelId: string) => void;
+  /** Select the pinned Hive ensemble entry. When omitted, the row is hidden. */
+  onSelectHive?: () => void;
 }
 
 export interface ModelPickerTypeaheadRef {
@@ -32,7 +40,7 @@ export interface ModelPickerTypeaheadRef {
 
 export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPickerTypeaheadProps>(
   function ModelPickerTypeahead(
-    { groups, selectedId, activeProvider, activeModel, onHoverId, onSelect },
+    { groups, selectedId, activeProvider, activeModel, hiveActive, onHoverId, onSelect, onSelectHive },
     ref,
   ) {
     const listRef = useRef<HTMLDivElement>(null);
@@ -42,23 +50,37 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
       [groups],
     );
 
+    // Navigation order: pinned Hive entry first (when available), then models.
+    const navIds = useMemo(
+      () => (onSelectHive ? [HIVE_OPTION_ID, ...flatOptions.map((o) => o.id)] : flatOptions.map((o) => o.id)),
+      [flatOptions, onSelectHive],
+    );
+
+    const selectId = (id: string) => {
+      if (id === HIVE_OPTION_ID) {
+        onSelectHive?.();
+        return;
+      }
+      const option = flatOptions.find((item) => item.id === id);
+      if (option) onSelect(option.provider, option.modelId);
+    };
+
     useImperativeHandle(ref, () => ({
       moveUp: () => {
-        if (flatOptions.length === 0) return;
-        const index = flatOptions.findIndex((option) => option.id === selectedId);
-        const next = flatOptions[(index - 1 + flatOptions.length) % flatOptions.length]!;
-        onHoverId?.(next.id);
+        if (navIds.length === 0) return;
+        const index = navIds.indexOf(selectedId);
+        const next = navIds[(index - 1 + navIds.length) % navIds.length]!;
+        onHoverId?.(next);
       },
       moveDown: () => {
-        if (flatOptions.length === 0) return;
-        const index = flatOptions.findIndex((option) => option.id === selectedId);
-        const next = flatOptions[(index + 1) % flatOptions.length]!;
-        onHoverId?.(next.id);
+        if (navIds.length === 0) return;
+        const index = navIds.indexOf(selectedId);
+        const next = navIds[(index + 1) % navIds.length]!;
+        onHoverId?.(next);
       },
       selectCurrent: () => {
-        const option =
-          flatOptions.find((item) => item.id === selectedId) ?? flatOptions[0];
-        if (option) onSelect(option.provider, option.modelId);
+        const id = navIds.includes(selectedId) ? selectedId : navIds[0];
+        if (id) selectId(id);
       },
     }));
 
@@ -97,16 +119,57 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
         </div>
 
         <div ref={listRef} className="max-h-[280px] overflow-y-auto py-2 scrollbar-hidden">
-          {groups.length === 0 ? (
-            <div className="px-4 py-6 text-center">
-              <p className="text-[13px] text-muted-foreground">
-                No models available yet.
-              </p>
-              <p className="mt-1 text-[12px] leading-4 text-muted-foreground/80">
-                Add an API key, use your subscription, or download a local model in Settings →
-                Local Models.
-              </p>
+          {onSelectHive ? (
+            <div className="mb-1">
+              <div className="px-4 pb-1 pt-0.5 text-[11px] uppercase tracking-[0.2em] text-accent-copper/70">
+                Featured
+              </div>
+              {(() => {
+                const isSelected = selectedId === HIVE_OPTION_ID;
+                return (
+                  <div
+                    data-value={HIVE_OPTION_ID}
+                    onClick={() => onSelectHive()}
+                    onMouseEnter={() => onHoverId?.(HIVE_OPTION_ID)}
+                    className={cn(
+                      'hive-picker-entry group/hive mx-2 flex cursor-pointer items-center gap-3 rounded-[12px] border px-3 py-2.5 transition-all duration-100',
+                      isSelected || hiveActive
+                        ? 'border-accent-copper/70 text-foreground shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.05),0_0_20px_hsl(18_84%_30%/0.5)]'
+                        : 'border-accent-copper/35 text-foreground hover:border-accent-copper/60',
+                    )}
+                  >
+                    <HiveModelIcon size={22} className="relative shrink-0" />
+                    <div className="relative min-w-0 flex-1">
+                      <span className="block truncate text-[15px] font-medium leading-5 text-foreground">
+                        Hive
+                      </span>
+                      <span className="block truncate text-[11px] leading-4 text-muted-foreground">
+                        5-model ensemble · balanced for quality
+                      </span>
+                    </div>
+                    {hiveActive && (
+                      <span className="relative shrink-0 text-[11px] font-medium text-accent-copper">
+                        active
+                      </span>
+                    )}
+                    {isSelected && <span className="relative shrink-0 text-accent-copper">&gt;</span>}
+                  </div>
+                );
+              })()}
             </div>
+          ) : null}
+          {groups.length === 0 ? (
+            onSelectHive ? null : (
+              <div className="px-4 py-6 text-center">
+                <p className="text-[13px] text-muted-foreground">
+                  No models available yet.
+                </p>
+                <p className="mt-1 text-[12px] leading-4 text-muted-foreground/80">
+                  Add an API key, use your subscription, or download a local model in Settings →
+                  Local Models.
+                </p>
+              </div>
+            )
           ) : (
             groups.map((group) => {
               const GroupIcon = PROVIDER_ICONS[group.provider] ?? Sparkles;

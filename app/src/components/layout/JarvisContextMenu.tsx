@@ -1,12 +1,22 @@
 import * as React from 'react';
-import { Copy, Keyboard, MessageSquarePlus, MousePointer2, PanelRightOpen, Search } from 'lucide-react';
+import { Copy, MessageSquarePlus, Mic, MousePointer2, PanelRightOpen, Search } from 'lucide-react';
+import { requestComposerSttToggle } from '@/features/composer-stt/composerSttService';
+import {
+  noteSttEditableFromPointer,
+  resolveComposerSttTextarea,
+  resolveGlobalSttEditable,
+} from '@/features/composer-stt/insertText';
+import { HOTKEYS } from '@/lib/hotkeys';
 import { useUIStore } from '@/stores/ui';
-import { cn } from '@/lib/utils';
+import { cn, renderHotkey } from '@/lib/utils';
+
+type ContextMenuDictationTarget = 'composer' | 'global';
 
 interface MenuState {
   x: number;
   y: number;
   selection: string;
+  dictationTarget: ContextMenuDictationTarget | null;
 }
 
 const SUPPRESS_CONTEXT_MENU_CLASSES = [
@@ -14,8 +24,18 @@ const SUPPRESS_CONTEXT_MENU_CLASSES = [
   'jarvis-context-map-right-dragging',
 ];
 
+function resolveContextMenuDictationTarget(
+  target: EventTarget | null,
+): ContextMenuDictationTarget | null {
+  noteSttEditableFromPointer(target);
+  if (resolveComposerSttTextarea()) return 'composer';
+  if (resolveGlobalSttEditable()) return 'global';
+  return null;
+}
+
 export function JarvisContextMenu() {
   const [menu, setMenu] = React.useState<MenuState | null>(null);
+  const composerSttEnabled = useUIStore((s) => s.composerStt);
   const setPaletteOpen = useUIStore((s) => s.setPaletteOpen);
   const toggleInspector = useUIStore((s) => s.toggleInspector);
   const setRoute = useUIStore((s) => s.setRoute);
@@ -41,7 +61,12 @@ export function JarvisContextMenu() {
       if (target?.closest('[data-native-context-menu]')) return;
       event.preventDefault();
       const selection = window.getSelection()?.toString().trim() ?? '';
-      setMenu({ x: event.clientX, y: event.clientY, selection });
+      setMenu({
+        x: event.clientX,
+        y: event.clientY,
+        selection,
+        dictationTarget: resolveContextMenuDictationTarget(event.target),
+      });
     };
     window.addEventListener('contextmenu', onContextMenu);
     window.addEventListener('click', close);
@@ -63,8 +88,15 @@ export function JarvisContextMenu() {
     setMenu(null);
   };
 
+  const startDictation = () => {
+    if (!composerSttEnabled || !menu.dictationTarget) return;
+    requestComposerSttToggle('context-menu');
+    setMenu(null);
+  };
+
   const left = Math.min(menu.x, window.innerWidth - 260);
   const top = Math.min(menu.y, window.innerHeight - 260);
+  const canDictate = composerSttEnabled && menu.dictationTarget !== null;
 
   return (
     <div
@@ -76,7 +108,13 @@ export function JarvisContextMenu() {
       <MenuButton icon={<Search />} label="Command Palette" shortcut="Ctrl+K" onClick={() => { setPaletteOpen(true); setMenu(null); }} />
       <MenuButton icon={<PanelRightOpen />} label="Toggle Inspector" shortcut="Ctrl+\\" onClick={() => { toggleInspector(); setMenu(null); }} />
       <MenuButton icon={<MessageSquarePlus />} label="Open Chat" onClick={() => { setRoute('chat'); setMenu(null); }} />
-      <MenuButton icon={<Keyboard />} label="Open Settings" shortcut="Ctrl+," onClick={() => { useUIStore.getState().setSettingsOpen(true); setMenu(null); }} />
+      <MenuButton
+        icon={<Mic />}
+        label="Microphone"
+        shortcut={renderHotkey(HOTKEYS.COMPOSER_STT)}
+        disabled={!canDictate}
+        onClick={startDictation}
+      />
       <div className="my-1 h-px bg-border/80" />
       <MenuButton icon={<Copy />} label="Copy Selection" shortcut="Ctrl+C" disabled={!menu.selection} onClick={() => void copySelection()} />
       <div className="mt-1 rounded-lg bg-accent-copper/10 px-2 py-1.5 text-[11px] text-accent-copper">

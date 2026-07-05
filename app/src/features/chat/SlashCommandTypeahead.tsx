@@ -1,10 +1,14 @@
 import { useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { motion } from 'motion/react';
 import { cn } from '@/lib/utils';
+import { HiveModelIcon } from '@/components/brand';
 import {
   BarChart3,
+  Bot,
+  Brain,
   CalendarDays,
   ChevronRight,
+  ClipboardList,
   FileText,
   HelpCircle,
   History,
@@ -26,6 +30,8 @@ export interface SlashCommandDef {
   aliases?: string[];
   description: string;
   icon: LucideIcon;
+  /** Official Hive model mark instead of Lucide icon. */
+  brandIcon?: 'hive';
   category?: 'chat' | 'navigation' | 'utility';
   takesArg?: boolean;
   argPlaceholder?: string;
@@ -36,6 +42,15 @@ export const SLASH_CMD_ALIASES: Record<string, string> = {
   terminal: 'terminals',
   contextmap: 'context',
   contexts: 'context',
+  agent: 'multitask',
+  multitaksk: 'multitask',
+  multiatask: 'multitask',
+  mulititask: 'multitask',
+  multitaks: 'multitask',
+  subagent: 'subagents',
+  suabagent: 'subagents',
+  subagnts: 'subagents',
+  subagens: 'subagents',
 };
 
 export function normalizeSlashCmd(raw: string): string {
@@ -43,7 +58,7 @@ export function normalizeSlashCmd(raw: string): string {
   return SLASH_CMD_ALIASES[cmd] ?? cmd;
 }
 
-export const CHAT_ATTACH_SLASH_CMDS = new Set(['terminals', 'context', 'plug', 'skills']);
+export const CHAT_ATTACH_SLASH_CMDS = new Set(['context', 'plug', 'skills', 'allaboutme']);
 
 export function isChatAttachSlashCmd(cmd: string): boolean {
   return CHAT_ATTACH_SLASH_CMDS.has(normalizeSlashCmd(cmd));
@@ -74,12 +89,45 @@ export function slashCmdMatchScore(query: string, def: SlashCommandDef): number 
 
 export const SLASH_COMMANDS: SlashCommandDef[] = [
   {
+    cmd: 'ask',
+    description: 'Ask only: answer without edits, commands, or plans',
+    icon: HelpCircle,
+    category: 'chat',
+    takesArg: true,
+    argPlaceholder: '<question>',
+  },
+  {
+    cmd: 'plan',
+    description: 'Plan mode: read-only plan with Build/Redo/Cancel',
+    icon: ClipboardList,
+    category: 'chat',
+    takesArg: true,
+    argPlaceholder: '<goal>',
+  },
+  {
+    cmd: 'multitask',
+    aliases: ['agent'],
+    description: 'Launch a chat-native Jarvis agent for a task',
+    icon: Bot,
+    category: 'chat',
+    takesArg: true,
+    argPlaceholder: '<task>',
+  },
+  {
+    cmd: 'subagents',
+    aliases: ['subagent'],
+    description: 'Spawn chat-native subagents for the task using this chat model',
+    icon: Bot,
+    category: 'chat',
+    takesArg: true,
+    argPlaceholder: '<task>',
+  },
+  {
     cmd: 'terminals',
     aliases: ['terminal'],
-    description: 'Attach a terminal session to this chat',
+    description: 'Reference the terminal surface in chat',
     icon: Terminal,
     category: 'chat',
-    hasOptions: true,
   },
   {
     cmd: 'context',
@@ -104,11 +152,18 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
     hasOptions: true,
   },
   {
-    cmd: 'hive',
-    description: 'Summon Hive model stacks',
-    icon: Sparkles,
+    cmd: 'allaboutme',
+    description: 'Attach, edit, retake, or update AllAboutMe.md',
+    icon: Brain,
     category: 'chat',
     hasOptions: true,
+  },
+  {
+    cmd: 'hive',
+    description: 'Reference Hive Balanced in chat',
+    icon: Sparkles,
+    brandIcon: 'hive',
+    category: 'chat',
   },
   {
     cmd: 'file',
@@ -137,12 +192,12 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
   },
   { cmd: 'clearfiles', description: 'Clear file attachments', icon: FileText, category: 'chat' },
 
-  { cmd: 'kanban', description: 'Open Kanban', icon: ListTodo, category: 'navigation' },
-  { cmd: 'history', description: 'Open History', icon: History, category: 'navigation' },
-  { cmd: 'tools', description: 'Open Tools', icon: Wrench, category: 'navigation' },
-  { cmd: 'agents', description: 'Open Agents', icon: Users, category: 'navigation' },
-  { cmd: 'schedule', description: 'Open Schedule', icon: CalendarDays, category: 'navigation' },
-  { cmd: 'chat', description: 'Back to Chat', icon: MessageSquare, category: 'navigation' },
+  { cmd: 'kanban', description: 'Reference Kanban', icon: ListTodo, category: 'navigation' },
+  { cmd: 'history', description: 'Reference History', icon: History, category: 'navigation' },
+  { cmd: 'tools', description: 'Reference Tools', icon: Wrench, category: 'navigation' },
+  { cmd: 'agents', description: 'Reference Agents page/editor', icon: Users, category: 'navigation' },
+  { cmd: 'schedule', description: 'Reference Schedule', icon: CalendarDays, category: 'navigation' },
+  { cmd: 'chat', description: 'Reference Chat', icon: MessageSquare, category: 'navigation' },
 
   { cmd: 'usage', description: 'Show usage info', icon: BarChart3, category: 'utility' },
   { cmd: 'commands', description: 'Command catalog', icon: Zap, category: 'utility' },
@@ -274,12 +329,16 @@ export const SlashCommandTypeahead = forwardRef<
                           : 'border-transparent text-muted-foreground hover:border-border hover:bg-muted/70 hover:text-foreground',
                       )}
                     >
-                      <Icon
-                        className={cn(
-                          'h-3 w-3 shrink-0',
-                          isSelected ? 'text-accent-copper' : 'text-muted-foreground/70',
-                        )}
-                      />
+                      {c.brandIcon === 'hive' ? (
+                        <HiveModelIcon size={18} className={isSelected ? '' : 'opacity-80'} />
+                      ) : (
+                        <Icon
+                          className={cn(
+                            'h-3 w-3 shrink-0',
+                            isSelected ? 'text-accent-copper' : 'text-muted-foreground/70',
+                          )}
+                        />
+                      )}
                       <span className="flex-1 truncate">/{c.cmd}</span>
                       {c.hasOptions && (
                         <ChevronRight className="h-2.5 w-2.5 text-accent-copper/60" />

@@ -253,7 +253,6 @@ const DEFAULT_PROVIDER_OPTIONS: { id: ProviderId; label: string; description: st
   { id: 'ollama', label: 'Ollama (local)', description: 'Local models on this device.' },
   { id: 'xai', label: 'xAI', description: 'Grok models with strong reasoning.' },
   { id: 'openrouter', label: 'OpenRouter', description: 'Single key, hundreds of models.' },
-  { id: 'mock', label: 'Mock', description: 'Built-in placeholder. No network calls.' },
 ];
 
 export function Providers() {
@@ -352,7 +351,7 @@ export function Providers() {
           {DEFAULT_PROVIDER_OPTIONS.map((opt) => {
             const selected = defaultProvider === opt.id;
             const selectable = isDefaultProviderSelectable(opt.id, apiKeys, offlineMode, plan, defaultLocalModel);
-            const hasKey = opt.id === 'mock' ? Boolean(apiKeys.mock?.trim()) : Boolean(apiKeys[opt.id]?.trim());
+            const hasKey = Boolean(apiKeys[opt.id]?.trim());
             const subscriptionHosted =
               planIncludesHostedChat(plan) && (opt.id === 'google' || opt.id === 'deepseek');
             return (
@@ -393,7 +392,7 @@ export function Providers() {
                         Subscription
                       </Badge>
                     )}
-                    {!hasKey && opt.id !== 'mock' && opt.id !== 'ollama' && !subscriptionHosted && (
+                    {!hasKey && opt.id !== 'ollama' && !subscriptionHosted && (
                       <Badge variant="outline">No key</Badge>
                     )}
                     {!selectable && <Badge variant="outline">Unavailable</Badge>}

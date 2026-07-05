@@ -59,6 +59,9 @@ describe('buildAddendumText', () => {
     expect(text).toContain('workflow.run');
     expect(text).toContain('settings.voice');
     expect(text).toContain('Available skills');
+    expect(text).toContain('Build');
+    expect(text).toContain('Operate');
+    expect(text).not.toContain('Coding');
     expect(text).not.toContain('wellness.eyeBreak');
     expect(text).not.toContain('clock.timer');
   });

@@ -110,8 +110,8 @@ export async function callCustomerPortal(): Promise<BillingResult> {
  * True when the Supabase cloud-sync env vars are present, meaning the
  * Edge Functions can be reached and dynamic checkout is available.
  *
- * When this returns false, the Plans page falls back to static hosted
- * Stripe links (env VITE_STRIPE_CHECKOUT_*) where configured.
+ * When this returns false, checkout remains disabled until the Supabase
+ * billing functions are configured.
  */
 export function isBackendBillingConfigured(): boolean {
   return isCloudSyncConfigured();

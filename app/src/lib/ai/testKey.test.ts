@@ -119,19 +119,19 @@ describe('testProviderKey', () => {
   });
 
   describe('Ollama', () => {
-    it('treats the empty string as "use default localhost"', async () => {
+    it('treats the empty string as "use default loopback"', async () => {
       fetchMock.mockResolvedValueOnce(okResponse({ models: [] }));
       const result = await testProviderKey('ollama', '');
       const [url] = fetchMock.mock.calls[0]!;
-      expect(url).toBe('http://localhost:11434/api/tags');
+      expect(url).toBe('http://127.0.0.1:11434/api/tags');
       expect(result.kind).toBe('ok');
     });
 
-    it('strips trailing slashes from a custom base URL', async () => {
+    it('strips trailing slashes from a custom loopback URL', async () => {
       fetchMock.mockResolvedValueOnce(okResponse({ models: [] }));
-      await testProviderKey('ollama', 'http://10.0.0.5:11434/');
+      await testProviderKey('ollama', 'http://localhost:11434/');
       const [url] = fetchMock.mock.calls[0]!;
-      expect(url).toBe('http://10.0.0.5:11434/api/tags');
+      expect(url).toBe('http://localhost:11434/api/tags');
     });
 
     it('reports model count on success', async () => {

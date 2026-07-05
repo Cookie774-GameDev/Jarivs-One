@@ -95,6 +95,7 @@ export function buildAddendumText(): string {
     '  emit an action block — do not pretend you already did it.',
     '- Do not answer app-control requests with JavaScript, shell snippets, pseudocode, or manual instructions.',
     '- A good app-control reply is one short sentence plus the required `action` block.',
+    '- To make, create, draft, or edit an agent or skill with Jarvis, use `creator.start` with `{"kind":"agent"}` or `{"kind":"skill"}`. This opens the guided creator; it does not save anything until the user applies and saves.',
     '- Use only ids from the list below; do not invent ids.',
     '- One action per fenced block. Multiple blocks per reply are fine.',
     '- If you need several actions, put them in the same reply so the UI can show one Approve all button.',

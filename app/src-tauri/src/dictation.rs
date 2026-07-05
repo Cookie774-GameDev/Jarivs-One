@@ -5,12 +5,6 @@ use std::{
     time::Duration,
 };
 
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
-
-#[cfg(windows)]
-const CREATE_NO_WINDOW: u32 = 0x08000000;
-
 #[tauri::command]
 pub fn dictation_paste_text(text: String) -> Result<(), String> {
     let clean = text.trim();

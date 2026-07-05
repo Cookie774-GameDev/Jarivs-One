@@ -343,7 +343,7 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
                     id="signin-password"
                     type="password"
                     autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-                    placeholder="\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"
+                    placeholder="123456"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     onKeyDown={(e) => {

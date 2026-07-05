@@ -13,8 +13,8 @@
  * `data: [DONE]`. With `stream_options.include_usage = true` the second-to-last
  * event carries the final usage block.
  */
-import type { LLMProvider, LLMRequest, LLMResponse } from '../types';
-import { estimateCost, estimateInputTokens } from '../types';
+import type { LLMContentPart, LLMProvider, LLMRequest, LLMResponse } from '../types';
+import { estimateCost, estimateInputTokens, llmContentToText } from '../types';
 import { useAuthStore } from '@/stores/auth';
 import { parseSSE } from './sse';
 
@@ -22,6 +22,17 @@ const API_URL = 'https://api.openai.com/v1/chat/completions';
 
 /** Default OpenAI model used when promoting a mock-default agent. */
 export const OPENAI_DEFAULT_MODEL = 'gpt-4o-mini';
+
+function toOpenAiContent(content: string | LLMContentPart[]) {
+  if (typeof content === 'string') return content;
+  return content.map((part) => {
+    if (part.type === 'text') return { type: 'text' as const, text: part.text };
+    return {
+      type: 'image_url' as const,
+      image_url: { url: `data:${part.mimeType};base64,${part.data}` },
+    };
+  });
+}
 
 export const openaiProvider: LLMProvider = {
   id: 'openai',
@@ -42,7 +53,10 @@ export const openaiProvider: LLMProvider = {
     // Strip any existing system messages from the user list to avoid duplicates.
     const messages = [
       { role: 'system' as const, content: req.agent.system_prompt },
-      ...req.messages.filter((m) => m.role !== 'system'),
+      ...req.messages.filter((m) => m.role !== 'system').map((m) => ({
+        role: m.role,
+        content: toOpenAiContent(m.content),
+      })),
     ];
 
     const body = {
@@ -113,7 +127,7 @@ export const openaiProvider: LLMProvider = {
     }
 
     if (inputTokens === 0) {
-      const inputText = messages.map((m) => m.content).join('\n');
+      const inputText = [req.agent.system_prompt, ...req.messages.map((m) => llmContentToText(m.content))].join('\n');
       inputTokens = estimateInputTokens(inputText);
     }
     if (outputTokens === 0) outputTokens = estimateInputTokens(acc);

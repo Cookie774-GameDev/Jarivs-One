@@ -3,14 +3,37 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Jarvis — Page not found</title>
-  <meta http-equiv="refresh" content="0; url=./" />
-  <style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#FAF6EE;color:#2A2520;font:16px/1.6 system-ui,sans-serif}a{color:#B5613A}</style>
+  <title>VibeSpace — Page not found</title>
+  <meta http-equiv="refresh" content="3; url=./" />
+  <meta name="theme-color" content="#2E2823" />
+  <link rel="icon" type="image/png" href="images/vibespace-logo.png" />
+  <style>
+    :root{--bg:#0c0a08;--fg:#f5efe6;--muted:#a89e90;--copper:#d68a4e;--copper-soft:#e8a96b}
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--bg);color:var(--fg);
+      font-family:"Inter",system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+    body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
+      background:radial-gradient(600px 400px at 30% 20%,rgba(214,138,78,0.12),transparent 60%),
+      radial-gradient(500px 360px at 70% 80%,rgba(164,114,240,0.08),transparent 58%)}
+    main{position:relative;z-index:1;text-align:center;padding:24px;max-width:480px}
+    h1{font-family:"Fraunces",Georgia,serif;font-weight:500;font-size:clamp(32px,6vw,52px);
+      letter-spacing:-0.02em;margin:0 0 16px;line-height:1.1}
+    h1 em{color:var(--copper-soft);font-style:italic}
+    p{color:var(--muted);font-size:17px;margin:0 0 28px}
+    a{display:inline-flex;gap:8px;align-items:center;padding:12px 22px;border-radius:999px;
+      font-weight:600;font-size:15px;background:linear-gradient(135deg,var(--copper),var(--copper-soft));
+      color:#1a1206;text-decoration:none;box-shadow:0 8px 26px -8px rgba(214,138,78,0.35);
+      transition:transform .15s}
+    a:hover{transform:translateY(-2px)}
+    .code{font-family:ui-monospace,monospace;font-size:13px;color:var(--copper-soft);margin-bottom:8px}
+  </style>
 </head>
 <body>
   <main>
-    <h1>Jarvis moved that page.</h1>
-    <p>Redirecting you home. If not, <a href="./">open Jarvis</a>.</p>
+    <div class="code">404 &middot; not found</div>
+    <h1>Jarvis moved that page. <em>Redirecting you home.</em></h1>
+    <p>If you are not redirected automatically, tap below to open VibeSpace.</p>
+    <a href="./">&larr; Back to VibeSpace</a>
   </main>
 </body>
 </html>

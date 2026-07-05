@@ -44,7 +44,7 @@ function refreshFromCatalog(): SkillManifest[] {
 
 export const skillRegistry = {
   /**
-   * Seed the unified catalog (16 presets + custom skills) and merge any
+   * Seed the unified catalog (five presets + custom skills) and merge any
    * bundled agent manifests. Idempotent.
    */
   async loadFromDisk(opts?: { projectRoot?: string }): Promise<SkillManifest[]> {

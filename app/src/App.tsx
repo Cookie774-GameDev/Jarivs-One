@@ -353,16 +353,6 @@ function useBoot() {
       try { stopNotifications = startNotificationLoop(); } catch (err) { console.error('Failed to start notification loop:', err); }
       try { stopTerminalScheduler = initTerminalScheduler(); } catch (err) { console.error('Failed to start terminal scheduler:', err); }
 
-      // Phase 6: Ollama model discovery (non-blocking)
-      void import('@/lib/ai').then(({ listOllamaModels, syncDiscoveredOllamaModels, isOllamaReachable }) =>
-        isOllamaReachable().then((connected: boolean) => {
-          if (!connected || cancelled) return;
-          return listOllamaModels().then((models: string[]) => {
-            if (!cancelled) syncDiscoveredOllamaModels(models);
-          });
-        })
-      ).catch((err) => console.warn('[boot] Ollama model discovery failed:', err));
-
       // Phase 6: Kokoro neural voice (background — default TTS, ~89 MB one-time)
       void import('@/features/voice/voiceRouter')
         .then(({ bootstrapKokoroVoiceOnLaunch }) => bootstrapKokoroVoiceOnLaunch())

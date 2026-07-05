@@ -23,14 +23,9 @@ Required for in-app VibeSpace Call:
 VITE_PHONE_JARVIS_CLOUD_URL=https://your-phone-jarvis-cloud.example.com
 ```
 
-Optional Stripe checkout links. When present, the Plans and Account pages open the matching tier checkout:
-
-```env
-VITE_STRIPE_CHECKOUT_STARTER=
-VITE_STRIPE_CHECKOUT_PRO=
-VITE_STRIPE_CHECKOUT_ULTRA=
-VITE_STRIPE_CHECKOUT_URL=
-```
+Stripe checkout is created server-side by Supabase Edge Functions. Do not ship
+static checkout URLs in the desktop app; configure Stripe secrets and price IDs
+on the Edge Function side only.
 
 Optional admin build flags. Admin users resolve to effective Ultra in the app and can use VibeSpace Call even before Stripe subscription sync is fully deployed:
 

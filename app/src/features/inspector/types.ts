@@ -25,18 +25,34 @@ export type VibeSpaceTask = {
 
 export type MilestoneStatus = 'todo' | 'working' | 'done';
 
+/**
+ * `todo`      — short-lived daily checklist item (Kanban "To-do" list).
+ * `milestone` — long-running goal that persists across days/weeks/months.
+ *
+ * Items created before this field existed are treated as `todo`.
+ */
+export type MilestoneKind = 'todo' | 'milestone';
+
 export type MilestoneItem = {
   id: string;
   title: string;
   description?: string;
   status: MilestoneStatus;
+  kind?: MilestoneKind;
   createdAt: number;
   updatedAt: number;
   completedAt?: number;
+  /** Optional target date/time for long-running milestones or daily to-dos. */
+  deadlineAt?: number;
   relatedTerminalId?: string;
   relatedChatId?: string;
   relatedFilePath?: string;
 };
+
+/** True when an item is a long-running milestone (not a daily to-do). */
+export function isMilestoneKind(item: Pick<MilestoneItem, 'kind'>): boolean {
+  return item.kind === 'milestone';
+}
 
 export type LiveWorkStatus = 'working' | 'stationary';
 

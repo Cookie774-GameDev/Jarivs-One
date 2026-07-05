@@ -42,7 +42,13 @@ export {
   pullOllamaModel,
   validateModelName,
 } from './providers/ollama';
-export type { OllamaModelInfo, OllamaPullProgress, OllamaEnsureStatus } from './providers/ollama';
+export type { OllamaModelInfo, OllamaPullProgress, OllamaEnsureStatus, EnsureOllamaOptions } from './providers/ollama';
+export {
+  bootstrapOllamaConnection,
+  invalidateOllamaBootstrap,
+  sanitizeOllamaEndpointFromStore,
+} from './ollamaBootstrap';
+export type { OllamaBootstrapResult, OllamaBootstrapOptions } from './ollamaBootstrap';
 
 export {
   CHAT_MODEL_OPTIONS,

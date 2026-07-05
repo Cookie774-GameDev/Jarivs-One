@@ -1,4 +1,11 @@
 import type { ContextRef, Timestamped, ChatId, MessageId, AgentId, ProjectId, WorkspaceId, ProviderId } from './common';
+import type {
+  JarvisChatAgent,
+  JarvisPermissionRequest,
+  JarvisPlanReview,
+  JarvisQuestionAnswer,
+  JarvisQuestionBlock,
+} from '@/features/jarvis-interaction/types';
 
 export type Role = 'user' | 'assistant' | 'agent' | 'system' | 'tool';
 
@@ -65,6 +72,11 @@ export type Part =
       result?: unknown;
       error?: string;
     }
+  | { kind: 'question_block'; block: JarvisQuestionBlock }
+  | { kind: 'question_answer'; blockId: string; answers: JarvisQuestionAnswer[] }
+  | { kind: 'plan_review'; plan: JarvisPlanReview }
+  | { kind: 'permission_request'; request: JarvisPermissionRequest }
+  | { kind: 'agent_card'; agent: JarvisChatAgent }
   | { kind: 'image'; url: string; alt?: string }
   | { kind: 'file_ref'; ref: ContextRef };
 

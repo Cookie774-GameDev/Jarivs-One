@@ -58,7 +58,7 @@ describe('generateProjectContextTree file safeguards', () => {
     expect(JSON.stringify(tree.nodes)).toContain('clip.mp4');
     expect(JSON.stringify(tree.nodes)).toContain('large.ts');
     expect(fsMocks.readTextFileSample).toHaveBeenCalledTimes(1);
-    expect(fsMocks.readTextFileSample).toHaveBeenCalledWith('C:\\proj\\src\\large.ts', 64 * 1024);
+    expect(fsMocks.readTextFileSample).toHaveBeenCalledWith('C:\\proj\\src\\large.ts', 64 * 1024, { root: 'C:\\proj' });
   });
 
   it('accepts image and video metadata up to 100 MB and rejects larger files', async () => {

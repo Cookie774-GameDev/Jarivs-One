@@ -3,7 +3,7 @@
  * Persists preset overrides and custom skills via skillsStore.
  */
 import * as React from 'react';
-import { RotateCcw, Save, Trash2 } from 'lucide-react';
+import { RotateCcw, Save, Sparkles, Trash2 } from 'lucide-react';
 import type { SkillManifest } from './loader';
 import { SKILL_EMOJI_PRESETS, renderSkillMarkdown } from './markdownPreview';
 import {
@@ -19,6 +19,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
+import {
+  JARVIS_CREATOR_APPLY_SKILL_EVENT,
+  type JarvisCreatorSkillDraft,
+} from '@/features/jarvis-creator/contracts';
+import { startJarvisCreator } from '@/features/jarvis-creator/launcher';
 
 export interface SkillEditorProps {
   manifest: SkillManifest;
@@ -54,6 +59,21 @@ export function SkillEditor({ manifest, onSaved, onDeleted }: SkillEditorProps) 
     setBody(manifest.body);
     setHue(manifest.colorHue ?? 35);
   }, [manifest]);
+
+  React.useEffect(() => {
+    const handleApply = (event: Event) => {
+      const detail = (event as CustomEvent<JarvisCreatorSkillDraft>).detail;
+      if (!detail?.title || !detail.description || !detail.systemPromptAddendum) return;
+      setEmoji(detail.emoji ?? emoji);
+      setTitle(detail.title);
+      setDescription(detail.description);
+      setToolsRaw(detail.tools.join(', '));
+      setAddendum(detail.systemPromptAddendum);
+      setBody(detail.body);
+    };
+    window.addEventListener(JARVIS_CREATOR_APPLY_SKILL_EVENT, handleApply as EventListener);
+    return () => window.removeEventListener(JARVIS_CREATOR_APPLY_SKILL_EVENT, handleApply as EventListener);
+  }, [emoji]);
 
   const previewHtml = React.useMemo(() => renderSkillMarkdown(body), [body]);
 
@@ -255,6 +275,21 @@ export function SkillEditor({ manifest, onSaved, onDeleted }: SkillEditorProps) 
           <Button variant="ghost" size="sm" onClick={onDelete}>
             <Trash2 className="h-3.5 w-3.5 text-destructive" />
             Delete
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="border border-accent-cyan/35 bg-accent-cyan/10 text-accent-cyan hover:border-accent-cyan/60 hover:bg-accent-cyan/15"
+            onClick={() =>
+              startJarvisCreator({
+                kind: 'skill',
+                currentName: title,
+                currentDescription: description,
+              })
+            }
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            Create with Jarvis
           </Button>
           <Button variant="accent" size="sm" onClick={onSave} disabled={saving}>
             <Save className="h-3.5 w-3.5" />

@@ -606,7 +606,7 @@ export async function generateProjectContextTree(options: GenerateContextOptions
     schemaVersion: 1,
     description: 'Generated VibeSpace project context map. Drag this file into Jarvis chat or terminals as project context.',
     tree,
-  }, null, 2));
+  }, null, 2), { root: rootDir });
   if (!fileWrite.ok) {
     throw new Error(`Could not write Context map file at ${mapPath}: ${fileWrite.error.raw ?? fileWrite.error.code}`);
   }
@@ -628,7 +628,7 @@ async function scanProjectFiles(
     if (depth > MAX_SCAN_DEPTH || seenDirs.has(dir)) return;
     seenDirs.add(dir);
 
-    const listed = await listDirectory(dir);
+    const listed = await listDirectory(dir, { root: rootDir });
     if (!listed.ok) return;
 
     const entries = prioritizeEntries(listed.entries);
@@ -655,7 +655,7 @@ async function scanProjectFiles(
         continue;
       }
 
-      const result = await readTextFileSample(entry.path, MAX_FILE_SAMPLE_BYTES);
+      const result = await readTextFileSample(entry.path, MAX_FILE_SAMPLE_BYTES, { root: rootDir });
       if (!result.ok) continue;
       const remaining = MAX_TOTAL_SAMPLE_CHARS - totalChars;
       if (remaining <= 0) break;

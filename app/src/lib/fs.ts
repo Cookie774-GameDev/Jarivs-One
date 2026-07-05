@@ -24,6 +24,10 @@ export type FsReadErrorCode =
   | 'not_utf8'
   | 'parent_not_found'
   | 'already_exists'
+  | 'unsupported_type'
+  | 'outside_root'
+  | 'root_not_found'
+  | 'root_not_dir'
   | 'unavailable'
   | 'unknown';
 
@@ -54,6 +58,15 @@ export type FsWriteResult =
   | { ok: true; path: string }
   | { ok: false; error: FsReadError; path: string };
 
+export type FsImageReadResult =
+  | { ok: true; path: string; data: string; mimeType: string; size: number }
+  | { ok: false; error: FsReadError; path: string };
+
+export interface FsAccessOptions {
+  /** Selected project root. Native IPC rejects paths outside it when provided. */
+  root?: string | null;
+}
+
 /** Map a Rust-side error string onto a stable code we can branch on. */
 function classifyError(raw: unknown): FsReadError {
   if (typeof raw !== 'string') {
@@ -67,7 +80,11 @@ function classifyError(raw: unknown): FsReadError {
     raw === 'too_large' ||
     raw === 'not_utf8' ||
     raw === 'parent_not_found' ||
-    raw === 'already_exists'
+    raw === 'already_exists' ||
+    raw === 'unsupported_type' ||
+    raw === 'outside_root' ||
+    raw === 'root_not_found' ||
+    raw === 'root_not_dir'
   ) {
     return { code: raw, raw };
   }
@@ -95,9 +112,9 @@ function classifyInvokeError(err: unknown): FsReadError {
  * preview, e2e harness without the shell), the call rejects and we
  * surface `unavailable` so the UI knows the feature is dark.
  */
-export async function readTextFile(path: string): Promise<FsReadResult> {
+export async function readTextFile(path: string, options: FsAccessOptions = {}): Promise<FsReadResult> {
   try {
-    const content = await invoke<string>('fs_read_text', { path });
+    const content = await invoke<string>('fs_read_text', { path, root: options.root ?? undefined });
     return { ok: true, content, path };
   } catch (err) {
     // Tauri's invoke rejects with the raw error string from the Rust
@@ -107,36 +124,45 @@ export async function readTextFile(path: string): Promise<FsReadResult> {
   }
 }
 
-export async function readTextFileSample(path: string, maxBytes = 64 * 1024): Promise<FsReadResult> {
+export async function readTextFileSample(path: string, maxBytes = 64 * 1024, options: FsAccessOptions = {}): Promise<FsReadResult> {
   try {
-    const content = await invoke<string>('fs_read_text_sample', { path, maxBytes });
+    const content = await invoke<string>('fs_read_text_sample', { path, maxBytes, root: options.root ?? undefined });
     return { ok: true, content, path };
   } catch (err) {
     return { ok: false, error: classifyInvokeError(err), path };
   }
 }
 
-export async function listDirectory(path: string): Promise<FsListResult> {
+export async function readImageFileBase64(path: string, options: FsAccessOptions = {}): Promise<FsImageReadResult> {
   try {
-    const entries = await invoke<FsEntry[]>('fs_list_dir', { path });
+    const result = await invoke<{ data: string; mimeType: string; size: number }>('fs_read_image_base64', { path, root: options.root ?? undefined });
+    return { ok: true, path, data: result.data, mimeType: result.mimeType, size: result.size };
+  } catch (err) {
+    return { ok: false, error: classifyInvokeError(err), path };
+  }
+}
+
+export async function listDirectory(path: string, options: FsAccessOptions = {}): Promise<FsListResult> {
+  try {
+    const entries = await invoke<FsEntry[]>('fs_list_dir', { path, root: options.root ?? undefined });
     return { ok: true, entries, path };
   } catch (err) {
     return { ok: false, error: classifyInvokeError(err), path };
   }
 }
 
-export async function writeTextFile(path: string, content: string): Promise<FsWriteResult> {
+export async function writeTextFile(path: string, content: string, options: FsAccessOptions = {}): Promise<FsWriteResult> {
   try {
-    await invoke('fs_write_text', { path, content });
+    await invoke('fs_write_text', { path, content, root: options.root ?? undefined });
     return { ok: true, path };
   } catch (err) {
     return { ok: false, error: classifyInvokeError(err), path };
   }
 }
 
-export async function createTextFile(path: string): Promise<FsWriteResult> {
+export async function createTextFile(path: string, options: FsAccessOptions = {}): Promise<FsWriteResult> {
   try {
-    await invoke('fs_create_text_file', { path });
+    await invoke('fs_create_text_file', { path, root: options.root ?? undefined });
     return { ok: true, path };
   } catch (err) {
     return { ok: false, error: classifyInvokeError(err), path };
@@ -151,7 +177,7 @@ export async function createTextFile(path: string): Promise<FsWriteResult> {
  */
 export async function readTextFiles(paths: string[]): Promise<FsReadResult[]> {
   if (paths.length === 0) return [];
-  const settled = await Promise.allSettled(paths.map(readTextFile));
+  const settled = await Promise.allSettled(paths.map((path) => readTextFile(path)));
   return settled.map((r, i) => {
     const path = paths[i] ?? '';
     if (r.status === 'fulfilled') return r.value;
@@ -182,6 +208,14 @@ export function describeFsError(err: FsReadError): string {
       return 'Parent folder does not exist.';
     case 'already_exists':
       return 'A file already exists at that path.';
+    case 'unsupported_type':
+      return 'Unsupported image type.';
+    case 'outside_root':
+      return 'Path is outside the selected project folder.';
+    case 'root_not_found':
+      return 'Project folder not found.';
+    case 'root_not_dir':
+      return 'Project root is not a folder.';
     case 'unavailable':
       return 'File reads only work in the desktop app.';
     case 'unknown':

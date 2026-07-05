@@ -1178,6 +1178,225 @@
   );
 }
 
+/* ============================================================
+   Hive composer halo — cozy warm glow around the chat box
+   ------------------------------------------------------------
+   Applied to the chat input container when the Hive ensemble is
+   the active model. A slowly rotating conic ring of warm, cozy
+   tones (copper → amber → honey → terracotta) flows around the
+   box — no rainbow, just a gentle warm radiance.
+   ============================================================ */
+
+@keyframes hive-composer-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+    filter: blur(6px);
+  }
+  50% {
+    opacity: 0.7;
+    filter: blur(9px);
+  }
+}
+
+/* Continuous warm-colour drift for the inner glow layer. */
+@keyframes hive-warm-flow {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 200% 50%;
+  }
+}
+
+[data-hive-active='true'] {
+  position: relative;
+  isolation: isolate;
+  /* Deep ember field with a single warm band sweeping across — way darker
+     and warmer than before; reads as moving warmth, not a bright fill. */
+  background-color: hsl(16 60% 7%);
+  background-image: linear-gradient(
+    100deg,
+    hsl(12 80% 18% / 0) 0%,
+    hsl(12 80% 18% / 0) 14%,
+    hsl(16 84% 26% / 0.7) 32%,
+    hsl(24 86% 32% / 0.85) 43%,
+    hsl(16 84% 26% / 0.7) 54%,
+    hsl(12 80% 18% / 0) 74%,
+    hsl(12 80% 18% / 0) 100%
+  );
+  background-size: 220% auto;
+  animation: hive-warm-flow 6.5s linear infinite;
+}
+
+/* Slow rotating ember ring — deep and warm. */
+[data-hive-active='true']::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: calc(var(--radius, 0.625rem) + 3px);
+  pointer-events: none;
+  z-index: -1;
+  background: conic-gradient(
+    from var(--jarvis-rainbow-angle),
+    hsl(10 82% 26%),
+    hsl(18 86% 34%),
+    hsl(28 88% 42%),
+    hsl(20 86% 34%),
+    hsl(12 82% 28%),
+    hsl(10 82% 26%)
+  );
+  opacity: 0.7;
+  filter: blur(7px);
+  animation:
+    jarvis-rainbow-spin 7s linear infinite,
+    hive-composer-pulse 4.6s ease-in-out infinite;
+}
+
+/* Soft ambient warmth around the field. */
+[data-hive-active='true']::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius, 0.625rem);
+  pointer-events: none;
+  z-index: -1;
+  box-shadow: 0 0 24px 1px hsl(18 84% 30% / 0.45);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-hive-active='true'],
+  [data-hive-active='true']::before {
+    animation: none;
+  }
+  [data-hive-active='true']::before {
+    opacity: 0.45;
+  }
+}
+
+/* ── Hive response bubble — warm flowing colours inside the bubble ──
+   The Hive reply renders as a rounded bubble whose interior carries the
+   same drifting warm gradient as the composer halo. Text sits on top and
+   stays fully readable; the effect is premium but never distracting. */
+
+@keyframes hive-bubble-breathe {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 0 22px hsl(var(--accent-copper) / 0.12),
+      0 6px 22px -8px hsl(var(--accent-copper) / 0.4),
+      0 0 0 1px hsl(var(--accent-copper) / 0.2);
+  }
+  50% {
+    box-shadow:
+      inset 0 0 30px hsl(var(--accent-copper) / 0.2),
+      0 8px 28px -6px hsl(var(--accent-copper) / 0.52),
+      0 0 0 1px hsl(var(--accent-copper) / 0.3);
+  }
+}
+
+.hive-response-glow {
+  position: relative;
+  border: 1px solid hsl(20 84% 32% / 0.45);
+  /* Deep ember interior with gentle moving warmth — way darker. */
+  background-color: hsl(16 56% 8%);
+  background-image: linear-gradient(
+    115deg,
+    hsl(12 82% 18% / 0.55),
+    hsl(18 82% 22% / 0.32) 35%,
+    hsl(26 84% 28% / 0.5) 60%,
+    hsl(12 82% 18% / 0.55) 100%
+  );
+  background-size: 220% auto;
+  animation:
+    hive-warm-flow 8s linear infinite,
+    hive-bubble-breathe 5s ease-in-out infinite;
+}
+
+/* The reply text itself: a warm gradient that flows through the words.
+   Kept bright enough to stay readable on the deep ember bubble. */
+.hive-response-glow .hive-words {
+  background: linear-gradient(
+    100deg,
+    hsl(26 90% 60%) 0%,
+    hsl(40 92% 68%) 25%,
+    hsl(32 90% 62%) 50%,
+    hsl(40 92% 68%) 75%,
+    hsl(26 90% 60%) 100%
+  );
+  background-size: 220% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: hive-warm-flow 4.5s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hive-response-glow {
+    animation: none;
+    background-image: none;
+    box-shadow:
+      inset 0 0 20px hsl(var(--accent-copper) / 0.12),
+      0 0 0 1px hsl(var(--accent-copper) / 0.22);
+  }
+  .hive-response-glow .hive-words {
+    animation: none;
+    background: none;
+    -webkit-background-clip: border-box;
+    background-clip: border-box;
+    color: hsl(40 86% 70%);
+  }
+}
+
+/* ── Hive model-picker entry — deep ember with a travelling sheen ──
+   Dedicated class (not arbitrary utilities) so the motion is guaranteed
+   to render. A dark warm base drifts while a bright sheen sweeps across. */
+.hive-picker-entry {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background-color: hsl(16 56% 9%);
+  background-image: linear-gradient(
+    110deg,
+    hsl(12 80% 16% / 0.9),
+    hsl(20 82% 22% / 0.7) 40%,
+    hsl(28 84% 26% / 0.85) 55%,
+    hsl(12 80% 16% / 0.9) 100%
+  );
+  background-size: 220% auto;
+  animation: hive-warm-flow 6s linear infinite;
+}
+
+.hive-picker-entry::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    115deg,
+    transparent 0%,
+    hsl(30 92% 55% / 0.32) 40%,
+    hsl(44 94% 64% / 0.42) 50%,
+    hsl(22 90% 50% / 0.32) 60%,
+    transparent 100%
+  );
+  background-size: 220% auto;
+  animation: hive-warm-flow 3.6s linear infinite;
+}
+
+.hive-picker-entry > * {
+  position: relative;
+  z-index: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hive-picker-entry,
+  .hive-picker-entry::before {
+    animation: none;
+  }
+}
+
 /* ── API key save — cozy colorful surge with sparkles ────────── */
 
 /* Wave layer: soft blues, purples, pinks, oranges */

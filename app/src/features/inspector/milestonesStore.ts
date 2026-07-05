@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { MilestoneItem, MilestoneStatus } from './types';
+import type { MilestoneItem, MilestoneKind, MilestoneStatus } from './types';
 
 function newId(): string {
   return `ms_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -8,10 +8,12 @@ function newId(): string {
 
 interface MilestonesState {
   items: MilestoneItem[];
-  addMilestone: (title: string, description?: string) => string;
-  updateMilestone: (id: string, patch: Partial<Pick<MilestoneItem, 'title' | 'description' | 'status'>>) => void;
+  addMilestone: (title: string, kind?: MilestoneKind, description?: string, deadlineAt?: number) => string;
+  updateMilestone: (id: string, patch: Partial<Pick<MilestoneItem, 'title' | 'description' | 'status' | 'deadlineAt'>>) => void;
   removeMilestone: (id: string) => void;
   toggleDone: (id: string) => void;
+  /** Remove completed daily to-dos (keeps long-running milestones). */
+  clearCompletedTodos: () => void;
   reorder: (fromIndex: number, toIndex: number) => void;
 }
 
@@ -19,14 +21,16 @@ export const useMilestonesStore = create<MilestonesState>()(
   persist(
     (set, get) => ({
       items: [],
-      addMilestone: (title, description) => {
+      addMilestone: (title, kind = 'todo', description, deadlineAt) => {
         const id = newId();
         const now = Date.now();
         const item: MilestoneItem = {
           id,
           title: title.trim(),
           description: description?.trim() || undefined,
+          deadlineAt: Number.isFinite(deadlineAt) ? deadlineAt : undefined,
           status: 'todo',
+          kind,
           createdAt: now,
           updatedAt: now,
         };
@@ -56,6 +60,12 @@ export const useMilestonesStore = create<MilestonesState>()(
         const next: MilestoneStatus = item.status === 'done' ? 'todo' : 'done';
         get().updateMilestone(id, { status: next });
       },
+      clearCompletedTodos: () =>
+        set({
+          items: get().items.filter(
+            (i) => i.kind === 'milestone' || i.status !== 'done',
+          ),
+        }),
       reorder: (fromIndex, toIndex) => {
         const items = [...get().items];
         const [moved] = items.splice(fromIndex, 1);

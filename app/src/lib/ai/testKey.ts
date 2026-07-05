@@ -253,14 +253,45 @@ async function testOllama(
   rawBaseUrl: string,
   signal?: AbortSignal,
 ): Promise<ProviderTestResult> {
-  // The `apiKeys.ollama` slot stores the daemon URL, not a secret. We
-  // accept either an empty string (use default) or any URL. Trim it
-  // the same way the adapter does so behaviour matches.
-  const base =
-    (rawBaseUrl.trim() || 'http://localhost:11434').replace(/\/+$/, '');
+  const { normalizeStoredOllamaEndpoint } = await import('./providers/ollama');
+  const base = normalizeStoredOllamaEndpoint(rawBaseUrl.trim() || undefined);
+
+  const { isTauri } = await import('@/lib/utils');
+  if (isTauri) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const ok = await invoke<boolean>('ollama_ping', { baseUrl: base });
+      if (!ok) {
+        const { bootstrapOllamaConnection } = await import('./ollamaBootstrap');
+        const boot = await bootstrapOllamaConnection({ force: true, signal });
+        if (!boot.ready) {
+          return {
+            kind: 'network',
+            provider: 'ollama',
+            detail: boot.status.detail ?? 'Ollama is not running',
+          };
+        }
+      }
+      const models = await invoke<Array<{ name: string }>>('ollama_list_models', { baseUrl: base });
+      const count = models?.length ?? 0;
+      return {
+        kind: 'ok',
+        provider: 'ollama',
+        detail:
+          count === 0
+            ? 'Daemon up — no models pulled yet'
+            : `${count} model${count === 1 ? '' : 's'} installed`,
+      };
+    } catch (err) {
+      return {
+        kind: 'network',
+        provider: 'ollama',
+        detail: (err as Error).message || 'unreachable',
+      };
+    }
+  }
+
   try {
-    // Use nativeFetch so packaged Tauri builds can talk to localhost
-    // without tripping CORS — same path the chat adapter takes.
     const res = await timedFetchVia(nativeFetch, `${base}/api/tags`, {
       method: 'GET',
       signal,

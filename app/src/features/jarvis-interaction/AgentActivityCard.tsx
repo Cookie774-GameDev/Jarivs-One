@@ -1,0 +1,303 @@
+﻿import * as React from 'react';
+import {
+  Bot,
+  ChevronDown,
+  ExternalLink,
+  GitFork,
+  X,
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+import { useUIStore } from '@/stores/ui';
+import type { Part } from '@/types/chat';
+import type { ChatId } from '@/types/common';
+import { useJarvisInteractionStore } from './sessionStore';
+import type { JarvisAgentStatus, JarvisChatAgent } from './types';
+
+type AgentPart = Extract<Part, { kind: 'agent_card' }>;
+const EMPTY_AGENTS: NonNullable<ReturnType<typeof useJarvisInteractionStore.getState>['agentsByChat'][string]> = [];
+
+export interface AgentActivityCardProps {
+  part: AgentPart;
+}
+
+export interface ChatAgentActivityPanelProps {
+  chatId: ChatId | string;
+  fallbackAgents?: JarvisChatAgent[];
+  compact?: boolean;
+  className?: string;
+}
+
+const STATUS_LABELS: Record<JarvisAgentStatus, string> = {
+  queued: 'queued',
+  thinking: 'thinking',
+  planning: 'planning',
+  asking_question: 'asking',
+  waiting_permission: 'waiting permission',
+  editing: 'editing',
+  testing: 'testing',
+  blocked: 'blocked',
+  done: 'done',
+  failed: 'failed',
+  cancelled: 'cancelled',
+};
+
+const INACTIVE_STATUSES: JarvisAgentStatus[] = ['blocked', 'done', 'failed', 'cancelled'];
+const HEADER_STATUS = 'Live agent work for this chat';
+
+export function AgentActivityCard({ part }: AgentActivityCardProps) {
+  const agent = part.agent;
+  const openChildChat = () => {
+    useUIStore.setState({ activeChatId: String(agent.childChatId), route: 'chat' });
+  };
+  return (
+    <article
+      data-testid="chat-agent-card"
+      className="group rounded-xl border border-orange-500/25 bg-orange-950/20 px-3 py-2 text-orange-50 shadow-[inset_0_1px_0_rgba(251,146,60,0.12)]"
+    >
+      <div className="flex min-w-0 items-start gap-2.5">
+        <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-orange-400/25 bg-orange-500/10 text-orange-300">
+          <Bot className="h-3.5 w-3.5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="shrink-0 rounded-full border border-orange-400/20 bg-black/20 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.12em] text-orange-300/85">
+              {agent.name.toLowerCase().includes('planner') ? 'Planner' : 'Subagent'}
+            </span>
+            <span className="truncate text-ui-strong text-orange-100">{agent.name}</span>
+            <span className="shrink-0 text-metadata text-orange-100/45">{STATUS_LABELS[agent.status]}</span>
+          </div>
+          <p className="mt-1 truncate text-secondary text-orange-50/85" title={agent.task}>
+            {cleanTask(agent.task, agent.name)}
+          </p>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-orange-100/55">
+            <span className="truncate">{agent.currentStep ?? STATUS_LABELS[agent.status]}</span>
+            <span aria-hidden>|</span>
+            <span className="truncate">{agent.modelLabel}</span>
+          </div>
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={openChildChat}
+          aria-label={`Open chat for ${agent.name}`}
+          className="h-7 shrink-0 border border-orange-400/15 bg-black/20 px-2 text-[11px] text-orange-200/80 hover:bg-orange-500/10 hover:text-orange-100"
+        >
+          Open chat
+        </Button>
+      </div>
+    </article>
+  );
+}
+
+export function ChatAgentActivityPanel({
+  chatId,
+  fallbackAgents = [],
+  compact = false,
+  className,
+}: ChatAgentActivityPanelProps) {
+  const [expanded, setExpanded] = React.useState(true);
+  const [dismissed, setDismissed] = React.useState(false);
+  const storedAgents = useJarvisInteractionStore(
+    (state) => state.agentsByChat[String(chatId)] ?? EMPTY_AGENTS,
+  );
+  const agents = React.useMemo(() => {
+    return dedupeAgents([...fallbackAgents, ...storedAgents]);
+  }, [fallbackAgents, storedAgents]);
+
+  const workingAgents = agents.filter(isAgentWorking);
+  const panelAgents = workingAgents;
+
+  if (dismissed) return null;
+  if (panelAgents.length === 0) return null;
+
+  const workingCount = workingAgents.length;
+  const title = `${workingCount} Working`;
+  return (
+    <section
+      className={cn(
+        'relative w-full overflow-visible rounded-[18px] border border-orange-400/40 bg-[#120d09]/95 text-orange-50',
+        'shadow-[0_0_0_1px_rgba(251,146,60,0.16),0_0_24px_rgba(251,146,60,0.32),inset_0_0_20px_rgba(251,146,60,0.08)]',
+        'backdrop-blur-xl',
+        className,
+      )}
+      aria-label="Multitask activity"
+      data-chat-agent-panel="connected"
+    >
+      <div className="overflow-hidden rounded-[17px]">
+        <div className="flex items-center gap-2.5 border-b border-orange-500/20 bg-gradient-to-r from-orange-500/10 via-black/25 to-orange-500/5 px-3 py-2">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <GitFork className="h-4 w-4 shrink-0 text-orange-300 drop-shadow-[0_0_8px_rgba(251,146,60,0.85)]" />
+            <span className="shrink-0 text-ui-strong font-semibold text-orange-300">{title}</span>
+            <span className="truncate text-metadata text-orange-100/70">{HEADER_STATUS}</span>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => setExpanded((value) => !value)}
+            aria-label={expanded ? 'Collapse multitask activity' : 'Expand multitask activity'}
+            aria-expanded={expanded}
+            className="border border-orange-400/15 bg-black/25 text-orange-100 hover:bg-orange-500/10 hover:text-orange-200"
+          >
+            <ChevronDown
+              className={cn(
+                'h-3.5 w-3.5 transition-transform',
+                expanded ? 'rotate-0' : '-rotate-90',
+              )}
+            />
+            {expanded ? 'Collapse' : 'Expand'}
+          </Button>
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            onClick={() => setDismissed(true)}
+            aria-label="Dismiss multitask activity"
+            className="h-7 w-7 rounded-full border border-orange-400/20 bg-orange-500/10 text-orange-300 hover:bg-orange-500/20"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+        {expanded ? (
+          <div className={cn('divide-y divide-orange-500/10', compact && 'text-[12px]')}>
+            {panelAgents.map((agent, index) => (
+              <AgentActivityRow key={String(agent.agentId)} agent={agent} index={index + 1} />
+            ))}
+          </div>
+        ) : null}
+      </div>
+      <div
+        data-testid="chat-agent-connector"
+        className="pointer-events-none absolute left-1/2 top-full h-8 w-24 -translate-x-1/2"
+        aria-hidden
+      >
+        <div className="mx-auto h-5 w-px bg-gradient-to-b from-orange-300 via-orange-500 to-transparent shadow-[0_0_18px_rgba(251,146,60,0.95)]" />
+        <div className="mx-auto -mt-1 h-4 w-4 rotate-45 rounded-[4px] border-b border-r border-orange-400/60 bg-[#120d09] shadow-[0_0_20px_rgba(251,146,60,0.95)]" />
+      </div>
+    </section>
+  );
+}
+
+function AgentActivityRow({ agent, index }: { agent: JarvisChatAgent; index: number }) {
+  const filesRead = agent.filesRead ?? [];
+  const filesEditing = agent.filesEditing ?? agent.lockedFiles;
+  const openChildChat = () => {
+    useUIStore.setState({ activeChatId: String(agent.childChatId), route: 'chat' });
+  };
+  const diff = agent.diffSummary;
+  const hasDiff = Boolean(diff && (diff.addedLines !== 0 || diff.removedLines !== 0));
+
+  return (
+    <article className="bg-gradient-to-r from-orange-950/25 via-black/20 to-transparent px-3 py-2">
+      <div className="grid grid-cols-[34px_minmax(0,1fr)_auto_auto] items-center gap-2">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-orange-500/20 bg-orange-500/10 text-sm font-semibold text-orange-300 shadow-[inset_0_0_14px_rgba(251,146,60,0.12)]">
+          {index}
+        </div>
+        <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="shrink-0 rounded-full border border-orange-400/20 bg-black/20 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.12em] text-orange-300/85">
+              {labelForAgent(agent)}
+            </span>
+            <span className="truncate text-ui-strong text-orange-50" title={cleanTask(agent.task, agent.name)}>
+              {agent.name}
+            </span>
+            <span className="shrink-0 text-metadata text-orange-100/45">{STATUS_LABELS[agent.status]}</span>
+          </div>
+          <p className="mt-1 line-clamp-2 text-secondary text-orange-50/85">
+            {cleanTask(agent.task, agent.name)}
+          </p>
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-orange-100/55">
+            <span className="truncate">{agent.currentStep ?? STATUS_LABELS[agent.status]}</span>
+            <span aria-hidden>|</span>
+            <span className="truncate">{agent.modelLabel}</span>
+            <FilePill label="Read" files={filesRead} />
+            <FilePill label="Edit" files={filesEditing} />
+          </div>
+        </div>
+        {hasDiff && diff ? <DiffCounts diff={diff} /> : null}
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={openChildChat}
+          aria-label={`Open chat for ${agent.name}`}
+          className="shrink-0 gap-1 border border-orange-400/15 bg-black/20 px-2 text-[11px] text-orange-200/80 hover:bg-orange-500/10 hover:text-orange-100"
+        >
+          <ExternalLink className="h-3.5 w-3.5" />
+          Open chat
+        </Button>
+      </div>
+    </article>
+  );
+}
+
+function FilePill({ label, files }: { label: string; files: string[] }) {
+  if (files.length === 0) return null;
+  return (
+    <span className="inline-flex max-w-[180px] items-center gap-1 rounded-full border border-orange-500/15 bg-black/20 px-1.5 py-0.5">
+      <span className="text-orange-300/80">{label}</span>
+      <span className="truncate">{summarizeFiles(files)}</span>
+    </span>
+  );
+}
+
+function DiffCounts({
+  diff,
+  small = false,
+}: {
+  diff: NonNullable<JarvisChatAgent['diffSummary']>;
+  small?: boolean;
+}) {
+  return (
+    <span
+      className={cn('flex shrink-0 items-center justify-end gap-3 font-mono', small ? 'text-[10px]' : 'text-[12px]')}
+      aria-label="Line changes"
+    >
+      <span className="text-emerald-400">+{diff.addedLines}</span>
+      <span className="text-red-400">-{diff.removedLines}</span>
+    </span>
+  );
+}
+
+
+
+function cleanTask(task: string, fallback: string): string {
+  const cleaned = task.replace(/^\/(?:multitask|subagents)\s+/i, '').trim();
+  return cleaned || fallback;
+}
+
+function labelForAgent(agent: JarvisChatAgent): 'Agent' | 'Subagent' {
+  return /^\/subagents\b/i.test(agent.task) ? 'Subagent' : 'Agent';
+}
+
+function summarizeFiles(files: string[]): string {
+  const first = basename(files[0] ?? '');
+  return files.length > 1 ? `${first} +${files.length - 1}` : first;
+}
+
+function basename(file: string): string {
+  return file.split(/[\\/]/).pop() || file;
+}
+
+function isAgentWorking(agent: JarvisChatAgent): boolean {
+  return !INACTIVE_STATUSES.includes(agent.status);
+}
+
+function dedupeAgents(agents: JarvisChatAgent[]): JarvisChatAgent[] {
+  const byId = new Map<string, JarvisChatAgent>();
+  for (const agent of agents) {
+    const id = String(agent.agentId);
+    const existing = byId.get(id);
+    byId.set(id, existing ? newerAgent(existing, agent) : agent);
+  }
+  return [...byId.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
+function newerAgent(a: JarvisChatAgent, b: JarvisChatAgent): JarvisChatAgent {
+  const aTime = Date.parse(a.updatedAt || a.createdAt);
+  const bTime = Date.parse(b.updatedAt || b.createdAt);
+  return bTime >= aTime ? { ...a, ...b } : { ...b, ...a };
+}
+

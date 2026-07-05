@@ -8,6 +8,8 @@ This document is the **authoritative spec** for **Hive**: the sequential multi-m
 
 > **Naming:** User-facing copy is always **Hive** (e.g. **Hive Fast**, **Hive Quality**). Internal code paths may still use `vibe_hive`, `stack_*`, or `StackPicker` historically — do not expose those names in UI or planning docs.
 
+> **Brand mark:** Official Hive model icon → `app/public/hive-model-icon.png` (GitHub: `docs/assets/hive-model-icon.png`). Use `HiveModelIcon` from `@/components/brand` in UI.
+
 ---
 
 ## 1. What Hive is

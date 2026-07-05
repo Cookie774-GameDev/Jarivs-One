@@ -340,34 +340,34 @@ export const SECTION_META: Record<
  */
 export const RELEASES: readonly Release[] = [
   {
-    version: '0.1.45',
-    date: '2026-06-19',
-    headline: 'Skills catalog, Inspector panel, and agent coordination',
+    version: '0.1.46',
+    date: '2026-07-05',
+    headline: 'Ollama auto-connect and Jarvis creator',
     summary:
-      'Unified skills library with editor and /skills picker, rebuilt Inspector and Kanban milestones, native terminal agent coordination, Apex billing tier, and Windows trust documentation.',
+      'Automatic Ollama bootstrap before auth gates, Jarvis creator for agents/skills/schedules, queued messages bar, All About Me settings, and mock demo removed from model pickers.',
     sections: [
       {
         kind: 'feature',
         items: [
-          'Unified skills catalog — built-in + custom skills with editor, preview, and /skills chat picker.',
-          'Inspector panel — Today, Quick Launch, Context, Tools Run, Trace milestones, and Active Work.',
-          'Terminal agent coordination — native project ledger, locks, and mode-aware prompt payloads for OpenCode CLIs.',
-          'Apex plan tier — subscription ladder update with checkout and entitlement wiring.',
+          'Ollama auto-connect — bootstrap on launch and window focus; Tauri native ping without HTTP fallback.',
+          'Jarvis creator — natural-language agent, skill, and schedule creation from chat.',
+          'Queued messages bar — visible send queue while a turn is streaming.',
+          'All About Me — personal context in Settings injected into prompts.',
         ],
       },
       {
         kind: 'improvement',
         items: [
-          'Kanban rebuilt on milestone store with inspector-aligned cards and columns.',
-          'Hive balanced preset and frontier model registry polish.',
-          'Windows trust docs — publisher metadata, SHA-256 verify script, SmartScreen guidance.',
+          'Local models — loopback endpoint normalization and provider test via Rust bridge on desktop.',
+          'Composer STT — interim editor, volume meter, and global host reliability.',
+          'Stack picker — Single mode iconless; Hive icon unchanged.',
         ],
       },
       {
         kind: 'fix',
         items: [
-          'Top-bar mic routes to composer STT, not the Jarvis voice module.',
-          'Terminal viewport and restore-session hardening across pane switches.',
+          'Mock demo model removed from all user-facing provider/model selectors.',
+          'Agent model dropdown uses connected registry without legacy manual ID field.',
         ],
       },
     ],
@@ -441,14 +441,14 @@ export const RELEASES: readonly Release[] = [
     date: '2026-06-15',
     headline: 'Hive stacks, Ultra tiers, voice routing, and agent fixes',
     summary:
-      'Re-ships Hive multi-model chat pipelines (Fast / Balanced / Quality / High), subscription tier expansion, AI credit bucket migration, and accumulated voice, terminal, and billing fixes from parallel agent work.',
+      'Re-ships Hive Balanced multi-model chat, subscription tier expansion, AI credit bucket migration, and accumulated voice, terminal, and billing fixes from parallel agent work.',
     sections: [
       {
         kind: 'feature',
         items: [
           'Hive — sequential multi-model chat stacks with collapsible step timeline in threads.',
-          '/hive and /stack slash overrides — preset and task type per message (e.g. /hive quality code …).',
-          'Settings → Hive — preset picker and custom step editor.',
+          '/hive and /stack slash overrides — Balanced pipeline and task type per message.',
+          'Settings → Hive — Balanced-only picker.',
           'Ultra + Supernova plan tiers with expanded AI credit allocations.',
         ],
       },
@@ -1457,7 +1457,7 @@ export const RELEASES: readonly Release[] = [
     date: '2026-05-31',
     headline: 'AI-proposed actions, custom tools, eye breaks, four plans',
     summary:
-      'Jarvis can now propose any of 24 built-in actions inline in chat — open the Terminals swarm, run Claude Code in a new pane, start a 20-20-20 eye break, jump to a settings tab — and you Approve / Cancel with one click before anything runs. A new Tools page lets you wrap those actions with friendly names and preset params, Mod+Shift+A opens an actions palette for direct invocation, and the Plans tab now shows the full ladder: Free, Starter $5, Pro $20, Ultra $100 (Stripe ships next).',
+      'Jarvis can now propose any of 24 built-in actions inline in chat — open the Terminals swarm, run Claude Code in a new pane, start a 20-20-20 eye break, jump to a settings tab — and you Approve / Cancel with one click before anything runs. A new Tools page lets you wrap those actions with friendly names and preset params, Mod+Shift+A opens an actions palette for direct invocation, and the Plans tab now shows the full ladder.',
     sections: [
       {
         kind: 'feature',
@@ -1467,7 +1467,7 @@ export const RELEASES: readonly Release[] = [
           'Custom Tools page (sidebar -> Tools, or natural-language "open tools"). Wrap any built-in action with a friendly name, emoji, description, and preset params. Saved tools show up in the actions palette and in the AI catalogue so Jarvis can propose them too. Quick-start templates included.',
           'Actions palette (Mod+Shift+A). Direct invocation of every registered action plus your custom tools. Substring search, grouped by category, recent actions pinned at top, inline parameter form when an action needs values.',
           'Wellness break overlay: full-screen 20-20-20 eye break with breathing orb and serene countdown. Triggered by Jarvis proposing `wellness.eyeBreak`, by clicking it in the actions palette, or by saving it as a quick-start tool. Esc skips.',
-          'Plans tab redesigned as a four-card ladder. Free is "Current"; Starter $5/mo (voice + Jarvis Call), Pro $20/mo (premium models), and Ultra $100/mo (frontier models) are "Available soon" until Stripe ships.',
+          'Plans tab redesigned as a four-card ladder: Free, Starter, Pro, and Ultra.',
           "Terminal command queue. When the AI proposes a terminal action and you Approve, the new pane appears reliably even when you weren't already on the Terminals route — the page drains the queue on mount.",
         ],
       },
@@ -1499,7 +1499,7 @@ export const RELEASES: readonly Release[] = [
       {
         kind: 'known',
         items: [
-          'Stripe billing is not yet connected, so Starter / Pro / Ultra cards say "Available soon". The entitlements module (`lib/entitlements.ts`) is the source of truth for what each tier unlocks; it just isn\'t enforced until the webhook lands.',
+          'Billing copy and enforcement were later moved to signed-in Supabase checkout sessions and Stripe webhooks.',
           'Public tool publishing is still separate from private account sync. `useToolStore.publish()` queues the private tool record for Jarvis Cloud sync.',
           'Approving an action that lacks a built-in registration (typo from the AI, or a custom tool deleted between proposal and approval) shows an error inline instead of guessing.',
         ],
@@ -1550,7 +1550,7 @@ export const RELEASES: readonly Release[] = [
       {
         kind: 'known',
         items: [
-          'Pro $5/mo tier is "Available soon" only. The Supabase + Stripe plumbing exists in `features/billing/HostedJarvis.tsx` but isn\u2019t connected to a live backend yet, so the upgrade button is intentionally disabled.',
+          'The legacy hosted proxy billing surface was later retired in favor of the Plans page and signed-in checkout sessions.',
           'Phone calling still requires the Fly.io deploy + Groq/Cartesia/LiveKit/Twilio keys + `VITE_PHONE_JARVIS_CLOUD_URL` from 0.1.1. No call connects until that\u2019s wired.',
           'Live agent orchestration (pane output streaming into the matching agent\u2019s chat) still hasn\u2019t landed; agent tags remain labels + default commands today.',
         ],

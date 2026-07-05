@@ -1,14 +1,32 @@
 import * as React from 'react';
-import { CalendarDays, Check, Clock, Plus, Repeat, Sparkles, Trash2 } from 'lucide-react';
+import { motion } from 'motion/react';
+import {
+  Bell,
+  CalendarDays,
+  CalendarRange,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  MapPin,
+  Plus,
+  Repeat,
+  Sparkles,
+  Trash2,
+} from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/toast';
 import { eventRepo } from '@/lib/db';
 import { useAuthStore } from '@/stores/auth';
+import { formatChatModelSelectionLabel, modelSelectionContextFromAuth, selectionFromOption, selectionOptionId } from '@/lib/ai/modelSelection';
+import { useAccessibleChatModels } from '@/lib/ai/useAccessibleChatModels';
+import { getProviderDisplayName } from '@/lib/ai/providerRegistry';
 import { cn } from '@/lib/utils';
 import { completeTask, useUpcomingTasks } from '@/features/tasks';
 import type { EventReminder, EventRow } from '@/types/event';
@@ -17,6 +35,18 @@ import type { WorkspaceId } from '@/types/common';
 import { parseEventInput } from './parseEventInput';
 import { useUpcomingEvents } from './hooks';
 import type { RecurrenceInstance } from './recurrence';
+import {
+  defaultEventEndMs,
+  defaultEventStartMs,
+  formatLocalDateTime,
+  formatLocalDayHeading,
+  formatLocalEventRange,
+  fromLocalDateTimeInput,
+  localDayKey,
+  toLocalDateTimeInput,
+} from './localDateTime';
+import { visualForEventTitle, visualForTask } from './scheduleIcons';
+import { buildJarvisScheduleEventInput, isJarvisScheduleEvent, parseJarvisScheduleMetadata } from './jarvisSchedules';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -31,41 +61,6 @@ const REMINDER_PRESETS: { label: string; offset_min: number }[] = [
 type TimelineItem =
   | { kind: 'event'; id: string; at: number; end: number; instance: RecurrenceInstance }
   | { kind: 'task'; id: string; at: number; task: Task; timeKind: 'Scheduled' | 'Due' };
-
-function toLocalInput(ms: number): string {
-  const d = new Date(ms);
-  const pad = (n: number) => n.toString().padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function fromLocalInput(s: string): number {
-  return new Date(s).getTime();
-}
-
-function formatDateTime(ms: number): string {
-  const d = new Date(ms);
-  return `${d.toLocaleDateString(undefined, {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-  })} · ${d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`;
-}
-
-function formatEventRange(inst: RecurrenceInstance): string {
-  const start = new Date(inst.instanceStartMs);
-  const end = new Date(inst.instanceEndMs);
-  if (inst.event.all_day) {
-    return `${start.toLocaleDateString(undefined, {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-    })} · All day`;
-  }
-  return `${formatDateTime(inst.instanceStartMs)} – ${end.toLocaleTimeString(undefined, {
-    hour: 'numeric',
-    minute: '2-digit',
-  })}`;
-}
 
 function buildTimeline(events: RecurrenceInstance[], tasks: Task[]): TimelineItem[] {
   const eventItems = events.map((instance) => ({
@@ -84,34 +79,228 @@ function buildTimeline(events: RecurrenceInstance[], tasks: Task[]): TimelineIte
         id: task.id,
         at,
         task,
-        timeKind: task.scheduled_for !== undefined ? 'Scheduled' as const : 'Due' as const,
+        timeKind: task.scheduled_for !== undefined ? ('Scheduled' as const) : ('Due' as const),
       };
     })
     .filter(Boolean) as TimelineItem[];
   return [...eventItems, ...taskItems].sort((a, b) => a.at - b.at);
 }
 
+function groupTimelineByDay(items: TimelineItem[]) {
+  const groups = new Map<string, TimelineItem[]>();
+  for (const item of items) {
+    const key = localDayKey(item.at);
+    const list = groups.get(key) ?? [];
+    list.push(item);
+    groups.set(key, list);
+  }
+  return [...groups.entries()].map(([dayKey, dayItems]) => ({
+    dayKey,
+    heading: formatLocalDayHeading(dayItems[0]!.at),
+    subheading: new Date(dayItems[0]!.at).toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    }),
+    items: dayItems,
+  }));
+}
+
+const WEEKDAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+const MONTH_LABELS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+function MiniCalendar({
+  todayKey,
+  selectedDayKey,
+  eventCountByDay,
+  onSelectDay,
+}: {
+  todayKey: string;
+  selectedDayKey: string | null;
+  eventCountByDay: Map<string, number>;
+  onSelectDay: (dayMs: number) => void;
+}) {
+  const now = React.useMemo(() => new Date(), []);
+  const [view, setView] = React.useState(() => ({ year: now.getFullYear(), month: now.getMonth() }));
+
+  const cells = React.useMemo(() => {
+    const first = new Date(view.year, view.month, 1);
+    const leading = first.getDay();
+    const out: { ms: number; day: number; inMonth: boolean }[] = [];
+    // 6 rows × 7 = stable height; start from the Sunday before the 1st.
+    const start = new Date(view.year, view.month, 1 - leading);
+    for (let i = 0; i < 42; i += 1) {
+      const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+      out.push({ ms: d.getTime(), day: d.getDate(), inMonth: d.getMonth() === view.month });
+    }
+    return out;
+  }, [view]);
+
+  const shiftMonth = (delta: number) =>
+    setView((prev) => {
+      const d = new Date(prev.year, prev.month + delta, 1);
+      return { year: d.getFullYear(), month: d.getMonth() };
+    });
+
+  return (
+    <div className="w-72 p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => shiftMonth(-1)}
+          className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-panel hover:text-foreground"
+          aria-label="Previous month"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        <div className="flex items-center gap-2">
+          <span className="font-display text-ui-strong text-foreground">
+            {MONTH_LABELS[view.month]} {view.year}
+          </span>
+          <button
+            type="button"
+            onClick={() => setView({ year: now.getFullYear(), month: now.getMonth() })}
+            className="rounded-md border border-border px-1.5 py-0.5 text-metadata text-muted-foreground transition-colors hover:border-accent-copper/40 hover:text-accent-copper"
+          >
+            Today
+          </button>
+        </div>
+        <button
+          type="button"
+          onClick={() => shiftMonth(1)}
+          className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-panel hover:text-foreground"
+          aria-label="Next month"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="mb-1 grid grid-cols-7 gap-1">
+        {WEEKDAY_LABELS.map((w, i) => (
+          <div key={`${w}-${i}`} className="text-center text-metadata text-muted-foreground">
+            {w}
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-7 gap-1">
+        {cells.map((cell) => {
+          const key = localDayKey(cell.ms);
+          const count = eventCountByDay.get(key) ?? 0;
+          const isToday = key === todayKey;
+          const isSelected = key === selectedDayKey;
+          return (
+            <button
+              key={cell.ms}
+              type="button"
+              onClick={() => onSelectDay(cell.ms)}
+              title={count > 0 ? `${count} item${count === 1 ? '' : 's'}` : 'No events'}
+              className={cn(
+                'relative flex aspect-square flex-col items-center justify-center rounded-md text-secondary transition-colors',
+                cell.inMonth ? 'text-foreground' : 'text-muted-foreground/40',
+                isSelected
+                  ? 'bg-accent-copper text-white'
+                  : isToday
+                    ? 'border border-accent-copper/50 bg-accent-copper/10 text-accent-copper'
+                    : 'hover:bg-panel',
+              )}
+            >
+              <span className="tabular-nums">{cell.day}</span>
+              {count > 0 && (
+                <span
+                  className={cn(
+                    'absolute bottom-1 h-1 w-1 rounded-full',
+                    isSelected ? 'bg-white' : 'bg-accent-copper',
+                  )}
+                  aria-hidden
+                />
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function SchedulePage() {
   const workspaceId = useAuthStore((s) => s.workspaceId) as WorkspaceId | null;
   const localUserId = useAuthStore((s) => s.localUserId);
+  const chatModelSelection = useAuthStore((s) => s.chatModelSelection);
+  const modelLabel = useAuthStore((s) => formatChatModelSelectionLabel(s.chatModelSelection, modelSelectionContextFromAuth(s)));
+  const { flatOptions: jarvisModelOptions } = useAccessibleChatModels();
   const events = useUpcomingEvents(workspaceId, 14 * DAY_MS, 100);
   const tasks = useUpcomingTasks();
   const timeline = React.useMemo(() => buildTimeline(events, tasks), [events, tasks]);
+  const dayGroups = React.useMemo(() => groupTimelineByDay(timeline), [timeline]);
+  const todayKey = React.useMemo(() => localDayKey(Date.now()), []);
+  const eventCountByDay = React.useMemo(() => {
+    const map = new Map<string, number>();
+    for (const item of timeline) {
+      const key = localDayKey(item.at);
+      map.set(key, (map.get(key) ?? 0) + 1);
+    }
+    return map;
+  }, [timeline]);
 
   const [quick, setQuick] = React.useState('');
   const [title, setTitle] = React.useState('');
-  const [startInput, setStartInput] = React.useState(() => toLocalInput(Date.now() + HOUR_MS));
-  const [endInput, setEndInput] = React.useState(() => toLocalInput(Date.now() + 2 * HOUR_MS));
+  const [startInput, setStartInput] = React.useState(() => toLocalDateTimeInput(defaultEventStartMs()));
+  const [endInput, setEndInput] = React.useState(() =>
+    toLocalDateTimeInput(defaultEventEndMs(defaultEventStartMs())),
+  );
   const [allDay, setAllDay] = React.useState(false);
   const [description, setDescription] = React.useState('');
   const [reminderOffsets, setReminderOffsets] = React.useState<number[]>([15]);
+  const [calendarOpen, setCalendarOpen] = React.useState(false);
+  const [selectedDayKey, setSelectedDayKey] = React.useState<string | null>(null);
+  const [scheduleMode, setScheduleMode] = React.useState<'event' | 'jarvis'>('event');
+  const [jarvisModelOptionId, setJarvisModelOptionId] = React.useState(() => selectionOptionId(chatModelSelection) ?? '');
+  const selectedJarvisModel = React.useMemo(
+    () => jarvisModelOptions.find((option) => option.id === jarvisModelOptionId) ?? null,
+    [jarvisModelOptions, jarvisModelOptionId],
+  );
+
+  React.useEffect(() => {
+    if (scheduleMode === 'jarvis') setAllDay(false);
+  }, [scheduleMode]);
+
+  React.useEffect(() => {
+    const activeId = selectionOptionId(chatModelSelection);
+    setJarvisModelOptionId((current) => {
+      if (current && jarvisModelOptions.some((option) => option.id === current)) return current;
+      if (activeId && jarvisModelOptions.some((option) => option.id === activeId)) return activeId;
+      return jarvisModelOptions[0]?.id ?? '';
+    });
+  }, [chatModelSelection, jarvisModelOptions]);
+
+  // Pick a day from the mini-calendar: pre-fill the new-event form for 9–10am
+  // that day and jump the timeline to it if anything is already scheduled.
+  const handleSelectDay = React.useCallback((dayMs: number) => {
+    const start = new Date(dayMs);
+    start.setHours(9, 0, 0, 0);
+    const startMs = start.getTime();
+    setStartInput(toLocalDateTimeInput(startMs));
+    setEndInput(toLocalDateTimeInput(defaultEventEndMs(startMs)));
+    const key = localDayKey(startMs);
+    setSelectedDayKey(key);
+    setCalendarOpen(false);
+    requestAnimationFrame(() => {
+      document
+        .getElementById(`schedule-day-${key}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, []);
 
   const applyParse = React.useCallback((raw: string) => {
     if (!raw.trim()) return;
     const parsed = parseEventInput(raw);
     setTitle(parsed.title);
-    setStartInput(toLocalInput(parsed.start_at));
-    setEndInput(toLocalInput(parsed.end_at));
+    setStartInput(toLocalDateTimeInput(parsed.start_at));
+    setEndInput(toLocalDateTimeInput(parsed.end_at));
     setAllDay(parsed.all_day);
   }, []);
 
@@ -129,37 +318,60 @@ export function SchedulePage() {
       toast.warning('Add a title', 'Events need a name.');
       return;
     }
+    if (scheduleMode === 'jarvis' && !selectedJarvisModel) {
+      toast.warning('Connect a model', 'Connect a provider or download a local model before saving a Jarvis Action.');
+      return;
+    }
 
-    const start = fromLocalInput(startInput);
+    const start = fromLocalDateTimeInput(startInput);
     if (!Number.isFinite(start)) {
       toast.warning('Check the start time', 'That date/time could not be read.');
       return;
     }
-    const rawEnd = fromLocalInput(endInput);
-    const end = allDay ? start + DAY_MS - 1 : Math.max(rawEnd, start + 5 * 60 * 1000);
-    const reminders: EventReminder[] = reminderOffsets.map((offset_min) => ({
-      offset_min,
-      channels: ['desktop', 'in_app'],
-    }));
+    const rawEnd = fromLocalDateTimeInput(endInput);
+    const jarvisAction = scheduleMode === 'jarvis';
+    const end = !jarvisAction && allDay ? start + DAY_MS - 1 : Math.max(rawEnd, start + 5 * 60 * 1000);
+    const reminders: EventReminder[] = jarvisAction
+      ? []
+      : reminderOffsets.map((offset_min) => ({
+          offset_min,
+          channels: ['desktop', 'in_app'],
+        }));
 
     try {
-      await eventRepo.create({
-        workspace_id: workspaceId,
-        title: title.trim(),
-        description: description.trim() || undefined,
-        start_at: start,
-        end_at: end,
-        all_day: allDay,
-        reminders,
-        source: 'manual',
-        created_by: localUserId ?? 'usr_local',
-      });
+      await eventRepo.create(jarvisAction
+        ? buildJarvisScheduleEventInput({
+            workspaceId,
+            createdBy: 'agent_jarvis',
+            title: title.trim(),
+            prompt: description.trim() || title.trim(),
+            startAt: start,
+            durationMs: end - start,
+            recurrence: 'once',
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+            modelSelection: selectedJarvisModel
+              ? selectionFromOption(selectedJarvisModel.provider, selectedJarvisModel.modelId)
+              : chatModelSelection,
+            agentId: 'agent_jarvis',
+          })
+        : {
+            workspace_id: workspaceId,
+            title: title.trim(),
+            description: description.trim() || undefined,
+            start_at: start,
+            end_at: end,
+            all_day: allDay,
+            reminders,
+            source: 'manual',
+            created_by: localUserId ?? 'usr_local',
+          });
       toast.success('Event saved', `“${title.trim()}” is on your schedule.`);
       setQuick('');
       setTitle('');
       setDescription('');
-      setStartInput(toLocalInput(Date.now() + HOUR_MS));
-      setEndInput(toLocalInput(Date.now() + 2 * HOUR_MS));
+      const nextStart = defaultEventStartMs();
+      setStartInput(toLocalDateTimeInput(nextStart));
+      setEndInput(toLocalDateTimeInput(defaultEventEndMs(nextStart)));
       setAllDay(false);
     } catch (err) {
       toast.error('Could not save', err instanceof Error ? err.message : 'Try again.');
@@ -186,18 +398,40 @@ export function SchedulePage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-paper-warm">
-      <header className="border-b border-border bg-panel px-5 py-4">
-        <div className="flex flex-wrap items-end justify-between gap-3">
+      <header className="relative overflow-hidden border-b border-border bg-gradient-to-r from-panel via-panel to-accent-copper/5 px-5 py-4">
+        <motion.div
+          aria-hidden
+          className="pointer-events-none absolute -right-16 -top-20 h-48 w-48 rounded-full bg-accent-copper/10 blur-3xl"
+          animate={{ scale: [1, 1.15, 1], opacity: [0.5, 0.8, 0.5] }}
+          transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
+        />
+        <div className="relative flex flex-wrap items-end justify-between gap-3">
           <div>
             <div className="flex items-center gap-2 text-metadata uppercase tracking-wider text-accent-copper">
               <CalendarDays className="h-4 w-4" /> Schedule
             </div>
             <h1 className="font-display text-hero text-foreground">Events, timed tasks, and AI plans</h1>
             <p className="mt-1 text-secondary text-muted-foreground">
-              Tell Jarvis what should happen and when. It can turn plain language into a scheduled work block.
+              Tell Jarvis what should happen and when. Times use your device clock.
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-1.5">
+                  <CalendarRange className="h-3.5 w-3.5 text-accent-copper" />
+                  Calendar
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-auto p-0">
+                <MiniCalendar
+                  todayKey={todayKey}
+                  selectedDayKey={selectedDayKey}
+                  eventCountByDay={eventCountByDay}
+                  onSelectDay={handleSelectDay}
+                />
+              </PopoverContent>
+            </Popover>
             <Badge variant="secondary">{events.length} events</Badge>
             <Badge variant="secondary">{tasks.length} timed tasks</Badge>
           </div>
@@ -205,45 +439,145 @@ export function SchedulePage() {
       </header>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-auto p-4 xl:grid-cols-[minmax(0,1fr)_420px]">
-        <section className="min-h-[360px] rounded-xl border border-border bg-background/80 shadow-soft">
-          <div className="flex items-center justify-between border-b border-border px-4 py-3">
+        <section className="min-h-[360px] overflow-hidden rounded-xl border border-border bg-background/80 shadow-soft">
+          <div className="flex items-center justify-between border-b border-border bg-panel/60 px-4 py-3">
             <div>
-              <h2 className="text-page-title text-foreground">Timeline</h2>
-              <p className="text-secondary text-muted-foreground">Next two weeks of events plus the next week of timed tasks.</p>
+              <h2 className="font-display text-page-title text-foreground">Timeline</h2>
+              <p className="text-secondary text-muted-foreground">
+                Next two weeks · local dates and times
+              </p>
             </div>
+            <Clock className="h-5 w-5 text-accent-copper/70" aria-hidden />
           </div>
 
           {timeline.length === 0 ? (
-            <div className="flex h-72 flex-col items-center justify-center gap-2 text-center text-muted-foreground">
-              <Clock className="h-8 w-8 text-accent-copper" />
-              <p className="text-secondary">Nothing scheduled yet.</p>
-              <p className="max-w-sm text-metadata">Add an event on the right or schedule a task with a due date to make it appear here.</p>
+            <div className="flex h-72 flex-col items-center justify-center gap-3 text-center text-muted-foreground">
+              <motion.div
+                className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-panel shadow-soft"
+                animate={{ y: [0, -6, 0] }}
+                transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+              >
+                <CalendarDays className="h-7 w-7 text-accent-copper" />
+              </motion.div>
+              <p className="font-display text-ui-strong text-foreground">Nothing scheduled yet</p>
+              <p className="max-w-sm text-metadata">
+                Add an event on the right or schedule a task with a due date to make it appear here.
+              </p>
             </div>
           ) : (
-            <ul className="divide-y divide-border">
-              {timeline.map((item) => (
-                <li key={`${item.kind}-${item.id}`} className="group flex gap-3 px-4 py-3 transition-colors hover:bg-muted/50">
-                  <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border bg-panel">
-                    {item.kind === 'event' ? <CalendarDays className="h-4 w-4 text-accent-cyan" /> : <Check className="h-4 w-4 text-accent-copper" />}
+            <div className="divide-y divide-border">
+              {dayGroups.map((group) => (
+                <section key={group.dayKey} id={`schedule-day-${group.dayKey}`}>
+                  <div
+                    className={cn(
+                      'sticky top-0 z-10 flex items-center gap-2 border-b border-border/80 px-4 py-2.5 backdrop-blur-sm',
+                      group.dayKey === todayKey
+                        ? 'bg-accent-copper/10'
+                        : group.dayKey === selectedDayKey
+                          ? 'bg-accent-copper/[0.06]'
+                          : 'bg-background/95',
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        'flex h-8 w-8 items-center justify-center rounded-lg border',
+                        group.dayKey === todayKey
+                          ? 'border-accent-copper/40 bg-accent-copper/15 text-accent-copper'
+                          : 'border-border bg-panel text-accent-cyan',
+                      )}
+                    >
+                      <CalendarDays className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-display text-ui-strong text-foreground">{group.heading}</p>
+                      <p className="text-metadata text-muted-foreground">{group.subheading}</p>
+                    </div>
+                    {group.dayKey === todayKey && (
+                      <Badge variant="outline" className="ml-auto border-accent-copper/40 text-accent-copper">
+                        Now
+                      </Badge>
+                    )}
                   </div>
-                  {item.kind === 'event' ? (
-                    <EventTimelineRow item={item} onDelete={handleDeleteEvent} />
-                  ) : (
-                    <TaskTimelineRow item={item} onComplete={handleCompleteTask} />
-                  )}
-                </li>
+
+                  <ul className="space-y-0">
+                    {group.items.map((item, idx) => (
+                      <motion.li
+                        key={`${item.kind}-${item.id}`}
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: Math.min(idx * 0.03, 0.3), type: 'spring', stiffness: 240, damping: 28 }}
+                        className="group border-b border-border/60 px-4 py-3.5 transition-colors last:border-b-0 hover:bg-muted/40"
+                      >
+                        {item.kind === 'event' ? (
+                          <EventTimelineRow item={item} onDelete={handleDeleteEvent} />
+                        ) : (
+                          <TaskTimelineRow item={item} onComplete={handleCompleteTask} />
+                        )}
+                      </motion.li>
+                    ))}
+                  </ul>
+                </section>
               ))}
-            </ul>
+            </div>
           )}
         </section>
 
         <aside className="rounded-xl border border-border bg-panel p-4 shadow-soft">
-          <div className="mb-4">
-            <h2 className="text-page-title text-foreground">Ask Jarvis to schedule</h2>
-            <p className="text-secondary text-muted-foreground">Natural-language planning stays local and editable before save.</p>
+          <div className="mb-4 rounded-lg border border-border/80 bg-background/60 p-3">
+            <div className="flex items-start gap-2">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-accent-cyan/30 bg-accent-cyan/10">
+                <Sparkles className="h-4 w-4 text-accent-cyan" />
+              </div>
+              <div>
+                <h2 className="font-display text-page-title text-foreground">Ask Jarvis to schedule</h2>
+                <p className="text-secondary text-muted-foreground">
+                  Natural-language planning stays local and editable before save.
+                </p>
+              </div>
+            </div>
           </div>
 
           <div className="flex flex-col gap-3">
+            <div className="grid grid-cols-2 gap-2 rounded-lg border border-border/80 bg-background/40 p-1">
+              <Button type="button" size="sm" variant={scheduleMode === 'event' ? 'secondary' : 'ghost'} onClick={() => setScheduleMode('event')}>
+                Event
+              </Button>
+              <Button type="button" size="sm" variant={scheduleMode === 'jarvis' ? 'secondary' : 'ghost'} onClick={() => setScheduleMode('jarvis')}>
+                Jarvis Action
+              </Button>
+            </div>
+            {scheduleMode === 'jarvis' && (
+              <div className="rounded-lg border border-accent-violet/30 bg-accent-violet/10 p-3 text-secondary">
+                <div className="font-display text-ui-strong text-foreground">Jarvis action</div>
+                <p className="mt-1 text-muted-foreground">Title, system prompt, model, and run time are saved as a real Jarvis schedule.</p>
+                <div className="mt-3 space-y-1.5">
+                  <Label htmlFor="jarvis-action-model" className="text-metadata text-muted-foreground">
+                    Jarvis action model
+                  </Label>
+                  {jarvisModelOptions.length > 0 ? (
+                    <select
+                      id="jarvis-action-model"
+                      value={jarvisModelOptionId}
+                      onChange={(event) => setJarvisModelOptionId(event.currentTarget.value)}
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-2.5 text-body text-foreground"
+                    >
+                      {jarvisModelOptions.map((option) => (
+                        <option key={option.id} value={option.id}>
+                          {getProviderDisplayName(option.provider)} · {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="rounded-md border border-dashed border-border bg-background/50 px-2.5 py-2 text-metadata text-muted-foreground">
+                      Connect a provider in Settings → Providers or download a local model before saving a Jarvis Action.
+                    </div>
+                  )}
+                </div>
+                <p className="mt-2 text-metadata text-accent-violet">
+                  Model: {selectedJarvisModel ? `${getProviderDisplayName(selectedJarvisModel.provider)} · ${selectedJarvisModel.label}` : modelLabel}
+                </p>
+              </div>
+            )}
             <div>
               <Label htmlFor="event-quick" className="flex items-center gap-1.5">
                 <Sparkles className="h-3.5 w-3.5 text-accent-cyan" /> Jarvis schedule request
@@ -254,64 +588,102 @@ export function SchedulePage() {
                 onChange={(e) => handleQuickChange(e.target.value)}
                 placeholder="Work on this chat for our project at 2am"
               />
-              <p className="mt-1 text-metadata text-muted-foreground">Try: Friday 4pm, tomorrow 9:30, call me at 2am, work on the project tonight.</p>
+              <p className="mt-1 text-metadata text-muted-foreground">
+                Try: Friday 4pm, tomorrow 9:30, call me at 2am, work on the project tonight.
+              </p>
             </div>
 
             <div>
-              <Label htmlFor="event-title">Title</Label>
+              <Label htmlFor="event-title">{scheduleMode === 'jarvis' ? 'Jarvis action title' : 'Title'}</Label>
               <Input id="event-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="What's the event?" />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label htmlFor="event-start">Start</Label>
-                <Input id="event-start" type="datetime-local" value={startInput} onChange={(e) => setStartInput(e.target.value)} />
+            <div className="rounded-lg border border-border/80 bg-background/40 p-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <Label className="flex items-center gap-1.5 text-foreground">
+                  <Clock className="h-3.5 w-3.5 text-accent-copper" /> When
+                </Label>
               </div>
-              <div>
-                <Label htmlFor="event-end">End</Label>
-                <Input id="event-end" type="datetime-local" value={endInput} onChange={(e) => setEndInput(e.target.value)} disabled={allDay} />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor="event-start" className="text-metadata text-muted-foreground">
+                    Start
+                  </Label>
+                  <Input
+                    id="event-start"
+                    type="datetime-local"
+                    value={startInput}
+                    onChange={(e) => setStartInput(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="event-end" className="text-metadata text-muted-foreground">
+                    End
+                  </Label>
+                  <Input
+                    id="event-end"
+                    type="datetime-local"
+                    value={endInput}
+                    onChange={(e) => setEndInput(e.target.value)}
+                    disabled={scheduleMode === 'event' && allDay}
+                  />
+                </div>
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
-              <Switch id="event-allday" checked={allDay} onCheckedChange={(v) => setAllDay(Boolean(v))} />
-              <Label htmlFor="event-allday" className="cursor-pointer">All day</Label>
-            </div>
+            {scheduleMode === 'event' ? (
+              <div className="flex items-center gap-3">
+                <Switch id="event-allday" checked={allDay} onCheckedChange={(v) => setAllDay(Boolean(v))} />
+                <Label htmlFor="event-allday" className="cursor-pointer">
+                  All day
+                </Label>
+              </div>
+            ) : null}
 
             <div>
-              <Label htmlFor="event-desc">Notes</Label>
-              <Textarea id="event-desc" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Optional context..." rows={4} />
+              <Label htmlFor="event-desc">{scheduleMode === 'jarvis' ? 'System prompt' : 'Notes'}</Label>
+              <Textarea
+                id="event-desc"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder={scheduleMode === 'jarvis' ? 'What should Jarvis do when this runs?' : 'Optional context...'}
+                rows={4}
+              />
             </div>
 
-            <div>
-              <Label>Reminders</Label>
-              <div className="mt-1.5 flex flex-wrap gap-2">
-                {REMINDER_PRESETS.map((preset) => {
-                  const active = reminderOffsets.includes(preset.offset_min);
-                  return (
-                    <button
-                      key={preset.offset_min}
-                      type="button"
-                      onClick={() =>
-                        setReminderOffsets((current) =>
-                          current.includes(preset.offset_min)
-                            ? current.filter((m) => m !== preset.offset_min)
-                            : [...current, preset.offset_min].sort((a, b) => a - b),
-                        )
-                      }
-                      className={cn(
-                        'rounded-md border px-2.5 py-1 text-metadata transition-colors',
-                        active
-                          ? 'border-accent-cyan/60 bg-accent-cyan/10 text-foreground'
-                          : 'border-border bg-background text-muted-foreground hover:border-border-mid',
-                      )}
-                    >
-                      {preset.label}
-                    </button>
-                  );
-                })}
+            {scheduleMode === 'event' ? (
+              <div>
+                <Label className="flex items-center gap-1.5">
+                  <Bell className="h-3.5 w-3.5 text-accent-copper" /> Reminders
+                </Label>
+                <div className="mt-1.5 flex flex-wrap gap-2">
+                  {REMINDER_PRESETS.map((preset) => {
+                    const active = reminderOffsets.includes(preset.offset_min);
+                    return (
+                      <button
+                        key={preset.offset_min}
+                        type="button"
+                        onClick={() =>
+                          setReminderOffsets((current) =>
+                            current.includes(preset.offset_min)
+                              ? current.filter((m) => m !== preset.offset_min)
+                              : [...current, preset.offset_min].sort((a, b) => a - b),
+                          )
+                        }
+                        className={cn(
+                          'rounded-md border px-2.5 py-1 text-metadata transition-colors',
+                          active
+                            ? 'border-accent-cyan/60 bg-accent-cyan/10 text-foreground'
+                            : 'border-border bg-background text-muted-foreground hover:border-border-mid',
+                        )}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
+            ) : null}
 
             <Button variant="accent" onClick={() => void handleSave()} className="mt-1 w-full">
               <Plus className="mr-1 h-3.5 w-3.5" /> Save event
@@ -331,31 +703,93 @@ function EventTimelineRow({
   onDelete: (event: EventRow) => void;
 }) {
   const event = item.instance.event;
+  const visual = visualForEventTitle(event.title);
+  const jarvisSchedule = isJarvisScheduleEvent(event);
+  const jarvisMetadata = parseJarvisScheduleMetadata(event);
+  const Icon = visual.icon;
+  const reminderCount = event.reminders?.length ?? 0;
+  const accentColor =
+    event.color_hue !== undefined ? `hsl(${event.color_hue} 70% 55%)` : undefined;
+
   return (
-    <div
-      className="min-w-0 flex-1"
-      style={event.color_hue !== undefined ? { borderLeftColor: `hsl(${event.color_hue} 70% 55%)` } : undefined}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex min-w-0 items-center gap-1.5 text-secondary text-foreground">
-            <span className="truncate">{event.title}</span>
-            {item.instance.isRecurrence && <Repeat className="h-3 w-3 shrink-0 text-muted-foreground" aria-label="Recurring" />}
+    <div className={cn('flex gap-3 rounded-xl', jarvisSchedule && 'bg-accent-violet/5 py-2 pr-2')}>
+      <div
+        className={cn(
+          'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border bg-panel shadow-soft',
+          jarvisSchedule ? 'border-accent-violet/40 bg-accent-violet/10 text-accent-violet' : visual.accentClass,
+        )}
+      >
+        <Icon className="h-4 w-4" aria-hidden />
+      </div>
+      <div
+        className="min-w-0 flex-1 rounded-lg border-l-2 pl-3"
+        style={
+          jarvisSchedule
+            ? { borderLeftColor: 'hsl(var(--accent-violet) / 0.75)' }
+            : accentColor
+              ? { borderLeftColor: accentColor }
+              : { borderLeftColor: 'hsl(var(--accent-cyan) / 0.5)' }
+        }
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+              <span className="truncate font-display text-ui-strong text-foreground">{event.title}</span>
+              <Badge variant="outline" className="shrink-0 text-metadata">
+                {jarvisSchedule ? 'Jarvis Scheduled' : visual.label}
+              </Badge>
+              {jarvisSchedule && (
+                <Badge variant="secondary" className="shrink-0 gap-1 text-metadata">
+                  <Sparkles className="h-3 w-3 text-accent-violet" />
+                  AI task
+                </Badge>
+              )}
+              {item.instance.isRecurrence && (
+                <Repeat className="h-3 w-3 shrink-0 text-muted-foreground" aria-label="Recurring" />
+              )}
+              {reminderCount > 0 && (
+                <span className="inline-flex items-center gap-0.5 text-metadata text-muted-foreground" title="Reminders">
+                  <Bell className="h-3 w-3" />
+                  {reminderCount}
+                </span>
+              )}
+            </div>
+            <p className="mt-1 flex items-center gap-1.5 text-metadata text-muted-foreground">
+              <Clock className="h-3 w-3 shrink-0 text-accent-copper/80" />
+              {formatLocalEventRange(
+                item.instance.instanceStartMs,
+                item.instance.instanceEndMs,
+                item.instance.event.all_day,
+              )}
+            </p>
+            {event.location && (
+              <p className="mt-1 flex items-center gap-1.5 text-metadata text-muted-foreground">
+                <MapPin className="h-3 w-3 shrink-0 text-accent-cyan/80" />
+                {event.location}
+              </p>
+            )}
+            {jarvisSchedule && jarvisMetadata ? (
+              <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-metadata text-muted-foreground">
+                <span>Model: {jarvisMetadata.modelSelection.mode === 'single' ? jarvisMetadata.modelSelection.modelId : jarvisMetadata.modelSelection.mode}</span>
+                <span>Agent: {String(jarvisMetadata.agentId)}</span>
+                <span>Next: {formatLocalDateTime(jarvisMetadata.nextRunAt ?? item.instance.instanceStartMs)}</span>
+              </p>
+            ) : null}
+            {event.description && (
+              <p className="mt-1.5 line-clamp-2 text-secondary text-muted-foreground">{event.description}</p>
+            )}
           </div>
-          <p className="mt-0.5 text-metadata text-muted-foreground">{formatEventRange(item.instance)}</p>
-          {event.location && <p className="mt-0.5 text-metadata text-muted-foreground">@ {event.location}</p>}
-          {event.description && <p className="mt-1 line-clamp-2 text-secondary text-muted-foreground">{event.description}</p>}
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="ghost"
+            onClick={() => onDelete(event)}
+            aria-label={`Delete ${event.title}`}
+            className="opacity-0 transition-opacity group-hover:opacity-100"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
         </div>
-        <Button
-          type="button"
-          size="icon-sm"
-          variant="ghost"
-          onClick={() => onDelete(event)}
-          aria-label={`Delete ${event.title}`}
-          className="opacity-0 transition-opacity group-hover:opacity-100"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
       </div>
     </div>
   );
@@ -369,29 +803,50 @@ function TaskTimelineRow({
   onComplete: (task: Task) => void;
 }) {
   const task = item.task;
+  const visual = visualForTask();
+  const Icon = visual.icon;
+
   return (
-    <div className="min-w-0 flex-1">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex min-w-0 items-center gap-2 text-secondary text-foreground">
-            <span className="truncate">{task.title}</span>
-            <Badge variant={task.priority === 'urgent' || task.priority === 'high' ? 'warning' : 'outline'}>
-              {task.priority}
-            </Badge>
+    <div className="flex gap-3">
+      <div
+        className={cn(
+          'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border bg-panel shadow-soft',
+          visual.accentClass,
+        )}
+      >
+        <Icon className="h-4 w-4" aria-hidden />
+      </div>
+      <div className="min-w-0 flex-1 rounded-lg border-l-2 border-accent-copper/40 pl-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <span className="truncate font-display text-ui-strong text-foreground">{task.title}</span>
+              <Badge variant="outline" className="shrink-0 text-metadata">
+                Task
+              </Badge>
+              <Badge variant={task.priority === 'urgent' || task.priority === 'high' ? 'warning' : 'outline'}>
+                {task.priority}
+              </Badge>
+            </div>
+            <p className="mt-1 flex items-center gap-1.5 text-metadata text-muted-foreground">
+              <Clock className="h-3 w-3 shrink-0 text-accent-copper/80" />
+              {item.timeKind} · {formatLocalDateTime(item.at)}
+            </p>
+            {task.notes && (
+              <p className="mt-1.5 line-clamp-2 text-secondary text-muted-foreground">{task.notes}</p>
+            )}
           </div>
-          <p className="mt-0.5 text-metadata text-muted-foreground">{item.timeKind} · {formatDateTime(item.at)}</p>
-          {task.notes && <p className="mt-1 line-clamp-2 text-secondary text-muted-foreground">{task.notes}</p>}
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="ghost"
+            onClick={() => onComplete(task)}
+            aria-label={`Complete ${task.title}`}
+            className="opacity-0 transition-opacity group-hover:opacity-100"
+          >
+            <Check className="h-3.5 w-3.5" />
+          </Button>
         </div>
-        <Button
-          type="button"
-          size="icon-sm"
-          variant="ghost"
-          onClick={() => onComplete(task)}
-          aria-label={`Complete ${task.title}`}
-          className="opacity-0 transition-opacity group-hover:opacity-100"
-        >
-          <Check className="h-3.5 w-3.5" />
-        </Button>
       </div>
     </div>
   );

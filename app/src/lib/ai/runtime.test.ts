@@ -3,10 +3,14 @@ import type { Agent, Message, Part } from '@/types';
 import type { AgentId, ChatId, MessageId } from '@/types/common';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
+import { useAllAboutMeStore } from '@/features/all-about-me/store';
 
 const mocks = vi.hoisted(() => ({
   runAgent: vi.fn(),
   chatGetById: vi.fn(),
+  getProjectContextBlock: vi.fn(),
+  getProjectContextTreeBlock: vi.fn(),
+  getConnectedFilesBlock: vi.fn(),
   getJarvisCoordinationContextBlock: vi.fn(),
   notifyDone: vi.fn(),
   devLog: vi.fn(),
@@ -53,9 +57,9 @@ vi.mock('@/features/terminals/agentContext', () => ({
 }));
 
 vi.mock('./context', () => ({
-  getProjectContextBlock: async () => '',
-  getProjectContextTreeBlock: () => '',
-  getConnectedFilesBlock: async () => '',
+  getProjectContextBlock: mocks.getProjectContextBlock,
+  getProjectContextTreeBlock: mocks.getProjectContextTreeBlock,
+  getConnectedFilesBlock: mocks.getConnectedFilesBlock,
   getExplicitContextBlock: () => '',
   getExplicitFilesBlock: async () => '',
   getExplicitTerminalBlock: () => '',
@@ -104,10 +108,10 @@ describe('startRuntimeListener agent routing', () => {
       stackPreset: 'off',
       stackCustomSteps: DEFAULT_CUSTOM_STEPS,
       plan: 'free',
-      apiKeys: { mock: 'mock-skip-sentinel' },
+      apiKeys: { groq: 'gsk_test' },
       defaultProvider: 'mock',
       offlineMode: false,
-      chatModelSelection: selectionFromOption('mock', 'mock-default'),
+      chatModelSelection: selectionFromOption('groq', 'llama-3.3-70b-versatile'),
     });
     useUIStore.setState({ voiceModalOpen: true });
     mocks.runAgent.mockResolvedValue({
@@ -116,8 +120,12 @@ describe('startRuntimeListener agent routing', () => {
       provider: 'mock',
       model: 'mock-default',
     });
+    mocks.getProjectContextBlock.mockResolvedValue('');
+    mocks.getProjectContextTreeBlock.mockReturnValue('');
+    mocks.getConnectedFilesBlock.mockResolvedValue('');
     mocks.getJarvisCoordinationContextBlock.mockResolvedValue('');
     mocks.chatGetById.mockResolvedValue(undefined);
+    useAllAboutMeStore.setState(useAllAboutMeStore.getInitialState(), true);
   });
 
   afterEach(() => {
@@ -217,6 +225,39 @@ describe('startRuntimeListener agent routing', () => {
     stop();
   });
 
+  it('releases the voice turn when no agent can reply', async () => {
+    const chatId = 'chat_voice_missing_agent' as ChatId;
+    const streamEnds: Event[] = [];
+    const onStreamEnd = (event: Event) => streamEnds.push(event);
+    window.addEventListener('jarvis:streaming-voice:end', onStreamEnd);
+
+    const stop = trackListener(startRuntimeListener({
+      getAgentById: () => null,
+      getAgentBySlug: () => null,
+      getAgentForChat: vi.fn(async () => null),
+      getMessages: vi.fn(async () => []),
+      appendMessage: vi.fn(async (msg) => ({
+        ...msg,
+        id: 'msg_missing_agent_assistant' as MessageId,
+        created_at: 2,
+        updated_at: 2,
+      })),
+      updateMessage: vi.fn(async () => undefined),
+    }));
+
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: { chatId, text: 'hello Jarvis', speakReply: true },
+      }),
+    );
+
+    await vi.waitFor(() => expect(streamEnds).toHaveLength(1));
+    expect(mocks.runAgent).not.toHaveBeenCalled();
+
+    window.removeEventListener('jarvis:streaming-voice:end', onStreamEnd);
+    stop();
+  });
+
   it('routes hyphenated textual mentions when composer ids are unavailable', async () => {
     const apple = agent('agent_apple', 'apple-agent', 'Always answer with APPLE.');
     const jarvis = agent('agent_jarvis', 'jarvis', 'You are Jarvis.');
@@ -257,6 +298,270 @@ describe('startRuntimeListener agent routing', () => {
     expect(mocks.runAgent.mock.calls[0][0].agent.system_prompt).toContain(
       'Always answer with APPLE.',
     );
+
+    stop();
+  });
+
+  it('routes textual @mentions followed by punctuation and preserves the user prompt', async () => {
+    const builder = agent('agent_builder', 'builder', 'Builder must answer with BUILD_CONTEXT.');
+    builder.description = 'Builds implementation plans.';
+    const jarvis = agent('agent_jarvis', 'jarvis', 'You are Jarvis.');
+    const chatId = 'chat_punctuation_mention' as ChatId;
+    const placeholderId = 'msg_punctuation_assistant' as MessageId;
+    const userText = '@builder, what context did you receive?';
+    const userMessage: Message = {
+      id: 'msg_punctuation_user' as MessageId,
+      chat_id: chatId,
+      role: 'user',
+      parts: [{ kind: 'text', text: userText }],
+      created_at: 1,
+      updated_at: 1,
+    };
+
+    const stop = trackListener(startRuntimeListener({
+      getAgentById: (id) => (id === builder.id ? builder : id === jarvis.id ? jarvis : null),
+      getAgentBySlug: (slug) =>
+        slug === 'builder' ? builder : slug === 'jarvis' ? jarvis : null,
+      getAgentForChat: vi.fn(async () => jarvis),
+      getMessages: vi.fn(async () => [userMessage]),
+      appendMessage: vi.fn(async (msg) => ({
+        ...msg,
+        id: placeholderId,
+        created_at: 2,
+        updated_at: 2,
+      })),
+      updateMessage: vi.fn(async () => undefined),
+    }));
+
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: { chatId, text: userText },
+      }),
+    );
+
+    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(1));
+    const call = mocks.runAgent.mock.calls[0][0];
+    expect(call.agent.id).toBe(builder.id);
+    expect(call.agent.system_prompt).toContain('Builder must answer with BUILD_CONTEXT.');
+    expect(call.agent.system_prompt).toContain('Mentioned agent context');
+    expect(call.messages.at(-1)).toMatchObject({ role: 'user', content: userText });
+
+    stop();
+  });
+
+  it('uses the chat project id, not only the active project, for context blocks', async () => {
+    useAuthStore.setState({ projectId: 'project_active' as never });
+    mocks.chatGetById.mockResolvedValueOnce({
+      id: 'chat_project_context',
+      workspace_id: 'workspace_a',
+      project_id: 'project_chat',
+      title: 'Project chat',
+      mode: 'chat',
+      active_agent_ids: [],
+      created_at: 1,
+      updated_at: 1,
+    });
+    mocks.getProjectContextBlock.mockResolvedValueOnce('project-context-for-chat');
+    mocks.getProjectContextTreeBlock.mockReturnValueOnce('context-map-for-chat');
+    const jarvis = agent('agent_jarvis', 'jarvis', 'You are Jarvis.');
+    const chatId = 'chat_project_context' as ChatId;
+    const placeholderId = 'msg_project_context_assistant' as MessageId;
+    const userMessage: Message = {
+      id: 'msg_project_context_user' as MessageId,
+      chat_id: chatId,
+      role: 'user',
+      parts: [{ kind: 'text', text: 'what changed here?' }],
+      created_at: 1,
+      updated_at: 1,
+    };
+
+    const stop = trackListener(startRuntimeListener({
+      getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+      getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+      getAgentForChat: vi.fn(async () => jarvis),
+      getMessages: vi.fn(async () => [userMessage]),
+      appendMessage: vi.fn(async (msg) => ({ ...msg, id: placeholderId, created_at: 2, updated_at: 2 })),
+      updateMessage: vi.fn(async () => undefined),
+    }));
+
+    window.dispatchEvent(new CustomEvent('jarvis:send', { detail: { chatId, text: 'what changed here?' } }));
+
+    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(1));
+    expect(mocks.getProjectContextBlock).toHaveBeenCalledWith('project_chat');
+    expect(mocks.getProjectContextTreeBlock).toHaveBeenCalledWith('project_chat');
+    expect(mocks.runAgent.mock.calls[0][0].agent.system_prompt).toContain('project-context-for-chat');
+    expect(mocks.runAgent.mock.calls[0][0].agent.system_prompt).toContain('context-map-for-chat');
+
+    stop();
+  });
+
+  it('adds profile context for every mentioned agent, not just the routed one', async () => {
+    const builder = agent('agent_builder', 'builder', 'Builder system document.');
+    builder.name = 'Builder';
+    builder.description = 'Implements code changes.';
+    const reviewer = agent('agent_reviewer', 'reviewer', 'Reviewer system document.');
+    reviewer.name = 'Reviewer';
+    reviewer.description = 'Reviews diffs and tests.';
+    const jarvis = agent('agent_jarvis', 'jarvis', 'You are Jarvis.');
+    const chatId = 'chat_multi_mentions' as ChatId;
+    const placeholderId = 'msg_multi_mentions_assistant' as MessageId;
+    const userMessage: Message = {
+      id: 'msg_multi_mentions_user' as MessageId,
+      chat_id: chatId,
+      role: 'user',
+      parts: [{ kind: 'text', text: '@builder @reviewer summarize the handoff' }],
+      created_at: 1,
+      updated_at: 1,
+    };
+
+    const stop = trackListener(startRuntimeListener({
+      getAgentById: (id) =>
+        id === builder.id ? builder : id === reviewer.id ? reviewer : id === jarvis.id ? jarvis : null,
+      getAgentBySlug: (slug) =>
+        slug === 'builder' ? builder : slug === 'reviewer' ? reviewer : slug === 'jarvis' ? jarvis : null,
+      getAgentForChat: vi.fn(async () => jarvis),
+      getMessages: vi.fn(async () => [userMessage]),
+      appendMessage: vi.fn(async (msg) => ({ ...msg, id: placeholderId, created_at: 2, updated_at: 2 })),
+      updateMessage: vi.fn(async () => undefined),
+    }));
+
+    window.dispatchEvent(new CustomEvent('jarvis:send', {
+      detail: {
+        chatId,
+        text: '@builder @reviewer summarize the handoff',
+        mentionedAgentIds: [builder.id, reviewer.id],
+      },
+    }));
+
+    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(1));
+    const prompt = mocks.runAgent.mock.calls[0][0].agent.system_prompt;
+    expect(prompt).toContain('Mentioned agent context');
+    expect(prompt).toContain('@builder');
+    expect(prompt).toContain('Builder system document.');
+    expect(prompt).toContain('@reviewer');
+    expect(prompt).toContain('Reviewer system document.');
+
+    stop();
+  });
+
+  it('keeps the Jarvis chat overlay terse and context-referential', async () => {
+    const jarvis = agent('agent_jarvis', 'jarvis', 'You are Jarvis.');
+    const chatId = 'chat_terse_jarvis' as ChatId;
+    const placeholderId = 'msg_terse_jarvis_assistant' as MessageId;
+    const userMessage: Message = {
+      id: 'msg_terse_jarvis_user' as MessageId,
+      chat_id: chatId,
+      role: 'user',
+      parts: [{ kind: 'text', text: 'what should I do next?' }],
+      created_at: 1,
+      updated_at: 1,
+    };
+
+    const stop = trackListener(startRuntimeListener({
+      getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+      getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+      getAgentForChat: vi.fn(async () => jarvis),
+      getMessages: vi.fn(async () => [userMessage]),
+      appendMessage: vi.fn(async (msg) => ({ ...msg, id: placeholderId, created_at: 2, updated_at: 2 })),
+      updateMessage: vi.fn(async () => undefined),
+    }));
+
+    window.dispatchEvent(new CustomEvent('jarvis:send', { detail: { chatId, text: 'what should I do next?' } }));
+
+    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(1));
+    const prompt = mocks.runAgent.mock.calls[0][0].agent.system_prompt;
+    expect(prompt).toContain('Answer in 1-3 short sentences');
+    expect(prompt).toContain('Name the relevant file, agent, terminal, context map, or page when it matters');
+    expect(prompt).toContain('/agents references the Agents page/editor');
+
+    stop();
+  });
+
+  it('injects AllAboutMe.md into Jarvis prompt context when present', async () => {
+    useAllAboutMeStore.setState({
+      markdown: '# AllAboutMe.md\n\n## Communication Style\n\nShort, direct, high-energy.',
+      source: 'quiz',
+      updatedAt: Date.now(),
+    });
+    const jarvis = agent('agent_jarvis', 'jarvis', 'You are Jarvis.');
+    const chatId = 'chat_all_about_me_context' as ChatId;
+    const placeholderId = 'msg_all_about_me_context_assistant' as MessageId;
+    const userMessage: Message = {
+      id: 'msg_all_about_me_context_user' as MessageId,
+      chat_id: chatId,
+      role: 'user',
+      parts: [{ kind: 'text', text: 'write this like me' }],
+      created_at: 1,
+      updated_at: 1,
+    };
+
+    const stop = trackListener(startRuntimeListener({
+      getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+      getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+      getAgentForChat: vi.fn(async () => jarvis),
+      getMessages: vi.fn(async () => [userMessage]),
+      appendMessage: vi.fn(async (msg) => ({ ...msg, id: placeholderId, created_at: 2, updated_at: 2 })),
+      updateMessage: vi.fn(async () => undefined),
+    }));
+
+    window.dispatchEvent(new CustomEvent('jarvis:send', { detail: { chatId, text: 'write this like me' } }));
+
+    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(1));
+    const prompt = mocks.runAgent.mock.calls[0][0].agent.system_prompt;
+    expect(prompt).toContain('--- all_about_me_profile ---');
+    expect(prompt).toContain('Short, direct, high-energy.');
+
+    stop();
+  });
+
+  it('revises AllAboutMe.md after every 10 user messages without blocking the reply', async () => {
+    useAllAboutMeStore.setState({
+      markdown: '# AllAboutMe.md\n\nStable profile.',
+      source: 'quiz',
+      updatedAt: Date.now(),
+      totalUserMessages: 9,
+      lastUpdatedAtMessageCount: 0,
+      learningEnabled: true,
+    });
+    const jarvis = agent('agent_jarvis', 'jarvis', 'You are Jarvis.');
+    const chatId = 'chat_all_about_me_learning' as ChatId;
+    const placeholderId = 'msg_all_about_me_learning_assistant' as MessageId;
+    const history: Message[] = Array.from({ length: 10 }, (_, index) => ({
+      id: `msg_all_about_me_learning_user_${index}` as MessageId,
+      chat_id: chatId,
+      role: 'user',
+      parts: [{ kind: 'text', text: index === 9 ? 'Please keep it short and launch-ready.' : `prior user message ${index}` }],
+      created_at: index + 1,
+      updated_at: index + 1,
+    }));
+    mocks.runAgent
+      .mockResolvedValueOnce({
+        text: 'Done.',
+        usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
+        provider: 'mock',
+        model: 'mock-default',
+      })
+      .mockResolvedValueOnce({
+        text: '# AllAboutMe.md\n\nStable profile.\n\n## Learned Patterns\n\nPrefers short, launch-ready replies.',
+        usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
+        provider: 'mock',
+        model: 'mock-default',
+      });
+
+    const stop = trackListener(startRuntimeListener({
+      getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+      getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+      getAgentForChat: vi.fn(async () => jarvis),
+      getMessages: vi.fn(async () => history),
+      appendMessage: vi.fn(async (msg) => ({ ...msg, id: placeholderId, created_at: 20, updated_at: 20 })),
+      updateMessage: vi.fn(async () => undefined),
+    }));
+
+    window.dispatchEvent(new CustomEvent('jarvis:send', { detail: { chatId, text: 'Please keep it short and launch-ready.' } }));
+
+    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(2));
+    expect(useAllAboutMeStore.getState().markdown).toContain('Learned Patterns');
+    expect(useAllAboutMeStore.getState().lastUpdatedAtMessageCount).toBe(10);
 
     stop();
   });
@@ -731,11 +1036,11 @@ describe('startRuntimeListener agent routing', () => {
     stop();
   });
 
-  it('runs Hive Quality from a /Hive slash prefix and writes stack step parts', async () => {
+  it('coerces legacy /Hive quality slash prefix to the Balanced pipeline', async () => {
     useAuthStore.setState({
       apiKeys: {
-        xai: 'xai-test',
-        anthropic: 'anthropic-test',
+        openrouter: 'openrouter-test',
+        deepseek: 'deepseek-test',
         openai: 'openai-test',
         google: 'google-test',
       },
@@ -755,28 +1060,34 @@ describe('startRuntimeListener agent routing', () => {
     };
     mocks.runAgent
       .mockResolvedValueOnce({
-        text: 'orient',
-        usage: { input_tokens: 1, output_tokens: 2, cost_usd: 0 },
-        provider: 'xai',
-        model: 'grok-4.3',
-      })
-      .mockResolvedValueOnce({
         text: 'draft',
         usage: { input_tokens: 1, output_tokens: 2, cost_usd: 0 },
-        provider: 'anthropic',
-        model: 'claude-opus-4-8',
+        provider: 'google',
+        model: 'gemini-3.5-flash-high',
+      })
+      .mockResolvedValueOnce({
+        text: 'cross-check',
+        usage: { input_tokens: 1, output_tokens: 2, cost_usd: 0 },
+        provider: 'openrouter',
+        model: 'minimax/minimax-m3',
+      })
+      .mockResolvedValueOnce({
+        text: 'diverse',
+        usage: { input_tokens: 1, output_tokens: 2, cost_usd: 0 },
+        provider: 'openrouter',
+        model: 'zhipuai/glm-5.2',
       })
       .mockResolvedValueOnce({
         text: 'harden',
         usage: { input_tokens: 1, output_tokens: 2, cost_usd: 0 },
-        provider: 'openai',
-        model: 'gpt-5.5-codex',
+        provider: 'deepseek',
+        model: 'deepseek-v4-pro-max',
       })
       .mockResolvedValueOnce({
         text: 'final',
         usage: { input_tokens: 1, output_tokens: 2, cost_usd: 0 },
-        provider: 'google',
-        model: 'gemini-3.5-flash',
+        provider: 'openai',
+        model: 'gpt-5.4-mini',
       });
 
     const stop = trackListener(startRuntimeListener({
@@ -799,13 +1110,13 @@ describe('startRuntimeListener agent routing', () => {
       }),
     );
 
-    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(4));
+    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(5));
     const updateCalls = updateMessage.mock.calls as unknown as Array<
       [MessageId, { parts: Part[] }]
     >;
     const finalWrite = updateCalls[updateCalls.length - 1]?.[1];
     if (!finalWrite) throw new Error('expected final Hive write');
-    expect(finalWrite.parts.filter((part) => part.kind === 'stack_step')).toHaveLength(4);
+    expect(finalWrite.parts.filter((part) => part.kind === 'stack_step')).toHaveLength(5);
     expect(finalWrite.parts.at(-1)).toEqual({ kind: 'text', text: 'final' });
     expect(mocks.runAgent.mock.calls[0][0].messages).toEqual(
       expect.arrayContaining([

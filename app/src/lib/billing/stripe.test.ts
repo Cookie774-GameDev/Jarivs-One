@@ -1,14 +1,9 @@
 /**
- * @file Tests for the per-tier Stripe checkout URL resolver.
+ * @file Tests for the deprecated static Stripe checkout URL resolver.
  *
- * The resolver is the bridge between "which env vars are set" and
- * "what does the Plans card render". Mistakes here ship as a button
- * that looks active but goes nowhere, or — worse — sends users to a
- * checkout for the wrong price. The tests pin:
- *   - per-tier env vars resolving to the matching URL,
- *   - free tier always returning undefined,
- *   - the legacy `VITE_STRIPE_CHECKOUT_URL` working as a fallback,
- *   - per-tier values winning over the legacy fallback.
+ * Live billing uses the signed-in Supabase Edge Function checkout flow.
+ * Static `buy.stripe.com` URLs are disabled because they can create
+ * subscriptions that do not map back to the Supabase user.
  *
  * `import.meta.env` is a build-time constant in production but Vitest
  * exposes it as a plain object we can mutate. We `delete` keys in
@@ -50,28 +45,27 @@ describe('getCheckoutUrl', () => {
     expect(getCheckoutUrl('free')).toBeUndefined();
   });
 
-  it('returns the per-tier env var when set', () => {
+  it('ignores per-tier static checkout URLs', () => {
     setEnv('VITE_STRIPE_CHECKOUT_PRO', 'https://buy.stripe.com/pro-link');
-    expect(getCheckoutUrl('pro')).toBe('https://buy.stripe.com/pro-link');
+    expect(getCheckoutUrl('pro')).toBeUndefined();
   });
 
-  it('returns the Apex/Supernova checkout URL when configured', () => {
+  it('ignores Apex/Supernova static checkout URLs', () => {
     setEnv('VITE_STRIPE_CHECKOUT_APEX', 'https://buy.stripe.com/apex-link');
-    expect(getCheckoutUrl('apex')).toBe('https://buy.stripe.com/apex-link');
+    expect(getCheckoutUrl('apex')).toBeUndefined();
   });
 
-  it('falls back to VITE_STRIPE_CHECKOUT_URL when the per-tier var is unset', () => {
+  it('does not fall back to VITE_STRIPE_CHECKOUT_URL', () => {
     setEnv('VITE_STRIPE_CHECKOUT_URL', 'https://buy.stripe.com/legacy');
-    expect(getCheckoutUrl('starter')).toBe('https://buy.stripe.com/legacy');
-    expect(getCheckoutUrl('ultra')).toBe('https://buy.stripe.com/legacy');
+    expect(getCheckoutUrl('starter')).toBeUndefined();
+    expect(getCheckoutUrl('ultra')).toBeUndefined();
   });
 
-  it('prefers the per-tier var over the legacy fallback', () => {
+  it('ignores mixed legacy and per-tier static checkout URLs', () => {
     setEnv('VITE_STRIPE_CHECKOUT_URL', 'https://buy.stripe.com/legacy');
     setEnv('VITE_STRIPE_CHECKOUT_PRO', 'https://buy.stripe.com/pro');
-    expect(getCheckoutUrl('pro')).toBe('https://buy.stripe.com/pro');
-    // Other tiers without their own var keep using the legacy fallback.
-    expect(getCheckoutUrl('starter')).toBe('https://buy.stripe.com/legacy');
+    expect(getCheckoutUrl('pro')).toBeUndefined();
+    expect(getCheckoutUrl('starter')).toBeUndefined();
   });
 
   it('treats whitespace-only env values as unset', () => {
@@ -81,19 +75,19 @@ describe('getCheckoutUrl', () => {
 
   it('trims surrounding whitespace from a configured URL', () => {
     setEnv('VITE_STRIPE_CHECKOUT_PRO', '  https://buy.stripe.com/pro  ');
-    expect(getCheckoutUrl('pro')).toBe('https://buy.stripe.com/pro');
+    expect(getCheckoutUrl('pro')).toBeUndefined();
   });
 });
 
 describe('isStripeConfigured', () => {
-  it('reports true when the legacy var is set', () => {
+  it('reports false when the legacy var is set', () => {
     setEnv('VITE_STRIPE_CHECKOUT_URL', 'https://buy.stripe.com/legacy');
-    expect(isStripeConfigured()).toBe(true);
+    expect(isStripeConfigured()).toBe(false);
   });
 
-  it('reports true when any per-tier var is set', () => {
+  it('reports false when any per-tier var is set', () => {
     setEnv('VITE_STRIPE_CHECKOUT_ULTRA', 'https://buy.stripe.com/ultra');
-    expect(isStripeConfigured()).toBe(true);
+    expect(isStripeConfigured()).toBe(false);
   });
 
   it('reports false when nothing is configured', () => {

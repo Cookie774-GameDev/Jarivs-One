@@ -78,6 +78,47 @@ describe('inferFallbackActionProposals', () => {
     expect(inferFallbackActionProposals('can you help me?', 'Sure.')).toEqual([]);
   });
 
+  it('proposes creating a Jarvis schedule from natural language', () => {
+    const proposals = inferFallbackActionProposals(
+      'Make a schedule to check AI news every morning',
+      'Done, I can make that schedule.',
+    );
+
+    expect(proposals[0]).toMatchObject({
+      action_id: 'schedule.create',
+      params: expect.objectContaining({
+        recurrence: 'daily',
+        prompt: 'make a schedule to check ai news every morning',
+      }),
+    });
+  });
+
+  it('proposes launching the Make with Jarvis agent creator for agent requests', () => {
+    const proposals = inferFallbackActionProposals(
+      'make an agent that reviews pull requests',
+      'I can help you draft that agent.',
+    );
+
+    expect(proposals[0]).toMatchObject({
+      action_id: 'creator.start',
+      params: { kind: 'agent' },
+      rationale: expect.stringMatching(/agent/i),
+    });
+  });
+
+  it('proposes launching the Make with Jarvis skill creator for skill requests', () => {
+    const proposals = inferFallbackActionProposals(
+      'create a skill for writing release notes',
+      'I can help you make that skill.',
+    );
+
+    expect(proposals[0]).toMatchObject({
+      action_id: 'creator.start',
+      params: { kind: 'skill' },
+      rationale: expect.stringMatching(/skill/i),
+    });
+  });
+
   it('proposes closing a stated number of terminal panes', () => {
     const proposals = inferFallbackActionProposals(
       'close 5 terminals',

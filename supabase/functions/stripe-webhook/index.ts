@@ -6,7 +6,8 @@
 // Security:
 //   - Signature verified against the RAW request body (req.text()).
 //   - Invalid/modified signatures -> 400.
-//   - Duplicate event ids -> short-circuit (no double-credit).
+//   - Processed duplicate event ids -> short-circuit (no double-credit).
+//   - Failed/unprocessed duplicate event ids -> retry so Stripe retries work.
 //   - Plan is ALWAYS derived from the Stripe price id, never the client.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.46.2';
@@ -87,16 +88,31 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   const db = admin();
 
-  // Idempotency: unique event_id. If insert conflicts, we've seen it -> skip.
-  const { error: dupErr } = await db.from('subscription_events').insert({
+  // Idempotency: unique event_id. Processed duplicates are skipped, but
+  // failed/unprocessed rows are retried so Stripe retry delivery can recover.
+  const { error: insertErr } = await db.from('subscription_events').insert({
     event_id: event.id,
     event_type: event.type,
     payload: event as unknown as Record<string, unknown>,
     processed: false,
   });
-  if (dupErr) {
-    // Unique violation => already processed.
-    return new Response('duplicate', { status: 200 });
+  if (insertErr) {
+    const { data: existing, error: lookupErr } = await db
+      .from('subscription_events')
+      .select('processed')
+      .eq('event_id', event.id)
+      .maybeSingle();
+    if (lookupErr) return new Response('Event lookup failed', { status: 500 });
+    if (existing?.processed) return new Response('duplicate', { status: 200 });
+
+    await db
+      .from('subscription_events')
+      .update({
+        event_type: event.type,
+        payload: event as unknown as Record<string, unknown>,
+      })
+      .eq('event_id', event.id)
+      .eq('processed', false);
   }
 
   try {

@@ -2,7 +2,6 @@ import * as React from 'react';
 import { ExternalLink, RefreshCw } from 'lucide-react';
 import type { ProviderId } from '@/types';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { useUIStore } from '@/stores/ui';
 import { rememberSettingsTab } from '@/features/settings/settingsTabMemory';
@@ -12,7 +11,6 @@ import {
 } from '@/lib/ai/providerRegistry';
 import {
   resolveModelOnProviderChange,
-  sanitizeModelIdForInput,
   validateProviderModelSelection,
 } from '@/lib/ai/providerModelCatalog';
 import { useProviderModelOptions } from '@/lib/ai/useProviderModelOptions';
@@ -45,7 +43,6 @@ export function ProviderModelSelect({
   className,
   idPrefix = 'provider-model',
 }: ProviderModelSelectProps) {
-  const [advancedCustom, setAdvancedCustom] = React.useState(false);
   const { ctx, providerOptions, modelOptions, refreshing, loadError, refreshModels } =
     useProviderModelOptions({
       providerId,
@@ -54,23 +51,13 @@ export function ProviderModelSelect({
     });
 
   const connected = isProviderConnected(providerId, ctx);
-  const validation = validateProviderModelSelection(providerId, modelId, ctx, {
-    allowCustom: advancedCustom,
-  });
-
-  const knownModel = modelOptions.some(
-    (option) => option.id.toLowerCase() === sanitizeModelIdForInput(modelId).toLowerCase() && !option.isCustom,
-  );
-
-  React.useEffect(() => {
-    if (!knownModel && modelId.trim()) setAdvancedCustom(true);
-  }, [knownModel, modelId]);
+  const validation = validateProviderModelSelection(providerId, modelId, ctx);
+  const selectedModelAvailable = modelOptions.some((option) => option.id === modelId);
 
   const handleProviderChange = (nextProvider: ProviderId) => {
     const nextModel = resolveModelOnProviderChange(nextProvider, modelId, ctx);
     onProviderChange(nextProvider);
     onModelChange(nextModel);
-    setAdvancedCustom(false);
   };
 
   const providerSelectId = `${idPrefix}-provider`;
@@ -131,23 +118,14 @@ export function ProviderModelSelect({
                 Go to Providers
               </Button>
             </div>
-          ) : advancedCustom ? (
-            <Input
-              id={modelSelectId}
-              value={modelId}
-              onChange={(event) => onModelChange(sanitizeModelIdForInput(event.target.value))}
-              placeholder="custom-model-id"
-              spellCheck={false}
-              autoComplete="off"
-            />
           ) : modelOptions.length > 0 ? (
             <select
               id={modelSelectId}
-              value={modelOptions.some((option) => option.id === modelId) ? modelId : ''}
+              value={selectedModelAvailable ? modelId : ''}
               onChange={(event) => onModelChange(event.target.value)}
               className="flex h-8 w-full rounded-md border border-input bg-background px-2.5 text-body text-foreground"
             >
-              {!modelOptions.some((option) => option.id === modelId) && modelId ? (
+              {!selectedModelAvailable && modelId ? (
                 <option value="" disabled>
                   Select a model
                 </option>
@@ -156,7 +134,6 @@ export function ProviderModelSelect({
                 <option key={option.id} value={option.id}>
                   {option.label}
                   {option.availability === 'preview' ? ' (preview)' : ''}
-                  {option.isCustom ? ' (custom)' : ''}
                 </option>
               ))}
             </select>
@@ -164,25 +141,8 @@ export function ProviderModelSelect({
             <div className="rounded-md border border-dashed border-border px-2.5 py-2 text-secondary text-muted-foreground">
               {loadError
                 ? `Could not load ${getProviderDisplayName(providerId)} models. Check your API key or try refreshing.`
-                : `Select a provider first.`}
+                : `No connected ${getProviderDisplayName(providerId)} models found. Connect a provider or refresh models.`}
             </div>
-          )}
-
-          {connected && (
-            <label className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
-              <input
-                type="checkbox"
-                checked={advancedCustom}
-                onChange={(event) => {
-                  setAdvancedCustom(event.target.checked);
-                  if (!event.target.checked && modelOptions[0]) {
-                    const keep = modelOptions.find((option) => option.id === modelId && !option.isCustom);
-                    onModelChange(keep?.id ?? modelOptions[0].id);
-                  }
-                }}
-              />
-              Advanced: custom model ID
-            </label>
           )}
         </div>
       </div>

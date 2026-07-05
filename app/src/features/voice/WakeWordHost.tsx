@@ -6,7 +6,13 @@ import { cn } from '@/lib/utils';
 import { containsWakePhrase, isWakeWordAutoOpenAllowed, readWakeWordEnabled, WAKE_WORD_SETTING_EVENT } from './wakeWord';
 import { VOICE_EXCLUSIVE_START_EVENT, VOICE_EXCLUSIVE_STOP_EVENT } from './VoiceService';
 import { speakWithSettings } from './voiceRouter';
-import { VOICE_ACKNOWLEDGEMENT_TEXT } from './speechSynthesis';
+import {
+  SPEECH_SYNTHESIS_END_EVENT,
+  SPEECH_SYNTHESIS_START_EVENT,
+  STREAMING_VOICE_END_EVENT,
+  STREAMING_VOICE_START_EVENT,
+  VOICE_ACKNOWLEDGEMENT_TEXT,
+} from './speechSynthesis';
 import { useAppForeground } from './useAppForeground';
 import { useAuthStore } from '@/stores/auth';
 
@@ -69,6 +75,7 @@ export function WakeWordHost() {
   const [status, setStatus] = React.useState<WakeStatus>('listening');
   const recognitionRef = React.useRef<WakeSpeechRecognition | null>(null);
   const restartTimerRef = React.useRef<number | null>(null);
+  const speechOutputDepthRef = React.useRef(0);
 
   React.useEffect(() => {
     const syncFromStorage = () => setEnabled(readWakeWordEnabled());
@@ -103,6 +110,7 @@ export function WakeWordHost() {
     const scheduleRestart = () => {
       clearRestart(restartTimerRef);
       if (disposed || !isWakeWordAutoOpenAllowed() || useUIStore.getState().voiceModalOpen) return;
+      if (speechOutputDepthRef.current > 0) return;
       if (document.visibilityState !== 'visible') return;
       restartTimerRef.current = window.setTimeout(startRecognition, 800);
     };
@@ -114,9 +122,19 @@ export function WakeWordHost() {
     const onExclusiveStop = () => {
       scheduleRestart();
     };
+    const onSpeechOutputStart = () => {
+      speechOutputDepthRef.current += 1;
+      clearRestart(restartTimerRef);
+      stopRecognition(recognitionRef);
+    };
+    const onSpeechOutputEnd = () => {
+      speechOutputDepthRef.current = Math.max(0, speechOutputDepthRef.current - 1);
+      scheduleRestart();
+    };
 
     const startRecognition = () => {
       if (disposed || recognitionRef.current || document.visibilityState !== 'visible') return;
+      if (speechOutputDepthRef.current > 0) return;
       const recognition = new RecognitionCtor();
       recognition.continuous = true;
       recognition.interimResults = true;
@@ -157,6 +175,10 @@ export function WakeWordHost() {
           event.error === 'audio-capture';
         if (blocked) {
           setStatus('blocked');
+          toast.warning(
+            'Wake word unavailable',
+            'Jarvis could not access the microphone. Check microphone permissions and device availability.',
+          );
           stopRecognition(recognitionRef);
           return;
         }
@@ -180,12 +202,21 @@ export function WakeWordHost() {
 
     window.addEventListener(VOICE_EXCLUSIVE_START_EVENT, onExclusiveStart);
     window.addEventListener(VOICE_EXCLUSIVE_STOP_EVENT, onExclusiveStop);
+    window.addEventListener(SPEECH_SYNTHESIS_START_EVENT, onSpeechOutputStart);
+    window.addEventListener(SPEECH_SYNTHESIS_END_EVENT, onSpeechOutputEnd);
+    window.addEventListener(STREAMING_VOICE_START_EVENT, onSpeechOutputStart);
+    window.addEventListener(STREAMING_VOICE_END_EVENT, onSpeechOutputEnd);
     startRecognition();
 
     return () => {
       disposed = true;
+      speechOutputDepthRef.current = 0;
       window.removeEventListener(VOICE_EXCLUSIVE_START_EVENT, onExclusiveStart);
       window.removeEventListener(VOICE_EXCLUSIVE_STOP_EVENT, onExclusiveStop);
+      window.removeEventListener(SPEECH_SYNTHESIS_START_EVENT, onSpeechOutputStart);
+      window.removeEventListener(SPEECH_SYNTHESIS_END_EVENT, onSpeechOutputEnd);
+      window.removeEventListener(STREAMING_VOICE_START_EVENT, onSpeechOutputStart);
+      window.removeEventListener(STREAMING_VOICE_END_EVENT, onSpeechOutputEnd);
       clearRestart(restartTimerRef);
       stopRecognition(recognitionRef);
     };

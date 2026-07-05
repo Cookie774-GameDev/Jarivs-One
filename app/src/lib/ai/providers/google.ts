@@ -15,8 +15,8 @@
  *  - Each chunk is `{ candidates: [{ content: { parts: [{ text }] } }],
  *      usageMetadata?: { promptTokenCount, candidatesTokenCount } }`.
  */
-import type { LLMProvider, LLMRequest, LLMResponse, LLMMessage } from '../types';
-import { estimateCost, estimateInputTokens } from '../types';
+import type { LLMContentPart, LLMProvider, LLMRequest, LLMResponse, LLMMessage } from '../types';
+import { estimateCost, estimateInputTokens, llmContentToText } from '../types';
 import { useAuthStore } from '@/stores/auth';
 import { parseSSE } from './sse';
 
@@ -30,6 +30,19 @@ export const GOOGLE_DEFAULT_MODEL = 'gemini-2.5-flash-lite';
 /** Convert our role -> Gemini role. Gemini doesn't have `system` in messages. */
 function geminiRole(role: LLMMessage['role']): 'user' | 'model' {
   return role === 'assistant' ? 'model' : 'user';
+}
+
+function geminiParts(content: string | LLMContentPart[]) {
+  if (typeof content === 'string') return [{ text: content }];
+  return content.map((part) => {
+    if (part.type === 'text') return { text: part.text };
+    return {
+      inlineData: {
+        mimeType: part.mimeType,
+        data: part.data,
+      },
+    };
+  });
 }
 
 export const googleProvider: LLMProvider = {
@@ -51,7 +64,7 @@ export const googleProvider: LLMProvider = {
       .filter((m) => m.role !== 'system')
       .map((m) => ({
         role: geminiRole(m.role),
-        parts: [{ text: m.content }],
+        parts: geminiParts(m.content),
       }));
 
     // Gemini requires the first turn to be `user`. If for any reason it's not,
@@ -131,7 +144,7 @@ export const googleProvider: LLMProvider = {
     }
 
     if (inputTokens === 0) {
-      const inputText = req.agent.system_prompt + '\n' + req.messages.map((m) => m.content).join('\n');
+      const inputText = req.agent.system_prompt + '\n' + req.messages.map((m) => llmContentToText(m.content)).join('\n');
       inputTokens = estimateInputTokens(inputText);
     }
     if (outputTokens === 0) outputTokens = estimateInputTokens(acc);

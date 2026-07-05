@@ -5,7 +5,7 @@
 import { getSupabaseClient } from '@/lib/supabase';
 import type { ProviderId } from '@/types/common';
 import type { LLMMessage, LLMStreamChunk } from '../types';
-import { estimateCost, estimateInputTokens } from '../types';
+import { estimateCost, estimateInputTokens, llmContentToText } from '../types';
 
 export interface HostedStackRequest {
   provider: ProviderId;
@@ -115,7 +115,7 @@ export async function runHostedStackStep(req: HostedStackRequest): Promise<Hoste
 
   if (inputTokens === 0) {
     inputTokens = estimateInputTokens(
-      [req.systemPrompt, ...req.messages.map((m) => m.content)].join('\n'),
+      [req.systemPrompt, ...req.messages.map((m) => llmContentToText(m.content))].join('\n'),
     );
   }
   if (outputTokens === 0) outputTokens = estimateInputTokens(acc);

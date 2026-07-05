@@ -29,7 +29,10 @@
         { "url": "https://api.figma.com/*" },
         { "url": "https://*.supabase.co/*" },
         { "url": "https://*.myshopify.com/*" },
-        { "url": "https://slack.com/*" }
+        { "url": "https://slack.com/*" },
+        { "url": "https://api.wulong.dev/*" },
+        { "url": "https://lmarena.ai/*" },
+        { "url": "https://arena.ai/*" }
       ]
     }
   ]

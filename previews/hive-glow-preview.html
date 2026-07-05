@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hive glow preview — cozy moving warmth</title>
+    <style>
+      :root {
+        /* App-ish deep ember palette — way darker + warmer */
+        --bg: #0e0a08;
+        --panel: #151010;
+        --field: #0d0907;
+        --border: #2a201b;
+        --text: #ece3da;
+        --muted: #9a8d80;
+        --copper: 26 90% 50%;
+
+        /* Deep warm ramp used everywhere */
+        --w1: 12 80% 16%;
+        --w2: 18 84% 26%;
+        --w3: 28 88% 34%;
+        --w4: 40 92% 46%;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          radial-gradient(1200px 600px at 70% -10%, hsl(24 60% 16% / 0.5), transparent 60%),
+          var(--bg);
+        color: var(--text);
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 38px;
+        padding: 46px 20px 80px;
+      }
+
+      h1 {
+        font-size: 22px;
+        font-weight: 650;
+        margin: 0;
+        letter-spacing: 0.2px;
+      }
+      .sub { color: var(--muted); font-size: 13px; margin-top: -26px; }
+
+      .stage {
+        width: 100%;
+        max-width: 760px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      .label {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+        color: hsl(var(--copper) / 0.8);
+      }
+
+      /* ============================================================
+         Shared moving-warmth keyframes
+         ============================================================ */
+      @property --ring-angle {
+        syntax: "<angle>";
+        inherits: false;
+        initial-value: 0deg;
+      }
+      @keyframes ring-spin { to { --ring-angle: 360deg; } }
+      @keyframes warm-flow { to { background-position: 200% center; } }
+      @keyframes warm-breathe {
+        0%, 100% { box-shadow: inset 0 0 26px hsl(var(--w2) / 0.16), 0 8px 30px -10px hsl(var(--w2) / 0.5); }
+        50%      { box-shadow: inset 0 0 36px hsl(var(--w2) / 0.26), 0 10px 38px -8px hsl(var(--w2) / 0.62); }
+      }
+
+      /* ============================================================
+         1) COMPOSER — dark + cozy, warm band sweeping across
+         ============================================================ */
+      .composer {
+        position: relative;
+        isolation: isolate;
+        border-radius: 14px;
+        border: 1px solid hsl(var(--w2) / 0.4);
+        background-color: var(--field);
+        /* moving warm band over the dark field = cozy + clearly moving */
+        background-image: linear-gradient(
+          100deg,
+          hsl(var(--w1) / 0) 0%,
+          hsl(var(--w1) / 0) 12%,
+          hsl(var(--w2) / 0.5) 30%,
+          hsl(var(--w3) / 0.62) 42%,
+          hsl(var(--w2) / 0.5) 54%,
+          hsl(var(--w1) / 0) 74%,
+          hsl(var(--w1) / 0) 100%
+        );
+        background-size: 220% auto;
+        padding: 16px 18px;
+        animation: warm-flow 6.5s linear infinite;
+      }
+      .composer::before {
+        content: "";
+        position: absolute;
+        inset: -2px;
+        border-radius: 16px;
+        z-index: -1;
+        background: conic-gradient(
+          from var(--ring-angle),
+          hsl(var(--w1)),
+          hsl(var(--w3)),
+          hsl(var(--w4)),
+          hsl(var(--w2)),
+          hsl(var(--w1))
+        );
+        opacity: 0.5;
+        filter: blur(7px);
+        animation: ring-spin 7s linear infinite;
+      }
+      .composer .ph { color: var(--muted); font-size: 15px; }
+      .composer .row {
+        margin-top: 22px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .dot { width: 8px; height: 8px; border-radius: 50%; background: hsl(var(--w3)); box-shadow: 0 0 8px hsl(var(--w3)); }
+      .kbd {
+        margin-left: auto;
+        font-family: ui-monospace, monospace;
+        font-size: 11px;
+        color: var(--text);
+        background: #000;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 3px 7px;
+      }
+
+      /* ============================================================
+         2) MODEL PICKER ENTRY — visible moving sheen
+         ============================================================ */
+      .picker {
+        width: 340px;
+        border-radius: 14px;
+        border: 1px solid var(--border);
+        background: var(--panel);
+        overflow: hidden;
+      }
+      .picker .head { padding: 12px 14px; border-bottom: 1px solid var(--border); display: flex; gap: 10px; align-items: center; }
+      .picker .head .ic {
+        width: 30px; height: 30px; border-radius: 50%;
+        border: 1px solid hsl(var(--copper) / 0.5);
+        display: grid; place-items: center; color: hsl(var(--copper));
+        box-shadow: inset 0 0 10px hsl(var(--copper) / 0.25);
+      }
+      .picker .head .t { font-size: 15px; font-weight: 600; }
+      .picker .head .d { font-size: 12px; color: var(--muted); }
+      .picker .feat { padding: 8px 10px 12px; }
+      .picker .feat .lbl { font-size: 10px; letter-spacing: 0.2em; color: hsl(var(--copper) / 0.7); text-transform: uppercase; padding: 0 4px 6px; }
+
+      .hive-entry {
+        position: relative;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        border-radius: 12px;
+        border: 1px solid hsl(var(--w2) / 0.45);
+        background-color: hsl(var(--w2) / 0.08);
+        padding: 11px 12px;
+      }
+      .hive-entry::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+          115deg,
+          transparent 0%,
+          hsl(var(--w3) / 0.28) 38%,
+          hsl(var(--w4) / 0.22) 50%,
+          hsl(var(--w2) / 0.28) 62%,
+          transparent 100%
+        );
+        background-size: 220% auto;
+        animation: warm-flow 5s linear infinite;
+        pointer-events: none;
+      }
+      .hive-entry .hic { position: relative; width: 22px; height: 22px; border-radius: 6px; background: conic-gradient(from var(--ring-angle), hsl(var(--w2)), hsl(var(--w4)), hsl(var(--w2))); animation: ring-spin 6s linear infinite; }
+      .hive-entry .meta { position: relative; flex: 1; min-width: 0; }
+      .hive-entry .meta .n { font-size: 15px; font-weight: 600; }
+      .hive-entry .meta .s { font-size: 11px; color: var(--muted); }
+      .hive-entry .active { position: relative; font-size: 11px; color: hsl(var(--copper)); font-weight: 600; }
+
+      /* ============================================================
+         3) RESPONSE BUBBLE — words with warm colours moving inside
+         ============================================================ */
+      .thread { display: flex; flex-direction: column; gap: 14px; }
+      .who { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+      .who .av { width: 24px; height: 24px; border-radius: 50%; background: conic-gradient(from var(--ring-angle), hsl(var(--w2)), hsl(var(--w4)), hsl(var(--w2))); animation: ring-spin 6s linear infinite; }
+      .who .nm { font-weight: 600; }
+      .who .tm { color: var(--muted); font-size: 11px; }
+
+      .bubble {
+        position: relative;
+        max-width: 86%;
+        border-radius: 16px;
+        border: 1px solid hsl(var(--w2) / 0.32);
+        /* deep ember interior, gentle moving warmth */
+        background-color: hsl(16 56% 8%);
+        background-image: linear-gradient(
+          115deg,
+          hsl(var(--w1) / 0.22),
+          hsl(var(--w2) / 0.12) 35%,
+          hsl(var(--w3) / 0.2) 60%,
+          hsl(var(--w1) / 0.22) 100%
+        );
+        background-size: 220% auto;
+        padding: 13px 16px;
+        animation: warm-flow 8s linear infinite, warm-breathe 5s ease-in-out infinite;
+        line-height: 1.55;
+        font-size: 15px;
+      }
+
+      /* The actual "words with colours moving in them" */
+      .bubble .gradient-words {
+        background: linear-gradient(
+          100deg,
+          hsl(26 90% 60%) 0%,
+          hsl(40 92% 68%) 25%,
+          hsl(32 90% 62%) 50%,
+          hsl(40 92% 68%) 75%,
+          hsl(26 90% 60%) 100%
+        );
+        background-size: 220% auto;
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+        animation: warm-flow 4.5s linear infinite;
+        font-weight: 560;
+      }
+      .bubble p { margin: 0 0 8px; }
+      .bubble p:last-child { margin-bottom: 0; }
+
+      .note {
+        max-width: 760px;
+        font-size: 12.5px;
+        color: var(--muted);
+        line-height: 1.6;
+        border-top: 1px solid var(--border);
+        padding-top: 16px;
+      }
+      .note b { color: var(--text); }
+
+      @media (prefers-reduced-motion: reduce) {
+        .composer, .composer::before, .hive-entry::before, .hive-entry .hic,
+        .who .av, .bubble, .bubble .gradient-words { animation: none !important; }
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Hive — cozy moving warmth (preview)</h1>
+    <p class="sub">Everything below is animated. Colours drift continuously; nothing is static.</p>
+
+    <div class="stage">
+      <div class="label">1 · Composer when Hive is the active model</div>
+      <div class="composer">
+        <div class="ph">Message Jarvis…&nbsp;&nbsp;(use @ to mention an agent)</div>
+        <div class="row">
+          <span class="dot"></span>
+          Hive · Hive Balanced
+          <span class="kbd">Ctrl Enter</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="stage" style="max-width:340px;align-items:center">
+      <div class="label" style="align-self:flex-start">2 · Model picker — Hive entry (sheen sweeps)</div>
+      <div class="picker">
+        <div class="head">
+          <div class="ic">✦</div>
+          <div>
+            <div class="t">AI model</div>
+            <div class="d">Choose provider and model</div>
+          </div>
+        </div>
+        <div class="feat">
+          <div class="lbl">Featured</div>
+          <div class="hive-entry">
+            <div class="hic"></div>
+            <div class="meta">
+              <div class="n">Hive</div>
+              <div class="s">5-model ensemble · balanced for quality</div>
+            </div>
+            <div class="active">active &gt;</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stage">
+      <div class="label">3 · Hive response — words with colours moving inside</div>
+      <div class="thread">
+        <div class="who">
+          <span class="av"></span>
+          <span class="nm">Hive</span>
+          <span class="tm">just now</span>
+        </div>
+        <div class="bubble">
+          <p><span class="gradient-words">Here's the plan, distilled from five models working together.</span></p>
+          <p><span class="gradient-words">The warm colours flow continuously through every word, while the
+            bubble itself breathes with a soft cozy glow — premium, but never hard to read.</span></p>
+          <p><span class="gradient-words">Tell me if you want it warmer, darker, faster, or slower and I'll dial it in.</span></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="note">
+      <b>What you're seeing:</b> the composer uses a dark field with a single warm band that sweeps
+      across (cozy, not a bright flat fill), plus a slow rotating warm ring. The Hive picker entry has a
+      diagonal sheen that travels left-to-right. The response is a darker cozy bubble whose
+      <b>words carry a warm gradient that moves through them</b>. All three share the same warm ramp so the
+      whole experience feels unified. Reduced-motion users get a static cozy version automatically.
+    </div>
+  </body>
+</html>

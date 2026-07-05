@@ -18,8 +18,8 @@
  *  - event: error                 surface and abort
  *  - event: ping                  keepalive, ignore
  */
-import type { LLMProvider, LLMRequest, LLMResponse, LLMMessage } from '../types';
-import { estimateCost, estimateInputTokens } from '../types';
+import type { LLMContentPart, LLMProvider, LLMRequest, LLMResponse, LLMMessage } from '../types';
+import { estimateCost, estimateInputTokens, llmContentToText } from '../types';
 import { useAuthStore } from '@/stores/auth';
 import { parseSSE } from './sse';
 
@@ -36,20 +36,54 @@ export const ANTHROPIC_DEFAULT_MODEL = 'claude-sonnet-4-20250514';
  * roles inside `messages` will 400. We collapse adjacent same-role messages
  * because Anthropic also requires strict alternation.
  */
+type AnthropicContent =
+  | string
+  | Array<
+      | { type: 'text'; text: string }
+      | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
+    >;
+
+function toAnthropicContent(content: string | LLMContentPart[]): AnthropicContent {
+  if (typeof content === 'string') return content;
+  return content.map((part) => {
+    if (part.type === 'text') return { type: 'text' as const, text: part.text };
+    return {
+      type: 'image' as const,
+      source: {
+        type: 'base64' as const,
+        media_type: part.mimeType,
+        data: part.data,
+      },
+    };
+  });
+}
+
+function appendAnthropicContent(base: AnthropicContent, next: string | LLMContentPart[]): AnthropicContent {
+  if (typeof next === 'string') {
+    if (typeof base === 'string') return `${base}\n\n${next}`;
+    return [...base, { type: 'text' as const, text: `\n\n${next}` }];
+  }
+  const nextContent = toAnthropicContent(next);
+  if (typeof base === 'string') {
+    return [{ type: 'text' as const, text: base }, ...(Array.isArray(nextContent) ? nextContent : [{ type: 'text' as const, text: nextContent }])];
+  }
+  return [...base, ...(Array.isArray(nextContent) ? nextContent : [{ type: 'text' as const, text: nextContent }])];
+}
+
 function toAnthropicPayload(req: LLMRequest): {
   system: string;
-  messages: { role: 'user' | 'assistant'; content: string }[];
+  messages: { role: 'user' | 'assistant'; content: AnthropicContent }[];
 } {
   const system = req.agent.system_prompt;
-  const out: { role: 'user' | 'assistant'; content: string }[] = [];
+  const out: { role: 'user' | 'assistant'; content: AnthropicContent }[] = [];
   for (const m of req.messages) {
     if (m.role === 'system') continue; // safety: shouldn't happen, but ignore
     const role = m.role;
     const last = out[out.length - 1];
     if (last && last.role === role) {
-      last.content += '\n\n' + m.content;
+      last.content = appendAnthropicContent(last.content, m.content);
     } else {
-      out.push({ role, content: m.content });
+      out.push({ role, content: toAnthropicContent(m.content) });
     }
   }
   // Anthropic requires the conversation to start with a user turn. If for any
@@ -164,7 +198,7 @@ export const anthropicProvider: LLMProvider = {
     // Fall back to estimates if Anthropic didn't report usage (rare, but happens
     // on some abrupt stops).
     if (inputTokens === 0) {
-      const inputText = system + '\n' + messages.map((m) => m.content).join('\n');
+      const inputText = system + '\n' + req.messages.map((m) => llmContentToText(m.content)).join('\n');
       inputTokens = estimateInputTokens(inputText);
     }
     if (outputTokens === 0) outputTokens = estimateInputTokens(acc);

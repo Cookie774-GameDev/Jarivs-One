@@ -15,6 +15,7 @@ import {
   Phone,
   Keyboard,
   AudioLines,
+  Brain,
   Info,
   Moon,
   Bell,
@@ -31,6 +32,7 @@ import { useAppAdmin } from '@/lib/admin';
 import { useUIStore } from '@/stores/ui';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import { HiveModelTabIcon } from '@/components/brand';
 import {
   prefetchSettingsTab,
   type SettingsTab,
@@ -44,6 +46,9 @@ const LocalModels = lazy(() =>
 );
 const Plans = lazy(() => import('./sections/Plans').then((m) => ({ default: m.Plans })));
 const Hive = lazy(() => import('./sections/Hive').then((m) => ({ default: m.Hive })));
+const AllAboutMe = lazy(() =>
+  import('./sections/AllAboutMe').then((m) => ({ default: m.AllAboutMe })),
+);
 const Appearance = lazy(() => import('./sections/Appearance').then((m) => ({ default: m.Appearance })));
 const Voice = lazy(() => import('./sections/Voice').then((m) => ({ default: m.Voice })));
 const PhoneVoice = lazy(() => import('./sections/PhoneVoice').then((m) => ({ default: m.PhoneVoice })));
@@ -71,13 +76,16 @@ interface TabDef {
   id: SettingsTab;
   label: string;
   icon: LucideIcon;
+  /** Official brand mark instead of Lucide (e.g. Hive model). */
+  brandIcon?: React.ComponentType<{ className?: string }>;
 }
 
 const TABS: TabDef[] = [
   { id: 'account', label: 'Account', icon: User2 },
   { id: 'plans', label: 'Plans', icon: Sparkles },
   { id: 'providers', label: 'Providers', icon: KeyRound },
-  { id: 'hive', label: 'Hive', icon: Network },
+  { id: 'hive', label: 'Hive', icon: Network, brandIcon: HiveModelTabIcon },
+  { id: 'allaboutme', label: 'All About Me', icon: Brain },
   { id: 'plugins', label: 'Plugins', icon: Blocks },
   { id: 'localmodels', label: 'Local Models', icon: HardDriveDownload },
   { id: 'appearance', label: 'Appearance', icon: Palette },
@@ -136,6 +144,9 @@ function SettingsTabPanels({ tab, visited }: { tab: SettingsTab; visited: Readon
       </CachedTabPanel>
       <CachedTabPanel id="hive" active={tab === 'hive'} visited={visited.has('hive')}>
         <Hive />
+      </CachedTabPanel>
+      <CachedTabPanel id="allaboutme" active={tab === 'allaboutme'} visited={visited.has('allaboutme')}>
+        <AllAboutMe />
       </CachedTabPanel>
       <CachedTabPanel id="plugins" active={tab === 'plugins'} visited={visited.has('plugins')}>
         <Plugins />
@@ -288,6 +299,7 @@ export function SettingsModal({ initialTab = 'account' }: SettingsModalProps) {
             >
               {tabs.map((t) => {
                 const Icon = t.icon;
+                const BrandIcon = t.brandIcon;
                 const active = tab === t.id;
                 return (
                   <button
@@ -309,12 +321,21 @@ export function SettingsModal({ initialTab = 'account' }: SettingsModalProps) {
                         : 'text-muted-foreground hover:text-foreground hover:bg-muted',
                     )}
                   >
-                    <Icon
-                      className={cn(
-                        'h-4 w-4 shrink-0',
-                        active ? 'text-accent-cyan' : 'text-muted-foreground',
-                      )}
-                    />
+                    {BrandIcon ? (
+                      <BrandIcon
+                        className={cn(
+                          'h-6 w-6 shrink-0',
+                          active ? 'opacity-100' : 'opacity-70',
+                        )}
+                      />
+                    ) : (
+                      <Icon
+                        className={cn(
+                          'h-4 w-4 shrink-0',
+                          active ? 'text-accent-cyan' : 'text-muted-foreground',
+                        )}
+                      />
+                    )}
                     <span className="flex-1 truncate">{t.label}</span>
                   </button>
                 );

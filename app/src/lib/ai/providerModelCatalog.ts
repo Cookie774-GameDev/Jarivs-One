@@ -120,7 +120,6 @@ function staticOptionsForProvider(
 function mergeModelOptions(
   providerId: ProviderId,
   lists: RegistryModelOption[][],
-  savedModelId?: string,
 ): RegistryModelOption[] {
   const seen = new Set<string>();
   const merged: RegistryModelOption[] = [];
@@ -136,29 +135,14 @@ function mergeModelOptions(
     for (const option of list) add(option);
   }
 
-  const saved = savedModelId ? sanitizeModelId(savedModelId) : '';
-  if (saved && !seen.has(saved.toLowerCase())) {
-    const known = CHAT_MODEL_OPTIONS.find(
-      (option) => option.provider === providerId && option.id.toLowerCase() === saved.toLowerCase(),
-    );
-    merged.push({
-      id: saved,
-      label: known?.label ?? `Custom: ${saved}`,
-      provider: providerId,
-      availability: 'custom',
-      isCustom: true,
-      subtitle: saved,
-    });
-  }
-
   return merged;
 }
 
-/** Resolve dropdown models for a provider (static + frontier + cached dynamic + saved custom). */
+/** Resolve dropdown models for a provider (static + frontier + cached dynamic only). */
 export function getModelsForProvider(
   providerId: ProviderId,
   ctx: ProviderConnectionContext,
-  savedModelId?: string,
+  _savedModelId?: string,
 ): RegistryModelOption[] {
   if (!isProviderConnected(providerId, ctx) && !isLocalProvider(providerId)) {
     return [];
@@ -168,7 +152,7 @@ export function getModelsForProvider(
   const frontier = frontierOptionsForProvider(providerId);
   const cached = dynamicModelCache.get(providerId)?.models ?? [];
 
-  return mergeModelOptions(providerId, [frontier, staticModels, cached], savedModelId);
+  return mergeModelOptions(providerId, [frontier, staticModels, cached]);
 }
 
 export function getModelLabelForProvider(
@@ -195,7 +179,7 @@ export function validateProviderModelSelection(
   providerId: ProviderId,
   modelId: string,
   ctx: ProviderConnectionContext,
-  opts?: { allowCustom?: boolean },
+  _opts?: { allowCustom?: boolean },
 ): ProviderModelValidation {
   const trimmed = sanitizeModelId(modelId);
   if (!trimmed) {
@@ -216,24 +200,9 @@ export function validateProviderModelSelection(
   const match = catalogOptions.find((option) => option.id.toLowerCase() === trimmed.toLowerCase());
 
   if (!match) {
-    if (opts?.allowCustom && trimmed) {
-      return {
-        ok: true,
-        isCustomModel: true,
-        warning: 'Custom model ID — may fail if unsupported.',
-      };
-    }
     return {
       ok: false,
       error: `This model is not available for ${getProviderDisplayName(providerId)}.`,
-    };
-  }
-
-  if (match.isCustom) {
-    return {
-      ok: true,
-      isCustomModel: true,
-      warning: 'Saved model is not in the current catalog. It is preserved as a custom model.',
     };
   }
 

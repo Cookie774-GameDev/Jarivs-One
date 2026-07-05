@@ -4,187 +4,1070 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>VibeSpace — Vibe Coding AI Workspace</title>
-  <meta name="description" content="VibeSpace is the all-in-one vibe coding AI workspace: calling, agents, coding terminals, system prompts, research, memory, tasks, and every model in one cozy desktop app. Jarvis voice built in." />
-  <meta property="og:title" content="VibeSpace — Vibe Coding AI Workspace" />
-  <meta property="og:description" content="Built for vibe coders by a vibe coder. Every model, agent, voice, and task under one roof — with Jarvis voice and AI calling built in." />
-  <meta property="og:type" content="website" />
-  <meta name="theme-color" content="#FAF6EE" />
+  <meta name="description" content="VibeSpace is the cozy all-in-one AI workspace for vibe coders: multi-model chat, agent councils, terminal swarms, Jarvis voice, AI calling, skills, memory, tasks, and Inspector — one local-first desktop app. Apache 2.0 open source." />
+  <meta name="theme-color" content="#2E2823" />
+  <meta name="author" content="VibeSpace" />
   <link rel="icon" type="image/png" href="images/vibespace-logo.png" />
-  <meta property="og:image" content="https://vibespaceos.com/assets/images/og-cover.png" />
-  <style>
-    :root {
-      --paper:#FAF6EE; --paper-warm:#F4ECDD; --panel:#fff; --cream:#F8EFDB;
-      --ink:#2A2520; --ink-soft:#5C544A; --ink-faint:#8B8077;
-      --copper:#B5613A; --copper-deep:#944D2D; --amber:#C58A3D;
-      --sage:#6F8F66; --moss:#4F6E47; --plum:#6E4F6F;
-      --border:#E5DBC9; --border-2:#D7C9AE;
-      --shadow-soft:0 1px 2px rgba(42,37,32,.04),0 12px 34px rgba(42,37,32,.07);
-      --shadow-warm:0 12px 50px rgba(181,97,58,.15);
-      --radius:18px;
-    }
-    *{box-sizing:border-box} html{scroll-behavior:smooth} body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Inter,Roboto,sans-serif;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;overflow-x:hidden}
-    body:before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.42;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.78' numOctaves='3'/><feColorMatrix type='saturate' values='0'/><feComponentTransfer><feFuncA type='table' tableValues='0 .055'/></feComponentTransfer></filter><rect width='160' height='160' filter='url(%23n)'/></svg>")}
-    body:after{content:"";position:fixed;inset:-20%;pointer-events:none;z-index:0;background:radial-gradient(900px 480px at 18% 8%,rgba(181,97,58,.16),transparent 65%),radial-gradient(740px 420px at 84% 24%,rgba(111,143,102,.14),transparent 62%),radial-gradient(640px 360px at 52% 92%,rgba(197,138,61,.12),transparent 70%);filter:blur(12px)}
-    a{color:inherit} code,kbd{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace} ::selection{background:rgba(181,97,58,.28)}
-    .nav,.hero,main,footer{position:relative;z-index:1}.nav{position:sticky;top:0;z-index:50;background:rgba(250,246,238,.86);backdrop-filter:blur(14px) saturate(120%);border-bottom:1px solid var(--border)}
-    .nav-inner{max-width:1200px;margin:auto;padding:14px 22px;display:flex;gap:18px;align-items:center}.brand{display:flex;gap:10px;align-items:center;text-decoration:none;font-weight:700}.mark-img{width:32px;height:32px;border-radius:10px;box-shadow:0 8px 24px rgba(181,97,58,.28);object-fit:cover}
-    .nav-links{margin-left:auto;display:flex;gap:4px;align-items:center}.nav-links a{padding:8px 10px;border-radius:999px;text-decoration:none;color:var(--ink-soft);font-size:13px}.nav-links a:hover{background:var(--cream);color:var(--ink)}.nav-cta{background:var(--ink)!important;color:var(--paper)!important;padding:9px 15px!important}@media(max-width:860px){.nav-links a:not(.nav-cta){display:none}}
-    .hero{max-width:1200px;margin:auto;padding:84px 22px 54px;display:grid;grid-template-columns:1.08fr .92fr;gap:42px;align-items:center}.eyebrow{display:inline-flex;align-items:center;gap:9px;padding:7px 12px;border-radius:999px;background:rgba(181,97,58,.09);border:1px solid rgba(181,97,58,.22);color:var(--copper);font-size:12px;font-weight:800;letter-spacing:.13em;text-transform:uppercase}.dot{width:7px;height:7px;border-radius:99px;background:var(--sage);box-shadow:0 0 0 6px rgba(111,143,102,.14)}
-    h1,h2,h3{font-family:ui-serif,"Iowan Old Style",Georgia,"Times New Roman",serif;font-weight:500;letter-spacing:-.02em}h1{font-size:clamp(46px,6.3vw,86px);line-height:1.03;margin:22px 0 18px}h2{font-size:clamp(34px,4.2vw,58px);line-height:1.12;margin:0 0 14px}h3{font-size:24px;line-height:1.18;margin:0 0 8px}em{font-family:inherit;color:var(--copper);font-style:italic}.lead{font-size:clamp(18px,1.45vw,21px);color:var(--ink-soft);max-width:650px;margin:0 0 26px}.micro{color:var(--ink-faint);font-family:ui-serif,"Iowan Old Style",Georgia,serif;font-style:italic}
-    .cta-row{display:flex;gap:12px;flex-wrap:wrap;margin:24px 0}.btn{display:inline-flex;gap:8px;align-items:center;justify-content:center;padding:12px 18px;border-radius:999px;border:1px solid var(--border-2);background:var(--panel);text-decoration:none;font-weight:750;box-shadow:var(--shadow-soft);transition:.18s}.btn:hover{transform:translateY(-2px);box-shadow:var(--shadow-warm)}.btn-primary{background:var(--ink);color:var(--paper);border-color:var(--ink)}.btn-copper{background:var(--copper);border-color:var(--copper);color:white}.hero-card{background:var(--panel);border:1px solid var(--border);border-radius:28px;padding:22px;box-shadow:var(--shadow-warm);position:relative;overflow:hidden}.hero-card:before{content:"Built by a vibe coder";position:absolute;right:18px;top:18px;border:2px solid rgba(181,97,58,.42);color:var(--copper);border-radius:999px;padding:8px 13px;font:700 11px/1 ui-serif,Georgia,serif;text-transform:uppercase;letter-spacing:.12em;transform:rotate(5deg)}
-    .window{border:1px solid var(--border);border-radius:18px;background:linear-gradient(180deg,#fff,var(--paper));overflow:hidden}.window-top{height:40px;background:var(--cream);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;padding:0 14px}.light{width:11px;height:11px;border-radius:50%;background:#E68A65}.light:nth-child(2){background:var(--amber)}.light:nth-child(3){background:var(--sage)}.phone-screen{padding:22px}.call-ring{width:118px;height:118px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff8,transparent 35%),linear-gradient(135deg,var(--amber),var(--copper));margin:10px auto 20px;display:grid;place-items:center;color:white;font:700 38px ui-serif,Georgia,serif;box-shadow:0 18px 60px rgba(181,97,58,.32);animation:breathe 4s ease-in-out infinite}@keyframes breathe{50%{transform:scale(1.045)}}.bubble{padding:12px 14px;border-radius:16px;margin:10px 0;max-width:88%;background:var(--cream);border:1px solid var(--border);font-size:14px}.bubble.ai{margin-left:auto;background:#2A2520;color:var(--paper);border-color:#2A2520}.metric-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px}.metric{background:var(--paper);border:1px dashed var(--border-2);border-radius:14px;padding:12px;text-align:center}.metric strong{display:block;font-size:18px;color:var(--copper)}
-    .install{max-width:780px;background:var(--ink);color:var(--paper);border-radius:18px;padding:14px;display:flex;gap:12px;align-items:center;margin-top:28px;box-shadow:0 22px 60px rgba(42,37,32,.18);position:relative}.install:before,.install:after{content:"";position:absolute;width:18px;height:18px;border-color:var(--amber)}.install:before{left:-1px;top:-1px;border-left:2px solid;border-top:2px solid;border-radius:18px 0 0 0}.install:after{right:-1px;bottom:-1px;border-right:2px solid;border-bottom:2px solid;border-radius:0 0 18px 0}.prompt{color:var(--amber);font-weight:800}.cmd{flex:1;white-space:nowrap;overflow-x:auto;font-size:13px}.copy{border:1px solid rgba(250,246,238,.18);background:rgba(255,255,255,.08);color:var(--paper);padding:7px 10px;border-radius:10px;cursor:pointer}.tabs{display:flex;gap:8px;max-width:780px;margin-top:12px}.tab{flex:1;border:1px solid var(--border);background:var(--panel);border-radius:999px;padding:8px;color:var(--ink-soft);cursor:pointer}.tab.active{background:var(--copper);border-color:var(--copper);color:white}
-    section{max-width:1200px;margin:auto;padding:82px 22px}.section-head{max-width:780px;margin-bottom:34px}.section-kicker{font:800 11px/1 ui-sans-serif,system-ui;letter-spacing:.18em;text-transform:uppercase;color:var(--copper);margin-bottom:12px}.grid{display:grid;gap:16px}.cards-3{grid-template-columns:repeat(3,minmax(0,1fr))}.cards-2{grid-template-columns:repeat(2,minmax(0,1fr))}.card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:24px;box-shadow:var(--shadow-soft);position:relative;overflow:hidden}.card:hover{box-shadow:var(--shadow-warm)}.card .num{font-family:ui-serif,Georgia,serif;font-style:italic;color:var(--border-2);font-size:34px;position:absolute;right:20px;top:16px}.card p{color:var(--ink-soft);margin:0}.chip{display:inline-flex;align-items:center;gap:7px;padding:5px 9px;border-radius:999px;background:var(--cream);border:1px solid var(--border);font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--copper);margin:0 6px 8px 0}.chip.live{color:var(--moss);background:rgba(111,143,102,.12)}.warm-band{max-width:none;background:linear-gradient(180deg,var(--paper-warm),var(--paper));border-top:1px solid var(--border);border-bottom:1px solid var(--border)}.mock{background:var(--paper);border:1px solid var(--border);border-radius:16px;padding:14px;margin-top:16px}.agent{display:flex;gap:10px;align-items:flex-start;padding:11px;border:1px solid var(--border);border-radius:12px;background:var(--panel);margin:8px 0;border-top:4px solid var(--sage)}.agent:nth-child(2){border-top-color:var(--plum)}.agent:nth-child(3){border-top-color:var(--amber)}.agent:nth-child(4){border-top-color:var(--copper)}.avatar{width:30px;height:30px;border-radius:9px;background:var(--copper);color:white;display:grid;place-items:center;font-size:12px;font-weight:800;flex:0 0 auto}.agent small{display:block;color:var(--ink-faint)}
-    .provider-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}.provider{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px;min-height:82px}.provider strong{display:block}.provider span{display:block;color:var(--ink-faint);font-size:12px}.brand-dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:7px}.download-card{display:flex;flex-direction:column;gap:14px}.steps{counter-reset:s;list-style:none;padding:0;margin:0}.steps li{counter-increment:s;display:flex;gap:10px;margin:10px 0;color:var(--ink-soft)}.steps li:before{content:counter(s);width:24px;height:24px;border-radius:50%;background:var(--copper);color:#fff;display:grid;place-items:center;font-size:12px;font-weight:800;flex:0 0 auto}.codebox{background:var(--ink);color:var(--paper);border-radius:12px;padding:12px;display:flex;gap:8px;align-items:center;font-size:12px;overflow:hidden}.codebox code{flex:1;overflow-x:auto;white-space:nowrap}.mini-table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--border);border-radius:16px;overflow:hidden;display:table}.mini-table th,.mini-table td{text-align:left;border-bottom:1px solid var(--border);padding:12px 14px;font-size:14px}.mini-table th{background:var(--cream);font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--copper)}.mini-table tr:last-child td{border-bottom:0}.letter{max-width:850px;margin:auto;background:var(--panel);border:1px solid var(--border);border-radius:22px;padding:46px;box-shadow:var(--shadow-warm);background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='42' height='42'><line x1='0' y1='41' x2='42' y2='41' stroke='%23E5DBC9' stroke-width='1' stroke-dasharray='2 3'/></svg>");background-size:42px 42px}.letter:before{content:"Letter";display:inline-block;margin-top:-70px;background:var(--paper);border:1px solid var(--copper);color:var(--copper);padding:4px 14px;border-radius:999px;font-family:ui-serif,Georgia,serif;font-style:italic}.faq details{background:var(--panel);border:1px solid var(--border);border-radius:14px;margin:10px 0;padding:16px}.faq summary{cursor:pointer;font-weight:800}.faq p{color:var(--ink-soft)}footer{border-top:1px solid var(--border);background:var(--paper-warm);padding:52px 22px}.footer-inner{max-width:1200px;margin:auto;display:grid;grid-template-columns:2fr repeat(3,1fr);gap:30px}.footer-inner a{display:block;color:var(--ink-soft);text-decoration:none;margin:6px 0}.footer-bottom{max-width:1200px;margin:28px auto 0;padding-top:20px;border-top:1px dashed var(--border-2);display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;color:var(--ink-faint);font-size:13px}.reveal{opacity:0;transform:translateY(12px);transition:.6s}.reveal.in{opacity:1;transform:none}@media(max-width:960px){.hero{grid-template-columns:1fr}.cards-3,.cards-2,.provider-grid{grid-template-columns:1fr 1fr}.footer-inner{grid-template-columns:1fr 1fr}}@media(max-width:620px){h1{font-size:43px}.cards-3,.cards-2,.provider-grid{grid-template-columns:1fr}.install{align-items:flex-start}.tabs{flex-wrap:wrap}.hero{padding-top:48px}.letter{padding:30px}.nav-inner{padding:12px}.metric-row{grid-template-columns:1fr}.mini-table{display:block;overflow-x:auto}}
-  </style>
+
+  <meta property="og:title" content="VibeSpace — Vibe Coding AI Workspace" />
+  <meta property="og:description" content="Every model, agent, voice, and task under one roof. Multi-model chat, agent councils, terminal swarms, Jarvis voice, AI calling, skills, memory, and Inspector. Local-first, BYOK, Apache 2.0." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://vibespaceos.com/" />
+  <meta property="og:image" content="https://vibespaceos.com/images/og-cover.png" />
+  <meta property="og:site_name" content="VibeSpace" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="VibeSpace — Vibe Coding AI Workspace" />
+  <meta name="twitter:description" content="Every model, agent, voice, and task under one roof. Local-first, BYOK, open source." />
+  <meta name="twitter:image" content="https://vibespaceos.com/images/og-cover.png" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/phone-os.css" />
+  <link rel="stylesheet" href="css/desktop-os.css" />
+
+  <script type="application/ld+json">
+  {
+    "@context":"https://schema.org",
+    "@type":"SoftwareApplication",
+    "name":"VibeSpace",
+    "applicationCategory":"DeveloperApplication",
+    "operatingSystem":"Windows, macOS, Linux",
+    "softwareVersion":"0.1.45",
+    "license":"https://www.apache.org/licenses/LICENSE-2.0",
+    "url":"https://vibespaceos.com/",
+    "downloadUrl":"https://github.com/Cookie774-GameDev/VibeSpace/releases/latest",
+    "codeRepository":"https://github.com/Cookie774-GameDev/VibeSpace",
+    "description":"Local-first desktop AI workspace with multi-model chat, agent councils, terminal swarms, Jarvis voice, AI calling, skills catalog, memory, tasks, and Inspector.",
+    "offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}
+  }
+  </script>
 </head>
 <body>
-  <header class="nav">
+  <div class="bg-orbs">
+    <div class="orb o1"></div><div class="orb o2"></div><div class="orb o3"></div><div class="orb o4"></div>
+  </div>
+  <div id="cursor-glow"></div>
+
+  <!-- NAV -->
+  <header class="nav" id="nav">
     <div class="nav-inner">
-      <a class="brand" href="#top"><img class="mark-img" src="images/vibespace-logo.png" width="32" height="32" alt="" /><span>VibeSpace</span></a>
-      <nav class="nav-links" aria-label="Primary">
-        <a href="#calling">Calling</a><a href="#features">Features</a><a href="#models">Models</a><a href="#download">Download</a><a href="#community">Community</a><a class="nav-cta" href="#install">Install</a>
+      <a class="brand" href="#top"><img src="images/vibespace-logo.png" width="34" height="34" alt="VibeSpace logo" /><span>VibeSpace</span></a>
+      <nav class="nav-links" id="navLinks" aria-label="Primary">
+        <a href="#features">Features</a>
+        <a href="#swarm">Terminals</a>
+        <a href="#voice">Voice</a>
+        <a href="#calling">Calling</a>
+        <a href="#hive">Hive</a>
+        <a href="#pricing">Pricing</a>
+        <a href="#download">Download</a>
+        <a href="#faq">FAQ</a>
+        <a class="nav-cta btn" href="#download">Install</a>
       </nav>
+      <button class="nav-burger" id="navBurger" aria-label="Toggle nav" aria-expanded="false">&#9776;</button>
     </div>
   </header>
 
-  <section id="top" class="hero">
-    <div>
-      <span class="eyebrow"><span class="dot"></span> v0.1.42 · vibe coding app</span>
-      <h1><em>Vibe coding</em> for vibe coders. By a vibe coder.</h1>
-      <p class="lead">VibeSpace is the cozy all-in-one AI workspace for builders who context-switch all day: call your AI with Jarvis voice, run agent councils, code in terminal swarms, save system prompts, research deeper, remember everything, and keep shipping.</p>
-      <div class="cta-row">
-        <a class="btn btn-primary" href="#download">Download VibeSpace</a>
-        <a class="btn btn-copper" href="#calling">See calling</a>
-        <a class="btn" data-link="github" href="https://github.com/Cookie774-GameDev/VibeSpace">GitHub</a>
-        <a class="btn" data-link="discord" href="#discord-placeholder">Discord</a>
-        <a class="btn" data-link="youtube" href="#youtube-placeholder">YouTube</a>
+  <!-- HERO -->
+  <section class="hero" id="top">
+    <div class="hero-grid">
+      <div>
+        <span class="eyebrow"><span class="dot-live"></span> v0.1.45 &middot; vibe coding app</span>
+        <h1 id="heroH1"><span class="word">Vibe</span> <span class="word">coding</span> <span class="word">for</span> <span class="word">vibe</span> <span class="word">coders.</span> <span class="word"><em>By</em></span> <span class="word"><em>a</em></span> <span class="word"><em>vibe</em></span> <span class="word"><em>coder.</em></span></h1>
+        <p class="lead">VibeSpace is the cozy all-in-one AI workspace for builders who context-switch all day: chat with every model, convene agent councils, code in terminal swarms, talk to Jarvis hands-free, make AI phone calls, manage tasks, remember everything, and keep shipping.</p>
+        <div class="hero-cta">
+          <a class="btn primary lg" href="#download">Download VibeSpace</a>
+          <a class="btn ghost lg" href="https://github.com/Cookie774-GameDev/VibeSpace" target="_blank" rel="noopener"><span data-ic="star"></span> Star on GitHub</a>
+        </div>
+        <div class="hero-meta">
+          <p class="platforms">Local-first &middot; BYOK &middot; <b>Windows</b> &middot; <b>macOS</b> &middot; <b>Linux</b> &middot; Apache 2.0</p>
+          <div class="install-row">
+            <div class="install" aria-label="Install command">
+              <span class="prompt" id="installPrompt">PS&gt;</span>
+              <code class="cmd" id="installCmd">irm https://raw.githubusercontent.com/Cookie774-GameDev/VibeSpace/main/install/install.ps1 | iex</code>
+              <button class="copy" data-copy-target="installCmd">COPY</button>
+            </div>
+            <div class="tabs" role="tablist" aria-label="Install command selector">
+              <button class="tab active" data-os="windows" role="tab">Windows</button>
+              <button class="tab" data-os="macos" role="tab">macOS</button>
+              <button class="tab" data-os="linux" role="tab">Linux</button>
+            </div>
+            <p class="micro">One line. The right installer. Your keys. Your machine. Yours forever.</p>
+          </div>
+        </div>
       </div>
-      <div id="install" class="install" aria-label="Install command">
-        <span class="prompt" id="install-prompt">PS&gt;</span>
-        <code class="cmd" id="install-cmd">irm https://raw.githubusercontent.com/Cookie774-GameDev/VibeSpace/main/install/install.ps1 | iex</code>
-        <button class="copy" data-copy-target="install-cmd">COPY</button>
-      </div>
-      <div class="tabs" role="tablist" aria-label="Install command selector">
-        <button class="tab active" data-os="windows">Windows</button>
-        <button class="tab" data-os="macos">macOS</button>
-        <button class="tab" data-os="linux">Linux</button>
-      </div>
-      <p class="micro">One line. The right installer. Your keys. Your machine. Yours forever.</p>
-    </div>
-    <div class="hero-card reveal">
-      <div class="window">
-        <div class="window-top"><span class="light"></span><span class="light"></span><span class="light"></span><strong style="margin-left:8px">Calling Sage...</strong></div>
-        <div class="phone-screen">
-          <div class="call-ring">J</div>
-          <div class="bubble">"Sage, what broke in the build? Just the exact file and next step."</div>
-          <div class="bubble ai">"I found it. Terminal exited non-zero in <code>auth.ts</code>. Want me to read the diff?"</div>
-          <div class="metric-row">
-            <div class="metric"><strong>&lt;800ms</strong><span>phone turn target</span></div>
-            <div class="metric"><strong>$0</strong><span>in-app call path</span></div>
-            <div class="metric"><strong>read-only</strong><span>by default</span></div>
+      <div>
+        <div class="sim-tabs" id="simTabs">
+          <button class="sim-tab active" data-sim="desktop"><span data-ic="computer"></span> Computer</button>
+          <button class="sim-tab" data-sim="phone"><span data-ic="phone"></span> Phone</button>
+        </div>
+
+        <!-- DESKTOP SIMULATOR -->
+        <div class="sim-panel active" id="simDesktop">
+          <div class="desktop-frame" id="desktopOS">
+            <div class="desktop-boot">
+              <div class="desktop-boot-logo">VibeSpace</div>
+              <div class="desktop-boot-msg">Starting VibeSpace...</div>
+              <div class="desktop-boot-bar"></div>
+            </div>
+            <div class="desktop-menubar">
+              <span class="mb-logo"><img src="images/vibespace-logo.png" alt="" /> VibeSpace</span>
+              <span class="mb-menu">File
+                <div class="mb-dropdown">
+                  <div class="mb-item" data-action="open-terminal">New Terminal</div>
+                  <div class="mb-item" data-action="open-chat">New Chat</div>
+                </div>
+              </span>
+              <span class="mb-menu">Terminal
+                <div class="mb-dropdown">
+                  <div class="mb-item" data-action="open-terminal">Open Terminal</div>
+                  <div class="mb-item" data-action="open-game">Ship the Build</div>
+                </div>
+              </span>
+              <span class="mb-menu">Settings
+                <div class="mb-dropdown">
+                  <div class="mb-item" data-action="open-settings">Preferences</div>
+                  <div class="mb-item" data-action="about">About VibeSpace</div>
+                </div>
+              </span>
+              <span class="mb-menu">Help
+                <div class="mb-dropdown">
+                  <div class="mb-item" data-action="open-voice">Jarvis Voice</div>
+                  <div class="mb-item" onclick="window.open('https://github.com/Cookie774-GameDev/VibeSpace','_blank')">GitHub &#8599;</div>
+                </div>
+              </span>
+              <span class="mb-clock">Mon 12:00</span>
+            </div>
+            <div class="desktop-wallpaper"></div>
+            <div class="desktop-windows"></div>
+            <div class="desktop-dock">
+              <div class="dock-icon" data-app="terminal" title="Terminal" data-ic="terminal"><span class="di-dot"></span></div>
+              <div class="dock-icon" data-app="chat" title="Chat" data-ic="chat"><span class="di-dot"></span></div>
+              <div class="dock-icon" data-app="voice" title="Voice" data-ic="voice"><span class="di-dot"></span></div>
+              <div class="dock-icon" data-app="inspector" title="Inspector" data-ic="inspector2"><span class="di-dot"></span></div>
+              <div class="dock-icon" data-app="skills" title="Skills" data-ic="skills2"><span class="di-dot"></span></div>
+              <div class="dock-icon" data-app="hive" title="Hive" data-ic="hive2"><span class="di-dot"></span></div>
+              <div class="dock-icon" data-app="game" title="Ship the Build" data-ic="game"><span class="di-dot"></span></div>
+              <div class="dock-icon" data-app="settings" title="Settings" data-ic="settings"><span class="di-dot"></span></div>
+            </div>
+            <div class="desktop-toast"></div>
+          </div>
+        </div>
+
+        <!-- PHONE SIMULATOR -->
+        <div class="sim-panel" id="simPhone">
+          <div class="phone-frame" id="phoneOS">
+            <div class="phone-screen">
+              <div class="phone-notch"></div>
+              <div class="phone-statusbar">
+                <span class="sb-time">12:00</span>
+                <span class="sb-icons">
+                  <span>&#9679;&#9679;&#9679;</span>
+                  <span class="phone-battery"><span class="phone-battery-fill" style="width:82%"></span></span>
+                </span>
+              </div>
+              <div class="phone-content">
+                <!-- LOCK SCREEN -->
+                <div class="phone-screen-layer phone-lock active">
+                  <div class="lock-icon" data-ic="lock"></div>
+                  <div class="phone-lock-time">12:00</div>
+                  <div class="phone-lock-date">Monday, Jan 1</div>
+                  <div class="phone-lock-hint">Swipe up or tap to unlock</div>
+                </div>
+
+                <!-- HOME SCREEN -->
+                <div class="phone-screen-layer phone-home-screen hidden-right">
+                  <div class="phone-home">
+                    <div class="phone-app-grid">
+                      <div class="phone-app-icon" data-app="calls"><div class="icon-box" style="background:#34d6e6" data-ic="call"></div><span class="icon-label">Calls</span></div>
+                      <div class="phone-app-icon" data-app="messages"><div class="icon-box" style="background:#6F8F66" data-ic="chat"></div><span class="icon-label">Messages</span></div>
+                      <div class="phone-app-icon" data-app="browser"><div class="icon-box" style="background:#8B5FB5" data-ic="browser"></div><span class="icon-label">Browser</span></div>
+                      <div class="phone-app-icon" data-app="dial"><div class="icon-box" style="background:#B5613A" data-ic="dialpad"></div><span class="icon-label">Dial</span></div>
+                      <div class="phone-app-icon" data-app="settings"><div class="icon-box" style="background:#5A524A" data-ic="settings"></div><span class="icon-label">Settings</span></div>
+                      <div class="phone-app-icon" data-app="appstore"><div class="icon-box" style="background:#C58A3D" data-ic="appstore"></div><span class="icon-label">App Store</span></div>
+                      <div class="phone-app-icon" data-app="notes"><div class="icon-box" style="background:#4DD8E8" data-ic="notes"></div><span class="icon-label">Notes</span></div>
+                      <div class="phone-app-icon" data-app="vibecast"><div class="icon-box" style="background:#9CC68B" data-ic="weather"></div><span class="icon-label">VibeCast</span></div>
+                      <div class="phone-app-icon" data-app="notifications"><div class="icon-box" style="background:#B98AE8" data-ic="notifications"></div><span class="icon-label">Alerts</span></div>
+                      <div class="phone-app-icon" data-app="calls" data-action="simulate-incoming"><div class="icon-box" style="background:#944D2D" data-ic="call"></div><span class="icon-label">Jarvis</span></div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- CALLS APP -->
+                <div class="phone-screen-layer phone-app-screen hidden-right" data-app="calls">
+                  <div class="phone-navbar"><button class="phone-back-btn">&#8249;</button><span class="phone-nav-title">Contacts</span></div>
+                  <div class="phone-app-body"><div class="call-list"></div></div>
+                </div>
+
+                <!-- MESSAGES LIST -->
+                <div class="phone-screen-layer phone-app-screen hidden-right" data-app="messages">
+                  <div class="msg-list-view">
+                    <div class="phone-navbar"><span class="phone-nav-title">Messages</span></div>
+                    <div class="phone-app-body"><div class="msg-list"></div></div>
+                  </div>
+                  <div class="phone-screen-layer msg-chat-view hidden-right">
+                    <div class="phone-navbar"><button class="phone-back-btn msg-back-btn">&#8249;</button><span class="phone-nav-title">Chat</span></div>
+                    <div class="msg-bubbles"></div>
+                    <div class="msg-input-row">
+                      <input class="msg-input" type="text" placeholder="Type a message..." />
+                      <button class="msg-send" aria-label="Send">&#9658;</button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- BROWSER APP -->
+                <div class="phone-screen-layer phone-app-screen hidden-right" data-app="browser">
+                  <div class="phone-navbar"><button class="phone-back-btn">&#8249;</button><span class="phone-nav-title">Browser</span></div>
+                  <div class="phone-browser-bar">
+                    <div class="phone-browser-url">github.com/Cookie774-GameDev/VibeSpace</div>
+                    <button class="phone-browser-go">Go</button>
+                  </div>
+                  <div class="phone-browser-body"></div>
+                </div>
+
+                <!-- DIAL PAD APP -->
+                <div class="phone-screen-layer phone-app-screen hidden-right" data-app="dial">
+                  <div class="phone-navbar"><button class="phone-back-btn">&#8249;</button><span class="phone-nav-title">Dial Pad</span></div>
+                  <div class="phone-app-body">
+                    <div class="dialpad">
+                      <div class="dialpad-display"></div>
+                      <div class="dialpad-grid">
+                        <button class="dial-key" data-key="1">1<span class="dk-letters"></span></button>
+                        <button class="dial-key" data-key="2">2<span class="dk-letters">ABC</span></button>
+                        <button class="dial-key" data-key="3">3<span class="dk-letters">DEF</span></button>
+                        <button class="dial-key" data-key="4">4<span class="dk-letters">GHI</span></button>
+                        <button class="dial-key" data-key="5">5<span class="dk-letters">JKL</span></button>
+                        <button class="dial-key" data-key="6">6<span class="dk-letters">MNO</span></button>
+                        <button class="dial-key" data-key="7">7<span class="dk-letters">PQRS</span></button>
+                        <button class="dial-key" data-key="8">8<span class="dk-letters">TUV</span></button>
+                        <button class="dial-key" data-key="9">9<span class="dk-letters">WXYZ</span></button>
+                        <button class="dial-key" data-key="*">*</button>
+                        <button class="dial-key" data-key="0">0<span class="dk-letters">+</span></button>
+                        <button class="dial-key" data-key="#">#</button>
+                      </div>
+                      <button class="dial-call-btn" aria-label="Call" data-ic="call"></button>
+                      <div class="dial-info">Real PSTN on paid plans &middot; In-app WebRTC free</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- SETTINGS APP -->
+                <div class="phone-screen-layer phone-app-screen hidden-right" data-app="settings">
+                  <div class="phone-navbar"><button class="phone-back-btn">&#8249;</button><span class="phone-nav-title">Settings</span></div>
+                  <div class="phone-app-body">
+                    <div class="phone-settings">
+                      <div class="phone-setting-row"><span class="ps-label">Custom time</span><input class="set-input ps-time-input" type="datetime-local" /></div>
+                      <div class="phone-setting-row"><span class="ps-label">Ringtone</span><span class="ps-value">Cosmic &#9835;</span></div>
+                      <div class="phone-setting-row"><span class="ps-label">Sync with desktop</span><button class="ps-toggle on"></button></div>
+                      <div style="font-size:11px;color:var(--faint);text-align:center;padding:16px;font-family:Fraunces,serif;font-style:italic">VibeSpace v0.1.45<br>Apache 2.0</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- APP STORE -->
+                <div class="phone-screen-layer phone-app-screen hidden-right" data-app="appstore">
+                  <div class="phone-navbar"><button class="phone-back-btn">&#8249;</button><span class="phone-nav-title">App Store</span></div>
+                  <div class="phone-app-body">
+                    <div class="phone-appstore">
+                      <div class="appstore-card">
+                        <div class="as-icon" data-ic="computer"></div>
+                        <div class="as-name">VibeSpace Desktop</div>
+                        <div class="as-desc">The full AI workspace — terminals, agents, voice, skills, and Inspector. Free and open source.</div>
+                        <a class="as-btn" href="#download">Get Desktop</a>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- NOTES APP -->
+                <div class="phone-screen-layer phone-app-screen hidden-right" data-app="notes">
+                  <div class="phone-navbar"><button class="phone-back-btn">&#8249;</button><span class="phone-nav-title">Notes</span><button class="phone-new-note" style="background:none;border:none;color:var(--gold);font-size:18px;cursor:pointer">+</button></div>
+                  <div class="phone-app-body">
+                    <div class="notes-list" style="padding:8px 14px"></div>
+                  </div>
+                </div>
+
+                <!-- VIBECAST APP -->
+                <div class="phone-screen-layer phone-app-screen hidden-right" data-app="vibecast">
+                  <div class="phone-navbar"><button class="phone-back-btn">&#8249;</button><span class="phone-nav-title">VibeCast</span></div>
+                  <div class="phone-app-body">
+                    <div class="vibecast-body" style="padding:20px 16px;text-align:center"></div>
+                  </div>
+                </div>
+
+                <!-- NOTIFICATIONS APP -->
+                <div class="phone-screen-layer phone-app-screen hidden-right" data-app="notifications">
+                  <div class="phone-navbar"><button class="phone-back-btn">&#8249;</button><span class="phone-nav-title">Alerts</span></div>
+                  <div class="phone-app-body">
+                    <div class="notif-list" style="padding:8px 14px"></div>
+                  </div>
+                </div>
+              </div>
+              <div class="phone-call-screen">
+                <div class="call-avatar-ring">J</div>
+                <div class="call-name">Jarvis</div>
+                <div class="call-status">calling...</div>
+                <div class="call-timer">00:00</div>
+                <div class="call-captions"></div>
+                <div class="call-controls">
+                  <button class="call-btn mute" aria-label="Mute" data-ic="mute"></button>
+                  <button class="call-btn end" aria-label="End call" data-ic="endcall"></button>
+                  <button class="call-btn speaker" aria-label="Speaker" data-ic="speaker"></button>
+                </div>
+              </div>
+
+              <!-- INCOMING CALL BANNER -->
+              <div class="phone-incoming-banner">
+                <div class="ib-avatar">J</div>
+                <div class="ib-info"><div class="ib-name">Jarvis</div><div class="ib-status">incoming call...</div></div>
+                <button class="ib-action">Answer</button>
+              </div>
+
+              <!-- TOAST -->
+              <div class="phone-toast"></div>
+
+              <!-- HOME INDICATOR -->
+              <div class="phone-home-indicator" aria-label="Home"></div>
+            </div>
           </div>
         </div>
       </div>
     </div>
   </section>
 
-  <section id="calling" class="warm-band">
-    <div class="section-head reveal"><div class="section-kicker">Main feature · AI calling</div><h2>Phone your AI like a friend. <em>It picks up.</em></h2><p class="lead">VibeSpace ships a real calling layer. Dial your assistant from any phone through Twilio, or tap the green Call button in the desktop app for a free LiveKit call. Jarvis voice can talk, search, summarize files, create tasks, and call you when something important happens.</p></div>
-    <div class="grid cards-3">
-      <div class="card reveal"><span class="num">i</span><h3>Call from any phone</h3><p>Path A uses Twilio Programmable Voice + Media Streams so a real number can route into Sage, your voice Jarvis.</p></div>
-      <div class="card reveal"><span class="num">ii</span><h3>Tap to call in-app</h3><p>Path C uses LiveKit WebRTC. No telco minutes, lower latency, and the same assistant brain inside your VibeSpace window.</p></div>
-      <div class="card reveal"><span class="num">iii</span><h3>Let Sage call you</h3><p>Outbound triggers can ring your phone for build failures, deadline alerts, errors, or manual check-ins.</p></div>
+  <!-- SOCIAL PROOF -->
+  <div class="proof">
+    <div class="proof-inner reveal">
+      <div class="proof-item"><strong>Apache 2.0</strong> Open source</div>
+      <div class="proof-item"><strong>21+</strong> Model providers</div>
+      <div class="proof-item"><strong>Local-first</strong> Keys on device</div>
+      <div class="proof-item"><strong>Ollama</strong> Offline mode</div>
+      <div class="proof-item"><strong>v0.1.45</strong> Shipping now</div>
     </div>
-    <div class="grid cards-3" style="margin-top:16px">
-      <div class="card reveal"><h3>The 9pm dog walk</h3><p>Call Jarvis while walking. Ask what changed in a project, add a task, or summarize the file you forgot to read.</p></div>
-      <div class="card reveal"><h3>The 2am build failure</h3><p>Sage can call when a build fails, read the traceback, name the file, and leave you with a morning fix list.</p></div>
-      <div class="card reveal"><h3>The driving-home TODO</h3><p>Hands stay on the wheel. Tell Jarvis the task, priority, due date, and project. It lands in your list.</p></div>
-    </div>
-  </section>
+  </div>
 
+  <!-- FEATURES -->
   <section id="features">
-    <div class="section-head reveal"><div class="section-kicker">All-in-one workspace</div><h2>Agents, coding, system prompts, research, calls, tasks, memory. <em>One calm place.</em></h2><p class="lead">VibeSpace is not another model tab. It is the integration layer: every model, every agent, every voice, and every task under one persistent memory.</p></div>
-    <div class="grid cards-3">
-      <div class="card reveal"><span class="num">1.0</span><h3>Convene the council</h3><p>Run Jarvis, Coder, Researcher, Critic, Memory Keeper, and Action Extractor as visible collaborators.</p></div>
-      <div class="card reveal"><span class="num">2.0</span><h3>Code in a swarm</h3><p>Real PTY terminals, pane grids, Scout / Builder / Reviewer roles, Claude Code, OpenCode, shell commands, and manual tile resizing.</p></div>
-      <div class="card reveal"><span class="num">3.0</span><h3>Save system prompts</h3><p>Bundled agent prompts, persona overlays, role-specific coding prompts, and a skills system designed for a marketplace.</p></div>
-      <div class="card reveal"><span class="num">4.0</span><h3>Research deeper</h3><p>Researcher agents read docs, synthesize, cite evidence, compare competitors, and hand work back to Coder or Critic.</p></div>
-      <div class="card reveal"><span class="num">5.0</span><h3>Remember everything</h3><p>Persistent memory across chats, voice, files, meetings, tasks, projects, and agent output. Local-first by design.</p></div>
-      <div class="card reveal"><span class="num">6.0</span><h3>Approve real actions</h3><p>24 built-in actions render as Approve / Cancel cards. Navigate, open terminals, run commands, toggle themes, and launch tools safely.</p></div>
+    <div class="sec-head reveal">
+      <div class="kicker">All-in-one workspace</div>
+      <h2>Agents, coding, voice, calls, skills, memory, tasks. <em>One calm place.</em></h2>
+      <p class="lead">VibeSpace is not another model tab. It is the integration layer: every model, every agent, every voice, and every task under one persistent memory.</p>
+    </div>
+    <div class="grid g3 reveal-stagger">
+      <div class="card"><div class="ico plum" data-ic="council"></div><h3>Agent council</h3><p>Run Jarvis, Coder, Researcher, Critic, Memory Keeper, and Action Extractor as visible collaborators that think in parallel and synthesize.</p></div>
+      <div class="card"><div class="ico copper" data-ic="terminal"></div><h3>Terminal swarm</h3><p>Real PTY terminals in a tile grid. Scout, Builder, Reviewer roles. Claude Code, OpenCode, shell commands, manual resizing, durable history.</p><span class="tag new">v0.1.45</span></div>
+      <div class="card"><div class="ico sage" data-ic="chat"></div><h3>Multi-model chat</h3><p>BYOK with 21+ providers. Persistent threads, slash commands, project context, and Hive stacks that route across models automatically.</p></div>
+      <div class="card"><div class="ico copper" data-ic="voice"></div><h3>Jarvis voice</h3><p>Hands-free push-to-talk with local Kokoro voices (free, unlimited). Optional cloud TTS on paid plans. Separate from the composer mic.</p></div>
+      <div class="card"><div class="ico" data-ic="call"></div><h3>AI calling</h3><p>Dial your AI from any phone via Twilio PSTN, or tap Call in-app via LiveKit WebRTC. Jarvis can call you for build failures and alerts.</p></div>
+      <div class="card"><div class="ico plum" data-ic="skills"></div><h3>Skills catalog</h3><p>Unified skills library with SkillEditor, markdown preview, built-in and custom skills. Use <code>/skills</code> in chat to pick one.</p><span class="tag new">v0.1.45</span></div>
+      <div class="card"><div class="ico sage" data-ic="memory"></div><h3>Memory &amp; context</h3><p>Persistent memory across chats, voice, files, tasks, and projects. Context maps scoped per project. Local-first by design.</p></div>
+      <div class="card"><div class="ico" data-ic="inspector"></div><h3>Inspector &amp; Kanban</h3><p>Today, Quick Launch, Context, Tools Run, Trace milestones, and Active Work. Milestone-driven Kanban board aligned with the Inspector trace store.</p><span class="tag new">v0.1.45</span></div>
+      <div class="card"><div class="ico copper" data-ic="tasks"></div><h3>Tasks &amp; actions</h3><p>Capture todos, schedule reminders, track work visually. 24 built-in actions render as Approve/Cancel cards. Navigate, run commands, toggle themes safely.</p></div>
     </div>
   </section>
 
-  <section id="council" class="warm-band">
-    <div class="section-head reveal"><div class="section-kicker">Council mode</div><h2>Four agents, <em>thinking together.</em></h2><p class="lead">Jarvis fans work out to specialists, then a critic synthesizes the best answer. The workspace shows the thinking instead of hiding it behind a spinner.</p></div>
-    <div class="grid cards-2">
-      <div class="card reveal">
-        <h3>Live agent canvas</h3>
-        <div class="mock">
-          <div class="agent"><span class="avatar">J</span><div><strong>Jarvis</strong><small>Routing prompt, checking project context.</small></div></div>
-          <div class="agent"><span class="avatar">R</span><div><strong>Researcher</strong><small>Reading docs and competitor landscape.</small></div></div>
-          <div class="agent"><span class="avatar">C</span><div><strong>Coder</strong><small>Mapping smallest safe implementation diff.</small></div></div>
-          <div class="agent"><span class="avatar">!</span><div><strong>Critic</strong><small>Finding gaps, risks, and missing tests.</small></div></div>
+  <!-- TERMINAL SWARM -->
+  <section id="swarm">
+    <div class="sec-head center reveal">
+      <div class="kicker">Terminal swarm</div>
+      <h2>Ten live terminals. <em>One workspace.</em></h2>
+      <p class="lead">Real PTY shells in a tile grid with agent roles, scrollback that survives restarts, and Rust-backed terminal agent coordination.</p>
+    </div>
+    <div class="swarm reveal">
+      <div class="swarm-pane">
+        <div class="ph">PANE 1 &middot; SCOUT</div>
+        <div class="ln mu">$ scout scan src/</div>
+        <div class="ln ok">  3 files changed</div>
+        <div class="ln">  auth.ts:42 +12</div>
+        <div class="ln">  api.ts:8 -3</div>
+        <div class="ln cu">  routing to builder</div>
+        <span class="cursor-blink"></span>
+      </div>
+      <div class="swarm-pane">
+        <div class="ph">PANE 2 &middot; BUILDER</div>
+        <div class="ln mu">$ build --fix</div>
+        <div class="ln ok">  patching auth.ts</div>
+        <div class="ln">  + token refresh</div>
+        <div class="ln">  + error boundary</div>
+        <div class="ln cu">  ready for review</div>
+        <span class="cursor-blink"></span>
+      </div>
+      <div class="swarm-pane">
+        <div class="ph">PANE 3 &middot; REVIEWER</div>
+        <div class="ln mu">$ review diff</div>
+        <div class="ln ok">  2 issues found</div>
+        <div class="ln">  missing test case</div>
+        <div class="ln">  edge: null token</div>
+        <div class="ln cu">  blocking merge</div>
+        <span class="cursor-blink"></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- FLOW CIRCLE -->
+  <section id="story">
+    <div class="sec-head center reveal">
+      <div class="kicker">How it flows</div>
+      <h2>One system, <em>always moving.</em></h2>
+      <p class="lead">Describe, explore, build, ship — then memory feeds the next loop. The whole thing runs as one connected cycle.</p>
+    </div>
+    <div class="flow-circle reveal" id="flowCircle">
+      <div class="flow-orbit">
+        <svg class="flow-ring" viewBox="0 0 400 400" fill="none" aria-hidden="true">
+          <circle cx="200" cy="200" r="150" stroke="var(--border)" stroke-width="1" stroke-dasharray="4 6"/>
+          <circle class="flow-ring-anim" cx="200" cy="200" r="150" stroke="var(--copper)" stroke-width="1.5" stroke-dasharray="20 940" stroke-linecap="round"/>
+          <line class="flow-arrow" x1="56" y1="200" x2="344" y2="200" stroke="var(--border)" stroke-width="1" stroke-dasharray="3 5"/>
+          <line class="flow-arrow" x1="200" y1="56" x2="200" y2="344" stroke="var(--border)" stroke-width="1" stroke-dasharray="3 5"/>
+        </svg>
+        <div class="flow-hub">
+          <span class="flow-hub-label">VibeSpace</span>
+          <span class="flow-hub-sub">one memory</span>
+        </div>
+        <div class="flow-node flow-node-1" data-flow="0">
+          <div class="flow-node-ico" data-ic="chat" style="color:var(--copper-soft)"></div>
+          <div class="flow-node-title">1. Describe</div>
+          <div class="flow-node-desc">Type or speak intent. Jarvis routes to the right agents.</div>
+        </div>
+        <div class="flow-node flow-node-2" data-flow="1">
+          <div class="flow-node-ico" data-ic="council" style="color:var(--plum)"></div>
+          <div class="flow-node-title">2. Council</div>
+          <div class="flow-node-desc">Researcher, Coder, Critic think in parallel — visible, not hidden.</div>
+        </div>
+        <div class="flow-node flow-node-3" data-flow="2">
+          <div class="flow-node-ico" data-ic="terminal" style="color:var(--sage)"></div>
+          <div class="flow-node-title">3. Swarm</div>
+          <div class="flow-node-desc">Scout, Builder, Reviewer work the PTY grid. You approve.</div>
+        </div>
+        <div class="flow-node flow-node-4" data-flow="3">
+          <div class="flow-node-ico" data-ic="tasks" style="color:var(--gold)"></div>
+          <div class="flow-node-title">4. Ship</div>
+          <div class="flow-node-desc">Critic synthesizes. Kanban updates. Memory saves. Loop again.</div>
         </div>
       </div>
-      <div class="card reveal"><h3>Built for vibe coders</h3><p>Describe intent, let agents explore, build, review, and synthesize. VibeSpace is the AI workspace for people who ship by conversation, terminal, and taste.</p><p style="margin-top:14px"><span class="chip live">Mention routing</span><span class="chip live">Synthesis</span><span class="chip live">Agent roles</span><span class="chip live">Traceable work</span></p></div>
+      <div class="flow-legend">
+        <span class="flow-legend-item"><span class="flow-ledge-dot" style="background:var(--copper-soft)"></span> Describe</span>
+        <span class="flow-legend-item"><span class="flow-ledge-dot" style="background:var(--plum)"></span> Council</span>
+        <span class="flow-legend-item"><span class="flow-ledge-dot" style="background:var(--sage)"></span> Swarm</span>
+        <span class="flow-legend-item"><span class="flow-ledge-dot" style="background:var(--gold)"></span> Ship</span>
+      </div>
     </div>
   </section>
 
-  <section id="models">
-    <div class="section-head reveal"><div class="section-kicker">Model support</div><h2>Bring Claude, GPT, Gemini, Groq, Ollama, open-source models, and more.</h2><p class="lead">VibeSpace is BYOK first. Five providers are live today; the rest already have key persistence and UI paths wired so new adapters can ship fast.</p></div>
-    <div class="provider-grid">
-      <div class="provider reveal"><strong><span class="brand-dot" style="background:#D97757"></span>Anthropic</strong><span>Claude · live</span></div><div class="provider reveal"><strong><span class="brand-dot" style="background:#10A37F"></span>OpenAI</strong><span>GPT · live</span></div><div class="provider reveal"><strong><span class="brand-dot" style="background:#4285F4"></span>Google</strong><span>Gemini · live/free</span></div><div class="provider reveal"><strong><span class="brand-dot" style="background:#F55036"></span>Groq</strong><span>Llama fast · live/free</span></div><div class="provider reveal"><strong><span class="brand-dot" style="background:#000"></span>Ollama</strong><span>local · live</span></div><div class="provider reveal"><strong><span class="brand-dot" style="background:#000"></span>xAI</strong><span>Grok · wired</span></div>
-      <div class="provider reveal"><strong><span class="brand-dot" style="background:#4D6BFE"></span>DeepSeek</strong><span>R1 · wired</span></div><div class="provider reveal"><strong><span class="brand-dot" style="background:#FA500F"></span>Mistral</strong><span>Codestral · wired</span></div><div class="provider reveal"><strong><span class="brand-dot" style="background:#39594D"></span>Cohere</strong><span>RAG · wired</span></div><div class="provider reveal"><strong><span class="brand-dot" style="background:#20B8CD"></span>Perplexity</strong><span>search · wired</span></div><div class="provider reveal"><strong><span class="brand-dot" style="background:#0F6FFF"></span>Together</strong><span>open models · wired</span></div><div class="provider reveal"><strong><span class="brand-dot" style="background:#6720FF"></span>Fireworks</strong><span>serving · wired</span></div>
-      <div class="provider reveal"><strong><span class="brand-dot" style="background:#000"></span>Replicate</strong><span>community · wired</span></div><div class="provider reveal"><strong><span class="brand-dot" style="background:#0866FF"></span>Llama</strong><span>open source</span></div><div class="provider reveal"><strong><span class="brand-dot" style="background:#6E4F6F"></span>OpenRouter</strong><span>gateway · wired</span></div><div class="provider reveal"><strong><span class="brand-dot" style="background:#4F6E47"></span>Hyperbolic</strong><span>GPU pricing · wired</span></div><div class="provider reveal"><strong><span class="brand-dot" style="background:#C58A3D"></span>Novita</strong><span>inference · wired</span></div><div class="provider reveal"><strong><span class="brand-dot" style="background:#8B8077"></span>Lambda</strong><span>cloud · wired</span></div>
+  <!-- JARVIS VOICE -->
+  <section id="voice">
+    <div class="sec-head reveal">
+      <div class="kicker">Jarvis voice</div>
+      <h2>Talk to your AI. <em>Hands-free.</em></h2>
+      <p class="lead">Push-to-talk with local Kokoro voices &mdash; free and unlimited for everyone. Jarvis and Friday presets need no key. Optional premium cloud voices on paid plans, with automatic fallback so it always works.</p>
+    </div>
+    <div class="grid g3 reveal-stagger">
+      <div class="card" style="text-align:center">
+        <div class="call-ring">J</div>
+        <h3>Jarvis &amp; Friday</h3>
+        <p>Free local voice presets. Calm British-inspired Jarvis and fast tactical Friday. No API key required. Unlimited usage.</p>
+      </div>
+      <div class="card"><div class="ico copper" data-ic="voice"></div><h3>Premium cloud voice</h3><p>Best-in-class neural voices on paid plans, metered and private, routed through a secure backend. Auto-falls-back to local when quota runs out.</p></div>
+      <div class="card"><div class="ico sage" data-ic="voice"></div><h3>Push-to-talk</h3><p><kbd>Mod+Space</kbd> opens the voice panel. Hands-free turn-taking with end/cancel phrases. Wake word gated on hands-free mode. Composer mic is separate.</p></div>
     </div>
   </section>
 
-  <section id="download" class="warm-band">
-    <div class="section-head reveal"><div class="section-kicker">Download</div><h2>Three steps. <em>Any desktop.</em></h2><p class="lead">VibeSpace supports Windows, macOS, and Linux. Use the one-liner, approve the installer, then launch VibeSpace and add your first provider key.</p></div>
-    <div class="grid cards-3">
-      <div class="card download-card reveal"><h3>Windows 10/11</h3><div class="codebox"><code id="win-cmd">irm https://raw.githubusercontent.com/Cookie774-GameDev/VibeSpace/main/install/install.ps1 | iex</code><button class="copy" data-copy-target="win-cmd">copy</button></div><ol class="steps"><li>Open PowerShell.</li><li>Run the one-line installer.</li><li>Type <code>Jarvis</code> in a terminal or launch VibeSpace from Start Menu.</li></ol></div>
-      <div class="card download-card reveal"><h3>macOS 12+</h3><div class="codebox"><code id="mac-cmd">curl -fsSL https://raw.githubusercontent.com/Cookie774-GameDev/VibeSpace/main/install/install.sh | bash</code><button class="copy" data-copy-target="mac-cmd">copy</button></div><ol class="steps"><li>Open Terminal.</li><li>Run the curl installer.</li><li>Open VibeSpace from Applications.</li></ol></div>
-      <div class="card download-card reveal"><h3>Linux</h3><div class="codebox"><code id="linux-cmd">curl -fsSL https://raw.githubusercontent.com/Cookie774-GameDev/VibeSpace/main/install/install.sh | bash</code><button class="copy" data-copy-target="linux-cmd">copy</button></div><ol class="steps"><li>Open your terminal.</li><li>Run the installer; deb/rpm/AppImage auto-detects.</li><li>Launch VibeSpace from your app menu.</li></ol></div>
+  <!-- AI CALLING -->
+  <section id="calling">
+    <div class="sec-head reveal">
+      <div class="kicker">AI calling</div>
+      <h2>Phone your AI like a friend. <em>It picks up.</em></h2>
+      <p class="lead">VibeSpace ships a real calling layer. Dial your assistant from any phone through Twilio, or tap Call in the desktop app for a free LiveKit WebRTC session. Jarvis can call you when something important happens.</p>
+    </div>
+    <div class="grid g3 reveal-stagger">
+      <div class="card"><span class="num"></span><h3>Call from any phone</h3><p>Path A uses Twilio Programmable Voice + Media Streams so a real number routes into Jarvis. PSTN minutes included on paid tiers.</p></div>
+      <div class="card"><h3>Tap to call in-app</h3><p>Path C uses LiveKit WebRTC. No telco minutes, lower latency, same assistant brain inside your VibeSpace window. Free on every plan.</p></div>
+      <div class="card"><h3>Let Jarvis call you</h3><p>Outbound triggers ring your phone for build failures, deadline alerts, errors, or manual check-ins. Per-plan minute budgets keep it honest.</p></div>
+    </div>
+    <div class="grid g3 reveal-stagger" style="margin-top:16px">
+      <div class="card"><h3>The 9pm dog walk</h3><p>Call Jarvis while walking. Ask what changed in a project, add a task, or summarize the file you forgot to read.</p></div>
+      <div class="card"><h3>The 2am build failure</h3><p>Jarvis can call when a build fails, read the traceback, name the file, and leave you a morning fix list.</p></div>
+      <div class="card"><h3>The driving-home TODO</h3><p>Hands stay on the wheel. Tell Jarvis the task, priority, due date, and project. It lands in your list.</p></div>
     </div>
   </section>
 
+  <!-- INTERACTIVE CALLING DEMO -->
+  <section id="calling-demo">
+    <div class="sec-head center reveal">
+      <div class="kicker">Try it now</div>
+      <h2>Call Jarvis. <em>Right here.</em></h2>
+      <p class="lead">Pick a contact, tap call, and watch live captions appear as the AI explains a real VibeSpace feature. Then send a message and get an in-character reply.</p>
+    </div>
+    <div class="jarvis-call-demo reveal" id="jarvisCallDemo">
+      <div class="jcd-left">
+        <div class="jcd-phone">
+          <div class="phone-frame" style="width:280px;height:540px">
+            <div class="phone-screen">
+              <div class="phone-notch"></div>
+              <div class="phone-statusbar">
+                <span class="sb-time jd-time">12:00</span>
+                <span class="sb-icons"><span>&#9679;&#9679;&#9679;</span><span class="phone-battery"><span class="phone-battery-fill" style="width:78%"></span></span></span>
+              </div>
+              <div class="phone-content">
+                <!-- Contact picker -->
+                <div class="phone-screen-layer jcd-picker active">
+                  <div class="phone-navbar"><span class="phone-nav-title">Call Jarvis</span></div>
+                  <div class="phone-app-body" style="overflow-y:auto">
+                    <div class="jcd-contact-list"></div>
+                  </div>
+                </div>
+                <!-- Call screen -->
+                <div class="phone-call-screen jcd-call">
+                  <div class="call-avatar-ring jcd-avatar">J</div>
+                  <div class="call-name jcd-name">Jarvis</div>
+                  <div class="call-status jcd-status">calling...</div>
+                  <div class="call-timer jcd-timer">00:00</div>
+                  <div class="call-captions jcd-captions"></div>
+                  <div class="call-controls">
+                    <button class="call-btn mute" data-ic="mute"></button>
+                    <button class="call-btn end jcd-end" data-ic="endcall"></button>
+                    <button class="call-btn speaker" data-ic="speaker"></button>
+                  </div>
+                </div>
+              </div>
+              <div class="phone-home-indicator"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="jcd-right">
+        <div class="jcd-tabs">
+          <button class="jcd-tab active" data-jcd="call">Call</button>
+          <button class="jcd-tab" data-jcd="msg">Messages</button>
+        </div>
+        <!-- Messages view -->
+        <div class="jcd-msg-view" style="display:none">
+          <div class="jcd-msg-header">
+            <select class="jcd-msg-contact">
+              <option value="jarvis">Jarvis</option>
+              <option value="sage">Sage</option>
+              <option value="builder">Builder</option>
+              <option value="critic">The Critic</option>
+              <option value="devrel">DevRel Bot</option>
+              <option value="midnight">Midnight Coder</option>
+              <option value="mom">Mom</option>
+            </select>
+          </div>
+          <div class="jcd-msg-bubbles"></div>
+          <div class="jcd-msg-input-row">
+            <input class="jcd-input" type="text" placeholder="Ask about voice, calls, terminals, skills, memory..." />
+            <button class="jcd-send" data-ic="send" aria-label="Send"></button>
+          </div>
+        </div>
+        <!-- Call tips view -->
+        <div class="jcd-call-view">
+          <div class="jcd-tip">Pick a contact on the left. They'll explain a real feature during the call.</div>
+          <div class="jcd-contacts-grid"></div>
+          <button class="jcd-incoming-btn">Simulate Jarvis calling you</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- HIVE / MULTI-MODEL -->
+  <section id="hive">
+    <div class="sec-head center reveal">
+      <div class="kicker">Hive &middot; multi-model</div>
+      <h2>21+ providers. <em>Your keys.</em> Or run offline.</h2>
+      <p class="lead">VibeSpace is BYOK first. Five providers are live adapters today; the rest have key persistence and UI wired so new adapters ship fast. Hive stacks route a single message across multiple models for quality.</p>
+    </div>
+    <div class="chips reveal">
+      <span class="chip live">Anthropic</span>
+      <span class="chip live">OpenAI</span>
+      <span class="chip live">Google Gemini</span>
+      <span class="chip live">Groq</span>
+      <span class="chip live">Ollama &middot; offline</span>
+      <span class="chip">xAI</span>
+      <span class="chip">DeepSeek</span>
+      <span class="chip">Mistral</span>
+      <span class="chip">Cohere</span>
+      <span class="chip">Perplexity</span>
+      <span class="chip">Together AI</span>
+      <span class="chip">Fireworks</span>
+      <span class="chip">OpenRouter</span>
+      <span class="chip">Replicate</span>
+      <span class="chip">Hugging Face</span>
+      <span class="chip">Azure OpenAI</span>
+      <span class="chip">AWS Bedrock</span>
+      <span class="chip">Cerebras</span>
+      <span class="chip">Novita</span>
+      <span class="chip">Hyperbolic</span>
+      <span class="chip">Lambda</span>
+    </div>
+  </section>
+
+  <!-- AGENT COUNCIL -->
+  <section id="council">
+    <div class="sec-head reveal">
+      <div class="kicker">Council mode</div>
+      <h2>Four agents, <em>thinking together.</em></h2>
+      <p class="lead">Jarvis fans work out to specialists, then a critic synthesizes the best answer. The workspace shows the thinking instead of hiding it behind a spinner.</p>
+    </div>
+    <div class="grid g2">
+      <div class="card">
+        <h3>Live agent canvas</h3>
+        <div class="agents-loop">
+          <div class="agent"><span class="avatar">J</span><div><strong>Jarvis</strong><small>Routing prompt, checking project context and memory.</small></div></div>
+          <div class="agent"><span class="avatar">R</span><div><strong>Researcher</strong><small>Reading docs and competitor landscape. Citing evidence.</small></div></div>
+          <div class="agent"><span class="avatar">C</span><div><strong>Coder</strong><small>Mapping smallest safe implementation diff.</small></div></div>
+          <div class="agent"><span class="avatar">!</span><div><strong>Critic</strong><small>Finding gaps, risks, and missing tests. Synthesizing.</small></div></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Built for vibe coders</h3>
+        <p>Describe intent, let agents explore, build, review, and synthesize. VibeSpace is the AI workspace for people who ship by conversation, terminal, and taste.</p>
+        <p style="margin-top:14px">
+          <span class="chip live">Mention routing</span>
+          <span class="chip live">Synthesis</span>
+          <span class="chip live">Agent roles</span>
+          <span class="chip live">Traceable work</span>
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- INSPECTOR & KANBAN -->
+  <section id="inspector">
+    <div class="sec-head reveal">
+      <div class="kicker">New in v0.1.45</div>
+      <h2>Inspector &amp; Kanban. <em>See the work.</em></h2>
+      <p class="lead">The Inspector panel surfaces Today, Quick Launch, Context, Tools Run, Trace milestones, and Active Work. The Kanban board is milestone-driven and aligned with the Inspector trace store, so what you see matches what happened.</p>
+    </div>
+    <div class="grid g3 reveal-stagger">
+      <div class="card"><div class="ico sage" data-ic="inspector"></div><h3>Inspector panel</h3><p>Today view, Quick Launch, Context, Tools Run, Trace milestones, and Active Work &mdash; all in one keyboard-first pane. <kbd>Mod+\\</kbd></p><span class="tag new">v0.1.45</span></div>
+      <div class="card"><div class="ico copper" data-ic="kanban"></div><h3>Kanban board</h3><p>Milestone-driven columns aligned with the Inspector trace store. Drag tasks across stages. Every card links back to the agent output that created it.</p><span class="tag new">v0.1.45</span></div>
+      <div class="card"><div class="ico plum" data-ic="skills"></div><h3>Skills catalog</h3><p>SkillEditor with markdown preview. Built-in and custom skills in one library. <code>/skills</code> picker in chat. Designed for a marketplace.</p><span class="tag new">v0.1.45</span></div>
+    </div>
+  </section>
+
+  <!-- PRICING -->
+  <section id="pricing">
+    <div class="sec-head center reveal">
+      <div class="kicker">Simple &amp; honest</div>
+      <h2>Plans that scale with you</h2>
+      <p class="lead">Free forever for local + BYOK. Paid plans add hosted AI credits, AI phone minutes, in-app cloud voice, and unlimited local Kokoro.</p>
+    </div>
+    <div class="grid price-grid reveal-stagger">
+      <div class="card plan">
+        <div class="pname">FREE</div>
+        <div class="pprice">$0</div>
+        <ul>
+          <li>Unlimited local Kokoro voice</li>
+          <li>All BYOK providers</li>
+          <li>Terminals, tasks, memory</li>
+          <li>Fully offline with Ollama</li>
+          <li>Agent council + skills</li>
+        </ul>
+        <a class="btn ghost" href="#download">Get started</a>
+      </div>
+      <div class="card plan">
+        <div class="pname">STARTER</div>
+        <div class="pprice">$10<span>/mo</span></div>
+        <ul>
+          <li>3,100 AI message credits</li>
+          <li>22 AI phone min/mo</li>
+          <li>~140+ min in-app cloud voice</li>
+          <li>30 min Deepgram promo</li>
+        </ul>
+        <a class="btn ghost" href="#download">Choose Starter</a>
+      </div>
+      <div class="card plan feat">
+        <div class="pname">PRO</div>
+        <div class="pprice">$50<span>/mo</span></div>
+        <ul>
+          <li>15,500 AI message credits</li>
+          <li>109 AI phone min/mo</li>
+          <li>~720+ min in-app cloud voice</li>
+          <li>90 min Deepgram promo</li>
+        </ul>
+        <a class="btn primary" href="#download">Choose Pro</a>
+      </div>
+      <div class="card plan">
+        <div class="pname">ULTRA</div>
+        <div class="pprice">$100<span>/mo</span></div>
+        <ul>
+          <li>31,000 AI message credits</li>
+          <li>217 AI phone min/mo</li>
+          <li>~1,400+ min in-app cloud voice</li>
+          <li>3 hr Deepgram promo</li>
+        </ul>
+        <a class="btn ghost" href="#download">Choose Ultra</a>
+      </div>
+    </div>
+    <p style="text-align:center;color:var(--faint);font-size:13px;margin-top:22px" class="reveal">Local voice is always free &amp; unlimited. Cloud features auto-fall-back to local when quota runs out.</p>
+  </section>
+
+  <!-- HOTKEYS -->
   <section id="hotkeys">
-    <div class="section-head reveal"><div class="section-kicker">Keyboard-first</div><h2>Fast enough for people who live on hotkeys.</h2></div>
-    <table class="mini-table reveal"><thead><tr><th>Hotkey</th><th>Action</th><th>Surface</th></tr></thead><tbody><tr><td><kbd>Mod+K</kbd></td><td>Command palette</td><td>Global</td></tr><tr><td><kbd>Mod+J</kbd></td><td>Jarvis assistant bar</td><td>Global</td></tr><tr><td><kbd>Mod+Space</kbd></td><td>Push-to-talk voice</td><td>Voice</td></tr><tr><td><kbd>Mod+Shift+A</kbd></td><td>Actions palette</td><td>Actions</td></tr><tr><td><kbd>Mod+Shift+L</kbd></td><td>Quick launcher</td><td>Launcher</td></tr><tr><td><kbd>Mod+Shift+T</kbd></td><td>To-do drawer</td><td>Tasks</td></tr><tr><td><kbd>Mod+\</kbd></td><td>Inspector pane</td><td>Context</td></tr><tr><td><kbd>Mod+B</kbd></td><td>Navigation pane</td><td>Layout</td></tr><tr><td><kbd>Mod+Enter</kbd></td><td>Send message</td><td>Chat</td></tr><tr><td><kbd>Mod+Shift+Enter</kbd></td><td>Broadcast to council</td><td>Council</td></tr></tbody></table>
+    <div class="sec-head center reveal">
+      <div class="kicker">Keyboard-first</div>
+      <h2>Fast enough for people who live on hotkeys</h2>
+    </div>
+    <div class="keys reveal-stagger">
+      <div class="keyrow"><span>Command palette</span><kbd>Mod + K</kbd></div>
+      <div class="keyrow"><span>Jarvis assistant bar</span><kbd>Mod + J</kbd></div>
+      <div class="keyrow"><span>Voice push-to-talk</span><kbd>Mod + Space</kbd></div>
+      <div class="keyrow"><span>Actions palette</span><kbd>Mod + Shift + A</kbd></div>
+      <div class="keyrow"><span>Quick launcher</span><kbd>Mod + Shift + L</kbd></div>
+      <div class="keyrow"><span>To-do drawer</span><kbd>Mod + Shift + T</kbd></div>
+      <div class="keyrow"><span>Inspector pane</span><kbd>Mod + \</kbd></div>
+      <div class="keyrow"><span>Navigation pane</span><kbd>Mod + B</kbd></div>
+      <div class="keyrow"><span>Send message</span><kbd>Mod + Enter</kbd></div>
+      <div class="keyrow"><span>Broadcast to council</span><kbd>Mod + Shift + Enter</kbd></div>
+    </div>
   </section>
 
-  <section id="stack" class="warm-band"><div class="section-head reveal"><div class="section-kicker">Architecture</div><h2>Local-first. BYOK. Open-source core. <em>Built to last.</em></h2></div><div class="grid cards-3"><div class="card reveal"><h3>Desktop</h3><p>Tauri 2, Rust, React, TypeScript, Vite, Tailwind, tiny native installers.</p></div><div class="card reveal"><h3>Runtime</h3><p>Mastra-style orchestration, Vercel AI SDK streams, MCP-lite tools, PTY terminals.</p></div><div class="card reveal"><h3>Calling</h3><p>Twilio PSTN, LiveKit WebRTC, Pipecat voice pipeline, FastAPI, Supabase RLS.</p></div><div class="card reveal"><h3>Storage</h3><p>Local-first chats, tasks, settings, skills, agents, and memory. Cloud sync optional.</p></div><div class="card reveal"><h3>Privacy</h3><p>BYOK keys, offline Ollama, read-only file bridge by default, telemetry off by default.</p></div><div class="card reveal"><h3>License</h3><p>Apache 2.0 open-source core. Fork it, inspect it, ship your own build.</p></div></div></section>
+  <!-- DOWNLOAD -->
+  <section id="download">
+    <div class="sec-head center reveal">
+      <div class="kicker">Download</div>
+      <h2>Three steps. <em>Any desktop.</em></h2>
+      <p class="lead">VibeSpace supports Windows, macOS, and Linux. Use the one-liner, approve the installer, then launch VibeSpace and add your first provider key.</p>
+    </div>
+    <div class="grid g3 reveal-stagger">
+      <div class="card dl-card">
+        <div class="os-icon" data-ic="os_win"></div>
+        <h3>Windows 10/11</h3>
+        <div class="codebox"><code id="winCmd">irm https://raw.githubusercontent.com/Cookie774-GameDev/VibeSpace/main/install/install.ps1 | iex</code><button class="copy" data-copy-target="winCmd">copy</button></div>
+        <ol class="dl-steps">
+          <li>Open PowerShell.</li>
+          <li>Run the one-line installer.</li>
+          <li>Type <code>Jarvis</code> in a terminal or launch VibeSpace from Start Menu.</li>
+        </ol>
+      </div>
+      <div class="card dl-card">
+        <div class="os-icon" data-ic="os_mac"></div>
+        <h3>macOS 12+</h3>
+        <div class="codebox"><code id="macCmd">curl -fsSL https://raw.githubusercontent.com/Cookie774-GameDev/VibeSpace/main/install/install.sh | bash</code><button class="copy" data-copy-target="macCmd">copy</button></div>
+        <ol class="dl-steps">
+          <li>Open Terminal.</li>
+          <li>Run the curl installer.</li>
+          <li>Open VibeSpace from Applications.</li>
+        </ol>
+      </div>
+      <div class="card dl-card">
+        <div class="os-icon" data-ic="os_linux"></div>
+        <h3>Linux</h3>
+        <div class="codebox"><code id="linuxCmd">curl -fsSL https://raw.githubusercontent.com/Cookie774-GameDev/VibeSpace/main/install/install.sh | bash</code><button class="copy" data-copy-target="linuxCmd">copy</button></div>
+        <ol class="dl-steps">
+          <li>Open your terminal.</li>
+          <li>Run the installer; deb/rpm/AppImage auto-detects.</li>
+          <li>Launch VibeSpace from your app menu.</li>
+        </ol>
+      </div>
+    </div>
+    <p style="text-align:center;margin-top:24px" class="reveal"><a class="btn dark" href="https://github.com/Cookie774-GameDev/VibeSpace/releases/latest" target="_blank" rel="noopener">View all releases &rarr;</a></p>
+  </section>
 
-  <section id="changelog"><div class="section-head reveal"><div class="section-kicker">We keep shipping</div><h2>A live product, not a landing-page promise.</h2><p class="lead">Recent drops include model access gating, real Ollama, local models settings, 24 actions, custom tools, wellness breaks, PTY terminals, call infrastructure, and a slimmer terminal workspace.</p></div><div class="grid cards-2"><div class="card reveal"><h3>v0.1.31</h3><p>Production hardening: restored Windows installer, billing-column security lockdown, message rate limiting, brighter Ultra galaxy, and a refreshed vibespaceos.com landing.</p></div><div class="card reveal"><h3>v0.1.29–0.1.30</h3><p>Silent updater polish, launcher multi-path detection, macOS/Linux installer fallbacks, and Twilio SMS webhook fixes.</p></div><div class="card reveal"><h3>v0.1.25</h3><p>Subscription tiers with Stripe checkout, voice budgets, cloud TTS proxy, and usage counters synced through Supabase.</p></div><div class="card reveal"><h3>Current focus</h3><p>Reliability, privacy, secure billing, and a calmer AI workspace experience.</p></div></div></section>
+  <!-- ARCHITECTURE -->
+  <section id="stack">
+    <div class="sec-head reveal">
+      <div class="kicker">Architecture</div>
+      <h2>Local-first. BYOK. Open-source core. <em>Built to last.</em></h2>
+    </div>
+    <div class="grid g3 reveal-stagger">
+      <div class="card"><h3>Desktop</h3><p>Tauri 2, Rust, React, TypeScript, Vite, Tailwind, tiny native installers.</p></div>
+      <div class="card"><h3>Runtime</h3><p>Mastra-style orchestration, Vercel AI SDK streams, MCP-lite tools, PTY terminals, Rust-backed agent ledger.</p></div>
+      <div class="card"><h3>Calling</h3><p>Twilio PSTN, LiveKit WebRTC, Pipecat voice pipeline, FastAPI, Supabase RLS.</p></div>
+      <div class="card"><h3>Storage</h3><p>Local-first chats, tasks, settings, skills, agents, and memory. Cloud sync optional.</p></div>
+      <div class="card"><h3>Privacy</h3><p>BYOK keys, offline Ollama, read-only file bridge by default, telemetry off by default.</p></div>
+      <div class="card"><h3>License</h3><p>Apache 2.0 open-source core. Fork it, inspect it, ship your own build.</p></div>
+    </div>
+  </section>
 
-  <section id="community" class="warm-band"><div class="section-head reveal"><div class="section-kicker">Community</div><h2>Watch it ship. Join the build.</h2><p class="lead">Follow the build on GitHub — releases, issues, and the changelog are public.</p></div><div class="grid cards-3"><a class="card reveal" data-link="github" href="https://github.com/Cookie774-GameDev/VibeSpace" style="text-decoration:none"><h3>GitHub</h3><p>Source, releases, issues, changelog, and everything we keep shipping.</p></a><a class="card reveal" data-link="discord" href="#discord-placeholder" style="text-decoration:none"><h3>Discord</h3><p>Community link placeholder.</p></a><a class="card reveal" data-link="youtube" href="#youtube-placeholder" style="text-decoration:none"><h3>YouTube</h3><p>Ship logs, demos, and walkthroughs.</p></a></div></section>
+  <!-- CHANGELOG TEASER -->
+  <section id="changelog">
+    <div class="sec-head reveal">
+      <div class="kicker">We keep shipping</div>
+      <h2>A live product, not a landing-page promise.</h2>
+      <p class="lead">v0.1.45 brings the unified skills catalog, Inspector panel, terminal agent coordination, milestone-driven Kanban, and an Apex billing tier.</p>
+    </div>
+    <div class="grid g2 reveal-stagger">
+      <div class="card"><span class="tag new">v0.1.45</span><h3>Skills, Inspector, Kanban</h3><p>Unified skills catalog with SkillEditor and <code>/skills</code> picker. Inspector panel (Today, Quick Launch, Context, Tools Run, Trace milestones, Active Work). Milestone-driven Kanban. Terminal agent coordination with a Rust-backed ledger.</p></div>
+      <div class="card"><h3>v0.1.44</h3><p>Provider/model registry across Hive, agents, and settings. Hands-free voice turn-taking. Terminal scrollback isolation and route-switch stability.</p></div>
+      <div class="card"><h3>v0.1.43</h3><p>Composer STT with local faster-whisper. StackPicker in-thread Hive presets. Workspace persistence flush on hide, shutdown, and tray exit.</p></div>
+      <div class="card"><h3>Current focus</h3><p>Reliability, privacy, secure billing, and a calmer AI workspace experience. Windows trust docs and release checksum verification.</p></div>
+    </div>
+  </section>
 
-  <section id="letter"><div class="letter reveal"><h2>A note from the maker.</h2><p>I wanted one place. Not seven. One warm desktop window where every model I pay for could sit at the same table, where my voice could find the right one, and where my to-do list updated itself when I said something out loud.</p><p><strong>VibeSpace is that place.</strong> A vibe coding app built for vibe coders by a vibe coder. Agents, code, calls, prompts, research, tasks, memory, and the messy middle of building real software.</p><p>It is unfinished, honest, and shipping. The core is open-source under Apache 2.0. Local-first by default. Bring your own keys. Use Ollama offline. Call it from the app. Fork it if you want. Keep moving.</p><p class="micro">With care,<br><strong>VibeSpace</strong><br>Maker · Apache 2.0 · Forever forkable</p></div></section>
+  <!-- LETTER -->
+  <section id="letter">
+    <div class="letter reveal">
+      <h2>A note from the maker.</h2>
+      <p>I wanted one place. Not seven. One warm desktop window where every model I pay for could sit at the same table, where my voice could find the right one, and where my to-do list updated itself when I said something out loud.</p>
+      <p><strong>VibeSpace is that place.</strong> A vibe coding app built for vibe coders by a vibe coder. Agents, code, calls, prompts, research, tasks, memory, skills, and the messy middle of building real software.</p>
+      <p>It is unfinished, honest, and shipping. The core is open-source under Apache 2.0. Local-first by default. Bring your own keys. Use Ollama offline. Call it from the app. Fork it if you want. Keep moving.</p>
+      <p class="sig">With care,<br /><strong>VibeSpace</strong><br />Maker &middot; Apache 2.0 &middot; Forever forkable</p>
+    </div>
+  </section>
 
-  <section id="faq" class="faq warm-band"><div class="section-head reveal"><div class="section-kicker">FAQ</div><h2>Questions before you install.</h2></div><details class="reveal"><summary>Is VibeSpace only for coding?</summary><p>No. Coding is the sharpest use-case, but VibeSpace also handles research, calls, tasks, memory, skills, agents, notes, actions, and project context.</p></details><details class="reveal"><summary>What models work today?</summary><p>Anthropic, OpenAI, Google Gemini, Groq, and Ollama are live adapters. Other providers already have UI/key persistence and can be promoted as adapters ship.</p></details><details class="reveal"><summary>Is calling fully done?</summary><p>The backend, bridge, settings, in-app LiveKit path, Twilio endpoints, PIN flow, audit logging, and outbound API are in place. Some hardening remains: real Cartesia voice IDs, verbal-confirm enforcement, audit viewer UI, trigger callsites, and provisioning automation.</p></details><details class="reveal"><summary>Can it run offline?</summary><p>Yes. Offline mode routes chat to Ollama. Local model support is live and keyless.</p></details><details class="reveal"><summary>What is the official website?</summary><p>The official home is <strong>vibespaceos.com</strong>. Downloads and one-line installers always resolve through the GitHub releases page, so both stay in sync.</p></details></section>
+  <!-- FAQ -->
+  <section id="faq">
+    <div class="sec-head center reveal">
+      <div class="kicker">FAQ</div>
+      <h2>Questions before you install</h2>
+    </div>
+    <div class="faq-list reveal">
+      <details><summary>Is VibeSpace only for coding?</summary><p>No. Coding is the sharpest use-case, but VibeSpace also handles research, calls, tasks, memory, skills, agents, notes, actions, and project context.</p></details>
+      <details><summary>What models work today?</summary><p>Anthropic, OpenAI, Google Gemini, Groq, and Ollama are live adapters. Other providers have UI and key persistence wired and can be promoted as adapters ship.</p></details>
+      <details><summary>Is Jarvis voice the same as a phone call?</summary><p>No. Jarvis voice is the in-app hands-free assistant (local Kokoro, free, unlimited). AI calling is a separate feature &mdash; PSTN phone calls via Twilio on paid tiers, or free in-app WebRTC via LiveKit.</p></details>
+      <details><summary>What is new in v0.1.45?</summary><p>Unified skills catalog with SkillEditor and <code>/skills</code> picker, Inspector panel (Today, Quick Launch, Context, Tools Run, Trace milestones, Active Work), milestone-driven Kanban, terminal agent coordination with a Rust-backed ledger, and an Apex billing tier.</p></details>
+      <details><summary>Can it run offline?</summary><p>Yes. Offline mode routes chat to Ollama. Local model support is live and keyless. Local Kokoro voice is always free and unlimited.</p></details>
+      <details><summary>What is the official website?</summary><p>The official home is <strong>vibespaceos.com</strong>. Downloads and one-line installers always resolve through the GitHub releases page, so both stay in sync.</p></details>
+    </div>
+  </section>
 
-  <footer><div class="footer-inner"><div><a class="brand" href="#top"><span class="mark"></span><span>VibeSpace</span></a><p style="color:var(--ink-soft);max-width:330px">The cozy all-in-one AI workspace for vibe coders. Built by a vibe coder. Shipped in public.</p></div><div><strong>Product</strong><a href="#calling">Calling</a><a href="#features">Features</a><a href="#models">Models</a><a href="#download">Download</a></div><div><strong>Open source</strong><a data-link="github" href="https://github.com/Cookie774-GameDev/VibeSpace">GitHub</a><a data-link="releases" href="https://github.com/Cookie774-GameDev/VibeSpace/releases">Releases</a><a data-link="issues" href="https://github.com/Cookie774-GameDev/VibeSpace/issues">Issues</a></div><div><strong>Community</strong><a data-link="discord" href="#discord-placeholder">Discord</a><a data-link="youtube" href="#youtube-placeholder">YouTube</a><a href="#letter">Maker letter</a></div></div><div class="footer-bottom"><span>© 2026 VibeSpace · Apache 2.0</span><span>Official site: <strong>vibespaceos.com</strong> · Current version: <strong>v0.1.42</strong></span></div></footer>
+  <!-- FOOTER -->
+  <footer>
+    <div class="foot-inner">
+      <div class="foot-col">
+        <a class="brand" href="#top" style="margin-bottom:12px;display:flex;gap:10px;align-items:center"><img src="images/vibespace-logo.png" width="30" height="30" alt="" style="border-radius:8px" /><span>VibeSpace</span></a>
+        <p style="color:var(--muted);max-width:300px;font-size:14px">The cozy all-in-one AI workspace for vibe coders. Built by a vibe coder. Shipped in public.</p>
+      </div>
+      <div class="foot-col">
+        <strong>Product</strong>
+        <a href="#features">Features</a>
+        <a href="#swarm">Terminals</a>
+        <a href="#voice">Voice</a>
+        <a href="#calling">Calling</a>
+        <a href="#hive">Hive</a>
+        <a href="#download">Download</a>
+      </div>
+      <div class="foot-col">
+        <strong>Open source</strong>
+        <a href="https://github.com/Cookie774-GameDev/VibeSpace" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/Cookie774-GameDev/VibeSpace/releases/latest" target="_blank" rel="noopener">Releases</a>
+        <a href="https://github.com/Cookie774-GameDev/VibeSpace/issues" target="_blank" rel="noopener">Issues</a>
+        <a href="https://github.com/Cookie774-GameDev/VibeSpace/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Changelog</a>
+      </div>
+      <div class="foot-col">
+        <strong>Resources</strong>
+        <a href="#faq">FAQ</a>
+        <a href="#letter">Maker letter</a>
+        <a href="#pricing">Pricing</a>
+        <a href="#stack">Architecture</a>
+      </div>
+    </div>
+    <div class="foot-bottom">
+      <span>&copy; 2026 VibeSpace &middot; Apache 2.0</span>
+      <span>Official site: <a href="https://vibespaceos.com/">vibespaceos.com</a> &middot; Current version: <strong>v0.1.45</strong></span>
+    </div>
+  </footer>
 
+  <script src="js/icons.js" defer></script>
+  <script src="js/dialogue.js" defer></script>
+  <script src="js/phone-os.js" defer></script>
+  <script src="js/desktop-os.js" defer></script>
+  <script src="js/motion.js" defer></script>
   <script>
-    const JARVIS_LINKS = {
-      github: 'https://github.com/Cookie774-GameDev/VibeSpace',
-      releases: 'https://github.com/Cookie774-GameDev/VibeSpace/releases',
-      issues: 'https://github.com/Cookie774-GameDev/VibeSpace/issues',
-      discord: '#discord-placeholder',
-      youtube: '#youtube-placeholder'
-    };
-    const COMMANDS = {
-      windows:{prompt:'PS>',cmd:'irm https://raw.githubusercontent.com/Cookie774-GameDev/VibeSpace/main/install/install.ps1 | iex'},
-      macos:{prompt:'$',cmd:'curl -fsSL https://raw.githubusercontent.com/Cookie774-GameDev/VibeSpace/main/install/install.sh | bash'},
-      linux:{prompt:'$',cmd:'curl -fsSL https://raw.githubusercontent.com/Cookie774-GameDev/VibeSpace/main/install/install.sh | bash'}
-    };
-    document.querySelectorAll('[data-link]').forEach(a=>{const v=JARVIS_LINKS[a.dataset.link];if(!v)return;a.href=v;if(v.startsWith('#')&&v.includes('placeholder')){a.style.display='none';}});
-    const cmd=document.getElementById('install-cmd'), prompt=document.getElementById('install-prompt');
-    document.querySelectorAll('.tab').forEach(tab=>tab.addEventListener('click',()=>{document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));tab.classList.add('active');const c=COMMANDS[tab.dataset.os];prompt.textContent=c.prompt;cmd.textContent=c.cmd;}));
-    document.querySelectorAll('.copy').forEach(btn=>btn.addEventListener('click',async()=>{const el=document.getElementById(btn.dataset.copyTarget);if(!el)return;await navigator.clipboard.writeText(el.textContent.trim());const old=btn.textContent;btn.textContent='copied';setTimeout(()=>btn.textContent=old,1300)}));
-    const io=new IntersectionObserver(entries=>entries.forEach(e=>{if(e.isIntersecting)e.target.classList.add('in')}),{threshold:.12});
-    document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+    // Interactive Jarvis calling demo (uses VSDialogue, so must load after dialogue.js)
+    (function(){
+      function init(){
+        var demo = document.getElementById('jarvisCallDemo');
+        if (!demo || !window.VSDialogue) return;
+
+        var contacts = VSDialogue.getAllContacts();
+        var callTimer = null, callSeconds = 0;
+
+        // Populate contact list in phone picker
+        var pickerList = demo.querySelector('.jcd-contact-list');
+        pickerList.style.padding = '8px 14px';
+        pickerList.innerHTML = contacts.map(function(c){
+          return '<div class="jcd-contact" data-jcd-call="'+c.id+'" style="border-left:3px solid '+c.color+'">' +
+            '<div class="jcd-contact-avatar" style="background:'+c.color+'">'+c.avatar+'</div>' +
+            '<div style="flex:1"><div class="jcd-contact-name">'+c.name+'</div>' +
+            '<div class="jcd-contact-role">'+c.role+'</div></div>' +
+            '<button class="cc-call-btn" data-ic="call" aria-label="Call"></button>' +
+          '</div>';
+        }).join('');
+
+        // Re-inject icons inside the picker
+        if (window.VSIconsInject) window.VSIconsInject(demo);
+
+        var phoneCallScreen = demo.querySelector('.jcd-call');
+        var jdAvatar = demo.querySelector('.jcd-avatar');
+        var jdName = demo.querySelector('.jcd-name');
+        var jdStatus = demo.querySelector('.jcd-status');
+        var jdTimer = demo.querySelector('.jcd-timer');
+        var jdCaptions = demo.querySelector('.jcd-captions');
+        var jdEnd = demo.querySelector('.jcd-end');
+
+        // Time updater
+        var jdTime = demo.querySelector('.jd-time');
+        function updateJdTime(){
+          var d = new Date();
+          jdTime.textContent = (d.getHours()%12||12)+':'+(d.getMinutes()<10?'0':'')+d.getMinutes();
+        }
+        updateJdTime(); setInterval(updateJdTime, 1000);
+
+        function startCall(contactId){
+          var c = VSDialogue.getContact(contactId);
+          if (!c) return;
+          jdAvatar.style.background = 'radial-gradient(circle at 35% 30%, rgba(255,255,255,0.25), transparent 35%), '+c.color;
+          jdAvatar.textContent = c.avatar;
+          jdName.textContent = c.name;
+          jdStatus.textContent = 'calling...';
+          jdTimer.textContent = '00:00';
+          jdCaptions.innerHTML = '';
+          phoneCallScreen.classList.add('active');
+          setTimeout(function(){
+            jdStatus.textContent = 'connected';
+            callSeconds = 0;
+            callTimer = setInterval(function(){
+              callSeconds++;
+              var mm = Math.floor(callSeconds/60), ss = callSeconds%60;
+              jdTimer.textContent = (mm<10?'0':'')+mm+':'+(ss<10?'0':'')+ss;
+            },1000);
+            playDialogue(c, jdCaptions);
+          }, 1500);
+        }
+
+        function playDialogue(c, container){
+          var lines = c.callLines, idx = 0;
+          function next(){
+            if (idx >= lines.length) return;
+            var line = lines[idx++];
+            var div = document.createElement('div');
+            div.className = 'caption-line them';
+            container.appendChild(div);
+            div.classList.add('show');
+            var i = 0;
+            var tick = setInterval(function(){
+              div.textContent = line.slice(0, ++i);
+              if (i >= line.length){
+                clearInterval(tick);
+                div.textContent = line;
+                container.scrollTop = container.scrollHeight;
+                setTimeout(next, 1800);
+              }
+            }, 20);
+          }
+          next();
+        }
+
+        function endCall(){
+          phoneCallScreen.classList.remove('active');
+          if (callTimer){ clearInterval(callTimer); callTimer = null; }
+          callSeconds = 0;
+        }
+
+        jdEnd.addEventListener('click', endCall);
+
+        // Contact picker
+        pickerList.addEventListener('click', function(e){
+          var el = e.target.closest('[data-jcd-call]');
+          if (!el) return;
+          startCall(el.dataset.jcdCall);
+        });
+
+        // Also wire the contacts grid on the right
+        var grid = demo.querySelector('.jcd-contacts-grid');
+        contacts.slice(0,6).forEach(function(c){
+          var div = document.createElement('div');
+          div.className = 'jcd-contact';
+          div.dataset.jcdCall = c.id;
+          div.style.borderLeft = '3px solid '+c.color;
+          div.innerHTML = '<div class="jcd-contact-avatar" style="background:'+c.color+'">'+c.avatar+'</div>' +
+            '<div style="flex:1"><div class="jcd-contact-name">'+c.name+'</div>' +
+            '<div class="jcd-contact-role">'+c.role+'</div></div>' +
+            '<button class="cc-call-btn" data-ic="call" aria-label="Call"></button>';
+          grid.appendChild(div);
+        });
+
+        // Incoming call button
+        var inBtn = demo.querySelector('.jcd-incoming-btn');
+        inBtn.addEventListener('click', function(){
+          startCall('jarvis');
+        });
+
+        // Re-inject icons in the grid
+        if (window.VSIconsInject) window.VSIconsInject(demo);
+
+        // ============ Messages ============
+        var tabCall = demo.querySelector('[data-jcd="call"]');
+        var tabMsg = demo.querySelector('[data-jcd="msg"]');
+        var callView = demo.querySelector('.jcd-call-view');
+        var msgView = demo.querySelector('.jcd-msg-view');
+        var msgSelect = demo.querySelector('.jcd-msg-contact');
+        var msgBubbles = demo.querySelector('.jcd-msg-bubbles');
+        var msgInput = demo.querySelector('.jcd-input');
+        var msgSend = demo.querySelector('.jcd-send');
+        var currentMsgContact = 'jarvis';
+        var msgHist = {};
+
+        function loadMessages(contactId){
+          msgBubbles.innerHTML = '';
+          var c = VSDialogue.getContact(contactId);
+          if (!c) return;
+          if (!msgHist[contactId]) msgHist[contactId] = [{text:c.defaultReply, side:'them'}];
+          msgHist[contactId].forEach(function(m, i){
+            var div = document.createElement('div');
+            div.className = m.side === 'you' ? 'jcd-msg-bubble-you' : 'jcd-msg-bubble-them';
+            div.textContent = m.text;
+            msgBubbles.appendChild(div);
+            setTimeout(function(){ div.classList.add('show'); }, 30);
+          });
+          msgBubbles.scrollTop = msgBubbles.scrollHeight;
+        }
+
+        msgSelect.addEventListener('change', function(){
+          currentMsgContact = msgSelect.value;
+          loadMessages(currentMsgContact);
+        });
+
+        msgSend.addEventListener('click', sendMessage);
+        msgInput.addEventListener('keydown', function(e){
+          if (e.key === 'Enter'){ e.preventDefault(); sendMessage(); }
+        });
+
+        function sendMessage(){
+          var text = msgInput.value.trim();
+          if (!text) return;
+          var youDiv = document.createElement('div');
+          youDiv.className = 'jcd-msg-bubble-you';
+          youDiv.textContent = text;
+          msgBubbles.appendChild(youDiv);
+          setTimeout(function(){ youDiv.classList.add('show'); }, 10);
+          msgInput.value = '';
+          msgBubbles.scrollTop = msgBubbles.scrollHeight;
+          msgHist[currentMsgContact].push({text:text, side:'you'});
+
+          setTimeout(function(){
+            var reply = VSDialogue.getReply(currentMsgContact, text);
+            var themDiv = document.createElement('div');
+            themDiv.className = 'jcd-msg-bubble-them';
+            msgBubbles.appendChild(themDiv);
+            themDiv.classList.add('show');
+            var i = 0;
+            var tick = setInterval(function(){
+              themDiv.textContent = reply.slice(0, ++i);
+              msgBubbles.scrollTop = msgBubbles.scrollHeight;
+              if (i >= reply.length){ clearInterval(tick); themDiv.textContent = reply; }
+            }, 15);
+            msgHist[currentMsgContact].push({text:reply, side:'them'});
+          }, 500);
+        }
+
+        loadMessages('jarvis');
+
+        // Tab switching
+        tabCall.addEventListener('click', function(){
+          tabCall.classList.add('active'); tabMsg.classList.remove('active');
+          callView.style.display = ''; msgView.style.display = 'none';
+        });
+        tabMsg.addEventListener('click', function(){
+          tabMsg.classList.add('active'); tabCall.classList.remove('active');
+          callView.style.display = 'none'; msgView.style.display = 'flex';
+        });
+      }
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+      else init();
+    })();
   </script>
 </body>
 </html>

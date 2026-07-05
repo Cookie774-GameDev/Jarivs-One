@@ -95,12 +95,12 @@ describe('modelSelection', () => {
     });
   });
 
-  it('migrates intentional Hive selection', () => {
+  it('migrates legacy Hive selection to Balanced', () => {
     expect(migrateLegacyModelSelection({
       stackPreset: 'quality',
       defaultProvider: 'google',
       selectedModels: {},
-    })).toEqual({ mode: 'hive', hiveId: 'quality' });
+    })).toEqual({ mode: 'hive', hiveId: 'balanced' });
   });
 
   it('only activates Hive when explicitly selected', () => {
@@ -130,5 +130,48 @@ describe('modelSelection', () => {
     expect(validation.ok).toBe(true);
     const send = validateSendModelAccess('hello', selection, ctx, []);
     expect(send.ok).toBe(true);
+  });
+
+  it('allows image attachments for vision-capable models', () => {
+    const ctx = {
+      apiKeys: { google: 'AIza_test' },
+      offlineMode: false,
+      plan: 'free' as const,
+      defaultLocalModel: 'llama3.2',
+    };
+    const selection = selectionFromOption('google', 'gemini-2.5-flash');
+    const send = validateSendModelAccess('describe this', selection, ctx, [], {
+      attachments: { hasImages: true },
+    });
+    expect(send.ok).toBe(true);
+  });
+
+  it('blocks image attachments for text-only models', () => {
+    const ctx = {
+      apiKeys: { groq: 'gsk_test' },
+      offlineMode: false,
+      plan: 'free' as const,
+      defaultLocalModel: 'llama3.2',
+    };
+    const selection = selectionFromOption('groq', 'llama-3.3-70b-versatile');
+    const send = validateSendModelAccess('describe this', selection, ctx, [], {
+      attachments: { hasImages: true },
+    });
+    expect(send.ok).toBe(false);
+    if (!send.ok) expect(send.message).toContain('selected model cannot see images');
+  });
+
+  it('blocks local image attachments until local multimodal payloads are implemented', () => {
+    const ctx = {
+      apiKeys: {},
+      offlineMode: true,
+      plan: 'free' as const,
+      defaultLocalModel: 'llama3.2-vision',
+    };
+    const selection = selectionFromOption('ollama', 'llama3.2-vision');
+    const send = validateSendModelAccess('describe this', selection, ctx, [], {
+      attachments: { hasImages: true },
+    });
+    expect(send.ok).toBe(false);
   });
 });

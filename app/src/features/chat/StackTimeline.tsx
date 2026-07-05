@@ -1,4 +1,5 @@
-import { ChevronDown, Sparkles } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
+import { HiveModelIcon } from '@/components/brand';
 import type { Part, ProviderId } from '@/types';
 import { getProviderDisplayName } from '@/lib/ai/providerRegistry';
 import { getModelLabelForProvider } from '@/lib/ai/providerModelCatalog';
@@ -14,7 +15,7 @@ export function StackTimeline({ steps }: { steps: StackStepPart[] }) {
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,hsl(var(--accent-copper)/0.16),transparent_36%),radial-gradient(circle_at_bottom_right,rgba(59,130,246,0.12),transparent_40%)]" />
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
         <span className="relative inline-flex items-center gap-2 font-display text-ui-strong text-foreground">
-          <Sparkles className="h-4 w-4 text-accent-copper" />
+          <HiveModelIcon size={24} className="text-accent-copper" />
           Hive · {steps.length} steps
         </span>
         <ChevronDown className="relative h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" />

@@ -12,7 +12,7 @@ import {
   planVoiceQuota,
   type PlanId,
 } from '@/lib/entitlements';
-import { getCheckoutUrl, isStripeConfigured } from '@/lib/billing/stripe';
+import { callCheckoutSession, isBackendBillingConfigured } from '@/lib/billing/checkout';
 import { openExternal } from '@/lib/tauri';
 import { toast } from '@/components/ui/toast';
 
@@ -22,6 +22,7 @@ export function AccountPage() {
   const plan = useAuthStore((s) => s.plan);
   const email = useAuthStore((s) => s.email);
   const cloudEmail = useAuthStore((s) => s.cloudSession?.email);
+  const cloudUserId = useAuthStore((s) => s.cloudSession?.user_id);
   const localUserId = useAuthStore((s) => s.localUserId);
   const defaultProvider = useAuthStore((s) => s.defaultProvider);
   const apiKeys = useAuthStore((s) => s.apiKeys);
@@ -43,13 +44,21 @@ export function AccountPage() {
       toast.info('Top tier active', 'You already have access to every VibeSpace feature.');
       return;
     }
-    const checkoutUrl = getCheckoutUrl(nextTier);
-    if (!checkoutUrl) {
-      toast.info('Checkout not configured', 'Billing URLs are missing for this build.');
+    if (!cloudUserId) {
+      toast.info('Sign in required', 'Sign in with a cloud account before upgrading.');
+      return;
+    }
+    if (!isBackendBillingConfigured()) {
+      toast.info('Checkout not configured', 'Supabase billing functions are missing for this build.');
+      return;
+    }
+    const result = await callCheckoutSession(nextTier);
+    if (!result.ok) {
+      toast.error('Checkout unavailable', result.error);
       return;
     }
     try {
-      await openExternal(checkoutUrl);
+      await openExternal(result.url);
     } catch (err) {
       toast.error('Could not open checkout', err instanceof Error ? err.message : 'Open Stripe manually.');
     }
@@ -114,7 +123,7 @@ export function AccountPage() {
                   size="sm"
                   className="mt-4 w-full"
                   onClick={openUpgrade}
-                  disabled={!nextTier || (!isStripeConfigured() && !admin)}
+                  disabled={!nextTier || (!isBackendBillingConfigured() && !admin)}
                 >
                   <ExternalLink className="h-3.5 w-3.5" />
                   {nextTier ? `Upgrade to ${PLANS[nextTier].label}` : 'All features active'}

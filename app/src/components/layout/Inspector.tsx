@@ -5,6 +5,7 @@ import {
   Boxes,
   CalendarDays,
   ChevronDown,
+  Check,
   Clock,
   CircleDot,
   ExternalLink,
@@ -29,6 +30,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Hint, Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
+import { useAgentStore } from '@/stores/agents';
 import { ChatThread, Composer } from '@/features/chat';
 import { EmptyChat } from '@/features/chat/EmptyChat';
 // `useTodayEvents` exists on the V2 schedule hooks (added by the parallel
@@ -47,9 +49,10 @@ import {
   openTaskCount,
 } from '@/features/inspector';
 import { useMilestonesStore } from '@/features/inspector/milestonesStore';
+import { isMilestoneKind } from '@/features/inspector/types';
 import { runAction } from '@/lib/actions';
 import { useToolRunsStore } from '@/features/inspector/toolRunsStore';
-import { chatRepo, taskRepo, terminalSessionRepo, db } from '@/lib/db';
+import { chatRepo, messageRepo, taskRepo, terminalSessionRepo, db } from '@/lib/db';
 import { toast } from '@/components/ui/toast';
 import { cn, formatClock, formatRelative } from '@/lib/utils';
 import type { QuickLink } from '@/types/quick-link';
@@ -73,6 +76,13 @@ import {
   type ContextTreeNode,
   type ProjectContextTree,
 } from '@/features/context/tree';
+import { getStoredProjectRoot } from '@/features/files/projectFiles';
+import { createJarvisCreatorChat } from '@/features/jarvis-creator/handoff';
+import {
+  JARVIS_CREATOR_START_EVENT,
+  type JarvisCreatorStartDetail,
+} from '@/features/jarvis-creator/contracts';
+import { consumePendingJarvisCreatorStart } from '@/features/jarvis-creator/launcher';
 import { usePinnedStore } from '@/features/inspector/pinnedStore';
 import { openExternal, isTauri } from '@/lib/tauri';
 
@@ -122,8 +132,8 @@ type Route =
  *
  * The Today / Context / Tools / Trace / Refs tabs are intentionally
  * untouched. Strip panels are wrapped in defensive try/catch + lazy
- * imports so a sibling slice that hasn't landed yet renders a friendly
- * "Coming soon" card instead of crashing the inspector.
+ * imports so a sibling slice failure renders a bounded error card
+ * instead of crashing the inspector.
  */
 export function Inspector() {
   const workspaceId = useAuthStore((s) => s.workspaceId) as WorkspaceId | null;
@@ -134,6 +144,8 @@ export function Inspector() {
   const [traceView, setTraceView] = React.useState<'milestones' | 'timeline'>('milestones');
   const [previewFilePath, setPreviewFilePath] = React.useState<string | null>(null);
   const inspectorOpen = useUIStore((s) => s.inspectorOpen);
+  const jarvisAgentId = useAgentStore((s) => Object.values(s.agents).find((agent) => agent.slug === 'jarvis')?.id ?? null);
+  const projectRoot = React.useMemo(() => getStoredProjectRoot(projectId), [projectId]);
 
   const setInspectorOpen = React.useCallback(
     (open: boolean) => useUIStore.setState({ inspectorOpen: open }),
@@ -152,13 +164,45 @@ export function Inspector() {
         setActiveTab(detail.tab);
       }
     };
+    const handleCreatorStart = (e: Event) => {
+      const detail = (e as CustomEvent<JarvisCreatorStartDetail>).detail;
+      if (!detail?.kind) return;
+      if (!workspaceId || !jarvisAgentId) {
+        toast.warning('Still loading', 'Jarvis creator is initializing — try again in a sec.');
+        return;
+      }
+      setInspectorOpen(true);
+      setActiveTab('jarvis');
+      void createJarvisCreatorChat({
+        kind: detail.kind,
+        workspaceId,
+        projectId,
+        jarvisAgentId,
+        currentName: detail.currentName,
+        currentDescription: detail.currentDescription,
+        chatRepo,
+        messageRepo,
+      })
+        .then((chatId) => setInspectorChatId(chatId))
+        .catch((err) => {
+          toast.error('Could not start Jarvis creator', err instanceof Error ? err.message : 'Try again.');
+        });
+    };
     window.addEventListener('jarvis:terminal:attach', handleAttach);
     window.addEventListener('jarvis:inspector:tab', handleTabEvent as EventListener);
+    window.addEventListener(JARVIS_CREATOR_START_EVENT, handleCreatorStart as EventListener);
+    if (workspaceId && jarvisAgentId) {
+      const pending = consumePendingJarvisCreatorStart();
+      if (pending) {
+        handleCreatorStart(new CustomEvent(JARVIS_CREATOR_START_EVENT, { detail: pending }));
+      }
+    }
     return () => {
       window.removeEventListener('jarvis:terminal:attach', handleAttach);
       window.removeEventListener('jarvis:inspector:tab', handleTabEvent as EventListener);
+      window.removeEventListener(JARVIS_CREATOR_START_EVENT, handleCreatorStart as EventListener);
     };
-  }, [setInspectorOpen]);
+  }, [jarvisAgentId, projectId, setInspectorOpen, workspaceId]);
 
   const inspectorChats =
     useLiveQuery(
@@ -373,6 +417,7 @@ export function Inspector() {
             <InspectorContextPanel
               inspectorOpen={inspectorOpen}
               previewFilePath={previewFilePath}
+              projectRoot={projectRoot}
               onPreviewFile={setPreviewFilePath}
             />
           </TabsContent>
@@ -445,10 +490,12 @@ function Placeholder({ title, body }: { title: string; body: string }) {
 function InspectorContextPanel({
   inspectorOpen,
   previewFilePath,
+  projectRoot,
   onPreviewFile,
 }: {
   inspectorOpen: boolean;
   previewFilePath: string | null;
+  projectRoot: string;
   onPreviewFile: (path: string | null) => void;
 }) {
   const projectId = useAuthStore((s) => s.projectId);
@@ -527,7 +574,7 @@ function InspectorContextPanel({
       }}
     >
       {inspectorOpen && previewFilePath ? (
-        <InspectorMiniEditor filePath={previewFilePath} onClose={() => onPreviewFile(null)} />
+        <InspectorMiniEditor filePath={previewFilePath} rootDir={projectRoot} onClose={() => onPreviewFile(null)} />
       ) : null}
 
       <Section
@@ -1512,8 +1559,8 @@ function RouteContextStrip({ workspaceId }: { workspaceId: WorkspaceId | null })
   } catch {
     panel = (
       <PlaceholderCard
-        title="Coming soon"
-        body="This panel will light up once its slice ships."
+        title="Panel unavailable"
+        body="This Inspector slice failed to load. The rest of the app remains available."
       />
     );
   }
@@ -1649,42 +1696,121 @@ function TerminalRow({ session }: { session: TerminalSession }) {
 
 function KanbanContextPanel(_props: { workspaceId: WorkspaceId | null }) {
   const milestoneItems = useMilestonesStore((s) => s.items);
+  const toggleDone = useMilestonesStore((s) => s.toggleDone);
+  const todos = React.useMemo(
+    () =>
+      milestoneItems
+        .filter((item) => !isMilestoneKind(item) && item.status !== 'done')
+        .sort((a, b) => b.updatedAt - a.updatedAt),
+    [milestoneItems],
+  );
   const milestones = React.useMemo(
-    () => [...milestoneItems].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 10),
+    () =>
+      milestoneItems
+        .filter(isMilestoneKind)
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+        .slice(0, 10),
     [milestoneItems],
   );
 
-  if (milestones.length === 0) {
+  if (milestoneItems.length === 0) {
     return (
       <PlaceholderCard
-        title="Recent milestones"
-        body="Add or move a milestone on the Kanban page to see it here."
+        title="To-do"
+        body="Add a to-do or milestone on the Kanban page to see it here."
       />
     );
   }
 
   return (
-    <StripCard eyebrow="Recent milestones" hint={String(milestones.length)}>
-      <ul className="flex flex-col gap-1.5">
-        {milestones.map((t) => (
-          <li
-            key={t.id}
-            className="flex items-center gap-2 rounded-md bg-paper-soft px-2 py-1.5"
-          >
-            <MilestoneStatusDot status={t.status} />
-            <span
-              className="text-secondary text-foreground truncate flex-1"
-              title={t.title}
-            >
-              {t.title}
+    <div className="flex flex-col gap-2">
+      {todos.length === 0 ? (
+        <PlaceholderCard
+          title="To-do"
+          body="No open to-dos. Add one on the Kanban page or from Trace."
+        />
+      ) : (
+        <details open className="group rounded-lg border border-border bg-paper p-3 shadow-soft">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-2">
+            <span className="text-metadata uppercase tracking-wide text-muted-foreground">
+              To-do
             </span>
-            <span className="text-metadata text-muted-foreground tabular-nums shrink-0">
-              {formatRelative(t.updatedAt)}
+            <span className="flex items-center gap-2">
+              <span className="text-metadata text-accent-copper tabular-nums">
+                {todos.length}
+              </span>
+              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground transition-transform group-open:rotate-180" />
             </span>
-          </li>
-        ))}
-      </ul>
-    </StripCard>
+          </summary>
+          <ul className="mt-2 flex max-h-64 flex-col gap-1.5 overflow-y-auto scrollbar-hidden">
+            {todos.map((item) => (
+              <li
+                key={item.id}
+                className="flex items-center gap-2 rounded-md bg-paper-soft px-2 py-1.5"
+              >
+                <button
+                  type="button"
+                  onClick={() => toggleDone(item.id)}
+                  className={cn(
+                    'flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-border transition-colors hover:border-accent-copper/50',
+                  )}
+                  aria-label={`Complete ${item.title}`}
+                >
+                  <span className="sr-only">Complete</span>
+                </button>
+                <span
+                  className="text-secondary text-foreground truncate flex-1"
+                  title={item.title}
+                >
+                  {item.title}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
+      {milestones.length > 0 ? (
+        <details className="group rounded-lg border border-border bg-paper p-3 shadow-soft">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-2">
+            <span className="text-metadata uppercase tracking-wide text-muted-foreground">
+              Recent milestones
+            </span>
+            <span className="flex items-center gap-2">
+              <span className="text-metadata text-accent-copper tabular-nums">
+                {milestones.length}
+              </span>
+              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground transition-transform group-open:rotate-180" />
+            </span>
+          </summary>
+          <ul className="mt-2 flex flex-col gap-1.5">
+            {milestones.map((t) => (
+              <li
+                key={t.id}
+                className="flex items-center gap-2 rounded-md bg-paper-soft px-2 py-1.5"
+              >
+                <MilestoneStatusDot status={t.status} />
+                <span
+                  className={cn(
+                    'text-secondary text-foreground truncate flex-1',
+                    t.status === 'done' && 'line-through text-muted-foreground',
+                  )}
+                  title={t.title}
+                >
+                  {t.title}
+                </span>
+                {t.status === 'done' ? (
+                  <Check className="h-3 w-3 shrink-0 text-accent-sage" aria-hidden="true" />
+                ) : null}
+                <span className="text-metadata text-muted-foreground tabular-nums shrink-0">
+                  {formatRelative(t.updatedAt)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+    </div>
   );
 }
 
@@ -1764,20 +1890,25 @@ interface BenchmarkLite {
 
 function BenchmarksContextPanel() {
   const [rows, setRows] = React.useState<BenchmarkLite[] | null>(null);
+  const [sourceHint, setSourceHint] = React.useState<string | undefined>(undefined);
 
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const path = '@/features/benchmarks';
-        const mod = await import(/* @vite-ignore */ path).catch(() => null);
-        if (cancelled || !mod) return;
-        const snap = (mod as { SNAPSHOT_ROWS?: BenchmarkLite[] }).SNAPSHOT_ROWS;
-        if (!Array.isArray(snap)) return;
-        const top = [...snap]
+        const { fetchBenchmarks } = await import('@/features/benchmarks/benchmarkData');
+        const result = await fetchBenchmarks();
+        if (cancelled) return;
+        const top = [...result.rows]
           .sort((a, b) => b.arena_score - a.arena_score)
-          .slice(0, 5);
-        if (!cancelled) setRows(top);
+          .slice(0, 5)
+          .map((r) => ({
+            model: r.model,
+            provider: r.provider,
+            arena_score: r.arena_score,
+          }));
+        setRows(top);
+        setSourceHint(result.fromSnapshot ? 'snapshot' : 'live');
       } catch {
         /* silent — placeholder remains */
       }
@@ -1791,7 +1922,7 @@ function BenchmarksContextPanel() {
     return (
       <PlaceholderCard
         title="Top by Arena score"
-        body="Loading the latest snapshot…"
+        body="Loading leaderboard…"
       />
     );
   }
@@ -1805,7 +1936,7 @@ function BenchmarksContextPanel() {
   }
 
   return (
-    <StripCard eyebrow="Top by Arena score" hint="snapshot">
+    <StripCard eyebrow="Top by Arena score" hint={sourceHint}>
       <ol className="flex flex-col gap-1.5">
         {rows.map((r, i) => (
           <li

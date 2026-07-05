@@ -4,8 +4,8 @@
  */
 import type { ProviderId } from '@/types/common';
 import { useAuthStore } from '@/stores/auth';
-import type { LLMProvider, LLMRequest, LLMResponse } from '../types';
-import { estimateCost, estimateInputTokens } from '../types';
+import type { LLMContentPart, LLMProvider, LLMRequest, LLMResponse } from '../types';
+import { estimateCost, estimateInputTokens, llmContentToText } from '../types';
 import { parseSSE } from './sse';
 
 export interface OpenAICompatibleConfig {
@@ -23,6 +23,17 @@ function safeJSON(s: string): unknown {
   } catch {
     return null;
   }
+}
+
+function toOpenAiCompatibleContent(content: string | LLMContentPart[]) {
+  if (typeof content === 'string') return content;
+  return content.map((part) => {
+    if (part.type === 'text') return { type: 'text' as const, text: part.text };
+    return {
+      type: 'image_url' as const,
+      image_url: { url: `data:${part.mimeType};base64,${part.data}` },
+    };
+  });
 }
 
 export function makeOpenAICompatibleProvider(cfg: OpenAICompatibleConfig): LLMProvider {
@@ -44,7 +55,10 @@ export function makeOpenAICompatibleProvider(cfg: OpenAICompatibleConfig): LLMPr
       const model = req.agent.model.model || cfg.defaultModel;
       const messages = [
         { role: 'system' as const, content: req.agent.system_prompt },
-        ...req.messages.filter((m) => m.role !== 'system'),
+        ...req.messages.filter((m) => m.role !== 'system').map((m) => ({
+          role: m.role,
+          content: toOpenAiCompatibleContent(m.content),
+        })),
       ];
 
       const body = {
@@ -119,7 +133,9 @@ export function makeOpenAICompatibleProvider(cfg: OpenAICompatibleConfig): LLMPr
       }
 
       if (inputTokens === 0) {
-        inputTokens = estimateInputTokens(messages.map((m) => m.content).join('\n'));
+        inputTokens = estimateInputTokens(
+          [req.agent.system_prompt, ...req.messages.map((m) => llmContentToText(m.content))].join('\n'),
+        );
       }
       if (outputTokens === 0) outputTokens = estimateInputTokens(acc);
 

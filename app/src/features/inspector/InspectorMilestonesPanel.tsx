@@ -1,11 +1,13 @@
 import * as React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Check, GripVertical, MoreHorizontal, Plus, Sparkles, Trash2 } from 'lucide-react';
+import { CalendarClock, Check, GripVertical, MoreHorizontal, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
+import { ActivityRow, useChatActivityStore } from '@/features/chat/activity';
 import { useMilestonesStore } from './milestonesStore';
+import { isMilestoneKind } from './types';
 import type { MilestoneItem } from './types';
 
 type TraceView = 'milestones' | 'timeline';
@@ -16,11 +18,20 @@ interface InspectorMilestonesPanelProps {
 }
 
 export function InspectorMilestonesPanel({ view, onViewChange }: InspectorMilestonesPanelProps) {
-  const items = useMilestonesStore((s) => s.items);
+  const allItems = useMilestonesStore((s) => s.items);
+  const items = React.useMemo(() => allItems.filter(isMilestoneKind), [allItems]);
   const addMilestone = useMilestonesStore((s) => s.addMilestone);
   const updateMilestone = useMilestonesStore((s) => s.updateMilestone);
   const removeMilestone = useMilestonesStore((s) => s.removeMilestone);
   const toggleDone = useMilestonesStore((s) => s.toggleDone);
+  const eventsByChat = useChatActivityStore((s) => s.eventsByChat);
+  const activityEvents = React.useMemo(
+    () => Object.values(eventsByChat)
+      .flat()
+      .sort((a, b) => a.ts - b.ts)
+      .slice(-16),
+    [eventsByChat],
+  );
 
   const [draft, setDraft] = React.useState('');
   const [celebrateId, setCelebrateId] = React.useState<string | null>(null);
@@ -31,7 +42,7 @@ export function InspectorMilestonesPanel({ view, onViewChange }: InspectorMilest
   const onAdd = () => {
     const title = draft.trim();
     if (!title) return;
-    addMilestone(title);
+    addMilestone(title, 'milestone');
     setDraft('');
   };
 
@@ -86,10 +97,18 @@ export function InspectorMilestonesPanel({ view, onViewChange }: InspectorMilest
       </header>
 
       {view === 'timeline' ? (
-        <div className="rounded-md border border-border bg-elevated px-3 py-3 text-secondary text-muted-foreground">
-          Agent rows, tool spans, and token costs will appear here as workflow events are recorded.
-          Use <span className="text-foreground">Milestone List</span> for actionable progress tracking today.
-        </div>
+        activityEvents.length > 0 ? (
+          <div className="overflow-hidden rounded-md border border-border bg-elevated">
+            {activityEvents.map((event) => (
+              <ActivityRow key={event.id} event={event} />
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-md border border-border bg-elevated px-3 py-3 text-secondary text-muted-foreground">
+            Jarvis agent, file, URL, and diff activity will appear here as chat workflows run.
+            Use <span className="text-foreground">Milestone List</span> for manual checkpoints.
+          </div>
+        )
       ) : (
         <>
           <div className="flex gap-1.5">
@@ -143,7 +162,7 @@ function MilestoneRow({
   item: MilestoneItem;
   celebrating: boolean;
   onCheck: () => void;
-  onUpdate: (patch: Partial<Pick<MilestoneItem, 'title' | 'description' | 'status'>>) => void;
+  onUpdate: (patch: Partial<Pick<MilestoneItem, 'title' | 'description' | 'status' | 'deadlineAt'>>) => void;
   onRemove: () => void;
 }) {
   const done = item.status === 'done';
@@ -195,9 +214,19 @@ function MilestoneRow({
           <input
             value={item.description ?? ''}
             onChange={(e) => onUpdate({ description: e.target.value })}
-            placeholder="Notes (optional)"
+            placeholder="Description"
             className="mt-0.5 w-full bg-transparent text-metadata text-muted-foreground outline-none"
           />
+          <label className="mt-1 flex items-center gap-1.5 text-metadata text-muted-foreground">
+            <CalendarClock className="h-3 w-3 text-accent-copper/80" />
+            <span className="sr-only">Target date for {item.title}</span>
+            <input
+              type="date"
+              value={toDateInput(item.deadlineAt)}
+              onChange={(e) => onUpdate({ deadlineAt: fromDateInput(e.target.value) })}
+              className="min-w-0 bg-transparent outline-none [color-scheme:dark]"
+            />
+          </label>
         </div>
         <button
           type="button"
@@ -215,4 +244,19 @@ function MilestoneRow({
       ) : null}
     </motion.li>
   );
+}
+
+function toDateInput(value: number | undefined): string {
+  if (!value || !Number.isFinite(value)) return '';
+  const date = new Date(value);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function fromDateInput(value: string): number | undefined {
+  if (!value) return undefined;
+  const ms = new Date(`${value}T17:00:00`).getTime();
+  return Number.isFinite(ms) ? ms : undefined;
 }

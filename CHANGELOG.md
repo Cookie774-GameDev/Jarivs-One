@@ -2,6 +2,36 @@
 
 All notable changes to Jarvis are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.46] - 2026-07-05
+
+### Added
+
+- **Ollama auto-connect** — bootstrap runs before auth/model gates; retry schedule on focus; Tauri `ollama_ping` bridge without HTTP fallback.
+- **Jarvis creator** — natural-language agent, skill, and schedule creation from chat with registry actions.
+- **Queued messages bar** — visible send queue while a turn is in flight.
+- **All About Me** — Settings section for personal context injected into prompts.
+- **Chat activity panel** — in-thread agent/tool activity timeline.
+- **Image attachments** — vision-capable chat uploads with provider routing.
+- **Leaderboard snapshot** — benchmark data refresh for June 2026 frontier models.
+
+### Improved
+
+- **Local models** — `OllamaConnectionHost` mounts in AuthGate; endpoint normalization to loopback; provider test uses Rust bridge on desktop.
+- **Composer STT** — interim editor, volume meter, and global host reliability.
+- **Stack picker** — Single mode iconless; Hive icon unchanged.
+- **Ambient audio** — playback engine refactor with loop/crossfade tests.
+- **Schedule** — Jarvis-managed recurring tasks with local datetime helpers.
+
+### Fixed
+
+- **Mock demo model** — removed from all user-facing provider/model selectors (internal mock routing unchanged).
+- **Provider key test** — Ollama validation aligned with loopback defaults and security policy.
+- **Agent model dropdown** — connected registry options without legacy manual ID field.
+
+### Removed
+
+- **SingleModelIcon** — Single stack mode no longer shows a separate brand icon.
+
 ## [0.1.45] - 2026-06-19
 
 ### Added

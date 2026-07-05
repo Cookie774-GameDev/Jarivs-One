@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'motion/react';
-import { X, FileText, Network, Zap, Terminal, Clock, Image, Link, Folder, Plug } from 'lucide-react';
+import { X, FileText, Network, Zap, Terminal, Image, Link, Folder, Plug, UserRound } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export type TokenType =
@@ -33,12 +33,12 @@ const TOKEN_ICONS: Record<TokenType, typeof FileText> = {
   link: Link,
   folder: Folder,
   model: Zap,
-  agent: Zap,
+  agent: UserRound,
   plugin: Plug,
 };
 
 const TOKEN_COLORS: Record<TokenType, string> = {
-  command: 'from-violet-500/30 to-purple-600/30 border-violet-500/50',
+  command: 'from-amber-400/30 via-orange-500/25 to-rose-500/30 border-amber-400/55',
   file: 'from-blue-500/25 to-indigo-500/25 border-blue-500/40',
   contextmap: 'from-purple-500/30 to-fuchsia-500/30 border-purple-500/50',
   terminal: 'from-emerald-500/25 to-teal-500/25 border-emerald-500/40',
@@ -46,12 +46,12 @@ const TOKEN_COLORS: Record<TokenType, string> = {
   link: 'from-cyan-500/25 to-sky-500/25 border-cyan-500/40',
   folder: 'from-amber-500/25 to-orange-500/25 border-amber-500/40',
   model: 'from-violet-500/30 to-purple-600/30 border-violet-500/50',
-  agent: 'from-violet-500/30 to-purple-600/30 border-violet-500/50',
+  agent: 'from-cyan-400/25 via-sky-500/20 to-blue-500/25 border-cyan-400/45',
   plugin: 'from-orange-500/25 to-amber-500/25 border-orange-500/40',
 };
 
 const TOKEN_GLOW: Record<TokenType, string> = {
-  command: 'shadow-[0_0_12px_rgba(139,92,246,0.3)]',
+  command: 'shadow-[0_0_14px_rgba(245,158,11,0.28)]',
   file: 'shadow-[0_0_10px_rgba(59,130,246,0.2)]',
   contextmap: 'shadow-[0_0_12px_rgba(168,85,247,0.3)]',
   terminal: 'shadow-[0_0_10px_rgba(16,185,129,0.2)]',
@@ -59,7 +59,7 @@ const TOKEN_GLOW: Record<TokenType, string> = {
   link: 'shadow-[0_0_10px_rgba(6,182,212,0.2)]',
   folder: 'shadow-[0_0_10px_rgba(245,158,11,0.2)]',
   model: 'shadow-[0_0_12px_rgba(139,92,246,0.3)]',
-  agent: 'shadow-[0_0_12px_rgba(139,92,246,0.3)]',
+  agent: 'shadow-[0_0_12px_rgba(34,211,238,0.24)]',
   plugin: 'shadow-[0_0_10px_rgba(245,158,11,0.2)]',
 };
 
@@ -78,11 +78,20 @@ export function InputToken({ type, label, sublabel, icon, onRemove, className }:
         'text-metadata font-medium',
         TOKEN_COLORS[type],
         TOKEN_GLOW[type],
+        type === 'command' && 'jarvis-confirmed-token animate-[plan-border-flow_7s_linear_infinite] bg-[length:220%_auto]',
+        type === 'agent' && 'jarvis-agent-token',
         'hover:brightness-110 transition-all duration-200',
         className,
       )}
     >
-      {icon ?? <Icon className="h-3 w-3 text-violet-400 shrink-0" />}
+      {icon ?? (
+        <Icon
+          className={cn(
+            'h-3 w-3 shrink-0',
+            type === 'command' ? 'text-amber-300' : type === 'agent' ? 'text-cyan-300' : 'text-violet-400',
+          )}
+        />
+      )}
       <span className="text-foreground/90 truncate max-w-[120px]">{label}</span>
       {sublabel && (
         <span className="text-muted-foreground/70 truncate max-w-[80px]">{sublabel}</span>

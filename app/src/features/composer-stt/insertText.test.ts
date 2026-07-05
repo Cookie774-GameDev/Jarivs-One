@@ -4,6 +4,10 @@ import {
   isComposerSttTextarea,
   isGlobalSttEditable,
   isTerminalSttSurface,
+  rememberSttEditableFromFocus,
+  resetSttFocusMemoryForTests,
+  resolveComposerSttTextarea,
+  resolveGlobalSttEditable,
 } from './insertText';
 
 describe('insertText', () => {
@@ -16,6 +20,7 @@ describe('insertText', () => {
 
   afterEach(() => {
     container.remove();
+    resetSttFocusMemoryForTests();
   });
 
   it('detects composer vs generic textareas', () => {
@@ -53,5 +58,52 @@ describe('insertText', () => {
     expect(insertTextIntoFocusedEditable('world')).toBe(true);
     expect(field.value).toBe('Hello world');
     expect(field.selectionStart).toBe(11);
+  });
+
+  it('resolves the last focused global field when the mic button steals focus', () => {
+    const field = document.createElement('textarea');
+    field.id = 'agent-prompt';
+    container.appendChild(field);
+    field.focus();
+    rememberSttEditableFromFocus(field);
+
+    const micButton = document.createElement('button');
+    micButton.textContent = 'Mic';
+    container.appendChild(micButton);
+    micButton.focus();
+
+    expect(document.activeElement).toBe(micButton);
+    expect(resolveGlobalSttEditable()).toBe(field);
+  });
+
+  it('resolves the last focused composer textarea when focus moves to a button', () => {
+    const composer = document.createElement('textarea');
+    composer.setAttribute('aria-label', 'Message');
+    container.appendChild(composer);
+    composer.focus();
+    rememberSttEditableFromFocus(composer);
+
+    const micButton = document.createElement('button');
+    container.appendChild(micButton);
+    micButton.focus();
+
+    expect(resolveComposerSttTextarea()).toBe(composer);
+    expect(resolveGlobalSttEditable()).toBeNull();
+  });
+
+  it('clears stale composer memory after focusing a global text field', () => {
+    const composer = document.createElement('textarea');
+    composer.setAttribute('aria-label', 'Message');
+    const agent = document.createElement('textarea');
+    agent.id = 'agent-prompt';
+    container.append(composer, agent);
+
+    composer.focus();
+    rememberSttEditableFromFocus(composer);
+    agent.focus();
+    rememberSttEditableFromFocus(agent);
+
+    expect(resolveComposerSttTextarea()).toBeNull();
+    expect(resolveGlobalSttEditable()).toBe(agent);
   });
 });

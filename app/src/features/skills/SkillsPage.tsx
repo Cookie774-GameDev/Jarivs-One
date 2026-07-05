@@ -1,5 +1,5 @@
 /**
- * SkillsPage — unified library: 16 built-in presets + user custom skills.
+ * SkillsPage — unified library: five built-in presets + user custom skills.
  * Inline SkillEditor on the right (no Files route navigation).
  */
 import * as React from 'react';
@@ -234,8 +234,8 @@ export function SkillsPage() {
         ) : (
           <div className="flex-1 flex items-center justify-center p-10">
             <div className="rounded-xl bg-paper border border-border shadow-soft p-8 max-w-md text-center space-y-3">
-              <div className="text-4xl">✨</div>
-              <div className="eyebrow">16 presets + yours</div>
+              <div className="text-4xl">✦</div>
+              <div className="eyebrow">5 focused presets + yours</div>
               <h1 className="font-display text-3xl font-semibold text-foreground leading-tight tracking-tight">
                 Skill library
               </h1>

@@ -24,7 +24,8 @@ import { useUIStore } from '@/stores/ui';
 import { useAuthStore } from '@/stores/auth';
 import { HOTKEYS } from '@/lib/hotkeys';
 import { cn, isMac } from '@/lib/utils';
-import { requestComposerSttFromToolbar } from '@/features/composer-stt';
+import { requestComposerSttFromToolbar, sttVolumeRef } from '@/features/composer-stt';
+import { MicWaveform } from '@/features/chat/MicWaveform';
 import { useCallStore } from '@/features/call/store';
 import { isCallConfigured, loadCallService } from '@/features/call';
 import { toast } from '@/components/ui/toast';
@@ -430,9 +431,11 @@ export function TopBar() {
               aria-pressed={composerSttListening}
               className="relative"
             >
-              <Mic
-                className={cn('h-4 w-4 transition-colors', composerSttListening && 'text-accent-cyan')}
-              />
+              {composerSttListening ? (
+                <MicWaveform volumeRef={sttVolumeRef} />
+              ) : (
+                <Mic className="h-4 w-4" />
+              )}
               {composerSttListening && (
                 <span
                   aria-hidden
@@ -639,12 +642,11 @@ function CompactRightCluster(props: CompactRightClusterProps) {
             />
             <MenuRow
               icon={
-                <Mic
-                  className={cn(
-                    'h-3.5 w-3.5',
-                    voiceListening && 'text-accent-cyan',
-                  )}
-                />
+                voiceListening ? (
+                  <MicWaveform volumeRef={sttVolumeRef} />
+                ) : (
+                  <Mic className="h-3.5 w-3.5" />
+                )
               }
               label={voiceListening ? 'Voice to text (listening)' : 'Voice to text'}
               hotkey={HOTKEYS.COMPOSER_STT}

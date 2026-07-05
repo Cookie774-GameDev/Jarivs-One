@@ -1,6 +1,8 @@
 import { useEffect, type ReactNode } from 'react';
 import { nanoid } from 'nanoid';
 import { useOllamaModelOptions } from '@/lib/ai/models';
+import { bootstrapOllamaConnection } from '@/lib/ai/ollamaBootstrap';
+import { OllamaConnectionHost } from '@/features/local-models/OllamaConnectionHost';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import { Onboarding } from '@/features/onboarding';
@@ -58,6 +60,12 @@ export function AuthGate({ children }: AuthGateProps) {
     }
   }, [localUserId, setLocalUser]);
 
+  // Start Ollama discovery before the model-access gate so local models can
+  // satisfy hasModelAccess and the catalog is warm when the shell mounts.
+  useEffect(() => {
+    void bootstrapOllamaConnection();
+  }, []);
+
   // 2. Seed the local database (idempotent). Runs once we have a user id and
   // the seed module is available. Failures are non-fatal - the rest of the
   // app should still come up.
@@ -82,13 +90,28 @@ export function AuthGate({ children }: AuthGateProps) {
   }, [localUserId]);
 
   if (!onboardingComplete) {
-    return <Onboarding />;
+    return (
+      <>
+        <OllamaConnectionHost />
+        <Onboarding />
+      </>
+    );
   }
 
   // Onboarding done but no model connected yet — require one before the app.
   if (!hasModelAccess) {
-    return <RequireModelAccess />;
+    return (
+      <>
+        <OllamaConnectionHost />
+        <RequireModelAccess />
+      </>
+    );
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      <OllamaConnectionHost />
+      {children}
+    </>
+  );
 }

@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import type { MilestoneItem, MilestoneStatus } from '@/features/inspector/types';
-import { KanbanCard } from './KanbanCard';
+import { KanbanCard, MILESTONE_DRAG_MIME } from './KanbanCard';
 
 export interface KanbanColumnProps {
   status: MilestoneStatus;
@@ -18,6 +18,7 @@ export interface KanbanColumnProps {
   onDropItem: (itemId: string, target: MilestoneStatus) => void;
   onCreateItem: (status: MilestoneStatus, title: string) => void;
   onOpenItem: (item: MilestoneItem) => void;
+  onToggleDone?: (itemId: string) => void;
 }
 
 export function KanbanColumn({
@@ -31,6 +32,7 @@ export function KanbanColumn({
   onDropItem,
   onCreateItem,
   onOpenItem,
+  onToggleDone,
 }: KanbanColumnProps) {
   const [isOver, setIsOver] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -49,14 +51,17 @@ export function KanbanColumn({
     if (creating) inputRef.current?.focus();
   }, [creating]);
 
+  const acceptsMilestoneDrag = (e: DragEvent<HTMLElement>) =>
+    e.dataTransfer.types.includes(MILESTONE_DRAG_MIME) || draggingItemId != null;
+
   const onDragOver = (e: DragEvent<HTMLDivElement>) => {
-    if (!draggingItemId) return;
+    if (!acceptsMilestoneDrag(e)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
   };
 
   const onDragEnter = (e: DragEvent<HTMLDivElement>) => {
-    if (!draggingItemId) return;
+    if (!acceptsMilestoneDrag(e)) return;
     e.preventDefault();
     dragDepth.current += 1;
     setIsOver(true);
@@ -71,9 +76,17 @@ export function KanbanColumn({
     e.preventDefault();
     dragDepth.current = 0;
     setIsOver(false);
-    const itemId = e.dataTransfer.getData('text/jarvis-milestone') || draggingItemId;
+    const itemId = e.dataTransfer.getData(MILESTONE_DRAG_MIME) || draggingItemId;
     if (!itemId) return;
     onDropItem(itemId, status);
+    onDragEndItem();
+  };
+
+  const dropZoneProps = {
+    onDragOver,
+    onDragEnter,
+    onDragLeave,
+    onDrop,
   };
 
   const submitDraft = () => {
@@ -102,10 +115,7 @@ export function KanbanColumn({
   return (
     <section
       aria-label={`${title} column`}
-      onDragOver={onDragOver}
-      onDragEnter={onDragEnter}
-      onDragLeave={onDragLeave}
-      onDrop={onDrop}
+      {...dropZoneProps}
       className={cn(
         'flex h-full min-h-[360px] flex-col gap-4 rounded-xl bg-paper-soft p-6 shadow-soft',
         'transition-[box-shadow] duration-150',
@@ -144,7 +154,7 @@ export function KanbanColumn({
         </div>
       ) : null}
 
-      <div className="flex min-h-0 flex-1 flex-col gap-2">
+      <div className="flex min-h-0 flex-1 flex-col gap-2" {...dropZoneProps}>
         {items.length === 0 ? (
           <div
             className={cn(
@@ -163,11 +173,12 @@ export function KanbanColumn({
               reducedMotion={reducedMotion}
               onDragStart={(e) => {
                 e.dataTransfer.effectAllowed = 'move';
-                e.dataTransfer.setData('text/jarvis-milestone', item.id);
+                e.dataTransfer.setData(MILESTONE_DRAG_MIME, item.id);
                 onDragStartItem(item.id);
               }}
               onDragEnd={onDragEndItem}
               onClick={() => onOpenItem(item)}
+              onToggleDone={onToggleDone ? () => onToggleDone(item.id) : undefined}
             />
           ))
         )}

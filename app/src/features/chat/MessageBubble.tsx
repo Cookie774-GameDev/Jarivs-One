@@ -5,10 +5,12 @@ import { useAgentStore } from '@/stores/agents';
 import { cn, formatRelative, hueFromString } from '@/lib/utils';
 import { MessagePart } from './MessagePart';
 import type { Message } from '@/types';
+import type { JarvisCreatorKind } from '@/features/jarvis-creator/contracts';
 
 export interface MessageBubbleProps {
   message: Message;
   compact?: boolean;
+  creatorDraftKind?: JarvisCreatorKind;
 }
 
 const spring = { type: 'spring' as const, stiffness: 400, damping: 30, mass: 0.8 };
@@ -21,8 +23,13 @@ function extractText(message: Message): string {
     .trim();
 }
 
-export function MessageBubble({ message, compact = false }: MessageBubbleProps) {
+export function MessageBubble({ message, compact = false, creatorDraftKind }: MessageBubbleProps) {
   const agent = useAgentStore((s) => (message.agent_id ? s.agents[message.agent_id] : undefined));
+
+  // A Hive ensemble reply carries one or more `stack_step` parts. When present
+  // we wrap the response in a soft, warm radiant glow that matches the cozy
+  // composer halo.
+  const isHiveResponse = message.parts.some((p) => p.kind === 'stack_step');
 
   const slug = agent?.slug ?? message.agent_id ?? 'jarvis';
   const hue = agent?.color_hue ?? hueFromString(slug);
@@ -60,8 +67,8 @@ export function MessageBubble({ message, compact = false }: MessageBubbleProps) 
       >
         <div className={cn('rounded-md border border-dashed border-border bg-elevated/60 px-3 py-2 text-center', compact ? 'max-w-full text-metadata' : 'max-w-[60ch]')}>
           <div className="flex flex-col gap-1.5 text-secondary text-muted-foreground">
-            {message.parts.map((part, i) => (
-              <MessagePart key={i} part={part} allParts={message.parts} messageId={message.id} chatId={message.chat_id} />
+              {message.parts.map((part, i) => (
+              <MessagePart key={i} part={part} allParts={message.parts} messageId={message.id} chatId={message.chat_id} creatorDraftKind={creatorDraftKind} />
             ))}
           </div>
         </div>
@@ -79,8 +86,8 @@ export function MessageBubble({ message, compact = false }: MessageBubbleProps) 
         transition={spring}
         className="flex w-full flex-col gap-1.5"
       >
-        {message.parts.map((part, i) => (
-          <MessagePart key={i} part={part} allParts={message.parts} messageId={message.id} chatId={message.chat_id} />
+              {message.parts.map((part, i) => (
+          <MessagePart key={i} part={part} allParts={message.parts} messageId={message.id} chatId={message.chat_id} creatorDraftKind={creatorDraftKind} />
         ))}
       </motion.div>
     );
@@ -100,7 +107,7 @@ export function MessageBubble({ message, compact = false }: MessageBubbleProps) 
           <div className="rounded-lg bg-muted px-3 py-2 text-foreground min-w-0 w-full overflow-hidden break-all">
             <div className="flex flex-col gap-2">
               {message.parts.map((part, i) => (
-                <MessagePart key={i} part={part} allParts={message.parts} messageId={message.id} chatId={message.chat_id} />
+                <MessagePart key={i} part={part} allParts={message.parts} messageId={message.id} chatId={message.chat_id} creatorDraftKind={creatorDraftKind} />
               ))}
             </div>
           </div>
@@ -140,15 +147,17 @@ export function MessageBubble({ message, compact = false }: MessageBubbleProps) 
           </div>
           <div
             className={cn(
-              'border-l py-0.5 min-w-0',
-              compact ? 'pl-2 text-secondary' : 'pl-3',
+              'min-w-0',
+              isHiveResponse
+                ? cn('hive-response-glow rounded-2xl', compact ? 'px-3 py-2 text-secondary' : 'px-3.5 py-2.5')
+                : cn('border-l py-0.5', compact ? 'pl-2 text-secondary' : 'pl-3'),
               // Subtle agent tint on hover via class? We use inline style for the dynamic color.
             )}
-            style={{ borderLeftColor: agentColor, borderLeftWidth: 1 }}
+            style={isHiveResponse ? undefined : { borderLeftColor: agentColor, borderLeftWidth: 1 }}
           >
             <div className="flex flex-col gap-2">
               {message.parts.map((part, i) => (
-                <MessagePart key={i} part={part} allParts={message.parts} messageId={message.id} chatId={message.chat_id} />
+                <MessagePart key={i} part={part} allParts={message.parts} messageId={message.id} chatId={message.chat_id} hiveWords={isHiveResponse} creatorDraftKind={creatorDraftKind} />
               ))}
             </div>
           </div>

@@ -28,7 +28,7 @@ export function SidebarFilesTree({ navOpen, active, onOpenFiles }: SidebarFilesT
   const loadRoot = React.useCallback(async (path: string) => {
     if (!path) return;
     setLoading(true);
-    const result = await listDirectory(path);
+    const result = await listDirectory(path, { root: path });
     setLoading(false);
     if (result.ok) setEntries(result.entries.slice(0, MAX_CHILDREN));
   }, []);
@@ -91,6 +91,7 @@ export function SidebarFilesTree({ navOpen, active, onOpenFiles }: SidebarFilesT
           key={entry.path}
           entry={entry}
           depth={0}
+          rootDir={rootDir}
           projectId={projectId}
           onOpenFiles={onOpenFiles}
         />
@@ -102,11 +103,13 @@ export function SidebarFilesTree({ navOpen, active, onOpenFiles }: SidebarFilesT
 function SidebarFileNode({
   entry,
   depth,
+  rootDir,
   projectId,
   onOpenFiles,
 }: {
   entry: FsEntry;
   depth: number;
+  rootDir: string;
   projectId: string | null;
   onOpenFiles: () => void;
 }) {
@@ -117,7 +120,7 @@ function SidebarFileNode({
   const loadChildren = async () => {
     if (!entry.isDir || children.length > 0) return;
     setLoading(true);
-    const result = await listDirectory(entry.path);
+    const result = await listDirectory(entry.path, { root: rootDir });
     setLoading(false);
     if (result.ok) setChildren(result.entries.slice(0, MAX_CHILDREN));
   };
@@ -194,6 +197,7 @@ function SidebarFileNode({
           key={child.path}
           entry={child}
           depth={depth + 1}
+            rootDir={rootDir}
           projectId={projectId}
           onOpenFiles={onOpenFiles}
         />

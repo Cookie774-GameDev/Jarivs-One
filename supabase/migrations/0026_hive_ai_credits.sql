@@ -4,6 +4,13 @@
 -- Chat-only Hive hosted steps draw from the user's AI credit allocation.
 -- Terminals, voice, PSTN, and SMS never use this ledger.
 
+alter table public.subscription_plan_limits
+  drop constraint if exists subscription_plan_limits_plan_check;
+
+alter table public.subscription_plan_limits
+  add constraint subscription_plan_limits_plan_check
+  check (plan in ('free', 'starter', 'pro', 'ultra', 'apex'));
+
 insert into public.subscription_plan_limits
   (plan, message_budget_usd, call_budget_usd, sms_budget_usd,
    message_credits, call_minutes, sms_count)

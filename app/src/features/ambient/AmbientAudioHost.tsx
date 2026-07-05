@@ -3,11 +3,13 @@ import { useUIStore } from '@/stores/ui';
 import { useAuthStore } from '@/stores/auth';
 import { effectivePlan, isAdminIdentity } from '@/lib/entitlements';
 import { AmbientAudioEngine } from './ambientAudio';
+import { shouldAmbientMusicPlay } from './ambientPlayback';
 import { getPlayableAmbientTrack } from './tracks';
 
 export function AmbientAudioHost() {
-  const ambientDrone = useUIStore((s) => s.ambientDrone);
+  const ambient = useUIStore((s) => s.ambient);
   const ambientActive = useUIStore((s) => s.ambientActive);
+  const ambientDrone = useUIStore((s) => s.ambientDrone);
   const ambientAlwaysPlay = useUIStore((s) => s.ambientAlwaysPlay);
   const ambientTrack = useUIStore((s) => s.ambientTrack);
   const ambientVolume = useUIStore((s) => s.ambientVolume);
@@ -15,7 +17,12 @@ export function AmbientAudioHost() {
   const email = useAuthStore((s) => s.email);
   const cloudEmail = useAuthStore((s) => s.cloudSession?.email ?? null);
   const localUserId = useAuthStore((s) => s.localUserId);
-  const shouldPlay = ambientDrone && (ambientAlwaysPlay || ambientActive);
+  const shouldPlay = shouldAmbientMusicPlay(
+    ambient,
+    ambientActive,
+    ambientDrone,
+    ambientAlwaysPlay,
+  );
   const admin = isAdminIdentity({ email, cloudEmail, localUserId });
   const playableTrack = getPlayableAmbientTrack(ambientTrack, effectivePlan(plan, admin), admin);
 

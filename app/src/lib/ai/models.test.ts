@@ -28,9 +28,16 @@ describe('chat model catalog', () => {
       'xai',
       'ollama',
       'local',
-      'mock',
     ]);
     expect(isRealChatProvider('openrouter')).toBe(true);
+  });
+
+  it('never exposes mock demo in accessible providers', () => {
+    const apiKeys = { mock: 'mock-skip-sentinel', google: 'test-key' };
+    syncDiscoveredOllamaModels(['llama3.2']);
+
+    expect(getAccessibleProviders(apiKeys, false)).not.toContain('mock');
+    expect(getAccessibleModelOptions('mock', apiKeys, false)).toEqual([]);
   });
 
   it('filters chat models to installed local models and configured API keys', () => {
@@ -39,7 +46,6 @@ describe('chat model catalog', () => {
 
     expect(getAccessibleProviders(apiKeys, false)).toEqual([
       'google',
-      'mock',
       'ollama',
       'local',
     ]);
@@ -79,7 +85,6 @@ describe('chat model catalog', () => {
       'mistral',
       'openrouter',
       'xai',
-      'mock',
       'ollama',
       'local',
     ]);

@@ -86,6 +86,21 @@ struct PersistPayload {
     reason: &'static str,
 }
 
+#[derive(Clone, Copy)]
+struct GlobalDictationShortcutConfig {
+    modifiers: Option<Modifiers>,
+    code: Code,
+    opens_overlay: bool,
+}
+
+fn global_dictation_shortcut_config() -> GlobalDictationShortcutConfig {
+    GlobalDictationShortcutConfig {
+        modifiers: Some(Modifiers::CONTROL),
+        code: Code::Space,
+        opens_overlay: false,
+    }
+}
+
 fn show_main_window(app: &tauri::AppHandle, reason: &'static str) {
     println!("[lifecycle] showing main window ({reason})");
     branding::apply_app_branding(app);
@@ -141,7 +156,12 @@ pub fn run() {
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
                     if event.state == ShortcutState::Pressed {
-                        show_dictation_window(app);
+                        let config = global_dictation_shortcut_config();
+                        if config.opens_overlay {
+                            show_dictation_window(app);
+                        } else if let Err(err) = dictation::trigger_os_dictation() {
+                            eprintln!("[dictation] failed to trigger native OS dictation: {err}");
+                        }
                     }
                 })
                 .build(),
@@ -183,9 +203,13 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            let dictation_shortcut = Shortcut::new(Some(Modifiers::CONTROL), Code::CapsLock);
+            let dictation_shortcut_config = global_dictation_shortcut_config();
+            let dictation_shortcut = Shortcut::new(
+                dictation_shortcut_config.modifiers,
+                dictation_shortcut_config.code,
+            );
             if let Err(err) = app.global_shortcut().register(dictation_shortcut) {
-                eprintln!("[dictation] failed to register Ctrl+CapsLock: {err}");
+                eprintln!("[dictation] failed to register Ctrl+Space: {err}");
             }
 
             Ok(())
@@ -220,6 +244,7 @@ pub fn run() {
             refresh_app_branding,
             fsread::fs_create_text_file,
             fsread::fs_list_dir,
+            fsread::fs_read_image_base64,
             fsread::fs_read_text,
             fsread::fs_read_text_sample,
             fsread::fs_write_text,
@@ -264,6 +289,7 @@ pub fn run() {
             kokoro::kokoro_delete_corrupt,
             kokoro::kokoro_speak,
             kokoro::kokoro_stop,
+            ollama_http::ollama_ping,
             ollama_http::ollama_list_models,
             ollama_http::ollama_pull_model,
             ollama_http::ollama_chat_stream,
@@ -280,4 +306,18 @@ pub fn run() {
                 );
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn global_dictation_shortcut_is_ctrl_space_without_overlay_focus() {
+        let config = global_dictation_shortcut_config();
+
+        assert_eq!(config.modifiers, Some(Modifiers::CONTROL));
+        assert_eq!(config.code, Code::Space);
+        assert!(!config.opens_overlay);
+    }
 }

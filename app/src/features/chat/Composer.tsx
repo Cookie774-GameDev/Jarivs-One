@@ -1,5 +1,6 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Send, ChevronDown, Sparkles, Mic, MicOff, FileText, X, Network, Terminal } from 'lucide-react';
+import { HiveModelIcon } from '@/components/brand';
 import { PLUGIN_CATALOG } from '@/features/plugins/catalog';
 import { extractPluginMentions } from '@/features/plugins/mentions';
 import { PluginLogo } from '@/features/plugins/PluginLogo';
@@ -12,7 +13,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui';
-import { messageRepo } from '@/lib/db';
+import { chatRepo, messageRepo } from '@/lib/db';
 import { cn, isTauri, renderHotkey } from '@/lib/utils';
 import { HOTKEYS } from '@/lib/hotkeys';
 import { buildUsageSummary } from '@/lib/usage/usageSummary';
@@ -34,11 +35,23 @@ import {
   startBatchAudioRecorder,
   STT_INACTIVITY_MS,
   STT_ACTIVITY_RMS,
+  sttVolumeRef,
+  setSttVolumeLevel,
+  resetSttVolume,
+  startSttVolumeMeter,
+  stopSttVolumeMeter,
   transcribeFasterWhisper,
   transcribeGroq as transcribeGroqApi,
   triggerWindowsNativeDictation,
+  resolveComposerSttTextarea,
   type FasterWhisperRecorder,
 } from '@/features/composer-stt';
+import {
+  buildSttCommittedValue,
+  buildSttPreviewValue,
+  captureSttTextSnapshot,
+  type SttFieldSnapshot,
+} from '@/features/composer-stt/sttInterimEditor';
 import { JARVIS_COMMAND_CATALOG } from '@/features/assistant/commands';
 import { toast } from '@/components/ui/toast';
 import type { Agent, AgentId, ChatId, ProviderId } from '@/types';
@@ -78,31 +91,49 @@ import {
 import { SlashCommandOptionPicker, type SlashCommandOption, type SlashCommandOptionPickerRef } from './SlashCommandOptionPicker';
 import {
   ModelPickerTypeahead,
+  HIVE_OPTION_ID,
   type ModelPickerTypeaheadRef,
 } from './ModelPickerTypeahead';
-import { StackPicker } from './StackPicker';
 import { InputToken, TokenList } from './InputToken';
 import { getChatDragKind, getChatDropPayload } from './dropPayload';
+import {
+  imageAttachmentFromBrowserFile,
+  imageAttachmentFromPath,
+  splitImageFiles,
+} from './imageAttachments';
 import { getSkillPickerOptions, getAllCatalogSkills } from '@/features/skills/skillCatalog';
+import { isSupportedImagePath, type ChatImageAttachment } from '@/lib/ai/vision';
 import {
   REAL_CHAT_PROVIDERS,
   selectLocalModelForChat,
   defaultModelForProvider,
   getAccessibleModelOptions,
   getAccessibleProviders,
-  syncDiscoveredOllamaModels,
   useOllamaModelOptions,
 } from '@/lib/ai/models';
 import { useAccessibleChatModels } from '@/lib/ai/useAccessibleChatModels';
+import { useAllAboutMeStore } from '@/features/all-about-me/store';
+import {
+  ALL_ABOUT_ME_SLASH_OPTIONS,
+  allAboutMeChatUpdateStatus,
+  buildAllAboutMeSlashText,
+  type AllAboutMeSlashOptionId,
+} from '@/features/all-about-me/slash';
 import {
   formatChatModelSelectionLabel,
   modelSelectionContextFromAuth,
+  selectionFromHive,
   selectionFromOption,
   selectionOptionId,
   validateSendModelAccess,
   type ChatModelSelection,
   type ModelSelectionContext,
 } from '@/lib/ai/modelSelection';
+import { ModeIndicator } from '@/features/jarvis-interaction/ModeIndicator';
+import { cycleInteractionMode, interactionModeLabel } from '@/features/jarvis-interaction/modes';
+import { useJarvisInteractionStore } from '@/features/jarvis-interaction/sessionStore';
+import { launchJarvisChatAgent } from '@/features/jarvis-interaction/agentRunner';
+import { QueuedMessagesBar, type QueuedChatMessage } from './QueuedMessagesBar';
 
 export interface ComposerProps {
   chatId: ChatId | string;
@@ -159,10 +190,76 @@ type MentionContext = { start: number; query: string };
 type SlashContext = { start: number; query: string };
 type OptionPickerContext = { cmd: SlashCommandDef; query: string };
 
-interface ConfirmedCommand {
+export interface ConfirmedCommand {
   cmd: string;
   value?: string;
   label: string;
+}
+
+export interface ConfirmedAgentMention {
+  id: AgentId;
+  slug: string;
+  label: string;
+}
+
+const SLASH_REFERENCE_LABELS: Record<string, string> = {
+  agents: 'Agents page/editor',
+  terminals: 'Terminal surface',
+  hive: 'Hive Balanced',
+  kanban: 'Kanban page',
+  history: 'History page',
+  tools: 'Tools page',
+  schedule: 'Schedule page',
+  chat: 'Chat page',
+};
+
+export function buildConfirmedAgentMention(agent: Agent): ConfirmedAgentMention {
+  return {
+    id: agent.id,
+    slug: agent.slug,
+    label: `@${agent.slug}`,
+  };
+}
+
+export function buildSlashReferenceCommand(cmd: SlashCommandDef): ConfirmedCommand {
+  const canonical = normalizeSlashCmd(cmd.cmd);
+  const label = SLASH_REFERENCE_LABELS[canonical] ?? cmd.description.replace(/^Open\s+/i, '');
+  return {
+    cmd: canonical,
+    value: `reference:${canonical}`,
+    label: `/${canonical}: ${label}`,
+  };
+}
+
+export function resolveMentionedAgentIdsForSend(
+  text: string,
+  agents: Record<string, Agent>,
+  confirmedMentions: ConfirmedAgentMention[] = [],
+): AgentId[] {
+  const seen = new Set<AgentId>();
+  const out: AgentId[] = [];
+  for (const mention of confirmedMentions) {
+    if (seen.has(mention.id)) continue;
+    seen.add(mention.id);
+    out.push(mention.id);
+  }
+  for (const id of extractMentionedAgentIds(text, agents)) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}
+
+function confirmedCommandReferenceText(commands: ConfirmedCommand[]): string {
+  const references = commands
+    .filter((command) => command.value?.startsWith('reference:'))
+    .map((command) => {
+      const label = command.label.replace(/^\/[^:]+:\s*/, '').trim();
+      return `/${command.cmd} references ${label}`;
+    });
+  if (references.length === 0) return '';
+  return `Context references: ${references.join('; ')}.`;
 }
 
 const WINDOWS_FILE_PATH_RE =
@@ -281,15 +378,23 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
   const [selectedSlashCmd, setSelectedSlashCmd] = useState<string>('');
   const [optionPickerCtx, setOptionPickerCtx] = useState<OptionPickerContext | null>(null);
   const [selectedOptionId, setSelectedOptionId] = useState<string>('');
+  const interactionMode = useJarvisInteractionStore((s) => s.modeForChat(chatId));
+  const setInteractionMode = useJarvisInteractionStore((s) => s.setChatMode);
   const [confirmedCommands, setConfirmedCommands] = useState<ConfirmedCommand[]>([]);
+  const [confirmedAgentMentions, setConfirmedAgentMentions] = useState<ConfirmedAgentMention[]>([]);
   const [sending, setSending] = useState(false);
+  const [jarvisRunning, setJarvisRunning] = useState(false);
+  const [queuedMessages, setQueuedMessages] = useState<QueuedChatMessage[]>([]);
   const [attachedFiles, setAttachedFiles] = useState<string[]>([]);
+  const [attachedImages, setAttachedImages] = useState<ChatImageAttachment[]>([]);
   const [attachedTerminals, setAttachedTerminals] = useState<TerminalRef[]>([]);
   const [attachedPlugins, setAttachedPlugins] = useState<string[]>([]);
   const [attachedContexts, setAttachedContexts] = useState<ContextAttachment[]>([]);
   const [dragOver, setDragOver] = useState(false);
   // V2 ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ speech-to-text in the composer.
   const [sttListening, setSttListening] = useState(false);
+  const [sttAwaitingFinal, setSttAwaitingFinal] = useState(false);
+  const [sttTranscribing, setSttTranscribing] = useState(false);
   const [sttInterim, setSttInterim] = useState('');
   const composerSttEnabled = useUIStore((s) => s.composerStt);
   const setComposerSttListening = useUIStore((s) => s.setComposerSttListening);
@@ -305,13 +410,70 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
   const audioSilenceTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastAudioActivityRef = useRef(0);
 
-  const volumeRef = useRef<number>(0);
-  const webSpeechAudioContextRef = useRef<AudioContext | null>(null);
-  const webSpeechStreamRef = useRef<MediaStream | null>(null);
-  const webSpeechAnalyserRef = useRef<AnalyserNode | null>(null);
-  const webSpeechVolumeTimerRef = useRef<number | null>(null);
+  const clearSttFinalizeTimer = useCallback(() => {
+    if (sttFinalizeTimerRef.current) {
+      clearTimeout(sttFinalizeTimerRef.current);
+      sttFinalizeTimerRef.current = null;
+    }
+  }, []);
+
+  const captureComposerSttSnapshot = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    sttSnapshotRef.current = captureSttTextSnapshot(
+      text,
+      el.selectionStart ?? text.length,
+      el.selectionEnd ?? text.length,
+    );
+  }, [text]);
+
+  const revertComposerSttPreview = useCallback(() => {
+    const snap = sttSnapshotRef.current;
+    if (!snap) return;
+    setText(snap.before + snap.after);
+    sttSnapshotRef.current = null;
+  }, []);
+
+  const volumeRef = sttVolumeRef;
   const voiceReplyRequestedRef = useRef(false);
   const batchRecorderRef = useRef<FasterWhisperRecorder | null>(null);
+  const sttSnapshotRef = useRef<SttFieldSnapshot | null>(null);
+  const transcribeGenRef = useRef(0);
+  const sttFinalizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const onRunState = (event: Event) => {
+      const detail = (event as CustomEvent<{ chatId?: string; status?: string }>).detail;
+      if (String(detail?.chatId) !== String(chatId)) return;
+      setJarvisRunning(detail?.status === 'running');
+    };
+    window.addEventListener('jarvis:run-state', onRunState as EventListener);
+    return () => window.removeEventListener('jarvis:run-state', onRunState as EventListener);
+  }, [chatId]);
+
+  const enqueueCurrentMessage = (draft: string) => {
+    const trimmedDraft = draft.trim();
+    if (!trimmedDraft) return;
+    setQueuedMessages((current) => [
+      ...current,
+      { id: `queued_${Date.now().toString(36)}_${current.length}`, text: trimmedDraft, createdAt: Date.now() },
+    ]);
+    setText('');
+    toast.info('Message queued', 'It will stay above the composer until you send, edit, or delete it.');
+  };
+
+  const editQueuedMessage = (id: string) => {
+    setQueuedMessages((current) => {
+      const queued = current.find((message) => message.id === id);
+      if (queued) setText(queued.text);
+      return current.filter((message) => message.id !== id);
+    });
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  };
+
+  const deleteQueuedMessage = (id: string) => {
+    setQueuedMessages((current) => current.filter((message) => message.id !== id));
+  };
 
   const agents = useAgentStore((s) => s.agents);
   const provider = useAuthStore((s) => s.defaultProvider);
@@ -397,6 +559,15 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       }));
     }
 
+    if (cmd === 'allaboutme') {
+      return ALL_ABOUT_ME_SLASH_OPTIONS.map((option) => ({
+        id: option.id,
+        label: option.label,
+        description: option.description,
+        icon: FileText,
+      }));
+    }
+
     return [];
   }, [optionPickerCtx, terminalSessions, projectId, pluginConnections]);
 
@@ -418,8 +589,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
 
   const stopGroqSttWithoutTranscribing = (message = 'Speech-to-text stopped after 30 seconds without voice activity.') => {
     clearAudioSilenceTimer();
-    stopWebSpeechVolumeMeter();
-    volumeRef.current = 0;
+    stopSttVolumeMeter();
     batchRecorderRef.current?.stop();
     batchRecorderRef.current = null;
     const context = audioContextRef.current;
@@ -557,7 +727,34 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     const before = text.slice(0, slashCtx.start);
     const after = text.slice(ta.selectionStart);
 
-    // If command has options (like /terminal or /contextmap), show option picker
+    const canonicalCmd = normalizeSlashCmd(cmd.cmd);
+
+    // `/hive` is no longer a reference token — it switches the chat model to the
+    // Hive ensemble (no attachment), then clears the typed command.
+    if (canonicalCmd === 'hive') {
+      setText(before + after);
+      setChatModelSelection(selectionFromHive('balanced'));
+      setSlashCtx(null);
+      requestAnimationFrame(() => textareaRef.current?.focus());
+      return;
+    }
+
+    const isReferenceCommand =
+      canonicalCmd === 'terminals' ||
+      cmd.category === 'navigation';
+
+    if (isReferenceCommand) {
+      setText(before + after);
+      setConfirmedCommands((cur) => {
+        const entry = buildSlashReferenceCommand(cmd);
+        return [...cur.filter((c) => c.value !== entry.value), entry];
+      });
+      setSlashCtx(null);
+      requestAnimationFrame(() => textareaRef.current?.focus());
+      return;
+    }
+
+    // If command has options (like /context or /plug), show option picker.
     if (cmd.hasOptions && isChatAttachSlashCmd(cmd.cmd)) {
       // Remove the typed slash command from text
       setText(before + after);
@@ -602,6 +799,17 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
   const selectOption = (option: SlashCommandOption) => {
     if (!optionPickerCtx) return;
     const cmd = optionPickerCtx.cmd;
+    if (cmd.cmd === 'allaboutme' && option.id === 'retake') {
+      setOptionPickerCtx(null);
+      setSelectedOptionId('');
+      setSettingsOpen(true);
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('jarvis:settings:tab', { detail: { tab: 'allaboutme' } }));
+        window.dispatchEvent(new CustomEvent('jarvis:allaboutme:retake'));
+      }, 0);
+      requestAnimationFrame(() => textareaRef.current?.focus());
+      return;
+    }
     const entry: ConfirmedCommand = {
       cmd: cmd.cmd,
       value: option.id,
@@ -634,14 +842,17 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     const ta = textareaRef.current;
     const before = text.slice(0, mentionCtx.start);
     const after = text.slice(ta.selectionStart);
-    const insert = `@${agent.slug} `;
-    const next = before + insert + after;
+    const next = before + after;
     setText(next);
+    setConfirmedAgentMentions((cur) => {
+      if (cur.some((mention) => mention.id === agent.id)) return cur;
+      return [...cur, buildConfirmedAgentMention(agent)].slice(0, 8);
+    });
     setMentionCtx(null);
     requestAnimationFrame(() => {
       const node = textareaRef.current;
       if (!node) return;
-      const pos = before.length + insert.length;
+      const pos = before.length;
       node.focus();
       node.setSelectionRange(pos, pos);
     });
@@ -666,6 +877,40 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       requestAnimationFrame(() => textareaRef.current?.focus());
       return true;
     };
+    if (cmd === 'ask') {
+      setInteractionMode(chatId, 'ask');
+      if (rest) return rest;
+      await addSystem('Switched to Ask Mode. Jarvis will answer only, with no edits, commands, or plans.');
+      return true;
+    }
+    if (cmd === 'plan') {
+      setInteractionMode(chatId, 'plan');
+      if (rest) return rest;
+      await addSystem('Switched to Plan Mode. Jarvis will inspect and produce a read-only plan with Build Plan, Redo Plan, and Cancel.');
+      return true;
+    }
+    if (cmd === 'schedule' && rest) {
+      return `/${cmd} ${rest}`;
+    }
+    if (cmd === 'multitask' || cmd === 'subagents') {
+      setInteractionMode(chatId, 'agent');
+      if (!rest) {
+        await addSystem(`Use /${cmd} <task> to launch chat-native Jarvis ${cmd === 'subagents' ? 'subagents' : 'agent'}.`);
+        return true;
+      }
+      const jarvisAgent = Object.values(agents).find((agent) => agent.slug === 'jarvis') ?? Object.values(agents)[0];
+      await launchJarvisChatAgent({
+        parentChatId: chatId,
+        task: rest,
+        modelLabel: formatChatModelSelectionLabel(chatModelSelection, modelCtx),
+        modelSelection: chatModelSelection,
+        jarvisAgentId: jarvisAgent?.id,
+        commandName: cmd,
+        repos: { chatRepo, messageRepo },
+      });
+      setText('');
+      return true;
+    }
     if (cmd === 'usage') {
       const apiKey = useAuthStore.getState().apiKeys[provider];
       await addSystem(
@@ -699,19 +944,10 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       return true;
     }
     if (cmd === 'hive') {
-      if (rest) return false;
-      await addSystem(
-        [
-          'Hive modes:',
-          '- /Hive fast   Gemini draft ï¿½ï¿½! Opus quick check',
-          '- /Hive balanced   Grok X High orient ï¿½ï¿½! Opus draft ï¿½ï¿½! Gemini polish',
-          '- /Hive quality   confirmed simulated Fable-beating stack (94.4)',
-          '- /Hive ultra   5-step Supernova stack for critical work',
-          '- /Hive custom   your Settings ï¿½ï¿½! Hive custom stack (max 5 models)',
-          '',
-          'Use it like: /Hive quality review this plan',
-        ].join('\n'),
-      );
+      setChatModelSelection(selectionFromHive('balanced'));
+      setText('');
+      if (rest) return rest;
+      await addSystem('Switched chat model to Hive — the 5-model balanced ensemble.');
       return true;
     }
     const routes: Record<string, string> = {
@@ -723,24 +959,17 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       chat: 'chat',
     };
     if (cmd in routes) {
-      if (disableRouteSlashCommands) {
-        await addSystem(`/${cmd} is disabled in the sidebar so this panel stays attached to the current project.`);
-        return true;
-      }
-      useUIStore.getState().setRoute(routes[cmd] as never);
-      if (rest) {
-        return rest;
-      }
-      await addSystem(`Opened ${cmd}.`);
-      return true;
+      const def = findSlashCommandDef(cmd);
+      const reference = def ? confirmedCommandReferenceText([buildSlashReferenceCommand(def)]) : `Context references: /${cmd} references ${routes[cmd]}.`;
+      const scopedReference = disableRouteSlashCommands
+        ? `${reference} This sidebar stays attached to the current project.`
+        : reference;
+      return rest ? `${scopedReference} ${rest}` : scopedReference;
     }
     if (cmd === 'terminals') {
-      if (rest) {
-        return rest;
-      }
-      if (openAttachPicker('terminals')) return true;
-      await addSystem('No terminal sessions yet. Open Terminals, start a pane, then use /terminals to attach its transcript to this chat.');
-      return true;
+      const def = findSlashCommandDef('terminals');
+      const reference = def ? confirmedCommandReferenceText([buildSlashReferenceCommand(def)]) : 'Context references: /terminals references Terminal surface.';
+      return rest ? `${reference} ${rest}` : reference;
     }
     if (cmd === 'context') {
       if (rest) {
@@ -787,6 +1016,24 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       await addSystem(`Available skills:\n${available}\n\nType /skills and choose one from the dropdown to apply it to your next message.`);
       return true;
     }
+    if (cmd === 'allaboutme') {
+      if (rest) {
+        const direct = ALL_ABOUT_ME_SLASH_OPTIONS.find((option) => (
+          option.id === rest || option.label.toLowerCase().includes(rest.toLowerCase())
+        ));
+        if (direct?.id === 'retake') {
+          setSettingsOpen(true);
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('jarvis:settings:tab', { detail: { tab: 'allaboutme' } }));
+            window.dispatchEvent(new CustomEvent('jarvis:allaboutme:retake'));
+          }, 0);
+          setText('');
+          return true;
+        }
+      }
+      if (openAttachPicker('allaboutme')) return true;
+      return true;
+    }
     if (cmd === 'attach' && rest) {
       setAttachedFiles((cur) => (cur.includes(rest) ? cur : [...cur, rest]).slice(0, 8));
       setText('');
@@ -800,8 +1047,8 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     if (cmd === 'help') {
       await addSystem(
         'Chat slash commands attach context to this conversation (not page navigation). '
-          + '/terminals, /context, /plug, /skills open pickers. '
-          + '/file <path>, /attach <path>. Navigation: /kanban, /history, /tools, /agents, /schedule. '
+          + '/agents, /terminals, /hive, /kanban, /history, /tools, /schedule become reference tokens. '
+          + '/context, /plug, /skills open pickers. /file <path>, /attach <path>. '
           + '/usage, /model, /commands, /clearfiles.',
       );
       return true;
@@ -812,6 +1059,18 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     }
     if (cmd === 'file') {
       if (rest) {
+        if (isSupportedImagePath(rest)) {
+          try {
+            const image = await imageAttachmentFromPath(rest);
+            setAttachedImages((cur) => (cur.some((item) => item.sourcePath === rest) ? cur : [...cur, image]).slice(0, 6));
+            setText('');
+            await addSystem(`Attached image: ${image.name}`);
+            return true;
+          } catch (err) {
+            toast.error('Image attach failed', err instanceof Error ? err.message : 'Could not attach image.');
+            return true;
+          }
+        }
         setAttachedFiles((cur) => (cur.includes(rest) ? cur : [...cur, rest]).slice(0, 8));
         setText('');
         await addSystem(`Attached file: ${rest}`);
@@ -824,15 +1083,50 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     return true;
   };
 
-  const handleSend = async () => {
-    const trimmed = text.trim();
+  const handleSend = async (overrideText?: string, options: { bypassQueue?: boolean } = {}) => {
+    const draftText = overrideText ?? text;
+    const trimmed = draftText.trim();
     const hasConfirmedCommands = confirmedCommands.length > 0;
-    if ((!trimmed && attachedFiles.length === 0 && attachedTerminals.length === 0 && attachedPlugins.length === 0 && attachedContexts.length === 0 && !hasConfirmedCommands) || sending) return;
+    const hasConfirmedAgentMentions = confirmedAgentMentions.length > 0;
+    if ((!trimmed && attachedFiles.length === 0 && attachedImages.length === 0 && attachedTerminals.length === 0 && attachedPlugins.length === 0 && attachedContexts.length === 0 && !hasConfirmedCommands && !hasConfirmedAgentMentions) || sending) return;
+    if (jarvisRunning && !options.bypassQueue && !overrideText) {
+      enqueueCurrentMessage(trimmed);
+      return;
+    }
     const slashResult = await handleSlashCommand(trimmed);
     if (slashResult === true) return;
     // When a route slash command has a remainder (e.g. "/terminals close 5 terminals"),
     // handleSlashCommand returns the remainder text so we send it as the message.
-    const sendText = typeof slashResult === 'string' ? slashResult.trim() : trimmed;
+    const rawSendText = typeof slashResult === 'string' ? slashResult.trim() : trimmed;
+    const interactionModeForSend = useJarvisInteractionStore.getState().modeForChat(chatId);
+    const mentionPrefix = confirmedAgentMentions.map((mention) => mention.label).join(' ');
+    const referenceText = confirmedCommandReferenceText(confirmedCommands);
+    const allAboutMeCommand = confirmedCommands.find((command) => command.cmd === 'allaboutme' && command.value);
+    let allAboutMeText = '';
+    let forceAllAboutMeUpdate = false;
+    if (allAboutMeCommand?.value) {
+      const optionId = allAboutMeCommand.value as AllAboutMeSlashOptionId;
+      const messageCount = await messageRepo.countByChat(chatId as ChatId);
+      if (optionId === 'force-update') {
+        const status = allAboutMeChatUpdateStatus(messageCount);
+        if (!status.ok) {
+          await messageRepo.create({
+            chat_id: chatId as ChatId,
+            role: 'system',
+            parts: [{ kind: 'text', text: status.message }],
+          });
+          setConfirmedCommands((cur) => cur.filter((command) => command.cmd !== 'allaboutme'));
+          return;
+        }
+        forceAllAboutMeUpdate = true;
+      }
+      allAboutMeText = buildAllAboutMeSlashText(
+        optionId,
+        useAllAboutMeStore.getState().markdown,
+        messageCount,
+      );
+    }
+    const sendText = [mentionPrefix, referenceText, allAboutMeText, rawSendText].filter(Boolean).join(' ').trim();
 
     const auth = useAuthStore.getState();
     const sendCheck = validateSendModelAccess(
@@ -840,6 +1134,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       auth.chatModelSelection,
       modelSelectionContextFromAuth(auth),
       auth.stackCustomSteps,
+      { attachments: { hasImages: attachedImages.length > 0 } },
     );
     if (!sendCheck.ok) {
       toast.error('Cannot send', sendCheck.message);
@@ -855,6 +1150,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     let nextAttachedPlugins = attachedPlugins;
     let nextAttachedContexts = attachedContexts;
     for (const confirmed of confirmedCommands) {
+      if (confirmed.value?.startsWith('reference:')) continue;
       if (normalizeSlashCmd(confirmed.cmd) === 'terminals' && confirmed.value) {
         const session = useTerminalTranscriptStore.getState().sessions[confirmed.value];
         if (session) {
@@ -896,7 +1192,9 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
         }
       }
     }
+    const confirmedMentionsForSend = confirmedAgentMentions;
     setConfirmedCommands([]);
+    setConfirmedAgentMentions([]);
 
     setSending(true);
     try {
@@ -928,13 +1226,18 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
         role: 'user',
         parts: [
           { kind: 'text', text: sendText || 'Attached context.' },
+          ...attachedImages.map((image) => ({
+            kind: 'image' as const,
+            url: `data:${image.mimeType};base64,${image.data}`,
+            alt: image.name,
+          })),
           ...attachedFiles.map((path) => ({ kind: 'file_ref' as const, ref: { kind: 'file' as const, id: path } })),
           ...nextAttachedTerminals.map((ref) => ({ kind: 'file_ref' as const, ref: { kind: 'memory' as const, id: `terminal:${terminalRefKey(ref)}`, excerpt: `Terminal reference: ${terminalRefLabel(ref)}` } })),
           ...nextAttachedContexts.map((context) => ({ kind: 'file_ref' as const, ref: { kind: 'memory' as const, id: `context:${context.nodeId}`, excerpt: `Context: ${context.title}` } })),
         ],
       });
 
-      const mentionedAgentIds = extractMentionedAgentIds(sendText, agents);
+      const mentionedAgentIds = resolveMentionedAgentIdsForSend(sendText, agents, confirmedMentionsForSend);
       const mentionedPluginIds = extractPluginMentions(sendText, PLUGIN_CATALOG);
       const pluginIds = Array.from(new Set([...nextAttachedPlugins, ...mentionedPluginIds])).slice(0, 8);
       const messageFilePaths = Array.from(
@@ -947,18 +1250,22 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
             text: sendText || 'Attached context.',
             mentionedAgentIds,
             filePaths: messageFilePaths,
+            imageAttachments: attachedImages,
             terminalRefs: nextAttachedTerminals,
             contextNodes: nextAttachedContexts,
             pluginIds,
             skillIds,
+            forceAllAboutMeUpdate,
+            interactionMode: interactionModeForSend,
             speakReply: voiceReplyRequestedRef.current || useAuthStore.getState().speakReplies,
             autoApproveActions: useAuthStore.getState().jarvisAutoApprove,
           },
         }),
       );
       voiceReplyRequestedRef.current = false;
-      setText('');
+      if (!overrideText) setText('');
       setAttachedFiles([]);
+      setAttachedImages([]);
       setAttachedTerminals([]);
       setAttachedPlugins([]);
       setAttachedContexts([]);
@@ -983,11 +1290,26 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     }
   };
 
+  const sendQueuedMessageNow = (id: string) => {
+    const queued = queuedMessages.find((message) => message.id === id);
+    if (!queued) return;
+    setQueuedMessages((current) => current.filter((message) => message.id !== id));
+    void handleSend(queued.text, { bypassQueue: true });
+  };
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // Mod+Enter always sends, regardless of any popover state
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault();
       void handleSend();
+      return;
+    }
+
+    if (e.shiftKey && e.key === 'Tab') {
+      e.preventDefault();
+      const nextMode = cycleInteractionMode(useJarvisInteractionStore.getState().modeForChat(chatId));
+      setInteractionMode(chatId, nextMode);
+      toast.info(interactionModeLabel(nextMode), 'Shift+Tab cycles Ask, Plan, and Agent modes.');
       return;
     }
 
@@ -1103,11 +1425,21 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     }
   };
 
-  const canSend = (text.trim().length > 0 || attachedFiles.length > 0 || attachedTerminals.length > 0 || attachedPlugins.length > 0 || attachedContexts.length > 0 || confirmedCommands.length > 0) && !sending;
+  const canSend = (text.trim().length > 0 || attachedFiles.length > 0 || attachedImages.length > 0 || attachedTerminals.length > 0 || attachedPlugins.length > 0 || attachedContexts.length > 0 || confirmedCommands.length > 0 || confirmedAgentMentions.length > 0) && !sending;
 
-  const addDroppedPath = useCallback((path: string) => {
+  const addDroppedPath = useCallback(async (path: string) => {
     const clean = path.trim();
     if (!clean) return;
+    if (isSupportedImagePath(clean)) {
+      try {
+        const image = await imageAttachmentFromPath(clean);
+        setAttachedImages((cur) => (cur.some((item) => item.sourcePath === clean) ? cur : [...cur, image]).slice(0, 6));
+        return;
+      } catch (err) {
+        toast.error('Image attach failed', err instanceof Error ? err.message : 'Could not attach image.');
+        return;
+      }
+    }
     setAttachedFiles((cur) => (cur.includes(clean) ? cur : [...cur, clean]).slice(0, 8));
     setText((cur) => {
       const separator = cur.length === 0 || /\s$/.test(cur) ? '' : ' ';
@@ -1120,11 +1452,34 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     const onAttachFile = (event: Event) => {
       const detail = (event as CustomEvent<{ path?: string; chatId?: string }>).detail;
       if (detail?.chatId && String(detail.chatId) !== String(chatId)) return;
-      if (detail?.path) addDroppedPath(detail.path);
+      if (detail?.path) void addDroppedPath(detail.path);
     };
     window.addEventListener('jarvis:file:attach', onAttachFile as EventListener);
     return () => window.removeEventListener('jarvis:file:attach', onAttachFile as EventListener);
   }, [addDroppedPath, chatId]);
+
+  const addBrowserImages = useCallback(async (files: File[] | FileList) => {
+    const images = splitImageFiles(files);
+    if (images.length === 0) return false;
+    try {
+      const next = await Promise.all(images.slice(0, 6).map(imageAttachmentFromBrowserFile));
+      setAttachedImages((cur) => {
+        const seen = new Set(cur.map((image) => `${image.name}:${image.size ?? 0}`));
+        const merged = [...cur];
+        for (const image of next) {
+          const key = `${image.name}:${image.size ?? 0}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          merged.push(image);
+        }
+        return merged.slice(0, 6);
+      });
+      return true;
+    } catch (err) {
+      toast.error('Image attach failed', err instanceof Error ? err.message : 'Could not attach image.');
+      return true;
+    }
+  }, []);
 
   const addDroppedTerminal = useCallback((raw: string | TerminalRef) => {
     const ref = typeof raw === 'string' ? parseTerminalRef(raw) : raw;
@@ -1185,33 +1540,47 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     return () => window.removeEventListener('jarvis:composer:insert-text', onInsertText as EventListener);
   }, [chatId]);
 
-  // ---------- V2 ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ speech-to-text wiring ----------
-  // Subscribe to VoiceService events when the user toggles STT on. We keep
-  // partials in a separate state so they show as a faded preview without
-  // mutating the saved draft until they finalize.
+  // ---------- V2 speech-to-text wiring ----------
   useEffect(() => {
-    if (!sttListening) return;
+    if (!sttListening && !sttAwaitingFinal) return;
 
     const offStart = VoiceService.on('voice:start', () => {
-      // intentionally empty ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ UI already reflects sttListening=true
+      captureComposerSttSnapshot();
     });
     const offPartial = VoiceService.on('voice:partial', ({ text: partial }) => {
-      setSttInterim(partial);
+      const snap = sttSnapshotRef.current;
+      if (snap) {
+        setText(buildSttPreviewValue(snap, partial));
+      } else {
+        setSttInterim(partial);
+      }
     });
     const offFinal = VoiceService.on('voice:final', ({ text: finalText }) => {
+      clearSttFinalizeTimer();
+      setSttAwaitingFinal(false);
       setSttInterim('');
+      VoiceService.setInactivityTimeoutMs(15_000);
+      const snap = sttSnapshotRef.current;
+      sttSnapshotRef.current = null;
       voiceReplyRequestedRef.current = true;
-      setText((cur) => {
-        // Append with a space if needed so each utterance flows naturally.
-        const sep = cur.length === 0 || /\s$/.test(cur) ? '' : ' ';
-        return cur + sep + finalText;
-      });
+      if (snap) {
+        const committed = buildSttCommittedValue(snap, finalText);
+        if (committed) setText(committed);
+      } else {
+        setText((cur) => {
+          const sep = cur.length === 0 || /\s$/.test(cur) ? '' : ' ';
+          return cur + sep + finalText;
+        });
+      }
       requestAnimationFrame(() => textareaRef.current?.focus());
     });
     const offError = VoiceService.on('voice:error', ({ kind, message }) => {
+      clearSttFinalizeTimer();
+      setSttAwaitingFinal(false);
       setSttListening(false);
       setSttInterim('');
-      stopWebSpeechVolumeMeter();
+      revertComposerSttPreview();
+      stopSttVolumeMeter();
       if (kind === 'unsupported') {
         toast.warning('Voice unsupported', message);
       } else if (kind === 'service_not_allowed' || kind === 'permission_denied') {
@@ -1221,16 +1590,18 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       }
     });
     const offEnd = VoiceService.on('voice:end', () => {
-      // Engine ended ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ sync our flag if the user didn't already turn off.
-      if (!VoiceService.isListening() && !VoiceService.wantsListening()) {
+      if (!VoiceService.isListening() && !VoiceService.wantsListening() && !sttAwaitingFinal) {
         setSttListening(false);
-        stopWebSpeechVolumeMeter();
+        stopSttVolumeMeter();
       }
     });
     const offTimeout = VoiceService.on('voice:timeout', ({ reason }) => {
+      clearSttFinalizeTimer();
+      setSttAwaitingFinal(false);
       setSttListening(false);
       setSttInterim('');
-      stopWebSpeechVolumeMeter();
+      revertComposerSttPreview();
+      stopSttVolumeMeter();
       toast.info('Speech-to-text stopped', reason);
     });
 
@@ -1242,58 +1613,17 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       offEnd();
       offTimeout();
     };
-  }, [sttListening]);
-
-  const startWebSpeechVolumeMeter = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      webSpeechStreamRef.current = stream;
-      const AudioCtor = getAudioContextCtor();
-      if (!AudioCtor) return;
-      const context = new AudioCtor();
-      webSpeechAudioContextRef.current = context;
-      const source = context.createMediaStreamSource(stream);
-      const analyser = context.createAnalyser();
-      analyser.fftSize = 256;
-      source.connect(analyser);
-      webSpeechAnalyserRef.current = analyser;
-
-      const dataArray = new Uint8Array(analyser.frequencyBinCount);
-      const updateVolume = () => {
-        if (!webSpeechAnalyserRef.current) return;
-        analyser.getByteFrequencyData(dataArray);
-        let sum = 0;
-        for (let i = 0; i < dataArray.length; i++) {
-          sum += dataArray[i];
-        }
-        const avg = sum / dataArray.length;
-        volumeRef.current = Math.min(1, avg / 60);
-        webSpeechVolumeTimerRef.current = requestAnimationFrame(updateVolume);
-      };
-      webSpeechVolumeTimerRef.current = requestAnimationFrame(updateVolume);
-    } catch (err) {
-      console.warn('[Composer] Web Speech volume meter failed to start', err);
-    }
-  };
-
-  const stopWebSpeechVolumeMeter = () => {
-    if (webSpeechVolumeTimerRef.current) {
-      cancelAnimationFrame(webSpeechVolumeTimerRef.current);
-      webSpeechVolumeTimerRef.current = null;
-    }
-    if (webSpeechAudioContextRef.current) {
-      void webSpeechAudioContextRef.current.close().catch(() => {});
-      webSpeechAudioContextRef.current = null;
-    }
-    if (webSpeechStreamRef.current) {
-      webSpeechStreamRef.current.getTracks().forEach((t) => t.stop());
-      webSpeechStreamRef.current = null;
-    }
-    webSpeechAnalyserRef.current = null;
-    volumeRef.current = 0;
-  };
+  }, [
+    captureComposerSttSnapshot,
+    clearSttFinalizeTimer,
+    revertComposerSttPreview,
+    sttAwaitingFinal,
+    sttListening,
+  ]);
 
   const startStt = () => {
+    transcribeGenRef.current += 1;
+    setSttTranscribing(false);
     if (getComposerSttProvider() === 'faster-whisper') {
       void startFasterWhisperStt();
       return;
@@ -1304,21 +1634,32 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
   const startSystemStt = async () => {
     if (isSystemSttAvailable()) {
       try {
-        setSttInterim('Listening with built-in speech recognition...');
+        if (VoiceService.isListening() || VoiceService.wantsListening()) {
+          VoiceService.interruptListening();
+        }
+        captureComposerSttSnapshot();
+        VoiceService.setInactivityTimeoutMs(null);
+        setSttInterim('');
         const started = VoiceService.startListening();
         if (!started) {
           setSttListening(false);
-          setSttInterim('');
+          setSttAwaitingFinal(false);
+          sttSnapshotRef.current = null;
+          VoiceService.setInactivityTimeoutMs(15_000);
           await trySystemSttFallbacks();
           return;
         }
         setSttListening(true);
-        void startWebSpeechVolumeMeter();
+        setSttAwaitingFinal(false);
+        void startSttVolumeMeter();
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Voice could not start.';
         toast.error('Voice error', msg);
         setSttListening(false);
+        setSttAwaitingFinal(false);
         setSttInterim('');
+        sttSnapshotRef.current = null;
+        VoiceService.setInactivityTimeoutMs(15_000);
       }
       return;
     }
@@ -1363,7 +1704,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     try {
       setSttInterim(`Listening with faster-whisper (${modelId})...`);
       batchRecorderRef.current = await startBatchAudioRecorder(
-        (rms) => { volumeRef.current = rms; },
+        (rms) => { setSttVolumeLevel(rms); },
         () => { void stopBatchStt(true); },
       );
       setSttListening(true);
@@ -1387,14 +1728,15 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
 
   const stopBatchStt = async (fromInactivity = false) => {
     clearAudioSilenceTimer();
-    stopWebSpeechVolumeMeter();
-    volumeRef.current = 0;
+    stopSttVolumeMeter();
     const recorder = batchRecorderRef.current;
     batchRecorderRef.current = null;
     const wav = recorder?.captureWav() ?? null;
     recorder?.stop();
     setSttListening(false);
+    setSttAwaitingFinal(false);
     if (!wav || wav.size === 0) {
+      setSttTranscribing(false);
       setSttInterim('');
       if (!fromInactivity) {
         toast.warning('No speech captured', 'Try again and speak for at least one second.');
@@ -1403,18 +1745,25 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       }
       return;
     }
-    setSttInterim('Transcribing...');
+    const gen = transcribeGenRef.current;
+    setSttTranscribing(true);
+    setSttInterim('Transcribing…');
     try {
-      const text = await transcribeFasterWhisper(wav, getFasterWhisperModel());
-      appendTranscript(text);
+      const transcript = await transcribeFasterWhisper(wav, getFasterWhisperModel());
+      if (gen !== transcribeGenRef.current) return;
+      appendTranscript(transcript);
     } catch (err) {
+      if (gen !== transcribeGenRef.current) return;
       toast.error(
         'Local transcription failed',
         err instanceof Error ? err.message : 'Falling back to system dictation.',
       );
       void startSystemStt();
     } finally {
-      setSttInterim('');
+      if (gen === transcribeGenRef.current) {
+        setSttTranscribing(false);
+        setSttInterim('');
+      }
     }
   };
 
@@ -1447,7 +1796,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
         if (rms > STT_ACTIVITY_RMS) {
           lastAudioActivityRef.current = Date.now();
         }
-        volumeRef.current = Math.min(1, rms * 8);
+        setSttVolumeLevel(Math.min(1, rms * 8));
         wavChunksRef.current.push(new Float32Array(channel));
       };
       source.connect(processor);
@@ -1474,20 +1823,27 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
 
   const transcribeGroq = async (blob: Blob, apiKey: string) => {
     if (blob.size === 0 || !apiKey) return;
-    setSttInterim('Transcribing...');
+    const gen = transcribeGenRef.current;
+    setSttTranscribing(true);
+    setSttInterim('Transcribing…');
     try {
       const finalText = await transcribeGroqApi(blob, apiKey);
+      if (gen !== transcribeGenRef.current) return;
       appendTranscript(finalText);
     } catch (err) {
+      if (gen !== transcribeGenRef.current) return;
       toast.error('Groq transcription failed', err instanceof Error ? err.message : 'Unknown error');
     } finally {
-      setSttListening(false);
-      setSttInterim('');
-      requestAnimationFrame(() => textareaRef.current?.focus());
+      if (gen === transcribeGenRef.current) {
+        setSttTranscribing(false);
+        setSttInterim('');
+        requestAnimationFrame(() => textareaRef.current?.focus());
+      }
     }
   };
 
   const stopStt = () => {
+    transcribeGenRef.current += 1;
     if (batchRecorderRef.current) {
       void stopBatchStt(false);
       return;
@@ -1495,8 +1851,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     setSttListening(false);
     setSttInterim('');
     clearAudioSilenceTimer();
-    stopWebSpeechVolumeMeter();
-    volumeRef.current = 0;
+    stopSttVolumeMeter();
     if (audioContextRef.current || audioProcessorRef.current || audioSourceRef.current) {
       const context = audioContextRef.current;
       const chunks = wavChunksRef.current;
@@ -1509,12 +1864,21 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       if (chunks.length > 0 && context) {
         void transcribeGroq(encodeWav(chunks, context.sampleRate), useAuthStore.getState().apiKeys.groq ?? '');
       } else {
+        setSttTranscribing(false);
         toast.warning('No speech captured', 'Try again and speak for at least one second.');
       }
       return;
     }
     mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
     mediaStreamRef.current = null;
+    setSttAwaitingFinal(true);
+    clearSttFinalizeTimer();
+    sttFinalizeTimerRef.current = setTimeout(() => {
+      setSttAwaitingFinal(false);
+      revertComposerSttPreview();
+      sttSnapshotRef.current = null;
+      VoiceService.setInactivityTimeoutMs(15_000);
+    }, 2_500);
     try {
       VoiceService.stopListening();
     } catch {
@@ -1523,31 +1887,33 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
   };
 
   const toggleStt = () => {
-    if (sttListening) stopStt();
+    if (sttListening || sttTranscribing) stopStt();
     else startStt();
   };
 
   // Stop listening when the chat unmounts/changes.
   useEffect(() => {
     return () => {
-      if (sttListening) VoiceService.stopListening();
+      transcribeGenRef.current += 1;
+      clearSttFinalizeTimer();
+      if (sttListening || sttAwaitingFinal) VoiceService.stopListening();
       clearAudioSilenceTimer();
-      stopWebSpeechVolumeMeter();
-      volumeRef.current = 0;
+      stopSttVolumeMeter();
       cleanupAudioRecorder(audioProcessorRef.current, audioSourceRef.current, audioContextRef.current, mediaStreamRef.current);
     };
-  }, [sttListening]);
+  }, [clearSttFinalizeTimer, sttAwaitingFinal, sttListening]);
 
   // Ctrl+CapsLock is dispatched globally; focused surfaces decide whether to consume it.
   useEffect(() => {
     const onToggle = (event: Event) => {
       if (!composerSttEnabled) return;
-      if (document.activeElement !== textareaRef.current) return;
+      const textarea = resolveComposerSttTextarea();
+      if (!textarea || textarea !== textareaRef.current) return;
       event.preventDefault?.();
       toggleStt();
     };
     const onStop = () => {
-      if (sttListening) stopStt();
+      if (sttListening || sttTranscribing || sttAwaitingFinal) stopStt();
     };
     window.addEventListener(COMPOSER_STT_TOGGLE_EVENT, onToggle);
     window.addEventListener(COMPOSER_STT_STOP_EVENT, onStop);
@@ -1555,7 +1921,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       window.removeEventListener(COMPOSER_STT_TOGGLE_EVENT, onToggle);
       window.removeEventListener(COMPOSER_STT_STOP_EVENT, onStop);
     };
-  }, [composerSttEnabled, sttListening]);
+  }, [composerSttEnabled, sttAwaitingFinal, sttListening, sttTranscribing]);
 
   useEffect(() => {
     setComposerSttListening(sttListening);
@@ -1606,7 +1972,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
           </button>
         </div>
       )}
-      <div className="px-3 py-2.5">
+      <div className={cn('px-3 py-2.5', compact && 'px-3.5 py-3')}>
         <Popover
           open={mentionCtx !== null || slashCtx !== null || optionPickerCtx !== null}
           onOpenChange={(open) => {
@@ -1621,9 +1987,12 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
             <div
               data-terminal-drop="chat"
               data-terminal-drop-chat-id={String(chatId)}
+              data-hive-active={chatModelSelection.mode === 'hive' ? 'true' : undefined}
               className={cn(
                 'rounded-lg border border-input bg-background',
                 'transition-colors focus-within:border-accent-cyan/40 focus-within:ring-1 focus-within:ring-ring',
+                chatModelSelection.mode === 'hive' && 'border-accent-copper/40',
+                compact && 'p-1',
               )}
             >
               <textarea
@@ -1647,6 +2016,16 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
                   recomputeMention();
                   recomputeSlash();
                 }}
+                onPaste={(e) => {
+                  const files = e.clipboardData?.files;
+                  if (files && files.length > 0) {
+                    const images = splitImageFiles(files);
+                    if (images.length > 0) {
+                      e.preventDefault();
+                      void addBrowserImages(images);
+                    }
+                  }
+                }}
                 onDragOver={(e) => {
                   if (getChatDragKind(e.dataTransfer.types)) {
                     e.preventDefault();
@@ -1655,6 +2034,14 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
                 }}
                 onDragLeave={() => setDragOver(false)}
                 onDrop={(e) => {
+                  const images = splitImageFiles(e.dataTransfer.files);
+                  if (images.length > 0) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setDragOver(false);
+                    void addBrowserImages(images);
+                    return;
+                  }
                   const payload = getChatDropPayload(e.dataTransfer);
                   if (!payload) return;
                   e.preventDefault();
@@ -1662,7 +2049,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
                   setDragOver(false);
                   if (payload.kind === 'context') addDroppedContext(payload.raw);
                   else if (payload.kind === 'terminal') addDroppedTerminal(payload.raw);
-                  else addDroppedPath(payload.path);
+                  else void addDroppedPath(payload.path);
                 }}
                 placeholder={placeholder ?? 'Message Jarvis...   (use @ to mention an agent)'}
                 aria-label="Message"
@@ -1671,11 +2058,29 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
                   'block w-full resize-none bg-transparent px-3 py-2 text-body text-foreground',
                   'placeholder:text-muted-foreground outline-none',
                   'scrollbar-hidden',
-                  compact && 'px-2 py-1.5 text-secondary',
+                  compact && 'py-2.5 text-secondary',
                   dragOver && 'bg-accent-copper/10 ring-1 ring-accent-copper/50',
                 )}
               />
-              {/* Confirmed command tokens (purple) */}
+              {confirmedAgentMentions.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 px-2 pb-1">
+                  <TokenList>
+                    {confirmedAgentMentions.map((mention) => (
+                      <InputToken
+                        key={mention.id}
+                        type="agent"
+                        label={mention.label}
+                        onRemove={() =>
+                          setConfirmedAgentMentions((cur) =>
+                            cur.filter((item) => item.id !== mention.id),
+                          )
+                        }
+                      />
+                    ))}
+                  </TokenList>
+                </div>
+              )}
+              {/* Confirmed command tokens */}
               {confirmedCommands.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 px-2 pb-1">
                   <TokenList>
@@ -1684,6 +2089,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
                         key={cmd.value ? `${cmd.cmd}:${cmd.value}` : cmd.cmd}
                         type="command"
                         label={cmd.label}
+                        icon={cmd.cmd === 'hive' ? <HiveModelIcon size={18} /> : undefined}
                         onRemove={() => removeConfirmedCommand(cmd.cmd, cmd.value)}
                       />
                     ))}
@@ -1699,6 +2105,19 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
                       label={path.split(/[/\\]/).pop() ?? path}
                       sublabel={path.includes('/') || path.includes('\\') ? '...' : undefined}
                       onRemove={() => setAttachedFiles((cur) => cur.filter((p) => p !== path))}
+                    />
+                  ))}
+                </div>
+              )}
+              {attachedImages.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 px-2 pb-1">
+                  {attachedImages.map((image) => (
+                    <InputToken
+                      key={image.id}
+                      type="image"
+                      label={image.name}
+                      sublabel={image.size ? `${Math.ceil(image.size / 1024)} KB` : image.mimeType}
+                      onRemove={() => setAttachedImages((cur) => cur.filter((item) => item.id !== image.id))}
                     />
                   ))}
                 </div>
@@ -1743,13 +2162,25 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
                   ))}
                 </div>
               )}
-              <div className="flex items-center gap-1 px-2 pb-2 pt-0.5">
+      <QueuedMessagesBar
+        messages={queuedMessages}
+        onEdit={editQueuedMessage}
+        onSendNow={sendQueuedMessageNow}
+        onDelete={deleteQueuedMessage}
+      />
+              <div
+                className={cn(
+                  'flex items-center gap-1 px-2 pb-2 pt-0.5',
+                  compact && 'flex-wrap gap-x-1.5 gap-y-1.5 px-2.5 pb-2.5 pt-1',
+                )}
+              >
                 <ModelPicker
                   selection={chatModelSelection}
                   modelCtx={modelCtx}
                   open={modelPickerOpen}
                   onOpenChange={setModelPickerOpen}
                   pickerRef={modelPickerRef}
+                  compact={compact}
                   onSelect={(next) => {
                     setChatModelSelection(next);
                     if (next.mode === 'single' && (next.providerId === 'ollama' || next.providerId === 'local')) {
@@ -1757,7 +2188,14 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
                     }
                   }}
                 />
-                <StackPicker />
+                <ModeIndicator
+                  mode={interactionMode}
+                  compact={compact}
+                  onCycle={() => {
+                    const nextMode = cycleInteractionMode(useJarvisInteractionStore.getState().modeForChat(chatId));
+                    setInteractionMode(chatId, nextMode);
+                  }}
+                />
                 {composerSttEnabled && (
                   <Hint
                     label={sttListening ? 'Stop dictation' : 'Voice to text'}
@@ -1767,6 +2205,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
                       type="button"
                       size="icon-sm"
                       variant={sttListening ? 'accent' : 'ghost'}
+                      onMouseDown={(event) => event.preventDefault()}
                       onClick={toggleStt}
                       aria-label={sttListening ? 'Stop dictation' : 'Start dictation'}
                       aria-pressed={sttListening}
@@ -1776,15 +2215,27 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
                     </Button>
                   </Hint>
                 )}
-                <span className="text-metadata text-muted-foreground ml-auto mr-1 hidden sm:inline">
-                  {sttListening && sttInterim ? (
+                <span
+                  className={cn(
+                    'text-metadata text-muted-foreground ml-auto mr-1 hidden sm:inline',
+                    compact && 'mr-0',
+                  )}
+                >
+                  {sttTranscribing ? (
+                    <p className="text-[11px] text-muted-foreground px-1" aria-live="polite">
+                      Transcribing…
+                    </p>
+                  ) : null}
+                  {sttListening && sttInterim && !sttTranscribing ? (
                     <span className="italic text-foreground/70" aria-live="polite">
                       {sttInterim}
                     </span>
                   ) : (
-                    <>
-                      <span className="kbd">{renderHotkey(HOTKEYS.SEND)}</span> to send
-                    </>
+                    compact ? null : (
+                      <>
+                        <span className="kbd">{renderHotkey(HOTKEYS.SEND)}</span> to send
+                      </>
+                    )
                   )}
                 </span>
                 <Hint label="Send" hotkey={HOTKEYS.SEND}>
@@ -1859,6 +2310,7 @@ interface ModelPickerProps {
   onOpenChange: (open: boolean) => void;
   onSelect: (selection: ChatModelSelection) => void;
   pickerRef: React.RefObject<ModelPickerTypeaheadRef | null>;
+  compact?: boolean;
 }
 
 function ModelPicker({
@@ -1868,6 +2320,7 @@ function ModelPicker({
   onOpenChange,
   onSelect,
   pickerRef,
+  compact = false,
 }: ModelPickerProps) {
   const { groups, flatOptions } = useAccessibleChatModels();
   const [selectedId, setSelectedId] = useState('');
@@ -1878,12 +2331,9 @@ function ModelPicker({
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    void import('@/lib/ai/providers/ollama').then(({ listOllamaModels, isOllamaReachable }) =>
-      isOllamaReachable().then((connected) => {
-        if (!connected || cancelled) return;
-        return listOllamaModels().then((models) => {
-          if (!cancelled) syncDiscoveredOllamaModels(models);
-        });
+    void import('@/lib/ai/ollamaBootstrap').then(({ bootstrapOllamaConnection }) =>
+      bootstrapOllamaConnection({ force: true }).then((result) => {
+        if (cancelled || !result.ready) return;
       }),
     );
     return () => {
@@ -1893,12 +2343,16 @@ function ModelPicker({
 
   useEffect(() => {
     if (!open) return;
+    if (selection.mode === 'hive') {
+      setSelectedId(HIVE_OPTION_ID);
+      return;
+    }
     const activeId = selectionOptionId(selection);
     if (activeId && flatOptions.some((option) => option.id === activeId)) {
       setSelectedId(activeId);
       return;
     }
-    setSelectedId('');
+    setSelectedId(HIVE_OPTION_ID);
   }, [open, selection, flatOptions]);
 
   useEffect(() => {
@@ -1933,6 +2387,11 @@ function ModelPicker({
     onOpenChange(false);
   };
 
+  const handleSelectHive = () => {
+    onSelect(selectionFromHive('balanced'));
+    onOpenChange(false);
+  };
+
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
@@ -1940,11 +2399,14 @@ function ModelPicker({
           type="button"
           size="sm"
           variant="ghost"
-          className="gap-1 px-2 text-muted-foreground hover:text-foreground"
+          className={cn(
+            'gap-1 px-2 text-muted-foreground hover:text-foreground',
+            compact && 'max-w-[11rem] shrink-0',
+          )}
           aria-label="Choose model"
         >
-          <Sparkles className="h-3.5 w-3.5 shrink-0" />
-          <span className="text-metadata">{displayLabel}</span>
+          {selection.mode === 'hive' ? <HiveModelIcon size={21} /> : null}
+          <span className={cn('text-metadata', compact && 'truncate')}>{displayLabel}</span>
           <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" />
         </Button>
       </PopoverTrigger>
@@ -1961,8 +2423,10 @@ function ModelPicker({
           selectedId={selectedId}
           activeProvider={activeProvider}
           activeModel={activeModel}
+          hiveActive={selection.mode === 'hive'}
           onHoverId={setSelectedId}
           onSelect={handleSelect}
+          onSelectHive={handleSelectHive}
         />
       </PopoverContent>
     </Popover>

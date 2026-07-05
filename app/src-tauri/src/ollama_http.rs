@@ -22,6 +22,51 @@ use tauri::{AppHandle, Emitter};
 
 const OLLAMA_BASE: &str = "http://127.0.0.1:11434";
 
+fn resolve_base(base_url: Option<String>) -> String {
+    let trimmed = base_url
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| OLLAMA_BASE.to_string());
+    trimmed.trim_end_matches('/').to_string()
+}
+
+fn is_allowed_local_endpoint(base_url: &str) -> bool {
+    let Ok(url) = reqwest::Url::parse(base_url) else {
+        return false;
+    };
+
+    if url.scheme() != "http" {
+        return false;
+    }
+
+    matches!(
+        url.host_str(),
+        Some("127.0.0.1") | Some("localhost") | Some("[::1]")
+    )
+}
+
+fn check_ollama_api(base_url: &str, timeout_secs: u64) -> bool {
+    if !is_allowed_local_endpoint(base_url) {
+        return false;
+    }
+
+    let Ok(client) = build_client(timeout_secs) else {
+        return false;
+    };
+
+    client
+        .get(format!("{base_url}/api/version"))
+        .send()
+        .map(|response| response.status().is_success())
+        .unwrap_or(false)
+}
+
+/// Fast loopback health check — used by the UI before listing models.
+#[tauri::command]
+pub fn ollama_ping(base_url: Option<String>) -> bool {
+    check_ollama_api(&resolve_base(base_url), 5)
+}
+
 fn build_client(timeout_secs: u64) -> Result<Client, String> {
     let mut builder = Client::builder();
     if timeout_secs > 0 {
@@ -55,10 +100,14 @@ pub struct OllamaModel {
 /// List installed models via GET /api/tags. Fast; returns [] on any failure
 /// so the UI can show a friendly "no models / start Ollama" state.
 #[tauri::command]
-pub fn ollama_list_models() -> Result<Vec<OllamaModel>, String> {
+pub fn ollama_list_models(base_url: Option<String>) -> Result<Vec<OllamaModel>, String> {
+    let base = resolve_base(base_url);
+    if !is_allowed_local_endpoint(&base) {
+        return Err("invalid_base_url".to_string());
+    }
     let client = build_client(15)?;
     let resp = client
-        .get(format!("{OLLAMA_BASE}/api/tags"))
+        .get(format!("{base}/api/tags"))
         .send()
         .map_err(|e| e.to_string())?;
     if !resp.status().is_success() {
@@ -99,9 +148,13 @@ struct PullProgress {
 /// the UI never blocks; emits `ollama:pull-progress` events with a final
 /// `done: true` (or `error`). Returns immediately after spawning.
 #[tauri::command]
-pub fn ollama_pull_model(app: AppHandle, model: String) -> Result<(), String> {
+pub fn ollama_pull_model(app: AppHandle, model: String, base_url: Option<String>) -> Result<(), String> {
     if !valid_model_name(&model) {
         return Err("invalid_model_name".to_string());
+    }
+    let base = resolve_base(base_url);
+    if !is_allowed_local_endpoint(&base) {
+        return Err("invalid_base_url".to_string());
     }
     let name = model.trim().to_string();
 
@@ -118,7 +171,7 @@ pub fn ollama_pull_model(app: AppHandle, model: String) -> Result<(), String> {
         };
         let pull_body = serde_json::json!({ "name": name, "stream": true }).to_string();
         let resp = match client
-            .post(format!("{OLLAMA_BASE}/api/pull"))
+            .post(format!("{base}/api/pull"))
             .header("content-type", "application/json")
             .body(pull_body)
             .send()
@@ -210,9 +263,14 @@ pub fn ollama_chat_stream(
     model: String,
     messages: serde_json::Value,
     temperature: Option<f64>,
+    base_url: Option<String>,
 ) -> Result<(), String> {
     if !valid_model_name(&model) {
         return Err("invalid_model_name".to_string());
+    }
+    let base = resolve_base(base_url);
+    if !is_allowed_local_endpoint(&base) {
+        return Err("invalid_base_url".to_string());
     }
     let event = format!("ollama:chat:{request_id}");
     let name = model.trim().to_string();
@@ -244,7 +302,7 @@ pub fn ollama_chat_stream(
         })
         .to_string();
         let resp = match client
-            .post(format!("{OLLAMA_BASE}/api/chat"))
+            .post(format!("{base}/api/chat"))
             .header("content-type", "application/json")
             .body(chat_body)
             .send()

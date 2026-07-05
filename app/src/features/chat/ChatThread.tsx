@@ -1,9 +1,14 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { AnimatePresence } from 'motion/react';
 import { Sparkles } from 'lucide-react';
 import { useChatMessages } from './hooks';
 import { MessageBubble } from './MessageBubble';
+import { ChatActivityTimeline } from './activity';
+import { ChatAgentActivityPanel } from '@/features/jarvis-interaction/AgentActivityCard';
 import type { ChatId, Message, Part } from '@/types';
+import type { JarvisCreatorKind } from '@/features/jarvis-creator/contracts';
+
+const MAX_STREAM_SIZE_PART = 8000;
 
 export interface ChatThreadProps {
   chatId: ChatId | string;
@@ -18,11 +23,20 @@ function streamingSize(message: Message | undefined): number {
   if (!message) return 0;
   let n = 0;
   for (const p of message.parts as Part[]) {
-    if (p.kind === 'text' || p.kind === 'reasoning') n += p.text.length;
-    else if (p.kind === 'tool_call') n += JSON.stringify(p.args).length;
-    else if (p.kind === 'tool_result') n += JSON.stringify(p.result ?? p.error ?? '').length;
+    if (p.kind === 'text' || p.kind === 'reasoning') n += Math.min(p.text.length, MAX_STREAM_SIZE_PART);
+    else if (p.kind === 'tool_call') n += Math.min(roughPayloadSize(p.args), MAX_STREAM_SIZE_PART);
+    else if (p.kind === 'tool_result') n += Math.min(roughPayloadSize(p.result ?? p.error ?? ''), MAX_STREAM_SIZE_PART);
   }
   return n;
+}
+
+function roughPayloadSize(value: unknown): number {
+  if (value == null) return 0;
+  if (typeof value === 'string') return value.length;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value).length;
+  if (Array.isArray(value)) return Math.min(value.length, 100) * 64;
+  if (typeof value === 'object') return Math.min(Object.keys(value as Record<string, unknown>).length, 100) * 96;
+  return 32;
 }
 
 /**
@@ -34,6 +48,8 @@ export function ChatThread({ chatId, compact = false }: ChatThreadProps) {
   const messages = useChatMessages(chatId);
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickyRef = useRef(true);
+  const fallbackAgents = useMemo(() => extractAgentCards(messages), [messages]);
+  const creatorDraftKind = useMemo(() => detectCreatorDraftKind(messages), [messages]);
 
   const tailSize = streamingSize(messages[messages.length - 1]);
 
@@ -65,15 +81,41 @@ export function ChatThread({ chatId, compact = false }: ChatThreadProps) {
         {messages.length === 0 ? (
           <ThreadHint />
         ) : (
-          <AnimatePresence initial={false}>
-            {messages.map((m) => (
-              <MessageBubble key={m.id} message={m} compact={compact} />
-            ))}
-          </AnimatePresence>
+          <>
+            <ChatActivityTimeline chatId={chatId} compact={compact} />
+            <AnimatePresence initial={false}>
+              {messages.map((m) => (
+                <MessageBubble key={m.id} message={m} compact={compact} creatorDraftKind={creatorDraftKind} />
+              ))}
+            </AnimatePresence>
+          </>
         )}
+        <ChatAgentActivityPanel
+          chatId={chatId}
+          fallbackAgents={fallbackAgents}
+          compact={compact}
+          className={compact ? 'mx-1 mb-6' : 'sticky bottom-0 z-10 mb-8'}
+        />
       </div>
     </div>
   );
+}
+
+function extractAgentCards(messages: Message[]) {
+  return messages.flatMap((message) =>
+    message.parts.flatMap((part) => (part.kind === 'agent_card' ? [part.agent] : [])),
+  );
+}
+
+function detectCreatorDraftKind(messages: Message[]): JarvisCreatorKind | undefined {
+  for (const message of messages) {
+    for (const part of message.parts) {
+      if (part.kind !== 'question_block') continue;
+      if (part.block.id === 'jarvis_creator_agent') return 'agent';
+      if (part.block.id === 'jarvis_creator_skill') return 'skill';
+    }
+  }
+  return undefined;
 }
 
 function ThreadHint() {

@@ -7,6 +7,8 @@ export {
   fetchBenchmarks,
   clearBenchmarkCache,
   isSupportedProvider,
+  normalizeWulong,
+  vendorToProvider,
   SNAPSHOT_ROWS,
   type BenchmarkRow,
   type FetchResult,

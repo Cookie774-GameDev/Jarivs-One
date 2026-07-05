@@ -50,7 +50,7 @@ describe('AI explicit file context safeguards', () => {
 
     const block = await getExplicitFilesBlock(['C:\\repo\\large.log']);
 
-    expect(fsMocks.readTextFileSample).toHaveBeenCalledWith('C:\\repo\\large.log', 64 * 1024);
+    expect(fsMocks.readTextFileSample).toHaveBeenCalledWith('C:\\repo\\large.log', 64 * 1024, { root: undefined });
     expect(block).toContain('C:\\repo\\large.log (truncated)');
     expect(block.length).toBeLessThan(18_000);
   });

@@ -19,6 +19,10 @@ import {
   X as XIcon,
   ArrowDown,
   ArrowUp,
+  Image as ImageIcon,
+  Video as VideoIcon,
+  Lock,
+  Unlock,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -43,8 +47,30 @@ import { BarChart } from './BarChart';
 type SortKey = 'arena_score' | 'cost' | 'context';
 
 const PROVIDER_FILTER_ALL = '__all__';
-const TOP_N_FOR_CHART = 12;
+const TOP_N_FOR_CHART = 25;
+/** Show at least this many rows before collapsing the rest behind a button. */
+const MIN_VISIBLE_ROWS = 50;
 const LMSYS_PUBLIC_URL = 'https://lmarena.ai/leaderboard';
+
+/** One-line capability summary used for the row hover tooltip. */
+function rowTooltip(r: BenchmarkRow): string {
+  const parts: string[] = [];
+  parts.push(`${r.model} · ${r.provider}`);
+  parts.push(r.open_source ? `Open source${r.license ? ` (${r.license})` : ''}` : 'Closed / proprietary');
+  if (r.cost_per_1m_input_usd != null || r.cost_per_1m_output_usd != null) {
+    const i = r.cost_per_1m_input_usd != null ? `$${r.cost_per_1m_input_usd}` : '—';
+    const o = r.cost_per_1m_output_usd != null ? `$${r.cost_per_1m_output_usd}` : '—';
+    parts.push(`Price: ${i} in / ${o} out per 1M`);
+  } else {
+    parts.push('Price: not published');
+  }
+  const modalities = ['Text'];
+  if (r.supports_image) modalities.push('Image');
+  if (r.supports_video) modalities.push('Video');
+  parts.push(`Inputs: ${modalities.join(', ')}`);
+  parts.push(`Arena ${r.arena_score} (±${Math.round((r.ci_high - r.ci_low) / 2)})`);
+  return parts.join('\n');
+}
 
 /** Heuristic: cost = average of input + output if both, else whichever is set,
  * else +Infinity so it sorts last. */
@@ -81,6 +107,7 @@ export function BenchmarksPage() {
   const [sortDir, setSortDir] = React.useState<'asc' | 'desc'>('desc');
 
   const [selectedModel, setSelectedModel] = React.useState<string | null>(null);
+  const [showAll, setShowAll] = React.useState(false);
 
   // Apply a fetch result to all the relevant state slots in one shot.
   // Used by initial load, manual refresh, focus refresh, and polling so
@@ -220,6 +247,17 @@ export function BenchmarksPage() {
       .sort((a, b) => b.arena_score - a.arena_score)
       .slice(0, TOP_N_FOR_CHART);
   }, [filtered]);
+
+  const visibleRows = React.useMemo(
+    () => (showAll ? sorted : sorted.slice(0, MIN_VISIBLE_ROWS)),
+    [sorted, showAll],
+  );
+  const hiddenCount = Math.max(0, sorted.length - visibleRows.length);
+
+  // Collapse the table again whenever the filter set changes.
+  React.useEffect(() => {
+    setShowAll(false);
+  }, [providerFilter, openOnly]);
 
   const selectedRow = React.useMemo(
     () => (selectedModel ? rows.find((r) => r.model === selectedModel) ?? null : null),
@@ -401,6 +439,7 @@ export function BenchmarksPage() {
                 <tr className="border-b border-border bg-paper-soft text-metadata text-muted-foreground uppercase tracking-wider">
                   <th className="text-left font-semibold px-4 py-3">Model</th>
                   <th className="text-left font-semibold px-4 py-3">Provider</th>
+                  <th className="text-left font-semibold px-4 py-3">Type</th>
                   <SortableTh
                     label="Arena"
                     active={sortKey === 'arena_score'}
@@ -425,10 +464,11 @@ export function BenchmarksPage() {
                 </tr>
               </thead>
               <tbody>
-                {sorted.map((row) => (
+                {visibleRows.map((row) => (
                   <tr
                     key={row.model}
                     onClick={() => setSelectedModel(row.model)}
+                    title={rowTooltip(row)}
                     className="border-b border-border/60 last:border-b-0 hover:bg-paper-soft cursor-pointer transition-colors"
                   >
                     <td className="px-4 py-3 text-foreground font-medium">
@@ -436,6 +476,42 @@ export function BenchmarksPage() {
                     </td>
                     <td className="px-4 py-3 text-muted-foreground font-mono text-metadata">
                       {row.provider}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className={cn(
+                            'inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-metadata',
+                            row.open_source
+                              ? 'border-accent-sage/40 bg-accent-sage/10 text-accent-sage'
+                              : 'border-accent-terracotta/40 bg-accent-terracotta/10 text-accent-terracotta',
+                          )}
+                          title={row.open_source ? 'Open source' : 'Closed / proprietary'}
+                        >
+                          {row.open_source ? (
+                            <Unlock className="h-3 w-3" />
+                          ) : (
+                            <Lock className="h-3 w-3" />
+                          )}
+                          {row.open_source ? 'Open' : 'Closed'}
+                        </span>
+                        {row.supports_image && (
+                          <span
+                            className="inline-flex items-center text-muted-foreground"
+                            title="Accepts image input"
+                          >
+                            <ImageIcon className="h-3.5 w-3.5" />
+                          </span>
+                        )}
+                        {row.supports_video && (
+                          <span
+                            className="inline-flex items-center text-muted-foreground"
+                            title="Accepts video input"
+                          >
+                            <VideoIcon className="h-3.5 w-3.5" />
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3 font-mono text-foreground">
                       {row.arena_score}
@@ -474,7 +550,7 @@ export function BenchmarksPage() {
                 {sorted.length === 0 && !loading && (
                   <tr>
                     <td
-                      colSpan={6}
+                      colSpan={7}
                       className="px-4 py-10 text-center text-secondary text-muted-foreground"
                     >
                       No models match the current filters.
@@ -484,6 +560,21 @@ export function BenchmarksPage() {
               </tbody>
             </table>
           </div>
+          {hiddenCount > 0 && (
+            <div className="border-t border-border bg-paper-soft px-4 py-3 text-center">
+              <Button variant="ghost" size="sm" onClick={() => setShowAll(true)}>
+                Show all {sorted.length} models
+                <span className="text-muted-foreground ml-1">(+{hiddenCount})</span>
+              </Button>
+            </div>
+          )}
+          {showAll && sorted.length > MIN_VISIBLE_ROWS && (
+            <div className="border-t border-border bg-paper-soft px-4 py-3 text-center">
+              <Button variant="ghost" size="sm" onClick={() => setShowAll(false)}>
+                Show top {MIN_VISIBLE_ROWS} only
+              </Button>
+            </div>
+          )}
         </section>
       </div>
 
@@ -649,6 +740,24 @@ function DetailDrawer({ row, onClose }: DetailDrawerProps) {
                       <span className={cn('sev-pill', licenseSeverity(row))}>
                         {row.license ?? (row.open_source ? 'open' : 'proprietary')}
                       </span>
+                    </dd>
+                  </div>
+                  <div className="col-span-2">
+                    <dt className="text-metadata text-muted-foreground uppercase tracking-wider">
+                      Inputs
+                    </dt>
+                    <dd className="mt-1 flex flex-wrap items-center gap-1.5">
+                      <Badge variant="secondary">Text</Badge>
+                      {row.supports_image && (
+                        <Badge variant="secondary" className="gap-1">
+                          <ImageIcon className="h-3 w-3" /> Image
+                        </Badge>
+                      )}
+                      {row.supports_video && (
+                        <Badge variant="secondary" className="gap-1">
+                          <VideoIcon className="h-3 w-3" /> Video
+                        </Badge>
+                      )}
                     </dd>
                   </div>
                 </dl>

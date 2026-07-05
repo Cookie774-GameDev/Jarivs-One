@@ -19,7 +19,7 @@ export const STT_ACTIVITY_RMS = 0.015;
 export const COMPOSER_STT_TOGGLE_EVENT = 'jarvis:stt:toggle';
 export const COMPOSER_STT_STOP_EVENT = 'jarvis:stt:stop';
 
-export type ComposerSttToggleSource = 'hotkey' | 'toolbar' | 'composer';
+export type ComposerSttToggleSource = 'hotkey' | 'toolbar' | 'composer' | 'context-menu';
 
 /** Dispatch the global composer STT toggle event. */
 export function requestComposerSttToggle(source: ComposerSttToggleSource = 'composer'): void {

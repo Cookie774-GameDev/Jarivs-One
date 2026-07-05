@@ -145,17 +145,16 @@ Free forever with your own keys. **Unlimited local Kokoro voice on every plan.**
 
 ### Hive
 
-Hive is the chat-only multi-model pipeline. Use `/Hive` to list modes, or send a prompt like `/Hive quality review this launch plan`.
+<img src="docs/assets/hive-model-icon.png" alt="Hive model" width="64" height="64" align="left" style="margin-right:16px;margin-bottom:8px;" />
 
-| Mode | Pipeline | Simulated status |
-|------|----------|------------------|
-| **Hive Fast** | Gemini 3.5 Flash → Opus quick check | Fast/low-cost; not confirmed Fable-beating |
-| **Hive Balanced** | Grok X High → Opus 4.8 → Gemini 3.5 Flash | Strong paid default; not overclaimed |
-| **Hive Quality** | Grok X High → Opus 4.8 → GPT-5.5 Codex → Gemini 3.5 Flash | **94.4 VibeScore**, +3.7 vs Fable 5 |
-| **Hive Ultra** | Opus 4.8 → DeepSeek V4 Pro → GPT-5.5 Codex → Opus security → Gemini 3.5 Flash | **94.1 VibeScore**, +3.4 vs Fable 5 |
-| **Hive Custom** | Up to 5 custom provider/model/prompt steps | User-defined stack |
+Hive is VibeSpace's **custom multi-model pipeline** — chat-only, sequential refinement across frontier models. Use **Hive Balanced** from the composer or `/hive` in chat.
 
-These benchmark claims are deterministic VibeBench simulations from `docs/HIVE_PIPELINE_SIMULATION_TIERS.md`, not a guarantee that every live provider response beats Fable 5. Terminals, PSTN voice, and SMS never use Hive or hosted Hive credits.
+| Mode | Pipeline | Notes |
+|------|----------|-------|
+| **Single** | One BYOK / hosted model | Default chat |
+| **Hive Balanced** | 5-model Balance pipeline | Flagship · chat-only |
+
+Terminals, PSTN voice, and SMS never use Hive. See [`docs/HIVE.md`](docs/HIVE.md) for the full spec.
 
 ### Subscriptions
 

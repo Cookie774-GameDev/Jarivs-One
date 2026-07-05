@@ -15,6 +15,7 @@ import {
   Zap,
   Orbit,
 } from 'lucide-react';
+import { HiveModelIcon } from '@/components/brand';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -28,7 +29,6 @@ import {
   type PlanId,
 } from '@/lib/entitlements';
 import { useAppAdmin } from '@/lib/admin';
-import { getCheckoutUrl, isStripeConfigured } from '@/lib/billing/stripe';
 import {
   callCheckoutSession,
   callCustomerPortal,
@@ -54,8 +54,9 @@ export function Plans() {
   const cloudSession = useAuthStore((s) => s.cloudSession);
   const admin = useAppAdmin();
   const activePlanId = effectivePlan(currentPlan, admin);
-  const stripeReady = isStripeConfigured() || isBackendBillingConfigured();
+  const billingBackendConfigured = isBackendBillingConfigured();
   const isSignedIn = Boolean(cloudSession?.user_id);
+  const backendReady = isSignedIn && billingBackendConfigured;
 
   const openProvidersTab = () => {
     window.dispatchEvent(
@@ -64,30 +65,24 @@ export function Plans() {
   };
 
   const handleUpgrade = async (tier: PlanId) => {
-    // Prefer the dynamic Edge Function checkout when the user is signed in.
-    if (isSignedIn && isBackendBillingConfigured()) {
-      const result = await callCheckoutSession(tier);
-      if (result.ok) {
-        try {
-          await openExternal(result.url);
-        } catch (err) {
-          toast.error('Could not open checkout', (err as Error).message ?? 'Open the URL manually.');
-        }
-        return;
-      }
-      // If the backend failed, fall through to static URL or show toast.
+    if (!isSignedIn) {
+      toast.info('Sign in required', 'Sign in with a cloud account before upgrading.');
+      return;
     }
-
-    const url = getCheckoutUrl(tier);
-    if (!url) {
+    if (!billingBackendConfigured) {
       toast.info(
-        'Checkout coming soon',
-        'Sign in or add Stripe env vars to activate billing.',
+        'Checkout unavailable',
+        'Billing is not configured for this build. Connect Supabase billing functions.',
       );
       return;
     }
+    const result = await callCheckoutSession(tier);
+    if (!result.ok) {
+      toast.error('Checkout unavailable', result.error);
+      return;
+    }
     try {
-      await openExternal(url);
+      await openExternal(result.url);
     } catch (err) {
       toast.error(
         'Could not open checkout',
@@ -144,8 +139,7 @@ export function Plans() {
             key={id}
             plan={PLANS[id]}
             isCurrent={id === activePlanId}
-            checkoutUrl={getCheckoutUrl(id)}
-            backendReady={isSignedIn && isBackendBillingConfigured()}
+            backendReady={backendReady}
             onAddKey={openProvidersTab}
             onUpgrade={() => void handleUpgrade(id)}
             onManage={() => void handleManageSubscription()}
@@ -156,17 +150,17 @@ export function Plans() {
       {/* Footer explanations */}
       <div className="rounded-2xl border border-border bg-elevated px-4 py-3.5 text-secondary text-muted-foreground leading-relaxed shadow-soft">
         <p>
-          {stripeReady ? (
+          {billingBackendConfigured ? (
             <>
-              <span className="text-foreground font-medium">Billing is live.</span>{' '}
-              All updates go safely through Stripe in your desktop browser. Cancel anytime with a single click. 
+              <span className="text-foreground font-medium">Secure checkout is configured.</span>{' '}
+              Upgrades are created from your signed-in account through Supabase billing functions.
               Your local files, workspace settings, custom tools, and keys never leave your machine on any tier.
             </>
           ) : (
             <>
-              <span className="text-foreground font-medium">Coming soon:</span>{' '}
-              Full cloud sync and hosted models release. Upgrades will activate securely through Stripe. 
-              Your localized chat database, workspace profiles, and API key configurations remain 100% private.
+              <span className="text-foreground font-medium">Billing not configured.</span>{' '}
+              Paid checkout requires Supabase billing functions in this build.
+              Your local chat database, workspace profiles, and API key configurations remain private.
             </>
           )}
         </p>
@@ -188,7 +182,6 @@ export function Plans() {
 interface PlanCardProps {
   plan: PlanDef;
   isCurrent: boolean;
-  checkoutUrl: string | undefined;
   /** True when the user is signed in and the Supabase backend is wired. */
   backendReady: boolean;
   onAddKey: () => void;
@@ -196,8 +189,8 @@ interface PlanCardProps {
   onManage: () => void;
 }
 
-function PlanCard({ plan, isCurrent, checkoutUrl, backendReady, onAddKey, onUpgrade, onManage }: PlanCardProps) {
-  const billingReady = backendReady || Boolean(checkoutUrl);
+function PlanCard({ plan, isCurrent, backendReady, onAddKey, onUpgrade, onManage }: PlanCardProps) {
+  const billingReady = backendReady;
 
   // Spark Card (Free)
   if (plan.id === 'free') {
@@ -546,7 +539,7 @@ function PlanCard({ plan, isCurrent, checkoutUrl, backendReady, onAddKey, onUpgr
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 flex-1 items-start gap-2.5">
                   <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-orange-300/40 bg-orange-500/15 shadow-[0_0_28px_rgba(255,133,0,0.25)]">
-                    <Sparkles className="h-5 w-5 text-orange-200 animate-pulse" />
+                    <HiveModelIcon size={42} />
                   </div>
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">

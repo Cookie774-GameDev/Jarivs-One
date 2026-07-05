@@ -71,6 +71,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return jsonResponse({ error: 'method_not_allowed' }, 405);
   }
 
+  return jsonResponse(
+    {
+      error: 'endpoint_retired',
+      fallback: 'byok_or_stack_complete',
+    },
+    410,
+  );
+
   // ---- 1. Authenticate ------------------------------------------------------
   const authHeader = req.headers.get('Authorization') || req.headers.get('authorization');
   const jwt = authHeader?.match(/^Bearer\s+(.+)$/i)?.[1];

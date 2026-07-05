@@ -40,7 +40,6 @@ export function isDefaultProviderSelectable(
 ): boolean {
   const accessible = getAccessibleProviders(apiKeys, offlineMode, plan, localDefault);
   if (accessible.includes(provider)) return true;
-  if (provider === 'mock') return Boolean(apiKeys.mock?.trim());
   if (planIncludesHostedChat(plan) && SUBSCRIPTION_HOSTED_PROVIDERS.includes(provider)) {
     return true;
   }

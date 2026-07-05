@@ -43,12 +43,13 @@ const MAX_TREE_CHILDREN = 500;
 interface TreeNodeProps {
   entry: FsEntry;
   depth: number;
+  rootDir: string;
   selectedPath: string | null;
   onOpenFile: (path: string) => void;
   onOpenDir: (path: string) => void;
 }
 
-function FileTreeNode({ entry, depth, selectedPath, onOpenFile, onOpenDir }: TreeNodeProps) {
+function FileTreeNode({ entry, depth, rootDir, selectedPath, onOpenFile, onOpenDir }: TreeNodeProps) {
   const [open, setOpen] = React.useState(false);
   const [children, setChildren] = React.useState<FsEntry[]>([]);
   const [loading, setLoading] = React.useState(false);
@@ -57,7 +58,7 @@ function FileTreeNode({ entry, depth, selectedPath, onOpenFile, onOpenDir }: Tre
     if (!entry.isDir) return;
     if (children.length > 0) return;
     setLoading(true);
-    const result = await listDirectory(entry.path);
+    const result = await listDirectory(entry.path, { root: rootDir });
     setLoading(false);
     if (!result.ok) {
       toast.error('Could not open folder', describeFsError(result.error));
@@ -125,6 +126,7 @@ function FileTreeNode({ entry, depth, selectedPath, onOpenFile, onOpenDir }: Tre
           key={child.path}
           entry={child}
           depth={depth + 1}
+          rootDir={rootDir}
           selectedPath={selectedPath}
           onOpenFile={onOpenFile}
           onOpenDir={onOpenDir}
@@ -157,7 +159,8 @@ export function FilesPage() {
   const loadRoot = React.useCallback(async (path: string) => {
     if (!path.trim()) return;
     setLoading(true);
-    const result = await listDirectory(path.trim());
+    const clean = path.trim();
+    const result = await listDirectory(clean, { root: clean });
     setLoading(false);
     if (!result.ok) {
       toast.error('Could not open project folder', describeFsError(result.error));
@@ -186,7 +189,7 @@ export function FilesPage() {
   }, [projectId]);
 
   const openFile = async (path: string) => {
-    const result = await readTextFile(path);
+    const result = await readTextFile(path, { root: rootDir });
     if (!result.ok) {
       toast.error('Could not read file', describeFsError(result.error));
       return;
@@ -222,7 +225,7 @@ export function FilesPage() {
 
   const saveFile = async () => {
     if (!selectedPath) return;
-    const result = await writeTextFile(selectedPath, content);
+    const result = await writeTextFile(selectedPath, content, { root: rootDir });
     if (!result.ok) {
       toast.error('Save failed', describeFsError(result.error));
       return;
@@ -236,7 +239,7 @@ export function FilesPage() {
     const name = newFileName.trim();
     if (!name || !currentDir) return;
     const path = joinPath(currentDir, name);
-    const result = await createTextFile(path);
+    const result = await createTextFile(path, { root: rootDir });
     if (!result.ok) {
       toast.error('Could not create file', describeFsError(result.error));
       return;
@@ -324,6 +327,7 @@ export function FilesPage() {
               key={entry.path}
               entry={entry}
               depth={0}
+              rootDir={rootDir}
               selectedPath={selectedPath}
               onOpenFile={(path) => void openFile(path)}
               onOpenDir={setCurrentDir}

@@ -94,4 +94,4 @@ export function renderSkillMarkdown(src: string): string {
   return out;
 }
 
-export const SKILL_EMOJI_PRESETS = ['✨', '💻', '🔍', '✍️', '📋', '📅', '⌨️', '🌐', '📁', '🎙️', '🎵', '🧠', '📝', '⚡', '🐙', '🧩'];
+export const SKILL_EMOJI_PRESETS = ['◆', '◇', '⬡', '✦', '✧', '▣', '◈', '◎', '△', '▱'];

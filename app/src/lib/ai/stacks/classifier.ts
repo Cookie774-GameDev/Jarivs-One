@@ -2,12 +2,9 @@ import type { StackPresetId, StackTaskType } from './types';
 
 const PRESET_TOKENS = new Set<StackPresetId>([
   'off',
-  'fast',
   'balanced',
-  'quality',
-  'ultra',
-  'custom',
 ]);
+const LEGACY_PRESET_TOKENS = new Set(['fast', 'quality', 'ultra', 'custom']);
 
 const TASK_TOKENS = new Set<StackTaskType>([
   'general',
@@ -46,6 +43,9 @@ export function parseStackSlashCommand(raw: string): ParsedStackSlashCommand {
   if (token1 && PRESET_TOKENS.has(token1 as StackPresetId)) {
     preset = token1 as StackPresetId;
     consumed = 1;
+  } else if (token1 && LEGACY_PRESET_TOKENS.has(token1)) {
+    preset = 'balanced';
+    consumed = 1;
   } else if (token1 && TASK_TOKENS.has(token1 as StackTaskType)) {
     taskType = token1 as StackTaskType;
     consumed = 1;
@@ -69,5 +69,6 @@ export function effectiveStackPreset(
   storedPreset: StackPresetId,
   slashPreset: StackPresetId | undefined,
 ): StackPresetId {
-  return slashPreset ?? storedPreset;
+  const selected = slashPreset ?? storedPreset;
+  return LEGACY_PRESET_TOKENS.has(selected) ? 'balanced' : selected;
 }

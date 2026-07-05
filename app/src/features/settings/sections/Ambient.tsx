@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Moon, Play, Pause, Music } from 'lucide-react';
 import { useUIStore } from '@/stores/ui';
 import { useAuthStore } from '@/stores/auth';
@@ -7,9 +7,13 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
+import { AmbientAudioEngine, type AmbientLoadStatus } from '@/features/ambient/ambientAudio';
+import { shouldAmbientMusicPlay } from '@/features/ambient/ambientPlayback';
 import {
+  AMBIENT_PREVIEW_DURATION_MS,
   AMBIENT_TRACKS,
   FREE_AMBIENT_TRACK,
+  getAmbientTrackDef,
   planAllowsAmbientTrack,
 } from '@/features/ambient/tracks';
 
@@ -29,6 +33,7 @@ const PRESETS_MIN: { label: string; value: number }[] = [
 export function Ambient() {
   const ambient = useUIStore((s) => s.ambient);
   const setAmbient = useUIStore((s) => s.setAmbient);
+  const ambientActive = useUIStore((s) => s.ambientActive);
   const ambientThresholdMs = useUIStore((s) => s.ambientThresholdMs);
   const setAmbientThresholdMs = useUIStore((s) => s.setAmbientThresholdMs);
   const ambientDrone = useUIStore((s) => s.ambientDrone);
@@ -47,27 +52,74 @@ export function Ambient() {
   const localUserId = useAuthStore((s) => s.localUserId);
 
   const [previewing, setPreviewing] = useState(false);
+  const [previewingMusic, setPreviewingMusic] = useState(false);
+  const [musicStatus, setMusicStatus] = useState<AmbientLoadStatus>({ state: 'idle' });
+  const previewStopRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return AmbientAudioEngine.getInstance().subscribeStatus(setMusicStatus);
+  }, []);
 
   const thresholdMin = Math.round(ambientThresholdMs / 60000);
   const admin = isAdminIdentity({ email, cloudEmail, localUserId });
   const activePlan = effectivePlan(plan, admin);
+  const isMusicLive = shouldAmbientMusicPlay(ambient, ambientActive, ambientDrone, ambientAlwaysPlay);
+  const selectedTrackLabel = getAmbientTrackDef(ambientTrack).label;
+
   useEffect(() => {
     if (planAllowsAmbientTrack(ambientTrack, activePlan, admin)) return;
     setAmbientTrack(FREE_AMBIENT_TRACK);
   }, [activePlan, admin, ambientTrack, setAmbientTrack]);
 
+  useEffect(() => {
+    if (AMBIENT_TRACKS.some((track) => track.id === ambientTrack)) return;
+    setAmbientTrack(FREE_AMBIENT_TRACK);
+  }, [ambientTrack, setAmbientTrack]);
+
   const handlePreview = () => {
     setPreviewing(true);
     setSettingsOpen(false);
-    // Defer slightly so the modal close animation finishes before ambient mounts.
     setTimeout(() => {
       if (!ambient) setAmbient(true);
+      if (!ambientDrone) setAmbientDrone(true);
       setAmbientActive(true);
       setPreviewing(false);
     }, 220);
   };
 
-  const isDroneControlsDisabled = !ambient || !ambientDrone;
+  useEffect(() => {
+    return () => {
+      if (previewStopRef.current !== null) {
+        window.clearTimeout(previewStopRef.current);
+      }
+    };
+  }, []);
+
+  const handlePreviewMusic = () => {
+    if (previewStopRef.current !== null) {
+      window.clearTimeout(previewStopRef.current);
+      previewStopRef.current = null;
+    }
+
+    setPreviewingMusic(true);
+    const engine = AmbientAudioEngine.getInstance();
+    engine.play(ambientTrack, ambientVolume);
+    void engine.resume();
+
+    previewStopRef.current = window.setTimeout(() => {
+      previewStopRef.current = null;
+      setPreviewingMusic(false);
+      const live = shouldAmbientMusicPlay(
+        useUIStore.getState().ambient,
+        useUIStore.getState().ambientActive,
+        useUIStore.getState().ambientDrone,
+        useUIStore.getState().ambientAlwaysPlay,
+      );
+      if (!live) {
+        engine.stop();
+      }
+    }, AMBIENT_PREVIEW_DURATION_MS);
+  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -133,7 +185,7 @@ export function Ambient() {
         <div>
           <Label htmlFor="ambient-drone" className={!ambient ? 'opacity-50' : ''}>Ambient soundscape</Label>
           <p className="text-metadata text-muted-foreground mt-1">
-            Play the hosted Jarvis music playlist while ambient is active.
+            Play music on the ambient idle screen (when 24/7 is off).
           </p>
         </div>
         <Switch
@@ -144,12 +196,25 @@ export function Ambient() {
         />
       </section>
 
-      {/* Dynamic Soundscape Sub-options */}
+      <section className="flex items-start justify-between gap-3 max-w-md">
+        <div>
+          <Label htmlFor="ambient-always-play">Play music 24/7</Label>
+          <p className="text-metadata text-muted-foreground mt-1">
+            Loop the selected track all the time. When off, music only plays during ambient idle.
+          </p>
+        </div>
+        <Switch
+          id="ambient-always-play"
+          checked={ambientAlwaysPlay}
+          onCheckedChange={setAmbientAlwaysPlay}
+        />
+      </section>
+
       <section className="flex flex-col gap-4 pl-4 border-l border-border/60">
         <div className="flex flex-col gap-2">
-          <Label className={isDroneControlsDisabled ? 'opacity-50' : ''}>Track selector</Label>
+          <Label>Track selector</Label>
           <p className="text-metadata text-muted-foreground">
-            Choose where the five-track playlist starts. It continues in order and repeats.
+            Pick a track to loop. 24/7 plays it always; otherwise it plays on the ambient idle screen.
           </p>
           <div className="grid grid-cols-2 gap-2 mt-1">
             {AMBIENT_TRACKS.map((t) => {
@@ -160,13 +225,15 @@ export function Ambient() {
                   type="button"
                   onClick={() => {
                     setAmbientTrack(t.id);
+                    if (isMusicLive) {
+                      AmbientAudioEngine.getInstance().setTrack(t.id);
+                    }
                   }}
-                  disabled={isDroneControlsDisabled}
                   className={
                     'flex items-center gap-2.5 p-3 rounded-lg border text-left transition-all ' +
                     (active
                       ? 'border-accent-copper bg-accent-copper/10 text-foreground shadow-sm'
-                      : 'border-border bg-panel text-muted-foreground hover:border-border-mid disabled:opacity-40')
+                      : 'border-border bg-panel text-muted-foreground hover:border-border-mid')
                   }
                 >
                   <Music className={`h-4 w-4 shrink-0 ${active ? 'text-accent-copper' : 'text-muted-foreground/60'}`} />
@@ -180,17 +247,37 @@ export function Ambient() {
               );
             })}
           </div>
-          <p className="text-metadata text-muted-foreground">
-            Replace the five placeholder URLs in the ambient track configuration with your public R2 links.
+          {musicStatus.state === 'error' ? (
+            <p className="text-[11px] text-destructive">
+              {selectedTrackLabel}: {musicStatus.message}
+            </p>
+          ) : null}
+          {musicStatus.state === 'playing' ? (
+            <p className="text-[11px] text-accent-copper">
+              Now playing: {selectedTrackLabel}
+              {previewingMusic ? ` · preview (${Math.round(AMBIENT_PREVIEW_DURATION_MS / 1000)}s)` : ''}
+            </p>
+          ) : null}
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className="self-start"
+            disabled={previewingMusic}
+            onClick={handlePreviewMusic}
+          >
+            {previewingMusic ? <Pause className="h-3.5 w-3.5 mr-1.5" /> : <Play className="h-3.5 w-3.5 mr-1.5" />}
+            Preview music ({Math.round(AMBIENT_PREVIEW_DURATION_MS / 1000)}s)
+          </Button>
+          <p className="text-[11px] text-muted-foreground">
+            Plays the selected track for {Math.round(AMBIENT_PREVIEW_DURATION_MS / 1000)} seconds. Volume applies live.
           </p>
         </div>
 
         <div className="flex flex-col gap-2 max-w-md">
           <div className="flex items-center justify-between">
-            <Label htmlFor="ambient-volume" className={isDroneControlsDisabled ? 'opacity-50' : ''}>Volume</Label>
-            <span className={`text-metadata text-accent-copper font-medium ${isDroneControlsDisabled ? 'opacity-50' : ''}`}>
-              {ambientVolume}%
-            </span>
+            <Label htmlFor="ambient-volume">Volume</Label>
+            <span className="text-metadata text-accent-copper font-medium">{ambientVolume}%</span>
           </div>
           <input
             id="ambient-volume"
@@ -198,24 +285,12 @@ export function Ambient() {
             min="0"
             max="100"
             value={ambientVolume}
-            onChange={(e) => setAmbientVolume(Number(e.target.value))}
-            disabled={isDroneControlsDisabled}
-            className="h-1.5 w-full appearance-none rounded-lg bg-border cursor-pointer accent-accent-copper disabled:opacity-50"
-          />
-        </div>
-
-        <div className="flex items-start justify-between gap-3 max-w-md">
-          <div>
-            <Label htmlFor="ambient-always-play" className={isDroneControlsDisabled ? 'opacity-50' : ''}>Always play 24/7</Label>
-            <p className="text-metadata text-muted-foreground mt-1">
-              Keep the hosted music playlist playing continuously, even when not in idle mode.
-            </p>
-          </div>
-          <Switch
-            id="ambient-always-play"
-            checked={ambientAlwaysPlay}
-            onCheckedChange={setAmbientAlwaysPlay}
-            disabled={isDroneControlsDisabled}
+            onChange={(e) => {
+              const next = Number(e.target.value);
+              setAmbientVolume(next);
+              AmbientAudioEngine.getInstance().setVolume(next);
+            }}
+            className="h-1.5 w-full appearance-none rounded-lg bg-border cursor-pointer accent-accent-copper"
           />
         </div>
       </section>

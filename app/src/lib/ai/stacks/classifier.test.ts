@@ -16,7 +16,7 @@ describe('Hive classifier', () => {
   it('parses /Hive as the Hive slash command', () => {
     expect(parseStackSlashCommand('/Hive quality code fix auth')).toEqual({
       matched: true,
-      preset: 'quality',
+      preset: 'balanced',
       taskType: 'code',
       text: 'fix auth',
     });
@@ -28,12 +28,12 @@ describe('Hive classifier', () => {
   it('parses /hive and /stack aliases', () => {
     expect(parseStackSlashCommand('/Hive quality explain the release')).toMatchObject({
       matched: true,
-      preset: 'quality',
+      preset: 'balanced',
       text: 'explain the release',
     });
     expect(parseStackSlashCommand('/hive ultra research compare models')).toMatchObject({
       matched: true,
-      preset: 'ultra',
+      preset: 'balanced',
       taskType: 'research',
       text: 'compare models',
     });
@@ -48,6 +48,6 @@ describe('Hive classifier', () => {
   it('keeps stored preset unless slash selects a non-off preset', () => {
     expect(effectiveStackPreset('balanced', undefined)).toBe('balanced');
     expect(effectiveStackPreset('balanced', 'off')).toBe('off');
-    expect(effectiveStackPreset('balanced', 'quality')).toBe('quality');
+    expect(effectiveStackPreset('balanced', 'quality')).toBe('balanced');
   });
 });

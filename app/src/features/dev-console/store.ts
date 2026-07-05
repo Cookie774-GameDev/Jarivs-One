@@ -35,6 +35,67 @@ import { create } from 'zustand';
 /** Hard cap on stored entries. ~1000 is plenty for live debug; older
  * entries fall off the front when the cap is exceeded. */
 const MAX_ENTRIES = 1000;
+const MAX_DETAIL_DEPTH = 5;
+const MAX_OBJECT_KEYS = 40;
+const MAX_ARRAY_ITEMS = 25;
+const MAX_DETAIL_STRING = 4000;
+const REDACTED = '[redacted]';
+
+const SENSITIVE_KEY_RE = /(authorization|cookie|set-cookie|token|access[_-]?token|refresh[_-]?token|jwt|api[_-]?key|apikey|password|secret|client[_-]?secret|service[_-]?role)/i;
+const SENSITIVE_VALUE_PATTERNS: Array<[RegExp, string]> = [
+  [/\bBearer\s+[A-Za-z0-9._~+/-]+=*/gi, `Bearer ${REDACTED}`],
+  [/\b(sk|rk)_(live|test)_[A-Za-z0-9_]{8,}\b/g, REDACTED],
+  [/\bwhsec_[A-Za-z0-9_]{8,}\b/g, REDACTED],
+  [/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g, REDACTED],
+  [/\bAIza[0-9A-Za-z_-]{20,}\b/g, REDACTED],
+];
+
+function truncateString(value: string, max = MAX_DETAIL_STRING): string {
+  return value.length > max ? `${value.slice(0, max)}…[truncated ${value.length - max} chars]` : value;
+}
+
+function redactString(value: string, max = MAX_DETAIL_STRING): string {
+  let out = value;
+  for (const [pattern, replacement] of SENSITIVE_VALUE_PATTERNS) {
+    out = out.replace(pattern, replacement);
+  }
+  return truncateString(out, max);
+}
+
+export function redactForLog(value: unknown, depth = 0, seen = new WeakSet<object>()): unknown {
+  if (value == null) return value;
+  if (typeof value === 'string') return redactString(value);
+  if (typeof value === 'number' || typeof value === 'boolean') return value;
+  if (typeof value === 'bigint') return `${value}n`;
+  if (typeof value === 'function') return '[Function]';
+  if (value instanceof Error) {
+    return {
+      name: value.name,
+      message: redactString(value.message, 1000),
+      stack: value.stack ? redactString(value.stack, 3000) : undefined,
+    };
+  }
+  if (typeof value !== 'object') return redactString(String(value));
+  if (seen.has(value)) return '[Circular]';
+  if (depth >= MAX_DETAIL_DEPTH) return '[MaxDepth]';
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    const items = value.slice(0, MAX_ARRAY_ITEMS).map((item) => redactForLog(item, depth + 1, seen));
+    if (value.length > MAX_ARRAY_ITEMS) items.push(`[Truncated ${value.length - MAX_ARRAY_ITEMS} items]`);
+    return items;
+  }
+
+  const out: Record<string, unknown> = {};
+  const entries = Object.entries(value as Record<string, unknown>);
+  for (const [key, child] of entries.slice(0, MAX_OBJECT_KEYS)) {
+    out[key] = SENSITIVE_KEY_RE.test(key) ? REDACTED : redactForLog(child, depth + 1, seen);
+  }
+  if (entries.length > MAX_OBJECT_KEYS) {
+    out.__truncatedKeys = entries.length - MAX_OBJECT_KEYS;
+  }
+  return out;
+}
 
 /** Channels group entries by source so the UI can filter quickly. */
 export type DevLogChannel =
@@ -119,8 +180,8 @@ export const useDevConsoleStore = create<DevConsoleState>((set, get) => ({
       ts: e.ts ?? Date.now(),
       level: e.level,
       channel: e.channel,
-      message: e.message,
-      detail: e.detail,
+      message: redactString(e.message, 500),
+      detail: e.detail === undefined ? undefined : redactForLog(e.detail),
       durationMs: e.durationMs,
     };
     set((s) => {

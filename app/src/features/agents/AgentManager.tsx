@@ -8,7 +8,7 @@
  * fresh id; "Delete" removes a non-builtin agent entirely.
  */
 import * as React from 'react';
-import { Trash2, Copy, Save, RotateCcw, Sparkles, Lock } from 'lucide-react';
+import { Trash2, Copy, Save, RotateCcw, Sparkles, Lock, Plus } from 'lucide-react';
 import type { Agent, AgentId, ProviderId } from '@/types';
 import { useAgentStore } from '@/stores/agents';
 import { useAuthStore } from '@/stores/auth';
@@ -25,15 +25,22 @@ import { agentRepo } from '@/lib/db';
 import { AgentBadge } from './AgentBadge';
 import { getDefaultAgents } from './registry';
 import { getAgentRole, ROLE_PERSONAS, type AgentRole } from './personas';
+import { getProviderDisplayName } from '@/lib/ai/providerRegistry';
 import {
   agentEditorProviderFromAgent,
   agentModelFromEditorChoice,
+  AGENT_DEFAULT_PROVIDER_MODEL,
   getAgentEditorProviderOptions,
   type AgentEditorProviderChoice,
 } from '@/lib/ai/agentProviderOptions';
 import { getModelsForProvider } from '@/lib/ai/providerModelCatalog';
 import { useProviderConnectionContext } from '@/lib/ai/useProviderModelOptions';
 import { useOllamaModelOptions, syncDiscoveredOllamaModels } from '@/lib/ai/models';
+import {
+  JARVIS_CREATOR_APPLY_AGENT_EVENT,
+  type JarvisCreatorAgentDraft,
+} from '@/features/jarvis-creator/contracts';
+import { startJarvisCreator } from '@/features/jarvis-creator/launcher';
 
 /**
  * Tiny role-pill for swarm agents (Scout / Builder / Reviewer).
@@ -135,6 +142,22 @@ export function AgentManager() {
     // Intentionally watch selectedAgent?.id, not the whole agent reference.
   }, [selectedAgent?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  React.useEffect(() => {
+    const handleApply = (event: Event) => {
+      const detail = (event as CustomEvent<JarvisCreatorAgentDraft>).detail;
+      if (!detail?.name || !detail.description || !detail.system_prompt) return;
+      setDraft((current) => current ? {
+        ...current,
+        name: detail.name,
+        description: detail.description,
+        system_prompt: detail.system_prompt,
+        temperature: detail.temperature,
+      } : current);
+    };
+    window.addEventListener(JARVIS_CREATOR_APPLY_AGENT_EVENT, handleApply as EventListener);
+    return () => window.removeEventListener(JARVIS_CREATOR_APPLY_AGENT_EVENT, handleApply as EventListener);
+  }, []);
+
   const apiKeys = useAuthStore((s) => s.apiKeys);
   const offlineMode = useAuthStore((s) => s.offlineMode);
   const plan = useAuthStore((s) => s.plan);
@@ -158,7 +181,6 @@ export function AgentManager() {
   }, []);
 
   const providerCtx = useProviderConnectionContext();
-  const [advancedCustomModel, setAdvancedCustomModel] = React.useState(false);
 
   const providerOptions = React.useMemo(
     () =>
@@ -174,18 +196,13 @@ export function AgentManager() {
 
   const modelOptions = React.useMemo(() => {
     if (!draft || draft.providerChoice === 'default') return [];
-    return getModelsForProvider(draft.providerChoice, providerCtx, draft.model);
+    return getModelsForProvider(draft.providerChoice, providerCtx);
   }, [draft, providerCtx, ollamaOptions]);
 
-  React.useEffect(() => {
-    if (!draft || draft.providerChoice === 'default') return;
-    const known = modelOptions.some(
-      (option) => option.id === draft.model && !option.isCustom,
-    );
-    if (!known && draft.model.trim()) setAdvancedCustomModel(true);
-  }, [selectedAgent?.id, draft?.model, draft?.providerChoice, modelOptions]);
-
   const dirty = !!(draft && selectedAgent && draftDiffers(draft, selectedAgent));
+  const agentModelAvailable =
+    !draft || draft.providerChoice === 'default' || modelOptions.some((option) => option.id === draft.model);
+  const saveDisabled = !dirty || !agentModelAvailable;
 
   const handleProviderChoice = (choice: AgentEditorProviderChoice) => {
     if (!draft) return;
@@ -268,6 +285,42 @@ export function AgentManager() {
     }
   };
 
+  const handleCreateNew = async () => {
+    const id = newAgentId();
+    const t = Date.now();
+    const created: Agent = {
+      id,
+      slug: `custom_${id.slice(-8).toLowerCase()}`,
+      name: 'New Agent',
+      description: 'Describe what this agent does.',
+      system_prompt: 'You are a helpful specialist. Be concise, specific, and actionable.',
+      model: { provider: 'mock', model: AGENT_DEFAULT_PROVIDER_MODEL },
+      tools_allowed: ['*'],
+      memory_scope: 'project',
+      capabilities: ['writing'],
+      temperature: 0.7,
+      builtin: false,
+      created_at: t,
+      updated_at: t,
+    };
+    try {
+      const saved = await agentRepo.create(created);
+      registerAgent(saved);
+      setSelectedId(saved.id);
+      toast.success('Created', `"${saved.name}" is ready to edit.`);
+    } catch (err) {
+      toast.error('Create failed', err instanceof Error ? err.message : 'Could not create this agent.');
+    }
+  };
+
+  const handleCreateWithJarvis = () => {
+    startJarvisCreator({
+      kind: 'agent',
+      currentName: draft?.name ?? selectedAgent?.name,
+      currentDescription: draft?.description ?? selectedAgent?.description,
+    });
+  };
+
   const handleDelete = async () => {
     if (!selectedAgent || selectedAgent.builtin) return;
     const name = selectedAgent.name;
@@ -290,9 +343,22 @@ export function AgentManager() {
     <div className="flex h-full min-h-[520px] surface-panel rounded-lg overflow-hidden">
       {/* List pane */}
       <div className="w-64 border-r border-border flex flex-col bg-elevated">
-        <div className="px-3 py-2.5 flex items-center justify-between">
+        <div className="px-3 py-2.5 flex items-center justify-between gap-2">
           <div className="text-ui-strong text-foreground">Agents</div>
-          <Badge variant="outline">{agentList.length}</Badge>
+          <div className="flex items-center gap-1.5">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => void handleCreateNew()}
+              aria-label="New agent"
+              title="New agent"
+              className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </Button>
+            <Badge variant="outline">{agentList.length}</Badge>
+          </div>
         </div>
         <Separator />
         <div className="flex-1 overflow-y-auto py-1 scrollbar-hidden">
@@ -375,6 +441,15 @@ export function AgentManager() {
                   <Copy className="h-3.5 w-3.5" />
                   Clone
                 </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleCreateWithJarvis}
+                  className="border border-accent-cyan/35 bg-accent-cyan/10 text-accent-cyan hover:border-accent-cyan/60 hover:bg-accent-cyan/15"
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Create with Jarvis
+                </Button>
                 {!selectedAgent.builtin && (
                   <Button variant="ghost" size="sm" onClick={handleDelete}>
                     <Trash2 className="h-3.5 w-3.5" />
@@ -386,7 +461,7 @@ export function AgentManager() {
                   variant="accent"
                   size="sm"
                   onClick={() => void handleSave()}
-                  disabled={!dirty}
+                  disabled={saveDisabled}
                 >
                   <Save className="h-3.5 w-3.5" />
                   Save
@@ -453,56 +528,43 @@ export function AgentManager() {
                       Follows Settings → Providers → Default provider
                     </p>
                   ) : modelOptions.length > 0 ? (
-                    advancedCustomModel ? (
-                      <Input
-                        id="agent-model"
-                        value={draft.model}
-                        onChange={(e) =>
-                          setDraft((d) => (d ? { ...d, model: e.target.value.trim() } : d))
-                        }
-                        spellCheck={false}
-                        autoComplete="off"
-                      />
-                    ) : (
-                      <select
-                        id="agent-model"
-                        value={draft.model}
-                        onChange={(e) =>
-                          setDraft((d) => (d ? { ...d, model: e.target.value } : d))
-                        }
-                        className={cn(
-                          'flex h-8 w-full rounded-md border border-input bg-background px-2 text-body text-foreground',
-                          'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-                          'transition-colors',
-                        )}
-                      >
-                        {modelOptions.map((opt) => (
-                          <option key={opt.id} value={opt.id}>
-                            {opt.label}
-                            {opt.isCustom ? ' (custom)' : ''}
-                          </option>
-                        ))}
-                      </select>
-                    )
+                    <select
+                      id="agent-model"
+                      value={agentModelAvailable ? draft.model : ''}
+                      onChange={(e) =>
+                        setDraft((d) => (d ? { ...d, model: e.target.value } : d))
+                      }
+                      className={cn(
+                        'flex h-8 w-full rounded-md border border-input bg-background px-2 text-body text-foreground',
+                        'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+                        'transition-colors',
+                      )}
+                    >
+                      {!agentModelAvailable ? (
+                        <option value="" disabled>
+                          Select a connected model
+                        </option>
+                      ) : null}
+                      {modelOptions.map((opt) => (
+                        <option key={opt.id} value={opt.id}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
                   ) : (
                     <p
                       id="agent-model"
                       className="flex min-h-8 items-center rounded-md border border-dashed border-accent-copper/35 bg-accent-copper/5 px-2 text-secondary text-muted-foreground"
                     >
-                      {ollamaOptions.length > 0
-                        ? 'Scanning local models…'
-                        : 'No models available — open Settings → Local Models to download one'}
+                      {draft.providerChoice === 'ollama' || draft.providerChoice === 'local'
+                        ? 'No local models found — open Settings → Local Models to download one'
+                        : `Connect ${getProviderDisplayName(draft.providerChoice)} in Settings → Providers to load models`}
                     </p>
                   )}
-                  {draft.providerChoice !== 'default' && modelOptions.length > 0 ? (
-                    <label className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
-                      <input
-                        type="checkbox"
-                        checked={advancedCustomModel}
-                        onChange={(event) => setAdvancedCustomModel(event.target.checked)}
-                      />
-                      Advanced: custom model ID
-                    </label>
+                  {!agentModelAvailable && modelOptions.length > 0 ? (
+                    <p className="mt-1 text-[11px] text-destructive">
+                      Select one of the connected models before saving this agent.
+                    </p>
                   ) : null}
                 </div>
               </div>

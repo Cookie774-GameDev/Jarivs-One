@@ -11,9 +11,10 @@ import {
   type ModelOption,
 } from './models';
 import { getModelLabelForProvider } from './providerModelCatalog';
-import { stepsForPreset } from './stacks/presets';
+import { coerceToExposedPreset, stepsForPreset } from './stacks/presets';
 import { isProviderConnected, type ProviderConnectionContext } from './providerRegistry';
 import { agentUsesDefaultProvider } from './agentProviderOptions';
+import { describeVisionRequirement, selectionSupportsVision } from './vision';
 
 export type ChatModelSelection =
   | { mode: 'none' }
@@ -31,11 +32,11 @@ export type ModelSelectionValidation =
   | { ok: false; message: string };
 
 const HIVE_LABELS: Record<Exclude<StackPresetId, 'off'>, string> = {
-  fast: 'Hive Fast',
+  fast: 'Hive Balanced',
   balanced: 'Hive Balanced',
-  quality: 'Hive Quality',
-  ultra: 'Hive Ultra',
-  custom: 'Hive Custom',
+  quality: 'Hive Balanced',
+  ultra: 'Hive Balanced',
+  custom: 'Hive Balanced',
 };
 
 export function normalizeChatModelSelection(
@@ -52,7 +53,8 @@ export function normalizeChatModelSelection(
   if (value.mode === 'hive') {
     const hiveId = value.hiveId;
     if (hiveId === 'fast' || hiveId === 'balanced' || hiveId === 'quality' || hiveId === 'ultra' || hiveId === 'custom') {
-      return { mode: 'hive', hiveId };
+      const exposed = coerceToExposedPreset(hiveId);
+      return exposed === 'off' ? EMPTY_CHAT_MODEL_SELECTION : { mode: 'hive', hiveId: exposed };
     }
     return EMPTY_CHAT_MODEL_SELECTION;
   }
@@ -65,7 +67,8 @@ export function migrateLegacyModelSelection(args: {
   selectedModels: Partial<Record<ProviderId, string>>;
 }): ChatModelSelection {
   if (args.stackPreset && args.stackPreset !== 'off') {
-    return { mode: 'hive', hiveId: args.stackPreset };
+    const exposed = coerceToExposedPreset(args.stackPreset);
+    return exposed === 'off' ? EMPTY_CHAT_MODEL_SELECTION : { mode: 'hive', hiveId: exposed };
   }
   const modelId = args.selectedModels[args.defaultProvider]?.trim();
   if (modelId && args.defaultProvider !== 'mock') {
@@ -78,8 +81,8 @@ export function resolveActiveStackPreset(
   selection: ChatModelSelection,
   stackSlash: ParsedStackSlashCommand,
 ): StackPresetId {
-  if (stackSlash.preset) return stackSlash.preset;
-  if (selection.mode === 'hive') return selection.hiveId;
+  if (stackSlash.preset) return coerceToExposedPreset(stackSlash.preset);
+  if (selection.mode === 'hive') return coerceToExposedPreset(selection.hiveId);
   return 'off';
 }
 
@@ -120,6 +123,7 @@ export function isHiveWorkflowReady(
       return false;
     }
     if (!isProviderConnected(step.provider, ctx)) return false;
+    if (hiveId === 'balanced') return true;
     return findAccessibleModel(step.provider, step.model, ctx) !== null;
   });
 }
@@ -128,7 +132,7 @@ export function validateChatModelSelection(
   selection: ChatModelSelection,
   ctx: ModelSelectionContext,
   customSteps: Parameters<typeof stepsForPreset>[2],
-  options?: { voice?: boolean },
+  options?: { voice?: boolean; attachments?: { hasImages?: boolean } },
 ): ModelSelectionValidation {
   if (selection.mode === 'none') {
     return {
@@ -153,6 +157,12 @@ export function validateChatModelSelection(
         message: 'Your selected model is unavailable. Choose another model before sending.',
       };
     }
+    if (options?.attachments?.hasImages && !selectionSupportsVision(selection, customSteps)) {
+      return {
+        ok: false,
+        message: describeVisionRequirement(selection),
+      };
+    }
     return { ok: true, selection };
   }
 
@@ -162,6 +172,12 @@ export function validateChatModelSelection(
       message: 'This Hive workflow is not ready. Check its models and providers before sending.',
     };
   }
+  if (options?.attachments?.hasImages && !selectionSupportsVision(selection, customSteps)) {
+    return {
+      ok: false,
+      message: describeVisionRequirement(selection),
+    };
+  }
   return { ok: true, selection };
 }
 
@@ -169,7 +185,7 @@ export function canSendModelRequest(
   selection: ChatModelSelection,
   ctx: ModelSelectionContext,
   customSteps: Parameters<typeof stepsForPreset>[2],
-  options?: { voice?: boolean },
+  options?: { voice?: boolean; attachments?: { hasImages?: boolean } },
 ): boolean {
   return validateChatModelSelection(selection, ctx, customSteps, options).ok;
 }
@@ -236,7 +252,7 @@ export function validateSendModelAccess(
   selection: ChatModelSelection,
   ctx: ModelSelectionContext,
   customSteps: Parameters<typeof stepsForPreset>[2],
-  options?: { voice?: boolean },
+  options?: { voice?: boolean; attachments?: { hasImages?: boolean } },
 ): ModelSelectionValidation {
   const stackSlash = parseStackSlashCommand(text);
   const stackPreset = resolveActiveStackPreset(selection, stackSlash);

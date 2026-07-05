@@ -1,0 +1,157 @@
+import { useState } from 'react';
+import { ClipboardList, RotateCcw, XCircle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { messageRepo } from '@/lib/db/repositories';
+import type { MessageId, Part } from '@/types';
+import { useJarvisInteractionStore } from './sessionStore';
+import type { JarvisPlanReview } from './types';
+
+type PlanPart = Extract<Part, { kind: 'plan_review' }>;
+
+export interface PlanReviewCardProps {
+  part: PlanPart;
+  messageId?: MessageId;
+  chatId?: string;
+}
+
+function planText(plan: JarvisPlanReview): string {
+  return [
+    `# ${plan.title}`,
+    plan.summary,
+    ...plan.steps.map((step, index) => `${index + 1}. ${step}`),
+    ...(plan.risks?.length ? ['Risks:', ...plan.risks.map((risk) => `- ${risk}`)] : []),
+  ].filter(Boolean).join('\n');
+}
+
+export function PlanReviewCard({ part, messageId, chatId }: PlanReviewCardProps) {
+  const { plan } = part;
+  const canExecute = plan.executable !== false;
+  const [redoOpen, setRedoOpen] = useState(false);
+  const [revision, setRevision] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const writeStatus = async (status: JarvisPlanReview['status']) => {
+    if (!messageId) return;
+    const message = await messageRepo.getById(messageId);
+    if (!message) return;
+    await messageRepo.update(messageId, {
+      parts: message.parts.map((messagePart) => (
+        messagePart.kind === 'plan_review' && messagePart.plan.id === plan.id
+          ? { kind: 'plan_review', plan: { ...messagePart.plan, status } }
+          : messagePart
+      )),
+    });
+  };
+
+  const handleBuild = async () => {
+    if (!chatId || busy || plan.status !== 'pending') return;
+    setBusy(true);
+    if (!canExecute) {
+      await writeStatus('built');
+      setBusy(false);
+      return;
+    }
+    await writeStatus('building');
+    useJarvisInteractionStore.getState().setChatMode(chatId, 'agent');
+    window.dispatchEvent(new CustomEvent('jarvis:send', {
+      detail: {
+        chatId,
+        text: `Build this approved plan:\n\n${planText(plan)}`,
+        interactionMode: 'agent',
+        structuredContext: {
+          kind: 'plan_build',
+          sourceMessageId: messageId,
+          payload: { plan },
+        },
+      },
+    }));
+    setBusy(false);
+  };
+
+  const handleRedo = async () => {
+    if (!chatId || busy || !revision.trim()) return;
+    setBusy(true);
+    await writeStatus('redone');
+    useJarvisInteractionStore.getState().setChatMode(chatId, 'plan');
+    const text = `Redo this plan with this instruction: ${revision.trim()}`;
+    await messageRepo.create({
+      chat_id: chatId as never,
+      role: 'user',
+      parts: [{ kind: 'text', text }],
+    });
+    window.dispatchEvent(new CustomEvent('jarvis:send', {
+      detail: {
+        chatId,
+        text,
+        interactionMode: 'plan',
+        structuredContext: {
+          kind: 'plan_redo',
+          sourceMessageId: messageId,
+          payload: { plan, revision: revision.trim() },
+        },
+      },
+    }));
+    setBusy(false);
+  };
+
+  const handleCancel = async () => {
+    if (busy || plan.status !== 'pending') return;
+    setBusy(true);
+    await writeStatus('cancelled');
+    setBusy(false);
+  };
+
+  return (
+    <section className="w-full min-w-[min(720px,100%)] rounded-xl border border-accent-copper/35 bg-accent-copper/5 p-3 shadow-[0_0_20px_-16px_hsl(var(--accent-copper))]">
+      <div className="mb-2 flex items-start gap-2">
+        <div className="rounded-full border border-accent-copper/40 bg-accent-copper/10 p-1">
+          <ClipboardList className="h-3.5 w-3.5 text-accent-copper" />
+        </div>
+        <div>
+          <div className="text-ui-strong text-foreground">{plan.title}</div>
+          <p className="text-secondary text-muted-foreground">{plan.summary}</p>
+        </div>
+      </div>
+      <ol className="ml-5 list-decimal space-y-1 text-secondary text-foreground">
+        {plan.steps.map((step, index) => <li key={`${plan.id}:step:${index}`}>{step}</li>)}
+      </ol>
+      {plan.risks?.length ? (
+        <div className="mt-2 rounded-md border border-border bg-background/60 px-2 py-1.5">
+          <div className="text-metadata uppercase tracking-wide text-muted-foreground">Risks</div>
+          <ul className="ml-4 list-disc text-secondary text-muted-foreground">
+            {plan.risks.map((risk, index) => <li key={`${plan.id}:risk:${index}`}>{risk}</li>)}
+          </ul>
+        </div>
+      ) : null}
+      {plan.status !== 'pending' && (
+        <p className="mt-2 text-secondary text-muted-foreground">Plan status: {plan.status}</p>
+      )}
+      {redoOpen && (
+        <div className="mt-3 flex flex-col gap-2">
+          <textarea
+            className="min-h-16 w-full resize-y rounded-md border border-border bg-background px-2 py-1.5 text-secondary text-foreground outline-none focus:border-accent-copper"
+            placeholder="What should Jarvis change in the next plan?"
+            value={revision}
+            onChange={(event) => setRevision(event.target.value)}
+          />
+          <Button type="button" size="sm" variant="accent" disabled={busy || !revision.trim()} onClick={handleRedo}>
+            Send Revision
+          </Button>
+        </div>
+      )}
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button type="button" size="sm" variant="accent" disabled={busy || plan.status !== 'pending'} onClick={handleBuild}>
+          {canExecute ? 'Build Plan' : 'Done'}
+        </Button>
+        <Button type="button" size="sm" variant="secondary" disabled={busy || plan.status !== 'pending'} onClick={() => setRedoOpen((open) => !open)}>
+          <RotateCcw className="h-3 w-3" />
+          Redo Plan
+        </Button>
+        <Button type="button" size="sm" variant="ghost" disabled={busy || plan.status !== 'pending'} onClick={handleCancel}>
+          <XCircle className="h-3 w-3" />
+          Cancel
+        </Button>
+      </div>
+    </section>
+  );
+}

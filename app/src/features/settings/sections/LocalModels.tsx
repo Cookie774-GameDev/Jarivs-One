@@ -14,8 +14,6 @@ import { useAuthStore } from '@/stores/auth';
 import {
   assertAllowedOllamaEndpoint,
   connectLocalModelToChat,
-  ensureOllamaReadySilent,
-  isOllamaReachable,
   listOllamaModelInfo,
   LOCAL_MODEL_CATALOG,
   catalogDisplayName,
@@ -29,6 +27,10 @@ import {
   type OllamaModelInfo,
   type OllamaPullProgress,
 } from '@/lib/ai';
+import {
+  bootstrapOllamaConnection,
+  invalidateOllamaBootstrap,
+} from '@/lib/ai/ollamaBootstrap';
 import {
   getNativeOllamaStatus,
   openOllamaTroubleshooting,
@@ -221,14 +223,14 @@ async function ensureOllamaReady(signal?: AbortSignal): Promise<boolean> {
   _bootstrapState = { phase: 'detecting', statusMsg: 'Checking Ollama installation…' };
   notifyBootstrap();
 
-  const status = await ensureOllamaReadySilent(signal, (next) => {
-    _bootstrapState = mapEnsureStatus(next);
-    notifyBootstrap();
+  const result = await bootstrapOllamaConnection({
+    force: true,
+    signal,
+    waitTimeoutMs: 90_000,
   });
-
-  _bootstrapState = mapEnsureStatus(status);
+  _bootstrapState = mapEnsureStatus(result.status);
   notifyBootstrap();
-  return status.ready;
+  return result.ready;
 }
 
 // ── Component ────────────────────────────────────────────────────────────
@@ -260,22 +262,16 @@ export function LocalModels({ active = true }: { active?: boolean } = {}) {
     async (autoStart = true) => {
       setScanning(true);
       try {
-        const [status, initiallyReachable] = await Promise.all([
-          getNativeOllamaStatus(),
-          isOllamaReachable(),
-        ]);
+        const result = await bootstrapOllamaConnection({
+          force: !autoStart,
+          waitTimeoutMs: autoStart ? undefined : 90_000,
+        });
+        const status = await getNativeOllamaStatus();
         setNativeStatus(status);
+        setReachable(result.ready);
 
-        let connected = initiallyReachable;
-        if (!connected && autoStart && status.installed === true && !autoStartAttemptedRef.current) {
-          autoStartAttemptedRef.current = true;
-          connected = await ensureOllamaReady();
-        }
-
-        setReachable(connected);
-        if (!connected) {
+        if (!result.ready) {
           setInstalled([]);
-          syncDiscoveredOllamaModels([]);
           return;
         }
 
@@ -309,6 +305,7 @@ export function LocalModels({ active = true }: { active?: boolean } = {}) {
       return;
     }
     setApiKey('ollama', trimmed);
+    invalidateOllamaBootstrap();
     autoStartAttemptedRef.current = false;
     toast.success('Local endpoint saved', trimmed);
     void scan();

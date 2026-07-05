@@ -95,9 +95,9 @@ describe('VoiceModal hands-free turn-taking', () => {
       voiceCancelPhrase: 'cancel',
       voiceSilenceDelayMs: 2000,
       voiceAutoApproveActions: true,
-      apiKeys: { mock: 'mock-skip-sentinel' },
+      apiKeys: { groq: 'gsk_test' },
       stackCustomSteps: DEFAULT_CUSTOM_STEPS,
-      chatModelSelection: selectionFromOption('mock', 'mock-default'),
+      chatModelSelection: selectionFromOption('groq', 'llama-3.3-70b-versatile'),
     });
     useVoiceStore.getState().reset();
   });

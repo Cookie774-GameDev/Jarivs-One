@@ -70,4 +70,32 @@ describe('VoiceService exclusive mic lifecycle', () => {
       window.removeEventListener(VOICE_EXCLUSIVE_STOP_EVENT, onStop);
     }
   });
+
+  it('can synchronously interrupt the active recognition session for a new mic owner', () => {
+    Object.defineProperty(window, 'SpeechRecognition', {
+      value: MockRecognition,
+      configurable: true,
+    });
+    const ends = vi.fn();
+    const stops: Event[] = [];
+    const offEnd = VoiceService.on('voice:end', ends);
+    const onStop = (event: Event) => stops.push(event);
+    window.addEventListener(VOICE_EXCLUSIVE_STOP_EVENT, onStop);
+
+    try {
+      expect(VoiceService.startListening()).toBe(true);
+      const activeRecognition = lastRecognition;
+
+      VoiceService.interruptListening();
+
+      expect(activeRecognition?.abort).toHaveBeenCalledTimes(1);
+      expect(VoiceService.isListening()).toBe(false);
+      expect(VoiceService.wantsListening()).toBe(false);
+      expect(ends).toHaveBeenCalledTimes(1);
+      expect(stops).toHaveLength(1);
+    } finally {
+      offEnd();
+      window.removeEventListener(VOICE_EXCLUSIVE_STOP_EVENT, onStop);
+    }
+  });
 });

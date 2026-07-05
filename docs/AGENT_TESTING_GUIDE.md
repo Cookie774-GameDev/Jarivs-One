@@ -81,7 +81,7 @@ Manual downloads and checksums: `DOWNLOAD.md`.
 |----------|---------|
 | `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` | Cloud auth + edge functions |
 | `VITE_*_API_KEY` | BYOK (or Settings → Providers) |
-| `VITE_STRIPE_CHECKOUT_*` | Per-tier Stripe checkout URLs |
+| Stripe Edge secrets | Server-side checkout + webhook only |
 | `VITE_PHONE_JARVIS_CLOUD_URL` | phone-jarvis cloud origin |
 | `VITE_JARVIS_ADMIN*` | Local admin entitlement builds |
 | `VITE_ENABLE_VOICE` / `COUNCIL` / `CLOUD_SYNC` | Feature flags |
@@ -289,7 +289,7 @@ Full table: **Settings → Hotkeys**.
 | Feature | Location | Code path | How to test | Expected | Dependencies |
 |---------|----------|-----------|-------------|----------|--------------|
 | **Plans** | Settings → Plans | `sections/Plans.tsx`, `lib/entitlements.ts` | View tiers | Spark / Orbit / Nova / Singularity cards | — |
-| **Checkout** | Plans → Upgrade | `create-checkout-session` | Click upgrade | Stripe Checkout | `VITE_STRIPE_CHECKOUT_*` |
+| **Checkout** | Plans → Upgrade | `create-checkout-session` | Click upgrade | Stripe Checkout | Stripe Edge secrets |
 | **Portal** | Account | `create-customer-portal` | Manage billing | Stripe portal | Active customer |
 | **Webhook sync** | Server | `stripe-webhook` | Complete test purchase | `profiles.tier` updates | Stripe test mode |
 | **Launch promo** | Plans | `claim-launch-promo` | Claim promo | Deepgram credit applied | Eligible account |
