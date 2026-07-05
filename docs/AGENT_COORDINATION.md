@@ -30,7 +30,7 @@ Prevent five concurrent Cursor agents from overwriting, reverting, or force-push
 | Field | Value |
 |-------|-------|
 | **Current released** | **v0.1.45** (2026-06-20) |
-| **Next target** | **v0.1.46** (releasing) |
+| **Next target** | **v0.1.47** (releasing to main) |
 | **Release channel** | `releases/channel.json` â†’ GitHub Releases |
 | **Branch convention** | `main` for releases; feature branches optional with ledger note |
 
@@ -1037,4 +1037,15 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Plan** | Full verified release: Ollama auto-connect, Jarvis creator, mock removal, Single icon removal, queued messages, All About Me, 799 tests GREEN, typecheck + build + cargo check |
 | **Files touched** | `app/src/**`, `CHANGELOG.md`, `releases/RELEASE_NOTES_0.1.46.md`, `install/install.ps1`, coordination ledger |
 | **Status** | releasing |
+| **Commit** | — |
+
+#### 2026-07-05 — Release v0.1.47 official to main (Helper)
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-05 1:20 PM CT |
+| **Version** | v0.1.47 |
+| **Plan** | Bump past v0.1.46; merge `test/local-update` → `main`; full release gate; push official production update |
+| **Files touched** | version bumps (`package.json`, `Cargo.toml`, `tauri.conf.json`, `releases.ts`), `CHANGELOG.md`, `RELEASE_NOTES_0.1.47.md`, `docs/AGENT_COORDINATION.md` |
+| **Status** | in-progress |
 | **Commit** | — |

@@ -31,7 +31,7 @@ import { Sparkles, Wrench, Rocket, Package, AlertTriangle, type LucideIcon } fro
  * The version string is also what the auto-show flow stores in
  * localStorage so users only see each release's notes once.
  */
-export const CURRENT_VERSION = '0.1.46';
+export const CURRENT_VERSION = '0.1.47';
 
 /**
  * Section type for grouping changelog items inside a release.
@@ -339,6 +339,30 @@ export const SECTION_META: Record<
  *     when it isn't obvious.
  */
 export const RELEASES: readonly Release[] = [
+  {
+    version: '0.1.47',
+    date: '2026-07-05',
+    headline: 'Official production release',
+    summary:
+      'Ships all accumulated work since v0.1.45 on main: Ollama auto-connect, Jarvis creator, queued messages, All About Me, chat activity, vision attachments, global STT, and schedule Jarvis actions.',
+    sections: [
+      {
+        kind: 'shipped',
+        items: [
+          'Official main release — merges test/local-update work onto production branch.',
+          'Ollama auto-connect, Jarvis creator, queued messages, and All About Me.',
+          'Chat activity timeline, vision attachments, global composer STT, schedule Jarvis actions.',
+        ],
+      },
+      {
+        kind: 'fix',
+        items: [
+          'Mock demo model removed from user-facing provider/model selectors.',
+          'AllAboutMe quiz test timeout extended for 60-question flow.',
+        ],
+      },
+    ],
+  },
   {
     version: '0.1.46',
     date: '2026-07-05',

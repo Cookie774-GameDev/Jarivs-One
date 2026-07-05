@@ -2,6 +2,13 @@
 
 All notable changes to Jarvis are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.47] - 2026-07-05
+
+### Shipped
+
+- **Official production release** — merges all work since v0.1.45 onto `main`: Jarvis creator, Ollama auto-connect, queued messages, All About Me, chat activity, vision attachments, global STT, schedule Jarvis actions, billing hardening, and benchmark refresh.
+- **Release gate** — typecheck, production build, and full Vitest suite verified before publish.
+
 ## [0.1.46] - 2026-07-05
 
 ### Added
