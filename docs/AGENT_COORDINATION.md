@@ -29,8 +29,8 @@ Prevent five concurrent Cursor agents from overwriting, reverting, or force-push
 
 | Field | Value |
 |-------|-------|
-| **Current released** | **v0.1.45** (2026-06-20) |
-| **Next target** | **v0.1.47** (releasing to main) |
+| **Current released** | **v0.1.47** (2026-07-05) |
+| **Next target** | **v0.1.48** |
 | **Release channel** | `releases/channel.json` â†’ GitHub Releases |
 | **Branch convention** | `main` for releases; feature branches optional with ledger note |
 
@@ -1047,5 +1047,5 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Version** | v0.1.47 |
 | **Plan** | Bump past v0.1.46; merge `test/local-update` → `main`; full release gate; push official production update |
 | **Files touched** | version bumps (`package.json`, `Cargo.toml`, `tauri.conf.json`, `releases.ts`), `CHANGELOG.md`, `RELEASE_NOTES_0.1.47.md`, `docs/AGENT_COORDINATION.md` |
-| **Status** | in-progress |
-| **Commit** | — |
+| **Status** | released |
+| **Commit** | `d6e9bdc` — `Release v0.1.47: official production update on main.` |
