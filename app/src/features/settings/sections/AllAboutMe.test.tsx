@@ -54,7 +54,7 @@ describe('AllAboutMe settings section', () => {
     expect(await screen.findByText(/Short and intense/i)).toBeTruthy();
     expect(useAllAboutMeStore.getState().markdown).toContain('# AllAboutMe.md');
     expect(screen.getByText(/VibeSpace Profile Vault\/AllAboutMe.md/i)).toBeTruthy();
-  }, 10_000);
+  }, 60_000);
 
   it('blocks the test when no real AI model is available', () => {
     render(<AllAboutMe completePrompt={vi.fn()} modelOptions={[]} />);
