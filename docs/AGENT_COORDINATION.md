@@ -111,6 +111,15 @@ Append new entries at the **bottom** of the relevant agent section. Use [How to 
 | **Status** | committed + pushed |
 | **Commit** | `f9676c6` — `fix: React #185 Inspector loops and Ollama API-first connect` |
 
+#### 2026-07-08 — Features guide documentation (terminal 4)
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-08 |
+| **Plan** | Create comprehensive `docs/FEATURES_GUIDE.md` (~70 features, 30 sections) |
+| **Files touched** | `docs/FEATURES_GUIDE.md`, coordination ledger |
+| **Status** | complete (saved locally; not committed) |
+
 ---
 
 ### VibeSpace Main
@@ -320,6 +329,7 @@ Append new entries at the **bottom** of the relevant agent section. Use [How to 
 | `app/src/features/terminals/**` | VibeSpace Main | v0.1.44 | in-progress | Urgent terminal stability, scrollback isolation, agent prompt delivery |
 | `app/src/components/layout/PageRouter.tsx` | VibeSpace Main | v0.1.44 | in-progress | Keep terminal surfaces stable across route switches |
 | `docs/AGENT_COORDINATION.md` | VibeSpace Main | v0.1.44 | in-progress | Coordination ledger for terminal reliability fix |
+| `docs/FEATURES_GUIDE.md` | terminal 4 | v0.1.48 | complete | Comprehensive features inventory (~70 features, 30 sections) |
 | `app/src-tauri/src/agent_coordination.rs` | VibeSpace Main | v0.1.44 | in-progress | Native atomic project-local terminal agent coordination ledger |
 | `app/src-tauri/src/lib.rs` | VibeSpace Main | v0.1.44 | in-progress | Register terminal agent coordination commands only |
 | `app/src/features/terminals/agentCoordination*` | VibeSpace Main | v0.1.44 | in-progress | Typed terminal swarm state, locks, summaries, and tests |
