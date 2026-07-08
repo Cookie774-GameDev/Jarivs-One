@@ -391,7 +391,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
   const [attachedPlugins, setAttachedPlugins] = useState<string[]>([]);
   const [attachedContexts, setAttachedContexts] = useState<ContextAttachment[]>([]);
   const [dragOver, setDragOver] = useState(false);
-  // V2 ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ speech-to-text in the composer.
+  // V2 — speech-to-text in the composer.
   const [sttListening, setSttListening] = useState(false);
   const [sttAwaitingFinal, setSttAwaitingFinal] = useState(false);
   const [sttTranscribing, setSttTranscribing] = useState(false);
@@ -1233,7 +1233,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       }
       // Repo stamps id + timestamps + bumps parent chat.updated_at.
       // The runtime listener (started in App.tsx) will read history
-      // from the same store after we dispatch the event below ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ so it
+      // from the same store after we dispatch the event below — so it
       // sees the user turn we just wrote and skips creating its own
       // user message. (See runtime.ts: prior versions wrote a second
       // copy here, producing the duplicate-bubble bug surfaced in the
@@ -1684,21 +1684,27 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
   };
 
   const trySystemSttFallbacks = async () => {
-    if (isTauri) {
-      const triggered = await triggerWindowsNativeDictation();
-      if (triggered) {
-        toast.info('Windows voice typing', 'Speak now   Windows will type into the composer.');
-        return;
-      }
-    }
+    // VibeSpace engines first: Groq Whisper is part of the shared STT pipeline.
     const groqKey = useAuthStore.getState().apiKeys.groq;
     if (groqKey && typeof navigator.mediaDevices?.getUserMedia === 'function' && getAudioContextCtor()) {
       void startGroqStt(groqKey);
       return;
     }
+    // Explicit last resort for the COMPOSER only (never global dictation):
+    // OS voice typing, clearly labeled as an OS fallback.
+    if (isTauri) {
+      const triggered = await triggerWindowsNativeDictation();
+      if (triggered) {
+        toast.info(
+          'OS voice typing (fallback)',
+          'No VibeSpace speech engine is configured, so Windows voice typing will type into the composer. Add a Groq key or a local model in Settings → Speech to Text to use VibeSpace STT.',
+        );
+        return;
+      }
+    }
     toast.warning(
       'Voice unsupported',
-      'Free built-in speech recognition is not available. Add a Groq key or download a local model in Settings ï¿½ï¿½! Speech to Text.',
+      'Free built-in speech recognition is not available. Add a Groq key or download a local model in Settings → Speech to Text.',
     );
   };
 
@@ -1708,7 +1714,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     if (!installed) {
       toast.warning(
         'Local model missing',
-        `Download the ${modelId} model in Settings ï¿½ï¿½! Speech to Text, or switch to system dictation.`,
+        `Download the ${modelId} model in Settings → Speech to Text, or switch to system dictation.`,
       );
       void startSystemStt();
       return;
@@ -1794,7 +1800,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       if (!AudioCtor) throw new Error('Audio recording is not available in this runtime.');
       const context = new AudioCtor();
       const source = context.createMediaStreamSource(stream);
-      // Use smaller buffer for lower latency ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ 2048 samples at 44.1kHz ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ 46ms
+      // Use smaller buffer for lower latency — 2048 samples at 44.1kHz ≈ 46ms
       // instead of 4096 samples at ~92ms. Shorter buffers mean faster activity
       // detection and smoother waveform updates.
       const processor = context.createScriptProcessor(2048, 1, 1);
@@ -1899,7 +1905,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     try {
       VoiceService.stopListening();
     } catch {
-      // ignore ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ engine may already be torn down
+      // ignore — engine may already be torn down
     }
   };
 
@@ -1970,7 +1976,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
             rel="noreferrer"
             className="text-accent-copper underline-offset-4 hover:underline"
           >
-            Get key ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+            Get key →
           </a>
           <button
             type="button"

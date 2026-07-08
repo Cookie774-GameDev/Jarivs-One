@@ -8,7 +8,7 @@ All notable changes to Jarvis are documented here. Format follows [Keep a Change
 
 - **Terminal orchestration action** — `terminal.orchestrate` executes a full multi-step plan behind ONE approval card: close all project terminals, open up to 10 panes running a CLI, assign agent roles per pane, and deliver each role's prompt through the AGENTS.md briefing files (never typed into shells). Deterministic fallback detection turns the full natural-language request into the same single proposal.
 - **Voice stop control** — clicking the orb mid-reply cancels the AI run and halts playback; new visible `paused` voice state replaces the silent listen-timeout shutoff.
-- **Global dictation fallback** — Ctrl+Space opens the VibeSpace dictation overlay on macOS/Linux or when native Win+H triggering fails.
+- **VibeSpace global dictation** — Ctrl+Space always opens the VibeSpace dictation overlay (all platforms). It shares the chat STT pipeline (local faster-whisper → built-in speech recognition → Deepgram → Groq per Settings → Speech to Text), shows real states with Retry/Clear controls and fix paths, and pastes into the focused app. It never routes through OS dictation (Windows Win+H); the composer's OS voice-typing fallback is now an explicitly-labeled last resort behind VibeSpace engines.
 - **Website demo voice** — Call Jarvis speaks its captions via browser speech synthesis (preloaded demo content only).
 
 - **Jarvis Action executor** — scheduled Jarvis Actions now run at their due time while the app is open, on the model saved with the action; outputs collect in a dedicated per-action chat.

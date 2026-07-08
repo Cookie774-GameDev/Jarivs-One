@@ -23,6 +23,7 @@
     "release:install": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"npm run release:windows; if ($LASTEXITCODE -eq 0) { $env:JARVIS_LOCAL=\\\"1\\\"; $env:JARVIS_SILENT=\\\"1\\\"; $env:JARVIS_FORMAT=\\\"nsis\\\"; powershell -NoProfile -ExecutionPolicy Bypass -File install/install.ps1 }\""
   },
   "devDependencies": {
+    "playwright-core": "^1.61.1",
     "prettier": "^3.3.3"
   },
   "engines": {

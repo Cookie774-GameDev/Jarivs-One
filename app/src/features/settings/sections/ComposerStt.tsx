@@ -102,7 +102,7 @@ export function ComposerStt() {
           <ProviderCard
             selected={provider === 'system'}
             title="Free / system"
-            description="Built-in OS speech recognition. Always available when supported — Web Speech on macOS/Linux; Windows speech services in WebView2, with Win+H fallback on desktop."
+            description="Built-in speech recognition (Web Speech) when the runtime supports it; Groq Whisper is used when a Groq key is configured. Global dictation (Ctrl+Space) uses this same engine order and never routes through Windows Win+H."
             icon={<Sparkles className="h-4 w-4" />}
             onSelect={() => chooseProvider('system')}
           />

@@ -95,15 +95,16 @@ struct GlobalDictationShortcutConfig {
 
 /// Ctrl+Space global dictation.
 ///
-/// `opens_overlay: false` means the shortcut PREFERS the platform's native
-/// dictation (Win+H voice typing on Windows). Platforms without a native
-/// path (macOS/Linux) - or a failed native trigger - fall back to the
-/// VibeSpace dictation overlay window instead of failing silently.
+/// `opens_overlay: true`: the shortcut ALWAYS opens the VibeSpace dictation
+/// overlay, which transcribes through the same speech-to-text pipeline as
+/// VibeSpace chat (local faster-whisper / Web Speech / Deepgram / Groq per
+/// Settings). VibeSpace never routes global dictation through the OS default
+/// dictation (Windows Win+H) - that is intentionally NOT the main path.
 fn global_dictation_shortcut_config() -> GlobalDictationShortcutConfig {
     GlobalDictationShortcutConfig {
         modifiers: Some(Modifiers::CONTROL),
         code: Code::Space,
-        opens_overlay: false,
+        opens_overlay: true,
     }
 }
 
@@ -162,16 +163,9 @@ pub fn run() {
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
                     if event.state == ShortcutState::Pressed {
-                        let config = global_dictation_shortcut_config();
-                        if config.opens_overlay {
-                            show_dictation_window(app);
-                        } else if let Err(err) = dictation::trigger_os_dictation() {
-                            // No native dictation on this platform (macOS/Linux)
-                            // or the trigger failed - open the VibeSpace overlay
-                            // instead of dropping the hotkey silently.
-                            eprintln!("[dictation] native OS dictation unavailable ({err}); opening VibeSpace overlay");
-                            show_dictation_window(app);
-                        }
+                        // Ctrl+Space always opens the VibeSpace dictation
+                        // overlay. Never route through OS dictation (Win+H).
+                        show_dictation_window(app);
                     }
                 })
                 .build(),
@@ -323,11 +317,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn global_dictation_shortcut_is_ctrl_space_without_overlay_focus() {
+    fn global_dictation_shortcut_is_ctrl_space_opening_the_vibespace_overlay() {
         let config = global_dictation_shortcut_config();
 
         assert_eq!(config.modifiers, Some(Modifiers::CONTROL));
         assert_eq!(config.code, Code::Space);
-        assert!(!config.opens_overlay);
+        // The VibeSpace overlay is the ONLY global dictation path - the
+        // shortcut must never route through OS dictation (Windows Win+H).
+        assert!(config.opens_overlay);
     }
 }

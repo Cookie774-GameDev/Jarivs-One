@@ -5,6 +5,7 @@
  */
 import type { VoiceEngine, VoicePresetId } from '@/types/common';
 import { toast } from '@/components/ui/toast';
+import { isTauri } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import type { VoiceTtsPreset } from './voicePlans';
@@ -106,7 +107,9 @@ export async function bootstrapKokoroVoiceOnLaunch(): Promise<void> {
       return;
     }
     const ready = await ensureKokoroReadyForSpeech();
-    if (!ready && useAuthStore.getState().voiceEngine === 'kokoro') {
+    // Only warn inside the real desktop app - the browser preview never has
+    // the Kokoro bridge, so the toast would be pure noise there.
+    if (!ready && isTauri && useAuthStore.getState().voiceEngine === 'kokoro') {
       toast.warning(
         'Kokoro voice not ready',
         'The local neural voice model could not be prepared. Jarvis will use the installed system voice for now — open Settings → Voice to retry the download.',

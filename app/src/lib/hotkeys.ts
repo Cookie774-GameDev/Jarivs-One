@@ -96,6 +96,12 @@ export const HOTKEYS = {
   TOGGLE_FULLSCREEN: 'Mod+Shift+F',
   AMBIENT_TOGGLE: 'Mod+Shift+.',
   COMPOSER_STT: 'Ctrl+CapsLock',
+  /**
+   * VibeSpace global dictation overlay. Registered as an OS-level Tauri
+   * global shortcut (src-tauri/src/lib.rs), listed here for the Hotkeys
+   * settings page. Uses the shared VibeSpace STT pipeline - never Win+H.
+   */
+  GLOBAL_DICTATION: 'Ctrl+Space',
   SCHEDULE: 'Mod+Shift+S',
   LAUNCHER: 'Mod+Shift+L',
   /** Jarvis Assistant — natural-language command bar. */

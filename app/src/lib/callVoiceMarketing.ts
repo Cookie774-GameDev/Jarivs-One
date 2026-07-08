@@ -134,7 +134,7 @@ export const SPARK_NO_FREE_CREDIT_LINE =
   'Unlimited local Kokoro · BYOK for cloud · first 200 get $5 Deepgram launch credit';
 
 export const GLOBAL_DICTATION_LINE =
-  'Global speech-to-text (Ctrl+CapsLock) — uses Deepgram launch credit when you have it';
+  'Global dictation (Ctrl+Space) — VibeSpace STT everywhere; uses Deepgram launch credit when you have it';
 
 export const UNLIMITED_LOCAL_KOKORO_LINE = 'Unlimited local Kokoro voice on every plan';
 

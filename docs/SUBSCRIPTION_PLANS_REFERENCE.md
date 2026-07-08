@@ -135,7 +135,7 @@ Hosted chat is **not unlimited**. Each paid tier has a fixed monthly **AI credit
 | **You calling Jarvis** | Jarvis Call (PSTN) | Outbound AI phone call via Twilio |
 | **Jarvis calling you** | Jarvis Call (PSTN) | Inbound / callback AI phone sessions |
 | **Cloud voice in the voice module** | Voice module | Deepgram TTS when user selects cloud engine (not local Kokoro) |
-| **Speech-to-text** | Voice module + global | Global dictation (`Ctrl+CapsLock`) |
+| **Speech-to-text** | Voice module + global | Global dictation (`Ctrl+Space`) |
 
 **Talking to Jarvis in the app through the voice module is NOT a phone call** and does not use Twilio. Default in-app talk uses **unlimited local Kokoro** (free, no Deepgram). Cloud Deepgram TTS in the voice module draws from the same wallet when selected.
 
@@ -281,7 +281,7 @@ Promos run **until the pool money runs out** — no new claims after `pause_at_u
 |---------|-------------------|-------------------------------|
 | **Jarvis Call** (PSTN phone) | ✓ unlocked | ✗ locked — Orbit+ only |
 | **Cloud voice module** (Deepgram TTS) | ✓ unlocked | ✗ locked — use local Kokoro or subscribe |
-| **Speech-to-text** (`Ctrl+CapsLock`) | ✓ unlocked | ✗ locked — BYOK Deepgram key or subscribe |
+| **Speech-to-text** (`Ctrl+Space` global) | ✓ unlocked | ✗ locked — BYOK Deepgram key or subscribe |
 | **Voice module (local Kokoro)** | ✓ always | ✓ always free |
 | **Hosted DeepSeek V4 Flash chat** | ✗ (Spark) | ✗ — subscribe for message credits |
 | **BYOK chat / terminals** | ✓ always | ✓ always free |
@@ -554,7 +554,7 @@ Wire auth signup webhook to call:
 | **Voice module — cloud Deepgram TTS** | ✓ first | ✓ fallback | **Live** (`tts-speak`) |
 | **Voice module — local Kokoro** | — | — | **Always free** |
 | **Jarvis Call (PSTN)** | designed | ✓ today | **TODO** — route promo before bucket |
-| **Global STT (`Ctrl+CapsLock`)** | designed | ✓ fallback | **TODO** — currently BYOK-only in app |
+| **Global dictation (`Ctrl+Space`)** | designed | ✓ fallback | **TODO** — currently BYOK-only in app |
 | **Hosted DeepSeek V4 Flash chat** | — | ✓ message credits | **Live** (`message-complete`) |
 | **7-day Spark expiry + lock-back** | — | — | **TODO** — `expires_at` on claim |
 

@@ -354,7 +354,7 @@ export const RELEASES: readonly Release[] = [
           'Jarvis creator questions now appear one at a time with Next/Back, real progress ("Question 1 of 2"), Cancel, and draft answers that survive navigating away.',
           'One-approval terminal orchestration: ask Jarvis to close all terminals, open 10 with Claude Code, and split them into role groups with custom prompts — a single card covers the whole plan, and role prompts are delivered through AGENTS.md, never typed into shells.',
           'Stop Jarvis mid-reply: click the voice orb while it speaks to cut the response and ask something else.',
-          'Ctrl+Space dictation now opens the VibeSpace overlay on systems without native voice typing.',
+          'Ctrl+Space always opens the VibeSpace global dictation overlay — it transcribes with the same speech-to-text engines as chat and never uses Windows Win+H.',
         ],
       },
       {

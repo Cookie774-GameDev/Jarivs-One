@@ -1110,6 +1110,17 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Status** | committed + pushed (PR #15) |
 | **Verification** | Fresh: typecheck, 867 tests, build, cargo check, cargo test --lib 9/9, release-manifest, install parsers, site serve 200s, CSS brace check, secret scans clean |
 
+#### 2026-07-08 — v0.1.48 global dictation correction + real media (Cloud Worker, branch `cursor/vibespace-launch-polish-6d99`)
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-08 (night) |
+| **Version** | v0.1.48 |
+| **Plan** | User correction: Ctrl+Space ALWAYS opens the VibeSpace dictation overlay (never Win+H); overlay now shares the chat STT pipeline (faster-whisper → Web Speech → Deepgram → Groq) with Retry/Clear/fix-path states; composer OS voice-typing demoted to explicitly-labeled last resort; hotkeys/settings/docs/site copy corrected; real app screenshots captured from the built bundle via new scripts/capture-screenshots.mjs; MEDIA_CAPTURE.md workflow; Composer mojibake fixed (visible "Get key ï¿½" banner) |
+| **Files touched** | `app/src-tauri/src/{lib,dictation}.rs`, `app/src/features/global-dictation/{dictationSession(+test),GlobalDictationOverlay(+test)}.ts*`, `app/src/features/chat/Composer.tsx`, `app/src/features/settings/sections/{Accessibility,ComposerStt,Hotkeys}.tsx`, `app/src/lib/{hotkeys,callVoiceMarketing}.ts`, `app/src/features/voice/voiceRouter.ts` (web-preview toast gate), `scripts/capture-screenshots.mjs`, `docs/{MEDIA_CAPTURE.md,FEATURES_GUIDE.md,AGENT_TESTING_GUIDE.md,SUBSCRIPTION_PLANS_REFERENCE.md,plans/AI_CREDIT_BUCKET_AND_ULTRA_TIER.md}`, `docs/screenshots/{app-chat,app-schedule,app-context-map,dictation-overlay}.png`, `README.md`, `site/index.html`, `CHANGELOG.md`, `releases/RELEASE_NOTES_0.1.48.md`, whats-new, this ledger |
+| **Status** | committed + pushed (PR #15) |
+| **Verification** | 875 tests / 164 files GREEN; typecheck, build, cargo check, cargo test --lib 9/9, release-manifest, installer parsers, site+README asset checks, secret scan clean |
+
 #### 2026-07-05 — Release v0.1.47 official to main (Helper)
 
 | Field | Value |

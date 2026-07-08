@@ -143,7 +143,8 @@ State: `app/src/stores/ui.ts`.
 | `Escape` | Close modal / exit council |
 | `Mod+Shift+F` | Fullscreen workspace |
 | `Mod+Shift+.` | Toggle ambient mode |
-| `Ctrl+CapsLock` | Composer STT + global dictation (desktop) |
+| `Ctrl+CapsLock` | Composer STT (in-app) |
+| `Ctrl+Space` | VibeSpace global dictation overlay (desktop, shared chat STT) |
 | `Mod+Shift+S` | Schedule |
 | `Mod+Shift+L` | Quick launcher |
 | `Mod+J` | Jarvis Assistant |
@@ -201,7 +202,7 @@ Full table: **Settings → Hotkeys**.
 | What's New | Version bump / megaphone | `features/whats-new/` |
 | Ambient takeover | Idle threshold | `features/ambient/` |
 | Wellness break | Action `wellness.eyeBreak` | `lib/actions/registry.ts` |
-| Global dictation | Ctrl+CapsLock (Tauri) | `features/global-dictation/` |
+| Global dictation | Ctrl+Space (Tauri) | `features/global-dictation/` |
 | Onboarding | First launch | `features/onboarding/` |
 
 ---
@@ -263,7 +264,7 @@ Full table: **Settings → Hotkeys**.
 | Feature | Location | Code path | How to test | Expected | Dependencies |
 |---------|----------|-----------|-------------|----------|--------------|
 | **Composer STT** | Composer mic; Ctrl+CapsLock | `Accessibility.tsx` toggle; composer pipeline | Enable in Settings → Accessibility; dictate | Text in composer | Deepgram or Web Speech |
-| **Global dictation** | Ctrl+CapsLock (desktop) | `global-dictation/GlobalDictationOverlay.tsx` | Dictate; release | Text pasted to focused app via `dictation_paste_text` | Tauri; Deepgram session |
+| **Global dictation** | Ctrl+Space (desktop) | `global-dictation/GlobalDictationOverlay.tsx` | Dictate; Enter | Text pasted to focused app via `dictation_paste_text` | Tauri; shared chat STT pipeline (faster-whisper / Web Speech / Deepgram / Groq), never Win+H |
 
 ### 4.6 Call / Jarvis Call (PSTN)
 

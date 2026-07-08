@@ -5,7 +5,7 @@
 - **One-approval terminal orchestration** — `terminal.orchestrate` handles "close all terminals, open 10 with Claude Code, five as code agents and five as reviewers with these prompts" as a single approval card. Role prompts are delivered through the AGENTS.md briefing files, never typed into shells. Decline does nothing; malformed plans fail closed.
 - **Voice stop control** — clicking the orb while Jarvis speaks stops the reply mid-response and hands the mic back. Listen timeouts show a visible **Paused** state instead of shutting off silently, and Settings voice previews no longer leave push-to-talk disarmed.
 - **Kokoro honesty** — if Kokoro is your selected engine and the ~89 MB model can't be prepared at launch, a toast explains the system-voice fallback and points to Settings → Voice (download happens on first use; it is not bundled).
-- **Global dictation reachability** — Ctrl+Space still prefers native Win+H on Windows; on macOS/Linux (or when the native trigger fails) it now opens the VibeSpace dictation overlay instead of failing silently.
+- **Global dictation is fully VibeSpace-owned** — Ctrl+Space always opens the VibeSpace dictation overlay on every platform. The overlay transcribes through the same STT pipeline as VibeSpace chat (local faster-whisper → built-in speech recognition → Deepgram → Groq, per Settings → Speech to Text) and pastes into the focused app. It never routes through OS dictation (Windows Win+H).
 - **Update honesty** — the pre-update warning and Settings → About now state plainly: all terminal information may not be saved; live terminal processes cannot survive the restart.
 - **Context map errors** — invalid path, file-not-folder, permission-denied, and browser-preview roots each produce a precise error instead of "no readable text files found", and a failed AI provider pass says the local fallback map is being built.
 - **Website demo voice** — the Call Jarvis demo speaks its captions with the browser's built-in speech synthesis ("Hey, what's up? It's Jarvis…"), clearly preloaded demo content.
@@ -48,4 +48,4 @@ curl -fsSL https://raw.githubusercontent.com/Cookie774-GameDev/VibeSpace/main/in
 
 - Windows: run the NSIS installer end-to-end, Authenticode signing (`WINDOWS_CERT_*`), Tauri updater signing (`TAURI_SIGNING_*`), and the `Jarvis` terminal-command smoke test per `docs/09-jarvis-calling-account-release.md` §6.
 - macOS: DMG mount/copy Gatekeeper flow; Developer ID signing + notarization for public distribution (see `DOWNLOAD.md` troubleshooting).
-- GUI voice/mic flows (real microphone), Win+H dictation, and Kokoro inference need desktop hardware.
+- GUI voice/mic flows (real microphone), the global dictation overlay with a live mic + paste into real apps (Notepad, browser bars, VS Code), and Kokoro inference need desktop hardware.

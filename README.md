@@ -96,6 +96,34 @@ flowchart TB
 
 ## Screenshots
 
+> Workspace shots below were captured from the real app bundle (web preview build) with
+> `scripts/capture-screenshots.mjs`. Desktop-only surfaces (live PTY terminals, native
+> dictation paste) are captured on real machines — see [`docs/MEDIA_CAPTURE.md`](docs/MEDIA_CAPTURE.md).
+
+### Workspace
+
+The three-pane shell: nav, chat canvas, and Jarvis composer with model picker and agent mode.
+
+![VibeSpace workspace with chat canvas and composer](docs/screenshots/app-chat.png)
+
+### Global dictation (Ctrl+Space)
+
+The VibeSpace dictation overlay — same STT engines as chat, pastes into the focused app, never Win+H.
+
+![VibeSpace global dictation overlay](docs/screenshots/dictation-overlay.png)
+
+### Schedule & Jarvis Actions
+
+Events, timed tasks, and scheduled Jarvis Actions with an in-page output viewer.
+
+![Schedule page with timeline and Jarvis Actions view](docs/screenshots/app-schedule.png)
+
+### Context Map
+
+Turn a project folder into an interactive AI context map that chats, terminals, and agents can use.
+
+![Context map creation page](docs/screenshots/app-context-map.png)
+
 ### Terminals
 
 A tile grid of real PTY shells. Run an agent CLI in one pane while shells stay live in the rest — every session persists across navigation.
@@ -142,6 +170,16 @@ Free forever with your own keys. **Unlimited local Kokoro voice on every plan.**
 - **Local Kokoro** — neural voice that downloads once and runs on your machine
 - **Command bar** — `Mod+J` assistant with app control, actions, and multi-step workflows
 - **Hands-free or click-to-talk** — continuous listening or push-to-talk
+
+### Voice-to-text everywhere
+
+- **Global dictation** — press `Ctrl+Space` anywhere on your desktop: the VibeSpace overlay
+  listens, transcribes, and pastes into the focused app (where OS input permissions allow)
+- **Shared STT pipeline** — the overlay uses the same engines as VibeSpace chat:
+  local faster-whisper → built-in speech recognition → Deepgram → Groq, per
+  Settings → Speech to Text. It never routes through OS dictation (Windows Win+H)
+- **Composer voice-to-text** — `Ctrl+CapsLock` or the composer mic dictates straight
+  into the chat input with live partial transcripts
 
 ### Hive
 
