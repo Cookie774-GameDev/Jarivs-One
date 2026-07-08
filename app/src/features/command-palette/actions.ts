@@ -26,6 +26,8 @@ import {
 } from 'lucide-react';
 import { HOTKEYS } from '@/lib/hotkeys';
 import { useUIStore } from '@/stores/ui';
+import { useAgentStore } from '@/stores/agents';
+import { toast } from '@/components/ui/toast';
 import type { PageId } from './store';
 
 export type ActionId = string;
@@ -334,6 +336,20 @@ const STATIC_ACTIONS: Action[] = [
     icon: Users,
     page: 'switch-mode',
     perform: ({ closePalette }) => {
+      // Council needs the feature flag and at least 2 registered agents to
+      // do anything useful - fail with a clear message instead of dropping
+      // the user into an empty grid.
+      if (import.meta.env.VITE_ENABLE_COUNCIL === 'false') {
+        toast.warning('Council disabled', 'Set VITE_ENABLE_COUNCIL=true in your build environment to enable Council mode.');
+        closePalette();
+        return;
+      }
+      const agentCount = Object.keys(useAgentStore.getState().agents).length;
+      if (agentCount < 2) {
+        toast.warning('Council needs 2+ agents', 'Create at least two agents on the Agents page, then switch to Council.');
+        closePalette();
+        return;
+      }
       useUIStore.getState().setChatMode('council');
       closePalette();
     },

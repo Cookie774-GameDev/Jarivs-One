@@ -31,6 +31,8 @@ import { JarvisContextMenu } from '@/components/layout/JarvisContextMenu';
 import { PageRouter } from '@/components/layout/PageRouter';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { startNotificationLoop } from '@/features/tasks';
+import { startClockEngine } from '@/features/clock/clockEngine';
+import { WellnessBreak } from '@/features/wellness';
 import { useGlobalHotkeys } from '@/features/command-palette';
 import { WakeWordHost } from '@/features/voice/WakeWordHost';
 import { ApiKeySaveBurst } from '@/features/settings/ApiKeySaveBurst';
@@ -237,6 +239,7 @@ function useBoot() {
     let stopNotifications: (() => void) | undefined;
     let stopTerminalScheduler: (() => void) | undefined;
     let stopJarvisScheduleRunner: (() => void) | undefined;
+    let stopClockEngine: (() => void) | undefined;
     let stopSyncLoop: (() => void) | undefined;
     let stopCloudAuth: (() => void) | undefined;
     let cancelled = false;
@@ -355,6 +358,7 @@ function useBoot() {
       try { stopNotifications = startNotificationLoop(); } catch (err) { console.error('Failed to start notification loop:', err); }
       try { stopTerminalScheduler = initTerminalScheduler(); } catch (err) { console.error('Failed to start terminal scheduler:', err); }
       try { stopJarvisScheduleRunner = startJarvisScheduleRunner(); } catch (err) { console.error('Failed to start Jarvis schedule runner:', err); }
+      try { stopClockEngine = startClockEngine(); } catch (err) { console.error('Failed to start clock engine:', err); }
 
       // Phase 6: Kokoro neural voice (background — default TTS, ~89 MB one-time)
       void import('@/features/voice/voiceRouter')
@@ -373,6 +377,7 @@ function useBoot() {
       stopNotifications?.();
       stopTerminalScheduler?.();
       stopJarvisScheduleRunner?.();
+      stopClockEngine?.();
       stopSyncLoop?.();
       stopCloudAuth?.();
     };
@@ -772,6 +777,10 @@ function WorkspaceRoot() {
       {/* V2 — idle takeover. Self-renders only when ambientActive=true. */}
       <AmbientHome />
       <AmbientAudioHost />
+
+      {/* V3 — 20-20-20 eye-break overlay. Self-renders only while
+          wellnessActive=true (wellness.eyeBreak action / assistant). */}
+      <WellnessBreak />
 
       {/* V3 — actions palette (Mod+Shift+A). Direct user invocation of
           built-in actions and saved custom tools. Sibling to the

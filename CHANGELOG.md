@@ -24,6 +24,15 @@ All notable changes to Jarvis are documented here. Format follows [Keep a Change
 
 ### Fixed
 
+- **Clock engine now runs** — timers and alarms created via clock actions actually fire; the engine loop was implemented but never started at boot.
+- **Eye-break overlay now renders** — the 20-20-20 wellness overlay component existed but was never mounted; `wellness.eyeBreak` now shows it.
+- **Council gating** — switching to Council mode from the palette now requires the feature flag and at least 2 registered agents, with clear messages instead of an empty grid.
+- **Hive is chat-only for real** — voice turns always use the single-model path; a Hive selection no longer routes spoken replies through the multi-step pipeline.
+- **Plugin OAuth honesty** — connectors without a live verification endpoint report "Manual Setup Required" instead of faking a successful test; keychain copy now states the browser-preview session-only behavior.
+- **Benchmark cost estimates labeled** — prices filled from the list-price catalog show a `~` prefix and an "(est.)" label instead of posing as feed data.
+- **Sticky nav readability** — the website nav used a light background over the dark warm theme (plus a stray broken CSS declaration); now dark glass, with keyboard focus rings and a skip link.
+- **About → What's new** — release notes can be reopened from Settings → About; `Mod+.` added as a documented inspector shortcut alias.
+- **package-lock version drift** — lockfile synced to 0.1.48.
 - **Mic recovery after settings changes** — a Settings voice preview that interrupts an armed push-to-talk mic re-arms it after the reply instead of leaving voice silently disabled.
 - **Kokoro missing-model honesty** — when Kokoro is the selected engine and the first-run ~89 MB download cannot complete, launch shows a clear fallback toast with a fix path; Settings copy no longer implies the model is bundled.
 - **Update warnings** — pre-update modal and Settings → About state explicitly that all terminal information may not be saved and live terminal processes cannot survive the restart.

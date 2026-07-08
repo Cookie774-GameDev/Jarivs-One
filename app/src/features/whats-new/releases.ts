@@ -8,8 +8,8 @@
  * for "what version am I running", and `CURRENT_VERSION` here mirrors it.
  *
  * Auto-open behaviour:
- *   - On boot, `useWhatsNew()` reads `localStorage['jarvis-last-seen-version']`
- *     and compares it to `CURRENT_VERSION`.
+ *   - On boot, `useWhatsNew()` reads `lastSeenWhatsNewVersion` (persisted in
+ *     the `jarvis-ui` store) and compares it to `CURRENT_VERSION`.
  *   - If they differ (including a fresh install where the key is missing),
  *     the modal opens once, focused on the **latest** release entry.
  *   - Dismissing the modal writes `CURRENT_VERSION` back to localStorage so
@@ -369,6 +369,9 @@ export const RELEASES: readonly Release[] = [
         kind: 'fix',
         items: [
           'Push to agent / Push to skill buttons only appear on real Jarvis draft replies in creator chats — never on user messages, seeded prompts, or normal conversations.',
+          'Timers and alarms actually fire now (the clock engine was never started), and the 20-20-20 eye-break overlay renders when triggered.',
+          'Hive stays chat-only: spoken voice replies always use the single-model path. Council mode asks for 2+ agents instead of opening an empty grid.',
+          'Plugin tests never fake success for OAuth connectors, and estimated benchmark prices are labeled with ~ instead of posing as feed data.',
           'Voice listening no longer shuts off silently: timeouts show a visible Paused state, and Settings voice previews hand the mic back to push-to-talk afterwards.',
           'Kokoro voice: if the first-run model download cannot complete while Kokoro is selected, a toast explains the system-voice fallback and how to retry.',
           'Update warnings now say plainly that all terminal information may not be saved — live terminal processes cannot survive the restart.',

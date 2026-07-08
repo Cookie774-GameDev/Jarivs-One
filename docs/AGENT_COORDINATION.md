@@ -1099,6 +1099,17 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Commit** | see branch `cursor/vibespace-launch-polish-6d99` |
 | **Verification notes** | Ollama daemon live on Linux VM: /api/version + /api/tags + pull OK; inference segfaults in sandbox (env limit). Windows NSIS run/signing and macOS Gatekeeper/notarization still require real machines — documented in `releases/RELEASE_NOTES_0.1.48.md`. |
 
+#### 2026-07-08 — v0.1.48 secondary audit fixes (Cloud Worker, branch `cursor/vibespace-launch-polish-6d99`)
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-08 (evening) |
+| **Version** | v0.1.48 |
+| **Plan** | Final secondary audit: verify prior claims fresh; fix unconnected features (clock engine never started, WellnessBreak never mounted), council flag/agent gating, Hive chat-only enforcement for voice, plugin OAuth fake-success, keychain copy honesty, benchmark estimated-price labeling, About What's New entry, Mod+. inspector alias, site nav dark-glass fix + focus rings + skip link, package-lock 0.1.48 sync, stale doc comment |
+| **Files touched** | `app/src/App.tsx`, `app/src/features/command-palette/{actions,useGlobalHotkeys}.ts*`, `app/src/features/plugins/{runtime,runtime.test,Plugins}.ts*`, `app/src/features/benchmarks/{benchmarkData,BenchmarksPage}.ts*`, `app/src/lib/ai/runtime.ts` (voice stack coercion), `app/src/features/settings/sections/About.tsx`, `app/src/features/whats-new/releases.ts`, `site/{index.html,css/style.css}`, `package-lock.json`, `CHANGELOG.md`, this ledger |
+| **Status** | committed + pushed (PR #15) |
+| **Verification** | Fresh: typecheck, 867 tests, build, cargo check, cargo test --lib 9/9, release-manifest, install parsers, site serve 200s, CSS brace check, secret scans clean |
+
 #### 2026-07-05 — Release v0.1.47 official to main (Helper)
 
 | Field | Value |

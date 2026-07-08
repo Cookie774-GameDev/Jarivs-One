@@ -746,7 +746,12 @@ export function startRuntimeListener(
     useAllAboutMeStore.getState().recordUserMessage();
 
     const stackSlash = parseStackSlashCommand(text);
-    const stackPreset = resolveActiveStackPreset(chatModelSelection, stackSlash);
+    // Hive multi-model stacks are chat-only by design (Settings → Hive says
+    // "Chat only"): voice turns always take the single-model path so spoken
+    // replies stay fast and are never billed through a multi-step pipeline.
+    const stackPreset = detail.speakReply === true
+      ? 'off'
+      : resolveActiveStackPreset(chatModelSelection, stackSlash);
     const stackText = stackSlash.matched ? stackSlash.text : text;
     const stackTaskType = stackSlash.taskType ?? classifyStackTask(stackText);
 

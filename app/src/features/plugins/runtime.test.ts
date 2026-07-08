@@ -57,14 +57,13 @@ describe('plugin runtime', () => {
     expect(fetchMock).toHaveBeenCalled();
   });
 
-  it('accepts oauth connectors after required fields are saved', async () => {
+  it('never fakes success for oauth connectors without a live verification endpoint', async () => {
     const { setPluginCredential } = await import('./credentials');
     await setPluginCredential('gmail', 'client_id', 'client-id');
     await setPluginCredential('gmail', 'client_secret', 'client-secret');
-    await expect(testPluginConnection('gmail')).resolves.toEqual({
-      ok: true,
-      accountLabel: 'Gmail',
-    });
+    const result = await testPluginConnection('gmail');
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/Manual Setup Required/i);
   });
 
   it('returns a readable invalid-credential error without logging the secret', async () => {

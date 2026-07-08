@@ -522,7 +522,11 @@ export function BenchmarksPage() {
                     <td className="px-4 py-3 font-mono text-right">
                       {row.cost_per_1m_input_usd != null ||
                       row.cost_per_1m_output_usd != null ? (
-                        <span className="text-foreground">
+                        <span
+                          className="text-foreground"
+                          title={row.cost_estimated ? 'List-price estimate — not reported by the leaderboard feed' : undefined}
+                        >
+                          {row.cost_estimated ? <span className="text-muted-foreground">~</span> : null}
                           {row.cost_per_1m_input_usd != null
                             ? formatCost(row.cost_per_1m_input_usd)
                             : '—'}
@@ -704,21 +708,21 @@ function DetailDrawer({ row, onClose }: DetailDrawerProps) {
                 <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-secondary">
                   <div>
                     <dt className="text-metadata text-muted-foreground uppercase tracking-wider">
-                      Input
+                      Input{row.cost_estimated ? ' (est.)' : ''}
                     </dt>
                     <dd className="text-foreground font-mono mt-0.5">
                       {row.cost_per_1m_input_usd != null
-                        ? `${formatCost(row.cost_per_1m_input_usd)} / 1M`
+                        ? `${row.cost_estimated ? '~' : ''}${formatCost(row.cost_per_1m_input_usd)} / 1M`
                         : '—'}
                     </dd>
                   </div>
                   <div>
                     <dt className="text-metadata text-muted-foreground uppercase tracking-wider">
-                      Output
+                      Output{row.cost_estimated ? ' (est.)' : ''}
                     </dt>
                     <dd className="text-foreground font-mono mt-0.5">
                       {row.cost_per_1m_output_usd != null
-                        ? `${formatCost(row.cost_per_1m_output_usd)} / 1M`
+                        ? `${row.cost_estimated ? '~' : ''}${formatCost(row.cost_per_1m_output_usd)} / 1M`
                         : '—'}
                     </dd>
                   </div>
