@@ -1121,6 +1121,18 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Status** | committed + pushed (PR #15) |
 | **Verification** | 875 tests / 164 files GREEN; typecheck, build, cargo check, cargo test --lib 9/9, release-manifest, installer parsers, site+README asset checks, secret scan clean |
 
+#### 2026-07-08 — v0.1.48 focus-aware dictation + security/payments audit (Cloud Worker, branch `cursor/vibespace-launch-polish-6d99`)
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-08 (late night) |
+| **Version** | v0.1.48 |
+| **Plan** | User correction: Ctrl+Space is focus-aware (in-app → composer STT for the focused input, outside → small overlay; never Win+H). Security/payments code audit: skill markdown image-scheme hardening, stale legacy webhook removed, portal error honesty, apex in Account ladder, site /billing success+cancel pages, npm audit fix (undici), entitlements doc truth. |
+| **Files touched** | `app/src-tauri/src/lib.rs` (dictation_route + tests), `app/src/features/composer-stt/{GlobalSttHost(+test),composerSttService}.ts*`, settings copy (Accessibility/Hotkeys/Plans), `app/src/features/skills/markdownPreview(+test).ts`, `app/src/features/account/AccountPage.tsx`, `app/src/lib/entitlements.ts`, `site/{index.html,billing/**}`, README, CHANGELOG, release notes, whats-new, `docs/MEDIA_CAPTURE.md`, deleted `app/supabase/functions/stripe-webhook`, package-lock (audit fix) |
+| **Status** | committed + pushed (PR #15) |
+| **Verification** | 880 tests / 165 files GREEN; typecheck, build, cargo check, cargo test --lib 10/10, release-manifest, installer parsers, site serve incl. /billing pages, secret scans clean |
+| **Known server-side gaps (deferred, external deploys needed)** | phone-jarvis `/livekit/token` + `/outbound/call` lack plan/budget checks; `stack-complete` has no per-tier model allowlist; hosted single-model chat labels exist while `message-complete` is not yet called by the app |
+
 #### 2026-07-05 — Release v0.1.47 official to main (Helper)
 
 | Field | Value |

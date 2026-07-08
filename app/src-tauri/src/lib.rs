@@ -95,11 +95,13 @@ struct GlobalDictationShortcutConfig {
 
 /// Ctrl+Space global dictation.
 ///
-/// `opens_overlay: true`: the shortcut ALWAYS opens the VibeSpace dictation
-/// overlay, which transcribes through the same speech-to-text pipeline as
-/// VibeSpace chat (local faster-whisper / Web Speech / Deepgram / Groq per
-/// Settings). VibeSpace never routes global dictation through the OS default
-/// dictation (Windows Win+H) - that is intentionally NOT the main path.
+/// `opens_overlay: true`: outside VibeSpace the shortcut opens the VibeSpace
+/// dictation overlay; when the app itself is focused, `dictation_route`
+/// directs the press to the in-app composer STT instead (no floating
+/// overlay on top of the app). Both paths use the same speech-to-text
+/// pipeline as VibeSpace chat (local faster-whisper / Web Speech / Deepgram
+/// / Groq per Settings). VibeSpace never routes dictation through the OS
+/// default dictation (Windows Win+H).
 fn global_dictation_shortcut_config() -> GlobalDictationShortcutConfig {
     GlobalDictationShortcutConfig {
         modifiers: Some(Modifiers::CONTROL),
@@ -141,6 +143,43 @@ fn show_dictation_window(app: &tauri::AppHandle) {
     }
 }
 
+/// Where a Ctrl+Space press should route.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+enum DictationRoute {
+    /// VibeSpace itself is focused: dictate into the focused in-app input
+    /// (composer STT pipeline) - no floating overlay on top of the app.
+    InApp,
+    /// Another application is focused: open the small VibeSpace overlay
+    /// that transcribes and pastes into that app.
+    Overlay,
+}
+
+/// Focus-aware dictation routing. Never returns a Win+H / OS-dictation path.
+fn dictation_route(main_window_focused: bool) -> DictationRoute {
+    if main_window_focused {
+        DictationRoute::InApp
+    } else {
+        DictationRoute::Overlay
+    }
+}
+
+fn handle_global_dictation_shortcut(app: &tauri::AppHandle) {
+    let main_focused = app
+        .get_webview_window("main")
+        .and_then(|window| window.is_focused().ok())
+        .unwrap_or(false);
+    match dictation_route(main_focused) {
+        DictationRoute::InApp => {
+            if let Some(window) = app.get_webview_window("main") {
+                // The frontend routes this to composer STT for the focused
+                // in-app input - same pipeline, no separate overlay UI.
+                let _ = window.emit("jarvis:global-dictation-in-app", ());
+            }
+        }
+        DictationRoute::Overlay => show_dictation_window(app),
+    }
+}
+
 /// Runs the Tauri app. Re-exposed under `#[mobile_entry_point]` so the same
 /// crate works for future iOS / Android builds via `npx tauri ios|android`.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -163,9 +202,10 @@ pub fn run() {
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
                     if event.state == ShortcutState::Pressed {
-                        // Ctrl+Space always opens the VibeSpace dictation
-                        // overlay. Never route through OS dictation (Win+H).
-                        show_dictation_window(app);
+                        // Ctrl+Space: focus-aware VibeSpace dictation.
+                        // In-app -> composer STT; outside -> small overlay.
+                        // Never routes through OS dictation (Win+H).
+                        handle_global_dictation_shortcut(app);
                     }
                 })
                 .build(),
@@ -325,5 +365,14 @@ mod tests {
         // The VibeSpace overlay is the ONLY global dictation path - the
         // shortcut must never route through OS dictation (Windows Win+H).
         assert!(config.opens_overlay);
+    }
+
+    #[test]
+    fn dictation_routes_in_app_when_vibespace_is_focused_and_overlay_otherwise() {
+        // Inside VibeSpace: no floating overlay - the press goes to the
+        // focused in-app input via composer STT.
+        assert_eq!(dictation_route(true), DictationRoute::InApp);
+        // Outside VibeSpace: the small overlay handles transcribe + paste.
+        assert_eq!(dictation_route(false), DictationRoute::Overlay);
     }
 }

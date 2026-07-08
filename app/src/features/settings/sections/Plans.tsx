@@ -103,8 +103,12 @@ export function Plans() {
       } catch (err) {
         toast.error('Could not open billing portal', (err as Error).message ?? 'Try again.');
       }
-    } else {
+    } else if (result.error === 'no_customer' || /no_customer/.test(result.error ?? '')) {
       toast.info('No subscription found', 'Upgrade to a paid plan to access the billing portal.');
+    } else {
+      // Real failures (network, edge function error) must not masquerade as
+      // "you have no subscription".
+      toast.error('Billing portal unavailable', result.error ?? 'Try again in a moment.');
     }
   };
 

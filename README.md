@@ -173,9 +173,11 @@ Free forever with your own keys. **Unlimited local Kokoro voice on every plan.**
 
 ### Voice-to-text everywhere
 
-- **Global dictation** — press `Ctrl+Space` anywhere on your desktop: the VibeSpace overlay
-  listens, transcribes, and pastes into the focused app (where OS input permissions allow)
-- **Shared STT pipeline** — the overlay uses the same engines as VibeSpace chat:
+- **One hotkey, focus-aware** — press `Ctrl+Space`: **inside VibeSpace** it dictates straight
+  into the focused input (composer, agent prompts, settings fields) with no floating overlay;
+  **outside VibeSpace** (browser, VS Code, Notepad, games) a small VibeSpace overlay listens,
+  transcribes, and pastes into the focused app where OS input permissions allow
+- **Shared STT pipeline** — both paths use the same engines as VibeSpace chat:
   local faster-whisper → built-in speech recognition → Deepgram → Groq, per
   Settings → Speech to Text. It never routes through OS dictation (Windows Win+H)
 - **Composer voice-to-text** — `Ctrl+CapsLock` or the composer mic dictates straight

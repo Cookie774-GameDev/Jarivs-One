@@ -40,10 +40,16 @@ export function renderSkillMarkdown(src: string): string {
     return `\u0000CB${codeBlocks.length - 1}\u0000`;
   });
 
-  // Images: ![alt](url) — spacing-friendly block display
+  // Images: ![alt](url) — spacing-friendly block display. Only safe URL
+  // schemes become an <img>; anything else stays visible as escaped text so
+  // a hostile skill body cannot smuggle javascript:/vbscript: URIs.
   escaped = escaped.replace(
     /!\[([^\]]*)\]\(([^)]+)\)/g,
-    '<figure class="my-4"><img src="$2" alt="$1" class="max-w-full rounded-lg border border-border shadow-soft" /><figcaption class="text-metadata text-muted-foreground mt-1.5 text-center">$1</figcaption></figure>',
+    (whole: string, alt: string, url: string) => {
+      const cleaned = url.trim();
+      if (!/^(https?:\/\/|data:image\/|\.{0,2}\/)/i.test(cleaned)) return whole;
+      return `<figure class="my-4"><img src="${cleaned}" alt="${alt}" class="max-w-full rounded-lg border border-border shadow-soft" /><figcaption class="text-metadata text-muted-foreground mt-1.5 text-center">${alt}</figcaption></figure>`;
+    },
   );
 
   const blocks = escaped.split(/\n\s*\n/);

@@ -26,6 +26,7 @@ Capture at 1440×900 or larger, default zoom, `jarvis-core` theme, demo data onl
 |---|---|
 | Terminal grid (live PTYs) | Open Terminals → `+` to 4–10 panes → run demo commands (`ls`, `htop`) |
 | Global dictation overlay over another app | Focus Notepad/TextEdit/a browser → press `Ctrl+Space` → capture overlay while listening |
+| In-app dictation (no overlay) | Focus the VibeSpace composer → press `Ctrl+Space` → capture the composer mic/interim state |
 | Voice settings / engines | Settings → Voice |
 | Agent/subagent panel | `/multitask fix the header layout` in chat |
 | Orchestration approval card | Ask Jarvis: "close all terminals, open 4 with claude, two as code agents and two as reviewers…" |
