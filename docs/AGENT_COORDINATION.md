@@ -1087,6 +1087,18 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Commit** | see branch `cursor/vibespace-launch-polish-6d99` |
 | **Note** | `releases/channel.json` intentionally NOT promoted — no 0.1.48 binaries built/signed in cloud env. Latest published GitHub release remains v0.1.45; 0.1.46/0.1.47 were source releases only. |
 
+#### 2026-07-08 — v0.1.48 batch 2: launch blockers (Cloud Worker, branch `cursor/vibespace-launch-polish-6d99`)
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-08 (afternoon) |
+| **Version** | v0.1.48 |
+| **Plan** | Remaining master-prompt blockers: terminal.orchestrate one-approval multi-step plans + role briefings via AGENTS.md, voice stop control + paused state + preview mic recovery, Kokoro launch honesty + download tests, Ctrl+Space overlay fallback (macOS/Linux), terminal update warning + queue stress tests, context-map root errors, website demo voice, Win/macOS installer validation (pwsh parse, macOS dry-run + SHA256 verify, asset URL 200s), live Ollama daemon verification |
+| **Files touched** | `app/src/lib/actions/{registry,fallbackActions,promptAddendum,orchestrate.test}.ts`, `app/src/features/terminals/{terminalRoleBriefings*,terminalCommandQueue*,TerminalsPage,agentPromptDelivery}.ts*`, `app/src/features/voice/{VoiceModal*,voiceRouter,store,Orb,modelManager.download.test}.ts*`, `app/src/features/settings/sections/{About,Voice}.tsx`, `app/src/features/updates/UpdateWarningHost.tsx`, `app/src-tauri/src/lib.rs`, `app/src/features/global-dictation/**`, `app/src/features/context/tree*.ts`, `site/{index.html,js/dialogue.js,js/phone-os.js}`, release docs, this ledger |
+| **Status** | committed + pushed on feature branch (PR #15) |
+| **Commit** | see branch `cursor/vibespace-launch-polish-6d99` |
+| **Verification notes** | Ollama daemon live on Linux VM: /api/version + /api/tags + pull OK; inference segfaults in sandbox (env limit). Windows NSIS run/signing and macOS Gatekeeper/notarization still require real machines — documented in `releases/RELEASE_NOTES_0.1.48.md`. |
+
 #### 2026-07-05 — Release v0.1.47 official to main (Helper)
 
 | Field | Value |

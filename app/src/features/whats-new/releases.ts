@@ -352,6 +352,9 @@ export const RELEASES: readonly Release[] = [
           'Jarvis Actions execute at their scheduled time while the app is open — outputs are saved and viewable from the new Jarvis Actions view on the Schedule page.',
           'Recurring Jarvis Actions: once, daily, weekdays, weekly, or monthly, selectable when saving.',
           'Jarvis creator questions now appear one at a time with Next/Back, real progress ("Question 1 of 2"), Cancel, and draft answers that survive navigating away.',
+          'One-approval terminal orchestration: ask Jarvis to close all terminals, open 10 with Claude Code, and split them into role groups with custom prompts — a single card covers the whole plan, and role prompts are delivered through AGENTS.md, never typed into shells.',
+          'Stop Jarvis mid-reply: click the voice orb while it speaks to cut the response and ask something else.',
+          'Ctrl+Space dictation now opens the VibeSpace overlay on systems without native voice typing.',
         ],
       },
       {
@@ -366,6 +369,10 @@ export const RELEASES: readonly Release[] = [
         kind: 'fix',
         items: [
           'Push to agent / Push to skill buttons only appear on real Jarvis draft replies in creator chats — never on user messages, seeded prompts, or normal conversations.',
+          'Voice listening no longer shuts off silently: timeouts show a visible Paused state, and Settings voice previews hand the mic back to push-to-talk afterwards.',
+          'Kokoro voice: if the first-run model download cannot complete while Kokoro is selected, a toast explains the system-voice fallback and how to retry.',
+          'Update warnings now say plainly that all terminal information may not be saved — live terminal processes cannot survive the restart.',
+          'Context maps report invalid paths, permission problems, and browser-preview limits precisely instead of "no readable text files found".',
           'Linux installer auto-launch and desktop entry now use the exact installed binary path instead of relying on PATH.',
           'Retired the old "Jarvis One" banner from the terminal launcher and Windows boot screen; the product is VibeSpace everywhere.',
         ],

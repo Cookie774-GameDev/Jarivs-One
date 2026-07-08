@@ -6,6 +6,11 @@ All notable changes to Jarvis are documented here. Format follows [Keep a Change
 
 ### Added
 
+- **Terminal orchestration action** — `terminal.orchestrate` executes a full multi-step plan behind ONE approval card: close all project terminals, open up to 10 panes running a CLI, assign agent roles per pane, and deliver each role's prompt through the AGENTS.md briefing files (never typed into shells). Deterministic fallback detection turns the full natural-language request into the same single proposal.
+- **Voice stop control** — clicking the orb mid-reply cancels the AI run and halts playback; new visible `paused` voice state replaces the silent listen-timeout shutoff.
+- **Global dictation fallback** — Ctrl+Space opens the VibeSpace dictation overlay on macOS/Linux or when native Win+H triggering fails.
+- **Website demo voice** — Call Jarvis speaks its captions via browser speech synthesis (preloaded demo content only).
+
 - **Jarvis Action executor** — scheduled Jarvis Actions now run at their due time while the app is open, on the model saved with the action; outputs collect in a dedicated per-action chat.
 - **Jarvis Actions view** — the Schedule timeline gains a Jarvis Actions toggle listing every action with run counts, next run, and a click-to-open output viewer inside Schedule.
 - **Recurring Jarvis Actions** — once / daily / weekdays / weekly / monthly presets in the Schedule form; recurrence advances safely after each run.
@@ -19,6 +24,11 @@ All notable changes to Jarvis are documented here. Format follows [Keep a Change
 
 ### Fixed
 
+- **Mic recovery after settings changes** — a Settings voice preview that interrupts an armed push-to-talk mic re-arms it after the reply instead of leaving voice silently disabled.
+- **Kokoro missing-model honesty** — when Kokoro is the selected engine and the first-run ~89 MB download cannot complete, launch shows a clear fallback toast with a fix path; Settings copy no longer implies the model is bundled.
+- **Update warnings** — pre-update modal and Settings → About state explicitly that all terminal information may not be saved and live terminal processes cannot survive the restart.
+- **Context map root errors** — invalid path / not-a-folder / permission-denied / browser-preview roots produce precise messages instead of "no readable text files found"; failed AI passes announce the local fallback.
+- **Orchestrated close-then-open batches** — reopening a full batch after close-all now yields exact pane counts (the leftover root pane is replaced, not appended to).
 - **Creator push buttons** — "Push to agent" / "Push to skill" now appear only on assistant draft replies inside creator chats; user messages, seeded prompts, and normal conversations never show them. Loose skill-draft detection requires multiple hints instead of the word "skill".
 - **Linux install** — auto-launch after install and the desktop entry use the absolute installed binary path; previously both failed when `~/.local/bin` was not on PATH.
 - **Branding** — removed the last "JARVIS ONE" banners from the embedded terminal launcher (`install.sh`) and the Windows terminal boot screen; deleted the redundant `install_new.ps1` duplicate.
