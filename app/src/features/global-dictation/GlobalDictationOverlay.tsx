@@ -145,7 +145,7 @@ export function GlobalDictationOverlay() {
               VibeSpace Dictation
             </div>
             <div className="truncate text-[11px] text-muted-foreground">
-              {partial || 'Ctrl+CapsLock'}
+              {partial || 'Ctrl+Space'}
             </div>
           </div>
         </div>

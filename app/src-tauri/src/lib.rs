@@ -93,6 +93,12 @@ struct GlobalDictationShortcutConfig {
     opens_overlay: bool,
 }
 
+/// Ctrl+Space global dictation.
+///
+/// `opens_overlay: false` means the shortcut PREFERS the platform's native
+/// dictation (Win+H voice typing on Windows). Platforms without a native
+/// path (macOS/Linux) - or a failed native trigger - fall back to the
+/// VibeSpace dictation overlay window instead of failing silently.
 fn global_dictation_shortcut_config() -> GlobalDictationShortcutConfig {
     GlobalDictationShortcutConfig {
         modifiers: Some(Modifiers::CONTROL),
@@ -160,7 +166,11 @@ pub fn run() {
                         if config.opens_overlay {
                             show_dictation_window(app);
                         } else if let Err(err) = dictation::trigger_os_dictation() {
-                            eprintln!("[dictation] failed to trigger native OS dictation: {err}");
+                            // No native dictation on this platform (macOS/Linux)
+                            // or the trigger failed - open the VibeSpace overlay
+                            // instead of dropping the hotkey silently.
+                            eprintln!("[dictation] native OS dictation unavailable ({err}); opening VibeSpace overlay");
+                            show_dictation_window(app);
                         }
                     }
                 })
