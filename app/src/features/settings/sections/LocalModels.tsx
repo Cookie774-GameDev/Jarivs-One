@@ -554,9 +554,45 @@ export function LocalModels({ active = true }: { active?: boolean } = {}) {
           <div className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2">
             <p className="text-metadata text-warning">{bootstrap.statusMsg}</p>
             {bootstrap.error ? <p className="mt-1 text-secondary text-muted-foreground">{bootstrap.error}</p> : null}
-            <Button variant="secondary" size="sm" className="mt-2" onClick={() => void handleOpenTroubleshooting()}>
-              Open troubleshooting
-            </Button>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  invalidateOllamaBootstrap();
+                  autoStartAttemptedRef.current = false;
+                  void ensureOllamaReady().then((ok) => {
+                    if (ok) {
+                      setReachable(true);
+                      void scan(false);
+                    }
+                  });
+                }}
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                Retry connection
+              </Button>
+              {canStart ? (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    void ensureOllamaReady().then((ok) => {
+                      if (ok) {
+                        setReachable(true);
+                        void scan(false);
+                      }
+                    });
+                  }}
+                >
+                  <Play className="h-3.5 w-3.5" />
+                  Start Ollama silently
+                </Button>
+              ) : null}
+              <Button variant="ghost" size="sm" onClick={() => void handleOpenTroubleshooting()}>
+                Open Ollama app (last resort)
+              </Button>
+            </div>
           </div>
         ) : null}
 
@@ -595,9 +631,41 @@ export function LocalModels({ active = true }: { active?: boolean } = {}) {
         ) : null}
 
         {reachable === false && nativeStatus.installed !== false && bootstrap.phase === 'idle' ? (
-          <p className="text-metadata text-muted-foreground">
-            Could not reach {ollamaBaseUrl()}. Press Start Ollama or click Download on any model.
-          </p>
+          <div className="rounded-md border border-border bg-panel/60 px-3 py-2">
+            <p className="text-metadata text-muted-foreground">
+              Could not reach {ollamaBaseUrl()}. Jarvis checks the Ollama API directly — no tray icon required.
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  invalidateOllamaBootstrap();
+                  void scan(false);
+                }}
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                Retry
+              </Button>
+              {canStart ? (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    void ensureOllamaReady().then((ok) => {
+                      if (ok) {
+                        setReachable(true);
+                        void scan(false);
+                      }
+                    });
+                  }}
+                >
+                  <Play className="h-3.5 w-3.5" />
+                  Start silently
+                </Button>
+              ) : null}
+            </div>
+          </div>
         ) : null}
 
         {connected && nativeStatus.version ? (

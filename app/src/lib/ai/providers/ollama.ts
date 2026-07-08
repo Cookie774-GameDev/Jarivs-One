@@ -236,16 +236,36 @@ async function listOllamaModelsViaInvoke(signal?: AbortSignal): Promise<OllamaMo
   return mapInvokeModels(models);
 }
 
+async function listOllamaModelsViaInvokeWithRetry(
+  signal?: AbortSignal,
+  attempts = 3,
+): Promise<OllamaModelInfo[]> {
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    if (signal?.aborted) return [];
+    try {
+      return await listOllamaModelsViaInvoke(signal);
+    } catch (err) {
+      lastError = err;
+      if (attempt < attempts - 1) {
+        await sleepMs(400 * (attempt + 1), signal);
+      }
+    }
+  }
+  if (lastError) throw lastError;
+  return [];
+}
+
 export async function listOllamaModelInfo(signal?: AbortSignal): Promise<OllamaModelInfo[]> {
   // Packaged Tauri: reqwest in Rust (no WebView Origin → no Ollama 403).
   if (isTauri) {
     try {
-      return await listOllamaModelsViaInvoke(signal);
+      return await listOllamaModelsViaInvokeWithRetry(signal);
     } catch {
       const ready = await ensureOllamaReadySilent(signal);
       if (!ready.ready) return [];
       try {
-        return await listOllamaModelsViaInvoke(signal);
+        return await listOllamaModelsViaInvokeWithRetry(signal);
       } catch {
         return [];
       }
@@ -272,29 +292,82 @@ export async function listOllamaModelInfo(signal?: AbortSignal): Promise<OllamaM
   }
 }
 
-/** Quick reachability probe for the local daemon via /api/version. */
-export async function isOllamaReachable(signal?: AbortSignal): Promise<boolean> {
+const OLLAMA_PING_TIMEOUT_MS = 5_000;
+const OLLAMA_PING_ATTEMPTS = 4;
+const OLLAMA_PING_BASE_INTERVAL_MS = 500;
+
+function sleepMs(ms: number, signal?: AbortSignal): Promise<void> {
+  if (ms <= 0) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    if (signal?.aborted) {
+      resolve();
+      return;
+    }
+    const timer = window.setTimeout(resolve, ms);
+    signal?.addEventListener('abort', () => window.clearTimeout(timer), { once: true });
+  });
+}
+
+async function probeOllamaApiOnce(baseUrl: string, signal?: AbortSignal): Promise<boolean> {
   if (signal?.aborted) return false;
 
   if (isTauri) {
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-      return await invoke<boolean>('ollama_ping', { baseUrl: resolvedOllamaBaseUrl() });
+      return await invoke<boolean>('ollama_ping', { baseUrl });
     } catch {
       return false;
     }
   }
 
   try {
-    const res = await nativeFetch(`${resolvedOllamaBaseUrl()}/api/version`, {
+    const res = await nativeFetch(`${baseUrl}/api/version`, {
       signal,
-      timeoutMs: 8_000,
+      timeoutMs: OLLAMA_PING_TIMEOUT_MS,
       headers: ollamaHeaders(),
     });
     return res.ok;
   } catch {
     return false;
   }
+}
+
+/** Loopback fallbacks when the stored host does not answer (127.0.0.1 vs localhost). */
+function loopbackProbeUrls(): string[] {
+  const primary = resolvedOllamaBaseUrl();
+  const urls = [primary];
+  try {
+    const parsed = new URL(primary);
+    const altHost = parsed.hostname === 'localhost' ? '127.0.0.1' : 'localhost';
+    const alt = `${parsed.protocol}//${altHost}${parsed.port ? `:${parsed.port}` : ''}`;
+    if (alt !== primary) urls.push(alt);
+  } catch {
+    // resolvedOllamaBaseUrl already validated the primary URL.
+  }
+  return urls;
+}
+
+/**
+ * Quick reachability probe for the local daemon via /api/version.
+ * Retries with backoff so a cold-started background serve has time to bind.
+ */
+export async function isOllamaReachable(
+  signal?: AbortSignal,
+  options?: { attempts?: number },
+): Promise<boolean> {
+  const attempts = Math.max(1, options?.attempts ?? OLLAMA_PING_ATTEMPTS);
+  const bases = loopbackProbeUrls();
+
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    if (signal?.aborted) return false;
+    for (const base of bases) {
+      if (await probeOllamaApiOnce(base, signal)) return true;
+    }
+    if (attempt < attempts - 1) {
+      await sleepMs(OLLAMA_PING_BASE_INTERVAL_MS * (attempt + 1), signal);
+    }
+  }
+  return false;
 }
 
 export async function waitForOllamaReachable(
@@ -415,15 +488,72 @@ export async function ensureOllamaReadySilent(
     });
 
     const native = await ensureNativeOllamaReady(resolvedOllamaBaseUrl());
-    const status: OllamaEnsureStatus = {
-      ready: native.ready,
-      apiReachable: native.apiReachable,
-      installed: native.installed,
-      version: native.version,
-      phase: native.phase,
-      detail: native.detail,
-      statusMsg: bootstrapStatusMessage(native.phase, native.detail),
-    };
+    if (native.ready) {
+      const ready: OllamaEnsureStatus = {
+        ready: true,
+        apiReachable: true,
+        installed: native.installed,
+        version: native.version,
+        phase: 'ready',
+        detail: native.detail,
+        statusMsg: bootstrapStatusMessage('ready', native.detail),
+      };
+      readyCache = { at: Date.now(), status: ready };
+      emit(ready);
+      return ready;
+    }
+
+    if (signal?.aborted) {
+      const aborted: OllamaEnsureStatus = {
+        ready: false,
+        apiReachable: false,
+        installed: native.installed,
+        phase: 'error',
+        detail: 'Cancelled.',
+        statusMsg: 'Cancelled.',
+      };
+      emit(aborted);
+      return aborted;
+    }
+
+    // Native startup can fail while an externally started background serve is still
+    // warming up (no tray icon). Poll the API directly before surfacing an error.
+    const waitTimeoutMs = options?.waitTimeoutMs ?? 90_000;
+    const polled = await waitForOllamaReachable(waitTimeoutMs, 1_500, signal, (msg) => {
+      emit({
+        ready: false,
+        apiReachable: false,
+        installed: native.installed,
+        phase: 'waiting',
+        detail: msg,
+        statusMsg: msg,
+      });
+    });
+
+    const status: OllamaEnsureStatus = polled
+      ? {
+          ready: true,
+          apiReachable: true,
+          installed: native.installed,
+          version: native.version,
+          phase: 'ready',
+          detail: 'Ollama API is reachable.',
+          statusMsg: bootstrapStatusMessage('ready'),
+        }
+      : {
+          ready: false,
+          apiReachable: false,
+          installed: native.installed,
+          version: native.version,
+          phase: native.phase === 'not_installed' ? 'not_installed' : 'error',
+          detail:
+            native.detail ??
+            `Could not reach Ollama at ${resolvedOllamaBaseUrl()} after ${Math.round(waitTimeoutMs / 1000)} seconds.`,
+          statusMsg: bootstrapStatusMessage(
+            native.phase === 'not_installed' ? 'not_installed' : 'error',
+            native.detail,
+          ),
+        };
     if (status.ready) readyCache = { at: Date.now(), status };
     emit(status);
     return status;

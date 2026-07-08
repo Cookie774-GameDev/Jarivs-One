@@ -572,15 +572,20 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
   }, [optionPickerCtx, terminalSessions, projectId, pluginConnections]);
 
   // Keep keyboard highlight on a valid option without clobbering hover/arrow nav.
+  const optionPickerSignature = useMemo(
+    () => optionPickerOptions.map((option) => option.id).join('\0'),
+    [optionPickerOptions],
+  );
+
   useEffect(() => {
     if (optionPickerOptions.length === 0) {
-      setSelectedOptionId('');
+      setSelectedOptionId((current) => (current === '' ? current : ''));
       return;
     }
     setSelectedOptionId((current) =>
       optionPickerOptions.some((o) => o.id === current) ? current : optionPickerOptions[0]!.id,
     );
-  }, [optionPickerOptions]);
+  }, [optionPickerSignature]);
 
   const clearAudioSilenceTimer = () => {
     if (audioSilenceTimerRef.current) clearInterval(audioSilenceTimerRef.current);
@@ -662,16 +667,21 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       });
   }, [agents, mentionCtx]);
 
+  const filteredAgentsSignature = useMemo(
+    () => filteredAgents.map((agent) => agent.slug).join('\0'),
+    [filteredAgents],
+  );
+
   // Keep selectedSlug in sync when filtered list changes
   useEffect(() => {
     if (filteredAgents.length === 0) {
-      setSelectedSlug('');
+      setSelectedSlug((current) => (current === '' ? current : ''));
       return;
     }
-    if (!filteredAgents.some((a) => a.slug === selectedSlug)) {
-      setSelectedSlug(filteredAgents[0]!.slug);
-    }
-  }, [filteredAgents, selectedSlug]);
+    setSelectedSlug((current) =>
+      filteredAgents.some((agent) => agent.slug === current) ? current : filteredAgents[0]!.slug,
+    );
+  }, [filteredAgentsSignature]);
 
   // Filtered slash command list for the typeahead (fuzzy match on cmd + description).
   const filteredSlashCommands = useMemo<SlashCommandDef[]>(() => {
@@ -687,17 +697,24 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     return scored;
   }, [slashCtx]);
 
+  const filteredSlashCommandsSignature = useMemo(
+    () => filteredSlashCommands.map((command) => command.cmd).join('\0'),
+    [filteredSlashCommands],
+  );
+
   // Keep selectedSlashCmd in sync when filtered list changes
   useEffect(() => {
     if (filteredSlashCommands.length === 0) {
-      setSelectedSlashCmd('');
+      setSelectedSlashCmd((current) => (current === '' ? current : ''));
       return;
     }
     const displayCommands = orderSlashCommandsForDisplay(filteredSlashCommands);
-    if (!displayCommands.some((c) => c.cmd === selectedSlashCmd)) {
-      setSelectedSlashCmd(displayCommands[0]!.cmd);
-    }
-  }, [filteredSlashCommands, selectedSlashCmd]);
+    setSelectedSlashCmd((current) =>
+      displayCommands.some((command) => command.cmd === current)
+        ? current
+        : displayCommands[0]!.cmd,
+    );
+  }, [filteredSlashCommandsSignature]);
 
   // Auto-grow the textarea up to MAX_HEIGHT, then enable internal scroll
   useEffect(() => {
@@ -1923,10 +1940,13 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     };
   }, [composerSttEnabled, sttAwaitingFinal, sttListening, sttTranscribing]);
 
+  // Only the main (non-compact) composer drives the global mic indicator — the
+  // Inspector sidebar mounts a second compact composer and must not fight it.
   useEffect(() => {
+    if (compact) return;
     setComposerSttListening(sttListening);
     return () => setComposerSttListening(false);
-  }, [setComposerSttListening, sttListening]);
+  }, [compact, setComposerSttListening, sttListening]);
 
   return (
     <div className={cn('border-t border-border bg-panel', compact && 'text-[12px]')}>
@@ -2341,19 +2361,25 @@ function ModelPicker({
     };
   }, [open]);
 
+  const flatOptionIds = useMemo(() => flatOptions.map((option) => option.id).join('\0'), [flatOptions]);
+  const selectionHighlightId = useMemo(() => {
+    if (selection.mode === 'hive') return HIVE_OPTION_ID;
+    return selectionOptionId(selection) ?? HIVE_OPTION_ID;
+  }, [selection]);
+
   useEffect(() => {
     if (!open) return;
     if (selection.mode === 'hive') {
-      setSelectedId(HIVE_OPTION_ID);
+      setSelectedId((current) => (current === HIVE_OPTION_ID ? current : HIVE_OPTION_ID));
       return;
     }
     const activeId = selectionOptionId(selection);
     if (activeId && flatOptions.some((option) => option.id === activeId)) {
-      setSelectedId(activeId);
+      setSelectedId((current) => (current === activeId ? current : activeId));
       return;
     }
-    setSelectedId(HIVE_OPTION_ID);
-  }, [open, selection, flatOptions]);
+    setSelectedId((current) => (current === HIVE_OPTION_ID ? current : HIVE_OPTION_ID));
+  }, [open, flatOptionIds, flatOptions, selectionHighlightId, selection]);
 
   useEffect(() => {
     if (!open) return;

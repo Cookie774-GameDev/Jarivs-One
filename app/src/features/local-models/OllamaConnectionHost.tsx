@@ -2,21 +2,23 @@ import { useEffect } from 'react';
 import { bootstrapOllamaConnection } from '@/lib/ai/ollamaBootstrap';
 
 const FOCUS_DEBOUNCE_MS = 8_000;
-const RETRY_MS = [0, 2_000, 4_000, 8_000, 12_000, 20_000, 30_000, 45_000];
+const BACKGROUND_PROBE_MS = 45_000;
+const RETRY_MS = [0, 2_000, 4_000, 8_000, 12_000, 20_000, 30_000, 45_000, 60_000];
 let lastFocusBootstrapAt = 0;
 
 /**
  * Keeps Ollama connected in the background: launch bootstrap, retry until the
- * daemon responds, and re-check when the window regains focus.
+ * daemon responds on loopback /api/version, and re-check on focus + interval.
  */
 export function OllamaConnectionHost() {
   useEffect(() => {
     let cancelled = false;
     const timers: number[] = [];
+    let backgroundTimer: number | null = null;
 
     const schedule = (attempt: number) => {
       if (cancelled || attempt >= RETRY_MS.length) return;
-      const delay = RETRY_MS[attempt] ?? 45_000;
+      const delay = RETRY_MS[attempt] ?? 60_000;
       const timer = window.setTimeout(() => {
         void bootstrapOllamaConnection({ force: attempt > 0 })
           .then((result) => {
@@ -35,6 +37,13 @@ export function OllamaConnectionHost() {
 
     schedule(0);
 
+    backgroundTimer = window.setInterval(() => {
+      if (cancelled) return;
+      void bootstrapOllamaConnection({ force: true }).catch((err) => {
+        console.warn('[ollama] background probe failed:', err);
+      });
+    }, BACKGROUND_PROBE_MS);
+
     function onFocus() {
       const now = Date.now();
       if (now - lastFocusBootstrapAt < FOCUS_DEBOUNCE_MS) return;
@@ -48,6 +57,7 @@ export function OllamaConnectionHost() {
     return () => {
       cancelled = true;
       for (const timer of timers) window.clearTimeout(timer);
+      if (backgroundTimer !== null) window.clearInterval(backgroundTimer);
       window.removeEventListener('focus', onFocus);
     };
   }, []);

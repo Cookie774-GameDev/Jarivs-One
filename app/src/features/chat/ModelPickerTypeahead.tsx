@@ -5,6 +5,7 @@ import type { ProviderId } from '@/types';
 import { cn } from '@/lib/utils';
 import { HiveModelIcon } from '@/components/brand';
 import type { ModelPickerGroup } from '@/lib/ai/useAccessibleChatModels';
+import { scrollPickerItemIntoView } from './pickerScroll';
 
 /** Sentinel id for the pinned Hive entry (keyboard nav + selection state). */
 export const HIVE_OPTION_ID = 'hive:balanced';
@@ -86,8 +87,7 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
 
     useEffect(() => {
       if (!listRef.current || !selectedId) return;
-      const selected = listRef.current.querySelector(`[data-value="${selectedId}"]`);
-      selected?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      scrollPickerItemIntoView(listRef.current, `[data-value="${selectedId}"]`);
     }, [selectedId]);
 
     return (

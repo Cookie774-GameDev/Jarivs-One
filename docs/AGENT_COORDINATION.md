@@ -100,6 +100,17 @@ Append new entries at the **bottom** of the relevant agent section. Use [How to 
 | **Status** | committed + pushed |
 | **Commit** | `484dfc8` â€” `Promote in-app updater channel to v0.1.43.` |
 
+#### 2026-07-08 — React #185 + Ollama reliability (Helper / terminal 4)
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-08 6:35 AM CT |
+| **Version** | v0.1.48 (next) |
+| **Plan** | Fix React maximum update depth (#185) in Inspector/Composer/pickers; Ollama API-first connect without tray dependency; restore `install/install.ps1` before commit |
+| **Files touched** | `Inspector.tsx`, `Composer.tsx`, `pickerScroll.ts`, picker typeaheads, `ChatActivityTimeline.tsx`, `InspectorMilestonesPanel.tsx`, `local_ai.rs`, `ollama.ts`, `OllamaConnectionHost.tsx`, `LocalModels.tsx`, `models.ts`, tests, coordination ledger |
+| **Status** | committed + pushed |
+| **Commit** | pending — `fix: React #185 Inspector loops and Ollama API-first connect` |
+
 ---
 
 ### VibeSpace Main
@@ -413,6 +424,10 @@ Append new entries at the **bottom** of the relevant agent section. Use [How to 
 | `app/src/features/jarvis-interaction/{AgentActivityCard,agentRunner,sessionStore,agents,types}.*` | terminal 4 | v0.1.46 | complete (uncommitted) | User-directed connected subagent state, panel close, child-chat click behavior |
 | `app/src/lib/actions/**`, `app/src/features/jarvis-creator/**`, `app/src/features/chat/{MessagePart,MessageBubble,ChatThread}.tsx`, `app/src/features/jarvis-interaction/AgentActivityCard.*`, `app/src/features/kanban/**`, `app/src/features/inspector/{types,milestonesStore,InspectorMilestonesPanel}.ts*`, `app/src/features/schedule/**`, `app/src/features/local-models/OllamaConnectionHost.tsx`, `app/src-tauri/src/{lib,dictation}.rs` | terminal 4 | v0.1.46 | complete (uncommitted) | User master prompt follow-up: approval-gated creator actions, scoped push buttons, cleaner subagent panel, milestone details/deadline, Jarvis schedule no-reminder UI, Ctrl+Space native dictation |
 | `app/src/features/composer-stt/**`, `app/src/features/voice/VoiceService.ts`, `app/src/features/chat/Composer.tsx`, `app/src/features/terminals/TerminalView.tsx` | terminal 4 | v0.1.46 | complete (uncommitted) | User master prompt follow-up: top-right mic stays STT-only and preempts hands-free Jarvis voice listening |
+| `app/src/lib/ai/ollamaBootstrap.ts`, `app/src/lib/ai/providers/ollama.ts`, `app/src/lib/ai/testKey.ts` | VibeSpace Worker (terminal 4) | v0.1.48 | complete (uncommitted) | Ollama API-first connect (no tray); retries + model sync |
+| `app/src/features/local-models/OllamaConnectionHost.tsx`, `app/src/features/auth/AuthGate.tsx` | VibeSpace Worker (terminal 4) | v0.1.48 | complete (uncommitted) | Background Ollama bootstrap retries |
+| `app/src/features/settings/sections/LocalModels.tsx` | VibeSpace Worker (terminal 4) | v0.1.48 | complete (uncommitted) | Ollama unreachable error + recovery UI |
+| `app/src-tauri/src/local_ai.rs`, `app/src-tauri/src/ollama_http.rs` | VibeSpace Worker (terminal 4) | v0.1.48 | complete (uncommitted) | Dead serve-child respawn; API ping hardening |
 
 #### 2026-06-30 â€” Master prompt follow-up action polish
 
@@ -1027,6 +1042,17 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Files touched** | `ollamaBootstrap.ts`, `OllamaConnectionHost.tsx`, `AuthGate.tsx`, `providers/ollama.ts`, `testKey.ts`, `App.tsx`, tests |
 | **Status** | implemented (uncommitted); 13 ollama tests GREEN |
 | **Commit** | — |
+
+#### 2026-07-07 — Ollama API-first connect (no tray dependency)
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-07 5:55 PM CT |
+| **Version** | v0.1.48 |
+| **Plan** | Detect/connect via loopback `/api/version` only; respawn dead `ollama serve` child; API retry + timeout; LocalModels recovery UI |
+| **Files touched** | `ollamaBootstrap.ts`, `providers/ollama.ts`, `OllamaConnectionHost.tsx`, `LocalModels.tsx`, `local_ai.rs`, `ollama_http.rs`, tests |
+| **Status** | committed (bundled with React #185 fix, 2026-07-08) |
+| **Commit** | see Helper 2026-07-08 entry |
 
 #### 2026-07-05 — Release v0.1.46 (Helper)
 

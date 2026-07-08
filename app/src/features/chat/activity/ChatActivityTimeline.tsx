@@ -35,10 +35,11 @@ const STATUS_META: Record<ChatActivityStatus, { label: string; variant: 'seconda
   error: { label: 'Failed', variant: 'destructive', icon: <XCircle className="h-3 w-3" /> },
 };
 
+const EMPTY_EVENTS: ChatActivityEvent[] = [];
+
 export function ChatActivityTimeline({ chatId, compact = false }: { chatId: ChatId | string; compact?: boolean }) {
-  const eventsByChat = useChatActivityStore((state) => state.eventsByChat);
-  const events = eventsByChat[String(chatId)];
-  const recent = React.useMemo(() => (events ?? []).slice(-12), [events]);
+  const events = useChatActivityStore((state) => state.eventsByChat[String(chatId)] ?? EMPTY_EVENTS);
+  const recent = React.useMemo(() => events.slice(-12), [events]);
   if (recent.length === 0) return null;
 
   return (
@@ -76,13 +77,7 @@ export function ActivityRow({ event }: { event: ChatActivityEvent }) {
   const hasBody = Boolean(event.detail || event.diff);
 
   return (
-    <motion.article
-      layout
-      initial={{ opacity: 0, y: 4 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.98 }}
-      className="bg-elevated/45"
-    >
+    <article className="bg-elevated/45">
       <button
         type="button"
         disabled={!hasBody}
@@ -138,7 +133,7 @@ export function ActivityRow({ event }: { event: ChatActivityEvent }) {
           </motion.div>
         ) : null}
       </AnimatePresence>
-    </motion.article>
+    </article>
   );
 }
 

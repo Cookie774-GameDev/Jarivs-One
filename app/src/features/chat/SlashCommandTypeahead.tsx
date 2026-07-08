@@ -2,6 +2,7 @@ import { useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { motion } from 'motion/react';
 import { cn } from '@/lib/utils';
 import { HiveModelIcon } from '@/components/brand';
+import { scrollPickerItemIntoView } from './pickerScroll';
 import {
   BarChart3,
   Bot,
@@ -264,8 +265,7 @@ export const SlashCommandTypeahead = forwardRef<
 
   useEffect(() => {
     if (!listRef.current || !selectedCmd) return;
-    const selected = listRef.current.querySelector(`[data-value="${selectedCmd}"]`);
-    selected?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    scrollPickerItemIntoView(listRef.current, `[data-value="${selectedCmd}"]`);
   }, [selectedCmd]);
 
   const groupedCommands = displayCommands.reduce<Record<string, SlashCommandDef[]>>((acc, cmd) => {

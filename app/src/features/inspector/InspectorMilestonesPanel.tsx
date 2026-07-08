@@ -25,13 +25,14 @@ export function InspectorMilestonesPanel({ view, onViewChange }: InspectorMilest
   const removeMilestone = useMilestonesStore((s) => s.removeMilestone);
   const toggleDone = useMilestonesStore((s) => s.toggleDone);
   const eventsByChat = useChatActivityStore((s) => s.eventsByChat);
-  const activityEvents = React.useMemo(
-    () => Object.values(eventsByChat)
-      .flat()
+  const activityEvents = React.useMemo(() => {
+    const chatKeys = Object.keys(eventsByChat);
+    if (chatKeys.length === 0) return [];
+    return chatKeys
+      .flatMap((chatKey) => eventsByChat[chatKey] ?? [])
       .sort((a, b) => a.ts - b.ts)
-      .slice(-16),
-    [eventsByChat],
-  );
+      .slice(-16);
+  }, [eventsByChat]);
 
   const [draft, setDraft] = React.useState('');
   const [celebrateId, setCelebrateId] = React.useState<string | null>(null);
@@ -167,11 +168,7 @@ function MilestoneRow({
 }) {
   const done = item.status === 'done';
   return (
-    <motion.li
-      layout
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.98 }}
+    <li
       className={cn(
         'relative rounded-md border border-border bg-elevated px-2 py-2',
         celebrating && 'ring-2 ring-accent-copper/60 shadow-[0_0_24px_rgba(255,152,0,0.25)]',
@@ -242,7 +239,7 @@ function MilestoneRow({
           <Sparkles className="h-3 w-3" /> Nice — milestone complete!
         </p>
       ) : null}
-    </motion.li>
+    </li>
   );
 }
 

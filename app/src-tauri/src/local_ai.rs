@@ -375,15 +375,35 @@ fn wait_for_ollama_cli_after_install() -> Result<(PathBuf, String), String> {
     )
 }
 
-fn start_ollama_serve_silent(executable: &Path) -> Result<(), String> {
+fn start_ollama_serve_silent(executable: &Path, base_url: &str) -> Result<(), String> {
+    // API-first: if the daemon already answers, never spawn another serve process.
+    if check_ollama_api(base_url, API_HEALTH_TIMEOUT) {
+        return Ok(());
+    }
+
     if port_11434_listening() {
+        // Something is bound on 11434 but the API is not up yet — wait_for_ollama_api
+        // handles the warm-up without spawning a duplicate serve child.
         return Ok(());
     }
 
     {
-        let child_guard = SERVE_CHILD.lock().map_err(|_| "Ollama startup lock poisoned".to_string())?;
-        if child_guard.is_some() {
-            return Ok(());
+        let mut child_guard = SERVE_CHILD
+            .lock()
+            .map_err(|_| "Ollama startup lock poisoned".to_string())?;
+        if let Some(child) = child_guard.as_mut() {
+            match child.try_wait() {
+                Ok(Some(_status)) => {
+                    *child_guard = None;
+                }
+                Ok(None) => {
+                    // Child still running — give it time to bind the API.
+                    return Ok(());
+                }
+                Err(_) => {
+                    *child_guard = None;
+                }
+            }
         }
     }
 
@@ -400,6 +420,17 @@ fn start_ollama_serve_silent(executable: &Path) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+fn clear_serve_child_if_dead() {
+    let Ok(mut child_guard) = SERVE_CHILD.lock() else {
+        return;
+    };
+    if let Some(child) = child_guard.as_mut() {
+        if matches!(child.try_wait(), Ok(Some(_)) | Err(_)) {
+            *child_guard = None;
+        }
+    }
 }
 
 fn ensure_ollama_ready_internal(base_url: Option<String>) -> OllamaEnsureResult {
@@ -484,7 +515,7 @@ fn ensure_ollama_ready_internal(base_url: Option<String>) -> OllamaEnsureResult 
         }
     };
 
-    if let Err(detail) = start_ollama_serve_silent(&executable) {
+    if let Err(detail) = start_ollama_serve_silent(&executable, &base) {
         return OllamaEnsureResult {
             ready: false,
             api_reachable: false,
@@ -496,6 +527,33 @@ fn ensure_ollama_ready_internal(base_url: Option<String>) -> OllamaEnsureResult 
     }
 
     if wait_for_ollama_api(&base, STARTUP_WAIT_TIMEOUT) {
+        return OllamaEnsureResult {
+            ready: true,
+            api_reachable: true,
+            installed: true,
+            version: Some(version),
+            phase: "ready".to_string(),
+            detail: Some("Ollama server started silently and API is reachable.".to_string()),
+        };
+    }
+
+    // First serve attempt may have exited (common on Windows when a stale child was
+    // tracked). Clear it and try one more silent serve before giving up.
+    clear_serve_child_if_dead();
+    if !check_ollama_api(&base, API_HEALTH_TIMEOUT) {
+        if let Err(detail) = start_ollama_serve_silent(&executable, &base) {
+            return OllamaEnsureResult {
+                ready: false,
+                api_reachable: false,
+                installed: true,
+                version: Some(version.clone()),
+                phase: "error".to_string(),
+                detail: Some(detail),
+            };
+        }
+    }
+
+    if wait_for_ollama_api(&base, Duration::from_secs(30)) {
         return OllamaEnsureResult {
             ready: true,
             api_reachable: true,

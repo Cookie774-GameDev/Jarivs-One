@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ProviderId } from '@/types';
 import type { PlanId } from '@/lib/entitlements';
 import { useAuthStore } from '@/stores/auth';
@@ -101,7 +101,10 @@ export function useOllamaModelOptions(): ModelOption[] {
       _discoveredListeners = _discoveredListeners.filter((l) => l !== listener);
     };
   }, []);
-  return _discoveredOllama.map((name) => ({ provider: 'ollama' as const, id: name, label: name }));
+  return useMemo(
+    () => _discoveredOllama.map((name) => ({ provider: 'ollama' as const, id: name, label: name })),
+    [_discoveredOllama.length, _discoveredOllama.join('\0')],
+  );
 }
 
 function hasCloudApiKey(

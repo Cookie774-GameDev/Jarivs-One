@@ -217,12 +217,17 @@ export function Inspector() {
       [] as Chat[],
     ) ?? [];
 
+  const inspectorChatKey = React.useMemo(
+    () => inspectorChats.map((chat) => chat.id).join('\0'),
+    [inspectorChats],
+  );
+
   React.useEffect(() => {
     setInspectorChatId((current) => {
       if (current && inspectorChats.some((chat) => chat.id === current)) return current;
       return inspectorChats[0]?.id ?? null;
     });
-  }, [inspectorChats, projectId]);
+  }, [inspectorChatKey, projectId]);
 
   const handleCreateChatInsideJarvisPanel = React.useCallback(async () => {
     if (!workspaceId) {
@@ -299,6 +304,8 @@ export function Inspector() {
             value="jarvis"
             className="m-0 flex-1 data-[state=active]:flex data-[state=inactive]:hidden flex-col min-h-0 bg-background overflow-hidden border-t border-border"
           >
+            {activeTab === 'jarvis' ? (
+              <>
             <div className="flex items-center gap-1 border-b border-border bg-panel-soft px-2 py-1.5 shrink-0">
               <Sparkles className="h-3.5 w-3.5 shrink-0 text-accent-copper" aria-hidden />
               <Popover>
@@ -403,41 +410,49 @@ export function Inspector() {
                 )}
               </div>
             </TooltipProvider>
+              </>
+            ) : null}
           </TabsContent>
           <TabsContent
             value="today"
             className="m-0 flex-1 overflow-auto scrollbar-hidden"
           >
-            <TodayPanel />
+            {activeTab === 'today' ? <TodayPanel /> : null}
           </TabsContent>
           <TabsContent
             value="context"
             className="m-0 flex-1 overflow-auto px-4 py-3 scrollbar-hidden"
           >
+            {activeTab === 'context' ? (
             <InspectorContextPanel
               inspectorOpen={inspectorOpen}
               previewFilePath={previewFilePath}
               projectRoot={projectRoot}
               onPreviewFile={setPreviewFilePath}
             />
+            ) : null}
           </TabsContent>
           <TabsContent
             value="tools"
             className="m-0 flex-1 overflow-auto px-4 py-3 scrollbar-hidden"
           >
-            <InspectorToolsPanel />
+            {activeTab === 'tools' ? <InspectorToolsPanel /> : null}
           </TabsContent>
           <TabsContent
             value="trace"
             className="m-0 flex-1 overflow-auto px-4 py-3 scrollbar-hidden"
           >
+            {activeTab === 'trace' ? (
             <InspectorMilestonesPanel view={traceView} onViewChange={setTraceView} />
+            ) : null}
           </TabsContent>
           <TabsContent
             value="live"
             className="m-0 flex-1 overflow-auto px-4 py-3 scrollbar-hidden"
           >
+            {activeTab === 'live' ? (
             <InspectorActiveWorkPanel workspaceId={workspaceId} />
+            ) : null}
           </TabsContent>
         </Tabs>
       </div>

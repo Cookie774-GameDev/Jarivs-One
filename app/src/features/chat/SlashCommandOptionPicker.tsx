@@ -2,6 +2,7 @@ import { useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { motion } from 'motion/react';
 import { cn } from '@/lib/utils';
 import { Loader2, AlertCircle, Network, Terminal, Zap, type LucideIcon } from 'lucide-react';
+import { scrollPickerItemIntoView } from './pickerScroll';
 
 export interface SlashCommandOption {
   id: string;
@@ -79,8 +80,7 @@ export const SlashCommandOptionPicker = forwardRef<
 
   useEffect(() => {
     if (!listRef.current || !selectedId) return;
-    const selected = listRef.current.querySelector(`[data-value="${selectedId}"]`);
-    selected?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    scrollPickerItemIntoView(listRef.current, `[data-value="${selectedId}"]`);
   }, [selectedId]);
 
   return (

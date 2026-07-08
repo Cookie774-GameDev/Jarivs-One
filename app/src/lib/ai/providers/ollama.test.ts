@@ -55,6 +55,17 @@ describe('ollama provider utilities', () => {
     );
   });
 
+  it('retries reachability before giving up', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValueOnce(new Response('{"version":"0.21.0"}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(isOllamaReachable(undefined, { attempts: 2 })).resolves.toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it('streams pull progress and reports percent complete', async () => {
     const progress: string[] = [];
     const percents: number[] = [];
