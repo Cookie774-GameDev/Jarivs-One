@@ -351,7 +351,7 @@ install_appimage() {
 Type=Application
 Name=VibeSpace
 Comment=The AI workspace for every model, agent, voice and task
-Exec=jarvis %U
+Exec=${target} %U
 Icon=${target}
 Terminal=false
 Categories=Office;Utility;
@@ -485,7 +485,13 @@ EOF
 
 launch_linux_app() {
   local runner=""
-  if command -v jarvis >/dev/null 2>&1; then
+  # Prefer the exact binary we just installed - a fresh shell often does not
+  # have ~/.local/bin on PATH yet, which used to make auto-launch fail right
+  # after a successful install.
+  local installed="$(linux_install_prefix)/bin/jarvis"
+  if [ -x "$installed" ]; then
+    runner="$installed"
+  elif command -v jarvis >/dev/null 2>&1; then
     runner="jarvis"
   elif command -v VibeSpace >/dev/null 2>&1; then
     runner="VibeSpace"
