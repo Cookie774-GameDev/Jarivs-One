@@ -219,6 +219,8 @@
     function nextLine() {
       if (idx >= lines.length) return;
       var line = lines[idx++];
+      // Preloaded demo voice speaks the caption line (captions always shown).
+      if (window.VSDialogue && VSDialogue.speak) VSDialogue.speak(line);
       var div = document.createElement("div");
       div.className = "caption-line them";
       captions.appendChild(div);
@@ -251,6 +253,7 @@
     callScreen.classList.remove("active");
     if (callTimer) { clearInterval(callTimer); callTimer = null; }
     callSeconds = 0;
+    if (window.VSDialogue && VSDialogue.stopSpeaking) VSDialogue.stopSpeaking();
     showToast(currentContact ? "Call ended — " + currentContact.name : "Call ended");
     currentContact = null;
   }

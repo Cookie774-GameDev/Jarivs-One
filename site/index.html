@@ -932,6 +932,8 @@
           function next(){
             if (idx >= lines.length) return;
             var line = lines[idx++];
+            // Preloaded demo voice — captions always remain the source of truth.
+            if (window.VSDialogue && VSDialogue.speak) VSDialogue.speak(line);
             var div = document.createElement('div');
             div.className = 'caption-line them';
             container.appendChild(div);
@@ -954,6 +956,7 @@
           phoneCallScreen.classList.remove('active');
           if (callTimer){ clearInterval(callTimer); callTimer = null; }
           callSeconds = 0;
+          if (window.VSDialogue && VSDialogue.stopSpeaking) VSDialogue.stopSpeaking();
         }
 
         jdEnd.addEventListener('click', endCall);
