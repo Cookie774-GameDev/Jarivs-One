@@ -8,7 +8,7 @@ Install VibeSpace like a normal desktop app. The one-line installers pull the la
 | macOS 12+ | DMG | `curl -fsSL https://raw.githubusercontent.com/Cookie774-GameDev/VibeSpace/main/install/install.sh \| bash` |
 | Linux | `.deb`, `.rpm`, or AppImage | `curl -fsSL https://raw.githubusercontent.com/Cookie774-GameDev/VibeSpace/main/install/install.sh \| bash` |
 
-Current staged release: `v0.1.31`. macOS and Linux filenames can vary by Tauri target, so `install/install.sh` resolves matching release assets from GitHub before falling back to the standard VibeSpace filename patterns.
+Latest published installer release: `v0.1.45`. macOS and Linux filenames can vary by Tauri target, so `install/install.sh` resolves matching release assets from GitHub before falling back to the standard VibeSpace filename patterns.
 
 ## Release Status
 
@@ -39,23 +39,22 @@ Grab installers from the [Releases page] and compare them against `SHA256SUMS.tx
 [Releases page]: https://github.com/Cookie774-GameDev/VibeSpace/releases
 
 ```text
-Windows:  VibeSpace_0.1.31_x64-setup.exe
-Windows:  VibeSpace_0.1.31_x64_en-US.msi
-Windows:  VibeSpace-0.1.31-Windows-x64.exe
-Windows:  VibeSpace-0.1.31-Windows-x64.msi
-macOS:    VibeSpace_0.1.31_aarch64.dmg
-macOS:    VibeSpace_0.1.31_x64.dmg
-Linux:    VibeSpace_0.1.31_amd64.deb
-Linux:    VibeSpace-0.1.31-1.x86_64.rpm
-Linux:    VibeSpace_0.1.31_amd64.AppImage
+Windows:  VibeSpace-0.1.45-Windows-x64.exe
+Windows:  VibeSpace_0.1.45_x64-setup.exe
+Windows:  VibeSpace_0.1.45_x64_en-US.msi
+macOS:    VibeSpace_0.1.45_aarch64.dmg
+macOS:    VibeSpace_0.1.45_x64.dmg
+Linux:    VibeSpace_0.1.45_amd64.deb
+Linux:    VibeSpace-0.1.45-1.x86_64.rpm
+Linux:    VibeSpace_0.1.45_amd64.AppImage
 ```
 
 ```powershell
-Get-FileHash -Algorithm SHA256 '.\VibeSpace_0.1.31_x64-setup.exe'
+Get-FileHash -Algorithm SHA256 '.\VibeSpace_0.1.45_x64-setup.exe'
 ```
 
 ```bash
-sha256sum 'VibeSpace_0.1.31_amd64.deb'
+sha256sum 'VibeSpace_0.1.45_amd64.AppImage'
 ```
 
 ## What Gets Installed
@@ -66,19 +65,9 @@ sha256sum 'VibeSpace_0.1.31_amd64.deb'
 
 VibeSpace is local-first. External services are optional and only used for enabled features such as cloud sync, hosted models, Stripe billing, and Jarvis Call.
 
-## What's New (v0.1.44)
+## What's New
 
-- **Hive Balance** — the flagship multi-model pipeline is now live in Settings → Hive.
-  Five-model ensemble: Gemini 3.5 Flash High → MiniMax-M3 → GLM-5.2 → DeepSeek V4 Pro Max → GPT-5.4 mini.
-  Pricing: $4.38 / 1M input · $19.97 / 1M output (same output cost as Fable 5).
-  Requires Orbit ($10/mo) or higher. BYOK keys work at every tier.
-- **Supernova plan (Apex)** — new top tier at $200/mo with 62,000 hosted AI credits/mo,
-  434 phone minutes, and highest-priority Hive routing. Full schema support now in place.
-- **Dynamic Stripe Checkout** — upgrade buttons call the Supabase Edge Function when
-  you are signed in, creating a personalised Stripe session instead of a static link.
-  Existing static fallback links still work when cloud sync is off.
-- **Manage Subscription** — the Plans page now shows a "Manage Subscription" button
-  on your active plan card that opens the Stripe billing portal directly.
+Full, always-current release history lives in [`CHANGELOG.md`](CHANGELOG.md) and per-version notes under [`releases/`](releases/). The in-app **What's New** modal (Settings → About) shows the same notes for the build you are running.
 
 ## After Installing
 
@@ -138,10 +127,10 @@ New desktop apps often trigger **SmartScreen** or antivirus prompts until Window
 2. Open `SHA256SUMS.txt` on that release and compare to your file:
 
    ```powershell
-   Get-FileHash -Algorithm SHA256 '.\VibeSpace_0.1.44_x64-setup.exe'
+   Get-FileHash -Algorithm SHA256 '.\VibeSpace_0.1.45_x64-setup.exe'
    ```
 
-   Or run `.\scripts\verify-release-checksum.ps1 -Version 0.1.44 -InstallerPath .\VibeSpace_0.1.44_x64-setup.exe`.
+   Or run `.\scripts\verify-release-checksum.ps1 -Version 0.1.45 -InstallerPath .\VibeSpace_0.1.45_x64-setup.exe`.
 
 3. If Windows shows **Windows protected your PC**, click **More info** → **Run anyway** only after the hash matches.
 
