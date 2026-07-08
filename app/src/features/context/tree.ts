@@ -1,4 +1,4 @@
-import { readTextFileSample, listDirectory, writeTextFile, type FsEntry } from '@/lib/fs';
+import { readTextFileSample, listDirectory, writeTextFile, type FsEntry, type FsReadError } from '@/lib/fs';
 import { basename, extension, isPopularTextFile } from '@/features/files/projectFiles';
 
 export const CONTEXT_MIME = 'application/x-jarvis-context';
@@ -593,6 +593,9 @@ export async function generateProjectContextTree(options: GenerateContextOptions
       });
     } catch {
       tree = null;
+      // Be explicit that the AI pass failed - otherwise users assume the
+      // heuristic fallback summaries came from their selected model.
+      options.onProgress?.(`${CONTEXT_PROVIDER_OPTIONS[provider].label} request failed — building the local fallback map instead.`);
     }
   }
 
@@ -615,6 +618,24 @@ export async function generateProjectContextTree(options: GenerateContextOptions
   return tree;
 }
 
+/** User-facing message for a context root that could not be scanned. */
+export function describeContextRootError(rootDir: string, error: FsReadError): string {
+  switch (error.code) {
+    case 'not_found':
+    case 'root_not_found':
+      return `Folder not found: ${rootDir}. Check the path and try again.`;
+    case 'not_a_dir':
+    case 'root_not_dir':
+      return `${rootDir} is a file, not a folder. Point the Context map at a project folder.`;
+    case 'outside_root':
+      return `Access to ${rootDir} was blocked. Pick a folder inside your project.`;
+    case 'unavailable':
+      return 'File access needs the VibeSpace desktop app - the browser preview cannot scan folders.';
+    default:
+      return `Could not read ${rootDir}: ${error.raw ?? error.code}. Check folder permissions and try again.`;
+  }
+}
+
 async function scanProjectFiles(
   rootDir: string,
   onProgress?: (message: string) => void,
@@ -629,7 +650,15 @@ async function scanProjectFiles(
     seenDirs.add(dir);
 
     const listed = await listDirectory(dir, { root: rootDir });
-    if (!listed.ok) return;
+    if (!listed.ok) {
+      // The ROOT must be readable - an invalid path, a non-folder path, or a
+      // permission problem should tell the user exactly what happened
+      // instead of collapsing into "no readable text files found".
+      if (dir === rootDir) {
+        throw new Error(describeContextRootError(rootDir, listed.error));
+      }
+      return;
+    }
 
     const entries = prioritizeEntries(listed.entries);
     for (const entry of entries) {
