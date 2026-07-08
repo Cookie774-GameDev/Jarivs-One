@@ -258,7 +258,9 @@ export function About() {
             <h3 className="text-ui-strong text-foreground">Updates</h3>
             <p className="text-secondary text-muted-foreground">
               Signed releases are delivered from GitHub Releases. Jarvis verifies every bundle,
-              shows pre-install warnings, and lets you update now or later.
+              shows pre-install warnings, and lets you update now or later. All terminal
+              information may not be saved across an update: layouts and recent output are
+              restored, but live terminal processes cannot survive the restart.
             </p>
           </div>
           <Button

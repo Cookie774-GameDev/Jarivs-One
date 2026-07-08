@@ -57,6 +57,7 @@ import {
   requestTerminalSwarm,
   enqueueTerminalClose,
 } from '@/features/terminals/terminalCommandQueue';
+import { setTerminalRoleBriefing } from '@/features/terminals/terminalRoleBriefings';
 import type { TerminalRef } from '@/features/terminals/terminalRefs';
 import { eventRepo, taskRepo } from '@/lib/db/repositories';
 import { openExternal } from '@/lib/tauri';
@@ -135,6 +136,63 @@ function rejectShellMetaChars(value: string): string | null {
     return 'Path contains shell metacharacters that could break the command. Remove `"` `;` `|` `&` `$` `` ` `` or control chars.';
   }
   return null;
+}
+
+export interface OrchestrationRoleGroup {
+  count: number;
+  agentSlug: string;
+  prompt?: string;
+}
+
+const ORCHESTRATE_MAX_PANES = 10;
+const ORCHESTRATE_MAX_PROMPT_CHARS = 4000;
+
+/**
+ * Validate the `terminal.orchestrate` roles payload. Fails closed on any
+ * malformed group so a garbled model proposal can never open panes with
+ * missing roles or oversized prompts.
+ */
+export function parseOrchestrationRoles(
+  raw: unknown,
+): { ok: true; groups: OrchestrationRoleGroup[] } | { ok: false; error: string } {
+  if (typeof raw !== 'string' || !raw.trim()) {
+    return { ok: false, error: 'rolesJson is required: a JSON array of {count, agentSlug, prompt?} groups.' };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { ok: false, error: 'rolesJson is not valid JSON.' };
+  }
+  if (!Array.isArray(parsed) || parsed.length === 0) {
+    return { ok: false, error: 'rolesJson must be a non-empty JSON array.' };
+  }
+  const groups: OrchestrationRoleGroup[] = [];
+  for (const entry of parsed) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      return { ok: false, error: 'Every roles entry must be an object with count and agentSlug.' };
+    }
+    const source = entry as Record<string, unknown>;
+    const count = typeof source.count === 'number' ? Math.floor(source.count) : NaN;
+    if (!Number.isFinite(count) || count < 1) {
+      return { ok: false, error: 'Every roles entry needs a count of at least 1.' };
+    }
+    const agentSlug = typeof source.agentSlug === 'string'
+      ? source.agentSlug.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '')
+      : '';
+    if (!agentSlug) {
+      return { ok: false, error: 'Every roles entry needs a non-empty agentSlug.' };
+    }
+    const prompt = typeof source.prompt === 'string' && source.prompt.trim()
+      ? source.prompt.trim().slice(0, ORCHESTRATE_MAX_PROMPT_CHARS)
+      : undefined;
+    groups.push({ count, agentSlug, prompt });
+  }
+  const total = groups.reduce((sum, group) => sum + group.count, 0);
+  if (total > ORCHESTRATE_MAX_PANES) {
+    return { ok: false, error: `Role counts add up to ${total} panes; the maximum is ${ORCHESTRATE_MAX_PANES}.` };
+  }
+  return { ok: true, groups };
 }
 
 function readClockSound(value: unknown): ClockSound {
@@ -527,6 +585,96 @@ const TERMINAL_ACTIONS: ActionDef[] = [
       enqueueTerminalClose(count);
       navigateTo('terminal');
       return ok(`Closing ${count} terminal pane${count === 1 ? '' : 's'}.`);
+    },
+  },
+  {
+    id: 'terminal.orchestrate',
+    category: 'terminal',
+    label: 'Orchestrate terminal agents',
+    description:
+      'One approved plan: optionally close every existing project terminal, open a batch of new panes (max 10 total), start a CLI such as claude or opencode in each, assign agent roles per pane, and deliver each role\'s custom prompt through the AGENTS.md briefing files. Use for requests like "close all terminals, open 10, five as code agents and five as reviewers with these prompts".',
+    icon: Layers,
+    destructive: true,
+    params: [
+      {
+        key: 'closeExisting',
+        label: 'Close existing terminals first',
+        type: 'boolean',
+        default: false,
+        help: 'When true, closes all current project panes before opening the new batch.',
+      },
+      {
+        key: 'command',
+        label: 'CLI command',
+        type: 'string',
+        required: false,
+        placeholder: 'claude',
+        help: 'Command started in every new pane (e.g. claude, opencode). Leave empty for a plain shell. If the CLI is not installed, the pane shows the shell\'s error - nothing is faked.',
+      },
+      {
+        key: 'rolesJson',
+        label: 'Roles JSON',
+        type: 'string',
+        required: true,
+        help: 'JSON array of role groups: [{"count":5,"agentSlug":"code-agent","prompt":"please find any security vulnerabilities"},{"count":5,"agentSlug":"code-reviewer","prompt":"you are a code reviewer"}]. Total count max 10. Prompts are delivered via AGENTS.md, never typed into the shell.',
+      },
+      {
+        key: 'cwd',
+        label: 'Working directory',
+        type: 'string',
+        required: false,
+        help: 'Optional project folder for every pane.',
+      },
+    ],
+    run: async (params) => {
+      const roles = parseOrchestrationRoles(params.rolesJson);
+      if (!roles.ok) return fail(roles.error);
+      const command = typeof params.command === 'string' ? params.command.trim() : '';
+      const cwd = typeof params.cwd === 'string' && params.cwd.trim() ? params.cwd.trim() : undefined;
+      if (cwd) {
+        const meta = rejectShellMetaChars(cwd);
+        if (meta) return fail(meta);
+      }
+      if (command) {
+        const meta = rejectShellMetaChars(command);
+        if (meta) return fail(meta);
+      }
+      const closeExisting = params.closeExisting === true || params.closeExisting === 'true';
+
+      if (closeExisting) enqueueTerminalClose(10);
+
+      const projectId = useAuthStore.getState().projectId ?? null;
+      const openedLabels: string[] = [];
+      for (const role of roles.groups) {
+        if (role.prompt) setTerminalRoleBriefing(projectId, role.agentSlug, role.prompt);
+        for (let i = 0; i < role.count; i++) {
+          enqueueTerminalCommand({
+            command,
+            label: `${role.agentSlug} ${i + 1}`,
+            agentSlug: role.agentSlug,
+            cwd,
+          });
+        }
+        openedLabels.push(`${role.count} × ${role.agentSlug}`);
+      }
+      navigateTo('terminal');
+
+      const total = roles.groups.reduce((sum, role) => sum + role.count, 0);
+      const briefed = roles.groups.filter((role) => role.prompt).length;
+      return ok(
+        [
+          closeExisting ? 'Closing all existing project terminals.' : null,
+          `Opening ${total} terminal pane${total === 1 ? '' : 's'}${command ? ` running \`${command}\`` : ''}: ${openedLabels.join(', ')}.`,
+          briefed > 0
+            ? `${briefed} role prompt${briefed === 1 ? '' : 's'} will be delivered through the AGENTS.md briefing files when each pane starts.`
+            : null,
+          command
+            ? `If \`${command}\` is not installed or configured, each pane will show the shell's own error - configure the CLI and rerun.`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(' '),
+      );
     },
   },
   {

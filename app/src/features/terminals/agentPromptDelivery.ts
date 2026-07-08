@@ -46,6 +46,7 @@ import { composeSkillAddenda } from '@/lib/agents/skills';
 import { loadStoredContextTree, type ProjectContextTree } from '@/features/context/tree';
 import { useTerminalTranscriptStore } from './transcriptStore';
 import { buildAgentPromptPayload } from './agentPromptPayload';
+import { getTerminalRoleBriefing } from './terminalRoleBriefings';
 import type { AgentCoordinationMode } from './agentCoordination';
 
 /* -------------------------------------------------------------------------- */
@@ -482,6 +483,13 @@ export async function deliverAgentTerminalContext(opts: {
     }
 
     const { name, prompt } = resolveAgentForSlug(opts.agentSlug);
+    // Orchestrated panes ("five as code reviewers with prompt X") carry an
+    // approved per-role briefing that reaches the CLI through this managed
+    // block - never typed into the shell.
+    const roleBriefing = getTerminalRoleBriefing(opts.projectId ?? null, opts.agentSlug);
+    const effectivePrompt = roleBriefing
+      ? [prompt, `## Assigned task\n\n${roleBriefing}`].filter((part) => part.trim()).join('\n\n')
+      : prompt;
     const projectContext = await loadProjectContext(opts.projectId);
     let contextMapSummary = '';
     try {
@@ -496,7 +504,7 @@ export async function deliverAgentTerminalContext(opts: {
       terminalId: opts.terminalId,
       agentSlug: opts.agentSlug,
       agentName: name,
-      agentPrompt: prompt,
+      agentPrompt: effectivePrompt,
       projectName: opts.projectName,
       projectContext,
       contextMapSummary,
