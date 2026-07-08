@@ -441,7 +441,7 @@ do
 done
 printf "\n\n"
 printf "%b\n" "${CYAN}  +--------------------------------------------------+${RESET}"
-printf "%b\n" "${CYAN}  |${RESET}${VIOLET}${BOLD}              J  A  R  V  I  S    O  N  E           ${RESET}${CYAN}|${RESET}"
+printf "%b\n" "${CYAN}  |${RESET}${VIOLET}${BOLD}            V  I  B  E  S  P  A  C  E             ${RESET}${CYAN}|${RESET}"
 printf "%b\n" "${BLUE}  |${RESET}${DIM}             INTELLIGENT DESKTOP SYSTEM             ${RESET}${BLUE}|${RESET}"
 printf "%b\n" "${VIOLET}  +--------------------------------------------------+${RESET}"
 printf "%b\n" "${PINK}       * ${CYAN}VOICE${PINK} * ${BLUE}AGENTS${PINK} * ${VIOLET}MEMORY${PINK} * ${GREEN}AUTOMATION${RESET}"
