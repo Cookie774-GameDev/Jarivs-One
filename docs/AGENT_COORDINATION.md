@@ -1075,6 +1075,18 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Status** | releasing |
 | **Commit** | — |
 
+#### 2026-07-08 — v0.1.48 launch-polish pass (Cloud Worker, branch `cursor/vibespace-launch-polish-6d99`)
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-08 |
+| **Version** | v0.1.48 |
+| **Plan** | User master-prompt execution: scoped creator push buttons, one-question wizard, Jarvis schedule executor + output viewer + recurrence, grouped agent panel with durable dismissal, Jarvis One branding removal, Linux installer launch fix (verified on Linux cloud), version bump to 0.1.48 |
+| **Files touched** | `app/src/features/chat/{MessageBubble,ChatThread.creatorScope.test}.tsx`, `app/src/features/jarvis-creator/contracts.ts`, `app/src/features/jarvis-interaction/{QuestionBlockCard,AgentActivityCard,types}.ts*` + tests, `app/src/features/schedule/{jarvisScheduleRunner,jarvisSchedules,hooks,SchedulePage}.ts*` + tests, `app/src/lib/ai/runtime.ts` (modelSelectionOverride only), `app/src/lib/actions/registry.ts` (recurrence options), `app/src/App.tsx` (runner wiring), `install/install.sh`, `install/install_new.ps1` (deleted), `tools/terminal_boot/jarvis_boot_forever.py`, version files, `CHANGELOG.md`, `releases/RELEASE_NOTES_0.1.48.md`, this ledger |
+| **Status** | committed + pushed on feature branch (PR to main) |
+| **Commit** | see branch `cursor/vibespace-launch-polish-6d99` |
+| **Note** | `releases/channel.json` intentionally NOT promoted — no 0.1.48 binaries built/signed in cloud env. Latest published GitHub release remains v0.1.45; 0.1.46/0.1.47 were source releases only. |
+
 #### 2026-07-05 — Release v0.1.47 official to main (Helper)
 
 | Field | Value |

@@ -2,6 +2,28 @@
 
 All notable changes to Jarvis are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.48] - 2026-07-08
+
+### Added
+
+- **Jarvis Action executor** — scheduled Jarvis Actions now run at their due time while the app is open, on the model saved with the action; outputs collect in a dedicated per-action chat.
+- **Jarvis Actions view** — the Schedule timeline gains a Jarvis Actions toggle listing every action with run counts, next run, and a click-to-open output viewer inside Schedule.
+- **Recurring Jarvis Actions** — once / daily / weekdays / weekly / monthly presets in the Schedule form; recurrence advances safely after each run.
+- **Question wizard** — Jarvis creator question blocks show one question at a time with Next/Back, real progress, Cancel, keyboard submit (Ctrl/Cmd+Enter), and session draft persistence.
+
+### Improved
+
+- **Multitask panel** — Agents and Subagents render in separate labeled sections; dismissal persists per chat for the session and clears when newer agent work starts.
+- **Missed run policy** — schedule runs missed by more than 6 hours are recorded in the action's history instead of replaying a stale backlog; duplicate occurrences can never double-fire.
+- **Schedule form** — Jarvis mode only asks for a run time (no end time), blocks duplicate title+time saves, and labels the save button accordingly.
+
+### Fixed
+
+- **Creator push buttons** — "Push to agent" / "Push to skill" now appear only on assistant draft replies inside creator chats; user messages, seeded prompts, and normal conversations never show them. Loose skill-draft detection requires multiple hints instead of the word "skill".
+- **Linux install** — auto-launch after install and the desktop entry use the absolute installed binary path; previously both failed when `~/.local/bin` was not on PATH.
+- **Branding** — removed the last "JARVIS ONE" banners from the embedded terminal launcher (`install.sh`) and the Windows terminal boot screen; deleted the redundant `install_new.ps1` duplicate.
+- **Schedule action registry** — removed `custom_interval` / `custom_days` recurrence options that silently behaved as one-shot schedules.
+
 ## [0.1.47] - 2026-07-05
 
 ### Shipped
