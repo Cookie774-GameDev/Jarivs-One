@@ -109,7 +109,7 @@ Append new entries at the **bottom** of the relevant agent section. Use [How to 
 | **Plan** | Fix React maximum update depth (#185) in Inspector/Composer/pickers; Ollama API-first connect without tray dependency; restore `install/install.ps1` before commit |
 | **Files touched** | `Inspector.tsx`, `Composer.tsx`, `pickerScroll.ts`, picker typeaheads, `ChatActivityTimeline.tsx`, `InspectorMilestonesPanel.tsx`, `local_ai.rs`, `ollama.ts`, `OllamaConnectionHost.tsx`, `LocalModels.tsx`, `models.ts`, tests, coordination ledger |
 | **Status** | committed + pushed |
-| **Commit** | pending — `fix: React #185 Inspector loops and Ollama API-first connect` |
+| **Commit** | `f9676c6` — `fix: React #185 Inspector loops and Ollama API-first connect` |
 
 ---
 
