@@ -773,7 +773,7 @@ export function Voice({ active = true }: { active?: boolean } = {}) {
               <div className="flex flex-wrap items-center gap-2">
                 <KokoroStatusBadge status={kokoroStatus} percent={kokoroPercent} />
                 <span className="text-metadata text-muted-foreground">
-                  Kokoro-82M neural voice · ~82 MB · downloads once
+                  Kokoro-82M neural voice · ~89 MB · downloads once on first use
                 </span>
               </div>
               <div className="flex items-center gap-2">

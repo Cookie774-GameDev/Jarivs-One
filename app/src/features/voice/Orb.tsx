@@ -85,6 +85,16 @@ const STYLES: Record<VoiceState, StateStyle> = {
     saturation: 1.05,
     hueShift: 0,
   },
+  paused: {
+    scale: 0.98,
+    brightness: 0.85,
+    haloScale: 0.98,
+    haloOpacity: 0.5,
+    conicSeconds: 16,
+    pulseSeconds: 6,
+    saturation: 0.8,
+    hueShift: 0,
+  },
   error: {
     scale: 0.96,
     brightness: 0.7,

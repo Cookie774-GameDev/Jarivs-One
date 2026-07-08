@@ -19,7 +19,7 @@ import { VoiceService } from './VoiceService';
 import { SPEECH_SYNTHESIS_END_EVENT, SPEECH_SYNTHESIS_START_EVENT, STREAMING_VOICE_END_EVENT, STREAMING_VOICE_START_EVENT } from './speechSynthesis';
 import { PERSONAS } from './personas';
 import { VoiceActivityWaveform } from './VoiceActivityWaveform';
-import { handleVoiceModuleClosed } from './voiceRouter';
+import { handleVoiceModuleClosed, stopCurrentVoiceResponse } from './voiceRouter';
 import { resolveVoiceListenTimeoutMs } from './voiceConversation';
 import {
   modelSelectionContextFromAuth,
@@ -37,6 +37,7 @@ const STATE_LABEL: Record<VoiceState, string> = {
   listening: 'Listening',
   thinking: 'Thinking',
   speaking: 'Speaking',
+  paused: 'Paused — click the orb to resume',
   error: 'Voice error',
 };
 
@@ -231,6 +232,10 @@ export function VoiceModal() {
   const streamingReplyRef = React.useRef(false);
   const listeningArmedRef = React.useRef(false);
   const turnBusyRef = React.useRef(false);
+  // True when the mic was actively listening as external speech (e.g. a
+  // Settings voice preview) started - so we can hand the mic back afterwards
+  // instead of leaving push-to-talk silently disarmed.
+  const resumeListeningAfterSpeechRef = React.useRef(false);
   const personaCfg = PERSONAS[persona];
 
   // Drag state — primary-button drag on the panel chrome, clamped to viewport
@@ -306,7 +311,26 @@ export function VoiceModal() {
     return started;
   }, []);
 
+  /** Stop the current spoken reply and hand control straight back to the user. */
+  const stopSpeaking = React.useCallback(() => {
+    stopCurrentVoiceResponse();
+    speakingRef.current = false;
+    streamingReplyRef.current = false;
+    turnBusyRef.current = false;
+    resumeListeningAfterSpeechRef.current = false;
+    if (useAuthStore.getState().voiceAutoListenOnOpen) {
+      listeningArmedRef.current = true;
+      startListening();
+    } else {
+      useVoiceStore.getState().setState('idle');
+    }
+  }, [startListening]);
+
   const toggleListening = React.useCallback(() => {
+    if (state === 'speaking' || speakingRef.current) {
+      stopSpeaking();
+      return;
+    }
     if (state === 'listening' || useUIStore.getState().voiceListening) {
       stopListening('idle');
       return;
@@ -315,7 +339,7 @@ export function VoiceModal() {
       listeningArmedRef.current = true;
     }
     startListening();
-  }, [startListening, state, stopListening, voiceAutoListenOnOpen]);
+  }, [startListening, state, stopListening, stopSpeaking, voiceAutoListenOnOpen]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -371,6 +395,12 @@ export function VoiceModal() {
           listeningArmedRef.current = true;
           pendingUtteranceRef.current = '';
           useVoiceStore.getState().setPartialTranscript('');
+          restartListening();
+        } else if (resumeListeningAfterSpeechRef.current) {
+          // External speech (e.g. a Settings voice preview) interrupted an
+          // armed push-to-talk mic - hand it back instead of going silent.
+          resumeListeningAfterSpeechRef.current = false;
+          listeningArmedRef.current = true;
           restartListening();
         } else {
           useVoiceStore.getState().setState('idle');
@@ -557,7 +587,9 @@ export function VoiceModal() {
           pendingUtteranceRef.current = '';
           useVoiceStore.getState().setPartialTranscript('');
         }
-        stopListening('idle');
+        // Visible pause instead of a silent shutoff - the label tells the
+        // user the mic stopped and how to resume.
+        stopListening('paused');
       }),
     ];
 
@@ -576,6 +608,10 @@ export function VoiceModal() {
     };
     const onSpeechStart = () => {
       if (streamingReplyRef.current) return;
+      // Capture BEFORE flipping turnBusy: a mid-listen preview (turn not
+      // busy, mic live) must resume the mic after the speech ends.
+      resumeListeningAfterSpeechRef.current =
+        !turnBusyRef.current && !handsFree() && VoiceService.isListening();
       turnBusyRef.current = true;
       speakingRef.current = true;
       stopMicForTurn();
@@ -675,18 +711,26 @@ export function VoiceModal() {
                 (state === 'listening' || state === 'speaking') && 'is-active',
               )}
               aria-label={
-                state === 'listening'
-                  ? 'Stop listening'
-                  : voiceAutoListenOnOpen
-                    ? 'Listening active'
-                    : 'Click to talk'
+                state === 'speaking'
+                  ? 'Stop response'
+                  : state === 'listening'
+                    ? 'Stop listening'
+                    : state === 'paused'
+                      ? 'Resume listening'
+                      : voiceAutoListenOnOpen
+                        ? 'Listening active'
+                        : 'Click to talk'
               }
               title={
-                state === 'listening'
-                  ? 'Stop listening'
-                  : voiceAutoListenOnOpen
-                    ? `Hands-free — say "${voiceCommitPhrase}" to send`
-                    : 'Click to let Jarvis hear you'
+                state === 'speaking'
+                  ? 'Stop Jarvis mid-reply and ask something else'
+                  : state === 'listening'
+                    ? 'Stop listening'
+                    : state === 'paused'
+                      ? 'Listening paused after silence — click to resume'
+                      : voiceAutoListenOnOpen
+                        ? `Hands-free — say "${voiceCommitPhrase}" to send`
+                        : 'Click to let Jarvis hear you'
               }
             >
               <SymbioteOrb state={state} size={30} />

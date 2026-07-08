@@ -4,6 +4,7 @@
  * runtime always speak through the same path.
  */
 import type { VoiceEngine, VoicePresetId } from '@/types/common';
+import { toast } from '@/components/ui/toast';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import type { VoiceTtsPreset } from './voicePlans';
@@ -87,7 +88,15 @@ const KOKORO_CACHE_MAX = 64;
 
 let kokoroBootstrapPromise: Promise<void> | null = null;
 
-/** Background Kokoro download on desktop launch (non-blocking, idempotent). */
+/**
+ * Background Kokoro download on desktop launch (non-blocking, idempotent).
+ *
+ * Not silent when it matters: if Kokoro is the user's SELECTED voice engine
+ * and the model cannot be prepared (download failed, checksum mismatch,
+ * engine not compiled), a toast explains that replies will fall back to the
+ * installed system voice and points at Settings → Voice to retry. Users on
+ * other engines are not nagged - the download stays best-effort for them.
+ */
 export async function bootstrapKokoroVoiceOnLaunch(): Promise<void> {
   if (kokoroBootstrapPromise) return kokoroBootstrapPromise;
   kokoroBootstrapPromise = (async () => {
@@ -96,7 +105,13 @@ export async function bootstrapKokoroVoiceOnLaunch(): Promise<void> {
     } catch {
       return;
     }
-    await ensureKokoroReadyForSpeech();
+    const ready = await ensureKokoroReadyForSpeech();
+    if (!ready && useAuthStore.getState().voiceEngine === 'kokoro') {
+      toast.warning(
+        'Kokoro voice not ready',
+        'The local neural voice model could not be prepared. Jarvis will use the installed system voice for now — open Settings → Voice to retry the download.',
+      );
+    }
   })().catch(() => {
     /* download is best-effort; Windows/local voice remains fallback */
   });
@@ -236,6 +251,22 @@ export function stopAllVoiceOutput(): void {
   activeStreamingSession = null;
   streaming?.haltPlayback();
   stopPlaybackOnly();
+}
+
+/**
+ * Stop the current spoken reply mid-response WITHOUT closing the voice panel:
+ * cancels the in-flight AI run and halts every playback engine so the user
+ * can immediately ask something else. Used by the orb's stop control.
+ */
+export function stopCurrentVoiceResponse(): void {
+  if (typeof window !== 'undefined') {
+    try {
+      window.dispatchEvent(new CustomEvent('jarvis:cancel'));
+    } catch {
+      /* ignore */
+    }
+  }
+  stopAllVoiceOutput();
 }
 
 export interface SpeakWithSettingsOptions {
