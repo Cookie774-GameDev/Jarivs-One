@@ -26,6 +26,13 @@ function extractText(message: Message): string {
 export function MessageBubble({ message, compact = false, creatorDraftKind }: MessageBubbleProps) {
   const agent = useAgentStore((s) => (message.agent_id ? s.agents[message.agent_id] : undefined));
 
+  // Creator "Push to agent/skill" buttons belong only on real Jarvis draft
+  // replies: assistant messages in a creator thread that are not the seeded
+  // question prompt itself. User, system, and tool messages never qualify.
+  const isCreatorSeedMessage = message.parts.some((p) => p.kind === 'question_block');
+  const assistantCreatorDraftKind =
+    message.role === 'assistant' && !isCreatorSeedMessage ? creatorDraftKind : undefined;
+
   // A Hive ensemble reply carries one or more `stack_step` parts. When present
   // we wrap the response in a soft, warm radiant glow that matches the cozy
   // composer halo.
@@ -68,7 +75,7 @@ export function MessageBubble({ message, compact = false, creatorDraftKind }: Me
         <div className={cn('rounded-md border border-dashed border-border bg-elevated/60 px-3 py-2 text-center', compact ? 'max-w-full text-metadata' : 'max-w-[60ch]')}>
           <div className="flex flex-col gap-1.5 text-secondary text-muted-foreground">
               {message.parts.map((part, i) => (
-              <MessagePart key={i} part={part} allParts={message.parts} messageId={message.id} chatId={message.chat_id} creatorDraftKind={creatorDraftKind} />
+              <MessagePart key={i} part={part} allParts={message.parts} messageId={message.id} chatId={message.chat_id} />
             ))}
           </div>
         </div>
@@ -87,7 +94,7 @@ export function MessageBubble({ message, compact = false, creatorDraftKind }: Me
         className="flex w-full flex-col gap-1.5"
       >
               {message.parts.map((part, i) => (
-          <MessagePart key={i} part={part} allParts={message.parts} messageId={message.id} chatId={message.chat_id} creatorDraftKind={creatorDraftKind} />
+          <MessagePart key={i} part={part} allParts={message.parts} messageId={message.id} chatId={message.chat_id} />
         ))}
       </motion.div>
     );
@@ -107,7 +114,7 @@ export function MessageBubble({ message, compact = false, creatorDraftKind }: Me
           <div className="rounded-lg bg-muted px-3 py-2 text-foreground min-w-0 w-full overflow-hidden break-all">
             <div className="flex flex-col gap-2">
               {message.parts.map((part, i) => (
-                <MessagePart key={i} part={part} allParts={message.parts} messageId={message.id} chatId={message.chat_id} creatorDraftKind={creatorDraftKind} />
+                <MessagePart key={i} part={part} allParts={message.parts} messageId={message.id} chatId={message.chat_id} />
               ))}
             </div>
           </div>
@@ -157,7 +164,7 @@ export function MessageBubble({ message, compact = false, creatorDraftKind }: Me
           >
             <div className="flex flex-col gap-2">
               {message.parts.map((part, i) => (
-                <MessagePart key={i} part={part} allParts={message.parts} messageId={message.id} chatId={message.chat_id} hiveWords={isHiveResponse} creatorDraftKind={creatorDraftKind} />
+                <MessagePart key={i} part={part} allParts={message.parts} messageId={message.id} chatId={message.chat_id} hiveWords={isHiveResponse} creatorDraftKind={assistantCreatorDraftKind} />
               ))}
             </div>
           </div>

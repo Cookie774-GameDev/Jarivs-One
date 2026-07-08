@@ -220,14 +220,17 @@ function cleanDraftName(value: string): string {
 
 function looksLikeCreatorSkillMarkdown(text: string): boolean {
   const normalized = text.toLowerCase();
-  return (
-    normalized.includes('additional aspects') ||
-    normalized.includes('runtime instructions') ||
-    normalized.includes('custom instructions') ||
-    normalized.includes('skill') ||
-    normalized.includes('assistant should') ||
-    normalized.includes('conversation experience')
-  );
+  // Require at least two independent draft hints. A single incidental word
+  // like "skill" in normal prose must not surface a Push button; when the
+  // content is ambiguous we hide the action by default.
+  const hints = [
+    /additional aspects|runtime instructions|custom instructions/.test(normalized),
+    /\bskill\b/.test(normalized),
+    /assistant should|conversation experience/.test(normalized),
+    /boundaries|do not|avoid|must not|when to use/.test(normalized),
+    /^\s*(?:[-*+]|\d+\.)\s+/m.test(text),
+  ];
+  return hints.filter(Boolean).length >= 2;
 }
 
 function looksLikeCreatorAgentMarkdown(text: string): boolean {

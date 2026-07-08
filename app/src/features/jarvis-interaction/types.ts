@@ -34,7 +34,7 @@ export interface JarvisQuestionBlock {
   description?: string;
   questions: JarvisQuestion[];
   answers?: JarvisQuestionAnswer[];
-  status: 'pending' | 'answered' | 'skipped';
+  status: 'pending' | 'answered' | 'skipped' | 'cancelled';
 }
 
 export interface JarvisPlanReview {

@@ -1052,14 +1052,15 @@ const SCHEDULE_ACTIONS: ActionDef[] = [
         label: 'Recurrence',
         type: 'select',
         default: 'once',
+        // Only recurrences the expansion engine and runner actually execute.
+        // custom_interval / custom_days were removed: they silently behaved
+        // as one-shot schedules everywhere.
         options: [
           { value: 'once', label: 'Once' },
           { value: 'daily', label: 'Daily' },
           { value: 'weekly', label: 'Weekly' },
           { value: 'monthly', label: 'Monthly' },
           { value: 'weekdays', label: 'Weekdays' },
-          { value: 'custom_interval', label: 'Custom interval' },
-          { value: 'custom_days', label: 'Custom days' },
         ],
       },
       { key: 'agentId', label: 'Agent id', type: 'string', required: false, help: 'Real agent id to use. Omit to use Jarvis/default chat agent.' },

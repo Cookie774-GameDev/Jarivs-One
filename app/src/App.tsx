@@ -50,6 +50,7 @@ import type { ChatId, MessageId } from '@/types/common';
 import { useHotkey, HOTKEYS } from '@/lib/hotkeys';
 import { DevConsoleHost } from '@/features/dev-console';
 import { initTerminalScheduler } from '@/features/terminals/terminalScheduler';
+import { startJarvisScheduleRunner } from '@/features/schedule/jarvisScheduleRunner';
 import { UpdateWarningHost } from '@/features/updates/UpdateWarningHost';
 import { flushWorkspacePersistence } from '@/lib/persistence/workspaceFlush';
 import { GlobalDictationOverlay } from '@/features/global-dictation/GlobalDictationOverlay';
@@ -235,6 +236,7 @@ function useBoot() {
     let stopRuntime: (() => void) | undefined;
     let stopNotifications: (() => void) | undefined;
     let stopTerminalScheduler: (() => void) | undefined;
+    let stopJarvisScheduleRunner: (() => void) | undefined;
     let stopSyncLoop: (() => void) | undefined;
     let stopCloudAuth: (() => void) | undefined;
     let cancelled = false;
@@ -352,6 +354,7 @@ function useBoot() {
       // Phase 5: background loops
       try { stopNotifications = startNotificationLoop(); } catch (err) { console.error('Failed to start notification loop:', err); }
       try { stopTerminalScheduler = initTerminalScheduler(); } catch (err) { console.error('Failed to start terminal scheduler:', err); }
+      try { stopJarvisScheduleRunner = startJarvisScheduleRunner(); } catch (err) { console.error('Failed to start Jarvis schedule runner:', err); }
 
       // Phase 6: Kokoro neural voice (background — default TTS, ~89 MB one-time)
       void import('@/features/voice/voiceRouter')
@@ -369,6 +372,7 @@ function useBoot() {
       stopRuntime?.();
       stopNotifications?.();
       stopTerminalScheduler?.();
+      stopJarvisScheduleRunner?.();
       stopSyncLoop?.();
       stopCloudAuth?.();
     };

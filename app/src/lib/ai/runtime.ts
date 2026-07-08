@@ -50,6 +50,7 @@ import {
   modelSelectionContextFromAuth,
   resolveActiveStackPreset,
   validateSendModelAccess,
+  type ChatModelSelection,
 } from './modelSelection';
 
 import {
@@ -132,6 +133,12 @@ export interface SendDetail {
   interactionMode?: JarvisInteractionMode;
   /** Durable structured UI context, such as answered question cards. */
   structuredContext?: JarvisStructuredContext;
+  /**
+   * Per-send model selection override. Used by scheduled Jarvis Actions so a
+   * saved schedule runs on its stored model instead of whatever the composer
+   * currently has selected. Omit for normal composer sends.
+   */
+  modelSelectionOverride?: ChatModelSelection;
 }
 
 /** The shape of the `jarvis:cancel` event detail. */
@@ -720,9 +727,10 @@ export function startRuntimeListener(
     const authState = useAuthStore.getState();
     const interactionMode = detail.interactionMode ?? useJarvisInteractionStore.getState().modeForChat(chatId);
     const modelCtx = modelSelectionContextFromAuth(authState);
+    const chatModelSelection = detail.modelSelectionOverride ?? authState.chatModelSelection;
     const sendValidation = validateSendModelAccess(
       text,
-      authState.chatModelSelection,
+      chatModelSelection,
       modelCtx,
       authState.stackCustomSteps,
       {
@@ -738,7 +746,7 @@ export function startRuntimeListener(
     useAllAboutMeStore.getState().recordUserMessage();
 
     const stackSlash = parseStackSlashCommand(text);
-    const stackPreset = resolveActiveStackPreset(authState.chatModelSelection, stackSlash);
+    const stackPreset = resolveActiveStackPreset(chatModelSelection, stackSlash);
     const stackText = stackSlash.matched ? stackSlash.text : text;
     const stackTaskType = stackSlash.taskType ?? classifyStackTask(stackText);
 
@@ -838,7 +846,7 @@ export function startRuntimeListener(
       authState.stackCustomSteps,
     );
     if (stackStepsEarly.length === 0) {
-      runnable = applyChatModelSelectionToAgent(runnable, authState.chatModelSelection);
+      runnable = applyChatModelSelectionToAgent(runnable, chatModelSelection);
     }
 
     // V3 — Splice in any terminal-pane transcript bound to this
