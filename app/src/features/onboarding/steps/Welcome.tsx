@@ -1,6 +1,7 @@
 import { motion } from 'motion/react';
 import { Sparkles, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { CURRENT_VERSION } from '@/features/whats-new/releases';
 
 interface WelcomeProps {
   onNext: () => void;
@@ -20,7 +21,7 @@ export function Welcome({ onNext }: WelcomeProps) {
       >
         <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-elevated/60 backdrop-blur-sm px-3 py-1 text-metadata text-muted-foreground">
           <Sparkles className="h-3 w-3 text-accent-cyan" />
-          Voltage v0.1
+          VibeSpace v{CURRENT_VERSION}
         </span>
 
         <h1 className="text-hero leading-tight">
@@ -28,8 +29,8 @@ export function Welcome({ onNext }: WelcomeProps) {
         </h1>
 
         <p className="text-body text-muted-foreground max-w-md">
-          A keyboard-first council of agents. Local by default, cloud when you want it. Voice when
-          your hands are full.
+          Your assistant inside VibeSpace — a keyboard-first council of agents. Local by default,
+          cloud when you want it. Voice when your hands are full.
         </p>
 
         <Button variant="accent" size="lg" onClick={onNext} className="mt-4">

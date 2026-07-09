@@ -1133,6 +1133,17 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Verification** | 880 tests / 165 files GREEN; typecheck, build, cargo check, cargo test --lib 10/10, release-manifest, installer parsers, site serve incl. /billing pages, secret scans clean |
 | **Known server-side gaps (deferred, external deploys needed)** | phone-jarvis `/livekit/token` + `/outbound/call` lack plan/budget checks; `stack-complete` has no per-tier model allowlist; hosted single-model chat labels exist while `message-complete` is not yet called by the app |
 
+#### 2026-07-09 — Final cross-platform validation pass (Cloud Worker, branch `cursor/vibespace-launch-polish-6d99`)
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-09 |
+| **Version** | v0.1.48 |
+| **Plan** | Validation-only checklist run: fresh full check battery, real Linux desktop boot of `tauri dev --features kokoro` under xvfb (app rendered onboarding, interactive clicks advanced steps, no panics), scripted browser boot validation (all routes + settings, zero console errors), site/billing asset checks, secret/stale-copy scans. One real blocker fixed: first-launch onboarding showed stale "Voltage v0.1" branding — now "VibeSpace v0.1.48" with Jarvis-is-the-assistant copy. |
+| **Files touched** | `app/src/features/onboarding/steps/Welcome.tsx`, `scripts/boot-validation.mjs` (new), this ledger |
+| **Status** | committed + pushed (PR #15) |
+| **Verification** | 880 tests / 165 files GREEN post-fix; typecheck, build, cargo check/test, release-manifest, installers, site JS/CSS, secret scans all green. Desktop kokoro-feature build links after adding libstdc++ dev symlink (VM env gap, documented). |
+
 #### 2026-07-05 — Release v0.1.47 official to main (Helper)
 
 | Field | Value |
