@@ -31,7 +31,7 @@ Capture at 1440×900 or larger, default zoom, `jarvis-core` theme, demo data onl
 | Agent/subagent panel | `/multitask fix the header layout` in chat |
 | Orchestration approval card | Ask Jarvis: "close all terminals, open 4 with claude, two as code agents and two as reviewers…" |
 
-- **Windows**: Win+Shift+S (Snipping Tool). Build/run from `C:\Users\viper\VibeSpace`: `npm install && npm run tauri:dev`.
+- **Windows**: Win+Shift+S (Snipping Tool). Build/run from your local clone: `npm install && npm run tauri:dev`.
 - **macOS**: Cmd+Shift+4, space for window capture.
 - **Linux (X11)**: `gnome-screenshot -w` or `scrot -s`; Wayland: `grim -g "$(slurp)"`.
 
