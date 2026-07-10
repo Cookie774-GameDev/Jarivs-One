@@ -1,7 +1,4 @@
-# Run lint, typecheck, and tests on pull requests + every push to main.
-# Catches the kind of stale-tsbuildinfo / drift bugs that bit us during
-# the 0.1.5 release prep.
-
+# Run typecheck, builds, tests, and backend policy checks on pull requests and main.
 name: CI
 
 on:
@@ -11,9 +8,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
-  # Cancel previous runs of the same workflow on the same branch/PR so
-  # we don't rack up minutes when a developer pushes 5 commits in a row.
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
@@ -21,7 +19,7 @@ jobs:
   frontend:
     name: Frontend (typecheck + build + test)
     runs-on: ubuntu-22.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
 
@@ -31,7 +29,30 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
+
+      - name: Check Supabase Edge Function JWT policy parity
+        id: supabase-parity
+        shell: bash
+        run: |
+          set +e
+          node scripts/check-supabase-function-parity.mjs > supabase-parity-report.txt 2>&1
+          code=$?
+          cat supabase-parity-report.txt
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload Supabase parity diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: supabase-parity-report
+          path: supabase-parity-report.txt
+          retention-days: 7
+
+      - name: Enforce Supabase policy parity
+        if: steps.supabase-parity.outputs.exit_code != '0'
+        run: exit 1
 
       - name: Typecheck
         run: npm run typecheck

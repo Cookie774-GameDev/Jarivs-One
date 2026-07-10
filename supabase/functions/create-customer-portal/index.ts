@@ -5,17 +5,29 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.46.2';
 import Stripe from 'https://esm.sh/stripe@14.21.0?target=deno';
 import { json } from '../_shared/voice.ts';
 
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
-const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
+const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const STRIPE_SECRET_KEY = Deno.env.get('STRIPE_SECRET_KEY') ?? '';
-const APP_BASE_URL = Deno.env.get('APP_BASE_URL') ?? 'https://cookie774-gamedev.github.io/VibeSpace';
+const APP_BASE_URL = (Deno.env.get('APP_BASE_URL') ?? 'https://vibespaceos.com').replace(/\/$/, '');
+
+function isSafeAppBaseUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.username === '' && url.password === '';
+  } catch {
+    return false;
+  }
+}
 
 Deno.serve(async (req: Request): Promise<Response> => {
   const origin = req.headers.get('origin');
   if (req.method === 'OPTIONS') return new Response(null, { headers: json({}, 200, origin).headers });
   if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405, origin);
-  if (!STRIPE_SECRET_KEY) return json({ error: 'billing_unconfigured' }, 500, origin);
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SUPABASE_SERVICE_ROLE_KEY || !STRIPE_SECRET_KEY) {
+    return json({ error: 'billing_unconfigured' }, 503, origin);
+  }
+  if (!isSafeAppBaseUrl(APP_BASE_URL)) return json({ error: 'billing_redirect_unconfigured' }, 503, origin);
 
   const jwt = (req.headers.get('authorization') || '').match(/^Bearer\s+(.+)$/i)?.[1];
   if (!jwt) return json({ error: 'unauthorized' }, 401, origin);
@@ -27,22 +39,34 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  const { data: profile } = await admin
-    .from('profiles')
-    .select('stripe_customer_id')
-    .eq('id', userData.user.id)
-    .maybeSingle();
-  const customerId = profile?.stripe_customer_id as string | undefined;
-  if (!customerId) return json({ error: 'no_customer' }, 404, origin);
 
-  const stripe = new Stripe(STRIPE_SECRET_KEY, {
-    apiVersion: '2024-12-18.acacia',
-    httpClient: Stripe.createFetchHttpClient(),
-  });
-  const portal = await stripe.billingPortal.sessions.create({
-    customer: customerId,
-    return_url: `${APP_BASE_URL}/account`,
-  });
+  try {
+    const { data: profile, error: profileErr } = await admin
+      .from('profiles')
+      .select('stripe_customer_id')
+      .eq('id', userData.user.id)
+      .maybeSingle();
+    if (profileErr) throw new Error('profile_lookup_failed');
 
-  return json({ url: portal.url }, 200, origin);
+    const customerId = profile?.stripe_customer_id as string | undefined;
+    if (!customerId) return json({ error: 'no_customer' }, 404, origin);
+
+    const stripe = new Stripe(STRIPE_SECRET_KEY, {
+      apiVersion: '2024-12-18.acacia',
+      httpClient: Stripe.createFetchHttpClient(),
+    });
+    const portal = await stripe.billingPortal.sessions.create({
+      customer: customerId,
+      return_url: `${APP_BASE_URL}/account`,
+    });
+
+    if (!portal.url) return json({ error: 'portal_unavailable' }, 502, origin);
+    return json({ url: portal.url }, 200, origin);
+  } catch (error) {
+    console.error('[create-customer-portal] failed', {
+      code: error instanceof Error ? error.message : 'unknown',
+      user_id: userData.user.id,
+    });
+    return json({ error: 'portal_failed' }, 502, origin);
+  }
 });
