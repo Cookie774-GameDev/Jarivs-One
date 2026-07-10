@@ -345,6 +345,17 @@ Append new entries at the **bottom** of the relevant agent section. Use [How to 
 |-------------|-------------|---------|--------|-------|
 | `docs/AGENT_COORDINATION.md` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | in-progress | PR #15 merge registration, conflict decisions, verification, final SHA, and lock release |
 | `docs/superpowers/plans/2026-07-10-pr15-safe-merge.md` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | in-progress | High-risk merge execution plan |
+| `.github/workflows/pages.yml` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | in-progress | Preserve current GitHub Pages deployment behavior from main |
+| `site/CNAME` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | in-progress | Preserve `vibespaceos.com` custom domain |
+| `site/css/phone-os.css` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | in-progress | Main-side phone simulator stylesheet |
+| `site/css/style.css` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | in-progress | Merge conflict: preserve main simulator/nav structure and PR #15 accessibility/contrast |
+| `site/download.html` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | in-progress | Current download hub plus approved clean-route follow-up |
+| `site/download/index.html` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | in-progress | Current clean download route plus approved follow-up |
+| `site/images/phone-photo-*.png` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | in-progress | Main-side phone simulator photo assets 1 through 5 |
+| `site/index.html` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | in-progress | Merge conflict: preserve main landing/phone UI and compatible PR #15 accessibility/dictation/call improvements |
+| `site/js/icons.js` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | in-progress | Main-side simulator icons |
+| `site/js/motion.js` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | in-progress | Main-side site motion behavior |
+| `site/js/phone-os.js` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | in-progress | Merge conflict: preserve main simulator and a single non-duplicated speech lifecycle |
 | `app/src/features/terminals/**` | VibeSpace Main | v0.1.44 | in-progress | Urgent terminal stability, scrollback isolation, agent prompt delivery |
 | `app/src/components/layout/PageRouter.tsx` | VibeSpace Main | v0.1.44 | in-progress | Keep terminal surfaces stable across route switches |
 | `docs/AGENT_COORDINATION.md` | VibeSpace Main | v0.1.44 | in-progress | Coordination ledger for terminal reliability fix |
