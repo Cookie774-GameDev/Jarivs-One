@@ -107,6 +107,23 @@ Append new entries at the **bottom** of the relevant agent section. Use [How to 
 | **Remaining risks** | PR #17 remains draft with unresolved Dependency Review and separate billing/call hardening. Current main/PR #15 retain known Twilio callback idempotency and Stripe persistence/JWT deployment risks documented in PR #17. Installer path must be unlocked and restored or correctly converted before any push/merge. |
 | **Final status** | BLOCKED; no push, no PR update, no merge to main, no final main verification claim. All Agent 1 logical locks released below. |
 
+#### 2026-07-10 — PR #15 final merge completed
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-10 15:18 CT |
+| **Agent ID** | `AGENT-1-20260710-132900-C9F2` |
+| **Task** | Complete PR #15 merge into `main` while preserving the current landing page/website. |
+| **Final status** | complete — PR #15 merged normally into `main` with merge commit `37d240a050e7c12b1b65898ca75752b90b50b7dc`. |
+| **Backup branch** | `backup/main-before-pr15-merge-20260710-agent1` preserved pre-merge `main` at `cccf9b8f6be436980a791278445880ec7e188e4e`. |
+| **PR branch pushed** | `cursor/vibespace-launch-polish-6d99` fast-forwarded to `8216088950aadffdf7fe598489b31442687731bc`; no force push used. |
+| **Conflict decisions** | Final user direction was to keep current `main` website/landing page exactly. The committed `site/` tree in the PR head and final `main` is `31e11795ed09631b3f24ba3fe7a52c5dd4e4b199`, matching pre-merge `main`; `git diff cccf9b8f6be436980a791278445880ec7e188e4e origin/main -- site` returned no changes. |
+| **Verification** | Local: `npm run typecheck` pass; `npm --prefix app run test -- --run` pass (166 files, 881 tests); `npm run build` pass; `cargo check --manifest-path app/src-tauri/Cargo.toml --release` pass with warnings only; `cargo test --manifest-path app/src-tauri/Cargo.toml --lib` pass (11 tests); `npm run test:release-manifest` pass; `npm audit --omit=dev --audit-level=high` pass with 0 vulnerabilities; `git diff --check HEAD` pass. GitHub CI on PR #15: Frontend pass; Rust pass. |
+| **Confirmed in main** | PR #15 head `8216088950aadffdf7fe598489b31442687731bc` is an ancestor of `origin/main`; PR #16 recovery commit `c82398d` is an ancestor of `origin/main`; final `origin/main` is `37d240a050e7c12b1b65898ca75752b90b50b7dc`. |
+| **Security review** | Secret scan found only placeholders, docs examples, and environment-variable names; no live Stripe, Supabase, GitHub, Slack, or AWS secret values were committed. No production Supabase or Stripe settings were changed. |
+| **Remaining risks** | `install/install.ps1` remains a known installer-delivery risk for the exact `irm ... | iex` path because the local antivirus lock blocked a verified UTF-8 conversion test. This merge did not change the installer file. Full macOS/Linux installer execution was not performed on native macOS/Linux hosts in this session. |
+| **Locks** | Released for `site/**` and `docs/AGENT_COORDINATION.md` after this final record. |
+
 ### VibeSpace Helper
 
 #### 2026-06-16 â€” UTF-8 install.ps1 hotfix + testing guide
@@ -371,8 +388,8 @@ Append new entries at the **bottom** of the relevant agent section. Use [How to 
 | `site/js/motion.js` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | Main-side site motion behavior preserved |
 | `site/js/phone-os.js` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | Conflict resolved to single speech lifecycle |
 | `install/install.ps1` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | Blocked by Bitdefender path lock; no verified installer commit produced |
-| `site/**` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | locked | User directed final PR #15 app merge with current main website preserved byte-for-byte |
-| `docs/AGENT_COORDINATION.md` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | locked | Recording final push, checks, merge SHA, and lock release |
+| `site/**` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | Final PR #15 app merge completed; current main website preserved byte-for-byte |
+| `docs/AGENT_COORDINATION.md` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | Final push, checks, merge SHA, and lock release recorded |
 | `app/src/features/terminals/**` | VibeSpace Main | v0.1.44 | in-progress | Urgent terminal stability, scrollback isolation, agent prompt delivery |
 | `app/src/components/layout/PageRouter.tsx` | VibeSpace Main | v0.1.44 | in-progress | Keep terminal surfaces stable across route switches |
 | `docs/AGENT_COORDINATION.md` | VibeSpace Main | v0.1.44 | in-progress | Coordination ledger for terminal reliability fix |
