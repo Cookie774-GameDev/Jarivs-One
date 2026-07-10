@@ -187,6 +187,9 @@ verify_jwt = false
 [functions.jarvis-proxy]
 verify_jwt = true
 
+[functions.stack-complete]
+verify_jwt = true
+
 [functions.create-checkout-session]
 verify_jwt = true
 
