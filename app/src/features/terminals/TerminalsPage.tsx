@@ -204,6 +204,11 @@ export function TerminalsPage() {
       if (items.length === 0) return;
       setTree((cur) => {
         let next = cur;
+        // After a "close all" the tree still holds one root pane (a tree can
+        // never be empty). Orchestrations that close everything and then open
+        // a fresh batch expect exact pane counts, so the first new pane
+        // REPLACES that leftover root instead of appending next to it.
+        let replaceRootNext = false;
         for (const item of items) {
           if (item.kind === 'shell') {
             if (item.target === 'all') {
@@ -245,12 +250,19 @@ export function TerminalsPage() {
                 });
               }
             } else {
-              next = appendLeaf(next, {
+              const seed = {
                 command: defaultShell(),
                 startupCommand: item.command || undefined,
-                agentSlug: item.label,
+                agentSlug: item.agentSlug ?? item.label,
+                name: item.agentSlug ? item.label : undefined,
                 cwd: item.cwd,
-              });
+              };
+              if (replaceRootNext && countLeaves(next) === 1) {
+                next = newLeaf(seed);
+                replaceRootNext = false;
+              } else {
+                next = appendLeaf(next, seed);
+              }
             }
           } else if (item.kind === 'swarm') {
             // Old "swarm" tile preset — degrade to a single Jarvis pane
@@ -262,11 +274,15 @@ export function TerminalsPage() {
           } else if (item.kind === 'close') {
             // Close the N most-recently-added leaves.
             const leaves = flattenLeaves(next);
-            const toClose = leaves.slice(-Math.min(item.count, leaves.length));
+            const closeCount = Math.min(item.count, leaves.length);
+            const toClose = leaves.slice(-closeCount);
             for (const leaf of toClose) {
               const closed = closePane(next, leaf.id);
               if (closed) next = closed;
             }
+            // A full wipe leaves one un-closable root; let the next opened
+            // pane take its place so batch counts come out exact.
+            if (closeCount >= leaves.length) replaceRootNext = true;
           }
         }
         return next;

@@ -351,7 +351,7 @@ install_appimage() {
 Type=Application
 Name=VibeSpace
 Comment=The AI workspace for every model, agent, voice and task
-Exec=jarvis %U
+Exec=${target} %U
 Icon=${target}
 Terminal=false
 Categories=Office;Utility;
@@ -441,7 +441,7 @@ do
 done
 printf "\n\n"
 printf "%b\n" "${CYAN}  +--------------------------------------------------+${RESET}"
-printf "%b\n" "${CYAN}  |${RESET}${VIOLET}${BOLD}              J  A  R  V  I  S    O  N  E           ${RESET}${CYAN}|${RESET}"
+printf "%b\n" "${CYAN}  |${RESET}${VIOLET}${BOLD}            V  I  B  E  S  P  A  C  E             ${RESET}${CYAN}|${RESET}"
 printf "%b\n" "${BLUE}  |${RESET}${DIM}             INTELLIGENT DESKTOP SYSTEM             ${RESET}${BLUE}|${RESET}"
 printf "%b\n" "${VIOLET}  +--------------------------------------------------+${RESET}"
 printf "%b\n" "${PINK}       * ${CYAN}VOICE${PINK} * ${BLUE}AGENTS${PINK} * ${VIOLET}MEMORY${PINK} * ${GREEN}AUTOMATION${RESET}"
@@ -485,7 +485,13 @@ EOF
 
 launch_linux_app() {
   local runner=""
-  if command -v jarvis >/dev/null 2>&1; then
+  # Prefer the exact binary we just installed - a fresh shell often does not
+  # have ~/.local/bin on PATH yet, which used to make auto-launch fail right
+  # after a successful install.
+  local installed="$(linux_install_prefix)/bin/jarvis"
+  if [ -x "$installed" ]; then
+    runner="$installed"
+  elif command -v jarvis >/dev/null 2>&1; then
     runner="jarvis"
   elif command -v VibeSpace >/dev/null 2>&1; then
     runner="VibeSpace"

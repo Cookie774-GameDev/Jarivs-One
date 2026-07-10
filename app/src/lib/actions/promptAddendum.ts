@@ -115,6 +115,7 @@ export function buildAddendumText(): string {
     '- Jarvis supports up to 10 terminal panes. Requests for 10 are valid and should not be rejected as too many.',
     '- For "open 5 terminals with opencode" (or any bulk count), use `terminal.bulkOpen` with params like `{"count":5,"command":"opencode"}` or the preset `terminal.bulkOpen.5` — the user must click **Approve** before panes open.',
     '- `terminal.bulkOpen`, `terminal.claude`, and `terminal.opencode` are destructive: always include a clear rationale and wait for approval.',
+    '- For COMBINED requests ("close all terminals, open 10 with claude, five as code agents with prompt X and five as reviewers with prompt Y"), emit ONE `terminal.orchestrate` block: `{"closeExisting":true,"command":"claude","rolesJson":"[{\\"count\\":5,\\"agentSlug\\":\\"code-agent\\",\\"prompt\\":\\"...\\"},{\\"count\\":5,\\"agentSlug\\":\\"code-reviewer\\",\\"prompt\\":\\"...\\"}]"}`. Role prompts are delivered through AGENTS.md briefing files, never typed into the shell. One approval covers the whole plan.',
     '- Plugin tools: when the user attaches a plugin via /plug or mentions one in chat, use `plugin.call` with `{"pluginId":"<id>","toolName":"<tool>"}` — credentials never appear in prompts.',
     '- Do not claim a plugin tool ran unless an approved `plugin.call` action returned a result.',
     '- Skills: the user can type `/skills` and choose a skill for the current turn. If they ask by voice or text which skills exist, use the Available skills section below.',

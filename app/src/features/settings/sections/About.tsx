@@ -11,6 +11,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth';
+import { useUIStore } from '@/stores/ui';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
@@ -258,21 +259,33 @@ export function About() {
             <h3 className="text-ui-strong text-foreground">Updates</h3>
             <p className="text-secondary text-muted-foreground">
               Signed releases are delivered from GitHub Releases. Jarvis verifies every bundle,
-              shows pre-install warnings, and lets you update now or later.
+              shows pre-install warnings, and lets you update now or later. All terminal
+              information may not be saved across an update: layouts and recent output are
+              restored, but live terminal processes cannot survive the restart.
             </p>
           </div>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={() => void checkForUpdates()}
-            disabled={!isTauri || busy}
-          >
-            <RefreshCw
-              className={updatePhase === 'checking' ? 'h-3.5 w-3.5 animate-spin' : 'h-3.5 w-3.5'}
-            />
-            Check now
-          </Button>
+          <div className="flex shrink-0 flex-col items-end gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => void checkForUpdates()}
+              disabled={!isTauri || busy}
+            >
+              <RefreshCw
+                className={updatePhase === 'checking' ? 'h-3.5 w-3.5 animate-spin' : 'h-3.5 w-3.5'}
+              />
+              Check now
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => useUIStore.getState().setWhatsNewOpen(true)}
+            >
+              What&apos;s new
+            </Button>
+          </div>
         </div>
 
         <div className="mt-4 rounded-xl border border-border/70 bg-background/55 px-3 py-3">

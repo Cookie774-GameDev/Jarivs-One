@@ -16,6 +16,7 @@ const HOTKEY_LABELS: Record<keyof typeof HOTKEYS, string> = {
   TOGGLE_FULLSCREEN: 'Toggle fullscreen workspace',
   AMBIENT_TOGGLE: 'Toggle ambient mode',
   COMPOSER_STT: 'Voice-to-text in composer',
+  GLOBAL_DICTATION: 'VibeSpace dictation — in-app input when focused, small overlay outside',
   SCHEDULE: 'Open schedule',
   LAUNCHER: 'Open quick launcher',
   ASSISTANT: 'Open Jarvis Assistant',

@@ -22,8 +22,10 @@ import time
 from dataclasses import dataclass
 from typing import List, Optional, Sequence, Tuple
 
+# Jarvis is the assistant layer; the product is VibeSpace. The old
+# "JARVIS ONE" product tag is retired.
 APP_NAME = "JARVIS"
-APP_TAG = "ONE"
+APP_TAG = "VIBESPACE"
 SUBTITLE = "SYMBIOTE INTEGRATED INTELLIGENCE"
 READY_TEXT = "Ready for your command."
 
@@ -62,7 +64,7 @@ SMALL_LOGO = [
     r"     | |\/| | | |    | |_| || |\___ \ ",
     r"     | |  | | | |___ |  _  || | ___) |",
     r"     |_|  |_|  \____||_| |_|___|____/",
-    r"              J A R V I S   O N E",
+    r"           V I B E S P A C E",
 ]
 
 FINGERPRINT = [

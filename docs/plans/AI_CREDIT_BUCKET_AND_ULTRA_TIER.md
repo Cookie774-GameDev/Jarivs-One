@@ -197,7 +197,7 @@ Council mode with **3 agents** on the same user message ≈ **3×** single-agent
 | **Vibe Hive / stack pipelines**       | **Out of scope this release** (see §10)                                                                  |
 | **Voice module — cloud Deepgram TTS** | Separate **call/voice** Deepgram bucket                                                                  |
 | **Jarvis Call (PSTN)**                | Separate **call/voice** bucket                                                                           |
-| **Global STT (`Ctrl+CapsLock`)**      | Deepgram promo → call/voice bucket                                                                       |
+| **Global dictation (`Ctrl+Space`)**      | Deepgram promo → call/voice bucket                                                                       |
 | **SMS**                               | Separate SMS bucket                                                                                      |
 | **Local Kokoro TTS**                  | Free, unmetered                                                                                          |
 

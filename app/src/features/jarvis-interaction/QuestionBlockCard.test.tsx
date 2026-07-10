@@ -47,6 +47,7 @@ describe('QuestionBlockCard', () => {
     repo.getById.mockReset();
     repo.update.mockReset();
     repo.create.mockReset();
+    window.sessionStorage.clear();
     window.dispatchEvent = vi.fn();
     repo.getById.mockResolvedValue({
       id: 'msg_1',
@@ -58,30 +59,59 @@ describe('QuestionBlockCard', () => {
     repo.create.mockResolvedValue({});
   });
 
-  it('does not auto-advance multi-select choices before Continue', async () => {
+  it('shows one question at a time with a real progress label', () => {
+    render(<QuestionBlockCard part={blockPart} messageId={'msg_1' as never} chatId="chat_1" />);
+
+    expect(screen.getByText('Question 1 of 2')).toBeTruthy();
+    expect(screen.getByText(/Which areas should Jarvis touch/i)).toBeTruthy();
+    expect(screen.queryByText(/Anything else/i)).toBeNull();
+    expect(screen.getByRole('button', { name: /Next/i })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Continue/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Back/i })).toBeNull();
+  });
+
+  it('does not auto-advance multi-select choices before Next', async () => {
     render(<QuestionBlockCard part={blockPart} messageId={'msg_1' as never} chatId="chat_1" />);
 
     fireEvent.click(screen.getByRole('button', { name: /Chat UI/i }));
 
+    expect(screen.getByText('Question 1 of 2')).toBeTruthy();
     expect(repo.update).not.toHaveBeenCalled();
     expect(repo.create).not.toHaveBeenCalled();
     expect(window.dispatchEvent).not.toHaveBeenCalled();
   });
 
-  it('validates required answers before continuing', async () => {
+  it('validates the current required question before moving on', async () => {
     render(<QuestionBlockCard part={blockPart} messageId={'msg_1' as never} chatId="chat_1" />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Continue/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Next/i }));
 
-    expect(await screen.findByText(/Please answer the required questions/i)).toBeTruthy();
+    expect(await screen.findByText(/Please answer this question/i)).toBeTruthy();
+    expect(screen.getByText('Question 1 of 2')).toBeTruthy();
     expect(repo.update).not.toHaveBeenCalled();
+  });
+
+  it('supports Next and Back navigation while keeping answers', async () => {
+    render(<QuestionBlockCard part={blockPart} messageId={'msg_1' as never} chatId="chat_1" />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Chat UI/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Next/i }));
+
+    expect(await screen.findByText('Question 2 of 2')).toBeTruthy();
+    expect(screen.getByPlaceholderText(/Add detail/i)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /Back/i }));
+
+    expect(await screen.findByText('Question 1 of 2')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Chat UI/i }).getAttribute('aria-pressed')).toBe('true');
   });
 
   it('persists answers, creates a question_answer message, and dispatches structured context', async () => {
     render(<QuestionBlockCard part={blockPart} messageId={'msg_1' as never} chatId="chat_1" />);
 
     fireEvent.click(screen.getByRole('button', { name: /Chat UI/i }));
-    fireEvent.change(screen.getByPlaceholderText(/Add detail/i), {
+    fireEvent.click(screen.getByRole('button', { name: /Next/i }));
+    fireEvent.change(await screen.findByPlaceholderText(/Add detail/i), {
       target: { value: 'Keep it in chat only.' },
     });
     fireEvent.click(screen.getByRole('button', { name: /Continue/i }));
@@ -102,6 +132,36 @@ describe('QuestionBlockCard', () => {
         structuredContext: expect.objectContaining({ kind: 'question_answers' }),
       }),
     }));
+  });
+
+  it('restores in-progress draft answers after remount', async () => {
+    const first = render(<QuestionBlockCard part={blockPart} messageId={'msg_1' as never} chatId="chat_1" />);
+    fireEvent.click(screen.getByRole('button', { name: /Chat UI/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Next/i }));
+    fireEvent.change(await screen.findByPlaceholderText(/Add detail/i), {
+      target: { value: 'Draft answer in progress' },
+    });
+    first.unmount();
+
+    render(<QuestionBlockCard part={blockPart} messageId={'msg_1' as never} chatId="chat_1" />);
+
+    expect(screen.getByText('Question 2 of 2')).toBeTruthy();
+    expect((screen.getByPlaceholderText(/Add detail/i) as HTMLTextAreaElement).value).toBe('Draft answer in progress');
+
+    fireEvent.click(screen.getByRole('button', { name: /Back/i }));
+    expect(screen.getByRole('button', { name: /Chat UI/i }).getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('cancels without sending anything to Jarvis', async () => {
+    render(<QuestionBlockCard part={blockPart} messageId={'msg_1' as never} chatId="chat_1" />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Cancel/i }));
+
+    await waitFor(() => expect(repo.update).toHaveBeenCalledTimes(1));
+    const updated = repo.update.mock.calls[0]?.[1] as { parts: Array<{ kind: string; block?: { status: string } }> };
+    expect(updated.parts.find((p) => p.kind === 'question_block')?.block?.status).toBe('cancelled');
+    expect(repo.create).not.toHaveBeenCalled();
+    expect(window.dispatchEvent).not.toHaveBeenCalled();
   });
 
   it('marks optional blocks skipped and dispatches skipped context', async () => {
@@ -131,5 +191,21 @@ describe('QuestionBlockCard', () => {
         }),
       }),
     }));
+  });
+
+  it('shows a single-question card without wizard chrome', () => {
+    const singlePart: Extract<Part, { kind: 'question_block' }> = {
+      ...blockPart,
+      block: {
+        ...blockPart.block,
+        questions: [blockPart.block.questions[1]],
+      },
+    };
+
+    render(<QuestionBlockCard part={singlePart} messageId={'msg_1' as never} chatId="chat_1" />);
+
+    expect(screen.queryByText(/Question 1 of 1/i)).toBeNull();
+    expect(screen.queryByRole('button', { name: /Next/i })).toBeNull();
+    expect(screen.getByRole('button', { name: /Continue/i })).toBeTruthy();
   });
 });

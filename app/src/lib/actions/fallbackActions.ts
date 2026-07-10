@@ -95,6 +95,89 @@ function extractBulkCloseTerminalRequest(text: string): { count: number } | null
   return { count };
 }
 
+interface OrchestrationRequest {
+  closeExisting: boolean;
+  command?: string;
+  roles: Array<{ count: number; agentSlug: string; prompt?: string }>;
+}
+
+function slugifyRole(label: string): string {
+  return label
+    .toLowerCase()
+    .trim()
+    .replace(/\bagents?\b/g, '')
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+/**
+ * Detect full terminal-orchestration requests like:
+ * "Close all terminals in project, open 10 new terminals, open Claude code in
+ * each one, and then put five as a code agent and another five as a code
+ * reviewer agent. For the five code reviewer agents, type this prompt: you
+ * are a code reviewer. For the code agents, type this prompt: please find
+ * any security vulnerabilities."
+ *
+ * Must run BEFORE the plain bulk open/close detectors so the whole plan
+ * lands in ONE approval card instead of two partial ones.
+ */
+function extractOrchestrationRequest(text: string): OrchestrationRequest | null {
+  const countToken = '(\\d+|one|two|three|four|five|six|seven|eight|nine|ten)';
+  const openMatch = new RegExp(`\\bopen\\s+${countToken}\\s+(?:new\\s+)?terminals?\\b`).exec(text);
+  const openCount = readTerminalCount(openMatch?.[1]);
+  if (!openCount) return null;
+
+  // Role split: "put five as a code agent and another five as a code reviewer agent"
+  const rolePattern = new RegExp(
+    `\\b${countToken}\\s+(?:of\\s+them\\s+)?as\\s+(?:an?\\s+)?([a-z][a-z ]{1,40}?)\\s+agents?\\b`,
+    'g',
+  );
+  const roles: Array<{ count: number; agentSlug: string; label: string; prompt?: string }> = [];
+  for (const match of text.matchAll(rolePattern)) {
+    const count = readTerminalCount(match[1]);
+    const label = (match[2] ?? '').trim();
+    const agentSlug = slugifyRole(label);
+    if (!count || !agentSlug) continue;
+    roles.push({ count, agentSlug, label });
+  }
+  if (roles.length < 2) return null;
+
+  // Prompts: "for the [five] code reviewer agents, type this prompt: ..."
+  const promptPattern = /for\s+the\s+(?:\w+\s+)?([a-z][a-z ]{1,40}?)\s+agents?[,:]?\s*(?:please\s+)?(?:type|use|give(?:\s+them)?|send)\s+(?:this|the)\s+prompt[.:]?\s*([^.]+(?:\.[^]*?)?)(?=\s+for\s+the\s+|\s*$)/gi;
+  for (const match of text.matchAll(promptPattern)) {
+    const slug = slugifyRole((match[1] ?? '').trim());
+    const prompt = (match[2] ?? '').trim().replace(/[.\s]+$/, '');
+    if (!slug || !prompt) continue;
+    // Prefer an exact slug match; otherwise take the LONGEST fuzzy match so
+    // "code reviewer" prompts never land on the shorter "code" role.
+    const role =
+      roles.find((entry) => entry.agentSlug === slug) ??
+      roles
+        .filter((entry) => slug.includes(entry.agentSlug) || entry.agentSlug.includes(slug))
+        .sort((a, b) => b.agentSlug.length - a.agentSlug.length)[0];
+    if (role) role.prompt = prompt;
+  }
+
+  const commandMatch = /\b(?:open|run|start|launch)\s+(claude(?:\s+code)?|opencode|open-code|codex|gemini)\b/.exec(text);
+  const command = commandMatch
+    ? commandMatch[1]!.replace(/\s+code$/, '').replace('open-code', 'opencode')
+    : undefined;
+
+  const closeExisting = /\bclose\s+all\s+(?:the\s+)?terminals?\b/.test(text);
+  const total = roles.reduce((sum, role) => sum + role.count, 0);
+  if (total > 10 || total !== openCount) {
+    // Counts disagree or exceed the pane cap - stay conservative and let
+    // the simpler detectors (or the model) handle it instead of guessing.
+    return null;
+  }
+  return {
+    closeExisting,
+    command,
+    roles: roles.map(({ count, agentSlug, prompt }) => ({ count, agentSlug, prompt })),
+  };
+}
+
 function nextWholeHour(): number {
   const date = new Date();
   date.setHours(date.getHours() + 1, 0, 0, 0);
@@ -175,6 +258,25 @@ export function inferFallbackActionProposals(
         'creator.start',
         { kind: creatorStart.kind },
         `Open the Make with Jarvis ${creatorStart.kind} creator after user approval.`,
+      ),
+    );
+    return proposals;
+  }
+
+  const orchestration = extractOrchestrationRequest(user);
+  if (orchestration) {
+    const summary = orchestration.roles
+      .map((role) => `${role.count} × ${role.agentSlug}`)
+      .join(', ');
+    proposals.push(
+      proposal(
+        'terminal.orchestrate',
+        {
+          closeExisting: orchestration.closeExisting,
+          ...(orchestration.command ? { command: orchestration.command } : {}),
+          rolesJson: JSON.stringify(orchestration.roles),
+        },
+        `${orchestration.closeExisting ? 'Close all project terminals, then open' : 'Open'} ${orchestration.roles.reduce((sum, role) => sum + role.count, 0)} terminals${orchestration.command ? ` running ${orchestration.command}` : ''} (${summary}); role prompts are delivered through AGENTS.md after user approval.`,
       ),
     );
     return proposals;

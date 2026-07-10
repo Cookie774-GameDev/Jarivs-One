@@ -2,6 +2,47 @@
 
 All notable changes to Jarvis are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.48] - 2026-07-08
+
+### Added
+
+- **Terminal orchestration action** — `terminal.orchestrate` executes a full multi-step plan behind ONE approval card: close all project terminals, open up to 10 panes running a CLI, assign agent roles per pane, and deliver each role's prompt through the AGENTS.md briefing files (never typed into shells). Deterministic fallback detection turns the full natural-language request into the same single proposal.
+- **Voice stop control** — clicking the orb mid-reply cancels the AI run and halts playback; new visible `paused` voice state replaces the silent listen-timeout shutoff.
+- **VibeSpace global dictation** — Ctrl+Space is focus-aware: inside VibeSpace it dictates straight into the focused in-app input (composer STT pipeline, no floating overlay); outside VibeSpace it opens a small VibeSpace overlay that transcribes and pastes into the focused app. Both paths share the chat STT pipeline (local faster-whisper → built-in speech recognition → Deepgram → Groq per Settings → Speech to Text), show real states with Retry/Clear controls and fix paths. It never routes through OS dictation (Windows Win+H); the composer's OS voice-typing fallback is now an explicitly-labeled last resort behind VibeSpace engines.
+- **Website demo voice** — Call Jarvis speaks its captions via browser speech synthesis (preloaded demo content only).
+
+- **Jarvis Action executor** — scheduled Jarvis Actions now run at their due time while the app is open, on the model saved with the action; outputs collect in a dedicated per-action chat.
+- **Jarvis Actions view** — the Schedule timeline gains a Jarvis Actions toggle listing every action with run counts, next run, and a click-to-open output viewer inside Schedule.
+- **Recurring Jarvis Actions** — once / daily / weekdays / weekly / monthly presets in the Schedule form; recurrence advances safely after each run.
+- **Question wizard** — Jarvis creator question blocks show one question at a time with Next/Back, real progress, Cancel, keyboard submit (Ctrl/Cmd+Enter), and session draft persistence.
+
+### Improved
+
+- **Multitask panel** — Agents and Subagents render in separate labeled sections; dismissal persists per chat for the session and clears when newer agent work starts.
+- **Missed run policy** — schedule runs missed by more than 6 hours are recorded in the action's history instead of replaying a stale backlog; duplicate occurrences can never double-fire.
+- **Schedule form** — Jarvis mode only asks for a run time (no end time), blocks duplicate title+time saves, and labels the save button accordingly.
+
+### Fixed
+
+- **Clock engine now runs** — timers and alarms created via clock actions actually fire; the engine loop was implemented but never started at boot.
+- **Eye-break overlay now renders** — the 20-20-20 wellness overlay component existed but was never mounted; `wellness.eyeBreak` now shows it.
+- **Council gating** — switching to Council mode from the palette now requires the feature flag and at least 2 registered agents, with clear messages instead of an empty grid.
+- **Hive is chat-only for real** — voice turns always use the single-model path; a Hive selection no longer routes spoken replies through the multi-step pipeline.
+- **Plugin OAuth honesty** — connectors without a live verification endpoint report "Manual Setup Required" instead of faking a successful test; keychain copy now states the browser-preview session-only behavior.
+- **Benchmark cost estimates labeled** — prices filled from the list-price catalog show a `~` prefix and an "(est.)" label instead of posing as feed data.
+- **Sticky nav readability** — the website nav used a light background over the dark warm theme (plus a stray broken CSS declaration); now dark glass, with keyboard focus rings and a skip link.
+- **About → What's new** — release notes can be reopened from Settings → About; `Mod+.` added as a documented inspector shortcut alias.
+- **package-lock version drift** — lockfile synced to 0.1.48.
+- **Mic recovery after settings changes** — a Settings voice preview that interrupts an armed push-to-talk mic re-arms it after the reply instead of leaving voice silently disabled.
+- **Kokoro missing-model honesty** — when Kokoro is the selected engine and the first-run ~89 MB download cannot complete, launch shows a clear fallback toast with a fix path; Settings copy no longer implies the model is bundled.
+- **Update warnings** — pre-update modal and Settings → About state explicitly that all terminal information may not be saved and live terminal processes cannot survive the restart.
+- **Context map root errors** — invalid path / not-a-folder / permission-denied / browser-preview roots produce precise messages instead of "no readable text files found"; failed AI passes announce the local fallback.
+- **Orchestrated close-then-open batches** — reopening a full batch after close-all now yields exact pane counts (the leftover root pane is replaced, not appended to).
+- **Creator push buttons** — "Push to agent" / "Push to skill" now appear only on assistant draft replies inside creator chats; user messages, seeded prompts, and normal conversations never show them. Loose skill-draft detection requires multiple hints instead of the word "skill".
+- **Linux install** — auto-launch after install and the desktop entry use the absolute installed binary path; previously both failed when `~/.local/bin` was not on PATH.
+- **Branding** — removed the last "JARVIS ONE" banners from the embedded terminal launcher (`install.sh`) and the Windows terminal boot screen; deleted the redundant `install_new.ps1` duplicate.
+- **Schedule action registry** — removed `custom_interval` / `custom_days` recurrence options that silently behaved as one-shot schedules.
+
 ## [0.1.47] - 2026-07-05
 
 ### Shipped

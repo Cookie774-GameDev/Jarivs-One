@@ -96,7 +96,8 @@ export function Plugins() {
           <h2 className="text-page-title text-foreground">Plugins</h2>
           <p className="mt-1 max-w-2xl text-secondary text-muted-foreground">
             Connect external services and expose controlled capabilities to Jarvis agents working in
-            terminals. Credentials stay in the operating-system keychain.
+            terminals. Credentials stay in the operating-system keychain on desktop
+            (browser preview keeps them in memory for the session only).
           </p>
         </div>
         <Badge variant={connectedCount ? 'success' : 'outline'}>{connectedCount} connected</Badge>
@@ -409,7 +410,7 @@ function PluginSetupDialog({
                 <div>
                   <p className="text-secondary font-medium text-foreground">Secure credential storage</p>
                   <p className="text-metadata text-muted-foreground">
-                    Values saved here go to the OS keychain. VibeSpace does not print them in logs or terminal context.
+                    Values saved here go to the OS keychain on desktop (session-only memory in browser preview). VibeSpace does not print them in logs or terminal context.
                   </p>
                 </div>
               </div>

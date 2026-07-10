@@ -17,6 +17,8 @@ export type VoiceState =
   | 'listening'
   | 'thinking'
   | 'speaking'
+  /** Listening stopped after silence/timeout — click the orb to resume. */
+  | 'paused'
   | 'error';
 
 export interface FinalTranscript {

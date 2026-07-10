@@ -91,6 +91,26 @@ export function AgentActivityCard({ part }: AgentActivityCardProps) {
   );
 }
 
+function dismissKey(chatId: ChatId | string): string {
+  return `jarvis-agent-panel-dismissed:${String(chatId)}`;
+}
+
+function readDismissedAt(chatId: ChatId | string): string | null {
+  try {
+    return window.sessionStorage.getItem(dismissKey(chatId));
+  } catch {
+    return null;
+  }
+}
+
+function writeDismissedAt(chatId: ChatId | string, iso: string) {
+  try {
+    window.sessionStorage.setItem(dismissKey(chatId), iso);
+  } catch {
+    // Best-effort only; the panel just reappears on remount.
+  }
+}
+
 export function ChatAgentActivityPanel({
   chatId,
   fallbackAgents = [],
@@ -98,7 +118,10 @@ export function ChatAgentActivityPanel({
   className,
 }: ChatAgentActivityPanelProps) {
   const [expanded, setExpanded] = React.useState(true);
-  const [dismissed, setDismissed] = React.useState(false);
+  const [dismissedAt, setDismissedAt] = React.useState<string | null>(() => readDismissedAt(chatId));
+  React.useEffect(() => {
+    setDismissedAt(readDismissedAt(chatId));
+  }, [chatId]);
   const storedAgents = useJarvisInteractionStore(
     (state) => state.agentsByChat[String(chatId)] ?? EMPTY_AGENTS,
   );
@@ -109,8 +132,17 @@ export function ChatAgentActivityPanel({
   const workingAgents = agents.filter(isAgentWorking);
   const panelAgents = workingAgents;
 
+  // A dismissal hides the panel until newer agent work starts, and survives
+  // route switches within the session instead of resetting on every remount.
+  const dismissed = dismissedAt !== null
+    && !panelAgents.some((agent) => agent.createdAt > dismissedAt);
+
   if (dismissed) return null;
   if (panelAgents.length === 0) return null;
+
+  const agentRows = panelAgents.filter((agent) => labelForAgent(agent) === 'Agent');
+  const subagentRows = panelAgents.filter((agent) => labelForAgent(agent) === 'Subagent');
+  const showGroupHeaders = agentRows.length > 0 && subagentRows.length > 0;
 
   const workingCount = workingAgents.length;
   const title = `${workingCount} Working`;
@@ -153,7 +185,11 @@ export function ChatAgentActivityPanel({
             type="button"
             size="icon"
             variant="ghost"
-            onClick={() => setDismissed(true)}
+            onClick={() => {
+              const iso = new Date().toISOString();
+              writeDismissedAt(chatId, iso);
+              setDismissedAt(iso);
+            }}
             aria-label="Dismiss multitask activity"
             className="h-7 w-7 rounded-full border border-orange-400/20 bg-orange-500/10 text-orange-300 hover:bg-orange-500/20"
           >
@@ -161,10 +197,27 @@ export function ChatAgentActivityPanel({
           </Button>
         </div>
         {expanded ? (
-          <div className={cn('divide-y divide-orange-500/10', compact && 'text-[12px]')}>
-            {panelAgents.map((agent, index) => (
-              <AgentActivityRow key={String(agent.agentId)} agent={agent} index={index + 1} />
-            ))}
+          <div className={cn(compact && 'text-[12px]')}>
+            {showGroupHeaders && agentRows.length > 0 && (
+              <div className="border-b border-orange-500/10 bg-black/20 px-3 py-1 text-[10px] uppercase tracking-[0.14em] text-orange-300/70">
+                Agents ({agentRows.length})
+              </div>
+            )}
+            <div className="divide-y divide-orange-500/10">
+              {agentRows.map((agent, index) => (
+                <AgentActivityRow key={String(agent.agentId)} agent={agent} index={index + 1} />
+              ))}
+            </div>
+            {showGroupHeaders && subagentRows.length > 0 && (
+              <div className="border-y border-orange-500/10 bg-black/20 px-3 py-1 text-[10px] uppercase tracking-[0.14em] text-orange-300/70">
+                Subagents ({subagentRows.length})
+              </div>
+            )}
+            <div className="divide-y divide-orange-500/10">
+              {subagentRows.map((agent, index) => (
+                <AgentActivityRow key={String(agent.agentId)} agent={agent} index={agentRows.length + index + 1} />
+              ))}
+            </div>
           </div>
         ) : null}
       </div>

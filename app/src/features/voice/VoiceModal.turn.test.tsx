@@ -67,6 +67,7 @@ vi.mock('./voiceChatRouting', () => ({
 
 vi.mock('./voiceRouter', () => ({
   handleVoiceModuleClosed: vi.fn(),
+  stopCurrentVoiceResponse: vi.fn(),
 }));
 
 import { VoiceModal } from './VoiceModal';

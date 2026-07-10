@@ -179,7 +179,12 @@ fn paste_clipboard() -> Result<(), String> {
 }
 
 /// Trigger the platform's native speech dictation UI when available.
-/// Windows: Win+H voice typing. macOS/Linux: returns an error (Web Speech is used in-app).
+/// Windows: Win+H voice typing. macOS/Linux: returns an error.
+///
+/// NOT the VibeSpace global dictation path: Ctrl+Space always opens the
+/// VibeSpace overlay with the shared STT pipeline. This command exists only
+/// as the composer's explicit last-resort fallback when no VibeSpace STT
+/// engine is available at all.
 #[tauri::command]
 pub fn trigger_os_dictation() -> Result<(), String> {
     trigger_os_dictation_inner()

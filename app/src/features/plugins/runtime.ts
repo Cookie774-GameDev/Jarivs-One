@@ -194,7 +194,9 @@ export async function testPluginConnection(pluginId: string): Promise<PluginTest
     }
 
     if (manifest.authType === 'oauth') {
-      return { ok: true, accountLabel: manifest.provider };
+      // No live verification endpoint for this OAuth connector: saved fields
+      // alone do not prove a working connection, so never report success.
+      return manualSetupResult(manifest);
     }
 
     if (

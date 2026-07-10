@@ -12,7 +12,7 @@ vi.mock('@/lib/fs', () => ({
   writeTextFile: fsMocks.writeTextFile,
 }));
 
-import { generateProjectContextTree, MAX_CONTEXT_FILE_BYTES, contextMapSlashOptions, resolveContextMapRecord, type ContextMapRecord } from './tree';
+import { describeContextRootError, generateProjectContextTree, MAX_CONTEXT_FILE_BYTES, contextMapSlashOptions, resolveContextMapRecord, type ContextMapRecord } from './tree';
 
 describe('generateProjectContextTree file safeguards', () => {
   beforeEach(() => {
@@ -105,6 +105,42 @@ describe('generateProjectContextTree file safeguards', () => {
     expect(serialized).toContain('image media');
     expect(serialized).toContain('video media');
     expect(fsMocks.readTextFileSample).not.toHaveBeenCalled();
+  });
+
+  it('reports a missing root folder instead of "no readable text files"', async () => {
+    fsMocks.listDirectory.mockResolvedValue({
+      ok: false,
+      path: 'C:\\does-not-exist',
+      error: { code: 'not_found' },
+    });
+
+    await expect(
+      generateProjectContextTree({ projectId: null, rootDir: 'C:\\does-not-exist', provider: 'local' }),
+    ).rejects.toThrow(/Folder not found: C:\\does-not-exist/);
+  });
+
+  it('reports a file-not-folder root and a blocked root distinctly', async () => {
+    fsMocks.listDirectory.mockResolvedValue({
+      ok: false,
+      path: 'C:\\proj\\readme.md',
+      error: { code: 'not_a_dir' },
+    });
+    await expect(
+      generateProjectContextTree({ projectId: null, rootDir: 'C:\\proj\\readme.md', provider: 'local' }),
+    ).rejects.toThrow(/is a file, not a folder/);
+
+    fsMocks.listDirectory.mockResolvedValue({
+      ok: false,
+      path: 'C:\\blocked',
+      error: { code: 'unknown', raw: 'Access is denied. (os error 5)' },
+    });
+    await expect(
+      generateProjectContextTree({ projectId: null, rootDir: 'C:\\blocked', provider: 'local' }),
+    ).rejects.toThrow(/Access is denied/);
+  });
+
+  it('explains the browser-preview limitation for an unavailable fs bridge', () => {
+    expect(describeContextRootError('C:\\proj', { code: 'unavailable' })).toContain('desktop app');
   });
 });
 

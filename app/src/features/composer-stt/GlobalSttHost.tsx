@@ -5,6 +5,8 @@ import { useUIStore } from '@/stores/ui';
 import {
   COMPOSER_STT_STOP_EVENT,
   COMPOSER_STT_TOGGLE_EVENT,
+  GLOBAL_DICTATION_IN_APP_EVENT,
+  requestComposerSttToggle,
   type ComposerSttToggleSource,
 } from './composerSttService';
 import {
@@ -254,6 +256,31 @@ export function GlobalSttHost() {
     window.addEventListener(COMPOSER_STT_TOGGLE_EVENT, onToggle);
     return () => window.removeEventListener(COMPOSER_STT_TOGGLE_EVENT, onToggle);
   }, [composerSttEnabled, listening, start, stop]);
+
+  // Ctrl+Space while VibeSpace itself is focused: the Rust global-shortcut
+  // handler emits this instead of opening the floating overlay, so the press
+  // becomes normal in-app voice-to-text for the focused input. A same-named
+  // window CustomEvent covers web preview and tests.
+  React.useEffect(() => {
+    const relay = () => requestComposerSttToggle('hotkey');
+    let unlistenTauri: (() => void) | undefined;
+    let cancelled = false;
+    void import('@tauri-apps/api/event')
+      .then(({ listen }) => listen(GLOBAL_DICTATION_IN_APP_EVENT, relay))
+      .then((off) => {
+        if (cancelled) off();
+        else unlistenTauri = off;
+      })
+      .catch(() => {
+        /* Browser preview - the window event below still works. */
+      });
+    window.addEventListener(GLOBAL_DICTATION_IN_APP_EVENT, relay);
+    return () => {
+      cancelled = true;
+      unlistenTauri?.();
+      window.removeEventListener(GLOBAL_DICTATION_IN_APP_EVENT, relay);
+    };
+  }, []);
 
   React.useEffect(
     () => () => {

@@ -34,6 +34,8 @@ export interface BenchmarkRow {
   supports_image?: boolean;
   /** Accepts video input. Inferred from the model family. */
   supports_video?: boolean;
+  /** True when costs were filled from the list-price catalog, not the feed. */
+  cost_estimated?: boolean;
   source: 'lmsys' | 'snapshot';
   fetched_at: number;
 }
@@ -111,6 +113,8 @@ export function enrichRow(row: BenchmarkRow): BenchmarkRow {
     if (pricing) {
       next.cost_per_1m_input_usd = next.cost_per_1m_input_usd ?? pricing.input;
       next.cost_per_1m_output_usd = next.cost_per_1m_output_usd ?? pricing.output;
+      // Honesty flag: the UI renders these as "~" list-price estimates.
+      next.cost_estimated = true;
     }
   }
   return next;

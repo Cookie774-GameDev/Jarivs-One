@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GlobalSttHost } from './GlobalSttHost';
 import {
   COMPOSER_STT_TOGGLE_EVENT,
+  GLOBAL_DICTATION_IN_APP_EVENT,
   requestComposerSttToggle,
 } from './composerSttService';
 import { rememberSttEditableFromFocus, resetSttFocusMemoryForTests } from './insertText';
@@ -100,6 +101,34 @@ describe('GlobalSttHost', () => {
     expect(voiceMocks.startListening).toHaveBeenCalledTimes(1);
     expect(setComposerSttListening).toHaveBeenCalledWith(true);
 
+    field.remove();
+  });
+
+  it('routes the in-app Ctrl+Space event to composer STT instead of any overlay', () => {
+    render(<GlobalSttHost />);
+
+    const field = document.createElement('textarea');
+    field.id = 'in-app-field';
+    document.body.appendChild(field);
+    field.focus();
+    rememberSttEditableFromFocus(field);
+
+    // Observe the relayed composer toggle event with its source.
+    const toggles: string[] = [];
+    const onToggle = (event: Event) =>
+      toggles.push(String((event as CustomEvent<{ source?: string }>).detail?.source));
+    window.addEventListener(COMPOSER_STT_TOGGLE_EVENT, onToggle);
+
+    // The Rust global-shortcut handler emits this when VibeSpace is focused.
+    window.dispatchEvent(new CustomEvent(GLOBAL_DICTATION_IN_APP_EVENT));
+
+    expect(toggles).toEqual(['hotkey']);
+    // The in-app path starts the SAME shared STT engine for the focused
+    // field - no separate dictation window is involved.
+    expect(voiceMocks.startListening).toHaveBeenCalledTimes(1);
+    expect(setComposerSttListening).toHaveBeenCalledWith(true);
+
+    window.removeEventListener(COMPOSER_STT_TOGGLE_EVENT, onToggle);
     field.remove();
   });
 

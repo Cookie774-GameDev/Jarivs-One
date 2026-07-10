@@ -8,8 +8,8 @@
  * for "what version am I running", and `CURRENT_VERSION` here mirrors it.
  *
  * Auto-open behaviour:
- *   - On boot, `useWhatsNew()` reads `localStorage['jarvis-last-seen-version']`
- *     and compares it to `CURRENT_VERSION`.
+ *   - On boot, `useWhatsNew()` reads `lastSeenWhatsNewVersion` (persisted in
+ *     the `jarvis-ui` store) and compares it to `CURRENT_VERSION`.
  *   - If they differ (including a fresh install where the key is missing),
  *     the modal opens once, focused on the **latest** release entry.
  *   - Dismissing the modal writes `CURRENT_VERSION` back to localStorage so
@@ -31,7 +31,7 @@ import { Sparkles, Wrench, Rocket, Package, AlertTriangle, type LucideIcon } fro
  * The version string is also what the auto-show flow stores in
  * localStorage so users only see each release's notes once.
  */
-export const CURRENT_VERSION = '0.1.47';
+export const CURRENT_VERSION = '0.1.48';
 
 /**
  * Section type for grouping changelog items inside a release.
@@ -339,6 +339,49 @@ export const SECTION_META: Record<
  *     when it isn't obvious.
  */
 export const RELEASES: readonly Release[] = [
+  {
+    version: '0.1.48',
+    date: '2026-07-08',
+    headline: 'Scheduled Jarvis Actions run for real',
+    summary:
+      'Jarvis Actions saved on the Schedule page now actually execute: due prompts run on their saved model, outputs collect in a per-action chat you can open inside Schedule, and recurring actions (daily, weekdays, weekly, monthly) advance safely with no duplicate runs.',
+    sections: [
+      {
+        kind: 'feature',
+        items: [
+          'Jarvis Actions execute at their scheduled time while the app is open — outputs are saved and viewable from the new Jarvis Actions view on the Schedule page.',
+          'Recurring Jarvis Actions: once, daily, weekdays, weekly, or monthly, selectable when saving.',
+          'Jarvis creator questions now appear one at a time with Next/Back, real progress ("Question 1 of 2"), Cancel, and draft answers that survive navigating away.',
+          'One-approval terminal orchestration: ask Jarvis to close all terminals, open 10 with Claude Code, and split them into role groups with custom prompts — a single card covers the whole plan, and role prompts are delivered through AGENTS.md, never typed into shells.',
+          'Stop Jarvis mid-reply: click the voice orb while it speaks to cut the response and ask something else.',
+          'Ctrl+Space dictation is focus-aware: inside VibeSpace it dictates into the focused input; outside it opens a small overlay that pastes into the focused app. Same speech-to-text engines as chat — never Windows Win+H.',
+        ],
+      },
+      {
+        kind: 'improvement',
+        items: [
+          'Multitask panel groups Agents and Subagents into separate sections; dismissing it now sticks across route switches until new agent work starts.',
+          'Missed schedule runs older than 6 hours are logged in the action history instead of replaying silently.',
+          'Duplicate Jarvis Actions with the same title and start time are blocked at save.',
+        ],
+      },
+      {
+        kind: 'fix',
+        items: [
+          'Push to agent / Push to skill buttons only appear on real Jarvis draft replies in creator chats — never on user messages, seeded prompts, or normal conversations.',
+          'Timers and alarms actually fire now (the clock engine was never started), and the 20-20-20 eye-break overlay renders when triggered.',
+          'Hive stays chat-only: spoken voice replies always use the single-model path. Council mode asks for 2+ agents instead of opening an empty grid.',
+          'Plugin tests never fake success for OAuth connectors, and estimated benchmark prices are labeled with ~ instead of posing as feed data.',
+          'Voice listening no longer shuts off silently: timeouts show a visible Paused state, and Settings voice previews hand the mic back to push-to-talk afterwards.',
+          'Kokoro voice: if the first-run model download cannot complete while Kokoro is selected, a toast explains the system-voice fallback and how to retry.',
+          'Update warnings now say plainly that all terminal information may not be saved — live terminal processes cannot survive the restart.',
+          'Context maps report invalid paths, permission problems, and browser-preview limits precisely instead of "no readable text files found".',
+          'Linux installer auto-launch and desktop entry now use the exact installed binary path instead of relying on PATH.',
+          'Retired the old "Jarvis One" banner from the terminal launcher and Windows boot screen; the product is VibeSpace everywhere.',
+        ],
+      },
+    ],
+  },
   {
     version: '0.1.47',
     date: '2026-07-05',

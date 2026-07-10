@@ -342,7 +342,7 @@ Speech-to-text for the chat composer and system-wide dictation into any focused 
 
 ### How to use it
 - **Settings → Accessibility** — enable Composer STT
-- **Ctrl+CapsLock** (desktop) — dictate into composer or global overlay
+- **Ctrl+CapsLock** — composer voice-to-text (in-app); **Ctrl+Space** — VibeSpace global dictation overlay (system-wide, shared chat STT pipeline, never Win+H)
 - Composer mic button when STT enabled
 
 ### How it works (intended behavior)
@@ -766,7 +766,8 @@ Honest inventory of gaps found in code/docs:
 | Mod+Shift+L | Launcher |
 | Mod+Shift+S | Schedule |
 | Mod+Shift+. | Ambient toggle |
-| Ctrl+CapsLock | Composer STT / global dictation |
+| Ctrl+CapsLock | Composer STT (in-app) |
+| Ctrl+Space | VibeSpace global dictation overlay (never Win+H) |
 | Mod+Shift+D / F12 | Dev console |
 
 Full list: **Settings → Hotkeys**.

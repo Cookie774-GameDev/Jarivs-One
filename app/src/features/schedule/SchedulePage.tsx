@@ -33,7 +33,7 @@ import type { EventReminder, EventRow } from '@/types/event';
 import type { Task } from '@/types/task';
 import type { WorkspaceId } from '@/types/common';
 import { parseEventInput } from './parseEventInput';
-import { useUpcomingEvents } from './hooks';
+import { useJarvisScheduleEvents, useUpcomingEvents } from './hooks';
 import type { RecurrenceInstance } from './recurrence';
 import {
   defaultEventEndMs,
@@ -46,7 +46,13 @@ import {
   toLocalDateTimeInput,
 } from './localDateTime';
 import { visualForEventTitle, visualForTask } from './scheduleIcons';
-import { buildJarvisScheduleEventInput, isJarvisScheduleEvent, parseJarvisScheduleMetadata } from './jarvisSchedules';
+import {
+  buildJarvisScheduleEventInput,
+  isJarvisScheduleEvent,
+  parseJarvisScheduleMetadata,
+  type JarvisScheduleRecurrence,
+} from './jarvisSchedules';
+import { ChatThread } from '@/features/chat/ChatThread';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -57,6 +63,18 @@ const REMINDER_PRESETS: { label: string; offset_min: number }[] = [
   { label: '15 min before', offset_min: 15 },
   { label: '1 hour before', offset_min: 60 },
 ];
+
+const JARVIS_RECURRENCE_PRESETS: { value: JarvisScheduleRecurrence; label: string }[] = [
+  { value: 'once', label: 'Once' },
+  { value: 'daily', label: 'Daily' },
+  { value: 'weekdays', label: 'Weekdays' },
+  { value: 'weekly', label: 'Weekly' },
+  { value: 'monthly', label: 'Monthly' },
+];
+
+function jarvisRecurrenceLabel(recurrence: JarvisScheduleRecurrence): string {
+  return JARVIS_RECURRENCE_PRESETS.find((preset) => preset.value === recurrence)?.label ?? 'Once';
+}
 
 type TimelineItem =
   | { kind: 'event'; id: string; at: number; end: number; instance: RecurrenceInstance }
@@ -258,6 +276,14 @@ export function SchedulePage() {
   const [calendarOpen, setCalendarOpen] = React.useState(false);
   const [selectedDayKey, setSelectedDayKey] = React.useState<string | null>(null);
   const [scheduleMode, setScheduleMode] = React.useState<'event' | 'jarvis'>('event');
+  const [jarvisRecurrence, setJarvisRecurrence] = React.useState<JarvisScheduleRecurrence>('once');
+  const [timelineView, setTimelineView] = React.useState<'timeline' | 'jarvis'>('timeline');
+  const [openJarvisEventId, setOpenJarvisEventId] = React.useState<string | null>(null);
+  const jarvisEvents = useJarvisScheduleEvents(workspaceId);
+  const openJarvisEvent = React.useMemo(
+    () => jarvisEvents.find((event) => String(event.id) === openJarvisEventId) ?? null,
+    [jarvisEvents, openJarvisEventId],
+  );
   const [jarvisModelOptionId, setJarvisModelOptionId] = React.useState(() => selectionOptionId(chatModelSelection) ?? '');
   const selectedJarvisModel = React.useMemo(
     () => jarvisModelOptions.find((option) => option.id === jarvisModelOptionId) ?? null,
@@ -338,6 +364,21 @@ export function SchedulePage() {
           channels: ['desktop', 'in_app'],
         }));
 
+    if (jarvisAction) {
+      // Duplicate guard: repeated saves (or repeated natural-language parses)
+      // of the same action at the same time must not stack duplicate runs.
+      const normalizedTitle = title.trim().toLowerCase();
+      const duplicate = jarvisEvents.some((event) =>
+        event.status === 'scheduled' &&
+        event.start_at === start &&
+        event.title.replace(/^Jarvis Scheduled\s+—\s+/, '').trim().toLowerCase() === normalizedTitle,
+      );
+      if (duplicate) {
+        toast.warning('Already scheduled', 'A Jarvis Action with this title and start time already exists.');
+        return;
+      }
+    }
+
     try {
       await eventRepo.create(jarvisAction
         ? buildJarvisScheduleEventInput({
@@ -347,7 +388,7 @@ export function SchedulePage() {
             prompt: description.trim() || title.trim(),
             startAt: start,
             durationMs: end - start,
-            recurrence: 'once',
+            recurrence: jarvisRecurrence,
             timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
             modelSelection: selectedJarvisModel
               ? selectionFromOption(selectedJarvisModel.provider, selectedJarvisModel.modelId)
@@ -365,7 +406,12 @@ export function SchedulePage() {
             source: 'manual',
             created_by: localUserId ?? 'usr_local',
           });
-      toast.success('Event saved', `“${title.trim()}” is on your schedule.`);
+      toast.success(
+        jarvisAction ? 'Jarvis Action saved' : 'Event saved',
+        jarvisAction
+          ? `“${title.trim()}” will run ${jarvisRecurrence === 'once' ? 'once' : jarvisRecurrenceLabel(jarvisRecurrence).toLowerCase()} while VibeSpace is open.`
+          : `“${title.trim()}” is on your schedule.`,
+      );
       setQuick('');
       setTitle('');
       setDescription('');
@@ -373,6 +419,7 @@ export function SchedulePage() {
       setStartInput(toLocalDateTimeInput(nextStart));
       setEndInput(toLocalDateTimeInput(defaultEventEndMs(nextStart)));
       setAllDay(false);
+      setJarvisRecurrence('once');
     } catch (err) {
       toast.error('Could not save', err instanceof Error ? err.message : 'Try again.');
     }
@@ -440,17 +487,66 @@ export function SchedulePage() {
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-auto p-4 xl:grid-cols-[minmax(0,1fr)_420px]">
         <section className="min-h-[360px] overflow-hidden rounded-xl border border-border bg-background/80 shadow-soft">
-          <div className="flex items-center justify-between border-b border-border bg-panel/60 px-4 py-3">
+          <div className="flex items-center justify-between gap-3 border-b border-border bg-panel/60 px-4 py-3">
             <div>
-              <h2 className="font-display text-page-title text-foreground">Timeline</h2>
+              <h2 className="font-display text-page-title text-foreground">
+                {timelineView === 'jarvis' ? 'Jarvis Actions' : 'Timeline'}
+              </h2>
               <p className="text-secondary text-muted-foreground">
-                Next two weeks · local dates and times
+                {timelineView === 'jarvis'
+                  ? 'Scheduled prompts and their saved outputs'
+                  : 'Next two weeks · local dates and times'}
               </p>
             </div>
-            <Clock className="h-5 w-5 text-accent-copper/70" aria-hidden />
+            <div className="flex items-center gap-2">
+              <div className="flex gap-1 rounded-lg border border-border/80 bg-background/40 p-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={timelineView === 'timeline' ? 'secondary' : 'ghost'}
+                  onClick={() => {
+                    setTimelineView('timeline');
+                    setOpenJarvisEventId(null);
+                  }}
+                >
+                  Timeline
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={timelineView === 'jarvis' ? 'secondary' : 'ghost'}
+                  onClick={() => setTimelineView('jarvis')}
+                >
+                  <Sparkles className="mr-1 h-3.5 w-3.5 text-accent-violet" />
+                  Jarvis Actions
+                  {jarvisEvents.length > 0 && (
+                    <span className="ml-1.5 rounded-full bg-accent-violet/15 px-1.5 text-metadata text-accent-violet">
+                      {jarvisEvents.length}
+                    </span>
+                  )}
+                </Button>
+              </div>
+              <Clock className="h-5 w-5 text-accent-copper/70" aria-hidden />
+            </div>
           </div>
 
-          {timeline.length === 0 ? (
+          {timelineView === 'jarvis' ? (
+            openJarvisEvent ? (
+              <JarvisActionOutputView
+                event={openJarvisEvent}
+                onBack={() => setOpenJarvisEventId(null)}
+                onDelete={(event) => {
+                  setOpenJarvisEventId(null);
+                  void handleDeleteEvent(event);
+                }}
+              />
+            ) : (
+              <JarvisActionsList
+                events={jarvisEvents}
+                onOpen={(event) => setOpenJarvisEventId(String(event.id))}
+              />
+            )
+          ) : timeline.length === 0 ? (
             <div className="flex h-72 flex-col items-center justify-center gap-3 text-center text-muted-foreground">
               <motion.div
                 className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-panel shadow-soft"
@@ -509,7 +605,14 @@ export function SchedulePage() {
                         className="group border-b border-border/60 px-4 py-3.5 transition-colors last:border-b-0 hover:bg-muted/40"
                       >
                         {item.kind === 'event' ? (
-                          <EventTimelineRow item={item} onDelete={handleDeleteEvent} />
+                          <EventTimelineRow
+                            item={item}
+                            onDelete={handleDeleteEvent}
+                            onOpenJarvis={(event) => {
+                              setTimelineView('jarvis');
+                              setOpenJarvisEventId(String(event.id));
+                            }}
+                          />
                         ) : (
                           <TaskTimelineRow item={item} onComplete={handleCompleteTask} />
                         )}
@@ -573,8 +676,34 @@ export function SchedulePage() {
                     </div>
                   )}
                 </div>
+                <div className="mt-3 space-y-1.5">
+                  <Label className="flex items-center gap-1.5 text-metadata text-muted-foreground">
+                    <Repeat className="h-3 w-3" /> Repeats
+                  </Label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {JARVIS_RECURRENCE_PRESETS.map((preset) => (
+                      <button
+                        key={preset.value}
+                        type="button"
+                        onClick={() => setJarvisRecurrence(preset.value)}
+                        className={cn(
+                          'rounded-md border px-2.5 py-1 text-metadata transition-colors',
+                          jarvisRecurrence === preset.value
+                            ? 'border-accent-violet/60 bg-accent-violet/10 text-foreground'
+                            : 'border-border bg-background text-muted-foreground hover:border-border-mid',
+                        )}
+                        aria-pressed={jarvisRecurrence === preset.value}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <p className="mt-2 text-metadata text-accent-violet">
                   Model: {selectedJarvisModel ? `${getProviderDisplayName(selectedJarvisModel.provider)} · ${selectedJarvisModel.label}` : modelLabel}
+                </p>
+                <p className="mt-1 text-metadata text-muted-foreground">
+                  Runs while VibeSpace is open. Runs missed by more than 6 hours are logged, not replayed.
                 </p>
               </div>
             )}
@@ -604,10 +733,10 @@ export function SchedulePage() {
                   <Clock className="h-3.5 w-3.5 text-accent-copper" /> When
                 </Label>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className={cn('grid gap-3', scheduleMode === 'jarvis' ? 'grid-cols-1' : 'grid-cols-2')}>
                 <div>
                   <Label htmlFor="event-start" className="text-metadata text-muted-foreground">
-                    Start
+                    {scheduleMode === 'jarvis' ? 'Run at' : 'Start'}
                   </Label>
                   <Input
                     id="event-start"
@@ -616,18 +745,20 @@ export function SchedulePage() {
                     onChange={(e) => setStartInput(e.target.value)}
                   />
                 </div>
-                <div>
-                  <Label htmlFor="event-end" className="text-metadata text-muted-foreground">
-                    End
-                  </Label>
-                  <Input
-                    id="event-end"
-                    type="datetime-local"
-                    value={endInput}
-                    onChange={(e) => setEndInput(e.target.value)}
-                    disabled={scheduleMode === 'event' && allDay}
-                  />
-                </div>
+                {scheduleMode === 'event' && (
+                  <div>
+                    <Label htmlFor="event-end" className="text-metadata text-muted-foreground">
+                      End
+                    </Label>
+                    <Input
+                      id="event-end"
+                      type="datetime-local"
+                      value={endInput}
+                      onChange={(e) => setEndInput(e.target.value)}
+                      disabled={allDay}
+                    />
+                  </div>
+                )}
               </div>
             </div>
 
@@ -686,7 +817,7 @@ export function SchedulePage() {
             ) : null}
 
             <Button variant="accent" onClick={() => void handleSave()} className="mt-1 w-full">
-              <Plus className="mr-1 h-3.5 w-3.5" /> Save event
+              <Plus className="mr-1 h-3.5 w-3.5" /> {scheduleMode === 'jarvis' ? 'Save Jarvis Action' : 'Save event'}
             </Button>
           </div>
         </aside>
@@ -698,9 +829,11 @@ export function SchedulePage() {
 function EventTimelineRow({
   item,
   onDelete,
+  onOpenJarvis,
 }: {
   item: Extract<TimelineItem, { kind: 'event' }>;
   onDelete: (event: EventRow) => void;
+  onOpenJarvis?: (event: EventRow) => void;
 }) {
   const event = item.instance.event;
   const visual = visualForEventTitle(event.title);
@@ -771,12 +904,24 @@ function EventTimelineRow({
             {jarvisSchedule && jarvisMetadata ? (
               <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-metadata text-muted-foreground">
                 <span>Model: {jarvisMetadata.modelSelection.mode === 'single' ? jarvisMetadata.modelSelection.modelId : jarvisMetadata.modelSelection.mode}</span>
-                <span>Agent: {String(jarvisMetadata.agentId)}</span>
+                <span>Repeats: {jarvisRecurrenceLabel(jarvisMetadata.recurrence)}</span>
                 <span>Next: {formatLocalDateTime(jarvisMetadata.nextRunAt ?? item.instance.instanceStartMs)}</span>
               </p>
             ) : null}
             {event.description && (
               <p className="mt-1.5 line-clamp-2 text-secondary text-muted-foreground">{event.description}</p>
+            )}
+            {jarvisSchedule && onOpenJarvis && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="mt-2 h-7 gap-1 border-accent-violet/40 text-metadata text-accent-violet hover:bg-accent-violet/10"
+                onClick={() => onOpenJarvis(event)}
+              >
+                <Sparkles className="h-3 w-3" />
+                View runs & output
+              </Button>
             )}
           </div>
           <Button
@@ -791,6 +936,163 @@ function EventTimelineRow({
           </Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function jarvisEventDisplayTitle(event: EventRow): string {
+  return event.title.replace(/^Jarvis Scheduled\s+—\s+/, '').trim() || 'Jarvis task';
+}
+
+function JarvisActionsList({
+  events,
+  onOpen,
+}: {
+  events: EventRow[];
+  onOpen: (event: EventRow) => void;
+}) {
+  if (events.length === 0) {
+    return (
+      <div className="flex h-72 flex-col items-center justify-center gap-3 text-center text-muted-foreground">
+        <motion.div
+          className="flex h-14 w-14 items-center justify-center rounded-2xl border border-accent-violet/30 bg-accent-violet/10 shadow-soft"
+          animate={{ y: [0, -6, 0] }}
+          transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+        >
+          <Sparkles className="h-7 w-7 text-accent-violet" />
+        </motion.div>
+        <p className="font-display text-ui-strong text-foreground">No Jarvis Actions yet</p>
+        <p className="max-w-sm text-metadata">
+          Switch the form on the right to “Jarvis Action” to schedule a prompt — like football news
+          every morning at 8 AM. Outputs collect here.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <ul className="divide-y divide-border/70">
+      {events.map((event) => {
+        const metadata = parseJarvisScheduleMetadata(event);
+        const runCount = metadata?.runHistory.length ?? 0;
+        const errorCount = metadata?.errorHistory.length ?? 0;
+        return (
+          <li key={event.id}>
+            <button
+              type="button"
+              onClick={() => onOpen(event)}
+              className="group flex w-full items-start gap-3 px-4 py-3.5 text-left transition-colors hover:bg-accent-violet/5"
+            >
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-accent-violet/40 bg-accent-violet/10 text-accent-violet">
+                <Sparkles className="h-4 w-4" aria-hidden />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                  <span className="truncate font-display text-ui-strong text-foreground">
+                    {jarvisEventDisplayTitle(event)}
+                  </span>
+                  <Badge variant="outline" className="shrink-0 text-metadata">
+                    {jarvisRecurrenceLabel(metadata?.recurrence ?? 'once')}
+                  </Badge>
+                  {event.status === 'done' && (
+                    <Badge variant="secondary" className="shrink-0 text-metadata">Completed</Badge>
+                  )}
+                  {event.status === 'cancelled' && (
+                    <Badge variant="secondary" className="shrink-0 text-metadata">Paused</Badge>
+                  )}
+                </div>
+                <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-metadata text-muted-foreground">
+                  <span className="inline-flex items-center gap-1">
+                    <Clock className="h-3 w-3 text-accent-copper/80" />
+                    {metadata?.nextRunAt && event.status === 'scheduled'
+                      ? `Next ${formatLocalDateTime(metadata.nextRunAt)}`
+                      : metadata?.lastRunAt
+                        ? `Last ran ${formatLocalDateTime(metadata.lastRunAt)}`
+                        : `Starts ${formatLocalDateTime(event.start_at)}`}
+                  </span>
+                  <span>{runCount} run{runCount === 1 ? '' : 's'}</span>
+                  {errorCount > 0 && (
+                    <span className="text-destructive">{errorCount} issue{errorCount === 1 ? '' : 's'}</span>
+                  )}
+                </p>
+                {metadata?.prompt && (
+                  <p className="mt-1 line-clamp-1 text-secondary text-muted-foreground">{metadata.prompt}</p>
+                )}
+              </div>
+              <ChevronRight className="mt-2 h-4 w-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function JarvisActionOutputView({
+  event,
+  onBack,
+  onDelete,
+}: {
+  event: EventRow;
+  onBack: () => void;
+  onDelete: (event: EventRow) => void;
+}) {
+  const metadata = parseJarvisScheduleMetadata(event);
+
+  return (
+    <div className="flex h-[560px] min-h-0 flex-col">
+      <div className="flex items-center justify-between gap-2 border-b border-border/70 bg-accent-violet/5 px-4 py-2.5">
+        <div className="flex min-w-0 items-center gap-2">
+          <Button type="button" size="icon-sm" variant="ghost" onClick={onBack} aria-label="Back to Jarvis Actions">
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <div className="min-w-0">
+            <div className="truncate font-display text-ui-strong text-foreground">
+              {jarvisEventDisplayTitle(event)}
+            </div>
+            <p className="text-metadata text-muted-foreground">
+              {jarvisRecurrenceLabel(metadata?.recurrence ?? 'once')}
+              {metadata?.modelSelection.mode === 'single' ? ` · ${metadata.modelSelection.modelId}` : ''}
+              {metadata?.nextRunAt && event.status === 'scheduled'
+                ? ` · next ${formatLocalDateTime(metadata.nextRunAt)}`
+                : ''}
+            </p>
+          </div>
+        </div>
+        <Button
+          type="button"
+          size="icon-sm"
+          variant="ghost"
+          onClick={() => onDelete(event)}
+          aria-label={`Delete ${event.title}`}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+
+      {metadata?.errorHistory.length ? (
+        <div className="border-b border-border/70 bg-destructive/5 px-4 py-2">
+          <p className="text-metadata text-destructive">
+            {metadata.errorHistory[metadata.errorHistory.length - 1]!.error}
+          </p>
+        </div>
+      ) : null}
+
+      {metadata?.outputChatId ? (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <ChatThread chatId={metadata.outputChatId} compact />
+        </div>
+      ) : (
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center text-muted-foreground">
+          <Sparkles className="h-6 w-6 text-accent-violet" />
+          <p className="font-display text-ui-strong text-foreground">No runs yet</p>
+          <p className="max-w-sm text-metadata">
+            {event.status === 'scheduled'
+              ? `The first output will appear here after ${formatLocalDateTime(metadata?.nextRunAt ?? event.start_at)}.`
+              : 'This action has not produced any output.'}
+          </p>
+        </div>
+      )}
     </div>
   );
 }

@@ -16,7 +16,7 @@ import { callCheckoutSession, isBackendBillingConfigured } from '@/lib/billing/c
 import { openExternal } from '@/lib/tauri';
 import { toast } from '@/components/ui/toast';
 
-const UPGRADE_ORDER: PlanId[] = ['starter', 'pro', 'ultra'];
+const UPGRADE_ORDER: PlanId[] = ['starter', 'pro', 'ultra', 'apex'];
 
 export function AccountPage() {
   const plan = useAuthStore((s) => s.plan);

@@ -67,6 +67,24 @@ export function Accessibility() {
 
       <Separator />
 
+      <section className="flex flex-col gap-2 max-w-md">
+        <Label className="flex items-center gap-2">
+          <Mic className="h-3.5 w-3.5 text-accent-copper" />
+          VibeSpace global dictation
+        </Label>
+        <p className="text-metadata text-muted-foreground">
+          Press <span className="kbd">{renderHotkey(HOTKEYS.GLOBAL_DICTATION)}</span> to dictate
+          with the same speech-to-text engines as VibeSpace chat (local faster-whisper, built-in
+          speech recognition, Deepgram, or Groq — in that order, per Settings → Speech to Text).
+          Inside VibeSpace it dictates straight into the focused input — no floating overlay.
+          Outside VibeSpace it opens a small overlay that transcribes and pastes into the focused
+          app. It never uses Windows Win+H. Requires the desktop app; paste support depends on OS
+          input permissions (Linux X11 needs xdotool).
+        </p>
+      </section>
+
+      <Separator />
+
       <section className="flex items-start justify-between gap-3 max-w-md">
         <div>
           <Label className="flex items-center gap-2">

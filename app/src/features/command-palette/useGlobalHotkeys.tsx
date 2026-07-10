@@ -61,6 +61,17 @@ export function useGlobalHotkeys(): void {
     }, []),
     { whenInputs: true },
   );
+  // Documented inspector shortcut from the product spec (Mod+.). Kept as an
+  // alias alongside Mod+\ and Mod+I; Mod+Shift+. remains ambient toggle.
+  useHotkey(
+    'Mod+.',
+    React.useCallback((e: KeyboardEvent) => {
+      if (e.shiftKey) return;
+      e.preventDefault();
+      useUIStore.getState().toggleInspector();
+    }, []),
+    { whenInputs: true },
+  );
 
   // Push-to-talk / voice toggle. Browsers may treat Cmd+Space as system
   // input; preventDefault lets us claim it inside the app.

@@ -28,6 +28,7 @@ const agentPart: Extract<Part, { kind: 'agent_card' }> = {
 
 describe('AgentActivityCard', () => {
   beforeEach(() => {
+    window.sessionStorage.clear();
     useUIStore.setState(useUIStore.getInitialState());
     useJarvisInteractionStore.setState({
       modesByChat: {},
@@ -91,6 +92,8 @@ describe('AgentActivityCard', () => {
     expect(screen.queryByRole('button', { name: /Stop all/i })).toBeNull();
     expect(screen.getAllByText('Agent')).toHaveLength(2);
     expect(screen.getAllByText('Subagent')).toHaveLength(1);
+    expect(screen.getByText('Agents (2)')).toBeTruthy();
+    expect(screen.getByText('Subagents (1)')).toBeTruthy();
     expect(screen.getByText('1')).toBeTruthy();
     expect(screen.getByText('2')).toBeTruthy();
     expect(screen.getByText('3')).toBeTruthy();
@@ -125,6 +128,42 @@ describe('AgentActivityCard', () => {
 
     expect(screen.queryByText('1 Working')).toBeNull();
     expect(screen.queryByLabelText('Multitask activity')).toBeNull();
+  });
+
+  it('keeps a dismissal across remounts but reappears for newer agent work', () => {
+    useJarvisInteractionStore.setState({
+      agentsByChat: {
+        chat_parent: [agentPart.agent],
+      },
+    });
+
+    const first = render(<ChatAgentActivityPanel chatId="chat_parent" />);
+    fireEvent.click(screen.getByRole('button', { name: /Dismiss multitask activity/i }));
+    expect(screen.queryByText('1 Working')).toBeNull();
+    first.unmount();
+
+    // Remount with the same (old) agent work - the dismissal must hold.
+    const second = render(<ChatAgentActivityPanel chatId="chat_parent" />);
+    expect(screen.queryByText('1 Working')).toBeNull();
+    second.unmount();
+
+    // A newer agent launch supersedes the dismissal.
+    useJarvisInteractionStore.setState({
+      agentsByChat: {
+        chat_parent: [
+          agentPart.agent,
+          {
+            ...agentPart.agent,
+            agentId: 'ja_new',
+            name: 'Fresh work',
+            createdAt: new Date(Date.now() + 60_000).toISOString(),
+            updatedAt: new Date(Date.now() + 60_000).toISOString(),
+          },
+        ],
+      },
+    });
+    render(<ChatAgentActivityPanel chatId="chat_parent" />);
+    expect(screen.getByText('2 Working')).toBeTruthy();
   });
 
   it('renders standalone message-level agent cards as compact chat rows', () => {

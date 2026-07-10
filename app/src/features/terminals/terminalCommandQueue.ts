@@ -44,6 +44,12 @@ export type TerminalCommand =
       /** Optional friendly label shown on the pane chrome. */
       label?: string;
       /**
+       * Agent role slug for the new pane. Distinct from `label`: the slug
+       * drives AGENTS.md briefing delivery and env vars, the label is only
+       * chrome text. Orchestrated batches set both.
+       */
+      agentSlug?: string;
+      /**
        * Optional working directory. Fresh panes pass this straight to
        * the PTY spawn command; broadcasts keep the current pane cwd.
        */

@@ -14,6 +14,7 @@ import { db } from '@/lib/db';
 import type { EventRow } from '@/types/event';
 import type { WorkspaceId } from '@/types/common';
 import { expandRecurrence, type RecurrenceInstance } from './recurrence';
+import { isJarvisScheduleEvent } from './jarvisSchedules';
 
 export interface UseEventsOptions {
   workspaceId: WorkspaceId | null;
@@ -83,6 +84,21 @@ export function useUpcomingEvents(
  * first runs; consumers that stay open across midnight will see stale data
  * until the next render.
  */
+/**
+ * Every Jarvis Action in the workspace regardless of status - completed
+ * one-shots stay visible so their outputs remain reachable from Schedule.
+ * Newest first.
+ */
+export function useJarvisScheduleEvents(workspaceId: WorkspaceId | null): EventRow[] {
+  return (
+    useLiveQuery(async () => {
+      if (!workspaceId) return [] as EventRow[];
+      const rows = await db.events.where('workspace_id').equals(workspaceId).toArray();
+      return rows.filter(isJarvisScheduleEvent).sort((a, b) => b.start_at - a.start_at);
+    }, [workspaceId]) ?? []
+  );
+}
+
 export function useTodayEvents(workspaceId: WorkspaceId | null): RecurrenceInstance[] {
   return (
     useLiveQuery(async () => {

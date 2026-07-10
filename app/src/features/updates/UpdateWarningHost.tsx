@@ -214,6 +214,8 @@ export function UpdateWarningHost() {
 
           <p className="mb-4 text-metadata text-muted-foreground">
             Save terminal layouts, active scripts, and unsaved files before applying the update.
+            All terminal information may not be saved: pane layout, roles, and recent output are
+            restored after the update, but running processes cannot survive the restart.
           </p>
 
           <div className="mt-4 flex flex-wrap items-center justify-end gap-3">

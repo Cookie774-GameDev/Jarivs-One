@@ -76,6 +76,37 @@ Prevent five concurrent Cursor agents from overwriting, reverting, or force-push
 
 Append new entries at the **bottom** of the relevant agent section. Use [How to update this doc](#how-to-update-this-doc).
 
+### Agent 1 — AGENT-1-20260710-132900-C9F2
+
+#### 2026-07-10 — Safely finish PR #15 merge
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-10 13:29 CT |
+| **Agent ID** | `AGENT-1-20260710-132900-C9F2` |
+| **Version** | v0.1.48 |
+| **Branch** | `cursor/vibespace-launch-polish-6d99` from `53edf3c`; merge base target `origin/main` at `cccf9b8` |
+| **Plan** | Back up current main, audit PR #15/#16 and recent website/phone/billing work, merge main into PR #15, resolve every conflict conservatively, run the full verification matrix, push and merge normally only if all required gates pass, then verify final main. |
+| **Affected systems** | Git history, desktop app, website/GitHub Pages, installers, phone/call flows, Stripe/Supabase source, CI/security checks |
+| **Files touched** | `docs/AGENT_COORDINATION.md`, `docs/superpowers/plans/2026-07-10-pr15-safe-merge.md`; exact conflict-file locks will be added after read-only merge-tree discovery and before the merge |
+| **Status** | blocked — required installer UTF-8 gate cannot be completed while Bitdefender holds the file; PR branch was not pushed and PR #15 was not merged |
+| **Commit** | `7355bea` merge resolution; `4a00956` website follow-up; no final merge SHA |
+| **Notes** | Root `SYSTEM_PROMPT.md` and root `AGENT_COORDINATION.md` were read from completed draft PR #17 because they are absent from current main/PR #15. PR #17 reports no active tasks and all locks released. No production Supabase/Stripe mutation is authorized. |
+
+#### 2026-07-10 — PR #15 merge verification and blocked handoff
+
+| Field | Value |
+|-------|-------|
+| **Conflict decisions** | `site/css/style.css`: kept main's newer nav structure and PR #15 focus/skip-link accessibility. `site/index.html`: kept main's expanded phone/call return flow, retained PR #15 dictation/skip-link copy, removed duplicate speech invocation. `site/js/phone-os.js`: kept main's expanded simulator and single `speechSynthesis` lifecycle. |
+| **PR #16** | Verified `21cf29b`, `b71df22`, and `c82398d` are ancestors of PR #15; focused schedule runner tests passed 16/16. |
+| **Website preserved** | Pages workflow, `site/CNAME` (`vibespaceos.com`), phone simulator/assets, PR #15 billing result pages, and Windows/macOS/Linux download hub preserved. Desktop/mobile browser checks passed with zero console errors; mobile document width 375/375 after root overflow fix. |
+| **Frontend verification** | `npm run typecheck` PASS; `npm --prefix app run test` PASS (166 files, 881 tests); `npm run build` PASS (2,815 modules; existing chunk warnings); `npm run test:release-manifest` PASS (1/1). |
+| **Rust verification** | `cargo check --manifest-path app/src-tauri/Cargo.toml --release` PASS with two dead-code warnings; `cargo test --manifest-path app/src-tauri/Cargo.toml --lib` PASS (11/11). |
+| **Installer verification** | PowerShell AST parser PASS on committed UTF-16LE file; Bash syntax PASS; latest v0.1.45 release contains expected EXE, MSI, Apple/Intel DMG, AppImage, DEB, and RPM assets. Required UTF-8 check FAIL: committed `install/install.ps1` is UTF-16LE with BOM. Correct UTF-16LE-to-UTF-8 conversion was attempted, but Bitdefender Virus Shield locked the file before it could be verified/staged; no security process was stopped or bypassed. |
+| **Security verification** | Secret-pattern scan PASS (976 tracked paths); `npm audit --omit=dev --audit-level=high` PASS (0 production vulnerabilities). Full `npm audit --audit-level=high` FAILS on pre-existing Vite/esbuild dev-server advisories requiring a breaking Vite upgrade. Canonical `supabase/` and billing/Supabase client trees match main. No production Supabase/Stripe action performed. |
+| **Remaining risks** | PR #17 remains draft with unresolved Dependency Review and separate billing/call hardening. Current main/PR #15 retain known Twilio callback idempotency and Stripe persistence/JWT deployment risks documented in PR #17. Installer path must be unlocked and restored or correctly converted before any push/merge. |
+| **Final status** | BLOCKED; no push, no PR update, no merge to main, no final main verification claim. All Agent 1 logical locks released below. |
+
 ### VibeSpace Helper
 
 #### 2026-06-16 â€” UTF-8 install.ps1 hotfix + testing guide
@@ -326,6 +357,22 @@ Append new entries at the **bottom** of the relevant agent section. Use [How to 
 
 | Path / area | Owner agent | Version | Status | Notes |
 |-------------|-------------|---------|--------|-------|
+| `docs/AGENT_COORDINATION.md` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | Blocked handoff recorded; no final merge SHA |
+| `docs/superpowers/plans/2026-07-10-pr15-safe-merge.md` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | High-risk merge execution plan |
+| `.github/workflows/pages.yml` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | Current GitHub Pages deployment behavior preserved |
+| `site/CNAME` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | `vibespaceos.com` custom domain preserved |
+| `site/css/phone-os.css` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | Main-side phone simulator stylesheet preserved |
+| `site/css/style.css` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | Conflict resolved; main nav plus PR #15 accessibility retained |
+| `site/download.html` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | Compatibility redirect to clean route |
+| `site/download/index.html` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | Full cross-platform download hub |
+| `site/images/phone-photo-*.png` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | Main-side phone simulator photo assets preserved |
+| `site/index.html` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | Conflict resolved; landing/phone/accessibility/download behaviors retained |
+| `site/js/icons.js` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | Main-side simulator icons preserved |
+| `site/js/motion.js` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | Main-side site motion behavior preserved |
+| `site/js/phone-os.js` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | Conflict resolved to single speech lifecycle |
+| `install/install.ps1` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | Blocked by Bitdefender path lock; no verified installer commit produced |
+| `site/**` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | locked | User directed final PR #15 app merge with current main website preserved byte-for-byte |
+| `docs/AGENT_COORDINATION.md` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | locked | Recording final push, checks, merge SHA, and lock release |
 | `app/src/features/terminals/**` | VibeSpace Main | v0.1.44 | in-progress | Urgent terminal stability, scrollback isolation, agent prompt delivery |
 | `app/src/components/layout/PageRouter.tsx` | VibeSpace Main | v0.1.44 | in-progress | Keep terminal surfaces stable across route switches |
 | `docs/AGENT_COORDINATION.md` | VibeSpace Main | v0.1.44 | in-progress | Coordination ledger for terminal reliability fix |
@@ -1074,6 +1121,75 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Files touched** | `app/src/**`, `CHANGELOG.md`, `releases/RELEASE_NOTES_0.1.46.md`, `install/install.ps1`, coordination ledger |
 | **Status** | releasing |
 | **Commit** | — |
+
+#### 2026-07-08 — v0.1.48 launch-polish pass (Cloud Worker, branch `cursor/vibespace-launch-polish-6d99`)
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-08 |
+| **Version** | v0.1.48 |
+| **Plan** | User master-prompt execution: scoped creator push buttons, one-question wizard, Jarvis schedule executor + output viewer + recurrence, grouped agent panel with durable dismissal, Jarvis One branding removal, Linux installer launch fix (verified on Linux cloud), version bump to 0.1.48 |
+| **Files touched** | `app/src/features/chat/{MessageBubble,ChatThread.creatorScope.test}.tsx`, `app/src/features/jarvis-creator/contracts.ts`, `app/src/features/jarvis-interaction/{QuestionBlockCard,AgentActivityCard,types}.ts*` + tests, `app/src/features/schedule/{jarvisScheduleRunner,jarvisSchedules,hooks,SchedulePage}.ts*` + tests, `app/src/lib/ai/runtime.ts` (modelSelectionOverride only), `app/src/lib/actions/registry.ts` (recurrence options), `app/src/App.tsx` (runner wiring), `install/install.sh`, `install/install_new.ps1` (deleted), `tools/terminal_boot/jarvis_boot_forever.py`, version files, `CHANGELOG.md`, `releases/RELEASE_NOTES_0.1.48.md`, this ledger |
+| **Status** | committed + pushed on feature branch (PR to main) |
+| **Commit** | see branch `cursor/vibespace-launch-polish-6d99` |
+| **Note** | `releases/channel.json` intentionally NOT promoted — no 0.1.48 binaries built/signed in cloud env. Latest published GitHub release remains v0.1.45; 0.1.46/0.1.47 were source releases only. |
+
+#### 2026-07-08 — v0.1.48 batch 2: launch blockers (Cloud Worker, branch `cursor/vibespace-launch-polish-6d99`)
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-08 (afternoon) |
+| **Version** | v0.1.48 |
+| **Plan** | Remaining master-prompt blockers: terminal.orchestrate one-approval multi-step plans + role briefings via AGENTS.md, voice stop control + paused state + preview mic recovery, Kokoro launch honesty + download tests, Ctrl+Space overlay fallback (macOS/Linux), terminal update warning + queue stress tests, context-map root errors, website demo voice, Win/macOS installer validation (pwsh parse, macOS dry-run + SHA256 verify, asset URL 200s), live Ollama daemon verification |
+| **Files touched** | `app/src/lib/actions/{registry,fallbackActions,promptAddendum,orchestrate.test}.ts`, `app/src/features/terminals/{terminalRoleBriefings*,terminalCommandQueue*,TerminalsPage,agentPromptDelivery}.ts*`, `app/src/features/voice/{VoiceModal*,voiceRouter,store,Orb,modelManager.download.test}.ts*`, `app/src/features/settings/sections/{About,Voice}.tsx`, `app/src/features/updates/UpdateWarningHost.tsx`, `app/src-tauri/src/lib.rs`, `app/src/features/global-dictation/**`, `app/src/features/context/tree*.ts`, `site/{index.html,js/dialogue.js,js/phone-os.js}`, release docs, this ledger |
+| **Status** | committed + pushed on feature branch (PR #15) |
+| **Commit** | see branch `cursor/vibespace-launch-polish-6d99` |
+| **Verification notes** | Ollama daemon live on Linux VM: /api/version + /api/tags + pull OK; inference segfaults in sandbox (env limit). Windows NSIS run/signing and macOS Gatekeeper/notarization still require real machines — documented in `releases/RELEASE_NOTES_0.1.48.md`. |
+
+#### 2026-07-08 — v0.1.48 secondary audit fixes (Cloud Worker, branch `cursor/vibespace-launch-polish-6d99`)
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-08 (evening) |
+| **Version** | v0.1.48 |
+| **Plan** | Final secondary audit: verify prior claims fresh; fix unconnected features (clock engine never started, WellnessBreak never mounted), council flag/agent gating, Hive chat-only enforcement for voice, plugin OAuth fake-success, keychain copy honesty, benchmark estimated-price labeling, About What's New entry, Mod+. inspector alias, site nav dark-glass fix + focus rings + skip link, package-lock 0.1.48 sync, stale doc comment |
+| **Files touched** | `app/src/App.tsx`, `app/src/features/command-palette/{actions,useGlobalHotkeys}.ts*`, `app/src/features/plugins/{runtime,runtime.test,Plugins}.ts*`, `app/src/features/benchmarks/{benchmarkData,BenchmarksPage}.ts*`, `app/src/lib/ai/runtime.ts` (voice stack coercion), `app/src/features/settings/sections/About.tsx`, `app/src/features/whats-new/releases.ts`, `site/{index.html,css/style.css}`, `package-lock.json`, `CHANGELOG.md`, this ledger |
+| **Status** | committed + pushed (PR #15) |
+| **Verification** | Fresh: typecheck, 867 tests, build, cargo check, cargo test --lib 9/9, release-manifest, install parsers, site serve 200s, CSS brace check, secret scans clean |
+
+#### 2026-07-08 — v0.1.48 global dictation correction + real media (Cloud Worker, branch `cursor/vibespace-launch-polish-6d99`)
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-08 (night) |
+| **Version** | v0.1.48 |
+| **Plan** | User correction: Ctrl+Space ALWAYS opens the VibeSpace dictation overlay (never Win+H); overlay now shares the chat STT pipeline (faster-whisper → Web Speech → Deepgram → Groq) with Retry/Clear/fix-path states; composer OS voice-typing demoted to explicitly-labeled last resort; hotkeys/settings/docs/site copy corrected; real app screenshots captured from the built bundle via new scripts/capture-screenshots.mjs; MEDIA_CAPTURE.md workflow; Composer mojibake fixed (visible "Get key ï¿½" banner) |
+| **Files touched** | `app/src-tauri/src/{lib,dictation}.rs`, `app/src/features/global-dictation/{dictationSession(+test),GlobalDictationOverlay(+test)}.ts*`, `app/src/features/chat/Composer.tsx`, `app/src/features/settings/sections/{Accessibility,ComposerStt,Hotkeys}.tsx`, `app/src/lib/{hotkeys,callVoiceMarketing}.ts`, `app/src/features/voice/voiceRouter.ts` (web-preview toast gate), `scripts/capture-screenshots.mjs`, `docs/{MEDIA_CAPTURE.md,FEATURES_GUIDE.md,AGENT_TESTING_GUIDE.md,SUBSCRIPTION_PLANS_REFERENCE.md,plans/AI_CREDIT_BUCKET_AND_ULTRA_TIER.md}`, `docs/screenshots/{app-chat,app-schedule,app-context-map,dictation-overlay}.png`, `README.md`, `site/index.html`, `CHANGELOG.md`, `releases/RELEASE_NOTES_0.1.48.md`, whats-new, this ledger |
+| **Status** | committed + pushed (PR #15) |
+| **Verification** | 875 tests / 164 files GREEN; typecheck, build, cargo check, cargo test --lib 9/9, release-manifest, installer parsers, site+README asset checks, secret scan clean |
+
+#### 2026-07-08 — v0.1.48 focus-aware dictation + security/payments audit (Cloud Worker, branch `cursor/vibespace-launch-polish-6d99`)
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-08 (late night) |
+| **Version** | v0.1.48 |
+| **Plan** | User correction: Ctrl+Space is focus-aware (in-app → composer STT for the focused input, outside → small overlay; never Win+H). Security/payments code audit: skill markdown image-scheme hardening, stale legacy webhook removed, portal error honesty, apex in Account ladder, site /billing success+cancel pages, npm audit fix (undici), entitlements doc truth. |
+| **Files touched** | `app/src-tauri/src/lib.rs` (dictation_route + tests), `app/src/features/composer-stt/{GlobalSttHost(+test),composerSttService}.ts*`, settings copy (Accessibility/Hotkeys/Plans), `app/src/features/skills/markdownPreview(+test).ts`, `app/src/features/account/AccountPage.tsx`, `app/src/lib/entitlements.ts`, `site/{index.html,billing/**}`, README, CHANGELOG, release notes, whats-new, `docs/MEDIA_CAPTURE.md`, deleted `app/supabase/functions/stripe-webhook`, package-lock (audit fix) |
+| **Status** | committed + pushed (PR #15) |
+| **Verification** | 880 tests / 165 files GREEN; typecheck, build, cargo check, cargo test --lib 10/10, release-manifest, installer parsers, site serve incl. /billing pages, secret scans clean |
+| **Known server-side gaps (deferred, external deploys needed)** | phone-jarvis `/livekit/token` + `/outbound/call` lack plan/budget checks; `stack-complete` has no per-tier model allowlist; hosted single-model chat labels exist while `message-complete` is not yet called by the app |
+
+#### 2026-07-09 — Final cross-platform validation pass (Cloud Worker, branch `cursor/vibespace-launch-polish-6d99`)
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-09 |
+| **Version** | v0.1.48 |
+| **Plan** | Validation-only checklist run: fresh full check battery, real Linux desktop boot of `tauri dev --features kokoro` under xvfb (app rendered onboarding, interactive clicks advanced steps, no panics), scripted browser boot validation (all routes + settings, zero console errors), site/billing asset checks, secret/stale-copy scans. One real blocker fixed: first-launch onboarding showed stale "Voltage v0.1" branding — now "VibeSpace v0.1.48" with Jarvis-is-the-assistant copy. |
+| **Files touched** | `app/src/features/onboarding/steps/Welcome.tsx`, `scripts/boot-validation.mjs` (new), this ledger |
+| **Status** | committed + pushed (PR #15) |
+| **Verification** | 880 tests / 165 files GREEN post-fix; typecheck, build, cargo check/test, release-manifest, installers, site JS/CSS, secret scans all green. Desktop kokoro-feature build links after adding libstdc++ dev symlink (VM env gap, documented). |
 
 #### 2026-07-05 — Release v0.1.47 official to main (Helper)
 

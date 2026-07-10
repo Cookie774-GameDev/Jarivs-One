@@ -21,8 +21,35 @@ export interface JarvisScheduleMetadata {
   createdBy: 'jarvis' | 'user';
   lastRunAt?: number;
   nextRunAt?: number;
+  /** Dedicated chat that collects this action's outputs. Created on first run. */
+  outputChatId?: string;
   runHistory: Array<{ at: number; status: 'success' | 'error'; summary?: string }>;
   errorHistory: Array<{ at: number; error: string }>;
+}
+
+/**
+ * Persist updated Jarvis schedule metadata back onto an event row while
+ * preserving the rest of the source_ref payload. History arrays are capped so
+ * long-lived recurring actions cannot grow the row without bound.
+ */
+export const JARVIS_SCHEDULE_HISTORY_CAP = 20;
+
+export function withJarvisScheduleMetadata(event: EventRow, metadata: JarvisScheduleMetadata): Partial<EventRow> {
+  const bounded: JarvisScheduleMetadata = {
+    ...metadata,
+    runHistory: metadata.runHistory.slice(-JARVIS_SCHEDULE_HISTORY_CAP),
+    errorHistory: metadata.errorHistory.slice(-JARVIS_SCHEDULE_HISTORY_CAP),
+  };
+  return {
+    source_ref: {
+      ...event.source_ref,
+      context: {
+        kind: event.source_ref?.context?.kind ?? 'memory',
+        ...event.source_ref?.context,
+        id: serializeJarvisScheduleMetadata(bounded),
+      },
+    },
+  };
 }
 
 export function serializeJarvisScheduleMetadata(metadata: JarvisScheduleMetadata): string {

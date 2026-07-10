@@ -18,6 +18,11 @@ export const STT_INACTIVITY_MS = 30_000;
 export const STT_ACTIVITY_RMS = 0.015;
 export const COMPOSER_STT_TOGGLE_EVENT = 'jarvis:stt:toggle';
 export const COMPOSER_STT_STOP_EVENT = 'jarvis:stt:stop';
+/**
+ * Emitted by the Rust Ctrl+Space handler when VibeSpace itself is focused:
+ * the press routes to in-app voice-to-text instead of the floating overlay.
+ */
+export const GLOBAL_DICTATION_IN_APP_EVENT = 'jarvis:global-dictation-in-app';
 
 export type ComposerSttToggleSource = 'hotkey' | 'toolbar' | 'composer' | 'context-menu';
 

@@ -1,13 +1,16 @@
 /**
  * Entitlements — single source of truth for paid-tier capabilities.
  *
- * Today (v0.1.3): every install is on the `free` tier. Stripe billing
- * isn't wired, so paid tiers are documented but unenforceable. This
- * module exists so:
+ * Stripe billing IS wired through Supabase Edge Functions
+ * (`create-checkout-session`, `create-customer-portal`, `stripe-webhook`);
+ * the webhook updates `profiles.tier`, and hosted budgets are enforced
+ * server-side by the metered edge functions. The client `plan` value is a
+ * UI convenience mirror only — never treat it as security. This module
+ * exists so:
  *
  *   1. The Plans settings tab has authoritative copy/quotas to render
  *      (no scattered magic numbers in the UI).
- *   2. When Stripe lands, the auth store flips `plan` to `starter` /
+ *   2. Sign-in syncs `profiles.tier` into the auth store `plan` as `starter` /
  *      `pro` / `ultra` and consumers ask `canUseModel(...)` etc.
  *      without rewriting every call site.
  *
