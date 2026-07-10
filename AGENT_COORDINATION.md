@@ -5,6 +5,7 @@
 - Agent ID: AGENT-20260710-111427-K7M2
 - Status: ACTIVE
 - Started: 2026-07-10 11:14:27 -05:00
+- Last heartbeat: 2026-07-10 11:21:18 -05:00
 - Branch: audit/backend-security-hardening-20260710
 - Base commit: 6b129a283bd0485d8757671416ad19c6df838c22
 - Task: Implement approved backend security, billing, connectivity, and release hardening without changing UI, design, features, plan presentation, or legitimate behavior.
@@ -19,12 +20,14 @@
 - supabase/functions/create-customer-portal/index.ts
 - supabase/functions/stripe-webhook/index.ts
 - supabase/functions/call-start/index.ts
+- supabase/functions/call-status/index.ts
 - supabase/functions/claim-launch-promo/index.ts
 - supabase/functions/_shared/budget.ts
 - supabase/migrations/0028_billing_call_hardening.sql
 - .github/workflows/ci.yml
 - .github/workflows/release.yml
 - .github/workflows/codeql.yml
+- .github/workflows/dependency-review.yml
 - .github/dependabot.yml
 - .github/CODEOWNERS
 - scripts/check-supabase-function-parity.mjs
@@ -41,3 +44,5 @@ Read SYSTEM_PROMPT.md and this file before work. Lock files before editing. Avoi
 ## Work log
 
 2026-07-10 11:14:27 -05:00 — Read the governing files fully, inspected main, current PRs, audit findings, and existing service behavior. Created the isolated branch. No source code was edited before registration. Local clone was unavailable because this runtime could not resolve github.com; connector writes and GitHub Actions will be used.
+
+2026-07-10 11:21:18 -05:00 — Completed focused source discovery for Supabase JWT configuration, Checkout, customer portal, Stripe webhook, call start/status, promo claims, plan budget fallback, migrations, CI, and release workflows. Added `call-status` and dependency-review workflow to the lock because they are required for idempotent call settlement and supply-chain checks.
