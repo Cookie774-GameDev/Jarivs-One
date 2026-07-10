@@ -13,7 +13,7 @@
       color: "#d68a4e",
       role: "Voice assistant",
       callLines: [
-        "Hey, what's up? It's Jarvis — the hands-free voice module inside VibeSpace. Not the product name, just the assistant.",
+        "Hey, it's Jarvis. I'm the hands-free voice module inside VibeSpace — not the product name, just the assistant.",
         "You can talk to me with Mod+Space push-to-talk. Local Kokoro voices are free and unlimited, no API key needed.",
         "Wake word only activates in hands-free mode, so I won't eavesdrop. Composer mic is separate from my voice panel.",
         "I can search your files, summarize docs, create tasks, and call you when a build fails. Want me to set something up?",
@@ -190,43 +190,11 @@
     return CONTACTS.slice();
   }
 
-  /**
-   * Speak a demo line out loud with the browser's built-in speech synthesis.
-   * Purely a preloaded demo voice: no recording, no network, no tracking.
-   * Silently does nothing when the browser has no speechSynthesis support
-   * or the user prefers reduced motion (captions always remain).
-   */
-  function speak(text) {
-    try {
-      if (!global.speechSynthesis || typeof global.SpeechSynthesisUtterance !== "function") return;
-      if (global.matchMedia && global.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-      global.speechSynthesis.cancel();
-      var utterance = new global.SpeechSynthesisUtterance(text);
-      utterance.rate = 1.02;
-      utterance.pitch = 0.92;
-      utterance.volume = 0.9;
-      global.speechSynthesis.speak(utterance);
-    } catch (err) {
-      /* voice is a bonus — captions carry the demo */
-    }
-  }
-
-  /** Stop any in-flight demo speech (call ended / navigated away). */
-  function stopSpeaking() {
-    try {
-      if (global.speechSynthesis) global.speechSynthesis.cancel();
-    } catch (err) {
-      /* nothing to stop */
-    }
-  }
-
   global.VSDialogue = {
     CONTACTS: CONTACTS,
     INCOMING_CALL_SCRIPT: INCOMING_CALL_SCRIPT,
     getContact: getContact,
     getReply: getReply,
-    getAllContacts: getAllContacts,
-    speak: speak,
-    stopSpeaking: stopSpeaking
+    getAllContacts: getAllContacts
   };
 })(window);

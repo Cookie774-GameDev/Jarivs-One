@@ -45,7 +45,6 @@
   </script>
 </head>
 <body>
-  <a class="skip-link" href="#top">Skip to content</a>
   <div class="bg-orbs">
     <div class="orb o1"></div><div class="orb o2"></div><div class="orb o3"></div><div class="orb o4"></div>
   </div>
@@ -62,9 +61,9 @@
         <a href="#calling">Calling</a>
         <a href="#hive">Hive</a>
         <a href="#pricing">Pricing</a>
-        <a href="download/">Download</a>
+        <a href="#download">Download</a>
         <a href="#faq">FAQ</a>
-        <a class="nav-cta btn" href="download/">Install</a>
+        <a class="nav-cta btn" href="#download">Install</a>
       </nav>
       <button class="nav-burger" id="navBurger" aria-label="Toggle nav" aria-expanded="false">&#9776;</button>
     </div>
@@ -78,7 +77,7 @@
         <h1 id="heroH1"><span class="word">Vibe</span> <span class="word">coding</span> <span class="word">for</span> <span class="word">vibe</span> <span class="word">coders.</span> <span class="word"><em>By</em></span> <span class="word"><em>a</em></span> <span class="word"><em>vibe</em></span> <span class="word"><em>coder.</em></span></h1>
         <p class="lead">VibeSpace is the cozy all-in-one AI workspace for builders who context-switch all day: chat with every model, convene agent councils, code in terminal swarms, talk to Jarvis hands-free, make AI phone calls, manage tasks, remember everything, and keep shipping.</p>
         <div class="hero-cta">
-          <a class="btn primary lg" href="download/">Download VibeSpace</a>
+          <a class="btn primary lg" href="#download">Download VibeSpace</a>
           <a class="btn ghost lg" href="https://github.com/Cookie774-GameDev/VibeSpace" target="_blank" rel="noopener"><span data-ic="star"></span> Star on GitHub</a>
         </div>
         <div class="hero-meta">
@@ -304,7 +303,7 @@
                         <div class="as-icon" data-ic="computer"></div>
                         <div class="as-name">VibeSpace Desktop</div>
                         <div class="as-desc">The full AI workspace — terminals, agents, voice, skills, and Inspector. Free and open source.</div>
-                        <a class="as-btn" href="download/">Get Desktop</a>
+                        <a class="as-btn" href="#download">Get Desktop</a>
                       </div>
                     </div>
                   </div>
@@ -839,7 +838,7 @@
           <li>Fully offline with Ollama</li>
           <li>Agent council + skills</li>
         </ul>
-        <a class="btn ghost" href="download/">Get started</a>
+        <a class="btn ghost" href="#download">Get started</a>
       </div>
       <div class="card plan">
         <div class="pname">STARTER</div>
@@ -850,7 +849,7 @@
           <li>~140+ min in-app cloud voice</li>
           <li>30 min Deepgram promo</li>
         </ul>
-        <a class="btn ghost" href="download/">Choose Starter</a>
+        <a class="btn ghost" href="#download">Choose Starter</a>
       </div>
       <div class="card plan feat">
         <div class="pname">PRO</div>
@@ -861,7 +860,7 @@
           <li>~720+ min in-app cloud voice</li>
           <li>90 min Deepgram promo</li>
         </ul>
-        <a class="btn primary" href="download/">Choose Pro</a>
+        <a class="btn primary" href="#download">Choose Pro</a>
       </div>
       <div class="card plan">
         <div class="pname">ULTRA</div>
@@ -872,7 +871,7 @@
           <li>~1,400+ min in-app cloud voice</li>
           <li>3 hr Deepgram promo</li>
         </ul>
-        <a class="btn ghost" href="download/">Choose Ultra</a>
+        <a class="btn ghost" href="#download">Choose Ultra</a>
       </div>
     </div>
     <p style="text-align:center;color:var(--faint);font-size:13px;margin-top:22px" class="reveal">Local voice is always free &amp; unlimited. Cloud features auto-fall-back to local when quota runs out.</p>
@@ -888,7 +887,6 @@
       <div class="keyrow"><span>Command palette</span><kbd>Mod + K</kbd></div>
       <div class="keyrow"><span>Jarvis assistant bar</span><kbd>Mod + J</kbd></div>
       <div class="keyrow"><span>Voice push-to-talk</span><kbd>Mod + Space</kbd></div>
-      <div class="keyrow"><span>Dictation — in-app input, or overlay outside VibeSpace</span><kbd>Ctrl + Space</kbd></div>
       <div class="keyrow"><span>Actions palette</span><kbd>Mod + Shift + A</kbd></div>
       <div class="keyrow"><span>Quick launcher</span><kbd>Mod + Shift + L</kbd></div>
       <div class="keyrow"><span>To-do drawer</span><kbd>Mod + Shift + T</kbd></div>
@@ -904,15 +902,13 @@
     <div class="sec-head center reveal">
       <div class="kicker">Download</div>
       <h2>Three steps. <em>Any desktop.</em></h2>
-      <p class="lead">VibeSpace supports Windows, macOS, and Linux. Use the one-liner if you want the guided install, or open the full download hub for direct Windows, macOS, and Linux packages.</p>
+      <p class="lead">VibeSpace supports Windows, macOS, and Linux. Use the one-liner, approve the installer, then launch VibeSpace and add your first provider key.</p>
     </div>
     <div class="grid g3 reveal-stagger">
       <div class="card dl-card">
         <div class="os-icon" data-ic="os_win"></div>
         <h3>Windows 10/11</h3>
         <div class="codebox"><code id="winCmd">irm https://raw.githubusercontent.com/Cookie774-GameDev/VibeSpace/main/install/install.ps1 | iex</code><button class="copy" data-copy-target="winCmd">copy</button></div>
-        <p>Installer script for the fastest setup, plus direct release files in the download hub.</p>
-        <p><span class="chip live">.exe installer</span> <span class="chip live">.msi package</span> <span class="chip">x64</span></p>
         <ol class="dl-steps">
           <li>Open PowerShell.</li>
           <li>Run the one-line installer.</li>
@@ -923,8 +919,6 @@
         <div class="os-icon" data-ic="os_mac"></div>
         <h3>macOS 12+</h3>
         <div class="codebox"><code id="macCmd">curl -fsSL https://raw.githubusercontent.com/Cookie774-GameDev/VibeSpace/main/install/install.sh | bash</code><button class="copy" data-copy-target="macCmd">copy</button></div>
-        <p>Use the installer command or grab the matching DMG for your Mac from the full download hub.</p>
-        <p><span class="chip live">Apple Silicon DMG</span> <span class="chip live">Intel DMG</span></p>
         <ol class="dl-steps">
           <li>Open Terminal.</li>
           <li>Run the curl installer.</li>
@@ -935,8 +929,6 @@
         <div class="os-icon" data-ic="os_linux"></div>
         <h3>Linux</h3>
         <div class="codebox"><code id="linuxCmd">curl -fsSL https://raw.githubusercontent.com/Cookie774-GameDev/VibeSpace/main/install/install.sh | bash</code><button class="copy" data-copy-target="linuxCmd">copy</button></div>
-        <p>Pick the terminal installer for convenience or choose the package format that matches your distro.</p>
-        <p><span class="chip live">AppImage</span> <span class="chip live">.deb</span> <span class="chip live">.rpm</span></p>
         <ol class="dl-steps">
           <li>Open your terminal.</li>
           <li>Run the installer; deb/rpm/AppImage auto-detects.</li>
@@ -944,8 +936,7 @@
         </ol>
       </div>
     </div>
-    <p class="micro reveal" style="text-align:center;margin:18px auto 0;max-width:760px">Need direct files instead of the one-line installer? The full download hub lists Windows <code>.exe</code> and <code>.msi</code>, macOS Apple Silicon and Intel <code>.dmg</code> builds, and Linux AppImage, <code>.deb</code>, and <code>.rpm</code> packages.</p>
-    <p style="text-align:center;margin-top:24px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap" class="reveal"><a class="btn primary" href="download/">Open full download hub</a><a class="btn dark" href="https://github.com/Cookie774-GameDev/VibeSpace/releases/latest" target="_blank" rel="noopener">View all releases &rarr;</a></p>
+    <p style="text-align:center;margin-top:24px" class="reveal"><a class="btn dark" href="https://github.com/Cookie774-GameDev/VibeSpace/releases/latest" target="_blank" rel="noopener">View all releases &rarr;</a></p>
   </section>
 
   <!-- ARCHITECTURE -->
