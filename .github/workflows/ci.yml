@@ -31,6 +31,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Check Supabase Edge Function JWT policy parity
+        run: node scripts/check-supabase-function-parity.mjs
+
       - name: Typecheck
         run: npm run typecheck
 
@@ -42,9 +45,6 @@ jobs:
 
       - name: Test release manifest
         run: npm run test:release-manifest
-
-      - name: Check Supabase Edge Function JWT policy parity
-        run: node scripts/check-supabase-function-parity.mjs
 
   rust:
     name: Rust (cargo check)
