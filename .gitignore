@@ -75,6 +75,7 @@ coverage/
 
 # Local scratch / temp working files (never commit)
 .tmp-*
+.agent-coordination.lock/
 
 # Local databases
 *.db
