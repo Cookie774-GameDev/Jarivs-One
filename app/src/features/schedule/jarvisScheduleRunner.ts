@@ -10,7 +10,9 @@
  *
  * Duplicate prevention: a run is claimed in-memory (`eventId:dueAt`) before
  * dispatch and the persisted metadata is advanced before the send, so
- * overlapping ticks or focus events can never double-fire one occurrence.
+ * overlapping ticks or focus events cannot double-fire one occurrence.
+ * Pre-dispatch failures restore the occurrence and release its claim so a
+ * temporary message-store error cannot silently complete the task.
  *
  * Catch-up policy: if the app was closed at the scheduled time, a missed
  * occurrence still runs on next launch when it is less than
@@ -103,6 +105,10 @@ function claimRun(key: string): boolean {
   return true;
 }
 
+function releaseRun(key: string): void {
+  claimedRuns.delete(key);
+}
+
 function outputChatTitle(event: EventRow): string {
   const title = event.title.replace(/^Jarvis Scheduled\s+—\s+/, '').trim() || 'Jarvis task';
   return `Jarvis Action — ${title}`.slice(0, 96);
@@ -151,7 +157,8 @@ export async function runDueJarvisSchedules(
 
     const dueAt = metadata.nextRunAt ?? event.start_at;
     if (dueAt > now) continue;
-    if (!claimRun(`${event.id}:${dueAt}`)) continue;
+    const claimKey = `${event.id}:${dueAt}`;
+    if (!claimRun(claimKey)) continue;
 
     const nextRunAt = computeNextJarvisRunAt(event, Math.max(dueAt, now));
 
@@ -177,8 +184,9 @@ export async function runDueJarvisSchedules(
       continue;
     }
 
+    let outputChatId = metadata.outputChatId;
     try {
-      const outputChatId = await ensureOutputChat(event, metadata, deps);
+      outputChatId = await ensureOutputChat(event, metadata, deps);
       const ranMetadata: JarvisScheduleMetadata = {
         ...metadata,
         outputChatId,
@@ -211,17 +219,26 @@ export async function runDueJarvisSchedules(
     } catch (err) {
       const failedMetadata: JarvisScheduleMetadata = {
         ...metadata,
-        nextRunAt: nextRunAt ?? undefined,
+        outputChatId,
+        // Restore the same occurrence instead of advancing it. Otherwise a
+        // one-shot remains `done`, and a recurring action silently skips the
+        // failed run after a temporary message-store error.
+        nextRunAt: dueAt,
         errorHistory: [
           ...metadata.errorHistory,
           { at: now, error: err instanceof Error ? err.message : 'Jarvis Action failed to start.' },
         ],
       };
       try {
-        await deps.updateEvent(event.id, withJarvisScheduleMetadata(event, failedMetadata));
+        await deps.updateEvent(event.id, {
+          ...withJarvisScheduleMetadata(event, failedMetadata),
+          status: 'scheduled',
+        });
       } catch {
         // Nothing else to do without a working event store.
       }
+      // No dispatch occurred, so allow the next poll/focus tick to retry.
+      releaseRun(claimKey);
     }
   }
 
