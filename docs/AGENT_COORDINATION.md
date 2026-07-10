@@ -89,9 +89,23 @@ Append new entries at the **bottom** of the relevant agent section. Use [How to 
 | **Plan** | Back up current main, audit PR #15/#16 and recent website/phone/billing work, merge main into PR #15, resolve every conflict conservatively, run the full verification matrix, push and merge normally only if all required gates pass, then verify final main. |
 | **Affected systems** | Git history, desktop app, website/GitHub Pages, installers, phone/call flows, Stripe/Supabase source, CI/security checks |
 | **Files touched** | `docs/AGENT_COORDINATION.md`, `docs/superpowers/plans/2026-07-10-pr15-safe-merge.md`; exact conflict-file locks will be added after read-only merge-tree discovery and before the merge |
-| **Status** | in-progress |
-| **Commit** | — |
+| **Status** | blocked — required installer UTF-8 gate cannot be completed while Bitdefender holds the file; PR branch was not pushed and PR #15 was not merged |
+| **Commit** | `7355bea` merge resolution; `4a00956` website follow-up; no final merge SHA |
 | **Notes** | Root `SYSTEM_PROMPT.md` and root `AGENT_COORDINATION.md` were read from completed draft PR #17 because they are absent from current main/PR #15. PR #17 reports no active tasks and all locks released. No production Supabase/Stripe mutation is authorized. |
+
+#### 2026-07-10 — PR #15 merge verification and blocked handoff
+
+| Field | Value |
+|-------|-------|
+| **Conflict decisions** | `site/css/style.css`: kept main's newer nav structure and PR #15 focus/skip-link accessibility. `site/index.html`: kept main's expanded phone/call return flow, retained PR #15 dictation/skip-link copy, removed duplicate speech invocation. `site/js/phone-os.js`: kept main's expanded simulator and single `speechSynthesis` lifecycle. |
+| **PR #16** | Verified `21cf29b`, `b71df22`, and `c82398d` are ancestors of PR #15; focused schedule runner tests passed 16/16. |
+| **Website preserved** | Pages workflow, `site/CNAME` (`vibespaceos.com`), phone simulator/assets, PR #15 billing result pages, and Windows/macOS/Linux download hub preserved. Desktop/mobile browser checks passed with zero console errors; mobile document width 375/375 after root overflow fix. |
+| **Frontend verification** | `npm run typecheck` PASS; `npm --prefix app run test` PASS (166 files, 881 tests); `npm run build` PASS (2,815 modules; existing chunk warnings); `npm run test:release-manifest` PASS (1/1). |
+| **Rust verification** | `cargo check --manifest-path app/src-tauri/Cargo.toml --release` PASS with two dead-code warnings; `cargo test --manifest-path app/src-tauri/Cargo.toml --lib` PASS (11/11). |
+| **Installer verification** | PowerShell AST parser PASS on committed UTF-16LE file; Bash syntax PASS; latest v0.1.45 release contains expected EXE, MSI, Apple/Intel DMG, AppImage, DEB, and RPM assets. Required UTF-8 check FAIL: committed `install/install.ps1` is UTF-16LE with BOM. Correct UTF-16LE-to-UTF-8 conversion was attempted, but Bitdefender Virus Shield locked the file before it could be verified/staged; no security process was stopped or bypassed. |
+| **Security verification** | Secret-pattern scan PASS (976 tracked paths); `npm audit --omit=dev --audit-level=high` PASS (0 production vulnerabilities). Full `npm audit --audit-level=high` FAILS on pre-existing Vite/esbuild dev-server advisories requiring a breaking Vite upgrade. Canonical `supabase/` and billing/Supabase client trees match main. No production Supabase/Stripe action performed. |
+| **Remaining risks** | PR #17 remains draft with unresolved Dependency Review and separate billing/call hardening. Current main/PR #15 retain known Twilio callback idempotency and Stripe persistence/JWT deployment risks documented in PR #17. Installer path must be unlocked and restored or correctly converted before any push/merge. |
+| **Final status** | BLOCKED; no push, no PR update, no merge to main, no final main verification claim. All Agent 1 logical locks released below. |
 
 ### VibeSpace Helper
 
@@ -343,19 +357,20 @@ Append new entries at the **bottom** of the relevant agent section. Use [How to 
 
 | Path / area | Owner agent | Version | Status | Notes |
 |-------------|-------------|---------|--------|-------|
-| `docs/AGENT_COORDINATION.md` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | in-progress | PR #15 merge registration, conflict decisions, verification, final SHA, and lock release |
-| `docs/superpowers/plans/2026-07-10-pr15-safe-merge.md` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | in-progress | High-risk merge execution plan |
-| `.github/workflows/pages.yml` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | in-progress | Preserve current GitHub Pages deployment behavior from main |
-| `site/CNAME` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | in-progress | Preserve `vibespaceos.com` custom domain |
-| `site/css/phone-os.css` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | in-progress | Main-side phone simulator stylesheet |
-| `site/css/style.css` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | in-progress | Merge conflict: preserve main simulator/nav structure and PR #15 accessibility/contrast |
-| `site/download.html` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | in-progress | Current download hub plus approved clean-route follow-up |
-| `site/download/index.html` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | in-progress | Current clean download route plus approved follow-up |
-| `site/images/phone-photo-*.png` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | in-progress | Main-side phone simulator photo assets 1 through 5 |
-| `site/index.html` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | in-progress | Merge conflict: preserve main landing/phone UI and compatible PR #15 accessibility/dictation/call improvements |
-| `site/js/icons.js` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | in-progress | Main-side simulator icons |
-| `site/js/motion.js` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | in-progress | Main-side site motion behavior |
-| `site/js/phone-os.js` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | in-progress | Merge conflict: preserve main simulator and a single non-duplicated speech lifecycle |
+| `docs/AGENT_COORDINATION.md` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | Blocked handoff recorded; no final merge SHA |
+| `docs/superpowers/plans/2026-07-10-pr15-safe-merge.md` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | High-risk merge execution plan |
+| `.github/workflows/pages.yml` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | Current GitHub Pages deployment behavior preserved |
+| `site/CNAME` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | `vibespaceos.com` custom domain preserved |
+| `site/css/phone-os.css` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | Main-side phone simulator stylesheet preserved |
+| `site/css/style.css` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | Conflict resolved; main nav plus PR #15 accessibility retained |
+| `site/download.html` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | Compatibility redirect to clean route |
+| `site/download/index.html` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | Full cross-platform download hub |
+| `site/images/phone-photo-*.png` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | Main-side phone simulator photo assets preserved |
+| `site/index.html` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | Conflict resolved; landing/phone/accessibility/download behaviors retained |
+| `site/js/icons.js` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | Main-side simulator icons preserved |
+| `site/js/motion.js` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | Main-side site motion behavior preserved |
+| `site/js/phone-os.js` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | Conflict resolved to single speech lifecycle |
+| `install/install.ps1` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | Blocked by Bitdefender path lock; no verified installer commit produced |
 | `app/src/features/terminals/**` | VibeSpace Main | v0.1.44 | in-progress | Urgent terminal stability, scrollback isolation, agent prompt delivery |
 | `app/src/components/layout/PageRouter.tsx` | VibeSpace Main | v0.1.44 | in-progress | Keep terminal surfaces stable across route switches |
 | `docs/AGENT_COORDINATION.md` | VibeSpace Main | v0.1.44 | in-progress | Coordination ledger for terminal reliability fix |
