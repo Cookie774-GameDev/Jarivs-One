@@ -22,7 +22,9 @@ const publicFunctions = new Set([
 const errors = [];
 for (const name of directories) {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const section = new RegExp(`\\[functions\\.${escaped}\\]([\\s\\S]*?)(?=\\n\\[|$)`, 'm').exec(config)?.[1] ?? '';
+  // Do not use the multiline flag here: with `m`, `$` matches the end of the
+  // section-header line and the non-greedy capture becomes empty.
+  const section = new RegExp(`\\[functions\\.${escaped}\\]([\\s\\S]*?)(?=\\n\\[|$)`).exec(config)?.[1] ?? '';
   const match = /verify_jwt\s*=\s*(true|false)/.exec(section);
   if (!match) {
     errors.push(`${name}: missing explicit verify_jwt policy`);
