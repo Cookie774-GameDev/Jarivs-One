@@ -1,11 +1,10 @@
 {
-  "version": "0.1.45",
-  "notes": "VibeSpace 0.1.45",
-  "pub_date": "2026-06-20T12:08:37.335Z",
+  "version": "0.1.48",
+  "notes": "VibeSpace 0.1.48",
+  "pub_date": "2026-07-10T20:40:52.000Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUVDJwYTFzUUhGTzRkQkdiTElUbjd4RVE0Y1Z2MjBsdVovbVJ5RUZzREZOZHRETUhRNElpTmZ0SDZBb2NZWDZ3c2J0eVBoT3pIeHAzbXIydzA5MGtTZzIzZEx4S3A0WGdzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgxOTU3MzE0CWZpbGU6VmliZVNwYWNlXzAuMS40NV94NjQtc2V0dXAuZXhlCmpVUWNPamlCeHJRUjhxazZVZUR0RU1Mbk9sZlBDYTVTM0pIQjRGYmJFK3NVZm5Ib1RTSkZPdE1uWTRQeUFFT20vcmlsRDIwanB5THBDUVhDcW5yMUJnPT0K",
-      "url": "https://github.com/Cookie774-GameDev/VibeSpace/releases/download/v0.1.45/VibeSpace-0.1.45-Windows-x64.exe"
+      "url": "https://github.com/Cookie774-GameDev/VibeSpace/releases/download/v0.1.48/VibeSpace_0.1.48_x64-setup.exe"
     }
   }
 }
