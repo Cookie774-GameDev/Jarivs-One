@@ -76,6 +76,23 @@ Prevent five concurrent Cursor agents from overwriting, reverting, or force-push
 
 Append new entries at the **bottom** of the relevant agent section. Use [How to update this doc](#how-to-update-this-doc).
 
+### Agent 1 — AGENT-1-20260710-132900-C9F2
+
+#### 2026-07-10 — Safely finish PR #15 merge
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-10 13:29 CT |
+| **Agent ID** | `AGENT-1-20260710-132900-C9F2` |
+| **Version** | v0.1.48 |
+| **Branch** | `cursor/vibespace-launch-polish-6d99` from `53edf3c`; merge base target `origin/main` at `cccf9b8` |
+| **Plan** | Back up current main, audit PR #15/#16 and recent website/phone/billing work, merge main into PR #15, resolve every conflict conservatively, run the full verification matrix, push and merge normally only if all required gates pass, then verify final main. |
+| **Affected systems** | Git history, desktop app, website/GitHub Pages, installers, phone/call flows, Stripe/Supabase source, CI/security checks |
+| **Files touched** | `docs/AGENT_COORDINATION.md`, `docs/superpowers/plans/2026-07-10-pr15-safe-merge.md`; exact conflict-file locks will be added after read-only merge-tree discovery and before the merge |
+| **Status** | in-progress |
+| **Commit** | — |
+| **Notes** | Root `SYSTEM_PROMPT.md` and root `AGENT_COORDINATION.md` were read from completed draft PR #17 because they are absent from current main/PR #15. PR #17 reports no active tasks and all locks released. No production Supabase/Stripe mutation is authorized. |
+
 ### VibeSpace Helper
 
 #### 2026-06-16 â€” UTF-8 install.ps1 hotfix + testing guide
@@ -326,6 +343,8 @@ Append new entries at the **bottom** of the relevant agent section. Use [How to 
 
 | Path / area | Owner agent | Version | Status | Notes |
 |-------------|-------------|---------|--------|-------|
+| `docs/AGENT_COORDINATION.md` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | in-progress | PR #15 merge registration, conflict decisions, verification, final SHA, and lock release |
+| `docs/superpowers/plans/2026-07-10-pr15-safe-merge.md` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | in-progress | High-risk merge execution plan |
 | `app/src/features/terminals/**` | VibeSpace Main | v0.1.44 | in-progress | Urgent terminal stability, scrollback isolation, agent prompt delivery |
 | `app/src/components/layout/PageRouter.tsx` | VibeSpace Main | v0.1.44 | in-progress | Keep terminal surfaces stable across route switches |
 | `docs/AGENT_COORDINATION.md` | VibeSpace Main | v0.1.44 | in-progress | Coordination ledger for terminal reliability fix |
