@@ -1,73 +1,118 @@
-/* phone-os.js — VibeSpace Phone simulator
- * Lock screen → home → 6 apps: Calls, Messages, Browser, Dial, Settings, App Store
- */
+/* phone-os.js - VibeSpace phone simulator */
 (function () {
   "use strict";
-  var reduce = matchMedia("(prefers-reduced-motion:reduce)").matches;
 
-  var phone, screen, content, statusBarTime, batteryFill;
-  var screenStack = []; // stack of active screen layers
+  var reduce = matchMedia("(prefers-reduced-motion:reduce)").matches;
+  var repoUrl = "https://github.com/Cookie774-GameDev/VibeSpace";
+  var apiRepoUrl = "https://api.github.com/repos/Cookie774-GameDev/VibeSpace";
+
+  var phone;
+  var statusBarTime;
+  var batteryFill;
+  var screenStack = [];
   var currentContact = null;
+  var currentUtterance = null;
   var callTimer = null;
   var callSeconds = 0;
   var incomingCallTimer = null;
-  var msgThreads = {}; // contactId -> [{text, side}]
+  var msgThreads = {};
+  var photos = [];
+  var flappyState = null;
+  var snakeState = null;
+  var browserCache = null;
 
   function init() {
     phone = document.getElementById("phoneOS");
-    if (!phone) return;
-    screen = phone.querySelector(".phone-screen");
-    content = phone.querySelector(".phone-content");
+    if (!phone || !window.VSDialogue) return;
+
     statusBarTime = phone.querySelector(".sb-time");
     batteryFill = phone.querySelector(".phone-battery-fill");
 
-    // Battery animation
-    if (batteryFill && !reduce) {
-      var bat = 82;
-      setInterval(function () {
-        bat = bat > 15 ? bat - 0.3 : 82;
-        batteryFill.style.width = bat + "%";
-      }, 4000);
-    }
-
-    // Time update
+    setupBattery();
     updateTime();
     setInterval(updateTime, 1000);
 
-    // Lock screen swipe up
-    var lockScreen = phone.querySelector(".phone-lock");
-    if (lockScreen) {
-      lockScreen.addEventListener("click", unlockPhone);
-    }
+    bindNavigation();
+    bindPhoneActions();
+    buildCallList();
+    buildMessageList();
+    initPhotos();
+    initDialPad();
+    initGames();
+    renderAllBrowsers();
 
-    // Home indicator
-    var homeIndicator = phone.querySelector(".phone-home-indicator");
-    if (homeIndicator) {
-      homeIndicator.addEventListener("click", goHome);
-    }
-
-    // App icon clicks
-    phone.querySelectorAll(".phone-app-icon").forEach(function (icon) {
-      icon.addEventListener("click", function () {
-        openApp(icon.dataset.app);
-      });
-    });
-
-    // Simulate incoming call button
-    var simBtn = phone.querySelector("[data-action='simulate-incoming']");
-    if (simBtn) simBtn.addEventListener("click", simulateIncomingCall);
-
-    // Auto incoming call after 30s (once per session)
     if (!sessionStorage.getItem("vs-incoming-call-done") && !reduce) {
       incomingCallTimer = setTimeout(simulateIncomingCall, 30000);
     }
 
-    // Build call list
-    buildCallList();
-    // Build message list
-    buildMessageList();
-    // Load browser
-    loadGitHubBrowser();
+    if (window.VSIconsInject) window.VSIconsInject(phone);
+  }
+
+  function setupBattery() {
+    if (!batteryFill || reduce) return;
+    var level = 82;
+    setInterval(function () {
+      level = level > 18 ? level - 0.4 : 82;
+      batteryFill.style.width = level + "%";
+    }, 4000);
+  }
+
+  function bindNavigation() {
+    var lock = phone.querySelector(".phone-lock");
+    var homeIndicator = phone.querySelector(".phone-home-indicator");
+    var homeButton = phone.querySelector(".phone-home-button");
+
+    if (lock) {
+      lock.addEventListener("click", unlockPhone);
+      lock.addEventListener("touchstart", unlockPhone, { passive: true });
+    }
+    if (homeIndicator) homeIndicator.addEventListener("click", goHome);
+    if (homeButton) homeButton.addEventListener("click", goHome);
+
+    phone.querySelectorAll(".phone-app-icon").forEach(function (icon) {
+      icon.addEventListener("click", function () {
+        if (icon.dataset.action === "simulate-incoming") {
+          simulateIncomingCall();
+          return;
+        }
+        openApp(icon.dataset.app);
+      });
+    });
+
+    document.addEventListener("click", function (e) {
+      if (!phone.contains(e.target)) return;
+      if (e.target.classList.contains("phone-back-btn")) goBack();
+      if (e.target.closest(".phone-incoming-banner")) answerIncomingCall();
+      if (e.target.classList.contains("phone-browser-go")) openGitHubPage();
+    });
+  }
+
+  function bindPhoneActions() {
+    var defaultSpeaker = phone.querySelector(".call-btn.speaker");
+    if (defaultSpeaker) defaultSpeaker.classList.add("active");
+
+    phone.addEventListener("click", function (e) {
+      var actionEl = e.target.closest("[data-phone-action]");
+      if (!actionEl) return;
+
+      var action = actionEl.dataset.phoneAction;
+      if (action === "call-jarvis") startCall("jarvis");
+      if (action === "incoming-call") simulateIncomingCall();
+      if (action === "open-camera") openApp("camera");
+      if (action === "take-photo") takePhoto();
+      if (action === "camera-flip") showToast("Switched lens");
+      if (action === "camera-mode") showToast("Portrait mode ready");
+      if (action === "start-flappy") startFlappyGame();
+      if (action === "start-snake") startSnakeGame();
+    });
+
+    phone.querySelectorAll(".call-btn").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        if (btn.classList.contains("end")) endCall();
+        if (btn.classList.contains("mute")) toggleMute(btn);
+        if (btn.classList.contains("speaker")) toggleSpeaker(btn);
+      });
+    });
   }
 
   function updateTime() {
@@ -75,430 +120,463 @@
     var customTime = sessionStorage.getItem("vs-phone-time");
     var d = customTime ? new Date(customTime) : new Date();
     if (isNaN(d)) d = new Date();
-    var h = d.getHours();
-    var m = d.getMinutes();
-    statusBarTime.textContent = (h % 12 || 12) + ":" + (m < 10 ? "0" : "") + m;
 
-    // Lock screen time
+    var hours = d.getHours();
+    var minutes = d.getMinutes();
+    var stamp = (hours % 12 || 12) + ":" + (minutes < 10 ? "0" : "") + minutes;
+
+    statusBarTime.textContent = stamp;
+
     var lockTime = phone.querySelector(".phone-lock-time");
-    if (lockTime) lockTime.textContent = (h % 12 || 12) + ":" + (m < 10 ? "0" : "") + m;
     var lockDate = phone.querySelector(".phone-lock-date");
+    if (lockTime) lockTime.textContent = stamp;
     if (lockDate) {
-      var days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
-      var months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+      var days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+      var months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
       lockDate.textContent = days[d.getDay()] + ", " + months[d.getMonth()] + " " + d.getDate();
     }
   }
 
   function unlockPhone() {
     var lock = phone.querySelector(".phone-lock");
-    if (!lock || lock.classList.contains("hidden-left")) return;
-    lock.classList.add("hidden-left");
     var home = phone.querySelector(".phone-home-screen");
+    if (!lock || !home) return;
+    lock.classList.add("hidden-left");
+    lock.classList.remove("active");
     home.classList.remove("hidden-right");
     home.classList.add("active");
     screenStack = [home];
   }
 
-  function goHome() {
-    // Close call if active
-    var callScreen = phone.querySelector(".phone-call-screen");
-    if (callScreen && callScreen.classList.contains("active")) {
-      endCall();
-    }
-    // Hide all app screens
-    phone.querySelectorAll(".phone-app-screen").forEach(function (s) {
-      s.classList.remove("active");
-      s.classList.add("hidden-right");
-    });
-    // Show home
-    var home = phone.querySelector(".phone-home-screen");
-    if (home) {
-      home.classList.remove("hidden-left", "hidden-right");
-      home.classList.add("active");
-      screenStack = [home];
-    }
-  }
-
   function openApp(appId) {
-    var screen = phone.querySelector('.phone-app-screen[data-app="' + appId + '"]');
-    if (!screen) return;
-    // Hide home
+    var target = phone.querySelector('.phone-app-screen[data-app="' + appId + '"]');
     var home = phone.querySelector(".phone-home-screen");
+    if (!target || !home) return;
+
+    if (screenStack.length === 0) unlockPhone();
+
+    phone.querySelectorAll(".phone-app-screen").forEach(function (screen) {
+      if (screen !== target) {
+        screen.classList.remove("active");
+        screen.classList.add("hidden-right");
+      }
+    });
+
     home.classList.add("hidden-left");
     home.classList.remove("active");
-    // Show app
-    screen.classList.remove("hidden-right", "hidden-left");
-    screen.classList.add("active");
-    screenStack = [home, screen];
+    target.classList.remove("hidden-right", "hidden-left");
+    target.classList.add("active");
+    screenStack = [home, target];
 
-    // App-specific init
-    if (appId === "browser") loadGitHubBrowser();
     if (appId === "settings") initSettings();
     if (appId === "notes") initNotes();
     if (appId === "vibecast") initVibeCast();
     if (appId === "notifications") initNotifications();
+    if (appId === "photos") renderPhotos();
+    if (appId === "safari" || appId === "chrome" || appId === "browser") renderAllBrowsers();
   }
 
   function goBack() {
-    if (screenStack.length <= 1) { goHome(); return; }
+    var chatView = phone.querySelector(".msg-chat-view");
+    var listView = phone.querySelector(".msg-list-view");
+    if (chatView && chatView.classList.contains("active")) {
+      chatView.classList.remove("active");
+      chatView.classList.add("hidden-right");
+      if (listView) listView.classList.remove("hidden-left");
+      return;
+    }
+
+    if (screenStack.length <= 1) {
+      goHome();
+      return;
+    }
+
     var current = screenStack.pop();
-    current.classList.add("hidden-right");
     current.classList.remove("active");
-    var prev = screenStack[screenStack.length - 1];
-    prev.classList.remove("hidden-left", "hidden-right");
-    prev.classList.add("active");
+    current.classList.add("hidden-right");
+
+    var previous = screenStack[screenStack.length - 1];
+    previous.classList.remove("hidden-left", "hidden-right");
+    previous.classList.add("active");
   }
 
-  // Wire back buttons
-  document.addEventListener("click", function (e) {
-    if (e.target && e.target.classList && e.target.classList.contains("phone-back-btn")) {
-      goBack();
-    }
-  });
+  function goHome() {
+    stopSpeech();
+    var callScreen = phone.querySelector(".phone-call-screen");
+    if (callScreen && callScreen.classList.contains("active")) endCall(false);
 
-  // ============ CALLS APP ============
+    phone.querySelectorAll(".phone-app-screen").forEach(function (screen) {
+      screen.classList.remove("active");
+      screen.classList.add("hidden-right");
+    });
+
+    var home = phone.querySelector(".phone-home-screen");
+    if (!home) return;
+    home.classList.remove("hidden-left", "hidden-right");
+    home.classList.add("active");
+    screenStack = [home];
+  }
+
   function buildCallList() {
     var list = phone.querySelector(".call-list");
     if (!list) return;
-    var contacts = VSDialogue.getAllContacts();
-    list.innerHTML = contacts.map(function (c) {
-      return '<div class="call-contact" data-call="' + c.id + '">' +
-        '<div class="cc-avatar" style="background:' + c.color + '">' + c.avatar + '</div>' +
-        '<div class="cc-info"><div class="cc-name">' + c.name + '</div>' +
-        '<div class="cc-role">' + c.role + '</div></div>' +
-        '<button class="cc-call-btn" aria-label="Call ' + c.name + '" data-ic="call"></button>' +
-        '</div>';
+    var contacts = window.VSDialogue.getAllContacts();
+
+    list.innerHTML = contacts.map(function (contact) {
+      return '<div class="call-contact" data-call="' + contact.id + '">' +
+        '<div class="cc-avatar" style="background:' + contact.color + '">' + contact.avatar + "</div>" +
+        '<div class="cc-info"><div class="cc-name">' + contact.name + "</div>" +
+        '<div class="cc-role">' + contact.role + "</div></div>" +
+        '<button class="cc-call-btn" aria-label="Call ' + contact.name + '" data-ic="call"></button>' +
+        "</div>";
     }).join("");
-    list.querySelectorAll(".call-contact").forEach(function (el) {
-      el.addEventListener("click", function () {
-        startCall(el.dataset.call);
+
+    list.querySelectorAll(".call-contact").forEach(function (row) {
+      row.addEventListener("click", function () {
+        startCall(row.dataset.call);
       });
     });
   }
 
   function startCall(contactId) {
-    var c = VSDialogue.getContact(contactId);
-    if (!c) return;
-    currentContact = c;
+    var contact = window.VSDialogue.getContact(contactId);
     var callScreen = phone.querySelector(".phone-call-screen");
+    if (!contact || !callScreen) return;
+
+    currentContact = contact;
+    stopSpeech();
+
     var avatar = callScreen.querySelector(".call-avatar-ring");
     var nameEl = callScreen.querySelector(".call-name");
     var statusEl = callScreen.querySelector(".call-status");
     var timerEl = callScreen.querySelector(".call-timer");
     var captions = callScreen.querySelector(".call-captions");
 
-    avatar.style.background = "radial-gradient(circle at 35% 30%, rgba(255,255,255,0.25), transparent 35%), " + c.color;
-    avatar.textContent = c.avatar;
-    nameEl.textContent = c.name;
+    avatar.style.background = "radial-gradient(circle at 35% 30%, rgba(255,255,255,0.25), transparent 35%), " + contact.color;
+    avatar.textContent = contact.avatar;
+    nameEl.textContent = contact.name;
     statusEl.textContent = "calling...";
     timerEl.textContent = "00:00";
     captions.innerHTML = "";
 
     callScreen.classList.add("active");
     phone.classList.add("phone-shake");
-    setTimeout(function () { phone.classList.remove("phone-shake"); }, 800);
+    setTimeout(function () { phone.classList.remove("phone-shake"); }, 700);
 
-    // After 1.5s, connect and start dialogue
+    if (callTimer) clearInterval(callTimer);
     setTimeout(function () {
       statusEl.textContent = "connected";
       callSeconds = 0;
       callTimer = setInterval(function () {
-        callSeconds++;
+        callSeconds += 1;
         var mm = Math.floor(callSeconds / 60);
         var ss = callSeconds % 60;
         timerEl.textContent = (mm < 10 ? "0" : "") + mm + ":" + (ss < 10 ? "0" : "") + ss;
       }, 1000);
-      playCallDialogue(c, captions);
-    }, 1500);
+      playCallDialogue(contact, captions);
+    }, 1300);
   }
 
-  function playCallDialogue(c, captions) {
-    var lines = c.callLines;
-    var idx = 0;
-    function nextLine() {
-      if (idx >= lines.length) return;
-      var line = lines[idx++];
-      // Preloaded demo voice speaks the caption line (captions always shown).
-      if (window.VSDialogue && VSDialogue.speak) VSDialogue.speak(line);
-      var div = document.createElement("div");
-      div.className = "caption-line them";
-      captions.appendChild(div);
-      div.classList.add("show");
-      if (!reduce) {
-        div.classList.add("typing");
-        // Typewriter
-        var i = 0;
-        var tick = setInterval(function () {
-          div.textContent = line.slice(0, ++i);
-          if (i >= line.length) {
-            clearInterval(tick);
-            div.classList.remove("typing");
-            div.textContent = line;
-            captions.scrollTop = captions.scrollHeight;
-            setTimeout(nextLine, 1800);
-          }
-        }, 20);
-      } else {
-        div.textContent = line;
+  function playCallDialogue(contact, captions) {
+    var lines = contact.callLines || [];
+    var index = 0;
+
+    function next() {
+      if (index >= lines.length || !currentContact || currentContact.id !== contact.id) return;
+      var line = lines[index++];
+      var bubble = document.createElement("div");
+      bubble.className = "caption-line them";
+      captions.appendChild(bubble);
+      bubble.classList.add("show");
+
+      if (reduce) {
+        bubble.textContent = line;
+        speakLine(line);
         captions.scrollTop = captions.scrollHeight;
-        setTimeout(nextLine, 1800);
+        setTimeout(next, 2300);
+        return;
       }
+
+      var cursor = 0;
+      var tick = setInterval(function () {
+        cursor += 1;
+        bubble.textContent = line.slice(0, cursor);
+        captions.scrollTop = captions.scrollHeight;
+        if (cursor >= line.length) {
+          clearInterval(tick);
+          bubble.textContent = line;
+          speakLine(line);
+          setTimeout(next, 2300);
+        }
+      }, 28);
     }
-    nextLine();
+
+    next();
   }
 
-  function endCall() {
+  function speakLine(text) {
+    if (!("speechSynthesis" in window)) return;
+    if (phone.querySelector(".call-btn.mute").classList.contains("active")) return;
+
+    stopSpeech();
+    currentUtterance = new SpeechSynthesisUtterance(text);
+    currentUtterance.rate = 1;
+    currentUtterance.pitch = 1;
+    currentUtterance.volume = phone.querySelector(".call-btn.speaker").classList.contains("active") ? 1 : 0.75;
+    window.speechSynthesis.speak(currentUtterance);
+  }
+
+  function stopSpeech() {
+    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+    currentUtterance = null;
+  }
+
+  function toggleMute(btn) {
+    btn.classList.toggle("active");
+    if (btn.classList.contains("active")) {
+      stopSpeech();
+      showToast("Call muted");
+    } else {
+      showToast("Mute off");
+    }
+  }
+
+  function toggleSpeaker(btn) {
+    btn.classList.toggle("active");
+    showToast(btn.classList.contains("active") ? "Speaker on" : "Speaker off");
+  }
+
+  function endCall(showEndedToast) {
     var callScreen = phone.querySelector(".phone-call-screen");
-    callScreen.classList.remove("active");
-    if (callTimer) { clearInterval(callTimer); callTimer = null; }
+    if (callScreen) callScreen.classList.remove("active");
+    if (callTimer) clearInterval(callTimer);
+    callTimer = null;
     callSeconds = 0;
-    if (window.VSDialogue && VSDialogue.stopSpeaking) VSDialogue.stopSpeaking();
-    showToast(currentContact ? "Call ended — " + currentContact.name : "Call ended");
+    stopSpeech();
+    if (showEndedToast !== false) showToast(currentContact ? "Call ended with " + currentContact.name : "Call ended");
     currentContact = null;
   }
 
-  // Wire call control buttons
-  document.addEventListener("click", function (e) {
-    if (!e.target || !e.target.classList) return;
-    if (e.target.classList.contains("call-btn") && e.target.classList.contains("end")) endCall();
-  });
-
-  // ============ INCOMING CALL ============
   function simulateIncomingCall() {
-    if (incomingCallTimer) { clearTimeout(incomingCallTimer); incomingCallTimer = null; }
+    if (incomingCallTimer) {
+      clearTimeout(incomingCallTimer);
+      incomingCallTimer = null;
+    }
     sessionStorage.setItem("vs-incoming-call-done", "1");
     var banner = phone.querySelector(".phone-incoming-banner");
     if (!banner) return;
     banner.classList.add("show");
     phone.classList.add("phone-shake");
-    setTimeout(function () { phone.classList.remove("phone-shake"); }, 800);
-    // Auto-dismiss after 8s if not answered
-    setTimeout(function () {
-      if (banner.classList.contains("show")) banner.classList.remove("show");
-    }, 8000);
+    setTimeout(function () { phone.classList.remove("phone-shake"); }, 700);
+    setTimeout(function () { banner.classList.remove("show"); }, 8000);
   }
 
-  // Wire incoming banner
-  document.addEventListener("click", function (e) {
-    if (!e.target) return;
-    if (e.target.closest(".phone-incoming-banner")) {
-      var banner = phone.querySelector(".phone-incoming-banner");
-      banner.classList.remove("show");
-      startCall("jarvis");
-    }
-  });
+  function answerIncomingCall() {
+    var banner = phone.querySelector(".phone-incoming-banner");
+    if (banner) banner.classList.remove("show");
+    startCall("jarvis");
+  }
 
-  // ============ MESSAGES APP ============
   function buildMessageList() {
     var list = phone.querySelector(".msg-list");
     if (!list) return;
-    var contacts = VSDialogue.getAllContacts();
-    list.innerHTML = contacts.map(function (c) {
-      var preview = c.defaultReply.slice(0, 45) + "...";
-      if (!msgThreads[c.id]) msgThreads[c.id] = [{ text: c.defaultReply, side: "them" }];
-      return '<div class="msg-thread" data-msg="' + c.id + '">' +
-        '<div class="mt-avatar" style="background:' + c.color + '">' + c.avatar + '</div>' +
-        '<div class="mt-info"><div class="mt-name">' + c.name + (c.pinned ? ' <span class="mt-pin" data-ic="pin"></span>' : '') + '</div>' +
-        '<div class="mt-preview">' + preview + '</div></div></div>';
+    var contacts = window.VSDialogue.getAllContacts();
+
+    list.innerHTML = contacts.map(function (contact) {
+      if (!msgThreads[contact.id]) {
+        msgThreads[contact.id] = [{ text: contact.defaultReply, side: "them" }];
+      }
+      return '<div class="msg-thread" data-msg="' + contact.id + '">' +
+        '<div class="mt-avatar" style="background:' + contact.color + '">' + contact.avatar + "</div>" +
+        '<div class="mt-info"><div class="mt-name">' + contact.name + "</div>" +
+        '<div class="mt-preview">' + contact.defaultReply.slice(0, 48) + "...</div></div></div>";
     }).join("");
-    list.querySelectorAll(".msg-thread").forEach(function (el) {
-      el.addEventListener("click", function () {
-        openMessageThread(el.dataset.msg);
+
+    list.querySelectorAll(".msg-thread").forEach(function (thread) {
+      thread.addEventListener("click", function () {
+        openMessageThread(thread.dataset.msg);
       });
     });
   }
 
   function openMessageThread(contactId) {
-    var c = VSDialogue.getContact(contactId);
-    if (!c) return;
-    var chatView = phone.querySelector(".msg-chat-view");
+    var contact = window.VSDialogue.getContact(contactId);
+    var listScreen = phone.querySelector('.phone-app-screen[data-app="messages"]');
+    var listView = listScreen.querySelector(".msg-list-view");
+    var chatView = listScreen.querySelector(".msg-chat-view");
     var titleEl = chatView.querySelector(".phone-nav-title");
     var bubbles = chatView.querySelector(".msg-bubbles");
-    titleEl.textContent = c.name;
-    bubbles.innerHTML = "";
-
-    // Show existing messages
-    var msgs = msgThreads[contactId] || [];
-    msgs.forEach(function (m, i) {
-      var div = document.createElement("div");
-      div.className = "msg-bubble " + m.side;
-      div.textContent = m.text;
-      bubbles.appendChild(div);
-      setTimeout(function () { div.classList.add("show"); }, reduce ? 0 : i * 100);
-    });
-    bubbles.scrollTop = bubbles.scrollHeight;
-
-    // Show chat view (replace list)
-    var listScreen = phone.querySelector('.phone-app-screen[data-app="messages"]');
-    var listLayer = listScreen.querySelector(".msg-list-view");
-    listLayer.classList.add("hidden-left");
-    chatView.classList.remove("hidden-right");
-    chatView.classList.add("active");
-
-    // Wire input
     var input = chatView.querySelector(".msg-input");
     var sendBtn = chatView.querySelector(".msg-send");
-    var backBtn = chatView.querySelector(".msg-back-btn");
+    if (!contact) return;
+
+    titleEl.textContent = contact.name;
+    bubbles.innerHTML = "";
+    msgThreads[contactId].forEach(function (msg, index) {
+      var bubble = document.createElement("div");
+      bubble.className = "msg-bubble " + msg.side;
+      bubble.textContent = msg.text;
+      bubbles.appendChild(bubble);
+      setTimeout(function () { bubble.classList.add("show"); }, reduce ? 0 : index * 70);
+    });
+
+    listView.classList.add("hidden-left");
+    chatView.classList.remove("hidden-right");
+    chatView.classList.add("active");
+    bubbles.scrollTop = bubbles.scrollHeight;
 
     function sendMessage() {
       var text = input.value.trim();
       if (!text) return;
-      var youDiv = document.createElement("div");
-      youDiv.className = "msg-bubble you";
-      youDiv.textContent = text;
-      bubbles.appendChild(youDiv);
-      setTimeout(function () { youDiv.classList.add("show"); }, 10);
+
+      var ownBubble = document.createElement("div");
+      ownBubble.className = "msg-bubble you show";
+      ownBubble.textContent = text;
+      bubbles.appendChild(ownBubble);
+      msgThreads[contactId].push({ text: text, side: "you" });
       input.value = "";
       bubbles.scrollTop = bubbles.scrollHeight;
-      msgThreads[contactId].push({ text: text, side: "you" });
 
-      // NPC reply
       setTimeout(function () {
-        var reply = VSDialogue.getReply(contactId, text);
-        var themDiv = document.createElement("div");
-        themDiv.className = "msg-bubble them";
-        bubbles.appendChild(themDiv);
-        themDiv.classList.add("show");
-        if (!reduce) {
-          var i = 0;
-          var tick = setInterval(function () {
-            themDiv.textContent = reply.slice(0, ++i);
-            bubbles.scrollTop = bubbles.scrollHeight;
-            if (i >= reply.length) {
-              clearInterval(tick);
-              themDiv.textContent = reply;
-            }
-          }, 15);
-        } else {
-          themDiv.textContent = reply;
-        }
+        var reply = window.VSDialogue.getReply(contactId, text);
+        var replyBubble = document.createElement("div");
+        replyBubble.className = "msg-bubble them show";
+        bubbles.appendChild(replyBubble);
         msgThreads[contactId].push({ text: reply, side: "them" });
-        bubbles.scrollTop = bubbles.scrollHeight;
-      }, 600);
+
+        if (reduce) {
+          replyBubble.textContent = reply;
+          return;
+        }
+
+        var cursor = 0;
+        var tick = setInterval(function () {
+          cursor += 1;
+          replyBubble.textContent = reply.slice(0, cursor);
+          bubbles.scrollTop = bubbles.scrollHeight;
+          if (cursor >= reply.length) clearInterval(tick);
+        }, 18);
+      }, 500);
     }
 
     sendBtn.onclick = sendMessage;
     input.onkeydown = function (e) {
-      if (e.key === "Enter") { e.preventDefault(); sendMessage(); }
-    };
-
-    backBtn.onclick = function () {
-      chatView.classList.remove("active");
-      chatView.classList.add("hidden-right");
-      listLayer.classList.remove("hidden-left");
-    };
-  }
-
-  // ============ BROWSER APP ============
-  function loadGitHubBrowser() {
-    var body = phone.querySelector(".phone-browser-body");
-    if (!body) return;
-    if (body.dataset.loaded) return;
-    body.dataset.loaded = "1";
-
-    body.innerHTML = '<div style="text-align:center;padding:40px 24px;color:var(--faint);font-size:12px">Loading GitHub&hellip;</div>';
-
-    fetch("https://api.github.com/repos/Cookie774-GameDev/VibeSpace")
-      .then(function (r) { return r.json(); })
-      .then(function (data) {
-        var stars = data.stargazers_count || 0;
-        var forks = data.forks_count || 0;
-        var desc = data.description || "The AI workspace where every model, agent, voice, and task lives under one roof.";
-        var lang = data.language || "TypeScript";
-        var updated = data.updated_at ? new Date(data.updated_at).toLocaleDateString() : "recently";
-        var name = data.full_name || "Cookie774-GameDev/VibeSpace";
-        var topics = data.topics && data.topics.length ? data.topics : ["ai","terminal","voice","agents","desktop","tauri"];
-        var created = data.created_at ? new Date(data.created_at).getFullYear() : "2025";
-
-        fetch("https://api.github.com/repos/Cookie774-GameDev/VibeSpace/releases/latest")
-          .then(function (r) { return r.json(); })
-          .then(function (rel) {
-            var ver = rel.tag_name || "v0.1.45";
-            renderGitHub(body, name, desc, stars, forks, lang, ver, updated, topics, created);
-          })
-          .catch(function () {
-            renderGitHub(body, name, desc, stars, forks, lang, "v0.1.45", updated, topics, created);
-          });
-      })
-      .catch(function () {
-        renderGitHub(body, "Cookie774-GameDev/VibeSpace",
-          "The AI workspace where every model, agent, voice, and task lives under one roof.",
-          "—", "—", "TypeScript", "v0.1.45", "recently", ["ai","terminal","voice","agents","desktop","tauri"], "2025");
-      });
-
-    // Also attempt an iframe (GitHub may block via X-Frame-Options; we keep the API fallback as primary)
-    // We do NOT rely on iframe; the API render is always shown.
-  }
-
-  function renderGitHub(body, name, desc, stars, forks, lang, ver, updated, topics, created) {
-    var topicHTML = topics.map(function (t) {
-      return '<span style="display:inline-block;padding:3px 8px;margin:2px;border-radius:99px;background:rgba(43,181,196,0.08);border:1px solid rgba(43,181,196,0.2);color:var(--cyan);font-size:10px;font-weight:600">' + t + '</span>';
-    }).join("");
-
-    body.innerHTML =
-      // Header strip
-      '<div style="background:#0d1117;padding:14px;border-radius:12px 12px 0 0;margin:0 -16px;border-bottom:1px solid #21262d">' +
-        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">' +
-          '<svg viewBox="0 0 16 16" width="18" height="18" fill="#f0f6fc" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>' +
-          '<span style="color:#f0f6fc;font-size:16px;font-weight:600">GitHub</span>' +
-        '</div>' +
-      '</div>' +
-      // Repo card
-      '<div style="padding:14px 0">' +
-        '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">' +
-          '<span style="color:#58a6ff;font-size:13px;font-weight:600">' + name.split("/")[0] + '/</span>' +
-          '<span style="color:#58a6ff;font-size:13px;font-weight:700">' + name.split("/")[1] + '</span>' +
-        '</div>' +
-        '<div style="font-size:12px;color:#8b949e;line-height:1.5;margin-bottom:10px">' + desc + '</div>' +
-        // Topics
-        '<div style="margin-bottom:12px">' + topicHTML + '</div>' +
-        // Meta row
-        '<div style="display:flex;flex-wrap:wrap;gap:8px 16px;font-size:11px;color:#8b949e;margin-bottom:12px">' +
-          '<span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:50%;background:#f1e05a"></span> ' + lang + '</span>' +
-          '<span style="display:flex;align-items:center;gap:4px"><svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M8 .25a.75.75 0 01.673.418l1.882 3.815 4.21.612a.75.75 0 01.416 1.279l-3.046 2.97.719 4.192a.75.75 0 01-1.088.791L8 12.347l-3.766 1.98a.75.75 0 01-1.088-.79l.72-4.194L.818 6.374a.75.75 0 01.416-1.28l4.21-.611L7.327.668A.75.75 0 018 .25z"/></svg> ' + stars + ' stars</span>' +
-          '<span style="display:flex;align-items:center;gap:4px"><svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M5 5.372v.878c0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75v-.878a2.25 2.25 0 111.5 2.122v-.878a.75.75 0 00-1.5 0v.878a2.25 2.25 0 11-3 0v-.878a.75.75 0 00-1.5 0v.878a2.25 2.25 0 11-3 0v-.878a.75.75 0 00-1.5 0v.878a2.25 2.25 0 111.5-2.122z"/></svg> ' + forks + ' forks</span>' +
-        '</div>' +
-        // About / Readme preview
-        '<div style="border:1px solid #21262d;border-radius:8px;overflow:hidden;margin-bottom:10px">' +
-          '<div style="background:#161b22;padding:8px 12px;color:#c9d1d9;font-size:11px;font-weight:600;border-bottom:1px solid #21262d">README.md</div>' +
-          '<div style="padding:12px;font-size:12px;color:#c9d1d9;line-height:1.5">' +
-            '<strong style="color:#f0f6fc">VibeSpace</strong> &mdash; The AI workspace where every model, agent, voice, and task lives under one roof.<br>' +
-            '<br>' +
-            '<span style="color:#58a6ff">Built with Tauri 2 + Rust + React. Local-first. BYOK. Apache 2.0.</span><br>' +
-            '<br>' +
-            'Features: Multi-model chat, agent council, terminal swarm, Jarvis voice, AI calling, skills catalog, Inspector, Kanban, Hive stacks.<br>' +
-            '<br>' +
-            'Status: <span style="color:#3fb950">shipping v0.1.45</span> &middot; Updated ' + updated + ' &middot; Since ' + created +
-          '</div>' +
-        '</div>' +
-        // Buttons
-        '<a class="gh-link" href="https://github.com/Cookie774-GameDev/VibeSpace" target="_blank" rel="noopener" style="display:block;text-align:center;margin-top:8px;padding:9px;border-radius:8px;background:linear-gradient(135deg,#238636,#2ea043);color:#fff;font-weight:600;font-size:12px;text-decoration:none">Open full repo on GitHub &#8599;</a>' +
-        '<a href="https://github.com/Cookie774-GameDev/VibeSpace/releases/latest" target="_blank" rel="noopener" style="display:block;text-align:center;margin-top:6px;padding:8px;border-radius:8px;background:#161b22;border:1px solid #30363d;color:#58a6ff;font-weight:600;font-size:11px;text-decoration:none">Download v' + ver.replace("v","") + ' release &#8599;</a>' +
-      '</div>';
-  }
-
-  // ============ DIAL PAD ============
-  function initDialPad() {
-    var display = phone.querySelector(".dialpad-display");
-    var keys = phone.querySelectorAll(".dial-key");
-    keys.forEach(function (k) {
-      k.onclick = function () {
-        var val = display.textContent;
-        if (val.length < 12) display.textContent = val + k.dataset.key;
-      };
-    });
-    var callBtn = phone.querySelector(".dial-call-btn");
-    if (callBtn) callBtn.onclick = function () {
-      var num = display.textContent.trim();
-      if (num) {
-        showToast("Dialing " + num + "...");
-        setTimeout(function () { startCall("jarvis"); }, 500);
+      if (e.key === "Enter") {
+        e.preventDefault();
+        sendMessage();
       }
     };
   }
 
-  // ============ SETTINGS ============
+  function renderAllBrowsers() {
+    phone.querySelectorAll(".phone-browser-body").forEach(function (body) {
+      renderBrowser(body);
+    });
+  }
+
+  function renderBrowser(body) {
+    if (!body) return;
+    body.classList.add("browser-shell");
+
+    if (browserCache) {
+      fillBrowser(body, browserCache);
+      return;
+    }
+
+    body.innerHTML = '<div class="gh-skeleton" style="height:56px"></div>' +
+      '<div class="gh-skeleton" style="height:112px"></div>' +
+      '<div class="gh-skeleton" style="height:38px"></div>';
+
+    fetch(apiRepoUrl)
+      .then(function (res) { return res.json(); })
+      .then(function (repo) {
+        return fetch(apiRepoUrl + "/releases/latest")
+          .then(function (res) { return res.json(); })
+          .catch(function () { return {}; })
+          .then(function (release) {
+            browserCache = {
+              name: repo.full_name || "Cookie774-GameDev/VibeSpace",
+              description: repo.description || "The AI workspace where every model, agent, voice, and task lives under one roof.",
+              stars: repo.stargazers_count || 0,
+              forks: repo.forks_count || 0,
+              language: repo.language || "TypeScript",
+              updated: repo.updated_at ? new Date(repo.updated_at).toLocaleDateString() : "recently",
+              topics: repo.topics && repo.topics.length ? repo.topics : ["ai", "desktop", "voice", "agents"],
+              version: release.tag_name || "latest",
+              created: repo.created_at ? new Date(repo.created_at).getFullYear() : "2025"
+            };
+            fillBrowser(body, browserCache);
+            phone.querySelectorAll(".phone-browser-body").forEach(function (panel) {
+              if (panel !== body) fillBrowser(panel, browserCache);
+            });
+          });
+      })
+      .catch(function () {
+        browserCache = {
+          name: "Cookie774-GameDev/VibeSpace",
+          description: "The AI workspace where every model, agent, voice, and task lives under one roof.",
+          stars: "Live",
+          forks: "Repo",
+          language: "TypeScript",
+          updated: "recently",
+          topics: ["ai", "desktop", "voice", "agents"],
+          version: "latest",
+          created: "2025"
+        };
+        fillBrowser(body, browserCache);
+      });
+  }
+
+  function fillBrowser(body, data) {
+    var topicHtml = data.topics.map(function (topic) {
+      return '<span style="display:inline-block;padding:4px 8px;margin:0 6px 6px 0;border-radius:999px;background:rgba(88,166,255,0.14);color:#c9d1d9;font-size:10px;font-weight:700">' + topic + "</span>";
+    }).join("");
+
+    body.innerHTML = '<div style="padding:14px;border:1px solid #30363d;border-radius:16px;background:#0d1117">' +
+      '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start">' +
+      '<div><div style="font-size:12px;color:#8b949e;margin-bottom:4px">GitHub</div>' +
+      '<div style="font-size:17px;color:#f0f6fc;font-weight:700;line-height:1.25">' + data.name + "</div></div>" +
+      '<div style="padding:6px 10px;border-radius:999px;background:#161b22;color:#58a6ff;font-size:10px;font-weight:700">' + data.version + "</div></div>" +
+      '<div style="margin-top:10px;font-size:12px;color:#c9d1d9;line-height:1.55">' + data.description + "</div>" +
+      '<div style="margin-top:10px">' + topicHtml + "</div>" +
+      '<div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap">' +
+      metricCard("Stars", data.stars) + metricCard("Forks", data.forks) + metricCard("Lang", data.language) + metricCard("Since", data.created) +
+      "</div>" +
+      '<div style="margin-top:12px;padding:10px 12px;border-radius:12px;background:#161b22;border:1px solid #21262d;color:#8b949e;font-size:11px">Last updated ' + data.updated + ". Open the full GitHub page for the live repo view.</div>" +
+      '<a class="gh-link" href="' + repoUrl + '" target="_blank" rel="noopener">Open live GitHub page</a>' +
+      "</div>";
+  }
+
+  function metricCard(label, value) {
+    return '<div style="min-width:56px;padding:8px 10px;border-radius:12px;background:#161b22;border:1px solid #21262d">' +
+      '<div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#8b949e">' + label + "</div>" +
+      '<div style="font-size:13px;color:#f0f6fc;font-weight:700;margin-top:4px">' + value + "</div></div>";
+  }
+
+  function openGitHubPage() {
+    window.open(repoUrl, "_blank", "noopener");
+  }
+
+  function initDialPad() {
+    var display = phone.querySelector(".dialpad-display");
+    if (!display) return;
+
+    phone.querySelectorAll(".dial-key").forEach(function (key) {
+      key.onclick = function () {
+        if (display.textContent.length < 14) display.textContent += key.dataset.key;
+      };
+    });
+
+    var callBtn = phone.querySelector(".dial-call-btn");
+    if (callBtn) {
+      callBtn.onclick = function () {
+        if (!display.textContent.trim()) return;
+        showToast("Dialing " + display.textContent + "...");
+        setTimeout(function () { startCall("jarvis"); }, 450);
+      };
+    }
+  }
+
   function initSettings() {
     var timeInput = phone.querySelector(".ps-time-input");
     if (timeInput) {
@@ -506,133 +584,346 @@
       timeInput.onchange = function () {
         sessionStorage.setItem("vs-phone-time", timeInput.value);
         updateTime();
-        showToast("Time updated");
+        showToast("Phone time updated");
       };
     }
   }
 
-  // ============ DIAL PAD INIT ============
-  document.addEventListener("DOMContentLoaded", initDialPad);
-
-  // ============ TOAST ============
-  function showToast(msg) {
-    var toast = phone.querySelector(".phone-toast");
-    if (!toast) return;
-    toast.textContent = msg;
-    toast.classList.add("show");
-    setTimeout(function () { toast.classList.remove("show"); }, 2500);
-  }
-
-  // ============ NOTES APP ============
-  var phoneNotes = [];
-  function initNotes() {
-    var list = phone.querySelector(".notes-list");
-    if (!list) return;
-    var stored = sessionStorage.getItem("vs-phone-notes");
-    if (stored) { try { phoneNotes = JSON.parse(stored); } catch (e) {} }
-    if (phoneNotes.length === 0) {
-      phoneNotes = [
-        { title: "Ship auth fix", body: "Token refresh logic — Builder patched, Critic approved. Ship before standup.", color: "#E0925C" },
-        { title: "Voice ideas", body: "Wake word only in hands-free mode. Add Friday preset for fast tactical. Kokoro is free.", color: "#9CC68B" },
-        { title: "Hive tuning", body: "Fast stack: Groq + Cerebras = 200ms. Quality stack adds Critic review step = 3.4s.", color: "#B98AE8" }
-      ];
-      sessionStorage.setItem("vs-phone-notes", JSON.stringify(phoneNotes));
-    }
-    renderNotes();
-
-    var newBtn = phone.querySelector(".phone-new-note");
-    if (newBtn) {
-      newBtn.onclick = function () {
-        phoneNotes.unshift({ title: "New note", body: "Tap to edit...", color: "#4DD8E8" });
-        sessionStorage.setItem("vs-phone-notes", JSON.stringify(phoneNotes));
-        renderNotes();
-        showToast("Note created");
-      };
-    }
-
-    function renderNotes() {
-      if (!list) return;
-      if (phoneNotes.length === 0) {
-        list.innerHTML = '<div style="text-align:center;color:var(--faint);padding:40px 20px;font-size:14px">No notes yet. Tap + to create one.</div>';
-        return;
+  function initPhotos() {
+    var stored = sessionStorage.getItem("vs-phone-photos");
+    if (stored) {
+      try {
+        photos = JSON.parse(stored);
+      } catch (err) {
+        photos = [];
       }
-      list.innerHTML = phoneNotes.map(function (n, i) {
-        return '<div class="notif-card" data-note="' + i + '" style="border-left:3px solid ' + n.color + '">' +
-          '<div style="font-weight:700;font-size:14px;color:var(--fg)">' + n.title + '</div>' +
-          '<div style="font-size:12px;color:var(--muted);margin-top:4px;line-height:1.4">' + n.body + '</div>' +
-        '</div>';
-      }).join("");
-      list.querySelectorAll("[data-note]").forEach(function (el) {
-        el.addEventListener("click", function () {
-          var idx = parseInt(el.dataset.note);
-          showToast("Note: " + phoneNotes[idx].title);
-        });
+    }
+
+    if (!photos.length) {
+      photos = [
+        { label: "Desk", gradient: "linear-gradient(135deg,#B5613A,#8f4422)" },
+        { label: "Build", gradient: "linear-gradient(135deg,#6F8F66,#3d5c35)" },
+        { label: "Repo", gradient: "linear-gradient(135deg,#4285F4,#1a5cc7)" },
+        { label: "Voice", gradient: "linear-gradient(135deg,#B98AE8,#7b4faf)" },
+        { label: "Jarvis", gradient: "linear-gradient(135deg,#E8B860,#c4943a)" },
+        { label: "Ship", gradient: "linear-gradient(135deg,#4DD8E8,#1f96a3)" }
+      ];
+      persistPhotos();
+    }
+    renderPhotos();
+  }
+
+  function renderPhotos() {
+    var grid = phone.querySelector(".photos-grid");
+    var feature = phone.querySelector(".photo-feature-preview");
+    if (!grid || !feature) return;
+
+    feature.style.background = photos[0] ? photos[0].gradient : "linear-gradient(135deg,#4DD8E8,#B98AE8,#E8B860)";
+
+    grid.innerHTML = photos.map(function (photo, index) {
+      return '<button class="photo-tile" type="button" data-photo-index="' + index + '" data-label="' + photo.label + '" style="background:' + photo.gradient + ';border:none"></button>';
+    }).join("");
+
+    grid.querySelectorAll(".photo-tile").forEach(function (tile) {
+      tile.addEventListener("click", function () {
+        var photo = photos[parseInt(tile.dataset.photoIndex, 10)];
+        feature.style.background = photo.gradient;
+        showToast("Opened " + photo.label);
+      });
+    });
+  }
+
+  function takePhoto() {
+    var labels = ["Sunset", "Workspace", "Launch", "UI", "Repo", "Build"];
+    var palette = [
+      "linear-gradient(135deg,#F55036,#c4321a)",
+      "linear-gradient(135deg,#10A37F,#0a7a5e)",
+      "linear-gradient(135deg,#4DD8E8,#1f96a3)",
+      "linear-gradient(135deg,#E8B860,#c4943a)",
+      "linear-gradient(135deg,#B98AE8,#7b4faf)"
+    ];
+    var photo = {
+      label: labels[Math.floor(Math.random() * labels.length)],
+      gradient: palette[Math.floor(Math.random() * palette.length)]
+    };
+    photos.unshift(photo);
+    photos = photos.slice(0, 12);
+    persistPhotos();
+    renderPhotos();
+    showToast("Photo captured");
+  }
+
+  function persistPhotos() {
+    sessionStorage.setItem("vs-phone-photos", JSON.stringify(photos));
+  }
+
+  function initGames() {
+    var flappyGame = phone.querySelector(".flappy-game");
+    if (flappyGame) {
+      flappyGame.addEventListener("click", function () {
+        if (flappyState && flappyState.running) flappyFlap();
       });
     }
+
+    snakeState = {
+      canvas: phone.querySelector(".snake-canvas"),
+      direction: "right",
+      nextDirection: "right",
+      interval: null,
+      score: 0,
+      cells: 12,
+      snake: [{ x: 2, y: 6 }, { x: 1, y: 6 }],
+      food: { x: 8, y: 6 }
+    };
+    renderSnake();
+
+    phone.querySelectorAll(".snake-btn[data-dir]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        setSnakeDirection(btn.dataset.dir);
+      });
+    });
   }
 
-  // ============ VIBECAST APP ============
+  function startFlappyGame() {
+    var root = phone.querySelector(".flappy-game");
+    if (!root) return;
+
+    if (flappyState && flappyState.raf) cancelAnimationFrame(flappyState.raf);
+
+    flappyState = {
+      root: root,
+      bird: root.querySelector(".flappy-bird"),
+      topPipe: root.querySelector(".pipe-top"),
+      bottomPipe: root.querySelector(".pipe-bottom"),
+      overlay: root.querySelector(".flappy-overlay"),
+      scoreEl: phone.querySelector(".flappy-score"),
+      raf: null,
+      running: true,
+      velocity: 0,
+      y: 98,
+      pipeX: 180,
+      gapTop: 70,
+      score: 0,
+      passed: false
+    };
+
+    if (flappyState.scoreEl) flappyState.scoreEl.textContent = "0";
+    flappyState.overlay.textContent = "Tap anywhere in the game to flap.";
+
+    stepFlappy();
+  }
+
+  function flappyFlap() {
+    if (!flappyState) return;
+    flappyState.velocity = -5.4;
+  }
+
+  function stepFlappy() {
+    if (!flappyState || !flappyState.running) return;
+
+    flappyState.velocity += 0.28;
+    flappyState.y += flappyState.velocity;
+    flappyState.pipeX -= 2.8;
+
+    if (flappyState.pipeX < -42) {
+      flappyState.pipeX = 216;
+      flappyState.gapTop = 42 + Math.random() * 88;
+      flappyState.passed = false;
+    }
+
+    if (!flappyState.passed && flappyState.pipeX + 42 < 52) {
+      flappyState.passed = true;
+      flappyState.score += 1;
+      if (flappyState.scoreEl) flappyState.scoreEl.textContent = String(flappyState.score);
+    }
+
+    var gapBottom = flappyState.gapTop + 76;
+    flappyState.bird.style.top = flappyState.y + "px";
+    flappyState.bird.style.transform = "rotate(" + Math.max(-25, Math.min(60, flappyState.velocity * 8)) + "deg)";
+    flappyState.topPipe.style.right = (216 - flappyState.pipeX) + "px";
+    flappyState.bottomPipe.style.right = (216 - flappyState.pipeX) + "px";
+    flappyState.topPipe.style.height = flappyState.gapTop + "px";
+    flappyState.bottomPipe.style.height = (230 - gapBottom) + "px";
+
+    if (
+      flappyState.y < 0 ||
+      flappyState.y > 206 ||
+      ((flappyState.pipeX < 82 && flappyState.pipeX + 42 > 52) &&
+      (flappyState.y < flappyState.gapTop - 18 || flappyState.y + 24 > gapBottom))
+    ) {
+      flappyState.running = false;
+      flappyState.overlay.textContent = "Game over. Tap Play to restart.";
+      cancelAnimationFrame(flappyState.raf);
+      return;
+    }
+
+    flappyState.raf = requestAnimationFrame(stepFlappy);
+  }
+
+  function startSnakeGame() {
+    if (!snakeState) return;
+    if (snakeState.interval) clearInterval(snakeState.interval);
+
+    snakeState.direction = "right";
+    snakeState.nextDirection = "right";
+    snakeState.score = 0;
+    snakeState.snake = [{ x: 2, y: 6 }, { x: 1, y: 6 }];
+    snakeState.food = randomFood();
+    updateSnakeScore();
+    renderSnake();
+
+    snakeState.interval = setInterval(function () {
+      snakeState.direction = snakeState.nextDirection;
+      var head = Object.assign({}, snakeState.snake[0]);
+      if (snakeState.direction === "up") head.y -= 1;
+      if (snakeState.direction === "down") head.y += 1;
+      if (snakeState.direction === "left") head.x -= 1;
+      if (snakeState.direction === "right") head.x += 1;
+
+      if (hitSnakeWall(head) || hitSnakeBody(head)) {
+        clearInterval(snakeState.interval);
+        snakeState.interval = null;
+        showToast("Snake crashed");
+        return;
+      }
+
+      snakeState.snake.unshift(head);
+      if (head.x === snakeState.food.x && head.y === snakeState.food.y) {
+        snakeState.score += 1;
+        updateSnakeScore();
+        snakeState.food = randomFood();
+      } else {
+        snakeState.snake.pop();
+      }
+      renderSnake();
+    }, 220);
+  }
+
+  function setSnakeDirection(dir) {
+    if (!snakeState) return;
+    var opposite = {
+      up: "down",
+      down: "up",
+      left: "right",
+      right: "left"
+    };
+    if (opposite[dir] === snakeState.direction) return;
+    snakeState.nextDirection = dir;
+  }
+
+  function randomFood() {
+    var food;
+    do {
+      food = {
+        x: Math.floor(Math.random() * snakeState.cells),
+        y: Math.floor(Math.random() * snakeState.cells)
+      };
+    } while (snakeState.snake.some(function (segment) {
+      return segment.x === food.x && segment.y === food.y;
+    }));
+    return food;
+  }
+
+  function hitSnakeWall(head) {
+    return head.x < 0 || head.y < 0 || head.x >= snakeState.cells || head.y >= snakeState.cells;
+  }
+
+  function hitSnakeBody(head) {
+    return snakeState.snake.some(function (segment) {
+      return segment.x === head.x && segment.y === head.y;
+    });
+  }
+
+  function renderSnake() {
+    if (!snakeState || !snakeState.canvas) return;
+    var ctx = snakeState.canvas.getContext("2d");
+    var cell = snakeState.canvas.width / snakeState.cells;
+
+    ctx.clearRect(0, 0, snakeState.canvas.width, snakeState.canvas.height);
+    ctx.fillStyle = "#182224";
+    ctx.fillRect(0, 0, snakeState.canvas.width, snakeState.canvas.height);
+
+    ctx.strokeStyle = "rgba(255,255,255,0.04)";
+    for (var i = 0; i <= snakeState.cells; i += 1) {
+      ctx.beginPath();
+      ctx.moveTo(i * cell, 0);
+      ctx.lineTo(i * cell, snakeState.canvas.height);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, i * cell);
+      ctx.lineTo(snakeState.canvas.width, i * cell);
+      ctx.lineTo(snakeState.canvas.width, i * cell);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = "#d68a4e";
+    ctx.fillRect(snakeState.food.x * cell + 4, snakeState.food.y * cell + 4, cell - 8, cell - 8);
+
+    snakeState.snake.forEach(function (segment, index) {
+      ctx.fillStyle = index === 0 ? "#9cc68b" : "#7aa869";
+      ctx.fillRect(segment.x * cell + 3, segment.y * cell + 3, cell - 6, cell - 6);
+    });
+  }
+
+  function updateSnakeScore() {
+    var scoreEl = phone.querySelector(".snake-score");
+    if (scoreEl) scoreEl.textContent = String(snakeState.score);
+  }
+
+  function showToast(message) {
+    var toast = phone.querySelector(".phone-toast");
+    if (!toast) return;
+    toast.textContent = message;
+    toast.classList.add("show");
+    setTimeout(function () { toast.classList.remove("show"); }, 2200);
+  }
+
+  function initNotes() {
+    var list = phone.querySelector(".notes-list");
+    var stored = sessionStorage.getItem("vs-phone-notes");
+    var notes = stored ? JSON.parse(stored) : [
+      { title: "Ship auth fix", body: "Token refresh is patched. Critic approved the diff.", color: "#E0925C" },
+      { title: "Voice ideas", body: "Wake word in hands-free mode only. Keep Kokoro local.", color: "#9CC68B" },
+      { title: "Hive tuning", body: "Fast stack drafts. Critic refines. Ship after smoke test.", color: "#B98AE8" }
+    ];
+    sessionStorage.setItem("vs-phone-notes", JSON.stringify(notes));
+
+    list.innerHTML = notes.map(function (note) {
+      return '<div class="notif-card" style="border-left:3px solid ' + note.color + '">' +
+        '<div style="font-weight:700;font-size:14px;color:var(--fg)">' + note.title + "</div>" +
+        '<div style="font-size:12px;color:var(--muted);margin-top:4px;line-height:1.4">' + note.body + "</div></div>";
+    }).join("");
+  }
+
   function initVibeCast() {
     var body = phone.querySelector(".vibecast-body");
     if (!body) return;
     var vibes = [
-      { temp: "72", label: "Peak Vibe", desc: "Everything is shipping. Council is in sync. Terminals are green.", mood: "sage" },
-      { temp: "68", label: "Cozy Focus", desc: "Deep work mode. Jarvis on standby. Memory is grounded.", mood: "copper" },
-      { temp: "65", label: "Late Night", desc: "2am energy. Midnight Coder online. Build might fail. Jarvis will call.", mood: "plum" },
-      { temp: "75", label: "Hive Flow", desc: "Models stacking perfectly. Fast draft, quality refine, critic approved.", mood: "cyan" }
+      { temp: "72", label: "Peak Vibe", desc: "Everything is shipping. Council is aligned." },
+      { temp: "68", label: "Cozy Focus", desc: "Deep work mode. Jarvis is on standby." },
+      { temp: "65", label: "Late Night", desc: "Builds are noisy. Voice is still calm." }
     ];
     var vibe = vibes[Math.floor(Math.random() * vibes.length)];
-    var moodColor = vibe.mood === "sage" ? "#9CC68B" : vibe.mood === "copper" ? "#E0925C" : vibe.mood === "plum" ? "#B98AE8" : "#4DD8E8";
-
-    body.innerHTML =
-      '<div style="font-family:Fraunces,serif;font-size:48px;font-weight:300;color:' + moodColor + ';line-height:1">' + vibe.temp + '</div>' +
+    body.innerHTML = '<div style="font-family:Fraunces,serif;font-size:48px;font-weight:300;color:var(--copper-soft);line-height:1">' + vibe.temp + '</div>' +
       '<div style="font-size:13px;color:var(--faint);margin-bottom:20px">vibes in the workspace</div>' +
-      '<div style="font-size:20px;font-weight:600;color:var(--fg);font-family:Fraunces,serif;margin-bottom:8px">' + vibe.label + '</div>' +
-      '<div style="font-size:13px;color:var(--muted);line-height:1.6;max-width:220px;margin:0 auto">' + vibe.desc + '</div>' +
-      '<div style="margin-top:24px;display:flex;gap:8px;justify-content:center">' +
-        '<button class="vc-refresh" style="padding:8px 16px;border-radius:8px;border:1px solid var(--border);background:var(--panel);color:var(--copper-soft);cursor:pointer;font-size:12px;font-weight:600;font-family:inherit">Refresh vibe</button>' +
-      '</div>' +
-      '<div style="margin-top:16px;font-size:11px;color:var(--faint);font-family:Fraunces,serif;font-style:italic">VibeCast — like weather, but for your build</div>';
-
-    body.querySelector(".vc-refresh").addEventListener("click", function () {
-      initVibeCast();
-      showToast("Vibe refreshed");
-    });
+      '<div style="font-size:20px;font-weight:600;color:var(--fg);font-family:Fraunces,serif;margin-bottom:8px">' + vibe.label + "</div>" +
+      '<div style="font-size:13px;color:var(--muted);line-height:1.6;max-width:220px;margin:0 auto">' + vibe.desc + "</div>";
   }
 
-  // ============ NOTIFICATIONS APP ============
   function initNotifications() {
     var list = phone.querySelector(".notif-list");
     if (!list) return;
-    var notifs = [
-      { app: "Terminal", icon: "terminal", msg: "Build succeeded — all 3 panes green", time: "2m ago", color: "#9CC68B" },
-      { app: "Jarvis", icon: "voice", msg: "Morning summary ready. 3 tasks, 1 build fixed overnight.", time: "8m ago", color: "#E0925C" },
-      { app: "Council", icon: "council", msg: "Critic approved your auth.ts patch. Ship it.", time: "15m ago", color: "#F0B07A" },
-      { app: "Hive", icon: "hive2", msg: "Fast stack synthesized in 200ms. Groq + Cerebras.", time: "22m ago", color: "#4DD8E8" },
-      { app: "Skills", icon: "skills2", msg: "New skill available: context-keeper v2", time: "1h ago", color: "#B98AE8" },
-      { app: "Inspector", icon: "inspector2", msg: "Milestone reached: auth module complete", time: "2h ago", color: "#9CC68B" },
-      { app: "Midnight Coder", icon: "call", msg: "Left you a fix list for the 2am build failure", time: "5h ago", color: "#9A9085" }
+    var items = [
+      "Build succeeded across all panes",
+      "Jarvis queued a morning summary",
+      "Critic approved your auth patch",
+      "Hive fast stack finished in 200ms"
     ];
-
-    list.innerHTML = notifs.map(function (n) {
-      return '<div class="notif-card" style="border-left:3px solid ' + n.color + '">' +
-        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">' +
-          '<span style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:' + n.color + ';font-weight:700">' + n.app + '</span>' +
-          '<span style="font-size:10px;color:var(--faint);margin-left:auto">' + n.time + '</span>' +
-        '</div>' +
-        '<div style="font-size:12px;color:var(--muted);line-height:1.4">' + n.msg + '</div>' +
-      '</div>';
+    list.innerHTML = items.map(function (item) {
+      return '<div class="notif-card"><div style="font-size:12px;color:var(--muted)">' + item + "</div></div>";
     }).join("");
-
-    list.querySelectorAll(".notif-card").forEach(function (el) {
-      el.addEventListener("click", function () {
-        var app = el.querySelector("span").textContent;
-        showToast("Opening " + app + "...");
-      });
-    });
   }
 
-  // Boot
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", init);
   } else {

@@ -195,20 +195,189 @@
     }
   }
 
-  // ---- Swarm panes reveal ----
+  // ---- Live swarm: 10 streaming terminals ----
+  var liveSwarm = document.getElementById("liveSwarm");
+  if (liveSwarm) {
+    var swarmStarted = false;
+    var swarmIo = new IntersectionObserver(function (e) {
+      if (e[0].isIntersecting && !swarmStarted) {
+        swarmStarted = true;
+        startLiveSwarm();
+        swarmIo.unobserve(e[0].target);
+      }
+    }, { threshold: 0.1 });
+    swarmIo.observe(liveSwarm);
+  }
+
+  function startLiveSwarm() {
+    var panes = document.querySelectorAll(".live-swarm-pane");
+    var tools = { codex: "codex", claude: "claude", opencode: "opencode" };
+    var roles = { scout: "scout", builder: "builder", reviewer: "reviewer", critic: "critic" };
+
+    var lineBank = {
+      scout: [
+        { t: "$ scout scan src/", c: "mu" },
+        { t: "  scanning 247 files...", c: "" },
+        { t: "  + 3 files changed", c: "ok" },
+        { t: "    auth.ts:42 +12 -3", c: "" },
+        { t: "    api.ts:8 -3", c: "" },
+        { t: "    utils.ts:15 +5", c: "" },
+        { t: "  -> routing to builder", c: "cu" },
+        { t: "$ scout find --untested", c: "mu" },
+        { t: "  6 files with < 50% coverage", c: "" },
+        { t: "  auth.ts: 42% -> needs tests", c: "" },
+        { t: "  + scout done, handing off", c: "ok" }
+      ],
+      builder: [
+        { t: "$ builder patch auth.ts", c: "mu" },
+        { t: "  + add token refresh logic", c: "ok" },
+        { t: "  + add error boundary", c: "ok" },
+        { t: "  + null guard on line 42", c: "ok" },
+        { t: "  writing test: auth.test.ts", c: "" },
+        { t: "  + test: refresh returns 200", c: "ok" },
+        { t: "  + test: expired token handled", c: "ok" },
+        { t: "  running tsc --noEmit...", c: "" },
+        { t: "  + 0 errors, 0 warnings", c: "ok" },
+        { t: "  -> ready for review", c: "cu" },
+        { t: "$ builder run --format", c: "mu" },
+        { t: "  prettier --write src/", c: "" },
+        { t: "  + 3 files formatted", c: "ok" }
+      ],
+      reviewer: [
+        { t: "$ reviewer diff auth.ts", c: "mu" },
+        { t: "  checking +12 -3 lines...", c: "" },
+        { t: "  ! missing test: null token", c: "err" },
+        { t: "  ! edge: refresh on offline", c: "err" },
+        { t: "  + good: error boundary added", c: "ok" },
+        { t: "  + good: type-safe guard", c: "ok" },
+        { t: "  -> 2 issues, blocking merge", c: "cu" },
+        { t: "$ reviewer diff utils.ts", c: "mu" },
+        { t: "  checking +5 lines...", c: "" },
+        { t: "  + clean, approved", c: "ok" }
+      ],
+      critic: [
+        { t: "$ critic synthesize", c: "mu" },
+        { t: "  scanning council output...", c: "" },
+        { t: "  scout: 3 files changed", c: "mu" },
+        { t: "  builder: 4 patches applied", c: "mu" },
+        { t: "  reviewer: 2 issues found", c: "mu" },
+        { t: "  ! null token not handled", c: "err" },
+        { t: "  ! offline refresh untested", c: "err" },
+        { t: "  -> blocking ship", c: "cu" },
+        { t: "  waiting for builder fix...", c: "" },
+        { t: "  builder: null guard added", c: "ok" },
+        { t: "  builder: offline test added", c: "ok" },
+        { t: "  + all issues resolved", c: "ok" },
+        { t: "  -> APPROVED, ship it", c: "ok" }
+      ]
+    };
+
+    var toolPrefix = {
+      codex: "$ codex",
+      claude: "$ claude-code",
+      opencode: "$ opencode"
+    };
+
+    panes.forEach(function (pane) {
+      var tool = pane.dataset.tool;
+      var role = pane.dataset.role;
+      var paneIdx = pane.dataset.pane;
+      var colorMap = { codex: "#E0925C", claude: "#B98AE8", opencode: "#4DD8E8" };
+
+      // Build header
+      pane.innerHTML =
+        '<div class="lsp-head">' +
+          '<span class="lsp-head-dot"></span>' +
+          '<span class="lsp-head-tool">' + tool + '</span>' +
+          '<span class="lsp-head-role">/' + role + ' #' + (parseInt(paneIdx) + 1) + '</span>' +
+        '</div>' +
+        '<div class="lsp-body"></div>';
+
+      var body = pane.querySelector(".lsp-body");
+      var lines = lineBank[role] || lineBank.scout;
+      var lineIdx = 0;
+      var lineCount = 0;
+
+      function addLine() {
+        // Cycle through the line bank
+        var line = lines[lineIdx % lines.length];
+        lineIdx++;
+
+        // Add tool prefix to first line of each cycle
+        var text = line.t;
+        if (lineIdx % lines.length === 1) {
+          var div = document.createElement("div");
+          div.className = "lsp-ln pr";
+          div.textContent = toolPrefix[tool] + " #" + (Math.floor(lineIdx / lines.length) + 1);
+          body.appendChild(div);
+        }
+
+        var div = document.createElement("div");
+        div.className = "lsp-ln " + (line.c || "");
+        div.textContent = text;
+        body.appendChild(div);
+
+        // Keep max 40 lines visible (auto-scroll)
+        while (body.children.length > 40) {
+          body.removeChild(body.firstChild);
+        }
+        body.scrollTop = body.scrollHeight;
+
+        lineCount++;
+        // Stop after 60+ seconds (~120+ lines at 2/s)
+        if (lineCount < 150) {
+          // Random delay 400-1200ms for variety
+          var delay = 300 + Math.random() * 700;
+          setTimeout(addLine, delay);
+        } else {
+          // Add a final "done" line and blinking cursor
+          var done = document.createElement("div");
+          done.className = "lsp-ln ok";
+          done.textContent = "+ session complete (" + lineCount + " lines)";
+          body.appendChild(done);
+          body.scrollTop = body.scrollHeight;
+
+          // Restart after 5s pause
+          setTimeout(function () {
+            lineCount = 0;
+            lineIdx = 0;
+            body.innerHTML = "";
+            addLine();
+          }, 5000);
+        }
+      }
+
+      // Stagger start per pane
+      setTimeout(addLine, parseInt(paneIdx) * 200);
+    });
+  }
+
+  // ---- Legacy swarm panes ----
   var swarmPanes = document.querySelectorAll(".swarm-pane");
   if (swarmPanes.length && !reduce) {
-    var swarmIo = new IntersectionObserver(function (entries) {
+    var swarmIo2 = new IntersectionObserver(function (entries) {
       entries.forEach(function (en, idx) {
         if (en.isIntersecting) {
           setTimeout(function () { en.target.classList.add("in"); }, idx * 150);
-          swarmIo.unobserve(en.target);
+          swarmIo2.unobserve(en.target);
         }
       });
     }, { threshold: 0.15 });
-    swarmPanes.forEach(function (p) { swarmIo.observe(p); });
+    swarmPanes.forEach(function (p) { swarmIo2.observe(p); });
   } else {
     swarmPanes.forEach(function (p) { p.classList.add("in"); });
+  }
+
+  // ---- Powerup animation (21+ providers) ----
+  var powerup = document.getElementById("powerupSection");
+  if (powerup) {
+    var puIo = new IntersectionObserver(function (e) {
+      if (e[0].isIntersecting) {
+        powerup.classList.add("on");
+        puIo.unobserve(e[0].target);
+      }
+    }, { threshold: 0.25 });
+    puIo.observe(powerup);
   }
 
   // ---- Parallax on orbs (scroll-linked, rAF throttled) ----

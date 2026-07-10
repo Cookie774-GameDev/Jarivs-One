@@ -47,7 +47,14 @@
     notifications: S + '<path d="M12 3a5 5 0 015 5v4l2 3H5l2-3V8a5 5 0 015-5z"/><path d="M10 18a2 2 0 004 0"/>' + E,
     trash: S + '<path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/><path d="M10 11v6"/><path d="M14 11v6"/>' + E,
     send: S + '<path d="M3 12l18-7-7 18-3-7-8-4z"/>' + E,
-    refresh: S + '<path d="M4 12a8 8 0 0114-5l2 2"/><path d="M20 12a8 8 0 01-14 5l-2-2"/><path d="M18 4v5h-5"/><path d="M6 20v-5h5"/>' + E
+    refresh: S + '<path d="M4 12a8 8 0 0114-5l2 2"/><path d="M20 12a8 8 0 01-14 5l-2-2"/><path d="M18 4v5h-5"/><path d="M6 20v-5h5"/>' + E,
+    // New phone apps
+    photos: S + '<rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="9" cy="9" r="2"/><path d="M4 16l4-4 3 3 3-4 6 7"/>' + E,
+    camera: S + '<path d="M12 8a5 5 0 100 10 5 5 0 000-10z"/><rect x="3" y="7" width="18" height="14" rx="3"/><path d="M8 4l1-2h6l1 2"/>' + E,
+    flappy: S + '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M8 12l3-3 3 3-3 3z"/><path d="M8 9l1-3"/><path d="M16 12l-1 2"/><path d="M16 12h1"/>' + E,
+    snake: S + '<path d="M4 6h12a2 2 0 012 2v8a2 2 0 01-2 2H4"/><circle cx="6" cy="8" r="1.5"/><circle cx="6" cy="14" r="1.5"/><circle cx="12" cy="12" r="1"/><circle cx="16" cy="12" r="1.5" fill="currentColor"/>' + E,
+    safari: S + '<circle cx="12" cy="12" r="9"/><path d="M12 8l4 8-8-4 4-4z"/><path d="M12 6v2"/><path d="M12 14v4"/><path d="M6 12h2"/><path d="M14 12h4"/>' + E,
+    chrome: S + '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/><path d="M12 3l5.5 9.5"/><path d="M5.5 7.5L12 12"/><path d="M5.5 16.5L12 12"/><path d="M12 21l-5.5-9.5"/><path d="M18.5 16.5L12 12"/>' + E
   };
 
   function injectInto(root) {
@@ -62,7 +69,7 @@
     });
   }
 
-  global.VSIconsInject = injectInto;
+  window.VSIconsInject = injectInto;
 
   function inject() { injectInto(document); }
 
@@ -71,4 +78,10 @@
   } else {
     inject();
   }
+
+  var retries = 20;
+  var retryTick = setInterval(function () {
+    if (retries-- <= 0) { clearInterval(retryTick); return; }
+    injectInto(document);
+  }, 500);
 })();

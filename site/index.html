@@ -34,7 +34,7 @@
     "name":"VibeSpace",
     "applicationCategory":"DeveloperApplication",
     "operatingSystem":"Windows, macOS, Linux",
-    "softwareVersion":"0.1.45",
+    "softwareVersion":"0.1.47",
     "license":"https://www.apache.org/licenses/LICENSE-2.0",
     "url":"https://vibespaceos.com/",
     "downloadUrl":"https://github.com/Cookie774-GameDev/VibeSpace/releases/latest",
@@ -74,7 +74,7 @@
   <section class="hero" id="top">
     <div class="hero-grid">
       <div>
-        <span class="eyebrow"><span class="dot-live"></span> v0.1.45 &middot; vibe coding app</span>
+        <span class="eyebrow"><span class="dot-live"></span> v0.1.47 &middot; vibe coding app</span>
         <h1 id="heroH1"><span class="word">Vibe</span> <span class="word">coding</span> <span class="word">for</span> <span class="word">vibe</span> <span class="word">coders.</span> <span class="word"><em>By</em></span> <span class="word"><em>a</em></span> <span class="word"><em>vibe</em></span> <span class="word"><em>coder.</em></span></h1>
         <p class="lead">VibeSpace is the cozy all-in-one AI workspace for builders who context-switch all day: chat with every model, convene agent councils, code in terminal swarms, talk to Jarvis hands-free, make AI phone calls, manage tasks, remember everything, and keep shipping.</p>
         <div class="hero-cta">
@@ -103,6 +103,7 @@
           <button class="sim-tab active" data-sim="desktop"><span data-ic="computer"></span> Computer</button>
           <button class="sim-tab" data-sim="phone"><span data-ic="phone"></span> Phone</button>
         </div>
+        <div class="sim-sign" id="simSign">Click the sidebar to explore Chat, Terminals, Agents, Inspector, Schedule, Skills, Hive, Voice &amp; Settings. Everything works.</div>
 
         <!-- DESKTOP SIMULATOR -->
         <div class="sim-panel active" id="simDesktop">
@@ -180,17 +181,29 @@
                 <!-- HOME SCREEN -->
                 <div class="phone-screen-layer phone-home-screen hidden-right">
                   <div class="phone-home">
+                    <div class="phone-home-banner">
+                      <div class="phone-home-banner-copy">
+                        <strong>Mini phone OS</strong>
+                        <span>Calls, messages, browsers, games, photos, and voice all work here.</span>
+                      </div>
+                    </div>
                     <div class="phone-app-grid">
-                      <div class="phone-app-icon" data-app="calls"><div class="icon-box" style="background:#34d6e6" data-ic="call"></div><span class="icon-label">Calls</span></div>
-                      <div class="phone-app-icon" data-app="messages"><div class="icon-box" style="background:#6F8F66" data-ic="chat"></div><span class="icon-label">Messages</span></div>
-                      <div class="phone-app-icon" data-app="browser"><div class="icon-box" style="background:#8B5FB5" data-ic="browser"></div><span class="icon-label">Browser</span></div>
-                      <div class="phone-app-icon" data-app="dial"><div class="icon-box" style="background:#B5613A" data-ic="dialpad"></div><span class="icon-label">Dial</span></div>
-                      <div class="phone-app-icon" data-app="settings"><div class="icon-box" style="background:#5A524A" data-ic="settings"></div><span class="icon-label">Settings</span></div>
-                      <div class="phone-app-icon" data-app="appstore"><div class="icon-box" style="background:#C58A3D" data-ic="appstore"></div><span class="icon-label">App Store</span></div>
-                      <div class="phone-app-icon" data-app="notes"><div class="icon-box" style="background:#4DD8E8" data-ic="notes"></div><span class="icon-label">Notes</span></div>
-                      <div class="phone-app-icon" data-app="vibecast"><div class="icon-box" style="background:#9CC68B" data-ic="weather"></div><span class="icon-label">VibeCast</span></div>
-                      <div class="phone-app-icon" data-app="notifications"><div class="icon-box" style="background:#B98AE8" data-ic="notifications"></div><span class="icon-label">Alerts</span></div>
-                      <div class="phone-app-icon" data-app="calls" data-action="simulate-incoming"><div class="icon-box" style="background:#944D2D" data-ic="call"></div><span class="icon-label">Jarvis</span></div>
+                      <div class="phone-app-icon" data-app="calls"><div class="icon-box" style="background:linear-gradient(135deg,#34d6e6,#1f96a3)" data-ic="call"></div><span class="icon-label">Calls</span></div>
+                      <div class="phone-app-icon" data-app="messages"><div class="icon-box" style="background:linear-gradient(135deg,#6F8F66,#4a6b42)" data-ic="chat"></div><span class="icon-label">Messages</span></div>
+                      <div class="phone-app-icon" data-app="browser"><div class="icon-box" style="background:linear-gradient(135deg,#8B5FB5,#6a3f94)" data-ic="browser"></div><span class="icon-label">Browser</span></div>
+                      <div class="phone-app-icon" data-app="dial"><div class="icon-box" style="background:linear-gradient(135deg,#B5613A,#8f4422)" data-ic="dialpad"></div><span class="icon-label">Dial</span></div>
+                      <div class="phone-app-icon" data-app="settings"><div class="icon-box" style="background:linear-gradient(135deg,#5A524A,#3d3730)" data-ic="settings"></div><span class="icon-label">Settings</span></div>
+                      <div class="phone-app-icon" data-app="appstore"><div class="icon-box" style="background:linear-gradient(135deg,#C58A3D,#a06e2a)" data-ic="appstore"></div><span class="icon-label">App Store</span></div>
+                      <div class="phone-app-icon" data-app="notes"><div class="icon-box" style="background:linear-gradient(135deg,#4DD8E8,#2bacbd)" data-ic="notes"></div><span class="icon-label">Notes</span></div>
+                      <div class="phone-app-icon" data-app="vibecast"><div class="icon-box" style="background:linear-gradient(135deg,#9CC68B,#7aa869)" data-ic="weather"></div><span class="icon-label">VibeCast</span></div>
+                      <div class="phone-app-icon" data-app="notifications"><div class="icon-box" style="background:linear-gradient(135deg,#B98AE8,#9966cc)" data-ic="notifications"></div><span class="icon-label">Alerts</span></div>
+                      <div class="phone-app-icon" data-app="calls" data-action="simulate-incoming"><div class="icon-box" style="background:linear-gradient(135deg,#944D2D,#6b321a)" data-ic="call"></div><span class="icon-label">Jarvis</span></div>
+                      <div class="phone-app-icon" data-app="photos"><div class="icon-box" style="background:linear-gradient(135deg,#E8B860,#c4943a)" data-ic="photos"></div><span class="icon-label">Photos</span></div>
+                      <div class="phone-app-icon" data-app="camera"><div class="icon-box" style="background:linear-gradient(135deg,#555,#222)" data-ic="camera"></div><span class="icon-label">Camera</span></div>
+                      <div class="phone-app-icon" data-app="flappy"><div class="icon-box" style="background:linear-gradient(135deg,#4DD8E8,#1f96a3)" data-ic="flappy"></div><span class="icon-label">Flappy</span></div>
+                      <div class="phone-app-icon" data-app="snake"><div class="icon-box" style="background:linear-gradient(135deg,#6F8F66,#3d5c35)" data-ic="snake"></div><span class="icon-label">Snake</span></div>
+                      <div class="phone-app-icon" data-app="safari"><div class="icon-box" style="background:linear-gradient(135deg,#4285F4,#1a5cc7)" data-ic="safari"></div><span class="icon-label">Safari</span></div>
+                      <div class="phone-app-icon" data-app="chrome"><div class="icon-box" style="background:linear-gradient(135deg,#F55036,#c4321a)" data-ic="chrome"></div><span class="icon-label">Chrome</span></div>
                     </div>
                   </div>
                 </div>
@@ -198,14 +211,30 @@
                 <!-- CALLS APP -->
                 <div class="phone-screen-layer phone-app-screen hidden-right" data-app="calls">
                   <div class="phone-navbar"><button class="phone-back-btn">&#8249;</button><span class="phone-nav-title">Contacts</span></div>
-                  <div class="phone-app-body"><div class="call-list"></div></div>
+                  <div class="phone-app-body">
+                    <div class="phone-comms-hero">
+                      <div class="phone-comms-chip">Live calling demo</div>
+                      <div class="phone-comms-title">Tap any contact to call and hear them talk back.</div>
+                      <div class="phone-comms-actions">
+                        <button class="phone-action-pill" data-phone-action="call-jarvis">Call Jarvis</button>
+                        <button class="phone-action-pill alt" data-phone-action="incoming-call">Trigger incoming</button>
+                      </div>
+                    </div>
+                    <div class="call-list"></div>
+                  </div>
                 </div>
 
                 <!-- MESSAGES LIST -->
                 <div class="phone-screen-layer phone-app-screen hidden-right" data-app="messages">
                   <div class="msg-list-view">
                     <div class="phone-navbar"><span class="phone-nav-title">Messages</span></div>
-                    <div class="phone-app-body"><div class="msg-list"></div></div>
+                    <div class="phone-app-body">
+                      <div class="phone-comms-hero messages">
+                        <div class="phone-comms-chip">Visual messaging</div>
+                        <div class="phone-comms-title">Open a thread, send a text, and get an animated reply.</div>
+                      </div>
+                      <div class="msg-list"></div>
+                    </div>
                   </div>
                   <div class="phone-screen-layer msg-chat-view hidden-right">
                     <div class="phone-navbar"><button class="phone-back-btn msg-back-btn">&#8249;</button><span class="phone-nav-title">Chat</span></div>
@@ -224,7 +253,7 @@
                     <div class="phone-browser-url">github.com/Cookie774-GameDev/VibeSpace</div>
                     <button class="phone-browser-go">Go</button>
                   </div>
-                  <div class="phone-browser-body"></div>
+                  <div class="phone-browser-body" data-browser="github"></div>
                 </div>
 
                 <!-- DIAL PAD APP -->
@@ -261,7 +290,7 @@
                       <div class="phone-setting-row"><span class="ps-label">Custom time</span><input class="set-input ps-time-input" type="datetime-local" /></div>
                       <div class="phone-setting-row"><span class="ps-label">Ringtone</span><span class="ps-value">Cosmic &#9835;</span></div>
                       <div class="phone-setting-row"><span class="ps-label">Sync with desktop</span><button class="ps-toggle on"></button></div>
-                      <div style="font-size:11px;color:var(--faint);text-align:center;padding:16px;font-family:Fraunces,serif;font-style:italic">VibeSpace v0.1.45<br>Apache 2.0</div>
+                      <div style="font-size:11px;color:var(--faint);text-align:center;padding:16px;font-family:Fraunces,serif;font-style:italic">VibeSpace v0.1.47<br>Apache 2.0</div>
                     </div>
                   </div>
                 </div>
@@ -305,6 +334,98 @@
                   </div>
                 </div>
               </div>
+              <!-- PHOTOS APP -->
+              <div class="phone-screen-layer phone-app-screen hidden-right" data-app="photos">
+                <div class="phone-navbar"><button class="phone-back-btn">&#8249;</button><span class="phone-nav-title">Photos</span></div>
+                <div class="phone-app-body" style="padding:6px">
+                  <div class="photo-feature-card">
+                    <div class="photo-feature-label">Latest shot</div>
+                    <div class="photo-feature-preview"></div>
+                    <button class="phone-action-pill" data-phone-action="open-camera">Open camera</button>
+                  </div>
+                  <div class="photos-grid"></div>
+                </div>
+              </div>
+              <!-- CAMERA APP -->
+              <div class="phone-screen-layer phone-app-screen hidden-right" data-app="camera">
+                <div class="phone-navbar"><button class="phone-back-btn">&#8249;</button><span class="phone-nav-title">Camera</span></div>
+                <div class="phone-app-body camera-app-body">
+                  <div class="camera-preview">
+                    <div class="camera-preview-scene"></div>
+                    <div class="camera-preview-overlay">
+                      <span>LIVE</span>
+                      <span>12MP</span>
+                    </div>
+                  </div>
+                  <div class="camera-controls">
+                    <button class="camera-secondary-btn" data-phone-action="camera-flip">Flip</button>
+                    <button class="camera-shutter-btn" data-phone-action="take-photo" aria-label="Take photo"></button>
+                    <button class="camera-secondary-btn" data-phone-action="camera-mode">Mode</button>
+                  </div>
+                  <div class="camera-caption">Take a simulated shot and it appears in Photos immediately.</div>
+                </div>
+              </div>
+              <!-- FLAPPY BIRD APP -->
+              <div class="phone-screen-layer phone-app-screen hidden-right" data-app="flappy">
+                <div class="phone-navbar"><button class="phone-back-btn">&#8249;</button><span class="phone-nav-title">Flappy Bird</span></div>
+                <div class="phone-app-body game-app-body">
+                  <div class="game-panel">
+                    <div class="game-head">
+                      <div class="game-title">Flappy Vibe</div>
+                      <div class="game-score-row"><span>Score</span><strong class="flappy-score">0</strong></div>
+                    </div>
+                    <div class="flappy-game" tabindex="0" aria-label="Flappy Bird mini game">
+                      <div class="flappy-bird"></div>
+                      <div class="flappy-pipe pipe-top"></div>
+                      <div class="flappy-pipe pipe-bottom"></div>
+                      <div class="flappy-overlay">Tap play, then tap the game area to flap.</div>
+                    </div>
+                    <button class="phone-action-pill flappy-start" data-phone-action="start-flappy">Play</button>
+                  </div>
+                </div>
+              </div>
+              <!-- SNAKE APP -->
+              <div class="phone-screen-layer phone-app-screen hidden-right" data-app="snake">
+                <div class="phone-navbar"><button class="phone-back-btn">&#8249;</button><span class="phone-nav-title">Snake</span></div>
+                <div class="phone-app-body game-app-body">
+                  <div class="game-panel">
+                    <div class="game-head">
+                      <div class="game-title">Snake</div>
+                      <div class="game-score-row"><span>Score</span><strong class="snake-score">0</strong></div>
+                    </div>
+                    <div class="snake-game-wrap">
+                      <canvas class="snake-canvas" width="216" height="216" aria-label="Snake mini game"></canvas>
+                    </div>
+                    <div class="snake-controls">
+                      <button class="snake-btn" data-dir="up">&#9650;</button>
+                      <div class="snake-middle-row">
+                        <button class="snake-btn" data-dir="left">&#9664;</button>
+                        <button class="snake-btn primary" data-phone-action="start-snake">Start</button>
+                        <button class="snake-btn" data-dir="right">&#9654;</button>
+                      </div>
+                      <button class="snake-btn" data-dir="down">&#9660;</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <!-- SAFARI APP -->
+              <div class="phone-screen-layer phone-app-screen hidden-right" data-app="safari">
+                <div class="phone-navbar"><button class="phone-back-btn">&#8249;</button><span class="phone-nav-title">Safari</span></div>
+                <div class="phone-browser-bar">
+                  <div class="phone-browser-url">github.com/Cookie774-GameDev/VibeSpace</div>
+                  <button class="phone-browser-go">Go</button>
+                </div>
+                <div class="phone-browser-body" data-browser="safari"></div>
+              </div>
+              <!-- CHROME APP -->
+              <div class="phone-screen-layer phone-app-screen hidden-right" data-app="chrome">
+                <div class="phone-navbar"><button class="phone-back-btn">&#8249;</button><span class="phone-nav-title">Chrome</span></div>
+                <div class="phone-browser-bar">
+                  <div class="phone-browser-url">github.com/Cookie774-GameDev/VibeSpace</div>
+                  <button class="phone-browser-go">Go</button>
+                </div>
+                <div class="phone-browser-body" data-browser="chrome"></div>
+              </div>
               <div class="phone-call-screen">
                 <div class="call-avatar-ring">J</div>
                 <div class="call-name">Jarvis</div>
@@ -328,9 +449,10 @@
               <!-- TOAST -->
               <div class="phone-toast"></div>
 
-              <!-- HOME INDICATOR -->
-              <div class="phone-home-indicator" aria-label="Home"></div>
             </div>
+            <!-- HOME INDICATOR -->
+            <div class="phone-home-indicator" aria-label="Home"></div>
+            <button class="phone-home-button" aria-label="Phone home button"></button>
           </div>
         </div>
       </div>
@@ -344,7 +466,7 @@
       <div class="proof-item"><strong>21+</strong> Model providers</div>
       <div class="proof-item"><strong>Local-first</strong> Keys on device</div>
       <div class="proof-item"><strong>Ollama</strong> Offline mode</div>
-      <div class="proof-item"><strong>v0.1.45</strong> Shipping now</div>
+      <div class="proof-item"><strong>v0.1.47</strong> Shipping now</div>
     </div>
   </div>
 
@@ -356,52 +478,42 @@
       <p class="lead">VibeSpace is not another model tab. It is the integration layer: every model, every agent, every voice, and every task under one persistent memory.</p>
     </div>
     <div class="grid g3 reveal-stagger">
-      <div class="card"><div class="ico plum" data-ic="council"></div><h3>Agent council</h3><p>Run Jarvis, Coder, Researcher, Critic, Memory Keeper, and Action Extractor as visible collaborators that think in parallel and synthesize.</p></div>
-      <div class="card"><div class="ico copper" data-ic="terminal"></div><h3>Terminal swarm</h3><p>Real PTY terminals in a tile grid. Scout, Builder, Reviewer roles. Claude Code, OpenCode, shell commands, manual resizing, durable history.</p><span class="tag new">v0.1.45</span></div>
-      <div class="card"><div class="ico sage" data-ic="chat"></div><h3>Multi-model chat</h3><p>BYOK with 21+ providers. Persistent threads, slash commands, project context, and Hive stacks that route across models automatically.</p></div>
-      <div class="card"><div class="ico copper" data-ic="voice"></div><h3>Jarvis voice</h3><p>Hands-free push-to-talk with local Kokoro voices (free, unlimited). Optional cloud TTS on paid plans. Separate from the composer mic.</p></div>
-      <div class="card"><div class="ico" data-ic="call"></div><h3>AI calling</h3><p>Dial your AI from any phone via Twilio PSTN, or tap Call in-app via LiveKit WebRTC. Jarvis can call you for build failures and alerts.</p></div>
-      <div class="card"><div class="ico plum" data-ic="skills"></div><h3>Skills catalog</h3><p>Unified skills library with SkillEditor, markdown preview, built-in and custom skills. Use <code>/skills</code> in chat to pick one.</p><span class="tag new">v0.1.45</span></div>
-      <div class="card"><div class="ico sage" data-ic="memory"></div><h3>Memory &amp; context</h3><p>Persistent memory across chats, voice, files, tasks, and projects. Context maps scoped per project. Local-first by design.</p></div>
-      <div class="card"><div class="ico" data-ic="inspector"></div><h3>Inspector &amp; Kanban</h3><p>Today, Quick Launch, Context, Tools Run, Trace milestones, and Active Work. Milestone-driven Kanban board aligned with the Inspector trace store.</p><span class="tag new">v0.1.45</span></div>
-      <div class="card"><div class="ico copper" data-ic="tasks"></div><h3>Tasks &amp; actions</h3><p>Capture todos, schedule reminders, track work visually. 24 built-in actions render as Approve/Cancel cards. Navigate, run commands, toggle themes safely.</p></div>
+      <div class="card"><div class="ico plum" data-ic="council"></div><h3>Agent council</h3><p><strong>Run Jarvis</strong>, Coder, Researcher, Critic, Memory Keeper, and Action Extractor as <strong>visible collaborators</strong> that think in <strong>parallel</strong> and synthesize.</p></div>
+      <div class="card"><div class="ico copper" data-ic="terminal"></div><h3>Terminal swarm</h3><p><strong>Real PTY terminals</strong> in a tile grid. Scout, Builder, Reviewer roles. <strong>Claude Code, OpenCode</strong>, shell commands, manual resizing, <strong>durable history</strong>.</p><span class="tag new">v0.1.47</span></div>
+      <div class="card"><div class="ico sage" data-ic="chat"></div><h3>Multi-model chat</h3><p><strong>BYOK with 21+ providers</strong>. Persistent threads, <strong>slash commands</strong>, project context, and <strong>Hive stacks</strong> that route across models automatically.</p></div>
+      <div class="card"><div class="ico copper" data-ic="voice"></div><h3>Jarvis voice</h3><p><strong>Hands-free push-to-talk</strong> with <strong>local Kokoro voices</strong> (free, unlimited). Optional cloud TTS on paid plans. Separate from the composer mic.</p></div>
+      <div class="card"><div class="ico" data-ic="call"></div><h3>AI calling</h3><p><strong>Dial your AI from any phone</strong> via Twilio PSTN, or tap Call in-app via <strong>LiveKit WebRTC</strong>. Jarvis can call you for build failures and alerts.</p></div>
+      <div class="card"><div class="ico plum" data-ic="skills"></div><h3>Skills catalog</h3><p><strong>Unified skills library</strong> with SkillEditor, markdown preview, built-in + custom skills. Use <code>/skills</code> in chat to pick one.</p><span class="tag new">v0.1.47</span></div>
+      <div class="card"><div class="ico sage" data-ic="memory"></div><h3>Memory &amp; context</h3><p><strong>Persistent memory</strong> across chats, voice, files, tasks, and projects. <strong>Context maps</strong> scoped per project. <strong>Local-first</strong> by design.</p></div>
+      <div class="card"><div class="ico" data-ic="inspector"></div><h3>Inspector &amp; Kanban</h3><p><strong>Today, Quick Launch, Context, Tools Run</strong>, Trace milestones, and Active Work. <strong>Milestone-driven Kanban</strong> board aligned with the Inspector trace store.</p><span class="tag new">v0.1.47</span></div>
+      <div class="card"><div class="ico copper" data-ic="tasks"></div><h3>Tasks &amp; actions</h3><p><strong>Capture todos, schedule reminders</strong>, track work visually. <strong>24 built-in actions</strong> render as Approve/Cancel cards. Navigate, run commands, toggle themes safely.</p></div>
     </div>
   </section>
 
-  <!-- TERMINAL SWARM -->
+  <!-- TERMINAL SWARM — 10 live streaming terminals -->
   <section id="swarm">
     <div class="sec-head center reveal">
       <div class="kicker">Terminal swarm</div>
       <h2>Ten live terminals. <em>One workspace.</em></h2>
-      <p class="lead">Real PTY shells in a tile grid with agent roles, scrollback that survives restarts, and Rust-backed terminal agent coordination.</p>
+      <p class="lead">Real PTY shells running <strong>Codex</strong>, <strong>Claude Code</strong>, and <strong>OpenCode</strong> — scroll past and watch them spew real-time build, test, and agent output.</p>
     </div>
-    <div class="swarm reveal">
-      <div class="swarm-pane">
-        <div class="ph">PANE 1 &middot; SCOUT</div>
-        <div class="ln mu">$ scout scan src/</div>
-        <div class="ln ok">  3 files changed</div>
-        <div class="ln">  auth.ts:42 +12</div>
-        <div class="ln">  api.ts:8 -3</div>
-        <div class="ln cu">  routing to builder</div>
-        <span class="cursor-blink"></span>
+    <div class="live-swarm reveal" id="liveSwarm">
+      <div class="live-swarm-grid">
+        <div class="live-swarm-pane" data-pane="0" data-tool="codex" data-role="scout"></div>
+        <div class="live-swarm-pane" data-pane="1" data-tool="claude" data-role="builder"></div>
+        <div class="live-swarm-pane" data-pane="2" data-tool="opencode" data-role="reviewer"></div>
+        <div class="live-swarm-pane" data-pane="3" data-tool="codex" data-role="builder"></div>
+        <div class="live-swarm-pane" data-pane="4" data-tool="claude" data-role="scout"></div>
+        <div class="live-swarm-pane" data-pane="5" data-tool="opencode" data-role="builder"></div>
+        <div class="live-swarm-pane" data-pane="6" data-tool="codex" data-role="reviewer"></div>
+        <div class="live-swarm-pane" data-pane="7" data-tool="claude" data-role="builder"></div>
+        <div class="live-swarm-pane" data-pane="8" data-tool="opencode" data-role="scout"></div>
+        <div class="live-swarm-pane" data-pane="9" data-tool="codex" data-role="critic"></div>
       </div>
-      <div class="swarm-pane">
-        <div class="ph">PANE 2 &middot; BUILDER</div>
-        <div class="ln mu">$ build --fix</div>
-        <div class="ln ok">  patching auth.ts</div>
-        <div class="ln">  + token refresh</div>
-        <div class="ln">  + error boundary</div>
-        <div class="ln cu">  ready for review</div>
-        <span class="cursor-blink"></span>
-      </div>
-      <div class="swarm-pane">
-        <div class="ph">PANE 3 &middot; REVIEWER</div>
-        <div class="ln mu">$ review diff</div>
-        <div class="ln ok">  2 issues found</div>
-        <div class="ln">  missing test case</div>
-        <div class="ln">  edge: null token</div>
-        <div class="ln cu">  blocking merge</div>
-        <span class="cursor-blink"></span>
+      <div class="live-swarm-legend">
+        <span class="lsl-item"><span class="lsl-dot" style="background:#E0925C"></span> Codex</span>
+        <span class="lsl-item"><span class="lsl-dot" style="background:#B98AE8"></span> Claude Code</span>
+        <span class="lsl-item"><span class="lsl-dot" style="background:#4DD8E8"></span> OpenCode</span>
       </div>
     </div>
   </section>
@@ -510,12 +622,39 @@
                 <span class="sb-icons"><span>&#9679;&#9679;&#9679;</span><span class="phone-battery"><span class="phone-battery-fill" style="width:78%"></span></span></span>
               </div>
               <div class="phone-content">
+                <div class="phone-screen-layer jcd-home-screen hidden-right">
+                  <div class="phone-home">
+                    <div class="phone-home-banner">
+                      <div class="phone-home-banner-copy">
+                        <strong>Phone Home</strong>
+                        <span>Tap an app. Calls stay voice-on by default.</span>
+                      </div>
+                    </div>
+                    <div class="phone-app-grid">
+                      <button class="phone-app-icon jcd-home-app" data-jcd-home-app="calls"><div class="icon-box" style="background:linear-gradient(135deg,#34d6e6,#1f96a3)" data-ic="call"></div><span class="icon-label">Calls</span></button>
+                      <button class="phone-app-icon jcd-home-app" data-jcd-home-app="messages"><div class="icon-box" style="background:linear-gradient(135deg,#6F8F66,#4a6b42)" data-ic="chat"></div><span class="icon-label">Messages</span></button>
+                      <button class="phone-app-icon jcd-home-app" data-jcd-home-app="safari"><div class="icon-box" style="background:linear-gradient(135deg,#4285F4,#1a5cc7)" data-ic="safari"></div><span class="icon-label">Safari</span></button>
+                      <button class="phone-app-icon jcd-home-app" data-jcd-home-app="chrome"><div class="icon-box" style="background:linear-gradient(135deg,#F55036,#c4321a)" data-ic="chrome"></div><span class="icon-label">Chrome</span></button>
+                      <button class="phone-app-icon jcd-home-app" data-jcd-home-app="photos"><div class="icon-box" style="background:linear-gradient(135deg,#E8B860,#c4943a)" data-ic="photos"></div><span class="icon-label">Photos</span></button>
+                      <button class="phone-app-icon jcd-home-app" data-jcd-home-app="camera"><div class="icon-box" style="background:linear-gradient(135deg,#555,#222)" data-ic="camera"></div><span class="icon-label">Camera</span></button>
+                      <button class="phone-app-icon jcd-home-app" data-jcd-home-app="flappy"><div class="icon-box" style="background:linear-gradient(135deg,#4DD8E8,#1f96a3)" data-ic="flappy"></div><span class="icon-label">Flappy</span></button>
+                      <button class="phone-app-icon jcd-home-app" data-jcd-home-app="snake"><div class="icon-box" style="background:linear-gradient(135deg,#6F8F66,#3d5c35)" data-ic="snake"></div><span class="icon-label">Snake</span></button>
+                    </div>
+                  </div>
+                </div>
                 <!-- Contact picker -->
                 <div class="phone-screen-layer jcd-picker active">
                   <div class="phone-navbar"><span class="phone-nav-title">Call Jarvis</span></div>
                   <div class="phone-app-body" style="overflow-y:auto">
                     <div class="jcd-contact-list"></div>
                   </div>
+                </div>
+                <div class="phone-screen-layer jcd-app-screen hidden-right">
+                  <div class="phone-navbar">
+                    <button class="phone-back-btn jcd-app-back">&#8249;</button>
+                    <span class="phone-nav-title jcd-app-title">App</span>
+                  </div>
+                  <div class="phone-app-body jcd-app-body"></div>
                 </div>
                 <!-- Call screen -->
                 <div class="phone-call-screen jcd-call">
@@ -531,7 +670,8 @@
                   </div>
                 </div>
               </div>
-              <div class="phone-home-indicator"></div>
+              <div class="phone-home-indicator jcd-home-indicator" aria-hidden="true"></div>
+              <button class="phone-home-button jcd-home-button" aria-label="Call demo home button"></button>
             </div>
           </div>
         </div>
@@ -572,33 +712,68 @@
 
   <!-- HIVE / MULTI-MODEL -->
   <section id="hive">
-    <div class="sec-head center reveal">
+    <div class="sec-bg-glow"></div>
+    <div class="sec-head center reveal fade-up">
       <div class="kicker">Hive &middot; multi-model</div>
       <h2>21+ providers. <em>Your keys.</em> Or run offline.</h2>
       <p class="lead">VibeSpace is BYOK first. Five providers are live adapters today; the rest have key persistence and UI wired so new adapters ship fast. Hive stacks route a single message across multiple models for quality.</p>
     </div>
-    <div class="chips reveal">
-      <span class="chip live">Anthropic</span>
-      <span class="chip live">OpenAI</span>
-      <span class="chip live">Google Gemini</span>
-      <span class="chip live">Groq</span>
-      <span class="chip live">Ollama &middot; offline</span>
-      <span class="chip">xAI</span>
-      <span class="chip">DeepSeek</span>
-      <span class="chip">Mistral</span>
-      <span class="chip">Cohere</span>
-      <span class="chip">Perplexity</span>
-      <span class="chip">Together AI</span>
-      <span class="chip">Fireworks</span>
-      <span class="chip">OpenRouter</span>
-      <span class="chip">Replicate</span>
-      <span class="chip">Hugging Face</span>
-      <span class="chip">Azure OpenAI</span>
-      <span class="chip">AWS Bedrock</span>
-      <span class="chip">Cerebras</span>
-      <span class="chip">Novita</span>
-      <span class="chip">Hyperbolic</span>
-      <span class="chip">Lambda</span>
+    <!-- Provider power-up animation -->
+    <div class="powerup reveal fade-up" id="powerupSection">
+      <!-- Central badge -->
+      <div class="powerup-core" id="powerupCore">
+        <div class="powerup-core-label">VibeSpace<br>OS</div>
+        <div class="powerup-core-sub">21+ providers / 1 hub</div>
+        <div class="powerup-core-ring"></div>
+      </div>
+      <!-- Particles / stars -->
+      <div class="powerup-particles" id="powerupParticles"></div>
+      <!-- Inner ring — Live providers -->
+      <div class="powerup-ring ring-inner" data-speed="1">
+        <div class="powerup-node live" data-pu="0" style="--pa:0deg" title="Anthropic — Live adapter">Anthropic</div>
+        <div class="powerup-node live" data-pu="1" style="--pa:72deg" title="OpenAI — Live adapter">OpenAI</div>
+        <div class="powerup-node live" data-pu="2" style="--pa:144deg" title="Google Gemini — Live adapter">Gemini</div>
+        <div class="powerup-node live" data-pu="3" style="--pa:216deg" title="Groq — Live adapter">Groq</div>
+        <div class="powerup-node live" data-pu="4" style="--pa:288deg" title="Ollama — Live offline">Ollama</div>
+      </div>
+      <!-- Middle ring — BYOK ready providers -->
+      <div class="powerup-ring ring-mid" data-speed="-0.6">
+        <div class="powerup-node byok" data-pu="5" style="--pa:0deg" title="xAI Grok — BYOK ready">xAI Grok</div>
+        <div class="powerup-node byok" data-pu="6" style="--pa:40deg" title="DeepSeek — BYOK ready">DeepSeek</div>
+        <div class="powerup-node byok" data-pu="7" style="--pa:80deg" title="Mistral — BYOK ready">Mistral</div>
+        <div class="powerup-node byok" data-pu="8" style="--pa:120deg" title="Cohere — BYOK ready">Cohere</div>
+        <div class="powerup-node byok" data-pu="9" style="--pa:160deg" title="Perplexity — BYOK ready">Perplexity</div>
+        <div class="powerup-node byok" data-pu="10" style="--pa:200deg" title="Together AI — BYOK ready">Together</div>
+        <div class="powerup-node byok" data-pu="11" style="--pa:240deg" title="Fireworks — BYOK ready">Fireworks</div>
+        <div class="powerup-node byok" data-pu="12" style="--pa:280deg" title="OpenRouter — BYOK ready">OpenRouter</div>
+        <div class="powerup-node byok" data-pu="13" style="--pa:320deg" title="Replicate — BYOK ready">Replicate</div>
+      </div>
+      <!-- Outer ring — Planned / coming soon -->
+      <div class="powerup-ring ring-outer" data-speed="0.4">
+        <div class="powerup-node planned" data-pu="14" style="--pa:0deg" title="Hugging Face — Coming soon">Hugging Face</div>
+        <div class="powerup-node planned" data-pu="15" style="--pa:45deg" title="Azure OpenAI — Coming soon">Azure OpenAI</div>
+        <div class="powerup-node planned" data-pu="16" style="--pa:90deg" title="AWS Bedrock — Coming soon">AWS Bedrock</div>
+        <div class="powerup-node planned" data-pu="17" style="--pa:135deg" title="Cerebras — Coming soon">Cerebras</div>
+        <div class="powerup-node planned" data-pu="18" style="--pa:180deg" title="Novita — Coming soon">Novita</div>
+        <div class="powerup-node planned" data-pu="19" style="--pa:225deg" title="Hyperbolic — Coming soon">Hyperbolic</div>
+        <div class="powerup-node planned" data-pu="20" style="--pa:270deg" title="Lambda — Coming soon">Lambda</div>
+        <div class="powerup-node planned" data-pu="21" style="--pa:315deg" title="+ more planned">+ more</div>
+      </div>
+    </div>
+    <!-- Legend -->
+    <div class="powerup-legend reveal fade-up">
+      <span class="pl-item live"><span class="pl-dot"></span>Live adapter</span>
+      <span class="pl-item byok"><span class="pl-dot"></span>BYOK ready</span>
+      <span class="pl-item local"><span class="pl-dot"></span>Offline / local</span>
+      <span class="pl-item planned"><span class="pl-dot"></span>Coming soon</span>
+    </div>
+    <!-- Bottom status bar -->
+    <div class="hive-status reveal fade-up">
+      <span class="hs-chip"><strong>BYOK first</strong> — your keys never leave your device</span>
+      <span class="hs-divider"></span>
+      <span class="hs-chip"><strong>5 live</strong> adapters today</span>
+      <span class="hs-divider"></span>
+      <span class="hs-chip"><strong>Hive stacks</strong> route across models</span>
     </div>
   </section>
 
@@ -635,14 +810,14 @@
   <!-- INSPECTOR & KANBAN -->
   <section id="inspector">
     <div class="sec-head reveal">
-      <div class="kicker">New in v0.1.45</div>
+      <div class="kicker">New in v0.1.47</div>
       <h2>Inspector &amp; Kanban. <em>See the work.</em></h2>
       <p class="lead">The Inspector panel surfaces Today, Quick Launch, Context, Tools Run, Trace milestones, and Active Work. The Kanban board is milestone-driven and aligned with the Inspector trace store, so what you see matches what happened.</p>
     </div>
     <div class="grid g3 reveal-stagger">
-      <div class="card"><div class="ico sage" data-ic="inspector"></div><h3>Inspector panel</h3><p>Today view, Quick Launch, Context, Tools Run, Trace milestones, and Active Work &mdash; all in one keyboard-first pane. <kbd>Mod+\\</kbd></p><span class="tag new">v0.1.45</span></div>
-      <div class="card"><div class="ico copper" data-ic="kanban"></div><h3>Kanban board</h3><p>Milestone-driven columns aligned with the Inspector trace store. Drag tasks across stages. Every card links back to the agent output that created it.</p><span class="tag new">v0.1.45</span></div>
-      <div class="card"><div class="ico plum" data-ic="skills"></div><h3>Skills catalog</h3><p>SkillEditor with markdown preview. Built-in and custom skills in one library. <code>/skills</code> picker in chat. Designed for a marketplace.</p><span class="tag new">v0.1.45</span></div>
+      <div class="card"><div class="ico sage" data-ic="inspector"></div><h3>Inspector panel</h3><p>Today view, Quick Launch, Context, Tools Run, Trace milestones, and Active Work &mdash; all in one keyboard-first pane. <kbd>Mod+\\</kbd></p><span class="tag new">v0.1.47</span></div>
+      <div class="card"><div class="ico copper" data-ic="kanban"></div><h3>Kanban board</h3><p>Milestone-driven columns aligned with the Inspector trace store. Drag tasks across stages. Every card links back to the agent output that created it.</p><span class="tag new">v0.1.47</span></div>
+      <div class="card"><div class="ico plum" data-ic="skills"></div><h3>Skills catalog</h3><p>SkillEditor with markdown preview. Built-in and custom skills in one library. <code>/skills</code> picker in chat. Designed for a marketplace.</p><span class="tag new">v0.1.47</span></div>
     </div>
   </section>
 
@@ -787,10 +962,10 @@
     <div class="sec-head reveal">
       <div class="kicker">We keep shipping</div>
       <h2>A live product, not a landing-page promise.</h2>
-      <p class="lead">v0.1.45 brings the unified skills catalog, Inspector panel, terminal agent coordination, milestone-driven Kanban, and an Apex billing tier.</p>
+      <p class="lead">v0.1.47 brings the unified skills catalog, Inspector panel, terminal agent coordination, milestone-driven Kanban, and an Apex billing tier.</p>
     </div>
     <div class="grid g2 reveal-stagger">
-      <div class="card"><span class="tag new">v0.1.45</span><h3>Skills, Inspector, Kanban</h3><p>Unified skills catalog with SkillEditor and <code>/skills</code> picker. Inspector panel (Today, Quick Launch, Context, Tools Run, Trace milestones, Active Work). Milestone-driven Kanban. Terminal agent coordination with a Rust-backed ledger.</p></div>
+      <div class="card"><span class="tag new">v0.1.47</span><h3>Skills, Inspector, Kanban</h3><p>Unified skills catalog with SkillEditor and <code>/skills</code> picker. Inspector panel (Today, Quick Launch, Context, Tools Run, Trace milestones, Active Work). Milestone-driven Kanban. Terminal agent coordination with a Rust-backed ledger.</p></div>
       <div class="card"><h3>v0.1.44</h3><p>Provider/model registry across Hive, agents, and settings. Hands-free voice turn-taking. Terminal scrollback isolation and route-switch stability.</p></div>
       <div class="card"><h3>v0.1.43</h3><p>Composer STT with local faster-whisper. StackPicker in-thread Hive presets. Workspace persistence flush on hide, shutdown, and tray exit.</p></div>
       <div class="card"><h3>Current focus</h3><p>Reliability, privacy, secure billing, and a calmer AI workspace experience. Windows trust docs and release checksum verification.</p></div>
@@ -818,7 +993,7 @@
       <details><summary>Is VibeSpace only for coding?</summary><p>No. Coding is the sharpest use-case, but VibeSpace also handles research, calls, tasks, memory, skills, agents, notes, actions, and project context.</p></details>
       <details><summary>What models work today?</summary><p>Anthropic, OpenAI, Google Gemini, Groq, and Ollama are live adapters. Other providers have UI and key persistence wired and can be promoted as adapters ship.</p></details>
       <details><summary>Is Jarvis voice the same as a phone call?</summary><p>No. Jarvis voice is the in-app hands-free assistant (local Kokoro, free, unlimited). AI calling is a separate feature &mdash; PSTN phone calls via Twilio on paid tiers, or free in-app WebRTC via LiveKit.</p></details>
-      <details><summary>What is new in v0.1.45?</summary><p>Unified skills catalog with SkillEditor and <code>/skills</code> picker, Inspector panel (Today, Quick Launch, Context, Tools Run, Trace milestones, Active Work), milestone-driven Kanban, terminal agent coordination with a Rust-backed ledger, and an Apex billing tier.</p></details>
+      <details><summary>What is new in v0.1.47?</summary><p>Unified skills catalog with SkillEditor and <code>/skills</code> picker, Inspector panel (Today, Quick Launch, Context, Tools Run, Trace milestones, Active Work), milestone-driven Kanban, terminal agent coordination with a Rust-backed ledger, and an Apex billing tier.</p></details>
       <details><summary>Can it run offline?</summary><p>Yes. Offline mode routes chat to Ollama. Local model support is live and keyless. Local Kokoro voice is always free and unlimited.</p></details>
       <details><summary>What is the official website?</summary><p>The official home is <strong>vibespaceos.com</strong>. Downloads and one-line installers always resolve through the GitHub releases page, so both stay in sync.</p></details>
     </div>
@@ -857,7 +1032,7 @@
     </div>
     <div class="foot-bottom">
       <span>&copy; 2026 VibeSpace &middot; Apache 2.0</span>
-      <span>Official site: <a href="https://vibespaceos.com/">vibespaceos.com</a> &middot; Current version: <strong>v0.1.45</strong></span>
+      <span>Official site: <a href="https://vibespaceos.com/">vibespaceos.com</a> &middot; Current version: <strong>v0.1.47</strong></span>
     </div>
   </footer>
 
@@ -877,10 +1052,11 @@
         var callTimer = null, callSeconds = 0;
 
         // Populate contact list in phone picker
+        var statuses = ['online','online','away','busy','online','away','online'];
         var pickerList = demo.querySelector('.jcd-contact-list');
         pickerList.style.padding = '8px 14px';
-        pickerList.innerHTML = contacts.map(function(c){
-          return '<div class="jcd-contact" data-jcd-call="'+c.id+'" style="border-left:3px solid '+c.color+'">' +
+        pickerList.innerHTML = contacts.map(function(c, i){
+          return '<div class="jcd-contact" data-jcd-call="'+c.id+'" data-status="'+(statuses[i]||'online')+'" style="border-left:3px solid '+c.color+'">' +
             '<div class="jcd-contact-avatar" style="background:'+c.color+'">'+c.avatar+'</div>' +
             '<div style="flex:1"><div class="jcd-contact-name">'+c.name+'</div>' +
             '<div class="jcd-contact-role">'+c.role+'</div></div>' +
@@ -892,12 +1068,39 @@
         if (window.VSIconsInject) window.VSIconsInject(demo);
 
         var phoneCallScreen = demo.querySelector('.jcd-call');
+        var phonePickerScreen = demo.querySelector('.jcd-picker');
+        var phoneHomeScreen = demo.querySelector('.jcd-home-screen');
+        var phoneAppScreen = demo.querySelector('.jcd-app-screen');
+        var phoneAppBody = demo.querySelector('.jcd-app-body');
+        var phoneAppTitle = demo.querySelector('.jcd-app-title');
+        var phoneAppBack = demo.querySelector('.jcd-app-back');
         var jdAvatar = demo.querySelector('.jcd-avatar');
         var jdName = demo.querySelector('.jcd-name');
         var jdStatus = demo.querySelector('.jcd-status');
         var jdTimer = demo.querySelector('.jcd-timer');
         var jdCaptions = demo.querySelector('.jcd-captions');
         var jdEnd = demo.querySelector('.jcd-end');
+        var jdMute = demo.querySelector('.jcd-call .call-btn.mute');
+        var jdSpeaker = demo.querySelector('.jcd-call .call-btn.speaker');
+        var jdHomeButton = demo.querySelector('.jcd-home-button');
+        var jdCurrentUtterance = null;
+        var jdPreferredVoices = { default: null, male: null, female: null, robot: null };
+        var jdMuted = false;
+        var jdSpeakerOn = true;
+        var jdCurrentContactId = 'jarvis';
+        var jdCurrentPhoneScreen = 'calls';
+        var jdCallRunId = 0;
+        var jdConnectTimer = null;
+        var jdAppState = { photos: 0, flappy: 0, snake: 0, browserTab: 'overview' };
+        var jdAppRuntime = { flappyFrame: null, snakeTimer: null };
+        var jdBrowserCache = null;
+        var jdPhotoLibrary = [
+          { src: 'images/phone-photo-1.png', title: 'Agent card flow' },
+          { src: 'images/phone-photo-2.png', title: 'Workspace inbox' },
+          { src: 'images/phone-photo-3.png', title: 'Morning build note' },
+          { src: 'images/phone-photo-4.png', title: 'Voice workspace' },
+          { src: 'images/phone-photo-5.png', title: 'Skill editor' }
+        ];
 
         // Time updater
         var jdTime = demo.querySelector('.jd-time');
@@ -907,9 +1110,46 @@
         }
         updateJdTime(); setInterval(updateJdTime, 1000);
 
+        function hidePhoneLayers(){
+          phoneHomeScreen.classList.remove('active');
+          phoneHomeScreen.classList.add('hidden-right');
+          phonePickerScreen.classList.remove('active');
+          phonePickerScreen.classList.add('hidden-right');
+          phoneAppScreen.classList.remove('active');
+          phoneAppScreen.classList.add('hidden-right');
+        }
+
+        function showPhoneScreen(name){
+          hidePhoneLayers();
+          jdCurrentPhoneScreen = name;
+          if (name === 'home') {
+            phoneHomeScreen.classList.remove('hidden-right', 'hidden-left');
+            phoneHomeScreen.classList.add('active');
+          } else if (name === 'calls') {
+            phonePickerScreen.classList.remove('hidden-right', 'hidden-left');
+            phonePickerScreen.classList.add('active');
+          } else if (name === 'app') {
+            phoneAppScreen.classList.remove('hidden-right', 'hidden-left');
+            phoneAppScreen.classList.add('active');
+          }
+        }
+
+        function restoreDesktopMessages(){
+          if (msgView && msgView.parentElement !== demo.querySelector('.jcd-right')) {
+            demo.querySelector('.jcd-right').appendChild(msgView);
+            msgView.style.display = 'none';
+          }
+        }
+
         function startCall(contactId){
           var c = VSDialogue.getContact(contactId);
           if (!c) return;
+          jdCallRunId++;
+          jdCurrentContactId = contactId;
+          stopSpeech();
+          if (callTimer){ clearInterval(callTimer); callTimer = null; }
+          if (jdConnectTimer) { clearTimeout(jdConnectTimer); jdConnectTimer = null; }
+          hidePhoneLayers();
           jdAvatar.style.background = 'radial-gradient(circle at 35% 30%, rgba(255,255,255,0.25), transparent 35%), '+c.color;
           jdAvatar.textContent = c.avatar;
           jdName.textContent = c.name;
@@ -917,51 +1157,494 @@
           jdTimer.textContent = '00:00';
           jdCaptions.innerHTML = '';
           phoneCallScreen.classList.add('active');
-          setTimeout(function(){
+          var runId = jdCallRunId;
+          jdConnectTimer = setTimeout(function(){
+            if (runId !== jdCallRunId) return;
             jdStatus.textContent = 'connected';
             callSeconds = 0;
             callTimer = setInterval(function(){
+              if (runId !== jdCallRunId) { clearInterval(callTimer); callTimer = null; return; }
               callSeconds++;
               var mm = Math.floor(callSeconds/60), ss = callSeconds%60;
               jdTimer.textContent = (mm<10?'0':'')+mm+':'+(ss<10?'0':'')+ss;
             },1000);
-            playDialogue(c, jdCaptions);
+            playDialogue(c, jdCaptions, runId);
           }, 1500);
         }
 
-        function playDialogue(c, container){
+        function playDialogue(c, container, runId){
           var lines = c.callLines, idx = 0;
           function next(){
-            if (idx >= lines.length) return;
+            if (idx >= lines.length || runId !== jdCallRunId || !phoneCallScreen.classList.contains('active')) return;
             var line = lines[idx++];
-            // Preloaded demo voice — captions always remain the source of truth.
-            if (window.VSDialogue && VSDialogue.speak) VSDialogue.speak(line);
             var div = document.createElement('div');
             div.className = 'caption-line them';
             container.appendChild(div);
             div.classList.add('show');
             var i = 0;
             var tick = setInterval(function(){
+              if (runId !== jdCallRunId || !phoneCallScreen.classList.contains('active')) { clearInterval(tick); return; }
               div.textContent = line.slice(0, ++i);
               if (i >= line.length){
                 clearInterval(tick);
+                if (runId !== jdCallRunId || !phoneCallScreen.classList.contains('active')) return;
                 div.textContent = line;
                 container.scrollTop = container.scrollHeight;
-                setTimeout(next, 1800);
+                speakLine(line);
+                setTimeout(next, 2500);
               }
-            }, 20);
+            }, 40);
           }
           next();
         }
 
-        function endCall(){
+        function loadVoices(){
+          if (!('speechSynthesis' in window)) return [];
+          var voices = window.speechSynthesis.getVoices();
+          if (!voices.length) return voices;
+          function pick(pattern){
+            return voices.find(function(v){
+              return /^en/i.test(v.lang) && pattern.test(v.name);
+            }) || null;
+          }
+          jdPreferredVoices.female = pick(/samantha|zira|aria|jenny|ava|susan|victoria|female/i);
+          jdPreferredVoices.male = pick(/guy|davis|mark|daniel|alex|male/i);
+          jdPreferredVoices.robot = pick(/zira|zira desktop|microsoft david|google us english|synth|robot/i);
+          jdPreferredVoices.default = jdPreferredVoices.female || jdPreferredVoices.male || voices.find(function(v){
+            return /^en/i.test(v.lang);
+          }) || voices[0];
+          return voices;
+        }
+
+        function stopSpeech(){
+          if (!('speechSynthesis' in window)) return;
+          window.speechSynthesis.cancel();
+          jdCurrentUtterance = null;
+        }
+
+        function getVoiceProfile(contactId){
+          if (contactId === 'devrel') return { voice: jdPreferredVoices.robot || jdPreferredVoices.default, rate: 0.92, pitch: 0.82 };
+          if (contactId === 'jarvis' || contactId === 'sage' || contactId === 'mom') {
+            return { voice: jdPreferredVoices.female || jdPreferredVoices.default, rate: 1, pitch: 1.08 };
+          }
+          return { voice: jdPreferredVoices.male || jdPreferredVoices.default, rate: 0.98, pitch: 0.92 };
+        }
+
+        function speakLine(line){
+          if (!('speechSynthesis' in window) || jdMuted) return;
+          stopSpeech();
+          loadVoices();
+          var profile = getVoiceProfile(jdCurrentContactId);
+          jdCurrentUtterance = new SpeechSynthesisUtterance(line);
+          jdCurrentUtterance.rate = profile.rate;
+          jdCurrentUtterance.pitch = profile.pitch;
+          jdCurrentUtterance.volume = jdSpeakerOn ? 1 : 0.82;
+          if (profile.voice) jdCurrentUtterance.voice = profile.voice;
+          window.speechSynthesis.speak(jdCurrentUtterance);
+        }
+
+        function showHomeScreen(){
+          cleanupAppRuntime();
+          restoreDesktopMessages();
+          endCall(false);
+          showPhoneScreen('home');
+        }
+
+        function showCallPicker(){
+          cleanupAppRuntime();
+          restoreDesktopMessages();
+          endCall(false);
+          showPhoneScreen('calls');
+        }
+
+        function cleanupAppRuntime(){
+          if (jdAppRuntime.flappyFrame) {
+            cancelAnimationFrame(jdAppRuntime.flappyFrame);
+            jdAppRuntime.flappyFrame = null;
+          }
+          if (jdAppRuntime.snakeTimer) {
+            clearInterval(jdAppRuntime.snakeTimer);
+            jdAppRuntime.snakeTimer = null;
+          }
+        }
+
+        function formatReadme(text){
+          return text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .split('\n')
+            .slice(0, 38)
+            .join('\n');
+        }
+
+        function ensureBrowserData(){
+          if (jdBrowserCache) return Promise.resolve(jdBrowserCache);
+          return Promise.all([
+            fetch('https://api.github.com/repos/Cookie774-GameDev/VibeSpace').then(function(r){ return r.json(); }),
+            fetch('https://api.github.com/repos/Cookie774-GameDev/VibeSpace/releases/latest').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
+            fetch('https://api.github.com/repos/Cookie774-GameDev/VibeSpace/contents').then(function(r){ return r.json(); }).catch(function(){ return []; }),
+            fetch('https://api.github.com/repos/Cookie774-GameDev/VibeSpace/readme').then(function(r){ return r.json(); }).catch(function(){ return {}; }),
+            fetch('https://api.github.com/repos/Cookie774-GameDev/VibeSpace/commits?per_page=4').then(function(r){ return r.json(); }).catch(function(){ return []; })
+          ]).then(function(results){
+            var readmeText = '';
+            if (results[3] && results[3].content) {
+              readmeText = atob(results[3].content.replace(/\n/g, ''));
+            }
+            jdBrowserCache = {
+              repo: results[0] || {},
+              release: results[1] || {},
+              contents: Array.isArray(results[2]) ? results[2] : [],
+              readme: readmeText,
+              commits: Array.isArray(results[4]) ? results[4] : []
+            };
+            return jdBrowserCache;
+          }).catch(function(){
+            jdBrowserCache = {
+              repo: { full_name: 'Cookie774-GameDev/VibeSpace', description: 'VibeSpace live repo preview unavailable offline.', stargazers_count: 0, forks_count: 0, open_issues_count: 0, language: 'TypeScript' },
+              release: { tag_name: 'latest' },
+              contents: [],
+              readme: 'Live GitHub preview failed to load. Check network access.',
+              commits: []
+            };
+            return jdBrowserCache;
+          });
+        }
+
+        function renderMiniBrowser(appName){
+          phoneAppTitle.textContent = appName;
+          phoneAppBody.innerHTML = '<div class="jcd-browser-shell">' +
+            '<div class="phone-browser-bar jcd-browser-bar">' +
+              '<div class="phone-browser-url">github.com/Cookie774-GameDev/VibeSpace</div>' +
+              '<button class="phone-browser-go jcd-mini-browser-refresh" type="button">Refresh</button>' +
+            '</div>' +
+            '<div class="jcd-browser-tabs">' +
+              '<button type="button" class="jcd-browser-tab active" data-browser-tab="overview">Overview</button>' +
+              '<button type="button" class="jcd-browser-tab" data-browser-tab="files">Files</button>' +
+              '<button type="button" class="jcd-browser-tab" data-browser-tab="readme">README</button>' +
+              '<button type="button" class="jcd-browser-tab" data-browser-tab="commits">Commits</button>' +
+            '</div>' +
+            '<div class="jcd-browser-scroll"><div class="jcd-browser-loading">Loading live GitHub data...</div></div>' +
+          '</div>';
+
+          var scroll = phoneAppBody.querySelector('.jcd-browser-scroll');
+          phoneAppBody.querySelector('.jcd-mini-browser-refresh').addEventListener('click', function(){
+            jdBrowserCache = null;
+            renderMiniBrowser(appName);
+          });
+
+          phoneAppBody.querySelectorAll('.jcd-browser-tab').forEach(function(tab){
+            tab.addEventListener('click', function(){
+              jdAppState.browserTab = tab.dataset.browserTab;
+              phoneAppBody.querySelectorAll('.jcd-browser-tab').forEach(function(other){
+                other.classList.toggle('active', other === tab);
+              });
+              renderBrowserTab(scroll, jdBrowserCache || { repo:{}, contents:[], commits:[], readme:'', release:{} });
+            });
+          });
+
+          ensureBrowserData().then(function(data){
+            if (!phoneAppBody.querySelector('.jcd-browser-scroll')) return;
+            renderBrowserTab(scroll, data);
+          });
+        }
+
+        function renderBrowserTab(scroll, data){
+          var repo = data.repo || {};
+          var tab = jdAppState.browserTab || 'overview';
+          if (tab === 'overview') {
+            scroll.innerHTML = '<div class="jcd-mini-browser-card">' +
+              '<div class="jcd-browser-repo-name">' + (repo.full_name || 'Cookie774-GameDev/VibeSpace') + '</div>' +
+              '<p>' + (repo.description || 'Local-first AI workspace with agents, terminals, voice, and calls.') + '</p>' +
+              '<div class="jcd-mini-stats">' +
+                '<div class="jcd-mini-stat"><span>Stars</span><strong>' + (repo.stargazers_count || 0) + '</strong></div>' +
+                '<div class="jcd-mini-stat"><span>Forks</span><strong>' + (repo.forks_count || 0) + '</strong></div>' +
+                '<div class="jcd-mini-stat"><span>Issues</span><strong>' + (repo.open_issues_count || 0) + '</strong></div>' +
+                '<div class="jcd-mini-stat"><span>Lang</span><strong>' + (repo.language || 'TypeScript') + '</strong></div>' +
+              '</div>' +
+              '<div class="jcd-app-copy" style="margin-top:12px;color:#c9d1d9">Release: ' + ((data.release && data.release.tag_name) || 'latest') + '</div>' +
+            '</div>';
+            return;
+          }
+          if (tab === 'files') {
+            scroll.innerHTML = '<div class="jcd-browser-list">' + (data.contents || []).slice(0, 18).map(function(item){
+              return '<div class="jcd-browser-row"><span>' + item.name + '</span><strong>' + item.type + '</strong></div>';
+            }).join('') + '</div>';
+            return;
+          }
+          if (tab === 'readme') {
+            scroll.innerHTML = '<pre class="jcd-browser-readme">' + formatReadme(data.readme || 'README unavailable') + '</pre>';
+            return;
+          }
+          scroll.innerHTML = '<div class="jcd-browser-list">' + (data.commits || []).map(function(commit){
+            var message = commit && commit.commit ? commit.commit.message.split('\n')[0] : 'Update';
+            var author = commit && commit.commit && commit.commit.author ? commit.commit.author.name : 'GitHub';
+            return '<div class="jcd-browser-row"><span>' + message + '</span><strong>' + author + '</strong></div>';
+          }).join('') + '</div>';
+        }
+
+        function renderPhotosApp(){
+          phoneAppTitle.textContent = 'Photos';
+          var activePhoto = jdPhotoLibrary[jdAppState.photos % jdPhotoLibrary.length];
+          phoneAppBody.innerHTML = '<div class="jcd-photo-stage">' +
+            '<img class="jcd-photo-hero" src="' + activePhoto.src + '" alt="' + activePhoto.title + '">' +
+            '<div class="jcd-photo-meta"><strong>' + activePhoto.title + '</strong><span>Captured in VibeSpace</span></div>' +
+            '</div><div class="jcd-photo-grid">' +
+            jdPhotoLibrary.map(function(photo, index){
+              var active = index === jdAppState.photos ? ' active' : '';
+              return '<button type="button" class="jcd-photo-thumb' + active + '" data-photo-index="' + index + '"><img src="' + photo.src + '" alt="' + photo.title + '"></button>';
+            }).join('') + '</div>';
+          phoneAppBody.querySelectorAll('.jcd-photo-thumb').forEach(function(btn){
+            btn.addEventListener('click', function(){
+              jdAppState.photos = parseInt(btn.dataset.photoIndex, 10);
+              renderPhotosApp();
+            });
+          });
+        }
+
+        function renderCameraApp(){
+          phoneAppTitle.textContent = 'Camera';
+          phoneAppBody.innerHTML = '<div class="jcd-camera-shell">' +
+            '<div class="jcd-camera-preview"><div class="jcd-camera-overlay"><span>REC</span><span>PORTRAIT</span></div></div>' +
+            '<div class="jcd-camera-controls">' +
+              '<button class="jcd-camera-btn" type="button" data-camera-action="flip">Flip</button>' +
+              '<button class="jcd-camera-btn shutter" type="button" data-camera-action="snap" aria-label="Shutter"></button>' +
+              '<button class="jcd-camera-btn" type="button" data-camera-action="tone">Tone</button>' +
+            '</div>' +
+            '<div class="jcd-app-copy" style="text-align:center;margin-top:10px">Stylized camera preview. Snap adds a fresh capture to Photos.</div></div>';
+          phoneAppBody.querySelectorAll('[data-camera-action]').forEach(function(btn){
+            btn.addEventListener('click', function(){
+              if (btn.dataset.cameraAction === 'snap') {
+                var captureId = jdPhotoLibrary.length + 1;
+                jdPhotoLibrary.unshift({ src: 'images/phone-photo-' + ((captureId % 5) || 5) + '.png', title: 'Camera capture ' + captureId });
+                jdAppState.photos = 0;
+                renderPhotosApp();
+              } else {
+                renderCameraApp();
+              }
+            });
+          });
+        }
+
+        function startFlappyGame(){
+          phoneAppTitle.textContent = 'Flappy';
+          phoneAppBody.innerHTML = '<div class="jcd-game-shell">' +
+            '<div class="jcd-game-header"><strong>Flappy Vibe</strong><span class="jcd-game-score">0</span></div>' +
+            '<canvas class="jcd-flappy-canvas" width="240" height="260"></canvas>' +
+            '<div class="jcd-game-controls"><button type="button" class="jcd-game-btn jcd-flappy-start">Start</button><button type="button" class="jcd-game-btn jcd-flappy-flap">Flap</button></div>' +
+            '<div class="jcd-flappy-note">Tap Flap or the canvas to stay airborne.</div></div>';
+          var canvas = phoneAppBody.querySelector('.jcd-flappy-canvas');
+          var ctx = canvas.getContext('2d');
+          var scoreEl = phoneAppBody.querySelector('.jcd-game-score');
+          var state = { y: 128, velocity: 0, pipeX: 200, gapY: 120, score: 0, running: false, passed: false };
+
+          function draw(){
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            var sky = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            sky.addColorStop(0, '#8ed9ff');
+            sky.addColorStop(0.65, '#dff6ff');
+            sky.addColorStop(0.66, '#90d16f');
+            sky.addColorStop(1, '#5e8f48');
+            ctx.fillStyle = sky;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#3ea44a';
+            ctx.fillRect(state.pipeX, 0, 34, state.gapY - 48);
+            ctx.fillRect(state.pipeX, state.gapY + 48, 34, canvas.height - state.gapY);
+            ctx.fillStyle = '#ffd54f';
+            ctx.beginPath();
+            ctx.ellipse(60, state.y, 16, 12, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#111';
+            ctx.beginPath();
+            ctx.arc(66, state.y - 2, 2, 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          function step(){
+            if (!state.running) return;
+            state.velocity += 0.35;
+            state.y += state.velocity;
+            state.pipeX -= 2.6;
+            if (state.pipeX < -34) {
+              state.pipeX = 240;
+              state.gapY = 80 + Math.random() * 100;
+              state.passed = false;
+            }
+            if (!state.passed && state.pipeX + 34 < 60) {
+              state.passed = true;
+              state.score += 1;
+              scoreEl.textContent = String(state.score);
+            }
+            if (state.y < 12 || state.y > 246 || ((state.pipeX < 76 && state.pipeX + 34 > 44) && (state.y < state.gapY - 58 || state.y > state.gapY + 38))) {
+              state.running = false;
+            }
+            draw();
+            jdAppRuntime.flappyFrame = requestAnimationFrame(step);
+          }
+
+          function flap(){
+            state.velocity = -4.8;
+          }
+
+          phoneAppBody.querySelector('.jcd-flappy-start').addEventListener('click', function(){
+            cleanupAppRuntime();
+            state = { y: 128, velocity: 0, pipeX: 200, gapY: 120, score: 0, running: true, passed: false };
+            scoreEl.textContent = '0';
+            draw();
+            jdAppRuntime.flappyFrame = requestAnimationFrame(step);
+          });
+          phoneAppBody.querySelector('.jcd-flappy-flap').addEventListener('click', flap);
+          canvas.addEventListener('click', flap);
+          draw();
+        }
+
+        function renderSnakeBoard(state){
+          var cells = [];
+          for (var y = 0; y < 12; y++) {
+            for (var x = 0; x < 12; x++) {
+              var className = 'jcd-snake-cell';
+              if (state.food.x === x && state.food.y === y) className += ' food';
+              if (state.snake.some(function(seg){ return seg.x === x && seg.y === y; })) className += ' snake';
+              cells.push('<div class="' + className + '"></div>');
+            }
+          }
+          phoneAppBody.querySelector('.jcd-snake-grid').innerHTML = cells.join('');
+          phoneAppBody.querySelector('.jcd-game-score').textContent = String(state.score);
+        }
+
+        function startSnakeGame(){
+          phoneAppTitle.textContent = 'Snake';
+          phoneAppBody.innerHTML = '<div class="jcd-game-shell">' +
+            '<div class="jcd-game-header"><strong>Snake</strong><span class="jcd-game-score">0</span></div>' +
+            '<div class="jcd-snake-grid"></div>' +
+            '<div class="jcd-snake-controls">' +
+              '<button type="button" class="jcd-game-btn" data-snake-dir="up">Up</button>' +
+              '<div class="jcd-snake-row"><button type="button" class="jcd-game-btn" data-snake-dir="left">Left</button><button type="button" class="jcd-game-btn jcd-snake-start">Start</button><button type="button" class="jcd-game-btn" data-snake-dir="right">Right</button></div>' +
+              '<button type="button" class="jcd-game-btn" data-snake-dir="down">Down</button>' +
+            '</div><div class="jcd-snake-note">Use the controls to steer the snake to the copper food.</div></div>';
+
+          var state = { snake: [{x:2,y:5},{x:1,y:5},{x:0,y:5}], dir: 'right', next: 'right', food: {x:8,y:7}, score: 0, running: false };
+
+          function randomFood(){
+            var point;
+            do {
+              point = { x: Math.floor(Math.random() * 12), y: Math.floor(Math.random() * 12) };
+            } while (state.snake.some(function(seg){ return seg.x === point.x && seg.y === point.y; }));
+            return point;
+          }
+
+          function tick(){
+            state.dir = state.next;
+            var head = { x: state.snake[0].x, y: state.snake[0].y };
+            if (state.dir === 'up') head.y--;
+            if (state.dir === 'down') head.y++;
+            if (state.dir === 'left') head.x--;
+            if (state.dir === 'right') head.x++;
+            if (head.x < 0 || head.y < 0 || head.x > 11 || head.y > 11 || state.snake.some(function(seg){ return seg.x === head.x && seg.y === head.y; })) {
+              clearInterval(jdAppRuntime.snakeTimer);
+              jdAppRuntime.snakeTimer = null;
+              state.running = false;
+              return;
+            }
+            state.snake.unshift(head);
+            if (head.x === state.food.x && head.y === state.food.y) {
+              state.score += 1;
+              state.food = randomFood();
+            } else {
+              state.snake.pop();
+            }
+            renderSnakeBoard(state);
+          }
+
+          phoneAppBody.querySelectorAll('[data-snake-dir]').forEach(function(btn){
+            btn.addEventListener('click', function(){
+              var dir = btn.dataset.snakeDir;
+              var opposite = { up:'down', down:'up', left:'right', right:'left' };
+              if (opposite[dir] !== state.dir) state.next = dir;
+            });
+          });
+          phoneAppBody.querySelector('.jcd-snake-start').addEventListener('click', function(){
+            cleanupAppRuntime();
+            state = { snake: [{x:2,y:5},{x:1,y:5},{x:0,y:5}], dir: 'right', next: 'right', food: randomFood(), score: 0, running: true };
+            renderSnakeBoard(state);
+            jdAppRuntime.snakeTimer = setInterval(tick, 180);
+          });
+
+          renderSnakeBoard(state);
+        }
+
+        function renderPhoneApp(appId){
+          cleanupAppRuntime();
+          phoneAppBody.innerHTML = '';
+          showPhoneScreen('app');
+
+          if (appId === 'messages') {
+            phoneAppTitle.textContent = 'Messages';
+            phoneAppBody.appendChild(msgView);
+            msgView.style.display = 'flex';
+            return;
+          }
+          if (appId === 'safari' || appId === 'chrome') {
+            renderMiniBrowser(appId === 'safari' ? 'Safari' : 'Chrome');
+            return;
+          }
+          if (appId === 'photos') {
+            renderPhotosApp();
+            return;
+          }
+          if (appId === 'camera') {
+            renderCameraApp();
+            return;
+          }
+          if (appId === 'flappy') {
+            startFlappyGame();
+            return;
+          }
+          if (appId === 'snake') {
+            startSnakeGame();
+            return;
+          }
+
+          phoneAppTitle.textContent = 'App';
+          phoneAppBody.innerHTML = '<div class="jcd-app-card"><div class="jcd-app-copy">This app is not configured yet.</div></div>';
+        }
+
+        function endCall(returnToPrevious){
+          jdCallRunId++;
           phoneCallScreen.classList.remove('active');
           if (callTimer){ clearInterval(callTimer); callTimer = null; }
+          if (jdConnectTimer) { clearTimeout(jdConnectTimer); jdConnectTimer = null; }
           callSeconds = 0;
-          if (window.VSDialogue && VSDialogue.stopSpeaking) VSDialogue.stopSpeaking();
+          stopSpeech();
+          if (returnToPrevious !== false) {
+            if (jdCurrentPhoneScreen === 'app') showPhoneScreen('app');
+            else if (jdCurrentPhoneScreen === 'home') showPhoneScreen('home');
+            else showPhoneScreen('calls');
+          }
         }
 
         jdEnd.addEventListener('click', endCall);
+        jdHomeButton.addEventListener('click', showHomeScreen);
+        jdMute.addEventListener('click', function(){
+          jdMuted = !jdMuted;
+          jdMute.classList.toggle('active', jdMuted);
+          if (jdMuted) stopSpeech();
+        });
+        jdSpeaker.addEventListener('click', function(){
+          jdSpeakerOn = !jdSpeakerOn;
+          jdSpeaker.classList.toggle('active', jdSpeakerOn);
+        });
+
+        if ('speechSynthesis' in window) {
+          loadVoices();
+          window.speechSynthesis.onvoiceschanged = loadVoices;
+        }
+        jdSpeaker.classList.add('active');
+        phoneAppBack.addEventListener('click', function(){
+          cleanupAppRuntime();
+          restoreDesktopMessages();
+          showHomeScreen();
+        });
 
         // Contact picker
         pickerList.addEventListener('click', function(e){
@@ -970,12 +1653,27 @@
           startCall(el.dataset.jcdCall);
         });
 
+        demo.querySelectorAll('.jcd-home-app').forEach(function(app){
+          app.addEventListener('click', function(){
+            var target = app.dataset.jcdHomeApp;
+            if (target === 'calls') { showCallPicker(); return; }
+            if (target === 'messages') {
+              tabMsg.click();
+              renderPhoneApp('messages');
+              return;
+            }
+            renderPhoneApp(target);
+          });
+        });
+
         // Also wire the contacts grid on the right
         var grid = demo.querySelector('.jcd-contacts-grid');
-        contacts.slice(0,6).forEach(function(c){
+        var gridStatuses = ['online','online','away','busy','online','away'];
+        contacts.slice(0,6).forEach(function(c, i){
           var div = document.createElement('div');
           div.className = 'jcd-contact';
           div.dataset.jcdCall = c.id;
+          div.dataset.status = gridStatuses[i]||'online';
           div.style.borderLeft = '3px solid '+c.color;
           div.innerHTML = '<div class="jcd-contact-avatar" style="background:'+c.color+'">'+c.avatar+'</div>' +
             '<div style="flex:1"><div class="jcd-contact-name">'+c.name+'</div>' +
@@ -1005,6 +1703,7 @@
         var currentMsgContact = 'jarvis';
         var msgHist = {};
 
+        function getContactName(id){ var c = VSDialogue.getContact(id); return c ? c.name : id; }
         function loadMessages(contactId){
           msgBubbles.innerHTML = '';
           var c = VSDialogue.getContact(contactId);
@@ -1014,6 +1713,7 @@
             var div = document.createElement('div');
             div.className = m.side === 'you' ? 'jcd-msg-bubble-you' : 'jcd-msg-bubble-them';
             div.textContent = m.text;
+            if (m.side === 'them') div.dataset.sender = getContactName(contactId);
             msgBubbles.appendChild(div);
             setTimeout(function(){ div.classList.add('show'); }, 30);
           });
@@ -1046,6 +1746,7 @@
             var reply = VSDialogue.getReply(currentMsgContact, text);
             var themDiv = document.createElement('div');
             themDiv.className = 'jcd-msg-bubble-them';
+            themDiv.dataset.sender = getContactName(currentMsgContact);
             msgBubbles.appendChild(themDiv);
             themDiv.classList.add('show');
             var i = 0;
@@ -1053,7 +1754,7 @@
               themDiv.textContent = reply.slice(0, ++i);
               msgBubbles.scrollTop = msgBubbles.scrollHeight;
               if (i >= reply.length){ clearInterval(tick); themDiv.textContent = reply; }
-            }, 15);
+            }, 25);
             msgHist[currentMsgContact].push({text:reply, side:'them'});
           }, 500);
         }
