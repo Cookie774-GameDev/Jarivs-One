@@ -73,6 +73,7 @@
   left: 0; right: 0; bottom: 0;
   overflow: hidden;
 }
+/* Home indicator — always clickable */
 .phone-home-indicator {
   position: absolute;
   bottom: 6px;
@@ -84,7 +85,34 @@
   background: rgba(255,255,255,0.3);
   z-index: 100;
   cursor: pointer;
+  transition: background .15s, width .15s, height .15s;
+  pointer-events: auto;
 }
+.phone-home-indicator:hover { background: rgba(255,255,255,0.55); }
+.phone-home-button {
+  position: absolute;
+  bottom: 12px;
+  right: 14px;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.18);
+  background: radial-gradient(circle at 35% 35%, rgba(255,255,255,0.12), rgba(0,0,0,0.6));
+  z-index: 110;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.12);
+}
+.phone-home-button::after {
+  content: "";
+  position: absolute;
+  inset: 9px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.25);
+}
+.phone-home-button:active { transform: scale(0.95); }
+.phone-home-bar:hover .phb-chevron { opacity: 1; border-color: rgba(255,255,255,0.8); }
+.phone-home-bar:hover .phb-bar { background: rgba(255,255,255,0.5); width: 66px; height: 5px; }
+.phone-home-bar:active { background: rgba(255,255,255,0.22); }
 
 /* ============ SCREENS (slide transitions) ============ */
 .phone-screen-layer {
@@ -134,12 +162,38 @@
 .phone-home {
   background: linear-gradient(160deg, #F8EFDB 0%, #46403A 100%);
   padding: 10px 20px 30px;
+  overflow-y: auto;
+  min-height: 100%;
+}
+.phone-home-banner {
+  margin: 6px 0 16px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(42,37,32,0.9), rgba(181,97,58,0.8));
+  border: 1px solid rgba(255,255,255,0.08);
+  box-shadow: 0 14px 30px -18px rgba(0,0,0,0.65);
+}
+.phone-home-banner-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.phone-home-banner-copy strong {
+  color: #fff7ec;
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 18px;
+  font-weight: 500;
+}
+.phone-home-banner-copy span {
+  color: rgba(255,247,236,0.78);
+  font-size: 12px;
+  line-height: 1.45;
 }
 .phone-app-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 16px 12px;
-  padding-top: 20px;
+  padding-top: 4px;
 }
 .phone-app-icon {
   display: flex;
@@ -160,6 +214,23 @@
   font-size: 24px;
   color: #fff;
   box-shadow: 0 4px 12px -4px rgba(0,0,0,0.5);
+  position: relative;
+  overflow: hidden;
+}
+.phone-app-icon .icon-box::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: 13px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.28), rgba(255,255,255,0));
+  pointer-events: none;
+}
+.phone-app-icon .icon-box svg {
+  position: relative;
+  z-index: 1;
+  width: 1.08em !important;
+  height: 1.08em !important;
+  filter: drop-shadow(0 2px 6px rgba(0,0,0,0.28));
 }
 .phone-app-icon .icon-label {
   font-size: 10px;
@@ -209,6 +280,54 @@
 
 /* ============ PHONE APP: CALLS ============ */
 .call-list { padding: 8px 0; }
+.phone-comms-hero {
+  margin: 12px 14px 10px;
+  padding: 14px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(77,216,232,0.12), rgba(181,97,58,0.18));
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.phone-comms-hero.messages {
+  background: linear-gradient(135deg, rgba(111,143,102,0.16), rgba(185,138,232,0.14));
+}
+.phone-comms-chip {
+  display: inline-flex;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.08);
+  color: var(--copper-soft, #e8a96b);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.phone-comms-title {
+  margin-top: 8px;
+  color: var(--fg, #f5efe6);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.phone-comms-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.phone-action-pill {
+  border: none;
+  border-radius: 999px;
+  padding: 9px 12px;
+  background: linear-gradient(135deg, var(--copper, #d68a4e), var(--copper-soft, #e8a96b));
+  color: #1a1206;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 12px 24px -16px rgba(214,138,78,0.7);
+}
+.phone-action-pill.alt {
+  background: rgba(255,255,255,0.08);
+  color: var(--fg, #f5efe6);
+  box-shadow: none;
+}
 .call-contact {
   display: flex;
   align-items: center;
@@ -269,38 +388,40 @@
   0% { transform: scale(1); opacity: 1; }
   100% { transform: scale(1.6); opacity: 0; }
 }
-.call-name { font-size: 22px; font-weight: 600; color: #46403A; margin-bottom: 4px; }
-.call-status { font-size: 14px; color: var(--copper-soft); margin-bottom: 16px; }
-.call-timer { font-family: "JetBrains Mono", monospace; font-size: 15px; color: #a89e90; margin-bottom: 20px; }
+.call-name { font-size: 22px; font-weight: 600; color: #FAF6EE; margin-bottom: 4px; }
+.call-status { font-size: 14px; color: var(--gold); margin-bottom: 16px; }
+.call-timer { font-family: "JetBrains Mono", monospace; font-size: 15px; color: #C9BFB1; margin-bottom: 20px; }
 .call-captions {
   flex: 1;
   width: 100%;
-  padding: 12px;
+  padding: 10px 12px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 .caption-line {
-  font-size: 14px;
-  line-height: 1.5;
-  padding: 8px 12px;
-  border-radius: 12px;
-  max-width: 85%;
+  font-size: 15px;
+  line-height: 1.55;
+  padding: 10px 14px;
+  border-radius: 14px;
+  max-width: 90%;
   opacity: 0;
   transform: translateY(8px);
-  transition: opacity .3s, transform .3s;
+  transition: opacity .4s, transform .4s;
 }
 .caption-line.show { opacity: 1; transform: none; }
 .caption-line.them {
-  background: rgba(255,255,255,0.10);
-  color: #46403A;
+  background: rgba(255,255,255,0.14);
+  color: #F2EBE0;
   align-self: flex-start;
+  border: 1px solid rgba(255,255,255,0.06);
 }
 .caption-line.you {
-  background: var(--copper, #d68a4e);
+  background: var(--copper, #E0925C);
   color: #1a1206;
   align-self: flex-end;
+  font-weight: 500;
 }
 .caption-line.typing::after {
   content: "|";
@@ -322,6 +443,7 @@
 .call-btn.mute { background: rgba(255,255,255,0.15); color: #46403A; }
 .call-btn.end { background: #e0533d; color: #fff; }
 .call-btn.speaker { background: rgba(255,255,255,0.15); color: #46403A; }
+.call-btn.active { background: var(--copper, #d68a4e); color: #1a1206; }
 
 /* ============ PHONE APP: MESSAGES ============ */
 .msg-list { padding: 4px 0; }
@@ -425,6 +547,11 @@
   cursor: pointer; flex-shrink: 0;
 }
 .phone-browser-body { flex: 1; overflow-y: auto; padding: 16px; }
+.phone-browser-body.browser-shell {
+  background:
+    radial-gradient(circle at top left, rgba(88,166,255,0.16), transparent 40%),
+    linear-gradient(180deg, #0d1117 0%, #141a22 100%);
+}
 .gh-card {
   background: var(--panel, #1a1612);
   border: 1px solid var(--border, #2e2820);
@@ -615,6 +742,243 @@
 
 /* ============ NOTES ============ */
 .phone-new-note { font-family: inherit; }
+.photo-feature-card {
+  padding: 14px;
+  margin: 4px 4px 10px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.08), rgba(232,184,96,0.18));
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.photo-feature-label {
+  font-size: 11px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--copper-soft, #e8a96b);
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.photo-feature-preview {
+  height: 112px;
+  border-radius: 14px;
+  margin-bottom: 12px;
+  background: linear-gradient(135deg, #4DD8E8, #B98AE8, #E8B860);
+}
+.photos-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+.photo-tile {
+  aspect-ratio: 1;
+  border-radius: 8px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+.photo-tile::after {
+  content: attr(data-label);
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  font-size: 9px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.92);
+}
+.camera-app-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  background: linear-gradient(180deg, #101114, #1b1d22);
+}
+.camera-preview {
+  width: 100%;
+  height: 290px;
+  border-radius: 24px;
+  padding: 10px;
+  background: #050607;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.camera-preview-scene {
+  height: 100%;
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 25% 20%, rgba(255,255,255,0.35), transparent 22%),
+    linear-gradient(180deg, rgba(77,216,232,0.45), rgba(181,97,58,0.2) 48%, rgba(12,13,18,0.95));
+  position: relative;
+  overflow: hidden;
+}
+.camera-preview-scene::before,
+.camera-preview-scene::after {
+  content: "";
+  position: absolute;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.12);
+}
+.camera-preview-scene::before {
+  width: 120px;
+  height: 120px;
+  right: -20px;
+  top: 22px;
+}
+.camera-preview-scene::after {
+  width: 180px;
+  height: 80px;
+  left: -30px;
+  bottom: 20px;
+}
+.camera-preview-overlay {
+  display: flex;
+  justify-content: space-between;
+  margin-top: -278px;
+  padding: 0 14px;
+  position: relative;
+  color: rgba(255,255,255,0.85);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .08em;
+}
+.camera-controls {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.camera-secondary-btn,
+.snake-btn {
+  min-width: 54px;
+  min-height: 42px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.06);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.camera-shutter-btn {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  border: 4px solid rgba(255,255,255,0.72);
+  background: radial-gradient(circle at 35% 35%, rgba(255,255,255,0.7), rgba(255,255,255,0.12));
+  cursor: pointer;
+}
+.camera-caption {
+  font-size: 11px;
+  color: rgba(255,255,255,0.62);
+  text-align: center;
+}
+.game-app-body {
+  padding: 16px;
+}
+.game-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(21,26,31,0.95), rgba(42,37,32,0.92));
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.game-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+}
+.game-title {
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 20px;
+  color: #fff7ec;
+}
+.game-score-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: rgba(255,255,255,0.6);
+}
+.game-score-row strong {
+  font-size: 18px;
+  color: var(--copper-soft, #e8a96b);
+}
+.flappy-game {
+  position: relative;
+  height: 230px;
+  border-radius: 18px;
+  overflow: hidden;
+  background: linear-gradient(180deg, #7fd0ff 0%, #c5f0ff 48%, #88c674 48%, #5f8f51 100%);
+}
+.flappy-bird {
+  position: absolute;
+  left: 52px;
+  top: 98px;
+  width: 30px;
+  height: 24px;
+  border-radius: 14px 14px 10px 10px;
+  background: linear-gradient(135deg, #ffdb5b, #f9a63e);
+  box-shadow: inset -6px -6px 0 rgba(255,255,255,0.18);
+}
+.flappy-bird::before {
+  content: "";
+  position: absolute;
+  right: 5px;
+  top: 8px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #21252d;
+}
+.flappy-pipe {
+  position: absolute;
+  right: 26px;
+  width: 42px;
+  background: linear-gradient(180deg, #47ae52, #2e8040);
+  border: 2px solid rgba(0,0,0,0.14);
+}
+.pipe-top { top: 0; height: 84px; }
+.pipe-bottom { bottom: 0; height: 90px; }
+.flappy-overlay {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(18,22,28,0.66);
+  color: #fff;
+  font-size: 11px;
+  text-align: center;
+}
+.snake-game-wrap {
+  display: grid;
+  place-items: center;
+}
+.snake-canvas {
+  width: 216px;
+  height: 216px;
+  border-radius: 16px;
+  background: #12181a;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.snake-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.snake-middle-row {
+  display: flex;
+  gap: 8px;
+}
+.snake-btn.primary {
+  background: var(--sage, #8fb87e);
+  color: #13200c;
+  border-color: transparent;
+}
 
 /* ============ REDUCED MOTION ============ */
 @media (prefers-reduced-motion: reduce) {
