@@ -446,6 +446,8 @@ export function TerminalView({
     let unregisterPaneClear: (() => void) | null = null;
     let unregisterSnapshotFlush: (() => void) | null = null;
     let snapshotSaveTimer: number | null = null;
+    let snapshotSaveInFlight: Promise<void> | null = null;
+    let latestTerminalWrite: Promise<void> = Promise.resolve();
     let lastSnapshotFingerprint = '';
     let deferredRestartCommand: string | null = null;
     let restartConfirmationHandled = false;
@@ -588,6 +590,7 @@ export function TerminalView({
     };
 
     const flushTerminalSnapshot = async (): Promise<void> => {
+      if (snapshotSaveInFlight) await snapshotSaveInFlight;
       const currentTerm = termRef.current;
       if (!currentTerm || !paneId) return;
       if (snapshotSaveTimer != null) {
@@ -605,8 +608,13 @@ export function TerminalView({
       });
       const fingerprint = terminalSnapshotFingerprint(snapshot);
       if (fingerprint === lastSnapshotFingerprint) return;
-      await invoke('terminal_snapshot_save', { snapshot });
-      lastSnapshotFingerprint = fingerprint;
+      snapshotSaveInFlight = invoke('terminal_snapshot_save', { snapshot });
+      try {
+        await snapshotSaveInFlight;
+        lastSnapshotFingerprint = fingerprint;
+      } finally {
+        snapshotSaveInFlight = null;
+      }
     };
 
     const scheduleTerminalSnapshot = (): void => {
@@ -637,14 +645,20 @@ export function TerminalView({
               userHasScrolled: userHasScrolledRef.current,
             })
           : false;
-        currentTerm?.write(displayData, () => {
-          if (cancelled) return;
-          if (shouldFollow) {
-            termRef.current?.scrollToBottom();
-            userHasScrolledRef.current = false;
-          }
-          scheduleTerminalSnapshot();
-        });
+        if (currentTerm) {
+          latestTerminalWrite = new Promise<void>((resolve) => {
+            currentTerm.write(displayData, () => {
+              if (!cancelled) {
+                if (shouldFollow) {
+                  termRef.current?.scrollToBottom();
+                  userHasScrolledRef.current = false;
+                }
+                scheduleTerminalSnapshot();
+              }
+              resolve();
+            });
+          });
+        }
       } catch (err) {
         console.warn('[Jarvis] terminal render write failed:', err);
       }
@@ -679,6 +693,7 @@ export function TerminalView({
         flushTerminalOutput();
       }
       flushCurrentInput();
+      await latestTerminalWrite;
       await flushTerminalSnapshot();
     };
 
@@ -1097,7 +1112,7 @@ export function TerminalView({
           /* backend probably gone */
         });
       }
-      if (spawnedFresh && restoredInput) {
+      if (spawnedFresh && restoredInput && !deferredRestartCommand) {
         window.setTimeout(
           () => {
             invoke('terminal_write', {
