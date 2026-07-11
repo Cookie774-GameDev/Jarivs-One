@@ -16,10 +16,10 @@
       "selected": 20,
       "sourceFrameCount": 96,
       "globalBBox": [
-        328,
-        44,
-        894,
-        650
+        365,
+        77,
+        868,
+        631
       ],
       "loop": true,
       "oneShot": false,
@@ -39,10 +39,10 @@
       "selected": 20,
       "sourceFrameCount": 96,
       "globalBBox": [
-        384,
-        46,
-        902,
-        655
+        416,
+        76,
+        863,
+        637
       ],
       "loop": true,
       "oneShot": false,
@@ -62,10 +62,10 @@
       "selected": 48,
       "sourceFrameCount": 96,
       "globalBBox": [
-        31,
-        0,
-        1896,
-        1080
+        478,
+        90,
+        1498,
+        1067
       ],
       "loop": true,
       "oneShot": false,
@@ -85,10 +85,10 @@
       "selected": 60,
       "sourceFrameCount": 96,
       "globalBBox": [
-        535,
-        44,
-        1356,
-        960
+        576,
+        90,
+        1311,
+        939
       ],
       "loop": false,
       "oneShot": true,
@@ -108,10 +108,10 @@
       "selected": 60,
       "sourceFrameCount": 96,
       "globalBBox": [
-        47,
-        0,
-        1780,
-        1080
+        435,
+        11,
+        1490,
+        1070
       ],
       "loop": false,
       "oneShot": true,
@@ -129,10 +129,10 @@
         "duration": 10.0
       },
       "globalBBox": [
-        330,
-        0,
-        946,
-        706
+        368,
+        68,
+        917,
+        690
       ]
     }
   ],

@@ -1,6 +1,7 @@
 /**
  * Pure Pet animation state machine.
  * Priority / interrupt rules for video-driven animations.
+ * Drag direction is supplied as a resolved walk anim (from petDragVelocity).
  */
 
 export type PetAnimId =
@@ -16,8 +17,10 @@ export type PetAnimId =
 export type PetDomainEvent =
   | { type: 'boot' }
   | { type: 'welcome_done' }
-  | { type: 'drag_start'; dx: number; dy: number }
-  | { type: 'drag_move'; dx: number; dy: number }
+  /** Begin drag; optional initial walk from velocity sample. */
+  | { type: 'drag_start'; walk?: 'walkLeft' | 'walkRight' | 'idlePrimary' }
+  /** Update walk direction from velocity controller (not raw dx). */
+  | { type: 'drag_move'; walk: 'walkLeft' | 'walkRight' | 'idlePrimary' }
   | { type: 'drag_end' }
   | { type: 'idle_fun_tick' }
   | { type: 'idle_fun_done' }
@@ -29,33 +32,15 @@ export type PetDomainEvent =
   | { type: 'panel_close' }
   | { type: 'shutdown' };
 
-export interface PetMachineConfig {
-  /** Horizontal drag delta that selects walkLeft/walkRight. */
-  directionThresholdPx: number;
-  /** Below this |dx| while dragging → idlePrimary (still dragged). */
-  stopThresholdPx: number;
-}
-
 export interface PetMachineState {
   anim: PetAnimId;
-  /** True after welcome has played once this session. */
   welcomePlayed: boolean;
-  /** True while pointer is down / window is being dragged. */
   dragging: boolean;
-  /** True while mini panel is open. */
   panelOpen: boolean;
-  /** True once sleepTransition finished until wake. */
   sleeping: boolean;
-  /** Last drag dx for direction. */
-  lastDx: number;
-  /** Shutdown latch. */
+  lastWalk: 'walkLeft' | 'walkRight' | 'idlePrimary';
   shutdown: boolean;
 }
-
-export const DEFAULT_PET_MACHINE_CONFIG: PetMachineConfig = {
-  directionThresholdPx: 4,
-  stopThresholdPx: 2,
-};
 
 export const PET_ANIM_PRIORITY: Record<PetAnimId, number> = {
   welcome: 90,
@@ -75,25 +60,14 @@ export function createInitialPetState(): PetMachineState {
     dragging: false,
     panelOpen: false,
     sleeping: false,
-    lastDx: 0,
+    lastWalk: 'idlePrimary',
     shutdown: false,
   };
 }
 
-function walkFromDx(dx: number, cfg: PetMachineConfig): PetAnimId {
-  if (dx <= -cfg.directionThresholdPx) return 'walkLeft';
-  if (dx >= cfg.directionThresholdPx) return 'walkRight';
-  return 'idlePrimary';
-}
-
-/**
- * Reduce domain events into the next machine state.
- * Pure — safe for unit tests without React/DOM.
- */
 export function reducePetEvent(
   state: PetMachineState,
   event: PetDomainEvent,
-  cfg: PetMachineConfig = DEFAULT_PET_MACHINE_CONFIG,
 ): PetMachineState {
   if (state.shutdown && event.type !== 'boot') return state;
 
@@ -110,30 +84,32 @@ export function reducePetEvent(
       return { ...state, anim: 'idlePrimary', welcomePlayed: true };
 
     case 'drag_start': {
-      const dx = event.dx;
+      const walk = event.walk ?? 'idlePrimary';
       return {
         ...state,
         dragging: true,
         sleeping: false,
-        lastDx: dx,
-        anim: walkFromDx(dx, cfg),
+        lastWalk: walk,
+        anim: walk === 'idlePrimary' ? 'idlePrimary' : walk,
       };
     }
 
     case 'drag_move': {
       if (!state.dragging) return state;
-      const dx = event.dx;
-      const anim =
-        Math.abs(dx) < cfg.stopThresholdPx ? 'idlePrimary' : walkFromDx(dx, cfg);
-      return { ...state, lastDx: dx, anim, sleeping: false };
+      return {
+        ...state,
+        lastWalk: event.walk,
+        anim: event.walk === 'idlePrimary' ? 'idlePrimary' : event.walk,
+        sleeping: false,
+      };
     }
 
     case 'drag_end':
       return {
         ...state,
         dragging: false,
-        lastDx: 0,
-        anim: state.panelOpen ? 'idlePrimary' : 'idlePrimary',
+        lastWalk: 'idlePrimary',
+        anim: 'idlePrimary',
       };
 
     case 'idle_fun_tick': {
@@ -159,7 +135,6 @@ export function reducePetEvent(
       return { ...state, anim: 'sleepingLoop', sleeping: true };
 
     case 'click': {
-      // Click always opens panel path; wakes if sleeping.
       if (state.sleeping || state.anim === 'sleepingLoop' || state.anim === 'sleepTransition') {
         return {
           ...state,
@@ -182,7 +157,11 @@ export function reducePetEvent(
       return {
         ...state,
         panelOpen: false,
-        anim: state.dragging ? walkFromDx(state.lastDx, cfg) : 'idlePrimary',
+        anim: state.dragging
+          ? state.lastWalk === 'idlePrimary'
+            ? 'idlePrimary'
+            : state.lastWalk
+          : 'idlePrimary',
       };
 
     case 'shutdown':
@@ -193,7 +172,6 @@ export function reducePetEvent(
   }
 }
 
-/** Whether idleFun scheduler may arm / fire. */
 export function canScheduleIdleFun(state: PetMachineState): boolean {
   return (
     !state.shutdown &&
@@ -205,7 +183,6 @@ export function canScheduleIdleFun(state: PetMachineState): boolean {
   );
 }
 
-/** Whether sleep timeout may fire. */
 export function canEnterSleep(state: PetMachineState): boolean {
   return (
     !state.shutdown &&
@@ -215,4 +192,10 @@ export function canEnterSleep(state: PetMachineState): boolean {
     state.welcomePlayed &&
     (state.anim === 'idlePrimary' || state.anim === 'idleFun')
   );
+}
+
+/** Click while sleeping must open panel + wake in one transition. */
+export function clickOpensPanelAndWakes(state: PetMachineState): boolean {
+  const next = reducePetEvent(state, { type: 'click' });
+  return next.panelOpen === true && (next.anim === 'wakeFromSleep' || next.anim === 'idlePrimary');
 }

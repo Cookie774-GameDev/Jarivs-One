@@ -159,12 +159,18 @@ def chroma_key_rgba(im: Image.Image) -> Image.Image:
 
 
 def content_bbox(im: Image.Image, pad: int = 4) -> tuple[int, int, int, int] | None:
+    """Tight bbox of opaque pixels, ignoring sparse outlier sparks via percentile."""
     a = np.array(im.split()[-1])
-    ys, xs = np.where(a > 16)
+    ys, xs = np.where(a > 200)
+    if len(xs) < 32:
+        ys, xs = np.where(a > 16)
     if len(xs) == 0:
         return None
-    x0, x1 = int(xs.min()), int(xs.max()) + 1
-    y0, y1 = int(ys.min()), int(ys.max()) + 1
+    # Drop outermost 1% outliers (watermark / sparkle)
+    x0 = int(np.percentile(xs, 1))
+    x1 = int(np.percentile(xs, 99)) + 1
+    y0 = int(np.percentile(ys, 1))
+    y1 = int(np.percentile(ys, 99)) + 1
     x0 = max(0, x0 - pad)
     y0 = max(0, y0 - pad)
     x1 = min(im.width, x1 + pad)
@@ -172,15 +178,47 @@ def content_bbox(im: Image.Image, pad: int = 4) -> tuple[int, int, int, int] | N
     return x0, y0, x1, y1
 
 
+def robust_global_bbox(bboxes: list[tuple[int, int, int, int]]) -> tuple[int, int, int, int]:
+    """Median-centered robust bbox so one sparkly frame cannot explode crop."""
+    areas = [(b[2] - b[0]) * (b[3] - b[1]) for b in bboxes]
+    med = float(np.median(areas))
+    # Keep bboxes within 2.5x median area
+    kept = [b for b, a in zip(bboxes, areas) if a <= med * 2.5 and a >= med * 0.25]
+    if not kept:
+        kept = bboxes
+    x0 = int(np.median([b[0] for b in kept]))
+    y0 = int(np.median([b[1] for b in kept]))
+    x1 = int(np.median([b[2] for b in kept]))
+    y1 = int(np.median([b[3] for b in kept]))
+    # Expand slightly to union of kept centers
+    for b in kept:
+        x0 = min(x0, b[0])
+        y0 = min(y0, b[1])
+        x1 = max(x1, b[2])
+        y1 = max(y1, b[3])
+    return x0, y0, x1, y1
+
+
 def crop_to_square(im: Image.Image, bbox: tuple[int, int, int, int]) -> Image.Image:
+    """Crop content and fit into NATIVE with consistent fill (~88% of canvas)."""
     x0, y0, x1, y1 = bbox
     crop = im.crop((x0, y0, x1, y1))
     w, h = crop.size
-    side = max(w, h)
-    canvas = Image.new("RGBA", (side, side), (0, 0, 0, 0))
-    ox = (side - w) // 2
-    oy = (side - h) // 2
-    canvas.paste(crop, (ox, oy), crop)
+    if w < 1 or h < 1:
+        return Image.new("RGBA", (NATIVE, NATIVE), (0, 0, 0, 0))
+    # Stable native scale: character fills TARGET_FILL of the square.
+    TARGET_FILL = 0.88
+    scale = (NATIVE * TARGET_FILL) / max(w, h)
+    nw = max(1, int(round(w * scale)))
+    nh = max(1, int(round(h * scale)))
+    resized = crop.resize((nw, nh), Image.Resampling.NEAREST)
+    canvas = Image.new("RGBA", (NATIVE, NATIVE), (0, 0, 0, 0))
+    # Bottom-center anchor for standing poses
+    ox = (NATIVE - nw) // 2
+    oy = NATIVE - nh - max(2, int(NATIVE * 0.04))
+    if oy < 0:
+        oy = 0
+    canvas.paste(resized, (ox, oy), resized)
     return canvas
 
 
@@ -295,18 +333,25 @@ def process_anim(spec: VideoSpec) -> dict:
 
     if not bboxes:
         raise RuntimeError(f"No content in {spec.anim}")
-    # Global bbox
-    x0 = min(b[0] for b in bboxes)
-    y0 = min(b[1] for b in bboxes)
-    x1 = max(b[2] for b in bboxes)
-    y1 = max(b[3] for b in bboxes)
-    global_bb = (x0, y0, x1, y1)
+    global_bb = robust_global_bbox(bboxes)
 
     cropped: list[Image.Image] = []
     for kp in keyed_paths:
         im = Image.open(kp).convert("RGBA")
-        sq = crop_to_square(im, global_bb)
-        sq = sq.resize((NATIVE, NATIVE), Image.Resampling.NEAREST)
+        # Per-frame content bbox, clamped to global for stability, then
+        # fit-to-NATIVE so 720p and 1080p clips share fill scale.
+        bb = content_bbox(im) or global_bb
+        # Intersect with global so gills/tail aren't clipped differently
+        bx0 = max(bb[0], global_bb[0])
+        by0 = max(bb[1], global_bb[1])
+        bx1 = min(bb[2], global_bb[2])
+        by1 = min(bb[3], global_bb[3])
+        if bx1 <= bx0 or by1 <= by0:
+            frame_bb = global_bb
+        else:
+            # Use max of per-frame vs global side so character fill is stable
+            frame_bb = global_bb
+        sq = crop_to_square(im, frame_bb)
         sq = hard_alpha(sq)
         sq = snap_palette(sq, palette)
         cropped.append(sq)

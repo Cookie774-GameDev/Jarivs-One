@@ -1,0 +1,30 @@
+[
+  {
+    "anim": "walkLeft",
+    "ok": false,
+    "meanAbsDiff": 79.841,
+    "anchorDeltaPx": 1.547,
+    "frames": 20
+  },
+  {
+    "anim": "walkRight",
+    "ok": false,
+    "meanAbsDiff": 80.271,
+    "anchorDeltaPx": 3.034,
+    "frames": 20
+  },
+  {
+    "anim": "idlePrimary",
+    "ok": false,
+    "meanAbsDiff": 47.0,
+    "anchorDeltaPx": 9.777,
+    "frames": 48
+  },
+  {
+    "anim": "sleepingLoop",
+    "ok": true,
+    "meanAbsDiff": 32.345,
+    "anchorDeltaPx": 0.156,
+    "frames": 40
+  }
+]

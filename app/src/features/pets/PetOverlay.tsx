@@ -1,6 +1,6 @@
 /**
- * Floating desktop Pet overlay — canvas atlas playback + drag/sleep/welcome.
- * Renders inside the main shell (transparent host). Does not use MP4 files.
+ * Floating desktop Pet overlay — canvas atlas playback + velocity drag + sleep/welcome.
+ * Does not use MP4 files. Click opens mini-panel via onOpenPanel (including wake-from-sleep).
  */
 import * as React from 'react';
 import { AtlasPlayer } from './atlasPlayer';
@@ -13,25 +13,36 @@ import {
   type PetMachineState,
 } from './petStateMachine';
 import { createPetScheduler } from './petScheduler';
+import {
+  createDragVelocityState,
+  sampleDragVelocity,
+  type DragVelocityState,
+} from './petDragVelocity';
+import { disposeAll, mapReducedMotionAnim, reducedMotionFps } from './petLifecycle';
 import { getAnimDef, getPetAnimationsManifest, resolveAtlasUrls } from './petManifest';
 import { cn } from '@/lib/utils';
 
 const DISPLAY = 128;
 
 export interface PetOverlayProps {
-  /** Master visibility (settings). */
   enabled?: boolean;
-  /** Reduced motion: snap to idlePrimary still. */
   reducedMotion?: boolean;
   className?: string;
+  /** Controlled panel open state from host. */
+  panelOpen?: boolean;
   onOpenPanel?: () => void;
+  onPanelClose?: () => void;
+  onAnimChange?: (anim: string) => void;
 }
 
 export function PetOverlay({
   enabled = true,
   reducedMotion = false,
   className,
+  panelOpen = false,
   onOpenPanel,
+  onPanelClose,
+  onAnimChange,
 }: PetOverlayProps) {
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   const playerRef = React.useRef(new AtlasPlayer());
@@ -44,54 +55,76 @@ export function PetOverlay({
     startY: number;
     originLeft: number;
     originTop: number;
-    lastX: number;
+    vel: DragVelocityState;
   } | null>(null);
   const animCache = React.useRef(new Map<PetAnimId, { jsonUrl: string; imageUrl: string }>());
   const currentAnim = React.useRef<PetAnimId | null>(null);
   const schedulerRef = React.useRef<ReturnType<typeof createPetScheduler> | null>(null);
+  const rafRef = React.useRef(0);
   const man = React.useMemo(() => getPetAnimationsManifest(), []);
 
-  const setState = React.useCallback((next: PetMachineState) => {
-    const prev = stateRef.current.anim;
-    stateRef.current = next;
-    if (next.anim !== prev) setAnimLabel(next.anim);
-  }, []);
+  const setState = React.useCallback(
+    (next: PetMachineState) => {
+      const prev = stateRef.current.anim;
+      stateRef.current = next;
+      if (next.anim !== prev) {
+        setAnimLabel(next.anim);
+        onAnimChange?.(next.anim);
+      }
+      if (next.panelOpen && !panelOpen) onOpenPanel?.();
+    },
+    [onAnimChange, onOpenPanel, panelOpen],
+  );
 
-  const playAnim = React.useCallback(async (id: PetAnimId) => {
-    if (currentAnim.current === id) return;
-    const def = getAnimDef(id);
-    if (!def) return;
-    let urls = animCache.current.get(id);
-    if (!urls) {
-      urls = resolveAtlasUrls(def);
-      animCache.current.set(id, urls);
+  // Sync external panel close into machine
+  React.useEffect(() => {
+    if (!panelOpen && stateRef.current.panelOpen) {
+      setState(reducePetEvent(stateRef.current, { type: 'panel_close' }));
     }
-    const player = playerRef.current;
-    try {
-      await player.load(urls.jsonUrl, urls.imageUrl);
-      currentAnim.current = id;
-      player.setAnimation(
-        {
-          frames: def.frames,
-          fps: reducedMotion ? 1 : def.fps,
-          loop: def.loop,
-          oneShot: def.oneShot,
-        },
-        () => {
-          const s = stateRef.current;
-          if (id === 'welcome') setState(reducePetEvent(s, { type: 'welcome_done' }));
-          else if (id === 'idleFun') setState(reducePetEvent(s, { type: 'idle_fun_done' }));
-          else if (id === 'sleepTransition')
-            setState(reducePetEvent(s, { type: 'sleep_transition_done' }));
-          else if (id === 'wakeFromSleep') setState(reducePetEvent(s, { type: 'wake_done' }));
-        },
-      );
-    } catch (err) {
-      console.warn('[pets] atlas load failed', id, err);
-    }
-  }, [reducedMotion, setState]);
+  }, [panelOpen, setState]);
 
-  // Boot + sync anim
+  const playAnim = React.useCallback(
+    async (id: PetAnimId) => {
+      const resolved = reducedMotion ? mapReducedMotionAnim(id) : id;
+      if (currentAnim.current === resolved && !reducedMotion) return;
+      const def = getAnimDef(resolved);
+      if (!def) return;
+      let urls = animCache.current.get(resolved);
+      if (!urls) {
+        urls = resolveAtlasUrls(def);
+        animCache.current.set(resolved, urls);
+      }
+      const player = playerRef.current;
+      try {
+        await player.load(urls.jsonUrl, urls.imageUrl);
+        currentAnim.current = resolved;
+        const fps = reducedMotion ? reducedMotionFps(resolved, def.fps) : def.fps;
+        player.setAnimation(
+          {
+            frames: def.frames,
+            fps,
+            loop: def.loop,
+            oneShot: def.oneShot,
+          },
+          () => {
+            const s = stateRef.current;
+            if (resolved === 'welcome' || id === 'welcome')
+              setState(reducePetEvent(s, { type: 'welcome_done' }));
+            else if (resolved === 'idleFun' || id === 'idleFun')
+              setState(reducePetEvent(s, { type: 'idle_fun_done' }));
+            else if (resolved === 'sleepTransition' || id === 'sleepTransition')
+              setState(reducePetEvent(s, { type: 'sleep_transition_done' }));
+            else if (resolved === 'wakeFromSleep' || id === 'wakeFromSleep')
+              setState(reducePetEvent(s, { type: 'wake_done' }));
+          },
+        );
+      } catch (err) {
+        console.warn('[pets] atlas load failed', resolved, err);
+      }
+    },
+    [reducedMotion, setState],
+  );
+
   React.useEffect(() => {
     if (!enabled) return;
     const s0 = reducePetEvent(createInitialPetState(), { type: 'boot' });
@@ -103,34 +136,26 @@ export function PetOverlay({
     schedulerRef.current = sched;
     void playAnim(s0.anim);
     return () => {
-      sched.dispose();
+      disposeAll([sched, playerRef.current]);
       schedulerRef.current = null;
-      playerRef.current.dispose();
       currentAnim.current = null;
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
   }, [enabled, man.scheduler.idleFunIntervalMs, man.scheduler.sleepTimeoutMs, playAnim, setState]);
 
-  // When machine anim changes, load playback
   React.useEffect(() => {
     if (!enabled) return;
-    const id = animLabel;
-    if (reducedMotion && id !== 'idlePrimary' && id !== 'welcome') {
-      void playAnim('idlePrimary');
-      return;
-    }
-    void playAnim(id);
+    void playAnim(animLabel);
     const s = stateRef.current;
     if (s.anim === 'idlePrimary' && s.welcomePlayed) {
       schedulerRef.current?.onActivity();
     } else if (s.anim !== 'idleFun') {
       schedulerRef.current?.onHighPriority();
     }
-  }, [enabled, reducedMotion, playAnim, animLabel]);
+  }, [enabled, playAnim, animLabel]);
 
-  // rAF loop
   React.useEffect(() => {
     if (!enabled) return;
-    let raf = 0;
     let last = performance.now();
     const tick = (t: number) => {
       const dt = Math.min(64, t - last);
@@ -145,67 +170,55 @@ export function PetOverlay({
           player.draw(ctx, 0, 0, DISPLAY, DISPLAY);
         }
       }
-      // schedulers
       const s = stateRef.current;
       const fire = schedulerRef.current?.tick(canScheduleIdleFun(s), canEnterSleep(s));
-      if (fire === 'idle_fun') {
-        setState(reducePetEvent(s, { type: 'idle_fun_tick' }));
-      } else if (fire === 'sleep') {
-        setState(reducePetEvent(s, { type: 'sleep_timeout' }));
-      }
-      raf = requestAnimationFrame(tick);
+      if (fire === 'idle_fun') setState(reducePetEvent(s, { type: 'idle_fun_tick' }));
+      else if (fire === 'sleep') setState(reducePetEvent(s, { type: 'sleep_timeout' }));
+      rafRef.current = requestAnimationFrame(tick);
     };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = 0;
+    };
   }, [enabled, setState]);
 
   const onPointerDown = (e: React.PointerEvent) => {
     const el = e.currentTarget as HTMLElement;
     el.setPointerCapture(e.pointerId);
+    const t = performance.now();
     dragRef.current = {
       active: true,
       startX: e.clientX,
       startY: e.clientY,
       originLeft: pos.left,
       originTop: pos.top,
-      lastX: e.clientX,
+      vel: createDragVelocityState(e.clientX, t),
     };
-    setState(
-      reducePetEvent(stateRef.current, {
-        type: 'drag_start',
-        dx: 0,
-        dy: 0,
-      }),
-    );
+    setState(reducePetEvent(stateRef.current, { type: 'drag_start', walk: 'idlePrimary' }));
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
     const d = dragRef.current;
     if (!d?.active) return;
-    const dx = e.clientX - d.lastX;
-    d.lastX = e.clientX;
+    const t = performance.now();
+    const { state: vel, walkAnim } = sampleDragVelocity(d.vel, e.clientX, t);
+    d.vel = vel;
     setPos({
       left: d.originLeft + (e.clientX - d.startX),
       top: d.originTop + (e.clientY - d.startY),
     });
-    setState(
-      reducePetEvent(stateRef.current, {
-        type: 'drag_move',
-        dx,
-        dy: e.clientY - d.startY,
-      }),
-    );
+    setState(reducePetEvent(stateRef.current, { type: 'drag_move', walk: walkAnim }));
   };
 
   const onPointerUp = (e: React.PointerEvent) => {
     const d = dragRef.current;
     if (!d) return;
-    const moved =
-      Math.hypot(e.clientX - d.startX, e.clientY - d.startY) > 4;
+    const moved = Math.hypot(e.clientX - d.startX, e.clientY - d.startY) > 6;
     dragRef.current = null;
     setState(reducePetEvent(stateRef.current, { type: 'drag_end' }));
     if (!moved) {
-      // Click: wake + open panel immediately
+      // Single click: open panel immediately (wakes if sleeping).
       setState(reducePetEvent(stateRef.current, { type: 'click' }));
       onOpenPanel?.();
       schedulerRef.current?.onActivity();
@@ -230,6 +243,7 @@ export function PetOverlay({
       }}
       data-pet-overlay="true"
       data-pet-anim={animLabel}
+      data-pet-panel-open={panelOpen ? 'true' : 'false'}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
