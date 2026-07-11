@@ -249,6 +249,9 @@ pub fn run() {
                                 {
                                     std::thread::sleep(Duration::from_millis(25));
                                 }
+                                app_handle
+                                    .state::<terminal_snapshot::PersistenceFlushState>()
+                                    .complete();
                                 app_handle.exit(0);
                             });
                         }
@@ -356,13 +359,36 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {
-            if let tauri::RunEvent::ExitRequested { .. } = event {
+            if let tauri::RunEvent::ExitRequested { api, code, .. } = event {
+                let state = app_handle.state::<terminal_snapshot::PersistenceFlushState>();
+                if state.is_completed() {
+                    return;
+                }
+                api.prevent_exit();
+                if state.is_pending() {
+                    return;
+                }
+
+                state.begin();
                 let _ = app_handle.emit(
                     "jarvis:persist-now",
-                    PersistPayload {
-                        reason: "exit-requested",
-                    },
+                    PersistPayload { reason: "exit-requested" },
                 );
+                let app_handle = app_handle.clone();
+                std::thread::spawn(move || {
+                    let started = std::time::Instant::now();
+                    while started.elapsed() < Duration::from_millis(1_500)
+                        && !app_handle
+                            .state::<terminal_snapshot::PersistenceFlushState>()
+                            .is_completed()
+                    {
+                        std::thread::sleep(Duration::from_millis(25));
+                    }
+                    app_handle
+                        .state::<terminal_snapshot::PersistenceFlushState>()
+                        .complete();
+                    app_handle.exit(code.unwrap_or(0));
+                });
             }
         });
 }

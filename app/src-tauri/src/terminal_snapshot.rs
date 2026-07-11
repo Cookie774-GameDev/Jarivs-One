@@ -102,17 +102,22 @@ impl SnapshotStore {
             return Err("snapshot_too_large".into());
         }
         if snapshot.command.as_ref().is_some_and(|command| {
-            command.chars().count() > MAX_COMMAND_CHARS
-                || command.chars().any(|ch| ch.is_control())
+            command.chars().count() > MAX_COMMAND_CHARS || command.chars().any(|ch| ch.is_control())
         }) {
             return Err("invalid_command".into());
         }
-        if snapshot.rows == 0 || snapshot.cols == 0 || snapshot.rows > 1_000 || snapshot.cols > 1_000 {
+        if snapshot.rows == 0
+            || snapshot.cols == 0
+            || snapshot.rows > 1_000
+            || snapshot.cols > 1_000
+        {
             return Err("invalid_geometry".into());
         }
-        if snapshot.text.chars().any(|ch| {
-            ch == '\u{1b}' || (ch.is_control() && ch != '\n' && ch != '\t')
-        }) {
+        if snapshot
+            .text
+            .chars()
+            .any(|ch| ch == '\u{1b}' || (ch.is_control() && ch != '\n' && ch != '\t'))
+        {
             return Err("invalid_text".into());
         }
         Ok(())
@@ -257,9 +262,7 @@ impl SnapshotStore {
             }
             match read_generation(&path) {
                 Some(generation) => {
-                    if now.saturating_sub(generation.snapshot.updated_at)
-                        > self.limits.max_age_ms
-                    {
+                    if now.saturating_sub(generation.snapshot.updated_at) > self.limits.max_age_ms {
                         remove_file(&path)?;
                     } else {
                         generations.push(generation);
@@ -281,7 +284,9 @@ impl SnapshotStore {
         }
         for pane_generations in by_pane.values_mut() {
             pane_generations.sort_by(|a, b| b.snapshot.updated_at.cmp(&a.snapshot.updated_at));
-            for old in pane_generations.drain(self.limits.generations_per_pane.min(pane_generations.len())..) {
+            for old in pane_generations
+                .drain(self.limits.generations_per_pane.min(pane_generations.len())..)
+            {
                 remove_file(&old.path)?;
             }
         }
@@ -302,7 +307,10 @@ impl SnapshotStore {
         let mut retained = HashSet::new();
         let mut by_project: HashMap<String, Vec<(String, u64)>> = HashMap::new();
         for (identity, project, updated_at) in pane_latest.drain(..) {
-            by_project.entry(project).or_default().push((identity, updated_at));
+            by_project
+                .entry(project)
+                .or_default()
+                .push((identity, updated_at));
         }
         for panes in by_project.values_mut() {
             panes.sort_by(|a, b| b.1.cmp(&a.1));
@@ -466,27 +474,38 @@ pub async fn terminal_snapshot_delete_project(
 
 #[derive(Default)]
 pub struct PersistenceFlushState {
+    pending: AtomicBool,
     completed: AtomicBool,
 }
 
 impl PersistenceFlushState {
     pub fn begin(&self) {
         self.completed.store(false, Ordering::Release);
+        self.pending.store(true, Ordering::Release);
+    }
+
+    pub fn is_pending(&self) -> bool {
+        self.pending.load(Ordering::Acquire) && !self.is_completed()
     }
 
     pub fn is_completed(&self) -> bool {
         self.completed.load(Ordering::Acquire)
     }
+
+    pub fn complete(&self) {
+        self.completed.store(true, Ordering::Release);
+        self.pending.store(false, Ordering::Release);
+    }
 }
 
 #[tauri::command]
 pub fn persistence_flush_complete(state: State<'_, PersistenceFlushState>) {
-    state.completed.store(true, Ordering::Release);
+    state.complete();
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{RetentionLimits, SnapshotStore, TerminalSnapshot};
+    use super::{PersistenceFlushState, RetentionLimits, SnapshotStore, TerminalSnapshot};
     use std::{fs, path::PathBuf};
 
     fn temp_root(name: &str) -> PathBuf {
@@ -512,6 +531,19 @@ mod tests {
         }
     }
 
+    #[test]
+    fn flush_state_coalesces_pending_exit_and_can_complete() {
+        let state = PersistenceFlushState::default();
+        assert!(!state.is_pending());
+        assert!(!state.is_completed());
+        state.begin();
+        assert!(state.is_pending());
+        assert!(!state.is_completed());
+        state.complete();
+        assert!(!state.is_pending());
+        assert!(state.is_completed());
+    }
+
     fn test_limits() -> RetentionLimits {
         RetentionLimits {
             max_snapshot_bytes: 1_024,
@@ -528,9 +560,15 @@ mod tests {
         let root = temp_root("validation");
         let store = SnapshotStore::with_limits(root.clone(), test_limits());
         let mut invalid = snapshot("project", "pane", "ok\x1b[31m", 10_000);
-        assert_eq!(store.save_at(invalid.clone(), 10_000), Err("invalid_text".into()));
+        assert_eq!(
+            store.save_at(invalid.clone(), 10_000),
+            Err("invalid_text".into())
+        );
         invalid.text = "x".repeat(1_025);
-        assert_eq!(store.save_at(invalid, 10_000), Err("snapshot_too_large".into()));
+        assert_eq!(
+            store.save_at(invalid, 10_000),
+            Err("snapshot_too_large".into())
+        );
         let _ = fs::remove_dir_all(root);
     }
 
@@ -539,7 +577,10 @@ mod tests {
         let root = temp_root("hashed");
         let store = SnapshotStore::with_limits(root.clone(), test_limits());
         store
-            .save_at(snapshot("../private-project", "..\\pane", "saved", 10_000), 10_000)
+            .save_at(
+                snapshot("../private-project", "..\\pane", "saved", 10_000),
+                10_000,
+            )
             .expect("save");
         let loaded = store
             .load(Some("../private-project"), "..\\pane")
@@ -548,9 +589,17 @@ mod tests {
         assert_eq!(loaded.text, "saved");
         let names = fs::read_dir(&root)
             .expect("read root")
-            .map(|entry| entry.expect("entry").file_name().to_string_lossy().into_owned())
+            .map(|entry| {
+                entry
+                    .expect("entry")
+                    .file_name()
+                    .to_string_lossy()
+                    .into_owned()
+            })
             .collect::<Vec<_>>();
-        assert!(names.iter().all(|name| !name.contains("private-project") && !name.contains("pane")));
+        assert!(names
+            .iter()
+            .all(|name| !name.contains("private-project") && !name.contains("pane")));
         assert!(fs::canonicalize(&root)
             .expect("canonical root")
             .starts_with(fs::canonicalize(std::env::temp_dir()).expect("canonical temp")));
@@ -561,8 +610,12 @@ mod tests {
     fn falls_back_when_the_newest_generation_is_corrupt() {
         let root = temp_root("fallback");
         let store = SnapshotStore::with_limits(root.clone(), test_limits());
-        store.save_at(snapshot("p", "a", "old", 10_000), 10_000).expect("old");
-        store.save_at(snapshot("p", "a", "new", 10_001), 10_001).expect("new");
+        store
+            .save_at(snapshot("p", "a", "old", 10_000), 10_000)
+            .expect("old");
+        store
+            .save_at(snapshot("p", "a", "new", 10_001), 10_001)
+            .expect("new");
         let newest = store
             .generation_paths(Some("p"), "a")
             .expect("paths")
@@ -571,7 +624,11 @@ mod tests {
             .expect("newest");
         fs::write(newest, b"{corrupt").expect("corrupt newest");
         assert_eq!(
-            store.load(Some("p"), "a").expect("load").expect("fallback").text,
+            store
+                .load(Some("p"), "a")
+                .expect("load")
+                .expect("fallback")
+                .text,
             "old"
         );
         let _ = fs::remove_dir_all(root);
@@ -589,9 +646,16 @@ mod tests {
                 )
                 .expect("save generation");
         }
-        assert_eq!(store.generation_paths(Some("p"), "a").expect("paths").len(), 2);
         assert_eq!(
-            store.load(Some("p"), "a").expect("load").expect("latest").text,
+            store.generation_paths(Some("p"), "a").expect("paths").len(),
+            2
+        );
+        assert_eq!(
+            store
+                .load(Some("p"), "a")
+                .expect("load")
+                .expect("latest")
+                .text,
             "v3"
         );
         let _ = fs::remove_dir_all(root);
@@ -601,10 +665,18 @@ mod tests {
     fn prunes_old_and_excess_panes() {
         let root = temp_root("retention");
         let store = SnapshotStore::with_limits(root.clone(), test_limits());
-        store.save_at(snapshot("p", "old", "old", 8_000), 10_000).expect("old");
-        store.save_at(snapshot("p", "a", "a", 10_000), 10_000).expect("a");
-        store.save_at(snapshot("p", "b", "b", 10_001), 10_001).expect("b");
-        store.save_at(snapshot("p", "c", "c", 10_002), 10_002).expect("c");
+        store
+            .save_at(snapshot("p", "old", "old", 8_000), 10_000)
+            .expect("old");
+        store
+            .save_at(snapshot("p", "a", "a", 10_000), 10_000)
+            .expect("a");
+        store
+            .save_at(snapshot("p", "b", "b", 10_001), 10_001)
+            .expect("b");
+        store
+            .save_at(snapshot("p", "c", "c", 10_002), 10_002)
+            .expect("c");
         assert!(store.load(Some("p"), "old").expect("load old").is_none());
         assert!(store.load(Some("p"), "a").expect("load a").is_none());
         assert!(store.load(Some("p"), "b").expect("load b").is_some());
@@ -616,9 +688,15 @@ mod tests {
     fn deletes_one_pane_or_an_entire_project() {
         let root = temp_root("delete");
         let store = SnapshotStore::with_limits(root.clone(), test_limits());
-        store.save_at(snapshot("p1", "a", "a", 10_000), 10_000).expect("a");
-        store.save_at(snapshot("p1", "b", "b", 10_001), 10_001).expect("b");
-        store.save_at(snapshot("p2", "c", "c", 10_002), 10_002).expect("c");
+        store
+            .save_at(snapshot("p1", "a", "a", 10_000), 10_000)
+            .expect("a");
+        store
+            .save_at(snapshot("p1", "b", "b", 10_001), 10_001)
+            .expect("b");
+        store
+            .save_at(snapshot("p2", "c", "c", 10_002), 10_002)
+            .expect("c");
         store.delete(Some("p1"), "a").expect("delete pane");
         assert!(store.load(Some("p1"), "a").expect("load a").is_none());
         assert!(store.load(Some("p1"), "b").expect("load b").is_some());
