@@ -6,6 +6,13 @@
 import { flushTranscriptStorage } from '@/features/terminals/transcriptStore';
 import { forEachLiveTree } from '@/features/terminals/terminalLiveCache';
 import { saveTerminalTree } from '@/features/terminals/terminalProjectMove';
+import { flushRegisteredTerminalSnapshots } from '@/features/terminals/terminalSnapshotRegistry';
+
+export interface WorkspaceFlushResult {
+  completed: number;
+  failed: number;
+  timedOut: boolean;
+}
 
 const PERSIST_KEY_PREFIXES = [
   'jarvis-ui',
@@ -42,7 +49,9 @@ function flushDebouncedLocalStorageKeys(): void {
 }
 
 /** Flush terminal transcripts, pane trees, and persisted UI state to disk. */
-export function flushWorkspacePersistence(reason?: string): void {
+export async function flushWorkspacePersistence(
+  reason?: string,
+): Promise<WorkspaceFlushResult> {
   try {
     if (typeof window !== 'undefined') {
       window.dispatchEvent(
@@ -56,10 +65,25 @@ export function flushWorkspacePersistence(reason?: string): void {
     });
     flushTranscriptStorage();
     flushDebouncedLocalStorageKeys();
-    if (reason && import.meta.env.DEV) {
-      console.info(`[workspace] flushed persistence (${reason})`);
-    }
   } catch (err) {
     console.warn('[workspace] persistence flush failed:', err);
+  }
+  const result = await flushRegisteredTerminalSnapshots();
+  if (reason && import.meta.env.DEV) {
+    console.info(
+      `[workspace] flushed persistence (${reason}; completed=${result.completed}, failed=${result.failed}, timedOut=${result.timedOut})`,
+    );
+  }
+  return result;
+}
+
+export async function flushWorkspacePersistenceAndAcknowledge(
+  reason: string,
+  acknowledge: () => Promise<unknown>,
+): Promise<WorkspaceFlushResult> {
+  try {
+    return await flushWorkspacePersistence(reason);
+  } finally {
+    await acknowledge();
   }
 }
