@@ -1229,3 +1229,16 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Change** | Process 6 MP4 motion refs → transparent frames/atlases/manifest + PixiJS state machine (walk L/R, idlePrimary, idleFun, welcome, sleepTransition/sleepingLoop/wakeFromSleep). Worktree only. |
 | **Locks** | claimed: tools/pets/pets_pipeline/process_videos.py, pack_atlases.py, app/src/assets/pets/characters/vibespace-axolotl-pixel/animations/**, app/src/features/pets/**, docs/pets/VIDEO_ANIMATION_* |
 
+
+#### 2026-07-11 — Pixel Pets video animations complete (draft PR)
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-11 17:50 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Status** | complete (draft PR; not merged) |
+| **Commit** | f2a899d |
+| **Change** | 6-video pipeline → transparent frames/atlases + pet state machine + PetOverlay |
+| **Verification** | pets tests 12/12; typecheck PASS |
+| **Locks** | released |
+
