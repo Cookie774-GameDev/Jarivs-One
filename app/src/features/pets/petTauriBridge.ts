@@ -22,6 +22,15 @@ export async function showPetOverlay(): Promise<void> {
   await invoke('pet_show_overlay');
 }
 
+export async function hidePetOverlay(): Promise<void> {
+  await invoke('pet_hide_overlay');
+}
+
+export async function isPetOverlayVisible(): Promise<boolean> {
+  const v = await invoke<boolean>('pet_is_overlay_visible');
+  return v === true;
+}
+
 export async function setPetOverlayPosition(x: number, y: number): Promise<void> {
   await invoke('pet_set_overlay_position', { x, y });
 }

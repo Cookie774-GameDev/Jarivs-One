@@ -1,32 +1,47 @@
 /**
  * Main-window pet host.
- * In Tauri: shows the separate pet-overlay window (no embedded duplicate pet).
- * Browser fallback: embeds PetOverlay + PetMiniPanel in the main shell.
- * Enforces single PetHost instance.
+ * Reads Settings → Pets enable flag. In Tauri: shows pet-overlay window only
+ * (no embedded duplicate). Browser: embeds overlay + mini-panel for local test.
  */
 import * as React from 'react';
 import { PetOverlay } from './PetOverlay';
 import { PetMiniPanel } from './PetMiniPanel';
 import {
   claimPetHostInstance,
+  hidePetOverlay,
   isTauriRuntime,
   releasePetHostInstance,
   showPetOverlay,
 } from './petTauriBridge';
+import { installPetPresentationStorageSync } from './petPresentationStore';
+import { usePetSettingsStore } from './petSettingsStore';
 
 export interface PetHostProps {
+  /** Override; defaults to settings store. */
   enabled?: boolean;
   reducedMotion?: boolean;
 }
 
-export function PetHost({ enabled = true, reducedMotion = false }: PetHostProps) {
+export function PetHost({ enabled: enabledProp, reducedMotion: reducedProp }: PetHostProps) {
+  const settingsEnabled = usePetSettingsStore((s) => s.enabled);
+  const settingsReduced = usePetSettingsStore((s) => s.reducedMotion);
+  const overlayVisible = usePetSettingsStore((s) => s.overlayVisible);
+  const sleepTimeoutMs = usePetSettingsStore((s) => s.sleepTimeoutMs);
+  const idleFunIntervalMs = usePetSettingsStore((s) => s.idleFunIntervalMs);
+
+  const enabled = enabledProp ?? settingsEnabled;
+  const reducedMotion = reducedProp ?? settingsReduced;
+
   const [panelOpen, setPanelOpen] = React.useState(false);
   const [animLabel, setAnimLabel] = React.useState<string>('welcome');
   const [claimed, setClaimed] = React.useState(false);
   const [tauri, setTauri] = React.useState(false);
 
   React.useEffect(() => {
-    if (!enabled) return;
+    return installPetPresentationStorageSync();
+  }, []);
+
+  React.useEffect(() => {
     if (!claimPetHostInstance()) {
       console.warn('[pets] duplicate PetHost prevented');
       return;
@@ -34,44 +49,53 @@ export function PetHost({ enabled = true, reducedMotion = false }: PetHostProps)
     setClaimed(true);
     const inTauri = isTauriRuntime();
     setTauri(inTauri);
-    if (inTauri) {
-      void showPetOverlay();
-    }
     return () => {
       releasePetHostInstance();
     };
-  }, [enabled]);
-
-  const openPanel = React.useCallback(() => {
-    setPanelOpen(true);
   }, []);
 
-  const closePanel = React.useCallback(() => {
-    setPanelOpen(false);
-  }, []);
+  // Show / hide overlay from settings without recreating the webview.
+  React.useEffect(() => {
+    if (!claimed || !tauri) return;
+    if (enabled && overlayVisible) {
+      void showPetOverlay();
+    } else {
+      void hidePetOverlay();
+    }
+  }, [claimed, tauri, enabled, overlayVisible]);
 
-  if (!enabled || !claimed) return null;
+  const openPanel = React.useCallback(() => setPanelOpen(true), []);
+  const closePanel = React.useCallback(() => setPanelOpen(false), []);
 
-  // Tauri: pet lives in pet-overlay window; main only coordinates panel state.
+  if (!claimed) return null;
+
   if (tauri) {
+    // Pet UI lives in separate windows; host only coordinates visibility.
     return (
-      <div data-pet-host="tauri" data-pet-instance="1" hidden aria-hidden>
-        {/* Mini-panel is its own Tauri window; keep a headless lifecycle mirror if needed later. */}
-      </div>
+      <div
+        data-pet-host="tauri"
+        data-pet-instance="1"
+        data-pet-enabled={enabled ? 'true' : 'false'}
+        hidden
+        aria-hidden
+      />
     );
   }
 
-  // Browser / test fallback: embedded overlay + panel.
+  if (!enabled || !overlayVisible) return null;
+
   return (
     <>
       <PetOverlay
-        enabled={enabled}
+        enabled
         reducedMotion={reducedMotion}
         panelOpen={panelOpen}
         onOpenPanel={openPanel}
         onPanelClose={closePanel}
         onAnimChange={setAnimLabel}
         tauriWindowMode={false}
+        sleepTimeoutMs={sleepTimeoutMs}
+        idleFunIntervalMs={idleFunIntervalMs}
       />
       <PetMiniPanel open={panelOpen} onClose={closePanel} animLabel={animLabel} />
     </>

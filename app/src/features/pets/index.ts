@@ -3,6 +3,8 @@ export { PetHost } from './PetHost';
 export { PetMiniPanel } from './PetMiniPanel';
 export { PetOverlayWindow } from './PetOverlayWindow';
 export { PetMiniPanelWindow } from './PetMiniPanelWindow';
+export { PetChatSurface } from './PetChatSurface';
+export { PetTerminalSurface } from './PetTerminalSurface';
 export {
   reducePetEvent,
   createInitialPetState,
@@ -47,3 +49,5 @@ export {
   assertSessionsSurvivePanelClose,
   petPanelTerminalCount,
 } from './petPresentation';
+export { usePetSettingsStore, forcePetAnim } from './petSettingsStore';
+export { usePetPresentationStore, installPetPresentationStorageSync } from './petPresentationStore';

@@ -1,6 +1,6 @@
 /**
- * Functional Pet mini-panel: chats / terminals / activity with presentation ownership.
- * Used as a Tauri window (view=pet-mini-panel) or browser fallback overlay.
+ * Functional Pet mini-panel with real ChatThread/Composer + TerminalView.
+ * Used as Tauri window (view=pet-mini-panel) or browser fallback.
  * Minimize/close never kill PTYs, streams, or chat threads.
  */
 import * as React from 'react';
@@ -10,29 +10,14 @@ import { cn } from '@/lib/utils';
 import {
   PET_PANEL_CLOSE_CONFIRM_BUTTONS,
   PET_PANEL_CLOSE_CONFIRM_MESSAGE,
-  PET_PANEL_MAX_TERMINALS,
-  PET_PANEL_TERMINAL_LIMIT_MESSAGE,
   createInitialPanelLifecycle,
   panelPreservesSessions,
   reducePanelLifecycle,
   type PetPanelLifecycleState,
 } from './petPanelLifecycle';
-import {
-  assertSessionsSurvivePanelClose,
-  beginChatRequest,
-  clearActivityUnread,
-  createEmptyPresentationState,
-  endChatRequest,
-  moveChatPresentation,
-  moveTerminalPresentation,
-  petPanelTerminalCount,
-  pushActivity,
-  registerChat,
-  registerTerminal,
-  sanitizeActivitySummary,
-  type PresentationState,
-  type SafeActivityEvent,
-} from './petPresentation';
+import { PetChatSurface } from './PetChatSurface';
+import { PetTerminalSurface } from './PetTerminalSurface';
+import { usePetPresentationStore } from './petPresentationStore';
 import { hidePetPanel, minimizePetPanel } from './petTauriBridge';
 
 export type PetMiniPanelTab = 'chats' | 'terminals' | 'activity';
@@ -42,11 +27,7 @@ export interface PetMiniPanelProps {
   onClose: () => void;
   animLabel?: string;
   className?: string;
-  /** Full-window mode inside pet-mini-panel Tauri webview. */
   windowMode?: boolean;
-  /** Optional seed presentation for tests / host sync. */
-  initialPresentation?: PresentationState;
-  onPresentationChange?: (state: PresentationState) => void;
   onLifecycleChange?: (state: PetPanelLifecycleState) => void;
 }
 
@@ -56,47 +37,39 @@ export function PetMiniPanel({
   animLabel,
   className,
   windowMode = false,
-  initialPresentation,
-  onPresentationChange,
   onLifecycleChange,
 }: PetMiniPanelProps) {
   const [tab, setTab] = React.useState<PetMiniPanelTab>('chats');
   const [lifecycle, setLifecycle] = React.useState<PetPanelLifecycleState>(
-    open ? 'open' : 'closed',
+    open || windowMode ? 'open' : createInitialPanelLifecycle(),
   );
-  const [presentation, setPresentation] = React.useState<PresentationState>(
-    () => initialPresentation ?? createEmptyPresentationState(),
-  );
-  const [terminalLimitMsg, setTerminalLimitMsg] = React.useState<string | null>(null);
-  const [selectedChatId, setSelectedChatId] = React.useState<string | null>(null);
+  const activity = usePetPresentationStore((s) => s.activity);
+  const unread = usePetPresentationStore((s) => s.unreadActivity);
+  const clearUnread = usePetPresentationStore((s) => s.clearUnread);
+  const setPanelLifecycle = usePetPresentationStore((s) => s.setPanelLifecycle);
+  const chats = usePetPresentationStore((s) => s.chats);
+  const terminals = usePetPresentationStore((s) => s.terminals);
 
   const updateLifecycle = React.useCallback(
     (event: Parameters<typeof reducePanelLifecycle>[1]) => {
       setLifecycle((prev) => {
         const next = reducePanelLifecycle(prev, event);
         onLifecycleChange?.(next);
+        setPanelLifecycle(next);
         return next;
       });
     },
-    [onLifecycleChange],
-  );
-
-  const updatePresentation = React.useCallback(
-    (next: PresentationState) => {
-      setPresentation(next);
-      onPresentationChange?.(next);
-    },
-    [onPresentationChange],
+    [onLifecycleChange, setPanelLifecycle],
   );
 
   React.useEffect(() => {
-    if (open) {
+    if (open || windowMode) {
       updateLifecycle({ type: 'request_open' });
       updateLifecycle({ type: 'opened' });
-      updatePresentation(clearActivityUnread(presentation));
+      clearUnread();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to open flag
-  }, [open]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, windowMode]);
 
   React.useEffect(() => {
     if (!open && !windowMode) return;
@@ -114,122 +87,32 @@ export function PetMiniPanel({
     updateLifecycle({ type: 'request_minimize' });
     updateLifecycle({ type: 'minimized' });
     void minimizePetPanel();
-    // Sessions survive
-    assertSessionsSurvivePanelClose(presentation);
   };
 
-  const handleCloseRequest = () => {
-    updateLifecycle({ type: 'request_close' });
-  };
+  const handleCloseRequest = () => updateLifecycle({ type: 'request_close' });
 
   const handleConfirmClose = () => {
     updateLifecycle({ type: 'confirm_close' });
-    const snapshot = assertSessionsSurvivePanelClose(presentation);
-    void snapshot;
     updateLifecycle({ type: 'closed' });
     void hidePetPanel();
     onClose();
   };
 
-  const handleCancelClose = () => {
-    updateLifecycle({ type: 'cancel_close' });
-  };
-
-  /** Demo helpers — real app wires these to Dexie/stores via presentation store. */
-  const ensureDemoData = () => {
-    let next = presentation;
-    if (Object.keys(next.chats).length === 0) {
-      next = registerChat(next, {
-        chatId: 'chat_demo_1',
-        owner: 'pet-mini-panel',
-        streaming: false,
-        activeRequestId: null,
-      });
-    }
-    if (Object.keys(next.terminals).length === 0) {
-      next = registerTerminal(next, {
-        terminalId: 'term_demo_1',
-        owner: 'pet-mini-panel',
-        ptyId: 'pty_demo_1',
-        title: 'pwsh',
-        cwd: 'C:\\Users\\viper',
-        shell: 'pwsh',
-        status: 'running',
-      });
-    }
-    if (next !== presentation) updatePresentation(next);
-  };
-
-  React.useEffect(() => {
-    if (open || windowMode) ensureDemoData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, windowMode]);
-
-  const claimChatToPanel = (chatId: string) => {
-    const result = moveChatPresentation(presentation, chatId, 'pet-mini-panel');
-    if (result.ok) updatePresentation(result.state);
-  };
-
-  const returnChatToMain = (chatId: string) => {
-    const result = moveChatPresentation(presentation, chatId, 'main');
-    if (result.ok) updatePresentation(result.state);
-  };
-
-  const claimTerminalToPanel = (terminalId: string) => {
-    const result = moveTerminalPresentation(presentation, terminalId, 'pet-mini-panel');
-    if (!result.ok) {
-      setTerminalLimitMsg(result.message ?? PET_PANEL_TERMINAL_LIMIT_MESSAGE);
-      return;
-    }
-    setTerminalLimitMsg(null);
-    updatePresentation(result.state);
-  };
-
-  const returnTerminalToMain = (terminalId: string) => {
-    const result = moveTerminalPresentation(presentation, terminalId, 'main');
-    if (result.ok) updatePresentation(result.state);
-  };
-
-  const sendChatMessage = (chatId: string) => {
-    const requestId = `req_${Date.now()}`;
-    const started = beginChatRequest(presentation, chatId, requestId);
-    if (!started.ok) {
-      // Duplicate outbound request blocked
-      return;
-    }
-    updatePresentation(started.state);
-    // Simulate stream completion without cloning thread
-    window.setTimeout(() => {
-      updatePresentation(endChatRequest(started.state, chatId, requestId));
-    }, 50);
-  };
-
-  const pushDemoActivity = () => {
-    const ev: SafeActivityEvent = {
-      id: `act_${Date.now()}`,
-      kind: 'chat',
-      summary: sanitizeActivitySummary('Chat updated — no secrets here'),
-      target: { type: 'chat', id: selectedChatId ?? 'chat_demo_1' },
-      createdAt: Date.now(),
-    };
-    updatePresentation(pushActivity(presentation, ev, { panelFocused: true }));
-  };
+  const handleCancelClose = () => updateLifecycle({ type: 'cancel_close' });
 
   const visible =
     windowMode ||
     open ||
     lifecycle === 'open' ||
     lifecycle === 'confirmingClose' ||
-    lifecycle === 'opening';
+    lifecycle === 'opening' ||
+    lifecycle === 'restoring';
 
   if (!visible && lifecycle !== 'minimized') return null;
   if (lifecycle === 'minimized' && !windowMode) return null;
 
-  const panelChats = Object.values(presentation.chats).filter((c) => c.owner === 'pet-mini-panel');
-  const panelTerms = Object.values(presentation.terminals).filter(
-    (t) => t.owner === 'pet-mini-panel',
-  );
-  const mainTerms = Object.values(presentation.terminals).filter((t) => t.owner === 'main');
+  const petChatCount = Object.values(chats).filter((c) => c.owner === 'pet-mini-panel').length;
+  const petTermCount = Object.values(terminals).filter((t) => t.owner === 'pet-mini-panel').length;
 
   return (
     <div
@@ -252,7 +135,8 @@ export function PetMiniPanel({
         <div>
           <div className="text-ui-strong text-foreground">VibeSpace Pet Panel</div>
           <div className="text-metadata text-muted-foreground">
-            {animLabel ? `Pet: ${animLabel}` : 'Axolotl companion'} · sessions keep running
+            {animLabel ? `Pet: ${animLabel}` : 'Axolotl companion'} · {petChatCount} chats ·{' '}
+            {petTermCount} terminals · sessions keep running
           </div>
         </div>
         <div className="flex items-center gap-1">
@@ -295,119 +179,38 @@ export function PetMiniPanel({
           >
             <Icon className="h-3.5 w-3.5" />
             {label}
-            {id === 'activity' && presentation.unreadActivity > 0
-              ? ` (${presentation.unreadActivity})`
-              : ''}
+            {id === 'activity' && unread > 0 ? ` (${unread})` : ''}
           </Button>
         ))}
       </nav>
 
-      <div className="flex-1 overflow-auto p-3 min-h-0">
-        {tab === 'chats' && (
-          <div className="flex flex-col gap-2" data-testid="pet-chats">
-            <p className="text-secondary text-muted-foreground">
-              Real thread IDs · presentation ownership only · no clone · no duplicate requests.
-            </p>
-            {panelChats.length === 0 && (
-              <p className="text-secondary text-muted-foreground">No chats on this panel yet.</p>
-            )}
-            {panelChats.map((c) => (
-              <div
-                key={c.chatId}
-                className="rounded-lg border border-border p-2 flex flex-col gap-1"
-                data-chat-id={c.chatId}
-              >
-                <div className="text-ui-strong text-foreground font-mono text-xs">{c.chatId}</div>
-                <div className="text-metadata text-muted-foreground">
-                  {c.streaming ? 'Streaming…' : 'Idle'}
-                  {c.activeRequestId ? ` · req ${c.activeRequestId}` : ''}
-                </div>
-                <div className="flex gap-1 flex-wrap">
-                  <Button size="sm" variant="secondary" onClick={() => sendChatMessage(c.chatId)}>
-                    Send (deduped)
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => returnChatToMain(c.chatId)}>
-                    Return to main
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => setSelectedChatId(c.chatId)}>
-                    Focus
-                  </Button>
-                </div>
-              </div>
-            ))}
-            {Object.values(presentation.chats)
-              .filter((c) => c.owner === 'main')
-              .map((c) => (
-                <div key={c.chatId} className="flex items-center justify-between gap-2 text-xs">
-                  <span className="font-mono text-muted-foreground">{c.chatId} (main)</span>
-                  <Button size="sm" variant="outline" onClick={() => claimChatToPanel(c.chatId)}>
-                    Move here
-                  </Button>
-                </div>
-              ))}
-          </div>
-        )}
-
-        {tab === 'terminals' && (
-          <div className="flex flex-col gap-2" data-testid="pet-terminals">
-            <p className="text-secondary text-muted-foreground">
-              Real PTY sessions · max {PET_PANEL_MAX_TERMINALS} presentations · move never restarts PTY.
-            </p>
-            {terminalLimitMsg && (
-              <div
-                className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-sm text-foreground"
-                data-testid="pet-terminal-limit"
-                role="alert"
-              >
-                {terminalLimitMsg}
-              </div>
-            )}
-            <div className="text-metadata text-muted-foreground">
-              On panel: {petPanelTerminalCount(presentation)} / {PET_PANEL_MAX_TERMINALS}
-            </div>
-            {panelTerms.map((t) => (
-              <div
-                key={t.terminalId}
-                className="rounded-lg border border-border p-2"
-                data-terminal-id={t.terminalId}
-                data-pty-id={t.ptyId}
-              >
-                <div className="text-ui-strong text-foreground">{t.title}</div>
-                <div className="text-metadata text-muted-foreground font-mono text-xs">
-                  {t.shell} · {t.cwd} · pty {t.ptyId} · {t.status}
-                </div>
-                <Button size="sm" variant="ghost" className="mt-1" onClick={() => returnTerminalToMain(t.terminalId)}>
-                  Return to main
-                </Button>
-              </div>
-            ))}
-            {mainTerms.map((t) => (
-              <div key={t.terminalId} className="flex items-center justify-between gap-2 text-xs">
-                <span className="font-mono text-muted-foreground">
-                  {t.terminalId} (main, pty {t.ptyId})
-                </span>
-                <Button size="sm" variant="outline" onClick={() => claimTerminalToPanel(t.terminalId)}>
-                  Move here
-                </Button>
-              </div>
-            ))}
-          </div>
-        )}
-
+      <div className="flex-1 overflow-hidden p-2 min-h-0">
+        {tab === 'chats' && <PetChatSurface className="h-full" />}
+        {tab === 'terminals' && <PetTerminalSurface className="h-full" />}
         {tab === 'activity' && (
-          <div className="flex flex-col gap-2" data-testid="pet-activity">
-            <p className="text-secondary text-muted-foreground">
-              Typed activity · stable-id dedupe · safe summaries only.
+          <div className="h-full overflow-auto" data-testid="pet-activity">
+            <p className="text-secondary text-muted-foreground mb-2">
+              Safe activity summaries · stable-id dedupe · no secrets.
             </p>
-            <Button size="sm" variant="secondary" onClick={pushDemoActivity}>
-              Record activity
-            </Button>
-            <ul className="text-sm space-y-1">
-              {presentation.activitySeenIds.slice(-20).reverse().map((id) => (
-                <li key={id} className="font-mono text-xs text-muted-foreground">
-                  {id}
+            <ul className="space-y-2">
+              {[...activity].reverse().map((ev) => (
+                <li
+                  key={ev.id}
+                  className="rounded-md border border-border p-2 text-sm"
+                  data-activity-id={ev.id}
+                >
+                  <div className="text-metadata text-muted-foreground">
+                    {ev.kind} · {new Date(ev.createdAt).toLocaleTimeString()}
+                  </div>
+                  <div className="text-foreground">{ev.summary}</div>
+                  <div className="text-metadata font-mono text-muted-foreground">
+                    → {ev.target.type}:{ev.target.id.slice(0, 16)}
+                  </div>
                 </li>
               ))}
+              {activity.length === 0 && (
+                <li className="text-secondary text-muted-foreground">No activity yet.</li>
+              )}
             </ul>
           </div>
         )}
@@ -426,7 +229,11 @@ export function PetMiniPanel({
               <Button variant="ghost" onClick={handleCancelClose}>
                 {PET_PANEL_CLOSE_CONFIRM_BUTTONS.cancel}
               </Button>
-              <Button variant="default" onClick={handleConfirmClose} data-testid="pet-close-confirm-btn">
+              <Button
+                variant="default"
+                onClick={handleConfirmClose}
+                data-testid="pet-close-confirm-btn"
+              >
                 {PET_PANEL_CLOSE_CONFIRM_BUTTONS.confirm}
               </Button>
             </div>

@@ -67,6 +67,9 @@ import { clearTerminalSession } from './terminalClear';
 import { toast } from '@/components/ui/toast';
 import { useTerminalTranscriptStore } from './transcriptStore';
 import type { AgentCoordinationMode } from './agentCoordination';
+import { usePetPresentationStore } from '@/features/pets/petPresentationStore';
+import { openOrFocusPetPanel } from '@/features/pets/petTauriBridge';
+import { Button } from '@/components/ui/button';
 import {
   parseTerminalRef,
   serializeTerminalRef,
@@ -742,6 +745,13 @@ function Tile({
   const [isEditingName, setIsEditingName] = React.useState(false);
   const [editNameValue, setEditNameValue] = React.useState('');
   const tileRef = React.useRef<HTMLDivElement>(null);
+  const presentedInPet = usePetPresentationStore((s) =>
+    leaf.sessionId ? s.isTerminalOnPet(leaf.sessionId) : false,
+  );
+  const registerTerminal = usePetPresentationStore((s) => s.registerTerminal);
+  const moveTerminal = usePetPresentationStore((s) => s.moveTerminal);
+  const setPanelActiveTerminalId = usePetPresentationStore((s) => s.setPanelActiveTerminalId);
+  const petTermCount = usePetPresentationStore((s) => s.petTerminalCount());
 
   React.useEffect(() => {
     const onFocusTerminal = (e: Event) => {
@@ -1178,29 +1188,99 @@ function Tile({
         </div>
       </div>
       <div className="min-h-0 flex-1">
-        <TerminalView
-          sessionId={leaf.sessionId ?? null}
-          paneId={leaf.id}
-          command={leaf.command || defaultCommand}
-          startupCommand={leaf.startupCommand}
-          pendingCommand={leaf.pendingCommand}
-          pendingCommandId={leaf.pendingCommandId}
-          cwd={leaf.cwd}
-          fontSize={fontSize}
-          agentSlug={leaf.agentSlug ?? null}
-          agentMode={resolvePaneAgentMode(leaf)}
-          onReady={onAttach}
-          onPendingCommandSent={onPendingCommandSent}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
-          projectId={projectId}
-          projectName={projectName}
-          // The tile already provides a frame + chrome strip, so we ask
-          // TerminalView to skip its own border/title row to avoid the
-          // double-bordered look.
-          hideChrome
-          className="h-full w-full"
-        />
+        {/* Atomic presentation: only one xterm owner per PTY (main vs pet panel). */}
+        {presentedInPet && leaf.sessionId ? (
+          <div
+            className="flex h-full flex-col items-center justify-center gap-2 bg-paper-soft p-4 text-center"
+            data-terminal-presented-in-pet="true"
+            data-pty-id={leaf.sessionId}
+          >
+            <p className="text-sm text-muted-foreground">
+              This live terminal is presented in the Pet mini-panel (same PTY — not restarted).
+            </p>
+            <div className="flex gap-2">
+              <Button size="sm" variant="secondary" onClick={() => void openOrFocusPetPanel()}>
+                Focus Pet Panel
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => moveTerminal(leaf.sessionId!, 'main')}
+              >
+                Return to main
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="relative h-full w-full">
+            {leaf.sessionId && (
+              <div className="absolute right-1 top-1 z-10">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 text-xs opacity-70 hover:opacity-100"
+                  data-testid="move-terminal-to-pet"
+                  onClick={() => {
+                    registerTerminal({
+                      terminalId: leaf.sessionId!,
+                      ptyId: leaf.sessionId!,
+                      owner: 'main',
+                      title: leaf.name || leaf.command || 'terminal',
+                      cwd: leaf.cwd,
+                      shell: leaf.command,
+                      paneId: leaf.id,
+                      status: 'running',
+                    });
+                    const result = moveTerminal(leaf.sessionId!, 'pet-mini-panel');
+                    if (!result.ok) {
+                      toast.error(
+                        result.message ??
+                          'The Pet panel supports up to 4 terminals. Return or close one before adding another.',
+                      );
+                      return;
+                    }
+                    setPanelActiveTerminalId(leaf.sessionId!);
+                    void openOrFocusPetPanel();
+                  }}
+                >
+                  To Pet ({petTermCount}/4)
+                </Button>
+              </div>
+            )}
+            <TerminalView
+              sessionId={leaf.sessionId ?? null}
+              paneId={leaf.id}
+              command={leaf.command || defaultCommand}
+              startupCommand={leaf.startupCommand}
+              pendingCommand={leaf.pendingCommand}
+              pendingCommandId={leaf.pendingCommandId}
+              cwd={leaf.cwd}
+              fontSize={fontSize}
+              agentSlug={leaf.agentSlug ?? null}
+              agentMode={resolvePaneAgentMode(leaf)}
+              onReady={(sid) => {
+                registerTerminal({
+                  terminalId: sid,
+                  ptyId: sid,
+                  owner: 'main',
+                  title: leaf.name || leaf.command || 'terminal',
+                  cwd: leaf.cwd,
+                  shell: leaf.command,
+                  paneId: leaf.id,
+                  status: 'running',
+                });
+                onAttach(sid);
+              }}
+              onPendingCommandSent={onPendingCommandSent}
+              onFocus={() => setIsFocused(true)}
+              onBlur={() => setIsFocused(false)}
+              projectId={projectId}
+              projectName={projectName}
+              hideChrome
+              className="h-full w-full"
+            />
+          </div>
+        )}
       </div>
       {contextMenu && (
         <TerminalContextMenu

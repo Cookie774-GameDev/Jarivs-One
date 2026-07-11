@@ -299,6 +299,8 @@ pub fn run() {
             app_version,
             refresh_app_branding,
             pets::pet_show_overlay,
+            pets::pet_hide_overlay,
+            pets::pet_is_overlay_visible,
             pets::pet_set_overlay_position,
             pets::pet_open_or_focus_panel,
             pets::pet_minimize_panel,

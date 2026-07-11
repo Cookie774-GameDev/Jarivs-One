@@ -5,10 +5,15 @@
 import * as React from 'react';
 import { PetOverlay } from './PetOverlay';
 import { openOrFocusPetPanel } from './petTauriBridge';
+import { installPetPresentationStorageSync } from './petPresentationStore';
+import { usePetSettingsStore } from './petSettingsStore';
 
 export function PetOverlayWindow() {
+  const reducedMotion = usePetSettingsStore((s) => s.reducedMotion);
+  const sleepTimeoutMs = usePetSettingsStore((s) => s.sleepTimeoutMs);
+  const idleFunIntervalMs = usePetSettingsStore((s) => s.idleFunIntervalMs);
+
   React.useEffect(() => {
-    // Ensure document background is transparent for the frameless window.
     document.documentElement.style.background = 'transparent';
     document.body.style.background = 'transparent';
     document.body.style.margin = '0';
@@ -19,6 +24,7 @@ export function PetOverlayWindow() {
       root.style.width = '144px';
       root.style.height = '144px';
     }
+    return installPetPresentationStorageSync();
   }, []);
 
   return (
@@ -35,7 +41,10 @@ export function PetOverlayWindow() {
     >
       <PetOverlay
         enabled
+        reducedMotion={reducedMotion}
         tauriWindowMode
+        sleepTimeoutMs={sleepTimeoutMs}
+        idleFunIntervalMs={idleFunIntervalMs}
         onOpenPanel={() => {
           void openOrFocusPetPanel();
         }}

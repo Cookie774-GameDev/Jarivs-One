@@ -26,6 +26,7 @@ import {
   Blocks,
   Shield,
   Zap,
+  Cat,
   type LucideIcon,
 } from 'lucide-react';
 import { useAppAdmin } from '@/lib/admin';
@@ -71,6 +72,7 @@ const Admin = lazy(() => import('./sections/Admin').then((m) => ({ default: m.Ad
 const JarvisActions = lazy(() =>
   import('./sections/JarvisActions').then((m) => ({ default: m.JarvisActions })),
 );
+const Pets = lazy(() => import('./sections/Pets').then((m) => ({ default: m.Pets })));
 
 interface TabDef {
   id: SettingsTab;
@@ -95,6 +97,7 @@ const TABS: TabDef[] = [
   { id: 'ambient', label: 'Ambient', icon: Moon },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'accessibility', label: 'Accessibility', icon: AccessibilityIcon },
+  { id: 'pets', label: 'Pets', icon: Cat },
   { id: 'hotkeys', label: 'Hotkeys', icon: Keyboard },
   { id: 'jarvisactions', label: 'Jarvis Actions', icon: Zap },
   { id: 'about', label: 'About', icon: Info },
@@ -190,6 +193,9 @@ function SettingsTabPanels({ tab, visited }: { tab: SettingsTab; visited: Readon
         visited={visited.has('accessibility')}
       >
         <Accessibility />
+      </CachedTabPanel>
+      <CachedTabPanel id="pets" active={tab === 'pets'} visited={visited.has('pets')}>
+        <Pets />
       </CachedTabPanel>
       <CachedTabPanel id="hotkeys" active={tab === 'hotkeys'} visited={visited.has('hotkeys')}>
         <Hotkeys />

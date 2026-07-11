@@ -22,6 +22,7 @@ import {
 import { disposeAll, mapReducedMotionAnim, reducedMotionFps } from './petLifecycle';
 import { getAnimDef, getPetAnimationsManifest, resolveAtlasUrls } from './petManifest';
 import { openOrFocusPetPanel, setPetOverlayPosition } from './petTauriBridge';
+import { PET_FORCE_ANIM_EVENT, type PetForceAnimDetail } from './petSettingsStore';
 import { cn } from '@/lib/utils';
 
 const DISPLAY = 128;
@@ -37,6 +38,8 @@ export interface PetOverlayProps {
   onAnimChange?: (anim: string) => void;
   /** When true, position is driven by the Tauri window (no CSS fixed offset). */
   tauriWindowMode?: boolean;
+  sleepTimeoutMs?: number;
+  idleFunIntervalMs?: number;
 }
 
 export function PetOverlay({
@@ -48,6 +51,8 @@ export function PetOverlay({
   onPanelClose: _onPanelClose,
   onAnimChange,
   tauriWindowMode = false,
+  sleepTimeoutMs,
+  idleFunIntervalMs,
 }: PetOverlayProps) {
   const hostRef = React.useRef<HTMLDivElement>(null);
   const playerRef = React.useRef(new PixiAtlasPlayer());
@@ -164,8 +169,8 @@ export function PetOverlay({
     const s0 = reducePetEvent(createInitialPetState(), { type: 'boot' });
     setState(s0);
     const sched = createPetScheduler({
-      idleFunIntervalMs: man.scheduler.idleFunIntervalMs,
-      sleepTimeoutMs: man.scheduler.sleepTimeoutMs,
+      idleFunIntervalMs: idleFunIntervalMs ?? man.scheduler.idleFunIntervalMs,
+      sleepTimeoutMs: sleepTimeoutMs ?? man.scheduler.sleepTimeoutMs,
     });
     schedulerRef.current = sched;
     void playAnim(s0.anim);
@@ -177,7 +182,46 @@ export function PetOverlay({
       // Fresh player after dispose so remount works.
       playerRef.current = new PixiAtlasPlayer();
     };
-  }, [enabled, man.scheduler.idleFunIntervalMs, man.scheduler.sleepTimeoutMs, playAnim, setState]);
+  }, [
+    enabled,
+    idleFunIntervalMs,
+    sleepTimeoutMs,
+    man.scheduler.idleFunIntervalMs,
+    man.scheduler.sleepTimeoutMs,
+    playAnim,
+    setState,
+  ]);
+
+  // Diagnostics: force animation from Settings → Pets
+  React.useEffect(() => {
+    if (!enabled) return;
+    const onForce = (e: Event) => {
+      const detail = (e as CustomEvent<PetForceAnimDetail>).detail;
+      if (!detail?.anim) return;
+      const anim = detail.anim as PetAnimId;
+      if (anim === 'sleepTransition') {
+        setState(reducePetEvent(stateRef.current, { type: 'sleep_timeout' }));
+      } else if (anim === 'wakeFromSleep') {
+        setState(reducePetEvent(stateRef.current, { type: 'click' }));
+      } else if (anim === 'idleFun') {
+        setState(reducePetEvent({ ...stateRef.current, anim: 'idlePrimary' }, { type: 'idle_fun_tick' }));
+      } else if (anim === 'walkLeft' || anim === 'walkRight') {
+        setState({
+          ...stateRef.current,
+          dragging: true,
+          anim,
+          lastWalk: anim,
+          sleeping: false,
+        });
+      } else if (anim === 'welcome') {
+        setState({ ...createInitialPetState(), welcomePlayed: false, anim: 'welcome' });
+      } else {
+        setState({ ...stateRef.current, anim, sleeping: anim === 'sleepingLoop' });
+      }
+    };
+    window.addEventListener(PET_FORCE_ANIM_EVENT, onForce);
+    return () => window.removeEventListener(PET_FORCE_ANIM_EVENT, onForce);
+  }, [enabled, setState]);
 
   React.useEffect(() => {
     if (!enabled) return;

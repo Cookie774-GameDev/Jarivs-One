@@ -1278,3 +1278,26 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Verification** | pets 40/40; typecheck PASS; frontend build PASS; cargo test pets 2/2; no-runtime-mp4 PASS |
 | **Locks** | released |
 
+
+#### 2026-07-11 - Pixel Pets full app wiring (chat/terminal/settings)
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-11 19:10 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Status** | in-progress |
+| **Change** | Wire real ChatThread/Composer + TerminalView into pet-mini-panel; pet settings store; presentation store; main-app controls |
+| **Locks** | claimed: app/src/features/pets/**, app/src/features/chat/ChatView.tsx, app/src/features/terminals/TileGrid.tsx, app/src/features/settings/**, app/src/App.tsx, app/src-tauri/src/pets.rs, docs/pets/**, docs/AGENT_COORDINATION.md |
+
+
+#### 2026-07-11 - Pixel Pets full Chat/Terminal wiring
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-11 19:45 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Status** | complete (draft PR; not merged) |
+| **Change** | Real ChatThread/Composer + TerminalView in pet-mini-panel; Settings Pets; presentation ownership in ChatView/TileGrid; hide/show overlay commands |
+| **Verification** | pets 45/45; typecheck PASS; build PASS; cargo pets 2/2 |
+| **Locks** | released |
+

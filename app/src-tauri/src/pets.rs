@@ -150,6 +150,25 @@ pub fn pet_show_overlay(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Hide the pet overlay without destroying the webview (no duplicate on re-show).
+#[tauri::command]
+pub fn pet_hide_overlay(app: AppHandle) -> Result<(), String> {
+    let win = app
+        .get_webview_window(PET_OVERLAY_LABEL)
+        .ok_or_else(|| "pet-overlay window missing".to_string())?;
+    let _ = win.hide();
+    Ok(())
+}
+
+/// Whether the pet overlay is currently visible.
+#[tauri::command]
+pub fn pet_is_overlay_visible(app: AppHandle) -> Result<bool, String> {
+    let win = app
+        .get_webview_window(PET_OVERLAY_LABEL)
+        .ok_or_else(|| "pet-overlay window missing".to_string())?;
+    Ok(win.is_visible().unwrap_or(false))
+}
+
 /// Move pet overlay to physical position (DPI-aware path via physical coords).
 #[tauri::command]
 pub fn pet_set_overlay_position(app: AppHandle, x: f64, y: f64) -> Result<(), String> {

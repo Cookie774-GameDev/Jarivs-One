@@ -852,6 +852,7 @@ export function App() {
     );
     return (
       <ErrorBoundary>
+        <ThemeHost />
         <React.Suspense fallback={null}>
           <PetMiniPanelWindow />
         </React.Suspense>

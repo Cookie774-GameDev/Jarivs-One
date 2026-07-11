@@ -13,6 +13,7 @@ export type SettingsTab =
   | 'ambient'
   | 'notifications'
   | 'accessibility'
+  | 'pets'
   | 'hotkeys'
   | 'jarvisactions'
   | 'admin'
@@ -33,6 +34,7 @@ const TAB_IMPORTS: Record<SettingsTab, () => Promise<unknown>> = {
   ambient: () => import('./sections/Ambient'),
   notifications: () => import('./sections/Notifications'),
   accessibility: () => import('./sections/Accessibility'),
+  pets: () => import('./sections/Pets').then((m) => ({ default: m.Pets })),
   hotkeys: () => import('./sections/Hotkeys'),
   jarvisactions: () => import('./sections/JarvisActions').then((m) => ({ default: m.JarvisActions })),
   admin: () => import('./sections/Admin'),

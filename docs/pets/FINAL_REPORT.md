@@ -111,9 +111,10 @@ Manual Windows DPI / multi-monitor checks: `docs/pets/verification/MANUAL_WINDOW
 
 ## Remaining genuine limitations
 
-- Full live ChatThread/xterm React mounts inside the mini-panel share the same stores/IDs; deep visual chrome parity continues to wire through presentation ownership APIs (logic + guards are implemented and tested).
-- Packaged Tauri multi-monitor smoke must be run on a Windows desktop with multiple displays.
-- Per-frame face-layer recompose from PSD/ORA is not fully automated; identity is enforced via deterministic pipeline + visual QA contact sheets against the layered package.
+- **Interactive Windows smoke and DPI multi-monitor checks must be run on the operator desktop** (`npm run tauri:dev`) — see `USER_TEST_GUIDE.md` and `verification/INTERACTIVE_STATUS.md`. Agent automation cannot complete GUI smoke.
+- Packaged `npm run tauri:build` may take a long time / need Windows toolchain; run locally and record artifact path.
+- Generation abort controllers live in the webview that started the request; the other window still sees Dexie stream updates.
+- Per-frame PSD face-layer recompose is not fully automated; contact-sheet QA is durable under `docs/pets/`.
 
 ## Rollback
 
