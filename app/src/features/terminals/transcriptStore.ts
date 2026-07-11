@@ -33,6 +33,10 @@ import {
   MAX_PENDING_ESCAPE_CHARS,
   splitTrailingIncompleteEscape,
 } from './terminalEscape';
+import {
+  sanitizePersistedDraft,
+  sanitizePersistedTerminalText,
+} from './terminalContentSanitizer';
 
 /* -------------------------------------------------------------------------- */
 /*  Constants                                                                 */
@@ -135,8 +139,13 @@ function sanitizeTerminalOutputChunk(
   const split = splitTrailingIncompleteEscape(combined);
   const nextPending =
     split.pendingEscape.length > MAX_PENDING_ESCAPE_CHARS ? '' : split.pendingEscape;
+  const text = sanitizePersistedTerminalText(stripAnsi(split.complete), {
+    maxBytes: MAX_BYTES_PER_SESSION * 4,
+    maxLines: 100_000,
+    truncationMarker: '',
+  }).text;
   return {
-    text: stripAnsi(split.complete),
+    text,
     rawText: split.complete,
     pendingEscape: nextPending,
   };
@@ -148,7 +157,11 @@ export function terminalRestoreText(session: Partial<SessionTranscript> | null |
       : typeof session?.rawText === 'string'
         ? stripAnsi(session.rawText)
         : '';
-  const safeSource = stripAnsi(source);
+  const safeSource = sanitizePersistedTerminalText(stripAnsi(source), {
+    maxBytes: MAX_BYTES_PER_SESSION,
+    maxLines: 800,
+    truncationMarker: '',
+  }).text;
   if (!safeSource) return '';
 
   return safeSource
@@ -353,13 +366,20 @@ export function deserializeTranscriptSessions(
         projectId: typeof session.projectId === 'string' ? session.projectId : null,
         agentSlug: typeof session.agentSlug === 'string' ? session.agentSlug : null,
         command: typeof session.command === 'string' ? session.command : null,
-        text:
-          typeof session.text === 'string'
-            ? stripAnsi(session.text).slice(-MAX_BYTES_PER_SESSION)
-            : '',
-        rawText: typeof session.rawText === 'string' ? session.rawText.slice(-MAX_BYTES_PER_SESSION) : '',
+        text: sanitizePersistedTerminalText(
+          typeof session.text === 'string' ? session.text : '',
+          {
+            maxBytes: MAX_BYTES_PER_SESSION,
+            maxLines: 100_000,
+            truncationMarker: '',
+          },
+        ).text,
+        rawText: '',
         pendingEscape: '',
-        currentInput: typeof session.currentInput === 'string' ? session.currentInput.slice(-4096) : '',
+        currentInput: sanitizePersistedDraft(
+          typeof session.currentInput === 'string' ? session.currentInput : '',
+          typeof session.text === 'string' ? session.text : '',
+        ),
         lastWriteAt: typeof session.lastWriteAt === 'number' ? session.lastWriteAt : Date.now(),
         bytesSeen: typeof session.bytesSeen === 'number' ? session.bytesSeen : 0,
       };
@@ -517,12 +537,14 @@ export const useTerminalTranscriptStore = create<TranscriptState>()(
       setCurrentInput: (sessionId, currentInput) => {
         set((state) => {
           const cur = state.sessions[sessionId];
-          if (!cur || cur.currentInput === currentInput) return {};
+          if (!cur) return {};
+          const safeInput = sanitizePersistedDraft(currentInput, cur.text);
+          if (cur.currentInput === safeInput) return {};
           const nextSessions = {
             ...state.sessions,
             [sessionId]: {
               ...cur,
-              currentInput,
+              currentInput: safeInput,
             },
           };
           // Hot path (typing): do not update lastWriteAt. Draft input is

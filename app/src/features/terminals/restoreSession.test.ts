@@ -4,6 +4,7 @@ import {
   type BackendTerminalInfo,
 } from './restoreSession';
 import type { SessionTranscript } from './transcriptStore';
+import type { TerminalSnapshotPayload } from './terminalSnapshot';
 
 function transcript(
   sessionId: string,
@@ -34,6 +35,20 @@ function backend(sessionId: string, projectId: string | null): BackendTerminalIn
     cols: 100,
     startedAt: 1,
     projectId,
+  };
+}
+
+function renderedSnapshot(text: string): TerminalSnapshotPayload {
+  return {
+    schemaVersion: 1,
+    projectId: 'project-a',
+    paneId: 'pane-a',
+    text,
+    rows: 30,
+    cols: 100,
+    updatedAt: 200,
+    command: 'opencode',
+    interactive: true,
   };
 }
 
@@ -136,6 +151,71 @@ describe('resolveTerminalRestoreSession', () => {
       oldSessionId: 'session-a',
       restoredText: '',
     });
+  });
+
+  it('restores a sanitized rendered snapshot for a dead interactive TUI', () => {
+    const decision = resolveTerminalRestoreSession({
+      existingSessionId: null,
+      paneId: 'pane-a',
+      projectId: 'project-a',
+      activeSessions: [],
+      renderedSnapshot: renderedSnapshot('OpenCode Zen\nlast rendered screen'),
+      transcripts: {
+        'session-a': {
+          ...transcript('session-a', 'pane-a', 'project-a'),
+          command: 'opencode',
+          text: 'half-painted raw TUI',
+        },
+      },
+    });
+
+    expect(decision).toMatchObject({
+      kind: 'spawn',
+      source: 'dead-historical-pane',
+      restoredText: 'OpenCode Zen\r\nlast rendered screen',
+    });
+  });
+
+  it('restores a pane snapshot even when the bounded transcript was evicted', () => {
+    const decision = resolveTerminalRestoreSession({
+      existingSessionId: null,
+      paneId: 'pane-a',
+      projectId: 'project-a',
+      activeSessions: [],
+      renderedSnapshot: renderedSnapshot('durable pane snapshot'),
+      transcripts: {},
+    });
+
+    expect(decision).toMatchObject({
+      kind: 'spawn',
+      source: 'dead-snapshot',
+      oldSessionId: null,
+      restoredText: 'durable pane snapshot',
+      restoredInput: '',
+    });
+  });
+
+  it('repairs control-bearing restored drafts and never restores a line ending', () => {
+    const decision = resolveTerminalRestoreSession({
+      existingSessionId: 'session-a',
+      paneId: 'pane-a',
+      projectId: 'project-a',
+      activeSessions: [],
+      transcripts: {
+        'session-a': {
+          ...transcript('session-a', 'pane-a', 'project-a'),
+          currentInput: 'npm test\u001b[A[<35;24;22M\rmalicious',
+        },
+      },
+    });
+
+    expect(decision).toMatchObject({
+      kind: 'spawn',
+      restoredInput: 'npm testmalicious',
+    });
+    if (decision.kind === 'spawn') {
+      expect(decision.restoredInput).not.toMatch(/[\r\n\x1b]/);
+    }
   });
 
   it('does not replay OpenCode TUI text when the CLI was launched inside PowerShell', () => {
