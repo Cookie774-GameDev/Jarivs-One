@@ -1,8 +1,8 @@
 # Terminal Persistence Remediation Report
 
-Date: 2026-07-11  
-Branch: `agent/terminal-persistence-recovery`  
-Base: `origin/main` at `ec56ef3b48e7f4758dd98335d2f3e1bb8895b693`  
+Date: 2026-07-11
+Branch: `agent/terminal-persistence-recovery`
+Base: `origin/main` at `ec56ef3b48e7f4758dd98335d2f3e1bb8895b693`
 Status: implementation and automated verification complete; not merged or deployed
 
 ## Scope and Guardrails
