@@ -54,6 +54,7 @@ mod kokoro;
 mod ollama_http;
 mod branding;
 mod agent_coordination;
+mod terminal_snapshot;
 
 /// Sanity-check command. The JS bridge can call this during startup to verify
 /// invoke() round-trips. Wire it in as needed; it returns a friendly string.
@@ -211,6 +212,7 @@ pub fn run() {
                 .build(),
         )
         .manage(terminal::TerminalState::default())
+        .manage(terminal_snapshot::PersistenceFlushState::default())
         .setup(|app| {
             let tray_menu = tauri::menu::Menu::with_items(
                 app,
@@ -235,10 +237,18 @@ pub fn run() {
                             show_main_window(app, "tray-show");
                         }
                         "exit" => {
+                            app.state::<terminal_snapshot::PersistenceFlushState>().begin();
                             let _ = app.emit("jarvis:persist-now", PersistPayload { reason: "tray-exit" });
                             let app_handle = app.clone();
                             std::thread::spawn(move || {
-                                std::thread::sleep(Duration::from_millis(750));
+                                let started = std::time::Instant::now();
+                                while started.elapsed() < Duration::from_millis(1_500)
+                                    && !app_handle
+                                        .state::<terminal_snapshot::PersistenceFlushState>()
+                                        .is_completed()
+                                {
+                                    std::thread::sleep(Duration::from_millis(25));
+                                }
                                 app_handle.exit(0);
                             });
                         }
@@ -299,6 +309,11 @@ pub fn run() {
             terminal::terminal_move,
             terminal::terminal_list,
             terminal::terminal_reconcile,
+            terminal_snapshot::terminal_snapshot_save,
+            terminal_snapshot::terminal_snapshot_load,
+            terminal_snapshot::terminal_snapshot_delete,
+            terminal_snapshot::terminal_snapshot_delete_project,
+            terminal_snapshot::persistence_flush_complete,
             agent_coordination::agent_coordination_snapshot,
             agent_coordination::agent_coordination_register,
             agent_coordination::agent_coordination_heartbeat,
