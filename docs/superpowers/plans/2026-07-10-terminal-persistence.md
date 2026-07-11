@@ -1,5 +1,11 @@
 # Durable Terminal Persistence Implementation Plan
 
+**Implementation status (2026-07-11):** Complete on branch
+`agent/terminal-persistence-recovery`. All implementation tasks were committed
+and verified. No merge or deployment was performed. Exact results, warnings,
+residual risks, and manual release gates are recorded in
+`docs/TERMINAL_PERSISTENCE_REMEDIATION_REPORT.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Persist sanitized, bounded terminal presentation and inert drafts across shutdown/restart while preventing automatic side-effecting command restarts.
