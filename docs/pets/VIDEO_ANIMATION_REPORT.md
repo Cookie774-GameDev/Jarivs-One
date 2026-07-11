@@ -45,10 +45,10 @@ Native cell: **128×128** RGBA. Atlases: `@1x` + nearest-neighbor `@2x`.
 - **welcome**: once after boot → idlePrimary (idempotent via `welcomePlayed`)
 - **idlePrimary**: default
 - **idleFun**: every 60s when eligible; no backlog after suspension
-- **walkLeft/Right**: only while dragging with |dx| ≥ 4px; stop when drag ends
+- **walkLeft/Right**: only while actively dragging; direction from pointer velocity (px/s) with dead-zone 12 px/s, hysteresis 80 ms, stop-delay 80 ms; stop when drag ends or velocity returns to neutral
 - **sleepTransition** → **sleepingLoop** after inactivity (default 5 min)
-- **click** while sleeping: open panel immediately + wakeFromSleep (no second click)
-- **drag** while sleeping: wakes then walks
+- **click** while sleeping: open mini-panel immediately + wakeFromSleep (no second click, no delayed panel)
+- **drag** while sleeping: wakes then walks by velocity direction
 
 ## Pipeline commands
 
@@ -61,8 +61,8 @@ Temp caches: `tools/pets/tmp_video_cache/` (gitignored).
 
 ## Runtime
 
-- `app/src/features/pets/*` — state machine, scheduler, atlas player, overlay
-- Mounted from `App.tsx` as lazy `PetOverlay`
+- `app/src/features/pets/*` — state machine, drag velocity, scheduler, atlas player, PetHost + PetOverlay + PetMiniPanel
+- Mounted from `App.tsx` as lazy `PetHost`
 - Canvas 2D nearest-neighbor atlas playback (Pixi-compatible JSON atlas format)
 
 ## Known limitations

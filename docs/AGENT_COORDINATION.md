@@ -1242,3 +1242,16 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Verification** | pets tests 12/12; typecheck PASS |
 | **Locks** | released |
 
+
+#### 2026-07-11 - Pixel Pets skeptic fixes verified (re-run)
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-11 18:10 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Status** | complete (draft PR; not merged) |
+| **Commits** | f2a899d, f8d369a, 0e781ac |
+| **Change** | Velocity drag + PetHost/MiniPanel + crop scale + QA; re-verified tests 19/19, typecheck, alpha QA PASS |
+| **Verification** | pets tests 19/19; typecheck PASS; alpha PASS; no-runtime-mp4 PASS; draft PR #19 |
+| **Locks** | released (no active pet locks) |
+
