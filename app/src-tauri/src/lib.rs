@@ -54,6 +54,7 @@ mod kokoro;
 mod ollama_http;
 mod branding;
 mod agent_coordination;
+mod pets;
 
 /// Sanity-check command. The JS bridge can call this during startup to verify
 /// invoke() round-trips. Wire it in as needed; it returns a friendly string.
@@ -211,7 +212,15 @@ pub fn run() {
                 .build(),
         )
         .manage(terminal::TerminalState::default())
+        .manage(pets::PetWindowState::default())
         .setup(|app| {
+            // Restore pet window geometry from disk.
+            {
+                let geo = pets::load_geometry(&app.handle());
+                if let Ok(mut g) = app.state::<pets::PetWindowState>().geometry.lock() {
+                    *g = geo;
+                }
+            }
             let tray_menu = tauri::menu::Menu::with_items(
                 app,
                 &[
@@ -269,13 +278,16 @@ pub fn run() {
                 }
                 tauri::WindowEvent::CloseRequested { api, .. } => {
                 use tauri::Emitter as _;
-                // The window only hides to tray (process stays alive), so the
-                // WebView keeps any in-flight speech playing. Tell the frontend
-                // to stop all TTS before we hide.
+                // Pet windows: hide only; never destroy sessions.
+                if pets::handle_pet_window_close(window) {
+                    api.prevent_close();
+                    return;
+                }
+                // Main (and others): hide to tray; process stays alive.
                 let _ = window.emit("jarvis:before-hide", ());
-                println!("[lifecycle] hiding main window; background service remains alive");
+                println!("[lifecycle] hiding window {}; background service remains alive", window.label());
                 if let Err(err) = window.hide() {
-                    eprintln!("[lifecycle] failed to hide main window: {err}");
+                    eprintln!("[lifecycle] failed to hide window: {err}");
                 }
                 api.prevent_close();
                 }
@@ -286,6 +298,14 @@ pub fn run() {
             greet,
             app_version,
             refresh_app_branding,
+            pets::pet_show_overlay,
+            pets::pet_set_overlay_position,
+            pets::pet_open_or_focus_panel,
+            pets::pet_minimize_panel,
+            pets::pet_hide_panel,
+            pets::pet_is_panel_visible,
+            pets::pet_save_panel_geometry,
+            pets::pet_validate_action,
             fsread::fs_create_text_file,
             fsread::fs_list_dir,
             fsread::fs_read_image_base64,

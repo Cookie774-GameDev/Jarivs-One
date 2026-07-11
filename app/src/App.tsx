@@ -822,11 +822,39 @@ function WorkspaceRoot() {
  *     stage logs too.
  */
 export function App() {
-  if (new URLSearchParams(window.location.search).get('view') === 'dictation') {
+  const view = new URLSearchParams(window.location.search).get('view');
+
+  if (view === 'dictation') {
     return (
       <ErrorBoundary>
         <ThemeHost />
         <GlobalDictationOverlay />
+      </ErrorBoundary>
+    );
+  }
+
+  if (view === 'pet-overlay') {
+    const PetOverlayWindow = React.lazy(() =>
+      import('@/features/pets/PetOverlayWindow').then((m) => ({ default: m.PetOverlayWindow })),
+    );
+    return (
+      <ErrorBoundary>
+        <React.Suspense fallback={null}>
+          <PetOverlayWindow />
+        </React.Suspense>
+      </ErrorBoundary>
+    );
+  }
+
+  if (view === 'pet-mini-panel') {
+    const PetMiniPanelWindow = React.lazy(() =>
+      import('@/features/pets/PetMiniPanelWindow').then((m) => ({ default: m.PetMiniPanelWindow })),
+    );
+    return (
+      <ErrorBoundary>
+        <React.Suspense fallback={null}>
+          <PetMiniPanelWindow />
+        </React.Suspense>
       </ErrorBoundary>
     );
   }

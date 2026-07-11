@@ -37,6 +37,37 @@
         "skipTaskbar": true,
         "visible": false,
         "center": true
+      },
+      {
+        "label": "pet-overlay",
+        "title": "VibeSpace Pet",
+        "url": "index.html?view=pet-overlay",
+        "width": 144,
+        "height": 144,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visible": false,
+        "focus": false,
+        "shadow": false
+      },
+      {
+        "label": "pet-mini-panel",
+        "title": "VibeSpace Pet Panel",
+        "url": "index.html?view=pet-mini-panel",
+        "width": 430,
+        "height": 560,
+        "minWidth": 360,
+        "minHeight": 360,
+        "resizable": true,
+        "decorations": true,
+        "transparent": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": false,
+        "visible": false,
+        "focus": false
       }
     ],
     "security": {

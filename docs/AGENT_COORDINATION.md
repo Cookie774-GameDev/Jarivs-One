@@ -1255,3 +1255,26 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Verification** | pets tests 19/19; typecheck PASS; alpha PASS; no-runtime-mp4 PASS; draft PR #19 |
 | **Locks** | released (no active pet locks) |
 
+
+#### 2026-07-11 - Pixel Pets blockers: PixiJS + Tauri windows + mini-panel parity
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-11 18:30 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Status** | in-progress |
+| **Change** | Replace Canvas2D with PixiJS Application; add pet-overlay + pet-mini-panel Tauri windows; presentation ownership; lifecycle; durable docs |
+| **Locks** | claimed: app/src/features/pets/**, app/src/App.tsx, app/src-tauri/src/lib.rs, app/src-tauri/src/pets.rs, app/src-tauri/capabilities/**, app/src-tauri/tauri.conf.json, app/package.json, docs/pets/**, docs/AGENT_COORDINATION.md |
+
+
+#### 2026-07-11 - Pixel Pets blockers implemented (Pixi + Tauri windows)
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-11 18:45 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Status** | complete (draft PR; not merged) |
+| **Change** | PixiJS Application player; pet-overlay + pet-mini-panel windows/capabilities/IPC; panel lifecycle; presentation ownership; durable docs/contact sheets |
+| **Verification** | pets 40/40; typecheck PASS; frontend build PASS; cargo test pets 2/2; no-runtime-mp4 PASS |
+| **Locks** | released |
+

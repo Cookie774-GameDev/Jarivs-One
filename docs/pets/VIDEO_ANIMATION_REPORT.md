@@ -1,4 +1,4 @@
-# Pixel Pets — Video Animation Report
+﻿# Pixel Pets â€” Video Animation Report
 
 Agent: `AGENT-20260711-111338-PX7L`  
 Branch: `agent/pixel-pets-axolotl`  
@@ -8,13 +8,13 @@ Date: 2026-07-11
 
 | Runtime | Source file | Res | FPS | Frames | Duration |
 |---------|-------------|-----|-----|--------|----------|
-| walkRight | Axolotl_walking_in_place_animation_202607111701.mp4 | 1280×720 | 24 | 96 | 4s |
-| walkLeft | Axolotl_walking_cycle_left_202607111648.mp4 | 1280×720 | 24 | 96 | 4s |
-| idlePrimary | Axolotl_character_breathing_and_…_202607111640.mp4 | 1920×1080 | 24 | 96 | 4s |
-| idleFun | Axolotl_character_2nd idle_animation_1080p_202607111636.mp4 | 1920×1080 | 24 | 96 | 4s |
-| welcome | Axolotl_character_pixel_art_Welcome Animtion.mp4 | 1920×1080 | 24 | 96 | 4s |
-| sleepTransition + sleepingLoop | Axolotl_transitions_to_sleep_202607111658.mp4 | 1280×720 | 24 | 240 | 10s |
-| wakeFromSleep | derived (reverse end of sleepTransition) | — | — | 8 | ~0.3s |
+| walkRight | Axolotl_walking_in_place_animation_202607111701.mp4 | 1280Ã—720 | 24 | 96 | 4s |
+| walkLeft | Axolotl_walking_cycle_left_202607111648.mp4 | 1280Ã—720 | 24 | 96 | 4s |
+| idlePrimary | Axolotl_character_breathing_and_â€¦_202607111640.mp4 | 1920Ã—1080 | 24 | 96 | 4s |
+| idleFun | Axolotl_character_2nd idle_animation_1080p_202607111636.mp4 | 1920Ã—1080 | 24 | 96 | 4s |
+| welcome | Axolotl_character_pixel_art_Welcome Animtion.mp4 | 1920Ã—1080 | 24 | 96 | 4s |
+| sleepTransition + sleepingLoop | Axolotl_transitions_to_sleep_202607111658.mp4 | 1280Ã—720 | 24 | 240 | 10s |
+| wakeFromSleep | derived (reverse end of sleepTransition) | â€” | â€” | 8 | ~0.3s |
 
 ## Background removal
 
@@ -38,15 +38,15 @@ Date: 2026-07-11
 | sleepingLoop | 40 | 10 | yes | no |
 | wakeFromSleep | 8 | 24 | no | yes |
 
-Native cell: **128×128** RGBA. Atlases: `@1x` + nearest-neighbor `@2x`.
+Native cell: **128Ã—128** RGBA. Atlases: `@1x` + nearest-neighbor `@2x`.
 
 ## Behavior mapping
 
-- **welcome**: once after boot → idlePrimary (idempotent via `welcomePlayed`)
+- **welcome**: once after boot â†’ idlePrimary (idempotent via `welcomePlayed`)
 - **idlePrimary**: default
 - **idleFun**: every 60s when eligible; no backlog after suspension
 - **walkLeft/Right**: only while actively dragging; direction from pointer velocity (px/s) with dead-zone 12 px/s, hysteresis 80 ms, stop-delay 80 ms; stop when drag ends or velocity returns to neutral
-- **sleepTransition** → **sleepingLoop** after inactivity (default 5 min)
+- **sleepTransition** â†’ **sleepingLoop** after inactivity (default 5 min)
 - **click** while sleeping: open mini-panel immediately + wakeFromSleep (no second click, no delayed panel)
 - **drag** while sleeping: wakes then walks by velocity direction
 
@@ -61,9 +61,9 @@ Temp caches: `tools/pets/tmp_video_cache/` (gitignored).
 
 ## Runtime
 
-- `app/src/features/pets/*` — state machine, drag velocity, scheduler, atlas player, PetHost + PetOverlay + PetMiniPanel
+- `app/src/features/pets/*` â€” state machine, drag velocity, scheduler, atlas player, PetHost + PetOverlay + PetMiniPanel
 - Mounted from `App.tsx` as lazy `PetHost`
-- Canvas 2D nearest-neighbor atlas playback (Pixi-compatible JSON atlas format)
+- Real PixiJS Application + nearest-neighbor atlas playback (JSON atlases)
 
 ## Known limitations
 
@@ -79,3 +79,4 @@ git checkout agent/pixel-pets-axolotl
 git revert <commit>
 # or remove app/src/features/pets + animations/atlases assets
 ```
+

@@ -1,6 +1,8 @@
 export { PetOverlay } from './PetOverlay';
 export { PetHost } from './PetHost';
 export { PetMiniPanel } from './PetMiniPanel';
+export { PetOverlayWindow } from './PetOverlayWindow';
+export { PetMiniPanelWindow } from './PetMiniPanelWindow';
 export {
   reducePetEvent,
   createInitialPetState,
@@ -19,4 +21,29 @@ export {
 } from './petDragVelocity';
 export { mapReducedMotionAnim, reducedMotionFps, disposeAll } from './petLifecycle';
 export { getPetAnimationsManifest, getAnimDef } from './petManifest';
-export { AtlasPlayer } from './atlasPlayer';
+export { AtlasPlayer, PixiAtlasPlayer, getLivePixiApplicationCount } from './atlasPlayer';
+export {
+  reducePanelLifecycle,
+  createInitialPanelLifecycle,
+  PET_PANEL_CLOSE_CONFIRM_MESSAGE,
+  PET_PANEL_MAX_TERMINALS,
+  PET_PANEL_TERMINAL_LIMIT_MESSAGE,
+  type PetPanelLifecycleState,
+} from './petPanelLifecycle';
+export {
+  validatePetProtocolMessage,
+  createPetProtocolMessage,
+  PET_WINDOW_LABELS,
+  type PetProtocolEnvelope,
+} from './petWindowProtocol';
+export {
+  createEmptyPresentationState,
+  moveChatPresentation,
+  moveTerminalPresentation,
+  beginChatRequest,
+  endChatRequest,
+  pushActivity,
+  sanitizeActivitySummary,
+  assertSessionsSurvivePanelClose,
+  petPanelTerminalCount,
+} from './petPresentation';
