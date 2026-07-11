@@ -1,4 +1,7 @@
-import { sanitizePersistedTerminalText } from './terminalContentSanitizer';
+import {
+  sanitizePersistedDraft,
+  sanitizePersistedTerminalText,
+} from './terminalContentSanitizer';
 
 export const TERMINAL_SNAPSHOT_SCHEMA_VERSION = 1 as const;
 export const MAX_TERMINAL_SNAPSHOT_BYTES = 512 * 1024;
@@ -54,6 +57,9 @@ export function createTerminalSnapshot(
   return {
     schemaVersion: TERMINAL_SNAPSHOT_SCHEMA_VERSION,
     ...metadata,
+    command: metadata.command
+      ? sanitizePersistedDraft(metadata.command) || null
+      : null,
     text: sanitized.text,
   };
 }

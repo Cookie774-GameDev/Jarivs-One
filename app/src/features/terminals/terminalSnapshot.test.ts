@@ -67,6 +67,22 @@ describe('createTerminalSnapshot', () => {
     expect(snapshot.text.split('\n').some((line) => line.startsWith('0-'))).toBe(false);
   });
 
+  it('sanitizes command metadata before persistence', () => {
+    const snapshot = createTerminalSnapshot(terminal(['ready']), {
+      projectId: 'p',
+      paneId: 'pane',
+      rows: 30,
+      cols: 100,
+      updatedAt: 1,
+      command: 'API_TOKEN=synthetic-token-value npm test\u001b[A',
+      interactive: false,
+    });
+
+    expect(snapshot.command).toContain('[REDACTED]');
+    expect(snapshot.command).not.toContain('synthetic-token-value');
+    expect(snapshot.command).not.toContain('\u001b');
+  });
+
   it('produces a stable fingerprint and changes it with content', () => {
     const base = createTerminalSnapshot(terminal(['one']), {
       projectId: 'p',

@@ -91,6 +91,18 @@ export function forgetTerminalLeafSessions(
   }
 }
 
+type InvokeCommand = (
+  command: string,
+  args?: Record<string, unknown>,
+) => Promise<unknown>;
+
+export async function deleteTerminalProjectSnapshots(
+  projectId: string | null,
+  invokeCommand: InvokeCommand = invoke,
+): Promise<void> {
+  await invokeCommand('terminal_snapshot_delete_project', { projectId });
+}
+
 export function TerminalsPage() {
   const projectId = useAuthStore((s) => s.projectId);
   const currentProjectId = projectId ?? null;
@@ -330,6 +342,9 @@ export function TerminalsPage() {
         });
       }
     }
+    void deleteTerminalProjectSnapshots(currentProjectId).catch(() => {
+      /* reset remains usable if native snapshot cleanup is unavailable */
+    });
     forgetTerminalLeafSessions(tree, forgetSession);
     setTree(newLeaf({ command: defaultShell() }));
     setFullscreenPaneId(null);
