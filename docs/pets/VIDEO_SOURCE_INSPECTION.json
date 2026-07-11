@@ -1,0 +1,145 @@
+{
+  "characterId": "vibespace-axolotl-pixel",
+  "nativeCanvas": 128,
+  "videos": [
+    {
+      "anim": "walkRight",
+      "source": "Axolotl_walking_in_place_animation_202607111701.mp4",
+      "checksum": "00275dce13f91a8ea097e6ef45c3951f328314c842eda198db6646aa1ef4be9e",
+      "probe": {
+        "width": 1280,
+        "height": 720,
+        "fps": 24.0,
+        "nb_frames": 96,
+        "duration": 4.0
+      },
+      "selected": 20,
+      "sourceFrameCount": 96,
+      "globalBBox": [
+        328,
+        44,
+        894,
+        650
+      ],
+      "loop": true,
+      "oneShot": false,
+      "fps": 13.0
+    },
+    {
+      "anim": "walkLeft",
+      "source": "Axolotl_walking_cycle_left_202607111648.mp4",
+      "checksum": "ba04c0c8d6113b16e1b3069c2b3590d5204fa60328308ca6ddf44bf39e498237",
+      "probe": {
+        "width": 1280,
+        "height": 720,
+        "fps": 24.0,
+        "nb_frames": 96,
+        "duration": 4.0
+      },
+      "selected": 20,
+      "sourceFrameCount": 96,
+      "globalBBox": [
+        384,
+        46,
+        902,
+        655
+      ],
+      "loop": true,
+      "oneShot": false,
+      "fps": 13.0
+    },
+    {
+      "anim": "idlePrimary",
+      "source": "Axolotl_character_breathing_and_\u2026_202607111640.mp4",
+      "checksum": "5e600d6bb6b2121544a446244a3bbd9d8c4f4978db637d704d2e6a3de501bf0e",
+      "probe": {
+        "width": 1920,
+        "height": 1080,
+        "fps": 24.0,
+        "nb_frames": 96,
+        "duration": 4.0
+      },
+      "selected": 48,
+      "sourceFrameCount": 96,
+      "globalBBox": [
+        31,
+        0,
+        1896,
+        1080
+      ],
+      "loop": true,
+      "oneShot": false,
+      "fps": 13.0
+    },
+    {
+      "anim": "idleFun",
+      "source": "Axolotl_character_2nd idle_animation_1080p_202607111636.mp4",
+      "checksum": "030f34a509802a05aa7e98d58d1f07fdcfc1df7944e88a1aef73b63509d9654e",
+      "probe": {
+        "width": 1920,
+        "height": 1080,
+        "fps": 24.0,
+        "nb_frames": 96,
+        "duration": 4.0
+      },
+      "selected": 60,
+      "sourceFrameCount": 96,
+      "globalBBox": [
+        535,
+        44,
+        1356,
+        960
+      ],
+      "loop": false,
+      "oneShot": true,
+      "fps": 15.0
+    },
+    {
+      "anim": "welcome",
+      "source": "Axolotl_character_pixel_art_Welcome Animtion.mp4",
+      "checksum": "dc1f98a389daf3dcab30ba7f8ad7c8c1ddeebe8f2777714caa34d5945a6fc880",
+      "probe": {
+        "width": 1920,
+        "height": 1080,
+        "fps": 24.0,
+        "nb_frames": 96,
+        "duration": 4.0
+      },
+      "selected": 60,
+      "sourceFrameCount": 96,
+      "globalBBox": [
+        47,
+        0,
+        1780,
+        1080
+      ],
+      "loop": false,
+      "oneShot": true,
+      "fps": 15.0
+    },
+    {
+      "anim": "sleepTransition+sleepingLoop+wakeFromSleep",
+      "source": "Axolotl_transitions_to_sleep_202607111658.mp4",
+      "checksum": "53c199588336d011ee97a7f7618a7416fbe4dfd5827624a09fe4d26fc51dd5f3",
+      "probe": {
+        "width": 1280,
+        "height": 720,
+        "fps": 24.0,
+        "nb_frames": 240,
+        "duration": 10.0
+      },
+      "globalBBox": [
+        330,
+        0,
+        946,
+        706
+      ]
+    }
+  ],
+  "method": {
+    "chromaKey": "HSV-ish green + black letterbox + white canvas mask; green spill desaturation",
+    "scale": "NEAREST to square NATIVE",
+    "alpha": "hard threshold 96",
+    "palette": "nearest snap to source/palette.json when present"
+  }
+}

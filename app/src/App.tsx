@@ -116,6 +116,9 @@ const ActionsPalette = React.lazy(() =>
 const AmbientHome = React.lazy(() =>
   import('@/features/ambient').then((m) => ({ default: m.AmbientHome })),
 );
+const PetOverlay = React.lazy(() =>
+  import('@/features/pets').then((m) => ({ default: m.PetOverlay })),
+);
 const CelebrationHost = React.lazy(() =>
   import('@/features/celebrate').then((m) => ({ default: m.CelebrationHost })),
 );
@@ -777,6 +780,11 @@ function WorkspaceRoot() {
       {/* V2 — idle takeover. Self-renders only when ambientActive=true. */}
       <AmbientHome />
       <AmbientAudioHost />
+
+      {/* Pixel Pet overlay — video-driven atlas animations (transparent). */}
+      <React.Suspense fallback={null}>
+        <PetOverlay />
+      </React.Suspense>
 
       {/* V3 — 20-20-20 eye-break overlay. Self-renders only while
           wellnessActive=true (wellness.eyeBreak action / assistant). */}

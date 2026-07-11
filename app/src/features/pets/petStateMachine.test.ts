@@ -1,0 +1,86 @@
+import { describe, expect, it } from 'vitest';
+import {
+  canEnterSleep,
+  canScheduleIdleFun,
+  createInitialPetState,
+  reducePetEvent,
+} from './petStateMachine';
+
+describe('petStateMachine', () => {
+  it('starts with welcome once then goes to idlePrimary', () => {
+    let s = createInitialPetState();
+    expect(s.anim).toBe('welcome');
+    s = reducePetEvent(s, { type: 'welcome_done' });
+    expect(s.anim).toBe('idlePrimary');
+    expect(s.welcomePlayed).toBe(true);
+    // second welcome_done is a no-op
+    s = reducePetEvent(s, { type: 'welcome_done' });
+    expect(s.anim).toBe('idlePrimary');
+  });
+
+  it('maps drag direction to walkLeft / walkRight and stops on drag_end', () => {
+    let s = reducePetEvent(createInitialPetState(), { type: 'welcome_done' });
+    s = reducePetEvent(s, { type: 'drag_start', dx: -10, dy: 0 });
+    expect(s.anim).toBe('walkLeft');
+    expect(s.dragging).toBe(true);
+    s = reducePetEvent(s, { type: 'drag_move', dx: 12, dy: 0 });
+    expect(s.anim).toBe('walkRight');
+    s = reducePetEvent(s, { type: 'drag_move', dx: 1, dy: 0 });
+    expect(s.anim).toBe('idlePrimary'); // below stop threshold while still dragging
+    s = reducePetEvent(s, { type: 'drag_end' });
+    expect(s.dragging).toBe(false);
+    expect(s.anim).toBe('idlePrimary');
+  });
+
+  it('plays idleFun only from idlePrimary and returns after done', () => {
+    let s = reducePetEvent(createInitialPetState(), { type: 'welcome_done' });
+    expect(canScheduleIdleFun(s)).toBe(true);
+    s = reducePetEvent(s, { type: 'idle_fun_tick' });
+    expect(s.anim).toBe('idleFun');
+    expect(canScheduleIdleFun(s)).toBe(false);
+    s = reducePetEvent(s, { type: 'idle_fun_done' });
+    expect(s.anim).toBe('idlePrimary');
+  });
+
+  it('does not start idleFun while dragging or sleeping', () => {
+    let s = reducePetEvent(createInitialPetState(), { type: 'welcome_done' });
+    s = reducePetEvent(s, { type: 'drag_start', dx: 8, dy: 0 });
+    s = reducePetEvent(s, { type: 'idle_fun_tick' });
+    expect(s.anim).toBe('walkRight');
+    s = reducePetEvent(s, { type: 'drag_end' });
+    s = reducePetEvent(s, { type: 'sleep_timeout' });
+    expect(s.anim).toBe('sleepTransition');
+    s = reducePetEvent(s, { type: 'idle_fun_tick' });
+    expect(s.anim).toBe('sleepTransition');
+  });
+
+  it('sleep transition enters persistent sleepingLoop until click wakes', () => {
+    let s = reducePetEvent(createInitialPetState(), { type: 'welcome_done' });
+    expect(canEnterSleep(s)).toBe(true);
+    s = reducePetEvent(s, { type: 'sleep_timeout' });
+    expect(s.anim).toBe('sleepTransition');
+    s = reducePetEvent(s, { type: 'sleep_transition_done' });
+    expect(s.anim).toBe('sleepingLoop');
+    expect(s.sleeping).toBe(true);
+    // second sleep timeout ignored
+    s = reducePetEvent(s, { type: 'sleep_timeout' });
+    expect(s.anim).toBe('sleepingLoop');
+    // click opens panel + wake
+    s = reducePetEvent(s, { type: 'click' });
+    expect(s.panelOpen).toBe(true);
+    expect(s.anim).toBe('wakeFromSleep');
+    expect(s.sleeping).toBe(false);
+    s = reducePetEvent(s, { type: 'wake_done' });
+    expect(s.anim).toBe('idlePrimary');
+  });
+
+  it('drag while sleeping wakes into walk direction', () => {
+    let s = reducePetEvent(createInitialPetState(), { type: 'welcome_done' });
+    s = reducePetEvent(s, { type: 'sleep_timeout' });
+    s = reducePetEvent(s, { type: 'sleep_transition_done' });
+    expect(s.sleeping).toBe(true);
+    s = reducePetEvent(s, { type: 'drag_start', dx: -9, dy: 1 });
+    expect(s.sleeping).toBe(false);
+    expect(s.anim).toBe('walkLeft');
+  });
+});

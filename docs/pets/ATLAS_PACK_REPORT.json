@@ -1,0 +1,109 @@
+{
+  "atlases": [
+    {
+      "anim": "walkRight",
+      "frames": 20,
+      "sheet1x": {
+        "w": 640,
+        "h": 512,
+        "bytes": 195546
+      },
+      "sheet2x": {
+        "w": 1280,
+        "h": 1024
+      }
+    },
+    {
+      "anim": "walkLeft",
+      "frames": 20,
+      "sheet1x": {
+        "w": 640,
+        "h": 512,
+        "bytes": 183680
+      },
+      "sheet2x": {
+        "w": 1280,
+        "h": 1024
+      }
+    },
+    {
+      "anim": "idlePrimary",
+      "frames": 48,
+      "sheet1x": {
+        "w": 896,
+        "h": 896,
+        "bytes": 144052
+      },
+      "sheet2x": {
+        "w": 1792,
+        "h": 1792
+      }
+    },
+    {
+      "anim": "idleFun",
+      "frames": 60,
+      "sheet1x": {
+        "w": 1024,
+        "h": 1024,
+        "bytes": 575478
+      },
+      "sheet2x": {
+        "w": 2048,
+        "h": 2048
+      }
+    },
+    {
+      "anim": "welcome",
+      "frames": 60,
+      "sheet1x": {
+        "w": 1024,
+        "h": 1024,
+        "bytes": 204805
+      },
+      "sheet2x": {
+        "w": 2048,
+        "h": 2048
+      }
+    },
+    {
+      "anim": "sleepTransition",
+      "frames": 120,
+      "sheet1x": {
+        "w": 1408,
+        "h": 1408,
+        "bytes": 874048
+      },
+      "sheet2x": {
+        "w": 2816,
+        "h": 2816
+      }
+    },
+    {
+      "anim": "sleepingLoop",
+      "frames": 40,
+      "sheet1x": {
+        "w": 896,
+        "h": 768,
+        "bytes": 304885
+      },
+      "sheet2x": {
+        "w": 1792,
+        "h": 1536
+      }
+    },
+    {
+      "anim": "wakeFromSleep",
+      "frames": 8,
+      "sheet1x": {
+        "w": 384,
+        "h": 384,
+        "bytes": 73896
+      },
+      "sheet2x": {
+        "w": 768,
+        "h": 768
+      }
+    }
+  ],
+  "cell": 128
+}

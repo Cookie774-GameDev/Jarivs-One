@@ -1218,3 +1218,14 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Files touched** | version bumps (`package.json`, `Cargo.toml`, `tauri.conf.json`, `releases.ts`), `CHANGELOG.md`, `RELEASE_NOTES_0.1.47.md`, `docs/AGENT_COORDINATION.md` |
 | **Status** | released |
 | **Commit** | `d6e9bdc` — `Release v0.1.47: official production update on main.` |
+
+#### 2026-07-11 — Pixel Pets video animations (amendment)
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-11 17:20 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Status** | in-progress |
+| **Change** | Process 6 MP4 motion refs → transparent frames/atlases/manifest + PixiJS state machine (walk L/R, idlePrimary, idleFun, welcome, sleepTransition/sleepingLoop/wakeFromSleep). Worktree only. |
+| **Locks** | claimed: tools/pets/pets_pipeline/process_videos.py, pack_atlases.py, app/src/assets/pets/characters/vibespace-axolotl-pixel/animations/**, app/src/features/pets/**, docs/pets/VIDEO_ANIMATION_* |
+
