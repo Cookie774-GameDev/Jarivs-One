@@ -1465,3 +1465,15 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Do not stage** | `install/install.ps1`, `app/src-tauri/Cargo.toml`, unrelated dirty docs/pets assets |
 | **Freeze root cause** | Near-identical stamped atlas cells (JSON multi-frame but visually identical) — not portrait substitution; cream pack is independent of glitch. |
 
+
+#### 2026-07-12 - Pixel Pets verification wire-up
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-12 ~08:42 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Status** | in-progress |
+| **Change** | Wire `shouldShowStandalonePet` into PetHost; `petTerminalLayout` + grid tests; `PetVoiceSurface` VoiceService tests; `petDevPerf` counters; suite **107/107** + typecheck. tauri:dev blocked (port 5173 in use). |
+| **Locks** | held on `app/src/features/pets/**`, axolotl assets, coordination ledger |
+| **Do not stage** | install.ps1, Cargo.toml |
+

@@ -13,6 +13,11 @@ import {
   SCALE_MODES,
   type TextureSource,
 } from 'pixi.js';
+import {
+  petPerfRecordTextureReload,
+  petPerfSetCanvasCount,
+  petPerfSetTickerFps,
+} from './petDevPerf';
 
 export interface AtlasFrame {
   frame: { x: number; y: number; w: number; h: number };
@@ -262,6 +267,10 @@ export class PixiAtlasPlayer {
 
     this.tickerFn = (ticker) => {
       this.update(ticker.deltaMS);
+      // Dev perf: approximate FPS from deltaMS when available.
+      if (ticker.deltaMS > 0) {
+        petPerfSetTickerFps(Math.round(1000 / ticker.deltaMS));
+      }
     };
     app.ticker.add(this.tickerFn);
 
@@ -269,6 +278,7 @@ export class PixiAtlasPlayer {
     this.sprite = sprite;
     liveApplications.add(app);
     liveApplicationCount += 1;
+    petPerfSetCanvasCount(liveApplicationCount);
   }
 
   private resizeToDisplay(): void {
@@ -366,6 +376,7 @@ export class PixiAtlasPlayer {
     this.lastImageUrl = imageUrl;
     this.atlas = atlas;
     this.frameTextures = nextFrames;
+    petPerfRecordTextureReload();
 
     // Dispose previous sheet after swap (not before).
     for (const t of prevFrames.values()) {
@@ -543,6 +554,7 @@ export class PixiAtlasPlayer {
     if (this.app) {
       liveApplications.delete(this.app);
       liveApplicationCount = Math.max(0, liveApplicationCount - 1);
+      petPerfSetCanvasCount(liveApplicationCount);
       try {
         this.app.destroy(true, { children: true, texture: true });
       } catch {

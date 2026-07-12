@@ -22,8 +22,11 @@ import {
   setPetPanelOpenFlag,
   showPetOverlay,
 } from './petTauriBridge';
+import { shouldShowStandalonePet } from './petPanelLifecycle';
 import { installPetPresentationStorageSync } from './petPresentationStore';
 import { installPetSettingsStorageSync, usePetSettingsStore } from './petSettingsStore';
+import { getLivePixiApplicationCount } from './pixiAtlasPlayer';
+import { installPetDevPerfGlobal } from './petDevPerf';
 
 export interface PetHostProps {
   enabled?: boolean;
@@ -65,7 +68,11 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedMotionProp
     }
     setClaimed(true);
     setTauri(isTauriRuntime());
-    return () => releasePetHostInstance();
+    const uninstallPerf = installPetDevPerfGlobal(() => getLivePixiApplicationCount());
+    return () => {
+      uninstallPerf();
+      releasePetHostInstance();
+    };
   }, []);
 
   // Cross-window panel flag (pet-overlay → main) + Tauri poll.
@@ -116,8 +123,13 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedMotionProp
     const sync = async () => {
       const panelVis = await isPetPanelVisible().catch(() => false);
       const flagOpen = readPetPanelOpenFlag();
-      const panelIsOpen = panelVis || flagOpen || hideSpriteForPanel;
-      const wantVisible = enabled && overlayVisible && !panelIsOpen;
+      // Single authoritative rule shared with unit tests (Axo + Glitch).
+      const wantVisible = shouldShowStandalonePet({
+        enabled,
+        overlayVisible,
+        panelOpenFlag: flagOpen || hideSpriteForPanel,
+        panelVisible: panelVis,
+      });
       if (!wantVisible) {
         await hidePetOverlay().catch(() => undefined);
         if (!cancelled && (!enabled || !overlayVisible)) {
@@ -206,7 +218,13 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedMotionProp
 
   if (!claimed || !enabled || !overlayVisible) return null;
 
-  const showInlineSprite = !hideSpriteForPanel && (!tauri || useInlineFallback);
+  const showStandalone = shouldShowStandalonePet({
+    enabled: true,
+    overlayVisible: true,
+    panelOpenFlag: hideSpriteForPanel || panelOpen,
+    panelVisible: false,
+  });
+  const showInlineSprite = showStandalone && (!tauri || useInlineFallback);
 
   return (
     <>

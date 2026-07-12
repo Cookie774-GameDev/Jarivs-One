@@ -24,6 +24,7 @@ import {
 import { disposeAll, mapReducedMotionAnim, reducedMotionFps } from './petLifecycle';
 import { clampPetPosition, getAnimDef, getPetAnimationsManifest, resolveAtlasUrls } from './petManifest';
 import { openOrFocusPetPanel, setPetOverlayPosition } from './petTauriBridge';
+import { petPerfRecordDragUpdate, petPerfRecordStateTransition } from './petDevPerf';
 import {
   PET_FORCE_ANIM_EVENT,
   type PetForceAnimDetail,
@@ -96,6 +97,7 @@ export function PetOverlay({
     const wasPanel = stateRef.current.panelOpen;
     stateRef.current = next;
     if (next.anim !== prevAnim) {
+      petPerfRecordStateTransition();
       setAnimLabel(next.anim);
       onAnimChangeRef.current?.(next.anim);
     }
@@ -397,6 +399,7 @@ export function PetOverlay({
       setPos({ left: clamped.x, top: clamped.y });
     }
     // One locomotion state update per pointer event batch (not per coalesced sample).
+    petPerfRecordDragUpdate();
     applyWalkFromVelocity(walkAnim, vx);
   };
 

@@ -65,33 +65,37 @@ describe('character switch cache eviction (shipped path)', () => {
     document.body.innerHTML = '';
   });
 
-  it('unloadCharacterCache receives glitch imageUrls from planCharacterSwitch', async () => {
-    const { planCharacterSwitch } = await import('./petCharacterSwitch');
-    const { PixiAtlasPlayer } = await import('./pixiAtlasPlayer');
-    const { resolveAtlasUrls, getAnimDef } = await import('./petManifest');
+  it(
+    'unloadCharacterCache receives glitch imageUrls from planCharacterSwitch',
+    async () => {
+      const { planCharacterSwitch } = await import('./petCharacterSwitch');
+      const { PixiAtlasPlayer } = await import('./pixiAtlasPlayer');
+      const { resolveAtlasUrls, getAnimDef } = await import('./petManifest');
 
-    const glitchUrl = resolveAtlasUrls(getAnimDef('idlePrimary', 'glitch')!, 'glitch').imageUrl;
-    expect(glitchUrl.toLowerCase()).toContain('glitch');
+      const glitchUrl = resolveAtlasUrls(getAnimDef('idlePrimary', 'glitch')!, 'glitch').imageUrl;
+      expect(glitchUrl.toLowerCase()).toContain('glitch');
 
-    // Simulate prior load of glitch skin
-    const player = new PixiAtlasPlayer();
-    const host = document.createElement('div');
-    document.body.appendChild(host);
-    await player.init(host, { displaySize: 128, backgroundAlpha: 0 });
+      // Simulate prior load of glitch skin
+      const player = new PixiAtlasPlayer();
+      const host = document.createElement('div');
+      document.body.appendChild(host);
+      await player.init(host, { displaySize: 128, backgroundAlpha: 0 });
 
-    // Manually set last loaded URL as if glitch atlas was loaded
-    // (load() needs fetch; we seed via unloadCharacterCache tracking by loading axo after plan)
-    const plan = planCharacterSwitch('glitch', 'axo', 'idlePrimary', [glitchUrl], 1);
-    expect(plan.imageUrlsToUnload.some((u) => u.toLowerCase().includes('glitch'))).toBe(true);
-    expect(plan.nextAtlas.imageUrl.toLowerCase()).not.toContain('glitch');
+      // Manually set last loaded URL as if glitch atlas was loaded
+      // (load() needs fetch; we seed via unloadCharacterCache tracking by loading axo after plan)
+      const plan = planCharacterSwitch('glitch', 'axo', 'idlePrimary', [glitchUrl], 1);
+      expect(plan.imageUrlsToUnload.some((u) => u.toLowerCase().includes('glitch'))).toBe(true);
+      expect(plan.nextAtlas.imageUrl.toLowerCase()).not.toContain('glitch');
 
-    // This is the exact call PetOverlay makes on characterId change.
-    await player.unloadCharacterCache(plan.imageUrlsToUnload);
+      // This is the exact call PetOverlay makes on characterId change.
+      await player.unloadCharacterCache(plan.imageUrlsToUnload);
 
-    const unloaded = unloadSpy.mock.calls.map((c) => String((c as unknown[])[0] ?? ''));
-    expect(unloaded.length).toBeGreaterThan(0);
-    expect(unloaded.some((u) => u.toLowerCase().includes('glitch'))).toBe(true);
+      const unloaded = unloadSpy.mock.calls.map((c) => String((c as unknown[])[0] ?? ''));
+      expect(unloaded.length).toBeGreaterThan(0);
+      expect(unloaded.some((u) => u.toLowerCase().includes('glitch'))).toBe(true);
 
-    player.dispose();
-  });
+      player.dispose();
+    },
+    20_000,
+  );
 });

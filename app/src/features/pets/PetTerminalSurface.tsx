@@ -15,26 +15,15 @@ import {
   PET_PANEL_TERMINAL_LIMIT_MESSAGE,
 } from './petPanelLifecycle';
 import { usePetPresentationStore } from './petPresentationStore';
+import {
+  gridClassForCount,
+  loadPetTerminalViewMode,
+  savePetTerminalViewMode,
+  type PetTerminalViewMode,
+} from './petTerminalLayout';
 import { cn } from '@/lib/utils';
 
-export type PetTerminalViewMode = 'tabs' | 'grid';
-
-const VIEW_MODE_KEY = 'vibespace-pet-terminal-view-mode';
-
-function loadViewMode(): PetTerminalViewMode {
-  try {
-    const v = localStorage.getItem(VIEW_MODE_KEY);
-    return v === 'grid' ? 'grid' : 'tabs';
-  } catch {
-    return 'tabs';
-  }
-}
-
-function gridClass(count: number): string {
-  if (count <= 1) return 'grid-cols-1 grid-rows-1';
-  if (count === 2) return 'grid-cols-2 grid-rows-1';
-  return 'grid-cols-2 grid-rows-2';
-}
+export type { PetTerminalViewMode };
 
 export function PetTerminalSurface({ className }: { className?: string }) {
   const workspaceId = useAuthStore((s) => s.workspaceId);
@@ -48,15 +37,11 @@ export function PetTerminalSurface({ className }: { className?: string }) {
   const lastLimitMessage = usePetPresentationStore((s) => s.lastLimitMessage);
   const petTerminalCount = usePetPresentationStore((s) => s.petTerminalCount);
 
-  const [viewMode, setViewMode] = React.useState<PetTerminalViewMode>(loadViewMode);
+  const [viewMode, setViewMode] = React.useState<PetTerminalViewMode>(loadPetTerminalViewMode);
 
   const setMode = (m: PetTerminalViewMode) => {
     setViewMode(m);
-    try {
-      localStorage.setItem(VIEW_MODE_KEY, m);
-    } catch {
-      /* ignore */
-    }
+    savePetTerminalViewMode(m);
   };
 
   const sessions = useLiveQuery(
@@ -285,7 +270,7 @@ export function PetTerminalSurface({ className }: { className?: string }) {
           </div>
         ) : viewMode === 'grid' ? (
           <div
-            className={cn('grid h-full min-h-0 gap-1 p-1', gridClass(petTerms.length))}
+            className={cn('grid h-full min-h-0 gap-1 p-1', gridClassForCount(petTerms.length))}
             data-pet-terminal-grid="true"
             data-pet-terminal-count={petTerms.length}
           >
