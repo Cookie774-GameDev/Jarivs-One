@@ -157,20 +157,24 @@ begin
   raise notice 'OK: RLS enabled on message/call/plan tables';
 end $$;
 
--- ── 8. plan limits seeded with the friendly credits/minutes ──────────────────
+-- ── 8. plan limits seeded with DeepSeek-heavy credits/minutes (0029) ─────────
 do $$
 declare v public.subscription_plan_limits%rowtype;
 begin
-  -- Values per migration 0021 (38% margin model).
+  -- Values per migration 0029 (33% COGS: DeepSeek 45 / call 42.5 / SMS 12.5).
   select * into v from public.subscription_plan_limits where plan='starter';
-  if v.message_credits <> 3100 or v.call_minutes <> 22 then
-    raise exception 'starter limits wrong: % credits, % min', v.message_credits, v.call_minutes;
+  if v.message_credits <> 1485 or v.call_minutes <> 14 or v.sms_count <> 41 then
+    raise exception 'starter limits wrong: % credits, % min, % sms',
+      v.message_credits, v.call_minutes, v.sms_count;
+  end if;
+  if public.unified_plan_budget_usd('starter') is distinct from 3.30 then
+    raise exception 'starter unified pool should be 3.30';
   end if;
   select * into v from public.subscription_plan_limits where plan='ultra';
-  if v.message_credits <> 31000 or v.call_minutes <> 217 then
+  if v.message_credits <> 14850 or v.call_minutes <> 140 then
     raise exception 'ultra limits wrong: % credits, % min', v.message_credits, v.call_minutes;
   end if;
-  raise notice 'OK: subscription_plan_limits seeded correctly';
+  raise notice 'OK: subscription_plan_limits seeded correctly (0029 + unified pool)';
 end $$;
 
 -- ── 9. message/call budget reserve enforces limits ───────────────────────────

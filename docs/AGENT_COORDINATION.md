@@ -1857,3 +1857,26 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | `supabase/migrations/0028-0030` | CREDITS-E2E | v0.1.48 | released | applied live |
 | `docs/AGENT_COORDINATION.md` | CREDITS-E2E | v0.1.48 | released | |
 
+### Security Agent — AGENT-SEC-20260712-CREDITS-FIX
+
+#### 2026-07-12 — Close remaining credits risks (SQL tests, Stripe path, Pages verify)
+
+| Field | Value |
+|-------|-------|
+| **Agent ID** | `AGENT-SEC-20260712-CREDITS-FIX` |
+| **Status** | complete; locks released |
+| **SQL** | Rewrote `subscription_v2_behavior.sql` for 0029/0030; fixed `rls_voice_verification` plan limits; added `unified_credit_pool_behavior.sql`. Both unified + subscription suites **ran live with begin/rollback — PASS**. |
+| **Stripe path** | Products/prices present ($10/$50/$100/$200); webhook GET **200**; checkout without JWT **401**; secrets map plan→price server-side. Full browser card flow still requires human with test card (cannot mint user JWT here). |
+| **Website** | GitHub Pages deploy for `c5921a5` **success**; live `vibespaceos.com` shows shared company credits ~3,300/16,500/33,000; old 3,100 gone. |
+| **Unit tests** | billing/account **38/38** pass |
+| **Risks remaining** | Manual Stripe Checkout with 4242… still recommended once in sandbox; `landing/` is source copy (Pages serves `site/`). |
+| **Locks** | released below |
+
+| Path | Agent | Ver | Status | Note |
+|------|-------|-----|--------|------|
+| `supabase/tests/subscription_v2_behavior.sql` | CREDITS-FIX | v0.1.48 | released | |
+| `supabase/tests/rls_voice_verification.sql` | CREDITS-FIX | v0.1.48 | released | |
+| `supabase/tests/unified_credit_pool_behavior.sql` | CREDITS-FIX | v0.1.48 | released | |
+| `docs/stripe-setup.md` | CREDITS-FIX | v0.1.48 | released | E2E checklist |
+| `docs/AGENT_COORDINATION.md` | CREDITS-FIX | v0.1.48 | released | |
+

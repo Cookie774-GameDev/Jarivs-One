@@ -63,11 +63,19 @@ npx supabase functions deploy call-status twilio-voice-webhook twilio-message-we
 ## 5. Test (test mode)
 
 - Use Stripe CLI to forward events: `stripe listen --forward-to <webhook url>`.
-- Use test card `4242 4242 4242 4242`.
+- Use test card `4242 4242 4242 4242` (any future expiry, any CVC).
 - The app sends only a **plan name** (`starter`/`pro`/`ultra`/`apex`); the price is
   resolved server-side. Frontend-supplied prices are ignored.
 - Health check (must return 200 text, **not** 401 JSON):  
   `GET https://<project-ref>.supabase.co/functions/v1/stripe-webhook`
+- Unauthenticated checkout must be **401**:  
+  `POST .../create-checkout-session` without `Authorization` → gateway rejects.
+- After a successful test Checkout: `profiles.tier` updates →  
+  `sync_message_call_usage_for_user` seeds message/call/sms rows for that plan’s
+  budgets. Usage is a **shared company credit pool** (not Stripe metered billing).
+- SQL regression (transactional, rolls back):  
+  `supabase/tests/subscription_v2_behavior.sql` and  
+  `supabase/tests/unified_credit_pool_behavior.sql`
 
 ## Security guarantees (implemented)
 
