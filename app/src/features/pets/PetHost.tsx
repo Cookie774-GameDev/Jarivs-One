@@ -51,6 +51,9 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedMotionProp
   /** Hide sprite when mini panel is open (local UI or Tauri panel). */
   const [hideSpriteForPanel, setHideSpriteForPanel] = React.useState(false);
   const [useInlineFallback, setUseInlineFallback] = React.useState(false);
+  /** App is exiting / hiding — never respawn pet-overlay. */
+  const [shuttingDown, setShuttingDown] = React.useState(false);
+  const shuttingDownRef = React.useRef(false);
 
   React.useEffect(() => {
     const a = installPetPresentationStorageSync();
@@ -115,12 +118,41 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedMotionProp
     };
   }, [claimed, tauri]);
 
+  // Shutdown: never briefly respawn the pet while the app is hiding/exiting.
+  React.useEffect(() => {
+    if (!claimed) return;
+    const markShutdown = () => {
+      shuttingDownRef.current = true;
+      setShuttingDown(true);
+      setPetPanelOpenFlag(false);
+      void hidePetOverlay().catch(() => undefined);
+    };
+    const onPageHide = () => markShutdown();
+    const onBeforeUnload = () => markShutdown();
+    const onPersist = () => markShutdown();
+    const onBeforeHide = () => markShutdown();
+    window.addEventListener('pagehide', onPageHide);
+    window.addEventListener('beforeunload', onBeforeUnload);
+    window.addEventListener('jarvis:persist-now', onPersist);
+    window.addEventListener('jarvis:before-hide', onBeforeHide);
+    return () => {
+      window.removeEventListener('pagehide', onPageHide);
+      window.removeEventListener('beforeunload', onBeforeUnload);
+      window.removeEventListener('jarvis:persist-now', onPersist);
+      window.removeEventListener('jarvis:before-hide', onBeforeHide);
+    };
+  }, [claimed]);
+
   // Drive Tauri pet-overlay visibility.
   React.useEffect(() => {
     if (!claimed || !tauri) return;
     let cancelled = false;
 
     const sync = async () => {
+      if (shuttingDownRef.current) {
+        await hidePetOverlay().catch(() => undefined);
+        return;
+      }
       const panelVis = await isPetPanelVisible().catch(() => false);
       const flagOpen = readPetPanelOpenFlag();
       // Single authoritative rule shared with unit tests (Axo + Glitch).
@@ -129,6 +161,7 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedMotionProp
         overlayVisible,
         panelOpenFlag: flagOpen || hideSpriteForPanel,
         panelVisible: panelVis,
+        shuttingDown: shuttingDownRef.current,
       });
       if (!wantVisible) {
         await hidePetOverlay().catch(() => undefined);
@@ -139,7 +172,7 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedMotionProp
       }
       await showPetOverlay().catch((err) => console.warn('[pets] show overlay', err));
       await new Promise((r) => setTimeout(r, 280));
-      if (cancelled) return;
+      if (cancelled || shuttingDownRef.current) return;
       const visible = await isPetOverlayVisible();
       setUseInlineFallback(!visible);
     };
@@ -148,7 +181,7 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedMotionProp
     return () => {
       cancelled = true;
     };
-  }, [claimed, tauri, enabled, overlayVisible, hideSpriteForPanel]);
+  }, [claimed, tauri, enabled, overlayVisible, hideSpriteForPanel, shuttingDown]);
 
   React.useEffect(() => {
     if (enabled && !overlayVisible) {
@@ -216,13 +249,14 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedMotionProp
     };
   }, [closePanel, openPanel]);
 
-  if (!claimed || !enabled || !overlayVisible) return null;
+  if (!claimed || !enabled || !overlayVisible || shuttingDown) return null;
 
   const showStandalone = shouldShowStandalonePet({
     enabled: true,
     overlayVisible: true,
     panelOpenFlag: hideSpriteForPanel || panelOpen,
     panelVisible: false,
+    shuttingDown,
   });
   const showInlineSprite = showStandalone && (!tauri || useInlineFallback);
 

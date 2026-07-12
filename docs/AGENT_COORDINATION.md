@@ -1488,3 +1488,15 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Change** | Terminal grid Focus/Max/Main/Close + shell labels + non-focused `pointer-events-none`; drag locomotion applied once per rAF; voice provider status + safe activity only. Suite **109/109**. Port 5173 already running this worktree vite + jarvis.exe. |
 | **Do not stage** | install.ps1, Cargo.toml |
 
+
+#### 2026-07-12 - Freeze chain audit + shutdown wire
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-12 ~08:47 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Status** | in-progress |
+| **Change** | Re-documented Axo freeze root cause + live manifest dump; PetHost `shuttingDown` on pagehide/beforeunload/jarvis:before-hide/jarvis:persist-now so overlay never respawns on exit. |
+| **Locks** | pets/** + axolotl assets + ledger |
+| **Do not stage** | install.ps1, Cargo.toml |
+
