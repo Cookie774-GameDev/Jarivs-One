@@ -1549,3 +1549,32 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Do not stage** | install.ps1, Cargo.toml |
 | **No merge** | draft PR #19 only |
 
+
+#### 2026-07-12 - Freeze diagnosis re-register at 8cdbe7f
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-12 ~08:58 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **HEAD** | `8cdbe7f` |
+| **Status** | in-progress — locks reacquired; freeze chain dump refreshed; gating suite re-run |
+| **Freeze root cause** | Near-identical cream atlas stamps (implementer/axo-glitch-mapping.txt) |
+| **Code tip** | `8fc7567` (DEV diagnostics + six-issue fixes) |
+| **Do not stage** | install.ps1, Cargo.toml |
+| **No merge** | draft PR #19 only |
+
+
+#### 2026-07-12 - Manual Windows QA + mini-panel TooltipProvider fix
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-12 ~09:15 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Branch** | `agent/pixel-pets-axolotl` (draft PR #19) |
+| **Status** | in-progress — **not complete**; locks held |
+| **Bug found/fixed** | Opening Pet mini panel crashed main UI: `Tooltip must be used within TooltipProvider` because `PetHost` mounts outside `AppShell`. Wrapped `PetMiniPanel` in `TooltipProvider`. |
+| **Manual Windows evidence** | Restored running `jarvis.exe` (this worktree + vite:5173). Cream Axo animates (8/8 unique pet-crop hashes). Panel open hides standalone pet; minimize restores pet. Terminals: Tabs, 4/4 cap + exact limit message, Focus/Max/Main/Close. Voice: Listen/Mute + real STT→AI→TTS copy. Suite **111/111**. |
+| **Still open** | Full interactive Glitch slow-drag walk QA; Grid multi-xterm visual proof; packaged build; multi-DPI matrix; dedicated `pet-overlay`/`pet-mini-panel` Tauri HWNDs not observed (inline fallback path exercised). |
+| **Do not stage** | install.ps1, Cargo.toml, dirty docs/pets assets |
+| **No merge/deploy** | draft PR #19 only |
+

@@ -5,6 +5,7 @@
 import * as React from 'react';
 import { MessageSquare, Terminal, Activity, Minus, X, GripVertical, Cat, Mic } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import {
   PET_PANEL_CLOSE_CONFIRM_BUTTONS,
@@ -209,7 +210,11 @@ export function PetMiniPanel({
     window.addEventListener('pointerup', up);
   };
 
+  // PetHost mounts outside AppShell, and the dedicated Tauri pet-mini-panel
+  // window has no shell either — chat/voice children use Tooltip/Hint and
+  // crash without a provider ("Tooltip must be used within TooltipProvider").
   return (
+    <TooltipProvider delayDuration={400}>
     <div
       className={cn(
         windowMode
@@ -430,5 +435,6 @@ export function PetMiniPanel({
         </div>
       )}
     </div>
+    </TooltipProvider>
   );
 }
