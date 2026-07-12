@@ -22,6 +22,7 @@ import {
   type DragVelocityState,
 } from './petDragVelocity';
 import { disposeAll, mapReducedMotionAnim, reducedMotionFps } from './petLifecycle';
+import { planCharacterSwitch } from './petCharacterSwitch';
 import { clampPetPosition, getAnimDef, getPetAnimationsManifest, resolveAtlasUrls } from './petManifest';
 import { openOrFocusPetPanel, setPetOverlayPosition } from './petTauriBridge';
 import {
@@ -235,15 +236,29 @@ export function PetOverlay({
     }
   }, [enabled, playAnim, animLabel]);
 
-  // Character (Axo↔Glitch) change only: clear Pixi cache so a prior skin cannot stick.
+  // Character (Axo↔Glitch) change only: unload prior skin atlas image URLs from
+  // Pixi Assets so a Glitch frame cannot stick after selecting Axo.
   const prevCharacterId = React.useRef(characterId);
   React.useEffect(() => {
     if (!enabled) return;
     if (prevCharacterId.current === characterId) return;
+    const previous = prevCharacterId.current;
     prevCharacterId.current = characterId;
     currentAnim.current = null;
     animCache.current.clear();
-    void playerRef.current.unloadCharacterCache().then(() => playAnim(animLabel));
+    const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+    const priorUrls = playerRef.current.loadedImageUrl
+      ? [playerRef.current.loadedImageUrl]
+      : [];
+    try {
+      const plan = planCharacterSwitch(previous, characterId, animLabel, priorUrls, dpr);
+      void playerRef.current
+        .unloadCharacterCache(plan.imageUrlsToUnload)
+        .then(() => playAnim(animLabel));
+    } catch (err) {
+      console.warn('[pets] character switch plan failed', err);
+      void playerRef.current.unloadCharacterCache(priorUrls).then(() => playAnim(animLabel));
+    }
   }, [enabled, characterId, playAnim, animLabel]);
 
   // Scheduler tick (Pixi ticker advances frames; we only poll sleep/idleFun here).

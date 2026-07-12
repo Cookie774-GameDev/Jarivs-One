@@ -77,6 +77,8 @@ export class PixiAtlasPlayer {
   private mountEl: HTMLElement | null = null;
   private lastFilter: 'nearest' | 'linear' | null = null;
   private loadGeneration = 0;
+  /** Last successfully loaded atlas image URL (for cache eviction on skin switch). */
+  private lastImageUrl: string | null = null;
 
   get application(): Application | null {
     return this.app;
@@ -221,13 +223,25 @@ export class PixiAtlasPlayer {
   /**
    * Load atlas JSON + image. Replaces prior atlas textures.
    */
+  /** Image URL of the atlas currently held by this player (if any). */
+  get loadedImageUrl(): string | null {
+    return this.lastImageUrl;
+  }
+
   /**
    * Drop cached textures for a prior skin so switching Axo↔Glitch cannot leave
    * a stale Glitch frame on screen under the Axo character id.
+   * Always unloads `lastImageUrl` plus any extra URLs passed by the caller.
    */
   async unloadCharacterCache(imageUrls: string[] = []): Promise<void> {
+    const urls = new Set<string>();
+    if (this.lastImageUrl) urls.add(this.lastImageUrl);
+    for (const u of imageUrls) {
+      if (u) urls.add(u);
+    }
     this.clearFrameTextures();
-    for (const url of imageUrls) {
+    this.lastImageUrl = null;
+    for (const url of urls) {
       try {
         await Assets.unload(url);
       } catch {
@@ -241,29 +255,18 @@ export class PixiAtlasPlayer {
     if (!this.app) throw new Error('PixiAtlasPlayer.init() required before load');
 
     const gen = ++this.loadGeneration;
-    // Evict previous base texture from Pixi cache before loading a new skin.
-    if (this.baseTexture) {
-      try {
-        const prevSrc = (this.baseTexture as { source?: { label?: string } }).source?.label;
-        if (prevSrc) await Assets.unload(prevSrc);
-      } catch {
-        /* ignore */
-      }
+    // Evict previous skin's atlas from Pixi Assets cache before loading a new one.
+    if (this.lastImageUrl && this.lastImageUrl !== imageUrl) {
+      await this.unloadCharacterCache([this.lastImageUrl]);
+    } else {
+      this.clearFrameTextures();
     }
-    this.clearFrameTextures();
 
     const res = await fetch(atlasUrl);
     if (!res.ok) throw new Error(`atlas fetch failed: ${atlasUrl}`);
     const atlas = (await res.json()) as AtlasJson;
     if (gen !== this.loadGeneration) return;
 
-    // Cache-bust key includes url so Axo/Glitch sheets never collide in Assets.
-    const cacheKey = `${imageUrl}#pet-atlas`;
-    try {
-      await Assets.unload(cacheKey);
-    } catch {
-      /* ignore */
-    }
     try {
       await Assets.unload(imageUrl);
     } catch {
@@ -284,6 +287,7 @@ export class PixiAtlasPlayer {
     }
 
     this.baseTexture = base;
+    this.lastImageUrl = imageUrl;
     this.atlas = atlas;
     this.applyNearestFilter(base);
 
