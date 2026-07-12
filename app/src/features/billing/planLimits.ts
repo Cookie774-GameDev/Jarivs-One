@@ -44,39 +44,40 @@ export const PUBLIC_PLANS: Record<BillingPlanId, PublicPlan> = {
   },
   starter: {
     id: 'starter',
-    label: 'Starter',
+    label: 'Orbit',
     priceUsd: 10,
-    messageCredits: 3100,
+    /** DeepSeek credits @ $0.001 — 45% of 33% sticker COGS. */
+    messageCredits: 1485,
     callMinutes: PHONE_MINUTES_BY_PLAN.starter,
-    smsTexts: 100,
-    blurb: `${callVoiceBucketLine('starter')}. ${UNLIMITED_LOCAL_KOKORO_LINE}. Plus AI messages and SMS.`,
+    smsTexts: 41,
+    blurb: `${callVoiceBucketLine('starter')}. ${UNLIMITED_LOCAL_KOKORO_LINE}. Plus DeepSeek chat credits and SMS.`,
   },
   pro: {
     id: 'pro',
-    label: 'Pro',
+    label: 'Nova',
     priceUsd: 50,
-    messageCredits: 15500,
+    messageCredits: 7425,
     callMinutes: PHONE_MINUTES_BY_PLAN.pro,
-    smsTexts: 500,
-    blurb: `${callVoiceBucketLine('pro')}. ${UNLIMITED_LOCAL_KOKORO_LINE}. Plus more AI messages and SMS.`,
+    smsTexts: 206,
+    blurb: `${callVoiceBucketLine('pro')}. ${UNLIMITED_LOCAL_KOKORO_LINE}. Plus more DeepSeek credits and SMS.`,
   },
   ultra: {
     id: 'ultra',
-    label: 'Ultra',
+    label: 'Singularity',
     priceUsd: 100,
-    messageCredits: 31000,
+    messageCredits: 14850,
     callMinutes: PHONE_MINUTES_BY_PLAN.ultra,
-    smsTexts: 1000,
-    blurb: `${callVoiceBucketLine('ultra')}. ${UNLIMITED_LOCAL_KOKORO_LINE}. Maximum AI messages and SMS.`,
+    smsTexts: 412,
+    blurb: `${callVoiceBucketLine('ultra')}. ${UNLIMITED_LOCAL_KOKORO_LINE}. Maximum DeepSeek credits and SMS.`,
   },
   apex: {
     id: 'apex',
     label: 'Supernova',
     priceUsd: 200,
-    messageCredits: 62000,
+    messageCredits: 29700,
     callMinutes: PHONE_MINUTES_BY_PLAN.apex,
-    smsTexts: 1860,
-    blurb: `${callVoiceBucketLine('apex')}. ${UNLIMITED_LOCAL_KOKORO_LINE}. Double Singularity for Hive-heavy work.`,
+    smsTexts: 825,
+    blurb: `${callVoiceBucketLine('apex')}. ${UNLIMITED_LOCAL_KOKORO_LINE}. Double Singularity for heavy voice + chat.`,
   },
 };
 
@@ -102,6 +103,10 @@ export interface CombinedUsage {
   message: UsageBucket;
   call: UsageBucket;
   sms: UsageBucket;
+  /** Shared company pool (1 credit ≈ $0.001). Optional for older edge builds. */
+  credits_included?: number;
+  credits_used?: number;
+  credits_remaining?: number;
 }
 
 export interface MessageUsage {
@@ -181,4 +186,107 @@ export function getCallUsage(): Promise<CallUsage | null> {
 /** All three buckets (messages / calls / SMS) with window remainders. */
 export function getCombinedUsage(): Promise<CombinedUsage | null> {
   return fetchUsage<CombinedUsage>('get-message-usage');
+}
+
+/** Progress bar percent (0–100). Safe when included is 0. */
+export function usagePercent(used: number, included: number): number {
+  if (!Number.isFinite(used) || !Number.isFinite(included) || included <= 0) return 0;
+  return Math.min(100, Math.max(0, Math.round((used / included) * 100)));
+}
+
+/** Human reset label for usage footers. Returns null when unknown. */
+export function formatUsageResetDate(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+/**
+ * Unified company credits — one internal unit for DeepSeek, phone, and SMS.
+ * 1 credit ≈ $0.001 company cost (same as a DeepSeek message credit).
+ */
+export const CREDITS_PER_USD = 1000;
+/** Phone minute ≈ $0.10 → 100 credits. */
+export const CREDITS_PER_PHONE_MINUTE = 100;
+/** SMS text ≈ $0.01 → 10 credits. */
+export const CREDITS_PER_SMS = 10;
+
+export interface UnifiedCreditPool {
+  included: number;
+  used: number;
+  remaining: number;
+  percent: number;
+  /** Soft breakdown for legend (not separate hard caps when pool is fungible). */
+  deepseekUsed: number;
+  phoneMinutesUsed: number;
+  smsUsed: number;
+}
+
+/** Convert a CombinedUsage snapshot into one shared credit pool for the UI bar. */
+export function unifiedCreditsFromCombined(
+  usage: CombinedUsage | null | undefined,
+): UnifiedCreditPool | null {
+  if (!usage) return null;
+  if (usage.admin_unlimited) {
+    return {
+      included: Number.POSITIVE_INFINITY,
+      used: 0,
+      remaining: Number.POSITIVE_INFINITY,
+      percent: 0,
+      deepseekUsed: 0,
+      phoneMinutesUsed: 0,
+      smsUsed: 0,
+    };
+  }
+  const deepseekUsed = Math.max(0, usage.message?.used ?? 0);
+  const phoneMinutesUsed = Math.max(0, usage.call?.used ?? 0);
+  const smsUsed = Math.max(0, usage.sms?.used ?? 0);
+
+  const included =
+    Math.max(0, usage.message?.included ?? 0) +
+    Math.max(0, usage.call?.included ?? 0) * CREDITS_PER_PHONE_MINUTE +
+    Math.max(0, usage.sms?.included ?? 0) * CREDITS_PER_SMS;
+
+  const used =
+    deepseekUsed +
+    phoneMinutesUsed * CREDITS_PER_PHONE_MINUTE +
+    smsUsed * CREDITS_PER_SMS;
+
+  if (included <= 0 && used <= 0) {
+    return {
+      included: 0,
+      used: 0,
+      remaining: 0,
+      percent: 0,
+      deepseekUsed,
+      phoneMinutesUsed,
+      smsUsed,
+    };
+  }
+
+  const remaining = Math.max(0, included - used);
+  return {
+    included,
+    used: Math.min(used, included || used),
+    remaining,
+    percent: usagePercent(used, included || used || 1),
+    deepseekUsed,
+    phoneMinutesUsed,
+    smsUsed,
+  };
+}
+
+export function unifiedCreditCopy(pool: UnifiedCreditPool | null, plan: BillingPlanId): string {
+  if (plan === 'free' || !pool || pool.included === 0) {
+    return 'Company credits not included on this plan. Use BYOK or local models for chat; subscribe for DeepSeek, phone, and SMS.';
+  }
+  if (!Number.isFinite(pool.included)) {
+    return 'Admin unlimited company credits.';
+  }
+  return (
+    `Shared pool: ${pool.used.toLocaleString()} used / ${pool.included.toLocaleString()} credits · ` +
+    `${pool.remaining.toLocaleString()} left. ` +
+    `Rates: DeepSeek 1 credit · phone ${CREDITS_PER_PHONE_MINUTE}/min · SMS ${CREDITS_PER_SMS}/text.`
+  );
 }

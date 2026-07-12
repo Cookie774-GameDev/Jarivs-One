@@ -4,15 +4,22 @@
 // Idempotent via subscription_events.event_id unique constraint.
 //
 // Security:
+//   - Deploy with verify_jwt=false (Stripe sends stripe-signature, not Supabase JWT).
 //   - Signature verified against the RAW request body (req.text()).
 //   - Invalid/modified signatures -> 400.
 //   - Processed duplicate event ids -> short-circuit (no double-credit).
 //   - Failed/unprocessed duplicate event ids -> retry so Stripe retries work.
 //   - Plan is ALWAYS derived from the Stripe price id, never the client.
+//   - past_due keeps paid access during dunning; free only on cancel/unpaid/expired.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.46.2';
 import Stripe from 'https://esm.sh/stripe@14.21.0?target=deno';
 import { planForPriceId } from '../_shared/voice.ts';
+import {
+  invoicePaymentFailedForcesFree,
+  subscriptionKeepsPaidAccess,
+  subscriptionRevokesToFree,
+} from '../_shared/subscriptionStatus.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -61,6 +68,18 @@ async function applyPlan(customerId: string, plan: string, sub: Stripe.Subscript
       updated_at: new Date().toISOString(),
     });
   }
+}
+
+async function applySubscriptionEvent(customerId: string, sub: Stripe.Subscription) {
+  if (subscriptionKeepsPaidAccess(sub.status)) {
+    const plan = planFromSubscription(sub);
+    if (plan) await applyPlan(customerId, plan, sub);
+    return;
+  }
+  if (subscriptionRevokesToFree(sub.status)) {
+    await applyPlan(customerId, 'free', sub);
+  }
+  // Other statuses (incomplete, paused, etc.): leave tier alone until Stripe resolves.
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
@@ -122,8 +141,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         const customerId = typeof session.customer === 'string' ? session.customer : session.customer?.id;
         if (customerId && session.subscription) {
           const sub = await stripe.subscriptions.retrieve(String(session.subscription));
-          const plan = planFromSubscription(sub);
-          if (plan) await applyPlan(customerId, plan, sub);
+          await applySubscriptionEvent(customerId, sub);
         }
         break;
       }
@@ -131,14 +149,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       case 'customer.subscription.updated': {
         const sub = event.data.object as Stripe.Subscription;
         const customerId = typeof sub.customer === 'string' ? sub.customer : sub.customer?.id;
-        if (customerId) {
-          if (sub.status === 'active' || sub.status === 'trialing') {
-            const plan = planFromSubscription(sub);
-            if (plan) await applyPlan(customerId, plan, sub);
-          } else if (sub.status === 'canceled' || sub.status === 'unpaid' || sub.status === 'past_due') {
-            await applyPlan(customerId, 'free', sub);
-          }
-        }
+        if (customerId) await applySubscriptionEvent(customerId, sub);
         break;
       }
       case 'customer.subscription.deleted': {
@@ -148,13 +159,27 @@ Deno.serve(async (req: Request): Promise<Response> => {
         break;
       }
       case 'invoice.payment_failed': {
+        // Do not thrash tier on a single failed charge. Sync subscription
+        // status if Stripe still considers the sub past_due/active so the
+        // row reflects dunning, but keep paid plan until revoke statuses.
+        if (invoicePaymentFailedForcesFree()) {
+          const invoice = event.data.object as Stripe.Invoice;
+          const customerId = typeof invoice.customer === 'string' ? invoice.customer : invoice.customer?.id;
+          if (customerId) await applyPlan(customerId, 'free', null);
+          break;
+        }
         const invoice = event.data.object as Stripe.Invoice;
         const customerId = typeof invoice.customer === 'string' ? invoice.customer : invoice.customer?.id;
-        if (customerId) await applyPlan(customerId, 'free', null);
+        const subRef = invoice.subscription;
+        if (customerId && subRef) {
+          const sub = await stripe.subscriptions.retrieve(String(subRef));
+          await applySubscriptionEvent(customerId, sub);
+        }
         break;
       }
       case 'invoice.payment_succeeded':
         // Period renewal: reserve_voice_seconds resets usage lazily on next call.
+        // If payment recovers from past_due, subscription.updated also fires.
         break;
       default:
         break;

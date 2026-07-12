@@ -10,20 +10,25 @@ export const USD_PER_PHONE_MINUTE_DISPLAY = 0.1;
 export const USD_PER_CLOUD_VOICE_MINUTE_DISPLAY = 0.015;
 export const USD_PER_STT_MINUTE_DISPLAY = 0.008;
 
+/**
+ * Shared call + Deepgram voice COGS (USD/mo).
+ * Plan split (33% sticker COGS): DeepSeek 45% · call/voice 42.5% · SMS 12.5%.
+ */
 export const CALL_VOICE_BUDGET_USD: Record<CallVoicePlanId, number> = {
   free: 0,
-  starter: 2.17,
-  pro: 10.85,
-  ultra: 21.7,
-  apex: 43.4,
+  starter: 1.4,
+  pro: 7.01,
+  ultra: 14.03,
+  apex: 28.05,
 };
 
+/** Phone minutes if the call/voice pot is burned entirely on PSTN (~$0.10/min). */
 export const PHONE_MINUTES_BY_PLAN: Record<CallVoicePlanId, number> = {
   free: 0,
-  starter: 22,
-  pro: 109,
-  ultra: 217,
-  apex: 434,
+  starter: 14,
+  pro: 70,
+  ultra: 140,
+  apex: 280,
 };
 
 export const DEEPGRAM_PROMO_POOL_USD: Record<PromoPhase, number> = {

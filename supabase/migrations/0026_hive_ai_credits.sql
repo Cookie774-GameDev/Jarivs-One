@@ -117,7 +117,7 @@ as $$
     (select s.plan
        from public.subscriptions s
       where s.user_id = p_user_id
-        and s.status in ('active', 'trialing')
+        and s.status in ('active', 'trialing', 'past_due')
       order by s.current_period_end desc nulls last
       limit 1),
     (select p.tier from public.profiles p where p.id = p_user_id),

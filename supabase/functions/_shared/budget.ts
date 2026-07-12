@@ -9,7 +9,7 @@ export type PlanId = 'free' | 'starter' | 'pro' | 'ultra';
 
 // Server-authoritative budgets (USD/month). Mirror of subscription_plan_limits.
 // The DB table is the source of truth at runtime; this is a typed fallback.
-// Economics: 38% gross margin; 62% COGS split 50/35/15 AI/calls/SMS.
+// Economics: COGS ≤ 33% of sticker; split DeepSeek 45% · call/voice 42.5% · SMS 12.5%.
 export const PLAN_LIMITS: Record<PlanId, {
   messageBudgetUsd: number;
   callBudgetUsd: number;
@@ -19,9 +19,9 @@ export const PLAN_LIMITS: Record<PlanId, {
   smsCount: number;
 }> = {
   free: { messageBudgetUsd: 0, callBudgetUsd: 0, smsBudgetUsd: 0, messageCredits: 0, callMinutes: 0, smsCount: 0 },
-  starter: { messageBudgetUsd: 3.10, callBudgetUsd: 2.17, smsBudgetUsd: 0.93, messageCredits: 3100, callMinutes: 22, smsCount: 93 },
-  pro: { messageBudgetUsd: 15.50, callBudgetUsd: 10.85, smsBudgetUsd: 4.65, messageCredits: 15500, callMinutes: 109, smsCount: 465 },
-  ultra: { messageBudgetUsd: 31.00, callBudgetUsd: 21.70, smsBudgetUsd: 9.30, messageCredits: 31000, callMinutes: 217, smsCount: 930 },
+  starter: { messageBudgetUsd: 1.485, callBudgetUsd: 1.4025, smsBudgetUsd: 0.4125, messageCredits: 1485, callMinutes: 14, smsCount: 41 },
+  pro: { messageBudgetUsd: 7.425, callBudgetUsd: 7.0125, smsBudgetUsd: 2.0625, messageCredits: 7425, callMinutes: 70, smsCount: 206 },
+  ultra: { messageBudgetUsd: 14.85, callBudgetUsd: 14.025, smsBudgetUsd: 4.125, messageCredits: 14850, callMinutes: 140, smsCount: 412 },
 };
 
 // Triple rate windows: each spend bucket is capped per rolling window as a
@@ -33,12 +33,13 @@ export const MAX_PROMPT_CHARS = 100_000;
 export const MAX_CALL_SECONDS = 1_800; // 30 min hard cap per call
 export const MAX_SMS_CHARS = 1_000; // hard cap per request (~7 GSM segments)
 
-// 1 message credit ≈ $0.001 of company spend (so Starter $3.10 → 3100 credits).
+// 1 company credit ≈ $0.001 of company spend (DeepSeek unit).
+// Shared monthly pool ≈ sum of message+call+sms budgets (Starter $3.30 → ~3300 credits).
 export const USD_PER_MESSAGE_CREDIT = 0.001;
-// Estimated company cost per call-minute (Twilio + STT + LLM + TTS), USD.
-export const USD_PER_CALL_MINUTE = 0.1; // Starter $2.17 → ~22 min
-// Estimated company cost per SMS segment (Twilio outbound + overhead), USD.
-export const USD_PER_SMS = 0.01; // Starter $0.93 → ~93 texts
+// Estimated company cost per call-minute (Twilio + STT + LLM + TTS), USD → 100 credits/min.
+export const USD_PER_CALL_MINUTE = 0.1;
+// Estimated company cost per SMS segment (Twilio outbound + overhead), USD → 10 credits/text.
+export const USD_PER_SMS = 0.01;
 
 // DeepSeek V4 Flash pricing (model `deepseek-chat`):
 //   input  $0.14 / 1M tokens (cache miss)

@@ -4,6 +4,10 @@
 // weekly (25%) and 5-hour (8%) window remainders, as friendly units
 // (never raw dollar budgets).
 //
+// Company spend is ONE fungible credit pool: DeepSeek + phone + SMS share
+// the same monthly / window budget. Per-service rows still exist for
+// analytics; remaining_now is computed against the shared pool.
+//
 // Backward compatible: the original top-level message_credits_* fields are
 // still returned for older clients.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.46.2';
@@ -49,27 +53,33 @@ function windowRemainingUsd(
   return Math.max(0, cap - Number(used ?? 0));
 }
 
-function bucket(row: UsageRow | null, usdPerUnit: number, included: number) {
-  const budget = Number(row?.monthly_budget_usd ?? 0);
+/**
+ * Analytics bucket for one service (used/included in that service's units)
+ * plus remaining_now against the SHARED company pool.
+ */
+function bucket(
+  row: UsageRow | null,
+  usdPerUnit: number,
+  included: number,
+  poolRemainingUsd: number,
+  rem5hUsd: number,
+  remWeekUsd: number,
+  poolBudgetUsd: number,
+) {
   const used = Number(row?.used_usd ?? 0);
-  const remainingUsd = Math.max(0, budget - used);
-  const rem5h = windowRemainingUsd(
-    budget, WINDOW_5H_FRACTION, row?.window_5h_start, row?.window_5h_used_usd, WINDOW_5H_MS,
-  );
-  const remWeek = windowRemainingUsd(
-    budget, WINDOW_WEEK_FRACTION, row?.window_week_start, row?.window_week_used_usd, WINDOW_WEEK_MS,
-  );
   const toUnits = (usd: number) => Math.max(0, Math.floor(usd / usdPerUnit));
-  const usedUnits = Math.min(included, Math.round(used / usdPerUnit));
+  const usedUnits = Math.round(used / usdPerUnit);
+  // Soft “included” still mirrors plan card units for legend; remaining is pool-based.
+  const remainingUnits = toUnits(poolRemainingUsd);
   return {
     included,
     used: usedUnits,
-    remaining: Math.max(0, included - usedUnits),
-    // Effective remaining = tightest of the three windows.
-    remaining_now: Math.min(toUnits(remainingUsd), toUnits(remWeek), toUnits(rem5h)),
-    window_5h_remaining: toUnits(Math.min(rem5h, remainingUsd)),
-    window_weekly_remaining: toUnits(Math.min(remWeek, remainingUsd)),
-    available: budget > 0 && used < budget,
+    remaining: remainingUnits,
+    // Effective remaining = tightest of pool monthly / week / 5h (in this unit).
+    remaining_now: Math.min(toUnits(poolRemainingUsd), toUnits(remWeekUsd), toUnits(rem5hUsd)),
+    window_5h_remaining: toUnits(Math.min(rem5hUsd, poolRemainingUsd)),
+    window_weekly_remaining: toUnits(Math.min(remWeekUsd, poolRemainingUsd)),
+    available: poolBudgetUsd > 0 && poolRemainingUsd > 0,
   };
 }
 
@@ -101,13 +111,43 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const plan = (msg?.plan ?? call?.plan ?? sms?.plan ?? 'free') as string;
   const { data: limits } = await admin
     .from('subscription_plan_limits')
-    .select('message_credits, call_minutes, sms_count')
+    .select('message_credits, call_minutes, sms_count, message_budget_usd, call_budget_usd, sms_budget_usd')
     .eq('plan', plan)
     .maybeSingle();
 
-  const messageBucket = bucket(msg, USD_PER_MESSAGE_CREDIT, Number(limits?.message_credits ?? 0));
-  const callBucket = bucket(call, USD_PER_CALL_MINUTE, Number(limits?.call_minutes ?? 0));
-  const smsBucket = bucket(sms, USD_PER_SMS, Number(limits?.sms_count ?? 0));
+  // Shared pool = sum of plan budgets; used = sum of service used_usd.
+  const poolBudgetUsd =
+    Number(limits?.message_budget_usd ?? 0) +
+    Number(limits?.call_budget_usd ?? 0) +
+    Number(limits?.sms_budget_usd ?? 0);
+  const poolUsedUsd =
+    Number(msg?.used_usd ?? 0) + Number(call?.used_usd ?? 0) + Number(sms?.used_usd ?? 0);
+  const poolRemainingUsd = Math.max(0, poolBudgetUsd - poolUsedUsd);
+
+  // Window caps sit on message_usage (pool leader) against TOTAL monthly budget.
+  const rem5hUsd = windowRemainingUsd(
+    poolBudgetUsd, WINDOW_5H_FRACTION, msg?.window_5h_start, msg?.window_5h_used_usd, WINDOW_5H_MS,
+  );
+  const remWeekUsd = windowRemainingUsd(
+    poolBudgetUsd, WINDOW_WEEK_FRACTION, msg?.window_week_start, msg?.window_week_used_usd, WINDOW_WEEK_MS,
+  );
+
+  const messageBucket = bucket(
+    msg, USD_PER_MESSAGE_CREDIT, Number(limits?.message_credits ?? 0),
+    poolRemainingUsd, rem5hUsd, remWeekUsd, poolBudgetUsd,
+  );
+  const callBucket = bucket(
+    call, USD_PER_CALL_MINUTE, Number(limits?.call_minutes ?? 0),
+    poolRemainingUsd, rem5hUsd, remWeekUsd, poolBudgetUsd,
+  );
+  const smsBucket = bucket(
+    sms, USD_PER_SMS, Number(limits?.sms_count ?? 0),
+    poolRemainingUsd, rem5hUsd, remWeekUsd, poolBudgetUsd,
+  );
+
+  // 1 credit = $0.001 (DeepSeek unit). Pool size in credits for the Account bar.
+  const creditsIncluded = Math.round(poolBudgetUsd / USD_PER_MESSAGE_CREDIT);
+  const creditsUsed = Math.round(poolUsedUsd / USD_PER_MESSAGE_CREDIT);
 
   return json(
     {
@@ -117,6 +157,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
       message: messageBucket,
       call: callBucket,
       sms: smsBucket,
+      // Unified company credit pool (DeepSeek + phone + SMS).
+      credits_included: creditsIncluded,
+      credits_used: Math.min(creditsUsed, creditsIncluded || creditsUsed),
+      credits_remaining: Math.max(0, creditsIncluded - creditsUsed),
       // Legacy fields (pre-0021 clients).
       message_credits_included: messageBucket.included,
       message_credits_used: messageBucket.used,

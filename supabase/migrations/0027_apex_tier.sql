@@ -39,10 +39,10 @@ declare
   v_target_tier text;
 begin
   select case
-           when bool_or(status in ('active','trialing')) then
+           when bool_or(status in ('active','trialing','past_due')) then
              (select plan from public.subscriptions
               where user_id = new.user_id
-                and status in ('active','trialing')
+                and status in ('active','trialing','past_due')
               order by case plan
                          when 'apex'    then 5
                          when 'ultra'   then 4

@@ -390,6 +390,60 @@ inspector_port = 8083
 # The Deno major version to use.
 deno_version = 2
 
+# ── Edge Function JWT gates ──────────────────────────────────────────────────
+# Stripe/Twilio call these without a Supabase user JWT. Signature verification
+# lives inside the function body (stripe-signature / X-Twilio-Signature).
+# Deploy with matching --no-verify-jwt flags in CI/docs.
+
+[functions.stripe-webhook]
+verify_jwt = false
+
+[functions.call-status]
+verify_jwt = false
+
+[functions.twilio-voice-webhook]
+verify_jwt = false
+
+[functions.twilio-message-webhook]
+verify_jwt = false
+
+[functions.model-manifest]
+verify_jwt = false
+
+# Authenticated metered APIs (default true; explicit for documentation).
+[functions.create-checkout-session]
+verify_jwt = true
+
+[functions.create-customer-portal]
+verify_jwt = true
+
+[functions.message-complete]
+verify_jwt = true
+
+[functions.stack-complete]
+verify_jwt = true
+
+[functions.tts-speak]
+verify_jwt = true
+
+[functions.call-start]
+verify_jwt = true
+
+[functions.sms-send]
+verify_jwt = true
+
+[functions.get-voice-usage]
+verify_jwt = true
+
+[functions.get-message-usage]
+verify_jwt = true
+
+[functions.get-call-usage]
+verify_jwt = true
+
+[functions.claim-launch-promo]
+verify_jwt = true
+
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 

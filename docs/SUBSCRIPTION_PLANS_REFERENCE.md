@@ -1,8 +1,8 @@
 # VibeSpace Subscription Plans — Complete Reference
 
-**Last updated:** June 2026  
+**Last updated:** July 2026  
 **Document path:** `docs/SUBSCRIPTION_PLANS_REFERENCE.md`  
-**Code sources:** `callVoiceMarketing.ts`, `budget.ts`, `entitlements.ts`, `message-complete`, migrations `0019` + `0021` + `0022`
+**Code sources:** `callVoiceMarketing.ts`, `budget.ts`, `entitlements.ts`, `planLimits.ts`, `message-complete`, migrations `0019` + `0021` + `0022` + `0029` + `0030`
 
 ---
 
@@ -107,16 +107,17 @@ Paid subscribers (Orbit / Nova / Singularity) get **hosted AI message credits** 
 | **Rate limits** | Triple windows on every bucket: **5-hour** (8%), **weekly** (25%), **monthly** (100%) — no rollover |
 | **Fallback** | If budget exhausted or provider down → client falls back to BYOK / local models |
 
-### Message credits by tier
+### Shared company credits by tier
 
-| Tier | Credits/mo |
-|------|------------|
-| Spark | 0 |
-| Orbit | **3,100** |
-| Nova | **15,500** |
-| Singularity | **31,000** |
+| Tier | Shared pool (credits/mo) | Notes |
+|------|--------------------------|--------|
+| Spark | 0 | BYOK / local only |
+| Orbit | **~3,300** | One pool for DeepSeek + phone + SMS |
+| Nova | **~16,500** | same |
+| Singularity | **~33,000** | same |
+| Supernova | **~66,000** | same |
 
-**BYOK always works on every tier** for any provider the user configures. Hosted DeepSeek is an **optional convenience** on paid plans, not a replacement for BYOK.
+**BYOK always works on every tier** for any provider the user configures. Hosted DeepSeek is an **optional convenience** on paid plans, not a replacement for BYOK. Customers never see raw dollar COGS — only credits and friendly minutes/texts in the spend breakdown.
 
 **Server allowlist:** clients cannot pick a more expensive model on the hosted path — only `deepseek-chat` is permitted (`message-complete/index.ts`).
 
@@ -294,24 +295,27 @@ Promos run **until the pool money runs out** — no new claims after `pause_at_u
 
 ---
 
-## Monthly subscription buckets
+## Monthly subscription — one shared company credit pool
 
-Paid tiers get **three separate monthly buckets**. Spark gets none (BYOK + local Kokoro).
+Paid tiers get **one fungible monthly credit pool** for DeepSeek chat, AI phone, and SMS.
+Analytics still track each service; **remaining budget is shared**. Spark gets none (BYOK + local Kokoro).
+
+**Rates (internal units, not cash):** DeepSeek **1 credit** · phone **100 credits/min** · SMS **10 credits/text**.
 
 ### Full plan comparison
 
-| | **Spark** | **Orbit** | **Nova** | **Singularity** |
-|---|:---:|:---:|:---:|:---:|
-| **Price** | $0 | $10/mo | $50/mo | $100/mo |
-| **Hosted AI (DeepSeek V4 Flash)** | — | 3,100 credits/mo | 15,500 credits/mo | 31,000 credits/mo |
-| **AI phone min headline/mo** | — | 22 | 109 | 217 |
-| **Cloud voice module max/mo** | Kokoro only | up to ~140+ min Deepgram TTS | up to ~720+ min | up to ~1,400+ min |
-| **SMS texts/mo** | — | ~100 | ~500 | ~1,000 |
-| **Jarvis Call (PSTN)** | ✗ | ✓ | ✓ | ✓ |
-| **Voice module (local Kokoro)** | ✓ unlimited | ✓ unlimited | ✓ unlimited | ✓ unlimited |
-| **Cloud sync** | ✗ | ✓ | ✓ | ✓ |
-| **Tool publishing** | ✗ | ✗ | ✓ | ✓ |
-| **Priority routing** | ✗ | ✗ | ✓ | ✓ |
+| | **Spark** | **Orbit** | **Nova** | **Singularity** | **Supernova** |
+|---|:---:|:---:|:---:|:---:|:---:|
+| **Price** | $0 | $10/mo | $50/mo | $100/mo | $200/mo |
+| **Shared company credits/mo** | — | ~3,300 | ~16,500 | ~33,000 | ~66,000 |
+| **Spend on** | — | DeepSeek · phone · SMS | same | same | same |
+| **Cloud voice module max/mo** | Kokoro only | up to ~140+ min Deepgram TTS | up to ~720+ min | up to ~1,400+ min | up to ~2,800+ min |
+| **Jarvis Call (PSTN)** | ✗ | ✓ | ✓ | ✓ | ✓ |
+| **Voice module (local Kokoro)** | ✓ unlimited | ✓ unlimited | ✓ unlimited | ✓ unlimited | ✓ unlimited |
+| **Cloud sync** | ✗ | ✓ | ✓ | ✓ | ✓ |
+| **Tool publishing** | ✗ | ✗ | ✓ | ✓ | ✓ |
+| **Priority routing** | ✗ | ✗ | ✓ | ✓ | ✓ |
+| **Account UI** | — | Single Shared company credits bar | same | same | same |
 
 ### Internal USD budgets (maintainers only)
 
@@ -322,7 +326,7 @@ Dollar caps, COGS splits, and margin targets are defined in `budget.ts` and migr
 | Tier | Company-hosted chat |
 |------|---------------------|
 | **Spark** | None — BYOK any provider, or free Gemini 2.5 Flash Lite via Google AI Studio (no card) |
-| **Orbit / Nova / Singularity** | **DeepSeek V4 Flash** via `message-complete` — credits scale with tier (3.1k → 31k/mo) |
+| **Orbit / Nova / Singularity / Supernova** | **DeepSeek V4 Flash** via `message-complete` — draws from the **shared** company credit pool (~3.3k → ~66k/mo) |
 
 BYOK for Anthropic, OpenAI, Groq, etc. remains available on **all** tiers regardless of hosted DeepSeek.
 
