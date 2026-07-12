@@ -1,6 +1,7 @@
 import * as React from 'react';
-import { ShieldCheck, CreditCard, Activity, Phone, Crown, ExternalLink } from 'lucide-react';
+import { ShieldCheck, CreditCard, Activity, Phone, Crown, ExternalLink, Cat } from 'lucide-react';
 import { Account } from '@/features/settings/sections/Account';
+import { PetAccountPanel } from '@/features/pets/PetAccountPanel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/stores/auth';
@@ -15,6 +16,7 @@ import {
 import { callCheckoutSession, isBackendBillingConfigured } from '@/lib/billing/checkout';
 import { openExternal } from '@/lib/tauri';
 import { toast } from '@/components/ui/toast';
+import { cn } from '@/lib/utils';
 
 const UPGRADE_ORDER: PlanId[] = ['starter', 'pro', 'ultra', 'apex'];
 
@@ -26,6 +28,7 @@ export function AccountPage() {
   const localUserId = useAuthStore((s) => s.localUserId);
   const defaultProvider = useAuthStore((s) => s.defaultProvider);
   const apiKeys = useAuthStore((s) => s.apiKeys);
+  const [mainTab, setMainTab] = React.useState<'profile' | 'pet'>('profile');
 
   const admin = isAdminIdentity({ email, cloudEmail, localUserId });
   const activePlanId = effectivePlan(plan, admin);
@@ -90,9 +93,48 @@ export function AccountPage() {
           </div>
         </header>
 
+        {/* Top-level Account tabs — Pet is impossible to miss */}
+        <div
+          className="flex flex-wrap gap-2 rounded-2xl border border-border bg-panel p-2"
+          role="tablist"
+          aria-label="Account center sections"
+        >
+          <Button
+            type="button"
+            size="sm"
+            variant={mainTab === 'profile' ? 'secondary' : 'ghost'}
+            role="tab"
+            aria-selected={mainTab === 'profile'}
+            onClick={() => setMainTab('profile')}
+            className={cn(mainTab === 'profile' && 'ring-1 ring-border')}
+          >
+            Profile & billing
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={mainTab === 'pet' ? 'secondary' : 'ghost'}
+            role="tab"
+            aria-selected={mainTab === 'pet'}
+            onClick={() => setMainTab('pet')}
+            data-testid="account-page-pet-tab"
+            className={cn(mainTab === 'pet' && 'ring-1 ring-accent-copper/40')}
+          >
+            <Cat className="h-3.5 w-3.5 mr-1 text-accent-copper" />
+            Pet
+          </Button>
+        </div>
+
+        {mainTab === 'pet' && (
+          <section className="rounded-3xl border border-border bg-panel p-5 shadow-soft">
+            <PetAccountPanel />
+          </section>
+        )}
+
+        {mainTab === 'profile' && (
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
           <section className="rounded-3xl border border-border bg-panel p-5 shadow-soft">
-            <Account />
+            <Account profileOnly />
           </section>
 
           <aside className="flex flex-col gap-5">
@@ -149,8 +191,22 @@ export function AccountPage() {
                 <UsageCard label="Jarvis Call" value={jarvisCallEnabled ? 'Enabled' : 'Plan required'} icon={<Phone className="h-3.5 w-3.5" />} />
               </div>
             </section>
+
+            <section className="rounded-3xl border border-accent-copper/30 bg-elevated p-5 shadow-soft">
+              <div className="mb-3 flex items-center gap-2">
+                <Cat className="h-5 w-5 text-accent-copper" />
+                <h2 className="text-page-title text-foreground">Pet</h2>
+              </div>
+              <p className="text-secondary text-muted-foreground mb-3">
+                Desktop companion settings and how-to live on the Pet tab.
+              </p>
+              <Button type="button" size="sm" variant="secondary" onClick={() => setMainTab('pet')}>
+                Open Pet settings
+              </Button>
+            </section>
           </aside>
         </div>
+        )}
       </div>
     </main>
   );

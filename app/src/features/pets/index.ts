@@ -51,3 +51,4 @@ export {
 } from './petPresentation';
 export { usePetSettingsStore, forcePetAnim } from './petSettingsStore';
 export { usePetPresentationStore, installPetPresentationStorageSync } from './petPresentationStore';
+export { PetAccountPanel } from './PetAccountPanel';
