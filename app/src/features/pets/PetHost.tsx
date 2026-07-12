@@ -1,11 +1,10 @@
 /**
  * Main-window pet coordinator.
  *
- * Strategy for non-disappearing pet:
- * - Always keep an in-app transparent sprite when enabled (reliable).
- * - Also drive Tauri pet-overlay when available (desktop always-on-top).
- * - Opening mini panel: try Tauri panel first; only hide overlay after panel
- *   is confirmed visible. If panel fails, keep sprite and open in-app panel.
+ * Single visible pet path:
+ * - Tauri: prefer dedicated pet-overlay window; inline only as fallback.
+ * - Browser: inline PetOverlay only.
+ * Never mount both at once (caused double welcome spam + disappear races).
  */
 import * as React from 'react';
 import { PetOverlay } from './PetOverlay';
@@ -13,6 +12,7 @@ import { PetMiniPanel } from './PetMiniPanel';
 import {
   claimPetHostInstance,
   hidePetOverlay,
+  isPetOverlayVisible,
   isTauriRuntime,
   openPetPanelSafely,
   releasePetHostInstance,
@@ -41,8 +41,13 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedMotionProp
   const [animLabel, setAnimLabel] = React.useState<string>('welcome');
   const [claimed, setClaimed] = React.useState(false);
   const [tauri, setTauri] = React.useState(false);
-  /** When true, hide in-app sprite (panel open and confirmed). */
+  /** Hide sprite only after mini panel is confirmed open. */
   const [hideSpriteForPanel, setHideSpriteForPanel] = React.useState(false);
+  /**
+   * Tauri: use inline sprite only when pet-overlay window failed to show.
+   * When false and tauri, pet lives solely in the transparent overlay WebView.
+   */
+  const [useInlineFallback, setUseInlineFallback] = React.useState(false);
 
   React.useEffect(() => {
     const a = installPetPresentationStorageSync();
@@ -63,17 +68,35 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedMotionProp
     return () => releasePetHostInstance();
   }, []);
 
-  // Keep Tauri overlay shown whenever pet should be visible (not while panel open).
+  // Drive Tauri pet-overlay visibility (single instance).
   React.useEffect(() => {
     if (!claimed || !tauri) return;
-    const wantVisible = enabled && overlayVisible && !hideSpriteForPanel;
-    if (wantVisible) {
-      void showPetOverlay().catch((err) => console.warn('[pets] show overlay', err));
-    } else if (hideSpriteForPanel) {
-      void hidePetOverlay().catch(() => undefined);
-    } else if (!enabled || !overlayVisible) {
-      void hidePetOverlay().catch(() => undefined);
-    }
+    let cancelled = false;
+
+    const sync = async () => {
+      const wantVisible = enabled && overlayVisible && !hideSpriteForPanel;
+      if (!wantVisible) {
+        await hidePetOverlay().catch(() => undefined);
+        if (!cancelled && (!enabled || !overlayVisible)) {
+          setUseInlineFallback(false);
+        }
+        return;
+      }
+      await showPetOverlay().catch((err) => console.warn('[pets] show overlay', err));
+      await new Promise((r) => setTimeout(r, 280));
+      if (cancelled) return;
+      const visible = await isPetOverlayVisible();
+      // Only one path: overlay XOR inline fallback — never both.
+      setUseInlineFallback(!visible);
+      if (!visible) {
+        console.warn('[pets] pet-overlay not visible — using in-app fallback sprite only');
+      }
+    };
+
+    void sync();
+    return () => {
+      cancelled = true;
+    };
   }, [claimed, tauri, enabled, overlayVisible, hideSpriteForPanel]);
 
   React.useEffect(() => {
@@ -97,18 +120,13 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedMotionProp
   const openPanel = React.useCallback(async () => {
     setPanelOpen(true);
     if (tauri) {
-      // Shared confirm-then-hide: never leaves user with neither sprite nor panel.
       const { panelVisible } = await openPetPanelSafely().catch((err) => {
         console.warn('[pets] open panel', err);
         return { panelVisible: false };
       });
+      // Hide floating sprite only when panel is actually up.
       setHideSpriteForPanel(panelVisible);
-      if (!panelVisible) {
-        // In-app mini panel fallback while Tauri panel missing.
-        setHideSpriteForPanel(false);
-      }
     } else {
-      // Browser: hide floating sprite while in-app panel is open.
       setHideSpriteForPanel(true);
     }
   }, [tauri]);
@@ -143,8 +161,9 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedMotionProp
 
   if (!claimed || !enabled || !overlayVisible) return null;
 
-  // Always mount in-app sprite when not hidden for a confirmed panel — prevents random disappear.
-  const showInlineSprite = !hideSpriteForPanel;
+  // Browser: always inline. Tauri: inline only as fallback (not alongside overlay).
+  const showInlineSprite =
+    !hideSpriteForPanel && (!tauri || useInlineFallback);
 
   return (
     <>
@@ -152,6 +171,7 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedMotionProp
         data-pet-host={tauri ? 'tauri' : 'browser'}
         data-pet-instance="1"
         data-pet-panel-open={panelOpen ? 'true' : 'false'}
+        data-pet-inline-fallback={useInlineFallback ? 'true' : 'false'}
         data-pet-hide-for-panel={hideSpriteForPanel ? 'true' : 'false'}
         data-pet-renderer-bg-alpha="0"
         hidden
@@ -173,7 +193,6 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedMotionProp
           idleFunIntervalMs={idleFunIntervalMs}
         />
       )}
-      {/* In-app mini panel when not in Tauri, or as fallback when Tauri panel fails */}
       {(!tauri || (panelOpen && !hideSpriteForPanel)) && (
         <PetMiniPanel
           open={panelOpen}

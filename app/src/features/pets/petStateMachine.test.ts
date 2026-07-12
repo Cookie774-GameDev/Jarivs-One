@@ -16,6 +16,16 @@ describe('petStateMachine', () => {
     expect(s.welcomePlayed).toBe(true);
   });
 
+  it('boot after welcomePlayed stays on idlePrimary (no welcome spam)', () => {
+    let s = createInitialPetState();
+    s = reducePetEvent(s, { type: 'boot' });
+    expect(s.anim).toBe('welcome');
+    s = reducePetEvent(s, { type: 'welcome_done' });
+    s = reducePetEvent(s, { type: 'boot' });
+    expect(s.anim).toBe('idlePrimary');
+    expect(s.welcomePlayed).toBe(true);
+  });
+
   it('maps velocity-resolved walk anims and stops on drag_end', () => {
     let s = reducePetEvent(createInitialPetState(), { type: 'welcome_done' });
     s = reducePetEvent(s, { type: 'drag_start', walk: 'walkLeft' });

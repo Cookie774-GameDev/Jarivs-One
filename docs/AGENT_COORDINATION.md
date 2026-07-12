@@ -1427,3 +1427,14 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Locks** | released |
 | **Do not stage** | install/install.ps1, Cargo.toml |
 
+
+#### 2026-07-12 - Fix pet disappear + welcome spam + Axo anim
+
+| Field | Value |
+|-------|-------|
+| **Status** | complete |
+| **Root causes** | (1) Boot effect re-ran on playAnim/setState → welcome loop; (2) load() cleared textures before new atlas ready → vanish on walk; (3) PetHost mounted inline + Tauri overlay together → double instances |
+| **Fix** | Stable boot (enabled+characterId only); atomic texture swap; single display path (overlay XOR inline) |
+| **Verification** | pets 79/79 PASS; typecheck PASS |
+| **Locks** | released |
+

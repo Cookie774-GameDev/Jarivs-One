@@ -1,6 +1,6 @@
 /**
  * Floating Pet interaction surface — PixiJS atlas playback + velocity drag.
- * Used inside the pet-overlay Tauri window (transparent, always-on-top).
+ * Used inside the pet-overlay Tauri window or as in-app fallback.
  * Does not decode MP4. Click opens/focuses mini-panel (including wake-from-sleep).
  */
 import * as React from 'react';
@@ -22,7 +22,6 @@ import {
   type DragVelocityState,
 } from './petDragVelocity';
 import { disposeAll, mapReducedMotionAnim, reducedMotionFps } from './petLifecycle';
-import { planCharacterSwitch } from './petCharacterSwitch';
 import { clampPetPosition, getAnimDef, getPetAnimationsManifest, resolveAtlasUrls } from './petManifest';
 import { openOrFocusPetPanel, setPetOverlayPosition } from './petTauriBridge';
 import {
@@ -38,14 +37,11 @@ export interface PetOverlayProps {
   enabled?: boolean;
   reducedMotion?: boolean;
   className?: string;
-  /** Controlled panel open state from host (browser fallback). */
   panelOpen?: boolean;
   onOpenPanel?: () => void;
   onPanelClose?: () => void;
-  /** Hide the pet (right-click → Close). */
   onRequestClose?: () => void;
   onAnimChange?: (anim: string) => void;
-  /** When true, position is driven by the Tauri window (no CSS fixed offset). */
   tauriWindowMode?: boolean;
   sleepTimeoutMs?: number;
   idleFunIntervalMs?: number;
@@ -68,6 +64,9 @@ export function PetOverlay({
   const playerRef = React.useRef(new PixiAtlasPlayer());
   const stateRef = React.useRef<PetMachineState>(createInitialPetState());
   const characterId = usePetSettingsStore((s) => s.characterId);
+  const characterIdRef = React.useRef(characterId);
+  characterIdRef.current = characterId;
+
   const [animLabel, setAnimLabel] = React.useState<PetAnimId>('welcome');
   const [pos, setPos] = React.useState({ left: 24, top: 120 });
   const dragRef = React.useRef<{
@@ -84,20 +83,26 @@ export function PetOverlay({
   const currentAnim = React.useRef<string | null>(null);
   const schedulerRef = React.useRef<ReturnType<typeof createPetScheduler> | null>(null);
   const initOnce = React.useRef(false);
+  const onOpenPanelRef = React.useRef(onOpenPanel);
+  onOpenPanelRef.current = onOpenPanel;
+  const onAnimChangeRef = React.useRef(onAnimChange);
+  onAnimChangeRef.current = onAnimChange;
+
   const man = React.useMemo(() => getPetAnimationsManifest(characterId), [characterId]);
 
-  const setState = React.useCallback(
-    (next: PetMachineState) => {
-      const prev = stateRef.current.anim;
-      stateRef.current = next;
-      if (next.anim !== prev) {
-        setAnimLabel(next.anim);
-        onAnimChange?.(next.anim);
-      }
-      if (next.panelOpen && !panelOpen) onOpenPanel?.();
-    },
-    [onAnimChange, onOpenPanel, panelOpen],
-  );
+  /** Stable state applicator — must not thrash boot effects. */
+  const setState = React.useCallback((next: PetMachineState) => {
+    const prevAnim = stateRef.current.anim;
+    const wasPanel = stateRef.current.panelOpen;
+    stateRef.current = next;
+    if (next.anim !== prevAnim) {
+      setAnimLabel(next.anim);
+      onAnimChangeRef.current?.(next.anim);
+    }
+    if (next.panelOpen && !wasPanel) {
+      onOpenPanelRef.current?.();
+    }
+  }, []);
 
   React.useEffect(() => {
     if (!panelOpen && stateRef.current.panelOpen) {
@@ -107,11 +112,15 @@ export function PetOverlay({
 
   const playAnim = React.useCallback(
     async (id: PetAnimId) => {
+      const charId = characterIdRef.current;
       const resolved = reducedMotion ? mapReducedMotionAnim(id) : id;
-      const animKey = `${characterId}:${resolved}`;
+      const animKey = `${charId}:${resolved}`;
       if (currentAnim.current === animKey && !reducedMotion) return;
-      const def = getAnimDef(resolved, characterId);
-      if (!def) return;
+      const def = getAnimDef(resolved, charId);
+      if (!def) {
+        console.warn('[pets] missing anim def', resolved, charId);
+        return;
+      }
 
       const player = playerRef.current;
       const host = hostRef.current;
@@ -123,19 +132,26 @@ export function PetOverlay({
           resolution: typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1,
           backgroundAlpha: 0,
         });
+        if (player.isDestroyed) return;
         initOnce.current = true;
       }
 
       const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
       const scaleSel = PixiAtlasPlayer.selectAtlasScale(def, dpr);
-      let urls = animCache.current.get(animKey);
+      const cacheKey = `${charId}:${scaleSel.atlasPath}`;
+      let urls = animCache.current.get(cacheKey);
       if (!urls) {
-        urls = resolveAtlasUrls(def, characterId, scaleSel.atlasPath);
-        animCache.current.set(animKey, urls);
+        urls = resolveAtlasUrls(def, charId, scaleSel.atlasPath);
+        animCache.current.set(cacheKey, urls);
       }
 
       try {
+        // load() keeps previous texture until new atlas is ready (no blink).
         await player.load(urls.jsonUrl, urls.imageUrl);
+        if (player.isDestroyed) return;
+        // Stale request guard: character or desired anim may have changed mid-load.
+        if (characterIdRef.current !== charId) return;
+
         currentAnim.current = animKey;
         const fps = reducedMotion ? reducedMotionFps(resolved, def.fps) : def.fps;
         player.setAnimation(
@@ -147,49 +163,72 @@ export function PetOverlay({
           },
           () => {
             const s = stateRef.current;
-            if (resolved === 'welcome' || id === 'welcome')
+            if (resolved === 'welcome' || id === 'welcome') {
               setState(reducePetEvent(s, { type: 'welcome_done' }));
-            else if (resolved === 'idleFun' || id === 'idleFun')
+            } else if (resolved === 'idleFun' || id === 'idleFun') {
               setState(reducePetEvent(s, { type: 'idle_fun_done' }));
-            else if (resolved === 'sleepTransition' || id === 'sleepTransition')
+            } else if (resolved === 'sleepTransition' || id === 'sleepTransition') {
               setState(reducePetEvent(s, { type: 'sleep_transition_done' }));
-            else if (resolved === 'wakeFromSleep' || id === 'wakeFromSleep')
+            } else if (resolved === 'wakeFromSleep' || id === 'wakeFromSleep') {
               setState(reducePetEvent(s, { type: 'wake_done' }));
+            }
           },
         );
       } catch (err) {
-        console.warn('[pets] pixi atlas load failed', resolved, err);
+        console.warn('[pets] pixi atlas load failed', resolved, charId, err);
+        currentAnim.current = null;
       }
     },
-    [characterId, reducedMotion, setState],
+    [reducedMotion, setState],
   );
 
+  const playAnimRef = React.useRef(playAnim);
+  playAnimRef.current = playAnim;
+
+  /**
+   * Boot / character mount — runs once per enabled+characterId.
+   * Must NOT depend on playAnim identity or panelOpen (that re-fired welcome forever).
+   */
   React.useEffect(() => {
     if (!enabled) return;
+
+    animCache.current.clear();
+    currentAnim.current = null;
+    initOnce.current = false;
+
     const s0 = reducePetEvent(createInitialPetState(), { type: 'boot' });
-    setState(s0);
+    stateRef.current = s0;
+    setAnimLabel(s0.anim);
+    onAnimChangeRef.current?.(s0.anim);
+
     const sched = createPetScheduler({
       idleFunIntervalMs: idleFunIntervalMs ?? man.scheduler.idleFunIntervalMs,
       sleepTimeoutMs: sleepTimeoutMs ?? man.scheduler.sleepTimeoutMs,
     });
     schedulerRef.current = sched;
-    void playAnim(s0.anim);
+
+    // Defer one frame so hostRef is mounted.
+    const t = window.setTimeout(() => {
+      void playAnimRef.current(s0.anim);
+    }, 0);
+
     return () => {
+      window.clearTimeout(t);
       disposeAll([sched, playerRef.current]);
       schedulerRef.current = null;
       currentAnim.current = null;
       initOnce.current = false;
-      // Fresh player after dispose so remount works.
       playerRef.current = new PixiAtlasPlayer();
     };
+    // characterId intentionally included: skin change = one clean remount + welcome once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- playAnim via ref
   }, [
     enabled,
+    characterId,
     idleFunIntervalMs,
     sleepTimeoutMs,
     man.scheduler.idleFunIntervalMs,
     man.scheduler.sleepTimeoutMs,
-    playAnim,
-    setState,
   ]);
 
   // Diagnostics: force animation from Settings → Pets
@@ -204,7 +243,9 @@ export function PetOverlay({
       } else if (anim === 'wakeFromSleep') {
         setState(reducePetEvent(stateRef.current, { type: 'click' }));
       } else if (anim === 'idleFun') {
-        setState(reducePetEvent({ ...stateRef.current, anim: 'idlePrimary' }, { type: 'idle_fun_tick' }));
+        setState(
+          reducePetEvent({ ...stateRef.current, anim: 'idlePrimary' }, { type: 'idle_fun_tick' }),
+        );
       } else if (anim === 'walkLeft' || anim === 'walkRight') {
         setState({
           ...stateRef.current,
@@ -223,8 +264,7 @@ export function PetOverlay({
     return () => window.removeEventListener(PET_FORCE_ANIM_EVENT, onForce);
   }, [enabled, setState]);
 
-  // Same-skin animation changes (idle/walk/sleep): swap frames only — do NOT
-  // unload textures or the sprite blanks on every drag/state transition.
+  // Play current machine anim (walk/idle/sleep transitions). No texture thrash.
   React.useEffect(() => {
     if (!enabled) return;
     void playAnim(animLabel);
@@ -234,34 +274,9 @@ export function PetOverlay({
     } else if (s.anim !== 'idleFun') {
       schedulerRef.current?.onHighPriority();
     }
-  }, [enabled, playAnim, animLabel]);
+  }, [enabled, animLabel, playAnim]);
 
-  // Character (Axo↔Glitch) change only: unload prior skin atlas image URLs from
-  // Pixi Assets so a Glitch frame cannot stick after selecting Axo.
-  const prevCharacterId = React.useRef(characterId);
-  React.useEffect(() => {
-    if (!enabled) return;
-    if (prevCharacterId.current === characterId) return;
-    const previous = prevCharacterId.current;
-    prevCharacterId.current = characterId;
-    currentAnim.current = null;
-    animCache.current.clear();
-    const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
-    const priorUrls = playerRef.current.loadedImageUrl
-      ? [playerRef.current.loadedImageUrl]
-      : [];
-    try {
-      const plan = planCharacterSwitch(previous, characterId, animLabel, priorUrls, dpr);
-      void playerRef.current
-        .unloadCharacterCache(plan.imageUrlsToUnload)
-        .then(() => playAnim(animLabel));
-    } catch (err) {
-      console.warn('[pets] character switch plan failed', err);
-      void playerRef.current.unloadCharacterCache(priorUrls).then(() => playAnim(animLabel));
-    }
-  }, [enabled, characterId, playAnim, animLabel]);
-
-  // Scheduler tick (Pixi ticker advances frames; we only poll sleep/idleFun here).
+  // Scheduler tick
   React.useEffect(() => {
     if (!enabled) return;
     let raf = 0;
@@ -282,11 +297,9 @@ export function PetOverlay({
     setState(reducePetEvent(stateRef.current, { type: 'click' }));
     schedulerRef.current?.onActivity();
     if (onOpenPanel) {
-      // Host owns panel + sprite hide/show (prevents disappear-with-no-panel).
       onOpenPanel();
       return;
     }
-    // Overlay-only window path (no host): open Tauri mini panel directly.
     const left = tauriWindowMode ? 0 : pos.left;
     const top = tauriWindowMode ? 0 : pos.top;
     void openOrFocusPetPanel(left, top).catch(() => undefined);
@@ -295,19 +308,18 @@ export function PetOverlay({
   const applyWalkFromVelocity = React.useCallback(
     (walkAnim: 'walkLeft' | 'walkRight' | 'idlePrimary', vx: number) => {
       setState(reducePetEvent(stateRef.current, { type: 'drag_move', walk: walkAnim }));
-      // Cursor speed → walk playback rate (still / slow / fast).
-      const def = getAnimDef(walkAnim === 'idlePrimary' ? 'idlePrimary' : walkAnim, characterId);
+      const def = getAnimDef(walkAnim === 'idlePrimary' ? 'idlePrimary' : walkAnim, characterIdRef.current);
       const baseFps = def?.fps ?? 12;
       const fps = reducedMotion
         ? reducedMotionFps(walkAnim === 'idlePrimary' ? 'idlePrimary' : walkAnim, baseFps)
         : dragWalkFpsFromVelocity(vx, baseFps);
       playerRef.current.setPlaybackFps(fps);
     },
-    [characterId, reducedMotion, setState],
+    [reducedMotion, setState],
   );
 
   const onPointerDown = (e: React.PointerEvent) => {
-    if (e.button === 2) return; // right-click → context menu only
+    if (e.button === 2) return;
     setCtxMenu(null);
     const el = e.currentTarget as HTMLElement;
     el.setPointerCapture(e.pointerId);
@@ -363,13 +375,11 @@ export function PetOverlay({
     dragRef.current = null;
     setState(reducePetEvent(stateRef.current, { type: 'drag_end' }));
     if (!moved) {
-      // Single click: open panel immediately (wakes if sleeping). No second click.
       openPanelNow();
     }
   };
 
-  // While the button is held still, pointermove stops firing — sample stationary
-  // velocity only after a short gap so live moves are not zeroed every frame.
+  // Stationary hold while dragging → idle walk anim
   React.useEffect(() => {
     if (!enabled) return;
     let raf = 0;
@@ -414,7 +424,6 @@ export function PetOverlay({
                 height: DISPLAY,
                 background: 'transparent',
                 backgroundColor: 'transparent',
-                // No card/plate behind the sprite
                 boxShadow: 'none',
                 border: 'none',
                 outline: 'none',
@@ -422,6 +431,7 @@ export function PetOverlay({
         }
         data-pet-overlay="true"
         data-pet-anim={animLabel}
+        data-pet-character={characterId}
         data-pet-panel-open={panelOpen ? 'true' : 'false'}
         data-pet-renderer="pixi"
         onPointerDown={onPointerDown}

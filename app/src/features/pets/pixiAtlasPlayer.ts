@@ -254,24 +254,23 @@ export class PixiAtlasPlayer {
     if (this.destroyed) throw new Error('PixiAtlasPlayer disposed');
     if (!this.app) throw new Error('PixiAtlasPlayer.init() required before load');
 
-    const gen = ++this.loadGeneration;
-    // Evict previous skin's atlas from Pixi Assets cache before loading a new one.
-    if (this.lastImageUrl && this.lastImageUrl !== imageUrl) {
-      await this.unloadCharacterCache([this.lastImageUrl]);
-    } else {
-      this.clearFrameTextures();
+    // Already showing this exact sheet — skip (avoids blink between walk frames).
+    if (this.lastImageUrl === imageUrl && this.frameTextures.size > 0 && this.atlas) {
+      return;
     }
+
+    const gen = ++this.loadGeneration;
+    const prevImageUrl = this.lastImageUrl;
+    const prevBase = this.baseTexture;
+    const prevFrames = new Map(this.frameTextures);
+
+    // CRITICAL: do NOT clear current textures until the new atlas is ready.
+    // Clearing first made the pet vanish on every walk/idle atlas switch.
 
     const res = await fetch(atlasUrl);
     if (!res.ok) throw new Error(`atlas fetch failed: ${atlasUrl}`);
     const atlas = (await res.json()) as AtlasJson;
-    if (gen !== this.loadGeneration) return;
-
-    try {
-      await Assets.unload(imageUrl);
-    } catch {
-      /* ignore */
-    }
+    if (gen !== this.loadGeneration || this.destroyed) return;
 
     // Load full sheet; prefer non-premultiplied alpha so cream stays bright on dark UI.
     const base = (await Assets.load({
@@ -281,16 +280,17 @@ export class PixiAtlasPlayer {
         alphaMode: 'no-premultiply-alpha',
       },
     })) as Texture;
-    if (gen !== this.loadGeneration) {
-      base.destroy(true);
+    if (gen !== this.loadGeneration || this.destroyed) {
+      try {
+        base.destroy(true);
+      } catch {
+        /* ignore */
+      }
       return;
     }
 
-    this.baseTexture = base;
-    this.lastImageUrl = imageUrl;
-    this.atlas = atlas;
+    const nextFrames = new Map<string, Texture>();
     this.applyNearestFilter(base);
-
     for (const [name, entry] of Object.entries(atlas.frames)) {
       const { x, y, w, h } = entry.frame;
       const frame = new Texture({
@@ -298,7 +298,36 @@ export class PixiAtlasPlayer {
         frame: new Rectangle(x, y, w, h),
       });
       this.applyNearestFilter(frame);
-      this.frameTextures.set(name, frame);
+      nextFrames.set(name, frame);
+    }
+
+    // Atomic swap — old sprite keeps drawing until this point.
+    this.baseTexture = base;
+    this.lastImageUrl = imageUrl;
+    this.atlas = atlas;
+    this.frameTextures = nextFrames;
+
+    // Dispose previous sheet after swap (not before).
+    for (const t of prevFrames.values()) {
+      try {
+        t.destroy(false);
+      } catch {
+        /* ignore */
+      }
+    }
+    if (prevBase && prevBase !== base) {
+      try {
+        prevBase.destroy(true);
+      } catch {
+        /* ignore */
+      }
+    }
+    if (prevImageUrl && prevImageUrl !== imageUrl) {
+      try {
+        await Assets.unload(prevImageUrl);
+      } catch {
+        /* ignore */
+      }
     }
   }
 

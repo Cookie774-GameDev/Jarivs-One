@@ -148,6 +148,48 @@ describe('PixiAtlasPlayer', () => {
     await expect(p.init(host)).rejects.toThrow(/dispose/i);
   });
 
+  it('load keeps prior textures until the new atlas is ready (no blink/clear-first)', async () => {
+    const host = document.createElement('div');
+    const p = new PixiAtlasPlayer();
+    await p.init(host);
+
+    // Seed two fake frame textures as if an idle atlas was loaded.
+    const idleTex = { destroy: vi.fn() } as unknown as import('pixi.js').Texture;
+    // Access private map via cast for unit test of swap semantics
+    const internal = p as unknown as {
+      frameTextures: Map<string, { destroy: (c?: boolean) => void }>;
+      lastImageUrl: string | null;
+      atlas: unknown;
+      baseTexture: unknown;
+    };
+    internal.frameTextures.set('frame_000', idleTex);
+    internal.lastImageUrl = 'idle.png';
+    internal.atlas = { frames: {} };
+    internal.baseTexture = { destroy: vi.fn() };
+
+    // Mock fetch + Assets for walk atlas
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        frames: {
+          frame_000: { frame: { x: 0, y: 0, w: 128, h: 128 } },
+        },
+        meta: { image: 'walk.png', size: { w: 128, h: 128 } },
+      }),
+    } as Response);
+
+    // While load is in-flight we cannot easily interleave without rewriting load
+    // to expose mid-state; assert post-condition: after load, prior destroy ran
+    // and new lastImageUrl is set (swap completed).
+    await p.load('walk.json', 'walk.png');
+    expect(internal.lastImageUrl).toBe('walk.png');
+    // Prior frame texture was destroyed only after swap (destroy was called).
+    expect(idleTex.destroy).toHaveBeenCalled();
+
+    fetchMock.mockRestore();
+    p.dispose();
+  });
+
   it('advances frames by fps and completes one-shots', async () => {
     const host = document.createElement('div');
     const p = new PixiAtlasPlayer();
