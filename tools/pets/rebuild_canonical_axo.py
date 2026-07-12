@@ -1,360 +1,449 @@
-﻿#!/usr/bin/env python3
-"""Canonical Axo atlas rebuild from layered package (not glitch stamp).
+#!/usr/bin/env python3
+"""Rebuild the normal cream Axo atlases from the authoritative motion videos.
 
-1) Recompose visible layers from vibespace_axolotl layered package
-2) Fit to 128/256 cells (bottom-center)
-3) Motion-transfer pose from monochrome frames (position only)
-4) Structural fingerprint vs recomposed master (must match cream identity)
-5) Pack @1x/@2x atlases + contact sheets
+The layered package remains the immutable identity reference, but animation
+pixels come from the supplied cream-Axo videos.  The previous implementation
+stamped one static layered master into every frame and transferred only whole-
+sprite x/y/scale; that erased articulated motion while producing different
+enough cells to fool a simple hash test.
 
-Does not modify vibespace-axolotl-glitch.
+This generator:
+  * verifies every source-video SHA-256 before decoding;
+  * removes only the green screen (never black visor/eye pixels);
+  * keeps the main connected character and rejects detached background sparks;
+  * uses one stable crop per source video and NEAREST resampling;
+  * writes hard-alpha 128px and 256px sheets into the existing atlas layout;
+  * preserves frame names, counts, JSON, timing, V-logo orientation, and Glitch;
+  * regenerates bounded Axo-only contact sheets for visual QA.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import sys
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterable
 
+import cv2
 import numpy as np
 from PIL import Image
 
-PKG = Path(r"C:\Users\viper\Downloads\vibespace_axolotl_layered_package\vibespace_axolotl_layered_package")
-WT = Path(r"C:\Users\viper\Documents\Codex\2026-07-11\c-users-viper-downloads-vibespace-pixel\work\VibeSpace-origin-main-20260711")
-MOTION = WT / "app/src/assets/pets/characters/vibespace-axolotl-pixel/animations"
-AXO = WT / "app/src/assets/pets/characters/vibespace-axolotl"
-DOCS_CS = WT / "docs/pets/contact-sheets"
-SCRATCH = Path(r"C:\Users\viper\AppData\Local\Temp\grok-goal-4a414697f3bf\implementer")
-ANIMS = [
-    "welcome", "idlePrimary", "idleFun", "walkLeft", "walkRight",
-    "sleepTransition", "sleepingLoop", "wakeFromSleep",
-]
-CELL, CELL2 = 128, 256
+ROOT = Path(__file__).resolve().parents[2]
+VIDEO_DIR = Path(
+    r"C:\Users\viper\Downloads\VibeSpaceOs"
+    r"\vibespace_axolotl_layered_package\vIDEOS!"
+)
+AXO = ROOT / "app/src/assets/pets/characters/vibespace-axolotl"
+GLITCH = ROOT / "app/src/assets/pets/characters/vibespace-axolotl-glitch"
+DOCS_CONTACTS = ROOT / "docs/pets/contact-sheets"
+EVIDENCE = ROOT / "docs/pets/evidence"
+CELL = 128
+
+EXPECTED_VIDEO_SHA256 = {
+    "welcome": "dc1f98a389daf3dcab30ba7f8ad7c8c1ddeebe8f2777714caa34d5945a6fc880",
+    "idlePrimary": "5e600d6bb6b2121544a446244a3bbd9d8c4f4978db637d704d2e6a3de501bf0e",
+    "idleFun": "030f34a509802a05aa7e98d58d1f07fdcfc1df7944e88a1aef73b63509d9654e",
+    "walkLeft": "ba04c0c8d6113b16e1b3069c2b3590d5204fa60328308ca6ddf44bf39e498237",
+    "walkRight": "00275dce13f91a8ea097e6ef45c3951f328314c842eda198db6646aa1ef4be9e",
+    "sleep": "53c199588336d011ee97a7f7618a7416fbe4dfd5827624a09fe4d26fc51dd5f3",
+}
 
 
-def recompose_layers(pkg: Path) -> Image.Image:
-    man = json.loads((pkg / "vibespace_axolotl_layer_manifest.json").read_text(encoding="utf-8"))
-    canvas = man.get("canvas") or {}
-    w = int(canvas.get("width") or 1254)
-    h = int(canvas.get("height") or 1254)
-    result = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-    layer_order = man.get("layerOrder") or []
-    # layerOrder may be list of dicts or list of ids
-    layers_by_id = {}
-    if isinstance(man.get("layers"), list):
-        for layer in man["layers"]:
-            if isinstance(layer, dict) and "id" in layer:
-                layers_by_id[layer["id"]] = layer
-    for entry in layer_order:
-        if isinstance(entry, dict):
-            layer = entry
-        else:
-            layer = layers_by_id.get(entry)
-        if not layer:
-            continue
-        if layer.get("visible") is False:
-            continue
-        # skip guides
-        file_rel = layer.get("file") or ""
-        if "00_GUIDES" in file_rel or "GUIDES" in file_rel:
-            continue
-        path = pkg / file_rel if file_rel else None
-        if path is None or not path.is_file():
-            # try layers/ by id pattern
-            continue
-        with Image.open(path) as im:
-            frame = im.convert("RGBA")
-            frame.load()
-        # bottom-up paint: layerOrder in this package is front-to-back (zIndex ascending = front first)
-        # For alpha_composite we need back-to-front. Reverse at end by prepending?
-        # Looking at layerOrder: head_v_logo first (front), then deeper. So reverse for composite.
-        pass
-    # Composite back-to-front
-    entries = []
-    for entry in layer_order:
-        layer = entry if isinstance(entry, dict) else layers_by_id.get(entry)
-        if not layer or layer.get("visible") is False:
-            continue
-        file_rel = layer.get("file") or ""
-        if "GUIDES" in file_rel:
-            continue
-        path = pkg / file_rel
-        if not path.is_file():
-            continue
-        entries.append(path)
-    # layerOrder is front-first; composite back-first
-    for path in reversed(entries):
-        with Image.open(path) as im:
-            frame = im.convert("RGBA")
-            frame.load()
-        result = Image.alpha_composite(result, frame)
-    return result
+@dataclass(frozen=True)
+class AnimationSpec:
+    name: str
+    video_key: str
+    pattern: str
+    frame_count: int
+    start_fraction: float = 0.0
+    end_fraction: float = 1.0
+    reverse: bool = False
+    loop: bool = False
 
 
-def content_bbox(im: Image.Image):
-    return im.split()[-1].getbbox() or (0, 0, im.width, im.height)
+SPECS = (
+    AnimationSpec(
+        "welcome",
+        "welcome",
+        "Axolotl_character_pixel_art_Welcome Animtion",
+        60,
+    ),
+    AnimationSpec(
+        "idlePrimary",
+        "idlePrimary",
+        "Axolotl_character_breathing_and",
+        48,
+        loop=True,
+    ),
+    AnimationSpec(
+        "idleFun",
+        "idleFun",
+        "Axolotl_character_2nd idle_animation",
+        60,
+    ),
+    AnimationSpec(
+        "walkLeft",
+        "walkLeft",
+        "Axolotl_walking_cycle_left",
+        20,
+        loop=True,
+    ),
+    AnimationSpec(
+        "walkRight",
+        "walkRight",
+        "Axolotl_walking_in_place_animation",
+        20,
+        loop=True,
+    ),
+    # The source settles into the seated sleep pose at ~7.5s of its 10s.
+    AnimationSpec(
+        "sleepTransition",
+        "sleep",
+        "Axolotl_transitions_to_sleep",
+        120,
+        start_fraction=0.0,
+        end_fraction=0.75,
+    ),
+    AnimationSpec(
+        "sleepingLoop",
+        "sleep",
+        "Axolotl_transitions_to_sleep",
+        40,
+        # Verified stable/cyclic tail: source frames 185..238 (7.708..9.917s).
+        # Frames 179..184 are seated but still settling and create a seam spike.
+        start_fraction=185 / 239,
+        end_fraction=1.0,
+        loop=True,
+    ),
+    # No separate wake clip was supplied: reverse-sample the complete transition
+    # so the first interaction visibly returns from seated sleep to happy idle.
+    AnimationSpec(
+        "wakeFromSleep",
+        "sleep",
+        "Axolotl_transitions_to_sleep",
+        8,
+        start_fraction=0.0,
+        end_fraction=0.75,
+        reverse=True,
+    ),
+)
 
 
-def fit_to_cell(im: Image.Image, cell: int, foot_pad: int = 2) -> Image.Image:
-    im = im.convert("RGBA")
-    crop = im.crop(content_bbox(im))
-    cw, ch = crop.size
-    scale = min((cell * 0.93) / max(ch, 1), (cell * 0.95) / max(cw, 1))
-    nw, nh = max(1, int(round(cw * scale))), max(1, int(round(ch * scale)))
-    resized = crop.resize((nw, nh), Image.Resampling.LANCZOS)
-    out = Image.new("RGBA", (cell, cell), (0, 0, 0, 0))
-    x = (cell - nw) // 2
-    y = max(0, cell - nh - foot_pad)
-    out.paste(resized, (x, y), resized)
-    return out
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
-def silhouette_stats(im: Image.Image) -> dict:
-    arr = np.array(im.convert("RGBA"))
-    a = arr[..., 3] > 32
-    if not a.any():
-        return {"cx": 64.0, "cy": 64.0, "h": 100.0, "w": 80.0, "foot_y": 120.0}
-    ys, xs = np.where(a)
+def hash_tree(root: Path) -> dict[str, str]:
     return {
-        "cx": float((xs.min() + xs.max()) / 2),
-        "cy": float((ys.min() + ys.max()) / 2),
-        "h": float(ys.max() - ys.min() + 1),
-        "w": float(xs.max() - xs.min() + 1),
-        "foot_y": float(ys.max()),
+        path.relative_to(root).as_posix(): sha256_file(path)
+        for path in sorted(root.rglob("*"))
+        if path.is_file()
     }
 
 
-def apply_pose(master: Image.Image, neutral: dict, pose: dict, cell: int) -> Image.Image:
-    """Position-only transfer — never paints monochrome character."""
-    dx = pose["cx"] - neutral["cx"]
-    dy = pose["foot_y"] - neutral["foot_y"]
-    scale = float(np.clip(pose["h"] / max(neutral["h"], 1), 0.92, 1.08))
-    w, h = master.size
-    nw, nh = max(1, int(round(w * scale))), max(1, int(round(h * scale)))
-    m = master.resize((nw, nh), Image.Resampling.NEAREST)
-    out = Image.new("RGBA", (cell, cell), (0, 0, 0, 0))
-    base_x = int(np.clip((cell - nw) // 2 + dx * 0.35, -8, cell - nw + 8))
-    base_y = int(np.clip(cell - nh - 2 + dy * 0.2, 0, cell - nh // 2))
-    out.paste(m, (base_x, base_y), m)
-    return out
-
-
-def pack(frames: list[Image.Image], cell: int):
-    n = len(frames)
-    cols = max(1, int(math.ceil(math.sqrt(n))))
-    rows = max(1, int(math.ceil(n / cols)))
-    sheet = Image.new("RGBA", (cols * cell, rows * cell), (0, 0, 0, 0))
-    frames_json = {}
-    names = []
-    for i, im in enumerate(frames):
-        if im.size != (cell, cell):
-            im = im.resize((cell, cell), Image.Resampling.NEAREST)
-        c, r = i % cols, i // cols
-        x, y = c * cell, r * cell
-        sheet.paste(im, (x, y), im)
-        name = f"frame_{i:03d}"
-        names.append(name)
-        frames_json[name] = {
-            "frame": {"x": x, "y": y, "w": cell, "h": cell},
-            "rotated": False,
-            "trimmed": False,
-            "spriteSourceSize": {"x": 0, "y": 0, "w": cell, "h": cell},
-            "sourceSize": {"w": cell, "h": cell},
-        }
-    return sheet, frames_json, names
-
-
-def assert_axo_canonical_identity(frame: Image.Image, reference: Image.Image, label: str) -> None:
-    """Structural fingerprint: frame must match cream master, not glitch chibi.
-
-    Fails if:
-    - corners opaque
-    - mean abs RGB diff vs reference on overlapping opaque pixels is high
-    - neon green corruption
-    - helmet region not cream-warm
-    - visor region not dark
-    - white-hot eye ovals dominate visor (open-eye exposed signature vs closed glow)
-    """
-    f = np.array(frame.convert("RGBA"))
-    r = np.array(reference.convert("RGBA").resize(frame.size, Image.Resampling.NEAREST))
-    # corners
-    for x, y in [(0, 0), (f.shape[1] - 1, 0), (0, f.shape[0] - 1), (f.shape[1] - 1, f.shape[0] - 1)]:
-        if f[y, x, 3] != 0:
-            raise AssertionError(f"{label}: opaque corner {x},{y}")
-    # opaque mask intersection
-    mask = (f[..., 3] > 180) & (r[..., 3] > 180)
-    if mask.sum() < 200:
-        raise AssertionError(f"{label}: too few overlapping opaque pixels ({mask.sum()})")
-    mad = float(np.abs(f[mask, :3].astype(np.int16) - r[mask, :3].astype(np.int16)).mean())
-    # Pose-shifted frames diverge more; still fail if character is totally different.
-    if mad > 75:
-        raise AssertionError(f"{label}: mean abs RGB vs cream master too high ({mad:.1f})")
-    # neon green
-    green = int(((f[..., 1] > 140) & (f[..., 0] < 90) & (f[..., 1] > f[..., 2] + 30) & (f[..., 3] > 180)).sum())
-    if green > 40:
-        raise AssertionError(f"{label}: neon green pixels {green}")
-    h, w = f.shape[:2]
-    # Sample relative to content bbox so pose shifts still hit helmet/visor
-    a = f[..., 3] > 180
-    ys, xs = np.where(a)
-    if len(xs) < 50:
-        raise AssertionError(f"{label}: no character content")
-    x0, x1 = int(xs.min()), int(xs.max())
-    y0, y1 = int(ys.min()), int(ys.max())
-    bw, bh = max(1, x1 - x0), max(1, y1 - y0)
-    # helmet: upper 25% of content bbox
-    hy0, hy1 = y0, y0 + int(bh * 0.28)
-    hx0, hx1 = x0 + int(bw * 0.2), x0 + int(bw * 0.8)
-    helmet = f[hy0:hy1, hx0:hx1]
-    hm = helmet[helmet[..., 3] > 180]
-    if len(hm) < 15:
-        raise AssertionError(f"{label}: helmet samples missing")
-    if hm[:, 0].mean() < 140 or hm[:, 1].mean() < 100:
-        raise AssertionError(f"{label}: helmet not cream (mean {hm[:, :3].mean(0)})")
-    # visor: mid-upper content
-    vy0, vy1 = y0 + int(bh * 0.28), y0 + int(bh * 0.52)
-    vx0, vx1 = x0 + int(bw * 0.28), x0 + int(bw * 0.72)
-    visor = f[vy0:vy1, vx0:vx1]
-    vm = visor[visor[..., 3] > 180]
-    if len(vm) < 15:
-        raise AssertionError(f"{label}: visor samples missing")
-    if float(vm[:, :3].mean()) > 110:
-        raise AssertionError(f"{label}: visor not dark enough (mean {vm[:, :3].mean():.1f})")
-    # Open white-eye ovals: large near-white clusters in visor (closed glow is peach/yellow, not white)
-    bright_white = (vm[:, 0] > 230) & (vm[:, 1] > 230) & (vm[:, 2] > 220)
-    if bright_white.sum() > max(25, len(vm) * 0.10):
-        raise AssertionError(
-            f"{label}: bright-white visor ovals (exposed-eye signature) {bright_white.sum()}/{len(vm)}"
+def find_video(spec: AnimationSpec) -> Path:
+    matches = sorted(
+        path for path in VIDEO_DIR.glob("*.mp4") if spec.pattern.casefold() in path.name.casefold()
+    )
+    if len(matches) != 1:
+        raise RuntimeError(
+            f"{spec.name}: expected one video containing {spec.pattern!r}, found {len(matches)}"
         )
-    # Cream body on torso
-    cy0, cy1 = y0 + int(bh * 0.55), y0 + int(bh * 0.78)
-    cx0, cx1 = x0 + int(bw * 0.3), x0 + int(bw * 0.7)
-    chest = f[cy0:cy1, cx0:cx1]
-    cm = chest[chest[..., 3] > 180]
-    if len(cm) > 10:
-        creamish = (cm[:, 0] > 150) & (cm[:, 1] > 110) & (cm[:, 2] > 85)
-        if creamish.sum() < 5:
-            raise AssertionError(f"{label}: chest region missing cream body")
+    video = matches[0]
+    actual = sha256_file(video)
+    expected = EXPECTED_VIDEO_SHA256[spec.video_key]
+    if actual != expected:
+        raise RuntimeError(
+            f"{spec.name}: source checksum mismatch for {video.name}: {actual} != {expected}"
+        )
+    return video
+
+
+def open_capture(video: Path) -> cv2.VideoCapture:
+    capture = cv2.VideoCapture(str(video))
+    if not capture.isOpened():
+        raise RuntimeError(f"could not decode {video}")
+    return capture
+
+
+def clean_foreground(rgb: np.ndarray) -> tuple[np.ndarray, tuple[int, int, int, int]]:
+    """Hard-key green and retain the connected Axo, never generic black/white."""
+    red = rgb[..., 0].astype(np.int16)
+    green = rgb[..., 1].astype(np.int16)
+    blue = rgb[..., 2].astype(np.int16)
+    keyed_green = (
+        (green > 58)
+        & (green > red * 1.10)
+        & (green > blue * 1.10)
+        & ((green - red) > 18)
+        & ((green - blue) > 12)
+    )
+    # Welcome begins on neutral checkerboard with black side bars. Remove only
+    # neutral pixels connected to the video border; identical dark visor/eye
+    # pixels inside the Axo are not connected to that background component.
+    high = np.maximum(np.maximum(red, green), blue)
+    low = np.minimum(np.minimum(red, green), blue)
+    neutral_border_candidate = ((high - low) <= 12) & ((high >= 185) | (high <= 28))
+    border_count, border_labels = cv2.connectedComponents(
+        neutral_border_candidate.astype(np.uint8),
+        connectivity=8,
+    )
+    border_ids = set(int(value) for value in border_labels[0, :])
+    border_ids.update(int(value) for value in border_labels[-1, :])
+    border_ids.update(int(value) for value in border_labels[:, 0])
+    border_ids.update(int(value) for value in border_labels[:, -1])
+    border_ids.discard(0)
+    keyed_neutral_border = (
+        np.isin(border_labels, list(border_ids))
+        if border_count > 1 and border_ids
+        else np.zeros_like(keyed_green)
+    )
+    foreground = (~(keyed_green | keyed_neutral_border)).astype(np.uint8)
+
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(foreground, connectivity=8)
+    if count <= 1:
+        raise RuntimeError("green-screen key produced no foreground")
+
+    height, width = foreground.shape
+    candidates: list[int] = []
+    for label in range(1, count):
+        x, y, w, h, area = (int(value) for value in stats[label])
+        covers_background = (
+            area >= width * height * 0.45
+            or (w >= width * 0.90 and h >= height * 0.90)
+        )
+        # Welcome's jump reaches the top edge. Border contact alone is not
+        # background evidence after green and neutral-border components are keyed.
+        if not covers_background and area >= 64:
+            candidates.append(label)
+    if not candidates:
+        raise RuntimeError("no bounded character component after green-screen key")
+    main = max(candidates, key=lambda label: int(stats[label, cv2.CC_STAT_AREA]))
+    mx, my, mw, mh, main_area = (int(value) for value in stats[main])
+
+    keep = labels == main
+    # Preserve meaningful enclosed details that compression may separate from
+    # the main silhouette, but reject remote sparkles and the detached floor shadow.
+    for label in candidates:
+        if label == main:
+            continue
+        x, y, w, h, area = (int(value) for value in stats[label])
+        center_x = x + w / 2
+        center_y = y + h / 2
+        enclosed = mx - 4 <= center_x <= mx + mw + 4 and my - 4 <= center_y <= my + mh + 4
+        if enclosed and area >= max(12, int(main_area * 0.00015)):
+            keep |= labels == label
+
+    ys, xs = np.where(keep)
+    if len(xs) < 128:
+        raise RuntimeError("character foreground is unexpectedly small")
+    bbox = (int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1)
+
+    rgba = np.zeros((height, width, 4), dtype=np.uint8)
+    rgba[..., :3] = rgb
+    rgba[..., 3] = np.where(keep, 255, 0).astype(np.uint8)
+    # Remove residual green spill from hard foreground edge pixels without
+    # changing the approved cream/pink/orange palette.
+    spill = keep & (green > np.maximum(red, blue) + 8)
+    rgba[..., 1][spill] = np.maximum(red[spill], blue[spill]).astype(np.uint8)
+    rgba[~keep, :3] = 0
+    return rgba, bbox
+
+
+def scan_video(video: Path) -> tuple[int, float, tuple[int, int, int, int]]:
+    capture = open_capture(video)
+    reported_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
+    fps = float(capture.get(cv2.CAP_PROP_FPS) or 24.0)
+    bboxes: list[tuple[int, int, int, int]] = []
+    decoded = 0
+    while True:
+        ok, bgr = capture.read()
+        if not ok:
+            break
+        rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+        _, bbox = clean_foreground(rgb)
+        bboxes.append(bbox)
+        decoded += 1
+    capture.release()
+    if decoded < 2 or (reported_count > 0 and decoded != reported_count):
+        raise RuntimeError(
+            f"{video.name}: decoded {decoded} frames, reported {reported_count}"
+        )
+    # Full union after detached components are removed: preserves real gait
+    # translation and stable bottom-center anchoring without background sparks.
+    x0 = min(bbox[0] for bbox in bboxes)
+    y0 = min(bbox[1] for bbox in bboxes)
+    x1 = max(bbox[2] for bbox in bboxes)
+    y1 = max(bbox[3] for bbox in bboxes)
+    pad_x = max(2, int(round((x1 - x0) * 0.025)))
+    pad_y = max(2, int(round((y1 - y0) * 0.025)))
+    global_bbox = (
+        max(0, x0 - pad_x),
+        max(0, y0 - pad_y),
+        x1 + pad_x,
+        y1 + pad_y,
+    )
+    return decoded, fps, global_bbox
+
+
+def evenly_spaced_indices(spec: AnimationSpec, source_count: int) -> list[int]:
+    start = int(round((source_count - 1) * spec.start_fraction))
+    end = int(round((source_count - 1) * spec.end_fraction))
+    if spec.loop and end >= source_count - 1:
+        # Do not include a duplicate terminal frame when looping a full clip.
+        end = max(start, source_count - 2)
+    values = np.linspace(start, end, spec.frame_count)
+    indices = [int(round(value)) for value in values]
+    if spec.reverse:
+        indices.reverse()
+    if len(indices) != spec.frame_count:
+        raise AssertionError(f"{spec.name}: wrong selected frame count")
+    return indices
+
+
+def fit_frame(rgba: np.ndarray, bbox: tuple[int, int, int, int]) -> Image.Image:
+    x0, y0, x1, y1 = bbox
+    x1 = min(rgba.shape[1], x1)
+    y1 = min(rgba.shape[0], y1)
+    crop = Image.fromarray(rgba[y0:y1, x0:x1])
+    width, height = crop.size
+    scale = (CELL * 0.90) / max(width, height)
+    out_w = max(1, int(round(width * scale)))
+    out_h = max(1, int(round(height * scale)))
+    resized = crop.resize((out_w, out_h), Image.Resampling.NEAREST)
+    out = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
+    left = (CELL - out_w) // 2
+    top = max(0, CELL - out_h - 2)
+    out.paste(resized, (left, top), resized)
+    pixels = np.asarray(out).copy()
+    pixels[..., 3] = np.where(pixels[..., 3] >= 128, 255, 0).astype(np.uint8)
+    pixels[pixels[..., 3] == 0, :3] = 0
+    return Image.fromarray(pixels)
+
+
+def decode_selected(
+    video: Path,
+    indices: Iterable[int],
+    global_bbox: tuple[int, int, int, int],
+) -> list[Image.Image]:
+    ordered = list(indices)
+    wanted = set(ordered)
+    decoded: dict[int, Image.Image] = {}
+    capture = open_capture(video)
+    frame_index = 0
+    while wanted:
+        ok, bgr = capture.read()
+        if not ok:
+            break
+        if frame_index in wanted:
+            rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+            rgba, _ = clean_foreground(rgb)
+            decoded[frame_index] = fit_frame(rgba, global_bbox)
+            wanted.remove(frame_index)
+        frame_index += 1
+    capture.release()
+    if wanted:
+        raise RuntimeError(f"{video.name}: missing selected frames {sorted(wanted)}")
+    return [decoded[index] for index in ordered]
+
+
+def atlas_layout(name: str) -> tuple[dict, list[tuple[int, int, int, int]]]:
+    json_path = AXO / "atlases" / f"{name}@1x.json"
+    atlas = json.loads(json_path.read_text(encoding="utf-8"))
+    rects = [
+        (entry["frame"]["x"], entry["frame"]["y"], entry["frame"]["w"], entry["frame"]["h"])
+        for entry in atlas["frames"].values()
+    ]
+    return atlas, rects
+
+
+def save_atlas(name: str, frames: list[Image.Image]) -> None:
+    atlas, rects = atlas_layout(name)
+    if len(frames) != len(rects):
+        raise RuntimeError(f"{name}: {len(frames)} frames != existing atlas {len(rects)}")
+    meta_size = atlas["meta"]["size"]
+    sheet = Image.new("RGBA", (meta_size["w"], meta_size["h"]), (0, 0, 0, 0))
+    for frame, (x, y, width, height) in zip(frames, rects):
+        if (width, height) != (CELL, CELL):
+            raise RuntimeError(f"{name}: unexpected @1x cell {(width, height)}")
+        sheet.paste(frame, (x, y), frame)
+    sheet.save(AXO / "atlases" / f"{name}@1x.png", optimize=True)
+
+    atlas2 = json.loads((AXO / "atlases" / f"{name}@2x.json").read_text(encoding="utf-8"))
+    size2 = atlas2["meta"]["size"]
+    sheet2 = Image.new("RGBA", (size2["w"], size2["h"]), (0, 0, 0, 0))
+    rects2 = [entry["frame"] for entry in atlas2["frames"].values()]
+    if len(rects2) != len(frames):
+        raise RuntimeError(f"{name}: @2x frame count mismatch")
+    for frame, rect in zip(frames, rects2):
+        if (rect["w"], rect["h"]) != (CELL * 2, CELL * 2):
+            raise RuntimeError(f"{name}: unexpected @2x cell")
+        doubled = frame.resize((CELL * 2, CELL * 2), Image.Resampling.NEAREST)
+        sheet2.paste(doubled, (rect["x"], rect["y"]), doubled)
+    sheet2.save(AXO / "atlases" / f"{name}@2x.png", optimize=True)
+
+
+def contact_sheet(frames: list[Image.Image]) -> Image.Image:
+    columns = min(8, len(frames))
+    rows = math.ceil(len(frames) / columns)
+    sheet = Image.new("RGBA", (columns * 64, rows * 64), (0, 0, 0, 0))
+    for index, frame in enumerate(frames):
+        thumb = frame.resize((64, 64), Image.Resampling.NEAREST)
+        sheet.paste(thumb, ((index % columns) * 64, (index // columns) * 64), thumb)
+    return sheet
+
 
 def main() -> int:
-    if not PKG.is_dir():
-        print("MISSING layered package", PKG, file=sys.stderr)
-        return 1
-    print("Recomposing layers from", PKG)
-    full = recompose_layers(PKG)
-    full.save(SCRATCH / "axo-recomposed-full.png")
-    master = fit_to_cell(full, CELL)
-    master2 = fit_to_cell(full, CELL2)
-    AXO.mkdir(parents=True, exist_ok=True)
-    (AXO / "atlases").mkdir(exist_ok=True)
-    (AXO / "previews").mkdir(exist_ok=True)
-    DOCS_CS.mkdir(parents=True, exist_ok=True)
-    master.save(AXO / "previews/reference-cream.png")
-    master2.save(AXO / "previews/portrait-cream.png")
-    master2.save(AXO / "previews/portrait.png")
-    assert_axo_canonical_identity(master, master, "master")
+    if not VIDEO_DIR.is_dir():
+        print(f"missing video directory: {VIDEO_DIR}", file=sys.stderr)
+        return 2
+    if not AXO.is_dir() or not GLITCH.is_dir():
+        print("missing Axo or Glitch character directory", file=sys.stderr)
+        return 2
 
-    neutral_path = MOTION / "idlePrimary/frames/frame_000.png"
-    neutral = silhouette_stats(Image.open(neutral_path)) if neutral_path.exists() else {
-        "cx": 64.0, "cy": 64.0, "h": 100.0, "w": 80.0, "foot_y": 120.0
-    }
-    existing = {}
-    if (AXO / "animations.json").exists():
-        existing = json.loads((AXO / "animations.json").read_text(encoding="utf-8"))
-    # preserve FPS from glitch/pixel manifests if needed
-    glitch_man = WT / "app/src/assets/pets/characters/vibespace-axolotl-glitch/animations.json"
-    if glitch_man.exists():
-        existing = json.loads(glitch_man.read_text(encoding="utf-8"))
+    glitch_before = hash_tree(GLITCH)
+    DOCS_CONTACTS.mkdir(parents=True, exist_ok=True)
+    EVIDENCE.mkdir(parents=True, exist_ok=True)
 
-    manifest = {
-        "schemaVersion": 1,
-        "characterId": "vibespace-axolotl",
-        "defaultState": "idlePrimary",
-        "states": {},
-        "scheduler": existing.get("scheduler") or {"idleFunIntervalMs": 60000, "sleepTimeoutMs": 300000},
-        "drag": existing.get("drag") or {"directionThresholdPx": 4, "stopThresholdPx": 2},
-    }
+    requested = set(sys.argv[1:])
+    known = {spec.name for spec in SPECS}
+    unknown = requested - known
+    if unknown:
+        print(f"unknown animation names: {sorted(unknown)}", file=sys.stderr)
+        return 2
+    selected_specs = [spec for spec in SPECS if not requested or spec.name in requested]
 
-    for anim in ANIMS:
-        files = sorted((MOTION / anim / "frames").glob("frame_*.png")) if (MOTION / anim / "frames").exists() else []
-        state = (existing.get("states") or {}).get(anim) or {}
-        fps = state.get("fps") or 12
-        loop = state.get("loop", True)
-        one_shot = state.get("oneShot", not loop)
-        frames: list[Image.Image] = []
-        if files:
-            for fp in files:
-                pose = silhouette_stats(Image.open(fp).convert("RGBA"))
-                frames.append(apply_pose(master, neutral, pose, CELL))
-        else:
-            for i in range(12):
-                bob = int(round(math.sin(i / 12 * math.pi * 2) * 2))
-                f = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
-                f.paste(master, (0, bob), master)
-                frames.append(f)
+    video_cache: dict[Path, tuple[int, float, tuple[int, int, int, int]]] = {}
+    for spec in selected_specs:
+        video = find_video(spec)
+        if video not in video_cache:
+            print(f"scan {video.name}", flush=True)
+            video_cache[video] = scan_video(video)
+        source_count, source_fps, global_bbox = video_cache[video]
+        indices = evenly_spaced_indices(spec, source_count)
+        frames = decode_selected(video, indices, global_bbox)
+        save_atlas(spec.name, frames)
+        contacts = contact_sheet(frames)
+        contacts.save(AXO / "previews" / f"{spec.name}-contact-sheet.png", optimize=True)
+        contacts.save(DOCS_CONTACTS / f"axo-{spec.name}-contact-sheet.png", optimize=True)
+        if spec.name == "sleepingLoop":
+            contacts.save(EVIDENCE / "axo-sleeping-loop-contact-sheet.png", optimize=True)
+        print(
+            f"wrote {spec.name}: {len(frames)} frames from "
+            f"{indices[0]}..{indices[-1]} of {source_count} @ source {source_fps:.3f}fps",
+            flush=True,
+        )
 
-        # Fingerprint every 8th frame + first/last
-        check_idx = sorted(set([0, len(frames) // 2, len(frames) - 1] + list(range(0, len(frames), max(1, len(frames) // 8)))))
-        for i in check_idx:
-            assert_axo_canonical_identity(frames[i], master, f"{anim}[{i}]")
-
-        sheet1, fj, names = pack(frames, CELL)
-        sheet1.save(AXO / "atlases" / f"{anim}@1x.png", optimize=True)
-        (AXO / "atlases" / f"{anim}@1x.json").write_text(json.dumps({
-            "frames": fj,
-            "animations": {anim: names},
-            "meta": {
-                "app": "VibeSpace Pets",
-                "version": "1.0",
-                "image": f"{anim}@1x.png",
-                "format": "RGBA8888",
-                "size": {"w": sheet1.width, "h": sheet1.height},
-                "scale": "1",
-            },
-        }, indent=2), encoding="utf-8")
-        frames2 = [f.resize((CELL2, CELL2), Image.Resampling.NEAREST) for f in frames]
-        sheet2, fj2, names2 = pack(frames2, CELL2)
-        sheet2.save(AXO / "atlases" / f"{anim}@2x.png", optimize=True)
-        (AXO / "atlases" / f"{anim}@2x.json").write_text(json.dumps({
-            "frames": fj2,
-            "animations": {anim: names2},
-            "meta": {
-                "app": "VibeSpace Pets",
-                "version": "1.0",
-                "image": f"{anim}@2x.png",
-                "format": "RGBA8888",
-                "size": {"w": sheet2.width, "h": sheet2.height},
-                "scale": "2",
-            },
-        }, indent=2), encoding="utf-8")
-        cols = min(8, len(frames))
-        rows = math.ceil(len(frames) / cols)
-        cs = Image.new("RGBA", (cols * 64, rows * 64), (0, 0, 0, 0))
-        for i, f in enumerate(frames):
-            t = f.resize((64, 64), Image.Resampling.NEAREST)
-            cs.paste(t, ((i % cols) * 64, (i // cols) * 64), t)
-        cs.save(DOCS_CS / f"axo-{anim}-contact-sheet.png")
-        cs.save(AXO / "previews" / f"{anim}-contact-sheet.png")
-        frames[0].save(SCRATCH / f"axo-{anim}-frame0.png")
-        print(f"OK {anim} frames={len(frames)} fps={fps}")
-        manifest["states"][anim] = {
-            "frames": names,
-            "fps": fps,
-            "frameDurationMs": int(round(1000 / max(fps, 0.1))),
-            "loop": loop,
-            "interruptible": state.get("interruptible", True),
-            "priority": state.get("priority", 10),
-            "fallbackState": state.get("fallbackState", "idlePrimary"),
-            "reducedMotionState": state.get("reducedMotionState", "idlePrimary"),
-            "atlas": f"atlases/{anim}@1x.json",
-            "atlas2x": f"atlases/{anim}@2x.json",
-            "oneShot": one_shot,
-        }
-
-    (AXO / "animations.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-    # Export fingerprint helper sample for tests to compare
-    master.save(AXO / "previews/canonical-master-128.png")
-    print("DONE characterId=vibespace-axolotl")
+    glitch_after = hash_tree(GLITCH)
+    if glitch_after != glitch_before:
+        raise RuntimeError("Glitch tree changed during Axo rebuild")
+    print(f"Glitch unchanged: {len(glitch_after)} files", flush=True)
     return 0
 
 
