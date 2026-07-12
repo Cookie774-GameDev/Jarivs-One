@@ -329,7 +329,7 @@ export function PetOverlay({
         className={cn(
           tauriWindowMode
             ? 'relative select-none touch-none w-full h-full'
-            : 'fixed z-[80] select-none touch-none',
+            : 'fixed z-[80] select-none touch-none pointer-events-auto',
           'cursor-grab active:cursor-grabbing',
           className,
         )}
@@ -339,6 +339,7 @@ export function PetOverlay({
                 width: DISPLAY,
                 height: DISPLAY,
                 background: 'transparent',
+                backgroundColor: 'transparent',
                 margin: 'auto',
               }
             : {
@@ -347,6 +348,11 @@ export function PetOverlay({
                 width: DISPLAY,
                 height: DISPLAY,
                 background: 'transparent',
+                backgroundColor: 'transparent',
+                // No card/plate behind the sprite
+                boxShadow: 'none',
+                border: 'none',
+                outline: 'none',
               }
         }
         data-pet-overlay="true"
@@ -364,7 +370,12 @@ export function PetOverlay({
         <div
           ref={hostRef}
           className="block w-full h-full"
-          style={{ width: DISPLAY, height: DISPLAY, background: 'transparent' }}
+          style={{
+            width: DISPLAY,
+            height: DISPLAY,
+            background: 'transparent',
+            backgroundColor: 'transparent',
+          }}
         />
       </div>
       {ctxMenu && (

@@ -86,21 +86,32 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedProp }: Pe
 
   if (!claimed || !enabled || !overlayVisible) return null;
 
+  // When the mini panel is open, hide the floating sprite; show it again on close/minimize.
+  const showSprite = !panelOpen;
+
   return (
     <>
-      <PetOverlay
-        enabled
-        reducedMotion={reducedMotion}
-        panelOpen={panelOpen}
-        onOpenPanel={openPanel}
-        onPanelClose={closePanel}
-        onAnimChange={setAnimLabel}
-        onRequestClose={hidePet}
-        tauriWindowMode={false}
-        sleepTimeoutMs={sleepTimeoutMs}
-        idleFunIntervalMs={idleFunIntervalMs}
+      {showSprite && (
+        <PetOverlay
+          enabled
+          reducedMotion={reducedMotion}
+          panelOpen={panelOpen}
+          onOpenPanel={openPanel}
+          onPanelClose={closePanel}
+          onAnimChange={setAnimLabel}
+          onRequestClose={hidePet}
+          tauriWindowMode={false}
+          sleepTimeoutMs={sleepTimeoutMs}
+          idleFunIntervalMs={idleFunIntervalMs}
+        />
+      )}
+      <PetMiniPanel
+        open={panelOpen}
+        onClose={closePanel}
+        onMinimize={() => setPanelOpen(false)}
+        animLabel={animLabel}
+        resizable
       />
-      <PetMiniPanel open={panelOpen} onClose={closePanel} animLabel={animLabel} resizable />
     </>
   );
 }

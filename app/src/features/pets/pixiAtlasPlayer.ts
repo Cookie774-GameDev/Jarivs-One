@@ -115,32 +115,59 @@ export class PixiAtlasPlayer {
     }
 
     const app = new Application();
+    const res = Math.min(
+      2,
+      Math.max(
+        1,
+        opts.resolution ??
+          (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1),
+      ),
+    );
     await app.init({
       width: this.displaySize,
       height: this.displaySize,
       backgroundAlpha: opts.backgroundAlpha ?? 0,
+      backgroundColor: 0x000000,
       antialias: false,
       autoDensity: true,
-      resolution: Math.min(2, Math.max(1, opts.resolution ?? (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1))),
+      resolution: res,
       preference: 'webgl',
-      // Preserve crisp pixels
+      // Preserve crisp pixels + correct alpha over dark UI
       roundPixels: true,
+      useBackBuffer: true,
+      clearBeforeRender: true,
     });
 
+    // Force fully transparent canvas (no dark brown plate behind sprite).
+    try {
+      app.renderer.background.alpha = 0;
+      app.renderer.background.color = 0x000000;
+    } catch {
+      /* pixi version differences */
+    }
+
     // Nearest-neighbor default for all textures on this renderer.
-    // Pixi v8: set on TextureSource when creating frame textures.
-    app.canvas.style.width = `${this.displaySize}px`;
-    app.canvas.style.height = `${this.displaySize}px`;
-    app.canvas.style.imageRendering = 'pixelated';
-    app.canvas.style.display = 'block';
-    app.canvas.style.background = 'transparent';
-    host.replaceChildren(app.canvas as HTMLCanvasElement);
+    const canvas = app.canvas as HTMLCanvasElement;
+    canvas.style.width = `${this.displaySize}px`;
+    canvas.style.height = `${this.displaySize}px`;
+    canvas.style.imageRendering = 'pixelated';
+    canvas.style.display = 'block';
+    canvas.style.background = 'transparent';
+    canvas.style.backgroundColor = 'transparent';
+    // Avoid premultiplied dark fringes on WebView
+    canvas.style.mixBlendMode = 'normal';
+    host.style.background = 'transparent';
+    host.style.backgroundColor = 'transparent';
+    host.replaceChildren(canvas);
 
     const sprite = new Sprite();
     sprite.roundPixels = true;
     sprite.anchor.set(0.5, 1); // bottom-center
     sprite.x = Math.round(this.displaySize / 2);
     sprite.y = Math.round(this.displaySize);
+    // Full brightness — never greyed-out tint
+    sprite.alpha = 1;
+    sprite.tint = 0xffffff;
     app.stage.addChild(sprite);
 
     this.tickerFn = (ticker) => {
@@ -176,10 +203,13 @@ export class PixiAtlasPlayer {
     const atlas = (await res.json()) as AtlasJson;
     if (gen !== this.loadGeneration) return;
 
-    // Load full sheet via Assets (or ImageBitmap fallback path)
+    // Load full sheet; prefer non-premultiplied alpha so cream stays bright on dark UI.
     const base = (await Assets.load({
       src: imageUrl,
-      data: { scaleMode: SCALE_MODES.NEAREST },
+      data: {
+        scaleMode: SCALE_MODES.NEAREST,
+        alphaMode: 'no-premultiply-alpha',
+      },
     })) as Texture;
     if (gen !== this.loadGeneration) {
       base.destroy(true);
@@ -203,9 +233,18 @@ export class PixiAtlasPlayer {
   }
 
   private applyNearestFilter(tex: Texture): void {
-    const source = tex.source as TextureSource & { scaleMode?: string };
-    if (source && 'scaleMode' in source) {
-      source.scaleMode = SCALE_MODES.NEAREST;
+    const source = tex.source as TextureSource & {
+      scaleMode?: string;
+      alphaMode?: string;
+    };
+    if (source) {
+      if ('scaleMode' in source) source.scaleMode = SCALE_MODES.NEAREST;
+      // Keep unpremultiplied so semi-transparent edges don't darken
+      try {
+        (source as { alphaMode?: string }).alphaMode = 'no-premultiply-alpha';
+      } catch {
+        /* ignore */
+      }
     }
     this.lastFilter = 'nearest';
   }
