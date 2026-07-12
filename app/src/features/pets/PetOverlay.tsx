@@ -26,6 +26,10 @@ import { clampPetPosition, getAnimDef, getPetAnimationsManifest, resolveAtlasUrl
 import { openOrFocusPetPanel, setPetOverlayPosition } from './petTauriBridge';
 import { petPerfRecordDragUpdate, petPerfRecordStateTransition } from './petDevPerf';
 import {
+  buildPetRuntimeDiagnostics,
+  installPetRuntimeDiagGlobal,
+} from './petRuntimeDiagnostics';
+import {
   PET_FORCE_ANIM_EVENT,
   type PetForceAnimDetail,
   usePetSettingsStore,
@@ -90,6 +94,21 @@ export function PetOverlay({
   onAnimChangeRef.current = onAnimChange;
 
   const man = React.useMemo(() => getPetAnimationsManifest(characterId), [characterId]);
+  const showDiagnostics = usePetSettingsStore((s) => s.showDiagnostics);
+
+  // DEV-only full chain diagnostics (no production spam).
+  React.useEffect(() => {
+    if (!enabled) return;
+    return installPetRuntimeDiagGlobal(() =>
+      buildPetRuntimeDiagnostics({
+        characterId: characterIdRef.current,
+        anim: stateRef.current.anim,
+        reducedMotion,
+        panelOpen: panelOpen || stateRef.current.panelOpen,
+        player: playerRef.current,
+      }),
+    );
+  }, [enabled, reducedMotion, panelOpen]);
 
   /** Stable state applicator — must not thrash boot effects. */
   const setState = React.useCallback((next: PetMachineState) => {
@@ -497,6 +516,8 @@ export function PetOverlay({
         data-pet-anim={animLabel}
         data-pet-character={characterId}
         data-pet-panel-open={panelOpen ? 'true' : 'false'}
+        data-pet-reduced-motion={reducedMotion ? 'true' : 'false'}
+        data-pet-show-diag={showDiagnostics ? 'true' : 'false'}
         data-pet-renderer="pixi"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}

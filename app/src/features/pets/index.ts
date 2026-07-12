@@ -34,6 +34,11 @@ export {
   type PetPanelLifecycleState,
 } from './petPanelLifecycle';
 export {
+  buildPetRuntimeDiagnostics,
+  installPetRuntimeDiagGlobal,
+  type PetRuntimeDiagnostics,
+} from './petRuntimeDiagnostics';
+export {
   validatePetProtocolMessage,
   createPetProtocolMessage,
   PET_WINDOW_LABELS,

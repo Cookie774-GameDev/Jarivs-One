@@ -1513,3 +1513,14 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Do not stage** | install.ps1, Cargo.toml |
 | **No merge/deploy** | draft PR #19 only |
 
+
+#### 2026-07-12 - DEV runtime diagnostics for Axo chain
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-12 ~08:51 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Status** | in-progress |
+| **Change** | `buildPetRuntimeDiagnostics` + DEV `window.__VIBESPACE_PET_DIAG__` covering selected pet ID, characterId, manifest path, atlas URL, anim state, frame index/count, ticker, reduced motion, panel hide, texture cache key — no production spam. |
+| **Do not stage** | install.ps1, Cargo.toml |
+
