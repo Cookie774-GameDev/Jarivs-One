@@ -6,8 +6,11 @@ import type { PetAnimId } from './petStateMachine';
 import axoAnimations from '@/assets/pets/characters/vibespace-axolotl/animations.json';
 import glitchAnimations from '@/assets/pets/characters/vibespace-axolotl-glitch/animations.json';
 import {
+  NORMAL_AXO_RUNTIME_ID,
+  GLITCH_RUNTIME_ID,
   resolvePetCharacterId,
   type PetCharacterId,
+  type PetCharacterInput,
   PET_CHARACTERS,
 } from './petCharacters';
 import { usePetSettingsStore } from './petSettingsStore';
@@ -42,8 +45,8 @@ export interface PetAnimationsManifest {
 }
 
 const MANIFEST_BY_CHAR: Record<PetCharacterId, PetAnimationsManifest> = {
-  axo: axoAnimations as PetAnimationsManifest,
-  glitch: glitchAnimations as PetAnimationsManifest,
+  [NORMAL_AXO_RUNTIME_ID]: axoAnimations as PetAnimationsManifest,
+  [GLITCH_RUNTIME_ID]: glitchAnimations as PetAnimationsManifest,
 };
 
 const ATLAS_URL_MODULES = import.meta.glob(
@@ -69,20 +72,20 @@ export function getSelectedCharacterId(): PetCharacterId {
   try {
     return resolvePetCharacterId(usePetSettingsStore.getState().characterId);
   } catch {
-    return 'axo';
+    return NORMAL_AXO_RUNTIME_ID;
   }
 }
 
 export function getPetAnimationsManifest(
-  characterId?: PetCharacterId,
+  characterId?: PetCharacterInput,
 ): PetAnimationsManifest {
-  const id = characterId ?? getSelectedCharacterId();
-  return MANIFEST_BY_CHAR[id] ?? MANIFEST_BY_CHAR.axo;
+  const id = characterId == null ? getSelectedCharacterId() : resolvePetCharacterId(characterId);
+  return MANIFEST_BY_CHAR[id] ?? MANIFEST_BY_CHAR[NORMAL_AXO_RUNTIME_ID];
 }
 
 export function getAnimDef(
   id: PetAnimId,
-  characterId?: PetCharacterId,
+  characterId?: PetCharacterInput,
 ): PetAnimStateDef | undefined {
   return getPetAnimationsManifest(characterId).states[id];
 }
@@ -90,16 +93,16 @@ export function getAnimDef(
 /** Resolve atlas URL for a character folder (production-safe via glob). */
 export function resolveAtlasUrls(
   def: PetAnimStateDef,
-  characterId?: PetCharacterId,
+  characterId?: PetCharacterInput,
   atlasPath?: string,
 ): { jsonUrl: string; imageUrl: string } {
-  const id = characterId ?? getSelectedCharacterId();
+  const id = characterId == null ? getSelectedCharacterId() : resolvePetCharacterId(characterId);
   const folder = PET_CHARACTERS[id]?.assetFolder ?? 'vibespace-axolotl';
   const jsonFile = (atlasPath ?? def.atlas).replace(/^atlases\//, '');
   const imageFile = jsonFile.replace(/\.json$/, '.png');
 
   // Hard guard: Axo must never resolve under a glitch folder.
-  if (id === 'axo' && folder.toLowerCase().includes('glitch')) {
+  if (id === NORMAL_AXO_RUNTIME_ID && folder.toLowerCase().includes('glitch')) {
     throw new Error('Axo cannot load glitch asset folder');
   }
 
@@ -107,7 +110,7 @@ export function resolveAtlasUrls(
   const imageUrl = atlasAssetUrl(folder, imageFile);
 
   if (jsonUrl && imageUrl) {
-    if (id === 'axo' && (jsonUrl.includes('glitch') || imageUrl.includes('glitch'))) {
+    if (id === NORMAL_AXO_RUNTIME_ID && (jsonUrl.includes('glitch') || imageUrl.includes('glitch'))) {
       throw new Error('Axo atlas URL unexpectedly contains glitch');
     }
     return { jsonUrl, imageUrl };

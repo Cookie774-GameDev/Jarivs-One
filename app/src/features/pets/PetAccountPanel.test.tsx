@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PetAccountPanel } from './PetAccountPanel';
+import { GLITCH_RUNTIME_ID, NORMAL_AXO_RUNTIME_ID } from './petCharacters';
 import { usePetSettingsStore } from './petSettingsStore';
 
 describe('PetAccountPanel character picker', () => {
@@ -13,7 +14,7 @@ describe('PetAccountPanel character picker', () => {
       idleFunIntervalMs: 60_000,
       showDiagnostics: false,
       overlayVisible: true,
-      characterId: 'axo',
+      characterId: NORMAL_AXO_RUNTIME_ID,
     });
   });
 
@@ -26,12 +27,12 @@ describe('PetAccountPanel character picker', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /select glitch/i }));
 
-    expect(usePetSettingsStore.getState().characterId).toBe('glitch');
+    expect(usePetSettingsStore.getState().characterId).toBe(GLITCH_RUNTIME_ID);
     expect(screen.getByRole('button', { name: /select glitch/i }).getAttribute('aria-pressed')).toBe('true');
     expect(dispatch).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'jarvis:pet:character-changed',
-        detail: { characterId: 'glitch' },
+        detail: { characterId: GLITCH_RUNTIME_ID },
       }),
     );
   });

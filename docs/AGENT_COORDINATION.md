@@ -1593,3 +1593,46 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Do not stage** | install/install.ps1, app/src-tauri/Cargo.toml |
 | **Remaining** | full Windows 35-step manual QA; packaged Tauri; multi-DPI |
 
+#### 2026-07-12 - User-directed stop / release for next task
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-12 ~09:43 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Branch** | `agent/pixel-pets-axolotl` (draft PR #19) |
+| **Status** | paused by user request; locks released for next task |
+| **Reason** | User explicitly said to drop the current work and wait for the next task. No further implementation, tests, commits, push, merge, or deployment performed in this stop step. |
+| **Important state** | Worktree may contain uncommitted Pixel Pets changes from the interrupted prior work and newer handoff entries. Do not assume complete; inspect `git status --short` and exact diffs before editing or staging. |
+| **Do not stage** | `install/install.ps1`, `app/src-tauri/Cargo.toml`, `.agent-coordination.lock.released-*` unless separately reviewed and approved. |
+
+#### 2026-07-12 - Canonical Axo runtime playback fix
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-12 ~10:00 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Branch** | `agent/pixel-pets-axolotl` (draft PR #19) |
+| **HEAD at claim** | `cd6337f` |
+| **Status** | in-progress |
+| **Task** | Stop Axo artwork regeneration/redesign; fix normal Axo runtime identity/loading/playback in the real shared Pixi path; preserve Glitch exactly. |
+| **Locks** | `app/src/features/pets/petCharacters.ts`, `app/src/features/pets/petManifest.ts`, `app/src/features/pets/petSettingsStore.ts`, `app/src/features/pets/petRuntimeDiagnostics.ts`, `app/src/features/pets/pixiAtlasPlayer.ts`, `app/src/features/pets/PetOverlay.tsx`, `app/src/features/pets/PetAccountPanel.tsx`, `app/src/features/pets/petIdentity.test.ts`, `app/src/features/pets/petManifest.test.ts`, `app/src/features/pets/petRuntimeDiagnostics.test.ts`, `app/src/features/pets/atlasPlayer.test.ts`, `app/src/features/pets/petAnimationPlayback.test.ts`, `app/src/features/pets/PetAccountPanel.test.tsx`, `docs/AGENT_COORDINATION.md` |
+| **Discovery before claim** | Current asset roots include `vibespace-axolotl`, `vibespace-axolotl-glitch`, and `vibespace-axolotl-pixel`; canonical Axo manifest exists and declares `characterId: vibespace-axolotl`. Current registry maps short UI IDs `axo`/`glitch` to canonical folders; task requires canonical runtime selectable IDs and migration of source aliases. |
+| **Do not stage** | `install/install.ps1`, `app/src-tauri/Cargo.toml`, `.agent-coordination.lock.released-*`, unrelated docs/pets scratch assets unless separately reviewed. |
+| **No merge/deploy** | Keep PR #19 draft only. |
+
+#### 2026-07-12 - Canonical Axo runtime identity/playback patch complete
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-12 10:27 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Branch** | `agent/pixel-pets-axolotl` (draft PR #19) |
+| **Status** | implementation patch complete; locks released after commit/push step; do not merge/deploy |
+| **Root cause addressed** | Runtime identity accepted/persisted short/source aliases (`axo`, `glitch`, `vibespace-axolotl-pixel`, etc.) instead of canonical selectable IDs, so diagnostics/persistence/registry resolution could restore or inspect the wrong runtime chain. Normal Axo now canonicalizes to `vibespace-axolotl`; Glitch remains `vibespace-axolotl-glitch`. |
+| **Changed files** | `petCharacters.ts`, `petManifest.ts`, `petSettingsStore.ts`, `petCharacterSwitch.ts`, `pixiAtlasPlayer.ts`, `petRuntimeDiagnostics.ts`, and focused tests. No Axo/Glitch artwork, atlas PNG/JSON, PSD/ORA, package assets, Supabase, Stripe, auth, migrations, deployments, or unrelated systems changed. |
+| **Diagnostics added** | DEV-only snapshot now includes canonical selected ID, manifest path/root, requested/active state, exact loaded atlas JSON URL, atlas PNG URL, scale, frame index/count/name, texture UID, ticker state/FPS, canvas/application count, reduced-motion, visibility, window label, renderer alpha, and nearest/linear filter state. |
+| **Verification** | `npm.cmd --prefix app run test -- src/features/pets/petIdentity.test.ts src/features/pets/petManifest.test.ts src/features/pets/petRuntimeDiagnostics.test.ts src/features/pets/atlasPlayer.test.ts src/features/pets/petAnimationPlayback.test.ts src/features/pets/PetAccountPanel.test.tsx --run` PASS 33/33; `npm.cmd --prefix app run test -- src/features/pets --run` PASS 126/126; `npm.cmd --prefix app run typecheck` PASS; `npm.cmd --prefix app run build` PASS. |
+| **Packaged build note** | `npm.cmd --prefix app run tauri:build` produced `VibeSpace_0.1.48_x64_en-US.msi` and `VibeSpace_0.1.48_x64-setup.exe`, then hit the expected signing gate: public key present but no `TAURI_SIGNING_PRIVATE_KEY`. No signing secret was printed or set. |
+| **Warnings / remaining manual gates** | Existing Vite dynamic-import/chunk warnings remain. Rust release build emitted existing dead-code warnings. Full signed packaged install/runtime visual recording remains a manual gate because signing credentials were unavailable. |
+| **Do not stage** | `install/install.ps1`, `app/src-tauri/Cargo.toml`, `.agent-coordination.lock.released-*`, `docs/pets/*` scratch assets, `vibespace-axolotl-pixel/previews/reference-axolotl.png`. |
+

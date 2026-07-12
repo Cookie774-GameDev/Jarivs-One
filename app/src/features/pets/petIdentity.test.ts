@@ -5,7 +5,13 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { PET_CHARACTERS, assertAxoNotGlitch } from './petCharacters';
+import {
+  NORMAL_AXO_RUNTIME_ID,
+  GLITCH_RUNTIME_ID,
+  PET_CHARACTERS,
+  assertAxoNotGlitch,
+  resolvePetCharacterId,
+} from './petCharacters';
 import { planCharacterSwitch } from './petCharacterSwitch';
 import {
   clampPetPosition,
@@ -17,16 +23,31 @@ import {
 const charactersRoot = join(process.cwd(), 'src/assets/pets/characters');
 
 describe('Axo / Glitch identity separation', () => {
+  it('normalizes all legacy/source Axo aliases to the canonical normal runtime ID', () => {
+    expect(resolvePetCharacterId('axo')).toBe(NORMAL_AXO_RUNTIME_ID);
+    expect(resolvePetCharacterId('vibespace-axolotl')).toBe(NORMAL_AXO_RUNTIME_ID);
+    expect(resolvePetCharacterId('vibespace-axolotl-pixel')).toBe(NORMAL_AXO_RUNTIME_ID);
+    expect(resolvePetCharacterId('vibespace-axolotl-light')).toBe(NORMAL_AXO_RUNTIME_ID);
+  });
+
+  it('normalizes Glitch aliases to the separate canonical Glitch runtime ID', () => {
+    expect(resolvePetCharacterId('glitch')).toBe(GLITCH_RUNTIME_ID);
+    expect(resolvePetCharacterId('vibespace-axolotl-glitch')).toBe(GLITCH_RUNTIME_ID);
+    expect(resolvePetCharacterId(GLITCH_RUNTIME_ID)).not.toBe(NORMAL_AXO_RUNTIME_ID);
+  });
+
   it('Axo characterId and folder never contain glitch', () => {
-    assertAxoNotGlitch(PET_CHARACTERS.axo);
-    expect(PET_CHARACTERS.axo.assetFolder).toBe('vibespace-axolotl');
-    expect(PET_CHARACTERS.axo.manifestCharacterId).toBe('vibespace-axolotl');
-    expect(PET_CHARACTERS.axo.assetFolder.toLowerCase()).not.toContain('glitch');
+    assertAxoNotGlitch(PET_CHARACTERS[NORMAL_AXO_RUNTIME_ID]);
+    expect(PET_CHARACTERS[NORMAL_AXO_RUNTIME_ID].id).toBe(NORMAL_AXO_RUNTIME_ID);
+    expect(PET_CHARACTERS[NORMAL_AXO_RUNTIME_ID].assetFolder).toBe('vibespace-axolotl');
+    expect(PET_CHARACTERS[NORMAL_AXO_RUNTIME_ID].manifestCharacterId).toBe('vibespace-axolotl');
+    expect(PET_CHARACTERS[NORMAL_AXO_RUNTIME_ID].assetFolder.toLowerCase()).not.toContain('glitch');
   });
 
   it('Glitch keeps its own intentional pack root', () => {
-    expect(PET_CHARACTERS.glitch.assetFolder).toBe('vibespace-axolotl-glitch');
-    expect(PET_CHARACTERS.glitch.manifestCharacterId).toBe('vibespace-axolotl-glitch');
+    expect(PET_CHARACTERS[GLITCH_RUNTIME_ID].id).toBe(GLITCH_RUNTIME_ID);
+    expect(PET_CHARACTERS[GLITCH_RUNTIME_ID].assetFolder).toBe('vibespace-axolotl-glitch');
+    expect(PET_CHARACTERS[GLITCH_RUNTIME_ID].manifestCharacterId).toBe('vibespace-axolotl-glitch');
   });
 
   it('Axo and Glitch manifests are different identities', () => {
@@ -97,8 +118,8 @@ describe('planCharacterSwitch (real path used by PetOverlay)', () => {
     const glitchIdle = resolveAtlasUrls(getAnimDef('idlePrimary', 'glitch')!, 'glitch');
     const plan = planCharacterSwitch('glitch', 'axo', 'idlePrimary', [glitchIdle.imageUrl], 1);
 
-    expect(plan.previousCharacterId).toBe('glitch');
-    expect(plan.nextCharacterId).toBe('axo');
+    expect(plan.previousCharacterId).toBe(GLITCH_RUNTIME_ID);
+    expect(plan.nextCharacterId).toBe(NORMAL_AXO_RUNTIME_ID);
     expect(plan.imageUrlsToUnload.length).toBeGreaterThan(0);
     // Must include the previously loaded glitch atlas image
     expect(plan.imageUrlsToUnload.some((u) => u.toLowerCase().includes('glitch'))).toBe(true);

@@ -5,8 +5,10 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { safeLocalStorage } from '@/lib/persistence/safeLocalStorage';
 import {
+  NORMAL_AXO_RUNTIME_ID,
   resolvePetCharacterId,
   type PetCharacterId,
+  type PetCharacterInput,
 } from './petCharacters';
 
 export interface PetSettingsState {
@@ -25,7 +27,7 @@ export interface PetSettingsState {
   setIdleFunIntervalMs: (ms: number) => void;
   setShowDiagnostics: (v: boolean) => void;
   setOverlayVisible: (v: boolean) => void;
-  setCharacterId: (id: PetCharacterId) => void;
+  setCharacterId: (id: PetCharacterInput) => void;
 }
 
 export const usePetSettingsStore = create<PetSettingsState>()(
@@ -37,7 +39,7 @@ export const usePetSettingsStore = create<PetSettingsState>()(
       idleFunIntervalMs: 60_000,
       showDiagnostics: false,
       overlayVisible: true,
-      characterId: 'axo',
+      characterId: NORMAL_AXO_RUNTIME_ID,
 
       setEnabled: (v) => set({ enabled: v, overlayVisible: v ? true : false }),
       setReducedMotion: (v) => set({ reducedMotion: v }),

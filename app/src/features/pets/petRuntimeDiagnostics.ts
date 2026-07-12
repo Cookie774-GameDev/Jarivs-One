@@ -2,8 +2,8 @@
  * Safe pet runtime diagnostics for the registry→manifest→atlas→ticker chain.
  * No console spam — pure snapshot builder; callers may expose on window in DEV only.
  */
-import type { PetCharacterId } from './petCharacters';
-import { PET_CHARACTERS } from './petCharacters';
+import type { PetCharacterId, PetCharacterInput } from './petCharacters';
+import { PET_CHARACTERS, resolvePetCharacterId } from './petCharacters';
 import type { PetAnimId } from './petStateMachine';
 import type { PixiAtlasPlayer } from './pixiAtlasPlayer';
 
@@ -11,6 +11,13 @@ export interface PetRuntimeDiagnostics {
   selectedPetId: PetCharacterId;
   resolvedCharacterId: string;
   assetFolder: string;
+  resolvedManifestUrl: string;
+  resolvedAssetRoot: string;
+  requestedState: PetAnimId | string;
+  activeState: PetAnimId | string;
+  atlasJsonUrl: string | null;
+  atlasPngUrl: string | null;
+  selectedScale: '1x' | '2x' | 'unknown';
   /** Logical path of the character animations manifest (not a network URL). */
   loadedManifestPath: string;
   loadedAtlasUrl: string | null;
@@ -25,32 +32,59 @@ export interface PetRuntimeDiagnostics {
   hiddenDueToPanel: boolean;
   activeTextureCacheKey: string | null;
   livePixiApplications: number;
+  canvasCount: number;
+  tickerFPS: number | null;
+  currentTextureUid: string | number | null;
   backgroundAlpha: number;
   scaleMode: 'nearest' | 'linear' | null;
+  documentVisibility: DocumentVisibilityState | 'unknown';
+  windowLabel: string;
 }
 
 export function buildPetRuntimeDiagnostics(input: {
-  characterId: PetCharacterId;
+  characterId: PetCharacterInput;
   anim: PetAnimId | string;
   reducedMotion: boolean;
   panelOpen: boolean;
   player: Pick<
     PixiAtlasPlayer,
     | 'getDiagnostics'
+    | 'loadedAtlasJsonUrl'
     | 'loadedImageUrl'
     | 'currentFrameIndex'
     | 'frameCount'
     | 'currentFrameName'
   > | null;
 }): PetRuntimeDiagnostics {
-  const def = PET_CHARACTERS[input.characterId] ?? PET_CHARACTERS.axo;
+  const selectedPetId = resolvePetCharacterId(input.characterId);
+  const def = PET_CHARACTERS[selectedPetId] ?? PET_CHARACTERS.axo;
   const playerDiag = input.player?.getDiagnostics?.() ?? null;
+  const atlasPngUrl = input.player?.loadedImageUrl ?? playerDiag?.textureCacheKey ?? null;
+  const atlasJsonUrl =
+    input.player?.loadedAtlasJsonUrl ??
+    playerDiag?.loadedAtlasJsonUrl ??
+    (atlasPngUrl ? atlasPngUrl.replace(/\.png($|\?)/, '.json$1') : null);
+  const selectedScale = atlasPngUrl?.includes('@2x')
+    ? '2x'
+    : atlasPngUrl?.includes('@1x')
+      ? '1x'
+      : 'unknown';
+  const manifestUrl = `assets/pets/characters/${def.assetFolder}/animations.json`;
+  const assetRoot = `assets/pets/characters/${def.assetFolder}/`;
+
   return {
-    selectedPetId: input.characterId,
+    selectedPetId,
     resolvedCharacterId: def.manifestCharacterId,
     assetFolder: def.assetFolder,
-    loadedManifestPath: `assets/pets/characters/${def.assetFolder}/animations.json`,
-    loadedAtlasUrl: input.player?.loadedImageUrl ?? playerDiag?.textureCacheKey ?? null,
+    resolvedManifestUrl: manifestUrl,
+    resolvedAssetRoot: assetRoot,
+    requestedState: input.anim,
+    activeState: input.anim,
+    atlasJsonUrl,
+    atlasPngUrl,
+    selectedScale,
+    loadedManifestPath: manifestUrl,
+    loadedAtlasUrl: atlasPngUrl,
     currentAnimationState: input.anim,
     currentFrameIndex: playerDiag?.currentFrameIndex ?? input.player?.currentFrameIndex ?? 0,
     frameCount: playerDiag?.frameCount ?? input.player?.frameCount ?? 0,
@@ -62,8 +96,18 @@ export function buildPetRuntimeDiagnostics(input: {
     hiddenDueToPanel: input.panelOpen,
     activeTextureCacheKey: playerDiag?.textureCacheKey ?? input.player?.loadedImageUrl ?? null,
     livePixiApplications: playerDiag?.liveApplicationCount ?? 0,
+    canvasCount: playerDiag?.liveApplicationCount ?? 0,
+    tickerFPS: playerDiag?.fps ?? null,
+    currentTextureUid: playerDiag?.currentTextureUid ?? null,
     backgroundAlpha: playerDiag?.backgroundAlpha ?? 0,
     scaleMode: playerDiag?.scaleMode ?? null,
+    documentVisibility:
+      typeof document !== 'undefined' ? document.visibilityState : 'unknown',
+    windowLabel:
+      typeof window !== 'undefined'
+        ? ((window as unknown as { __TAURI_INTERNALS__?: { metadata?: { currentWindow?: { label?: string } } } })
+            .__TAURI_INTERNALS__?.metadata?.currentWindow?.label ?? 'browser')
+        : 'unknown',
   };
 }
 

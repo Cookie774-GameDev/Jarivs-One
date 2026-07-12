@@ -82,6 +82,8 @@ export class PixiAtlasPlayer {
   private mountEl: HTMLElement | null = null;
   private lastFilter: 'nearest' | 'linear' | null = null;
   private loadGeneration = 0;
+  /** Last successfully loaded atlas JSON URL (diagnostic source of truth). */
+  private lastAtlasJsonUrl: string | null = null;
   /** Last successfully loaded atlas image URL (for cache eviction on skin switch). */
   private lastImageUrl: string | null = null;
 
@@ -121,6 +123,18 @@ export class PixiAtlasPlayer {
     return this.lastImageUrl;
   }
 
+  get loadedAtlasJsonUrl(): string | null {
+    return this.lastAtlasJsonUrl;
+  }
+
+  get currentTextureUid(): string | number | null {
+    const tex = this.sprite?.texture as
+      | (Texture & { uid?: string | number; source?: { uid?: string | number } })
+      | null
+      | undefined;
+    return tex?.uid ?? tex?.source?.uid ?? this.currentFrameName;
+  }
+
   /**
    * Distinct cache identity: characterId + animation state + scale + asset version.
    * @see buildPetTextureCacheKey
@@ -153,6 +167,8 @@ export class PixiAtlasPlayer {
     tickerRunning: boolean;
     animationPaused: boolean;
     textureCacheKey: string | null;
+    loadedAtlasJsonUrl: string | null;
+    currentTextureUid: string | number | null;
     liveApplicationCount: number;
     backgroundAlpha: number;
     scaleMode: 'nearest' | 'linear' | null;
@@ -168,6 +184,8 @@ export class PixiAtlasPlayer {
       tickerRunning: this.isTickerAttached,
       animationPaused: this.isAnimationPaused,
       textureCacheKey: this.textureCacheKey,
+      loadedAtlasJsonUrl: this.loadedAtlasJsonUrl,
+      currentTextureUid: this.currentTextureUid,
       liveApplicationCount: liveApplicationCount,
       backgroundAlpha: this.backgroundAlpha,
       scaleMode: this.lastFilter,
@@ -327,6 +345,7 @@ export class PixiAtlasPlayer {
       if (u) urls.add(u);
     }
     this.clearFrameTextures();
+    this.lastAtlasJsonUrl = null;
     this.lastImageUrl = null;
     for (const url of urls) {
       try {
@@ -342,7 +361,12 @@ export class PixiAtlasPlayer {
     if (!this.app) throw new Error('PixiAtlasPlayer.init() required before load');
 
     // Already showing this exact sheet — skip (avoids blink between walk frames).
-    if (this.lastImageUrl === imageUrl && this.frameTextures.size > 0 && this.atlas) {
+    if (
+      this.lastAtlasJsonUrl === atlasUrl &&
+      this.lastImageUrl === imageUrl &&
+      this.frameTextures.size > 0 &&
+      this.atlas
+    ) {
       return;
     }
 
@@ -390,6 +414,7 @@ export class PixiAtlasPlayer {
 
     // Atomic swap — old sprite keeps drawing until this point.
     this.baseTexture = base;
+    this.lastAtlasJsonUrl = atlasUrl;
     this.lastImageUrl = imageUrl;
     this.atlas = atlas;
     this.frameTextures = nextFrames;
@@ -548,6 +573,8 @@ export class PixiAtlasPlayer {
     this.onComplete = null;
     this.frameNames = [];
     this.atlas = null;
+    this.lastAtlasJsonUrl = null;
+    this.lastImageUrl = null;
 
     if (this.app && this.tickerFn) {
       try {
