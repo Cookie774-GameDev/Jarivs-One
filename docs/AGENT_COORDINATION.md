@@ -1500,3 +1500,16 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Locks** | pets/** + axolotl assets + ledger |
 | **Do not stage** | install.ps1, Cargo.toml |
 
+
+#### 2026-07-12 - Gating re-verify (freeze evidence + suite)
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-12 ~08:49 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **HEAD** | `811ab6b` |
+| **Status** | in-progress — locks reacquired; gating suite re-run |
+| **Freeze root cause** | Near-identical cream atlas cells (JSON multi-frame, visually static) — documented in implementer scratch `axo-glitch-mapping.txt` |
+| **Do not stage** | install.ps1, Cargo.toml |
+| **No merge/deploy** | draft PR #19 only |
+
