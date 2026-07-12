@@ -39,6 +39,31 @@ export async function openOrFocusPetPanel(nearX?: number, nearY?: number): Promi
   await invoke('pet_open_or_focus_panel', { nearX: nearX ?? null, nearY: nearY ?? null });
 }
 
+/**
+ * Open mini panel, then hide the pet overlay only if the panel is actually
+ * visible. Used by both PetHost (main) and PetOverlayWindow (desktop path).
+ * Prevents "sprite gone + no panel" when panel open fails.
+ */
+export async function openPetPanelSafely(
+  nearX?: number,
+  nearY?: number,
+): Promise<{ panelVisible: boolean }> {
+  if (!isTauriRuntime()) {
+    return { panelVisible: false };
+  }
+  await openOrFocusPetPanel(nearX, nearY);
+  // Brief settle for WebView show
+  await new Promise((r) => setTimeout(r, 180));
+  const panelVisible = await isPetPanelVisible();
+  if (panelVisible) {
+    await hidePetOverlay().catch(() => undefined);
+  } else {
+    // Panel did not open — keep/restore the floating pet.
+    await showPetOverlay().catch(() => undefined);
+  }
+  return { panelVisible };
+}
+
 export async function minimizePetPanel(): Promise<void> {
   await invoke('pet_minimize_panel');
 }

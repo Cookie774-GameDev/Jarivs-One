@@ -54,6 +54,7 @@ vi.mock('pixi.js', async () => {
     Application: FakeApplication,
     Assets: {
       load: async () => new FakeTexture(),
+      unload: async () => undefined,
     },
     Rectangle: class {
       constructor(

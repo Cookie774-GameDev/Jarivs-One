@@ -222,20 +222,29 @@ export function PetOverlay({
     return () => window.removeEventListener(PET_FORCE_ANIM_EVENT, onForce);
   }, [enabled, setState]);
 
+  // Same-skin animation changes (idle/walk/sleep): swap frames only — do NOT
+  // unload textures or the sprite blanks on every drag/state transition.
   React.useEffect(() => {
     if (!enabled) return;
-    // Force atlas reload when skin changes; clear Pixi cache so Glitch frames
-    // cannot stick after selecting Axo (and vice versa).
-    currentAnim.current = null;
-    animCache.current.clear();
-    void playerRef.current.unloadCharacterCache().then(() => playAnim(animLabel));
+    void playAnim(animLabel);
     const s = stateRef.current;
     if (s.anim === 'idlePrimary' && s.welcomePlayed) {
       schedulerRef.current?.onActivity();
     } else if (s.anim !== 'idleFun') {
       schedulerRef.current?.onHighPriority();
     }
-  }, [enabled, playAnim, animLabel, characterId]);
+  }, [enabled, playAnim, animLabel]);
+
+  // Character (Axo↔Glitch) change only: clear Pixi cache so a prior skin cannot stick.
+  const prevCharacterId = React.useRef(characterId);
+  React.useEffect(() => {
+    if (!enabled) return;
+    if (prevCharacterId.current === characterId) return;
+    prevCharacterId.current = characterId;
+    currentAnim.current = null;
+    animCache.current.clear();
+    void playerRef.current.unloadCharacterCache().then(() => playAnim(animLabel));
+  }, [enabled, characterId, playAnim, animLabel]);
 
   // Scheduler tick (Pixi ticker advances frames; we only poll sleep/idleFun here).
   React.useEffect(() => {

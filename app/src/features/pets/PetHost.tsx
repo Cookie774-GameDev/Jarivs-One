@@ -13,9 +13,8 @@ import { PetMiniPanel } from './PetMiniPanel';
 import {
   claimPetHostInstance,
   hidePetOverlay,
-  isPetPanelVisible,
   isTauriRuntime,
-  openOrFocusPetPanel,
+  openPetPanelSafely,
   releasePetHostInstance,
   showPetOverlay,
 } from './petTauriBridge';
@@ -98,17 +97,15 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedMotionProp
   const openPanel = React.useCallback(async () => {
     setPanelOpen(true);
     if (tauri) {
-      await openOrFocusPetPanel().catch((err) => console.warn('[pets] open panel', err));
-      // Only hide sprite if panel actually opened; otherwise keep pet visible.
-      await new Promise((r) => setTimeout(r, 200));
-      const panelOk = await isPetPanelVisible();
-      if (panelOk) {
-        setHideSpriteForPanel(true);
-        void hidePetOverlay().catch(() => undefined);
-      } else {
-        // Panel failed — keep sprite, still mark panelOpen for in-app mini panel.
+      // Shared confirm-then-hide: never leaves user with neither sprite nor panel.
+      const { panelVisible } = await openPetPanelSafely().catch((err) => {
+        console.warn('[pets] open panel', err);
+        return { panelVisible: false };
+      });
+      setHideSpriteForPanel(panelVisible);
+      if (!panelVisible) {
+        // In-app mini panel fallback while Tauri panel missing.
         setHideSpriteForPanel(false);
-        void showPetOverlay().catch(() => undefined);
       }
     } else {
       // Browser: hide floating sprite while in-app panel is open.

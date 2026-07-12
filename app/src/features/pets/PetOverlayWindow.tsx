@@ -4,7 +4,7 @@
  */
 import * as React from 'react';
 import { PetOverlay } from './PetOverlay';
-import { openOrFocusPetPanel } from './petTauriBridge';
+import { openPetPanelSafely } from './petTauriBridge';
 import { installPetPresentationStorageSync } from './petPresentationStore';
 import { installPetSettingsStorageSync, usePetSettingsStore } from './petSettingsStore';
 
@@ -73,7 +73,8 @@ export function PetOverlayWindow() {
         sleepTimeoutMs={sleepTimeoutMs}
         idleFunIntervalMs={idleFunIntervalMs}
         onOpenPanel={() => {
-          void openOrFocusPetPanel();
+          // Same confirm-then-hide path as PetHost — never hide overlay unless panel is visible.
+          void openPetPanelSafely();
         }}
       />
     </div>

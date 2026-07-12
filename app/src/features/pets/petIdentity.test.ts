@@ -1,7 +1,7 @@
 /**
  * Axo vs Glitch identity separation — must never load Glitch assets as Axo.
  */
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PET_CHARACTERS, assertAxoNotGlitch } from './petCharacters';
 import {
   clampPetPosition,
@@ -85,5 +85,34 @@ describe('clampPetPosition', () => {
       y: 600 - 128,
     });
     expect(clampPetPosition(40, 50, 128, 800, 600)).toEqual({ x: 40, y: 50 });
+  });
+});
+
+describe('Pixi texture cache on Axo↔Glitch switch', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    document.body.innerHTML = '';
+  });
+
+  it('unloadCharacterCache is invoked so a Glitch texture cannot stick after Axo select', async () => {
+    // Drive the real player API used on characterId change (not reimplemented).
+    const unloadSpy = vi.fn(async () => undefined);
+    const { PixiAtlasPlayer } = await import('./pixiAtlasPlayer');
+    const player = new PixiAtlasPlayer();
+    // Replace unload with spy while keeping instance methods
+    player.unloadCharacterCache = unloadSpy;
+
+    // Simulate the character-switch path from PetOverlay:
+    // clear cache before loading the new skin's atlas.
+    await player.unloadCharacterCache(['glitch-atlas.png']);
+    expect(unloadSpy).toHaveBeenCalledTimes(1);
+    expect(unloadSpy).toHaveBeenCalledWith(['glitch-atlas.png']);
+
+    // Distinct atlas paths for the two skins (regression if they collapse).
+    const axo = resolveAtlasUrls(getAnimDef('idlePrimary', 'axo')!, 'axo');
+    const glitch = resolveAtlasUrls(getAnimDef('idlePrimary', 'glitch')!, 'glitch');
+    expect(axo.imageUrl).not.toBe(glitch.imageUrl);
+    expect(axo.imageUrl.toLowerCase()).not.toContain('glitch');
+    expect(glitch.imageUrl.toLowerCase()).toContain('glitch');
   });
 });

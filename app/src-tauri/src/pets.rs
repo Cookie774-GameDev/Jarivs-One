@@ -203,7 +203,11 @@ pub fn pet_set_overlay_position(app: AppHandle, x: f64, y: f64) -> Result<(), St
 }
 
 /// Open or focus the single pet-mini-panel instance near the pet.
-/// Hides the floating pet sprite while the panel is open (restore on hide/minimize).
+///
+/// Does **not** hide the pet-overlay. The frontend must call
+/// `pet_hide_overlay` only after confirming the panel is visible
+/// (`pet_is_panel_visible`), so a failed panel open cannot leave the
+/// user with neither sprite nor panel.
 #[tauri::command]
 pub fn pet_open_or_focus_panel(app: AppHandle, near_x: Option<f64>, near_y: Option<f64>) -> Result<(), String> {
     let win = app
@@ -241,10 +245,7 @@ pub fn pet_open_or_focus_panel(app: AppHandle, near_x: Option<f64>, near_y: Opti
     drop(open);
     drop(geo);
 
-    // Hide floating pet while panel is open (no black plate under panel).
-    if let Some(overlay) = app.get_webview_window(PET_OVERLAY_LABEL) {
-        let _ = overlay.hide();
-    }
+    // Intentionally do not hide pet-overlay here — JS confirm-then-hide.
     Ok(())
 }
 
