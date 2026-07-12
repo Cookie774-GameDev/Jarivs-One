@@ -1,9 +1,9 @@
 /**
  * Jarvis Mini Voice Module for the Pet mini-panel.
- * Reuses real VoiceService + useVoiceStore — not a mock UI.
+ * Reuses real VoiceService + useVoiceStore — not a mock UI or second voice backend.
  */
 import * as React from 'react';
-import { Mic, MicOff, Square, Volume2 } from 'lucide-react';
+import { MessageSquare, Mic, MicOff, Square, Volume2, VolumeX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useVoiceStore } from '@/features/voice/store';
@@ -11,14 +11,24 @@ import { VoiceService } from '@/features/voice/VoiceService';
 import { useUIStore } from '@/stores/ui';
 import { stopAllVoiceOutput } from '@/features/voice/voiceRouter';
 
-export function PetVoiceSurface({ className }: { className?: string }) {
+export function PetVoiceSurface({
+  className,
+  onOpenChats,
+}: {
+  className?: string;
+  /** Switch mini-panel to the Chats tab (same presentation store chats). */
+  onOpenChats?: () => void;
+}) {
   const state = useVoiceStore((s) => s.state);
   const errorMessage = useVoiceStore((s) => s.errorMessage);
   const partial = useVoiceStore((s) => s.partialTranscript);
   const finals = useVoiceStore((s) => s.finalTranscript);
+  const persona = useVoiceStore((s) => s.persona);
   const setVoiceModalOpen = useUIStore((s) => s.setVoiceModalOpen);
 
   const [busy, setBusy] = React.useState(false);
+  /** Local mute of TTS output only — does not create a second audio pipeline. */
+  const [muted, setMuted] = React.useState(false);
 
   const isListening = state === 'listening';
   const isSpeaking = state === 'speaking';
@@ -41,14 +51,9 @@ export function PetVoiceSurface({ className }: { className?: string }) {
     }
   }, []);
 
-  const stop = React.useCallback(() => {
+  const stopListeningOnly = React.useCallback(() => {
     try {
       VoiceService.stopListening?.();
-    } catch {
-      /* ignore */
-    }
-    try {
-      stopAllVoiceOutput();
     } catch {
       /* ignore */
     }
@@ -57,9 +62,32 @@ export function PetVoiceSurface({ className }: { className?: string }) {
     }
   }, []);
 
+  const stopAll = React.useCallback(() => {
+    stopListeningOnly();
+    try {
+      stopAllVoiceOutput();
+    } catch {
+      /* ignore */
+    }
+  }, [stopListeningOnly]);
+
+  const toggleMute = React.useCallback(() => {
+    setMuted((m) => {
+      const next = !m;
+      if (next) {
+        try {
+          stopAllVoiceOutput();
+        } catch {
+          /* ignore */
+        }
+      }
+      return next;
+    });
+  }, []);
+
   React.useEffect(() => {
     return () => {
-      // Cleanup on unmount: stop capture if panel closes mid-listen
+      // Cleanup on unmount / panel close: stop capture; do not leave mic open.
       try {
         if (useVoiceStore.getState().state === 'listening') {
           VoiceService.stopListening?.();
@@ -75,13 +103,15 @@ export function PetVoiceSurface({ className }: { className?: string }) {
       className={cn('flex h-full min-h-0 flex-col gap-3 p-2', className)}
       data-pet-voice-surface="true"
       data-voice-state={state}
+      data-voice-muted={muted ? 'true' : 'false'}
+      data-voice-persona={persona}
     >
       <div className="flex flex-wrap items-center gap-2">
         <Button
           size="sm"
           variant={isListening ? 'destructive' : 'default'}
           disabled={busy}
-          onClick={() => (isListening ? stop() : start())}
+          onClick={() => (isListening ? stopListeningOnly() : start())}
           data-pet-voice-mic="true"
           className="gap-1.5"
         >
@@ -89,21 +119,54 @@ export function PetVoiceSurface({ className }: { className?: string }) {
           {isListening ? 'Stop' : 'Listen'}
         </Button>
         {(isSpeaking || isThinking) && (
-          <Button size="sm" variant="outline" onClick={stop} className="gap-1.5">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={stopAll}
+            className="gap-1.5"
+            data-pet-voice-stop-output="true"
+          >
             <Square className="h-3.5 w-3.5" />
-            Stop output
+            Stop speaking
           </Button>
         )}
         <Button
           size="sm"
           variant="ghost"
+          onClick={toggleMute}
+          className="gap-1.5"
+          data-pet-voice-mute="true"
+          aria-pressed={muted}
+        >
+          {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+          {muted ? 'Unmute' : 'Mute'}
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
           onClick={() => setVoiceModalOpen(true)}
           className="gap-1.5"
+          data-pet-voice-full-ui="true"
         >
           <Volume2 className="h-4 w-4" />
           Full voice UI
         </Button>
-        <span className="text-metadata text-muted-foreground ml-auto capitalize">{state}</span>
+        {onOpenChats && (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={onOpenChats}
+            className="gap-1.5"
+            data-pet-voice-open-chats="true"
+          >
+            <MessageSquare className="h-4 w-4" />
+            Open chat
+          </Button>
+        )}
+        <span className="text-metadata text-muted-foreground ml-auto capitalize">
+          {persona} · {state}
+          {muted ? ' · muted' : ''}
+        </span>
       </div>
 
       {errorMessage && (
@@ -122,7 +185,7 @@ export function PetVoiceSurface({ className }: { className?: string }) {
           </p>
         )}
         {finals.map((f) => (
-          <div key={f.ts} className="text-sm">
+          <div key={f.ts} className="text-sm" data-pet-voice-user-final="true">
             <span className="text-metadata text-muted-foreground">You · </span>
             <span className="text-foreground">{f.text}</span>
           </div>

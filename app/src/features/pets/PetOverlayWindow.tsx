@@ -8,6 +8,7 @@ import {
   openPetPanelSafely,
   hidePetOverlay,
   setPetPanelOpenFlag,
+  showPetOverlay,
 } from './petTauriBridge';
 import { installPetPresentationStorageSync } from './petPresentationStore';
 import { installPetSettingsStorageSync, usePetSettingsStore } from './petSettingsStore';
@@ -78,13 +79,20 @@ export function PetOverlayWindow() {
         idleFunIntervalMs={idleFunIntervalMs}
         onOpenPanel={() => {
           // Hide standalone pet as soon as panel open is requested; confirm via bridge.
+          // Never leave both hidden if panel open fails — restore overlay + clear flag.
           setPetPanelOpenFlag(true);
           void hidePetOverlay().catch(() => undefined);
-          void openPetPanelSafely().then(({ panelVisible }) => {
-            if (!panelVisible) {
+          void openPetPanelSafely()
+            .then(({ panelVisible }) => {
+              if (!panelVisible) {
+                setPetPanelOpenFlag(false);
+                void showPetOverlay().catch(() => undefined);
+              }
+            })
+            .catch(() => {
               setPetPanelOpenFlag(false);
-            }
-          });
+              void showPetOverlay().catch(() => undefined);
+            });
         }}
       />
     </div>

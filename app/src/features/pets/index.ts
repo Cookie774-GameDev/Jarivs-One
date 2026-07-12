@@ -27,6 +27,7 @@ export { AtlasPlayer, PixiAtlasPlayer, getLivePixiApplicationCount } from './atl
 export {
   reducePanelLifecycle,
   createInitialPanelLifecycle,
+  shouldShowStandalonePet,
   PET_PANEL_CLOSE_CONFIRM_MESSAGE,
   PET_PANEL_MAX_TERMINALS,
   PET_PANEL_TERMINAL_LIMIT_MESSAGE,

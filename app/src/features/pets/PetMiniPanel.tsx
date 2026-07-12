@@ -344,7 +344,9 @@ export function PetMiniPanel({
         <div className="h-full min-h-0 rounded-xl border border-border/50 bg-background/70 shadow-inner overflow-hidden">
           {tab === 'chats' && <PetChatSurface className="h-full p-2" />}
           {tab === 'terminals' && <PetTerminalSurface className="h-full p-2" />}
-          {tab === 'voice' && <PetVoiceSurface className="h-full" />}
+          {tab === 'voice' && (
+            <PetVoiceSurface className="h-full" onOpenChats={() => setTab('chats')} />
+          )}
           {tab === 'activity' && (
             <div className="h-full overflow-auto p-3" data-testid="pet-activity">
               <p className="mb-3 text-secondary text-muted-foreground text-sm">

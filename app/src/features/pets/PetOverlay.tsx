@@ -358,11 +358,31 @@ export function PetOverlay({
   const onPointerMove = (e: React.PointerEvent) => {
     const d = dragRef.current;
     if (!d?.active) return;
-    const t = performance.now();
-    const { state: vel, walkAnim } = sampleDragVelocity(d.vel, e.clientX, t);
-    d.vel = vel;
-    const dx = e.clientX - d.startX;
-    const dy = e.clientY - d.startY;
+    // Coalesce high-frequency pointer samples when available; keep last sample for position.
+    const native = e.nativeEvent as PointerEvent & {
+      getCoalescedEvents?: () => PointerEvent[];
+    };
+    const coalesced =
+      typeof native.getCoalescedEvents === 'function' ? native.getCoalescedEvents() : null;
+    const samples =
+      coalesced && coalesced.length > 0
+        ? coalesced
+        : [{ clientX: e.clientX, clientY: e.clientY, timeStamp: e.timeStamp }];
+    let walkAnim: 'walkLeft' | 'walkRight' | 'idlePrimary' = 'idlePrimary';
+    let vx = d.vel.vx;
+    for (const sample of samples) {
+      const t =
+        typeof sample.timeStamp === 'number' && sample.timeStamp > 0
+          ? sample.timeStamp
+          : performance.now();
+      const r = sampleDragVelocity(d.vel, sample.clientX, t);
+      d.vel = r.state;
+      walkAnim = r.walkAnim;
+      vx = r.state.vx;
+    }
+    const last = samples[samples.length - 1]!;
+    const dx = last.clientX - d.startX;
+    const dy = last.clientY - d.startY;
     if (tauriWindowMode) {
       const rawX = d.windowOriginX + dx;
       const rawY = d.windowOriginY + dy;
@@ -376,7 +396,8 @@ export function PetOverlay({
       const clamped = clampPetPosition(d.originLeft + dx, d.originTop + dy, DISPLAY, sw, sh, 0);
       setPos({ left: clamped.x, top: clamped.y });
     }
-    applyWalkFromVelocity(walkAnim, vel.vx);
+    // One locomotion state update per pointer event batch (not per coalesced sample).
+    applyWalkFromVelocity(walkAnim, vx);
   };
 
   const onPointerUp = (e: React.PointerEvent) => {

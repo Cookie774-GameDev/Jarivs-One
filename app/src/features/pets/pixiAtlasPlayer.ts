@@ -92,6 +92,66 @@ export class PixiAtlasPlayer {
     return this.frameNames[this.index] ?? null;
   }
 
+  get currentFrameIndex(): number {
+    return this.index;
+  }
+
+  get frameCount(): number {
+    return this.frameNames.length;
+  }
+
+  get animationElapsedMs(): number {
+    return this.accum + this.index * (this.fps > 0 ? 1000 / this.fps : 0);
+  }
+
+  get isAnimationPaused(): boolean {
+    return this.done || this.destroyed || this.frameNames.length === 0;
+  }
+
+  get isTickerAttached(): boolean {
+    return Boolean(this.app && this.tickerFn && !this.destroyed);
+  }
+
+  get textureCacheKey(): string | null {
+    return this.lastImageUrl;
+  }
+
+  /**
+   * Safe development diagnostics for the registry→atlas→ticker chain.
+   * No console spam — callers log only when needed.
+   */
+  getDiagnostics(): {
+    currentFrameIndex: number;
+    frameCount: number;
+    currentFrameName: string | null;
+    elapsedAnimationMs: number;
+    fps: number;
+    loop: boolean;
+    done: boolean;
+    tickerRunning: boolean;
+    animationPaused: boolean;
+    textureCacheKey: string | null;
+    liveApplicationCount: number;
+    backgroundAlpha: number;
+    scaleMode: 'nearest' | 'linear' | null;
+  } {
+    return {
+      currentFrameIndex: this.index,
+      frameCount: this.frameNames.length,
+      currentFrameName: this.currentFrameName,
+      elapsedAnimationMs: this.animationElapsedMs,
+      fps: this.fps,
+      loop: this.loop,
+      done: this.done,
+      tickerRunning: this.isTickerAttached,
+      animationPaused: this.isAnimationPaused,
+      textureCacheKey: this.textureCacheKey,
+      liveApplicationCount: liveApplicationCount,
+      backgroundAlpha: this.backgroundAlpha,
+      scaleMode: this.lastFilter,
+    };
+  }
+
   get textureScaleMode(): 'nearest' | 'linear' | null {
     return this.lastFilter;
   }

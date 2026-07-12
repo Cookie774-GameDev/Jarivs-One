@@ -1449,3 +1449,19 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Issues** | Axo frozen (few unique frames); panel hide; drag chop; terminal grid; Jarvis voice mini |
 | **Do not stage** | install/install.ps1, Cargo.toml |
 
+
+#### 2026-07-12 - Pixel Pets six-issue re-register (continuation session)
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-12 ~08:35 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Branch** | `agent/pixel-pets-axolotl` (draft PR #19) |
+| **HEAD at claim** | `e85ce33` |
+| **Status** | in-progress — locks reacquired |
+| **Change** | Continue six functional fixes: Axo multi-frame animation proof, panel hide lifecycle, drag smoothing, terminal Tabs/Grid, real Jarvis Mini Voice. Document freeze root cause + runtime chain. |
+| **Locks claimed** | `app/src/features/pets/**`, `app/src/assets/pets/characters/vibespace-axolotl/**`, `docs/AGENT_COORDINATION.md` |
+| **Active lock file** | `.agent-coordination.lock/owner.txt` |
+| **Do not stage** | `install/install.ps1`, `app/src-tauri/Cargo.toml`, unrelated dirty docs/pets assets |
+| **Freeze root cause** | Near-identical stamped atlas cells (JSON multi-frame but visually identical) — not portrait substitution; cream pack is independent of glitch. |
+

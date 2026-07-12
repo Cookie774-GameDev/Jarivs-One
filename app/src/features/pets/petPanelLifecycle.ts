@@ -122,3 +122,26 @@ export function panelIsVisible(state: PetPanelLifecycleState): boolean {
 export function panelPreservesSessions(state: PetPanelLifecycleState): boolean {
   return state !== 'disposed';
 }
+
+/**
+ * Authoritative rule: standalone pet-overlay visibility for both Axo and Glitch.
+ * XOR with mini panel — never show both. Shutdown never restores overlay.
+ */
+export function shouldShowStandalonePet(input: {
+  enabled: boolean;
+  overlayVisible: boolean;
+  /** Cross-window localStorage / React flag set while panel is open or opening. */
+  panelOpenFlag: boolean;
+  /** Tauri isPetPanelVisible() result. */
+  panelVisible: boolean;
+  /** Application is exiting — never respawn pet. */
+  shuttingDown?: boolean;
+  /** openPetPanelSafely confirmed failure after an optimistic hide. */
+  panelOpenFailed?: boolean;
+}): boolean {
+  if (input.shuttingDown) return false;
+  if (!input.enabled || !input.overlayVisible) return false;
+  if (input.panelOpenFailed) return true;
+  if (input.panelOpenFlag || input.panelVisible) return false;
+  return true;
+}

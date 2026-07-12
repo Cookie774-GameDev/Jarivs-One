@@ -6,6 +6,7 @@ import {
   panelIsVisible,
   panelPreservesSessions,
   reducePanelLifecycle,
+  shouldShowStandalonePet,
 } from './petPanelLifecycle';
 
 describe('pet panel lifecycle', () => {
@@ -74,5 +75,54 @@ describe('pet panel lifecycle', () => {
     s = reducePanelLifecycle(s, { type: 'minimized' });
     s = reducePanelLifecycle(s, { type: 'request_open' });
     expect(s).toBe('restoring');
+  });
+});
+
+describe('shouldShowStandalonePet (Axo + Glitch shared rule)', () => {
+  const base = { enabled: true, overlayVisible: true, panelOpenFlag: false, panelVisible: false };
+
+  it('shows overlay when panel closed (both skins)', () => {
+    expect(shouldShowStandalonePet(base)).toBe(true);
+  });
+
+  it('hides overlay when panel open flag is set (Axo click path)', () => {
+    expect(shouldShowStandalonePet({ ...base, panelOpenFlag: true })).toBe(false);
+  });
+
+  it('hides overlay when Tauri panel is visible (Glitch click path)', () => {
+    expect(shouldShowStandalonePet({ ...base, panelVisible: true })).toBe(false);
+  });
+
+  it('restores overlay after minimize/close (flags cleared)', () => {
+    expect(shouldShowStandalonePet({ ...base, panelOpenFlag: false, panelVisible: false })).toBe(
+      true,
+    );
+  });
+
+  it('restores overlay when panel open fails', () => {
+    expect(
+      shouldShowStandalonePet({
+        ...base,
+        panelOpenFlag: true,
+        panelOpenFailed: true,
+      }),
+    ).toBe(true);
+  });
+
+  it('does not respawn overlay during application shutdown', () => {
+    expect(shouldShowStandalonePet({ ...base, shuttingDown: true })).toBe(false);
+    expect(
+      shouldShowStandalonePet({
+        ...base,
+        panelOpenFlag: false,
+        panelVisible: false,
+        shuttingDown: true,
+      }),
+    ).toBe(false);
+  });
+
+  it('hides when pet disabled or overlay preference off', () => {
+    expect(shouldShowStandalonePet({ ...base, enabled: false })).toBe(false);
+    expect(shouldShowStandalonePet({ ...base, overlayVisible: false })).toBe(false);
   });
 });
