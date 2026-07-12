@@ -133,6 +133,20 @@ fn is_pet_label(label: &str) -> bool {
     label == PET_OVERLAY_LABEL || label == PET_MINI_PANEL_LABEL
 }
 
+/// Ensure the pet-overlay WebView paints a fully transparent chrome (Windows).
+///
+/// On Windows 8+, WebView2 treats any non-zero alpha as opaque 255 for the
+/// webview layer — only alpha `0` yields a transparent clear. Pair this with
+/// `transparent: true` + `--default-background-color=00000000` in conf.
+fn ensure_pet_overlay_transparent(win: &tauri::WebviewWindow) {
+    let _ = win.set_shadow(false);
+    let _ = win.set_decorations(false);
+    // Fully transparent clear (R,G,B,A) — A must be 0 on Windows WebView2.
+    let _ = win.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
+    // Keep the pet clickable/draggable (do not ignore cursor events).
+    let _ = win.set_ignore_cursor_events(false);
+}
+
 /// Show the pet overlay (create visibility). Single instance by label.
 #[tauri::command]
 pub fn pet_show_overlay(app: AppHandle) -> Result<(), String> {
@@ -146,6 +160,7 @@ pub fn pet_show_overlay(app: AppHandle) -> Result<(), String> {
     let _ = win.set_position(PhysicalPosition::new(x as i32, y as i32));
     let _ = win.set_size(PhysicalSize::new(OVERLAY_SIZE, OVERLAY_SIZE));
     let _ = win.set_always_on_top(true);
+    ensure_pet_overlay_transparent(&win);
     let _ = win.show();
     Ok(())
 }
@@ -186,6 +201,7 @@ pub fn pet_set_overlay_position(app: AppHandle, x: f64, y: f64) -> Result<(), St
 }
 
 /// Open or focus the single pet-mini-panel instance near the pet.
+/// Hides the floating pet sprite while the panel is open (restore on hide/minimize).
 #[tauri::command]
 pub fn pet_open_or_focus_panel(app: AppHandle, near_x: Option<f64>, near_y: Option<f64>) -> Result<(), String> {
     let win = app
@@ -220,10 +236,17 @@ pub fn pet_open_or_focus_panel(app: AppHandle, near_x: Option<f64>, near_y: Opti
     geo.panel_h = Some(h);
     save_geometry(&app, &geo);
     *open = true;
+    drop(open);
+    drop(geo);
+
+    // Hide floating pet while panel is open (no black plate under panel).
+    if let Some(overlay) = app.get_webview_window(PET_OVERLAY_LABEL) {
+        let _ = overlay.hide();
+    }
     Ok(())
 }
 
-/// Minimize panel only — sessions keep running.
+/// Minimize panel only — sessions keep running. Restores the pet sprite.
 #[tauri::command]
 pub fn pet_minimize_panel(app: AppHandle) -> Result<(), String> {
     let win = app
@@ -233,10 +256,12 @@ pub fn pet_minimize_panel(app: AppHandle) -> Result<(), String> {
     if let Ok(mut open) = app.state::<PetWindowState>().panel_open.lock() {
         *open = false;
     }
+    // Bring pet sprite back
+    let _ = pet_show_overlay(app.clone());
     Ok(())
 }
 
-/// Hide panel without killing sessions (close after user confirms in UI).
+/// Hide panel without killing sessions (close after user confirms in UI). Restores pet.
 #[tauri::command]
 pub fn pet_hide_panel(app: AppHandle) -> Result<(), String> {
     let win = app
@@ -258,6 +283,7 @@ pub fn pet_hide_panel(app: AppHandle) -> Result<(), String> {
     if let Ok(mut open) = app.state::<PetWindowState>().panel_open.lock() {
         *open = false;
     }
+    let _ = pet_show_overlay(app.clone());
     Ok(())
 }
 

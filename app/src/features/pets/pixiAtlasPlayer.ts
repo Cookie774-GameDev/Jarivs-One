@@ -94,6 +94,31 @@ export class PixiAtlasPlayer {
     return this.lastFilter;
   }
 
+  /** Renderer clear alpha (0 = fully transparent). Used by unit tests. */
+  get backgroundAlpha(): number {
+    if (!this.app) return 0;
+    try {
+      const bg = this.app.renderer.background as unknown as { alpha?: number };
+      return typeof bg.alpha === 'number' ? bg.alpha : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  private forceTransparentBackground(app: Application): void {
+    try {
+      const bg = app.renderer.background as unknown as {
+        alpha?: number;
+        color?: unknown;
+      };
+      if (bg) {
+        bg.alpha = 0;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
   /**
    * Initialize (or re-bind) a single Pixi Application into `host`.
    * Safe to call again with the same host — does not create a second app.
@@ -126,25 +151,20 @@ export class PixiAtlasPlayer {
     await app.init({
       width: this.displaySize,
       height: this.displaySize,
+      // Critical: fully transparent clear — never opaque black plate
       backgroundAlpha: opts.backgroundAlpha ?? 0,
-      backgroundColor: 0x000000,
       antialias: false,
       autoDensity: true,
       resolution: res,
       preference: 'webgl',
-      // Preserve crisp pixels + correct alpha over dark UI
       roundPixels: true,
-      useBackBuffer: true,
       clearBeforeRender: true,
+      // WebGL must allocate an alpha buffer (otherwise clear is opaque black)
+      multiView: false,
     });
 
-    // Force fully transparent canvas (no dark brown plate behind sprite).
-    try {
-      app.renderer.background.alpha = 0;
-      app.renderer.background.color = 0x000000;
-    } catch {
-      /* pixi version differences */
-    }
+    // Re-assert transparent background after init (some Pixi paths reset it).
+    this.forceTransparentBackground(app);
 
     // Nearest-neighbor default for all textures on this renderer.
     const canvas = app.canvas as HTMLCanvasElement;
@@ -154,10 +174,18 @@ export class PixiAtlasPlayer {
     canvas.style.display = 'block';
     canvas.style.background = 'transparent';
     canvas.style.backgroundColor = 'transparent';
-    // Avoid premultiplied dark fringes on WebView
+    canvas.style.backgroundImage = 'none';
+    canvas.style.border = 'none';
+    canvas.style.outline = 'none';
+    canvas.style.boxShadow = 'none';
     canvas.style.mixBlendMode = 'normal';
+    canvas.dataset.petPixiCanvas = 'true';
+    host.classList.add('pet-canvas-container');
     host.style.background = 'transparent';
     host.style.backgroundColor = 'transparent';
+    host.style.backgroundImage = 'none';
+    host.style.border = 'none';
+    host.style.boxShadow = 'none';
     host.replaceChildren(canvas);
 
     const sprite = new Sprite();
@@ -277,6 +305,11 @@ export class PixiAtlasPlayer {
     this.done = false;
     this.onComplete = onComplete ?? null;
     this.applyCurrentFrame();
+  }
+
+  setPlaybackFps(fps: number): void {
+    if (!Number.isFinite(fps) || fps <= 0) return;
+    this.fps = fps;
   }
 
   /**

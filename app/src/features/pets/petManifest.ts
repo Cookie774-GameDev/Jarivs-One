@@ -1,8 +1,15 @@
 /**
- * Load typed animation manifest shipped with the character pack.
+ * Load typed animation manifest for the selected pet character pack.
  */
 import type { PetAnimId } from './petStateMachine';
-import animationsJson from '@/assets/pets/characters/vibespace-axolotl-pixel/animations.json';
+import axoAnimations from '@/assets/pets/characters/vibespace-axolotl-pixel/animations.json';
+import glitchAnimations from '@/assets/pets/characters/vibespace-axolotl-glitch/animations.json';
+import {
+  resolvePetCharacterId,
+  type PetCharacterId,
+  PET_CHARACTERS,
+} from './petCharacters';
+import { usePetSettingsStore } from './petSettingsStore';
 
 export interface PetAnimStateDef {
   frames: string[];
@@ -33,20 +40,49 @@ export interface PetAnimationsManifest {
   };
 }
 
-export function getPetAnimationsManifest(): PetAnimationsManifest {
-  return animationsJson as PetAnimationsManifest;
+/**
+ * AXO (default) → full-color glitch pack atlases.
+ * GLITCH? → monochrome pixel pack atlases.
+ * Folder names on disk are historical; character mapping is authoritative.
+ */
+const MANIFEST_BY_CHAR: Record<PetCharacterId, PetAnimationsManifest> = {
+  axo: glitchAnimations as PetAnimationsManifest,
+  glitch: axoAnimations as PetAnimationsManifest,
+};
+
+export function getSelectedCharacterId(): PetCharacterId {
+  try {
+    return resolvePetCharacterId(usePetSettingsStore.getState().characterId);
+  } catch {
+    return 'axo';
+  }
 }
 
-export function getAnimDef(id: PetAnimId): PetAnimStateDef | undefined {
-  return getPetAnimationsManifest().states[id];
+export function getPetAnimationsManifest(
+  characterId?: PetCharacterId,
+): PetAnimationsManifest {
+  const id = characterId ?? getSelectedCharacterId();
+  return MANIFEST_BY_CHAR[id] ?? MANIFEST_BY_CHAR.axo;
 }
 
-/** Resolve atlas URL relative to character root for Vite. */
-export function resolveAtlasUrls(def: PetAnimStateDef): { jsonUrl: string; imageUrl: string } {
-  // def.atlas like "atlases/walkRight@1x.json"
-  const jsonFile = def.atlas.replace(/^atlases\//, '');
+export function getAnimDef(
+  id: PetAnimId,
+  characterId?: PetCharacterId,
+): PetAnimStateDef | undefined {
+  return getPetAnimationsManifest(characterId).states[id];
+}
+
+/** Resolve atlas URL for a character folder. */
+export function resolveAtlasUrls(
+  def: PetAnimStateDef,
+  characterId?: PetCharacterId,
+  atlasPath?: string,
+): { jsonUrl: string; imageUrl: string } {
+  const id = characterId ?? getSelectedCharacterId();
+  const folder = PET_CHARACTERS[id]?.assetFolder ?? 'vibespace-axolotl-glitch';
+  const jsonFile = (atlasPath ?? def.atlas).replace(/^atlases\//, '');
   const imageFile = jsonFile.replace(/\.json$/, '.png');
-  const root = '../../assets/pets/characters/vibespace-axolotl-pixel/atlases/';
+  const root = `../../assets/pets/characters/${folder}/atlases/`;
   return {
     jsonUrl: new URL(`${root}${jsonFile}`, import.meta.url).href,
     imageUrl: new URL(`${root}${imageFile}`, import.meta.url).href,

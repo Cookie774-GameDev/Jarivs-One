@@ -10,6 +10,10 @@ import {
   type AnimPlaybackMeta,
 } from './pixiAtlasPlayer';
 
+const pixiMockState = vi.hoisted(() => ({
+  initOptions: [] as Array<Record<string, unknown>>,
+}));
+
 // Mock pixi.js Application for jsdom (no real WebGL).
 vi.mock('pixi.js', async () => {
   class FakeTicker {
@@ -22,6 +26,7 @@ vi.mock('pixi.js', async () => {
     }
   }
   class FakeRenderer {
+    background = { alpha: 1, color: 0x000000 };
     resize() {}
   }
   class FakeApplication {
@@ -29,7 +34,9 @@ vi.mock('pixi.js', async () => {
     stage = { addChild: vi.fn() };
     ticker = new FakeTicker();
     renderer = new FakeRenderer();
-    async init() {}
+    async init(options?: Record<string, unknown>) {
+      pixiMockState.initOptions.push(options ?? {});
+    }
     destroy() {}
   }
   class FakeSprite {
@@ -75,7 +82,7 @@ vi.mock('pixi.js', async () => {
 
 describe('PixiAtlasPlayer', () => {
   afterEach(() => {
-    // Ensure counter can return to 0
+    pixiMockState.initOptions.length = 0;
   });
 
   it('selects @2x atlas when DPR >= 1.5', () => {
@@ -103,6 +110,33 @@ describe('PixiAtlasPlayer', () => {
     expect(p.application).toBeNull();
     expect(getLivePixiApplicationCount()).toBe(before);
     host.remove();
+  });
+
+  it('initializes Pixi with a transparent alpha-capable renderer and canvas', async () => {
+    const host = document.createElement('div');
+    const p = new PixiAtlasPlayer();
+    await p.init(host, { displaySize: 128, resolution: 2, backgroundAlpha: 0 });
+
+    expect(pixiMockState.initOptions).toHaveLength(1);
+    expect(pixiMockState.initOptions[0]).toMatchObject({
+      width: 128,
+      height: 128,
+      backgroundAlpha: 0,
+      antialias: false,
+      autoDensity: true,
+      resolution: 2,
+      clearBeforeRender: true,
+    });
+    expect(pixiMockState.initOptions[0]).not.toHaveProperty('useBackBuffer', true);
+    expect((p.application?.renderer as unknown as { background: { alpha: number } }).background.alpha).toBe(0);
+    expect(host.style.background).toBe('transparent');
+    expect(host.querySelectorAll('canvas')).toHaveLength(1);
+    const canvas = host.querySelector('canvas') as HTMLCanvasElement;
+    expect(canvas.style.background).toBe('transparent');
+    expect(canvas.style.backgroundColor).toBe('transparent');
+    expect(canvas.dataset.petPixiCanvas).toBe('true');
+
+    p.dispose();
   });
 
   it('prevents re-init after dispose', async () => {

@@ -7,21 +7,22 @@ import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { usePetSettingsStore } from './petSettingsStore';
+import { PET_CHARACTER_LIST } from './petCharacters';
+import { notifyPetCharacterChanged, usePetSettingsStore } from './petSettingsStore';
 import { cn } from '@/lib/utils';
-
-// Vite asset URL (built into the app bundle).
-import petPreviewUrl from '@/assets/pets/characters/vibespace-axolotl-pixel/previews/idlePrimary-contact-sheet.png';
 
 export function PetAccountPanel({ className }: { className?: string }) {
   const enabled = usePetSettingsStore((s) => s.enabled);
   const overlayVisible = usePetSettingsStore((s) => s.overlayVisible);
   const reducedMotion = usePetSettingsStore((s) => s.reducedMotion);
+  const characterId = usePetSettingsStore((s) => s.characterId);
   const setEnabled = usePetSettingsStore((s) => s.setEnabled);
   const setOverlayVisible = usePetSettingsStore((s) => s.setOverlayVisible);
   const setReducedMotion = usePetSettingsStore((s) => s.setReducedMotion);
+  const setCharacterId = usePetSettingsStore((s) => s.setCharacterId);
 
   const show = enabled && overlayVisible;
+  const selectedCharacter = PET_CHARACTER_LIST.find((c) => c.id === characterId) ?? PET_CHARACTER_LIST[0];
 
   const showPetNow = () => {
     setEnabled(true);
@@ -33,32 +34,58 @@ export function PetAccountPanel({ className }: { className?: string }) {
     window.dispatchEvent(new CustomEvent('jarvis:pet:open-panel'));
   };
 
+  const chooseCharacter = (id: typeof characterId) => {
+    setCharacterId(id);
+    notifyPetCharacterChanged(id);
+    showPetNow();
+  };
+
   return (
     <div className={cn('flex flex-col gap-5', className)} data-settings-pet-tab="true" data-account-pet-section="true">
       <div className="flex items-center gap-2">
         <Cat className="h-5 w-5 text-accent-copper" />
         <h2 className="text-page-title text-foreground">Pet</h2>
-        <Badge variant="outline">Axolotl Pixel</Badge>
+        <Badge variant="outline">{selectedCharacter.name}</Badge>
       </div>
 
       <section className="flex flex-col sm:flex-row gap-4 items-start">
-        <div
-          className={cn(
-            'shrink-0 rounded-xl border border-border bg-muted/40 p-2 w-[180px]',
-            'flex flex-col items-center gap-2',
-          )}
-        >
-          <img
-            src={typeof petPreviewUrl === 'string' ? petPreviewUrl : String(petPreviewUrl)}
-            alt="VibeSpace Axolotl Pixel Pet"
-            className="w-full h-auto rounded-lg"
-            style={{ imageRendering: 'pixelated' }}
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = 'none';
-            }}
-          />
-          <div className="text-ui-strong text-center text-sm">Axolotl Pixel</div>
-          <Badge variant="success">Selected</Badge>
+        <div className="grid w-full max-w-md shrink-0 grid-cols-1 gap-3 sm:w-[380px] sm:grid-cols-2">
+          {PET_CHARACTER_LIST.map((character) => {
+            const selected = character.id === characterId;
+            return (
+              <button
+                key={character.id}
+                type="button"
+                aria-pressed={selected}
+                aria-label={`Select ${character.name}`}
+                className={cn(
+                  'rounded-lg border bg-muted/30 p-2 text-left transition-colors',
+                  'hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  selected ? 'border-accent-copper bg-accent-copper/10' : 'border-border',
+                )}
+                onClick={() => chooseCharacter(character.id)}
+              >
+                <img
+                  src={character.preview}
+                  alt={`${character.title} preview`}
+                  className="mb-2 h-auto w-full rounded-md"
+                  style={{ imageRendering: 'pixelated' }}
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                  }}
+                />
+                <div className="flex items-center justify-between gap-2">
+                  <span className={cn('text-ui-strong text-sm', character.accent)}>
+                    {character.name}
+                  </span>
+                  <Badge variant={selected ? 'success' : 'outline'}>
+                    {selected ? 'Selected' : character.badge}
+                  </Badge>
+                </div>
+                <div className="mt-1 text-metadata text-muted-foreground">{character.blurb}</div>
+              </button>
+            );
+          })}
         </div>
 
         <div className="flex flex-col gap-3 flex-1 min-w-0">

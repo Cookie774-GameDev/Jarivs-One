@@ -22,7 +22,11 @@ import {
 import { disposeAll, mapReducedMotionAnim, reducedMotionFps } from './petLifecycle';
 import { getAnimDef, getPetAnimationsManifest, resolveAtlasUrls } from './petManifest';
 import { openOrFocusPetPanel, setPetOverlayPosition } from './petTauriBridge';
-import { PET_FORCE_ANIM_EVENT, type PetForceAnimDetail } from './petSettingsStore';
+import {
+  PET_FORCE_ANIM_EVENT,
+  type PetForceAnimDetail,
+  usePetSettingsStore,
+} from './petSettingsStore';
 import { cn } from '@/lib/utils';
 
 const DISPLAY = 128;
@@ -60,6 +64,7 @@ export function PetOverlay({
   const hostRef = React.useRef<HTMLDivElement>(null);
   const playerRef = React.useRef(new PixiAtlasPlayer());
   const stateRef = React.useRef<PetMachineState>(createInitialPetState());
+  const characterId = usePetSettingsStore((s) => s.characterId);
   const [animLabel, setAnimLabel] = React.useState<PetAnimId>('welcome');
   const [pos, setPos] = React.useState({ left: 24, top: 120 });
   const dragRef = React.useRef<{
@@ -72,11 +77,11 @@ export function PetOverlay({
     windowOriginX: number;
     windowOriginY: number;
   } | null>(null);
-  const animCache = React.useRef(new Map<PetAnimId, { jsonUrl: string; imageUrl: string }>());
-  const currentAnim = React.useRef<PetAnimId | null>(null);
+  const animCache = React.useRef(new Map<string, { jsonUrl: string; imageUrl: string }>());
+  const currentAnim = React.useRef<string | null>(null);
   const schedulerRef = React.useRef<ReturnType<typeof createPetScheduler> | null>(null);
   const initOnce = React.useRef(false);
-  const man = React.useMemo(() => getPetAnimationsManifest(), []);
+  const man = React.useMemo(() => getPetAnimationsManifest(characterId), [characterId]);
 
   const setState = React.useCallback(
     (next: PetMachineState) => {
@@ -100,8 +105,9 @@ export function PetOverlay({
   const playAnim = React.useCallback(
     async (id: PetAnimId) => {
       const resolved = reducedMotion ? mapReducedMotionAnim(id) : id;
-      if (currentAnim.current === resolved && !reducedMotion) return;
-      const def = getAnimDef(resolved);
+      const animKey = `${characterId}:${resolved}`;
+      if (currentAnim.current === animKey && !reducedMotion) return;
+      const def = getAnimDef(resolved, characterId);
       if (!def) return;
 
       const player = playerRef.current;
@@ -119,27 +125,15 @@ export function PetOverlay({
 
       const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
       const scaleSel = PixiAtlasPlayer.selectAtlasScale(def, dpr);
-      // resolveAtlasUrls uses @1x by default; map 2x path when selected
-      let urls = animCache.current.get(resolved);
+      let urls = animCache.current.get(animKey);
       if (!urls) {
-        const base = resolveAtlasUrls(def);
-        if (scaleSel.scale === '2x' && def.atlas2x) {
-          const jsonFile = def.atlas2x.replace(/^atlases\//, '');
-          const imageFile = jsonFile.replace(/\.json$/, '.png');
-          const root = '../../assets/pets/characters/vibespace-axolotl-pixel/atlases/';
-          urls = {
-            jsonUrl: new URL(`${root}${jsonFile}`, import.meta.url).href,
-            imageUrl: new URL(`${root}${imageFile}`, import.meta.url).href,
-          };
-        } else {
-          urls = base;
-        }
-        animCache.current.set(resolved, urls);
+        urls = resolveAtlasUrls(def, characterId, scaleSel.atlasPath);
+        animCache.current.set(animKey, urls);
       }
 
       try {
         await player.load(urls.jsonUrl, urls.imageUrl);
-        currentAnim.current = resolved;
+        currentAnim.current = animKey;
         const fps = reducedMotion ? reducedMotionFps(resolved, def.fps) : def.fps;
         player.setAnimation(
           {
@@ -164,7 +158,7 @@ export function PetOverlay({
         console.warn('[pets] pixi atlas load failed', resolved, err);
       }
     },
-    [reducedMotion, setState],
+    [characterId, reducedMotion, setState],
   );
 
   React.useEffect(() => {
@@ -228,6 +222,8 @@ export function PetOverlay({
 
   React.useEffect(() => {
     if (!enabled) return;
+    // Force atlas reload when skin changes (characterId is inside playAnim).
+    currentAnim.current = null;
     void playAnim(animLabel);
     const s = stateRef.current;
     if (s.anim === 'idlePrimary' && s.welcomePlayed) {
@@ -235,7 +231,7 @@ export function PetOverlay({
     } else if (s.anim !== 'idleFun') {
       schedulerRef.current?.onHighPriority();
     }
-  }, [enabled, playAnim, animLabel]);
+  }, [enabled, playAnim, animLabel, characterId]);
 
   // Scheduler tick (Pixi ticker advances frames; we only poll sleep/idleFun here).
   React.useEffect(() => {
@@ -369,12 +365,15 @@ export function PetOverlay({
       >
         <div
           ref={hostRef}
-          className="block w-full h-full"
+          className="pet-canvas-container block w-full h-full"
           style={{
             width: DISPLAY,
             height: DISPLAY,
             background: 'transparent',
             backgroundColor: 'transparent',
+            backgroundImage: 'none',
+            border: 'none',
+            boxShadow: 'none',
           }}
         />
       </div>

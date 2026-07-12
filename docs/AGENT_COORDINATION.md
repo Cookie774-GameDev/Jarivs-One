@@ -1322,3 +1322,70 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Verification** | typecheck PASS; pets 45/45 |
 | **Locks** | released |
 
+
+#### 2026-07-11 - Pet skins AXO + GLITCH picker
+
+| Field | Value |
+|-------|-------|
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Status** | in-progress |
+| **Locks** | app/src/features/pets/**, app/src/assets/pets/**, app/src/features/account/**, docs/AGENT_COORDINATION.md |
+
+#### 2026-07-11 - Pet skins continuation after interrupted session
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-11 21:25 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Status** | in-progress |
+| **Change** | Continue the interrupted AXO + GLITCH selectable pet skins work from the existing dirty worktree; preserve generated assets and unrelated installer deletion. |
+| **Locks** | app/src/features/pets/**, app/src/assets/pets/**, app/src/features/account/**, app/src/features/settings/**, app/src/App.tsx, docs/AGENT_COORDINATION.md |
+
+#### 2026-07-11 - Pet skins AXO + GLITCH picker complete
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-11 21:35 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Status** | complete locally; ready to commit/push |
+| **Change** | Added selectable AXO/GLITCH pet character registry, persisted skin setting, Account/Settings Pet picker cards, character-aware manifest loading, and Pixi atlas reloads for selected character including @2x atlas paths. |
+| **Verification** | `npm.cmd --prefix app run test -- src/features/pets/petManifest.test.ts src/features/pets/PetAccountPanel.test.tsx --run` PASS (3/3); `npm.cmd --prefix app run test -- src/features/pets --run` PASS (47/47); `npm.cmd --prefix app run typecheck` PASS; `npm.cmd --prefix app run build` PASS with existing Vite/chunk warnings. |
+| **Risks / notes** | No Supabase, Stripe, billing, auth, migration, release, or production changes. Preserve unrelated `install/install.ps1` deletion and unstaged `app/src-tauri/Cargo.toml` working-tree state; do not stage either. Active coordination lock path cleared after update; sandbox prevented deletion of moved-aside lock archive directories, which remain untracked and excluded. |
+| **Locks** | released after staging/commit handoff; no active pet locks expected after push. |
+
+#### 2026-07-11 - Pet skins handoff blocked by Git metadata permission
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-11 21:40 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Status** | blocked at staging/commit only |
+| **What happened** | Implementation and verification completed, but `git add -- ...` failed with `fatal: Unable to create 'C:/Users/viper/VibeSpace/.git/worktrees/VibeSpace-origin-main-20260711/index.lock': Permission denied`. No index lock exists; the sandbox cannot write the Git metadata directory outside the writable worktree root. |
+| **Completed work preserved** | Working tree contains the completed AXO/GLITCH picker code and GLITCH runtime asset pack. Nothing was staged or committed. |
+| **Next command** | Re-run the exact scoped `git add -- docs/AGENT_COORDINATION.md app/src/features/pets/PetAccountPanel.tsx app/src/features/pets/PetAccountPanel.test.tsx app/src/features/pets/PetOverlay.tsx app/src/features/pets/petManifest.ts app/src/features/pets/petManifest.test.ts app/src/features/pets/petSettingsStore.ts app/src/features/pets/petCharacters.ts app/src/assets/pets/characters/vibespace-axolotl-glitch` from an environment allowed to write the linked worktree Git metadata. |
+| **Do not stage** | `install/install.ps1`, `app/src-tauri/Cargo.toml`, `.agent-coordination.lock.released-*`, `app/src/assets/pets/characters/vibespace-axolotl-pixel/previews/reference-axolotl.png` unless separately reviewed and approved. |
+
+#### 2026-07-11 - Pet transparency and drag-walk fix
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-11 22:05 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Status** | in-progress |
+| **Change** | Diagnose and fix opaque black Pet rendering surface without changing animation artwork/timing/scale/state machine; add runtime atlas alpha checks; fix drag-walk to stop when held still and track cursor velocity. |
+| **Locks** | `app/src/features/pets/pixiAtlasPlayer.ts`, `app/src/features/pets/atlasPlayer.test.ts`, `app/src/features/pets/PetOverlay.tsx`, `app/src/features/pets/PetOverlayWindow.tsx`, `app/src/features/pets/petDragVelocity.ts`, `app/src/features/pets/petDragVelocity.test.ts`, `app/src/features/pets/petAtlasAlpha.test.ts`, `app/src/styles/globals.css`, `docs/AGENT_COORDINATION.md` |
+| **Discovery so far** | User before screenshot shows a black rectangle matching the render surface. Runtime atlas PNGs for AXO and GLITCH were inspected directly and are RGBA with transparent corners; pet-overlay Tauri config is already transparent/decorations false/shadow false; overlay route does not mount the normal app shell. Suspect Pixi/WebGL canvas/back-buffer compositing plus overlay CSS flash/parent transparency gaps. |
+| **Constraints** | Preserve unrelated `install/install.ps1` deletion and unstaged `app/src-tauri/Cargo.toml`; do not modify Supabase, Stripe, billing, auth, migrations, production data, releases, or unrelated UI. |
+
+
+#### 2026-07-11 - Pet transparency + AXO/GLITCH mapping (complete)
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-11 22:30 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Status** | complete locally; commit/push |
+| **Change** | (1) AXO default skin now loads full-color `vibespace-axolotl-glitch` atlases; GLITCH? uses monochrome `vibespace-axolotl-pixel` pack. (2) Transparency: PetHost shows Tauri pet-overlay only (no main-shell embed); Pixi `backgroundAlpha: 0`; scoped pet-overlay CSS; index.html early transparent mark; tauri conf `backgroundColor` + WebView2 args; Rust `set_background_color(0,0,0,0)`. (3) Automated atlas alpha + transparency tests. Animations/state machine/timing unchanged. |
+| **Verification** | pets tests 57/57 PASS; typecheck PASS; cargo check PASS (Color API); do not stage install.ps1 or Cargo.toml. |
+| **Locks** | released after push |
+

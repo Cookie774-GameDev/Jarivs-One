@@ -120,6 +120,40 @@ export function sampleDragVelocity(
   return { state: next, walkAnim };
 }
 
+/**
+ * Re-sample the current pointer location when the pointer is held still.
+ * Pointer events stop firing while the mouse button is held but not moving;
+ * without this tick the last walking direction can stay latched forever.
+ */
+export function sampleStationaryDragVelocity(
+  state: DragVelocityState,
+  t: number,
+  cfg: DragVelocityConfig = DEFAULT_DRAG_VELOCITY_CONFIG,
+): { state: DragVelocityState; walkAnim: 'walkLeft' | 'walkRight' | 'idlePrimary' } {
+  const next = sampleDragVelocity(state, state.lastX, t, {
+    ...cfg,
+    // A stationary sample represents no current movement, so do not preserve
+    // prior EMA velocity. This lets stopDelayMs decide when to idle.
+    smoothing: 1,
+  });
+  return {
+    ...next,
+    state: { ...next.state, vx: 0 },
+  };
+}
+
+export function dragWalkFpsFromVelocity(
+  vx: number,
+  baseFps: number,
+  cfg: DragVelocityConfig = DEFAULT_DRAG_VELOCITY_CONFIG,
+): number {
+  if (!Number.isFinite(baseFps) || baseFps <= 0) return 12;
+  const speed = Math.max(0, Math.abs(vx) - cfg.deadZonePxPerSec);
+  if (speed <= 0) return baseFps;
+  const scale = Math.min(1.6, Math.max(0.55, speed / 220));
+  return Math.max(4, Math.min(24, Math.round(baseFps * scale)));
+}
+
 /** Map machine walk anim for reduced-motion (restrained 2-frame still handled by player fps). */
 export function reducedMotionWalkAnim(
   walk: 'walkLeft' | 'walkRight' | 'idlePrimary',

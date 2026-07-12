@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   createDragVelocityState,
+  dragWalkFpsFromVelocity,
   sampleDragVelocity,
+  sampleStationaryDragVelocity,
   DEFAULT_DRAG_VELOCITY_CONFIG,
 } from './petDragVelocity';
 
@@ -65,5 +67,27 @@ describe('petDragVelocity', () => {
     s = r.state;
     r = sampleDragVelocity(s, 40, 250, cfg); // 100ms of zero velocity after first stop candidate
     expect(r.walkAnim).toBe('idlePrimary');
+  });
+
+  it('returns to idle when the pointer is held still and no move event fires', () => {
+    let s = createDragVelocityState(0, 0);
+    let r = sampleDragVelocity(s, 40, 100, cfg);
+    expect(r.walkAnim).toBe('walkRight');
+    s = r.state;
+
+    r = sampleStationaryDragVelocity(s, 150, cfg);
+    expect(r.walkAnim).toBe('walkRight');
+    s = r.state;
+
+    r = sampleStationaryDragVelocity(s, 250, cfg);
+    expect(r.walkAnim).toBe('idlePrimary');
+    expect(r.state.vx).toBe(0);
+  });
+
+  it('maps cursor speed to bounded walking playback fps', () => {
+    expect(dragWalkFpsFromVelocity(0, 12, cfg)).toBe(12);
+    expect(dragWalkFpsFromVelocity(80, 12, cfg)).toBeLessThan(12);
+    expect(dragWalkFpsFromVelocity(600, 12, cfg)).toBeGreaterThan(12);
+    expect(dragWalkFpsFromVelocity(5000, 12, cfg)).toBeLessThanOrEqual(24);
   });
 });

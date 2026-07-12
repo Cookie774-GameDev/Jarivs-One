@@ -1,22 +1,23 @@
 /**
  * User-facing Pet settings — persisted in the normal app (localStorage).
- * Shared across main / pet-overlay / pet-mini-panel via the same origin storage.
  */
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { safeLocalStorage } from '@/lib/persistence/safeLocalStorage';
+import {
+  resolvePetCharacterId,
+  type PetCharacterId,
+} from './petCharacters';
 
 export interface PetSettingsState {
-  /** Master enable — when false, overlay is hidden and not shown. */
   enabled: boolean;
   reducedMotion: boolean;
-  /** Idle → sleep transition timeout (ms). */
   sleepTimeoutMs: number;
   idleFunIntervalMs: number;
-  /** Show developer diagnostics in Settings (gated). */
   showDiagnostics: boolean;
-  /** Last known pet overlay visible. */
   overlayVisible: boolean;
+  /** Selected sprite skin */
+  characterId: PetCharacterId;
 
   setEnabled: (v: boolean) => void;
   setReducedMotion: (v: boolean) => void;
@@ -24,6 +25,7 @@ export interface PetSettingsState {
   setIdleFunIntervalMs: (ms: number) => void;
   setShowDiagnostics: (v: boolean) => void;
   setOverlayVisible: (v: boolean) => void;
+  setCharacterId: (id: PetCharacterId) => void;
 }
 
 export const usePetSettingsStore = create<PetSettingsState>()(
@@ -35,6 +37,7 @@ export const usePetSettingsStore = create<PetSettingsState>()(
       idleFunIntervalMs: 60_000,
       showDiagnostics: false,
       overlayVisible: true,
+      characterId: 'axo',
 
       setEnabled: (v) => set({ enabled: v, overlayVisible: v ? true : false }),
       setReducedMotion: (v) => set({ reducedMotion: v }),
@@ -44,6 +47,7 @@ export const usePetSettingsStore = create<PetSettingsState>()(
         set({ idleFunIntervalMs: Math.max(10_000, Math.min(ms, 30 * 60 * 1000)) }),
       setShowDiagnostics: (v) => set({ showDiagnostics: v }),
       setOverlayVisible: (v) => set({ overlayVisible: v }),
+      setCharacterId: (id) => set({ characterId: resolvePetCharacterId(id) }),
     }),
     {
       name: 'vibespace-pet-settings',
@@ -55,13 +59,23 @@ export const usePetSettingsStore = create<PetSettingsState>()(
         idleFunIntervalMs: s.idleFunIntervalMs,
         showDiagnostics: s.showDiagnostics,
         overlayVisible: s.overlayVisible,
+        characterId: s.characterId,
       }),
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<PetSettingsState>;
+        return {
+          ...current,
+          ...p,
+          characterId: resolvePetCharacterId(p.characterId),
+        };
+      },
     },
   ),
 );
 
-/** Force-play diagnostic animation (listened by PetOverlay). */
 export const PET_FORCE_ANIM_EVENT = 'jarvis:pet:force-anim';
+export const PET_CHARACTER_CHANGED_EVENT = 'jarvis:pet:character-changed';
+
 export type PetForceAnimDetail = {
   anim:
     | 'welcome'
@@ -76,4 +90,38 @@ export type PetForceAnimDetail = {
 
 export function forcePetAnim(anim: PetForceAnimDetail['anim']): void {
   window.dispatchEvent(new CustomEvent(PET_FORCE_ANIM_EVENT, { detail: { anim } }));
+}
+
+export function notifyPetCharacterChanged(id: PetCharacterId): void {
+  window.dispatchEvent(
+    new CustomEvent(PET_CHARACTER_CHANGED_EVENT, { detail: { characterId: id } }),
+  );
+}
+
+/**
+ * Cross-window sync for pet settings (main ↔ pet-overlay WebViews share origin).
+ * Rehydrates the store when another window writes `vibespace-pet-settings`.
+ */
+export function installPetSettingsStorageSync(): () => void {
+  if (typeof window === 'undefined') return () => undefined;
+  const onStorage = (e: StorageEvent) => {
+    if (e.key !== 'vibespace-pet-settings' || e.newValue == null) return;
+    try {
+      const parsed = JSON.parse(e.newValue) as { state?: Partial<PetSettingsState> };
+      const s = parsed.state ?? (parsed as Partial<PetSettingsState>);
+      usePetSettingsStore.setState({
+        enabled: s.enabled ?? usePetSettingsStore.getState().enabled,
+        reducedMotion: s.reducedMotion ?? usePetSettingsStore.getState().reducedMotion,
+        sleepTimeoutMs: s.sleepTimeoutMs ?? usePetSettingsStore.getState().sleepTimeoutMs,
+        idleFunIntervalMs: s.idleFunIntervalMs ?? usePetSettingsStore.getState().idleFunIntervalMs,
+        showDiagnostics: s.showDiagnostics ?? usePetSettingsStore.getState().showDiagnostics,
+        overlayVisible: s.overlayVisible ?? usePetSettingsStore.getState().overlayVisible,
+        characterId: resolvePetCharacterId(s.characterId),
+      });
+    } catch {
+      /* ignore corrupt storage */
+    }
+  };
+  window.addEventListener('storage', onStorage);
+  return () => window.removeEventListener('storage', onStorage);
 }

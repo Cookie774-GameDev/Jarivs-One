@@ -51,7 +51,9 @@
         "skipTaskbar": true,
         "visible": false,
         "focus": false,
-        "shadow": false
+        "shadow": false,
+        "backgroundColor": [0, 0, 0, 0],
+        "additionalBrowserArgs": "--default-background-color=00000000 --disable-features=CalculateNativeWinOcclusion --autoplay-policy=no-user-gesture-required"
       },
       {
         "label": "pet-mini-panel",

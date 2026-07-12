@@ -1,10 +1,11 @@
 /**
- * Main-app Pet host — always mounts the pet overlay inside the main window
- * so `npm run tauri:dev` shows the pet on every route without a special URL.
+ * Main-window pet coordinator.
  *
- * Layout: floating pet sprite + floating resizable mini-panel (same app).
- * Optional Tauri pet-overlay show is attempted for always-on-top, but the
- * in-app overlay is the source of truth so the pet is never "invisible".
+ * In Tauri: shows the dedicated transparent `pet-overlay` window (no main-shell
+ * embed — that path painted an opaque rectangle from body CSS / WebView).
+ * Browser fallback: embeds PetOverlay in the main document.
+ *
+ * Mini-panel opens from the main shell (or pet-mini-panel window).
  */
 import * as React from 'react';
 import { PetOverlay } from './PetOverlay';
@@ -14,9 +15,10 @@ import {
   hidePetOverlay,
   isTauriRuntime,
   releasePetHostInstance,
+  showPetOverlay,
 } from './petTauriBridge';
 import { installPetPresentationStorageSync } from './petPresentationStore';
-import { usePetSettingsStore } from './petSettingsStore';
+import { installPetSettingsStorageSync, usePetSettingsStore } from './petSettingsStore';
 
 export interface PetHostProps {
   enabled?: boolean;
@@ -37,8 +39,16 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedProp }: Pe
   const [panelOpen, setPanelOpen] = React.useState(false);
   const [animLabel, setAnimLabel] = React.useState<string>('welcome');
   const [claimed, setClaimed] = React.useState(false);
+  const [tauri, setTauri] = React.useState(false);
 
-  React.useEffect(() => installPetPresentationStorageSync(), []);
+  React.useEffect(() => {
+    const a = installPetPresentationStorageSync();
+    const b = installPetSettingsStorageSync();
+    return () => {
+      a();
+      b();
+    };
+  }, []);
 
   React.useEffect(() => {
     if (!claimPetHostInstance()) {
@@ -46,19 +56,21 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedProp }: Pe
       return;
     }
     setClaimed(true);
+    setTauri(isTauriRuntime());
     return () => releasePetHostInstance();
   }, []);
 
-  // Prefer in-app pet. Hide separate Tauri overlay to avoid a second ghost pet.
+  // Show/hide the transparent pet-overlay WebView (never embed under opaque main CSS).
   React.useEffect(() => {
-    if (!claimed) return;
-    if (isTauriRuntime()) {
-      // Keep secondary window hidden — main shell hosts the visible pet.
+    if (!claimed || !tauri) return;
+    const wantVisible = enabled && overlayVisible && !panelOpen;
+    if (wantVisible) {
+      void showPetOverlay().catch((err) => console.warn('[pets] show overlay', err));
+    } else {
       void hidePetOverlay().catch(() => undefined);
     }
-  }, [claimed, enabled, overlayVisible]);
+  }, [claimed, tauri, enabled, overlayVisible, panelOpen]);
 
-  // If settings somehow left pet "enabled" but not visible, default show.
   React.useEffect(() => {
     if (enabled && !overlayVisible) {
       setOverlayVisible(true);
@@ -86,9 +98,24 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedProp }: Pe
 
   if (!claimed || !enabled || !overlayVisible) return null;
 
-  // When the mini panel is open, hide the floating sprite; show it again on close/minimize.
-  const showSprite = !panelOpen;
+  // Tauri: pet lives only in transparent pet-overlay WebView.
+  // Mini panel is the separate pet-mini-panel window (opened via openOrFocusPetPanel).
+  // Do NOT mount an in-app mini panel here — that would reintroduce an opaque shell.
+  if (tauri) {
+    return (
+      <div
+        data-pet-host="tauri"
+        data-pet-instance="1"
+        data-pet-panel-open={panelOpen ? 'true' : 'false'}
+        data-pet-renderer-bg-alpha="0"
+        hidden
+        aria-hidden
+      />
+    );
+  }
 
+  // Browser / non-Tauri fallback: in-document floating sprite.
+  const showSprite = !panelOpen;
   return (
     <>
       {showSprite && (
