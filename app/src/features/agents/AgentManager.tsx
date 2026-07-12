@@ -8,8 +8,28 @@
  * fresh id; "Delete" removes a non-builtin agent entirely.
  */
 import * as React from 'react';
-import { Trash2, Copy, Save, RotateCcw, Sparkles, Lock, Plus } from 'lucide-react';
-import type { Agent, AgentId, ProviderId } from '@/types';
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Copy,
+  Loader2,
+  Lock,
+  Plus,
+  RotateCcw,
+  Save,
+  Sparkles,
+  Trash2,
+} from 'lucide-react';
+import type {
+  Agent,
+  AgentCapability,
+  AgentEffort,
+  AgentEffortCustom,
+  AgentId,
+  AgentPersona,
+  MemoryScope,
+  ProviderId,
+} from '@/types';
 import { useAgentStore } from '@/stores/agents';
 import { useAuthStore } from '@/stores/auth';
 import { Button } from '@/components/ui/button';
@@ -76,6 +96,15 @@ interface DraftState {
   provider: ProviderId;
   model: string;
   temperature: number;
+  tools_allowed: string[];
+  memory_scope: MemoryScope;
+  capabilities: AgentCapability[];
+  skills: string[];
+  max_output_tokens: number | null;
+  color_hue: number | null;
+  effort: AgentEffort;
+  effort_custom: AgentEffortCustom | null;
+  persona: AgentPersona;
 }
 
 function agentToDraft(a: Agent): DraftState {
@@ -87,21 +116,61 @@ function agentToDraft(a: Agent): DraftState {
     provider: a.model.provider,
     model: a.model.model,
     temperature: a.temperature ?? 0.7,
+    tools_allowed: [...a.tools_allowed],
+    memory_scope: a.memory_scope,
+    capabilities: [...a.capabilities],
+    skills: [...(a.skills ?? [])],
+    max_output_tokens: a.max_output_tokens ?? null,
+    color_hue: a.color_hue ?? null,
+    effort: a.effort ?? 'medium',
+    effort_custom: a.effort_custom ? { ...a.effort_custom } : null,
+    persona: a.persona ?? 'jarvis',
   };
 }
 
-function draftDiffers(d: DraftState, a: Agent): boolean {
-  const base = agentToDraft(a);
-  return (
-    d.name !== base.name ||
-    d.description !== base.description ||
-    d.system_prompt !== base.system_prompt ||
-    d.providerChoice !== base.providerChoice ||
-    d.provider !== base.provider ||
-    d.model !== base.model ||
-    d.temperature !== base.temperature
+function normalizeLineEndings(value: string): string {
+  return value.replace(/\r\n?/g, '\n');
+}
+
+function normalizePromptForComparison(value: string): string {
+  return normalizeLineEndings(value).replace(/[ \t]+$/gm, '');
+}
+
+function normalizeUnordered(values: readonly string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))].sort((a, b) =>
+    a.localeCompare(b),
   );
 }
+
+function normalizedDraft(draft: DraftState): unknown {
+  return {
+    ...draft,
+    name: draft.name.trim(),
+    description: draft.description.trim(),
+    system_prompt: normalizePromptForComparison(draft.system_prompt),
+    tools_allowed: normalizeUnordered(draft.tools_allowed),
+    capabilities: normalizeUnordered(draft.capabilities),
+    skills: normalizeUnordered(draft.skills),
+    effort_custom: draft.effort === 'custom' ? draft.effort_custom : null,
+  };
+}
+
+function draftsDiffer(draft: DraftState, baseline: DraftState): boolean {
+  return JSON.stringify(normalizedDraft(draft)) !== JSON.stringify(normalizedDraft(baseline));
+}
+
+function parseList(value: string): string[] {
+  return value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function formatList(values: readonly string[]): string {
+  return values.join(', ');
+}
+
+type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
 export function AgentManager() {
   const agents = useAgentStore((s) => s.agents);
@@ -133,12 +202,22 @@ export function AgentManager() {
   // Draft is reset whenever the *selection* changes (not when the agent
   // reference updates after a save).
   const [draft, setDraft] = React.useState<DraftState | null>(null);
+  const [baseline, setBaseline] = React.useState<DraftState | null>(null);
+  const [saveState, setSaveState] = React.useState<SaveState>('idle');
+  const [saveError, setSaveError] = React.useState<string | null>(null);
   const draftRef = React.useRef<DraftState | null>(null);
+  const baselineRef = React.useRef<DraftState | null>(null);
+  const savingRef = React.useRef(false);
   draftRef.current = draft;
+  baselineRef.current = baseline;
   React.useEffect(() => {
     const next = selectedAgent ? agentToDraft(selectedAgent) : null;
     setDraft(next);
+    setBaseline(next);
+    setSaveState('idle');
+    setSaveError(null);
     draftRef.current = next;
+    baselineRef.current = next;
     // Intentionally watch selectedAgent?.id, not the whole agent reference.
   }, [selectedAgent?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -199,10 +278,33 @@ export function AgentManager() {
     return getModelsForProvider(draft.providerChoice, providerCtx);
   }, [draft, providerCtx, ollamaOptions]);
 
-  const dirty = !!(draft && selectedAgent && draftDiffers(draft, selectedAgent));
+  const dirty = !!(draft && baseline && draftsDiffer(draft, baseline));
   const agentModelAvailable =
     !draft || draft.providerChoice === 'default' || modelOptions.some((option) => option.id === draft.model);
-  const saveDisabled = !dirty || !agentModelAvailable;
+  const validationError = (() => {
+    if (!draft) return 'No agent is selected.';
+    if (!draft.name.trim()) return 'Agent name is required.';
+    if (!draft.description.trim()) return 'Agent description is required.';
+    if (!draft.system_prompt.trim()) return 'System prompt is required.';
+    if (!agentModelAvailable) return 'Select an available model before saving.';
+    if (!Number.isFinite(draft.temperature) || draft.temperature < 0 || draft.temperature > 2) {
+      return 'Temperature must be between 0 and 2.';
+    }
+    if (
+      draft.max_output_tokens !== null &&
+      (!Number.isInteger(draft.max_output_tokens) || draft.max_output_tokens <= 0)
+    ) {
+      return 'Max output tokens must be a positive whole number.';
+    }
+    if (
+      draft.color_hue !== null &&
+      (!Number.isInteger(draft.color_hue) || draft.color_hue < 0 || draft.color_hue > 359)
+    ) {
+      return 'Color hue must be a whole number from 0 to 359.';
+    }
+    return null;
+  })();
+  const saveDisabled = !dirty || Boolean(validationError) || saveState === 'saving';
 
   const handleProviderChoice = (choice: AgentEditorProviderChoice) => {
     if (!draft) return;
@@ -223,9 +325,24 @@ export function AgentManager() {
     });
   };
 
-  const handleSave = async () => {
+  const handleSave = React.useCallback(async () => {
     const currentDraft = draftRef.current;
-    if (!selectedAgent || !currentDraft || !dirty) return;
+    const currentBaseline = baselineRef.current;
+    if (
+      savingRef.current ||
+      !selectedAgent ||
+      !currentDraft ||
+      !currentBaseline ||
+      !draftsDiffer(currentDraft, currentBaseline)
+    ) return;
+    if (validationError) {
+      setSaveState('error');
+      setSaveError(validationError);
+      return;
+    }
+    savingRef.current = true;
+    setSaveState('saving');
+    setSaveError(null);
     const patch: Partial<Agent> = {
       name: currentDraft.name,
       description: currentDraft.description,
@@ -236,6 +353,18 @@ export function AgentManager() {
         model: currentDraft.model,
       },
       temperature: currentDraft.temperature,
+      tools_allowed: normalizeUnordered(currentDraft.tools_allowed),
+      memory_scope: currentDraft.memory_scope,
+      capabilities: normalizeUnordered(currentDraft.capabilities) as AgentCapability[],
+      skills: normalizeUnordered(currentDraft.skills),
+      max_output_tokens: currentDraft.max_output_tokens ?? undefined,
+      color_hue: currentDraft.color_hue ?? undefined,
+      effort: currentDraft.effort,
+      effort_custom:
+        currentDraft.effort === 'custom' && currentDraft.effort_custom
+          ? { ...currentDraft.effort_custom }
+          : undefined,
+      persona: currentDraft.persona,
     };
     try {
       const existing = await agentRepo.getById(selectedAgent.id);
@@ -245,16 +374,55 @@ export function AgentManager() {
       registerAgent(saved);
       const syncedDraft = agentToDraft(saved);
       setDraft(syncedDraft);
+      setBaseline(syncedDraft);
       draftRef.current = syncedDraft;
+      baselineRef.current = syncedDraft;
+      setSaveState('saved');
       toast.success('Saved', `Updated "${saved.name}"`);
     } catch (err) {
-      toast.error('Save failed', err instanceof Error ? err.message : 'Could not save this agent.');
+      const message = err instanceof Error ? err.message : 'Could not save this agent.';
+      setSaveState('error');
+      setSaveError(message);
+      toast.error('Save failed', message);
+    } finally {
+      savingRef.current = false;
     }
+  }, [registerAgent, selectedAgent, validationError]);
+
+  React.useEffect(() => {
+    const handleKeyboardSave = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 's') return;
+      const target = event.target;
+      if (target instanceof HTMLInputElement && target.type === 'file') return;
+      const currentDraft = draftRef.current;
+      const currentBaseline = baselineRef.current;
+      if (!currentDraft || !currentBaseline || !draftsDiffer(currentDraft, currentBaseline)) return;
+      event.preventDefault();
+      void handleSave();
+    };
+    window.addEventListener('keydown', handleKeyboardSave);
+    return () => window.removeEventListener('keydown', handleKeyboardSave);
+  }, [handleSave]);
+
+  React.useEffect(() => {
+    if (saveState !== 'saved') return;
+    const timer = window.setTimeout(() => setSaveState('idle'), 1800);
+    return () => window.clearTimeout(timer);
+  }, [saveState]);
+
+  const selectAgent = (nextId: AgentId) => {
+    if (nextId === selectedId) return;
+    if (dirty && !window.confirm('Discard unsaved changes and switch agents?')) return;
+    setSelectedId(nextId);
   };
 
   const handleReset = () => {
-    if (!selectedAgent) return;
-    setDraft(agentToDraft(selectedAgent));
+    if (!baseline) return;
+    const next = { ...baseline, tools_allowed: [...baseline.tools_allowed], capabilities: [...baseline.capabilities], skills: [...baseline.skills] };
+    setDraft(next);
+    draftRef.current = next;
+    setSaveState('idle');
+    setSaveError(null);
   };
 
   const handleClone = async () => {
@@ -380,7 +548,7 @@ export function AgentManager() {
                 <button
                   key={agent.id}
                   type="button"
-                  onClick={() => setSelectedId(agent.id)}
+                  onClick={() => selectAgent(agent.id)}
                   className={cn(
                     'w-full text-left px-3 py-2 transition-colors flex items-center gap-2',
                     active ? 'bg-muted text-foreground' : 'hover:bg-muted/50',
@@ -462,9 +630,22 @@ export function AgentManager() {
                   size="sm"
                   onClick={() => void handleSave()}
                   disabled={saveDisabled}
+                  aria-label={saveState === 'error' ? 'Retry save' : 'Save agent'}
                 >
-                  <Save className="h-3.5 w-3.5" />
-                  Save
+                  {saveState === 'saving' ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : saveState === 'saved' ? (
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                  ) : (
+                    <Save className="h-3.5 w-3.5" />
+                  )}
+                  {saveState === 'saving'
+                    ? 'Saving...'
+                    : saveState === 'saved'
+                      ? 'Saved'
+                      : saveState === 'error'
+                        ? 'Retry'
+                        : 'Save'}
                 </Button>
               </div>
             </div>
@@ -472,7 +653,16 @@ export function AgentManager() {
             <Separator />
 
             {/* Editable fields */}
-            <div className="space-y-4">
+              <div className="space-y-4">
+              {saveError ? (
+                <div
+                  role="alert"
+                  className="flex items-start gap-2 rounded-md border border-destructive/35 bg-destructive/5 px-3 py-2 text-secondary text-destructive"
+                >
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span>The Agent was not saved. Your edits are still here. {saveError}</span>
+                </div>
+              ) : null}
               <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="agent-name">Name</Label>
@@ -609,25 +799,120 @@ export function AgentManager() {
 
               <Separator />
 
-              {/* Read-only metadata */}
+              {/* Agent permissions and advanced settings */}
               <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
-                <div>
-                  <Label className="block mb-1.5">Capabilities</Label>
-                  <div className="flex flex-wrap gap-1">
-                    {selectedAgent.capabilities.length === 0 ? (
-                      <span className="text-metadata text-muted-foreground">none</span>
-                    ) : (
-                      selectedAgent.capabilities.map((c) => (
-                        <Badge key={c} variant="secondary" className="text-metadata">
-                          {c}
-                        </Badge>
-                      ))
-                    )}
-                  </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="agent-capabilities">Capabilities</Label>
+                  <Input
+                    id="agent-capabilities"
+                    value={formatList(draft.capabilities)}
+                    placeholder="writing, planning"
+                    onChange={(event) => setDraft((current) => current ? {
+                      ...current,
+                      capabilities: parseList(event.target.value) as AgentCapability[],
+                    } : current)}
+                  />
                 </div>
-                <div>
-                  <Label className="block mb-1.5">Memory scope</Label>
-                  <Badge variant="outline">{selectedAgent.memory_scope}</Badge>
+                <div className="space-y-1.5">
+                  <Label htmlFor="agent-skills">Skills</Label>
+                  <Input
+                    id="agent-skills"
+                    value={formatList(draft.skills)}
+                    placeholder="skill ids, comma separated"
+                    onChange={(event) => setDraft((current) => current ? {
+                      ...current,
+                      skills: parseList(event.target.value),
+                    } : current)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="agent-tools">Allowed tools</Label>
+                  <Input
+                    id="agent-tools"
+                    value={formatList(draft.tools_allowed)}
+                    placeholder="* or tool ids"
+                    onChange={(event) => setDraft((current) => current ? {
+                      ...current,
+                      tools_allowed: parseList(event.target.value),
+                    } : current)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="agent-memory-scope">Memory scope</Label>
+                  <select
+                    id="agent-memory-scope"
+                    value={draft.memory_scope}
+                    onChange={(event) => setDraft((current) => current ? {
+                      ...current,
+                      memory_scope: event.target.value as MemoryScope,
+                    } : current)}
+                    className="flex h-8 w-full rounded-md border border-input bg-background px-2 text-body text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  >
+                    <option value="agent">Agent</option>
+                    <option value="project">Project</option>
+                    <option value="workspace">Workspace</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="agent-effort">Reasoning effort</Label>
+                  <select
+                    id="agent-effort"
+                    value={draft.effort}
+                    onChange={(event) => setDraft((current) => current ? {
+                      ...current,
+                      effort: event.target.value as AgentEffort,
+                    } : current)}
+                    className="flex h-8 w-full rounded-md border border-input bg-background px-2 text-body text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  >
+                    {['minimal', 'low', 'medium', 'high', 'max', 'custom'].map((effort) => (
+                      <option key={effort} value={effort}>{effort}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="agent-persona">Persona</Label>
+                  <select
+                    id="agent-persona"
+                    value={draft.persona}
+                    onChange={(event) => setDraft((current) => current ? {
+                      ...current,
+                      persona: event.target.value as AgentPersona,
+                    } : current)}
+                    className="flex h-8 w-full rounded-md border border-input bg-background px-2 text-body text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  >
+                    {['jarvis', 'athena', 'edge', 'watson', 'hal', 'custom'].map((persona) => (
+                      <option key={persona} value={persona}>{persona}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="agent-max-output">Max output tokens</Label>
+                  <Input
+                    id="agent-max-output"
+                    type="number"
+                    min={1}
+                    value={draft.max_output_tokens ?? ''}
+                    placeholder="Provider default"
+                    onChange={(event) => setDraft((current) => current ? {
+                      ...current,
+                      max_output_tokens: event.target.value ? Number(event.target.value) : null,
+                    } : current)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="agent-color-hue">Appearance hue</Label>
+                  <Input
+                    id="agent-color-hue"
+                    type="number"
+                    min={0}
+                    max={359}
+                    value={draft.color_hue ?? ''}
+                    placeholder="Automatic"
+                    onChange={(event) => setDraft((current) => current ? {
+                      ...current,
+                      color_hue: event.target.value ? Number(event.target.value) : null,
+                    } : current)}
+                  />
                 </div>
               </div>
             </div>
