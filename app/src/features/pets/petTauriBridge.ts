@@ -44,6 +44,25 @@ export async function openOrFocusPetPanel(nearX?: number, nearY?: number): Promi
  * visible. Used by both PetHost (main) and PetOverlayWindow (desktop path).
  * Prevents "sprite gone + no panel" when panel open fails.
  */
+export const PET_PANEL_OPEN_FLAG_KEY = 'vibespace-pet-panel-open';
+
+export function setPetPanelOpenFlag(open: boolean): void {
+  try {
+    if (open) localStorage.setItem(PET_PANEL_OPEN_FLAG_KEY, '1');
+    else localStorage.removeItem(PET_PANEL_OPEN_FLAG_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+export function readPetPanelOpenFlag(): boolean {
+  try {
+    return localStorage.getItem(PET_PANEL_OPEN_FLAG_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
 export async function openPetPanelSafely(
   nearX?: number,
   nearY?: number,
@@ -56,8 +75,10 @@ export async function openPetPanelSafely(
   await new Promise((r) => setTimeout(r, 180));
   const panelVisible = await isPetPanelVisible();
   if (panelVisible) {
+    setPetPanelOpenFlag(true);
     await hidePetOverlay().catch(() => undefined);
   } else {
+    setPetPanelOpenFlag(false);
     // Panel did not open — keep/restore the floating pet.
     await showPetOverlay().catch(() => undefined);
   }

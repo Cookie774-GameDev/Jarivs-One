@@ -1,26 +1,38 @@
 /**
- * Horizontal drag direction from pointer velocity (px/s), with smoothing,
- * dead-zone, hysteresis, and stop delay. Pure — unit-tested without DOM.
+ * Horizontal drag direction from pointer velocity (px/s), with EMA smoothing,
+ * separate entry/exit thresholds, hysteresis, min walk hold, and stop grace.
+ * Pure — unit-tested without DOM.
  */
 
 export type WalkDirection = 'walkLeft' | 'walkRight' | 'draggingNeutral';
 
 export interface DragVelocityConfig {
-  /** |vx| below this (px/s) → neutral (after stop delay). */
-  deadZonePxPerSec: number;
-  /** Min time a new direction must hold before flip. */
+  /** |vx| must exceed this to *enter* walking from idle. */
+  walkEntryPxPerSec: number;
+  /** |vx| must fall below this (for stopDelayMs) to *exit* walking. */
+  walkExitPxPerSec: number;
+  /** Min time a new direction must hold before flip L↔R. */
   hysteresisMs: number;
-  /** How long |vx| must stay in dead zone before neutral. */
+  /** How long |vx| must stay under exit threshold before idle. */
   stopDelayMs: number;
-  /** EMA blend for velocity samples (0–1). Higher = snappier. */
+  /** Minimum time to stay in walk once entered (reduces flicker). */
+  minWalkHoldMs: number;
+  /** EMA blend for velocity samples (0–1). Lower = smoother. */
   smoothing: number;
 }
 
 export const DEFAULT_DRAG_VELOCITY_CONFIG: DragVelocityConfig = {
-  deadZonePxPerSec: 12,
-  hysteresisMs: 80,
-  stopDelayMs: 80,
-  smoothing: 0.45,
+  walkEntryPxPerSec: 14,
+  walkExitPxPerSec: 5,
+  hysteresisMs: 100,
+  stopDelayMs: 160,
+  minWalkHoldMs: 180,
+  smoothing: 0.32,
+};
+
+/** @deprecated use walkEntry/walkExit — kept for older tests */
+export type DragVelocityConfigLegacy = DragVelocityConfig & {
+  deadZonePxPerSec?: number;
 };
 
 export interface DragVelocityState {
@@ -28,16 +40,11 @@ export interface DragVelocityState {
   lastT: number;
   vx: number;
   direction: WalkDirection;
-  /** When current direction was locked in. */
   directionSinceMs: number;
-  /** When |vx| first entered dead zone while walking. */
   stopCandidateSinceMs: number | null;
 }
 
-export function createDragVelocityState(
-  x: number,
-  t: number,
-): DragVelocityState {
+export function createDragVelocityState(x: number, t: number): DragVelocityState {
   return {
     lastX: x,
     lastT: t,
@@ -48,23 +55,33 @@ export function createDragVelocityState(
   };
 }
 
-function desiredFromVx(vx: number, dead: number): WalkDirection {
-  // Strict inequality: |vx| == deadZone counts as neutral (dead zone inclusive).
-  if (vx < -dead) return 'walkLeft';
-  if (vx > dead) return 'walkRight';
-  return 'draggingNeutral';
+function resolveCfg(cfg: DragVelocityConfigLegacy): DragVelocityConfig {
+  const entry =
+    cfg.walkEntryPxPerSec ??
+    (typeof cfg.deadZonePxPerSec === 'number' ? cfg.deadZonePxPerSec : 14);
+  const exit =
+    cfg.walkExitPxPerSec ??
+    (typeof cfg.deadZonePxPerSec === 'number' ? cfg.deadZonePxPerSec * 0.4 : 5);
+  return {
+    walkEntryPxPerSec: entry,
+    walkExitPxPerSec: Math.min(exit, entry - 1),
+    hysteresisMs: cfg.hysteresisMs,
+    stopDelayMs: cfg.stopDelayMs,
+    minWalkHoldMs: cfg.minWalkHoldMs ?? 180,
+    smoothing: cfg.smoothing,
+  };
 }
 
 /**
- * Sample a pointer position at time t (ms). Returns next state + walk anim id
- * (maps draggingNeutral → idlePrimary for the machine while still dragging).
+ * Sample a pointer position at time t (ms).
  */
 export function sampleDragVelocity(
   state: DragVelocityState,
   x: number,
   t: number,
-  cfg: DragVelocityConfig = DEFAULT_DRAG_VELOCITY_CONFIG,
+  cfgIn: DragVelocityConfigLegacy = DEFAULT_DRAG_VELOCITY_CONFIG,
 ): { state: DragVelocityState; walkAnim: 'walkLeft' | 'walkRight' | 'idlePrimary' } {
+  const cfg = resolveCfg(cfgIn);
   const dt = Math.max(1, t - state.lastT);
   const instVx = ((x - state.lastX) / dt) * 1000;
   const vx = state.vx * (1 - cfg.smoothing) + instVx * cfg.smoothing;
@@ -72,15 +89,35 @@ export function sampleDragVelocity(
   let directionSinceMs = state.directionSinceMs;
   let stopCandidateSinceMs = state.stopCandidateSinceMs;
 
-  const desired = desiredFromVx(vx, cfg.deadZonePxPerSec);
+  const abs = Math.abs(vx);
+  const holdOk = t - state.directionSinceMs >= cfg.minWalkHoldMs;
+
+  // Desired direction from velocity with dual thresholds
+  let desired: WalkDirection = 'draggingNeutral';
+  if (direction === 'walkLeft' || direction === 'walkRight') {
+    // While walking: use lower exit threshold; stay if still moving same way
+    if (vx < -cfg.walkExitPxPerSec) desired = 'walkLeft';
+    else if (vx > cfg.walkExitPxPerSec) desired = 'walkRight';
+    else desired = 'draggingNeutral';
+  } else {
+    // From idle: require higher entry threshold
+    if (vx < -cfg.walkEntryPxPerSec) desired = 'walkLeft';
+    else if (vx > cfg.walkEntryPxPerSec) desired = 'walkRight';
+  }
 
   if (desired === 'draggingNeutral') {
     if (direction === 'walkLeft' || direction === 'walkRight') {
-      if (stopCandidateSinceMs == null) stopCandidateSinceMs = t;
-      if (t - stopCandidateSinceMs >= cfg.stopDelayMs) {
-        direction = 'draggingNeutral';
-        directionSinceMs = t;
+      // Respect min walk hold before allowing stop countdown
+      if (!holdOk) {
+        // keep walking
         stopCandidateSinceMs = null;
+      } else {
+        if (stopCandidateSinceMs == null) stopCandidateSinceMs = t;
+        if (t - stopCandidateSinceMs >= cfg.stopDelayMs) {
+          direction = 'draggingNeutral';
+          directionSinceMs = t;
+          stopCandidateSinceMs = null;
+        }
       }
     } else {
       stopCandidateSinceMs = null;
@@ -88,16 +125,18 @@ export function sampleDragVelocity(
   } else {
     stopCandidateSinceMs = null;
     if (desired !== direction) {
-      // Allow immediate first lock from neutral; otherwise require hysteresis.
-      if (
-        direction === 'draggingNeutral' ||
+      if (direction === 'draggingNeutral') {
+        // enter walk immediately when entry threshold met
+        direction = desired;
+        directionSinceMs = t;
+      } else if (
+        // L↔R flip: hysteresis + min hold
+        holdOk &&
         t - directionSinceMs >= cfg.hysteresisMs
       ) {
         direction = desired;
         directionSinceMs = t;
       }
-    } else {
-      directionSinceMs = state.directionSinceMs;
     }
   }
 
@@ -120,20 +159,14 @@ export function sampleDragVelocity(
   return { state: next, walkAnim };
 }
 
-/**
- * Re-sample the current pointer location when the pointer is held still.
- * Pointer events stop firing while the mouse button is held but not moving;
- * without this tick the last walking direction can stay latched forever.
- */
 export function sampleStationaryDragVelocity(
   state: DragVelocityState,
   t: number,
-  cfg: DragVelocityConfig = DEFAULT_DRAG_VELOCITY_CONFIG,
+  cfgIn: DragVelocityConfigLegacy = DEFAULT_DRAG_VELOCITY_CONFIG,
 ): { state: DragVelocityState; walkAnim: 'walkLeft' | 'walkRight' | 'idlePrimary' } {
+  // Hold last X; zero instantaneous velocity so stop grace can complete
   const next = sampleDragVelocity(state, state.lastX, t, {
-    ...cfg,
-    // A stationary sample represents no current movement, so do not preserve
-    // prior EMA velocity. This lets stopDelayMs decide when to idle.
+    ...cfgIn,
     smoothing: 1,
   });
   return {
@@ -145,16 +178,16 @@ export function sampleStationaryDragVelocity(
 export function dragWalkFpsFromVelocity(
   vx: number,
   baseFps: number,
-  cfg: DragVelocityConfig = DEFAULT_DRAG_VELOCITY_CONFIG,
+  cfgIn: DragVelocityConfigLegacy = DEFAULT_DRAG_VELOCITY_CONFIG,
 ): number {
+  const cfg = resolveCfg(cfgIn);
   if (!Number.isFinite(baseFps) || baseFps <= 0) return 12;
-  const speed = Math.max(0, Math.abs(vx) - cfg.deadZonePxPerSec);
+  const speed = Math.max(0, Math.abs(vx) - cfg.walkExitPxPerSec);
   if (speed <= 0) return baseFps;
   const scale = Math.min(1.6, Math.max(0.55, speed / 220));
   return Math.max(4, Math.min(24, Math.round(baseFps * scale)));
 }
 
-/** Map machine walk anim for reduced-motion (restrained 2-frame still handled by player fps). */
 export function reducedMotionWalkAnim(
   walk: 'walkLeft' | 'walkRight' | 'idlePrimary',
 ): 'walkLeft' | 'walkRight' | 'idlePrimary' {

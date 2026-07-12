@@ -1438,3 +1438,14 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Verification** | pets 79/79 PASS; typecheck PASS |
 | **Locks** | released |
 
+
+#### 2026-07-12 - Pixel Pets six-issue continuation
+
+| Field | Value |
+|-------|-------|
+| **Agent** | AGENT-20260711-111338-PX7L |
+| **Status** | in-progress |
+| **Locks** | app/src/features/pets/**, app/src/assets/pets/characters/vibespace-axolotl/**, docs/AGENT_COORDINATION.md |
+| **Issues** | Axo frozen (few unique frames); panel hide; drag chop; terminal grid; Jarvis voice mini |
+| **Do not stage** | install/install.ps1, Cargo.toml |
+

@@ -3,7 +3,7 @@
  * Resizable + movable. Minimize/close hide the panel and restore the pet sprite.
  */
 import * as React from 'react';
-import { MessageSquare, Terminal, Activity, Minus, X, GripVertical, Cat } from 'lucide-react';
+import { MessageSquare, Terminal, Activity, Minus, X, GripVertical, Cat, Mic } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import {
@@ -16,10 +16,11 @@ import {
 } from './petPanelLifecycle';
 import { PetChatSurface } from './PetChatSurface';
 import { PetTerminalSurface } from './PetTerminalSurface';
+import { PetVoiceSurface } from './PetVoiceSurface';
 import { usePetPresentationStore } from './petPresentationStore';
 import { hidePetPanel, minimizePetPanel } from './petTauriBridge';
 
-export type PetMiniPanelTab = 'chats' | 'terminals' | 'activity';
+export type PetMiniPanelTab = 'chats' | 'terminals' | 'activity' | 'voice';
 
 export interface PetMiniPanelProps {
   open: boolean;
@@ -97,6 +98,11 @@ export function PetMiniPanel({
   const handleMinimize = () => {
     updateLifecycle({ type: 'request_minimize' });
     updateLifecycle({ type: 'minimized' });
+    try {
+      localStorage.removeItem('vibespace-pet-panel-open');
+    } catch {
+      /* ignore */
+    }
     void minimizePetPanel().catch(() => undefined);
     onMinimize?.();
     onClose(); // restores pet sprite via host panelOpen=false
@@ -107,6 +113,11 @@ export function PetMiniPanel({
   const handleConfirmClose = () => {
     updateLifecycle({ type: 'confirm_close' });
     updateLifecycle({ type: 'closed' });
+    try {
+      localStorage.removeItem('vibespace-pet-panel-open');
+    } catch {
+      /* ignore */
+    }
     void hidePetPanel().catch(() => undefined);
     onClose();
   };
@@ -299,6 +310,7 @@ export function PetMiniPanel({
           [
             ['chats', MessageSquare, 'Chats'],
             ['terminals', Terminal, 'Terminals'],
+            ['voice', Mic, 'Voice'],
             ['activity', Activity, 'Activity'],
           ] as const
         ).map(([id, Icon, label]) => {
@@ -332,6 +344,7 @@ export function PetMiniPanel({
         <div className="h-full min-h-0 rounded-xl border border-border/50 bg-background/70 shadow-inner overflow-hidden">
           {tab === 'chats' && <PetChatSurface className="h-full p-2" />}
           {tab === 'terminals' && <PetTerminalSurface className="h-full p-2" />}
+          {tab === 'voice' && <PetVoiceSurface className="h-full" />}
           {tab === 'activity' && (
             <div className="h-full overflow-auto p-3" data-testid="pet-activity">
               <p className="mb-3 text-secondary text-muted-foreground text-sm">

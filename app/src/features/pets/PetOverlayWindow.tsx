@@ -4,7 +4,11 @@
  */
 import * as React from 'react';
 import { PetOverlay } from './PetOverlay';
-import { openPetPanelSafely } from './petTauriBridge';
+import {
+  openPetPanelSafely,
+  hidePetOverlay,
+  setPetPanelOpenFlag,
+} from './petTauriBridge';
 import { installPetPresentationStorageSync } from './petPresentationStore';
 import { installPetSettingsStorageSync, usePetSettingsStore } from './petSettingsStore';
 
@@ -73,8 +77,14 @@ export function PetOverlayWindow() {
         sleepTimeoutMs={sleepTimeoutMs}
         idleFunIntervalMs={idleFunIntervalMs}
         onOpenPanel={() => {
-          // Same confirm-then-hide path as PetHost — never hide overlay unless panel is visible.
-          void openPetPanelSafely();
+          // Hide standalone pet as soon as panel open is requested; confirm via bridge.
+          setPetPanelOpenFlag(true);
+          void hidePetOverlay().catch(() => undefined);
+          void openPetPanelSafely().then(({ panelVisible }) => {
+            if (!panelVisible) {
+              setPetPanelOpenFlag(false);
+            }
+          });
         }}
       />
     </div>

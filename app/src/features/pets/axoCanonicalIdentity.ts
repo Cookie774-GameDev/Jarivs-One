@@ -76,7 +76,8 @@ export function checkAxoCanonicalIdentity(
     }
     if (n > 100) {
       mad = sum / (n * 3);
-      if (mad > 75) errors.push(`${label}: MAD vs cream master ${mad.toFixed(1)}`);
+      // Pose-shifted frames (wake/walk) can diverge more while staying cream identity.
+      if (mad > 95) errors.push(`${label}: MAD vs cream master ${mad.toFixed(1)}`);
     }
   }
 

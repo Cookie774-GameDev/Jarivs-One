@@ -305,14 +305,24 @@ export function PetOverlay({
     void openOrFocusPetPanel(left, top).catch(() => undefined);
   }, [onOpenPanel, pos.left, pos.top, setState, tauriWindowMode]);
 
+  const lastWalkAnimRef = React.useRef<'walkLeft' | 'walkRight' | 'idlePrimary' | null>(null);
   const applyWalkFromVelocity = React.useCallback(
     (walkAnim: 'walkLeft' | 'walkRight' | 'idlePrimary', vx: number) => {
-      setState(reducePetEvent(stateRef.current, { type: 'drag_move', walk: walkAnim }));
-      const def = getAnimDef(walkAnim === 'idlePrimary' ? 'idlePrimary' : walkAnim, characterIdRef.current);
+      // Only push state machine when locomotion class changes — prevents walk/idle flicker
+      // and avoids restarting walk animation at frame 0 on every pointer sample.
+      if (lastWalkAnimRef.current !== walkAnim) {
+        lastWalkAnimRef.current = walkAnim;
+        setState(reducePetEvent(stateRef.current, { type: 'drag_move', walk: walkAnim }));
+      }
+      const def = getAnimDef(
+        walkAnim === 'idlePrimary' ? 'idlePrimary' : walkAnim,
+        characterIdRef.current,
+      );
       const baseFps = def?.fps ?? 12;
       const fps = reducedMotion
         ? reducedMotionFps(walkAnim === 'idlePrimary' ? 'idlePrimary' : walkAnim, baseFps)
         : dragWalkFpsFromVelocity(vx, baseFps);
+      // Speed-only update; do not reset animation phase.
       playerRef.current.setPlaybackFps(fps);
     },
     [reducedMotion, setState],
@@ -334,6 +344,7 @@ export function PetOverlay({
       windowOriginX: e.screenX - e.clientX + pos.left,
       windowOriginY: e.screenY - e.clientY + pos.top,
     };
+    lastWalkAnimRef.current = 'idlePrimary';
     setState(reducePetEvent(stateRef.current, { type: 'drag_start', walk: 'idlePrimary' }));
   };
 
@@ -373,6 +384,7 @@ export function PetOverlay({
     if (!d) return;
     const moved = Math.hypot(e.clientX - d.startX, e.clientY - d.startY) > 6;
     dragRef.current = null;
+    lastWalkAnimRef.current = null;
     setState(reducePetEvent(stateRef.current, { type: 'drag_end' }));
     if (!moved) {
       openPanelNow();
