@@ -1636,3 +1636,15 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Warnings / remaining manual gates** | Existing Vite dynamic-import/chunk warnings remain. Rust release build emitted existing dead-code warnings. Full signed packaged install/runtime visual recording remains a manual gate because signing credentials were unavailable. |
 | **Do not stage** | `install/install.ps1`, `app/src-tauri/Cargo.toml`, `.agent-coordination.lock.released-*`, `docs/pets/*` scratch assets, `vibespace-axolotl-pixel/previews/reference-axolotl.png`. |
 
+#### 2026-07-12 - Canonical Axo runtime patch pushed / locks released
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-12 10:35 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Branch** | `agent/pixel-pets-axolotl` |
+| **Pushed code commit** | `f41e191 fix(pets): canonicalize Axo runtime identity` |
+| **Status** | pushed to origin; logical file locks released; draft PR #19 remains unmerged and undeployed |
+| **Next manual gate** | Open the normal Tauri dev app and/or unsigned packaged executable, select normal Axo, and capture the requested video/visual evidence for all eight states plus Axo→Glitch→Axo. Signing-gated installer verification still needs `TAURI_SIGNING_PRIVATE_KEY` outside Codex. |
+| **Unrelated dirty files preserved** | `app/src-tauri/Cargo.toml`, `install/install.ps1` deletion, `.agent-coordination.lock.released-*`, pet scratch preview/frame files. |
+
