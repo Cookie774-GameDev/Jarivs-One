@@ -5,6 +5,7 @@ const fsMocks = vi.hoisted(() => ({
   listDirectory: vi.fn(),
   writeTextFile: vi.fn(),
   getStoredProjectRoot: vi.fn(),
+  getJarvisProjectsDir: vi.fn(),
   loadCoordinationSummary: vi.fn(),
 }));
 
@@ -20,6 +21,7 @@ vi.mock('@/lib/db', () => ({
 
 vi.mock('@/features/files/projectFiles', () => ({
   getStoredProjectRoot: fsMocks.getStoredProjectRoot,
+  getJarvisProjectsDir: fsMocks.getJarvisProjectsDir,
 }));
 
 vi.mock('@/features/terminals/agentCoordinationClient', () => ({
@@ -31,6 +33,10 @@ import {
   getExplicitFilesBlock,
   getExplicitTerminalBlock,
   getJarvisCoordinationContextBlock,
+  extractExplicitDestination,
+  formatResolvedJarvisContext,
+  rememberConversationDestination,
+  resolveJarvisContext,
 } from './context';
 
 describe('AI explicit file context safeguards', () => {
@@ -38,7 +44,30 @@ describe('AI explicit file context safeguards', () => {
     vi.clearAllMocks();
     useTerminalTranscriptStore.getState().reset();
     fsMocks.getStoredProjectRoot.mockReturnValue('');
+    fsMocks.getJarvisProjectsDir.mockResolvedValue('C:\\Jarvis\\Projects');
     fsMocks.loadCoordinationSummary.mockResolvedValue('');
+  });
+
+  it('remembers a conversation folder and prefers a newer active project', async () => {
+    rememberConversationDestination('chat_1', 'Put future files here:\nC:\\Users\\viper\\projects\\FarmLife');
+    expect(extractExplicitDestination('Use `C:\\Users\\viper\\projects\\FarmLife`')).toBe(
+      'C:\\Users\\viper\\projects\\FarmLife',
+    );
+    const remembered = await resolveJarvisContext({
+      projectId: null,
+      chatId: 'chat_1',
+      currentText: 'Create a roadmap file.',
+    });
+    expect(remembered.preferredDestination).toBe('C:\\Users\\viper\\projects\\FarmLife');
+
+    fsMocks.getStoredProjectRoot.mockReturnValue('C:\\Users\\viper\\projects\\NewProject');
+    const active = await resolveJarvisContext({
+      projectId: 'project_new' as never,
+      chatId: 'chat_1',
+      currentText: 'Create a roadmap file.',
+    });
+    expect(active.preferredDestination).toBe('C:\\Users\\viper\\projects\\NewProject');
+    expect(formatResolvedJarvisContext(active)).toContain('Preferred new-file destination');
   });
 
   it('samples attached text files instead of reading them in full', async () => {

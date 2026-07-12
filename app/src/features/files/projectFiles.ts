@@ -60,6 +60,21 @@ export function joinPath(dir: string, name: string): string {
   return `${dir.replace(/[\\/]$/g, '')}${sep}${name}`;
 }
 
+export async function getJarvisRootDir(): Promise<string> {
+  if (!isTauri) return '';
+  try {
+    const { appDataDir } = await import('@tauri-apps/api/path');
+    return (await appDataDir()).replace(/[\\/]$/g, '');
+  } catch {
+    return '';
+  }
+}
+
+export async function getJarvisProjectsDir(): Promise<string> {
+  const root = await getJarvisRootDir();
+  return root ? joinPath(root, 'Projects') : '';
+}
+
 export function extension(path: string): string {
   const base = basename(path).toLowerCase();
   if (base === 'dockerfile' || base.startsWith('.env')) return base.replace(/^\./, '');

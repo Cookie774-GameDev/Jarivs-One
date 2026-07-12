@@ -33,6 +33,7 @@ export type ActionCategory =
   | 'settings' // open / configure settings panes
   | 'theme' // dark/light/density
   | 'voice' // voice modal, captions
+  | 'file' // project-scoped text file reads and writes
   | 'terminal' // terminal pane operations
   | 'schedule' // Jarvis-created and user-created scheduled tasks
   | 'clock' // timers and alarms

@@ -61,7 +61,11 @@ import {
   getExplicitFilesBlock,
   getExplicitTerminalBlock,
   getJarvisCoordinationContextBlock,
+  formatResolvedJarvisContext,
+  rememberConversationDestination,
+  resolveJarvisContext,
 } from './context';
+import { classifyJarvisIntent, formatJarvisIntentPolicy } from './intent';
 import type { TerminalRef } from '@/features/terminals/terminalRefs';
 import type { ContextAttachment } from '@/features/context/tree';
 import { modelSupportsVision, type ChatImageAttachment } from './vision';
@@ -221,7 +225,7 @@ const CHAT_RESPONSE_STYLE_OVERLAY = [
   'If multiple @agents are mentioned, answer as/for the first mentioned agent and use the others as context.',
 ].join('\n');
 
-function getInteractionModeOverlay(mode: JarvisInteractionMode): string {
+function getInteractionModeOverlay(mode: JarvisInteractionMode, needsVisiblePlan: boolean): string {
   if (mode === 'ask') {
     return [
       '## Jarvis interaction mode: Ask',
@@ -230,6 +234,13 @@ function getInteractionModeOverlay(mode: JarvisInteractionMode): string {
     ].join('\n');
   }
   if (mode === 'plan') {
+    if (!needsVisiblePlan) {
+      return [
+        '## Jarvis interaction mode: Plan',
+        'The request is informational or otherwise does not benefit from an implementation plan.',
+        'Answer directly without a plan card, implementation approval, action block, or mutation.',
+      ].join('\n');
+    }
     return [
       '## Jarvis interaction mode: Plan',
       'This is read-only planning mode. You may inspect available context and explain a plan.',
@@ -594,7 +605,10 @@ function toLLMMessages(history: Message[], excludeId?: MessageId, includeImages 
 function textToParts(text: string, userText?: string, interactionMode: JarvisInteractionMode = 'agent'): Part[] {
   const questionResult = parseJarvisQuestionBlocks(text);
   if (questionResult.hasQuestionBlocks) return questionResult.parts;
-  const planResult = parseJarvisPlanBlocks(text, { force: interactionMode === 'plan' });
+  const requestIntent = classifyJarvisIntent({ text: userText ?? '' });
+  const planResult = parseJarvisPlanBlocks(text, {
+    force: interactionMode === 'plan' && requestIntent.needsVisiblePlan,
+  });
   if (planResult.hasPlanBlocks) return planResult.parts;
   const permissionResult = parseJarvisPermissionBlocks(text);
   if (permissionResult.hasPermissionBlocks) return permissionResult.parts;
@@ -777,6 +791,22 @@ export function startRuntimeListener(
     }
 
     const projectId = await resolveChatProjectId(chatId);
+    rememberConversationDestination(chatId, text);
+    const resolvedRequestContext = await resolveJarvisContext({
+      projectId,
+      chatId,
+      currentText: text,
+      enabledCapabilities: [
+        ...agent.capabilities,
+        ...agent.tools_allowed,
+        ...(agent.skills ?? []),
+      ],
+    });
+    const requestIntent = classifyJarvisIntent({
+      text,
+      destination: resolvedRequestContext.preferredDestination,
+      hasResolvedDestination: Boolean(resolvedRequestContext.preferredDestination),
+    });
     const activity = useChatActivityStore.getState();
     const agentActivityId = createChatActivityId('agent');
     activity.record({
@@ -895,6 +925,8 @@ export function startRuntimeListener(
     let pluginContext = '';
     let pluginStatusContext = '';
     let selectedSkillsContext = '';
+    const resolvedContextBlock = formatResolvedJarvisContext(resolvedRequestContext);
+    const requestIntentBlock = formatJarvisIntentPolicy(requestIntent);
     try {
       projectContext = await getProjectContextBlock(projectId);
     } catch (err) {
@@ -1034,7 +1066,9 @@ export function startRuntimeListener(
       pluginContext,
       pluginStatusContext,
       selectedSkillsContext,
-      getInteractionModeOverlay(interactionMode),
+      resolvedContextBlock,
+      requestIntentBlock,
+      getInteractionModeOverlay(interactionMode, requestIntent.needsVisiblePlan),
       structuredContextBlock(detail.structuredContext),
       mentionedAgentContext,
       explicitContext,

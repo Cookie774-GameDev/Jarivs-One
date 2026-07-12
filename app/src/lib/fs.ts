@@ -169,6 +169,28 @@ export async function createTextFile(path: string, options: FsAccessOptions = {}
   }
 }
 
+export async function createTextFileWithContent(
+  path: string,
+  content: string,
+  options: FsAccessOptions = {},
+): Promise<FsWriteResult> {
+  try {
+    await invoke('fs_create_text_with_content', { path, content, root: options.root ?? undefined });
+    return { ok: true, path };
+  } catch (err) {
+    return { ok: false, error: classifyInvokeError(err), path };
+  }
+}
+
+export async function createDirectory(path: string, options: FsAccessOptions = {}): Promise<FsWriteResult> {
+  try {
+    await invoke('fs_create_dir_all', { path, root: options.root ?? undefined });
+    return { ok: true, path };
+  } catch (err) {
+    return { ok: false, error: classifyInvokeError(err), path };
+  }
+}
+
 /**
  * Read multiple files in parallel. Failures are folded into the
  * returned list rather than rejecting the whole batch — the AI

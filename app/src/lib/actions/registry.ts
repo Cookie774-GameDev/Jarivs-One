@@ -48,6 +48,7 @@ import {
   Clock,
   AlarmClock,
   Plug,
+  FileText,
 } from 'lucide-react';
 
 import { useUIStore, type Route } from '@/stores/ui';
@@ -73,6 +74,7 @@ import type { CustomToolStep } from '@/features/tools/toolStore';
 import { getExplicitTerminalBlock } from '@/lib/ai/context';
 import { PRESET_ACTIONS } from './registryPresets';
 import { APP_CONTROL_ACTIONS } from './registryAppControl';
+import { FILE_ACTIONS } from './registryFiles';
 import {
   buildJarvisScheduleEventInput,
   scheduleActionSummary,
@@ -1527,6 +1529,7 @@ export function getBuiltinActions(): ActionDef[] {
     ...SETTINGS_ACTIONS,
     ...THEME_ACTIONS,
     ...VOICE_ACTIONS,
+    ...FILE_ACTIONS,
     ...TERMINAL_ACTIONS,
     ...SCHEDULE_ACTIONS,
     ...CHAT_ACTIONS,
@@ -1566,6 +1569,7 @@ export const CATEGORY_LABELS: Record<
   | 'settings'
   | 'theme'
   | 'voice'
+  | 'file'
   | 'terminal'
   | 'schedule'
   | 'clock'
@@ -1579,6 +1583,7 @@ export const CATEGORY_LABELS: Record<
   settings: 'Settings',
   theme: 'Appearance',
   voice: 'Voice',
+  file: 'Files',
   terminal: 'Terminal',
   schedule: 'Schedule',
   clock: 'Clock',
@@ -1594,6 +1599,7 @@ export const CATEGORY_ICON: Record<string, LucideIcon> = {
   settings: Cog,
   theme: Sparkles,
   voice: Mic,
+  file: FileText,
   terminal: TerminalIcon,
   schedule: CalendarClock,
   clock: Clock,

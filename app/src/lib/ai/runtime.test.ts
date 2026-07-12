@@ -64,6 +64,13 @@ vi.mock('./context', () => ({
   getExplicitFilesBlock: async () => '',
   getExplicitTerminalBlock: () => '',
   getJarvisCoordinationContextBlock: mocks.getJarvisCoordinationContextBlock,
+  rememberConversationDestination: () => undefined,
+  resolveJarvisContext: async () => ({
+    relevantFiles: [],
+    enabledCapabilities: [],
+    sourceReasons: [],
+  }),
+  formatResolvedJarvisContext: () => '',
 }));
 
 import { startRuntimeListener } from './runtime';
