@@ -47,6 +47,16 @@ import {
 import { cn } from '@/lib/utils';
 
 const DISPLAY = 128;
+const DEBUG_ANIMS: PetAnimId[] = [
+  'welcome',
+  'idlePrimary',
+  'idleFun',
+  'walkLeft',
+  'walkRight',
+  'sleepTransition',
+  'sleepingLoop',
+  'wakeFromSleep',
+];
 
 export interface PetOverlayProps {
   enabled?: boolean;
@@ -101,6 +111,8 @@ export function PetOverlay({
   const currentAnim = React.useRef<string | null>(null);
   const schedulerRef = React.useRef<ReturnType<typeof createPetScheduler> | null>(null);
   const initOnce = React.useRef(false);
+  const lifecycleGenerationRef = React.useRef(0);
+  const animationRequestRef = React.useRef(0);
   const onOpenPanelRef = React.useRef(onOpenPanel);
   onOpenPanelRef.current = onOpenPanel;
   const onAnimChangeRef = React.useRef(onAnimChange);
@@ -108,6 +120,18 @@ export function PetOverlay({
 
   const man = React.useMemo(() => getPetAnimationsManifest(characterId), [characterId]);
   const showDiagnostics = usePetSettingsStore((s) => s.showDiagnostics);
+  const setCharacterId = usePetSettingsStore((s) => s.setCharacterId);
+  const debugMode =
+    import.meta.env.DEV &&
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('petDebug') === '1';
+  const [debugTick, setDebugTick] = React.useState(0);
+
+  React.useEffect(() => {
+    if (!debugMode) return;
+    const timer = window.setInterval(() => setDebugTick((value) => value + 1), 100);
+    return () => window.clearInterval(timer);
+  }, [debugMode]);
 
   // DEV-only full chain diagnostics (no production spam).
   React.useEffect(() => {
@@ -144,10 +168,11 @@ export function PetOverlay({
 
   const playAnim = React.useCallback(
     async (id: PetAnimId) => {
+      const lifecycleGeneration = lifecycleGenerationRef.current;
+      const requestGeneration = ++animationRequestRef.current;
       const charId = characterIdRef.current;
       const resolved = reducedMotion ? mapReducedMotionAnim(id) : id;
       const animKey = `${charId}:${resolved}`;
-      if (currentAnim.current === animKey && !reducedMotion) return;
       const def = getAnimDef(resolved, charId);
       if (!def) {
         console.warn('[pets] missing anim def', resolved, charId);
@@ -158,13 +183,19 @@ export function PetOverlay({
       const host = hostRef.current;
       if (!host) return;
 
+      const isCurrentRequest = () =>
+        lifecycleGenerationRef.current === lifecycleGeneration &&
+        animationRequestRef.current === requestGeneration &&
+        playerRef.current === player &&
+        !player.isDestroyed;
+
       if (!initOnce.current) {
         await player.init(host, {
           displaySize: DISPLAY,
           resolution: typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1,
           backgroundAlpha: 0,
         });
-        if (player.isDestroyed) return;
+        if (!isCurrentRequest()) return;
         initOnce.current = true;
       }
 
@@ -178,10 +209,20 @@ export function PetOverlay({
         animCache.current.set(cacheKey, urls);
       }
 
+      const playbackKey = `${charId}:${resolved}:${scaleSel.scale}:${urls.jsonUrl}:${urls.imageUrl}:v1`;
+      if (
+        currentAnim.current === animKey &&
+        player.isPlaybackReady(playbackKey, urls.jsonUrl)
+      ) {
+        const fps = reducedMotion ? reducedMotionFps(resolved, def.fps) : def.fps;
+        player.setPlaybackFps(fps);
+        return;
+      }
+
       try {
         // load() keeps previous texture until new atlas is ready (no blink).
         await player.load(urls.jsonUrl, urls.imageUrl);
-        if (player.isDestroyed) return;
+        if (!isCurrentRequest()) return;
         // Stale request guard: character or desired anim may have changed mid-load.
         if (characterIdRef.current !== charId) return;
 
@@ -193,6 +234,7 @@ export function PetOverlay({
             fps,
             loop: def.loop,
             oneShot: def.oneShot,
+            playbackKey,
           },
           () => {
             const s = stateRef.current;
@@ -218,12 +260,29 @@ export function PetOverlay({
   const playAnimRef = React.useRef(playAnim);
   playAnimRef.current = playAnim;
 
+  // The Pixi Application belongs to the mounted overlay, not to a character.
+  // Axo ↔ Glitch swaps atlases on this same player/canvas/ticker.
+  React.useEffect(() => {
+    if (!enabled) return;
+    return () => {
+      lifecycleGenerationRef.current += 1;
+      animationRequestRef.current += 1;
+      disposeAll([playerRef.current]);
+      currentAnim.current = null;
+      initOnce.current = false;
+      playerRef.current = new PixiAtlasPlayer();
+    };
+  }, [enabled]);
+
   /**
    * Boot / character mount — runs once per enabled+characterId.
    * Must NOT depend on playAnim identity or panelOpen (that re-fired welcome forever).
    */
   React.useEffect(() => {
     if (!enabled) return;
+
+    lifecycleGenerationRef.current += 1;
+    animationRequestRef.current += 1;
 
     animCache.current.clear();
     currentAnim.current = null;
@@ -240,18 +299,12 @@ export function PetOverlay({
     });
     schedulerRef.current = sched;
 
-    // Defer one frame so hostRef is mounted.
-    const t = window.setTimeout(() => {
-      void playAnimRef.current(s0.anim);
-    }, 0);
-
     return () => {
-      window.clearTimeout(t);
-      disposeAll([sched, playerRef.current]);
+      lifecycleGenerationRef.current += 1;
+      animationRequestRef.current += 1;
+      disposeAll([sched]);
       schedulerRef.current = null;
       currentAnim.current = null;
-      initOnce.current = false;
-      playerRef.current = new PixiAtlasPlayer();
     };
     // characterId intentionally included: skin change = one clean remount + welcome once.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- playAnim via ref
@@ -264,17 +317,24 @@ export function PetOverlay({
     man.scheduler.sleepTimeoutMs,
   ]);
 
-  // Diagnostics: force animation from Settings → Pets
-  React.useEffect(() => {
-    if (!enabled) return;
-    const onForce = (e: Event) => {
-      const detail = (e as CustomEvent<PetForceAnimDetail>).detail;
-      if (!detail?.anim) return;
-      const anim = detail.anim as PetAnimId;
+  const forceAnimation = React.useCallback(
+    (anim: PetAnimId) => {
       if (anim === 'sleepTransition') {
-        setState(reducePetEvent(stateRef.current, { type: 'sleep_timeout' }));
+        setState({
+          ...stateRef.current,
+          anim: 'sleepTransition',
+          dragging: false,
+          sleeping: false,
+          panelOpen: false,
+        });
       } else if (anim === 'wakeFromSleep') {
-        setState(reducePetEvent(stateRef.current, { type: 'click' }));
+        setState({
+          ...stateRef.current,
+          anim: 'wakeFromSleep',
+          dragging: false,
+          sleeping: false,
+          panelOpen: false,
+        });
       } else if (anim === 'idleFun') {
         setState(
           reducePetEvent({ ...stateRef.current, anim: 'idlePrimary' }, { type: 'idle_fun_tick' }),
@@ -292,10 +352,21 @@ export function PetOverlay({
       } else {
         setState({ ...stateRef.current, anim, sleeping: anim === 'sleepingLoop' });
       }
+    },
+    [setState],
+  );
+
+  // Diagnostics: force animation from Settings → Pets
+  React.useEffect(() => {
+    if (!enabled) return;
+    const onForce = (e: Event) => {
+      const detail = (e as CustomEvent<PetForceAnimDetail>).detail;
+      if (!detail?.anim) return;
+      forceAnimation(detail.anim as PetAnimId);
     };
     window.addEventListener(PET_FORCE_ANIM_EVENT, onForce);
     return () => window.removeEventListener(PET_FORCE_ANIM_EVENT, onForce);
-  }, [enabled, setState]);
+  }, [enabled, forceAnimation]);
 
   // Play current machine anim (walk/idle/sleep transitions). No texture thrash.
   React.useEffect(() => {
@@ -581,6 +652,45 @@ export function PetOverlay({
           }}
         />
       </div>
+      {debugMode && (
+        <div
+          data-pet-animation-debug="true"
+          className="fixed left-2 top-[144px] z-[100] max-w-[560px] rounded bg-black/90 p-2 text-[10px] text-white"
+        >
+          <div data-pet-debug-status="true">
+            {(() => {
+              void debugTick;
+              const diag = playerRef.current.getDiagnostics();
+              return `surface=diagnostic commit=${import.meta.env.VITE_GIT_COMMIT ?? 'unknown'} character=${characterId} anim=${animLabel} frame=${diag.currentFrameIndex}/${diag.frameCount} rect=${diag.currentTextureFrameRect ?? 'none'} ticker=${diag.tickerStarted ? 'started' : 'stopped'} resets=${diag.animationResetCount} app=${diag.applicationObjectId ?? 'none'} canvas=${diag.canvasObjectId ?? 'none'}`;
+            })()}
+          </div>
+          <div className="mt-1 flex flex-wrap gap-1">
+            <button type="button" onClick={() => setCharacterId('vibespace-axolotl')}>
+              Axo
+            </button>
+            <button
+              type="button"
+              onClick={() => setCharacterId('vibespace-axolotl-glitch')}
+            >
+              Glitch
+            </button>
+            {DEBUG_ANIMS.map((anim) => (
+              <button key={anim} type="button" onClick={() => forceAnimation(anim)}>
+                {anim}
+              </button>
+            ))}
+            <button type="button" onClick={() => playerRef.current.pause()}>
+              pause
+            </button>
+            <button type="button" onClick={() => playerRef.current.resume()}>
+              resume
+            </button>
+            <button type="button" onClick={() => playerRef.current.restartAnimation()}>
+              restart
+            </button>
+          </div>
+        </div>
+      )}
       {ctxMenu && (
         <div
           className="fixed z-[90] min-w-[120px] rounded-lg border border-border bg-panel shadow-lg p-1"

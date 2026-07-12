@@ -38,6 +38,7 @@ export interface AnimPlaybackMeta {
   fps: number;
   loop: boolean;
   oneShot?: boolean;
+  playbackKey?: string;
 }
 
 export interface PixiAtlasPlayerOptions {
@@ -54,6 +55,20 @@ export interface PixiAtlasPlayerOptions {
 /** Track live applications so tests can assert single-instance discipline. */
 const liveApplications = new WeakSet<Application>();
 let liveApplicationCount = 0;
+const textureObjectIds = new WeakMap<object, string>();
+let textureObjectSeq = 0;
+
+function textureObjectId(value: unknown): string | null {
+  if ((typeof value !== 'object' && typeof value !== 'function') || value === null) {
+    return null;
+  }
+  const obj = value as object;
+  const existing = textureObjectIds.get(obj);
+  if (existing) return existing;
+  const next = `tex:${++textureObjectSeq}`;
+  textureObjectIds.set(obj, next);
+  return next;
+}
 
 export function getLivePixiApplicationCount(): number {
   return liveApplicationCount;
@@ -75,6 +90,7 @@ export class PixiAtlasPlayer {
   private index = 0;
   private accum = 0;
   private done = false;
+  private manuallyPaused = false;
   private onComplete: (() => void) | null = null;
   private displaySize = 128;
   private destroyed = false;
@@ -82,6 +98,19 @@ export class PixiAtlasPlayer {
   private mountEl: HTMLElement | null = null;
   private lastFilter: 'nearest' | 'linear' | null = null;
   private loadGeneration = 0;
+  private activePlaybackKey: string | null = null;
+  private activeFrameSignature = '';
+  private activeLoop = true;
+  private activeOneShot = false;
+  private setAnimationCallCount = 0;
+  private ignoredDuplicateAnimationRequests = 0;
+  private animationResetCount = 0;
+  private textureAssignmentCount = 0;
+  private lastAssignedTexture: unknown = null;
+  private lastTextureChanged = false;
+  private currentTextureObjectId: string | null = null;
+  private currentTextureSourceId: string | null = null;
+  private currentTextureFrameRect: string | null = null;
   /** Last successfully loaded atlas JSON URL (diagnostic source of truth). */
   private lastAtlasJsonUrl: string | null = null;
   /** Last successfully loaded atlas image URL (for cache eviction on skin switch). */
@@ -112,7 +141,7 @@ export class PixiAtlasPlayer {
   }
 
   get isAnimationPaused(): boolean {
-    return this.done || this.destroyed || this.frameNames.length === 0;
+    return this.manuallyPaused || this.done || this.destroyed || this.frameNames.length === 0;
   }
 
   get isTickerAttached(): boolean {
@@ -127,12 +156,37 @@ export class PixiAtlasPlayer {
     return this.lastAtlasJsonUrl;
   }
 
+  /**
+   * True only when the requested animation is already live on this exact
+   * player. A matching React animation key alone is insufficient after a
+   * StrictMode cleanup or player replacement.
+   */
+  isPlaybackReady(playbackKey: string, atlasJsonUrl: string): boolean {
+    const tickerStarted = this.isTickerStarted();
+    const canvas = this.app?.canvas as HTMLCanvasElement | undefined;
+    return Boolean(
+      !this.destroyed &&
+        this.app &&
+        this.sprite &&
+        this.atlas &&
+        this.frameTextures.size > 1 &&
+        this.frameNames.length > 1 &&
+        this.activePlaybackKey === playbackKey &&
+        this.lastAtlasJsonUrl === atlasJsonUrl &&
+        this.isTickerAttached &&
+        tickerStarted &&
+        this.sprite.texture &&
+        canvas?.parentElement === this.mountEl,
+    );
+  }
+
   get currentTextureUid(): string | number | null {
     const tex = this.sprite?.texture as
       | (Texture & { uid?: string | number; source?: { uid?: string | number } })
       | null
       | undefined;
-    return tex?.uid ?? tex?.source?.uid ?? this.currentFrameName;
+    if (!tex) return null;
+    return tex.uid ?? textureObjectId(tex);
   }
 
   /**
@@ -165,10 +219,21 @@ export class PixiAtlasPlayer {
     loop: boolean;
     done: boolean;
     tickerRunning: boolean;
+    tickerStarted: boolean;
+    tickerListenerCount: number | null;
     animationPaused: boolean;
     textureCacheKey: string | null;
     loadedAtlasJsonUrl: string | null;
     currentTextureUid: string | number | null;
+    currentTextureSourceUid: string | null;
+    currentTextureFrameRect: string | null;
+    lastTextureChanged: boolean;
+    textureAssignmentCount: number;
+    setAnimationCallCount: number;
+    ignoredDuplicateAnimationRequests: number;
+    animationResetCount: number;
+    applicationObjectId: string | null;
+    canvasObjectId: string | null;
     liveApplicationCount: number;
     backgroundAlpha: number;
     scaleMode: 'nearest' | 'linear' | null;
@@ -182,10 +247,21 @@ export class PixiAtlasPlayer {
       loop: this.loop,
       done: this.done,
       tickerRunning: this.isTickerAttached,
+      tickerStarted: this.isTickerStarted(),
+      tickerListenerCount: this.getTickerListenerCount(),
       animationPaused: this.isAnimationPaused,
       textureCacheKey: this.textureCacheKey,
       loadedAtlasJsonUrl: this.loadedAtlasJsonUrl,
       currentTextureUid: this.currentTextureUid,
+      currentTextureSourceUid: this.currentTextureSourceId,
+      currentTextureFrameRect: this.currentTextureFrameRect,
+      lastTextureChanged: this.lastTextureChanged,
+      textureAssignmentCount: this.textureAssignmentCount,
+      setAnimationCallCount: this.setAnimationCallCount,
+      ignoredDuplicateAnimationRequests: this.ignoredDuplicateAnimationRequests,
+      animationResetCount: this.animationResetCount,
+      applicationObjectId: textureObjectId(this.app),
+      canvasObjectId: textureObjectId(this.app?.canvas),
       liveApplicationCount: liveApplicationCount,
       backgroundAlpha: this.backgroundAlpha,
       scaleMode: this.lastFilter,
@@ -219,6 +295,23 @@ export class PixiAtlasPlayer {
     } catch {
       /* ignore */
     }
+  }
+
+  private isTickerStarted(): boolean {
+    const ticker = this.app?.ticker as
+      | { started?: boolean; start?: () => void }
+      | undefined;
+    return Boolean(ticker?.started);
+  }
+
+  private getTickerListenerCount(): number | null {
+    const ticker = this.app?.ticker as
+      | { fns?: unknown[]; count?: number; _head?: { next?: unknown } }
+      | undefined;
+    if (!ticker) return null;
+    if (Array.isArray(ticker.fns)) return ticker.fns.length;
+    if (typeof ticker.count === 'number') return ticker.count;
+    return null;
   }
 
   /**
@@ -308,6 +401,11 @@ export class PixiAtlasPlayer {
       }
     };
     app.ticker.add(this.tickerFn);
+    try {
+      app.ticker.start();
+    } catch {
+      /* Pixi ticker starts by default in some environments. */
+    }
 
     this.app = app;
     this.sprite = sprite;
@@ -347,6 +445,8 @@ export class PixiAtlasPlayer {
     this.clearFrameTextures();
     this.lastAtlasJsonUrl = null;
     this.lastImageUrl = null;
+    this.activePlaybackKey = null;
+    this.activeFrameSignature = '';
     for (const url of urls) {
       try {
         await Assets.unload(url);
@@ -418,6 +518,8 @@ export class PixiAtlasPlayer {
     this.lastImageUrl = imageUrl;
     this.atlas = atlas;
     this.frameTextures = nextFrames;
+    this.activePlaybackKey = null;
+    this.activeFrameSignature = '';
     petPerfRecordTextureReload();
 
     // Dispose previous sheet after swap (not before).
@@ -481,12 +583,38 @@ export class PixiAtlasPlayer {
   }
 
   setAnimation(meta: AnimPlaybackMeta, onComplete?: () => void): void {
+    this.setAnimationCallCount += 1;
+    const frameSignature = meta.frames.join('\u001f');
+    const playbackKey =
+      meta.playbackKey ??
+      `${this.lastAtlasJsonUrl ?? 'no-atlas'}|${this.lastImageUrl ?? 'no-image'}|${frameSignature}|${meta.loop ? 'loop' : 'once'}|${meta.oneShot ? 'one' : 'multi'}`;
+    const nextLoop = meta.loop && !meta.oneShot;
+    const nextOneShot = Boolean(meta.oneShot);
+    if (
+      this.activePlaybackKey === playbackKey &&
+      this.activeFrameSignature === frameSignature &&
+      this.activeLoop === nextLoop &&
+      this.activeOneShot === nextOneShot &&
+      this.frameNames.length > 0 &&
+      this.atlas
+    ) {
+      this.ignoredDuplicateAnimationRequests += 1;
+      this.fps = meta.fps > 0 ? meta.fps : this.fps;
+      this.onComplete = onComplete ?? this.onComplete;
+      return;
+    }
+    this.animationResetCount += 1;
+    this.activePlaybackKey = playbackKey;
+    this.activeFrameSignature = frameSignature;
+    this.activeLoop = nextLoop;
+    this.activeOneShot = nextOneShot;
     this.frameNames = meta.frames.slice();
     this.fps = meta.fps > 0 ? meta.fps : 12;
-    this.loop = meta.loop && !meta.oneShot;
+    this.loop = nextLoop;
     this.index = 0;
     this.accum = 0;
     this.done = false;
+    this.manuallyPaused = false;
     this.onComplete = onComplete ?? null;
     this.applyCurrentFrame();
   }
@@ -496,12 +624,31 @@ export class PixiAtlasPlayer {
     this.fps = fps;
   }
 
+  pause(): void {
+    if (!this.destroyed) this.manuallyPaused = true;
+  }
+
+  resume(): void {
+    if (!this.destroyed && this.frameNames.length > 0) this.manuallyPaused = false;
+  }
+
+  restartAnimation(): void {
+    if (this.destroyed || this.frameNames.length === 0) return;
+    this.index = 0;
+    this.accum = 0;
+    this.done = false;
+    this.manuallyPaused = false;
+    this.applyCurrentFrame();
+  }
+
   /**
    * Advance animation clock. Also invoked by Pixi ticker.
    * Returns true if a one-shot completed.
    */
   update(dtMs: number): boolean {
-    if (this.done || this.frameNames.length === 0 || this.destroyed) return this.done;
+    if (this.manuallyPaused || this.done || this.frameNames.length === 0 || this.destroyed) {
+      return this.done;
+    }
     const frameMs = 1000 / this.fps;
     this.accum += dtMs;
     let advanced = false;
@@ -530,7 +677,13 @@ export class PixiAtlasPlayer {
     const name = this.frameNames[Math.min(this.index, this.frameNames.length - 1)];
     const tex = this.frameTextures.get(name);
     if (!tex) return;
+    const prev = this.sprite.texture;
     this.sprite.texture = tex;
+    this.textureAssignmentCount += 1;
+    this.lastTextureChanged = prev !== tex;
+    this.lastAssignedTexture = tex;
+    this.currentTextureObjectId = textureObjectId(tex);
+    this.currentTextureSourceId = textureObjectId((tex as Texture).source);
 
     // Fit frame into display with integer scale; preserve bottom-center anchor.
     const tw = tex.width || 1;
@@ -547,6 +700,9 @@ export class PixiAtlasPlayer {
 
     // Trimmed-frame offset: spriteSourceSize x/y shifts the draw origin within sourceSize.
     const entry = this.atlas?.frames[name];
+    this.currentTextureFrameRect = entry
+      ? `${entry.frame.x},${entry.frame.y},${entry.frame.w},${entry.frame.h}`
+      : null;
     if (entry?.trimmed && entry.spriteSourceSize && entry.sourceSize) {
       const ox = entry.spriteSourceSize.x;
       const oy = entry.spriteSourceSize.y;

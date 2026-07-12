@@ -133,7 +133,6 @@
       "loop": true,
       "interruptible": true,
       "priority": 10,
-      "fallbackState": "idlePrimary",
       "reducedMotionState": "idlePrimary",
       "atlas": "atlases/idlePrimary@1x.json",
       "atlas2x": "atlases/idlePrimary@2x.json",

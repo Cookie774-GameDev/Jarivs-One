@@ -12,6 +12,10 @@ interface ImportMetaEnv {
   readonly VITE_ENABLE_COUNCIL?: string;
   readonly VITE_ENABLE_CLOUD_SYNC?: string;
   readonly VITE_APP_VERSION: string;
+  readonly VITE_GIT_COMMIT?: string;
+  readonly VITE_GIT_BRANCH?: string;
+  readonly VITE_BUILD_TIMESTAMP?: string;
+  readonly VITE_FRONTEND_ASSET_VERSION?: string;
 }
 
 interface ImportMeta {

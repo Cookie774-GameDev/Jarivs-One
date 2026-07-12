@@ -51,6 +51,14 @@ describe('pet animations manifest (shipped assets)', () => {
     expect(urls.jsonUrl.toLowerCase()).not.toContain('glitch');
   });
 
+  it('does not allow looping Axo states to fall back to themselves', () => {
+    const man = getPetAnimationsManifest(NORMAL_AXO_RUNTIME_ID);
+    const invalid = Object.entries(man.states).filter(
+      ([id, state]) => state.loop === true && state.fallbackState === id,
+    );
+    expect(invalid).toEqual([]);
+  });
+
   it('resolves Glitch atlases from vibespace-axolotl-glitch folder', () => {
     const def = getAnimDef('idlePrimary', GLITCH_RUNTIME_ID);
     const urls = resolveAtlasUrls(def!, GLITCH_RUNTIME_ID, def!.atlas2x);

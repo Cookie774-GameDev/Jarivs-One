@@ -4,6 +4,7 @@
  */
 import type { PetCharacterId, PetCharacterInput } from './petCharacters';
 import { PET_CHARACTERS, resolvePetCharacterId } from './petCharacters';
+import { getPetRuntimeBuildInfo, type PetRuntimeBuildInfo } from './petRuntimeBuildInfo';
 import type { PetAnimId } from './petStateMachine';
 import type { PixiAtlasPlayer } from './pixiAtlasPlayer';
 
@@ -27,7 +28,16 @@ export interface PetRuntimeDiagnostics {
   currentFrameName: string | null;
   elapsedAnimationMs: number;
   tickerRunning: boolean;
+  tickerStarted: boolean;
+  tickerListenerCount: number | null;
   animationPaused: boolean;
+  currentTextureSourceUid: string | null;
+  currentTextureFrameRect: string | null;
+  lastTextureChanged: boolean;
+  textureAssignmentCount: number;
+  setAnimationCallCount: number;
+  ignoredDuplicateAnimationRequests: number;
+  animationResetCount: number;
   reducedMotion: boolean;
   hiddenDueToPanel: boolean;
   activeTextureCacheKey: string | null;
@@ -39,6 +49,7 @@ export interface PetRuntimeDiagnostics {
   scaleMode: 'nearest' | 'linear' | null;
   documentVisibility: DocumentVisibilityState | 'unknown';
   windowLabel: string;
+  buildInfo: PetRuntimeBuildInfo;
 }
 
 export function buildPetRuntimeDiagnostics(input: {
@@ -71,6 +82,7 @@ export function buildPetRuntimeDiagnostics(input: {
       : 'unknown';
   const manifestUrl = `assets/pets/characters/${def.assetFolder}/animations.json`;
   const assetRoot = `assets/pets/characters/${def.assetFolder}/`;
+  const manifestAssetVersion = `${def.manifestCharacterId}@1`;
 
   return {
     selectedPetId,
@@ -91,7 +103,16 @@ export function buildPetRuntimeDiagnostics(input: {
     currentFrameName: playerDiag?.currentFrameName ?? input.player?.currentFrameName ?? null,
     elapsedAnimationMs: playerDiag?.elapsedAnimationMs ?? 0,
     tickerRunning: playerDiag?.tickerRunning ?? false,
+    tickerStarted: playerDiag?.tickerStarted ?? false,
+    tickerListenerCount: playerDiag?.tickerListenerCount ?? null,
     animationPaused: playerDiag?.animationPaused ?? true,
+    currentTextureSourceUid: playerDiag?.currentTextureSourceUid ?? null,
+    currentTextureFrameRect: playerDiag?.currentTextureFrameRect ?? null,
+    lastTextureChanged: playerDiag?.lastTextureChanged ?? false,
+    textureAssignmentCount: playerDiag?.textureAssignmentCount ?? 0,
+    setAnimationCallCount: playerDiag?.setAnimationCallCount ?? 0,
+    ignoredDuplicateAnimationRequests: playerDiag?.ignoredDuplicateAnimationRequests ?? 0,
+    animationResetCount: playerDiag?.animationResetCount ?? 0,
     reducedMotion: input.reducedMotion,
     hiddenDueToPanel: input.panelOpen,
     activeTextureCacheKey: playerDiag?.textureCacheKey ?? input.player?.loadedImageUrl ?? null,
@@ -108,6 +129,10 @@ export function buildPetRuntimeDiagnostics(input: {
         ? ((window as unknown as { __TAURI_INTERNALS__?: { metadata?: { currentWindow?: { label?: string } } } })
             .__TAURI_INTERNALS__?.metadata?.currentWindow?.label ?? 'browser')
         : 'unknown',
+    buildInfo: getPetRuntimeBuildInfo(undefined, {
+      selectedPetId,
+      manifestAssetVersion,
+    }),
   };
 }
 
@@ -118,9 +143,25 @@ export function installPetRuntimeDiagGlobal(getSnap: () => PetRuntimeDiagnostics
     typeof import.meta !== 'undefined' &&
     Boolean((import.meta as { env?: { DEV?: boolean } }).env?.DEV);
   if (!isDev) return () => undefined;
-  const w = window as unknown as { __VIBESPACE_PET_DIAG__?: () => PetRuntimeDiagnostics | null };
+  const w = window as unknown as {
+    __VIBESPACE_PET_DIAG__?: () => PetRuntimeDiagnostics | null;
+    __VIBESPACE_PET_TRACE__?: PetRuntimeDiagnostics[];
+  };
   w.__VIBESPACE_PET_DIAG__ = getSnap;
+  w.__VIBESPACE_PET_TRACE__ = [];
+  const sample = () => {
+    const snap = getSnap();
+    if (!snap) return;
+    const trace = w.__VIBESPACE_PET_TRACE__ ?? [];
+    trace.push(snap);
+    while (trace.length > 24) trace.shift();
+    w.__VIBESPACE_PET_TRACE__ = trace;
+  };
+  sample();
+  const interval = window.setInterval(sample, 250);
   return () => {
+    window.clearInterval(interval);
     delete w.__VIBESPACE_PET_DIAG__;
+    delete w.__VIBESPACE_PET_TRACE__;
   };
 }

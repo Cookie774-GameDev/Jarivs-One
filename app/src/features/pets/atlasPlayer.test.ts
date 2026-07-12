@@ -18,11 +18,15 @@ const pixiMockState = vi.hoisted(() => ({
 vi.mock('pixi.js', async () => {
   class FakeTicker {
     fns: Array<(t: { deltaMS: number }) => void> = [];
+    started = false;
     add(fn: (t: { deltaMS: number }) => void) {
       this.fns.push(fn);
     }
     remove(fn: (t: { deltaMS: number }) => void) {
       this.fns = this.fns.filter((f) => f !== fn);
+    }
+    start() {
+      this.started = true;
     }
   }
   class FakeRenderer {
@@ -238,6 +242,142 @@ describe('PixiAtlasPlayer', () => {
     expect(completed).toBe(1);
     expect(p.update(500)).toBe(true);
     expect(completed).toBe(1);
+    p.dispose();
+  });
+
+  it('does not reset duplicate playback requests for the same loaded animation', async () => {
+    const host = document.createElement('div');
+    const p = new PixiAtlasPlayer();
+    await p.init(host);
+
+    (p as unknown as { atlas: unknown; lastAtlasJsonUrl: string; lastImageUrl: string }).atlas = {
+      frames: {
+        a: { frame: { x: 0, y: 0, w: 1, h: 1 } },
+        b: { frame: { x: 1, y: 0, w: 1, h: 1 } },
+        c: { frame: { x: 2, y: 0, w: 1, h: 1 } },
+      },
+      meta: { image: 'idle.png', size: { w: 3, h: 1 } },
+    };
+    (p as unknown as { lastAtlasJsonUrl: string; lastImageUrl: string }).lastAtlasJsonUrl = 'idle.json';
+    (p as unknown as { lastImageUrl: string }).lastImageUrl = 'idle.png';
+    const map = (p as unknown as { frameTextures: Map<string, unknown> }).frameTextures;
+    for (const n of ['a', 'b', 'c']) {
+      map.set(n, { width: 1, height: 1, source: { scaleMode: 'nearest' }, destroy: () => {} });
+    }
+
+    const meta: AnimPlaybackMeta = { frames: ['a', 'b', 'c'], fps: 10, loop: true };
+    p.setAnimation(meta);
+    p.update(200);
+    expect(p.currentFrameIndex).toBe(2);
+
+    p.setAnimation(meta);
+
+    expect(p.currentFrameIndex).toBe(2);
+    expect(p.getDiagnostics().ignoredDuplicateAnimationRequests).toBe(1);
+    expect(p.getDiagnostics().animationResetCount).toBe(1);
+    p.dispose();
+  });
+
+  it('reports actual ticker started state, not only callback attachment', async () => {
+    const host = document.createElement('div');
+    const p = new PixiAtlasPlayer();
+    await p.init(host);
+
+    const diag = p.getDiagnostics();
+
+    expect(diag.tickerRunning).toBe(true);
+    expect(diag.tickerStarted).toBe(true);
+    expect(diag.tickerListenerCount).toBe(1);
+    p.dispose();
+  });
+
+  it('does not report the same animation as playable after its player was disposed', async () => {
+    const host = document.createElement('div');
+    const p = new PixiAtlasPlayer();
+    await p.init(host);
+    (p as unknown as { atlas: unknown; lastAtlasJsonUrl: string; lastImageUrl: string }).atlas = {
+      frames: {
+        a: { frame: { x: 0, y: 0, w: 1, h: 1 } },
+        b: { frame: { x: 1, y: 0, w: 1, h: 1 } },
+      },
+      meta: { image: 'idle.png', size: { w: 2, h: 1 } },
+    };
+    (p as unknown as { lastAtlasJsonUrl: string; lastImageUrl: string }).lastAtlasJsonUrl =
+      'idle.json';
+    (p as unknown as { lastImageUrl: string }).lastImageUrl = 'idle.png';
+    const map = (p as unknown as { frameTextures: Map<string, unknown> }).frameTextures;
+    map.set('a', { width: 1, height: 1, source: {}, destroy: () => {} });
+    map.set('b', { width: 1, height: 1, source: {}, destroy: () => {} });
+    p.setAnimation({
+      frames: ['a', 'b'],
+      fps: 10,
+      loop: true,
+      playbackKey: 'axo:idlePrimary',
+    });
+
+    expect(p.isPlaybackReady('axo:idlePrimary', 'idle.json')).toBe(true);
+    p.dispose();
+    expect(p.isPlaybackReady('axo:idlePrimary', 'idle.json')).toBe(false);
+  });
+
+  it('pauses, resumes, and restarts the current visible animation without replacing it', async () => {
+    const host = document.createElement('div');
+    const p = new PixiAtlasPlayer();
+    await p.init(host);
+    (p as unknown as { atlas: unknown }).atlas = {
+      frames: {
+        a: { frame: { x: 0, y: 0, w: 1, h: 1 } },
+        b: { frame: { x: 1, y: 0, w: 1, h: 1 } },
+      },
+      meta: { image: 'walk.png', size: { w: 2, h: 1 } },
+    };
+    const map = (p as unknown as { frameTextures: Map<string, unknown> }).frameTextures;
+    map.set('a', { width: 1, height: 1, source: {}, destroy: () => {} });
+    map.set('b', { width: 1, height: 1, source: {}, destroy: () => {} });
+    p.setAnimation({ frames: ['a', 'b'], fps: 10, loop: true });
+
+    p.pause();
+    p.update(200);
+    expect(p.currentFrameIndex).toBe(0);
+    expect(p.isAnimationPaused).toBe(true);
+
+    p.resume();
+    p.update(100);
+    expect(p.currentFrameIndex).toBe(1);
+
+    p.restartAnimation();
+    expect(p.currentFrameIndex).toBe(0);
+    expect(p.isAnimationPaused).toBe(false);
+    p.dispose();
+  });
+
+  it('tracks real texture assignment identity instead of falling back to frame name', async () => {
+    const host = document.createElement('div');
+    const p = new PixiAtlasPlayer();
+    await p.init(host);
+    (p as unknown as { atlas: unknown; lastAtlasJsonUrl: string; lastImageUrl: string }).atlas = {
+      frames: {
+        a: { frame: { x: 0, y: 0, w: 1, h: 1 } },
+        b: { frame: { x: 1, y: 0, w: 1, h: 1 } },
+      },
+      meta: { image: 'x', size: { w: 2, h: 1 } },
+    };
+    (p as unknown as { lastAtlasJsonUrl: string; lastImageUrl: string }).lastAtlasJsonUrl = 'x.json';
+    (p as unknown as { lastImageUrl: string }).lastImageUrl = 'x.png';
+    const map = (p as unknown as { frameTextures: Map<string, unknown> }).frameTextures;
+    const sameTexture = { width: 1, height: 1, source: { scaleMode: 'nearest' }, destroy: () => {} };
+    map.set('a', sameTexture);
+    map.set('b', sameTexture);
+
+    p.setAnimation({ frames: ['a', 'b'], fps: 10, loop: true });
+    const before = p.getDiagnostics();
+    p.update(100);
+    const after = p.getDiagnostics();
+
+    expect(after.currentFrameName).toBe('b');
+    expect(after.currentTextureUid).toBe(before.currentTextureUid);
+    expect(after.lastTextureChanged).toBe(false);
+    expect(after.textureAssignmentCount).toBe(2);
     p.dispose();
   });
 
