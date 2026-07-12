@@ -22,7 +22,7 @@ import {
   type DragVelocityState,
 } from './petDragVelocity';
 import { disposeAll, mapReducedMotionAnim, reducedMotionFps } from './petLifecycle';
-import { getAnimDef, getPetAnimationsManifest, resolveAtlasUrls } from './petManifest';
+import { clampPetPosition, getAnimDef, getPetAnimationsManifest, resolveAtlasUrls } from './petManifest';
 import { openOrFocusPetPanel, setPetOverlayPosition } from './petTauriBridge';
 import {
   PET_FORCE_ANIM_EVENT,
@@ -224,9 +224,11 @@ export function PetOverlay({
 
   React.useEffect(() => {
     if (!enabled) return;
-    // Force atlas reload when skin changes (characterId is inside playAnim).
+    // Force atlas reload when skin changes; clear Pixi cache so Glitch frames
+    // cannot stick after selecting Axo (and vice versa).
     currentAnim.current = null;
-    void playAnim(animLabel);
+    animCache.current.clear();
+    void playerRef.current.unloadCharacterCache().then(() => playAnim(animLabel));
     const s = stateRef.current;
     if (s.anim === 'idlePrimary' && s.welcomePlayed) {
       schedulerRef.current?.onActivity();
@@ -254,9 +256,13 @@ export function PetOverlay({
 
   const openPanelNow = React.useCallback(() => {
     setState(reducePetEvent(stateRef.current, { type: 'click' }));
-    onOpenPanel?.();
     schedulerRef.current?.onActivity();
-    // Optional separate Tauri panel if present; main host also opens in-app panel.
+    if (onOpenPanel) {
+      // Host owns panel + sprite hide/show (prevents disappear-with-no-panel).
+      onOpenPanel();
+      return;
+    }
+    // Overlay-only window path (no host): open Tauri mini panel directly.
     const left = tauriWindowMode ? 0 : pos.left;
     const top = tauriWindowMode ? 0 : pos.top;
     void openOrFocusPetPanel(left, top).catch(() => undefined);
@@ -311,12 +317,17 @@ export function PetOverlay({
     const dx = e.clientX - d.startX;
     const dy = e.clientY - d.startY;
     if (tauriWindowMode) {
-      void setPetOverlayPosition(d.windowOriginX + dx, d.windowOriginY + dy);
+      const rawX = d.windowOriginX + dx;
+      const rawY = d.windowOriginY + dy;
+      const sw = typeof window !== 'undefined' ? window.screen.availWidth || window.innerWidth : 1920;
+      const sh = typeof window !== 'undefined' ? window.screen.availHeight || window.innerHeight : 1080;
+      const clamped = clampPetPosition(rawX, rawY, DISPLAY, sw, sh, 0);
+      void setPetOverlayPosition(clamped.x, clamped.y);
     } else {
-      setPos({
-        left: d.originLeft + dx,
-        top: d.originTop + dy,
-      });
+      const sw = typeof window !== 'undefined' ? window.innerWidth : 1920;
+      const sh = typeof window !== 'undefined' ? window.innerHeight : 1080;
+      const clamped = clampPetPosition(d.originLeft + dx, d.originTop + dy, DISPLAY, sw, sh, 0);
+      setPos({ left: clamped.x, top: clamped.y });
     }
     applyWalkFromVelocity(walkAnim, vel.vx);
   };

@@ -221,15 +221,54 @@ export class PixiAtlasPlayer {
   /**
    * Load atlas JSON + image. Replaces prior atlas textures.
    */
+  /**
+   * Drop cached textures for a prior skin so switching Axo↔Glitch cannot leave
+   * a stale Glitch frame on screen under the Axo character id.
+   */
+  async unloadCharacterCache(imageUrls: string[] = []): Promise<void> {
+    this.clearFrameTextures();
+    for (const url of imageUrls) {
+      try {
+        await Assets.unload(url);
+      } catch {
+        /* ignore missing cache entries */
+      }
+    }
+  }
+
   async load(atlasUrl: string, imageUrl: string): Promise<void> {
     if (this.destroyed) throw new Error('PixiAtlasPlayer disposed');
     if (!this.app) throw new Error('PixiAtlasPlayer.init() required before load');
 
     const gen = ++this.loadGeneration;
+    // Evict previous base texture from Pixi cache before loading a new skin.
+    if (this.baseTexture) {
+      try {
+        const prevSrc = (this.baseTexture as { source?: { label?: string } }).source?.label;
+        if (prevSrc) await Assets.unload(prevSrc);
+      } catch {
+        /* ignore */
+      }
+    }
+    this.clearFrameTextures();
+
     const res = await fetch(atlasUrl);
     if (!res.ok) throw new Error(`atlas fetch failed: ${atlasUrl}`);
     const atlas = (await res.json()) as AtlasJson;
     if (gen !== this.loadGeneration) return;
+
+    // Cache-bust key includes url so Axo/Glitch sheets never collide in Assets.
+    const cacheKey = `${imageUrl}#pet-atlas`;
+    try {
+      await Assets.unload(cacheKey);
+    } catch {
+      /* ignore */
+    }
+    try {
+      await Assets.unload(imageUrl);
+    } catch {
+      /* ignore */
+    }
 
     // Load full sheet; prefer non-premultiplied alpha so cream stays bright on dark UI.
     const base = (await Assets.load({
@@ -244,7 +283,6 @@ export class PixiAtlasPlayer {
       return;
     }
 
-    this.clearFrameTextures();
     this.baseTexture = base;
     this.atlas = atlas;
     this.applyNearestFilter(base);

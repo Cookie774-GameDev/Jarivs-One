@@ -185,11 +185,13 @@ pub fn pet_is_overlay_visible(app: AppHandle) -> Result<bool, String> {
 }
 
 /// Move pet overlay to physical position (DPI-aware path via physical coords).
+/// Always clamped so the sprite cannot be dragged fully off-screen.
 #[tauri::command]
 pub fn pet_set_overlay_position(app: AppHandle, x: f64, y: f64) -> Result<(), String> {
     let win = app
         .get_webview_window(PET_OVERLAY_LABEL)
         .ok_or_else(|| "pet-overlay window missing".to_string())?;
+    // Keep at least ~24px of the pet window on-screen (cannot disappear off edge).
     let (cx, cy) = clamp_to_monitors(&app, x, y, OVERLAY_SIZE as f64, OVERLAY_SIZE as f64);
     let _ = win.set_position(PhysicalPosition::new(cx as i32, cy as i32));
     if let Ok(mut geo) = app.state::<PetWindowState>().geometry.lock() {

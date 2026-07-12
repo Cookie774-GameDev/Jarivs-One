@@ -1414,3 +1414,16 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Locks** | released |
 | **Risks** | Runtime AXO animation frames are full-color pack (cream/pink/orange), not a frame-by-frame remaster of the ChatGPT helmet still; preview uses the cream reference image. Full re-authoring of every anim from that still needs a separate art pass. |
 
+
+#### 2026-07-11 - Separate cream Axo from Glitch + visibility fixes
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-11 23:00 CT |
+| **Agent ID** | AGENT-20260711-111338-PX7L |
+| **Status** | complete |
+| **Change** | Independent vibespace-axolotl cream pack; Glitch pack untouched; transparent previews; PetHost non-disappear + panel confirm; clampPetPosition; texture cache clear on skin switch; identity tests. |
+| **Verification** | pets 66/66 PASS; typecheck PASS |
+| **Locks** | released |
+| **Do not stage** | install/install.ps1, Cargo.toml |
+
