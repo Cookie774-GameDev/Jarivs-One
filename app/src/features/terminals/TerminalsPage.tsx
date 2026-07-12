@@ -41,6 +41,7 @@ import {
   resolvePaneTreeChange,
 } from './paneTree';
 import { useTerminalCommandQueue } from './terminalCommandQueue';
+import { markTerminalExecution } from './terminalExecutionStore';
 import type { TerminalRef } from './terminalRefs';
 import {
   defaultShell,
@@ -211,6 +212,7 @@ export function TerminalsPage() {
         let replaceRootNext = false;
         for (const item of items) {
           if (item.kind === 'shell') {
+            markTerminalExecution(item.id, 'starting');
             if (item.target === 'all') {
               const pendingCommandId = Date.now();
               const leaves = flattenLeaves(next);
@@ -256,6 +258,7 @@ export function TerminalsPage() {
                 agentSlug: item.agentSlug ?? item.label,
                 name: item.agentSlug ? item.label : undefined,
                 cwd: item.cwd,
+                executionId: item.id,
               };
               if (replaceRootNext && countLeaves(next) === 1) {
                 next = newLeaf(seed);

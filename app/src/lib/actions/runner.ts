@@ -183,6 +183,15 @@ function describe(v: unknown): string {
  * supplied but the action didn't declare) pass through verbatim — the
  * runner can use them, an action that forgot to declare them won't.
  */
+const OMITTED_ACTION_PARAM_RE = /^(?:command|script|content|prompt|rolesJson|stepsJson|body|payload)$/i;
+
+function actionParamsForLog(params: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(params).map(([key, value]) => [
+    key,
+    OMITTED_ACTION_PARAM_RE.test(key) ? '[omitted]' : value,
+  ]));
+}
+
 function validateAndCoerceParams(
   def: ActionDef,
   params: Record<string, unknown>,
@@ -232,7 +241,7 @@ async function runActionOnce(
     channel: 'action',
     level: 'info',
     message: `Action → ${id}`,
-    detail: { id, params, source: ctx.source ?? 'unknown' },
+    detail: { id, params: actionParamsForLog(params), source: ctx.source ?? 'unknown' },
   });
 
   const def = resolveAction(id);
@@ -258,7 +267,7 @@ async function runActionOnce(
       level: 'warn',
       message: `Action ✗ ${id} (invalid params)`,
       durationMs: Date.now() - startedAt,
-      detail: { id, errors: validation.errors, params },
+      detail: { id, errors: validation.errors, params: actionParamsForLog(params) },
     });
     return { ok: false, error };
   }
@@ -279,7 +288,12 @@ async function runActionOnce(
         ? `Action ✓ ${id}`
         : `Action ✗ ${id}: ${result.error}`,
       durationMs: Date.now() - startedAt,
-      detail: { id, result },
+      detail: {
+        id,
+        result: result.ok
+          ? { ok: true, summary: result.summary }
+          : { ok: false, error: result.error },
+      },
     });
     return result;
   } catch (err) {

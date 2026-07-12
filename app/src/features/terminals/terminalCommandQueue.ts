@@ -92,6 +92,9 @@ interface TerminalCommandQueueState {
    */
   drain: () => TerminalCommand[];
 
+  /** Remove one command before the terminal page drains it. */
+  cancel: (id: string) => boolean;
+
   /** Clear without returning. Used on TerminalsPage unmount as a
    *  defensive cleanup (anything still in the queue is stale). */
   clear: () => void;
@@ -131,6 +134,12 @@ export const useTerminalCommandQueue = create<TerminalCommandQueueState>(
       set({ queue: [] });
       return items;
     },
+    cancel: (id) => {
+      const current = get().queue;
+      if (!current.some((item) => item.id === id)) return false;
+      set({ queue: current.filter((item) => item.id !== id) });
+      return true;
+    },
     clear: () => set({ queue: [] }),
   }),
 );
@@ -140,6 +149,10 @@ export function enqueueTerminalCommand(
   cmd: Omit<Extract<TerminalCommand, { kind: 'shell' }>, 'id' | 'kind'>,
 ): string {
   return useTerminalCommandQueue.getState().enqueue(cmd);
+}
+
+export function cancelQueuedTerminalCommand(id: string): boolean {
+  return useTerminalCommandQueue.getState().cancel(id);
 }
 
 /** Send a command to every live terminal pane. */

@@ -23,6 +23,7 @@ import { runAction, resolveAction, getAllActions } from '@/lib/actions/runner';
 import { toast } from '@/components/ui/toast';
 import { useToolStore } from '@/features/tools/toolStore';
 import { useTerminalCommandQueue } from '@/features/terminals/terminalCommandQueue';
+import { useDevConsoleStore } from '@/features/dev-console';
 
 describe('resolveAction', () => {
   it('finds built-in actions by id', () => {
@@ -90,6 +91,7 @@ describe('runAction', () => {
     vi.clearAllMocks();
     useToolStore.setState({ tools: [] });
     useTerminalCommandQueue.getState().clear();
+    useDevConsoleStore.getState().clear();
   });
 
   it('returns a structured error for unknown ids and toasts by default', async () => {
@@ -193,5 +195,20 @@ describe('runAction', () => {
     ]);
     expect(first).toEqual(second);
     expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('omits command payloads from action diagnostics', async () => {
+    const secretCommand = 'Write-Output PRIVATE_VALUE_DO_NOT_LOG';
+    const result = await runAction(
+      'terminal.run',
+      { command: secretCommand, cwd: 'C:\\Projects\\Safe' },
+      { source: 'ai', messageId: 'message_secret', callId: 'call_secret' },
+      { emitToast: false },
+    );
+    expect(result.ok).toBe(true);
+    const serialized = JSON.stringify(useDevConsoleStore.getState().entries);
+    expect(serialized).not.toContain(secretCommand);
+    expect(serialized).toContain('[omitted]');
+    expect(serialized).toContain('C:\\\\Projects\\\\Safe');
   });
 });

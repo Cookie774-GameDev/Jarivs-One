@@ -111,6 +111,7 @@ export function buildAddendumText(): string {
     '- To save a reusable command for later, use `custom.createTerminalCommand` or',
     '  `custom.createWorkflowTool` — still requires user approval first.',
     '- Terminal basics: "open terminals" means create new panes. "run a command in all terminals" means send text into existing panes. Never reuse one existing pane when the user asked for multiple new panes.',
+    '- Prefer `terminal.powershell` for PowerShell scripts on Windows. It uses encoded-command transport after approval; omit `timeoutMs` for long-running servers.',
     '- Chat slash commands (/terminals, /context, /plug, /skills) attach workspace context to THIS chat turn — they do not mean "open the page" or "edit the page UI". Use the attachment or transcript already in context.',
     '- Slash surface targeting: when the user writes `/surface action` (e.g., `/terminals close 5 terminals`), the `/surface` prefix tells you which workspace area the task targets — emit the appropriate action block. Do not treat it as navigation-only or explain-the-page-only.',
     '- To close terminal panes, use `terminal.bulkClose` with `{"count": N}`. For "close all terminals", use count 10 (the max).',

@@ -81,6 +81,7 @@ import {
   type JarvisScheduleRecurrence,
 } from '@/features/schedule/jarvisSchedules';
 import { formatChatModelSelectionLabel, modelSelectionContextFromAuth } from '@/lib/ai/modelSelection';
+import { markTerminalExecution } from '@/features/terminals/terminalExecutionStore';
 
 /* --------------------------------------------------------------------------
  * Helpers
@@ -105,6 +106,15 @@ function dispatchAfterCommit(name: string, detail?: unknown): void {
  */
 function navigateTo(route: Route): void {
   useUIStore.getState().setRoute(route);
+}
+
+function encodePowerShellCommand(script: string): string {
+  let bytes = '';
+  for (let index = 0; index < script.length; index += 1) {
+    const code = script.charCodeAt(index);
+    bytes += String.fromCharCode(code & 0xff, code >>> 8);
+  }
+  return btoa(bytes);
 }
 
 /** ok-shaped success helper. */
@@ -550,16 +560,20 @@ const TERMINAL_ACTIONS: ActionDef[] = [
         const meta = rejectShellMetaChars(cwd);
         if (meta) return fail(meta);
       }
+      const executionIds: string[] = [];
       for (let i = 0; i < count; i++) {
-        enqueueTerminalCommand({
+        const executionId = enqueueTerminalCommand({
           command,
           label: command ? `${command} ${i + 1}` : `terminal ${i + 1}`,
           cwd,
         });
+        executionIds.push(executionId);
+        markTerminalExecution(executionId, 'queued');
       }
       navigateTo('terminal');
       return ok(
-        `Opening ${count} terminal pane${count === 1 ? '' : 's'}${command ? ` with ${command}` : ''}.`,
+        `Queued ${count} terminal pane${count === 1 ? '' : 's'}${command ? ` with ${command}` : ''}.`,
+        { state: 'queued', executionId: executionIds[0], executionIds },
       );
     },
   },
@@ -755,6 +769,72 @@ const TERMINAL_ACTIONS: ActionDef[] = [
     },
   },
   {
+    id: 'terminal.powershell',
+    category: 'terminal',
+    label: 'Run a PowerShell command',
+    description:
+      'Run an approved Windows PowerShell script in a new terminal pane using UTF-16LE encoded-command transport.',
+    icon: PlayCircle,
+    destructive: true,
+    params: [
+      {
+        key: 'command',
+        label: 'PowerShell command',
+        type: 'string',
+        required: true,
+        help: 'PowerShell script body. It is encoded only after the user approves the action.',
+      },
+      {
+        key: 'label',
+        label: 'Pane label',
+        type: 'string',
+        required: false,
+      },
+      {
+        key: 'cwd',
+        label: 'Working directory',
+        type: 'string',
+        required: false,
+        help: 'Optional active project folder for the PowerShell process.',
+      },
+      {
+        key: 'timeoutMs',
+        label: 'Timeout in milliseconds',
+        type: 'number',
+        required: false,
+        help: 'Optional 1 second to 30 minute deadline. Omit for long-running commands.',
+      },
+    ],
+    run: async (params) => {
+      const script = typeof params.command === 'string' ? params.command.trim() : '';
+      if (!script) return fail('Missing required parameter: command.');
+      if (script.length > 10_000) {
+        return fail('The PowerShell command is too long to start safely. Save it as a script file instead.');
+      }
+      const cwd = typeof params.cwd === 'string' && params.cwd.trim() ? params.cwd.trim() : undefined;
+      if (cwd) {
+        const meta = rejectShellMetaChars(cwd);
+        if (meta) return fail(meta);
+      }
+      const label = typeof params.label === 'string' && params.label.trim()
+        ? params.label.trim()
+        : 'PowerShell';
+      const timeoutMs = typeof params.timeoutMs === 'number' ? params.timeoutMs : undefined;
+      if (timeoutMs !== undefined && (timeoutMs < 1_000 || timeoutMs > 1_800_000)) {
+        return fail('Timeout must be between 1,000 and 1,800,000 milliseconds.');
+      }
+      const encoded = encodePowerShellCommand(script);
+      const command = `powershell.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand ${encoded}`;
+      const executionId = enqueueTerminalCommand({ command, label, cwd });
+      markTerminalExecution(executionId, 'queued', { timeoutMs });
+      navigateTo('terminal');
+      return ok('PowerShell command queued in Terminal.', {
+        state: 'queued',
+        executionId,
+      });
+    },
+  },
+  {
     id: 'terminal.run',
     category: 'terminal',
     label: 'Run a command in a new pane',
@@ -786,6 +866,13 @@ const TERMINAL_ACTIONS: ActionDef[] = [
         placeholder: 'C:\\Users\\you\\projects\\my-app',
         help: 'Optional. The pane will `cd` here before running.',
       },
+      {
+        key: 'timeoutMs',
+        label: 'Timeout in milliseconds',
+        type: 'number',
+        required: false,
+        help: 'Optional 1 second to 30 minute deadline. Omit for long-running commands.',
+      },
     ],
     run: async (params) => {
       const command = typeof params.command === 'string' ? params.command.trim() : '';
@@ -802,9 +889,14 @@ const TERMINAL_ACTIONS: ActionDef[] = [
         const meta = rejectShellMetaChars(cwd);
         if (meta) return fail(meta);
       }
-      enqueueTerminalCommand({ command, label, cwd });
+      const timeoutMs = typeof params.timeoutMs === 'number' ? params.timeoutMs : undefined;
+      if (timeoutMs !== undefined && (timeoutMs < 1_000 || timeoutMs > 1_800_000)) {
+        return fail('Timeout must be between 1,000 and 1,800,000 milliseconds.');
+      }
+      const executionId = enqueueTerminalCommand({ command, label, cwd });
+      markTerminalExecution(executionId, 'queued', { timeoutMs });
       navigateTo('terminal');
-      return ok(`Queued: ${command}`);
+      return ok('Command queued in Terminal.', { state: 'queued', executionId });
     },
   },
   {

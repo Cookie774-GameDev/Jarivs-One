@@ -48,6 +48,7 @@ export type ActionCategory =
  */
 export type ActionStatus =
   | 'pending'
+  | 'queued'
   | 'running'
   | 'success'
   | 'error'

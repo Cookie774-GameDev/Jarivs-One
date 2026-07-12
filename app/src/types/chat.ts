@@ -17,6 +17,7 @@ export type Role = 'user' | 'assistant' | 'agent' | 'system' | 'tool';
  */
 export type ActionStatus =
   | 'pending'
+  | 'queued'
   | 'running'
   | 'success'
   | 'error'

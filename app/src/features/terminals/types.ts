@@ -20,6 +20,8 @@ export interface TerminalViewProps {
   pendingCommand?: string;
   /** Token for repeated pending commands with identical text. */
   pendingCommandId?: number;
+  /** Action queue id whose lifecycle follows this PTY. */
+  executionId?: string;
   /** Working directory for the spawned process. */
   cwd?: string;
   /** Active project ID to scope the 10-terminal session limit. */

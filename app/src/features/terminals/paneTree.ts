@@ -64,6 +64,8 @@ export type LeafBase = {
   pendingCommand?: string;
   /** Monotonic token so repeated identical commands still dispatch. */
   pendingCommandId?: number;
+  /** Action queue id used to report the real PTY lifecycle back to chat. */
+  executionId?: string;
   /** Optional working directory for the session. */
   cwd?: string;
   /** Agent slug tag for swarm UI. See note above. */
@@ -126,6 +128,7 @@ export function newLeaf(seed?: Partial<LeafBase>): PaneNode {
     startupCommand: seed?.startupCommand,
     pendingCommand: seed?.pendingCommand,
     pendingCommandId: seed?.pendingCommandId,
+    executionId: seed?.executionId,
     cwd: seed?.cwd,
     agentSlug: seed?.agentSlug,
     agentMode: seed?.agentMode,
@@ -264,6 +267,7 @@ function newLeafBase(seed?: Partial<LeafBase>): LeafBase {
     startupCommand: seed?.startupCommand,
     pendingCommand: seed?.pendingCommand,
     pendingCommandId: seed?.pendingCommandId,
+    executionId: seed?.executionId,
     cwd: seed?.cwd,
     agentSlug: seed?.agentSlug,
     agentMode: seed?.agentMode,
