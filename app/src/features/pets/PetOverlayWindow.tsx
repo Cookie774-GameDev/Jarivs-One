@@ -1,12 +1,14 @@
 /**
  * Dedicated entry for Tauri window label `pet-overlay`.
  * Transparent, frameless surface — Pixi pet only.
+ *
+ * Click opens the real mini panel via openOrFocusPetMiniPanel (shared with Axo).
+ * Does not alter Glitch animation/drag — only panel open wiring.
  */
 import * as React from 'react';
 import { PetOverlay } from './PetOverlay';
 import {
-  openPetPanelSafely,
-  hidePetOverlay,
+  openOrFocusPetMiniPanel,
   setPetPanelOpenFlag,
   showPetOverlay,
 } from './petTauriBridge';
@@ -78,13 +80,12 @@ export function PetOverlayWindow() {
         sleepTimeoutMs={sleepTimeoutMs}
         idleFunIntervalMs={idleFunIntervalMs}
         onOpenPanel={() => {
-          // Hide standalone pet as soon as panel open is requested; confirm via bridge.
-          // Never leave both hidden if panel open fails — restore overlay + clear flag.
-          setPetPanelOpenFlag(true);
-          void hidePetOverlay().catch(() => undefined);
-          void openPetPanelSafely()
+          // Shared Axo+Glitch path: single-flight open, confirm-then-hide overlay.
+          // Does NOT hide overlay optimistically before confirm (avoids both-hidden).
+          void openOrFocusPetMiniPanel()
             .then(({ panelVisible }) => {
               if (!panelVisible) {
+                // Bridge already restored overlay + cleared flag; keep fail-open.
                 setPetPanelOpenFlag(false);
                 void showPetOverlay().catch(() => undefined);
               }

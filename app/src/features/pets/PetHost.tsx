@@ -15,7 +15,8 @@ import {
   isPetOverlayVisible,
   isPetPanelVisible,
   isTauriRuntime,
-  openPetPanelSafely,
+  openOrFocusPetMiniPanel,
+  PET_OPEN_PANEL_EVENT,
   PET_PANEL_OPEN_FLAG_KEY,
   readPetPanelOpenFlag,
   releasePetHostInstance,
@@ -86,12 +87,16 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedMotionProp
       const open = e.newValue === '1';
       setHideSpriteForPanel(open);
       setPanelOpen(open);
+      // Overlay-window click may set the flag before Tauri panel is confirmed.
+      // Prefer showing in-app panel until pet-mini-panel is proven visible.
+      if (open) setUseInlineFallback(true);
     };
     window.addEventListener('storage', onStorage);
     // Seed from flag
     if (readPetPanelOpenFlag()) {
       setHideSpriteForPanel(true);
       setPanelOpen(true);
+      setUseInlineFallback(true);
     }
     return () => window.removeEventListener('storage', onStorage);
   }, [claimed]);
@@ -107,7 +112,14 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedMotionProp
         setHideSpriteForPanel(true);
         setPanelOpen(true);
         setPetPanelOpenFlag(true);
+        // Real Tauri mini panel is up — drop in-app duplicate if it was a bridge.
+        setUseInlineFallback(false);
         await hidePetOverlay().catch(() => undefined);
+      } else if (readPetPanelOpenFlag()) {
+        // Flag says open but Tauri panel is not visible → keep/show in-app panel.
+        setPanelOpen(true);
+        setHideSpriteForPanel(true);
+        setUseInlineFallback(true);
       }
     };
     void tick();
@@ -203,20 +215,41 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedMotionProp
     setPetPanelOpenFlag(false);
   }, [setOverlayVisible]);
 
+  const openPanelBusyRef = React.useRef(false);
+
   const openPanel = React.useCallback(async () => {
-    setPanelOpen(true);
-    setHideSpriteForPanel(true);
-    setPetPanelOpenFlag(true);
-    if (tauri) {
-      const { panelVisible } = await openPetPanelSafely().catch((err) => {
-        console.warn('[pets] open panel', err);
-        return { panelVisible: false };
-      });
-      if (!panelVisible) {
-        // Panel failed — keep in-app mini panel, still hide floating pet while open=true
-        // User asked pet to hide when panel open; in-app panel counts.
-        setHideSpriteForPanel(true);
+    if (openPanelBusyRef.current) return;
+    openPanelBusyRef.current = true;
+    try {
+      setPanelOpen(true);
+      setHideSpriteForPanel(true);
+      setPetPanelOpenFlag(true);
+      if (tauri) {
+        const result = await openOrFocusPetMiniPanel().catch((err) => {
+          console.warn('[pets] open panel', err);
+          return {
+            panelVisible: false,
+            useInlineFallback: true,
+            coalesced: false,
+          };
+        });
+        if (result.panelVisible) {
+          // Dedicated Tauri mini panel confirmed — keep standalone hidden.
+          setHideSpriteForPanel(true);
+          setUseInlineFallback(false);
+        } else {
+          // CRITICAL: if pet-mini-panel did not show, mount in-app PetMiniPanel.
+          // Previously hideSpriteForPanel stayed true with no UI → "click does nothing".
+          setUseInlineFallback(true);
+          setHideSpriteForPanel(true);
+          setPanelOpen(true);
+          setPetPanelOpenFlag(true);
+        }
+      } else {
+        setUseInlineFallback(true);
       }
+    } finally {
+      openPanelBusyRef.current = false;
     }
   }, [tauri]);
 
@@ -239,11 +272,11 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedMotionProp
       void showPetOverlay().catch(() => undefined);
     };
     const onClosePanel = () => closePanel();
-    window.addEventListener('jarvis:pet:open-panel', onOpen);
+    window.addEventListener(PET_OPEN_PANEL_EVENT, onOpen);
     window.addEventListener('jarvis:pet:show', onShow);
     window.addEventListener('jarvis:pet:close-panel', onClosePanel);
     return () => {
-      window.removeEventListener('jarvis:pet:open-panel', onOpen);
+      window.removeEventListener(PET_OPEN_PANEL_EVENT, onOpen);
       window.removeEventListener('jarvis:pet:show', onShow);
       window.removeEventListener('jarvis:pet:close-panel', onClosePanel);
     };

@@ -8,10 +8,27 @@ vi.mock('./PetOverlay', () => ({
 
 vi.mock('./petTauriBridge', () => ({
   openOrFocusPetPanel: vi.fn(async () => undefined),
+  openOrFocusPetMiniPanel: vi.fn(async () => ({
+    panelVisible: true,
+    useInlineFallback: false,
+    coalesced: false,
+  })),
+  setPetPanelOpenFlag: vi.fn(),
+  showPetOverlay: vi.fn(async () => undefined),
 }));
 
 vi.mock('./petPresentationStore', () => ({
   installPetPresentationStorageSync: vi.fn(() => () => undefined),
+}));
+
+vi.mock('./petSettingsStore', () => ({
+  installPetSettingsStorageSync: vi.fn(() => () => undefined),
+  usePetSettingsStore: (sel: (s: Record<string, unknown>) => unknown) =>
+    sel({
+      reducedMotion: false,
+      sleepTimeoutMs: 300_000,
+      idleFunIntervalMs: 60_000,
+    }),
 }));
 
 describe('PetOverlayWindow transparency shell', () => {

@@ -122,6 +122,23 @@ export class PixiAtlasPlayer {
   }
 
   /**
+   * Distinct cache identity: characterId + animation state + scale + asset version.
+   * @see buildPetTextureCacheKey
+   */
+  static buildTextureCacheKey(input: {
+    characterId: string;
+    animationState: string;
+    scale: '1x' | '2x' | string;
+    assetVersion?: string | number;
+    imageUrl?: string;
+  }): string {
+    // Local re-export of pure helper (avoids circular import in tests).
+    const ver = input.assetVersion ?? '1';
+    const url = input.imageUrl ?? '';
+    return `${input.characterId}|${input.animationState}|${input.scale}|${ver}|${url}`;
+  }
+
+  /**
    * Safe development diagnostics for the registry→atlas→ticker chain.
    * No console spam — callers log only when needed.
    */

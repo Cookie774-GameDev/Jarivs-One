@@ -1578,3 +1578,18 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Do not stage** | install.ps1, Cargo.toml, dirty docs/pets assets |
 | **No merge/deploy** | draft PR #19 only |
 
+
+#### 2026-07-12 - Glitch click-to-panel + Axo identity preserve (no Glitch art)
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-12 09:34 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Branch** | `agent/pixel-pets-axolotl` (draft PR #19) |
+| **Status** | in-progress — do not merge/complete |
+| **Change** | (1) Glitch assets SHA-256 frozen + tests; zero Glitch art/timing/drag threshold changes. (2) Shared `openOrFocusPetMiniPanel` single-flight open with confirm-then-hide + poll retries. (3) Fix click-to-panel: when Tauri mini panel fails to confirm, force in-app `PetMiniPanel` fallback (was: hide sprite + no UI). (4) Click-vs-drag via `petClickGesture` (12px) without changing walk velocity controller. (5) Distinct anim cache keys per character. |
+| **Tests** | pets suite 123/123 PASS; typecheck OK |
+| **Glitch hashes** | all MATCH after (see implementer glitch-sha256-before/after) |
+| **Do not stage** | install/install.ps1, app/src-tauri/Cargo.toml |
+| **Remaining** | full Windows 35-step manual QA; packaged Tauri; multi-DPI |
+

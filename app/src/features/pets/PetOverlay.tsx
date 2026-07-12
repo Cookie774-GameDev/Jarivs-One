@@ -23,7 +23,17 @@ import {
 } from './petDragVelocity';
 import { disposeAll, mapReducedMotionAnim, reducedMotionFps } from './petLifecycle';
 import { clampPetPosition, getAnimDef, getPetAnimationsManifest, resolveAtlasUrls } from './petManifest';
-import { openOrFocusPetPanel, setPetOverlayPosition } from './petTauriBridge';
+import {
+  beginPetPointerGesture,
+  samplePetPointerGesture,
+  shouldOpenPanelFromGesture,
+  type PetPointerGesture,
+} from './petClickGesture';
+import {
+  notifyPetPanelOpenRequested,
+  openOrFocusPetMiniPanel,
+  setPetOverlayPosition,
+} from './petTauriBridge';
 import { petPerfRecordDragUpdate, petPerfRecordStateTransition } from './petDevPerf';
 import {
   buildPetRuntimeDiagnostics,
@@ -83,7 +93,10 @@ export function PetOverlay({
     vel: DragVelocityState;
     windowOriginX: number;
     windowOriginY: number;
+    gesture: PetPointerGesture;
   } | null>(null);
+  /** Prevents double open from setState(panelOpen) + explicit openPanelNow. */
+  const openingPanelRef = React.useRef(false);
   const animCache = React.useRef(new Map<string, { jsonUrl: string; imageUrl: string }>());
   const currentAnim = React.useRef<string | null>(null);
   const schedulerRef = React.useRef<ReturnType<typeof createPetScheduler> | null>(null);
@@ -113,16 +126,14 @@ export function PetOverlay({
   /** Stable state applicator — must not thrash boot effects. */
   const setState = React.useCallback((next: PetMachineState) => {
     const prevAnim = stateRef.current.anim;
-    const wasPanel = stateRef.current.panelOpen;
     stateRef.current = next;
     if (next.anim !== prevAnim) {
       petPerfRecordStateTransition();
       setAnimLabel(next.anim);
       onAnimChangeRef.current?.(next.anim);
     }
-    if (next.panelOpen && !wasPanel) {
-      onOpenPanelRef.current?.();
-    }
+    // Panel open is driven exclusively by openPanelNow / openOrFocusPetMiniPanel
+    // so we never double-fire on click (was: setState panelOpen + openPanelNow).
   }, []);
 
   React.useEffect(() => {
@@ -159,7 +170,8 @@ export function PetOverlay({
 
       const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
       const scaleSel = PixiAtlasPlayer.selectAtlasScale(def, dpr);
-      const cacheKey = `${charId}:${scaleSel.atlasPath}`;
+      // characterId + anim + scale path — never share Axo/Glitch cache entries.
+      const cacheKey = `${charId}:${resolved}:${scaleSel.atlasPath}`;
       let urls = animCache.current.get(cacheKey);
       if (!urls) {
         urls = resolveAtlasUrls(def, charId, scaleSel.atlasPath);
@@ -315,15 +327,30 @@ export function PetOverlay({
   const [ctxMenu, setCtxMenu] = React.useState<{ x: number; y: number } | null>(null);
 
   const openPanelNow = React.useCallback(() => {
+    if (openingPanelRef.current) return;
+    openingPanelRef.current = true;
+    // Wake + mark panel intent in the pure state machine (sleep first-click opens).
     setState(reducePetEvent(stateRef.current, { type: 'click' }));
     schedulerRef.current?.onActivity();
-    if (onOpenPanel) {
-      onOpenPanel();
-      return;
-    }
     const left = tauriWindowMode ? 0 : pos.left;
     const top = tauriWindowMode ? 0 : pos.top;
-    void openOrFocusPetPanel(left, top).catch(() => undefined);
+    const finish = () => {
+      openingPanelRef.current = false;
+    };
+    if (onOpenPanel) {
+      try {
+        onOpenPanel();
+      } finally {
+        // Host may be async; release after a tick so double-clicks coalesce via bridge.
+        window.setTimeout(finish, 400);
+      }
+      return;
+    }
+    // No host callback: open Tauri panel + notify main-shell for in-app fallback.
+    notifyPetPanelOpenRequested(left, top);
+    void openOrFocusPetMiniPanel(left, top)
+      .catch(() => undefined)
+      .finally(finish);
   }, [onOpenPanel, pos.left, pos.top, setState, tauriWindowMode]);
 
   const lastWalkAnimRef = React.useRef<'walkLeft' | 'walkRight' | 'idlePrimary' | null>(null);
@@ -377,6 +404,16 @@ export function PetOverlay({
     const el = e.currentTarget as HTMLElement;
     el.setPointerCapture(e.pointerId);
     const t = performance.now();
+    const gesture = beginPetPointerGesture({
+      pointerId: e.pointerId,
+      clientX: e.clientX,
+      clientY: e.clientY,
+      screenX: e.screenX,
+      screenY: e.screenY,
+      logicalLeft: pos.left,
+      logicalTop: pos.top,
+      nowMs: t,
+    });
     dragRef.current = {
       active: true,
       startX: e.clientX,
@@ -386,6 +423,7 @@ export function PetOverlay({
       vel: createDragVelocityState(e.clientX, t),
       windowOriginX: e.screenX - e.clientX + pos.left,
       windowOriginY: e.screenY - e.clientY + pos.top,
+      gesture,
     };
     lastWalkAnimRef.current = 'idlePrimary';
     setState(reducePetEvent(stateRef.current, { type: 'drag_start', walk: 'idlePrimary' }));
@@ -424,6 +462,7 @@ export function PetOverlay({
       vx = r.state.vx;
     }
     const last = samples[samples.length - 1]!;
+    samplePetPointerGesture(d.gesture, last.clientX, last.clientY);
     const dx = last.clientX - d.startX;
     const dy = last.clientY - d.startY;
     if (tauriWindowMode) {
@@ -447,11 +486,12 @@ export function PetOverlay({
   const onPointerUp = (e: React.PointerEvent) => {
     const d = dragRef.current;
     if (!d) return;
-    const moved = Math.hypot(e.clientX - d.startX, e.clientY - d.startY) > 6;
+    samplePetPointerGesture(d.gesture, e.clientX, e.clientY);
+    const openPanel = shouldOpenPanelFromGesture(d.gesture);
     dragRef.current = null;
     lastWalkAnimRef.current = null;
     setState(reducePetEvent(stateRef.current, { type: 'drag_end' }));
-    if (!moved) {
+    if (openPanel) {
       openPanelNow();
     }
   };

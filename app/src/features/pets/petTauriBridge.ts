@@ -1,6 +1,10 @@
 /**
  * Browser-safe bridge to Tauri pet window commands.
  * No-ops gracefully when not running inside Tauri.
+ *
+ * Panel open path (Axo + Glitch share one function):
+ *   openOrFocusPetMiniPanel → single-flight → show/focus pet-mini-panel →
+ *   confirm visible → hide overlay. On failure: restore overlay, clear lock.
  */
 
 export function isTauriRuntime(): boolean {
@@ -46,6 +50,22 @@ export async function openOrFocusPetPanel(nearX?: number, nearY?: number): Promi
  */
 export const PET_PANEL_OPEN_FLAG_KEY = 'vibespace-pet-panel-open';
 
+/** Cross-window / in-app request that the mini panel must open (fallback path). */
+export const PET_OPEN_PANEL_EVENT = 'jarvis:pet:open-panel';
+
+/** Ask the main-shell PetHost to open its in-app mini panel (same-window only). */
+export function notifyPetPanelOpenRequested(nearX?: number, nearY?: number): void {
+  try {
+    window.dispatchEvent(
+      new CustomEvent(PET_OPEN_PANEL_EVENT, {
+        detail: { nearX: nearX ?? null, nearY: nearY ?? null, source: 'pet' },
+      }),
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
 export function setPetPanelOpenFlag(open: boolean): void {
   try {
     if (open) localStorage.setItem(PET_PANEL_OPEN_FLAG_KEY, '1');
@@ -63,26 +83,113 @@ export function readPetPanelOpenFlag(): boolean {
   }
 }
 
+export type OpenPetMiniPanelResult = {
+  /** Tauri pet-mini-panel is visible and focused. */
+  panelVisible: boolean;
+  /** Caller should mount/show the in-app PetMiniPanel fallback. */
+  useInlineFallback: boolean;
+  /** True when a concurrent open was coalesced into the in-flight promise. */
+  coalesced: boolean;
+};
+
+let openPanelInFlight: Promise<OpenPetMiniPanelResult> | null = null;
+
+async function waitMs(ms: number): Promise<void> {
+  await new Promise((r) => setTimeout(r, ms));
+}
+
+/**
+ * Poll panel visibility a few times — WebView show can lag past a single 180ms wait.
+ */
+async function pollPanelVisible(attempts = 5, gapMs = 100): Promise<boolean> {
+  for (let i = 0; i < attempts; i += 1) {
+    if (await isPetPanelVisible()) return true;
+    if (i + 1 < attempts) await waitMs(gapMs);
+  }
+  return false;
+}
+
+/**
+ * Confirm-then-hide open used by tests and internal callers.
+ * Prefer {@link openOrFocusPetMiniPanel} for production (single-flight).
+ */
 export async function openPetPanelSafely(
   nearX?: number,
   nearY?: number,
 ): Promise<{ panelVisible: boolean }> {
-  if (!isTauriRuntime()) {
-    return { panelVisible: false };
+  const result = await openOrFocusPetMiniPanel(nearX, nearY);
+  return { panelVisible: result.panelVisible };
+}
+
+/**
+ * Canonical open path for Axo and Glitch.
+ *
+ * - Single-flight: concurrent clicks share one open promise (no duplicate panels).
+ * - If pet-mini-panel already exists (hidden/minimized), show/unminimize/focus.
+ * - Hide standalone overlay only after panel is confirmed visible.
+ * - On failure: clear flag, restore overlay, signal inline fallback.
+ * - Also dispatches PET_OPEN_PANEL_EVENT so the main window can mount in-app UI.
+ */
+export async function openOrFocusPetMiniPanel(
+  nearX?: number,
+  nearY?: number,
+): Promise<OpenPetMiniPanelResult> {
+  if (openPanelInFlight) {
+    const result = await openPanelInFlight;
+    return { ...result, coalesced: true };
   }
-  await openOrFocusPetPanel(nearX, nearY);
-  // Brief settle for WebView show
-  await new Promise((r) => setTimeout(r, 180));
-  const panelVisible = await isPetPanelVisible();
-  if (panelVisible) {
+
+  openPanelInFlight = (async (): Promise<OpenPetMiniPanelResult> => {
+    // Note: do NOT dispatch PET_OPEN_PANEL_EVENT here — PetHost listens for that
+    // event and would re-enter openPanel → infinite single-flight churn.
+    // Callers that need main-shell fallback should dispatch the event themselves
+    // (see notifyPetPanelOpenRequested).
+
+    if (!isTauriRuntime()) {
+      // Browser / non-Tauri: in-app panel only.
+      setPetPanelOpenFlag(true);
+      return { panelVisible: false, useInlineFallback: true, coalesced: false };
+    }
+
+    // Optimistic flag so hosts hide the standalone sprite while opening.
     setPetPanelOpenFlag(true);
-    await hidePetOverlay().catch(() => undefined);
-  } else {
-    setPetPanelOpenFlag(false);
-    // Panel did not open — keep/restore the floating pet.
+
+    await openOrFocusPetPanel(nearX, nearY);
+    // First settle + retries (minimized restore can be slower than 180ms).
+    await waitMs(120);
+    let panelVisible = await pollPanelVisible(6, 90);
+
+    if (!panelVisible) {
+      // Second attempt: re-invoke show/focus in case the window was racing.
+      await openOrFocusPetPanel(nearX, nearY);
+      await waitMs(150);
+      panelVisible = await pollPanelVisible(4, 100);
+    }
+
+    if (panelVisible) {
+      setPetPanelOpenFlag(true);
+      await hidePetOverlay().catch(() => undefined);
+      return { panelVisible: true, useInlineFallback: false, coalesced: false };
+    }
+
+    // Panel did not confirm — restore sprite and force in-app fallback UI.
+    // Keep flag true when useInlineFallback so main host can show PetMiniPanel;
+    // callers that only use Tauri should clear via setPetPanelOpenFlag(false).
+    setPetPanelOpenFlag(true);
     await showPetOverlay().catch(() => undefined);
+    return { panelVisible: false, useInlineFallback: true, coalesced: false };
+  })();
+
+  try {
+    return await openPanelInFlight;
+  } finally {
+    openPanelInFlight = null;
   }
-  return { panelVisible };
+}
+
+/** Test-only: clear single-flight guard between cases. */
+export function __resetPetPanelOpenFlightForTests(): void {
+  openPanelInFlight = null;
 }
 
 export async function minimizePetPanel(): Promise<void> {
