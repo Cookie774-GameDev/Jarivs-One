@@ -125,22 +125,32 @@ export function PetTerminalSurface({ className }: { className?: string }) {
         <div className="flex shrink-0 items-center justify-between gap-1 border-b border-border px-1.5 py-0.5">
           <div className="min-w-0 truncate text-metadata">
             <span className="text-foreground">{t.title || t.terminalId.slice(0, 8)}</span>
+            {t.shell && (
+              <span className="ml-1 text-muted-foreground" title="shell">
+                · {t.shell}
+              </span>
+            )}
             {t.cwd && (
               <span className="ml-1 text-muted-foreground truncate" title={t.cwd}>
-                {t.cwd}
+                · {t.cwd}
               </span>
             )}
             <span className="ml-1 text-muted-foreground">· {t.status}</span>
+            {focused && (
+              <span className="ml-1 text-accent-copper" data-pet-terminal-input-focus="true">
+                · input
+              </span>
+            )}
           </div>
           <div className="flex shrink-0 gap-0.5">
             <Button
               size="sm"
               variant="ghost"
               className="h-6 px-1.5 text-[10px]"
+              title="Focus this terminal for keyboard input"
               onClick={(e) => {
                 e.stopPropagation();
                 setPanelActiveTerminalId(t.terminalId);
-                setMode('tabs');
               }}
             >
               Focus
@@ -149,6 +159,20 @@ export function PetTerminalSurface({ className }: { className?: string }) {
               size="sm"
               variant="ghost"
               className="h-6 px-1.5 text-[10px]"
+              title="Maximize in tabs mode"
+              onClick={(e) => {
+                e.stopPropagation();
+                setPanelActiveTerminalId(t.terminalId);
+                setMode('tabs');
+              }}
+            >
+              Max
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 px-1.5 text-[10px]"
+              title="Return terminal to main app (keeps PTY)"
               onClick={(e) => {
                 e.stopPropagation();
                 returnToMain(t.terminalId);
@@ -156,9 +180,26 @@ export function PetTerminalSurface({ className }: { className?: string }) {
             >
               Main
             </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 px-1.5 text-[10px]"
+              title="Close on Pet panel (return to main, PTY stays alive)"
+              data-pet-terminal-close={t.terminalId}
+              onClick={(e) => {
+                e.stopPropagation();
+                returnToMain(t.terminalId);
+              }}
+            >
+              Close
+            </Button>
           </div>
         </div>
-        <div className="min-h-0 flex-1">
+        {/* Only focused tile receives keyboard; all tiles keep live output/PTY. */}
+        <div
+          className={cn('min-h-0 flex-1', !focused && 'pointer-events-none')}
+          data-pet-terminal-input={focused ? 'true' : 'false'}
+        >
           <TerminalView
             key={t.ptyId}
             sessionId={isPending ? null : t.ptyId}

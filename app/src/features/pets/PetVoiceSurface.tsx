@@ -9,7 +9,18 @@ import { cn } from '@/lib/utils';
 import { useVoiceStore } from '@/features/voice/store';
 import { VoiceService } from '@/features/voice/VoiceService';
 import { useUIStore } from '@/stores/ui';
+import { useAuthStore } from '@/stores/auth';
 import { stopAllVoiceOutput } from '@/features/voice/voiceRouter';
+import { usePetPresentationStore } from './petPresentationStore';
+import { sanitizeActivitySummary } from './petPresentation';
+
+const SAFE_VOICE_ACTIVITY: Record<string, string> = {
+  listening: 'Jarvis is listening',
+  thinking: 'Jarvis is thinking',
+  speaking: 'Jarvis is speaking',
+  error: 'Voice request failed',
+  idle: 'Voice request completed',
+};
 
 export function PetVoiceSurface({
   className,
@@ -25,6 +36,9 @@ export function PetVoiceSurface({
   const finals = useVoiceStore((s) => s.finalTranscript);
   const persona = useVoiceStore((s) => s.persona);
   const setVoiceModalOpen = useUIStore((s) => s.setVoiceModalOpen);
+  const defaultProvider = useAuthStore((s) => s.defaultProvider);
+  const selectedModels = useAuthStore((s) => s.selectedModels);
+  const pushActivity = usePetPresentationStore((s) => s.pushActivity);
 
   const [busy, setBusy] = React.useState(false);
   /** Local mute of TTS output only — does not create a second audio pipeline. */
@@ -33,6 +47,32 @@ export function PetVoiceSurface({
   const isListening = state === 'listening';
   const isSpeaking = state === 'speaking';
   const isThinking = state === 'thinking';
+
+  const modelId = defaultProvider ? selectedModels[defaultProvider] : undefined;
+  const providerLabel = defaultProvider
+    ? `${defaultProvider}${modelId ? ` · ${modelId}` : ''}`
+    : 'provider not set';
+
+  // Safe activity summaries only — never transcripts, tokens, or paths.
+  const prevStateRef = React.useRef(state);
+  React.useEffect(() => {
+    if (prevStateRef.current === state) return;
+    prevStateRef.current = state;
+    const summary = SAFE_VOICE_ACTIVITY[state];
+    if (!summary) return;
+    // Avoid "completed" spam when bouncing through idle without a session
+    if (state === 'idle' && !finals.length && !errorMessage) return;
+    pushActivity(
+      {
+        id: `voice-${state}-${Date.now()}`,
+        kind: state === 'error' ? 'error' : 'notification',
+        summary: sanitizeActivitySummary(summary),
+        target: { type: 'notification', id: 'pet-voice' },
+        createdAt: Date.now(),
+      },
+      true,
+    );
+  }, [state, pushActivity, finals.length, errorMessage]);
 
   const start = React.useCallback(() => {
     setBusy(true);
@@ -105,6 +145,7 @@ export function PetVoiceSurface({
       data-voice-state={state}
       data-voice-muted={muted ? 'true' : 'false'}
       data-voice-persona={persona}
+      data-voice-provider={defaultProvider ?? ''}
     >
       <div className="flex flex-wrap items-center gap-2">
         <Button
@@ -167,6 +208,14 @@ export function PetVoiceSurface({
           {persona} · {state}
           {muted ? ' · muted' : ''}
         </span>
+      </div>
+
+      <div
+        className="text-metadata text-muted-foreground truncate"
+        data-pet-voice-provider-status="true"
+        title={providerLabel}
+      >
+        Model · {providerLabel} · voice {persona}
       </div>
 
       {errorMessage && (

@@ -308,6 +308,13 @@ export function PetOverlay({
   }, [onOpenPanel, pos.left, pos.top, setState, tauriWindowMode]);
 
   const lastWalkAnimRef = React.useRef<'walkLeft' | 'walkRight' | 'idlePrimary' | null>(null);
+  /** Pending locomotion sample applied once per animation frame (not per pointermove). */
+  const pendingWalkRef = React.useRef<{
+    walkAnim: 'walkLeft' | 'walkRight' | 'idlePrimary';
+    vx: number;
+  } | null>(null);
+  const walkRafRef = React.useRef(0);
+
   const applyWalkFromVelocity = React.useCallback(
     (walkAnim: 'walkLeft' | 'walkRight' | 'idlePrimary', vx: number) => {
       // Only push state machine when locomotion class changes — prevents walk/idle flicker
@@ -328,6 +335,21 @@ export function PetOverlay({
       playerRef.current.setPlaybackFps(fps);
     },
     [reducedMotion, setState],
+  );
+
+  const scheduleWalkApply = React.useCallback(
+    (walkAnim: 'walkLeft' | 'walkRight' | 'idlePrimary', vx: number) => {
+      pendingWalkRef.current = { walkAnim, vx };
+      if (walkRafRef.current) return;
+      walkRafRef.current = requestAnimationFrame(() => {
+        walkRafRef.current = 0;
+        const p = pendingWalkRef.current;
+        if (!p) return;
+        pendingWalkRef.current = null;
+        applyWalkFromVelocity(p.walkAnim, p.vx);
+      });
+    },
+    [applyWalkFromVelocity],
   );
 
   const onPointerDown = (e: React.PointerEvent) => {
@@ -398,9 +420,9 @@ export function PetOverlay({
       const clamped = clampPetPosition(d.originLeft + dx, d.originTop + dy, DISPLAY, sw, sh, 0);
       setPos({ left: clamped.x, top: clamped.y });
     }
-    // One locomotion state update per pointer event batch (not per coalesced sample).
+    // Position updates immediately; locomotion state applies once per rAF.
     petPerfRecordDragUpdate();
-    applyWalkFromVelocity(walkAnim, vx);
+    scheduleWalkApply(walkAnim, vx);
   };
 
   const onPointerUp = (e: React.PointerEvent) => {
@@ -415,7 +437,7 @@ export function PetOverlay({
     }
   };
 
-  // Stationary hold while dragging → idle walk anim
+  // Stationary hold while dragging → idle walk anim (also rAF-paced).
   React.useEffect(() => {
     if (!enabled) return;
     let raf = 0;
@@ -424,13 +446,19 @@ export function PetOverlay({
       if (d?.active && now - d.vel.lastT >= 40) {
         const { state: vel, walkAnim } = sampleStationaryDragVelocity(d.vel, now);
         d.vel = vel;
-        applyWalkFromVelocity(walkAnim, vel.vx);
+        scheduleWalkApply(walkAnim, vel.vx);
       }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [enabled, applyWalkFromVelocity]);
+    return () => {
+      cancelAnimationFrame(raf);
+      if (walkRafRef.current) {
+        cancelAnimationFrame(walkRafRef.current);
+        walkRafRef.current = 0;
+      }
+    };
+  }, [enabled, scheduleWalkApply]);
 
   if (!enabled) return null;
 

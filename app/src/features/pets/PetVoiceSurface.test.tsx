@@ -2,7 +2,7 @@
  * Jarvis Mini Voice surface wires to real VoiceService + useVoiceStore exports.
  * Mocks are only at the VoiceService boundary (not a reimplementation of the surface).
  */
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const startListening = vi.fn(() => true);
@@ -22,6 +22,7 @@ vi.mock('@/features/voice/voiceRouter', () => ({
 
 import { PetVoiceSurface } from './PetVoiceSurface';
 import { useVoiceStore } from '@/features/voice/store';
+import { usePetPresentationStore } from './petPresentationStore';
 
 describe('PetVoiceSurface real voice wiring', () => {
   beforeEach(() => {
@@ -88,5 +89,26 @@ describe('PetVoiceSurface real voice wiring', () => {
     render(<PetVoiceSurface />);
     expect(startListening).not.toHaveBeenCalled();
     expect(useVoiceStore.getState().state).toBe('idle');
+  });
+
+  it('shows provider/model status from auth store (no second backend)', () => {
+    render(<PetVoiceSurface />);
+    const el = document.querySelector('[data-pet-voice-provider-status]');
+    expect(el).toBeTruthy();
+    expect(el?.textContent).toMatch(/Model/i);
+  });
+
+  it('pushes only safe activity summaries (no transcript text)', async () => {
+    usePetPresentationStore.setState({ activity: [], activitySeenIds: [], unreadActivity: 0 });
+    render(<PetVoiceSurface />);
+    useVoiceStore.getState().setState('listening');
+    await waitFor(() => {
+      expect(
+        usePetPresentationStore.getState().activity.some((a) => a.summary === 'Jarvis is listening'),
+      ).toBe(true);
+    });
+    expect(
+      usePetPresentationStore.getState().activity.every((a) => !/secret|sk-|password/i.test(a.summary)),
+    ).toBe(true);
   });
 });
