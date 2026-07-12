@@ -1524,3 +1524,15 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Change** | `buildPetRuntimeDiagnostics` + DEV `window.__VIBESPACE_PET_DIAG__` covering selected pet ID, characterId, manifest path, atlas URL, anim state, frame index/count, ticker, reduced motion, panel hide, texture cache key — no production spam. |
 | **Do not stage** | install.ps1, Cargo.toml |
 
+
+#### 2026-07-12 - Freeze chain re-verify at 8fc7567
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-12 ~08:53 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **HEAD** | `8fc7567` |
+| **Status** | in-progress — locks held; suite re-run |
+| **Freeze root cause** | Near-identical cream atlas cells (documented implementer/axo-glitch-mapping.txt) |
+| **Do not stage** | install.ps1, Cargo.toml |
+
