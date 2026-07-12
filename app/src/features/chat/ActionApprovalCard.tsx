@@ -20,7 +20,7 @@
  * `busy` flag while a click is in-flight.
  */
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   AlertTriangle,
   Check,
@@ -130,6 +130,8 @@ export function ActionApprovalCard({
   const StatusIcon = visual.icon;
 
   const [busy, setBusy] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+  const busyRef = useRef(false);
   const pendingActions = allParts.filter(
     (p): p is ActionPart => p.kind === 'action_proposal' && p.status === 'pending',
   );
@@ -148,42 +150,52 @@ export function ActionApprovalCard({
   };
 
   const handleApprove = async () => {
-    if (busy || part.status !== 'pending') return;
+    if (busyRef.current || part.status !== 'pending') return;
+    busyRef.current = true;
     setBusy(true);
-    await writeStatus({ status: 'running' });
-    const result = await runAction(
-      part.action_id,
-      part.params,
-      {
-        source: 'ai',
-        chatId,
-        messageId,
-        callId: part.call_id,
-      },
-      { emitToast: false },
-    );
-    if (result.ok) {
-      await writeStatus({
-        status: 'success',
-        result: result.data,
-        error: undefined,
-      });
-    } else {
-      await writeStatus({ status: 'error', error: result.error });
+    setLocalError(null);
+    try {
+      await writeStatus({ status: 'running' });
+      const result = await runAction(
+        part.action_id,
+        part.params,
+        { source: 'ai', chatId, messageId, callId: part.call_id },
+        { emitToast: false },
+      );
+      await writeStatus(result.ok
+        ? { status: 'success', result: result.data, error: undefined }
+        : { status: 'error', error: result.error });
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : 'The action could not start. Please retry.');
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
     }
-    setBusy(false);
   };
 
   const handleCancel = async () => {
-    if (busy || part.status !== 'pending') return;
-    await writeStatus({ status: 'cancelled' });
+    if (busyRef.current || part.status !== 'pending') return;
+    busyRef.current = true;
+    setBusy(true);
+    setLocalError(null);
+    try {
+      await writeStatus({ status: 'cancelled' });
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : 'The action could not be cancelled.');
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
   };
 
   const handleApproveAll = async () => {
-    if (busy || part.status !== 'pending' || pendingActions.length <= 1) return;
+    if (busyRef.current || part.status !== 'pending' || pendingActions.length <= 1) return;
+    busyRef.current = true;
     setBusy(true);
+    setLocalError(null);
     const runnable = pendingActions.filter((p) => resolveAction(p.action_id));
     if (runnable.length === 0) {
+      busyRef.current = false;
       setBusy(false);
       return;
     }
@@ -200,27 +212,25 @@ export function ActionApprovalCard({
       });
     };
 
-    for (const action of runnable) {
-      await mark(action.call_id, { status: 'running' });
-      const result = await runAction(
-        action.action_id,
-        action.params,
-        {
-          source: 'ai',
-          chatId,
-          messageId,
-          callId: action.call_id,
-        },
-        { emitToast: false },
-      );
-      await mark(
-        action.call_id,
-        result.ok
+    try {
+      for (const action of runnable) {
+        await mark(action.call_id, { status: 'running' });
+        const result = await runAction(
+          action.action_id,
+          action.params,
+          { source: 'ai', chatId, messageId, callId: action.call_id },
+          { emitToast: false },
+        );
+        await mark(action.call_id, result.ok
           ? { status: 'success', result: result.data, error: undefined }
-          : { status: 'error', error: result.error },
-      );
+          : { status: 'error', error: result.error });
+      }
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : 'One or more actions could not run.');
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
     }
-    setBusy(false);
   };
 
   // Body text for the inline result line shown after a non-pending run.
@@ -336,6 +346,11 @@ export function ActionApprovalCard({
             {resultLine}
           </div>
         )
+      )}
+      {localError && (
+        <p role="alert" className="text-secondary text-destructive">
+          {localError} No duplicate action was started.
+        </p>
       )}
     </div>
   );

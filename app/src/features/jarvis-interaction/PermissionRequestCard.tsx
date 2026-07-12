@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { ShieldAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { messageRepo } from '@/lib/db/repositories';
@@ -19,6 +19,8 @@ export function PermissionRequestCard({ part, messageId, chatId }: PermissionReq
   const [editOpen, setEditOpen] = useState(false);
   const [instruction, setInstruction] = useState('');
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const busyRef = useRef(false);
 
   const writeStatus = async (status: JarvisPermissionStatus, nextInstruction?: string) => {
     if (!messageId) return;
@@ -59,14 +61,22 @@ export function PermissionRequestCard({ part, messageId, chatId }: PermissionReq
   };
 
   const approve = async (status: JarvisPermissionStatus) => {
-    if (busy || request.status !== 'pending') return;
+    if (busyRef.current || request.status !== 'pending') return;
+    busyRef.current = true;
     setBusy(true);
-    await writeStatus(status);
-    if (status === 'approved_plan' && chatId) {
-      useJarvisInteractionStore.getState().setPlanSafeApproval(chatId, true);
+    setError(null);
+    try {
+      await writeStatus(status);
+      if (status === 'approved_plan' && chatId) {
+        useJarvisInteractionStore.getState().setPlanSafeApproval(chatId, true);
+      }
+      sendPermissionContext(status);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Permission could not be saved. Please retry.');
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
     }
-    sendPermissionContext(status);
-    setBusy(false);
   };
 
   const deny = async () => {
@@ -105,6 +115,7 @@ export function PermissionRequestCard({ part, messageId, chatId }: PermissionReq
       {request.status !== 'pending' && (
         <p className="mb-2 text-secondary text-muted-foreground">Permission status: {request.status}</p>
       )}
+      {error && <p role="alert" className="mb-2 text-secondary text-destructive">{error}</p>}
       {editOpen && (
         <div className="mb-3 flex flex-col gap-2">
           <textarea

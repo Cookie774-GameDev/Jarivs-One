@@ -76,7 +76,10 @@ import {
   buildAllAboutMeLearningDiff,
   summarizeAllAboutMeLearningChange,
 } from '@/features/all-about-me/activity';
-import { parseJarvisQuestionBlocks } from '@/features/jarvis-interaction/questionParser';
+import {
+  createClarificationQuestionBlock,
+  parseJarvisQuestionBlocks,
+} from '@/features/jarvis-interaction/questionParser';
 import type { JarvisInteractionMode, JarvisStructuredContext } from '@/features/jarvis-interaction/types';
 import { useJarvisInteractionStore } from '@/features/jarvis-interaction/sessionStore';
 import { parseJarvisPlanBlocks } from '@/features/jarvis-interaction/planParser';
@@ -603,9 +606,12 @@ function toLLMMessages(history: Message[], excludeId?: MessageId, includeImages 
  * self-correct rather than silently retrying broken JSON.
  */
 function textToParts(text: string, userText?: string, interactionMode: JarvisInteractionMode = 'agent'): Part[] {
+  const requestIntent = classifyJarvisIntent({ text: userText ?? '' });
   const questionResult = parseJarvisQuestionBlocks(text);
   if (questionResult.hasQuestionBlocks) return questionResult.parts;
-  const requestIntent = classifyJarvisIntent({ text: userText ?? '' });
+  if (requestIntent.needsQuestions) {
+    return [{ kind: 'question_block', block: createClarificationQuestionBlock(userText ?? '') }];
+  }
   const planResult = parseJarvisPlanBlocks(text, {
     force: interactionMode === 'plan' && requestIntent.needsVisiblePlan,
   });

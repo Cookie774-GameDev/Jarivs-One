@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { ArrowLeft, ArrowRight, Check, HelpCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -84,10 +84,14 @@ export function QuestionBlockCard({ part, messageId, chatId }: QuestionBlockCard
   const initialDraft = useMemo(() => readDraft(draftKey), [draftKey]);
   const [selectedByQuestion, setSelectedByQuestion] = useState<Record<string, string[]>>(initialDraft.selected);
   const [textByQuestion, setTextByQuestion] = useState<Record<string, string>>(initialDraft.text);
+  const [customOpenByQuestion, setCustomOpenByQuestion] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(Object.keys(initialDraft.text).map((id) => [id, Boolean(initialDraft.text[id])])),
+  );
   const total = block.questions.length;
   const [activeIndex, setActiveIndex] = useState(() => Math.min(Math.max(initialDraft.activeIndex, 0), Math.max(total - 1, 0)));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
 
   const isPending = block.status === 'pending';
   const isWizard = total > 1;
@@ -137,36 +141,45 @@ export function QuestionBlockCard({ part, messageId, chatId }: QuestionBlockCard
   };
 
   const persistAndSend = async (answers: JarvisQuestionAnswer[], status: 'answered' | 'skipped') => {
-    if (!messageId || !chatId) return;
+    if (!messageId || !chatId || busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
-    await persistBlockStatus(answers, status);
-    await messageRepo.create({
-      chat_id: chatId as never,
-      role: 'user',
-      parts: [
-        { kind: 'text', text: status === 'skipped' ? `Skipped: ${block.title ?? 'Jarvis questions'}` : buildAnswerSummary(block.questions, answers) },
-        { kind: 'question_answer', blockId: block.id, answers },
-      ],
-    });
-    window.dispatchEvent(new CustomEvent('jarvis:send', {
-      detail: {
-        chatId,
-        text: status === 'skipped'
-          ? `Skipped Jarvis question block ${block.id}.`
-          : buildAnswerSummary(block.questions, answers),
-        structuredContext: {
-          kind: 'question_answers',
-          sourceMessageId: messageId,
-          payload: {
-            blockId: block.id,
-            answers,
-            skipped: status === 'skipped',
+    setError(null);
+    try {
+      await persistBlockStatus(answers, status);
+      await messageRepo.create({
+        chat_id: chatId as never,
+        role: 'user',
+        parts: [
+          { kind: 'text', text: status === 'skipped' ? `Skipped: ${block.title ?? 'Jarvis questions'}` : buildAnswerSummary(block.questions, answers) },
+          { kind: 'question_answer', blockId: block.id, answers },
+        ],
+      });
+      window.dispatchEvent(new CustomEvent('jarvis:send', {
+        detail: {
+          chatId,
+          text: status === 'skipped'
+            ? `Skipped Jarvis question block ${block.id}.`
+            : buildAnswerSummary(block.questions, answers),
+          structuredContext: {
+            kind: 'question_answers',
+            sourceMessageId: messageId,
+            payload: {
+              blockId: block.id,
+              originalRequest: block.originalRequest,
+              answers,
+              skipped: status === 'skipped',
+            },
           },
         },
-      },
-    }));
-    clearDraft(draftKey);
-    setBusy(false);
+      }));
+      clearDraft(draftKey);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save these answers. Please retry.');
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
   };
 
   const toggleChoice = (question: JarvisQuestion, optionId: string) => {
@@ -217,11 +230,19 @@ export function QuestionBlockCard({ part, messageId, chatId }: QuestionBlockCard
   };
 
   const handleCancel = async () => {
-    if (busy || !isPending) return;
+    if (busyRef.current || !isPending) return;
+    busyRef.current = true;
     setBusy(true);
-    clearDraft(draftKey);
-    await persistBlockStatus(collectAnswers(true), 'cancelled');
-    setBusy(false);
+    setError(null);
+    try {
+      await persistBlockStatus(collectAnswers(true), 'cancelled');
+      clearDraft(draftKey);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not cancel these questions. Please retry.');
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
   };
 
   const handleTextKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -265,16 +286,39 @@ export function QuestionBlockCard({ part, messageId, chatId }: QuestionBlockCard
             })}
           </div>
         ) : null}
-        <textarea
-          className="min-h-16 w-full resize-y rounded-md border border-border bg-background px-2 py-1.5 text-secondary text-foreground outline-none focus:border-accent-cyan"
-          placeholder={question.placeholder ?? 'Write your answer or add an “Other” response'}
-          value={textByQuestion[question.id] ?? ''}
-          onKeyDown={handleTextKeyDown}
-          onChange={(event) => {
-            setError(null);
-            setTextByQuestion((current) => ({ ...current, [question.id]: event.target.value }));
-          }}
-        />
+        {question.options?.length ? (
+          <button
+            type="button"
+            className={cn(
+              'mb-2 rounded-md border px-2.5 py-1.5 text-secondary transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-cyan/60',
+              customOpenByQuestion[question.id]
+                ? 'border-accent-cyan/70 bg-accent-cyan/15 text-foreground'
+                : 'border-border bg-elevated text-muted-foreground hover:text-foreground',
+            )}
+            aria-pressed={Boolean(customOpenByQuestion[question.id])}
+            aria-controls={`question-custom-${question.id}`}
+            onClick={() => setCustomOpenByQuestion((current) => ({
+              ...current,
+              [question.id]: !current[question.id],
+            }))}
+          >
+            Write my own answer
+          </button>
+        ) : null}
+        {customOpenByQuestion[question.id] || !question.options?.length ? (
+          <textarea
+            id={`question-custom-${question.id}`}
+            aria-label={`Custom response for ${question.prompt}`}
+            className="min-h-16 w-full resize-y rounded-md border border-border bg-background px-2 py-1.5 text-secondary text-foreground outline-none focus:border-accent-cyan focus-visible:ring-2 focus-visible:ring-accent-cyan/40"
+            placeholder={question.placeholder ?? 'Write your own answer'}
+            value={textByQuestion[question.id] ?? ''}
+            onKeyDown={handleTextKeyDown}
+            onChange={(event) => {
+              setError(null);
+              setTextByQuestion((current) => ({ ...current, [question.id]: event.target.value }));
+            }}
+          />
+        ) : null}
       </div>
     );
   };
@@ -293,7 +337,7 @@ export function QuestionBlockCard({ part, messageId, chatId }: QuestionBlockCard
             )}
           </div>
         </div>
-        {isWizard && isPending && (
+        {isPending && (
           <span className="shrink-0 rounded-full border border-accent-cyan/30 bg-accent-cyan/10 px-2 py-0.5 text-metadata text-muted-foreground">
             Question {activeIndex + 1} of {total}
           </span>
@@ -324,7 +368,7 @@ export function QuestionBlockCard({ part, messageId, chatId }: QuestionBlockCard
           : block.questions.map((question, index) => renderQuestion(question, index))}
       </div>
 
-      {error && <p className="mt-2 text-secondary text-destructive">{error}</p>}
+      {error && <p role="alert" className="mt-2 text-secondary text-destructive">{error}</p>}
       {!isPending && (
         <p className="mt-2 text-secondary text-muted-foreground">
           {block.status === 'skipped' ? 'Skipped.' : block.status === 'cancelled' ? 'Cancelled.' : 'Answered.'}
@@ -345,7 +389,7 @@ export function QuestionBlockCard({ part, messageId, chatId }: QuestionBlockCard
           </Button>
         ) : (
           <Button type="button" size="sm" variant="accent" disabled={busy || !isPending} onClick={handleContinue}>
-            Continue
+            Submit
           </Button>
         )}
         {canSkip && (

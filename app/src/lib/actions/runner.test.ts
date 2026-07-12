@@ -174,4 +174,24 @@ describe('runAction', () => {
     expect(result.ok).toBe(true);
     expect(useTerminalCommandQueue.getState().queue).toHaveLength(2);
   });
+
+  it('shares one in-flight execution for the same approved proposal', async () => {
+    const def = resolveAction('settings.open');
+    expect(def).toBeTruthy();
+    const spy = vi.spyOn(def!, 'run').mockImplementation(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      return { ok: true, summary: 'opened' };
+    });
+    const context = {
+      source: 'ai' as const,
+      messageId: 'message_once',
+      callId: 'call_once',
+    };
+    const [first, second] = await Promise.all([
+      runAction('settings.open', {}, context, { emitToast: false }),
+      runAction('settings.open', {}, context, { emitToast: false }),
+    ]);
+    expect(first).toEqual(second);
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
 });

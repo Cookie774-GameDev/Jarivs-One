@@ -214,7 +214,7 @@ function validateAndCoerceParams(
  * (`emitToast: false`) so the proposal card itself owns the visible
  * status; we don't want a parallel toast competing for attention.
  */
-export async function runAction(
+async function runActionOnce(
   id: string,
   params: Record<string, unknown> = {},
   ctx: ActionRunContext,
@@ -300,4 +300,24 @@ export async function runAction(
     });
     return { ok: false, error };
   }
+}
+
+const inFlightActionRuns = new Map<string, Promise<ActionResult>>();
+
+/** Execute one approved proposal at most once while it is in flight. */
+export function runAction(
+  id: string,
+  params: Record<string, unknown> = {},
+  ctx: ActionRunContext,
+  options: { emitToast?: boolean } = {},
+): Promise<ActionResult> {
+  const key = ctx.messageId && ctx.callId ? `${ctx.messageId}:${ctx.callId}` : undefined;
+  if (!key) return runActionOnce(id, params, ctx, options);
+  const existing = inFlightActionRuns.get(key);
+  if (existing) return existing;
+  const run = runActionOnce(id, params, ctx, options).finally(() => {
+    if (inFlightActionRuns.get(key) === run) inFlightActionRuns.delete(key);
+  });
+  inFlightActionRuns.set(key, run);
+  return run;
 }

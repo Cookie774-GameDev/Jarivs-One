@@ -27,6 +27,26 @@ function asOption(value: unknown, index: number): JarvisQuestionOption | null {
   };
 }
 
+const FALLBACK_OPTIONS: JarvisQuestionOption[] = [
+  { id: 'recommended', label: 'Use Jarvis’s recommended option' },
+  { id: 'current_defaults', label: 'Use the current project defaults' },
+  { id: 'minimal_scope', label: 'Use the smallest safe scope' },
+];
+
+function exactlyThreeOptions(value: unknown): JarvisQuestionOption[] {
+  const parsed = Array.isArray(value)
+    ? value.map(asOption).filter((option): option is JarvisQuestionOption => Boolean(option))
+    : [];
+  const unique = parsed.filter(
+    (option, index, all) => all.findIndex((candidate) => candidate.id === option.id) === index,
+  );
+  for (const fallback of FALLBACK_OPTIONS) {
+    if (unique.length >= 3) break;
+    if (!unique.some((option) => option.id === fallback.id)) unique.push(fallback);
+  }
+  return unique.slice(0, 3);
+}
+
 function asQuestion(value: unknown, index: number): JarvisQuestion | null {
   const record = asRecord(value);
   if (!record) return null;
@@ -37,9 +57,7 @@ function asQuestion(value: unknown, index: number): JarvisQuestion | null {
     rawType === 'single' || rawType === 'multi' || rawType === 'mixed' || rawType === 'text'
       ? rawType
       : 'text';
-  const options = Array.isArray(record.options)
-    ? record.options.map(asOption).filter((option): option is JarvisQuestionOption => Boolean(option))
-    : undefined;
+  const options = exactlyThreeOptions(record.options);
   return {
     id: asString(record.id, `q_${index + 1}`),
     prompt,
@@ -48,6 +66,7 @@ function asQuestion(value: unknown, index: number): JarvisQuestion | null {
     required: asBoolean(record.required),
     allowSkip: asBoolean(record.allowSkip),
     placeholder: asString(record.placeholder) || undefined,
+    allowCustomResponse: true,
   };
 }
 
@@ -56,13 +75,64 @@ function asQuestionBlock(value: unknown, index: number): JarvisQuestionBlock | n
   if (!record || !Array.isArray(record.questions)) return null;
   const questions = record.questions
     .map(asQuestion)
-    .filter((question): question is JarvisQuestion => Boolean(question));
+    .filter((question): question is JarvisQuestion => Boolean(question))
+    .slice(0, 3);
   if (questions.length === 0) return null;
   return {
     id: asString(record.id, `qb_${Date.now()}_${index}`),
     title: asString(record.title) || undefined,
     description: asString(record.description) || undefined,
+    originalRequest: asString(record.originalRequest) || undefined,
     questions,
+    status: 'pending',
+  };
+}
+
+function stableId(text: string): string {
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return Math.abs(hash >>> 0).toString(36);
+}
+
+export function createClarificationQuestionBlock(userText: string): JarvisQuestionBlock {
+  const buildQuestion = (
+    id: string,
+    prompt: string,
+    options: [JarvisQuestionOption, JarvisQuestionOption, JarvisQuestionOption],
+  ): JarvisQuestion => ({
+    id,
+    prompt,
+    type: 'single',
+    options,
+    required: true,
+    allowSkip: false,
+    allowCustomResponse: true,
+  });
+  return {
+    id: `qb_clarify_${stableId(userText)}`,
+    title: 'A few details before I continue',
+    description: 'Answer up to three focused questions. Your answers stay attached to this task.',
+    originalRequest: userText,
+    questions: [
+      buildQuestion('scope', 'What scope should I use?', [
+        { id: 'focused', label: 'Focused minimum' },
+        { id: 'complete', label: 'Complete polished version' },
+        { id: 'phased', label: 'Build it in phases' },
+      ]),
+      buildQuestion('direction', 'Which direction should guide the result?', [
+        { id: 'match_project', label: 'Match the current project' },
+        { id: 'recommended', label: 'Use Jarvis’s recommendation' },
+        { id: 'practical', label: 'Prioritize practical defaults' },
+      ]),
+      buildQuestion('destination', 'Where should the result go?', [
+        { id: 'active_project', label: 'Current active project' },
+        { id: 'jarvis_projects', label: 'New folder under Jarvis Projects' },
+        { id: 'saved_project', label: 'Another saved project' },
+      ]),
+    ],
     status: 'pending',
   };
 }
