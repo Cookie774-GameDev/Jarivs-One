@@ -179,10 +179,14 @@ checks and are not claimed as passed.
 
 ## Commits
 
-1. `ba36d99ecf7685c5941e0b9ea662c1b2c38d71e3` - reliable Agent editor saving.
-2. `193c03cc35ef25143274d656028f13aab4daa30d` - context-aware safe file destinations.
-3. `9a8b3f0a4238a1567746e27960f2703927b3d49a` - structured clarification workflow.
-4. `bda58976787de191950ad226ad4e1a1041b26358` - reliable truthful command execution.
+1. `e05c299` - reliable Agent editor saving.
+2. `d2944e8` - context-aware safe file destinations.
+3. `88c23f8` - structured clarification workflow.
+4. `af22b39` - reliable truthful command execution.
+5. `aebfcaa` - design, plan, and remediation report.
+
+These hashes are the final versions after rebasing cleanly onto remote commit
+`0539dcdd589608de172b7f1fd4356c0fe5a23433`.
 
 The four implementation commits change 41 files with 2,500 insertions and 191
 deletions relative to the starting commit.
