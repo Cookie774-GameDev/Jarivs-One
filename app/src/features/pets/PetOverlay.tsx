@@ -35,6 +35,8 @@ export interface PetOverlayProps {
   panelOpen?: boolean;
   onOpenPanel?: () => void;
   onPanelClose?: () => void;
+  /** Hide the pet (right-click → Close). */
+  onRequestClose?: () => void;
   onAnimChange?: (anim: string) => void;
   /** When true, position is driven by the Tauri window (no CSS fixed offset). */
   tauriWindowMode?: boolean;
@@ -49,6 +51,7 @@ export function PetOverlay({
   panelOpen = false,
   onOpenPanel,
   onPanelClose: _onPanelClose,
+  onRequestClose,
   onAnimChange,
   tauriWindowMode = false,
   sleepTimeoutMs,
@@ -249,17 +252,21 @@ export function PetOverlay({
     return () => cancelAnimationFrame(raf);
   }, [enabled, setState]);
 
+  const [ctxMenu, setCtxMenu] = React.useState<{ x: number; y: number } | null>(null);
+
   const openPanelNow = React.useCallback(() => {
     setState(reducePetEvent(stateRef.current, { type: 'click' }));
     onOpenPanel?.();
     schedulerRef.current?.onActivity();
-    // Tauri: single-instance open/focus of pet-mini-panel
+    // Optional separate Tauri panel if present; main host also opens in-app panel.
     const left = tauriWindowMode ? 0 : pos.left;
     const top = tauriWindowMode ? 0 : pos.top;
-    void openOrFocusPetPanel(left, top);
+    void openOrFocusPetPanel(left, top).catch(() => undefined);
   }, [onOpenPanel, pos.left, pos.top, setState, tauriWindowMode]);
 
   const onPointerDown = (e: React.PointerEvent) => {
+    if (e.button === 2) return; // right-click → context menu only
+    setCtxMenu(null);
     const el = e.currentTarget as HTMLElement;
     el.setPointerCapture(e.pointerId);
     const t = performance.now();
@@ -274,6 +281,13 @@ export function PetOverlay({
       windowOriginY: e.screenY - e.clientY + pos.top,
     };
     setState(reducePetEvent(stateRef.current, { type: 'drag_start', walk: 'idlePrimary' }));
+  };
+
+  const onContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragRef.current = null;
+    setCtxMenu({ x: e.clientX, y: e.clientY });
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
@@ -310,46 +324,92 @@ export function PetOverlay({
   if (!enabled) return null;
 
   return (
-    <div
-      className={cn(
-        tauriWindowMode
-          ? 'relative select-none touch-none w-full h-full'
-          : 'fixed z-[70] select-none touch-none',
-        'cursor-grab active:cursor-grabbing',
-        className,
-      )}
-      style={
-        tauriWindowMode
-          ? {
-              width: DISPLAY,
-              height: DISPLAY,
-              background: 'transparent',
-              margin: 'auto',
-            }
-          : {
-              left: pos.left,
-              top: pos.top,
-              width: DISPLAY,
-              height: DISPLAY,
-              background: 'transparent',
-            }
-      }
-      data-pet-overlay="true"
-      data-pet-anim={animLabel}
-      data-pet-panel-open={panelOpen ? 'true' : 'false'}
-      data-pet-renderer="pixi"
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
-      role="img"
-      aria-label={`VibeSpace Pet — ${animLabel}`}
-    >
+    <>
       <div
-        ref={hostRef}
-        className="block w-full h-full"
-        style={{ width: DISPLAY, height: DISPLAY, background: 'transparent' }}
-      />
-    </div>
+        className={cn(
+          tauriWindowMode
+            ? 'relative select-none touch-none w-full h-full'
+            : 'fixed z-[80] select-none touch-none',
+          'cursor-grab active:cursor-grabbing',
+          className,
+        )}
+        style={
+          tauriWindowMode
+            ? {
+                width: DISPLAY,
+                height: DISPLAY,
+                background: 'transparent',
+                margin: 'auto',
+              }
+            : {
+                left: pos.left,
+                top: pos.top,
+                width: DISPLAY,
+                height: DISPLAY,
+                background: 'transparent',
+              }
+        }
+        data-pet-overlay="true"
+        data-pet-anim={animLabel}
+        data-pet-panel-open={panelOpen ? 'true' : 'false'}
+        data-pet-renderer="pixi"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        onContextMenu={onContextMenu}
+        role="img"
+        aria-label={`VibeSpace Pet — ${animLabel}. Drag to move, click to open panel, right-click to close.`}
+      >
+        <div
+          ref={hostRef}
+          className="block w-full h-full"
+          style={{ width: DISPLAY, height: DISPLAY, background: 'transparent' }}
+        />
+      </div>
+      {ctxMenu && (
+        <div
+          className="fixed z-[90] min-w-[120px] rounded-lg border border-border bg-panel shadow-lg p-1"
+          style={{ left: ctxMenu.x, top: ctxMenu.y }}
+          data-pet-context-menu="true"
+          role="menu"
+        >
+          <button
+            type="button"
+            className="w-full rounded px-3 py-1.5 text-left text-sm hover:bg-muted"
+            role="menuitem"
+            onClick={() => {
+              setCtxMenu(null);
+              onRequestClose?.();
+            }}
+          >
+            Close
+          </button>
+          <button
+            type="button"
+            className="w-full rounded px-3 py-1.5 text-left text-sm hover:bg-muted"
+            role="menuitem"
+            onClick={() => {
+              setCtxMenu(null);
+              openPanelNow();
+            }}
+          >
+            Open panel
+          </button>
+        </div>
+      )}
+      {ctxMenu && (
+        <button
+          type="button"
+          className="fixed inset-0 z-[85] cursor-default bg-transparent"
+          aria-label="Dismiss pet menu"
+          onClick={() => setCtxMenu(null)}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setCtxMenu(null);
+          }}
+        />
+      )}
+    </>
   );
 }

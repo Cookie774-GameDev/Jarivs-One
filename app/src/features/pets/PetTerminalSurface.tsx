@@ -25,9 +25,7 @@ export function PetTerminalSurface({ className }: { className?: string }) {
   const panelActiveTerminalId = usePetPresentationStore((s) => s.panelActiveTerminalId);
   const setPanelActiveTerminalId = usePetPresentationStore((s) => s.setPanelActiveTerminalId);
   const lastLimitMessage = usePetPresentationStore((s) => s.lastLimitMessage);
-  const clearLimitMessage = usePetPresentationStore((s) => s.clearLimitMessage);
   const petTerminalCount = usePetPresentationStore((s) => s.petTerminalCount);
-  const pushActivity = usePetPresentationStore((s) => s.pushActivity);
 
   const sessions = useLiveQuery(
     async () => {
@@ -68,28 +66,6 @@ export function PetTerminalSurface({ className }: { className?: string }) {
       }
     }
   }, [sessions, terminals, registerTerminal]);
-
-  const mainTerms = Object.values(terminals).filter((t) => t.owner === 'main');
-
-  const claimToPet = (terminalId: string) => {
-    clearLimitMessage();
-    const result = moveTerminal(terminalId, 'pet-mini-panel');
-    if (!result.ok) {
-      // limit message set in store
-      return;
-    }
-    setPanelActiveTerminalId(terminalId);
-    pushActivity(
-      {
-        id: `act_term_move_${terminalId}_${Date.now()}`,
-        kind: 'terminal',
-        summary: `Terminal presentation moved to Pet panel`,
-        target: { type: 'terminal', id: terminalId },
-        createdAt: Date.now(),
-      },
-      true,
-    );
-  };
 
   const returnToMain = (terminalId: string) => {
     moveTerminal(terminalId, 'main');
@@ -200,23 +176,9 @@ export function PetTerminalSurface({ className }: { className?: string }) {
         )}
       </div>
 
-      {mainTerms.length > 0 && (
-        <div className="shrink-0 max-h-28 overflow-auto border-t border-border pt-2">
-          <div className="text-metadata text-muted-foreground mb-1">Main terminals — move here (no restart)</div>
-          <ul className="space-y-1">
-            {mainTerms.slice(0, 12).map((t) => (
-              <li key={t.terminalId} className="flex items-center justify-between gap-2 text-xs">
-                <span className="truncate font-mono text-muted-foreground">
-                  {t.title || t.terminalId.slice(0, 10)} · {t.status}
-                </span>
-                <Button size="sm" variant="outline" onClick={() => claimToPet(t.terminalId)}>
-                  Move to Pet Panel
-                </Button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      <p className="text-metadata text-muted-foreground shrink-0">
+        Tip: right-click a terminal in the main app → Send to Pet panel.
+      </p>
     </div>
   );
 }

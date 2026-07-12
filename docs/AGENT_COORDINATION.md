@@ -1301,3 +1301,24 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Verification** | pets 45/45; typecheck PASS; build PASS; cargo pets 2/2 |
 | **Locks** | released |
 
+
+#### 2026-07-11 - Pixel Pets UX fix (visible pet, account tab, right-click)
+
+| Field | Value |
+|-------|-------|
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Status** | in-progress |
+| **Change** | Embed pet in main app always-on; Account Pet tab; right-click chat/terminal to pet panel; remove To Pet buttons; pet right-click Close |
+| **Locks** | pets/**, ChatView, TileGrid, TerminalContextMenu, Account.tsx, SettingsModal, TabStrip if needed |
+
+
+#### 2026-07-11 - Pixel Pets UX simplified (visible + Account tab)
+
+| Field | Value |
+|-------|-------|
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Status** | complete (draft PR; not merged) |
+| **Change** | Pet embedded in main app always; Account→Pet tab; right-click chat/terminal; remove To Pet buttons; pet right-click Close |
+| **Verification** | typecheck PASS; pets 45/45 |
+| **Locks** | released |
+

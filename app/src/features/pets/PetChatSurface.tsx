@@ -12,7 +12,6 @@ import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import { Button } from '@/components/ui/button';
 import { usePetPresentationStore } from './petPresentationStore';
-import { openOrFocusPetPanel } from './petTauriBridge';
 import { cn } from '@/lib/utils';
 
 export function PetChatSurface({ className }: { className?: string }) {
@@ -23,7 +22,6 @@ export function PetChatSurface({ className }: { className?: string }) {
   const moveChat = usePetPresentationStore((s) => s.moveChat);
   const registerChat = usePetPresentationStore((s) => s.registerChat);
   const chats = usePetPresentationStore((s) => s.chats);
-  const pushActivity = usePetPresentationStore((s) => s.pushActivity);
 
   const allChats = useLiveQuery(
     async () => {
@@ -52,24 +50,6 @@ export function PetChatSurface({ className }: { className?: string }) {
     }
   }, [activeId, panelActiveChatId, setPanelActiveChatId]);
 
-  const openExistingOnPanel = (chatId: string) => {
-    registerChat(chatId, 'main');
-    moveChat(chatId, 'pet-mini-panel');
-    setPanelActiveChatId(chatId);
-    setActiveChat(chatId); // same thread id — presentation only
-    pushActivity(
-      {
-        id: `act_chat_move_${chatId}_${Date.now()}`,
-        kind: 'chat',
-        summary: `Chat moved to Pet panel (${chatId.slice(0, 12)}…)`,
-        target: { type: 'chat', id: chatId },
-        createdAt: Date.now(),
-      },
-      true,
-    );
-    void openOrFocusPetPanel();
-  };
-
   const returnToMain = (chatId: string) => {
     moveChat(chatId, 'main');
     setActiveChat(chatId);
@@ -84,8 +64,6 @@ export function PetChatSurface({ className }: { className?: string }) {
     setPanelActiveChatId(id);
     setActiveChat(id);
   };
-
-  const mainChats = (allChats ?? []).filter((c) => !petChatIds.includes(c.id));
 
   return (
     <div className={cn('flex h-full min-h-0 flex-col gap-2', className)} data-pet-chat-surface="true">
@@ -135,21 +113,9 @@ export function PetChatSurface({ className }: { className?: string }) {
         )}
       </div>
 
-      {mainChats.length > 0 && (
-        <div className="shrink-0 max-h-28 overflow-auto border-t border-border pt-2">
-          <div className="text-metadata text-muted-foreground mb-1">Main app chats — move here</div>
-          <ul className="space-y-1">
-            {mainChats.slice(0, 12).map((c) => (
-              <li key={c.id} className="flex items-center justify-between gap-2 text-xs">
-                <span className="truncate font-mono text-muted-foreground">{c.title || c.id}</span>
-                <Button size="sm" variant="outline" onClick={() => openExistingOnPanel(c.id)}>
-                  Move to Pet Panel
-                </Button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      <p className="text-metadata text-muted-foreground shrink-0">
+        Tip: right-click a chat tab in the main app → Send to Pet panel.
+      </p>
     </div>
   );
 }

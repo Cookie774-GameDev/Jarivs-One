@@ -68,7 +68,7 @@ import { toast } from '@/components/ui/toast';
 import { useTerminalTranscriptStore } from './transcriptStore';
 import type { AgentCoordinationMode } from './agentCoordination';
 import { usePetPresentationStore } from '@/features/pets/petPresentationStore';
-import { openOrFocusPetPanel } from '@/features/pets/petTauriBridge';
+import { usePetSettingsStore } from '@/features/pets/petSettingsStore';
 import { Button } from '@/components/ui/button';
 import {
   parseTerminalRef,
@@ -751,7 +751,6 @@ function Tile({
   const registerTerminal = usePetPresentationStore((s) => s.registerTerminal);
   const moveTerminal = usePetPresentationStore((s) => s.moveTerminal);
   const setPanelActiveTerminalId = usePetPresentationStore((s) => s.setPanelActiveTerminalId);
-  const petTermCount = usePetPresentationStore((s) => s.petTerminalCount());
 
   React.useEffect(() => {
     const onFocusTerminal = (e: Event) => {
@@ -1196,90 +1195,45 @@ function Tile({
             data-pty-id={leaf.sessionId}
           >
             <p className="text-sm text-muted-foreground">
-              This live terminal is presented in the Pet mini-panel (same PTY — not restarted).
+              This live terminal is in the Pet panel (same PTY — not restarted).
             </p>
-            <div className="flex gap-2">
-              <Button size="sm" variant="secondary" onClick={() => void openOrFocusPetPanel()}>
-                Focus Pet Panel
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => moveTerminal(leaf.sessionId!, 'main')}
-              >
-                Return to main
-              </Button>
-            </div>
+            <Button size="sm" variant="outline" onClick={() => moveTerminal(leaf.sessionId!, 'main')}>
+              Bring back here
+            </Button>
           </div>
         ) : (
-          <div className="relative h-full w-full">
-            {leaf.sessionId && (
-              <div className="absolute right-1 top-1 z-10">
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 text-xs opacity-70 hover:opacity-100"
-                  data-testid="move-terminal-to-pet"
-                  onClick={() => {
-                    registerTerminal({
-                      terminalId: leaf.sessionId!,
-                      ptyId: leaf.sessionId!,
-                      owner: 'main',
-                      title: leaf.name || leaf.command || 'terminal',
-                      cwd: leaf.cwd,
-                      shell: leaf.command,
-                      paneId: leaf.id,
-                      status: 'running',
-                    });
-                    const result = moveTerminal(leaf.sessionId!, 'pet-mini-panel');
-                    if (!result.ok) {
-                      toast.error(
-                        result.message ??
-                          'The Pet panel supports up to 4 terminals. Return or close one before adding another.',
-                      );
-                      return;
-                    }
-                    setPanelActiveTerminalId(leaf.sessionId!);
-                    void openOrFocusPetPanel();
-                  }}
-                >
-                  To Pet ({petTermCount}/4)
-                </Button>
-              </div>
-            )}
-            <TerminalView
-              sessionId={leaf.sessionId ?? null}
-              paneId={leaf.id}
-              command={leaf.command || defaultCommand}
-              startupCommand={leaf.startupCommand}
-              pendingCommand={leaf.pendingCommand}
-              pendingCommandId={leaf.pendingCommandId}
-              cwd={leaf.cwd}
-              fontSize={fontSize}
-              agentSlug={leaf.agentSlug ?? null}
-              agentMode={resolvePaneAgentMode(leaf)}
-              onReady={(sid) => {
-                registerTerminal({
-                  terminalId: sid,
-                  ptyId: sid,
-                  owner: 'main',
-                  title: leaf.name || leaf.command || 'terminal',
-                  cwd: leaf.cwd,
-                  shell: leaf.command,
-                  paneId: leaf.id,
-                  status: 'running',
-                });
-                onAttach(sid);
-              }}
-              onPendingCommandSent={onPendingCommandSent}
-              onFocus={() => setIsFocused(true)}
-              onBlur={() => setIsFocused(false)}
-              projectId={projectId}
-              projectName={projectName}
-              hideChrome
-              className="h-full w-full"
-            />
-          </div>
+          <TerminalView
+            sessionId={leaf.sessionId ?? null}
+            paneId={leaf.id}
+            command={leaf.command || defaultCommand}
+            startupCommand={leaf.startupCommand}
+            pendingCommand={leaf.pendingCommand}
+            pendingCommandId={leaf.pendingCommandId}
+            cwd={leaf.cwd}
+            fontSize={fontSize}
+            agentSlug={leaf.agentSlug ?? null}
+            agentMode={resolvePaneAgentMode(leaf)}
+            onReady={(sid) => {
+              registerTerminal({
+                terminalId: sid,
+                ptyId: sid,
+                owner: 'main',
+                title: leaf.name || leaf.command || 'terminal',
+                cwd: leaf.cwd,
+                shell: leaf.command,
+                paneId: leaf.id,
+                status: 'running',
+              });
+              onAttach(sid);
+            }}
+            onPendingCommandSent={onPendingCommandSent}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            projectId={projectId}
+            projectName={projectName}
+            hideChrome
+            className="h-full w-full"
+          />
         )}
       </div>
       {contextMenu && (
@@ -1293,6 +1247,35 @@ function Tile({
           onClear={handleClear}
           onSplit={handleSplit}
           onCloseTerminal={onClose}
+          onSendToPetPanel={
+            leaf.sessionId
+              ? () => {
+                  registerTerminal({
+                    terminalId: leaf.sessionId!,
+                    ptyId: leaf.sessionId!,
+                    owner: 'main',
+                    title: leaf.name || leaf.command || 'terminal',
+                    cwd: leaf.cwd,
+                    shell: leaf.command,
+                    paneId: leaf.id,
+                    status: 'running',
+                  });
+                  const result = moveTerminal(leaf.sessionId!, 'pet-mini-panel');
+                  if (!result.ok) {
+                    toast.error(
+                      result.message ??
+                        'The Pet panel supports up to 4 terminals. Return or close one before adding another.',
+                    );
+                    return;
+                  }
+                  setPanelActiveTerminalId(leaf.sessionId!);
+                  usePetSettingsStore.getState().setEnabled(true);
+                  usePetSettingsStore.getState().setOverlayVisible(true);
+                  window.dispatchEvent(new CustomEvent('jarvis:pet:open-panel'));
+                  toast.success('Sent to Pet panel', 'Same live terminal — not restarted.');
+                }
+              : undefined
+          }
         />
       )}
     </div>

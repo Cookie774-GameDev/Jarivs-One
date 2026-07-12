@@ -9,12 +9,10 @@ import { ensureActiveChat } from './chatLifecycle';
 import { cn } from '@/lib/utils';
 import { getChatDragKind, getChatDropPayload, type ChatDropKind } from './dropPayload';
 import { usePetPresentationStore } from '@/features/pets/petPresentationStore';
-import { openOrFocusPetPanel } from '@/features/pets/petTauriBridge';
 
 /**
- * Top-level wrapper for the chat surface. Reads `activeChatId` from the UI store
- * and renders either the empty state or thread + composer.
- * When the thread is owned by the Pet panel, input ownership moves there (no clone).
+ * Top-level chat surface. Move chats into the Pet panel via right-click on a tab
+ * (TabStrip) — no permanent "Move to Pet" button clutter.
  */
 export function ChatView() {
   const activeChatId = useUIStore((s) => s.activeChatId);
@@ -23,8 +21,6 @@ export function ChatView() {
   const [ensureFailed, setEnsureFailed] = useState(false);
   const isOnPet = usePetPresentationStore((s) => s.isChatOnPet(activeChatId));
   const moveChat = usePetPresentationStore((s) => s.moveChat);
-  const registerChat = usePetPresentationStore((s) => s.registerChat);
-  const setPanelActiveChatId = usePetPresentationStore((s) => s.setPanelActiveChatId);
 
   useEffect(() => {
     if (activeChatId) return;
@@ -86,51 +82,20 @@ export function ChatView() {
         )}
         {activeChatId ? (
           <>
-            <div className="flex items-center justify-end gap-2 border-b border-border px-3 py-1.5 shrink-0">
-              {isOnPet ? (
-                <>
-                  <span className="text-metadata text-muted-foreground">
-                    Presented in Pet panel · same thread ID · no clone
-                  </span>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => void openOrFocusPetPanel()}
-                  >
-                    Focus Pet Panel
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      moveChat(activeChatId, 'main');
-                    }}
-                  >
-                    Open in Main App
-                  </Button>
-                </>
-              ) : (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  data-testid="move-chat-to-pet"
-                  onClick={() => {
-                    registerChat(activeChatId, 'main');
-                    moveChat(activeChatId, 'pet-mini-panel');
-                    setPanelActiveChatId(activeChatId);
-                    void openOrFocusPetPanel();
-                  }}
-                >
-                  Move to Pet Panel
+            {isOnPet && (
+              <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-1.5 shrink-0 bg-muted/40">
+                <span className="text-metadata text-muted-foreground">
+                  This chat is open in the Pet panel (same thread — not copied).
+                </span>
+                <Button size="sm" variant="outline" onClick={() => moveChat(activeChatId, 'main')}>
+                  Bring back here
                 </Button>
-              )}
-            </div>
+              </div>
+            )}
             <ChatThread chatId={activeChatId} />
-            {/* Only one active composer owner: pet panel owns input when moved. */}
             {isOnPet ? (
               <div className="border-t border-border px-4 py-3 text-secondary text-muted-foreground text-sm">
-                Composer is active in the Pet mini-panel for this thread. Streaming continues if
-                generation already started here.
+                Type in the Pet panel for this thread. Streaming already started here keeps running.
               </div>
             ) : (
               <Composer chatId={activeChatId} />

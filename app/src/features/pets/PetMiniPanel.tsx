@@ -28,6 +28,8 @@ export interface PetMiniPanelProps {
   animLabel?: string;
   className?: string;
   windowMode?: boolean;
+  /** Allow drag-resize of the floating panel (main-app mode). */
+  resizable?: boolean;
   onLifecycleChange?: (state: PetPanelLifecycleState) => void;
 }
 
@@ -37,9 +39,12 @@ export function PetMiniPanel({
   animLabel,
   className,
   windowMode = false,
+  resizable = false,
   onLifecycleChange,
 }: PetMiniPanelProps) {
   const [tab, setTab] = React.useState<PetMiniPanelTab>('chats');
+  const [size, setSize] = React.useState({ w: 430, h: 560 });
+  const [panelPos, setPanelPos] = React.useState({ right: 24, bottom: 24 });
   const [lifecycle, setLifecycle] = React.useState<PetPanelLifecycleState>(
     open || windowMode ? 'open' : createInitialPanelLifecycle(),
   );
@@ -114,16 +119,71 @@ export function PetMiniPanel({
   const petChatCount = Object.values(chats).filter((c) => c.owner === 'pet-mini-panel').length;
   const petTermCount = Object.values(terminals).filter((t) => t.owner === 'pet-mini-panel').length;
 
+  const onResizePointerDown = (e: React.PointerEvent) => {
+    if (!resizable || windowMode) return;
+    e.preventDefault();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startW = size.w;
+    const startH = size.h;
+    const move = (ev: PointerEvent) => {
+      const dw = startX - ev.clientX; // grow from bottom-right toward top-left when dragging handle at corner
+      const dh = startY - ev.clientY;
+      setSize({
+        w: Math.max(360, Math.min(900, startW + dw)),
+        h: Math.max(360, Math.min(900, startH + dh)),
+      });
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  const onHeaderDrag = (e: React.PointerEvent) => {
+    if (windowMode || e.button !== 0) return;
+    const target = e.target as HTMLElement;
+    if (target.closest('button')) return;
+    e.preventDefault();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startRight = panelPos.right;
+    const startBottom = panelPos.bottom;
+    const move = (ev: PointerEvent) => {
+      setPanelPos({
+        right: Math.max(8, startRight - (ev.clientX - startX)),
+        bottom: Math.max(8, startBottom - (ev.clientY - startY)),
+      });
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
   return (
     <div
       className={cn(
         windowMode
           ? 'fixed inset-0 z-50 flex flex-col bg-background'
-          : 'fixed z-[71] w-[430px] h-[560px] max-h-[90vh] rounded-xl border border-border bg-panel/95 backdrop-blur-md shadow-xl',
+          : 'fixed z-[81] max-h-[90vh] rounded-xl border border-border bg-panel/95 backdrop-blur-md shadow-xl',
         'flex flex-col',
         className,
       )}
-      style={windowMode ? undefined : { right: 24, bottom: 24 }}
+      style={
+        windowMode
+          ? undefined
+          : {
+              right: panelPos.right,
+              bottom: panelPos.bottom,
+              width: size.w,
+              height: size.h,
+            }
+      }
       role="dialog"
       aria-modal="true"
       aria-label="Pet mini panel"
@@ -131,7 +191,10 @@ export function PetMiniPanel({
       data-pet-panel-lifecycle={lifecycle}
       data-pet-preserves-sessions={panelPreservesSessions(lifecycle) ? 'true' : 'false'}
     >
-      <header className="flex items-center justify-between gap-2 border-b border-border px-3 py-2 shrink-0">
+      <header
+        className="flex items-center justify-between gap-2 border-b border-border px-3 py-2 shrink-0 cursor-move"
+        onPointerDown={onHeaderDrag}
+      >
         <div>
           <div className="text-ui-strong text-foreground">VibeSpace Pet Panel</div>
           <div className="text-metadata text-muted-foreground">
@@ -215,6 +278,15 @@ export function PetMiniPanel({
           </div>
         )}
       </div>
+
+      {resizable && !windowMode && (
+        <div
+          className="absolute left-0 top-0 h-4 w-4 cursor-nwse-resize"
+          onPointerDown={onResizePointerDown}
+          aria-label="Resize pet panel"
+          data-pet-panel-resize="true"
+        />
+      )}
 
       {lifecycle === 'confirmingClose' && (
         <div

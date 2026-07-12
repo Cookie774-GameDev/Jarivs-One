@@ -1,7 +1,10 @@
 /**
- * Main-window pet host.
- * Reads Settings → Pets enable flag. In Tauri: shows pet-overlay window only
- * (no embedded duplicate). Browser: embeds overlay + mini-panel for local test.
+ * Main-app Pet host — always mounts the pet overlay inside the main window
+ * so `npm run tauri:dev` shows the pet on every route without a special URL.
+ *
+ * Layout: floating pet sprite + floating resizable mini-panel (same app).
+ * Optional Tauri pet-overlay show is attempted for always-on-top, but the
+ * in-app overlay is the source of truth so the pet is never "invisible".
  */
 import * as React from 'react';
 import { PetOverlay } from './PetOverlay';
@@ -11,13 +14,11 @@ import {
   hidePetOverlay,
   isTauriRuntime,
   releasePetHostInstance,
-  showPetOverlay,
 } from './petTauriBridge';
 import { installPetPresentationStorageSync } from './petPresentationStore';
 import { usePetSettingsStore } from './petSettingsStore';
 
 export interface PetHostProps {
-  /** Override; defaults to settings store. */
   enabled?: boolean;
   reducedMotion?: boolean;
 }
@@ -28,6 +29,7 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedProp }: Pe
   const overlayVisible = usePetSettingsStore((s) => s.overlayVisible);
   const sleepTimeoutMs = usePetSettingsStore((s) => s.sleepTimeoutMs);
   const idleFunIntervalMs = usePetSettingsStore((s) => s.idleFunIntervalMs);
+  const setOverlayVisible = usePetSettingsStore((s) => s.setOverlayVisible);
 
   const enabled = enabledProp ?? settingsEnabled;
   const reducedMotion = reducedProp ?? settingsReduced;
@@ -35,11 +37,8 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedProp }: Pe
   const [panelOpen, setPanelOpen] = React.useState(false);
   const [animLabel, setAnimLabel] = React.useState<string>('welcome');
   const [claimed, setClaimed] = React.useState(false);
-  const [tauri, setTauri] = React.useState(false);
 
-  React.useEffect(() => {
-    return installPetPresentationStorageSync();
-  }, []);
+  React.useEffect(() => installPetPresentationStorageSync(), []);
 
   React.useEffect(() => {
     if (!claimPetHostInstance()) {
@@ -47,42 +46,45 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedProp }: Pe
       return;
     }
     setClaimed(true);
-    const inTauri = isTauriRuntime();
-    setTauri(inTauri);
-    return () => {
-      releasePetHostInstance();
-    };
+    return () => releasePetHostInstance();
   }, []);
 
-  // Show / hide overlay from settings without recreating the webview.
+  // Prefer in-app pet. Hide separate Tauri overlay to avoid a second ghost pet.
   React.useEffect(() => {
-    if (!claimed || !tauri) return;
-    if (enabled && overlayVisible) {
-      void showPetOverlay();
-    } else {
-      void hidePetOverlay();
+    if (!claimed) return;
+    if (isTauriRuntime()) {
+      // Keep secondary window hidden — main shell hosts the visible pet.
+      void hidePetOverlay().catch(() => undefined);
     }
-  }, [claimed, tauri, enabled, overlayVisible]);
+  }, [claimed, enabled, overlayVisible]);
+
+  // If settings somehow left pet "enabled" but not visible, default show.
+  React.useEffect(() => {
+    if (enabled && !overlayVisible) {
+      setOverlayVisible(true);
+    }
+  }, [enabled, overlayVisible, setOverlayVisible]);
 
   const openPanel = React.useCallback(() => setPanelOpen(true), []);
   const closePanel = React.useCallback(() => setPanelOpen(false), []);
+  const hidePet = React.useCallback(() => {
+    setOverlayVisible(false);
+    setPanelOpen(false);
+  }, [setOverlayVisible]);
 
-  if (!claimed) return null;
+  React.useEffect(() => {
+    const onOpen = () => {
+      if (!usePetSettingsStore.getState().enabled) {
+        usePetSettingsStore.getState().setEnabled(true);
+      }
+      usePetSettingsStore.getState().setOverlayVisible(true);
+      setPanelOpen(true);
+    };
+    window.addEventListener('jarvis:pet:open-panel', onOpen);
+    return () => window.removeEventListener('jarvis:pet:open-panel', onOpen);
+  }, []);
 
-  if (tauri) {
-    // Pet UI lives in separate windows; host only coordinates visibility.
-    return (
-      <div
-        data-pet-host="tauri"
-        data-pet-instance="1"
-        data-pet-enabled={enabled ? 'true' : 'false'}
-        hidden
-        aria-hidden
-      />
-    );
-  }
-
-  if (!enabled || !overlayVisible) return null;
+  if (!claimed || !enabled || !overlayVisible) return null;
 
   return (
     <>
@@ -93,11 +95,12 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedProp }: Pe
         onOpenPanel={openPanel}
         onPanelClose={closePanel}
         onAnimChange={setAnimLabel}
+        onRequestClose={hidePet}
         tauriWindowMode={false}
         sleepTimeoutMs={sleepTimeoutMs}
         idleFunIntervalMs={idleFunIntervalMs}
       />
-      <PetMiniPanel open={panelOpen} onClose={closePanel} animLabel={animLabel} />
+      <PetMiniPanel open={panelOpen} onClose={closePanel} animLabel={animLabel} resizable />
     </>
   );
 }
