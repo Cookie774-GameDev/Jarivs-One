@@ -1477,3 +1477,14 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Locks** | held on `app/src/features/pets/**`, axolotl assets, coordination ledger |
 | **Do not stage** | install.ps1, Cargo.toml |
 
+
+#### 2026-07-12 - Grid chrome / rAF drag / voice activity
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-12 ~08:46 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Status** | in-progress |
+| **Change** | Terminal grid Focus/Max/Main/Close + shell labels + non-focused `pointer-events-none`; drag locomotion applied once per rAF; voice provider status + safe activity only. Suite **109/109**. Port 5173 already running this worktree vite + jarvis.exe. |
+| **Do not stage** | install.ps1, Cargo.toml |
+
