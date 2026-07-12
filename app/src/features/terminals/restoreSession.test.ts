@@ -38,7 +38,7 @@ function backend(sessionId: string, projectId: string | null): BackendTerminalIn
 }
 
 describe('resolveTerminalRestoreSession', () => {
-  it('reattaches a live historical pane session after a frontend reload', () => {
+  it('reattaches a live historical pane session and replays its transcript into the new renderer', () => {
     const decision = resolveTerminalRestoreSession({
       existingSessionId: null,
       paneId: 'pane-a',
@@ -53,11 +53,11 @@ describe('resolveTerminalRestoreSession', () => {
     if (decision.kind === 'attach') {
       expect(decision.sessionId).toBe('session-a');
       expect(decision.source).toBe('historical-pane');
-      expect(decision.restoredText).toBe('');
+      expect(decision.restoredText).toBe('output from session-a');
     }
   });
 
-  it('reattaches an explicitly known live session without visually replaying transcript text', () => {
+  it('reattaches an explicitly known live shell and replays its transcript into the new renderer', () => {
     const decision = resolveTerminalRestoreSession({
       existingSessionId: 'session-a',
       paneId: 'pane-a',
@@ -71,7 +71,7 @@ describe('resolveTerminalRestoreSession', () => {
     expect(decision.kind).toBe('attach');
     if (decision.kind === 'attach') {
       expect(decision.sessionId).toBe('session-a');
-      expect(decision.restoredText).toBe('');
+      expect(decision.restoredText).toBe('output from session-a');
     }
   });
 

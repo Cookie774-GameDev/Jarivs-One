@@ -72,6 +72,20 @@ function restoredTextForDeadSession(
   return terminalRestoreText(session);
 }
 
+function restoredTextForAttachedSession(
+  session: SessionTranscript | null | undefined,
+  backendInfo: BackendTerminalInfo,
+): string {
+  if (!session || isInteractiveTuiSession(session, backendInfo)) {
+    return '';
+  }
+  // The Rust PTY bridge streams only future output; it does not retain a
+  // backlog for a replacement xterm renderer. Replaying the locally persisted
+  // shell transcript here restores the renderer without writing history back
+  // into the live PTY or starting a duplicate process.
+  return terminalRestoreText(session);
+}
+
 export function resolveTerminalRestoreSession({
   existingSessionId,
   paneId,
@@ -90,7 +104,10 @@ export function resolveTerminalRestoreSession({
       return {
         kind: 'attach',
         sessionId: existingSessionId,
-        restoredText: '',
+        restoredText: restoredTextForAttachedSession(
+          transcripts[existingSessionId],
+          activeExisting,
+        ),
         source: 'existing-session',
       };
     }
@@ -120,7 +137,10 @@ export function resolveTerminalRestoreSession({
         return {
           kind: 'attach',
           sessionId: historicalSession.sessionId,
-          restoredText: '',
+          restoredText: restoredTextForAttachedSession(
+            historicalSession,
+            activeHistorical,
+          ),
           source: 'historical-pane',
         };
       }
