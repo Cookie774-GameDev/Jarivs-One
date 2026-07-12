@@ -157,11 +157,11 @@ export function reducePetEvent(
       return {
         ...state,
         panelOpen: false,
-        anim: state.dragging
-          ? state.lastWalk === 'idlePrimary'
-            ? 'idlePrimary'
-            : state.lastWalk
-          : 'idlePrimary',
+        anim: 'welcome',
+        welcomePlayed: false,
+        dragging: false,
+        sleeping: false,
+        lastWalk: 'idlePrimary',
       };
 
     case 'shutdown':

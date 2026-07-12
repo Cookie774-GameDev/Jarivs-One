@@ -8,6 +8,7 @@ const playerState = vi.hoisted(() => ({
     initialized: boolean;
     setAnimationCalls: number;
     loadCalls: number;
+    animations: Array<{ fps: number; playbackKey?: string }>;
   }>,
 }));
 
@@ -29,6 +30,7 @@ vi.mock('./pixiAtlasPlayer', () => {
     initialized = false;
     setAnimationCalls = 0;
     loadCalls = 0;
+    animations: Array<{ fps: number; playbackKey?: string }> = [];
     isDestroyed = false;
     application = {};
 
@@ -59,8 +61,9 @@ vi.mock('./pixiAtlasPlayer', () => {
 
     setPlaybackFps() {}
 
-    setAnimation() {
+    setAnimation(meta: { fps: number; playbackKey?: string }) {
       this.setAnimationCalls += 1;
+      this.animations.push(meta);
     }
 
     getDiagnostics() {
@@ -101,6 +104,19 @@ vi.mock('./pixiAtlasPlayer', () => {
   return { PixiAtlasPlayer: MockPlayer };
 });
 
+vi.mock('./petTauriBridge', () => ({
+  PET_OVERLAY_SHOW_EVENT: 'vibespace:pet-overlay-show',
+  PET_OVERLAY_SHOW_EPOCH_KEY: 'vibespace-pet-overlay-show-epoch',
+  PET_PANEL_OPEN_FLAG_KEY: 'vibespace-pet-panel-open',
+  notifyPetPanelOpenRequested: vi.fn(),
+  openOrFocusPetMiniPanel: vi.fn(async () => ({
+    panelVisible: true,
+    useInlineFallback: false,
+    coalesced: false,
+  })),
+  setPetOverlayPosition: vi.fn(async () => undefined),
+}));
+
 import { PetOverlay } from './PetOverlay';
 
 describe('PetOverlay StrictMode player lifecycle', () => {
@@ -126,6 +142,75 @@ describe('PetOverlay StrictMode player lifecycle', () => {
     for (const stale of playerState.instances.filter((player) => player.disposed)) {
       expect(stale.setAnimationCalls).toBe(0);
     }
+
+    view.unmount();
+  });
+
+  it('applies the shared 15 percent speed increase to the initial welcome', async () => {
+    const view = render(<PetOverlay />);
+
+    await waitFor(() => {
+      const live = playerState.instances.find((player) => player.initialized && !player.disposed);
+      expect(live?.animations[0]?.fps).toBeCloseTo(8.625, 8);
+    });
+
+    view.unmount();
+  });
+
+  it('restarts welcome when the native overlay receives a cross-window show signal', async () => {
+    const view = render(<PetOverlay tauriWindowMode />);
+
+    await waitFor(() => {
+      const live = playerState.instances.find((player) => player.initialized && !player.disposed);
+      expect(live?.setAnimationCalls).toBe(1);
+    });
+    window.dispatchEvent(
+      new StorageEvent('storage', {
+        key: 'vibespace-pet-overlay-show-epoch',
+        oldValue: '1',
+        newValue: '2',
+      }),
+    );
+
+    await waitFor(
+      () => {
+        const live = playerState.instances.find((player) => player.initialized && !player.disposed);
+        const welcomeStarts =
+          live?.animations.filter((animation) => animation.playbackKey?.includes(':welcome:'))
+            .length ?? 0;
+        expect(welcomeStarts).toBe(2);
+      },
+      { timeout: 1500 },
+    );
+
+    view.unmount();
+  });
+
+  it('restarts welcome when the mini-panel flag is cleared on close or minimize', async () => {
+    const view = render(<PetOverlay tauriWindowMode />);
+
+    await waitFor(() => {
+      const live = playerState.instances.find((player) => player.initialized && !player.disposed);
+      expect(live?.setAnimationCalls).toBe(1);
+    });
+    window.dispatchEvent(
+      new StorageEvent('storage', {
+        key: 'vibespace-pet-panel-open',
+        oldValue: '1',
+        newValue: null,
+      }),
+    );
+
+    await waitFor(
+      () => {
+        const live = playerState.instances.find((player) => player.initialized && !player.disposed);
+        const welcomeStarts =
+          live?.animations.filter((animation) => animation.playbackKey?.includes(':welcome:'))
+            .length ?? 0;
+        expect(welcomeStarts).toBe(2);
+      },
+      { timeout: 1500 },
+    );
 
     view.unmount();
   });

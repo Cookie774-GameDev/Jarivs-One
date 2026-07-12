@@ -20,6 +20,7 @@ function invokeCount(cmd: string): number {
 describe('openOrFocusPetMiniPanel / openPetPanelSafely', () => {
   beforeEach(() => {
     invokeMock.mockReset();
+    localStorage.clear();
     (window as unknown as { __TAURI_INTERNALS__?: object }).__TAURI_INTERNALS__ = {};
   });
 
@@ -105,5 +106,19 @@ describe('openOrFocusPetMiniPanel / openPetPanelSafely', () => {
     const result = await openOrFocusPetMiniPanel();
     expect(result.panelVisible).toBe(false);
     expect(result.useInlineFallback).toBe(true);
+  });
+
+  it('signals other Pet windows whenever the overlay is shown', async () => {
+    invokeMock.mockResolvedValue(undefined);
+    const onShow = vi.fn();
+    window.addEventListener('vibespace:pet-overlay-show', onShow);
+
+    const { showPetOverlay } = await import('./petTauriBridge');
+    await showPetOverlay();
+
+    expect(invoked('pet_show_overlay')).toBe(true);
+    expect(localStorage.getItem('vibespace-pet-overlay-show-epoch')).toBeTruthy();
+    expect(onShow).toHaveBeenCalledTimes(1);
+    window.removeEventListener('vibespace:pet-overlay-show', onShow);
   });
 });

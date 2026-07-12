@@ -71,4 +71,16 @@ describe('petStateMachine', () => {
     expect(s.sleeping).toBe(false);
     expect(s.anim).toBe('walkLeft');
   });
+
+  it('replays welcome when the mini panel closes and the pet reappears', () => {
+    let s = reducePetEvent(createInitialPetState(), { type: 'welcome_done' });
+    s = reducePetEvent(s, { type: 'click' });
+    expect(s.panelOpen).toBe(true);
+
+    s = reducePetEvent(s, { type: 'panel_close' });
+
+    expect(s.panelOpen).toBe(false);
+    expect(s.anim).toBe('welcome');
+    expect(s.welcomePlayed).toBe(false);
+  });
 });

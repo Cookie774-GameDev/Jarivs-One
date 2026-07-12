@@ -5,6 +5,9 @@
 
 import type { PetAnimId } from './petStateMachine';
 
+/** Shared runtime speed increase for every Axo and Glitch animation. */
+export const PET_ANIMATION_SPEED_MULTIPLIER = 1.15;
+
 /** Map a desired anim to the reduced-motion fallback. */
 export function mapReducedMotionAnim(anim: PetAnimId): PetAnimId {
   switch (anim) {
@@ -30,6 +33,16 @@ export function reducedMotionFps(anim: PetAnimId, nominal: number): number {
   if (anim === 'walkLeft' || anim === 'walkRight') return Math.min(nominal, 6);
   if (anim === 'welcome') return Math.min(nominal, 8);
   return Math.min(nominal, 6);
+}
+
+/** Apply the shared speed increase, then retain the reduced-motion safety caps. */
+export function petPlaybackFps(
+  anim: PetAnimId,
+  nominal: number,
+  reducedMotion: boolean,
+): number {
+  const accelerated = nominal * PET_ANIMATION_SPEED_MULTIPLIER;
+  return reducedMotion ? reducedMotionFps(anim, accelerated) : accelerated;
 }
 
 export interface Disposable {

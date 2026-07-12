@@ -11,6 +11,25 @@ export function isTauriRuntime(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 }
 
+/** Shared-origin signal consumed by the already-mounted pet-overlay WebView. */
+export const PET_OVERLAY_SHOW_EPOCH_KEY = 'vibespace-pet-overlay-show-epoch';
+export const PET_OVERLAY_SHOW_EVENT = 'vibespace:pet-overlay-show';
+let overlayShowSignalSequence = 0;
+
+function signalPetOverlayShown(): void {
+  const epoch = `${Date.now()}:${++overlayShowSignalSequence}`;
+  try {
+    localStorage.setItem(PET_OVERLAY_SHOW_EPOCH_KEY, epoch);
+  } catch {
+    /* same-window event below remains available */
+  }
+  try {
+    window.dispatchEvent(new CustomEvent(PET_OVERLAY_SHOW_EVENT, { detail: { epoch } }));
+  } catch {
+    /* ignore */
+  }
+}
+
 async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T | null> {
   if (!isTauriRuntime()) return null;
   try {
@@ -24,6 +43,7 @@ async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T
 
 export async function showPetOverlay(): Promise<void> {
   await invoke('pet_show_overlay');
+  signalPetOverlayShown();
 }
 
 export async function hidePetOverlay(): Promise<void> {

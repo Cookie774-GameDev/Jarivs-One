@@ -21,7 +21,7 @@ import {
   sampleStationaryDragVelocity,
   type DragVelocityState,
 } from './petDragVelocity';
-import { disposeAll, mapReducedMotionAnim, reducedMotionFps } from './petLifecycle';
+import { disposeAll, mapReducedMotionAnim, petPlaybackFps } from './petLifecycle';
 import { clampPetPosition, getAnimDef, getPetAnimationsManifest, resolveAtlasUrls } from './petManifest';
 import {
   beginPetPointerGesture,
@@ -32,6 +32,9 @@ import {
 import {
   notifyPetPanelOpenRequested,
   openOrFocusPetMiniPanel,
+  PET_OVERLAY_SHOW_EPOCH_KEY,
+  PET_OVERLAY_SHOW_EVENT,
+  PET_PANEL_OPEN_FLAG_KEY,
   setPetOverlayPosition,
 } from './petTauriBridge';
 import { petPerfRecordDragUpdate, petPerfRecordStateTransition } from './petDevPerf';
@@ -113,6 +116,7 @@ export function PetOverlay({
   const initOnce = React.useRef(false);
   const lifecycleGenerationRef = React.useRef(0);
   const animationRequestRef = React.useRef(0);
+  const welcomeReplayTimerRef = React.useRef(0);
   const onOpenPanelRef = React.useRef(onOpenPanel);
   onOpenPanelRef.current = onOpenPanel;
   const onAnimChangeRef = React.useRef(onAnimChange);
@@ -214,7 +218,7 @@ export function PetOverlay({
         currentAnim.current === animKey &&
         player.isPlaybackReady(playbackKey, urls.jsonUrl)
       ) {
-        const fps = reducedMotion ? reducedMotionFps(resolved, def.fps) : def.fps;
+        const fps = petPlaybackFps(resolved, def.fps, reducedMotion);
         player.setPlaybackFps(fps);
         return;
       }
@@ -227,7 +231,7 @@ export function PetOverlay({
         if (characterIdRef.current !== charId) return;
 
         currentAnim.current = animKey;
-        const fps = reducedMotion ? reducedMotionFps(resolved, def.fps) : def.fps;
+        const fps = petPlaybackFps(resolved, def.fps, reducedMotion);
         player.setAnimation(
           {
             frames: def.frames,
@@ -348,13 +352,53 @@ export function PetOverlay({
           sleeping: false,
         });
       } else if (anim === 'welcome') {
+        const wasWelcome = stateRef.current.anim === 'welcome';
+        currentAnim.current = null;
         setState({ ...createInitialPetState(), welcomePlayed: false, anim: 'welcome' });
+        if (wasWelcome) {
+          void playAnimRef.current('welcome');
+        }
       } else {
         setState({ ...stateRef.current, anim, sleeping: anim === 'sleepingLoop' });
       }
     },
     [setState],
   );
+
+  // A hidden Tauri WebView stays mounted. The main/panel windows signal show,
+  // close, and minimize through shared-origin storage. Debounce the paired
+  // close+show signals so one clean welcome starts after the native window is
+  // visible, while retaining the shared player/canvas.
+  React.useEffect(() => {
+    if (!enabled || !tauriWindowMode) return;
+    const scheduleWelcome = () => {
+      if (welcomeReplayTimerRef.current) {
+        window.clearTimeout(welcomeReplayTimerRef.current);
+      }
+      welcomeReplayTimerRef.current = window.setTimeout(() => {
+        welcomeReplayTimerRef.current = 0;
+        forceAnimation('welcome');
+      }, 160);
+    };
+    const onStorage = (event: StorageEvent) => {
+      const overlayShown =
+        event.key === PET_OVERLAY_SHOW_EPOCH_KEY && typeof event.newValue === 'string';
+      const panelReturned =
+        event.key === PET_PANEL_OPEN_FLAG_KEY && event.oldValue === '1' && event.newValue == null;
+      if (overlayShown || panelReturned) scheduleWelcome();
+    };
+
+    window.addEventListener('storage', onStorage);
+    window.addEventListener(PET_OVERLAY_SHOW_EVENT, scheduleWelcome);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener(PET_OVERLAY_SHOW_EVENT, scheduleWelcome);
+      if (welcomeReplayTimerRef.current) {
+        window.clearTimeout(welcomeReplayTimerRef.current);
+        welcomeReplayTimerRef.current = 0;
+      }
+    };
+  }, [enabled, forceAnimation, tauriWindowMode]);
 
   // Diagnostics: force animation from Settings → Pets
   React.useEffect(() => {
@@ -446,8 +490,11 @@ export function PetOverlay({
       );
       const baseFps = def?.fps ?? 12;
       const fps = reducedMotion
-        ? reducedMotionFps(walkAnim === 'idlePrimary' ? 'idlePrimary' : walkAnim, baseFps)
-        : dragWalkFpsFromVelocity(vx, baseFps);
+        ? petPlaybackFps(walkAnim === 'idlePrimary' ? 'idlePrimary' : walkAnim, baseFps, true)
+        : dragWalkFpsFromVelocity(
+            vx,
+            petPlaybackFps(walkAnim === 'idlePrimary' ? 'idlePrimary' : walkAnim, baseFps, false),
+          );
       // Speed-only update; do not reset animation phase.
       playerRef.current.setPlaybackFps(fps);
     },
