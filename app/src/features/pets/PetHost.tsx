@@ -1,11 +1,9 @@
 /**
  * Main-window pet coordinator.
  *
- * In Tauri: shows the dedicated transparent `pet-overlay` window (no main-shell
- * embed — that path painted an opaque rectangle from body CSS / WebView).
- * Browser fallback: embeds PetOverlay in the main document.
- *
- * Mini-panel opens from the main shell (or pet-mini-panel window).
+ * Tauri: drives the transparent `pet-overlay` window, with an in-app
+ * transparent sprite fallback if the overlay fails to show (so selecting a
+ * pet never results in "nothing"). Browser: embeds PetOverlay only.
  */
 import * as React from 'react';
 import { PetOverlay } from './PetOverlay';
@@ -13,6 +11,7 @@ import { PetMiniPanel } from './PetMiniPanel';
 import {
   claimPetHostInstance,
   hidePetOverlay,
+  isPetOverlayVisible,
   isTauriRuntime,
   releasePetHostInstance,
   showPetOverlay,
@@ -40,6 +39,8 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedProp }: Pe
   const [animLabel, setAnimLabel] = React.useState<string>('welcome');
   const [claimed, setClaimed] = React.useState(false);
   const [tauri, setTauri] = React.useState(false);
+  /** When true, also mount an in-app transparent sprite (overlay missing/failed). */
+  const [useInlineFallback, setUseInlineFallback] = React.useState(false);
 
   React.useEffect(() => {
     const a = installPetPresentationStorageSync();
@@ -60,15 +61,39 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedProp }: Pe
     return () => releasePetHostInstance();
   }, []);
 
-  // Show/hide the transparent pet-overlay WebView (never embed under opaque main CSS).
+  // Show/hide the transparent pet-overlay WebView.
   React.useEffect(() => {
     if (!claimed || !tauri) return;
     const wantVisible = enabled && overlayVisible && !panelOpen;
-    if (wantVisible) {
-      void showPetOverlay().catch((err) => console.warn('[pets] show overlay', err));
-    } else {
-      void hidePetOverlay().catch(() => undefined);
-    }
+    let cancelled = false;
+
+    const sync = async () => {
+      if (wantVisible) {
+        await showPetOverlay();
+        // Confirm visibility; if the separate WebView failed, fall back inline.
+        await new Promise((r) => setTimeout(r, 250));
+        if (cancelled) return;
+        const visible = await isPetOverlayVisible();
+        if (!cancelled) {
+          setUseInlineFallback(!visible);
+          if (!visible) {
+            console.warn('[pets] pet-overlay not visible — using in-app fallback sprite');
+          }
+        }
+      } else {
+        await hidePetOverlay().catch(() => undefined);
+        if (!cancelled) setUseInlineFallback(false);
+      }
+    };
+
+    void sync().catch((err) => {
+      console.warn('[pets] show overlay', err);
+      if (!cancelled && wantVisible) setUseInlineFallback(true);
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [claimed, tauri, enabled, overlayVisible, panelOpen]);
 
   React.useEffect(() => {
@@ -92,33 +117,44 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedProp }: Pe
       usePetSettingsStore.getState().setOverlayVisible(true);
       setPanelOpen(true);
     };
+    const onShow = () => {
+      if (!usePetSettingsStore.getState().enabled) {
+        usePetSettingsStore.getState().setEnabled(true);
+      }
+      usePetSettingsStore.getState().setOverlayVisible(true);
+      // Selecting / "Show Pet" must surface the sprite, not leave panel latched closed.
+      setPanelOpen(false);
+      void showPetOverlay().catch(() => setUseInlineFallback(true));
+    };
+    const onClosePanel = () => setPanelOpen(false);
     window.addEventListener('jarvis:pet:open-panel', onOpen);
-    return () => window.removeEventListener('jarvis:pet:open-panel', onOpen);
+    window.addEventListener('jarvis:pet:show', onShow);
+    window.addEventListener('jarvis:pet:close-panel', onClosePanel);
+    return () => {
+      window.removeEventListener('jarvis:pet:open-panel', onOpen);
+      window.removeEventListener('jarvis:pet:show', onShow);
+      window.removeEventListener('jarvis:pet:close-panel', onClosePanel);
+    };
   }, []);
 
   if (!claimed || !enabled || !overlayVisible) return null;
 
-  // Tauri: pet lives only in transparent pet-overlay WebView.
-  // Mini panel is the separate pet-mini-panel window (opened via openOrFocusPetPanel).
-  // Do NOT mount an in-app mini panel here — that would reintroduce an opaque shell.
-  if (tauri) {
-    return (
-      <div
-        data-pet-host="tauri"
-        data-pet-instance="1"
-        data-pet-panel-open={panelOpen ? 'true' : 'false'}
-        data-pet-renderer-bg-alpha="0"
-        hidden
-        aria-hidden
-      />
-    );
-  }
+  const showInlineSprite = !panelOpen && (!tauri || useInlineFallback);
 
-  // Browser / non-Tauri fallback: in-document floating sprite.
-  const showSprite = !panelOpen;
   return (
     <>
-      {showSprite && (
+      {tauri && (
+        <div
+          data-pet-host="tauri"
+          data-pet-instance="1"
+          data-pet-panel-open={panelOpen ? 'true' : 'false'}
+          data-pet-inline-fallback={useInlineFallback ? 'true' : 'false'}
+          data-pet-renderer-bg-alpha="0"
+          hidden
+          aria-hidden
+        />
+      )}
+      {showInlineSprite && (
         <PetOverlay
           enabled
           reducedMotion={reducedMotion}
@@ -132,13 +168,15 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedProp }: Pe
           idleFunIntervalMs={idleFunIntervalMs}
         />
       )}
-      <PetMiniPanel
-        open={panelOpen}
-        onClose={closePanel}
-        onMinimize={() => setPanelOpen(false)}
-        animLabel={animLabel}
-        resizable
-      />
+      {!tauri && (
+        <PetMiniPanel
+          open={panelOpen}
+          onClose={closePanel}
+          onMinimize={() => setPanelOpen(false)}
+          animLabel={animLabel}
+          resizable
+        />
+      )}
     </>
   );
 }

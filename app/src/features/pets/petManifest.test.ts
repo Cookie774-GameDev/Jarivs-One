@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { getAnimDef, getPetAnimationsManifest, resolveAtlasUrls } from './petManifest';
+import {
+  getAnimDef,
+  getBundledAtlasModuleCount,
+  getPetAnimationsManifest,
+  resolveAtlasUrls,
+} from './petManifest';
 
 const REQUIRED = [
   'walkLeft',
@@ -42,8 +47,8 @@ describe('pet animations manifest (shipped assets)', () => {
 
     const urls = resolveAtlasUrls(def!, 'axo', def!.atlas2x);
 
-    expect(urls.jsonUrl).toContain('/vibespace-axolotl-glitch/atlases/idlePrimary@2x.json');
-    expect(urls.imageUrl).toContain('/vibespace-axolotl-glitch/atlases/idlePrimary@2x.png');
+    expect(urls.jsonUrl).toMatch(/vibespace-axolotl-glitch\/atlases\/idlePrimary@2x\.json/);
+    expect(urls.imageUrl).toMatch(/vibespace-axolotl-glitch\/atlases\/idlePrimary@2x\.png/);
   });
 
   it('resolves GLITCH? atlases from the monochrome pixel pack folder', () => {
@@ -52,7 +57,17 @@ describe('pet animations manifest (shipped assets)', () => {
 
     const urls = resolveAtlasUrls(def!, 'glitch', def!.atlas2x);
 
-    expect(urls.jsonUrl).toContain('/vibespace-axolotl-pixel/atlases/idlePrimary@2x.json');
-    expect(urls.imageUrl).toContain('/vibespace-axolotl-pixel/atlases/idlePrimary@2x.png');
+    expect(urls.jsonUrl).toMatch(/vibespace-axolotl-pixel\/atlases\/idlePrimary@2x\.json/);
+    expect(urls.imageUrl).toMatch(/vibespace-axolotl-pixel\/atlases\/idlePrimary@2x\.png/);
+  });
+
+  it('bundles runtime atlas modules so production loads do not 404', () => {
+    // 2 characters × 8 anims × 2 scales × (json+png) = 64 modules expected at least
+    expect(getBundledAtlasModuleCount()).toBeGreaterThanOrEqual(32);
+    const axo = resolveAtlasUrls(getAnimDef('idlePrimary', 'axo')!, 'axo');
+    expect(axo.jsonUrl.length).toBeGreaterThan(0);
+    expect(axo.imageUrl.length).toBeGreaterThan(0);
+    expect(axo.jsonUrl).toMatch(/idlePrimary@1x\.json/);
+    expect(axo.imageUrl).toMatch(/idlePrimary@1x\.png/);
   });
 });

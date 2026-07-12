@@ -16,7 +16,9 @@ import {
 import { createPetScheduler } from './petScheduler';
 import {
   createDragVelocityState,
+  dragWalkFpsFromVelocity,
   sampleDragVelocity,
+  sampleStationaryDragVelocity,
   type DragVelocityState,
 } from './petDragVelocity';
 import { disposeAll, mapReducedMotionAnim, reducedMotionFps } from './petLifecycle';
@@ -260,6 +262,20 @@ export function PetOverlay({
     void openOrFocusPetPanel(left, top).catch(() => undefined);
   }, [onOpenPanel, pos.left, pos.top, setState, tauriWindowMode]);
 
+  const applyWalkFromVelocity = React.useCallback(
+    (walkAnim: 'walkLeft' | 'walkRight' | 'idlePrimary', vx: number) => {
+      setState(reducePetEvent(stateRef.current, { type: 'drag_move', walk: walkAnim }));
+      // Cursor speed → walk playback rate (still / slow / fast).
+      const def = getAnimDef(walkAnim === 'idlePrimary' ? 'idlePrimary' : walkAnim, characterId);
+      const baseFps = def?.fps ?? 12;
+      const fps = reducedMotion
+        ? reducedMotionFps(walkAnim === 'idlePrimary' ? 'idlePrimary' : walkAnim, baseFps)
+        : dragWalkFpsFromVelocity(vx, baseFps);
+      playerRef.current.setPlaybackFps(fps);
+    },
+    [characterId, reducedMotion, setState],
+  );
+
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.button === 2) return; // right-click → context menu only
     setCtxMenu(null);
@@ -302,7 +318,7 @@ export function PetOverlay({
         top: d.originTop + dy,
       });
     }
-    setState(reducePetEvent(stateRef.current, { type: 'drag_move', walk: walkAnim }));
+    applyWalkFromVelocity(walkAnim, vel.vx);
   };
 
   const onPointerUp = (e: React.PointerEvent) => {
@@ -316,6 +332,24 @@ export function PetOverlay({
       openPanelNow();
     }
   };
+
+  // While the button is held still, pointermove stops firing — sample stationary
+  // velocity only after a short gap so live moves are not zeroed every frame.
+  React.useEffect(() => {
+    if (!enabled) return;
+    let raf = 0;
+    const tick = (now: number) => {
+      const d = dragRef.current;
+      if (d?.active && now - d.vel.lastT >= 40) {
+        const { state: vel, walkAnim } = sampleStationaryDragVelocity(d.vel, now);
+        d.vel = vel;
+        applyWalkFromVelocity(walkAnim, vel.vx);
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [enabled, applyWalkFromVelocity]);
 
   if (!enabled) return null;
 

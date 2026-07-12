@@ -27,10 +27,13 @@ export function PetAccountPanel({ className }: { className?: string }) {
   const showPetNow = () => {
     setEnabled(true);
     setOverlayVisible(true);
+    // Force main PetHost to clear panel latch and show the sprite again.
+    window.dispatchEvent(new CustomEvent('jarvis:pet:show'));
   };
 
   const openPanel = () => {
-    showPetNow();
+    setEnabled(true);
+    setOverlayVisible(true);
     window.dispatchEvent(new CustomEvent('jarvis:pet:open-panel'));
   };
 

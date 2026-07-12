@@ -1389,3 +1389,28 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Verification** | pets tests 57/57 PASS; typecheck PASS; cargo check PASS (Color API); do not stage install.ps1 or Cargo.toml. |
 | **Locks** | released after push |
 
+
+#### 2026-07-11 - Pet show fix + cream AXO + drag stop
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-11 22:40 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Status** | in-progress |
+| **Change** | Fix pet not appearing on select (panel latch + overlay fallback + bundled atlas URLs); AXO cream preview + full-color pack; drag walk stops when cursor still and speed follows velocity. |
+| **Locks** | app/src/features/pets/**, app/src/assets/pets/characters/vibespace-axolotl-glitch/**, docs/AGENT_COORDINATION.md |
+| **Constraints** | Do not stage install/install.ps1 or Cargo.toml; draft PR only. |
+
+
+#### 2026-07-11 - Pet show fix + cream AXO + drag stop (complete)
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-11 22:45 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Status** | complete |
+| **Change** | PetHost: jarvis:pet:show clears panel latch; inline fallback if overlay missing; atlas URLs via import.meta.glob; AXO cream portrait + full-color pack; GLITCH monochrome; stationary drag tick + velocity FPS. |
+| **Verification** | pets 58/58 PASS; typecheck PASS |
+| **Locks** | released |
+| **Risks** | Runtime AXO animation frames are full-color pack (cream/pink/orange), not a frame-by-frame remaster of the ChatGPT helmet still; preview uses the cream reference image. Full re-authoring of every anim from that still needs a separate art pass. |
+

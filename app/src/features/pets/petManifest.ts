@@ -1,5 +1,6 @@
 /**
  * Load typed animation manifest for the selected pet character pack.
+ * Atlas URLs are resolved via Vite glob so production bundles include every PNG/JSON.
  */
 import type { PetAnimId } from './petStateMachine';
 import axoAnimations from '@/assets/pets/characters/vibespace-axolotl-pixel/animations.json';
@@ -41,14 +42,37 @@ export interface PetAnimationsManifest {
 }
 
 /**
- * AXO (default) → full-color glitch pack atlases.
- * GLITCH? → monochrome pixel pack atlases.
- * Folder names on disk are historical; character mapping is authoritative.
+ * AXO (default) → full-color cream pack (`vibespace-axolotl-glitch` folder — historical name).
+ * GLITCH? → monochrome pipeline pack (`vibespace-axolotl-pixel`).
  */
 const MANIFEST_BY_CHAR: Record<PetCharacterId, PetAnimationsManifest> = {
   axo: glitchAnimations as PetAnimationsManifest,
   glitch: axoAnimations as PetAnimationsManifest,
 };
+
+/**
+ * Eager URL map for every runtime atlas. Dynamic `new URL(..., import.meta.url)`
+ * with a variable folder can 404 in the packaged app; glob is reliable.
+ */
+const ATLAS_URL_MODULES = import.meta.glob(
+  '../../assets/pets/characters/*/atlases/*',
+  {
+    eager: true,
+    query: '?url',
+    import: 'default',
+  },
+) as Record<string, string>;
+
+function atlasAssetUrl(folder: string, fileName: string): string | null {
+  const needle = `/characters/${folder}/atlases/${fileName}`;
+  for (const [key, url] of Object.entries(ATLAS_URL_MODULES)) {
+    const norm = key.replace(/\\/g, '/');
+    if (norm.endsWith(needle) || norm.includes(`${folder}/atlases/${fileName}`)) {
+      return url;
+    }
+  }
+  return null;
+}
 
 export function getSelectedCharacterId(): PetCharacterId {
   try {
@@ -72,7 +96,7 @@ export function getAnimDef(
   return getPetAnimationsManifest(characterId).states[id];
 }
 
-/** Resolve atlas URL for a character folder. */
+/** Resolve atlas URL for a character folder (production-safe via glob). */
 export function resolveAtlasUrls(
   def: PetAnimStateDef,
   characterId?: PetCharacterId,
@@ -82,9 +106,23 @@ export function resolveAtlasUrls(
   const folder = PET_CHARACTERS[id]?.assetFolder ?? 'vibespace-axolotl-glitch';
   const jsonFile = (atlasPath ?? def.atlas).replace(/^atlases\//, '');
   const imageFile = jsonFile.replace(/\.json$/, '.png');
+
+  const jsonUrl = atlasAssetUrl(folder, jsonFile);
+  const imageUrl = atlasAssetUrl(folder, imageFile);
+
+  if (jsonUrl && imageUrl) {
+    return { jsonUrl, imageUrl };
+  }
+
+  // Dev fallback if glob key shape differs
   const root = `../../assets/pets/characters/${folder}/atlases/`;
   return {
-    jsonUrl: new URL(`${root}${jsonFile}`, import.meta.url).href,
-    imageUrl: new URL(`${root}${imageFile}`, import.meta.url).href,
+    jsonUrl: jsonUrl ?? new URL(`${root}${jsonFile}`, import.meta.url).href,
+    imageUrl: imageUrl ?? new URL(`${root}${imageFile}`, import.meta.url).href,
   };
+}
+
+/** Exposed for tests — count of bundled atlas modules. */
+export function getBundledAtlasModuleCount(): number {
+  return Object.keys(ATLAS_URL_MODULES).length;
 }

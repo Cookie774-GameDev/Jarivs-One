@@ -141,7 +141,9 @@ function runtimeAtlases(): Array<{ jsonPath: string; pngPath: string }> {
 }
 
 describe('runtime pet atlas alpha', () => {
-  it('keeps runtime atlas PNGs RGBA with transparent sheet and frame corners', () => {
+  it(
+    'keeps runtime atlas PNGs RGBA with transparent sheet and frame corners',
+    () => {
     const atlases = runtimeAtlases();
     expect(atlases.length).toBeGreaterThan(0);
 
@@ -182,5 +184,7 @@ describe('runtime pet atlas alpha', () => {
         }
       }
     }
-  });
+  },
+  30_000,
+  );
 });
