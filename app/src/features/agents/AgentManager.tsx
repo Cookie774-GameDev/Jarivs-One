@@ -189,6 +189,8 @@ export function AgentManager() {
   }, [agents]);
 
   const [selectedId, setSelectedId] = React.useState<AgentId | null>(null);
+  const selectedIdRef = React.useRef<AgentId | null>(selectedId);
+  selectedIdRef.current = selectedId;
 
   // Auto-select the first agent when the list materialises or the current one
   // is removed.
@@ -372,12 +374,14 @@ export function AgentManager() {
         ? await agentRepo.update(selectedAgent.id, patch)
         : await agentRepo.create({ ...selectedAgent, ...patch, id: selectedAgent.id });
       registerAgent(saved);
-      const syncedDraft = agentToDraft(saved);
-      setDraft(syncedDraft);
-      setBaseline(syncedDraft);
-      draftRef.current = syncedDraft;
-      baselineRef.current = syncedDraft;
-      setSaveState('saved');
+      if (selectedIdRef.current === selectedAgent.id) {
+        const syncedDraft = agentToDraft(saved);
+        setDraft(syncedDraft);
+        setBaseline(syncedDraft);
+        draftRef.current = syncedDraft;
+        baselineRef.current = syncedDraft;
+        setSaveState('saved');
+      }
       toast.success('Saved', `Updated "${saved.name}"`);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Could not save this agent.';
