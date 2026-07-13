@@ -55,6 +55,9 @@ describe('buildAddendumText', () => {
     const text = buildAddendumText();
     expect(text).toContain('nav.chat');
     expect(text).toContain('terminal.swarm');
+    expect(text).toContain('terminal.fleet');
+    expect(text).toContain('target total');
+    expect(text).toContain('terminal.bulkOpen');
     expect(text).toContain('Prefer `terminal.powershell`');
     expect(text).toContain('voice.setEngine');
     expect(text).toContain('workflow.run');

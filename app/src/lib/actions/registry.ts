@@ -57,7 +57,11 @@ import {
   enqueueTerminalCommand,
   requestTerminalSwarm,
   enqueueTerminalClose,
+  requestTerminalFleet,
+  MAX_TERMINAL_FLEET_BATCH_SIZE,
+  MAX_TERMINAL_FLEET_STAGGER_DELAY_MS,
 } from '@/features/terminals/terminalCommandQueue';
+import { invoke } from '@tauri-apps/api/core';
 import { setTerminalRoleBriefing } from '@/features/terminals/terminalRoleBriefings';
 import type { TerminalRef } from '@/features/terminals/terminalRefs';
 import { eventRepo, taskRepo } from '@/lib/db/repositories';
@@ -82,6 +86,14 @@ import {
 } from '@/features/schedule/jarvisSchedules';
 import { formatChatModelSelectionLabel, modelSelectionContextFromAuth } from '@/lib/ai/modelSelection';
 import { markTerminalExecution } from '@/features/terminals/terminalExecutionStore';
+import {
+  TERMINAL_CLI_PRESETS,
+  getTerminalCliPreset,
+  type TerminalCliPresetId,
+} from '@/features/terminals/terminalCliPresets';
+import { validateTerminalFleetCustomCommand } from '@/features/terminals/terminalFleet';
+import { useTerminalFleetStore } from '@/features/terminals/terminalFleetStore';
+import { MAX_PANES } from '@/features/terminals/paneTree';
 
 /* --------------------------------------------------------------------------
  * Helpers
@@ -516,6 +528,167 @@ const TERMINAL_ACTIONS: ActionDef[] = [
         );
       }
       return ok('Terminal transcript captured.', block);
+    },
+  },
+  {
+    id: 'terminal.fleet',
+    category: 'terminal',
+    label: 'Terminal Fleet',
+    description:
+      'Safely reach a target total terminal count with a verified CLI preset or reviewed custom command. Occupied and uncertain panes are never changed.',
+    icon: Layers,
+    destructive: true,
+    params: [
+      {
+        key: 'targetTotal',
+        label: 'Target total',
+        type: 'number',
+        required: true,
+        default: 4,
+        help: `Desired total after completion, not a number of new panes. Maximum ${MAX_PANES}.`,
+      },
+      {
+        key: 'preset',
+        label: 'CLI preset',
+        type: 'select',
+        required: true,
+        default: 'claude',
+        options: [
+          ...TERMINAL_CLI_PRESETS.map((preset) => ({
+            value: preset.id,
+            label: preset.displayName,
+          })),
+          { value: 'custom', label: 'Custom command' },
+        ],
+        help: 'Known presets are checked on PATH before any Fleet work is queued.',
+      },
+      {
+        key: 'command',
+        label: 'Custom command',
+        type: 'string',
+        help: 'Required only for Custom command. Shell chaining, redirects, substitutions, and controls are rejected.',
+      },
+      {
+        key: 'cwd',
+        label: 'Working directory',
+        type: 'string',
+        help: 'Optional project folder for the safely selected new or reusable panes.',
+      },
+      {
+        key: 'batchSize',
+        label: 'Batch size',
+        type: 'number',
+        default: 2,
+        help: 'How many panes may start in one bounded batch.',
+      },
+      {
+        key: 'staggerDelayMs',
+        label: 'Stagger delay (ms)',
+        type: 'number',
+        default: 200,
+        help: 'Pause between launch batches to keep the UI responsive.',
+      },
+      {
+        key: 'saveCustomPreset',
+        label: 'Save custom preset',
+        type: 'boolean',
+        default: false,
+        help: 'Save an approved custom command into the existing local/sync-compatible Tools system.',
+      },
+      {
+        key: 'customPresetName',
+        label: 'Custom preset name',
+        type: 'string',
+        help: 'Required when Save custom preset is enabled.',
+      },
+    ],
+    run: async (params) => {
+      const targetTotal = Math.min(
+        MAX_PANES,
+        Math.max(0, Math.floor(typeof params.targetTotal === 'number' ? params.targetTotal : 0)),
+      );
+      const presetId = typeof params.preset === 'string' ? params.preset : 'claude';
+      const cwd = typeof params.cwd === 'string' ? params.cwd.trim() : undefined;
+      if (cwd) {
+        const meta = rejectShellMetaChars(cwd);
+        if (meta) return fail(meta);
+      }
+      const batchSize = Math.min(
+        MAX_TERMINAL_FLEET_BATCH_SIZE,
+        Math.max(1, Math.floor(typeof params.batchSize === 'number' ? params.batchSize : 2)),
+      );
+      const staggerDelayMs = Math.min(
+        MAX_TERMINAL_FLEET_STAGGER_DELAY_MS,
+        Math.max(
+          0,
+          Math.floor(typeof params.staggerDelayMs === 'number' ? params.staggerDelayMs : 200),
+        ),
+      );
+
+      let selection:
+        | { kind: 'preset'; presetId: TerminalCliPresetId }
+        | { kind: 'custom'; command: string };
+      if (presetId === 'custom') {
+        const custom = validateTerminalFleetCustomCommand(
+          typeof params.command === 'string' ? params.command : '',
+        );
+        if (!custom.ok) {
+          return fail(`Custom Fleet command is invalid (${custom.reason}).`);
+        }
+        selection = { kind: 'custom', command: custom.command };
+
+        if (params.saveCustomPreset === true) {
+          const name =
+            typeof params.customPresetName === 'string'
+              ? params.customPresetName.trim()
+              : '';
+          if (!name) return fail('A custom preset name is required before saving.');
+          const { saveTerminalFleetPreset } = await import(
+            '@/features/tools/toolStore'
+          );
+          saveTerminalFleetPreset({
+            name,
+            command: custom.command,
+            targetTotal,
+            cwd,
+            batchSize,
+            staggerDelayMs,
+          });
+        }
+      } else {
+        const preset = getTerminalCliPreset(presetId);
+        if (!preset) return fail(`Unknown Terminal Fleet preset: ${presetId}.`);
+        let availability: { exists?: boolean; reason?: string };
+        try {
+          availability = await invoke('terminal_command_exists', {
+            name: preset.executable,
+          });
+        } catch {
+          return fail(
+            `Could not safely verify whether ${preset.displayName} is installed. No terminals were changed.`,
+          );
+        }
+        if (availability.exists !== true) {
+          return fail(
+            `${preset.displayName} is not available on PATH. Install or configure it using ${preset.installUrl}; no terminals were changed.`,
+          );
+        }
+        selection = { kind: 'preset', presetId: preset.id };
+      }
+
+      const requestId = requestTerminalFleet({
+        targetTotal,
+        selection,
+        cwd,
+        batchSize,
+        staggerDelayMs,
+      });
+      useTerminalFleetStore.getState().begin({ requestId, targetTotal });
+      navigateTo('terminal');
+      return ok(
+        `Queued Terminal Fleet to safely reach ${targetTotal} total terminal${targetTotal === 1 ? '' : 's'}.`,
+        { state: 'queued', requestId, targetTotal },
+      );
     },
   },
   {

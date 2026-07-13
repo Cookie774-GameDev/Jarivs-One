@@ -9,6 +9,12 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
+const tauriMock = vi.hoisted(() => ({
+  invoke: vi.fn(),
+}));
+
+vi.mock('@tauri-apps/api/core', () => tauriMock);
+
 // Avoid pulling the real toast module (it mounts a portal in jsdom).
 vi.mock('@/components/ui/toast', () => ({
   toast: {
@@ -23,6 +29,7 @@ import { runAction, resolveAction, getAllActions } from '@/lib/actions/runner';
 import { toast } from '@/components/ui/toast';
 import { useToolStore } from '@/features/tools/toolStore';
 import { useTerminalCommandQueue } from '@/features/terminals/terminalCommandQueue';
+import { useTerminalFleetStore } from '@/features/terminals/terminalFleetStore';
 import { useDevConsoleStore } from '@/features/dev-console';
 
 describe('resolveAction', () => {
@@ -31,6 +38,19 @@ describe('resolveAction', () => {
     expect(a).toBeDefined();
     expect(a?.id).toBe('nav.chat');
     expect(a?.category).toBe('navigation');
+  });
+
+  it('exposes exactly one code-owned approval-gated Terminal Fleet action', () => {
+    const matches = getAllActions().filter((action) => action.id === 'terminal.fleet');
+
+    expect(matches).toHaveLength(1);
+    expect(matches[0]).toMatchObject({
+      category: 'terminal',
+      label: 'Terminal Fleet',
+      destructive: true,
+    });
+    expect(matches[0]?.autoApprove).not.toBe(true);
+    expect(useToolStore.getState().tools).toEqual([]);
   });
 
   it('returns undefined for unknown ids', () => {
@@ -89,9 +109,62 @@ describe('getAllActions', () => {
 describe('runAction', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    tauriMock.invoke.mockImplementation(async (command: string) => {
+      if (command === 'terminal_command_exists') {
+        return { exists: true, reason: 'available' };
+      }
+      return undefined;
+    });
     useToolStore.setState({ tools: [] });
     useTerminalCommandQueue.getState().clear();
+    useTerminalFleetStore.getState().reset();
     useDevConsoleStore.getState().clear();
+  });
+
+  it('queues one target-total Fleet transaction and begins bounded progress', async () => {
+    const result = await runAction(
+      'terminal.fleet',
+      {
+        targetTotal: '8',
+        preset: 'claude',
+        batchSize: '2',
+        staggerDelayMs: '125',
+      },
+      { source: 'user' },
+      { emitToast: false },
+    );
+
+    expect(result.ok).toBe(true);
+    const [queued] = useTerminalCommandQueue.getState().queue;
+    expect(queued).toMatchObject({
+      kind: 'fleet',
+      targetTotal: 8,
+      selection: { kind: 'preset', presetId: 'claude' },
+      batchSize: 2,
+      staggerDelayMs: 125,
+    });
+    if (!queued || queued.kind !== 'fleet') throw new Error('expected Fleet request');
+    expect(useTerminalFleetStore.getState().records.at(-1)).toMatchObject({
+      requestId: queued.requestId,
+      targetTotal: 8,
+      status: 'queued',
+    });
+  });
+
+  it('refuses a missing preset CLI without opening or changing terminals', async () => {
+    tauriMock.invoke.mockResolvedValue({ exists: false, reason: 'not-found' });
+
+    const result = await runAction(
+      'terminal.fleet',
+      { targetTotal: 10, preset: 'grok' },
+      { source: 'user' },
+      { emitToast: false },
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/Grok Build.*not installed|not available/i);
+    expect(useTerminalCommandQueue.getState().queue).toEqual([]);
+    expect(useTerminalFleetStore.getState().records).toEqual([]);
   });
 
   it('returns a structured error for unknown ids and toasts by default', async () => {

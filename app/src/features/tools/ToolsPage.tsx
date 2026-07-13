@@ -25,7 +25,10 @@ import {
   Sparkles,
   Info,
   Workflow,
+  Terminal as TerminalIcon,
+  X,
 } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -50,6 +53,18 @@ import {
 } from './toolStore';
 import { getBuiltinActions, runAction } from '@/lib/actions';
 import type { ActionDef, ActionParam } from '@/lib/actions';
+import {
+  TERMINAL_CLI_PRESETS,
+  getTerminalCliPreset,
+  type TerminalCliPresetId,
+} from '@/features/terminals/terminalCliPresets';
+import { validateTerminalFleetCustomCommand } from '@/features/terminals/terminalFleet';
+import { useTerminalFleetStore } from '@/features/terminals/terminalFleetStore';
+import { useTerminalCommandQueue } from '@/features/terminals/terminalCommandQueue';
+import { countLeaves } from '@/features/terminals/paneTree';
+import { getLiveTree } from '@/features/terminals/terminalLiveCache';
+import { loadTerminalTreeForProject } from '@/features/terminals/terminalProjectMove';
+import { useAuthStore } from '@/stores/auth';
 
 /* --------------------------------------------------------------------------
  * Quick-start templates
@@ -126,6 +141,354 @@ function summariseParams(params: Record<string, unknown>): string {
 function summariseSteps(steps: CustomToolStep[] | undefined): string {
   if (!steps?.length) return '';
   return steps.map((step, index) => `${index + 1}. ${step.label ?? step.action}`).join(' -> ');
+}
+
+type FleetPresetChoice = TerminalCliPresetId | 'custom';
+type FleetAvailability = 'checking' | 'available' | 'missing' | 'error';
+
+function TerminalFleetCard() {
+  const projectId = useAuthStore((state) => state.projectId) ?? null;
+  const records = useTerminalFleetStore((state) => state.records);
+  const [targetTotal, setTargetTotal] = React.useState(4);
+  const [presetId, setPresetId] = React.useState<FleetPresetChoice>('claude');
+  const [command, setCommand] = React.useState('');
+  const [cwd, setCwd] = React.useState('');
+  const [batchSize, setBatchSize] = React.useState(2);
+  const [staggerDelayMs, setStaggerDelayMs] = React.useState(200);
+  const [saveCustomPreset, setSaveCustomPreset] = React.useState(false);
+  const [customPresetName, setCustomPresetName] = React.useState('');
+  const [submitting, setSubmitting] = React.useState(false);
+  const [requestId, setRequestId] = React.useState<string | null>(null);
+  const [availability, setAvailability] = React.useState<
+    Partial<Record<TerminalCliPresetId, FleetAvailability>>
+  >({});
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setAvailability(
+      Object.fromEntries(
+        TERMINAL_CLI_PRESETS.map((preset) => [preset.id, 'checking']),
+      ),
+    );
+    void Promise.all(
+      TERMINAL_CLI_PRESETS.map(async (preset) => {
+        try {
+          const result = await invoke<{ exists?: boolean }>(
+            'terminal_command_exists',
+            { name: preset.executable },
+          );
+          return [
+            preset.id,
+            result.exists === true ? 'available' : 'missing',
+          ] as const;
+        } catch {
+          return [preset.id, 'error'] as const;
+        }
+      }),
+    ).then((results) => {
+      if (!cancelled) setAvailability(Object.fromEntries(results));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const selectedPreset =
+    presetId === 'custom' ? null : getTerminalCliPreset(presetId);
+  const selectedAvailability =
+    presetId === 'custom' ? 'available' : availability[presetId] ?? 'checking';
+  const customValidation =
+    presetId === 'custom'
+      ? validateTerminalFleetCustomCommand(command)
+      : { ok: true as const, command: '' };
+  const latestRecord = requestId
+    ? records.find((record) => record.requestId === requestId)
+    : records.at(-1);
+  const terminalStatus = latestRecord
+    ? ['complete', 'partial', 'cancelled', 'failed'].includes(latestRecord.status)
+    : true;
+  const currentTree =
+    getLiveTree(projectId) ?? loadTerminalTreeForProject(projectId);
+  const currentCount = countLeaves(currentTree);
+  const canStart =
+    !submitting &&
+    selectedAvailability === 'available' &&
+    customValidation.ok &&
+    (!saveCustomPreset || Boolean(customPresetName.trim()));
+
+  const startFleet = async () => {
+    if (!canStart) return;
+    setSubmitting(true);
+    try {
+      const result = await runAction(
+        'terminal.fleet',
+        {
+          targetTotal,
+          preset: presetId,
+          command: presetId === 'custom' ? command : '',
+          cwd,
+          batchSize,
+          staggerDelayMs,
+          saveCustomPreset,
+          customPresetName,
+        },
+        { source: 'user' },
+      );
+      if (result.ok) {
+        const nextRequestId = (
+          result.data as { requestId?: unknown } | undefined
+        )?.requestId;
+        if (typeof nextRequestId === 'string') setRequestId(nextRequestId);
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const cancelFleet = () => {
+    if (!latestRecord) return;
+    useTerminalCommandQueue.getState().cancel(latestRecord.requestId);
+    useTerminalFleetStore.getState().cancel(latestRecord.requestId);
+  };
+
+  return (
+    <section
+      aria-labelledby="terminal-fleet-heading"
+      className="mb-8 overflow-hidden rounded-lg border border-accent-copper/30 bg-paper shadow-soft"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border bg-panel px-4 py-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="rounded-md border border-accent-copper/30 bg-accent-copper/10 p-2 text-accent-copper">
+            <TerminalIcon className="h-4 w-4" aria-hidden />
+          </div>
+          <div>
+            <div className="text-metadata uppercase tracking-wider text-accent-copper">
+              Built in · approval gated
+            </div>
+            <h2 id="terminal-fleet-heading" className="font-display text-title text-foreground">
+              Terminal Fleet
+            </h2>
+            <p className="mt-1 max-w-2xl text-secondary text-muted-foreground">
+              Reach a target total without typing into occupied or uncertain terminals.
+              Known CLIs are checked first and are never installed automatically.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 font-mono text-metadata" aria-label="Current and target terminal totals">
+          <span className="rounded border border-border bg-elevated px-2 py-1">
+            current {currentCount}
+          </span>
+          <span aria-hidden className="text-accent-copper">→</span>
+          <span className="rounded border border-accent-copper/40 bg-accent-copper/10 px-2 py-1 text-foreground">
+            target {targetTotal}
+          </span>
+        </div>
+      </div>
+
+      <div className="grid gap-4 p-4 lg:grid-cols-[1.25fr_0.75fr]">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <Label htmlFor="fleet-target" className="text-metadata uppercase tracking-wide">
+              Target total
+            </Label>
+            <Input
+              id="fleet-target"
+              type="number"
+              min={0}
+              max={10}
+              value={targetTotal}
+              onChange={(event) => setTargetTotal(Number(event.target.value))}
+            />
+            <p className="mt-1 text-metadata text-muted-foreground">
+              Existing occupied terminals count toward this number.
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="fleet-preset" className="text-metadata uppercase tracking-wide">
+              CLI preset
+            </Label>
+            <select
+              id="fleet-preset"
+              value={presetId}
+              onChange={(event) => setPresetId(event.target.value as FleetPresetChoice)}
+              className={cn(
+                'h-8 w-full rounded-md border border-border bg-input px-2',
+                'text-secondary text-foreground',
+                'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+              )}
+            >
+              {TERMINAL_CLI_PRESETS.map((preset) => (
+                <option key={preset.id} value={preset.id}>
+                  {preset.displayName}
+                </option>
+              ))}
+              <option value="custom">Custom command</option>
+            </select>
+            <div className="mt-1 flex items-center justify-between gap-2 text-metadata">
+              <span
+                className={cn(
+                  selectedAvailability === 'available'
+                    ? 'text-success'
+                    : selectedAvailability === 'missing'
+                      ? 'text-destructive'
+                      : 'text-muted-foreground',
+                )}
+              >
+                {presetId === 'custom'
+                  ? 'Reviewed locally before queueing'
+                  : selectedAvailability === 'checking'
+                    ? 'Checking installation…'
+                    : selectedAvailability === 'available'
+                      ? 'Installed'
+                      : selectedAvailability === 'missing'
+                        ? 'Not found on PATH'
+                        : 'Availability check unavailable'}
+              </span>
+              {selectedPreset && selectedAvailability !== 'available' && (
+                <a
+                  href={selectedPreset.installUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-accent-copper underline-offset-2 hover:underline"
+                >
+                  Setup guide
+                </a>
+              )}
+            </div>
+          </div>
+
+          {presetId === 'custom' && (
+            <div className="sm:col-span-2">
+              <Label htmlFor="fleet-command" className="text-metadata uppercase tracking-wide">
+                Custom command
+              </Label>
+              <Input
+                id="fleet-command"
+                value={command}
+                onChange={(event) => setCommand(event.target.value)}
+                placeholder="aider --model sonnet"
+                spellCheck={false}
+                className="font-mono"
+              />
+              {!customValidation.ok && command.length > 0 && (
+                <p className="mt-1 text-metadata text-destructive">
+                  Command rejected: {customValidation.reason.replaceAll('-', ' ')}.
+                </p>
+              )}
+            </div>
+          )}
+
+          <div className="sm:col-span-2">
+            <Label htmlFor="fleet-cwd" className="text-metadata uppercase tracking-wide">
+              Working directory <span className="normal-case text-muted-foreground">(optional)</span>
+            </Label>
+            <Input
+              id="fleet-cwd"
+              value={cwd}
+              onChange={(event) => setCwd(event.target.value)}
+              placeholder="C:\\Projects\\my-app"
+              spellCheck={false}
+              className="font-mono"
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="fleet-batch" className="text-metadata uppercase tracking-wide">
+              Batch size
+            </Label>
+            <Input
+              id="fleet-batch"
+              type="number"
+              min={1}
+              max={10}
+              value={batchSize}
+              onChange={(event) => setBatchSize(Number(event.target.value))}
+            />
+          </div>
+          <div>
+            <Label htmlFor="fleet-stagger" className="text-metadata uppercase tracking-wide">
+              Stagger (ms)
+            </Label>
+            <Input
+              id="fleet-stagger"
+              type="number"
+              min={0}
+              max={5000}
+              step={50}
+              value={staggerDelayMs}
+              onChange={(event) => setStaggerDelayMs(Number(event.target.value))}
+            />
+          </div>
+
+          {presetId === 'custom' && (
+            <div className="sm:col-span-2 rounded-md border border-border bg-panel px-3 py-2">
+              <label className="flex cursor-pointer items-center gap-2 text-secondary text-foreground">
+                <input
+                  type="checkbox"
+                  checked={saveCustomPreset}
+                  onChange={(event) => setSaveCustomPreset(event.target.checked)}
+                />
+                Save this reviewed command as a reusable custom tool
+              </label>
+              {saveCustomPreset && (
+                <Input
+                  value={customPresetName}
+                  onChange={(event) => setCustomPresetName(event.target.value)}
+                  placeholder="My Aider fleet"
+                  aria-label="Custom Fleet preset name"
+                  className="mt-2"
+                />
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-col justify-between gap-4 rounded-md border border-border bg-elevated p-3">
+          <div aria-live="polite">
+            <div className="text-metadata uppercase tracking-wide text-muted-foreground">
+              Safe launch report
+            </div>
+            {latestRecord ? (
+              <div className="mt-2 space-y-2 text-secondary">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Status</span>
+                  <span className="font-mono text-foreground">{latestRecord.status}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-metadata">
+                  <span>reused {latestRecord.reusedCount}</span>
+                  <span>created {latestRecord.createdCount}</span>
+                  <span>launched {latestRecord.launchedCount}</span>
+                  <span>skipped {latestRecord.skippedCount}</span>
+                </div>
+                {latestRecord.errors.map((error) => (
+                  <p key={error} className="rounded border border-destructive/30 bg-destructive/5 px-2 py-1 text-metadata text-destructive">
+                    {error}
+                  </p>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-2 text-secondary text-muted-foreground">
+                Empty panes are reused only after live backend and transcript checks.
+                The terminal page shows batch progress and Cancel while work runs.
+              </p>
+            )}
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => void startFleet()} disabled={!canStart}>
+              <Play className="h-3.5 w-3.5" />
+              {submitting ? 'Checking…' : 'Start Fleet'}
+            </Button>
+            {latestRecord && !terminalStatus && (
+              <Button variant="ghost" onClick={cancelFleet}>
+                <X className="h-3.5 w-3.5" /> Cancel
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 /** Coerce a form input value to the param's type before saving. */
@@ -687,6 +1050,8 @@ export function ToolsPage() {
             Export / Import still works for manual backups and offline moves.
           </div>
         </div>
+
+        <TerminalFleetCard />
 
         {/* Quick-start templates (always visible — they make new tools cheap) */}
         <div className="mb-8">

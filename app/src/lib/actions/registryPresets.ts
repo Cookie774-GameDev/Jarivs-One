@@ -236,12 +236,15 @@ export const TERMINAL_PRESET_ACTIONS: ActionDef[] = TERMINAL_COMMAND_PRESETS.map
   ),
 );
 
-/** Quick bulk-open aliases for common swarm sizes. */
+/**
+ * Legacy quick aliases that always add N new panes. Keep their ids and
+ * behavior stable for saved tools; target-total requests use terminal.fleet.
+ */
 export const TERMINAL_BULK_PRESETS: ActionDef[] = [2, 3, 4, 5, 6, 8, 10].map((count) => ({
   id: `terminal.bulkOpen.${count}`,
   category: 'terminal' as const,
   label: `Open ${count} terminal panes`,
-  description: `Open ${count} new terminal panes in the active project context. Optionally run the same startup command in each.`,
+  description: `Open ${count} additional new terminal panes in the active project context. For a desired total, use Terminal Fleet instead.`,
   icon: TerminalIcon,
   destructive: true,
   params: [

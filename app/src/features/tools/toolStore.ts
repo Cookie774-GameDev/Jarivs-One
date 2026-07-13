@@ -31,6 +31,7 @@ import { safeLocalStorage } from '@/lib/persistence/safeLocalStorage';
 import { Wrench } from 'lucide-react';
 import { getBuiltinAction } from '@/lib/actions/registry';
 import type { ActionDef, ActionParam, ActionResult, ActionRunContext } from '@/lib/actions/types';
+import { validateTerminalFleetCustomCommand } from '@/features/terminals/terminalFleet';
 
 /* --------------------------------------------------------------------------
  * Types
@@ -75,6 +76,15 @@ export interface CustomToolStep {
   params: Record<string, unknown>;
   /** Optional human label for cards and run summaries. */
   label?: string;
+}
+
+export interface TerminalFleetSavedPresetInput {
+  name: string;
+  command: string;
+  targetTotal: number;
+  cwd?: string;
+  batchSize: number;
+  staggerDelayMs: number;
 }
 
 /* --------------------------------------------------------------------------
@@ -466,3 +476,34 @@ export const useToolStore = create<ToolStoreState>()(
     },
   ),
 );
+
+/**
+ * Save a reviewed custom Fleet command through the ordinary user-tool path.
+ * The code-owned `terminal.fleet` action itself never enters persistence or
+ * cloud sync; this creates only the user's explicitly requested wrapper.
+ */
+export function saveTerminalFleetPreset(
+  input: TerminalFleetSavedPresetInput,
+): CustomTool {
+  const name = input.name.trim();
+  if (!name) throw new Error('A Terminal Fleet preset name is required.');
+  const command = validateTerminalFleetCustomCommand(input.command);
+  if (!command.ok) {
+    throw new Error(`Custom Fleet command is invalid (${command.reason}).`);
+  }
+  return useToolStore.getState().create({
+    name,
+    description: `Reach ${Math.max(0, Math.floor(input.targetTotal))} total terminals with this reviewed custom command.`,
+    baseAction: 'terminal.fleet',
+    params: {
+      targetTotal: input.targetTotal,
+      preset: 'custom',
+      command: command.command,
+      cwd: input.cwd ?? '',
+      batchSize: input.batchSize,
+      staggerDelayMs: input.staggerDelayMs,
+      saveCustomPreset: false,
+    },
+    emoji: '⌘',
+  });
+}

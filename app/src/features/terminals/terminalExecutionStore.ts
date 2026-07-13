@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
+import type { TerminalLeafBackendState } from './paneTree';
 
 export type TerminalExecutionStatus =
   | 'queued'
@@ -19,13 +20,27 @@ export interface TerminalExecution {
   updatedAt: number;
 }
 
+export interface TerminalPaneRuntime {
+  paneId: string;
+  backendState: TerminalLeafBackendState;
+  sessionId?: string;
+  updatedAt: number;
+}
+
 interface TerminalExecutionState {
   executions: Record<string, TerminalExecution>;
+  paneRuntime: Record<string, TerminalPaneRuntime>;
   mark: (id: string, status: TerminalExecutionStatus, patch?: Partial<TerminalExecution>) => void;
+  markPaneRuntime: (
+    paneId: string,
+    backendState: TerminalLeafBackendState,
+    sessionId?: string,
+  ) => void;
   clear: () => void;
 }
 
 const MAX_EXECUTIONS = 100;
+const MAX_PANE_RUNTIME_RECORDS = 100;
 const executionTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
 
 function clearExecutionTimeout(id: string): void {
@@ -36,6 +51,7 @@ function clearExecutionTimeout(id: string): void {
 
 export const useTerminalExecutionStore = create<TerminalExecutionState>((set) => ({
   executions: {},
+  paneRuntime: {},
   mark: (id, status, patch = {}) => set((state) => {
     const next = {
       ...state.executions,
@@ -52,12 +68,40 @@ export const useTerminalExecutionStore = create<TerminalExecutionState>((set) =>
       executions: Object.fromEntries(entries.slice(0, MAX_EXECUTIONS).map((entry) => [entry.id, entry])),
     };
   }),
+  markPaneRuntime: (paneId, backendState, sessionId) => set((state) => {
+    if (!paneId) return state;
+    const record: TerminalPaneRuntime = {
+      paneId,
+      backendState,
+      sessionId: backendState === 'active' ? sessionId : undefined,
+      updatedAt: Date.now(),
+    };
+    const entries = Object.values({ ...state.paneRuntime, [paneId]: record })
+      .sort((left, right) => right.updatedAt - left.updatedAt)
+      .slice(0, MAX_PANE_RUNTIME_RECORDS);
+    return {
+      paneRuntime: Object.fromEntries(entries.map((entry) => [entry.paneId, entry])),
+    };
+  }),
   clear: () => {
     for (const timer of executionTimeouts.values()) clearTimeout(timer);
     executionTimeouts.clear();
-    set({ executions: {} });
+    set({ executions: {}, paneRuntime: {} });
   },
 }));
+
+export function markTerminalPaneRuntime(
+  paneId: string | undefined,
+  backendState: TerminalLeafBackendState,
+  sessionId?: string,
+): void {
+  if (!paneId) return;
+  useTerminalExecutionStore.getState().markPaneRuntime(
+    paneId,
+    backendState,
+    sessionId,
+  );
+}
 
 export function markTerminalExecution(
   id: string | undefined,

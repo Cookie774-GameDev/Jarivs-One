@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import {
   attachTerminalExecution,
+  markTerminalPaneRuntime,
   markTerminalExecution,
   useTerminalExecutionStore,
 } from './terminalExecutionStore';
@@ -75,5 +76,25 @@ describe('terminal execution lifecycle', () => {
     expect(attached).toBe(false);
     expect(invoke).toHaveBeenCalledWith('terminal_kill', { sessionId: 'pty_race' });
     expect(useTerminalExecutionStore.getState().executions.exec_race.status).toBe('cancelled');
+  });
+
+  it('tracks bounded pane backend evidence separately from command output', () => {
+    markTerminalPaneRuntime('pane-1', 'active', 'pty-1');
+    expect(useTerminalExecutionStore.getState().paneRuntime['pane-1']).toMatchObject({
+      backendState: 'active',
+      sessionId: 'pty-1',
+    });
+
+    markTerminalPaneRuntime('pane-1', 'idle');
+    expect(useTerminalExecutionStore.getState().paneRuntime['pane-1']).toMatchObject({
+      backendState: 'idle',
+      sessionId: undefined,
+    });
+
+    for (let index = 0; index < 140; index += 1) {
+      markTerminalPaneRuntime(`pane-${index + 2}`, 'unknown');
+    }
+    expect(Object.keys(useTerminalExecutionStore.getState().paneRuntime)).toHaveLength(100);
+    expect(JSON.stringify(useTerminalExecutionStore.getState().paneRuntime)).not.toContain('output');
   });
 });

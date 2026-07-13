@@ -12,6 +12,12 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
+const tauriMock = vi.hoisted(() => ({
+  invoke: vi.fn(),
+}));
+
+vi.mock('@tauri-apps/api/core', () => tauriMock);
+
 vi.mock('@/components/ui/toast', () => ({
   toast: {
     success: vi.fn(),
@@ -30,12 +36,40 @@ import { useTerminalExecutionStore } from '@/features/terminals/terminalExecutio
 
 describe('runAction param coercion', () => {
   beforeEach(() => {
+    tauriMock.invoke.mockResolvedValue({ exists: true, reason: 'available' });
     useToolStore.setState({ tools: [] });
     useTerminalCommandQueue.getState().clear();
     useTerminalExecutionStore.getState().clear();
     // Make sure each test starts with a known route so navigation
     // assertions don't depend on the previous test's state.
     useUIStore.getState().setRoute('chat');
+  });
+
+  it('rejects unsafe Fleet custom commands before queueing', async () => {
+    for (const command of ['aider; whoami', 'aider && whoami', 'aider\nwhoami']) {
+      const result = await runAction(
+        'terminal.fleet',
+        { targetTotal: 4, preset: 'custom', command },
+        { source: 'user' },
+        { emitToast: false },
+      );
+      expect(result.ok).toBe(false);
+    }
+
+    expect(useTerminalCommandQueue.getState().queue).toEqual([]);
+  });
+
+  it('rejects unsafe Fleet working directories before queueing', async () => {
+    const result = await runAction(
+      'terminal.fleet',
+      { targetTotal: 4, preset: 'codex', cwd: 'C:\\safe"; whoami' },
+      { source: 'user' },
+      { emitToast: false },
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/metacharacter/i);
+    expect(useTerminalCommandQueue.getState().queue).toEqual([]);
   });
 
   it('coerces a numeric-string into a number for number-typed params', async () => {

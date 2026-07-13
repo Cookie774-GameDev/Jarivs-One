@@ -108,6 +108,10 @@ import {
 } from './terminalSnapshot';
 import { registerTerminalSnapshotFlush } from './terminalSnapshotRegistry';
 import { terminalRestartDecision } from './terminalRestartPolicy';
+import {
+  markTerminalPaneRuntime,
+  useTerminalExecutionStore,
+} from './terminalExecutionStore';
 
 /**
  * When the parent owns its own chrome (`<TileGrid>`'s pane-tile or the
@@ -241,6 +245,7 @@ export function TerminalView({
   fontSize = 9,
   agentSlug,
   agentMode,
+  executionId,
   onReady,
   onPendingCommandSent,
   onExit,
@@ -273,6 +278,8 @@ export function TerminalView({
   const currentInputFlushTimerRef = useRef<number | null>(null);
 
   const [activeSessionId, setActiveSessionId] = useState<string | null>(existingSessionId ?? null);
+  const [lifecycleGeneration, setLifecycleGeneration] = useState(0);
+  const previousExecutionIdRef = useRef(executionId);
   const [isFocused, setIsFocused] = useState(false);
   const [dictating, setDictating] = useState(false);
   const setComposerSttListening = useUIStore((s) => s.setComposerSttListening);
@@ -326,6 +333,25 @@ export function TerminalView({
   useEffect(() => {
     agentModeRef.current = resolvedAgentMode;
   }, [resolvedAgentMode]);
+  useEffect(() => {
+    if (!paneId) return;
+    if (existingSessionId) {
+      markTerminalPaneRuntime(paneId, 'active', existingSessionId);
+      return;
+    }
+    const runtime = useTerminalExecutionStore.getState().paneRuntime[paneId];
+    if (runtime?.backendState !== 'idle') {
+      markTerminalPaneRuntime(paneId, 'unknown');
+    }
+  }, [existingSessionId, paneId]);
+  useEffect(() => {
+    const previous = previousExecutionIdRef.current;
+    previousExecutionIdRef.current = executionId;
+    if (!executionId || executionId === previous || !paneId) return;
+    const runtime = useTerminalExecutionStore.getState().paneRuntime[paneId];
+    if (runtime?.backendState !== 'idle') return;
+    setLifecycleGeneration((current) => current + 1);
+  }, [executionId, paneId]);
 
   useEffect(() => {
     return () => {
@@ -441,6 +467,18 @@ export function TerminalView({
   useEffect(() => {
     const containerEl = containerRef.current;
     if (!containerEl) return;
+
+    const forceFreshLaunch = lifecycleGeneration > 0;
+    if (forceFreshLaunch) {
+      // A new execution id can rearm only a pane affirmatively marked idle.
+      // Ignore dead-session recovery state so the already-approved Fleet
+      // command starts directly instead of entering the reboot-confirm path.
+      sessionRef.current = null;
+      setActiveSessionId(null);
+      exitFiredRef.current = false;
+      currentInputRef.current = '';
+      setError(null);
+    }
 
     let cancelled = false;
     let term: Terminal | null = null;
@@ -878,6 +916,7 @@ export function TerminalView({
           if (e.payload.sessionId !== sessionRef.current) return;
           if (exitFiredRef.current) return;
           exitFiredRef.current = true;
+          markTerminalPaneRuntime(paneId, 'idle');
           onExitRef.current?.(e.payload.code);
         });
         if (cancelled) {
@@ -910,11 +949,14 @@ export function TerminalView({
       let restoredInput = '';
       let sessionCwd: string | null = cwd ?? null;
       let briefingDelivered = false;
+      const restoreExistingSessionId = forceFreshLaunch
+        ? null
+        : existingSessionId;
       const slugAtSpawn = agentSlugRef.current;
       const modeAtSpawn = agentModeRef.current;
       try {
         let activeSessions: BackendTerminalInfo[] = [];
-        if (existingSessionId != null || paneId) {
+        if (restoreExistingSessionId != null || (paneId && !forceFreshLaunch)) {
           try {
             activeSessions = await invoke<BackendTerminalInfo[]>('terminal_list');
           } catch (listErr) {
@@ -923,7 +965,7 @@ export function TerminalView({
         }
 
         let renderedSnapshot: TerminalSnapshotPayload | null = null;
-        if (paneId) {
+        if (paneId && !forceFreshLaunch) {
           try {
             renderedSnapshot = await invoke<TerminalSnapshotPayload | null>(
               'terminal_snapshot_load',
@@ -935,8 +977,8 @@ export function TerminalView({
         }
 
         const restoreDecision = resolveTerminalRestoreSession({
-          existingSessionId,
-          paneId,
+          existingSessionId: restoreExistingSessionId,
+          paneId: forceFreshLaunch ? undefined : paneId,
           projectId,
           activeSessions,
           transcripts: useTerminalTranscriptStore.getState().sessions,
@@ -1092,7 +1134,7 @@ export function TerminalView({
       // every render; production does it on fast route changes
       // during the spawn window). We kill the orphan and bail.
       if (cancelled) {
-        if (existingSessionId == null) {
+        if (restoreExistingSessionId == null) {
           invoke('terminal_kill', { sessionId: sid }).catch(() => {
             /* nothing to do — PTY may have already exited */
           });
@@ -1100,6 +1142,7 @@ export function TerminalView({
         return;
       }
       sessionRef.current = sid;
+      markTerminalPaneRuntime(paneId, 'active', sid);
       if (paneId) {
         setTerminalPaneSessionId(paneId, sid);
       }
@@ -1231,7 +1274,10 @@ export function TerminalView({
     };
 
     void init().catch((err) => {
-      if (!cancelled) setError(String(err));
+      if (!cancelled) {
+        markTerminalPaneRuntime(paneId, 'unknown');
+        setError(String(err));
+      }
     });
 
     return () => {
@@ -1300,9 +1346,10 @@ export function TerminalView({
       // NOTE: deliberately no `terminal_kill` here. Sessions persist past
       // unmount; the user closes them via the chrome `×` button.
     };
-    // Mount-only: prop changes after mount don't re-spawn the PTY.
+    // Re-run only when a new approved execution id rearms an affirmatively
+    // idle presentation slot. Ordinary prop changes still never respawn PTYs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [lifecycleGeneration]);
 
   const lastPendingCommandIdRef = useRef<number | undefined>(undefined);
   useEffect(() => {
@@ -1471,6 +1518,7 @@ export function TerminalView({
     }
     if (!exitFiredRef.current) {
       exitFiredRef.current = true;
+      markTerminalPaneRuntime(paneId, 'idle');
       onExitRef.current?.(null);
     }
   };

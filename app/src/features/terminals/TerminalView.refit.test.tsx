@@ -2,6 +2,7 @@ import { act, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TerminalView } from './TerminalView';
 import { useTerminalTranscriptStore } from './transcriptStore';
+import { markTerminalPaneRuntime } from './terminalExecutionStore';
 
 interface FakeTerminalHandle {
   buffer: {
@@ -226,6 +227,64 @@ describe('TerminalView stable refit integration', () => {
     expect(mocks.fit).not.toHaveBeenCalled();
     expect(mocks.invoke).not.toHaveBeenCalledWith('terminal_spawn', expect.anything());
     expect(result.container.firstElementChild?.getAttribute('data-session-id')).toBe('pty-live');
+  });
+
+  it('rearms an ended presentation slot when a new approved Fleet execution arrives', async () => {
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === 'terminal_list') {
+        return [
+          {
+            sessionId: 'pty-live',
+            command: 'powershell',
+            cwd: '',
+            rows: 24,
+            cols: 80,
+            startedAt: 1,
+            projectId: null,
+          },
+        ];
+      }
+      if (command === 'terminal_spawn') {
+        return { sessionId: 'pty-fleet', cwd: 'C:\\work' };
+      }
+      return undefined;
+    });
+    const onReady = vi.fn();
+    const result = render(
+      <TerminalView
+        sessionId="pty-live"
+        paneId="pane-ended"
+        command="powershell"
+        executionId="previous-execution"
+        onReady={onReady}
+      />,
+    );
+    await waitFor(() => expect(onReady).toHaveBeenCalledWith('pty-live'));
+    markTerminalPaneRuntime('pane-ended', 'idle');
+    mocks.invoke.mockClear();
+    onReady.mockClear();
+
+    result.rerender(
+      <TerminalView
+        sessionId="pty-live"
+        paneId="pane-ended"
+        command="powershell"
+        startupCommand="codex"
+        executionId="fleet-request:1"
+        onReady={onReady}
+      />,
+    );
+
+    await waitFor(() => expect(onReady).toHaveBeenCalledWith('pty-fleet'));
+    expect(mocks.invoke).toHaveBeenCalledWith(
+      'terminal_spawn',
+      expect.objectContaining({ command: 'powershell', cwd: undefined }),
+    );
+    expect(mocks.invoke).toHaveBeenCalledWith('terminal_write', {
+      sessionId: 'pty-fleet',
+      data: 'codex\r',
+    });
+    expect(mocks.invoke).not.toHaveBeenCalledWith('terminal_kill', expect.anything());
   });
 
   it('waits for stable visible geometry, redraws, and resizes the existing PTY once', async () => {
