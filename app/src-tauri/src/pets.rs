@@ -6,7 +6,10 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
-use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize};
+use tauri::{
+    AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindow,
+    WebviewWindowBuilder,
+};
 
 pub const PET_OVERLAY_LABEL: &str = "pet-overlay";
 pub const PET_MINI_PANEL_LABEL: &str = "pet-mini-panel";
@@ -65,13 +68,7 @@ pub fn save_geometry(app: &AppHandle, geo: &PetGeometryState) {
 }
 
 /// Clamp logical position into a monitor work area (approx via available monitors).
-fn clamp_to_monitors(
-    app: &AppHandle,
-    x: f64,
-    y: f64,
-    w: f64,
-    h: f64,
-) -> (f64, f64) {
+fn clamp_to_monitors(app: &AppHandle, x: f64, y: f64, w: f64, h: f64) -> (f64, f64) {
     let monitors = app.available_monitors().unwrap_or_default();
     if monitors.is_empty() {
         return (x.max(0.0), y.max(0.0));
@@ -147,50 +144,190 @@ fn ensure_pet_overlay_transparent(win: &tauri::WebviewWindow) {
     let _ = win.set_ignore_cursor_events(false);
 }
 
+fn pet_webview_url(app: &AppHandle, view: &str) -> Result<WebviewUrl, String> {
+    #[cfg(debug_assertions)]
+    if let Some(mut dev_url) = app.config().build.dev_url.clone() {
+        dev_url.set_query(Some(&format!("view={view}")));
+        return Ok(WebviewUrl::External(dev_url));
+    }
+
+    Ok(WebviewUrl::App(format!("index.html?view={view}").into()))
+}
+
+#[cfg(debug_assertions)]
+fn log_pet_window_metrics(label: &str, win: &WebviewWindow) {
+    let visible = win.is_visible().unwrap_or(false);
+    let title = win.title().unwrap_or_else(|_| "<unknown>".to_string());
+    let pos = win
+        .outer_position()
+        .map(|p| format!("{},{}", p.x, p.y))
+        .unwrap_or_else(|e| format!("err:{e}"));
+    let size = win
+        .outer_size()
+        .map(|s| format!("{}x{}", s.width, s.height))
+        .unwrap_or_else(|e| format!("err:{e}"));
+    eprintln!("[pets] {label}: title={title:?} visible={visible} pos={pos} size={size}");
+}
+
+fn get_or_create_pet_overlay(app: &AppHandle) -> Result<WebviewWindow, String> {
+    if let Some(win) = app.get_webview_window(PET_OVERLAY_LABEL) {
+        return Ok(win);
+    }
+
+    #[cfg(debug_assertions)]
+    eprintln!("[pets] creating pet-overlay window");
+
+    WebviewWindowBuilder::new(
+        app,
+        PET_OVERLAY_LABEL,
+        pet_webview_url(app, "pet-overlay")?,
+    )
+    .title("VibeSpace Pet")
+    .inner_size(OVERLAY_SIZE as f64, OVERLAY_SIZE as f64)
+    .min_inner_size(OVERLAY_SIZE as f64, OVERLAY_SIZE as f64)
+    .max_inner_size(OVERLAY_SIZE as f64, OVERLAY_SIZE as f64)
+    .resizable(false)
+    .decorations(false)
+    .transparent(true)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .visible(true)
+    .focused(false)
+    .shadow(false)
+    .background_color(tauri::window::Color(0, 0, 0, 0))
+    .additional_browser_args(
+        "--default-background-color=00000000 --disable-features=CalculateNativeWinOcclusion --autoplay-policy=no-user-gesture-required",
+    )
+    .build()
+    .map_err(|e| format!("failed to create pet-overlay window: {e}"))
+}
+
+fn get_or_create_pet_panel(app: &AppHandle) -> Result<WebviewWindow, String> {
+    if let Some(win) = app.get_webview_window(PET_MINI_PANEL_LABEL) {
+        return Ok(win);
+    }
+
+    #[cfg(debug_assertions)]
+    eprintln!("[pets] creating pet-mini-panel window");
+
+    WebviewWindowBuilder::new(
+        app,
+        PET_MINI_PANEL_LABEL,
+        pet_webview_url(app, "pet-mini-panel")?,
+    )
+    .title("VibeSpace Pet Panel")
+    .inner_size(PANEL_DEFAULT_W, PANEL_DEFAULT_H)
+    .min_inner_size(PANEL_MIN_W, PANEL_MIN_H)
+    .resizable(true)
+    .decorations(true)
+    .transparent(false)
+    .always_on_top(true)
+    .skip_taskbar(false)
+    .visible(false)
+    .focused(false)
+    .build()
+    .map_err(|e| format!("failed to create pet-mini-panel window: {e}"))
+}
+
 /// Show the pet overlay (create visibility). Single instance by label.
 #[tauri::command]
-pub fn pet_show_overlay(app: AppHandle) -> Result<(), String> {
-    let win = app
-        .get_webview_window(PET_OVERLAY_LABEL)
-        .ok_or_else(|| "pet-overlay window missing".to_string())?;
+pub async fn pet_show_overlay(app: AppHandle) -> Result<(), String> {
+    #[cfg(debug_assertions)]
+    eprintln!("[pets] pet_show_overlay invoked");
+
     let state = app.state::<PetWindowState>();
     let geo = state.geometry.lock().map_err(|e| e.to_string())?;
-    let (x, y) = recover_position(&app, geo.overlay_x, geo.overlay_y, OVERLAY_SIZE as f64, OVERLAY_SIZE as f64);
+    let (x, y) = recover_position(
+        &app,
+        geo.overlay_x,
+        geo.overlay_y,
+        OVERLAY_SIZE as f64,
+        OVERLAY_SIZE as f64,
+    );
     drop(geo);
-    let _ = win.set_position(PhysicalPosition::new(x as i32, y as i32));
-    let _ = win.set_size(PhysicalSize::new(OVERLAY_SIZE, OVERLAY_SIZE));
-    let _ = win.set_always_on_top(true);
+
+    let app_for_create = app.clone();
+    app.run_on_main_thread(move || {
+        if let Err(err) = get_or_create_pet_overlay(&app_for_create) {
+            eprintln!("[pets] failed to create pet-overlay: {err}");
+            return;
+        }
+
+        // Let the WebView creation message return to the event loop before
+        // applying window operations. Calling set_position/show immediately
+        // after build() can race WebView2 and produce "failed to receive
+        // message from webview" on Windows.
+        let app_for_show = app_for_create.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(80));
+            let app_for_callback = app_for_show.clone();
+            let _ = app_for_show.run_on_main_thread(move || {
+                if let Err(err) = show_existing_pet_overlay(app_for_callback.clone(), x, y) {
+                    eprintln!("[pets] failed to show pet-overlay: {err}");
+                }
+            });
+        });
+    })
+    .map_err(|e| format!("failed to schedule pet-overlay creation: {e}"))?;
+
+    Ok(())
+}
+
+fn show_existing_pet_overlay(app: AppHandle, x: f64, y: f64) -> Result<(), String> {
+    let win = app
+        .get_webview_window(PET_OVERLAY_LABEL)
+        .ok_or_else(|| "pet-overlay window missing after creation".to_string())?;
+    let overlay_size = PhysicalSize::new(OVERLAY_SIZE, OVERLAY_SIZE);
+    win.set_position(PhysicalPosition::new(x as i32, y as i32))
+        .map_err(|e| format!("failed to position pet-overlay: {e}"))?;
+    win.set_min_size(Some(overlay_size))
+        .map_err(|e| format!("failed to set pet-overlay min size: {e}"))?;
+    win.set_max_size(Some(overlay_size))
+        .map_err(|e| format!("failed to set pet-overlay max size: {e}"))?;
+    win.set_size(overlay_size)
+        .map_err(|e| format!("failed to size pet-overlay: {e}"))?;
+    win.set_always_on_top(true)
+        .map_err(|e| format!("failed to set pet-overlay always-on-top: {e}"))?;
     ensure_pet_overlay_transparent(&win);
-    let _ = win.show();
+    win.show()
+        .map_err(|e| format!("failed to show pet-overlay: {e}"))?;
+    // Windows/WebView2 can report a tiny transparent host HWND on first show.
+    // Re-assert the exact pet surface size after visibility is applied.
+    win.set_size(overlay_size)
+        .map_err(|e| format!("failed to confirm pet-overlay size: {e}"))?;
+    #[cfg(debug_assertions)]
+    log_pet_window_metrics("after pet_show_overlay", &win);
     Ok(())
 }
 
 /// Hide the pet overlay without destroying the webview (no duplicate on re-show).
 #[tauri::command]
 pub fn pet_hide_overlay(app: AppHandle) -> Result<(), String> {
-    let win = app
-        .get_webview_window(PET_OVERLAY_LABEL)
-        .ok_or_else(|| "pet-overlay window missing".to_string())?;
-    let _ = win.hide();
+    #[cfg(debug_assertions)]
+    eprintln!("[pets] pet_hide_overlay invoked");
+
+    if let Some(win) = app.get_webview_window(PET_OVERLAY_LABEL) {
+        let _ = win.hide();
+    }
     Ok(())
 }
 
 /// Whether the pet overlay is currently visible.
 #[tauri::command]
 pub fn pet_is_overlay_visible(app: AppHandle) -> Result<bool, String> {
-    let win = app
+    Ok(app
         .get_webview_window(PET_OVERLAY_LABEL)
-        .ok_or_else(|| "pet-overlay window missing".to_string())?;
-    Ok(win.is_visible().unwrap_or(false))
+        .and_then(|win| win.is_visible().ok())
+        .unwrap_or(false))
 }
 
 /// Move pet overlay to physical position (DPI-aware path via physical coords).
 /// Always clamped so the sprite cannot be dragged fully off-screen.
 #[tauri::command]
 pub fn pet_set_overlay_position(app: AppHandle, x: f64, y: f64) -> Result<(), String> {
-    let win = app
-        .get_webview_window(PET_OVERLAY_LABEL)
-        .ok_or_else(|| "pet-overlay window missing".to_string())?;
+    let Some(win) = app.get_webview_window(PET_OVERLAY_LABEL) else {
+        return Ok(());
+    };
     // Keep at least ~24px of the pet window on-screen (cannot disappear off edge).
     let (cx, cy) = clamp_to_monitors(&app, x, y, OVERLAY_SIZE as f64, OVERLAY_SIZE as f64);
     let _ = win.set_position(PhysicalPosition::new(cx as i32, cy as i32));
@@ -209,10 +346,12 @@ pub fn pet_set_overlay_position(app: AppHandle, x: f64, y: f64) -> Result<(), St
 /// (`pet_is_panel_visible`), so a failed panel open cannot leave the
 /// user with neither sprite nor panel.
 #[tauri::command]
-pub fn pet_open_or_focus_panel(app: AppHandle, near_x: Option<f64>, near_y: Option<f64>) -> Result<(), String> {
-    let win = app
-        .get_webview_window(PET_MINI_PANEL_LABEL)
-        .ok_or_else(|| "pet-mini-panel window missing".to_string())?;
+pub async fn pet_open_or_focus_panel(
+    app: AppHandle,
+    near_x: Option<f64>,
+    near_y: Option<f64>,
+) -> Result<(), String> {
+    let win = get_or_create_pet_panel(&app)?;
 
     let state = app.state::<PetWindowState>();
     let mut open = state.panel_open.lock().map_err(|e| e.to_string())?;
@@ -252,24 +391,34 @@ pub fn pet_open_or_focus_panel(app: AppHandle, near_x: Option<f64>, near_y: Opti
 /// Minimize panel only — sessions keep running. Restores the pet sprite.
 #[tauri::command]
 pub fn pet_minimize_panel(app: AppHandle) -> Result<(), String> {
-    let win = app
-        .get_webview_window(PET_MINI_PANEL_LABEL)
-        .ok_or_else(|| "pet-mini-panel window missing".to_string())?;
-    let _ = win.minimize();
+    if let Some(win) = app.get_webview_window(PET_MINI_PANEL_LABEL) {
+        let _ = win.minimize();
+    }
     if let Ok(mut open) = app.state::<PetWindowState>().panel_open.lock() {
         *open = false;
     }
     // Bring pet sprite back
-    let _ = pet_show_overlay(app.clone());
+    tauri::async_runtime::spawn(async move {
+        let _ = pet_show_overlay(app.clone()).await;
+    });
     Ok(())
 }
 
 /// Hide panel without killing sessions (close after user confirms in UI). Restores pet.
 #[tauri::command]
 pub fn pet_hide_panel(app: AppHandle) -> Result<(), String> {
-    let win = app
-        .get_webview_window(PET_MINI_PANEL_LABEL)
-        .ok_or_else(|| "pet-mini-panel window missing".to_string())?;
+    let win = match app.get_webview_window(PET_MINI_PANEL_LABEL) {
+        Some(win) => win,
+        None => {
+            if let Ok(mut open) = app.state::<PetWindowState>().panel_open.lock() {
+                *open = false;
+            }
+            tauri::async_runtime::spawn(async move {
+                let _ = pet_show_overlay(app.clone()).await;
+            });
+            return Ok(());
+        }
+    };
     // Capture size/pos before hide
     if let Ok(mut geo) = app.state::<PetWindowState>().geometry.lock() {
         if let Ok(pos) = win.outer_position() {
@@ -286,22 +435,30 @@ pub fn pet_hide_panel(app: AppHandle) -> Result<(), String> {
     if let Ok(mut open) = app.state::<PetWindowState>().panel_open.lock() {
         *open = false;
     }
-    let _ = pet_show_overlay(app.clone());
+    tauri::async_runtime::spawn(async move {
+        let _ = pet_show_overlay(app.clone()).await;
+    });
     Ok(())
 }
 
 #[tauri::command]
 pub fn pet_is_panel_visible(app: AppHandle) -> Result<bool, String> {
-    let win = app
-        .get_webview_window(PET_MINI_PANEL_LABEL)
-        .ok_or_else(|| "pet-mini-panel window missing".to_string())?;
+    let Some(win) = app.get_webview_window(PET_MINI_PANEL_LABEL) else {
+        return Ok(false);
+    };
     let visible = win.is_visible().unwrap_or(false);
     let minimized = win.is_minimized().unwrap_or(false);
     Ok(visible && !minimized)
 }
 
 #[tauri::command]
-pub fn pet_save_panel_geometry(app: AppHandle, x: f64, y: f64, w: f64, h: f64) -> Result<(), String> {
+pub fn pet_save_panel_geometry(
+    app: AppHandle,
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+) -> Result<(), String> {
     let (cx, cy) = clamp_to_monitors(&app, x, y, w, h);
     if let Ok(mut geo) = app.state::<PetWindowState>().geometry.lock() {
         geo.panel_x = Some(cx);
