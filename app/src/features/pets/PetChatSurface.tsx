@@ -11,6 +11,7 @@ import { chatRepo } from '@/lib/db';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import { Button } from '@/components/ui/button';
+import { ExternalLink, MessageSquarePlus } from 'lucide-react';
 import { usePetPresentationStore } from './petPresentationStore';
 import { cn } from '@/lib/utils';
 
@@ -40,9 +41,10 @@ export function PetChatSurface({ className }: { className?: string }) {
     [chats],
   );
 
-  const activeId = panelActiveChatId && petChatIds.includes(panelActiveChatId)
-    ? panelActiveChatId
-    : petChatIds[0] ?? null;
+  const activeId =
+    panelActiveChatId && petChatIds.includes(panelActiveChatId)
+      ? panelActiveChatId
+      : (petChatIds[0] ?? null);
 
   React.useEffect(() => {
     if (activeId && activeId !== panelActiveChatId) {
@@ -66,14 +68,31 @@ export function PetChatSurface({ className }: { className?: string }) {
   };
 
   return (
-    <div className={cn('flex h-full min-h-0 flex-col gap-2', className)} data-pet-chat-surface="true">
-      <div className="flex flex-wrap items-center gap-1 shrink-0">
-        <Button size="sm" variant="secondary" onClick={() => void createNewOnPanel()}>
-          New chat
+    <div
+      className={cn('flex h-full min-h-0 min-w-0 flex-col gap-2', className)}
+      data-pet-chat-surface="true"
+    >
+      <div className="flex flex-wrap items-center gap-1 shrink-0" data-pet-chat-toolbar="true">
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => void createNewOnPanel()}
+          aria-label="New chat"
+          title="New chat"
+        >
+          <MessageSquarePlus className="h-3.5 w-3.5" />
+          <span data-pet-compact-label>New chat</span>
         </Button>
         {activeId && (
-          <Button size="sm" variant="ghost" onClick={() => returnToMain(activeId)}>
-            Open in Main App
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => returnToMain(activeId)}
+            aria-label="Open chat in main app"
+            title="Open chat in main app"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            <span data-pet-compact-label>Open in Main App</span>
           </Button>
         )}
       </div>
@@ -88,6 +107,8 @@ export function PetChatSurface({ className }: { className?: string }) {
                 size="sm"
                 variant={id === activeId ? 'default' : 'outline'}
                 className="max-w-[140px] truncate"
+                title={row?.title || id}
+                aria-label={`Open chat ${row?.title || id}`}
                 onClick={() => setPanelActiveChatId(id)}
                 data-chat-id={id}
               >
@@ -98,7 +119,10 @@ export function PetChatSurface({ className }: { className?: string }) {
         </div>
       )}
 
-      <div className="flex-1 min-h-0 flex flex-col border border-border rounded-lg overflow-hidden bg-background">
+      <div
+        className="flex-1 min-h-0 min-w-0 flex flex-col border border-border rounded-lg overflow-hidden bg-background"
+        data-pet-chat-workspace="true"
+      >
         {activeId ? (
           <>
             <ChatThread chatId={activeId} compact />
@@ -113,7 +137,7 @@ export function PetChatSurface({ className }: { className?: string }) {
         )}
       </div>
 
-      <p className="text-metadata text-muted-foreground shrink-0">
+      <p className="pet-panel-secondary-copy text-metadata text-muted-foreground shrink-0">
         Tip: right-click a chat tab in the main app → Send to Pet panel.
       </p>
     </div>

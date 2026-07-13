@@ -5,15 +5,12 @@
  */
 import * as React from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { LayoutGrid, LayoutList } from 'lucide-react';
+import { Crosshair, ExternalLink, LayoutGrid, LayoutList, Maximize2, Plus, X } from 'lucide-react';
 import { TerminalView } from '@/features/terminals/TerminalView';
 import { terminalSessionRepo } from '@/lib/db';
 import { useAuthStore } from '@/stores/auth';
 import { Button } from '@/components/ui/button';
-import {
-  PET_PANEL_MAX_TERMINALS,
-  PET_PANEL_TERMINAL_LIMIT_MESSAGE,
-} from './petPanelLifecycle';
+import { PET_PANEL_MAX_TERMINALS, PET_PANEL_TERMINAL_LIMIT_MESSAGE } from './petPanelLifecycle';
 import { usePetPresentationStore } from './petPresentationStore';
 import {
   gridClassForCount,
@@ -148,50 +145,58 @@ export function PetTerminalSurface({ className }: { className?: string }) {
               variant="ghost"
               className="h-6 px-1.5 text-[10px]"
               title="Focus this terminal for keyboard input"
+              aria-label="Focus this terminal for keyboard input"
               onClick={(e) => {
                 e.stopPropagation();
                 setPanelActiveTerminalId(t.terminalId);
               }}
             >
-              Focus
+              <Crosshair className="h-3 w-3" />
+              <span data-pet-compact-label>Focus</span>
             </Button>
             <Button
               size="sm"
               variant="ghost"
               className="h-6 px-1.5 text-[10px]"
               title="Maximize in tabs mode"
+              aria-label="Maximize terminal in tabs mode"
               onClick={(e) => {
                 e.stopPropagation();
                 setPanelActiveTerminalId(t.terminalId);
                 setMode('tabs');
               }}
             >
-              Max
+              <Maximize2 className="h-3 w-3" />
+              <span data-pet-compact-label>Max</span>
             </Button>
             <Button
               size="sm"
               variant="ghost"
               className="h-6 px-1.5 text-[10px]"
               title="Return terminal to main app (keeps PTY)"
+              aria-label="Return terminal to main app"
               onClick={(e) => {
                 e.stopPropagation();
                 returnToMain(t.terminalId);
               }}
             >
-              Main
+              <ExternalLink className="h-3 w-3" />
+              <span data-pet-compact-label>Main</span>
             </Button>
             <Button
               size="sm"
               variant="ghost"
               className="h-6 px-1.5 text-[10px]"
               title="Close on Pet panel (return to main, PTY stays alive)"
+              aria-label="Close terminal on Pet panel"
               data-pet-terminal-close={t.terminalId}
               onClick={(e) => {
                 e.stopPropagation();
                 returnToMain(t.terminalId);
               }}
             >
-              Close
+              <X className="h-3 w-3" />
+              <span data-pet-compact-label>Close</span>
             </Button>
           </div>
         </div>
@@ -238,10 +243,20 @@ export function PetTerminalSurface({ className }: { className?: string }) {
   };
 
   return (
-    <div className={cn('flex h-full min-h-0 flex-col gap-2', className)} data-pet-terminal-surface="true">
-      <div className="flex flex-wrap items-center gap-1 shrink-0">
-        <Button size="sm" variant="secondary" onClick={spawnOnPet}>
-          New terminal
+    <div
+      className={cn('flex h-full min-h-0 min-w-0 flex-col gap-2', className)}
+      data-pet-terminal-surface="true"
+    >
+      <div className="flex flex-wrap items-center gap-1 shrink-0" data-pet-terminal-toolbar="true">
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={spawnOnPet}
+          aria-label="New terminal"
+          title="New terminal"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          <span data-pet-compact-label>New terminal</span>
         </Button>
         <span className="text-metadata text-muted-foreground">
           {petTerminalCount()} / {PET_PANEL_MAX_TERMINALS} on panel
@@ -254,9 +269,11 @@ export function PetTerminalSurface({ className }: { className?: string }) {
             onClick={() => setMode('tabs')}
             data-pet-terminal-view="tabs"
             aria-pressed={viewMode === 'tabs'}
+            aria-label="Terminal tabs view"
+            title="Terminal tabs view"
           >
             <LayoutList className="h-3.5 w-3.5" />
-            Tabs
+            <span data-pet-compact-label>Tabs</span>
           </Button>
           <Button
             size="sm"
@@ -265,14 +282,23 @@ export function PetTerminalSurface({ className }: { className?: string }) {
             onClick={() => setMode('grid')}
             data-pet-terminal-view="grid"
             aria-pressed={viewMode === 'grid'}
+            aria-label="Terminal grid view"
+            title="Terminal grid view"
           >
             <LayoutGrid className="h-3.5 w-3.5" />
-            Grid
+            <span data-pet-compact-label>Grid</span>
           </Button>
         </div>
         {active && viewMode === 'tabs' && (
-          <Button size="sm" variant="ghost" onClick={() => returnToMain(active.terminalId)}>
-            Return to main
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => returnToMain(active.terminalId)}
+            aria-label="Return terminal to main app"
+            title="Return terminal to main app"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            <span data-pet-compact-label>Return to main</span>
           </Button>
         )}
       </div>
@@ -297,6 +323,8 @@ export function PetTerminalSurface({ className }: { className?: string }) {
               onClick={() => setPanelActiveTerminalId(t.terminalId)}
               data-terminal-id={t.terminalId}
               data-pty-id={t.ptyId}
+              title={t.title || t.terminalId}
+              aria-label={`Open terminal ${t.title || t.terminalId}`}
             >
               {t.title || t.terminalId.slice(0, 8)}
             </Button>
@@ -322,7 +350,7 @@ export function PetTerminalSurface({ className }: { className?: string }) {
         ) : null}
       </div>
 
-      <p className="text-metadata text-muted-foreground shrink-0">
+      <p className="pet-panel-secondary-copy text-metadata text-muted-foreground shrink-0">
         Tip: right-click a terminal in the main app → Send to Pet panel. Grid shows all live PTYs.
       </p>
     </div>

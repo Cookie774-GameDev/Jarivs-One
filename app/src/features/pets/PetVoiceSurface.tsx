@@ -140,14 +140,14 @@ export function PetVoiceSurface({
 
   return (
     <div
-      className={cn('flex h-full min-h-0 flex-col gap-3 p-2', className)}
+      className={cn('flex h-full min-h-0 min-w-0 flex-col gap-3 p-2', className)}
       data-pet-voice-surface="true"
       data-voice-state={state}
       data-voice-muted={muted ? 'true' : 'false'}
       data-voice-persona={persona}
       data-voice-provider={defaultProvider ?? ''}
     >
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2" data-pet-voice-toolbar="true">
         <Button
           size="sm"
           variant={isListening ? 'destructive' : 'default'}
@@ -155,9 +155,11 @@ export function PetVoiceSurface({
           onClick={() => (isListening ? stopListeningOnly() : start())}
           data-pet-voice-mic="true"
           className="gap-1.5"
+          aria-label={isListening ? 'Stop listening' : 'Listen'}
+          title={isListening ? 'Stop listening' : 'Listen'}
         >
           {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-          {isListening ? 'Stop' : 'Listen'}
+          <span data-pet-compact-label>{isListening ? 'Stop' : 'Listen'}</span>
         </Button>
         {(isSpeaking || isThinking) && (
           <Button
@@ -166,9 +168,11 @@ export function PetVoiceSurface({
             onClick={stopAll}
             className="gap-1.5"
             data-pet-voice-stop-output="true"
+            aria-label="Stop speaking"
+            title="Stop speaking"
           >
             <Square className="h-3.5 w-3.5" />
-            Stop speaking
+            <span data-pet-compact-label>Stop speaking</span>
           </Button>
         )}
         <Button
@@ -178,9 +182,11 @@ export function PetVoiceSurface({
           className="gap-1.5"
           data-pet-voice-mute="true"
           aria-pressed={muted}
+          aria-label={muted ? 'Unmute' : 'Mute'}
+          title={muted ? 'Unmute' : 'Mute'}
         >
           {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
-          {muted ? 'Unmute' : 'Mute'}
+          <span data-pet-compact-label>{muted ? 'Unmute' : 'Mute'}</span>
         </Button>
         <Button
           size="sm"
@@ -188,9 +194,11 @@ export function PetVoiceSurface({
           onClick={() => setVoiceModalOpen(true)}
           className="gap-1.5"
           data-pet-voice-full-ui="true"
+          aria-label="Open full voice UI"
+          title="Open full voice UI"
         >
           <Volume2 className="h-4 w-4" />
-          Full voice UI
+          <span data-pet-compact-label>Full voice UI</span>
         </Button>
         {onOpenChats && (
           <Button
@@ -199,9 +207,11 @@ export function PetVoiceSurface({
             onClick={onOpenChats}
             className="gap-1.5"
             data-pet-voice-open-chats="true"
+            aria-label="Open chat"
+            title="Open chat"
           >
             <MessageSquare className="h-4 w-4" />
-            Open chat
+            <span data-pet-compact-label>Open chat</span>
           </Button>
         )}
         <span className="text-metadata text-muted-foreground ml-auto capitalize">
@@ -211,7 +221,7 @@ export function PetVoiceSurface({
       </div>
 
       <div
-        className="text-metadata text-muted-foreground truncate"
+        className="pet-panel-secondary-copy text-metadata text-muted-foreground truncate"
         data-pet-voice-provider-status="true"
         title={providerLabel}
       >
@@ -219,7 +229,10 @@ export function PetVoiceSurface({
       </div>
 
       {errorMessage && (
-        <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-sm">
+        <div
+          role="alert"
+          className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-sm"
+        >
           {errorMessage}
           <Button size="sm" variant="ghost" className="ml-2 h-auto p-0" onClick={start}>
             Retry
@@ -227,10 +240,14 @@ export function PetVoiceSurface({
         </div>
       )}
 
-      <div className="flex-1 min-h-0 overflow-auto rounded-lg border border-border bg-elevated/30 p-3 space-y-2">
+      <div
+        className="flex-1 min-h-0 min-w-0 overflow-auto rounded-lg border border-border bg-elevated/30 p-3 space-y-2"
+        data-pet-voice-transcript="true"
+      >
         {finals.length === 0 && !partial && (
           <p className="text-secondary text-muted-foreground text-sm">
-            Tap Listen and speak. Uses the same Jarvis voice pipeline as the main app (STT → AI → TTS).
+            Tap Listen and speak. Uses the same Jarvis voice pipeline as the main app (STT → AI →
+            TTS).
           </p>
         )}
         {finals.map((f) => (
