@@ -10,8 +10,8 @@
  * for a few hundred milliseconds while its chunk fetches.
  *
  * Lifecycle:
- *   1. The action runner enqueues a `TerminalCommand` (`shell` or
- *      `swarm`) and switches the route to 'terminal'.
+ *   1. The action runner enqueues a `TerminalCommand` (`shell`, `swarm`,
+ *      or bounded `fleet`) and switches the route to 'terminal'.
  *   2. React commits the route change. The lazy chunk loads.
  *   3. TerminalsPage mounts and subscribes to this store. Its first
  *      effect drains every queued item — appending panes for `shell`
@@ -29,6 +29,19 @@
 
 import { create } from 'zustand';
 import type { TerminalRef } from './terminalRefs';
+import { MAX_PANES } from './paneTree';
+import type { TerminalFleetSelection } from './terminalFleet';
+
+export const MAX_TERMINAL_FLEET_BATCH_SIZE = MAX_PANES;
+export const MAX_TERMINAL_FLEET_STAGGER_DELAY_MS = 5_000;
+
+export interface TerminalFleetRequestInput {
+  targetTotal: number;
+  selection: TerminalFleetSelection;
+  cwd?: string;
+  batchSize: number;
+  staggerDelayMs: number;
+}
 
 /**
  * Queue item. Discriminated union so a single drain() call can deliver
@@ -70,10 +83,23 @@ export type TerminalCommand =
       id: string;
       /** How many of the most-recently-added panes to close. Clamped 1–10. */
       count: number;
+    }
+  | {
+      kind: 'fleet';
+      /** Queue identity and public request identity stay identical. */
+      id: string;
+      requestId: string;
+      targetTotal: number;
+      selection: TerminalFleetSelection;
+      cwd?: string;
+      batchSize: number;
+      staggerDelayMs: number;
     };
 
 interface TerminalCommandQueueState {
   queue: TerminalCommand[];
+  activeFleetRequestIds: string[];
+  cancelledFleetRequestIds: string[];
 
   /** Append a shell command; returns the assigned id. */
   enqueue: (
@@ -86,6 +112,9 @@ interface TerminalCommandQueueState {
   /** Append a close request for the N most-recent panes; returns the assigned id. */
   requestClose: (count: number) => string;
 
+  /** Append one bounded target-total Fleet transaction. */
+  requestFleet: (input: TerminalFleetRequestInput) => string;
+
   /**
    * Drain everything currently queued and return it. Resets the queue
    * to empty. Idempotent on subsequent calls.
@@ -94,6 +123,12 @@ interface TerminalCommandQueueState {
 
   /** Remove one command before the terminal page drains it. */
   cancel: (id: string) => boolean;
+
+  /** Query cooperative cancellation while a drained Fleet batch is launching. */
+  isFleetCancelled: (id: string) => boolean;
+
+  /** Release cancellation/in-flight bookkeeping after Fleet processing ends. */
+  completeFleet: (id: string) => void;
 
   /** Clear without returning. Used on TerminalsPage unmount as a
    *  defensive cleanup (anything still in the queue is stale). */
@@ -108,9 +143,16 @@ function newId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${(nextId++).toString(36)}`;
 }
 
+function boundedInteger(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min;
+  return Math.min(max, Math.max(min, Math.floor(value)));
+}
+
 export const useTerminalCommandQueue = create<TerminalCommandQueueState>(
   (set, get) => ({
     queue: [],
+    activeFleetRequestIds: [],
+    cancelledFleetRequestIds: [],
     enqueue: (cmd) => {
       const id = newId('tcmd');
       const next: TerminalCommand = { kind: 'shell', id, ...cmd };
@@ -128,19 +170,68 @@ export const useTerminalCommandQueue = create<TerminalCommandQueueState>(
       set((s) => ({ queue: [...s.queue, { kind: 'close', id, count: clamped }] }));
       return id;
     },
+    requestFleet: (input) => {
+      const id = newId('tflt');
+      const next: TerminalCommand = {
+        kind: 'fleet',
+        id,
+        requestId: id,
+        targetTotal: boundedInteger(input.targetTotal, 0, MAX_PANES),
+        selection: input.selection,
+        cwd: input.cwd,
+        batchSize: boundedInteger(input.batchSize, 1, MAX_TERMINAL_FLEET_BATCH_SIZE),
+        staggerDelayMs: boundedInteger(
+          input.staggerDelayMs,
+          0,
+          MAX_TERMINAL_FLEET_STAGGER_DELAY_MS,
+        ),
+      };
+      set((state) => ({ queue: [...state.queue, next] }));
+      return id;
+    },
     drain: () => {
       const items = get().queue;
       if (items.length === 0) return items;
-      set({ queue: [] });
+      const fleetIds = items
+        .filter((item): item is Extract<TerminalCommand, { kind: 'fleet' }> =>
+          item.kind === 'fleet',
+        )
+        .map((item) => item.requestId);
+      set((state) => ({
+        queue: [],
+        activeFleetRequestIds: [...new Set([...state.activeFleetRequestIds, ...fleetIds])],
+      }));
       return items;
     },
     cancel: (id) => {
-      const current = get().queue;
-      if (!current.some((item) => item.id === id)) return false;
-      set({ queue: current.filter((item) => item.id !== id) });
+      const state = get();
+      if (state.queue.some((item) => item.id === id)) {
+        set({ queue: state.queue.filter((item) => item.id !== id) });
+        return true;
+      }
+      if (!state.activeFleetRequestIds.includes(id)) return false;
+      if (!state.cancelledFleetRequestIds.includes(id)) {
+        set({
+          cancelledFleetRequestIds: [...state.cancelledFleetRequestIds, id],
+        });
+      }
       return true;
     },
-    clear: () => set({ queue: [] }),
+    isFleetCancelled: (id) => get().cancelledFleetRequestIds.includes(id),
+    completeFleet: (id) => {
+      set((state) => ({
+        activeFleetRequestIds: state.activeFleetRequestIds.filter((item) => item !== id),
+        cancelledFleetRequestIds: state.cancelledFleetRequestIds.filter(
+          (item) => item !== id,
+        ),
+      }));
+    },
+    clear: () =>
+      set({
+        queue: [],
+        activeFleetRequestIds: [],
+        cancelledFleetRequestIds: [],
+      }),
   }),
 );
 
@@ -170,4 +261,17 @@ export function requestTerminalSwarm(): string {
 /** Close the N most-recently-added terminal panes. */
 export function enqueueTerminalClose(count: number): string {
   return useTerminalCommandQueue.getState().requestClose(count);
+}
+
+/** Queue a bounded Fleet transaction for TerminalsPage to process. */
+export function requestTerminalFleet(input: TerminalFleetRequestInput): string {
+  return useTerminalCommandQueue.getState().requestFleet(input);
+}
+
+export function isTerminalFleetRequestCancelled(id: string): boolean {
+  return useTerminalCommandQueue.getState().isFleetCancelled(id);
+}
+
+export function completeTerminalFleetRequest(id: string): void {
+  useTerminalCommandQueue.getState().completeFleet(id);
 }

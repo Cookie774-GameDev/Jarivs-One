@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   flattenLeaves,
   fromLeaves,
+  isReusableTerminalLeaf,
   newLeaf,
   resolvePaneAgentMode,
   resizeAdjacentTracks,
@@ -84,5 +85,43 @@ describe('resolvePaneAgentMode', () => {
     expect(resolvePaneAgentMode({ agentSlug: 'coder', agentMode: 'coordinated' })).toBe(
       'coordinated',
     );
+  });
+});
+
+describe('isReusableTerminalLeaf', () => {
+  const idleRuntime = { backendState: 'idle' as const, transcript: '   ' };
+
+  it('accepts only a positively idle leaf with no meaningful work state', () => {
+    const empty = newLeaf({ command: 'powershell' }) as Extract<PaneNode, { kind: 'leaf' }>;
+    expect(isReusableTerminalLeaf(empty, idleRuntime)).toBe(true);
+  });
+
+  it.each([
+    ['live session', { sessionId: 'pty-1' }],
+    ['startup command', { startupCommand: 'claude' }],
+    ['pending command', { pendingCommand: 'npm test' }],
+    ['pending command token', { pendingCommandId: 42 }],
+    ['execution', { executionId: 'exec-1' }],
+    ['agent slug', { agentSlug: 'builder' }],
+    ['agent mode', { agentMode: 'no-context' as const }],
+  ])('rejects a leaf with %s metadata', (_label, patch) => {
+    const candidate = {
+      ...(newLeaf() as Extract<PaneNode, { kind: 'leaf' }>),
+      ...patch,
+    };
+    expect(isReusableTerminalLeaf(candidate, idleRuntime)).toBe(false);
+  });
+
+  it('rejects meaningful transcripts and active or uncertain backend state', () => {
+    const candidate = newLeaf() as Extract<PaneNode, { kind: 'leaf' }>;
+    expect(
+      isReusableTerminalLeaf(candidate, { backendState: 'idle', transcript: 'PS> output' }),
+    ).toBe(false);
+    expect(
+      isReusableTerminalLeaf(candidate, { backendState: 'active', transcript: '' }),
+    ).toBe(false);
+    expect(
+      isReusableTerminalLeaf(candidate, { backendState: 'unknown', transcript: '' }),
+    ).toBe(false);
   });
 });

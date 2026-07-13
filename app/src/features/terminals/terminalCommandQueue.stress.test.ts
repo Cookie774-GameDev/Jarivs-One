@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   broadcastTerminalCommand,
+  completeTerminalFleetRequest,
   enqueueTerminalClose,
   enqueueTerminalCommand,
+  isTerminalFleetRequestCancelled,
+  requestTerminalFleet,
   useTerminalCommandQueue,
 } from './terminalCommandQueue';
 import {
@@ -116,5 +119,62 @@ describe('terminal command queue stress', () => {
     expect(useTerminalCommandQueue.getState().cancel(first)).toBe(true);
     expect(useTerminalCommandQueue.getState().cancel(first)).toBe(false);
     expect(useTerminalCommandQueue.getState().drain().map((item) => item.id)).toEqual([second]);
+  });
+
+  it('queues a bounded fleet transaction in mixed arrival order', () => {
+    const first = enqueueTerminalCommand({ command: 'echo first' });
+    const fleetId = requestTerminalFleet({
+      targetTotal: 8,
+      selection: { kind: 'preset', presetId: 'codex' },
+      cwd: 'C:\\work',
+      batchSize: 3,
+      staggerDelayMs: 250,
+    });
+    const last = enqueueTerminalCommand({ command: 'echo last' });
+
+    expect(useTerminalCommandQueue.getState().drain()).toEqual([
+      expect.objectContaining({ kind: 'shell', id: first }),
+      {
+        kind: 'fleet',
+        id: fleetId,
+        requestId: fleetId,
+        targetTotal: 8,
+        selection: { kind: 'preset', presetId: 'codex' },
+        cwd: 'C:\\work',
+        batchSize: 3,
+        staggerDelayMs: 250,
+      },
+      expect.objectContaining({ kind: 'shell', id: last }),
+    ]);
+  });
+
+  it('cancels fleet work both before drain and while processing', () => {
+    const queued = requestTerminalFleet({
+      targetTotal: 4,
+      selection: { kind: 'preset', presetId: 'claude' },
+      batchSize: 2,
+      staggerDelayMs: 100,
+    });
+    expect(useTerminalCommandQueue.getState().cancel(queued)).toBe(true);
+    expect(useTerminalCommandQueue.getState().drain()).toEqual([]);
+
+    const processing = requestTerminalFleet({
+      targetTotal: 6,
+      selection: { kind: 'custom', command: 'aider --model sonnet' },
+      batchSize: 20,
+      staggerDelayMs: 99_999,
+    });
+    const [transaction] = useTerminalCommandQueue.getState().drain();
+    expect(transaction).toMatchObject({
+      kind: 'fleet',
+      requestId: processing,
+      batchSize: 10,
+      staggerDelayMs: 5_000,
+    });
+    expect(useTerminalCommandQueue.getState().cancel(processing)).toBe(true);
+    expect(isTerminalFleetRequestCancelled(processing)).toBe(true);
+    completeTerminalFleetRequest(processing);
+    expect(isTerminalFleetRequestCancelled(processing)).toBe(false);
+    expect(useTerminalCommandQueue.getState().cancel(processing)).toBe(false);
   });
 });
