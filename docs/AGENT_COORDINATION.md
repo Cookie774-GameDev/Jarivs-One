@@ -374,6 +374,11 @@ Append new entries at the **bottom** of the relevant agent section. Use [How to 
 
 | Path / area | Owner agent | Version | Status | Notes |
 |-------------|-------------|---------|--------|-------|
+| `docs/AGENT_COORDINATION.md`, `docs/superpowers/plans/2026-07-13-subscription-cli-bridge.md` | Claude 1 (`AGENT-CLAUDE1-20260713-112348-SCB1`) | v0.1.49 | in-progress | Approved implementation plan, lock/status ledger, draft-PR handoff |
+| `app/src/lib/ai/adapters/**`, `app/src/lib/ai/{router,runtime,types,modelSelection,useAccessibleChatModels}.ts`, `app/src/stores/auth.ts`, `app/src/types/chat.ts`, `app/src/lib/db/repositories.ts` | Claude 1 (`AGENT-CLAUDE1-20260713-112348-SCB1`) | v0.1.49 | in-progress | Connection-aware adapter registry, routing, persistence, event normalization |
+| `app/src-tauri/src/{cli_bridge,lib}.rs` | Claude 1 (`AGENT-CLAUDE1-20260713-112348-SCB1`) | v0.1.49 | in-progress | Shell-free detection, probes, structured process execution and cancellation |
+| `app/src/lib/usage/**`, `app/src/features/chat/{Composer,ModelPickerTypeahead,SlashCommandTypeahead,MessagePart,UsageCard,ConnectionInfoPopover}.tsx` | Claude 1 (`AGENT-CLAUDE1-20260713-112348-SCB1`) | v0.1.49 | in-progress | Truthful usage data, picker mode labels, usage card, capability gating |
+| `app/src/features/settings/{SettingsModal,settingsPrefetch,settingsTabMemory}.ts*`, `app/src/features/settings/sections/{Providers,SubscriptionCliBridge}.tsx` | Claude 1 (`AGENT-CLAUDE1-20260713-112348-SCB1`) | v0.1.49 | in-progress | Compact Subscription & CLI Bridge settings surface |
 | `docs/AGENT_COORDINATION.md` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | Blocked handoff recorded; no final merge SHA |
 | `docs/superpowers/plans/2026-07-10-pr15-safe-merge.md` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | High-risk merge execution plan |
 | `.github/workflows/pages.yml` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | Current GitHub Pages deployment behavior preserved |
@@ -1656,7 +1661,7 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Agent ID** | `AGENT-CLAUDE1-20260713-112348-SCB1` |
 | **Branch** | `main` at `eb4b26aee66c8c14324a282d8bedf8f2d55808df`; moving to isolated `feature/subscription-cli-bridge` worktree after approval |
 | **Task** | Implement Subscription & CLI Bridge: reusable adapters, safe CLI detection/execution, ten-target capability registry, per-chat connections, truthful `/usage`, compact settings/picker UI, and full verification. |
-| **Status** | implementation approved 2026-07-13; worktree setup in progress |
+| **Status** | implementation approved 2026-07-13; isolated worktree active at `.worktrees/subscription-cli-bridge`; implementation locks claimed |
 | **Files touched** | Coordination and worktree-safety metadata only before isolated-worktree creation; product scopes will be locked in the feature worktree before edits |
 | **Constraints** | No Stripe, Supabase, billing, subscription, schema, website, phone, entitlement, deployment, merge, release, credential, or production changes. No provider auth prompts or billable probes. |
 
