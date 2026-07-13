@@ -42,6 +42,7 @@ import { useIdleDetection, AmbientAudioHost } from '@/features/ambient';
 import { useLinkHotkeys } from '@/features/launcher';
 import { startWorkspaceAnalyticsClock } from '@/features/inspector/workspaceAnalytics';
 import { GlobalSttHost } from '@/features/composer-stt';
+import { FileExplorerHost } from '@/features/files';
 import { Toaster, toast } from '@/components/ui/toast';
 import { startRuntimeListener } from '@/lib/ai/runtime';
 import { messageRepo, agentRepo, chatRepo, openDb, db } from '@/lib/db';
@@ -109,6 +110,12 @@ const AssistantBar = React.lazy(() =>
 );
 const WhatsNewHost = React.lazy(() =>
   import('@/features/whats-new').then((m) => ({ default: m.WhatsNewHost })),
+);
+const NewsHost = React.lazy(() =>
+  import('@/features/news').then((m) => ({ default: m.NewsHost })),
+);
+const ProductTutorialHost = React.lazy(() =>
+  import('@/features/product-tutorial').then((m) => ({ default: m.ProductTutorialHost })),
 );
 const ActionsPalette = React.lazy(() =>
   import('@/features/actions').then((m) => ({ default: m.ActionsPalette })),
@@ -764,6 +771,12 @@ function WorkspaceRoot() {
       <LauncherDialogHost />
       <AssistantBarHost />
       <WhatsNewHost />
+      <React.Suspense fallback={null}>
+        <NewsHost />
+      </React.Suspense>
+      <React.Suspense fallback={null}>
+        <ProductTutorialHost />
+      </React.Suspense>
       <UpdateWarningHost />
 
       {/* Visual ambient effects removed — clean UI */}
@@ -788,6 +801,9 @@ function WorkspaceRoot() {
       <ActionsPaletteHost />
 
       <GlobalSttHost />
+
+      {/* Themed desktop file / folder explorer (Context, Files, pickers). */}
+      <FileExplorerHost />
 
       {/* Toast outlet */}
       <JarvisContextMenu />

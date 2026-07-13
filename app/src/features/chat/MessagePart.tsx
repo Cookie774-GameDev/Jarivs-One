@@ -1,4 +1,4 @@
-import { FileText, Image as ImageIcon } from 'lucide-react';
+import { Bot, FileText, Image as ImageIcon, Layers, Zap } from 'lucide-react';
 import { ToolCallCard } from './ToolCallCard';
 import { ActionApprovalCard } from './ActionApprovalCard';
 import { StackTimeline } from './StackTimeline';
@@ -11,12 +11,18 @@ import {
   parseLooseJarvisCreatorAgentDraft,
   parseLooseJarvisCreatorSkillDraft,
   parseJarvisCreatorDraft,
+  normalizeJarvisCreatorSkillDraft,
   type JarvisCreatorKind,
 } from '@/features/jarvis-creator/contracts';
 import { QuestionBlockCard } from '@/features/jarvis-interaction/QuestionBlockCard';
 import { PlanReviewCard } from '@/features/jarvis-interaction/PlanReviewCard';
 import { PermissionRequestCard } from '@/features/jarvis-interaction/PermissionRequestCard';
 import { AgentActivityCard } from '@/features/jarvis-interaction/AgentActivityCard';
+import {
+  activeChatCommandLabel,
+  parseActiveChatCommandMessage,
+} from './chatActiveCommands';
+import { cn } from '@/lib/utils';
 
 function textForDisplay(text: string): string {
   if (!text.includes('```')) return text;
@@ -28,6 +34,65 @@ function textForDisplay(text: string): string {
     .join('')
     .trim();
   return prose;
+}
+
+/** Distinct “command in use” card — not an attachment chip. */
+function ActiveChatCommandMessage({ text }: { text: string }) {
+  const parsed = parseActiveChatCommandMessage(text);
+  if (!parsed) return null;
+  const isSub = parsed.cmd === 'subagents';
+  const Icon = isSub ? Layers : Bot;
+  return (
+    <div
+      data-testid="active-chat-command"
+      data-command={parsed.cmd}
+      className={cn(
+        'relative overflow-hidden rounded-xl border px-3 py-2.5',
+        'shadow-[0_0_22px_rgba(0,0,0,0.18)]',
+        isSub
+          ? 'border-fuchsia-400/50 bg-gradient-to-br from-fuchsia-500/18 via-violet-500/12 to-background/40'
+          : 'border-cyan-400/50 bg-gradient-to-br from-cyan-500/18 via-sky-500/12 to-background/40',
+      )}
+      title={`${activeChatCommandLabel(parsed.cmd)} command in use`}
+    >
+      <div
+        aria-hidden
+        className={cn(
+          'pointer-events-none absolute inset-y-0 left-0 w-1',
+          isSub ? 'bg-fuchsia-400' : 'bg-cyan-400',
+        )}
+      />
+      <div className="flex flex-wrap items-center gap-2 pl-1.5">
+        <span
+          className={cn(
+            'inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold tracking-wide',
+            isSub
+              ? 'border-fuchsia-400/55 bg-fuchsia-500/20 text-fuchsia-100'
+              : 'border-cyan-400/55 bg-cyan-500/20 text-cyan-100',
+          )}
+        >
+          <Icon className="h-3.5 w-3.5 shrink-0" />
+          /{parsed.cmd}
+        </span>
+        <span
+          className={cn(
+            'inline-flex items-center gap-1 rounded-full px-1.5 py-px text-[9px] font-bold uppercase tracking-wider',
+            isSub
+              ? 'bg-fuchsia-400/25 text-fuchsia-100 ring-1 ring-fuchsia-300/40'
+              : 'bg-cyan-400/25 text-cyan-100 ring-1 ring-cyan-300/40',
+          )}
+        >
+          <Zap className="h-2.5 w-2.5" />
+          In use
+        </span>
+      </div>
+      {parsed.task ? (
+        <p className="mt-2 pl-1.5 text-body text-foreground/95 whitespace-pre-wrap break-words [overflow-wrap:anywhere] leading-relaxed">
+          {parsed.task}
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 function CreatorDraftApply({ text, kind }: { text: string; kind?: JarvisCreatorKind }) {
@@ -42,7 +107,7 @@ function CreatorDraftApply({ text, kind }: { text: string; kind?: JarvisCreatorK
           className="mt-2 w-fit rounded-md border border-accent-copper/45 bg-accent-copper/10 px-2 py-1 text-metadata text-foreground hover:border-accent-copper/70"
           onClick={() => window.dispatchEvent(new CustomEvent(JARVIS_CREATOR_APPLY_AGENT_EVENT, { detail: agent.draft }))}
         >
-          Apply agent draft
+          Push to agent
         </button>
       );
     }
@@ -63,27 +128,41 @@ function CreatorDraftApply({ text, kind }: { text: string; kind?: JarvisCreatorK
 
   const skill = parseJarvisCreatorDraft('skill', text);
   if (skill.ok) {
-    return (
-      <button
-        type="button"
-        className="mt-2 w-fit rounded-md border border-accent-copper/45 bg-accent-copper/10 px-2 py-1 text-metadata text-foreground hover:border-accent-copper/70"
-        onClick={() => window.dispatchEvent(new CustomEvent(JARVIS_CREATOR_APPLY_SKILL_EVENT, { detail: skill.draft }))}
-      >
-        Apply skill draft
-      </button>
-    );
+    const normalized = normalizeJarvisCreatorSkillDraft(skill.draft);
+    if (normalized) {
+      return (
+        <button
+          type="button"
+          className="mt-2 w-fit rounded-md border border-accent-copper/45 bg-accent-copper/10 px-2 py-1 text-metadata text-foreground hover:border-accent-copper/70"
+          onClick={() =>
+            window.dispatchEvent(
+              new CustomEvent(JARVIS_CREATOR_APPLY_SKILL_EVENT, { detail: normalized }),
+            )
+          }
+        >
+          Push to skill
+        </button>
+      );
+    }
   }
   const looseSkill = parseLooseJarvisCreatorSkillDraft(text);
   if (looseSkill.ok) {
-    return (
-      <button
-        type="button"
-        className="mt-2 w-fit rounded-md border border-accent-copper/45 bg-accent-copper/10 px-2 py-1 text-metadata text-foreground hover:border-accent-copper/70"
-        onClick={() => window.dispatchEvent(new CustomEvent(JARVIS_CREATOR_APPLY_SKILL_EVENT, { detail: looseSkill.draft }))}
-      >
-        Push to skill
-      </button>
-    );
+    const normalized = normalizeJarvisCreatorSkillDraft(looseSkill.draft);
+    if (normalized) {
+      return (
+        <button
+          type="button"
+          className="mt-2 w-fit rounded-md border border-accent-copper/45 bg-accent-copper/10 px-2 py-1 text-metadata text-foreground hover:border-accent-copper/70"
+          onClick={() =>
+            window.dispatchEvent(
+              new CustomEvent(JARVIS_CREATOR_APPLY_SKILL_EVENT, { detail: normalized }),
+            )
+          }
+        >
+          Push to skill
+        </button>
+      );
+    }
   }
   return null;
 }
@@ -126,6 +205,10 @@ export function MessagePart({
     case 'text': {
       if (!part.text) {
         return <span className="inline-block h-3 w-3 rounded-full bg-muted-foreground/40 animate-pulse" aria-label="Thinking" />;
+      }
+      const activeCommand = parseActiveChatCommandMessage(part.text);
+      if (activeCommand) {
+        return <ActiveChatCommandMessage text={part.text} />;
       }
       const display = textForDisplay(part.text);
       if (!display && part.text.includes('```action')) {

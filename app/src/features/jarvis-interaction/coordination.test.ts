@@ -4,6 +4,7 @@ import {
   createEmptyJarvisCoordinationSnapshot,
   registerJarvisChatAgent,
   releaseJarvisAgentLocks,
+  summarizeJarvisChatCoordination,
   updateJarvisAgentStatus,
 } from './coordination';
 
@@ -69,6 +70,31 @@ describe('Jarvis chat-agent coordination', () => {
     expect(conflict.ok).toBe(false);
     if (conflict.ok) throw new Error('expected conflict');
     expect(conflict.conflict.lockedByAgentId).toBe('ja_1');
+  });
+
+  it('summarizes chat multitask agents and locks for Jarvis chat context', () => {
+    let snapshot = createEmptyJarvisCoordinationSnapshot('C:/repo', '2026-06-24T12:00:00.000Z');
+    snapshot = registerJarvisChatAgent(snapshot, {
+      agentId: 'ja_1',
+      name: 'Fix composer',
+      modelLabel: 'google/gemini',
+      chatId: 'chat_1',
+      task: 'Fix AllAboutMe close save',
+      now: '2026-06-24T12:00:01.000Z',
+    });
+    const locked = acquireJarvisFileLock(snapshot, {
+      agentId: 'ja_1',
+      filePath: 'app/src/features/settings/sections/AllAboutMe.tsx',
+      reason: 'Autosave',
+      now: '2026-06-24T12:00:02.000Z',
+    });
+    if (!locked.ok) throw new Error('expected lock');
+
+    const summary = summarizeJarvisChatCoordination(locked.snapshot);
+    expect(summary).toContain('Chat multitask / subagent coordination');
+    expect(summary).toContain('Fix composer');
+    expect(summary).toContain('AllAboutMe.tsx');
+    expect(summary).toContain('.jarvis/agent-coordination.json');
   });
 
   it('releases active locks when an agent finishes, fails, or is cancelled', () => {

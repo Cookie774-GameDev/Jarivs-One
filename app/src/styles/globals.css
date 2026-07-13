@@ -1674,6 +1674,7 @@
 }
 
 .jarvis-terminal-surface .xterm {
+  position: relative;
   height: 100%;
   width: 100%;
   max-width: 100%;
@@ -1681,9 +1682,12 @@
   background: transparent !important;
 }
 
+/* Keep the live surface top-aligned inside the pane (prompt stays at top
+   of the tile, not floating mid/bottom when the buffer is short). */
 .jarvis-terminal-surface .xterm .xterm-helpers,
 .jarvis-terminal-surface .xterm-screen,
 .jarvis-terminal-surface .xterm-viewport {
+  top: 0 !important;
   left: 0 !important;
   width: 100% !important;
   background: transparent !important;

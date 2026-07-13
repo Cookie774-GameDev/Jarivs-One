@@ -234,13 +234,21 @@ export function QuestionBlockCard({ part, messageId, chatId }: QuestionBlockCard
   const renderQuestion = (question: JarvisQuestion, index: number) => {
     const selected = selectedByQuestion[question.id] ?? [];
     return (
-      <div key={question.id} className="rounded-lg border border-border/80 bg-background/60 p-3">
-        <div className="mb-2 text-secondary font-medium text-foreground">
+      <div
+        key={question.id}
+        className="min-w-0 rounded-xl border border-border/60 bg-background/80 p-4 shadow-sm"
+        data-testid="question-block-step"
+      >
+        <div className="mb-3 text-[13.5px] font-medium leading-snug text-foreground break-words">
           {isWizard ? question.prompt : `${index + 1}. ${question.prompt}`}
-          {question.required && <span className="ml-1 text-accent-copper">*</span>}
+          {question.required && (
+            <span className="ml-1 font-semibold text-accent-copper" aria-hidden>
+              *
+            </span>
+          )}
         </div>
         {question.options?.length ? (
-          <div className="mb-2 flex flex-wrap gap-2">
+          <div className="mb-3 flex flex-wrap gap-2">
             {question.options.map((option) => {
               const active = selected.includes(option.id);
               return (
@@ -248,17 +256,17 @@ export function QuestionBlockCard({ part, messageId, chatId }: QuestionBlockCard
                   key={option.id}
                   type="button"
                   className={cn(
-                    'rounded-md border px-2.5 py-1.5 text-secondary transition',
+                    'rounded-lg border px-3 py-2 text-left text-sm leading-snug transition',
                     active
-                      ? 'border-accent-cyan/70 bg-accent-cyan/15 text-foreground'
-                      : 'border-border bg-elevated text-muted-foreground hover:text-foreground',
+                      ? 'border-accent-copper/70 bg-accent-copper/15 text-foreground'
+                      : 'border-border bg-elevated text-muted-foreground hover:border-accent-copper/40 hover:text-foreground',
                   )}
                   aria-pressed={active}
                   onClick={() => toggleChoice(question, option.id)}
                 >
-                  <span className="inline-flex items-center gap-1">
-                    {active && <Check className="h-3 w-3" />}
-                    {option.label}
+                  <span className="inline-flex items-center gap-1.5">
+                    {active && <Check className="h-3.5 w-3.5 shrink-0 text-accent-copper" />}
+                    <span className="break-words">{option.label}</span>
                   </span>
                 </button>
               );
@@ -266,7 +274,7 @@ export function QuestionBlockCard({ part, messageId, chatId }: QuestionBlockCard
           </div>
         ) : null}
         <textarea
-          className="min-h-16 w-full resize-y rounded-md border border-border bg-background px-2 py-1.5 text-secondary text-foreground outline-none focus:border-accent-cyan"
+          className="min-h-[7.5rem] w-full resize-y rounded-xl border border-border/80 bg-paper-soft/40 px-3.5 py-3 text-sm leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/75 focus:border-accent-copper/70 focus:bg-background focus:ring-2 focus:ring-accent-copper/20"
           placeholder={question.placeholder ?? 'Write your answer or add an “Other” response'}
           value={textByQuestion[question.id] ?? ''}
           onKeyDown={handleTextKeyDown}
@@ -280,58 +288,75 @@ export function QuestionBlockCard({ part, messageId, chatId }: QuestionBlockCard
   };
 
   return (
-    <section className="rounded-xl border border-accent-cyan/30 bg-accent-cyan/5 p-3 shadow-[0_0_20px_-16px_hsl(var(--accent-cyan))]">
-      <div className="mb-3 flex items-start justify-between gap-2">
-        <div className="flex items-start gap-2">
-          <div className="rounded-full border border-accent-cyan/40 bg-accent-cyan/10 p-1">
-            <HelpCircle className="h-3.5 w-3.5 text-accent-cyan" />
+    <section
+      className="w-full min-w-0 max-w-full space-y-4 rounded-2xl border border-accent-copper/35 bg-gradient-to-b from-accent-copper/10 via-background/40 to-background/20 p-4 shadow-[0_12px_40px_-28px_hsl(var(--accent-copper))]"
+      data-testid="question-block-card"
+    >
+      {/* Header stacks on the Inspector column so title + badge never crush. */}
+      <header className="flex min-w-0 flex-col gap-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="mt-0.5 shrink-0 rounded-xl border border-accent-copper/40 bg-accent-copper/15 p-2 shadow-sm">
+            <HelpCircle className="h-4 w-4 text-accent-copper" />
           </div>
-          <div>
-            <div className="text-ui-strong text-foreground">{block.title ?? 'Jarvis needs a quick answer'}</div>
-            {block.description && (
-              <p className="text-secondary text-muted-foreground">{block.description}</p>
-            )}
-          </div>
-        </div>
-        {isWizard && isPending && (
-          <span className="shrink-0 rounded-full border border-accent-cyan/30 bg-accent-cyan/10 px-2 py-0.5 text-metadata text-muted-foreground">
-            Question {activeIndex + 1} of {total}
-          </span>
-        )}
-      </div>
-
-      {isWizard && isPending && (
-        <div className="mb-3 flex gap-1" aria-hidden>
-          {block.questions.map((question, index) => (
-            <span
-              key={question.id}
-              className={cn(
-                'h-1 flex-1 rounded-full transition-colors',
-                index < activeIndex
-                  ? 'bg-accent-cyan/70'
-                  : index === activeIndex
-                    ? 'bg-accent-cyan/45'
-                    : 'bg-border',
+          <div className="min-w-0 flex-1 space-y-2">
+            <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <h3 className="min-w-0 text-[15px] font-semibold leading-snug tracking-tight text-foreground break-words">
+                {block.title ?? 'Jarvis needs a quick answer'}
+              </h3>
+              {isWizard && isPending && (
+                <span
+                  className="w-fit shrink-0 rounded-full border border-accent-copper/40 bg-accent-copper/12 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-accent-copper"
+                  aria-label={`Question ${activeIndex + 1} of ${total}`}
+                >
+                  {activeIndex + 1} / {total}
+                </span>
               )}
-            />
-          ))}
+            </div>
+            {block.description ? (
+              <p className="text-[12.5px] leading-relaxed text-muted-foreground break-words">
+                {block.description}
+              </p>
+            ) : null}
+          </div>
         </div>
-      )}
 
-      <div className="flex flex-col gap-3">
+        {isWizard && isPending && (
+          <div className="flex items-center gap-2" aria-hidden>
+            {block.questions.map((question, index) => (
+              <span
+                key={question.id}
+                className={cn(
+                  'h-1.5 flex-1 rounded-full transition-all duration-300',
+                  index < activeIndex
+                    ? 'bg-accent-copper'
+                    : index === activeIndex
+                      ? 'bg-accent-copper/55 shadow-[0_0_10px_hsl(var(--accent-copper)/0.35)]'
+                      : 'bg-border/80',
+                )}
+              />
+            ))}
+          </div>
+        )}
+      </header>
+
+      <div className="flex min-w-0 flex-col gap-3">
         {isPending && isWizard && activeQuestion
           ? renderQuestion(activeQuestion, activeIndex)
           : block.questions.map((question, index) => renderQuestion(question, index))}
       </div>
 
-      {error && <p className="mt-2 text-secondary text-destructive">{error}</p>}
+      {error && (
+        <p className="text-sm leading-snug text-destructive break-words" role="alert">
+          {error}
+        </p>
+      )}
       {!isPending && (
-        <p className="mt-2 text-secondary text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           {block.status === 'skipped' ? 'Skipped.' : block.status === 'cancelled' ? 'Cancelled.' : 'Answered.'}
         </p>
       )}
 
-      <div className="mt-3 flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 pt-0.5">
         {isWizard && activeIndex > 0 && (
           <Button type="button" size="sm" variant="ghost" disabled={busy || !isPending} onClick={handleBack}>
             <ArrowLeft className="mr-1 h-3.5 w-3.5" />

@@ -82,7 +82,10 @@ import {
   JARVIS_CREATOR_START_EVENT,
   type JarvisCreatorStartDetail,
 } from '@/features/jarvis-creator/contracts';
-import { consumePendingJarvisCreatorStart } from '@/features/jarvis-creator/launcher';
+import {
+  consumePendingJarvisCreatorStart,
+  requeueJarvisCreatorStart,
+} from '@/features/jarvis-creator/launcher';
 import { usePinnedStore } from '@/features/inspector/pinnedStore';
 import { openExternal, isTauri } from '@/lib/tauri';
 
@@ -143,9 +146,13 @@ export function Inspector() {
   const [activeTab, setActiveTab] = React.useState('today');
   const [traceView, setTraceView] = React.useState<'milestones' | 'timeline'>('milestones');
   const [previewFilePath, setPreviewFilePath] = React.useState<string | null>(null);
+  /** Holds a freshly created creator chat id until Dexie live-query catches up. */
+  const stickyCreatorChatIdRef = React.useRef<string | null>(null);
   const inspectorOpen = useUIStore((s) => s.inspectorOpen);
   const jarvisAgentId = useAgentStore((s) => Object.values(s.agents).find((agent) => agent.slug === 'jarvis')?.id ?? null);
   const projectRoot = React.useMemo(() => getStoredProjectRoot(projectId), [projectId]);
+  /** Jarvis creator needs a slightly wider column so question cards aren't squished. */
+  const inspectorWidth = activeTab === 'jarvis' ? 380 : 320;
 
   const setInspectorOpen = React.useCallback(
     (open: boolean) => useUIStore.setState({ inspectorOpen: open }),
@@ -167,12 +174,14 @@ export function Inspector() {
     const handleCreatorStart = (e: Event) => {
       const detail = (e as CustomEvent<JarvisCreatorStartDetail>).detail;
       if (!detail?.kind) return;
+      setInspectorOpen(true);
+      setActiveTab('jarvis');
       if (!workspaceId || !jarvisAgentId) {
+        // Keep the request until agents/workspace finish loading.
+        requeueJarvisCreatorStart(detail);
         toast.warning('Still loading', 'Jarvis creator is initializing — try again in a sec.');
         return;
       }
-      setInspectorOpen(true);
-      setActiveTab('jarvis');
       void createJarvisCreatorChat({
         kind: detail.kind,
         workspaceId,
@@ -183,7 +192,11 @@ export function Inspector() {
         chatRepo,
         messageRepo,
       })
-        .then((chatId) => setInspectorChatId(chatId))
+        .then((chatId) => {
+          stickyCreatorChatIdRef.current = chatId;
+          setInspectorChatId(chatId);
+          setActiveTab('jarvis');
+        })
         .catch((err) => {
           toast.error('Could not start Jarvis creator', err instanceof Error ? err.message : 'Try again.');
         });
@@ -223,11 +236,25 @@ export function Inspector() {
   );
 
   React.useEffect(() => {
+    // Project switch drops sticky creator selection from the previous project.
+    stickyCreatorChatIdRef.current = null;
+  }, [projectId]);
+
+  React.useEffect(() => {
     setInspectorChatId((current) => {
+      const sticky = stickyCreatorChatIdRef.current;
+      const preferred = sticky ?? current;
+      if (preferred && inspectorChats.some((chat) => chat.id === preferred)) {
+        if (sticky === preferred) stickyCreatorChatIdRef.current = null;
+        return preferred;
+      }
+      // Keep the newly created creator chat selected while live-query indexes it.
+      // Without this, Create with Jarvis opened the panel but snapped back to an older chat.
+      if (preferred && sticky === preferred) return preferred;
       if (current && inspectorChats.some((chat) => chat.id === current)) return current;
       return inspectorChats[0]?.id ?? null;
     });
-  }, [inspectorChatKey, projectId]);
+  }, [inspectorChatKey, projectId, inspectorChats]);
 
   const handleCreateChatInsideJarvisPanel = React.useCallback(async () => {
     if (!workspaceId) {
@@ -265,11 +292,11 @@ export function Inspector() {
       aria-label="Inspector"
       className="shrink-0 overflow-hidden bg-panel border-l border-border"
       initial={{ width: 0 }}
-      animate={{ width: 320 }}
+      animate={{ width: inspectorWidth }}
       exit={{ width: 0 }}
       transition={{ type: 'spring', stiffness: 400, damping: 30 }}
     >
-      <div className="flex h-full w-[320px] flex-col">
+      <div className="flex h-full flex-col" style={{ width: inspectorWidth }}>
         {/* Header with Title and Close Button */}
         <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-panel-soft">
           <span className="text-metadata font-medium uppercase tracking-wider text-muted-foreground">Inspector</span>

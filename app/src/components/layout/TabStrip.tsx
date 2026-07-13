@@ -37,7 +37,7 @@
 import * as React from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { AnimatePresence, motion } from 'motion/react';
-import { Plus, X } from 'lucide-react';
+import { Pin, Plus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Hint } from '@/components/ui/tooltip';
 import { useHotkey, HOTKEYS } from '@/lib/hotkeys';
@@ -49,10 +49,12 @@ import type { Chat } from '@/types/chat';
 import type { ChatId, WorkspaceId, ProjectId } from '@/types';
 import { cn } from '@/lib/utils';
 import { ensureActiveChat } from '@/features/chat/chatLifecycle';
+import { sortChatsForDisplay } from '@/features/chat/chatPin';
 
 interface TabModel {
   id: ChatId;
   title: string;
+  pinned?: boolean;
 }
 
 const ROOT_PROJECT_KEY = '__root__';
@@ -82,7 +84,7 @@ export function TabStrip() {
       const filtered = projectId
         ? rows.filter((c) => c.project_id === projectId)
         : rows.filter((c) => !c.project_id);
-      return filtered.sort((a, b) => b.updated_at - a.updated_at).slice(0, 20);
+      return sortChatsForDisplay(filtered).slice(0, 20);
     },
     [workspaceId, projectId],
     [] as Chat[],
@@ -93,6 +95,7 @@ export function TabStrip() {
       (chats ?? []).map((c) => ({
         id: c.id,
         title: (c.title ?? '').trim() || 'Untitled chat',
+        pinned: Boolean(c.pinned),
       })),
     [chats],
   );
@@ -412,6 +415,12 @@ function TabItem({ tab, active, onActivate, onClose, onRename }: TabItemProps) {
       )}
       title={editing ? undefined : 'Double-click to rename'}
     >
+      {tab.pinned ? (
+        <Pin
+          className="h-3 w-3 shrink-0 fill-accent-copper/80 text-accent-copper"
+          aria-label="Pinned"
+        />
+      ) : null}
       {editing ? (
         <input
           ref={inputRef}

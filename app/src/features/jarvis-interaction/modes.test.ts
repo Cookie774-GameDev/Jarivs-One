@@ -4,6 +4,8 @@ import {
   cycleInteractionMode,
   interactionModeLabel,
   modeFromSlashCommand,
+  parsePermissionModeArg,
+  PERMISSION_MODE_OPTIONS,
 } from './modes';
 import { useJarvisInteractionStore } from './sessionStore';
 
@@ -22,7 +24,30 @@ describe('Jarvis interaction modes', () => {
     expect(modeFromSlashCommand('ask')).toBe('ask');
     expect(modeFromSlashCommand('plan')).toBe('plan');
     expect(modeFromSlashCommand('multitask')).toBe('agent');
+    expect(modeFromSlashCommand('permissions agent')).toBe('agent');
+    expect(modeFromSlashCommand('permissions plan')).toBe('plan');
+    expect(modeFromSlashCommand('permissions ask')).toBe('ask');
+    expect(modeFromSlashCommand('permissions full')).toBe('agent');
+    expect(modeFromSlashCommand('permissions')).toBeNull();
     expect(modeFromSlashCommand('unknown')).toBeNull();
+  });
+
+  it('parses /permissions arguments', () => {
+    expect(parsePermissionModeArg('agent')).toBe('agent');
+    expect(parsePermissionModeArg('plan')).toBe('plan');
+    expect(parsePermissionModeArg('ask')).toBe('ask');
+    expect(parsePermissionModeArg('full access')).toBe('agent');
+    expect(parsePermissionModeArg('read-only')).toBe('plan');
+    expect(parsePermissionModeArg('nope')).toBeNull();
+  });
+
+  it('exposes three polished mode options with Agent/Plan/Ask labels', () => {
+    expect(PERMISSION_MODE_OPTIONS.map((o) => o.id)).toEqual(['agent', 'plan', 'ask']);
+    expect(PERMISSION_MODE_OPTIONS.map((o) => o.shortLabel)).toEqual([
+      'Agent Mode',
+      'Plan Mode',
+      'Ask Mode',
+    ]);
   });
 
   it('persists mode per chat with Agent Mode as the default', () => {

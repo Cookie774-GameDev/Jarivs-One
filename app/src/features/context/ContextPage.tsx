@@ -209,13 +209,14 @@ export function ContextPage() {
   }, [maps, projectId]);
 
   const openFolderPicker = async () => {
-    const picked = await chooseProjectFolder();
-    if (!picked) {
-      toast.info('Use the path field', 'Native folder picking is available in the desktop app.');
-      return;
-    }
+    const picked = await chooseProjectFolder({
+      title: 'Choose project folder',
+      initialPath: rootDraft.trim() || undefined,
+    });
+    if (!picked) return;
     setRootDraft(picked);
     setStoredProjectRoot(projectId, picked);
+    toast.success('Project folder selected', picked);
   };
 
   const rememberRoot = () => {

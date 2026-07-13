@@ -6,6 +6,8 @@ const fsMocks = vi.hoisted(() => ({
   writeTextFile: vi.fn(),
   getStoredProjectRoot: vi.fn(),
   loadCoordinationSummary: vi.fn(),
+  loadJarvisCoordinationSnapshot: vi.fn(),
+  summarizeJarvisChatCoordination: vi.fn(),
 }));
 
 vi.mock('@/lib/fs', () => ({
@@ -26,6 +28,11 @@ vi.mock('@/features/terminals/agentCoordinationClient', () => ({
   loadCoordinationSummary: fsMocks.loadCoordinationSummary,
 }));
 
+vi.mock('@/features/jarvis-interaction/coordination', () => ({
+  loadJarvisCoordinationSnapshot: fsMocks.loadJarvisCoordinationSnapshot,
+  summarizeJarvisChatCoordination: fsMocks.summarizeJarvisChatCoordination,
+}));
+
 import { useTerminalTranscriptStore } from '@/features/terminals/transcriptStore';
 import {
   getExplicitFilesBlock,
@@ -39,6 +46,15 @@ describe('AI explicit file context safeguards', () => {
     useTerminalTranscriptStore.getState().reset();
     fsMocks.getStoredProjectRoot.mockReturnValue('');
     fsMocks.loadCoordinationSummary.mockResolvedValue('');
+    fsMocks.loadJarvisCoordinationSnapshot.mockResolvedValue({
+      version: 1,
+      projectRoot: '',
+      generatedAt: '',
+      agents: [],
+      locks: [],
+      events: [],
+    });
+    fsMocks.summarizeJarvisChatCoordination.mockReturnValue('');
   });
 
   it('samples attached text files instead of reading them in full', async () => {
@@ -101,9 +117,33 @@ describe('AI explicit file context safeguards', () => {
     const block = await getJarvisCoordinationContextBlock('project_a' as never);
 
     expect(fsMocks.loadCoordinationSummary).toHaveBeenCalledWith('C:\\repo');
+    expect(fsMocks.loadJarvisCoordinationSnapshot).toHaveBeenCalledWith('C:\\repo');
     expect(block).toContain('Jarvis chat coordination awareness');
     expect(block).toContain('Coordination Summary');
     expect(block).toContain('coordination summary truncated');
     expect(block.length).toBeLessThan(3_700);
+  });
+
+  it('merges chat multitask coordination into the same context block for all chats', async () => {
+    fsMocks.getStoredProjectRoot.mockReturnValue('C:\\repo');
+    fsMocks.loadCoordinationSummary.mockResolvedValue('## Terminal agents\n- builder idle');
+    fsMocks.loadJarvisCoordinationSnapshot.mockResolvedValue({
+      version: 1,
+      projectRoot: 'C:\\repo',
+      generatedAt: '2026-06-24T12:00:00.000Z',
+      agents: [{ agentId: 'ja_1', name: 'Multitask A', status: 'thinking' }],
+      locks: [],
+      events: [],
+    });
+    fsMocks.summarizeJarvisChatCoordination.mockReturnValue(
+      '## Chat multitask / subagent coordination\n- Multitask A [thinking]',
+    );
+
+    const block = await getJarvisCoordinationContextBlock('project_a' as never);
+
+    expect(block).toContain('Terminal agents');
+    expect(block).toContain('Chat multitask / subagent coordination');
+    expect(block).toContain('Multitask A');
+    expect(block).toContain('all chats');
   });
 });

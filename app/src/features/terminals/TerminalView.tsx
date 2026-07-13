@@ -30,7 +30,7 @@
  * before slice 1 lands) we render a calm `bg-paper-soft` placeholder
  * instead of crashing the React tree.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type MouseEvent, type PointerEvent } from 'react';
 import { Mic, X } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
@@ -44,6 +44,11 @@ import 'xterm/css/xterm.css';
 import { cn } from '@/lib/utils';
 import { toast } from '@/components/ui/toast';
 import type { TerminalViewProps } from './types';
+import {
+  HOLD_TO_CONFIRM_MS,
+  createHoldToConfirmController,
+  type HoldConfirmPhase,
+} from './holdToConfirm';
 import { useTerminalTranscriptStore } from './transcriptStore';
 import { resolveTerminalRestoreSession, type BackendTerminalInfo } from './restoreSession';
 import {
@@ -67,7 +72,7 @@ import { TERMINAL_CLEAR_SUPPRESS_MS } from './terminalClear';
 import { createWebglDisposeTracker } from './terminalDispose';
 import { shouldSendTerminalResize, type TerminalGridSize } from './terminalGeometry';
 import {
-  shouldAutoFollowTerminalOutput,
+  applyTerminalFollowScroll,
   terminalUserHasScrolled,
 } from './terminalViewport';
 import { COMPOSER_STT_STOP_EVENT, COMPOSER_STT_TOGGLE_EVENT } from '@/features/composer-stt';
@@ -575,16 +580,18 @@ export function TerminalView({
 
       try {
         const currentTerm = termRef.current;
-        const shouldFollow = currentTerm
-          ? shouldAutoFollowTerminalOutput({
-              term: currentTerm,
-              userHasScrolled: userHasScrolledRef.current,
-            })
-          : false;
+        const followUserScrolled = userHasScrolledRef.current;
         currentTerm?.write(displayData, () => {
-          if (cancelled || !shouldFollow) return;
-          termRef.current?.scrollToBottom();
-          userHasScrolledRef.current = false;
+          if (cancelled) return;
+          const live = termRef.current;
+          if (!live) return;
+          // Short buffers pin to top (PS prompt at top of pane); long
+          // scrollback follows the bottom only while the user hasn't
+          // scrolled away. Never thrash between top and bottom.
+          applyTerminalFollowScroll(live, { userHasScrolled: followUserScrolled });
+          if (!followUserScrolled) {
+            userHasScrolledRef.current = false;
+          }
         });
       } catch (err) {
         console.warn('[Jarvis] terminal render write failed:', err);
@@ -848,10 +855,10 @@ export function TerminalView({
           if (restoreDecision.restoredText) {
             term.write(restoreDecision.restoredText);
             term.write('\r\n\x1b[33m[Session restored - process restarted]\x1b[0m\r\n', () => {
-              // Land the viewport on the latest restored content. xterm only
-              // auto-scrolls when already at the bottom, so pin it once the
-              // replay is parsed; subsequent PTY writes then keep it pinned.
-              if (!cancelled) termRef.current?.scrollToBottom();
+              // Long restores follow bottom; short ones stay top-aligned.
+              if (!cancelled && termRef.current) {
+                applyTerminalFollowScroll(termRef.current, { userHasScrolled: false });
+              }
             });
             // Set active window of 3s to bypass ConPTY initialization screen-clear signals only when restoring transcript
             ignoreClearsUntilRef.current = Date.now() + 3000;
@@ -957,9 +964,14 @@ export function TerminalView({
           // Restore visual transcript for active session re-attach
           if (restoreDecision.restoredText) {
             term.write(restoreDecision.restoredText, () => {
-              if (!cancelled) termRef.current?.scrollToBottom();
+              if (!cancelled && termRef.current) {
+                applyTerminalFollowScroll(termRef.current, { userHasScrolled: false });
+              }
             });
             ignoreClearsUntilRef.current = Date.now() + 3000;
+          } else if (!cancelled && termRef.current) {
+            // Fresh / empty re-attach: keep prompt at the top of the pane.
+            applyTerminalFollowScroll(termRef.current, { userHasScrolled: false });
           }
         }
       } catch (err) {
@@ -1014,6 +1026,11 @@ export function TerminalView({
           ignoreClearsUntilRef.current,
           Date.now() + 1500,
         );
+        // Fresh PTY: keep the first prompt top-aligned in the pane.
+        requestAnimationFrame(() => {
+          if (cancelled || !termRef.current) return;
+          applyTerminalFollowScroll(termRef.current, { userHasScrolled: false });
+        });
       }
       if (spawnedFresh && startupCommand) {
         invoke('terminal_write', {
@@ -1445,25 +1462,84 @@ export function TerminalView({
         </div>
       )}
       {!hideChrome && (
-        <div className="flex h-6 shrink-0 items-center justify-between border-b border-border bg-paper-soft px-2">
-          <span className="truncate font-mono text-metadata text-muted-foreground">
-            {command || 'terminal'}
-          </span>
-          <button
-            type="button"
-            onClick={() => void handleKill()}
-            aria-label="Kill terminal"
-            className="flex h-4 w-4 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          >
-            <X className="h-3 w-3" />
-          </button>
-        </div>
+        <StandaloneCloseChrome
+          label={command || 'terminal'}
+          onClose={() => void handleKill()}
+        />
       )}
       <div
         ref={containerRef}
         style={{ backgroundColor: pickTheme().background }}
         className="min-h-0 w-full flex-1 overflow-hidden pt-2 px-1.5 pb-1"
       />
+    </div>
+  );
+}
+
+/** Standalone chrome X: hold 1.5s then Confirm (matches PaneToolbar close). */
+function StandaloneCloseChrome({
+  label,
+  onClose,
+}: {
+  label: string;
+  onClose: () => void;
+}) {
+  const [phase, setPhase] = useState<HoldConfirmPhase>('idle');
+  const ctrlRef = useRef(
+    createHoldToConfirmController({ onPhaseChange: setPhase }),
+  );
+
+  useEffect(() => {
+    const ctrl = ctrlRef.current;
+    return () => ctrl.dispose();
+  }, []);
+
+  const begin = (e: PointerEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    ctrlRef.current.beginHold();
+  };
+  const cancel = () => ctrlRef.current.cancelHold();
+  const confirm = (e: MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!ctrlRef.current.confirm()) return;
+    onClose();
+  };
+
+  return (
+    <div className="flex h-6 shrink-0 items-center justify-between border-b border-border bg-paper-soft px-2">
+      <span className="truncate font-mono text-metadata text-muted-foreground">{label}</span>
+      {phase === 'confirm' ? (
+        <button
+          type="button"
+          onClick={confirm}
+          onPointerDown={(e) => e.stopPropagation()}
+          aria-label="Confirm close terminal"
+          className="inline-flex h-4 items-center rounded border border-accent-copper bg-accent-copper/20 px-1.5 text-[9px] font-bold uppercase tracking-wider text-accent-copper animate-pulse"
+        >
+          Confirm?
+        </button>
+      ) : (
+        <button
+          type="button"
+          onPointerDown={begin}
+          onPointerUp={cancel}
+          onPointerLeave={cancel}
+          onPointerCancel={cancel}
+          aria-label={`Hold ${HOLD_TO_CONFIRM_MS / 1000}s to close terminal`}
+          title={`Hold ${HOLD_TO_CONFIRM_MS / 1000}s to close terminal`}
+          className="relative flex h-4 w-4 items-center justify-center overflow-hidden rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground select-none"
+        >
+          <span
+            className={cn(
+              'pointer-events-none absolute inset-y-0 left-0 bg-accent-copper/30 transition-all ease-linear',
+              phase === 'holding' ? 'w-full duration-[1500ms]' : 'w-0 duration-0',
+            )}
+          />
+          <X className="relative z-10 h-3 w-3" />
+        </button>
+      )}
     </div>
   );
 }

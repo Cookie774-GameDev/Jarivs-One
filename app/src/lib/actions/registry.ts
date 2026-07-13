@@ -73,6 +73,7 @@ import type { CustomToolStep } from '@/features/tools/toolStore';
 import { getExplicitTerminalBlock } from '@/lib/ai/context';
 import { PRESET_ACTIONS } from './registryPresets';
 import { APP_CONTROL_ACTIONS } from './registryAppControl';
+import { FILE_ACTIONS } from './registryFiles';
 import {
   buildJarvisScheduleEventInput,
   scheduleActionSummary,
@@ -1535,6 +1536,7 @@ export function getBuiltinActions(): ActionDef[] {
     ...CREATOR_ACTIONS,
     ...PRODUCTIVITY_ACTIONS,
     ...APP_CONTROL_ACTIONS,
+    ...FILE_ACTIONS,
     ...PRESET_ACTIONS,
   ];
 }

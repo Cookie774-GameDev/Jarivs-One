@@ -96,14 +96,42 @@ describe('benchmarkData live sources', () => {
     expect(result.fromSnapshot).toBe(true);
     expect(result.rows).toHaveLength(50);
     expect(result.rows[0]?.model).toBe('Claude Fable 5');
+    expect(result.rows[0]?.arena_score).toBe(60);
+    expect(result.rows[0]?.cost_per_1m_input_usd).toBe(10);
     expect(result.rows[0]?.source).toBe('snapshot');
   });
 
-  it('serves curated Top 50 snapshot on default load', async () => {
+  it('serves curated Top 50 unique-model snapshot on default load', async () => {
     const result = await fetchBenchmarks();
     expect(result.fromSnapshot).toBe(true);
     expect(result.rows).toHaveLength(50);
     expect(result.rows[0]?.model).toBe('Claude Fable 5');
+    expect(result.rows[1]?.model).toBe('GPT-5.6 Sol');
+    expect(result.rows[5]?.model).toBe('Grok 4.5');
+    expect(result.rows[49]?.model).toBe('GPT-OSS 20B');
+    // One unique model per row — no reasoning-variant duplicates.
+    const names = result.rows.map((r) => r.model);
+    expect(new Set(names).size).toBe(50);
     expect(mockedFetch).not.toHaveBeenCalled();
+  });
+
+  it('keeps OpenRouter list prices and modalities on snapshot rows', async () => {
+    const result = await fetchBenchmarks();
+    const withPrice = result.rows.filter(
+      (r) => r.cost_per_1m_input_usd != null && r.cost_per_1m_output_usd != null,
+    );
+    expect(withPrice.length).toBe(50);
+    const sol = result.rows.find((r) => r.model === 'GPT-5.6 Sol');
+    expect(sol?.cost_per_1m_input_usd).toBe(5);
+    expect(sol?.cost_per_1m_output_usd).toBe(30);
+    expect(sol?.context_window).toBe(1_050_000);
+    expect(sol?.supports_image).toBe(true);
+    const gemini = result.rows.find((r) => r.model === 'Gemini 3.5 Flash');
+    expect(gemini?.cost_per_1m_input_usd).toBe(1.5);
+    expect(gemini?.cost_per_1m_output_usd).toBe(9);
+    expect(gemini?.supports_video).toBe(true);
+    const oss = result.rows.find((r) => r.model === 'GPT-OSS 20B');
+    expect(oss?.arena_score).toBe(14.9);
+    expect(oss?.open_source).toBe(true);
   });
 });

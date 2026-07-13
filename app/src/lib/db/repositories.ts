@@ -336,6 +336,8 @@ export const chatRepo = {
       mode: input.mode,
       active_agent_ids: input.active_agent_ids,
       archived: input.archived,
+      pinned: input.pinned,
+      pinned_at: input.pinned_at,
       created_at: ts,
       updated_at: ts,
     };

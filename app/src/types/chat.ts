@@ -122,6 +122,10 @@ export type Chat = {
   created_at: number;
   updated_at: number;
   archived?: boolean;
+  /** When true, chat appears in the sidebar Pinned section and sorts above unpinned. */
+  pinned?: boolean;
+  /** Unix-ms when the chat was last pinned (for stable pin order). */
+  pinned_at?: number;
 };
 
 /**

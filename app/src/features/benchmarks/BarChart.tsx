@@ -280,13 +280,15 @@ export function BarChart({ rows, height, className }: BarChartProps) {
               {hover.row.provider}
             </div>
             <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-metadata">
-              <span className="text-muted-foreground">Arena</span>
+              <span className="text-muted-foreground">Intel</span>
               <span className="text-foreground font-mono text-right">
                 {hover.row.arena_score}
-                <span className="text-muted-foreground">
-                  {' '}
-                  ({hover.row.ci_low}–{hover.row.ci_high})
-                </span>
+                {(hover.row.ci_high - hover.row.ci_low) > 0 && (
+                  <span className="text-muted-foreground">
+                    {' '}
+                    ({hover.row.ci_low}–{hover.row.ci_high})
+                  </span>
+                )}
               </span>
               {hover.row.cost_per_1m_input_usd != null && (
                 <>

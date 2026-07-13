@@ -514,6 +514,41 @@ describe('startRuntimeListener agent routing', () => {
     stop();
   });
 
+  it('injects Settings display name and default write folder into Jarvis context', async () => {
+    useAuthStore.setState({ displayName: 'Viper' });
+    const jarvis = agent('agent_jarvis_identity', 'jarvis', 'You are Jarvis.');
+    const chatId = 'chat_user_identity_context' as ChatId;
+    const placeholderId = 'msg_user_identity_assistant' as MessageId;
+    const userMessage: Message = {
+      id: 'msg_user_identity_user' as MessageId,
+      chat_id: chatId,
+      role: 'user',
+      parts: [{ kind: 'text', text: 'hey what is my name' }],
+      created_at: 1,
+      updated_at: 1,
+    };
+
+    const stop = trackListener(startRuntimeListener({
+      getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+      getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+      getAgentForChat: vi.fn(async () => jarvis),
+      getMessages: vi.fn(async () => [userMessage]),
+      appendMessage: vi.fn(async (msg) => ({ ...msg, id: placeholderId, created_at: 2, updated_at: 2 })),
+      updateMessage: vi.fn(async () => undefined),
+    }));
+
+    window.dispatchEvent(new CustomEvent('jarvis:send', { detail: { chatId, text: 'hey what is my name' } }));
+
+    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(1));
+    const prompt = mocks.runAgent.mock.calls[0][0].agent.system_prompt as string;
+    expect(prompt).toContain('User identity');
+    expect(prompt).toContain('**Viper**');
+    expect(prompt).toContain('Default write folder');
+    expect(prompt).toMatch(/jarvis_question|question card/i);
+
+    stop();
+  });
+
   it('revises AllAboutMe.md after every 10 user messages without blocking the reply', async () => {
     useAllAboutMeStore.setState({
       markdown: '# AllAboutMe.md\n\nStable profile.',

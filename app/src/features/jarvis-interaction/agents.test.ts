@@ -71,7 +71,7 @@ describe('Jarvis chat agents', () => {
     expect(messageRepo.create).toHaveBeenNthCalledWith(1, expect.objectContaining({
       chat_id: 'chat_parent',
       role: 'user',
-      parts: [expect.objectContaining({ kind: 'text', text: 'Slash command /multitask attached: Review runtime modes' })],
+      parts: [expect.objectContaining({ kind: 'text', text: '/multitask Review runtime modes' })],
     }));
     expect(messageRepo.create).toHaveBeenNthCalledWith(2, expect.objectContaining({
       role: 'assistant',

@@ -203,8 +203,32 @@ function persistSavedSizes(projectId: string | null, s: SavedSizes): void {
   }
 }
 
+/** Equal fr units for every track — production tiles are always equal by default. */
 function defaultSizes(n: number): number[] {
   return Array.from({ length: n }, () => 1);
+}
+
+/**
+ * True when every track already shares the same fr weight (equal tiles).
+ * Used to avoid rewriting equal layouts while still repairing unequal ones.
+ */
+function tracksAreEqual(sizes: number[]): boolean {
+  if (sizes.length <= 1) return true;
+  const first = sizes[0]!;
+  return sizes.every((s) => Math.abs(s - first) < 1e-6);
+}
+
+/** CSS flex shorthand that forces equal share regardless of content min-size. */
+function equalFlexStyle(fr: number): React.CSSProperties {
+  return {
+    // Explicit grow/shrink/basis — `flex: N` alone can leave unequal basis
+    // from chrome content and make one tile look larger than its neighbor.
+    flexGrow: fr,
+    flexShrink: 1,
+    flexBasis: 0,
+    minWidth: 0,
+    minHeight: 0,
+  };
 }
 
 function mandatoryFontSize(paneCount: number): number {
@@ -274,11 +298,16 @@ export function TileGrid({
 
   const [colSizes, setColSizes] = React.useState<number[]>(() => {
     const s = savedSizes[layoutKey];
-    return s && s.cols.length === cols ? [...s.cols] : defaultSizes(cols);
+    // Prefer equal tiles: only restore custom ratios when they are still
+    // the right length AND already equal. Unequal saved ratios (from an
+    // old drag) made grids look broken — user requires equal sizing.
+    if (s && s.cols.length === cols && tracksAreEqual(s.cols)) return [...s.cols];
+    return defaultSizes(cols);
   });
   const [rowSizes, setRowSizes] = React.useState<number[]>(() => {
     const s = savedSizes[layoutKey];
-    return s && s.rows.length === rows ? [...s.rows] : defaultSizes(rows);
+    if (s && s.rows.length === rows && tracksAreEqual(s.rows)) return [...s.rows];
+    return defaultSizes(rows);
   });
 
   // When grid dimensions change (user added or removed tiles), swap the
@@ -297,8 +326,32 @@ export function TileGrid({
     const loaded = loadSavedSizes(projectId);
     setSavedSizes(loaded);
     const s = loaded[layoutKey];
-    setColSizes(s && s.cols.length === cols ? [...s.cols] : defaultSizes(cols));
-    setRowSizes(s && s.rows.length === rows ? [...s.rows] : defaultSizes(rows));
+    // Always land on equal tracks when layout/project changes unless the
+    // saved layout is already equal (keeps intentional even splits).
+    const nextCols =
+      s && s.cols.length === cols && tracksAreEqual(s.cols)
+        ? [...s.cols]
+        : defaultSizes(cols);
+    const nextRows =
+      s && s.rows.length === rows && tracksAreEqual(s.rows)
+        ? [...s.rows]
+        : defaultSizes(rows);
+    setColSizes(nextCols);
+    setRowSizes(nextRows);
+    // If we discarded unequal ratios, persist the repaired equal layout
+    // so the next reload stays consistent.
+    if (
+      s &&
+      ((s.cols.length === cols && !tracksAreEqual(s.cols)) ||
+        (s.rows.length === rows && !tracksAreEqual(s.rows)))
+    ) {
+      const repaired: SavedSizes = {
+        ...loaded,
+        [layoutKey]: { cols: nextCols, rows: nextRows },
+      };
+      setSavedSizes(repaired);
+      persistSavedSizes(projectId, repaired);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, layoutKey, cols, rows]);
 
@@ -607,8 +660,8 @@ export function TileGrid({
           rowChildren.push(
             <div
               key={leaf?.id ?? `__empty_${rowIdx}_${colIdx}`}
-              style={{ flex: colSizes[colIdx] ?? 1, minWidth: 0, minHeight: 0 }}
-              className="flex p-0.5"
+              style={equalFlexStyle(colSizes[colIdx] ?? 1)}
+              className="flex h-full min-h-0 min-w-0 p-0.5"
             >
               {leaf ? (
                 renderTile(leaf)
@@ -630,8 +683,8 @@ export function TileGrid({
         return (
           <React.Fragment key={`row-${rowIdx}`}>
             <div
-              style={{ flex: rowSizes[rowIdx] ?? 1, minHeight: 0, minWidth: 0 }}
-              className="flex flex-row"
+              style={equalFlexStyle(rowSizes[rowIdx] ?? 1)}
+              className="flex min-h-0 min-w-0 flex-row"
             >
               {rowChildren}
             </div>

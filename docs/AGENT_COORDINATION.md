@@ -1880,3 +1880,37 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | `docs/stripe-setup.md` | CREDITS-FIX | v0.1.48 | released | E2E checklist |
 | `docs/AGENT_COORDINATION.md` | CREDITS-FIX | v0.1.48 | released | |
 
+### Codex — AGENT-CODEX-20260712-154700-TERMRESTORE
+
+#### 2026-07-12 — Preserve shell transcript when reattaching a live PTY
+
+| Field | Value |
+|-------|-------|
+| **Agent ID** | `AGENT-CODEX-20260712-154700-TERMRESTORE` |
+| **Branch / commit** | local dirty `main` at `e6c0e0337d749ea48b2a8fa5c8371b3767798ced` (user explicitly authorized focused in-place edits) |
+| **Plan** | Reproduce the live-PTY renderer reattach gap, replay the persisted plain-shell transcript into the replacement xterm renderer, retain stale fullscreen-TUI suppression, and run focused plus required checks. |
+| **Status** | in-progress |
+| **Scope guard** | Preserve all pre-existing dirty work; exact-path patches only; no billing, auth, Stripe, Supabase, installer, or unrelated UI changes. |
+
+| Path / area | Owner agent | Version | Status | Notes |
+|-------------|-------------|---------|--------|-------|
+| `app/src/features/terminals/restoreSession.ts` | `AGENT-CODEX-20260712-154700-TERMRESTORE` | v0.1.48 | locked | Live PTY transcript replay decision only |
+| `app/src/features/terminals/restoreSession.test.ts` | `AGENT-CODEX-20260712-154700-TERMRESTORE` | v0.1.48 | locked | Focused regression coverage |
+| `docs/AGENT_COORDINATION.md` | `AGENT-CODEX-20260712-154700-TERMRESTORE` | v0.1.48 | locked | Append-only coordination record |
+
+#### 2026-07-12 — TERMRESTORE complete; locks released
+
+| Field | Value |
+|-------|-------|
+| **Status** | implemented and committed; ready for direct push to `main` |
+| **Commit** | `0539dcd` — `fix: replay terminal history on live PTY reattach` |
+| **Root cause** | Live PTY attach returned an empty replay even though the Rust event bridge retains no output backlog for a replacement xterm renderer. |
+| **Verification** | Restore regression 7/7; terminal persistence group 68/68; typecheck pass; production frontend build pass; Rust check pass; Rust lib tests 11/11; release-manifest 1/1. Full frontend run: 1033/1036 with three unrelated timeout failures, all three passed 19/19 alone. Packaged Tauri build timed out after 20 minutes without a result and is not claimed. |
+| **Scope** | Commit contains only `restoreSession.ts` and `restoreSession.test.ts`; all pre-existing dirty work preserved and unstaged. |
+
+| Path / area | Owner agent | Version | Status | Notes |
+|-------------|-------------|---------|--------|-------|
+| `app/src/features/terminals/restoreSession.ts` | `AGENT-CODEX-20260712-154700-TERMRESTORE` | v0.1.48 | released | Committed in `0539dcd` |
+| `app/src/features/terminals/restoreSession.test.ts` | `AGENT-CODEX-20260712-154700-TERMRESTORE` | v0.1.48 | released | Committed in `0539dcd` |
+| `docs/AGENT_COORDINATION.md` | `AGENT-CODEX-20260712-154700-TERMRESTORE` | v0.1.48 | released | Append-only local coordination record; intentionally unstaged |
+

@@ -142,9 +142,49 @@ export async function readImageFileBase64(path: string, options: FsAccessOptions
   }
 }
 
+/** Normalize IPC payloads so snake_case / camelCase both work. */
+export function normalizeFsEntry(raw: unknown): FsEntry | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const name = typeof r.name === 'string' ? r.name : '';
+  const entryPath = typeof r.path === 'string' ? r.path : '';
+  if (!name || !entryPath) return null;
+  const isDir = Boolean(
+    r.isDir === true ||
+      r.is_dir === true ||
+      r.isDirectory === true ||
+      r.is_directory === true,
+  );
+  const sizeRaw = r.size ?? r.byteSize ?? r.byte_size;
+  const size = coerceFiniteNumber(sizeRaw);
+  const createdRaw = r.createdMs ?? r.created_ms;
+  const modifiedRaw = r.modifiedMs ?? r.modified_ms;
+  return {
+    name,
+    path: entryPath,
+    isDir,
+    size,
+    createdMs: coerceFiniteNumber(createdRaw),
+    modifiedMs: coerceFiniteNumber(modifiedRaw),
+  };
+}
+
+/** Accept number or numeric string (native u64/u128 IPC edge cases). */
+function coerceFiniteNumber(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return undefined;
+}
+
 export async function listDirectory(path: string, options: FsAccessOptions = {}): Promise<FsListResult> {
   try {
-    const entries = await invoke<FsEntry[]>('fs_list_dir', { path, root: options.root ?? undefined });
+    const raw = await invoke<unknown[]>('fs_list_dir', { path, root: options.root ?? undefined });
+    const entries = (Array.isArray(raw) ? raw : [])
+      .map(normalizeFsEntry)
+      .filter((e): e is FsEntry => e != null);
     return { ok: true, entries, path };
   } catch (err) {
     return { ok: false, error: classifyInvokeError(err), path };

@@ -10,6 +10,8 @@ describe('InputToken visual variants', () => {
     const token = screen.getByText('/agents: Agents page/editor').closest('div');
     expect(token?.className).toContain('jarvis-confirmed-token');
     expect(token?.className).toContain('from-amber');
+    expect(token?.className).toMatch(/ring-amber|shadow-/);
+    expect(screen.getByText('ok')).toBeTruthy();
   });
 
   it('renders selected agent mentions as distinct colored tokens', () => {

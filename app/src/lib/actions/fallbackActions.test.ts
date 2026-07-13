@@ -78,6 +78,31 @@ describe('inferFallbackActionProposals', () => {
     expect(inferFallbackActionProposals('can you help me?', 'Sure.')).toEqual([]);
   });
 
+  it('proposes files.write when the user asks to create a file at an absolute path', () => {
+    const proposals = inferFallbackActionProposals(
+      'Jarvis make me a file here: "C:\\Users\\viper\\Downloads" okay and write a short story about dogs in it',
+      "I can't fulfill this request.",
+    );
+
+    expect(proposals.some((p) => p.action_id === 'files.write')).toBe(true);
+    const write = proposals.find((p) => p.action_id === 'files.write');
+    expect(String(write?.params.path)).toMatch(/Downloads/i);
+    expect(String(write?.params.path)).toMatch(/\.txt$/i);
+    expect(String(write?.params.content).length).toBeGreaterThan(5);
+  });
+
+  it('proposes files.write into a general default folder when no path is given', () => {
+    const proposals = inferFallbackActionProposals(
+      'Jarvis make me a file and write a short story about cats in it',
+      "I can't write files.",
+    );
+
+    expect(proposals.some((p) => p.action_id === 'files.write')).toBe(true);
+    const write = proposals.find((p) => p.action_id === 'files.write');
+    expect(String(write?.params.path)).toMatch(/jarvis-note\.txt$/i);
+    expect(String(write?.params.content).toLowerCase()).toMatch(/cat/);
+  });
+
   it('proposes creating a Jarvis schedule from natural language', () => {
     const proposals = inferFallbackActionProposals(
       'Make a schedule to check AI news every morning',
@@ -117,6 +142,30 @@ describe('inferFallbackActionProposals', () => {
       params: { kind: 'skill' },
       rationale: expect.stringMatching(/skill/i),
     });
+  });
+
+  it('does not re-open Make with Jarvis when the user is answering creator skill questions', () => {
+    const proposals = inferFallbackActionProposals(
+      [
+        'What do you want this skill to do?: create a reminder skill for team checks',
+        'How should it behave in detail? Include examples, boundaries, tone, and do-not-dos.: be polite and brief',
+      ].join('\n'),
+      'I can draft that skill for you.',
+    );
+
+    expect(proposals.find((p) => p.action_id === 'creator.start')).toBeUndefined();
+  });
+
+  it('does not re-open Make with Jarvis for agent creator answer dumps', () => {
+    const proposals = inferFallbackActionProposals(
+      [
+        'What do you want this agent to do?: review pull requests',
+        'How should it behave in detail? Include rules, tools, boundaries, tone, and do-not-dos.: be careful',
+      ].join('\n'),
+      'Sure.',
+    );
+
+    expect(proposals.find((p) => p.action_id === 'creator.start')).toBeUndefined();
   });
 
   it('proposes closing a stated number of terminal panes', () => {

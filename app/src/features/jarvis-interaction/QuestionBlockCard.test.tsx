@@ -62,7 +62,8 @@ describe('QuestionBlockCard', () => {
   it('shows one question at a time with a real progress label', () => {
     render(<QuestionBlockCard part={blockPart} messageId={'msg_1' as never} chatId="chat_1" />);
 
-    expect(screen.getByText('Question 1 of 2')).toBeTruthy();
+    // Compact badge form: "1 / 2" (still means question 1 of 2).
+    expect(screen.getByText('1 / 2')).toBeTruthy();
     expect(screen.getByText(/Which areas should Jarvis touch/i)).toBeTruthy();
     expect(screen.queryByText(/Anything else/i)).toBeNull();
     expect(screen.getByRole('button', { name: /Next/i })).toBeTruthy();
@@ -75,7 +76,7 @@ describe('QuestionBlockCard', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Chat UI/i }));
 
-    expect(screen.getByText('Question 1 of 2')).toBeTruthy();
+    expect(screen.getByText('1 / 2')).toBeTruthy();
     expect(repo.update).not.toHaveBeenCalled();
     expect(repo.create).not.toHaveBeenCalled();
     expect(window.dispatchEvent).not.toHaveBeenCalled();
@@ -87,7 +88,7 @@ describe('QuestionBlockCard', () => {
     fireEvent.click(screen.getByRole('button', { name: /Next/i }));
 
     expect(await screen.findByText(/Please answer this question/i)).toBeTruthy();
-    expect(screen.getByText('Question 1 of 2')).toBeTruthy();
+    expect(screen.getByText('1 / 2')).toBeTruthy();
     expect(repo.update).not.toHaveBeenCalled();
   });
 
@@ -97,12 +98,12 @@ describe('QuestionBlockCard', () => {
     fireEvent.click(screen.getByRole('button', { name: /Chat UI/i }));
     fireEvent.click(screen.getByRole('button', { name: /Next/i }));
 
-    expect(await screen.findByText('Question 2 of 2')).toBeTruthy();
+    expect(await screen.findByText('2 / 2')).toBeTruthy();
     expect(screen.getByPlaceholderText(/Add detail/i)).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: /Back/i }));
 
-    expect(await screen.findByText('Question 1 of 2')).toBeTruthy();
+    expect(await screen.findByText('1 / 2')).toBeTruthy();
     expect(screen.getByRole('button', { name: /Chat UI/i }).getAttribute('aria-pressed')).toBe('true');
   });
 
@@ -145,7 +146,7 @@ describe('QuestionBlockCard', () => {
 
     render(<QuestionBlockCard part={blockPart} messageId={'msg_1' as never} chatId="chat_1" />);
 
-    expect(screen.getByText('Question 2 of 2')).toBeTruthy();
+    expect(screen.getByText('2 / 2')).toBeTruthy();
     expect((screen.getByPlaceholderText(/Add detail/i) as HTMLTextAreaElement).value).toBe('Draft answer in progress');
 
     fireEvent.click(screen.getByRole('button', { name: /Back/i }));

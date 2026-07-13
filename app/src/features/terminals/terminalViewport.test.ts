@@ -1,7 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
+  applyTerminalFollowScroll,
   isTerminalViewportAtBottom,
   shouldAutoFollowTerminalOutput,
+  shouldPinTerminalViewportToTop,
   terminalUserHasScrolled,
 } from './terminalViewport';
 
@@ -41,5 +43,40 @@ describe('terminal viewport helpers', () => {
       term: terminal(100, 100),
       userHasScrolled: true,
     })).toBe(true);
+  });
+
+  it('pins short (no-scrollback) terminals to the top of the pane', () => {
+    expect(shouldPinTerminalViewportToTop(terminal(0, 0))).toBe(true);
+    expect(shouldPinTerminalViewportToTop(terminal(5, 0))).toBe(true);
+    expect(shouldPinTerminalViewportToTop(terminal(100, 40))).toBe(false);
+  });
+
+  it('scrolls to top for short buffers and bottom for long follow', () => {
+    const short = {
+      ...terminal(0, 0),
+      scrollToTop: vi.fn(),
+      scrollToBottom: vi.fn(),
+    };
+    applyTerminalFollowScroll(short, { userHasScrolled: false });
+    expect(short.scrollToTop).toHaveBeenCalledTimes(1);
+    expect(short.scrollToBottom).not.toHaveBeenCalled();
+
+    const long = {
+      ...terminal(100, 40),
+      scrollToTop: vi.fn(),
+      scrollToBottom: vi.fn(),
+    };
+    applyTerminalFollowScroll(long, { userHasScrolled: false });
+    expect(long.scrollToBottom).toHaveBeenCalledTimes(1);
+    expect(long.scrollToTop).not.toHaveBeenCalled();
+
+    const scrolledAway = {
+      ...terminal(10, 40),
+      scrollToTop: vi.fn(),
+      scrollToBottom: vi.fn(),
+    };
+    applyTerminalFollowScroll(scrolledAway, { userHasScrolled: true });
+    expect(scrolledAway.scrollToTop).not.toHaveBeenCalled();
+    expect(scrolledAway.scrollToBottom).not.toHaveBeenCalled();
   });
 });
