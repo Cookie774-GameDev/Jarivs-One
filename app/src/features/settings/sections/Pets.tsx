@@ -14,12 +14,14 @@ import {
 } from '@/features/pets/petSettingsStore';
 import { usePetPresentationStore } from '@/features/pets/petPresentationStore';
 import {
+  getPetStartWithWindows,
   hidePetOverlay,
   hidePetPanel,
   isPetOverlayVisible,
   isTauriRuntime,
   openOrFocusPetPanel,
   setPetOverlayPosition,
+  setPetStartWithWindows,
   showPetOverlay,
 } from '@/features/pets/petTauriBridge';
 import { invoke } from '@tauri-apps/api/core';
@@ -60,9 +62,20 @@ export function Pets() {
 
   const [tauri, setTauri] = useState(false);
   const [panelVisible, setPanelVisible] = useState(false);
+  const [startWithWindows, setStartWithWindowsState] = useState(false);
+  const [startupSettingReady, setStartupSettingReady] = useState(false);
+  const [startupSettingError, setStartupSettingError] = useState<string | null>(null);
 
   useEffect(() => {
     setTauri(isTauriRuntime());
+    if (!isTauriRuntime()) {
+      setStartupSettingReady(true);
+      return;
+    }
+    void getPetStartWithWindows().then((enabled) => {
+      if (enabled != null) setStartWithWindowsState(enabled);
+      setStartupSettingReady(true);
+    });
   }, []);
 
   useEffect(() => {
@@ -138,6 +151,37 @@ export function Pets() {
             setEnabled(Boolean(v));
             if (v) void showPet();
             else void hidePet();
+          }}
+        />
+      </section>
+
+      <section className="flex items-start justify-between gap-3 max-w-md">
+        <div>
+          <Label htmlFor="pet-start-with-windows">Start VibeSpace with Windows</Label>
+          <p className="text-metadata text-muted-foreground mt-1">
+            Opt in to launch the installed app at sign-in so the enabled Pet can restore without
+            stealing focus. Development builds never change this setting.
+          </p>
+          {startupSettingError && (
+            <p className="mt-1 text-metadata text-destructive" role="status">
+              {startupSettingError}
+            </p>
+          )}
+        </div>
+        <Switch
+          id="pet-start-with-windows"
+          checked={startWithWindows}
+          disabled={!tauri || !startupSettingReady}
+          onCheckedChange={(value) => {
+            const enabledAtStartup = Boolean(value);
+            setStartupSettingError(null);
+            void setPetStartWithWindows(enabledAtStartup).then((saved) => {
+              if (saved == null) {
+                setStartupSettingError('Could not update the Windows startup setting.');
+                return;
+              }
+              setStartWithWindowsState(saved);
+            });
           }}
         />
       </section>

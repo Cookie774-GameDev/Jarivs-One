@@ -5,6 +5,54 @@
   isolation: isolate;
 }
 
+[data-pet-panel-lifecycle='opening'],
+[data-pet-panel-lifecycle='restoring'] {
+  animation: pet-panel-enter 140ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+[data-pet-panel-lifecycle='minimizing'],
+[data-pet-panel-lifecycle='closing'] {
+  animation: pet-panel-exit 140ms ease-in both;
+  pointer-events: none;
+}
+
+.pet-panel-error-details {
+  animation: pet-panel-details 120ms ease-out both;
+}
+
+@keyframes pet-panel-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pet-panel-exit {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@keyframes pet-panel-details {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .pet-panel-top {
   flex: 0 0 auto;
   min-width: 0;
@@ -124,5 +172,10 @@
 @media (prefers-reduced-motion: reduce) {
   .pet-panel-top {
     transition: none;
+  }
+
+  [data-pet-panel-lifecycle],
+  .pet-panel-error-details {
+    animation: none;
   }
 }

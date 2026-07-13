@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::{
     AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindow,
@@ -19,6 +19,67 @@ const PANEL_DEFAULT_W: f64 = 430.0;
 const PANEL_DEFAULT_H: f64 = 560.0;
 const PANEL_MIN_W: f64 = 360.0;
 const PANEL_MIN_H: f64 = 360.0;
+const PET_AUTOSTART_VALUE_NAME: &str = "VibeSpace";
+
+fn windows_startup_command(executable: &Path) -> String {
+    let safe_path = executable.to_string_lossy().replace('"', "");
+    format!(r#""{safe_path}""#)
+}
+
+#[cfg(target_os = "windows")]
+fn get_windows_startup_enabled() -> Result<bool, String> {
+    use winreg::enums::{HKEY_CURRENT_USER, KEY_READ};
+    use winreg::RegKey;
+
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let run = match hkcu
+        .open_subkey_with_flags(r"Software\Microsoft\Windows\CurrentVersion\Run", KEY_READ)
+    {
+        Ok(run) => run,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(format!("failed to read Windows startup settings: {error}")),
+    };
+    Ok(run.get_value::<String, _>(PET_AUTOSTART_VALUE_NAME).is_ok())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn get_windows_startup_enabled() -> Result<bool, String> {
+    Ok(false)
+}
+
+#[cfg(target_os = "windows")]
+fn set_windows_startup_enabled(enabled: bool) -> Result<bool, String> {
+    use winreg::enums::HKEY_CURRENT_USER;
+    use winreg::RegKey;
+
+    if cfg!(debug_assertions) {
+        return Err("Start with Windows can only be changed by an installed release build".into());
+    }
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let (run, _) = hkcu
+        .create_subkey(r"Software\Microsoft\Windows\CurrentVersion\Run")
+        .map_err(|error| format!("failed to open Windows startup settings: {error}"))?;
+    if enabled {
+        let executable = std::env::current_exe()
+            .map_err(|error| format!("failed to resolve the installed executable: {error}"))?;
+        run.set_value(
+            PET_AUTOSTART_VALUE_NAME,
+            &windows_startup_command(&executable),
+        )
+        .map_err(|error| format!("failed to enable Windows startup: {error}"))?;
+        return Ok(true);
+    }
+    match run.delete_value(PET_AUTOSTART_VALUE_NAME) {
+        Ok(()) => Ok(false),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(format!("failed to disable Windows startup: {error}")),
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn set_windows_startup_enabled(_enabled: bool) -> Result<bool, String> {
+    Err("Start with Windows is only available on Windows".into())
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
@@ -385,6 +446,16 @@ pub fn pet_is_overlay_visible(app: AppHandle) -> Result<bool, String> {
         .get_webview_window(PET_OVERLAY_LABEL)
         .and_then(|win| win.is_visible().ok())
         .unwrap_or(false))
+}
+
+#[tauri::command]
+pub fn pet_get_start_with_windows() -> Result<bool, String> {
+    get_windows_startup_enabled()
+}
+
+#[tauri::command]
+pub fn pet_set_start_with_windows(enabled: bool) -> Result<bool, String> {
+    set_windows_startup_enabled(enabled)
 }
 
 fn previous_geometry_path(app: &AppHandle) -> Option<PathBuf> {
@@ -788,6 +859,17 @@ mod tests {
         invalid = valid;
         invalid.panel_w = Some(PANEL_MIN_W - 1.0);
         assert!(!geometry_is_valid(&invalid));
+    }
+
+    #[test]
+    fn windows_startup_command_is_quoted_and_uses_one_stable_value_name() {
+        assert_eq!(PET_AUTOSTART_VALUE_NAME, "VibeSpace");
+        assert_eq!(
+            windows_startup_command(std::path::Path::new(
+                r"C:\\Program Files\\VibeSpace\\VibeSpace.exe"
+            )),
+            r#""C:\\Program Files\\VibeSpace\\VibeSpace.exe""#
+        );
     }
 
     fn allowed_actions_contains(a: &str) -> bool {

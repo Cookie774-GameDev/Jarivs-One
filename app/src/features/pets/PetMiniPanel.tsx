@@ -70,6 +70,7 @@ export function PetMiniPanel({
 }: PetMiniPanelProps) {
   const [tab, setTab] = React.useState<PetMiniPanelTab>('chats');
   const [headerCollapsed, setHeaderCollapsed] = React.useState(loadPetPanelHeaderCollapsed);
+  const [expandedErrors, setExpandedErrors] = React.useState<Set<string>>(() => new Set());
   const [density, setDensity] = React.useState<PetPanelDensity>('comfortable');
   const panelRef = React.useRef<HTMLDivElement>(null);
   const [size, setSize] = React.useState({ w: 460, h: 600 });
@@ -83,6 +84,21 @@ export function PetMiniPanel({
   const setPanelLifecycle = usePetPresentationStore((s) => s.setPanelLifecycle);
   const chats = usePetPresentationStore((s) => s.chats);
   const terminals = usePetPresentationStore((s) => s.terminals);
+  const transitionTimerRef = React.useRef(0);
+
+  const transitionDuration = React.useCallback(() => {
+    if (typeof window.matchMedia === 'function') {
+      return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 140;
+    }
+    return 140;
+  }, []);
+
+  React.useEffect(
+    () => () => {
+      window.clearTimeout(transitionTimerRef.current);
+    },
+    [],
+  );
 
   React.useLayoutEffect(() => {
     const node = panelRef.current;
@@ -130,8 +146,12 @@ export function PetMiniPanel({
 
   React.useEffect(() => {
     if (open || windowMode) {
+      window.clearTimeout(transitionTimerRef.current);
       updateLifecycle({ type: 'request_open' });
-      updateLifecycle({ type: 'opened' });
+      transitionTimerRef.current = window.setTimeout(
+        () => updateLifecycle({ type: 'opened' }),
+        transitionDuration(),
+      );
       clearUnread();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -150,30 +170,36 @@ export function PetMiniPanel({
   }, [open, windowMode, lifecycle, updateLifecycle]);
 
   const handleMinimize = () => {
+    window.clearTimeout(transitionTimerRef.current);
     updateLifecycle({ type: 'request_minimize' });
-    updateLifecycle({ type: 'minimized' });
-    try {
-      localStorage.removeItem('vibespace-pet-panel-open');
-    } catch {
-      /* ignore */
-    }
-    void minimizePetPanel().catch(() => undefined);
-    onMinimize?.();
-    onClose(); // restores pet sprite via host panelOpen=false
+    transitionTimerRef.current = window.setTimeout(() => {
+      updateLifecycle({ type: 'minimized' });
+      try {
+        localStorage.removeItem('vibespace-pet-panel-open');
+      } catch {
+        /* ignore */
+      }
+      void minimizePetPanel().catch(() => undefined);
+      onMinimize?.();
+      onClose(); // restores pet sprite via host panelOpen=false
+    }, transitionDuration());
   };
 
   const handleCloseRequest = () => updateLifecycle({ type: 'request_close' });
 
   const handleConfirmClose = () => {
+    window.clearTimeout(transitionTimerRef.current);
     updateLifecycle({ type: 'confirm_close' });
-    updateLifecycle({ type: 'closed' });
-    try {
-      localStorage.removeItem('vibespace-pet-panel-open');
-    } catch {
-      /* ignore */
-    }
-    void hidePetPanel().catch(() => undefined);
-    onClose();
+    transitionTimerRef.current = window.setTimeout(() => {
+      updateLifecycle({ type: 'closed' });
+      try {
+        localStorage.removeItem('vibespace-pet-panel-open');
+      } catch {
+        /* ignore */
+      }
+      void hidePetPanel().catch(() => undefined);
+      onClose();
+    }, transitionDuration());
   };
 
   const handleCancelClose = () => updateLifecycle({ type: 'cancel_close' });
@@ -462,6 +488,38 @@ export function PetMiniPanel({
                         {ev.kind} · {new Date(ev.createdAt).toLocaleTimeString()}
                       </div>
                       <div className="mt-0.5 text-foreground">{ev.summary}</div>
+                      {ev.kind === 'error' && (
+                        <div className="mt-2">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-xs"
+                            aria-expanded={expandedErrors.has(ev.id)}
+                            aria-label={
+                              expandedErrors.has(ev.id)
+                                ? 'Collapse error details'
+                                : 'Expand error details'
+                            }
+                            onClick={() =>
+                              setExpandedErrors((current) => {
+                                const next = new Set(current);
+                                if (next.has(ev.id)) next.delete(ev.id);
+                                else next.add(ev.id);
+                                return next;
+                              })
+                            }
+                          >
+                            {expandedErrors.has(ev.id) ? 'Hide details' : 'Show details'}
+                          </Button>
+                          {expandedErrors.has(ev.id) && (
+                            <div className="pet-panel-error-details mt-2 rounded-lg border border-destructive/25 bg-destructive/5 p-2 text-metadata text-muted-foreground">
+                              <div>Target: {ev.target.type}</div>
+                              <div className="break-all">Reference: {ev.target.id}</div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </li>
                   ))}
                   {activity.length === 0 && (

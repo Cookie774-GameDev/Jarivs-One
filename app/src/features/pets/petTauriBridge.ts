@@ -69,6 +69,14 @@ export async function reassertPetOverlayTopmost(): Promise<void> {
   await invoke('pet_reassert_overlay_topmost');
 }
 
+export async function getPetStartWithWindows(): Promise<boolean | null> {
+  return invoke<boolean>('pet_get_start_with_windows');
+}
+
+export async function setPetStartWithWindows(enabled: boolean): Promise<boolean | null> {
+  return invoke<boolean>('pet_set_start_with_windows', { enabled });
+}
+
 export async function openOrFocusPetPanel(
   nearX?: number,
   nearY?: number,

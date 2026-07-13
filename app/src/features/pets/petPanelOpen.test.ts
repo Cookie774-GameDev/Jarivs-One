@@ -76,6 +76,19 @@ describe('openOrFocusPetMiniPanel / openPetPanelSafely', () => {
     expect(invoked('pet_reassert_overlay_topmost')).toBe(true);
   });
 
+  it('queries and changes the opt-in Windows startup entry through bounded Pet commands', async () => {
+    invokeMock.mockImplementation(async (cmd: string, args?: { enabled?: boolean }) => {
+      if (cmd === 'pet_get_start_with_windows') return false;
+      if (cmd === 'pet_set_start_with_windows') return args?.enabled === true;
+      return undefined;
+    });
+
+    const { getPetStartWithWindows, setPetStartWithWindows } = await import('./petTauriBridge');
+    expect(await getPetStartWithWindows()).toBe(false);
+    expect(await setPetStartWithWindows(true)).toBe(true);
+    expect(invokeMock).toHaveBeenCalledWith('pet_set_start_with_windows', { enabled: true });
+  });
+
   it('restores overlay when panel is not visible (no disappear)', async () => {
     invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === 'pet_open_or_focus_panel') return undefined;

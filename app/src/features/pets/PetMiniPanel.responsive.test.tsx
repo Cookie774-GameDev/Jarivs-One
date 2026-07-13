@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PetMiniPanel } from './PetMiniPanel';
 import { usePetPresentationStore } from './petPresentationStore';
 
@@ -36,6 +36,10 @@ describe('PetMiniPanel responsive shell', () => {
     });
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('collapses the complete header without unmounting the active shared surface', () => {
     render(<PetMiniPanel open onClose={vi.fn()} windowMode />);
 
@@ -69,5 +73,47 @@ describe('PetMiniPanel responsive shell', () => {
     expect(panel.classList.contains('pet-mini-panel-shell')).toBe(true);
     expect(panel.hasAttribute('data-pet-panel-density')).toBe(true);
     expect(panel.getAttribute('style') ?? '').not.toContain('scale(');
+  });
+
+  it('keeps minimize and close lifecycle states visible for their bounded transitions', () => {
+    vi.useFakeTimers();
+    const onClose = vi.fn();
+    const onMinimize = vi.fn();
+    render(<PetMiniPanel open onClose={onClose} onMinimize={onMinimize} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Minimize pet panel' }));
+    expect(
+      screen
+        .getByRole('dialog', { name: 'Pet mini panel' })
+        .getAttribute('data-pet-panel-lifecycle'),
+    ).toBe('minimizing');
+    expect(onClose).not.toHaveBeenCalled();
+
+    act(() => vi.advanceTimersByTime(160));
+    expect(onMinimize).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('expands and collapses safe error activity details without exposing hidden content', () => {
+    usePetPresentationStore.setState({
+      activity: [
+        {
+          id: 'error-1',
+          kind: 'error',
+          summary: 'Terminal task failed',
+          target: { type: 'terminal', id: 'terminal-7' },
+          createdAt: 1_000,
+        },
+      ],
+    });
+    render(<PetMiniPanel open onClose={vi.fn()} windowMode />);
+    fireEvent.click(screen.getByRole('button', { name: 'Activity' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Expand error details' }));
+    expect(screen.getByText('Target: terminal')).toBeTruthy();
+    expect(screen.getByText('Reference: terminal-7')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse error details' }));
+    expect(screen.queryByText('Reference: terminal-7')).toBeNull();
   });
 });

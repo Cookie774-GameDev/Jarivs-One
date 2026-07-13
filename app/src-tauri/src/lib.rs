@@ -330,6 +330,8 @@ pub fn run() {
             pets::pet_hide_overlay,
             pets::pet_is_overlay_visible,
             pets::pet_reassert_overlay_topmost,
+            pets::pet_get_start_with_windows,
+            pets::pet_set_start_with_windows,
             pets::pet_set_overlay_position,
             pets::pet_snap_overlay_to_edge,
             pets::pet_open_or_focus_panel,
