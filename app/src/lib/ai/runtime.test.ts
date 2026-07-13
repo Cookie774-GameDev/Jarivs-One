@@ -4,6 +4,10 @@ import type { AgentId, ChatId, MessageId } from '@/types/common';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import { useAllAboutMeStore } from '@/features/all-about-me/store';
+import {
+  getChatActivityEvents,
+  useChatActivityStore,
+} from '@/features/chat/activity/activityStore';
 
 const mocks = vi.hoisted(() => ({
   runAgent: vi.fn(),
@@ -133,6 +137,7 @@ describe('startRuntimeListener agent routing', () => {
     mocks.getJarvisCoordinationContextBlock.mockResolvedValue('');
     mocks.chatGetById.mockResolvedValue(undefined);
     useAllAboutMeStore.setState(useAllAboutMeStore.getInitialState(), true);
+    useChatActivityStore.setState({ eventsByChat: {} });
   });
 
   afterEach(() => {
@@ -1249,5 +1254,143 @@ describe('startRuntimeListener agent routing', () => {
       [MessageId, { parts: Part[] }]
     >).at(-1)?.[1].parts;
     expect(final).toEqual([{ kind: 'text', text: '1. Heat water.\n2. Brew the coffee.\n3. Serve.' }]);
+  });
+
+  it('preserves the activity start timestamp and records structured usage exactly once on completion', async () => {
+    let now = 10_000;
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    const jarvis = agent('agent_metrics_done', 'jarvis', 'You are Jarvis.');
+    const chatId = 'chat_metrics_done' as ChatId;
+    let resolveRun!: (value: {
+      text: string;
+      usage: { input_tokens: number; output_tokens: number; cost_usd: number };
+      provider: string;
+      model: string;
+    }) => void;
+    mocks.runAgent.mockReturnValue(new Promise((resolve) => { resolveRun = resolve; }));
+    trackListener(startRuntimeListener({
+      getAgentById: () => jarvis,
+      getAgentBySlug: () => jarvis,
+      getAgentForChat: vi.fn(async () => jarvis),
+      getMessages: vi.fn(async () => []),
+      appendMessage: vi.fn(async (message) => ({
+        ...message,
+        id: 'msg_metrics_done' as MessageId,
+        created_at: 1,
+        updated_at: 1,
+      })),
+      updateMessage: vi.fn(async () => undefined),
+    }));
+
+    window.dispatchEvent(new CustomEvent('jarvis:send', {
+      detail: { chatId, text: 'measure this run' },
+    }));
+    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(1));
+    const started = getChatActivityEvents(chatId).find((event) => event.kind === 'agent');
+    expect(started).toMatchObject({
+      status: 'running',
+      ts: 10_000,
+      startedAt: 10_000,
+    });
+
+    now = 12_500;
+    resolveRun({
+      text: 'Measured.',
+      usage: { input_tokens: 17, output_tokens: 5, cost_usd: 0 },
+      provider: 'mock',
+      model: 'mock-default',
+    });
+
+    await vi.waitFor(() => expect(
+      getChatActivityEvents(chatId).find((event) => event.kind === 'agent')?.status,
+    ).toBe('done'));
+    expect(getChatActivityEvents(chatId).find((event) => event.kind === 'agent')).toMatchObject({
+      status: 'done',
+      ts: 10_000,
+      startedAt: 10_000,
+      endedAt: 12_500,
+      inputTokens: 17,
+      outputTokens: 5,
+    });
+  });
+
+  it('closes failed activity duration without replacing its start timestamp', async () => {
+    let now = 20_000;
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    const jarvis = agent('agent_metrics_error', 'jarvis', 'You are Jarvis.');
+    const chatId = 'chat_metrics_error' as ChatId;
+    let rejectRun!: (reason: Error) => void;
+    mocks.runAgent.mockReturnValue(new Promise((_resolve, reject) => { rejectRun = reject; }));
+    trackListener(startRuntimeListener({
+      getAgentById: () => jarvis,
+      getAgentBySlug: () => jarvis,
+      getAgentForChat: vi.fn(async () => jarvis),
+      getMessages: vi.fn(async () => []),
+      appendMessage: vi.fn(async (message) => ({
+        ...message,
+        id: 'msg_metrics_error' as MessageId,
+        created_at: 1,
+        updated_at: 1,
+      })),
+      updateMessage: vi.fn(async () => undefined),
+    }));
+    window.dispatchEvent(new CustomEvent('jarvis:send', {
+      detail: { chatId, text: 'fail this run' },
+    }));
+    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(1));
+
+    now = 21_750;
+    rejectRun(new Error('synthetic provider failure'));
+
+    await vi.waitFor(() => expect(getChatActivityEvents(chatId)[0]?.status).toBe('error'));
+    expect(getChatActivityEvents(chatId)[0]).toMatchObject({
+      ts: 20_000,
+      startedAt: 20_000,
+      endedAt: 21_750,
+    });
+  });
+
+  it('closes cancelled activity duration without fabricating usage', async () => {
+    let now = 30_000;
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    const jarvis = agent('agent_metrics_cancel', 'jarvis', 'You are Jarvis.');
+    const chatId = 'chat_metrics_cancel' as ChatId;
+    const placeholderId = 'msg_metrics_cancel' as MessageId;
+    mocks.runAgent.mockImplementation(async ({ signal }: { signal: AbortSignal }) =>
+      new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });
+      }),
+    );
+    trackListener(startRuntimeListener({
+      getAgentById: () => jarvis,
+      getAgentBySlug: () => jarvis,
+      getAgentForChat: vi.fn(async () => jarvis),
+      getMessages: vi.fn(async () => []),
+      appendMessage: vi.fn(async (message) => ({
+        ...message,
+        id: placeholderId,
+        created_at: 1,
+        updated_at: 1,
+      })),
+      updateMessage: vi.fn(async () => undefined),
+    }));
+    window.dispatchEvent(new CustomEvent('jarvis:send', {
+      detail: { chatId, text: 'cancel this run' },
+    }));
+    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(1));
+
+    now = 31_250;
+    window.dispatchEvent(new CustomEvent('jarvis:cancel', {
+      detail: { messageId: placeholderId },
+    }));
+
+    await vi.waitFor(() => expect(getChatActivityEvents(chatId)[0]?.status).toBe('cancelled'));
+    expect(getChatActivityEvents(chatId)[0]).toMatchObject({
+      ts: 30_000,
+      startedAt: 30_000,
+      endedAt: 31_250,
+    });
+    expect(getChatActivityEvents(chatId)[0]?.inputTokens).toBeUndefined();
+    expect(getChatActivityEvents(chatId)[0]?.outputTokens).toBeUndefined();
   });
 });

@@ -113,36 +113,53 @@ export function parseTokensFromSubtitle(subtitle: string | undefined): {
 export function summarizeChatActivity(events: ChatActivityEvent[], nowMs = Date.now()) {
   let inputTokens = 0;
   let outputTokens = 0;
+  let usageKnown = false;
   let addedLines = 0;
   let removedLines = 0;
   let agentTurns = 0;
+  let restoredEditedFileCount = 0;
+  let eventCount = 0;
   const editedFiles = new Set<string>();
   let startedAt: number | undefined;
   let endedAt: number | undefined;
   let running: ChatActivityEvent | undefined;
   let lastAgent: ChatActivityEvent | undefined;
+  const deduplicated = [...new Map(events.map((event) => [event.id, event])).values()];
 
-  for (const event of events) {
-    if (typeof event.inputTokens === 'number' && typeof event.outputTokens === 'number') {
-      inputTokens += event.inputTokens;
-      outputTokens += event.outputTokens;
+  for (const event of deduplicated) {
+    const structuredInput = typeof event.inputTokens === 'number' ? event.inputTokens : 0;
+    const structuredOutput = typeof event.outputTokens === 'number' ? event.outputTokens : 0;
+    if (structuredInput + structuredOutput > 0) {
+      inputTokens += structuredInput;
+      outputTokens += structuredOutput;
+      usageKnown = true;
     } else {
       const parsed = parseTokensFromSubtitle(event.subtitle);
-      if (parsed) {
+      if (parsed && parsed.inputTokens + parsed.outputTokens > 0) {
         inputTokens += parsed.inputTokens;
         outputTokens += parsed.outputTokens;
-      } else {
-        if (typeof event.inputTokens === 'number') inputTokens += event.inputTokens;
-        if (typeof event.outputTokens === 'number') outputTokens += event.outputTokens;
+        usageKnown = true;
       }
     }
-    if (typeof event.addedLines === 'number') addedLines += event.addedLines;
-    if (typeof event.removedLines === 'number') removedLines += event.removedLines;
-    if (event.filePath && (event.kind === 'diff' || event.kind === 'file')) {
-      editedFiles.add(event.filePath);
+    if (event.restoredAggregate) {
+      if (typeof event.addedLines === 'number') addedLines += event.addedLines;
+      if (typeof event.removedLines === 'number') removedLines += event.removedLines;
+    } else if (event.kind === 'diff' || event.kind === 'tool') {
+      if (typeof event.addedLines === 'number') addedLines += event.addedLines;
+      if (typeof event.removedLines === 'number') removedLines += event.removedLines;
+      if (event.filePath && (event.addedLines !== undefined || event.removedLines !== undefined)) {
+        editedFiles.add(event.filePath);
+      }
     }
-    if (event.kind === 'agent' || event.kind === 'subagent') {
-      agentTurns += 1;
+    if (event.restoredAggregate && event.aggregateTotals) {
+      restoredEditedFileCount += event.aggregateTotals.editedFileCount;
+      agentTurns += event.aggregateTotals.agentTurns;
+      eventCount += event.aggregateTotals.eventCount;
+    } else {
+      eventCount += 1;
+      if (event.kind === 'agent' || event.kind === 'subagent') agentTurns += 1;
+    }
+    if ((event.kind === 'agent' || event.kind === 'subagent') && !event.restoredAggregate) {
       if (!lastAgent || event.ts >= lastAgent.ts) lastAgent = event;
     }
     const start = event.startedAt ?? event.ts;
@@ -181,11 +198,12 @@ export function summarizeChatActivity(events: ChatActivityEvent[], nowMs = Date.
     (events.length === 0 ? 'Ready — send a message to start this session' : '—');
 
   return {
-    inputTokens,
-    outputTokens,
+    inputTokens: usageKnown ? inputTokens : null,
+    outputTokens: usageKnown ? outputTokens : null,
+    usageKnown,
     addedLines,
     removedLines,
-    editedFileCount: editedFiles.size,
+    editedFileCount: restoredEditedFileCount + editedFiles.size,
     editedFiles: [...editedFiles],
     agentTurns,
     startedAt,
@@ -194,7 +212,7 @@ export function summarizeChatActivity(events: ChatActivityEvent[], nowMs = Date.
     isLive,
     doingNow,
     running,
-    eventCount: events.length,
+    eventCount,
   };
 }
 
@@ -204,7 +222,9 @@ export function summarizeChatActivity(events: ChatActivityEvent[], nowMs = Date.
  */
 export function selectActivityFeedEvents(events: ChatActivityEvent[]): ChatActivityEvent[] {
   if (events.length === 0) return [];
-  const sorted = [...events].sort((a, b) => a.ts - b.ts);
+  const sorted = [...events]
+    .filter((event) => !event.restoredAggregate)
+    .sort((a, b) => a.ts - b.ts);
   const lastAgent = [...sorted].reverse().find((e) => e.kind === 'agent' || e.kind === 'subagent');
   return sorted.filter((event) => {
     if (event.status === 'running' || event.status === 'pending') return true;
@@ -326,13 +346,21 @@ export function ChatActivityTimeline({ chatId, compact = false }: { chatId: Chat
           />
           <StatChip
             label="Tokens in"
-            value={<span className="font-mono tabular-nums">{summary.inputTokens.toLocaleString()}</span>}
-            hint="Total input tokens this chat"
+            value={
+              <span className="font-mono tabular-nums">
+                {summary.inputTokens == null ? 'Unavailable' : summary.inputTokens.toLocaleString()}
+              </span>
+            }
+            hint={summary.usageKnown ? 'Total provider-reported input tokens this chat' : 'Provider did not report token usage'}
           />
           <StatChip
             label="Tokens out"
-            value={<span className="font-mono tabular-nums">{summary.outputTokens.toLocaleString()}</span>}
-            hint="Total output tokens this chat"
+            value={
+              <span className="font-mono tabular-nums">
+                {summary.outputTokens == null ? 'Unavailable' : summary.outputTokens.toLocaleString()}
+              </span>
+            }
+            hint={summary.usageKnown ? 'Total provider-reported output tokens this chat' : 'Provider did not report token usage'}
           />
           <StatChip
             label="Started"
@@ -509,7 +537,7 @@ export function ActivityRow({ event, nowMs = Date.now() }: { event: ChatActivity
           <p className="truncate text-metadata text-muted-foreground">
             {event.subtitle ?? event.agentSlug ?? event.filePath ?? event.url ?? formatRelative(event.ts)}
             {event.inputTokens != null || event.outputTokens != null
-              ? ` · ${event.inputTokens ?? 0}+${event.outputTokens ?? 0} tok · ${durationLabel}`
+              ? ` · ${event.inputTokens ?? '—'}+${event.outputTokens ?? '—'} tok · ${durationLabel}`
               : ` · ${durationLabel}`}
           </p>
         </div>

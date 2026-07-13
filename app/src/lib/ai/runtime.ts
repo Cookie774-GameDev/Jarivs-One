@@ -84,6 +84,8 @@ import type { JarvisInteractionMode, JarvisStructuredContext } from '@/features/
 import { useJarvisInteractionStore } from '@/features/jarvis-interaction/sessionStore';
 import { parseJarvisPlanBlocks } from '@/features/jarvis-interaction/planParser';
 import { parseJarvisPermissionBlocks } from '@/features/jarvis-interaction/permissionParser';
+import { buildUserIdentityContextBlock } from './userIdentity';
+import { resolveDefaultWriteDir } from '@/lib/actions/defaultWriteDir';
 
 /**
  * Bindings the runtime needs from the host app. Implementations are typically
@@ -267,6 +269,17 @@ function structuredContextBlock(context: JarvisStructuredContext | undefined): s
   ].join('\n');
 }
 
+function defaultWriteFolderContextBlock(dir: string): string {
+  const trimmed = dir.trim();
+  if (!trimmed) return '';
+  return [
+    '## Default write folder',
+    `When creating a file without a user-specified path, write under: \`${trimmed}\`.`,
+    'Choose a clear filename (e.g. story.txt, jarvis-note.txt). Prefer this folder over inventing random paths.',
+    'If the user did specify a path, always use theirs instead.',
+  ].join('\n');
+}
+
 function applyChatResponseStyleOverlay(agent: Agent): Agent {
   return {
     ...agent,
@@ -446,6 +459,7 @@ async function maybeUpdateAllAboutMeFromChat(
   if (!existingMarkdown) return;
   const recentUserMessages = recentUserMessageTexts(history);
   if (recentUserMessages.length === 0) return;
+  const activityStartedAt = Date.now();
   const activityId = chatId ? createChatActivityId('tool') : null;
   if (activityId && chatId) {
     useChatActivityStore.getState().record({
@@ -457,7 +471,8 @@ async function maybeUpdateAllAboutMeFromChat(
       subtitle: 'AllAboutMe.md update in progress',
       detail: 'Jarvis found 10 qualifying user messages and is updating the private AllAboutMe.md profile.',
       agentSlug: 'jarvis',
-      ts: Date.now(),
+      ts: activityStartedAt,
+      startedAt: activityStartedAt,
     });
   }
   try {
@@ -485,6 +500,7 @@ async function maybeUpdateAllAboutMeFromChat(
         diff: buildAllAboutMeLearningDiff(existingMarkdown, revised),
         addedLines: summary.addedLines,
         removedLines: summary.removedLines,
+        endedAt: Date.now(),
       });
     }
     devConsole.log({
@@ -502,6 +518,7 @@ async function maybeUpdateAllAboutMeFromChat(
         status: 'error',
         title: 'AllAboutMe.md learning skipped',
         detail: err instanceof Error ? err.message : String(err),
+        endedAt: Date.now(),
       });
     }
     devConsole.log({
@@ -814,6 +831,7 @@ export function startRuntimeListener(
       hasResolvedDestination: Boolean(resolvedRequestContext.preferredDestination),
     });
     const activity = useChatActivityStore.getState();
+    const agentActivityStartedAt = Date.now();
     const agentActivityId = createChatActivityId('agent');
     activity.record({
       id: agentActivityId,
@@ -826,7 +844,8 @@ export function startRuntimeListener(
         : `${agent.model.provider}/${agent.model.model}`,
       agentId: agent.id,
       agentSlug: agent.slug,
-      ts: Date.now(),
+      ts: agentActivityStartedAt,
+      startedAt: agentActivityStartedAt,
       detail: mentionedAgents.length > 0
         ? mentionedAgents.map((mentioned) => `@${mentioned.slug} — ${mentioned.description || mentioned.name}`).join('\n')
         : undefined,
@@ -928,6 +947,8 @@ export function startRuntimeListener(
     let explicitTerminalContext = '';
     let jarvisCoordinationContext = '';
     let allAboutMeContext = '';
+    let userIdentityContext = '';
+    let defaultWriteDirContext = '';
     let pluginContext = '';
     let pluginStatusContext = '';
     let selectedSkillsContext = '';
@@ -1014,12 +1035,32 @@ export function startRuntimeListener(
     }
     if (agent.slug === 'jarvis') {
       try {
+        userIdentityContext = buildUserIdentityContextBlock(useAuthStore.getState().displayName);
+      } catch (err) {
+        devConsole.log({
+          channel: 'ai',
+          level: 'warn',
+          message: 'user identity context build failed',
+          detail: { error: err instanceof Error ? err.message : String(err) },
+        });
+      }
+      try {
         allAboutMeContext = buildAllAboutMeContextBlock(useAllAboutMeStore.getState().markdown);
       } catch (err) {
         devConsole.log({
           channel: 'ai',
           level: 'warn',
           message: 'AllAboutMe.md context build failed',
+          detail: { error: err instanceof Error ? err.message : String(err) },
+        });
+      }
+      try {
+        defaultWriteDirContext = defaultWriteFolderContextBlock(await resolveDefaultWriteDir());
+      } catch (err) {
+        devConsole.log({
+          channel: 'ai',
+          level: 'warn',
+          message: 'default write folder context build failed',
           detail: { error: err instanceof Error ? err.message : String(err) },
         });
       }
@@ -1068,7 +1109,9 @@ export function startRuntimeListener(
     const contextBlocks = [
       projectContext,
       projectContextTree,
+      userIdentityContext,
       allAboutMeContext,
+      defaultWriteDirContext,
       pluginContext,
       pluginStatusContext,
       selectedSkillsContext,
@@ -1342,11 +1385,25 @@ export function startRuntimeListener(
 
       useAgentStore.getState().setRunState(agent.id, 'done');
       useAgentStore.getState().setVerb(agent.id, undefined);
+      const activityEndedAt = Date.now();
+      const reportedInputTokens = Number.isFinite(response.usage.input_tokens)
+        ? Math.max(0, response.usage.input_tokens)
+        : 0;
+      const reportedOutputTokens = Number.isFinite(response.usage.output_tokens)
+        ? Math.max(0, response.usage.output_tokens)
+        : 0;
+      const hasProviderUsage = reportedInputTokens + reportedOutputTokens > 0;
       useChatActivityStore.getState().update(chatId, agentActivityId, {
         status: 'done',
         title: `@${agent.slug} finished`,
-        subtitle: `${response.provider}/${response.model} · ${response.usage.input_tokens}+${response.usage.output_tokens} tokens`,
-        ts: Date.now(),
+        subtitle: hasProviderUsage
+          ? `${response.provider}/${response.model} · ${reportedInputTokens}+${reportedOutputTokens} tokens`
+          : `${response.provider}/${response.model}`,
+        endedAt: activityEndedAt,
+        ...(hasProviderUsage ? {
+          inputTokens: reportedInputTokens,
+          outputTokens: reportedOutputTokens,
+        } : {}),
       });
       dispatchRunState(chatId, 'done');
       updateStructuredAgentStatus(detail.structuredContext, 'done', 'Finished');
@@ -1468,7 +1525,7 @@ export function startRuntimeListener(
         status: aborted ? 'cancelled' : 'error',
         title: aborted ? `@${agent.slug} cancelled` : `@${agent.slug} failed`,
         subtitle: aborted ? 'Cancelled by user' : ((err as Error)?.message ?? 'Unknown error'),
-        ts: Date.now(),
+        endedAt: Date.now(),
       });
       dispatchRunState(chatId, aborted ? 'cancelled' : 'error');
       updateStructuredAgentStatus(detail.structuredContext, aborted ? 'cancelled' : 'failed', aborted ? 'Cancelled' : 'Failed');

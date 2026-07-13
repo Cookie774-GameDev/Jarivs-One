@@ -26,6 +26,23 @@ describe('ChatActivityTimeline always-visible session panel', () => {
     expect(summary.isLive).toBe(false);
     expect(summary.doingNow).toMatch(/Ready/i);
   });
+
+  it('renders unavailable instead of fabricated zero token usage', () => {
+    useChatActivityStore.getState().record({
+      id: 'agent_without_usage',
+      chatId: 'chat_unknown_usage',
+      kind: 'agent',
+      status: 'done',
+      title: '@jarvis finished',
+      ts: 1,
+      startedAt: 1,
+      endedAt: 2,
+    });
+
+    render(<ChatActivityTimeline chatId="chat_unknown_usage" />);
+
+    expect(screen.getAllByText('Unavailable')).toHaveLength(2);
+  });
 });
 
 describe('ActivityRow', () => {
