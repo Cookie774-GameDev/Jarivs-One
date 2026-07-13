@@ -368,73 +368,12 @@ Append new entries at the **bottom** of the relevant agent section. Use [How to 
 
 ---
 
-### Security Agent / Worker (slash UX)
-
-#### 2026-07-11 — /permissions mode-only + active /multitask|/subagents chat styling
-
-| Field | Value |
-|-------|-------|
-| **Timestamp** | 2026-07-11 13:15 CT |
-| **Agent ID** | `AGENT-SEC-20260711-131500-A7C3` |
-| **Version** | v0.1.48 |
-| **Branch** | `main` @ `ec56ef3` |
-| **Plan** | (1) `/permissions` selection must change chat mode only — never attach a confirmed chip. (2) `/multitask` and `/subagents` user messages must render as **active commands in use** (distinct color/badge), not “attached” attachment language. Inspect before edit; tests + typecheck before claiming pass. |
-| **Files touched** | `app/src/features/chat/Composer.tsx`, `MessagePart.tsx`, `chatActiveCommands.ts` (+tests), `MessagePart.activeCommand.test.tsx`, `app/src/features/jarvis-interaction/agentRunner.ts`, `agents.test.ts`, `docs/AGENT_COORDINATION.md` |
-| **Status** | complete (uncommitted) |
-| **Commit** | — |
-| **Verification** | `vitest` 20/20 on focused suites (chatActiveCommands, MessagePart.activeCommand, agents, modes, ModeIndicator); `npm run typecheck` PASS. |
-| **Risks / remaining** | Older chats still store “Slash command /X attached: …” text — parser still maps those to the new **In use** UI. Composer draft text for `/multitask` remains plain textarea until send (only the sent message is styled). |
-| **Notes** | No terminals/voice/inspector/Hive changes. ModeIndicator Agent/Plan/Ask panel + `/permissions` slash retained. Locks released below. |
-
----
-
 ## File ownership / lock table
 
 > **Current v0.1.44:** No active locks. Claim rows before editing.
 
 | Path / area | Owner agent | Version | Status | Notes |
 |-------------|-------------|---------|--------|-------|
-| `app/src/features/settings/sections/AllAboutMe.tsx` | `AGENT-SEC-20260711-AAMUI` | v0.1.48 | released | Test popup UX polish |
-| `app/src/features/settings/sections/AllAboutMe.test.tsx` | `AGENT-SEC-20260711-AAMUI` | v0.1.48 | released | Match new grade step + Ctrl+Enter |
-| `docs/AGENT_COORDINATION.md` | `AGENT-SEC-20260711-AAMUI` | v0.1.48 | released | This task |
-| `app/src/features/chat/ChatThread.tsx` | `AGENT-SEC-20260711-SESSIONSCROLL` | v0.1.48 | released | Session panel scrolls with content |
-| `docs/AGENT_COORDINATION.md` | `AGENT-SEC-20260711-SESSIONSCROLL` | v0.1.48 | released | This task |
-| `app/src/features/terminals/PaneToolbar.tsx` | `AGENT-SEC-20260711-TERMX` | v0.1.48 | released | Hold-confirm close X + clear fix |
-| `app/src/features/terminals/holdToConfirm.ts` (+test) | `AGENT-SEC-20260711-TERMX` | v0.1.48 | released | Shared hold timing helper |
-| `app/src/features/terminals/TerminalView.tsx` (standalone close chrome) | `AGENT-SEC-20260711-TERMX` | v0.1.48 | released | Same hold-confirm for non-tile chrome |
-| `app/src/features/terminals/PaneToolbar.test.ts` | `AGENT-SEC-20260711-TERMX` | v0.1.48 | released | Existing font tests still pass |
-| `docs/AGENT_COORDINATION.md` | `AGENT-SEC-20260711-TERMX` | v0.1.48 | released | This task |
-| `app/src/features/chat/chatUndoRedo.ts` (+test) | `AGENT-SEC-20260711-UNDOREDO` | v0.1.48 | released | Safe turn select + stacks |
-| `app/src/features/chat/Composer.tsx` (undo/redo handlers) | `AGENT-SEC-20260711-UNDOREDO` | v0.1.48 | released | Wire /undo /redo |
-| `app/src/features/chat/SlashCommandTypeahead.tsx` (+test) | `AGENT-SEC-20260711-UNDOREDO` | v0.1.48 | released | Catalog entries |
-| `docs/AGENT_COORDINATION.md` | `AGENT-SEC-20260711-UNDOREDO` | v0.1.48 | released | This task |
-| `app/src/features/chat/ChatThread.tsx` | `AGENT-SEC-20260711-SESSIONUI2` | v0.1.48 | released | Pin session panel always at top |
-| `app/src/features/chat/activity/ChatActivityTimeline.tsx` | `AGENT-SEC-20260711-SESSIONUI2` | v0.1.48 | released | Render empty idle dashboard |
-| `app/src/features/chat/activity/ChatActivityTimeline.test.tsx` | `AGENT-SEC-20260711-SESSIONUI2` | v0.1.48 | released | Always-visible panel tests |
-| `app/src/features/chat/Composer.tsx` (mode toast only) | `AGENT-SEC-20260711-SESSIONUI2` | v0.1.48 | released | Quiet mode switches |
-| `docs/AGENT_COORDINATION.md` | `AGENT-SEC-20260711-SESSIONUI2` | v0.1.48 | released | This task |
-| `app/src/features/settings/sections/AllAboutMe.tsx` | `AGENT-SEC-20260711-AAMCOORD` | v0.1.48 | released | Always-save test progress |
-| `app/src/features/settings/sections/AllAboutMe.test.tsx` | `AGENT-SEC-20260711-AAMCOORD` | v0.1.48 | released | Close/unmount save tests |
-| `app/src/features/all-about-me/store.ts` | `AGENT-SEC-20260711-AAMCOORD` | v0.1.48 | released | No change needed (persist already OK) |
-| `app/src/features/jarvis-interaction/coordination.ts` (+test) | `AGENT-SEC-20260711-AAMCOORD` | v0.1.48 | released | Chat coordination summary |
-| `app/src/lib/ai/context.ts` (+test) | `AGENT-SEC-20260711-AAMCOORD` | v0.1.48 | released | Merge chat+terminal coord into prompts |
-| `docs/AGENT_COORDINATION.md` | `AGENT-SEC-20260711-AAMCOORD` | v0.1.48 | released | This task |
-| `app/src/features/jarvis-interaction/ModeIndicator.tsx` | `AGENT-SEC-20260711-JARVISUX` | v0.1.48 | released | Remove Shield from mode chip |
-| `app/src/lib/ai/runtime.ts` (user identity + file/question overlays) | `AGENT-SEC-20260711-JARVISUX` | v0.1.48 | released | Identity, defaults, question cards |
-| `app/src/lib/ai/userIdentity.ts` (+test) | `AGENT-SEC-20260711-JARVISUX` | v0.1.48 | released | displayName context block |
-| `app/src/lib/actions/defaultWriteDir.ts` (+test) | `AGENT-SEC-20260711-JARVISUX` | v0.1.48 | released | General write folder |
-| `app/src/lib/actions/fallbackActions.ts` (+test) | `AGENT-SEC-20260711-JARVISUX` | v0.1.48 | released | Default path when missing |
-| `app/src/lib/actions/promptAddendum.ts` (file/question lines only) | `AGENT-SEC-20260711-JARVISUX` | v0.1.48 | released | Stronger capability copy |
-| `app/src/lib/ai/runtime.test.ts` (identity test only) | `AGENT-SEC-20260711-JARVISUX` | v0.1.48 | released | displayName injection |
-| `docs/AGENT_COORDINATION.md` | `AGENT-SEC-20260711-JARVISUX` | v0.1.48 | released | This task |
-| `app/src/features/chat/Composer.tsx` (permissions chip paths only) | `AGENT-SEC-20260711-131500-A7C3` | v0.1.48 | released | Mode-only apply; no attach chip |
-| `app/src/features/chat/MessagePart.tsx` (active slash render) | `AGENT-SEC-20260711-131500-A7C3` | v0.1.48 | released | Distinct multitask/subagents UI |
-| `app/src/features/chat/chatActiveCommands.ts` | `AGENT-SEC-20260711-131500-A7C3` | v0.1.48 | released | Parse/format active command messages |
-| `app/src/features/chat/chatActiveCommands.test.ts` | `AGENT-SEC-20260711-131500-A7C3` | v0.1.48 | released | Unit tests |
-| `app/src/features/chat/MessagePart.activeCommand.test.tsx` | `AGENT-SEC-20260711-131500-A7C3` | v0.1.48 | released | Active command render tests |
-| `app/src/features/jarvis-interaction/agentRunner.ts` | `AGENT-SEC-20260711-131500-A7C3` | v0.1.48 | released | Stop “attached” user message wording |
-| `app/src/features/jarvis-interaction/agents.test.ts` | `AGENT-SEC-20260711-131500-A7C3` | v0.1.48 | released | Expect active command message format |
-| `docs/AGENT_COORDINATION.md` | `AGENT-SEC-20260711-131500-A7C3` | v0.1.48 | released | Ledger + locks for this task |
 | `docs/AGENT_COORDINATION.md` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | Blocked handoff recorded; no final merge SHA |
 | `docs/superpowers/plans/2026-07-10-pr15-safe-merge.md` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | High-risk merge execution plan |
 | `.github/workflows/pages.yml` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | Current GitHub Pages deployment behavior preserved |
@@ -521,14 +460,6 @@ Append new entries at the **bottom** of the relevant agent section. Use [How to 
 | `app/src/lib/billing/**`, `supabase/functions/**`, `supabase/migrations/0026_hive_ai_credits.sql` | terminal 4 | v0.1.44 | complete (uncommitted) | Publish hardening: Edge checkout only, webhook retry fix, Apex plan-limit constraint, legacy proxy retired |
 | `app/src/features/dev-console/**` | terminal 4 | v0.1.44 | complete (uncommitted) | Publish hardening: recursive redaction and capped debug payloads |
 | `app/src/lib/fs.ts`, `app/src-tauri/src/fsread.rs`, `app/src/features/files/**`, `app/src/features/context/**`, `app/src/features/inspector/**` | terminal 4 | v0.1.44 | complete (uncommitted) | Publish hardening: canonical FS paths and project-root containment for main file surfaces |
-| `app/src/features/files/FileExplorerDialog.tsx` | AGENT-SEC-20260711-FILEPERF | v0.1.48+ | released | Large media preview/thumb throttle only |
-| `app/src/features/files/fileExplorerMediaLimits.ts` | AGENT-SEC-20260711-FILEPERF | v0.1.48+ | released | Size/concurrency/auto-grid limits for explorer images |
-| `app/src/features/files/fileExplorerMediaLimits.test.ts` | AGENT-SEC-20260711-FILEPERF | v0.1.48+ | released | Unit tests for media limits |
-| `app/src/features/files/FileExplorerDialog.tsx` | AGENT-SEC-20260711-FILESEARCH | v0.1.48+ | released | Background mini-Jarvis search + text/image previews |
-| `app/src/features/files/fileExplorerSearchRuntime.ts` | AGENT-SEC-20260711-FILESEARCH | v0.1.48+ | released | Persist search job/hits across dialog close |
-| `app/src/features/files/fileExplorerSearchRuntime.test.ts` | AGENT-SEC-20260711-FILESEARCH | v0.1.48+ | released | Runtime store tests |
-| `app/src/features/files/fileExplorerSearch.ts` | AGENT-SEC-20260711-FILESEARCH | v0.1.48+ | released | Export isTextPath for text preview only |
-| `app/src/features/files/fileExplorerMediaLimits.ts` | AGENT-SEC-20260711-FILESEARCH | v0.1.48+ | released | Raise side-preview size so screenshots work |
 | `app/src/features/chat/activity/**`, `app/src/features/chat/ChatThread.tsx` | terminal 4 | v0.1.44 | complete (uncommitted) | Heavy-workflow guardrails: capped activity detail/diff payloads and bounded render size estimates |
 | `app/src/features/all-about-me/**` | terminal 4 | v0.1.44 | complete (uncommitted) | AllAboutMe.md quiz, local profile document, and learning store |
 | `app/src/features/settings/**`, `app/src/lib/ai/{context,runtime}.ts` | terminal 4 | v0.1.44 | complete (uncommitted) | Integrated All About Me settings tab and Jarvis runtime context/update cadence |
@@ -1288,629 +1219,432 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Status** | released |
 | **Commit** | `d6e9bdc` — `Release v0.1.47: official production update on main.` |
 
-#### 2026-07-10 — Equal terminal tiles + top-aligned prompt
-
-| Field | Value |
-|-------|-------|
-| **Timestamp** | 2026-07-10 23:15 CT |
-| **Agent ID** | `AGENT-SEC-20260710-TERMSIZE` |
-| **Version** | v0.1.48+ |
-| **Plan** | (1) Equal tile tracks via flex-basis 0% + equal fr defaults. (2) Pin short terminal content to top (stop scrollToBottom pinning PS prompt to bottom). Do not touch clear/close/persistence/color. |
-| **Files locked** | `TileGrid.tsx`, `terminalViewport.ts`, `terminalViewport.test.ts`, `TerminalView.tsx` (scroll follow only), `globals.css` (xterm top align only), `docs/AGENT_COORDINATION.md` |
-| **Status** | in-progress |
-| **Commit** | — |
-
-#### 2026-07-11 — File explorer large media performance (Security)
-
-| Field | Value |
-|-------|-------|
-| **Timestamp** | 2026-07-11 11:07 CT |
-| **Agent ID** | `AGENT-SEC-20260711-FILEPERF` |
-| **Version** | v0.1.48+ |
-| **Plan** | Stop file explorer from overloading the app on folders with many/large pictures: size-gate thumbs + side preview, cap concurrent image reads, limit auto-grid + max thumbs. **Only** explorer media loading — no other systems. |
-| **Files locked** | `FileExplorerDialog.tsx`, `fileExplorerMediaLimits.ts` (+test), `docs/AGENT_COORDINATION.md` |
-| **Status** | complete (uncommitted) |
-| **Commit** | — |
-| **Do not touch** | terminals, jarvis-creator, chat runtime, rust fsread limits, billing, installers |
-| **Implementation** | New `fileExplorerMediaLimits.ts`: thumb ≤1.5 MiB, preview ≤4 MiB, max 2 concurrent image reads, max 24 grid thumbs, auto-grid only for 4–48 media items (larger folders stay list). `FileExplorerDialog` uses size gate + slot queue for tiles and side pane; large images show icon / “too large to preview”. |
-| **Verification** | `npm run test -- --run src/features/files/fileExplorerMediaLimits.test.ts src/features/files/fileExplorerStore.test.ts src/features/files/fileExplorerSearch.test.ts` → 17/17 PASS. `npm run typecheck` → PASS. |
-| **Risks / remaining** | Still loads full base64 for eligible thumbs (no server-side resize). Manual grid on 200-file folders is safe due to budget+concurrency but first 24 small images still load. Unknown-size entries still attempt load (backend `too_large` handles >8 MiB). |
-| **Locks** | Released after this record. |
-
-#### 2026-07-11 — Mini Jarvis search persist + previews (Security)
-
-| Field | Value |
-|-------|-------|
-| **Timestamp** | 2026-07-11 11:20 CT |
-| **Agent ID** | `AGENT-SEC-20260711-FILESEARCH` |
-| **Version** | v0.1.48+ |
-| **Plan** | (1) Mini Jarvis search keeps running after explorer close; hits restore on reopen in the explorer list. (2) Fix text file preview + screenshot/image preview in the side pane. Scope: file explorer search/preview only. |
-| **Files locked** | `FileExplorerDialog.tsx`, `fileExplorerSearchRuntime.ts`(+test), `fileExplorerSearch.ts` (isTextPath export), `fileExplorerMediaLimits.ts` (preview size), ledger |
-| **Status** | in-progress |
-| **Do not touch** | terminals, jarvis-creator, chat runtime, billing, rust fs commands (except via existing IPC), installers |
-
-#### 2026-07-11 — Mini Jarvis search persist + previews COMPLETE
-
-| Field | Value |
-|-------|-------|
-| **Timestamp** | 2026-07-11 11:20 CT |
-| **Agent ID** | `AGENT-SEC-20260711-FILESEARCH` |
-| **Status** | complete (uncommitted) |
-| **Implementation** | `fileExplorerSearchRuntime` module store: search job survives dialog close; hits/status/query restore on reopen and list in explorer; `loadDir` no longer wipes hits. Text preview via `readTextFileSample` + `isTextPath`; image/screenshot preview fixed (8 MiB side-pane cap, mime fallback, concurrency slot). |
-| **Verification** | Focused tests 23/23 PASS (search runtime, search, media limits, store). `npm run typecheck` PASS. |
-| **Risks** | In-flight walk is not hard-aborted (generation invalidates publish only). Images >8 MiB still blocked by native IPC. Search is process-local (not disk-persisted across app restart). |
-| **Locks** | Released. |
-
-
-#### 2026-07-11 — Advanced multi-clue mini Jarvis search + layout (Security)
-
-| Field | Value |
-|-------|-------|
-| **Timestamp** | 2026-07-11 11:40 CT |
-| **Agent ID** | `AGENT-SEC-20260711-SEARCHADV` |
-| **Status** | complete (uncommitted) |
-| **Problem** | Natural query for txt + Deepgram + API keys only scanned current folder (.android) and matched weak stopwords → wrong `context_map.json`. |
-| **Implementation** | Advanced `parseSearchClues` (txt document NL, stopwords, multi-term AND, content sample 96KB, skip image/video content). Wide multi-root walk (Home/Documents/Desktop/Downloads + current; `here` for local). UI: Open folder status at top; Mini Jarvis search fixed at bottom. |
-| **Files** | `fileExplorerSearch.ts`, `fileExplorerSearchRuntime.ts`, `FileExplorerDialog.tsx`, tests, ledger |
-| **Verification** | Search tests 19/19 PASS; typecheck PASS. |
-| **Risks** | Wide scans take longer; AppData/node_modules skipped; binary/PDF content not indexed; >4MB text name-only. |
-| **Locks** | Released. |
-
-#### 2026-07-11 — Advanced multi-clue mini Jarvis search + layout (Security)
-
-| Field | Value |
-|-------|-------|
-| **Timestamp** | 2026-07-11 11:40 CT |
-| **Agent ID** | `AGENT-SEC-20260711-SEARCHADV` |
-| **Status** | complete (uncommitted) |
-| **Problem** | Natural multi-clue query (txt + Deepgram + API keys) only scanned current folder (.android) and matched weak stopwords → wrong `context_map.json`. |
-| **Implementation** | Advanced `parseSearchClues` (NL type, stopwords, multi-term AND). Content sample 96KB for text only (skip images). Wide multi-root walk (Home/Documents/Desktop/Downloads + current; `here` for local). UI: Open folder at top; Mini Jarvis search fixed at bottom. |
-| **Files** | `fileExplorerSearch.ts`, `fileExplorerSearchRuntime.ts`, `FileExplorerDialog.tsx`, tests, ledger |
-| **Verification** | Search tests PASS; typecheck PASS. |
-| **Risks** | Wide scans slower; skips node_modules/AppData; no OCR on images; no PDF binary text. |
-| **Locks** | Released. |
-
-#### 2026-07-11 — File explorer date groups (Security)
-
-| Field | Value |
-|-------|-------|
-| **Timestamp** | 2026-07-11 12:30 CT |
-| **Agent ID** | `AGENT-SEC-20260711-DATEGROUPS` |
-| **Status** | complete (uncommitted) |
-| **Problem** | Folder listings (e.g. Downloads) sorted A–Z only; user wanted OS-style sections Today / Yesterday / … |
-| **Implementation** | `fileExplorerDateGroups.ts` groups by modified date (fallback created); list+grid show sticky section headers. Search hits stay score-ranked (no date buckets). `normalizeFsEntry` coerces string timestamps from native IPC. |
-| **Files** | `fileExplorerDateGroups.ts`(+test), `FileExplorerDialog.tsx`, `lib/fs.ts`(+normalize test), ledger |
-| **Verification** | Date-group + normalize + search + media tests 33/33 PASS; typecheck PASS. |
-| **Risks** | If native metadata lacks times, falls back to A–Z. Week buckets use Sunday-start (Windows-style). |
-| **Locks** | Released. |
-
-#### 2026-07-11 — Search hit selection + preview fix (Security)
-
-| Field | Value |
-|-------|-------|
-| **Timestamp** | 2026-07-11 12:40 CT |
-| **Agent ID** | `AGENT-SEC-20260711-SEARCHSEL` |
-| **Status** | in-progress |
-| **Problem** | Clicking mini-Jarvis search hits does not select or preview (folder mode early-return in selectEntry). |
-| **Plan** | Always allow file selection for preview in all modes; keep folder-confirm semantics; test selection helper. |
-| **Files locked** | `FileExplorerDialog.tsx`, selection helper + test, ledger |
-| **Do not touch** | terminals, chat, billing, rust, other features |
-
-#### 2026-07-11 — Search hit selection + preview fix COMPLETE
-
-| Field | Value |
-|-------|-------|
-| **Timestamp** | 2026-07-11 12:45 CT |
-| **Agent ID** | `AGENT-SEC-20260711-SEARCHSEL` |
-| **Status** | complete (uncommitted) |
-| **Problem** | Clicking mini-Jarvis search hits did nothing in folder mode (`selectEntry` early-returned for files). |
-| **Implementation** | `fileExplorerSelection.ts`: files always selectable for highlight + preview in all modes; folder confirm still only commits folders/open path. Seed selection keeps user click among hits. |
-| **Files** | `fileExplorerSelection.ts`(+test), `FileExplorerDialog.tsx`, ledger |
-| **Verification** | Files feature tests 46/46 PASS; typecheck PASS. |
-| **Risks** | In folder mode, selecting a file is preview-only (Select folder still uses open folder) — intentional. |
-| **Locks** | Released. |
-
-#### 2026-07-11 — Jarvis file/shell capabilities + session panel (Security)
-
-| Field | Value |
-|-------|-------|
-| **Timestamp** | 2026-07-11 12:55 CT |
-| **Agent ID** | `AGENT-SEC-20260711-JARVISFS` |
-| **Status** | complete (uncommitted) |
-| **Problem** | Chat Jarvis refused file writes; activity panel only listed finished agents. |
-| **Implementation** | (1) System overlays: desktop can `files.read` / `files.write` / `shell.powershell` / `terminal.run` after Approve; no false "can't write". (2) New actions `files.write`, `files.read`, `shell.powershell` + fallback infer for "make a file at path". (3) Activity header → session stats (edited files, +/- lines, tokens, start/duration, now-doing) + Collapse. (4) Edit/Read cards themed like Claude Code with VibeSpace copper styling + colored diffs. |
-| **Files** | `runtime.ts`, `promptAddendum.ts`, `fallbackActions.ts`, `registryFiles.ts`, `registry.ts`, `ChatActivityTimeline.tsx`, `ToolCallCard.tsx`, `activity/types.ts`, tests |
-| **Verification** | registryFiles + fallback + activity + runtimeSafety tests 24/24 PASS; typecheck PASS. |
-| **Risks** | Tiny models may still refuse until fallback injects `files.write`; write capped ~1MB native; PowerShell opens a terminal pane (approval-gated). |
-| **Locks** | Released. |
-
-#### 2026-07-11 — Jarvis session stats panel polish (Security)
-
-| Field | Value |
-|-------|-------|
-| **Timestamp** | 2026-07-11 13:00 CT |
-| **Agent ID** | `AGENT-SEC-20260711-SESSIONUI` |
-| **Status** | complete (uncommitted) |
-| **Change** | Top chat panel is a session dashboard: edited files, lines +/-, tokens in, tokens out, started time, running duration, now-doing, Collapse/Expand. Parses legacy token subtitles; expandable feed hides Done spam. Default collapsed. |
-| **Files** | `ChatActivityTimeline.tsx`, activity tests/index, ledger |
-| **Verification** | activity tests 7/7 PASS; typecheck PASS. |
-| **Locks** | Released. |
-
-#### 2026-07-11 — Queued message Start Multitask button (Security)
-
-| Field | Value |
-|-------|-------|
-| **Timestamp** | 2026-07-11 13:10 CT |
-| **Agent ID** | `AGENT-SEC-20260711-QUEUEMT` |
-| **Status** | complete (uncommitted) |
-| **Change** | Each queued message has a copper-themed Multitask button that dequeues and runs `/multitask <text>` via existing slash handler (same as typing the command). |
-| **Files** | `QueuedMessagesBar.tsx`(+test), `Composer.tsx` (wire only), ledger |
-| **Verification** | QueuedMessagesBar tests 2/2 PASS; typecheck PASS. |
-| **Risks** | Multitask still depends on jarvis agent being available; same limits as manual /multitask. |
-| **Locks** | Released. |
-
-#### 2026-07-11 — Slash command UX (Security)
-
-| Field | Value |
-|-------|-------|
-| **Timestamp** | 2026-07-11 13:20 CT |
-| **Agent ID** | `AGENT-SEC-20260711-SLASHUX` |
-| **Status** | complete (uncommitted) |
-| **Change** | Confirmed slash chips with stronger glow/shine; mid-message slash detection; `/file` opens project file picker; `/clearfile(s)` clears files+images; inline utility slash extraction on send. |
-| **Files** | `slashProjectFiles.ts`(+test), `SlashCommandTypeahead.tsx`(+test), `Composer.tsx`, `InputToken.tsx`(+test), ledger |
-| **Verification** | 15/15 focused slash/token tests PASS; typecheck PASS. |
-| **Risks** | Project file list capped (~250 files, depth 5); needs project root from Files. |
-| **Locks** | Released. |
-
-#### 2026-07-11 — Permissions mini panel + /permissions (Security)
-
-| Field | Value |
-|-------|-------|
-| **Timestamp** | 2026-07-11 13:40 CT |
-| **Agent ID** | `AGENT-SEC-20260711-PERMSUI` |
-| **Status** | complete (uncommitted) |
-| **Change** | Polished permissions chip next to model picker opens Full Access / Read only / Ask only panel. `/permissions` (and full/read/ask args) sets the same per-chat mode. Labels remapped from Agent/Plan/Ask. |
-| **Files** | `ModeIndicator.tsx`(+test), `modes.ts`(+test), `Composer.tsx`, `SlashCommandTypeahead.tsx`, ledger |
-| **Verification** | 16/16 mode/slash tests PASS; typecheck PASS. |
-| **Risks** | Existing /ask and /plan still switch modes; multitask still forces Full Access. |
-| **Locks** | Released. |
-
-#### 2026-07-11 — Benchmarks Top 50 real Arena refresh (Security)
-
-| Field | Value |
-|-------|-------|
-| **Timestamp** | 2026-07-11 14:40 CT |
-| **Agent ID** | `AGENT-SEC-20260711-BENCH` |
-| **Status** | complete (uncommitted) |
-| **Change** | Replaced curated Top 50 with Arena AI text leaderboard data from Jul 10, 2026 (scores, votes, public $/M prices, context lengths). Updated pricing heuristics, SpaceXAI→xai mapping, cache key, public link to arena.ai. |
-| **Files** | `leaderboardSnapshot20260710.ts`, `benchmarkData.ts`(+test), `BenchmarksPage.tsx`, removed `leaderboardSnapshot20260623.ts`, gen script |
-| **Verification** | benchmarkData tests 6/6; typecheck PASS. |
-| **Risks** | Live Wu Long API only returns ~20 models; full Top 50 is the curated snapshot until Refresh merges more. Prices marked estimated when filled from catalog. |
-| **Locks** | Released. |
-
-#### 2026-07-11 — AllAboutMe test UI polish (Security)
-
-| Field | Value |
-|-------|-------|
-| **Timestamp** | 2026-07-11 14:13 CT |
-| **Agent ID** | `AGENT-SEC-20260711-AAMUI` |
-| **Status** | complete (uncommitted) |
-| **Change** | AllAboutMe test popup: top progress bar, faster choice auto-advance, Ctrl+Enter next, grading model only on final grade step, tighter chrome. Question text unchanged. Autosave preserved. |
-| **Files** | `AllAboutMe.tsx`(+test), ledger |
-| **Verification** | AllAboutMe settings tests 10/10; typecheck PASS. |
-| **Risks** | Choice auto-advance is 120ms; rapid double-taps could skip if user fights the timer (cleared on new select). |
-| **Locks** | Released. |
-
-#### 2026-07-11 — Session panel scrolls with chat (not sticky) (Security)
-
-| Field | Value |
-|-------|-------|
-| **Timestamp** | 2026-07-11 13:40 CT |
-| **Agent ID** | `AGENT-SEC-20260711-SESSIONSCROLL` |
-| **Status** | complete (uncommitted) |
-| **Change** | Jarvis session panel stays at top of every chat (always mounted) but lives inside the message scroller — no longer pinned/sticky while scrolling. |
-| **Files** | `ChatThread.tsx`, ledger |
-| **Verification** | ChatActivityTimeline + ChatThread tests 5/5; typecheck PASS. |
-| **Locks** | Released. |
-
-#### 2026-07-11 — Terminal X close hold-to-confirm (Security)
-
-| Field | Value |
-|-------|-------|
-| **Timestamp** | 2026-07-11 13:35 CT |
-| **Agent ID** | `AGENT-SEC-20260711-TERMX` |
-| **Version** | v0.1.48 |
-| **Status** | complete (uncommitted) |
-| **Change** | Terminal close X uses hold 1.5s → Confirm? (same as Clear). Shared ref-safe `holdToConfirm` controller; chrome buttons stopPropagation so tile drag doesn’t swallow presses. Standalone TerminalView chrome matches. |
-| **Files** | `holdToConfirm.ts`(+test), `PaneToolbar.tsx`, `TerminalView.tsx` (standalone chrome), ledger |
-| **Verification** | holdToConfirm 5/5; PaneToolbar 3/3; typecheck PASS. |
-| **Risks** | Closing the last pane still resolves to a fresh leaf (by design). Must hold full 1.5s before Confirm appears. |
-| **Locks** | Released below. |
-
-#### 2026-07-11 — /undo and /redo last chat turn (Security)
-
-| Field | Value |
-|-------|-------|
-| **Timestamp** | 2026-07-11 13:30 CT |
-| **Agent ID** | `AGENT-SEC-20260711-UNDOREDO` |
-| **Version** | v0.1.48 |
-| **Status** | complete (uncommitted) |
-| **Change** | `/undo` safely removes last full turn (user + following assistant/tool/agent); posts “Undone.”; `/redo` restores LIFO per chat. Skips status msgs; blocks while Jarvis running; new user send clears redo stack. |
-| **Files** | `chatUndoRedo.ts`(+test), `Composer.tsx` (handlers), `SlashCommandTypeahead.tsx`(+test), ledger |
-| **Verification** | chatUndoRedo 9/9; SlashCommandTypeahead 9/9; typecheck PASS. |
-| **Risks** | Redo stack is in-memory (cleared on full app reload). Does not reverse side effects of already-approved file/shell actions. |
-| **Locks** | Released below. |
-
-#### 2026-07-11 — Jarvis session panel always visible + quiet mode toasts (Security)
-
-| Field | Value |
-|-------|-------|
-| **Timestamp** | 2026-07-11 13:28 CT |
-| **Agent ID** | `AGENT-SEC-20260711-SESSIONUI2` |
-| **Version** | v0.1.48 |
-| **Status** | complete (uncommitted) |
-| **Change** | (1) Jarvis session panel always mounted at top of chat, pinned above the message scroller (not removed when empty/no events). (2) Removed toast popups for mode changes (ModeIndicator, Shift+Tab, /permissions, /ask, /plan). Mode chip still updates in place. |
-| **Files** | `ChatThread.tsx`, `ChatActivityTimeline.tsx`(+test), `Composer.tsx` (mode toasts only), ledger |
-| **Verification** | 12/12 focused tests PASS; typecheck PASS. |
-| **Risks** | Panel takes a bit of vertical space on empty chats by design. Expand still defaults collapsed for the detail feed. |
-| **Locks** | Released below. |
-
-#### 2026-07-11 — AllAboutMe always-save + chat coordination diagnostic (Security)
-
-| Field | Value |
-|-------|-------|
-| **Timestamp** | 2026-07-11 13:24 CT |
-| **Agent ID** | `AGENT-SEC-20260711-AAMCOORD` |
-| **Version** | v0.1.48 |
-| **Branch** | `main` @ `ec56ef3` |
-| **Status** | complete (uncommitted) |
-| **Change** | (1) AllAboutMe test autosaves every answer; close via X/Escape/overlay, Settings unmount, and pagehide all flush draft to store. (2) Verified AllAboutMe.md generation, 10-msg learning path in runtime (all Jarvis chats), store persist. (3) Chat coordination: `getJarvisCoordinationContextBlock` now merges terminal `.vibespace` summary + chat multitask ledger `.jarvis/agent-coordination.json` for every project chat. |
-| **Files** | `AllAboutMe.tsx`(+test), `coordination.ts`(+test), `context.ts`(+test), ledger |
-| **Verification** | AllAboutMe suite 25/25; settings AllAboutMe 8/8; coordination 4/4; context 5/5; runtime 21/21; typecheck PASS. |
-| **Risks** | Chat coordination file requires a project root + fs write from multitask launch; browser-only preview may lack both ledgers. AllAboutMe profile is virtual vault path in UI (localStorage-backed), not a physical disk file unless exported later. |
-| **Locks** | Released below. |
-
-#### 2026-07-11 — Mode chip, user identity, file defaults, question cards (Security)
-
-| Field | Value |
-|-------|-------|
-| **Timestamp** | 2026-07-11 13:22 CT |
-| **Agent ID** | `AGENT-SEC-20260711-JARVISUX` |
-| **Version** | v0.1.48 |
-| **Branch** | `main` @ `ec56ef3` |
-| **Status** | complete (uncommitted) |
-| **Change** | (1) Removed Shield from mode chip (mode icon only). (2) Inject Settings `displayName` as user identity context for Jarvis. (3) Default write folder (Downloads→Documents→fallback) injected + fallback `files.write` when no path. (4) Overlay teaches `jarvis_question` cards for important clarifications; answers already return via `question_answers` structured context. |
-| **Files** | `ModeIndicator.tsx`, `runtime.ts`(+test), `userIdentity.ts`(+test), `defaultWriteDir.ts`(+test), `fallbackActions.ts`(+test), `promptAddendum.ts`, ledger |
-| **Verification** | 46/46 focused tests PASS (userIdentity, defaultWriteDir, fallbackActions, ModeIndicator, runtime); `npm run typecheck` PASS. |
-| **Risks** | Browser fallback write path is Public Documents/VibeSpace or /tmp/vibespace; desktop uses real Downloads when Tauri path APIs work. Question-card usage still depends on model following overlay. |
-| **Locks** | Released below. |
-
----
-
-#### 2026-07-11 — Connectivity audit: Supabase + Stripe + App (read-only)
-
-| Field | Value |
-|-------|-------|
-| **Timestamp** | 2026-07-11 17:10 CT |
-| **Agent ID** | `AGENT-GROK-20260711-CONNECTAUDIT` |
-| **Status** | complete (read-only; no code changes) |
-| **Change** | Audited App↔Supabase↔Stripe wiring. Confirmed cloud project ACTIVE, edge functions deployed, Stripe sandbox products/prices exist. Found local app missing `app/.env.local` (no VITE_SUPABASE_*), and live `stripe-webhook` gated by JWT (401 without auth header — Stripe cannot deliver events). |
-| **Files** | none edited |
-| **Verification** | billing unit tests 19/19; live HTTP probes on edge functions; Supabase MCP list projects/functions/migrations; Stripe MCP account + products/prices |
-| **Risks** | stripe-webhook verify_jwt=true breaks plan sync; hive/apex migrations may not be on remote; local dev cloud-disconnected until env filled |
-| **Locks** | none claimed (read-only) |
-
-
-### Security Agent — AGENT-SEC-20260711-FULLAUDIT
-
-#### 2026-07-11 — Full security / Stripe / DB / payments audit (report-only)
-
-| Field | Value |
-|-------|-------|
-| **Timestamp** | 2026-07-11 17:10 CT |
-| **Agent ID** | `AGENT-SEC-20260711-FULLAUDIT` |
-| **Version** | v0.1.48 |
-| **Plan** | Read-only security + payments + RLS + edge-function audit; no production mutations; no code fixes until user authorizes |
-| **Affected systems** | Supabase project `tipeobvisjqvpbzcpckh`, Stripe test acct `acct_1TgcFBPsULCV4aFr`, edge functions, billing code paths (read-only) |
-| **Files locked** | none (report-only; no edits to app/supabase functions) |
-| **Status** | complete report-only — critical Stripe webhook JWT gate + missing stack-complete + migration gaps documented |
-| **Verified** | Live edge probes; Stripe MCP products/prices/subs; Supabase advisors/migrations/tables/functions; unit tests billing/auth 32/32; client has no `.env.local` |
-| **Not verified** | End-to-end paid checkout with real card (blocked by webhook JWT + empty profiles); Twilio live call; secrets values (names only) |
-| **Code changes** | none |
-
-
-### Active claim AGENT-GROK-20260711-CONNECTFIX
-| `app/.env.local` (create, gitignored) | `AGENT-GROK-20260711-CONNECTFIX` | v0.1.48 | in-progress | Wire VITE_SUPABASE_* publishable only |
-| `supabase/functions/stripe-webhook/**` | `AGENT-GROK-20260711-CONNECTFIX` | v0.1.48 | in-progress | Redeploy verify_jwt=false |
-| `supabase/migrations/0026_hive_ai_credits.sql` | `AGENT-GROK-20260711-CONNECTFIX` | v0.1.48 | in-progress | Apply if missing on remote |
-| `supabase/migrations/0027_apex_tier.sql` | `AGENT-GROK-20260711-CONNECTFIX` | v0.1.48 | in-progress | Apply if missing on remote |
-| `docs/AGENT_COORDINATION.md` | `AGENT-GROK-20260711-CONNECTFIX` | v0.1.48 | in-progress | This connectivity fix task |
-
-
-### Security Agent — AGENT-SEC-20260711-BILLFIX
-
-#### 2026-07-11 — Fix billing P0/P1/P2 from full audit
+#### 2026-07-11 — Pixel Pets video animations (amendment)
 
 | Field | Value |
 |-------|-------|
 | **Timestamp** | 2026-07-11 17:20 CT |
-| **Agent ID** | `AGENT-SEC-20260711-BILLFIX` |
-| **Version** | v0.1.48 |
-| **Plan** | Fix stripe-webhook JWT deploy, dunning softness, stack-complete deploy, APP_BASE_URL defaults, is_app_admin revoke, config.toml verify_jwt, missing apex/hive migrations, subscriptionStatus tests. No unrelated systems. |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
 | **Status** | in-progress |
-| **Locks** | claimed below |
-
-| `supabase/functions/stripe-webhook/index.ts` | `AGENT-SEC-20260711-BILLFIX` | v0.1.48 | in-progress | Soft dunning + plan retain past_due |
-| `supabase/functions/create-checkout-session/index.ts` | `AGENT-SEC-20260711-BILLFIX` | v0.1.48 | in-progress | APP_BASE_URL default |
-| `supabase/functions/create-customer-portal/index.ts` | `AGENT-SEC-20260711-BILLFIX` | v0.1.48 | in-progress | APP_BASE_URL default |
-| `supabase/functions/stack-complete/index.ts` | `AGENT-SEC-20260711-BILLFIX` | v0.1.48 | in-progress | Deploy only (JWT on) |
-| `supabase/functions/_shared/voice.ts` | `AGENT-SEC-20260711-BILLFIX` | v0.1.48 | in-progress | Shared billing status helpers if needed |
-| `supabase/config.toml` | `AGENT-SEC-20260711-BILLFIX` | v0.1.48 | in-progress | verify_jwt per function |
-| `supabase/migrations/0028_revoke_is_app_admin_client.sql` | `AGENT-SEC-20260711-BILLFIX` | v0.1.48 | in-progress | New |
-| `app/src/lib/billing/subscriptionStatus.ts` (+test) | `AGENT-SEC-20260711-BILLFIX` | v0.1.48 | in-progress | Pure rules + tests |
-| `docs/stripe-setup.md` | `AGENT-SEC-20260711-BILLFIX` | v0.1.48 | in-progress | Docs accuracy |
-| `docs/security-production-checklist.md` | `AGENT-SEC-20260711-BILLFIX` | v0.1.48 | in-progress | Status update |
-| `docs/AGENT_COORDINATION.md` | `AGENT-SEC-20260711-BILLFIX` | v0.1.48 | in-progress | This task |
-
-#### 2026-07-11 — Fix App ↔ Supabase ↔ Stripe connectivity
-
-| Field | Value |
-|-------|-------|
-| **Timestamp** | 2026-07-11 17:15 CT |
-| **Agent ID** | `AGENT-GROK-20260711-CONNECTFIX` |
-| **Status** | complete |
-| **Change** | (1) Created gitignored `app/.env.local` with publishable VITE_SUPABASE_URL + ANON_KEY for project tipeobvisjqvpbzcpckh. (2) Redeployed `stripe-webhook` with `--no-verify-jwt` (v7, verify_jwt=false) — GET now 200. (3) Applied remote migrations `hive_ai_credits` + `apex_tier` (hive tables + apex constraints). (4) Added `env.connectivity.test.ts` smoke for env presence. |
-| **Files** | `app/.env.local` (gitignored), `app/src/lib/supabase/env.connectivity.test.ts`, ledger; remote edge function + DB only |
-| **Verification** | webhook GET 200 + POST no-sig 400; Auth health 200 + profiles REST 200 with anon key; hive_plan_allocations 5 plans; plan_limits free/starter/pro/ultra/apex; billing+connectivity tests 24/24 |
-| **Risks / remaining** | Cannot verify STRIPE_SECRET_KEY / WEBHOOK_SECRET / price IDs are set on Supabase secrets from here (no values returned). End-to-end paid checkout still needs signed-in user + Stripe Dashboard webhook URL pointing at this function. Restart Vite/Tauri after .env.local. |
-| **Locks** | Released below. |
-
-| Path / area | Owner agent | Version | Status | Notes |
-|-------------|-------------|---------|--------|-------|
-| `app/.env.local` | `AGENT-GROK-20260711-CONNECTFIX` | v0.1.48 | released | gitignored publishable keys |
-| `supabase/functions/stripe-webhook/**` | `AGENT-GROK-20260711-CONNECTFIX` | v0.1.48 | released | deploy only, verify_jwt=false |
-| `supabase/migrations/0026*` / `0027*` | `AGENT-GROK-20260711-CONNECTFIX` | v0.1.48 | released | applied on remote |
-| `app/src/lib/supabase/env.connectivity.test.ts` | `AGENT-GROK-20260711-CONNECTFIX` | v0.1.48 | released | smoke test |
-| `docs/AGENT_COORDINATION.md` | `AGENT-GROK-20260711-CONNECTFIX` | v0.1.48 | released | this task |
+| **Change** | Process 6 MP4 motion refs → transparent frames/atlases/manifest + PixiJS state machine (walk L/R, idlePrimary, idleFun, welcome, sleepTransition/sleepingLoop/wakeFromSleep). Worktree only. |
+| **Locks** | claimed: tools/pets/pets_pipeline/process_videos.py, pack_atlases.py, app/src/assets/pets/characters/vibespace-axolotl-pixel/animations/**, app/src/features/pets/**, docs/pets/VIDEO_ANIMATION_* |
 
 
-#### 2026-07-11 — BILLFIX complete (release locks)
-
-| Field | Value |
-|-------|-------|
-| **Timestamp** | 2026-07-11 17:15 CT |
-| **Agent ID** | `AGENT-SEC-20260711-BILLFIX` |
-| **Status** | complete; locks released |
-| **Deployed** | `stripe-webhook` v8 `verify_jwt=false` (GET 200); `stack-complete` v1 JWT on (GET 401); checkout/portal redeployed |
-| **DB** | Applied hive_ai_credits, apex_tier, revoke_app_admin_rpc_and_past_due on `tipeobvisjqvpbzcpckh` |
-| **Stripe** | Created Apex product `prod_UrsvhWBeMOx2Np` price `price_1Ts99HPsULCV4aFruBZ3NG97` \/mo; set `STRIPE_APEX_PRICE_ID` + `APP_BASE_URL` secrets |
-| **Tests** | billing unit tests 23/23 pass |
-| **Not done** | Live card E2E checkout; Auth leaked-password toggle (dashboard); desktop `app/.env.local`; Twilio live call |
-| **Locks** | all BILLFIX locks released below |
-
-| `supabase/functions/stripe-webhook/index.ts` | `AGENT-SEC-20260711-BILLFIX` | v0.1.48 | released | Soft dunning |
-| `supabase/functions/create-checkout-session/index.ts` | `AGENT-SEC-20260711-BILLFIX` | v0.1.48 | released | APP_BASE_URL |
-| `supabase/functions/create-customer-portal/index.ts` | `AGENT-SEC-20260711-BILLFIX` | v0.1.48 | released | APP_BASE_URL |
-| `supabase/functions/stack-complete/index.ts` | `AGENT-SEC-20260711-BILLFIX` | v0.1.48 | released | Deployed |
-| `supabase/functions/_shared/subscriptionStatus.ts` | `AGENT-SEC-20260711-BILLFIX` | v0.1.48 | released | New |
-| `supabase/config.toml` | `AGENT-SEC-20260711-BILLFIX` | v0.1.48 | released | verify_jwt map |
-| `supabase/migrations/0026-0028*` | `AGENT-SEC-20260711-BILLFIX` | v0.1.48 | released | Applied live |
-| `app/src/lib/billing/subscriptionStatus.ts` (+test) | `AGENT-SEC-20260711-BILLFIX` | v0.1.48 | released | |
-| `docs/stripe-setup.md` / `security-production-checklist.md` | `AGENT-SEC-20260711-BILLFIX` | v0.1.48 | released | |
-| `docs/AGENT_COORDINATION.md` | `AGENT-SEC-20260711-BILLFIX` | v0.1.48 | released | This task |
-
-
-### Security Agent — AGENT-SEC-20260711-AUTHUI
-
-#### 2026-07-11 — Fix sign-in/sign-up + email OTP + polish UI
+#### 2026-07-11 — Pixel Pets video animations complete (draft PR)
 
 | Field | Value |
 |-------|-------|
 | **Timestamp** | 2026-07-11 17:50 CT |
-| **Agent ID** | `AGENT-SEC-20260711-AUTHUI` |
-| **Plan** | Align Supabase OTP length/templates with app 6-digit flow; raise email rate limit; fix site_url; polish SignInDialog/Account; humanize auth errors; use auth.resend. Do not touch terminals/billing unrelated. |
-| **Status** | in-progress |
-
-| `app/src/features/auth/SignInDialog.tsx` | `AGENT-SEC-20260711-AUTHUI` | v0.1.48 | in-progress | Main auth UI + flow |
-| `app/src/features/auth/OtpCodeInput.tsx` | `AGENT-SEC-20260711-AUTHUI` | v0.1.48 | in-progress | UI polish |
-| `app/src/features/auth/authValidation.ts` (+test) | `AGENT-SEC-20260711-AUTHUI` | v0.1.48 | in-progress | Error helpers |
-| `app/src/features/auth/authErrors.ts` (+test) | `AGENT-SEC-20260711-AUTHUI` | v0.1.48 | in-progress | New error mapper |
-| `app/src/features/settings/sections/Account.tsx` | `AGENT-SEC-20260711-AUTHUI` | v0.1.48 | in-progress | Account auth surface polish |
-| `supabase/templates/*.html` | `AGENT-SEC-20260711-AUTHUI` | v0.1.48 | in-progress | OTP templates |
-| `docs/supabase-setup.md` | `AGENT-SEC-20260711-AUTHUI` | v0.1.48 | in-progress | Auth email notes |
-| `docs/AGENT_COORDINATION.md` | `AGENT-SEC-20260711-AUTHUI` | v0.1.48 | in-progress | This task |
-
-
-#### 2026-07-11 — AUTHUI complete
-
-| Field | Value |
-|-------|-------|
-| **Status** | complete; locks released |
-| **Root cause** | Live Auth had `mailer_otp_length=8` + **link** email templates while app expected **6-digit** `{{ .Token }}` OTP; repeated signup reported “code sent” with no email |
-| **Server** | Patched project `tipeobvisjqvpbzcpckh`: OTP length 6, Token templates, site_url + allow list, password min 8 |
-| **Client** | Polished `SignInDialog` + Account cloud card; `authErrors` mapper; existing-account detection; `auth.resend` |
-| **Tests** | `src/features/auth` 7/7 pass |
-| **Remaining** | Custom SMTP (Resend) still **not** configured — default Supabase mailer may spam-folder; user must add Resend for reliable delivery |
-| **Locks** | released below |
-
-| `app/src/features/auth/**` | `AGENT-SEC-20260711-AUTHUI` | v0.1.48 | released | Auth UI + errors |
-| `app/src/features/settings/sections/Account.tsx` | `AGENT-SEC-20260711-AUTHUI` | v0.1.48 | released | |
-| `supabase/templates/*.html` | `AGENT-SEC-20260711-AUTHUI` | v0.1.48 | released | |
-| `docs/supabase-setup.md` | `AGENT-SEC-20260711-AUTHUI` | v0.1.48 | released | |
-| `docs/AGENT_COORDINATION.md` | `AGENT-SEC-20260711-AUTHUI` | v0.1.48 | released | |
-
-
-### Security Agent — AGENT-SEC-20260711-ACCTUSAGE
-
-#### 2026-07-11 — Account Usage: real message / phone / SMS meters
-
-| Field | Value |
-|-------|-------|
-| **Agent ID** | `AGENT-SEC-20260711-ACCTUSAGE` |
-| **Plan** | Wire AccountPage Usage to getCombinedUsage; progress bars; empty/error states. No billing backend changes. |
-| **Status** | in-progress |
-
-| `app/src/features/account/AccountPage.tsx` | `AGENT-SEC-20260711-ACCTUSAGE` | v0.1.48 | in-progress | Real usage UI |
-| `app/src/features/billing/planLimits.ts` (+test) | `AGENT-SEC-20260711-ACCTUSAGE` | v0.1.48 | in-progress | usagePercent helpers |
-| `docs/AGENT_COORDINATION.md` | `AGENT-SEC-20260711-ACCTUSAGE` | v0.1.48 | in-progress | This task |
-
-
-#### 2026-07-11 — ACCTUSAGE complete
-
-| Field | Value |
-|-------|-------|
-| **Status** | complete; locks released |
-| **Change** | Account Usage loads `getCombinedUsage()` for AI messages, phone minutes, SMS; progress bars + empty/error/retry |
-| **Tests** | planLimits tests + typecheck filter |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Status** | complete (draft PR; not merged) |
+| **Commit** | f2a899d |
+| **Change** | 6-video pipeline → transparent frames/atlases + pet state machine + PetOverlay |
+| **Verification** | pets tests 12/12; typecheck PASS |
 | **Locks** | released |
 
-| `app/src/features/account/AccountPage.tsx` | `AGENT-SEC-20260711-ACCTUSAGE` | v0.1.48 | released | |
-| `app/src/features/billing/planLimits.ts` (+test) | `AGENT-SEC-20260711-ACCTUSAGE` | v0.1.48 | released | |
-| `docs/AGENT_COORDINATION.md` | `AGENT-SEC-20260711-ACCTUSAGE` | v0.1.48 | released | |
+
+#### 2026-07-11 - Pixel Pets skeptic fixes verified (re-run)
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-11 18:10 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Status** | complete (draft PR; not merged) |
+| **Commits** | f2a899d, f8d369a, 0e781ac |
+| **Change** | Velocity drag + PetHost/MiniPanel + crop scale + QA; re-verified tests 19/19, typecheck, alpha QA PASS |
+| **Verification** | pets tests 19/19; typecheck PASS; alpha PASS; no-runtime-mp4 PASS; draft PR #19 |
+| **Locks** | released (no active pet locks) |
 
 
-#### 2026-07-11 — Plan budgets DeepSeek-heavy (45/42.5/12.5 of 33% COGS)
+#### 2026-07-11 - Pixel Pets blockers: PixiJS + Tauri windows + mini-panel parity
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-11 18:30 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Status** | in-progress |
+| **Change** | Replace Canvas2D with PixiJS Application; add pet-overlay + pet-mini-panel Tauri windows; presentation ownership; lifecycle; durable docs |
+| **Locks** | claimed: app/src/features/pets/**, app/src/App.tsx, app/src-tauri/src/lib.rs, app/src-tauri/src/pets.rs, app/src-tauri/capabilities/**, app/src-tauri/tauri.conf.json, app/package.json, docs/pets/**, docs/AGENT_COORDINATION.md |
+
+
+#### 2026-07-11 - Pixel Pets blockers implemented (Pixi + Tauri windows)
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-11 18:45 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Status** | complete (draft PR; not merged) |
+| **Change** | PixiJS Application player; pet-overlay + pet-mini-panel windows/capabilities/IPC; panel lifecycle; presentation ownership; durable docs/contact sheets |
+| **Verification** | pets 40/40; typecheck PASS; frontend build PASS; cargo test pets 2/2; no-runtime-mp4 PASS |
+| **Locks** | released |
+
+
+#### 2026-07-11 - Pixel Pets full app wiring (chat/terminal/settings)
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-11 19:10 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Status** | in-progress |
+| **Change** | Wire real ChatThread/Composer + TerminalView into pet-mini-panel; pet settings store; presentation store; main-app controls |
+| **Locks** | claimed: app/src/features/pets/**, app/src/features/chat/ChatView.tsx, app/src/features/terminals/TileGrid.tsx, app/src/features/settings/**, app/src/App.tsx, app/src-tauri/src/pets.rs, docs/pets/**, docs/AGENT_COORDINATION.md |
+
+
+#### 2026-07-11 - Pixel Pets full Chat/Terminal wiring
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-11 19:45 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Status** | complete (draft PR; not merged) |
+| **Change** | Real ChatThread/Composer + TerminalView in pet-mini-panel; Settings Pets; presentation ownership in ChatView/TileGrid; hide/show overlay commands |
+| **Verification** | pets 45/45; typecheck PASS; build PASS; cargo pets 2/2 |
+| **Locks** | released |
+
+
+#### 2026-07-11 - Pixel Pets UX fix (visible pet, account tab, right-click)
+
+| Field | Value |
+|-------|-------|
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Status** | in-progress |
+| **Change** | Embed pet in main app always-on; Account Pet tab; right-click chat/terminal to pet panel; remove To Pet buttons; pet right-click Close |
+| **Locks** | pets/**, ChatView, TileGrid, TerminalContextMenu, Account.tsx, SettingsModal, TabStrip if needed |
+
+
+#### 2026-07-11 - Pixel Pets UX simplified (visible + Account tab)
+
+| Field | Value |
+|-------|-------|
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Status** | complete (draft PR; not merged) |
+| **Change** | Pet embedded in main app always; Account→Pet tab; right-click chat/terminal; remove To Pet buttons; pet right-click Close |
+| **Verification** | typecheck PASS; pets 45/45 |
+| **Locks** | released |
+
+
+#### 2026-07-11 - Pet skins AXO + GLITCH picker
+
+| Field | Value |
+|-------|-------|
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Status** | in-progress |
+| **Locks** | app/src/features/pets/**, app/src/assets/pets/**, app/src/features/account/**, docs/AGENT_COORDINATION.md |
+
+#### 2026-07-11 - Pet skins continuation after interrupted session
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-11 21:25 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Status** | in-progress |
+| **Change** | Continue the interrupted AXO + GLITCH selectable pet skins work from the existing dirty worktree; preserve generated assets and unrelated installer deletion. |
+| **Locks** | app/src/features/pets/**, app/src/assets/pets/**, app/src/features/account/**, app/src/features/settings/**, app/src/App.tsx, docs/AGENT_COORDINATION.md |
+
+#### 2026-07-11 - Pet skins AXO + GLITCH picker complete
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-11 21:35 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Status** | complete locally; ready to commit/push |
+| **Change** | Added selectable AXO/GLITCH pet character registry, persisted skin setting, Account/Settings Pet picker cards, character-aware manifest loading, and Pixi atlas reloads for selected character including @2x atlas paths. |
+| **Verification** | `npm.cmd --prefix app run test -- src/features/pets/petManifest.test.ts src/features/pets/PetAccountPanel.test.tsx --run` PASS (3/3); `npm.cmd --prefix app run test -- src/features/pets --run` PASS (47/47); `npm.cmd --prefix app run typecheck` PASS; `npm.cmd --prefix app run build` PASS with existing Vite/chunk warnings. |
+| **Risks / notes** | No Supabase, Stripe, billing, auth, migration, release, or production changes. Preserve unrelated `install/install.ps1` deletion and unstaged `app/src-tauri/Cargo.toml` working-tree state; do not stage either. Active coordination lock path cleared after update; sandbox prevented deletion of moved-aside lock archive directories, which remain untracked and excluded. |
+| **Locks** | released after staging/commit handoff; no active pet locks expected after push. |
+
+#### 2026-07-11 - Pet skins handoff blocked by Git metadata permission
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-11 21:40 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Status** | blocked at staging/commit only |
+| **What happened** | Implementation and verification completed, but `git add -- ...` failed with `fatal: Unable to create 'C:/Users/viper/VibeSpace/.git/worktrees/VibeSpace-origin-main-20260711/index.lock': Permission denied`. No index lock exists; the sandbox cannot write the Git metadata directory outside the writable worktree root. |
+| **Completed work preserved** | Working tree contains the completed AXO/GLITCH picker code and GLITCH runtime asset pack. Nothing was staged or committed. |
+| **Next command** | Re-run the exact scoped `git add -- docs/AGENT_COORDINATION.md app/src/features/pets/PetAccountPanel.tsx app/src/features/pets/PetAccountPanel.test.tsx app/src/features/pets/PetOverlay.tsx app/src/features/pets/petManifest.ts app/src/features/pets/petManifest.test.ts app/src/features/pets/petSettingsStore.ts app/src/features/pets/petCharacters.ts app/src/assets/pets/characters/vibespace-axolotl-glitch` from an environment allowed to write the linked worktree Git metadata. |
+| **Do not stage** | `install/install.ps1`, `app/src-tauri/Cargo.toml`, `.agent-coordination.lock.released-*`, `app/src/assets/pets/characters/vibespace-axolotl-pixel/previews/reference-axolotl.png` unless separately reviewed and approved. |
+
+#### 2026-07-11 - Pet transparency and drag-walk fix
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-11 22:05 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Status** | in-progress |
+| **Change** | Diagnose and fix opaque black Pet rendering surface without changing animation artwork/timing/scale/state machine; add runtime atlas alpha checks; fix drag-walk to stop when held still and track cursor velocity. |
+| **Locks** | `app/src/features/pets/pixiAtlasPlayer.ts`, `app/src/features/pets/atlasPlayer.test.ts`, `app/src/features/pets/PetOverlay.tsx`, `app/src/features/pets/PetOverlayWindow.tsx`, `app/src/features/pets/petDragVelocity.ts`, `app/src/features/pets/petDragVelocity.test.ts`, `app/src/features/pets/petAtlasAlpha.test.ts`, `app/src/styles/globals.css`, `docs/AGENT_COORDINATION.md` |
+| **Discovery so far** | User before screenshot shows a black rectangle matching the render surface. Runtime atlas PNGs for AXO and GLITCH were inspected directly and are RGBA with transparent corners; pet-overlay Tauri config is already transparent/decorations false/shadow false; overlay route does not mount the normal app shell. Suspect Pixi/WebGL canvas/back-buffer compositing plus overlay CSS flash/parent transparency gaps. |
+| **Constraints** | Preserve unrelated `install/install.ps1` deletion and unstaged `app/src-tauri/Cargo.toml`; do not modify Supabase, Stripe, billing, auth, migrations, production data, releases, or unrelated UI. |
+
+
+#### 2026-07-11 - Pet transparency + AXO/GLITCH mapping (complete)
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-11 22:30 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Status** | complete locally; commit/push |
+| **Change** | (1) AXO default skin now loads full-color `vibespace-axolotl-glitch` atlases; GLITCH? uses monochrome `vibespace-axolotl-pixel` pack. (2) Transparency: PetHost shows Tauri pet-overlay only (no main-shell embed); Pixi `backgroundAlpha: 0`; scoped pet-overlay CSS; index.html early transparent mark; tauri conf `backgroundColor` + WebView2 args; Rust `set_background_color(0,0,0,0)`. (3) Automated atlas alpha + transparency tests. Animations/state machine/timing unchanged. |
+| **Verification** | pets tests 57/57 PASS; typecheck PASS; cargo check PASS (Color API); do not stage install.ps1 or Cargo.toml. |
+| **Locks** | released after push |
+
+
+#### 2026-07-11 - Pet show fix + cream AXO + drag stop
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-11 22:40 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Status** | in-progress |
+| **Change** | Fix pet not appearing on select (panel latch + overlay fallback + bundled atlas URLs); AXO cream preview + full-color pack; drag walk stops when cursor still and speed follows velocity. |
+| **Locks** | app/src/features/pets/**, app/src/assets/pets/characters/vibespace-axolotl-glitch/**, docs/AGENT_COORDINATION.md |
+| **Constraints** | Do not stage install/install.ps1 or Cargo.toml; draft PR only. |
+
+
+#### 2026-07-11 - Pet show fix + cream AXO + drag stop (complete)
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-11 22:45 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Status** | complete |
+| **Change** | PetHost: jarvis:pet:show clears panel latch; inline fallback if overlay missing; atlas URLs via import.meta.glob; AXO cream portrait + full-color pack; GLITCH monochrome; stationary drag tick + velocity FPS. |
+| **Verification** | pets 58/58 PASS; typecheck PASS |
+| **Locks** | released |
+| **Risks** | Runtime AXO animation frames are full-color pack (cream/pink/orange), not a frame-by-frame remaster of the ChatGPT helmet still; preview uses the cream reference image. Full re-authoring of every anim from that still needs a separate art pass. |
+
+
+#### 2026-07-11 - Separate cream Axo from Glitch + visibility fixes
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-11 23:00 CT |
+| **Agent ID** | AGENT-20260711-111338-PX7L |
+| **Status** | complete |
+| **Change** | Independent vibespace-axolotl cream pack; Glitch pack untouched; transparent previews; PetHost non-disappear + panel confirm; clampPetPosition; texture cache clear on skin switch; identity tests. |
+| **Verification** | pets 66/66 PASS; typecheck PASS |
+| **Locks** | released |
+| **Do not stage** | install/install.ps1, Cargo.toml |
+
+
+#### 2026-07-12 - Fix pet disappear + welcome spam + Axo anim
 
 | Field | Value |
 |-------|-------|
 | **Status** | complete |
-| **Change** | DeepSeek +15pp, call/SMS -7.5pp each; planLimits/entitlements/marketing/budget + migration 0029 applied live |
-| **Account** | Usage meters labeled DeepSeek / Phone / SMS with thicker progress bars |
-
-
-### Security Agent — AGENT-SEC-20260711-ACCTABS
-
-#### 2026-07-11 — Account page horizontal tabs (Profile, Usage, Billing, Support, More)
-
-| Field | Value |
-|-------|-------|
-| **Agent ID** | `AGENT-SEC-20260711-ACCTABS` |
-| **Status** | in-progress |
-| **Scope** | AccountPage only (+ optional small tab helper test). TopBar already routes to account. |
-
-| `app/src/features/account/AccountPage.tsx` | `AGENT-SEC-20260711-ACCTABS` | v0.1.48 | in-progress | Tabbed account center |
-| `app/src/features/account/accountTabs.ts` (+test) | `AGENT-SEC-20260711-ACCTABS` | v0.1.48 | in-progress | Tab ids/labels |
-| `docs/AGENT_COORDINATION.md` | `AGENT-SEC-20260711-ACCTABS` | v0.1.48 | in-progress | This task |
-
-
-#### 2026-07-11 — ACCTABS complete
-
-| Field | Value |
-|-------|-------|
-| **Status** | complete; locks released |
-| **Change** | Account Center tab strip: Profile · Usage · Billing · Support · More. Top-right avatar already routes to account. |
-| **Tests** | accountTabs 2/2 pass; tsc clean for account files |
+| **Root causes** | (1) Boot effect re-ran on playAnim/setState → welcome loop; (2) load() cleared textures before new atlas ready → vanish on walk; (3) PetHost mounted inline + Tauri overlay together → double instances |
+| **Fix** | Stable boot (enabled+characterId only); atomic texture swap; single display path (overlay XOR inline) |
+| **Verification** | pets 79/79 PASS; typecheck PASS |
 | **Locks** | released |
 
-| `app/src/features/account/AccountPage.tsx` | `AGENT-SEC-20260711-ACCTABS` | v0.1.48 | released | |
-| `app/src/features/account/accountTabs.ts` (+test) | `AGENT-SEC-20260711-ACCTABS` | v0.1.48 | released | |
-| `docs/AGENT_COORDINATION.md` | `AGENT-SEC-20260711-ACCTABS` | v0.1.48 | released | |
 
-### Security Agent — AGENT-SEC-20260711-UNIFIEDCREDITS
-
-#### 2026-07-11 — Single shared company credit bar (DeepSeek + phone + SMS)
+#### 2026-07-12 - Pixel Pets six-issue continuation
 
 | Field | Value |
 |-------|-------|
-| **Agent ID** | `AGENT-SEC-20260711-UNIFIEDCREDITS` |
-| **Status** | complete; locks released |
-| **Change** | One fungible monthly credit pool. Account Usage shows a single Shared company credits bar + spend chips. DB reserve_* RPCs check pool total (migration 0030 applied). get-message-usage returns pool remaining + credits_* fields. Rates: DeepSeek 1 cr · phone 100/min · SMS 10/text. |
-| **Tests** | planLimits 13 + accountTabs 2 = 15 pass |
-| **Live** | `unified_plan_budget_usd('starter')` = 3.30; get-message-usage redeployed with JWT verify |
-
-| Path | Agent | Status |
-|------|-------|--------|
-| `app/src/features/account/AccountPage.tsx` (UnifiedUsageBar) | UNIFIEDCREDITS | released |
-| `app/src/features/billing/planLimits.ts` (+test) | UNIFIEDCREDITS | released |
-| `app/src/features/account/accountTabs.ts` | UNIFIEDCREDITS | released |
-| `supabase/migrations/0030_unified_credit_pool_reserves.sql` | UNIFIEDCREDITS | released (applied live) |
-| `supabase/functions/get-message-usage/index.ts` | UNIFIEDCREDITS | released (deployed) |
-| `docs/AGENT_COORDINATION.md` | UNIFIEDCREDITS | released |
-
-### Security Agent — AGENT-SEC-20260711-CREDITS-E2E
-
-#### 2026-07-11 — End-to-end unified credits (Supabase + Stripe + website + GitHub)
-
-| Field | Value |
-|-------|-------|
-| **Agent ID** | `AGENT-SEC-20260711-CREDITS-E2E` |
-| **Status** | complete; locks released |
-| **Verified live** | pool RPCs use unified_plan_budget_usd; starter $3.30 · pro $16.50 · ultra $33 · apex $66; get-message-usage GET 200; stripe-webhook GET 200 (JWT off); get-call-usage redeployed |
-| **Tests** | planLimits + accountTabs + billing: **38/38 pass** |
-| **Website** | site/ + landing/ pricing → shared company credits (~3.3k / 16.5k / 33k / 66k) |
-| **Stripe** | still maps price→tier only; usage seeded by profiles.tier triggers; credits not sold as Stripe metered items |
-| **Scope** | credits/billing surfaces only — no unrelated chat/terminal/files changes in commit |
-| **Risks** | Full card E2E checkout not re-run this session; SQL behavior tests in supabase/tests still have pre-0029 numbers (not run against live) |
-| **Locks** | released below |
-
-| Path | Agent | Ver | Status | Note |
-|------|-------|-----|--------|------|
-| `site/index.html` (pricing) | CREDITS-E2E | v0.1.48 | released | |
-| `landing/index.html` (pricing) | CREDITS-E2E | v0.1.48 | released | |
-| `docs/SUBSCRIPTION_PLANS_REFERENCE.md` | CREDITS-E2E | v0.1.48 | released | |
-| `docs/stripe-setup.md` | CREDITS-E2E | v0.1.48 | released | |
-| `app/src/lib/entitlements.ts` | CREDITS-E2E | v0.1.48 | released | |
-| `app/src/features/billing/planLimits.ts` (+test) | CREDITS-E2E | v0.1.48 | released | |
-| `app/src/features/account/*` (usage bar/tabs) | CREDITS-E2E | v0.1.48 | released | |
-| `supabase/functions/get-call-usage` | CREDITS-E2E | v0.1.48 | released | deployed |
-| `supabase/functions/get-message-usage` | CREDITS-E2E | v0.1.48 | released | deployed earlier |
-| `supabase/migrations/0028-0030` | CREDITS-E2E | v0.1.48 | released | applied live |
-| `docs/AGENT_COORDINATION.md` | CREDITS-E2E | v0.1.48 | released | |
-
-### Security Agent — AGENT-SEC-20260712-CREDITS-FIX
-
-#### 2026-07-12 — Close remaining credits risks (SQL tests, Stripe path, Pages verify)
-
-| Field | Value |
-|-------|-------|
-| **Agent ID** | `AGENT-SEC-20260712-CREDITS-FIX` |
-| **Status** | complete; locks released |
-| **SQL** | Rewrote `subscription_v2_behavior.sql` for 0029/0030; fixed `rls_voice_verification` plan limits; added `unified_credit_pool_behavior.sql`. Both unified + subscription suites **ran live with begin/rollback — PASS**. |
-| **Stripe path** | Products/prices present ($10/$50/$100/$200); webhook GET **200**; checkout without JWT **401**; secrets map plan→price server-side. Full browser card flow still requires human with test card (cannot mint user JWT here). |
-| **Website** | GitHub Pages deploy for `c5921a5` **success**; live `vibespaceos.com` shows shared company credits ~3,300/16,500/33,000; old 3,100 gone. |
-| **Unit tests** | billing/account **38/38** pass |
-| **Risks remaining** | Manual Stripe Checkout with 4242… still recommended once in sandbox; `landing/` is source copy (Pages serves `site/`). |
-| **Locks** | released below |
-
-| Path | Agent | Ver | Status | Note |
-|------|-------|-----|--------|------|
-| `supabase/tests/subscription_v2_behavior.sql` | CREDITS-FIX | v0.1.48 | released | |
-| `supabase/tests/rls_voice_verification.sql` | CREDITS-FIX | v0.1.48 | released | |
-| `supabase/tests/unified_credit_pool_behavior.sql` | CREDITS-FIX | v0.1.48 | released | |
-| `docs/stripe-setup.md` | CREDITS-FIX | v0.1.48 | released | E2E checklist |
-| `docs/AGENT_COORDINATION.md` | CREDITS-FIX | v0.1.48 | released | |
-
-### Codex — AGENT-CODEX-20260712-154700-TERMRESTORE
-
-#### 2026-07-12 — Preserve shell transcript when reattaching a live PTY
-
-| Field | Value |
-|-------|-------|
-| **Agent ID** | `AGENT-CODEX-20260712-154700-TERMRESTORE` |
-| **Branch / commit** | local dirty `main` at `e6c0e0337d749ea48b2a8fa5c8371b3767798ced` (user explicitly authorized focused in-place edits) |
-| **Plan** | Reproduce the live-PTY renderer reattach gap, replay the persisted plain-shell transcript into the replacement xterm renderer, retain stale fullscreen-TUI suppression, and run focused plus required checks. |
+| **Agent** | AGENT-20260711-111338-PX7L |
 | **Status** | in-progress |
-| **Scope guard** | Preserve all pre-existing dirty work; exact-path patches only; no billing, auth, Stripe, Supabase, installer, or unrelated UI changes. |
+| **Locks** | app/src/features/pets/**, app/src/assets/pets/characters/vibespace-axolotl/**, docs/AGENT_COORDINATION.md |
+| **Issues** | Axo frozen (few unique frames); panel hide; drag chop; terminal grid; Jarvis voice mini |
+| **Do not stage** | install/install.ps1, Cargo.toml |
 
-| Path / area | Owner agent | Version | Status | Notes |
-|-------------|-------------|---------|--------|-------|
-| `app/src/features/terminals/restoreSession.ts` | `AGENT-CODEX-20260712-154700-TERMRESTORE` | v0.1.48 | locked | Live PTY transcript replay decision only |
-| `app/src/features/terminals/restoreSession.test.ts` | `AGENT-CODEX-20260712-154700-TERMRESTORE` | v0.1.48 | locked | Focused regression coverage |
-| `docs/AGENT_COORDINATION.md` | `AGENT-CODEX-20260712-154700-TERMRESTORE` | v0.1.48 | locked | Append-only coordination record |
 
-#### 2026-07-12 — TERMRESTORE complete; locks released
+#### 2026-07-12 - Pixel Pets six-issue re-register (continuation session)
 
 | Field | Value |
 |-------|-------|
-| **Status** | implemented and committed; ready for direct push to `main` |
-| **Commit** | `0539dcd` — `fix: replay terminal history on live PTY reattach` |
-| **Root cause** | Live PTY attach returned an empty replay even though the Rust event bridge retains no output backlog for a replacement xterm renderer. |
-| **Verification** | Restore regression 7/7; terminal persistence group 68/68; typecheck pass; production frontend build pass; Rust check pass; Rust lib tests 11/11; release-manifest 1/1. Full frontend run: 1033/1036 with three unrelated timeout failures, all three passed 19/19 alone. Packaged Tauri build timed out after 20 minutes without a result and is not claimed. |
-| **Scope** | Commit contains only `restoreSession.ts` and `restoreSession.test.ts`; all pre-existing dirty work preserved and unstaged. |
+| **Timestamp** | 2026-07-12 ~08:35 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Branch** | `agent/pixel-pets-axolotl` (draft PR #19) |
+| **HEAD at claim** | `e85ce33` |
+| **Status** | in-progress — locks reacquired |
+| **Change** | Continue six functional fixes: Axo multi-frame animation proof, panel hide lifecycle, drag smoothing, terminal Tabs/Grid, real Jarvis Mini Voice. Document freeze root cause + runtime chain. |
+| **Locks claimed** | `app/src/features/pets/**`, `app/src/assets/pets/characters/vibespace-axolotl/**`, `docs/AGENT_COORDINATION.md` |
+| **Active lock file** | `.agent-coordination.lock/owner.txt` |
+| **Do not stage** | `install/install.ps1`, `app/src-tauri/Cargo.toml`, unrelated dirty docs/pets assets |
+| **Freeze root cause** | Near-identical stamped atlas cells (JSON multi-frame but visually identical) — not portrait substitution; cream pack is independent of glitch. |
 
-| Path / area | Owner agent | Version | Status | Notes |
-|-------------|-------------|---------|--------|-------|
-| `app/src/features/terminals/restoreSession.ts` | `AGENT-CODEX-20260712-154700-TERMRESTORE` | v0.1.48 | released | Committed in `0539dcd` |
-| `app/src/features/terminals/restoreSession.test.ts` | `AGENT-CODEX-20260712-154700-TERMRESTORE` | v0.1.48 | released | Committed in `0539dcd` |
-| `docs/AGENT_COORDINATION.md` | `AGENT-CODEX-20260712-154700-TERMRESTORE` | v0.1.48 | released | Append-only local coordination record; intentionally unstaged |
+
+#### 2026-07-12 - Pixel Pets verification wire-up
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-12 ~08:42 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Status** | in-progress |
+| **Change** | Wire `shouldShowStandalonePet` into PetHost; `petTerminalLayout` + grid tests; `PetVoiceSurface` VoiceService tests; `petDevPerf` counters; suite **107/107** + typecheck. tauri:dev blocked (port 5173 in use). |
+| **Locks** | held on `app/src/features/pets/**`, axolotl assets, coordination ledger |
+| **Do not stage** | install.ps1, Cargo.toml |
+
+
+#### 2026-07-12 - Grid chrome / rAF drag / voice activity
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-12 ~08:46 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Status** | in-progress |
+| **Change** | Terminal grid Focus/Max/Main/Close + shell labels + non-focused `pointer-events-none`; drag locomotion applied once per rAF; voice provider status + safe activity only. Suite **109/109**. Port 5173 already running this worktree vite + jarvis.exe. |
+| **Do not stage** | install.ps1, Cargo.toml |
+
+
+#### 2026-07-12 - Freeze chain audit + shutdown wire
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-12 ~08:47 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Status** | in-progress |
+| **Change** | Re-documented Axo freeze root cause + live manifest dump; PetHost `shuttingDown` on pagehide/beforeunload/jarvis:before-hide/jarvis:persist-now so overlay never respawns on exit. |
+| **Locks** | pets/** + axolotl assets + ledger |
+| **Do not stage** | install.ps1, Cargo.toml |
+
+
+#### 2026-07-12 - Gating re-verify (freeze evidence + suite)
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-12 ~08:49 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **HEAD** | `811ab6b` |
+| **Status** | in-progress — locks reacquired; gating suite re-run |
+| **Freeze root cause** | Near-identical cream atlas cells (JSON multi-frame, visually static) — documented in implementer scratch `axo-glitch-mapping.txt` |
+| **Do not stage** | install.ps1, Cargo.toml |
+| **No merge/deploy** | draft PR #19 only |
+
+
+#### 2026-07-12 - DEV runtime diagnostics for Axo chain
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-12 ~08:51 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Status** | in-progress |
+| **Change** | `buildPetRuntimeDiagnostics` + DEV `window.__VIBESPACE_PET_DIAG__` covering selected pet ID, characterId, manifest path, atlas URL, anim state, frame index/count, ticker, reduced motion, panel hide, texture cache key — no production spam. |
+| **Do not stage** | install.ps1, Cargo.toml |
+
+
+#### 2026-07-12 - Freeze chain re-verify at 8fc7567
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-12 ~08:53 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **HEAD** | `8fc7567` |
+| **Status** | in-progress — locks held; suite re-run |
+| **Freeze root cause** | Near-identical cream atlas cells (documented implementer/axo-glitch-mapping.txt) |
+| **Do not stage** | install.ps1, Cargo.toml |
+
+
+#### 2026-07-12 - Gating evidence pass at 9a1b6d5
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-12 ~08:55 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **HEAD** | `9a1b6d5` (code tip `8fc7567`) |
+| **Status** | in-progress — freeze chain re-documented; suite+typecheck+build |
+| **Freeze root cause** | Near-identical cream atlas stamps (JSON multi-frame, pixels static) |
+| **Do not stage** | install.ps1, Cargo.toml |
+| **No merge** | draft PR #19 only |
+
+
+#### 2026-07-12 - Freeze diagnosis re-register at 8cdbe7f
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-12 ~08:58 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **HEAD** | `8cdbe7f` |
+| **Status** | in-progress — locks reacquired; freeze chain dump refreshed; gating suite re-run |
+| **Freeze root cause** | Near-identical cream atlas stamps (implementer/axo-glitch-mapping.txt) |
+| **Code tip** | `8fc7567` (DEV diagnostics + six-issue fixes) |
+| **Do not stage** | install.ps1, Cargo.toml |
+| **No merge** | draft PR #19 only |
+
+
+#### 2026-07-12 - Manual Windows QA + mini-panel TooltipProvider fix
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-12 ~09:15 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Branch** | `agent/pixel-pets-axolotl` (draft PR #19) |
+| **Status** | in-progress — **not complete**; locks held |
+| **Bug found/fixed** | Opening Pet mini panel crashed main UI: `Tooltip must be used within TooltipProvider` because `PetHost` mounts outside `AppShell`. Wrapped `PetMiniPanel` in `TooltipProvider`. |
+| **Manual Windows evidence** | Restored running `jarvis.exe` (this worktree + vite:5173). Cream Axo animates (8/8 unique pet-crop hashes). Panel open hides standalone pet; minimize restores pet. Terminals: Tabs, 4/4 cap + exact limit message, Focus/Max/Main/Close. Voice: Listen/Mute + real STT→AI→TTS copy. Suite **111/111**. |
+| **Still open** | Full interactive Glitch slow-drag walk QA; Grid multi-xterm visual proof; packaged build; multi-DPI matrix; dedicated `pet-overlay`/`pet-mini-panel` Tauri HWNDs not observed (inline fallback path exercised). |
+| **Do not stage** | install.ps1, Cargo.toml, dirty docs/pets assets |
+| **No merge/deploy** | draft PR #19 only |
+
+
+#### 2026-07-12 - Glitch click-to-panel + Axo identity preserve (no Glitch art)
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-12 09:34 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Branch** | `agent/pixel-pets-axolotl` (draft PR #19) |
+| **Status** | in-progress — do not merge/complete |
+| **Change** | (1) Glitch assets SHA-256 frozen + tests; zero Glitch art/timing/drag threshold changes. (2) Shared `openOrFocusPetMiniPanel` single-flight open with confirm-then-hide + poll retries. (3) Fix click-to-panel: when Tauri mini panel fails to confirm, force in-app `PetMiniPanel` fallback (was: hide sprite + no UI). (4) Click-vs-drag via `petClickGesture` (12px) without changing walk velocity controller. (5) Distinct anim cache keys per character. |
+| **Tests** | pets suite 123/123 PASS; typecheck OK |
+| **Glitch hashes** | all MATCH after (see implementer glitch-sha256-before/after) |
+| **Do not stage** | install/install.ps1, app/src-tauri/Cargo.toml |
+| **Remaining** | full Windows 35-step manual QA; packaged Tauri; multi-DPI |
+
+#### 2026-07-12 - User-directed stop / release for next task
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-12 ~09:43 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Branch** | `agent/pixel-pets-axolotl` (draft PR #19) |
+| **Status** | paused by user request; locks released for next task |
+| **Reason** | User explicitly said to drop the current work and wait for the next task. No further implementation, tests, commits, push, merge, or deployment performed in this stop step. |
+| **Important state** | Worktree may contain uncommitted Pixel Pets changes from the interrupted prior work and newer handoff entries. Do not assume complete; inspect `git status --short` and exact diffs before editing or staging. |
+| **Do not stage** | `install/install.ps1`, `app/src-tauri/Cargo.toml`, `.agent-coordination.lock.released-*` unless separately reviewed and approved. |
+
+#### 2026-07-12 - Canonical Axo runtime playback fix
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-12 ~10:00 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Branch** | `agent/pixel-pets-axolotl` (draft PR #19) |
+| **HEAD at claim** | `cd6337f` |
+| **Status** | in-progress |
+| **Task** | Stop Axo artwork regeneration/redesign; fix normal Axo runtime identity/loading/playback in the real shared Pixi path; preserve Glitch exactly. |
+| **Locks** | `app/src/features/pets/petCharacters.ts`, `app/src/features/pets/petManifest.ts`, `app/src/features/pets/petSettingsStore.ts`, `app/src/features/pets/petRuntimeDiagnostics.ts`, `app/src/features/pets/pixiAtlasPlayer.ts`, `app/src/features/pets/PetOverlay.tsx`, `app/src/features/pets/PetAccountPanel.tsx`, `app/src/features/pets/petIdentity.test.ts`, `app/src/features/pets/petManifest.test.ts`, `app/src/features/pets/petRuntimeDiagnostics.test.ts`, `app/src/features/pets/atlasPlayer.test.ts`, `app/src/features/pets/petAnimationPlayback.test.ts`, `app/src/features/pets/PetAccountPanel.test.tsx`, `docs/AGENT_COORDINATION.md` |
+| **Discovery before claim** | Current asset roots include `vibespace-axolotl`, `vibespace-axolotl-glitch`, and `vibespace-axolotl-pixel`; canonical Axo manifest exists and declares `characterId: vibespace-axolotl`. Current registry maps short UI IDs `axo`/`glitch` to canonical folders; task requires canonical runtime selectable IDs and migration of source aliases. |
+| **Do not stage** | `install/install.ps1`, `app/src-tauri/Cargo.toml`, `.agent-coordination.lock.released-*`, unrelated docs/pets scratch assets unless separately reviewed. |
+| **No merge/deploy** | Keep PR #19 draft only. |
+
+#### 2026-07-12 - Canonical Axo runtime identity/playback patch complete
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-12 10:27 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Branch** | `agent/pixel-pets-axolotl` (draft PR #19) |
+| **Status** | implementation patch complete; locks released after commit/push step; do not merge/deploy |
+| **Root cause addressed** | Runtime identity accepted/persisted short/source aliases (`axo`, `glitch`, `vibespace-axolotl-pixel`, etc.) instead of canonical selectable IDs, so diagnostics/persistence/registry resolution could restore or inspect the wrong runtime chain. Normal Axo now canonicalizes to `vibespace-axolotl`; Glitch remains `vibespace-axolotl-glitch`. |
+| **Changed files** | `petCharacters.ts`, `petManifest.ts`, `petSettingsStore.ts`, `petCharacterSwitch.ts`, `pixiAtlasPlayer.ts`, `petRuntimeDiagnostics.ts`, and focused tests. No Axo/Glitch artwork, atlas PNG/JSON, PSD/ORA, package assets, Supabase, Stripe, auth, migrations, deployments, or unrelated systems changed. |
+| **Diagnostics added** | DEV-only snapshot now includes canonical selected ID, manifest path/root, requested/active state, exact loaded atlas JSON URL, atlas PNG URL, scale, frame index/count/name, texture UID, ticker state/FPS, canvas/application count, reduced-motion, visibility, window label, renderer alpha, and nearest/linear filter state. |
+| **Verification** | `npm.cmd --prefix app run test -- src/features/pets/petIdentity.test.ts src/features/pets/petManifest.test.ts src/features/pets/petRuntimeDiagnostics.test.ts src/features/pets/atlasPlayer.test.ts src/features/pets/petAnimationPlayback.test.ts src/features/pets/PetAccountPanel.test.tsx --run` PASS 33/33; `npm.cmd --prefix app run test -- src/features/pets --run` PASS 126/126; `npm.cmd --prefix app run typecheck` PASS; `npm.cmd --prefix app run build` PASS. |
+| **Packaged build note** | `npm.cmd --prefix app run tauri:build` produced `VibeSpace_0.1.48_x64_en-US.msi` and `VibeSpace_0.1.48_x64-setup.exe`, then hit the expected signing gate: public key present but no `TAURI_SIGNING_PRIVATE_KEY`. No signing secret was printed or set. |
+| **Warnings / remaining manual gates** | Existing Vite dynamic-import/chunk warnings remain. Rust release build emitted existing dead-code warnings. Full signed packaged install/runtime visual recording remains a manual gate because signing credentials were unavailable. |
+| **Do not stage** | `install/install.ps1`, `app/src-tauri/Cargo.toml`, `.agent-coordination.lock.released-*`, `docs/pets/*` scratch assets, `vibespace-axolotl-pixel/previews/reference-axolotl.png`. |
+
+#### 2026-07-12 - Canonical Axo runtime patch pushed / locks released
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-12 10:35 CT |
+| **Agent ID** | `AGENT-20260711-111338-PX7L` |
+| **Branch** | `agent/pixel-pets-axolotl` |
+| **Pushed code commit** | `f41e191 fix(pets): canonicalize Axo runtime identity` |
+| **Status** | pushed to origin; logical file locks released; draft PR #19 remains unmerged and undeployed |
+| **Next manual gate** | Open the normal Tauri dev app and/or unsigned packaged executable, select normal Axo, and capture the requested video/visual evidence for all eight states plus Axo→Glitch→Axo. Signing-gated installer verification still needs `TAURI_SIGNING_PRIVATE_KEY` outside Codex. |
+| **Unrelated dirty files preserved** | `app/src-tauri/Cargo.toml`, `install/install.ps1` deletion, `.agent-coordination.lock.released-*`, pet scratch preview/frame files. |
 

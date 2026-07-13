@@ -314,6 +314,40 @@
     @apply h-full w-full;
   }
 
+  /*
+   * Pet overlay window only — fully transparent shell.
+   * Scoped so the main VibeSpace theme (bg-background on body) is untouched.
+   * Without this, the pet-overlay WebView paints an opaque rectangle behind
+   * the sprite (globals body { @apply bg-background }).
+   */
+  html[data-vibespace-view='pet-overlay'],
+  html[data-vibespace-view='pet-overlay'] body,
+  html[data-vibespace-view='pet-overlay'] #root,
+  html[data-vibespace-view='pet-overlay'] .pet-overlay-root,
+  html[data-vibespace-view='pet-overlay'] .pet-canvas-container,
+  html[data-vibespace-view='pet-overlay'] [data-pet-overlay='true'],
+  html[data-vibespace-view='pet-overlay'] canvas,
+  html[data-vibespace-view='pet-overlay'] canvas[data-pet-pixi-canvas='true'] {
+    background: transparent !important;
+    background-color: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
+    border: none !important;
+    outline: none !important;
+  }
+
+  html[data-vibespace-view='pet-overlay'],
+  html[data-vibespace-view='pet-overlay'] body,
+  html[data-vibespace-view='pet-overlay'] #root {
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    width: 100%;
+    height: 100%;
+    /* Kill dark-theme bloom / panel tints that can look like a black plate */
+    --bloom-image: none !important;
+  }
+
   /* Display headings get the serif treatment per Cozy Checklist. */
   h1,
   h2,

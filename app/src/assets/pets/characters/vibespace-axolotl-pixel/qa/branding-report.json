@@ -1,0 +1,31 @@
+{
+  "canonicalPeachPx": 1909,
+  "canonicalDarkFacePx": 720,
+  "perAnim": {
+    "walkLeft": {
+      "peachPx": 1064,
+      "darkPx": 2910,
+      "opaque": 5995
+    },
+    "walkRight": {
+      "peachPx": 1122,
+      "darkPx": 3252,
+      "opaque": 6636
+    },
+    "idlePrimary": {
+      "peachPx": 583,
+      "darkPx": 2417,
+      "opaque": 4817
+    },
+    "welcome": {
+      "peachPx": 612,
+      "darkPx": 2130,
+      "opaque": 4440
+    }
+  },
+  "ok": true,
+  "note": "Video frames are motion refs; palette snap applied. V logos upright enforced by non-mirroring walk cycles.",
+  "walkLeftAtlas": "atlases/walkLeft@1x.json",
+  "walkRightAtlas": "atlases/walkRight@1x.json",
+  "walkNotMirrored": true
+}

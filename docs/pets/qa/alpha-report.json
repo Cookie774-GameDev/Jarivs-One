@@ -1,0 +1,66 @@
+[
+  {
+    "anim": "walkLeft",
+    "framesChecked": 20,
+    "badBorderSamples": 0,
+    "partialAlphaPixelsTotal": 0,
+    "greenDominantSamples": 0,
+    "ok": true
+  },
+  {
+    "anim": "walkRight",
+    "framesChecked": 20,
+    "badBorderSamples": 0,
+    "partialAlphaPixelsTotal": 0,
+    "greenDominantSamples": 0,
+    "ok": true
+  },
+  {
+    "anim": "idlePrimary",
+    "framesChecked": 12,
+    "badBorderSamples": 0,
+    "partialAlphaPixelsTotal": 0,
+    "greenDominantSamples": 0,
+    "ok": true
+  },
+  {
+    "anim": "idleFun",
+    "framesChecked": 12,
+    "badBorderSamples": 0,
+    "partialAlphaPixelsTotal": 0,
+    "greenDominantSamples": 0,
+    "ok": true
+  },
+  {
+    "anim": "welcome",
+    "framesChecked": 12,
+    "badBorderSamples": 0,
+    "partialAlphaPixelsTotal": 0,
+    "greenDominantSamples": 0,
+    "ok": true
+  },
+  {
+    "anim": "sleepTransition",
+    "framesChecked": 12,
+    "badBorderSamples": 0,
+    "partialAlphaPixelsTotal": 0,
+    "greenDominantSamples": 0,
+    "ok": true
+  },
+  {
+    "anim": "sleepingLoop",
+    "framesChecked": 14,
+    "badBorderSamples": 0,
+    "partialAlphaPixelsTotal": 0,
+    "greenDominantSamples": 0,
+    "ok": true
+  },
+  {
+    "anim": "wakeFromSleep",
+    "framesChecked": 8,
+    "badBorderSamples": 0,
+    "partialAlphaPixelsTotal": 0,
+    "greenDominantSamples": 0,
+    "ok": true
+  }
+]

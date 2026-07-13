@@ -123,6 +123,9 @@ const ActionsPalette = React.lazy(() =>
 const AmbientHome = React.lazy(() =>
   import('@/features/ambient').then((m) => ({ default: m.AmbientHome })),
 );
+const PetHost = React.lazy(() =>
+  import('@/features/pets').then((m) => ({ default: m.PetHost })),
+);
 const CelebrationHost = React.lazy(() =>
   import('@/features/celebrate').then((m) => ({ default: m.CelebrationHost })),
 );
@@ -791,6 +794,11 @@ function WorkspaceRoot() {
       <AmbientHome />
       <AmbientAudioHost />
 
+      {/* Pixel Pet — video-driven atlas animations + mini-panel on click. */}
+      <React.Suspense fallback={null}>
+        <PetHost />
+      </React.Suspense>
+
       {/* V3 — 20-20-20 eye-break overlay. Self-renders only while
           wellnessActive=true (wellness.eyeBreak action / assistant). */}
       <WellnessBreak />
@@ -830,11 +838,40 @@ function WorkspaceRoot() {
  *     stage logs too.
  */
 export function App() {
-  if (new URLSearchParams(window.location.search).get('view') === 'dictation') {
+  const view = new URLSearchParams(window.location.search).get('view');
+
+  if (view === 'dictation') {
     return (
       <ErrorBoundary>
         <ThemeHost />
         <GlobalDictationOverlay />
+      </ErrorBoundary>
+    );
+  }
+
+  if (view === 'pet-overlay') {
+    const PetOverlayWindow = React.lazy(() =>
+      import('@/features/pets/PetOverlayWindow').then((m) => ({ default: m.PetOverlayWindow })),
+    );
+    return (
+      <ErrorBoundary>
+        <React.Suspense fallback={null}>
+          <PetOverlayWindow />
+        </React.Suspense>
+      </ErrorBoundary>
+    );
+  }
+
+  if (view === 'pet-mini-panel') {
+    const PetMiniPanelWindow = React.lazy(() =>
+      import('@/features/pets/PetMiniPanelWindow').then((m) => ({ default: m.PetMiniPanelWindow })),
+    );
+    return (
+      <ErrorBoundary>
+        <ThemeHost />
+        <React.Suspense fallback={null}>
+          <PetMiniPanelWindow />
+        </React.Suspense>
       </ErrorBoundary>
     );
   }

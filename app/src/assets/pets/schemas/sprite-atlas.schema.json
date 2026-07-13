@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibespace.local/schemas/pets/sprite-atlas.schema.json",
+  "title": "VibeSpace Pet PixiJS Sprite Atlas",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["frames", "meta"],
+  "properties": {
+    "frames": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "$ref": "#/$defs/frameEntry" }
+    },
+    "animations": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "minItems": 1,
+        "items": { "type": "string", "minLength": 1 }
+      }
+    },
+    "meta": { "$ref": "#/$defs/meta" }
+  },
+  "$defs": {
+    "rect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "w", "h"],
+      "properties": {
+        "x": { "type": "integer", "minimum": 0 },
+        "y": { "type": "integer", "minimum": 0 },
+        "w": { "type": "integer", "minimum": 1 },
+        "h": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "frameEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["frame", "rotated", "trimmed", "spriteSourceSize", "sourceSize"],
+      "properties": {
+        "frame": { "$ref": "#/$defs/rect" },
+        "rotated": { "const": false },
+        "trimmed": { "type": "boolean" },
+        "spriteSourceSize": { "$ref": "#/$defs/rect" },
+        "sourceSize": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["w", "h"],
+          "properties": {
+            "w": { "type": "integer", "minimum": 1 },
+            "h": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "anchor": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["x", "y"],
+          "properties": {
+            "x": { "type": "number", "minimum": 0, "maximum": 1 },
+            "y": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        }
+      }
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["app", "version", "image", "format", "scale", "size"],
+      "properties": {
+        "app": { "const": "VibeSpace Pet Pipeline" },
+        "version": { "type": "string", "minLength": 1 },
+        "image": { "type": "string", "minLength": 1 },
+        "format": { "const": "RGBA8888" },
+        "scale": { "enum": ["1", "2"] },
+        "size": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["w", "h"],
+          "properties": {
+            "w": { "type": "integer", "minimum": 1, "maximum": 8192 },
+            "h": { "type": "integer", "minimum": 1, "maximum": 8192 }
+          }
+        }
+      }
+    }
+  }
+}

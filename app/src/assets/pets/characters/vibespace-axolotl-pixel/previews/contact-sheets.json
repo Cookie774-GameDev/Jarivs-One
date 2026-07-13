@@ -1,0 +1,10 @@
+{
+  "walkLeft": "app/src/assets/pets/characters/vibespace-axolotl-pixel/previews/walkLeft-contact-sheet.png",
+  "walkRight": "app/src/assets/pets/characters/vibespace-axolotl-pixel/previews/walkRight-contact-sheet.png",
+  "idlePrimary": "app/src/assets/pets/characters/vibespace-axolotl-pixel/previews/idlePrimary-contact-sheet.png",
+  "idleFun": "app/src/assets/pets/characters/vibespace-axolotl-pixel/previews/idleFun-contact-sheet.png",
+  "welcome": "app/src/assets/pets/characters/vibespace-axolotl-pixel/previews/welcome-contact-sheet.png",
+  "sleepTransition": "app/src/assets/pets/characters/vibespace-axolotl-pixel/previews/sleepTransition-contact-sheet.png",
+  "sleepingLoop": "app/src/assets/pets/characters/vibespace-axolotl-pixel/previews/sleepingLoop-contact-sheet.png",
+  "wakeFromSleep": "app/src/assets/pets/characters/vibespace-axolotl-pixel/previews/wakeFromSleep-contact-sheet.png"
+}

@@ -72,6 +72,7 @@ const JarvisActions = lazy(() =>
   import('./sections/JarvisActions').then((m) => ({ default: m.JarvisActions })),
 );
 
+
 interface TabDef {
   id: SettingsTab;
   label: string;

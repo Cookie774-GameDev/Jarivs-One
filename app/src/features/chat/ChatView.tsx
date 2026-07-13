@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { TooltipProvider } from '@/components/ui';
+import { Button } from '@/components/ui/button';
 import { useUIStore } from '@/stores/ui';
 import { ChatThread } from './ChatThread';
 import { Composer } from './Composer';
@@ -7,16 +8,19 @@ import { EmptyChat } from './EmptyChat';
 import { ensureActiveChat } from './chatLifecycle';
 import { cn } from '@/lib/utils';
 import { getChatDragKind, getChatDropPayload, type ChatDropKind } from './dropPayload';
+import { usePetPresentationStore } from '@/features/pets/petPresentationStore';
 
 /**
- * Top-level wrapper for the chat surface. Reads `activeChatId` from the UI store
- * and renders either the empty state or thread + composer.
+ * Top-level chat surface. Move chats into the Pet panel via right-click on a tab
+ * (TabStrip) — no permanent "Move to Pet" button clutter.
  */
 export function ChatView() {
   const activeChatId = useUIStore((s) => s.activeChatId);
   const [dropKind, setDropKind] = useState<ChatDropKind | null>(null);
   const [ensuringChat, setEnsuringChat] = useState(false);
   const [ensureFailed, setEnsureFailed] = useState(false);
+  const isOnPet = usePetPresentationStore((s) => s.isChatOnPet(activeChatId));
+  const moveChat = usePetPresentationStore((s) => s.moveChat);
 
   useEffect(() => {
     if (activeChatId) return;
@@ -78,8 +82,24 @@ export function ChatView() {
         )}
         {activeChatId ? (
           <>
+            {isOnPet && (
+              <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-1.5 shrink-0 bg-muted/40">
+                <span className="text-metadata text-muted-foreground">
+                  This chat is open in the Pet panel (same thread — not copied).
+                </span>
+                <Button size="sm" variant="outline" onClick={() => moveChat(activeChatId, 'main')}>
+                  Bring back here
+                </Button>
+              </div>
+            )}
             <ChatThread chatId={activeChatId} />
-            <Composer chatId={activeChatId} />
+            {isOnPet ? (
+              <div className="border-t border-border px-4 py-3 text-secondary text-muted-foreground text-sm">
+                Type in the Pet panel for this thread. Streaming already started here keeps running.
+              </div>
+            ) : (
+              <Composer chatId={activeChatId} />
+            )}
           </>
         ) : ensuringChat ? (
           <div className="flex flex-1 items-center justify-center text-secondary text-muted-foreground">

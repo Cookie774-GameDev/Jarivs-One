@@ -39,21 +39,22 @@
 //! New commands should be small and pure; heavy logic belongs in the Node
 //! runtime sidecar so we keep the Rust core boring and stable.
 
+use std::time::Duration;
 use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
-use std::time::Duration;
 
+mod agent_coordination;
+mod branding;
+mod credentials;
 mod dictation;
 mod faster_whisper;
 mod fsread;
-mod terminal;
-mod credentials;
+mod kokoro;
 mod launcher;
 mod local_ai;
-mod kokoro;
 mod ollama_http;
-mod branding;
-mod agent_coordination;
+mod pets;
+mod terminal;
 
 /// Sanity-check command. The JS bridge can call this during startup to verify
 /// invoke() round-trips. Wire it in as needed; it returns a friendly string.
@@ -211,12 +212,28 @@ pub fn run() {
                 .build(),
         )
         .manage(terminal::TerminalState::default())
+        .manage(pets::PetWindowState::default())
         .setup(|app| {
+            // Restore pet window geometry from disk.
+            {
+                let geo = pets::load_geometry(&app.handle());
+                if let Ok(mut g) = app.state::<pets::PetWindowState>().geometry.lock() {
+                    *g = geo;
+                }
+            }
             let tray_menu = tauri::menu::Menu::with_items(
                 app,
                 &[
-                    &tauri::menu::MenuItem::with_id(app, "show", "Show VibeSpace", true, None::<&str>).unwrap(),
-                    &tauri::menu::MenuItem::with_id(app, "exit", "Exit", true, None::<&str>).unwrap(),
+                    &tauri::menu::MenuItem::with_id(
+                        app,
+                        "show",
+                        "Show VibeSpace",
+                        true,
+                        None::<&str>,
+                    )
+                    .unwrap(),
+                    &tauri::menu::MenuItem::with_id(app, "exit", "Exit", true, None::<&str>)
+                        .unwrap(),
                 ],
             )?;
 
@@ -229,21 +246,24 @@ pub fn run() {
                 .icon(tray_icon)
                 .tooltip("VibeSpace")
                 .menu(&tray_menu)
-                .on_menu_event(|app, event| {
-                    match event.id.as_ref() {
-                        "show" => {
-                            show_main_window(app, "tray-show");
-                        }
-                        "exit" => {
-                            let _ = app.emit("jarvis:persist-now", PersistPayload { reason: "tray-exit" });
-                            let app_handle = app.clone();
-                            std::thread::spawn(move || {
-                                std::thread::sleep(Duration::from_millis(750));
-                                app_handle.exit(0);
-                            });
-                        }
-                        _ => {}
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "show" => {
+                        show_main_window(app, "tray-show");
                     }
+                    "exit" => {
+                        let _ = app.emit(
+                            "jarvis:persist-now",
+                            PersistPayload {
+                                reason: "tray-exit",
+                            },
+                        );
+                        let app_handle = app.clone();
+                        std::thread::spawn(move || {
+                            std::thread::sleep(Duration::from_millis(750));
+                            app_handle.exit(0);
+                        });
+                    }
+                    _ => {}
                 })
                 .build(app)?;
 
@@ -268,16 +288,22 @@ pub fn run() {
                     }
                 }
                 tauri::WindowEvent::CloseRequested { api, .. } => {
-                use tauri::Emitter as _;
-                // The window only hides to tray (process stays alive), so the
-                // WebView keeps any in-flight speech playing. Tell the frontend
-                // to stop all TTS before we hide.
-                let _ = window.emit("jarvis:before-hide", ());
-                println!("[lifecycle] hiding main window; background service remains alive");
-                if let Err(err) = window.hide() {
-                    eprintln!("[lifecycle] failed to hide main window: {err}");
-                }
-                api.prevent_close();
+                    use tauri::Emitter as _;
+                    // Pet windows: hide only; never destroy sessions.
+                    if pets::handle_pet_window_close(window) {
+                        api.prevent_close();
+                        return;
+                    }
+                    // Main (and others): hide to tray; process stays alive.
+                    let _ = window.emit("jarvis:before-hide", ());
+                    println!(
+                        "[lifecycle] hiding window {}; background service remains alive",
+                        window.label()
+                    );
+                    if let Err(err) = window.hide() {
+                        eprintln!("[lifecycle] failed to hide window: {err}");
+                    }
+                    api.prevent_close();
                 }
                 _ => {}
             }
@@ -287,6 +313,16 @@ pub fn run() {
             app_version,
             refresh_app_branding,
             fsread::fs_create_dir_all,
+            pets::pet_show_overlay,
+            pets::pet_hide_overlay,
+            pets::pet_is_overlay_visible,
+            pets::pet_set_overlay_position,
+            pets::pet_open_or_focus_panel,
+            pets::pet_minimize_panel,
+            pets::pet_hide_panel,
+            pets::pet_is_panel_visible,
+            pets::pet_save_panel_geometry,
+            pets::pet_validate_action,
             fsread::fs_create_text_file,
             fsread::fs_create_text_with_content,
             fsread::fs_list_dir,

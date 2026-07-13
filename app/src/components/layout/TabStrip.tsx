@@ -50,6 +50,8 @@ import type { ChatId, WorkspaceId, ProjectId } from '@/types';
 import { cn } from '@/lib/utils';
 import { ensureActiveChat } from '@/features/chat/chatLifecycle';
 import { sortChatsForDisplay } from '@/features/chat/chatPin';
+import { usePetPresentationStore } from '@/features/pets/petPresentationStore';
+import { usePetSettingsStore } from '@/features/pets/petSettingsStore';
 
 interface TabModel {
   id: ChatId;
@@ -324,6 +326,18 @@ export function TabStrip() {
               onActivate={() => handleSelect(tab.id)}
               onClose={() => void handleClose(tab.id)}
               onRename={(next) => void handleRename(tab.id, next)}
+              onSendToPetPanel={() => {
+                const petOn = usePetSettingsStore.getState().enabled;
+                if (!petOn) {
+                  usePetSettingsStore.getState().setEnabled(true);
+                  usePetSettingsStore.getState().setOverlayVisible(true);
+                }
+                usePetPresentationStore.getState().registerChat(tab.id, 'main');
+                usePetPresentationStore.getState().moveChat(tab.id, 'pet-mini-panel');
+                usePetPresentationStore.getState().setPanelActiveChatId(tab.id);
+                toast.success('Sent to Pet panel', 'Same chat thread — not a copy.');
+                window.dispatchEvent(new CustomEvent('jarvis:pet:open-panel'));
+              }}
             />
           ))}
         </AnimatePresence>
@@ -356,11 +370,13 @@ interface TabItemProps {
   onActivate: () => void;
   onClose: () => void;
   onRename: (next: string) => void;
+  onSendToPetPanel?: () => void;
 }
 
-function TabItem({ tab, active, onActivate, onClose, onRename }: TabItemProps) {
+function TabItem({ tab, active, onActivate, onClose, onRename, onSendToPetPanel }: TabItemProps) {
   const [editing, setEditing] = React.useState(false);
   const [draft, setDraft] = React.useState(tab.title);
+  const [menu, setMenu] = React.useState<{ x: number; y: number } | null>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
 
   // Sync the draft when the underlying title changes (e.g. AI auto-name).
@@ -392,6 +408,7 @@ function TabItem({ tab, active, onActivate, onClose, onRename }: TabItemProps) {
   };
 
   return (
+    <>
     <motion.div
       role="tab"
       aria-selected={active}
@@ -407,13 +424,18 @@ function TabItem({ tab, active, onActivate, onClose, onRename }: TabItemProps) {
         e.stopPropagation();
         setEditing(true);
       }}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setMenu({ x: e.clientX, y: e.clientY });
+      }}
       className={cn(
         'group flex h-7 max-w-[220px] shrink-0 cursor-default select-none items-center gap-1.5 self-center rounded-md border border-transparent px-2 text-secondary transition-colors',
         active
           ? 'bg-elevated text-foreground border-border'
           : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground',
       )}
-      title={editing ? undefined : 'Double-click to rename'}
+      title={editing ? undefined : 'Double-click to rename · Right-click for Pet panel'}
     >
       {tab.pinned ? (
         <Pin
@@ -463,5 +485,33 @@ function TabItem({ tab, active, onActivate, onClose, onRename }: TabItemProps) {
         <X className="h-3 w-3" />
       </button>
     </motion.div>
+    {menu && (
+      <>
+        <button
+          type="button"
+          className="fixed inset-0 z-[200] cursor-default bg-transparent"
+          aria-label="Dismiss menu"
+          onClick={() => setMenu(null)}
+        />
+        <div
+          className="fixed z-[210] min-w-[180px] rounded-lg border border-border bg-panel p-1 shadow-lg"
+          style={{ left: menu.x, top: menu.y }}
+          role="menu"
+        >
+          <button
+            type="button"
+            className="w-full rounded px-2.5 py-1.5 text-left text-metadata hover:bg-accent-copper/10"
+            role="menuitem"
+            onClick={() => {
+              setMenu(null);
+              onSendToPetPanel?.();
+            }}
+          >
+            Send to Pet panel
+          </button>
+        </div>
+      </>
+    )}
+    </>
   );
 }

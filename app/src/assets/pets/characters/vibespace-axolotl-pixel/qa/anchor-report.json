@@ -1,0 +1,58 @@
+[
+  {
+    "anim": "walkLeft",
+    "comXMean": 63.52,
+    "comYMean": 64.08,
+    "comXStd": 0.45,
+    "comYStd": 1.13
+  },
+  {
+    "anim": "walkRight",
+    "comXMean": 65.87,
+    "comYMean": 64.62,
+    "comXStd": 1.19,
+    "comYStd": 0.71
+  },
+  {
+    "anim": "idlePrimary",
+    "comXMean": 60.5,
+    "comYMean": 62.93,
+    "comXStd": 0.71,
+    "comYStd": 3.14
+  },
+  {
+    "anim": "idleFun",
+    "comXMean": 65.75,
+    "comYMean": 66.46,
+    "comXStd": 1.3,
+    "comYStd": 0.76
+  },
+  {
+    "anim": "welcome",
+    "comXMean": 63.99,
+    "comYMean": 61.33,
+    "comXStd": 0.32,
+    "comYStd": 4.5
+  },
+  {
+    "anim": "sleepTransition",
+    "comXMean": 65.3,
+    "comYMean": 66.48,
+    "comXStd": 0.92,
+    "comYStd": 1.43
+  },
+  {
+    "anim": "sleepingLoop",
+    "comXMean": 64.09,
+    "comYMean": 66.38,
+    "comXStd": 0.06,
+    "comYStd": 0.15
+  },
+  {
+    "anim": "wakeFromSleep",
+    "comXMean": 64.1,
+    "comYMean": 66.29,
+    "comXStd": 0.03,
+    "comYStd": 0.1
+  }
+]
