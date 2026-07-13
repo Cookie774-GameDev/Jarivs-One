@@ -70,7 +70,16 @@ import {
 } from './terminalClearRegistry';
 import { TERMINAL_CLEAR_SUPPRESS_MS } from './terminalClear';
 import { createWebglDisposeTracker } from './terminalDispose';
-import { shouldSendTerminalResize, type TerminalGridSize } from './terminalGeometry';
+import {
+  isUsableTerminalGeometry,
+  readTerminalContainerGeometry,
+  shouldSendTerminalResize,
+  type TerminalGridSize,
+} from './terminalGeometry';
+import {
+  createTerminalRefitCoordinator,
+  type TerminalRefitCoordinator,
+} from './terminalRefitCoordinator';
 import {
   applyTerminalFollowScroll,
   terminalUserHasScrolled,
@@ -258,6 +267,7 @@ export function TerminalView({
   const ignoreClearsUntilRef = useRef<number>(0);
   const suppressOutputUntilRef = useRef<number>(0);
   const lastResizeSentRef = useRef<TerminalGridSize | null>(null);
+  const refitRequestRef = useRef<(() => void) | null>(null);
   const userHasScrolledRef = useRef(false);
   const currentInputRef = useRef('');
   const currentInputFlushTimerRef = useRef<number | null>(null);
@@ -440,7 +450,7 @@ export function TerminalView({
     let scrollListenerDispose: { dispose: () => void } | null = null;
     let resizeObserver: ResizeObserver | null = null;
     let mutationObserver: MutationObserver | null = null;
-    let rafToken: number | null = null;
+    let refitCoordinator: TerminalRefitCoordinator | null = null;
     let outputRafToken: number | null = null;
     let pendingOutput = '';
     let pendingTranscript = '';
@@ -550,41 +560,49 @@ export function TerminalView({
       return stripOrphanEscapeFragments(chunk);
     };
 
-    // RAF-coalesced resize. Multiple ResizeObserver fires inside the same
-    // animation frame collapse to a single fit() + IPC. Without this,
-    // dragging a split or reflowing the tile grid can fire dozens of
-    // `terminal_resize` calls per second for no benefit.
-    const dispatchResize = () => {
-      if (rafToken != null) return;
-      rafToken = requestAnimationFrame(() => {
-        rafToken = null;
-        const t = termRef.current;
-        const f = fitRef.current;
-        const sid = sessionRef.current;
-        if (!t || !f || !sid) return;
+    const applyStableTerminalRefit = () => {
+      const t = termRef.current;
+      const f = fitRef.current;
+      const sid = sessionRef.current;
+      if (!t || !f || !sid) return;
 
-        // Skip fitting if the container is currently hidden or collapsed
-        const width = containerEl.clientWidth;
-        const height = containerEl.clientHeight;
-        if (width <= 40 || height <= 40) return;
-
-        try {
-          f.fit();
-        } catch {
-          return;
-        }
-        const nextSize = { rows: t.rows, cols: t.cols };
-        if (!shouldSendTerminalResize(lastResizeSentRef.current, nextSize)) return;
-        lastResizeSentRef.current = nextSize;
-        invoke('terminal_resize', {
-          sessionId: sid,
-          rows: t.rows,
-          cols: t.cols,
-        }).catch(() => {
-          /* backend may have torn down -- ignore */
+      try {
+        f.fit();
+        // FitAddon can retain the correct grid while xterm's renderer still
+        // holds a stale canvas after a hidden -> visible route transition.
+        // Refresh only the visible rows; scroll-follow below deliberately
+        // leaves a user-scrolled viewport untouched.
+        t.refresh(0, Math.max(0, t.rows - 1));
+        applyTerminalFollowScroll(t, {
+          userHasScrolled: userHasScrolledRef.current,
         });
+      } catch {
+        return;
+      }
+
+      const nextSize = { rows: t.rows, cols: t.cols };
+      if (!shouldSendTerminalResize(lastResizeSentRef.current, nextSize)) return;
+      lastResizeSentRef.current = nextSize;
+      invoke('terminal_resize', {
+        sessionId: sid,
+        rows: t.rows,
+        cols: t.cols,
+      }).catch(() => {
+        /* backend may have torn down -- ignore */
       });
     };
+
+    refitCoordinator = createTerminalRefitCoordinator({
+      requestFrame: (callback) => requestAnimationFrame(callback),
+      cancelFrame: (id) => cancelAnimationFrame(id),
+      readGeometry: () => readTerminalContainerGeometry(containerEl),
+      onStableGeometry: applyStableTerminalRefit,
+    });
+    const requestTerminalRefit = () => refitCoordinator?.request();
+    const requestTerminalRefitWhenVisible = () => {
+      if (!document.hidden) requestTerminalRefit();
+    };
+    refitRequestRef.current = requestTerminalRefit;
 
     const applyThemeToTerm = () => {
       const t = termRef.current;
@@ -756,7 +774,7 @@ export function TerminalView({
             } catch {
               /* renderer may already be switching; the refit below is best-effort */
             }
-            dispatchResize();
+            requestTerminalRefit();
           });
         });
         webglDispose.setAddon(webgl);
@@ -877,10 +895,13 @@ export function TerminalView({
       // PTY's initial size already reflects the visible viewport. This
       // avoids the brief "shell renders at the 30x100 default" flicker
       // when the surrounding tile is much smaller than that.
-      try {
-        fit.fit();
-      } catch {
-        /* container not laid out yet; post-spawn fit covers it */
+      const initialGeometry = readTerminalContainerGeometry(containerEl);
+      if (isUsableTerminalGeometry(initialGeometry)) {
+        try {
+          fit.fit();
+        } catch {
+          /* post-spawn stable refit covers renderer setup races */
+        }
       }
 
       // Spawn or attach.
@@ -1151,16 +1172,16 @@ export function TerminalView({
       }
 
       handleVisible = () => {
-        window.setTimeout(() => {
-          if (!cancelled) dispatchResize();
-        }, 50);
+        if (!cancelled) requestTerminalRefit();
       };
 
       // Geometry observers.
-      resizeObserver = new ResizeObserver(() => dispatchResize());
+      resizeObserver = new ResizeObserver(() => requestTerminalRefit());
       resizeObserver.observe(containerEl);
-      window.addEventListener('resize', dispatchResize);
+      window.addEventListener('resize', requestTerminalRefit);
+      window.addEventListener('focus', requestTerminalRefit);
       window.addEventListener('jarvis:terminals:visible', handleVisible);
+      document.addEventListener('visibilitychange', requestTerminalRefitWhenVisible);
 
       onClear = (e: Event) => {
         if (cancelled) return;
@@ -1193,7 +1214,7 @@ export function TerminalView({
       });
 
       // Final fit now that we have the real session dims.
-      dispatchResize();
+      requestTerminalRefit();
 
       // Late insurance: some browsers fire fonts.ready before the metric
       // tables are fully built. Bust xterm's metric cache one more time
@@ -1204,9 +1225,7 @@ export function TerminalView({
           if (cancelled) return;
           const t = termRef.current;
           if (t) t.options.fontFamily = t.options.fontFamily;
-          requestAnimationFrame(() => {
-            if (!cancelled) dispatchResize();
-          });
+          requestTerminalRefit();
         });
       }
     };
@@ -1217,7 +1236,11 @@ export function TerminalView({
 
     return () => {
       cancelled = true;
-      if (rafToken != null) cancelAnimationFrame(rafToken);
+      refitCoordinator?.dispose();
+      refitCoordinator = null;
+      if (refitRequestRef.current === requestTerminalRefit) {
+        refitRequestRef.current = null;
+      }
       if (currentInputFlushTimerRef.current != null) {
         window.clearTimeout(currentInputFlushTimerRef.current);
         currentInputFlushTimerRef.current = null;
@@ -1251,7 +1274,9 @@ export function TerminalView({
           }
         }
       }
-      window.removeEventListener('resize', dispatchResize);
+      window.removeEventListener('resize', requestTerminalRefit);
+      window.removeEventListener('focus', requestTerminalRefit);
+      document.removeEventListener('visibilitychange', requestTerminalRefitWhenVisible);
       if (handleVisible) {
         window.removeEventListener('jarvis:terminals:visible', handleVisible);
       }
@@ -1305,28 +1330,7 @@ export function TerminalView({
     if (t.options.fontSize === fontSize) return;
     t.options.fontSize = fontSize;
     t.options.fontFamily = t.options.fontFamily;
-    const id = requestAnimationFrame(() => {
-      const term2 = termRef.current;
-      const f = fitRef.current;
-      const sid = sessionRef.current;
-      if (!term2 || !f || !sid) return;
-      try {
-        f.fit();
-      } catch {
-        return;
-      }
-      const nextSize = { rows: term2.rows, cols: term2.cols };
-      if (!shouldSendTerminalResize(lastResizeSentRef.current, nextSize)) return;
-      lastResizeSentRef.current = nextSize;
-      invoke('terminal_resize', {
-        sessionId: sid,
-        rows: term2.rows,
-        cols: term2.cols,
-      }).catch(() => {
-        /* backend torn down */
-      });
-    });
-    return () => cancelAnimationFrame(id);
+    refitRequestRef.current?.();
   }, [fontSize]);
 
   useEffect(() => {

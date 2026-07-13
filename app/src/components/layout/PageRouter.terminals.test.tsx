@@ -19,6 +19,7 @@ vi.mock('@/features/chat', () => ({
 describe('PageRouter terminal preservation', () => {
   afterEach(() => {
     useUIStore.getState().resetUI();
+    vi.restoreAllMocks();
   });
 
   it('keeps the terminal page mounted after switching to another route', async () => {
@@ -50,5 +51,24 @@ describe('PageRouter terminal preservation', () => {
         .closest('[data-terminal-route-cache]')
         ?.getAttribute('aria-hidden'),
     ).toBe('false');
+  });
+
+  it('requests a terminal refit when the cached route becomes visible again', async () => {
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      callback(performance.now());
+      return 1;
+    });
+    const dispatch = vi.spyOn(window, 'dispatchEvent');
+    useUIStore.getState().setRoute('schedule');
+    render(<PageRouter />);
+    dispatch.mockClear();
+
+    await act(async () => {
+      useUIStore.getState().setRoute('terminal');
+    });
+
+    expect(
+      dispatch.mock.calls.some(([event]) => event.type === 'jarvis:terminals:visible'),
+    ).toBe(true);
   });
 });
