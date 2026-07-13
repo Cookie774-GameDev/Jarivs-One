@@ -8,6 +8,7 @@
 import * as React from 'react';
 import { PetOverlay } from './PetOverlay';
 import {
+  hidePetOverlay,
   openOrFocusPetMiniPanel,
   reassertPetOverlayTopmost,
   setPetPanelOpenFlag,
@@ -21,6 +22,7 @@ export function PetOverlayWindow() {
   const sleepTimeoutMs = usePetSettingsStore((s) => s.sleepTimeoutMs);
   const idleFunIntervalMs = usePetSettingsStore((s) => s.idleFunIntervalMs);
   const panelMode = usePetSettingsStore((s) => s.panelMode) ?? 'normal';
+  const setOverlayVisible = usePetSettingsStore((s) => s.setOverlayVisible);
 
   React.useEffect(() => {
     document.documentElement.dataset.vibespaceView = 'pet-overlay';
@@ -114,6 +116,13 @@ export function PetOverlayWindow() {
               setPetPanelOpenFlag(false);
               void showPetOverlay().catch(() => undefined);
             });
+        }}
+        onRequestClose={() => {
+          setOverlayVisible(false);
+          void hidePetOverlay().catch(() => {
+            setOverlayVisible(true);
+            void showPetOverlay().catch(() => undefined);
+          });
         }}
       />
     </div>

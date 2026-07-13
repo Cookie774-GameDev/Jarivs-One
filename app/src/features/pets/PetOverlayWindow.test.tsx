@@ -1,13 +1,9 @@
-import { render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PetOverlayWindow } from './PetOverlayWindow';
 
-vi.mock('./PetOverlay', () => ({
-  PetOverlay: () => <canvas data-pet-pixi-canvas="true" />,
-}));
-
-vi.mock('./petTauriBridge', () => ({
-  openOrFocusPetPanel: vi.fn(async () => undefined),
+const mocks = vi.hoisted(() => ({
+  hidePetOverlay: vi.fn(async () => undefined),
   openOrFocusPetMiniPanel: vi.fn(async () => ({
     panelVisible: true,
     useInlineFallback: false,
@@ -15,7 +11,33 @@ vi.mock('./petTauriBridge', () => ({
   })),
   reassertPetOverlayTopmost: vi.fn(async () => undefined),
   setPetPanelOpenFlag: vi.fn(),
+  setOverlayVisible: vi.fn(),
   showPetOverlay: vi.fn(async () => undefined),
+}));
+
+vi.mock('./PetOverlay', () => ({
+  PetOverlay: ({
+    onOpenPanel,
+    onRequestClose,
+  }: {
+    onOpenPanel?: () => void;
+    onRequestClose?: () => void;
+  }) => (
+    <div>
+      <button type="button" onClick={onOpenPanel}>Open mock pet panel</button>
+      <button type="button" onClick={onRequestClose}>Close mock pet</button>
+      <canvas data-pet-pixi-canvas="true" />
+    </div>
+  ),
+}));
+
+vi.mock('./petTauriBridge', () => ({
+  openOrFocusPetPanel: vi.fn(async () => undefined),
+  hidePetOverlay: mocks.hidePetOverlay,
+  openOrFocusPetMiniPanel: mocks.openOrFocusPetMiniPanel,
+  reassertPetOverlayTopmost: mocks.reassertPetOverlayTopmost,
+  setPetPanelOpenFlag: mocks.setPetPanelOpenFlag,
+  showPetOverlay: mocks.showPetOverlay,
 }));
 
 vi.mock('./petPresentationStore', () => ({
@@ -29,10 +51,23 @@ vi.mock('./petSettingsStore', () => ({
       reducedMotion: false,
       sleepTimeoutMs: 300_000,
       idleFunIntervalMs: 60_000,
+      panelMode: 'always-on-top',
+      setOverlayVisible: mocks.setOverlayVisible,
     }),
 }));
 
 describe('PetOverlayWindow transparency shell', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.hidePetOverlay.mockResolvedValue(undefined);
+    mocks.openOrFocusPetMiniPanel.mockResolvedValue({
+      panelVisible: true,
+      useInlineFallback: false,
+      coalesced: false,
+    });
+    mocks.showPetOverlay.mockResolvedValue(undefined);
+  });
+
   afterEach(() => {
     document.documentElement.removeAttribute('data-vibespace-view');
     document.body.removeAttribute('data-vibespace-view');
@@ -40,6 +75,7 @@ describe('PetOverlayWindow transparency shell', () => {
     document.body.removeAttribute('style');
     const root = document.getElementById('root');
     root?.removeAttribute('style');
+    root?.remove();
   });
 
   it('marks the document and overlay root as transparent pet-only chrome', async () => {
@@ -66,7 +102,54 @@ describe('PetOverlayWindow transparency shell', () => {
         overlayRoot.style.backgroundColor === 'transparent',
     ).toBe(true);
     expect(overlayRoot.querySelectorAll('[data-pet-pixi-canvas="true"]')).toHaveLength(1);
+  });
 
-    root.remove();
+  it('opens the real mini-panel with the persisted window mode', async () => {
+    render(<PetOverlayWindow />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open mock pet panel' }));
+
+    await waitFor(() => {
+      expect(mocks.openOrFocusPetMiniPanel).toHaveBeenCalledWith(
+        undefined,
+        undefined,
+        'always-on-top',
+      );
+    });
+    expect(mocks.showPetOverlay).not.toHaveBeenCalled();
+  });
+
+  it('restores the sprite when mini-panel opening reports no visible panel', async () => {
+    mocks.openOrFocusPetMiniPanel.mockResolvedValueOnce({
+      panelVisible: false,
+      useInlineFallback: false,
+      coalesced: false,
+    });
+    render(<PetOverlayWindow />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open mock pet panel' }));
+
+    await waitFor(() => expect(mocks.showPetOverlay).toHaveBeenCalledOnce());
+    expect(mocks.setPetPanelOpenFlag).toHaveBeenCalledWith(false);
+  });
+
+  it('wires the native right-click Close action to hide the overlay', async () => {
+    render(<PetOverlayWindow />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close mock pet' }));
+
+    await waitFor(() => expect(mocks.hidePetOverlay).toHaveBeenCalledOnce());
+    expect(mocks.setOverlayVisible).toHaveBeenCalledWith(false);
+  });
+
+  it('restores the visible preference when native overlay hiding fails', async () => {
+    mocks.hidePetOverlay.mockRejectedValueOnce(new Error('synthetic hide failure'));
+    render(<PetOverlayWindow />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close mock pet' }));
+
+    await waitFor(() => expect(mocks.showPetOverlay).toHaveBeenCalledOnce());
+    expect(mocks.setOverlayVisible).toHaveBeenNthCalledWith(1, false);
+    expect(mocks.setOverlayVisible).toHaveBeenNthCalledWith(2, true);
   });
 });

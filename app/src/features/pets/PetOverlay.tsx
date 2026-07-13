@@ -116,7 +116,7 @@ export function PetOverlay({
   const notificationReactions = usePetSettingsStore((s) => s.notificationReactions) ?? true;
   const pointerTracking = usePetSettingsStore((s) => s.pointerTracking) ?? true;
   const positionLocked = positionLockedProp ?? settingsPositionLocked ?? false;
-  const edgeSnapping = edgeSnappingProp ?? settingsEdgeSnapping ?? true;
+  const edgeSnapping = edgeSnappingProp ?? settingsEdgeSnapping ?? false;
   const characterIdRef = React.useRef(characterId);
   characterIdRef.current = characterId;
 

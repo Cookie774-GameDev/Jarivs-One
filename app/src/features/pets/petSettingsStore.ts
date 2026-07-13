@@ -69,7 +69,7 @@ export const usePetSettingsStore = create<PetSettingsState>()(
       characterId: NORMAL_AXO_RUNTIME_ID,
       panelMode: 'normal',
       positionLocked: false,
-      edgeSnapping: true,
+      edgeSnapping: false,
       animationLevel: 'calm',
       soundEnabled: true,
       notificationReactions: true,
