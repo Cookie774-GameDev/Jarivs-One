@@ -50,6 +50,32 @@ describe('openOrFocusPetMiniPanel / openPetPanelSafely', () => {
     expect(invoked('pet_show_overlay')).toBe(false);
   });
 
+  it('passes the validated panel window mode to the native open command', async () => {
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === 'pet_is_panel_visible') return true;
+      return undefined;
+    });
+
+    const { openPetPanelSafely } = await import('./petTauriBridge');
+    await openPetPanelSafely(10, 20, 'follow-pet');
+
+    const openCall = invokeMock.mock.calls.find((call) => call[0] === 'pet_open_or_focus_panel');
+    expect(openCall?.[1]).toMatchObject({
+      nearX: 10,
+      nearY: 20,
+      panelMode: 'follow-pet',
+    });
+  });
+
+  it('offers a bounded native topmost recovery command for lifecycle health checks', async () => {
+    invokeMock.mockResolvedValue(undefined);
+
+    const { reassertPetOverlayTopmost } = await import('./petTauriBridge');
+    await reassertPetOverlayTopmost();
+
+    expect(invoked('pet_reassert_overlay_topmost')).toBe(true);
+  });
+
   it('restores overlay when panel is not visible (no disappear)', async () => {
     invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === 'pet_open_or_focus_panel') return undefined;

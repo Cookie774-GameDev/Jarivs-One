@@ -9,6 +9,7 @@ import * as React from 'react';
 import { PetOverlay } from './PetOverlay';
 import {
   openOrFocusPetMiniPanel,
+  reassertPetOverlayTopmost,
   setPetPanelOpenFlag,
   showPetOverlay,
 } from './petTauriBridge';
@@ -19,6 +20,7 @@ export function PetOverlayWindow() {
   const reducedMotion = usePetSettingsStore((s) => s.reducedMotion);
   const sleepTimeoutMs = usePetSettingsStore((s) => s.sleepTimeoutMs);
   const idleFunIntervalMs = usePetSettingsStore((s) => s.idleFunIntervalMs);
+  const panelMode = usePetSettingsStore((s) => s.panelMode) ?? 'normal';
 
   React.useEffect(() => {
     document.documentElement.dataset.vibespaceView = 'pet-overlay';
@@ -57,6 +59,24 @@ export function PetOverlayWindow() {
     };
   }, []);
 
+  React.useEffect(() => {
+    const recoverTopmost = () => {
+      if (document.visibilityState === 'hidden') return;
+      void reassertPetOverlayTopmost().catch(() => undefined);
+    };
+    recoverTopmost();
+    const interval = window.setInterval(recoverTopmost, 45_000);
+    window.addEventListener('focus', recoverTopmost);
+    window.addEventListener('pageshow', recoverTopmost);
+    document.addEventListener('visibilitychange', recoverTopmost);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', recoverTopmost);
+      window.removeEventListener('pageshow', recoverTopmost);
+      document.removeEventListener('visibilitychange', recoverTopmost);
+    };
+  }, []);
+
   return (
     <div
       data-pet-window="pet-overlay"
@@ -82,7 +102,7 @@ export function PetOverlayWindow() {
         onOpenPanel={() => {
           // Shared Axo+Glitch path: single-flight open, confirm-then-hide overlay.
           // Does NOT hide overlay optimistically before confirm (avoids both-hidden).
-          void openOrFocusPetMiniPanel()
+          void openOrFocusPetMiniPanel(undefined, undefined, panelMode)
             .then(({ panelVisible }) => {
               if (!panelVisible) {
                 // Bridge already restored overlay + cleared flag; keep fail-open.

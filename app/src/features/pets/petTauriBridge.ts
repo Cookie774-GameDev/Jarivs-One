@@ -11,6 +11,8 @@ export function isTauriRuntime(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 }
 
+export type PetPanelMode = 'follow-pet' | 'always-on-top' | 'normal';
+
 /** Shared-origin signal consumed by the already-mounted pet-overlay WebView. */
 export const PET_OVERLAY_SHOW_EPOCH_KEY = 'vibespace-pet-overlay-show-epoch';
 export const PET_OVERLAY_SHOW_EVENT = 'vibespace:pet-overlay-show';
@@ -59,8 +61,24 @@ export async function setPetOverlayPosition(x: number, y: number): Promise<void>
   await invoke('pet_set_overlay_position', { x, y });
 }
 
-export async function openOrFocusPetPanel(nearX?: number, nearY?: number): Promise<void> {
-  await invoke('pet_open_or_focus_panel', { nearX: nearX ?? null, nearY: nearY ?? null });
+export async function snapPetOverlayToEdge(): Promise<void> {
+  await invoke('pet_snap_overlay_to_edge');
+}
+
+export async function reassertPetOverlayTopmost(): Promise<void> {
+  await invoke('pet_reassert_overlay_topmost');
+}
+
+export async function openOrFocusPetPanel(
+  nearX?: number,
+  nearY?: number,
+  panelMode: PetPanelMode = 'normal',
+): Promise<void> {
+  await invoke('pet_open_or_focus_panel', {
+    nearX: nearX ?? null,
+    nearY: nearY ?? null,
+    panelMode,
+  });
 }
 
 /**
@@ -136,8 +154,9 @@ async function pollPanelVisible(attempts = 5, gapMs = 100): Promise<boolean> {
 export async function openPetPanelSafely(
   nearX?: number,
   nearY?: number,
+  panelMode: PetPanelMode = 'normal',
 ): Promise<{ panelVisible: boolean }> {
-  const result = await openOrFocusPetMiniPanel(nearX, nearY);
+  const result = await openOrFocusPetMiniPanel(nearX, nearY, panelMode);
   return { panelVisible: result.panelVisible };
 }
 
@@ -153,6 +172,7 @@ export async function openPetPanelSafely(
 export async function openOrFocusPetMiniPanel(
   nearX?: number,
   nearY?: number,
+  panelMode: PetPanelMode = 'normal',
 ): Promise<OpenPetMiniPanelResult> {
   if (openPanelInFlight) {
     const result = await openPanelInFlight;
@@ -174,14 +194,14 @@ export async function openOrFocusPetMiniPanel(
     // Optimistic flag so hosts hide the standalone sprite while opening.
     setPetPanelOpenFlag(true);
 
-    await openOrFocusPetPanel(nearX, nearY);
+    await openOrFocusPetPanel(nearX, nearY, panelMode);
     // First settle + retries (minimized restore can be slower than 180ms).
     await waitMs(120);
     let panelVisible = await pollPanelVisible(6, 90);
 
     if (!panelVisible) {
       // Second attempt: re-invoke show/focus in case the window was racing.
-      await openOrFocusPetPanel(nearX, nearY);
+      await openOrFocusPetPanel(nearX, nearY, panelMode);
       await waitMs(150);
       panelVisible = await pollPanelVisible(4, 100);
     }

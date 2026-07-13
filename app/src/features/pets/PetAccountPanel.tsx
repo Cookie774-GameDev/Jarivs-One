@@ -16,13 +16,28 @@ export function PetAccountPanel({ className }: { className?: string }) {
   const overlayVisible = usePetSettingsStore((s) => s.overlayVisible);
   const reducedMotion = usePetSettingsStore((s) => s.reducedMotion);
   const characterId = usePetSettingsStore((s) => s.characterId);
+  const panelMode = usePetSettingsStore((s) => s.panelMode);
+  const positionLocked = usePetSettingsStore((s) => s.positionLocked);
+  const edgeSnapping = usePetSettingsStore((s) => s.edgeSnapping);
+  const animationLevel = usePetSettingsStore((s) => s.animationLevel);
+  const soundEnabled = usePetSettingsStore((s) => s.soundEnabled);
+  const notificationReactions = usePetSettingsStore((s) => s.notificationReactions);
+  const pointerTracking = usePetSettingsStore((s) => s.pointerTracking);
   const setEnabled = usePetSettingsStore((s) => s.setEnabled);
   const setOverlayVisible = usePetSettingsStore((s) => s.setOverlayVisible);
   const setReducedMotion = usePetSettingsStore((s) => s.setReducedMotion);
   const setCharacterId = usePetSettingsStore((s) => s.setCharacterId);
+  const setPanelMode = usePetSettingsStore((s) => s.setPanelMode);
+  const setPositionLocked = usePetSettingsStore((s) => s.setPositionLocked);
+  const setEdgeSnapping = usePetSettingsStore((s) => s.setEdgeSnapping);
+  const setAnimationLevel = usePetSettingsStore((s) => s.setAnimationLevel);
+  const setSoundEnabled = usePetSettingsStore((s) => s.setSoundEnabled);
+  const setNotificationReactions = usePetSettingsStore((s) => s.setNotificationReactions);
+  const setPointerTracking = usePetSettingsStore((s) => s.setPointerTracking);
 
   const show = enabled && overlayVisible;
-  const selectedCharacter = PET_CHARACTER_LIST.find((c) => c.id === characterId) ?? PET_CHARACTER_LIST[0];
+  const selectedCharacter =
+    PET_CHARACTER_LIST.find((c) => c.id === characterId) ?? PET_CHARACTER_LIST[0];
 
   const showPetNow = () => {
     setEnabled(true);
@@ -44,7 +59,11 @@ export function PetAccountPanel({ className }: { className?: string }) {
   };
 
   return (
-    <div className={cn('flex flex-col gap-5', className)} data-settings-pet-tab="true" data-account-pet-section="true">
+    <div
+      className={cn('flex flex-col gap-5', className)}
+      data-settings-pet-tab="true"
+      data-account-pet-section="true"
+    >
       <div className="flex items-center gap-2">
         <Cat className="h-5 w-5 text-accent-copper" />
         <h2 className="text-page-title text-foreground">Pet</h2>
@@ -113,6 +132,90 @@ export function PetAccountPanel({ className }: { className?: string }) {
             />
           </div>
 
+          <div className="max-w-md space-y-2">
+            <div>
+              <Label>Mini-panel behavior</Label>
+              <p className="text-metadata text-muted-foreground">
+                Choose how the panel behaves among your other desktop windows.
+              </p>
+            </div>
+            <div
+              className="grid grid-cols-1 gap-1.5 sm:grid-cols-3"
+              role="group"
+              aria-label="Mini-panel behavior"
+            >
+              {(
+                [
+                  ['follow-pet', 'Panel follows Pet'],
+                  ['always-on-top', 'Panel stays on top'],
+                  ['normal', 'Panel behaves as a normal window'],
+                ] as const
+              ).map(([mode, label]) => (
+                <Button
+                  key={mode}
+                  type="button"
+                  size="sm"
+                  variant={panelMode === mode ? 'default' : 'outline'}
+                  aria-label={label}
+                  aria-pressed={panelMode === mode}
+                  onClick={() => setPanelMode(mode)}
+                  className="h-auto min-h-8 whitespace-normal px-2 py-1.5 text-center leading-tight"
+                >
+                  {label.replace('Panel ', '')}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid w-full max-w-md grid-cols-1 gap-3 sm:grid-cols-2">
+            {[
+              ['pet-lock-position', 'Lock Pet position', positionLocked, setPositionLocked],
+              ['pet-edge-snap', 'Snap Pet to screen edges', edgeSnapping, setEdgeSnapping],
+              ['pet-sounds', 'Pet sounds', soundEnabled, setSoundEnabled],
+              [
+                'pet-notification-reactions',
+                'Notification reactions',
+                notificationReactions,
+                setNotificationReactions,
+              ],
+              ['pet-pointer-tracking', 'Pointer tracking', pointerTracking, setPointerTracking],
+            ].map(([id, label, checked, setter]) => (
+              <div
+                key={id as string}
+                className="flex items-center justify-between gap-2 rounded-lg border border-border p-2.5"
+              >
+                <Label htmlFor={id as string} className="text-sm leading-tight">
+                  {label as string}
+                </Label>
+                <Switch
+                  id={id as string}
+                  aria-label={label as string}
+                  checked={checked as boolean}
+                  onCheckedChange={(value) => (setter as (next: boolean) => void)(Boolean(value))}
+                />
+              </div>
+            ))}
+          </div>
+
+          <div className="max-w-md space-y-2">
+            <Label>Animation level</Label>
+            <div className="flex flex-wrap gap-1" role="group" aria-label="Pet animation level">
+              {(['off', 'reduced', 'calm', 'normal', 'playful'] as const).map((level) => (
+                <Button
+                  key={level}
+                  size="sm"
+                  type="button"
+                  variant={animationLevel === level ? 'default' : 'outline'}
+                  aria-pressed={animationLevel === level}
+                  onClick={() => setAnimationLevel(level)}
+                  className="capitalize"
+                >
+                  {level}
+                </Button>
+              ))}
+            </div>
+          </div>
+
           <div className="flex items-center justify-between gap-3 max-w-md">
             <div>
               <Label htmlFor="pet-rm-account">Reduced motion</Label>
@@ -149,15 +252,15 @@ export function PetAccountPanel({ className }: { className?: string }) {
             <strong className="text-foreground">Move</strong> — click and drag the pet.
           </li>
           <li>
-            <strong className="text-foreground">Mini panel</strong> — click the pet (no drag). Resize
-            from the corner; drag the title bar to move the panel.
+            <strong className="text-foreground">Mini panel</strong> — click the pet (no drag).
+            Resize from the corner; drag the title bar to move the panel.
           </li>
           <li>
             <strong className="text-foreground">Hide pet</strong> — right-click pet → Close.
           </li>
           <li>
-            <strong className="text-foreground">Chat → panel</strong> — right-click a chat tab → Send
-            to Pet panel.
+            <strong className="text-foreground">Chat → panel</strong> — right-click a chat tab →
+            Send to Pet panel.
           </li>
           <li>
             <strong className="text-foreground">Terminal → panel</strong> — right-click a terminal →

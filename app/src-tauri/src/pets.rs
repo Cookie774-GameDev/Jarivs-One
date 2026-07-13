@@ -20,6 +20,19 @@ const PANEL_DEFAULT_H: f64 = 560.0;
 const PANEL_MIN_W: f64 = 360.0;
 const PANEL_MIN_H: f64 = 360.0;
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum PetPanelMode {
+    FollowPet,
+    AlwaysOnTop,
+    #[default]
+    Normal,
+}
+
+fn panel_stays_on_top(mode: PetPanelMode) -> bool {
+    mode == PetPanelMode::AlwaysOnTop
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PetGeometryState {
     pub overlay_x: Option<f64>,
@@ -47,9 +60,12 @@ fn geometry_path(app: &AppHandle) -> Option<PathBuf> {
 
 pub fn load_geometry(app: &AppHandle) -> PetGeometryState {
     if let Some(path) = geometry_path(app) {
-        if let Ok(bytes) = fs::read(&path) {
-            if let Ok(g) = serde_json::from_slice::<PetGeometryState>(&bytes) {
-                return g;
+        if let Some(geometry) = read_geometry(&path) {
+            return geometry;
+        }
+        if let Some(previous) = previous_geometry_path(app) {
+            if let Some(geometry) = read_geometry(&previous) {
+                return geometry;
             }
         }
     }
@@ -57,49 +73,97 @@ pub fn load_geometry(app: &AppHandle) -> PetGeometryState {
 }
 
 pub fn save_geometry(app: &AppHandle, geo: &PetGeometryState) {
+    if !geometry_is_valid(geo) {
+        return;
+    }
     if let Some(path) = geometry_path(app) {
         if let Some(parent) = path.parent() {
             let _ = fs::create_dir_all(parent);
         }
         if let Ok(bytes) = serde_json::to_vec_pretty(geo) {
-            let _ = fs::write(path, bytes);
+            let temp = path.with_extension("json.tmp");
+            if let Ok(mut file) = fs::File::create(&temp) {
+                use std::io::Write;
+                if file.write_all(&bytes).is_ok() && file.sync_all().is_ok() {
+                    if path.exists() {
+                        if let Some(previous) = previous_geometry_path(app) {
+                            let _ = fs::copy(&path, previous);
+                        }
+                    }
+                    if fs::rename(&temp, &path).is_err() {
+                        let _ = fs::remove_file(&path);
+                        let _ = fs::rename(&temp, &path);
+                    }
+                }
+            }
+            let _ = fs::remove_file(temp);
         }
     }
 }
 
-/// Clamp logical position into a monitor work area (approx via available monitors).
-fn clamp_to_monitors(app: &AppHandle, x: f64, y: f64, w: f64, h: f64) -> (f64, f64) {
+/// Clamp physical position into an operating-system monitor work area.
+fn clamp_to_monitors(
+    app: &AppHandle,
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+    preferred_monitor_name: Option<&str>,
+) -> (f64, f64) {
     let monitors = app.available_monitors().unwrap_or_default();
     if monitors.is_empty() {
-        return (x.max(0.0), y.max(0.0));
+        return if x.is_finite() && y.is_finite() {
+            (x.max(0.0), y.max(0.0))
+        } else {
+            (24.0, 120.0)
+        };
     }
-    // Prefer monitor containing point; else primary; else first.
-    let mut chosen = monitors.first().cloned();
-    for m in &monitors {
-        let pos = m.position();
-        let size = m.size();
+    let x = if x.is_finite() { x } else { 24.0 };
+    let y = if y.is_finite() { y } else { 120.0 };
+    let w = if w.is_finite() && w > 0.0 {
+        w
+    } else {
+        OVERLAY_SIZE as f64
+    };
+    let h = if h.is_finite() && h > 0.0 {
+        h
+    } else {
+        OVERLAY_SIZE as f64
+    };
+    let containing = monitors.iter().find(|monitor| {
+        let area = monitor.work_area();
+        let pos = area.position;
+        let size = area.size;
         let mx = pos.x as f64;
         let my = pos.y as f64;
         let mw = size.width as f64;
         let mh = size.height as f64;
-        if x >= mx && y >= my && x < mx + mw && y < my + mh {
-            chosen = Some(m.clone());
-            break;
-        }
-    }
-    let m = match chosen.or_else(|| app.primary_monitor().ok().flatten()) {
+        x >= mx && y >= my && x < mx + mw && y < my + mh
+    });
+    let preferred = preferred_monitor_name.and_then(|name| {
+        monitors.iter().find(|monitor| {
+            monitor
+                .name()
+                .is_some_and(|monitor_name| monitor_name == name)
+        })
+    });
+    let primary = app.primary_monitor().ok().flatten();
+    let m = match containing
+        .cloned()
+        .or_else(|| preferred.cloned())
+        .or(primary)
+        .or_else(|| monitors.first().cloned())
+    {
         Some(m) => m,
         None => return (x.max(0.0), y.max(0.0)),
     };
-    let pos = m.position();
-    let size = m.size();
-    let scale = m.scale_factor();
-    // Work area approximation: leave ~40px bottom for taskbar in logical px.
-    let taskbar = 40.0 * scale;
+    let area = m.work_area();
+    let pos = area.position;
+    let size = area.size;
     let mx = pos.x as f64;
     let my = pos.y as f64;
     let mw = size.width as f64;
-    let mh = size.height as f64 - taskbar;
+    let mh = size.height as f64;
     let cx = x.clamp(mx, (mx + mw - w).max(mx));
     let cy = y.clamp(my, (my + mh - h).max(my));
     (cx, cy)
@@ -112,16 +176,17 @@ fn recover_position(
     saved_y: Option<f64>,
     w: f64,
     h: f64,
+    preferred_monitor_name: Option<&str>,
 ) -> (f64, f64) {
     if let (Some(x), Some(y)) = (saved_x, saved_y) {
-        return clamp_to_monitors(app, x, y, w, h);
+        return clamp_to_monitors(app, x, y, w, h, preferred_monitor_name);
     }
     if let Ok(Some(primary)) = app.primary_monitor() {
         let pos = primary.position();
         let size = primary.size();
         let x = pos.x as f64 + size.width as f64 - w - 24.0;
         let y = pos.y as f64 + size.height as f64 - h - 80.0;
-        return clamp_to_monitors(app, x, y, w, h);
+        return clamp_to_monitors(app, x, y, w, h, preferred_monitor_name);
     }
     (24.0, 120.0)
 }
@@ -219,9 +284,9 @@ fn get_or_create_pet_panel(app: &AppHandle) -> Result<WebviewWindow, String> {
     .inner_size(PANEL_DEFAULT_W, PANEL_DEFAULT_H)
     .min_inner_size(PANEL_MIN_W, PANEL_MIN_H)
     .resizable(true)
-    .decorations(true)
+    .decorations(false)
     .transparent(false)
-    .always_on_top(true)
+    .always_on_top(false)
     .skip_taskbar(false)
     .visible(false)
     .focused(false)
@@ -243,6 +308,7 @@ pub async fn pet_show_overlay(app: AppHandle) -> Result<(), String> {
         geo.overlay_y,
         OVERLAY_SIZE as f64,
         OVERLAY_SIZE as f64,
+        geo.overlay_monitor_name.as_deref(),
     );
     drop(geo);
 
@@ -321,6 +387,58 @@ pub fn pet_is_overlay_visible(app: AppHandle) -> Result<bool, String> {
         .unwrap_or(false))
 }
 
+fn previous_geometry_path(app: &AppHandle) -> Option<PathBuf> {
+    app.path()
+        .app_data_dir()
+        .ok()
+        .map(|d| d.join("pets").join("window-geometry.previous.json"))
+}
+
+fn geometry_is_valid(geo: &PetGeometryState) -> bool {
+    [
+        geo.overlay_x,
+        geo.overlay_y,
+        geo.panel_x,
+        geo.panel_y,
+        geo.panel_w,
+        geo.panel_h,
+    ]
+    .into_iter()
+    .flatten()
+    .all(f64::is_finite)
+        && geo
+            .panel_w
+            .map_or(true, |w| (PANEL_MIN_W..=4000.0).contains(&w))
+        && geo
+            .panel_h
+            .map_or(true, |h| (PANEL_MIN_H..=4000.0).contains(&h))
+}
+
+fn read_geometry(path: &std::path::Path) -> Option<PetGeometryState> {
+    let bytes = fs::read(path).ok()?;
+    if bytes.len() > 64 * 1024 {
+        return None;
+    }
+    let geometry = serde_json::from_slice::<PetGeometryState>(&bytes).ok()?;
+    geometry_is_valid(&geometry).then_some(geometry)
+}
+
+/// Reassert topmost only when the overlay is already visible. Never shows,
+/// focuses, or activates a hidden Pet window.
+#[tauri::command]
+pub fn pet_reassert_overlay_topmost(app: AppHandle) -> Result<(), String> {
+    let Some(win) = app.get_webview_window(PET_OVERLAY_LABEL) else {
+        return Ok(());
+    };
+    if !win.is_visible().unwrap_or(false) {
+        return Ok(());
+    }
+    win.set_always_on_top(true)
+        .map_err(|e| format!("failed to restore pet-overlay topmost state: {e}"))?;
+    ensure_pet_overlay_transparent(&win);
+    Ok(())
+}
+
 /// Move pet overlay to physical position (DPI-aware path via physical coords).
 /// Always clamped so the sprite cannot be dragged fully off-screen.
 #[tauri::command]
@@ -329,11 +447,86 @@ pub fn pet_set_overlay_position(app: AppHandle, x: f64, y: f64) -> Result<(), St
         return Ok(());
     };
     // Keep at least ~24px of the pet window on-screen (cannot disappear off edge).
-    let (cx, cy) = clamp_to_monitors(&app, x, y, OVERLAY_SIZE as f64, OVERLAY_SIZE as f64);
+    let (cx, cy) = clamp_to_monitors(&app, x, y, OVERLAY_SIZE as f64, OVERLAY_SIZE as f64, None);
     let _ = win.set_position(PhysicalPosition::new(cx as i32, cy as i32));
     if let Ok(mut geo) = app.state::<PetWindowState>().geometry.lock() {
         geo.overlay_x = Some(cx);
         geo.overlay_y = Some(cy);
+        geo.overlay_monitor_name = win
+            .current_monitor()
+            .ok()
+            .flatten()
+            .and_then(|monitor| monitor.name().cloned());
+        save_geometry(&app, &geo);
+    }
+    Ok(())
+}
+
+fn nearest_edge_position(
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+    monitor_x: f64,
+    monitor_y: f64,
+    monitor_w: f64,
+    monitor_h: f64,
+    margin: f64,
+) -> (f64, f64) {
+    let left = monitor_x + margin;
+    let right = (monitor_x + monitor_w - w - margin).max(left);
+    let top = monitor_y + margin;
+    let bottom = (monitor_y + monitor_h - h - margin).max(top);
+    let candidates = [
+        (left, y.clamp(top, bottom), (x - left).abs()),
+        (right, y.clamp(top, bottom), (x - right).abs()),
+        (x.clamp(left, right), top, (y - top).abs()),
+        (x.clamp(left, right), bottom, (y - bottom).abs()),
+    ];
+    candidates
+        .into_iter()
+        .min_by(|a, b| a.2.total_cmp(&b.2))
+        .map(|(cx, cy, _)| (cx, cy))
+        .unwrap_or((left, top))
+}
+
+/// Snap the visible overlay to the nearest edge of its current monitor.
+#[tauri::command]
+pub fn pet_snap_overlay_to_edge(app: AppHandle) -> Result<(), String> {
+    let Some(win) = app.get_webview_window(PET_OVERLAY_LABEL) else {
+        return Ok(());
+    };
+    let position = win
+        .outer_position()
+        .map_err(|e| format!("failed to read pet-overlay position: {e}"))?;
+    let monitor = win
+        .current_monitor()
+        .ok()
+        .flatten()
+        .or_else(|| app.primary_monitor().ok().flatten());
+    let Some(monitor) = monitor else {
+        return Ok(());
+    };
+    let work_area = monitor.work_area();
+    let monitor_position = work_area.position;
+    let monitor_size = work_area.size;
+    let (x, y) = nearest_edge_position(
+        position.x as f64,
+        position.y as f64,
+        OVERLAY_SIZE as f64,
+        OVERLAY_SIZE as f64,
+        monitor_position.x as f64,
+        monitor_position.y as f64,
+        monitor_size.width as f64,
+        monitor_size.height as f64,
+        8.0,
+    );
+    win.set_position(PhysicalPosition::new(x as i32, y as i32))
+        .map_err(|e| format!("failed to snap pet-overlay: {e}"))?;
+    if let Ok(mut geo) = app.state::<PetWindowState>().geometry.lock() {
+        geo.overlay_x = Some(x);
+        geo.overlay_y = Some(y);
+        geo.overlay_monitor_name = monitor.name().cloned();
         save_geometry(&app, &geo);
     }
     Ok(())
@@ -350,8 +543,10 @@ pub async fn pet_open_or_focus_panel(
     app: AppHandle,
     near_x: Option<f64>,
     near_y: Option<f64>,
+    panel_mode: Option<PetPanelMode>,
 ) -> Result<(), String> {
     let win = get_or_create_pet_panel(&app)?;
+    let panel_mode = panel_mode.unwrap_or_default();
 
     let state = app.state::<PetWindowState>();
     let mut open = state.panel_open.lock().map_err(|e| e.to_string())?;
@@ -359,18 +554,50 @@ pub async fn pet_open_or_focus_panel(
 
     let w = geo.panel_w.unwrap_or(PANEL_DEFAULT_W);
     let h = geo.panel_h.unwrap_or(PANEL_DEFAULT_H);
-    let (x, y) = if let (Some(px), Some(py)) = (geo.panel_x, geo.panel_y) {
-        recover_position(&app, Some(px), Some(py), w, h)
-    } else if let (Some(nx), Some(ny)) = (near_x, near_y) {
-        recover_position(&app, Some(nx + OVERLAY_SIZE as f64 + 8.0), Some(ny), w, h)
+    let follow_anchor = if panel_mode == PetPanelMode::FollowPet {
+        near_x.zip(near_y).or_else(|| {
+            app.get_webview_window(PET_OVERLAY_LABEL)
+                .and_then(|overlay| overlay.outer_position().ok())
+                .map(|position| (position.x as f64, position.y as f64))
+        })
     } else {
-        recover_position(&app, None, None, w, h)
+        None
+    };
+    let (x, y) = if let Some((nx, ny)) = follow_anchor {
+        recover_position(
+            &app,
+            Some(nx + OVERLAY_SIZE as f64 + 8.0),
+            Some(ny),
+            w,
+            h,
+            None,
+        )
+    } else if let (Some(px), Some(py)) = (geo.panel_x, geo.panel_y) {
+        recover_position(
+            &app,
+            Some(px),
+            Some(py),
+            w,
+            h,
+            geo.panel_monitor_name.as_deref(),
+        )
+    } else if let (Some(nx), Some(ny)) = (near_x, near_y) {
+        recover_position(
+            &app,
+            Some(nx + OVERLAY_SIZE as f64 + 8.0),
+            Some(ny),
+            w,
+            h,
+            None,
+        )
+    } else {
+        recover_position(&app, None, None, w, h, geo.panel_monitor_name.as_deref())
     };
 
     let _ = win.set_size(PhysicalSize::new(w as u32, h as u32));
     let _ = win.set_min_size(Some(tauri::LogicalSize::new(PANEL_MIN_W, PANEL_MIN_H)));
     let _ = win.set_position(PhysicalPosition::new(x as i32, y as i32));
-    let _ = win.set_always_on_top(true);
+    let _ = win.set_always_on_top(panel_stays_on_top(panel_mode));
     let _ = win.unminimize();
     let _ = win.show();
     let _ = win.set_focus();
@@ -379,6 +606,11 @@ pub async fn pet_open_or_focus_panel(
     geo.panel_y = Some(y);
     geo.panel_w = Some(w);
     geo.panel_h = Some(h);
+    geo.panel_monitor_name = win
+        .current_monitor()
+        .ok()
+        .flatten()
+        .and_then(|monitor| monitor.name().cloned());
     save_geometry(&app, &geo);
     *open = true;
     drop(open);
@@ -459,12 +691,16 @@ pub fn pet_save_panel_geometry(
     w: f64,
     h: f64,
 ) -> Result<(), String> {
-    let (cx, cy) = clamp_to_monitors(&app, x, y, w, h);
+    let (cx, cy) = clamp_to_monitors(&app, x, y, w, h, None);
     if let Ok(mut geo) = app.state::<PetWindowState>().geometry.lock() {
         geo.panel_x = Some(cx);
         geo.panel_y = Some(cy);
         geo.panel_w = Some(w.max(PANEL_MIN_W));
         geo.panel_h = Some(h.max(PANEL_MIN_H));
+        geo.panel_monitor_name = app
+            .get_webview_window(PET_MINI_PANEL_LABEL)
+            .and_then(|window| window.current_monitor().ok().flatten())
+            .and_then(|monitor| monitor.name().cloned());
         save_geometry(&app, &geo);
     }
     Ok(())
@@ -517,6 +753,43 @@ mod tests {
         assert!(allowed_actions_contains("panel:open"));
     }
 
+    #[test]
+    fn panel_mode_defaults_to_normal_and_only_explicit_mode_is_topmost() {
+        assert_eq!(PetPanelMode::default(), PetPanelMode::Normal);
+        assert!(!panel_stays_on_top(PetPanelMode::Normal));
+        assert!(!panel_stays_on_top(PetPanelMode::FollowPet));
+        assert!(panel_stays_on_top(PetPanelMode::AlwaysOnTop));
+    }
+
+    #[test]
+    fn nearest_edge_snap_respects_negative_monitor_coordinates() {
+        let (x, y) = nearest_edge_position(
+            -300.0, 300.0, 144.0, 144.0, -1920.0, 0.0, 1920.0, 1040.0, 8.0,
+        );
+        assert_eq!(x, -152.0);
+        assert_eq!(y, 300.0);
+    }
+
+    #[test]
+    fn geometry_validation_rejects_non_finite_and_unusable_panel_sizes() {
+        let valid = PetGeometryState {
+            overlay_x: Some(-1200.0),
+            overlay_y: Some(80.0),
+            panel_w: Some(PANEL_MIN_W),
+            panel_h: Some(PANEL_MIN_H),
+            ..PetGeometryState::default()
+        };
+        assert!(geometry_is_valid(&valid));
+
+        let mut invalid = valid.clone();
+        invalid.overlay_x = Some(f64::NAN);
+        assert!(!geometry_is_valid(&invalid));
+
+        invalid = valid;
+        invalid.panel_w = Some(PANEL_MIN_W - 1.0);
+        assert!(!geometry_is_valid(&invalid));
+    }
+
     fn allowed_actions_contains(a: &str) -> bool {
         pet_validate_action(a.to_string()).unwrap_or(false)
     }
@@ -546,6 +819,9 @@ pub fn handle_pet_window_close(window: &tauri::Window) -> bool {
                 *open = false;
             }
         }
+        tauri::async_runtime::spawn(async move {
+            let _ = pet_show_overlay(app).await;
+        });
     }
     true
 }

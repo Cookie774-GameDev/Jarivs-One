@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { render, waitFor } from '@testing-library/react';
+import { fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const playerState = vi.hoisted(() => ({
@@ -115,13 +115,90 @@ vi.mock('./petTauriBridge', () => ({
     coalesced: false,
   })),
   setPetOverlayPosition: vi.fn(async () => undefined),
+  snapPetOverlayToEdge: vi.fn(async () => undefined),
 }));
 
 import { PetOverlay } from './PetOverlay';
+import { setPetOverlayPosition, snapPetOverlayToEdge } from './petTauriBridge';
 
 describe('PetOverlay StrictMode player lifecycle', () => {
   afterEach(() => {
     playerState.instances.length = 0;
+    vi.mocked(setPetOverlayPosition).mockClear();
+    vi.mocked(snapPetOverlayToEdge).mockClear();
+  });
+
+  it('snaps an unlocked desktop Pet only after the drag ends', async () => {
+    const view = render(<PetOverlay tauriWindowMode edgeSnapping />);
+    await waitFor(() => {
+      expect(view.container.querySelector('[data-pet-overlay="true"]')).toBeTruthy();
+    });
+    const overlay = view.container.querySelector('[data-pet-overlay="true"]') as HTMLElement;
+    overlay.setPointerCapture = vi.fn();
+
+    fireEvent.pointerDown(overlay, {
+      button: 0,
+      pointerId: 8,
+      clientX: 20,
+      clientY: 20,
+      screenX: 200,
+      screenY: 200,
+    });
+    fireEvent.pointerMove(overlay, {
+      pointerId: 8,
+      clientX: 45,
+      clientY: 20,
+      screenX: 225,
+      screenY: 200,
+    });
+    expect(snapPetOverlayToEdge).not.toHaveBeenCalled();
+
+    fireEvent.pointerUp(overlay, {
+      pointerId: 8,
+      clientX: 45,
+      clientY: 20,
+      screenX: 225,
+      screenY: 200,
+    });
+    expect(snapPetOverlayToEdge).toHaveBeenCalledTimes(1);
+    view.unmount();
+  });
+
+  it('keeps clicks active while position lock prevents desktop movement', async () => {
+    const view = render(<PetOverlay tauriWindowMode positionLocked />);
+
+    await waitFor(() => {
+      expect(view.container.querySelector('[data-pet-overlay="true"]')).toBeTruthy();
+    });
+    const overlay = view.container.querySelector('[data-pet-overlay="true"]') as HTMLElement;
+    overlay.setPointerCapture = vi.fn();
+
+    fireEvent.pointerDown(overlay, {
+      button: 0,
+      pointerId: 7,
+      clientX: 20,
+      clientY: 20,
+      screenX: 200,
+      screenY: 200,
+    });
+    fireEvent.pointerMove(overlay, {
+      pointerId: 7,
+      clientX: 70,
+      clientY: 55,
+      screenX: 250,
+      screenY: 235,
+    });
+    fireEvent.pointerUp(overlay, {
+      pointerId: 7,
+      clientX: 70,
+      clientY: 55,
+      screenX: 250,
+      screenY: 235,
+    });
+
+    expect(setPetOverlayPosition).not.toHaveBeenCalled();
+    expect(overlay.getAttribute('data-pet-position-locked')).toBe('true');
+    view.unmount();
   });
 
   it('allows only the final live player generation to start the visible animation', async () => {
@@ -132,9 +209,7 @@ describe('PetOverlay StrictMode player lifecycle', () => {
     );
 
     await waitFor(() => {
-      const live = playerState.instances.filter(
-        (player) => player.initialized && !player.disposed,
-      );
+      const live = playerState.instances.filter((player) => player.initialized && !player.disposed);
       expect(live).toHaveLength(1);
       expect(live[0].setAnimationCalls).toBe(1);
     });

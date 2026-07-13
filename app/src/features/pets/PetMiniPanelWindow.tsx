@@ -7,6 +7,7 @@ import { AuthGate } from '@/features/auth/AuthGate';
 import { PetMiniPanel } from './PetMiniPanel';
 import { applyThemeToDocument, useUIStore } from '@/stores/ui';
 import { installPetPresentationStorageSync } from './petPresentationStore';
+import { installPetSettingsStorageSync } from './petSettingsStore';
 
 export function PetMiniPanelWindow() {
   const [open, setOpen] = React.useState(true);
@@ -16,10 +17,20 @@ export function PetMiniPanelWindow() {
     applyThemeToDocument(theme);
   }, [theme]);
 
-  React.useEffect(() => installPetPresentationStorageSync(), []);
+  React.useEffect(() => {
+    const uninstallPresentation = installPetPresentationStorageSync();
+    const uninstallSettings = installPetSettingsStorageSync();
+    return () => {
+      uninstallPresentation();
+      uninstallSettings();
+    };
+  }, []);
 
   return (
-    <div data-pet-window="pet-mini-panel" className="h-screen w-screen overflow-hidden bg-background">
+    <div
+      data-pet-window="pet-mini-panel"
+      className="h-screen w-screen overflow-hidden bg-background"
+    >
       <AuthGate>
         <PetMiniPanel
           open={open}

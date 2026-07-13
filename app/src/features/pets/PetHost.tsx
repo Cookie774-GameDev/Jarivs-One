@@ -37,6 +37,7 @@ export interface PetHostProps {
 export function PetHost({ enabled: enabledProp, reducedMotion: reducedMotionProp }: PetHostProps) {
   const settingsEnabled = usePetSettingsStore((s) => s.enabled);
   const settingsReduced = usePetSettingsStore((s) => s.reducedMotion);
+  const panelMode = usePetSettingsStore((s) => s.panelMode);
   const overlayVisible = usePetSettingsStore((s) => s.overlayVisible);
   const sleepTimeoutMs = usePetSettingsStore((s) => s.sleepTimeoutMs);
   const idleFunIntervalMs = usePetSettingsStore((s) => s.idleFunIntervalMs);
@@ -225,14 +226,16 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedMotionProp
       setHideSpriteForPanel(true);
       setPetPanelOpenFlag(true);
       if (tauri) {
-        const result = await openOrFocusPetMiniPanel().catch((err) => {
-          console.warn('[pets] open panel', err);
-          return {
-            panelVisible: false,
-            useInlineFallback: true,
-            coalesced: false,
-          };
-        });
+        const result = await openOrFocusPetMiniPanel(undefined, undefined, panelMode).catch(
+          (err) => {
+            console.warn('[pets] open panel', err);
+            return {
+              panelVisible: false,
+              useInlineFallback: true,
+              coalesced: false,
+            };
+          },
+        );
         if (result.panelVisible) {
           // Dedicated Tauri mini panel confirmed — keep standalone hidden.
           setHideSpriteForPanel(true);
@@ -251,7 +254,7 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedMotionProp
     } finally {
       openPanelBusyRef.current = false;
     }
-  }, [tauri]);
+  }, [panelMode, tauri]);
 
   React.useEffect(() => {
     const onOpen = () => {

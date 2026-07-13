@@ -22,7 +22,12 @@ import {
   type DragVelocityState,
 } from './petDragVelocity';
 import { disposeAll, mapReducedMotionAnim, petPlaybackFps } from './petLifecycle';
-import { clampPetPosition, getAnimDef, getPetAnimationsManifest, resolveAtlasUrls } from './petManifest';
+import {
+  clampPetPosition,
+  getAnimDef,
+  getPetAnimationsManifest,
+  resolveAtlasUrls,
+} from './petManifest';
 import {
   beginPetPointerGesture,
   samplePetPointerGesture,
@@ -36,12 +41,10 @@ import {
   PET_OVERLAY_SHOW_EVENT,
   PET_PANEL_OPEN_FLAG_KEY,
   setPetOverlayPosition,
+  snapPetOverlayToEdge,
 } from './petTauriBridge';
 import { petPerfRecordDragUpdate, petPerfRecordStateTransition } from './petDevPerf';
-import {
-  buildPetRuntimeDiagnostics,
-  installPetRuntimeDiagGlobal,
-} from './petRuntimeDiagnostics';
+import { buildPetRuntimeDiagnostics, installPetRuntimeDiagGlobal } from './petRuntimeDiagnostics';
 import {
   PET_FORCE_ANIM_EVENT,
   type PetForceAnimDetail,
@@ -73,6 +76,8 @@ export interface PetOverlayProps {
   tauriWindowMode?: boolean;
   sleepTimeoutMs?: number;
   idleFunIntervalMs?: number;
+  positionLocked?: boolean;
+  edgeSnapping?: boolean;
 }
 
 export function PetOverlay({
@@ -87,11 +92,19 @@ export function PetOverlay({
   tauriWindowMode = false,
   sleepTimeoutMs,
   idleFunIntervalMs,
+  positionLocked: positionLockedProp,
+  edgeSnapping: edgeSnappingProp,
 }: PetOverlayProps) {
   const hostRef = React.useRef<HTMLDivElement>(null);
   const playerRef = React.useRef(new PixiAtlasPlayer());
   const stateRef = React.useRef<PetMachineState>(createInitialPetState());
   const characterId = usePetSettingsStore((s) => s.characterId);
+  const settingsPositionLocked = usePetSettingsStore((s) => s.positionLocked);
+  const setPositionLocked = usePetSettingsStore((s) => s.setPositionLocked);
+  const panelMode = usePetSettingsStore((s) => s.panelMode) ?? 'normal';
+  const settingsEdgeSnapping = usePetSettingsStore((s) => s.edgeSnapping);
+  const positionLocked = positionLockedProp ?? settingsPositionLocked ?? false;
+  const edgeSnapping = edgeSnappingProp ?? settingsEdgeSnapping ?? true;
   const characterIdRef = React.useRef(characterId);
   characterIdRef.current = characterId;
 
@@ -107,6 +120,7 @@ export function PetOverlay({
     windowOriginX: number;
     windowOriginY: number;
     gesture: PetPointerGesture;
+    canMove: boolean;
   } | null>(null);
   /** Prevents double open from setState(panelOpen) + explicit openPanelNow. */
   const openingPanelRef = React.useRef(false);
@@ -214,10 +228,7 @@ export function PetOverlay({
       }
 
       const playbackKey = `${charId}:${resolved}:${scaleSel.scale}:${urls.jsonUrl}:${urls.imageUrl}:v1`;
-      if (
-        currentAnim.current === animKey &&
-        player.isPlaybackReady(playbackKey, urls.jsonUrl)
-      ) {
+      if (currentAnim.current === animKey && player.isPlaybackReady(playbackKey, urls.jsonUrl)) {
         const fps = petPlaybackFps(resolved, def.fps, reducedMotion);
         player.setPlaybackFps(fps);
         return;
@@ -463,10 +474,10 @@ export function PetOverlay({
     }
     // No host callback: open Tauri panel + notify main-shell for in-app fallback.
     notifyPetPanelOpenRequested(left, top);
-    void openOrFocusPetMiniPanel(left, top)
+    void openOrFocusPetMiniPanel(left, top, panelMode)
       .catch(() => undefined)
       .finally(finish);
-  }, [onOpenPanel, pos.left, pos.top, setState, tauriWindowMode]);
+  }, [onOpenPanel, panelMode, pos.left, pos.top, setState, tauriWindowMode]);
 
   const lastWalkAnimRef = React.useRef<'walkLeft' | 'walkRight' | 'idlePrimary' | null>(null);
   /** Pending locomotion sample applied once per animation frame (not per pointermove). */
@@ -542,9 +553,12 @@ export function PetOverlay({
       windowOriginX: e.screenX - e.clientX + pos.left,
       windowOriginY: e.screenY - e.clientY + pos.top,
       gesture,
+      canMove: !positionLocked,
     };
     lastWalkAnimRef.current = 'idlePrimary';
-    setState(reducePetEvent(stateRef.current, { type: 'drag_start', walk: 'idlePrimary' }));
+    if (!positionLocked) {
+      setState(reducePetEvent(stateRef.current, { type: 'drag_start', walk: 'idlePrimary' }));
+    }
   };
 
   const onContextMenu = (e: React.MouseEvent) => {
@@ -581,13 +595,16 @@ export function PetOverlay({
     }
     const last = samples[samples.length - 1]!;
     samplePetPointerGesture(d.gesture, last.clientX, last.clientY);
+    if (!d.canMove) return;
     const dx = last.clientX - d.startX;
     const dy = last.clientY - d.startY;
     if (tauriWindowMode) {
       const rawX = d.windowOriginX + dx;
       const rawY = d.windowOriginY + dy;
-      const sw = typeof window !== 'undefined' ? window.screen.availWidth || window.innerWidth : 1920;
-      const sh = typeof window !== 'undefined' ? window.screen.availHeight || window.innerHeight : 1080;
+      const sw =
+        typeof window !== 'undefined' ? window.screen.availWidth || window.innerWidth : 1920;
+      const sh =
+        typeof window !== 'undefined' ? window.screen.availHeight || window.innerHeight : 1080;
       const clamped = clampPetPosition(rawX, rawY, DISPLAY, sw, sh, 0);
       void setPetOverlayPosition(clamped.x, clamped.y);
     } else {
@@ -608,7 +625,35 @@ export function PetOverlay({
     const openPanel = shouldOpenPanelFromGesture(d.gesture);
     dragRef.current = null;
     lastWalkAnimRef.current = null;
-    setState(reducePetEvent(stateRef.current, { type: 'drag_end' }));
+    if (d.canMove) {
+      setState(reducePetEvent(stateRef.current, { type: 'drag_end' }));
+      if (tauriWindowMode && edgeSnapping) {
+        void snapPetOverlayToEdge();
+      } else if (!tauriWindowMode && edgeSnapping) {
+        const sw = typeof window !== 'undefined' ? window.innerWidth : 1920;
+        const sh = typeof window !== 'undefined' ? window.innerHeight : 1080;
+        setPos((current) => {
+          const candidates = [
+            { left: 0, top: current.top, distance: current.left },
+            {
+              left: Math.max(0, sw - DISPLAY),
+              top: current.top,
+              distance: Math.abs(sw - DISPLAY - current.left),
+            },
+            { left: current.left, top: 0, distance: current.top },
+            {
+              left: current.left,
+              top: Math.max(0, sh - DISPLAY),
+              distance: Math.abs(sh - DISPLAY - current.top),
+            },
+          ];
+          const nearest = candidates.reduce((best, candidate) =>
+            candidate.distance < best.distance ? candidate : best,
+          );
+          return { left: nearest.left, top: nearest.top };
+        });
+      }
+    }
     if (openPanel) {
       openPanelNow();
     }
@@ -620,7 +665,7 @@ export function PetOverlay({
     let raf = 0;
     const tick = (now: number) => {
       const d = dragRef.current;
-      if (d?.active && now - d.vel.lastT >= 40) {
+      if (d?.active && d.canMove && now - d.vel.lastT >= 40) {
         const { state: vel, walkAnim } = sampleStationaryDragVelocity(d.vel, now);
         d.vel = vel;
         scheduleWalkApply(walkAnim, vel.vx);
@@ -647,6 +692,7 @@ export function PetOverlay({
             ? 'relative select-none touch-none w-full h-full'
             : 'fixed z-[80] select-none touch-none pointer-events-auto',
           'cursor-grab active:cursor-grabbing',
+          positionLocked && 'cursor-pointer active:cursor-pointer',
           className,
         )}
         style={
@@ -675,6 +721,8 @@ export function PetOverlay({
         data-pet-character={characterId}
         data-pet-panel-open={panelOpen ? 'true' : 'false'}
         data-pet-reduced-motion={reducedMotion ? 'true' : 'false'}
+        data-pet-position-locked={positionLocked ? 'true' : 'false'}
+        data-pet-edge-snapping={edgeSnapping ? 'true' : 'false'}
         data-pet-show-diag={showDiagnostics ? 'true' : 'false'}
         data-pet-renderer="pixi"
         onPointerDown={onPointerDown}
@@ -715,10 +763,7 @@ export function PetOverlay({
             <button type="button" onClick={() => setCharacterId('vibespace-axolotl')}>
               Axo
             </button>
-            <button
-              type="button"
-              onClick={() => setCharacterId('vibespace-axolotl-glitch')}
-            >
+            <button type="button" onClick={() => setCharacterId('vibespace-axolotl-glitch')}>
               Glitch
             </button>
             {DEBUG_ANIMS.map((anim) => (
@@ -766,6 +811,18 @@ export function PetOverlay({
             }}
           >
             Open panel
+          </button>
+          <button
+            type="button"
+            className="w-full rounded px-3 py-1.5 text-left text-sm hover:bg-muted"
+            role="menuitemcheckbox"
+            aria-checked={positionLocked}
+            onClick={() => {
+              setCtxMenu(null);
+              setPositionLocked(!positionLocked);
+            }}
+          >
+            {positionLocked ? 'Unlock position' : 'Lock position'}
           </button>
         </div>
       )}

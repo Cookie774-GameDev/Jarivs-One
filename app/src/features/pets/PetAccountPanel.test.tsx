@@ -22,18 +22,36 @@ describe('PetAccountPanel character picker', () => {
     const dispatch = vi.spyOn(window, 'dispatchEvent');
     render(<PetAccountPanel />);
 
-    expect(screen.getByRole('button', { name: /select axo/i }).getAttribute('aria-pressed')).toBe('true');
-    expect(screen.getByRole('button', { name: /select glitch/i }).getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByRole('button', { name: /select axo/i }).getAttribute('aria-pressed')).toBe(
+      'true',
+    );
+    expect(
+      screen.getByRole('button', { name: /select glitch/i }).getAttribute('aria-pressed'),
+    ).toBe('false');
 
     fireEvent.click(screen.getByRole('button', { name: /select glitch/i }));
 
     expect(usePetSettingsStore.getState().characterId).toBe(GLITCH_RUNTIME_ID);
-    expect(screen.getByRole('button', { name: /select glitch/i }).getAttribute('aria-pressed')).toBe('true');
+    expect(
+      screen.getByRole('button', { name: /select glitch/i }).getAttribute('aria-pressed'),
+    ).toBe('true');
     expect(dispatch).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'jarvis:pet:character-changed',
         detail: { characterId: GLITCH_RUNTIME_ID },
       }),
     );
+  });
+
+  it('offers explicit panel behavior and desktop interaction controls', () => {
+    render(<PetAccountPanel />);
+
+    expect(screen.getByRole('button', { name: 'Panel follows Pet' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Panel stays on top' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Panel behaves as a normal window' })).toBeTruthy();
+    expect(screen.getByLabelText('Lock Pet position')).toBeTruthy();
+    expect(screen.getByLabelText('Snap Pet to screen edges')).toBeTruthy();
+    expect(screen.getByLabelText('Pet sounds')).toBeTruthy();
+    expect(screen.getByLabelText('Notification reactions')).toBeTruthy();
   });
 });

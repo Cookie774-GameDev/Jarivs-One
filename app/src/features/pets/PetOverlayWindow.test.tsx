@@ -13,6 +13,7 @@ vi.mock('./petTauriBridge', () => ({
     useInlineFallback: false,
     coalesced: false,
   })),
+  reassertPetOverlayTopmost: vi.fn(async () => undefined),
   setPetPanelOpenFlag: vi.fn(),
   showPetOverlay: vi.fn(async () => undefined),
 }));
