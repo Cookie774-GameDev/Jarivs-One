@@ -6,12 +6,31 @@ import {
   EMPTY_CHAT_MODEL_SELECTION,
   formatChatModelSelectionLabel,
   migrateLegacyModelSelection,
+  normalizeChatModelSelection,
   resolveActiveStackPreset,
   selectionFromOption,
   validateChatModelSelection,
   validateSendModelAccess,
 } from './modelSelection';
 import type { Agent } from '@/types';
+import type { ProviderCapabilities } from './adapters/types';
+
+const nativeCapabilities: ProviderCapabilities = {
+  text: true,
+  images: true,
+  files: false,
+  tools: true,
+  modelSelection: true,
+  structuredOutput: true,
+  streaming: true,
+  cancellation: true,
+  resumeSession: false,
+  systemPrompt: true,
+  workingDirectory: false,
+  usage: true,
+  subscriptionQuota: false,
+  localOnly: false,
+};
 
 const jarvis: Agent = {
   id: 'agent_jarvis' as Agent['id'],
@@ -93,6 +112,41 @@ describe('modelSelection', () => {
       providerId: 'groq',
       modelId: 'llama-3.3-70b-versatile',
     });
+  });
+
+  it('round-trips a single selection with its exact connection identity', () => {
+    const selection = {
+      mode: 'single' as const,
+      providerId: 'openai' as const,
+      modelId: 'gpt-5.2',
+      connectionId: 'openai-api',
+      connectionMode: 'native-api' as const,
+      authSource: 'api-key',
+      capabilities: nativeCapabilities,
+    };
+
+    expect(normalizeChatModelSelection(selection)).toEqual(selection);
+  });
+
+  it('keeps legacy persisted selections without inventing a connection', () => {
+    expect(normalizeChatModelSelection({
+      mode: 'single',
+      providerId: 'groq',
+      modelId: 'llama-3.3-70b-versatile',
+    })).toEqual({
+      mode: 'single',
+      providerId: 'groq',
+      modelId: 'llama-3.3-70b-versatile',
+    });
+  });
+
+  it('fails closed when persisted connection metadata is incomplete', () => {
+    expect(normalizeChatModelSelection({
+      mode: 'single',
+      providerId: 'openai',
+      modelId: 'gpt-5.2',
+      connectionId: 'openai-codex',
+    })).toEqual(EMPTY_CHAT_MODEL_SELECTION);
   });
 
   it('migrates legacy Hive selection to Balanced', () => {

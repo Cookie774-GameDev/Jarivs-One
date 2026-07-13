@@ -6,6 +6,7 @@ import type {
   JarvisQuestionAnswer,
   JarvisQuestionBlock,
 } from '@/features/jarvis-interaction/types';
+import type { ProviderConnection } from '@/lib/ai/adapters/types';
 
 export type Role = 'user' | 'assistant' | 'agent' | 'system' | 'tool';
 
@@ -120,6 +121,8 @@ export type Chat = {
   title: string;
   mode: ChatMode;
   active_agent_ids: AgentId[]; // single in chat mode, n in council
+  /** Exact local provider connection selected for this chat. Never cloud-synced. */
+  connection?: ProviderConnection;
   created_at: number;
   updated_at: number;
   archived?: boolean;

@@ -123,6 +123,14 @@ function syncRowId(table: StoreName, row: unknown): string | null {
   return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
+function payloadForSync(table: StoreName, row: unknown): unknown {
+  if (table !== 'chats' || !row || typeof row !== 'object' || Array.isArray(row)) {
+    return row;
+  }
+  const { connection: _localConnection, ...payload } = row as Record<string, unknown>;
+  return payload;
+}
+
 async function enqueueLocalSync(
   op: SyncOp,
   table: StoreName,
@@ -162,12 +170,12 @@ async function enqueueLocalSync(
 
 async function syncInsert<T>(table: StoreName, row: T): Promise<void> {
   const rowId = syncRowId(table, row);
-  if (rowId) await enqueueLocalSync('insert', table, rowId, row);
+  if (rowId) await enqueueLocalSync('insert', table, rowId, payloadForSync(table, row));
 }
 
 async function syncUpdate<T>(table: StoreName, row: T): Promise<void> {
   const rowId = syncRowId(table, row);
-  if (rowId) await enqueueLocalSync('update', table, rowId, row);
+  if (rowId) await enqueueLocalSync('update', table, rowId, payloadForSync(table, row));
 }
 
 async function syncDelete(table: StoreName, rowId: string): Promise<void> {
@@ -335,6 +343,7 @@ export const chatRepo = {
       title: input.title,
       mode: input.mode,
       active_agent_ids: input.active_agent_ids,
+      connection: input.connection,
       archived: input.archived,
       pinned: input.pinned,
       pinned_at: input.pinned_at,

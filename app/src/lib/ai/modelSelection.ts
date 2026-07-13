@@ -15,10 +15,32 @@ import { coerceToExposedPreset, stepsForPreset } from './stacks/presets';
 import { isProviderConnected, type ProviderConnectionContext } from './providerRegistry';
 import { agentUsesDefaultProvider } from './agentProviderOptions';
 import { describeVisionRequirement, selectionSupportsVision } from './vision';
+import type {
+  ConnectionMode,
+  ProviderCapabilities,
+  ProviderConnection,
+} from './adapters/types';
+
+type ConnectedSingleSelection = {
+  connectionId: string;
+  connectionMode: ConnectionMode;
+  authSource: string;
+  capabilities: ProviderCapabilities;
+};
+
+type LegacySingleSelection = {
+  connectionId?: never;
+  connectionMode?: never;
+  authSource?: never;
+  capabilities?: never;
+};
 
 export type ChatModelSelection =
   | { mode: 'none' }
-  | { mode: 'single'; providerId: ProviderId; modelId: string }
+  | ({ mode: 'single'; providerId: ProviderId; modelId: string } & (
+      | ConnectedSingleSelection
+      | LegacySingleSelection
+    ))
   | { mode: 'hive'; hiveId: Exclude<StackPresetId, 'off'> };
 
 export const EMPTY_CHAT_MODEL_SELECTION: ChatModelSelection = { mode: 'none' };
@@ -39,15 +61,69 @@ const HIVE_LABELS: Record<Exclude<StackPresetId, 'off'>, string> = {
   custom: 'Hive Balanced',
 };
 
+const CAPABILITY_KEYS = [
+  'text',
+  'images',
+  'files',
+  'tools',
+  'modelSelection',
+  'structuredOutput',
+  'streaming',
+  'cancellation',
+  'resumeSession',
+  'systemPrompt',
+  'workingDirectory',
+  'usage',
+  'subscriptionQuota',
+  'localOnly',
+] as const satisfies readonly (keyof ProviderCapabilities)[];
+
+const CONNECTION_METADATA_KEYS = [
+  'connectionId',
+  'connectionMode',
+  'authSource',
+  'capabilities',
+] as const;
+
+function normalizeCapabilities(raw: unknown): ProviderCapabilities | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const record = raw as Record<string, unknown>;
+  if (!CAPABILITY_KEYS.every((key) => typeof record[key] === 'boolean')) return null;
+  return Object.fromEntries(
+    CAPABILITY_KEYS.map((key) => [key, record[key]]),
+  ) as unknown as ProviderCapabilities;
+}
+
+function normalizeSingleConnection(raw: Record<string, unknown>): ConnectedSingleSelection | null {
+  const connectionId = typeof raw.connectionId === 'string' ? raw.connectionId.trim() : '';
+  const authSource = typeof raw.authSource === 'string' ? raw.authSource.trim() : '';
+  const connectionMode = raw.connectionMode;
+  const capabilities = normalizeCapabilities(raw.capabilities);
+  if (
+    !connectionId ||
+    !authSource ||
+    (connectionMode !== 'external-cli' && connectionMode !== 'native-api' && connectionMode !== 'local') ||
+    !capabilities
+  ) {
+    return null;
+  }
+  return { connectionId, connectionMode, authSource, capabilities };
+}
+
 export function normalizeChatModelSelection(
   raw: unknown,
 ): ChatModelSelection {
   if (!raw || typeof raw !== 'object') return EMPTY_CHAT_MODEL_SELECTION;
-  const value = raw as Partial<ChatModelSelection>;
+  const value = raw as Partial<ChatModelSelection> & Record<string, unknown>;
   if (value.mode === 'single') {
     const providerId = value.providerId;
     const modelId = typeof value.modelId === 'string' ? value.modelId.trim() : '';
     if (!providerId || !modelId) return EMPTY_CHAT_MODEL_SELECTION;
+    const connection = normalizeSingleConnection(value);
+    if (connection) return { mode: 'single', providerId, modelId, ...connection };
+    if (CONNECTION_METADATA_KEYS.some((key) => key in value)) {
+      return EMPTY_CHAT_MODEL_SELECTION;
+    }
     return { mode: 'single', providerId, modelId };
   }
   if (value.mode === 'hive') {
@@ -209,8 +285,20 @@ export function selectionOptionId(selection: ChatModelSelection): string | null 
   return `${selection.providerId}:${selection.modelId}`;
 }
 
-export function selectionFromOption(providerId: ProviderId, modelId: string): ChatModelSelection {
-  return { mode: 'single', providerId, modelId: modelId.trim() };
+export function selectionFromOption(
+  providerId: ProviderId,
+  modelId: string,
+  connection?: ProviderConnection,
+): ChatModelSelection {
+  const base = { mode: 'single' as const, providerId, modelId: modelId.trim() };
+  if (!connection) return base;
+  return {
+    ...base,
+    connectionId: connection.id,
+    connectionMode: connection.mode,
+    authSource: connection.authSource,
+    capabilities: connection.capabilities,
+  };
 }
 
 export function selectionFromHive(hiveId: Exclude<StackPresetId, 'off'>): ChatModelSelection {
