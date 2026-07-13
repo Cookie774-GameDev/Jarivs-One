@@ -55,6 +55,7 @@ mod local_ai;
 mod ollama_http;
 mod pets;
 mod terminal;
+mod terminal_snapshot;
 
 /// Sanity-check command. The JS bridge can call this during startup to verify
 /// invoke() round-trips. Wire it in as needed; it returns a friendly string.
@@ -213,6 +214,7 @@ pub fn run() {
         )
         .manage(terminal::TerminalState::default())
         .manage(pets::PetWindowState::default())
+        .manage(terminal_snapshot::PersistenceFlushState::default())
         .setup(|app| {
             // Restore pet window geometry from disk.
             {
@@ -251,6 +253,7 @@ pub fn run() {
                         show_main_window(app, "tray-show");
                     }
                     "exit" => {
+                        app.state::<terminal_snapshot::PersistenceFlushState>().begin();
                         let _ = app.emit(
                             "jarvis:persist-now",
                             PersistPayload {
@@ -259,7 +262,17 @@ pub fn run() {
                         );
                         let app_handle = app.clone();
                         std::thread::spawn(move || {
-                            std::thread::sleep(Duration::from_millis(750));
+                            let started = std::time::Instant::now();
+                            while started.elapsed() < Duration::from_millis(1_500)
+                                && !app_handle
+                                    .state::<terminal_snapshot::PersistenceFlushState>()
+                                    .is_completed()
+                            {
+                                std::thread::sleep(Duration::from_millis(25));
+                            }
+                            app_handle
+                                .state::<terminal_snapshot::PersistenceFlushState>()
+                                .complete();
                             app_handle.exit(0);
                         });
                     }
@@ -337,6 +350,11 @@ pub fn run() {
             terminal::terminal_move,
             terminal::terminal_list,
             terminal::terminal_reconcile,
+            terminal_snapshot::terminal_snapshot_save,
+            terminal_snapshot::terminal_snapshot_load,
+            terminal_snapshot::terminal_snapshot_delete,
+            terminal_snapshot::terminal_snapshot_delete_project,
+            terminal_snapshot::persistence_flush_complete,
             agent_coordination::agent_coordination_snapshot,
             agent_coordination::agent_coordination_register,
             agent_coordination::agent_coordination_heartbeat,
@@ -379,13 +397,36 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {
-            if let tauri::RunEvent::ExitRequested { .. } = event {
+            if let tauri::RunEvent::ExitRequested { api, code, .. } = event {
+                let state = app_handle.state::<terminal_snapshot::PersistenceFlushState>();
+                if state.is_completed() {
+                    return;
+                }
+                api.prevent_exit();
+                if state.is_pending() {
+                    return;
+                }
+
+                state.begin();
                 let _ = app_handle.emit(
                     "jarvis:persist-now",
-                    PersistPayload {
-                        reason: "exit-requested",
-                    },
+                    PersistPayload { reason: "exit-requested" },
                 );
+                let app_handle = app_handle.clone();
+                std::thread::spawn(move || {
+                    let started = std::time::Instant::now();
+                    while started.elapsed() < Duration::from_millis(1_500)
+                        && !app_handle
+                            .state::<terminal_snapshot::PersistenceFlushState>()
+                            .is_completed()
+                    {
+                        std::thread::sleep(Duration::from_millis(25));
+                    }
+                    app_handle
+                        .state::<terminal_snapshot::PersistenceFlushState>()
+                        .complete();
+                    app_handle.exit(code.unwrap_or(0));
+                });
             }
         });
 }

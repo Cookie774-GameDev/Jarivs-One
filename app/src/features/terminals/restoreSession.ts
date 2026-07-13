@@ -1,5 +1,7 @@
 import { terminalRestoreText, type SessionTranscript } from './transcriptStore';
 import { detectInteractiveAgentCli } from './agentPromptDelivery';
+import { sanitizePersistedDraft } from './terminalContentSanitizer';
+import type { TerminalSnapshotPayload } from './terminalSnapshot';
 
 export interface BackendTerminalInfo {
   sessionId: string;
@@ -23,7 +25,7 @@ export type TerminalRestoreDecision =
       restoredText: string;
       restoredInput: string;
       oldSessionId: string | null;
-      source: 'dead-existing-session' | 'dead-historical-pane' | 'new-pane';
+      source: 'dead-existing-session' | 'dead-historical-pane' | 'dead-snapshot' | 'new-pane';
     };
 
 interface ResolveTerminalRestoreInput {
@@ -32,6 +34,7 @@ interface ResolveTerminalRestoreInput {
   projectId?: string | null;
   activeSessions: BackendTerminalInfo[];
   transcripts: Record<string, SessionTranscript>;
+  renderedSnapshot?: TerminalSnapshotPayload | null;
 }
 
 function normalizeProjectId(projectId: string | null | undefined): string | null {
@@ -64,7 +67,11 @@ function isInteractiveTuiSession(
 
 function restoredTextForDeadSession(
   session: SessionTranscript | null | undefined,
+  renderedSnapshot?: TerminalSnapshotPayload | null,
 ): string {
+  if (renderedSnapshot?.text) {
+    return terminalRestoreText({ text: renderedSnapshot.text });
+  }
   if (!session) return '';
   if (isInteractiveTuiSession(session)) {
     return '';
@@ -92,6 +99,7 @@ export function resolveTerminalRestoreSession({
   projectId,
   activeSessions,
   transcripts,
+  renderedSnapshot,
 }: ResolveTerminalRestoreInput): TerminalRestoreDecision {
   const normalizedProjectId = normalizeProjectId(projectId);
 
@@ -115,8 +123,11 @@ export function resolveTerminalRestoreSession({
     const oldSession = transcripts[existingSessionId];
     return {
       kind: 'spawn',
-      restoredText: restoredTextForDeadSession(oldSession),
-      restoredInput: oldSession?.currentInput ?? '',
+      restoredText: restoredTextForDeadSession(oldSession, renderedSnapshot),
+      restoredInput: sanitizePersistedDraft(
+        oldSession?.currentInput ?? '',
+        oldSession?.text ?? '',
+      ),
       oldSessionId: existingSessionId,
       source: 'dead-existing-session',
     };
@@ -147,12 +158,25 @@ export function resolveTerminalRestoreSession({
 
       return {
         kind: 'spawn',
-        restoredText: restoredTextForDeadSession(historicalSession),
-        restoredInput: historicalSession.currentInput ?? '',
+        restoredText: restoredTextForDeadSession(historicalSession, renderedSnapshot),
+        restoredInput: sanitizePersistedDraft(
+          historicalSession.currentInput ?? '',
+          historicalSession.text,
+        ),
         oldSessionId: historicalSession.sessionId,
         source: 'dead-historical-pane',
       };
     }
+  }
+
+  if (renderedSnapshot?.text) {
+    return {
+      kind: 'spawn',
+      restoredText: restoredTextForDeadSession(null, renderedSnapshot),
+      restoredInput: '',
+      oldSessionId: null,
+      source: 'dead-snapshot',
+    };
   }
 
   return {

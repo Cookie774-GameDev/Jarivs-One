@@ -55,7 +55,10 @@ import { DevConsoleHost } from '@/features/dev-console';
 import { initTerminalScheduler } from '@/features/terminals/terminalScheduler';
 import { startJarvisScheduleRunner } from '@/features/schedule/jarvisScheduleRunner';
 import { UpdateWarningHost } from '@/features/updates/UpdateWarningHost';
-import { flushWorkspacePersistence } from '@/lib/persistence/workspaceFlush';
+import {
+  flushWorkspacePersistence,
+  flushWorkspacePersistenceAndAcknowledge,
+} from '@/lib/persistence/workspaceFlush';
 import { GlobalDictationOverlay } from '@/features/global-dictation/GlobalDictationOverlay';
 import type { Agent, AgentId, Message } from '@/types';
 
@@ -428,7 +431,7 @@ function useDesktopReopenLifecycle() {
     // When the app is closed (hidden to tray) or torn down, stop any in-flight
     // speech so Jarvis does not keep talking in the background.
     const stopAllSpeech = () => {
-      flushWorkspacePersistence('before-hide');
+      void flushWorkspacePersistence('before-hide');
       try {
         window.speechSynthesis?.cancel();
       } catch {
@@ -463,8 +466,18 @@ function useDesktopReopenLifecycle() {
       .catch(() => {});
     void import('@tauri-apps/api/event')
       .then(({ listen }) =>
-        listen<{ reason?: string }>('jarvis:persist-now', (event) => {
-          flushWorkspacePersistence(event.payload?.reason ?? 'desktop-persist');
+        listen<{ reason?: string }>('jarvis:persist-now', async (event) => {
+          try {
+            await flushWorkspacePersistenceAndAcknowledge(
+              event.payload?.reason ?? 'desktop-persist',
+              async () => {
+                const { invoke } = await import('@tauri-apps/api/core');
+                await invoke('persistence_flush_complete');
+              },
+            );
+          } catch {
+            /* Desktop exit retains its native hard deadline if IPC is unavailable. */
+          }
         }),
       )
       .then((unlisten) => {

@@ -91,6 +91,14 @@ import {
   registerCoordinatedTerminal,
 } from './agentCoordinationClient';
 import type { AgentCoordinationMode } from './agentCoordination';
+import { createPersistedInputTracker } from './terminalInputPersistence';
+import {
+  createTerminalSnapshot,
+  terminalSnapshotFingerprint,
+  type TerminalSnapshotPayload,
+} from './terminalSnapshot';
+import { registerTerminalSnapshotFlush } from './terminalSnapshotRegistry';
+import { terminalRestartDecision } from './terminalRestartPolicy';
 
 /**
  * When the parent owns its own chrome (`<TileGrid>`'s pane-tile or the
@@ -207,12 +215,6 @@ function pickTheme() {
 
 function commandToInput(command: string): string {
   return command.endsWith('\n') || command.endsWith('\r') ? command : `${command}\r`;
-}
-
-function inputBeforeSubmit(data: string, currentInput: string): string {
-  const submitIdx = data.search(/[\r\n]/);
-  if (submitIdx === -1) return '';
-  return `${currentInput}${data.slice(0, submitIdx)}`.trim();
 }
 
 export function TerminalView({
@@ -447,8 +449,16 @@ export function TerminalView({
     let onClear: ((e: Event) => void) | null = null;
     let onPersistNow: (() => void) | null = null;
     let unregisterPaneClear: (() => void) | null = null;
+    let unregisterSnapshotFlush: (() => void) | null = null;
+    let snapshotSaveTimer: number | null = null;
+    let snapshotSaveInFlight: Promise<void> | null = null;
+    let latestTerminalWrite: Promise<void> = Promise.resolve();
+    let lastSnapshotFingerprint = '';
+    let deferredRestartCommand: string | null = null;
+    let restartConfirmationHandled = false;
     let startupRestoreMode = false;
     const webglDispose = createWebglDisposeTracker();
+    const inputTracker = createPersistedInputTracker(currentInputRef.current);
 
     const isInteractiveAgentSession = (sid: string): boolean => {
       const currentSession = useTerminalTranscriptStore.getState().sessions[sid];
@@ -483,6 +493,22 @@ export function TerminalView({
           console.warn('[Jarvis] agent briefing refresh failed:', result.error);
         }
       })();
+    };
+
+    const confirmDeferredRestart = (): void => {
+      if (!deferredRestartCommand || restartConfirmationHandled) return;
+      const sid = sessionRef.current;
+      if (!sid) return;
+      restartConfirmationHandled = true;
+      const deferred = deferredRestartCommand;
+      deferredRestartCommand = null;
+      if (!window.confirm(`Restart the previous terminal command?\n\n${deferred}`)) return;
+      invoke('terminal_write', {
+        sessionId: sid,
+        data: commandToInput(deferred),
+      }).catch(() => {
+        /* backend probably gone */
+      });
     };
 
     const resetTerminalSurface = () => {
@@ -568,6 +594,44 @@ export function TerminalView({
       t.options.theme = pickTheme();
     };
 
+    const flushTerminalSnapshot = async (): Promise<void> => {
+      if (snapshotSaveInFlight) await snapshotSaveInFlight;
+      const currentTerm = termRef.current;
+      if (!currentTerm || !paneId) return;
+      if (snapshotSaveTimer != null) {
+        window.clearTimeout(snapshotSaveTimer);
+        snapshotSaveTimer = null;
+      }
+      const snapshot = createTerminalSnapshot(currentTerm, {
+        projectId: projectId ?? null,
+        paneId,
+        rows: currentTerm.rows,
+        cols: currentTerm.cols,
+        updatedAt: Date.now(),
+        command: startupCommand ?? command ?? null,
+        interactive: isInteractiveAgentSession(sessionRef.current ?? ''),
+      });
+      const fingerprint = terminalSnapshotFingerprint(snapshot);
+      if (fingerprint === lastSnapshotFingerprint) return;
+      snapshotSaveInFlight = invoke('terminal_snapshot_save', { snapshot });
+      try {
+        await snapshotSaveInFlight;
+        lastSnapshotFingerprint = fingerprint;
+      } finally {
+        snapshotSaveInFlight = null;
+      }
+    };
+
+    const scheduleTerminalSnapshot = (): void => {
+      if (!paneId || snapshotSaveTimer != null) return;
+      snapshotSaveTimer = window.setTimeout(() => {
+        snapshotSaveTimer = null;
+        void flushTerminalSnapshot().catch((err) => {
+          console.warn('[Jarvis] terminal snapshot save failed:', err);
+        });
+      }, 1_000);
+    };
+
     const flushTerminalOutput = () => {
       outputRafToken = null;
       if (!pendingOutput) return;
@@ -581,18 +645,26 @@ export function TerminalView({
       try {
         const currentTerm = termRef.current;
         const followUserScrolled = userHasScrolledRef.current;
-        currentTerm?.write(displayData, () => {
-          if (cancelled) return;
-          const live = termRef.current;
-          if (!live) return;
-          // Short buffers pin to top (PS prompt at top of pane); long
-          // scrollback follows the bottom only while the user hasn't
-          // scrolled away. Never thrash between top and bottom.
-          applyTerminalFollowScroll(live, { userHasScrolled: followUserScrolled });
-          if (!followUserScrolled) {
-            userHasScrolledRef.current = false;
-          }
-        });
+        if (currentTerm) {
+          latestTerminalWrite = new Promise<void>((resolve) => {
+            currentTerm.write(displayData, () => {
+              if (!cancelled) {
+                const live = termRef.current;
+                if (live) {
+                  // Short buffers pin to top (PS prompt at top of pane); long
+                  // scrollback follows the bottom only while the user hasn't
+                  // scrolled away. Never thrash between top and bottom.
+                  applyTerminalFollowScroll(live, { userHasScrolled: followUserScrolled });
+                }
+                if (!followUserScrolled) {
+                  userHasScrolledRef.current = false;
+                }
+                scheduleTerminalSnapshot();
+              }
+              resolve();
+            });
+          });
+        }
       } catch (err) {
         console.warn('[Jarvis] terminal render write failed:', err);
       }
@@ -621,12 +693,14 @@ export function TerminalView({
       }
     };
 
-    const flushTerminalPersistenceNow = () => {
+    const flushTerminalPersistenceNow = async (): Promise<void> => {
       if (outputRafToken != null) {
         cancelAnimationFrame(outputRafToken);
         flushTerminalOutput();
       }
       flushCurrentInput();
+      await latestTerminalWrite;
+      await flushTerminalSnapshot();
     };
 
     const init = async () => {
@@ -718,6 +792,7 @@ export function TerminalView({
           setIsFocused(true);
           const sid = sessionRef.current;
           if (sid) ensureAgentBriefingForSession(sid);
+          confirmDeferredRestart();
           onFocusRef.current?.();
         });
         textarea.addEventListener('blur', () => {
@@ -731,26 +806,13 @@ export function TerminalView({
         const sid = sessionRef.current;
         if (!sid) return;
 
-        // Trace currently typed command prompt input
+        // Track only printable draft input; terminal protocol and control
+        // sequences are never allowed into persisted state.
         const store = useTerminalTranscriptStore.getState();
         const currentSession = store.sessions[sid];
-        let currentInput = currentInputRef.current || currentSession?.currentInput || '';
-        const submittedInput = inputBeforeSubmit(data, currentInput);
-        let shouldFlushInputNow = false;
-        for (let i = 0; i < data.length; i++) {
-          const char = data[i];
-          if (char === '\r' || char === '\n' || char === '\x03') {
-            currentInput = '';
-            shouldFlushInputNow = true;
-          } else if (char === '\x7f' || char === '\x08') {
-            currentInput = currentInput.slice(0, -1);
-          } else if (char.charCodeAt(0) >= 32 && char.charCodeAt(0) <= 126) {
-            currentInput += char;
-          }
-        }
-
-        currentInputRef.current = currentInput;
-        if (shouldFlushInputNow) {
+        const inputUpdate = inputTracker.push(data);
+        currentInputRef.current = inputUpdate.draft;
+        if (inputUpdate.flushNow) {
           if (currentInputFlushTimerRef.current != null) {
             window.clearTimeout(currentInputFlushTimerRef.current);
             currentInputFlushTimerRef.current = null;
@@ -761,7 +823,7 @@ export function TerminalView({
         }
 
         if (
-          submittedInput &&
+          inputUpdate.submittedText &&
           agentSlugRef.current &&
           detectInteractiveAgentCli({
             command: currentSession?.command ?? startupCommand ?? command,
@@ -839,18 +901,40 @@ export function TerminalView({
           }
         }
 
+        let renderedSnapshot: TerminalSnapshotPayload | null = null;
+        if (paneId) {
+          try {
+            renderedSnapshot = await invoke<TerminalSnapshotPayload | null>(
+              'terminal_snapshot_load',
+              { projectId: projectId ?? null, paneId },
+            );
+          } catch (snapshotErr) {
+            console.warn('[Jarvis] Failed to load terminal snapshot:', snapshotErr);
+          }
+        }
+
         const restoreDecision = resolveTerminalRestoreSession({
           existingSessionId,
           paneId,
           projectId,
           activeSessions,
           transcripts: useTerminalTranscriptStore.getState().sessions,
+          renderedSnapshot,
         });
         startupRestoreMode = Boolean(restoreDecision.restoredText);
 
         if (restoreDecision.kind === 'spawn') {
           spawnedFresh = true;
           restoredInput = restoreDecision.restoredInput;
+          let spawnCommand = command;
+          const isRecoveredSession = restoreDecision.source !== 'new-pane';
+          if (isRecoveredSession) {
+            const restart = terminalRestartDecision(command, startupCommand);
+            spawnCommand = restart.spawnCommand;
+            if (restart.kind === 'confirm') {
+              deferredRestartCommand = restart.deferredCommand;
+            }
+          }
 
           if (restoreDecision.restoredText) {
             term.write(restoreDecision.restoredText);
@@ -885,7 +969,7 @@ export function TerminalView({
           }
 
           const result = await invoke<SpawnResult>('terminal_spawn', {
-            command,
+            command: spawnCommand,
             cwd,
             rows: term.rows,
             cols: term.cols,
@@ -1021,6 +1105,10 @@ export function TerminalView({
         projectId: projectId ?? null,
       });
       onReadyRef.current?.(sid);
+      if (restoredInput) {
+        inputTracker.replaceDraft(restoredInput);
+        currentInputRef.current = inputTracker.currentDraft();
+      }
       if (spawnedFresh) {
         ignoreClearsUntilRef.current = Math.max(
           ignoreClearsUntilRef.current,
@@ -1032,7 +1120,7 @@ export function TerminalView({
           applyTerminalFollowScroll(termRef.current, { userHasScrolled: false });
         });
       }
-      if (spawnedFresh && startupCommand) {
+      if (spawnedFresh && startupCommand && !deferredRestartCommand) {
         invoke('terminal_write', {
           sessionId: sid,
           data: commandToInput(startupCommand),
@@ -1040,7 +1128,7 @@ export function TerminalView({
           /* backend probably gone */
         });
       }
-      if (spawnedFresh && restoredInput) {
+      if (spawnedFresh && restoredInput && !deferredRestartCommand) {
         window.setTimeout(
           () => {
             invoke('terminal_write', {
@@ -1052,6 +1140,14 @@ export function TerminalView({
           },
           startupCommand ? 900 : 250,
         );
+      }
+
+      if (paneId) {
+        unregisterSnapshotFlush = registerTerminalSnapshotFlush(
+          `${projectId ?? '__no_project__'}:${paneId}`,
+          flushTerminalPersistenceNow,
+        );
+        scheduleTerminalSnapshot();
       }
 
       handleVisible = () => {
@@ -1078,7 +1174,7 @@ export function TerminalView({
       };
       window.addEventListener('jarvis:terminal:clear', onClear);
       onPersistNow = () => {
-        if (!cancelled) flushTerminalPersistenceNow();
+        if (!cancelled) void flushTerminalPersistenceNow();
       };
       window.addEventListener('jarvis:terminal:persist-now', onPersistNow);
 
@@ -1127,6 +1223,13 @@ export function TerminalView({
         currentInputFlushTimerRef.current = null;
       }
       flushCurrentInput();
+      if (snapshotSaveTimer != null) {
+        window.clearTimeout(snapshotSaveTimer);
+        snapshotSaveTimer = null;
+      }
+      void flushTerminalSnapshot().catch(() => {
+        /* app or route may already be tearing down */
+      });
       if (outputRafToken != null) {
         cancelAnimationFrame(outputRafToken);
         flushTerminalOutput();
@@ -1154,6 +1257,7 @@ export function TerminalView({
       }
       if (onClear) window.removeEventListener('jarvis:terminal:clear', onClear);
       if (onPersistNow) window.removeEventListener('jarvis:terminal:persist-now', onPersistNow);
+      unregisterSnapshotFlush?.();
       unregisterPaneClear?.();
       if (paneId) clearTerminalPaneSessionId(paneId);
       resizeObserver?.disconnect();
@@ -1350,6 +1454,16 @@ export function TerminalView({
       // kill IPC so a failure to kill still cleans up the in-memory
       // buffer (the pane is going away from the user's POV either way).
       useTerminalTranscriptStore.getState().forgetSession(sid);
+    }
+    if (paneId) {
+      try {
+        await invoke('terminal_snapshot_delete', {
+          projectId: projectId ?? null,
+          paneId,
+        });
+      } catch {
+        /* explicit pane close still succeeds if snapshot cleanup fails */
+      }
     }
     if (!exitFiredRef.current) {
       exitFiredRef.current = true;
