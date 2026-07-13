@@ -1,11 +1,13 @@
 import { create } from 'zustand';
 import {
   CalendarDays,
+  AppWindow,
   CheckSquare,
   Code,
   FileText,
   History,
   LayoutGrid,
+  Grid2X2Plus,
   ListPlus,
   type LucideIcon,
   Maximize2,
@@ -29,6 +31,7 @@ import { useUIStore } from '@/stores/ui';
 import { useAgentStore } from '@/stores/agents';
 import { toast } from '@/components/ui/toast';
 import type { PageId } from './store';
+import { useWorkbenchStore } from '@/features/workbench/store';
 
 export type ActionId = string;
 
@@ -112,6 +115,31 @@ const STATIC_ACTIONS: Action[] = [
     keywords: ['todo', 'reminder', 'create'],
     perform: ({ closePalette }) => {
       emitJarvisEvent('jarvis:open-task-composer');
+      closePalette();
+    },
+  },
+  {
+    id: 'open-workbench',
+    label: 'Open Workbench',
+    description: 'Open the spatial canvas without changing its saved layout',
+    icon: AppWindow,
+    page: 'root',
+    keywords: ['canvas', 'workspace', 'desktop', 'spatial'],
+    perform: ({ closePalette }) => {
+      useUIStore.getState().setRoute('workbench');
+      closePalette();
+    },
+  },
+  {
+    id: 'spawn-workbench',
+    label: 'Spawn Workbench',
+    description: 'Create the web development layout with four terminals',
+    icon: Grid2X2Plus,
+    page: 'root',
+    keywords: ['canvas', 'terminals', 'browser', 'web development', 'agents'],
+    perform: ({ closePalette }) => {
+      useWorkbenchStore.getState().applyTemplate('web-development');
+      useUIStore.getState().setRoute('workbench');
       closePalette();
     },
   },

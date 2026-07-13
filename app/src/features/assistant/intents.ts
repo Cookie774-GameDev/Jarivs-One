@@ -11,6 +11,8 @@
  *   3. Add a `case` branch in `execute.ts`.
  *   4. Add a preview line in `AssistantBar.previewIntent`.
  */
+import type { WallpaperId, WorkbenchPanelKind } from '@/features/workbench/types';
+
 export type AssistantIntent =
   /** "create project tiger" */
   | { kind: 'create_project'; name: string; color_hue?: number }
@@ -58,6 +60,17 @@ export type AssistantIntent =
   | { kind: 'open_launcher' }
   /** "open schedule" */
   | { kind: 'open_schedule' }
+  /** Workbench layout, panel, and wallpaper orchestration. */
+  | { kind: 'workbench'; action: 'open' }
+  | { kind: 'workbench'; action: 'spawn'; templateId: string }
+  | {
+      kind: 'workbench';
+      action: 'add-panel';
+      panelKind: WorkbenchPanelKind;
+      count: number;
+    }
+  | { kind: 'workbench'; action: 'set-wallpaper'; wallpaperId: WallpaperId }
+  | { kind: 'workbench'; action: 'pause-wallpaper' | 'resume-wallpaper' }
   /**
    * "open terminals" / "show benchmarks" / "switch to kanban" — V3 top-level
    * route navigation. `route` is one of `useUIStore`'s Route enum values
@@ -71,7 +84,7 @@ export type AssistantIntent =
    */
   | {
       kind: 'navigate';
-      route: 'chat' | 'terminal' | 'kanban' | 'schedule' | 'agents' | 'context' | 'skills' | 'benchmarks' | 'history' | 'tools' | 'files';
+      route: 'chat' | 'workbench' | 'terminal' | 'kanban' | 'schedule' | 'agents' | 'context' | 'skills' | 'benchmarks' | 'history' | 'tools' | 'files';
     }
   /** "create project tiger then open 4 terminals" */
   | { kind: 'multi_step'; steps: AssistantIntent[] }

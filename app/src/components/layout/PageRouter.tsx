@@ -110,6 +110,14 @@ const TerminalsPage = React.lazy(() =>
     })),
 );
 
+const WorkbenchPage = React.lazy(() =>
+  import('@/features/workbench')
+    .then((m) => ({ default: m.WorkbenchPage }))
+    .catch(() => ({
+      default: () => <PlaceholderPage title="Workbench" hint="Module not loaded" />,
+    })),
+);
+
 const KanbanPage = React.lazy(() =>
   import('@/features/kanban')
     .then((m) => ({ default: m.KanbanPage }))
@@ -192,6 +200,7 @@ const AccountPage = React.lazy(() =>
 // `Route` union in `ui.ts`, TypeScript will flag this map as incomplete.
 const routeMap: Record<Route, React.LazyExoticComponent<React.ComponentType>> = {
   chat: ChatRoute,
+  workbench: WorkbenchPage,
   terminal: TerminalsPage,
   kanban: KanbanPage,
   schedule: SchedulePage,

@@ -58,6 +58,7 @@ import { isAdminIdentity, planAllowsJarvisCall } from '@/lib/entitlements';
 
 type Route =
   | 'chat'
+  | 'workbench'
   | 'terminal'
   | 'kanban'
   | 'schedule'
@@ -74,6 +75,7 @@ type Route =
 
 const ROUTES: ReadonlyArray<Route> = [
   'chat',
+  'workbench',
   'terminal',
   'kanban',
   'schedule',
@@ -89,6 +91,7 @@ const ROUTES: ReadonlyArray<Route> = [
 
 const ROUTE_LABELS: Record<Route, string> = {
   chat: 'Chat',
+  workbench: 'Workbench',
   terminal: 'Terminal',
   kanban: 'Kanban',
   schedule: 'Schedule',
