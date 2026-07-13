@@ -1682,3 +1682,15 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Locks** | Exact feature scopes claimed in the lock table above for this isolated branch. |
 | **Status** | in-progress; dependency and clean-baseline setup |
 
+#### 2026-07-13 - Subscription & CLI Bridge Task 1 complete
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-13 12:41 CT |
+| **Agent ID** | `AGENT-CODEX-20260713-121609-SCB2` |
+| **Commit** | `8b19337b0759c70f477a25b1f5e48f52c84772b8` — `feat(ai): add connection-aware provider registry` |
+| **Result** | Connection modes/capabilities, fail-closed registry, all-or-none connection selection metadata, local chat persistence, and cloud payload stripping implemented. |
+| **Verification** | Focused Vitest: 3 files / 21 tests PASS; TypeScript typecheck PASS. Task review: spec PASS, quality PASS, no remaining findings. |
+| **Locks** | Task 1 scopes remain held because later routing/usage tasks consume the same shared contracts. |
+| **Status** | Task 1 complete; Task 2 Rust supervisor next. |
+
