@@ -29,6 +29,7 @@ const blockPart: Extract<Part, { kind: 'question_block' }> = {
         options: [
           { id: 'chat', label: 'Chat UI' },
           { id: 'runtime', label: 'Runtime' },
+          { id: 'both', label: 'Both areas' },
         ],
       },
       {
@@ -37,6 +38,11 @@ const blockPart: Extract<Part, { kind: 'question_block' }> = {
         type: 'text',
         required: false,
         placeholder: 'Add detail',
+        options: [
+          { id: 'none', label: 'Nothing else' },
+          { id: 'tests', label: 'Add tests' },
+          { id: 'docs', label: 'Add documentation' },
+        ],
       },
     ],
   },
@@ -62,12 +68,11 @@ describe('QuestionBlockCard', () => {
   it('shows one question at a time with a real progress label', () => {
     render(<QuestionBlockCard part={blockPart} messageId={'msg_1' as never} chatId="chat_1" />);
 
-    // Compact badge form: "1 / 2" (still means question 1 of 2).
-    expect(screen.getByText('1 / 2')).toBeTruthy();
+    expect(screen.getByText('Question 1 of 2')).toBeTruthy();
     expect(screen.getByText(/Which areas should Jarvis touch/i)).toBeTruthy();
     expect(screen.queryByText(/Anything else/i)).toBeNull();
     expect(screen.getByRole('button', { name: /Next/i })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /Continue/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Submit/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /Back/i })).toBeNull();
   });
 
@@ -76,7 +81,7 @@ describe('QuestionBlockCard', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Chat UI/i }));
 
-    expect(screen.getByText('1 / 2')).toBeTruthy();
+    expect(screen.getByText('Question 1 of 2')).toBeTruthy();
     expect(repo.update).not.toHaveBeenCalled();
     expect(repo.create).not.toHaveBeenCalled();
     expect(window.dispatchEvent).not.toHaveBeenCalled();
@@ -88,7 +93,7 @@ describe('QuestionBlockCard', () => {
     fireEvent.click(screen.getByRole('button', { name: /Next/i }));
 
     expect(await screen.findByText(/Please answer this question/i)).toBeTruthy();
-    expect(screen.getByText('1 / 2')).toBeTruthy();
+    expect(screen.getByText('Question 1 of 2')).toBeTruthy();
     expect(repo.update).not.toHaveBeenCalled();
   });
 
@@ -98,12 +103,13 @@ describe('QuestionBlockCard', () => {
     fireEvent.click(screen.getByRole('button', { name: /Chat UI/i }));
     fireEvent.click(screen.getByRole('button', { name: /Next/i }));
 
-    expect(await screen.findByText('2 / 2')).toBeTruthy();
+    expect(await screen.findByText('Question 2 of 2')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Write my own answer/i }));
     expect(screen.getByPlaceholderText(/Add detail/i)).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: /Back/i }));
 
-    expect(await screen.findByText('1 / 2')).toBeTruthy();
+    expect(await screen.findByText('Question 1 of 2')).toBeTruthy();
     expect(screen.getByRole('button', { name: /Chat UI/i }).getAttribute('aria-pressed')).toBe('true');
   });
 
@@ -112,10 +118,11 @@ describe('QuestionBlockCard', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Chat UI/i }));
     fireEvent.click(screen.getByRole('button', { name: /Next/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Write my own answer/i }));
     fireEvent.change(await screen.findByPlaceholderText(/Add detail/i), {
       target: { value: 'Keep it in chat only.' },
     });
-    fireEvent.click(screen.getByRole('button', { name: /Continue/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Submit/i }));
 
     await waitFor(() => expect(repo.update).toHaveBeenCalledTimes(1));
     expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({
@@ -139,6 +146,7 @@ describe('QuestionBlockCard', () => {
     const first = render(<QuestionBlockCard part={blockPart} messageId={'msg_1' as never} chatId="chat_1" />);
     fireEvent.click(screen.getByRole('button', { name: /Chat UI/i }));
     fireEvent.click(screen.getByRole('button', { name: /Next/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Write my own answer/i }));
     fireEvent.change(await screen.findByPlaceholderText(/Add detail/i), {
       target: { value: 'Draft answer in progress' },
     });
@@ -146,7 +154,7 @@ describe('QuestionBlockCard', () => {
 
     render(<QuestionBlockCard part={blockPart} messageId={'msg_1' as never} chatId="chat_1" />);
 
-    expect(screen.getByText('2 / 2')).toBeTruthy();
+    expect(screen.getByText('Question 2 of 2')).toBeTruthy();
     expect((screen.getByPlaceholderText(/Add detail/i) as HTMLTextAreaElement).value).toBe('Draft answer in progress');
 
     fireEvent.click(screen.getByRole('button', { name: /Back/i }));
@@ -194,7 +202,7 @@ describe('QuestionBlockCard', () => {
     }));
   });
 
-  it('shows a single-question card without wizard chrome', () => {
+  it('shows progress and Submit for a single-question card', () => {
     const singlePart: Extract<Part, { kind: 'question_block' }> = {
       ...blockPart,
       block: {
@@ -205,8 +213,22 @@ describe('QuestionBlockCard', () => {
 
     render(<QuestionBlockCard part={singlePart} messageId={'msg_1' as never} chatId="chat_1" />);
 
-    expect(screen.queryByText(/Question 1 of 1/i)).toBeNull();
+    expect(screen.getByText(/Question 1 of 1/i)).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Next/i })).toBeNull();
-    expect(screen.getByRole('button', { name: /Continue/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Submit/i })).toBeTruthy();
+  });
+
+  it('keeps answers and shows a retryable error when persistence fails', async () => {
+    repo.update.mockRejectedValueOnce(new Error('Storage unavailable'));
+    render(<QuestionBlockCard part={blockPart} messageId={'msg_1' as never} chatId="chat_1" />);
+    fireEvent.click(screen.getByRole('button', { name: /Chat UI/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Next/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Submit/i }));
+
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(screen.getByText(/Question 2 of 2/i)).toBeTruthy();
+    expect(repo.create).not.toHaveBeenCalled();
+    expect(window.dispatchEvent).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /Submit/i })).toHaveProperty('disabled', false);
   });
 });

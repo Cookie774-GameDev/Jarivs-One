@@ -61,7 +61,11 @@ import {
   getExplicitFilesBlock,
   getExplicitTerminalBlock,
   getJarvisCoordinationContextBlock,
+  formatResolvedJarvisContext,
+  rememberConversationDestination,
+  resolveJarvisContext,
 } from './context';
+import { classifyJarvisIntent, formatJarvisIntentPolicy } from './intent';
 import type { TerminalRef } from '@/features/terminals/terminalRefs';
 import type { ContextAttachment } from '@/features/context/tree';
 import { modelSupportsVision, type ChatImageAttachment } from './vision';
@@ -72,14 +76,14 @@ import {
   buildAllAboutMeLearningDiff,
   summarizeAllAboutMeLearningChange,
 } from '@/features/all-about-me/activity';
-import { parseJarvisQuestionBlocks } from '@/features/jarvis-interaction/questionParser';
+import {
+  createClarificationQuestionBlock,
+  parseJarvisQuestionBlocks,
+} from '@/features/jarvis-interaction/questionParser';
 import type { JarvisInteractionMode, JarvisStructuredContext } from '@/features/jarvis-interaction/types';
 import { useJarvisInteractionStore } from '@/features/jarvis-interaction/sessionStore';
 import { parseJarvisPlanBlocks } from '@/features/jarvis-interaction/planParser';
 import { parseJarvisPermissionBlocks } from '@/features/jarvis-interaction/permissionParser';
-import { buildJarvisCreatorPrompt, type JarvisCreatorKind } from '@/features/jarvis-creator/contracts';
-import { buildUserIdentityContextBlock } from './userIdentity';
-import { resolveDefaultWriteDir } from '@/lib/actions/defaultWriteDir';
 
 /**
  * Bindings the runtime needs from the host app. Implementations are typically
@@ -201,40 +205,15 @@ function getSelectedSkillsBlock(skillIds: string[] | undefined): string {
 const JARVIS_CHAT_ACTION_OVERLAY = [
   '## Jarvis chat interface',
   '',
-  'You are Jarvis inside the VibeSpace desktop app chat UI (Tauri), not a sandboxed web chatbot.',
-  'Answer in 1-3 short sentences unless the user explicitly asks for more, or you must show a question card / action block.',
+  'You are Jarvis inside the VibeSpace chat UI, not a terminal CLI.',
+  'Answer in 1-3 short sentences unless the user explicitly asks for more.',
   'Name the relevant file, agent, terminal, context map, or page when it matters.',
-  'If Settings identity context includes the user\'s preferred name, use it naturally.',
-  '',
-  '## Desktop capabilities (you DO have these)',
-  '- You CAN read text files with `files.read` action blocks (absolute paths).',
-  '- You CAN create/edit/write text files with `files.write` (absolute path + content). User must Approve first.',
-  '- You CAN run PowerShell via `shell.powershell` or any shell command via `terminal.run`. User must Approve first.',
-  '- When the user gives an absolute folder/path (e.g. C:\\Users\\…\\Downloads), use it in the action params.',
-  '- If the user wants a file but does not give a path, write under the **Default write folder** from context (usually Downloads or Documents/VibeSpace). Invent a clear filename like `jarvis-note.txt` or `story.txt`.',
-  '- Do NOT claim you lack filesystem access, cannot write files, or cannot run commands in this app.',
-  '- Do NOT refuse ordinary creative writing (stories, notes, scripts) as "explicit" or "cannot fulfill" unless the request is clearly illegal or harmful.',
-  '- For "make a file here: PATH and write …", emit `files.write` with that path and the full content — do not only apologize.',
-  '',
-  'Example file write:',
-  '```action',
-  '{ "id": "files.write", "params": { "path": "C:\\\\Users\\\\you\\\\Downloads\\\\story.txt", "content": "Once upon a time…" }, "rationale": "Create the requested story file." }',
-  '```',
-  '',
-  '## Important clarifying questions (use the card UI)',
-  'When a question is important for the task (missing path preference only if default is wrong, destructive scope, choice of approach that changes the plan), do NOT dump a long list of questions in plain text.',
-  'Emit a fenced `jarvis_question` JSON block so the app shows the question card. The user answers in the card; answers return to you as structured context (`question_answers`) — then continue the work using those answers.',
-  'Example:',
-  '```jarvis_question',
-  '{ "id": "qb_path", "title": "Where should I put the file?", "questions": [ { "id": "q1", "prompt": "Preferred folder", "type": "single", "options": [ { "id": "downloads", "label": "Downloads" }, { "id": "documents", "label": "Documents" } ], "required": true } ] }',
-  '```',
-  'Skip the card for trivial chat; use it when the answer materially changes what you write or do.',
   '',
   'Rules:',
-  '- If the user asks you to change the app, navigate, open terminals, run commands, create/edit files, create schedules, or spawn subagents, say the result briefly and emit a fenced `action` block when an action exists.',
-  '- Never answer app-control or file-write requests with JavaScript, shell snippets, pseudocode, or instructions for the user to run manually — emit the action block instead.',
+  '- If the user asks you to change the app, navigate, open terminals, run commands, create schedules, or spawn subagents, say the result briefly and emit a fenced `action` block when an action exists.',
+  '- Never answer app-control requests with JavaScript, shell snippets, pseudocode, or instructions for the user to run manually.',
   '- Never emit raw `{action}` macros. Use fenced JSON action blocks only.',
-  '- Mutating actions do not run until the user clicks Approve, so never claim they already happened.',
+  '- Mutating app actions do not run until the user clicks Approve, so never claim they already happened.',
   '- For "open N terminals", use `terminal.bulkOpen` with `{"count":N}`. If they say "with opencode", add `"command":"opencode"`.',
   '- Never ask for passwords, API keys, tokens, recovery codes, credit cards, or credentials. Direct users to the trusted settings or provider connection UI instead.',
   '- Use any provided terminal coordination summary as read-only awareness of active agents, locks, and recent work.',
@@ -249,7 +228,7 @@ const CHAT_RESPONSE_STYLE_OVERLAY = [
   'If multiple @agents are mentioned, answer as/for the first mentioned agent and use the others as context.',
 ].join('\n');
 
-function getInteractionModeOverlay(mode: JarvisInteractionMode): string {
+function getInteractionModeOverlay(mode: JarvisInteractionMode, needsVisiblePlan: boolean): string {
   if (mode === 'ask') {
     return [
       '## Jarvis interaction mode: Ask',
@@ -258,6 +237,13 @@ function getInteractionModeOverlay(mode: JarvisInteractionMode): string {
     ].join('\n');
   }
   if (mode === 'plan') {
+    if (!needsVisiblePlan) {
+      return [
+        '## Jarvis interaction mode: Plan',
+        'The request is informational or otherwise does not benefit from an implementation plan.',
+        'Answer directly without a plan card, implementation approval, action block, or mutation.',
+      ].join('\n');
+    }
     return [
       '## Jarvis interaction mode: Plan',
       'This is read-only planning mode. You may inspect available context and explain a plan.',
@@ -267,62 +253,18 @@ function getInteractionModeOverlay(mode: JarvisInteractionMode): string {
   }
   return [
     '## Jarvis interaction mode: Agent',
-    'You may do real work on this desktop: read/write text files and run PowerShell/shell via approval-gated action blocks (`files.read`, `files.write`, `shell.powershell`, `terminal.run`).',
-    'Risky writes, deletes, commands, project-structure changes, or agent launches must wait for user Approve — never claim they already ran.',
-    'Never invent excuses that you cannot access the user folder when they provided a path; propose `files.write` / `files.read` / `shell.powershell` instead.',
-    'If no path is given for a new file, use the Default write folder from context and a sensible filename.',
-    'For important missing decisions, emit a `jarvis_question` card; answers return as structured question_answers context.',
+    'You may help do the work, but risky writes, deletes, commands, project-structure changes, or agent launches must be gated by permission cards or existing approval actions.',
   ].join('\n');
 }
 
 function structuredContextBlock(context: JarvisStructuredContext | undefined): string {
   if (!context) return '';
-  const lines = [
+  return [
     '## Structured Jarvis UI context',
     `Kind: ${context.kind}`,
     'Payload:',
     JSON.stringify(context.payload, null, 2),
-  ];
-  if (context.kind === 'question_answers') {
-    lines.push(
-      '',
-      'The user answered your question card. Use these answers to continue the task.',
-      'Do not re-ask the same questions. Prefer emitting the next action or the completed result.',
-    );
-  }
-  return lines.join('\n');
-}
-
-function defaultWriteFolderContextBlock(dir: string): string {
-  const trimmed = dir.trim();
-  if (!trimmed) return '';
-  return [
-    '## Default write folder',
-    `When creating a file without a user-specified path, write under: \`${trimmed}\`.`,
-    'Choose a clear filename (e.g. story.txt, jarvis-note.txt). Prefer this folder over inventing random paths.',
-    'If the user did specify a path, always use theirs instead.',
   ].join('\n');
-}
-
-function creatorDraftKindFromMessages(messages: Message[]): JarvisCreatorKind | null {
-  for (const message of messages) {
-    for (const part of message.parts) {
-      if (part.kind !== 'question_block') continue;
-      if (part.block.id === 'jarvis_creator_agent') return 'agent';
-      if (part.block.id === 'jarvis_creator_skill') return 'skill';
-    }
-  }
-  return null;
-}
-
-function creatorDraftKindFromStructuredContext(
-  context: JarvisStructuredContext | undefined,
-): JarvisCreatorKind | null {
-  if (!context || context.kind !== 'question_answers') return null;
-  const blockId = (context.payload as { blockId?: string } | undefined)?.blockId;
-  if (blockId === 'jarvis_creator_agent') return 'agent';
-  if (blockId === 'jarvis_creator_skill') return 'skill';
-  return null;
 }
 
 function applyChatResponseStyleOverlay(agent: Agent): Agent {
@@ -663,15 +605,16 @@ function toLLMMessages(history: Message[], excludeId?: MessageId, includeImages 
  * wrote, and the AI sees the same context on the next turn so it can
  * self-correct rather than silently retrying broken JSON.
  */
-function textToParts(
-  text: string,
-  userText?: string,
-  interactionMode: JarvisInteractionMode = 'agent',
-  options?: { suppressCreatorStartFallback?: boolean },
-): Part[] {
+function textToParts(text: string, userText?: string, interactionMode: JarvisInteractionMode = 'agent'): Part[] {
+  const requestIntent = classifyJarvisIntent({ text: userText ?? '' });
   const questionResult = parseJarvisQuestionBlocks(text);
   if (questionResult.hasQuestionBlocks) return questionResult.parts;
-  const planResult = parseJarvisPlanBlocks(text, { force: interactionMode === 'plan' });
+  if (requestIntent.needsQuestions) {
+    return [{ kind: 'question_block', block: createClarificationQuestionBlock(userText ?? '') }];
+  }
+  const planResult = parseJarvisPlanBlocks(text, {
+    force: interactionMode === 'plan' && requestIntent.needsVisiblePlan,
+  });
   if (planResult.hasPlanBlocks) return planResult.parts;
   const permissionResult = parseJarvisPermissionBlocks(text);
   if (permissionResult.hasPermissionBlocks) return permissionResult.parts;
@@ -686,15 +629,10 @@ function textToParts(
     return [{ kind: 'text', text: prose || 'Ask Mode blocked an action proposal from this reply.' }];
   }
   if (!result.hasActionBlocks) {
-    let fallbackProposals = userText
+    const fallbackProposals = userText
       && interactionMode === 'agent'
       ? inferFallbackActionProposals(userText, text)
       : [];
-    // Creator wizard answers must never re-open Make with Jarvis — that
-    // replaces the skill/agent draft with a useless approval loop.
-    if (options?.suppressCreatorStartFallback) {
-      fallbackProposals = fallbackProposals.filter((p) => p.action_id !== 'creator.start');
-    }
     if (fallbackProposals.length === 0) return [{ kind: 'text', text }];
     return [
       {
@@ -859,9 +797,24 @@ export function startRuntimeListener(
     }
 
     const projectId = await resolveChatProjectId(chatId);
+    rememberConversationDestination(chatId, text);
+    const resolvedRequestContext = await resolveJarvisContext({
+      projectId,
+      chatId,
+      currentText: text,
+      enabledCapabilities: [
+        ...agent.capabilities,
+        ...agent.tools_allowed,
+        ...(agent.skills ?? []),
+      ],
+    });
+    const requestIntent = classifyJarvisIntent({
+      text,
+      destination: resolvedRequestContext.preferredDestination,
+      hasResolvedDestination: Boolean(resolvedRequestContext.preferredDestination),
+    });
     const activity = useChatActivityStore.getState();
     const agentActivityId = createChatActivityId('agent');
-    const runStartedAt = Date.now();
     activity.record({
       id: agentActivityId,
       chatId,
@@ -873,11 +826,10 @@ export function startRuntimeListener(
         : `${agent.model.provider}/${agent.model.model}`,
       agentId: agent.id,
       agentSlug: agent.slug,
-      ts: runStartedAt,
-      startedAt: runStartedAt,
+      ts: Date.now(),
       detail: mentionedAgents.length > 0
         ? mentionedAgents.map((mentioned) => `@${mentioned.slug} — ${mentioned.description || mentioned.name}`).join('\n')
-        : 'Thinking…',
+        : undefined,
     });
     for (const path of detail.filePaths ?? []) {
       activity.record({
@@ -976,11 +928,11 @@ export function startRuntimeListener(
     let explicitTerminalContext = '';
     let jarvisCoordinationContext = '';
     let allAboutMeContext = '';
-    let userIdentityContext = '';
-    let defaultWriteDirContext = '';
     let pluginContext = '';
     let pluginStatusContext = '';
     let selectedSkillsContext = '';
+    const resolvedContextBlock = formatResolvedJarvisContext(resolvedRequestContext);
+    const requestIntentBlock = formatJarvisIntentPolicy(requestIntent);
     try {
       projectContext = await getProjectContextBlock(projectId);
     } catch (err) {
@@ -1062,33 +1014,12 @@ export function startRuntimeListener(
     }
     if (agent.slug === 'jarvis') {
       try {
-        userIdentityContext = buildUserIdentityContextBlock(useAuthStore.getState().displayName);
-      } catch (err) {
-        devConsole.log({
-          channel: 'ai',
-          level: 'warn',
-          message: 'user identity context build failed',
-          detail: { error: err instanceof Error ? err.message : String(err) },
-        });
-      }
-      try {
         allAboutMeContext = buildAllAboutMeContextBlock(useAllAboutMeStore.getState().markdown);
       } catch (err) {
         devConsole.log({
           channel: 'ai',
           level: 'warn',
           message: 'AllAboutMe.md context build failed',
-          detail: { error: err instanceof Error ? err.message : String(err) },
-        });
-      }
-      try {
-        const writeDir = await resolveDefaultWriteDir();
-        defaultWriteDirContext = defaultWriteFolderContextBlock(writeDir);
-      } catch (err) {
-        devConsole.log({
-          channel: 'ai',
-          level: 'warn',
-          message: 'default write folder context build failed',
           detail: { error: err instanceof Error ? err.message : String(err) },
         });
       }
@@ -1137,13 +1068,13 @@ export function startRuntimeListener(
     const contextBlocks = [
       projectContext,
       projectContextTree,
-      userIdentityContext,
       allAboutMeContext,
-      defaultWriteDirContext,
       pluginContext,
       pluginStatusContext,
       selectedSkillsContext,
-      getInteractionModeOverlay(interactionMode),
+      resolvedContextBlock,
+      requestIntentBlock,
+      getInteractionModeOverlay(interactionMode, requestIntent.needsVisiblePlan),
       structuredContextBlock(detail.structuredContext),
       mentionedAgentContext,
       explicitContext,
@@ -1286,22 +1217,6 @@ export function startRuntimeListener(
 
       // Read the now-current history; pass it (sans placeholder) to the model.
       const history = await bindings.getMessages(chatId);
-      // Creator chats no longer seed a long visible prompt above the questions.
-      // Inject the drafting contract into the system prompt every turn instead.
-      const creatorKind =
-        creatorDraftKindFromStructuredContext(detail.structuredContext) ??
-        creatorDraftKindFromMessages(history);
-      if (creatorKind) {
-        runnable = {
-          ...runnable,
-          system_prompt: [
-            buildJarvisCreatorPrompt(creatorKind),
-            runnable.system_prompt ?? '',
-          ]
-            .filter(Boolean)
-            .join('\n\n'),
-        };
-      }
       const includeImages = stackStepsEarly.length > 0
         ? stackStepsEarly.every((step) => modelSupportsVision(step.provider, step.model))
         : modelSupportsVision(runnable.model.provider, runnable.model.model);
@@ -1395,18 +1310,12 @@ export function startRuntimeListener(
       // textToParts() splits the text on action-proposal fences so the
       // chat thread renders inline Approve/Cancel cards alongside prose.
       const finalText = sanitizePromptLeaks(sanitizeUnsupportedActionMacros(sanitizeCredentialRequests(response.text || acc)));
-      // Suppress "Make with Jarvis" action fallback when we are already inside
-      // the creator wizard (question answers / creator chat) so Continue drafts
-      // the skill/agent instead of re-opening the creator approval card.
-      const suppressCreatorStartFallback =
-        Boolean(creatorKind) ||
-        detail.structuredContext?.kind === 'question_answers';
       const finalParts = response.stackResult
         ? [
             ...response.stackResult.steps.map(stackStepToPart),
-            ...textToParts(finalText, stackText, interactionMode, { suppressCreatorStartFallback }),
+            ...textToParts(finalText, stackText, interactionMode),
           ]
-        : textToParts(finalText, text, interactionMode, { suppressCreatorStartFallback });
+        : textToParts(finalText, text, interactionMode);
       await bindings.updateMessage(placeholder.id, {
         parts: finalParts,
         usage: {
@@ -1438,10 +1347,6 @@ export function startRuntimeListener(
         title: `@${agent.slug} finished`,
         subtitle: `${response.provider}/${response.model} · ${response.usage.input_tokens}+${response.usage.output_tokens} tokens`,
         ts: Date.now(),
-        endedAt: Date.now(),
-        inputTokens: response.usage.input_tokens,
-        outputTokens: response.usage.output_tokens,
-        detail: 'Done',
       });
       dispatchRunState(chatId, 'done');
       updateStructuredAgentStatus(detail.structuredContext, 'done', 'Finished');
@@ -1564,8 +1469,6 @@ export function startRuntimeListener(
         title: aborted ? `@${agent.slug} cancelled` : `@${agent.slug} failed`,
         subtitle: aborted ? 'Cancelled by user' : ((err as Error)?.message ?? 'Unknown error'),
         ts: Date.now(),
-        endedAt: Date.now(),
-        detail: aborted ? 'Cancelled' : ((err as Error)?.message ?? 'Error'),
       });
       dispatchRunState(chatId, aborted ? 'cancelled' : 'error');
       updateStructuredAgentStatus(detail.structuredContext, aborted ? 'cancelled' : 'failed', aborted ? 'Cancelled' : 'Failed');

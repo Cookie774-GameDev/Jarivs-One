@@ -64,6 +64,13 @@ vi.mock('./context', () => ({
   getExplicitFilesBlock: async () => '',
   getExplicitTerminalBlock: () => '',
   getJarvisCoordinationContextBlock: mocks.getJarvisCoordinationContextBlock,
+  rememberConversationDestination: () => undefined,
+  resolveJarvisContext: async () => ({
+    relevantFiles: [],
+    enabledCapabilities: [],
+    sourceReasons: [],
+  }),
+  formatResolvedJarvisContext: () => '',
 }));
 
 import { startRuntimeListener } from './runtime';
@@ -1160,5 +1167,87 @@ describe('startRuntimeListener agent routing', () => {
     );
 
     stop();
+  });
+
+  it('opens a deterministic three-question card when the user explicitly asks first', async () => {
+    const jarvis = agent('agent_jarvis', 'jarvis', 'You are Jarvis.');
+    const chatId = 'chat_explicit_questions' as ChatId;
+    const updateMessage = vi.fn(async () => undefined);
+    const userMessage: Message = {
+      id: 'msg_explicit_questions_user' as MessageId,
+      chat_id: chatId,
+      role: 'user',
+      parts: [{ kind: 'text', text: 'Build a game, but ask me three questions first.' }],
+      created_at: 1,
+      updated_at: 1,
+    };
+    mocks.runAgent.mockResolvedValueOnce({
+      text: 'Sure, I will ask questions.',
+      usage: { input_tokens: 1, output_tokens: 2, cost_usd: 0 },
+      provider: 'mock',
+      model: 'mock-default',
+    });
+    trackListener(startRuntimeListener({
+      getAgentById: () => jarvis,
+      getAgentBySlug: () => jarvis,
+      getAgentForChat: vi.fn(async () => jarvis),
+      getMessages: vi.fn(async () => [userMessage]),
+      appendMessage: vi.fn(async (message) => ({
+        ...message, id: 'msg_explicit_questions_assistant' as MessageId, created_at: 2, updated_at: 2,
+      })),
+      updateMessage,
+    }));
+    window.dispatchEvent(new CustomEvent('jarvis:send', {
+      detail: { chatId, text: 'Build a game, but ask me three questions first.' },
+    }));
+
+    await vi.waitFor(() => expect(updateMessage).toHaveBeenCalled());
+    const final = (updateMessage.mock.calls as unknown as Array<
+      [MessageId, { parts: Part[] }]
+    >).at(-1)?.[1].parts;
+    const questionPart = final?.find((part) => part.kind === 'question_block');
+    expect(questionPart?.kind).toBe('question_block');
+    if (questionPart?.kind !== 'question_block') return;
+    expect(questionPart.block.questions).toHaveLength(3);
+    expect(questionPart.block.questions.every((question) => question.options?.length === 3)).toBe(true);
+  });
+
+  it('does not force an implementation plan card for informational Plan Mode requests', async () => {
+    const jarvis = agent('agent_jarvis', 'jarvis', 'You are Jarvis.');
+    const chatId = 'chat_plan_information' as ChatId;
+    const updateMessage = vi.fn(async () => undefined);
+    const userMessage: Message = {
+      id: 'msg_plan_information_user' as MessageId,
+      chat_id: chatId,
+      role: 'user',
+      parts: [{ kind: 'text', text: 'How do I make coffee step by step?' }],
+      created_at: 1,
+      updated_at: 1,
+    };
+    mocks.runAgent.mockResolvedValueOnce({
+      text: '1. Heat water.\n2. Brew the coffee.\n3. Serve.',
+      usage: { input_tokens: 1, output_tokens: 10, cost_usd: 0 },
+      provider: 'mock',
+      model: 'mock-default',
+    });
+    trackListener(startRuntimeListener({
+      getAgentById: () => jarvis,
+      getAgentBySlug: () => jarvis,
+      getAgentForChat: vi.fn(async () => jarvis),
+      getMessages: vi.fn(async () => [userMessage]),
+      appendMessage: vi.fn(async (message) => ({
+        ...message, id: 'msg_plan_information_assistant' as MessageId, created_at: 2, updated_at: 2,
+      })),
+      updateMessage,
+    }));
+    window.dispatchEvent(new CustomEvent('jarvis:send', {
+      detail: { chatId, text: 'How do I make coffee step by step?', interactionMode: 'plan' },
+    }));
+
+    await vi.waitFor(() => expect(updateMessage).toHaveBeenCalled());
+    const final = (updateMessage.mock.calls as unknown as Array<
+      [MessageId, { parts: Part[] }]
+    >).at(-1)?.[1].parts;
+    expect(final).toEqual([{ kind: 'text', text: '1. Heat water.\n2. Brew the coffee.\n3. Serve.' }]);
   });
 });

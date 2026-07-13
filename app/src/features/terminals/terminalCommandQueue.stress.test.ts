@@ -109,4 +109,12 @@ describe('terminal command queue stress', () => {
     expect(items[1]).toMatchObject({ kind: 'close', count: 1 });
     expect(items[2]).toMatchObject({ kind: 'shell', target: 'all', command: 'echo hi' });
   });
+
+  it('cancels an exact queued command without touching neighboring work', () => {
+    const first = enqueueTerminalCommand({ command: 'echo first' });
+    const second = enqueueTerminalCommand({ command: 'echo second' });
+    expect(useTerminalCommandQueue.getState().cancel(first)).toBe(true);
+    expect(useTerminalCommandQueue.getState().cancel(first)).toBe(false);
+    expect(useTerminalCommandQueue.getState().drain().map((item) => item.id)).toEqual([second]);
+  });
 });

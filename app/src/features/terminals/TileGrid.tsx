@@ -72,6 +72,7 @@ import {
   serializeTerminalRef,
   type TerminalRef,
 } from './terminalRefs';
+import { attachTerminalExecution, markTerminalExecution } from './terminalExecutionStore';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
@@ -579,7 +580,10 @@ export function TileGrid({
       isFullscreen={fullscreenPaneId === leaf.id}
       canFullscreen={canFullscreen}
       onClose={() => handleClose(leaf.id)}
-      onAttach={(sid) => handleSessionAttach(leaf.id, sid)}
+      onAttach={(sid) => {
+        handleSessionAttach(leaf.id, sid);
+        void attachTerminalExecution(leaf.executionId, sid);
+      }}
       onPendingCommandSent={() => handlePendingCommandSent(leaf.id)}
       onAgentSelection={(selection) => handleAgentSelection(leaf.id, selection)}
       onFontSizeCycle={() => handleFontSizeCycle(leaf.id)}
@@ -1238,12 +1242,18 @@ function Tile({
           startupCommand={leaf.startupCommand}
           pendingCommand={leaf.pendingCommand}
           pendingCommandId={leaf.pendingCommandId}
+          executionId={leaf.executionId}
           cwd={leaf.cwd}
           fontSize={fontSize}
           agentSlug={leaf.agentSlug ?? null}
           agentMode={resolvePaneAgentMode(leaf)}
           onReady={onAttach}
           onPendingCommandSent={onPendingCommandSent}
+          onExit={(code) => markTerminalExecution(
+            leaf.executionId,
+            code === 0 ? 'complete' : code === null ? 'cancelled' : 'failed',
+            { exitCode: code },
+          )}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
           projectId={projectId}

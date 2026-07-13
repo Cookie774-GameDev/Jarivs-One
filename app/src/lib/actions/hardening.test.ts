@@ -26,11 +26,13 @@ import { useToolStore } from '@/features/tools/toolStore';
 import { useTerminalTranscriptStore } from '@/features/terminals/transcriptStore';
 import { useUIStore } from '@/stores/ui';
 import { useTerminalCommandQueue } from '@/features/terminals/terminalCommandQueue';
+import { useTerminalExecutionStore } from '@/features/terminals/terminalExecutionStore';
 
 describe('runAction param coercion', () => {
   beforeEach(() => {
     useToolStore.setState({ tools: [] });
     useTerminalCommandQueue.getState().clear();
+    useTerminalExecutionStore.getState().clear();
     // Make sure each test starts with a known route so navigation
     // assertions don't depend on the previous test's state.
     useUIStore.getState().setRoute('chat');
@@ -46,7 +48,7 @@ describe('runAction param coercion', () => {
       { source: 'user' },
     );
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.summary).toBe('Opening 2 terminal panes.');
+    if (result.ok) expect(result.summary).toBe('Queued 2 terminal panes.');
   });
 
   it('rejects non-numeric strings on number-typed params', async () => {
@@ -94,6 +96,7 @@ describe('terminal action shell-injection guard', () => {
   beforeEach(() => {
     useToolStore.setState({ tools: [] });
     useTerminalCommandQueue.getState().clear();
+    useTerminalExecutionStore.getState().clear();
     useUIStore.getState().setRoute('chat');
   });
 
@@ -160,6 +163,51 @@ describe('terminal action shell-injection guard', () => {
     );
     expect(result.ok).toBe(true);
     expect(useUIStore.getState().route).toBe('terminal');
+  });
+
+  it('queues approved PowerShell as a UTF-16LE encoded command', async () => {
+    const script = "Write-Output 'hello world'; $value = 2 + 2";
+    const result = await runAction(
+      'terminal.powershell',
+      { command: script, cwd: 'C:\\Projects\\Farm Life' },
+      { source: 'ai' },
+      { emitToast: false },
+    );
+
+    expect(result.ok).toBe(true);
+    const queued = useTerminalCommandQueue.getState().drain();
+    expect(queued).toHaveLength(1);
+    expect(queued[0]).toMatchObject({
+      kind: 'shell',
+      cwd: 'C:\\Projects\\Farm Life',
+    });
+    const command = (queued[0] as { command: string }).command;
+    expect(command).toMatch(/^powershell\.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand /);
+    const encoded = command.split(' ').at(-1)!;
+    const bytes = Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
+    const decoded = Array.from({ length: bytes.length / 2 }, (_, index) =>
+      String.fromCharCode(bytes[index * 2]! | (bytes[index * 2 + 1]! << 8)),
+    ).join('');
+    expect(decoded).toBe(script);
+    if (result.ok) expect(result.data).toEqual(expect.objectContaining({ state: 'queued' }));
+  });
+
+  it('attaches a bounded opt-in timeout to a queued command', async () => {
+    const result = await runAction(
+      'terminal.run',
+      { command: 'npm test', timeoutMs: 30_000 },
+      { source: 'ai' },
+      { emitToast: false },
+    );
+    expect(result.ok).toBe(true);
+    const executionId = result.ok
+      ? (result.data as { executionId?: string } | undefined)?.executionId
+      : undefined;
+    expect(executionId).toBeTruthy();
+    expect(useTerminalExecutionStore.getState().executions[executionId!]).toMatchObject({
+      status: 'queued',
+      timeoutMs: 30_000,
+    });
   });
 });
 

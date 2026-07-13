@@ -22,7 +22,7 @@
 //!   - This command is read-only. No write counterpart yet — the AI
 //!     workflow doesn't need one and the safest privilege is "only
 //!     what's used."
-//!   - No directory listing, no globbing — keep the surface tight.
+//!   - No globbing — keep the surface tight.
 //!   - The size cap (100 MiB) is high enough for large project files,
 //!     while prompt callers use `fs_read_text_sample` so huge logs do
 //!     not get copied wholesale into the WebView heap.
@@ -283,4 +283,113 @@ pub fn fs_create_text_file(path: String, root: Option<String>) -> Result<(), Str
         return Err("already_exists".to_string());
     }
     std::fs::write(&p, b"").map_err(|e| format!("io: {}", e))
+}
+
+#[tauri::command]
+pub fn fs_create_text_with_content(
+    path: String,
+    content: String,
+    root: Option<String>,
+) -> Result<(), String> {
+    if content.len() > MAX_WRITE_BYTES {
+        return Err("too_large".to_string());
+    }
+    let p = writable_path(&path, root.as_deref())?;
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&p)
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::AlreadyExists {
+                "already_exists".to_string()
+            } else {
+                format!("io: {}", e)
+            }
+        })?;
+    std::io::Write::write_all(&mut file, content.as_bytes())
+        .map_err(|e| format!("io: {}", e))
+}
+
+#[tauri::command]
+pub fn fs_create_dir_all(path: String, root: Option<String>) -> Result<(), String> {
+    let p = require_absolute(&path)?;
+    let canonical_root = canonical_root(root.as_deref())?;
+    if p.exists() {
+        let canonical = std::fs::canonicalize(&p).map_err(|e| format!("io: {}", e))?;
+        ensure_inside_root(&canonical, canonical_root.as_ref())?;
+        return if canonical.is_dir() {
+            Ok(())
+        } else {
+            Err("not_a_dir".to_string())
+        };
+    }
+
+    let mut existing_ancestor = p.parent().ok_or_else(|| "parent_not_found".to_string())?;
+    while !existing_ancestor.exists() {
+        existing_ancestor = existing_ancestor
+            .parent()
+            .ok_or_else(|| "parent_not_found".to_string())?;
+    }
+    let canonical_ancestor =
+        std::fs::canonicalize(existing_ancestor).map_err(|e| format!("io: {}", e))?;
+    ensure_inside_root(&canonical_ancestor, canonical_root.as_ref())?;
+    std::fs::create_dir_all(&p).map_err(|e| format!("io: {}", e))?;
+    let canonical = std::fs::canonicalize(&p).map_err(|e| format!("io: {}", e))?;
+    ensure_inside_root(&canonical, canonical_root.as_ref())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_root(label: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "vibespace-fsread-{}-{}-{}",
+            label,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ))
+    }
+
+    #[test]
+    fn creates_content_once_and_refuses_overwrite() {
+        let root = test_root("create");
+        std::fs::create_dir_all(&root).unwrap();
+        let file = root.join("dogs.md");
+        let root_text = root.to_string_lossy().to_string();
+        let file_text = file.to_string_lossy().to_string();
+        fs_create_text_with_content(
+            file_text.clone(),
+            "# Dogs".to_string(),
+            Some(root_text.clone()),
+        )
+        .unwrap();
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "# Dogs");
+        assert_eq!(
+            fs_create_text_with_content(file_text, "changed".to_string(), Some(root_text)),
+            Err("already_exists".to_string())
+        );
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "# Dogs");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn creates_nested_directory_inside_root_and_rejects_file_collision() {
+        let root = test_root("dir");
+        std::fs::create_dir_all(&root).unwrap();
+        let nested = root.join("Projects").join("FarmLife");
+        let root_text = root.to_string_lossy().to_string();
+        fs_create_dir_all(nested.to_string_lossy().to_string(), Some(root_text.clone())).unwrap();
+        assert!(nested.is_dir());
+        let collision = root.join("Projects").join("not-a-folder");
+        std::fs::write(&collision, b"file").unwrap();
+        assert_eq!(
+            fs_create_dir_all(collision.to_string_lossy().to_string(), Some(root_text)),
+            Err("not_a_dir".to_string())
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }

@@ -19,6 +19,7 @@ export interface JarvisQuestion {
   required?: boolean;
   allowSkip?: boolean;
   placeholder?: string;
+  allowCustomResponse?: true;
 }
 
 export interface JarvisQuestionAnswer {
@@ -32,6 +33,7 @@ export interface JarvisQuestionBlock {
   id: string;
   title?: string;
   description?: string;
+  originalRequest?: string;
   questions: JarvisQuestion[];
   answers?: JarvisQuestionAnswer[];
   status: 'pending' | 'answered' | 'skipped' | 'cancelled';

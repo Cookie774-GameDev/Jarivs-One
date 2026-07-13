@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { ClipboardList, RotateCcw, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { messageRepo } from '@/lib/db/repositories';
@@ -29,6 +29,8 @@ export function PlanReviewCard({ part, messageId, chatId }: PlanReviewCardProps)
   const [redoOpen, setRedoOpen] = useState(false);
   const [revision, setRevision] = useState('');
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const busyRef = useRef(false);
 
   const writeStatus = async (status: JarvisPlanReview['status']) => {
     if (!messageId) return;
@@ -44,28 +46,35 @@ export function PlanReviewCard({ part, messageId, chatId }: PlanReviewCardProps)
   };
 
   const handleBuild = async () => {
-    if (!chatId || busy || plan.status !== 'pending') return;
+    if (!chatId || busyRef.current || plan.status !== 'pending') return;
+    busyRef.current = true;
     setBusy(true);
-    if (!canExecute) {
-      await writeStatus('built');
-      setBusy(false);
-      return;
-    }
-    await writeStatus('building');
-    useJarvisInteractionStore.getState().setChatMode(chatId, 'agent');
-    window.dispatchEvent(new CustomEvent('jarvis:send', {
-      detail: {
-        chatId,
-        text: `Build this approved plan:\n\n${planText(plan)}`,
-        interactionMode: 'agent',
-        structuredContext: {
-          kind: 'plan_build',
-          sourceMessageId: messageId,
-          payload: { plan },
+    setError(null);
+    try {
+      if (!canExecute) {
+        await writeStatus('built');
+        return;
+      }
+      await writeStatus('building');
+      useJarvisInteractionStore.getState().setChatMode(chatId, 'agent');
+      window.dispatchEvent(new CustomEvent('jarvis:send', {
+        detail: {
+          chatId,
+          text: `Build this approved plan:\n\n${planText(plan)}`,
+          interactionMode: 'agent',
+          structuredContext: {
+            kind: 'plan_build',
+            sourceMessageId: messageId,
+            payload: { plan },
+          },
         },
-      },
-    }));
-    setBusy(false);
+      }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'The plan could not start. Please retry.');
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
   };
 
   const handleRedo = async () => {
@@ -126,6 +135,7 @@ export function PlanReviewCard({ part, messageId, chatId }: PlanReviewCardProps)
       {plan.status !== 'pending' && (
         <p className="mt-2 text-secondary text-muted-foreground">Plan status: {plan.status}</p>
       )}
+      {error && <p role="alert" className="mt-2 text-secondary text-destructive">{error}</p>}
       {redoOpen && (
         <div className="mt-3 flex flex-col gap-2">
           <textarea
