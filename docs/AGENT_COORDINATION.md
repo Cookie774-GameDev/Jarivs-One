@@ -379,6 +379,11 @@ Append new entries at the **bottom** of the relevant agent section. Use [How to 
 | `app/src-tauri/src/{cli_bridge,lib}.rs` | Claude 1 (`AGENT-CLAUDE1-20260713-112348-SCB1`) | v0.1.49 | in-progress | Shell-free detection, probes, structured process execution and cancellation |
 | `app/src/lib/usage/**`, `app/src/features/chat/{Composer,ModelPickerTypeahead,SlashCommandTypeahead,MessagePart,UsageCard,ConnectionInfoPopover}.tsx` | Claude 1 (`AGENT-CLAUDE1-20260713-112348-SCB1`) | v0.1.49 | in-progress | Truthful usage data, picker mode labels, usage card, capability gating |
 | `app/src/features/settings/{SettingsModal,settingsPrefetch,settingsTabMemory}.ts*`, `app/src/features/settings/sections/{Providers,SubscriptionCliBridge}.tsx` | Claude 1 (`AGENT-CLAUDE1-20260713-112348-SCB1`) | v0.1.49 | in-progress | Compact Subscription & CLI Bridge settings surface |
+| `docs/AGENT_COORDINATION.md`, `docs/superpowers/plans/2026-07-13-subscription-cli-bridge.md` | Claude 1 / Codex (`AGENT-CODEX-20260713-121609-SCB2`) | v0.1.49 | in-progress | Collision-free worktree `.worktrees/subscription-cli-bridge-codex`; plan and coordination only |
+| `app/src/lib/ai/adapters/**`, `app/src/lib/ai/{router,runtime,types,modelSelection,useAccessibleChatModels}.ts`, `app/src/stores/auth.ts`, `app/src/types/chat.ts`, `app/src/lib/db/repositories.ts` | Claude 1 / Codex (`AGENT-CODEX-20260713-121609-SCB2`) | v0.1.49 | in-progress | Connection registry, exact routing, per-chat persistence; isolated branch scope |
+| `app/src-tauri/src/{cli_bridge,lib}.rs` | Claude 1 / Codex (`AGENT-CODEX-20260713-121609-SCB2`) | v0.1.49 | in-progress | Shell-free CLI discovery, execution, cancellation; isolated branch scope |
+| `app/src/lib/usage/**`, `app/src/features/chat/{Composer,ModelPickerTypeahead,SlashCommandTypeahead,MessagePart,UsageCard,ConnectionInfoPopover}.tsx` | Claude 1 / Codex (`AGENT-CODEX-20260713-121609-SCB2`) | v0.1.49 | in-progress | Truthful usage, picker labels, usage card, capability gating; isolated branch scope |
+| `app/src/features/settings/{SettingsModal,settingsPrefetch,settingsTabMemory}.ts*`, `app/src/features/settings/sections/{Providers,SubscriptionCliBridge}.tsx` | Claude 1 / Codex (`AGENT-CODEX-20260713-121609-SCB2`) | v0.1.49 | in-progress | Compact settings surface; isolated branch scope |
 | `docs/AGENT_COORDINATION.md` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | Blocked handoff recorded; no final merge SHA |
 | `docs/superpowers/plans/2026-07-10-pr15-safe-merge.md` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | High-risk merge execution plan |
 | `.github/workflows/pages.yml` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | Current GitHub Pages deployment behavior preserved |
@@ -1664,4 +1669,16 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Status** | implementation approved 2026-07-13; isolated worktree active at `.worktrees/subscription-cli-bridge`; implementation locks claimed |
 | **Files touched** | Coordination and worktree-safety metadata only before isolated-worktree creation; product scopes will be locked in the feature worktree before edits |
 | **Constraints** | No Stripe, Supabase, billing, subscription, schema, website, phone, entitlement, deployment, merge, release, credential, or production changes. No provider auth prompts or billable probes. |
+
+#### 2026-07-13 - Subscription & CLI Bridge collision-free implementation worktree
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-13 12:16 CT |
+| **Agent ID** | `AGENT-CODEX-20260713-121609-SCB2` |
+| **Branch / worktree** | `feature/subscription-cli-bridge-codex` at `ecd459c1ff0934d5cf361b72ea92ea87f9f36f29`; `.worktrees/subscription-cli-bridge-codex` |
+| **Task** | Execute the approved Subscription & CLI Bridge plan through a reusable adapter registry, safe Tauri supervisor, ten-target catalog, per-chat connections, and truthful `/usage`. |
+| **Coordination event** | Another workspace agent appended an unrelated Jarvis gold-standard task and overlapping locks inside `.worktrees/subscription-cli-bridge` under the briefing-derived ID. Its changes were preserved byte-for-byte. This task moved to a separate branch/worktree and registered this fresh unique ID before product edits. |
+| **Locks** | Exact feature scopes claimed in the lock table above for this isolated branch. |
+| **Status** | in-progress; dependency and clean-baseline setup |
 
