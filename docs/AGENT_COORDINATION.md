@@ -382,6 +382,7 @@ Append new entries at the **bottom** of the relevant agent section. Use [How to 
 | `docs/AGENT_COORDINATION.md`, `docs/superpowers/plans/2026-07-13-subscription-cli-bridge.md` | Claude 1 / Codex (`AGENT-CODEX-20260713-121609-SCB2`) | v0.1.49 | in-progress | Collision-free worktree `.worktrees/subscription-cli-bridge-codex`; plan and coordination only |
 | `app/src/lib/ai/adapters/**`, `app/src/lib/ai/{router,runtime,types,modelSelection,useAccessibleChatModels}.ts`, `app/src/stores/auth.ts`, `app/src/types/chat.ts`, `app/src/lib/db/repositories.ts` | Claude 1 / Codex (`AGENT-CODEX-20260713-121609-SCB2`) | v0.1.49 | in-progress | Connection registry, exact routing, per-chat persistence; isolated branch scope |
 | `app/src-tauri/src/{cli_bridge,lib}.rs` | Claude 1 / Codex (`AGENT-CODEX-20260713-121609-SCB2`) | v0.1.49 | in-progress | Shell-free CLI discovery, execution, cancellation; isolated branch scope |
+| `app/src-tauri/Cargo.toml` (Windows feature flags only) | Claude 1 / Codex (`AGENT-CODEX-20260713-121609-SCB2`) | v0.1.49 | in-progress | Existing `windows` 0.61 JobObjects/Threading/ToolHelp/Security features for race-free CLI process-tree containment; no crate/version change |
 | `app/src/lib/usage/**`, `app/src/features/chat/{Composer,ModelPickerTypeahead,SlashCommandTypeahead,MessagePart,UsageCard,ConnectionInfoPopover}.tsx` | Claude 1 / Codex (`AGENT-CODEX-20260713-121609-SCB2`) | v0.1.49 | in-progress | Truthful usage, picker labels, usage card, capability gating; isolated branch scope |
 | `app/src/features/settings/{SettingsModal,settingsPrefetch,settingsTabMemory}.ts*`, `app/src/features/settings/sections/{Providers,SubscriptionCliBridge}.tsx` | Claude 1 / Codex (`AGENT-CODEX-20260713-121609-SCB2`) | v0.1.49 | in-progress | Compact settings surface; isolated branch scope |
 | `docs/AGENT_COORDINATION.md` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | Blocked handoff recorded; no final merge SHA |
@@ -1693,4 +1694,16 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Verification** | Focused Vitest: 3 files / 21 tests PASS; TypeScript typecheck PASS. Task review: spec PASS, quality PASS, no remaining findings. |
 | **Locks** | Task 1 scopes remain held because later routing/usage tasks consume the same shared contracts. |
 | **Status** | Task 1 complete; Task 2 Rust supervisor next. |
+
+#### 2026-07-13 - Subscription & CLI Bridge Task 2 complete
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-13 16:38 CT |
+| **Agent ID** | `AGENT-CODEX-20260713-121609-SCB2` |
+| **Commit** | `4500ddf` — `feat(tauri): add secure external CLI supervisor` |
+| **Result** | Opaque trusted executable registry, shell-free bounded probes/execution, compositional stateful redaction, incremental JSONL events, cancellation, and race-free Windows Job Object descendant containment implemented. |
+| **Verification** | Full Rust test target compiled with `--no-run`; scoped rustfmt/diff checks PASS; fresh static security review PASS with no findings. Enterprise Code Integrity blocks unsigned local runtime artifacts, so the Windows descendant regression is required in signed CI. |
+| **Scope** | Existing `windows` 0.61 dependency gained four feature flags only; no dependency version, credential, billing, schema, production, release, merge, or deploy change. |
+| **Status** | Task 2 complete; Task 3 external adapter catalog next. |
 
