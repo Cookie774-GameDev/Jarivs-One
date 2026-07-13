@@ -31,12 +31,26 @@ export function Pets() {
   const idleFunIntervalMs = usePetSettingsStore((s) => s.idleFunIntervalMs);
   const showDiagnostics = usePetSettingsStore((s) => s.showDiagnostics);
   const overlayVisible = usePetSettingsStore((s) => s.overlayVisible);
+  const panelMode = usePetSettingsStore((s) => s.panelMode);
+  const positionLocked = usePetSettingsStore((s) => s.positionLocked);
+  const edgeSnapping = usePetSettingsStore((s) => s.edgeSnapping);
+  const animationLevel = usePetSettingsStore((s) => s.animationLevel);
+  const soundEnabled = usePetSettingsStore((s) => s.soundEnabled);
+  const notificationReactions = usePetSettingsStore((s) => s.notificationReactions);
+  const pointerTracking = usePetSettingsStore((s) => s.pointerTracking);
   const setEnabled = usePetSettingsStore((s) => s.setEnabled);
   const setReducedMotion = usePetSettingsStore((s) => s.setReducedMotion);
   const setSleepTimeoutMs = usePetSettingsStore((s) => s.setSleepTimeoutMs);
   const setIdleFunIntervalMs = usePetSettingsStore((s) => s.setIdleFunIntervalMs);
   const setShowDiagnostics = usePetSettingsStore((s) => s.setShowDiagnostics);
   const setOverlayVisible = usePetSettingsStore((s) => s.setOverlayVisible);
+  const setPanelMode = usePetSettingsStore((s) => s.setPanelMode);
+  const setPositionLocked = usePetSettingsStore((s) => s.setPositionLocked);
+  const setEdgeSnapping = usePetSettingsStore((s) => s.setEdgeSnapping);
+  const setAnimationLevel = usePetSettingsStore((s) => s.setAnimationLevel);
+  const setSoundEnabled = usePetSettingsStore((s) => s.setSoundEnabled);
+  const setNotificationReactions = usePetSettingsStore((s) => s.setNotificationReactions);
+  const setPointerTracking = usePetSettingsStore((s) => s.setPointerTracking);
 
   const panelLifecycle = usePetPresentationStore((s) => s.panelLifecycle);
   const chats = usePetPresentationStore((s) => s.chats);
@@ -77,11 +91,11 @@ export function Pets() {
   };
 
   const resetPanelPosition = async () => {
-    await openOrFocusPetPanel(200, 120);
+    await openOrFocusPetPanel(200, 120, panelMode);
   };
 
   const openPanel = async () => {
-    await openOrFocusPetPanel();
+    await openOrFocusPetPanel(undefined, undefined, panelMode);
   };
 
   const diag = (anim: PetForceAnimDetail['anim']) => {
@@ -126,6 +140,83 @@ export function Pets() {
             else void hidePet();
           }}
         />
+      </section>
+
+      <section className="flex flex-col gap-3 max-w-lg rounded-lg border border-border p-3">
+        <div>
+          <Label>Mini-panel behavior</Label>
+          <p className="text-metadata text-muted-foreground mt-1">
+            The Pet stays above normal apps. The panel only stays on top when you choose it.
+          </p>
+        </div>
+        <div
+          className="grid grid-cols-1 gap-1.5 sm:grid-cols-3"
+          role="group"
+          aria-label="Mini-panel behavior"
+        >
+          {(
+            [
+              ['follow-pet', 'Follows Pet'],
+              ['always-on-top', 'Stays on top'],
+              ['normal', 'Normal window'],
+            ] as const
+          ).map(([mode, label]) => (
+            <Button
+              key={mode}
+              size="sm"
+              type="button"
+              variant={panelMode === mode ? 'default' : 'outline'}
+              aria-pressed={panelMode === mode}
+              onClick={() => setPanelMode(mode)}
+            >
+              {label}
+            </Button>
+          ))}
+        </div>
+      </section>
+
+      <section className="grid max-w-lg grid-cols-1 gap-2 sm:grid-cols-2">
+        {(
+          [
+            ['pet-settings-lock', 'Lock Pet position', positionLocked, setPositionLocked],
+            ['pet-settings-snap', 'Snap to screen edges', edgeSnapping, setEdgeSnapping],
+            ['pet-settings-sound', 'Pet sounds', soundEnabled, setSoundEnabled],
+            [
+              'pet-settings-reactions',
+              'Notification reactions',
+              notificationReactions,
+              setNotificationReactions,
+            ],
+            ['pet-settings-pointer', 'Pointer tracking', pointerTracking, setPointerTracking],
+          ] as const
+        ).map(([id, label, checked, setter]) => (
+          <div
+            key={id}
+            className="flex items-center justify-between gap-2 rounded-lg border border-border p-3"
+          >
+            <Label htmlFor={id}>{label}</Label>
+            <Switch id={id} checked={checked} onCheckedChange={(value) => setter(Boolean(value))} />
+          </div>
+        ))}
+      </section>
+
+      <section className="flex flex-col gap-2 max-w-lg">
+        <Label>Animation level</Label>
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Pet animation level">
+          {(['off', 'reduced', 'calm', 'normal', 'playful'] as const).map((level) => (
+            <Button
+              key={level}
+              size="sm"
+              type="button"
+              className="capitalize"
+              variant={animationLevel === level ? 'default' : 'outline'}
+              aria-pressed={animationLevel === level}
+              onClick={() => setAnimationLevel(level)}
+            >
+              {level}
+            </Button>
+          ))}
+        </div>
       </section>
 
       <section className="flex items-start justify-between gap-3 max-w-md">
@@ -206,16 +297,16 @@ export function Pets() {
       <section className="rounded-lg border border-border p-3 text-sm space-y-1 max-w-lg">
         <div className="text-ui-strong">Status</div>
         <div className="text-muted-foreground">Pet enabled: {enabled ? 'yes' : 'no'}</div>
-        <div className="text-muted-foreground">Overlay visible flag: {overlayVisible ? 'yes' : 'no'}</div>
+        <div className="text-muted-foreground">
+          Overlay visible flag: {overlayVisible ? 'yes' : 'no'}
+        </div>
         <div className="text-muted-foreground">Runtime: {tauri ? 'Tauri' : 'Browser fallback'}</div>
         <div className="text-muted-foreground">Panel lifecycle: {panelLifecycle}</div>
         <div className="text-muted-foreground">
           Panel visible (Tauri): {panelVisible ? 'yes' : 'no / n/a'}
         </div>
         <div className="text-muted-foreground">Chats on panel: {petChats.length}</div>
-        <div className="text-muted-foreground">
-          Active chat: {panelActiveChatId ?? '—'}
-        </div>
+        <div className="text-muted-foreground">Active chat: {panelActiveChatId ?? '—'}</div>
         <div className="text-muted-foreground">
           Terminals on panel: {petTerms.map((t) => t.ptyId).join(', ') || '—'}
         </div>

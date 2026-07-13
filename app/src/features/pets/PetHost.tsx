@@ -23,6 +23,7 @@ import {
   setPetPanelOpenFlag,
   showPetOverlay,
 } from './petTauriBridge';
+import { installPetApplicationEventAdapters } from './petRuntimeEvents';
 import { shouldShowStandalonePet } from './petPanelLifecycle';
 import { installPetPresentationStorageSync } from './petPresentationStore';
 import { installPetSettingsStorageSync, usePetSettingsStore } from './petSettingsStore';
@@ -65,6 +66,11 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedMotionProp
       b();
     };
   }, []);
+
+  React.useEffect(() => {
+    if (!claimed) return;
+    return installPetApplicationEventAdapters();
+  }, [claimed]);
 
   React.useEffect(() => {
     if (!claimPetHostInstance()) {

@@ -50,6 +50,14 @@ import {
   type PetForceAnimDetail,
   usePetSettingsStore,
 } from './petSettingsStore';
+import { resolvePetMotionPolicy } from './petMotionPolicy';
+import {
+  petReactionForEvent,
+  shouldAcceptPetReaction,
+  subscribePetRuntimeEvents,
+  type PetReactionDescriptor,
+  type PetReactionId,
+} from './petRuntimeEvents';
 import { cn } from '@/lib/utils';
 
 const DISPLAY = 128;
@@ -82,7 +90,7 @@ export interface PetOverlayProps {
 
 export function PetOverlay({
   enabled = true,
-  reducedMotion = false,
+  reducedMotion: reducedMotionProp = false,
   className,
   panelOpen = false,
   onOpenPanel,
@@ -103,12 +111,18 @@ export function PetOverlay({
   const setPositionLocked = usePetSettingsStore((s) => s.setPositionLocked);
   const panelMode = usePetSettingsStore((s) => s.panelMode) ?? 'normal';
   const settingsEdgeSnapping = usePetSettingsStore((s) => s.edgeSnapping);
+  const animationLevel = usePetSettingsStore((s) => s.animationLevel) ?? 'calm';
+  const settingsIdleFunIntervalMs = usePetSettingsStore((s) => s.idleFunIntervalMs);
+  const notificationReactions = usePetSettingsStore((s) => s.notificationReactions) ?? true;
+  const pointerTracking = usePetSettingsStore((s) => s.pointerTracking) ?? true;
   const positionLocked = positionLockedProp ?? settingsPositionLocked ?? false;
   const edgeSnapping = edgeSnappingProp ?? settingsEdgeSnapping ?? true;
   const characterIdRef = React.useRef(characterId);
   characterIdRef.current = characterId;
 
   const [animLabel, setAnimLabel] = React.useState<PetAnimId>('welcome');
+  const [systemReducedMotion, setSystemReducedMotion] = React.useState(false);
+  const [runtimeReaction, setRuntimeReaction] = React.useState<PetReactionId>('idle');
   const [pos, setPos] = React.useState({ left: 24, top: 120 });
   const dragRef = React.useRef<{
     active: boolean;
@@ -131,12 +145,43 @@ export function PetOverlay({
   const lifecycleGenerationRef = React.useRef(0);
   const animationRequestRef = React.useRef(0);
   const welcomeReplayTimerRef = React.useRef(0);
+  const reactionTimerRef = React.useRef(0);
+  const reactionRef = React.useRef<PetReactionDescriptor | null>(null);
+  const reactionExpiresAtRef = React.useRef(0);
+  const reactionBaseAnimRef = React.useRef<PetAnimId>('idlePrimary');
   const onOpenPanelRef = React.useRef(onOpenPanel);
   onOpenPanelRef.current = onOpenPanel;
   const onAnimChangeRef = React.useRef(onAnimChange);
   onAnimChangeRef.current = onAnimChange;
 
   const man = React.useMemo(() => getPetAnimationsManifest(characterId), [characterId]);
+  React.useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const query = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const update = () => setSystemReducedMotion(query.matches);
+    update();
+    query.addEventListener?.('change', update);
+    return () => query.removeEventListener?.('change', update);
+  }, []);
+  const motionPolicy = React.useMemo(
+    () =>
+      resolvePetMotionPolicy({
+        level: animationLevel,
+        userReducedMotion: reducedMotionProp,
+        systemReducedMotion,
+        idleFunIntervalMs:
+          idleFunIntervalMs ?? settingsIdleFunIntervalMs ?? man.scheduler.idleFunIntervalMs,
+      }),
+    [
+      animationLevel,
+      idleFunIntervalMs,
+      man.scheduler.idleFunIntervalMs,
+      reducedMotionProp,
+      settingsIdleFunIntervalMs,
+      systemReducedMotion,
+    ],
+  );
+  const reducedMotion = motionPolicy.reducedMotion;
   const showDiagnostics = usePetSettingsStore((s) => s.showDiagnostics);
   const setCharacterId = usePetSettingsStore((s) => s.setCharacterId);
   const debugMode =
@@ -231,6 +276,8 @@ export function PetOverlay({
       if (currentAnim.current === animKey && player.isPlaybackReady(playbackKey, urls.jsonUrl)) {
         const fps = petPlaybackFps(resolved, def.fps, reducedMotion);
         player.setPlaybackFps(fps);
+        if (motionPolicy.animationsEnabled) player.resume();
+        else player.pause();
         return;
       }
 
@@ -264,16 +311,22 @@ export function PetOverlay({
             }
           },
         );
+        if (!motionPolicy.animationsEnabled) player.pause();
       } catch (err) {
         console.warn('[pets] pixi atlas load failed', resolved, charId, err);
         currentAnim.current = null;
       }
     },
-    [reducedMotion, setState],
+    [motionPolicy.animationsEnabled, reducedMotion, setState],
   );
 
   const playAnimRef = React.useRef(playAnim);
   playAnimRef.current = playAnim;
+
+  React.useEffect(() => {
+    if (motionPolicy.animationsEnabled) playerRef.current.resume();
+    else playerRef.current.pause();
+  }, [motionPolicy.animationsEnabled]);
 
   // The Pixi Application belongs to the mounted overlay, not to a character.
   // Axo ↔ Glitch swaps atlases on this same player/canvas/ticker.
@@ -309,7 +362,7 @@ export function PetOverlay({
     onAnimChangeRef.current?.(s0.anim);
 
     const sched = createPetScheduler({
-      idleFunIntervalMs: idleFunIntervalMs ?? man.scheduler.idleFunIntervalMs,
+      idleFunIntervalMs: motionPolicy.idleFunIntervalMs,
       sleepTimeoutMs: sleepTimeoutMs ?? man.scheduler.sleepTimeoutMs,
     });
     schedulerRef.current = sched;
@@ -326,7 +379,7 @@ export function PetOverlay({
   }, [
     enabled,
     characterId,
-    idleFunIntervalMs,
+    motionPolicy.idleFunIntervalMs,
     sleepTimeoutMs,
     man.scheduler.idleFunIntervalMs,
     man.scheduler.sleepTimeoutMs,
@@ -423,6 +476,63 @@ export function PetOverlay({
     return () => window.removeEventListener(PET_FORCE_ANIM_EVENT, onForce);
   }, [enabled, forceAnimation]);
 
+  const clearRuntimeReaction = React.useCallback(
+    (restoreUnderlying = true) => {
+      window.clearTimeout(reactionTimerRef.current);
+      reactionTimerRef.current = 0;
+      const hadReaction = reactionRef.current != null;
+      reactionRef.current = null;
+      reactionExpiresAtRef.current = 0;
+      setRuntimeReaction('idle');
+      if (!restoreUnderlying || !hadReaction) return;
+      const current = stateRef.current;
+      if (current.dragging || current.panelOpen || current.sleeping || current.shutdown) return;
+      setState({ ...current, anim: reactionBaseAnimRef.current });
+    },
+    [setState],
+  );
+
+  React.useEffect(() => {
+    if (!enabled || !notificationReactions) {
+      clearRuntimeReaction();
+      return;
+    }
+    const unsubscribe = subscribePetRuntimeEvents((event) => {
+      const incoming = petReactionForEvent(event.kind);
+      const now = Date.now();
+      if (
+        !shouldAcceptPetReaction(reactionRef.current, incoming, now, reactionExpiresAtRef.current)
+      ) {
+        return;
+      }
+      if (reactionRef.current == null || now >= reactionExpiresAtRef.current) {
+        reactionBaseAnimRef.current = stateRef.current.anim;
+      }
+      window.clearTimeout(reactionTimerRef.current);
+      reactionRef.current = incoming;
+      reactionExpiresAtRef.current = now + incoming.durationMs;
+      setRuntimeReaction(incoming.reaction);
+      if (motionPolicy.animationsEnabled && !stateRef.current.dragging) {
+        setState({ ...stateRef.current, anim: incoming.animation, sleeping: false });
+      }
+      reactionTimerRef.current = window.setTimeout(
+        () => clearRuntimeReaction(true),
+        incoming.durationMs,
+      );
+    });
+    return () => {
+      unsubscribe();
+      window.clearTimeout(reactionTimerRef.current);
+      reactionTimerRef.current = 0;
+    };
+  }, [
+    clearRuntimeReaction,
+    enabled,
+    motionPolicy.animationsEnabled,
+    notificationReactions,
+    setState,
+  ]);
+
   // Play current machine anim (walk/idle/sleep transitions). No texture thrash.
   React.useEffect(() => {
     if (!enabled) return;
@@ -441,14 +551,17 @@ export function PetOverlay({
     let raf = 0;
     const tick = () => {
       const s = stateRef.current;
-      const fire = schedulerRef.current?.tick(canScheduleIdleFun(s), canEnterSleep(s));
+      const fire = schedulerRef.current?.tick(
+        motionPolicy.idleFunEnabled && canScheduleIdleFun(s),
+        canEnterSleep(s),
+      );
       if (fire === 'idle_fun') setState(reducePetEvent(s, { type: 'idle_fun_tick' }));
       else if (fire === 'sleep') setState(reducePetEvent(s, { type: 'sleep_timeout' }));
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [enabled, setState]);
+  }, [enabled, motionPolicy.idleFunEnabled, setState]);
 
   const [ctxMenu, setCtxMenu] = React.useState<{ x: number; y: number } | null>(null);
 
@@ -529,6 +642,7 @@ export function PetOverlay({
 
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.button === 2) return;
+    clearRuntimeReaction(false);
     setCtxMenu(null);
     const el = e.currentTarget as HTMLElement;
     el.setPointerCapture(e.pointerId);
@@ -561,9 +675,19 @@ export function PetOverlay({
     }
   };
 
+  const onPointerEnter = () => {
+    if (!pointerTracking || reactionRef.current) return;
+    setRuntimeReaction('hover');
+  };
+
+  const onPointerLeave = () => {
+    if (runtimeReaction === 'hover') setRuntimeReaction('idle');
+  };
+
   const onContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    clearRuntimeReaction(false);
     dragRef.current = null;
     setCtxMenu({ x: e.clientX, y: e.clientY });
   };
@@ -723,9 +847,13 @@ export function PetOverlay({
         data-pet-reduced-motion={reducedMotion ? 'true' : 'false'}
         data-pet-position-locked={positionLocked ? 'true' : 'false'}
         data-pet-edge-snapping={edgeSnapping ? 'true' : 'false'}
+        data-pet-animation-level={animationLevel}
+        data-pet-reaction={runtimeReaction}
         data-pet-show-diag={showDiagnostics ? 'true' : 'false'}
         data-pet-renderer="pixi"
         onPointerDown={onPointerDown}
+        onPointerEnter={onPointerEnter}
+        onPointerLeave={onPointerLeave}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
@@ -746,6 +874,24 @@ export function PetOverlay({
             boxShadow: 'none',
           }}
         />
+        <span className="sr-only" role="status" aria-live="polite">
+          {runtimeReaction === 'idle' ? 'Pet is idle' : `Pet status: ${runtimeReaction}`}
+        </span>
+        {runtimeReaction !== 'idle' && (
+          <div
+            className={cn(
+              'pointer-events-none absolute right-2 top-2 h-2.5 w-2.5 rounded-full border border-white/70 shadow-sm',
+              runtimeReaction === 'error' || runtimeReaction === 'blocked'
+                ? 'bg-destructive'
+                : runtimeReaction === 'success'
+                  ? 'bg-success'
+                  : 'bg-accent-copper',
+            )}
+            title={`Pet status: ${runtimeReaction}`}
+            aria-hidden
+            data-pet-reaction-indicator={runtimeReaction}
+          />
+        )}
       </div>
       {debugMode && (
         <div

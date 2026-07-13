@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { fireEvent, render, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const playerState = vi.hoisted(() => ({
@@ -61,6 +61,10 @@ vi.mock('./pixiAtlasPlayer', () => {
 
     setPlaybackFps() {}
 
+    pause() {}
+
+    resume() {}
+
     setAnimation(meta: { fps: number; playbackKey?: string }) {
       this.setAnimationCalls += 1;
       this.animations.push(meta);
@@ -120,12 +124,40 @@ vi.mock('./petTauriBridge', () => ({
 
 import { PetOverlay } from './PetOverlay';
 import { setPetOverlayPosition, snapPetOverlayToEdge } from './petTauriBridge';
+import { publishPetRuntimeEvent, resetPetRuntimeEventDedupeForTests } from './petRuntimeEvents';
 
 describe('PetOverlay StrictMode player lifecycle', () => {
   afterEach(() => {
     playerState.instances.length = 0;
     vi.mocked(setPetOverlayPosition).mockClear();
     vi.mocked(snapPetOverlayToEdge).mockClear();
+    resetPetRuntimeEventDedupeForTests();
+    vi.useRealTimers();
+  });
+
+  it('shows then clears a sanitized success reaction from the shared runtime event broker', () => {
+    vi.useFakeTimers();
+    const view = render(<PetOverlay />);
+    const overlay = view.container.querySelector('[data-pet-overlay="true"]') as HTMLElement;
+    expect(overlay).toBeTruthy();
+
+    act(() => {
+      publishPetRuntimeEvent({
+        id: 'chat-finished-1',
+        kind: 'chat.completed',
+        sourceId: 'chat-real-id',
+        occurredAt: Date.now(),
+      });
+    });
+
+    expect(overlay.getAttribute('data-pet-reaction')).toBe('success');
+    expect(view.container.querySelector('[data-pet-reaction-indicator="success"]')).toBeTruthy();
+
+    act(() => {
+      vi.advanceTimersByTime(2_400);
+    });
+    expect(overlay.getAttribute('data-pet-reaction')).toBe('idle');
+    view.unmount();
   });
 
   it('snaps an unlocked desktop Pet only after the drag ends', async () => {
