@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PetMiniPanel } from './PetMiniPanel';
 import { usePetPresentationStore } from './petPresentationStore';
@@ -37,41 +37,76 @@ describe('PetMiniPanel responsive shell', () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.useRealTimers();
   });
 
-  it('collapses the complete header without unmounting the active shared surface', () => {
-    render(<PetMiniPanel open onClose={vi.fn()} windowMode />);
+  it('collapses to only the active surface and one accessible expand control', () => {
+    const { container } = render(<PetMiniPanel open onClose={vi.fn()} windowMode />);
 
-    expect(screen.getByTestId('pet-panel-header').getAttribute('data-collapsed')).toBe('false');
+    expect(screen.getByTestId('pet-panel-header')).toBeTruthy();
     expect(screen.getByTestId('shared-chat-surface')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Collapse panel header' }));
 
-    expect(screen.getByTestId('pet-panel-header').getAttribute('data-collapsed')).toBe('true');
+    expect(screen.queryByTestId('pet-panel-header')).toBeNull();
     expect(screen.getByTestId('shared-chat-surface')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Expand panel header' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Minimize pet panel' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Close pet panel' })).toBeNull();
+    expect(screen.queryByRole('navigation', { name: 'Panel sections' })).toBeNull();
+    expect(container.querySelectorAll('button')).toHaveLength(1);
     expect(localStorage.getItem('vibespace-pet-panel-header-collapsed')).toBe('1');
   });
 
-  it('restores the collapsed preference and keeps every essential window control accessible', () => {
+  it('restores the collapsed preference and expands back to complete window chrome', () => {
     localStorage.setItem('vibespace-pet-panel-header-collapsed', '1');
 
     render(<PetMiniPanel open onClose={vi.fn()} windowMode />);
 
-    expect(screen.getByTestId('pet-panel-header').getAttribute('data-collapsed')).toBe('true');
+    expect(screen.queryByTestId('pet-panel-header')).toBeNull();
     expect(screen.getByRole('button', { name: 'Expand panel header' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Minimize pet panel' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Close pet panel' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Chats' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Expand panel header' }));
+
+    expect(screen.getByTestId('pet-panel-header')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Minimize pet panel' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Close pet panel' })).toBeTruthy();
-    expect(screen.getByText('Chats')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Chats' })).toBeTruthy();
+    expect(localStorage.getItem('vibespace-pet-panel-header-collapsed')).toBe('0');
   });
 
-  it('exposes container-driven density hooks without scaling the interface', () => {
+  it('derives density from the panel container without scaling the interface', async () => {
+    let width = 360;
+    let height = 700;
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(() => ({
+      width,
+      height,
+      top: 0,
+      right: width,
+      bottom: height,
+      left: 0,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    }));
     render(<PetMiniPanel open onClose={vi.fn()} windowMode />);
 
     const panel = screen.getByRole('dialog', { name: 'Pet mini panel' });
     expect(panel.classList.contains('pet-mini-panel-shell')).toBe(true);
-    expect(panel.hasAttribute('data-pet-panel-density')).toBe(true);
+    await waitFor(() => expect(panel.getAttribute('data-pet-panel-density')).toBe('minimum'));
+
+    width = 460;
+    fireEvent(window, new Event('resize'));
+    await waitFor(() => expect(panel.getAttribute('data-pet-panel-density')).toBe('compact'));
+
+    width = 700;
+    height = 700;
+    fireEvent(window, new Event('resize'));
+    await waitFor(() => expect(panel.getAttribute('data-pet-panel-density')).toBe('comfortable'));
     expect(panel.getAttribute('style') ?? '').not.toContain('scale(');
   });
 

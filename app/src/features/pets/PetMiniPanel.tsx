@@ -328,6 +328,7 @@ export function PetMiniPanel({
         data-pet-mini-panel="true"
         data-pet-panel-lifecycle={lifecycle}
         data-pet-panel-density={density}
+        data-pet-panel-header-collapsed={headerCollapsed ? 'true' : 'false'}
         data-pet-preserves-sessions={panelPreservesSessions(lifecycle) ? 'true' : 'false'}
       >
         {/* Accent top edge */}
@@ -338,90 +339,87 @@ export function PetMiniPanel({
           />
         )}
 
-        <div
-          className="pet-panel-top border-b border-border/80 bg-elevated/40 backdrop-blur-sm"
-          data-testid="pet-panel-header"
-          data-collapsed={headerCollapsed ? 'true' : 'false'}
-        >
-          <header
-            className={cn(
-              'pet-panel-header-row relative flex items-center gap-2 px-3 py-2.5',
-              !windowMode && 'cursor-move',
-            )}
-            onPointerDown={onHeaderDrag}
+        {headerCollapsed && (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={toggleHeaderCollapsed}
+            aria-label="Expand panel header"
+            aria-expanded={false}
+            title="Expand panel header"
+            className="pet-panel-expand-control border border-border/70 bg-background/85 text-muted-foreground shadow-sm backdrop-blur-sm hover:bg-muted hover:text-foreground"
           >
-            <div className="flex min-w-0 items-center gap-2.5">
-              {!windowMode && (
-                <GripVertical className="h-4 w-4 shrink-0 text-muted-foreground/60" aria-hidden />
-              )}
-              <div className="pet-panel-identity-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-accent-copper/30 bg-accent-copper/10">
-                <Cat className="h-4.5 w-4.5 text-accent-copper" aria-hidden />
-              </div>
-              <div className={cn('min-w-0', headerCollapsed && 'hidden')}>
-                <div className="pet-panel-expanded-title truncate text-ui-strong text-foreground tracking-tight">
-                  Pet panel
-                </div>
-                <div className="pet-panel-subtitle truncate text-metadata text-muted-foreground">
-                  {animLabel ? `${animLabel}` : 'Axolotl'} · {petChatCount} chats · {petTermCount}{' '}
-                  terminals
-                </div>
-              </div>
-            </div>
-            {headerCollapsed && (
-              <div className="pet-panel-active-label min-w-0 text-sm font-medium text-foreground">
-                {tab === 'chats'
-                  ? 'Chats'
-                  : tab === 'terminals'
-                    ? 'Terminals'
-                    : tab === 'voice'
-                      ? 'Voice'
-                      : 'Activity'}
-                {unread > 0 ? ` · ${unread} unread` : ''}
-              </div>
-            )}
-            <div className="pet-panel-drag-region" data-tauri-drag-region aria-hidden />
-            <div className="flex shrink-0 items-center gap-0.5">
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={toggleHeaderCollapsed}
-                aria-label={headerCollapsed ? 'Expand panel header' : 'Collapse panel header'}
-                aria-expanded={!headerCollapsed}
-                title={headerCollapsed ? 'Expand panel header' : 'Collapse panel header'}
-                className="text-muted-foreground hover:text-foreground"
-              >
-                {headerCollapsed ? (
-                  <ChevronDown className="h-4 w-4" />
-                ) : (
-                  <ChevronUp className="h-4 w-4" />
-                )}
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={handleMinimize}
-                aria-label="Minimize pet panel"
-                data-testid="pet-panel-minimize"
-                className="text-muted-foreground hover:text-foreground"
-                title="Minimize — pet comes back"
-              >
-                <Minus className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={handleCloseRequest}
-                aria-label="Close pet panel"
-                data-testid="pet-panel-close"
-                className="text-muted-foreground hover:text-destructive"
-                title="Close — pet comes back"
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          </header>
+            <ChevronDown className="h-4 w-4" />
+          </Button>
+        )}
 
-          {!headerCollapsed && (
+        {!headerCollapsed && (
+          <div
+            className="pet-panel-top border-b border-border/80 bg-elevated/40 backdrop-blur-sm"
+            data-testid="pet-panel-header"
+          >
+            <header
+              className={cn(
+                'pet-panel-header-row relative flex items-center gap-2 px-3 py-2.5',
+                !windowMode && 'cursor-move',
+              )}
+              onPointerDown={onHeaderDrag}
+            >
+              <div className="flex min-w-0 items-center gap-2.5">
+                {!windowMode && (
+                  <GripVertical className="h-4 w-4 shrink-0 text-muted-foreground/60" aria-hidden />
+                )}
+                <div className="pet-panel-identity-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-accent-copper/30 bg-accent-copper/10">
+                  <Cat className="h-4.5 w-4.5 text-accent-copper" aria-hidden />
+                </div>
+                <div className="min-w-0">
+                  <div className="pet-panel-expanded-title truncate text-ui-strong text-foreground tracking-tight">
+                    Pet panel
+                  </div>
+                  <div className="pet-panel-subtitle truncate text-metadata text-muted-foreground">
+                    {animLabel ? `${animLabel}` : 'Axolotl'} · {petChatCount} chats · {petTermCount}{' '}
+                    terminals
+                  </div>
+                </div>
+              </div>
+              <div className="pet-panel-drag-region" data-tauri-drag-region aria-hidden />
+              <div className="flex shrink-0 items-center gap-0.5">
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={toggleHeaderCollapsed}
+                  aria-label="Collapse panel header"
+                  aria-expanded={true}
+                  title="Collapse panel header"
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <ChevronUp className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={handleMinimize}
+                  aria-label="Minimize pet panel"
+                  data-testid="pet-panel-minimize"
+                  className="text-muted-foreground hover:text-foreground"
+                  title="Minimize — pet comes back"
+                >
+                  <Minus className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={handleCloseRequest}
+                  aria-label="Close pet panel"
+                  data-testid="pet-panel-close"
+                  className="text-muted-foreground hover:text-destructive"
+                  title="Close — pet comes back"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </header>
+
             <nav
               className="pet-panel-nav flex gap-1 border-t border-border/50 bg-background/30 px-2 py-1.5"
               aria-label="Panel sections"
@@ -462,8 +460,8 @@ export function PetMiniPanel({
                 );
               })}
             </nav>
-          )}
-        </div>
+          </div>
+        )}
 
         <div className="pet-panel-workspace relative flex-1 overflow-hidden p-2.5 min-h-0 bg-background/20">
           <div className="pet-panel-surface-frame h-full min-h-0 rounded-xl border border-border/50 bg-background/70 shadow-inner overflow-hidden">

@@ -75,14 +75,20 @@
   flex: 1 1 auto;
 }
 
+.pet-panel-expand-control {
+  position: absolute;
+  top: 0.375rem;
+  right: 0.375rem;
+  z-index: 8;
+}
+
 .pet-panel-nav-button {
   min-width: 0;
   flex: 1 1 0;
   justify-content: center;
 }
 
-.pet-panel-nav-label,
-.pet-panel-active-label {
+.pet-panel-nav-label {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -167,6 +173,15 @@
   [data-pet-mini-panel='true'] button {
     min-width: 1.9rem;
   }
+}
+
+[data-pet-panel-header-collapsed='true'] .pet-panel-workspace {
+  padding: 0;
+}
+
+[data-pet-panel-header-collapsed='true'] .pet-panel-surface-frame {
+  border-width: 0;
+  border-radius: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {
