@@ -45,6 +45,7 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut,
 
 mod agent_coordination;
 mod branding;
+mod cli_bridge;
 mod credentials;
 mod dictation;
 mod faster_whisper;
@@ -212,6 +213,7 @@ pub fn run() {
                 })
                 .build(),
         )
+        .manage(cli_bridge::CliBridgeState::default())
         .manage(terminal::TerminalState::default())
         .manage(pets::PetWindowState::default())
         .manage(terminal_snapshot::PersistenceFlushState::default())
@@ -325,6 +327,10 @@ pub fn run() {
             greet,
             app_version,
             refresh_app_branding,
+            cli_bridge::cli_bridge_scan,
+            cli_bridge::cli_bridge_probe,
+            cli_bridge::cli_bridge_start,
+            cli_bridge::cli_bridge_cancel,
             fsread::fs_create_dir_all,
             pets::pet_show_overlay,
             pets::pet_hide_overlay,
