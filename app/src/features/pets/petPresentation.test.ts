@@ -68,6 +68,12 @@ describe('presentation ownership', () => {
     expect(moved.ptyId).toBe('pty_live_1');
     expect(moved.state.terminals.t1.ptyId).toBe('pty_live_1');
     expect(moved.state.terminals.t1.owner).toBe('pet-mini-panel');
+    expect(moved.state.terminals.t1).toMatchObject({
+      title: 'pwsh',
+      cwd: 'C:\\tmp',
+      shell: 'pwsh',
+      status: 'running',
+    });
   });
 
   it('enforces four-terminal panel limit with exact message', () => {
@@ -98,7 +104,9 @@ describe('presentation ownership', () => {
     if (fail.ok) return;
     expect(fail.message).toBe(PET_PANEL_TERMINAL_LIMIT_MESSAGE);
     // Fifth remains on main
-    expect(s.terminals.t_extra.owner).toBe('main');
+    expect(fail.state).toBe(s);
+    expect(fail.state.terminals.t_extra.owner).toBe('main');
+    expect(petPanelTerminalCount(fail.state)).toBe(PET_PANEL_MAX_TERMINALS);
   });
 
   it('streaming and running terminals survive panel close snapshot', () => {

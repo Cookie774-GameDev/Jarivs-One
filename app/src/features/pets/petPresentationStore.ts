@@ -31,6 +31,7 @@ export interface OwnedTerminal {
   cwd?: string;
   shell?: string;
   paneId?: string;
+  projectId?: string | null;
   status: 'running' | 'exited' | 'error';
 }
 

@@ -2,6 +2,12 @@ import * as React from 'react';
 import { AnimatePresence, MotionConfig } from 'motion/react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useUIStore } from '@/stores/ui';
+import { useAuthStore } from '@/stores/auth';
+import {
+  installMainTerminalFocusBridge,
+  type MainTerminalFocusTarget,
+} from '@/features/terminals/terminalRefs';
+import type { ProjectId } from '@/types/common';
 import { TopBar } from './TopBar';
 import { NavPane } from './NavPane';
 import { Inspector } from './Inspector';
@@ -34,6 +40,20 @@ interface AppShellProps {
 export function AppShell({ children }: AppShellProps) {
   const inspectorOpen = useUIStore((s) => s.inspectorOpen);
   const chatMode = useUIStore((s) => s.chatMode);
+
+  React.useEffect(
+    () =>
+      installMainTerminalFocusBridge({
+        isTerminalRouteVisible: () => useUIStore.getState().route === 'terminal',
+        openTerminalRoute: (target: MainTerminalFocusTarget) => {
+          if (target.projectId) {
+            useAuthStore.getState().setProjectId(target.projectId as ProjectId);
+          }
+          useUIStore.getState().setRoute('terminal');
+        },
+      }),
+    [],
+  );
 
   return (
     <MotionConfig

@@ -7,6 +7,7 @@ import * as React from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Crosshair, ExternalLink, LayoutGrid, LayoutList, Maximize2, Plus, X } from 'lucide-react';
 import { TerminalView } from '@/features/terminals/TerminalView';
+import { requestMainTerminalFocus } from '@/features/terminals/terminalRefs';
 import { terminalSessionRepo } from '@/lib/db';
 import { useAuthStore } from '@/stores/auth';
 import { Button } from '@/components/ui/button';
@@ -66,7 +67,9 @@ export function PetTerminalSurface({ className }: { className?: string }) {
 
   React.useEffect(() => {
     for (const row of sessions ?? []) {
-      if (!terminals[row.id]) {
+      const existing =
+        terminals[row.id] ?? Object.values(terminals).find((term) => term.ptyId === row.id);
+      if (!existing) {
         registerTerminal({
           terminalId: row.id,
           ptyId: row.id,
@@ -74,15 +77,26 @@ export function PetTerminalSurface({ className }: { className?: string }) {
           title: row.title || row.shell_command || 'terminal',
           cwd: row.cwd,
           shell: row.shell_command,
+          projectId: row.project_id ?? null,
           status: row.status === 'exited' ? 'exited' : 'running',
         });
+      } else if (!existing.projectId && row.project_id) {
+        registerTerminal({ ...existing, projectId: row.project_id });
       }
     }
   }, [sessions, terminals, registerTerminal]);
 
   const returnToMain = (terminalId: string) => {
-    moveTerminal(terminalId, 'main');
+    const terminal = terminals[terminalId];
+    if (!terminal) return;
+    const result = moveTerminal(terminalId, 'main');
+    if (!result.ok) return;
     if (panelActiveTerminalId === terminalId) setPanelActiveTerminalId(null);
+    void requestMainTerminalFocus({
+      sessionId: terminal.ptyId,
+      paneId: terminal.paneId,
+      projectId: terminal.projectId ?? projectId ?? undefined,
+    });
   };
 
   const spawnOnPet = () => {
@@ -100,6 +114,7 @@ export function PetTerminalSurface({ className }: { className?: string }) {
           ptyId: tempId,
           owner: 'pet-mini-panel',
           title: 'new',
+          projectId: projectId ?? null,
           status: 'running',
         },
       },
@@ -187,8 +202,8 @@ export function PetTerminalSurface({ className }: { className?: string }) {
               size="sm"
               variant="ghost"
               className="h-6 px-1.5 text-[10px]"
-              title="Close on Pet panel (return to main, PTY stays alive)"
-              aria-label="Close terminal on Pet panel"
+              title="Return terminal to main app (PTY stays alive)"
+              aria-label="Return terminal to main app"
               data-pet-terminal-close={t.terminalId}
               onClick={(e) => {
                 e.stopPropagation();
@@ -196,7 +211,7 @@ export function PetTerminalSurface({ className }: { className?: string }) {
               }}
             >
               <X className="h-3 w-3" />
-              <span data-pet-compact-label>Close</span>
+              <span data-pet-compact-label>Main</span>
             </Button>
           </div>
         </div>
@@ -211,7 +226,7 @@ export function PetTerminalSurface({ className }: { className?: string }) {
             paneId={`pet-pane-${t.terminalId}`}
             hideChrome
             className="h-full w-full"
-            projectId={projectId}
+            projectId={t.projectId ?? projectId}
             onReady={(sessionId) => {
               const prev = t.terminalId;
               usePetPresentationStore.setState((s) => {
@@ -224,6 +239,7 @@ export function PetTerminalSurface({ className }: { className?: string }) {
                   title: t.title || 'terminal',
                   cwd: t.cwd,
                   shell: t.shell,
+                  projectId: t.projectId ?? projectId ?? null,
                   status: 'running',
                 };
                 return {
