@@ -1648,3 +1648,15 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Next manual gate** | Open the normal Tauri dev app and/or unsigned packaged executable, select normal Axo, and capture the requested video/visual evidence for all eight states plus Axo→Glitch→Axo. Signing-gated installer verification still needs `TAURI_SIGNING_PRIVATE_KEY` outside Codex. |
 | **Unrelated dirty files preserved** | `app/src-tauri/Cargo.toml`, `install/install.ps1` deletion, `.agent-coordination.lock.released-*`, pet scratch preview/frame files. |
 
+#### 2026-07-13 - Subscription & CLI Bridge planning discovery
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-13 11:23 CT |
+| **Agent ID** | `AGENT-CLAUDE1-20260713-112348-SCB1` |
+| **Branch** | `main` at `eb4b26aee66c8c14324a282d8bedf8f2d55808df`; moving to isolated `feature/subscription-cli-bridge` worktree after approval |
+| **Task** | Implement Subscription & CLI Bridge: reusable adapters, safe CLI detection/execution, ten-target capability registry, per-chat connections, truthful `/usage`, compact settings/picker UI, and full verification. |
+| **Status** | implementation approved 2026-07-13; worktree setup in progress |
+| **Files touched** | Coordination and worktree-safety metadata only before isolated-worktree creation; product scopes will be locked in the feature worktree before edits |
+| **Constraints** | No Stripe, Supabase, billing, subscription, schema, website, phone, entitlement, deployment, merge, release, credential, or production changes. No provider auth prompts or billable probes. |
+
