@@ -7,6 +7,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { ChatThread } from '@/features/chat/ChatThread';
 import { Composer } from '@/features/chat/Composer';
 import { ensureActiveChat } from '@/features/chat/chatLifecycle';
+import { useChatTitleEditor } from '@/features/chat/useChatTitleEditor';
 import { chatRepo } from '@/lib/db';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
@@ -14,6 +15,57 @@ import { Button } from '@/components/ui/button';
 import { ExternalLink, MessageSquarePlus } from 'lucide-react';
 import { usePetPresentationStore } from './petPresentationStore';
 import { cn } from '@/lib/utils';
+import type { ChatId } from '@/types';
+
+interface PetChatTabProps {
+  chatId: string;
+  title: string;
+  label: string;
+  active: boolean;
+  canRename: boolean;
+  onActivate: () => void;
+}
+
+function PetChatTab({ chatId, title, label, active, canRename, onActivate }: PetChatTabProps) {
+  const titleEditor = useChatTitleEditor({ chatId: chatId as ChatId, title });
+
+  if (titleEditor.editing) {
+    return (
+      <input
+        ref={titleEditor.inputRef}
+        value={titleEditor.draft}
+        disabled={titleEditor.saving}
+        onChange={(event) => titleEditor.setDraft(event.target.value)}
+        onBlur={() => void titleEditor.commit()}
+        onKeyDown={titleEditor.handleKeyDown}
+        aria-label={`Rename ${title}`}
+        aria-busy={titleEditor.saving}
+        data-chat-id={chatId}
+        className="h-7 min-w-[96px] max-w-[140px] rounded-md border border-accent-copper/50 bg-background px-2 text-metadata text-foreground outline-none ring-1 ring-accent-copper/25"
+      />
+    );
+  }
+
+  return (
+    <Button
+      size="sm"
+      variant={active ? 'default' : 'outline'}
+      className="max-w-[140px] truncate"
+      title={canRename ? `${title} · Double-click to rename` : title}
+      aria-label={`Open chat ${title}`}
+      onClick={onActivate}
+      onDoubleClick={(event) => {
+        if (!canRename) return;
+        event.preventDefault();
+        event.stopPropagation();
+        titleEditor.startEditing();
+      }}
+      data-chat-id={chatId}
+    >
+      {label}
+    </Button>
+  );
+}
 
 export function PetChatSurface({ className }: { className?: string }) {
   const workspaceId = useAuthStore((s) => s.workspaceId);
@@ -102,18 +154,15 @@ export function PetChatSurface({ className }: { className?: string }) {
           {petChatIds.map((id) => {
             const row = (allChats ?? []).find((c) => c.id === id);
             return (
-              <Button
+              <PetChatTab
                 key={id}
-                size="sm"
-                variant={id === activeId ? 'default' : 'outline'}
-                className="max-w-[140px] truncate"
+                chatId={id}
                 title={row?.title || id}
-                aria-label={`Open chat ${row?.title || id}`}
-                onClick={() => setPanelActiveChatId(id)}
-                data-chat-id={id}
-              >
-                {row?.title || id.slice(0, 10)}
-              </Button>
+                label={row?.title || id.slice(0, 10)}
+                active={id === activeId}
+                canRename={Boolean(row)}
+                onActivate={() => setPanelActiveChatId(id)}
+              />
             );
           })}
         </div>
