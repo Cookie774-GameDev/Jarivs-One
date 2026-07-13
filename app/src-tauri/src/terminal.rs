@@ -17,6 +17,7 @@
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -89,6 +90,214 @@ struct ExitPayload {
 }
 
 const MAX_TERMINAL_SESSIONS: usize = 10;
+const DEFAULT_WINDOWS_PATHEXT: &str = ".COM;.EXE;.BAT;.CMD";
+
+// Both variants are exercised by the pure cross-platform tests; a production
+// build constructs only the host platform's variant.
+#[allow(dead_code)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TerminalExecutablePlatform {
+    Windows,
+    Unix,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum TerminalCommandExistsReason {
+    Available,
+    InvalidName,
+    PathUnavailable,
+    NotFound,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalCommandExistsResponse {
+    pub exists: bool,
+    pub reason: TerminalCommandExistsReason,
+}
+
+fn valid_terminal_executable_name(name: &str) -> bool {
+    if name.is_empty() || name.len() > 64 {
+        return false;
+    }
+    let mut chars = name.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    first.is_ascii_alphanumeric()
+        && chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
+}
+
+fn trim_path_entry(entry: &str) -> &str {
+    let trimmed = entry.trim();
+    trimmed
+        .strip_prefix('"')
+        .and_then(|inner| inner.strip_suffix('"'))
+        .map(str::trim)
+        .unwrap_or(trimmed)
+}
+
+fn absolute_path_entry(entry: &str, platform: TerminalExecutablePlatform) -> bool {
+    match platform {
+        TerminalExecutablePlatform::Windows => {
+            let bytes = entry.as_bytes();
+            let drive_absolute = bytes.len() >= 3
+                && bytes[0].is_ascii_alphabetic()
+                && bytes[1] == b':'
+                && matches!(bytes[2], b'\\' | b'/');
+            let unc_absolute = entry.starts_with("\\\\") || entry.starts_with("//");
+            drive_absolute || unc_absolute
+        }
+        TerminalExecutablePlatform::Unix => entry.starts_with('/'),
+    }
+}
+
+fn windows_extensions(pathext: Option<&str>) -> Vec<String> {
+    let source = pathext
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or(DEFAULT_WINDOWS_PATHEXT);
+    let mut extensions = Vec::new();
+    for raw in source.split(';') {
+        let extension = trim_path_entry(raw);
+        if extension.len() < 2
+            || extension.len() > 16
+            || !extension.starts_with('.')
+            || !extension[1..].chars().all(|ch| ch.is_ascii_alphanumeric())
+        {
+            continue;
+        }
+        if !extensions
+            .iter()
+            .any(|existing: &String| existing.eq_ignore_ascii_case(extension))
+        {
+            extensions.push(extension.to_string());
+        }
+    }
+    extensions
+}
+
+/// Resolve a bare executable name against explicit PATH/PATHEXT text.
+///
+/// Candidate inspection is injected so the resolver itself is deterministic,
+/// testable on every host platform, and incapable of executing a candidate.
+/// Empty or relative PATH entries are deliberately ignored rather than being
+/// interpreted as the current working directory.
+pub(crate) fn resolve_terminal_executable<F>(
+    name: &str,
+    path: &str,
+    pathext: Option<&str>,
+    platform: TerminalExecutablePlatform,
+    is_executable: F,
+) -> Option<PathBuf>
+where
+    F: Fn(&Path) -> bool,
+{
+    if !valid_terminal_executable_name(name) {
+        return None;
+    }
+
+    let separator = match platform {
+        TerminalExecutablePlatform::Windows => ';',
+        TerminalExecutablePlatform::Unix => ':',
+    };
+    let extensions = match platform {
+        TerminalExecutablePlatform::Windows => windows_extensions(pathext),
+        TerminalExecutablePlatform::Unix => vec![String::new()],
+    };
+
+    for raw_directory in path.split(separator) {
+        let directory = trim_path_entry(raw_directory);
+        if directory.is_empty() || !absolute_path_entry(directory, platform) {
+            continue;
+        }
+        for extension in &extensions {
+            let candidate = PathBuf::from(directory).join(format!("{name}{extension}"));
+            if is_executable(&candidate) {
+                return Some(candidate);
+            }
+        }
+    }
+    None
+}
+
+fn current_terminal_executable_platform() -> TerminalExecutablePlatform {
+    #[cfg(target_os = "windows")]
+    {
+        TerminalExecutablePlatform::Windows
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        TerminalExecutablePlatform::Unix
+    }
+}
+
+fn executable_file(candidate: &Path, platform: TerminalExecutablePlatform) -> bool {
+    let Ok(metadata) = candidate.metadata() else {
+        return false;
+    };
+    if !metadata.is_file() {
+        return false;
+    }
+    match platform {
+        TerminalExecutablePlatform::Windows => true,
+        TerminalExecutablePlatform::Unix => {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                metadata.permissions().mode() & 0o111 != 0
+            }
+            #[cfg(not(unix))]
+            {
+                false
+            }
+        }
+    }
+}
+
+/// Read-only PATH discovery for a registry-provided bare executable name.
+/// The resolved path is intentionally reduced to a boolean/reason response.
+#[tauri::command]
+pub fn terminal_command_exists(name: String) -> TerminalCommandExistsResponse {
+    if !valid_terminal_executable_name(&name) {
+        return TerminalCommandExistsResponse {
+            exists: false,
+            reason: TerminalCommandExistsReason::InvalidName,
+        };
+    }
+    let Some(path) = std::env::var_os("PATH") else {
+        return TerminalCommandExistsResponse {
+            exists: false,
+            reason: TerminalCommandExistsReason::PathUnavailable,
+        };
+    };
+    if path.is_empty() {
+        return TerminalCommandExistsResponse {
+            exists: false,
+            reason: TerminalCommandExistsReason::PathUnavailable,
+        };
+    }
+
+    let platform = current_terminal_executable_platform();
+    let path = path.to_string_lossy();
+    let pathext = std::env::var_os("PATHEXT");
+    let pathext = pathext.as_deref().map(|value| value.to_string_lossy());
+    let resolved =
+        resolve_terminal_executable(&name, &path, pathext.as_deref(), platform, |candidate| {
+            executable_file(candidate, platform)
+        });
+    if resolved.is_some() {
+        TerminalCommandExistsResponse {
+            exists: true,
+            reason: TerminalCommandExistsReason::Available,
+        }
+    } else {
+        TerminalCommandExistsResponse {
+            exists: false,
+            reason: TerminalCommandExistsReason::NotFound,
+        }
+    }
+}
 
 /// Resolve which executable to launch when the caller didn't pick one.
 ///
@@ -531,7 +740,11 @@ pub async fn terminal_reconcile(
 
 #[cfg(test)]
 mod tests {
-    use super::{decode_terminal_bytes, default_terminal_cwd};
+    use super::{
+        decode_terminal_bytes, default_terminal_cwd, resolve_terminal_executable,
+        terminal_command_exists, TerminalCommandExistsReason, TerminalExecutablePlatform,
+    };
+    use std::cell::Cell;
 
     #[test]
     fn decode_terminal_bytes_holds_split_utf8_until_complete() {
@@ -578,5 +791,109 @@ mod tests {
             decode_terminal_bytes(&mut pending, &icon[1..]),
             Some("⚡".to_string()),
         );
+    }
+
+    fn normalized(path: &std::path::Path) -> String {
+        path.to_string_lossy()
+            .replace('\\', "/")
+            .to_ascii_lowercase()
+    }
+
+    #[test]
+    fn resolve_terminal_executable_uses_windows_path_and_pathext_without_execution() {
+        let probes = Cell::new(0);
+        let resolved = resolve_terminal_executable(
+            "claude",
+            r#";"C:\Tools";;relative;C:\Other"#,
+            Some(".EXE;.CMD"),
+            TerminalExecutablePlatform::Windows,
+            |candidate| {
+                probes.set(probes.get() + 1);
+                normalized(candidate) == "c:/tools/claude.cmd"
+            },
+        );
+
+        assert_eq!(
+            resolved.as_deref().map(normalized),
+            Some("c:/tools/claude.cmd".to_string())
+        );
+        assert!(probes.get() > 0);
+    }
+
+    #[test]
+    fn resolve_terminal_executable_uses_unix_filename_and_ignores_pathext() {
+        let resolved = resolve_terminal_executable(
+            "qwen",
+            r#":/usr/local/bin::relative:"/usr/bin""#,
+            Some(".EXE;.CMD"),
+            TerminalExecutablePlatform::Unix,
+            |candidate| normalized(candidate) == "/usr/bin/qwen",
+        );
+
+        assert_eq!(
+            resolved.as_deref().map(normalized),
+            Some("/usr/bin/qwen".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_terminal_executable_rejects_paths_controls_and_unsafe_names() {
+        for name in [
+            "../claude",
+            "tools/claude",
+            "C:\\Tools\\claude",
+            "claude.exe",
+            "claude\nwhoami",
+            "claude\0",
+            "two words",
+            "",
+        ] {
+            let probes = Cell::new(0);
+            assert_eq!(
+                resolve_terminal_executable(
+                    name,
+                    r#"C:\Tools"#,
+                    Some(".EXE"),
+                    TerminalExecutablePlatform::Windows,
+                    |_| {
+                        probes.set(probes.get() + 1);
+                        true
+                    },
+                ),
+                None,
+                "name should be rejected: {name:?}"
+            );
+            assert_eq!(
+                probes.get(),
+                0,
+                "unsafe names must not probe the filesystem"
+            );
+        }
+    }
+
+    #[test]
+    fn resolve_terminal_executable_does_not_accept_false_positive_candidates() {
+        let probes = Cell::new(0);
+        let resolved = resolve_terminal_executable(
+            "copilot",
+            r#"C:\Tools"#,
+            Some(".EXE;.CMD"),
+            TerminalExecutablePlatform::Windows,
+            |_| {
+                probes.set(probes.get() + 1);
+                false
+            },
+        );
+
+        assert_eq!(resolved, None);
+        assert_eq!(probes.get(), 2);
+    }
+
+    #[test]
+    fn terminal_command_exists_returns_only_a_safe_reason_for_invalid_names() {
+        let response = terminal_command_exists("../claude".to_string());
+
+        assert!(!response.exists);
+        assert_eq!(response.reason, TerminalCommandExistsReason::InvalidName);
     }
 }

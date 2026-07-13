@@ -354,6 +354,7 @@ pub fn run() {
             terminal::terminal_move,
             terminal::terminal_list,
             terminal::terminal_reconcile,
+            terminal::terminal_command_exists,
             terminal_snapshot::terminal_snapshot_save,
             terminal_snapshot::terminal_snapshot_load,
             terminal_snapshot::terminal_snapshot_delete,
