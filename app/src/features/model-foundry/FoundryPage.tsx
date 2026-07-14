@@ -32,6 +32,7 @@ import { FoundryDeploymentRepository, type FoundryDeploymentRecord } from './dep
 import { DeploymentPanel, EvaluationArenaPanel, ImprovementPanel } from './FoundryGovernancePanels';
 import { LocalAdapterRegistry, type LocalAdapterRecord } from './adapterRegistry';
 import { RealAdapterRegistryPanel } from './RealAdapterRegistryPanel';
+import { foundryMetadataSyncEnabled, queueFoundryMetadataSync, setFoundryMetadataSyncEnabled } from './metadataSync';
 
 export interface FoundryPageProps { readonly storage?: StorageAdapter; readonly dependencies?: FixtureBackendDependencies }
 
@@ -71,8 +72,17 @@ function StepCard({ icon, title, detail, complete }: { icon: React.ReactNode; ti
   return <div className={cn('rounded-lg border p-3', complete ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-border bg-background/40')}>
     <div className="flex items-center gap-2 text-ui-strong"><span className={complete ? 'text-emerald-400' : 'text-muted-foreground'}>{complete ? <CheckCircle2 className="h-4 w-4" /> : icon}</span>{title}</div>
     <p className="mt-1 text-metadata text-muted-foreground">{detail}</p>
+    {title === 'Promotion' && <MetadataSyncToggle />}
   </div>;
 }
+
+function MetadataSyncToggle() {
+  const [enabled, setEnabled] = React.useState(false);
+  React.useEffect(() => { setEnabled(foundryMetadataSyncEnabled(window.localStorage)); }, []);
+  return <label className="mt-3 flex items-start gap-2 text-metadata text-muted-foreground"><input type="checkbox" checked={enabled} onChange={(event) => { const next = event.target.checked; setFoundryMetadataSyncEnabled(window.localStorage, next); setEnabled(next); window.dispatchEvent(new CustomEvent('vibespace:foundry-metadata-sync-changed')); }} /><span>{nextLabel(enabled)}</span></label>;
+}
+
+function nextLabel(enabled: boolean) { return enabled ? 'Metadata sync enabled: hashes and lifecycle status only.' : 'Enable optional metadata sync (never examples, prompts, outputs, paths, weights, or adapters).'; }
 
 export function FoundryPage({ storage = browserStorage, dependencies = defaultDependencies }: FoundryPageProps) {
   const [backend] = React.useState(() => new DeterministicFixtureBackend(dependencies));
@@ -97,6 +107,7 @@ export function FoundryPage({ storage = browserStorage, dependencies = defaultDe
   const [routingMode, setRoutingMode] = React.useState<FoundryDeploymentRecord['routingMode']>('manual');
   const [trafficPercent, setTrafficPercent] = React.useState(100);
   const [feedbackConsent, setFeedbackConsent] = React.useState(false);
+  const [metadataSyncEnabled, setMetadataSyncEnabled] = React.useState(() => foundryMetadataSyncEnabled(storage));
   const [realConfig, setRealConfig] = React.useState({ method: 'lora' as 'lora' | 'qlora', seed: 7, epochs: 1, batchSize: 1, gradientAccumulation: 4, maxSequenceLength: 256, learningRate: 0.0002, loraRank: 8, loraAlpha: 16, loraDropout: 0.05 });
   const projectId = snapshot?.project.id;
 
@@ -128,6 +139,17 @@ export function FoundryPage({ storage = browserStorage, dependencies = defaultDe
       storage.setItem(NATIVE_RUN_STORAGE_KEY, JSON.stringify({ ...parsed, [projectId]: nativeRun }));
     } catch { /* Local run-state persistence is optional. */ }
   }, [nativeRun, projectId, storage]);
+
+  React.useEffect(() => {
+    if (!snapshot || !metadataSyncEnabled) return;
+    void queueFoundryMetadataSync(snapshot, storage).catch(() => setError('Metadata sync could not be queued. Local data remains unchanged.'));
+  }, [metadataSyncEnabled, snapshot, storage]);
+
+  React.useEffect(() => {
+    const refresh = () => setMetadataSyncEnabled(foundryMetadataSyncEnabled(storage));
+    window.addEventListener('vibespace:foundry-metadata-sync-changed', refresh);
+    return () => window.removeEventListener('vibespace:foundry-metadata-sync-changed', refresh);
+  }, [storage]);
 
   React.useEffect(() => {
     let unlisten: (() => void) | undefined;
