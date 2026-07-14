@@ -8,6 +8,8 @@ use tauri::Manager;
 
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
+#[cfg(windows)]
+use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -24,6 +26,20 @@ pub struct WorkerRuntimeStatus {
     worker_installed: bool,
     protocol_version: u8,
     detail: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HardwareProfile {
+    os: String,
+    architecture: String,
+    logical_cores: usize,
+    ram_bytes: Option<u64>,
+    accelerator_status: String,
+    accelerator_detail: String,
+    detection_complete: bool,
+    recommended_mode: String,
+    warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -202,6 +218,51 @@ fn parse_probe_message(
         capabilities: envelope.capabilities,
         protocol_version: envelope.protocol_version,
     })
+}
+
+fn physical_memory_bytes() -> Option<u64> {
+    #[cfg(windows)]
+    unsafe {
+        let mut status = MEMORYSTATUSEX::default();
+        status.dwLength = std::mem::size_of::<MEMORYSTATUSEX>() as u32;
+        return GlobalMemoryStatusEx(&mut status)
+            .ok()
+            .map(|_| status.ullTotalPhys);
+    }
+    #[cfg(not(windows))]
+    {
+        None
+    }
+}
+
+#[tauri::command]
+pub fn model_foundry_hardware_profile() -> HardwareProfile {
+    let ram_bytes = physical_memory_bytes();
+    let logical_cores = std::thread::available_parallelism()
+        .map(|value| value.get())
+        .unwrap_or(1);
+    let mut warnings = vec![
+        "No accelerator API has been verified; GPU and VRAM are reported as unknown.".to_string(),
+    ];
+    if ram_bytes.is_none() {
+        warnings.push("Total memory is unavailable on this platform build.".to_string());
+    }
+    let enough_for_small_cpu_lora = ram_bytes.is_some_and(|bytes| bytes >= 16 * 1024 * 1024 * 1024);
+    HardwareProfile {
+        os: std::env::consts::OS.to_string(),
+        architecture: std::env::consts::ARCH.to_string(),
+        logical_cores,
+        ram_bytes,
+        accelerator_status: "unknown".into(),
+        accelerator_detail: "VibeSpace did not find a verified native accelerator probe.".into(),
+        detection_complete: false,
+        recommended_mode: if enough_for_small_cpu_lora {
+            "small_cpu_lora_with_resource_guard".into()
+        } else {
+            "fixture_only_until_hardware_is_verified".into()
+        },
+        warnings,
+    }
 }
 
 #[tauri::command]

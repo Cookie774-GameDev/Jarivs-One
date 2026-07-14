@@ -24,7 +24,7 @@ function renderFoundry(storage = new InMemoryStorageAdapter()) {
 }
 
 describe('FoundryPage fixture vertical slice', () => {
-  it('runs create, fixture training, evaluation, explicit promotion, and restart recovery', () => {
+  it('runs create, fixture training, evaluation, explicit promotion, and restart recovery', async () => {
     const view = renderFoundry();
 
     expect(screen.getByRole('heading', { name: 'Build Your Own AI' })).toBeTruthy();
@@ -33,6 +33,9 @@ describe('FoundryPage fixture vertical slice', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Create VibeCoder' }));
     expect(screen.getByRole('heading', { name: 'VibeCoder' })).toBeTruthy();
     expect(screen.getByText('Project ready')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Check this device' }));
+    expect(await screen.findByText('Desktop hardware check unavailable in web mode.')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Prepare approved fixture inputs' }));
     expect(screen.getByText('1 approved example')).toBeTruthy();

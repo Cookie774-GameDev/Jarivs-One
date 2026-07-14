@@ -308,6 +308,7 @@ pub fn run() {
             agent_coordination::agent_coordination_lock_file,
             agent_coordination::agent_coordination_release_file,
             agent_coordination::agent_coordination_append_event,
+            model_foundry::model_foundry_hardware_profile,
             model_foundry::model_foundry_runtime_status,
             model_foundry::model_foundry_prepare_runtime,
             model_foundry::model_foundry_worker_probe,

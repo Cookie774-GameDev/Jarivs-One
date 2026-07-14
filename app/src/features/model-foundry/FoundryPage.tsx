@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { ArrowRight, CheckCircle2, Cpu, Database, FlaskConical, ShieldCheck, Sparkles } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Cpu, Database, FlaskConical, Gauge, ShieldCheck, Sparkles } from 'lucide-react';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
@@ -9,6 +9,7 @@ import { DeterministicFixtureBackend, type FixtureBackendDependencies } from './
 import { VersionedFixtureRepository, type StorageAdapter } from './localRepository';
 import { VIBECODER_TEMPLATE } from './validation';
 import { createFixtureBase, createFixtureDataset, createFixtureEvaluation } from './demoFixtures';
+import { getFoundryHardwareProfile, type FoundryHardwareProfile } from './nativeBridge';
 
 export interface FoundryPageProps { readonly storage?: StorageAdapter; readonly dependencies?: FixtureBackendDependencies }
 
@@ -37,6 +38,8 @@ export function FoundryPage({ storage = browserStorage, dependencies = defaultDe
   const [repository] = React.useState(() => new VersionedFixtureRepository(storage, 'vibespace.model-foundry', () => dependencies.idFactory('correlation')));
   const [snapshot, setSnapshot] = React.useState<ProjectSnapshot | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [hardware, setHardware] = React.useState<FoundryHardwareProfile | null>(null);
+  const [checkingHardware, setCheckingHardware] = React.useState(false);
 
   React.useEffect(() => {
     const loaded = repository.load();
@@ -63,6 +66,12 @@ export function FoundryPage({ storage = browserStorage, dependencies = defaultDe
   const evaluation = snapshot?.evaluationRuns.at(-1);
   const canAdvance = Boolean(activeJob && ['queued', 'preparing', 'training', 'checkpointing'].includes(activeJob.state));
 
+const checkHardware = async () => {
+    setCheckingHardware(true);
+    try { setHardware(await getFoundryHardwareProfile()); setError(null); }
+    catch (caught) { setError(caught instanceof Error ? caught.message : 'Hardware check failed.'); }
+    finally { setCheckingHardware(false); }
+  };
   const createProject = () => act(() => commit(unwrap(backend.createProject(VIBECODER_TEMPLATE))));
   const prepare = () => act(() => { if (!projectId) return; unwrap(backend.attachBaseModel(projectId, createFixtureBase(dependencies.clock()))); commit(unwrap(backend.attachDatasetVersion(projectId, createFixtureDataset(projectId, dependencies.clock())))) });
   const startTraining = () => act(() => { if (!projectId) return; unwrap(backend.startTraining(projectId, { method: 'lora', config: { epochs: 1, learningRate: 0.0002, rank: 8, seed: 7, batchSize: 1, gradientAccumulationSteps: 1, sequenceLength: 256, validationSplit: 0.1 } })); refresh(projectId) });
@@ -78,6 +87,7 @@ export function FoundryPage({ storage = browserStorage, dependencies = defaultDe
       {error && <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-destructive">{error}</div>}
       {!snapshot ? <Card className="overflow-hidden border-cyan-500/20 bg-panel/90"><CardHeader className="border-b border-border bg-gradient-to-r from-cyan-500/10 to-violet-500/10"><CardTitle className="flex items-center gap-2 text-lg"><Sparkles className="text-cyan-400" /> Start with VibeCoder</CardTitle><CardDescription>A narrow coding-review specialist with local-only privacy, no tool access, and explicit evidence rules.</CardDescription></CardHeader><CardContent className="grid gap-3 pt-4 md:grid-cols-3"><StepCard icon={<ShieldCheck className="h-4 w-4" />} title="Constrained" detail="No shell, network, or external transfer." complete={false} /><StepCard icon={<Database className="h-4 w-4" />} title="Traceable" detail="Versioned data and approval provenance." complete={false} /><StepCard icon={<Cpu className="h-4 w-4" />} title="Measurable" detail="Quality, safety, and regression gates." complete={false} /><Button variant="accent" className="mt-2 md:col-span-3" onClick={createProject}>Create VibeCoder <ArrowRight /></Button></CardContent></Card> : <>
         <Card className="border-violet-500/20 bg-panel/90"><CardHeader><div className="flex flex-wrap items-center justify-between gap-3"><div><CardTitle><h2 className="text-xl">{snapshot.project.specialist.name}</h2></CardTitle><CardDescription>{snapshot.project.specialist.purpose}</CardDescription></div><Badge variant="outline" className="border-emerald-500/30 text-emerald-300">Project ready</Badge></div></CardHeader><CardContent className="grid gap-3 md:grid-cols-4"><StepCard icon={<Sparkles className="h-4 w-4" />} title="Specialist" detail="Objective and constraints locked." complete /><StepCard icon={<Database className="h-4 w-4" />} title="Data" detail={snapshot.datasetVersion ? 'Approved manifest attached.' : 'Awaiting approved inputs.'} complete={Boolean(snapshot.datasetVersion)} /><StepCard icon={<Cpu className="h-4 w-4" />} title="Training" detail={activeJob ? titleCase(activeJob.state) : 'Not started.'} complete={activeJob?.state === 'completed'} /><StepCard icon={<ShieldCheck className="h-4 w-4" />} title="Promotion" detail={snapshot.championVersionId ? 'Champion selected.' : 'Requires passing evidence.'} complete={Boolean(snapshot.championVersionId)} /></CardContent></Card>
+<Card className="border-cyan-500/20"><CardContent className="flex flex-wrap items-center justify-between gap-4 pt-4"><div className="flex items-start gap-3"><Gauge className="mt-0.5 h-5 w-5 text-cyan-400" /><div><div className="text-ui-strong">Device readiness</div>{hardware ? <><div className="text-secondary text-muted-foreground">{hardware.native ? `${hardware.os} · ${hardware.architecture} · ${hardware.logicalCores} logical cores` : hardware.acceleratorDetail}</div><div className="mt-1 text-metadata text-amber-200">Recommendation: {hardware.recommendedMode.replaceAll('_', ' ')}</div></> : <div className="text-secondary text-muted-foreground">Run an honest local check before choosing real training.</div>}</div></div><Button onClick={() => void checkHardware()} disabled={checkingHardware}>{checkingHardware ? 'Checking device…' : 'Check this device'}</Button></CardContent></Card>
         {!snapshot.datasetVersion && <Button variant="accent" onClick={prepare}>Prepare approved fixture inputs</Button>}
         {snapshot.datasetVersion && !activeJob && <Card><CardContent className="flex flex-wrap items-center justify-between gap-3 pt-4"><div><div className="text-ui-strong">1 approved example</div><div className="text-secondary text-muted-foreground">Fixture Base · Apache-2.0</div></div><Button onClick={startTraining}>Start fixture training</Button></CardContent></Card>}
         {activeJob && <TrainingRegion job={activeJob} active={canAdvance} onAdvance={advance} onResume={resume} />}
