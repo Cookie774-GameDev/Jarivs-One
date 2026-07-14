@@ -10,6 +10,9 @@ import {
   setStoredOpenFile,
 } from './projectFiles';
 import { startRightClickDrag } from '@/lib/rightClickDrag';
+import { ResourceContextMenu } from '@/components/ui/ResourceContextMenu';
+import { useUIStore } from '@/stores/ui';
+import { isTauri, openExternal } from '@/lib/tauri';
 
 interface SidebarFilesTreeProps {
   navOpen: boolean;
@@ -116,6 +119,12 @@ function SidebarFileNode({
   const [open, setOpen] = React.useState(false);
   const [children, setChildren] = React.useState<FsEntry[]>([]);
   const [loading, setLoading] = React.useState(false);
+  const activeChatId = useUIStore((state) => state.activeChatId);
+  const [contextMenu, setContextMenu] = React.useState<{
+    x: number;
+    y: number;
+    returnFocus: HTMLElement;
+  } | null>(null);
 
   const loadChildren = async () => {
     if (!entry.isDir || children.length > 0) return;
@@ -146,6 +155,19 @@ function SidebarFileNode({
     e.dataTransfer.effectAllowed = 'copy';
     e.dataTransfer.setData('text/plain', entry.path);
     e.dataTransfer.setData('application/x-jarvis-file', entry.path);
+  };
+
+  const openContextMenu = (event: React.MouseEvent<HTMLElement> | React.KeyboardEvent<HTMLElement>) => {
+    if (Number(document.body.dataset.jarvisSuppressContextMenuUntil ?? 0) > Date.now()) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const rect = event.currentTarget.getBoundingClientRect();
+    const mouse = 'clientX' in event && event.clientX > 0;
+    setContextMenu({
+      x: mouse ? event.clientX : rect.left + 8,
+      y: mouse ? event.clientY : rect.bottom + 4,
+      returnFocus: event.currentTarget,
+    });
   };
 
   return (
@@ -179,6 +201,12 @@ function SidebarFileNode({
               startRightClickDrag(e, 'file', { path: entry.path });
             }
           }}
+          onContextMenu={openContextMenu}
+          onKeyDown={(event) => {
+            if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
+              openContextMenu(event);
+            }
+          }}
           onClick={() => void openEntry()}
           className="flex min-w-0 flex-1 items-center gap-1.5 text-left focus-visible:outline-none"
           title={entry.path}
@@ -202,6 +230,18 @@ function SidebarFileNode({
           onOpenFiles={onOpenFiles}
         />
       ))}
+      {contextMenu ? (
+        <ResourceContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          resource={{ kind: 'file', name: entry.name, path: entry.path }}
+          activeChatId={entry.isDir ? null : activeChatId}
+          returnFocus={contextMenu.returnFocus}
+          onOpen={() => void openEntry()}
+          onReveal={isTauri ? (path) => openExternal(path) : undefined}
+          onClose={() => setContextMenu(null)}
+        />
+      ) : null}
     </div>
   );
 }

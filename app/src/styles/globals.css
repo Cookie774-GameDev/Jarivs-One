@@ -1690,6 +1690,18 @@
   border-width: 2px;
 }
 
+.jarvis-resource-context-menu {
+  max-height: min(70vh, 420px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jarvis-resource-drag-preview {
+    transition: none !important;
+  }
+}
+
 .jarvis-context-menu {
   position: fixed;
   z-index: 2147483646;

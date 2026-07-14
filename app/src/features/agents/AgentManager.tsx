@@ -54,6 +54,8 @@ import {
   type AgentEditorProviderChoice,
 } from '@/lib/ai/agentProviderOptions';
 import { getModelsForProvider } from '@/lib/ai/providerModelCatalog';
+import { getChatDragKind, getChatDropPayload } from '@/features/chat/dropPayload';
+import { routeResourceInteraction } from '@/lib/resourceInteraction';
 import { useProviderConnectionContext } from '@/lib/ai/useProviderModelOptions';
 import { useOllamaModelOptions, syncDiscoveredOllamaModels } from '@/lib/ai/models';
 import {
@@ -168,6 +170,19 @@ function parseList(value: string): string[] {
 
 function formatList(values: readonly string[]): string {
   return values.join(', ');
+}
+
+function handleResourceDragOver(event: React.DragEvent<HTMLElement>) {
+  const kind = getChatDragKind(event.dataTransfer.types);
+  if (kind === 'file' || kind === 'context') event.preventDefault();
+}
+
+function handleResourceDrop(event: React.DragEvent<HTMLElement>) {
+  const payload = getChatDropPayload(event.dataTransfer);
+  if (!payload || payload.kind === 'terminal') return;
+  event.preventDefault();
+  event.stopPropagation();
+  routeResourceInteraction(payload, event.currentTarget);
 }
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
@@ -789,11 +804,14 @@ export function AgentManager() {
                 <Label htmlFor="agent-prompt">System prompt</Label>
                 <Textarea
                   id="agent-prompt"
+                  data-resource-target="agent-prompt"
                   value={draft.system_prompt}
                   onChange={(e) =>
                     setDraft((d) => (d ? { ...d, system_prompt: e.target.value } : d))
                   }
                   className="min-h-[260px] font-mono text-secondary leading-relaxed"
+                  onDragOver={handleResourceDragOver}
+                  onDrop={handleResourceDrop}
                 />
                 <div className="text-metadata text-muted-foreground">
                   {draft.system_prompt.length.toLocaleString()} chars · ~
@@ -833,12 +851,15 @@ export function AgentManager() {
                   <Label htmlFor="agent-tools">Allowed tools</Label>
                   <Input
                     id="agent-tools"
+                    data-resource-target="agent-tools"
                     value={formatList(draft.tools_allowed)}
                     placeholder="* or tool ids"
                     onChange={(event) => setDraft((current) => current ? {
                       ...current,
                       tools_allowed: parseList(event.target.value),
                     } : current)}
+                    onDragOver={handleResourceDragOver}
+                    onDrop={handleResourceDrop}
                   />
                 </div>
                 <div className="space-y-1.5">

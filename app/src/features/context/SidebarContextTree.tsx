@@ -4,6 +4,9 @@ import { toast } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth';
 import { startRightClickDrag } from '@/lib/rightClickDrag';
+import { ResourceContextMenu } from '@/components/ui/ResourceContextMenu';
+import { useUIStore } from '@/stores/ui';
+import { isTauri, openExternal } from '@/lib/tauri';
 import {
   CONTEXT_MIME,
   MAX_ACTIVE_CONTEXT_MAPS,
@@ -25,6 +28,23 @@ import {
 interface SidebarContextTreeProps {
   navOpen: boolean;
   onOpenContext: () => void;
+}
+
+type ResourceMenuState = { x: number; y: number; returnFocus: HTMLElement };
+
+function menuStateForEvent(
+  event: React.MouseEvent<HTMLElement> | React.KeyboardEvent<HTMLElement>,
+): ResourceMenuState | null {
+  if (Number(document.body.dataset.jarvisSuppressContextMenuUntil ?? 0) > Date.now()) return null;
+  event.preventDefault();
+  event.stopPropagation();
+  const rect = event.currentTarget.getBoundingClientRect();
+  const mouse = 'clientX' in event && event.clientX > 0;
+  return {
+    x: mouse ? event.clientX : rect.left + 8,
+    y: mouse ? event.clientY : rect.bottom + 4,
+    returnFocus: event.currentTarget,
+  };
 }
 
 export function SidebarContextTree({ navOpen, onOpenContext }: SidebarContextTreeProps) {
@@ -117,6 +137,8 @@ function SidebarContextMap({
   const deleted = map.status === 'deleted';
   const hasChildren = map.tree.nodes.length > 0;
   const mapFilePath = map.filePath ?? contextMapFilePath(map.rootDir);
+  const activeChatId = useUIStore((state) => state.activeChatId);
+  const [contextMenu, setContextMenu] = React.useState<ResourceMenuState | null>(null);
 
   React.useEffect(() => {
     if (selected && !deleted) setOpen(true);
@@ -161,6 +183,12 @@ function SidebarContextMap({
               startRightClickDrag(event, 'file', { path: mapFilePath });
             }
           }}
+          onContextMenu={(event) => setContextMenu(menuStateForEvent(event))}
+          onKeyDown={(event) => {
+            if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
+              setContextMenu(menuStateForEvent(event));
+            }
+          }}
           onClick={() => onSelectMap(map.id)}
           className="flex min-w-0 flex-1 items-center gap-1.5 text-left focus-visible:outline-none"
           title={mapFilePath}
@@ -184,6 +212,18 @@ function SidebarContextMap({
           ))}
         </div>
       ) : null}
+      {contextMenu ? (
+        <ResourceContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          resource={{ kind: 'file', name: map.name, path: mapFilePath }}
+          activeChatId={deleted ? null : activeChatId}
+          returnFocus={contextMenu.returnFocus}
+          onOpen={() => onSelectMap(map.id)}
+          onReveal={isTauri ? (path) => openExternal(path) : undefined}
+          onClose={() => setContextMenu(null)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -200,6 +240,8 @@ function SidebarContextNode({
   onOpenContext: () => void;
 }) {
   const [open, setOpen] = React.useState(depth < 1);
+  const activeChatId = useUIStore((state) => state.activeChatId);
+  const [contextMenu, setContextMenu] = React.useState<ResourceMenuState | null>(null);
   const hasChildren = (node.children?.length ?? 0) > 0;
   const openNode = () => {
     const filePath = contextNodeFilePath(tree, node);
@@ -252,6 +294,12 @@ function SidebarContextNode({
               startRightClickDrag(e, 'context', { node, tree });
             }
           }}
+          onContextMenu={(event) => setContextMenu(menuStateForEvent(event))}
+          onKeyDown={(event) => {
+            if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
+              setContextMenu(menuStateForEvent(event));
+            }
+          }}
           onClick={openNode}
           onDoubleClick={openNode}
           className="flex min-w-0 flex-1 items-center gap-1.5 text-left focus-visible:outline-none"
@@ -272,6 +320,23 @@ function SidebarContextNode({
           onOpenContext={onOpenContext}
         />
       ))}
+      {contextMenu ? (
+        <ResourceContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          resource={{
+            kind: 'context',
+            name: node.title,
+            raw: serializeContextAttachment(nodeToAttachment(tree, node)),
+            ...(contextNodeFilePath(tree, node) ? { path: contextNodeFilePath(tree, node) } : {}),
+          }}
+          activeChatId={activeChatId}
+          returnFocus={contextMenu.returnFocus}
+          onOpen={openNode}
+          onReveal={isTauri && contextNodeFilePath(tree, node) ? (path) => openExternal(path) : undefined}
+          onClose={() => setContextMenu(null)}
+        />
+      ) : null}
     </div>
   );
 }

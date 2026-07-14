@@ -141,6 +141,25 @@ describe('AgentManager save lifecycle', () => {
     }));
   });
 
+  it('inserts an explicit local resource drop into the prompt without submitting or saving', () => {
+    render(<AgentManager />);
+    const prompt = screen.getByLabelText('System prompt') as HTMLTextAreaElement;
+    prompt.setSelectionRange(prompt.value.length, prompt.value.length);
+
+    fireEvent.drop(prompt, {
+      dataTransfer: {
+        types: ['application/x-jarvis-file'],
+        files: [],
+        getData: (type: string) => type === 'application/x-jarvis-file'
+          ? 'C:\\repo\\src\\safe-file.ts'
+          : '',
+      },
+    });
+
+    expect(prompt.value).toBe(`${baseAgent.system_prompt}C:\\repo\\src\\safe-file.ts`);
+    expect(screen.getByRole('button', { name: 'Save agent' })).toHaveProperty('disabled', false);
+  });
+
   it('persists every editable field and reopens the saved values after remount', async () => {
     const agentRepo = await repoMocks();
     let persisted = baseAgent;

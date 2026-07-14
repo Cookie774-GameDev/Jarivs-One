@@ -18,6 +18,11 @@ interface ResourceContextMenuProps {
   onOpen?: () => void;
   onPreview?: () => void;
   onReveal?: (path: string) => void | Promise<void>;
+  extraActions?: Array<{
+    id: string;
+    label: string;
+    run: () => void | Promise<void>;
+  }>;
   onClose: () => void;
 }
 
@@ -37,6 +42,7 @@ export function ResourceContextMenu({
   onOpen,
   onPreview,
   onReveal,
+  extraActions = [],
   onClose,
 }: ResourceContextMenuProps) {
   const menuRef = React.useRef<HTMLDivElement>(null);
@@ -77,6 +83,7 @@ export function ResourceContextMenu({
         run: () => { routeResourceInteraction(resource, insertTarget); },
       });
     }
+    next.push(...extraActions);
     next.push({
       id: 'copy-reference',
       label: path ? 'Copy path' : 'Copy reference',
@@ -95,7 +102,7 @@ export function ResourceContextMenu({
       });
     }
     return next;
-  }, [activeChatId, canInsert, insertTarget, onOpen, onPreview, onReveal, path, reference, resource]);
+  }, [activeChatId, canInsert, extraActions, insertTarget, onOpen, onPreview, onReveal, path, reference, resource]);
 
   React.useEffect(() => {
     itemRefs.current[0]?.focus();

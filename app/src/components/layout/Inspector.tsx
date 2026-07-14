@@ -88,6 +88,7 @@ import {
 } from '@/features/jarvis-creator/launcher';
 import { usePinnedStore } from '@/features/inspector/pinnedStore';
 import { openExternal, isTauri } from '@/lib/tauri';
+import { ResourceContextMenu } from '@/components/ui/ResourceContextMenu';
 
 interface InspectorCustomTool {
   slug: string;
@@ -543,6 +544,7 @@ function InspectorContextPanel({
   const projectId = useAuthStore((s) => s.projectId);
   const setRoute = useUIStore((s) => s.setRoute);
   const setLauncherOpen = useUIStore((s) => s.setLauncherOpen);
+  const activeChatId = useUIStore((s) => s.activeChatId);
   const pinFile = usePinnedStore((s) => s.pinFile);
   const pinMap = usePinnedStore((s) => s.pinMap);
   const [tick, setTick] = React.useState(0);
@@ -556,6 +558,7 @@ function InspectorContextPanel({
     mapId?: string;
     mapTitle?: string;
     mapRoot?: string;
+    returnFocus: HTMLElement;
   } | null>(null);
 
   React.useEffect(() => {
@@ -563,13 +566,6 @@ function InspectorContextPanel({
     window.addEventListener('jarvis:context-tree-updated', onUpdated);
     return () => window.removeEventListener('jarvis:context-tree-updated', onUpdated);
   }, []);
-
-  React.useEffect(() => {
-    if (!contextMenu) return;
-    const close = () => setContextMenu(null);
-    window.addEventListener('click', close);
-    return () => window.removeEventListener('click', close);
-  }, [contextMenu]);
 
   const tree = React.useMemo(() => loadStoredContextTree(projectId), [projectId, tick]);
   const rows = React.useMemo(() => {
@@ -634,14 +630,15 @@ function InspectorContextPanel({
           onContextMenu={(e) => {
             e.preventDefault();
             setContextMenu({
-              x: e.clientX,
-              y: e.clientY,
+              x: 'clientX' in e && e.clientX > 0 ? e.clientX : e.currentTarget.getBoundingClientRect().left + 8,
+              y: 'clientY' in e && e.clientY > 0 ? e.clientY : e.currentTarget.getBoundingClientRect().bottom + 4,
               attachment: mapAttachment,
               filePath: mapPath,
               isMap: true,
               mapId: tree.rootDir,
               mapTitle: mapAttachment.title,
               mapRoot: tree.rootDir,
+              returnFocus: e.currentTarget as HTMLElement,
             });
           }}
           onPreview={
@@ -686,10 +683,11 @@ function InspectorContextPanel({
                     onContextMenu={(e) => {
                       e.preventDefault();
                       setContextMenu({
-                        x: e.clientX,
-                        y: e.clientY,
+                        x: 'clientX' in e && e.clientX > 0 ? e.clientX : e.currentTarget.getBoundingClientRect().left + 8,
+                        y: 'clientY' in e && e.clientY > 0 ? e.clientY : e.currentTarget.getBoundingClientRect().bottom + 4,
                         attachment,
                         filePath,
+                        returnFocus: e.currentTarget as HTMLElement,
                       });
                     }}
                     onPreview={inspectorOpen && filePath ? () => onPreviewFile(filePath) : undefined}
@@ -702,84 +700,40 @@ function InspectorContextPanel({
       </Section>
 
       {contextMenu ? (
-        <div
-          className="fixed z-[90] min-w-[180px] rounded-md border border-border bg-panel p-1 shadow-lg"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
-          role="menu"
-        >
-          {contextMenu.filePath ? (
-            <ContextMenuItem
-              label="Preview in Inspector"
-              onClick={() => {
-                onPreviewFile(contextMenu.filePath!);
-                setContextMenu(null);
-              }}
-            />
-          ) : null}
-          {contextMenu.filePath ? (
-            <ContextMenuItem
-              label="Pin file"
-              onClick={() => {
-                pinFile(contextMenu.filePath!, contextMenu.attachment?.title);
-                setContextMenu(null);
-              }}
-            />
-          ) : null}
-          {contextMenu.isMap && contextMenu.mapId ? (
-            <ContextMenuItem
-              label="Pin context map"
-              onClick={() => {
-                pinMap({
-                  id: contextMenu.mapId!,
-                  title: contextMenu.mapTitle ?? 'Context map',
-                  rootDir: contextMenu.mapRoot ?? '',
-                });
-                setContextMenu(null);
-              }}
-            />
-          ) : null}
-          {contextMenu.filePath ? (
-            <ContextMenuItem
-              label="Copy path"
-              onClick={() => {
-                void navigator.clipboard.writeText(contextMenu.filePath!);
-                toast.success('Copied', 'Path copied to clipboard');
-                setContextMenu(null);
-              }}
-            />
-          ) : null}
-          {contextMenu.filePath && isTauri ? (
-            <ContextMenuItem
-              label="Reveal in Explorer"
-              onClick={() => {
-                void openExternal(contextMenu.filePath!);
-                setContextMenu(null);
-              }}
-            />
-          ) : null}
-          <ContextMenuItem
-            label="Open Context page"
-            onClick={() => {
-              setRoute('context');
-              setContextMenu(null);
-            }}
-          />
-        </div>
+        <ResourceContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          resource={{
+            kind: 'context',
+            name: contextMenu.attachment?.title ?? contextMenu.mapTitle ?? 'Context',
+            raw: serializeContextAttachment(contextMenu.attachment ?? mapAttachment),
+            ...(contextMenu.filePath ? { path: contextMenu.filePath } : {}),
+          }}
+          activeChatId={activeChatId}
+          returnFocus={contextMenu.returnFocus}
+          onOpen={() => setRoute('context')}
+          onPreview={contextMenu.filePath ? () => onPreviewFile(contextMenu.filePath!) : undefined}
+          onReveal={isTauri && contextMenu.filePath ? (path) => openExternal(path) : undefined}
+          extraActions={[
+            ...(contextMenu.filePath ? [{
+              id: 'pin-file',
+              label: 'Pin file',
+              run: () => pinFile(contextMenu.filePath!, contextMenu.attachment?.title),
+            }] : []),
+            ...(contextMenu.isMap && contextMenu.mapId ? [{
+              id: 'pin-map',
+              label: 'Pin context map',
+              run: () => pinMap({
+                id: contextMenu.mapId!,
+                title: contextMenu.mapTitle ?? 'Context map',
+                rootDir: contextMenu.mapRoot ?? '',
+              }),
+            }] : []),
+          ]}
+          onClose={() => setContextMenu(null)}
+        />
       ) : null}
     </div>
-  );
-}
-
-function ContextMenuItem({ label, onClick }: { label: string; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      role="menuitem"
-      onClick={onClick}
-      className="w-full rounded px-2 py-1.5 text-left text-secondary hover:bg-muted hover:text-foreground"
-    >
-      {label}
-    </button>
   );
 }
 
@@ -1010,7 +964,7 @@ function ContextResourceRow({
   icon: React.ReactNode;
   meta?: string;
   onOpen: () => void;
-  onContextMenu?: (e: React.MouseEvent) => void;
+  onContextMenu?: (e: React.MouseEvent | React.KeyboardEvent) => void;
   onPreview?: () => void;
 }) {
   return (
@@ -1019,6 +973,12 @@ function ContextResourceRow({
       draggable
       onClick={onOpen}
       onContextMenu={onContextMenu}
+      onKeyDown={(event) => {
+        if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
+          event.preventDefault();
+          onContextMenu?.(event);
+        }
+      }}
       onDragStart={(event) => setContextDragData(event, attachment, filePath)}
       className={resourceButtonClass}
       title={subtitle}
