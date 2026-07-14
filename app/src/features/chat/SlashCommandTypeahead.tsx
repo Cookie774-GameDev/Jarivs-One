@@ -227,7 +227,7 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
   { cmd: 'schedule', description: 'Reference Schedule', icon: CalendarDays, category: 'navigation' },
   { cmd: 'chat', description: 'Reference Chat', icon: MessageSquare, category: 'navigation' },
 
-  { cmd: 'usage', description: 'Show usage info', icon: BarChart3, category: 'utility' },
+  { cmd: 'usage', description: 'Show truthful current-chat usage and quota availability', icon: BarChart3, category: 'utility', argPlaceholder: '[refresh|session|all]' },
   {
     cmd: 'undo',
     description: 'Undo the last full chat turn (user + reply)',

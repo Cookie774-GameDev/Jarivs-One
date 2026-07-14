@@ -23,6 +23,7 @@ import {
   parseActiveChatCommandMessage,
 } from './chatActiveCommands';
 import { cn } from '@/lib/utils';
+import { UsageCard } from './UsageCard';
 
 function textForDisplay(text: string): string {
   if (!text.includes('```')) return text;
@@ -241,6 +242,10 @@ export function MessagePart({
           {part.text}
         </div>
       );
+    }
+
+    case 'usage_card': {
+      return <UsageCard snapshots={part.snapshots} scope={part.scope} />;
     }
 
     case 'stack_step': {

@@ -16,7 +16,7 @@ import {
 import { chatRepo, messageRepo } from '@/lib/db';
 import { cn, isTauri, renderHotkey } from '@/lib/utils';
 import { HOTKEYS } from '@/lib/hotkeys';
-import { buildUsageSummary } from '@/lib/usage/usageSummary';
+import { getAllUsage, getUsage, parseUsageSlashCommand, refreshUsage } from '@/lib/usage/usageService';
 import { useAgentStore } from '@/stores/agents';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
@@ -132,7 +132,7 @@ import {
   useOllamaModelOptions,
 } from '@/lib/ai/models';
 import { useAccessibleChatModels } from '@/lib/ai/useAccessibleChatModels';
-import { getProviderConnectionDescriptor } from '@/lib/ai/adapters/catalog';
+import { getProviderConnectionDescriptor, PROVIDER_CONNECTIONS } from '@/lib/ai/adapters/catalog';
 import { useAllAboutMeStore } from '@/features/all-about-me/store';
 import {
   ALL_ABOUT_ME_SLASH_OPTIONS,
@@ -1115,14 +1115,36 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       return true;
     }
     if (cmd === 'usage') {
-      const apiKey = useAuthStore.getState().apiKeys[provider];
-      await addSystem(
-        await buildUsageSummary({
-          provider,
-          apiKey,
-          providerLabel: PROVIDER_LABELS[provider],
-        }),
-      );
+      const usageMode = parseUsageSlashCommand(trimmed);
+      if (!usageMode) {
+        await addSystem('Usage commands: /usage, /usage refresh, /usage session, /usage all.');
+        return true;
+      }
+      const persistedChat = await chatRepo.getById(chatId as ChatId).catch(() => undefined);
+      const selectedId = persistedChat?.connection?.id
+        ?? (chatModelSelection.mode === 'single' ? chatModelSelection.connectionId : undefined);
+      let selectedConnection = selectedId
+        ? PROVIDER_CONNECTIONS.find((connection) => connection.id === selectedId)
+        : undefined;
+      selectedConnection ??= PROVIDER_CONNECTIONS.find((connection) => (
+        connection.providerId === provider
+        && (provider === 'ollama' || provider === 'local' ? connection.mode === 'local' : connection.mode === 'native-api')
+      ));
+      if (!selectedConnection) {
+        await addSystem('Usage is unavailable until this chat has an exact AI connection selected.');
+        return true;
+      }
+      const snapshots = usageMode === 'all'
+        ? await getAllUsage(PROVIDER_CONNECTIONS.filter((connection) => connection.enabled), chatId as ChatId)
+        : [usageMode === 'refresh'
+          ? await refreshUsage(selectedConnection, chatId as ChatId)
+          : await getUsage(selectedConnection, chatId as ChatId, usageMode)];
+      await messageRepo.create({
+        chat_id: chatId as ChatId,
+        role: 'system',
+        parts: [{ kind: 'usage_card', snapshots, scope: usageMode === 'all' ? 'all' : 'connection' }],
+      });
+      setText('');
       return true;
     }
     if (cmd === 'model') {

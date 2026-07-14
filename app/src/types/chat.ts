@@ -7,6 +7,7 @@ import type {
   JarvisQuestionBlock,
 } from '@/features/jarvis-interaction/types';
 import type { ProviderConnection } from '@/lib/ai/adapters/types';
+import type { UsageSnapshot } from '@/lib/usage/usageTypes';
 
 export type Role = 'user' | 'assistant' | 'agent' | 'system' | 'tool';
 
@@ -80,7 +81,8 @@ export type Part =
   | { kind: 'permission_request'; request: JarvisPermissionRequest }
   | { kind: 'agent_card'; agent: JarvisChatAgent }
   | { kind: 'image'; url: string; alt?: string }
-  | { kind: 'file_ref'; ref: ContextRef };
+  | { kind: 'file_ref'; ref: ContextRef }
+  | { kind: 'usage_card'; snapshots: UsageSnapshot[]; scope: 'connection' | 'all' };
 
 /**
  * A single message in a chat thread.
