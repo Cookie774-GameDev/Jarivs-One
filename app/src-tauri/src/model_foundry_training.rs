@@ -705,6 +705,14 @@ mod tests {
     }
 
     #[test]
+    fn artifact_file_paths_cannot_escape_the_verified_artifact_root() {
+        let root = Path::new("artifact-root");
+        assert!(safe_artifact_child(root, "adapter_model.safetensors").is_ok());
+        assert!(safe_artifact_child(root, "../outside").is_err());
+        assert!(safe_artifact_child(root, "/absolute").is_err());
+    }
+
+    #[test]
     fn protocol_identity_and_line_bounds_fail_closed() {
         let valid = serde_json::json!({
             "protocolVersion": 1,
