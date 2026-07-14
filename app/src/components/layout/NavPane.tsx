@@ -301,14 +301,6 @@ export function NavPane() {
           />
           <RouteItem
             navOpen={navOpen}
-            label="Skills"
-            icon={<Sparkles className="h-3.5 w-3.5 text-muted-foreground" />}
-            target="skills"
-            route={route}
-            setRoute={setRoute}
-          />
-          <RouteItem
-            navOpen={navOpen}
             label="Tools"
             icon={<Wrench className="h-3.5 w-3.5 text-muted-foreground" />}
             target="tools"
