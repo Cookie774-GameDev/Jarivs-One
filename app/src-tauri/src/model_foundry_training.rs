@@ -105,6 +105,7 @@ pub struct GenerateFromArtifactResult {
 pub struct EvaluateArtifactRequest {
     project_id: String,
     job_id: String,
+    champion_job_id: Option<String>,
     max_cases: Option<u32>,
     max_new_tokens: Option<u32>,
 }
@@ -771,6 +772,12 @@ pub fn model_foundry_evaluate_artifact(
 ) -> Result<EvaluateArtifactResult, String> {
     validate_storage_id(&request.project_id)?;
     validate_storage_id(&request.job_id)?;
+    if let Some(champion_job_id) = &request.champion_job_id {
+        validate_storage_id(champion_job_id)?;
+        if champion_job_id == &request.job_id {
+            return Err("A candidate cannot be evaluated against itself as champion.".into());
+        }
+    }
     let max_cases = request.max_cases.unwrap_or(32);
     let max_new_tokens = request.max_new_tokens.unwrap_or(128);
     if !(1..=64).contains(&max_cases) || !(1..=256).contains(&max_new_tokens) {
@@ -793,6 +800,7 @@ pub fn model_foundry_evaluate_artifact(
         "backend": "real-evaluation",
         "jobId": request.job_id,
         "trainingManifestPath": training_manifest,
+        "championJobId": request.champion_job_id,
         "maxCases": max_cases,
         "maxNewTokens": max_new_tokens,
     })).map_err(|error| format!("Unable to serialize evaluation manifest: {error}"))?)?;

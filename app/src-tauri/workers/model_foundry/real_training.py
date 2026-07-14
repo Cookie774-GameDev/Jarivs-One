@@ -357,6 +357,9 @@ def run_real_evaluation(manifest: dict[str, Any], job_dir: Path, model_root: Pat
         raise TrainingFailure("evaluation.case_limit", "maxCases must be between 1 and 64.")
     if not isinstance(max_new_tokens, int) or isinstance(max_new_tokens, bool) or not 1 <= max_new_tokens <= 256:
         raise TrainingFailure("evaluation.output_limit", "maxNewTokens must be between 1 and 256.")
+    champion_job_id = manifest.get("championJobId")
+    if champion_job_id is not None and (not isinstance(champion_job_id, str) or not champion_job_id or len(champion_job_id) > 128):
+        raise TrainingFailure("evaluation.champion", "championJobId must identify a local adapter job.")
     training_path = canonical_child(manifest.get("trainingManifestPath"), job_dir, "trainingManifestPath")
     try:
         training_manifest = json.loads(training_path.read_text(encoding="utf-8"))
@@ -376,6 +379,23 @@ def run_real_evaluation(manifest: dict[str, Any], job_dir: Path, model_root: Pat
             raise TrainingFailure("evaluation.artifact_manifest", "The artifact checksum inventory is malformed.")
         if sha256_file(canonical_child(str(artifact_root / relative), artifact_root, "adapter artifact file")) != expected.lower():
             raise TrainingFailure("evaluation.artifact_checksum", "An adapter file no longer matches its immutable manifest.")
+    champion_validated: dict[str, Any] | None = None
+    champion_artifact_root: Path | None = None
+    if champion_job_id:
+        champion_dir = canonical_child(str(job_dir.parent / champion_job_id), job_dir.parent, "champion job")
+        try:
+            champion_manifest = json.loads((champion_dir / "training-manifest.json").read_text(encoding="utf-8"))
+            champion_artifact_manifest = json.loads((champion_dir / "output" / "artifact" / "artifact-manifest.json").read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise TrainingFailure("evaluation.champion", "The current champion's immutable files are unavailable.") from exc
+        champion_validated = validate_manifest(champion_manifest, champion_dir, model_root)
+        champion_artifact_root = canonical_child(str(champion_dir / "output" / "artifact"), champion_dir, "champion artifact")
+        champion_files = champion_artifact_manifest.get("adapterFiles")
+        if champion_artifact_manifest.get("kind") != "peft-adapter" or champion_artifact_manifest.get("backend") != "real" or not isinstance(champion_files, dict) or not champion_files:
+            raise TrainingFailure("evaluation.champion", "The current champion is not a supported verified adapter.")
+        for relative, expected in champion_files.items():
+            if not isinstance(relative, str) or not isinstance(expected, str) or sha256_file(canonical_child(str(champion_artifact_root / relative), champion_artifact_root, "champion artifact file")) != expected.lower():
+                raise TrainingFailure("evaluation.champion", "The current champion artifact no longer matches its immutable manifest.")
     rows = _read_jsonl(validated["validationDatasetPath"])[:max_cases]
     try:
         import torch
@@ -393,7 +413,13 @@ def run_real_evaluation(manifest: dict[str, Any], job_dir: Path, model_root: Pat
         evidence: list[dict[str, Any]] = []
         base_scores: list[float] = []
         candidate_scores: list[float] = []
+        champion_scores: list[float] = []
         safety_failures: list[str] = []
+        champion = None
+        if champion_validated and champion_artifact_root:
+            champion_base = AutoModelForCausalLM.from_pretrained(champion_validated["modelDir"], local_files_only=True, trust_remote_code=False, torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32)
+            champion = PeftModel.from_pretrained(champion_base, champion_artifact_root, local_files_only=True)
+            champion.eval()
         for index, row in enumerate(rows):
             encoded = tokenizer(row["prompt"], return_tensors="pt", truncation=True, max_length=2048)
             encoded = {key: value.to(device) for key, value in encoded.items()}
@@ -407,6 +433,15 @@ def run_real_evaluation(manifest: dict[str, Any], job_dir: Path, model_root: Pat
             with torch.inference_mode():
                 candidate_ids = candidate.generate(**encoded, max_new_tokens=max_new_tokens, do_sample=False, pad_token_id=tokenizer.eos_token_id)
             candidate_text = tokenizer.decode(candidate_ids[0][input_tokens:], skip_special_tokens=True).strip()[:12_000]
+            champion_score: float | None = None
+            if champion is not None:
+                champion_device = next(champion.parameters()).device
+                champion_encoded = {key: value.to(champion_device) for key, value in encoded.items()}
+                with torch.inference_mode():
+                    champion_ids = champion.generate(**champion_encoded, max_new_tokens=max_new_tokens, do_sample=False, pad_token_id=tokenizer.eos_token_id)
+                champion_text = tokenizer.decode(champion_ids[0][input_tokens:], skip_special_tokens=True).strip()[:12_000]
+                champion_score = _evaluation_similarity(row["completion"], champion_text)
+                champion_scores.append(champion_score)
             base_score = _evaluation_similarity(row["completion"], base_text)
             candidate_score = _evaluation_similarity(row["completion"], candidate_text)
             base_scores.append(base_score)
@@ -417,12 +452,14 @@ def run_real_evaluation(manifest: dict[str, Any], job_dir: Path, model_root: Pat
                 "caseId": f"case-{index + 1}",
                 "baseScore": base_score,
                 "candidateScore": candidate_score,
+                "championScore": champion_score,
                 "evidenceHash": hashlib.sha256((row["prompt"] + "\0" + row["completion"] + "\0" + base_text + "\0" + candidate_text).encode("utf-8")).hexdigest(),
             })
         base_mean = round(sum(base_scores) / len(base_scores), 6)
         candidate_mean = round(sum(candidate_scores) / len(candidate_scores), 6)
-        passes = not safety_failures and candidate_mean >= base_mean
-        return {"suite": "pinned-validation-reference-v1", "caseCount": len(rows), "baseScore": base_mean, "candidateScore": candidate_mean, "delta": round(candidate_mean - base_mean, 6), "safetyFailures": safety_failures, "gate": "pass" if passes else "blocked", "caseEvidence": evidence}
+        champion_mean = round(sum(champion_scores) / len(champion_scores), 6) if champion_scores else None
+        passes = not safety_failures and candidate_mean >= base_mean and (champion_mean is None or candidate_mean >= champion_mean)
+        return {"suite": "pinned-validation-reference-v1", "caseCount": len(rows), "baseScore": base_mean, "candidateScore": candidate_mean, "championScore": champion_mean, "delta": round(candidate_mean - base_mean, 6), "safetyFailures": safety_failures, "gate": "pass" if passes else "blocked", "caseEvidence": evidence}
     except (torch.cuda.OutOfMemoryError, MemoryError) as exc:
         raise out_of_memory_failure() from exc
 

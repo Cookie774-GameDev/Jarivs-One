@@ -17,7 +17,7 @@ describe('LocalAdapterRegistry', () => {
     const artifact = { projectId: 'project-1', jobId: 'job-1', manifestSha256: 'a'.repeat(64), adapterFiles: { 'adapter_model.safetensors': 'b'.repeat(64) }, metrics: {}, trainingConfig: { method: 'lora' } };
     registry.upsert('project-1', 'job-1', artifact);
     expect(() => registry.promote('project-1', 'job-1')).toThrow(/passing local evaluation/i);
-    registry.recordEvaluation('project-1', 'job-1', artifact.manifestSha256, { suite: 'pinned-validation-reference-v1', caseCount: 1, baseScore: 0.2, candidateScore: 0.3, delta: 0.1, safetyFailures: [], gate: 'pass', caseEvidence: [{ caseId: 'case-1', baseScore: 0.2, candidateScore: 0.3, evidenceHash: 'c'.repeat(64) }] });
+    registry.recordEvaluation('project-1', 'job-1', artifact.manifestSha256, { suite: 'pinned-validation-reference-v1', caseCount: 1, baseScore: 0.2, candidateScore: 0.3, championScore: null, delta: 0.1, safetyFailures: [], gate: 'pass', caseEvidence: [{ caseId: 'case-1', baseScore: 0.2, candidateScore: 0.3, championScore: null, evidenceHash: 'c'.repeat(64) }] });
     expect(registry.promote('project-1', 'job-1')).toMatchObject([{ jobId: 'job-1', status: 'promoted' }]);
   });
 });

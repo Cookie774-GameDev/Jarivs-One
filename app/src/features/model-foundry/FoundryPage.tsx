@@ -286,9 +286,11 @@ const downloadSelectedModel = async () => {
   const archiveRegisteredAdapter = (record: LocalAdapterRecord) => setLocalAdapters(adapterRegistry.archive(record.projectId, record.jobId));
   const probeRegisteredAdapter = async (record: LocalAdapterRecord) => { const result = await generateFromFoundryArtifact({ projectId: record.projectId, jobId: record.jobId, prompt: 'Reply READY.', maxNewTokens: 8 }); setNotice(`Adapter probe succeeded: ${result.text.slice(0, 80)}`); setError(null); };
   const evaluateRegisteredAdapter = async (record: LocalAdapterRecord) => {
-    const result = await evaluateFoundryArtifact({ projectId: record.projectId, jobId: record.jobId });
+    const champion = localAdapters.find((adapter) => adapter.status === 'promoted' && adapter.jobId !== record.jobId);
+    const result = await evaluateFoundryArtifact({ projectId: record.projectId, jobId: record.jobId, championJobId: champion?.jobId });
     setLocalAdapters(adapterRegistry.recordEvaluation(record.projectId, record.jobId, result.artifactManifestSha256, result.report));
-    setNotice(result.report.gate === 'pass' ? `Evaluation passed: ${result.report.candidateScore.toFixed(3)} candidate score (${result.report.delta >= 0 ? '+' : ''}${result.report.delta.toFixed(3)} versus base). Explicit approval is still required.` : `Evaluation blocked promotion: ${result.report.candidateScore.toFixed(3)} candidate score (${result.report.delta.toFixed(3)} versus base), ${result.report.safetyFailures.length} safety failure(s).`);
+    const benchmark = result.report.championScore === null ? 'base' : 'base and current champion';
+    setNotice(result.report.gate === 'pass' ? `Evaluation passed: ${result.report.candidateScore.toFixed(3)} candidate score (${result.report.delta >= 0 ? '+' : ''}${result.report.delta.toFixed(3)} versus base; compared with ${benchmark}). Explicit approval is still required.` : `Evaluation blocked promotion: ${result.report.candidateScore.toFixed(3)} candidate score (${result.report.delta.toFixed(3)} versus base), ${result.report.safetyFailures.length} safety failure(s).`);
     setError(null);
   };
   const promoteRegisteredAdapter = (record: LocalAdapterRecord) => { setLocalAdapters(adapterRegistry.promote(record.projectId, record.jobId)); setNotice(`${record.jobId} is now the promoted local champion. Earlier champions remain available for rollback.`); setError(null); };
