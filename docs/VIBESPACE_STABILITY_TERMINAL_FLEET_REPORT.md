@@ -26,4 +26,6 @@ The normal `npm --prefix app run build` command currently stops in TypeScript at
 
 ## Performance and manual gates
 
-Automated stress and full-suite verification are performed in the final verification stage and recorded in `VIBESPACE_STABILITY_TESTING.md`. Physical multi-monitor scaling, real microphone permission, signed Tauri/updater behavior, real CLI availability, and synthetic-only screenshot/video capture remain manual gates until directly observed. Sudden power loss cannot be guaranteed.
+Automated Fleet planning/store/queue, refit coordination, Pet preference, and responsive-panel stress checks passed 28/28. Direct Vite production bundling passed. Rust library tests passed 31/31, debug `cargo check` passed, and the release-manifest test passed 1/1.
+
+The complete frontend suite and release `cargo check` did not return within their five-minute bounds under local process contention and were terminated without a result; they are not claimed as passing. Repository-wide `cargo fmt --check` remains unclean in unrelated Rust files. Physical multi-monitor scaling, real microphone permission, signed Tauri/updater behavior, real CLI availability, and synthetic-only screenshot/video capture remain manual gates until directly observed. Sudden power loss cannot be guaranteed.
