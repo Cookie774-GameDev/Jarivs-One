@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canRoutePromotedAdapter, LocalAdapterRegistry } from './adapterRegistry';
+import { canRoutePromotedAdapter, LocalAdapterRegistry, promotedAdapterForProject } from './adapterRegistry';
 import { InMemoryStorageAdapter } from './localRepository';
 
 describe('LocalAdapterRegistry', () => {
@@ -22,6 +22,7 @@ describe('LocalAdapterRegistry', () => {
     expect(registry.promote('project-1', 'job-1')).toMatchObject([{ jobId: 'job-1', status: 'promoted' }]);
     expect(() => registry.archive('project-1', 'job-1')).toThrow(/Promote another/i);
     expect(canRoutePromotedAdapter(storage, 'project-1', 'job-1')).toBe(true);
+    expect(promotedAdapterForProject(storage, 'project-1')).toMatchObject({ jobId: 'job-1', status: 'promoted' });
   });
 
   it('rolls back to the immediately prior passing champion', () => {

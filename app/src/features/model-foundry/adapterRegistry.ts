@@ -42,6 +42,10 @@ export function canRoutePromotedAdapter(storage: LocalAdapterStorage, projectId:
     && record.evaluation.report.gate === 'pass';
 }
 
+export function promotedAdapterForProject(storage: LocalAdapterStorage, projectId: string): LocalAdapterRecord | null {
+  return parse(storage.getItem(STORAGE_KEY)).find((record) => record.projectId === projectId && canRoutePromotedAdapter(storage, projectId, record.jobId)) ?? null;
+}
+
 export class LocalAdapterRegistry {
   constructor(private readonly storage: LocalAdapterStorage, private readonly now: () => string) {}
   list(projectId: string): readonly LocalAdapterRecord[] { return parse(this.storage.getItem(STORAGE_KEY)).filter((record) => record.projectId === projectId); }
