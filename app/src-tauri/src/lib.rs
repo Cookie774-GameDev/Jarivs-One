@@ -54,6 +54,7 @@ mod kokoro;
 mod ollama_http;
 mod branding;
 mod agent_coordination;
+mod model_foundry;
 
 /// Sanity-check command. The JS bridge can call this during startup to verify
 /// invoke() round-trips. Wire it in as needed; it returns a friendly string.
@@ -307,6 +308,9 @@ pub fn run() {
             agent_coordination::agent_coordination_lock_file,
             agent_coordination::agent_coordination_release_file,
             agent_coordination::agent_coordination_append_event,
+            model_foundry::model_foundry_runtime_status,
+            model_foundry::model_foundry_prepare_runtime,
+            model_foundry::model_foundry_worker_probe,
             credentials::credential_set,
             credentials::credential_get,
             credentials::credential_delete,
