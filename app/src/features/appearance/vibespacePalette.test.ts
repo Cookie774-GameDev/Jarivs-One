@@ -79,6 +79,25 @@ describe('VibeSpace locked palette (shipped CSS)', () => {
     expect(css).toContain('--vs-terminal-bg: #622f12');
     expect(css).toContain('prefers-reduced-motion: reduce');
   });
+
+  it('styles primary chrome under vibespace without restyling pets', () => {
+    const raw = readFileSync(vibespaceCssPath, 'utf8');
+    const css = raw.toLowerCase();
+    // Primary chrome hooks present
+    expect(css).toContain("header[aria-label='application header']");
+    expect(css).toContain("[data-nav-pane='true']");
+    expect(css).toContain("aside[aria-label='inspector']");
+    expect(css).toContain("main[aria-label='workspace']");
+    // Terminal: paper frame + dark interior (not cream over xterm glyphs)
+    expect(css).toContain('.jarvis-terminal-surface');
+    expect(css).toContain('.xterm-viewport');
+    expect(css).toMatch(/--vs-terminal-bg:\s*#622f12/);
+    // Pets/mascot must not be restyled by this theme file
+    expect(css).not.toMatch(/\[data-pet-overlay/);
+    expect(css).not.toMatch(/\.pet-overlay-root/);
+    expect(css).not.toMatch(/\.pet-canvas-container/);
+    expect(css).not.toMatch(/pixi|vibespace-axolotl|pet-mini-panel/);
+  });
 });
 
 describe('VibeSpace theme resolution via shipped store API', () => {

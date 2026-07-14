@@ -317,17 +317,156 @@ html[data-theme='vibespace'] .font-display {
   text-shadow: 0 1px 0 color-mix(in srgb, var(--vs-paper-0) 70%, transparent);
 }
 
-/* Terminal frame outer may be cardboard; interior stays wood-deep */
-html[data-theme='vibespace'] .jarvis-terminal-surface,
+/* =========================================================================
+   Primary chrome — paper shells (layout/IDs/behavior unchanged)
+   ========================================================================= */
+
+/* Top bar — thin layered paper strip */
+html[data-theme='vibespace'] header[aria-label='Application header'] {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--vs-paper-0) 96%, white) 0%,
+      color-mix(in srgb, var(--vs-paper-1) 92%, transparent) 100%
+    ) !important;
+  border-bottom: 1px solid color-mix(in srgb, var(--vs-cardboard) 32%, var(--vs-paper-1)) !important;
+  box-shadow:
+    inset 0 -1px 0 color-mix(in srgb, var(--vs-paper-0) 70%, transparent),
+    0 2px 8px color-mix(in srgb, var(--vs-wood) 8%, transparent);
+}
+
+/* Nav sidebar — warm paper rail with crease edge */
+html[data-theme='vibespace'] [data-nav-pane='true'],
+html[data-theme='vibespace'] aside[aria-label='Navigation'] {
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--vs-paper-1) 94%, var(--vs-paper-peach)) 0%,
+      color-mix(in srgb, var(--vs-paper-0) 90%, transparent) 100%
+    ) !important;
+  border-right: 1px solid color-mix(in srgb, var(--vs-cardboard) 30%, var(--vs-paper-1)) !important;
+  box-shadow:
+    inset -1px 0 0 color-mix(in srgb, var(--vs-paper-0) 55%, transparent),
+    4px 0 18px color-mix(in srgb, var(--vs-wood) 6%, transparent);
+}
+
+/* Selected nav row — coral paper tab insert */
+html[data-theme='vibespace'] [data-nav-pane='true'] [aria-current='page'],
+html[data-theme='vibespace'] [data-nav-pane='true'] [aria-pressed='true'],
+html[data-theme='vibespace'] aside[aria-label='Navigation'] button[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--vs-coral) 18%, var(--vs-paper-0)) !important;
+  border-color: color-mix(in srgb, var(--vs-coral) 40%, var(--vs-paper-1));
+  box-shadow:
+    inset 3px 0 0 var(--vs-coral),
+    0 2px 6px color-mix(in srgb, var(--vs-coral) 12%, transparent);
+}
+
+/* Tab strip — stacked paper tabs */
+html[data-theme='vibespace'] .flex.h-8.shrink-0.items-stretch.gap-1.border-b.border-border.bg-panel {
+  background: color-mix(in srgb, var(--vs-paper-2) 88%, transparent) !important;
+  border-bottom-color: color-mix(in srgb, var(--vs-cardboard) 28%, var(--vs-paper-1)) !important;
+}
+
+/* Inspector — paper folder panel */
+html[data-theme='vibespace'] aside[aria-label='Inspector'] {
+  background:
+    linear-gradient(
+      270deg,
+      color-mix(in srgb, var(--vs-paper-1) 95%, var(--vs-lavender)) 0%,
+      color-mix(in srgb, var(--vs-paper-0) 92%, transparent) 100%
+    ) !important;
+  border-left: 1px solid color-mix(in srgb, var(--vs-cardboard) 30%, var(--vs-paper-1)) !important;
+  box-shadow:
+    inset 1px 0 0 color-mix(in srgb, var(--vs-paper-0) 60%, transparent),
+    -4px 0 18px color-mix(in srgb, var(--vs-wood) 6%, transparent);
+}
+
+/* Main workspace canvas — soft paper stage with distant landscape glow */
+html[data-theme='vibespace'] main[aria-label='Workspace'] {
+  position: relative;
+  background:
+    radial-gradient(ellipse 70% 45% at 78% 92%, color-mix(in srgb, var(--vs-sage) 14%, transparent), transparent 60%),
+    radial-gradient(ellipse 50% 40% at 12% 88%, color-mix(in srgb, var(--vs-coral) 12%, transparent), transparent 55%),
+    radial-gradient(ellipse 40% 30% at 50% 100%, color-mix(in srgb, var(--vs-lavender) 10%, transparent), transparent 50%),
+    color-mix(in srgb, var(--vs-paper-0) 70%, transparent);
+}
+
+/* Cards / bordered sheets — cut-paper depth */
+html[data-theme='vibespace'] .rounded-lg.border,
+html[data-theme='vibespace'] .rounded-md.border,
+html[data-theme='vibespace'] .rounded-xl.border {
+  border-color: color-mix(in srgb, var(--vs-cardboard) 28%, var(--vs-paper-1));
+  box-shadow: var(--vs-cut-shadow);
+}
+
+/* Separators read as creases */
+html[data-theme='vibespace'] [data-orientation='horizontal'].bg-border,
+html[data-theme='vibespace'] hr,
+html[data-theme='vibespace'] .border-b.border-border {
+  border-color: color-mix(in srgb, var(--vs-wood) 18%, var(--vs-paper-1));
+}
+
+/* Ghost / secondary buttons — cream paper chips */
+html[data-theme='vibespace'] button[class*='ghost'],
+html[data-theme='vibespace'] .hover\:bg-accent-copper\/10:hover {
+  border-radius: 10px;
+}
+html[data-theme='vibespace'] button[class*='ghost']:hover {
+  background: color-mix(in srgb, var(--vs-coral) 12%, var(--vs-paper-0)) !important;
+}
+
+/* Composer / inputs already covered; deepen tray feel for textareas in chat */
+html[data-theme='vibespace'] textarea {
+  box-shadow:
+    inset 0 1px 2px color-mix(in srgb, var(--vs-wood) 10%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--vs-cardboard) 18%, transparent);
+  border-radius: 12px;
+}
+
+/* Popovers / dropdowns — elevated paper sheets */
+html[data-theme='vibespace'] [data-radix-popper-content-wrapper] [class*='bg-panel'],
+html[data-theme='vibespace'] [role='menu'],
+html[data-theme='vibespace'] [data-radix-menu-content],
+html[data-theme='vibespace'] [data-radix-dropdown-menu-content],
+html[data-theme='vibespace'] [data-radix-popover-content] {
+  background: color-mix(in srgb, var(--vs-paper-0) 96%, white) !important;
+  border: 1px solid color-mix(in srgb, var(--vs-cardboard) 32%, var(--vs-paper-1)) !important;
+  box-shadow: var(--vs-elevated-paper-shadow) !important;
+  border-radius: 14px !important;
+}
+
+/* =========================================================================
+   Terminals — cardboard/paper FRAME only; xterm interior stays dark & readable
+   ========================================================================= */
+html[data-theme='vibespace'] .jarvis-terminal-surface {
+  background:
+    linear-gradient(
+      165deg,
+      color-mix(in srgb, var(--vs-paper-peach) 40%, var(--vs-paper-1)) 0%,
+      color-mix(in srgb, var(--vs-paper-1) 90%, var(--vs-cardboard)) 100%
+    ) !important;
+  border: 1px solid color-mix(in srgb, var(--vs-cardboard) 45%, var(--vs-paper-1)) !important;
+  border-radius: var(--radius-lg) !important;
+  box-shadow: var(--vs-deep-stage-shadow);
+  padding: 6px;
+}
+
+/* Dark high-contrast interior — never cream paper over glyph canvas */
+html[data-theme='vibespace'] .jarvis-terminal-surface .xterm,
+html[data-theme='vibespace'] .jarvis-terminal-surface .xterm-viewport,
+html[data-theme='vibespace'] .jarvis-terminal-surface .xterm-screen,
+html[data-theme='vibespace'] .jarvis-terminal-surface .xterm-screen canvas,
 html[data-theme='vibespace'] .xterm {
   background-color: var(--vs-terminal-bg) !important;
-  color: var(--vs-terminal-fg);
+  color: var(--vs-terminal-fg) !important;
+  border-radius: 8px;
 }
-html[data-theme='vibespace'] .jarvis-terminal-surface {
-  border: 1px solid color-mix(in srgb, var(--vs-cardboard) 55%, var(--vs-wood-deep));
-  border-radius: var(--radius);
-  box-shadow: var(--vs-deep-stage-shadow);
-}
+
+/* =========================================================================
+   Pets / mascot — intentionally untouched (no restyle/recolor/reposition)
+   Pet overlay rules live in globals under data-vibespace-view=pet-overlay only.
+   This theme file must never target pet canvas/overlay surfaces.
+   ========================================================================= */
 
 /* Light / Dark / Jarvis skins live only in globals.css — never rewrite them here. */
 
