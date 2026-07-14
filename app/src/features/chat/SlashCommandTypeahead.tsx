@@ -16,6 +16,7 @@ import {
   ListTodo,
   MessageSquare,
   Network,
+  Palette,
   Plug,
   Redo2,
   Shield,
@@ -228,6 +229,14 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
   { cmd: 'chat', description: 'Reference Chat', icon: MessageSquare, category: 'navigation' },
 
   { cmd: 'usage', description: 'Show usage info', icon: BarChart3, category: 'utility' },
+  {
+    cmd: 'theme',
+    description: 'Switch Jarvis Core, VibeSpace, Default, or Light',
+    icon: Palette,
+    category: 'utility',
+    takesArg: true,
+    argPlaceholder: 'jarvis | vibespace | default | light',
+  },
   {
     cmd: 'undo',
     description: 'Undo the last full chat turn (user + reply)',

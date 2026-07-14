@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SELECTABLE_THEMES, migrateThemePreference } from './themes';
+import { SELECTABLE_THEMES, migrateThemePreference, parseThemeCommandArgument } from './themes';
 
 describe('appearance theme registry', () => {
   it('exposes the four supported themes in product order', () => {
@@ -16,5 +16,12 @@ describe('appearance theme registry', () => {
     expect(migrateThemePreference('system')).toBe('default');
     expect(migrateThemePreference('vibespace')).toBe('vibespace');
     expect(migrateThemePreference('unknown')).toBe('default');
+  });
+
+  it('parses friendly /theme arguments', () => {
+    expect(parseThemeCommandArgument('VibeSpace')).toBe('vibespace');
+    expect(parseThemeCommandArgument('jarvis core')).toBe('jarvis');
+    expect(parseThemeCommandArgument('dark')).toBe('default');
+    expect(parseThemeCommandArgument('nope')).toBeNull();
   });
 });

@@ -30,3 +30,18 @@ export function migrateThemePreference(value: unknown): SelectableTheme {
 export function isSelectableTheme(theme: Theme): theme is SelectableTheme {
   return SELECTABLE_THEME_IDS.has(theme as SelectableTheme);
 }
+
+const THEME_COMMAND_ALIASES: Record<string, SelectableTheme> = {
+  jarvis: 'jarvis',
+  'jarvis core': 'jarvis',
+  core: 'jarvis',
+  vibespace: 'vibespace',
+  vibe: 'vibespace',
+  default: 'default',
+  dark: 'default',
+  light: 'light',
+};
+
+export function parseThemeCommandArgument(value: string): SelectableTheme | null {
+  return THEME_COMMAND_ALIASES[value.trim().toLowerCase()] ?? null;
+}
