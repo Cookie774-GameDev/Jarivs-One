@@ -13,14 +13,17 @@ export function createFixtureBase(now: string): BaseModelRecord {
   };
 }
 
-export function createFixtureDataset(projectId: string, now: string): DatasetVersionManifest {
+export function createFixtureDataset(projectId: string, now: string, specialist?: SpecialistDefinition): DatasetVersionManifest {
+  const input = specialist?.expectedInputs[0] ?? 'Review a pure TypeScript function.';
+  const expectedOutput = specialist?.expectedOutputs[0] ?? 'Report only evidence-backed findings.';
+  const tag = specialist?.id ?? 'code-review';
   return {
     schemaVersion: CURRENT_FOUNDRY_SCHEMA_VERSION, id: 'dataset-v1', datasetId: 'vibecoder-examples', version: 1,
     manifestHash: HASH,
     examples: [{
       id: 'example-1', projectId, datasetVersionId: 'dataset-v1', exampleType: 'prompt_completion', createdAt: now,
-      input: 'Review a pure TypeScript function.', expectedOutput: 'Report only evidence-backed findings.', split: 'train',
-      labels: ['review'], tags: ['typescript'], contentHash: HASH,
+      input, expectedOutput, split: 'train',
+      labels: [tag], tags: [tag, 'fixture'], contentHash: HASH,
       provenance: { sourceId: 'local-example-1', sourceVersion: '1' }, authorType: 'user', synthetic: false,
       license: 'user-owned', privacyClassification: 'private', qualityStatus: 'approved', approvalStatus: 'approved',
       secretScanStatus: 'passed', duplicateGroupId: null, tokenEstimate: 12, testEvidence: 'fixture://evidence/example-1',
