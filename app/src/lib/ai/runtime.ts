@@ -15,7 +15,7 @@
  * and lets the consumer wire up the real repo at app boot time.
  */
 import type { Agent, AgentId, Chat, Message, MessageId, Part } from '@/types';
-import type { ChatId, ProjectId } from '@/types/common';
+import type { ChatId } from '@/types/common';
 import { useAuthStore } from '@/stores/auth';
 import { useAgentStore } from '@/stores/agents';
 import { runAgent } from './router';
@@ -36,6 +36,8 @@ import { STREAMING_VOICE_END_EVENT } from '@/features/voice/speechSynthesis';
 import { registerActiveStreamingVoiceSession } from '@/features/voice/voiceRouter';
 import { deriveChatTitle, maybeRenameChat } from '@/features/chat/chatLifecycle';
 import { getStoredProjectRoot } from '@/features/files/projectFiles';
+import { resolveDefaultWriteDir } from '@/lib/actions/defaultWriteDir';
+import { buildUserIdentityContextBlock } from './userIdentity';
 import { composeSkillAddenda, resolveSkills } from '@/lib/agents/skills';
 import { createChatActivityId, useChatActivityStore } from '@/features/chat/activity';
 import {
@@ -338,16 +340,6 @@ function updateStructuredAgentStatus(
     currentStep,
     updatedAt: new Date().toISOString(),
   });
-}
-
-async function resolveChatProjectId(chatId: ChatId | string): Promise<ProjectId | null> {
-  try {
-    const chat = await chatRepo.getById(chatId as ChatId);
-    if (chat?.project_id) return chat.project_id;
-  } catch {
-    // Fall back to the currently active project below.
-  }
-  return useAuthStore.getState().projectId as ProjectId | null;
 }
 
 function resolveMentionedAgents(
@@ -818,7 +810,7 @@ export function startRuntimeListener(
       return;
     }
 
-    const projectId = await resolveChatProjectId(chatId);
+    const projectId = chatRecord?.project_id ?? authState.projectId;
     rememberConversationDestination(chatId, text);
     const resolvedRequestContext = await resolveJarvisContext({
       projectId,
@@ -949,6 +941,8 @@ export function startRuntimeListener(
     let explicitFilesContext = '';
     let explicitTerminalContext = '';
     let jarvisCoordinationContext = '';
+    let userIdentityContext = '';
+    let defaultWriteFolderContext = '';
     let allAboutMeContext = '';
     let pluginContext = '';
     let pluginStatusContext = '';
@@ -1035,6 +1029,16 @@ export function startRuntimeListener(
       });
     }
     if (agent.slug === 'jarvis') {
+      userIdentityContext = buildUserIdentityContextBlock(authState.displayName);
+      try {
+        const defaultWriteFolder = await resolveDefaultWriteDir();
+        defaultWriteFolderContext = [
+          '## Default write folder',
+          `When the user requests a new file without a destination, use: ${defaultWriteFolder}`,
+        ].join('\n');
+      } catch {
+        // The file action still applies its own safe fallback directory.
+      }
       try {
         allAboutMeContext = buildAllAboutMeContextBlock(useAllAboutMeStore.getState().markdown);
       } catch (err) {
@@ -1090,6 +1094,8 @@ export function startRuntimeListener(
     const contextBlocks = [
       projectContext,
       projectContextTree,
+      userIdentityContext,
+      defaultWriteFolderContext,
       allAboutMeContext,
       pluginContext,
       pluginStatusContext,
