@@ -27,4 +27,16 @@ describe('DatasetStudioPanel', () => {
     expect(screen.getByText(/quarantined pending review/)).toBeTruthy();
     expect(screen.getByRole('button', { name: /Redact 1 findings/ })).toBeTruthy();
   });
+
+  it('creates a follow-on immutable dataset with lineage', async () => {
+    const onVersion = vi.fn();
+    render(<DatasetStudioPanel projectId="project-1" now={() => NOW} version={2} parentVersionId="vibecoder-dataset-v1" onVersion={onVersion} />);
+    fireEvent.change(screen.getByLabelText('Input'), { target: { value: 'Review the next code sample.' } });
+    fireEvent.change(screen.getByLabelText('Expected output'), { target: { value: 'Return a concise review.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add approved example' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Approve dataset consent' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create immutable dataset v2' }));
+    expect(await screen.findByText(/Immutable dataset v2 created/)).toBeTruthy();
+    expect(onVersion.mock.calls[0][0]).toMatchObject({ version: 2, parentVersionId: 'vibecoder-dataset-v1' });
+  });
 });

@@ -13,11 +13,13 @@ export interface DatasetStudioPanelProps {
   readonly projectId: string;
   readonly now: () => string;
   readonly onVersion: (manifest: DatasetVersionManifest) => void;
+  readonly version?: number;
+  readonly parentVersionId?: string | null;
 }
 
 const emptyDraft = (): DatasetDraft => ({ input: '', expectedOutput: '', exampleType: 'prompt_completion', sourceKind: 'manual', sourceReference: 'local-manual-entry', license: 'user-owned', privacyClassification: 'private', tags: [] });
 
-export function DatasetStudioPanel({ projectId, now, onVersion }: DatasetStudioPanelProps) {
+export function DatasetStudioPanel({ projectId, now, onVersion, version = 1, parentVersionId = null }: DatasetStudioPanelProps) {
   const [draft, setDraft] = React.useState<DatasetDraft>(emptyDraft);
   const [drafts, setDrafts] = React.useState<readonly DatasetDraft[]>([]);
   const [inputFindings, setInputFindings] = React.useState<readonly ScanFinding[]>([]);
@@ -64,8 +66,8 @@ export function DatasetStudioPanel({ projectId, now, onVersion }: DatasetStudioP
   const createVersion = async () => {
     setBuilding(true);
     try {
-      const result = await buildDatasetVersion(drafts, { projectId, datasetId: 'vibecoder-dataset', version: 1, parentVersionId: null, actorId: 'local-owner', consentApproved: consent, consentPurpose: 'Approved local specialist training and evaluation.', now: now(), seed: 7 });
-      onVersion(result.manifest); setLocked(true); setStatus(`Immutable dataset v1 created with ${result.manifest.examples.length} approved examples.`);
+      const result = await buildDatasetVersion(drafts, { projectId, datasetId: 'vibecoder-dataset', version, parentVersionId, actorId: 'local-owner', consentApproved: consent, consentPurpose: 'Approved local specialist training and evaluation.', now: now(), seed: 7 });
+      onVersion(result.manifest); setLocked(true); setStatus(`Immutable dataset v${version} created with ${result.manifest.examples.length} approved examples.`);
     } catch (caught) { setStatus(caught instanceof Error ? caught.message : 'Dataset version creation failed.'); }
     finally { setBuilding(false); }
   };
@@ -76,7 +78,7 @@ export function DatasetStudioPanel({ projectId, now, onVersion }: DatasetStudioP
       <div className="grid gap-3 md:grid-cols-3"><div><Label htmlFor="dataset-type">Example type</Label><select id="dataset-type" className="mt-1 h-8 w-full rounded-md border border-input bg-background px-2 text-secondary" value={draft.exampleType} onChange={(event) => setDraft((current) => ({ ...current, exampleType: event.target.value as DatasetDraft['exampleType'] }))}><option value="prompt_completion">Prompt / completion</option><option value="code_patch">Code patch</option><option value="bug_fix">Bug / fix</option><option value="test_failure_fix">Test failure / fix</option><option value="preference">Preference pair</option><option value="evaluation">Evaluation only</option></select></div><div><Label htmlFor="dataset-source">Source reference</Label><Input id="dataset-source" value={draft.sourceReference} onChange={(event) => setDraft((current) => ({ ...current, sourceReference: event.target.value }))} /></div><div><Label htmlFor="dataset-license">License</Label><Input id="dataset-license" value={draft.license} onChange={(event) => setDraft((current) => ({ ...current, license: event.target.value }))} /></div></div>
       <div className="flex flex-wrap gap-2"><Button onClick={scan}><ScanSearch /> Scan example</Button>{findingCount > 0 && <Button variant="outline" onClick={redact}><AlertTriangle /> Redact {findingCount} findings</Button>}<Button variant="outline" onClick={stageSyntheticVariation}>Stage local synthetic variation</Button><Button variant="accent" onClick={addDraft}><Plus /> Add approved example</Button></div>
       <div className="rounded-lg border border-border p-3"><div className="mb-2 flex items-center gap-2 text-ui-strong"><FileJson2 className="h-4 w-4" /> Scoped import</div><div className="grid gap-2 md:grid-cols-[140px_1fr_auto]"><select aria-label="Import format" className="h-8 rounded-md border border-input bg-background px-2 text-secondary" value={importFormat} onChange={(event) => setImportFormat(event.target.value as DatasetImportFormat)}><option value="jsonl">JSONL</option><option value="json">JSON</option><option value="csv">CSV mapping</option><option value="markdown">Markdown</option></select><Textarea aria-label="Selected import content" value={importText} onChange={(event) => setImportText(event.target.value)} placeholder="Paste only the explicitly selected records." /><Button onClick={importSelected} disabled={!importText.trim()}>Stage import</Button></div></div>
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3"><div><div className="text-ui-strong">Review queue <Badge variant="outline">{drafts.length}</Badge></div><div className="text-metadata text-muted-foreground">Exact and normalized duplicates are removed when the version is built.</div></div><label className="flex items-start gap-2 text-secondary"><input type="checkbox" aria-label="Approve dataset consent" checked={consent} onChange={(event) => setConsent(event.target.checked)} className="mt-0.5" /><span>I approve these selected examples for local training and evaluation.</span></label><Button variant="accent" disabled={!consent || drafts.length === 0 || building} onClick={() => void createVersion()}>{building ? 'Building version…' : 'Create immutable dataset v1'}</Button></div>
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3"><div><div className="text-ui-strong">Review queue <Badge variant="outline">{drafts.length}</Badge></div><div className="text-metadata text-muted-foreground">Exact and normalized duplicates are removed when the version is built.</div></div><label className="flex items-start gap-2 text-secondary"><input type="checkbox" aria-label="Approve dataset consent" checked={consent} onChange={(event) => setConsent(event.target.checked)} className="mt-0.5" /><span>I approve these selected examples for local training and evaluation.</span></label><Button variant="accent" disabled={!consent || drafts.length === 0 || building} onClick={() => void createVersion()}>{building ? 'Building version…' : `Create immutable dataset v${version}`}</Button></div>
       {status && <p role="status" className="text-secondary text-muted-foreground">{status}</p>}
     </>}
   </CardContent></Card>;
