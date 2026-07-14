@@ -12,6 +12,14 @@ const THEME_ICONS: Record<SelectableTheme, typeof Sun> = {
   light: Sun,
 };
 
+/** Mini swatches so the VibeSpace card previews the origami palette. */
+const THEME_SWATCHES: Partial<Record<SelectableTheme, string[]>> = {
+  vibespace: ['#e88870', '#9b7ec9', '#7eb0d8', '#8fbf8a', '#e8b85c'],
+  jarvis: ['#ff8a00', '#1a1f2e', '#ffb020'],
+  default: ['#d97757', '#d4a258', '#2a2018'],
+  light: ['#f5efe6', '#d97757', '#3a2e22'],
+};
+
 const DENSITIES: { id: 'compact' | 'cozy'; label: string; description: string }[] = [
   { id: 'compact', label: 'Compact', description: '13px text, 28px rows. Maximum density.' },
   { id: 'cozy', label: 'Cozy', description: 'A touch more breathing room.' },
@@ -64,6 +72,17 @@ export function Appearance() {
                 <Icon
                   className={cn('h-5 w-5', selected ? 'text-accent-cyan' : 'text-muted-foreground')}
                 />
+                {THEME_SWATCHES[t.id] ? (
+                  <span className="flex items-center gap-1" aria-hidden>
+                    {THEME_SWATCHES[t.id]!.map((color) => (
+                      <span
+                        key={color}
+                        className="h-2.5 w-2.5 rounded-full border border-border/60"
+                        style={{ backgroundColor: color }}
+                      />
+                    ))}
+                  </span>
+                ) : null}
                 <span
                   className={cn(
                     'text-ui-strong',

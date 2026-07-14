@@ -10,7 +10,11 @@ export type ThemeDefinition = {
 
 export const SELECTABLE_THEMES: readonly ThemeDefinition[] = [
   { id: 'jarvis', label: 'Jarvis Core', description: 'High-contrast command center.' },
-  { id: 'vibespace', label: 'VibeSpace', description: 'Pastel origami workspace.' },
+  {
+    id: 'vibespace',
+    label: 'VibeSpace',
+    description: 'Warm origami cream with coral, lavender, mint, and sky radiance.',
+  },
   { id: 'default', label: 'Default', description: 'Warm, focused dark workspace.' },
   { id: 'light', label: 'Light', description: 'Soft paper for bright rooms.' },
 ] as const;
