@@ -1,0 +1,233 @@
+/* =============================================================================
+   Production website origami paper language (vibespaceos.com / site/)
+   Shares the locked VibeSpace palette with the desktop appearance.
+   Does not scroll-jack; only restyles tokens + light section storytelling.
+   ============================================================================= */
+
+:root {
+  --vs-paper-0: #fdf4e6;
+  --vs-paper-1: #faeee0;
+  --vs-paper-2: #fceacc;
+  --vs-paper-peach: #fcd1a9;
+  --vs-coral: #e3885e;
+  --vs-coral-deep: #d5663a;
+  --vs-salmon: #d77b6b;
+  --vs-peach: #e7a57e;
+  --vs-honey: #eaa870;
+  --vs-lavender: #cfa1c7;
+  --vs-plum: #a57aa0;
+  --vs-plum-deep: #7b5479;
+  --vs-sage: #8fa08b;
+  --vs-sage-mid: #798a6a;
+  --vs-sage-deep: #6c7457;
+  --vs-sky: #8cbfd1;
+  --vs-cardboard: #b27c53;
+  --vs-wood: #865939;
+  --vs-wood-deep: #622f12;
+  --vs-ink: #54362a;
+
+  /* Remap site dusk tokens → origami cream stage */
+  --bg: var(--vs-paper-0);
+  --bg-2: var(--vs-paper-1);
+  --panel: var(--vs-paper-1);
+  --panel-2: var(--vs-paper-2);
+  --border: color-mix(in srgb, var(--vs-cardboard) 35%, var(--vs-paper-1));
+  --border-glow: color-mix(in srgb, var(--vs-coral) 40%, transparent);
+  --fg: var(--vs-ink);
+  --muted: color-mix(in srgb, var(--vs-wood) 75%, var(--vs-ink));
+  --faint: color-mix(in srgb, var(--vs-wood) 55%, var(--vs-paper-1));
+  --gold: var(--vs-honey);
+  --gold-soft: color-mix(in srgb, var(--vs-honey) 70%, white);
+  --gold-deep: color-mix(in srgb, var(--vs-honey) 70%, var(--vs-wood));
+  --copper: var(--vs-coral);
+  --copper-deep: var(--vs-coral-deep);
+  --copper-soft: var(--vs-peach);
+  --copper-glow: color-mix(in srgb, var(--vs-coral) 28%, transparent);
+  --sage: var(--vs-sage);
+  --cyan: var(--vs-sky);
+  --plum: var(--vs-lavender);
+  --amber: var(--vs-honey);
+  --shadow-soft: 0 1px 3px color-mix(in srgb, var(--vs-wood) 12%, transparent),
+    0 10px 28px color-mix(in srgb, var(--vs-coral) 10%, transparent);
+  --shadow-glow: 0 0 0 1px color-mix(in srgb, var(--vs-coral) 22%, transparent),
+    0 14px 36px -10px color-mix(in srgb, var(--vs-coral) 25%, transparent);
+}
+
+body {
+  background: var(--vs-paper-0);
+  color: var(--vs-ink);
+}
+body::before {
+  background:
+    radial-gradient(900px 480px at 16% 10%, color-mix(in srgb, var(--vs-coral) 22%, transparent), transparent 60%),
+    radial-gradient(740px 420px at 86% 22%, color-mix(in srgb, var(--vs-lavender) 20%, transparent), transparent 60%),
+    radial-gradient(640px 360px at 50% 92%, color-mix(in srgb, var(--vs-sage) 16%, transparent), transparent 70%),
+    radial-gradient(520px 300px at 70% 60%, color-mix(in srgb, var(--vs-sky) 12%, transparent), transparent 65%),
+    linear-gradient(180deg, color-mix(in srgb, var(--vs-paper-peach) 35%, transparent) 0%, transparent 32%);
+}
+body::after {
+  opacity: 0.035;
+}
+
+.bg-orbs .orb {
+  opacity: 0.45;
+  filter: blur(80px);
+}
+.orb.o1 {
+  background: radial-gradient(circle, color-mix(in srgb, var(--vs-coral) 35%, transparent), transparent 70%);
+}
+.orb.o2 {
+  background: radial-gradient(circle, color-mix(in srgb, var(--vs-lavender) 30%, transparent), transparent 70%);
+}
+.orb.o3 {
+  background: radial-gradient(circle, color-mix(in srgb, var(--vs-sky) 28%, transparent), transparent 70%);
+}
+.orb.o4 {
+  background: radial-gradient(circle, color-mix(in srgb, var(--vs-sage) 26%, transparent), transparent 70%);
+}
+
+#cursor-glow {
+  background: radial-gradient(circle, color-mix(in srgb, var(--vs-coral) 12%, transparent), transparent 60%);
+}
+
+/* Nav — thin layered cream paper */
+.nav {
+  background: color-mix(in srgb, var(--vs-paper-0) 88%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--vs-cardboard) 22%, transparent);
+  backdrop-filter: blur(16px) saturate(140%);
+}
+.nav.scrolled {
+  background: color-mix(in srgb, var(--vs-paper-1) 94%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--vs-cardboard) 30%, transparent);
+}
+.brand span {
+  background: linear-gradient(135deg, var(--vs-ink), var(--vs-coral));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.nav-links a {
+  color: var(--muted);
+}
+.nav-links a:not(.nav-cta):hover {
+  color: var(--vs-coral-deep);
+  background: color-mix(in srgb, var(--vs-coral) 10%, transparent);
+}
+.nav-links a:not(.nav-cta)::after {
+  background: linear-gradient(90deg, transparent, var(--vs-coral), transparent);
+}
+.nav-cta {
+  background: linear-gradient(135deg, var(--vs-coral), var(--vs-coral-deep)) !important;
+  color: var(--vs-paper-0) !important;
+  box-shadow: 0 4px 16px -4px color-mix(in srgb, var(--vs-coral) 40%, transparent) !important;
+}
+.nav-cta:hover {
+  background: linear-gradient(135deg, var(--vs-peach), var(--vs-coral)) !important;
+}
+.nav-burger {
+  border-color: var(--border);
+  color: var(--vs-ink);
+}
+@media (max-width: 860px) {
+  .nav-links {
+    background: color-mix(in srgb, var(--vs-paper-0) 96%, transparent);
+    border-bottom-color: color-mix(in srgb, var(--vs-cardboard) 25%, transparent);
+  }
+}
+
+/* Buttons & cards — paper tabs / sheets */
+.btn.primary,
+a.btn.primary {
+  background: linear-gradient(135deg, var(--vs-coral), var(--vs-coral-deep));
+  color: var(--vs-paper-0);
+  border-color: color-mix(in srgb, var(--vs-coral-deep) 50%, transparent);
+  box-shadow: 0 4px 14px -4px color-mix(in srgb, var(--vs-coral) 35%, transparent);
+}
+.btn.primary:hover,
+a.btn.primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px -8px color-mix(in srgb, var(--vs-coral) 40%, transparent);
+}
+.btn.ghost,
+a.btn.ghost {
+  background: color-mix(in srgb, var(--vs-paper-0) 80%, transparent);
+  border: 1.5px solid color-mix(in srgb, var(--vs-cardboard) 35%, var(--vs-paper-1));
+  color: var(--vs-ink);
+}
+.card,
+.feature-card,
+.pricing-card,
+.faq-item {
+  background: color-mix(in srgb, var(--vs-paper-0) 92%, transparent);
+  border: 1px solid color-mix(in srgb, var(--vs-cardboard) 28%, var(--vs-paper-1));
+  box-shadow: var(--shadow-soft);
+  border-radius: 18px;
+}
+.card:hover,
+.feature-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 32px -12px color-mix(in srgb, var(--vs-wood) 18%, transparent);
+}
+
+/* Continuous paper ribbon (decorative, non-interactive, no scroll-jack) */
+.vs-site-ribbon {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  overflow: hidden;
+  opacity: 0.55;
+}
+.vs-site-ribbon svg {
+  width: 100%;
+  height: 100%;
+}
+.vs-site-ribbon path {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+@media (max-width: 768px) {
+  .vs-site-ribbon {
+    opacity: 0.28;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vs-site-ribbon {
+    display: none;
+  }
+  .orb {
+    animation: none !important;
+  }
+  .btn.primary:hover,
+  a.btn.primary:hover,
+  .card:hover,
+  .feature-card:hover {
+    transform: none;
+  }
+}
+
+/* Section headers — soft crease underline */
+.sec-head h2,
+.kicker {
+  color: var(--vs-ink);
+}
+.kicker {
+  color: var(--vs-coral-deep);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+.lead {
+  color: var(--muted);
+}
+
+/* Footer calm paper landscape */
+footer,
+.foot,
+.site-footer {
+  background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--vs-paper-2) 70%, transparent));
+  color: var(--vs-ink);
+  border-top: 1px solid color-mix(in srgb, var(--vs-cardboard) 22%, transparent);
+}

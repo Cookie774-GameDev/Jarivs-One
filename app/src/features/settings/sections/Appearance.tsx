@@ -13,8 +13,9 @@ const THEME_ICONS: Record<SelectableTheme, typeof Sun> = {
 };
 
 /** Mini swatches so the VibeSpace card previews the origami palette. */
+/** Locked origami palette preview (OBJECTIVE §4). */
 const THEME_SWATCHES: Partial<Record<SelectableTheme, string[]>> = {
-  vibespace: ['#e88870', '#9b7ec9', '#7eb0d8', '#8fbf8a', '#e8b85c'],
+  vibespace: ['#FDF4E6', '#E3885E', '#CFA1C7', '#8FA08B', '#8CBFD1'],
   jarvis: ['#ff8a00', '#1a1f2e', '#ffb020'],
   default: ['#d97757', '#d4a258', '#2a2018'],
   light: ['#f5efe6', '#d97757', '#3a2e22'],

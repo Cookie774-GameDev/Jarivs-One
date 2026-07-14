@@ -13,7 +13,7 @@ export const SELECTABLE_THEMES: readonly ThemeDefinition[] = [
   {
     id: 'vibespace',
     label: 'VibeSpace',
-    description: 'Warm origami cream with coral, lavender, mint, and sky radiance.',
+    description: 'Handcrafted origami paper: cream, coral, lavender, and sage.',
   },
   { id: 'default', label: 'Default', description: 'Warm, focused dark workspace.' },
   { id: 'light', label: 'Light', description: 'Soft paper for bright rooms.' },

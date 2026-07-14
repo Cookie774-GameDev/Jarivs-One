@@ -1,0 +1,102 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { describe, expect, it } from 'vitest';
+import { SELECTABLE_THEMES, migrateThemePreference, parseThemeCommandArgument } from './themes';
+import { applyThemeToDocument, resolveTheme, useUIStore } from '@/stores/ui';
+
+/** Locked OBJECTIVE §4 hues that must appear in the shipped VibeSpace stylesheet. */
+const LOCKED_HEX = [
+  '#fdf4e6',
+  '#faeee0',
+  '#fceacc',
+  '#fcd1a9',
+  '#e3885e',
+  '#d5663a',
+  '#d77b6b',
+  '#e7a57e',
+  '#eaa870',
+  '#cfa1c7',
+  '#a57aa0',
+  '#7b5479',
+  '#8fa08b',
+  '#798a6a',
+  '#6c7457',
+  '#8cbfd1',
+  '#b27c53',
+  '#865939',
+  '#622f12',
+  '#54362a',
+] as const;
+
+const vibespaceCssPath = resolve(__dirname, '../../styles/vibespace-theme.css');
+const globalsCssPath = resolve(__dirname, '../../styles/globals.css');
+
+function readCss(path: string): string {
+  return readFileSync(path, 'utf8').toLowerCase();
+}
+
+describe('VibeSpace locked palette (shipped CSS)', () => {
+  it('ships every locked palette hex under data-theme=vibespace only', () => {
+    const css = readCss(vibespaceCssPath);
+    expect(css).toContain("html[data-theme='vibespace']");
+    for (const hex of LOCKED_HEX) {
+      expect(css, `missing locked hue ${hex}`).toContain(hex);
+    }
+  });
+
+  it('does not rewrite dark/light/jarvis token blocks inside globals.css for vibespace work', () => {
+    const globals = readFileSync(globalsCssPath, 'utf8');
+    // Other theme token blocks remain present as independent skins.
+    expect(globals).toMatch(/\[data-theme=['"]dark['"]\]/);
+    expect(globals).toMatch(/\[data-theme=['"]light['"]\]/);
+    expect(globals).toMatch(/\[data-theme=['"]jarvis['"]\]/);
+    // VibeSpace must not be injected as a globals theme block (lives in vibespace-theme.css).
+    expect(globals).not.toMatch(/\[data-theme=['"]vibespace['"]\]\s*\{/);
+  });
+
+  it('scopes paper primitives and terminal interior to vibespace only', () => {
+    const css = readCss(vibespaceCssPath);
+    expect(css).toContain("html[data-theme='vibespace'] .vs-paper-surface");
+    expect(css).toContain("html[data-theme='vibespace'] .vs-folded-card");
+    expect(css).toContain('--vs-terminal-bg: #622f12');
+    expect(css).toContain('prefers-reduced-motion: reduce');
+  });
+});
+
+describe('VibeSpace theme resolution via shipped store API', () => {
+  it('accepts vibespace through the public theme registry', () => {
+    expect(SELECTABLE_THEMES.some((t) => t.id === 'vibespace' && t.label === 'VibeSpace')).toBe(true);
+    expect(migrateThemePreference('vibespace')).toBe('vibespace');
+    expect(parseThemeCommandArgument('VibeSpace')).toBe('vibespace');
+  });
+
+  it('applyThemeToDocument sets data-theme=vibespace without flipping other skins', () => {
+    applyThemeToDocument('dark');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+
+    applyThemeToDocument('vibespace');
+    expect(resolveTheme('vibespace')).toBe('vibespace');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('vibespace');
+    expect(document.documentElement.getAttribute('data-theme-preference')).toBe('vibespace');
+
+    applyThemeToDocument('jarvis');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('jarvis');
+
+    applyThemeToDocument('light');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+
+    applyThemeToDocument('default');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+    expect(document.documentElement.getAttribute('data-theme-preference')).toBe('default');
+  });
+
+  it('setTheme persists vibespace through the UI store action path', () => {
+    useUIStore.getState().setTheme('vibespace');
+    expect(useUIStore.getState().theme).toBe('vibespace');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('vibespace');
+
+    useUIStore.getState().setTheme('default');
+    expect(useUIStore.getState().theme).toBe('default');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+  });
+});

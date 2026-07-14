@@ -74,3 +74,9 @@ A warm workshop at night: ten AI agents, terminals, and voice working together a
 - 300–900ms: nav + logo fade in
 - 900–1800ms: hero headline stagger + subhead blur + CTA spring + mock chrome draw
 - No white flash ever — themed background on first paint
+
+
+## VibeSpace appearance (vibespace)
+
+Selectable skin under `data-theme='vibespace'` only. Locked origami palette: cream paper-0/1/2, coral primary, lavender/sage/sky support, wood/ink structure. Styles live in `app/src/styles/vibespace-theme.css`; production site shares tokens via `site/css/origami-paper.css`. Does not alter Dark/Light/Jarvis token blocks.
+

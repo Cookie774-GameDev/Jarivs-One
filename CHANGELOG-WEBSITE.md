@@ -63,3 +63,7 @@ Complete rewrite of `site/index.html` as the canonical VibeSpace marketing homep
 
 ### Known limitation
 The reference video (`Screen Recording 2026-06-22 080126.mp4`) was extracted to 12 frames via ffmpeg, but this build model lacks image-input capability and could not visually inspect them. The motion system was built from the prompt's Section 5 spec (a detailed frame-by-frame description likely authored from the same video) cross-referenced with `landing.html`'s implemented animation patterns. A human should verify the result against the video and adjust if any specific motion pattern is missing.
+
+## Unreleased — origami paper language
+- Production `site/` cream origami stage via `css/origami-paper.css` (locked VibeSpace palette).
+- Decorative non-interactive paper ribbon; reduced-motion hides ribbon/orbs animation.
