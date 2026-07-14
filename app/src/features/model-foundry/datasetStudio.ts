@@ -14,6 +14,9 @@ export interface DatasetDraft {
   readonly license: string;
   readonly privacyClassification: DatasetExample['privacyClassification'];
   readonly tags: readonly string[];
+  /** Locally generated template variation; never confused with a human source. */
+  readonly synthetic?: boolean;
+  readonly syntheticProvenance?: string;
 }
 
 export interface CsvMapping {
@@ -145,6 +148,20 @@ function draftFromRecord(record: Record<string, unknown>, sourceKind: DatasetSou
   return { input, expectedOutput, exampleType, sourceKind, sourceReference: reference, license: typeof record.license === 'string' ? record.license : 'user-owned', privacyClassification: 'private', tags: Array.isArray(record.tags) ? record.tags.filter((tag): tag is string => typeof tag === 'string') : [] };
 }
 
+/** Creates a transparent, deterministic local variation; it never calls a teacher or cloud model. */
+export function buildLocalSyntheticVariation(draft: DatasetDraft): DatasetDraft {
+  if (!draft.input.trim() || !draft.expectedOutput.trim()) throw new Error('Write and scan a seed input and approved target before staging a synthetic variation.');
+  return {
+    ...draft,
+    input: `Apply the same constraints to this variation: ${draft.input.trim()}`,
+    sourceKind: 'licensed',
+    sourceReference: 'local-synthetic-template-v1',
+    tags: [...new Set([...draft.tags, 'synthetic', 'local-template'])],
+    synthetic: true,
+    syntheticProvenance: 'local-synthetic-template-v1; deterministic prompt wrapper; no teacher model or network used',
+  };
+}
+
 export function parseScopedDatasetImport(format: DatasetImportFormat, content: string, reference: string, mapping?: CsvMapping): readonly DatasetDraft[] {
   if (new TextEncoder().encode(content).byteLength > 5 * 1024 * 1024) throw new Error('Dataset import exceeds the 5 MB review limit.');
   let drafts: DatasetDraft[];
@@ -202,11 +219,11 @@ export async function buildDatasetVersion(drafts: readonly DatasetDraft[], optio
       id: `example-${contentHash.slice(0, 16)}`, projectId: options.projectId, datasetVersionId,
       exampleType: draft.exampleType, input: draft.input, expectedOutput: draft.expectedOutput, split,
       labels: [], tags: [...draft.tags], contentHash, provenance: { sourceId: `source-${contentHash.slice(0, 16)}`, sourceVersion: '1' },
-      authorType: 'user', synthetic: false, license: draft.license, privacyClassification: draft.privacyClassification,
+      authorType: draft.synthetic ? 'synthetic_generator' : 'user', synthetic: draft.synthetic === true, license: draft.license, privacyClassification: draft.privacyClassification,
       qualityStatus: 'approved', approvalStatus: 'approved', secretScanStatus: 'passed', duplicateGroupId: null,
       tokenEstimate: Math.ceil((draft.input.length + draft.expectedOutput.length) / 4), testEvidence: null,
       reviewerId: options.actorId, rejectionReason: null,
-      source: { kind: draft.sourceKind, reference: draft.sourceReference, approved: true },
+      source: { kind: draft.sourceKind, reference: draft.syntheticProvenance ?? draft.sourceReference, approved: true },
       consent: { approved: true, actorId: options.actorId, approvedAt: options.now, purpose: options.consentPurpose },
       createdAt: options.now,
     };

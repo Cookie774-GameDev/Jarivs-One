@@ -1,5 +1,5 @@
 ﻿import { describe, expect, it } from 'vitest';
-import { buildDatasetVersion, parseScopedDatasetImport, redactDatasetText, scanDatasetText } from './datasetStudio';
+import { buildDatasetVersion, buildLocalSyntheticVariation, parseScopedDatasetImport, redactDatasetText, scanDatasetText } from './datasetStudio';
 
 const NOW = '2026-07-14T12:00:00.000Z';
 
@@ -30,6 +30,12 @@ describe('Dataset Studio governance', () => {
     expect(result.duplicateGroups).toHaveLength(1);
     expect(result.manifest.splitStrategy.statistics).toEqual({ train: 1, validation: 0, test: 0 });
     expect(Object.isFrozen(result.manifest)).toBe(true);
+  });
+
+  it('labels deterministic local variations as synthetic provenance', async () => {
+    const draft = buildLocalSyntheticVariation({ input: 'Review this function.', expectedOutput: 'No side effects.', exampleType: 'code_patch', sourceKind: 'manual', sourceReference: 'local://manual/1', license: 'user-owned', privacyClassification: 'private', tags: ['review'] });
+    const result = await buildDatasetVersion([draft], options());
+    expect(result.manifest.examples[0]).toMatchObject({ synthetic: true, authorType: 'synthetic_generator', source: { kind: 'licensed', reference: expect.stringContaining('local-synthetic-template') } });
   });
 
   it('refuses to build when clean examples or explicit consent are missing', async () => {
