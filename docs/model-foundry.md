@@ -18,7 +18,7 @@ Supabase metadata migration `0031_model_foundry_metadata.sql` stores only owner-
 
 ## Known boundaries
 
-Real adapters are verified outputs, but they are not yet exposed as a general chat-provider model. Use the existing VibeSpace local-model routing for the current chat path. Fixture-mode deployment records represent local routing intent and must not be read as a running inference server.
+Verified real adapters can be selected from their completed Training Lab run with **Use in chat**. VibeSpace routes the bounded project/job adapter identity through the native worker, verifies the artifact again, and generates locally without a network service. Fixture-mode deployment records still represent local routing intent and must not be read as a running inference server.
 
 ## Focused checks
 
