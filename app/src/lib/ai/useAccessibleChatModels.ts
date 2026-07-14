@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ProviderId } from '@/types';
 import { useAuthStore } from '@/stores/auth';
 import { getProviderDisplayName } from './providerRegistry';
@@ -99,6 +99,13 @@ export function useAccessibleChatModels() {
   const defaultLocalModel = useAuthStore((s) => s.defaultLocalModel);
   const ollamaOptions = useOllamaModelOptions();
   const ollamaSignature = ollamaOptions.map((option) => option.id).join('\0');
+  const [foundryRegistryRevision, setFoundryRegistryRevision] = useState(0);
+
+  useEffect(() => {
+    const refresh = () => setFoundryRegistryRevision((revision) => revision + 1);
+    window.addEventListener('vibespace:foundry-adapters-changed', refresh);
+    return () => window.removeEventListener('vibespace:foundry-adapters-changed', refresh);
+  }, []);
 
   const groups = useMemo(
     () =>
@@ -108,7 +115,7 @@ export function useAccessibleChatModels() {
         plan,
         defaultLocalModel,
       }),
-    [apiKeys, offlineMode, plan, defaultLocalModel, ollamaSignature],
+    [apiKeys, offlineMode, plan, defaultLocalModel, ollamaSignature, foundryRegistryRevision],
   );
 
   const flatOptions = useMemo(() => groups.flatMap((group) => group.options), [groups]);
