@@ -175,6 +175,12 @@ type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
 export function AgentManager() {
   const [showFoundry, setShowFoundry] = React.useState(false);
+  React.useEffect(() => {
+    if (window.sessionStorage.getItem('vibespace:open-foundry') === '1') {
+      window.sessionStorage.removeItem('vibespace:open-foundry');
+      setShowFoundry(true);
+    }
+  }, []);
   const agents = useAgentStore((s) => s.agents);
   const registerMany = useAgentStore((s) => s.registerMany);
   const registerAgent = useAgentStore((s) => s.registerAgent);

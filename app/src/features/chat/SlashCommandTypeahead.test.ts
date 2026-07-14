@@ -53,6 +53,14 @@ describe('orderSlashCommandsForDisplay', () => {
     expect(normalizeSlashCmd('subagnts')).toBe('subagents');
     expect(normalizeSlashCmd('multiatask')).toBe('multitask');
     expect(normalizeSlashCmd('multitaksk')).toBe('multitask');
+    expect(normalizeSlashCmd('foundry')).toBe('build-ai');
+  });
+
+  it('includes Build Your Own AI as an actionable navigation command', () => {
+    expect(SLASH_COMMANDS.find((cmd) => cmd.cmd === 'build-ai')).toMatchObject({
+      category: 'navigation',
+      description: 'Open Build Your Own AI',
+    });
   });
 
   it('matches alias queries to the canonical command', () => {

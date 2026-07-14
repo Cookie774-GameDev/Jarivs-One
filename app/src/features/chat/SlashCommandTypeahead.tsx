@@ -10,6 +10,7 @@ import {
   CalendarDays,
   ChevronRight,
   ClipboardList,
+  FlaskConical,
   FileText,
   HelpCircle,
   History,
@@ -43,6 +44,7 @@ export const SLASH_CMD_ALIASES: Record<string, string> = {
   terminal: 'terminals',
   contextmap: 'context',
   contexts: 'context',
+  foundry: 'build-ai',
   agent: 'multitask',
   multitaksk: 'multitask',
   multiatask: 'multitask',
@@ -197,6 +199,7 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
   { cmd: 'history', description: 'Reference History', icon: History, category: 'navigation' },
   { cmd: 'tools', description: 'Reference Tools', icon: Wrench, category: 'navigation' },
   { cmd: 'agents', description: 'Reference Agents page/editor', icon: Users, category: 'navigation' },
+  { cmd: 'build-ai', aliases: ['foundry'], description: 'Open Build Your Own AI', icon: FlaskConical, category: 'navigation' },
   { cmd: 'schedule', description: 'Reference Schedule', icon: CalendarDays, category: 'navigation' },
   { cmd: 'chat', description: 'Reference Chat', icon: MessageSquare, category: 'navigation' },
 

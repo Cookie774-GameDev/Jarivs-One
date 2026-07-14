@@ -967,6 +967,12 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       await addSystem('Switched chat model to Hive — the 5-model balanced ensemble.');
       return true;
     }
+    if (cmd === 'build-ai') {
+      window.sessionStorage.setItem('vibespace:open-foundry', '1');
+      useUIStore.getState().setRoute('agents');
+      setText('');
+      return true;
+    }
     const routes: Record<string, string> = {
       kanban: 'kanban',
       history: 'history',
