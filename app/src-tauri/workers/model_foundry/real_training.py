@@ -322,7 +322,7 @@ def run_real_inference(manifest: dict[str, Any], job_dir: Path, model_root: Path
             generated = model.generate(**encoded, max_new_tokens=max_new_tokens, do_sample=False, pad_token_id=tokenizer.eos_token_id)
         input_tokens = int(encoded["input_ids"].shape[-1])
         output_ids = generated[0][input_tokens:]
-        text = tokenizer.decode(output_ids, skip_special_tokens=True).strip()
+        text = tokenizer.decode(output_ids, skip_special_tokens=True).strip()[:12_000]
         if not text:
             raise TrainingFailure("inference.empty", "The local adapter returned no generated text.")
         return {"text": text, "inputTokens": input_tokens, "outputTokens": int(output_ids.shape[-1])}
