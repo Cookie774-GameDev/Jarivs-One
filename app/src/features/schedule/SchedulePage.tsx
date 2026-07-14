@@ -285,10 +285,20 @@ export function SchedulePage() {
     [jarvisEvents, openJarvisEventId],
   );
   const [jarvisModelOptionId, setJarvisModelOptionId] = React.useState(() => selectionOptionId(chatModelSelection) ?? '');
-  const selectedJarvisModel = React.useMemo(
-    () => jarvisModelOptions.find((option) => option.id === jarvisModelOptionId) ?? null,
-    [jarvisModelOptions, jarvisModelOptionId],
-  );
+  const selectedJarvisModel = React.useMemo(() => {
+    const exact = jarvisModelOptions.find((option) => option.id === jarvisModelOptionId);
+    if (exact) return exact;
+
+    // Accept provider-qualified values persisted by older builds, then resolve
+    // them to the concrete connection so scheduled actions retain exact routing.
+    const separator = jarvisModelOptionId.indexOf(':');
+    if (separator < 1) return null;
+    const provider = jarvisModelOptionId.slice(0, separator);
+    const modelId = jarvisModelOptionId.slice(separator + 1);
+    return jarvisModelOptions.find((option) => (
+      option.provider === provider && option.modelId === modelId && option.available !== false
+    )) ?? null;
+  }, [jarvisModelOptions, jarvisModelOptionId]);
 
   React.useEffect(() => {
     if (scheduleMode === 'jarvis') setAllDay(false);
@@ -299,7 +309,15 @@ export function SchedulePage() {
     setJarvisModelOptionId((current) => {
       if (current && jarvisModelOptions.some((option) => option.id === current)) return current;
       if (activeId && jarvisModelOptions.some((option) => option.id === activeId)) return activeId;
-      return jarvisModelOptions[0]?.id ?? '';
+      if (chatModelSelection.mode === 'single') {
+        const compatible = jarvisModelOptions.find((option) => (
+          option.provider === chatModelSelection.providerId &&
+          option.modelId === chatModelSelection.modelId &&
+          option.available !== false
+        ));
+        if (compatible) return compatible.id;
+      }
+      return jarvisModelOptions.find((option) => option.available !== false)?.id ?? jarvisModelOptions[0]?.id ?? '';
     });
   }, [chatModelSelection, jarvisModelOptions]);
 
@@ -391,7 +409,11 @@ export function SchedulePage() {
             recurrence: jarvisRecurrence,
             timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
             modelSelection: selectedJarvisModel
-              ? selectionFromOption(selectedJarvisModel.provider, selectedJarvisModel.modelId)
+              ? selectionFromOption(
+                  selectedJarvisModel.provider,
+                  selectedJarvisModel.modelId,
+                  selectedJarvisModel.connection,
+                )
               : chatModelSelection,
             agentId: 'agent_jarvis',
           })
@@ -661,9 +683,30 @@ export function SchedulePage() {
                     <select
                       id="jarvis-action-model"
                       value={jarvisModelOptionId}
-                      onChange={(event) => setJarvisModelOptionId(event.currentTarget.value)}
+                      onChange={(event) => {
+                        const value = event.currentTarget.value;
+                        const exact = jarvisModelOptions.find((option) => option.id === value);
+                        if (exact) {
+                          setJarvisModelOptionId(exact.id);
+                          return;
+                        }
+                        const separator = value.indexOf(':');
+                        const provider = value.slice(0, separator);
+                        const modelId = value.slice(separator + 1);
+                        const compatible = jarvisModelOptions.find((option) => (
+                          option.provider === provider &&
+                          option.modelId === modelId &&
+                          option.available !== false
+                        ));
+                        setJarvisModelOptionId(compatible?.id ?? value);
+                      }}
                       className="flex h-9 w-full rounded-md border border-input bg-background px-2.5 text-body text-foreground"
                     >
+                      {[...new Set(jarvisModelOptions.map((option) => `${option.provider}:${option.modelId}`))].map((id) => (
+                        <option key={`legacy-${id}`} value={id} hidden>
+                          {id}
+                        </option>
+                      ))}
                       {jarvisModelOptions.map((option) => (
                         <option key={option.id} value={option.id}>
                           {getProviderDisplayName(option.provider)} · {option.label}
