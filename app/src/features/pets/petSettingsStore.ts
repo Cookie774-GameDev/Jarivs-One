@@ -40,6 +40,8 @@ export interface PetSettingsState {
   soundEnabled: boolean;
   notificationReactions: boolean;
   pointerTracking: boolean;
+  /** Opt-in: submit finalized Pet voice turns instead of inserting a draft. */
+  petVoiceAutoSend: boolean;
 
   setEnabled: (v: boolean) => void;
   setReducedMotion: (v: boolean) => void;
@@ -55,6 +57,7 @@ export interface PetSettingsState {
   setSoundEnabled: (v: boolean) => void;
   setNotificationReactions: (v: boolean) => void;
   setPointerTracking: (v: boolean) => void;
+  setPetVoiceAutoSend: (v: boolean) => void;
 }
 
 export const usePetSettingsStore = create<PetSettingsState>()(
@@ -74,6 +77,7 @@ export const usePetSettingsStore = create<PetSettingsState>()(
       soundEnabled: true,
       notificationReactions: true,
       pointerTracking: true,
+      petVoiceAutoSend: false,
 
       setEnabled: (v) => set({ enabled: v, overlayVisible: v ? true : false }),
       setReducedMotion: (v) => set({ reducedMotion: v }),
@@ -91,6 +95,7 @@ export const usePetSettingsStore = create<PetSettingsState>()(
       setSoundEnabled: (v) => set({ soundEnabled: v }),
       setNotificationReactions: (v) => set({ notificationReactions: v }),
       setPointerTracking: (v) => set({ pointerTracking: v }),
+      setPetVoiceAutoSend: (v) => set({ petVoiceAutoSend: v }),
     }),
     {
       name: 'vibespace-pet-settings',
@@ -110,6 +115,7 @@ export const usePetSettingsStore = create<PetSettingsState>()(
         soundEnabled: s.soundEnabled,
         notificationReactions: s.notificationReactions,
         pointerTracking: s.pointerTracking,
+        petVoiceAutoSend: s.petVoiceAutoSend,
       }),
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<PetSettingsState>;
@@ -177,6 +183,8 @@ export function installPetSettingsStorageSync(): () => void {
         notificationReactions:
           s.notificationReactions ?? usePetSettingsStore.getState().notificationReactions,
         pointerTracking: s.pointerTracking ?? usePetSettingsStore.getState().pointerTracking,
+        petVoiceAutoSend:
+          s.petVoiceAutoSend ?? usePetSettingsStore.getState().petVoiceAutoSend,
       });
     } catch {
       /* ignore corrupt storage */

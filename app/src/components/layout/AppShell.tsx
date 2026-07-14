@@ -8,6 +8,7 @@ import {
   type MainTerminalFocusTarget,
 } from '@/features/terminals/terminalRefs';
 import type { ProjectId } from '@/types/common';
+import { installPetVoiceRuntimeBridge } from '@/features/voice/useVoiceTurnController';
 import { TopBar } from './TopBar';
 import { NavPane } from './NavPane';
 import { Inspector } from './Inspector';
@@ -54,6 +55,8 @@ export function AppShell({ children }: AppShellProps) {
       }),
     [],
   );
+
+  React.useEffect(() => installPetVoiceRuntimeBridge(), []);
 
   return (
     <MotionConfig

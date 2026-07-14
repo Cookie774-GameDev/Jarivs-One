@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => ({
     stop: vi.fn(),
     haltPlayback: vi.fn(),
   },
+  createStreamingVoiceSession: vi.fn(),
   voiceCanSpeak: true,
 }));
 
@@ -53,7 +54,7 @@ vi.mock('@/lib/notifications', () => ({
 }));
 
 vi.mock('@/features/voice/streamingVoice', () => ({
-  createStreamingVoiceSession: () => mocks.streamingSession,
+  createStreamingVoiceSession: mocks.createStreamingVoiceSession,
 }));
 
 vi.mock('@/features/terminals/agentContext', () => ({
@@ -103,6 +104,7 @@ describe('startRuntimeListener agent routing', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.voiceCanSpeak = true;
+    mocks.createStreamingVoiceSession.mockReset().mockReturnValue(mocks.streamingSession);
     try {
       localStorage.clear();
     } catch {
@@ -784,6 +786,67 @@ describe('startRuntimeListener agent routing', () => {
     stop();
   });
 
+  it('speaks a validated background Pet voice turn while the main voice module is closed', async () => {
+    mocks.voiceCanSpeak = false;
+    useUIStore.setState({ voiceModalOpen: false });
+    const jarvis = agent('agent_jarvis', 'jarvis', 'You are Jarvis.');
+    const chatId = 'chat_pet_voice' as ChatId;
+    const placeholderId = 'msg_pet_voice_assistant' as MessageId;
+    const userMessage: Message = {
+      id: 'msg_pet_voice_user' as MessageId,
+      chat_id: chatId,
+      role: 'user',
+      parts: [{ kind: 'text', text: 'hello from the Pet' }],
+      created_at: 1,
+      updated_at: 1,
+    };
+    mocks.runAgent.mockResolvedValueOnce({
+      text: 'Hello from Jarvis.',
+      usage: { input_tokens: 1, output_tokens: 3, cost_usd: 0 },
+      provider: 'mock',
+      model: 'mock-default',
+    });
+    const runStates: Array<Record<string, unknown>> = [];
+    const onRunState = (event: Event) => {
+      runStates.push((event as CustomEvent<Record<string, unknown>>).detail);
+    };
+    window.addEventListener('jarvis:run-state', onRunState);
+    const stop = trackListener(startRuntimeListener({
+      getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+      getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+      getAgentForChat: vi.fn(async () => jarvis),
+      getMessages: vi.fn(async () => [userMessage]),
+      appendMessage: vi.fn(async (msg) => ({
+        ...msg,
+        id: placeholderId,
+        created_at: 2,
+        updated_at: 2,
+      })),
+      updateMessage: vi.fn(async () => undefined),
+    }));
+
+    window.dispatchEvent(new CustomEvent('jarvis:send', {
+      detail: {
+        chatId,
+        text: 'hello from the Pet',
+        speakReply: true,
+        voiceRequestId: 'voice_pet_1',
+        allowBackgroundVoice: true,
+      },
+    }));
+
+    await vi.waitFor(() => expect(mocks.streamingSession.onComplete).toHaveBeenCalledTimes(1));
+    expect(mocks.createStreamingVoiceSession).toHaveBeenCalledWith(
+      expect.objectContaining({ allowBackground: true }),
+    );
+    expect(runStates).toContainEqual(
+      expect.objectContaining({ voiceRequestId: 'voice_pet_1', status: 'running' }),
+    );
+
+    window.removeEventListener('jarvis:run-state', onRunState);
+    stop();
+  });
+
   it('cancels an in-flight speakReply run when a new voice send arrives', async () => {
     useUIStore.setState({ voiceModalOpen: true });
     const jarvis = agent('agent_jarvis', 'jarvis', 'You are Jarvis.');
@@ -829,6 +892,68 @@ describe('startRuntimeListener agent routing', () => {
     await vi.waitFor(() => expect(signals[0]?.aborted).toBe(true));
     await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(2));
 
+    stop();
+  });
+
+  it('cancels only the run correlated to a Pet voice request id', async () => {
+    useUIStore.setState({ voiceModalOpen: true });
+    const jarvis = agent('agent_jarvis', 'jarvis', 'You are Jarvis.');
+    const chatId = 'chat_voice_scoped_cancel' as ChatId;
+    let placeholderSeq = 0;
+    const signals: AbortSignal[] = [];
+    mocks.runAgent.mockImplementation(async (payload: { signal: AbortSignal }) => {
+      signals.push(payload.signal);
+      await new Promise<void>((resolve) => {
+        payload.signal.addEventListener('abort', () => resolve(), { once: true });
+      });
+      return {
+        text: 'cancelled',
+        usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
+        provider: 'mock',
+        model: 'mock-default',
+      };
+    });
+    const stop = trackListener(startRuntimeListener({
+      getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+      getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+      getAgentForChat: vi.fn(async () => jarvis),
+      getMessages: vi.fn(async () => []),
+      appendMessage: vi.fn(async (msg) => ({
+        ...msg,
+        id: `msg_voice_scoped_${++placeholderSeq}` as MessageId,
+        created_at: placeholderSeq,
+        updated_at: placeholderSeq,
+      })),
+      updateMessage: vi.fn(async () => undefined),
+    }));
+
+    window.dispatchEvent(new CustomEvent('jarvis:send', {
+      detail: {
+        chatId,
+        text: 'voice request',
+        speakReply: true,
+        voiceRequestId: 'voice_scoped_1',
+      },
+    }));
+    await vi.waitFor(() => expect(signals).toHaveLength(1));
+
+    window.dispatchEvent(new CustomEvent('jarvis:send', {
+      detail: { chatId, text: 'unrelated typed request' },
+    }));
+    await vi.waitFor(() => expect(signals).toHaveLength(2));
+
+    window.dispatchEvent(new CustomEvent('jarvis:cancel', {
+      detail: { voiceRequestId: '../invalid' },
+    }));
+    expect(signals[0]?.aborted).toBe(false);
+    expect(signals[1]?.aborted).toBe(false);
+
+    window.dispatchEvent(new CustomEvent('jarvis:cancel', {
+      detail: { voiceRequestId: 'voice_scoped_1' },
+    }));
+
+    expect(signals[0]?.aborted).toBe(true);
+    expect(signals[1]?.aborted).toBe(false);
     stop();
   });
 

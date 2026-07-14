@@ -125,6 +125,20 @@ describe('StreamingVoiceSession lifecycle', () => {
     expect(mocks.speakWithSettings).not.toHaveBeenCalled();
   });
 
+  it('allows only an explicitly background-enabled Pet turn to speak with the main modal closed', async () => {
+    mocks.canSpeak = false;
+    mocks.sessionId = 0;
+    const session = new StreamingVoiceSession({ allowBackground: true });
+
+    session.onDelta('Pet reply.');
+    await session.onComplete('Pet reply.');
+
+    expect(mocks.speakWithSettings).toHaveBeenCalledWith(
+      'Pet reply.',
+      expect.objectContaining({ allowBackground: true }),
+    );
+  });
+
   it('uses the Kokoro streaming player instead of serial speak calls', async () => {
     mocks.authState.voiceEngine = 'kokoro';
     const events: string[] = [];

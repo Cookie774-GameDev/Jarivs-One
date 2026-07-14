@@ -7,12 +7,13 @@ import { MessageSquare, Mic, MicOff, Square, Volume2, VolumeX } from 'lucide-rea
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useVoiceStore } from '@/features/voice/store';
-import { VoiceService } from '@/features/voice/VoiceService';
+import { useVoiceTurnController } from '@/features/voice/useVoiceTurnController';
 import { useUIStore } from '@/stores/ui';
 import { useAuthStore } from '@/stores/auth';
 import { stopAllVoiceOutput } from '@/features/voice/voiceRouter';
 import { usePetPresentationStore } from './petPresentationStore';
 import { sanitizeActivitySummary } from './petPresentation';
+import { usePetSettingsStore } from './petSettingsStore';
 
 const SAFE_VOICE_ACTIVITY: Record<string, string> = {
   listening: 'Jarvis is listening',
@@ -39,10 +40,31 @@ export function PetVoiceSurface({
   const defaultProvider = useAuthStore((s) => s.defaultProvider);
   const selectedModels = useAuthStore((s) => s.selectedModels);
   const pushActivity = usePetPresentationStore((s) => s.pushActivity);
+  const panelActiveChatId = usePetPresentationStore((s) => s.panelActiveChatId);
+  const chats = usePetPresentationStore((s) => s.chats);
+  const petVoiceAutoSend = usePetSettingsStore((s) => s.petVoiceAutoSend);
+  const setPetVoiceAutoSend = usePetSettingsStore((s) => s.setPetVoiceAutoSend);
 
   const [busy, setBusy] = React.useState(false);
   /** Local mute of TTS output only — does not create a second audio pipeline. */
   const [muted, setMuted] = React.useState(false);
+
+  const targetChatId = React.useMemo(() => {
+    const petChatIds = Object.values(chats)
+      .filter((chat) => chat.owner === 'pet-mini-panel')
+      .map((chat) => chat.chatId);
+    return panelActiveChatId && petChatIds.includes(panelActiveChatId)
+      ? panelActiveChatId
+      : (petChatIds[0] ?? null);
+  }, [chats, panelActiveChatId]);
+
+  const voice = useVoiceTurnController({
+    owner: 'pet',
+    enabled: true,
+    targetChatId,
+    autoSend: petVoiceAutoSend,
+    muted,
+  });
 
   const isListening = state === 'listening';
   const isSpeaking = state === 'speaking';
@@ -77,9 +99,8 @@ export function PetVoiceSurface({
   const start = React.useCallback(() => {
     setBusy(true);
     try {
-      // Real VoiceService path used by the main Voice modal.
-      const ok = VoiceService.startListening();
-      if (!ok) {
+      const ok = voice.startListening();
+      if (!ok && useVoiceStore.getState().state !== 'error') {
         useVoiceStore.getState().setState('error', 'Could not start microphone');
       }
     } catch (err) {
@@ -89,27 +110,22 @@ export function PetVoiceSurface({
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [voice]);
 
   const stopListeningOnly = React.useCallback(() => {
     try {
-      VoiceService.stopListening?.();
+      voice.stopListening('idle');
     } catch {
       /* ignore */
     }
     if (useVoiceStore.getState().state === 'listening') {
       useVoiceStore.getState().setState('idle');
     }
-  }, []);
+  }, [voice]);
 
   const stopAll = React.useCallback(() => {
-    stopListeningOnly();
-    try {
-      stopAllVoiceOutput();
-    } catch {
-      /* ignore */
-    }
-  }, [stopListeningOnly]);
+    voice.stopSpeaking();
+  }, [voice]);
 
   const toggleMute = React.useCallback(() => {
     setMuted((m) => {
@@ -123,19 +139,6 @@ export function PetVoiceSurface({
       }
       return next;
     });
-  }, []);
-
-  React.useEffect(() => {
-    return () => {
-      // Cleanup on unmount / panel close: stop capture; do not leave mic open.
-      try {
-        if (useVoiceStore.getState().state === 'listening') {
-          VoiceService.stopListening?.();
-        }
-      } catch {
-        /* ignore */
-      }
-    };
   }, []);
 
   return (
@@ -188,6 +191,20 @@ export function PetVoiceSurface({
           {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
           <span data-pet-compact-label>{muted ? 'Unmute' : 'Mute'}</span>
         </Button>
+        <label
+          className="inline-flex min-h-7 items-center gap-1.5 rounded-md px-2 text-metadata text-muted-foreground hover:bg-muted"
+          title="When off, finalized speech is inserted as a draft and is never submitted automatically."
+        >
+          <input
+            type="checkbox"
+            checked={petVoiceAutoSend}
+            onChange={(event) => setPetVoiceAutoSend(event.currentTarget.checked)}
+            aria-label="Send voice turns automatically"
+            data-pet-voice-auto-send="true"
+            className="h-3.5 w-3.5 accent-primary"
+          />
+          <span data-pet-compact-label>Auto-send</span>
+        </label>
         <Button
           size="sm"
           variant="ghost"
@@ -246,8 +263,8 @@ export function PetVoiceSurface({
       >
         {finals.length === 0 && !partial && (
           <p className="text-secondary text-muted-foreground text-sm">
-            Tap Listen and speak. Uses the same Jarvis voice pipeline as the main app (STT → AI →
-            TTS).
+            Tap Listen and speak. Final speech is inserted into the active shared chat as a draft.
+            Say the commit phrase or opt in to Auto-send for the shared Jarvis AI and voice reply.
           </p>
         )}
         {finals.map((f) => (

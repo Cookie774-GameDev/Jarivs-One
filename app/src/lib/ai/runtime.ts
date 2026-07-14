@@ -130,6 +130,10 @@ export interface SendDetail {
   contextNodes?: ContextAttachment[];
   /** Speak the final assistant reply when this send came from voice input. */
   speakReply?: boolean;
+  /** Correlates one voice turn without exposing prompt or response content. */
+  voiceRequestId?: string;
+  /** Validated Pet-window turns may speak while the main Voice modal is closed. */
+  allowBackgroundVoice?: boolean;
   /** Run Jarvis action proposals immediately without approval cards. */
   autoApproveActions?: boolean;
   /** Plugin ids attached via /plug or detected in message text. */
@@ -154,6 +158,8 @@ export interface SendDetail {
 export interface CancelDetail {
   /** The assistant placeholder message id to cancel. Omit to cancel everything. */
   messageId?: MessageId;
+  /** Cancel only the assistant run correlated to this voice request. */
+  voiceRequestId?: string;
 }
 
 export interface RuntimeOptions {
@@ -294,10 +300,19 @@ function applyJarvisChatActionOverlay(agent: Agent): Agent {
   };
 }
 
-function dispatchRunState(chatId: ChatId | string, status: 'running' | 'done' | 'error' | 'cancelled'): void {
+function dispatchRunState(
+  chatId: ChatId | string,
+  status: 'running' | 'done' | 'error' | 'cancelled',
+  voiceRequestId?: string,
+): void {
   window.dispatchEvent(new CustomEvent('jarvis:run-state', {
-    detail: { chatId: String(chatId), status },
+    detail: { chatId: String(chatId), status, voiceRequestId },
   }));
+}
+
+function boundedVoiceRequestId(value: unknown): string | undefined {
+  if (typeof value !== 'string' || value.length < 4 || value.length > 160) return undefined;
+  return /^[A-Za-z0-9._:-]+$/.test(value) ? value : undefined;
 }
 
 export function sanitizeCredentialRequests(text: string): string {
@@ -737,17 +752,21 @@ export function startRuntimeListener(
   const flushIntervalMs = options.flushIntervalMs ?? 120;
 
   const inFlight = new Map<MessageId, AbortController>();
+  const inFlightVoice = new Map<string, MessageId>();
+  const inFlightVoiceControllers = new Map<string, AbortController>();
+  const cancelledVoiceRequests = new Set<string>();
 
   const releaseVoiceTurnWithoutReply = (detail: SendDetail, chatId: ChatId | string): void => {
     if (detail.speakReply !== true) return;
     window.dispatchEvent(new CustomEvent(STREAMING_VOICE_END_EVENT));
-    dispatchRunState(chatId, 'error');
+    dispatchRunState(chatId, 'error', boundedVoiceRequestId(detail.voiceRequestId));
   };
 
   const handleSend = async (e: Event) => {
     const detail = (e as CustomEvent<SendDetail>).detail;
     if (!detail || !detail.chatId || typeof detail.text !== 'string') return;
     const { chatId, text } = detail;
+    const voiceRequestId = boundedVoiceRequestId(detail.voiceRequestId);
 
     if (detail.speakReply === true && inFlight.size > 0) {
       const count = inFlight.size;
@@ -1137,6 +1156,10 @@ export function startRuntimeListener(
 
     let placeholderId: MessageId | null = null;
     const controller = new AbortController();
+    if (voiceRequestId) {
+      inFlightVoiceControllers.set(voiceRequestId, controller);
+      if (cancelledVoiceRequests.delete(voiceRequestId)) controller.abort();
+    }
     // Hoisted so the catch / finally blocks can include it in their
     // DevConsole entries — defining it inside the try would put it
     // out of scope when the run errors before the first log call.
@@ -1158,7 +1181,11 @@ export function startRuntimeListener(
 
     const flushSpeechDelta = () => {
       speechDeltaTimer = null;
-      if (!streamingVoice || !acc || !canVoiceModuleSpeak()) return;
+      if (
+        !streamingVoice ||
+        !acc ||
+        (!detail.allowBackgroundVoice && !canVoiceModuleSpeak())
+      ) return;
       lastSpeechDeltaAt = Date.now();
       streamingVoice.onDelta(acc);
     };
@@ -1196,6 +1223,7 @@ export function startRuntimeListener(
       streamingVoice = createStreamingVoiceSession({
         voiceEngine: voiceSettings.voiceEngine,
         voicePreset: voiceSettings.voicePreset,
+        allowBackground: detail.allowBackgroundVoice === true,
       });
     }
     const stackSteps = stepsForPreset(
@@ -1256,7 +1284,8 @@ export function startRuntimeListener(
       });
       placeholderId = placeholder.id;
       inFlight.set(placeholder.id, controller);
-      dispatchRunState(chatId, 'running');
+      if (voiceRequestId) inFlightVoice.set(voiceRequestId, placeholder.id);
+      dispatchRunState(chatId, 'running', voiceRequestId);
 
       // Read the now-current history; pass it (sans placeholder) to the model.
       const history = await bindings.getMessages(chatId);
@@ -1405,7 +1434,7 @@ export function startRuntimeListener(
           outputTokens: reportedOutputTokens,
         } : {}),
       });
-      dispatchRunState(chatId, 'done');
+      dispatchRunState(chatId, 'done', voiceRequestId);
       updateStructuredAgentStatus(detail.structuredContext, 'done', 'Finished');
 
       // Auto-name the chat from its first assistant reply.
@@ -1460,7 +1489,7 @@ export function startRuntimeListener(
         try {
           cancelSpeechDelta();
           flushSpeechDelta();
-          if (canVoiceModuleSpeak()) {
+          if (detail.allowBackgroundVoice || canVoiceModuleSpeak()) {
             await streamingVoice.onComplete(finalText);
           } else {
             streamingVoice.haltPlayback();
@@ -1527,7 +1556,7 @@ export function startRuntimeListener(
         subtitle: aborted ? 'Cancelled by user' : ((err as Error)?.message ?? 'Unknown error'),
         endedAt: Date.now(),
       });
-      dispatchRunState(chatId, aborted ? 'cancelled' : 'error');
+      dispatchRunState(chatId, aborted ? 'cancelled' : 'error', voiceRequestId);
       updateStructuredAgentStatus(detail.structuredContext, aborted ? 'cancelled' : 'failed', aborted ? 'Cancelled' : 'Failed');
 
       devConsole.log({
@@ -1549,15 +1578,43 @@ export function startRuntimeListener(
       });
     } finally {
       if (placeholderId) inFlight.delete(placeholderId);
+      if (voiceRequestId) {
+        inFlightVoice.delete(voiceRequestId);
+        inFlightVoiceControllers.delete(voiceRequestId);
+        cancelledVoiceRequests.delete(voiceRequestId);
+      }
     }
   };
 
   const handleCancel = (e: Event) => {
     const detail = (e as CustomEvent<CancelDetail>).detail;
+    const voiceRequestId = boundedVoiceRequestId(detail?.voiceRequestId);
+    if (detail?.voiceRequestId !== undefined && !voiceRequestId) return;
+    if (voiceRequestId) {
+      const messageId = inFlightVoice.get(voiceRequestId);
+      const controller =
+        inFlightVoiceControllers.get(voiceRequestId) ??
+        (messageId ? inFlight.get(messageId) : undefined);
+      controller?.abort();
+      if (!controller) {
+        if (cancelledVoiceRequests.size >= 64) {
+          const oldest = cancelledVoiceRequests.values().next().value;
+          if (oldest) cancelledVoiceRequests.delete(oldest);
+        }
+        cancelledVoiceRequests.add(voiceRequestId);
+      }
+      if (messageId) inFlight.delete(messageId);
+      inFlightVoice.delete(voiceRequestId);
+      inFlightVoiceControllers.delete(voiceRequestId);
+      return;
+    }
     if (!detail || !detail.messageId) {
       const count = inFlight.size;
       for (const c of inFlight.values()) c.abort();
       inFlight.clear();
+      inFlightVoice.clear();
+      inFlightVoiceControllers.clear();
+      cancelledVoiceRequests.clear();
       if (count > 0) {
         devConsole.log({
           channel: 'ai',
@@ -1589,5 +1646,8 @@ export function startRuntimeListener(
     window.removeEventListener(cancelEventName, handleCancel as EventListener);
     for (const c of inFlight.values()) c.abort();
     inFlight.clear();
+    inFlightVoice.clear();
+    inFlightVoiceControllers.clear();
+    cancelledVoiceRequests.clear();
   };
 }

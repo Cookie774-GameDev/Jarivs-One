@@ -1,36 +1,19 @@
 import * as React from 'react';
 import { AnimatePresence, motion, useMotionValue } from 'motion/react';
 import { Bot, ChevronDown, ChevronUp, Mic, UserRound, X } from 'lucide-react';
-import { toast } from '@/components/ui/toast';
 import { useUIStore } from '@/stores/ui';
 import { useAuthStore } from '@/stores/auth';
 import { cn } from '@/lib/utils';
-import { messageRepo } from '@/lib/db';
 import { useChatMessages } from '@/features/chat/hooks';
-import {
-  ensureJarvisChatForVoice,
-  focusVoiceChat,
-  resolveVoiceChatTarget,
-} from './voiceChatRouting';
-import type { ChatId, Message } from '@/types';
+import type { Message } from '@/types';
 import type { VoiceState } from './store';
 import { useVoiceStore } from './store';
-import { VoiceService } from './VoiceService';
-import { SPEECH_SYNTHESIS_END_EVENT, SPEECH_SYNTHESIS_START_EVENT, STREAMING_VOICE_END_EVENT, STREAMING_VOICE_START_EVENT } from './speechSynthesis';
 import { PERSONAS } from './personas';
 import { VoiceActivityWaveform } from './VoiceActivityWaveform';
-import { handleVoiceModuleClosed, stopCurrentVoiceResponse } from './voiceRouter';
-import { resolveVoiceListenTimeoutMs } from './voiceConversation';
 import {
-  modelSelectionContextFromAuth,
-  validateSendModelAccess,
-} from '@/lib/ai/modelSelection';
-import {
-  processVoiceFinalEvent,
-  shouldAutoSendOnSilence,
   voiceListeningHint,
-  VOICE_REPLY_COOLDOWN_MS,
 } from './voiceTurnCommit';
+import { useVoiceTurnController } from './useVoiceTurnController';
 
 const STATE_LABEL: Record<VoiceState, string> = {
   idle: 'Ready',
@@ -224,18 +207,6 @@ export function VoiceModal() {
   const errorMessage = useVoiceStore((voice) => voice.errorMessage);
   const levelRef = React.useRef(0);
   const transcriptRef = React.useRef<HTMLDivElement>(null);
-  const pendingUtteranceRef = React.useRef('');
-  const utteranceTimerRef = React.useRef<number | null>(null);
-  const restartTimerRef = React.useRef<number | null>(null);
-  const cooldownTimerRef = React.useRef<number | null>(null);
-  const speakingRef = React.useRef(false);
-  const streamingReplyRef = React.useRef(false);
-  const listeningArmedRef = React.useRef(false);
-  const turnBusyRef = React.useRef(false);
-  // True when the mic was actively listening as external speech (e.g. a
-  // Settings voice preview) started - so we can hand the mic back afterwards
-  // instead of leaving push-to-talk silently disarmed.
-  const resumeListeningAfterSpeechRef = React.useRef(false);
   const personaCfg = PERSONAS[persona];
 
   // Drag state — primary-button drag on the panel chrome, clamped to viewport
@@ -279,374 +250,11 @@ export function VoiceModal() {
     isDragging.current = false;
   }, []);
 
-  const stopListening = React.useCallback((nextState: VoiceState = 'idle') => {
-    listeningArmedRef.current = false;
-    VoiceService.stopListening();
-    useUIStore.getState().setVoiceListening(false);
-    useVoiceStore.getState().setPartialTranscript('');
-    useVoiceStore.getState().setState(nextState);
-  }, []);
-
-  const startListening = React.useCallback(() => {
-    const supported = VoiceService.isSupported();
-    if (!supported) {
-      useUIStore.getState().setVoiceListening(false);
-      useVoiceStore
-        .getState()
-        .setState('error', 'Speech recognition is unavailable in this runtime.');
-      return false;
-    }
-    listeningArmedRef.current = true;
-    const auth = useAuthStore.getState();
-    VoiceService.setInactivityTimeoutMs(
-      resolveVoiceListenTimeoutMs(auth.voiceAutoListenOnOpen, auth.voiceListenTimeoutMs),
-    );
-    const started = VoiceService.startListening();
-    useUIStore.getState().setVoiceListening(started);
-    if (started) {
-      useVoiceStore.getState().setState('listening');
-    } else {
-      listeningArmedRef.current = false;
-    }
-    return started;
-  }, []);
-
-  /** Stop the current spoken reply and hand control straight back to the user. */
-  const stopSpeaking = React.useCallback(() => {
-    stopCurrentVoiceResponse();
-    speakingRef.current = false;
-    streamingReplyRef.current = false;
-    turnBusyRef.current = false;
-    resumeListeningAfterSpeechRef.current = false;
-    if (useAuthStore.getState().voiceAutoListenOnOpen) {
-      listeningArmedRef.current = true;
-      startListening();
-    } else {
-      useVoiceStore.getState().setState('idle');
-    }
-  }, [startListening]);
-
-  const toggleListening = React.useCallback(() => {
-    if (state === 'speaking' || speakingRef.current) {
-      stopSpeaking();
-      return;
-    }
-    if (state === 'listening' || useUIStore.getState().voiceListening) {
-      stopListening('idle');
-      return;
-    }
-    if (!voiceAutoListenOnOpen) {
-      listeningArmedRef.current = true;
-    }
-    startListening();
-  }, [startListening, state, stopListening, stopSpeaking, voiceAutoListenOnOpen]);
-
-  React.useEffect(() => {
-    if (!open) return;
-    void ensureJarvisChatForVoice().then((chatId) => {
-      if (chatId) focusVoiceChat(chatId);
-    });
-  }, [open]);
-
-  React.useEffect(() => {
-    if (!open) return;
-    listeningArmedRef.current = voiceAutoListenOnOpen;
-    if (voiceAutoListenOnOpen) startListening();
-    else useVoiceStore.getState().setState('idle');
-
-    const handsFree = () => useAuthStore.getState().voiceAutoListenOnOpen;
-
-    const clearUtteranceTimers = () => {
-      if (utteranceTimerRef.current !== null) window.clearTimeout(utteranceTimerRef.current);
-      utteranceTimerRef.current = null;
-    };
-
-    const releaseTurnAndRestart = () => {
-      turnBusyRef.current = false;
-      if (handsFree()) {
-        listeningArmedRef.current = true;
-        restartListening();
-      } else {
-        useVoiceStore.getState().setState('idle');
-      }
-    };
-
-    const restartListening = () => {
-      if (turnBusyRef.current) return;
-      if (!useUIStore.getState().voiceModalOpen || speakingRef.current || !listeningArmedRef.current) return;
-      if (!handsFree() && !listeningArmedRef.current) return;
-      if (VoiceService.isListening() || VoiceService.wantsListening()) return;
-      if (restartTimerRef.current !== null) window.clearTimeout(restartTimerRef.current);
-      restartTimerRef.current = window.setTimeout(() => {
-        restartTimerRef.current = null;
-        if (turnBusyRef.current) return;
-        if (!useUIStore.getState().voiceModalOpen || speakingRef.current || !listeningArmedRef.current) return;
-        if (VoiceService.isListening() || VoiceService.wantsListening()) return;
-        startListening();
-      }, 180);
-    };
-
-    const scheduleRestartAfterReply = () => {
-      if (cooldownTimerRef.current !== null) window.clearTimeout(cooldownTimerRef.current);
-      cooldownTimerRef.current = window.setTimeout(() => {
-        cooldownTimerRef.current = null;
-        turnBusyRef.current = false;
-        if (handsFree()) {
-          listeningArmedRef.current = true;
-          pendingUtteranceRef.current = '';
-          useVoiceStore.getState().setPartialTranscript('');
-          restartListening();
-        } else if (resumeListeningAfterSpeechRef.current) {
-          // External speech (e.g. a Settings voice preview) interrupted an
-          // armed push-to-talk mic - hand it back instead of going silent.
-          resumeListeningAfterSpeechRef.current = false;
-          listeningArmedRef.current = true;
-          restartListening();
-        } else {
-          useVoiceStore.getState().setState('idle');
-        }
-      }, VOICE_REPLY_COOLDOWN_MS);
-    };
-
-    const disarmPushToTalk = () => {
-      if (handsFree()) return;
-      listeningArmedRef.current = false;
-      VoiceService.stopListening();
-      useUIStore.getState().setVoiceListening(false);
-    };
-
-    const stopMicForTurn = () => {
-      VoiceService.stopListening();
-      useUIStore.getState().setVoiceListening(false);
-      clearUtteranceTimers();
-    };
-
-    const flushUtterance = (textOverride?: string) => {
-      clearUtteranceTimers();
-      if (turnBusyRef.current) return;
-
-      const text = (textOverride ?? pendingUtteranceRef.current).trim();
-      pendingUtteranceRef.current = '';
-      if (!text) return;
-
-      turnBusyRef.current = true;
-      disarmPushToTalk();
-      stopMicForTurn();
-      useVoiceStore.getState().setState('thinking');
-      void (async () => {
-        const target = await resolveVoiceChatTarget(text);
-        if (!target) {
-          useVoiceStore.getState().setState('error', 'Could not open a Jarvis chat.');
-          releaseTurnAndRestart();
-          return;
-        }
-
-        focusVoiceChat(target.chatId);
-        const chatId = target.chatId;
-        const messageText = target.messageText.trim();
-        if (!messageText) {
-          useVoiceStore.getState().setState('error', 'Say something for Jarvis to send.');
-          releaseTurnAndRestart();
-          return;
-        }
-
-        const auth = useAuthStore.getState();
-        const modelCheck = validateSendModelAccess(
-          messageText,
-          auth.chatModelSelection,
-          modelSelectionContextFromAuth(auth),
-          auth.stackCustomSteps,
-          { voice: true },
-        );
-        if (!modelCheck.ok) {
-          useVoiceStore.getState().setState('error', modelCheck.message);
-          releaseTurnAndRestart();
-          return;
-        }
-
-        try {
-          await messageRepo.create({
-            chat_id: chatId as ChatId,
-            role: 'user',
-            parts: [{ kind: 'text', text: messageText }],
-          });
-          window.dispatchEvent(
-            new CustomEvent('jarvis:send', {
-              detail: {
-                chatId,
-                text: messageText,
-                agentId: target.agentId,
-                mentionedAgentIds: target.mentionedAgentIds,
-                speakReply: true,
-                autoApproveActions: auth.voiceAutoApproveActions,
-              },
-            }),
-          );
-        } catch (error) {
-          toast.error(
-            'Voice message failed',
-            error instanceof Error ? error.message : 'Could not send.',
-          );
-          useVoiceStore.getState().setState('error', 'Could not send the voice message.');
-          releaseTurnAndRestart();
-        }
-      })();
-    };
-
-    let partialTimer: number | null = null;
-    let pendingPartial = '';
-
-    const schedulePartial = (text: string) => {
-      pendingPartial = text;
-      levelRef.current = Math.min(1, 0.25 + text.length / 48);
-      if (partialTimer !== null) return;
-      partialTimer = window.setTimeout(() => {
-        partialTimer = null;
-        useVoiceStore.getState().setPartialTranscript(pendingPartial);
-      }, 100);
-    };
-
-    const offs = [
-      VoiceService.on('voice:start', () => {
-        useUIStore.getState().setVoiceListening(true);
-        useVoiceStore.getState().setState('listening');
-      }),
-      VoiceService.on('voice:partial', ({ text }) => {
-        schedulePartial(text);
-      }),
-      VoiceService.on('voice:final', ({ text }) => {
-        if (turnBusyRef.current) return;
-
-        useVoiceStore.getState().pushFinalTranscript(text);
-        const auth = useAuthStore.getState();
-        const action = processVoiceFinalEvent({
-          finalText: text,
-          currentDraft: pendingUtteranceRef.current,
-          turnBusy: turnBusyRef.current,
-          handsFree: auth.voiceAutoListenOnOpen,
-          endTrigger: auth.voiceEndTrigger,
-          commitPhrase: auth.voiceCommitPhrase,
-          cancelPhrase: auth.voiceCancelPhrase,
-        });
-
-        if (action.type === 'ignore') return;
-
-        if (action.type === 'cancel') {
-          pendingUtteranceRef.current = '';
-          clearUtteranceTimers();
-          useVoiceStore.getState().setPartialTranscript('');
-          return;
-        }
-
-        if (action.type === 'accumulate') {
-          pendingUtteranceRef.current = action.draft;
-          useVoiceStore.getState().setPartialTranscript(action.draft);
-          return;
-        }
-
-        if (action.type === 'commit') {
-          pendingUtteranceRef.current = '';
-          flushUtterance(action.messageText);
-          return;
-        }
-
-        pendingUtteranceRef.current = action.draft;
-        if (!shouldAutoSendOnSilence(auth.voiceAutoListenOnOpen, auth.voiceEndTrigger)) return;
-
-        clearUtteranceTimers();
-        utteranceTimerRef.current = window.setTimeout(
-          () => flushUtterance(),
-          auth.voiceSilenceDelayMs,
-        );
-      }),
-      VoiceService.on('voice:error', ({ kind, message }) => {
-        if (kind === 'no_speech' || kind === 'aborted') {
-          restartListening();
-          return;
-        }
-        if (
-          kind === 'permission_denied' ||
-          kind === 'service_not_allowed' ||
-          kind === 'audio_capture'
-        ) {
-          useUIStore.getState().setVoiceListening(false);
-          useVoiceStore.getState().setState('error', message);
-          return;
-        }
-        useVoiceStore.getState().setState('error', message);
-      }),
-      VoiceService.on('voice:timeout', () => {
-        if (!handsFree()) return;
-        const auth = useAuthStore.getState();
-        if (shouldAutoSendOnSilence(auth.voiceAutoListenOnOpen, auth.voiceEndTrigger)) {
-          if (pendingUtteranceRef.current.trim()) {
-            flushUtterance();
-            return;
-          }
-        } else {
-          pendingUtteranceRef.current = '';
-          useVoiceStore.getState().setPartialTranscript('');
-        }
-        // Visible pause instead of a silent shutoff - the label tells the
-        // user the mic stopped and how to resume.
-        stopListening('paused');
-      }),
-    ];
-
-    const onStreamingStart = () => {
-      streamingReplyRef.current = true;
-      turnBusyRef.current = true;
-      if (speakingRef.current) return;
-      speakingRef.current = true;
-      stopMicForTurn();
-      useVoiceStore.getState().setState('speaking');
-    };
-    const onStreamingEnd = () => {
-      streamingReplyRef.current = false;
-      speakingRef.current = false;
-      scheduleRestartAfterReply();
-    };
-    const onSpeechStart = () => {
-      if (streamingReplyRef.current) return;
-      // Capture BEFORE flipping turnBusy: a mid-listen preview (turn not
-      // busy, mic live) must resume the mic after the speech ends.
-      resumeListeningAfterSpeechRef.current =
-        !turnBusyRef.current && !handsFree() && VoiceService.isListening();
-      turnBusyRef.current = true;
-      speakingRef.current = true;
-      stopMicForTurn();
-      useVoiceStore.getState().setState('speaking');
-    };
-    const onSpeechEnd = () => {
-      if (streamingReplyRef.current) return;
-      speakingRef.current = false;
-      scheduleRestartAfterReply();
-    };
-    window.addEventListener(STREAMING_VOICE_START_EVENT, onStreamingStart);
-    window.addEventListener(STREAMING_VOICE_END_EVENT, onStreamingEnd);
-    window.addEventListener(SPEECH_SYNTHESIS_START_EVENT, onSpeechStart);
-    window.addEventListener(SPEECH_SYNTHESIS_END_EVENT, onSpeechEnd);
-
-    return () => {
-      offs.forEach((off) => off());
-      if (partialTimer !== null) window.clearTimeout(partialTimer);
-      if (restartTimerRef.current !== null) window.clearTimeout(restartTimerRef.current);
-      restartTimerRef.current = null;
-      if (cooldownTimerRef.current !== null) window.clearTimeout(cooldownTimerRef.current);
-      cooldownTimerRef.current = null;
-      clearUtteranceTimers();
-      pendingUtteranceRef.current = '';
-      useVoiceStore.getState().clearTranscripts();
-      listeningArmedRef.current = false;
-      turnBusyRef.current = false;
-      streamingReplyRef.current = false;
-      window.removeEventListener(STREAMING_VOICE_START_EVENT, onStreamingStart);
-      window.removeEventListener(STREAMING_VOICE_END_EVENT, onStreamingEnd);
-      window.removeEventListener(SPEECH_SYNTHESIS_START_EVENT, onSpeechStart);
-      window.removeEventListener(SPEECH_SYNTHESIS_END_EVENT, onSpeechEnd);
-      handleVoiceModuleClosed();
-    };
-  }, [open, startListening, voiceAutoListenOnOpen, stopListening]);
+  const { toggleListening } = useVoiceTurnController({
+    owner: 'main',
+    enabled: open,
+    levelRef,
+  });
 
   const listeningHint =
     state === 'listening'
@@ -691,10 +299,7 @@ export function VoiceModal() {
         >
           <button
             type="button"
-            onClick={() => {
-              handleVoiceModuleClosed();
-              setOpen(false);
-            }}
+            onClick={() => setOpen(false)}
             className="absolute right-1.5 top-1.5 z-10 flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             aria-label="Close Jarvis voice session"
             title="Close"

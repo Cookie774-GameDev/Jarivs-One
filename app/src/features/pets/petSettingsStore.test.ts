@@ -19,6 +19,7 @@ describe('Pet settings store desktop controls', () => {
     expect(state.soundEnabled).toBe(true);
     expect(state.notificationReactions).toBe(true);
     expect(state.pointerTracking).toBe(true);
+    expect(state.petVoiceAutoSend).toBe(false);
     expect(state.reducedMotion).toBe(false);
     expect(state.showDiagnostics).toBe(false);
   });
@@ -34,6 +35,7 @@ describe('Pet settings store desktop controls', () => {
         soundEnabled: false,
         notificationReactions: false,
         pointerTracking: false,
+        petVoiceAutoSend: true,
         reducedMotion: true,
         showDiagnostics: true,
       },
@@ -51,6 +53,7 @@ describe('Pet settings store desktop controls', () => {
       soundEnabled: false,
       notificationReactions: false,
       pointerTracking: false,
+      petVoiceAutoSend: true,
       reducedMotion: true,
       showDiagnostics: true,
     });
@@ -69,6 +72,7 @@ describe('Pet settings store desktop controls', () => {
       positionLocked: false,
       edgeSnapping: false,
       animationLevel: 'calm',
+      petVoiceAutoSend: false,
       reducedMotion: false,
       showDiagnostics: false,
     });
@@ -84,6 +88,7 @@ describe('Pet settings store desktop controls', () => {
     state.setSoundEnabled(false);
     state.setNotificationReactions(false);
     state.setPointerTracking(false);
+    state.setPetVoiceAutoSend(true);
 
     expect(usePetSettingsStore.getState()).toMatchObject({
       panelMode: 'always-on-top',
@@ -93,6 +98,7 @@ describe('Pet settings store desktop controls', () => {
       soundEnabled: false,
       notificationReactions: false,
       pointerTracking: false,
+      petVoiceAutoSend: true,
     });
 
     const persisted = JSON.parse(localStorage.getItem('vibespace-pet-settings')!);
@@ -104,6 +110,7 @@ describe('Pet settings store desktop controls', () => {
       soundEnabled: false,
       notificationReactions: false,
       pointerTracking: false,
+      petVoiceAutoSend: true,
     });
   });
 });

@@ -2,34 +2,53 @@
  * Jarvis Mini Voice surface wires to real VoiceService + useVoiceStore exports.
  * Mocks are only at the VoiceService boundary (not a reimplementation of the surface).
  */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const startListening = vi.fn(() => true);
 const stopListening = vi.fn();
 const stopAllVoiceOutput = vi.fn();
+const voiceHandlers = new Map<string, Set<(payload?: unknown) => void>>();
 
 vi.mock('@/features/voice/VoiceService', () => ({
   VoiceService: {
+    isSupported: () => true,
+    isListening: () => false,
+    wantsListening: () => false,
+    setInactivityTimeoutMs: vi.fn(),
     startListening: () => startListening(),
     stopListening: () => stopListening(),
+    on: (event: string, handler: (payload?: unknown) => void) => {
+      let handlers = voiceHandlers.get(event);
+      if (!handlers) {
+        handlers = new Set();
+        voiceHandlers.set(event, handlers);
+      }
+      handlers.add(handler);
+      return () => handlers!.delete(handler);
+    },
   },
 }));
 
 vi.mock('@/features/voice/voiceRouter', () => ({
   stopAllVoiceOutput: () => stopAllVoiceOutput(),
+  stopCurrentVoiceResponse: vi.fn(),
+  handleVoiceModuleClosed: vi.fn(),
 }));
 
 import { PetVoiceSurface } from './PetVoiceSurface';
 import { useVoiceStore } from '@/features/voice/store';
 import { usePetPresentationStore } from './petPresentationStore';
+import { usePetSettingsStore } from './petSettingsStore';
 
 describe('PetVoiceSurface real voice wiring', () => {
   beforeEach(() => {
     startListening.mockReset().mockReturnValue(true);
     stopListening.mockReset();
     stopAllVoiceOutput.mockReset();
+    voiceHandlers.clear();
     useVoiceStore.getState().reset();
+    usePetSettingsStore.setState({ petVoiceAutoSend: false });
   });
 
   it('starts listening via VoiceService (not a mock mic demo)', () => {
@@ -79,8 +98,8 @@ describe('PetVoiceSurface real voice wiring', () => {
   });
 
   it('cleanup on unmount stops listening when still capturing', () => {
-    useVoiceStore.getState().setState('listening');
     const { unmount } = render(<PetVoiceSurface />);
+    fireEvent.click(screen.getByRole('button', { name: /^listen$/i }));
     unmount();
     expect(stopListening).toHaveBeenCalled();
   });
@@ -89,6 +108,17 @@ describe('PetVoiceSurface real voice wiring', () => {
     render(<PetVoiceSurface />);
     expect(startListening).not.toHaveBeenCalled();
     expect(useVoiceStore.getState().state).toBe('idle');
+  });
+
+  it('keeps AI auto-send off by default and exposes an accessible opt-in', () => {
+    render(<PetVoiceSurface />);
+    const toggle = screen.getByRole('checkbox', { name: /send voice turns automatically/i });
+    expect((toggle as HTMLInputElement).checked).toBe(false);
+
+    fireEvent.click(toggle);
+
+    expect(usePetSettingsStore.getState().petVoiceAutoSend).toBe(true);
+    expect((toggle as HTMLInputElement).checked).toBe(true);
   });
 
   it('shows provider/model status from auth store (no second backend)', () => {
@@ -101,7 +131,7 @@ describe('PetVoiceSurface real voice wiring', () => {
   it('pushes only safe activity summaries (no transcript text)', async () => {
     usePetPresentationStore.setState({ activity: [], activitySeenIds: [], unreadActivity: 0 });
     render(<PetVoiceSurface />);
-    useVoiceStore.getState().setState('listening');
+    act(() => useVoiceStore.getState().setState('listening'));
     await waitFor(() => {
       expect(
         usePetPresentationStore.getState().activity.some((a) => a.summary === 'Jarvis is listening'),

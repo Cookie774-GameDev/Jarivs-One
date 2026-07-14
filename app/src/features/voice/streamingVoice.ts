@@ -23,6 +23,8 @@ import {
 export interface StreamingVoiceOptions {
   voiceEngine?: VoiceEngine;
   voicePreset?: VoicePresetId;
+  /** Narrow per-turn escape hatch for a validated Pet-window voice request. */
+  allowBackground?: boolean;
 }
 
 export class StreamingVoiceSession {
@@ -34,11 +36,13 @@ export class StreamingVoiceSession {
   private readonly voicePreset: VoicePresetId;
   private readonly kokoroStream: KokoroStreamingPlayer | null;
   private readonly sessionId: number;
+  private readonly allowBackground: boolean;
 
   constructor(options: StreamingVoiceOptions = {}) {
     const state = useAuthStore.getState();
     this.engine = options.voiceEngine ?? state.voiceEngine ?? 'kokoro';
     this.voicePreset = options.voicePreset ?? state.voicePreset ?? 'jarvis-prime';
+    this.allowBackground = options.allowBackground === true;
     this.sessionId = getActiveVoiceSessionId();
     this.kokoroStream =
       this.engine === 'kokoro' ? createKokoroStreamingPlayer(this.voicePreset) : null;
@@ -46,6 +50,7 @@ export class StreamingVoiceSession {
   }
 
   private isSessionLive(): boolean {
+    if (this.allowBackground) return !this.stopped;
     return (
       !this.stopped &&
       this.sessionId > 0 &&
@@ -126,6 +131,7 @@ export class StreamingVoiceSession {
       await speakWithSettings(text, {
         voiceEngine: this.engine,
         voicePreset: this.voicePreset,
+        allowBackground: this.allowBackground,
       });
     });
   }

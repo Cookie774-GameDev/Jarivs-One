@@ -18,6 +18,7 @@ const voiceMockState = vi.hoisted(() => ({
 const routerMocks = vi.hoisted(() => ({
   handleVoiceModuleClosed: vi.fn(),
   stopCurrentVoiceResponse: vi.fn(),
+  stopAllVoiceOutput: vi.fn(),
 }));
 
 vi.mock('./VoiceService', () => ({
