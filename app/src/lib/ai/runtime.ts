@@ -72,6 +72,12 @@ import { modelSupportsVision, type ChatImageAttachment } from './vision';
 import { ALL_ABOUT_ME_FILE_LOCATION, buildAllAboutMeContextBlock } from '@/features/all-about-me/profile';
 import { reviseAllAboutMeMarkdown } from '@/features/all-about-me/ai';
 import { useAllAboutMeStore } from '@/features/all-about-me/store';
+import { buildUserIdentityContextBlock } from './userIdentity';
+import {
+  browserFallbackWriteDir,
+  getCachedDefaultWriteDir,
+  resolveDefaultWriteDir,
+} from '@/lib/actions/defaultWriteDir';
 import {
   buildAllAboutMeLearningDiff,
   summarizeAllAboutMeLearningChange,
@@ -1012,6 +1018,8 @@ export function startRuntimeListener(
         detail: { error: err instanceof Error ? err.message : String(err) },
       });
     }
+    let userIdentityContext = '';
+    let defaultWriteFolderContext = '';
     if (agent.slug === 'jarvis') {
       try {
         allAboutMeContext = buildAllAboutMeContextBlock(useAllAboutMeStore.getState().markdown);
@@ -1020,6 +1028,33 @@ export function startRuntimeListener(
           channel: 'ai',
           level: 'warn',
           message: 'AllAboutMe.md context build failed',
+          detail: { error: err instanceof Error ? err.message : String(err) },
+        });
+      }
+      try {
+        userIdentityContext = buildUserIdentityContextBlock(useAuthStore.getState().displayName);
+      } catch (err) {
+        devConsole.log({
+          channel: 'ai',
+          level: 'warn',
+          message: 'user identity context build failed',
+          detail: { error: err instanceof Error ? err.message : String(err) },
+        });
+      }
+      try {
+        const writeDir =
+          getCachedDefaultWriteDir() ??
+          (await resolveDefaultWriteDir().catch(() => browserFallbackWriteDir()));
+        defaultWriteFolderContext = [
+          '## Default write folder',
+          `When creating files without an explicit path, write under: \`${writeDir}\`.`,
+          'Prefer this folder over refusing for "unknown location".',
+        ].join('\n');
+      } catch (err) {
+        devConsole.log({
+          channel: 'ai',
+          level: 'warn',
+          message: 'default write folder context build failed',
           detail: { error: err instanceof Error ? err.message : String(err) },
         });
       }
@@ -1068,6 +1103,8 @@ export function startRuntimeListener(
     const contextBlocks = [
       projectContext,
       projectContextTree,
+      userIdentityContext,
+      defaultWriteFolderContext,
       allAboutMeContext,
       pluginContext,
       pluginStatusContext,

@@ -54,6 +54,24 @@ describe('VibeSpace locked palette (shipped CSS)', () => {
     expect(globals).not.toMatch(/\[data-theme=['"]vibespace['"]\]\s*\{/);
   });
 
+  it('vibespace-theme.css never rewrites non-vibespace data-theme selectors', () => {
+    // Ship isolation: every data-theme rule in this file must target vibespace only.
+    // Catches accidental light/dark/jarvis token rewrites that would violate AC1.
+    const raw = readFileSync(vibespaceCssPath, 'utf8');
+    const selectors = raw.match(/\[data-theme\s*=\s*['"][^'"]+['"]\]/g) ?? [];
+    expect(selectors.length).toBeGreaterThan(0);
+    for (const sel of selectors) {
+      const theme = /data-theme\s*=\s*['"]([^'"]+)['"]/.exec(sel)?.[1];
+      expect(theme, `non-vibespace selector leaked into vibespace-theme.css: ${sel}`).toBe(
+        'vibespace',
+      );
+    }
+    // Explicit negative checks (skeptic-required).
+    expect(raw).not.toMatch(/\[data-theme\s*=\s*['"]light['"]\]/);
+    expect(raw).not.toMatch(/\[data-theme\s*=\s*['"]dark['"]\]/);
+    expect(raw).not.toMatch(/\[data-theme\s*=\s*['"]jarvis['"]\]/);
+  });
+
   it('scopes paper primitives and terminal interior to vibespace only', () => {
     const css = readCss(vibespaceCssPath);
     expect(css).toContain("html[data-theme='vibespace'] .vs-paper-surface");
