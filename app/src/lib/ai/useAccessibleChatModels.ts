@@ -32,6 +32,24 @@ export interface ModelPickerGroup {
   options: ModelPickerOption[];
 }
 
+const FOUNDRY_ADAPTER_STORAGE_KEY = 'vibespace.model-foundry.real-adapters.v1';
+
+function promotedFoundryAdapters(): ModelPickerOption[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = JSON.parse(window.localStorage.getItem(FOUNDRY_ADAPTER_STORAGE_KEY) ?? '[]') as unknown;
+    if (!Array.isArray(raw)) return [];
+    return raw.flatMap((value) => {
+      if (!value || typeof value !== 'object') return [];
+      const record = value as { projectId?: unknown; jobId?: unknown; status?: unknown; artifactManifestSha256?: unknown; evaluation?: { artifactManifestSha256?: unknown; report?: { gate?: unknown } } };
+      const evaluation = record.evaluation;
+      if (record.status !== 'promoted' || evaluation?.report?.gate !== 'pass' || evaluation?.artifactManifestSha256 !== record.artifactManifestSha256 || typeof record.projectId !== 'string' || typeof record.jobId !== 'string') return [];
+      const modelId = `${record.projectId}--${record.jobId}`;
+      return [{ id: `foundry:${modelId}`, provider: 'foundry' as ProviderId, modelId, label: `Local champion · ${record.jobId}` }];
+    });
+  } catch { return []; }
+}
+
 export function buildModelPickerGroups(args: {
   apiKeys: Partial<Record<ProviderId, string>>;
   offlineMode: boolean;
@@ -68,6 +86,8 @@ export function buildModelPickerGroups(args: {
       })),
     });
   }
+  const foundry = promotedFoundryAdapters();
+  if (foundry.length) groups.push({ provider: 'foundry', label: 'Build Your Own AI', options: foundry });
   return groups;
 }
 
