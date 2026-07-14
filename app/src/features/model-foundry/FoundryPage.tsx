@@ -305,7 +305,7 @@ const downloadSelectedModel = async () => {
     useAuthStore.getState().setChatModelSelection({ mode: 'single', providerId: 'foundry', modelId: `${record.projectId}--${record.jobId}` });
     setNotice(`Selected ${record.jobId} as the local chat champion.`); setError(null);
   };
-  const archiveRegisteredAdapter = (record: LocalAdapterRecord) => setLocalAdapters(adapterRegistry.archive(record.projectId, record.jobId));
+  const archiveRegisteredAdapter = (record: LocalAdapterRecord) => act(() => setLocalAdapters(adapterRegistry.archive(record.projectId, record.jobId)));
   const probeRegisteredAdapter = async (record: LocalAdapterRecord) => { const result = await generateFromFoundryArtifact({ projectId: record.projectId, jobId: record.jobId, prompt: 'Reply READY.', maxNewTokens: 8 }); setNotice(`Adapter probe succeeded: ${result.text.slice(0, 80)}`); setError(null); };
   const evaluateRegisteredAdapter = async (record: LocalAdapterRecord) => {
     const champion = localAdapters.find((adapter) => adapter.status === 'promoted' && adapter.jobId !== record.jobId);

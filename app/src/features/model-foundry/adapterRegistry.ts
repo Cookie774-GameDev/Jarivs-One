@@ -52,6 +52,8 @@ export class LocalAdapterRegistry {
     return records.filter((record) => record.projectId === projectId);
   }
   archive(projectId: string, jobId: string): readonly LocalAdapterRecord[] {
+    const target = parse(this.storage.getItem(STORAGE_KEY)).find((record) => record.projectId === projectId && record.jobId === jobId);
+    if (target?.status === 'promoted') throw new Error('Promote another verified adapter before archiving the active champion.');
     const records = parse(this.storage.getItem(STORAGE_KEY)).map((record) => record.projectId === projectId && record.jobId === jobId ? { ...record, status: 'archived' as const } : record);
     this.storage.setItem(STORAGE_KEY, JSON.stringify(records));
     return records.filter((record) => record.projectId === projectId);

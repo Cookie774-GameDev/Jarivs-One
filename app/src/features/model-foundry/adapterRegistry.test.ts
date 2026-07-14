@@ -19,5 +19,6 @@ describe('LocalAdapterRegistry', () => {
     expect(() => registry.promote('project-1', 'job-1')).toThrow(/passing local evaluation/i);
     registry.recordEvaluation('project-1', 'job-1', artifact.manifestSha256, { suite: 'pinned-validation-reference-v1', caseCount: 1, baseScore: 0.2, candidateScore: 0.3, championScore: null, delta: 0.1, safetyFailures: [], gate: 'pass', caseEvidence: [{ caseId: 'case-1', baseScore: 0.2, candidateScore: 0.3, championScore: null, evidenceHash: 'c'.repeat(64) }] });
     expect(registry.promote('project-1', 'job-1')).toMatchObject([{ jobId: 'job-1', status: 'promoted' }]);
+    expect(() => registry.archive('project-1', 'job-1')).toThrow(/Promote another/i);
   });
 });
