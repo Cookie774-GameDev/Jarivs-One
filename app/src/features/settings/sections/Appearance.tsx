@@ -41,7 +41,7 @@ export function Appearance() {
 
       <section className="flex flex-col gap-3">
         <Label>Theme</Label>
-        <div className="grid grid-cols-2 gap-2 max-w-md">
+        <div className="grid grid-cols-2 gap-2 max-w-md" role="radiogroup" aria-label="App theme">
           {SELECTABLE_THEMES.map((t) => {
             const Icon = THEME_ICONS[t.id];
             const selected = theme === t.id;
@@ -51,6 +51,8 @@ export function Appearance() {
                 key={t.id}
                 onClick={() => setTheme(t.id)}
                 aria-pressed={selected}
+                role="radio"
+                aria-checked={selected}
                 className={cn(
                   'flex flex-col items-center justify-center gap-2 rounded-md border bg-panel py-4 transition-colors',
                   'hover:bg-elevated focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
