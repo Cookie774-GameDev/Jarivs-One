@@ -100,6 +100,9 @@ export function resolveProviderAndModel(agent: Agent): { provider: LLMProvider; 
   const auth = useAuthStore.getState();
 
   if (auth.offlineMode) {
+    if (agent.model.provider === 'foundry' && foundryProvider.isAvailable()) {
+      return { provider: foundryProvider, model: agent.model.model };
+    }
     return resolveLocalSelection(auth);
   }
 

@@ -89,6 +89,7 @@ export function getProviderConnectionStatus(
   providerId: ProviderId,
   ctx: ProviderConnectionContext,
 ): ProviderConnectionStatus {
+  if (providerId === 'foundry') return 'local';
   if (ctx.offlineMode) {
     return isLocalProvider(providerId) && localModelsAvailable(ctx.defaultLocalModel ?? '')
       ? 'local'

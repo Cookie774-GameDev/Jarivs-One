@@ -160,6 +160,7 @@ export function getModelLabelForProvider(
   modelId: string,
   ctx: ProviderConnectionContext,
 ): string {
+  if (providerId === 'foundry') return `VibeModel adapter · ${modelId}`;
   const options = getModelsForProvider(providerId, ctx, modelId);
   return options.find((option) => option.id === modelId)?.label ?? modelId;
 }

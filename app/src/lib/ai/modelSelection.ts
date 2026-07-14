@@ -105,6 +105,9 @@ export function isSingleModelAvailable(
   selection: Extract<ChatModelSelection, { mode: 'single' }>,
   ctx: ModelSelectionContext,
 ): boolean {
+  if (selection.providerId === 'foundry') {
+    return /^[A-Za-z0-9_-]{1,64}--[A-Za-z0-9_-]{1,64}$/.test(selection.modelId);
+  }
   if (!getAccessibleProviders(ctx.apiKeys, ctx.offlineMode, ctx.plan, ctx.defaultLocalModel).includes(selection.providerId)) {
     return false;
   }
