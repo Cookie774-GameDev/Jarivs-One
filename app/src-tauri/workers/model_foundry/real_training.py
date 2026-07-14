@@ -12,6 +12,7 @@ import math
 import os
 import random
 import shutil
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
@@ -326,6 +327,102 @@ def run_real_inference(manifest: dict[str, Any], job_dir: Path, model_root: Path
         if not text:
             raise TrainingFailure("inference.empty", "The local adapter returned no generated text.")
         return {"text": text, "inputTokens": input_tokens, "outputTokens": int(output_ids.shape[-1])}
+    except (torch.cuda.OutOfMemoryError, MemoryError) as exc:
+        raise out_of_memory_failure() from exc
+
+
+def _evaluation_similarity(expected: str, generated: str) -> float:
+    """A deterministic, local-only grader for reference completions.
+
+    This deliberately returns a bounded scalar instead of sending prompts or
+    outputs to a judge service.  It is evidence for a narrow exact-reference
+    suite, not a claim of general model quality.
+    """
+    normalized_expected = " ".join(expected.lower().split())
+    normalized_generated = " ".join(generated.lower().split())
+    if not normalized_expected or not normalized_generated:
+        return 0.0
+    if normalized_expected in normalized_generated:
+        return 1.0
+    return round(SequenceMatcher(a=normalized_expected, b=normalized_generated).ratio(), 6)
+
+
+def run_real_evaluation(manifest: dict[str, Any], job_dir: Path, model_root: Path) -> dict[str, Any]:
+    """Compare the verified adapter with its exact pinned base model locally."""
+    if manifest.get("backend") != "real-evaluation":
+        raise TrainingFailure("evaluation.backend", "Local evaluation requires backend='real-evaluation'.")
+    max_cases = manifest.get("maxCases", 32)
+    max_new_tokens = manifest.get("maxNewTokens", 128)
+    if not isinstance(max_cases, int) or isinstance(max_cases, bool) or not 1 <= max_cases <= 64:
+        raise TrainingFailure("evaluation.case_limit", "maxCases must be between 1 and 64.")
+    if not isinstance(max_new_tokens, int) or isinstance(max_new_tokens, bool) or not 1 <= max_new_tokens <= 256:
+        raise TrainingFailure("evaluation.output_limit", "maxNewTokens must be between 1 and 256.")
+    training_path = canonical_child(manifest.get("trainingManifestPath"), job_dir, "trainingManifestPath")
+    try:
+        training_manifest = json.loads(training_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise TrainingFailure("evaluation.manifest", "The immutable training manifest is unavailable.") from exc
+    validated = validate_manifest(training_manifest, job_dir, model_root)
+    artifact_root = canonical_child(str(job_dir / "output" / "artifact"), job_dir, "adapter artifact")
+    try:
+        artifact_manifest = json.loads((artifact_root / "artifact-manifest.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise TrainingFailure("evaluation.artifact_manifest", "The verified adapter manifest is unavailable.") from exc
+    adapter_files = artifact_manifest.get("adapterFiles")
+    if artifact_manifest.get("kind") != "peft-adapter" or artifact_manifest.get("backend") != "real" or not isinstance(adapter_files, dict) or not adapter_files:
+        raise TrainingFailure("evaluation.artifact_manifest", "The artifact is not a supported local PEFT adapter.")
+    for relative, expected in adapter_files.items():
+        if not isinstance(relative, str) or not isinstance(expected, str):
+            raise TrainingFailure("evaluation.artifact_manifest", "The artifact checksum inventory is malformed.")
+        if sha256_file(canonical_child(str(artifact_root / relative), artifact_root, "adapter artifact file")) != expected.lower():
+            raise TrainingFailure("evaluation.artifact_checksum", "An adapter file no longer matches its immutable manifest.")
+    rows = _read_jsonl(validated["validationDatasetPath"])[:max_cases]
+    try:
+        import torch
+        from peft import PeftModel
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+    except ImportError as exc:
+        raise TrainingFailure("evaluation.dependencies_missing", "The optional pinned training runtime is not installed.") from exc
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(validated["modelDir"], local_files_only=True, trust_remote_code=False)
+        if tokenizer.pad_token_id is None:
+            tokenizer.pad_token = tokenizer.eos_token
+        base = AutoModelForCausalLM.from_pretrained(validated["modelDir"], local_files_only=True, trust_remote_code=False, torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32)
+        base.eval()
+        device = next(base.parameters()).device
+        evidence: list[dict[str, Any]] = []
+        base_scores: list[float] = []
+        candidate_scores: list[float] = []
+        safety_failures: list[str] = []
+        for index, row in enumerate(rows):
+            encoded = tokenizer(row["prompt"], return_tensors="pt", truncation=True, max_length=2048)
+            encoded = {key: value.to(device) for key, value in encoded.items()}
+            input_tokens = int(encoded["input_ids"].shape[-1])
+            with torch.inference_mode():
+                base_ids = base.generate(**encoded, max_new_tokens=max_new_tokens, do_sample=False, pad_token_id=tokenizer.eos_token_id)
+            base_text = tokenizer.decode(base_ids[0][input_tokens:], skip_special_tokens=True).strip()[:12_000]
+            if index == 0:
+                candidate = PeftModel.from_pretrained(base, artifact_root, local_files_only=True)
+                candidate.eval()
+            with torch.inference_mode():
+                candidate_ids = candidate.generate(**encoded, max_new_tokens=max_new_tokens, do_sample=False, pad_token_id=tokenizer.eos_token_id)
+            candidate_text = tokenizer.decode(candidate_ids[0][input_tokens:], skip_special_tokens=True).strip()[:12_000]
+            base_score = _evaluation_similarity(row["completion"], base_text)
+            candidate_score = _evaluation_similarity(row["completion"], candidate_text)
+            base_scores.append(base_score)
+            candidate_scores.append(candidate_score)
+            if not candidate_text:
+                safety_failures.append(f"case-{index + 1}: empty output")
+            evidence.append({
+                "caseId": f"case-{index + 1}",
+                "baseScore": base_score,
+                "candidateScore": candidate_score,
+                "evidenceHash": hashlib.sha256((row["prompt"] + "\0" + row["completion"] + "\0" + base_text + "\0" + candidate_text).encode("utf-8")).hexdigest(),
+            })
+        base_mean = round(sum(base_scores) / len(base_scores), 6)
+        candidate_mean = round(sum(candidate_scores) / len(candidate_scores), 6)
+        passes = not safety_failures and candidate_mean >= base_mean
+        return {"suite": "pinned-validation-reference-v1", "caseCount": len(rows), "baseScore": base_mean, "candidateScore": candidate_mean, "delta": round(candidate_mean - base_mean, 6), "safetyFailures": safety_failures, "gate": "pass" if passes else "blocked", "caseEvidence": evidence}
     except (torch.cuda.OutOfMemoryError, MemoryError) as exc:
         raise out_of_memory_failure() from exc
 

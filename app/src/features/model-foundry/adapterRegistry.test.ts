@@ -11,4 +11,13 @@ describe('LocalAdapterRegistry', () => {
     expect(registry.list('project-1')).toMatchObject([{ jobId: 'job-1', status: 'candidate', adapterFileCount: 1 }]);
     expect(registry.archive('project-1', 'job-1')).toMatchObject([{ jobId: 'job-1', status: 'archived' }]);
   });
+
+  it('requires a current passing evaluation before explicit promotion', () => {
+    const registry = new LocalAdapterRegistry(new InMemoryStorageAdapter(), () => '2026-07-14T00:00:00.000Z');
+    const artifact = { projectId: 'project-1', jobId: 'job-1', manifestSha256: 'a'.repeat(64), adapterFiles: { 'adapter_model.safetensors': 'b'.repeat(64) }, metrics: {}, trainingConfig: { method: 'lora' } };
+    registry.upsert('project-1', 'job-1', artifact);
+    expect(() => registry.promote('project-1', 'job-1')).toThrow(/passing local evaluation/i);
+    registry.recordEvaluation('project-1', 'job-1', artifact.manifestSha256, { suite: 'pinned-validation-reference-v1', caseCount: 1, baseScore: 0.2, candidateScore: 0.3, delta: 0.1, safetyFailures: [], gate: 'pass', caseEvidence: [{ caseId: 'case-1', baseScore: 0.2, candidateScore: 0.3, evidenceHash: 'c'.repeat(64) }] });
+    expect(registry.promote('project-1', 'job-1')).toMatchObject([{ jobId: 'job-1', status: 'promoted' }]);
+  });
 });

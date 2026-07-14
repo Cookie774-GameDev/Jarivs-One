@@ -100,6 +100,22 @@ pub struct GenerateFromArtifactResult {
     artifact_manifest_sha256: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EvaluateArtifactRequest {
+    project_id: String,
+    job_id: String,
+    max_cases: Option<u32>,
+    max_new_tokens: Option<u32>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EvaluateArtifactResult {
+    artifact_manifest_sha256: String,
+    report: serde_json::Value,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct WorkerMessageEvent {
@@ -745,6 +761,78 @@ pub fn model_foundry_generate_from_artifact(
             output_tokens: output.get("outputTokens").and_then(serde_json::Value::as_u64).unwrap_or(0).min(u32::MAX as u64) as u32,
             artifact_manifest_sha256: verified.manifest_sha256,
         });
+    }
+}
+
+#[tauri::command]
+pub fn model_foundry_evaluate_artifact(
+    app: tauri::AppHandle,
+    request: EvaluateArtifactRequest,
+) -> Result<EvaluateArtifactResult, String> {
+    validate_storage_id(&request.project_id)?;
+    validate_storage_id(&request.job_id)?;
+    let max_cases = request.max_cases.unwrap_or(32);
+    let max_new_tokens = request.max_new_tokens.unwrap_or(128);
+    if !(1..=64).contains(&max_cases) || !(1..=256).contains(&max_new_tokens) {
+        return Err("Evaluation limits are outside the governed bounds.".into());
+    }
+    let verified = model_foundry_inspect_artifact(app.clone(), request.project_id.clone(), request.job_id.clone())?;
+    let root = runtime_root(&app)?;
+    let python = venv_python(&root);
+    if !real_training_dependencies_installed(&python) {
+        return Err("The pinned real-training runtime is not installed.".into());
+    }
+    let worker = install_embedded_worker(&root)?;
+    let job_dir = root.join("projects").join(&request.project_id).join("jobs").join(&request.job_id);
+    let training_manifest = job_dir.join("training-manifest.json");
+    if !training_manifest.is_file() {
+        return Err("The immutable training manifest was not found for this adapter.".into());
+    }
+    let evaluation_manifest = job_dir.join("evaluation-manifest.json");
+    atomic_write(&evaluation_manifest, &serde_json::to_vec(&serde_json::json!({
+        "backend": "real-evaluation",
+        "jobId": request.job_id,
+        "trainingManifestPath": training_manifest,
+        "maxCases": max_cases,
+        "maxNewTokens": max_new_tokens,
+    })).map_err(|error| format!("Unable to serialize evaluation manifest: {error}"))?)?;
+    let request_id = format!("evaluate-{}", request.job_id);
+    let command = serde_json::json!({
+        "protocolVersion": PROTOCOL_VERSION,
+        "type": "command",
+        "requestId": request_id,
+        "jobId": request.job_id.clone(),
+        "operation": "evaluate",
+        "manifestPath": evaluation_manifest,
+    });
+    let mut process = hardened_command(&python);
+    process.arg("-I").arg(&worker).arg("--job-dir").arg(&job_dir).arg("--model-root").arg(root.join("models"))
+        .current_dir(&job_dir).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
+    let mut child = process.spawn().map_err(|error| format!("Unable to start the local evaluation worker: {error}"))?;
+    let mut stdin = child.stdin.take().ok_or_else(|| "Local evaluation worker stdin was unavailable.".to_string())?;
+    let mut stdout = child.stdout.take().ok_or_else(|| "Local evaluation worker stdout was unavailable.".to_string())?;
+    writeln!(stdin, "{command}").and_then(|_| stdin.flush()).map_err(|error| format!("Unable to submit local evaluation: {error}"))?;
+    drop(stdin);
+    loop {
+        let line = read_bounded_line(&mut stdout)?.ok_or_else(|| "Local evaluation worker exited without a result.".to_string())?;
+        let message: serde_json::Value = serde_json::from_slice(&line).map_err(|_| "Local evaluation worker returned malformed protocol JSON.".to_string())?;
+        if !worker_identity_valid(&message, &request_id, &request.job_id) {
+            child.kill().ok();
+            return Err("Local evaluation worker response did not match the evaluation request.".into());
+        }
+        if message.get("type").and_then(serde_json::Value::as_str) != Some("result") {
+            continue;
+        }
+        let _ = child.wait();
+        if message.get("state").and_then(serde_json::Value::as_str) != Some("completed") {
+            return Err(message.pointer("/error/message").and_then(serde_json::Value::as_str).unwrap_or("Local evaluation failed.").to_string());
+        }
+        let report = message.get("evaluation").filter(|value| value.is_object()).cloned().ok_or_else(|| "Local evaluation worker returned no report.".to_string())?;
+        let gate = report.get("gate").and_then(serde_json::Value::as_str);
+        if !matches!(gate, Some("pass") | Some("blocked")) {
+            return Err("Local evaluation worker returned an invalid gate result.".into());
+        }
+        return Ok(EvaluateArtifactResult { artifact_manifest_sha256: verified.manifest_sha256, report });
     }
 }
 

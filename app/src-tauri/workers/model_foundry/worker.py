@@ -161,7 +161,7 @@ class Worker:
             self.active = (request_id, job_id)
             self.cancel_event.clear()
             self.stop_after_checkpoint.clear()
-            target = self.run_inference if operation == "infer" else self.run_training
+            target = self.run_inference if operation == "infer" else self.run_evaluation if operation == "evaluate" else self.run_training
             self.thread = threading.Thread(target=target, args=(request_id, job_id, manifest_path, manifest, operation), daemon=False)
             self.thread.start()
 
@@ -187,6 +187,29 @@ class Worker:
         except Exception as exc:
             code = getattr(exc, "code", "inference.failed")
             self.emit_error(request_id, job_id, code, str(exc)[:240])
+        finally:
+            with self.active_lock:
+                self.active = None
+
+    def run_evaluation(self, request_id: str, job_id: str, manifest_path: Path, manifest: dict[str, Any], operation: str) -> None:
+        try:
+            if manifest.get("backend") != "real-evaluation":
+                raise ValueError("evaluation requires a real-evaluation manifest")
+            module = self.load_real_training_module()
+            write_message({
+                "protocolVersion": PROTOCOL_VERSION, "type": "event", "kind": "progress", "requestId": request_id,
+                "jobId": job_id, "sequence": 1, "phase": "evaluating", "progress": 0.15,
+                "timestamp": utc_now(), "message": "Comparing the verified adapter with its pinned base model",
+            }, self.output_lock)
+            report = module.run_real_evaluation(manifest, self.job_dir, self.model_root)
+            write_message({
+                "protocolVersion": PROTOCOL_VERSION, "type": "result", "requestId": request_id, "jobId": job_id,
+                "sequence": 2, "state": "completed", "timestamp": utc_now(), "artifactManifestPath": None,
+                "checkpointPath": None, "error": None, "evaluation": report,
+            }, self.output_lock)
+        except Exception as exc:
+            code = getattr(exc, "code", "evaluation.failed")
+            self.emit_error(request_id, job_id, code, str(exc)[:240], getattr(exc, "recoverable", False), getattr(exc, "suggestions", []))
         finally:
             with self.active_lock:
                 self.active = None
