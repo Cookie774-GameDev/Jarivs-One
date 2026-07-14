@@ -45,6 +45,16 @@ import { GlobalSttHost } from '@/features/composer-stt';
 import { FileExplorerHost } from '@/features/files';
 import { Toaster, toast } from '@/components/ui/toast';
 import { startRuntimeListener } from '@/lib/ai/runtime';
+import { startJarvisResponsePolicyListener } from '@/lib/jarvis/responseListener';
+import {
+  emojisEnabledFromLearning,
+  startJarvisLearningListener,
+} from '@/features/jarvis-memory/learningListener';
+import { startJarvisOperatorListener } from '@/lib/jarvis/operatorListener';
+import { startAllAboutMePersistence } from '@/features/all-about-me/persistence';
+import { startJarvisTaskRunNotifications } from '@/features/jarvis-runs/taskRunNotifications';
+import { resumeRecoverableJarvisRuns } from '@/features/jarvis-runs/recoveryExecutor';
+import { startJarvisTaskRunPersistence } from '@/features/jarvis-runs/taskRunPersistence';
 import { messageRepo, agentRepo, chatRepo, openDb, db } from '@/lib/db';
 import { useAuthStore } from '@/stores/auth';
 import { getDefaultAgents } from '@/features/agents';
@@ -249,6 +259,12 @@ function useBoot() {
 
   React.useEffect(() => {
     let stopRuntime: (() => void) | undefined;
+    let stopLocalResponse: (() => void) | undefined;
+    let stopLearning: (() => void) | undefined;
+    let stopOperator: (() => void) | undefined;
+    let stopAllAboutMePersistence: (() => void) | undefined;
+    let stopTaskRunNotifications: (() => void) | undefined;
+    let stopTaskRunPersistence: (() => void) | undefined;
     let stopNotifications: (() => void) | undefined;
     let stopTerminalScheduler: (() => void) | undefined;
     let stopJarvisScheduleRunner: (() => void) | undefined;
@@ -338,6 +354,38 @@ function useBoot() {
       }
 
       // Phase 4: runtime listener
+      stopLearning = startJarvisLearningListener({
+        getAccountId: () => {
+          const auth = useAuthStore.getState();
+          return auth.cloudSession?.user_id ?? auth.localUserId ?? 'local-unassigned';
+        },
+        subscribeAccount: (listener) => useAuthStore.subscribe(() => listener()),
+      });
+      stopAllAboutMePersistence = startAllAboutMePersistence({
+        getAccountId: () => {
+          const auth = useAuthStore.getState();
+          return auth.cloudSession?.user_id ?? auth.localUserId ?? 'local-unassigned';
+        },
+        subscribeAccount: (listener) => useAuthStore.subscribe(() => listener()),
+      });
+      stopLocalResponse = startJarvisResponsePolicyListener({
+        appendMessage: async (msg) => messageRepo.create(msg as never),
+        emojisEnabled: emojisEnabledFromLearning,
+      });
+      stopOperator = startJarvisOperatorListener({
+        appendMessage: async (msg) => messageRepo.create(msg as never),
+      });
+      stopTaskRunNotifications = startJarvisTaskRunNotifications();
+      stopTaskRunPersistence = startJarvisTaskRunPersistence({
+        getAccountId: () => {
+          const auth = useAuthStore.getState();
+          return auth.cloudSession?.user_id ?? auth.localUserId ?? 'local-unassigned';
+        },
+        subscribeAccount: (listener) => useAuthStore.subscribe(() => listener()),
+        onHydrated: async () => {
+          await resumeRecoverableJarvisRuns();
+        },
+      });
       stopRuntime = startRuntimeListener({
         getAgentById: (id) => useAgentStore.getState().agents[id] ?? null,
         getAgentBySlug: (slug) => {
@@ -387,6 +435,12 @@ function useBoot() {
     return () => {
       cancelled = true;
       stopRuntime?.();
+      stopLocalResponse?.();
+      stopLearning?.();
+      stopAllAboutMePersistence?.();
+      stopTaskRunNotifications?.();
+      stopTaskRunPersistence?.();
+      stopOperator?.();
       stopNotifications?.();
       stopTerminalScheduler?.();
       stopJarvisScheduleRunner?.();

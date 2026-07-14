@@ -5,6 +5,8 @@ import { useChatMessages } from './hooks';
 import { MessageBubble } from './MessageBubble';
 import { ChatActivityTimeline } from './activity';
 import { ChatAgentActivityPanel } from '@/features/jarvis-interaction/AgentActivityCard';
+import { JarvisTaskProgressCard } from '@/features/jarvis-runs/JarvisTaskProgressCard';
+import { JarvisMemoryStatus } from '@/features/jarvis-memory/JarvisMemoryStatus';
 import type { ChatId, Message, Part } from '@/types';
 import type { JarvisCreatorKind } from '@/features/jarvis-creator/contracts';
 
@@ -102,6 +104,8 @@ export function ChatThread({ chatId, compact = false }: ChatThreadProps) {
           compact={compact}
           className={compact ? 'mx-1 mb-6' : 'sticky bottom-0 z-10 mb-8'}
         />
+        <JarvisTaskProgressCard chatId={String(chatId)} compact={compact} />
+        <JarvisMemoryStatus chatId={String(chatId)} />
       </div>
     </div>
   );

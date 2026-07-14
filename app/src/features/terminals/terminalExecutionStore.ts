@@ -37,6 +37,10 @@ function clearExecutionTimeout(id: string): void {
 export const useTerminalExecutionStore = create<TerminalExecutionState>((set) => ({
   executions: {},
   mark: (id, status, patch = {}) => set((state) => {
+    const current = state.executions[id];
+    if (current?.status === 'cancelled' && status !== 'cancelled') {
+      return state;
+    }
     const next = {
       ...state.executions,
       [id]: {
@@ -101,6 +105,6 @@ export async function attachTerminalExecution(
     await invoke('terminal_kill', { sessionId }).catch(() => undefined);
     return false;
   }
-  markTerminalExecution(id, 'running', { sessionId });
+  markTerminalExecution(id, 'starting', { sessionId });
   return true;
 }

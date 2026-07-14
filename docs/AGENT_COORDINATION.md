@@ -374,6 +374,13 @@ Append new entries at the **bottom** of the relevant agent section. Use [How to 
 
 | Path / area | Owner agent | Version | Status | Notes |
 |-------------|-------------|---------|--------|-------|
+| `docs/AGENT_COORDINATION.md`, `docs/JARVIS_GOLD_STANDARD_REPORT.md` | Codex (`AGENT-CODEX-20260713-120845-JGS1`) | v0.1.49 | released | Jarvis gold-standard implementation ledger and evidence report |
+| `app/src/lib/actions/**`, `app/src/lib/jarvis/**`, `app/src/lib/notifications.ts`, `scripts/jarvis-actions/**`, `tests/jarvis/**` | Codex (`AGENT-CODEX-20260713-120845-JGS1`) | v0.1.49 | released | Typed action catalogue, planner/policy/executor/verifier, generated docs, metrics, prompt suite |
+| `app/src/features/jarvis-runs/**`, `app/src/features/jarvis-memory/**`, `app/src/features/all-about-me/**`, `app/src/features/settings/sections/AllAboutMe*.tsx` | Codex (`AGENT-CODEX-20260713-120845-JGS1`) | v0.1.49 | released | Persistent run state, private learning.md, memory controls, and AllAboutMe.md separation/recovery |
+| `app/src/lib/mcp/**`, `app/src/features/plugins/**`, `app/src/features/jarvis-interaction/**`, `app/src/stores/agents.ts` | Codex (`AGENT-CODEX-20260713-120845-JGS1`) | v0.1.49 | released | MCP/plugin lifecycle and coordinated agent wait/collect/status handling |
+| `app/src/features/chat/{ChatThread,ActionApprovalCard}.tsx`, `app/src/App.tsx`, `app/src/lib/db/repositories.ts` | Codex (`AGENT-CODEX-20260713-120845-JGS1`) | v0.1.49 | released | Compact run/memory UI integration, action policy UI, verified shared-record mutations |
+| `app/src/features/dev-console/{store,store.test}.ts` | Codex (`AGENT-CODEX-20260713-120845-JGS1`) | v0.1.49 | released | Credential-shaped value redaction for action diagnostics |
+| `app/src/features/terminals/{TerminalView,terminalExecutionStore,terminalExecutionStore.test}.ts*` | Codex (`AGENT-CODEX-20260713-120845-JGS1`) | v0.1.49 | released | Review fix: verify startup-command delivery before terminal orchestration reports running; preserve cancellation |
 | `docs/AGENT_COORDINATION.md` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | Blocked handoff recorded; no final merge SHA |
 | `docs/superpowers/plans/2026-07-10-pr15-safe-merge.md` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | High-risk merge execution plan |
 | `.github/workflows/pages.yml` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | Current GitHub Pages deployment behavior preserved |
@@ -1659,4 +1666,30 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Status** | implementation approved 2026-07-13; worktree setup in progress |
 | **Files touched** | Coordination and worktree-safety metadata only before isolated-worktree creation; product scopes will be locked in the feature worktree before edits |
 | **Constraints** | No Stripe, Supabase, billing, subscription, schema, website, phone, entitlement, deployment, merge, release, credential, or production changes. No provider auth prompts or billable probes. |
+
+#### 2026-07-13 - Jarvis gold-standard implementation
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-13 12:08 CT |
+| **Agent ID** | `AGENT-CODEX-20260713-120845-JGS1` |
+| **Branch / worktree** | `feature/jarvis-gold-standard` at `d78203e63d2b799b722d4136cbd288de220e3490`; `.worktrees/jarvis-gold-standard` |
+| **Task** | Execute the supplied Jarvis gold-standard implementation: concise conversation, typed real actions, policy/execution/verification, persistent task runs, plugin/MCP/agent integration, private learning memory, and 20+ prompt validation. |
+| **Overlap decision** | The active `AGENT-CLAUDE1-20260713-112348-SCB1` Subscription & CLI Bridge worktree owns AI router/runtime/model-selection, Composer/model picker/slash/message provider surfaces, settings provider/bridge UI, auth/chat types/repositories, and Tauri CLI bridge/lib.rs. This branch will not edit those paths; provider/CLI integration remains an explicit gated dependency until that agent releases its locks. |
+| **Root-cause evidence before edits** | Mock provider returns a long provider-warning reply for ordinary prompts such as `Hi`; prompt-only brevity does not create a deterministic casual path. Action fallback can append a real action while retaining fake-code prose. MCP is an in-process map without server lifecycle. Chat-agent state lacks a parent task-run wait/collect/recovery layer. AllAboutMe is localStorage-only, not account-scoped, and `setLearningEnabled(false)` currently forces `true`. |
+| **Baseline evidence** | Existing focused Vitest command in the other worktree produced no output for over one minute and was terminated; another pre-existing full-suite Vitest process is still active there. No pass is claimed. This isolated branch will use single-worker focused commands and record hangs/failures honestly. |
+| **Constraints** | No Stripe, Supabase billing/prices, subscriptions, production data, release, deployment, merge, or unrelated UI. Credentials never enter prompts, logs, task state, or learning memory. |
+| **Status** | complete; all Jarvis locks released |
+
+#### 2026-07-13 - Jarvis gold-standard completion and handoff
+
+| Field | Value |
+|-------|-------|
+| **Agent ID** | `AGENT-CODEX-20260713-120845-JGS1` |
+| **Result** | Implemented deterministic conversation/intent handling, typed plan validation and real actions, persistent account-scoped task runs, approval/cancellation recovery, verified terminal startup, MCP/plugin lifecycle, GET-only Supabase table discovery, private `learning.md`, stable account-scoped AllAboutMe files, credential redaction, UI progress/status, and 33 prompt contracts. |
+| **Review fixes** | Confined file search to active project; migrated legacy AllAboutMe safely; added deletion tombstones; account-scoped task storage; expanded natural-language secret redaction; preserved pending learning saves across account changes; prevented cancelled approvals/startups from running; disabled ambiguous MCP retries; registered a read-only Supabase adapter; integrated typed planner validation into the production operator. |
+| **Verification** | Final typecheck PASS; production build PASS (3,718 modules); final exact post-review regressions PASS (17 files / 86 tests); earlier focused matrix PASS (30 files / 128 tests); gold evaluator PASS (33 contracts plus mismatch guard); release manifest PASS (1/1); Rust release check PASS with existing warnings; `git diff --check` PASS. Broad/full Vitest timeouts and browser/native-interaction limits are documented in `docs/JARVIS_GOLD_STANDARD_REPORT.md`. |
+| **Safety** | No production Supabase mutation, service-role use, Stripe/billing/price/subscription change, deployment, release, merge, website/phone/installer change, or secret disclosure. The Supabase adapter uses only configured publishable/anon credentials for a GET OpenAPI request. |
+| **Remaining integration** | AI prompt-layer/learning-context injection and provider/usage/CLI routing remain gated on the separate active Subscription & CLI Bridge runtime locks; full Vitest and native/browser interaction remain pre-merge gates. |
+| **Locks** | All rows owned by this agent changed to `released`; shared coordination board updated. |
 

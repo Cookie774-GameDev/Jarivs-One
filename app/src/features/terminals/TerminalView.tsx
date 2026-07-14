@@ -99,6 +99,10 @@ import {
 } from './terminalSnapshot';
 import { registerTerminalSnapshotFlush } from './terminalSnapshotRegistry';
 import { terminalRestartDecision } from './terminalRestartPolicy';
+import {
+  markTerminalExecution,
+  useTerminalExecutionStore,
+} from './terminalExecutionStore';
 
 /**
  * When the parent owns its own chrome (`<TileGrid>`'s pane-tile or the
@@ -222,6 +226,7 @@ export function TerminalView({
   paneId,
   command,
   startupCommand,
+  executionId,
   pendingCommand,
   pendingCommandId,
   cwd,
@@ -1120,13 +1125,24 @@ export function TerminalView({
           applyTerminalFollowScroll(termRef.current, { userHasScrolled: false });
         });
       }
-      if (spawnedFresh && startupCommand && !deferredRestartCommand) {
-        invoke('terminal_write', {
-          sessionId: sid,
-          data: commandToInput(startupCommand),
-        }).catch(() => {
-          /* backend probably gone */
-        });
+      const executionWasCancelled = executionId
+        ? useTerminalExecutionStore.getState().executions[executionId]?.status === 'cancelled'
+        : false;
+      if (spawnedFresh && startupCommand && !deferredRestartCommand && !executionWasCancelled) {
+        try {
+          await invoke('terminal_write', {
+            sessionId: sid,
+            data: commandToInput(startupCommand),
+          });
+          markTerminalExecution(executionId, 'running', { sessionId: sid });
+        } catch {
+          markTerminalExecution(executionId, 'failed', {
+            sessionId: sid,
+            exitCode: null,
+          });
+        }
+      } else if (executionId && !executionWasCancelled) {
+        markTerminalExecution(executionId, 'running', { sessionId: sid });
       }
       if (spawnedFresh && restoredInput && !deferredRestartCommand) {
         window.setTimeout(
