@@ -10,6 +10,8 @@ export interface LocalAdapterRecord {
   readonly trainingConfig: Record<string, unknown>;
   readonly status: 'candidate' | 'promoted' | 'archived';
   readonly verifiedAt: string;
+  /** The immediately prior champion, retained for a governed local rollback. */
+  readonly previousChampionJobId?: string;
   readonly evaluation?: { readonly artifactManifestSha256: string; readonly evaluatedAt: string; readonly report: FoundryRealEvaluationReport };
 }
 
@@ -39,7 +41,7 @@ export class LocalAdapterRegistry {
   upsert(projectId: string, jobId: string, artifact: FoundryRealArtifactSummary): LocalAdapterRecord {
     const records = parse(this.storage.getItem(STORAGE_KEY));
     const existing = records.find((item) => item.projectId === projectId && item.jobId === jobId && item.artifactManifestSha256 === artifact.manifestSha256);
-    const record: LocalAdapterRecord = { schemaVersion: 1, projectId, jobId, artifactManifestSha256: artifact.manifestSha256, adapterFileCount: Object.keys(artifact.adapterFiles).length, metrics: artifact.metrics, trainingConfig: artifact.trainingConfig, status: existing?.status === 'promoted' ? 'promoted' : 'candidate', verifiedAt: this.now(), evaluation: existing?.evaluation };
+    const record: LocalAdapterRecord = { schemaVersion: 1, projectId, jobId, artifactManifestSha256: artifact.manifestSha256, adapterFileCount: Object.keys(artifact.adapterFiles).length, metrics: artifact.metrics, trainingConfig: artifact.trainingConfig, status: existing?.status === 'promoted' ? 'promoted' : 'candidate', verifiedAt: this.now(), evaluation: existing?.evaluation, previousChampionJobId: existing?.previousChampionJobId };
     this.storage.setItem(STORAGE_KEY, JSON.stringify([...records.filter((item) => item.projectId !== projectId || item.jobId !== jobId), record]));
     notifyRegistryChanged();
     return record;
@@ -51,9 +53,21 @@ export class LocalAdapterRegistry {
     return records.filter((record) => record.projectId === projectId);
   }
   promote(projectId: string, jobId: string): readonly LocalAdapterRecord[] {
-    const current = parse(this.storage.getItem(STORAGE_KEY)).find((record) => record.projectId === projectId && record.jobId === jobId);
+    const source = parse(this.storage.getItem(STORAGE_KEY));
+    const current = source.find((record) => record.projectId === projectId && record.jobId === jobId);
     if (!current || current.status === 'archived' || current.evaluation?.artifactManifestSha256 !== current.artifactManifestSha256 || current.evaluation.report.gate !== 'pass') throw new Error('A current passing local evaluation is required before approval.');
-    const records = parse(this.storage.getItem(STORAGE_KEY)).map((record) => record.projectId !== projectId ? record : record.jobId === jobId ? { ...record, status: 'promoted' as const } : record.status === 'promoted' ? { ...record, status: 'candidate' as const } : record);
+    const previous = source.find((record) => record.projectId === projectId && record.status === 'promoted');
+    const records = source.map((record) => record.projectId !== projectId ? record : record.jobId === jobId ? { ...record, status: 'promoted' as const, previousChampionJobId: previous?.jobId } : record.status === 'promoted' ? { ...record, status: 'candidate' as const } : record);
+    this.storage.setItem(STORAGE_KEY, JSON.stringify(records));
+    notifyRegistryChanged();
+    return records.filter((record) => record.projectId === projectId);
+  }
+  rollback(projectId: string): readonly LocalAdapterRecord[] {
+    const source = parse(this.storage.getItem(STORAGE_KEY));
+    const champion = source.find((record) => record.projectId === projectId && record.status === 'promoted');
+    const previous = champion?.previousChampionJobId ? source.find((record) => record.projectId === projectId && record.jobId === champion.previousChampionJobId) : undefined;
+    if (!champion || !previous || previous.status === 'archived' || previous.evaluation?.artifactManifestSha256 !== previous.artifactManifestSha256 || previous.evaluation.report.gate !== 'pass') throw new Error('No verified prior champion is available for rollback.');
+    const records = source.map((record) => record.projectId !== projectId ? record : record.jobId === champion.jobId ? { ...record, status: 'candidate' as const, previousChampionJobId: undefined } : record.jobId === previous.jobId ? { ...record, status: 'promoted' as const } : record);
     this.storage.setItem(STORAGE_KEY, JSON.stringify(records));
     notifyRegistryChanged();
     return records.filter((record) => record.projectId === projectId);

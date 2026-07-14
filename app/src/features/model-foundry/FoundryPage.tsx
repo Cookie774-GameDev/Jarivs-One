@@ -133,6 +133,17 @@ export function FoundryPage({ storage = browserStorage, dependencies = defaultDe
   }, [adapterRegistry, projectId]);
 
   React.useEffect(() => {
+    const rollback = (event: Event) => {
+      const requestedProjectId = (event as CustomEvent<{ projectId?: string }>).detail?.projectId;
+      if (!projectId || requestedProjectId !== projectId) return;
+      try { setLocalAdapters(adapterRegistry.rollback(projectId)); setNotice('Restored the immediately prior verified local champion.'); setError(null); }
+      catch (caught) { setError(caught instanceof Error ? caught.message : 'Local champion rollback failed.'); }
+    };
+    window.addEventListener('vibespace:foundry-rollback-requested', rollback);
+    return () => window.removeEventListener('vibespace:foundry-rollback-requested', rollback);
+  }, [adapterRegistry, projectId]);
+
+  React.useEffect(() => {
     if (!projectId || !nativeRun) return;
     try {
       const parsed = JSON.parse(storage.getItem(NATIVE_RUN_STORAGE_KEY) ?? '{}') as Record<string, NativeRunState>;
