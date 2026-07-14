@@ -61,6 +61,7 @@ import {
   type JarvisCreatorAgentDraft,
 } from '@/features/jarvis-creator/contracts';
 import { startJarvisCreator } from '@/features/jarvis-creator/launcher';
+import { FoundryPage } from '@/features/model-foundry/FoundryPage';
 
 /**
  * Tiny role-pill for swarm agents (Scout / Builder / Reviewer).
@@ -173,6 +174,7 @@ function formatList(values: readonly string[]): string {
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
 export function AgentManager() {
+  const [showFoundry, setShowFoundry] = React.useState(false);
   const agents = useAgentStore((s) => s.agents);
   const registerMany = useAgentStore((s) => s.registerMany);
   const registerAgent = useAgentStore((s) => s.registerAgent);
@@ -507,6 +509,23 @@ export function AgentManager() {
     toast.success('Loaded', `${defaults.length} default agents added`);
   };
 
+  if (showFoundry) {
+    return (
+      <div className="relative h-full min-h-[520px] overflow-hidden rounded-lg border border-border bg-background">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="absolute right-5 top-5 z-10 bg-background/90 backdrop-blur"
+          onClick={() => setShowFoundry(false)}
+        >
+          Back to agents
+        </Button>
+        <FoundryPage />
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-full min-h-[520px] surface-panel rounded-lg overflow-hidden">
       {/* List pane */}
@@ -527,6 +546,18 @@ export function AgentManager() {
             </Button>
             <Badge variant="outline">{agentList.length}</Badge>
           </div>
+        </div>
+        <div className="px-3 pb-2.5">
+          <Button
+            type="button"
+            variant="accent"
+            size="sm"
+            className="w-full"
+            onClick={() => setShowFoundry(true)}
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            Build Your Own AI
+          </Button>
         </div>
         <Separator />
         <div className="flex-1 overflow-y-auto py-1 scrollbar-hidden">

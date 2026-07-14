@@ -1880,3 +1880,32 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | `docs/stripe-setup.md` | CREDITS-FIX | v0.1.48 | released | E2E checklist |
 | `docs/AGENT_COORDINATION.md` | CREDITS-FIX | v0.1.48 | released | |
 
+### Codex — AGENT-CODEX-20260713-FOUNDRY
+
+#### 2026-07-13 — Build Your Own AI / VibeModel Foundry
+
+| Field | Value |
+|-------|-------|
+| **Agent ID** | `AGENT-CODEX-20260713-FOUNDRY` |
+| **Branch / worktree** | `codex/build-your-own-ai` at `C:\Users\viper\VibeSpace\.worktrees\build-your-own-ai` |
+| **Base** | `origin/main` at `f9d2a849ade8ef14f9657ca30dfd309bfce4b60f` |
+| **Goal** | Implement the complete local-first Build Your Own AI vertical slice: versioned specialist contracts, immutable datasets, fixture and opt-in local training, evaluation gates, explicit promotion, rollback, feedback/improvement cycles, native supervision, optional metadata sync, entitlements, tests, security, recovery, and evidence. |
+| **Status** | in-progress |
+| **Discovery** | Read root instructions and this ledger; inspected open PRs #17/#18/#19, all active worktrees, frontend/local-model seams, native process/persistence seams, Supabase/Stripe/RLS, CI, release, and packaging. Findings are recorded in `docs/build-your-own-ai/DISCOVERY.md`. |
+| **Conflict boundary** | Active Workbench edits own `NavPane.tsx`, `PageRouter.tsx`, `TopBar.tsx`, and `ui.ts`. Active native/Pets/terminal/subscription work owns `App.tsx`, `capabilities/default.json`, `tauri.conf.json`, and `src-tauri/src/lib.rs`. This task will begin in new modules and the Agents integration seam; no conflicting shared shell/native registration file is claimed yet. |
+| **Baseline** | `npm ci` PASS (339 packages); `npm run typecheck` PASS; `npm run test:release-manifest` PASS. Frontend suite, production build, and Cargo check timed out silently under concurrent machine load. `install/install.ps1` is deleted/quarantined by the documented Windows security path lock and cannot currently be restored (`Permission denied`). These are pre-feature baseline conditions. |
+| **Production safety** | No merge, push, deployment, production migration, live Stripe mutation, charge, refund, model upload, dataset upload, or release is authorized or performed. |
+
+#### Active file ownership / locks
+
+| Path / area | Owner agent | Version | Status | Notes |
+|-------------|-------------|---------|--------|-------|
+| `docs/AGENT_COORDINATION.md` | `AGENT-CODEX-20260713-FOUNDRY` | v0.1.48+ | in-progress | Append-only coordination records for this task |
+| `docs/build-your-own-ai/**` | `AGENT-CODEX-20260713-FOUNDRY` | v0.1.48+ | in-progress | Discovery, architecture, threat model, traceability, setup, recovery, evidence |
+| `app/src/features/model-foundry/**` | `AGENT-CODEX-20260713-FOUNDRY` | v0.1.48+ | in-progress | New Foundry domain, persistence, UI, fixture workflow, tests |
+| `app/src/features/agents/AgentManager.tsx` (Build Your Own AI entry only) | `AGENT-CODEX-20260713-FOUNDRY` | v0.1.48+ | in-progress | Native navigation integration without touching active Workbench route files |
+| `app/src-tauri/src/model_foundry/**` | `AGENT-CODEX-20260713-FOUNDRY` | v0.1.48+ | in-progress | New safe app-data, hardware, job, worker, artifact, and recovery module |
+| `workers/vibemodel-foundry/**` | `AGENT-CODEX-20260713-FOUNDRY` | v0.1.48+ | in-progress | Isolated fixture/LoRA worker and pinned environment |
+| `supabase/migrations/0031_ai_model_foundry.sql` | `AGENT-CODEX-20260713-FOUNDRY` | v0.1.48+ | in-progress | Optional safe metadata, RLS, entitlements, idempotent usage |
+| `supabase/tests/ai_model_foundry_behavior.sql` | `AGENT-CODEX-20260713-FOUNDRY` | v0.1.48+ | in-progress | Ownership, cross-user denial, entitlement, usage idempotency |
+
