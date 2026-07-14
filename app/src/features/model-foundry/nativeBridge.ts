@@ -38,6 +38,10 @@ export interface FoundryWorkerRuntimeStatus {
   readonly detail: string;
 }
 
+export interface FoundryTrainingRuntimeStatus {
+  readonly installed: boolean;
+  readonly detail: string;
+}
 export interface FoundryWorkerProbe {
   readonly healthy: boolean;
   readonly workerVersion: string;
@@ -79,6 +83,15 @@ export async function prepareFoundryRuntime(): Promise<FoundryWorkerRuntimeStatu
   return invoke<FoundryWorkerRuntimeStatus>('model_foundry_prepare_runtime');
 }
 
+export async function getFoundryTrainingRuntimeStatus(): Promise<FoundryTrainingRuntimeStatus> {
+  if (!isTauri) return { installed: false, detail: 'Real LoRA training is available only in the desktop app.' };
+  return invoke<FoundryTrainingRuntimeStatus>('model_foundry_training_runtime_status');
+}
+
+export async function installFoundryTrainingDependencies(): Promise<FoundryTrainingRuntimeStatus> {
+  if (!isTauri) throw new Error('Real LoRA training is available only in the desktop app.');
+  return invoke<FoundryTrainingRuntimeStatus>('model_foundry_install_training_dependencies');
+}
 export async function probeFoundryWorker(projectId: string): Promise<FoundryWorkerProbe> {
   if (!isTauri) throw new Error('Native worker probe is available only in the desktop app.');
   return invoke<FoundryWorkerProbe>('model_foundry_worker_probe', { projectId });

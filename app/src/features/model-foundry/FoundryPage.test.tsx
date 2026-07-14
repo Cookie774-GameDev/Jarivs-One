@@ -99,7 +99,7 @@ describe('FoundryPage fixture vertical slice', () => {
     expect(screen.getByText(/Revision a91318be/)).toBeTruthy();
     expect(screen.getByText(/Remote model code stays disabled/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Download and verify model' }).hasAttribute('disabled')).toBe(true);
-    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('checkbox', { name: /I reviewed and approve/ }));
     expect(screen.getByRole('button', { name: 'Download and verify model' }).hasAttribute('disabled')).toBe(false);
     expect(screen.queryByRole('button', { name: 'Prepare approved fixture inputs' })).not.toBeTruthy();
   });});

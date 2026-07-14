@@ -312,6 +312,8 @@ pub fn run() {
             model_foundry::model_foundry_hardware_profile,
             model_foundry::model_foundry_runtime_status,
             model_foundry::model_foundry_prepare_runtime,
+            model_foundry::model_foundry_training_runtime_status,
+            model_foundry::model_foundry_install_training_dependencies,
             model_foundry::model_foundry_worker_probe,
             model_foundry_download::model_foundry_download_model,
             model_foundry_download::model_foundry_cancel_download,

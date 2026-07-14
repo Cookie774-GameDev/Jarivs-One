@@ -16,6 +16,9 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 const PROTOCOL_VERSION: u8 = 1;
 const MAX_MESSAGE_BYTES: usize = 64 * 1024;
 const EMBEDDED_WORKER: &str = include_str!("../workers/model_foundry/worker.py");
+const EMBEDDED_REAL_TRAINING: &str = include_str!("../workers/model_foundry/real_training.py");
+const EMBEDDED_REAL_REQUIREMENTS: &str =
+    include_str!("../workers/model_foundry/requirements-real.lock");
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -28,6 +31,12 @@ pub struct WorkerRuntimeStatus {
     detail: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RealTrainingRuntimeStatus {
+    installed: bool,
+    detail: String,
+}
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HardwareProfile {
@@ -101,6 +110,14 @@ fn venv_python(root: &Path) -> PathBuf {
 
 fn worker_script(root: &Path) -> PathBuf {
     root.join("worker").join("worker.py")
+}
+
+fn real_training_script(root: &Path) -> PathBuf {
+    root.join("worker").join("real_training.py")
+}
+
+fn real_requirements(root: &Path) -> PathBuf {
+    root.join("worker").join("requirements-real.lock")
 }
 
 fn allowed_environment_from<I>(environment: I) -> BTreeMap<String, String>
@@ -184,7 +201,29 @@ fn install_embedded_worker(root: &Path) -> Result<PathBuf, String> {
     if fs::read(&target).ok().as_deref() != Some(EMBEDDED_WORKER.as_bytes()) {
         atomic_write(&target, EMBEDDED_WORKER.as_bytes())?;
     }
+    let training = real_training_script(root);
+    if fs::read(&training).ok().as_deref() != Some(EMBEDDED_REAL_TRAINING.as_bytes()) {
+        atomic_write(&training, EMBEDDED_REAL_TRAINING.as_bytes())?;
+    }
+    let requirements = real_requirements(root);
+    if fs::read(&requirements).ok().as_deref() != Some(EMBEDDED_REAL_REQUIREMENTS.as_bytes()) {
+        atomic_write(&requirements, EMBEDDED_REAL_REQUIREMENTS.as_bytes())?;
+    }
     Ok(target)
+}
+
+fn real_training_dependencies_installed(python: &Path) -> bool {
+    if !python.is_file() {
+        return false;
+    }
+    let verification = "from importlib.metadata import version; expected={'accelerate':'1.8.1','peft':'0.16.0','safetensors':'0.5.3','torch':'2.7.1','transformers':'4.53.2'}; assert all(version(name)==wanted for name,wanted in expected.items())";
+    let mut command = hardened_command(python);
+    command
+        .args(["-I", "-c", verification])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    command.status().is_ok_and(|status| status.success())
 }
 
 fn parse_probe_message(
@@ -318,6 +357,76 @@ pub fn model_foundry_prepare_runtime(app: tauri::AppHandle) -> Result<WorkerRunt
     model_foundry_runtime_status(app)
 }
 
+#[tauri::command]
+pub fn model_foundry_training_runtime_status(
+    app: tauri::AppHandle,
+) -> Result<RealTrainingRuntimeStatus, String> {
+    let root = runtime_root(&app)?;
+    let installed = real_training_dependencies_installed(&venv_python(&root));
+    Ok(RealTrainingRuntimeStatus {
+        installed,
+        detail: if installed {
+            "Pinned real LoRA training dependencies are installed.".into()
+        } else {
+            "Real LoRA training dependencies are not installed. Installation is optional and requires an explicit user action.".into()
+        },
+    })
+}
+
+#[tauri::command]
+pub fn model_foundry_install_training_dependencies(
+    app: tauri::AppHandle,
+) -> Result<RealTrainingRuntimeStatus, String> {
+    model_foundry_prepare_runtime(app.clone())?;
+    let root = runtime_root(&app)?;
+    let python = venv_python(&root);
+    install_embedded_worker(&root)?;
+    let requirements = real_requirements(&root);
+    let mut command = hardened_command(&python);
+    command
+        .args([
+            "-I",
+            "-m",
+            "pip",
+            "install",
+            "--require-virtualenv",
+            "--require-hashes",
+            "--only-binary=:all:",
+            "--disable-pip-version-check",
+            "--no-input",
+            "-r",
+        ])
+        .arg(&requirements)
+        .current_dir(&root)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped());
+    let output = command.output().map_err(|error| {
+        format!("Unable to start the pinned training dependency installer: {error}")
+    })?;
+    if !output.status.success() {
+        let detail = String::from_utf8_lossy(&output.stderr);
+        let tail = detail
+            .chars()
+            .rev()
+            .take(1200)
+            .collect::<String>()
+            .chars()
+            .rev()
+            .collect::<String>();
+        return Err(format!(
+            "Pinned training dependency installation failed: {tail}"
+        ));
+    }
+    let status = model_foundry_training_runtime_status(app)?;
+    if !status.installed {
+        return Err(
+            "Training dependencies were installed but their pinned versions could not be verified."
+                .into(),
+        );
+    }
+    Ok(status)
+}
 #[tauri::command]
 pub fn model_foundry_worker_probe(
     app: tauri::AppHandle,

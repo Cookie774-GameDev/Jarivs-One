@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """VibeModel Foundry worker protocol v1.
 
 This worker owns no network server and accepts only bounded NDJSON commands over
@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 import queue
@@ -68,8 +69,9 @@ def atomic_json(path: Path, payload: dict[str, Any]) -> None:
 
 
 class Worker:
-    def __init__(self, job_dir: Path, heartbeat_seconds: float, step_seconds: float) -> None:
+    def __init__(self, job_dir: Path, model_root: Path, heartbeat_seconds: float, step_seconds: float) -> None:
         self.job_dir = job_dir.resolve(strict=True)
+        self.model_root = model_root.resolve(strict=False)
         self.heartbeat_seconds = max(0.05, heartbeat_seconds)
         self.step_seconds = max(0.02, step_seconds)
         self.output_lock = threading.Lock()
@@ -79,12 +81,23 @@ class Worker:
         self.active: tuple[str, str] | None = None
         self.thread: threading.Thread | None = None
 
-    def emit_error(self, request_id: str, job_id: str, code: str, message: str, recoverable: bool = False) -> None:
+    def emit_error(
+        self,
+        request_id: str,
+        job_id: str,
+        code: str,
+        message: str,
+        recoverable: bool = False,
+        suggestions: list[str] | None = None,
+    ) -> None:
         write_message({
             "protocolVersion": PROTOCOL_VERSION, "type": "result", "requestId": request_id,
             "jobId": job_id, "sequence": 1, "state": "failed", "timestamp": utc_now(),
             "artifactManifestPath": None, "checkpointPath": None,
-            "error": {"code": code, "message": message, "recoverable": recoverable, "correlationId": request_id},
+            "error": {
+                "code": code, "message": message, "recoverable": recoverable,
+                "correlationId": request_id, "suggestions": suggestions or [],
+            },
         }, self.output_lock)
 
     def handle(self, command: dict[str, Any]) -> None:
@@ -125,6 +138,15 @@ class Worker:
             self.emit_error(request_id, job_id, "worker.manifest", str(exc)[:240])
             return
         if operation == "validate":
+            if manifest.get("backend") == "real":
+                try:
+                    module = self.load_real_training_module()
+                    module.validate_manifest(manifest, self.job_dir, self.model_root)
+                except Exception as exc:
+                    code = getattr(exc, "code", "training.validation")
+                    suggestions = getattr(exc, "suggestions", [])
+                    self.emit_error(request_id, job_id, code, str(exc)[:240], getattr(exc, "recoverable", False), suggestions)
+                    return
             write_message({
                 "protocolVersion": PROTOCOL_VERSION, "type": "result", "requestId": request_id, "jobId": job_id,
                 "sequence": 1, "state": "completed", "timestamp": utc_now(), "artifactManifestPath": None,
@@ -146,6 +168,9 @@ class Worker:
         checkpoint: Path | None = None
         phases = [("validating", 0.05), ("preparing", 0.15), ("loading_model", 0.25), ("loading_dataset", 0.35), ("training", 0.65), ("checkpointing", 0.82), ("validating_model", 0.92), ("finalizing", 0.98)]
         try:
+            if manifest.get("backend") == "real":
+                self.run_real_backend(request_id, job_id, manifest, operation)
+                return
             if operation == "resume":
                 raw_checkpoint = manifest.get("resumeCheckpointPath")
                 expected = manifest.get("resumeCheckpointSha256")
@@ -195,6 +220,68 @@ class Worker:
             with self.active_lock:
                 self.active = None
 
+    def load_real_training_module(self) -> Any:
+        module_path = Path(__file__).with_name("real_training.py")
+        spec = importlib.util.spec_from_file_location("vibespace_real_training", module_path)
+        if spec is None or spec.loader is None:
+            raise RuntimeError("Real training module could not be loaded.")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def run_real_backend(
+        self,
+        request_id: str,
+        job_id: str,
+        manifest: dict[str, Any],
+        operation: str,
+    ) -> None:
+        sequence = 0
+        last_heartbeat = 0.0
+
+        def emit(phase: str, progress: float, message: str) -> None:
+            nonlocal sequence, last_heartbeat
+            sequence += 1
+            resource = {"ramBytes": None, "vramBytes": None, "diskFreeBytes": shutil.disk_usage(self.job_dir).free}
+            write_message({
+                "protocolVersion": PROTOCOL_VERSION, "type": "event", "kind": "progress",
+                "requestId": request_id, "jobId": job_id, "sequence": sequence,
+                "phase": phase, "progress": progress, "timestamp": utc_now(),
+                "message": message, "resource": resource,
+            }, self.output_lock)
+            now = time.monotonic()
+            if now - last_heartbeat >= self.heartbeat_seconds:
+                sequence += 1
+                write_message({
+                    "protocolVersion": PROTOCOL_VERSION, "type": "event", "kind": "heartbeat",
+                    "requestId": request_id, "jobId": job_id, "sequence": sequence,
+                    "phase": phase, "progress": progress, "timestamp": utc_now(),
+                    "message": "Worker heartbeat", "resource": resource,
+                }, self.output_lock)
+                last_heartbeat = now
+
+        try:
+            if operation == "resume" and not manifest.get("resumeCheckpointPath"):
+                raise ValueError("resumeCheckpointPath is required for resume")
+            module = self.load_real_training_module()
+            result = module.run_real_training(
+                manifest,
+                self.job_dir,
+                self.model_root,
+                self.cancel_event.is_set,
+                self.stop_after_checkpoint.is_set,
+                emit,
+            )
+            checkpoint_raw = result.get("checkpointPath")
+            artifact_raw = result.get("artifactManifestPath")
+            checkpoint = Path(checkpoint_raw) if checkpoint_raw else None
+            artifact = Path(artifact_raw) if artifact_raw else None
+            self.emit_result(request_id, job_id, sequence + 1, result["state"], checkpoint, artifact)
+        except Exception as exc:
+            code = getattr(exc, "code", "training.failed")
+            recoverable = getattr(exc, "recoverable", False)
+            suggestions = getattr(exc, "suggestions", [])
+            self.emit_error(request_id, job_id, code, str(exc)[:240], recoverable, suggestions)
     def emit_result(self, request_id: str, job_id: str, sequence: int, state: str, checkpoint: Path | None, artifact: Path | None) -> None:
         if state not in TERMINAL_STATES:
             raise ValueError("invalid terminal state")
@@ -209,12 +296,13 @@ class Worker:
 def main() -> int:
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--job-dir", required=True)
+    parser.add_argument("--model-root")
     parser.add_argument("--heartbeat-seconds", type=float, default=5.0)
     parser.add_argument("--step-seconds", type=float, default=0.1)
     args = parser.parse_args()
     job_dir = Path(args.job_dir)
     job_dir.mkdir(parents=True, exist_ok=True)
-    worker = Worker(job_dir, args.heartbeat_seconds, args.step_seconds)
+    worker = Worker(job_dir, Path(args.model_root) if args.model_root else job_dir / "models", args.heartbeat_seconds, args.step_seconds)
     for raw in sys.stdin.buffer:
         if len(raw) > MAX_MESSAGE_BYTES:
             worker.emit_error("invalid", "invalid", "worker.message_size", "Worker command exceeds the protocol limit.")
