@@ -22,6 +22,13 @@ import '@fontsource/inter/700.css';
 import { App } from './App';
 import './styles/globals.css';
 import './styles/vibespace-theme.css';
+import { applyThemeToDocument, useUIStore } from './stores/ui';
+import { startThemeSync } from './features/appearance/themeSync';
+
+startThemeSync((theme) => {
+  applyThemeToDocument(theme);
+  useUIStore.setState({ theme });
+});
 
 // Mark pet-overlay BEFORE first paint so globals.css can suppress body bg.
 // Without this, body { @apply bg-background } paints an opaque rectangle

@@ -7,6 +7,7 @@ import { syncVoiceModuleOpenState } from '@/features/voice/voiceRouter';
 import type { ProductTutorialStatus } from '@/features/product-tutorial/tutorialState';
 import { markTutorialPending } from '@/features/product-tutorial/tutorialState';
 import { migrateThemePreference } from '@/features/appearance/themes';
+import { publishThemePreference } from '@/features/appearance/themeSync';
 
 const debouncedUiStorage = createDebouncedStateStorage(safeLocalStorage);
 
@@ -364,8 +365,10 @@ export const useUIStore = create<UIState>()(
         })),
       setChatMode: (mode) => set({ chatMode: mode }),
       setTheme: (t) => {
-        applyThemeToDocument(t);
-        set({ theme: t });
+        const theme = migrateThemePreference(t);
+        applyThemeToDocument(theme);
+        set({ theme });
+        publishThemePreference(theme);
       },
       finishOnboarding: () =>
         set((s) => ({
