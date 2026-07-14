@@ -1,51 +1,88 @@
-import { contextMapFilePath, contextNodeFilePath } from '@/features/context/tree';
+import {
+  contextMapFilePath,
+  contextNodeFilePath,
+  nodeToAttachment,
+  serializeContextAttachment,
+  type ContextTreeNode,
+  type ProjectContextTree,
+} from '@/features/context/tree';
+import {
+  resolveResourceDestination,
+  routeResourceInteraction,
+  type ResourceReference,
+} from './resourceInteraction';
+
+type RightDragData =
+  | { path: string }
+  | { node: ContextTreeNode; tree: ProjectContextTree };
+
+let cancelActiveRightDrag: (() => void) | null = null;
+
+function referenceForDrag(type: 'file' | 'context', data: RightDragData): ResourceReference {
+  if (type === 'file') {
+    const path = (data as { path: string }).path;
+    return {
+      kind: 'file',
+      path,
+      name: path.split(/[\\/]/).pop() || path,
+    };
+  }
+
+  const { node, tree } = data as { node: ContextTreeNode; tree: ProjectContextTree };
+  const attachment = nodeToAttachment(tree, node);
+  const path = contextNodeFilePath(tree, node)
+    ?? (node.kind === 'root' && tree.rootDir ? contextMapFilePath(tree.rootDir) : undefined);
+  return {
+    kind: 'context',
+    name: node.title,
+    raw: serializeContextAttachment(attachment),
+    ...(path ? { path } : {}),
+  };
+}
 
 export function startRightClickDrag(
   e: React.MouseEvent | MouseEvent,
   type: 'file' | 'context',
-  data: { path: string } | { node: any; tree: any }
-) {
-  if (e.button !== 2) return;
+  data: RightDragData,
+): () => void {
+  if (e.button !== 2) return () => {};
   e.preventDefault();
   e.stopPropagation();
+  cancelActiveRightDrag?.();
 
+  const resource = referenceForDrag(type, data);
   const startX = e.clientX;
   const startY = e.clientY;
   let latestX = startX;
   let latestY = startY;
   let dragging = false;
+  let cleaned = false;
   let preview: HTMLDivElement | null = null;
   let hoverTarget: HTMLElement | null = null;
   let suppressNativeMenuUntil = 0;
-
-  // Determine path to paste
-  let path = '';
-  let label = '';
-  if (type === 'file') {
-    path = (data as { path: string }).path;
-    label = path.split(/[\\/]/).pop() || path;
-  } else {
-    const { node, tree } = data as { node: any; tree: any };
-    const filePath = contextNodeFilePath(tree, node);
-    path = filePath || (node.kind === 'root' && tree?.rootDir ? contextMapFilePath(tree.rootDir) : node.path) || node.title;
-    label = node.title;
-  }
+  let suppressionTimer: number | null = null;
 
   const clearHoverTarget = () => {
     hoverTarget?.classList.remove('jarvis-terminal-drop-hover');
+    hoverTarget?.classList.remove('jarvis-resource-drop-hover');
     hoverTarget = null;
   };
 
-  const findDropTarget = () => {
-    const el = document.elementFromPoint(latestX, latestY) as HTMLElement | null;
-    return el?.closest('[data-terminal-drop]') as HTMLElement | null;
+  const elementAtPointer = () => document.elementFromPoint(latestX, latestY) as HTMLElement | null;
+
+  const findHoverTarget = (): HTMLElement | null => {
+    const element = elementAtPointer();
+    if (!element || !resolveResourceDestination(element)) return null;
+    return (element.closest('[data-resource-drop], [data-terminal-drop]') as HTMLElement | null)
+      ?? (element.closest('input, textarea, [contenteditable]') as HTMLElement | null);
   };
 
   const ensurePreview = () => {
     if (preview) return;
     preview = document.createElement('div');
-    preview.className = 'jarvis-terminal-drag-preview';
-    preview.textContent = `Paste path · ${label}`;
+    preview.className = 'jarvis-terminal-drag-preview jarvis-resource-drag-preview';
+    preview.textContent = `Insert reference · ${resource.name}`;
+    preview.setAttribute('aria-hidden', 'true');
     document.body.appendChild(preview);
     document.body.classList.add('jarvis-terminal-right-dragging');
   };
@@ -55,25 +92,50 @@ export function startRightClickDrag(
     preview.style.transform = `translate3d(${latestX + 14}px, ${latestY + 14}px, 0)`;
   };
 
-  const cleanup = () => {
+  const removeListeners = () => {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    document.removeEventListener('keydown', onKeyDown, true);
+    window.removeEventListener('dragend', onCancel);
+    window.removeEventListener('jarvis:route-change', onCancel);
+    window.removeEventListener('hashchange', onCancel);
+    window.removeEventListener('popstate', onCancel);
+    window.removeEventListener('blur', onCancel);
+    window.removeEventListener('beforeunload', onCancel);
+  };
+
+  const finishContextMenuSuppression = () => {
+    document.removeEventListener('contextmenu', onContextMenu, true);
+    delete document.body.dataset.jarvisSuppressContextMenuUntil;
+    if (suppressionTimer !== null) {
+      window.clearTimeout(suppressionTimer);
+      suppressionTimer = null;
+    }
+  };
+
+  const cleanup = (preserveContextMenuSuppression = false) => {
+    if (cleaned) return;
+    cleaned = true;
     clearHoverTarget();
     preview?.remove();
     preview = null;
     document.body.classList.remove('jarvis-terminal-right-dragging');
-    document.removeEventListener('mousemove', onMove);
-    document.removeEventListener('mouseup', onUp);
-    const delay = Math.max(0, suppressNativeMenuUntil - Date.now()) + 50;
-    window.setTimeout(() => {
-      document.removeEventListener('contextmenu', onContextMenu, true);
-    }, delay);
+    removeListeners();
+    if (preserveContextMenuSuppression) {
+      const delay = Math.max(0, suppressNativeMenuUntil - Date.now()) + 50;
+      suppressionTimer = window.setTimeout(finishContextMenuSuppression, delay);
+    } else {
+      finishContextMenuSuppression();
+    }
+    if (cancelActiveRightDrag === cancel) cancelActiveRightDrag = null;
   };
 
-  const onContextMenu = (ev: MouseEvent) => {
+  function onContextMenu(ev: MouseEvent) {
     if (dragging || Date.now() < suppressNativeMenuUntil) {
       ev.preventDefault();
       ev.stopPropagation();
     }
-  };
+  }
 
   function onMove(ev: MouseEvent) {
     latestX = ev.clientX;
@@ -85,13 +147,11 @@ export function startRightClickDrag(
     ensurePreview();
     updatePreview();
 
-    const target = findDropTarget();
+    const target = findHoverTarget();
     if (target !== hoverTarget) {
       clearHoverTarget();
       hoverTarget = target;
-      if (hoverTarget) {
-        hoverTarget.classList.add('jarvis-terminal-drop-hover');
-      }
+      hoverTarget?.classList.add('jarvis-terminal-drop-hover', 'jarvis-resource-drop-hover');
     }
   }
 
@@ -102,32 +162,37 @@ export function startRightClickDrag(
       document.body.dataset.jarvisSuppressContextMenuUntil = String(suppressNativeMenuUntil);
       ev.preventDefault();
       ev.stopPropagation();
-      const dropTarget = findDropTarget();
-      if (dropTarget) {
-        const kind = dropTarget.dataset.terminalDrop;
-        if (kind === 'chat') {
-          const targetChatId = dropTarget.dataset.terminalDropChatId;
-          window.dispatchEvent(
-            new CustomEvent('jarvis:composer:insert-text', {
-              detail: { text: path, chatId: targetChatId },
-            })
-          );
-        } else if (kind === 'pane') {
-          const targetPaneId = dropTarget.dataset.terminalDropPaneId;
-          if (targetPaneId) {
-            window.dispatchEvent(
-              new CustomEvent('jarvis:terminal:write-text', {
-                detail: { paneId: targetPaneId, text: path },
-              })
-            );
-          }
-        }
-      }
+      routeResourceInteraction(resource, elementAtPointer());
+      cleanup(true);
+      return;
     }
+    cleanup();
+  }
+
+  function onKeyDown(ev: KeyboardEvent) {
+    if (ev.key !== 'Escape') return;
+    ev.preventDefault();
+    cleanup();
+  }
+
+  function onCancel() {
+    cleanup();
+  }
+
+  function cancel() {
     cleanup();
   }
 
   document.addEventListener('mousemove', onMove);
   document.addEventListener('mouseup', onUp);
+  document.addEventListener('keydown', onKeyDown, true);
   document.addEventListener('contextmenu', onContextMenu, true);
+  window.addEventListener('dragend', onCancel);
+  window.addEventListener('jarvis:route-change', onCancel);
+  window.addEventListener('hashchange', onCancel);
+  window.addEventListener('popstate', onCancel);
+  window.addEventListener('blur', onCancel);
+  window.addEventListener('beforeunload', onCancel);
+  cancelActiveRightDrag = cancel;
+  return cancel;
 }

@@ -29,6 +29,7 @@ describe('chat drop payloads', () => {
 
     expect(payload).toEqual({
       kind: 'context',
+      name: 'Context file',
       raw: '{"title":"Context file","summary":"Use this"}',
     });
   });
@@ -57,13 +58,32 @@ describe('chat drop payloads', () => {
       },
     ));
 
-    expect(payload).toEqual({ kind: 'file', path: 'D:\\project\\README.md' });
+    expect(payload).toEqual({
+      kind: 'file',
+      name: 'README.md',
+      path: 'D:\\project\\README.md',
+    });
   });
 
-  it('classifies drag-over state without reading protected drop data', () => {
+  it('classifies only explicit resource MIME during drag-over without reading protected data', () => {
     expect(getChatDragKind([CONTEXT_MIME, FILE_MIME])).toBe('context');
     expect(getChatDragKind([TERMINAL_MIME, 'text/plain'])).toBe('terminal');
-    expect(getChatDragKind(['text/plain'])).toBe('file');
+    expect(getChatDragKind(['text/plain'])).toBeNull();
     expect(getChatDragKind(['text/html'])).toBeNull();
+  });
+
+  it('rejects control characters, oversized references, and plain-text path spoofing', () => {
+    expect(getChatDropPayload(dataTransfer(
+      [FILE_MIME],
+      { [FILE_MIME]: 'C:\\bad\npath.txt' },
+    ))).toBeNull();
+    expect(getChatDropPayload(dataTransfer(
+      [FILE_MIME],
+      { [FILE_MIME]: `C:\\${'x'.repeat(8_193)}` },
+    ))).toBeNull();
+    expect(getChatDropPayload(dataTransfer(
+      ['text/plain'],
+      { 'text/plain': 'C:\\spoofed\\secret.txt' },
+    ))).toBeNull();
   });
 });

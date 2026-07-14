@@ -114,6 +114,11 @@ import {
   UNDO_STATUS_TEXT,
 } from './chatUndoRedo';
 import { getChatDragKind, getChatDropPayload } from './dropPayload';
+import {
+  attachResourceToChat,
+  normalizeResourceReference,
+  type ResourceReference,
+} from '@/lib/resourceInteraction';
 import { getStoredProjectRoot } from '@/features/files/projectFiles';
 import {
   imageAttachmentFromBrowserFile,
@@ -1850,6 +1855,23 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
   }, [addDroppedContext, chatId]);
 
   useEffect(() => {
+    const onAttachResource = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        chatId?: string;
+        resource?: ResourceReference;
+      }>).detail;
+      if (!detail?.chatId || String(detail.chatId) !== String(chatId)) return;
+      if (!detail.resource) return;
+      const resource = normalizeResourceReference(detail.resource);
+      if (!resource) return;
+      if (resource.kind === 'context') addDroppedContext(resource.raw);
+      else void addDroppedPath(resource.path);
+    };
+    window.addEventListener('jarvis:composer:attach-resource', onAttachResource as EventListener);
+    return () => window.removeEventListener('jarvis:composer:attach-resource', onAttachResource as EventListener);
+  }, [addDroppedContext, addDroppedPath, chatId]);
+
+  useEffect(() => {
     const onInsertText = (e: Event) => {
       const detail = (e as CustomEvent<{ text: string; chatId?: string }>).detail;
       if (detail?.chatId && String(detail.chatId) !== String(chatId)) return;
@@ -2324,6 +2346,8 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
             <div
               data-terminal-drop="chat"
               data-terminal-drop-chat-id={String(chatId)}
+              data-resource-drop="chat"
+              data-resource-chat-id={String(chatId)}
               data-hive-active={chatModelSelection.mode === 'hive' ? 'true' : undefined}
               className={cn(
                 'rounded-lg border border-input bg-background',
@@ -2384,9 +2408,8 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
                   e.preventDefault();
                   e.stopPropagation();
                   setDragOver(false);
-                  if (payload.kind === 'context') addDroppedContext(payload.raw);
-                  else if (payload.kind === 'terminal') addDroppedTerminal(payload.raw);
-                  else void addDroppedPath(payload.path);
+                  if (payload.kind === 'terminal') addDroppedTerminal(payload.raw);
+                  else attachResourceToChat(payload, String(chatId));
                 }}
                 placeholder={placeholder ?? 'Message Jarvis...   (use @ to mention an agent)'}
                 aria-label="Message"

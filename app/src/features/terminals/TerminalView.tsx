@@ -88,11 +88,9 @@ import { COMPOSER_STT_STOP_EVENT, COMPOSER_STT_TOGGLE_EVENT } from '@/features/c
 import { startSttVolumeMeter, stopSttVolumeMeter } from '@/features/composer-stt/sttVolume';
 import { VoiceService } from '@/features/voice/VoiceService';
 import { useUIStore } from '@/stores/ui';
-import {
-  CONTEXT_MIME,
-  formatContextAttachmentForTerminal,
-  parseContextAttachment,
-} from '@/features/context/tree';
+import { CONTEXT_MIME, parseContextAttachment } from '@/features/context/tree';
+import { FILE_MIME, getChatDropPayload } from '@/features/chat/dropPayload';
+import { isSafeResourceInsertText, routeResourceInteraction } from '@/lib/resourceInteraction';
 import {
   heartbeatCoordinatedTerminal,
   inferAgentProvider,
@@ -1384,6 +1382,7 @@ export function TerminalView({
     const onWriteText = (e: Event) => {
       const detail = (e as CustomEvent<{ paneId: string; text: string }>).detail;
       if (detail?.paneId === paneId) {
+        if (!isSafeResourceInsertText(detail.text)) return;
         const sid = sessionRef.current;
         if (!sid) return;
         void invoke('terminal_write', {
@@ -1566,10 +1565,12 @@ export function TerminalView({
   return (
     <div
       data-session-id={activeSessionId ?? undefined}
+      data-resource-drop="terminal"
+      data-resource-pane-id={paneId}
+      data-resource-shell={command ?? undefined}
       onDragOver={(e) => {
         const nextKind =
-          e.dataTransfer.types.includes('application/x-jarvis-file') ||
-          e.dataTransfer.types.includes('text/plain')
+          e.dataTransfer.types.includes(FILE_MIME)
             ? 'file'
             : e.dataTransfer.types.includes(CONTEXT_MIME)
               ? 'context'
@@ -1580,25 +1581,18 @@ export function TerminalView({
       }}
       onDragLeave={() => setDropKind(null)}
       onDrop={(e) => {
-        const filePath = e.dataTransfer.getData('application/x-jarvis-file');
-        const contextRaw = e.dataTransfer.getData(CONTEXT_MIME);
-        const path = filePath || (!contextRaw ? e.dataTransfer.getData('text/plain') : '');
-        if (!contextRaw && !path) return;
+        const payload = getChatDropPayload(e.dataTransfer);
+        if (!payload || payload.kind === 'terminal') return;
         e.preventDefault();
+        e.stopPropagation();
         setDropKind(null);
-        const sid = sessionRef.current;
-        if (!sid) return;
-        if (contextRaw) {
-          const context = parseContextAttachment(contextRaw);
-          if (!context) return;
-          flashPowerUp(context.title);
-          void invoke('terminal_write', {
-            sessionId: sid,
-            data: commandToInput(formatContextAttachmentForTerminal(context)),
-          });
-          return;
+        if (payload.kind === 'context') {
+          const context = parseContextAttachment(payload.raw);
+          if (context) {
+            flashPowerUp(context.title);
+          }
         }
-        void invoke('terminal_write', { sessionId: sid, data: path.trim() });
+        routeResourceInteraction(payload, e.currentTarget);
       }}
       className={cn(
         'jarvis-terminal-surface relative flex w-full flex-col overflow-hidden bg-paper transition-shadow duration-300',
