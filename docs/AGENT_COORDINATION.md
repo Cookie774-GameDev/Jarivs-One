@@ -1719,3 +1719,15 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Safety** | No real provider/auth/billable commands, credential reads, shell APIs, permissive flags, raw auth forwarding, dependency changes, production changes, merge, or deploy. |
 | **Status** | Task 3 complete; Task 4 exact routing, picker, and settings next. |
 
+#### 2026-07-14 - Subscription & CLI Bridge Tasks 4–5 complete
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-14 08:25 CT |
+| **Agent ID** | `AGENT-CODEX-20260713-121609-SCB2` |
+| **Commits** | `2004450` — exact routing/picker/settings; `d3d407f` — truthful structured usage cards |
+| **Result** | Exact connection routing with no paid fallback, per-chat persistence, capability gating, grouped mode/auth picker labels, connection popover/settings, and structured `/usage`, `/usage refresh`, `/usage session`, `/usage all` interception. |
+| **Verification** | Task 4 focused: 3 files / 8 tests PASS. Task 5 focused plus legacy summary: 4 files / 15 tests PASS. Full TypeScript reports only the two existing missing-`pixi.js` Pets diagnostics and no changed-scope diagnostics. |
+| **Safety** | Quota/period/cost unknowns are unavailable rather than zero/unlimited; OpenAI organization usage is not labeled Codex quota; Ollama states no subscription quota; OpenCode is bridge-local. No model prompt, auth launch, billable probe, credential read, production change, merge, or deploy. |
+| **Status** | Tasks 4–5 complete; final combined regression and draft PR next. |
+
