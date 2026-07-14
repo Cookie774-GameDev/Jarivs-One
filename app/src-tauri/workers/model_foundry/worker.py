@@ -89,10 +89,11 @@ class Worker:
         message: str,
         recoverable: bool = False,
         suggestions: list[str] | None = None,
+        sequence: int = 1,
     ) -> None:
         write_message({
             "protocolVersion": PROTOCOL_VERSION, "type": "result", "requestId": request_id,
-            "jobId": job_id, "sequence": 1, "state": "failed", "timestamp": utc_now(),
+            "jobId": job_id, "sequence": sequence, "state": "failed", "timestamp": utc_now(),
             "artifactManifestPath": None, "checkpointPath": None,
             "error": {
                 "code": code, "message": message, "recoverable": recoverable,
@@ -237,28 +238,39 @@ class Worker:
         operation: str,
     ) -> None:
         sequence = 0
-        last_heartbeat = 0.0
+        sequence_lock = threading.Lock()
+        heartbeat_stop = threading.Event()
+        current = {"phase": "validating", "progress": 0.0}
+
+        def resource() -> dict[str, int | None]:
+            return {"ramBytes": None, "vramBytes": None, "diskFreeBytes": shutil.disk_usage(self.job_dir).free}
 
         def emit(phase: str, progress: float, message: str) -> None:
-            nonlocal sequence, last_heartbeat
-            sequence += 1
-            resource = {"ramBytes": None, "vramBytes": None, "diskFreeBytes": shutil.disk_usage(self.job_dir).free}
-            write_message({
-                "protocolVersion": PROTOCOL_VERSION, "type": "event", "kind": "progress",
-                "requestId": request_id, "jobId": job_id, "sequence": sequence,
-                "phase": phase, "progress": progress, "timestamp": utc_now(),
-                "message": message, "resource": resource,
-            }, self.output_lock)
-            now = time.monotonic()
-            if now - last_heartbeat >= self.heartbeat_seconds:
+            nonlocal sequence
+            with sequence_lock:
+                current.update(phase=phase, progress=progress)
                 sequence += 1
                 write_message({
-                    "protocolVersion": PROTOCOL_VERSION, "type": "event", "kind": "heartbeat",
+                    "protocolVersion": PROTOCOL_VERSION, "type": "event", "kind": "progress",
                     "requestId": request_id, "jobId": job_id, "sequence": sequence,
                     "phase": phase, "progress": progress, "timestamp": utc_now(),
-                    "message": "Worker heartbeat", "resource": resource,
+                    "message": message, "resource": resource(),
                 }, self.output_lock)
-                last_heartbeat = now
+
+        def heartbeat() -> None:
+            nonlocal sequence
+            while not heartbeat_stop.wait(self.heartbeat_seconds):
+                with sequence_lock:
+                    sequence += 1
+                    write_message({
+                        "protocolVersion": PROTOCOL_VERSION, "type": "event", "kind": "heartbeat",
+                        "requestId": request_id, "jobId": job_id, "sequence": sequence,
+                        "phase": current["phase"], "progress": current["progress"], "timestamp": utc_now(),
+                        "message": "Worker heartbeat", "resource": resource(),
+                    }, self.output_lock)
+
+        heartbeat_thread = threading.Thread(target=heartbeat, daemon=True)
+        heartbeat_thread.start()
 
         try:
             if operation == "resume" and not manifest.get("resumeCheckpointPath"):
@@ -276,12 +288,21 @@ class Worker:
             artifact_raw = result.get("artifactManifestPath")
             checkpoint = Path(checkpoint_raw) if checkpoint_raw else None
             artifact = Path(artifact_raw) if artifact_raw else None
-            self.emit_result(request_id, job_id, sequence + 1, result["state"], checkpoint, artifact)
+            heartbeat_stop.set()
+            heartbeat_thread.join(timeout=self.heartbeat_seconds + 1)
+            with sequence_lock:
+                self.emit_result(request_id, job_id, sequence + 1, result["state"], checkpoint, artifact)
         except Exception as exc:
             code = getattr(exc, "code", "training.failed")
             recoverable = getattr(exc, "recoverable", False)
             suggestions = getattr(exc, "suggestions", [])
-            self.emit_error(request_id, job_id, code, str(exc)[:240], recoverable, suggestions)
+            heartbeat_stop.set()
+            heartbeat_thread.join(timeout=self.heartbeat_seconds + 1)
+            with sequence_lock:
+                self.emit_error(request_id, job_id, code, str(exc)[:240], recoverable, suggestions, sequence + 1)
+        finally:
+            heartbeat_stop.set()
+            heartbeat_thread.join(timeout=self.heartbeat_seconds + 1)
     def emit_result(self, request_id: str, job_id: str, sequence: int, state: str, checkpoint: Path | None, artifact: Path | None) -> None:
         if state not in TERMINAL_STATES:
             raise ValueError("invalid terminal state")

@@ -277,6 +277,7 @@ fn spawn_worker(
     job_dir: PathBuf,
     model_root: PathBuf,
     manifest_path: PathBuf,
+    operation: &str,
 ) -> Result<(), String> {
     let root = runtime_root(&app)?;
     let python = venv_python(&root);
@@ -290,7 +291,7 @@ fn spawn_worker(
         "type": "command",
         "requestId": request_id,
         "jobId": job_id,
-        "operation": "train",
+        "operation": operation,
         "manifestPath": manifest_path,
     });
     let mut process = hardened_command(&python);
@@ -426,11 +427,14 @@ pub fn model_foundry_start_training(
     let root = runtime_root(&app)?;
     let model_dir = root.join("models").join(&request.model_id);
     let snapshot = load_snapshot(&model_dir, &request.model_id)?;
-    let model_files: BTreeMap<_, _> = snapshot
+    let mut model_files: BTreeMap<_, _> = snapshot
         .files
         .iter()
         .map(|file| (file.path.clone(), file.sha256.clone()))
         .collect();
+    let snapshot_manifest_bytes = fs::read(model_dir.join("snapshot-manifest.json"))
+        .map_err(|error| format!("Unable to read the verified model snapshot manifest: {error}"))?;
+    model_files.insert("snapshot-manifest.json".into(), sha256_bytes(&snapshot_manifest_bytes));
     let job_dir = root
         .join("projects")
         .join(&request.project_id)
@@ -480,11 +484,63 @@ pub fn model_foundry_start_training(
         job_dir.clone(),
         root.join("models"),
         manifest_path,
+        "train",
     )?;
     Ok(StartTrainingResult {
         started: true,
         project_id: request.project_id,
         job_id: request.job_id,
+        job_dir: job_dir.to_string_lossy().into_owned(),
+    })
+}
+
+#[tauri::command]
+pub fn model_foundry_resume_training(
+    app: tauri::AppHandle,
+    project_id: String,
+    job_id: String,
+) -> Result<StartTrainingResult, String> {
+    validate_storage_id(&project_id)?;
+    validate_storage_id(&job_id)?;
+    let root = runtime_root(&app)?;
+    let job_dir = root.join("projects").join(&project_id).join("jobs").join(&job_id);
+    let original_manifest_path = job_dir.join("training-manifest.json");
+    let mut manifest: serde_json::Value = serde_json::from_slice(
+        &fs::read(&original_manifest_path)
+            .map_err(|_| "The immutable training manifest was not found for this job.".to_string())?,
+    )
+    .map_err(|_| "The immutable training manifest is malformed.".to_string())?;
+    let checkpoints = job_dir.join("output").join("checkpoints");
+    let checkpoint = fs::read_dir(&checkpoints)
+        .map_err(|_| "No verified checkpoint is available to resume.".to_string())?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.is_dir() && path.join("checkpoint-manifest.json").is_file())
+        .max()
+        .ok_or_else(|| "No verified checkpoint is available to resume.".to_string())?;
+    let object = manifest
+        .as_object_mut()
+        .ok_or_else(|| "The immutable training manifest is not an object.".to_string())?;
+    object.insert("resumeCheckpointPath".into(), serde_json::json!(checkpoint));
+    let resume_manifest_path = job_dir.join("resume-manifest.json");
+    atomic_write(
+        &resume_manifest_path,
+        &serde_json::to_vec(&manifest)
+            .map_err(|error| format!("Unable to serialize the resume manifest: {error}"))?,
+    )?;
+    spawn_worker(
+        app,
+        project_id.clone(),
+        job_id.clone(),
+        job_dir.clone(),
+        root.join("models"),
+        resume_manifest_path,
+        "resume",
+    )?;
+    Ok(StartTrainingResult {
+        started: true,
+        project_id,
+        job_id,
         job_dir: job_dir.to_string_lossy().into_owned(),
     })
 }

@@ -148,6 +148,11 @@ export async function startFoundryTraining(request: FoundryNativeTrainingRequest
   return invoke<FoundryNativeTrainingStart>('model_foundry_start_training', { request });
 }
 
+export async function resumeFoundryTraining(projectId: string, jobId: string): Promise<FoundryNativeTrainingStart> {
+  if (!isTauri) throw new Error('Real LoRA training is available only in the desktop app.');
+  return invoke<FoundryNativeTrainingStart>('model_foundry_resume_training', { projectId, jobId });
+}
+
 export async function cancelFoundryTraining(projectId: string, jobId: string): Promise<boolean> {
   if (!isTauri) return false;
   return invoke<boolean>('model_foundry_cancel_training', { projectId, jobId });
