@@ -20,6 +20,7 @@ import type {
   ProviderCapabilities,
   ProviderConnection,
 } from './adapters/types';
+import { getProviderConnectionDescriptor } from './adapters/catalog';
 
 type ConnectedSingleSelection = {
   connectionId: string;
@@ -208,7 +209,7 @@ export function validateChatModelSelection(
   selection: ChatModelSelection,
   ctx: ModelSelectionContext,
   customSteps: Parameters<typeof stepsForPreset>[2],
-  options?: { voice?: boolean; attachments?: { hasImages?: boolean } },
+  options?: { voice?: boolean; attachments?: { hasImages?: boolean; hasFiles?: boolean }; tools?: boolean },
 ): ModelSelectionValidation {
   if (selection.mode === 'none') {
     return {
@@ -220,7 +221,21 @@ export function validateChatModelSelection(
   }
 
   if (selection.mode === 'single') {
-    if (!isSingleModelAvailable(selection, ctx)) {
+    let exactConnection: Readonly<ProviderConnection> | undefined;
+    if (selection.connectionId) {
+      try {
+        exactConnection = getProviderConnectionDescriptor(selection.connectionId);
+      } catch {
+        return { ok: false, message: `Unknown provider connection: ${selection.connectionId}` };
+      }
+      if (!exactConnection.enabled) {
+        return { ok: false, message: `Provider connection is disabled: ${selection.connectionId}` };
+      }
+      if (exactConnection.providerId !== selection.providerId) {
+        return { ok: false, message: 'The selected connection does not match this model provider.' };
+      }
+    }
+    if (exactConnection?.mode !== 'external-cli' && !isSingleModelAvailable(selection, ctx)) {
       const needsKey = !isProviderConnected(selection.providerId, ctx);
       if (needsKey) {
         return {
@@ -232,6 +247,16 @@ export function validateChatModelSelection(
         ok: false,
         message: 'Your selected model is unavailable. Choose another model before sending.',
       };
+    }
+    const capabilities = exactConnection?.capabilities ?? selection.capabilities;
+    if (options?.attachments?.hasImages && capabilities && !capabilities.images) {
+      return { ok: false, message: 'The selected connection does not support image attachments.' };
+    }
+    if (options?.attachments?.hasFiles && capabilities && !capabilities.files) {
+      return { ok: false, message: 'The selected connection does not support file attachments.' };
+    }
+    if (options?.tools && capabilities && !capabilities.tools) {
+      return { ok: false, message: 'The selected connection does not support tools.' };
     }
     if (options?.attachments?.hasImages && !selectionSupportsVision(selection, customSteps)) {
       return {
@@ -261,7 +286,7 @@ export function canSendModelRequest(
   selection: ChatModelSelection,
   ctx: ModelSelectionContext,
   customSteps: Parameters<typeof stepsForPreset>[2],
-  options?: { voice?: boolean; attachments?: { hasImages?: boolean } },
+  options?: { voice?: boolean; attachments?: { hasImages?: boolean; hasFiles?: boolean }; tools?: boolean },
 ): boolean {
   return validateChatModelSelection(selection, ctx, customSteps, options).ok;
 }
@@ -282,7 +307,7 @@ export function formatChatModelSelectionLabel(
 
 export function selectionOptionId(selection: ChatModelSelection): string | null {
   if (selection.mode !== 'single') return null;
-  return `${selection.providerId}:${selection.modelId}`;
+  return `${selection.connectionId ?? selection.providerId}:${selection.modelId}`;
 }
 
 export function selectionFromOption(
@@ -340,7 +365,7 @@ export function validateSendModelAccess(
   selection: ChatModelSelection,
   ctx: ModelSelectionContext,
   customSteps: Parameters<typeof stepsForPreset>[2],
-  options?: { voice?: boolean; attachments?: { hasImages?: boolean } },
+  options?: { voice?: boolean; attachments?: { hasImages?: boolean; hasFiles?: boolean }; tools?: boolean },
 ): ModelSelectionValidation {
   const stackSlash = parseStackSlashCommand(text);
   const stackPreset = resolveActiveStackPreset(selection, stackSlash);

@@ -94,6 +94,7 @@ import {
   HIVE_OPTION_ID,
   type ModelPickerTypeaheadRef,
 } from './ModelPickerTypeahead';
+import { ConnectionInfoPopover } from './ConnectionInfoPopover';
 import { InputToken, TokenList } from './InputToken';
 import {
   extractInlineUtilitySlashCommands,
@@ -131,6 +132,7 @@ import {
   useOllamaModelOptions,
 } from '@/lib/ai/models';
 import { useAccessibleChatModels } from '@/lib/ai/useAccessibleChatModels';
+import { getProviderConnectionDescriptor } from '@/lib/ai/adapters/catalog';
 import { useAllAboutMeStore } from '@/features/all-about-me/store';
 import {
   ALL_ABOUT_ME_SLASH_OPTIONS,
@@ -552,6 +554,25 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     () => modelSelectionContextFromAuth({ apiKeys, offlineMode, plan, defaultLocalModel }),
     [apiKeys, offlineMode, plan, defaultLocalModel],
   );
+
+  // A chat's exact connection is local-only metadata. Restore it when switching chats.
+  useEffect(() => {
+    let cancelled = false;
+    void chatRepo.getById(chatId as ChatId).then((chat) => {
+      if (cancelled || !chat?.connection) return;
+      const current = useAuthStore.getState().chatModelSelection;
+      const modelId = chat.connection.modelId
+        ?? (current.mode === 'single' && current.providerId === chat.connection.providerId ? current.modelId : '')
+        ?? '';
+      if (!modelId) return;
+      setChatModelSelection(selectionFromOption(
+        chat.connection.providerId as ProviderId,
+        modelId,
+        chat.connection,
+      ));
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [chatId, setChatModelSelection]);
 
   // Generate options for option picker based on current command
   const optionPickerOptions = useMemo<SlashCommandOption[]>(() => {
@@ -1427,7 +1448,10 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       auth.chatModelSelection,
       modelSelectionContextFromAuth(auth),
       auth.stackCustomSteps,
-      { attachments: { hasImages: attachedImages.length > 0 } },
+      {
+        attachments: { hasImages: attachedImages.length > 0, hasFiles: attachedFiles.length > 0 },
+        tools: attachedPlugins.length > 0,
+      },
     );
     if (!sendCheck.ok) {
       toast.error('Cannot send', sendCheck.message);
@@ -1567,6 +1591,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
             interactionMode: interactionModeForSend,
             speakReply: voiceReplyRequestedRef.current || useAuthStore.getState().speakReplies,
             autoApproveActions: useAuthStore.getState().jarvisAutoApprove,
+            modelSelectionOverride: useAuthStore.getState().chatModelSelection,
           },
         }),
       );
@@ -2521,11 +2546,22 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
                   compact={compact}
                   onSelect={(next) => {
                     setChatModelSelection(next);
+                    if (next.mode === 'single' && next.connectionId) {
+                      const descriptor = getProviderConnectionDescriptor(next.connectionId);
+                      void chatRepo.update(chatId as ChatId, {
+                        connection: { ...descriptor, modelId: next.modelId },
+                      }).catch(() => toast.error('Connection not saved', 'Try choosing the connection again.'));
+                    }
                     if (next.mode === 'single' && (next.providerId === 'ollama' || next.providerId === 'local')) {
                       selectLocalModelForChat(next.modelId);
                     }
                   }}
                 />
+                {chatModelSelection.mode === 'single' && chatModelSelection.connectionId ? (
+                  <ConnectionInfoPopover
+                    connectionId={chatModelSelection.connectionId}
+                  />
+                ) : null}
                 <ModeIndicator
                   mode={interactionMode}
                   compact={compact}
@@ -2731,8 +2767,8 @@ function ModelPicker({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [open, onOpenChange, pickerRef]);
 
-  const handleSelect = (nextProvider: ProviderId, nextModel: string) => {
-    onSelect(selectionFromOption(nextProvider, nextModel));
+  const handleSelect = (nextProvider: ProviderId, nextModel: string, connection?: Readonly<import('@/lib/ai/adapters/types').ProviderConnection>) => {
+    onSelect(selectionFromOption(nextProvider, nextModel, connection));
     onOpenChange(false);
   };
 

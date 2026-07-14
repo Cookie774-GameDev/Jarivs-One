@@ -2,7 +2,9 @@ import { describe, expect, it, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { useAuthStore } from '@/stores/auth';
 import { syncDiscoveredOllamaModels } from './models';
-import { buildModelPickerGroups, useAccessibleChatModels } from './useAccessibleChatModels';
+import { buildConnectionPickerGroups, buildModelPickerGroups, useAccessibleChatModels } from './useAccessibleChatModels';
+import { CODEX_CLI_CONNECTION } from './adapters/catalog';
+import { OPENAI_API_CONNECTION } from './adapters/nativeCatalog';
 
 describe('useAccessibleChatModels', () => {
   beforeEach(() => {
@@ -35,5 +37,23 @@ describe('useAccessibleChatModels', () => {
 
     expect(result.current.hasAny).toBe(true);
     expect(result.current.flatOptions[0]?.modelId).toBe('llama3.2');
+  });
+
+  it('groups exact connections by provider family with mode and availability labels', () => {
+    const groups = buildConnectionPickerGroups({
+      connections: [CODEX_CLI_CONNECTION, OPENAI_API_CONNECTION],
+      modelsByProvider: { openai: [{ id: 'gpt-5', label: 'GPT-5' }] },
+      stateByConnection: {
+        'openai-codex': { available: true, auth: 'authenticated' },
+        'openai-api': { available: false, auth: 'unauthenticated' },
+      },
+    });
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.label).toBe('OpenAI');
+    expect(groups[0]?.options.map((option) => option.modeLabel)).toEqual([
+      'Subscription bridge · External agent',
+      'Native Jarvis Chat · API billed',
+    ]);
+    expect(groups[0]?.options[1]).toMatchObject({ available: false, authLabel: 'Sign in required' });
   });
 });
