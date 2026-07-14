@@ -28,6 +28,8 @@ import { FOUNDRY_MODEL_CATALOG, modelCompatibility } from './modelRegistry';
 import { DatasetStudioPanel } from './DatasetStudioPanel';
 import { FoundryDeploymentRepository, type FoundryDeploymentRecord } from './deployment';
 import { DeploymentPanel, EvaluationArenaPanel, ImprovementPanel } from './FoundryGovernancePanels';
+import { LocalAdapterRegistry, type LocalAdapterRecord } from './adapterRegistry';
+import { RealAdapterRegistryPanel } from './RealAdapterRegistryPanel';
 
 export interface FoundryPageProps { readonly storage?: StorageAdapter; readonly dependencies?: FixtureBackendDependencies }
 
@@ -74,6 +76,7 @@ export function FoundryPage({ storage = browserStorage, dependencies = defaultDe
   const [backend] = React.useState(() => new DeterministicFixtureBackend(dependencies));
   const [repository] = React.useState(() => new VersionedFixtureRepository(storage, 'vibespace.model-foundry', () => dependencies.idFactory('correlation')));
   const [deployments] = React.useState(() => new FoundryDeploymentRepository(storage, dependencies.clock, () => dependencies.idFactory('deployment')));
+  const [adapterRegistry] = React.useState(() => new LocalAdapterRegistry(storage, dependencies.clock));
   const [snapshot, setSnapshot] = React.useState<ProjectSnapshot | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [hardware, setHardware] = React.useState<FoundryHardwareProfile | null>(null);
@@ -86,6 +89,7 @@ export function FoundryPage({ storage = browserStorage, dependencies = defaultDe
   const [runtimeApproval, setRuntimeApproval] = React.useState(false);
   const [runtimeBusy, setRuntimeBusy] = React.useState(false);
   const [nativeRun, setNativeRun] = React.useState<NativeRunState | null>(null);
+  const [localAdapters, setLocalAdapters] = React.useState<readonly LocalAdapterRecord[]>([]);
   const [deployment, setDeployment] = React.useState<FoundryDeploymentRecord | null>(null);
   const [routingMode, setRoutingMode] = React.useState<FoundryDeploymentRecord['routingMode']>('manual');
   const [trafficPercent, setTrafficPercent] = React.useState(100);
@@ -109,6 +113,10 @@ export function FoundryPage({ storage = browserStorage, dependencies = defaultDe
     const restored = readPersistedNativeRun(storage, projectId);
     setNativeRun(restored?.terminal ? restored : restored ? { ...restored, phase: 'interrupted', terminal: true, detail: 'The desktop app restarted. Resume from the last verified checkpoint.' } : null);
   }, [projectId, storage]);
+
+  React.useEffect(() => {
+    setLocalAdapters(projectId ? adapterRegistry.list(projectId) : []);
+  }, [adapterRegistry, projectId]);
 
   React.useEffect(() => {
     if (!projectId || !nativeRun) return;
@@ -135,6 +143,8 @@ export function FoundryPage({ storage = browserStorage, dependencies = defaultDe
         : current);
       if (message.type === 'result' && phase === 'completed') {
         void inspectFoundryArtifact(event.projectId, event.jobId).then((artifact) => {
+          const registered = adapterRegistry.upsert(event.projectId, event.jobId, artifact);
+          setLocalAdapters((current) => [...current.filter((item) => item.projectId !== registered.projectId || item.jobId !== registered.jobId), registered]);
           setNativeRun((current) => current?.jobId === event.jobId
             ? { ...current, detail: `Verified adapter artifact (${Object.keys(artifact.adapterFiles).length} files, ${artifact.manifestSha256.slice(0, 12)}…).`, terminal: true }
             : current);
@@ -142,7 +152,7 @@ export function FoundryPage({ storage = browserStorage, dependencies = defaultDe
       }
     }).then((dispose) => { unlisten = dispose; });
     return () => unlisten?.();
-  }, []);
+  }, [adapterRegistry]);
 
   const commit = React.useCallback((next: ProjectSnapshot) => {
     const saved = repository.save(next);
@@ -270,6 +280,11 @@ const downloadSelectedModel = async () => {
     useAuthStore.getState().setChatModelSelection({ mode: 'single', providerId: 'foundry', modelId: `${projectId}--${nativeRun.jobId}` });
     setError(null);
   };
+  const useRegisteredAdapterInChat = (record: LocalAdapterRecord) => {
+    useAuthStore.getState().setChatModelSelection({ mode: 'single', providerId: 'foundry', modelId: `${record.projectId}--${record.jobId}` });
+    setError(null);
+  };
+  const archiveRegisteredAdapter = (record: LocalAdapterRecord) => setLocalAdapters(adapterRegistry.archive(record.projectId, record.jobId));
   const activateDeployment = () => act(() => {
     if (!projectId || !snapshot?.championVersionId) return;
     const champion = snapshot.modelVersions.find((version) => version.id === snapshot.championVersionId);
@@ -314,6 +329,7 @@ const downloadSelectedModel = async () => {
         {snapshot.datasetVersion && selectedModel.kind === 'downloadable' && <Card className="border-cyan-500/20"><CardHeader><CardTitle>Training Lab</CardTitle><CardDescription>Build a bounded LoRA or QLoRA run from immutable local inputs. The worker refuses to silently change these settings.</CardDescription></CardHeader><CardContent className="space-y-4"><div className="grid gap-3 md:grid-cols-3"><label className="space-y-1"><span className="text-metadata text-muted-foreground">Method</span><select value={realConfig.method} onChange={(event) => setRealConfig((config) => ({ ...config, method: event.target.value as 'lora' | 'qlora' }))} className="h-9 w-full rounded-md border border-input bg-background px-3"><option value="lora">LoRA</option><option value="qlora">QLoRA (verified CUDA only)</option></select></label><label className="space-y-1"><span className="text-metadata text-muted-foreground">Epochs</span><input type="number" min={1} max={50} value={realConfig.epochs} onChange={(event) => setRealConfig((config) => ({ ...config, epochs: Number(event.target.value) }))} className="h-9 w-full rounded-md border border-input bg-background px-3" /></label><label className="space-y-1"><span className="text-metadata text-muted-foreground">Batch size</span><input type="number" min={1} max={64} value={realConfig.batchSize} onChange={(event) => setRealConfig((config) => ({ ...config, batchSize: Number(event.target.value) }))} className="h-9 w-full rounded-md border border-input bg-background px-3" /></label><label className="space-y-1"><span className="text-metadata text-muted-foreground">Gradient accumulation</span><input type="number" min={1} max={1024} value={realConfig.gradientAccumulation} onChange={(event) => setRealConfig((config) => ({ ...config, gradientAccumulation: Number(event.target.value) }))} className="h-9 w-full rounded-md border border-input bg-background px-3" /></label><label className="space-y-1"><span className="text-metadata text-muted-foreground">Sequence length</span><input type="number" min={64} max={32768} step={64} value={realConfig.maxSequenceLength} onChange={(event) => setRealConfig((config) => ({ ...config, maxSequenceLength: Number(event.target.value) }))} className="h-9 w-full rounded-md border border-input bg-background px-3" /></label><label className="space-y-1"><span className="text-metadata text-muted-foreground">LoRA rank</span><input type="number" min={1} max={512} value={realConfig.loraRank} onChange={(event) => setRealConfig((config) => ({ ...config, loraRank: Number(event.target.value), loraAlpha: Math.max(config.loraAlpha, Number(event.target.value) * 2) }))} className="h-9 w-full rounded-md border border-input bg-background px-3" /></label><label className="space-y-1"><span className="text-metadata text-muted-foreground">Learning rate</span><input type="number" min={0.000001} max={1} step={0.0001} value={realConfig.learningRate} onChange={(event) => setRealConfig((config) => ({ ...config, learningRate: Number(event.target.value) }))} className="h-9 w-full rounded-md border border-input bg-background px-3" /></label></div><div className="text-secondary text-muted-foreground">{nativeRun ? nativeRun.detail : 'Requires the verified model snapshot, installed pinned runtime, and an approved dataset with train and validation splits.'}</div>{nativeRun && <><div className="flex items-center justify-between text-metadata text-muted-foreground"><span>{titleCase(nativeRun.phase.replaceAll('_', ' '))}</span><span>{Math.round(nativeRun.progress * 100)}%</span></div><div className="h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full bg-gradient-to-r from-cyan-400 to-violet-500" style={{ width: `${nativeRun.progress * 100}%` }} /></div></>}<div className="flex flex-wrap gap-2"><Button variant="accent" disabled={Boolean(nativeRun && !nativeRun.terminal)} onClick={() => void startRealTraining().catch((caught) => setError(caught instanceof Error ? caught.message : 'Real training could not start.'))}>Start real training</Button>{nativeRun?.phase === 'interrupted' && <Button variant="accent" onClick={() => void resumeRealTraining().catch((caught) => setError(caught instanceof Error ? caught.message : 'Could not resume real training.'))}>Resume real run</Button>}{nativeRun && !nativeRun.terminal && <><Button variant="outline" onClick={() => void stopRealTrainingAfterCheckpoint().catch((caught) => setError(caught instanceof Error ? caught.message : 'Could not stop after checkpoint.'))}>Stop after checkpoint</Button><Button variant="outline" onClick={() => void cancelRealTraining().catch((caught) => setError(caught instanceof Error ? caught.message : 'Could not cancel training.'))}>Cancel real run</Button></>}</div><p className="text-metadata text-muted-foreground">QLoRA fails closed without verified CUDA and pinned bitsandbytes. Out-of-memory errors preserve this configuration and return concrete reductions to try.</p></CardContent></Card>}
         {snapshot.datasetVersion && selectedModel.kind === 'fixture' && !activeJob && <Card><CardContent className="flex flex-wrap items-center justify-between gap-3 pt-4"><div><div className="text-ui-strong">{snapshot.datasetVersion.examples.length} approved {snapshot.datasetVersion.examples.length === 1 ? 'example' : 'examples'}</div><div className="text-secondary text-muted-foreground">Fixture Base · Apache-2.0</div></div><Button onClick={startTraining}>Start fixture training</Button></CardContent></Card>}
         {nativeRun?.phase === 'completed' && nativeRun.detail.startsWith('Verified adapter artifact') && selectedModel.kind === 'downloadable' && <Card className="border-emerald-500/25"><CardHeader><CardTitle>Verified local adapter</CardTitle><CardDescription>This adapter passed immutable artifact verification. Select it for the next chat; inference remains fully local.</CardDescription></CardHeader><CardContent className="flex flex-wrap items-center justify-between gap-3"><div className="text-metadata text-muted-foreground">Model ID: {projectId}--{nativeRun.jobId}</div><Button variant="accent" onClick={useRealAdapterInChat}>Use in chat</Button></CardContent></Card>}
+        <RealAdapterRegistryPanel records={localAdapters} onUse={useRegisteredAdapterInChat} onArchive={archiveRegisteredAdapter} />
         {activeJob && <TrainingRegion job={activeJob} active={canAdvance} onAdvance={advance} onResume={resume} />}
         {evaluation && <div role="status" className="sr-only"><span>{evaluation.gate.result === 'pass' ? 'All gates passed' : 'Evaluation gates are blocked'}</span><span>{evaluation.safetyFailures.length} safety failures</span></div>}
         {activeJob?.state === 'completed' && candidate && <EvaluationArenaPanel candidate={candidate} evaluation={evaluation} championVersionId={snapshot.championVersionId} onEvaluate={evaluate} onPromote={promote} />}
