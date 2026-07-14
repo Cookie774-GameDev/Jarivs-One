@@ -34,7 +34,52 @@ export interface FoundryModelDownloadResult {
   readonly sizeBytes: number;
   readonly resumed: boolean;
   readonly files: readonly { readonly path: string; readonly sha256: string; readonly sizeBytes: number }[];
-}export interface FoundryWorkerRuntimeStatus {
+}
+
+export interface FoundryNativeTrainingExample {
+  readonly prompt: string;
+  readonly completion: string;
+}
+
+export interface FoundryNativeTrainingRequest {
+  readonly projectId: string;
+  readonly jobId: string;
+  readonly modelId: string;
+  readonly datasetVersionId: string;
+  readonly datasetManifestHash: string;
+  readonly datasetFingerprint: string;
+  readonly datasetApproved: boolean;
+  readonly trainExamples: readonly FoundryNativeTrainingExample[];
+  readonly validationExamples: readonly FoundryNativeTrainingExample[];
+  readonly trainingConfig: {
+    readonly method: 'lora' | 'qlora';
+    readonly seed: number;
+    readonly epochs: number;
+    readonly batchSize: number;
+    readonly gradientAccumulation: number;
+    readonly maxSequenceLength: number;
+    readonly learningRate: number;
+    readonly loraRank: number;
+    readonly loraAlpha: number;
+    readonly loraDropout: number;
+  };
+  readonly targetModules?: readonly string[];
+}
+
+export interface FoundryNativeTrainingStart {
+  readonly started: boolean;
+  readonly projectId: string;
+  readonly jobId: string;
+  readonly jobDir: string;
+}
+
+export interface FoundryWorkerMessage {
+  readonly projectId: string;
+  readonly jobId: string;
+  readonly message: Record<string, unknown>;
+}
+
+export interface FoundryWorkerRuntimeStatus {
   readonly ready: boolean;
   readonly root: string;
   readonly python: string | null;
@@ -97,6 +142,28 @@ export async function installFoundryTrainingDependencies(): Promise<FoundryTrain
   if (!isTauri) throw new Error('Real LoRA training is available only in the desktop app.');
   return invoke<FoundryTrainingRuntimeStatus>('model_foundry_install_training_dependencies');
 }
+
+export async function startFoundryTraining(request: FoundryNativeTrainingRequest): Promise<FoundryNativeTrainingStart> {
+  if (!isTauri) throw new Error('Real LoRA training is available only in the desktop app.');
+  return invoke<FoundryNativeTrainingStart>('model_foundry_start_training', { request });
+}
+
+export async function cancelFoundryTraining(projectId: string, jobId: string): Promise<boolean> {
+  if (!isTauri) return false;
+  return invoke<boolean>('model_foundry_cancel_training', { projectId, jobId });
+}
+
+export async function stopFoundryTrainingAfterCheckpoint(projectId: string, jobId: string): Promise<boolean> {
+  if (!isTauri) return false;
+  return invoke<boolean>('model_foundry_stop_after_checkpoint', { projectId, jobId });
+}
+
+export async function listenFoundryWorkerMessages(listener: (event: FoundryWorkerMessage) => void): Promise<() => void> {
+  if (!isTauri) return () => undefined;
+  const event = await import('@tauri-apps/api/event');
+  return event.listen<FoundryWorkerMessage>('model-foundry:worker-message', ({ payload }) => listener(payload));
+}
+
 export async function probeFoundryWorker(projectId: string): Promise<FoundryWorkerProbe> {
   if (!isTauri) throw new Error('Native worker probe is available only in the desktop app.');
   return invoke<FoundryWorkerProbe>('model_foundry_worker_probe', { projectId });

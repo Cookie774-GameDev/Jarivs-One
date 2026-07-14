@@ -11,14 +11,20 @@ import { VIBECODER_TEMPLATE } from './validation';
 import { createFixtureBase, createFixtureDataset, createFixtureEvaluation } from './demoFixtures';
 import {
   downloadFoundryModel,
+  cancelFoundryTraining,
   getFoundryHardwareProfile,
   getFoundryTrainingRuntimeStatus,
   installFoundryTrainingDependencies,
+  listenFoundryWorkerMessages,
+  startFoundryTraining,
+  stopFoundryTrainingAfterCheckpoint,
   type FoundryHardwareProfile,
   type FoundryTrainingRuntimeStatus,
 } from './nativeBridge';
 import { FOUNDRY_MODEL_CATALOG, modelCompatibility } from './modelRegistry';
 import { DatasetStudioPanel } from './DatasetStudioPanel';
+import { FoundryDeploymentRepository, type FoundryDeploymentRecord } from './deployment';
+import { DeploymentPanel, EvaluationArenaPanel, ImprovementPanel } from './FoundryGovernancePanels';
 
 export interface FoundryPageProps { readonly storage?: StorageAdapter; readonly dependencies?: FixtureBackendDependencies }
 
@@ -35,6 +41,14 @@ const defaultDependencies: FixtureBackendDependencies = {
 function unwrap<T>(result: FoundryResult<T>): T { if (!result.ok) throw new Error(result.error.message); return result.value }
 function titleCase(value: string) { return value.charAt(0).toUpperCase() + value.slice(1) }
 
+interface NativeRunState {
+  readonly jobId: string;
+  readonly phase: string;
+  readonly progress: number;
+  readonly terminal: boolean;
+  readonly detail: string;
+}
+
 function StepCard({ icon, title, detail, complete }: { icon: React.ReactNode; title: string; detail: string; complete: boolean }) {
   return <div className={cn('rounded-lg border p-3', complete ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-border bg-background/40')}>
     <div className="flex items-center gap-2 text-ui-strong"><span className={complete ? 'text-emerald-400' : 'text-muted-foreground'}>{complete ? <CheckCircle2 className="h-4 w-4" /> : icon}</span>{title}</div>
@@ -45,6 +59,7 @@ function StepCard({ icon, title, detail, complete }: { icon: React.ReactNode; ti
 export function FoundryPage({ storage = browserStorage, dependencies = defaultDependencies }: FoundryPageProps) {
   const [backend] = React.useState(() => new DeterministicFixtureBackend(dependencies));
   const [repository] = React.useState(() => new VersionedFixtureRepository(storage, 'vibespace.model-foundry', () => dependencies.idFactory('correlation')));
+  const [deployments] = React.useState(() => new FoundryDeploymentRepository(storage, dependencies.clock, () => dependencies.idFactory('deployment')));
   const [snapshot, setSnapshot] = React.useState<ProjectSnapshot | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [hardware, setHardware] = React.useState<FoundryHardwareProfile | null>(null);
@@ -56,6 +71,11 @@ export function FoundryPage({ storage = browserStorage, dependencies = defaultDe
   const [trainingRuntime, setTrainingRuntime] = React.useState<FoundryTrainingRuntimeStatus | null>(null);
   const [runtimeApproval, setRuntimeApproval] = React.useState(false);
   const [runtimeBusy, setRuntimeBusy] = React.useState(false);
+  const [nativeRun, setNativeRun] = React.useState<NativeRunState | null>(null);
+  const [deployment, setDeployment] = React.useState<FoundryDeploymentRecord | null>(null);
+  const [routingMode, setRoutingMode] = React.useState<FoundryDeploymentRecord['routingMode']>('manual');
+  const [trafficPercent, setTrafficPercent] = React.useState(100);
+  const [feedbackConsent, setFeedbackConsent] = React.useState(false);
 
   React.useEffect(() => {
     const loaded = repository.load();
@@ -67,6 +87,25 @@ export function FoundryPage({ storage = browserStorage, dependencies = defaultDe
       if (!saved.ok) setError(saved.error.message); else setSnapshot(restored.value);
     } else setError(restored.error.message);
   }, [backend, repository]);
+
+  React.useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    void listenFoundryWorkerMessages((event) => {
+      const message = event.message;
+      const phase = typeof message.phase === 'string' ? message.phase : typeof message.state === 'string' ? message.state : 'working';
+      const progress = typeof message.progress === 'number' ? message.progress : phase === 'completed' ? 1 : 0;
+      const nestedError = message.error && typeof message.error === 'object' ? message.error as Record<string, unknown> : null;
+      const detail = typeof message.message === 'string'
+        ? message.message
+        : typeof nestedError?.message === 'string'
+          ? nestedError.message
+          : phase.replaceAll('_', ' ');
+      setNativeRun((current) => current?.jobId === event.jobId
+        ? { ...current, phase, progress, detail, terminal: message.type === 'result' }
+        : current);
+    }).then((dispose) => { unlisten = dispose; });
+    return () => unlisten?.();
+  }, []);
 
   const commit = React.useCallback((next: ProjectSnapshot) => {
     const saved = repository.save(next);
@@ -82,6 +121,12 @@ export function FoundryPage({ storage = browserStorage, dependencies = defaultDe
   const evaluation = snapshot?.evaluationRuns.at(-1);
   const canAdvance = Boolean(activeJob && ['queued', 'preparing', 'training', 'checkpointing'].includes(activeJob.state));
   const selectedModel = FOUNDRY_MODEL_CATALOG.find((model) => model.id === selectedModelId) ?? FOUNDRY_MODEL_CATALOG[0];
+
+  React.useEffect(() => {
+    if (!projectId) return;
+    const active = deployments.list(projectId).find((item) => item.status === 'active') ?? null;
+    setDeployment(active);
+  }, [deployments, projectId, snapshot?.championVersionId]);
 
 const checkHardware = async () => {
     setCheckingHardware(true);
@@ -126,6 +171,74 @@ const downloadSelectedModel = async () => {
     catch (caught) { setError(caught instanceof Error ? caught.message : 'Training runtime installation failed.'); }
     finally { setRuntimeBusy(false); }
   };
+  const startRealTraining = async () => {
+    if (!projectId || !snapshot?.datasetVersion || selectedModel.kind !== 'downloadable') return;
+    const runtime = await getFoundryTrainingRuntimeStatus();
+    setTrainingRuntime(runtime);
+    if (!runtime.installed) throw new Error('Install the pinned LoRA runtime before starting real training.');
+    if (!downloadStatus?.startsWith('Verified')) throw new Error('Download and verify the complete pinned base-model snapshot first.');
+    const trainExamples = snapshot.datasetVersion.examples.filter((example) => example.split === 'train').map((example) => ({ prompt: example.input, completion: example.expectedOutput }));
+    const validationExamples = snapshot.datasetVersion.examples.filter((example) => example.split === 'validation').map((example) => ({ prompt: example.input, completion: example.expectedOutput }));
+    if (!trainExamples.length || !validationExamples.length) throw new Error('Real training requires an approved dataset version with both train and validation examples.');
+    const approved = snapshot.datasetVersion.scanSummary.status === 'passed'
+      && snapshot.datasetVersion.qualitySummary.status !== 'failed'
+      && snapshot.datasetVersion.licenseReport.status === 'passed'
+      && snapshot.datasetVersion.secretScanReport.status === 'passed';
+    if (!approved) throw new Error('The attached dataset version has not passed every approval gate.');
+    const jobId = `real-${crypto.randomUUID()}`;
+    setNativeRun({ jobId, phase: 'queued', progress: 0, detail: 'Submitting immutable real-training job.', terminal: false });
+    try {
+      await startFoundryTraining({
+        projectId,
+        jobId,
+        modelId: selectedModel.id,
+        datasetVersionId: snapshot.datasetVersion.id,
+        datasetManifestHash: snapshot.datasetVersion.manifestHash,
+        datasetFingerprint: snapshot.datasetVersion.fingerprint,
+        datasetApproved: true,
+        trainExamples,
+        validationExamples,
+        trainingConfig: { method: 'lora', seed: 7, epochs: 1, batchSize: 1, gradientAccumulation: 4, maxSequenceLength: 256, learningRate: 0.0002, loraRank: 8, loraAlpha: 16, loraDropout: 0.05 },
+      });
+    } catch (caught) {
+      setNativeRun((current) => current?.jobId === jobId ? { ...current, phase: 'failed', terminal: true, detail: caught instanceof Error ? caught.message : 'Could not start real training.' } : current);
+      throw caught;
+    }
+  };
+  const cancelRealTraining = async () => {
+    if (!projectId || !nativeRun || nativeRun.terminal) return;
+    const accepted = await cancelFoundryTraining(projectId, nativeRun.jobId);
+    if (!accepted) throw new Error('The real-training worker is no longer active.');
+    setNativeRun((current) => current ? { ...current, detail: 'Cancellation requested; the worker will stop safely.' } : current);
+  };
+  const stopRealTrainingAfterCheckpoint = async () => {
+    if (!projectId || !nativeRun || nativeRun.terminal) return;
+    const accepted = await stopFoundryTrainingAfterCheckpoint(projectId, nativeRun.jobId);
+    if (!accepted) throw new Error('The real-training worker is no longer active.');
+    setNativeRun((current) => current ? { ...current, detail: 'Will stop after the next verified checkpoint.' } : current);
+  };
+  const activateDeployment = () => act(() => {
+    if (!projectId || !snapshot?.championVersionId) return;
+    const champion = snapshot.modelVersions.find((version) => version.id === snapshot.championVersionId);
+    if (!champion) throw new Error('The champion artifact is unavailable for deployment.');
+    setDeployment(deployments.activate({ projectId, modelVersionId: champion.id, artifactFingerprint: champion.artifactFingerprint, routingMode, trafficPercent }));
+  });
+  const pauseDeployment = () => act(() => {
+    if (!projectId || !deployment) return;
+    setDeployment(deployments.pause(projectId, deployment.id));
+  });
+  const recordFeedback = (rating: 'helpful' | 'not_helpful') => act(() => {
+    if (!projectId || !feedbackConsent) return;
+    const evidenceHash = evaluation?.caseEvidence[0]?.evidenceHash ?? candidate?.artifactFingerprint;
+    if (!evidenceHash) throw new Error('Run an evaluation before recording improvement feedback.');
+    unwrap(backend.recordFeedback(projectId, { rating, evidenceHash, consent: { approved: true, actorId: 'local-owner', approvedAt: dependencies.clock(), purpose: 'Improve this local specialist from reviewed feedback.' } }));
+    refresh(projectId);
+  });
+  const createImprovementCycle = () => act(() => {
+    if (!projectId || !snapshot?.feedbackEvents.length) return;
+    unwrap(backend.createImprovementCycle(projectId, snapshot.feedbackEvents.map((event) => event.id), 'local-owner', 'Consented local feedback is ready for a governed training review.'));
+    refresh(projectId);
+  });
   const createProject = () => act(() => commit(unwrap(backend.createProject(VIBECODER_TEMPLATE))));
   const prepare = () => act(() => { if (!projectId) return; unwrap(backend.attachBaseModel(projectId, createFixtureBase(dependencies.clock()))); commit(unwrap(backend.attachDatasetVersion(projectId, createFixtureDataset(projectId, dependencies.clock())))) });
   const attachStudioDataset = (dataset: Parameters<DeterministicFixtureBackend['attachDatasetVersion']>[1]) => act(() => { if (!projectId) return; unwrap(backend.attachBaseModel(projectId, createFixtureBase(dependencies.clock()))); commit(unwrap(backend.attachDatasetVersion(projectId, dataset))); setShowDatasetStudio(false); });
@@ -144,11 +257,13 @@ const downloadSelectedModel = async () => {
         <Card className="border-violet-500/20 bg-panel/90"><CardHeader><div className="flex flex-wrap items-center justify-between gap-3"><div><CardTitle><h2 className="text-xl">{snapshot.project.specialist.name}</h2></CardTitle><CardDescription>{snapshot.project.specialist.purpose}</CardDescription></div><Badge variant="outline" className="border-emerald-500/30 text-emerald-300">Project ready</Badge></div></CardHeader><CardContent className="grid gap-3 md:grid-cols-4"><StepCard icon={<Sparkles className="h-4 w-4" />} title="Specialist" detail="Objective and constraints locked." complete /><StepCard icon={<Database className="h-4 w-4" />} title="Data" detail={snapshot.datasetVersion ? 'Approved manifest attached.' : 'Awaiting approved inputs.'} complete={Boolean(snapshot.datasetVersion)} /><StepCard icon={<Cpu className="h-4 w-4" />} title="Training" detail={activeJob ? titleCase(activeJob.state) : 'Not started.'} complete={activeJob?.state === 'completed'} /><StepCard icon={<ShieldCheck className="h-4 w-4" />} title="Promotion" detail={snapshot.championVersionId ? 'Champion selected.' : 'Requires passing evidence.'} complete={Boolean(snapshot.championVersionId)} /></CardContent></Card>
 <Card className="border-cyan-500/20"><CardContent className="flex flex-wrap items-center justify-between gap-4 pt-4"><div className="flex items-start gap-3"><Gauge className="mt-0.5 h-5 w-5 text-cyan-400" /><div><div className="text-ui-strong">Device readiness</div>{hardware ? <><div className="text-secondary text-muted-foreground">{hardware.native ? `${hardware.os} · ${hardware.architecture} · ${hardware.logicalCores} logical cores` : hardware.acceleratorDetail}</div><div className="mt-1 text-metadata text-amber-200">Recommendation: {hardware.recommendedMode.replaceAll('_', ' ')}</div></> : <div className="text-secondary text-muted-foreground">Run an honest local check before choosing real training.</div>}</div></div><Button onClick={() => void checkHardware()} disabled={checkingHardware}>{checkingHardware ? 'Checking device…' : 'Check this device'}</Button></CardContent></Card>
 <Card className="border-violet-500/20"><CardHeader><CardTitle>Real training runtime</CardTitle><CardDescription>The fixture worker is lightweight. Real LoRA uses a separate, hash-pinned Python environment and is installed only after approval.</CardDescription></CardHeader><CardContent className="space-y-3"><div className="text-secondary text-muted-foreground">{trainingRuntime?.detail ?? 'Not checked on this device.'}</div>{!trainingRuntime?.installed && <label className="flex items-start gap-2 text-secondary"><input type="checkbox" checked={runtimeApproval} onChange={(event) => setRuntimeApproval(event.target.checked)} className="mt-0.5" /><span>I approve installing the pinned real-training stack. This can be a multi-gigabyte download; it stays inside VibeSpace app data and does not modify global Python.</span></label>}<div className="flex flex-wrap gap-2"><Button variant="outline" disabled={runtimeBusy} onClick={() => void inspectTrainingRuntime()}>{runtimeBusy ? 'Working…' : 'Check training runtime'}</Button>{!trainingRuntime?.installed && <Button variant="accent" disabled={!runtimeApproval || runtimeBusy} onClick={() => void installTrainingRuntime()}>Install pinned LoRA runtime</Button>}</div><p className="text-metadata text-muted-foreground">No dependency install starts automatically. QLoRA remains disabled unless CUDA and the optional pinned quantization runtime are both verified.</p></CardContent></Card><Card><CardHeader><CardTitle>Approved base models</CardTitle><CardDescription>Review source, immutable revision, license, size, and local resource estimate before selection.</CardDescription></CardHeader><CardContent className="space-y-3">{FOUNDRY_MODEL_CATALOG.map((model) => { const compatibility = modelCompatibility(model, hardware?.ramBytes ?? null); const selected = model.id === selectedModel.id; return <button key={model.id} type="button" aria-pressed={selected} onClick={() => { setSelectedModelId(model.id); setLicenseApproved(false); setDownloadStatus(null); }} className={cn('w-full rounded-lg border p-3 text-left transition-colors', selected ? 'border-cyan-400/50 bg-cyan-500/5' : 'border-border hover:bg-muted/40')}><div className="flex flex-wrap items-center justify-between gap-2"><span className="text-ui-strong">{model.name}</span><div className="flex gap-2"><Badge variant="outline">{model.license}</Badge><Badge variant="outline">{compatibility}</Badge></div></div><div className="mt-1 text-metadata text-muted-foreground">{model.publisher} · {model.displaySize} · {model.parameterCount.toLocaleString()} parameters · {model.format}</div><div className="mt-1 truncate text-metadata text-muted-foreground">Revision {model.revision}</div></button>; })}{selectedModel.kind === 'fixture' ? <div className="text-secondary text-emerald-300">Bundled fixture metadata selected. No model download is required.</div> : <div className="space-y-3 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3"><label className="flex items-start gap-2 text-secondary"><input type="checkbox" checked={licenseApproved} onChange={(event) => setLicenseApproved(event.target.checked)} className="mt-0.5" /><span>I reviewed and approve the {selectedModel.license} license and the {selectedModel.displaySize} verified download.</span></label><div className="flex flex-wrap items-center gap-3"><Button variant="accent" disabled={!licenseApproved || Boolean(downloadStatus?.startsWith('Downloading'))} onClick={() => void downloadSelectedModel()}>Download and verify model</Button>{downloadStatus && <span className="text-metadata text-muted-foreground">{downloadStatus}</span>}</div><p className="text-metadata text-muted-foreground">Remote model code stays disabled. Only the six pinned, checksum-verified snapshot files are accepted.</p></div>}</CardContent></Card>
-{!snapshot.datasetVersion && selectedModel.kind === 'fixture' && <div className="space-y-3"><div className="flex flex-wrap gap-2"><Button variant="accent" onClick={prepare}>Prepare approved fixture inputs</Button><Button variant="outline" onClick={() => setShowDatasetStudio((visible) => !visible)}>{showDatasetStudio ? 'Close Dataset Studio' : 'Open Dataset Studio'}</Button></div>{showDatasetStudio && projectId && <DatasetStudioPanel projectId={projectId} now={dependencies.clock} onVersion={attachStudioDataset} />}</div>}
-        {snapshot.datasetVersion && !activeJob && <Card><CardContent className="flex flex-wrap items-center justify-between gap-3 pt-4"><div><div className="text-ui-strong">1 approved example</div><div className="text-secondary text-muted-foreground">Fixture Base · Apache-2.0</div></div><Button onClick={startTraining}>Start fixture training</Button></CardContent></Card>}
+{!snapshot.datasetVersion && <div className="space-y-3"><div className="flex flex-wrap gap-2">{selectedModel.kind === 'fixture' && <Button variant="accent" onClick={prepare}>Prepare approved fixture inputs</Button>}<Button variant="outline" onClick={() => setShowDatasetStudio((visible) => !visible)}>{showDatasetStudio ? 'Close Dataset Studio' : 'Open Dataset Studio'}</Button></div>{showDatasetStudio && projectId && <DatasetStudioPanel projectId={projectId} now={dependencies.clock} onVersion={attachStudioDataset} />}</div>}
+        {snapshot.datasetVersion && selectedModel.kind === 'downloadable' && <Card className="border-cyan-500/20"><CardHeader><CardTitle>Real LoRA run</CardTitle><CardDescription>Creates immutable train and validation JSONL files, verifies the pinned local snapshot again inside the worker, and never changes the requested configuration automatically.</CardDescription></CardHeader><CardContent className="space-y-3"><div className="text-secondary text-muted-foreground">{nativeRun ? nativeRun.detail : 'Requires the verified model snapshot, installed pinned runtime, and an approved dataset with train and validation splits.'}</div>{nativeRun && <><div className="flex items-center justify-between text-metadata text-muted-foreground"><span>{titleCase(nativeRun.phase.replaceAll('_', ' '))}</span><span>{Math.round(nativeRun.progress * 100)}%</span></div><div className="h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full bg-gradient-to-r from-cyan-400 to-violet-500" style={{ width: `${nativeRun.progress * 100}%` }} /></div></>}<div className="flex flex-wrap gap-2"><Button variant="accent" disabled={Boolean(nativeRun && !nativeRun.terminal)} onClick={() => void startRealTraining().catch((caught) => setError(caught instanceof Error ? caught.message : 'Real training could not start.'))}>Start real LoRA training</Button>{nativeRun && !nativeRun.terminal && <><Button variant="outline" onClick={() => void stopRealTrainingAfterCheckpoint().catch((caught) => setError(caught instanceof Error ? caught.message : 'Could not stop after checkpoint.'))}>Stop after checkpoint</Button><Button variant="outline" onClick={() => void cancelRealTraining().catch((caught) => setError(caught instanceof Error ? caught.message : 'Could not cancel training.'))}>Cancel real run</Button></>}</div><p className="text-metadata text-muted-foreground">The fixture lifecycle remains separate. A completed real adapter is retained as a local artifact and must still pass the evaluation and promotion gates before use.</p></CardContent></Card>}
+        {snapshot.datasetVersion && selectedModel.kind === 'fixture' && !activeJob && <Card><CardContent className="flex flex-wrap items-center justify-between gap-3 pt-4"><div><div className="text-ui-strong">{snapshot.datasetVersion.examples.length} approved examples</div><div className="text-secondary text-muted-foreground">Fixture Base · Apache-2.0</div></div><Button onClick={startTraining}>Start fixture training</Button></CardContent></Card>}
         {activeJob && <TrainingRegion job={activeJob} active={canAdvance} onAdvance={advance} onResume={resume} />}
-        {activeJob?.state === 'completed' && candidate && !evaluation && <Button variant="accent" onClick={evaluate}>Run fixture evaluation</Button>}
-        {evaluation && <Card className={evaluation.gate.result === 'pass' ? 'border-emerald-500/30' : 'border-destructive/30'}><CardContent className="flex flex-wrap items-center justify-between gap-4 pt-4"><div><div className="text-ui-strong">{evaluation.gate.result === 'pass' ? 'All gates passed' : 'Promotion blocked'}</div><div className="text-secondary text-muted-foreground">{evaluation.safetyFailures.length} safety failures</div></div>{evaluation.gate.result === 'pass' && !snapshot.championVersionId && <Button variant="accent" onClick={promote}>Promote candidate</Button>}{snapshot.championVersionId && <Badge className="bg-emerald-500/15 text-emerald-300">Current champion</Badge>}</CardContent></Card>}
+        {activeJob?.state === 'completed' && candidate && <EvaluationArenaPanel candidate={candidate} evaluation={evaluation} championVersionId={snapshot.championVersionId} onEvaluate={evaluate} onPromote={promote} />}
+        <DeploymentPanel snapshot={snapshot} deployment={deployment} routingMode={routingMode} trafficPercent={trafficPercent} onRoutingMode={setRoutingMode} onTrafficPercent={setTrafficPercent} onActivate={activateDeployment} onPause={pauseDeployment} />
+        <ImprovementPanel feedbackCount={snapshot.feedbackEvents.length} cycleCount={snapshot.improvementCycles.length} consentApproved={feedbackConsent} onConsent={setFeedbackConsent} onFeedback={recordFeedback} onCycle={createImprovementCycle} />
       </>}
     </div>
   </main>;
