@@ -415,7 +415,7 @@ export function validateDatasetVersion(value: unknown): ValidationResult<Dataset
       if (example.datasetVersionId !== value.id) {
         addIssue(issues, [...path, 'datasetVersionId'], 'invalid_provenance', 'Example must reference this dataset version.');
       }
-      if (!['instruction_response', 'preference', 'correction', 'evaluation'].includes(String(example.exampleType))) {
+      if (!['prompt_completion', 'chat_conversation', 'tool_trace', 'code_patch', 'before_after', 'bug_fix', 'test_failure_fix', 'structured_extraction', 'classification', 'preference', 'rubric_scored', 'human_edit', 'accepted_output', 'rejected_output', 'evaluation'].includes(String(example.exampleType))) {
         addIssue(issues, [...path, 'exampleType'], 'unsupported', 'Unsupported dataset example type.');
       }
       validateText(example.input, issues, [...path, 'input']);
@@ -452,7 +452,7 @@ export function validateDatasetVersion(value: unknown): ValidationResult<Dataset
       if (!isRecord(example.source)) {
         addIssue(issues, [...path, 'source'], 'invalid_provenance', 'Approved source metadata is required.');
       } else {
-        if (!['user_authored', 'licensed', 'approved_feedback'].includes(String(example.source.kind))) {
+        if (!['manual', 'user_authored', 'json', 'jsonl', 'csv', 'markdown', 'vibespace_conversation', 'accepted_agent_run', 'git_patch', 'test_artifact', 'context_map', 'licensed', 'approved_feedback'].includes(String(example.source.kind))) {
           addIssue(issues, [...path, 'source', 'kind'], 'unsupported', 'Unsupported dataset source kind.');
         }
         validateText(example.source.reference, issues, [...path, 'source', 'reference']);
@@ -470,6 +470,7 @@ export function validateDatasetVersion(value: unknown): ValidationResult<Dataset
         validateIsoTimestamp(example.consent.approvedAt, issues, [...path, 'consent', 'approvedAt']);
         validateText(example.consent.purpose, issues, [...path, 'consent', 'purpose']);
       }
+      validateIsoTimestamp(example.createdAt, issues, [...path, 'createdAt']);
     });
   }
 

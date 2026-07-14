@@ -164,7 +164,22 @@ export interface DatasetExample {
   readonly id: string;
   readonly projectId: string;
   readonly datasetVersionId: string;
-  readonly exampleType: 'instruction_response' | 'preference' | 'correction' | 'evaluation';
+  readonly exampleType:
+    | 'prompt_completion'
+    | 'chat_conversation'
+    | 'tool_trace'
+    | 'code_patch'
+    | 'before_after'
+    | 'bug_fix'
+    | 'test_failure_fix'
+    | 'structured_extraction'
+    | 'classification'
+    | 'preference'
+    | 'rubric_scored'
+    | 'human_edit'
+    | 'accepted_output'
+    | 'rejected_output'
+    | 'evaluation';
   readonly input: string;
   readonly expectedOutput: string;
   readonly split: DatasetSplit;
@@ -188,11 +203,25 @@ export interface DatasetExample {
   readonly reviewerId?: string | null;
   readonly rejectionReason?: string | null;
   readonly source: {
-    readonly kind: 'user_authored' | 'licensed' | 'approved_feedback';
+    readonly kind:
+      | 'manual'
+      | 'user_authored'
+      | 'json'
+      | 'jsonl'
+      | 'csv'
+      | 'markdown'
+      | 'vibespace_conversation'
+      | 'accepted_agent_run'
+      | 'git_patch'
+      | 'test_artifact'
+      | 'context_map'
+      | 'licensed'
+      | 'approved_feedback';
     readonly reference: string;
     readonly approved: boolean;
   };
   readonly consent: ConsentMetadata;
+  readonly createdAt: string;
 }
 
 export interface DatasetVersionManifest {

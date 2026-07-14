@@ -1,4 +1,6 @@
 export * from './domain';
+export * from './datasetStudio';
+export * from './DatasetStudioPanel';
 export * from './fixtureBackend';
 export * from './FoundryPage';
 export * from './localRepository';

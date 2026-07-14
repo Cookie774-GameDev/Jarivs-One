@@ -18,7 +18,7 @@ export function createFixtureDataset(projectId: string, now: string): DatasetVer
     schemaVersion: CURRENT_FOUNDRY_SCHEMA_VERSION, id: 'dataset-v1', datasetId: 'vibecoder-examples', version: 1,
     manifestHash: HASH,
     examples: [{
-      id: 'example-1', projectId, datasetVersionId: 'dataset-v1', exampleType: 'instruction_response',
+      id: 'example-1', projectId, datasetVersionId: 'dataset-v1', exampleType: 'prompt_completion', createdAt: now,
       input: 'Review a pure TypeScript function.', expectedOutput: 'Report only evidence-backed findings.', split: 'train',
       labels: ['review'], tags: ['typescript'], contentHash: HASH,
       provenance: { sourceId: 'local-example-1', sourceVersion: '1' }, authorType: 'user', synthetic: false,
