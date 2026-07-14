@@ -1707,3 +1707,15 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Scope** | Existing `windows` 0.61 dependency gained four feature flags only; no dependency version, credential, billing, schema, production, release, merge, or deploy change. |
 | **Status** | Task 2 complete; Task 3 external adapter catalog next. |
 
+#### 2026-07-13 - Subscription & CLI Bridge Task 3 complete
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-13 23:28 CT |
+| **Agent ID** | `AGENT-CODEX-20260713-121609-SCB2` |
+| **Commit** | `1212f488d5803c6ee7bfad0532bea1ccfff25d80` — `feat(ai): add subscription CLI provider adapters` |
+| **Result** | Fifteen connection descriptors across ten provider families plus shell-free Codex, Claude, Gemini, Copilot, Qwen, and OpenCode adapters with bounded stateful protocol normalization. |
+| **Verification** | Focused Vitest 33/33 PASS; targeted strict TypeScript compile PASS; independent remediation review PASS with no Critical, Important, or Minor findings. Full app typecheck reports only two unrelated missing-`pixi.js` diagnostics in existing Pets files. |
+| **Safety** | No real provider/auth/billable commands, credential reads, shell APIs, permissive flags, raw auth forwarding, dependency changes, production changes, merge, or deploy. |
+| **Status** | Task 3 complete; Task 4 exact routing, picker, and settings next. |
+
