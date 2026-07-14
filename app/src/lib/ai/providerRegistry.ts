@@ -12,6 +12,7 @@ export const PROVIDER_DISPLAY_NAMES: Partial<Record<ProviderId, string>> = {
   deepseek: 'DeepSeek',
   ollama: 'Local Models',
   local: 'Local Models',
+  foundry: 'Build Your Own AI',
   openrouter: 'OpenRouter',
   mistral: 'Mistral',
   together: 'Together AI',
@@ -53,6 +54,7 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
   { id: 'together', displayName: 'Together AI', requiresApiKey: true, supportsDynamicListing: false, hiveEligible: true },
   { id: 'ollama', displayName: 'Local Models', requiresApiKey: false, supportsDynamicListing: true, hiveEligible: true },
   { id: 'local', displayName: 'Local Models', requiresApiKey: false, supportsDynamicListing: true, hiveEligible: false },
+  { id: 'foundry', displayName: 'Build Your Own AI', requiresApiKey: false, supportsDynamicListing: false, hiveEligible: false },
   { id: 'mock', displayName: 'Mock (demo)', requiresApiKey: true, supportsDynamicListing: false, hiveEligible: false },
 ];
 
@@ -73,7 +75,7 @@ export function requiresApiKey(providerId: ProviderId): boolean {
 }
 
 export function isLocalProvider(providerId: ProviderId): boolean {
-  return providerId === 'ollama' || providerId === 'local';
+  return providerId === 'ollama' || providerId === 'local' || providerId === 'foundry';
 }
 
 export interface ProviderConnectionContext {

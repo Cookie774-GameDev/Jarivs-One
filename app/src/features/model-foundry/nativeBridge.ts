@@ -82,6 +82,13 @@ export interface FoundryRealArtifactSummary {
   readonly trainingConfig: Record<string, unknown>;
 }
 
+export interface FoundryArtifactGeneration {
+  readonly text: string;
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+  readonly artifactManifestSha256: string;
+}
+
 export interface FoundryWorkerMessage {
   readonly projectId: string;
   readonly jobId: string;
@@ -166,6 +173,11 @@ export async function resumeFoundryTraining(projectId: string, jobId: string): P
 export async function inspectFoundryArtifact(projectId: string, jobId: string): Promise<FoundryRealArtifactSummary> {
   if (!isTauri) throw new Error('Real training artifacts are available only in the desktop app.');
   return invoke<FoundryRealArtifactSummary>('model_foundry_inspect_artifact', { projectId, jobId });
+}
+
+export async function generateFromFoundryArtifact(args: { projectId: string; jobId: string; prompt: string; maxNewTokens?: number }): Promise<FoundryArtifactGeneration> {
+  if (!isTauri) throw new Error('Local adapter inference is available only in the desktop app.');
+  return invoke<FoundryArtifactGeneration>('model_foundry_generate_from_artifact', { request: args });
 }
 
 export async function cancelFoundryTraining(projectId: string, jobId: string): Promise<boolean> {

@@ -24,7 +24,7 @@ from typing import Any
 PROTOCOL_VERSION = 1
 MAX_MESSAGE_BYTES = 64 * 1024
 TERMINAL_STATES = {"completed", "cancelled", "failed", "interrupted"}
-ALLOWED_OPERATIONS = {"handshake", "validate", "train", "resume", "cancel", "stop_after_checkpoint", "health"}
+ALLOWED_OPERATIONS = {"handshake", "validate", "train", "resume", "infer", "cancel", "stop_after_checkpoint", "health"}
 
 
 def utc_now() -> str:
@@ -116,7 +116,7 @@ class Worker:
                 "protocolVersion": PROTOCOL_VERSION, "type": "result", "requestId": request_id, "jobId": job_id,
                 "sequence": 1, "state": "completed", "timestamp": utc_now(), "artifactManifestPath": None,
                 "checkpointPath": None, "error": None,
-                "capabilities": ["validate", "train", "resume", "cancel", "stop_after_checkpoint", "heartbeat", "checkpoint"],
+                "capabilities": ["validate", "train", "resume", "infer", "cancel", "stop_after_checkpoint", "heartbeat", "checkpoint"],
                 "workerVersion": "0.1.0",
             }, self.output_lock)
             return
@@ -161,8 +161,35 @@ class Worker:
             self.active = (request_id, job_id)
             self.cancel_event.clear()
             self.stop_after_checkpoint.clear()
-            self.thread = threading.Thread(target=self.run_training, args=(request_id, job_id, manifest_path, manifest, operation), daemon=False)
+            target = self.run_inference if operation == "infer" else self.run_training
+            self.thread = threading.Thread(target=target, args=(request_id, job_id, manifest_path, manifest, operation), daemon=False)
             self.thread.start()
+
+    def run_inference(self, request_id: str, job_id: str, manifest_path: Path, manifest: dict[str, Any], operation: str) -> None:
+        try:
+            if manifest.get("backend") != "real-inference":
+                raise ValueError("inference requires a real-inference manifest")
+            module = self.load_real_training_module()
+            write_message({
+                "protocolVersion": PROTOCOL_VERSION, "type": "event", "kind": "progress", "requestId": request_id,
+                "jobId": job_id, "sequence": 1, "phase": "loading_model", "progress": 0.15,
+                "timestamp": utc_now(), "message": "Loading verified local adapter",
+            }, self.output_lock)
+            result = module.run_real_inference(manifest, self.job_dir, self.model_root)
+            text = result.get("text")
+            if not isinstance(text, str) or not text:
+                raise ValueError("inference produced no text")
+            write_message({
+                "protocolVersion": PROTOCOL_VERSION, "type": "result", "requestId": request_id, "jobId": job_id,
+                "sequence": 2, "state": "completed", "timestamp": utc_now(), "artifactManifestPath": None,
+                "checkpointPath": None, "error": None, "output": {"text": text, "inputTokens": result.get("inputTokens", 0), "outputTokens": result.get("outputTokens", 0)},
+            }, self.output_lock)
+        except Exception as exc:
+            code = getattr(exc, "code", "inference.failed")
+            self.emit_error(request_id, job_id, code, str(exc)[:240])
+        finally:
+            with self.active_lock:
+                self.active = None
 
     def run_training(self, request_id: str, job_id: str, manifest_path: Path, manifest: dict[str, Any], operation: str) -> None:
         sequence = 0

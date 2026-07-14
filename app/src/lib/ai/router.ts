@@ -22,6 +22,7 @@ import { openaiProvider } from './providers/openai';
 import { googleProvider } from './providers/google';
 import { groqProvider } from './providers/groq';
 import { ollamaProvider } from './providers/ollama';
+import { foundryProvider } from './providers/foundry';
 import {
   openrouterProvider,
   deepseekProvider,
@@ -52,6 +53,7 @@ const providers: Record<ProviderId, LLMProvider> = {
   mistral: mistralProvider,
   together: togetherProvider,
   ollama: ollamaProvider,
+  foundry: foundryProvider,
   cohere: mockProvider,
   perplexity: mockProvider,
   fireworks: mockProvider,

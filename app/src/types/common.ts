@@ -95,6 +95,7 @@ export type ProviderId =
   | 'mistral'
   | 'together'
   | 'ollama'
+  | 'foundry'
   // V3 — additional OpenAI-compatible providers.
   | 'cohere'
   | 'perplexity'

@@ -319,6 +319,7 @@ pub fn run() {
             model_foundry_training::model_foundry_start_training,
             model_foundry_training::model_foundry_resume_training,
             model_foundry_training::model_foundry_inspect_artifact,
+            model_foundry_training::model_foundry_generate_from_artifact,
             model_foundry_training::model_foundry_cancel_training,
             model_foundry_training::model_foundry_stop_after_checkpoint,
             model_foundry_training::model_foundry_training_active,

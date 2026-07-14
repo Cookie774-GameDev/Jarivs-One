@@ -82,6 +82,24 @@ pub struct RealArtifactSummary {
     training_config: serde_json::Value,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GenerateFromArtifactRequest {
+    project_id: String,
+    job_id: String,
+    prompt: String,
+    max_new_tokens: Option<u32>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GenerateFromArtifactResult {
+    text: String,
+    input_tokens: u32,
+    output_tokens: u32,
+    artifact_manifest_sha256: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct WorkerMessageEvent {
@@ -474,7 +492,7 @@ pub fn model_foundry_start_training(
     let output_dir = job_dir.join("output");
     let manifest = serde_json::json!({
         "protocolVersion": PROTOCOL_VERSION,
-        "jobId": request.job_id,
+        "jobId": request.job_id.clone(),
         "projectId": request.project_id,
         "backend": "real",
         "modelId": request.model_id,
@@ -652,6 +670,82 @@ pub fn model_foundry_inspect_artifact(
         metrics: manifest.get("metrics").cloned().unwrap_or_else(|| serde_json::json!({})),
         training_config: manifest.get("trainingConfig").cloned().unwrap_or_else(|| serde_json::json!({})),
     })
+}
+
+#[tauri::command]
+pub fn model_foundry_generate_from_artifact(
+    app: tauri::AppHandle,
+    request: GenerateFromArtifactRequest,
+) -> Result<GenerateFromArtifactResult, String> {
+    validate_storage_id(&request.project_id)?;
+    validate_storage_id(&request.job_id)?;
+    if request.prompt.trim().is_empty() || request.prompt.len() > 16_384 {
+        return Err("Prompt must contain 1 through 16,384 characters.".into());
+    }
+    let max_new_tokens = request.max_new_tokens.unwrap_or(320);
+    if !(1..=512).contains(&max_new_tokens) {
+        return Err("maxNewTokens must be between 1 and 512.".into());
+    }
+    let verified = model_foundry_inspect_artifact(app.clone(), request.project_id.clone(), request.job_id.clone())?;
+    let root = runtime_root(&app)?;
+    let python = venv_python(&root);
+    if !real_training_dependencies_installed(&python) {
+        return Err("The pinned real-training runtime is not installed.".into());
+    }
+    let worker = install_embedded_worker(&root)?;
+    let job_dir = root.join("projects").join(&request.project_id).join("jobs").join(&request.job_id);
+    let training_manifest = job_dir.join("training-manifest.json");
+    if !training_manifest.is_file() {
+        return Err("The immutable training manifest was not found for this adapter.".into());
+    }
+    let inference_manifest = job_dir.join("inference-manifest.json");
+    atomic_write(&inference_manifest, &serde_json::to_vec(&serde_json::json!({
+        "backend": "real-inference",
+        "jobId": request.job_id,
+        "trainingManifestPath": training_manifest,
+        "prompt": request.prompt.clone(),
+        "maxNewTokens": max_new_tokens,
+    })).map_err(|error| format!("Unable to serialize inference manifest: {error}"))?)?;
+    let request_id = format!("infer-{}", request.job_id);
+    let command = serde_json::json!({
+        "protocolVersion": PROTOCOL_VERSION,
+        "type": "command",
+        "requestId": request_id,
+        "jobId": request.job_id.clone(),
+        "operation": "infer",
+        "manifestPath": inference_manifest,
+    });
+    let mut process = hardened_command(&python);
+    process.arg("-I").arg(&worker).arg("--job-dir").arg(&job_dir).arg("--model-root").arg(root.join("models"))
+        .current_dir(&job_dir).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
+    let mut child = process.spawn().map_err(|error| format!("Unable to start the local adapter worker: {error}"))?;
+    let mut stdin = child.stdin.take().ok_or_else(|| "Local adapter worker stdin was unavailable.".to_string())?;
+    let mut stdout = child.stdout.take().ok_or_else(|| "Local adapter worker stdout was unavailable.".to_string())?;
+    writeln!(stdin, "{command}").and_then(|_| stdin.flush()).map_err(|error| format!("Unable to submit local adapter inference: {error}"))?;
+    drop(stdin);
+    loop {
+        let line = read_bounded_line(&mut stdout)?.ok_or_else(|| "Local adapter worker exited without a result.".to_string())?;
+        let message: serde_json::Value = serde_json::from_slice(&line).map_err(|_| "Local adapter worker returned malformed protocol JSON.".to_string())?;
+        if !worker_identity_valid(&message, &request_id, &request.job_id) {
+            child.kill().ok();
+            return Err("Local adapter worker response did not match the inference request.".into());
+        }
+        if message.get("type").and_then(serde_json::Value::as_str) != Some("result") {
+            continue;
+        }
+        let _ = child.wait();
+        if message.get("state").and_then(serde_json::Value::as_str) != Some("completed") {
+            return Err(message.pointer("/error/message").and_then(serde_json::Value::as_str).unwrap_or("Local adapter inference failed.").to_string());
+        }
+        let output = message.get("output").and_then(serde_json::Value::as_object).ok_or_else(|| "Local adapter worker returned no output payload.".to_string())?;
+        let text = output.get("text").and_then(serde_json::Value::as_str).filter(|value| !value.is_empty()).ok_or_else(|| "Local adapter worker returned empty text.".to_string())?;
+        return Ok(GenerateFromArtifactResult {
+            text: text.to_string(),
+            input_tokens: output.get("inputTokens").and_then(serde_json::Value::as_u64).unwrap_or(0).min(u32::MAX as u64) as u32,
+            output_tokens: output.get("outputTokens").and_then(serde_json::Value::as_u64).unwrap_or(0).min(u32::MAX as u64) as u32,
+            artifact_manifest_sha256: verified.manifest_sha256,
+        });
+    }
 }
 
 #[cfg(test)]

@@ -267,6 +267,69 @@ def _verify_resume_checkpoint(path: Path, expected_fingerprint: str) -> None:
             raise TrainingFailure("training.resume_checksum", f"Resume checkpoint verification failed for {relative}.")
 
 
+def run_real_inference(manifest: dict[str, Any], job_dir: Path, model_root: Path) -> dict[str, Any]:
+    """Generate once from a verified adapter without opening a network service."""
+    if manifest.get("backend") != "real-inference":
+        raise TrainingFailure("inference.backend", "Local adapter inference requires backend='real-inference'.")
+    prompt = manifest.get("prompt")
+    max_new_tokens = manifest.get("maxNewTokens")
+    if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 16_384:
+        raise TrainingFailure("inference.prompt", "Prompt must contain 1 through 16,384 characters.")
+    if not isinstance(max_new_tokens, int) or isinstance(max_new_tokens, bool) or not 1 <= max_new_tokens <= 512:
+        raise TrainingFailure("inference.output_limit", "maxNewTokens must be between 1 and 512.")
+    training_path = canonical_child(manifest.get("trainingManifestPath"), job_dir, "trainingManifestPath")
+    try:
+        training_manifest = json.loads(training_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise TrainingFailure("inference.manifest", "The immutable training manifest is unavailable.") from exc
+    validated = validate_manifest(training_manifest, job_dir, model_root)
+    artifact_root = canonical_child(str(job_dir / "output" / "artifact"), job_dir, "adapter artifact")
+    try:
+        artifact_manifest = json.loads((artifact_root / "artifact-manifest.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise TrainingFailure("inference.artifact_manifest", "The verified adapter manifest is unavailable.") from exc
+    if artifact_manifest.get("formatVersion") != 1 or artifact_manifest.get("kind") != "peft-adapter" or artifact_manifest.get("backend") != "real":
+        raise TrainingFailure("inference.artifact_manifest", "The artifact is not a supported local PEFT adapter.")
+    adapter_files = artifact_manifest.get("adapterFiles")
+    if not isinstance(adapter_files, dict) or not adapter_files:
+        raise TrainingFailure("inference.artifact_manifest", "The artifact has no adapter checksum inventory.")
+    for relative, expected in adapter_files.items():
+        if not isinstance(relative, str) or not isinstance(expected, str):
+            raise TrainingFailure("inference.artifact_manifest", "The artifact checksum inventory is malformed.")
+        candidate = canonical_child(str(artifact_root / relative), artifact_root, "adapter artifact file")
+        if sha256_file(candidate) != expected.lower():
+            raise TrainingFailure("inference.artifact_checksum", "An adapter file no longer matches its immutable manifest.")
+    try:
+        import torch
+        from peft import PeftModel
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+    except ImportError as exc:
+        raise TrainingFailure("inference.dependencies_missing", "The optional pinned training runtime is not installed.") from exc
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(validated["modelDir"], local_files_only=True, trust_remote_code=False)
+        if tokenizer.pad_token_id is None:
+            tokenizer.pad_token = tokenizer.eos_token
+        model = AutoModelForCausalLM.from_pretrained(
+            validated["modelDir"], local_files_only=True, trust_remote_code=False,
+            torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+        )
+        model = PeftModel.from_pretrained(model, artifact_root, local_files_only=True)
+        model.eval()
+        encoded = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=2048)
+        device = next(model.parameters()).device
+        encoded = {key: value.to(device) for key, value in encoded.items()}
+        with torch.inference_mode():
+            generated = model.generate(**encoded, max_new_tokens=max_new_tokens, do_sample=False, pad_token_id=tokenizer.eos_token_id)
+        input_tokens = int(encoded["input_ids"].shape[-1])
+        output_ids = generated[0][input_tokens:]
+        text = tokenizer.decode(output_ids, skip_special_tokens=True).strip()
+        if not text:
+            raise TrainingFailure("inference.empty", "The local adapter returned no generated text.")
+        return {"text": text, "inputTokens": input_tokens, "outputTokens": int(output_ids.shape[-1])}
+    except (torch.cuda.OutOfMemoryError, MemoryError) as exc:
+        raise out_of_memory_failure() from exc
+
+
 def run_real_training(
     manifest: dict[str, Any],
     job_dir: Path,
