@@ -1731,3 +1731,15 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Safety** | Quota/period/cost unknowns are unavailable rather than zero/unlimited; OpenAI organization usage is not labeled Codex quota; Ollama states no subscription quota; OpenCode is bridge-local. No model prompt, auth launch, billable probe, credential read, production change, merge, or deploy. |
 | **Status** | Tasks 4–5 complete; final combined regression and draft PR next. |
 
+#### 2026-07-14 - Subscription & CLI Bridge final verification
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-14 08:28 CT |
+| **Agent ID** | `AGENT-CODEX-20260713-121609-SCB2` |
+| **Branch** | `feature/subscription-cli-bridge-codex` |
+| **Verification** | Combined Tasks 1/3/4/5 focused regression: 12 files / 77 tests PASS. Rust full test target previously compiled with `--no-run`; final Job Object runtime regression remains a signed Windows CI requirement. |
+| **Known baseline** | App typecheck and production build stop only on unresolved `pixi.js` imports in existing Pets files (`atlasPlayer.test.ts:161`, `pixiAtlasPlayer.ts:15`); no subscription-bridge diagnostics. |
+| **Scope check** | Only the unrelated user-owned `install/install.ps1` deletion remains unstaged and excluded. No production credentials, provider prompts, auth launches, billable probes, billing/schema changes, merge, deploy, or release. |
+| **Status** | Implementation committed and branch pushed; opening draft PR to `main`. |
+
