@@ -4,6 +4,8 @@ Build Your Own AI is VibeSpace's local-first specialist-model workflow. The firs
 
 Dataset Studio can stage a deterministic **local synthetic variation** from a user-authored, scanned seed. It is explicitly labeled `synthetic_generator` with its local-template provenance, receives no teacher-model or network access, and still requires scan, consent, duplicate review, and immutable-version approval.
 
+After a passing adapter is promoted, it can also draft a **local teacher target** for a reviewed seed. This is explicit opt-in, uses only the project’s promoted adapter, remains local, is source-labeled, and fills a reviewable field rather than approving or training on output automatically.
+
 Once a version is attached, **Create next dataset version** builds `v2+` as a new immutable manifest with an explicit parent-version link. Existing training manifests stay bound to their original dataset digest; later runs opt in to the new version.
 
 ## Current execution modes
