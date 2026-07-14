@@ -1,4 +1,4 @@
-﻿import { isTauri } from '../../lib/utils';
+import { isTauri } from '../../lib/utils';
 
 export interface FoundryHardwareProfile {
   readonly native: boolean;
@@ -13,6 +13,22 @@ export interface FoundryHardwareProfile {
   readonly warnings: readonly string[];
 }
 
+export interface FoundryModelDownloadRequest {
+  readonly projectId: string;
+  readonly modelId: string;
+  readonly url: string;
+  readonly expectedSha256: string;
+  readonly expectedSizeBytes: number;
+  readonly licenseApproved: boolean;
+}
+
+export interface FoundryModelDownloadResult {
+  readonly modelId: string;
+  readonly path: string;
+  readonly sha256: string;
+  readonly sizeBytes: number;
+  readonly resumed: boolean;
+}
 export interface FoundryWorkerRuntimeStatus {
   readonly ready: boolean;
   readonly root: string;
@@ -66,4 +82,19 @@ export async function prepareFoundryRuntime(): Promise<FoundryWorkerRuntimeStatu
 export async function probeFoundryWorker(projectId: string): Promise<FoundryWorkerProbe> {
   if (!isTauri) throw new Error('Native worker probe is available only in the desktop app.');
   return invoke<FoundryWorkerProbe>('model_foundry_worker_probe', { projectId });
+}
+
+export async function downloadFoundryModel(request: FoundryModelDownloadRequest): Promise<FoundryModelDownloadResult> {
+  if (!isTauri) throw new Error('Verified model downloads are available only in the desktop app.');
+  return invoke<FoundryModelDownloadResult>('model_foundry_download_model', { request });
+}
+
+export async function cancelFoundryModelDownload(projectId: string, modelId: string): Promise<boolean> {
+  if (!isTauri) return false;
+  return invoke<boolean>('model_foundry_cancel_download', { projectId, modelId });
+}
+
+export async function cleanupFoundryPartialDownload(modelId: string): Promise<boolean> {
+  if (!isTauri) return false;
+  return invoke<boolean>('model_foundry_cleanup_partial_download', { modelId });
 }

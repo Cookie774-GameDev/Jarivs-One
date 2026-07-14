@@ -90,4 +90,16 @@ describe('FoundryPage fixture vertical slice', () => {
     render(<FoundryPage storage={view.storage} dependencies={view.dependencies} />);
     expect(within(screen.getByRole('region', { name: 'Training job' })).getByText('Interrupted')).toBeTruthy();
   });
-});
+
+  it('requires explicit license approval for a pinned real model download', () => {
+    renderFoundry();
+    fireEvent.click(screen.getByRole('button', { name: 'Create VibeCoder' }));
+    fireEvent.click(screen.getByRole('button', { name: /SmolLM2 135M Instruct/ }));
+
+    expect(screen.getByText(/Revision a91318be/)).toBeTruthy();
+    expect(screen.getByText(/Remote model code stays disabled/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Download and verify model' }).hasAttribute('disabled')).toBe(true);
+    fireEvent.click(screen.getByRole('checkbox'));
+    expect(screen.getByRole('button', { name: 'Download and verify model' }).hasAttribute('disabled')).toBe(false);
+    expect(screen.queryByRole('button', { name: 'Prepare approved fixture inputs' })).not.toBeTruthy();
+  });});
