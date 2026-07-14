@@ -20,7 +20,7 @@ Supabase metadata migration `0031_model_foundry_metadata.sql` stores only owner-
 
 ## Known boundaries
 
-Verified real adapters enter the local registry as candidates. A local, deterministic reference evaluation compares a candidate against its pinned base model and, when one exists, the current champion. A candidate must pass that gate and receive explicit approval before it becomes the champion and appears in the regular chat model picker. VibeSpace routes the bounded project/job adapter identity through the native worker, verifies the artifact again, and generates locally without a network service. Previously approved adapters remain available to re-promote as a rollback target. Fixture-mode deployment records still represent local routing intent and must not be read as a running inference server.
+Verified real adapters enter the local registry as candidates. A local, deterministic reference evaluation compares a candidate against its pinned base model and, when one exists, the current champion. A candidate must pass that gate and receive explicit approval before it becomes the champion and appears in the regular chat model picker. VibeSpace rejects a candidate or stale adapter ID at inference time, then routes the promoted bounded project/job identity through the native worker, verifies the artifact again, and generates locally without a network service. Previously approved adapters remain available to re-promote as a rollback target. Fixture-mode deployment records still represent local routing intent and must not be read as a running inference server.
 
 ## Focused checks
 
