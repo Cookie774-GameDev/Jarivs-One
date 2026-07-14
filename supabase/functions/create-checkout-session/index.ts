@@ -5,7 +5,9 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.46.2';
 import Stripe from 'https://esm.sh/stripe@14.21.0?target=deno';
-import { json } from '../_shared/voice.ts';
+import { buildCheckoutIdempotencyKey } from '../_shared/billingSecurity.ts';
+import { subscriptionBlocksCheckout } from '../_shared/subscriptionStatus.ts';
+import { hasUniqueConfiguredPrices, json } from '../_shared/voice.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
@@ -24,7 +26,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const origin = req.headers.get('origin');
   if (req.method === 'OPTIONS') return new Response(null, { headers: json({}, 200, origin).headers });
   if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405, origin);
-  if (!STRIPE_SECRET_KEY) return json({ error: 'billing_unconfigured' }, 500, origin);
+  if (!STRIPE_SECRET_KEY || !hasUniqueConfiguredPrices(PRICE_FOR_PLAN)) {
+    return json({ error: 'billing_unconfigured' }, 500, origin);
+  }
 
   const jwt = (req.headers.get('authorization') || '').match(/^Bearer\s+(.+)$/i)?.[1];
   if (!jwt) return json({ error: 'unauthorized' }, 401, origin);
@@ -52,31 +56,145 @@ Deno.serve(async (req: Request): Promise<Response> => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
+  const { data: localSubscriptions, error: subscriptionErr } = await admin
+    .from('subscriptions')
+    .select('id,status')
+    .eq('user_id', user.id)
+    .limit(100);
+  if (subscriptionErr) return json({ error: 'billing_lookup_failed' }, 500, origin);
+  if ((localSubscriptions ?? []).some((subscription) =>
+    subscriptionBlocksCheckout(subscription.status)
+  )) {
+    return json({ error: 'subscription_exists' }, 409, origin);
+  }
+
   // Reuse an existing Stripe customer if we have one mapped on the profile.
-  const { data: profile } = await admin
+  const { data: profile, error: profileErr } = await admin
     .from('profiles')
     .select('stripe_customer_id')
     .eq('id', user.id)
     .maybeSingle();
+  if (profileErr) return json({ error: 'account_lookup_failed' }, 500, origin);
+  if (!profile) return json({ error: 'account_unavailable' }, 404, origin);
+
   let customerId = profile?.stripe_customer_id as string | undefined;
-  if (!customerId) {
-    const customer = await stripe.customers.create({
-      email: user.email ?? undefined,
-      metadata: { supabase_user_id: user.id },
+  const requestKey = buildCheckoutIdempotencyKey(
+    req.headers.get('x-idempotency-key'),
+    user.id,
+    plan,
+  );
+
+  const { data: claim, error: claimErr } = await admin.rpc('claim_checkout_slot', {
+    p_user_id: user.id,
+    p_idempotency_key: requestKey,
+    p_plan: plan,
+  });
+  if (claimErr) return json({ error: 'checkout_guard_unavailable' }, 500, origin);
+  if (!claim?.claimed) {
+    return json({ error: claim?.reason ?? 'checkout_in_progress' }, 409, origin);
+  }
+  const expiresAt = Math.floor(Date.parse(String(claim.expires_at)) / 1000);
+  if (!Number.isFinite(expiresAt)) {
+    await admin.rpc('release_checkout_slot', {
+      p_user_id: user.id,
+      p_idempotency_key: requestKey,
     });
-    customerId = customer.id;
-    await admin.from('profiles').update({ stripe_customer_id: customerId }).eq('id', user.id);
+    return json({ error: 'checkout_guard_unavailable' }, 500, origin);
   }
 
-  const session = await stripe.checkout.sessions.create({
-    mode: 'subscription',
-    customer: customerId,
-    line_items: [{ price: priceId, quantity: 1 }],
-    success_url: `${APP_BASE_URL}/billing/success`,
-    cancel_url: `${APP_BASE_URL}/billing/cancel`,
-    client_reference_id: user.id,
-    metadata: { supabase_user_id: user.id, plan },
-  });
+  let sessionCreated = false;
+  const releaseUnattachedSlot = async () => {
+    await admin.rpc('release_checkout_slot', {
+      p_user_id: user.id,
+      p_idempotency_key: requestKey,
+    });
+  };
 
-  return json({ url: session.url }, 200, origin);
+  try {
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        email: user.email ?? undefined,
+        metadata: { supabase_user_id: user.id },
+      }, { idempotencyKey: `customer:${user.id}` });
+
+      const { data: claimed, error: claimErr } = await admin
+        .from('profiles')
+        .update({ stripe_customer_id: customer.id })
+        .eq('id', user.id)
+        .is('stripe_customer_id', null)
+        .select('stripe_customer_id')
+        .maybeSingle();
+      if (claimErr) {
+        await releaseUnattachedSlot();
+        return json({ error: 'customer_link_failed' }, 500, origin);
+      }
+      customerId = claimed?.stripe_customer_id as string | undefined;
+
+      // A concurrent idempotent request may have linked the customer first.
+      if (!customerId) {
+        const { data: refreshed, error: refreshErr } = await admin
+          .from('profiles')
+          .select('stripe_customer_id')
+          .eq('id', user.id)
+          .maybeSingle();
+        if (refreshErr || !refreshed?.stripe_customer_id) {
+          await releaseUnattachedSlot();
+          return json({ error: 'customer_link_failed' }, 500, origin);
+        }
+        customerId = refreshed.stripe_customer_id as string;
+      }
+    }
+
+    const stripeSubscriptions = await stripe.subscriptions.list({
+      customer: customerId,
+      status: 'all',
+      limit: 100,
+    });
+    if (stripeSubscriptions.data.some((subscription) =>
+      subscriptionBlocksCheckout(subscription.status)
+    )) {
+      await releaseUnattachedSlot();
+      return json({ error: 'subscription_exists' }, 409, origin);
+    }
+    if (stripeSubscriptions.has_more) {
+      await releaseUnattachedSlot();
+      return json({ error: 'billing_lookup_failed' }, 500, origin);
+    }
+
+    if (claim.stripe_session_id) {
+      const existingSession = await stripe.checkout.sessions.retrieve(
+        String(claim.stripe_session_id),
+      );
+      sessionCreated = true;
+      if (existingSession.status === 'open' && existingSession.url) {
+        return json({ url: existingSession.url }, 200, origin);
+      }
+      return json({ error: 'checkout_in_progress' }, 409, origin);
+    }
+
+    const session = await stripe.checkout.sessions.create({
+      mode: 'subscription',
+      customer: customerId,
+      line_items: [{ price: priceId, quantity: 1 }],
+      success_url: `${APP_BASE_URL}/billing/success`,
+      cancel_url: `${APP_BASE_URL}/billing/cancel`,
+      expires_at: expiresAt,
+      client_reference_id: user.id,
+      metadata: { supabase_user_id: user.id, plan, checkout_request_key: requestKey },
+    }, { idempotencyKey: requestKey });
+    sessionCreated = true;
+    if (!session.url) return json({ error: 'checkout_unavailable' }, 502, origin);
+    const { data: attached, error: attachErr } = await admin.rpc('attach_checkout_session', {
+      p_user_id: user.id,
+      p_idempotency_key: requestKey,
+      p_session_id: session.id,
+    });
+    if (attachErr || attached !== true) {
+      return json({ error: 'checkout_guard_unavailable' }, 500, origin);
+    }
+    return json({ url: session.url }, 200, origin);
+  } catch {
+    if (!sessionCreated) await releaseUnattachedSlot();
+    return json({ error: 'checkout_unavailable' }, 502, origin);
+  }
 });

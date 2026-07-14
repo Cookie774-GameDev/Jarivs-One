@@ -26,11 +26,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  const { data: appAdminFlag } = await admin.rpc('is_app_admin', { p_user_id: userId });
+  const { data: appAdminFlag, error: adminErr } = await admin.rpc('is_app_admin', { p_user_id: userId });
+  if (adminErr) return json({ error: 'usage_unavailable' }, 503, origin);
   if (appAdminFlag) {
     return json(
       {
-        plan: 'ultra',
+        plan: 'apex',
         subscription_status: 'active',
         provider: 'admin_unlimited',
         monthly_seconds_limit: 999_999,
@@ -48,11 +49,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   // Cloud voice draws from the SHARED call/voice budget (call_usage), so report
   // remaining from there. COST_PER_SECOND_USD converts dollars -> seconds.
-  const { data: usage } = await admin
+  const { data: usage, error: usageErr } = await admin
     .from('call_usage')
     .select('plan, monthly_budget_usd, used_usd')
     .eq('user_id', userId)
     .maybeSingle();
+  if (usageErr) return json({ error: 'usage_unavailable' }, 503, origin);
 
   const plan = usage?.plan ?? 'free';
   const budget = Number(usage?.monthly_budget_usd ?? 0);
@@ -63,7 +65,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const usedSecs = Math.floor(used / COST_PER_SECOND_USD);
   const remaining = Math.floor(remainingUsd / COST_PER_SECOND_USD);
 
-  const { data: activeSub } = await admin
+  const { data: activeSub, error: subErr } = await admin
     .from('subscriptions')
     .select('status, plan')
     .eq('user_id', userId)
@@ -71,23 +73,26 @@ Deno.serve(async (req: Request): Promise<Response> => {
     .order('current_period_end', { ascending: false })
     .limit(1)
     .maybeSingle();
+  if (subErr) return json({ error: 'usage_unavailable' }, 503, origin);
   const subscriptionStatus = activeSub?.status ?? (plan === 'free' ? 'free' : 'unknown');
 
-  const { data: promo } = await admin
+  const { data: promo, error: promoErr } = await admin
     .from('deepgram_promo_usage')
     .select('seconds_limit, used_seconds')
     .eq('user_id', userId)
     .maybeSingle();
+  if (promoErr) return json({ error: 'usage_unavailable' }, 503, origin);
 
   const promoLimit = Number(promo?.seconds_limit ?? 0);
   const promoUsed = Number(promo?.used_seconds ?? 0);
   const promoRemaining = Math.max(0, promoLimit - promoUsed);
 
-  const { data: pool } = await admin
+  const { data: pool, error: poolErr } = await admin
     .from('deepgram_promo_pool')
     .select('active, budget_usd, used_usd, pause_at_usd')
     .eq('id', 1)
     .maybeSingle();
+  if (poolErr) return json({ error: 'usage_unavailable' }, 503, origin);
 
   const poolActive = Boolean(pool?.active) && Number(pool?.used_usd ?? 0) < Number(pool?.pause_at_usd ?? 0);
   const deepgramPromoAvailable = poolActive && promoRemaining > 0;

@@ -101,19 +101,27 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   const usageCols =
     'plan, monthly_budget_usd, used_usd, reset_date, window_5h_start, window_5h_used_usd, window_week_start, window_week_used_usd';
-  const [{ data: msg }, { data: call }, { data: sms }, { data: adminFlag }] = await Promise.all([
+  const [messageResult, callResult, smsResult, adminResult] = await Promise.all([
     admin.from('message_usage').select(usageCols).eq('user_id', userId).maybeSingle(),
     admin.from('call_usage').select(usageCols).eq('user_id', userId).maybeSingle(),
     admin.from('sms_usage').select(usageCols).eq('user_id', userId).maybeSingle(),
     admin.rpc('is_app_admin', { p_user_id: userId }),
   ]);
+  if (messageResult.error || callResult.error || smsResult.error || adminResult.error) {
+    return json({ error: 'usage_unavailable' }, 503, origin);
+  }
+  const msg = messageResult.data;
+  const call = callResult.data;
+  const sms = smsResult.data;
+  const adminFlag = adminResult.data;
 
   const plan = (msg?.plan ?? call?.plan ?? sms?.plan ?? 'free') as string;
-  const { data: limits } = await admin
+  const { data: limits, error: limitsErr } = await admin
     .from('subscription_plan_limits')
     .select('message_credits, call_minutes, sms_count, message_budget_usd, call_budget_usd, sms_budget_usd')
     .eq('plan', plan)
     .maybeSingle();
+  if (limitsErr || !limits) return json({ error: 'usage_unavailable' }, 503, origin);
 
   // Shared pool = sum of plan budgets; used = sum of service used_usd.
   const poolBudgetUsd =

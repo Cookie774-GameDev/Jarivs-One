@@ -16,6 +16,8 @@
 // Company keys live ONLY in Supabase secrets. Never returned to the client.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.46.2';
+import { buildUsageIdempotencyKey } from '../_shared/billingSecurity.ts';
+import { reserveMeteredUsage, settleMeteredUsage } from '../_shared/metering.ts';
 import {
   APPROVED_PRESETS,
   APPROVED_PROVIDERS,
@@ -145,13 +147,17 @@ Deno.serve(async (req: Request): Promise<Response> => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  const { data: appAdminFlag } = await admin.rpc('is_app_admin', { p_user_id: userId });
+  const { data: appAdminFlag, error: adminErr } = await admin.rpc('is_app_admin', { p_user_id: userId });
+  if (adminErr) return json({ error: 'usage_unavailable' }, 503, origin);
   const appAdmin = Boolean(appAdminFlag);
 
   const estSecs = estimateSeconds(text.length);
   const estCostUsd = estSecs * COST_PER_SECOND_USD;
   const estDeepgramUsd = deepgramCostUsd(estSecs);
   let billingSource: 'admin' | 'deepgram_promo' | 'call_budget' = appAdmin ? 'admin' : 'call_budget';
+  const requestKey = buildUsageIdempotencyKey('tts', req.headers.get('x-idempotency-key'));
+  let reservationId: string | null = null;
+  let promoReservationId: string | null = null;
   let reserved: {
     ok: boolean;
     reason?: string;
@@ -180,15 +186,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
     let promoAttempted = false;
     if (provider === 'deepgram_tts') {
       promoAttempted = true;
-      const { data: promoReservation, error: promoErr } = await admin.rpc('reserve_deepgram_promo', {
+      const { data: promoReservation, error: promoErr } = await admin.rpc('reserve_deepgram_promo_idempotent', {
         p_user_id: userId,
         p_estimate_seconds: estSecs,
         p_estimate_usd: estDeepgramUsd,
+        p_idempotency_key: requestKey,
       });
       if (promoErr) return json({ error: 'usage_unavailable' }, 503, origin);
       if ((promoReservation as { ok?: boolean } | null)?.ok) {
+        if ((promoReservation as { duplicate?: boolean }).duplicate) {
+          return json({ error: 'duplicate_request' }, 409, origin);
+        }
         billingSource = 'deepgram_promo';
         reserved = promoReservation as typeof reserved;
+        promoReservationId = String((promoReservation as { reservation_id: string }).reservation_id);
       }
     }
 
@@ -196,17 +207,19 @@ Deno.serve(async (req: Request): Promise<Response> => {
     // Free-tier Deepgram after promo exhaustion must not silently retry another bucket.
     if (billingSource !== 'deepgram_promo') {
       if (promoAttempted) {
-        const { data: profile } = await admin
+        const { data: profile, error: profileErr } = await admin
           .from('profiles')
           .select('tier')
           .eq('id', userId)
           .maybeSingle();
+        if (profileErr) return json({ error: 'usage_unavailable' }, 503, origin);
         const tier = String(profile?.tier ?? 'free');
         if (tier === 'free') {
-          await admin.from('voice_events').insert({
+          const { error: eventErr } = await admin.from('voice_events').insert({
             user_id: userId, provider, voice_preset: preset, text_chars: text.length,
             estimated_seconds: estSecs, status: 'blocked', error_code: 'promo_exhausted',
           });
+          if (eventErr) return json({ error: 'usage_unavailable' }, 503, origin);
           return json(
             { error: 'quota_exceeded', reason: 'promo_exhausted', fallback: 'kokoro_local' },
             402,
@@ -214,19 +227,41 @@ Deno.serve(async (req: Request): Promise<Response> => {
           );
         }
       }
-      const { data: reservation, error: reserveErr } = await admin
-        .rpc('reserve_call_budget', { p_user_id: userId, p_estimate_usd: estCostUsd });
-      if (reserveErr) return json({ error: 'usage_unavailable' }, 500, origin);
-      reserved = reservation as typeof reserved;
+      const meteredReservation = await reserveMeteredUsage(admin, {
+        userId,
+        kind: 'call',
+        estimateUsd: estCostUsd,
+        idempotencyKey: requestKey,
+        count: estSecs,
+        context: { provider, operation: 'tts' },
+      });
+      reserved = meteredReservation as typeof reserved;
       if (!reserved?.ok) {
-        await admin.from('voice_events').insert({
+        const { error: eventErr } = await admin.from('voice_events').insert({
           user_id: userId, provider, voice_preset: preset, text_chars: text.length,
           estimated_seconds: estSecs, status: 'blocked', error_code: reserved?.reason ?? 'budget',
         });
+        if (eventErr) return json({ error: 'usage_unavailable' }, 503, origin);
         return json({ error: 'quota_exceeded', reason: reserved?.reason ?? 'budget', fallback: 'kokoro_local' }, 402, origin);
       }
+      if (meteredReservation.duplicate) return json({ error: 'duplicate_request' }, 409, origin);
+      reservationId = meteredReservation.reservationId;
       billingSource = 'call_budget';
     }
+  } else {
+    const meteredReservation = await reserveMeteredUsage(admin, {
+      userId,
+      kind: 'call',
+      estimateUsd: estCostUsd,
+      idempotencyKey: requestKey,
+      count: estSecs,
+      context: { provider, operation: 'tts' },
+    });
+    if (!meteredReservation.ok) {
+      return json({ error: 'usage_unavailable' }, 503, origin);
+    }
+    if (meteredReservation.duplicate) return json({ error: 'duplicate_request' }, 409, origin);
+    reservationId = meteredReservation.reservationId;
   }
 
   // 5. Call provider
@@ -236,26 +271,28 @@ Deno.serve(async (req: Request): Promise<Response> => {
     else if (provider === 'deepgram_tts') audio = await callDeepgram(text, preset);
     else audio = await callElevenLabs(text, preset);
   } catch (e) {
-    if (!appAdmin) {
-      if (billingSource === 'deepgram_promo') {
-        await admin.rpc('settle_deepgram_promo', {
+    if (billingSource === 'deepgram_promo') {
+        const { data: settledPromo, error: settleErr } = await admin.rpc('settle_deepgram_promo_idempotent', {
           p_user_id: userId,
-          p_reserved_seconds: estSecs,
-          p_reserved_usd: estDeepgramUsd,
+          p_reservation_id: promoReservationId,
           p_actual_seconds: 0,
           p_actual_usd: 0,
+          p_status: 'released',
         });
-      } else {
-        await admin.rpc('settle_call_budget', {
-          p_user_id: userId, p_reserved: estCostUsd, p_actual: 0, p_seconds: 0,
-        });
-      }
+        if (settleErr || !(settledPromo as { ok?: boolean } | null)?.ok) {
+          return json({ error: 'usage_unavailable' }, 503, origin);
+        }
+      } else if (reservationId && !await settleMeteredUsage(admin, {
+        userId, reservationId, actualUsd: 0, actualCount: 0, status: 'released',
+      })) {
+        return json({ error: 'usage_unavailable' }, 503, origin);
     }
     const code = (e as Error).message?.startsWith('provider') ? (e as Error).message : 'provider_failed';
-    await admin.from('voice_events').insert({
+    const { error: eventErr } = await admin.from('voice_events').insert({
       user_id: userId, provider, voice_preset: preset, text_chars: text.length,
       estimated_seconds: estSecs, actual_seconds: 0, status: 'error', error_code: code,
     });
+    if (eventErr) console.error('voice_usage_event_write_failed');
     return json({ error: 'cloud_unavailable', fallback: 'kokoro_local' }, 502, origin);
   }
 
@@ -264,26 +301,28 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const actualCostUsd = billingSource === 'deepgram_promo'
     ? deepgramCostUsd(actualSecs)
     : actualSecs * COST_PER_SECOND_USD;
-  if (!appAdmin) {
-    if (billingSource === 'deepgram_promo') {
-      await admin.rpc('settle_deepgram_promo', {
+  if (billingSource === 'deepgram_promo') {
+      const { data: settledPromo, error: settleErr } = await admin.rpc('settle_deepgram_promo_idempotent', {
         p_user_id: userId,
-        p_reserved_seconds: estSecs,
-        p_reserved_usd: estDeepgramUsd,
+        p_reservation_id: promoReservationId,
         p_actual_seconds: actualSecs,
         p_actual_usd: actualCostUsd,
+        p_status: 'settled',
       });
-    } else {
-      await admin.rpc('settle_call_budget', {
-        p_user_id: userId, p_reserved: estCostUsd, p_actual: actualCostUsd, p_seconds: actualSecs,
-      });
-    }
+      if (settleErr || !(settledPromo as { ok?: boolean } | null)?.ok) {
+        return json({ error: 'usage_unavailable' }, 503, origin);
+      }
+    } else if (reservationId && !await settleMeteredUsage(admin, {
+      userId, reservationId, actualUsd: actualCostUsd, actualCount: actualSecs, status: 'settled',
+    })) {
+      return json({ error: 'usage_unavailable' }, 503, origin);
   }
-  await admin.from('voice_events').insert({
+  const { error: eventErr } = await admin.from('voice_events').insert({
     user_id: userId, provider, voice_preset: preset, text_chars: text.length,
     estimated_seconds: estSecs, actual_seconds: actualSecs,
     estimated_cost_usd: appAdmin ? 0 : actualCostUsd, status: 'ok',
   });
+  if (eventErr) console.error('voice_usage_event_write_failed');
 
   // 7. Return audio + remaining quota for the billing source used.
   const remainingSeconds = appAdmin

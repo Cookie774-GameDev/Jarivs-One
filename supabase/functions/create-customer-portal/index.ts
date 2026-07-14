@@ -27,11 +27,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  const { data: profile } = await admin
+  const { data: profile, error: profileErr } = await admin
     .from('profiles')
     .select('stripe_customer_id')
     .eq('id', userData.user.id)
     .maybeSingle();
+  if (profileErr) return json({ error: 'account_lookup_failed' }, 500, origin);
   const customerId = profile?.stripe_customer_id as string | undefined;
   if (!customerId) return json({ error: 'no_customer' }, 404, origin);
 
@@ -39,10 +40,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
     apiVersion: '2024-12-18.acacia',
     httpClient: Stripe.createFetchHttpClient(),
   });
-  const portal = await stripe.billingPortal.sessions.create({
-    customer: customerId,
-    return_url: `${APP_BASE_URL}/account`,
-  });
-
-  return json({ url: portal.url }, 200, origin);
+  try {
+    const portal = await stripe.billingPortal.sessions.create({
+      customer: customerId,
+      return_url: `${APP_BASE_URL}/account`,
+    });
+    if (!portal.url) return json({ error: 'portal_unavailable' }, 502, origin);
+    return json({ url: portal.url }, 200, origin);
+  } catch {
+    return json({ error: 'portal_unavailable' }, 502, origin);
+  }
 });

@@ -22,6 +22,8 @@
 // TWILIO_* secrets are absent (they are provisioned separately).
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.46.2';
+import { buildUsageIdempotencyKey } from '../_shared/billingSecurity.ts';
+import { reserveMeteredUsage, settleMeteredUsage } from '../_shared/metering.ts';
 import { json } from '../_shared/voice.ts';
 import {
   estimateSmsCostUsd,
@@ -84,11 +86,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
   });
 
   // 3. Destination: the authenticated user's own number, server-side lookup.
-  const { data: phone } = await admin
+  const { data: phone, error: phoneErr } = await admin
     .from('phone_settings')
     .select('user_phone_number, twilio_phone_number')
     .eq('user_id', userId)
     .maybeSingle();
+  if (phoneErr) return json({ error: 'account_lookup_failed' }, 503, origin);
   const toNumber = String(phone?.user_phone_number ?? '').trim();
   if (!toNumber) return json({ error: 'no_phone_number' }, 400, origin);
   if (!isE164(toNumber)) return json({ error: 'invalid_phone_number' }, 400, origin);
@@ -97,7 +100,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ error: 'sms_not_configured' }, 503, origin);
   }
 
-  const { data: appAdminFlag } = await admin.rpc('is_app_admin', { p_user_id: userId });
+  const { data: appAdminFlag, error: adminErr } = await admin.rpc('is_app_admin', { p_user_id: userId });
+  if (adminErr) return json({ error: 'usage_unavailable' }, 503, origin);
   const appAdmin = Boolean(appAdminFlag);
 
   // 4. Rate limit (fail closed).
@@ -111,33 +115,38 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   // STOP compliance: append the opt-out footer to the first text of the cycle.
-  const { data: usageRow } = await admin
+  const { data: usageRow, error: usageErr } = await admin
     .from('sms_usage')
     .select('used_count')
     .eq('user_id', userId)
     .maybeSingle();
+  if (usageErr) return json({ error: 'usage_unavailable' }, 503, origin);
   const isFirstOfCycle = Number(usageRow?.used_count ?? 0) === 0;
   const finalMessage = isFirstOfCycle && !message.toUpperCase().includes('STOP')
     ? `${message}${STOP_FOOTER}`
     : message;
 
-  // 5. Reserve budget (skipped for admins; the RPC enforces all three windows).
+  // 5. Reserve budget. Admins receive a zero-charge audit reservation.
   const estSegments = smsSegments(finalMessage);
   const estCost = estimateSmsCostUsd(estSegments);
-  if (!appAdmin) {
-    const { data: reservation, error: reserveErr } = await admin.rpc('reserve_sms_budget', {
-      p_user_id: userId, p_estimate_usd: estCost, p_count: 1,
-    });
-    if (reserveErr) return json({ error: 'usage_unavailable' }, 500, origin);
-    const reserved = reservation as { ok: boolean; reason?: string; retry_after?: string } | null;
-    if (!reserved?.ok) {
-      await admin.rpc('record_usage_event', {
+  let reservationId: string | null = null;
+  const reserved = await reserveMeteredUsage(admin, {
+      userId,
+      kind: 'sms',
+      estimateUsd: estCost,
+      idempotencyKey: buildUsageIdempotencyKey('sms', req.headers.get('x-idempotency-key')),
+      count: 1,
+      context: { provider: 'twilio', operation: 'outbound_sms' },
+  });
+  if (!reserved?.ok) {
+      const { error: eventErr } = await admin.rpc('record_usage_event', {
         p_kind: 'sms', p_user_id: userId,
         p_payload: {
           to_last4: toNumber.slice(-4), segments: estSegments, message_chars: finalMessage.length,
           status: 'blocked', error_code: reserved?.reason ?? 'budget',
         },
       });
+      if (eventErr) return json({ error: 'usage_unavailable' }, 503, origin);
       const reason = reserved?.reason ?? 'budget';
       const isWindow = reason === 'window_5h_exceeded' || reason === 'window_weekly_exceeded';
       return json(
@@ -149,8 +158,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
         isWindow ? 429 : 402,
         origin,
       );
-    }
   }
+  if (reserved.duplicate) return json({ error: 'duplicate_request' }, 409, origin);
+  reservationId = reserved.reservationId;
 
   // 6. Twilio send (company credentials; never exposed to the client).
   const auth = btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
@@ -169,46 +179,48 @@ Deno.serve(async (req: Request): Promise<Response> => {
     );
     twilioBody = await twilioRes.json().catch(() => ({}));
   } catch {
-    if (!appAdmin) {
-      await admin.rpc('settle_sms_budget', {
-        p_user_id: userId, p_reserved: estCost, p_actual: 0, p_count_delta: -1,
-      });
+    if (reservationId && !await settleMeteredUsage(admin, {
+      userId, reservationId, actualUsd: 0, actualCount: 0, status: 'released',
+    })) {
+      return json({ error: 'usage_unavailable' }, 503, origin);
     }
-    await admin.rpc('record_usage_event', {
+    const { error: eventErr } = await admin.rpc('record_usage_event', {
       p_kind: 'sms', p_user_id: userId,
       p_payload: {
         to_last4: toNumber.slice(-4), segments: estSegments, message_chars: finalMessage.length,
         status: 'error', error_code: 'twilio_unreachable',
       },
     });
+    if (eventErr) console.error('sms_usage_event_write_failed');
     return json({ error: 'sms_unavailable' }, 502, origin);
   }
 
   if (!twilioRes.ok) {
-    if (!appAdmin) {
-      await admin.rpc('settle_sms_budget', {
-        p_user_id: userId, p_reserved: estCost, p_actual: 0, p_count_delta: -1,
-      });
+    if (reservationId && !await settleMeteredUsage(admin, {
+      userId, reservationId, actualUsd: 0, actualCount: 0, status: 'released',
+    })) {
+      return json({ error: 'usage_unavailable' }, 503, origin);
     }
-    await admin.rpc('record_usage_event', {
+    const { error: eventErr } = await admin.rpc('record_usage_event', {
       p_kind: 'sms', p_user_id: userId,
       p_payload: {
         to_last4: toNumber.slice(-4), segments: estSegments, message_chars: finalMessage.length,
         status: 'error', error_code: `twilio_${twilioRes.status}`,
       },
     });
+    if (eventErr) console.error('sms_usage_event_write_failed');
     return json({ error: 'sms_failed' }, 502, origin);
   }
 
   // 7. Settle actual cost (Twilio reports the real segment count) + record.
   const actualSegments = Math.max(1, Number(twilioBody.num_segments ?? estSegments) || estSegments);
   const actualCost = estimateSmsCostUsd(actualSegments);
-  if (!appAdmin) {
-    await admin.rpc('settle_sms_budget', {
-      p_user_id: userId, p_reserved: estCost, p_actual: actualCost, p_count_delta: 0,
-    });
+  if (reservationId && !await settleMeteredUsage(admin, {
+    userId, reservationId, actualUsd: actualCost, actualCount: 1, status: 'settled',
+  })) {
+    return json({ error: 'usage_unavailable' }, 503, origin);
   }
-  await admin.rpc('record_usage_event', {
+  const { error: eventErr } = await admin.rpc('record_usage_event', {
     p_kind: 'sms', p_user_id: userId,
     p_payload: {
       to_last4: toNumber.slice(-4), segments: actualSegments, message_chars: finalMessage.length,
@@ -218,6 +230,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       status: 'ok',
     },
   });
+  if (eventErr) console.error('sms_usage_event_write_failed');
 
   return json({ ok: true, segments: actualSegments }, 200, origin);
 });

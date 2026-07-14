@@ -1,19 +1,11 @@
 // @ts-nocheck
-// stripe-webhook: verifies Stripe signatures, maps price IDs -> plans
-// server-side, updates profiles.tier + subscriptions, and seeds voice_usage.
-// Idempotent via subscription_events.event_id unique constraint.
-//
-// Security:
-//   - Deploy with verify_jwt=false (Stripe sends stripe-signature, not Supabase JWT).
-//   - Signature verified against the RAW request body (req.text()).
-//   - Invalid/modified signatures -> 400.
-//   - Processed duplicate event ids -> short-circuit (no double-credit).
-//   - Failed/unprocessed duplicate event ids -> retry so Stripe retries work.
-//   - Plan is ALWAYS derived from the Stripe price id, never the client.
-//   - past_due keeps paid access during dunning; free only on cancel/unpaid/expired.
+// Stripe-signed webhook. Deploy with verify_jwt=false; Stripe does not send a
+// Supabase JWT. Subscription writes are applied transactionally by migration
+// 0031 and plans are always derived from the server-side price allowlist.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.46.2';
 import Stripe from 'https://esm.sh/stripe@14.21.0?target=deno';
+import { buildSubscriptionRpcArgs } from '../_shared/billingSecurity.ts';
 import { planForPriceId } from '../_shared/voice.ts';
 import {
   invoicePaymentFailedForcesFree,
@@ -32,67 +24,83 @@ function admin() {
   });
 }
 
+function objectId(value: string | { id?: string } | null | undefined): string | null {
+  if (typeof value === 'string') return value;
+  return value?.id ?? null;
+}
+
 function planFromSubscription(sub: Stripe.Subscription): string | null {
   for (const item of sub.items?.data ?? []) {
-    const p = planForPriceId(item?.price?.id);
-    if (p) return p;
+    const plan = planForPriceId(item?.price?.id);
+    if (plan) return plan;
   }
   return null;
 }
 
-async function applyPlan(customerId: string, plan: string, sub: Stripe.Subscription | null) {
-  const db = admin();
-  const { data: profile } = await db
-    .from('profiles')
-    .select('id')
-    .eq('stripe_customer_id', customerId)
-    .maybeSingle();
-  if (!profile?.id) return;
-
-  // profiles.tier change fires the voice_usage sync trigger automatically.
-  await db.from('profiles').update({ tier: plan, updated_at: new Date().toISOString() }).eq('id', profile.id);
-
-  if (sub) {
-    await db.from('subscriptions').upsert({
-      id: sub.id,
-      user_id: profile.id,
-      stripe_customer_id: customerId,
-      status: sub.status,
-      plan,
-      price_id: sub.items?.data?.[0]?.price?.id ?? null,
-      current_period_start: sub.current_period_start
-        ? new Date(sub.current_period_start * 1000).toISOString() : null,
-      current_period_end: sub.current_period_end
-        ? new Date(sub.current_period_end * 1000).toISOString() : null,
-      cancel_at_period_end: sub.cancel_at_period_end ?? false,
-      updated_at: new Date().toISOString(),
-    });
-  }
+async function recordFailure(
+  db: ReturnType<typeof admin>,
+  event: Stripe.Event,
+  errorCode: string,
+  customerId: string | null = null,
+  subscriptionId: string | null = null,
+): Promise<void> {
+  const { error } = await db.rpc('record_stripe_event_failure', {
+    p_event_id: event.id,
+    p_event_type: event.type,
+    p_event_created_at: new Date(event.created * 1000).toISOString(),
+    p_customer_id: customerId,
+    p_subscription_id: subscriptionId,
+    p_error_code: errorCode,
+  });
+  if (error) console.error('stripe_event_failure_record_failed');
 }
 
-async function applySubscriptionEvent(customerId: string, sub: Stripe.Subscription) {
-  if (subscriptionKeepsPaidAccess(sub.status)) {
-    const plan = planFromSubscription(sub);
-    if (plan) await applyPlan(customerId, plan, sub);
-    return;
+async function applySubscription(
+  db: ReturnType<typeof admin>,
+  event: Stripe.Event,
+  customerId: string,
+  subscription: Stripe.Subscription,
+): Promise<boolean> {
+  const keepsAccess = subscriptionKeepsPaidAccess(subscription.status);
+  const revokesAccess = subscriptionRevokesToFree(subscription.status);
+  if (!keepsAccess && !revokesAccess) {
+    await recordFailure(db, event, 'unsupported_subscription_status', customerId, subscription.id);
+    return false;
   }
-  if (subscriptionRevokesToFree(sub.status)) {
-    await applyPlan(customerId, 'free', sub);
+
+  const plan = planFromSubscription(subscription);
+  if (keepsAccess && !plan) {
+    await recordFailure(db, event, 'unknown_price_id', customerId, subscription.id);
+    return false;
   }
-  // Other statuses (incomplete, paused, etc.): leave tier alone until Stripe resolves.
+
+  const { error } = await db.rpc('apply_stripe_subscription_event',
+    buildSubscriptionRpcArgs({
+      eventId: event.id,
+      eventType: event.type,
+      eventCreated: event.created,
+      customerId,
+      plan,
+      subscription,
+    }));
+  if (error) {
+    await recordFailure(db, event, 'subscription_apply_failed', customerId, subscription.id);
+    return false;
+  }
+  return true;
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
-  if (req.method === 'GET') return new Response('Jarvis Stripe webhook up.\n', { status: 200 });
+  if (req.method === 'GET') return new Response('VibeSpace Stripe webhook up.\n', { status: 200 });
   if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405 });
   if (!STRIPE_WEBHOOK_SECRET || !STRIPE_SECRET_KEY) {
     return new Response('Webhook not configured', { status: 500 });
   }
 
-  const sig = req.headers.get('stripe-signature');
-  if (!sig) return new Response('Missing stripe-signature', { status: 400 });
+  const signature = req.headers.get('stripe-signature');
+  if (!signature) return new Response('Missing stripe-signature', { status: 400 });
 
-  const rawBody = await req.text(); // raw body required for signature verification
+  const rawBody = await req.text();
   const stripe = new Stripe(STRIPE_SECRET_KEY, {
     apiVersion: '2024-12-18.acacia',
     httpClient: Stripe.createFetchHttpClient(),
@@ -100,95 +108,86 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   let event: Stripe.Event;
   try {
-    event = await stripe.webhooks.constructEventAsync(rawBody, sig, STRIPE_WEBHOOK_SECRET);
-  } catch (err) {
-    return new Response(`Signature verification failed: ${(err as Error).message}`, { status: 400 });
+    event = await stripe.webhooks.constructEventAsync(rawBody, signature, STRIPE_WEBHOOK_SECRET);
+  } catch {
+    return new Response('Signature verification failed', { status: 400 });
   }
 
   const db = admin();
-
-  // Idempotency: unique event_id. Processed duplicates are skipped, but
-  // failed/unprocessed rows are retried so Stripe retry delivery can recover.
-  const { error: insertErr } = await db.from('subscription_events').insert({
-    event_id: event.id,
-    event_type: event.type,
-    payload: event as unknown as Record<string, unknown>,
-    processed: false,
-  });
-  if (insertErr) {
-    const { data: existing, error: lookupErr } = await db
-      .from('subscription_events')
-      .select('processed')
-      .eq('event_id', event.id)
-      .maybeSingle();
-    if (lookupErr) return new Response('Event lookup failed', { status: 500 });
-    if (existing?.processed) return new Response('duplicate', { status: 200 });
-
-    await db
-      .from('subscription_events')
-      .update({
-        event_type: event.type,
-        payload: event as unknown as Record<string, unknown>,
-      })
-      .eq('event_id', event.id)
-      .eq('processed', false);
-  }
-
   try {
+    let subscription: Stripe.Subscription | null = null;
+    let customerId: string | null = null;
+    let checkoutUserId: string | null = null;
+    let checkoutSessionId: string | null = null;
+
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
-        const customerId = typeof session.customer === 'string' ? session.customer : session.customer?.id;
-        if (customerId && session.subscription) {
-          const sub = await stripe.subscriptions.retrieve(String(session.subscription));
-          await applySubscriptionEvent(customerId, sub);
+        checkoutUserId = session.client_reference_id ?? null;
+        checkoutSessionId = session.id;
+        customerId = objectId(session.customer);
+        const subscriptionId = objectId(session.subscription);
+        if (customerId && subscriptionId) {
+          subscription = await stripe.subscriptions.retrieve(subscriptionId);
         }
         break;
       }
       case 'customer.subscription.created':
-      case 'customer.subscription.updated': {
-        const sub = event.data.object as Stripe.Subscription;
-        const customerId = typeof sub.customer === 'string' ? sub.customer : sub.customer?.id;
-        if (customerId) await applySubscriptionEvent(customerId, sub);
-        break;
-      }
+      case 'customer.subscription.updated':
       case 'customer.subscription.deleted': {
-        const sub = event.data.object as Stripe.Subscription;
-        const customerId = typeof sub.customer === 'string' ? sub.customer : sub.customer?.id;
-        if (customerId) await applyPlan(customerId, 'free', sub);
+        subscription = event.data.object as Stripe.Subscription;
+        customerId = objectId(subscription.customer);
         break;
       }
       case 'invoice.payment_failed': {
-        // Do not thrash tier on a single failed charge. Sync subscription
-        // status if Stripe still considers the sub past_due/active so the
-        // row reflects dunning, but keep paid plan until revoke statuses.
-        if (invoicePaymentFailedForcesFree()) {
-          const invoice = event.data.object as Stripe.Invoice;
-          const customerId = typeof invoice.customer === 'string' ? invoice.customer : invoice.customer?.id;
-          if (customerId) await applyPlan(customerId, 'free', null);
-          break;
-        }
+        if (invoicePaymentFailedForcesFree()) break;
         const invoice = event.data.object as Stripe.Invoice;
-        const customerId = typeof invoice.customer === 'string' ? invoice.customer : invoice.customer?.id;
-        const subRef = invoice.subscription;
-        if (customerId && subRef) {
-          const sub = await stripe.subscriptions.retrieve(String(subRef));
-          await applySubscriptionEvent(customerId, sub);
+        customerId = objectId(invoice.customer);
+        const subscriptionId = objectId(invoice.subscription);
+        if (customerId && subscriptionId) {
+          subscription = await stripe.subscriptions.retrieve(subscriptionId);
         }
         break;
       }
-      case 'invoice.payment_succeeded':
-        // Period renewal: reserve_voice_seconds resets usage lazily on next call.
-        // If payment recovers from past_due, subscription.updated also fires.
+      case 'invoice.payment_succeeded': {
+        const invoice = event.data.object as Stripe.Invoice;
+        customerId = objectId(invoice.customer);
+        const subscriptionId = objectId(invoice.subscription);
+        if (customerId && subscriptionId) {
+          subscription = await stripe.subscriptions.retrieve(subscriptionId);
+        }
         break;
+      }
       default:
-        break;
+        return new Response('ok', { status: 200 });
     }
 
-    await db.from('subscription_events').update({ processed: true }).eq('event_id', event.id);
+    if (!subscription || !customerId) {
+      await recordFailure(db, event, 'missing_subscription_reference', customerId);
+      return new Response('Event could not be applied', { status: 500 });
+    }
+    if (!await applySubscription(db, event, customerId, subscription)) {
+      return new Response('Event could not be applied', { status: 500 });
+    }
+    if (checkoutUserId && checkoutSessionId) {
+      const { data: completed, error: completionErr } = await db.rpc('complete_checkout_slot', {
+        p_user_id: checkoutUserId,
+        p_session_id: checkoutSessionId,
+      });
+      if (completionErr || completed !== true) {
+        await recordFailure(
+          db,
+          event,
+          'checkout_guard_cleanup_failed',
+          customerId,
+          subscription.id,
+        );
+        return new Response('Event could not be finalized', { status: 500 });
+      }
+    }
     return new Response('ok', { status: 200 });
-  } catch (err) {
-    // 500 -> Stripe retries with backoff.
-    return new Response(`Handler error: ${(err as Error).message}`, { status: 500 });
+  } catch {
+    await recordFailure(db, event, 'webhook_processing_failed');
+    return new Response('Handler failed', { status: 500 });
   }
 });

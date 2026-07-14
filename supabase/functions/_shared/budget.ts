@@ -1,11 +1,13 @@
 // Shared budget/plan/Twilio helpers for messaging + calling + SMS Edge Functions.
 // Deno runtime. Server-side only. Never bundled into the desktop app.
 
+// Deno requires the explicit extension; app-side contract tests also compile this module.
+// @ts-ignore TS5097 -- this file executes under Deno, not the app TypeScript runtime.
 import { json } from './voice.ts';
 
 export { json };
 
-export type PlanId = 'free' | 'starter' | 'pro' | 'ultra';
+export type PlanId = 'free' | 'starter' | 'pro' | 'ultra' | 'apex';
 
 // Server-authoritative budgets (USD/month). Mirror of subscription_plan_limits.
 // The DB table is the source of truth at runtime; this is a typed fallback.
@@ -22,6 +24,7 @@ export const PLAN_LIMITS: Record<PlanId, {
   starter: { messageBudgetUsd: 1.485, callBudgetUsd: 1.4025, smsBudgetUsd: 0.4125, messageCredits: 1485, callMinutes: 14, smsCount: 41 },
   pro: { messageBudgetUsd: 7.425, callBudgetUsd: 7.0125, smsBudgetUsd: 2.0625, messageCredits: 7425, callMinutes: 70, smsCount: 206 },
   ultra: { messageBudgetUsd: 14.85, callBudgetUsd: 14.025, smsBudgetUsd: 4.125, messageCredits: 14850, callMinutes: 140, smsCount: 412 },
+  apex: { messageBudgetUsd: 29.70, callBudgetUsd: 28.05, smsBudgetUsd: 8.25, messageCredits: 29700, callMinutes: 280, smsCount: 825 },
 };
 
 // Triple rate windows: each spend bucket is capped per rolling window as a
@@ -53,6 +56,28 @@ export const DEEPSEEK_OUT_PER_TOKEN = 0.28 / 1_000_000;
 export function estimateMessageCostUsd(promptTokens: number, completionTokens: number): number {
   return Math.max(0, promptTokens) * DEEPSEEK_IN_MISS_PER_TOKEN
     + Math.max(0, completionTokens) * DEEPSEEK_OUT_PER_TOKEN;
+}
+
+export function buildMessageReservationEstimate(
+  promptChars: number,
+  requestedCompletionTokens: unknown,
+  defaultCompletionTokens: number,
+  maxCompletionTokens: number,
+): { promptTokens: number; completionTokens: number; estimatedCostUsd: number } {
+  const promptTokens = Math.ceil(Math.max(0, promptChars) / 4);
+  const requested = typeof requestedCompletionTokens === 'number'
+      && Number.isFinite(requestedCompletionTokens)
+    ? Math.round(requestedCompletionTokens)
+    : defaultCompletionTokens;
+  const completionTokens = Math.min(
+    Math.max(1, Math.floor(maxCompletionTokens)),
+    Math.max(1, requested),
+  );
+  return {
+    promptTokens,
+    completionTokens,
+    estimatedCostUsd: estimateMessageCostUsd(promptTokens, completionTokens),
+  };
 }
 
 /** Exact DeepSeek cost from a usage block (cache-hit aware). */

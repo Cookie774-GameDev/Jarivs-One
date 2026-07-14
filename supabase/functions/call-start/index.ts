@@ -7,6 +7,8 @@
 // real per-second cost is settled by call-status when the call ends.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.46.2';
+import { buildUsageIdempotencyKey } from '../_shared/billingSecurity.ts';
+import { reserveBoundedCallUsage, settleMeteredUsage } from '../_shared/metering.ts';
 import { json } from '../_shared/voice.ts';
 import { estimateCallCostUsd, MAX_CALL_SECONDS } from '../_shared/budget.ts';
 
@@ -19,6 +21,7 @@ const TWILIO_PHONE_NUMBER = Deno.env.get('TWILIO_PHONE_NUMBER') ?? '';
 const APP_BASE_URL = Deno.env.get('APP_BASE_URL') ?? '';
 
 const MIN_RESERVE_SECONDS = 60; // reserve at least 1 minute up front
+const CALLS_PER_MINUTE = 3;
 
 Deno.serve(async (req: Request): Promise<Response> => {
   const origin = req.headers.get('origin');
@@ -46,21 +49,41 @@ Deno.serve(async (req: Request): Promise<Response> => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  // Reserve a minimum estimate atomically; denies free users / exhausted budgets.
-  const estCost = estimateCallCostUsd(MIN_RESERVE_SECONDS);
-  const { data: reservation, error: reserveErr } = await admin
-    .rpc('reserve_call_budget', { p_user_id: userId, p_estimate_usd: estCost });
-  if (reserveErr) return json({ error: 'usage_unavailable' }, 500, origin);
-  const reserved = reservation as { ok: boolean; reason?: string } | null;
+  // Reserve the largest affordable duration, then make that exact reservation
+  // the provider hard limit so a call cannot incur unreserved spend.
+  const reserved = await reserveBoundedCallUsage(admin, {
+    userId,
+    idempotencyKey: buildUsageIdempotencyKey('call', req.headers.get('x-idempotency-key')),
+    maxSeconds: MAX_CALL_SECONDS,
+    minSeconds: MIN_RESERVE_SECONDS,
+    costPerSecondUsd: estimateCallCostUsd(1),
+    rateLimitWindowStart: new Date(Math.floor(Date.now() / 60_000) * 60_000).toISOString(),
+    rateLimitMaxRequests: CALLS_PER_MINUTE,
+    context: { provider: 'twilio', operation: 'outbound_call' },
+  });
   if (!reserved?.ok) {
-    return json({ error: 'budget_exceeded', reason: reserved?.reason ?? 'budget' }, 402, origin);
+    if (reserved?.reason === 'rate_limited') return json({ error: 'rate_limited' }, 429, origin);
+    if (reserved?.reason === 'usage_unavailable') return json({ error: 'usage_unavailable' }, 503, origin);
+    return json({ error: 'budget_exceeded' }, 402, origin);
   }
+  const reservedSeconds = reserved.reservedCount;
+  if (reserved.duplicate) {
+    if (typeof reserved.provider_reference === 'string') {
+      return json({
+        call_sid: reserved.provider_reference,
+        status: 'initiated',
+        max_seconds: reservedSeconds,
+      }, 200, origin);
+    }
+    return json({ error: 'request_in_progress' }, 409, origin);
+  }
+  const reservationId = reserved.reservationId;
 
   if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_PHONE_NUMBER) {
     // Release the reservation; calling isn't configured yet.
-    await admin.rpc('settle_call_budget', {
-      p_user_id: userId, p_reserved: estCost, p_actual: 0, p_seconds: 0,
-    });
+    if (!await settleMeteredUsage(admin, {
+      userId, reservationId, actualUsd: 0, actualCount: 0, status: 'released',
+    })) return json({ error: 'usage_unavailable' }, 503, origin);
     return json({ error: 'calling_unconfigured' }, 503, origin);
   }
 
@@ -70,10 +93,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
     To: toNumber,
     From: TWILIO_PHONE_NUMBER,
     Url: `${APP_BASE_URL}/functions/v1/twilio-voice-webhook`,
-    StatusCallback: `${APP_BASE_URL}/functions/v1/call-status`,
+    StatusCallback: `${APP_BASE_URL}/functions/v1/call-status?reservation_id=${encodeURIComponent(reservationId)}`,
     StatusCallbackEvent: 'completed',
     Timeout: '30',
-    TimeLimit: String(MAX_CALL_SECONDS),
+    TimeLimit: String(reservedSeconds),
   });
   let twilioRes: Response;
   try {
@@ -86,17 +109,38 @@ Deno.serve(async (req: Request): Promise<Response> => {
       },
     );
   } catch {
-    await admin.rpc('settle_call_budget', { p_user_id: userId, p_reserved: estCost, p_actual: 0, p_seconds: 0 });
+    if (!await settleMeteredUsage(admin, {
+      userId, reservationId, actualUsd: 0, actualCount: 0, status: 'released',
+    })) return json({ error: 'usage_unavailable' }, 503, origin);
     return json({ error: 'call_provider_unavailable' }, 502, origin);
   }
   if (!twilioRes.ok) {
-    await admin.rpc('settle_call_budget', { p_user_id: userId, p_reserved: estCost, p_actual: 0, p_seconds: 0 });
+    if (!await settleMeteredUsage(admin, {
+      userId, reservationId, actualUsd: 0, actualCount: 0, status: 'released',
+    })) return json({ error: 'usage_unavailable' }, 503, origin);
     return json({ error: 'call_failed' }, 502, origin);
   }
   const call = await twilioRes.json();
-  await admin.rpc('record_usage_event', {
-    p_kind: 'call', p_user_id: userId,
-    p_payload: { call_sid: call.sid, direction: 'outbound', status: 'initiated', estimated_cost_usd: estCost },
+  const callSid = typeof call?.sid === 'string' ? call.sid : '';
+  if (!callSid) {
+    console.error('twilio_call_missing_sid');
+    return json({ error: 'call_failed' }, 502, origin);
+  }
+  const { data: attached, error: attachErr } = await admin.rpc('attach_usage_provider_reference', {
+    p_user_id: userId,
+    p_reservation_id: reservationId,
+    p_provider_reference: callSid,
   });
-  return json({ call_sid: call.sid, status: 'initiated', max_seconds: MAX_CALL_SECONDS }, 200, origin);
+  const { error: eventErr } = await admin.rpc('record_usage_event', {
+    p_kind: 'call', p_user_id: userId,
+    p_payload: {
+      call_sid: callSid,
+      direction: 'outbound',
+      status: 'initiated',
+      estimated_cost_usd: estimateCallCostUsd(reservedSeconds),
+    },
+  });
+  if (attachErr || attached !== true) console.error('call_reservation_link_failed');
+  if (eventErr) console.error('call_usage_event_write_failed');
+  return json({ call_sid: callSid, status: 'initiated', max_seconds: reservedSeconds }, 200, origin);
 });

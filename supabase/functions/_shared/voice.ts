@@ -26,29 +26,44 @@ export function deepgramCostUsd(seconds: number): number {
 
 export const PLAN_BUDGET_USD: Record<PlanId, number> = {
   free: 0,
-  starter: 2,
-  pro: 10,
-  ultra: 20,
-  apex: 40,
+  starter: 1.4025,
+  pro: 7.0125,
+  ultra: 14.025,
+  apex: 28.05,
 };
 
 export function secondsForBudget(budgetUsd: number): number {
   return Math.floor((budgetUsd || 0) / COST_PER_SECOND_USD);
 }
 
+export type PaidPlanId = Exclude<PlanId, 'free'>;
+export type PricePlanMapping = Partial<Record<PaidPlanId, string | undefined>>;
+
+export function hasUniqueConfiguredPrices(mapping: PricePlanMapping): boolean {
+  const prices = Object.values(mapping).filter((value): value is string => Boolean(value));
+  return new Set(prices).size === prices.length;
+}
+
+export function planForPriceMapping(
+  priceId: string | null | undefined,
+  mapping: PricePlanMapping,
+): PaidPlanId | null {
+  if (!priceId) return null;
+  const matches = (Object.entries(mapping) as Array<[PaidPlanId, string | undefined]>)
+    .filter(([, configuredPrice]) => configuredPrice === priceId)
+    .map(([plan]) => plan);
+  return matches.length === 1 ? matches[0] : null;
+}
+
 // Map a Stripe price ID to a plan, server-side only. Never trust the client.
 export function planForPriceId(priceId: string | null | undefined): PlanId | null {
-  if (!priceId) return null;
   const env = (globalThis as { Deno?: { env: { get(k: string): string | undefined } } }).Deno?.env;
-  const starter = env?.get('STRIPE_STARTER_PRICE_ID') ?? env?.get('STRIPE_PRICE_STARTER');
-  const pro = env?.get('STRIPE_PRO_PRICE_ID') ?? env?.get('STRIPE_PRICE_PRO');
-  const ultra = env?.get('STRIPE_ULTRA_PRICE_ID') ?? env?.get('STRIPE_PRICE_ULTRA');
-  const apex = env?.get('STRIPE_APEX_PRICE_ID') ?? env?.get('STRIPE_PRICE_APEX');
-  if (priceId === starter) return 'starter';
-  if (priceId === pro) return 'pro';
-  if (priceId === ultra) return 'ultra';
-  if (priceId === apex) return 'apex';
-  return null;
+  return planForPriceMapping(priceId, {
+    starter: env?.get('STRIPE_STARTER_PRICE_ID') ?? env?.get('STRIPE_PRICE_STARTER'),
+    pro: env?.get('STRIPE_PRO_PRICE_ID') ?? env?.get('STRIPE_PRICE_PRO'),
+    ultra: env?.get('STRIPE_ULTRA_PRICE_ID') ?? env?.get('STRIPE_PRICE_ULTRA'),
+    apex: env?.get('STRIPE_APEX_PRICE_ID') ?? env?.get('STRIPE_PRICE_APEX'),
+  });
 }
 
 // Restrictive CORS: the desktop app runs under tauri://localhost and the dev
@@ -64,7 +79,8 @@ export function corsHeaders(origin: string | null): Record<string, string> {
   const allow = origin && ALLOWED_ORIGINS.has(origin) ? origin : 'tauri://localhost';
   return {
     'access-control-allow-origin': allow,
-    'access-control-allow-headers': 'authorization, x-client-info, apikey, content-type',
+    'access-control-allow-headers':
+      'authorization, x-client-info, apikey, content-type, x-idempotency-key',
     'access-control-allow-methods': 'POST, GET, OPTIONS',
     'vary': 'Origin',
   };

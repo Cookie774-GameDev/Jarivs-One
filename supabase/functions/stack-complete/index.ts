@@ -3,8 +3,11 @@
 // Auth ΓåÆ plan budget reserve ΓåÆ provider allowlist ΓåÆ stream SSE to client.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.46.2';
+import { buildUsageIdempotencyKey } from '../_shared/billingSecurity.ts';
+import { reserveMeteredUsage, settleMeteredUsage } from '../_shared/metering.ts';
 import { json } from '../_shared/voice.ts';
 import {
+  buildMessageReservationEstimate,
   estimateMessageCostUsd,
   MAX_PROMPT_CHARS,
 } from '../_shared/budget.ts';
@@ -91,10 +94,6 @@ function boundedNumber(value: unknown, fallback: number, min: number, max: numbe
   return Math.min(max, Math.max(min, n));
 }
 
-function boundedInteger(value: unknown, fallback: number, min: number, max: number): number {
-  return Math.round(boundedNumber(value, fallback, min, max));
-}
-
 function timeoutSignal(ms: number): AbortSignal {
   const c = new AbortController();
   setTimeout(() => c.abort(), ms);
@@ -109,7 +108,7 @@ async function streamOpenAICompatible(
   url: string,
   apiKey: string,
   body: Record<string, unknown>,
-  onUsage?: (usage: ProviderUsage) => Promise<void>,
+  onUsage?: (usage: ProviderUsage, outcome: 'completed' | 'failed' | 'canceled') => Promise<void>,
 ): Promise<ReadableStream<Uint8Array>> {
   const upstream = await fetch(url, {
     method: 'POST',
@@ -129,43 +128,57 @@ async function streamOpenAICompatible(
   let buffer = '';
   let promptTokens = 0;
   let completionTokens = 0;
+  let finalized = false;
+
+  const finalize = async (outcome: 'completed' | 'failed' | 'canceled') => {
+    if (finalized) return;
+    finalized = true;
+    if (onUsage) await onUsage({
+      prompt_tokens: promptTokens,
+      completion_tokens: completionTokens,
+    }, outcome);
+  };
 
   return new ReadableStream({
     async pull(controller) {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          const usage = { prompt_tokens: promptTokens, completion_tokens: completionTokens };
-          controller.enqueue(new TextEncoder().encode(
-            sseLine({
-              done: true,
-              usage,
-            }),
-          ));
-          if (onUsage) void onUsage(usage);
-          controller.close();
-          return;
-        }
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          const raw = line.slice(6).trim();
-          if (!raw || raw === '[DONE]') continue;
-          try {
-            const j = JSON.parse(raw);
-            const delta = j.choices?.[0]?.delta?.content ?? '';
-            if (delta) controller.enqueue(new TextEncoder().encode(sseLine({ delta })));
-            if (j.usage) {
-              promptTokens = j.usage.prompt_tokens ?? promptTokens;
-              completionTokens = j.usage.completion_tokens ?? completionTokens;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            const usage = { prompt_tokens: promptTokens, completion_tokens: completionTokens };
+            await finalize('completed');
+            controller.enqueue(new TextEncoder().encode(sseLine({ done: true, usage })));
+            controller.close();
+            return;
+          }
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() ?? '';
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const raw = line.slice(6).trim();
+            if (!raw || raw === '[DONE]') continue;
+            try {
+              const j = JSON.parse(raw);
+              const delta = j.choices?.[0]?.delta?.content ?? '';
+              if (delta) controller.enqueue(new TextEncoder().encode(sseLine({ delta })));
+              if (j.usage) {
+                promptTokens = j.usage.prompt_tokens ?? promptTokens;
+                completionTokens = j.usage.completion_tokens ?? completionTokens;
+              }
+            } catch {
+              // Ignore malformed provider lines; the final usage still settles.
             }
-          } catch {
-            // skip
           }
         }
+      } catch {
+        await finalize('failed');
+        controller.error(new Error('upstream_error'));
       }
+    },
+    async cancel() {
+      await reader.cancel();
+      await finalize('canceled');
     },
   });
 }
@@ -210,7 +223,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  const { data: appAdminFlag } = await admin.rpc('is_app_admin', { p_user_id: userId });
+  const { data: appAdminFlag, error: adminErr } = await admin.rpc('is_app_admin', { p_user_id: userId });
+  if (adminErr) return json({ error: 'usage_unavailable' }, 503, origin);
   const appAdmin = Boolean(appAdminFlag);
 
   const windowStart = new Date(Math.floor(Date.now() / RATE_WINDOW_MS) * RATE_WINDOW_MS).toISOString();
@@ -222,57 +236,73 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ error: 'rate_limited' }, 429, origin);
   }
 
-  const estPromptTokens = Math.ceil(promptChars / 4);
-  const estCost = estimateMessageCostUsd(estPromptTokens, EST_COMPLETION_TOKENS);
+  const estimate = buildMessageReservationEstimate(
+    promptChars,
+    body.max_tokens,
+    EST_COMPLETION_TOKENS,
+    MAX_COMPLETION_TOKENS,
+  );
+  const estCost = estimate.estimatedCostUsd;
+  let reservationId: string | null = null;
   let settled = false;
-  const settle = async (actualCost: number) => {
-    if (appAdmin || settled) return;
-    settled = true;
-    await admin.rpc('settle_message_budget', {
-      p_user_id: userId,
-      p_reserved: estCost,
-      p_actual: Math.max(0, actualCost),
+  const settle = async (actualCost: number, status: 'settled' | 'released' = 'settled') => {
+    if (settled || !reservationId) return true;
+    const ok = await settleMeteredUsage(admin, {
+      userId,
+      reservationId,
+      actualUsd: Math.max(0, actualCost),
+      status,
     });
+    if (ok) settled = true;
+    return ok;
   };
-  if (!appAdmin) {
-    const { data: reservation, error: reserveErr } = await admin
-      .rpc('reserve_message_budget', { p_user_id: userId, p_estimate_usd: estCost });
-    if (reserveErr) return json({ error: 'usage_unavailable' }, 500, origin);
-    const reserved = reservation as { ok: boolean; reason?: string } | null;
-    if (!reserved?.ok) {
-      return json({ error: 'budget_exceeded', reason: reserved?.reason ?? 'budget', fallback: 'byok_or_local' }, 402, origin);
-    }
+  const reserved = await reserveMeteredUsage(admin, {
+      userId,
+      kind: 'message',
+      estimateUsd: estCost,
+      idempotencyKey: buildUsageIdempotencyKey('stack', req.headers.get('x-idempotency-key')),
+      context: { provider, model, operation: 'stack' },
+  });
+  if (!reserved?.ok) {
+    return json({ error: 'budget_exceeded', reason: reserved?.reason ?? 'budget', fallback: 'byok_or_local' }, 402, origin);
   }
+  if (reserved.duplicate) return json({ error: 'duplicate_request' }, 409, origin);
+  reservationId = reserved.reservationId;
 
   const url = OPENAI_COMPAT_URLS[provider];
-  if (!url) return json({ error: 'provider_not_implemented' }, 501, origin);
+  if (!url) {
+    if (!await settle(0, 'released')) return json({ error: 'usage_unavailable' }, 503, origin);
+    return json({ error: 'provider_not_implemented' }, 501, origin);
+  }
 
   try {
-    const maxTokens = boundedInteger(body.max_tokens, EST_COMPLETION_TOKENS, 1, MAX_COMPLETION_TOKENS);
     const temperature = boundedNumber(body.temperature, 0.5, 0, 1);
     const stream = await streamOpenAICompatible(url, apiKey, {
       model,
       messages: chatMessages,
       temperature,
-      max_tokens: maxTokens,
-    }, async (usage) => {
-      const actualCost = usage.prompt_tokens || usage.completion_tokens
+      max_tokens: estimate.completionTokens,
+    }, async (usage, outcome) => {
+      const actualCost = outcome === 'completed' && (usage.prompt_tokens || usage.completion_tokens)
         ? estimateMessageCostUsd(usage.prompt_tokens, usage.completion_tokens)
-        : estCost;
-      await settle(actualCost);
-      await admin.rpc('record_usage_event', {
+        : outcome === 'completed' ? estCost : 0;
+      if (!await settle(actualCost, outcome === 'completed' ? 'settled' : 'released')) {
+        throw new Error('settlement_failed');
+      }
+      const { error: eventErr } = await admin.rpc('record_usage_event', {
         p_kind: 'stack',
         p_user_id: userId,
         p_payload: {
           provider,
           model,
-          status: 'ok',
+          status: outcome === 'completed' ? 'ok' : outcome,
           estimated_cost_usd: estCost,
           actual_cost_usd: actualCost,
           prompt_tokens: usage.prompt_tokens,
           completion_tokens: usage.completion_tokens,
         },
       });
+      if (eventErr) console.error('stack_usage_event_write_failed');
     });
 
     return new Response(stream, {
@@ -284,12 +314,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
       },
     });
   } catch (e) {
-    await settle(0);
-    await admin.rpc('record_usage_event', {
+    if (!await settle(0, 'released')) return json({ error: 'usage_unavailable' }, 503, origin);
+    const { error: eventErr } = await admin.rpc('record_usage_event', {
       p_kind: 'stack',
       p_user_id: userId,
       p_payload: { provider, model, status: 'error', estimated_cost_usd: estCost },
     });
+    if (eventErr) console.error('stack_usage_event_write_failed');
     return json({ error: 'provider_unavailable' }, 502, origin);
   }
 });

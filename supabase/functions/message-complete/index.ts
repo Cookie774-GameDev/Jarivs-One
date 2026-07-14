@@ -4,21 +4,22 @@
 // Free users + BYOK/local routes do NOT come here (the client uses its own
 // key/local model). This endpoint is only for company-paid hosted inference:
 //   auth -> validate -> provider configured? -> rate-limit (fail closed)
-//   -> admin? skip budget : reserve budget atomically (monthly + weekly + 5h
+//   -> reserve budget atomically (admins receive a zero-charge audit row;
+//      paid users consume monthly + weekly + 5h
 //   windows enforced in the RPC) -> call DeepSeek -> settle actual cost
 //   -> record event.
 // On any failure returns a safe coded error so the client can fall back to a
 // cheaper/local/BYOK route.
 //
-// App admins (app_admins table) bypass quota reservation but the response is
-// otherwise identical. Admin chat normally uses BYOK keys client-side and
-// never reaches this endpoint.
+// App admins remain quota-unlimited, but their provider usage is still audited.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.46.2';
+import { buildUsageIdempotencyKey } from '../_shared/billingSecurity.ts';
+import { reserveMeteredUsage, settleMeteredUsage } from '../_shared/metering.ts';
 import { json } from '../_shared/voice.ts';
 import {
+  buildMessageReservationEstimate,
   deepseekActualCostUsd,
-  estimateMessageCostUsd,
   MAX_PROMPT_CHARS,
 } from '../_shared/budget.ts';
 
@@ -80,7 +81,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  const { data: appAdminFlag } = await admin.rpc('is_app_admin', { p_user_id: userId });
+  const { data: appAdminFlag, error: adminErr } = await admin.rpc('is_app_admin', { p_user_id: userId });
+  if (adminErr) return json({ error: 'usage_unavailable' }, 503, origin);
   const appAdmin = Boolean(appAdminFlag);
 
   // Rate limit (fail closed: a broken limiter cannot be bypassed).
@@ -95,18 +97,28 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   // Reserve budget from an estimate (~prompt tokens + assumed completion).
   // The RPC enforces monthly + weekly (25%) + 5-hour (8%) windows atomically.
-  const estPromptTokens = Math.ceil(promptChars / 4);
-  const estCost = estimateMessageCostUsd(estPromptTokens, EST_COMPLETION_TOKENS);
-  if (!appAdmin) {
-    const { data: reservation, error: reserveErr } = await admin
-      .rpc('reserve_message_budget', { p_user_id: userId, p_estimate_usd: estCost });
-    if (reserveErr) return json({ error: 'usage_unavailable' }, 500, origin);
-    const reserved = reservation as { ok: boolean; reason?: string; remaining_usd?: number; retry_after?: string } | null;
-    if (!reserved?.ok) {
-      await admin.rpc('record_usage_event', {
+  const estimate = buildMessageReservationEstimate(
+    promptChars,
+    EST_COMPLETION_TOKENS,
+    EST_COMPLETION_TOKENS,
+    EST_COMPLETION_TOKENS,
+  );
+  const estPromptTokens = estimate.promptTokens;
+  const estCost = estimate.estimatedCostUsd;
+  let reservationId: string | null = null;
+  const reserved = await reserveMeteredUsage(admin, {
+      userId,
+      kind: 'message',
+      estimateUsd: estCost,
+      idempotencyKey: buildUsageIdempotencyKey('message', req.headers.get('x-idempotency-key')),
+      context: { provider: 'deepseek', model },
+  });
+  if (!reserved?.ok) {
+      const { error: eventErr } = await admin.rpc('record_usage_event', {
         p_kind: 'message', p_user_id: userId,
         p_payload: { provider: 'deepseek', model, status: 'blocked', error_code: reserved?.reason ?? 'budget' },
       });
+      if (eventErr) return json({ error: 'usage_unavailable' }, 503, origin);
       const reason = reserved?.reason ?? 'budget';
       const isWindow = reason === 'window_5h_exceeded' || reason === 'window_weekly_exceeded';
       return json(
@@ -119,8 +131,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
         isWindow ? 429 : 402,
         origin,
       );
-    }
   }
+  if (reserved.duplicate) return json({ error: 'duplicate_request' }, 409, origin);
+  reservationId = reserved.reservationId;
 
   // Streaming-safe: we always request a non-streamed completion so `usage`
   // is present for exact settlement (client streaming is handled locally).
@@ -129,24 +142,34 @@ Deno.serve(async (req: Request): Promise<Response> => {
     upstream = await fetch(DEEPSEEK_URL, {
       method: 'POST',
       headers: { authorization: `Bearer ${DEEPSEEK_API_KEY}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ model, messages, stream: false }),
+      body: JSON.stringify({
+        model,
+        messages,
+        stream: false,
+        max_tokens: estimate.completionTokens,
+      }),
       signal: timeoutSignal(PROVIDER_TIMEOUT_MS),
     });
   } catch {
-    if (!appAdmin) {
-      await admin.rpc('settle_message_budget', { p_user_id: userId, p_reserved: estCost, p_actual: 0 });
+    if (reservationId && !await settleMeteredUsage(admin, {
+      userId, reservationId, actualUsd: 0, status: 'released',
+    })) {
+      return json({ error: 'usage_unavailable' }, 503, origin);
     }
     return json({ error: 'provider_unavailable', fallback: 'byok_or_local' }, 502, origin);
   }
 
   if (!upstream.ok) {
-    if (!appAdmin) {
-      await admin.rpc('settle_message_budget', { p_user_id: userId, p_reserved: estCost, p_actual: 0 });
+    if (reservationId && !await settleMeteredUsage(admin, {
+      userId, reservationId, actualUsd: 0, status: 'released',
+    })) {
+      return json({ error: 'usage_unavailable' }, 503, origin);
     }
-    await admin.rpc('record_usage_event', {
+    const { error: eventErr } = await admin.rpc('record_usage_event', {
       p_kind: 'message', p_user_id: userId,
       p_payload: { provider: 'deepseek', model, status: 'error', error_code: `provider_${upstream.status}` },
     });
+    if (eventErr) return json({ error: 'usage_unavailable' }, 503, origin);
     return json({ error: 'provider_error', fallback: 'byok_or_local' }, 502, origin);
   }
 
@@ -154,8 +177,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
   try {
     result = await upstream.json();
   } catch {
-    if (!appAdmin) {
-      await admin.rpc('settle_message_budget', { p_user_id: userId, p_reserved: estCost, p_actual: 0 });
+    if (reservationId && !await settleMeteredUsage(admin, {
+      userId, reservationId, actualUsd: 0, status: 'released',
+    })) {
+      return json({ error: 'usage_unavailable' }, 503, origin);
     }
     return json({ error: 'provider_error', fallback: 'byok_or_local' }, 502, origin);
   }
@@ -167,10 +192,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
     prompt_cache_hit_tokens: usage.prompt_cache_hit_tokens,
     prompt_cache_miss_tokens: usage.prompt_cache_miss_tokens,
   });
-  if (!appAdmin) {
-    await admin.rpc('settle_message_budget', { p_user_id: userId, p_reserved: estCost, p_actual: actualCost });
+  if (reservationId && !await settleMeteredUsage(admin, {
+    userId, reservationId, actualUsd: actualCost, status: 'settled',
+  })) {
+    return json({ error: 'usage_unavailable' }, 503, origin);
   }
-  await admin.rpc('record_usage_event', {
+  const { error: eventErr } = await admin.rpc('record_usage_event', {
     p_kind: 'message', p_user_id: userId,
     p_payload: {
       provider: 'deepseek', model,
@@ -181,6 +208,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       status: 'ok',
     },
   });
+  if (eventErr) return json({ error: 'usage_unavailable' }, 503, origin);
 
   return json({ message: result.choices?.[0]?.message ?? null, usage }, 200, origin);
 });

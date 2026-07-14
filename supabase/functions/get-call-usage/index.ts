@@ -13,6 +13,7 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 Deno.serve(async (req: Request): Promise<Response> => {
   const origin = req.headers.get('origin');
   if (req.method === 'OPTIONS') return new Response(null, { headers: json({}, 200, origin).headers });
+  if (req.method !== 'GET' && req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405, origin);
 
   const jwt = (req.headers.get('authorization') || '').match(/^Bearer\s+(.+)$/i)?.[1];
   if (!jwt) return json({ error: 'unauthorized' }, 401, origin);
@@ -26,18 +27,25 @@ Deno.serve(async (req: Request): Promise<Response> => {
   });
 
   const usageCols = 'plan, monthly_budget_usd, used_usd, used_seconds';
-  const [{ data: call }, { data: msg }, { data: sms }] = await Promise.all([
+  const [callResult, messageResult, smsResult] = await Promise.all([
     admin.from('call_usage').select(usageCols).eq('user_id', userId).maybeSingle(),
     admin.from('message_usage').select('plan, used_usd').eq('user_id', userId).maybeSingle(),
     admin.from('sms_usage').select('used_usd').eq('user_id', userId).maybeSingle(),
   ]);
+  if (callResult.error || messageResult.error || smsResult.error) {
+    return json({ error: 'usage_unavailable' }, 503, origin);
+  }
+  const call = callResult.data;
+  const msg = messageResult.data;
+  const sms = smsResult.data;
 
   const plan = call?.plan ?? msg?.plan ?? 'free';
-  const { data: limits } = await admin
+  const { data: limits, error: limitsErr } = await admin
     .from('subscription_plan_limits')
     .select('call_minutes, message_budget_usd, call_budget_usd, sms_budget_usd')
     .eq('plan', plan)
     .maybeSingle();
+  if (limitsErr || !limits) return json({ error: 'usage_unavailable' }, 503, origin);
 
   const poolBudgetUsd =
     Number(limits?.message_budget_usd ?? 0) +

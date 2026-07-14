@@ -57,7 +57,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
       const { data: spark, error: sparkErr } = await service.rpc('claim_launch_spark_promo', {
         p_user_id: userId,
       });
-      if (!sparkErr && spark) {
+      if (sparkErr) return json({ ok: false, reason: 'rpc_error' }, 200, origin);
+      if (spark) {
         const sparkResult = spark as Record<string, unknown>;
         if (sparkResult.ok) result = sparkResult;
       }

@@ -1,0 +1,77 @@
+{
+  "version": "5",
+  "remote": {
+    "https://esm.sh/@supabase/supabase-js@2.46.2": "539c8cec917a5316008a50e04e4c1577aacc5dfb7a4797f74bf50c7845affcab",
+    "https://esm.sh/stripe@14.21.0?target=deno": "c68b76780452938e9bbae9e312323e97869ccbdafeb83ddf372746ffa52f6b66"
+  },
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:playwright-core@^1.61.1",
+        "npm:prettier@^3.3.3"
+      ]
+    },
+    "members": {
+      "app": {
+        "packageJson": {
+          "dependencies": [
+            "npm:@fontsource/fraunces@^5.2.9",
+            "npm:@fontsource/inter@^5.2.8",
+            "npm:@fontsource/jetbrains-mono@^5.2.8",
+            "npm:@fontsource/plus-jakarta-sans@^5.2.8",
+            "npm:@radix-ui/react-checkbox@^1.1.3",
+            "npm:@radix-ui/react-dialog@^1.1.4",
+            "npm:@radix-ui/react-label@^2.1.1",
+            "npm:@radix-ui/react-popover@^1.1.4",
+            "npm:@radix-ui/react-select@^2.1.4",
+            "npm:@radix-ui/react-separator@^1.1.1",
+            "npm:@radix-ui/react-slot@^1.1.1",
+            "npm:@radix-ui/react-switch@^1.1.2",
+            "npm:@radix-ui/react-tabs@^1.1.2",
+            "npm:@radix-ui/react-tooltip@^1.1.6",
+            "npm:@supabase/supabase-js@^2.46.2",
+            "npm:@tauri-apps/api@^2.2.0",
+            "npm:@tauri-apps/cli@^2.2.0",
+            "npm:@tauri-apps/plugin-dialog@^2.7.1",
+            "npm:@tauri-apps/plugin-http@^2.5.9",
+            "npm:@tauri-apps/plugin-process@^2.3.1",
+            "npm:@tauri-apps/plugin-updater@^2.10.1",
+            "npm:@testing-library/dom@^10.4.1",
+            "npm:@testing-library/react@^16.3.2",
+            "npm:@types/node@^22.10.5",
+            "npm:@types/react-dom@^18.3.5",
+            "npm:@types/react@^18.3.18",
+            "npm:@vitejs/plugin-react@^4.3.4",
+            "npm:@vitest/ui@^4.1.7",
+            "npm:autoprefixer@^10.4.20",
+            "npm:class-variance-authority@~0.7.1",
+            "npm:clsx@^2.1.1",
+            "npm:cmdk@^1.0.4",
+            "npm:date-fns@^4.1.0",
+            "npm:dexie-react-hooks@^1.1.7",
+            "npm:dexie@^4.0.10",
+            "npm:jsdom@^29.1.1",
+            "npm:livekit-client@^2.19.1",
+            "npm:lucide-react@0.469",
+            "npm:motion@^11.15.0",
+            "npm:nanoid@^5.0.9",
+            "npm:pixi.js@^8.19.0",
+            "npm:postcss@^8.4.49",
+            "npm:react-dom@^18.3.1",
+            "npm:react@^18.3.1",
+            "npm:tailwind-merge@^2.6.0",
+            "npm:tailwindcss@^3.4.17",
+            "npm:typescript@^5.6.3",
+            "npm:vite@^5.4.11",
+            "npm:vitest@^4.1.7",
+            "npm:xterm-addon-fit@0.8",
+            "npm:xterm-addon-web-links@0.9",
+            "npm:xterm-addon-webgl@0.16",
+            "npm:xterm@^5.3.0",
+            "npm:zustand@^5.0.2"
+          ]
+        }
+      }
+    }
+  }
+}
