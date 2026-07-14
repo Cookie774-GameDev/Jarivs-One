@@ -15,6 +15,7 @@ import {
   getFoundryHardwareProfile,
   getFoundryTrainingRuntimeStatus,
   installFoundryTrainingDependencies,
+  inspectFoundryArtifact,
   listenFoundryWorkerMessages,
   resumeFoundryTraining,
   startFoundryTraining,
@@ -38,6 +39,7 @@ const defaultDependencies: FixtureBackendDependencies = {
   clock: () => new Date().toISOString(),
   idFactory: (kind) => `${kind}-${crypto.randomUUID()}`,
 };
+const NATIVE_RUN_STORAGE_KEY = 'vibespace.model-foundry.native-runs.v1';
 
 function unwrap<T>(result: FoundryResult<T>): T { if (!result.ok) throw new Error(result.error.message); return result.value }
 function titleCase(value: string) { return value.charAt(0).toUpperCase() + value.slice(1) }
@@ -48,6 +50,16 @@ interface NativeRunState {
   readonly progress: number;
   readonly terminal: boolean;
   readonly detail: string;
+}
+
+function readPersistedNativeRun(storage: StorageAdapter, projectId: string): NativeRunState | null {
+  try {
+    const parsed = JSON.parse(storage.getItem(NATIVE_RUN_STORAGE_KEY) ?? '{}') as Record<string, unknown>;
+    const candidate = parsed[projectId];
+    if (!candidate || typeof candidate !== 'object') return null;
+    const run = candidate as Partial<NativeRunState>;
+    return typeof run.jobId === 'string' && typeof run.phase === 'string' && typeof run.progress === 'number' && typeof run.terminal === 'boolean' && typeof run.detail === 'string' ? run as NativeRunState : null;
+  } catch { return null; }
 }
 
 function StepCard({ icon, title, detail, complete }: { icon: React.ReactNode; title: string; detail: string; complete: boolean }) {
@@ -77,6 +89,8 @@ export function FoundryPage({ storage = browserStorage, dependencies = defaultDe
   const [routingMode, setRoutingMode] = React.useState<FoundryDeploymentRecord['routingMode']>('manual');
   const [trafficPercent, setTrafficPercent] = React.useState(100);
   const [feedbackConsent, setFeedbackConsent] = React.useState(false);
+  const [realConfig, setRealConfig] = React.useState({ method: 'lora' as 'lora' | 'qlora', seed: 7, epochs: 1, batchSize: 1, gradientAccumulation: 4, maxSequenceLength: 256, learningRate: 0.0002, loraRank: 8, loraAlpha: 16, loraDropout: 0.05 });
+  const projectId = snapshot?.project.id;
 
   React.useEffect(() => {
     const loaded = repository.load();
@@ -88,6 +102,20 @@ export function FoundryPage({ storage = browserStorage, dependencies = defaultDe
       if (!saved.ok) setError(saved.error.message); else setSnapshot(restored.value);
     } else setError(restored.error.message);
   }, [backend, repository]);
+
+  React.useEffect(() => {
+    if (!projectId) return;
+    const restored = readPersistedNativeRun(storage, projectId);
+    setNativeRun(restored?.terminal ? restored : restored ? { ...restored, phase: 'interrupted', terminal: true, detail: 'The desktop app restarted. Resume from the last verified checkpoint.' } : null);
+  }, [projectId, storage]);
+
+  React.useEffect(() => {
+    if (!projectId || !nativeRun) return;
+    try {
+      const parsed = JSON.parse(storage.getItem(NATIVE_RUN_STORAGE_KEY) ?? '{}') as Record<string, NativeRunState>;
+      storage.setItem(NATIVE_RUN_STORAGE_KEY, JSON.stringify({ ...parsed, [projectId]: nativeRun }));
+    } catch { /* Local run-state persistence is optional. */ }
+  }, [nativeRun, projectId, storage]);
 
   React.useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -104,6 +132,13 @@ export function FoundryPage({ storage = browserStorage, dependencies = defaultDe
       setNativeRun((current) => current?.jobId === event.jobId
         ? { ...current, phase, progress, detail, terminal: message.type === 'result' }
         : current);
+      if (message.type === 'result' && phase === 'completed') {
+        void inspectFoundryArtifact(event.projectId, event.jobId).then((artifact) => {
+          setNativeRun((current) => current?.jobId === event.jobId
+            ? { ...current, detail: `Verified adapter artifact (${Object.keys(artifact.adapterFiles).length} files, ${artifact.manifestSha256.slice(0, 12)}…).`, terminal: true }
+            : current);
+        }).catch((caught) => setError(caught instanceof Error ? caught.message : 'Completed artifact verification failed.'));
+      }
     }).then((dispose) => { unlisten = dispose; });
     return () => unlisten?.();
   }, []);
@@ -116,7 +151,6 @@ export function FoundryPage({ storage = browserStorage, dependencies = defaultDe
   const refresh = React.useCallback((projectId: string) => commit(unwrap(backend.getProject(projectId))), [backend, commit]);
   const act = (operation: () => void) => { try { operation() } catch (caught) { setError(caught instanceof Error ? caught.message : 'Foundry operation failed.') } };
 
-  const projectId = snapshot?.project.id;
   const activeJob = snapshot?.trainingJobs.at(-1);
   const candidate = snapshot?.modelVersions.at(-1);
   const evaluation = snapshot?.evaluationRuns.at(-1);
@@ -166,9 +200,10 @@ const downloadSelectedModel = async () => {
     finally { setRuntimeBusy(false); }
   };
   const installTrainingRuntime = async () => {
+    const includeQlora = realConfig.method === 'qlora';
     if (!runtimeApproval) return;
     setRuntimeBusy(true);
-    try { setTrainingRuntime(await installFoundryTrainingDependencies()); setError(null); }
+    try { setTrainingRuntime(await installFoundryTrainingDependencies(includeQlora)); setError(null); }
     catch (caught) { setError(caught instanceof Error ? caught.message : 'Training runtime installation failed.'); }
     finally { setRuntimeBusy(false); }
   };
@@ -177,6 +212,7 @@ const downloadSelectedModel = async () => {
     const runtime = await getFoundryTrainingRuntimeStatus();
     setTrainingRuntime(runtime);
     if (!runtime.installed) throw new Error('Install the pinned LoRA runtime before starting real training.');
+    if (realConfig.method === 'qlora' && !runtime.qloraInstalled) throw new Error('Install the optional pinned QLoRA add-on before starting a QLoRA run.');
     if (!downloadStatus?.startsWith('Verified')) throw new Error('Download and verify the complete pinned base-model snapshot first.');
     const trainExamples = snapshot.datasetVersion.examples.filter((example) => example.split === 'train').map((example) => ({ prompt: example.input, completion: example.expectedOutput }));
     const validationExamples = snapshot.datasetVersion.examples.filter((example) => example.split === 'validation').map((example) => ({ prompt: example.input, completion: example.expectedOutput }));
@@ -199,7 +235,7 @@ const downloadSelectedModel = async () => {
         datasetApproved: true,
         trainExamples,
         validationExamples,
-        trainingConfig: { method: 'lora', seed: 7, epochs: 1, batchSize: 1, gradientAccumulation: 4, maxSequenceLength: 256, learningRate: 0.0002, loraRank: 8, loraAlpha: 16, loraDropout: 0.05 },
+        trainingConfig: realConfig,
       });
     } catch (caught) {
       setNativeRun((current) => current?.jobId === jobId ? { ...current, phase: 'failed', terminal: true, detail: caught instanceof Error ? caught.message : 'Could not start real training.' } : current);
@@ -269,7 +305,7 @@ const downloadSelectedModel = async () => {
 <Card className="border-cyan-500/20"><CardContent className="flex flex-wrap items-center justify-between gap-4 pt-4"><div className="flex items-start gap-3"><Gauge className="mt-0.5 h-5 w-5 text-cyan-400" /><div><div className="text-ui-strong">Device readiness</div>{hardware ? <><div className="text-secondary text-muted-foreground">{hardware.native ? `${hardware.os} · ${hardware.architecture} · ${hardware.logicalCores} logical cores` : hardware.acceleratorDetail}</div><div className="mt-1 text-metadata text-amber-200">Recommendation: {hardware.recommendedMode.replaceAll('_', ' ')}</div></> : <div className="text-secondary text-muted-foreground">Run an honest local check before choosing real training.</div>}</div></div><Button onClick={() => void checkHardware()} disabled={checkingHardware}>{checkingHardware ? 'Checking device…' : 'Check this device'}</Button></CardContent></Card>
 <Card className="border-violet-500/20"><CardHeader><CardTitle>Real training runtime</CardTitle><CardDescription>The fixture worker is lightweight. Real LoRA uses a separate, hash-pinned Python environment and is installed only after approval.</CardDescription></CardHeader><CardContent className="space-y-3"><div className="text-secondary text-muted-foreground">{trainingRuntime?.detail ?? 'Not checked on this device.'}</div>{!trainingRuntime?.installed && <label className="flex items-start gap-2 text-secondary"><input type="checkbox" checked={runtimeApproval} onChange={(event) => setRuntimeApproval(event.target.checked)} className="mt-0.5" /><span>I approve installing the pinned real-training stack. This can be a multi-gigabyte download; it stays inside VibeSpace app data and does not modify global Python.</span></label>}<div className="flex flex-wrap gap-2"><Button variant="outline" disabled={runtimeBusy} onClick={() => void inspectTrainingRuntime()}>{runtimeBusy ? 'Working…' : 'Check training runtime'}</Button>{!trainingRuntime?.installed && <Button variant="accent" disabled={!runtimeApproval || runtimeBusy} onClick={() => void installTrainingRuntime()}>Install pinned LoRA runtime</Button>}</div><p className="text-metadata text-muted-foreground">No dependency install starts automatically. QLoRA remains disabled unless CUDA and the optional pinned quantization runtime are both verified.</p></CardContent></Card><Card><CardHeader><CardTitle>Approved base models</CardTitle><CardDescription>Review source, immutable revision, license, size, and local resource estimate before selection.</CardDescription></CardHeader><CardContent className="space-y-3">{FOUNDRY_MODEL_CATALOG.map((model) => { const compatibility = modelCompatibility(model, hardware?.ramBytes ?? null); const selected = model.id === selectedModel.id; return <button key={model.id} type="button" aria-pressed={selected} onClick={() => { setSelectedModelId(model.id); setLicenseApproved(false); setDownloadStatus(null); }} className={cn('w-full rounded-lg border p-3 text-left transition-colors', selected ? 'border-cyan-400/50 bg-cyan-500/5' : 'border-border hover:bg-muted/40')}><div className="flex flex-wrap items-center justify-between gap-2"><span className="text-ui-strong">{model.name}</span><div className="flex gap-2"><Badge variant="outline">{model.license}</Badge><Badge variant="outline">{compatibility}</Badge></div></div><div className="mt-1 text-metadata text-muted-foreground">{model.publisher} · {model.displaySize} · {model.parameterCount.toLocaleString()} parameters · {model.format}</div><div className="mt-1 truncate text-metadata text-muted-foreground">Revision {model.revision}</div></button>; })}{selectedModel.kind === 'fixture' ? <div className="text-secondary text-emerald-300">Bundled fixture metadata selected. No model download is required.</div> : <div className="space-y-3 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3"><label className="flex items-start gap-2 text-secondary"><input type="checkbox" checked={licenseApproved} onChange={(event) => setLicenseApproved(event.target.checked)} className="mt-0.5" /><span>I reviewed and approve the {selectedModel.license} license and the {selectedModel.displaySize} verified download.</span></label><div className="flex flex-wrap items-center gap-3"><Button variant="accent" disabled={!licenseApproved || Boolean(downloadStatus?.startsWith('Downloading'))} onClick={() => void downloadSelectedModel()}>Download and verify model</Button>{downloadStatus && <span className="text-metadata text-muted-foreground">{downloadStatus}</span>}</div><p className="text-metadata text-muted-foreground">Remote model code stays disabled. Only the six pinned, checksum-verified snapshot files are accepted.</p></div>}</CardContent></Card>
 {!snapshot.datasetVersion && <div className="space-y-3"><div className="flex flex-wrap gap-2">{selectedModel.kind === 'fixture' && <Button variant="accent" onClick={prepare}>Prepare approved fixture inputs</Button>}<Button variant="outline" onClick={() => setShowDatasetStudio((visible) => !visible)}>{showDatasetStudio ? 'Close Dataset Studio' : 'Open Dataset Studio'}</Button></div>{showDatasetStudio && projectId && <DatasetStudioPanel projectId={projectId} now={dependencies.clock} onVersion={attachStudioDataset} />}</div>}
-        {snapshot.datasetVersion && selectedModel.kind === 'downloadable' && <Card className="border-cyan-500/20"><CardHeader><CardTitle>Real LoRA run</CardTitle><CardDescription>Creates immutable train and validation JSONL files, verifies the pinned local snapshot again inside the worker, and never changes the requested configuration automatically.</CardDescription></CardHeader><CardContent className="space-y-3"><div className="text-secondary text-muted-foreground">{nativeRun ? nativeRun.detail : 'Requires the verified model snapshot, installed pinned runtime, and an approved dataset with train and validation splits.'}</div>{nativeRun && <><div className="flex items-center justify-between text-metadata text-muted-foreground"><span>{titleCase(nativeRun.phase.replaceAll('_', ' '))}</span><span>{Math.round(nativeRun.progress * 100)}%</span></div><div className="h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full bg-gradient-to-r from-cyan-400 to-violet-500" style={{ width: `${nativeRun.progress * 100}%` }} /></div></>}<div className="flex flex-wrap gap-2"><Button variant="accent" disabled={Boolean(nativeRun && !nativeRun.terminal)} onClick={() => void startRealTraining().catch((caught) => setError(caught instanceof Error ? caught.message : 'Real training could not start.'))}>Start real LoRA training</Button>{nativeRun?.phase === 'interrupted' && <Button variant="accent" onClick={() => void resumeRealTraining().catch((caught) => setError(caught instanceof Error ? caught.message : 'Could not resume real training.'))}>Resume real run</Button>}{nativeRun && !nativeRun.terminal && <><Button variant="outline" onClick={() => void stopRealTrainingAfterCheckpoint().catch((caught) => setError(caught instanceof Error ? caught.message : 'Could not stop after checkpoint.'))}>Stop after checkpoint</Button><Button variant="outline" onClick={() => void cancelRealTraining().catch((caught) => setError(caught instanceof Error ? caught.message : 'Could not cancel training.'))}>Cancel real run</Button></>}</div><p className="text-metadata text-muted-foreground">The fixture lifecycle remains separate. A completed real adapter is retained as a local artifact and must still pass the evaluation and promotion gates before use.</p></CardContent></Card>}
+        {snapshot.datasetVersion && selectedModel.kind === 'downloadable' && <Card className="border-cyan-500/20"><CardHeader><CardTitle>Training Lab</CardTitle><CardDescription>Build a bounded LoRA or QLoRA run from immutable local inputs. The worker refuses to silently change these settings.</CardDescription></CardHeader><CardContent className="space-y-4"><div className="grid gap-3 md:grid-cols-3"><label className="space-y-1"><span className="text-metadata text-muted-foreground">Method</span><select value={realConfig.method} onChange={(event) => setRealConfig((config) => ({ ...config, method: event.target.value as 'lora' | 'qlora' }))} className="h-9 w-full rounded-md border border-input bg-background px-3"><option value="lora">LoRA</option><option value="qlora">QLoRA (verified CUDA only)</option></select></label><label className="space-y-1"><span className="text-metadata text-muted-foreground">Epochs</span><input type="number" min={1} max={50} value={realConfig.epochs} onChange={(event) => setRealConfig((config) => ({ ...config, epochs: Number(event.target.value) }))} className="h-9 w-full rounded-md border border-input bg-background px-3" /></label><label className="space-y-1"><span className="text-metadata text-muted-foreground">Batch size</span><input type="number" min={1} max={64} value={realConfig.batchSize} onChange={(event) => setRealConfig((config) => ({ ...config, batchSize: Number(event.target.value) }))} className="h-9 w-full rounded-md border border-input bg-background px-3" /></label><label className="space-y-1"><span className="text-metadata text-muted-foreground">Gradient accumulation</span><input type="number" min={1} max={1024} value={realConfig.gradientAccumulation} onChange={(event) => setRealConfig((config) => ({ ...config, gradientAccumulation: Number(event.target.value) }))} className="h-9 w-full rounded-md border border-input bg-background px-3" /></label><label className="space-y-1"><span className="text-metadata text-muted-foreground">Sequence length</span><input type="number" min={64} max={32768} step={64} value={realConfig.maxSequenceLength} onChange={(event) => setRealConfig((config) => ({ ...config, maxSequenceLength: Number(event.target.value) }))} className="h-9 w-full rounded-md border border-input bg-background px-3" /></label><label className="space-y-1"><span className="text-metadata text-muted-foreground">LoRA rank</span><input type="number" min={1} max={512} value={realConfig.loraRank} onChange={(event) => setRealConfig((config) => ({ ...config, loraRank: Number(event.target.value), loraAlpha: Math.max(config.loraAlpha, Number(event.target.value) * 2) }))} className="h-9 w-full rounded-md border border-input bg-background px-3" /></label><label className="space-y-1"><span className="text-metadata text-muted-foreground">Learning rate</span><input type="number" min={0.000001} max={1} step={0.0001} value={realConfig.learningRate} onChange={(event) => setRealConfig((config) => ({ ...config, learningRate: Number(event.target.value) }))} className="h-9 w-full rounded-md border border-input bg-background px-3" /></label></div><div className="text-secondary text-muted-foreground">{nativeRun ? nativeRun.detail : 'Requires the verified model snapshot, installed pinned runtime, and an approved dataset with train and validation splits.'}</div>{nativeRun && <><div className="flex items-center justify-between text-metadata text-muted-foreground"><span>{titleCase(nativeRun.phase.replaceAll('_', ' '))}</span><span>{Math.round(nativeRun.progress * 100)}%</span></div><div className="h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full bg-gradient-to-r from-cyan-400 to-violet-500" style={{ width: `${nativeRun.progress * 100}%` }} /></div></>}<div className="flex flex-wrap gap-2"><Button variant="accent" disabled={Boolean(nativeRun && !nativeRun.terminal)} onClick={() => void startRealTraining().catch((caught) => setError(caught instanceof Error ? caught.message : 'Real training could not start.'))}>Start real training</Button>{nativeRun?.phase === 'interrupted' && <Button variant="accent" onClick={() => void resumeRealTraining().catch((caught) => setError(caught instanceof Error ? caught.message : 'Could not resume real training.'))}>Resume real run</Button>}{nativeRun && !nativeRun.terminal && <><Button variant="outline" onClick={() => void stopRealTrainingAfterCheckpoint().catch((caught) => setError(caught instanceof Error ? caught.message : 'Could not stop after checkpoint.'))}>Stop after checkpoint</Button><Button variant="outline" onClick={() => void cancelRealTraining().catch((caught) => setError(caught instanceof Error ? caught.message : 'Could not cancel training.'))}>Cancel real run</Button></>}</div><p className="text-metadata text-muted-foreground">QLoRA fails closed without verified CUDA and pinned bitsandbytes. Out-of-memory errors preserve this configuration and return concrete reductions to try.</p></CardContent></Card>}
         {snapshot.datasetVersion && selectedModel.kind === 'fixture' && !activeJob && <Card><CardContent className="flex flex-wrap items-center justify-between gap-3 pt-4"><div><div className="text-ui-strong">{snapshot.datasetVersion.examples.length} approved examples</div><div className="text-secondary text-muted-foreground">Fixture Base · Apache-2.0</div></div><Button onClick={startTraining}>Start fixture training</Button></CardContent></Card>}
         {activeJob && <TrainingRegion job={activeJob} active={canAdvance} onAdvance={advance} onResume={resume} />}
         {activeJob?.state === 'completed' && candidate && <EvaluationArenaPanel candidate={candidate} evaluation={evaluation} championVersionId={snapshot.championVersionId} onEvaluate={evaluate} onPromote={promote} />}

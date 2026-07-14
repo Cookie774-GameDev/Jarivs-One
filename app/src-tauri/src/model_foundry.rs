@@ -19,6 +19,8 @@ const EMBEDDED_WORKER: &str = include_str!("../workers/model_foundry/worker.py")
 const EMBEDDED_REAL_TRAINING: &str = include_str!("../workers/model_foundry/real_training.py");
 const EMBEDDED_REAL_REQUIREMENTS: &str =
     include_str!("../workers/model_foundry/requirements-real.lock");
+const EMBEDDED_QLORA_REQUIREMENTS: &str =
+    include_str!("../workers/model_foundry/requirements-qlora.lock");
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -35,6 +37,7 @@ pub struct WorkerRuntimeStatus {
 #[serde(rename_all = "camelCase")]
 pub struct RealTrainingRuntimeStatus {
     installed: bool,
+    qlora_installed: bool,
     detail: String,
 }
 #[derive(Debug, Clone, Serialize)]
@@ -118,6 +121,10 @@ fn real_training_script(root: &Path) -> PathBuf {
 
 fn real_requirements(root: &Path) -> PathBuf {
     root.join("worker").join("requirements-real.lock")
+}
+
+fn qlora_requirements(root: &Path) -> PathBuf {
+    root.join("worker").join("requirements-qlora.lock")
 }
 
 fn allowed_environment_from<I>(environment: I) -> BTreeMap<String, String>
@@ -209,6 +216,10 @@ pub(crate) fn install_embedded_worker(root: &Path) -> Result<PathBuf, String> {
     if fs::read(&requirements).ok().as_deref() != Some(EMBEDDED_REAL_REQUIREMENTS.as_bytes()) {
         atomic_write(&requirements, EMBEDDED_REAL_REQUIREMENTS.as_bytes())?;
     }
+    let qlora = qlora_requirements(root);
+    if fs::read(&qlora).ok().as_deref() != Some(EMBEDDED_QLORA_REQUIREMENTS.as_bytes()) {
+        atomic_write(&qlora, EMBEDDED_QLORA_REQUIREMENTS.as_bytes())?;
+    }
     Ok(target)
 }
 
@@ -220,6 +231,19 @@ pub(crate) fn real_training_dependencies_installed(python: &Path) -> bool {
     let mut command = hardened_command(python);
     command
         .args(["-I", "-c", verification])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    command.status().is_ok_and(|status| status.success())
+}
+
+fn qlora_dependencies_installed(python: &Path) -> bool {
+    if !python.is_file() {
+        return false;
+    }
+    let mut command = hardened_command(python);
+    command
+        .args(["-I", "-c", "from importlib.metadata import version; assert version('bitsandbytes') == '0.46.1'"])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
@@ -362,11 +386,18 @@ pub fn model_foundry_training_runtime_status(
     app: tauri::AppHandle,
 ) -> Result<RealTrainingRuntimeStatus, String> {
     let root = runtime_root(&app)?;
-    let installed = real_training_dependencies_installed(&venv_python(&root));
+    let python = venv_python(&root);
+    let installed = real_training_dependencies_installed(&python);
+    let qlora_installed = qlora_dependencies_installed(&python);
     Ok(RealTrainingRuntimeStatus {
         installed,
+        qlora_installed,
         detail: if installed {
-            "Pinned real LoRA training dependencies are installed.".into()
+            if qlora_installed {
+                "Pinned LoRA and QLoRA dependencies are installed. QLoRA still requires a verified CUDA device.".into()
+            } else {
+                "Pinned real LoRA dependencies are installed. The optional QLoRA add-on is not installed.".into()
+            }
         } else {
             "Real LoRA training dependencies are not installed. Installation is optional and requires an explicit user action.".into()
         },
@@ -376,12 +407,17 @@ pub fn model_foundry_training_runtime_status(
 #[tauri::command]
 pub fn model_foundry_install_training_dependencies(
     app: tauri::AppHandle,
+    include_qlora: Option<bool>,
 ) -> Result<RealTrainingRuntimeStatus, String> {
     model_foundry_prepare_runtime(app.clone())?;
     let root = runtime_root(&app)?;
     let python = venv_python(&root);
     install_embedded_worker(&root)?;
-    let requirements = real_requirements(&root);
+    let requirements = if include_qlora.unwrap_or(false) {
+        qlora_requirements(&root)
+    } else {
+        real_requirements(&root)
+    };
     let mut command = hardened_command(&python);
     command
         .args([
@@ -419,7 +455,7 @@ pub fn model_foundry_install_training_dependencies(
         ));
     }
     let status = model_foundry_training_runtime_status(app)?;
-    if !status.installed {
+    if !status.installed || (include_qlora.unwrap_or(false) && !status.qlora_installed) {
         return Err(
             "Training dependencies were installed but their pinned versions could not be verified."
                 .into(),

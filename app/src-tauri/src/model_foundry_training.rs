@@ -71,6 +71,17 @@ pub struct StartTrainingResult {
     job_dir: String,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RealArtifactSummary {
+    project_id: String,
+    job_id: String,
+    manifest_sha256: String,
+    adapter_files: BTreeMap<String, String>,
+    metrics: serde_json::Value,
+    training_config: serde_json::Value,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct WorkerMessageEvent {
@@ -179,6 +190,16 @@ fn serialize_examples(examples: &[NativeTrainingExample], label: &str) -> Result
 
 fn sha256_bytes(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
+}
+
+fn safe_artifact_child(root: &Path, relative: &str) -> Result<PathBuf, String> {
+    let path = Path::new(relative);
+    if path.is_absolute()
+        || path.components().any(|component| matches!(component, std::path::Component::ParentDir | std::path::Component::RootDir | std::path::Component::Prefix(_)))
+    {
+        return Err("Artifact manifest contains an unsafe file path.".into());
+    }
+    Ok(root.join(path))
 }
 
 fn safe_snapshot_file_name(value: &str) -> bool {
@@ -582,6 +603,55 @@ pub fn model_foundry_training_active(project_id: String, job_id: String) -> Resu
         .lock()
         .map(|active| active.contains_key(&job_key(&project_id, &job_id)))
         .map_err(|_| "Training job state is unavailable.".to_string())
+}
+
+#[tauri::command]
+pub fn model_foundry_inspect_artifact(
+    app: tauri::AppHandle,
+    project_id: String,
+    job_id: String,
+) -> Result<RealArtifactSummary, String> {
+    validate_storage_id(&project_id)?;
+    validate_storage_id(&job_id)?;
+    let root = runtime_root(&app)?
+        .join("projects").join(&project_id).join("jobs").join(&job_id)
+        .join("output").join("artifact");
+    let manifest_path = root.join("artifact-manifest.json");
+    let manifest_bytes = fs::read(&manifest_path)
+        .map_err(|_| "No completed adapter artifact is available for this job.".to_string())?;
+    let manifest: serde_json::Value = serde_json::from_slice(&manifest_bytes)
+        .map_err(|_| "The adapter artifact manifest is malformed.".to_string())?;
+    if manifest.get("formatVersion").and_then(serde_json::Value::as_u64) != Some(1)
+        || manifest.get("kind").and_then(serde_json::Value::as_str) != Some("peft-adapter")
+        || manifest.get("backend").and_then(serde_json::Value::as_str) != Some("real")
+    {
+        return Err("The artifact manifest does not describe a supported local adapter.".into());
+    }
+    let files = manifest.get("adapterFiles").and_then(serde_json::Value::as_object)
+        .ok_or_else(|| "The artifact manifest has no adapter file checksums.".to_string())?;
+    if files.is_empty() {
+        return Err("The artifact manifest has no adapter files.".into());
+    }
+    let mut adapter_files = BTreeMap::new();
+    for (relative, digest) in files {
+        let expected = digest.as_str().ok_or_else(|| "The artifact manifest contains an invalid checksum.".to_string())?;
+        validate_sha256(expected, "Artifact checksum")?;
+        let bytes = fs::read(safe_artifact_child(&root, relative)?)
+            .map_err(|_| "An artifact file is missing or unreadable.".to_string())?;
+        let actual = sha256_bytes(&bytes);
+        if actual != expected.to_ascii_lowercase() {
+            return Err("An adapter artifact checksum did not match its immutable manifest.".into());
+        }
+        adapter_files.insert(relative.clone(), actual);
+    }
+    Ok(RealArtifactSummary {
+        project_id,
+        job_id,
+        manifest_sha256: sha256_bytes(&manifest_bytes),
+        adapter_files,
+        metrics: manifest.get("metrics").cloned().unwrap_or_else(|| serde_json::json!({})),
+        training_config: manifest.get("trainingConfig").cloned().unwrap_or_else(|| serde_json::json!({})),
+    })
 }
 
 #[cfg(test)]

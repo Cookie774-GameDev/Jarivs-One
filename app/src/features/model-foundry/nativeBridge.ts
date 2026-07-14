@@ -73,6 +73,15 @@ export interface FoundryNativeTrainingStart {
   readonly jobDir: string;
 }
 
+export interface FoundryRealArtifactSummary {
+  readonly projectId: string;
+  readonly jobId: string;
+  readonly manifestSha256: string;
+  readonly adapterFiles: Readonly<Record<string, string>>;
+  readonly metrics: Record<string, unknown>;
+  readonly trainingConfig: Record<string, unknown>;
+}
+
 export interface FoundryWorkerMessage {
   readonly projectId: string;
   readonly jobId: string;
@@ -90,6 +99,7 @@ export interface FoundryWorkerRuntimeStatus {
 
 export interface FoundryTrainingRuntimeStatus {
   readonly installed: boolean;
+  readonly qloraInstalled: boolean;
   readonly detail: string;
 }
 export interface FoundryWorkerProbe {
@@ -134,13 +144,13 @@ export async function prepareFoundryRuntime(): Promise<FoundryWorkerRuntimeStatu
 }
 
 export async function getFoundryTrainingRuntimeStatus(): Promise<FoundryTrainingRuntimeStatus> {
-  if (!isTauri) return { installed: false, detail: 'Real LoRA training is available only in the desktop app.' };
+  if (!isTauri) return { installed: false, qloraInstalled: false, detail: 'Real LoRA training is available only in the desktop app.' };
   return invoke<FoundryTrainingRuntimeStatus>('model_foundry_training_runtime_status');
 }
 
-export async function installFoundryTrainingDependencies(): Promise<FoundryTrainingRuntimeStatus> {
+export async function installFoundryTrainingDependencies(includeQlora = false): Promise<FoundryTrainingRuntimeStatus> {
   if (!isTauri) throw new Error('Real LoRA training is available only in the desktop app.');
-  return invoke<FoundryTrainingRuntimeStatus>('model_foundry_install_training_dependencies');
+  return invoke<FoundryTrainingRuntimeStatus>('model_foundry_install_training_dependencies', { includeQlora });
 }
 
 export async function startFoundryTraining(request: FoundryNativeTrainingRequest): Promise<FoundryNativeTrainingStart> {
@@ -151,6 +161,11 @@ export async function startFoundryTraining(request: FoundryNativeTrainingRequest
 export async function resumeFoundryTraining(projectId: string, jobId: string): Promise<FoundryNativeTrainingStart> {
   if (!isTauri) throw new Error('Real LoRA training is available only in the desktop app.');
   return invoke<FoundryNativeTrainingStart>('model_foundry_resume_training', { projectId, jobId });
+}
+
+export async function inspectFoundryArtifact(projectId: string, jobId: string): Promise<FoundryRealArtifactSummary> {
+  if (!isTauri) throw new Error('Real training artifacts are available only in the desktop app.');
+  return invoke<FoundryRealArtifactSummary>('model_foundry_inspect_artifact', { projectId, jobId });
 }
 
 export async function cancelFoundryTraining(projectId: string, jobId: string): Promise<boolean> {

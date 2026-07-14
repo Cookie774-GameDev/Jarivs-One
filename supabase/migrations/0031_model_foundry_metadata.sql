@@ -85,6 +85,13 @@ create index if not exists model_foundry_jobs_project_id_idx on public.model_fou
 create index if not exists model_foundry_versions_project_id_idx on public.model_foundry_model_versions(project_id, created_at desc);
 create index if not exists model_foundry_evaluations_project_id_idx on public.model_foundry_evaluations(project_id, created_at desc);
 
+create trigger model_foundry_projects_touch_updated before update on public.model_foundry_projects
+  for each row execute function public.touch_updated_at_ts();
+create trigger model_foundry_training_jobs_touch_updated before update on public.model_foundry_training_jobs
+  for each row execute function public.touch_updated_at_ts();
+create trigger model_foundry_deployments_touch_updated before update on public.model_foundry_deployments
+  for each row execute function public.touch_updated_at_ts();
+
 alter table public.model_foundry_projects enable row level security;
 alter table public.model_foundry_dataset_versions enable row level security;
 alter table public.model_foundry_training_jobs enable row level security;
