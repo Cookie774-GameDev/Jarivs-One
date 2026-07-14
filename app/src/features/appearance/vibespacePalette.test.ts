@@ -76,22 +76,26 @@ describe('VibeSpace locked palette (shipped CSS)', () => {
     const css = readCss(vibespaceCssPath);
     expect(css).toContain("html[data-theme='vibespace'] .vs-paper-surface");
     expect(css).toContain("html[data-theme='vibespace'] .vs-folded-card");
-    expect(css).toContain('--vs-terminal-bg: #622f12');
+    expect(css).toContain('--vs-terminal-bg: #1a1410');
     expect(css).toContain('prefers-reduced-motion: reduce');
   });
 
   it('styles primary chrome under vibespace without restyling pets', () => {
     const raw = readFileSync(vibespaceCssPath, 'utf8');
     const css = raw.toLowerCase();
-    // Primary chrome hooks present
+    // Primary chrome hooks present (refs 1–5)
     expect(css).toContain("header[aria-label='application header']");
     expect(css).toContain("[data-nav-pane='true']");
     expect(css).toContain("aside[aria-label='inspector']");
     expect(css).toContain("main[aria-label='workspace']");
+    expect(css).toContain("[data-tour='chat-composer']");
     // Terminal: paper frame + dark interior (not cream over xterm glyphs)
     expect(css).toContain('.jarvis-terminal-surface');
     expect(css).toContain('.xterm-viewport');
-    expect(css).toMatch(/--vs-terminal-bg:\s*#622f12/);
+    expect(css).toMatch(/--vs-terminal-bg:\s*#1a1410/);
+    // Kraft paper surfaces (not glass)
+    expect(css).toContain('var(--vs-paper-0)');
+    expect(css).toContain('var(--vs-coral)');
     // Pets/mascot must not be restyled by this theme file
     expect(css).not.toMatch(/\[data-pet-overlay/);
     expect(css).not.toMatch(/\.pet-overlay-root/);
