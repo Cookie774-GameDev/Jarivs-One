@@ -1,17 +1,16 @@
-import { Cpu, Monitor, Moon, Sparkles, Sun } from 'lucide-react';
+import { Cpu, Moon, Sparkles, Sun } from 'lucide-react';
 import { useUIStore } from '@/stores/ui';
-import type { Theme } from '@/types/common';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
+import { SELECTABLE_THEMES, type SelectableTheme } from '@/features/appearance/themes';
 
-const THEMES: { id: Theme; label: string; icon: typeof Sun }[] = [
-  { id: 'jarvis', label: 'Jarvis Core', icon: Cpu },
-  { id: 'vibespace', label: 'VibeSpace', icon: Sparkles },
-  { id: 'dark', label: 'Dark', icon: Moon },
-  { id: 'light', label: 'Light', icon: Sun },
-  { id: 'system', label: 'System', icon: Monitor },
-];
+const THEME_ICONS: Record<SelectableTheme, typeof Sun> = {
+  jarvis: Cpu,
+  vibespace: Sparkles,
+  default: Moon,
+  light: Sun,
+};
 
 const DENSITIES: { id: 'compact' | 'cozy'; label: string; description: string }[] = [
   { id: 'compact', label: 'Compact', description: '13px text, 28px rows. Maximum density.' },
@@ -43,8 +42,8 @@ export function Appearance() {
       <section className="flex flex-col gap-3">
         <Label>Theme</Label>
         <div className="grid grid-cols-2 gap-2 max-w-md">
-          {THEMES.map((t) => {
-            const Icon = t.icon;
+          {SELECTABLE_THEMES.map((t) => {
+            const Icon = THEME_ICONS[t.id];
             const selected = theme === t.id;
             return (
               <button
@@ -70,6 +69,9 @@ export function Appearance() {
                   )}
                 >
                   {t.label}
+                </span>
+                <span className="text-metadata text-muted-foreground text-center px-2">
+                  {t.description}
                 </span>
               </button>
             );

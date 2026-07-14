@@ -6,12 +6,14 @@ import { safeLocalStorage, measureStorageSizes } from '@/lib/persistence/safeLoc
 import { syncVoiceModuleOpenState } from '@/features/voice/voiceRouter';
 import type { ProductTutorialStatus } from '@/features/product-tutorial/tutorialState';
 import { markTutorialPending } from '@/features/product-tutorial/tutorialState';
+import { migrateThemePreference } from '@/features/appearance/themes';
 
 const debouncedUiStorage = createDebouncedStateStorage(safeLocalStorage);
 
-export type ResolvedTheme = Exclude<Theme, 'system'>;
+export type ResolvedTheme = 'dark' | 'light' | 'jarvis' | 'vibespace';
 
 export function resolveTheme(theme: Theme, prefersDark?: boolean): ResolvedTheme {
+  if (theme === 'default') return 'dark';
   if (theme !== 'system') return theme;
   const dark =
     prefersDark ??
@@ -293,7 +295,7 @@ const defaults: Pick<
   settingsOpen: false,
   onboardingComplete: false,
   productTutorialStatus: null,
-  theme: 'dark',
+  theme: 'default',
   density: 'cozy',
   ambient: true,
   ambientActive: false,
@@ -446,7 +448,7 @@ export const useUIStore = create<UIState>()(
     {
       name: 'jarvis-ui',
       storage: createJSONStorage(() => debouncedUiStorage),
-      version: 3,
+      version: 4,
       migrate: (persistedState: any, version: number) => {
         let state = persistedState;
         if (version < 1) {
@@ -509,6 +511,14 @@ export const useUIStore = create<UIState>()(
               state && typeof state === 'object' && 'productTutorialStatus' in state
                 ? (state as { productTutorialStatus: ProductTutorialStatus }).productTutorialStatus
                 : null,
+          };
+        }
+        if (version < 4) {
+          state = {
+            ...(state && typeof state === 'object' ? state : {}),
+            theme: migrateThemePreference(
+              state && typeof state === 'object' ? (state as { theme?: unknown }).theme : undefined,
+            ),
           };
         }
         return state;
