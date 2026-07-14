@@ -56,6 +56,7 @@ mod branding;
 mod agent_coordination;
 mod model_foundry;
 mod model_foundry_download;
+mod model_foundry_training;
 
 /// Sanity-check command. The JS bridge can call this during startup to verify
 /// invoke() round-trips. Wire it in as needed; it returns a friendly string.
@@ -315,6 +316,10 @@ pub fn run() {
             model_foundry::model_foundry_training_runtime_status,
             model_foundry::model_foundry_install_training_dependencies,
             model_foundry::model_foundry_worker_probe,
+            model_foundry_training::model_foundry_start_training,
+            model_foundry_training::model_foundry_cancel_training,
+            model_foundry_training::model_foundry_stop_after_checkpoint,
+            model_foundry_training::model_foundry_training_active,
             model_foundry_download::model_foundry_download_model,
             model_foundry_download::model_foundry_cancel_download,
             model_foundry_download::model_foundry_cleanup_partial_download,

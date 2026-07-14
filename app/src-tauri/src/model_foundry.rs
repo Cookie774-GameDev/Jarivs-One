@@ -77,7 +77,7 @@ struct ProbeEnvelope {
     capabilities: Vec<String>,
 }
 
-fn validate_storage_id(value: &str) -> Result<(), String> {
+pub(crate) fn validate_storage_id(value: &str) -> Result<(), String> {
     if value.is_empty() || value.len() > 64 {
         return Err("Identifier must contain 1 through 64 characters.".into());
     }
@@ -90,14 +90,14 @@ fn validate_storage_id(value: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn runtime_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn runtime_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     app.path()
         .app_data_dir()
         .map(|path| path.join("model-foundry"))
         .map_err(|error| format!("Unable to resolve the application data directory: {error}"))
 }
 
-fn venv_python(root: &Path) -> PathBuf {
+pub(crate) fn venv_python(root: &Path) -> PathBuf {
     #[cfg(windows)]
     {
         root.join("runtime").join("Scripts").join("python.exe")
@@ -147,7 +147,7 @@ where
         .collect()
 }
 
-fn hardened_command(executable: &Path) -> Command {
+pub(crate) fn hardened_command(executable: &Path) -> Command {
     let mut command = Command::new(executable);
     command.env_clear();
     command.envs(allowed_environment_from(std::env::vars()));
@@ -158,7 +158,7 @@ fn hardened_command(executable: &Path) -> Command {
     command
 }
 
-fn atomic_write(path: &Path, contents: &[u8]) -> Result<(), String> {
+pub(crate) fn atomic_write(path: &Path, contents: &[u8]) -> Result<(), String> {
     let parent = path
         .parent()
         .ok_or_else(|| "Worker path has no parent directory.".to_string())?;
@@ -196,7 +196,7 @@ fn discover_bootstrap_python() -> Option<PathBuf> {
     })
 }
 
-fn install_embedded_worker(root: &Path) -> Result<PathBuf, String> {
+pub(crate) fn install_embedded_worker(root: &Path) -> Result<PathBuf, String> {
     let target = worker_script(root);
     if fs::read(&target).ok().as_deref() != Some(EMBEDDED_WORKER.as_bytes()) {
         atomic_write(&target, EMBEDDED_WORKER.as_bytes())?;
@@ -212,7 +212,7 @@ fn install_embedded_worker(root: &Path) -> Result<PathBuf, String> {
     Ok(target)
 }
 
-fn real_training_dependencies_installed(python: &Path) -> bool {
+pub(crate) fn real_training_dependencies_installed(python: &Path) -> bool {
     if !python.is_file() {
         return false;
     }
