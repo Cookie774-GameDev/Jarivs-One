@@ -374,7 +374,7 @@ const downloadSelectedModel = async () => {
   const startTraining = () => act(() => { if (!projectId) return; unwrap(backend.startTraining(projectId, { method: 'lora', config: { epochs: 1, learningRate: 0.0002, rank: 8, seed: 7, batchSize: 1, gradientAccumulationSteps: 1, sequenceLength: 256, validationSplit: 0.1 } })); refresh(projectId) });
   const advance = () => act(() => { if (!projectId || !activeJob) return; unwrap(backend.advanceTraining(projectId, activeJob.id)); refresh(projectId) });
   const resume = () => act(() => { if (!projectId || !activeJob) return; unwrap(backend.resumeTraining(projectId, activeJob.id)); refresh(projectId) });
-  const evaluate = () => act(() => { if (!projectId || !candidate) return; unwrap(backend.evaluateCandidate(projectId, candidate.id, createFixtureEvaluation(dependencies.clock()))); refresh(projectId) });
+  const evaluate = () => act(() => { if (!projectId || !candidate || !snapshot) return; unwrap(backend.evaluateCandidate(projectId, candidate.id, createFixtureEvaluation(dependencies.clock(), snapshot.project.specialist))); refresh(projectId) });
   const promote = () => act(() => { if (!projectId || !candidate || !evaluation) return; unwrap(backend.promoteCandidate(projectId, candidate.id, evaluation.id, 'local-owner', 'Passed every fixture promotion gate.')); refresh(projectId) });
 
   return <main className="h-full overflow-y-auto bg-[radial-gradient(circle_at_top_right,hsl(var(--accent-violet)/0.10),transparent_42%)] p-5 md:p-7">

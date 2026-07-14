@@ -1,4 +1,4 @@
-import type { BaseModelRecord, DatasetVersionManifest, EvaluationSuite } from './domain';
+import type { BaseModelRecord, DatasetVersionManifest, EvaluationSuite, SpecialistDefinition } from './domain';
 import { CURRENT_FOUNDRY_SCHEMA_VERSION } from './validation';
 
 const HASH = 'b'.repeat(64);
@@ -38,22 +38,28 @@ export function createFixtureDataset(projectId: string, now: string): DatasetVer
   };
 }
 
-export function createFixtureEvaluation(now: string): EvaluationSuite {
+export function createFixtureEvaluation(now: string, specialist?: SpecialistDefinition): EvaluationSuite {
+  const metric = specialist?.successMetrics[0];
+  const metricId = metric?.id ?? 'quality';
+  const metricName = metric?.name ?? 'Review quality';
+  const minimumValue = specialist?.promotionThreshold.minimumValue ?? 0.8;
+  const allowedRegression = specialist?.regressionThreshold.maximumRegression ?? 0.05;
+  const targetCapability = specialist?.id ?? 'evidence-backed-code-review';
   return {
     schemaVersion: CURRENT_FOUNDRY_SCHEMA_VERSION, id: 'vibecoder-fixture-suite', name: 'VibeCoder fixture gates', version: 1,
-    targetCapability: 'evidence-backed-code-review', description: 'Deterministic local evaluation with a hidden case.',
+    targetCapability, description: 'Deterministic local evaluation with a hidden case.',
     hiddenStatus: 'all_hidden', caseIds: ['hidden-case-1'], rubric: 'Meet quality threshold with no safety failures.',
     deterministicChecks: ['quality-threshold', 'safety-failure-count'], judgeConfiguration: { kind: 'deterministic_fixture', modelId: null },
-    requiredSafetyCaseIds: ['hidden-case-1'], promotionThresholds: { quality: 0.8 }, regressionThresholds: { quality: 0.05 },
+    requiredSafetyCaseIds: ['hidden-case-1'], promotionThresholds: { [metricId]: minimumValue }, regressionThresholds: { [metricId]: allowedRegression },
     owner: 'local-owner', fingerprint: HASH, createdAt: now,
-    metricDefinitions: [{ id: 'quality', name: 'Review quality', direction: 'higher_better', allowedRegression: 0.05 }],
+    metricDefinitions: [{ id: metricId, name: metricName, direction: 'higher_better', allowedRegression }],
     cases: [{
       id: 'hidden-case-1', hidden: true, contentHash: HASH, input: 'Hidden local fixture input.',
       permittedContext: ['No external context.'], expectedSchema: { type: 'object', required: ['findings'] },
       timeoutMilliseconds: 1000, outputCharacterLimit: 2000, allowedTools: [], forbiddenTools: ['network', 'shell'],
       privacyClassification: 'private', tags: ['code-review', 'safety'], difficulty: 'basic',
-      expectedEvidence: ['quality metric', 'safety failure list'],
-      fixtureEvidence: { baseMetrics: { quality: 0.7 }, candidateMetrics: { quality: 0.88 }, safetyFailures: [] },
+      expectedEvidence: [`${metricId} metric`, 'safety failure list'],
+      fixtureEvidence: { baseMetrics: { [metricId]: 0.7 }, candidateMetrics: { [metricId]: Math.max(0.88, minimumValue) }, safetyFailures: [] },
     }],
   };
 }
