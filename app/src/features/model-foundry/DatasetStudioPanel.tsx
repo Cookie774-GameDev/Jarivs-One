@@ -63,6 +63,7 @@ export function DatasetStudioPanel({ projectId, now, onVersion, version = 1, par
   const generateWithLocalTeacher = async () => {
     if (!teacherApproval) { setStatus('Explicit approval is required before a local promoted adapter may draft a teacher target.'); return; }
     if (!draft.input.trim()) { setStatus('Write a seed input before requesting a local teacher draft.'); return; }
+    if (scanDatasetText(draft.input).length) { setStatus('The seed is quarantined. Redact findings and scan again before local teacher generation.'); return; }
     const teacher = promotedAdapterForProject(window.localStorage, projectId);
     if (!teacher) { setStatus('Promote a passing local adapter for this project before using it as a teacher.'); return; }
     setTeacherBusy(true);

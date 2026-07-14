@@ -28,6 +28,14 @@ describe('DatasetStudioPanel', () => {
     expect(screen.getByRole('button', { name: /Redact 1 findings/ })).toBeTruthy();
   });
 
+  it('quarantines secret-bearing seeds before local teacher generation', () => {
+    render(<DatasetStudioPanel projectId="project-1" now={() => NOW} onVersion={() => undefined} />);
+    fireEvent.change(screen.getByLabelText('Input'), { target: { value: 'password=hunter22' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Approve local teacher draft' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Draft with promoted adapter' }));
+    expect(screen.getByText(/seed is quarantined/i)).toBeTruthy();
+  });
+
   it('creates a follow-on immutable dataset with lineage', async () => {
     const onVersion = vi.fn();
     render(<DatasetStudioPanel projectId="project-1" now={() => NOW} version={2} parentVersionId="vibecoder-dataset-v1" onVersion={onVersion} />);
