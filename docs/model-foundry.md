@@ -16,7 +16,7 @@ The native layer accepts only bounded identifiers, configured model revisions, a
 
 Completed adapter artifacts include an immutable manifest with adapter-file digests, base-model digests, data digests, training configuration, and numeric validation metrics. Before an artifact is presented as ready, VibeSpace reads it through a fixed project/job path and verifies each listed adapter file again. Artifact paths that attempt to escape the adapter directory are rejected.
 
-Supabase metadata migration `0031_model_foundry_metadata.sql` stores only owner-scoped project, dataset-version, job, model-version, evaluation, and deployment metadata. It deliberately excludes raw examples, weights, checkpoints, prompts, outputs, and logs. The in-app **Optional metadata sync** setting is off by default; when enabled it queues only an allowlisted summary (IDs, hashes, lifecycle state, aggregate scores, and promotion history) through the existing signed-in account sync queue. Applying the migration remains an environment/deployment operation and is not performed by local app code.
+Supabase metadata migration `0031_model_foundry_metadata.sql` stores only owner-scoped project, dataset-version, job, model-version, evaluation, and deployment metadata. It deliberately excludes raw examples, weights, checkpoints, prompts, outputs, and logs. The in-app **Optional metadata sync** setting is off by default and respects the existing cloud-sync entitlement; when available and enabled it queues only an allowlisted summary (IDs, hashes, lifecycle state, aggregate scores, and promotion history) through the existing signed-in account sync queue. Applying the migration remains an environment/deployment operation and is not performed by local app code.
 
 ## Known boundaries
 
