@@ -386,7 +386,7 @@ export async function testProviderKey(
   const trimmed = key.trim();
 
   // Ollama is an endpoint, not a secret — empty means "use default".
-  if (provider !== 'ollama' && !trimmed) {
+  if (provider !== 'ollama' && provider !== 'foundry' && !trimmed) {
     return { kind: 'unconfigured', provider };
   }
 
@@ -426,6 +426,7 @@ export async function testProviderKey(
     case 'bedrock':
     case 'mock':
     case 'local':
+    case 'foundry':
       return { kind: 'unsupported', provider };
   }
 }

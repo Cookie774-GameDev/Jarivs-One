@@ -184,6 +184,7 @@ const PROVIDER_LABELS: Record<ProviderId, string> = {
   bedrock: 'AWS Bedrock',
   mock: 'Mock',
   local: 'Local',
+  foundry: 'Build Your Own AI',
 };
 
 type MentionContext = { start: number; query: string };

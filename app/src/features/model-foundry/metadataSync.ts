@@ -21,7 +21,7 @@ export function foundryMetadataPayload(snapshot: ProjectSnapshot): Record<string
     updatedAt: snapshot.project.updatedAt,
     baseModel: snapshot.baseModel ? { id: snapshot.baseModel.id, revision: snapshot.baseModel.revision, license: snapshot.baseModel.license, checksum: snapshot.baseModel.checksum.value } : null,
     dataset: snapshot.datasetVersion ? { id: snapshot.datasetVersion.id, manifestHash: snapshot.datasetVersion.manifestHash, fingerprint: snapshot.datasetVersion.fingerprint, splitCounts: snapshot.datasetVersion.splitStrategy.statistics, includedCount: snapshot.datasetVersion.includedExampleIds.length, excludedCount: snapshot.datasetVersion.excludedExampleIds.length } : null,
-    jobs: snapshot.trainingJobs.map((job) => ({ id: job.id, state: job.state, backend: job.backend, progress: job.progress, createdAt: job.createdAt, updatedAt: job.updatedAt, artifactFingerprint: job.artifact?.fingerprint ?? null })),
+    jobs: snapshot.trainingJobs.map((job) => ({ id: job.id, state: job.state, backend: job.backend, progress: job.progress, createdAt: job.createdAt, updatedAt: job.updatedAt, artifactFingerprint: job.artifact?.fixtureFingerprint ?? null })),
     modelVersions: snapshot.modelVersions.map((version) => ({ id: version.id, sourceJobId: version.sourceJobId, artifactFingerprint: version.artifactFingerprint, baseModelId: version.baseModelId, baseRevision: version.baseRevision, license: version.license, createdAt: version.createdAt })),
     evaluations: snapshot.evaluationRuns.map((run) => ({ id: run.id, status: run.status, gate: run.gate.result, safetyFailureCount: run.safetyFailures.length, aggregateDeltas: run.aggregateDeltas, createdAt: run.createdAt })),
     championVersionId: snapshot.championVersionId ?? null,
