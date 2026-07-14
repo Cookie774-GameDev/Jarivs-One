@@ -16,20 +16,25 @@ export interface FoundryHardwareProfile {
 export interface FoundryModelDownloadRequest {
   readonly projectId: string;
   readonly modelId: string;
-  readonly url: string;
-  readonly expectedSha256: string;
-  readonly expectedSizeBytes: number;
+  readonly revision: string;
+  readonly license: string;
+  readonly files: readonly {
+    readonly path: string;
+    readonly url: string;
+    readonly expectedSha256: string;
+    readonly expectedSizeBytes: number;
+  }[];
   readonly licenseApproved: boolean;
 }
 
 export interface FoundryModelDownloadResult {
   readonly modelId: string;
   readonly path: string;
-  readonly sha256: string;
+  readonly manifestPath: string;
   readonly sizeBytes: number;
   readonly resumed: boolean;
-}
-export interface FoundryWorkerRuntimeStatus {
+  readonly files: readonly { readonly path: string; readonly sha256: string; readonly sizeBytes: number }[];
+}export interface FoundryWorkerRuntimeStatus {
   readonly ready: boolean;
   readonly root: string;
   readonly python: string | null;
