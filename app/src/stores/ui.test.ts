@@ -20,6 +20,13 @@ describe('UI theme resolution', () => {
     expect(document.documentElement.getAttribute('data-theme-preference')).toBe('jarvis');
   });
 
+  it('keeps VibeSpace as an independent selectable theme', () => {
+    expect(resolveTheme('vibespace')).toBe('vibespace');
+    applyThemeToDocument('vibespace');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('vibespace');
+    expect(document.documentElement.getAttribute('data-theme-preference')).toBe('vibespace');
+  });
+
   it('applies theme changes synchronously through the UI store', () => {
     useUIStore.getState().setTheme('jarvis');
     expect(useUIStore.getState().theme).toBe('jarvis');

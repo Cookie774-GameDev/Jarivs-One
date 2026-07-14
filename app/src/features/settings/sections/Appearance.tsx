@@ -1,4 +1,4 @@
-import { Cpu, Monitor, Moon, Sun } from 'lucide-react';
+import { Cpu, Monitor, Moon, Sparkles, Sun } from 'lucide-react';
 import { useUIStore } from '@/stores/ui';
 import type { Theme } from '@/types/common';
 import { Label } from '@/components/ui/label';
@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 
 const THEMES: { id: Theme; label: string; icon: typeof Sun }[] = [
   { id: 'jarvis', label: 'Jarvis Core', icon: Cpu },
+  { id: 'vibespace', label: 'VibeSpace', icon: Sparkles },
   { id: 'dark', label: 'Dark', icon: Moon },
   { id: 'light', label: 'Light', icon: Sun },
   { id: 'system', label: 'System', icon: Monitor },
