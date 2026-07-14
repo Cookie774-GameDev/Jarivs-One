@@ -1,6 +1,7 @@
 import type { LLMProvider, LLMRequest, LLMResponse } from '../types';
 import { estimateInputTokens, llmContentToText } from '../types';
 import { generateFromFoundryArtifact } from '@/features/model-foundry/nativeBridge';
+import { canRoutePromotedAdapter } from '@/features/model-foundry/adapterRegistry';
 import { isTauri } from '@/lib/utils';
 
 const MODEL_ID = /^([A-Za-z0-9_-]{1,64})--([A-Za-z0-9_-]{1,64})$/;
@@ -23,6 +24,9 @@ export const foundryProvider: LLMProvider = {
   async run(req): Promise<LLMResponse> {
     if (req.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
     const { projectId, jobId } = parseArtifactModelId(req.agent.model.model);
+    if (typeof window === 'undefined' || !canRoutePromotedAdapter(window.localStorage, projectId, jobId)) {
+      throw new Error('Choose a promoted Foundry adapter that has passed its current local evaluation.');
+    }
     const prompt = buildPrompt(req);
     const response = await generateFromFoundryArtifact({
       projectId,

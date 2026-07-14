@@ -35,6 +35,13 @@ function parse(raw: string | null): LocalAdapterRecord[] {
   } catch { return []; }
 }
 
+export function canRoutePromotedAdapter(storage: LocalAdapterStorage, projectId: string, jobId: string): boolean {
+  const record = parse(storage.getItem(STORAGE_KEY)).find((item) => item.projectId === projectId && item.jobId === jobId);
+  return record?.status === 'promoted'
+    && record.evaluation?.artifactManifestSha256 === record.artifactManifestSha256
+    && record.evaluation.report.gate === 'pass';
+}
+
 export class LocalAdapterRegistry {
   constructor(private readonly storage: LocalAdapterStorage, private readonly now: () => string) {}
   list(projectId: string): readonly LocalAdapterRecord[] { return parse(this.storage.getItem(STORAGE_KEY)).filter((record) => record.projectId === projectId); }

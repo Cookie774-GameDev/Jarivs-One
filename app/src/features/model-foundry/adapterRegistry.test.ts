@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LocalAdapterRegistry } from './adapterRegistry';
+import { canRoutePromotedAdapter, LocalAdapterRegistry } from './adapterRegistry';
 import { InMemoryStorageAdapter } from './localRepository';
 
 describe('LocalAdapterRegistry', () => {
@@ -13,13 +13,15 @@ describe('LocalAdapterRegistry', () => {
   });
 
   it('requires a current passing evaluation before explicit promotion', () => {
-    const registry = new LocalAdapterRegistry(new InMemoryStorageAdapter(), () => '2026-07-14T00:00:00.000Z');
+    const storage = new InMemoryStorageAdapter();
+    const registry = new LocalAdapterRegistry(storage, () => '2026-07-14T00:00:00.000Z');
     const artifact = { projectId: 'project-1', jobId: 'job-1', manifestSha256: 'a'.repeat(64), adapterFiles: { 'adapter_model.safetensors': 'b'.repeat(64) }, metrics: {}, trainingConfig: { method: 'lora' } };
     registry.upsert('project-1', 'job-1', artifact);
     expect(() => registry.promote('project-1', 'job-1')).toThrow(/passing local evaluation/i);
     registry.recordEvaluation('project-1', 'job-1', artifact.manifestSha256, { suite: 'pinned-validation-reference-v1', caseCount: 1, baseScore: 0.2, candidateScore: 0.3, championScore: null, delta: 0.1, safetyFailures: [], gate: 'pass', caseEvidence: [{ caseId: 'case-1', baseScore: 0.2, candidateScore: 0.3, championScore: null, evidenceHash: 'c'.repeat(64) }] });
     expect(registry.promote('project-1', 'job-1')).toMatchObject([{ jobId: 'job-1', status: 'promoted' }]);
     expect(() => registry.archive('project-1', 'job-1')).toThrow(/Promote another/i);
+    expect(canRoutePromotedAdapter(storage, 'project-1', 'job-1')).toBe(true);
   });
 
   it('rolls back to the immediately prior passing champion', () => {

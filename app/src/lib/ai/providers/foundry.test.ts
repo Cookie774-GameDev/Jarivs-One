@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 const { generate } = vi.hoisted(() => ({ generate: vi.fn().mockResolvedValue({ text: 'Reviewed locally.', inputTokens: 11, outputTokens: 3, artifactManifestSha256: 'a'.repeat(64) }) }));
 
 vi.mock('@/features/model-foundry/nativeBridge', () => ({ generateFromFoundryArtifact: generate }));
+vi.mock('@/features/model-foundry/adapterRegistry', () => ({ canRoutePromotedAdapter: () => true }));
 vi.mock('@/lib/utils', () => ({ isTauri: true }));
 
 import { foundryProvider } from './foundry';
