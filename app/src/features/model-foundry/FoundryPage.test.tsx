@@ -102,4 +102,15 @@ describe('FoundryPage fixture vertical slice', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: /I reviewed and approve/ }));
     expect(screen.getByRole('button', { name: 'Download and verify model' }).hasAttribute('disabled')).toBe(false);
     expect(screen.queryByRole('button', { name: 'Prepare approved fixture inputs' })).not.toBeTruthy();
-  });});
+  });
+
+  it('retains an earlier local specialist when creating another project', () => {
+    renderFoundry();
+    fireEvent.click(screen.getByRole('button', { name: 'Create VibeCoder' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create another AI' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create VibeCoder' }));
+
+    expect(screen.getByText(/2 saved specialists/)).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: /VibeCoder/ })).toHaveLength(2);
+  });
+});
