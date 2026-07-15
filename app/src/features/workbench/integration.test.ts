@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getAllActions, performAction } from '@/features/command-palette/actions';
 import { resolveInitialRoute, useUIStore } from '@/stores/ui';
 import { useWorkbenchStore } from './store';
+import './registerCommandActions';
 
 describe('Workbench entry points', () => {
   afterEach(() => {

@@ -98,6 +98,7 @@ const activeStoppers: Array<() => void> = [];
 describe('startRuntimeListener agent routing', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.runAgent.mockReset();
     mocks.voiceCanSpeak = true;
     try {
       localStorage.clear();
@@ -599,7 +600,7 @@ describe('startRuntimeListener agent routing', () => {
       updateMessage: vi.fn(async () => undefined),
     }));
 
-    window.dispatchEvent(new CustomEvent('jarvis:send', { detail: { chatId, text: 'Please keep it short and launch-ready.' } }));
+    window.dispatchEvent(new CustomEvent('jarvis:send', { detail: { chatId, text: 'Please keep it short and launch-ready.', forceAllAboutMeUpdate: true } }));
 
     await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(2));
     expect(useAllAboutMeStore.getState().markdown).toContain('Learned Patterns');
