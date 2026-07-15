@@ -115,4 +115,20 @@ describe('FoundryPage fixture vertical slice', () => {
     expect(screen.getByText(/2 saved specialists/)).toBeTruthy();
     expect(screen.getAllByRole('button', { name: /VibeCoder/ })).toHaveLength(2);
   });
+
+  it('creates a custom specialist with governed language and forbidden action', () => {
+    renderFoundry();
+    fireEvent.click(screen.getByRole('button', { name: 'Create custom AI' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Specialist name' }), { target: { value: 'Invoice Extractor' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Narrow task' }), { target: { value: 'Extract invoice totals from a local document.' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Expected input' }), { target: { value: 'A local invoice document.' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Expected output' }), { target: { value: 'A validated total record.' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Hard constraint' }), { target: { value: 'Use only fields present in the document.' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Output language' }), { target: { value: 'Spanish' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Forbidden action' }), { target: { value: 'invent totals' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create custom AI' }));
+
+    expect(screen.getByRole('heading', { name: 'Invoice Extractor' })).toBeTruthy();
+    expect(screen.getByText(/Extract invoice totals from a local document/)).toBeTruthy();
+  });
 });
