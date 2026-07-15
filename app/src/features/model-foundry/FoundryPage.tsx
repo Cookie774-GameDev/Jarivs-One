@@ -48,6 +48,7 @@ const defaultDependencies: FixtureBackendDependencies = {
   idFactory: (kind) => `${kind}-${crypto.randomUUID()}`,
 };
 const NATIVE_RUN_STORAGE_KEY = 'vibespace.model-foundry.native-runs.v1';
+const PRIVATE_EVALUATION_STORAGE_KEY = 'vibespace.model-foundry.private-evaluation-suites.v1';
 
 function unwrap<T>(result: FoundryResult<T>): T { if (!result.ok) throw new Error(result.error.message); return result.value }
 function titleCase(value: string) { return value.charAt(0).toUpperCase() + value.slice(1) }
@@ -68,6 +69,20 @@ function readPersistedNativeRun(storage: StorageAdapter, projectId: string): Nat
     const run = candidate as Partial<NativeRunState>;
     return typeof run.jobId === 'string' && typeof run.phase === 'string' && typeof run.progress === 'number' && typeof run.terminal === 'boolean' && typeof run.detail === 'string' ? run as NativeRunState : null;
   } catch { return null; }
+}
+
+function readPersistedPrivateEvaluationCases(storage: StorageAdapter, projectId: string): readonly FoundryPrivateEvaluationCase[] {
+  try {
+    const parsed = JSON.parse(storage.getItem(PRIVATE_EVALUATION_STORAGE_KEY) ?? '{}') as Record<string, unknown>;
+    const rawCases = parsed[projectId];
+    if (!Array.isArray(rawCases)) return [];
+    return rawCases.flatMap((value) => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+      const candidate = value as Partial<FoundryPrivateEvaluationCase>;
+      if (typeof candidate.id !== 'string' || !candidate.id || candidate.id.length > 128 || typeof candidate.prompt !== 'string' || candidate.prompt.length > 16_384 || typeof candidate.expectedCompletion !== 'string' || candidate.expectedCompletion.length > 12_000 || typeof candidate.hidden !== 'boolean') return [];
+      return [{ id: candidate.id, prompt: candidate.prompt, expectedCompletion: candidate.expectedCompletion, hidden: candidate.hidden }];
+    }).slice(0, 32);
+  } catch { return []; }
 }
 
 function StepCard({ icon, title, detail, complete }: { icon: React.ReactNode; title: string; detail: string; complete: boolean }) {
@@ -127,6 +142,7 @@ export function FoundryPage({ storage = browserStorage, dependencies = defaultDe
   const [nativeRun, setNativeRun] = React.useState<NativeRunState | null>(null);
   const [localAdapters, setLocalAdapters] = React.useState<readonly LocalAdapterRecord[]>([]);
   const [privateEvaluationCases, setPrivateEvaluationCases] = React.useState<readonly FoundryPrivateEvaluationCase[]>([]);
+  const skipPrivateSuitePersist = React.useRef(false);
   const [deployment, setDeployment] = React.useState<FoundryDeploymentRecord | null>(null);
   const [routingMode, setRoutingMode] = React.useState<FoundryDeploymentRecord['routingMode']>('manual');
   const [trafficPercent, setTrafficPercent] = React.useState(100);
@@ -156,6 +172,12 @@ export function FoundryPage({ storage = browserStorage, dependencies = defaultDe
   }, [projectId, storage]);
 
   React.useEffect(() => {
+    if (!projectId) { setPrivateEvaluationCases([]); return; }
+    skipPrivateSuitePersist.current = true;
+    setPrivateEvaluationCases(readPersistedPrivateEvaluationCases(storage, projectId));
+  }, [projectId, storage]);
+
+  React.useEffect(() => {
     setLocalAdapters(projectId ? adapterRegistry.list(projectId) : []);
   }, [adapterRegistry, projectId]);
 
@@ -177,6 +199,15 @@ export function FoundryPage({ storage = browserStorage, dependencies = defaultDe
       storage.setItem(NATIVE_RUN_STORAGE_KEY, JSON.stringify({ ...parsed, [projectId]: nativeRun }));
     } catch { /* Local run-state persistence is optional. */ }
   }, [nativeRun, projectId, storage]);
+
+  React.useEffect(() => {
+    if (!projectId) return;
+    if (skipPrivateSuitePersist.current) { skipPrivateSuitePersist.current = false; return; }
+    try {
+      const parsed = JSON.parse(storage.getItem(PRIVATE_EVALUATION_STORAGE_KEY) ?? '{}') as Record<string, readonly FoundryPrivateEvaluationCase[]>;
+      storage.setItem(PRIVATE_EVALUATION_STORAGE_KEY, JSON.stringify({ ...parsed, [projectId]: privateEvaluationCases }));
+    } catch { /* Local private-suite persistence is optional. */ }
+  }, [privateEvaluationCases, projectId, storage]);
 
   React.useEffect(() => {
     if (!snapshot) return;
@@ -353,6 +384,7 @@ const downloadSelectedModel = async () => {
   const archiveRegisteredAdapter = (record: LocalAdapterRecord) => act(() => setLocalAdapters(adapterRegistry.archive(record.projectId, record.jobId)));
   const probeRegisteredAdapter = async (record: LocalAdapterRecord) => { const result = await generateFromFoundryArtifact({ projectId: record.projectId, jobId: record.jobId, prompt: 'Reply READY.', maxNewTokens: 8 }); setNotice(`Adapter probe succeeded: ${result.text.slice(0, 80)}`); setError(null); };
   const evaluateRegisteredAdapter = async (record: LocalAdapterRecord) => {
+    if (privateEvaluationCases.some((evaluationCase) => !evaluationCase.prompt.trim() || !evaluationCase.expectedCompletion.trim())) throw new Error('Complete or remove every private evaluation case before running it.');
     const champion = localAdapters.find((adapter) => adapter.status === 'promoted' && adapter.jobId !== record.jobId);
     const result = await evaluateFoundryArtifact({ projectId: record.projectId, jobId: record.jobId, championJobId: champion?.jobId, ...(privateEvaluationCases.length ? { maxCases: privateEvaluationCases.length, cases: privateEvaluationCases } : {}) });
     setLocalAdapters(adapterRegistry.recordEvaluation(record.projectId, record.jobId, result.artifactManifestSha256, result.report));
