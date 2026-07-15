@@ -6,6 +6,10 @@ on:
       - agent/integrate-pr18-23-20260715
     paths:
       - .github/workflows/integrate-pr20-once.yml
+  pull_request:
+    branches:
+      - agent/integrate-pr18-23-20260715
+    types: [opened, synchronize]
 
 permissions:
   contents: write
@@ -73,7 +77,6 @@ jobs:
             fi
           done
 
-          # Start from the already-integrated versions of these shared files.
           git checkout HEAD -- "${expected[@]}"
 
           python - <<'PY'
@@ -93,14 +96,11 @@ jobs:
                   raise SystemExit(f"Missing integration marker for {label}")
               return text.replace(marker, replacement, 1)
 
-          # Tauri capability: allow the detached Workbench webview window.
           p, text = load("app/src-tauri/capabilities/default.json")
           marker = '    "core:webview:default",\n'
-          replacement = marker + '    "core:webview:allow-create-webview-window",\n'
-          text = add_once(text, marker, replacement, "default capability")
+          text = add_once(text, marker, marker + '    "core:webview:allow-create-webview-window",\n', "default capability")
           save(p, text)
 
-          # Navigation: preserve current pet/theme navigation and add Workbench.
           p, text = load("app/src/components/layout/NavPane.tsx")
           if "  AppWindow,\n" not in text:
               marker = "  Settings as SettingsIcon,\n"
@@ -113,12 +113,12 @@ jobs:
               if marker not in text:
                   raise SystemExit("Missing NavPane import marker")
               text = text.replace(marker, marker + workbench_import, 1)
-          workbench_selector = "  const applyWorkbenchTemplate = useWorkbenchStore((s) => s.applyTemplate);\n"
-          if workbench_selector not in text:
+          selector = "  const applyWorkbenchTemplate = useWorkbenchStore((s) => s.applyTemplate);\n"
+          if selector not in text:
               marker = "  const toggleNavSection = useUIStore((s) => s.toggleNavSection);\n"
               if marker not in text:
                   raise SystemExit("Missing NavPane selector marker")
-              text = text.replace(marker, marker + workbench_selector, 1)
+              text = text.replace(marker, marker + selector, 1)
           if 'label="Workbench"' not in text:
               marker = '''          <RouteItem
             navOpen={navOpen}
@@ -147,49 +147,32 @@ jobs:
           ) : null}
 '''
               if marker not in text:
-                  raise SystemExit("Missing NavPane Terminals route marker")
+                  raise SystemExit("Missing NavPane Terminals marker")
               text = text.replace(marker, block + marker, 1)
           save(p, text)
 
-          # Top bar route metadata.
           p, text = load("app/src/components/layout/TopBar.tsx")
-          text = add_once(
-              text,
-              "type Route =\n  | 'chat'\n",
-              "type Route =\n  | 'chat'\n  | 'workbench'\n",
-              "TopBar Route type",
-          )
-          text = add_once(
-              text,
-              "const ROUTES: ReadonlyArray<Route> = [\n  'chat',\n",
-              "const ROUTES: ReadonlyArray<Route> = [\n  'chat',\n  'workbench',\n",
-              "TopBar routes",
-          )
-          text = add_once(
-              text,
-              "const ROUTE_LABELS: Record<Route, string> = {\n  chat: 'Chat',\n",
-              "const ROUTE_LABELS: Record<Route, string> = {\n  chat: 'Chat',\n  workbench: 'Workbench',\n",
-              "TopBar labels",
-          )
+          text = add_once(text, "type Route =\n  | 'chat'\n", "type Route =\n  | 'chat'\n  | 'workbench'\n", "TopBar Route type")
+          text = add_once(text, "const ROUTES: ReadonlyArray<Route> = [\n  'chat',\n", "const ROUTES: ReadonlyArray<Route> = [\n  'chat',\n  'workbench',\n", "TopBar routes")
+          text = add_once(text, "const ROUTE_LABELS: Record<Route, string> = {\n  chat: 'Chat',\n", "const ROUTE_LABELS: Record<Route, string> = {\n  chat: 'Chat',\n  workbench: 'Workbench',\n", "TopBar labels")
           save(p, text)
 
-          # Command palette: preserve theme actions and add Workbench actions.
           p, text = load("app/src/features/command-palette/actions.ts")
           if "  AppWindow,\n" not in text:
               marker = "  CalendarDays,\n"
               if marker not in text:
-                  raise SystemExit("Missing command-palette CalendarDays marker")
+                  raise SystemExit("Missing command palette CalendarDays marker")
               text = text.replace(marker, marker + "  AppWindow,\n", 1)
           if "  Grid2X2Plus,\n" not in text:
               marker = "  LayoutGrid,\n"
               if marker not in text:
-                  raise SystemExit("Missing command-palette LayoutGrid marker")
+                  raise SystemExit("Missing command palette LayoutGrid marker")
               text = text.replace(marker, marker + "  Grid2X2Plus,\n", 1)
           workbench_import = "import { useWorkbenchStore } from '@/features/workbench/store';\n"
           if workbench_import not in text:
               marker = "import type { PageId } from './store';\n"
               if marker not in text:
-                  raise SystemExit("Missing command-palette import marker")
+                  raise SystemExit("Missing command palette import marker")
               text = text.replace(marker, marker + workbench_import, 1)
           if "id: 'open-workbench'" not in text:
               marker = "  {\n    id: 'switch-agent',\n"
@@ -220,18 +203,12 @@ jobs:
   },
 '''
               if marker not in text:
-                  raise SystemExit("Missing command-palette switch-agent marker")
+                  raise SystemExit("Missing command palette switch-agent marker")
               text = text.replace(marker, block + marker, 1)
           save(p, text)
 
-          # UI state: retain current appearance state and add the Workbench route.
           p, text = load("app/src/stores/ui.ts")
-          text = add_once(
-              text,
-              "export type Route =\n  | 'chat'\n",
-              "export type Route =\n  | 'chat'\n  | 'workbench'\n",
-              "UI Route type",
-          )
+          text = add_once(text, "export type Route =\n  | 'chat'\n", "export type Route =\n  | 'chat'\n  | 'workbench'\n", "UI Route type")
           if "export function resolveInitialRoute(" not in text:
               marker = "  | 'files'\n  | 'account';\n"
               addition = '''
@@ -247,7 +224,7 @@ export function resolveInitialRoute(search?: string): Route {
 }
 '''
               if marker not in text:
-                  raise SystemExit("Missing UI route-union marker")
+                  raise SystemExit("Missing UI route union marker")
               text = text.replace(marker, marker + addition, 1)
           if "  route: resolveInitialRoute(),\n" not in text:
               marker = "  route: 'chat',\n"
@@ -258,15 +235,13 @@ export function resolveInitialRoute(search?: string): Route {
           PY
 
           git add "${expected[@]}"
-
-          remaining_conflicts=$(git diff --name-only --diff-filter=U)
-          if [ -n "$remaining_conflicts" ]; then
+          remaining=$(git diff --name-only --diff-filter=U)
+          if [ -n "$remaining" ]; then
             echo "Unresolved conflicts remain:"
-            echo "$remaining_conflicts"
+            echo "$remaining"
             git merge --abort
             exit 1
           fi
-
           git diff --check
 
       - name: Set up Node
@@ -303,10 +278,6 @@ export function resolveInitialRoute(search?: string): Route {
         shell: bash
         run: |
           set -euo pipefail
-          if git merge-base --is-ancestor origin/feature/workbench-master-claude HEAD; then
-            echo "Workbench already integrated; nothing to commit."
-            exit 0
-          fi
           git rm .github/workflows/integrate-pr20-once.yml
           git commit -m "Integrate PR #20 Workbench into PR #18-#23 branch"
           git push origin HEAD:refs/heads/agent/integrate-pr18-23-20260715
