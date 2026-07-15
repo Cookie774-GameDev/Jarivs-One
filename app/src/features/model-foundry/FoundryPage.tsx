@@ -493,6 +493,7 @@ const downloadSelectedModel = async () => {
         {activeJob?.state === 'completed' && candidate && <EvaluationArenaPanel candidate={candidate} evaluation={evaluation} championVersionId={snapshot.championVersionId} onEvaluate={evaluate} onPromote={promote} />}
         <DeploymentPanel snapshot={snapshot} deployment={deployment} routingMode={routingMode} trafficPercent={trafficPercent} onRoutingMode={setRoutingMode} onTrafficPercent={setTrafficPercent} onActivate={activateDeployment} onPause={pauseDeployment} />
         <ImprovementPanel feedbackCount={snapshot.feedbackEvents.length} cycleCount={snapshot.improvementCycles.length} consentApproved={feedbackConsent} onConsent={setFeedbackConsent} onFeedback={recordFeedback} onCycle={createImprovementCycle} />
+        <LocalStateFootprint snapshot={snapshot} projectCount={projectCatalog.length} />
         <ProjectCatalogPanel projects={projectCatalog} activeProjectId={projectId} onOpen={openCatalogProject} onCreate={createAnotherProject} />
       </>}
     </div>
@@ -513,4 +514,10 @@ function PrivateEvaluationSuite({ cases, onChange }: { cases: readonly FoundryPr
 function ProjectCatalogPanel({ projects, activeProjectId, onOpen, onCreate }: { projects: readonly ProjectSnapshot[]; activeProjectId?: string; onOpen: (snapshot: ProjectSnapshot) => void; onCreate: () => void }) {
   const visibleProjects = projects.filter((project) => project?.project?.id && project?.project?.specialist?.name).sort((left, right) => right.project.updatedAt.localeCompare(left.project.updatedAt));
   return <Card className="border-cyan-500/20"><CardHeader><CardTitle>Local specialist projects</CardTitle><CardDescription>Projects are stored locally and can be reopened without replacing another specialist.</CardDescription></CardHeader><CardContent className="space-y-3"><div className="flex flex-wrap gap-2"><Button variant="accent" onClick={onCreate}>Create another AI</Button></div>{visibleProjects.length > 1 && <div className="grid gap-2 md:grid-cols-2">{visibleProjects.map((project) => <button key={project.project.id} type="button" aria-pressed={project.project.id === activeProjectId} onClick={() => onOpen(project)} className={cn('rounded-lg border p-3 text-left transition-colors', project.project.id === activeProjectId ? 'border-cyan-400/50 bg-cyan-500/5' : 'border-border hover:bg-muted/40')}><div className="text-ui-strong">{project.project.specialist.name}</div><div className="mt-1 text-metadata text-muted-foreground">{project.project.specialist.purpose}</div><div className="mt-2 text-metadata text-muted-foreground">{project.championVersionId ? 'Champion promoted' : project.trainingJobs.at(-1)?.state ?? 'Created'} · {new Date(project.project.updatedAt).toLocaleDateString()}</div></button>)}</div>}</CardContent></Card>;
+}
+
+function LocalStateFootprint({ snapshot, projectCount }: { snapshot: ProjectSnapshot; projectCount: number }) {
+  const bytes = new TextEncoder().encode(JSON.stringify(snapshot)).byteLength;
+  const size = bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KiB`;
+  return <div className="rounded-lg border border-border bg-background/35 px-3 py-2 text-metadata text-muted-foreground">Local Foundry state: <span className="text-ui-strong text-foreground">{size}</span> for this project · {projectCount} saved specialist{projectCount === 1 ? '' : 's'} · excludes model snapshots, adapters, checkpoints, and logs.</div>;
 }
