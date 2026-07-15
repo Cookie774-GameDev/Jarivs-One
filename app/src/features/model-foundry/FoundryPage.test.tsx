@@ -54,6 +54,8 @@ describe('FoundryPage fixture vertical slice', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Run fixture evaluation' }));
     expect(screen.getByText('All gates passed')).toBeTruthy();
     expect(screen.getByText('0 safety failures')).toBeTruthy();
+    expect(screen.getByText('Per-case evaluation evidence')).toBeTruthy();
+    expect(screen.getByText('Hidden case')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Promote candidate' }));
     expect(screen.getByText('Current champion')).toBeTruthy();
