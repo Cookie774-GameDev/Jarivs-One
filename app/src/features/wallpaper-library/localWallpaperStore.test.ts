@@ -119,7 +119,7 @@ describe('localWallpaperStore durable bytes', () => {
 
     const row = await getWallpaperBlob('wp-1');
     expect(row?.sha256).toBe('deadbeef');
-    expect(row?.blob.size).toBe(4);
+    expect(row?.blob?.size).toBe(4);
 
     const again = await rehydrateWallpaperObjectUrl('wp-1');
     expect(again).toBeTruthy();
