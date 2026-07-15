@@ -41,11 +41,11 @@ function promotedFoundryAdapters(): ModelPickerOption[] {
     if (!Array.isArray(raw)) return [];
     return raw.flatMap((value) => {
       if (!value || typeof value !== 'object') return [];
-      const record = value as { projectId?: unknown; projectName?: unknown; jobId?: unknown; status?: unknown; artifactManifestSha256?: unknown; evaluation?: { artifactManifestSha256?: unknown; report?: { gate?: unknown } } };
+      let record = value as { projectId?: unknown; projectName?: unknown; jobId?: unknown; status?: unknown; artifactManifestSha256?: unknown; evaluation?: { artifactManifestSha256?: unknown; report?: { gate?: unknown } } };
       const evaluation = record.evaluation;
       if (record.status !== 'promoted' || evaluation?.report?.gate !== 'pass' || evaluation?.artifactManifestSha256 !== record.artifactManifestSha256 || typeof record.projectId !== 'string' || typeof record.jobId !== 'string') return [];
       const modelId = `${record.projectId}--${record.jobId}`;
-      if (typeof record.projectName === 'string' && record.projectName.trim()) record.jobId = record.projectName.trim().slice(0, 120);
+      if (typeof record.projectName === 'string' && record.projectName.trim()) record = { ...record, jobId: record.projectName.trim().slice(0, 120) };
       return [{ id: `foundry:${modelId}`, provider: 'foundry' as ProviderId, modelId, label: `Local champion · ${record.jobId}` }];
     });
   } catch { return []; }
