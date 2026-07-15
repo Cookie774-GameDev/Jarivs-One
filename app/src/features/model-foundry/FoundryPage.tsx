@@ -284,7 +284,8 @@ export function FoundryPage({ storage = browserStorage, dependencies = defaultDe
         : current);
       if (message.type === 'result' && phase === 'completed') {
         void inspectFoundryArtifact(event.projectId, event.jobId).then((artifact) => {
-          const registered = adapterRegistry.upsert(event.projectId, event.jobId, artifact);
+          const projectName = projectCatalogRef.current.find((candidate) => candidate.project.id === event.projectId)?.project.specialist.name;
+          const registered = adapterRegistry.upsert(event.projectId, event.jobId, artifact, projectName);
           setLocalAdapters((current) => [...current.filter((item) => item.projectId !== registered.projectId || item.jobId !== registered.jobId), registered]);
           setNativeRun((current) => current?.jobId === event.jobId
             ? { ...current, detail: `Verified adapter artifact (${Object.keys(artifact.adapterFiles).length} files, ${artifact.manifestSha256.slice(0, 12)}…).`, terminal: true }

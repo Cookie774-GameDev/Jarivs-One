@@ -3,6 +3,8 @@ import type { FoundryRealArtifactSummary, FoundryRealEvaluationReport } from './
 export interface LocalAdapterRecord {
   readonly schemaVersion: 1;
   readonly projectId: string;
+  /** Local display name captured from the specialist manifest; never synced as artifact content. */
+  readonly projectName?: string;
   readonly jobId: string;
   readonly artifactManifestSha256: string;
   readonly adapterFileCount: number;
@@ -49,10 +51,11 @@ export function promotedAdapterForProject(storage: LocalAdapterStorage, projectI
 export class LocalAdapterRegistry {
   constructor(private readonly storage: LocalAdapterStorage, private readonly now: () => string) {}
   list(projectId: string): readonly LocalAdapterRecord[] { return parse(this.storage.getItem(STORAGE_KEY)).filter((record) => record.projectId === projectId); }
-  upsert(projectId: string, jobId: string, artifact: FoundryRealArtifactSummary): LocalAdapterRecord {
+  upsert(projectId: string, jobId: string, artifact: FoundryRealArtifactSummary, projectName?: string): LocalAdapterRecord {
     const records = parse(this.storage.getItem(STORAGE_KEY));
     const existing = records.find((item) => item.projectId === projectId && item.jobId === jobId && item.artifactManifestSha256 === artifact.manifestSha256);
-    const record: LocalAdapterRecord = { schemaVersion: 1, projectId, jobId, artifactManifestSha256: artifact.manifestSha256, adapterFileCount: Object.keys(artifact.adapterFiles).length, metrics: artifact.metrics, trainingConfig: artifact.trainingConfig, status: existing?.status === 'promoted' ? 'promoted' : 'candidate', verifiedAt: this.now(), evaluation: existing?.evaluation, previousChampionJobId: existing?.previousChampionJobId };
+    const normalizedProjectName = projectName?.trim().slice(0, 120);
+    const record: LocalAdapterRecord = { schemaVersion: 1, projectId, projectName: normalizedProjectName || existing?.projectName, jobId, artifactManifestSha256: artifact.manifestSha256, adapterFileCount: Object.keys(artifact.adapterFiles).length, metrics: artifact.metrics, trainingConfig: artifact.trainingConfig, status: existing?.status === 'promoted' ? 'promoted' : 'candidate', verifiedAt: this.now(), evaluation: existing?.evaluation, previousChampionJobId: existing?.previousChampionJobId };
     this.storage.setItem(STORAGE_KEY, JSON.stringify([...records.filter((item) => item.projectId !== projectId || item.jobId !== jobId), record]));
     notifyRegistryChanged();
     return record;
