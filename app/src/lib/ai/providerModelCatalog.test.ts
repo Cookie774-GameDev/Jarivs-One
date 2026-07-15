@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { syncDiscoveredOllamaModels } from './models';
 import {
   getModelsForProvider,
+  getModelLabelForProvider,
   modelBelongsToProvider,
   resetProviderModelCache,
   resolveModelOnProviderChange,
@@ -20,6 +21,7 @@ describe('providerModelCatalog', () => {
   beforeEach(() => {
     resetProviderModelCache();
     syncDiscoveredOllamaModels([]);
+    window.localStorage.removeItem('vibespace.model-foundry.real-adapters.v1');
   });
 
   it('sanitizes manual model ids', () => {
@@ -53,5 +55,14 @@ describe('providerModelCatalog', () => {
       allowCustom: true,
     });
     expect(result.ok).toBe(false);
+  });
+
+  it('uses the promoted specialist name for the Foundry model label', () => {
+    window.localStorage.setItem('vibespace.model-foundry.real-adapters.v1', JSON.stringify([{
+      schemaVersion: 1, projectId: 'project_1', projectName: 'Invoice Extractor', jobId: 'job_1', status: 'promoted', artifactManifestSha256: 'a'.repeat(64),
+      evaluation: { artifactManifestSha256: 'a'.repeat(64), report: { gate: 'pass' } },
+    }]));
+
+    expect(getModelLabelForProvider('foundry', 'project_1--job_1', ctx)).toBe('Invoice Extractor');
   });
 });

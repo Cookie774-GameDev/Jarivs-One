@@ -14,6 +14,7 @@ import {
   isProviderConnected,
   type ProviderConnectionContext,
 } from './providerRegistry';
+import { promotedAdapterForProject } from '@/features/model-foundry/adapterRegistry';
 
 export type ModelAvailability = 'stable' | 'preview' | 'experimental' | 'deprecated' | 'custom';
 
@@ -160,6 +161,15 @@ export function getModelLabelForProvider(
   modelId: string,
   ctx: ProviderConnectionContext,
 ): string {
+  if (providerId === 'foundry') {
+    const match = /^([A-Za-z0-9_-]{1,64})--([A-Za-z0-9_-]{1,64})$/.exec(modelId);
+    if (match && typeof window !== 'undefined') {
+      try {
+        const adapter = promotedAdapterForProject(window.localStorage, match[1]!);
+        if (adapter?.jobId === match[2] && adapter.projectName?.trim()) return adapter.projectName.trim();
+      } catch { /* Storage access is optional; use the opaque adapter ID as a safe fallback. */ }
+    }
+  }
   if (providerId === 'foundry') return `VibeModel adapter · ${modelId}`;
   const options = getModelsForProvider(providerId, ctx, modelId);
   return options.find((option) => option.id === modelId)?.label ?? modelId;
