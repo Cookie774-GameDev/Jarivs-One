@@ -957,4 +957,12 @@ mod tests {
         let mut oversized = bytes.as_slice();
         assert!(read_bounded_line(&mut oversized).is_err());
     }
+
+    #[test]
+    fn credential_shaped_private_evaluation_text_is_rejected() {
+        assert!(!has_credential_shaped_text("Summarize this local document."));
+        assert!(has_credential_shaped_text("-----BEGIN PRIVATE KEY-----"));
+        assert!(has_credential_shaped_text("postgresql://owner:password@localhost/private"));
+        assert!(has_credential_shaped_text("sk-abcdefghijklmnopqrstuvwxyz123456"));
+    }
 }
