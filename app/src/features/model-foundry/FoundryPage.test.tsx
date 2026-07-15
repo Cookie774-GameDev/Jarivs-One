@@ -119,6 +119,16 @@ describe('FoundryPage fixture vertical slice', () => {
     expect(screen.getAllByRole('button', { name: /VibeCoder/ })).toHaveLength(2);
   });
 
+  it('keeps saved specialists available while creating another AI', () => {
+    renderFoundry();
+    fireEvent.click(screen.getByRole('button', { name: 'Create VibeCoder' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create another AI' }));
+
+    expect(screen.getByText('Local specialist projects')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /^VibeCoder\b/ }));
+    expect(screen.getByRole('heading', { name: 'VibeCoder' })).toBeTruthy();
+  });
+
   it('creates a custom specialist with governed language and forbidden action', () => {
     const view = renderFoundry();
     fireEvent.click(screen.getByRole('button', { name: 'Create custom AI' }));
@@ -132,7 +142,7 @@ describe('FoundryPage fixture vertical slice', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Create custom AI' }));
 
     expect(screen.getByRole('heading', { name: 'Invoice Extractor' })).toBeTruthy();
-    expect(screen.getByText(/Extract invoice totals from a local document/)).toBeTruthy();
+    expect(screen.getAllByText(/Extract invoice totals from a local document/).length).toBeGreaterThan(0);
     expect(JSON.parse(view.storage.getItem('vibespace.model-foundry.current') ?? '{}').snapshot.project.specialist.forbiddenBehavior).toContain('Never invent totals.');
   });
 });
