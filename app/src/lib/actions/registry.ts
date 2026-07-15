@@ -82,6 +82,7 @@ import {
 } from '@/features/schedule/jarvisSchedules';
 import { formatChatModelSelectionLabel, modelSelectionContextFromAuth } from '@/lib/ai/modelSelection';
 import { markTerminalExecution } from '@/features/terminals/terminalExecutionStore';
+import { createJarvisCoreActions } from './registryJarvisCore';
 
 /* --------------------------------------------------------------------------
  * Helpers
@@ -1616,7 +1617,7 @@ const PRODUCTIVITY_ACTIONS: ActionDef[] = [
 
 /** All built-in actions in canonical display order. */
 export function getBuiltinActions(): ActionDef[] {
-  return [
+  const baseActions: ActionDef[] = [
     ...NAVIGATION_ACTIONS,
     ...SETTINGS_ACTIONS,
     ...THEME_ACTIONS,
@@ -1630,9 +1631,10 @@ export function getBuiltinActions(): ActionDef[] {
     ...CREATOR_ACTIONS,
     ...PRODUCTIVITY_ACTIONS,
     ...APP_CONTROL_ACTIONS,
-    ...FILE_ACTIONS,
     ...PRESET_ACTIONS,
   ];
+  const byId = new Map(baseActions.map((action) => [action.id, action]));
+  return [...baseActions, ...createJarvisCoreActions((id) => byId.get(id))];
 }
 
 /**

@@ -43,7 +43,9 @@ const REDACTED = '[redacted]';
 
 const SENSITIVE_KEY_RE = /(authorization|cookie|set-cookie|token|access[_-]?token|refresh[_-]?token|jwt|api[_-]?key|apikey|password|secret|client[_-]?secret|service[_-]?role)/i;
 const SENSITIVE_VALUE_PATTERNS: Array<[RegExp, string]> = [
+  [/\b(api[-_ ]?key|access[-_ ]?token|refresh[-_ ]?token|password|client[-_ ]?secret|private[-_ ]?key|secret)\s*([:=])\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi, `$1$2${REDACTED}`],
   [/\bBearer\s+[A-Za-z0-9._~+/-]+=*/gi, `Bearer ${REDACTED}`],
+  [/\bgh[pousr]_[A-Za-z0-9]{20,}\b/g, REDACTED],
   [/\b(sk|rk)_(live|test)_[A-Za-z0-9_]{8,}\b/g, REDACTED],
   [/\bwhsec_[A-Za-z0-9_]{8,}\b/g, REDACTED],
   [/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g, REDACTED],

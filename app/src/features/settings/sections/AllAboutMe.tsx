@@ -11,7 +11,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
@@ -29,6 +28,7 @@ import {
   type AllAboutMeQuestionAnswer,
 } from '@/features/all-about-me/profile';
 import type { AllAboutMeTestMode } from '@/features/all-about-me/store';
+import { JarvisLearningControls } from '@/features/jarvis-memory/JarvisLearningControls';
 
 interface AllAboutMeProps {
   completePrompt?: AllAboutMeCompletion;
@@ -194,12 +194,9 @@ export function AllAboutMe({
   const quizAnswers = useAllAboutMeStore((state) => state.quizAnswers);
   const testDraft = useAllAboutMeStore((state) => state.testDraft);
   const updatedAt = useAllAboutMeStore((state) => state.updatedAt);
-  const totalUserMessages = useAllAboutMeStore((state) => state.totalUserMessages);
-  const lastUpdatedAtMessageCount = useAllAboutMeStore((state) => state.lastUpdatedAtMessageCount);
   const saveQuizProfile = useAllAboutMeStore((state) => state.saveQuizProfile);
   const saveTestDraft = useAllAboutMeStore((state) => state.saveTestDraft);
   const clearTestDraft = useAllAboutMeStore((state) => state.clearTestDraft);
-  const setLearningEnabled = useAllAboutMeStore((state) => state.setLearningEnabled);
   const deleteProfile = useAllAboutMeStore((state) => state.deleteProfile);
   const availableModels = React.useMemo(
     () => modelOptions ?? getAllAboutMeModelOptions(),
@@ -455,7 +452,6 @@ export function AllAboutMe({
     }
   }
 
-  const updateDistance = Math.max(0, 10 - (totalUserMessages - lastUpdatedAtMessageCount));
   const noRealModels = availableModels.length === 0;
 
   return (
@@ -593,27 +589,17 @@ export function AllAboutMe({
               AllAboutMe.md
             </CardTitle>
             <CardDescription>
-              Jarvis reads this as bounded context and improves it from chat patterns.
+              A stable, user-controlled profile. Automatic interaction preferences are stored separately in learning.md.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-background/40 p-3">
+            <div className="rounded-md border border-border bg-background/40 p-3">
               <div>
-                <div className="text-ui-strong text-foreground">Chat learning</div>
+                <div className="text-ui-strong text-foreground">Intentional profile</div>
                 <p className="text-metadata text-muted-foreground">
-                  {markdown
-                    ? updateDistance === 0
-                      ? 'After every 10 user messages, Jarvis can learn on the next turn and writes a visible AllAboutMe.md activity row.'
-                      : `After every 10 user messages, Jarvis updates AllAboutMe.md. ${updateDistance} message${updateDistance === 1 ? '' : 's'} until the next check.`
-                    : 'After every 10 user messages, Jarvis can update AllAboutMe.md once the quiz creates a profile.'}
+                  Jarvis changes this document only when you complete the profile flow or make an explicit edit.
                 </p>
               </div>
-              <Switch
-                aria-label="AllAboutMe chat learning is always on"
-                checked
-                disabled
-                onCheckedChange={setLearningEnabled}
-              />
             </div>
             {markdown ? (
               <div className="rounded-md border border-border bg-background/40 p-3">
@@ -628,12 +614,14 @@ export function AllAboutMe({
               </pre>
             ) : (
               <div className="rounded-md border border-dashed border-border bg-background/40 p-5 text-secondary text-muted-foreground">
-                Finish the quiz to generate the first profile. Jarvis will use that document to
-                match your tone and keep improving it after every 10 user messages.
+                Finish the quiz to generate the first stable profile. Jarvis will use that document
+                as bounded context until you intentionally update or delete it.
               </div>
             )}
           </CardContent>
         </Card>
+
+        <JarvisLearningControls />
       </section>
 
       <Dialog

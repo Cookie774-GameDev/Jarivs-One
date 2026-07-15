@@ -76,4 +76,30 @@ describe('terminal execution lifecycle', () => {
     expect(invoke).toHaveBeenCalledWith('terminal_kill', { sessionId: 'pty_race' });
     expect(useTerminalExecutionStore.getState().executions.exec_race.status).toBe('cancelled');
   });
+
+  it('stays starting until startup input has been accepted by the PTY backend', async () => {
+    markTerminalExecution('exec_start', 'starting');
+
+    const attached = await attachTerminalExecution('exec_start', 'pty_start');
+
+    expect(attached).toBe(true);
+    expect(useTerminalExecutionStore.getState().executions.exec_start).toMatchObject({
+      status: 'starting',
+      sessionId: 'pty_start',
+    });
+    markTerminalExecution('exec_start', 'running');
+    expect(useTerminalExecutionStore.getState().executions.exec_start.status).toBe('running');
+  });
+
+  it('does not let a late startup result overwrite cancellation', () => {
+    markTerminalExecution('exec_cancelled', 'starting');
+    markTerminalExecution('exec_cancelled', 'cancelled');
+
+    markTerminalExecution('exec_cancelled', 'running', { sessionId: 'pty_late' });
+    markTerminalExecution('exec_cancelled', 'failed', { exitCode: 1 });
+
+    expect(useTerminalExecutionStore.getState().executions.exec_cancelled).toMatchObject({
+      status: 'cancelled',
+    });
+  });
 });

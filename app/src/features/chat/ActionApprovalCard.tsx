@@ -42,6 +42,11 @@ import {
 } from '@/features/terminals/terminalExecutionStore';
 import type { Part, ActionStatus } from '@/types';
 import type { MessageId } from '@/types/common';
+import {
+  beginTaskApprovalStep,
+  cancelTaskApprovalStep,
+  finishTaskApprovalStep,
+} from '@/features/jarvis-runs/approvalBridge';
 
 type ActionPart = Extract<Part, { kind: 'action_proposal' }>;
 
@@ -179,15 +184,19 @@ export function ActionApprovalCard({
     syncedExecutionStatusRef.current = execution.status;
     if (execution.status === 'complete') {
       void writeStatus({ status: 'success', error: undefined });
+      finishTaskApprovalStep(part.call_id, { ok: true, summary: 'Terminal command completed.' });
     } else if (execution.status === 'failed') {
+      const error = execution.exitCode === undefined
+        ? 'The command failed.'
+        : `The command exited with code ${execution.exitCode}.`;
       void writeStatus({
         status: 'error',
-        error: execution.exitCode === undefined
-          ? 'The command failed.'
-          : `The command exited with code ${execution.exitCode}.`,
+        error,
       });
+      finishTaskApprovalStep(part.call_id, { ok: false, error });
     } else if (execution.status === 'cancelled') {
       void writeStatus({ status: 'cancelled', error: undefined });
+      cancelTaskApprovalStep(part.call_id);
     }
   }, [execution?.exitCode, execution?.status]);
 
@@ -197,6 +206,10 @@ export function ActionApprovalCard({
     setBusy(true);
     setLocalError(null);
     try {
+      if (!beginTaskApprovalStep(part.call_id)) {
+        await writeStatus({ status: 'cancelled', error: undefined });
+        return;
+      }
       await writeStatus({ status: 'running' });
       const result = await runAction(
         part.action_id,
@@ -209,10 +222,18 @@ export function ActionApprovalCard({
         && result.data !== null
         && (result.data as { state?: string }).state === 'queued';
       await writeStatus(result.ok
-        ? { status: queued ? 'queued' : 'success', result: result.data, error: undefined }
+        ? {
+          status: queued ? 'queued' : 'success',
+          result: result.data,
+          error: undefined,
+        }
         : { status: 'error', error: result.error });
+      if (!queued) finishTaskApprovalStep(part.call_id, result);
     } catch (err) {
-      setLocalError(err instanceof Error ? err.message : 'The action could not start. Please retry.');
+      const error = err instanceof Error ? err.message : 'The action could not start. Please retry.';
+      setLocalError(error);
+      await writeStatus({ status: 'error', error }).catch(() => undefined);
+      finishTaskApprovalStep(part.call_id, { ok: false, error });
     } finally {
       busyRef.current = false;
       setBusy(false);
@@ -226,6 +247,7 @@ export function ActionApprovalCard({
     setLocalError(null);
     try {
       await writeStatus({ status: 'cancelled' });
+      cancelTaskApprovalStep(part.call_id);
     } catch (err) {
       setLocalError(err instanceof Error ? err.message : 'The action could not be cancelled.');
     } finally {
@@ -249,6 +271,7 @@ export function ActionApprovalCard({
       syncedExecutionStatusRef.current = 'cancelled';
       markTerminalExecution(executionId, 'cancelled', { exitCode: null });
       await writeStatus({ status: 'cancelled', error: undefined });
+      cancelTaskApprovalStep(part.call_id);
     } catch (err) {
       setLocalError(err instanceof Error ? err.message : 'The command could not be cancelled.');
     } finally {
@@ -283,6 +306,7 @@ export function ActionApprovalCard({
 
     try {
       for (const action of runnable) {
+        beginTaskApprovalStep(action.call_id);
         await mark(action.call_id, { status: 'running' });
         const result = await runAction(
           action.action_id,
@@ -295,8 +319,13 @@ export function ActionApprovalCard({
           && result.data !== null
           && (result.data as { state?: string }).state === 'queued';
         await mark(action.call_id, result.ok
-          ? { status: queued ? 'queued' : 'success', result: result.data, error: undefined }
+          ? {
+            status: queued ? 'queued' : 'success',
+            result: result.data,
+            error: undefined,
+          }
           : { status: 'error', error: result.error });
+        if (!queued) finishTaskApprovalStep(action.call_id, result);
       }
     } catch (err) {
       setLocalError(err instanceof Error ? err.message : 'One or more actions could not run.');

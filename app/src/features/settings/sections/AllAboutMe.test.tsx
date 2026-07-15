@@ -113,13 +113,13 @@ describe('AllAboutMe settings section', () => {
     expect(screen.queryByRole('option', { name: /legacy-manual-model/i })).toBeNull();
   });
 
-  it('keeps chat learning transparently locked on', () => {
+  it('separates the stable profile from automatic learning memory', () => {
     render(<AllAboutMe completePrompt={vi.fn()} modelOptions={[]} />);
 
-    const learningSwitch = screen.getByLabelText(/AllAboutMe chat learning is always on/i);
-    expect(learningSwitch).toHaveProperty('disabled', true);
-    expect(learningSwitch.getAttribute('aria-checked')).toBe('true');
-    expect(screen.getAllByText(/After every 10 user messages/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Intentional profile/i)).toBeTruthy();
+    expect(screen.getByText(/changes this document only when you complete the profile flow or make an explicit edit/i)).toBeTruthy();
+    expect(screen.getByText(/Automatic interaction preferences are stored separately in learning\.md/i)).toBeTruthy();
+    expect(screen.queryByText(/After every 10 user messages/i)).toBeNull();
   });
 
   it('autosaves progress when the popup is paused and resumes later', () => {
