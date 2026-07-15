@@ -117,6 +117,11 @@ export function UpdateWarningHost() {
       if (res.available && res.version) {
         setTargetVersion(res.version);
         setUpdateAvailable(true);
+        window.dispatchEvent(
+          new CustomEvent('jarvis:update-available', {
+            detail: { version: res.version },
+          }),
+        );
         if (timeLeft === null) startCountdown();
       }
     } catch (err) {

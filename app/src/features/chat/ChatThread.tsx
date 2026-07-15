@@ -72,23 +72,29 @@ export function ChatThread({ chatId, compact = false }: ChatThreadProps) {
     <div
       ref={scrollRef}
       onScroll={onScroll}
-      className="flex-1 min-h-0 overflow-y-auto"
+      className="min-h-0 flex-1 overflow-y-auto"
       role="log"
       aria-live="polite"
       aria-relevant="additions text"
+      data-tour="chat-thread"
     >
-      <div className={compact ? 'w-full px-2 py-3 flex flex-col gap-3' : 'mx-auto w-full max-w-[860px] px-4 py-6 flex flex-col gap-4'}>
+      <div
+        className={
+          compact
+            ? 'flex w-full flex-col gap-3 px-2 py-3'
+            : 'mx-auto flex w-full max-w-[860px] flex-col gap-4 px-4 py-6'
+        }
+      >
+        {/* Top of every chat; scrolls away with messages (not sticky). */}
+        <ChatActivityTimeline chatId={chatId} compact={compact} />
         {messages.length === 0 ? (
           <ThreadHint />
         ) : (
-          <>
-            <ChatActivityTimeline chatId={chatId} compact={compact} />
-            <AnimatePresence initial={false}>
-              {messages.map((m) => (
-                <MessageBubble key={m.id} message={m} compact={compact} creatorDraftKind={creatorDraftKind} />
-              ))}
-            </AnimatePresence>
-          </>
+          <AnimatePresence initial={false}>
+            {messages.map((m) => (
+              <MessageBubble key={m.id} message={m} compact={compact} creatorDraftKind={creatorDraftKind} />
+            ))}
+          </AnimatePresence>
         )}
         <ChatAgentActivityPanel
           chatId={chatId}

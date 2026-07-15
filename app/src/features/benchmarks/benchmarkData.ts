@@ -16,7 +16,7 @@ import { nativeFetch } from '@/lib/nativeFetch';
 import {
   LEADERBOARD_SNAPSHOT_ROWS,
   LEADERBOARD_SNAPSHOT_TS,
-} from './leaderboardSnapshot20260623';
+} from './leaderboardSnapshot20260711';
 
 export interface BenchmarkRow {
   model: string;
@@ -66,30 +66,52 @@ export function inferCapabilities(model: string): { image: boolean; video: boole
   return { image, video };
 }
 
-/** List-price estimates (USD / 1M tokens) keyed by model-family pattern. */
+/**
+ * List-price fallbacks (USD / 1M tokens) when the Arena row has no price.
+ * Prefer more specific patterns first. Values track public Arena $/M columns
+ * and vendor list prices as of the Jul 2026 snapshot.
+ */
 const PRICING_CATALOG: ReadonlyArray<{ pattern: RegExp; input: number; output: number }> = [
+  { pattern: /claude.*fable/, input: 10, output: 50 },
+  { pattern: /claude.*opus.*4\.[5-9]|claude.*opus.*4-[5-9]/, input: 5, output: 25 },
   { pattern: /claude.*opus/, input: 15, output: 75 },
+  { pattern: /claude.*sonnet.*5/, input: 2, output: 10 },
   { pattern: /claude.*sonnet/, input: 3, output: 15 },
-  { pattern: /claude.*haiku/, input: 0.8, output: 4 },
+  { pattern: /claude.*haiku/, input: 1, output: 5 },
+  { pattern: /gpt-?5\.6|gpt-?5\.5/, input: 5, output: 30 },
+  { pattern: /gpt-?5\.4-?mini/, input: 0.75, output: 4.5 },
+  { pattern: /gpt-?5\.4/, input: 2.5, output: 15 },
+  { pattern: /gpt-?5\.2/, input: 1.75, output: 14 },
+  { pattern: /gpt-?5\.1/, input: 1.25, output: 10 },
   { pattern: /gpt-?5/, input: 1.25, output: 10 },
   { pattern: /gpt-?4o-mini|gpt-?4\.1-mini/, input: 0.15, output: 0.6 },
   { pattern: /gpt-?4o|chatgpt-?4o|gpt-?4\.1/, input: 2.5, output: 10 },
   { pattern: /gpt-?4-turbo/, input: 10, output: 30 },
   { pattern: /o1-mini|o3-mini|o4-mini/, input: 1.1, output: 4.4 },
   { pattern: /\bo1\b|\bo3\b|\bo4\b/, input: 15, output: 60 },
-  { pattern: /gemini.*flash/, input: 0.075, output: 0.3 },
-  { pattern: /gemini.*pro/, input: 1.25, output: 5 },
+  { pattern: /gemini.*3\.5.*flash|gemini.*3-?flash/, input: 0.5, output: 3 },
+  { pattern: /gemini.*3.*pro|gemini.*3\.1.*pro/, input: 2, output: 12 },
+  { pattern: /gemini.*flash/, input: 0.3, output: 2.5 },
+  { pattern: /gemini.*pro/, input: 1.25, output: 10 },
+  { pattern: /grok[-\s]?4\.20|grok[-\s]?4\.5|grok[-\s]?4\.1/, input: 2, output: 6 },
   { pattern: /grok[-\s]?4/, input: 3, output: 15 },
   { pattern: /grok/, input: 2, output: 10 },
+  { pattern: /deepseek.*v4/, input: 0.43, output: 0.87 },
   { pattern: /deepseek/, input: 0.27, output: 1.1 },
+  { pattern: /muse.?spark/, input: 1.25, output: 4.25 },
+  { pattern: /glm-?5/, input: 1.4, output: 4.4 },
+  { pattern: /qwen3\.7|qwen3\.6|qwen3\.5/, input: 1.25, output: 3.75 },
+  { pattern: /qwen/, input: 0.5, output: 1.5 },
+  { pattern: /kimi|moonshot/, input: 0.95, output: 4 },
+  { pattern: /mimo/, input: 0.43, output: 0.87 },
   { pattern: /llama.*405b/, input: 3, output: 5 },
   { pattern: /llama.*70b/, input: 0.6, output: 0.8 },
   { pattern: /llama.*8b/, input: 0.05, output: 0.08 },
   { pattern: /mistral.*large/, input: 2, output: 6 },
   { pattern: /pixtral|mistral.*nemo/, input: 0.15, output: 0.15 },
-  { pattern: /qwen/, input: 0.5, output: 1.5 },
   { pattern: /command/, input: 2.5, output: 10 },
-  { pattern: /gemma/, input: 0.27, output: 0.27 },
+  { pattern: /gemma.?4/, input: 0.14, output: 0.4 },
+  { pattern: /gemma/, input: 0.08, output: 0.16 },
 ];
 
 function inferPricing(model: string): { input: number; output: number } | null {
@@ -151,19 +173,22 @@ const LMARENA_ENDPOINTS = [
   'https://lmarena.ai/leaderboard/text/overall',
   'https://lmarena.ai/leaderboard',
 ] as const;
-const CACHE_KEY = 'jarvis-benchmark-cache-v3';
+const CACHE_KEY = 'jarvis-benchmark-cache-v4';
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour — live rows only
 /** Reject cached rows whose Arena snapshot is older than this. */
 const MAX_ROW_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 12_000;
 
 /**
- * Snapshot timestamp — curated Top 50 LMArena export (2026-06-23).
+ * Snapshot timestamp — curated Top 50 UNIQUE models (AA Intelligence, 2026-07-11).
  * The live fetch path is authoritative on Refresh; this labels curated rows.
  */
 export const SNAPSHOT_TS = LEADERBOARD_SNAPSHOT_TS;
 
-/** Curated Top 50 from `top_50_ai_models_leaderboard_2026-06-23.xlsx`. */
+/**
+ * Curated Top 50 unique models (one base model per row).
+ * Rank score = Artificial Analysis Intelligence Index; prices/context from OpenRouter.
+ */
 export const SNAPSHOT_ROWS: BenchmarkRow[] = LEADERBOARD_SNAPSHOT_ROWS.map((row) => ({
   ...row,
 }));
@@ -290,7 +315,7 @@ export function vendorToProvider(vendor: string): string {
   if (v.includes('openai')) return 'openai';
   if (v.includes('google')) return 'google';
   if (v.includes('meta')) return 'meta';
-  if (v.includes('x.ai') || v === 'xai') return 'xai';
+  if (v.includes('x.ai') || v.includes('spacexai') || v === 'xai') return 'xai';
   if (v.includes('deepseek')) return 'deepseek';
   if (v.includes('mistral')) return 'mistral';
   if (v.includes('nvidia')) return 'nvidia';
@@ -298,12 +323,13 @@ export function vendorToProvider(vendor: string): string {
   if (v.includes('alibaba') || v.includes('qwen')) return 'alibaba';
   if (v.includes('cohere')) return 'cohere';
   if (v.includes('01.ai') || v.includes('01ai')) return '01ai';
-  if (v.includes('z.ai') || v === 'zai') return 'zai';
+  if (v.includes('z.ai') || v === 'zai' || v === 'z.ai') return 'zai';
   if (v.includes('baidu')) return 'baidu';
   if (v.includes('moonshot')) return 'moonshot';
   if (v.includes('xiaomi')) return 'xiaomi';
   if (v.includes('bytedance')) return 'bytedance';
   if (v.includes('minimax')) return 'minimax';
+  if (v.includes('meta')) return 'meta';
   return v.replace(/\s+/g, '');
 }
 
@@ -441,6 +467,7 @@ export function clearBenchmarkCache(): void {
     localStorage.removeItem(CACHE_KEY);
     // Drop legacy keys that may still hold frozen snapshot rows.
     localStorage.removeItem('jarvis-benchmark-cache');
+    localStorage.removeItem('jarvis-benchmark-cache-v3');
   } catch {
     /* ignore */
   }

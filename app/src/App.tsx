@@ -42,6 +42,7 @@ import { useIdleDetection, AmbientAudioHost } from '@/features/ambient';
 import { useLinkHotkeys } from '@/features/launcher';
 import { startWorkspaceAnalyticsClock } from '@/features/inspector/workspaceAnalytics';
 import { GlobalSttHost } from '@/features/composer-stt';
+import { FileExplorerHost } from '@/features/files';
 import { Toaster, toast } from '@/components/ui/toast';
 import { startRuntimeListener } from '@/lib/ai/runtime';
 import { messageRepo, agentRepo, chatRepo, openDb, db } from '@/lib/db';
@@ -54,7 +55,10 @@ import { DevConsoleHost } from '@/features/dev-console';
 import { initTerminalScheduler } from '@/features/terminals/terminalScheduler';
 import { startJarvisScheduleRunner } from '@/features/schedule/jarvisScheduleRunner';
 import { UpdateWarningHost } from '@/features/updates/UpdateWarningHost';
-import { flushWorkspacePersistence } from '@/lib/persistence/workspaceFlush';
+import {
+  flushWorkspacePersistence,
+  flushWorkspacePersistenceAndAcknowledge,
+} from '@/lib/persistence/workspaceFlush';
 import { GlobalDictationOverlay } from '@/features/global-dictation/GlobalDictationOverlay';
 import type { Agent, AgentId, Message } from '@/types';
 
@@ -110,11 +114,20 @@ const AssistantBar = React.lazy(() =>
 const WhatsNewHost = React.lazy(() =>
   import('@/features/whats-new').then((m) => ({ default: m.WhatsNewHost })),
 );
+const NewsHost = React.lazy(() =>
+  import('@/features/news').then((m) => ({ default: m.NewsHost })),
+);
+const ProductTutorialHost = React.lazy(() =>
+  import('@/features/product-tutorial').then((m) => ({ default: m.ProductTutorialHost })),
+);
 const ActionsPalette = React.lazy(() =>
   import('@/features/actions').then((m) => ({ default: m.ActionsPalette })),
 );
 const AmbientHome = React.lazy(() =>
   import('@/features/ambient').then((m) => ({ default: m.AmbientHome })),
+);
+const PetHost = React.lazy(() =>
+  import('@/features/pets').then((m) => ({ default: m.PetHost })),
 );
 const CelebrationHost = React.lazy(() =>
   import('@/features/celebrate').then((m) => ({ default: m.CelebrationHost })),
@@ -418,7 +431,7 @@ function useDesktopReopenLifecycle() {
     // When the app is closed (hidden to tray) or torn down, stop any in-flight
     // speech so Jarvis does not keep talking in the background.
     const stopAllSpeech = () => {
-      flushWorkspacePersistence('before-hide');
+      void flushWorkspacePersistence('before-hide');
       try {
         window.speechSynthesis?.cancel();
       } catch {
@@ -453,8 +466,18 @@ function useDesktopReopenLifecycle() {
       .catch(() => {});
     void import('@tauri-apps/api/event')
       .then(({ listen }) =>
-        listen<{ reason?: string }>('jarvis:persist-now', (event) => {
-          flushWorkspacePersistence(event.payload?.reason ?? 'desktop-persist');
+        listen<{ reason?: string }>('jarvis:persist-now', async (event) => {
+          try {
+            await flushWorkspacePersistenceAndAcknowledge(
+              event.payload?.reason ?? 'desktop-persist',
+              async () => {
+                const { invoke } = await import('@tauri-apps/api/core');
+                await invoke('persistence_flush_complete');
+              },
+            );
+          } catch {
+            /* Desktop exit retains its native hard deadline if IPC is unavailable. */
+          }
         }),
       )
       .then((unlisten) => {
@@ -764,6 +787,12 @@ function WorkspaceRoot() {
       <LauncherDialogHost />
       <AssistantBarHost />
       <WhatsNewHost />
+      <React.Suspense fallback={null}>
+        <NewsHost />
+      </React.Suspense>
+      <React.Suspense fallback={null}>
+        <ProductTutorialHost />
+      </React.Suspense>
       <UpdateWarningHost />
 
       {/* Visual ambient effects removed — clean UI */}
@@ -778,6 +807,11 @@ function WorkspaceRoot() {
       <AmbientHome />
       <AmbientAudioHost />
 
+      {/* Pixel Pet — video-driven atlas animations + mini-panel on click. */}
+      <React.Suspense fallback={null}>
+        <PetHost />
+      </React.Suspense>
+
       {/* V3 — 20-20-20 eye-break overlay. Self-renders only while
           wellnessActive=true (wellness.eyeBreak action / assistant). */}
       <WellnessBreak />
@@ -788,6 +822,9 @@ function WorkspaceRoot() {
       <ActionsPaletteHost />
 
       <GlobalSttHost />
+
+      {/* Themed desktop file / folder explorer (Context, Files, pickers). */}
+      <FileExplorerHost />
 
       {/* Toast outlet */}
       <JarvisContextMenu />
@@ -814,11 +851,40 @@ function WorkspaceRoot() {
  *     stage logs too.
  */
 export function App() {
-  if (new URLSearchParams(window.location.search).get('view') === 'dictation') {
+  const view = new URLSearchParams(window.location.search).get('view');
+
+  if (view === 'dictation') {
     return (
       <ErrorBoundary>
         <ThemeHost />
         <GlobalDictationOverlay />
+      </ErrorBoundary>
+    );
+  }
+
+  if (view === 'pet-overlay') {
+    const PetOverlayWindow = React.lazy(() =>
+      import('@/features/pets/PetOverlayWindow').then((m) => ({ default: m.PetOverlayWindow })),
+    );
+    return (
+      <ErrorBoundary>
+        <React.Suspense fallback={null}>
+          <PetOverlayWindow />
+        </React.Suspense>
+      </ErrorBoundary>
+    );
+  }
+
+  if (view === 'pet-mini-panel') {
+    const PetMiniPanelWindow = React.lazy(() =>
+      import('@/features/pets/PetMiniPanelWindow').then((m) => ({ default: m.PetMiniPanelWindow })),
+    );
+    return (
+      <ErrorBoundary>
+        <ThemeHost />
+        <React.Suspense fallback={null}>
+          <PetMiniPanelWindow />
+        </React.Suspense>
       </ErrorBoundary>
     );
   }

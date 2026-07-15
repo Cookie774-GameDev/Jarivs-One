@@ -4,6 +4,8 @@ import type { Theme } from '@/types/common';
 import { createDebouncedStateStorage } from '@/lib/persistence/debouncedStateStorage';
 import { safeLocalStorage, measureStorageSizes } from '@/lib/persistence/safeLocalStorage';
 import { syncVoiceModuleOpenState } from '@/features/voice/voiceRouter';
+import type { ProductTutorialStatus } from '@/features/product-tutorial/tutorialState';
+import { markTutorialPending } from '@/features/product-tutorial/tutorialState';
 
 const debouncedUiStorage = createDebouncedStateStorage(safeLocalStorage);
 
@@ -88,6 +90,12 @@ interface UIState {
   voiceListening: boolean; // distinct - drives glow border without modal
   settingsOpen: boolean;
   onboardingComplete: boolean;
+  /**
+   * First-run product tour gate (separate from setup onboarding).
+   * `null` = legacy install, never force; `pending` = show offer after
+   * workspace entry; `skipped`/`completed` = do not re-offer.
+   */
+  productTutorialStatus: ProductTutorialStatus;
 
   // Theme + layout prefs
   theme: Theme;
@@ -122,6 +130,11 @@ interface UIState {
    * TopBar megaphone button. Transient — never persisted.
    */
   whatsNewOpen: boolean;
+  /**
+   * AI News mini-panel (model drops / headlines / YouTube).
+   * Transient — never persisted. Unrelated to Pixel Pets.
+   */
+  newsPanelOpen: boolean;
 
   // V2 — accessibility
   /** Show the speech-to-text mic button in the chat composer. */
@@ -191,6 +204,7 @@ interface UIState {
   setChatMode: (mode: ChatMode) => void;
   setTheme: (t: Theme) => void;
   finishOnboarding: () => void;
+  setProductTutorialStatus: (status: ProductTutorialStatus) => void;
   resetUI: () => void;
 
   // V2 actions
@@ -206,6 +220,7 @@ interface UIState {
   setLauncherOpen: (v: boolean) => void;
   setAssistantOpen: (v: boolean) => void;
   setWhatsNewOpen: (v: boolean) => void;
+  setNewsPanelOpen: (v: boolean) => void;
   setComposerStt: (v: boolean) => void;
   setComposerSttListening: (v: boolean) => void;
   setDefaultTerminalFontSize: (v: number) => void;
@@ -236,6 +251,7 @@ const defaults: Pick<
   | 'voiceListening'
   | 'settingsOpen'
   | 'onboardingComplete'
+  | 'productTutorialStatus'
   | 'theme'
   | 'density'
   | 'ambient'
@@ -249,6 +265,7 @@ const defaults: Pick<
   | 'launcherOpen'
   | 'assistantOpen'
   | 'whatsNewOpen'
+  | 'newsPanelOpen'
   | 'composerStt'
   | 'composerSttListening'
   | 'defaultTerminalFontSize'
@@ -275,6 +292,7 @@ const defaults: Pick<
   voiceListening: false,
   settingsOpen: false,
   onboardingComplete: false,
+  productTutorialStatus: null,
   theme: 'dark',
   density: 'cozy',
   ambient: true,
@@ -288,6 +306,7 @@ const defaults: Pick<
   launcherOpen: false,
   assistantOpen: false,
   whatsNewOpen: false,
+  newsPanelOpen: false,
   composerStt: true,
   composerSttListening: false,
   defaultTerminalFontSize: 9,
@@ -346,7 +365,13 @@ export const useUIStore = create<UIState>()(
         applyThemeToDocument(t);
         set({ theme: t });
       },
-      finishOnboarding: () => set({ onboardingComplete: true }),
+      finishOnboarding: () =>
+        set((s) => ({
+          onboardingComplete: true,
+          // Brand-new users only: offer the interactive product tour once.
+          productTutorialStatus: markTutorialPending(s.productTutorialStatus),
+        })),
+      setProductTutorialStatus: (status) => set({ productTutorialStatus: status }),
       resetUI: () => {
         applyThemeToDocument(defaults.theme);
         set(defaults);
@@ -381,6 +406,7 @@ export const useUIStore = create<UIState>()(
       setLauncherOpen: (v) => set({ launcherOpen: v }),
       setAssistantOpen: (v) => set({ assistantOpen: v }),
       setWhatsNewOpen: (v) => set({ whatsNewOpen: v }),
+      setNewsPanelOpen: (v) => set({ newsPanelOpen: v }),
       setComposerStt: (v) => set({ composerStt: v }),
       setComposerSttListening: (v) => set({ composerSttListening: v }),
       setDefaultTerminalFontSize: (v) =>
@@ -420,7 +446,7 @@ export const useUIStore = create<UIState>()(
     {
       name: 'jarvis-ui',
       storage: createJSONStorage(() => debouncedUiStorage),
-      version: 2,
+      version: 3,
       migrate: (persistedState: any, version: number) => {
         let state = persistedState;
         if (version < 1) {
@@ -474,6 +500,17 @@ export const useUIStore = create<UIState>()(
             aiCompletionCue: false,
           };
         }
+        if (version < 3) {
+          // Existing installs: never force the product tour.
+          // New users get `pending` via finishOnboarding.
+          state = {
+            ...(state && typeof state === 'object' ? state : {}),
+            productTutorialStatus:
+              state && typeof state === 'object' && 'productTutorialStatus' in state
+                ? (state as { productTutorialStatus: ProductTutorialStatus }).productTutorialStatus
+                : null,
+          };
+        }
         return state;
       },
       partialize: (s) => ({
@@ -486,6 +523,7 @@ export const useUIStore = create<UIState>()(
         theme: s.theme,
         density: s.density,
         onboardingComplete: s.onboardingComplete,
+        productTutorialStatus: s.productTutorialStatus,
         ambient: s.ambient,
         ambientThresholdMs: s.ambientThresholdMs,
         ambientDrone: s.ambientDrone,

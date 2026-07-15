@@ -39,21 +39,24 @@
 //! New commands should be small and pure; heavy logic belongs in the Node
 //! runtime sidecar so we keep the Rust core boring and stable.
 
+use std::time::Duration;
 use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
-use std::time::Duration;
 
+mod agent_coordination;
+mod branding;
+mod cli_bridge;
+mod credentials;
 mod dictation;
 mod faster_whisper;
 mod fsread;
-mod terminal;
-mod credentials;
+mod kokoro;
 mod launcher;
 mod local_ai;
-mod kokoro;
 mod ollama_http;
-mod branding;
-mod agent_coordination;
+mod pets;
+mod terminal;
+mod terminal_snapshot;
 
 /// Sanity-check command. The JS bridge can call this during startup to verify
 /// invoke() round-trips. Wire it in as needed; it returns a friendly string.
@@ -210,13 +213,31 @@ pub fn run() {
                 })
                 .build(),
         )
+        .manage(cli_bridge::CliBridgeState::default())
         .manage(terminal::TerminalState::default())
+        .manage(pets::PetWindowState::default())
+        .manage(terminal_snapshot::PersistenceFlushState::default())
         .setup(|app| {
+            // Restore pet window geometry from disk.
+            {
+                let geo = pets::load_geometry(&app.handle());
+                if let Ok(mut g) = app.state::<pets::PetWindowState>().geometry.lock() {
+                    *g = geo;
+                }
+            }
             let tray_menu = tauri::menu::Menu::with_items(
                 app,
                 &[
-                    &tauri::menu::MenuItem::with_id(app, "show", "Show VibeSpace", true, None::<&str>).unwrap(),
-                    &tauri::menu::MenuItem::with_id(app, "exit", "Exit", true, None::<&str>).unwrap(),
+                    &tauri::menu::MenuItem::with_id(
+                        app,
+                        "show",
+                        "Show VibeSpace",
+                        true,
+                        None::<&str>,
+                    )
+                    .unwrap(),
+                    &tauri::menu::MenuItem::with_id(app, "exit", "Exit", true, None::<&str>)
+                        .unwrap(),
                 ],
             )?;
 
@@ -229,21 +250,35 @@ pub fn run() {
                 .icon(tray_icon)
                 .tooltip("VibeSpace")
                 .menu(&tray_menu)
-                .on_menu_event(|app, event| {
-                    match event.id.as_ref() {
-                        "show" => {
-                            show_main_window(app, "tray-show");
-                        }
-                        "exit" => {
-                            let _ = app.emit("jarvis:persist-now", PersistPayload { reason: "tray-exit" });
-                            let app_handle = app.clone();
-                            std::thread::spawn(move || {
-                                std::thread::sleep(Duration::from_millis(750));
-                                app_handle.exit(0);
-                            });
-                        }
-                        _ => {}
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "show" => {
+                        show_main_window(app, "tray-show");
                     }
+                    "exit" => {
+                        app.state::<terminal_snapshot::PersistenceFlushState>().begin();
+                        let _ = app.emit(
+                            "jarvis:persist-now",
+                            PersistPayload {
+                                reason: "tray-exit",
+                            },
+                        );
+                        let app_handle = app.clone();
+                        std::thread::spawn(move || {
+                            let started = std::time::Instant::now();
+                            while started.elapsed() < Duration::from_millis(1_500)
+                                && !app_handle
+                                    .state::<terminal_snapshot::PersistenceFlushState>()
+                                    .is_completed()
+                            {
+                                std::thread::sleep(Duration::from_millis(25));
+                            }
+                            app_handle
+                                .state::<terminal_snapshot::PersistenceFlushState>()
+                                .complete();
+                            app_handle.exit(0);
+                        });
+                    }
+                    _ => {}
                 })
                 .build(app)?;
 
@@ -268,16 +303,22 @@ pub fn run() {
                     }
                 }
                 tauri::WindowEvent::CloseRequested { api, .. } => {
-                use tauri::Emitter as _;
-                // The window only hides to tray (process stays alive), so the
-                // WebView keeps any in-flight speech playing. Tell the frontend
-                // to stop all TTS before we hide.
-                let _ = window.emit("jarvis:before-hide", ());
-                println!("[lifecycle] hiding main window; background service remains alive");
-                if let Err(err) = window.hide() {
-                    eprintln!("[lifecycle] failed to hide main window: {err}");
-                }
-                api.prevent_close();
+                    use tauri::Emitter as _;
+                    // Pet windows: hide only; never destroy sessions.
+                    if pets::handle_pet_window_close(window) {
+                        api.prevent_close();
+                        return;
+                    }
+                    // Main (and others): hide to tray; process stays alive.
+                    let _ = window.emit("jarvis:before-hide", ());
+                    println!(
+                        "[lifecycle] hiding window {}; background service remains alive",
+                        window.label()
+                    );
+                    if let Err(err) = window.hide() {
+                        eprintln!("[lifecycle] failed to hide window: {err}");
+                    }
+                    api.prevent_close();
                 }
                 _ => {}
             }
@@ -286,7 +327,25 @@ pub fn run() {
             greet,
             app_version,
             refresh_app_branding,
+            cli_bridge::cli_bridge_scan,
+            cli_bridge::cli_bridge_probe,
+            cli_bridge::cli_bridge_start,
+            cli_bridge::cli_bridge_cancel,
             fsread::fs_create_dir_all,
+            pets::pet_show_overlay,
+            pets::pet_hide_overlay,
+            pets::pet_is_overlay_visible,
+            pets::pet_reassert_overlay_topmost,
+            pets::pet_get_start_with_windows,
+            pets::pet_set_start_with_windows,
+            pets::pet_set_overlay_position,
+            pets::pet_snap_overlay_to_edge,
+            pets::pet_open_or_focus_panel,
+            pets::pet_minimize_panel,
+            pets::pet_hide_panel,
+            pets::pet_is_panel_visible,
+            pets::pet_save_panel_geometry,
+            pets::pet_validate_action,
             fsread::fs_create_text_file,
             fsread::fs_create_text_with_content,
             fsread::fs_list_dir,
@@ -301,6 +360,11 @@ pub fn run() {
             terminal::terminal_move,
             terminal::terminal_list,
             terminal::terminal_reconcile,
+            terminal_snapshot::terminal_snapshot_save,
+            terminal_snapshot::terminal_snapshot_load,
+            terminal_snapshot::terminal_snapshot_delete,
+            terminal_snapshot::terminal_snapshot_delete_project,
+            terminal_snapshot::persistence_flush_complete,
             agent_coordination::agent_coordination_snapshot,
             agent_coordination::agent_coordination_register,
             agent_coordination::agent_coordination_heartbeat,
@@ -343,13 +407,36 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {
-            if let tauri::RunEvent::ExitRequested { .. } = event {
+            if let tauri::RunEvent::ExitRequested { api, code, .. } = event {
+                let state = app_handle.state::<terminal_snapshot::PersistenceFlushState>();
+                if state.is_completed() {
+                    return;
+                }
+                api.prevent_exit();
+                if state.is_pending() {
+                    return;
+                }
+
+                state.begin();
                 let _ = app_handle.emit(
                     "jarvis:persist-now",
-                    PersistPayload {
-                        reason: "exit-requested",
-                    },
+                    PersistPayload { reason: "exit-requested" },
                 );
+                let app_handle = app_handle.clone();
+                std::thread::spawn(move || {
+                    let started = std::time::Instant::now();
+                    while started.elapsed() < Duration::from_millis(1_500)
+                        && !app_handle
+                            .state::<terminal_snapshot::PersistenceFlushState>()
+                            .is_completed()
+                    {
+                        std::thread::sleep(Duration::from_millis(25));
+                    }
+                    app_handle
+                        .state::<terminal_snapshot::PersistenceFlushState>()
+                        .complete();
+                    app_handle.exit(code.unwrap_or(0));
+                });
             }
         });
 }

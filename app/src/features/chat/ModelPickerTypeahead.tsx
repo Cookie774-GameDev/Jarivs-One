@@ -5,6 +5,7 @@ import type { ProviderId } from '@/types';
 import { cn } from '@/lib/utils';
 import { HiveModelIcon } from '@/components/brand';
 import type { ModelPickerGroup } from '@/lib/ai/useAccessibleChatModels';
+import type { ProviderConnection } from '@/lib/ai/adapters/types';
 import { scrollPickerItemIntoView } from './pickerScroll';
 
 /** Sentinel id for the pinned Hive entry (keyboard nav + selection state). */
@@ -28,7 +29,7 @@ export interface ModelPickerTypeaheadProps {
   /** Whether the Hive ensemble is the active chat selection. */
   hiveActive?: boolean;
   onHoverId?: (id: string) => void;
-  onSelect: (provider: ProviderId, modelId: string) => void;
+  onSelect: (provider: ProviderId, modelId: string, connection?: Readonly<ProviderConnection>) => void;
   /** Select the pinned Hive ensemble entry. When omitted, the row is hidden. */
   onSelectHive?: () => void;
 }
@@ -53,7 +54,10 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
 
     // Navigation order: pinned Hive entry first (when available), then models.
     const navIds = useMemo(
-      () => (onSelectHive ? [HIVE_OPTION_ID, ...flatOptions.map((o) => o.id)] : flatOptions.map((o) => o.id)),
+      () => {
+        const usable = flatOptions.filter((option) => option.available !== false).map((option) => option.id);
+        return onSelectHive ? [HIVE_OPTION_ID, ...usable] : usable;
+      },
       [flatOptions, onSelectHive],
     );
 
@@ -63,7 +67,7 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
         return;
       }
       const option = flatOptions.find((item) => item.id === id);
-      if (option) onSelect(option.provider, option.modelId);
+      if (option && option.available !== false) onSelect(option.provider, option.modelId, option.connection);
     };
 
     useImperativeHandle(ref, () => ({
@@ -187,11 +191,13 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
                       <div
                         key={option.id}
                         data-value={option.id}
-                        onClick={() => onSelect(option.provider, option.modelId)}
-                        onMouseEnter={() => onHoverId?.(option.id)}
+                        onClick={() => option.available !== false && onSelect(option.provider, option.modelId, option.connection)}
+                        onMouseEnter={() => option.available !== false && onHoverId?.(option.id)}
+                        aria-disabled={option.available === false}
                         className={cn(
                           'mx-2 flex cursor-pointer items-center gap-3 rounded-[12px] border px-3 py-2.5',
                           'transition-all duration-100',
+                          option.available === false && 'cursor-not-allowed opacity-55',
                           isSelected
                             ? 'jarvis-slash-item-selected border-accent-copper/60 bg-accent-copper/12 text-foreground shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.04),0_0_16px_hsl(var(--accent-copper)/0.1)]'
                             : 'border-transparent text-muted-foreground hover:border-border hover:bg-muted/70 hover:text-foreground',
@@ -207,8 +213,8 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
                           <span className="block truncate text-[15px] font-medium leading-5 text-foreground">
                             {option.label}
                           </span>
-                          <span className="block truncate font-mono text-[11px] leading-4 text-muted-foreground">
-                            {option.modelId}
+                          <span className="block truncate text-[11px] leading-4 text-muted-foreground">
+                            {option.modeLabel ?? option.modelId}{option.authLabel ? ` · ${option.authLabel}` : ''}
                           </span>
                         </div>
                         {isActive && (

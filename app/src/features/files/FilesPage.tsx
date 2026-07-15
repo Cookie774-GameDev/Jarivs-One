@@ -1,21 +1,24 @@
 import * as React from 'react';
 import {
   ChevronRight,
+  Copy,
   FileText,
   Folder,
   FolderOpen,
+  Loader2,
+  MessageSquare,
   Plus,
   RefreshCw,
   Save,
   Send,
   Sparkles,
+  X,
 } from 'lucide-react';
 import { Button, Input, Textarea, toast } from '@/components/ui';
 import { cn } from '@/lib/utils';
-import { chatRepo } from '@/lib/db';
 import { useAuthStore } from '@/stores/auth';
-import { useUIStore } from '@/stores/ui';
-import type { AgentId, ChatId, ProjectId, WorkspaceId } from '@/types';
+import { useAgentStore } from '@/stores/agents';
+import type { ProjectId } from '@/types';
 import {
   createTextFile,
   describeFsError,
@@ -24,6 +27,10 @@ import {
   writeTextFile,
   type FsEntry,
 } from '@/lib/fs';
+import { runAgent } from '@/lib/ai/router';
+import {
+  applyChatModelSelectionToAgent,
+} from '@/lib/ai/modelSelection';
 import {
   basename,
   chooseProjectFolder,
@@ -37,6 +44,19 @@ import {
   setStoredProjectRoot,
 } from './projectFiles';
 import { startRightClickDrag } from '@/lib/rightClickDrag';
+
+/** Mini Files-panel chat only — never writes into the main Chat route. */
+type MiniLine = {
+  id: string;
+  role: 'user' | 'assistant' | 'error';
+  text: string;
+};
+
+const FILES_MINI_SYSTEM = [
+  'You are Jarvis answering questions about a code/file selection inside the VibeSpace Files page.',
+  'Keep replies short, clear, and to the point — prefer tight bullet lines over long essays.',
+  'Stay focused on the attached selection and the user question. Do not invent files that are not shown.',
+].join(' ');
 
 const MAX_TREE_CHILDREN = 500;
 
@@ -138,7 +158,6 @@ function FileTreeNode({ entry, depth, rootDir, selectedPath, onOpenFile, onOpenD
 
 export function FilesPage() {
   const projectId = useAuthStore((s) => s.projectId) as ProjectId | null;
-  const workspaceId = useAuthStore((s) => s.workspaceId) as WorkspaceId | null;
   const [rootDraft, setRootDraft] = React.useState(() => getStoredProjectRoot(projectId));
   const [rootDir, setRootDir] = React.useState(() => getStoredProjectRoot(projectId));
   const [currentDir, setCurrentDir] = React.useState(() => getStoredProjectRoot(projectId));
@@ -149,10 +168,19 @@ export function FilesPage() {
   const [loading, setLoading] = React.useState(false);
   const [newFileName, setNewFileName] = React.useState('');
   const [askDraft, setAskDraft] = React.useState('Explain this code and suggest a safe edit.');
+  /** Selection attached via the highlight → Ask Jarvis control. */
+  const [attachedSelection, setAttachedSelection] = React.useState<string>('');
+  const [miniLines, setMiniLines] = React.useState<MiniLine[]>([]);
+  const [miniBusy, setMiniBusy] = React.useState(false);
+  const [selPopup, setSelPopup] = React.useState<{
+    text: string;
+    top: number;
+    left: number;
+  } | null>(null);
   const editorRef = React.useRef<HTMLTextAreaElement>(null);
-  const activeChatId = useUIStore((s) => s.activeChatId);
-  const setActiveChat = useUIStore((s) => s.setActiveChat);
-  const setRoute = useUIStore((s) => s.setRoute);
+  const miniScrollRef = React.useRef<HTMLDivElement>(null);
+  const jarvisAgent = useAgentStore((s) => Object.values(s.agents).find((a) => a.slug === 'jarvis') ?? null);
+  const chatModelSelection = useAuthStore((s) => s.chatModelSelection);
 
   const dirty = content !== savedContent;
 
@@ -214,13 +242,14 @@ export function FilesPage() {
   }, [projectId]);
 
   const chooseRoot = async () => {
-    const picked = await chooseProjectFolder();
-    if (!picked) {
-      toast.info('Use the path field', 'Native folder picking is available in the desktop app.');
-      return;
-    }
+    const picked = await chooseProjectFolder({
+      title: 'Choose project folder',
+      initialPath: rootDraft.trim() || rootDir || undefined,
+    });
+    if (!picked) return;
     setRootDraft(picked);
     await loadRoot(picked);
+    toast.success('Project folder selected', picked);
   };
 
   const saveFile = async () => {
@@ -249,42 +278,144 @@ export function FilesPage() {
     await openFile(path);
   };
 
-  const selectedText = () => {
+  const readEditorSelection = React.useCallback((): string => {
     const el = editorRef.current;
     if (!el) return '';
     return content.slice(el.selectionStart, el.selectionEnd).trim();
-  };
+  }, [content]);
 
-  const ensureChat = async (): Promise<ChatId | string | null> => {
-    if (activeChatId) return activeChatId;
-    if (!workspaceId) return null;
-    const chat = await chatRepo.create({
-      workspace_id: workspaceId,
-      project_id: projectId ?? undefined,
-      title: selectedPath ? `Ask about ${basename(selectedPath)}` : 'Files question',
-      mode: 'chat',
-      active_agent_ids: [] as AgentId[],
-    });
-    setActiveChat(chat.id);
-    return chat.id;
-  };
-
-  const askJarvis = async () => {
-    if (!selectedPath) return;
-    const code = selectedText() || content.slice(0, 8000);
-    if (!code.trim()) return;
-    const chatId = await ensureChat();
-    if (!chatId) {
-      toast.error('No workspace yet', 'Create or load a workspace before asking Jarvis.');
+  const updateSelectionPopup = React.useCallback(() => {
+    const el = editorRef.current;
+    if (!el) {
+      setSelPopup(null);
       return;
     }
-    setRoute('chat');
-    setTimeout(() => {
-      window.dispatchEvent(new CustomEvent('jarvis:files:ask', {
-        detail: { path: selectedPath, prompt: askDraft.trim() || 'Review this code.', code },
-      }));
-    }, 80);
-    toast.success('Prepared Jarvis question', basename(selectedPath));
+    const text = content.slice(el.selectionStart, el.selectionEnd).trim();
+    if (!text || el.selectionStart === el.selectionEnd) {
+      setSelPopup(null);
+      return;
+    }
+    // Anchor a compact toolbar near the top of the editor (selection APIs
+    // on <textarea> don't expose a client rect for the caret range).
+    const rect = el.getBoundingClientRect();
+    setSelPopup({
+      text,
+      top: Math.max(8, rect.top + 10),
+      left: Math.min(window.innerWidth - 160, Math.max(12, rect.left + rect.width / 2 - 70)),
+    });
+  }, [content]);
+
+  React.useEffect(() => {
+    const hide = () => setSelPopup(null);
+    window.addEventListener('scroll', hide, true);
+    window.addEventListener('resize', hide);
+    return () => {
+      window.removeEventListener('scroll', hide, true);
+      window.removeEventListener('resize', hide);
+    };
+  }, []);
+
+  React.useEffect(() => {
+    miniScrollRef.current?.scrollTo({ top: miniScrollRef.current.scrollHeight, behavior: 'smooth' });
+  }, [miniLines, miniBusy]);
+
+  const copySelection = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success('Copied', `${Math.min(text.length, 48)} chars`);
+    } catch {
+      toast.error('Copy failed', 'Clipboard is not available.');
+    }
+    setSelPopup(null);
+  };
+
+  /** Attach highlight into the Files mini chat only (no main Chat route). */
+  const attachSelectionForAsk = (text: string) => {
+    const clean = text.trim();
+    if (!clean) return;
+    setAttachedSelection(clean);
+    setSelPopup(null);
+    if (!askDraft.trim()) setAskDraft('Explain this selection briefly.');
+  };
+
+  const askJarvisMini = async () => {
+    if (!selectedPath) return;
+    const code = attachedSelection.trim() || readEditorSelection() || content.slice(0, 6000);
+    const question = askDraft.trim() || 'Explain this briefly.';
+    if (!code.trim()) {
+      toast.warning('Nothing to ask about', 'Select text in the file or open a file first.');
+      return;
+    }
+    if (!jarvisAgent) {
+      toast.error('Jarvis not ready', 'Wait for agents to finish loading.');
+      return;
+    }
+
+    const userLine = attachedSelection.trim()
+      ? `${question}\n\n(Selection from ${basename(selectedPath)})`
+      : question;
+
+    const userId = `u_${Date.now().toString(36)}`;
+    const assistantId = `a_${Date.now().toString(36)}`;
+    setMiniLines((prev) => [
+      ...prev,
+      { id: userId, role: 'user', text: userLine },
+      { id: assistantId, role: 'assistant', text: '' },
+    ]);
+    setMiniBusy(true);
+
+    const agent = applyChatModelSelectionToAgent(
+      {
+        ...jarvisAgent,
+        system_prompt: [FILES_MINI_SYSTEM, jarvisAgent.system_prompt ?? ''].filter(Boolean).join('\n\n'),
+      },
+      chatModelSelection,
+    );
+
+    const payload = [
+      `File: ${selectedPath}`,
+      '',
+      'Selection:',
+      '```',
+      code.slice(0, 12_000),
+      '```',
+      '',
+      `Question: ${question}`,
+    ].join('\n');
+
+    try {
+      const response = await runAgent({
+        agent,
+        messages: [{ role: 'user', content: payload }],
+        max_output_tokens: 512,
+        temperature: 0.35,
+        onChunk: (chunk) => {
+          if (!chunk.delta) return;
+          setMiniLines((prev) =>
+            prev.map((line) =>
+              line.id === assistantId ? { ...line, text: line.text + chunk.delta } : line,
+            ),
+          );
+        },
+      });
+      const finalText = (response.text || '').trim() || 'No response.';
+      setMiniLines((prev) =>
+        prev.map((line) =>
+          line.id === assistantId ? { ...line, text: finalText } : line,
+        ),
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setMiniLines((prev) =>
+        prev.map((line) =>
+          line.id === assistantId
+            ? { ...line, role: 'error', text: msg.slice(0, 280) }
+            : line,
+        ),
+      );
+    } finally {
+      setMiniBusy(false);
+    }
   };
 
   return (
@@ -370,23 +501,138 @@ export function FilesPage() {
           </div>
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-2 p-3">
+        <div className="relative flex min-h-0 flex-1 flex-col gap-2 p-3">
           <Textarea
             ref={editorRef}
             value={content}
             onChange={(e) => setContent(e.target.value)}
+            onSelect={updateSelectionPopup}
+            onMouseUp={updateSelectionPopup}
+            onKeyUp={updateSelectionPopup}
+            onBlur={() => {
+              // Delay so toolbar buttons can receive the click first.
+              window.setTimeout(() => setSelPopup(null), 180);
+            }}
             placeholder="Open a text/code file to edit it here."
             spellCheck={false}
             className="min-h-0 flex-1 resize-none font-mono text-sm leading-5"
           />
-          <div className="rounded-lg border border-border bg-panel p-2">
-            <div className="mb-1.5 flex items-center gap-2 text-ui-strong text-foreground">
-              <Sparkles className="h-4 w-4 text-accent-copper" /> Ask Jarvis About Selection
+
+          {/* Compact selection toolbar — Files page only */}
+          {selPopup && (
+            <div
+              className="fixed z-50 flex items-center gap-0.5 rounded-full border border-accent-copper/40 bg-panel/95 px-1 py-0.5 shadow-lg backdrop-blur"
+              style={{ top: selPopup.top, left: selPopup.left }}
+              onMouseDown={(e) => e.preventDefault()}
+            >
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-accent-copper/15"
+                onClick={() => void copySelection(selPopup.text)}
+                title="Copy"
+              >
+                <Copy className="h-3 w-3" />
+                Copy
+              </button>
+              <span className="h-3 w-px bg-border" aria-hidden />
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium text-accent-copper transition-colors hover:bg-accent-copper/15"
+                onClick={() => attachSelectionForAsk(selPopup.text)}
+                title="Ask Jarvis about this selection"
+              >
+                <Sparkles className="h-3 w-3" />
+                Ask Jarvis
+              </button>
             </div>
-            <div className="flex gap-2">
-              <Input value={askDraft} onChange={(e) => setAskDraft(e.target.value)} placeholder="Ask for an explanation, refactor, bug fix, or edit plan" />
-              <Button variant="accent" size="sm" onClick={() => void askJarvis()} disabled={!selectedPath || !content.trim()} className="gap-1 shrink-0">
-                <Send className="h-3.5 w-3.5" /> Send to Jarvis
+          )}
+
+          {/* Mini Files Jarvis panel — isolated from main Chat */}
+          <div className="flex max-h-[42%] min-h-[140px] shrink-0 flex-col rounded-lg border border-border bg-panel shadow-soft">
+            <div className="flex items-center gap-2 border-b border-border px-2.5 py-1.5">
+              <MessageSquare className="h-3.5 w-3.5 text-accent-copper" />
+              <span className="text-metadata font-medium text-foreground">Ask Jarvis (this file)</span>
+              <span className="text-[10px] text-muted-foreground">short answers · stays on Files</span>
+              {miniLines.length > 0 && (
+                <button
+                  type="button"
+                  className="ml-auto text-[10px] text-muted-foreground hover:text-foreground"
+                  onClick={() => setMiniLines([])}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+
+            <div
+              ref={miniScrollRef}
+              className="min-h-0 flex-1 space-y-1.5 overflow-y-auto px-2.5 py-2"
+            >
+              {miniLines.length === 0 ? (
+                <p className="text-metadata text-muted-foreground">
+                  Highlight code → <span className="text-foreground">Ask Jarvis</span>, then send a short question.
+                </p>
+              ) : (
+                miniLines.map((line) => (
+                  <div
+                    key={line.id}
+                    className={cn(
+                      'rounded-md px-2 py-1.5 text-[12px] leading-snug whitespace-pre-wrap break-words',
+                      line.role === 'user' && 'bg-muted/60 text-foreground',
+                      line.role === 'assistant' && 'border border-accent-copper/20 bg-accent-copper/5 text-foreground',
+                      line.role === 'error' && 'border border-destructive/30 bg-destructive/10 text-destructive',
+                    )}
+                  >
+                    <span className="mr-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      {line.role === 'user' ? 'You' : line.role === 'error' ? 'Error' : 'Jarvis'}
+                    </span>
+                    {line.text || (miniBusy && line.role === 'assistant' ? '…' : '')}
+                  </div>
+                ))
+              )}
+            </div>
+
+            {attachedSelection ? (
+              <div className="mx-2 mb-1 flex items-start gap-1.5 rounded-md border border-accent-copper/30 bg-accent-copper/10 px-2 py-1">
+                <Sparkles className="mt-0.5 h-3 w-3 shrink-0 text-accent-copper" />
+                <pre className="min-w-0 flex-1 overflow-hidden text-[11px] leading-snug text-foreground/90 line-clamp-3 whitespace-pre-wrap font-mono">
+                  {attachedSelection.slice(0, 400)}
+                  {attachedSelection.length > 400 ? '…' : ''}
+                </pre>
+                <button
+                  type="button"
+                  className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground"
+                  onClick={() => setAttachedSelection('')}
+                  aria-label="Clear attached selection"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ) : null}
+
+            <div className="flex gap-1.5 border-t border-border p-2">
+              <Input
+                value={askDraft}
+                onChange={(e) => setAskDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    void askJarvisMini();
+                  }
+                }}
+                placeholder="Ask about the selection…"
+                disabled={miniBusy}
+                className="h-8 text-sm"
+              />
+              <Button
+                variant="accent"
+                size="sm"
+                onClick={() => void askJarvisMini()}
+                disabled={miniBusy || !selectedPath || !content.trim()}
+                className="gap-1 shrink-0"
+              >
+                {miniBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                Send
               </Button>
             </div>
           </div>

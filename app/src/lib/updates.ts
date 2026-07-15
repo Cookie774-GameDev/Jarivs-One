@@ -60,7 +60,7 @@ export async function checkForAppUpdate(options: {
     return { available: true, installed: false, version, notes };
   }
 
-  flushWorkspacePersistence('pre-update-install');
+  await flushWorkspacePersistence('pre-update-install');
 
   let downloadedBytes = 0;
   let totalBytes: number | undefined;
@@ -84,7 +84,7 @@ export async function checkForAppUpdate(options: {
   });
 
   options.onProgress?.({ phase: 'installed', downloadedBytes, totalBytes });
-  flushWorkspacePersistence('pre-update-relaunch');
+  await flushWorkspacePersistence('pre-update-relaunch');
 
   try {
     const { relaunch } = await import('@tauri-apps/plugin-process');

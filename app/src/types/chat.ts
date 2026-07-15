@@ -6,6 +6,8 @@ import type {
   JarvisQuestionAnswer,
   JarvisQuestionBlock,
 } from '@/features/jarvis-interaction/types';
+import type { ProviderConnection } from '@/lib/ai/adapters/types';
+import type { UsageSnapshot } from '@/lib/usage/usageTypes';
 
 export type Role = 'user' | 'assistant' | 'agent' | 'system' | 'tool';
 
@@ -79,7 +81,8 @@ export type Part =
   | { kind: 'permission_request'; request: JarvisPermissionRequest }
   | { kind: 'agent_card'; agent: JarvisChatAgent }
   | { kind: 'image'; url: string; alt?: string }
-  | { kind: 'file_ref'; ref: ContextRef };
+  | { kind: 'file_ref'; ref: ContextRef }
+  | { kind: 'usage_card'; snapshots: UsageSnapshot[]; scope: 'connection' | 'all' };
 
 /**
  * A single message in a chat thread.
@@ -120,9 +123,15 @@ export type Chat = {
   title: string;
   mode: ChatMode;
   active_agent_ids: AgentId[]; // single in chat mode, n in council
+  /** Exact local provider connection selected for this chat. Never cloud-synced. */
+  connection?: ProviderConnection;
   created_at: number;
   updated_at: number;
   archived?: boolean;
+  /** When true, chat appears in the sidebar Pinned section and sorts above unpinned. */
+  pinned?: boolean;
+  /** Unix-ms when the chat was last pinned (for stable pin order). */
+  pinned_at?: number;
 };
 
 /**

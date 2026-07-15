@@ -1,9 +1,41 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'node:path';
+import { execSync } from 'node:child_process';
+import fs from 'node:fs';
 
 // https://vitejs.dev/config/
 const host = process.env.TAURI_DEV_HOST;
+
+function safeGit(args: string, fallback: string): string {
+  try {
+    return execSync(`git ${args}`, {
+      cwd: path.resolve(__dirname, '..'),
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim() || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function readAppVersion(): string {
+  try {
+    const raw = fs.readFileSync(path.resolve(__dirname, 'package.json'), 'utf8');
+    const parsed = JSON.parse(raw) as { version?: unknown };
+    return typeof parsed.version === 'string' && parsed.version.trim() ? parsed.version.trim() : '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
+
+const buildGitCommit = process.env.VITE_GIT_COMMIT || safeGit('rev-parse HEAD', 'unknown');
+const buildGitBranch = process.env.VITE_GIT_BRANCH || safeGit('rev-parse --abbrev-ref HEAD', 'unknown');
+const buildTimestamp = process.env.VITE_BUILD_TIMESTAMP || new Date().toISOString();
+const appVersion = process.env.VITE_APP_VERSION || readAppVersion();
+const frontendAssetVersion =
+  process.env.VITE_FRONTEND_ASSET_VERSION ||
+  `app-${appVersion}-${buildGitCommit === 'unknown' ? 'unknown' : buildGitCommit.slice(0, 12)}`;
 
 /**
  * Manual chunk strategy.
@@ -87,6 +119,14 @@ function manualChunks(id: string): string | undefined {
 
 export default defineConfig({
   plugins: [react()],
+
+  define: {
+    'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion),
+    'import.meta.env.VITE_GIT_COMMIT': JSON.stringify(buildGitCommit),
+    'import.meta.env.VITE_GIT_BRANCH': JSON.stringify(buildGitBranch),
+    'import.meta.env.VITE_BUILD_TIMESTAMP': JSON.stringify(buildTimestamp),
+    'import.meta.env.VITE_FRONTEND_ASSET_VERSION': JSON.stringify(frontendAssetVersion),
+  },
 
   // Path aliases mirror tsconfig.json
   resolve: {

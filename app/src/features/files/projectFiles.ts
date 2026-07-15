@@ -86,31 +86,74 @@ export function isPopularTextFile(path: string): boolean {
   return TEXT_EXTENSIONS.has(extension(path));
 }
 
-export async function chooseProjectFolder(): Promise<string | null> {
+/**
+ * Open the themed in-app file explorer (folder mode).
+ * Falls back to the native OS dialog, then null if both fail.
+ */
+export async function chooseProjectFolder(options?: {
+  title?: string;
+  initialPath?: string | null;
+}): Promise<string | null> {
+  // Preferred: VibeSpace-themed explorer (live FS via fs_list_dir).
+  try {
+    const { openFileExplorer } = await import('./fileExplorerStore');
+    const result = await openFileExplorer({
+      mode: 'folder',
+      title: options?.title ?? 'Choose project folder',
+      initialPath: options?.initialPath ?? (getStoredProjectRoot(null) || undefined),
+    });
+    if (result.ok && result.paths[0]) return result.paths[0];
+    if (!result.ok && result.cancelled) return null;
+  } catch {
+    /* explorer host may be unavailable in tests — try native */
+  }
+
   if (!isTauri) return null;
   try {
     const { open } = await import('@tauri-apps/plugin-dialog');
     const selected: string | string[] | null = await open({
       directory: true,
       multiple: false,
-      title: 'Choose project folder',
+      title: options?.title ?? 'Choose project folder',
     });
     if (typeof selected === 'string') return selected;
     if (Array.isArray(selected)) return (selected as string[]).find((item: string) => typeof item === 'string') ?? null;
   } catch {
-    // The typed path fallback remains available when the native dialog is unavailable.
+    // The typed path fallback remains available when dialogs are unavailable.
   }
   return null;
 }
 
-export async function chooseProjectFiles(multiple = true): Promise<string[]> {
+/**
+ * Open the themed in-app file explorer (file / multi-file mode).
+ * Falls back to the native OS dialog.
+ */
+export async function chooseProjectFiles(
+  multiple = true,
+  options?: { title?: string; root?: string | null; initialPath?: string | null; extensions?: string[] },
+): Promise<string[]> {
+  try {
+    const { openFileExplorer } = await import('./fileExplorerStore');
+    const result = await openFileExplorer({
+      mode: multiple ? 'files' : 'file',
+      title: options?.title ?? (multiple ? 'Choose files' : 'Choose file'),
+      root: options?.root ?? null,
+      initialPath: options?.initialPath ?? options?.root ?? null,
+      extensions: options?.extensions,
+    });
+    if (result.ok) return result.paths;
+    if (!result.ok && result.cancelled) return [];
+  } catch {
+    /* fall through to native */
+  }
+
   if (!isTauri) return [];
   try {
     const { open } = await import('@tauri-apps/plugin-dialog');
     const selected: unknown = await open({
       directory: false,
       multiple,
-      title: 'Choose project files',
+      title: options?.title ?? 'Choose project files',
     });
     if (typeof selected === 'string') return [selected];
     if (Array.isArray(selected)) return selected.filter((item): item is string => typeof item === 'string');

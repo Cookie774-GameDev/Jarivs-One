@@ -21,6 +21,7 @@ import { toast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
 import {
   JARVIS_CREATOR_APPLY_SKILL_EVENT,
+  normalizeJarvisCreatorSkillDraft,
   type JarvisCreatorSkillDraft,
 } from '@/features/jarvis-creator/contracts';
 import { startJarvisCreator } from '@/features/jarvis-creator/launcher';
@@ -62,18 +63,23 @@ export function SkillEditor({ manifest, onSaved, onDeleted }: SkillEditorProps) 
 
   React.useEffect(() => {
     const handleApply = (event: Event) => {
-      const detail = (event as CustomEvent<JarvisCreatorSkillDraft>).detail;
-      if (!detail?.title || !detail.description || !detail.systemPromptAddendum) return;
-      setEmoji(detail.emoji ?? emoji);
+      const raw = (event as CustomEvent<Partial<JarvisCreatorSkillDraft>>).detail;
+      const detail = normalizeJarvisCreatorSkillDraft(raw);
+      if (!detail) {
+        toast.error('Push failed', 'Jarvis draft was missing skill title or instructions.');
+        return;
+      }
+      setEmoji(detail.emoji ?? '✨');
       setTitle(detail.title);
       setDescription(detail.description);
-      setToolsRaw(detail.tools.join(', '));
+      setToolsRaw((detail.tools ?? []).join(', '));
       setAddendum(detail.systemPromptAddendum);
       setBody(detail.body);
+      toast.success('Skill draft applied', detail.title);
     };
     window.addEventListener(JARVIS_CREATOR_APPLY_SKILL_EVENT, handleApply as EventListener);
     return () => window.removeEventListener(JARVIS_CREATOR_APPLY_SKILL_EVENT, handleApply as EventListener);
-  }, [emoji]);
+  }, []);
 
   const previewHtml = React.useMemo(() => renderSkillMarkdown(body), [body]);
 

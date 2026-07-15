@@ -1,0 +1,163 @@
+{
+  "normalization": {
+    "canonicalArchiveDeterministicTimestamps": true,
+    "canonicalArchiveEntryCount": 153,
+    "canonicalArchiveSelfExcluded": true,
+    "canonicalArchiveSha256": "b4847021b3a0952f7dfc28e8e51617003f77b9cb70f1d0c00faa87fe987fef04",
+    "canonicalArchiveUnsafeEntryCount": 0,
+    "duplicateHashGroupCount": 20,
+    "duplicateHashGroups": [
+      [
+        "layers/07_FACE__expressions__concerned__concerned__left_eye.png",
+        "layers/07_FACE__expressions__neutral__neutral__left_eye.png",
+        "layers/07_FACE__expressions__thinking__thinking__left_eye.png"
+      ],
+      [
+        "layers/07_FACE__expressions__excited__excited__left_brow.png",
+        "layers/07_FACE__expressions__relieved__relieved__left_brow.png",
+        "layers/07_FACE__expressions__surprised__surprised__left_brow.png"
+      ],
+      [
+        "layers/07_FACE__expressions__excited__excited__right_brow.png",
+        "layers/07_FACE__expressions__relieved__relieved__right_brow.png",
+        "layers/07_FACE__expressions__surprised__surprised__right_brow.png"
+      ],
+      [
+        "layers/07_FACE__expressions__concerned__concerned__left_brow.png",
+        "layers/07_FACE__expressions__thinking__thinking__left_brow.png"
+      ],
+      [
+        "layers/07_FACE__expressions__concerned__concerned__mouth.png",
+        "layers/07_FACE__expressions__error__error__mouth.png"
+      ],
+      [
+        "layers/07_FACE__expressions__concerned__concerned__right_brow.png",
+        "layers/07_FACE__expressions__thinking__thinking__right_brow.png"
+      ],
+      [
+        "layers/07_FACE__expressions__concerned__concerned__right_eye.png",
+        "layers/07_FACE__expressions__neutral__neutral__right_eye.png"
+      ],
+      [
+        "layers/07_FACE__expressions__error__error__left_brow.png",
+        "layers/07_FACE__expressions__working_focused__working_focused__left_brow.png"
+      ],
+      [
+        "layers/07_FACE__expressions__error__error__right_brow.png",
+        "layers/07_FACE__expressions__working_focused__working_focused__right_brow.png"
+      ],
+      [
+        "layers/07_FACE__expressions__excited__excited__left_eye.png",
+        "layers/07_FACE__expressions__surprised__surprised__left_eye.png"
+      ],
+      [
+        "layers/07_FACE__expressions__excited__excited__right_eye.png",
+        "layers/07_FACE__expressions__surprised__surprised__right_eye.png"
+      ],
+      [
+        "layers/07_FACE__expressions__happy__happy__left_eye.png",
+        "layers/07_FACE__left_eye.png"
+      ],
+      [
+        "layers/07_FACE__expressions__happy__happy__mouth.png",
+        "layers/07_FACE__mouth.png"
+      ],
+      [
+        "layers/07_FACE__expressions__happy__happy__right_eye.png",
+        "layers/07_FACE__right_eye.png"
+      ],
+      [
+        "layers/07_FACE__expressions__happy__happy__tongue_or_inner_mouth.png",
+        "layers/07_FACE__tongue_or_inner_mouth.png"
+      ],
+      [
+        "layers/07_FACE__expressions__neutral__neutral__left_brow.png",
+        "layers/07_FACE__expressions__sleepy__sleepy__left_brow.png"
+      ],
+      [
+        "layers/07_FACE__expressions__neutral__neutral__mouth.png",
+        "layers/07_FACE__expressions__working_focused__working_focused__mouth.png"
+      ],
+      [
+        "layers/07_FACE__expressions__neutral__neutral__right_brow.png",
+        "layers/07_FACE__expressions__sleepy__sleepy__right_brow.png"
+      ],
+      [
+        "layers/11_REFERENCE__reconstruction_overlay_reference.png",
+        "previews/vibespace_axolotl_reconstruction_overlay.png"
+      ],
+      [
+        "previews/vibespace_axolotl_preview.png",
+        "previews/vibespace_axolotl_preview_transparent.png"
+      ]
+    ],
+    "sourceFileCount": 152,
+    "sourceHashAlgorithm": "sha256"
+  },
+  "schemaVersion": 1,
+  "status": "pass",
+  "validation": {
+    "anatomy_underlap_ids": [
+      "helmet_back",
+      "tail_root_underlap",
+      "left_gill_upper_attachment",
+      "left_gill_middle_attachment",
+      "left_gill_lower_attachment",
+      "right_gill_upper_attachment",
+      "right_gill_middle_attachment",
+      "right_gill_lower_attachment",
+      "left_leg_underlap",
+      "right_leg_underlap",
+      "left_upper_arm_underlap",
+      "right_upper_arm_underlap",
+      "left_hand_underlap",
+      "right_hand_underlap",
+      "helmet_under_face_trim",
+      "torso_behind_arms",
+      "lower_body_behind_hoodie"
+    ],
+    "branding_all_non_mirrorable": true,
+    "canvas": [
+      1254,
+      1254
+    ],
+    "character_id": "vibespace-axolotl-light",
+    "default_expression": "happy",
+    "default_recomposition_exact": true,
+    "empty_layer_ids": [],
+    "guide_and_reference_groups_hidden": true,
+    "happy_expression_is_source_extracted": true,
+    "invalid_pivot_ids": [],
+    "invalid_pivot_references": [],
+    "manifest_layer_count": 136,
+    "missing_layer_files": [],
+    "ora": {
+      "group_count": 23,
+      "has_merged_image": true,
+      "has_thumbnail": true,
+      "layer_png_count": 136,
+      "leaf_layer_count": 136,
+      "mimetype": "image/openraster"
+    },
+    "preview_alpha": {
+      "maximum": 255,
+      "minimum": 0,
+      "opaque": 543470,
+      "partial": 4065,
+      "transparent": 1024981
+    },
+    "psd": {
+      "contains_transparency_layers": true,
+      "group_count": 23,
+      "height": 1254,
+      "layer_record_count": 182,
+      "leaf_layer_count": 136,
+      "section_divider_count": 46,
+      "signature": "8BPS",
+      "version": 1,
+      "width": 1254
+    },
+    "unique_layer_ids": true,
+    "unique_layer_paths": true
+  }
+}

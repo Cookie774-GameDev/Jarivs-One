@@ -13,15 +13,16 @@ import {
   KeyRound,
   User2,
   LifeBuoy,
-  MoreHorizontal,
   BookOpen,
   Mail,
   MessageCircle,
   Download,
   ScrollText,
   Sparkles,
+  Cat,
 } from 'lucide-react';
 import { Account } from '@/features/settings/sections/Account';
+import { PetAccountPanel } from '@/features/pets/PetAccountPanel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -61,8 +62,8 @@ const TAB_ICONS: Record<AccountTabId, React.ReactNode> = {
   profile: <User2 className="h-3.5 w-3.5" />,
   usage: <Activity className="h-3.5 w-3.5" />,
   billing: <CreditCard className="h-3.5 w-3.5" />,
+  pets: <Cat className="h-3.5 w-3.5" />,
   support: <LifeBuoy className="h-3.5 w-3.5" />,
-  more: <MoreHorizontal className="h-3.5 w-3.5" />,
 };
 
 export function AccountPage() {
@@ -404,10 +405,20 @@ export function AccountPage() {
             </PanelCard>
           </TabsContent>
 
+          <TabsContent value="pets" className="mt-0 focus-visible:ring-0">
+            <PanelCard
+              title="Pets"
+              subtitle="Your desktop companion — show, hide, and learn how to use the mini panel."
+              icon={<Cat className="h-5 w-5 text-accent-copper" />}
+            >
+              <PetAccountPanel />
+            </PanelCard>
+          </TabsContent>
+
           <TabsContent value="support" className="mt-0 focus-visible:ring-0">
             <PanelCard
               title="Support"
-              subtitle="Get help with your account, billing, or the desktop app."
+              subtitle="Help, docs, downloads, and device details for this install."
               icon={<LifeBuoy className="h-5 w-5 text-sky-400" />}
             >
               <div className="grid gap-3 sm:grid-cols-2">
@@ -453,17 +464,6 @@ export function AccountPage() {
                   actionLabel="Open usage"
                   onAction={() => setTab('usage')}
                 />
-              </div>
-            </PanelCard>
-          </TabsContent>
-
-          <TabsContent value="more" className="mt-0 focus-visible:ring-0">
-            <PanelCard
-              title="More"
-              subtitle="Downloads, license, and device details for this install."
-              icon={<MoreHorizontal className="h-5 w-5 text-muted-foreground" />}
-            >
-              <div className="grid gap-3 sm:grid-cols-2">
                 <LinkRow
                   icon={<Download className="h-4 w-4" />}
                   title="Downloads"

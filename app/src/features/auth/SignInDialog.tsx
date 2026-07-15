@@ -1,5 +1,14 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { ArrowLeft, Loader2, AlertTriangle, Mail } from 'lucide-react';
+import {
+  ArrowLeft,
+  Loader2,
+  AlertTriangle,
+  Mail,
+  Sparkles,
+  ShieldCheck,
+  KeyRound,
+  CheckCircle2,
+} from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -11,10 +20,11 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Separator } from '@/components/ui/separator';
 import { toast } from '@/components/ui/toast';
-import { getSupabaseClient } from '@/lib/supabase/client';
+import { getSupabaseClient, isCloudSyncConfigured } from '@/lib/supabase/client';
+import { cn } from '@/lib/utils';
 import { OtpCodeInput } from './OtpCodeInput';
+import { formatAuthError, isLikelyExistingAccountSignUp } from './authErrors';
 import {
   isCompleteOtpCode,
   normalizeOtpCode,
@@ -48,6 +58,8 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
   const [verifyKind, setVerifyKind] = useState<VerifyKind>('signup');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
+  const cloudReady = isCloudSyncConfigured();
 
   useEffect(() => {
     if (open) {
@@ -55,11 +67,12 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
       setPhase('credentials');
       setOtpCode('');
       setError(null);
+      setInfo(null);
     }
   }, [open, initialMode]);
 
   const NOT_CONFIGURED =
-    'VibeSpace Cloud is not configured in this build. Install the official VibeSpace release, or ask the build maintainer to configure the app backend.';
+    'VibeSpace Cloud is not configured in this build. Install the official release, or ask the maintainer to set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.';
 
   function reset() {
     setEmail('');
@@ -68,6 +81,7 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
     setPhase('credentials');
     setBusy(false);
     setError(null);
+    setInfo(null);
   }
 
   function selectMode(next: Mode) {
@@ -75,11 +89,13 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
     setPhase('credentials');
     setOtpCode('');
     setError(null);
+    setInfo(null);
   }
 
   async function handleCredentialsSubmit() {
     setError(null);
-    const trimmedEmail = email.trim();
+    setInfo(null);
+    const trimmedEmail = email.trim().toLowerCase();
     const emailError = validateEmail(trimmedEmail);
     if (emailError) {
       setError(emailError);
@@ -106,13 +122,17 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
       if (mode === 'magic') {
         const { error: otpError } = await client.auth.signInWithOtp({
           email: trimmedEmail,
-          options: { shouldCreateUser: false },
+          options: {
+            shouldCreateUser: false,
+            // Desktop / local web — OTP is entered in-app; no redirect required.
+          },
         });
         if (otpError) throw otpError;
         setVerifyKind('email');
         setPhase('verify');
         setOtpCode('');
-        toast.success('Code sent', `We emailed a 6-digit code to ${trimmedEmail}.`);
+        setInfo('Check your inbox (and spam) for a 6-digit code. Codes expire in one hour.');
+        toast.success('Code sent', `We emailed a code to ${trimmedEmail}.`);
         return;
       }
 
@@ -120,18 +140,34 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
         const { data, error: signUpError } = await client.auth.signUp({
           email: trimmedEmail,
           password,
+          options: {
+            emailRedirectTo: undefined,
+          },
         });
         if (signUpError) throw signUpError;
+
         if (data.session) {
-          toast.success('Account created', 'You are signed in. Cloud sync is enabled.');
+          toast.success('Welcome to VibeSpace', 'Your account is ready and cloud sync is on.');
           onOpenChange(false);
           reset();
           return;
         }
+
+        if (isLikelyExistingAccountSignUp(data)) {
+          setError(
+            'That email already has an account. Sign in with your password, or use Email code.',
+          );
+          setMode('signin');
+          return;
+        }
+
         setVerifyKind('signup');
         setPhase('verify');
         setOtpCode('');
-        toast.success('Code sent', `We emailed a 6-digit code to ${trimmedEmail}.`);
+        setInfo(
+          'We sent a 6-digit code to your email. Enter it below to finish signup. Check spam if it is missing.',
+        );
+        toast.success('Check your email', `Verification code sent to ${trimmedEmail}.`);
         return;
       }
 
@@ -140,12 +176,11 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
         password,
       });
       if (signInError) throw signInError;
-      toast.success('Signed in', 'Cloud sync is now enabled.');
+      toast.success('Signed in', 'Cloud sync is enabled for this device.');
       onOpenChange(false);
       reset();
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Sign in failed.';
-      setError(message);
+      setError(formatAuthError(err, 'Sign in failed. Try again.'));
     } finally {
       setBusy(false);
     }
@@ -153,7 +188,7 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
 
   async function handleVerifySubmit() {
     setError(null);
-    const trimmedEmail = email.trim();
+    const trimmedEmail = email.trim().toLowerCase();
     const token = normalizeOtpCode(otpCode);
     if (!isCompleteOtpCode(token)) {
       setError('Enter the full 6-digit code from your email.');
@@ -177,16 +212,15 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
       if (verifyError) throw verifyError;
 
       toast.success(
-        verifyKind === 'signup' ? 'Account created' : 'Signed in',
+        verifyKind === 'signup' ? 'Account verified' : 'Signed in',
         verifyKind === 'signup'
-          ? 'Your email is verified and cloud sync is enabled.'
-          : 'Cloud sync is now enabled.',
+          ? 'Your email is confirmed and cloud sync is enabled.'
+          : 'Cloud sync is enabled for this device.',
       );
       onOpenChange(false);
       reset();
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Verification failed.';
-      setError(message);
+      setError(formatAuthError(err, 'Verification failed. Check the code and try again.'));
     } finally {
       setBusy(false);
     }
@@ -194,7 +228,8 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
 
   async function handleResendCode() {
     setError(null);
-    const trimmedEmail = email.trim();
+    setInfo(null);
+    const trimmedEmail = email.trim().toLowerCase();
     const emailError = validateEmail(trimmedEmail);
     if (emailError) {
       setError(emailError);
@@ -211,15 +246,22 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
 
     try {
       if (verifyKind === 'signup') {
-        if (!password) {
-          setError('Go back and re-enter your password to resend the code.');
-          return;
-        }
-        const { error: signUpError } = await client.auth.signUp({
+        const { error: resendError } = await client.auth.resend({
+          type: 'signup',
           email: trimmedEmail,
-          password,
         });
-        if (signUpError) throw signUpError;
+        if (resendError) {
+          // Fallback: some projects only re-send via signUp when password is still available.
+          if (password) {
+            const { error: signUpError } = await client.auth.signUp({
+              email: trimmedEmail,
+              password,
+            });
+            if (signUpError) throw resendError;
+          } else {
+            throw resendError;
+          }
+        }
       } else {
         const { error: otpError } = await client.auth.signInWithOtp({
           email: trimmedEmail,
@@ -228,10 +270,10 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
         if (otpError) throw otpError;
       }
       setOtpCode('');
-      toast.success('New code sent', `Check ${trimmedEmail} for a fresh 6-digit code.`);
+      setInfo('A new code is on the way. Check inbox and spam — wait a minute before requesting another.');
+      toast.success('New code sent', `Check ${trimmedEmail}.`);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Could not resend the code.';
-      setError(message);
+      setError(formatAuthError(err, 'Could not resend the code.'));
     } finally {
       setBusy(false);
     }
@@ -248,50 +290,72 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
         if (!v) reset();
       }}
     >
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>
-            {verifying
-              ? 'Enter verification code'
-              : mode === 'signup'
-                ? 'Create your account'
-                : 'Sign in'}
-          </DialogTitle>
-          <DialogDescription>
-            {verifying ? (
-              <>
-                We sent a 6-digit code to{' '}
-                <span className="font-medium text-foreground">{trimmedEmail}</span>. Paste it below
-                to {verifyKind === 'signup' ? 'finish creating your account' : 'sign in'}.
-              </>
-            ) : mode === 'signup' ? (
-              'Use a valid email and password. We will email you a verification code to confirm your account.'
-            ) : mode === 'magic' ? (
-              'Sign in without a password. We will email you a one-time 6-digit code.'
-            ) : (
-              'Welcome back. Sign in to access your account, plan, and synced workspace.'
-            )}
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent className="max-w-[440px] overflow-hidden border-border/80 bg-elevated p-0 shadow-2xl sm:rounded-2xl">
+        <div className="relative overflow-hidden border-b border-border/70 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 px-6 pb-5 pt-6">
+          <div className="pointer-events-none absolute -right-8 -top-10 h-36 w-36 rounded-full bg-accent-copper/20 blur-3xl" />
+          <div className="pointer-events-none absolute -left-6 bottom-0 h-28 w-28 rounded-full bg-sky-500/15 blur-3xl" />
+          <DialogHeader className="relative z-10 gap-2">
+            <div className="mb-1 inline-flex w-fit items-center gap-1.5 rounded-full border border-accent-copper/35 bg-accent-copper/10 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-accent-copper">
+              <Sparkles className="h-3 w-3" />
+              VibeSpace Cloud
+            </div>
+            <DialogTitle className="text-xl text-white sm:text-2xl">
+              {verifying
+                ? 'Enter your code'
+                : mode === 'signup'
+                  ? 'Create your account'
+                  : mode === 'magic'
+                    ? 'Email code sign-in'
+                    : 'Welcome back'}
+            </DialogTitle>
+            <DialogDescription className="text-[13.5px] leading-relaxed text-slate-300">
+              {verifying ? (
+                <>
+                  We sent a <span className="font-medium text-white">6-digit code</span> to{' '}
+                  <span className="font-medium text-sky-200">{trimmedEmail}</span>. Paste it below
+                  to {verifyKind === 'signup' ? 'finish creating your account' : 'sign in'}.
+                </>
+              ) : mode === 'signup' ? (
+                'Create an account with email and password. We’ll email a one-time code so only you can activate it.'
+              ) : mode === 'magic' ? (
+                'No password needed. We’ll email a one-time code for this device.'
+              ) : (
+                'Sign in to sync plans, billing, and workspace data across devices.'
+              )}
+            </DialogDescription>
+          </DialogHeader>
+        </div>
 
-        {!verifying && (
-          <div className="flex items-center gap-1 rounded-md bg-muted p-0.5 self-start">
-            <ModeButton current={mode} value="signin" onSelect={selectMode}>
-              Sign in
-            </ModeButton>
-            <ModeButton current={mode} value="signup" onSelect={selectMode}>
-              Create account
-            </ModeButton>
-            <ModeButton current={mode} value="magic" onSelect={selectMode}>
-              Email code
-            </ModeButton>
-          </div>
-        )}
+        <div className="flex flex-col gap-4 px-6 py-5">
+          {!cloudReady && (
+            <div
+              className="flex items-start gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2.5"
+              role="status"
+            >
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+              <p className="text-sm leading-snug text-amber-100/95">
+                Cloud auth is not configured in this build, so sign-in cannot reach the server.
+              </p>
+            </div>
+          )}
 
-        <div className="flex flex-col gap-3">
+          {!verifying && (
+            <div className="grid grid-cols-3 gap-1 rounded-xl border border-border/80 bg-muted/60 p-1">
+              <ModeButton current={mode} value="signin" onSelect={selectMode} icon={<KeyRound className="h-3.5 w-3.5" />}>
+                Sign in
+              </ModeButton>
+              <ModeButton current={mode} value="signup" onSelect={selectMode} icon={<ShieldCheck className="h-3.5 w-3.5" />}>
+                Sign up
+              </ModeButton>
+              <ModeButton current={mode} value="magic" onSelect={selectMode} icon={<Mail className="h-3.5 w-3.5" />}>
+                Email code
+              </ModeButton>
+            </div>
+          )}
+
           {verifying ? (
-            <div className="flex flex-col items-center gap-4 py-2">
-              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-accent-cyan/10 text-accent-cyan">
+            <div className="flex flex-col items-center gap-4 py-1">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-sky-400/25 bg-sky-400/10 text-sky-300 shadow-inner">
                 <Mail className="h-5 w-5" />
               </div>
               <OtpCodeInput
@@ -301,8 +365,8 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
                 autoFocus
                 aria-invalid={Boolean(error)}
               />
-              <p className="text-metadata text-muted-foreground text-center">
-                Codes expire after one hour. You can paste the full code at once.
+              <p className="max-w-sm text-center text-metadata leading-relaxed text-muted-foreground">
+                Codes expire after one hour. You can paste all six digits at once.
               </p>
               <Button
                 type="button"
@@ -316,13 +380,14 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
               </Button>
             </div>
           ) : (
-            <>
+            <div className="flex flex-col gap-3.5">
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="signin-email">Email</Label>
                 <Input
                   id="signin-email"
                   type="email"
                   autoComplete="email"
+                  inputMode="email"
                   placeholder="you@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -333,6 +398,7 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
                     }
                   }}
                   disabled={busy}
+                  className="h-10"
                 />
               </div>
 
@@ -343,7 +409,7 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
                     id="signin-password"
                     type="password"
                     autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-                    placeholder="123456"
+                    placeholder={mode === 'signup' ? 'At least 8 characters' : 'Your password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     onKeyDown={(e) => {
@@ -353,31 +419,40 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
                       }
                     }}
                     disabled={busy}
+                    className="h-10"
                   />
                   {mode === 'signup' ? (
                     <p className="text-metadata text-muted-foreground">
-                      At least 8 characters with letters and numbers.
+                      Use 8+ characters with at least one letter and one number.
                     </p>
                   ) : null}
                 </div>
               )}
-            </>
+            </div>
+          )}
+
+          {info && !error && (
+            <div
+              className="flex items-start gap-2 rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-2.5"
+              role="status"
+            >
+              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-sky-300" aria-hidden />
+              <p className="text-sm leading-snug text-sky-50/95">{info}</p>
+            </div>
           )}
 
           {error && (
             <div
-              className="flex items-start gap-2 rounded-md border border-destructive/60 bg-destructive/25 px-3 py-2.5"
+              className="flex items-start gap-2 rounded-xl border border-destructive/50 bg-destructive/15 px-3 py-2.5"
               role="alert"
             >
-              <AlertTriangle className="h-4 w-4 text-destructive mt-0.5 shrink-0" aria-hidden />
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" aria-hidden />
               <p className="text-sm font-medium leading-snug text-foreground">{error}</p>
             </div>
           )}
         </div>
 
-        <Separator />
-
-        <DialogFooter className="!justify-between sm:!justify-between">
+        <DialogFooter className="!justify-between gap-2 border-t border-border/70 bg-muted/20 px-6 py-4 sm:!justify-between">
           {verifying ? (
             <Button
               variant="ghost"
@@ -386,6 +461,7 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
                 setPhase('credentials');
                 setOtpCode('');
                 setError(null);
+                setInfo(null);
               }}
             >
               <ArrowLeft className="h-3.5 w-3.5" />
@@ -398,13 +474,14 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
           )}
           <Button
             variant="accent"
-            onClick={verifying ? handleVerifySubmit : handleCredentialsSubmit}
-            disabled={busy || (verifying && !isCompleteOtpCode(otpCode))}
+            className="min-w-[9.5rem]"
+            onClick={() => void (verifying ? handleVerifySubmit() : handleCredentialsSubmit())}
+            disabled={busy || !cloudReady || (verifying && !isCompleteOtpCode(otpCode))}
           >
             {busy ? (
               <>
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Working...
+                Working…
               </>
             ) : verifying ? (
               <>Verify & continue</>
@@ -414,7 +491,7 @@ export function SignInDialog({ open, onOpenChange, initialMode }: SignInDialogPr
                 Send code
               </>
             ) : mode === 'signup' ? (
-              <>Send verification code</>
+              <>Create account</>
             ) : (
               <>Sign in</>
             )}
@@ -430,11 +507,13 @@ function ModeButton({
   value,
   onSelect,
   children,
+  icon,
 }: {
   current: Mode;
   value: Mode;
   onSelect: (m: Mode) => void;
   children: ReactNode;
+  icon?: ReactNode;
 }) {
   const active = current === value;
   return (
@@ -442,13 +521,14 @@ function ModeButton({
       type="button"
       onClick={() => onSelect(value)}
       aria-pressed={active}
-      className={
-        'inline-flex items-center justify-center whitespace-nowrap rounded-sm px-2.5 py-1 text-secondary font-medium transition-all ' +
-        (active
-          ? 'bg-elevated text-foreground shadow-sm'
-          : 'text-muted-foreground hover:text-foreground')
-      }
+      className={cn(
+        'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2 py-2 text-[12.5px] font-medium transition-all',
+        active
+          ? 'bg-elevated text-foreground shadow-sm ring-1 ring-border'
+          : 'text-muted-foreground hover:bg-background/40 hover:text-foreground',
+      )}
     >
+      {icon}
       {children}
     </button>
   );

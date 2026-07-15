@@ -65,43 +65,60 @@ const TOKEN_GLOW: Record<TokenType, string> = {
 
 export function InputToken({ type, label, sublabel, icon, onRemove, className }: InputTokenProps) {
   const Icon = TOKEN_ICONS[type];
+  const isCommand = type === 'command';
 
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.8, y: 4 }}
-      animate={{ opacity: 1, scale: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.8, y: -4 }}
-      transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+      initial={{ opacity: 0, scale: 0.72, y: 8, filter: 'blur(2px)' }}
+      animate={{ opacity: 1, scale: 1, y: 0, filter: 'blur(0px)' }}
+      exit={{ opacity: 0, scale: 0.85, y: -6, filter: 'blur(1px)' }}
+      transition={{ type: 'spring', stiffness: 520, damping: 26, mass: 0.7 }}
       className={cn(
-        'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full',
+        'relative inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full',
         'bg-gradient-to-r border',
         'text-metadata font-medium',
         TOKEN_COLORS[type],
         TOKEN_GLOW[type],
-        type === 'command' && 'jarvis-confirmed-token animate-[plan-border-flow_7s_linear_infinite] bg-[length:220%_auto]',
+        isCommand &&
+          'jarvis-confirmed-token animate-[plan-border-flow_5.5s_linear_infinite] bg-[length:240%_auto] shadow-[0_0_18px_rgba(245,158,11,0.35),inset_0_0_12px_rgba(251,191,36,0.12)] ring-1 ring-amber-400/40',
         type === 'agent' && 'jarvis-agent-token',
+        type === 'file' && 'ring-1 ring-blue-400/25',
         'hover:brightness-110 transition-all duration-200',
         className,
       )}
+      title={isCommand ? `Confirmed: ${label}` : label}
     >
+      {isCommand ? (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-0 overflow-hidden rounded-full"
+        >
+          <span className="absolute inset-y-0 -left-1/3 w-1/3 skew-x-[-18deg] bg-gradient-to-r from-transparent via-white/25 to-transparent animate-[plan-border-flow_2.4s_linear_infinite] bg-[length:200%_auto]" />
+        </span>
+      ) : null}
       {icon ?? (
         <Icon
           className={cn(
-            'h-3 w-3 shrink-0',
-            type === 'command' ? 'text-amber-300' : type === 'agent' ? 'text-cyan-300' : 'text-violet-400',
+            'relative h-3 w-3 shrink-0',
+            isCommand ? 'text-amber-200 drop-shadow-[0_0_6px_rgba(251,191,36,0.8)]' : type === 'agent' ? 'text-cyan-300' : 'text-violet-400',
           )}
         />
       )}
-      <span className="text-foreground/90 truncate max-w-[120px]">{label}</span>
+      <span className="relative text-foreground/95 truncate max-w-[140px]">{label}</span>
       {sublabel && (
-        <span className="text-muted-foreground/70 truncate max-w-[80px]">{sublabel}</span>
+        <span className="relative text-muted-foreground/75 truncate max-w-[90px]">{sublabel}</span>
       )}
+      {isCommand ? (
+        <span className="relative rounded-full bg-amber-400/20 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-amber-200/95">
+          ok
+        </span>
+      ) : null}
       {onRemove && (
         <button
           type="button"
           onClick={onRemove}
           className={cn(
-            'ml-0.5 p-0.5 rounded-full',
+            'relative ml-0.5 p-0.5 rounded-full',
             'text-muted-foreground/60 hover:text-foreground',
             'hover:bg-white/10 transition-colors',
             'focus:outline-none focus-visible:ring-1 focus-visible:ring-violet-500',

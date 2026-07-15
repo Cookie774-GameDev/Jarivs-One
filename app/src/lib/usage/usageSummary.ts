@@ -17,9 +17,9 @@ export interface LocalUsageTotals {
 }
 
 interface LiveOpenAiUsage {
-  inputTokens: number;
-  outputTokens: number;
-  requests: number;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  requests: number | null;
   costUsd: number | null;
   source: 'live' | 'unavailable';
   error?: string;
@@ -252,9 +252,9 @@ async function fetchOpenAiLiveUsage(apiKey: string): Promise<LiveOpenAiUsage> {
   if (!usageRes.ok) {
     const errorText = await usageRes.text().catch(() => usageRes.statusText);
     return {
-      inputTokens: 0,
-      outputTokens: 0,
-      requests: 0,
+      inputTokens: null,
+      outputTokens: null,
+      requests: null,
       costUsd: null,
       source: 'unavailable',
       error: `OpenAI usage API returned ${usageRes.status}: ${errorText.slice(0, 180)}`,
@@ -351,8 +351,8 @@ export async function buildUsageSummary({
         `Current usage: ${live.usageUsd === null ? 'not reported' : usd(live.usageUsd)}`,
         `Monthly usage: ${live.usageMonthlyUsd === null ? 'not reported' : usd(live.usageMonthlyUsd)}`,
         `Daily usage: ${live.usageDailyUsd === null ? 'not reported' : usd(live.usageDailyUsd)}`,
-        `Limit remaining: ${live.remainingUsd === null ? 'unlimited or not reported' : usd(live.remainingUsd)}`,
-        `Limit: ${live.limitUsd === null ? 'unlimited or not reported' : usd(live.limitUsd)}${live.reset ? ` (${live.reset})` : ''}`,
+        `Limit remaining: ${live.remainingUsd === null ? 'unavailable or not reported' : usd(live.remainingUsd)}`,
+        `Limit: ${live.limitUsd === null ? 'unavailable or not reported' : usd(live.limitUsd)}${live.reset ? ` (${live.reset})` : ''}`,
       );
     } else {
       lines.push(
@@ -378,8 +378,8 @@ export async function buildUsageSummary({
   if (live.source === 'live') {
     lines.push(
       'Live OpenAI organization usage:',
-      `Requests: ${live.requests.toLocaleString()}`,
-      `Tokens: ${live.inputTokens.toLocaleString()} input + ${live.outputTokens.toLocaleString()} output`,
+      `Requests: ${live.requests === null ? 'unavailable' : live.requests.toLocaleString()}`,
+      `Tokens: ${live.inputTokens === null ? 'unavailable' : live.inputTokens.toLocaleString()} input + ${live.outputTokens === null ? 'unavailable' : live.outputTokens.toLocaleString()} output`,
       `Costs endpoint: ${live.costUsd === null ? 'available but no billable amount returned' : usd(live.costUsd)}`,
     );
   } else {

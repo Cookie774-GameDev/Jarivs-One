@@ -31,6 +31,20 @@ import {
 } from './providers/compatibleInstances';
 import { agentUsesDefaultProvider } from './agentProviderOptions';
 import { EMPTY_CHAT_MODEL_SELECTION } from './modelSelection';
+import type {
+  ProviderAdapter,
+  ProviderCapabilities,
+  ProviderConnection,
+  ProviderEvent,
+} from './adapters/types';
+import { getProviderConnectionDescriptor } from './adapters/catalog';
+import { codexCliAdapter } from './adapters/codex';
+import { claudeCliAdapter } from './adapters/claude';
+import { geminiCliAdapter } from './adapters/gemini';
+import { copilotCliAdapter } from './adapters/copilot';
+import { qwenCliAdapter } from './adapters/qwen';
+import { openCodeCliAdapter } from './adapters/opencode';
+import { llmContentToText } from './types';
 
 export class NoModelSelectedError extends Error {
   constructor() {
@@ -64,6 +78,112 @@ const providers: Record<ProviderId, LLMProvider> = {
   huggingface: mockProvider,
   bedrock: mockProvider,
 };
+
+const externalAdapters: Readonly<Record<string, ProviderAdapter>> = Object.freeze({
+  [codexCliAdapter.id]: codexCliAdapter,
+  [claudeCliAdapter.id]: claudeCliAdapter,
+  [geminiCliAdapter.id]: geminiCliAdapter,
+  [copilotCliAdapter.id]: copilotCliAdapter,
+  [qwenCliAdapter.id]: qwenCliAdapter,
+  [openCodeCliAdapter.id]: openCodeCliAdapter,
+});
+
+export interface ConnectionRequirements {
+  images?: boolean;
+  files?: boolean;
+  tools?: boolean;
+}
+
+function assertConnectionCapabilities(
+  connection: ProviderConnection,
+  requirements: ConnectionRequirements = {},
+): void {
+  const checks: Array<[keyof ProviderCapabilities, boolean | undefined, string]> = [
+    ['images', requirements.images, 'image attachments'],
+    ['files', requirements.files, 'file attachments'],
+    ['tools', requirements.tools, 'tools'],
+  ];
+  for (const [capability, required, label] of checks) {
+    if (required && !connection.capabilities[capability]) {
+      throw new Error(`${connection.displayName} does not support ${label}`);
+    }
+  }
+}
+
+function usageNumber(value: { value?: number } | undefined): number {
+  return typeof value?.value === 'number' && Number.isFinite(value.value) ? value.value : 0;
+}
+
+/** Exact, fail-closed external bridge seam. Exported so routing can be tested without Tauri. */
+export async function runExternalConnection(args: {
+  connection: ProviderConnection;
+  adapter: ProviderAdapter;
+  requestId: string;
+  prompt: string;
+  modelId?: string;
+  systemPrompt?: string;
+  workingDirectory?: string;
+  signal?: AbortSignal;
+  requirements?: ConnectionRequirements;
+  onChunk?: (chunk: LLMStreamChunk) => void;
+}): Promise<LLMResponse> {
+  const { connection, adapter } = args;
+  if (!connection.enabled) throw new Error(`Provider connection is disabled: ${connection.id}`);
+  if (connection.mode !== 'external-cli') {
+    throw new Error(`Provider connection is not an external agent: ${connection.id}`);
+  }
+  if (adapter.id !== connection.adapterId) {
+    throw new Error(`Provider adapter mismatch for connection: ${connection.id}`);
+  }
+  assertConnectionCapabilities(connection, args.requirements);
+  if (!adapter.send) throw new Error(`${connection.displayName} cannot send requests`);
+
+  const detection = adapter.detect ? await adapter.detect() : { status: 'unavailable' as const };
+  if (detection.status !== 'available') {
+    throw new Error(`${connection.displayName} is unavailable`);
+  }
+  const auth = adapter.probeAuth ? await adapter.probeAuth(connection) : { status: 'unknown' as const };
+  if (auth.status === 'unauthenticated') throw new Error(`${connection.displayName} is signed out`);
+  if (args.signal?.aborted) throw new DOMException('The request was aborted.', 'AbortError');
+
+  let text = '';
+  let first = true;
+  let finishReason: string | undefined;
+  let usage: Extract<ProviderEvent, { type: 'usage' }>['usage'] | undefined;
+  for await (const event of adapter.send({
+    requestId: args.requestId,
+    connection,
+    prompt: args.prompt,
+    modelId: args.modelId,
+    systemPrompt: args.systemPrompt,
+    workingDirectory: args.workingDirectory,
+    signal: args.signal,
+  })) {
+    if (event.type === 'text') {
+      text += event.delta;
+      args.onChunk?.({ delta: event.delta, first });
+      first = false;
+    } else if (event.type === 'usage') {
+      usage = event.usage;
+    } else if (event.type === 'error') {
+      throw new Error(event.message);
+    } else if (event.type === 'done') {
+      finishReason = event.finishReason;
+    }
+  }
+  args.onChunk?.({ delta: '', done: true });
+  return {
+    text,
+    usage: {
+      input_tokens: usageNumber(usage?.inputTokens),
+      output_tokens: usageNumber(usage?.outputTokens),
+      cost_usd: usageNumber(usage?.costUsd),
+    },
+    provider: connection.providerId as ProviderId,
+    model: args.modelId ?? connection.modelId ?? connection.displayName,
+    ...(finishReason ? { finish_reason: finishReason } : {}),
+  };
+}
 
 function resolveExplicitSingleSelection(
   auth: ReturnType<typeof useAuthStore.getState>,
@@ -141,7 +261,45 @@ export async function runAgent(req: {
   temperature?: number;
   max_output_tokens?: number;
   provider_options?: Record<string, unknown>;
+  /** Exact local connection selected for this chat. Never inferred or substituted. */
+  connectionId?: string;
+  connectionRequirements?: ConnectionRequirements;
+  workingDirectory?: string;
 }): Promise<LLMResponse> {
+  const connectionId = req.connectionId;
+  if (connectionId) {
+    const connection = getProviderConnectionDescriptor(connectionId);
+    if (!connection.enabled) throw new Error(`Provider connection is disabled: ${connectionId}`);
+    assertConnectionCapabilities(connection, req.connectionRequirements);
+    const expectedProvider = connection.mode === 'local' ? 'ollama' : connection.providerId;
+    if (req.agent.model.provider !== expectedProvider && !(connection.mode === 'local' && req.agent.model.provider === 'local')) {
+      throw new Error(`Selected model does not match provider connection: ${connectionId}`);
+    }
+    if (connection.mode === 'external-cli') {
+      const adapter = externalAdapters[connection.adapterId];
+      if (!adapter) throw new Error(`Provider adapter is unavailable: ${connection.adapterId}`);
+      const prompt = req.messages.map((message) => `${message.role}: ${llmContentToText(message.content)}`).join('\n\n');
+      const response = await runExternalConnection({
+        connection,
+        adapter,
+        requestId: globalThis.crypto?.randomUUID?.() ?? `req-${Date.now()}`,
+        prompt,
+        modelId: req.agent.model.model,
+        systemPrompt: req.agent.system_prompt,
+        workingDirectory: req.workingDirectory,
+        signal: req.signal,
+        requirements: req.connectionRequirements,
+        onChunk: req.onChunk,
+      });
+      useAgentStore.getState().addTokens(
+        req.agent.id,
+        response.usage.input_tokens,
+        response.usage.output_tokens,
+        response.usage.cost_usd,
+      );
+      return response;
+    }
+  }
   const { provider, model } = resolveProviderAndModel(req.agent);
 
   const effectiveAgent: Agent =

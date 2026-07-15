@@ -3,8 +3,8 @@
  *
  * Shows a sortable, filterable table + horizontal bar chart of public
  * leaderboard scores. Data comes from `benchmarkData.fetchBenchmarks()`,
- * which falls back to a frozen snapshot when the live LMArena endpoint
- * fails. The header chip makes that fallback state explicit.
+ * which falls back to a curated Top-50 unique-model snapshot (AA Intelligence
+ * + OpenRouter list prices) when live fetch fails. The header chip makes that state explicit.
  *
  * The page is fully self-contained: no parent route wiring, no provider,
  * no shared state beyond reading `useAuthStore` to allow the detail
@@ -50,7 +50,8 @@ const PROVIDER_FILTER_ALL = '__all__';
 const TOP_N_FOR_CHART = 25;
 /** Show at least this many rows before collapsing the rest behind a button. */
 const MIN_VISIBLE_ROWS = 50;
-const LMSYS_PUBLIC_URL = 'https://lmarena.ai/leaderboard';
+const SNAPSHOT_SOURCE_URL = 'https://artificialanalysis.ai/leaderboards/models';
+const OPENROUTER_MODELS_URL = 'https://openrouter.ai/models';
 
 /** One-line capability summary used for the row hover tooltip. */
 function rowTooltip(r: BenchmarkRow): string {
@@ -68,7 +69,12 @@ function rowTooltip(r: BenchmarkRow): string {
   if (r.supports_image) modalities.push('Image');
   if (r.supports_video) modalities.push('Video');
   parts.push(`Inputs: ${modalities.join(', ')}`);
-  parts.push(`Arena ${r.arena_score} (±${Math.round((r.ci_high - r.ci_low) / 2)})`);
+  const ciHalf = (r.ci_high - r.ci_low) / 2;
+  parts.push(
+    ciHalf > 0
+      ? `Intelligence ${r.arena_score} (±${Math.round(ciHalf)})`
+      : `Intelligence ${r.arena_score}`,
+  );
   return parts.join('\n');
 }
 
@@ -334,12 +340,24 @@ export function BenchmarksPage() {
           <div className="cozy-card !py-3 !px-4 flex items-start gap-3 border-warning/40">
             <AlertTriangle className="h-4 w-4 text-warning shrink-0 mt-0.5" />
             <div className="text-secondary text-foreground">
-              Showing a frozen snapshot from {fetchedAt && formatRelative(fetchedAt)}.{' '}
-              <span className="text-muted-foreground">
-                The live leaderboard endpoint is unreachable
-                {errorReason ? ` (${errorReason})` : ''}; numbers below are not
-                live. Hit refresh to retry.
-              </span>
+              {errorReason ? (
+                <>
+                  Showing a frozen snapshot from {fetchedAt && formatRelative(fetchedAt)}.{' '}
+                  <span className="text-muted-foreground">
+                    Live fetch failed ({errorReason}). Numbers below are the curated
+                    Top 50 unique-model table — hit refresh to retry.
+                  </span>
+                </>
+              ) : (
+                <>
+                  Curated Top 50 unique models (one model per row)
+                  {fetchedAt ? ` · ${formatRelative(fetchedAt)}` : ''}.{' '}
+                  <span className="text-muted-foreground">
+                    Ranked by Artificial Analysis Intelligence Index; OpenRouter
+                    list prices & modalities. Hit refresh for a live Arena pull.
+                  </span>
+                </>
+              )}
             </div>
           </div>
         )}
@@ -381,7 +399,7 @@ export function BenchmarksPage() {
                 'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring transition-colors',
               )}
             >
-              <option value="arena_score">Arena score</option>
+              <option value="arena_score">Intelligence score</option>
               <option value="cost">Cost</option>
               <option value="context">Context window</option>
             </select>
@@ -409,7 +427,7 @@ export function BenchmarksPage() {
         <section className="cozy-card !p-5">
           <div className="flex items-baseline justify-between mb-4">
             <h2 className="text-page-title text-foreground">
-              Top {Math.min(TOP_N_FOR_CHART, topForChart.length)} by Arena score
+              Top {Math.min(TOP_N_FOR_CHART, topForChart.length)} by Intelligence
             </h2>
             <div className="flex items-center gap-3 text-metadata text-muted-foreground">
               <span className="flex items-center gap-1.5">
@@ -441,7 +459,7 @@ export function BenchmarksPage() {
                   <th className="text-left font-semibold px-4 py-3">Provider</th>
                   <th className="text-left font-semibold px-4 py-3">Type</th>
                   <SortableTh
-                    label="Arena"
+                    label="Intel"
                     active={sortKey === 'arena_score'}
                     dir={sortDir}
                     onClick={() => toggleSort('arena_score')}
@@ -515,9 +533,11 @@ export function BenchmarksPage() {
                     </td>
                     <td className="px-4 py-3 font-mono text-foreground">
                       {row.arena_score}
-                      <span className="text-muted-foreground text-metadata ml-1">
-                        ±{Math.round((row.ci_high - row.ci_low) / 2)}
-                      </span>
+                      {(row.ci_high - row.ci_low) > 0 && (
+                        <span className="text-muted-foreground text-metadata ml-1">
+                          ±{Math.round((row.ci_high - row.ci_low) / 2)}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 font-mono text-right">
                       {row.cost_per_1m_input_usd != null ||
@@ -685,15 +705,17 @@ function DetailDrawer({ row, onClose }: DetailDrawerProps) {
                 {/* Score block */}
                 <div>
                   <div className="text-metadata text-muted-foreground uppercase tracking-wider mb-1">
-                    Arena score
+                    Intelligence score
                   </div>
                   <div className="flex items-baseline gap-2">
                     <span className="text-hero font-mono text-foreground">
                       {row.arena_score}
                     </span>
-                    <span className="text-secondary text-muted-foreground font-mono">
-                      ({row.ci_low} – {row.ci_high})
-                    </span>
+                    {(row.ci_high - row.ci_low) > 0 && (
+                      <span className="text-secondary text-muted-foreground font-mono">
+                        ({row.ci_low} – {row.ci_high})
+                      </span>
+                    )}
                   </div>
                   {row.votes != null && (
                     <div className="text-metadata text-muted-foreground mt-1">
@@ -772,19 +794,32 @@ function DetailDrawer({ row, onClose }: DetailDrawerProps) {
                   <div className="text-metadata text-muted-foreground uppercase tracking-wider mb-2">
                     Source
                   </div>
-                  <a
-                    href={LMSYS_PUBLIC_URL}
-                    target="_blank"
-                    rel="noreferrer noopener"
-                    className="inline-flex items-center gap-1.5 text-secondary text-accent-copper hover:underline"
-                  >
-                    Chatbot Arena leaderboard
-                    <ExternalLink className="h-3 w-3" />
-                  </a>
+                  <div className="flex flex-col gap-1.5">
+                    <a
+                      href={SNAPSHOT_SOURCE_URL}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className="inline-flex items-center gap-1.5 text-secondary text-accent-copper hover:underline"
+                    >
+                      Artificial Analysis leaderboard
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                    <a
+                      href={OPENROUTER_MODELS_URL}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className="inline-flex items-center gap-1.5 text-secondary text-accent-copper hover:underline"
+                    >
+                      OpenRouter models (pricing)
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  </div>
                   <div className="text-metadata text-muted-foreground mt-2">
                     Data source:{' '}
                     <span className="font-mono">
-                      {row.source === 'snapshot' ? 'frozen snapshot' : 'lmsys live'}
+                      {row.source === 'snapshot'
+                        ? 'AA unique-model snapshot'
+                        : 'Arena live'}
                     </span>
                     {' · '}
                     fetched {formatRelative(row.fetched_at)}

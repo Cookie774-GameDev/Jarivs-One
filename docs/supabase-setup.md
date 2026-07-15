@@ -75,8 +75,13 @@ npx supabase secrets list   # shows names + digests only, never values
 
 ## 5. Configure Auth email delivery (Resend)
 
-Supabase Auth emails do not reliably reach public inboxes on the default sender.
-For production, use Resend SMTP with the verified VibeSpace domain.
+**Why codes may never arrive:** Supabase’s built-in mailer is rate-limited and often
+lands in spam (or is dropped). Production **requires custom SMTP** (Resend).
+
+App expectation (must match project Auth settings):
+- OTP length **6** (not 8)
+- Confirmation + magic-link templates use **`{{ .Token }}`** (not only a link)
+- Subjects can include `{{ .Token }}` so the code is visible in the inbox preview
 
 1. Verify the sending domain in Resend.
    - Recommended sender: `VibeSpace <no-reply@vibespaceos.com>`.
@@ -102,12 +107,15 @@ For production, use Resend SMTP with the verified VibeSpace domain.
    - OTP length: `6`
    - OTP expiry: `3600` seconds or lower
    - Email confirmation: enabled
+7. Site URL / redirect allow-list should include desktop + web origins
+   (`https://vibespaceos.com`, `http://localhost:5173`, `tauri://localhost`, …).
 
 Security notes:
 - Do not put the Resend key in `VITE_*` variables.
 - Do not disable email confirmation to work around delivery issues.
 - Use OTP templates (`{{ .Token }}`) instead of one-click auth links so security scanners cannot consume single-use links.
 - Keep Auth emails transactional only: no promos, no marketing copy, minimal links.
+- Raising `rate_limit_email_sent` above the free-mailer default requires custom SMTP.
 
 ## 6. Deploy Edge Functions
 

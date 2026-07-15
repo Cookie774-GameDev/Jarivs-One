@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 2,
+  "defaultCharacterId": "vibespace-axolotl-pixel",
+  "characters": [
+    {
+      "id": "vibespace-axolotl-pixel",
+      "displayName": "VibeSpace Axolotl",
+      "sources": [
+        "characters/vibespace-axolotl-pixel/archival/vibespace_axolotl_animation_rig.psd",
+        "characters/vibespace-axolotl-pixel/archival/vibespace_axolotl_animation_rig.ora",
+        "characters/vibespace-axolotl-pixel/archival/vibespace_axolotl_layer_manifest.json",
+        "characters/vibespace-axolotl-pixel/archival/original-source.png"
+      ],
+      "primarySource": "characters/vibespace-axolotl-pixel/archival/vibespace_axolotl_layer_manifest.json",
+      "renderMode": "pixel-sprite",
+      "rigProfile": "pixel-biped-axolotl",
+      "visualStyle": "warm-cream-peach-pixel",
+      "logoMode": "v-mark",
+      "capabilities": {
+        "externalGills": true,
+        "gillCountPerSide": 3,
+        "tail": true,
+        "ears": false,
+        "floating": false,
+        "separateHands": true,
+        "separateFeet": true,
+        "proceduralFace": true,
+        "walkCycle": true
+      }
+    }
+  ]
+}

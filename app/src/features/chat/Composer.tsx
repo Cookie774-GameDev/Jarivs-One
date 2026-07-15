@@ -16,7 +16,7 @@ import {
 import { chatRepo, messageRepo } from '@/lib/db';
 import { cn, isTauri, renderHotkey } from '@/lib/utils';
 import { HOTKEYS } from '@/lib/hotkeys';
-import { buildUsageSummary } from '@/lib/usage/usageSummary';
+import { getAllUsage, getUsage, parseUsageSlashCommand, refreshUsage } from '@/lib/usage/usageService';
 import { useAgentStore } from '@/stores/agents';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
@@ -94,8 +94,28 @@ import {
   HIVE_OPTION_ID,
   type ModelPickerTypeaheadRef,
 } from './ModelPickerTypeahead';
+import { ConnectionInfoPopover } from './ConnectionInfoPopover';
 import { InputToken, TokenList } from './InputToken';
+import {
+  extractInlineUtilitySlashCommands,
+  getInlineSlashContext,
+  listProjectFileOptions,
+} from './slashProjectFiles';
+import {
+  clearRedoStack,
+  NOTHING_TO_REDO_TEXT,
+  NOTHING_TO_UNDO_TEXT,
+  popRedoTurn,
+  pushRedoTurn,
+  REDO_STATUS_TEXT,
+  selectLastUndoableTurn,
+  summarizeUndoTurn,
+  REDO_BLOCKED_RUNNING_TEXT,
+  UNDO_BLOCKED_RUNNING_TEXT,
+  UNDO_STATUS_TEXT,
+} from './chatUndoRedo';
 import { getChatDragKind, getChatDropPayload } from './dropPayload';
+import { getStoredProjectRoot } from '@/features/files/projectFiles';
 import {
   imageAttachmentFromBrowserFile,
   imageAttachmentFromPath,
@@ -112,6 +132,7 @@ import {
   useOllamaModelOptions,
 } from '@/lib/ai/models';
 import { useAccessibleChatModels } from '@/lib/ai/useAccessibleChatModels';
+import { getProviderConnectionDescriptor, PROVIDER_CONNECTIONS } from '@/lib/ai/adapters/catalog';
 import { useAllAboutMeStore } from '@/features/all-about-me/store';
 import {
   ALL_ABOUT_ME_SLASH_OPTIONS,
@@ -130,10 +151,20 @@ import {
   type ModelSelectionContext,
 } from '@/lib/ai/modelSelection';
 import { ModeIndicator } from '@/features/jarvis-interaction/ModeIndicator';
-import { cycleInteractionMode, interactionModeLabel } from '@/features/jarvis-interaction/modes';
+import {
+  cycleInteractionMode,
+  parsePermissionModeArg,
+  PERMISSION_MODE_OPTIONS,
+} from '@/features/jarvis-interaction/modes';
 import { useJarvisInteractionStore } from '@/features/jarvis-interaction/sessionStore';
 import { launchJarvisChatAgent } from '@/features/jarvis-interaction/agentRunner';
-import { QueuedMessagesBar, type QueuedChatMessage } from './QueuedMessagesBar';
+import {
+  buildQueuedMultitaskCommand,
+  QueuedMessagesBar,
+  shouldAutoSendQueuedOnRunStatus,
+  takeNextQueuedMessage,
+  type QueuedChatMessage,
+} from './QueuedMessagesBar';
 
 export interface ComposerProps {
   chatId: ChatId | string;
@@ -291,27 +322,10 @@ function getMentionContext(value: string, caret: number): MentionContext | null 
 
 /**
  * Find an active "/xxx" slash command being typed at the caret.
- * Triggers when '/' is at position 0 or directly after whitespace.
- * Only activates if the query contains no spaces (single token).
+ * Works at the start, middle (after space/punctuation), or end of a message.
  */
 function getSlashContext(value: string, caret: number): SlashContext | null {
-  let i = caret - 1;
-  while (i >= 0) {
-    const c = value[i];
-    if (c === '/') {
-      if (i === 0 || /\s/.test(value[i - 1] ?? '')) {
-        const query = value.slice(i + 1, caret);
-        // Only trigger if no spaces in the query (single token command)
-        if (!/\s/.test(query)) {
-          return { start: i, query };
-        }
-      }
-      return null;
-    }
-    if (/\s/.test(c)) return null;
-    i--;
-  }
-  return null;
+  return getInlineSlashContext(value, caret);
 }
 
 /**
@@ -441,14 +455,38 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
   const transcribeGenRef = useRef(0);
   const sttFinalizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const queuedMessagesRef = useRef(queuedMessages);
+  queuedMessagesRef.current = queuedMessages;
+  const sendingRef = useRef(sending);
+  sendingRef.current = sending;
+  /** Latest auto-flush implementation (set after handleSend exists). */
+  const flushNextQueuedRef = useRef<() => void>(() => {});
+
   useEffect(() => {
+    let flushTimer: ReturnType<typeof setTimeout> | null = null;
     const onRunState = (event: Event) => {
       const detail = (event as CustomEvent<{ chatId?: string; status?: string }>).detail;
       if (String(detail?.chatId) !== String(chatId)) return;
-      setJarvisRunning(detail?.status === 'running');
+      const status = detail?.status;
+      if (status === 'running') {
+        setJarvisRunning(true);
+        return;
+      }
+      setJarvisRunning(false);
+      // When the previous full reply finishes (or fails/cancels), send the next
+      // queued message automatically — FIFO order.
+      if (!shouldAutoSendQueuedOnRunStatus(status)) return;
+      if (flushTimer) clearTimeout(flushTimer);
+      flushTimer = setTimeout(() => {
+        flushTimer = null;
+        flushNextQueuedRef.current();
+      }, 60);
     };
     window.addEventListener('jarvis:run-state', onRunState as EventListener);
-    return () => window.removeEventListener('jarvis:run-state', onRunState as EventListener);
+    return () => {
+      window.removeEventListener('jarvis:run-state', onRunState as EventListener);
+      if (flushTimer) clearTimeout(flushTimer);
+    };
   }, [chatId]);
 
   const enqueueCurrentMessage = (draft: string) => {
@@ -459,7 +497,10 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       { id: `queued_${Date.now().toString(36)}_${current.length}`, text: trimmedDraft, createdAt: Date.now() },
     ]);
     setText('');
-    toast.info('Message queued', 'It will stay above the composer until you send, edit, or delete it.');
+    toast.info(
+      'Message queued',
+      'It will send automatically when Jarvis finishes the current reply (or use Send / Multitask).',
+    );
   };
 
   const editQueuedMessage = (id: string) => {
@@ -500,6 +541,9 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
   const modelPickerRef = useRef<ModelPickerTypeaheadRef>(null);
   const setSettingsOpen = useUIStore((s) => s.setSettingsOpen);
   const ollamaOptions = useOllamaModelOptions();
+  const [projectFileOptions, setProjectFileOptions] = useState<SlashCommandOption[]>([]);
+  const [projectFilesLoading, setProjectFilesLoading] = useState(false);
+  const [projectFilesError, setProjectFilesError] = useState<string | undefined>(undefined);
 
   const accessibleProviders = useMemo(
     () => getAccessibleProviders(apiKeys, offlineMode, plan),
@@ -510,6 +554,25 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     () => modelSelectionContextFromAuth({ apiKeys, offlineMode, plan, defaultLocalModel }),
     [apiKeys, offlineMode, plan, defaultLocalModel],
   );
+
+  // A chat's exact connection is local-only metadata. Restore it when switching chats.
+  useEffect(() => {
+    let cancelled = false;
+    void chatRepo.getById(chatId as ChatId).then((chat) => {
+      if (cancelled || !chat?.connection) return;
+      const current = useAuthStore.getState().chatModelSelection;
+      const modelId = chat.connection.modelId
+        ?? (current.mode === 'single' && current.providerId === chat.connection.providerId ? current.modelId : '')
+        ?? '';
+      if (!modelId) return;
+      setChatModelSelection(selectionFromOption(
+        chat.connection.providerId as ProviderId,
+        modelId,
+        chat.connection,
+      ));
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [chatId, setChatModelSelection]);
 
   // Generate options for option picker based on current command
   const optionPickerOptions = useMemo<SlashCommandOption[]>(() => {
@@ -568,8 +631,40 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       }));
     }
 
+    if (normalizeSlashCmd(cmd) === 'file') {
+      return projectFileOptions;
+    }
+
+    if (normalizeSlashCmd(cmd) === 'permissions') {
+      return PERMISSION_MODE_OPTIONS.map((option) => ({
+        id: option.id,
+        label: option.title,
+        description: option.description,
+        metadata: option.id === interactionMode ? 'active' : undefined,
+      }));
+    }
+
     return [];
-  }, [optionPickerCtx, terminalSessions, projectId, pluginConnections]);
+  }, [optionPickerCtx, terminalSessions, projectId, pluginConnections, projectFileOptions, interactionMode]);
+
+  // Load project files when /file picker opens
+  useEffect(() => {
+    if (normalizeSlashCmd(optionPickerCtx?.cmd.cmd ?? '') !== 'file') {
+      return;
+    }
+    let cancelled = false;
+    setProjectFilesLoading(true);
+    setProjectFilesError(undefined);
+    void listProjectFileOptions({ projectId }).then((result) => {
+      if (cancelled) return;
+      setProjectFileOptions(result.options);
+      setProjectFilesError(result.error);
+      setProjectFilesLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [optionPickerCtx, projectId]);
 
   // Keep keyboard highlight on a valid option without clobbering hover/arrow nav.
   const optionPickerSignature = useMemo(
@@ -751,6 +846,10 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     if (canonicalCmd === 'hive') {
       setText(before + after);
       setChatModelSelection(selectionFromHive('balanced'));
+      setConfirmedCommands((cur) => {
+        const entry = buildSlashReferenceCommand(cmd);
+        return [...cur.filter((c) => c.value !== entry.value), entry];
+      });
       setSlashCtx(null);
       requestAnimationFrame(() => textareaRef.current?.focus());
       return;
@@ -771,9 +870,30 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       return;
     }
 
-    // If command has options (like /context or /plug), show option picker.
-    if (cmd.hasOptions && isChatAttachSlashCmd(cmd.cmd)) {
-      // Remove the typed slash command from text
+    // /clearfiles (and aliases) — clear attachments immediately + confirmed chip
+    if (canonicalCmd === 'clearfiles') {
+      setText(before + after);
+      setAttachedFiles([]);
+      setAttachedImages([]);
+      const flashId = `clear:${Date.now()}`;
+      setConfirmedCommands((cur) => [
+        ...cur.filter((c) => c.cmd !== 'clearfiles'),
+        { cmd: 'clearfiles', value: flashId, label: '/clearfiles · cleared' },
+      ]);
+      window.setTimeout(() => {
+        setConfirmedCommands((cur) => cur.filter((c) => !(c.cmd === 'clearfiles' && c.value === flashId)));
+      }, 2200);
+      toast.info('Attachments cleared', 'All files and images removed from this message.');
+      setSlashCtx(null);
+      requestAnimationFrame(() => textareaRef.current?.focus());
+      return;
+    }
+
+    // If command has options (context, plug, skills, file, permissions…), show option picker.
+    if (
+      cmd.hasOptions &&
+      (isChatAttachSlashCmd(cmd.cmd) || normalizeSlashCmd(cmd.cmd) === 'permissions')
+    ) {
       setText(before + after);
       setSlashCtx(null);
       setSelectedOptionId('');
@@ -782,24 +902,33 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       return;
     }
 
-    // For commands without options, insert executable slash text. Confirmed
-    // tokens are reserved for option commands that need a selected value.
-    if (!cmd.takesArg) {
-      const insert = `/${cmd.cmd}`;
-      const next = before + insert + after;
-      setText(next);
+    // Model picker
+    if (canonicalCmd === 'model' && cmd.hasOptions) {
+      setText(before + after);
       setSlashCtx(null);
-      requestAnimationFrame(() => {
-        const node = textareaRef.current;
-        if (!node) return;
-        const pos = before.length + insert.length;
-        node.focus();
-        node.setSelectionRange(pos, pos);
-      });
+      setModelPickerOpen(true);
+      requestAnimationFrame(() => textareaRef.current?.focus());
       return;
     }
 
-    // For commands that take args, insert into text
+    // Utility / no-arg commands become confirmed chips (cool effect) when possible
+    if (!cmd.takesArg) {
+      setText(before + after);
+      setConfirmedCommands((cur) => [
+        ...cur.filter((c) => c.cmd !== canonicalCmd),
+        {
+          cmd: canonicalCmd,
+          value: `confirmed:${canonicalCmd}`,
+          label: `/${canonicalCmd}`,
+        },
+      ]);
+      setSlashCtx(null);
+      requestAnimationFrame(() => textareaRef.current?.focus());
+      return;
+    }
+
+    // Commands that take free-text args: keep slash in the draft at the caret
+    // so the user can finish typing (e.g. /multitask fix the bug).
     const insert = `/${cmd.cmd} `;
     const next = before + insert + after;
     setText(next);
@@ -816,6 +945,8 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
   const selectOption = (option: SlashCommandOption) => {
     if (!optionPickerCtx) return;
     const cmd = optionPickerCtx.cmd;
+    const canonical = normalizeSlashCmd(cmd.cmd);
+
     if (cmd.cmd === 'allaboutme' && option.id === 'retake') {
       setOptionPickerCtx(null);
       setSelectedOptionId('');
@@ -827,6 +958,48 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       requestAnimationFrame(() => textareaRef.current?.focus());
       return;
     }
+
+    // /permissions picker: set Agent / Plan / Ask mode only — never attach a chip.
+    if (canonical === 'permissions') {
+      const nextMode = parsePermissionModeArg(option.id) ?? (option.id as 'ask' | 'plan' | 'agent');
+      if (nextMode === 'ask' || nextMode === 'plan' || nextMode === 'agent') {
+        setInteractionMode(chatId, nextMode);
+        // Drop any stale permissions chip from older builds.
+        setConfirmedCommands((cur) => cur.filter((c) => c.cmd !== 'permissions'));
+        // Quiet: mode chip already shows the active mode — no toast spam.
+      }
+      setOptionPickerCtx(null);
+      setSelectedOptionId('');
+      requestAnimationFrame(() => textareaRef.current?.focus());
+      return;
+    }
+
+    // /file picker: attach project file path + show confirmed chip
+    if (canonical === 'file') {
+      const path = option.id;
+      if (isSupportedImagePath(path)) {
+        void imageAttachmentFromPath(path)
+          .then((image) => {
+            setAttachedImages((cur) =>
+              cur.some((item) => item.sourcePath === path) ? cur : [...cur, image].slice(0, 6),
+            );
+          })
+          .catch((err) => {
+            toast.error('Image attach failed', err instanceof Error ? err.message : 'Could not attach image.');
+          });
+      } else {
+        setAttachedFiles((cur) => (cur.includes(path) ? cur : [...cur, path]).slice(0, 8));
+      }
+      setConfirmedCommands((cur) => [
+        ...cur.filter((c) => !(c.cmd === 'file' && c.value === path)),
+        { cmd: 'file', value: path, label: `/file: ${option.label}` },
+      ]);
+      setOptionPickerCtx(null);
+      setSelectedOptionId('');
+      requestAnimationFrame(() => textareaRef.current?.focus());
+      return;
+    }
+
     const entry: ConfirmedCommand = {
       cmd: cmd.cmd,
       value: option.id,
@@ -894,16 +1067,29 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       requestAnimationFrame(() => textareaRef.current?.focus());
       return true;
     };
+    if (cmd === 'permissions' || cmd === 'permission' || cmd === 'perms' || cmd === 'access') {
+      const parsed = rest ? parsePermissionModeArg(rest) : null;
+      if (parsed) {
+        setInteractionMode(chatId, parsed);
+        // Mode change only — do not attach /permissions as a confirmed chip.
+        setConfirmedCommands((cur) => cur.filter((c) => c.cmd !== 'permissions'));
+        setText('');
+        return true;
+      }
+      // Open the permissions option picker (still not an attachment).
+      openAttachPicker('permissions');
+      return true;
+    }
     if (cmd === 'ask') {
       setInteractionMode(chatId, 'ask');
       if (rest) return rest;
-      await addSystem('Switched to Ask Mode. Jarvis will answer only, with no edits, commands, or plans.');
+      setText('');
       return true;
     }
     if (cmd === 'plan') {
       setInteractionMode(chatId, 'plan');
       if (rest) return rest;
-      await addSystem('Switched to Plan Mode. Jarvis will inspect and produce a read-only plan with Build Plan, Redo Plan, and Cancel.');
+      setText('');
       return true;
     }
     if (cmd === 'schedule' && rest) {
@@ -929,14 +1115,36 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       return true;
     }
     if (cmd === 'usage') {
-      const apiKey = useAuthStore.getState().apiKeys[provider];
-      await addSystem(
-        await buildUsageSummary({
-          provider,
-          apiKey,
-          providerLabel: PROVIDER_LABELS[provider],
-        }),
-      );
+      const usageMode = parseUsageSlashCommand(trimmed);
+      if (!usageMode) {
+        await addSystem('Usage commands: /usage, /usage refresh, /usage session, /usage all.');
+        return true;
+      }
+      const persistedChat = await chatRepo.getById(chatId as ChatId).catch(() => undefined);
+      const selectedId = persistedChat?.connection?.id
+        ?? (chatModelSelection.mode === 'single' ? chatModelSelection.connectionId : undefined);
+      let selectedConnection = selectedId
+        ? PROVIDER_CONNECTIONS.find((connection) => connection.id === selectedId)
+        : undefined;
+      selectedConnection ??= PROVIDER_CONNECTIONS.find((connection) => (
+        connection.providerId === provider
+        && (provider === 'ollama' || provider === 'local' ? connection.mode === 'local' : connection.mode === 'native-api')
+      ));
+      if (!selectedConnection) {
+        await addSystem('Usage is unavailable until this chat has an exact AI connection selected.');
+        return true;
+      }
+      const snapshots = usageMode === 'all'
+        ? await getAllUsage(PROVIDER_CONNECTIONS.filter((connection) => connection.enabled), chatId as ChatId)
+        : [usageMode === 'refresh'
+          ? await refreshUsage(selectedConnection, chatId as ChatId)
+          : await getUsage(selectedConnection, chatId as ChatId, usageMode)];
+      await messageRepo.create({
+        chat_id: chatId as ChatId,
+        role: 'system',
+        parts: [{ kind: 'usage_card', snapshots, scope: usageMode === 'all' ? 'all' : 'connection' }],
+      });
+      setText('');
       return true;
     }
     if (cmd === 'model') {
@@ -1058,15 +1266,79 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     }
     if (cmd === 'clearfiles') {
       setAttachedFiles([]);
-      await addSystem('Cleared attached files.');
+      setAttachedImages([]);
+      setText('');
+      toast.info('Attachments cleared', 'All files and images removed from this message.');
+      return true;
+    }
+    if (cmd === 'undo') {
+      if (jarvisRunning) {
+        await addSystem(UNDO_BLOCKED_RUNNING_TEXT);
+        return true;
+      }
+      const history = await messageRepo.listByChat(chatId as ChatId);
+      const turn = selectLastUndoableTurn(history);
+      if (turn.length === 0) {
+        await addSystem(NOTHING_TO_UNDO_TEXT);
+        return true;
+      }
+      // Delete oldest-first so partial failure still leaves a consistent prefix.
+      for (const message of turn) {
+        await messageRepo.delete(message.id);
+      }
+      pushRedoTurn({
+        chatId: String(chatId),
+        messages: turn,
+        undoneAt: Date.now(),
+      });
+      await messageRepo.create({
+        chat_id: chatId as ChatId,
+        role: 'system',
+        parts: [{ kind: 'text', text: `${UNDO_STATUS_TEXT} ${summarizeUndoTurn(turn)}` }],
+      });
+      setText('');
+      return true;
+    }
+    if (cmd === 'redo') {
+      if (jarvisRunning) {
+        await addSystem(REDO_BLOCKED_RUNNING_TEXT);
+        return true;
+      }
+      const turn = popRedoTurn(String(chatId));
+      if (!turn || turn.messages.length === 0) {
+        await addSystem(NOTHING_TO_REDO_TEXT);
+        return true;
+      }
+      // Restore chronological order with original ids/timestamps.
+      for (const message of turn.messages) {
+        await messageRepo.create({
+          id: message.id,
+          chat_id: message.chat_id,
+          role: message.role,
+          agent_id: message.agent_id,
+          parts: message.parts,
+          parent_id: message.parent_id,
+          usage: message.usage,
+          created_at: message.created_at,
+          updated_at: message.updated_at,
+        });
+      }
+      await messageRepo.create({
+        chat_id: chatId as ChatId,
+        role: 'system',
+        parts: [{ kind: 'text', text: REDO_STATUS_TEXT }],
+      });
+      setText('');
       return true;
     }
     if (cmd === 'help') {
       await addSystem(
-        'Chat slash commands attach context to this conversation (not page navigation). '
-          + '/agents, /terminals, /hive, /kanban, /history, /tools, /schedule become reference tokens. '
-          + '/context, /plug, /skills open pickers. /file <path>, /attach <path>. '
-          + '/usage, /model, /commands, /clearfiles.',
+        'Chat slash commands work at the start, middle, or end of a message. '
+          + '/agents, /terminals, /hive, /kanban, /history, /tools, /schedule become confirmed reference chips. '
+          + '/context, /plug, /skills, /file open pickers. /file lists files in your open project. '
+          + '/attach <path>, /clearfiles (or /clearfile) clears attachments. '
+          + '/undo removes the last full turn; /redo restores it. '
+          + '/usage, /model, /commands, /multitask, /ask, /plan.',
       );
       return true;
     }
@@ -1076,24 +1348,38 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     }
     if (cmd === 'file') {
       if (rest) {
-        if (isSupportedImagePath(rest)) {
+        // Resolve by absolute path or by name within project options
+        let path = rest;
+        if (!/^(?:[A-Za-z]:[\\/]|\\\\|\/)/.test(rest)) {
+          const listed = await listProjectFileOptions({ projectId });
+          const match =
+            listed.options.find((o) => o.label.toLowerCase() === rest.toLowerCase()) ||
+            listed.options.find((o) => o.label.toLowerCase().includes(rest.toLowerCase()));
+          if (match) path = match.id;
+        }
+        if (isSupportedImagePath(path)) {
           try {
-            const image = await imageAttachmentFromPath(rest);
-            setAttachedImages((cur) => (cur.some((item) => item.sourcePath === rest) ? cur : [...cur, image]).slice(0, 6));
+            const image = await imageAttachmentFromPath(path);
+            setAttachedImages((cur) => (cur.some((item) => item.sourcePath === path) ? cur : [...cur, image]).slice(0, 6));
             setText('');
-            await addSystem(`Attached image: ${image.name}`);
             return true;
           } catch (err) {
             toast.error('Image attach failed', err instanceof Error ? err.message : 'Could not attach image.');
             return true;
           }
         }
-        setAttachedFiles((cur) => (cur.includes(rest) ? cur : [...cur, rest]).slice(0, 8));
+        setAttachedFiles((cur) => (cur.includes(path) ? cur : [...cur, path]).slice(0, 8));
         setText('');
-        await addSystem(`Attached file: ${rest}`);
         return true;
       }
-      await addSystem('Use /file <absolute path> to attach a file. Example: /file C:\\Users\\you\\projects\\app.tsx\nOr drag files from the left panel into the chat.');
+      // Open project file picker (same as selecting /file from typeahead)
+      const root = getStoredProjectRoot(projectId);
+      if (!root) {
+        toast.info('No project open', 'Open a project folder in Files, then use /file to attach.');
+        setText('');
+        return true;
+      }
+      openAttachPicker('file');
       return true;
     }
     await addSystem(`Unknown slash command: /${cmd}. Try /help.`);
@@ -1110,11 +1396,44 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       enqueueCurrentMessage(trimmed);
       return;
     }
-    const slashResult = await handleSlashCommand(trimmed);
+
+    // Pull utility slash tokens from anywhere in the message (start/middle/end)
+    // so "/clearfiles" or "/file readme.md" works even mid-sentence.
+    const inline = extractInlineUtilitySlashCommands(trimmed);
+    let handledUtilityOnly = false;
+    for (const util of inline.utilities) {
+      const cmd = normalizeSlashCmd(util.cmd);
+      // /file with no target needs the picker UI — don't open it during send.
+      if (cmd === 'file' && !util.rest) continue;
+      const payload = util.rest ? `/${cmd} ${util.rest}` : `/${cmd}`;
+      const handled = await handleSlashCommand(payload);
+      if (handled === true) handledUtilityOnly = true;
+    }
+    const afterInline = inline.utilities.length > 0 ? inline.cleaned : trimmed;
+
+    // Leading full-message slash (multitask, ask, plan, etc.)
+    const slashResult = afterInline.startsWith('/')
+      ? await handleSlashCommand(afterInline)
+      : false;
     if (slashResult === true) return;
     // When a route slash command has a remainder (e.g. "/terminals close 5 terminals"),
     // handleSlashCommand returns the remainder text so we send it as the message.
-    const rawSendText = typeof slashResult === 'string' ? slashResult.trim() : trimmed;
+    const rawSendText = typeof slashResult === 'string' ? slashResult.trim() : afterInline;
+
+    // Message was only utility slash tokens (e.g. just /clearfiles) — done.
+    if (
+      handledUtilityOnly &&
+      !rawSendText &&
+      confirmedCommands.length === 0 &&
+      confirmedAgentMentions.length === 0 &&
+      attachedFiles.length === 0 &&
+      attachedImages.length === 0 &&
+      attachedTerminals.length === 0 &&
+      attachedPlugins.length === 0 &&
+      attachedContexts.length === 0
+    ) {
+      return;
+    }
     const interactionModeForSend = useJarvisInteractionStore.getState().modeForChat(chatId);
     const mentionPrefix = confirmedAgentMentions.map((mention) => mention.label).join(' ');
     const referenceText = confirmedCommandReferenceText(confirmedCommands);
@@ -1151,7 +1470,10 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       auth.chatModelSelection,
       modelSelectionContextFromAuth(auth),
       auth.stackCustomSteps,
-      { attachments: { hasImages: attachedImages.length > 0 } },
+      {
+        attachments: { hasImages: attachedImages.length > 0, hasFiles: attachedFiles.length > 0 },
+        tools: attachedPlugins.length > 0,
+      },
     );
     if (!sendCheck.ok) {
       toast.error('Cannot send', sendCheck.message);
@@ -1163,11 +1485,24 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       .filter((confirmed) => confirmed.cmd === 'skills' && confirmed.value)
       .map((confirmed) => confirmed.value!)
       .slice(0, 6);
+    let nextAttachedFiles = [...attachedFiles];
     let nextAttachedTerminals = attachedTerminals;
     let nextAttachedPlugins = attachedPlugins;
     let nextAttachedContexts = attachedContexts;
     for (const confirmed of confirmedCommands) {
       if (confirmed.value?.startsWith('reference:')) continue;
+      if (confirmed.value?.startsWith('confirmed:')) continue;
+      if (confirmed.cmd === 'clearfiles') continue;
+      if (confirmed.cmd === 'permissions') continue;
+      if (normalizeSlashCmd(confirmed.cmd) === 'file' && confirmed.value) {
+        const path = confirmed.value;
+        if (!isSupportedImagePath(path)) {
+          nextAttachedFiles = nextAttachedFiles.includes(path)
+            ? nextAttachedFiles
+            : [...nextAttachedFiles, path].slice(0, 8);
+        }
+        continue;
+      }
       if (normalizeSlashCmd(confirmed.cmd) === 'terminals' && confirmed.value) {
         const session = useTerminalTranscriptStore.getState().sessions[confirmed.value];
         if (session) {
@@ -1238,6 +1573,8 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       // user message. (See runtime.ts: prior versions wrote a second
       // copy here, producing the duplicate-bubble bug surfaced in the
       // AI-router audit.)
+      // New real user turns invalidate redo history for this chat.
+      clearRedoStack(String(chatId));
       await messageRepo.create({
         chat_id: chatId as ChatId,
         role: 'user',
@@ -1248,7 +1585,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
             url: `data:${image.mimeType};base64,${image.data}`,
             alt: image.name,
           })),
-          ...attachedFiles.map((path) => ({ kind: 'file_ref' as const, ref: { kind: 'file' as const, id: path } })),
+          ...nextAttachedFiles.map((path) => ({ kind: 'file_ref' as const, ref: { kind: 'file' as const, id: path } })),
           ...nextAttachedTerminals.map((ref) => ({ kind: 'file_ref' as const, ref: { kind: 'memory' as const, id: `terminal:${terminalRefKey(ref)}`, excerpt: `Terminal reference: ${terminalRefLabel(ref)}` } })),
           ...nextAttachedContexts.map((context) => ({ kind: 'file_ref' as const, ref: { kind: 'memory' as const, id: `context:${context.nodeId}`, excerpt: `Context: ${context.title}` } })),
         ],
@@ -1258,7 +1595,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       const mentionedPluginIds = extractPluginMentions(sendText, PLUGIN_CATALOG);
       const pluginIds = Array.from(new Set([...nextAttachedPlugins, ...mentionedPluginIds])).slice(0, 8);
       const messageFilePaths = Array.from(
-        new Set([...attachedFiles, ...extractAbsoluteFilePaths(sendText)]),
+        new Set([...nextAttachedFiles, ...extractAbsoluteFilePaths(sendText)]),
       ).slice(0, 8);
       window.dispatchEvent(
         new CustomEvent('jarvis:send', {
@@ -1276,6 +1613,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
             interactionMode: interactionModeForSend,
             speakReply: voiceReplyRequestedRef.current || useAuthStore.getState().speakReplies,
             autoApproveActions: useAuthStore.getState().jarvisAutoApprove,
+            modelSelectionOverride: useAuthStore.getState().chatModelSelection,
           },
         }),
       );
@@ -1314,6 +1652,23 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
     void handleSend(queued.text, { bypassQueue: true });
   };
 
+  /** Same as typing `/multitask <message>` for a queued row (parallel agent work). */
+  const startQueuedMultitask = (id: string) => {
+    const queued = queuedMessages.find((message) => message.id === id);
+    if (!queued) return;
+    setQueuedMessages((current) => current.filter((message) => message.id !== id));
+    void handleSend(buildQueuedMultitaskCommand(queued.text), { bypassQueue: true });
+  };
+
+  // Keep auto-flush bound to latest handleSend + queue (after handleSend is defined).
+  flushNextQueuedRef.current = () => {
+    if (sendingRef.current) return;
+    const { next, remaining } = takeNextQueuedMessage(queuedMessagesRef.current);
+    if (!next) return;
+    setQueuedMessages(remaining);
+    void handleSend(next.text, { bypassQueue: true });
+  };
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // Mod+Enter always sends, regardless of any popover state
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
@@ -1326,7 +1681,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       e.preventDefault();
       const nextMode = cycleInteractionMode(useJarvisInteractionStore.getState().modeForChat(chatId));
       setInteractionMode(chatId, nextMode);
-      toast.info(interactionModeLabel(nextMode), 'Shift+Tab cycles Ask, Plan, and Agent modes.');
+      // Mode chip updates in place — no toast for routine mode cycles.
       return;
     }
 
@@ -1955,7 +2310,10 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
   }, [compact, setComposerSttListening, sttListening]);
 
   return (
-    <div className={cn('border-t border-border bg-panel', compact && 'text-[12px]')}>
+    <div
+      className={cn('border-t border-border bg-panel', compact && 'text-[12px]')}
+      data-tour="chat-composer"
+    >
       {showFreeKeyNudge && (
         <div
           className={cn(
@@ -2192,6 +2550,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
         messages={queuedMessages}
         onEdit={editQueuedMessage}
         onSendNow={sendQueuedMessageNow}
+        onStartMultitask={startQueuedMultitask}
         onDelete={deleteQueuedMessage}
       />
               <div
@@ -2209,14 +2568,28 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
                   compact={compact}
                   onSelect={(next) => {
                     setChatModelSelection(next);
+                    if (next.mode === 'single' && next.connectionId) {
+                      const descriptor = getProviderConnectionDescriptor(next.connectionId);
+                      void chatRepo.update(chatId as ChatId, {
+                        connection: { ...descriptor, modelId: next.modelId },
+                      }).catch(() => toast.error('Connection not saved', 'Try choosing the connection again.'));
+                    }
                     if (next.mode === 'single' && (next.providerId === 'ollama' || next.providerId === 'local')) {
                       selectLocalModelForChat(next.modelId);
                     }
                   }}
                 />
+                {chatModelSelection.mode === 'single' && chatModelSelection.connectionId ? (
+                  <ConnectionInfoPopover
+                    connectionId={chatModelSelection.connectionId}
+                  />
+                ) : null}
                 <ModeIndicator
                   mode={interactionMode}
                   compact={compact}
+                  onSelectMode={(nextMode) => {
+                    setInteractionMode(chatId, nextMode);
+                  }}
                   onCycle={() => {
                     const nextMode = cycleInteractionMode(useJarvisInteractionStore.getState().modeForChat(chatId));
                     setInteractionMode(chatId, nextMode);
@@ -2301,6 +2674,8 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
                 options={optionPickerOptions}
                 selectedId={selectedOptionId}
                 query={optionPickerCtx.query}
+                loading={normalizeSlashCmd(optionPickerCtx.cmd.cmd) === 'file' ? projectFilesLoading : false}
+                error={normalizeSlashCmd(optionPickerCtx.cmd.cmd) === 'file' ? projectFilesError : undefined}
                 onHoverId={setSelectedOptionId}
                 onSelect={selectOption}
               />
@@ -2414,8 +2789,8 @@ function ModelPicker({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [open, onOpenChange, pickerRef]);
 
-  const handleSelect = (nextProvider: ProviderId, nextModel: string) => {
-    onSelect(selectionFromOption(nextProvider, nextModel));
+  const handleSelect = (nextProvider: ProviderId, nextModel: string, connection?: Readonly<import('@/lib/ai/adapters/types').ProviderConnection>) => {
+    onSelect(selectionFromOption(nextProvider, nextModel, connection));
     onOpenChange(false);
   };
 

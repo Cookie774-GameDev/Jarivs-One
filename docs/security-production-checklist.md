@@ -28,8 +28,11 @@ on your secrets/artifacts, ⚠️ follow-up.
 - ✅ Raw-body webhook signature verification.
 - ✅ Idempotent via unique `event_id`.
 - ✅ Server-side price→plan mapping; frontend price/plan never trusted.
-- ✅ Benefits granted only after Stripe confirmation; failed invoice → free.
-- ⏳ End-to-end test-mode verification (needs keys + products).
+- ✅ Benefits granted only after Stripe confirmation.
+- ✅ `stripe-webhook` must run with `verify_jwt=false` (Stripe has no user JWT).
+- ✅ Dunning soft: `past_due` keeps plan; single `invoice.payment_failed` does not free.
+- ✅ `stack-complete` edge function for subscription Hive hosted steps (JWT on).
+- ⏳ End-to-end test-mode card checkout + confirm `profiles.tier` (operator).
 
 ## Calling / messaging (Twilio)
 - ✅ `X-Twilio-Signature` HMAC-SHA1 verification on all webhooks.

@@ -14,6 +14,7 @@ import {
   PhoneOff,
   Megaphone,
   MoreHorizontal,
+  Newspaper,
   PanelRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -124,6 +125,7 @@ export function TopBar() {
   const setLauncherOpen = useUIStore((s) => s.setLauncherOpen);
   const setAssistantOpen = useUIStore((s) => s.setAssistantOpen);
   const setWhatsNewOpen = useUIStore((s) => s.setWhatsNewOpen);
+  const setNewsPanelOpen = useUIStore((s) => s.setNewsPanelOpen);
   const chatFullscreen = useUIStore((s) => s.chatFullscreen);
   const toggleChatFullscreen = useUIStore((s) => s.toggleChatFullscreen);
 
@@ -355,6 +357,7 @@ export function TopBar() {
           toggleComposerStt={toggleComposerStt}
           setSettingsOpen={setSettingsOpen}
           setWhatsNewOpen={setWhatsNewOpen}
+          setNewsPanelOpen={setNewsPanelOpen}
           hasUnseenWhatsNew={hasUnseenWhatsNew}
           currentVersion={currentVersion}
           displayName={displayName}
@@ -447,6 +450,17 @@ export function TopBar() {
 
           <CallTopBarButton />
 
+          <Hint label="AI News">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => setNewsPanelOpen(true)}
+              aria-label="Open AI news"
+            >
+              <Newspaper className="h-4 w-4" />
+            </Button>
+          </Hint>
+
           <Hint label="What's new">
             <Button
               variant="ghost"
@@ -490,6 +504,7 @@ export function TopBar() {
               size="icon-sm"
               onClick={() => setSettingsOpen(true)}
               aria-label="Settings"
+              data-tour="settings"
             >
               <Settings className="h-4 w-4" />
             </Button>
@@ -537,6 +552,7 @@ interface CompactRightClusterProps {
   toggleComposerStt: () => void;
   setSettingsOpen: (v: boolean) => void;
   setWhatsNewOpen: (v: boolean) => void;
+  setNewsPanelOpen: (v: boolean) => void;
   hasUnseenWhatsNew: boolean;
   currentVersion: string;
   displayName: string | null;
@@ -560,6 +576,7 @@ function CompactRightCluster(props: CompactRightClusterProps) {
     toggleComposerStt,
     setSettingsOpen,
     setWhatsNewOpen,
+    setNewsPanelOpen,
     hasUnseenWhatsNew,
     currentVersion,
     displayName,
@@ -653,6 +670,11 @@ function CompactRightCluster(props: CompactRightClusterProps) {
               onClick={closeAfter(toggleComposerStt)}
             />
             <CompactCallRow closeAfter={closeAfter} />
+            <MenuRow
+              icon={<Newspaper className="h-3.5 w-3.5" />}
+              label="AI News"
+              onClick={closeAfter(() => setNewsPanelOpen(true))}
+            />
             <MenuRow
               icon={<Megaphone className="h-3.5 w-3.5" />}
               label={`What's new${hasUnseenWhatsNew ? ' (new)' : ''}`}

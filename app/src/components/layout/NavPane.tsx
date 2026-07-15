@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Pin,
+  PinOff,
   FolderTree,
   MessageSquare,
   Bot,
@@ -29,10 +30,12 @@ import { useAgentStore } from '@/stores/agents';
 import { db, projectRepo, chatRepo } from '@/lib/db';
 import type { Project } from '@/lib/db/schema';
 import type { Agent, ChatId, ProjectId, WorkspaceId } from '@/types';
+import type { Chat } from '@/types/chat';
 import { cn } from '@/lib/utils';
 import { AgentBadge } from '@/features/agents/AgentBadge';
 import { SidebarContextTree } from '@/features/context/SidebarContextTree';
 import { SidebarFilesTree } from '@/features/files/SidebarFilesTree';
+import { chatPinPatch, isChatPinned, sortChatsForDisplay } from '@/features/chat/chatPin';
 
 const TERMINAL_MIME = 'application/x-jarvis-terminal';
 
@@ -41,11 +44,11 @@ const TERMINAL_MIME = 'application/x-jarvis-terminal';
  *
  * V2 Cozy: every section is now wired to live data + actionable.
  *
- * - Pinned: chats with `pinned=true` (best-effort; field reserved on Chat).
+ * - Pinned: chats with `pinned=true` (toggle via the pin control on each row).
  * - Projects: dexie-live list, "+ New" button creates `Project N`, click
  *   activates via `setProjectId`. The active row glows copper.
- * - Chats: dexie-live list scoped to the active workspace + project, "+ New"
- *   creates a placeholder chat, click activates via `setActiveChat`.
+ * - Chats: dexie-live list scoped to the active workspace + project (unpinned),
+ *   "+ New" creates a placeholder chat, click activates via `setActiveChat`.
  * - Agents: registered agents from the runtime store. Clicking an agent
  *   spins up a new chat with that agent active — matches the V2 ask
  *   "the buttons at the side for a specific AI agents are not working".
@@ -81,7 +84,7 @@ export function NavPane() {
   );
   const chats = useLiveQuery(
     async () => {
-      if (!workspaceId) return [];
+      if (!workspaceId) return [] as Chat[];
       const rows = await db.chats.where('workspace_id').equals(workspaceId).toArray();
       // Project-scoped: a chat with no project_id is "loose" and only
       // shows when no project is active. With an active project, only
@@ -90,12 +93,42 @@ export function NavPane() {
       const filtered = projectId
         ? rows.filter((c) => c.project_id === projectId)
         : rows.filter((c) => !c.project_id);
-      // newest first
-      return filtered.sort((a, b) => b.updated_at - a.updated_at).slice(0, 50);
+      return sortChatsForDisplay(filtered).slice(0, 50);
     },
     [workspaceId, projectId],
-    [],
+    [] as Chat[],
   );
+
+  const pinnedChats = React.useMemo(
+    () => (chats ?? []).filter((c) => isChatPinned(c)),
+    [chats],
+  );
+  const unpinnedChats = React.useMemo(
+    () => (chats ?? []).filter((c) => !isChatPinned(c)),
+    [chats],
+  );
+
+  const onTogglePinChat = async (chat: Chat) => {
+    const nextPinned = !isChatPinned(chat);
+    try {
+      await chatRepo.update(chat.id, chatPinPatch(nextPinned));
+      toast.info(
+        nextPinned ? 'Chat pinned' : 'Chat unpinned',
+        nextPinned ? 'It will stay at the top of the sidebar.' : 'Moved back to Chats.',
+      );
+    } catch (err) {
+      toast.error(
+        'Could not update pin',
+        err instanceof Error ? err.message : 'Try again.',
+      );
+    }
+  };
+
+  const openChat = (c: Chat) => {
+    setActiveChat(c.id as unknown as ChatId);
+    setChatMode(c.mode);
+    setRoute('chat');
+  };
 
   // ---------- create handlers ----------
 
@@ -300,7 +333,20 @@ export function NavPane() {
           collapsed={!!navSectionsCollapsed['pinned']}
           onToggleCollapsed={() => toggleNavSection('pinned')}
         >
-          <EmptyHint navOpen={navOpen} text="Pin chats to keep them close." />
+          {pinnedChats.length === 0 ? (
+            <EmptyHint navOpen={navOpen} text="Pin chats to keep them close." />
+          ) : (
+            pinnedChats.map((c) => (
+              <ChatNavRow
+                key={c.id}
+                chat={c}
+                navOpen={navOpen}
+                active={(c.id as unknown as string) === activeChatId}
+                onOpen={() => openChat(c)}
+                onTogglePin={() => void onTogglePinChat(c)}
+              />
+            ))
+          )}
         </NavSection>
 
         <NavSection
@@ -373,21 +419,24 @@ export function NavPane() {
             </Hint>
           }
         >
-          {(chats ?? []).length === 0 ? (
-            <EmptyHint navOpen={navOpen} text="No chats yet. Hit + to start one." />
+          {unpinnedChats.length === 0 ? (
+            <EmptyHint
+              navOpen={navOpen}
+              text={
+                pinnedChats.length > 0
+                  ? 'All chats are pinned above.'
+                  : 'No chats yet. Hit + to start one.'
+              }
+            />
           ) : (
-            (chats ?? []).map((c) => (
-              <NavItem
+            unpinnedChats.map((c) => (
+              <ChatNavRow
                 key={c.id}
+                chat={c}
                 navOpen={navOpen}
-                label={c.title || 'Untitled chat'}
                 active={(c.id as unknown as string) === activeChatId}
-                icon={<MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />}
-                onClick={() => {
-                  setActiveChat(c.id as unknown as ChatId);
-                  setChatMode(c.mode);
-                  setRoute('chat');
-                }}
+                onOpen={() => openChat(c)}
+                onTogglePin={() => void onTogglePinChat(c)}
               />
             ))
           )}
@@ -440,6 +489,7 @@ export function NavPane() {
           collapsed={!!navSectionsCollapsed['context']}
           onToggleCollapsed={() => toggleNavSection('context')}
           onTitleClick={() => setRoute('context')}
+          dataTour="context"
         >
           <SidebarContextTree navOpen={navOpen} onOpenContext={() => setRoute('context')} />
         </NavSection>
@@ -486,6 +536,8 @@ interface NavSectionProps {
   onToggleCollapsed?: () => void;
   /** Optional title click handler. When present, only the chevron toggles. */
   onTitleClick?: () => void;
+  /** Product-tutorial spotlight target id. */
+  dataTour?: string;
   children?: React.ReactNode;
 }
 
@@ -499,6 +551,7 @@ function NavSection({
   collapsed,
   onToggleCollapsed,
   onTitleClick,
+  dataTour,
   children,
 }: NavSectionProps) {
   if (!navOpen) {
@@ -508,6 +561,7 @@ function NavSection({
       <section
         className="flex flex-col items-center gap-1 px-2 pb-2 pt-3"
         aria-label={title}
+        data-tour={dataTour}
       >
         <span className="text-muted-foreground/60" title={title}>
           {icon}
@@ -517,7 +571,7 @@ function NavSection({
     );
   }
   return (
-    <section className="px-2 pb-3 pt-3">
+    <section className="px-2 pb-3 pt-3" data-tour={dataTour}>
       <header
         className={cn(
           'group flex items-center gap-2 px-2 pb-1.5 text-metadata uppercase tracking-wider text-muted-foreground',
@@ -741,9 +795,11 @@ interface NavItemProps {
   navOpen: boolean;
   active?: boolean;
   onClick?: () => void;
+  /** Product-tutorial spotlight target id (rendered as data-tour). */
+  dataTour?: string;
 }
 
-function NavItem({ icon, label, navOpen, active, onClick }: NavItemProps) {
+function NavItem({ icon, label, navOpen, active, onClick, dataTour }: NavItemProps) {
   if (!navOpen) {
     return (
       <button
@@ -751,6 +807,7 @@ function NavItem({ icon, label, navOpen, active, onClick }: NavItemProps) {
         onClick={onClick}
         title={label}
         aria-label={label}
+        data-tour={dataTour}
         className={cn(
           'flex h-7 w-full items-center justify-center rounded-md text-foreground transition-colors',
           'hover:bg-muted focus-visible:outline-none focus-visible:ring-inset focus-visible:ring-1 focus-visible:ring-ring',
@@ -765,6 +822,7 @@ function NavItem({ icon, label, navOpen, active, onClick }: NavItemProps) {
     <button
       type="button"
       onClick={onClick}
+      data-tour={dataTour}
       className={cn(
         'group flex h-7 w-full items-center gap-2 rounded-md px-2 text-body text-foreground transition-colors',
         'hover:bg-muted focus-visible:outline-none focus-visible:ring-inset focus-visible:ring-1 focus-visible:ring-ring',
@@ -774,6 +832,80 @@ function NavItem({ icon, label, navOpen, active, onClick }: NavItemProps) {
       <span className="shrink-0">{icon}</span>
       <span className="min-w-0 flex-1 truncate text-left">{label}</span>
     </button>
+  );
+}
+
+interface ChatNavRowProps {
+  chat: Chat;
+  navOpen: boolean;
+  active?: boolean;
+  onOpen: () => void;
+  onTogglePin: () => void;
+}
+
+function ChatNavRow({ chat, navOpen, active, onOpen, onTogglePin }: ChatNavRowProps) {
+  const label = (chat.title || 'Untitled chat').trim() || 'Untitled chat';
+  const pinned = isChatPinned(chat);
+
+  if (!navOpen) {
+    return (
+      <button
+        type="button"
+        onClick={onOpen}
+        title={pinned ? `${label} (pinned)` : label}
+        aria-label={pinned ? `${label}, pinned` : label}
+        className={cn(
+          'relative flex h-7 w-full items-center justify-center rounded-md text-foreground transition-colors',
+          'hover:bg-muted focus-visible:outline-none focus-visible:ring-inset focus-visible:ring-1 focus-visible:ring-ring',
+          active && 'bg-muted ring-inset ring-1 ring-accent-copper/40',
+        )}
+      >
+        <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
+        {pinned ? (
+          <Pin className="absolute right-1 top-1 h-2 w-2 fill-accent-copper text-accent-copper" />
+        ) : null}
+      </button>
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        'group flex h-7 w-full items-center gap-0.5 rounded-md pr-0.5 transition-colors',
+        'hover:bg-muted',
+        active && 'bg-muted ring-inset ring-1 ring-accent-copper/40',
+      )}
+    >
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-body text-foreground focus-visible:outline-none focus-visible:ring-inset focus-visible:ring-1 focus-visible:ring-ring"
+      >
+        <MessageSquare className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        <span className="min-w-0 flex-1 truncate text-left">{label}</span>
+      </button>
+      <Hint label={pinned ? 'Unpin chat' : 'Pin chat'}>
+        <button
+          type="button"
+          data-nav-action="true"
+          onClick={(e) => {
+            e.stopPropagation();
+            onTogglePin();
+          }}
+          aria-label={pinned ? `Unpin ${label}` : `Pin ${label}`}
+          aria-pressed={pinned}
+          className={cn(
+            'inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm transition-colors',
+            'text-muted-foreground/50 hover:bg-background/80 hover:text-accent-copper',
+            'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+            'opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
+            pinned && 'opacity-100 text-accent-copper',
+          )}
+        >
+          {pinned ? <PinOff className="h-3 w-3" /> : <Pin className="h-3 w-3" />}
+        </button>
+      </Hint>
+    </div>
   );
 }
 
@@ -804,6 +936,7 @@ function RouteItem({ icon, label, navOpen, target, route, setRoute }: RouteItemP
       navOpen={navOpen}
       active={active}
       onClick={() => setRoute(target)}
+      dataTour={target}
     />
   );
 }

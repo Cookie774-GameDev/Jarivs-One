@@ -1630,6 +1630,7 @@ export function getBuiltinActions(): ActionDef[] {
     ...CREATOR_ACTIONS,
     ...PRODUCTIVITY_ACTIONS,
     ...APP_CONTROL_ACTIONS,
+    ...FILE_ACTIONS,
     ...PRESET_ACTIONS,
   ];
 }

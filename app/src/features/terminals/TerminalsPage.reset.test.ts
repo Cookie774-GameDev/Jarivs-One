@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { forgetTerminalLeafSessions } from './TerminalsPage';
+import {
+  deleteTerminalProjectSnapshots,
+  forgetTerminalLeafSessions,
+} from './TerminalsPage';
 import { fromLeaves, type PaneNode } from './paneTree';
 
 describe('terminal reset hygiene', () => {
@@ -16,5 +19,17 @@ describe('terminal reset hygiene', () => {
     expect(forget).toHaveBeenCalledTimes(2);
     expect(forget).toHaveBeenCalledWith('session-a');
     expect(forget).toHaveBeenCalledWith('session-c');
+  });
+
+  it('deletes the active project snapshots exactly once during reset', async () => {
+    const invokeCommand = vi.fn(async () => undefined);
+
+    await deleteTerminalProjectSnapshots('project-a', invokeCommand);
+
+    expect(invokeCommand).toHaveBeenCalledOnce();
+    expect(invokeCommand).toHaveBeenCalledWith(
+      'terminal_snapshot_delete_project',
+      { projectId: 'project-a' },
+    );
   });
 });

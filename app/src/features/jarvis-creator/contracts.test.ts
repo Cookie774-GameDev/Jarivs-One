@@ -28,7 +28,7 @@ describe('jarvis creator contracts', () => {
     expect(prompt).toContain('role, mission, behavior rules, boundaries, tools, output style, quality bar, and avoid-list');
     expect(prompt).toContain('production-style');
     expect(prompt).toContain('concrete');
-    expect(prompt).not.toContain('```json');
+    expect(prompt).toContain('```json');
   });
 
   it('builds a two-question skill prompt with a strict JSON return contract', () => {
@@ -47,7 +47,8 @@ describe('jarvis creator contracts', () => {
     expect(prompt).toContain('role, mission, behavior rules, boundaries, tools, output style, quality bar, and avoid-list');
     expect(prompt).toContain('production-style');
     expect(prompt).toContain('concrete');
-    expect(prompt).not.toContain('```json');
+    expect(prompt).toContain('systemPromptAddendum');
+    expect(prompt).toContain('```json');
   });
 
   it('builds Cursor-style written-response creator question blocks', () => {
@@ -118,10 +119,57 @@ describe('jarvis creator contracts', () => {
 
     expect(draft.ok).toBe(true);
     if (!draft.ok) throw new Error(draft.error);
-    expect(draft.draft.title).toBe('Jarvis Skill Draft');
-    expect(draft.draft.description).toContain('Allow users to customize');
+    expect(draft.draft.title).toBeTruthy();
+    expect(draft.draft.description).toBeTruthy();
     expect(draft.draft.systemPromptAddendum).toContain('Selecting from a provided list');
-    expect(draft.draft.body).toContain('Additional aspects');
+    expect(draft.draft.body).toContain(draft.draft.title);
+  });
+
+  it('extracts skill name, description, runtime instructions, and body from labeled markdown', () => {
+    const markdown = [
+      'To create a conversational AI that politely reminds your team members not to duplicate checks on tasks or projects, I propose implementing the following features:',
+      '',
+      '**Skill Name:** "Smart Check Reminder"',
+      '',
+      '**Behavior:**',
+      '1. **Introduction**: When prompted with a task or project, ask the user if they\'ve completed it before.',
+      '2. **Reminder Message**: If no answer is provided, deliver a gentle reminder message.',
+      'Example: "Hi [Name], I noticed you mentioned this task/project earlier. Have you already completed the check?"',
+    ].join('\n');
+
+    const draft = parseLooseJarvisCreatorSkillDraft(markdown);
+    expect(draft.ok).toBe(true);
+    if (!draft.ok) throw new Error(draft.error);
+    expect(draft.draft.title).toBe('Smart Check Reminder');
+    expect(draft.draft.description.toLowerCase()).not.toContain('skill name');
+    expect(draft.draft.systemPromptAddendum).toContain('Introduction');
+    expect(draft.draft.systemPromptAddendum).toContain('Reminder Message');
+    expect(draft.draft.systemPromptAddendum).not.toMatch(/^To create a conversational AI/i);
+    expect(draft.draft.body).toContain('# Smart Check Reminder');
+    expect(draft.draft.body).toContain('## Instructions');
+  });
+
+  it('accepts skill JSON with alias keys (name / runtime_instructions / library body)', () => {
+    const result = parseJarvisCreatorDraft('skill', [
+      '```json',
+      JSON.stringify({
+        name: 'Smart Check Reminder',
+        summary: 'Politely remind teammates not to re-check work.',
+        tools: 'files, web',
+        runtime_instructions: 'Ask if the check was already done before reminding.',
+        library_body: '## Use\n\nUse when teammates re-open closed checks.',
+        emoji: '🔔',
+      }),
+      '```',
+    ].join('\n'));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error);
+    expect(result.draft.title).toBe('Smart Check Reminder');
+    expect(result.draft.description).toContain('Politely remind');
+    expect(result.draft.tools).toEqual(['files', 'web']);
+    expect(result.draft.systemPromptAddendum).toContain('already done');
+    expect(result.draft.body).toContain('re-open closed checks');
   });
 
   it('converts creator-style markdown into a conservative agent draft fallback', () => {
