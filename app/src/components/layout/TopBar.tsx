@@ -59,6 +59,7 @@ import { isAdminIdentity, planAllowsJarvisCall } from '@/lib/entitlements';
 
 type Route =
   | 'chat'
+  | 'workbench'
   | 'terminal'
   | 'kanban'
   | 'schedule'
@@ -75,6 +76,7 @@ type Route =
 
 const ROUTES: ReadonlyArray<Route> = [
   'chat',
+  'workbench',
   'terminal',
   'kanban',
   'schedule',
@@ -90,6 +92,7 @@ const ROUTES: ReadonlyArray<Route> = [
 
 const ROUTE_LABELS: Record<Route, string> = {
   chat: 'Chat',
+  workbench: 'Workbench',
   terminal: 'Terminal',
   kanban: 'Kanban',
   schedule: 'Schedule',
@@ -168,7 +171,7 @@ export function TopBar() {
   // fields), so we fall back to generic labels when the IDs are set, and
   // "Loading..." when they're null. Replace with real names once the
   // auth/workspaces stores expose them.
-  const workspaceLabel = workspaceId ? 'Workspace' : 'Loading\u2026';
+  const workspaceLabel = workspaceId ? 'Workspace' : 'Loading…';
   const projectLabel = projectId ? 'Project' : null;
 
   const offChat = route !== 'chat';
