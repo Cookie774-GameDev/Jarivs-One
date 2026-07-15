@@ -775,7 +775,9 @@ function WorkspaceRoot() {
       <ApiKeySaveBurst />
 
       {/* V2 — idle takeover. Self-renders only when ambientActive=true. */}
-      <AmbientHome />
+      <React.Suspense fallback={null}>
+        <AmbientHome />
+      </React.Suspense>
       <AmbientAudioHost />
 
       {/* V3 — 20-20-20 eye-break overlay. Self-renders only while
