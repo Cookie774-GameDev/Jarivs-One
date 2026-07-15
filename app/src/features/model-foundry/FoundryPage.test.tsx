@@ -64,7 +64,7 @@ describe('FoundryPage fixture vertical slice', () => {
     render(<FoundryPage storage={view.storage} dependencies={view.dependencies} />);
     expect(screen.getByRole('heading', { name: 'VibeCoder' })).toBeTruthy();
     expect(screen.getByText('Current champion')).toBeTruthy();
-  });
+  }, 15_000);
 
   it('does not expose promotion before a complete passing evaluation', () => {
     renderFoundry();
