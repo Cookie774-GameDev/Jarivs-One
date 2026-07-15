@@ -2,6 +2,8 @@
 
 Build Your Own AI is VibeSpace's local-first specialist-model workflow. The first built-in project, VibeCoder, keeps raw datasets, training manifests, checkpoints, adapters, prompts, and output logs in the app's local data directory.
 
+The Foundry home keeps a local catalog of up to 24 specialist snapshots. Creating another AI does not replace an existing project; a project can be reopened from the local catalog and then recovered through the normal validated repository path.
+
 Dataset Studio can stage a deterministic **local synthetic variation** from a user-authored, scanned seed. It is explicitly labeled `synthetic_generator` with its local-template provenance, receives no teacher-model or network access, and still requires scan, consent, duplicate review, and immutable-version approval.
 
 After a passing adapter is promoted, it can also draft a **local teacher target** for a reviewed seed. This is explicit opt-in, uses only the project’s promoted adapter, remains local, is source-labeled, and fills a reviewable field rather than approving or training on output automatically.
@@ -24,7 +26,7 @@ Supabase metadata migration `0031_model_foundry_metadata.sql` stores only owner-
 
 ## Known boundaries
 
-Verified real adapters enter the local registry as candidates. A local, deterministic reference evaluation compares a candidate against its pinned base model and, when one exists, the current champion. A user can instead supply up to 32 **private local reference cases**; these remain in the local evaluation manifest, reject credential-shaped text, and expose only scores, hidden status, and evidence hashes in the result. A candidate must pass that gate and receive explicit approval before it becomes the champion and appears in the regular chat model picker. VibeSpace rejects a candidate or stale adapter ID at inference time, then routes the promoted bounded project/job identity through the native worker, verifies the artifact again, and generates locally without a network service. Previously approved adapters remain available to re-promote as a rollback target. Fixture-mode deployment records still represent local routing intent and must not be read as a running inference server.
+Verified real adapters enter the local registry as candidates. A local, deterministic reference evaluation compares a candidate against its pinned base model and, when one exists, the current champion. A user can instead supply up to 32 **private local reference cases**; they persist only in local Foundry storage and the local evaluation manifest, reject credential-shaped text, can be explicitly cleared, and expose only scores, hidden status, and evidence hashes in the result. A candidate must pass that gate and receive explicit approval before it becomes the champion and appears in the regular chat model picker. VibeSpace rejects a candidate or stale adapter ID at inference time, then routes the promoted bounded project/job identity through the native worker, verifies the artifact again, and generates locally without a network service. Previously approved adapters remain available to re-promote as a rollback target. Fixture-mode deployment records still represent local routing intent and must not be read as a running inference server.
 
 ## Focused checks
 
