@@ -37,6 +37,7 @@ python -m py_compile src-tauri\workers\model_foundry\worker.py src-tauri\workers
 cargo test --manifest-path src-tauri\Cargo.toml --lib model_foundry_training::tests
 cargo test --manifest-path src-tauri\Cargo.toml --lib model_foundry_download::tests
 npm run typecheck
+npx vitest run src/features/model-foundry --pool=forks --maxWorkers=1
 ```
 
-The full TypeScript check can be slower than the focused native checks on an actively running desktop workspace.
+The full TypeScript check can be slower than the focused native checks on an actively running desktop workspace. In constrained desktop environments, run Vitest with one fork as above; it avoids the default worker-startup stall while retaining the complete Foundry test group.
