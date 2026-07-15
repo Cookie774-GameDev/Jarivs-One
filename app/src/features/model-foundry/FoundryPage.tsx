@@ -31,7 +31,7 @@ import {
 import { FOUNDRY_MODEL_CATALOG, modelCompatibility } from './modelRegistry';
 import { DatasetStudioPanel } from './DatasetStudioPanel';
 import { FoundryDeploymentRepository, type FoundryDeploymentRecord } from './deployment';
-import { DeploymentPanel, EvaluationArenaPanel, ImprovementPanel } from './FoundryGovernancePanels';
+import { DeploymentPanel, EvaluationArenaPanel, FixtureEvaluationEvidencePanel, ImprovementPanel } from './FoundryGovernancePanels';
 import { LocalAdapterRegistry, type LocalAdapterRecord } from './adapterRegistry';
 import { RealAdapterRegistryPanel } from './RealAdapterRegistryPanel';
 import { foundryMetadataSyncEnabled, queueFoundryMetadataDeletion, queueFoundryMetadataSync, setFoundryMetadataSyncEnabled } from './metadataSync';
@@ -491,6 +491,7 @@ const downloadSelectedModel = async () => {
         {activeJob && <TrainingRegion job={activeJob} active={canAdvance} onAdvance={advance} onResume={resume} />}
         {evaluation && <div role="status" className="sr-only"><span>{evaluation.gate.result === 'pass' ? 'All gates passed' : 'Evaluation gates are blocked'}</span><span>{evaluation.safetyFailures.length} safety failures</span></div>}
         {activeJob?.state === 'completed' && candidate && <EvaluationArenaPanel candidate={candidate} evaluation={evaluation} championVersionId={snapshot.championVersionId} onEvaluate={evaluate} onPromote={promote} />}
+        {activeJob?.state === 'completed' && <FixtureEvaluationEvidencePanel evaluation={evaluation} />}
         <DeploymentPanel snapshot={snapshot} deployment={deployment} routingMode={routingMode} trafficPercent={trafficPercent} onRoutingMode={setRoutingMode} onTrafficPercent={setTrafficPercent} onActivate={activateDeployment} onPause={pauseDeployment} />
         <ImprovementPanel feedbackCount={snapshot.feedbackEvents.length} cycleCount={snapshot.improvementCycles.length} consentApproved={feedbackConsent} onConsent={setFeedbackConsent} onFeedback={recordFeedback} onCycle={createImprovementCycle} />
         <LocalStateFootprint snapshot={snapshot} projectCount={projectCatalog.length} />
