@@ -117,7 +117,7 @@ describe('FoundryPage fixture vertical slice', () => {
   });
 
   it('creates a custom specialist with governed language and forbidden action', () => {
-    renderFoundry();
+    const view = renderFoundry();
     fireEvent.click(screen.getByRole('button', { name: 'Create custom AI' }));
     fireEvent.change(screen.getByRole('textbox', { name: 'Specialist name' }), { target: { value: 'Invoice Extractor' } });
     fireEvent.change(screen.getByRole('textbox', { name: 'Narrow task' }), { target: { value: 'Extract invoice totals from a local document.' } });
@@ -130,5 +130,6 @@ describe('FoundryPage fixture vertical slice', () => {
 
     expect(screen.getByRole('heading', { name: 'Invoice Extractor' })).toBeTruthy();
     expect(screen.getByText(/Extract invoice totals from a local document/)).toBeTruthy();
+    expect(JSON.parse(view.storage.getItem('vibespace.model-foundry.current') ?? '{}').snapshot.project.specialist.forbiddenBehavior).toContain('Never invent totals.');
   });
 });
