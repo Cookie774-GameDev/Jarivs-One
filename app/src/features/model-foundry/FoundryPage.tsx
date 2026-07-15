@@ -49,6 +49,7 @@ const defaultDependencies: FixtureBackendDependencies = {
 };
 const NATIVE_RUN_STORAGE_KEY = 'vibespace.model-foundry.native-runs.v1';
 const PRIVATE_EVALUATION_STORAGE_KEY = 'vibespace.model-foundry.private-evaluation-suites.v1';
+const CREDENTIAL_SHAPED_TEXT = /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|\b(?:sk-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b|(?:postgres(?:ql)?|mysql):\/\/[^\s:@]+:[^\s@]+@/i;
 
 function unwrap<T>(result: FoundryResult<T>): T { if (!result.ok) throw new Error(result.error.message); return result.value }
 function titleCase(value: string) { return value.charAt(0).toUpperCase() + value.slice(1) }
@@ -83,6 +84,10 @@ function readPersistedPrivateEvaluationCases(storage: StorageAdapter, projectId:
       return [{ id: candidate.id, prompt: candidate.prompt, expectedCompletion: candidate.expectedCompletion, hidden: candidate.hidden }];
     }).slice(0, 32);
   } catch { return []; }
+}
+
+function privateCaseContainsCredential(caseInput: FoundryPrivateEvaluationCase): boolean {
+  return CREDENTIAL_SHAPED_TEXT.test(caseInput.prompt) || CREDENTIAL_SHAPED_TEXT.test(caseInput.expectedCompletion);
 }
 
 function StepCard({ icon, title, detail, complete }: { icon: React.ReactNode; title: string; detail: string; complete: boolean }) {
@@ -203,6 +208,7 @@ export function FoundryPage({ storage = browserStorage, dependencies = defaultDe
   React.useEffect(() => {
     if (!projectId) return;
     if (skipPrivateSuitePersist.current) { skipPrivateSuitePersist.current = false; return; }
+    if (privateEvaluationCases.some(privateCaseContainsCredential)) return;
     try {
       const parsed = JSON.parse(storage.getItem(PRIVATE_EVALUATION_STORAGE_KEY) ?? '{}') as Record<string, readonly FoundryPrivateEvaluationCase[]>;
       storage.setItem(PRIVATE_EVALUATION_STORAGE_KEY, JSON.stringify({ ...parsed, [projectId]: privateEvaluationCases }));
@@ -385,6 +391,7 @@ const downloadSelectedModel = async () => {
   const probeRegisteredAdapter = async (record: LocalAdapterRecord) => { const result = await generateFromFoundryArtifact({ projectId: record.projectId, jobId: record.jobId, prompt: 'Reply READY.', maxNewTokens: 8 }); setNotice(`Adapter probe succeeded: ${result.text.slice(0, 80)}`); setError(null); };
   const evaluateRegisteredAdapter = async (record: LocalAdapterRecord) => {
     if (privateEvaluationCases.some((evaluationCase) => !evaluationCase.prompt.trim() || !evaluationCase.expectedCompletion.trim())) throw new Error('Complete or remove every private evaluation case before running it.');
+    if (privateEvaluationCases.some(privateCaseContainsCredential)) throw new Error('Remove credential-shaped text from private evaluation cases before running them.');
     const champion = localAdapters.find((adapter) => adapter.status === 'promoted' && adapter.jobId !== record.jobId);
     const result = await evaluateFoundryArtifact({ projectId: record.projectId, jobId: record.jobId, championJobId: champion?.jobId, ...(privateEvaluationCases.length ? { maxCases: privateEvaluationCases.length, cases: privateEvaluationCases } : {}) });
     setLocalAdapters(adapterRegistry.recordEvaluation(record.projectId, record.jobId, result.artifactManifestSha256, result.report));
@@ -461,5 +468,6 @@ function TrainingRegion({ job, active, onAdvance, onResume }: { job: TrainingJob
 function PrivateEvaluationSuite({ cases, onChange }: { cases: readonly FoundryPrivateEvaluationCase[]; onChange: (cases: readonly FoundryPrivateEvaluationCase[]) => void }) {
   const addCase = () => onChange([...cases, { id: `local-case-${crypto.randomUUID()}`, prompt: '', expectedCompletion: '', hidden: true }]);
   const update = (id: string, patch: Partial<FoundryPrivateEvaluationCase>) => onChange(cases.map((evaluationCase) => evaluationCase.id === id ? { ...evaluationCase, ...patch } : evaluationCase));
-  return <Card className="border-violet-500/20"><CardHeader><CardTitle>Private Evaluation Suite</CardTitle><CardDescription>Optional local reference cases replace the validation split for real-adapter evaluation. They are never synchronized or shown in evidence reports.</CardDescription></CardHeader><CardContent className="space-y-3">{cases.map((evaluationCase, index) => <div key={evaluationCase.id} className="grid gap-2 rounded-lg border p-3 md:grid-cols-2"><label className="space-y-1"><span className="text-metadata text-muted-foreground">Case {index + 1} prompt</span><textarea value={evaluationCase.prompt} maxLength={16384} onChange={(event) => update(evaluationCase.id, { prompt: event.target.value })} className="min-h-20 w-full rounded-md border border-input bg-background p-2 text-secondary" /></label><label className="space-y-1"><span className="text-metadata text-muted-foreground">Expected completion</span><textarea value={evaluationCase.expectedCompletion} maxLength={12000} onChange={(event) => update(evaluationCase.id, { expectedCompletion: event.target.value })} className="min-h-20 w-full rounded-md border border-input bg-background p-2 text-secondary" /></label><label className="flex items-center gap-2 text-metadata text-muted-foreground"><input type="checkbox" checked={evaluationCase.hidden} onChange={(event) => update(evaluationCase.id, { hidden: event.target.checked })} />Keep this case hidden in evaluation reports</label><Button variant="outline" className="w-fit" onClick={() => onChange(cases.filter((candidate) => candidate.id !== evaluationCase.id))}>Remove case</Button></div>)}<div className="flex flex-wrap items-center gap-3"><Button variant="outline" disabled={cases.length >= 32} onClick={addCase}>Add private case</Button><span className="text-metadata text-muted-foreground">{cases.length ? `${cases.length} local case${cases.length === 1 ? '' : 's'} will be used on the next real evaluation.` : 'Without local cases, the immutable validation split is used.'}</span></div></CardContent></Card>;
+  const containsCredential = cases.some(privateCaseContainsCredential);
+  return <Card className="border-violet-500/20"><CardHeader><CardTitle>Private Evaluation Suite</CardTitle><CardDescription>Optional local reference cases replace the validation split for real-adapter evaluation. They are never synchronized or shown in evidence reports.</CardDescription></CardHeader><CardContent className="space-y-3">{cases.map((evaluationCase, index) => <div key={evaluationCase.id} className="grid gap-2 rounded-lg border p-3 md:grid-cols-2"><label className="space-y-1"><span className="text-metadata text-muted-foreground">Case {index + 1} prompt</span><textarea value={evaluationCase.prompt} maxLength={16384} onChange={(event) => update(evaluationCase.id, { prompt: event.target.value })} className="min-h-20 w-full rounded-md border border-input bg-background p-2 text-secondary" /></label><label className="space-y-1"><span className="text-metadata text-muted-foreground">Expected completion</span><textarea value={evaluationCase.expectedCompletion} maxLength={12000} onChange={(event) => update(evaluationCase.id, { expectedCompletion: event.target.value })} className="min-h-20 w-full rounded-md border border-input bg-background p-2 text-secondary" /></label><label className="flex items-center gap-2 text-metadata text-muted-foreground"><input type="checkbox" checked={evaluationCase.hidden} onChange={(event) => update(evaluationCase.id, { hidden: event.target.checked })} />Keep this case hidden in evaluation reports</label><Button variant="outline" className="w-fit" onClick={() => onChange(cases.filter((candidate) => candidate.id !== evaluationCase.id))}>Remove case</Button></div>)}{containsCredential && <p className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-metadata text-destructive">Credential-shaped text is blocked and will not be stored or evaluated.</p>}<div className="flex flex-wrap items-center gap-3"><Button variant="outline" disabled={cases.length >= 32} onClick={addCase}>Add private case</Button><span className="text-metadata text-muted-foreground">{cases.length ? `${cases.length} local case${cases.length === 1 ? '' : 's'} will be used on the next real evaluation.` : 'Without local cases, the immutable validation split is used.'}</span></div></CardContent></Card>;
 }
