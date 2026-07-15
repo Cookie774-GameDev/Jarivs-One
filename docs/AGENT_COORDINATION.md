@@ -374,13 +374,17 @@ Append new entries at the **bottom** of the relevant agent section. Use [How to 
 
 | Path / area | Owner agent | Version | Status | Notes |
 |-------------|-------------|---------|--------|-------|
-| `docs/AGENT_COORDINATION.md`, `docs/JARVIS_GOLD_STANDARD_REPORT.md` | Codex (`AGENT-CODEX-20260713-120845-JGS1`) | v0.1.49 | released | Jarvis gold-standard implementation ledger and evidence report |
-| `app/src/lib/actions/**`, `app/src/lib/jarvis/**`, `app/src/lib/notifications.ts`, `scripts/jarvis-actions/**`, `tests/jarvis/**` | Codex (`AGENT-CODEX-20260713-120845-JGS1`) | v0.1.49 | released | Typed action catalogue, planner/policy/executor/verifier, generated docs, metrics, prompt suite |
-| `app/src/features/jarvis-runs/**`, `app/src/features/jarvis-memory/**`, `app/src/features/all-about-me/**`, `app/src/features/settings/sections/AllAboutMe*.tsx` | Codex (`AGENT-CODEX-20260713-120845-JGS1`) | v0.1.49 | released | Persistent run state, private learning.md, memory controls, and AllAboutMe.md separation/recovery |
-| `app/src/lib/mcp/**`, `app/src/features/plugins/**`, `app/src/features/jarvis-interaction/**`, `app/src/stores/agents.ts` | Codex (`AGENT-CODEX-20260713-120845-JGS1`) | v0.1.49 | released | MCP/plugin lifecycle and coordinated agent wait/collect/status handling |
-| `app/src/features/chat/{ChatThread,ActionApprovalCard}.tsx`, `app/src/App.tsx`, `app/src/lib/db/repositories.ts` | Codex (`AGENT-CODEX-20260713-120845-JGS1`) | v0.1.49 | released | Compact run/memory UI integration, action policy UI, verified shared-record mutations |
-| `app/src/features/dev-console/{store,store.test}.ts` | Codex (`AGENT-CODEX-20260713-120845-JGS1`) | v0.1.49 | released | Credential-shaped value redaction for action diagnostics |
-| `app/src/features/terminals/{TerminalView,terminalExecutionStore,terminalExecutionStore.test}.ts*` | Codex (`AGENT-CODEX-20260713-120845-JGS1`) | v0.1.49 | released | Review fix: verify startup-command delivery before terminal orchestration reports running; preserve cancellation |
+| `docs/AGENT_COORDINATION.md`, `docs/superpowers/plans/2026-07-13-subscription-cli-bridge.md` | Claude 1 (`AGENT-CLAUDE1-20260713-112348-SCB1`) | v0.1.49 | in-progress | Approved implementation plan, lock/status ledger, draft-PR handoff |
+| `app/src/lib/ai/adapters/**`, `app/src/lib/ai/{router,runtime,types,modelSelection,useAccessibleChatModels}.ts`, `app/src/stores/auth.ts`, `app/src/types/chat.ts`, `app/src/lib/db/repositories.ts` | Claude 1 (`AGENT-CLAUDE1-20260713-112348-SCB1`) | v0.1.49 | in-progress | Connection-aware adapter registry, routing, persistence, event normalization |
+| `app/src-tauri/src/{cli_bridge,lib}.rs` | Claude 1 (`AGENT-CLAUDE1-20260713-112348-SCB1`) | v0.1.49 | in-progress | Shell-free detection, probes, structured process execution and cancellation |
+| `app/src/lib/usage/**`, `app/src/features/chat/{Composer,ModelPickerTypeahead,SlashCommandTypeahead,MessagePart,UsageCard,ConnectionInfoPopover}.tsx` | Claude 1 (`AGENT-CLAUDE1-20260713-112348-SCB1`) | v0.1.49 | in-progress | Truthful usage data, picker mode labels, usage card, capability gating |
+| `app/src/features/settings/{SettingsModal,settingsPrefetch,settingsTabMemory}.ts*`, `app/src/features/settings/sections/{Providers,SubscriptionCliBridge}.tsx` | Claude 1 (`AGENT-CLAUDE1-20260713-112348-SCB1`) | v0.1.49 | in-progress | Compact Subscription & CLI Bridge settings surface |
+| `docs/AGENT_COORDINATION.md`, `docs/superpowers/plans/2026-07-13-subscription-cli-bridge.md` | Claude 1 / Codex (`AGENT-CODEX-20260713-121609-SCB2`) | v0.1.49 | in-progress | Collision-free worktree `.worktrees/subscription-cli-bridge-codex`; plan and coordination only |
+| `app/src/lib/ai/adapters/**`, `app/src/lib/ai/{router,runtime,types,modelSelection,useAccessibleChatModels}.ts`, `app/src/stores/auth.ts`, `app/src/types/chat.ts`, `app/src/lib/db/repositories.ts` | Claude 1 / Codex (`AGENT-CODEX-20260713-121609-SCB2`) | v0.1.49 | in-progress | Connection registry, exact routing, per-chat persistence; isolated branch scope |
+| `app/src-tauri/src/{cli_bridge,lib}.rs` | Claude 1 / Codex (`AGENT-CODEX-20260713-121609-SCB2`) | v0.1.49 | in-progress | Shell-free CLI discovery, execution, cancellation; isolated branch scope |
+| `app/src-tauri/Cargo.toml` (Windows feature flags only) | Claude 1 / Codex (`AGENT-CODEX-20260713-121609-SCB2`) | v0.1.49 | in-progress | Existing `windows` 0.61 JobObjects/Threading/ToolHelp/Security features for race-free CLI process-tree containment; no crate/version change |
+| `app/src/lib/usage/**`, `app/src/features/chat/{Composer,ModelPickerTypeahead,SlashCommandTypeahead,MessagePart,UsageCard,ConnectionInfoPopover}.tsx` | Claude 1 / Codex (`AGENT-CODEX-20260713-121609-SCB2`) | v0.1.49 | in-progress | Truthful usage, picker labels, usage card, capability gating; isolated branch scope |
+| `app/src/features/settings/{SettingsModal,settingsPrefetch,settingsTabMemory}.ts*`, `app/src/features/settings/sections/{Providers,SubscriptionCliBridge}.tsx` | Claude 1 / Codex (`AGENT-CODEX-20260713-121609-SCB2`) | v0.1.49 | in-progress | Compact settings surface; isolated branch scope |
 | `docs/AGENT_COORDINATION.md` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | Blocked handoff recorded; no final merge SHA |
 | `docs/superpowers/plans/2026-07-10-pr15-safe-merge.md` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | High-risk merge execution plan |
 | `.github/workflows/pages.yml` | Agent 1 (`AGENT-1-20260710-132900-C9F2`) | v0.1.48 | released | Current GitHub Pages deployment behavior preserved |
@@ -1663,33 +1667,79 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Agent ID** | `AGENT-CLAUDE1-20260713-112348-SCB1` |
 | **Branch** | `main` at `eb4b26aee66c8c14324a282d8bedf8f2d55808df`; moving to isolated `feature/subscription-cli-bridge` worktree after approval |
 | **Task** | Implement Subscription & CLI Bridge: reusable adapters, safe CLI detection/execution, ten-target capability registry, per-chat connections, truthful `/usage`, compact settings/picker UI, and full verification. |
-| **Status** | implementation approved 2026-07-13; worktree setup in progress |
+| **Status** | implementation approved 2026-07-13; isolated worktree active at `.worktrees/subscription-cli-bridge`; implementation locks claimed |
 | **Files touched** | Coordination and worktree-safety metadata only before isolated-worktree creation; product scopes will be locked in the feature worktree before edits |
 | **Constraints** | No Stripe, Supabase, billing, subscription, schema, website, phone, entitlement, deployment, merge, release, credential, or production changes. No provider auth prompts or billable probes. |
 
-#### 2026-07-13 - Jarvis gold-standard implementation
+#### 2026-07-13 - Subscription & CLI Bridge collision-free implementation worktree
 
 | Field | Value |
 |-------|-------|
-| **Timestamp** | 2026-07-13 12:08 CT |
-| **Agent ID** | `AGENT-CODEX-20260713-120845-JGS1` |
-| **Branch / worktree** | `feature/jarvis-gold-standard` at `d78203e63d2b799b722d4136cbd288de220e3490`; `.worktrees/jarvis-gold-standard` |
-| **Task** | Execute the supplied Jarvis gold-standard implementation: concise conversation, typed real actions, policy/execution/verification, persistent task runs, plugin/MCP/agent integration, private learning memory, and 20+ prompt validation. |
-| **Overlap decision** | The active `AGENT-CLAUDE1-20260713-112348-SCB1` Subscription & CLI Bridge worktree owns AI router/runtime/model-selection, Composer/model picker/slash/message provider surfaces, settings provider/bridge UI, auth/chat types/repositories, and Tauri CLI bridge/lib.rs. This branch will not edit those paths; provider/CLI integration remains an explicit gated dependency until that agent releases its locks. |
-| **Root-cause evidence before edits** | Mock provider returns a long provider-warning reply for ordinary prompts such as `Hi`; prompt-only brevity does not create a deterministic casual path. Action fallback can append a real action while retaining fake-code prose. MCP is an in-process map without server lifecycle. Chat-agent state lacks a parent task-run wait/collect/recovery layer. AllAboutMe is localStorage-only, not account-scoped, and `setLearningEnabled(false)` currently forces `true`. |
-| **Baseline evidence** | Existing focused Vitest command in the other worktree produced no output for over one minute and was terminated; another pre-existing full-suite Vitest process is still active there. No pass is claimed. This isolated branch will use single-worker focused commands and record hangs/failures honestly. |
-| **Constraints** | No Stripe, Supabase billing/prices, subscriptions, production data, release, deployment, merge, or unrelated UI. Credentials never enter prompts, logs, task state, or learning memory. |
-| **Status** | complete; all Jarvis locks released |
+| **Timestamp** | 2026-07-13 12:16 CT |
+| **Agent ID** | `AGENT-CODEX-20260713-121609-SCB2` |
+| **Branch / worktree** | `feature/subscription-cli-bridge-codex` at `ecd459c1ff0934d5cf361b72ea92ea87f9f36f29`; `.worktrees/subscription-cli-bridge-codex` |
+| **Task** | Execute the approved Subscription & CLI Bridge plan through a reusable adapter registry, safe Tauri supervisor, ten-target catalog, per-chat connections, and truthful `/usage`. |
+| **Coordination event** | Another workspace agent appended an unrelated Jarvis gold-standard task and overlapping locks inside `.worktrees/subscription-cli-bridge` under the briefing-derived ID. Its changes were preserved byte-for-byte. This task moved to a separate branch/worktree and registered this fresh unique ID before product edits. |
+| **Locks** | Exact feature scopes claimed in the lock table above for this isolated branch. |
+| **Status** | in-progress; dependency and clean-baseline setup |
 
-#### 2026-07-13 - Jarvis gold-standard completion and handoff
+#### 2026-07-13 - Subscription & CLI Bridge Task 1 complete
 
 | Field | Value |
 |-------|-------|
-| **Agent ID** | `AGENT-CODEX-20260713-120845-JGS1` |
-| **Result** | Implemented deterministic conversation/intent handling, typed plan validation and real actions, persistent account-scoped task runs, approval/cancellation recovery, verified terminal startup, MCP/plugin lifecycle, GET-only Supabase table discovery, private `learning.md`, stable account-scoped AllAboutMe files, credential redaction, UI progress/status, and 33 prompt contracts. |
-| **Review fixes** | Confined file search to active project; migrated legacy AllAboutMe safely; added deletion tombstones; account-scoped task storage; expanded natural-language secret redaction; preserved pending learning saves across account changes; prevented cancelled approvals/startups from running; disabled ambiguous MCP retries; registered a read-only Supabase adapter; integrated typed planner validation into the production operator. |
-| **Verification** | Final typecheck PASS; production build PASS (3,718 modules); final exact post-review regressions PASS (17 files / 86 tests); earlier focused matrix PASS (30 files / 128 tests); gold evaluator PASS (33 contracts plus mismatch guard); release manifest PASS (1/1); Rust release check PASS with existing warnings; `git diff --check` PASS. Broad/full Vitest timeouts and browser/native-interaction limits are documented in `docs/JARVIS_GOLD_STANDARD_REPORT.md`. |
-| **Safety** | No production Supabase mutation, service-role use, Stripe/billing/price/subscription change, deployment, release, merge, website/phone/installer change, or secret disclosure. The Supabase adapter uses only configured publishable/anon credentials for a GET OpenAPI request. |
-| **Remaining integration** | AI prompt-layer/learning-context injection and provider/usage/CLI routing remain gated on the separate active Subscription & CLI Bridge runtime locks; full Vitest and native/browser interaction remain pre-merge gates. |
-| **Locks** | All rows owned by this agent changed to `released`; shared coordination board updated. |
+| **Timestamp** | 2026-07-13 12:41 CT |
+| **Agent ID** | `AGENT-CODEX-20260713-121609-SCB2` |
+| **Commit** | `8b19337b0759c70f477a25b1f5e48f52c84772b8` — `feat(ai): add connection-aware provider registry` |
+| **Result** | Connection modes/capabilities, fail-closed registry, all-or-none connection selection metadata, local chat persistence, and cloud payload stripping implemented. |
+| **Verification** | Focused Vitest: 3 files / 21 tests PASS; TypeScript typecheck PASS. Task review: spec PASS, quality PASS, no remaining findings. |
+| **Locks** | Task 1 scopes remain held because later routing/usage tasks consume the same shared contracts. |
+| **Status** | Task 1 complete; Task 2 Rust supervisor next. |
+
+#### 2026-07-13 - Subscription & CLI Bridge Task 2 complete
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-13 16:38 CT |
+| **Agent ID** | `AGENT-CODEX-20260713-121609-SCB2` |
+| **Commit** | `4500ddf` — `feat(tauri): add secure external CLI supervisor` |
+| **Result** | Opaque trusted executable registry, shell-free bounded probes/execution, compositional stateful redaction, incremental JSONL events, cancellation, and race-free Windows Job Object descendant containment implemented. |
+| **Verification** | Full Rust test target compiled with `--no-run`; scoped rustfmt/diff checks PASS; fresh static security review PASS with no findings. Enterprise Code Integrity blocks unsigned local runtime artifacts, so the Windows descendant regression is required in signed CI. |
+| **Scope** | Existing `windows` 0.61 dependency gained four feature flags only; no dependency version, credential, billing, schema, production, release, merge, or deploy change. |
+| **Status** | Task 2 complete; Task 3 external adapter catalog next. |
+
+#### 2026-07-13 - Subscription & CLI Bridge Task 3 complete
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-13 23:28 CT |
+| **Agent ID** | `AGENT-CODEX-20260713-121609-SCB2` |
+| **Commit** | `1212f488d5803c6ee7bfad0532bea1ccfff25d80` — `feat(ai): add subscription CLI provider adapters` |
+| **Result** | Fifteen connection descriptors across ten provider families plus shell-free Codex, Claude, Gemini, Copilot, Qwen, and OpenCode adapters with bounded stateful protocol normalization. |
+| **Verification** | Focused Vitest 33/33 PASS; targeted strict TypeScript compile PASS; independent remediation review PASS with no Critical, Important, or Minor findings. Full app typecheck reports only two unrelated missing-`pixi.js` diagnostics in existing Pets files. |
+| **Safety** | No real provider/auth/billable commands, credential reads, shell APIs, permissive flags, raw auth forwarding, dependency changes, production changes, merge, or deploy. |
+| **Status** | Task 3 complete; Task 4 exact routing, picker, and settings next. |
+
+#### 2026-07-14 - Subscription & CLI Bridge Tasks 4–5 complete
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-14 08:25 CT |
+| **Agent ID** | `AGENT-CODEX-20260713-121609-SCB2` |
+| **Commits** | `2004450` — exact routing/picker/settings; `d3d407f` — truthful structured usage cards |
+| **Result** | Exact connection routing with no paid fallback, per-chat persistence, capability gating, grouped mode/auth picker labels, connection popover/settings, and structured `/usage`, `/usage refresh`, `/usage session`, `/usage all` interception. |
+| **Verification** | Task 4 focused: 3 files / 8 tests PASS. Task 5 focused plus legacy summary: 4 files / 15 tests PASS. Full TypeScript reports only the two existing missing-`pixi.js` Pets diagnostics and no changed-scope diagnostics. |
+| **Safety** | Quota/period/cost unknowns are unavailable rather than zero/unlimited; OpenAI organization usage is not labeled Codex quota; Ollama states no subscription quota; OpenCode is bridge-local. No model prompt, auth launch, billable probe, credential read, production change, merge, or deploy. |
+| **Status** | Tasks 4–5 complete; final combined regression and draft PR next. |
+
+#### 2026-07-14 - Subscription & CLI Bridge final verification
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-14 08:28 CT |
+| **Agent ID** | `AGENT-CODEX-20260713-121609-SCB2` |
+| **Branch** | `feature/subscription-cli-bridge-codex` |
+| **Verification** | Combined Tasks 1/3/4/5 focused regression: 12 files / 77 tests PASS. Rust full test target previously compiled with `--no-run`; final Job Object runtime regression remains a signed Windows CI requirement. |
+| **Known baseline** | App typecheck and production build stop only on unresolved `pixi.js` imports in existing Pets files (`atlasPlayer.test.ts:161`, `pixiAtlasPlayer.ts:15`); no subscription-bridge diagnostics. |
+| **Scope check** | Only the unrelated user-owned `install/install.ps1` deletion remains unstaged and excluded. No production credentials, provider prompts, auth launches, billable probes, billing/schema changes, merge, deploy, or release. |
+| **Status** | Implementation committed and branch pushed; opening draft PR to `main`. |
 
