@@ -15,6 +15,7 @@ import { coerceToExposedPreset, stepsForPreset } from './stacks/presets';
 import { isProviderConnected, type ProviderConnectionContext } from './providerRegistry';
 import { agentUsesDefaultProvider } from './agentProviderOptions';
 import { describeVisionRequirement, selectionSupportsVision } from './vision';
+import { canRoutePromotedAdapter } from '@/features/model-foundry/adapterRegistry';
 
 export type ChatModelSelection =
   | { mode: 'none' }
@@ -106,7 +107,8 @@ export function isSingleModelAvailable(
   ctx: ModelSelectionContext,
 ): boolean {
   if (selection.providerId === 'foundry') {
-    return /^[A-Za-z0-9_-]{1,64}--[A-Za-z0-9_-]{1,64}$/.test(selection.modelId);
+    const match = /^([A-Za-z0-9_-]{1,64})--([A-Za-z0-9_-]{1,64})$/.exec(selection.modelId);
+    return Boolean(match && typeof window !== 'undefined' && canRoutePromotedAdapter(window.localStorage, match[1]!, match[2]!));
   }
   if (!getAccessibleProviders(ctx.apiKeys, ctx.offlineMode, ctx.plan, ctx.defaultLocalModel).includes(selection.providerId)) {
     return false;

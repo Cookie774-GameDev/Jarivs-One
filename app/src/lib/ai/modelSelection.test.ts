@@ -132,6 +132,19 @@ describe('modelSelection', () => {
     expect(send.ok).toBe(true);
   });
 
+  it('requires a currently passing promoted Foundry adapter before chat can send', () => {
+    const ctx = { apiKeys: {}, offlineMode: true, plan: 'free' as const, defaultLocalModel: '' };
+    const selection = selectionFromOption('foundry', 'project_1--job_1');
+    expect(validateChatModelSelection(selection, ctx, []).ok).toBe(false);
+
+    localStorage.setItem('vibespace.model-foundry.real-adapters.v1', JSON.stringify([{
+      schemaVersion: 1, projectId: 'project_1', jobId: 'job_1', status: 'promoted', artifactManifestSha256: 'a'.repeat(64),
+      evaluation: { artifactManifestSha256: 'a'.repeat(64), report: { gate: 'pass' } },
+    }]));
+
+    expect(validateChatModelSelection(selection, ctx, []).ok).toBe(true);
+  });
+
   it('allows image attachments for vision-capable models', () => {
     const ctx = {
       apiKeys: { google: 'AIza_test' },
