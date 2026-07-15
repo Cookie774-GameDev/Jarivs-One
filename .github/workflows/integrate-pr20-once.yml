@@ -1,0 +1,312 @@
+name: Integrate PR 20 once
+
+on:
+  push:
+    branches:
+      - agent/integrate-pr18-23-20260715
+    paths:
+      - .github/workflows/integrate-pr20-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out integration branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/integrate-pr18-23-20260715
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch Workbench branch
+        run: git fetch origin feature/workbench-master-claude:refs/remotes/origin/feature/workbench-master-claude
+
+      - name: Merge and resolve the five reviewed integration files
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if git merge-base --is-ancestor origin/feature/workbench-master-claude HEAD; then
+            echo "Workbench branch is already integrated."
+            exit 0
+          fi
+
+          set +e
+          git merge --no-commit --no-ff origin/feature/workbench-master-claude
+          merge_status=$?
+          set -e
+          if [ "$merge_status" -gt 1 ]; then
+            echo "git merge failed unexpectedly with status $merge_status"
+            exit "$merge_status"
+          fi
+
+          expected=(
+            "app/src-tauri/capabilities/default.json"
+            "app/src/components/layout/NavPane.tsx"
+            "app/src/components/layout/TopBar.tsx"
+            "app/src/features/command-palette/actions.ts"
+            "app/src/stores/ui.ts"
+          )
+
+          mapfile -t conflicts < <(git diff --name-only --diff-filter=U)
+          for conflict in "${conflicts[@]}"; do
+            allowed=false
+            for path in "${expected[@]}"; do
+              if [ "$conflict" = "$path" ]; then
+                allowed=true
+                break
+              fi
+            done
+            if [ "$allowed" != true ]; then
+              echo "Unexpected merge conflict: $conflict"
+              git merge --abort
+              exit 1
+            fi
+          done
+
+          # Start from the already-integrated versions of these shared files.
+          git checkout HEAD -- "${expected[@]}"
+
+          python - <<'PY'
+          from pathlib import Path
+
+          def load(path: str) -> tuple[Path, str]:
+              p = Path(path)
+              return p, p.read_text(encoding="utf-8")
+
+          def save(p: Path, text: str) -> None:
+              p.write_text(text, encoding="utf-8", newline="\n")
+
+          def add_once(text: str, marker: str, replacement: str, label: str) -> str:
+              if replacement in text:
+                  return text
+              if marker not in text:
+                  raise SystemExit(f"Missing integration marker for {label}")
+              return text.replace(marker, replacement, 1)
+
+          # Tauri capability: allow the detached Workbench webview window.
+          p, text = load("app/src-tauri/capabilities/default.json")
+          marker = '    "core:webview:default",\n'
+          replacement = marker + '    "core:webview:allow-create-webview-window",\n'
+          text = add_once(text, marker, replacement, "default capability")
+          save(p, text)
+
+          # Navigation: preserve current pet/theme navigation and add Workbench.
+          p, text = load("app/src/components/layout/NavPane.tsx")
+          if "  AppWindow,\n" not in text:
+              marker = "  Settings as SettingsIcon,\n"
+              if marker not in text:
+                  raise SystemExit("Missing NavPane icon marker")
+              text = text.replace(marker, marker + "  AppWindow,\n", 1)
+          workbench_import = "import { useWorkbenchStore } from '@/features/workbench/store';\n"
+          if workbench_import not in text:
+              marker = "import { SidebarFilesTree } from '@/features/files/SidebarFilesTree';\n"
+              if marker not in text:
+                  raise SystemExit("Missing NavPane import marker")
+              text = text.replace(marker, marker + workbench_import, 1)
+          workbench_selector = "  const applyWorkbenchTemplate = useWorkbenchStore((s) => s.applyTemplate);\n"
+          if workbench_selector not in text:
+              marker = "  const toggleNavSection = useUIStore((s) => s.toggleNavSection);\n"
+              if marker not in text:
+                  raise SystemExit("Missing NavPane selector marker")
+              text = text.replace(marker, marker + workbench_selector, 1)
+          if 'label="Workbench"' not in text:
+              marker = '''          <RouteItem
+            navOpen={navOpen}
+            label="Terminals"
+'''
+              block = '''          <RouteItem
+            navOpen={navOpen}
+            label="Workbench"
+            icon={<AppWindow className="h-3.5 w-3.5 text-accent-copper" />}
+            target="workbench"
+            route={route}
+            setRoute={setRoute}
+          />
+          {navOpen ? (
+            <button
+              type="button"
+              className="mx-2 mb-1 flex h-7 items-center justify-center gap-1.5 rounded-md border border-accent-copper/35 bg-accent-copper/10 px-2 text-metadata font-medium text-accent-copper transition-colors hover:bg-accent-copper/16 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-copper/60"
+              onClick={() => {
+                applyWorkbenchTemplate('web-development');
+                setRoute('workbench');
+              }}
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              Spawn Workbench
+            </button>
+          ) : null}
+'''
+              if marker not in text:
+                  raise SystemExit("Missing NavPane Terminals route marker")
+              text = text.replace(marker, block + marker, 1)
+          save(p, text)
+
+          # Top bar route metadata.
+          p, text = load("app/src/components/layout/TopBar.tsx")
+          text = add_once(
+              text,
+              "type Route =\n  | 'chat'\n",
+              "type Route =\n  | 'chat'\n  | 'workbench'\n",
+              "TopBar Route type",
+          )
+          text = add_once(
+              text,
+              "const ROUTES: ReadonlyArray<Route> = [\n  'chat',\n",
+              "const ROUTES: ReadonlyArray<Route> = [\n  'chat',\n  'workbench',\n",
+              "TopBar routes",
+          )
+          text = add_once(
+              text,
+              "const ROUTE_LABELS: Record<Route, string> = {\n  chat: 'Chat',\n",
+              "const ROUTE_LABELS: Record<Route, string> = {\n  chat: 'Chat',\n  workbench: 'Workbench',\n",
+              "TopBar labels",
+          )
+          save(p, text)
+
+          # Command palette: preserve theme actions and add Workbench actions.
+          p, text = load("app/src/features/command-palette/actions.ts")
+          if "  AppWindow,\n" not in text:
+              marker = "  CalendarDays,\n"
+              if marker not in text:
+                  raise SystemExit("Missing command-palette CalendarDays marker")
+              text = text.replace(marker, marker + "  AppWindow,\n", 1)
+          if "  Grid2X2Plus,\n" not in text:
+              marker = "  LayoutGrid,\n"
+              if marker not in text:
+                  raise SystemExit("Missing command-palette LayoutGrid marker")
+              text = text.replace(marker, marker + "  Grid2X2Plus,\n", 1)
+          workbench_import = "import { useWorkbenchStore } from '@/features/workbench/store';\n"
+          if workbench_import not in text:
+              marker = "import type { PageId } from './store';\n"
+              if marker not in text:
+                  raise SystemExit("Missing command-palette import marker")
+              text = text.replace(marker, marker + workbench_import, 1)
+          if "id: 'open-workbench'" not in text:
+              marker = "  {\n    id: 'switch-agent',\n"
+              block = '''  {
+    id: 'open-workbench',
+    label: 'Open Workbench',
+    description: 'Open the spatial canvas without changing its saved layout',
+    icon: AppWindow,
+    page: 'root',
+    keywords: ['canvas', 'workspace', 'desktop', 'spatial'],
+    perform: ({ closePalette }) => {
+      useUIStore.getState().setRoute('workbench');
+      closePalette();
+    },
+  },
+  {
+    id: 'spawn-workbench',
+    label: 'Spawn Workbench',
+    description: 'Create the web development layout with four terminals',
+    icon: Grid2X2Plus,
+    page: 'root',
+    keywords: ['canvas', 'terminals', 'browser', 'web development', 'agents'],
+    perform: ({ closePalette }) => {
+      useWorkbenchStore.getState().applyTemplate('web-development');
+      useUIStore.getState().setRoute('workbench');
+      closePalette();
+    },
+  },
+'''
+              if marker not in text:
+                  raise SystemExit("Missing command-palette switch-agent marker")
+              text = text.replace(marker, block + marker, 1)
+          save(p, text)
+
+          # UI state: retain current appearance state and add the Workbench route.
+          p, text = load("app/src/stores/ui.ts")
+          text = add_once(
+              text,
+              "export type Route =\n  | 'chat'\n",
+              "export type Route =\n  | 'chat'\n  | 'workbench'\n",
+              "UI Route type",
+          )
+          if "export function resolveInitialRoute(" not in text:
+              marker = "  | 'files'\n  | 'account';\n"
+              addition = '''
+
+/**
+ * Normal reloads remain in Classic VibeSpace. The explicit query is used only
+ * by the detached Workbench window so it can boot directly into its surface.
+ */
+export function resolveInitialRoute(search?: string): Route {
+  const value =
+    search ?? (typeof window !== 'undefined' ? window.location.search : '');
+  return new URLSearchParams(value).get('workbench') === '1' ? 'workbench' : 'chat';
+}
+'''
+              if marker not in text:
+                  raise SystemExit("Missing UI route-union marker")
+              text = text.replace(marker, marker + addition, 1)
+          if "  route: resolveInitialRoute(),\n" not in text:
+              marker = "  route: 'chat',\n"
+              if marker not in text:
+                  raise SystemExit("Missing UI default route marker")
+              text = text.replace(marker, "  route: resolveInitialRoute(),\n", 1)
+          save(p, text)
+          PY
+
+          git add "${expected[@]}"
+
+          remaining_conflicts=$(git diff --name-only --diff-filter=U)
+          if [ -n "$remaining_conflicts" ]; then
+            echo "Unresolved conflicts remain:"
+            echo "$remaining_conflicts"
+            git merge --abort
+            exit 1
+          fi
+
+          git diff --check
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Focused Workbench tests
+        run: >-
+          npm --prefix app run test -- --run
+          src/features/workbench/WorkbenchPage.test.tsx
+          src/features/workbench/browserSecurity.test.ts
+          src/features/workbench/integration.test.ts
+          src/features/workbench/persistence.test.ts
+          src/features/workbench/templates.test.ts
+          src/features/workbench/wallpapers.test.ts
+          src/components/layout/PageRouter.workbench.test.tsx
+          src/features/assistant/workbench.test.ts
+
+      - name: Production build
+        run: npm run build
+
+      - name: Rust check
+        run: cargo check --manifest-path app/src-tauri/Cargo.toml
+
+      - name: Commit and push the integration merge
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git merge-base --is-ancestor origin/feature/workbench-master-claude HEAD; then
+            echo "Workbench already integrated; nothing to commit."
+            exit 0
+          fi
+          git rm .github/workflows/integrate-pr20-once.yml
+          git commit -m "Integrate PR #20 Workbench into PR #18-#23 branch"
+          git push origin HEAD:refs/heads/agent/integrate-pr18-23-20260715
