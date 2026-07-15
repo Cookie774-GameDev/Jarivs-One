@@ -49,6 +49,7 @@ const defaultDependencies: FixtureBackendDependencies = {
 };
 const NATIVE_RUN_STORAGE_KEY = 'vibespace.model-foundry.native-runs.v1';
 const PRIVATE_EVALUATION_STORAGE_KEY = 'vibespace.model-foundry.private-evaluation-suites.v1';
+const PROJECT_CATALOG_STORAGE_KEY = 'vibespace.model-foundry.project-catalog.v1';
 const CREDENTIAL_SHAPED_TEXT = /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|\b(?:sk-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b|(?:postgres(?:ql)?|mysql):\/\/[^\s:@]+:[^\s@]+@/i;
 const SPECIALIST_TEMPLATES = [
   { label: 'Support classifier', name: 'Support classifier', purpose: 'Classify a customer-support request into a reviewed routing category.', input: 'A local customer-support message.', output: 'One allowed routing category with confidence.', constraints: 'Use only the supplied message and never invent account data.' },
@@ -98,6 +99,17 @@ function privateCaseContainsCredential(caseInput: FoundryPrivateEvaluationCase):
   return CREDENTIAL_SHAPED_TEXT.test(caseInput.prompt) || CREDENTIAL_SHAPED_TEXT.test(caseInput.expectedCompletion);
 }
 
+function readProjectCatalog(storage: StorageAdapter): readonly ProjectSnapshot[] {
+  try {
+    const parsed = JSON.parse(storage.getItem(PROJECT_CATALOG_STORAGE_KEY) ?? '[]') as unknown;
+    return Array.isArray(parsed) ? parsed.filter((value): value is ProjectSnapshot => Boolean(value) && typeof value === 'object' && !Array.isArray(value)).slice(0, 24) : [];
+  } catch { return []; }
+}
+
+function writeProjectCatalog(storage: StorageAdapter, snapshots: readonly ProjectSnapshot[]): void {
+  storage.setItem(PROJECT_CATALOG_STORAGE_KEY, JSON.stringify(snapshots.slice(0, 24)));
+}
+
 function StepCard({ icon, title, detail, complete }: { icon: React.ReactNode; title: string; detail: string; complete: boolean }) {
   return <div className={cn('rounded-lg border p-3', complete ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-border bg-background/40')}>
     <div className="flex items-center gap-2 text-ui-strong"><span className={complete ? 'text-emerald-400' : 'text-muted-foreground'}>{complete ? <CheckCircle2 className="h-4 w-4" /> : icon}</span>{title}</div>
@@ -141,6 +153,8 @@ export function FoundryPage({ storage = browserStorage, dependencies = defaultDe
   const [deployments] = React.useState(() => new FoundryDeploymentRepository(storage, dependencies.clock, () => dependencies.idFactory('deployment')));
   const [adapterRegistry] = React.useState(() => new LocalAdapterRegistry(storage, dependencies.clock));
   const [snapshot, setSnapshot] = React.useState<ProjectSnapshot | null>(null);
+  const [projectCatalog, setProjectCatalog] = React.useState<readonly ProjectSnapshot[]>(() => readProjectCatalog(storage));
+  const projectCatalogRef = React.useRef(projectCatalog);
   const [error, setError] = React.useState<string | null>(null);
   const [notice, setNotice] = React.useState<string | null>(null);
   const [hardware, setHardware] = React.useState<FoundryHardwareProfile | null>(null);
@@ -167,6 +181,12 @@ export function FoundryPage({ storage = browserStorage, dependencies = defaultDe
   const [realConfig, setRealConfig] = React.useState({ method: 'lora' as 'lora' | 'qlora', seed: 7, epochs: 1, batchSize: 1, gradientAccumulation: 4, maxSequenceLength: 256, learningRate: 0.0002, loraRank: 8, loraAlpha: 16, loraDropout: 0.05 });
   const projectId = snapshot?.project.id;
 
+  const persistProjectCatalog = React.useCallback((next: readonly ProjectSnapshot[]) => {
+    try { writeProjectCatalog(storage, next); } catch { /* The active repository still preserves the current project. */ }
+    projectCatalogRef.current = next;
+    setProjectCatalog(next);
+  }, [storage]);
+
   React.useEffect(() => {
     const loaded = repository.load();
     if (!loaded.ok) return setError(loaded.error.message);
@@ -174,9 +194,9 @@ export function FoundryPage({ storage = browserStorage, dependencies = defaultDe
     const restored = backend.restoreProject(loaded.value);
     if (restored.ok) {
       const saved = repository.save(restored.value);
-      if (!saved.ok) setError(saved.error.message); else setSnapshot(restored.value);
+      if (!saved.ok) setError(saved.error.message); else { setSnapshot(restored.value); persistProjectCatalog([restored.value, ...projectCatalogRef.current.filter((candidate) => candidate.project.id !== restored.value.project.id)]); }
     } else setError(restored.error.message);
-  }, [backend, repository]);
+  }, [backend, persistProjectCatalog, repository]);
 
   React.useEffect(() => {
     if (!projectId) return;
@@ -272,8 +292,9 @@ export function FoundryPage({ storage = browserStorage, dependencies = defaultDe
   const commit = React.useCallback((next: ProjectSnapshot) => {
     const saved = repository.save(next);
     if (!saved.ok) return setError(saved.error.message);
+    persistProjectCatalog([next, ...projectCatalogRef.current.filter((candidate) => candidate.project.id !== next.project.id)]);
     setSnapshot(next); setError(null);
-  }, [repository]);
+  }, [persistProjectCatalog, repository]);
   const refresh = React.useCallback((projectId: string) => commit({ ...unwrap(backend.getProject(projectId)) }), [backend, commit]);
   const act = (operation: () => void) => { try { operation() } catch (caught) { setError(caught instanceof Error ? caught.message : 'Foundry operation failed.') } };
 
@@ -432,6 +453,8 @@ const downloadSelectedModel = async () => {
   });
   const createProject = (specialist: SpecialistDefinition = VIBECODER_TEMPLATE) => act(() => commit(unwrap(backend.createProject(specialist))));
   const createCustomProject = () => act(() => createProject(customSpecialist(customDraft, dependencies.clock())));
+  const openCatalogProject = (catalogSnapshot: ProjectSnapshot) => act(() => commit(unwrap(backend.restoreProject(catalogSnapshot))));
+  const createAnotherProject = () => { setSnapshot(null); setShowCustomCreator(false); setError(null); setNotice('Create a new specialist. Existing local projects remain available below.'); };
   const prepare = () => act(() => { if (!projectId || !snapshot) return; unwrap(backend.attachBaseModel(projectId, createFixtureBase(dependencies.clock()))); commit(unwrap(backend.attachDatasetVersion(projectId, createFixtureDataset(projectId, dependencies.clock(), snapshot.project.specialist)))) });
   const attachStudioDataset = (dataset: Parameters<DeterministicFixtureBackend['attachDatasetVersion']>[1]) => act(() => { if (!projectId) return; unwrap(backend.attachBaseModel(projectId, createFixtureBase(dependencies.clock()))); commit(unwrap(backend.attachDatasetVersion(projectId, dataset))); setShowDatasetStudio(false); });
   const startTraining = () => act(() => { if (!projectId) return; unwrap(backend.startTraining(projectId, { method: 'lora', config: { epochs: 1, learningRate: 0.0002, rank: 8, seed: 7, batchSize: 1, gradientAccumulationSteps: 1, sequenceLength: 256, validationSplit: 0.1 } })); refresh(projectId) });
@@ -465,6 +488,7 @@ const downloadSelectedModel = async () => {
         {activeJob?.state === 'completed' && candidate && <EvaluationArenaPanel candidate={candidate} evaluation={evaluation} championVersionId={snapshot.championVersionId} onEvaluate={evaluate} onPromote={promote} />}
         <DeploymentPanel snapshot={snapshot} deployment={deployment} routingMode={routingMode} trafficPercent={trafficPercent} onRoutingMode={setRoutingMode} onTrafficPercent={setTrafficPercent} onActivate={activateDeployment} onPause={pauseDeployment} />
         <ImprovementPanel feedbackCount={snapshot.feedbackEvents.length} cycleCount={snapshot.improvementCycles.length} consentApproved={feedbackConsent} onConsent={setFeedbackConsent} onFeedback={recordFeedback} onCycle={createImprovementCycle} />
+        <ProjectCatalogPanel projects={projectCatalog} activeProjectId={projectId} onOpen={openCatalogProject} onCreate={createAnotherProject} />
       </>}
     </div>
   </main>;
@@ -479,4 +503,9 @@ function PrivateEvaluationSuite({ cases, onChange }: { cases: readonly FoundryPr
   const update = (id: string, patch: Partial<FoundryPrivateEvaluationCase>) => onChange(cases.map((evaluationCase) => evaluationCase.id === id ? { ...evaluationCase, ...patch } : evaluationCase));
   const containsCredential = cases.some(privateCaseContainsCredential);
   return <Card className="border-violet-500/20"><CardHeader><CardTitle>Private Evaluation Suite</CardTitle><CardDescription>Optional local reference cases replace the validation split for real-adapter evaluation. They are never synchronized or shown in evidence reports.</CardDescription></CardHeader><CardContent className="space-y-3">{cases.map((evaluationCase, index) => <div key={evaluationCase.id} className="grid gap-2 rounded-lg border p-3 md:grid-cols-2"><label className="space-y-1"><span className="text-metadata text-muted-foreground">Case {index + 1} prompt</span><textarea value={evaluationCase.prompt} maxLength={16384} onChange={(event) => update(evaluationCase.id, { prompt: event.target.value })} className="min-h-20 w-full rounded-md border border-input bg-background p-2 text-secondary" /></label><label className="space-y-1"><span className="text-metadata text-muted-foreground">Expected completion</span><textarea value={evaluationCase.expectedCompletion} maxLength={12000} onChange={(event) => update(evaluationCase.id, { expectedCompletion: event.target.value })} className="min-h-20 w-full rounded-md border border-input bg-background p-2 text-secondary" /></label><label className="flex items-center gap-2 text-metadata text-muted-foreground"><input type="checkbox" checked={evaluationCase.hidden} onChange={(event) => update(evaluationCase.id, { hidden: event.target.checked })} />Keep this case hidden in evaluation reports</label><Button variant="outline" className="w-fit" onClick={() => onChange(cases.filter((candidate) => candidate.id !== evaluationCase.id))}>Remove case</Button></div>)}{containsCredential && <p className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-metadata text-destructive">Credential-shaped text is blocked and will not be stored or evaluated.</p>}<div className="flex flex-wrap items-center gap-3"><Button variant="outline" disabled={cases.length >= 32} onClick={addCase}>Add private case</Button><span className="text-metadata text-muted-foreground">{cases.length ? `${cases.length} local case${cases.length === 1 ? '' : 's'} will be used on the next real evaluation.` : 'Without local cases, the immutable validation split is used.'}</span></div></CardContent></Card>;
+}
+
+function ProjectCatalogPanel({ projects, activeProjectId, onOpen, onCreate }: { projects: readonly ProjectSnapshot[]; activeProjectId?: string; onOpen: (snapshot: ProjectSnapshot) => void; onCreate: () => void }) {
+  const visibleProjects = projects.filter((project) => project?.project?.id && project?.project?.specialist?.name).sort((left, right) => right.project.updatedAt.localeCompare(left.project.updatedAt));
+  return <Card className="border-cyan-500/20"><CardHeader><CardTitle>Local specialist projects</CardTitle><CardDescription>Projects are stored locally and can be reopened without replacing another specialist.</CardDescription></CardHeader><CardContent className="space-y-3"><div className="flex flex-wrap gap-2"><Button variant="accent" onClick={onCreate}>Create another AI</Button></div>{visibleProjects.length > 1 && <div className="grid gap-2 md:grid-cols-2">{visibleProjects.map((project) => <button key={project.project.id} type="button" aria-pressed={project.project.id === activeProjectId} onClick={() => onOpen(project)} className={cn('rounded-lg border p-3 text-left transition-colors', project.project.id === activeProjectId ? 'border-cyan-400/50 bg-cyan-500/5' : 'border-border hover:bg-muted/40')}><div className="text-ui-strong">{project.project.specialist.name}</div><div className="mt-1 text-metadata text-muted-foreground">{project.project.specialist.purpose}</div><div className="mt-2 text-metadata text-muted-foreground">{project.championVersionId ? 'Champion promoted' : project.trainingJobs.at(-1)?.state ?? 'Created'} · {new Date(project.project.updatedAt).toLocaleDateString()}</div></button>)}</div>}</CardContent></Card>;
 }
