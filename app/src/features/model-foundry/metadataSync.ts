@@ -33,3 +33,8 @@ export async function queueFoundryMetadataSync(snapshot: ProjectSnapshot, storag
   if (!foundryMetadataSyncEnabled(storage)) return;
   await enqueueMutation('update', 'model_foundry_metadata', snapshot.project.id, foundryMetadataPayload(snapshot));
 }
+
+/** A revocation queues a cloud tombstone only; the local project, artifacts, and raw data are never touched. */
+export async function queueFoundryMetadataDeletion(snapshot: ProjectSnapshot): Promise<void> {
+  await enqueueMutation('delete', 'model_foundry_metadata', snapshot.project.id, null);
+}

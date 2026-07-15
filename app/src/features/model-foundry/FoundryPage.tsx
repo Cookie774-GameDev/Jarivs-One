@@ -33,7 +33,7 @@ import { FoundryDeploymentRepository, type FoundryDeploymentRecord } from './dep
 import { DeploymentPanel, EvaluationArenaPanel, ImprovementPanel } from './FoundryGovernancePanels';
 import { LocalAdapterRegistry, type LocalAdapterRecord } from './adapterRegistry';
 import { RealAdapterRegistryPanel } from './RealAdapterRegistryPanel';
-import { foundryMetadataSyncEnabled, queueFoundryMetadataSync, setFoundryMetadataSyncEnabled } from './metadataSync';
+import { foundryMetadataSyncEnabled, queueFoundryMetadataDeletion, queueFoundryMetadataSync, setFoundryMetadataSyncEnabled } from './metadataSync';
 
 export interface FoundryPageProps { readonly storage?: StorageAdapter; readonly dependencies?: FixtureBackendDependencies }
 
@@ -89,7 +89,7 @@ function MetadataSyncToggle() {
   return <label className="mt-3 flex items-start gap-2 text-metadata text-muted-foreground"><input type="checkbox" disabled={!cloudSync} checked={enabled} onChange={(event) => { const next = event.target.checked; setFoundryMetadataSyncEnabled(window.localStorage, next); setEnabled(next); window.dispatchEvent(new CustomEvent('vibespace:foundry-metadata-sync-changed')); }} /><span>{cloudSync ? nextLabel(enabled) : 'Optional metadata sync is available with a plan that includes cloud sync. Local Foundry work remains unrestricted.'}</span></label>;
 }
 
-function nextLabel(enabled: boolean) { return enabled ? 'Metadata sync enabled: hashes and lifecycle status only.' : 'Enable optional metadata sync (never examples, prompts, outputs, paths, weights, or adapters).'; }
+function nextLabel(enabled: boolean) { return enabled ? 'Metadata sync enabled: hashes and lifecycle status only. Turning it off queues deletion of cloud metadata.' : 'Enable optional metadata sync (never examples, prompts, outputs, paths, weights, or adapters).'; }
 
 function customSpecialist(draft: { name: string; purpose: string; input: string; output: string; constraints: string; commercialIntent: SpecialistDefinition['commercialIntent']; latencyMs: number; memoryMb: number; threshold: number }, now: string): SpecialistDefinition {
   const name = draft.name.trim();
@@ -130,6 +130,7 @@ export function FoundryPage({ storage = browserStorage, dependencies = defaultDe
   const [trafficPercent, setTrafficPercent] = React.useState(100);
   const [feedbackConsent, setFeedbackConsent] = React.useState(false);
   const [metadataSyncEnabled, setMetadataSyncEnabled] = React.useState(() => foundryMetadataSyncEnabled(storage));
+  const previousMetadataSyncEnabled = React.useRef(metadataSyncEnabled);
   const [showCustomCreator, setShowCustomCreator] = React.useState(false);
   const [customDraft, setCustomDraft] = React.useState({ name: '', purpose: '', input: '', output: '', constraints: '', commercialIntent: 'personal' as SpecialistDefinition['commercialIntent'], latencyMs: 8000, memoryMb: 1024, threshold: 0.8 });
   const [realConfig, setRealConfig] = React.useState({ method: 'lora' as 'lora' | 'qlora', seed: 7, epochs: 1, batchSize: 1, gradientAccumulation: 4, maxSequenceLength: 256, learningRate: 0.0002, loraRank: 8, loraAlpha: 16, loraDropout: 0.05 });
@@ -176,8 +177,15 @@ export function FoundryPage({ storage = browserStorage, dependencies = defaultDe
   }, [nativeRun, projectId, storage]);
 
   React.useEffect(() => {
-    if (!snapshot || !metadataSyncEnabled || !getPlan(plan).cloudSync) return;
-    void queueFoundryMetadataSync(snapshot, storage).catch(() => setError('Metadata sync could not be queued. Local data remains unchanged.'));
+    if (!snapshot) return;
+    const wasEnabled = previousMetadataSyncEnabled.current;
+    const canSync = metadataSyncEnabled && getPlan(plan).cloudSync;
+    previousMetadataSyncEnabled.current = canSync;
+    if (canSync) {
+      void queueFoundryMetadataSync(snapshot, storage).catch(() => setError('Metadata sync could not be queued. Local data remains unchanged.'));
+    } else if (wasEnabled) {
+      void queueFoundryMetadataDeletion(snapshot).catch(() => setError('Metadata deletion could not be queued. Local data remains unchanged.'));
+    }
   }, [metadataSyncEnabled, plan, snapshot, storage]);
 
   React.useEffect(() => {
