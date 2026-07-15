@@ -21,6 +21,14 @@ begin
     return new;
   end if;
 
+  if not exists (
+    select 1 from public.profiles
+    where id = new.user_id
+      and tier in ('starter', 'pro', 'ultra', 'apex')
+  ) then
+    raise exception 'Model Foundry metadata sync requires an active cloud-sync entitlement';
+  end if;
+
   if new.payload is null or jsonb_typeof(new.payload) <> 'object' then
     raise exception 'Model Foundry sync requires a metadata object';
   end if;

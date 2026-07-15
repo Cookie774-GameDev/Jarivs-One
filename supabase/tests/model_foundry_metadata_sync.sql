@@ -10,6 +10,7 @@ declare
 begin
   insert into auth.users (id, email)
   values (uid, 'foundry-metadata-' || uid::text || '@test.local');
+  insert into public.profiles (id, tier) values (uid, 'starter');
 
   insert into public.app_sync_records (user_id, table_name, row_id, op, payload)
   values (
@@ -47,6 +48,17 @@ begin
     raise exception 'Foundry deletion payload was accepted';
   exception when others then
     if position('deletion records must not include a payload' in sqlerrm) = 0 then
+      raise;
+    end if;
+  end;
+
+  update public.profiles set tier = 'free' where id = uid;
+  begin
+    insert into public.app_sync_records (user_id, table_name, row_id, op, payload)
+    values (uid, 'model_foundry_metadata', 'project-unentitled', 'update', '{"schemaVersion":1}'::jsonb);
+    raise exception 'Foundry metadata sync was accepted without an entitlement';
+  exception when others then
+    if position('requires an active cloud-sync entitlement' in sqlerrm) = 0 then
       raise;
     end if;
   end;
