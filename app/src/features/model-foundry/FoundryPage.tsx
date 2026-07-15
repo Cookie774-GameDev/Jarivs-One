@@ -315,6 +315,14 @@ export function FoundryPage({ storage = browserStorage, dependencies = defaultDe
   const selectedModel = FOUNDRY_MODEL_CATALOG.find((model) => model.id === selectedModelId) ?? FOUNDRY_MODEL_CATALOG[0];
 
   React.useEffect(() => {
+    const persistedModelId = snapshot?.baseModel?.id;
+    if (!persistedModelId || !FOUNDRY_MODEL_CATALOG.some((model) => model.id === persistedModelId)) return;
+    setSelectedModelId(persistedModelId);
+    setLicenseApproved(false);
+    setDownloadStatus(null);
+  }, [snapshot?.baseModel?.id, snapshot?.project.id]);
+
+  React.useEffect(() => {
     if (!projectId) return;
     const active = deployments.list(projectId).find((item) => item.status === 'active') ?? null;
     setDeployment(active);

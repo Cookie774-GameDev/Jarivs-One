@@ -141,6 +141,20 @@ describe('FoundryPage fixture vertical slice', () => {
     expect(screen.getByRole('button', { name: 'Open Dataset Studio' })).toBeTruthy();
   });
 
+  it('restores the persisted base-model selection when reopening a project', () => {
+    renderFoundry();
+    fireEvent.click(screen.getByRole('button', { name: 'Create VibeCoder' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Prepare approved fixture inputs' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create another AI' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create VibeCoder' }));
+    fireEvent.click(screen.getByRole('button', { name: /SmolLM2 135M Instruct/ }));
+    expect(screen.getByText('Real local mode · setup required')).toBeTruthy();
+
+    const catalogEntries = screen.getAllByRole('button', { name: /^VibeCoder Review narrow coding changes/ });
+    fireEvent.click(catalogEntries.at(-1)!);
+    expect(screen.getByText('Fixture mode · local only')).toBeTruthy();
+  });
+
   it('creates a custom specialist with governed language and forbidden action', () => {
     const view = renderFoundry();
     fireEvent.click(screen.getByRole('button', { name: 'Create custom AI' }));
