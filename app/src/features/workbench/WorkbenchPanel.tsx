@@ -29,6 +29,19 @@ export function WorkbenchPanel({
   onClose,
 }: WorkbenchPanelProps) {
   const [draft, setDraft] = React.useState({ x: panel.x, y: panel.y, width: panel.width, height: panel.height });
+  const onUpdateRef = React.useRef(onUpdate);
+  const onRuntimeUpdateRef = React.useRef(onRuntimeUpdate);
+  onUpdateRef.current = onUpdate;
+  onRuntimeUpdateRef.current = onRuntimeUpdate;
+
+  // Stable identities so child panels (Files/Jarvis/Editor) never re-subscribe
+  // effects solely because the canvas re-rendered with new inline lambdas.
+  const update = React.useCallback((patch: Partial<WorkbenchPanelModel>) => {
+    onUpdateRef.current(patch);
+  }, []);
+  const updateRuntime = React.useCallback((patch: Partial<WorkbenchPanelModel>) => {
+    onRuntimeUpdateRef.current(patch);
+  }, []);
 
   React.useEffect(() => {
     setDraft({ x: panel.x, y: panel.y, width: panel.width, height: panel.height });
@@ -85,16 +98,11 @@ export function WorkbenchPanel({
     window.addEventListener('pointerup', up, { once: true });
   };
 
-  const update = React.useCallback((patch: Partial<WorkbenchPanelModel>) => onUpdate(patch), [onUpdate]);
-  const updateRuntime = React.useCallback(
-    (patch: Partial<WorkbenchPanelModel>) => onRuntimeUpdate(patch),
-    [onRuntimeUpdate],
-  );
-
   return (
     <section
       className="workbench-panel"
       data-kind={panel.kind}
+      data-panel-id={panel.id}
       data-selected={selected ? 'true' : 'false'}
       data-minimized={panel.minimized ? 'true' : 'false'}
       aria-label={`${panel.title} panel`}
@@ -119,7 +127,12 @@ export function WorkbenchPanel({
         <button type="button" aria-label={`${panel.minimized ? 'Restore' : 'Minimize'} ${panel.title}`} onClick={() => onUpdate({ minimized: !panel.minimized })}><Minus /></button>
         <button type="button" aria-label={`Close ${panel.title}`} onClick={onClose}><X /></button>
       </header>
-      <div className="workbench-panel-body" aria-hidden={panel.minimized}>
+      <div
+        className="workbench-panel-body"
+        aria-hidden={panel.minimized}
+        onWheel={(event) => event.stopPropagation()}
+        onPointerDown={(event) => event.stopPropagation()}
+      >
         {panel.kind === 'terminal' ? (
           <TerminalPanel panel={panel} onUpdate={updateRuntime} />
         ) : panel.kind === 'browser' ? (

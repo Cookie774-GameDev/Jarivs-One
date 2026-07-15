@@ -20,6 +20,8 @@ import {
   Rocket,
   Sparkles,
   Settings,
+  Smartphone,
+  Globe2,
   Sun,
   User,
   Users,
@@ -116,6 +118,64 @@ const STATIC_ACTIONS: Action[] = [
     },
   },
   {
+<<<<<<< HEAD
+=======
+    id: 'open-workbench',
+    label: 'Open Workbench',
+    description: 'Open Workbench in-app and try a separate window',
+    icon: AppWindow,
+    page: 'root',
+    keywords: ['canvas', 'workspace', 'desktop', 'spatial'],
+    perform: ({ closePalette }) => {
+      useUIStore.getState().setRoute('workbench');
+      void import('@/features/workbench/window').then(({ openOrFocusWorkbenchWindow }) =>
+        openOrFocusWorkbenchWindow({ name: useWorkbenchStore.getState().name }),
+      );
+      closePalette();
+    },
+  },
+  {
+    id: 'spawn-workbench',
+    label: 'Spawn Workbench',
+    description: 'Apply the web development layout and open Workbench',
+    icon: Grid2X2Plus,
+    page: 'root',
+    keywords: ['canvas', 'terminals', 'browser', 'web development', 'agents'],
+    perform: ({ closePalette }) => {
+      useWorkbenchStore.getState().applyTemplate('web-development');
+      useUIStore.getState().setRoute('workbench');
+      void import('@/features/workbench/window').then(({ openOrFocusWorkbenchWindow }) =>
+        openOrFocusWorkbenchWindow({ name: useWorkbenchStore.getState().name }),
+      );
+      closePalette();
+    },
+  },
+  {
+    id: 'open-preview-studio',
+    label: 'Open Preview Studio',
+    description: 'Responsive device previews for local servers and HTML',
+    icon: Smartphone,
+    page: 'root',
+    keywords: ['preview', 'iphone', 'ipad', 'responsive', 'localhost', 'vite'],
+    perform: ({ closePalette }) => {
+      useUIStore.getState().setRoute('preview');
+      closePalette();
+    },
+  },
+  {
+    id: 'open-vibe-browser',
+    label: 'Open Vibe Browser',
+    description: 'Isolated agent-capable browser runtime',
+    icon: Globe2,
+    page: 'root',
+    keywords: ['browser', 'edge', 'chrome', 'cdp', 'agent', 'web'],
+    perform: ({ closePalette }) => {
+      useUIStore.getState().setRoute('browser');
+      closePalette();
+    },
+  },
+  {
+>>>>>>> 4c198fe (WIP: preserve complete Grok Workbench implementation)
     id: 'switch-agent',
     label: 'Switch agent...',
     description: 'Change the active agent for this chat',

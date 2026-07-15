@@ -7,6 +7,7 @@ import { NavPane } from './NavPane';
 import { Inspector } from './Inspector';
 import { TabStrip } from './TabStrip';
 import { CouncilActivityStrip } from './ActivityStrip';
+import { isWorkbenchDetachedSearch } from '@/features/workbench/window';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -22,6 +23,9 @@ interface AppShellProps {
  *                                 | <main>{children}</main>           |
  *                                 | ActivityStrip (32px, council only)|
  *
+ * Detached Workbench windows (`?workbench=1`) render children full-bleed
+ * without main-app chrome so Workbench owns the entire native window.
+ *
  * The shell does not decide which canvas is active - children are slotted
  * by the caller. The shell wires global hotkeys for nav / inspector /
  * palette / voice / settings.
@@ -34,6 +38,30 @@ interface AppShellProps {
 export function AppShell({ children }: AppShellProps) {
   const inspectorOpen = useUIStore((s) => s.inspectorOpen);
   const chatMode = useUIStore((s) => s.chatMode);
+  const route = useUIStore((s) => s.route);
+  const workbenchFullscreen = route === 'workbench' || isWorkbenchDetachedSearch();
+
+  // Workbench owns the entire app chrome (full screen surface).
+  if (workbenchFullscreen) {
+    return (
+      <MotionConfig
+        reducedMotion="user"
+        transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+      >
+        <TooltipProvider delayDuration={400}>
+          <div
+            className="flex h-full w-full flex-col bg-background text-foreground"
+            data-workbench-fullscreen="true"
+            data-workbench-detached={isWorkbenchDetachedSearch() ? 'true' : 'false'}
+          >
+            <main aria-label="Workbench window" className="min-h-0 min-w-0 flex-1 overflow-hidden">
+              {children}
+            </main>
+          </div>
+        </TooltipProvider>
+      </MotionConfig>
+    );
+  }
 
   return (
     <MotionConfig

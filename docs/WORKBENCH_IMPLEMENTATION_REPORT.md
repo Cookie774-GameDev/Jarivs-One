@@ -2,165 +2,147 @@
 
 ## Scope
 
-This change adds Workbench as an additive VibeSpace route. Classic Chat remains
-the default startup route, and the existing terminal, Jarvis, agents, files,
-actions, GitHub, Supabase, plugins, kanban, Pets, authentication, billing, and
-cloud systems are not replaced. A detached Workbench window opts into the route
-with `?workbench=1`.
+Workbench is an additive VibeSpace surface that opens as a **detached full window**
+while Classic Chat remains the default main-window experience.
 
-Implementation was isolated on `feature/workbench-master-claude` in a dedicated
-git worktree. The canonical coordination ledger and files locked by other active
-agents were not edited.
+This report covers PR #20 plus the 2026-07-13 functional pass that makes Workbench
+persistent, named, multi-window-safe, and connected for the five primary panels.
 
-## User-facing behavior
+## Architecture decisions
 
-- Adds Workbench to navigation, the command palette, and the global assistant.
-- Adds a spatial canvas with pointer panning, Ctrl/Cmd-wheel zoom, keyboard zoom,
-  fit-to-content, auto-arrange, a minimap, drag, resize, selection,
-  Shift multi-select, keyboard movement, deletion, undo, and redo.
-- Keeps minimized panels mounted so live terminal resources are not destroyed.
-- Adds 14 panel types: terminal, browser, Jarvis, agent, files, editor, kanban,
-  actions, notes, diagram, plugins, GitHub, Supabase, and activity.
-- Reuses the existing `TerminalView` for real PTY-backed terminal panels. Terminal
-  panels attach to persisted session resource IDs, while transcripts and terminal
-  output are never serialized into Workbench state.
-- Adds an embedded browser panel with an address bar, reload, external open, and
-  best-effort named Chrome and Edge launchers. Embedded pages are sandboxed and
-  deliberately do not inherit VibeSpace origin or native bridge access.
-- Adds seven built-in layouts: Coding, Multi-agent, Research, Web development,
-  Supabase, Content, and Blank. The Web development layout includes four terminal
-  panels and two browser panels.
-- Supports user-saved templates. Runtime terminal resource IDs are removed before
-  a template is saved.
-- Adds a detached Workbench window in Tauri and a browser-popup fallback on the
-  web. The native window uses a scoped `workbench-*` capability.
-- Adds deterministic assistant commands for opening/spawning Workbench, adding
-  typed panels, selecting wallpapers, and pausing/resuming wallpaper motion.
+### Detached window (not in-page content only)
 
-## Wallpapers
+- Entry points call `openOrFocusWorkbenchWindow()` (`window.ts`).
+- Fixed native/web window label: `vibespace-workbench` — **focus existing** instead of spawning unlimited windows.
+- URL: `/?workbench=1` sets `resolveInitialRoute` → `workbench`.
+- `AppShell` detects detached search and renders **full-bleed** Workbench without TopBar/Nav/Inspector.
+- Main app **stays open** on its current route. Popup-blocked web fallback may open in-page Workbench with a toast.
 
-Wallpapers are separate from Pets and do not import or modify the Pets system.
-The gallery contains, in stable order:
+### Persistence
 
-1. None
-2. Warm Gradient
-3. Interactive Space Clouds
-4. Starfield
-5. Orbital Lights
-6. Particles
-7. Fluid Gradient
-8. Aurora
-9. Cozy Night Window
-10. Grid Pulse
-11. Custom Image
-12. Custom Video
-13. User Pack
+- Versioned envelope `vibespace-workbench:v1` + last-known-good key.
+- Document fields: `name`, `revision`, panels, view, wallpaper, customTemplates, `updatedAt`.
+- Debounced save (~350ms) + 5s safety flush + immediate flush on `pagehide` / `beforeunload` / `visibilitychange=hidden` / template apply.
+- No-op skip when content fingerprint unchanged.
+- **Revision-aware stale-write rejection** so multi-window peers cannot overwrite newer storage.
+- Cross-window sync via `BroadcastChannel` + `storage` events.
+- Secrets redacted in command/url; terminal transcripts never stored in layout JSON.
+- Templates strip `resourceId` (live session IDs). Live sessions may keep terminal `resourceId` for PTY reconnect.
 
-Wallpaper definitions are declarative data. They cannot contain executable
-callbacks, scripts, or Tauri APIs. Animated canvas effects consume pointer input
-inside the wallpaper host instead of updating React state on every pointer move.
-Reduced-motion preferences pause or simplify motion. Users can also pause motion
-explicitly.
+### Primary embedded panels (fully functional in-panel)
 
-Custom image uploads are limited to 2 MB and PNG, JPEG, WebP, GIF, or AVIF. They
-are persisted as data URLs. Custom video uploads are limited to 18 MB and MP4,
-WebM, or OGG; they use session-only object URLs and the UI states that limitation.
-Unsafe persisted wallpaper URLs are discarded during hydration.
+| Panel | Implementation | Connected systems |
+| --- | --- | --- |
+| **Terminal** | `TerminalPanel` → existing `TerminalView` | PTY sessions via `resourceId` reconnect |
+| **Browser** | `BrowserPanel` | HTTP(S) only, sandboxed iframe, external open, blocked-embed UX |
+| **Project files** | `FilesPanel` | `listDirectory` + `projectFiles` store; open → editor |
+| **Jarvis** | `JarvisPanel` | `ChatThread` + `Composer` + `ensureActiveChat` (shared chat/runtime) |
+| **Editor** | `EditorPanel` | FS read/write; optional MD/HTML preview (escaped / sandboxed) |
 
-## Persistence and recovery
+### Secondary panels (still limited)
 
-Workbench state is stored in a versioned localStorage envelope with bounded
-panel/template counts and sanitized geometry. A last-known-good backup is written
-before replacing the primary copy and is used if the primary payload is corrupt.
+Agent, kanban, actions, notes (textarea), diagram, plugins, GitHub, Supabase, activity remain lightweight references with “open full view” where applicable. Honest limitation — not claimed as full embeds.
 
-The persisted model includes panel layout, view position/zoom, selection,
-wallpaper settings, and saved templates. It excludes terminal transcripts,
-browser cookies, API keys, and other provider credentials. Secret-like command
-and URL values are replaced with `[redacted]` before serialization. Runtime-only
-terminal status updates and ordinary note/editor typing do not inflate undo
-history.
+## UX behavior
 
-## Browser and desktop security
+- Editable **Workbench name** (default `My Workbench`), auto-persisted, window title updated in detached native mode.
+- **Save layout** opens template library with focused name field (named reusable templates).
+- Live layout auto-saves without manual save.
+- No **Classic VibeSpace** toolbar button.
+- No **Spawn Workbench** nav button — nav **Workbench** opens/focuses the window.
 
-- Browser navigation accepts only HTTP and HTTPS URLs.
-- Embedded HTTP credentials and privileged schemes such as `javascript:`,
-  `data:`, `file:`, `tauri:`, `asset:`, `chrome:`, and `about:` are rejected.
-- The iframe omits `allow-same-origin` and
-  `allow-popups-to-escape-sandbox`. Clipboard, camera, microphone, and geolocation
-  permissions are explicitly disabled, and referrer policy is `no-referrer`.
-- Workbench drag/drop accepts only the private typed panel MIME payload. Dropped
-  text is never evaluated or executed.
-- The native capability applies only to local windows named `workbench-*`.
-  Embedded remote pages remain sandboxed iframe content and are not associated
-  with that capability.
+## Browser security model
 
-## Integration boundaries
+- `normalizeBrowserUrl` allows only `http:` / `https:`.
+- Rejects `javascript:`, `data:`, `file:`, `tauri:`, `asset:`, `chrome:`, `about:`, `vbscript:`, and embedded credentials.
+- Iframe sandbox omits `allow-same-origin` and popup-escape; referrer `no-referrer`; permissions disabled.
+- Sites that block embedding: status + **Open externally** (URL revalidated). Never claim universal embed success.
+- Named Chrome/Edge launch is best-effort OS protocol only.
 
-Real terminal and browser panels live inside the canvas. The other system panels
-are lightweight, live Workbench references with actions that open their existing
-full VibeSpace routes; this avoids duplicating stateful systems or modifying files
-currently owned by other agents. No Pets, billing, authentication, cloud,
-Supabase internals, terminal internals, Rust command handlers, or root `App.tsx`
-files were changed.
+## Changed files (functional pass)
 
-## Verification performed
+### Workbench feature
+
+- `app/src/features/workbench/**` — store, persistence, window, name, panels, CSS, tests
+- New: `FilesPanel.tsx`, `JarvisPanel.tsx`, `EditorPanel.tsx`, `editorPreview.ts`, `workbenchName.ts`
+
+### Narrow integration (why)
+
+| File | Why |
+| --- | --- |
+| `NavPane.tsx` | Workbench entry opens detached window instead of in-route-only |
+| `AppShell.tsx` | Full-bleed chrome when `?workbench=1` |
+| `command-palette/actions.ts` | Open/spawn use detached window helper |
+| `assistant/execute.ts` | Workbench intents open detached window |
+| `docs/WORKBENCH_IMPLEMENTATION_REPORT.md` | This document |
+| `docs/AGENT_COORDINATION.md` | Locks / work log |
+
+### Not changed
+
+Billing, auth, pets, voice, installer content, release channel, Supabase/GitHub internals, terminal Rust PTY core, main Chat page behavior (only reused components).
+
+## Tests and verification
+
+### Focused automated (passed)
+
+`npm run test -- --run src/features/workbench src/features/assistant/workbench.test.ts src/components/layout/PageRouter.workbench.test.tsx`
+
+- **12 files, 34 tests passed**
+- Coverage includes: persistence/LKG/redaction/stale revision, name sanitization, window open/focus/popup-block, browser schemes, editor preview safety, embedded files/jarvis/editor (no placeholder), page route, assistant intents
+
+Evidence: implementer scratch `workbench-focused-tests.log`
+
+### Gates
 
 | Check | Result |
 | --- | --- |
-| `npm ci` | Passed. npm reported the pre-existing audit baseline of 1 moderate and 1 high vulnerability. |
-| Baseline `npm run typecheck` | Passed before implementation. |
-| Latest `npm run typecheck` | Passed. |
-| `npm run build` | Passed; 2,841 modules transformed. Existing chunk-size and mixed dynamic/static import warnings remain. |
-| `cargo check --manifest-path app/src-tauri/Cargo.toml` | Passed. Two existing Rust dead-code warnings remain. |
-| `npm run test:release-manifest` | Passed, 1/1. |
-| Final focused Workbench/routing/assistant tests | Passed, 10 files and 27 tests. |
-| Full `npm run test -- --run` | 178 files and 942 tests passed; 4 unrelated UI tests timed out at the repository's 5-second limit under parallel load. No Workbench test failed. |
-| Serial rerun of the 4 timed-out files | Passed, 4 files and 15 tests. |
-| `git diff --check` | Passed for tracked changes. |
-| Secret-pattern scan of the intended change paths | No private-key, OpenAI-key, or GitHub-token patterns found. |
-| Local preview HTTP response | Passed with HTTP 200 at `http://127.0.0.1:5175/?workbench=1`. |
+| `npm run typecheck` | Passed |
+| `npm run build` | Passed (~1m 17s; existing chunk warnings) |
+| `npm run test:release-manifest` | Passed 1/1 |
+| `cargo check --manifest-path app/src-tauri/Cargo.toml` | Finished; 2 pre-existing dead-code warnings |
 
-The four full-suite timeouts were:
+### Manual / native
 
-- `AgentManager.test.tsx` — save lifecycle
-- `AgentManager.jarvisCreator.test.tsx` — blank-agent creation
-- `ChatThread.agentPanel.test.tsx` — connected agent activity panel
-- `AgentRolePicker.test.tsx` — persisted swarm label
+- Web entry path unit-tested; interactive Tauri multi-window QA **not claimed** in this harness (`tauri-unavailable.log`).
+- Popup behavior depends on browser allow-list.
 
-All four files passed together with `--maxWorkers=1`, confirming the full-suite
-failures were load-sensitive timeouts rather than deterministic regressions.
+## Security review
 
-## Known limitations and remaining risks
+- Diff secret scan: no live key patterns in Workbench change set.
+- Credentials, cookies, transcripts excluded from layout persistence.
+- Remote browser content isolated from native bridge / same-origin app data.
 
-- Browser extension control could not attach to the local preview after the
-  prescribed retries, so interactive visual QA was not claimed. The preview
-  returned HTTP 200, and build, type, feature, and route verification passed.
-- Some sites deny embedding via `X-Frame-Options` or Content Security Policy.
-  Those pages must be opened externally; Workbench does not weaken their policy.
-- Embedded browser sessions do not import cookies or login state from the user's
-  installed Chrome/Edge profile.
-- Named Chrome/Edge launch uses the operating system's registered custom protocol
-  as a best-effort request. It was not verifiable in the headless native check and
-  can fall back to the default external-browser behavior on machines without the
-  named browser/protocol registration.
-- Custom videos are session-only because storing large binary media in
-  localStorage would create reliability and quota risks.
-- Animated wallpaper quality depends on WebView canvas support. Reduced-motion
-  and static fallbacks remain available.
-- The repository-wide full test command can exceed four concurrent jsdom tests'
-  5-second limits on this machine. The affected files pass serially.
-- `install/install.ps1` disappeared from this worktree independently of the task,
-  matching an active installer worktree issue and apparent endpoint-security
-  quarantine behavior. It is intentionally excluded from this change and will
-  not be staged or committed.
+## Remaining risks and limitations
 
-## Changed areas
+1. Many websites refuse iframe embedding — external open is the supported path.
+2. Full native multi-window interactive QA should be done on a Tauri build before release.
+3. Non-primary panels remain reference cards.
+4. Custom video wallpapers remain session-oriented (quota).
+5. `install/install.ps1` local delete is unrelated and must not be committed with this work.
+6. PowerShell may surface cargo `warning:` on stderr as a non-zero shell status even when cargo Finished successfully — check the log for `Finished`.
 
-- `app/src/features/workbench/**`
-- Workbench route/navigation/top-bar integration
-- Workbench command-palette and assistant integration
-- Scoped Tauri webview-window capability
-- Focused Workbench, assistant, persistence, security, and routing tests
+## Completion status
 
-No release, deployment, or merge is performed by this task. The handoff stops at
-a draft pull request.
+Primary goal items delivered in code + automated gates:
+
+- Detached open/focus Workbench window; main stays open
+- Auto-save + revision multi-window protection
+- Editable name
+- Real Files / Jarvis / Editor / Browser / Terminal panels
+- Classic button removed
+- Tests + report + locks process
+
+No merge/deploy performed.
+
+## Follow-up fixes (skeptic pass)
+
+- Stabilized WorkbenchCanvas panel handlers via per-id map + refs (no new lambdas each render).
+- WorkbenchPanel holds stable `update` / `updateRuntime` via refs.
+- FilesPanel: loadRoot no longer depends on `panel.settings` / unstable `onUpdate`; status/cwd written only when values change.
+- JarvisPanel: status updates only when changed; `onUpdate` via ref (no effect loop).
+- `install/install.ps1` restored from HEAD (unrelated local delete).
+- Regression: `panelStability.test.tsx`.
+- Web launch evidence: `web-launch.log` with HTTP 200 on main and `?workbench=1`.
+
+- Web popup features no longer include noopener/noreferrer so window.open returns a handle, NavPane can trust ok:true, and named Workbench reuse works.
+

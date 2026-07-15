@@ -4,18 +4,23 @@ import {
   WORKBENCH_STORAGE_KEY,
   loadWorkbenchDocument,
   saveWorkbenchDocument,
+  serializeContentFingerprint,
 } from './persistence';
 import { createDefaultWorkbenchDocument } from './store';
 
 describe('Workbench persistence', () => {
   beforeEach(() => window.localStorage.clear());
 
-  it('writes a versioned document and keeps an atomic last-known-good copy', () => {
+  it('writes a versioned document with name/revision and keeps LKG', () => {
     const document = createDefaultWorkbenchDocument();
+    document.name = 'Desk One';
     document.panels[0]!.title = 'Terminal — no transcript is stored';
 
-    expect(saveWorkbenchDocument(document, window.localStorage)).toBe(true);
+    const result = saveWorkbenchDocument(document, window.localStorage);
+    expect(result.ok).toBe(true);
+    expect(result.document?.revision).toBeGreaterThan(0);
     expect(window.localStorage.getItem(WORKBENCH_STORAGE_KEY)).toContain('"version":1');
+    expect(window.localStorage.getItem(WORKBENCH_STORAGE_KEY)).toContain('Desk One');
     expect(window.localStorage.getItem(LAST_KNOWN_GOOD_KEY)).toBe(
       window.localStorage.getItem(WORKBENCH_STORAGE_KEY),
     );
@@ -54,5 +59,40 @@ describe('Workbench persistence', () => {
     const loaded = loadWorkbenchDocument(window.localStorage);
     expect(loaded.document.wallpaper.assetUrl).toBeUndefined();
     expect(window.localStorage.getItem(WORKBENCH_STORAGE_KEY)).not.toContain('javascript:');
+  });
+
+  it('rejects stale multi-window writes when storage revision is newer', () => {
+    const first = createDefaultWorkbenchDocument();
+    first.name = 'Window A';
+    const saved = saveWorkbenchDocument(first, window.localStorage);
+    expect(saved.ok).toBe(true);
+    const revision = saved.document!.revision;
+
+    const stale = createDefaultWorkbenchDocument();
+    stale.name = 'Stale window';
+    stale.revision = 0;
+    const rejected = saveWorkbenchDocument(stale, window.localStorage, {
+      lastKnownRevision: 0,
+    });
+    expect(rejected.ok).toBe(false);
+    expect(rejected.reason).toBe('stale');
+    expect(rejected.document?.name).toBe('Window A');
+    expect(rejected.document?.revision).toBe(revision);
+
+    const okWrite = saveWorkbenchDocument(
+      { ...stale, name: 'Window B', revision },
+      window.localStorage,
+      { lastKnownRevision: revision },
+    );
+    expect(okWrite.ok).toBe(true);
+    expect(okWrite.document?.name).toBe('Window B');
+  });
+
+  it('fingerprints content without revision noise', () => {
+    const a = createDefaultWorkbenchDocument();
+    const b = { ...a, revision: 99, updatedAt: Date.now() + 999 };
+    expect(serializeContentFingerprint(a)).toBe(serializeContentFingerprint(b));
+    b.name = 'Different';
+    expect(serializeContentFingerprint(a)).not.toBe(serializeContentFingerprint(b));
   });
 });

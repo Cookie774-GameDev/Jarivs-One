@@ -1,13 +1,20 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useUIStore } from '@/stores/ui';
 import { useWorkbenchStore } from '@/features/workbench/store';
 import { parseAssistantInput } from './parse';
 import { executeIntent } from './execute';
 
+vi.mock('@/features/workbench/window', () => ({
+  openOrFocusWorkbenchWindow: vi.fn(async () => ({ ok: true })),
+  openDetachedWorkbench: vi.fn(async () => ({ ok: true })),
+  isWorkbenchDetachedSearch: () => false,
+}));
+
 describe('Jarvis Workbench commands', () => {
   afterEach(() => {
     useUIStore.getState().resetUI();
     useWorkbenchStore.getState().resetWorkbench();
+    vi.clearAllMocks();
   });
 
   it('parses Workbench launch and orchestration phrases locally', () => {
@@ -33,11 +40,16 @@ describe('Jarvis Workbench commands', () => {
     });
   });
 
-  it('executes Workbench commands against the live stores', async () => {
+  it('executes Workbench commands against the live stores and opens the window', async () => {
+    const { openOrFocusWorkbenchWindow } = await import('@/features/workbench/window');
     const spawned = await executeIntent(parseAssistantInput('spawn research workbench'));
     expect(spawned.ok).toBe(true);
+    expect(openOrFocusWorkbenchWindow).toHaveBeenCalled();
+    // Workbench is always routed in-app so the surface is never missing.
     expect(useUIStore.getState().route).toBe('workbench');
-    expect(useWorkbenchStore.getState().panels.filter((panel) => panel.kind === 'browser')).toHaveLength(2);
+    expect(
+      useWorkbenchStore.getState().panels.filter((panel) => panel.kind === 'browser'),
+    ).toHaveLength(2);
 
     const wallpaper = await executeIntent(parseAssistantInput('set wallpaper to aurora'));
     expect(wallpaper.ok).toBe(true);

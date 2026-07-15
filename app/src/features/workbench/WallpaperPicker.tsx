@@ -2,6 +2,7 @@ import * as React from 'react';
 import { ImagePlus, Pause, Play, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
+import { WallpaperLibrary } from '@/features/wallpaper-library/WallpaperLibrary';
 import { useWorkbenchStore } from './store';
 import { BUILT_IN_WALLPAPERS } from './wallpapers';
 import type { WallpaperId } from './types';
@@ -128,6 +129,7 @@ export function WallpaperPicker({ open, onClose }: WallpaperPickerProps) {
             Pointer response
           </label>
         </div>
+        <WallpaperLibrary />
         <input
           ref={fileRef}
           className="sr-only"

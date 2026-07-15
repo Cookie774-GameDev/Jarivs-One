@@ -11,9 +11,11 @@ import {
   KanbanSquare,
   Network,
   NotebookPen,
+  PanelLeft,
   PlugZap,
   Sparkles,
   Terminal,
+  X,
 } from 'lucide-react';
 import type { WorkbenchPanelKind } from './types';
 
@@ -40,29 +42,67 @@ const palette: Array<{
 
 export const WORKBENCH_DRAG_MIME = 'application/x-vibespace-workbench-panel';
 
-export function PanelPalette({ onAdd }: { onAdd: (kind: WorkbenchPanelKind) => void }) {
+interface PanelPaletteProps {
+  onAdd: (kind: WorkbenchPanelKind) => void;
+  open?: boolean;
+  onClose?: () => void;
+  onOpen?: () => void;
+}
+
+export function PanelPalette({ onAdd, open = true, onClose, onOpen }: PanelPaletteProps) {
+  if (!open) {
+    return (
+      <div className="workbench-palette-collapsed" aria-label="Workbench panels collapsed">
+        <button
+          type="button"
+          className="workbench-palette-reopen"
+          aria-label="Open panels"
+          title="Open panels"
+          onClick={() => onOpen?.()}
+        >
+          <PanelLeft aria-hidden="true" />
+        </button>
+      </div>
+    );
+  }
+
   return (
     <aside className="workbench-palette" aria-label="Workbench panels">
-      <p>Panels</p>
-      {palette.map(({ kind, label, icon: Icon }) => (
+      <div className="workbench-palette-head">
+        <p>Panels</p>
+      </div>
+      <div className="workbench-palette-items">
+        {palette.map(({ kind, label, icon: Icon }) => (
+          <button
+            key={kind}
+            type="button"
+            aria-label={`Add ${label}`}
+            draggable
+            onClick={() => onAdd(kind)}
+            onDragStart={(event) => {
+              event.dataTransfer.effectAllowed = 'copy';
+              event.dataTransfer.setData(
+                WORKBENCH_DRAG_MIME,
+                JSON.stringify({ version: 1, kind }),
+              );
+            }}
+          >
+            <Icon aria-hidden="true" />
+            <span>{label}</span>
+          </button>
+        ))}
+      </div>
+      <div className="workbench-palette-foot">
         <button
-          key={kind}
           type="button"
-          aria-label={`Add ${label}`}
-          draggable
-          onClick={() => onAdd(kind)}
-          onDragStart={(event) => {
-            event.dataTransfer.effectAllowed = 'copy';
-            event.dataTransfer.setData(
-              WORKBENCH_DRAG_MIME,
-              JSON.stringify({ version: 1, kind }),
-            );
-          }}
+          className="workbench-palette-close"
+          aria-label="Close panels"
+          title="Close panels"
+          onClick={() => onClose?.()}
         >
-          <Icon aria-hidden="true" />
-          <span>{label}</span>
+          <X aria-hidden="true" strokeWidth={2.25} />
         </button>
-      ))}
+      </div>
     </aside>
   );
 }
