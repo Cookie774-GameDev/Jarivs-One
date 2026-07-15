@@ -102,12 +102,22 @@ pub struct GenerateFromArtifactResult {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct EvaluateArtifactCase {
+    id: String,
+    prompt: String,
+    expected_completion: String,
+    hidden: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct EvaluateArtifactRequest {
     project_id: String,
     job_id: String,
     champion_job_id: Option<String>,
     max_cases: Option<u32>,
     max_new_tokens: Option<u32>,
+    cases: Option<Vec<EvaluateArtifactCase>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -147,6 +157,17 @@ fn active_jobs() -> &'static Mutex<HashMap<String, JobControl>> {
 
 fn job_key(project_id: &str, job_id: &str) -> String {
     format!("{project_id}:{job_id}")
+}
+
+fn has_credential_shaped_text(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    value.contains("-----BEGIN ")
+        || lower.contains("postgres://")
+        || lower.contains("postgresql://")
+        || lower.contains("mysql://")
+        || value.split_whitespace().any(|token| {
+            (token.starts_with("sk-") || token.starts_with("ghp_") || token.starts_with("github_pat_")) && token.len() >= 20
+        })
 }
 
 fn validate_sha256(value: &str, label: &str) -> Result<(), String> {
@@ -783,6 +804,20 @@ pub fn model_foundry_evaluate_artifact(
     if !(1..=64).contains(&max_cases) || !(1..=256).contains(&max_new_tokens) {
         return Err("Evaluation limits are outside the governed bounds.".into());
     }
+    if let Some(cases) = &request.cases {
+        if cases.is_empty() || cases.len() > 32 || cases.len() > max_cases as usize {
+            return Err("A local evaluation suite must contain 1 through 32 cases and fit within the selected case limit.".into());
+        }
+        for case in cases {
+            validate_storage_id(&case.id)?;
+            if case.prompt.trim().is_empty() || case.prompt.len() > 16_384 || case.expected_completion.trim().is_empty() || case.expected_completion.len() > 12_000 {
+                return Err("Each local evaluation case needs a bounded prompt and expected completion.".into());
+            }
+            if has_credential_shaped_text(&case.prompt) || has_credential_shaped_text(&case.expected_completion) {
+                return Err("Local evaluation cases cannot contain credential-shaped text.".into());
+            }
+        }
+    }
     let verified = model_foundry_inspect_artifact(app.clone(), request.project_id.clone(), request.job_id.clone())?;
     let root = runtime_root(&app)?;
     let python = venv_python(&root);
@@ -803,6 +838,12 @@ pub fn model_foundry_evaluate_artifact(
         "championJobId": request.champion_job_id,
         "maxCases": max_cases,
         "maxNewTokens": max_new_tokens,
+        "customCases": request.cases.as_ref().map(|cases| cases.iter().map(|case| serde_json::json!({
+            "id": case.id,
+            "prompt": case.prompt,
+            "expectedCompletion": case.expected_completion,
+            "hidden": case.hidden,
+        })).collect::<Vec<_>>()),
     })).map_err(|error| format!("Unable to serialize evaluation manifest: {error}"))?)?;
     let request_id = format!("evaluate-{}", request.job_id);
     let command = serde_json::json!({

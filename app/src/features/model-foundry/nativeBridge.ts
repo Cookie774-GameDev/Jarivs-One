@@ -98,7 +98,7 @@ export interface FoundryRealEvaluationReport {
   readonly delta: number;
   readonly safetyFailures: readonly string[];
   readonly gate: 'pass' | 'blocked';
-  readonly caseEvidence: readonly { readonly caseId: string; readonly baseScore: number; readonly candidateScore: number; readonly championScore: number | null; readonly evidenceHash: string }[];
+  readonly caseEvidence: readonly { readonly caseId: string; readonly hidden?: boolean; readonly baseScore: number; readonly candidateScore: number; readonly championScore: number | null; readonly evidenceHash: string }[];
 }
 
 export interface FoundryArtifactEvaluation {
@@ -197,7 +197,9 @@ export async function generateFromFoundryArtifact(args: { projectId: string; job
   return invoke<FoundryArtifactGeneration>('model_foundry_generate_from_artifact', { request: args });
 }
 
-export async function evaluateFoundryArtifact(args: { projectId: string; jobId: string; championJobId?: string; maxCases?: number; maxNewTokens?: number }): Promise<FoundryArtifactEvaluation> {
+export interface FoundryPrivateEvaluationCase { readonly id: string; readonly prompt: string; readonly expectedCompletion: string; readonly hidden: boolean }
+
+export async function evaluateFoundryArtifact(args: { projectId: string; jobId: string; championJobId?: string; maxCases?: number; maxNewTokens?: number; cases?: readonly FoundryPrivateEvaluationCase[] }): Promise<FoundryArtifactEvaluation> {
   if (!isTauri) throw new Error('Local adapter evaluation is available only in the desktop app.');
   return invoke<FoundryArtifactEvaluation>('model_foundry_evaluate_artifact', { request: args });
 }

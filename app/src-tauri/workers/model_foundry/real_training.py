@@ -370,6 +370,28 @@ def run_real_evaluation(manifest: dict[str, Any], job_dir: Path, model_root: Pat
     champion_job_id = manifest.get("championJobId")
     if champion_job_id is not None and (not isinstance(champion_job_id, str) or not champion_job_id or len(champion_job_id) > 128):
         raise TrainingFailure("evaluation.champion", "championJobId must identify a local adapter job.")
+    custom_cases = manifest.get("customCases")
+    if custom_cases is not None:
+        if not isinstance(custom_cases, list) or not 1 <= len(custom_cases) <= 32 or len(custom_cases) > max_cases:
+            raise TrainingFailure("evaluation.custom_cases", "The local evaluation suite must contain 1 through 32 bounded cases.")
+        case_ids: set[str] = set()
+        rows: list[dict[str, Any]] = []
+        for raw_case in custom_cases:
+            if not isinstance(raw_case, dict):
+                raise TrainingFailure("evaluation.custom_cases", "A local evaluation case is malformed.")
+            case_id = raw_case.get("id")
+            prompt = raw_case.get("prompt")
+            expected = raw_case.get("expectedCompletion")
+            hidden = raw_case.get("hidden")
+            if not isinstance(case_id, str) or not case_id or len(case_id) > 128 or case_id in case_ids or not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 16_384 or not isinstance(expected, str) or not expected.strip() or len(expected) > 12_000 or not isinstance(hidden, bool):
+                raise TrainingFailure("evaluation.custom_cases", "Each local evaluation case needs a unique ID, bounded prompt, expected completion, and hidden flag.")
+            case_ids.add(case_id)
+            rows.append({"id": case_id, "prompt": prompt, "completion": expected, "hidden": hidden})
+    else:
+        rows = _read_jsonl(validated["validationDatasetPath"])[:max_cases]
+        for index, row in enumerate(rows):
+            row["id"] = f"case-{index + 1}"
+            row["hidden"] = False
     training_path = canonical_child(manifest.get("trainingManifestPath"), job_dir, "trainingManifestPath")
     try:
         training_manifest = json.loads(training_path.read_text(encoding="utf-8"))
@@ -406,7 +428,6 @@ def run_real_evaluation(manifest: dict[str, Any], job_dir: Path, model_root: Pat
         for relative, expected in champion_files.items():
             if not isinstance(relative, str) or not isinstance(expected, str) or sha256_file(canonical_child(str(champion_artifact_root / relative), champion_artifact_root, "champion artifact file")) != expected.lower():
                 raise TrainingFailure("evaluation.champion", "The current champion artifact no longer matches its immutable manifest.")
-    rows = _read_jsonl(validated["validationDatasetPath"])[:max_cases]
     try:
         import torch
         from peft import PeftModel
@@ -461,7 +482,8 @@ def run_real_evaluation(manifest: dict[str, Any], job_dir: Path, model_root: Pat
             for reason in _unsafe_output_reasons(candidate_text):
                 safety_failures.append(f"case-{index + 1}: {reason}")
             evidence.append({
-                "caseId": f"case-{index + 1}",
+                "caseId": row["id"],
+                "hidden": row["hidden"],
                 "baseScore": base_score,
                 "candidateScore": candidate_score,
                 "championScore": champion_score,
@@ -471,7 +493,7 @@ def run_real_evaluation(manifest: dict[str, Any], job_dir: Path, model_root: Pat
         candidate_mean = round(sum(candidate_scores) / len(candidate_scores), 6)
         champion_mean = round(sum(champion_scores) / len(champion_scores), 6) if champion_scores else None
         passes = not safety_failures and candidate_mean >= base_mean and (champion_mean is None or candidate_mean >= champion_mean)
-        return {"suite": "pinned-validation-reference-v1", "caseCount": len(rows), "baseScore": base_mean, "candidateScore": candidate_mean, "championScore": champion_mean, "delta": round(candidate_mean - base_mean, 6), "safetyFailures": safety_failures, "gate": "pass" if passes else "blocked", "caseEvidence": evidence}
+        return {"suite": "custom-local-reference-v1" if custom_cases is not None else "pinned-validation-reference-v1", "caseCount": len(rows), "baseScore": base_mean, "candidateScore": candidate_mean, "championScore": champion_mean, "delta": round(candidate_mean - base_mean, 6), "safetyFailures": safety_failures, "gate": "pass" if passes else "blocked", "caseEvidence": evidence}
     except (torch.cuda.OutOfMemoryError, MemoryError) as exc:
         raise out_of_memory_failure() from exc
 
