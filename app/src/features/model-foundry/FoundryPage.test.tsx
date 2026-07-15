@@ -33,6 +33,7 @@ describe('FoundryPage fixture vertical slice', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Create VibeCoder' }));
     expect(screen.getByRole('heading', { name: 'VibeCoder' })).toBeTruthy();
     expect(screen.getByText('Project ready')).toBeTruthy();
+    expect(screen.getByText('Spark · local Foundry unrestricted')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Check this device' }));
     expect(await screen.findByText('Desktop hardware check unavailable in web mode.')).toBeTruthy();
