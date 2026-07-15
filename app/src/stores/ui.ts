@@ -46,6 +46,7 @@ export type DoneNotificationSettings = Record<DoneNotificationKey, boolean>;
  */
 export type Route =
   | 'chat'
+  | 'workbench'
   | 'terminal'
   | 'kanban'
   | 'schedule'
@@ -59,6 +60,16 @@ export type Route =
   | 'tools'
   | 'files'
   | 'account';
+
+/**
+ * Normal reloads remain in Classic VibeSpace. The explicit query is used only
+ * by the detached Workbench window so it can boot directly into its surface.
+ */
+export function resolveInitialRoute(search?: string): Route {
+  const value =
+    search ?? (typeof window !== 'undefined' ? window.location.search : '');
+  return new URLSearchParams(value).get('workbench') === '1' ? 'workbench' : 'chat';
+}
 
 /**
  * Wellness break kinds. The 20-20-20 eye break is the only kind today;
@@ -322,7 +333,7 @@ const defaults: Pick<
     skills: false,
   },
   aiCompletionCue: false,
-  route: 'chat',
+  route: resolveInitialRoute(),
   callModalOpen: false,
   lastSeenWhatsNewVersion: null,
   wellnessActive: false,
