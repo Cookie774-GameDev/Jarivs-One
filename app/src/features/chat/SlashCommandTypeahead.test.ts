@@ -99,4 +99,12 @@ describe('orderSlashCommandsForDisplay', () => {
     expect(findSlashCommandDef('undo')?.cmd).toBe('undo');
     expect(findSlashCommandDef('redo')?.cmd).toBe('redo');
   });
+
+  it('includes the local /theme utility command', () => {
+    expect(findSlashCommandDef('theme')).toMatchObject({
+      cmd: 'theme',
+      category: 'utility',
+      takesArg: true,
+    });
+  });
 });

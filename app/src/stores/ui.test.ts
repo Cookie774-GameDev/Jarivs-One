@@ -20,6 +20,20 @@ describe('UI theme resolution', () => {
     expect(document.documentElement.getAttribute('data-theme-preference')).toBe('jarvis');
   });
 
+  it('resolves the public Default theme to the established dark skin', () => {
+    expect(resolveTheme('default')).toBe('dark');
+    applyThemeToDocument('default');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+    expect(document.documentElement.getAttribute('data-theme-preference')).toBe('default');
+  });
+
+  it('keeps VibeSpace as an independent selectable theme', () => {
+    expect(resolveTheme('vibespace')).toBe('vibespace');
+    applyThemeToDocument('vibespace');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('vibespace');
+    expect(document.documentElement.getAttribute('data-theme-preference')).toBe('vibespace');
+  });
+
   it('applies theme changes synchronously through the UI store', () => {
     useUIStore.getState().setTheme('jarvis');
     expect(useUIStore.getState().theme).toBe('jarvis');

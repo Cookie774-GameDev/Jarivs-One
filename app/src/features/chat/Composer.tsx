@@ -20,6 +20,7 @@ import { getAllUsage, getUsage, parseUsageSlashCommand, refreshUsage } from '@/l
 import { useAgentStore } from '@/stores/agents';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
+import { parseThemeCommandArgument, SELECTABLE_THEMES } from '@/features/appearance/themes';
 import { VoiceService } from '@/features/voice/VoiceService';
 import { MicWaveform } from './MicWaveform';
 import {
@@ -1147,6 +1148,19 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
       setText('');
       return true;
     }
+    if (cmd === 'theme') {
+      const nextTheme = parseThemeCommandArgument(rest);
+      if (!nextTheme) {
+        await addSystem(
+          `Available themes: ${SELECTABLE_THEMES.map((theme) => theme.label).join(', ')}. Use /theme <name>.`,
+        );
+        return true;
+      }
+      useUIStore.getState().setTheme(nextTheme);
+      const label = SELECTABLE_THEMES.find((theme) => theme.id === nextTheme)?.label ?? nextTheme;
+      await addSystem(`Theme changed to ${label}.`);
+      return true;
+    }
     if (cmd === 'model') {
       if (!rest) {
         setText('');
@@ -1338,7 +1352,7 @@ export function Composer({ chatId, placeholder, compact = false, disableRouteSla
           + '/context, /plug, /skills, /file open pickers. /file lists files in your open project. '
           + '/attach <path>, /clearfiles (or /clearfile) clears attachments. '
           + '/undo removes the last full turn; /redo restores it. '
-          + '/usage, /model, /commands, /multitask, /ask, /plan.',
+          + '/usage, /model, /theme, /commands, /multitask, /ask, /plan.',
       );
       return true;
     }

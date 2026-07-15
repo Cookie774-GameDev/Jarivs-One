@@ -1,0 +1,111 @@
+/* VibeSpace: a pastel origami workspace skin. Kept separate from globals.css
+ * so the established Dark, Light, and Jarvis Core skins remain unchanged. */
+html[data-theme='vibespace'] {
+  --background: 36 65% 95%;
+  --background-warm: 29 72% 92%;
+  --panel: 28 66% 91%;
+  --elevated: 42 82% 98%;
+  --paper-soft: 35 68% 94%;
+  --paper-done: 102 31% 90%;
+
+  --border: 24 36% 82%;
+  --border-mid: 22 31% 70%;
+  --line-soft: 30 42% 87%;
+  --input: 24 36% 82%;
+  --ring: 12 78% 62%;
+
+  --foreground: 23 31% 22%;
+  --muted: 32 48% 91%;
+  --muted-foreground: 25 18% 42%;
+  --ink-faint: 27 14% 57%;
+
+  --accent-cyan: 12 78% 62%;
+  --accent-violet: 276 42% 62%;
+  --accent: 12 78% 62%;
+  --accent-foreground: 42 82% 98%;
+  --accent-copper: 12 78% 62%;
+  --accent-amber: 38 88% 62%;
+  --accent-amber-soft: 38 88% 62% / 0.18;
+
+  --rose: 350 65% 72%;
+  --terracotta: 12 78% 62%;
+  --honey: 38 88% 62%;
+  --sage: 99 28% 55%;
+  --sage-deep: 103 31% 40%;
+  --lavender: 276 42% 68%;
+  --cream: 42 82% 96%;
+
+  --primary: 12 78% 62%;
+  --primary-foreground: 42 82% 98%;
+  --secondary: 276 36% 91%;
+  --secondary-foreground: 274 28% 30%;
+  --destructive: 2 62% 55%;
+  --destructive-foreground: 42 82% 98%;
+  --success: 103 31% 43%;
+  --warning: 35 76% 47%;
+  --info: 211 50% 55%;
+
+  --crit: 2 62% 55%;
+  --crit-bg: 4 72% 92%;
+  --high: 18 72% 54%;
+  --high-bg: 24 75% 91%;
+  --med: 35 76% 47%;
+  --med-bg: 42 77% 89%;
+  --low: 103 31% 43%;
+  --low-bg: 103 32% 89%;
+  --info-sev: 276 42% 55%;
+  --info-bg: 276 42% 92%;
+
+  --radius-sm: 10px;
+  --radius: 15px;
+  --radius-lg: 24px;
+  --shadow-soft: 0 2px 5px hsl(20 30% 40% / 0.08), 0 8px 22px hsl(12 65% 55% / 0.07);
+  --shadow-lift: 0 10px 24px hsl(20 30% 40% / 0.12), 0 20px 48px hsl(276 42% 55% / 0.1);
+  --shadow-cozy: 0 16px 40px -12px hsl(12 78% 50% / 0.22), 0 4px 12px hsl(24 30% 35% / 0.08);
+
+  --ambient-deep: 31 54% 91%;
+  --ambient-phase: 0;
+  --ink-soft: 23 29% 30%;
+  --surface-warm: 34 63% 93%;
+  --bloom-image:
+    radial-gradient(at 12% 10%, hsl(12 88% 76% / 0.28) 0, transparent 42%),
+    radial-gradient(at 86% 12%, hsl(276 54% 78% / 0.24) 0, transparent 44%),
+    radial-gradient(at 88% 88%, hsl(103 36% 69% / 0.22) 0, transparent 46%),
+    radial-gradient(at 8% 92%, hsl(39 92% 72% / 0.2) 0, transparent 44%);
+}
+
+html[data-theme='vibespace'] body {
+  background-color: hsl(var(--background));
+  background-image: var(--bloom-image);
+}
+
+/* Softer Light: lower glare and gentler separators while preserving the
+ * existing warm-paper character and AA text contrast. */
+html[data-theme='light'] {
+  --background: 38 46% 96%;
+  --background-warm: 36 43% 93%;
+  --panel: 36 40% 93%;
+  --elevated: 42 58% 98%;
+  --paper-soft: 39 48% 96%;
+  --paper-done: 39 38% 94%;
+  --border: 34 26% 87%;
+  --border-mid: 32 22% 78%;
+  --line-soft: 36 31% 91%;
+  --input: 34 26% 87%;
+  --foreground: 25 24% 21%;
+  --muted: 37 35% 93%;
+  --muted-foreground: 27 15% 39%;
+  --ink-faint: 29 10% 55%;
+  --shadow-soft: 0 2px 8px hsl(28 22% 36% / 0.05), 0 8px 22px hsl(28 22% 36% / 0.035);
+  --shadow-lift: 0 8px 20px hsl(28 22% 36% / 0.07), 0 18px 40px hsl(14 45% 45% / 0.055);
+  --bloom-image:
+    radial-gradient(at 18% 12%, hsl(14 62% 78% / 0.12) 0, transparent 46%),
+    radial-gradient(at 82% 82%, hsl(105 24% 70% / 0.1) 0, transparent 48%),
+    radial-gradient(at 100% 0%, hsl(280 24% 78% / 0.07) 0, transparent 46%);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html[data-theme='vibespace'] body {
+    transition: background-color 180ms ease, color 180ms ease;
+  }
+}

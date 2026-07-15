@@ -12,13 +12,13 @@ import {
   MessageSquare,
   MessageSquarePlus,
   Mic,
-  Monitor,
   Moon,
   Moon as Ambient,
   PanelLeft,
   PanelRight,
   Palette,
   Rocket,
+  Sparkles,
   Settings,
   Sun,
   User,
@@ -273,13 +273,24 @@ const STATIC_ACTIONS: Action[] = [
 
   // --- Theme sub-page -----------------------------------------------------
   {
-    id: 'theme-dark',
-    label: 'Dark',
+    id: 'theme-default',
+    label: 'Default',
     icon: Moon,
     page: 'theme',
     keywords: ['oled', 'night'],
     perform: ({ closePalette }) => {
-      useUIStore.getState().setTheme('dark');
+      useUIStore.getState().setTheme('default');
+      closePalette();
+    },
+  },
+  {
+    id: 'theme-vibespace',
+    label: 'VibeSpace',
+    icon: Sparkles,
+    page: 'theme',
+    keywords: ['pastel', 'origami', 'peach', 'lavender'],
+    perform: ({ closePalette }) => {
+      useUIStore.getState().setTheme('vibespace');
       closePalette();
     },
   },
@@ -305,18 +316,6 @@ const STATIC_ACTIONS: Action[] = [
       closePalette();
     },
   },
-  {
-    id: 'theme-system',
-    label: 'System',
-    icon: Monitor,
-    page: 'theme',
-    keywords: ['auto', 'os'],
-    perform: ({ closePalette }) => {
-      useUIStore.getState().setTheme('system');
-      closePalette();
-    },
-  },
-
   // --- Switch chat mode sub-page -----------------------------------------
   {
     id: 'mode-chat',
