@@ -9,7 +9,7 @@ import { getPlan } from '../../lib/entitlements';
 import type { FoundryResult, ProjectSnapshot, SpecialistDefinition, TrainingJobSnapshot } from './domain';
 import { DeterministicFixtureBackend, type FixtureBackendDependencies } from './fixtureBackend';
 import { VersionedFixtureRepository, type StorageAdapter } from './localRepository';
-import { VIBECODER_TEMPLATE } from './validation';
+import { validateProjectSnapshot, VIBECODER_TEMPLATE } from './validation';
 import { createFixtureBase, createFixtureDataset, createFixtureEvaluation } from './demoFixtures';
 import {
   downloadFoundryModel,
@@ -102,7 +102,11 @@ function privateCaseContainsCredential(caseInput: FoundryPrivateEvaluationCase):
 function readProjectCatalog(storage: StorageAdapter): readonly ProjectSnapshot[] {
   try {
     const parsed = JSON.parse(storage.getItem(PROJECT_CATALOG_STORAGE_KEY) ?? '[]') as unknown;
-    return Array.isArray(parsed) ? parsed.filter((value): value is ProjectSnapshot => Boolean(value) && typeof value === 'object' && !Array.isArray(value)).slice(0, 24) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.flatMap((value) => {
+      const validation = validateProjectSnapshot(value);
+      return validation.valid ? [validation.value] : [];
+    }).slice(0, 24);
   } catch { return []; }
 }
 
