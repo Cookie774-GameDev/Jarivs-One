@@ -99,6 +99,8 @@ describe('FoundryPage fixture vertical slice', () => {
     fireEvent.click(screen.getByRole('button', { name: /SmolLM2 135M Instruct/ }));
 
     expect(screen.getByText(/Revision a91318be/)).toBeTruthy();
+    expect(screen.getByText('Real local mode · setup required')).toBeTruthy();
+    expect(screen.queryByText(/Truthful simulation/)).not.toBeTruthy();
     expect(screen.getByText(/Remote model code stays disabled/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Download and verify model' }).hasAttribute('disabled')).toBe(true);
     fireEvent.click(screen.getByRole('checkbox', { name: /I reviewed and approve/ }));
