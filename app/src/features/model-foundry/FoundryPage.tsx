@@ -50,7 +50,7 @@ const defaultDependencies: FixtureBackendDependencies = {
 const NATIVE_RUN_STORAGE_KEY = 'vibespace.model-foundry.native-runs.v1';
 const PRIVATE_EVALUATION_STORAGE_KEY = 'vibespace.model-foundry.private-evaluation-suites.v1';
 const PROJECT_CATALOG_STORAGE_KEY = 'vibespace.model-foundry.project-catalog.v1';
-const CREDENTIAL_SHAPED_TEXT = /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|\b(?:sk-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b|(?:postgres(?:ql)?|mysql):\/\/[^\s:@]+:[^\s@]+@/i;
+const CREDENTIAL_SHAPED_TEXT = /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|\b(?:sk-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AIza[0-9A-Za-z_-]{30,}|whsec_[A-Za-z0-9_-]{16,})\b|(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?):\/\/[^\s:@]+:[^\s@]+@/i;
 const SPECIALIST_TEMPLATES = [
   { label: 'Support classifier', name: 'Support classifier', purpose: 'Classify a customer-support request into a reviewed routing category.', input: 'A local customer-support message.', output: 'One allowed routing category with confidence.', constraints: 'Use only the supplied message and never invent account data.' },
   { label: 'Data extractor', name: 'Structured data extractor', purpose: 'Extract a narrow set of fields from a supplied local document.', input: 'One local source document.', output: 'A validated structured record with requested fields.', constraints: 'Return only fields supported by the supplied document.' },

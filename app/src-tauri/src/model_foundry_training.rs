@@ -165,8 +165,18 @@ fn has_credential_shaped_text(value: &str) -> bool {
         || lower.contains("postgres://")
         || lower.contains("postgresql://")
         || lower.contains("mysql://")
+        || lower.contains("mongodb://")
+        || lower.contains("mongodb+srv://")
         || value.split_whitespace().any(|token| {
-            (token.starts_with("sk-") || token.starts_with("ghp_") || token.starts_with("github_pat_")) && token.len() >= 20
+            (token.starts_with("sk-")
+                || token.starts_with("ghp_")
+                || token.starts_with("gho_")
+                || token.starts_with("ghu_")
+                || token.starts_with("ghs_")
+                || token.starts_with("ghr_")
+                || token.starts_with("github_pat_")
+                || token.starts_with("AIza")
+                || token.starts_with("whsec_")) && token.len() >= 20
         })
 }
 
@@ -964,5 +974,6 @@ mod tests {
         assert!(has_credential_shaped_text("-----BEGIN PRIVATE KEY-----"));
         assert!(has_credential_shaped_text("postgresql://owner:password@localhost/private"));
         assert!(has_credential_shaped_text("sk-abcdefghijklmnopqrstuvwxyz123456"));
+        assert!(has_credential_shaped_text("whsec_abcdefghijklmnopqrstuvwxyz"));
     }
 }
