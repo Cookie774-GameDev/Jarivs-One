@@ -54,6 +54,10 @@ mod kokoro;
 mod ollama_http;
 mod branding;
 mod agent_coordination;
+mod static_server;
+mod preview;
+mod browser_process;
+mod wallpaper_master;
 
 /// Sanity-check command. The JS bridge can call this during startup to verify
 /// invoke() round-trips. Wire it in as needed; it returns a friendly string.
@@ -339,6 +343,29 @@ pub fn run() {
             ollama_http::ollama_list_models,
             ollama_http::ollama_pull_model,
             ollama_http::ollama_chat_stream,
+            // Preview Studio + Vibe Browser
+            static_server::preview_start_static_server,
+            static_server::preview_stop_static_server,
+            static_server::preview_static_server_status,
+            static_server::preview_probe_dev_servers,
+            preview::preview_create,
+            preview::preview_set_bounds,
+            preview::preview_navigate,
+            preview::preview_show,
+            preview::preview_hide,
+            preview::preview_reload,
+            preview::preview_destroy,
+            preview::preview_status,
+            preview::preview_probe_url,
+            browser_process::browser_detect_installations,
+            browser_process::browser_status,
+            browser_process::browser_start,
+            browser_process::browser_stop,
+            browser_process::browser_clear_profile,
+            browser_process::browser_open_downloads_folder,
+            wallpaper_master::wallpaper_find_local_master,
+            wallpaper_master::wallpaper_cache_full_master,
+            wallpaper_master::wallpaper_full_cache_path,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

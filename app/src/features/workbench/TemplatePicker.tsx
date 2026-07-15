@@ -1,20 +1,34 @@
 import * as React from 'react';
 import { Check, LayoutTemplate, Plus, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { toast } from '@/components/ui/toast';
 import { BUILT_IN_TEMPLATES } from './templates';
 import { useWorkbenchStore } from './store';
 
 interface TemplatePickerProps {
   open: boolean;
   onClose: () => void;
+  /** When true, focus the save-name field so Save Workbench is one step away. */
+  focusSave?: boolean;
 }
 
-export function TemplatePicker({ open, onClose }: TemplatePickerProps) {
+export function TemplatePicker({ open, onClose, focusSave = false }: TemplatePickerProps) {
   const applyTemplate = useWorkbenchStore((state) => state.applyTemplate);
   const saveTemplate = useWorkbenchStore((state) => state.saveTemplate);
   const deleteTemplate = useWorkbenchStore((state) => state.deleteTemplate);
   const customTemplates = useWorkbenchStore((state) => state.customTemplates);
   const [name, setName] = React.useState('');
+  const nameInputRef = React.useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    if (!focusSave) return;
+    const frame = window.requestAnimationFrame(() => {
+      nameInputRef.current?.focus();
+      nameInputRef.current?.select();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [open, focusSave]);
 
   if (!open) return null;
   const templates = [...BUILT_IN_TEMPLATES, ...customTemplates];
@@ -29,8 +43,8 @@ export function TemplatePicker({ open, onClose }: TemplatePickerProps) {
       >
         <header>
           <div>
-            <p>Layout library</p>
-            <h2 id="workbench-template-title">Workbench templates</h2>
+            <p>Saved workbenches</p>
+            <h2 id="workbench-template-title">Layouts &amp; templates</h2>
           </div>
           <Button type="button" size="icon" variant="ghost" aria-label="Close templates" onClick={onClose}>
             <X />
@@ -53,7 +67,7 @@ export function TemplatePicker({ open, onClose }: TemplatePickerProps) {
                 ))}
               </div>
               <div>
-                <p>{template.builtIn ? 'Built in' : 'Your template'}</p>
+                <p>{template.builtIn ? 'Built in' : 'Your workbench'}</p>
                 <h3>{template.name}</h3>
                 <span>{template.description}</span>
               </div>
@@ -87,19 +101,29 @@ export function TemplatePicker({ open, onClose }: TemplatePickerProps) {
           className="workbench-save-template"
           onSubmit={(event) => {
             event.preventDefault();
-            if (saveTemplate(name)) setName('');
+            const trimmed = name.trim();
+            if (!trimmed) return;
+            if (saveTemplate(trimmed)) {
+              toast.success('Workbench saved', `"${trimmed}" is ready under Templates.`);
+              setName('');
+            }
           }}
         >
           <LayoutTemplate aria-hidden="true" />
-          <label htmlFor="workbench-template-name">Save the current layout</label>
+          <label htmlFor="workbench-template-name">Save this Workbench</label>
           <input
+            ref={nameInputRef}
             id="workbench-template-name"
             value={name}
             onChange={(event) => setName(event.target.value)}
             placeholder="My focused workspace"
             maxLength={120}
+            autoComplete="off"
+            spellCheck={false}
           />
-          <Button type="submit" size="sm" disabled={!name.trim()}><Plus /> Save template</Button>
+          <Button type="submit" size="sm" disabled={!name.trim()}>
+            <Plus /> Save Workbench
+          </Button>
         </form>
       </section>
     </div>

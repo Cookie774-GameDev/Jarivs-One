@@ -34,6 +34,7 @@ import { cn } from '@/lib/utils';
 import { AgentBadge } from '@/features/agents/AgentBadge';
 import { SidebarContextTree } from '@/features/context/SidebarContextTree';
 import { SidebarFilesTree } from '@/features/files/SidebarFilesTree';
+import { openOrFocusWorkbenchWindow } from '@/features/workbench/window';
 import { useWorkbenchStore } from '@/features/workbench/store';
 
 const TERMINAL_MIME = 'application/x-jarvis-terminal';
@@ -66,7 +67,6 @@ export function NavPane() {
   const setRoute = useUIStore((s) => s.setRoute);
   const navSectionsCollapsed = useUIStore((s) => s.navSectionsCollapsed);
   const toggleNavSection = useUIStore((s) => s.toggleNavSection);
-  const applyWorkbenchTemplate = useWorkbenchStore((s) => s.applyTemplate);
 
   const workspaceId = useAuthStore((s) => s.workspaceId) as WorkspaceId | null;
   const localUserId = useAuthStore((s) => s.localUserId);
@@ -221,27 +221,44 @@ export function NavPane() {
             route={route}
             setRoute={setRoute}
           />
-          <RouteItem
+          <NavItem
             navOpen={navOpen}
             label="Workbench"
             icon={<AppWindow className="h-3.5 w-3.5 text-accent-copper" />}
-            target="workbench"
-            route={route}
-            setRoute={setRoute}
+            active={route === 'workbench'}
+            onClick={() => {
+              // ALWAYS show Workbench in this window first so it is never "nowhere to be found".
+              // Then best-effort open/focus a separate native/browser window.
+              setRoute('workbench');
+              void openOrFocusWorkbenchWindow({
+                name: useWorkbenchStore.getState().name,
+              })
+                .then((result) => {
+                  if (result.ok) {
+                    toast.success(
+                      result.focusedExisting ? 'Workbench focused' : 'Workbench ready',
+                      result.focusedExisting
+                        ? 'Brought the Workbench window forward. It is also open in this window.'
+                        : 'Workbench is open here. A separate window was also opened if the desktop shell allowed it.',
+                    );
+                    return;
+                  }
+                  toast.info(
+                    'Workbench open',
+                    result.reason ??
+                      'Showing Workbench in this window (separate window unavailable).',
+                  );
+                })
+                .catch((err: unknown) => {
+                  toast.info(
+                    'Workbench open',
+                    err instanceof Error
+                      ? err.message
+                      : 'Showing Workbench in this window.',
+                  );
+                });
+            }}
           />
-          {navOpen ? (
-            <button
-              type="button"
-              className="mx-2 mb-1 flex h-7 items-center justify-center gap-1.5 rounded-md border border-accent-copper/35 bg-accent-copper/10 px-2 text-metadata font-medium text-accent-copper transition-colors hover:bg-accent-copper/16 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-copper/60"
-              onClick={() => {
-                applyWorkbenchTemplate('web-development');
-                setRoute('workbench');
-              }}
-            >
-              <Sparkles className="h-3.5 w-3.5" />
-              Spawn Workbench
-            </button>
-          ) : null}
           <RouteItem
             navOpen={navOpen}
             label="Terminals"

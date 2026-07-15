@@ -87,15 +87,20 @@ export async function executeIntent(intent: AssistantIntent): Promise<AssistantR
       // ----------------------------------------------------------------
       case 'workbench': {
         const workbench = useWorkbenchStore.getState();
+        const { openOrFocusWorkbenchWindow } = await import('@/features/workbench/window');
+        // Always surface Workbench in the main window so it is never missing.
+        useUIStore.getState().setRoute('workbench');
+        const openWindow = async () =>
+          openOrFocusWorkbenchWindow({ name: useWorkbenchStore.getState().name });
         if (intent.action === 'open') {
-          useUIStore.getState().setRoute('workbench');
+          await openWindow();
           return ok('Opened Workbench.');
         }
         if (intent.action === 'spawn') {
           if (!workbench.applyTemplate(intent.templateId)) {
             return fail(`No Workbench template named '${intent.templateId}'.`);
           }
-          useUIStore.getState().setRoute('workbench');
+          await openWindow();
           return ok(`Spawned the ${intent.templateId.replace(/-/g, ' ')} Workbench.`);
         }
         if (intent.action === 'add-panel') {
@@ -103,12 +108,12 @@ export async function executeIntent(intent: AssistantIntent): Promise<AssistantR
           for (let index = 0; index < count; index += 1) {
             workbench.addPanel(intent.panelKind);
           }
-          useUIStore.getState().setRoute('workbench');
+          await openWindow();
           return ok(`Added ${count} ${intent.panelKind} panel${count === 1 ? '' : 's'} to Workbench.`);
         }
         if (intent.action === 'set-wallpaper') {
           workbench.setWallpaper(intent.wallpaperId);
-          useUIStore.getState().setRoute('workbench');
+          await openWindow();
           return ok(`Changed the Workbench wallpaper to ${intent.wallpaperId.replace(/-/g, ' ')}.`);
         }
         const paused = intent.action === 'pause-wallpaper';

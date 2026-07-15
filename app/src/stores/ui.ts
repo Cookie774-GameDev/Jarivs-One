@@ -42,6 +42,8 @@ export type DoneNotificationSettings = Record<DoneNotificationKey, boolean>;
 export type Route =
   | 'chat'
   | 'workbench'
+  | 'preview'
+  | 'browser'
   | 'terminal'
   | 'kanban'
   | 'schedule'

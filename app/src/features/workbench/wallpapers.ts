@@ -61,6 +61,15 @@ export function validateWallpaperDefinition(
 export function isSafeWallpaperAssetUrl(url: string, kind: 'image' | 'video'): boolean {
   const value = url.trim();
   if (!value) return false;
+  // Full masters played via Tauri asset protocol (convertFileSrc).
+  if (
+    value.startsWith('asset:') ||
+    value.startsWith('http://asset.localhost/') ||
+    value.startsWith('https://asset.localhost/') ||
+    value.includes('asset.localhost')
+  ) {
+    return true;
+  }
   if (value.startsWith('blob:')) return true;
   if (kind === 'image' && /^data:image\/(?:png|jpe?g|webp|gif|avif);base64,/i.test(value)) {
     return true;

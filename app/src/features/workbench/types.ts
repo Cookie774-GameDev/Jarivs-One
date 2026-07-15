@@ -5,6 +5,7 @@ export const WORKBENCH_PANEL_KINDS = [
   'agent',
   'files',
   'editor',
+  'device-preview',
   'kanban',
   'actions',
   'notes',
@@ -27,6 +28,24 @@ export interface WorkbenchPanelSettings {
   agentId?: string;
   note?: string;
   language?: string;
+  /** Absolute project file path for editor panels (live session only). */
+  filePath?: string;
+  /** Whether editor device preview is open. */
+  previewEnabled?: boolean;
+  /** Device preset id for editor preview (iphone-15, ipad-mini, …). */
+  previewDeviceId?: string;
+  /** Portrait or landscape for editor device preview. */
+  previewOrientation?: 'portrait' | 'landscape';
+  /** Show device chrome around the preview. */
+  previewShowFrame?: boolean;
+  /** Preview scale factor (0.25–1) — visual only; CSS viewport stays exact. */
+  previewZoom?: number;
+  /** Linked editor panel id for live device preview tabs. */
+  sourcePanelId?: string;
+  /** Snapshot / live document HTML for device-preview panels. */
+  previewDocument?: string;
+  /** Display name of the source file/language for device-preview chrome. */
+  previewLabel?: string;
 }
 
 export interface WorkbenchPanel {
@@ -88,6 +107,13 @@ export interface WorkbenchTemplate {
 
 export interface WorkbenchDocument {
   version: 1;
+  /** User-facing Workbench name (live session). */
+  name: string;
+  /**
+   * Monotonic revision for multi-window stale-write rejection.
+   * Incremented on every successful persistence write.
+   */
+  revision: number;
   panels: WorkbenchPanel[];
   view: WorkbenchView;
   wallpaper: WorkbenchWallpaperConfig;
@@ -98,10 +124,11 @@ export interface WorkbenchDocument {
 export const DEFAULT_PANEL_SIZE: Record<WorkbenchPanelKind, { width: number; height: number }> = {
   terminal: { width: 520, height: 300 },
   browser: { width: 680, height: 440 },
-  jarvis: { width: 360, height: 460 },
+  jarvis: { width: 420, height: 520 },
   agent: { width: 330, height: 300 },
-  files: { width: 300, height: 440 },
+  files: { width: 320, height: 480 },
   editor: { width: 620, height: 440 },
+  'device-preview': { width: 480, height: 720 },
   kanban: { width: 620, height: 420 },
   actions: { width: 360, height: 360 },
   notes: { width: 360, height: 330 },
@@ -118,7 +145,8 @@ export const PANEL_TITLES: Record<WorkbenchPanelKind, string> = {
   jarvis: 'Jarvis',
   agent: 'Agent',
   files: 'Project files',
-  editor: 'Editor & preview',
+  editor: 'Editor',
+  'device-preview': 'Device preview',
   kanban: 'Kanban',
   actions: 'Jarvis actions',
   notes: 'Notes',
@@ -128,3 +156,8 @@ export const PANEL_TITLES: Record<WorkbenchPanelKind, string> = {
   supabase: 'Supabase',
   activity: 'Activity',
 };
+
+/** Max panels accepted at write time (enforced before save). */
+export const MAX_WORKBENCH_PANELS = 80;
+/** Max custom templates. */
+export const MAX_CUSTOM_TEMPLATES = 24;

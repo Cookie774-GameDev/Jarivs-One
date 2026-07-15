@@ -19,29 +19,81 @@ export function WorkbenchCanvas() {
   const clearSelection = useWorkbenchStore((state) => state.clearSelection);
   const bringToFront = useWorkbenchStore((state) => state.bringToFront);
   const setView = useWorkbenchStore((state) => state.setView);
+  const setCanvasSize = useWorkbenchStore((state) => state.setCanvasSize);
+  const fitView = useWorkbenchStore((state) => state.fitView);
   const undo = useWorkbenchStore((state) => state.undo);
   const redo = useWorkbenchStore((state) => state.redo);
   const panning = React.useRef<null | { clientX: number; clientY: number; x: number; y: number }>(null);
 
-  const fit = React.useCallback(() => {
-    const root = rootRef.current;
-    if (!root || panels.length === 0) {
-      setView({ x: 24, y: 24, zoom: 0.8 });
-      return;
+  // Keep store mutators in refs so per-panel handlers stay identity-stable
+  // across canvas re-renders (prevents Files/Jarvis effect thrash).
+  const updatePanelRef = React.useRef(updatePanel);
+  const removePanelRef = React.useRef(removePanel);
+  const duplicatePanelRef = React.useRef(duplicatePanel);
+  const selectPanelRef = React.useRef(selectPanel);
+  const bringToFrontRef = React.useRef(bringToFront);
+  updatePanelRef.current = updatePanel;
+  removePanelRef.current = removePanel;
+  duplicatePanelRef.current = duplicatePanel;
+  selectPanelRef.current = selectPanel;
+  bringToFrontRef.current = bringToFront;
+
+  const handlersById = React.useRef(
+    new Map<
+      string,
+      {
+        onSelect: (additive: boolean) => void;
+        onBringToFront: () => void;
+        onUpdate: (patch: Parameters<typeof updatePanel>[1]) => void;
+        onRuntimeUpdate: (patch: Parameters<typeof updatePanel>[1]) => void;
+        onDuplicate: () => void;
+        onClose: () => void;
+      }
+    >(),
+  );
+
+  const getHandlers = React.useCallback((id: string) => {
+    let handlers = handlersById.current.get(id);
+    if (!handlers) {
+      handlers = {
+        onSelect: (additive: boolean) => selectPanelRef.current(id, additive),
+        onBringToFront: () => bringToFrontRef.current(id),
+        onUpdate: (patch) => updatePanelRef.current(id, patch),
+        onRuntimeUpdate: (patch) =>
+          updatePanelRef.current(id, patch, { recordHistory: false }),
+        onDuplicate: () => duplicatePanelRef.current(id),
+        onClose: () => removePanelRef.current(id),
+      };
+      handlersById.current.set(id, handlers);
     }
-    const minX = Math.min(...panels.map((panel) => panel.x));
-    const minY = Math.min(...panels.map((panel) => panel.y));
-    const maxX = Math.max(...panels.map((panel) => panel.x + panel.width));
-    const maxY = Math.max(...panels.map((panel) => panel.y + (panel.minimized ? 42 : panel.height)));
-    const width = Math.max(1, maxX - minX);
-    const height = Math.max(1, maxY - minY);
-    const zoom = Math.max(0.25, Math.min(1.1, (root.clientWidth - 80) / width, (root.clientHeight - 80) / height));
-    setView({
-      zoom,
-      x: (root.clientWidth - width * zoom) / 2 - minX * zoom,
-      y: (root.clientHeight - height * zoom) / 2 - minY * zoom,
-    });
-  }, [panels, setView]);
+    return handlers;
+  }, []);
+
+  React.useEffect(() => {
+    const live = new Set(panels.map((panel) => panel.id));
+    for (const id of handlersById.current.keys()) {
+      if (!live.has(id)) handlersById.current.delete(id);
+    }
+  }, [panels]);
+
+  // Keep store canvas size in sync so the home/recenter button can fit without
+  // rearranging nodes.
+  React.useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const publish = () => {
+      setCanvasSize({ width: root.clientWidth, height: root.clientHeight });
+    };
+    publish();
+    const ro =
+      typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => publish()) : null;
+    ro?.observe(root);
+    window.addEventListener('resize', publish);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener('resize', publish);
+    };
+  }, [setCanvasSize]);
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement;
@@ -63,7 +115,7 @@ export function WorkbenchCanvas() {
     }
     if (event.key === '0') {
       event.preventDefault();
-      fit();
+      fitView();
       return;
     }
     if (event.key === 'Delete' || event.key === 'Backspace') {
@@ -115,6 +167,12 @@ export function WorkbenchCanvas() {
       onKeyDown={onKeyDown}
       onPointerDown={onPointerDown}
       onWheel={(event) => {
+        // Never pan/zoom the canvas when the user is scrolling inside a panel
+        // (Jarvis chat history, files tree, embedded pages, etc.).
+        const target = event.target as HTMLElement | null;
+        if (target?.closest('.workbench-panel-body, .workbench-panel-header input, .workbench-panel-header textarea, .workbench-panel-header select')) {
+          return;
+        }
         event.preventDefault();
         if (event.ctrlKey || event.metaKey) {
           setView({ zoom: view.zoom - event.deltaY * 0.0012 });
@@ -150,22 +208,23 @@ export function WorkbenchCanvas() {
         className="workbench-stage"
         style={{ transform: `translate3d(${view.x}px, ${view.y}px, 0) scale(${view.zoom})` }}
       >
-        {panels.map((panel) => (
-          <WorkbenchPanel
-            key={panel.id}
-            panel={panel}
-            selected={selectedIds.includes(panel.id)}
-            zoom={view.zoom}
-            onSelect={(additive) => selectPanel(panel.id, additive)}
-            onBringToFront={() => bringToFront(panel.id)}
-            onUpdate={(patch) => updatePanel(panel.id, patch)}
-            onRuntimeUpdate={(patch) =>
-              updatePanel(panel.id, patch, { recordHistory: false })
-            }
-            onDuplicate={() => duplicatePanel(panel.id)}
-            onClose={() => removePanel(panel.id)}
-          />
-        ))}
+        {panels.map((panel) => {
+          const handlers = getHandlers(panel.id);
+          return (
+            <WorkbenchPanel
+              key={panel.id}
+              panel={panel}
+              selected={selectedIds.includes(panel.id)}
+              zoom={view.zoom}
+              onSelect={handlers.onSelect}
+              onBringToFront={handlers.onBringToFront}
+              onUpdate={handlers.onUpdate}
+              onRuntimeUpdate={handlers.onRuntimeUpdate}
+              onDuplicate={handlers.onDuplicate}
+              onClose={handlers.onClose}
+            />
+          );
+        })}
       </div>
       <div className="workbench-minimap" aria-hidden="true">
         {panels.slice(0, 24).map((panel) => (

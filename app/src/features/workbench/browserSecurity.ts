@@ -1,7 +1,37 @@
 export const EMBEDDED_BROWSER_SANDBOX =
   'allow-forms allow-modals allow-popups allow-scripts';
 
+/** Loopback pages often need same-origin for local apps; still no Tauri bridge. */
+export const LOOPBACK_BROWSER_SANDBOX =
+  'allow-forms allow-modals allow-popups allow-scripts allow-same-origin';
+
 const FORBIDDEN_SCHEME = /^(?:javascript|data|file|tauri|asset|chrome|about|vbscript):/i;
+
+/** Hosts that reliably refuse iframe embedding (XFO / CSP frame-ancestors). */
+const KNOWN_FRAME_BLOCKED_HOSTS = [
+  'youtube.com',
+  'www.youtube.com',
+  'm.youtube.com',
+  'youtu.be',
+  'google.com',
+  'www.google.com',
+  'accounts.google.com',
+  'facebook.com',
+  'www.facebook.com',
+  'twitter.com',
+  'x.com',
+  'www.x.com',
+  'instagram.com',
+  'www.instagram.com',
+  'github.com',
+  'www.github.com',
+  'reddit.com',
+  'www.reddit.com',
+  'linkedin.com',
+  'www.linkedin.com',
+  'netflix.com',
+  'www.netflix.com',
+];
 
 export function normalizeBrowserUrl(input: string): string {
   const raw = input.trim();
@@ -24,17 +54,82 @@ export function normalizeBrowserUrl(input: string): string {
   return url.toString();
 }
 
+export function isLoopbackHost(hostname: string): boolean {
+  return /^(localhost|127\.0\.0\.1|\[::1\])$/i.test(hostname);
+}
+
+export function isKnownFrameBlockedHost(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  return KNOWN_FRAME_BLOCKED_HOSTS.some(
+    (blocked) => host === blocked || host.endsWith(`.${blocked}`),
+  );
+}
+
+/**
+ * Convert watch URLs to the official embed endpoint when possible so the
+ * panel can show a real player instead of "refused to connect".
+ */
+export function toEmbeddableUrl(input: string): { src: string; usedEmbed: boolean } {
+  const normalized = normalizeBrowserUrl(input);
+  const url = new URL(normalized);
+  const host = url.hostname.toLowerCase();
+
+  if (host === 'youtu.be') {
+    const id = url.pathname.replace(/^\//, '').split('/')[0];
+    if (id) {
+      return {
+        src: `https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}`,
+        usedEmbed: true,
+      };
+    }
+  }
+
+  if (host === 'youtube.com' || host === 'www.youtube.com' || host === 'm.youtube.com') {
+    const id = url.searchParams.get('v');
+    if (id) {
+      return {
+        src: `https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}`,
+        usedEmbed: true,
+      };
+    }
+    const shorts = url.pathname.match(/^\/shorts\/([^/]+)/);
+    if (shorts?.[1]) {
+      return {
+        src: `https://www.youtube-nocookie.com/embed/${encodeURIComponent(shorts[1])}`,
+        usedEmbed: true,
+      };
+    }
+    // Channel/home pages cannot be embedded — caller should open externally.
+  }
+
+  return { src: normalized, usedEmbed: false };
+}
+
 export function browserFramePolicy(input: string): {
   src: string;
   sandbox: string;
   referrerPolicy: 'no-referrer';
   allow: string;
+  frameBlocked: boolean;
+  usedEmbed: boolean;
+  externalUrl: string;
 } {
+  const externalUrl = normalizeBrowserUrl(input);
+  const { src, usedEmbed } = toEmbeddableUrl(input);
+  const frameHost = new URL(src).hostname;
+  const originalHost = new URL(externalUrl).hostname;
+  const loopback = isLoopbackHost(frameHost);
+  const frameBlocked = !usedEmbed && isKnownFrameBlockedHost(originalHost);
+
   return {
-    src: normalizeBrowserUrl(input),
-    sandbox: EMBEDDED_BROWSER_SANDBOX,
+    src,
+    sandbox: loopback ? LOOPBACK_BROWSER_SANDBOX : EMBEDDED_BROWSER_SANDBOX,
     referrerPolicy: 'no-referrer',
-    allow:
-      "clipboard-read 'none'; clipboard-write 'none'; camera 'none'; microphone 'none'; geolocation 'none'",
+    allow: usedEmbed
+      ? 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture'
+      : "clipboard-read 'none'; clipboard-write 'none'; camera 'none'; microphone 'none'; geolocation 'none'",
+    frameBlocked,
+    usedEmbed,
+    externalUrl,
   };
 }
