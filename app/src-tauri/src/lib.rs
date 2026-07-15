@@ -1,40 +1,40 @@
-//! Jarvis desktop shell – Tauri 2 Rust core.
+//! Jarvis desktop shell ΓÇô Tauri 2 Rust core.
 //!
-//! Architecture (see docs/02-system-architecture.md §2.1):
+//! Architecture (see docs/02-system-architecture.md ┬º2.1):
 //!
 //! ```text
-//!  ┌───────────────────────── Tauri main (this crate) ─────────────────────────┐
-//!  │   • Window + tray + native notifications                                  │
-//!  │   • Global hotkeys, deep links, mic permissions                           │
-//!  │   • IPC broker between WebView, Node runtime, and Python voice sidecar    │
-//!  └─────────────────────────────────────────────────────────────────────────-─┘
-//!         │                              │                              │
-//!  ┌──────▼───────┐                ┌─────▼──────┐                ┌──────▼──────┐
-//!  │  WebView     │                │  Node      │                │  Python     │
-//!  │  (Vite + R)  │  Tauri cmd     │  runtime   │  stdin/stdout  │  voice      │
-//!  │              │ ◀─────────────▶│  (Mastra)  │ ◀────────────▶│  (Pipecat)  │
-//!  └──────────────┘                └────────────┘                └─────────────┘
+//!  ΓöîΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ Tauri main (this crate) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÉ
+//!  Γöé   ΓÇó Window + tray + native notifications                                  Γöé
+//!  Γöé   ΓÇó Global hotkeys, deep links, mic permissions                           Γöé
+//!  Γöé   ΓÇó IPC broker between WebView, Node runtime, and Python voice sidecar    Γöé
+//!  ΓööΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ-ΓöÇΓöÿ
+//!         Γöé                              Γöé                              Γöé
+//!  ΓöîΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓû╝ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÉ                ΓöîΓöÇΓöÇΓöÇΓöÇΓöÇΓû╝ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÉ                ΓöîΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓû╝ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÉ
+//!  Γöé  WebView     Γöé                Γöé  Node      Γöé                Γöé  Python     Γöé
+//!  Γöé  (Vite + R)  Γöé  Tauri cmd     Γöé  runtime   Γöé  stdin/stdout  Γöé  voice      Γöé
+//!  Γöé              Γöé ΓùÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓû╢Γöé  (Mastra)  Γöé ΓùÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓû╢Γöé  (Pipecat)  Γöé
+//!  ΓööΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÿ                ΓööΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÿ                ΓööΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÿ
 //! ```
 //!
 //! ## V1 plugins registered
-//! - `tauri-plugin-notification`  – OS native banners (todo reminders, errors)
-//! - `tauri-plugin-dialog`        – open/save/message dialogs
-//! - `tauri-plugin-shell`         – `shell.open` for opening URLs in the OS browser
-//! - `tauri-plugin-os`            – platform/arch detection for the runtime
-//! - `tauri-plugin-http`          – native HTTP client used by the Ollama bridge
+//! - `tauri-plugin-notification`  ΓÇô OS native banners (todo reminders, errors)
+//! - `tauri-plugin-dialog`        ΓÇô open/save/message dialogs
+//! - `tauri-plugin-shell`         ΓÇô `shell.open` for opening URLs in the OS browser
+//! - `tauri-plugin-os`            ΓÇô platform/arch detection for the runtime
+//! - `tauri-plugin-http`          ΓÇô native HTTP client used by the Ollama bridge
 //!                                  to bypass `tauri://localhost` CORS that
 //!                                  blocks `fetch` to `http://localhost:11434`
 //!                                  in packaged builds.
-//! - `tauri-plugin-process`       – relaunch after updater installation
-//! - `tauri-plugin-updater`       – signed auto-update channel
+//! - `tauri-plugin-process`       ΓÇô relaunch after updater installation
+//! - `tauri-plugin-updater`       ΓÇô signed auto-update channel
 //!
 //! ## Plugins to wire up as features land
-//! - `tauri-plugin-global-shortcut` – cmd-space style global hotkeys
-//! - `tauri-plugin-fs`              – scoped reads/writes to ~/.jarvis
-//! - `tauri-plugin-store`           – persistent JSON preferences
-//! - `tauri-plugin-window-state`    – remember window size + position
-//! - `tauri-plugin-single-instance` – one Jarvis per user account
-//! - `tauri-plugin-deep-link`       – `jarvis://` URL handler
+//! - `tauri-plugin-global-shortcut` ΓÇô cmd-space style global hotkeys
+//! - `tauri-plugin-fs`              ΓÇô scoped reads/writes to ~/.jarvis
+//! - `tauri-plugin-store`           ΓÇô persistent JSON preferences
+//! - `tauri-plugin-window-state`    ΓÇô remember window size + position
+//! - `tauri-plugin-single-instance` ΓÇô one Jarvis per user account
+//! - `tauri-plugin-deep-link`       ΓÇô `jarvis://` URL handler
 //!
 //! New commands should be small and pure; heavy logic belongs in the Node
 //! runtime sidecar so we keep the Rust core boring and stable.
@@ -54,18 +54,13 @@ mod kokoro;
 mod launcher;
 mod local_ai;
 mod ollama_http;
-<<<<<<< HEAD
 mod pets;
 mod terminal;
 mod terminal_snapshot;
-=======
-mod branding;
-mod agent_coordination;
-mod static_server;
-mod preview;
 mod browser_process;
+mod preview;
+mod static_server;
 mod wallpaper_master;
->>>>>>> 4c198fe (WIP: preserve complete Grok Workbench implementation)
 
 /// Sanity-check command. The JS bridge can call this during startup to verify
 /// invoke() round-trips. Wire it in as needed; it returns a friendly string.
@@ -135,7 +130,7 @@ fn show_main_window(app: &tauri::AppHandle, reason: &'static str) {
         if let Err(err) = window.set_focus() {
             eprintln!("[lifecycle] failed to focus main window ({reason}): {err}");
         }
-        // WebView2 often swaps HWND during show — re-apply after the surface is back.
+        // WebView2 often swaps HWND during show ΓÇö re-apply after the surface is back.
         branding::apply_window_icon(&window);
         if let Err(err) = window.emit("jarvis:reopen", ReopenPayload { reason }) {
             eprintln!("[lifecycle] failed to emit reopen event ({reason}): {err}");
@@ -412,7 +407,7 @@ pub fn run() {
             ollama_http::ollama_list_models,
             ollama_http::ollama_pull_model,
             ollama_http::ollama_chat_stream,
-            // Preview Studio + Vibe Browser
+            // Preview Studio + Vibe Browser + wallpaper master
             static_server::preview_start_static_server,
             static_server::preview_stop_static_server,
             static_server::preview_static_server_status,

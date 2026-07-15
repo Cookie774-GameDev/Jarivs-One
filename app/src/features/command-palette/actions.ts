@@ -1,10 +1,12 @@
 import { create } from 'zustand';
 import {
+  AppWindow,
   CalendarDays,
   CheckSquare,
   Code,
   FileText,
   History,
+  Grid2X2Plus,
   LayoutGrid,
   ListPlus,
   type LucideIcon,
@@ -31,6 +33,7 @@ import { useUIStore } from '@/stores/ui';
 import { useAgentStore } from '@/stores/agents';
 import { toast } from '@/components/ui/toast';
 import type { PageId } from './store';
+import { useWorkbenchStore } from '@/features/workbench/store';
 
 export type ActionId = string;
 
@@ -118,8 +121,6 @@ const STATIC_ACTIONS: Action[] = [
     },
   },
   {
-<<<<<<< HEAD
-=======
     id: 'open-workbench',
     label: 'Open Workbench',
     description: 'Open Workbench in-app and try a separate window',
@@ -175,7 +176,6 @@ const STATIC_ACTIONS: Action[] = [
     },
   },
   {
->>>>>>> 4c198fe (WIP: preserve complete Grok Workbench implementation)
     id: 'switch-agent',
     label: 'Switch agent...',
     description: 'Change the active agent for this chat',
@@ -269,7 +269,7 @@ const STATIC_ACTIONS: Action[] = [
       closePalette();
     },
   },
-  // V2 — Schedule
+  // V2 ΓÇö Schedule
   {
     id: 'open-schedule',
     label: 'Schedule',
@@ -284,7 +284,7 @@ const STATIC_ACTIONS: Action[] = [
     },
   },
 
-  // V2 — Quick Launch
+  // V2 ΓÇö Quick Launch
   {
     id: 'open-launcher',
     label: 'Quick Launch',
@@ -299,7 +299,7 @@ const STATIC_ACTIONS: Action[] = [
     },
   },
 
-  // V2 — Fullscreen workspace toggle
+  // V2 ΓÇö Fullscreen workspace toggle
   {
     id: 'toggle-fullscreen',
     label: 'Toggle fullscreen workspace',
@@ -314,7 +314,7 @@ const STATIC_ACTIONS: Action[] = [
     },
   },
 
-  // V2 — Ambient toggle
+  // V2 ΓÇö Ambient toggle
   {
     id: 'toggle-ambient',
     label: 'Ambient mode',
