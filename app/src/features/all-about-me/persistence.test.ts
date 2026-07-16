@@ -14,6 +14,17 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
   };
 }
 
+function deferredValue<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve: ((value: T) => void) | undefined;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return {
+    promise,
+    resolve: (value) => resolve?.(value),
+  };
+}
+
 describe('All About Me account persistence coordinator', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -256,6 +267,93 @@ describe('All About Me account persistence coordinator', () => {
     expect(migratedToAccountB).toBe(false);
     expect(JSON.parse(claimedLegacy ?? '{}').state?.accountScope).toBe('account-a');
     expect(localStorage.getItem('jarvis-all-about-me')).not.toBeNull();
+  });
+
+  it('claims legacy before canonical load and tracks the activation through teardown', async () => {
+    const legacyMarkdown = '# All About Me\n\nLegacy account A profile';
+    localStorage.setItem(
+      'jarvis-all-about-me',
+      JSON.stringify({
+        state: { markdown: legacyMarkdown },
+        version: 1,
+      }),
+    );
+    const accountALoad = deferredValue<{
+      path: string;
+      markdown: string;
+      recovered: boolean;
+      found: boolean;
+    }>();
+    const accountAMigration = deferred();
+    const load = vi.fn((accountId: string) =>
+      accountId === 'account-a'
+        ? accountALoad.promise
+        : Promise.resolve({
+            path: `${accountId}/all-about-me.md`,
+            markdown: '',
+            recovered: false,
+            found: false,
+          }),
+    );
+    const save = vi.fn((accountId: string) =>
+      accountId === 'account-a' ? accountAMigration.promise : Promise.resolve(),
+    );
+
+    const stopAccountA = startAllAboutMePersistence({
+      getAccountId: () => 'account-a',
+      subscribeAccount: () => () => undefined,
+      load,
+      save,
+    });
+    const claimedBeforeLoad = JSON.parse(localStorage.getItem('jarvis-all-about-me') ?? '{}').state
+      ?.accountScope;
+
+    let accountAStopSettled = false;
+    const stoppingAccountA = stopAccountA().then(() => {
+      accountAStopSettled = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const stopSettledBeforeLoad = accountAStopSettled;
+
+    const stopAccountB = startAllAboutMePersistence({
+      getAccountId: () => 'account-b',
+      subscribeAccount: () => () => undefined,
+      load,
+      save,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const accountBMigratedBeforeALoad = save.mock.calls.some(
+      ([accountId]) => accountId === 'account-b',
+    );
+    const accountBAppliedLegacy = useAllAboutMeStore.getState().markdown === legacyMarkdown;
+
+    accountALoad.resolve({
+      path: 'account-a/all-about-me.md',
+      markdown: '',
+      recovered: false,
+      found: false,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const accountAMigrationQueued = save.mock.calls.some(
+      ([accountId]) => accountId === 'account-a',
+    );
+    const stopSettledBeforeMigration = accountAStopSettled;
+
+    accountAMigration.resolve();
+    await stoppingAccountA;
+    await stopAccountB();
+    const retainedLegacy = JSON.parse(localStorage.getItem('jarvis-all-about-me') ?? '{}').state;
+
+    expect(claimedBeforeLoad).toBe('account-a');
+    expect(stopSettledBeforeLoad).toBe(false);
+    expect(accountBMigratedBeforeALoad).toBe(false);
+    expect(accountBAppliedLegacy).toBe(false);
+    expect(accountAMigrationQueued).toBe(true);
+    expect(stopSettledBeforeMigration).toBe(false);
+    expect(retainedLegacy).toMatchObject({
+      accountScope: 'account-a',
+      markdown: legacyMarkdown,
+    });
   });
 
   it('quarantines the profile synchronously when the account becomes blank', async () => {

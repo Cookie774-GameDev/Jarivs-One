@@ -107,6 +107,7 @@ export function startAllAboutMePersistence(
       }
     | undefined;
   let writeQueue: Promise<void> = Promise.resolve();
+  const activationPromises = new Set<Promise<void>>();
 
   useAllAboutMeStore.getState().setAccountScope(activeAccount);
 
@@ -139,24 +140,27 @@ export function startAllAboutMePersistence(
     return pending;
   };
 
-  const loadIntoStore = async (accountId: string, resetFirst: boolean, generation: number) => {
+  const loadIntoStore = async (
+    accountId: string,
+    resetFirst: boolean,
+    generation: number,
+    legacy: ReturnType<typeof legacyProfile>,
+  ) => {
     try {
       const result = await load(accountId);
-      if (!isCurrent(accountId, generation)) return;
-      if (resetFirst) applyToStore(() => useAllAboutMeStore.getState().resetProfile());
-      const legacy = legacyProfile(accountId);
+      const current = isCurrent(accountId, generation);
+      if (current && resetFirst) {
+        applyToStore(() => useAllAboutMeStore.getState().resetProfile());
+      }
       if (result.found) {
+        if (!current) return;
         applyToStore(() => useAllAboutMeStore.getState().setMarkdown(result.markdown));
-        if (legacy?.matched && isCurrent(accountId, generation)) {
+        if (legacy?.matched) {
           safeLocalStorage.removeItem(LEGACY_STORAGE_KEY);
         }
       } else if (legacy?.matched && legacy.markdown) {
         // Migrate before deleting the only previous durable copy. A failed
         // write intentionally leaves localStorage untouched for a later retry.
-        if (!legacy.scope && !claimLegacyProfile(accountId)) {
-          report(bindings, new Error('Unable to claim legacy All About Me profile migration.'));
-          return;
-        }
         const saved = await persist(accountId, legacy.markdown);
         if (!saved || !isCurrent(accountId, generation)) return;
         applyToStore(() => useAllAboutMeStore.getState().setMarkdown(legacy.markdown));
@@ -167,6 +171,33 @@ export function startAllAboutMePersistence(
     } catch (error) {
       report(bindings, error);
     }
+  };
+
+  const startActivation = (
+    accountId: string,
+    resetFirst: boolean,
+    generation: number,
+    ready: Promise<unknown> = Promise.resolve(),
+  ): Promise<void> => {
+    let legacy = legacyProfile(accountId);
+    if (legacy?.matched && !legacy.scope) {
+      if (!claimLegacyProfile(accountId)) {
+        report(bindings, new Error('Unable to claim legacy All About Me profile migration.'));
+        legacy = null;
+      } else {
+        legacy = legacyProfile(accountId);
+      }
+    }
+    const operation = (async () => {
+      await ready;
+      await loadIntoStore(accountId, resetFirst, generation, legacy);
+    })();
+    activationPromises.add(operation);
+    void operation.then(
+      () => activationPromises.delete(operation),
+      () => activationPromises.delete(operation),
+    );
+    return operation;
   };
 
   const unsubscribeStore = useAllAboutMeStore.subscribe((state, previous) => {
@@ -205,15 +236,11 @@ export function startAllAboutMePersistence(
     }
     activeAccount = next;
     applyToStore(() => useAllAboutMeStore.getState().setAccountScope(next));
-    void (async () => {
-      await pendingFlush;
-      if (!isCurrent(next, generation)) return;
-      await loadIntoStore(next, true, generation);
-    })();
+    void startActivation(next, true, generation, pendingFlush);
   };
 
   const unsubscribeAccount = bindings.subscribeAccount(switchAccount);
-  void loadIntoStore(activeAccount, false, activation);
+  void startActivation(activeAccount, false, activation);
 
   return async () => {
     disposed = true;
@@ -225,6 +252,7 @@ export function startAllAboutMePersistence(
       persist(timer.accountId, timer.markdown);
       timer = undefined;
     }
+    await Promise.allSettled([...activationPromises]);
     await writeQueue;
   };
 }
