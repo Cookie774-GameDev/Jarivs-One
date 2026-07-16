@@ -909,72 +909,181 @@ git commit -m "feat(jarvis): add shared kernel contracts"
 - Modify: `app/src/lib/ai/context.ts`
 - Modify: `app/src/lib/ai/context.test.ts`
 
-**Contract:**
+**Interfaces:**
+
+- Consumes: `FsReadError` from `app/src/lib/fs.ts`.
+- Produces: one two-stage path-and-content admission policy shared by Context
+  scanning, connected files, and explicit attachments.
+- Preserves: ordinary non-secret text/media behavior; an explicit attachment
+  does not bypass policy and Task 4 adds no consent UI.
+
+**Exact contract:**
 
 ```ts
+import type { FsReadError } from '@/lib/fs';
+
+export type JarvisSourceChannel =
+  | 'automatic_scan'
+  | 'explicit_attachment'
+  | 'connected_file'
+  | 'artifact_preview'
+  | 'sync';
+
+export type JarvisSourcePolicyInput = {
+  path: string;
+  root?: string | null;
+  sizeBytes?: number;
+  channel: JarvisSourceChannel;
+  kind: 'directory' | 'text' | 'media_metadata' | 'binary' | 'unknown';
+  contentSample?: string;
+  defaultSensitivity?: 'public' | 'private';
+};
+
 export type JarvisSourceDecision =
-  | { allowed: true; reason: 'allowed_text_source' }
+  | {
+      allowed: true;
+      reason: 'allowed_text_source';
+      sensitivity: 'public' | 'private';
+      safeSummary: string;
+    }
   | {
       allowed: false;
       reason:
         | 'secret_filename'
+        | 'secret_content'
         | 'credential_path'
         | 'binary'
         | 'too_large'
         | 'outside_allowed_root'
         | 'symlink_escape'
         | 'unsupported';
+      sensitivity: 'restricted' | 'secret';
+      safeSummary: string;
     };
 
 export function classifyJarvisSource(input: JarvisSourcePolicyInput): JarvisSourceDecision;
+
+export function classifyJarvisReadError(
+  error: FsReadError,
+): Extract<JarvisSourceDecision, { allowed: false }>;
 ```
 
-The denylist includes `.env`, `.env.*`, key/certificate formats, credential
-stores, auth/cookie/browser-storage files, common cloud credentials, and
-repository-specific secret paths. It is applied before file reads, extraction,
-indexing, retrieval, prompt compilation, artifact preview, or sync.
+- Run `classifyJarvisSource()` before every read. A denied path must never
+  reach `readTextFileSample()`, provider prompt construction, indexing,
+  artifact preview, or sync.
+- For an allowed text path, run the classifier again with exactly the sampled
+  content before that sample enters a provider prompt or Context tree.
+- `safeSummary` uses only a basename, safe category, and reason. It never
+  includes a rejected match, token fragment, credential value, raw body, or
+  private absolute path.
+- Local project and attachment inputs default to `sensitivity: 'private'`.
+  `public` is returned only when the caller explicitly supplies
+  `defaultSensitivity: 'public'`.
+- `FsReadError.code === 'outside_root'` maps to
+  `outside_allowed_root`; a safe native `symlink_escape` category maps to
+  `symlink_escape`; `too_large`, `not_utf8`, and `unsupported_type` map to
+  `too_large`, `binary`, and `unsupported`.
 
-**Step 1: Add failing security tests**
+Path admission denies case-insensitively after slash normalization:
 
-Add cases for `.env`, `.env.local`, nested `.env.production`, `.pem`, `.key`,
-`.p12`, `.pfx`, credentials files, cookies, browser storage, symlink escape,
-case variants, and safe similarly named files.
+- `.env` and every `.env.*` variant, `.npmrc`, and `.pypirc`;
+- `.pem`, `.key`, `.p12`, `.pfx`, private-key exports, `id_rsa`, and
+  `id_ed25519`;
+- AWS `.aws/credentials`, GCP/gcloud credential JSON, Azure credential/token
+  files, provider credential directories, `.config/gh/hosts.yml`,
+  `.docker/config.json`, and `.kube/config`;
+- recovery-code exports, keychain exports, browser cookie databases, auth
+  stores, and paths with explicit credential/secret directory semantics.
 
-**Step 2: Observe failure**
+Content admission returns `secret_content` for:
+
+- a PEM private-key header;
+- non-empty `API_KEY`, `ACCESS_TOKEN`, `REFRESH_TOKEN`, `CLIENT_SECRET`,
+  `PASSWORD`, or `AWS_SECRET_ACCESS_KEY` assignments;
+- credential-shaped values using recognizable prefixes such as
+  `github_pat_`, `ghp_`, `sk-`, or `AIza`;
+- recovery-code or credential-export records.
+
+Safe near-matches such as `src/environment.ts`, `docs/cookie-policy.md`, and
+`src/keynote.ts` remain allowed.
+
+- [ ] **Step 1: Write the failing policy and integration tests**
+
+In `sourcePolicy.test.ts`, table-test every path class above with Windows and
+POSIX separators, safe near-matches, content-only denial under
+`C:\repo\notes.txt`, sensitivity output, and proof that `safeSummary` excludes
+the synthetic secret.
+
+In `tree.test.ts`, prove `.env.local`, `.npmrc`, cloud credentials, and a
+normal `.txt` sample containing a secret never appear in the generated tree or
+provider bundle. Assert `readTextFileSample()` is never called for path-denied
+fixtures and `listDirectory()` is never called for denied `.aws`, `.azure`, or
+gcloud credential child directories.
+
+In `context.test.ts`, prove connected and explicit files share the policy,
+explicit attachment does not bypass it, content-denied samples are absent from
+the returned block, and ordinary text/media behavior remains available.
+
+- [ ] **Step 2: Run the focused tests and verify RED**
 
 ```powershell
-npm --prefix app test -- src/lib/jarvis/sourcePolicy.test.ts src/features/context/tree.test.ts
+npm --prefix app test -- src/lib/jarvis/sourcePolicy.test.ts src/features/context/tree.test.ts src/lib/ai/context.test.ts
 ```
 
-Expected: existing `.env*` candidate tests fail against the new policy.
+Expected: FAIL because the new module cannot be resolved and the existing
+Context scan still admits `.env*` candidates.
 
-**Step 3: Implement**
+- [ ] **Step 3: Implement the exact two-stage source policy**
 
-Make `tree.ts` and every explicit-attachment read in `ai/context.ts` delegate
-to `classifyJarvisSource()` before opening the source. Remove the current
-`.env*` allow behavior. Preserve supported ordinary source types.
+Implement `sourcePolicy.ts` to the exact contract above. Normalize separators
+and case for path classification, reject secret content without returning the
+match, and map filesystem read failures through `classifyJarvisReadError()`.
 
-**Step 4: Verify**
+- [ ] **Step 4: Integrate both current ingestion paths**
+
+In `tree.ts`, remove the current
+`basename(entry.path).startsWith('.env')` candidate allowance. Classify the
+selected root before its first listing, every directory before recursion, and
+every file before media metadata creation or text reads. Never traverse a
+denied credential directory. Classify each successful text sample again before
+adding it to `ScannedContextFile[]`. Omit rejected sources without copying
+their contents into errors, progress strings, trees, or provider prompts.
+
+In `ai/context.ts`, make connected-file and explicit-attachment reads use the
+same pre-read and post-read policy. A denial contributes only its
+`safeSummary`; the existing `--- ${path} ---` formatting must not reveal a
+rejected secret path or body.
+
+- [ ] **Step 5: Verify the implementation**
 
 ```powershell
 npm --prefix app test -- src/lib/jarvis/sourcePolicy.test.ts src/features/context/tree.test.ts src/lib/ai/context.test.ts
 npm run typecheck
 ```
 
-**Step 5: Commit**
+- [ ] **Step 6: Stage literal files, inspect the cache, and commit**
 
 ```powershell
-git add app/src/lib/jarvis/sourcePolicy.ts app/src/lib/jarvis/sourcePolicy.test.ts app/src/features/context/tree.ts app/src/features/context/tree.test.ts app/src/lib/ai/context.ts app/src/lib/ai/context.test.ts
+git add -- 'app/src/lib/jarvis/sourcePolicy.ts' 'app/src/lib/jarvis/sourcePolicy.test.ts' 'app/src/features/context/tree.ts' 'app/src/features/context/tree.test.ts' 'app/src/lib/ai/context.ts' 'app/src/lib/ai/context.test.ts'
+git diff --cached --name-only
 git diff --cached --check
-git commit -m "fix(context): exclude secrets before ingestion"
+git diff --cached -- 'app/src/lib/jarvis/sourcePolicy.ts' 'app/src/lib/jarvis/sourcePolicy.test.ts' 'app/src/features/context/tree.ts' 'app/src/features/context/tree.test.ts' 'app/src/lib/ai/context.ts' 'app/src/lib/ai/context.test.ts'
+git diff --cached --name-only -- 'install/install.ps1'
+git commit -m "fix(context): exclude secret paths and content"
+git show --check --stat HEAD
+git diff-tree --no-commit-id --name-only -r HEAD
+git log --oneline origin/main..HEAD -- 'install/install.ps1'
 ```
+
+Expected staged and committed names: exactly the six files above. The
+installer queries and whitespace checks produce no output.
 
 ## Task 5: Client Entitlement Interlock
 
 **Files:**
 
 - Modify: `app/src/lib/entitlements.ts`
-- Modify: `app/src/lib/entitlements.test.ts`
+- Create: `app/src/lib/entitlements.test.ts`
 - Modify: `app/src/lib/admin.ts`
 - Create: `app/src/lib/admin.test.ts`
 - Modify: `app/src/components/layout/TopBar.tsx`
@@ -983,52 +1092,233 @@ git commit -m "fix(context): exclude secrets before ingestion"
 - Modify: `app/src/features/call/CallButton.tsx`
 - Modify: `app/src/features/call/CallModal.tsx`
 - Modify: `app/src/features/settings/sections/Ambient.tsx`
+- Modify: `app/src/features/settings/sections/Admin.tsx`
 
-**Behavior:**
+**Interfaces:**
 
-- Remove the hard-coded email-derived admin path.
-- Preserve developer/test access only through existing explicit test fixtures
-  or development configuration that cannot ship enabled.
-- Make entitlement resolution depend on typed server/test state, never email
-  spelling or local storage alone.
-- Return entitlement provenance and verification time from `admin.ts`.
-- Make every direct caller consume the verified snapshot rather than
-  `isAdminIdentity`.
-- Keep current plan behavior for legitimate entitlement inputs.
+- Consumes: the exact `JarvisEntitlementSnapshot` exported by Task 3.
+- Produces: a typed entitlement snapshot API plus a boolean
+  `useAppAdmin(): boolean` compatibility selector derived only from that
+  snapshot.
+- Preserves: existing `effectivePlan`, `planAllowsJarvisCall`,
+  `planAllowsVoiceWithAdmin`, ambient, voice-plan, and existing boolean
+  consumer behavior for a true verified admin result.
 
-**Step 1: Add failing tests**
+**Exact typed and compatibility contract:**
 
-Cover:
+```ts
+import type { JarvisEntitlementSnapshot } from '@/lib/jarvis/contracts';
 
-- the previously privileged email receives no admin rights without an explicit
-  entitlement;
-- email case variants and aliases never grant rights;
-- valid signed/test entitlement inputs still resolve;
-- missing/expired/unverified state fails closed.
+export const APP_ADMIN_CAPABILITY = 'app.admin';
 
-**Step 2: Observe failure**
+export type EntitlementEvaluationContext = {
+  production: boolean;
+  now: number;
+};
 
-```powershell
-npm --prefix app test -- src/lib/entitlements.test.ts
+export type LocalDevelopmentEntitlementConfig = {
+  blanketAdmin: boolean;
+  adminEmails: readonly string[];
+  adminLocalIds: readonly string[];
+};
+
+export function resolveLocalDevelopmentEntitlementSnapshot(
+  identity: AdminIdentity,
+  options?: {
+    context?: Partial<EntitlementEvaluationContext>;
+    config?: LocalDevelopmentEntitlementConfig;
+  },
+): JarvisEntitlementSnapshot;
+
+export function entitlementSnapshotAllowsAdmin(
+  snapshot: JarvisEntitlementSnapshot,
+  context?: Partial<EntitlementEvaluationContext>,
+): boolean;
 ```
 
-Expected: the old email allowlist case fails.
+```ts
+export async function fetchCloudAdminEntitlementSnapshot(
+  userId: string | undefined,
+): Promise<JarvisEntitlementSnapshot>;
 
-**Step 3: Remove the bypass**
+export async function fetchCloudAdminStatus(userId: string | undefined): Promise<boolean>;
 
-Delete `BUILTIN_ADMIN_EMAILS` and any derived branches. Do not add a replacement
-client allowlist.
+export function useAppEntitlementSnapshot(): JarvisEntitlementSnapshot;
 
-**Step 4: Verify and commit**
+/** Boolean UI compatibility selector; never a second authority source. */
+export function useAppAdmin(): boolean;
+```
+
+Delete `BUILTIN_ADMIN_EMAILS`; no replacement hard-coded email or local ID is
+permitted. Existing `VITE_JARVIS_ADMIN`, `VITE_JARVIS_LOCAL_ADMIN`,
+`VITE_JARVIS_ADMIN_EMAILS`, and `VITE_JARVIS_ADMIN_LOCAL_IDS` inputs may
+produce only a `source: 'local_development'` snapshot and only when
+`production === false`:
+
+```ts
+{
+  source: 'local_development',
+  planId: 'ultra',
+  capabilities: [APP_ADMIN_CAPABILITY],
+  verifiedAt: now,
+  expiresAt: now + 5 * 60_000,
+}
+```
+
+In production, the same identity/configuration returns:
+
+```ts
+{ source: 'unavailable', capabilities: [] }
+```
+
+No production billing or admin operation may treat a
+`source: 'local_development'` snapshot as authority.
+
+`entitlementSnapshotAllowsAdmin()` returns true only when:
+
+- `verifiedAt` is finite;
+- `expiresAt`, when present, is greater than `now`;
+- `APP_ADMIN_CAPABILITY` exists; and
+- the source is `server`, or is `local_development` while
+  `production === false`.
+
+`planId` alone never grants admin. `source: 'unavailable'`, missing
+verification, an expired snapshot, an empty capability list, and production
+evaluation of `local_development` all fail closed.
+
+`fetchCloudAdminEntitlementSnapshot()` maps a successful `is_app_admin` RPC to
+a server snapshot. A true result includes `APP_ADMIN_CAPABILITY`; false is a
+verified server snapshot with an empty capability list. Missing user ID,
+missing client, RPC error, or thrown error returns
+`{ source: 'unavailable', capabilities: [] }`. Cache the complete snapshot by
+user ID, never return it after `expiresAt`, and preserve
+`clearCloudAdminCache()` as the explicit reset.
+
+`fetchCloudAdminStatus()` remains only this compatibility wrapper:
+
+```ts
+export async function fetchCloudAdminStatus(userId: string | undefined): Promise<boolean> {
+  return entitlementSnapshotAllowsAdmin(await fetchCloudAdminEntitlementSnapshot(userId));
+}
+```
+
+`useAppEntitlementSnapshot()` reads current auth-store identity, prefers a
+successful signed-in server result, uses explicitly configured development
+state only in a non-production build, otherwise returns unavailable, and
+resets on account change.
+
+`useAppAdmin()` remains only:
+
+```ts
+export function useAppAdmin(): boolean {
+  return entitlementSnapshotAllowsAdmin(useAppEntitlementSnapshot());
+}
+```
+
+It is not a second authority source.
+
+**Exact caller migration:**
+
+Replace every direct `isAdminIdentity()` call with `useAppAdmin()` in:
+
+- `app/src/components/layout/TopBar.tsx` for both call controls;
+- `app/src/features/account/AccountPage.tsx`;
+- `app/src/features/ambient/AmbientAudioHost.tsx`;
+- `app/src/features/call/CallButton.tsx`;
+- `app/src/features/call/CallModal.tsx`;
+- `app/src/features/settings/sections/Ambient.tsx`.
+
+Remove now-unused `email`, `cloudEmail`, and `localUserId` selectors from those
+components.
+
+Convert `app/src/features/settings/sections/Admin.tsx` from direct
+`fetchCloudAdminStatus()` use to the typed
+`useAppEntitlementSnapshot()` result. Its copy describes server-authoritative
+admin and explicitly marked development access and removes claims that an
+email allowlist is production authority.
+
+Verify, but do not otherwise change, these existing boolean compatibility
+consumers:
+
+- `app/src/features/settings/SettingsModal.tsx`;
+- `app/src/features/settings/sections/Hive.tsx`;
+- `app/src/features/settings/sections/Plans.tsx`;
+- `app/src/features/settings/sections/Voice.tsx`;
+- `app/src/features/wallpaper-library/WallpaperLibrary.tsx`.
+
+- [ ] **Step 1: Write the failing entitlement and admin tests**
+
+In `entitlements.test.ts`, cover:
+
+- `vipersel2@gmail.com`, case variants, and aliases receive no admin capability
+  when the explicit local-development configuration is empty;
+- explicitly configured email or local ID produces
+  `source: 'local_development'` only with `production: false`;
+- a handcrafted, unexpired local-development snapshot with `app.admin` still
+  fails under `production: true`;
+- an unexpired verified server snapshot containing `app.admin` passes;
+- missing `verifiedAt`, expired `expiresAt`, unavailable source, empty
+  capabilities, and `planId: 'ultra'` without the capability fail;
+- legitimate `effectivePlan`, `planAllowsJarvisCall`, and
+  `planAllowsVoiceWithAdmin` behavior remains unchanged when passed the
+  derived boolean.
+
+In `admin.test.ts`, mock `getSupabaseClient()` and prove:
+
+- RPC true produces a server snapshot with `app.admin`, finite `verifiedAt`,
+  and future `expiresAt`;
+- RPC false produces a verified server snapshot without `app.admin`;
+- missing user/client, RPC error, and thrown exception produce unavailable;
+- cache entries are scoped by user ID, expire, and are cleared by
+  `clearCloudAdminCache()`;
+- `fetchCloudAdminStatus()` returns the boolean derived from the typed result;
+- `useAppAdmin()` returns a boolean and account switching cannot retain the
+  previous account's admin state.
+
+- [ ] **Step 2: Run the focused tests and verify RED**
 
 ```powershell
-npm --prefix app test -- src/lib/entitlements.test.ts
-npm --prefix app test -- src/lib/admin.test.ts
+npm --prefix app test -- src/lib/entitlements.test.ts src/lib/admin.test.ts
+```
+
+Expected: FAIL because both tests and the typed exports are absent; once the
+old implementation loads, the hard-coded owner-email expectation also fails.
+
+- [ ] **Step 3: Implement the typed, fail-closed snapshot boundary**
+
+Implement the exact contracts above, delete the hard-coded email path, cache
+complete user-scoped snapshots, reject expired/unverified/local-production
+authority, and preserve the boolean compatibility wrappers.
+
+- [ ] **Step 4: Migrate the exact direct callers and verify compatibility**
+
+Apply the exact caller migration above. Confirm the verify-only list still
+receives a boolean from `useAppAdmin()` and that account switching clears any
+prior account's snapshot-derived state.
+
+- [ ] **Step 5: Verify the implementation**
+
+```powershell
+npm --prefix app test -- src/lib/entitlements.test.ts src/lib/admin.test.ts
 npm run typecheck
-git add app/src/lib/entitlements.ts app/src/lib/entitlements.test.ts app/src/lib/admin.ts app/src/lib/admin.test.ts app/src/components/layout/TopBar.tsx app/src/features/account/AccountPage.tsx app/src/features/ambient/AmbientAudioHost.tsx app/src/features/call/CallButton.tsx app/src/features/call/CallModal.tsx app/src/features/settings/sections/Ambient.tsx
-git diff --cached --check
-git commit -m "fix(entitlements): remove client admin email bypass"
 ```
+
+- [ ] **Step 6: Stage literal files, inspect the cache, and commit**
+
+```powershell
+git add -- 'app/src/lib/entitlements.ts' 'app/src/lib/entitlements.test.ts' 'app/src/lib/admin.ts' 'app/src/lib/admin.test.ts' 'app/src/components/layout/TopBar.tsx' 'app/src/features/account/AccountPage.tsx' 'app/src/features/ambient/AmbientAudioHost.tsx' 'app/src/features/call/CallButton.tsx' 'app/src/features/call/CallModal.tsx' 'app/src/features/settings/sections/Ambient.tsx' 'app/src/features/settings/sections/Admin.tsx'
+git diff --cached --name-only
+git diff --cached --check
+git diff --cached -- 'app/src/lib/entitlements.ts' 'app/src/lib/entitlements.test.ts' 'app/src/lib/admin.ts' 'app/src/lib/admin.test.ts' 'app/src/components/layout/TopBar.tsx' 'app/src/features/account/AccountPage.tsx' 'app/src/features/ambient/AmbientAudioHost.tsx' 'app/src/features/call/CallButton.tsx' 'app/src/features/call/CallModal.tsx' 'app/src/features/settings/sections/Ambient.tsx' 'app/src/features/settings/sections/Admin.tsx'
+git diff --cached --name-only -- 'install/install.ps1'
+git commit -m "fix(entitlements): remove client admin authority"
+git show --check --stat HEAD
+git diff-tree --no-commit-id --name-only -r HEAD
+git log --oneline origin/main..HEAD -- 'install/install.ps1'
+```
+
+Expected staged and committed names: exactly the eleven files above. The
+installer queries and whitespace checks produce no output.
 
 ## Task 6: Browser Operator Approval Integrity Interlock
 
@@ -1042,59 +1332,311 @@ git commit -m "fix(entitlements): remove client admin email bypass"
 - Modify: `app/src/features/browser/BrowserPage.tsx`
 - Create: `app/src/features/browser/BrowserPage.approval.test.tsx`
 
-**Contract:**
+**Interfaces:**
 
-Every consequential browser request stores and verifies:
+- Consumes: `JarvisApproval['risk']` from Task 3, `hashJarvisText()` from Task
+  2, `getActiveAccountIdentity()` from Task 1A, and
+  `isProtectedJarvisAgent()` from `app/src/lib/jarvis/identity.ts`.
+- Produces: a complete account-bound, session-local reviewed browser action
+  record and a fail-closed immediate execution interlock.
+- Defers: canonical consequential execution to Task 19's
+  `JarvisApprovalV1` adapter. The browser store remains a view projection, not
+  a second durable approval authority.
+- Preserves: manual browser navigation and safe ordinary browser use.
+
+**Exact reviewed-action contract:**
 
 ```ts
+import type { Agent } from '@/types/agent';
+import type { JarvisApproval } from '@/lib/jarvis/contracts';
+
+export type BrowserJsonPrimitive = string | number | boolean | null;
+export type BrowserJsonValue = BrowserJsonPrimitive | BrowserJsonValue[] | BrowserJsonObject;
+export type BrowserJsonObject = {
+  [key: string]: BrowserJsonValue;
+};
+
+export type BrowserActionRisk = JarvisApproval['risk'];
+
+export type BrowserActionRequester = {
+  kind: 'agent';
+  agent: Pick<Agent, 'id' | 'slug' | 'builtin'>;
+  runId?: string;
+};
+
+export type BrowserActionTarget = {
+  currentUrl: string;
+  requestedUrl?: string;
+  selector?: string;
+  coordinates?: { x: number; y: number };
+};
+
+export type BrowserReviewedActionStatus = 'pending' | 'denied' | 'expired' | 'unavailable';
+
 export type BrowserReviewedAction = {
   id: string;
+  accountId: string;
+  requester: BrowserActionRequester;
   kind: string;
+  actionVersion: 1;
   origin: string;
-  tabId?: string;
+  tabId: string;
   frameId?: string;
   target: BrowserActionTarget;
-  parameters: JsonObject;
-  parameterHash: string;
+  parameters: BrowserJsonObject;
+  parametersHash: string;
+  reviewedHash: string;
   expectedEffect: string;
-  risk: 'low' | 'medium' | 'high';
+  risk: BrowserActionRisk;
+  safeSummary: string;
+  status: BrowserReviewedActionStatus;
   requestedAt: number;
   expiresAt: number;
+  result?: string;
 };
 ```
 
-No credential/cookie/token value may be persisted. Approval consumption must
-fail when the action kind, origin, target, parameter hash, expiry, or account
-scope differs. Until the real execution bridge is verified, consequential
-actions remain unavailable or approval-only and cannot report success.
+`BrowserToolRequest` becomes:
 
-**Step 1: Write failing tests**
+```ts
+export interface BrowserToolRequest {
+  tool: string;
+  params?: BrowserJsonObject;
+  summary?: string;
+  requester?: BrowserActionRequester;
+}
+```
 
-Cover parameter retention, tamper rejection, expiry, replay, origin change,
-tab/URL change, redaction, unsupported execution, and truthful unavailable
-state.
+Risk uses only the canonical vocabulary:
 
-**Step 2: Observe failure**
+```ts
+export function classifyRisk(tool: string, parameters?: BrowserJsonObject): JarvisApproval['risk'];
+```
+
+- read/list/inspect operations without a consequential hint are `safe`;
+- click/type/press/select/check/upload/download/navigate are `confirm`;
+- submit/delete/purchase/pay/password/login/sign-in/checkout or an explicitly
+  destructive registered action are `dangerous`.
+
+The caller cannot supply risk. Derive it from the registered tool plus
+canonical parameters, never from caller-authored `summary`, and derive it again
+at validation.
+
+**Exact hash and validation contract:**
+
+```ts
+export const BROWSER_ACTION_VERSION = 1;
+export const BROWSER_REVIEW_TTL_MS = 5 * 60_000;
+
+export type BrowserReviewContext = {
+  accountId: string;
+  origin: string;
+  tabId: string;
+  frameId?: string;
+  target: BrowserActionTarget;
+  now: number;
+};
+
+export type BrowserReviewValidation =
+  | { ok: true; action: BrowserReviewedAction }
+  | {
+      ok: false;
+      reason:
+        | 'not_found'
+        | 'not_pending'
+        | 'account_mismatch'
+        | 'expired'
+        | 'hash_mismatch'
+        | 'action_changed'
+        | 'origin_changed'
+        | 'tab_changed'
+        | 'frame_changed'
+        | 'target_changed'
+        | 'risk_changed';
+    };
+
+export function canonicalizeBrowserJson(value: BrowserJsonValue): string;
+
+export async function validateBrowserReviewedAction(
+  action: BrowserReviewedAction | undefined,
+  request: BrowserToolRequest,
+  context: BrowserReviewContext,
+): Promise<BrowserReviewValidation>;
+
+export async function consumeBrowserReviewedAction(
+  actionId: string,
+  cdp: CdpSession | null,
+): Promise<BrowserToolResult>;
+```
+
+`canonicalizeBrowserJson()` recursively sorts object keys, preserves array
+order, rejects `undefined`, functions, class instances, cycles, and non-finite
+numbers, and emits one deterministic JSON string. Hash using Task 2's
+cryptographic `hashJarvisText()`; do not use `hashString()`. Normalize optional
+`builtin`, `runId`, `frameId`, and target fields to explicit booleans or `null`
+before canonicalization.
+
+Compute:
+
+- `parametersHash` from canonical non-secret `parameters`;
+- `reviewedHash` from canonical JSON containing exactly `accountId`,
+  `requester`, `kind`, `actionVersion`, `origin`, `tabId`, `frameId` or
+  `null`, `target`, `parameters`, `expectedEffect`, `risk`, and `expiresAt`.
+
+At validation, compare stored `accountId` to
+`getActiveAccountIdentity()?.accountId`, recompute both hashes, derive risk
+again, and compare current origin/tab/frame/target. Any difference returns the
+exact typed rejection above.
+
+Reject before storage when any parameter key or value represents a password,
+cookie, authorization header, API key, token, client secret, private key,
+recovery code, or when `params.secret === true`. Neither the value, a fragment,
+nor a credential-handle identifier may enter `safeSummary`, `result`, logs, or
+tests.
+
+**Immediate-interlock behavior:**
+
+- `user_only` rejects every programmatic browser request, including `safe`.
+- Every `confirm` or `dangerous` request requires a requester snapshot, a real
+  active account identity, a real active tab, and a complete non-secret
+  reviewed record.
+- Control mode never bypasses review for `confirm` or `dangerous`.
+- `safe` read/list/inspect actions may continue through the existing executor.
+- `browser.stop` continues to abort current agent actions.
+- The store preserves the complete record and keeps it session-local; its
+  persisted `partialize` payload excludes reviewed records.
+- `BrowserPage` Approve calls
+  `consumeBrowserReviewedAction(action.id, cdpRef.current)`.
+- Delete summary reconstruction through:
+
+```ts
+executeBrowserTool({ tool: action.tool, summary: action.summary }, cdpRef.current);
+```
+
+Even after local validation succeeds, `consumeBrowserReviewedAction()` returns
+truthful unavailability:
+
+```ts
+{
+  ok: false,
+  tool: action.kind,
+  message:
+    'Browser Operator execution is unavailable until canonical approval is active.',
+  data: { status: 'unavailable', actionId: action.id },
+}
+```
+
+It updates the view record to `unavailable`, never calls
+`executeBrowserTool()`, and never marks the action done, completed, or
+successful. Deny updates the exact record to `denied`. Manual typing and
+navigation performed directly by the user remain enabled.
+
+When Task 6 needs a JARVIS-specific label or branch, it imports
+`isProtectedJarvisAgent()` and never checks slug alone. The predicate is true
+only for `agent.builtin === true && agent.slug === 'jarvis'`; a user-created
+`{ slug: 'jarvis', builtin: false }` is not protected. Task 10 owns the other
+slug-only call sites in `App.tsx`, `Inspector.tsx`, `Composer.tsx`,
+`FilesPage.tsx`, `FileExplorerDialog.tsx`, `modelSelection.ts`, and
+`runtime.ts`.
+
+- [ ] **Step 1: Write the failing action-integrity tests**
+
+In `browserActions.test.ts`, prove:
+
+- risk returns only `safe | confirm | dangerous`;
+- a benign summary cannot downgrade tool/parameter-derived risk;
+- user-only mode rejects even safe programmatic actions;
+- confirm/dangerous cannot bypass review in any control mode;
+- records preserve canonical parameters, account, action version, origin,
+  tab/frame, target, risk, and expiry;
+- object-key reordering leaves both hashes unchanged;
+- changing each bound field changes or rejects the reviewed hash;
+- non-`pending` status rejects replay with `not_pending`;
+- account switch, expiry, origin change, tab/URL change, frame change, target
+  change, risk drift, replay, and tamper are rejected;
+- secret/cookie/token/private-key/recovery-code parameters are rejected before
+  insertion;
+- valid local review returns truthful unavailable and never calls the
+  executor;
+- `isProtectedJarvisAgent()` distinguishes built-in JARVIS from a user-created
+  slug collision.
+
+- [ ] **Step 2: Write the failing store and UI tests**
+
+In `browserStore.test.ts`, prove the enqueue path stores the complete record,
+status transitions are limited to
+`pending -> denied|expired|unavailable`, records are bounded to 100, and
+reviewed records are absent from the persisted `partialize` payload.
+
+In `BrowserPage.approval.test.tsx`, mount a pending record and prove Approve
+passes only the action ID and current CDP handle, never reconstructs a request
+from `safeSummary`, renders unavailable rather than success/done, Deny marks
+the exact record denied, and ordinary manual URL navigation remains enabled.
+
+- [ ] **Step 3: Run the focused tests and verify RED**
 
 ```powershell
 npm --prefix app test -- src/features/browser/browserActions.test.ts src/features/browser/browserStore.test.ts src/features/browser/BrowserPage.approval.test.tsx
 ```
 
-**Step 3: Implement**
+Expected: FAIL because the two new tests do not exist, current records discard
+parameters/account/target, `BrowserPage` reconstructs only tool/summary, and
+the current risk vocabulary is not canonical.
 
-Preserve the exact reviewed action in the store, compare its hash and current
-tab/URL/target at consumption, replace `BrowserPage` summary-based replay, and
-quarantine any path that cannot execute through a verified bridge.
+- [ ] **Step 4: Implement the complete reviewed-record and validation contract**
 
-**Step 4: Verify and commit**
+Implement canonical JSON, cryptographic parameter/reviewed hashes, secret
+rejection, account/tab/frame/target/risk/expiry binding, bounded session-local
+storage, and the exact typed validation failures above.
+
+- [ ] **Step 5: Implement the fail-closed BrowserPage consumption path**
+
+Replace summary replay with ID-only consumption. Preserve safe actions and
+manual navigation, but return the exact unavailable result for locally
+reviewed consequential actions until Task 19 is canonical.
+
+- [ ] **Step 6: Verify the implementation**
 
 ```powershell
 npm --prefix app test -- src/features/browser/browserActions.test.ts src/features/browser/browserStore.test.ts src/features/browser/BrowserPage.approval.test.tsx
 npm run typecheck
-git add app/src/features/browser/browserTypes.ts app/src/features/browser/browserStore.ts app/src/features/browser/browserActions.ts app/src/features/browser/browserActions.test.ts app/src/features/browser/browserStore.test.ts app/src/features/browser/BrowserPage.tsx app/src/features/browser/BrowserPage.approval.test.tsx
-git diff --cached --check
-git commit -m "fix(browser): bind approvals to reviewed parameters"
 ```
+
+- [ ] **Step 7: Record the required Task 19 follow-through**
+
+Task 19 must add these exact browser paths to its file list, focused tests, and
+literal staging command:
+
+- `app/src/features/browser/browserTypes.ts`
+- `app/src/features/browser/browserStore.ts`
+- `app/src/features/browser/browserStore.test.ts`
+- `app/src/features/browser/browserActions.ts`
+- `app/src/features/browser/browserActions.test.ts`
+- `app/src/features/browser/BrowserPage.tsx`
+- `app/src/features/browser/BrowserPage.approval.test.tsx`
+
+Task 19 replaces Task 6's session-local validation/unavailable outcome with an
+adapter to canonical `JarvisApprovalV1`, inherits account scope from the
+parent run, and revalidates action version, canonical parameter hash, target,
+risk, capability snapshot, entitlement, expiry, and single-use consumption.
+The browser store remains only a view projection.
+
+- [ ] **Step 8: Stage literal files, inspect the cache, and commit**
+
+```powershell
+git add -- 'app/src/features/browser/browserTypes.ts' 'app/src/features/browser/browserStore.ts' 'app/src/features/browser/browserActions.ts' 'app/src/features/browser/browserActions.test.ts' 'app/src/features/browser/browserStore.test.ts' 'app/src/features/browser/BrowserPage.tsx' 'app/src/features/browser/BrowserPage.approval.test.tsx'
+git diff --cached --name-only
+git diff --cached --check
+git diff --cached -- 'app/src/features/browser/browserTypes.ts' 'app/src/features/browser/browserStore.ts' 'app/src/features/browser/browserActions.ts' 'app/src/features/browser/browserActions.test.ts' 'app/src/features/browser/browserStore.test.ts' 'app/src/features/browser/BrowserPage.tsx' 'app/src/features/browser/BrowserPage.approval.test.tsx'
+git diff --cached --name-only -- 'install/install.ps1'
+git commit -m "fix(browser): quarantine unbound browser approvals"
+git show --check --stat HEAD
+git diff-tree --no-commit-id --name-only -r HEAD
+git log --oneline origin/main..HEAD -- 'install/install.ps1'
+```
+
+Expected staged and committed names: exactly the seven files above. The
+installer queries and whitespace checks produce no output.
 
 ## Task 7: Additive Dexie v3 Schema and Testable Database Factory
 
