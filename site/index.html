@@ -26,6 +26,7 @@
   <link rel="stylesheet" href="css/style.css" />
   <link rel="stylesheet" href="css/phone-os.css" />
   <link rel="stylesheet" href="css/desktop-os.css" />
+  <link rel="stylesheet" href="css/origami-scroll-world.css" />
 
   <script type="application/ld+json">
   {
@@ -468,6 +469,35 @@
       <div class="proof-item"><strong>v0.1.47</strong> Shipping now</div>
     </div>
   </div>
+
+  <!-- Six media anchors, five visible scenes. Cinematic scroll-scrub is on when
+       data-cinematic-ready is true (all dives + connectors present). Mobile and
+       reduced motion keep this exact-art semantic fallback. -->
+  <section class="origami-world" id="vibespaceOrigamiWorld" data-cinematic-ready="true" aria-label="Travel through the VibeSpace world">
+    <div class="origami-world__fallback">
+      <article class="origami-world__scene" aria-labelledby="origami-scene-1-title">
+        <img src="images/origami-scroll/source/scene-01-network.png" alt="An origami VibeSpace network connecting colorful project islands" width="1672" height="941" fetchpriority="high" />
+        <div class="origami-world__copy"><span class="origami-world__num">01 / 05</span><h2 id="origami-scene-1-title">One connected world.</h2><p>Every model, agent, voice, project, and task meets at one calm center.</p></div>
+      </article>
+      <article class="origami-world__scene" aria-labelledby="origami-scene-2-title">
+        <img src="images/origami-scroll/source/scene-02-jarvis-voice.png" alt="An origami Jarvis voice studio with microphones, speech cards, and glowing pathways" width="1672" height="941" loading="lazy" decoding="async" />
+        <div class="origami-world__copy"><span class="origami-world__num">02 / 05</span><h2 id="origami-scene-2-title">Speak. Build. Keep moving.</h2><p>Natural voice and live context keep Jarvis close to the work.</p></div>
+      </article>
+      <article class="origami-world__scene" aria-labelledby="origami-scene-3-title">
+        <img src="images/origami-scroll/source/scene-03-terminal-workshop.png" alt="An origami terminal workshop with command machines and conveyor routes" width="1672" height="941" loading="lazy" decoding="async" />
+        <div class="origami-world__copy"><span class="origami-world__num">03 / 05</span><h2 id="origami-scene-3-title">A workshop for real agents.</h2><p>Run coordinated terminals, inspect every command, and keep the whole build visible.</p></div>
+      </article>
+      <article class="origami-world__scene" aria-labelledby="origami-scene-4-title">
+        <img src="images/origami-scroll/source/scene-04-jarvis-actions.png" alt="An origami automation garden with a clock, calendars, and connected action cards" width="1672" height="941" loading="lazy" decoding="async" />
+        <div class="origami-world__copy"><span class="origami-world__num">04 / 05</span><h2 id="origami-scene-4-title">Time becomes a tool.</h2><p>Schedule work, approve actions, and carry the right task into the right moment.</p></div>
+      </article>
+      <article class="origami-world__scene origami-world__outro" aria-labelledby="origami-scene-5-title">
+        <img src="images/origami-scroll/source/scene-05-context-memory.png" alt="An origami knowledge garden with documents, a library, a map, and a glowing memory stream" width="1672" height="941" loading="lazy" decoding="async" />
+        <img src="images/origami-scroll/source/scene-05-outro-workspace.png" alt="The flowing VibeSpace paths arriving at a circular personal workspace portal" width="1672" height="941" loading="lazy" decoding="async" />
+        <div class="origami-world__copy"><span class="origami-world__num">05 / 05</span><h2 id="origami-scene-5-title">Everything comes together in your space.</h2><p>Projects, documents, preferences, and personal knowledge become one living context.</p></div>
+      </article>
+    </div>
+  </section>
 
   <!-- FEATURES -->
   <section id="features">
@@ -1038,6 +1068,8 @@
   <script src="js/dialogue.js" defer></script>
   <script src="js/phone-os.js" defer></script>
   <script src="js/desktop-os.js" defer></script>
+  <script src="js/scroll-world-engine.js" defer></script>
+  <script src="js/origami-scroll-world.js" defer></script>
   <script src="js/motion.js" defer></script>
   <script>
     // Interactive Jarvis calling demo (uses VSDialogue, so must load after dialogue.js)

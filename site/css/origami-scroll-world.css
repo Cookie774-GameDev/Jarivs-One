@@ -1,0 +1,187 @@
+.origami-world {
+  --sw-bg: #f7eddd;
+  --sw-ink: #38271f;
+  --sw-ink-soft: #79665c;
+  --sw-font-display: "Fraunces", Georgia, serif;
+  --sw-font-body: "Inter", system-ui, sans-serif;
+  position: relative;
+  left: 50%;
+  width: 100vw;
+  margin: 0 0 0 -50vw;
+  background: #f7eddd;
+  color: #38271f;
+  isolation: isolate;
+}
+
+.origami-world__fallback {
+  display: grid;
+  background: #f7eddd;
+}
+
+.origami-world__scene {
+  position: relative;
+  min-height: min(100vh, 940px);
+  overflow: hidden;
+  display: grid;
+  align-items: center;
+  background: #f7eddd;
+}
+
+.origami-world__scene img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: min(100vh, 940px);
+  object-fit: cover;
+  object-position: center;
+}
+
+.origami-world__copy {
+  position: absolute;
+  z-index: 2;
+  left: clamp(22px, 5vw, 76px);
+  top: 50%;
+  width: min(37vw, 500px);
+  transform: translateY(-50%);
+  color: #3d2a22;
+  text-shadow: 0 2px 24px rgba(255, 248, 235, 0.92);
+}
+
+.origami-world__scene:nth-child(2) .origami-world__copy,
+.origami-world__scene:nth-child(4) .origami-world__copy {
+  left: auto;
+  right: clamp(22px, 5vw, 76px);
+}
+
+.origami-world__num {
+  display: block;
+  margin-bottom: 14px;
+  font: 700 0.74rem/1 "JetBrains Mono", monospace;
+  letter-spacing: 0.16em;
+  color: #ad604d;
+}
+
+.origami-world__copy h2 {
+  margin: 0;
+  max-width: 12ch;
+  font: 600 clamp(2.2rem, 4.5vw, 4.8rem)/0.98 "Fraunces", Georgia, serif;
+  letter-spacing: -0.035em;
+}
+
+.origami-world__copy p {
+  max-width: 38ch;
+  margin: 18px 0 0;
+  font: 500 clamp(1rem, 1.35vw, 1.16rem)/1.6 "Inter", system-ui, sans-serif;
+  color: #665249;
+}
+
+.origami-world__outro {
+  display: grid;
+  min-height: min(100vh, 940px);
+}
+
+.origami-world__outro img {
+  grid-area: 1 / 1;
+  transition: none;
+}
+
+.origami-world__outro img:last-of-type {
+  clip-path: inset(0 0 0 50%);
+}
+
+.origami-world--cinematic .origami-world__fallback {
+  display: none;
+}
+
+/* Keep the stage mountable; only dim chrome until the sequence is in range.
+   Full visibility:hidden previously left a blank cream slab if isActive lagged. */
+.origami-world--cinematic:not(.sw-is-active) .sw-sky,
+.origami-world--cinematic:not(.sw-is-active) .sw-scrollbar,
+.origami-world--cinematic:not(.sw-is-active) .sw-topbar,
+.origami-world--cinematic:not(.sw-is-active) .sw-copylayer,
+.origami-world--cinematic:not(.sw-is-active) .sw-route,
+.origami-world--cinematic:not(.sw-is-active) .sw-hint {
+  opacity: 0;
+  pointer-events: none;
+}
+.origami-world--cinematic:not(.sw-is-active) .sw-stage {
+  opacity: 0;
+  pointer-events: none;
+}
+.origami-world--cinematic.sw-is-active .sw-sky,
+.origami-world--cinematic.sw-is-active .sw-scrollbar,
+.origami-world--cinematic.sw-is-active .sw-topbar,
+.origami-world--cinematic.sw-is-active .sw-stage,
+.origami-world--cinematic.sw-is-active .sw-copylayer,
+.origami-world--cinematic.sw-is-active .sw-route,
+.origami-world--cinematic.sw-is-active .sw-hint {
+  opacity: 1;
+  transition: opacity 0.25s ease;
+}
+
+.origami-world--cinematic .sw-copylayer::before {
+  width: min(48vw, 680px);
+  background: linear-gradient(90deg, rgba(247, 237, 221, 0.94), rgba(247, 237, 221, 0.52) 52%, transparent 100%);
+}
+
+.origami-world--cinematic .sw-copy {
+  width: min(35vw, 455px);
+}
+
+.origami-world--cinematic .sw-copy__title {
+  max-width: 11ch;
+  font-weight: 600;
+}
+
+.origami-world--cinematic .sw-copy__body {
+  max-width: 35ch;
+}
+
+.origami-world--cinematic .sw-route {
+  right: clamp(10px, 2vw, 28px);
+}
+
+@media (max-width: 860px) {
+  .origami-world__scene,
+  .origami-world__scene img,
+  .origami-world__outro {
+    min-height: 78svh;
+  }
+
+  .origami-world__scene img {
+    object-position: center 44%;
+  }
+
+  .origami-world__copy,
+  .origami-world__scene:nth-child(2) .origami-world__copy,
+  .origami-world__scene:nth-child(4) .origami-world__copy {
+    left: 18px;
+    right: 18px;
+    top: auto;
+    bottom: 22px;
+    width: auto;
+    transform: none;
+    padding: 70px 4px 4px;
+    background: linear-gradient(0deg, rgba(247, 237, 221, 0.98), rgba(247, 237, 221, 0.82) 60%, transparent);
+  }
+
+  .origami-world__copy h2 {
+    max-width: 14ch;
+    font-size: clamp(2rem, 10vw, 3.25rem);
+  }
+
+  .origami-world__outro img:last-of-type {
+    clip-path: inset(50% 0 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .origami-world *,
+  .origami-world *::before,
+  .origami-world *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
+  }
+}

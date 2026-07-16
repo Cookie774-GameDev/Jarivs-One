@@ -1,0 +1,61 @@
+{
+  "pipeline": "oso95/scroll-world architecture-b",
+  "ready": true,
+  "generator": "grok-imagine-video (image_to_video dives + reference_to_video connectors); Higgsfield CLI blocked by only_mcp_usage_on_trial_is_available",
+  "blockedReason": null,
+  "encoding": {
+    "videoCodec": "h264",
+    "pixelFormat": "yuv420p",
+    "crf": 20,
+    "gop": 8,
+    "faststart": true,
+    "audio": false,
+    "width": 1264,
+    "height": 720
+  },
+  "dives": [
+    {
+      "id": "scene-01-network",
+      "source": "source/scene-01-network.png",
+      "output": "dives/scene-01-network.mp4",
+      "prompt": "Preserve this exact handcrafted pastel origami VibeSpace network world, its V logo, colors, islands, bridges, clouds, paper texture, and composition. Begin with the complete diorama small and distant in spacious warm cream. Execute one slow continuous stabilized camera flight toward the central coral VibeSpace hub, adding true parallax between foreground clouds, bridges, islands, and background mountains. End close to the central hub on a clean forward-moving frame suitable for a connector. No cuts, no text changes, no new objects, no people, no logo mutation, no warping, no motion blur."
+    },
+    {
+      "id": "scene-02-jarvis-voice",
+      "source": "source/scene-02-jarvis-voice.png",
+      "output": "dives/scene-02-jarvis-voice.mp4",
+      "prompt": "Preserve this exact origami Jarvis voice studio, V logo, microphones, headphones, speech cards, assistant character, flowers, paper folds, and palette. Begin on the supplied complete frame and fly slowly along the glowing coral and lavender voice pathways toward the microphone pavilion and small assistant. Use restrained forward motion with gentle lateral drift and layered parallax. Finish inside the voice garden near the glowing microphone, still stable and connector-ready. No cuts, no invented objects or letters, no people, no logo mutation, no unstable morphing, no heavy blur."
+    },
+    {
+      "id": "scene-03-terminal-workshop",
+      "source": "source/scene-03-terminal-workshop.png",
+      "output": "dives/scene-03-terminal-workshop.mp4",
+      "prompt": "Preserve this exact origami Terminal Workshop, terminal machines, black screens, command lines, conveyor belts, cards, signs, paper mountains, V logo, and coral-purple-mint palette. Start on the complete supplied composition. Fly in one controlled shot along the lower conveyor, pass the command cards, and rise subtly toward the terminal machines to reveal workshop depth. End close among the terminals on a stable forward-facing frame. No cuts, no new text, no extra machines, no people, no logo changes, no warping, no flicker, minimal motion blur."
+    },
+    {
+      "id": "scene-04-jarvis-actions",
+      "source": "source/scene-04-jarvis-actions.png",
+      "output": "dives/scene-04-jarvis-actions.mp4",
+      "prompt": "Preserve this exact origami automation garden, clock tower, calendars, action cards, glowing assistant orb, flowers, moon panel, V logo, and colors. Start with the whole supplied world. Follow the coral action path slowly between the calendar tents toward the assistant and clock tower, using subtle depth and foreground leaf parallax. Settle near the clock and stacked action cards on a clean connector-ready frame. No cuts, no text invention, no people, no altered logo, no object morphing, no jitter, no excessive blur."
+    },
+    {
+      "id": "scene-05-context-memory",
+      "source": "source/scene-05-context-memory.png",
+      "output": "dives/scene-05-context-memory.mp4",
+      "prompt": "Preserve this exact origami deep-context world, floating documents, knowledge garden, round library, project map, scanner robot, glowing coral-lavender memory river, workspace building, V logo, plants, and composition. Begin with the complete supplied landscape. Glide above the map and scanner, then follow the luminous memory river toward the library and distant workspace, maintaining calm deliberate speed and strong layered parallax. End aligned with the outgoing memory stream on a stable frame. No cuts, no new labels, no extra robots or people, no logo changes, no warping, no flicker."
+    },
+    {
+      "id": "scene-05-outro-workspace",
+      "source": "source/scene-05-outro-workspace.png",
+      "output": "dives/scene-05-outro-workspace.mp4",
+      "prompt": "Preserve this exact origami VibeSpace workspace portal, circular layered paper opening, flowing message paths, envelopes, interface cards, desk, chair, lamp, clouds, stars, V logo, and pastel palette. Start on the complete supplied image. Follow the layered coral-lavender-blue paper paths and envelopes toward the circular opening, then gently enter enough to reveal the warm personal workspace while keeping the portal frame visible. Finish settled and calm with the workspace centered. No cuts, no new text or objects, no people, no logo mutation, no geometry warping, no flicker, minimal blur."
+    }
+  ],
+  "connectors": [
+    { "id": "scene-01-to-02", "fromDive": "scene-01-network", "toDive": "scene-02-jarvis-voice", "output": "connectors/scene-01-to-02.mp4", "prompt": "Create one seamless continuous forward camera passage from the exact final frame of the network dive to the exact first frame of the Jarvis Voice dive. Carry the coral and lavender paper route through cream clouds into the voice garden. Endpoint frames must remain exact; preserve all origami materials, V logo, palette, lighting, and scale. No cut, flash, new object, text, person, logo change, morph, or blur burst." },
+    { "id": "scene-02-to-03", "fromDive": "scene-02-jarvis-voice", "toDive": "scene-03-terminal-workshop", "output": "connectors/scene-02-to-03.mp4", "prompt": "Create one seamless continuous flight from the exact final frame of the voice dive to the exact first frame of the Terminal Workshop dive. Let the glowing voice path fold into a paper command ribbon and conveyor route. Keep endpoint frames exact and preserve the established handcrafted origami palette, texture, lighting, and V logo. No cut, flash, people, invented letters, object mutation, or unstable warping." },
+    { "id": "scene-03-to-04", "fromDive": "scene-03-terminal-workshop", "toDive": "scene-04-jarvis-actions", "output": "connectors/scene-03-to-04.mp4", "prompt": "Create one seamless forward connector from the exact terminal-dive final frame to the exact actions-dive first frame. Follow a command card off the conveyor as it becomes a scheduled action card entering the clock garden. Exact endpoints, stable scale, consistent paper texture, palette, lighting, and V logo. No cut, flash, new characters, new text, morphing, or blur burst." },
+    { "id": "scene-04-to-05", "fromDive": "scene-04-jarvis-actions", "toDive": "scene-05-context-memory", "output": "connectors/scene-04-to-05.mp4", "prompt": "Create one seamless flight from the exact actions-dive final frame to the exact memory-dive first frame. Follow a glowing scheduled-action route as it unfolds into the coral-lavender memory river and knowledge garden. Preserve exact endpoints, origami materials, V logo, color, exposure, and camera scale. No cut, flash, people, extra objects, lettering, warping, or jitter." },
+    { "id": "scene-05-to-outro", "fromDive": "scene-05-context-memory", "toDive": "scene-05-outro-workspace", "output": "connectors/scene-05-to-outro.mp4", "prompt": "Create one seamless final passage from the exact deep-context dive final frame to the exact workspace-outro dive first frame. Track the same glowing memory stream as it becomes layered paper paths and message envelopes leading to the circular personal workspace portal. Keep both endpoints exact, V logo stable, palette and paper lighting continuous. No cut, flash, extra objects, people, text mutation, geometry warp, or blur burst." }
+  ]
+}
