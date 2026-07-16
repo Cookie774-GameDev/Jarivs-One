@@ -343,8 +343,8 @@ export const KNOWN_SHIPPED_JARVIS_PROMPT_HASHES = {
   seed_00ceba4: '020dde65358f76f800c06ba36fd12d2309c8285b1a0ca66b6dd670f2c08b02e0',
   registry_3f90607_d611620_fa82eee:
     '5291fb94990f1be342a8f5021d5575ac8c84830a9de9d34a991e9c40a00445f9',
-  registry_5b83ab0: '372097384ec803abce2c36422cc135cc0dd6b0b988b0b6f826c05dc45ae382cb',
-  registry_ed91635_current: '935b8911bd134646475507d2363a79c2f5e0c232e4561285a647f07f60195bda',
+  registry_5b83ab0: 'ffaea2ca63b6325ea06164b2d2c7e8a1fa0cff1ed92e8c93e5f31f864bb04ca3',
+  registry_ed91635_current: 'c8929dd35bcad916c401d0fe4c51cd518ce210177f3b29b6f4d3f214a501c447',
 } as const;
 ```
 
@@ -352,7 +352,10 @@ The first value is the `app/src/lib/db/seed.ts` prompt shipped at `00ceba4`.
 The next values are runtime registry prompt variants from
 `3f90607`/`d611620`/`fa82eee`, `5b83ab0`, and `ed91635` through the current
 release. Do not hash TypeScript source escapes or file bytes; tests must hash
-the actual runtime strings.
+the actual runtime strings. The raw TypeScript-source spellings whose hashes
+are `372097384ec803abce2c36422cc135cc0dd6b0b988b0b6f826c05dc45ae382cb`
+and `935b8911bd134646475507d2363a79c2f5e0c232e4561285a647f07f60195bda`
+are negative fixtures only and must not enter the known-runtime hash set.
 
 **Implementation responsibilities:**
 
@@ -376,7 +379,9 @@ Cover:
 
 - exact `trim()` plus CRLF/lone-CR-to-LF normalization;
 - all four frozen runtime hashes and their source-history labels;
-- edited-prompt and TypeScript-source-escape rejection;
+- edited-prompt rejection;
+- raw TypeScript-source spellings hashing to `372097...` and `935b89...` but
+  still being rejected by `isKnownShippedJarvisPrompt()`;
 - SHA-256 rather than the existing non-cryptographic helper;
 - `isProtectedJarvisAgent()` accepting only built-in slug `jarvis` and rejecting
   a user-created slug collision;
@@ -780,6 +785,7 @@ without inventing a separate event ID.
 export type JarvisContractValidationErrorCode =
   | 'missing_field'
   | 'invalid_type'
+  | 'unknown_field'
   | 'unknown_enum'
   | 'non_finite_number'
   | 'invalid_identifier'
@@ -830,6 +836,41 @@ Paths and messages contain only schema field names, indexes, and safe error
 categories. Validators never log, stringify into diagnostics, or return the
 rejected payload.
 
+Every Task 2/Task 3 v1 root or nested schema object is closed and rejects
+unexpected own string keys with `unknown_field` at the exact unexpected-key
+path. The closed boundaries are:
+
+- `JarvisRequestEnvelope`, request `agent`, each `LLMMessage`, and each LLM
+  text/image content part;
+- `JarvisIdentitySnapshot`, `JarvisProfileSnapshot`, `CompiledJarvisPrompt`,
+  each `CompiledPromptLayer`, and prompt `diagnostics`;
+- `JarvisSourceRef`, `JarvisContextPack`, each `JarvisContextItem`, context
+  `budget`, and each context exclusion;
+- `JarvisEntitlementSnapshot`, `JarvisCapabilitySnapshot`, each
+  `JarvisCapabilityRef`, `JarvisModelSnapshot`, `JarvisOutputContract`, and
+  `JarvisExecutionState`;
+- `JarvisResponseEnvelope`, response `enforcement`, `JarvisRun`, `JarvisEvent`,
+  `JarvisApproval`, each approval secret-handle reference, and
+  `JarvisArtifact`.
+
+The only open compatibility values are
+`JarvisModelSnapshot.capabilities`, `JarvisApproval.params`,
+`JarvisApproval.targetSnapshot`, and existing `Part` entries in
+`JarvisResponseEnvelope.parts`. Model capability values must still be booleans,
+and every open value must still be deeply JSON-safe.
+
+Validate the existing `LLMMessage` contract completely without redefining it:
+each message is a closed `{ role, content }` object; `role` is exactly
+`system | user | assistant`; `content` is a string or dense array of closed
+`{ type: 'text', text }` or
+`{ type: 'image', data, mimeType, name? }` objects with string fields. Do not
+add base64, MIME-support, filename, size, or provider-capability semantics.
+
+For each existing response `Part`, require a plain deeply JSON-safe record with
+an own string `kind`, but keep the remaining payload opaque. Do not duplicate
+the evolving application `Part` union or enforce its structured semantics in
+Task 3; Tasks 14 and 16 own those semantics.
+
 Task 3 validators enforce required fields, primitive/container shapes, literal
 schema version, enum membership, finite timestamps/numbers, non-negative
 integer event sequences, non-empty identifiers, and JSON-safe values. They do
@@ -859,6 +900,16 @@ Cover:
 - source refs missing account, trust, sensitivity, or kind;
 - nested functions, class instances, symbols, bigint, `undefined`, sparse
   arrays, and non-finite values rejected as non-JSON-safe;
+- unknown keys rejected at every closed boundary above, including
+  `JarvisEvent.id`, while the four open compatibility values accept arbitrary
+  own string keys only when their complete values remain JSON-safe;
+- exact current `LLMMessage` string/text-part/image-part shapes, roles, dense
+  arrays, and unknown-key failures without a parallel message contract;
+- response `Part` entries requiring only a plain JSON-safe record and own
+  string `kind`, with opaque JSON-safe payload fields preserved;
+- successful validation returning the identical root and every identical
+  nested object/array reference without cloning, mutation, normalization,
+  defaulting, or freezing;
 - a `console` spy proving rejected payload values are never logged or returned.
 
 Do not add tests for transition legality, secret-shaped parameter contents,
@@ -876,10 +927,11 @@ Expected: FAIL because the contract modules do not exist.
 
 Implement the exact validator exports above with shared private JSON-safety,
 record, array, finite-number, non-empty-string, and enum helpers. Successful
-results return the same validated value without mutation. Do not add a runtime
-schema dependency unless hand-written validation is first shown materially
-less safe and the dependency receives a separately scoped plan correction.
-`index.ts` re-exports only these canonical definitions.
+results return the same validated root and nested references without mutation,
+cloning, normalization, defaulting, or freezing; Task 11 alone owns deep
+freeze. Do not add a runtime schema dependency unless hand-written validation
+is first shown materially less safe and the dependency receives a separately
+scoped plan correction. `index.ts` re-exports only these canonical definitions.
 
 - [ ] **Step 4: Verify**
 
@@ -908,6 +960,7 @@ git commit -m "feat(jarvis): add shared kernel contracts"
 - Modify: `app/src/features/context/tree.test.ts`
 - Modify: `app/src/lib/ai/context.ts`
 - Modify: `app/src/lib/ai/context.test.ts`
+- Modify: `app/src-tauri/src/fsread.rs`
 
 **Interfaces:**
 
@@ -955,7 +1008,6 @@ export type JarvisSourceDecision =
         | 'binary'
         | 'too_large'
         | 'outside_allowed_root'
-        | 'symlink_escape'
         | 'unsupported';
       sensitivity: 'restricted' | 'secret';
       safeSummary: string;
@@ -973,6 +1025,12 @@ export function classifyJarvisReadError(
   artifact preview, or sync.
 - For an allowed text path, run the classifier again with exactly the sampled
   content before that sample enters a provider prompt or Context tree.
+- For an allowed `media_metadata` path, call
+  `readTextFileSample(path, 1, { root })` and discard its content before
+  constructing metadata. This existing native command canonicalizes both the
+  target and root, rejects an outside-root target (including a symlink that
+  resolves outside the root), verifies a regular file, and enforces the
+  100 MiB cap without admitting binary bytes to the prompt.
 - `safeSummary` uses only a basename, safe category, and reason. It never
   includes a rejected match, token fragment, credential value, raw body, or
   private absolute path.
@@ -980,9 +1038,10 @@ export function classifyJarvisReadError(
   `public` is returned only when the caller explicitly supplies
   `defaultSensitivity: 'public'`.
 - `FsReadError.code === 'outside_root'` maps to
-  `outside_allowed_root`; a safe native `symlink_escape` category maps to
-  `symlink_escape`; `too_large`, `not_utf8`, and `unsupported_type` map to
-  `too_large`, `binary`, and `unsupported`.
+  `outside_allowed_root`; `too_large`, `not_utf8`, and `unsupported_type` map
+  to `too_large`, `binary`, and `unsupported`. Do not invent a separate
+  `symlink_escape` code: the current native canonical-path boundary reports
+  every root escape as `outside_root`.
 
 Path admission denies case-insensitively after slash normalization:
 
@@ -1012,26 +1071,51 @@ Safe near-matches such as `src/environment.ts`, `docs/cookie-policy.md`, and
 In `sourcePolicy.test.ts`, table-test every path class above with Windows and
 POSIX separators, safe near-matches, content-only denial under
 `C:\repo\notes.txt`, sensitivity output, and proof that `safeSummary` excludes
-the synthetic secret.
+the synthetic secret. Include lexical `root\..\outside` traversal and absolute
+outside-root media paths so synchronous denial occurs before native access.
 
 In `tree.test.ts`, prove `.env.local`, `.npmrc`, cloud credentials, and a
 normal `.txt` sample containing a secret never appear in the generated tree or
 provider bundle. Assert `readTextFileSample()` is never called for path-denied
 fixtures and `listDirectory()` is never called for denied `.aws`, `.azure`, or
-gcloud credential child directories.
+gcloud credential child directories. Also prove every allowed media candidate
+performs a one-byte sampled read with `{ root: rootDir }` before metadata, and
+that `outside_root` or `too_large` omits the media source and provider payload.
 
 In `context.test.ts`, prove connected and explicit files share the policy,
 explicit attachment does not bypass it, content-denied samples are absent from
-the returned block, and ordinary text/media behavior remains available.
+the returned block, and ordinary text/media behavior remains available. For
+both connected and explicit media, assert a one-byte sampled read with the
+selected root occurs before metadata, the sampled content is discarded, and
+`outside_root`/`too_large` yields only the safe denial summary.
 
-- [ ] **Step 2: Run the focused tests and verify RED**
+In `fsread.rs`, add native regression tests proving `fs_read_text_sample()`
+returns `outside_root` for an ordinary file outside the selected root and
+`too_large` for a sparse file larger than `MAX_FILE_BYTES` on every platform.
+Under `#[cfg(unix)]`, create real in-root file and directory symlinks targeting
+outside the root and assert both return `outside_root`; do not silently skip a
+compiled symlink test after creation failure. Name these tests
+`sample_rejects_outside_root`, `sample_rejects_too_large`,
+`sample_rejects_symlink_file_escape`, and
+`sample_rejects_symlink_directory_escape` so the focused Rust filter below is
+exact.
+
+- [ ] **Step 2: Pin the native characterization, then verify frontend RED**
+
+```powershell
+cargo test --manifest-path app/src-tauri/Cargo.toml fsread::tests::sample_rejects_
+```
+
+Expected: PASS against the existing native canonicalization/cap behavior. This
+is a characterization gate, not the focused RED.
 
 ```powershell
 npm --prefix app test -- src/lib/jarvis/sourcePolicy.test.ts src/features/context/tree.test.ts src/lib/ai/context.test.ts
 ```
 
-Expected: FAIL because the new module cannot be resolved and the existing
-Context scan still admits `.env*` candidates.
+Expected: FAIL because the new module cannot be resolved, the existing Context
+scan still admits `.env*` candidates, and both media branches bypass the
+sampled-read boundary.
 
 - [ ] **Step 3: Implement the exact two-stage source policy**
 
@@ -1048,26 +1132,31 @@ every file before media metadata creation or text reads. Never traverse a
 denied credential directory. Classify each successful text sample again before
 adding it to `ScannedContextFile[]`. Omit rejected sources without copying
 their contents into errors, progress strings, trees, or provider prompts.
+Before adding media metadata, perform the one-byte sampled read with
+`{ root: rootDir }`, discard the content, and omit/map any native denial.
 
 In `ai/context.ts`, make connected-file and explicit-attachment reads use the
 same pre-read and post-read policy. A denial contributes only its
 `safeSummary`; the existing `--- ${path} ---` formatting must not reveal a
-rejected secret path or body.
+rejected secret path or body. Both media routes must perform and discard the
+same one-byte sampled read with their selected root before returning metadata.
 
 - [ ] **Step 5: Verify the implementation**
 
 ```powershell
 npm --prefix app test -- src/lib/jarvis/sourcePolicy.test.ts src/features/context/tree.test.ts src/lib/ai/context.test.ts
 npm run typecheck
+cargo fmt --manifest-path app/src-tauri/Cargo.toml -- --check
+cargo test --manifest-path app/src-tauri/Cargo.toml fsread::tests::sample_rejects_
 ```
 
 - [ ] **Step 6: Stage literal files, inspect the cache, and commit**
 
 ```powershell
-git add -- 'app/src/lib/jarvis/sourcePolicy.ts' 'app/src/lib/jarvis/sourcePolicy.test.ts' 'app/src/features/context/tree.ts' 'app/src/features/context/tree.test.ts' 'app/src/lib/ai/context.ts' 'app/src/lib/ai/context.test.ts'
+git add -- 'app/src/lib/jarvis/sourcePolicy.ts' 'app/src/lib/jarvis/sourcePolicy.test.ts' 'app/src/features/context/tree.ts' 'app/src/features/context/tree.test.ts' 'app/src/lib/ai/context.ts' 'app/src/lib/ai/context.test.ts' 'app/src-tauri/src/fsread.rs'
 git diff --cached --name-only
 git diff --cached --check
-git diff --cached -- 'app/src/lib/jarvis/sourcePolicy.ts' 'app/src/lib/jarvis/sourcePolicy.test.ts' 'app/src/features/context/tree.ts' 'app/src/features/context/tree.test.ts' 'app/src/lib/ai/context.ts' 'app/src/lib/ai/context.test.ts'
+git diff --cached -- 'app/src/lib/jarvis/sourcePolicy.ts' 'app/src/lib/jarvis/sourcePolicy.test.ts' 'app/src/features/context/tree.ts' 'app/src/features/context/tree.test.ts' 'app/src/lib/ai/context.ts' 'app/src/lib/ai/context.test.ts' 'app/src-tauri/src/fsread.rs'
 git diff --cached --name-only -- 'install/install.ps1'
 git commit -m "fix(context): exclude secret paths and content"
 git show --check --stat HEAD
@@ -1075,7 +1164,7 @@ git diff-tree --no-commit-id --name-only -r HEAD
 git log --oneline origin/main..HEAD -- 'install/install.ps1'
 ```
 
-Expected staged and committed names: exactly the six files above. The
+Expected staged and committed names: exactly the seven files above. The
 installer queries and whitespace checks produce no output.
 
 ## Task 5: Client Entitlement Interlock
@@ -1339,10 +1428,11 @@ installer queries and whitespace checks produce no output.
   `isProtectedJarvisAgent()` from `app/src/lib/jarvis/identity.ts`.
 - Produces: a complete account-bound, session-local reviewed browser action
   record and a fail-closed immediate execution interlock.
-- Defers: canonical consequential execution to Task 19's
+- Defers: every programmatic Browser Operator execution to Task 19D's
   `JarvisApprovalV1` adapter. The browser store remains a view projection, not
   a second durable approval authority.
-- Preserves: manual browser navigation and safe ordinary browser use.
+- Preserves: browser navigation, typing, and inspection performed directly by
+  the user.
 
 **Exact reviewed-action contract:**
 
@@ -1497,12 +1587,15 @@ tests.
 **Immediate-interlock behavior:**
 
 - `user_only` rejects every programmatic browser request, including `safe`.
-- Every `confirm` or `dangerous` request requires a requester snapshot, a real
-  active account identity, a real active tab, and a complete non-secret
-  reviewed record.
-- Control mode never bypasses review for `confirm` or `dangerous`.
-- `safe` read/list/inspect actions may continue through the existing executor.
-- `browser.stop` continues to abort current agent actions.
+- Every programmatic request in every mode, including `safe` read/list/inspect,
+  is unavailable until Task 19D's canonical approval engine is active. No mode,
+  risk class, or local validation result may call the existing executor.
+- Every locally reviewed request requires a requester snapshot, a real active
+  account identity, a real active tab, and a complete non-secret record with
+  exact parameters and target.
+- `browser.stop` remains a local cancellation safety signal for already-running
+  legacy agent work; it is not treated as authorization to start a Browser
+  Operator action.
 - The store preserves the complete record and keeps it session-local; its
   persisted `partialize` payload excludes reviewed records.
 - `BrowserPage` Approve calls
@@ -1546,7 +1639,8 @@ In `browserActions.test.ts`, prove:
 - risk returns only `safe | confirm | dangerous`;
 - a benign summary cannot downgrade tool/parameter-derived risk;
 - user-only mode rejects even safe programmatic actions;
-- confirm/dangerous cannot bypass review in any control mode;
+- safe/confirm/dangerous all report unavailable and cannot reach the executor
+  in any control mode before Task 19D;
 - records preserve canonical parameters, account, action version, origin,
   tab/frame, target, risk, and expiry;
 - object-key reordering leaves both hashes unchanged;
@@ -1556,8 +1650,8 @@ In `browserActions.test.ts`, prove:
   change, risk drift, replay, and tamper are rejected;
 - secret/cookie/token/private-key/recovery-code parameters are rejected before
   insertion;
-- valid local review returns truthful unavailable and never calls the
-  executor;
+- valid local review for every risk class returns truthful unavailable and
+  never calls the executor;
 - `isProtectedJarvisAgent()` distinguishes built-in JARVIS from a user-created
   slug collision.
 
@@ -1581,7 +1675,8 @@ npm --prefix app test -- src/features/browser/browserActions.test.ts src/feature
 
 Expected: FAIL because the two new tests do not exist, current records discard
 parameters/account/target, `BrowserPage` reconstructs only tool/summary, and
-the current risk vocabulary is not canonical.
+the current risk vocabulary is not canonical. Existing safe programmatic
+read/list/inspect requests also still reach the executor.
 
 - [ ] **Step 4: Implement the complete reviewed-record and validation contract**
 
@@ -1591,9 +1686,11 @@ storage, and the exact typed validation failures above.
 
 - [ ] **Step 5: Implement the fail-closed BrowserPage consumption path**
 
-Replace summary replay with ID-only consumption. Preserve safe actions and
-manual navigation, but return the exact unavailable result for locally
-reviewed consequential actions until Task 19 is canonical.
+Replace summary replay with ID-only consumption. Preserve only direct manual
+browser use and the local stop safety signal. Return the exact unavailable
+result for every programmatic request, including locally validated
+read/list/inspect, and prove no existing executor call occurs until Task 19D is
+canonical.
 
 - [ ] **Step 6: Verify the implementation**
 
@@ -1602,10 +1699,10 @@ npm --prefix app test -- src/features/browser/browserActions.test.ts src/feature
 npm run typecheck
 ```
 
-- [ ] **Step 7: Record the required Task 19 follow-through**
+- [ ] **Step 7: Record the required Task 19D follow-through**
 
-Task 19 must add these exact browser paths to its file list, focused tests, and
-literal staging command:
+Task 19D must add these exact browser paths to its file list, focused tests,
+and literal staging command:
 
 - `app/src/features/browser/browserTypes.ts`
 - `app/src/features/browser/browserStore.ts`
@@ -1615,11 +1712,16 @@ literal staging command:
 - `app/src/features/browser/BrowserPage.tsx`
 - `app/src/features/browser/BrowserPage.approval.test.tsx`
 
-Task 19 replaces Task 6's session-local validation/unavailable outcome with an
-adapter to canonical `JarvisApprovalV1`, inherits account scope from the
-parent run, and revalidates action version, canonical parameter hash, target,
-risk, capability snapshot, entitlement, expiry, and single-use consumption.
-The browser store remains only a view projection.
+Task 19D replaces Task 6's session-local validation/unavailable outcome with an
+adapter to canonical `JarvisApprovalV1`, inherits account scope from the parent
+run, and revalidates action version, canonical parameter hash, target, risk,
+capability snapshot, entitlement, expiry, and single-use consumption.
+`confirm` and `dangerous` requests use the canonical human-decision path.
+`safe` programmatic read/list/inspect requests must use
+`JarvisApprovalEngine.executeAutoApprovedSafe()`, which still creates,
+approves, revalidates, consumes, and executes the exact canonical record; they
+never regain a direct executor path. The browser store remains only a view
+projection.
 
 - [ ] **Step 8: Stage literal files, inspect the cache, and commit**
 
@@ -2082,8 +2184,11 @@ Inside that transaction:
 8. Write `migration_version`, `migration_source`, optional
    `migration_source_prompt_hash`, and `migration_completed_at` on that profile
    in the same transaction.
-9. A repeat with the same account, version, source, and source hash returns the
-   existing rows with `migrated: false`.
+9. If the deterministic profile has the matching account/profile ID,
+   `identityVersion`, migration version, migration source, and migration source
+   hash, return the current profile row unchanged with `migrated: false`.
+   Authorized mutable profile edits and later revision IDs do not invalidate or
+   replay a completed marker.
 10. Do not modify a legacy Agent row, any user-created agent, provider, model,
     tools, capabilities, memory scope, effort, temperature, or timestamp.
 
@@ -2110,12 +2215,16 @@ hash fields are absent.
 
 Before inserting, query every profile row for the account. More than one
 active row is `profile_integrity_error`. An existing deterministic profile
-with a different account, identity version, revision, or migration marker is
-`migration_conflict`. If either the deterministic identity revision ID or
-`[identity_id+version]` row exists, its complete mapped value must match the
-protected revision or activation fails closed. Wrap Web Crypto work performed
-while the transaction is open in `Dexie.waitFor(...)` so the transaction
-cannot auto-commit during hashing.
+with a different account, identity version, or completed migration
+version/source/source hash is `migration_conflict`. Once that immutable marker
+matches, do not compare, reseed, or overwrite `revisionId`,
+`customInstructions`, `instructionSource`, domain `sourcePromptHash`,
+`memoryScope`, `voiceEnabled`, `soulRevisionId`, `active`, or mutable
+timestamps. If either the deterministic identity revision ID or
+`[identity_id+version]` row exists, its complete mapped immutable value must
+match the protected revision or activation fails closed. Wrap Web Crypto work
+performed while the transaction is open in `Dexie.waitFor(...)` so the
+transaction cannot auto-commit during hashing.
 
 The coordinator publishes `activating` before each activation attempt,
 publishes only the matching account's `ready` result, and maps safe failure
@@ -2135,8 +2244,13 @@ In `jarvisV3.test.ts`, prove:
 - only `builtin === true && slug === 'jarvis'` is selected and a user-created
   slug collision is ignored;
 - the protected identity revision and one active profile seed once;
-- the same migration marker/source hash is a no-op, while a changed hash is a
-  typed conflict;
+- the same migration marker/source hash is a no-op returning the current
+  profile unchanged, while a changed hash is a typed conflict;
+- after the initial migration, directly write a valid later profile revision
+  in the Task 8 test fixture without importing Task 9, reactivate, and prove
+  `migrated: false` while the later revision ID, custom instructions,
+  instruction source, source hash, voice/memory settings, and timestamps remain
+  byte-for-byte unchanged;
 - a known shipped local prompt records only the migration source hash and
   leaves profile `sourcePromptHash` absent;
 - deterministic profile IDs are stable per account, differ across accounts,
@@ -2585,6 +2699,7 @@ installer queries and whitespace checks produce no output.
 - Modify: `app/src/lib/db/seed.ts`
 - Create: `app/src/lib/db/seed.test.ts`
 - Modify: `app/src/lib/db/index.ts`
+- Modify: `app/src/lib/db/migrations/jarvisV3.test.ts`
 - Modify: `app/src/features/agents/registry.ts`
 - Create: `app/src/features/agents/registry.test.ts`
 - Modify: `app/src/features/agents/AgentManager.tsx`
@@ -2616,7 +2731,7 @@ Move the currently shipped registry JARVIS prompt into this module as
 legacy `Agent.system_prompt` column, not Task 2's immutable identity text. Its
 normalized SHA-256 must equal
 `KNOWN_SHIPPED_JARVIS_PROMPT_HASHES.registry_ed91635_current`
-(`935b8911bd134646475507d2363a79c2f5e0c232e4561285a647f07f60195bda`).
+(`c8929dd35bcad916c401d0fe4c51cd518ce210177f3b29b6f4d3f214a501c447`).
 Move the current Coder prompt and both exact current registry definitions into
 the same module; `registry.ts` retains no roster fields or prompt text.
 
@@ -2745,7 +2860,20 @@ In `AgentManager.test.tsx` and `AgentDetail.test.tsx`, prove:
 - non-JARVIS save/clone/delete regressions remain green; and
 - `AgentDetail` uses profile text only for protected JARVIS.
 
-- [ ] **Step 3: Run the focused tests and verify RED**
+In `jarvisV3.test.ts`, add the Task 9/10 integration regression: migrate once,
+call `jarvisProfileRepo.updateCustomInstructions()` to create a valid later
+revision, reactivate the same account, and prove activation returns
+`migrated: false` without replacing the new revision, text, instruction
+source, or preserved migration metadata.
+
+- [ ] **Step 3: Pin the profile-reactivation integration, then verify Task 10 RED**
+
+```powershell
+npm --prefix app test -- src/lib/db/migrations/jarvisV3.test.ts
+```
+
+Expected: PASS. This is a cross-task Task 8/9 characterization gate proving
+the activation contract already preserves a repository-created later revision.
 
 ```powershell
 npm --prefix app test -- src/lib/jarvis/builtinAgents.test.ts src/lib/db/seed.test.ts src/features/agents/registry.test.ts src/features/agents/AgentManager.test.tsx src/features/agents/AgentDetail.test.tsx
@@ -2770,17 +2898,17 @@ non-JARVIS lifecycle.
 - [ ] **Step 6: Verify the implementation**
 
 ```powershell
-npm --prefix app test -- src/lib/jarvis/builtinAgents.test.ts src/lib/db/seed.test.ts src/features/agents/registry.test.ts src/features/agents/AgentManager.test.tsx src/features/agents/AgentDetail.test.tsx
+npm --prefix app test -- src/lib/jarvis/builtinAgents.test.ts src/lib/db/seed.test.ts src/lib/db/migrations/jarvisV3.test.ts src/features/agents/registry.test.ts src/features/agents/AgentManager.test.tsx src/features/agents/AgentDetail.test.tsx
 npm run typecheck
 ```
 
 - [ ] **Step 7: Stage literal files, inspect the cache, and commit**
 
 ```powershell
-git add -- 'app/src/lib/jarvis/builtinAgents.ts' 'app/src/lib/jarvis/builtinAgents.test.ts' 'app/src/lib/db/seed.ts' 'app/src/lib/db/seed.test.ts' 'app/src/lib/db/index.ts' 'app/src/features/agents/registry.ts' 'app/src/features/agents/registry.test.ts' 'app/src/features/agents/AgentManager.tsx' 'app/src/features/agents/AgentManager.test.tsx' 'app/src/features/agents/AgentDetail.tsx' 'app/src/features/agents/AgentDetail.test.tsx' 'app/src/types/agent.ts'
+git add -- 'app/src/lib/jarvis/builtinAgents.ts' 'app/src/lib/jarvis/builtinAgents.test.ts' 'app/src/lib/db/seed.ts' 'app/src/lib/db/seed.test.ts' 'app/src/lib/db/index.ts' 'app/src/lib/db/migrations/jarvisV3.test.ts' 'app/src/features/agents/registry.ts' 'app/src/features/agents/registry.test.ts' 'app/src/features/agents/AgentManager.tsx' 'app/src/features/agents/AgentManager.test.tsx' 'app/src/features/agents/AgentDetail.tsx' 'app/src/features/agents/AgentDetail.test.tsx' 'app/src/types/agent.ts'
 git diff --cached --name-only
 git diff --cached --check
-git diff --cached -- 'app/src/lib/jarvis/builtinAgents.ts' 'app/src/lib/jarvis/builtinAgents.test.ts' 'app/src/lib/db/seed.ts' 'app/src/lib/db/seed.test.ts' 'app/src/lib/db/index.ts' 'app/src/features/agents/registry.ts' 'app/src/features/agents/registry.test.ts' 'app/src/features/agents/AgentManager.tsx' 'app/src/features/agents/AgentManager.test.tsx' 'app/src/features/agents/AgentDetail.tsx' 'app/src/features/agents/AgentDetail.test.tsx' 'app/src/types/agent.ts'
+git diff --cached -- 'app/src/lib/jarvis/builtinAgents.ts' 'app/src/lib/jarvis/builtinAgents.test.ts' 'app/src/lib/db/seed.ts' 'app/src/lib/db/seed.test.ts' 'app/src/lib/db/index.ts' 'app/src/lib/db/migrations/jarvisV3.test.ts' 'app/src/features/agents/registry.ts' 'app/src/features/agents/registry.test.ts' 'app/src/features/agents/AgentManager.tsx' 'app/src/features/agents/AgentManager.test.tsx' 'app/src/features/agents/AgentDetail.tsx' 'app/src/features/agents/AgentDetail.test.tsx' 'app/src/types/agent.ts'
 git diff --cached --name-only -- 'install/install.ps1'
 git commit -m "refactor(agents): route builtin Jarvis through profiles"
 git show --check --stat HEAD
@@ -2788,7 +2916,7 @@ git diff-tree --no-commit-id --name-only -r HEAD
 git log --oneline origin/main..HEAD -- 'install/install.ps1'
 ```
 
-Expected staged and committed names: exactly the twelve files above. The
+Expected staged and committed names: exactly the thirteen files above. The
 installer queries and whitespace checks produce no output.
 
 ## Task 18: Execution Journal State Machine and Abort Registry
