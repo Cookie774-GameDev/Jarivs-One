@@ -33,7 +33,9 @@ function report(bindings: AllAboutMePersistenceBindings, error: unknown): void {
 
 const LEGACY_STORAGE_KEY = 'jarvis-all-about-me';
 
-function legacyProfile(accountId: string): { markdown: string; matched: boolean } | null {
+function legacyProfile(
+  accountId: string,
+): { markdown: string; matched: boolean; scope: string } | null {
   // safeLocalStorage is a synchronous StateStorage implementation. Zustand's
   // interface also permits async implementations, so narrow its concrete
   // return type here rather than leaking that union into JSON.parse.
@@ -45,14 +47,45 @@ function legacyProfile(accountId: string): { markdown: string; matched: boolean 
     };
     const scope =
       typeof parsed.state?.accountScope === 'string' ? account(parsed.state.accountScope) : '';
-    if (scope && scope !== accountId) return { markdown: '', matched: false };
+    if (scope && scope !== accountId) return { markdown: '', matched: false, scope };
     const markdown =
       typeof parsed.state?.markdown === 'string'
         ? sanitizeAllAboutMeMarkdown(parsed.state.markdown)
         : '';
-    return { markdown, matched: true };
+    return { markdown, matched: true, scope };
   } catch {
     return null;
+  }
+}
+
+function claimLegacyProfile(accountId: string): boolean {
+  const raw = safeLocalStorage.getItem(LEGACY_STORAGE_KEY) as string | null;
+  if (!raw) return false;
+  try {
+    const parsed = JSON.parse(raw) as {
+      state?: Record<string, unknown>;
+      [key: string]: unknown;
+    };
+    if (!parsed.state || Array.isArray(parsed.state)) return false;
+    const scope =
+      typeof parsed.state.accountScope === 'string' ? account(parsed.state.accountScope) : '';
+    if (scope && scope !== accountId) return false;
+    if (!scope) {
+      safeLocalStorage.setItem(
+        LEGACY_STORAGE_KEY,
+        JSON.stringify({
+          ...parsed,
+          state: {
+            ...parsed.state,
+            accountScope: accountId,
+          },
+        }),
+      );
+    }
+    const claimed = legacyProfile(accountId);
+    return Boolean(claimed?.matched && claimed.scope === accountId);
+  } catch {
+    return false;
   }
 }
 
@@ -63,6 +96,7 @@ export function startAllAboutMePersistence(
   const save = bindings.save ?? saveAllAboutMeFile;
   const debounceMs = bindings.debounceMs ?? 300;
   let activeAccount = requireAccountId(bindings.getAccountId());
+  let activation = 1;
   let disposed = false;
   let applying = false;
   let timer:
@@ -72,50 +106,71 @@ export function startAllAboutMePersistence(
         markdown: string;
       }
     | undefined;
-  const inFlight = new Set<Promise<unknown>>();
+  let writeQueue: Promise<void> = Promise.resolve();
 
   useAllAboutMeStore.getState().setAccountScope(activeAccount);
 
-  const loadIntoStore = async (accountId: string, resetFirst: boolean) => {
+  const applyToStore = (apply: () => void): void => {
+    applying = true;
     try {
-      const result = await load(accountId);
-      if (disposed || activeAccount !== accountId) return;
-      applying = true;
-      if (resetFirst) useAllAboutMeStore.getState().resetProfile();
-      const legacy = legacyProfile(accountId);
-      if (result.found) {
-        useAllAboutMeStore.getState().setMarkdown(result.markdown);
-        if (legacy?.matched) safeLocalStorage.removeItem(LEGACY_STORAGE_KEY);
-      } else if (legacy?.matched && legacy.markdown) {
-        // Migrate before deleting the only previous durable copy. A failed
-        // write intentionally leaves localStorage untouched for a later retry.
-        await save(accountId, legacy.markdown);
-        if (disposed || activeAccount !== accountId) return;
-        useAllAboutMeStore.getState().setMarkdown(legacy.markdown);
-        safeLocalStorage.removeItem(LEGACY_STORAGE_KEY);
-      } else if (legacy?.matched && !legacy.markdown) {
-        safeLocalStorage.removeItem(LEGACY_STORAGE_KEY);
-      }
-    } catch (error) {
-      report(bindings, error);
+      apply();
     } finally {
       applying = false;
     }
   };
 
-  const persist = (accountId: string, markdown: string) => {
-    const pending = Promise.resolve()
+  const isCurrent = (accountId: string, generation: number): boolean =>
+    !disposed && activeAccount === accountId && activation === generation;
+
+  const persist = (accountId: string, markdown: string): Promise<boolean> => {
+    const pending = writeQueue
       .then(() => save(accountId, markdown))
-      .catch((error) => report(bindings, error));
-    inFlight.add(pending);
-    void pending.finally(() => {
-      inFlight.delete(pending);
-    });
+      .then(
+        () => true,
+        (error) => {
+          report(bindings, error);
+          return false;
+        },
+      );
+    writeQueue = pending.then(
+      () => undefined,
+      () => undefined,
+    );
     return pending;
   };
 
+  const loadIntoStore = async (accountId: string, resetFirst: boolean, generation: number) => {
+    try {
+      const result = await load(accountId);
+      if (!isCurrent(accountId, generation)) return;
+      if (resetFirst) applyToStore(() => useAllAboutMeStore.getState().resetProfile());
+      const legacy = legacyProfile(accountId);
+      if (result.found) {
+        applyToStore(() => useAllAboutMeStore.getState().setMarkdown(result.markdown));
+        if (legacy?.matched && isCurrent(accountId, generation)) {
+          safeLocalStorage.removeItem(LEGACY_STORAGE_KEY);
+        }
+      } else if (legacy?.matched && legacy.markdown) {
+        // Migrate before deleting the only previous durable copy. A failed
+        // write intentionally leaves localStorage untouched for a later retry.
+        if (!legacy.scope && !claimLegacyProfile(accountId)) {
+          report(bindings, new Error('Unable to claim legacy All About Me profile migration.'));
+          return;
+        }
+        const saved = await persist(accountId, legacy.markdown);
+        if (!saved || !isCurrent(accountId, generation)) return;
+        applyToStore(() => useAllAboutMeStore.getState().setMarkdown(legacy.markdown));
+        safeLocalStorage.removeItem(LEGACY_STORAGE_KEY);
+      } else if (legacy?.matched && !legacy.markdown && isCurrent(accountId, generation)) {
+        safeLocalStorage.removeItem(LEGACY_STORAGE_KEY);
+      }
+    } catch (error) {
+      report(bindings, error);
+    }
+  };
+
   const unsubscribeStore = useAllAboutMeStore.subscribe((state, previous) => {
-    if (applying || state.markdown === previous.markdown) return;
+    if (applying || !activeAccount || state.markdown === previous.markdown) return;
     if (timer) clearTimeout(timer.handle);
     const accountAtChange = activeAccount;
     const markdownAtChange = state.markdown;
@@ -133,46 +188,43 @@ export function startAllAboutMePersistence(
   const switchAccount = () => {
     const next = account(bindings.getAccountId());
     if (next === activeAccount) return;
+    const pendingTimer = timer;
     if (timer) {
       clearTimeout(timer.handle);
       timer = undefined;
     }
-    const previousAccount = activeAccount;
-    const previousMarkdown = useAllAboutMeStore.getState().markdown;
+    const pendingFlush = pendingTimer
+      ? persist(pendingTimer.accountId, pendingTimer.markdown)
+      : writeQueue.then(() => true);
+    const generation = ++activation;
     if (!next) {
       activeAccount = '';
-      void persist(previousAccount, previousMarkdown).then(() => {
-        if (!disposed && !account(bindings.getAccountId())) {
-          useAllAboutMeStore.getState().clearAccountScope();
-        }
-      });
+      applyToStore(() => useAllAboutMeStore.getState().clearAccountScope());
+      void pendingFlush;
       return;
     }
     activeAccount = next;
-    applying = true;
-    useAllAboutMeStore.getState().setAccountScope(next);
-    applying = false;
+    applyToStore(() => useAllAboutMeStore.getState().setAccountScope(next));
     void (async () => {
-      await persist(previousAccount, previousMarkdown);
-      await loadIntoStore(next, true);
+      await pendingFlush;
+      if (!isCurrent(next, generation)) return;
+      await loadIntoStore(next, true, generation);
     })();
   };
 
   const unsubscribeAccount = bindings.subscribeAccount(switchAccount);
-  void loadIntoStore(activeAccount, false);
+  void loadIntoStore(activeAccount, false, activation);
 
   return async () => {
     disposed = true;
+    activation += 1;
     unsubscribeStore();
     unsubscribeAccount();
-    const flush = timer
-      ? (() => {
-          clearTimeout(timer.handle);
-          const pending = persist(timer.accountId, timer.markdown);
-          timer = undefined;
-          return pending;
-        })()
-      : undefined;
-    await Promise.allSettled([...inFlight, ...(flush ? [flush] : [])]);
+    if (timer) {
+      clearTimeout(timer.handle);
+      persist(timer.accountId, timer.markdown);
+      timer = undefined;
+    }
+    await writeQueue;
   };
 }

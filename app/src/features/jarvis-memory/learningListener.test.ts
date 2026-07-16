@@ -3,6 +3,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { emojisEnabledFromLearning, startJarvisLearningListener } from './learningListener';
 import { useJarvisLearningStore } from './learningStore';
 
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve: (() => void) | undefined;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return {
+    promise,
+    resolve: () => resolve?.(),
+  };
+}
+
 describe('Jarvis learning event listener', () => {
   let stop: (() => void | Promise<void>) | undefined;
 
@@ -236,6 +247,104 @@ describe('Jarvis learning event listener', () => {
       'account-a',
       expect.stringContaining('Keep account A review notes concise'),
     );
+  });
+
+  it('serializes a latest stop flush behind an older in-flight write', async () => {
+    const completions = [deferred(), deferred()];
+    let nextCompletion = 0;
+    let durableMarkdown = '';
+    const save = vi.fn((_accountId: string, markdown: string) => {
+      const completion = completions[nextCompletion++];
+      if (!completion) throw new Error('Unexpected learning save.');
+      return completion.promise.then(() => {
+        durableMarkdown = markdown;
+      });
+    });
+    stop = startJarvisLearningListener({
+      getAccountId: () => 'account-a',
+      save,
+      load: async () => null,
+      debounceMs: 60_000,
+    });
+
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: { chatId: 'chat-1', text: 'Remember that the older preference comes first.' },
+      }),
+    );
+    await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+
+    useJarvisLearningStore.getState().remember({
+      value: 'The latest preference must remain durable',
+      category: 'response-style',
+      source: { kind: 'explicit' },
+    });
+
+    const stopping = stop();
+    stop = undefined;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    completions[1]!.resolve();
+    await Promise.resolve();
+    completions[0]!.resolve();
+    await stopping;
+
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(durableMarkdown).toContain('The latest preference must remain durable');
+  });
+
+  it('quarantines learning state synchronously when the account becomes blank', async () => {
+    let accountId = 'account-a';
+    let accountChanged: () => void = () => undefined;
+    const completion = deferred();
+    const save = vi.fn(() => completion.promise);
+    stop = startJarvisLearningListener({
+      getAccountId: () => accountId,
+      subscribeAccount: (listener) => {
+        accountChanged = listener;
+        return () => undefined;
+      },
+      save,
+      load: async () => null,
+      debounceMs: 60_000,
+    });
+    await vi.waitFor(() =>
+      expect(useJarvisLearningStore.getState().activeAccountId).toBe('account-a'),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    useJarvisLearningStore.getState().remember({
+      value: 'Private learning pending a slow flush',
+      category: 'personal',
+      source: { kind: 'explicit' },
+    });
+
+    let sameTurnState:
+      | {
+          activeAccountId: string;
+          profileIds: string[];
+          historyIds: string[];
+        }
+      | undefined;
+    accountId = '';
+    accountChanged();
+    const state = useJarvisLearningStore.getState();
+    sameTurnState = {
+      activeAccountId: state.activeAccountId,
+      profileIds: Object.keys(state.profiles),
+      historyIds: Object.keys(state.history),
+    };
+
+    await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    completion.resolve();
+    await vi.waitFor(() => expect(useJarvisLearningStore.getState().activeAccountId).toBe(''));
+    await stop();
+    stop = undefined;
+
+    expect(sameTurnState).toEqual({
+      activeAccountId: '',
+      profileIds: [],
+      historyIds: [],
+    });
+    expect(useJarvisLearningStore.getState().profiles).toEqual({});
   });
 
   it('rejects a blank persistence scope instead of fabricating local-unassigned', () => {

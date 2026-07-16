@@ -3,6 +3,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAllAboutMeStore } from './store';
 import { startAllAboutMePersistence } from './persistence';
 
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve: (() => void) | undefined;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return {
+    promise,
+    resolve: () => resolve?.(),
+  };
+}
+
 describe('All About Me account persistence coordinator', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -153,6 +164,142 @@ describe('All About Me account persistence coordinator', () => {
 
     expect(save).toHaveBeenCalledTimes(1);
     expect(save).toHaveBeenCalledWith('account-a', '# All About Me\n\nPrivate account A profile');
+  });
+
+  it('serializes a latest stop flush behind an older in-flight profile write', async () => {
+    const completions = [deferred(), deferred()];
+    let nextCompletion = 0;
+    let durableMarkdown = '';
+    const save = vi.fn((_accountId: string, markdown: string) => {
+      const completion = completions[nextCompletion++];
+      if (!completion) throw new Error('Unexpected All About Me save.');
+      return completion.promise.then(() => {
+        durableMarkdown = markdown;
+      });
+    });
+    const stop = startAllAboutMePersistence({
+      getAccountId: () => 'account-a',
+      subscribeAccount: () => () => undefined,
+      load: async () => ({
+        path: 'account-a/all-about-me.md',
+        markdown: '',
+        recovered: false,
+        found: false,
+      }),
+      save,
+      debounceMs: 0,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    useAllAboutMeStore.getState().setMarkdown('# All About Me\n\nOlder profile');
+    await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    useAllAboutMeStore.getState().setMarkdown('# All About Me\n\nLatest durable profile');
+
+    const stopping = stop();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    completions[1]!.resolve();
+    await Promise.resolve();
+    completions[0]!.resolve();
+    await stopping;
+
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(durableMarkdown).toBe('# All About Me\n\nLatest durable profile');
+  });
+
+  it('tracks a claimed legacy migration through stop without offering it to the next account', async () => {
+    localStorage.setItem(
+      'jarvis-all-about-me',
+      JSON.stringify({
+        state: { markdown: '# All About Me\n\nLegacy account A profile' },
+        version: 1,
+      }),
+    );
+    const migration = deferred();
+    const save = vi.fn((accountId: string) =>
+      accountId === 'account-a' ? migration.promise : Promise.resolve(),
+    );
+    const load = vi.fn(async (accountId: string) => ({
+      path: `${accountId}/all-about-me.md`,
+      markdown: '',
+      recovered: false,
+      found: false,
+    }));
+    const stopAccountA = startAllAboutMePersistence({
+      getAccountId: () => 'account-a',
+      subscribeAccount: () => () => undefined,
+      load,
+      save,
+    });
+    await vi.waitFor(() => expect(save).toHaveBeenCalledWith('account-a', expect.any(String)));
+
+    let stopSettled = false;
+    const stoppingAccountA = stopAccountA().then(() => {
+      stopSettled = true;
+    });
+    const stopAccountB = startAllAboutMePersistence({
+      getAccountId: () => 'account-b',
+      subscribeAccount: () => () => undefined,
+      load,
+      save,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const stopWaitedForMigration = !stopSettled;
+    const migratedToAccountB = save.mock.calls.some(([accountId]) => accountId === 'account-b');
+    const claimedLegacy = localStorage.getItem('jarvis-all-about-me');
+
+    migration.resolve();
+    await stoppingAccountA;
+    await stopAccountB();
+
+    expect(stopWaitedForMigration).toBe(true);
+    expect(migratedToAccountB).toBe(false);
+    expect(JSON.parse(claimedLegacy ?? '{}').state?.accountScope).toBe('account-a');
+    expect(localStorage.getItem('jarvis-all-about-me')).not.toBeNull();
+  });
+
+  it('quarantines the profile synchronously when the account becomes blank', async () => {
+    let accountId = 'account-a';
+    let accountChanged: () => void = () => undefined;
+    const completion = deferred();
+    const save = vi.fn(() => completion.promise);
+    const stop = startAllAboutMePersistence({
+      getAccountId: () => accountId,
+      subscribeAccount: (listener) => {
+        accountChanged = listener;
+        return () => undefined;
+      },
+      load: async () => ({
+        path: 'account-a/all-about-me.md',
+        markdown: '',
+        recovered: false,
+        found: false,
+      }),
+      save,
+      debounceMs: 60_000,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    useAllAboutMeStore
+      .getState()
+      .setMarkdown('# All About Me\n\nPrivate profile pending a slow flush');
+
+    accountId = '';
+    accountChanged();
+    const sameTurnState = {
+      accountScope: useAllAboutMeStore.getState().accountScope,
+      markdown: useAllAboutMeStore.getState().markdown,
+    };
+
+    await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    completion.resolve();
+    await vi.waitFor(() => expect(useAllAboutMeStore.getState().accountScope).toBe(''));
+    await stop();
+
+    expect(sameTurnState).toEqual({
+      accountScope: '',
+      markdown: '',
+    });
+    expect(useAllAboutMeStore.getState().markdown).toBe('');
   });
 
   it('rejects a blank persistence scope instead of fabricating local-unassigned', () => {

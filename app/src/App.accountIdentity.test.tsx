@@ -541,11 +541,13 @@ describe('App canonical account identity boot', () => {
     }
   });
 
-  it('keeps the V2 shell renderable when a live blank cloud id tears down the active scope', async () => {
+  it('quarantines private state in the same turn a live blank cloud id tears down the scope', async () => {
     prepareAppIdentity({
       cloudSession: null,
       localUserId: 'stable-local-user',
     });
+    const finishLearningFlush = accountListeners.deferStop('learning', 'stable-local-user');
+    const finishProfileFlush = accountListeners.deferStop('all-about-me', 'stable-local-user');
 
     render(<App />);
     await waitForAccountScopeBoot();
@@ -574,8 +576,26 @@ describe('App canonical account identity boot', () => {
       }),
     );
 
+    let sameTurnState:
+      | {
+          learningAccountId: string;
+          learningProfileIds: string[];
+          profileScope: string;
+          profileMarkdown: string;
+          taskScope: string;
+          taskRunIds: string[];
+        }
+      | undefined;
     act(() => {
       useAuthStore.setState({ cloudSession: cloudSession('   ') });
+      sameTurnState = {
+        learningAccountId: useJarvisLearningStore.getState().activeAccountId,
+        learningProfileIds: Object.keys(useJarvisLearningStore.getState().profiles),
+        profileScope: useAllAboutMeStore.getState().accountScope,
+        profileMarkdown: useAllAboutMeStore.getState().markdown,
+        taskScope: useJarvisTaskRunStore.getState().accountScope,
+        taskRunIds: Object.keys(useJarvisTaskRunStore.getState().runs),
+      };
     });
 
     await waitFor(() => {
@@ -584,6 +604,11 @@ describe('App canonical account identity boot', () => {
         'stop:all-about-me:stable-local-user',
         'stop:task-runs:stable-local-user',
       ]);
+    });
+    await act(async () => {
+      finishLearningFlush();
+      finishProfileFlush();
+      await Promise.resolve();
     });
 
     await waitFor(() => {
@@ -605,6 +630,14 @@ describe('App canonical account identity boot', () => {
     expect(useJarvisTaskRunStore.getState()).toMatchObject({
       accountScope: '',
       runs: {},
+    });
+    expect(sameTurnState).toEqual({
+      learningAccountId: '',
+      learningProfileIds: [],
+      profileScope: '',
+      profileMarkdown: '',
+      taskScope: '',
+      taskRunIds: [],
     });
   });
 

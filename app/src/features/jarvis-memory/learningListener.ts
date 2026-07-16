@@ -79,7 +79,7 @@ export function startJarvisLearningListener(
       markdown: string;
     }
   >();
-  const inFlightSaves = new Set<Promise<void>>();
+  let writeQueue: Promise<void> = Promise.resolve();
   let disposed = false;
 
   const loadAccount = (accountId: string) => {
@@ -108,7 +108,7 @@ export function startJarvisLearningListener(
     chatId?: string,
     announceCompletion = false,
   ): Promise<void> => {
-    const pending = Promise.resolve()
+    const pending = writeQueue
       .then(() => save(active, markdown))
       .then(() => {
         if (announceCompletion) publishStatus(chatId, 'updated');
@@ -117,22 +117,18 @@ export function startJarvisLearningListener(
         publishStatus(chatId, 'error');
         report(bindings, error);
       });
-    inFlightSaves.add(pending);
-    void pending.finally(() => {
-      inFlightSaves.delete(pending);
-    });
+    writeQueue = pending;
     return pending;
   };
 
-  const flushScheduled = (active?: string): Promise<void>[] => {
-    const flushes: Promise<void>[] = [];
+  const flushScheduled = (active?: string): Promise<void> => {
     for (const [accountId, pending] of timers) {
       if (active && accountId !== active) continue;
       clearTimeout(pending.timer);
       timers.delete(accountId);
-      flushes.push(writeProfile(accountId, pending.markdown));
+      writeProfile(accountId, pending.markdown);
     }
-    return flushes;
+    return writeQueue;
   };
 
   const persistProfile = (active: string, markdown: string) => {
@@ -166,14 +162,12 @@ export function startJarvisLearningListener(
     const previous = store.getState().activeAccountId;
     if (next === previous) return;
     if (!next) {
-      void Promise.allSettled(flushScheduled(previous)).then(() => {
-        if (!disposed && !bindings.getAccountId().trim()) {
-          store.getState().clearAccountScope();
-        }
-      });
+      const pendingFlush = flushScheduled(previous);
+      store.getState().clearAccountScope();
+      void pendingFlush;
       return;
     }
-    void Promise.allSettled(flushScheduled(previous)).then(() => {
+    void flushScheduled(previous).then(() => {
       if (!disposed && bindings.getAccountId().trim() === next) loadAccount(next);
     });
   });
@@ -238,8 +232,8 @@ export function startJarvisLearningListener(
     unsubscribe();
     unsubscribeAccount?.();
     window.removeEventListener(eventName, onSend);
-    const pending = [...inFlightSaves, ...flushScheduled()];
-    await Promise.allSettled(pending);
+    flushScheduled();
+    await writeQueue;
   };
 }
 

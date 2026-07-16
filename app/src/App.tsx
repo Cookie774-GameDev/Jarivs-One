@@ -407,6 +407,14 @@ function useBoot() {
         if (!nextIdentity) quarantineAccountScopedState();
         return;
       }
+      if (!nextIdentity) {
+        const precedingTransition = accountTransition;
+        const immediateTeardown = stopAccountScopedListeners();
+        accountTransition = Promise.allSettled([precedingTransition, immediateTeardown]).then(
+          () => undefined,
+        );
+        return;
+      }
       accountTransition = accountTransition
         .then(async () => {
           if (cancelled || request !== accountTransitionRequest) return;
