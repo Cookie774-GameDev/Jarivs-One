@@ -19,12 +19,14 @@ export class AccountIdentityNotReadyError extends Error {
 export function resolveAccountIdentity(
   auth: Pick<AuthState, 'cloudSession' | 'localUserId'>,
 ): AccountIdentity | null {
-  const supabaseAccountId = auth.cloudSession?.user_id.trim();
-  if (supabaseAccountId) {
-    return {
-      accountId: supabaseAccountId,
-      source: 'supabase',
-    };
+  if (auth.cloudSession) {
+    const supabaseAccountId = auth.cloudSession.user_id.trim();
+    return supabaseAccountId
+      ? {
+          accountId: supabaseAccountId,
+          source: 'supabase',
+        }
+      : null;
   }
 
   const localAccountId = auth.localUserId?.trim();

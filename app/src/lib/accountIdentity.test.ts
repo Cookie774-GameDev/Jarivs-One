@@ -39,6 +39,18 @@ describe('canonical account identity', () => {
     });
   });
 
+  it('fails closed when a present cloud session has no usable user id', () => {
+    expect(
+      resolveAccountIdentity({
+        cloudSession: {
+          ...cloudSession,
+          user_id: '   ',
+        },
+        localUserId: 'local-user',
+      }),
+    ).toBeNull();
+  });
+
   it('uses the stable local user while signed out', () => {
     expect(
       resolveAccountIdentity({
