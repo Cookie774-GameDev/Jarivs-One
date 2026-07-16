@@ -3,8 +3,22 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createJarvisTaskRun, useJarvisTaskRunStore } from './taskRunStore';
 import { startJarvisTaskRunPersistence } from './taskRunPersistence';
 
+const accountStorage = vi.hoisted(() => ({
+  privateAccountDirectory: vi.fn<(accountId: string) => Promise<string>>(),
+}));
+
+vi.mock('@/features/jarvis-memory/accountStorage', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/jarvis-memory/accountStorage')>();
+  accountStorage.privateAccountDirectory.mockImplementation(actual.privateAccountDirectory);
+  return {
+    ...actual,
+    privateAccountDirectory: accountStorage.privateAccountDirectory,
+  };
+});
+
 describe('account-scoped Jarvis task persistence', () => {
   beforeEach(() => {
+    accountStorage.privateAccountDirectory.mockClear();
     localStorage.clear();
     useJarvisTaskRunStore.getState().clearForTests();
   });
@@ -90,8 +104,7 @@ describe('account-scoped Jarvis task persistence', () => {
       onHydrated: hydrated,
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 50));
-
+    expect(accountStorage.privateAccountDirectory).not.toHaveBeenCalled();
     expect(hydrated).not.toHaveBeenCalled();
     expect(useJarvisTaskRunStore.getState()).toMatchObject({
       accountScope: '',

@@ -86,6 +86,10 @@ type SupabaseSessionLike = {
 
 let accountScopeTeardownBarrier: Promise<void> = Promise.resolve();
 
+function cloudSessionUserId(session: SupabaseSessionLike): string {
+  return session?.user?.id?.trim() ?? '';
+}
+
 /**
  * Lazy-mounted modals + canvas surfaces.
  *
@@ -146,16 +150,17 @@ const CelebrationHost = React.lazy(() =>
 );
 
 function applyCloudSession(session: SupabaseSessionLike): void {
-  const userId = session?.user?.id;
-  if (!userId) {
+  if (session === null) {
     useAuthStore.getState().setCloudSession(null);
     return;
   }
+  const userId = cloudSessionUserId(session);
   useAuthStore.getState().setCloudSession({
     user_id: userId,
     email: session.user?.email ?? '',
     expires_at: session.expires_at ?? 0,
   });
+  if (!userId) return;
   void syncPlanFromProfile(userId);
 }
 
@@ -483,16 +488,15 @@ function useBoot() {
                   applyCloudSession(data.session as SupabaseSessionLike);
                   accountIdentityReady = true;
                   syncAccountScopedListeners();
+                  const userId = cloudSessionUserId(data.session as SupabaseSessionLike);
                   // Startup routing: when cloud auth is configured but no one is
                   // signed in, open the Account page so the user can sign up /
                   // sign in. When signed in, the persisted last route is restored
                   // automatically (route is persisted in the UI store).
                   if (!data.session) {
                     useUIStore.getState().setRoute('account');
-                  } else if (data.session.user?.id) {
-                    void import('@/lib/launchPromo').then((m) =>
-                      m.claimLaunchPromo(data.session?.user?.id),
-                    );
+                  } else if (userId) {
+                    void import('@/lib/launchPromo').then((m) => m.claimLaunchPromo(userId));
                   }
                 })
                 .catch((error) => {
@@ -506,14 +510,13 @@ function useBoot() {
                 applyCloudSession(session as SupabaseSessionLike);
                 accountIdentityReady = true;
                 syncAccountScopedListeners();
-                if (session?.user?.id) {
+                const userId = cloudSessionUserId(session as SupabaseSessionLike);
+                if (userId) {
                   void retrySyncErrors()
                     .then(() => processSyncQueue())
                     .then(() => processCloudPull())
                     .catch((err) => console.warn('[sync] immediate flush failed:', err));
-                  void import('@/lib/launchPromo').then((m) =>
-                    m.claimLaunchPromo(session.user?.id),
-                  );
+                  void import('@/lib/launchPromo').then((m) => m.claimLaunchPromo(userId));
                 }
               });
               stopCloudAuth = () => sub.data.subscription.unsubscribe();

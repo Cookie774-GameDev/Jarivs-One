@@ -91,6 +91,18 @@ const bootStorage = vi.hoisted(() => {
   };
 });
 
+const cloudSync = vi.hoisted(() => ({
+  processCloudPull: vi.fn(async () => undefined),
+  processSyncQueue: vi.fn(async () => undefined),
+  pruneSyncQueue: vi.fn(async () => undefined),
+  retrySyncErrors: vi.fn(async () => undefined),
+  startSyncLoop: vi.fn(() => () => undefined),
+}));
+
+const launchPromo = vi.hoisted(() => ({
+  claim: vi.fn(async () => undefined),
+}));
+
 const cloudBoot = vi.hoisted(() => {
   type Session = {
     user?: {
@@ -212,11 +224,15 @@ vi.mock('@/lib/supabase/client', () => ({
 }));
 
 vi.mock('@/lib/sync', () => ({
-  processCloudPull: vi.fn(async () => undefined),
-  processSyncQueue: vi.fn(async () => undefined),
-  pruneSyncQueue: vi.fn(async () => undefined),
-  retrySyncErrors: vi.fn(async () => undefined),
-  startSyncLoop: vi.fn(() => () => undefined),
+  processCloudPull: cloudSync.processCloudPull,
+  processSyncQueue: cloudSync.processSyncQueue,
+  pruneSyncQueue: cloudSync.pruneSyncQueue,
+  retrySyncErrors: cloudSync.retrySyncErrors,
+  startSyncLoop: cloudSync.startSyncLoop,
+}));
+
+vi.mock('@/lib/launchPromo', () => ({
+  claimLaunchPromo: launchPromo.claim,
 }));
 
 vi.mock('@/lib/ai/runtime', async (importOriginal) => {
@@ -429,6 +445,92 @@ describe('App canonical account identity boot', () => {
       expect(accountListeners.taskRuns).toHaveBeenCalledTimes(1);
     });
     expectEveryListenerStartedWith('confirmed-cloud-user');
+  });
+
+  it('keeps an initial present Supabase session with an empty user id fail-closed', async () => {
+    cloudBoot.setConfigured(true);
+    const session = cloudBoot.deferSession();
+    prepareAppIdentity({
+      cloudSession: null,
+      localUserId: 'stable-local-user',
+    });
+
+    render(<App />);
+    await waitForAccountScopeBoot();
+
+    await act(async () => {
+      session.resolve(supabaseSession(''));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(accountListeners.learning).not.toHaveBeenCalled();
+    expect(accountListeners.allAboutMe).not.toHaveBeenCalled();
+    expect(accountListeners.taskRuns).not.toHaveBeenCalled();
+    expect(useAuthStore.getState().cloudSession).toMatchObject({ user_id: '' });
+    expect(cloudBoot.client.from).not.toHaveBeenCalled();
+    expect(launchPromo.claim).not.toHaveBeenCalled();
+  });
+
+  it('tears down local scope for a live present Supabase session with a missing user id', async () => {
+    cloudBoot.setConfigured(true);
+    prepareAppIdentity({
+      cloudSession: null,
+      localUserId: 'stable-local-user',
+    });
+
+    render(<App />);
+    await waitForAccountScopeBoot();
+    expectEveryListenerStartedWith('stable-local-user');
+
+    act(() => {
+      cloudBoot.emitAuth({
+        user: { email: 'missing-id@example.test' },
+        expires_at: 4_102_444_800,
+      });
+    });
+
+    expect(accountListeners.events.slice(-3)).toEqual([
+      'stop:learning:stable-local-user',
+      'stop:all-about-me:stable-local-user',
+      'stop:task-runs:stable-local-user',
+    ]);
+    expect(accountListeners.learning).toHaveBeenCalledTimes(1);
+    expect(accountListeners.allAboutMe).toHaveBeenCalledTimes(1);
+    expect(accountListeners.taskRuns).toHaveBeenCalledTimes(1);
+    expect(useAuthStore.getState().cloudSession).toMatchObject({ user_id: '' });
+  });
+
+  it('skips cloud profile, promo, and sync work for a live whitespace-only user id', async () => {
+    cloudBoot.setConfigured(true);
+    prepareAppIdentity({
+      cloudSession: null,
+      localUserId: 'stable-local-user',
+    });
+
+    render(<App />);
+    await waitForAccountScopeBoot();
+    expectEveryListenerStartedWith('stable-local-user');
+    const callsBeforeMalformedSession = {
+      profile: cloudBoot.client.from.mock.calls.length,
+      promo: launchPromo.claim.mock.calls.length,
+      retry: cloudSync.retrySyncErrors.mock.calls.length,
+      queue: cloudSync.processSyncQueue.mock.calls.length,
+      pull: cloudSync.processCloudPull.mock.calls.length,
+    };
+
+    await act(async () => {
+      cloudBoot.emitAuth(supabaseSession('   '));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect({
+      profile: cloudBoot.client.from.mock.calls.length,
+      promo: launchPromo.claim.mock.calls.length,
+      retry: cloudSync.retrySyncErrors.mock.calls.length,
+      queue: cloudSync.processSyncQueue.mock.calls.length,
+      pull: cloudSync.processCloudPull.mock.calls.length,
+    }).toEqual(callsBeforeMalformedSession);
+    expect(useAuthStore.getState().cloudSession).toMatchObject({ user_id: '' });
   });
 
   it('remains fail-closed when configured Supabase session recovery rejects', async () => {
