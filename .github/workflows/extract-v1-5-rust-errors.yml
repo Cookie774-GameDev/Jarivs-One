@@ -1,0 +1,32 @@
+name: Extract VibeSpace v1.5.0 Rust errors
+
+on:
+  create:
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  extract:
+    if: github.ref_type == 'branch' && github.ref_name == 'extract-v1.5.0-rust-errors'
+    runs-on: ubuntu-22.04
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Extract E0599 blocks
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api repos/$GITHUB_REPOSITORY/actions/jobs/87524666509/logs > job.log
+          grep -a -B 6 -A 24 'error\[E0599\]' job.log > blocks.log || true
+          {
+            echo 'Exact macOS E0599 compiler blocks:'
+            echo '```text'
+            cat blocks.log
+            echo '```'
+          } > body.md
+          jq -n --rawfile body body.md '{body:$body}' > payload.json
+          gh api --method PATCH repos/$GITHUB_REPOSITORY/issues/comments/4987745757 --input payload.json
