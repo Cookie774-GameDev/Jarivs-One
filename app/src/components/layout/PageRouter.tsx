@@ -234,7 +234,11 @@ const routeMap: Record<Route, React.LazyExoticComponent<React.ComponentType>> = 
   account: AccountPage,
 };
 
-export function PageRouter() {
+interface PageRouterProps {
+  chatPage?: React.ReactNode;
+}
+
+export function PageRouter({ chatPage }: PageRouterProps = {}) {
   const route = useUIStore((s) => s.route);
   const visibleRoute = React.useDeferredValue(route);
   const Page = routeMap[visibleRoute] ?? ChatRoute;
@@ -291,7 +295,11 @@ export function PageRouter() {
           <BrowserPage />
         </div>
       ) : null}
-      {!isCachedSurface ? <Page key={visibleRoute} /> : null}
+      {!isCachedSurface
+        ? visibleRoute === 'chat' && chatPage !== undefined
+          ? chatPage
+          : <Page key={visibleRoute} />
+        : null}
     </React.Suspense>
   );
 }

@@ -192,8 +192,7 @@ async function syncPlanFromProfile(userId: string): Promise<void> {
  * For the `chat` route we keep the existing council bootstrap so
  * council mode still pulls per-chat agent ids and seeds messages.
  */
-function ActiveCanvas() {
-  const route = useUIStore((s) => s.route);
+export function ActiveCanvas() {
   const chatMode = useUIStore((s) => s.chatMode);
   const activeChatId = useUIStore((s) => s.activeChatId);
   const [councilAgentIds, setCouncilAgentIds] = React.useState<AgentId[]>([]);
@@ -230,24 +229,21 @@ function ActiveCanvas() {
     };
   }, [chatMode, activeChatId, agentMap]);
 
-  // V3 — non-chat routes go through the lazy PageRouter.
-  if (route !== 'chat') {
-    return <PageRouter />;
-  }
-
-  if (chatMode === 'council') {
-    return (
+  const chatPage =
+    chatMode === 'council' ? (
       <React.Suspense fallback={null}>
         <CouncilView agentIds={councilAgentIds} messages={councilMessages} />
       </React.Suspense>
+    ) : (
+      // doc / code modes are placeholders in V1 - render the chat as a fallback.
+      <React.Suspense fallback={null}>
+        <ChatView />
+      </React.Suspense>
     );
-  }
-  // doc / code modes are placeholders in V1 - render the chat as a fallback.
-  return (
-    <React.Suspense fallback={null}>
-      <ChatView />
-    </React.Suspense>
-  );
+
+  // Keep PageRouter mounted for the lifetime of the workspace. It owns the
+  // cached terminal/browser/preview surfaces, including while Chat is visible.
+  return <PageRouter chatPage={chatPage} />;
 }
 
 /**
