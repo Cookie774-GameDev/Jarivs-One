@@ -108,6 +108,7 @@ export function startAllAboutMePersistence(
     | undefined;
   let writeQueue: Promise<void> = Promise.resolve();
   const activationPromises = new Set<Promise<void>>();
+  const accountRevisions = new Map<string, number>();
 
   useAllAboutMeStore.getState().setAccountScope(activeAccount);
 
@@ -123,16 +124,28 @@ export function startAllAboutMePersistence(
   const isCurrent = (accountId: string, generation: number): boolean =>
     !disposed && activeAccount === accountId && activation === generation;
 
-  const persist = (accountId: string, markdown: string): Promise<boolean> => {
-    const pending = writeQueue
-      .then(() => save(accountId, markdown))
-      .then(
-        () => true,
-        (error) => {
-          report(bindings, error);
-          return false;
-        },
-      );
+  const revisionFor = (accountId: string): number => accountRevisions.get(accountId) ?? 0;
+
+  const isRevisionCurrent = (accountId: string, revision: number): boolean =>
+    revisionFor(accountId) === revision;
+
+  const persist = (
+    accountId: string,
+    markdown: string,
+    expectedRevision?: number,
+  ): Promise<boolean> => {
+    const pending = writeQueue.then(async () => {
+      if (expectedRevision !== undefined && !isRevisionCurrent(accountId, expectedRevision)) {
+        return false;
+      }
+      try {
+        await save(accountId, markdown);
+        return true;
+      } catch (error) {
+        report(bindings, error);
+        return false;
+      }
+    });
     writeQueue = pending.then(
       () => undefined,
       () => undefined,
@@ -145,24 +158,35 @@ export function startAllAboutMePersistence(
     resetFirst: boolean,
     generation: number,
     legacy: ReturnType<typeof legacyProfile>,
+    revision: number,
   ) => {
     try {
       const result = await load(accountId);
       const current = isCurrent(accountId, generation);
-      if (current && resetFirst) {
+      const revisionCurrent = isRevisionCurrent(accountId, revision);
+      if (current && revisionCurrent && resetFirst) {
         applyToStore(() => useAllAboutMeStore.getState().resetProfile());
       }
       if (result.found) {
         if (!current) return;
-        applyToStore(() => useAllAboutMeStore.getState().setMarkdown(result.markdown));
+        if (revisionCurrent) {
+          applyToStore(() => useAllAboutMeStore.getState().setMarkdown(result.markdown));
+        }
         if (legacy?.matched) {
           safeLocalStorage.removeItem(LEGACY_STORAGE_KEY);
         }
       } else if (legacy?.matched && legacy.markdown) {
+        if (!revisionCurrent) return;
         // Migrate before deleting the only previous durable copy. A failed
         // write intentionally leaves localStorage untouched for a later retry.
-        const saved = await persist(accountId, legacy.markdown);
-        if (!saved || !isCurrent(accountId, generation)) return;
+        const saved = await persist(accountId, legacy.markdown, revision);
+        if (
+          !saved ||
+          !isCurrent(accountId, generation) ||
+          !isRevisionCurrent(accountId, revision)
+        ) {
+          return;
+        }
         applyToStore(() => useAllAboutMeStore.getState().setMarkdown(legacy.markdown));
         safeLocalStorage.removeItem(LEGACY_STORAGE_KEY);
       } else if (legacy?.matched && !legacy.markdown && isCurrent(accountId, generation)) {
@@ -179,6 +203,7 @@ export function startAllAboutMePersistence(
     generation: number,
     ready: Promise<unknown> = Promise.resolve(),
   ): Promise<void> => {
+    const revision = revisionFor(accountId);
     let legacy = legacyProfile(accountId);
     if (legacy?.matched && !legacy.scope) {
       if (!claimLegacyProfile(accountId)) {
@@ -190,7 +215,7 @@ export function startAllAboutMePersistence(
     }
     const operation = (async () => {
       await ready;
-      await loadIntoStore(accountId, resetFirst, generation, legacy);
+      await loadIntoStore(accountId, resetFirst, generation, legacy, revision);
     })();
     activationPromises.add(operation);
     void operation.then(
@@ -204,6 +229,7 @@ export function startAllAboutMePersistence(
     if (applying || !activeAccount || state.markdown === previous.markdown) return;
     if (timer) clearTimeout(timer.handle);
     const accountAtChange = activeAccount;
+    accountRevisions.set(accountAtChange, revisionFor(accountAtChange) + 1);
     const markdownAtChange = state.markdown;
     const handle = setTimeout(() => {
       timer = undefined;

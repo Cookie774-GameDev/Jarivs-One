@@ -356,6 +356,62 @@ describe('All About Me account persistence coordinator', () => {
     });
   });
 
+  it('does not migrate captured legacy after a newer profile edit is queued', async () => {
+    const legacyMarkdown = '# All About Me\n\nLegacy account A profile';
+    const newestMarkdown = '# All About Me\n\nNewest account A profile';
+    localStorage.setItem(
+      'jarvis-all-about-me',
+      JSON.stringify({
+        state: { markdown: legacyMarkdown },
+        version: 1,
+      }),
+    );
+    const accountALoad = deferredValue<{
+      path: string;
+      markdown: string;
+      recovered: boolean;
+      found: boolean;
+    }>();
+    let durableMarkdown = '';
+    const save = vi.fn(async (_accountId: string, markdown: string) => {
+      durableMarkdown = markdown;
+    });
+    const stop = startAllAboutMePersistence({
+      getAccountId: () => 'account-a',
+      subscribeAccount: () => () => undefined,
+      load: () => accountALoad.promise,
+      save,
+      debounceMs: 60_000,
+    });
+    expect(
+      JSON.parse(localStorage.getItem('jarvis-all-about-me') ?? '{}').state?.accountScope,
+    ).toBe('account-a');
+
+    useAllAboutMeStore.getState().setMarkdown(newestMarkdown);
+    let stopSettled = false;
+    const stopping = stop().then(() => {
+      stopSettled = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(stopSettled).toBe(false);
+
+    accountALoad.resolve({
+      path: 'account-a/all-about-me.md',
+      markdown: '',
+      recovered: false,
+      found: false,
+    });
+    await stopping;
+
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(save).toHaveBeenCalledWith('account-a', newestMarkdown);
+    expect(durableMarkdown).toBe(newestMarkdown);
+    expect(JSON.parse(localStorage.getItem('jarvis-all-about-me') ?? '{}').state).toMatchObject({
+      accountScope: 'account-a',
+      markdown: legacyMarkdown,
+    });
+  });
+
   it('quarantines the profile synchronously when the account becomes blank', async () => {
     let accountId = 'account-a';
     let accountChanged: () => void = () => undefined;
