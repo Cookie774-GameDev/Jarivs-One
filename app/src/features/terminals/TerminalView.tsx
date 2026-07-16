@@ -948,7 +948,7 @@ export function TerminalView({
             term.write('\r\n\x1b[33m[Session restored - process restarted]\x1b[0m\r\n', () => {
               // Long restores follow bottom; short ones stay top-aligned.
               if (!cancelled && termRef.current) {
-                applyTerminalFollowScroll(termRef.current, { userHasScrolled: false });
+                applyTerminalFollowScroll(termRef.current, { getUserHasScrolled: () => false });
               }
             });
             // Set active window of 3s to bypass ConPTY initialization screen-clear signals only when restoring transcript
@@ -1056,13 +1056,13 @@ export function TerminalView({
           if (restoreDecision.restoredText) {
             term.write(restoreDecision.restoredText, () => {
               if (!cancelled && termRef.current) {
-                applyTerminalFollowScroll(termRef.current, { userHasScrolled: false });
+                applyTerminalFollowScroll(termRef.current, { getUserHasScrolled: () => false });
               }
             });
             ignoreClearsUntilRef.current = Date.now() + 3000;
           } else if (!cancelled && termRef.current) {
             // Fresh / empty re-attach: keep prompt at the top of the pane.
-            applyTerminalFollowScroll(termRef.current, { userHasScrolled: false });
+            applyTerminalFollowScroll(termRef.current, { getUserHasScrolled: () => false });
           }
         }
       } catch (err) {
@@ -1124,7 +1124,7 @@ export function TerminalView({
         // Fresh PTY: keep the first prompt top-aligned in the pane.
         requestAnimationFrame(() => {
           if (cancelled || !termRef.current) return;
-          applyTerminalFollowScroll(termRef.current, { userHasScrolled: false });
+          applyTerminalFollowScroll(termRef.current, { getUserHasScrolled: () => false });
         });
       }
       const executionWasCancelled = executionId
