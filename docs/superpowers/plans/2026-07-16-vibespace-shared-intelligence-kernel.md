@@ -1,11 +1,9 @@
 # VibeSpace Shared Intelligence Kernel Implementation Plan
 
-> **For Codex:** REQUIRED SUB-SKILL: Use
-> `superpowers:subagent-driven-development` to implement this plan task-by-task.
-> Use `superpowers:test-driven-development` for every feature or fix,
-> `superpowers:systematic-debugging` for unexpected failures, and
-> `superpowers:verification-before-completion` before claiming this plan is
-> complete.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use
+> `superpowers:subagent-driven-development` (recommended) or
+> `superpowers:executing-plans` to implement this plan task-by-task. Steps use
+> checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Implement the approved Shared Intelligence Kernel as the real,
 persisted, safety-enforcing foundation consumed by typed JARVIS chat, voice,
@@ -39,26 +37,38 @@ Rust, existing VibeSpace AI/provider adapters and stores.
   localhost processes untouched.
 - Never stage or restore the unrelated `install/install.ps1` deletion.
 - Before each task, acquire exact file locks in `AGENT_COORDINATION.md`.
-- Tasks with disjoint files may run concurrently; contract-defining tasks land
-  before their consumers.
+- Read-only discovery and brief preparation may run concurrently. Product
+  implementation tasks run sequentially through fresh implementer and reviewer
+  gates; contract-defining tasks land before their consumers.
 - Each behavior change begins with a focused failing test and an observed
   expected failure.
 - Do not use snapshot-only tests for security, migration, state-machine, or
   transport behavior.
-- Commit only the files named in the task. Run `git diff --check` before every
-  commit.
+- Use `superpowers:systematic-debugging` for unexpected failures and
+  `superpowers:verification-before-completion` before any completion claim.
+- Never stage a directory. Construct every `git add` from the exact literal
+  files enumerated by that task.
+- Immediately before every commit, run `git diff --cached --name-only`,
+  `git diff --cached --check`, and `git diff --cached -- <each exact task
+path>`. The name list must contain only the task's locked files, and
+  `install/install.ps1` must never appear.
 - Do not push, open a draft PR, or claim the kernel complete until Task 22.
 
 ### Dependency-safe execution order
 
-Execute the numbered task briefs in this order:
+Execute the task briefs in this dependency-safe order:
 
-`1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 18, 11, 12, 13, 14, 15, 19, 20, 16, 17, 21, 22`.
+`1A, 1B (lock-gated), 2, 3, 4, 5, 6, 7, 8, 9, 10, 18, 11, 12, 13, 16A, 14, 15, 19, 20, 16B, 21A, 17, 21B, 22`.
 
-Task 18 moves ahead of request consumers so the request builder can allocate
-real run IDs and the chat/schedule/Hive cutovers never create a competing
-lifecycle. Tasks 19 and 20 move ahead of the consumer cutovers so approval,
-cancellation, and artifact behavior are canonical before those flows use them.
+Task 1A is complete. Task 1B remains deferred while
+`AGENT-20260713-081843-S9BX` owns `app/src/App.tsx`; that lock does not block
+Tasks 2-13, but Task 1B must land before Task 16A starts. Task 18 precedes
+request consumers so it alone allocates caller-stable run IDs and owns legal
+state transitions. Task 16A establishes `legacy | shadow | kernel` shadow
+compilation before response cutover; Task 16B owns the tested production
+default switch to `kernel`. Task 21A binds voice before schedule/Hive Task 17,
+and Task 21B mounts the read-only Command Center only after all canonical
+lifecycle consumers exist.
 
 ## Contract Naming and Persistence Conventions
 
@@ -66,8 +76,15 @@ cancellation, and artifact behavior are canonical before those flows use them.
 - Dexie rows use snake_case.
 - Explicit mappers are the only conversion boundary.
 - Times are Unix milliseconds.
-- IDs use stable prefixes:
-  `jrun_`, `jevt_`, `jappr_`, `jart_`, `jprof_`, `jident_`.
+- IDs use stable prefixes: `jrun_`, `jappr_`, `jart_`, `jprof_`, `jident_`.
+- A `JarvisEvent` has no separate prefixed ID. Its canonical identity is the
+  compound `(runId, seq)` key; `idempotencyKey` is a distinct retry/crash
+  deduplication key.
+- `JarvisRun.id` is the caller-stable run ID and run idempotency key. Task 18
+  allocates and persists it before any request envelope is built.
+- Mutable identity/profile records remain separate from immutable request
+  snapshots. A dispatched envelope and every nested snapshot/collection are
+  deeply immutable.
 - Secret values, raw credentials, cookies, auth headers, and browser storage
   never appear in any row, event, approval, artifact, log, or diagnostic.
 - `accountId` is always explicit for account-bearing repository reads.
@@ -75,11 +92,16 @@ cancellation, and artifact behavior are canonical before those flows use them.
 
 ## Task 1: Canonical Account Identity
 
-**Files:**
+### Task 1A: Resolver contract - complete
 
-- Create: `app/src/lib/accountIdentity.ts`
-- Create: `app/src/lib/accountIdentity.test.ts`
-- Modify: `app/src/App.tsx`
+**Files and evidence:**
+
+- Created: `app/src/lib/accountIdentity.ts`
+- Created: `app/src/lib/accountIdentity.test.ts`
+- Implementation commit:
+  `a33eeb6fb9588869116c55b000a4b65e4a2fbb99`
+- Review-fix commit:
+  `7b51641fd159e5b58ef9604db9fa1010854aaa0a`
 
 **Contract:**
 
@@ -100,45 +122,104 @@ export function requireAccountIdentity(
 export function getActiveAccountIdentity(): AccountIdentity | null;
 ```
 
-**Step 1: Write the failing tests**
+- [x] **Step 1: Write and observe the focused RED test**
 
 Cover:
 
 - authenticated Supabase ID wins over local ID;
+- a present cloud session with a blank user ID fails closed instead of falling
+  through to local scope;
 - stable local ID is used while signed out;
 - no identity returns `null`, never `local-unassigned`;
 - signing in/out changes active scope without rewriting `localUserId`;
 - `requireAccountIdentity()` throws a typed boot-not-ready error.
 
-**Step 2: Run the focused test**
-
 ```powershell
 npm --prefix app test -- src/lib/accountIdentity.test.ts
 ```
 
-Expected: FAIL because the module does not exist.
+Observed: FAIL because the module did not exist.
 
-**Step 3: Implement the smallest contract**
+- [x] **Step 2: Implement and review the resolver**
 
-Move the three duplicated account-ID expressions from `App.tsx` behind the new
-functions. Delay kernel activation until a real identity is available; do not
-delay the existing V2 UI boot.
+The resolver is Supabase-first, local-only while signed out, and fail-closed
+when a present cloud session has an unusable user ID. It never fabricates
+`local-unassigned`. The independent review fix added the malformed-cloud-session
+regression.
 
-**Step 4: Verify**
+- [x] **Step 3: Verify the completed slice**
 
 ```powershell
 npm --prefix app test -- src/lib/accountIdentity.test.ts
 npm run typecheck
 ```
 
-Expected: focused tests and typecheck pass.
+Observed: focused Vitest passed 6/6; root typecheck passed; exact-file Prettier,
+whitespace, and commit-scope checks passed.
 
-**Step 5: Commit**
+### Task 1B: App account-scope integration - deferred
+
+**Lock prerequisite:** Do not edit or stage this task until the current
+`app/src/App.tsx` owner formally releases or hands off the exact file. Preserve
+that owner's staged App work during reconciliation.
+
+**Files:**
+
+- Modify: `app/src/App.tsx`
+- Create: `app/src/App.accountIdentity.test.tsx`
+
+- [ ] **Step 1: Write the failing App boot integration tests**
+
+Mock only the account-scoped listener factories and prove:
+
+- the existing V2 shell remains renderable while canonical identity is
+  unavailable;
+- learning, All About Me persistence, and legacy task-run persistence do not
+  start until `resolveAccountIdentity()` returns a real scope;
+- signed-out local scope and valid cloud scope start with the exact resolved
+  `accountId`;
+- a present cloud session with a blank user ID starts no scoped listener and
+  never falls back to `localUserId`;
+- account transitions stop every old-scope listener before starting the new
+  scope, without rewriting the stable local ID.
+
+- [ ] **Step 2: Observe the focused RED failure**
 
 ```powershell
-git add app/src/lib/accountIdentity.ts app/src/lib/accountIdentity.test.ts app/src/App.tsx
+npm --prefix app test -- src/App.accountIdentity.test.tsx
+```
+
+Expected: FAIL because `App.tsx` still contains three
+`cloudSession?.user_id ?? localUserId ?? 'local-unassigned'` fallbacks and starts
+the listeners before canonical scope is ready.
+
+- [ ] **Step 3: Integrate the canonical resolver**
+
+Replace all three fallback expressions with the Task 1A resolver. Keep
+account-scoped start/stop ownership in one App boot lifecycle: no identity
+means no account-scoped listener, an account change tears down the old scope
+before starting the new one, and App cleanup tears down the active scope.
+Delay only shared-kernel/account-scoped activation; do not delay the existing
+V2 UI, database seed, non-account-scoped runtime, or unrelated boot effects.
+
+- [ ] **Step 4: Verify the lock-gated slice**
+
+```powershell
+npm --prefix app test -- src/App.accountIdentity.test.tsx src/lib/accountIdentity.test.ts
+npm run typecheck
+```
+
+Expected: both focused files and typecheck pass; the App test proves no
+cross-account fallback and no V2 shell boot regression.
+
+- [ ] **Step 5: Stage exact files, inspect the cache, and commit**
+
+```powershell
+git add -- app/src/App.tsx app/src/App.accountIdentity.test.tsx
+git diff --cached --name-only
 git diff --cached --check
-git commit -m "feat(jarvis): add canonical account identity"
+git diff --cached -- app/src/App.tsx app/src/App.accountIdentity.test.tsx
+git commit -m "feat(jarvis): bind app boot to canonical account identity"
 ```
 
 ## Task 2: Protected JARVIS Identity and Profile Contracts
@@ -150,54 +231,166 @@ git commit -m "feat(jarvis): add canonical account identity"
 - Create: `app/src/lib/jarvis/profiles/types.ts`
 - Create: `app/src/lib/jarvis/profiles/types.test.ts`
 
-**Contract:**
+**Interfaces:**
 
 ```ts
 export const JARVIS_IDENTITY_ID = 'jarvis';
 export const JARVIS_IDENTITY_VERSION = 1;
 
-export type JarvisIdentitySnapshot = {
-  id: 'jarvis';
-  version: number;
-  name: 'JARVIS';
-  immutableRules: readonly string[];
-  responsePolicyVersion: number;
-  securityPolicyVersion: number;
-};
-
-export type JarvisProfile = {
+export interface JarvisIdentityRevision {
   id: string;
+  identityId: typeof JARVIS_IDENTITY_ID;
+  version: number;
+  coreHash: string;
+  responseContractHash: string;
+  createdAt: number;
+}
+
+export interface JarvisIdentitySnapshot {
+  identityVersion: number;
+  coreHash: string;
+  responseContractHash: string;
+}
+
+export interface JarvisProfile {
+  id: string;
+  revisionId: string;
   accountId: string;
   name: string;
   customInstructions: string;
   instructionSource: 'none' | 'user' | 'legacy_user_extension';
-  memoryScope: 'none' | 'project' | 'workspace' | 'account';
+  memoryScope: 'none' | 'profile' | 'shared_selected';
   voiceEnabled: boolean;
   active: boolean;
   identityVersion: number;
+  soulRevisionId?: string;
   sourcePromptHash?: string;
   createdAt: number;
   updatedAt: number;
-};
+}
+
+export interface JarvisProfileSnapshot {
+  profileId: string;
+  revisionId: string;
+  soulRevisionId?: string;
+  customInstructions: string;
+  memoryScope: 'none' | 'profile' | 'shared_selected';
+}
+
+export type JarvisDeliverySurface = 'written' | 'voice';
+
+export interface JarvisDeliveryPolicy {
+  surface: JarvisDeliverySurface;
+  identityVersion: number;
+  identityCore: string;
+  responseContract: string;
+  surfaceRules: readonly string[];
+}
+
+export const JARVIS_IDENTITY_POLICY: Readonly<{
+  identityVersion: 1;
+  identityCore: string;
+  responseContract: string;
+  delivery: Readonly<Record<JarvisDeliverySurface, readonly string[]>>;
+}>;
+
+export function isProtectedJarvisAgent(agent: Pick<Agent, 'builtin' | 'slug'>): boolean;
+
+export function getJarvisDeliveryPolicy(
+  surface: JarvisDeliverySurface,
+): Readonly<JarvisDeliveryPolicy>;
+
+export function hashJarvisText(text: string): Promise<string>;
+
+export function isKnownShippedJarvisPrompt(text: string): Promise<boolean>;
+
+export function createJarvisIdentitySnapshot(
+  revision: JarvisIdentityRevision,
+): Readonly<JarvisIdentitySnapshot>;
+
+export function createJarvisProfileSnapshot(
+  profile: JarvisProfile,
+): Readonly<JarvisProfileSnapshot>;
 ```
 
-Implement:
+Mutable identity/profile records and immutable request snapshots are separate
+contracts. Profile `id` remains stable across edits while `revisionId` changes
+for every user-authorized revision. Snapshot factories return only hashes,
+version/revision references, approved custom instructions, and memory scope;
+they never expose immutable policy text, migration-only fields, active flags,
+or mutable timestamps.
 
-- `normalizeLegacyJarvisPrompt()`;
-- cryptographic `hashJarvisText()` using SHA-256;
-- frozen hashes for every shipped JARVIS prompt in current release history;
-- `isKnownShippedJarvisPrompt()`;
-- immutable identity and profile snapshot factories.
+The shared protected-agent predicate is exactly
+`agent.builtin === true && agent.slug === 'jarvis'`. Tasks 8, 10, 12, 14, 16A,
+16B, and later goal work must import it rather than repeat slug-only checks.
+
+**Frozen legacy prompt normalization and hashes:**
+
+`normalizeLegacyJarvisPrompt(text)` must apply JavaScript `trim()` and normalize
+both CRLF and lone CR to LF:
+
+```ts
+export function normalizeLegacyJarvisPrompt(text: string): string {
+  return text.trim().replace(/\r\n?/g, '\n');
+}
+```
+
+Hash the normalized runtime prompt string as UTF-8 bytes with SHA-256. Pin these
+four unique shipped values:
+
+```ts
+export const KNOWN_SHIPPED_JARVIS_PROMPT_HASHES = {
+  seed_00ceba4: '020dde65358f76f800c06ba36fd12d2309c8285b1a0ca66b6dd670f2c08b02e0',
+  registry_3f90607_d611620_fa82eee:
+    '5291fb94990f1be342a8f5021d5575ac8c84830a9de9d34a991e9c40a00445f9',
+  registry_5b83ab0: '372097384ec803abce2c36422cc135cc0dd6b0b988b0b6f826c05dc45ae382cb',
+  registry_ed91635_current: '935b8911bd134646475507d2363a79c2f5e0c232e4561285a647f07f60195bda',
+} as const;
+```
+
+The first value is the `app/src/lib/db/seed.ts` prompt shipped at `00ceba4`.
+The next values are runtime registry prompt variants from
+`3f90607`/`d611620`/`fa82eee`, `5b83ab0`, and `ed91635` through the current
+release. Do not hash TypeScript source escapes or file bytes; tests must hash
+the actual runtime strings.
+
+**Implementation responsibilities:**
+
+- `hashJarvisText(text)` calls `normalizeLegacyJarvisPrompt(text)` exactly once,
+  hashes that UTF-8 runtime string with Web Crypto SHA-256, and returns
+  lowercase hexadecimal;
+- `isKnownShippedJarvisPrompt(text)` hashes through that same function and
+  checks only the four frozen values;
+- one frozen immutable identity/security/response policy source from the
+  approved design;
+- `getJarvisDeliveryPolicy('written' | 'voice')` returns frozen surface policy
+  whose `identityCore` and `responseContract` come from
+  `JARVIS_IDENTITY_POLICY`, never a duplicated prompt;
+- the protected-agent predicate and immutable snapshot factories above.
 
 Do not use the non-cryptographic `hashString()` helper.
 
-**Step 1: Write the failing tests**
+- [ ] **Step 1: Write the failing contract tests**
 
-Cover stable hashes after CRLF/LF normalization, every shipped prompt variant,
-edited-prompt rejection, immutable snapshots, and a single identity rule source
-for written and voice behavior.
+Cover:
 
-**Step 2: Observe failure**
+- exact `trim()` plus CRLF/lone-CR-to-LF normalization;
+- all four frozen runtime hashes and their source-history labels;
+- edited-prompt and TypeScript-source-escape rejection;
+- SHA-256 rather than the existing non-cryptographic helper;
+- `isProtectedJarvisAgent()` accepting only built-in slug `jarvis` and rejecting
+  a user-created slug collision;
+- stable profile ID with a distinct changing revision ID;
+- identity snapshots containing only
+  `identityVersion/coreHash/responseContractHash`;
+- profile snapshots containing only
+  `profileId/revisionId/soulRevisionId/customInstructions/memoryScope`;
+- frozen snapshots;
+- exact function signatures and lowercase SHA-256 results;
+- written and voice policies whose `identityCore` and `responseContract`
+  equal the same frozen source values while only `surfaceRules` differ.
+
+- [ ] **Step 2: Observe the focused RED failure**
 
 ```powershell
 npm --prefix app test -- src/lib/jarvis/identity.test.ts src/lib/jarvis/profiles/types.test.ts
@@ -205,24 +398,29 @@ npm --prefix app test -- src/lib/jarvis/identity.test.ts src/lib/jarvis/profiles
 
 Expected: FAIL because the modules do not exist.
 
-**Step 3: Implement**
+- [ ] **Step 3: Implement the minimal protected contracts**
 
-Lift canonical identity/security/response clauses from the approved design and
-response-intelligence specification into frozen constants. Store only versions
-and hashes in diagnostics.
+Lift canonical immutable identity, security, truth, response, and written/voice
+delivery clauses from the approved design into one frozen policy object.
+Create identity/profile domain records separately from their snapshot
+factories. Freeze returned snapshots. Diagnostics may contain only versions,
+revision IDs, and hashes, never raw immutable rules or custom instruction
+content.
 
-**Step 4: Verify**
+- [ ] **Step 4: Verify**
 
 ```powershell
 npm --prefix app test -- src/lib/jarvis/identity.test.ts src/lib/jarvis/profiles/types.test.ts
 npm run typecheck
 ```
 
-**Step 5: Commit**
+- [ ] **Step 5: Stage exact files, inspect the cache, and commit**
 
 ```powershell
-git add app/src/lib/jarvis/identity.ts app/src/lib/jarvis/identity.test.ts app/src/lib/jarvis/profiles
+git add -- app/src/lib/jarvis/identity.ts app/src/lib/jarvis/identity.test.ts app/src/lib/jarvis/profiles/types.ts app/src/lib/jarvis/profiles/types.test.ts
+git diff --cached --name-only
 git diff --cached --check
+git diff --cached -- app/src/lib/jarvis/identity.ts app/src/lib/jarvis/identity.test.ts app/src/lib/jarvis/profiles/types.ts app/src/lib/jarvis/profiles/types.test.ts
 git commit -m "feat(jarvis): define protected identity and profiles"
 ```
 
@@ -240,7 +438,13 @@ git commit -m "feat(jarvis): define protected identity and profiles"
 - Create: `app/src/lib/jarvis/contracts/validators.test.ts`
 - Create: `app/src/lib/jarvis/contracts/index.ts`
 
-**Required domain shapes:**
+**Interfaces:**
+
+Task 3 consumes `JarvisIdentitySnapshot` and `JarvisProfileSnapshot` from Task 2. It defines every other normative v1 shape and enum below. Later tasks may
+add versioned extensions, but they must not create parallel base contracts.
+
+`app/src/lib/jarvis/contracts/request.ts` must preserve this exact request
+envelope:
 
 ```ts
 export interface JarvisRequestEnvelope {
@@ -266,6 +470,181 @@ export interface JarvisRequestEnvelope {
   outputContract: JarvisOutputContract;
   createdAt: number;
 }
+```
+
+> The envelope is immutable after dispatch. A retry receives a new `requestId`
+> and retains the same `runId` only when it is a transport retry of the same
+> logical execution.
+
+Task 18 must allocate and persist the caller-stable `runId` before Task 11
+constructs this envelope. Task 11 deep-freezes the completed envelope and all
+nested snapshots/collections. A logical retry creates both a new `requestId`
+and a new `runId`; a transport retry creates a new `requestId` and retains the
+same run.
+
+`app/src/lib/jarvis/contracts/prompt.ts`:
+
+```ts
+export type PromptAuthority =
+  | 'immutable_security'
+  | 'immutable_identity'
+  | 'capability_policy'
+  | 'user_approved_preference'
+  | 'turn_policy'
+  | 'untrusted_context'
+  | 'output_contract';
+
+export interface CompiledPromptLayer {
+  id: string;
+  authority: PromptAuthority;
+  sourceRefs: JarvisSourceRef[];
+  content: string;
+  contentHash: string;
+  charCount: number;
+  truncated: boolean;
+}
+
+export interface CompiledJarvisPrompt {
+  schemaVersion: 1;
+  layers: readonly CompiledPromptLayer[];
+  systemText: string;
+  providerPrompt?: string;
+  promptHash: string;
+  identityVersion: number;
+  profileRevisionId: string;
+  diagnostics: {
+    totalChars: number;
+    omittedSourceRefs: JarvisSourceRef[];
+    warnings: string[];
+  };
+}
+```
+
+`app/src/lib/jarvis/contracts/source.ts`:
+
+```ts
+export type JarvisSourceKind =
+  | 'user_message'
+  | 'chat'
+  | 'project'
+  | 'project_file'
+  | 'context_node'
+  | 'memory'
+  | 'terminal'
+  | 'tool_result'
+  | 'plugin'
+  | 'mcp'
+  | 'web'
+  | 'schedule'
+  | 'artifact'
+  | 'agent_output';
+
+export interface JarvisSourceRef {
+  id: string;
+  kind: JarvisSourceKind;
+  label: string;
+  uri?: string;
+  accountId: string;
+  projectId?: string;
+  trust: 'user_direct' | 'app_verified' | 'external_untrusted';
+  sensitivity: 'public' | 'private' | 'restricted' | 'secret';
+  observedAt?: number;
+  contentHash?: string;
+}
+
+export interface JarvisContextItem {
+  source: JarvisSourceRef;
+  purpose: 'answer' | 'execution' | 'preference' | 'history' | 'capability' | 'citation';
+  excerpt: string;
+  score?: number;
+  truncated: boolean;
+}
+
+export interface JarvisContextPack {
+  items: readonly JarvisContextItem[];
+  budget: {
+    maxChars: number;
+    usedChars: number;
+  };
+  exclusions: {
+    source: JarvisSourceRef;
+    reason: string;
+  }[];
+}
+```
+
+`app/src/lib/jarvis/contracts/capability.ts`:
+
+```ts
+export interface JarvisEntitlementSnapshot {
+  source: 'server' | 'local_development' | 'unavailable';
+  planId?: string;
+  capabilities: string[];
+  verifiedAt?: number;
+  expiresAt?: number;
+}
+
+export interface JarvisCapabilitySnapshot {
+  capturedAt: number;
+  tools: JarvisCapabilityRef[];
+  plugins: JarvisCapabilityRef[];
+  mcps: JarvisCapabilityRef[];
+  terminals: JarvisCapabilityRef[];
+  agents: JarvisCapabilityRef[];
+  entitlements: JarvisEntitlementSnapshot;
+}
+
+export interface JarvisCapabilityRef {
+  id: string;
+  state: 'available' | 'connected' | 'authenticated' | 'degraded' | 'unavailable' | 'planned';
+  operations: string[];
+  evidenceRef?: string;
+  lastVerifiedAt?: number;
+}
+
+export interface JarvisModelSnapshot {
+  connectionId?: string;
+  providerId: string;
+  modelId: string;
+  connectionMode: 'native-api' | 'external-cli' | 'local';
+  capabilities: Record<string, boolean>;
+  effectiveTemperature?: number;
+  capturedAt: number;
+}
+```
+
+`app/src/lib/jarvis/contracts/response.ts`:
+
+```ts
+export type JarvisResponseMode =
+  | 'acknowledgement'
+  | 'direct_answer'
+  | 'status'
+  | 'warning'
+  | 'approval_required'
+  | 'action_running'
+  | 'action_success'
+  | 'action_partial'
+  | 'action_failure'
+  | 'clarification'
+  | 'recommendation'
+  | 'long_form_delivery'
+  | 'sensitive';
+
+export interface JarvisOutputContract {
+  preserveStructuredBlocks: true;
+  allowActionBlocks: boolean;
+  allowPlanBlocks: boolean;
+  allowQuestionBlocks: boolean;
+  allowPermissionBlocks: boolean;
+  voiceDelivery: 'none' | 'validated_stream' | 'final_summary';
+}
+
+export interface JarvisExecutionState {
+  status: JarvisRunStatus;
+  verifiedBy: 'journal' | 'executor' | 'provider';
+  lastEventSeq: number;
+}
 
 export interface JarvisResponseEnvelope {
   schemaVersion: 1;
@@ -290,7 +669,11 @@ export interface JarvisResponseEnvelope {
 }
 ```
 
-Execution types must include the exact legal statuses:
+The response envelope block above is exact. Task 14 owns semantic truth checks,
+mode classification, and prose enforcement; Task 3 validates only its JSON-safe
+shape and enum membership.
+
+`app/src/lib/jarvis/contracts/execution.ts`:
 
 ```ts
 export type JarvisRunStatus =
@@ -303,49 +686,215 @@ export type JarvisRunStatus =
   | 'failed'
   | 'cancelled'
   | 'timed_out';
+
+export interface JarvisRun {
+  id: string;
+  accountId: string;
+  workspaceId?: string;
+  projectId?: string;
+  chatId?: string;
+  parentRunId?: string;
+  source: JarvisRequestEnvelope['surface'];
+  status: JarvisRunStatus;
+  agentId: string;
+  identityVersion: number;
+  profileRevisionId: string;
+  model: JarvisModelSnapshot;
+  createdAt: number;
+  updatedAt: number;
+  completedAt?: number;
+}
+
+export interface JarvisEvent {
+  runId: string;
+  seq: number;
+  idempotencyKey: string;
+  type:
+    | 'run_state'
+    | 'model'
+    | 'context'
+    | 'retrieval'
+    | 'tool'
+    | 'terminal'
+    | 'approval'
+    | 'artifact'
+    | 'message'
+    | 'warning'
+    | 'error';
+  status?: string;
+  title: string;
+  safeSummary?: string;
+  sourceRefs: JarvisSourceRef[];
+  artifactIds: string[];
+  createdAt: number;
+}
+
+export interface JarvisApproval {
+  id: string;
+  runId: string;
+  actionId: string;
+  actionVersion: number;
+  params: unknown;
+  secretHandleRefs?: {
+    field: string;
+    handleId: string;
+  }[];
+  paramsHash: string;
+  targetSnapshot?: unknown;
+  risk: 'safe' | 'confirm' | 'dangerous';
+  status: 'pending' | 'approved' | 'denied' | 'expired' | 'consumed';
+  createdAt: number;
+  decidedAt?: number;
+  consumedAt?: number;
+}
+
+export interface JarvisArtifact {
+  id: string;
+  runId: string;
+  kind:
+    | 'file'
+    | 'link'
+    | 'text'
+    | 'image'
+    | 'document'
+    | 'code'
+    | 'terminal_output'
+    | 'provider_result';
+  title: string;
+  uri?: string;
+  mimeType?: string;
+  safeSummary?: string;
+  sourceRefs: JarvisSourceRef[];
+  createdAt: number;
+}
 ```
 
-Validators return typed errors with a JSON-safe path and never log the
+`JarvisRun.id` is the caller-stable run idempotency key. A `JarvisEvent` is
+identified only by `(runId, seq)`; `idempotencyKey` is required, non-empty, and
+used by Task 7's unique `[run_id+idempotency_key]` index to deduplicate delivery
+without inventing a separate event ID.
+
+`app/src/lib/jarvis/contracts/validators.ts` returns:
+
+```ts
+export type JarvisContractValidationErrorCode =
+  | 'missing_field'
+  | 'invalid_type'
+  | 'unknown_enum'
+  | 'non_finite_number'
+  | 'invalid_identifier'
+  | 'non_json_safe';
+
+export interface JarvisContractValidationError {
+  code: JarvisContractValidationErrorCode;
+  path: readonly (string | number)[];
+  message: string;
+}
+
+export type JarvisContractValidationResult<T> =
+  | { ok: true; value: T }
+  | { ok: false; errors: readonly JarvisContractValidationError[] };
+
+export function validateJarvisRequestEnvelope(
+  input: unknown,
+): JarvisContractValidationResult<JarvisRequestEnvelope>;
+export function validateCompiledJarvisPrompt(
+  input: unknown,
+): JarvisContractValidationResult<CompiledJarvisPrompt>;
+export function validateJarvisSourceRef(
+  input: unknown,
+): JarvisContractValidationResult<JarvisSourceRef>;
+export function validateJarvisContextPack(
+  input: unknown,
+): JarvisContractValidationResult<JarvisContextPack>;
+export function validateJarvisCapabilitySnapshot(
+  input: unknown,
+): JarvisContractValidationResult<JarvisCapabilitySnapshot>;
+export function validateJarvisModelSnapshot(
+  input: unknown,
+): JarvisContractValidationResult<JarvisModelSnapshot>;
+export function validateJarvisResponseEnvelope(
+  input: unknown,
+): JarvisContractValidationResult<JarvisResponseEnvelope>;
+export function validateJarvisRun(input: unknown): JarvisContractValidationResult<JarvisRun>;
+export function validateJarvisEvent(input: unknown): JarvisContractValidationResult<JarvisEvent>;
+export function validateJarvisApproval(
+  input: unknown,
+): JarvisContractValidationResult<JarvisApproval>;
+export function validateJarvisArtifact(
+  input: unknown,
+): JarvisContractValidationResult<JarvisArtifact>;
+```
+
+Paths and messages contain only schema field names, indexes, and safe error
+categories. Validators never log, stringify into diagnostics, or return the
 rejected payload.
 
-**Step 1: Write failing validator tests**
+Task 3 validators enforce required fields, primitive/container shapes, literal
+schema version, enum membership, finite timestamps/numbers, non-negative
+integer event sequences, non-empty identifiers, and JSON-safe values. They do
+not decide legal run transitions, secret-content admission, approval risk or
+consumption, artifact backing, or response/executor truth:
 
-Test:
+- Task 18 owns legal state transitions and cancellation outcomes.
+- Task 19 owns secret parameter rejection, risk derivation, and approval
+  revalidation.
+- Task 20 owns artifact backing/state rules.
+- Task 14 owns response truth and prose enforcement.
 
-- valid round trips;
-- unknown enum values;
-- missing account/request/run ownership;
-- non-finite timestamps/sequences;
-- secret-shaped approval parameters;
-- invalid terminal transitions;
-- source refs without provenance/freshness;
-- response text without matching execution truth;
-- JSON serialization without functions, class instances, or `undefined`.
+- [ ] **Step 1: Write failing table-driven validator tests**
 
-**Step 2: Observe failure**
+Cover:
+
+- valid construction and JSON round trips for every contract family;
+- every `PromptAuthority`, source kind/trust/sensitivity/context purpose,
+  capability state, connection mode, entitlement source, voice delivery,
+  response mode, run status, event type, approval risk/status, and artifact
+  kind;
+- unknown enum values and wrong `schemaVersion`;
+- missing account/request/run ownership and empty IDs;
+- non-finite timestamps/scores/budgets and negative/fractional event sequences;
+- event identity as `(runId, seq)` plus a required non-empty
+  `idempotencyKey`, with no event `id`;
+- source refs missing account, trust, sensitivity, or kind;
+- nested functions, class instances, symbols, bigint, `undefined`, sparse
+  arrays, and non-finite values rejected as non-JSON-safe;
+- a `console` spy proving rejected payload values are never logged or returned.
+
+Do not add tests for transition legality, secret-shaped parameter contents,
+artifact backing, or response text matching executor truth in this task.
+
+- [ ] **Step 2: Observe the focused RED failure**
 
 ```powershell
 npm --prefix app test -- src/lib/jarvis/contracts/validators.test.ts
 ```
 
-**Step 3: Implement minimal contracts and validators**
+Expected: FAIL because the contract modules do not exist.
 
-Use explicit type guards and construction functions; do not add a runtime
-schema dependency unless the hand-written implementation becomes materially
-less safe and the dependency is separately justified.
+- [ ] **Step 3: Implement minimal contracts and shape/enum validators**
 
-**Step 4: Verify**
+Implement the exact validator exports above with shared private JSON-safety,
+record, array, finite-number, non-empty-string, and enum helpers. Successful
+results return the same validated value without mutation. Do not add a runtime
+schema dependency unless hand-written validation is first shown materially
+less safe and the dependency receives a separately scoped plan correction.
+`index.ts` re-exports only these canonical definitions.
+
+- [ ] **Step 4: Verify**
 
 ```powershell
 npm --prefix app test -- src/lib/jarvis/contracts/validators.test.ts
 npm run typecheck
 ```
 
-**Step 5: Commit**
+- [ ] **Step 5: Stage exact files, inspect the cache, and commit**
 
 ```powershell
-git add app/src/lib/jarvis/contracts
+git add -- app/src/lib/jarvis/contracts/request.ts app/src/lib/jarvis/contracts/prompt.ts app/src/lib/jarvis/contracts/source.ts app/src/lib/jarvis/contracts/capability.ts app/src/lib/jarvis/contracts/response.ts app/src/lib/jarvis/contracts/execution.ts app/src/lib/jarvis/contracts/validators.ts app/src/lib/jarvis/contracts/validators.test.ts app/src/lib/jarvis/contracts/index.ts
+git diff --cached --name-only
 git diff --cached --check
+git diff --cached -- app/src/lib/jarvis/contracts/request.ts app/src/lib/jarvis/contracts/prompt.ts app/src/lib/jarvis/contracts/source.ts app/src/lib/jarvis/contracts/capability.ts app/src/lib/jarvis/contracts/response.ts app/src/lib/jarvis/contracts/execution.ts app/src/lib/jarvis/contracts/validators.ts app/src/lib/jarvis/contracts/validators.test.ts app/src/lib/jarvis/contracts/index.ts
 git commit -m "feat(jarvis): add shared kernel contracts"
 ```
 
