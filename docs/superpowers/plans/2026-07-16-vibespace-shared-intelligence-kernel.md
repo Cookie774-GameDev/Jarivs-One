@@ -49,6 +49,17 @@ Rust, existing VibeSpace AI/provider adapters and stores.
   commit.
 - Do not push, open a draft PR, or claim the kernel complete until Task 22.
 
+### Dependency-safe execution order
+
+Execute the numbered task briefs in this order:
+
+`1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 18, 11, 12, 13, 14, 15, 19, 20, 16, 17, 21, 22`.
+
+Task 18 moves ahead of request consumers so the request builder can allocate
+real run IDs and the chat/schedule/Hive cutovers never create a competing
+lifecycle. Tasks 19 and 20 move ahead of the consumer cutovers so approval,
+cancellation, and artifact behavior are canonical before those flows use them.
+
 ## Contract Naming and Persistence Conventions
 
 - Domain contracts use camelCase.
