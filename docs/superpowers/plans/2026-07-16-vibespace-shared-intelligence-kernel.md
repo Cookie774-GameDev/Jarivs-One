@@ -2791,468 +2791,6 @@ git log --oneline origin/main..HEAD -- 'install/install.ps1'
 Expected staged and committed names: exactly the twelve files above. The
 installer queries and whitespace checks produce no output.
 
-## Task 11: Context Pack, Capability Snapshot, and Request Envelope Builder
-
-**Files:**
-
-- Create: `app/src/lib/jarvis/contextPack.ts`
-- Create: `app/src/lib/jarvis/contextPack.test.ts`
-- Create: `app/src/lib/jarvis/capabilitySnapshot.ts`
-- Create: `app/src/lib/jarvis/capabilitySnapshot.test.ts`
-- Create: `app/src/lib/jarvis/requestEnvelope.ts`
-- Create: `app/src/lib/jarvis/requestEnvelope.test.ts`
-- Modify: `app/src/lib/ai/context.ts`
-- Modify: `app/src/lib/ai/context.test.ts`
-
-**Contract:**
-
-```ts
-export async function buildJarvisContextPack(
-  input: JarvisContextPackInput,
-): Promise<JarvisContextPack>;
-
-export function createJarvisCapabilitySnapshot(
-  input: CapabilitySnapshotInput,
-): JarvisCapabilitySnapshot;
-
-export async function createJarvisRequestEnvelope(
-  input: JarvisRequestInput,
-): Promise<JarvisRequestEnvelope>;
-```
-
-The context pack:
-
-- applies source policy before reading;
-- includes trust, provenance, freshness, byte/token cost, and truncation reason;
-- orders explicit user attachments before retrieved context;
-- treats retrieved/external content as untrusted data, never instructions;
-- uses deterministic budgets;
-- omits source body when only a reference is authorized.
-
-Capability snapshots distinguish the approved connection and availability
-states and are derived from live typed state. The exact persisted vocabulary is
-`available | connected | authenticated | degraded | unavailable | planned`.
-
-**Step 1: Write failing tests**
-
-Cover deterministic ordering/budgets, secret exclusion, trust isolation,
-stale sources, missing connectors, model/provider state, entitlements, and
-request-source variants.
-
-**Step 2: Observe failure**
-
-```powershell
-npm --prefix app test -- src/lib/jarvis/contextPack.test.ts src/lib/jarvis/capabilitySnapshot.test.ts src/lib/jarvis/requestEnvelope.test.ts
-```
-
-**Step 3: Implement**
-
-Adapt existing AI context resolution through the new builder without deleting
-the old non-JARVIS path.
-
-**Step 4: Verify and commit**
-
-```powershell
-npm --prefix app test -- src/lib/jarvis/contextPack.test.ts src/lib/jarvis/capabilitySnapshot.test.ts src/lib/jarvis/requestEnvelope.test.ts src/lib/ai/context.test.ts
-npm run typecheck
-git add app/src/lib/jarvis/contextPack.ts app/src/lib/jarvis/contextPack.test.ts app/src/lib/jarvis/capabilitySnapshot.ts app/src/lib/jarvis/capabilitySnapshot.test.ts app/src/lib/jarvis/requestEnvelope.ts app/src/lib/jarvis/requestEnvelope.test.ts app/src/lib/ai/context.ts app/src/lib/ai/context.test.ts
-git diff --cached --check
-git commit -m "feat(jarvis): build typed request envelopes"
-```
-
-## Task 12: Deterministic Prompt Compiler
-
-**Files:**
-
-- Create: `app/src/lib/jarvis/promptCompiler.ts`
-- Create: `app/src/lib/jarvis/promptCompiler.test.ts`
-- Modify: `app/src/lib/jarvis/promptLayers.ts`
-- Modify: `app/src/lib/jarvis/promptLayers.test.ts`
-
-**Compiler surface:**
-
-```ts
-export function compileJarvisPrompt(envelope: JarvisRequestEnvelope): CompiledJarvisPrompt;
-```
-
-Authority order:
-
-1. immutable security and truth rules;
-2. immutable JARVIS identity and response contract;
-3. capability, tool, approval, and entitlement policy;
-4. user-approved profile and custom instructions;
-5. current surface and interaction-mode policy;
-6. provenance-labelled untrusted context;
-7. structured-output requirements.
-
-The compiler emits separately addressable layers with stable IDs, authority,
-trust, provenance, byte/token estimates, source hashes, and a deterministic
-compiled hash. Untrusted text is enclosed as data and cannot introduce system
-instructions.
-
-**Step 1: Write failing tests**
-
-Cover stable output/hash, authority ordering, profile isolation, source
-escaping, budget truncation, structured output rules, model switching,
-schedule/Hive source differences, and no duplicate identity layers.
-
-**Step 2: Observe failure**
-
-```powershell
-npm --prefix app test -- src/lib/jarvis/promptCompiler.test.ts src/lib/jarvis/promptLayers.test.ts
-```
-
-**Step 3: Implement**
-
-Make the old `assembleJarvisPromptLayers()` a compatibility wrapper over the
-compiler or remove it only after all imports prove obsolete.
-
-**Step 4: Verify and commit**
-
-```powershell
-npm --prefix app test -- src/lib/jarvis/promptCompiler.test.ts src/lib/jarvis/promptLayers.test.ts
-npm run typecheck
-git add app/src/lib/jarvis/promptCompiler.ts app/src/lib/jarvis/promptCompiler.test.ts app/src/lib/jarvis/promptLayers.ts app/src/lib/jarvis/promptLayers.test.ts
-git diff --cached --check
-git commit -m "feat(jarvis): compile one authoritative prompt"
-```
-
-## Task 13: Provider Prompt Transport
-
-**Files:**
-
-- Create: `app/src/lib/ai/providerPromptTransport.ts`
-- Create: `app/src/lib/ai/providerPromptTransport.test.ts`
-- Modify: `app/src/lib/ai/router.ts`
-- Modify: `app/src/lib/ai/router.test.ts`
-- Modify: `app/src/lib/ai/router.connection.test.ts`
-- Modify: `app/src/lib/ai/types.ts`
-- Modify: `app/src/lib/ai/adapters/types.ts`
-- Modify: `app/src/lib/ai/adapters/catalog.ts`
-- Modify: `app/src/lib/ai/adapters/catalog.test.ts`
-- Modify: `app/src/lib/ai/adapters/nativeCatalog.ts`
-- Modify: `app/src/lib/ai/adapters/registry.test.ts`
-- Modify: `app/src/lib/ai/adapters/cliBridge.ts`
-- Modify: `app/src/lib/ai/adapters/cliParsers.test.ts`
-- Modify: `app/src/lib/ai/adapters/claude.ts`
-- Modify: `app/src/lib/ai/adapters/codex.ts`
-- Modify: `app/src/lib/ai/adapters/copilot.ts`
-- Modify: `app/src/lib/ai/adapters/gemini.ts`
-- Modify: `app/src/lib/ai/adapters/opencode.ts`
-- Modify: `app/src/lib/ai/adapters/qwen.ts`
-- Modify: `app/src/lib/ai/providers/anthropic.ts`
-- Modify: `app/src/lib/ai/providers/google.ts`
-- Modify: `app/src/lib/ai/providers/groq.ts`
-- Modify: `app/src/lib/ai/providers/mock.ts`
-- Modify: `app/src/lib/ai/providers/ollama.ts`
-- Modify: `app/src/lib/ai/providers/ollama.test.ts`
-- Modify: `app/src/lib/ai/providers/openai.ts`
-- Modify: `app/src/lib/ai/providers/openai-compatible.ts`
-- Modify: `app/src/lib/ai/providers/openai-compatible.test.ts`
-
-**Contract:**
-
-```ts
-export type ProviderPromptTransport = {
-  system: string;
-  messages: readonly AiMessage[];
-  compiledHash: string;
-  transport: 'native_system' | 'preamble_message' | 'cli_preamble';
-};
-
-export function buildProviderPromptTransport(
-  compiled: CompiledJarvisPrompt,
-  target: ProviderTransportTarget,
-): ProviderPromptTransport;
-```
-
-Rules:
-
-- Native system fields receive the compiled system contract.
-- Providers without system fields receive a deterministic first-message
-  preamble.
-- External CLI adapters receive the compiled preamble through stdin or a
-  documented safe argument; never through unsafe command concatenation.
-- If a transport cannot preserve the contract, JARVIS requests fail closed
-  with typed `unsupported_prompt_transport`.
-- Non-JARVIS behavior remains compatible.
-
-**Step 1: Write failing construction tests**
-
-Assert the identity hash and output contract are present in every provider and
-CLI invocation. Include whitespace, quotes, Unicode, multiline text, and
-prompt-injection-like input.
-
-**Step 2: Observe failure**
-
-```powershell
-npm --prefix app test -- src/lib/ai/providerPromptTransport.test.ts src/lib/ai/router.test.ts src/lib/ai/router.connection.test.ts src/lib/ai/adapters/catalog.test.ts src/lib/ai/adapters/registry.test.ts src/lib/ai/adapters/cliParsers.test.ts
-```
-
-Expected: current external CLI adapter cases demonstrate dropped system prompt.
-
-**Step 3: Implement**
-
-Keep secret-bearing provider configuration out of the compiled prompt and test
-diagnostics.
-
-**Step 4: Verify and commit**
-
-```powershell
-npm --prefix app test -- src/lib/ai/providerPromptTransport.test.ts src/lib/ai/router.test.ts src/lib/ai/router.connection.test.ts src/lib/ai/adapters/catalog.test.ts src/lib/ai/adapters/registry.test.ts src/lib/ai/adapters/cliParsers.test.ts
-npm --prefix app test -- src/lib/ai/providers
-npm run typecheck
-git add app/src/lib/ai/providerPromptTransport.ts app/src/lib/ai/providerPromptTransport.test.ts app/src/lib/ai/router.ts app/src/lib/ai/router.test.ts app/src/lib/ai/adapters app/src/lib/ai/providers
-git diff --cached --check
-git commit -m "fix(ai): preserve compiled Jarvis prompts across providers"
-```
-
-## Task 14: Response Tokenizer, Modes, Linter, Repair, and Envelope
-
-**Files:**
-
-- Create: `app/src/lib/jarvis/response/tokenizer.ts`
-- Create: `app/src/lib/jarvis/response/tokenizer.test.ts`
-- Create: `app/src/lib/jarvis/response/modeClassifier.ts`
-- Create: `app/src/lib/jarvis/response/modeClassifier.test.ts`
-- Create: `app/src/lib/jarvis/response/linter.ts`
-- Create: `app/src/lib/jarvis/response/linter.test.ts`
-- Create: `app/src/lib/jarvis/response/repair.ts`
-- Create: `app/src/lib/jarvis/response/repair.test.ts`
-- Create: `app/src/lib/jarvis/response/templates.ts`
-- Create: `app/src/lib/jarvis/response/templates.test.ts`
-- Create: `app/src/lib/jarvis/response/pipeline.ts`
-- Create: `app/src/lib/jarvis/response/pipeline.test.ts`
-- Create: `app/src/lib/jarvis/response/index.ts`
-- Modify: `app/src/lib/jarvis/responsePolicy.ts`
-- Modify: `app/src/lib/jarvis/responsePolicy.test.ts`
-- Modify: `app/src/lib/jarvis/responseListener.ts`
-- Modify: `app/src/lib/jarvis/responseListener.test.ts`
-
-**Pipeline:**
-
-```ts
-export async function processJarvisResponse(
-  raw: RawProviderResponse,
-  request: JarvisRequestEnvelope,
-  repair: JarvisRepairPort,
-): Promise<JarvisResponseEnvelope>;
-```
-
-Order:
-
-1. tokenize immutable structured blocks;
-2. classify deterministic response mode from request and execution state;
-3. sanitize credential/prompt-leak/action-macro content;
-4. lint prose only;
-5. apply deterministic repair to prose only;
-6. use templates for action lifecycle narration;
-7. restore structured blocks byte-for-byte;
-8. derive display and spoken text from the same verified truth state;
-9. validate the response envelope.
-
-Permit at most one bounded prose-only repair through a low-level provider port.
-The repair receives immutable placeholders and verified facts, cannot invoke
-tools, cannot recursively invoke the kernel, and cannot change structured
-regions or execution state. If it fails, use deterministic transformations,
-verified state templates, or a quarantined retry response as required by the
-approved design.
-
-**Step 1: Write failing tests**
-
-Cover every required response mode, structured block round trips, prompt leak,
-credential leak, “Sir” cadence, dry humor, generic fallback replacement,
-submission vs completion, approval/running/success/failure/partial states,
-citations, artifacts, model switch, frustrated-user tone, sensitive topics,
-and deterministic idempotence.
-
-**Step 2: Observe failure**
-
-```powershell
-npm --prefix app test -- src/lib/jarvis/response
-```
-
-**Step 3: Implement**
-
-Retain old public response-policy functions as wrappers where existing
-consumers need them. Greeting interception must check the selected built-in
-JARVIS identity before preempting the provider.
-
-**Step 4: Verify and commit**
-
-```powershell
-npm --prefix app test -- src/lib/jarvis/response src/lib/jarvis/responsePolicy.test.ts src/lib/jarvis/responseListener.test.ts
-npm run typecheck
-git add app/src/lib/jarvis/response app/src/lib/jarvis/responsePolicy.ts app/src/lib/jarvis/responsePolicy.test.ts app/src/lib/jarvis/responseListener.ts app/src/lib/jarvis/responseListener.test.ts
-git diff --cached --check
-git commit -m "feat(jarvis): enforce verified response envelopes"
-```
-
-## Task 15: Streaming Preview Gate and Speech Gate
-
-**Files:**
-
-- Create: `app/src/lib/jarvis/response/streamingPreviewGate.ts`
-- Create: `app/src/lib/jarvis/response/streamingPreviewGate.test.ts`
-- Create: `app/src/features/chat/streamingPreviewStore.ts`
-- Create: `app/src/features/chat/streamingPreviewStore.test.ts`
-- Create: `app/src/features/voice/speechGate.ts`
-- Create: `app/src/features/voice/speechGate.test.ts`
-- Modify: `app/src/features/voice/streamingVoice.ts`
-- Modify: `app/src/features/voice/streamingVoice.test.ts`
-- Modify: `app/src/features/voice/textCleanup.ts`
-- Modify: `app/src/features/voice/textCleanup.test.ts`
-- Modify: `app/src/features/voice/VoiceModal.tsx`
-- Modify: `app/src/features/voice/VoiceModal.turn.test.tsx`
-
-**Rules:**
-
-- Streaming preview may display only incrementally validated prose.
-- Streaming preview remains ephemeral and is never written to Dexie as a
-  canonical assistant message.
-- An incomplete structured block remains buffered.
-- Secret-like or prompt-leak-like spans are withheld.
-- TTS accepts only `JarvisResponseEnvelope.spokenText` or validated safe chunks
-  produced by the speech gate.
-- Stop/cancel aborts queued synthesis and playback.
-- Structured blocks, URLs, citations, code, tables, action macros, and hidden
-  metadata are not spoken unless an explicit accessible narration template
-  provides safe text.
-
-**Step 1: Write failing tests**
-
-Include chunk boundaries inside secrets, Markdown fences, action blocks,
-Unicode, sentence boundaries, late cancellation, provider error, and final
-display/spoken consistency.
-
-**Step 2: Observe failure**
-
-```powershell
-npm --prefix app test -- src/lib/jarvis/response/streamingPreviewGate.test.ts src/features/chat/streamingPreviewStore.test.ts src/features/voice/speechGate.test.ts src/features/voice/streamingVoice.test.ts
-```
-
-**Step 3: Implement**
-
-Remove every path that sends accumulated raw provider text directly to TTS or
-canonical message persistence.
-
-**Step 4: Verify and commit**
-
-```powershell
-npm --prefix app test -- src/lib/jarvis/response/streamingPreviewGate.test.ts src/features/chat/streamingPreviewStore.test.ts src/features/voice/speechGate.test.ts src/features/voice/streamingVoice.test.ts src/features/voice/textCleanup.test.ts src/features/voice/VoiceModal.turn.test.tsx
-npm run typecheck
-git add app/src/lib/jarvis/response/streamingPreviewGate.ts app/src/lib/jarvis/response/streamingPreviewGate.test.ts app/src/features/chat/streamingPreviewStore.ts app/src/features/chat/streamingPreviewStore.test.ts app/src/features/voice/speechGate.ts app/src/features/voice/speechGate.test.ts app/src/features/voice/streamingVoice.ts app/src/features/voice/streamingVoice.test.ts app/src/features/voice/textCleanup.ts app/src/features/voice/textCleanup.test.ts app/src/features/voice/VoiceModal.tsx app/src/features/voice/VoiceModal.turn.test.tsx
-git diff --cached --check
-git commit -m "fix(voice): gate streaming and speech through verified text"
-```
-
-## Task 16: Typed Chat Runtime Cutover
-
-**Files:**
-
-- Create: `app/src/lib/jarvis/kernel.ts`
-- Create: `app/src/lib/jarvis/kernel.integration.test.ts`
-- Modify: `app/src/lib/ai/runtime.ts`
-- Modify: `app/src/lib/ai/runtime.test.ts`
-- Modify: `app/src/lib/ai/runtimeSafety.test.ts`
-- Modify: `app/src/features/chat/ChatView.tsx`
-- Modify: `app/src/features/chat/ChatThread.tsx`
-- Modify: `app/src/features/chat/ChatThread.agentPanel.test.tsx`
-- Modify: `app/src/features/chat/MessagePart.jarvisCreator.test.tsx`
-- Modify: `app/src/lib/jarvis/responseListener.ts`
-- Modify: `app/src/lib/jarvis/responseListener.test.ts`
-
-**Behavior:**
-
-- Only built-in JARVIS chat turns use the kernel path in this task.
-- Build the request envelope once.
-- Compile and transport the prompt once.
-- Stream through the preview gate.
-- Finalize through `processJarvisResponse()`.
-- Persist one canonical assistant message only after final enforcement; on an
-  interrupted turn persist only the preview gate's safe partial with explicit
-  interruption state.
-- Persist/display source and artifact refs.
-- Preserve existing non-JARVIS agent behavior.
-- A typed feature gate permits forward rollback to the legacy JARVIS runtime
-  without rolling back Dexie.
-
-**Step 1: Write failing integration tests**
-
-Cover built-in JARVIS gate, user-created `jarvis` slug rejection, request ID
-continuity, provider transport, final envelope, structured UI parts, error,
-abort, retry, and non-JARVIS compatibility.
-
-**Step 2: Observe failure**
-
-```powershell
-npm --prefix app test -- src/lib/jarvis/kernel.integration.test.ts src/lib/ai/runtime.test.ts src/lib/ai/runtimeSafety.test.ts src/features/chat/ChatThread.agentPanel.test.tsx src/features/chat/MessagePart.jarvisCreator.test.tsx src/lib/jarvis/responseListener.test.ts
-```
-
-**Step 3: Implement the cutover**
-
-Keep legacy code reachable only through the explicit rollback gate; do not
-maintain two implicit prompt paths. Replace the standalone response listener's
-direct message writes with kernel-controlled deterministic responses.
-
-**Step 4: Verify and commit**
-
-```powershell
-npm --prefix app test -- src/lib/jarvis/kernel.integration.test.ts src/lib/ai/runtime.test.ts src/lib/ai/runtimeSafety.test.ts src/features/chat/ChatThread.agentPanel.test.tsx src/features/chat/MessagePart.jarvisCreator.test.tsx src/lib/jarvis/responseListener.test.ts
-npm run typecheck
-git add app/src/lib/jarvis/kernel.ts app/src/lib/jarvis/kernel.integration.test.ts app/src/lib/ai/runtime.ts app/src/lib/ai/runtime.test.ts app/src/lib/ai/runtimeSafety.test.ts app/src/features/chat/ChatView.tsx app/src/features/chat/ChatThread.tsx app/src/features/chat/ChatThread.agentPanel.test.tsx app/src/features/chat/MessagePart.jarvisCreator.test.tsx app/src/lib/jarvis/responseListener.ts app/src/lib/jarvis/responseListener.test.ts
-git diff --cached --check
-git commit -m "feat(chat): route builtin Jarvis through the kernel"
-```
-
-## Task 17: Schedule and Hive Final Cutovers
-
-**Files:**
-
-- Modify: `app/src/features/schedule/jarvisScheduleRunner.ts`
-- Modify: `app/src/features/schedule/jarvisScheduleRunner.test.ts`
-- Modify: `app/src/features/schedule/jarvisScheduleRunner.retry.test.ts`
-- Modify: `app/src/lib/ai/stacks/runner.ts`
-- Modify: `app/src/lib/ai/stacks/runner.test.ts`
-- Modify: `app/src/lib/ai/stacks/hiveBalance.test.ts`
-
-**Behavior:**
-
-- Scheduled JARVIS work builds a `surface: 'schedule'` request envelope with the
-  schedule, retry, and execution truth.
-- Hive workers retain independent prompts and identities.
-- Only the selected JARVIS final synthesis uses `surface: 'hive_final'`.
-- Worker attribution, source refs, partial success, costs, cancellation, and
-  errors survive into the final envelope.
-- Retries are idempotent and do not duplicate completed side effects.
-
-**Step 1: Write failing tests**
-
-Cover schedule success/retry/failure/cancel, Hive all-success/partial/failure,
-worker attribution, no worker personality overwrite, and final JARVIS response
-enforcement.
-
-**Step 2: Observe failure**
-
-```powershell
-npm --prefix app test -- src/features/schedule/jarvisScheduleRunner.test.ts src/features/schedule/jarvisScheduleRunner.retry.test.ts src/lib/ai/stacks/runner.test.ts src/lib/ai/stacks/hiveBalance.test.ts
-```
-
-**Step 3: Implement**
-
-Use shared envelope/compiler/pipeline functions; do not duplicate schedule or
-Hive prompt overlays.
-
-**Step 4: Verify and commit**
-
-```powershell
-npm --prefix app test -- src/features/schedule/jarvisScheduleRunner.test.ts src/features/schedule/jarvisScheduleRunner.retry.test.ts src/lib/ai/stacks/runner.test.ts src/lib/ai/stacks/hiveBalance.test.ts
-npm run typecheck
-git add app/src/features/schedule/jarvisScheduleRunner.ts app/src/features/schedule/jarvisScheduleRunner.test.ts app/src/features/schedule/jarvisScheduleRunner.retry.test.ts app/src/lib/ai/stacks/runner.ts app/src/lib/ai/stacks/runner.test.ts app/src/lib/ai/stacks/hiveBalance.test.ts
-git diff --cached --check
-git commit -m "feat(jarvis): enforce schedule and Hive final responses"
-```
-
 ## Task 18: Execution Journal State Machine and Abort Registry
 
 **Files:**
@@ -3322,6 +2860,1367 @@ git add app/src/lib/jarvis/executionJournal
 git diff --cached --check
 git commit -m "feat(jarvis): add normalized execution journal"
 ```
+
+## Task 11: Context, Capability, Immutable Envelope, and Retry Identity
+
+**Files:**
+
+- Create: `app/src/lib/jarvis/contextPack.ts`
+- Create: `app/src/lib/jarvis/contextPack.test.ts`
+- Create: `app/src/lib/jarvis/capabilitySnapshot.ts`
+- Create: `app/src/lib/jarvis/capabilitySnapshot.test.ts`
+- Create: `app/src/lib/jarvis/requestEnvelope.ts`
+- Create: `app/src/lib/jarvis/requestEnvelope.test.ts`
+- Modify: `app/src/lib/ai/context.ts`
+- Modify: `app/src/lib/ai/context.test.ts`
+
+**Interfaces:**
+
+- Consumes Task 2's `JarvisIdentitySnapshot`,
+  `JarvisProfileSnapshot`, and frozen profile factories.
+- Consumes Task 3's `JarvisRequestEnvelope`, `JarvisContextPack`,
+  `JarvisCapabilitySnapshot`, `JarvisModelSnapshot`,
+  `JarvisOutputContract`, and validators.
+- Consumes Task 4's two-stage `classifyJarvisSource()` path/content
+  admission.
+- Consumes Task 5's verified `JarvisEntitlementSnapshot`.
+- Consumes Task 9's account-scoped repositories and local-only enforcement.
+- Consumes Task 18's already-persisted `runId`, parent-run ownership, and
+  journal transition primitives layered over Task 9's
+  `compareAndAppendTransitionEvent()`. Task 11 never allocates a run ID.
+- Produces `validateJarvisRequestAttempt()`, `buildJarvisContextPack()`,
+  `createJarvisCapabilitySnapshot()`, and
+  `createJarvisRequestEnvelope()` for Tasks 12, 16A, 16B, 21A, and 17.
+
+**Exact contracts:**
+
+```ts
+export type JarvisRequestAttempt =
+  | {
+      kind: 'initial';
+      requestId: string;
+      runId: string;
+    }
+  | {
+      kind: 'transport_retry';
+      requestId: string;
+      runId: string;
+      previousRequestId: string;
+      previousRunId: string;
+    }
+  | {
+      kind: 'logical_retry';
+      requestId: string;
+      runId: string;
+      previousRequestId: string;
+      previousRunId: string;
+    };
+
+export interface JarvisContextCandidate {
+  source: JarvisSourceRef;
+  purpose: JarvisContextItem['purpose'];
+  excerpt?: string;
+  score?: number;
+  explicitlyAttached: boolean;
+  authorizedBody: boolean;
+}
+
+export interface JarvisContextPackInput {
+  accountId: string;
+  candidates: readonly JarvisContextCandidate[];
+  maxChars: number;
+}
+
+export interface CapabilitySnapshotInput {
+  capturedAt: number;
+  tools: readonly JarvisCapabilityRef[];
+  plugins: readonly JarvisCapabilityRef[];
+  mcps: readonly JarvisCapabilityRef[];
+  terminals: readonly JarvisCapabilityRef[];
+  agents: readonly JarvisCapabilityRef[];
+  entitlements: JarvisEntitlementSnapshot;
+}
+
+export interface JarvisRequestInput {
+  attempt: JarvisRequestAttempt;
+  accountId: string;
+  workspaceId?: string;
+  projectId?: string;
+  chatId?: string;
+  parentRunId?: string;
+  agent: JarvisRequestEnvelope['agent'];
+  surface: JarvisRequestEnvelope['surface'];
+  interactionMode: JarvisRequestEnvelope['interactionMode'];
+  responseModeHint?: JarvisResponseMode;
+  identity: JarvisIdentitySnapshot;
+  profile: JarvisProfileSnapshot;
+  model: JarvisModelSnapshot;
+  capabilities: JarvisCapabilitySnapshot;
+  context: JarvisContextPack;
+  outputContract: JarvisOutputContract;
+  userText: string;
+  messageHistory: readonly LLMMessage[];
+  createdAt: number;
+}
+
+export function validateJarvisRequestAttempt(
+  attempt: JarvisRequestAttempt,
+): Readonly<{ requestId: string; runId: string }>;
+
+export async function buildJarvisContextPack(
+  input: JarvisContextPackInput,
+): Promise<Readonly<JarvisContextPack>>;
+
+export function createJarvisCapabilitySnapshot(
+  input: CapabilitySnapshotInput,
+): Readonly<JarvisCapabilitySnapshot>;
+
+export async function createJarvisRequestEnvelope(
+  input: JarvisRequestInput,
+): Promise<Readonly<JarvisRequestEnvelope>>;
+```
+
+**Request-attempt rules:**
+
+- `requestId`, `runId`, and all previous IDs are non-empty.
+- `initial` accepts Task 18's persisted run and a fresh request ID.
+- A transport retry requires a new request ID and the same run ID:
+
+```ts
+attempt.requestId !== attempt.previousRequestId;
+attempt.runId === attempt.previousRunId;
+```
+
+- A logical retry requires both a new request ID and a new run ID:
+
+```ts
+attempt.requestId !== attempt.previousRequestId;
+attempt.runId !== attempt.previousRunId;
+```
+
+- Invalid combinations throw a typed local `JarvisRequestAttemptError` before
+  provider dispatch.
+- The envelope contains only the current attempt's IDs. Previous IDs are
+  journal relations, not hidden prompt fields.
+- Task 18 must return the persisted run before
+  `createJarvisRequestEnvelope()` is called. The builder has no run-ID
+  generator import.
+
+**Context and capability rules:**
+
+- Explicit user attachments sort ahead of retrieved candidates.
+- Within the same class, sort by descending finite score, then
+  `source.observedAt` descending, then `source.id` ascending.
+- Every candidate account must match `input.accountId`.
+- Re-run Task 4 source admission before including an excerpt.
+- `authorizedBody: false` retains only the source reference and adds no body.
+- Secret/restricted exclusions contain the source ref plus a safe category,
+  never the rejected body.
+- External/retrieved context stays `trust: 'external_untrusted'` and cannot
+  become a preference or authority layer.
+- Truncation is deterministic, never splits a UTF-16 surrogate pair, and
+  records the source in `exclusions` when no excerpt character fits.
+- Capability arrays are copied, sorted by stable ID, and frozen.
+- Capability state uses only
+  `available | connected | authenticated | degraded | unavailable | planned`.
+- A catalog entry alone cannot become `connected` or `authenticated`.
+- Entitlements are copied from Task 5's verified snapshot without inference.
+
+**Deep-freeze rule:**
+
+Use one cycle-safe recursive freezer owned by `requestEnvelope.ts`. Do not
+freeze caller-owned objects in place. Build detached copies, then freeze:
+
+- the envelope and `agent`;
+- identity, profile, model, capability, entitlement, and output snapshots;
+- capability arrays and every capability object;
+- context, items, exclusions, budget, every source ref, and every item;
+- `messageHistory`, every message, content-part array, and every content part;
+- every nested plain array/object reachable from model capabilities.
+
+A strict-mode mutation attempt must throw or leave the value unchanged.
+
+- [ ] **Step 1: Write the focused failing tests**
+
+In `requestEnvelope.test.ts`, table-test initial IDs; transport retry with a
+new request and same run; logical retry with a new request and new run; reused
+request IDs; transport retry with a different run; logical retry with the same
+run; missing IDs; the Task 18 run supplied exactly once; every nested
+`Object.isFrozen()` assertion; caller inputs remaining unfrozen and unchanged;
+mutation attempts against arrays, message parts, capabilities, source refs,
+profile text, and model flags; and validator failure preventing return.
+
+In `contextPack.test.ts`, cover explicit-first ordering, deterministic ties,
+account mismatch, body-not-authorized behavior, stale refs, secret path and
+content exclusion, stable truncation, and untrusted-authority isolation.
+
+In `capabilitySnapshot.test.ts`, cover every capability state, catalog-only
+`planned/available`, signed-out/unavailable connectors, exact model/provider
+state, entitlement provenance, detached copies, and deep freezing.
+
+- [ ] **Step 2: Run the focused RED test and confirm the expected cause**
+
+```powershell
+npm --prefix app test -- src/lib/jarvis/contextPack.test.ts src/lib/jarvis/capabilitySnapshot.test.ts src/lib/jarvis/requestEnvelope.test.ts src/lib/ai/context.test.ts
+```
+
+Expected: FAIL because the three new modules cannot be resolved.
+
+- [ ] **Step 3: Implement the minimal complete boundary**
+
+Implement the exact contracts, attempt validation, deterministic context
+ranking/budgeting, verified capability copy, detached deep-freeze behavior,
+and the existing AI-context adapter. Preserve the non-JARVIS context path.
+
+- [ ] **Step 4: Run focused and broader verification**
+
+```powershell
+npm --prefix app test -- src/lib/jarvis/contextPack.test.ts src/lib/jarvis/capabilitySnapshot.test.ts src/lib/jarvis/requestEnvelope.test.ts src/lib/ai/context.test.ts
+npm run typecheck
+```
+
+Expected: the focused suite and root typecheck pass.
+
+- [ ] **Step 5: Stage literal files, inspect the cache, and commit**
+
+```powershell
+git add -- 'app/src/lib/jarvis/contextPack.ts' 'app/src/lib/jarvis/contextPack.test.ts' 'app/src/lib/jarvis/capabilitySnapshot.ts' 'app/src/lib/jarvis/capabilitySnapshot.test.ts' 'app/src/lib/jarvis/requestEnvelope.ts' 'app/src/lib/jarvis/requestEnvelope.test.ts' 'app/src/lib/ai/context.ts' 'app/src/lib/ai/context.test.ts'
+git diff --cached --name-only
+git diff --cached --check
+git diff --cached -- 'app/src/lib/jarvis/contextPack.ts' 'app/src/lib/jarvis/contextPack.test.ts' 'app/src/lib/jarvis/capabilitySnapshot.ts' 'app/src/lib/jarvis/capabilitySnapshot.test.ts' 'app/src/lib/jarvis/requestEnvelope.ts' 'app/src/lib/jarvis/requestEnvelope.test.ts' 'app/src/lib/ai/context.ts' 'app/src/lib/ai/context.test.ts'
+git diff --cached --name-only -- 'install/install.ps1'
+git commit -m "feat(jarvis): build immutable request envelopes"
+git show --check --stat HEAD
+git diff-tree --no-commit-id --name-only -r HEAD
+git log --oneline origin/main..HEAD -- 'install/install.ps1'
+```
+
+Expected staged and committed names: exactly the eight files above. The
+installer and whitespace queries produce no output.
+
+## Task 12: Pure Protected Prompt Compiler with Defense in Depth
+
+**Files:**
+
+- Create: `app/src/lib/jarvis/promptCompiler.ts`
+- Create: `app/src/lib/jarvis/promptCompiler.test.ts`
+- Create: `app/src/lib/jarvis/promptCompiler.performance.test.ts`
+- Modify: `app/src/lib/jarvis/promptLayers.ts`
+- Modify: `app/src/lib/jarvis/promptLayers.test.ts`
+
+**Interfaces:**
+
+- Consumes only the frozen Task 11 `JarvisRequestEnvelope`, Task 3 domain
+  contracts, Task 2 protected-agent predicate and immutable policy exports,
+  and Task 4 pure source-classification function.
+- Produces one deterministic `CompiledJarvisPrompt` for Task 13 transport and
+  Tasks 16A/16B/21A/17 runtime consumers.
+- Imports no Zustand store, repository, router, provider, UI, browser, auth,
+  agent getter, or All About Me getter.
+
+**Exact compiler surface and errors:**
+
+```ts
+export const JARVIS_ALL_ABOUT_ME_SOURCE_ID = 'jarvis:all-about-me';
+
+export type JarvisPromptCompilationErrorCode =
+  | 'not_protected_jarvis'
+  | 'secret_source'
+  | 'duplicate_immutable_layer'
+  | 'invalid_envelope'
+  | 'prompt_budget_exceeded';
+
+export class JarvisPromptCompilationError extends Error {
+  readonly code: JarvisPromptCompilationErrorCode;
+
+  constructor(code: JarvisPromptCompilationErrorCode, message: string) {
+    super(message);
+    this.name = 'JarvisPromptCompilationError';
+    this.code = code;
+  }
+}
+
+export function compileJarvisPrompt(
+  envelope: Readonly<JarvisRequestEnvelope>,
+): Readonly<CompiledJarvisPrompt>;
+```
+
+**Protected-agent gate:**
+
+Compilation begins with:
+
+```ts
+if (!isProtectedJarvisAgent(envelope.agent)) {
+  throw new JarvisPromptCompilationError(
+    'not_protected_jarvis',
+    'The protected JARVIS compiler is unavailable for this agent.',
+  );
+}
+```
+
+The predicate remains exactly:
+
+```ts
+agent.builtin === true && agent.slug === 'jarvis';
+```
+
+A user-created agent whose slug is `jarvis` fails before layer construction,
+hashing, diagnostics, or provider dispatch.
+
+**Compiler-owned secret defense:**
+
+Before rendering context:
+
+1. reject every source with `sensitivity === 'secret'`;
+2. re-run `classifyJarvisSource()` on every included excerpt using its safe
+   URI/label, `kind: 'text'`, the appropriate context channel, and
+   `contentSample: item.excerpt`;
+3. reject a denied `secret_filename`, `credential_path`, or `secret_content`;
+4. never put the rejected excerpt, path, token fragment, or source body in the
+   thrown error or diagnostics.
+
+Restricted sources remain excluded unless a later explicit-consent contract
+has already converted them to an allowed private context item. This task does
+not invent that consent flow.
+
+**Exact layer order and duplicate rules:**
+
+Build exactly these seven layer IDs in order:
+
+```ts
+[
+  'immutable-security',
+  'immutable-identity',
+  'capability-policy',
+  'user-approved-preference',
+  'turn-policy',
+  'untrusted-context',
+  'output-contract',
+];
+```
+
+Map them to Task 3's `PromptAuthority` values in the same order.
+
+- Immutable security appears once.
+- Immutable identity/response contract appears once.
+- `profile.customInstructions` appears once in
+  `user-approved-preference`.
+- Context items whose source ID is `JARVIS_ALL_ABOUT_ME_SOURCE_ID` are
+  deduplicated by source ID and content hash, then injected exactly once in
+  the same preference layer.
+- Duplicate All About Me candidates are recorded in
+  `diagnostics.omittedSourceRefs`; their text is not repeated.
+- A second immutable security or identity layer throws
+  `duplicate_immutable_layer`.
+- Untrusted source text is fenced and labelled as data. It cannot emit a new
+  authority-layer header.
+- Budgeting and hash input are deterministic.
+- `systemText` is produced from frozen layer copies.
+- Diagnostics contain only layer IDs, character counts, truncation flags,
+  source IDs, and hashes.
+
+**No-global-read gate:**
+
+`promptCompiler.ts` and its transitive production imports may not import:
+
+```text
+@/stores/*
+@/lib/db/*
+@/features/*
+@/lib/ai/router
+@/lib/ai/providers/*
+```
+
+Tests replace auth, agent, All About Me, and repository getters with functions
+that throw. Compilation must still succeed from the supplied envelope.
+
+`assembleJarvisPromptLayers()` becomes a compatibility wrapper over
+`compileJarvisPrompt()` only for callers that already supply a complete
+envelope. It cannot retain a second universal core or read user state.
+
+- [ ] **Step 1: Write the focused failing tests**
+
+Cover protected built-in acceptance; user-created slug collision and missing
+built-in rejection; all seven layers in exact order; stable hashes across
+detached equal inputs; model changes not altering immutable identity text;
+secret sensitivity and secret-shaped ordinary text rejection; safe errors and
+diagnostics; duplicate immutable-layer rejection; All About Me absent, once,
+and duplicated; profile custom instructions exactly once; context unable to
+add authority; no global getter called; and the compatibility wrapper using
+the canonical compiler text.
+
+In `promptCompiler.performance.test.ts`, build a representative detached
+ordinary-chat input with 24 context items and 20 history messages. Warm the
+path, then measure at least 200 iterations of:
+
+```ts
+await createJarvisRequestEnvelope(input);
+compileJarvisPrompt(envelope);
+```
+
+Exclude context retrieval and provider I/O. Sort durations, assert p95 below
+`25` milliseconds, and print only iteration count, sanitized character
+counts, and p95.
+
+- [ ] **Step 2: Run the focused RED test and confirm the expected cause**
+
+```powershell
+npm --prefix app test -- src/lib/jarvis/promptCompiler.test.ts src/lib/jarvis/promptCompiler.performance.test.ts src/lib/jarvis/promptLayers.test.ts
+```
+
+Expected: FAIL because `promptCompiler.ts` does not exist.
+
+- [ ] **Step 3: Implement the pure compiler and compatibility wrapper**
+
+Implement the protected gate, compiler-owned secret admission, exact seven
+layers, deterministic budgets/hashes, exactly-once profile and All About Me
+context, frozen safe diagnostics, and wrapper. Do not add a store/repository/
+router/provider/UI/browser read.
+
+- [ ] **Step 4: Run focused and broader verification**
+
+```powershell
+npm --prefix app test -- src/lib/jarvis/promptCompiler.test.ts src/lib/jarvis/promptCompiler.performance.test.ts src/lib/jarvis/promptLayers.test.ts
+npm run typecheck
+```
+
+Expected: the focused correctness/performance suite and root typecheck pass.
+
+- [ ] **Step 5: Stage literal files, inspect the cache, and commit**
+
+```powershell
+git add -- 'app/src/lib/jarvis/promptCompiler.ts' 'app/src/lib/jarvis/promptCompiler.test.ts' 'app/src/lib/jarvis/promptCompiler.performance.test.ts' 'app/src/lib/jarvis/promptLayers.ts' 'app/src/lib/jarvis/promptLayers.test.ts'
+git diff --cached --name-only
+git diff --cached --check
+git diff --cached -- 'app/src/lib/jarvis/promptCompiler.ts' 'app/src/lib/jarvis/promptCompiler.test.ts' 'app/src/lib/jarvis/promptCompiler.performance.test.ts' 'app/src/lib/jarvis/promptLayers.ts' 'app/src/lib/jarvis/promptLayers.test.ts'
+git diff --cached --name-only -- 'install/install.ps1'
+git commit -m "feat(jarvis): compile one protected prompt contract"
+git show --check --stat HEAD
+git diff-tree --no-commit-id --name-only -r HEAD
+git log --oneline origin/main..HEAD -- 'install/install.ps1'
+```
+
+Expected staged and committed names: exactly the five files above. The
+installer and whitespace queries produce no output.
+
+## Task 13: Exact Provider Prompt Transport for Every Adapter
+
+**Files:**
+
+- Create: `app/src/lib/ai/providerPromptTransport.ts`
+- Create: `app/src/lib/ai/providerPromptTransport.test.ts`
+- Modify: `app/src/lib/ai/types.ts`
+- Modify: `app/src/lib/ai/router.ts`
+- Modify: `app/src/lib/ai/router.test.ts`
+- Modify: `app/src/lib/ai/router.connection.test.ts`
+- Modify: `app/src/lib/ai/adapters/types.ts`
+- Modify: `app/src/lib/ai/adapters/catalog.ts`
+- Modify: `app/src/lib/ai/adapters/catalog.test.ts`
+- Modify: `app/src/lib/ai/adapters/nativeCatalog.ts`
+- Modify: `app/src/lib/ai/adapters/registry.test.ts`
+- Modify: `app/src/lib/ai/adapters/cliBridge.ts`
+- Modify: `app/src/lib/ai/adapters/cliParsers.test.ts`
+- Modify: `app/src/lib/ai/adapters/claude.ts`
+- Modify: `app/src/lib/ai/adapters/codex.ts`
+- Modify: `app/src/lib/ai/adapters/copilot.ts`
+- Modify: `app/src/lib/ai/adapters/gemini.ts`
+- Modify: `app/src/lib/ai/adapters/opencode.ts`
+- Modify: `app/src/lib/ai/adapters/qwen.ts`
+- Modify: `app/src/lib/ai/providers/anthropic.ts`
+- Modify: `app/src/lib/ai/providers/google.ts`
+- Modify: `app/src/lib/ai/providers/groq.ts`
+- Modify: `app/src/lib/ai/providers/mock.ts`
+- Modify: `app/src/lib/ai/providers/mock.test.ts`
+- Modify: `app/src/lib/ai/providers/ollama.ts`
+- Modify: `app/src/lib/ai/providers/ollama.test.ts`
+- Modify: `app/src/lib/ai/providers/openai.ts`
+- Modify: `app/src/lib/ai/providers/openai-compatible.ts`
+- Modify: `app/src/lib/ai/providers/openai-compatible.test.ts`
+- Modify: `app/src/lib/db/repositories.connection.test.ts`
+
+Do not stage `app/src/lib/ai/adapters`, `app/src/lib/ai/providers`, or another
+directory pathspec.
+
+**Interfaces:**
+
+- Consumes Task 12's frozen `CompiledJarvisPrompt`.
+- Extends every registered provider connection and CLI definition with one
+  explicit strategy.
+- Produces `buildProviderPromptTransport()` and protected-router inputs for
+  Tasks 16A, 16B, 21A, and 17.
+
+**Exact strategy vocabulary:**
+
+```ts
+export type JarvisPromptTransportStrategy = 'native-system' | 'prefixed-preamble' | 'unsupported';
+```
+
+Add this required field to catalog/registry connection descriptors:
+
+```ts
+export interface ProviderConnection {
+  // existing fields remain
+  promptTransport: JarvisPromptTransportStrategy;
+}
+```
+
+Add the same required declaration to every external CLI definition:
+
+```ts
+export interface CliProviderDefinition {
+  // existing fields remain
+  promptTransport: 'prefixed-preamble' | 'unsupported';
+}
+```
+
+The catalog rejects registration when an external connection and its adapter
+definition disagree.
+
+**Current connection matrix:**
+
+Pin this table in `providerPromptTransport.test.ts`:
+
+| Connection ID           | Strategy            |
+| ----------------------- | ------------------- |
+| `openai-codex`          | `prefixed-preamble` |
+| `openai-api`            | `native-system`     |
+| `anthropic-claude-code` | `prefixed-preamble` |
+| `anthropic-api`         | `native-system`     |
+| `google-gemini-cli`     | `prefixed-preamble` |
+| `google-gemini-api`     | `native-system`     |
+| `google-vertex`         | `native-system`     |
+| `github-copilot-cli`    | `prefixed-preamble` |
+| `xai-api`               | `native-system`     |
+| `deepseek-api`          | `native-system`     |
+| `zai-api`               | `native-system`     |
+| `qwen-code`             | `prefixed-preamble` |
+| `qwen-api`              | `native-system`     |
+| `ollama-local`          | `native-system`     |
+| `opencode-cli`          | `prefixed-preamble` |
+
+Synthetic unknown/custom connections use `unsupported` until an explicit
+strategy is registered.
+
+**Exact construction contract:**
+
+```ts
+export type ProviderPromptTransport =
+  | {
+      strategy: 'native-system';
+      systemPrompt: string;
+      messages: readonly LLMMessage[];
+      compiledHash: string;
+    }
+  | {
+      strategy: 'prefixed-preamble';
+      prompt: string;
+      compiledHash: string;
+    };
+
+export class UnsupportedPromptTransportError extends Error {
+  readonly code = 'unsupported_prompt_transport';
+  readonly connectionId: string;
+
+  constructor(connectionId: string) {
+    super(`The selected connection cannot preserve the protected prompt contract.`);
+    this.name = 'UnsupportedPromptTransportError';
+    this.connectionId = connectionId;
+  }
+}
+
+export function buildProviderPromptTransport(input: {
+  compiled: Readonly<CompiledJarvisPrompt>;
+  connection: Readonly<ProviderConnection>;
+  messages: readonly LLMMessage[];
+}): Readonly<ProviderPromptTransport>;
+```
+
+For `native-system`:
+
+- `systemPrompt` equals `compiled.systemText` exactly;
+- message roles/content stay semantically unchanged;
+- providers use their real system/developer field;
+- no system text is duplicated into a user message.
+
+For `prefixed-preamble`, create one deterministic string:
+
+```text
+<VIBESPACE_SYSTEM_CONTRACT schema="1" sha256="<compiled.promptHash>">
+<compiled.systemText>
+</VIBESPACE_SYSTEM_CONTRACT>
+<VIBESPACE_MESSAGES>
+<deterministically serialized messages>
+</VIBESPACE_MESSAGES>
+```
+
+- Preserve Unicode and line endings after compiler normalization.
+- Pass the complete string as one prompt through stdin when the CLI supports
+  stdin.
+- Gemini, Copilot, and Qwen keep the complete prompt as one literal argv
+  element where their CLI contract requires `-p`.
+- Never concatenate a shell command.
+- Never put secrets, API keys, auth state, or connection credentials in the
+  preamble.
+
+For `unsupported`, throw `UnsupportedPromptTransportError` before provider
+detection, authentication probe, process spawn, network fetch, or usage
+mutation.
+
+**Router and cancellation rules:**
+
+`runAgent()` accepts canonical compiled input only for protected JARVIS kernel
+dispatch:
+
+```ts
+compiledPrompt?: Readonly<CompiledJarvisPrompt>;
+requestId?: string;
+```
+
+- If `compiledPrompt` exists, `requestId` is required and the selected
+  connection's declared strategy is used.
+- Preserve the exact connection ID, provider ID, model ID, temperature, output
+  token limit, working directory, and message history.
+- Forward the exact caller `AbortSignal` to native fetch/provider code and the
+  Tauri CLI bridge.
+- Abort before send causes no provider/adapter call.
+- Mid-stream abort remains an `AbortError`; it is never wrapped as a provider
+  failure or retried as another logical execution.
+- A connection advertising cancellation proves the signal reaches its
+  provider/bridge. A connection without cancellation reports that truthfully
+  in its capability snapshot.
+- Non-JARVIS calls without `compiledPrompt` retain existing behavior.
+
+- [ ] **Step 1: Write the table-driven failing construction tests**
+
+For every row in `PROVIDER_CONNECTIONS`, assert exact strategy; connection,
+provider, model, and mode preservation; compiled hash preservation; protected
+contract transmission; user-message preservation; unsupported fail-closed
+behavior; and advertised cancellation forwarding.
+
+Also cover quotes, Unicode, multiline text, option-looking values, PowerShell
+syntax, shell metacharacters, and prompt-injection-like text; no raw command
+construction; exact stdin/argv behavior for all six external adapters; native
+request construction for OpenAI, Anthropic, Google/Vertex, OpenAI-compatible,
+Ollama, Groq, and mock; updated persisted connection fixtures; an abort racing
+CLI registration; and no unsupported fallback to mutable
+`Agent.system_prompt`.
+
+- [ ] **Step 2: Run the focused RED test and confirm the expected cause**
+
+```powershell
+npm --prefix app test -- src/lib/ai/providerPromptTransport.test.ts src/lib/ai/router.test.ts src/lib/ai/router.connection.test.ts src/lib/ai/adapters/catalog.test.ts src/lib/ai/adapters/registry.test.ts src/lib/ai/adapters/cliParsers.test.ts src/lib/ai/providers/mock.test.ts src/lib/ai/providers/ollama.test.ts src/lib/ai/providers/openai-compatible.test.ts src/lib/db/repositories.connection.test.ts
+```
+
+Expected: FAIL because the transport module is missing and current external
+CLI construction drops `systemPrompt`.
+
+- [ ] **Step 3: Implement every declared transport and cancellation path**
+
+Add the required strategy to every connection/adapter, reject mismatches and
+unsupported routes before side effects, construct exact native or preamble
+requests, preserve selection/options/history, and propagate the same abort
+signal without changing non-JARVIS calls.
+
+- [ ] **Step 4: Run focused and broader verification**
+
+```powershell
+npm --prefix app test -- src/lib/ai/providerPromptTransport.test.ts src/lib/ai/router.test.ts src/lib/ai/router.connection.test.ts src/lib/ai/adapters/catalog.test.ts src/lib/ai/adapters/registry.test.ts src/lib/ai/adapters/cliParsers.test.ts src/lib/ai/providers/mock.test.ts src/lib/ai/providers/ollama.test.ts src/lib/ai/providers/openai-compatible.test.ts src/lib/db/repositories.connection.test.ts
+npm run typecheck
+```
+
+Expected: the full construction matrix and root typecheck pass.
+
+- [ ] **Step 5: Stage literal files, inspect the cache, and commit**
+
+```powershell
+git add -- 'app/src/lib/ai/providerPromptTransport.ts' 'app/src/lib/ai/providerPromptTransport.test.ts' 'app/src/lib/ai/types.ts' 'app/src/lib/ai/router.ts' 'app/src/lib/ai/router.test.ts' 'app/src/lib/ai/router.connection.test.ts' 'app/src/lib/ai/adapters/types.ts' 'app/src/lib/ai/adapters/catalog.ts' 'app/src/lib/ai/adapters/catalog.test.ts' 'app/src/lib/ai/adapters/nativeCatalog.ts' 'app/src/lib/ai/adapters/registry.test.ts' 'app/src/lib/ai/adapters/cliBridge.ts' 'app/src/lib/ai/adapters/cliParsers.test.ts' 'app/src/lib/ai/adapters/claude.ts' 'app/src/lib/ai/adapters/codex.ts' 'app/src/lib/ai/adapters/copilot.ts' 'app/src/lib/ai/adapters/gemini.ts' 'app/src/lib/ai/adapters/opencode.ts' 'app/src/lib/ai/adapters/qwen.ts' 'app/src/lib/ai/providers/anthropic.ts' 'app/src/lib/ai/providers/google.ts' 'app/src/lib/ai/providers/groq.ts' 'app/src/lib/ai/providers/mock.ts' 'app/src/lib/ai/providers/mock.test.ts' 'app/src/lib/ai/providers/ollama.ts' 'app/src/lib/ai/providers/ollama.test.ts' 'app/src/lib/ai/providers/openai.ts' 'app/src/lib/ai/providers/openai-compatible.ts' 'app/src/lib/ai/providers/openai-compatible.test.ts' 'app/src/lib/db/repositories.connection.test.ts'
+git diff --cached --name-only
+git diff --cached --check
+git diff --cached -- 'app/src/lib/ai/providerPromptTransport.ts' 'app/src/lib/ai/providerPromptTransport.test.ts' 'app/src/lib/ai/types.ts' 'app/src/lib/ai/router.ts' 'app/src/lib/ai/router.test.ts' 'app/src/lib/ai/router.connection.test.ts' 'app/src/lib/ai/adapters/types.ts' 'app/src/lib/ai/adapters/catalog.ts' 'app/src/lib/ai/adapters/catalog.test.ts' 'app/src/lib/ai/adapters/nativeCatalog.ts' 'app/src/lib/ai/adapters/registry.test.ts' 'app/src/lib/ai/adapters/cliBridge.ts' 'app/src/lib/ai/adapters/cliParsers.test.ts' 'app/src/lib/ai/adapters/claude.ts' 'app/src/lib/ai/adapters/codex.ts' 'app/src/lib/ai/adapters/copilot.ts' 'app/src/lib/ai/adapters/gemini.ts' 'app/src/lib/ai/adapters/opencode.ts' 'app/src/lib/ai/adapters/qwen.ts' 'app/src/lib/ai/providers/anthropic.ts' 'app/src/lib/ai/providers/google.ts' 'app/src/lib/ai/providers/groq.ts' 'app/src/lib/ai/providers/mock.ts' 'app/src/lib/ai/providers/mock.test.ts' 'app/src/lib/ai/providers/ollama.ts' 'app/src/lib/ai/providers/ollama.test.ts' 'app/src/lib/ai/providers/openai.ts' 'app/src/lib/ai/providers/openai-compatible.ts' 'app/src/lib/ai/providers/openai-compatible.test.ts' 'app/src/lib/db/repositories.connection.test.ts'
+git diff --cached --name-only -- 'install/install.ps1'
+git commit -m "fix(ai): preserve protected prompts across transports"
+git show --check --stat HEAD
+git diff-tree --no-commit-id --name-only -r HEAD
+git log --oneline origin/main..HEAD -- 'install/install.ps1'
+```
+
+Expected staged and committed names: exactly the thirty files above. The
+installer and whitespace queries produce no output.
+
+## Task 16A: Shadow Compilation and the Three-State Runtime Gate
+
+**Prerequisites:**
+
+- Task 1B has landed after formal `app/src/App.tsx` lock handoff.
+- Tasks 2-13 and Task 18 are complete.
+- Secret-source, entitlement, Browser Operator, private-sync, and unsafe
+  prompt-transport interlocks are active.
+
+**Files:**
+
+- Create: `app/src/lib/jarvis/kernelMode.ts`
+- Create: `app/src/lib/jarvis/kernelMode.test.ts`
+- Create: `app/src/lib/jarvis/shadowCompilation.ts`
+- Create: `app/src/lib/jarvis/shadowCompilation.test.ts`
+- Modify: `app/src/lib/ai/runtime.ts`
+- Modify: `app/src/lib/ai/runtime.test.ts`
+- Modify: `app/src/lib/ai/runtimeSafety.test.ts`
+
+**Interfaces:**
+
+- Consumes Task 18's persisted-run creation and Task 9's atomic
+  `compareAndAppendTransitionEvent()` primitive.
+- Consumes Task 11's immutable envelope builder, Task 12's pure compiler, and
+  Task 13's prompt-transport support check.
+- Produces the gate and observational shadow path that Task 16B later converts
+  to canonical kernel dispatch.
+- Does not own canonical assistant messages, response envelopes, approvals,
+  artifacts, or the default switch to `kernel`.
+
+**Exact gate:**
+
+```ts
+export type JarvisKernelMode = 'legacy' | 'shadow' | 'kernel';
+
+export const DEFAULT_JARVIS_KERNEL_MODE: JarvisKernelMode = 'shadow';
+
+export class JarvisKernelModeError extends Error {
+  readonly code: 'invalid_kernel_mode' | 'kernel_mode_not_ready';
+
+  constructor(code: 'invalid_kernel_mode' | 'kernel_mode_not_ready', message: string) {
+    super(message);
+    this.name = 'JarvisKernelModeError';
+    this.code = code;
+  }
+}
+
+export function resolveJarvisKernelMode(override?: JarvisKernelMode): JarvisKernelMode;
+```
+
+The mode override is an internal `RuntimeOptions.jarvisKernelMode` test and
+rollback input. It is not accepted from a `jarvis:send` event, model output,
+chat message, URL, or local prompt.
+
+**Shadow contracts and safe diagnostics:**
+
+```ts
+export interface JarvisShadowLayerDiagnostic {
+  id: string;
+  authority: PromptAuthority;
+  charCount: number;
+  truncated: boolean;
+  contentHash: string;
+}
+
+export interface JarvisShadowDiagnostic {
+  mode: 'shadow';
+  requestId: string;
+  runId: string;
+  promptHash?: string;
+  layers: readonly JarvisShadowLayerDiagnostic[];
+  errorCategory?: string;
+  durationMs: number;
+}
+
+export interface JarvisShadowCompilationDeps {
+  createPersistedRun(input: JarvisRunCreateInput): Promise<JarvisRun>;
+  buildEnvelope(input: JarvisRequestInput): Promise<Readonly<JarvisRequestEnvelope>>;
+  compilePrompt(envelope: Readonly<JarvisRequestEnvelope>): Readonly<CompiledJarvisPrompt>;
+  recordDiagnostic(diagnostic: JarvisShadowDiagnostic): void;
+  now(): number;
+}
+
+export interface JarvisShadowTurnInput {
+  run: JarvisRunCreateInput;
+  attempt: Extract<JarvisRequestAttempt, { kind: 'initial' }>;
+  request: Omit<JarvisRequestInput, 'attempt'>;
+}
+
+export async function compileJarvisShadowTurn(
+  input: JarvisShadowTurnInput,
+  deps: JarvisShadowCompilationDeps,
+): Promise<
+  | {
+      ok: true;
+      envelope: Readonly<JarvisRequestEnvelope>;
+      compiled: Readonly<CompiledJarvisPrompt>;
+    }
+  | {
+      ok: false;
+      requestId: string;
+      runId: string;
+      errorCategory: string;
+    }
+>;
+```
+
+Task 18 creates the run first. Shadow compilation never allocates an
+unpersisted run ID.
+
+Diagnostics may contain only request/run IDs; identity/profile revision IDs;
+layer IDs; character counts; truncation flags; content/prompt hashes;
+sanitized duration; and a safe error category. They may not contain prompt
+text, user text, custom instructions, source excerpts, file paths, provider
+credentials, approval parameters, or model reasoning.
+
+**Mode behavior:**
+
+`legacy`:
+
+- run the current non-kernel request/response path;
+- do not build a shadow envelope;
+- still enforce Task 4 source admission, Task 5 entitlements, Task 6 Browser
+  Operator quarantine, Task 9 private-sync guard, and Task 13 prompt-transport
+  support.
+
+`shadow`:
+
+- only for protected built-in JARVIS, create the canonical run, build/validate
+  the envelope, compile the prompt, and record safe diagnostics;
+- dispatch the current legacy request and use the current legacy response;
+- do not send the compiled prompt to the provider;
+- do not write a canonical kernel assistant response or artifact;
+- after successful shadow compilation, mirror the real legacy provider
+  running/completed/failed/cancelled outcome through Task 18 and Task 9's
+  `compareAndAppendTransitionEvent()` primitive so no nonterminal shadow run
+  is orphaned;
+- a compiler/shape defect transitions the shadow run to `failed`, records a
+  safe category, and still lets the separate legacy dispatch continue;
+- an independent safety-interlock denial fails closed and does not continue;
+- cancellation signal delivery alone remains nonterminal until an owning
+  executor verifies the terminal state.
+
+`kernel` in Task 16A:
+
+- resolve as a valid mode;
+- fail with `kernel_mode_not_ready` before provider dispatch because Task 16B
+  has not installed the canonical dispatcher.
+
+Non-JARVIS agents skip shadow compilation and preserve their existing path in
+all modes.
+
+**Interlocks stay outside the gate:**
+
+```ts
+export interface JarvisRuntimeInterlockPort {
+  assertCanonicalAccountIdentity(): void;
+  assertSourcesAdmitted(): void;
+  assertEntitlementAllowsRequestedCapability(): void;
+  assertBrowserOperatorAvailableOrQuarantined(): void;
+  assertPrivateSyncBoundary(): void;
+  assertSelectedPromptTransportSupported(): void;
+}
+
+export interface RuntimeOptions {
+  // existing options remain
+  jarvisKernelMode?: JarvisKernelMode;
+  jarvisInterlocks?: JarvisRuntimeInterlockPort;
+  jarvisShadow?: JarvisShadowCompilationDeps;
+}
+```
+
+Call every port method before the mode branch. Production boot supplies the
+real interlock port; focused tests inject spies/failures. Rollback changes
+dispatch ownership only and cannot disable or short-circuit these checks.
+
+- [ ] **Step 1: Write the focused failing tests**
+
+Cover the `shadow` default; explicit `legacy`, `shadow`, and `kernel`;
+invalid-mode rejection; legacy dispatch once with no shadow build; shadow
+compile once plus legacy dispatch once; allowlisted diagnostics only; shadow
+failure recording a safe category while legacy still dispatches; every
+interlock denial preventing dispatch in `legacy` and `shadow`; unsupported
+transport and private-sync denial in every mode; `kernel_mode_not_ready` with
+zero provider calls; non-JARVIS and user-created slug collisions skipping
+shadow; canonical App identity; no `local-unassigned`; atomic shadow terminal
+mirroring; and delivered-but-unverified cancellation remaining nonterminal.
+
+- [ ] **Step 2: Run the focused RED test and confirm the expected cause**
+
+```powershell
+npm --prefix app test -- src/lib/jarvis/kernelMode.test.ts src/lib/jarvis/shadowCompilation.test.ts src/lib/ai/runtime.test.ts src/lib/ai/runtimeSafety.test.ts
+```
+
+Expected: FAIL because the gate and shadow modules do not exist.
+
+- [ ] **Step 3: Implement observational shadow compilation**
+
+Implement the exact gate, persisted-run-first shadow builder, safe diagnostic
+allowlist, independent interlock port, legacy/shadow/kernel behavior, and
+atomic terminal mirroring. Keep the default `shadow`; do not persist canonical
+assistant output or dispatch a compiled prompt.
+
+- [ ] **Step 4: Run focused and broader verification**
+
+```powershell
+npm --prefix app test -- src/lib/jarvis/kernelMode.test.ts src/lib/jarvis/shadowCompilation.test.ts src/lib/ai/runtime.test.ts src/lib/ai/runtimeSafety.test.ts
+npm run typecheck
+```
+
+Expected: the gate/shadow/runtime safety suite and root typecheck pass, with
+the production default still `shadow`.
+
+- [ ] **Step 5: Stage literal files, inspect the cache, and commit**
+
+```powershell
+git add -- 'app/src/lib/jarvis/kernelMode.ts' 'app/src/lib/jarvis/kernelMode.test.ts' 'app/src/lib/jarvis/shadowCompilation.ts' 'app/src/lib/jarvis/shadowCompilation.test.ts' 'app/src/lib/ai/runtime.ts' 'app/src/lib/ai/runtime.test.ts' 'app/src/lib/ai/runtimeSafety.test.ts'
+git diff --cached --name-only
+git diff --cached --check
+git diff --cached -- 'app/src/lib/jarvis/kernelMode.ts' 'app/src/lib/jarvis/kernelMode.test.ts' 'app/src/lib/jarvis/shadowCompilation.ts' 'app/src/lib/jarvis/shadowCompilation.test.ts' 'app/src/lib/ai/runtime.ts' 'app/src/lib/ai/runtime.test.ts' 'app/src/lib/ai/runtimeSafety.test.ts'
+git diff --cached --name-only -- 'install/install.ps1'
+git commit -m "feat(jarvis): add safe shadow compilation"
+git show --check --stat HEAD
+git diff-tree --no-commit-id --name-only -r HEAD
+git log --oneline origin/main..HEAD -- 'install/install.ps1'
+```
+
+Expected staged and committed names: exactly the seven files above. The
+installer and whitespace queries produce no output, and the default remains
+`shadow`.
+
+## Task 14: Conditional Prose Repair and Verified Response Truth
+
+**Files:**
+
+- Create: `app/src/lib/jarvis/response/tokenizer.ts`
+- Create: `app/src/lib/jarvis/response/tokenizer.test.ts`
+- Create: `app/src/lib/jarvis/response/modeClassifier.ts`
+- Create: `app/src/lib/jarvis/response/modeClassifier.test.ts`
+- Create: `app/src/lib/jarvis/response/linter.ts`
+- Create: `app/src/lib/jarvis/response/linter.test.ts`
+- Create: `app/src/lib/jarvis/response/repair.ts`
+- Create: `app/src/lib/jarvis/response/repair.test.ts`
+- Create: `app/src/lib/jarvis/response/templates.ts`
+- Create: `app/src/lib/jarvis/response/templates.test.ts`
+- Create: `app/src/lib/jarvis/response/pipeline.ts`
+- Create: `app/src/lib/jarvis/response/pipeline.test.ts`
+- Create: `app/src/lib/jarvis/response/pipeline.performance.test.ts`
+- Create: `app/src/lib/jarvis/response/index.ts`
+- Modify: `app/src/lib/jarvis/responsePolicy.ts`
+- Modify: `app/src/lib/jarvis/responsePolicy.test.ts`
+- Modify: `app/src/lib/jarvis/responseListener.ts`
+- Modify: `app/src/lib/jarvis/responseListener.test.ts`
+
+Do not stage `app/src/lib/jarvis/response` as a directory.
+
+**Interfaces:**
+
+- Consumes Task 3 request/response/execution contracts, Task 11's immutable
+  envelope, Task 18's verified run state, and Task 2's protected predicate.
+- Produces the canonical response processor used by Tasks 16B, 21A, and 17.
+- Owns prose-only repair and deterministic truth narration; it never changes
+  verified lifecycle state.
+
+**Exact pipeline contracts:**
+
+```ts
+export type JarvisStructuredRegionKind =
+  | 'code_fence'
+  | 'action'
+  | 'plan'
+  | 'question'
+  | 'permission'
+  | 'table'
+  | 'diff'
+  | 'citation'
+  | 'url'
+  | 'quoted_text';
+
+export interface JarvisStructuredRegion {
+  index: number;
+  kind: JarvisStructuredRegionKind;
+  bytes: string;
+  valid: boolean;
+  errorCode?: 'unclosed_fence' | 'invalid_json' | 'invalid_shape';
+}
+
+export interface TokenizedJarvisResponse {
+  proseWithPlaceholders: string;
+  regions: readonly JarvisStructuredRegion[];
+}
+
+export type JarvisLintViolationDisposition = 'repairable' | 'deterministic' | 'quarantine';
+
+export interface JarvisLintViolation {
+  code: string;
+  disposition: JarvisLintViolationDisposition;
+  safeSummary: string;
+}
+
+export interface JarvisVerifiedFacts {
+  executionState?: JarvisExecutionState;
+  modelState: 'available' | 'connected' | 'authenticated' | 'degraded' | 'unavailable';
+  plugins: readonly JarvisCapabilityRef[];
+  mcps: readonly JarvisCapabilityRef[];
+  terminalState?: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'timed_out';
+}
+
+export interface RawProviderResponse {
+  text: string;
+  provider: JarvisModelSnapshot;
+  verifiedFacts: JarvisVerifiedFacts;
+  completedAt: number;
+}
+
+export interface JarvisRepairRequest {
+  prose: string;
+  immutablePlaceholders: readonly string[];
+  mode: JarvisResponseMode;
+  verifiedFacts: JarvisVerifiedFacts;
+  violations: readonly JarvisLintViolation[];
+}
+
+export interface JarvisRepairPort {
+  repair(request: Readonly<JarvisRepairRequest>): Promise<string>;
+}
+
+export async function processJarvisResponse(
+  raw: Readonly<RawProviderResponse>,
+  request: Readonly<JarvisRequestEnvelope>,
+  repair: JarvisRepairPort,
+): Promise<Readonly<JarvisResponseEnvelope>>;
+```
+
+**Exact processing order:**
+
+1. tokenize immutable structured regions;
+2. classify mode from the request plus verified facts;
+3. sanitize secret requests, hidden-prompt leakage, and unsupported action
+   macros in prose only;
+4. lint prose only;
+5. if and only if one or more `repairable` violations exist and no
+   `quarantine` violation exists, make at most one repair call;
+6. for `deterministic` violations or failed repair, apply local deterministic
+   transformations/templates;
+7. for `quarantine`, make zero repair calls and replace prose with the safe
+   retry template;
+8. restore every valid structured region byte-for-byte;
+9. never turn an invalid structured region into an executable `Part`;
+10. derive `displayText` and `spokenText` from the same mode and verified
+    facts;
+11. validate the final envelope.
+
+When lint passes, `repair.repair` is called zero times. Style compliance cannot
+add provider latency.
+
+**Malformed structured-region behavior:**
+
+- Preserve the exact malformed region in `JarvisStructuredRegion.bytes` for
+  the in-memory diagnostic result.
+- Do not parse, execute, or convert it to an action, plan, permission,
+  question, tool, or terminal part.
+- Return a safe text part stating that structured output could not be
+  validated.
+- Put only the safe code and region index in `enforcement.violations`.
+- Do not put raw malformed bytes in logs, events, spoken text, approval copy,
+  or repair input.
+
+**Truth fixtures:**
+
+| Verified fact                        | Required narration behavior                                    |
+| ------------------------------------ | -------------------------------------------------------------- |
+| run `awaiting_approval`              | mode `approval_required`; never says running/completed         |
+| run `running`                        | mode `action_running`; never says completed                    |
+| run `completed` and journal verified | mode `action_success`                                          |
+| run `partial`                        | mode `action_partial`; names incomplete state                  |
+| run `failed`                         | mode `action_failure`; never says completed                    |
+| run `cancelled`                      | mode `status` or `warning`; states cancelled before completion |
+| run `timed_out`                      | mode `warning` or `action_failure`; states timed out           |
+| model `unavailable`                  | mode `warning`; no silent model switch                         |
+| plugin/MCP `available`               | says available, not connected                                  |
+| plugin/MCP `connected`               | says connected, not authenticated unless the snapshot says so  |
+| plugin/MCP `authenticated`           | says authenticated                                             |
+| terminal `queued`                    | says queued, not running                                       |
+| terminal `running`                   | says running, not completed                                    |
+| terminal `completed`                 | says completed only with executor/journal verification         |
+
+Model prose cannot override these templates. Delivered-but-unverified
+cancellation is not a `cancelled` truth fixture.
+
+**Protected local-response listener:**
+
+`responseListener.ts` may intercept a greeting only after resolving the exact
+agent and calling `isProtectedJarvisAgent()`. Extend its binding:
+
+```ts
+resolveAgent(detail: LocalSendDetail): Agent | null | Promise<Agent | null>;
+```
+
+A user-created slug collision, unresolved agent, non-JARVIS chat, or
+context-bearing turn is not intercepted. Task 16B later removes direct
+canonical message writes from this listener.
+
+- [ ] **Step 1: Write the focused failing tests**
+
+Cover every required response mode, structured block round trips, prompt leak,
+credential leak, “Sir” cadence, dry humor, generic fallback replacement,
+submission vs completion, approval/running/success/failure/partial states,
+citations, artifacts, model switch, frustrated-user tone, sensitive topics,
+and deterministic idempotence.
+
+Also cover zero repair calls when lint passes; exactly one repair call for one
+or many repairable violations; no second call when repaired output still
+fails; zero calls for deterministic-only or quarantine violations; repair
+rejection fallback; malformed action/plan/question/permission blocks remaining
+non-executable; cancellation, timeout, unavailable model, plugin/MCP states,
+and terminal queued/running/completed truth; provider completion unable to
+override journal state; display/spoken severity agreement; no prose rewrite of
+code, URLs, citations, tables, diffs, terminal output, or artifacts; protected
+greeting interception; and user-created collision rejection.
+
+In `pipeline.performance.test.ts`, build a representative ordinary response
+and a repair port that throws if called. Warm the path, measure at least 500
+iterations of deterministic classification plus prose linting, sort
+durations, assert p95 below `15` milliseconds, and record only iteration
+count, sanitized length, violation count, and p95.
+
+- [ ] **Step 2: Run the focused RED test and confirm the expected cause**
+
+```powershell
+npm --prefix app test -- src/lib/jarvis/response/tokenizer.test.ts src/lib/jarvis/response/modeClassifier.test.ts src/lib/jarvis/response/linter.test.ts src/lib/jarvis/response/repair.test.ts src/lib/jarvis/response/templates.test.ts src/lib/jarvis/response/pipeline.test.ts src/lib/jarvis/response/pipeline.performance.test.ts src/lib/jarvis/responsePolicy.test.ts src/lib/jarvis/responseListener.test.ts
+```
+
+Expected: FAIL because the response modules do not exist.
+
+- [ ] **Step 3: Implement conditional repair and verified templates**
+
+Implement the exact processing order, prose-only sanitizer/linter, conditional
+single repair, deterministic/quarantine fallbacks, immutable structured
+restoration, verified display/spoken derivation, response-policy wrappers, and
+protected greeting resolution.
+
+- [ ] **Step 4: Run focused and broader verification**
+
+```powershell
+npm --prefix app test -- src/lib/jarvis/response/tokenizer.test.ts src/lib/jarvis/response/modeClassifier.test.ts src/lib/jarvis/response/linter.test.ts src/lib/jarvis/response/repair.test.ts src/lib/jarvis/response/templates.test.ts src/lib/jarvis/response/pipeline.test.ts src/lib/jarvis/response/pipeline.performance.test.ts src/lib/jarvis/responsePolicy.test.ts src/lib/jarvis/responseListener.test.ts
+npm run typecheck
+```
+
+Expected: the response correctness/performance suite and root typecheck pass.
+
+- [ ] **Step 5: Stage literal files, inspect the cache, and commit**
+
+```powershell
+git add -- 'app/src/lib/jarvis/response/tokenizer.ts' 'app/src/lib/jarvis/response/tokenizer.test.ts' 'app/src/lib/jarvis/response/modeClassifier.ts' 'app/src/lib/jarvis/response/modeClassifier.test.ts' 'app/src/lib/jarvis/response/linter.ts' 'app/src/lib/jarvis/response/linter.test.ts' 'app/src/lib/jarvis/response/repair.ts' 'app/src/lib/jarvis/response/repair.test.ts' 'app/src/lib/jarvis/response/templates.ts' 'app/src/lib/jarvis/response/templates.test.ts' 'app/src/lib/jarvis/response/pipeline.ts' 'app/src/lib/jarvis/response/pipeline.test.ts' 'app/src/lib/jarvis/response/pipeline.performance.test.ts' 'app/src/lib/jarvis/response/index.ts' 'app/src/lib/jarvis/responsePolicy.ts' 'app/src/lib/jarvis/responsePolicy.test.ts' 'app/src/lib/jarvis/responseListener.ts' 'app/src/lib/jarvis/responseListener.test.ts'
+git diff --cached --name-only
+git diff --cached --check
+git diff --cached -- 'app/src/lib/jarvis/response/tokenizer.ts' 'app/src/lib/jarvis/response/tokenizer.test.ts' 'app/src/lib/jarvis/response/modeClassifier.ts' 'app/src/lib/jarvis/response/modeClassifier.test.ts' 'app/src/lib/jarvis/response/linter.ts' 'app/src/lib/jarvis/response/linter.test.ts' 'app/src/lib/jarvis/response/repair.ts' 'app/src/lib/jarvis/response/repair.test.ts' 'app/src/lib/jarvis/response/templates.ts' 'app/src/lib/jarvis/response/templates.test.ts' 'app/src/lib/jarvis/response/pipeline.ts' 'app/src/lib/jarvis/response/pipeline.test.ts' 'app/src/lib/jarvis/response/pipeline.performance.test.ts' 'app/src/lib/jarvis/response/index.ts' 'app/src/lib/jarvis/responsePolicy.ts' 'app/src/lib/jarvis/responsePolicy.test.ts' 'app/src/lib/jarvis/responseListener.ts' 'app/src/lib/jarvis/responseListener.test.ts'
+git diff --cached --name-only -- 'install/install.ps1'
+git commit -m "feat(jarvis): enforce verified response truth"
+git show --check --stat HEAD
+git diff-tree --no-commit-id --name-only -r HEAD
+git log --oneline origin/main..HEAD -- 'install/install.ps1'
+```
+
+Expected staged and committed names: exactly the eighteen files above. The
+installer and whitespace queries produce no output.
+
+## Task 15: Preview and Speech Gate Preparation Only
+
+**Files:**
+
+- Create: `app/src/lib/jarvis/response/streamingPreviewGate.ts`
+- Create: `app/src/lib/jarvis/response/streamingPreviewGate.test.ts`
+- Create: `app/src/features/chat/streamingPreviewStore.ts`
+- Create: `app/src/features/chat/streamingPreviewStore.test.ts`
+- Create: `app/src/features/voice/speechGate.ts`
+- Create: `app/src/features/voice/speechGate.test.ts`
+- Modify: `app/src/features/voice/streamingVoice.ts`
+- Modify: `app/src/features/voice/streamingVoice.test.ts`
+- Modify: `app/src/features/voice/textCleanup.ts`
+- Modify: `app/src/features/voice/textCleanup.test.ts`
+- Modify: `app/src/features/voice/VoiceModal.tsx`
+- Modify: `app/src/features/voice/VoiceModal.turn.test.tsx`
+- Modify: `app/src/features/voice/VoiceModal.stop.test.tsx`
+
+**Interfaces:**
+
+- Consumes Task 14's response mode, linter violation, execution-state, and
+  final response contracts.
+- Produces ephemeral preview and branded validated-speech inputs for Task 16B
+  and Task 21A.
+- Does not modify `app/src/lib/ai/runtime.ts` and does not claim the current
+  raw runtime writes or accumulated-text TTS calls are removed.
+
+Task 16B owns replacing raw assistant placeholders with ephemeral preview,
+removing direct accumulated raw text from TTS, and persisting only a final
+validated response or final validated cancellation/partial response.
+
+**Exact preview contracts:**
+
+```ts
+export interface StreamingPreviewState {
+  buffered: string;
+  visible: string;
+  insideFence: boolean;
+}
+
+export type StreamingPreviewDecision =
+  | {
+      allowed: true;
+      state: Readonly<StreamingPreviewState>;
+      visibleText: string;
+    }
+  | {
+      allowed: false;
+      state: Readonly<StreamingPreviewState>;
+      reason:
+        | 'incomplete_sentence'
+        | 'inside_structured_fence'
+        | 'secret_signal'
+        | 'prompt_leak_signal'
+        | 'invalid_structure';
+    };
+
+export function createStreamingPreviewState(): Readonly<StreamingPreviewState>;
+
+export function pushStreamingPreviewChunk(
+  state: Readonly<StreamingPreviewState>,
+  delta: string,
+): StreamingPreviewDecision;
+
+export interface JarvisStreamingPreview {
+  accountId: string;
+  runId: string;
+  requestId: string;
+  chatId: string;
+  text: string;
+  updatedAt: number;
+}
+```
+
+`streamingPreviewStore` exposes only:
+
+```ts
+setPreview(preview: JarvisStreamingPreview): void;
+getPreview(accountId: string, runId: string): JarvisStreamingPreview | null;
+clearPreview(accountId: string, runId: string): void;
+clearAccountPreviews(accountId: string): void;
+```
+
+It has no Dexie, message-repository, journal-mutation, local-storage, or sync
+import. Preview state is replaceable and process-local.
+
+**Exact speech-gate contract:**
+
+```ts
+declare const validatedSpeechChunkBrand: unique symbol;
+
+export type ValidatedSpeechChunk = string & {
+  readonly [validatedSpeechChunkBrand]: true;
+};
+
+export interface SpeechGateInput {
+  text: string;
+  completeSentence: boolean;
+  insideFence: boolean;
+  mode: JarvisResponseMode;
+  executionState?: JarvisExecutionState;
+  lintViolations: readonly JarvisLintViolation[];
+}
+
+export type SpeechGateDecision =
+  | { allowed: true; chunk: ValidatedSpeechChunk }
+  | {
+      allowed: false;
+      reason:
+        | 'incomplete_sentence'
+        | 'inside_fence'
+        | 'secret_signal'
+        | 'prompt_leak_signal'
+        | 'mode_mismatch'
+        | 'execution_state_mismatch'
+        | 'lint_failure';
+    };
+
+export function validateSpeechChunk(input: Readonly<SpeechGateInput>): SpeechGateDecision;
+```
+
+A spoken streaming chunk must pass all six independent checks:
+
+1. complete sentence;
+2. outside code/structured fences;
+3. no secret or hidden-prompt signal;
+4. response-mode compatibility;
+5. verified execution-state compatibility;
+6. deterministic linter acceptance.
+
+`streamingVoice.ts` adds:
+
+```ts
+enqueueValidatedChunk(chunk: ValidatedSpeechChunk): void;
+completeValidated(
+  response: Readonly<
+    Pick<JarvisResponseEnvelope, 'spokenText' | 'mode' | 'executionState'>
+  >,
+): Promise<void>;
+```
+
+The legacy raw `onDelta(string)` compatibility entry may remain only until
+Task 16B removes its final caller. Label it as a temporary legacy boundary and
+do not use it from new Task 15 code or tests.
+
+**Stop and playback rules:**
+
+- Stop/cancel clears queued sentence buffers.
+- Stop/cancel aborts current synthesis and playback.
+- Late synthesis completion cannot restart playback.
+- Mic state after stop follows existing hands-free/push-to-talk behavior.
+- `VoiceModal.stop.test.tsx` is mandatory in RED and GREEN commands.
+- Code, JSON, URLs, citations, raw paths, action macros, and hidden metadata
+  are not spoken unless a deterministic accessibility template supplies the
+  text.
+
+- [ ] **Step 1: Write the focused failing tests**
+
+Cover chunk boundaries inside secrets and prompt-leak phrases; Markdown,
+action, plan, question, and permission fence boundaries; Unicode sentence
+boundaries; incomplete sentences withheld; preview store never calling
+message/Dexie/local-storage APIs; preview replace/clear by run; every
+speech-gate rejection reason; validated brand creation only by the gate; final
+spoken severity for warning/failure/cancellation; queued synthesis/playback
+stop; late completion not resuming audio; and existing VoiceModal stop/mic
+state.
+
+- [ ] **Step 2: Run the focused RED test and confirm the expected cause**
+
+```powershell
+npm --prefix app test -- src/lib/jarvis/response/streamingPreviewGate.test.ts src/features/chat/streamingPreviewStore.test.ts src/features/voice/speechGate.test.ts src/features/voice/streamingVoice.test.ts src/features/voice/textCleanup.test.ts src/features/voice/VoiceModal.turn.test.tsx src/features/voice/VoiceModal.stop.test.tsx
+```
+
+Expected: FAIL because the preview and speech-gate modules do not exist.
+
+- [ ] **Step 3: Implement the preview/speech libraries and stop contract**
+
+Implement the exact pure preview gate/store, six-check speech gate, branded
+streaming-voice entry points, cleanup behavior, and VoiceModal stop
+regressions. Do not edit runtime or claim canonical cutover.
+
+- [ ] **Step 4: Run focused and broader verification**
+
+```powershell
+npm --prefix app test -- src/lib/jarvis/response/streamingPreviewGate.test.ts src/features/chat/streamingPreviewStore.test.ts src/features/voice/speechGate.test.ts src/features/voice/streamingVoice.test.ts src/features/voice/textCleanup.test.ts src/features/voice/VoiceModal.turn.test.tsx src/features/voice/VoiceModal.stop.test.tsx
+npm run typecheck
+```
+
+Expected: the focused preview/voice suite and root typecheck pass.
+
+- [ ] **Step 5: Stage literal files, inspect the cache, and commit**
+
+```powershell
+git add -- 'app/src/lib/jarvis/response/streamingPreviewGate.ts' 'app/src/lib/jarvis/response/streamingPreviewGate.test.ts' 'app/src/features/chat/streamingPreviewStore.ts' 'app/src/features/chat/streamingPreviewStore.test.ts' 'app/src/features/voice/speechGate.ts' 'app/src/features/voice/speechGate.test.ts' 'app/src/features/voice/streamingVoice.ts' 'app/src/features/voice/streamingVoice.test.ts' 'app/src/features/voice/textCleanup.ts' 'app/src/features/voice/textCleanup.test.ts' 'app/src/features/voice/VoiceModal.tsx' 'app/src/features/voice/VoiceModal.turn.test.tsx' 'app/src/features/voice/VoiceModal.stop.test.tsx'
+git diff --cached --name-only
+git diff --cached --check
+git diff --cached -- 'app/src/lib/jarvis/response/streamingPreviewGate.ts' 'app/src/lib/jarvis/response/streamingPreviewGate.test.ts' 'app/src/features/chat/streamingPreviewStore.ts' 'app/src/features/chat/streamingPreviewStore.test.ts' 'app/src/features/voice/speechGate.ts' 'app/src/features/voice/speechGate.test.ts' 'app/src/features/voice/streamingVoice.ts' 'app/src/features/voice/streamingVoice.test.ts' 'app/src/features/voice/textCleanup.ts' 'app/src/features/voice/textCleanup.test.ts' 'app/src/features/voice/VoiceModal.tsx' 'app/src/features/voice/VoiceModal.turn.test.tsx' 'app/src/features/voice/VoiceModal.stop.test.tsx'
+git diff --cached --name-only -- 'install/install.ps1'
+git commit -m "feat(voice): prepare validated preview and speech gates"
+git show --check --stat HEAD
+git diff-tree --no-commit-id --name-only -r HEAD
+git log --oneline origin/main..HEAD -- 'install/install.ps1'
+```
+
+Expected staged and committed names: exactly the thirteen files above. The
+installer and whitespace queries produce no output.
 
 ## Task 19: Approval Engine, Deterministic Actions, and Real Cancellation
 
@@ -3454,7 +4353,991 @@ git diff --cached --check
 git commit -m "feat(jarvis): normalize artifacts and project legacy activity"
 ```
 
-## Task 21: Voice Session Binding and Thin Truthful Command Center
+## Task 16B: Typed-Chat Kernel Cutover and Tested Default Switch
+
+**Prerequisites:**
+
+- Tasks 1B, 11-15, 16A, 18, 19, and 20 are complete.
+- The production default in `kernelMode.ts` is still `shadow`.
+- Task 20 exposes canonical artifact lookup and read-only legacy projections.
+
+**Files:**
+
+- Create: `app/src/lib/jarvis/kernel.ts`
+- Create: `app/src/lib/jarvis/kernel.integration.test.ts`
+- Create: `app/src/lib/jarvis/kernelMessageProjection.ts`
+- Create: `app/src/lib/jarvis/kernelMessageProjection.test.ts`
+- Modify: `app/src/lib/jarvis/kernelMode.ts`
+- Modify: `app/src/lib/jarvis/kernelMode.test.ts`
+- Modify: `app/src/lib/jarvis/identity.ts`
+- Modify: `app/src/lib/jarvis/identity.test.ts`
+- Modify: `app/src/lib/ai/runtime.ts`
+- Modify: `app/src/lib/ai/runtime.test.ts`
+- Modify: `app/src/lib/ai/runtimeSafety.test.ts`
+- Modify: `app/src/types/chat.ts`
+- Modify: `app/src/features/chat/streamingPreviewStore.ts`
+- Modify: `app/src/features/chat/streamingPreviewStore.test.ts`
+- Modify: `app/src/features/voice/speechGate.ts`
+- Modify: `app/src/features/voice/speechGate.test.ts`
+- Modify: `app/src/features/voice/streamingVoice.ts`
+- Modify: `app/src/features/voice/streamingVoice.test.ts`
+- Modify: `app/src/features/chat/ChatView.tsx`
+- Modify: `app/src/features/chat/ChatThread.tsx`
+- Modify: `app/src/features/chat/ChatThread.agentPanel.test.tsx`
+- Modify: `app/src/features/chat/MessagePart.tsx`
+- Modify: `app/src/features/chat/MessagePart.jarvisCreator.test.tsx`
+- Modify: `app/src/lib/jarvis/responseListener.ts`
+- Modify: `app/src/lib/jarvis/responseListener.test.ts`
+- Modify: `app/src/components/layout/Inspector.tsx`
+- Modify: `app/src/features/chat/Composer.tsx`
+- Modify: `app/src/features/files/FilesPage.tsx`
+- Modify: `app/src/features/files/FileExplorerDialog.tsx`
+- Modify: `app/src/lib/ai/modelSelection.ts`
+- Modify: `app/src/lib/ai/modelSelection.test.ts`
+
+`app/src/types/common.ts` is intentionally not modified. Legacy `ContextRef`
+continues to represent legacy file/chat references. Kernel provenance and
+artifact references use explicit new message-part variants.
+
+**Interfaces:**
+
+- Consumes Tasks 11-15, Task 18's state machine/abort registry, Task 19's
+  approval engine, and Task 20's backed artifacts/projections.
+- Produces canonical protected typed-chat dispatch and source/artifact message
+  projection for Task 21A and Task 17.
+- Owns the only production-default change from `shadow` to `kernel`.
+
+**Canonical dispatcher:**
+
+```ts
+export interface JarvisKernelTurnInput {
+  run: Readonly<JarvisRun>;
+  attempt: JarvisRequestAttempt;
+  accountId: string;
+  workspaceId?: string;
+  projectId?: string;
+  chatId: string;
+  parentRunId?: string;
+  userMessageId: string;
+  agent: Agent;
+  surface: JarvisRequestEnvelope['surface'];
+  interactionMode: JarvisRequestEnvelope['interactionMode'];
+  userText: string;
+  messageHistory: readonly LLMMessage[];
+  model: JarvisModelSnapshot;
+  identity: JarvisIdentitySnapshot;
+  profile: JarvisProfileSnapshot;
+  capabilities: JarvisCapabilitySnapshot;
+  context: JarvisContextPack;
+  outputContract: JarvisOutputContract;
+  workingDirectory?: string;
+}
+
+export interface JarvisKernelTurnResult {
+  request: Readonly<JarvisRequestEnvelope>;
+  compiled: Readonly<CompiledJarvisPrompt>;
+  response: Readonly<JarvisResponseEnvelope>;
+  messageParts: readonly Part[];
+}
+
+export interface JarvisKernelDeps {
+  journal: JarvisExecutionJournal;
+  approvals: JarvisApprovalEngine;
+  artifacts: JarvisArtifactRepository;
+  dispatchProvider(input: {
+    requestId: string;
+    compiled: Readonly<CompiledJarvisPrompt>;
+    model: JarvisModelSnapshot;
+    messages: readonly LLMMessage[];
+    signal: AbortSignal;
+    workingDirectory?: string;
+    onChunk(delta: string): void;
+  }): Promise<RawProviderResponse>;
+  processResponse(
+    raw: Readonly<RawProviderResponse>,
+    request: Readonly<JarvisRequestEnvelope>,
+  ): Promise<Readonly<JarvisResponseEnvelope>>;
+  now(): number;
+}
+
+export async function runJarvisKernelTurn(
+  input: Readonly<JarvisKernelTurnInput>,
+  deps: JarvisKernelDeps,
+): Promise<JarvisKernelTurnResult>;
+```
+
+**Canonical execution order:**
+
+For protected typed JARVIS:
+
+1. verify canonical account, `input.run.id === input.attempt.runId`, and the
+   already-persisted Task 18 run;
+2. transition `queued -> compiling`;
+3. build and validate one envelope;
+4. compile one prompt;
+5. transition `compiling -> running`;
+6. register the provider aborter:
+
+```ts
+{
+  accountId,
+  runId,
+  registrationId: `${runId}:provider`,
+  kind: 'provider_stream',
+  abort: () => {
+    controller.abort();
+    return true;
+  },
+}
+```
+
+7. dispatch through Task 13 exactly once;
+8. pass deltas only through Task 15's preview gate/store;
+9. process the final/terminal response through Task 14;
+10. normalize verified artifacts through Task 20;
+11. project response/source/artifact refs into typed message parts;
+12. persist one canonical assistant message;
+13. append canonical events and perform Task 18's legal terminal transition
+    through Task 9's `compareAndAppendTransitionEvent()` primitive;
+14. clear preview and dispose the exact provider abort registration in
+    `finally`.
+
+Approval creation/consumption and consequential action execution use Task 19.
+Kernel mode never invokes legacy auto-approval directly.
+
+**Preview, partial, and persistence rules:**
+
+- Do not create an empty assistant placeholder in kernel mode.
+- Provider deltas update only `streamingPreviewStore`.
+- No preview chunk is a canonical message, terminal activity state, artifact,
+  approval, or event body.
+- On normal completion, persist only final validated projected parts.
+- On cancellation or provider interruption, run the safe accumulated preview
+  through Task 14 with verified `cancelled`, `failed`, or `timed_out` facts.
+  Persist it only as a final validated partial/cancellation envelope.
+- If no safe partial exists, persist the deterministic terminal-state
+  template.
+- Never persist the raw accumulator on an error path.
+- Remove `streamingVoice.onDelta(rawString)`. Only
+  `enqueueValidatedChunk()` or final `spokenText` may reach TTS.
+- Abort signal delivery remains nonterminal; only the owning provider/executor
+  confirmation may transition the run to `cancelled`.
+
+**Safe failures:**
+
+Envelope validation failure:
+
+- zero provider calls;
+- append a safe validation-error event;
+- transition the canonical run to `failed`;
+- persist no fabricated assistant output beyond the deterministic safe local
+  error envelope.
+
+Journal create/transition failure before provider dispatch:
+
+- zero provider calls;
+- retain the already-persisted user message;
+- persist no assistant placeholder;
+- surface a recovery error with a safe category.
+
+Journal failure after provider output:
+
+- do not write an unjournaled success message;
+- retain the user message and canonical run evidence already committed;
+- surface a recovery error;
+- never fall back to legacy in the same logical execution.
+
+Task 13 unsupported transport:
+
+- zero provider calls;
+- safe failed run;
+- no mutable legacy prompt fallback.
+
+**Typed source and artifact projection:**
+
+Add these variants to `Part` in `types/chat.ts`:
+
+```ts
+export type JarvisSourceMessageRef = {
+  id: string;
+  kind: JarvisSourceKind;
+  label: string;
+  uri?: string;
+  trust: JarvisSourceRef['trust'];
+  sensitivity: JarvisSourceRef['sensitivity'];
+  observedAt?: number;
+};
+
+export type JarvisArtifactMessageRef = {
+  id: string;
+  kind: JarvisArtifact['kind'];
+  title: string;
+  state: JarvisArtifactState;
+  uri?: string;
+  safeSummary?: string;
+};
+
+export type Part =
+  | /* existing variants unchanged */
+  | { kind: 'jarvis_source_ref'; source: JarvisSourceMessageRef }
+  | { kind: 'jarvis_artifact_ref'; artifact: JarvisArtifactMessageRef };
+```
+
+Projection surface:
+
+```ts
+export function projectJarvisEnvelopeToMessageParts(input: {
+  response: Readonly<JarvisResponseEnvelope>;
+  artifacts: readonly JarvisArtifactV1[];
+}): readonly Part[];
+```
+
+Rules:
+
+- preserve every existing structured `response.parts` item;
+- append each unique source ID once;
+- append each unique artifact ID once;
+- every `response.artifactIds` value resolves to a real Task 20 row with
+  backing; a missing row is a typed projection error, not a fake card;
+- keep source `accountId` in the canonical envelope/journal but not in visible
+  projection copy;
+- omit restricted/secret source URIs;
+- never copy artifact inline content into a part;
+- `MessagePart.tsx` renders safe labels, state, and real links only;
+- old `file_ref` and every historical part render unchanged.
+
+**Protected-agent helper and slug-only call sites:**
+
+Extend Task 2's identity module:
+
+```ts
+export function findProtectedJarvisAgent<T extends Pick<Agent, 'builtin' | 'slug'>>(
+  agents: Iterable<T>,
+): T | undefined;
+```
+
+It returns the first agent satisfying `isProtectedJarvisAgent()`.
+
+Replace slug-only protected behavior in:
+
+```text
+app/src/components/layout/Inspector.tsx
+app/src/features/chat/Composer.tsx
+app/src/features/files/FilesPage.tsx
+app/src/features/files/FileExplorerDialog.tsx
+app/src/lib/ai/modelSelection.ts
+app/src/lib/ai/runtime.ts
+```
+
+`app/src/App.tsx` remains owned/tested by Task 1B and must already use the same
+predicate/helper before Task 16A.
+
+Collision rules:
+
+- `builtin: false, slug: 'jarvis'` remains a normal user agent;
+- it is not selected as the protected default;
+- it receives no JARVIS model override, prompt compiler, response enforcer,
+  profile storage, greeting interception, hidden-editor behavior, or
+  auto-approval treatment;
+- the protected built-in retains those exact paths.
+
+After changes:
+
+```powershell
+rg -n --fixed-strings ".slug === 'jarvis'" app/src/App.tsx app/src/components/layout/Inspector.tsx app/src/features/chat/Composer.tsx app/src/features/files/FilesPage.tsx app/src/features/files/FileExplorerDialog.tsx app/src/lib/ai/modelSelection.ts app/src/lib/ai/runtime.ts
+```
+
+Expected: no output. Explicit user-facing slug parsing in unrelated routing
+utilities is not redefined as protected identity.
+
+**Activation and rollback:**
+
+1. Leave `DEFAULT_JARVIS_KERNEL_MODE = 'shadow'`.
+2. Implement the kernel and run focused integration tests with an explicit
+   internal `kernel` override.
+3. Prove non-JARVIS, rollback, safety, persistence, cancellation, source, and
+   artifact cases pass.
+4. Change only:
+
+```ts
+export const DEFAULT_JARVIS_KERNEL_MODE: JarvisKernelMode = 'kernel';
+```
+
+5. Rerun the same tests without an override.
+6. Rerun runtime safety and Task 13 transport tests.
+
+Do not switch the default before the explicit override suite passes.
+
+An internal `legacy` override routes protected chat through compatibility
+runtime while still enforcing Task 4 source admission, Task 5 entitlements,
+Task 6 browser quarantine, Task 9 private-sync guard, and Task 13 unsupported
+transport denial. Rollback leaves Dexie v3 intact and cannot delete or
+downgrade it.
+
+- [ ] **Step 1: Write the focused failing integration tests**
+
+Cover explicit kernel currently returning `kernel_mode_not_ready`; one
+envelope/compiler/provider/pipeline for protected chat; user-created slug
+collision and non-JARVIS staying legacy; request/run continuity; transport
+versus logical retry IDs; no raw placeholder; ephemeral preview and clear; no
+preview persistence; one final message; safe cancelled/failed partial;
+provider abort registration/disposal; structured parts; typed source/artifact
+projection/rendering; missing artifact backing; response-listener direct write
+removal; validation before provider; journal failure retaining the user
+message; unsupported transport fail-closed; rollback interlocks; activation
+order; and every protected call site rejecting the collision.
+
+- [ ] **Step 2: Run the initial RED test and confirm the expected cause**
+
+```powershell
+npm --prefix app test -- src/lib/jarvis/kernel.integration.test.ts src/lib/jarvis/kernelMessageProjection.test.ts src/lib/jarvis/kernelMode.test.ts src/lib/ai/runtime.test.ts src/lib/ai/runtimeSafety.test.ts src/lib/jarvis/identity.test.ts src/lib/ai/modelSelection.test.ts src/features/chat/streamingPreviewStore.test.ts src/features/voice/speechGate.test.ts src/features/voice/streamingVoice.test.ts src/features/chat/ChatThread.agentPanel.test.tsx src/features/chat/MessagePart.jarvisCreator.test.tsx src/lib/jarvis/responseListener.test.ts
+```
+
+Expected: FAIL because the canonical dispatcher/projection do not exist and
+explicit kernel mode is not ready.
+
+- [ ] **Step 3: Implement canonical cutover while the default stays shadow**
+
+Implement the exact dispatcher, preview/response/artifact/message ordering,
+safe failures, protected-agent call-site cleanup, and rollback behavior. Keep
+`DEFAULT_JARVIS_KERNEL_MODE = 'shadow'`.
+
+- [ ] **Step 4: Prove explicit kernel mode before activation**
+
+```powershell
+npm --prefix app test -- src/lib/jarvis/kernel.integration.test.ts src/lib/jarvis/kernelMessageProjection.test.ts src/lib/ai/runtime.test.ts src/lib/ai/runtimeSafety.test.ts src/features/chat/streamingPreviewStore.test.ts src/features/voice/speechGate.test.ts src/features/voice/streamingVoice.test.ts src/features/chat/ChatThread.agentPanel.test.tsx src/features/chat/MessagePart.jarvisCreator.test.tsx
+```
+
+Expected: PASS with the production default still `shadow`.
+
+- [ ] **Step 5: Change the default to kernel and rerun focused and broader verification**
+
+Change only the default constant after Step 4 passes, then run:
+
+```powershell
+npm --prefix app test -- src/lib/jarvis/kernel.integration.test.ts src/lib/jarvis/kernelMessageProjection.test.ts src/lib/jarvis/kernelMode.test.ts src/lib/ai/runtime.test.ts src/lib/ai/runtimeSafety.test.ts src/lib/jarvis/identity.test.ts src/lib/ai/modelSelection.test.ts src/lib/ai/providerPromptTransport.test.ts src/features/chat/streamingPreviewStore.test.ts src/features/voice/speechGate.test.ts src/features/voice/streamingVoice.test.ts src/features/chat/ChatThread.agentPanel.test.tsx src/features/chat/MessagePart.jarvisCreator.test.tsx src/lib/jarvis/responseListener.test.ts
+npm run typecheck
+rg -n --fixed-strings ".slug === 'jarvis'" app/src/App.tsx app/src/components/layout/Inspector.tsx app/src/features/chat/Composer.tsx app/src/features/files/FilesPage.tsx app/src/features/files/FileExplorerDialog.tsx app/src/lib/ai/modelSelection.ts app/src/lib/ai/runtime.ts
+```
+
+Expected: focused tests and typecheck pass; the slug-only scan produces no
+output; tests without an override prove the default is now `kernel`.
+
+- [ ] **Step 6: Stage literal files, inspect the cache, and commit**
+
+```powershell
+git add -- 'app/src/lib/jarvis/kernel.ts' 'app/src/lib/jarvis/kernel.integration.test.ts' 'app/src/lib/jarvis/kernelMessageProjection.ts' 'app/src/lib/jarvis/kernelMessageProjection.test.ts' 'app/src/lib/jarvis/kernelMode.ts' 'app/src/lib/jarvis/kernelMode.test.ts' 'app/src/lib/jarvis/identity.ts' 'app/src/lib/jarvis/identity.test.ts' 'app/src/lib/ai/runtime.ts' 'app/src/lib/ai/runtime.test.ts' 'app/src/lib/ai/runtimeSafety.test.ts' 'app/src/types/chat.ts' 'app/src/features/chat/streamingPreviewStore.ts' 'app/src/features/chat/streamingPreviewStore.test.ts' 'app/src/features/voice/speechGate.ts' 'app/src/features/voice/speechGate.test.ts' 'app/src/features/voice/streamingVoice.ts' 'app/src/features/voice/streamingVoice.test.ts' 'app/src/features/chat/ChatView.tsx' 'app/src/features/chat/ChatThread.tsx' 'app/src/features/chat/ChatThread.agentPanel.test.tsx' 'app/src/features/chat/MessagePart.tsx' 'app/src/features/chat/MessagePart.jarvisCreator.test.tsx' 'app/src/lib/jarvis/responseListener.ts' 'app/src/lib/jarvis/responseListener.test.ts' 'app/src/components/layout/Inspector.tsx' 'app/src/features/chat/Composer.tsx' 'app/src/features/files/FilesPage.tsx' 'app/src/features/files/FileExplorerDialog.tsx' 'app/src/lib/ai/modelSelection.ts' 'app/src/lib/ai/modelSelection.test.ts'
+git diff --cached --name-only
+git diff --cached --check
+git diff --cached -- 'app/src/lib/jarvis/kernel.ts' 'app/src/lib/jarvis/kernel.integration.test.ts' 'app/src/lib/jarvis/kernelMessageProjection.ts' 'app/src/lib/jarvis/kernelMessageProjection.test.ts' 'app/src/lib/jarvis/kernelMode.ts' 'app/src/lib/jarvis/kernelMode.test.ts' 'app/src/lib/jarvis/identity.ts' 'app/src/lib/jarvis/identity.test.ts' 'app/src/lib/ai/runtime.ts' 'app/src/lib/ai/runtime.test.ts' 'app/src/lib/ai/runtimeSafety.test.ts' 'app/src/types/chat.ts' 'app/src/features/chat/streamingPreviewStore.ts' 'app/src/features/chat/streamingPreviewStore.test.ts' 'app/src/features/voice/speechGate.ts' 'app/src/features/voice/speechGate.test.ts' 'app/src/features/voice/streamingVoice.ts' 'app/src/features/voice/streamingVoice.test.ts' 'app/src/features/chat/ChatView.tsx' 'app/src/features/chat/ChatThread.tsx' 'app/src/features/chat/ChatThread.agentPanel.test.tsx' 'app/src/features/chat/MessagePart.tsx' 'app/src/features/chat/MessagePart.jarvisCreator.test.tsx' 'app/src/lib/jarvis/responseListener.ts' 'app/src/lib/jarvis/responseListener.test.ts' 'app/src/components/layout/Inspector.tsx' 'app/src/features/chat/Composer.tsx' 'app/src/features/files/FilesPage.tsx' 'app/src/features/files/FileExplorerDialog.tsx' 'app/src/lib/ai/modelSelection.ts' 'app/src/lib/ai/modelSelection.test.ts'
+git diff --cached --name-only -- 'install/install.ps1'
+git commit -m "feat(chat): cut protected Jarvis over to the kernel"
+git show --check --stat HEAD
+git diff-tree --no-commit-id --name-only -r HEAD
+git log --oneline origin/main..HEAD -- 'install/install.ps1'
+```
+
+Expected staged and committed names: exactly the thirty-one files above. The
+installer and whitespace queries produce no output.
+
+## Task 21A: Voice-Session Binding Through the Canonical Kernel
+
+**Prerequisites:**
+
+- Task 16B's default kernel cutover is complete.
+- Task 18 supports multiple labelled abort registrations per run.
+- Task 19 approval/action execution and Task 20 artifacts are canonical.
+
+**Files:**
+
+- Create: `app/src/features/voice/voiceSessionBinding.ts`
+- Create: `app/src/features/voice/voiceSessionBinding.test.ts`
+- Modify: `app/src/features/voice/voiceChatRouting.ts`
+- Modify: `app/src/features/voice/voiceChatRouting.test.ts`
+- Modify: `app/src/features/voice/voiceTurnCommit.ts`
+- Modify: `app/src/features/voice/voiceTurnCommit.test.ts`
+- Modify: `app/src/features/voice/store.ts`
+- Modify: `app/src/features/voice/store.test.ts`
+- Modify: `app/src/features/voice/VoiceModal.tsx`
+- Modify: `app/src/features/voice/VoiceModal.turn.test.tsx`
+- Modify: `app/src/features/voice/VoiceModal.stop.test.tsx`
+- Modify: `app/src/features/voice/voiceRouter.ts`
+- Modify: `app/src/features/voice/voiceRouter.test.ts`
+- Modify: `app/src/features/voice/streamingVoice.ts`
+- Modify: `app/src/features/voice/streamingVoice.test.ts`
+- Modify: `app/src/lib/jarvis/kernel.ts`
+- Modify: `app/src/lib/jarvis/kernel.integration.test.ts`
+- Modify: `app/src/lib/ai/runtime.ts`
+- Modify: `app/src/lib/ai/runtime.test.ts`
+
+**Interfaces:**
+
+- Consumes Task 16B's canonical kernel, Task 18's labelled abort registry and
+  atomic verified transition, and Task 15's speech/playback gates.
+- Produces one immutable voice-session binding and canonical voice envelope
+  lineage for Task 17 and Task 21B.
+- Does not create a second voice lifecycle or treat abort delivery as a
+  terminal cancellation.
+
+**Exact binding:**
+
+```ts
+export interface VoiceSessionBinding {
+  sessionId: string;
+  accountId: string;
+  chatId: ChatId;
+  startedAt: number;
+  activeRunId?: string;
+}
+
+export function newVoiceSessionId(): string;
+
+export function createVoiceSessionBinding(input: {
+  sessionId: string;
+  accountId: string;
+  chatId: ChatId;
+  startedAt: number;
+}): Readonly<VoiceSessionBinding>;
+```
+
+`useVoiceStore` adds:
+
+```ts
+session: Readonly<VoiceSessionBinding> | null;
+beginSession(binding: Readonly<VoiceSessionBinding>): boolean;
+setSessionRun(runId: string | undefined): void;
+endSession(): void;
+```
+
+`newVoiceSessionId()` returns
+`vsession_${globalThis.crypto.randomUUID()}`. If Web Crypto is unavailable,
+session start fails safely instead of using a timestamp-only or shared ID.
+
+Rules:
+
+- `beginSession()` succeeds only when no session is active.
+- Capture the binding once when voice opens after resolving both canonical
+  account identity and a protected JARVIS chat.
+- Route, Workbench tab, active-chat, project-panel, or later
+  `ensureJarvisChatForVoice()` changes cannot replace the binding.
+- Account change ends the old session before a new session begins.
+- A malformed cloud session or missing canonical identity starts no bound
+  session.
+- Closing requests cancellation for the active run before clearing the
+  binding.
+- Default JARVIS voice turns always use `session.chatId`.
+- Explicit non-JARVIS voice turns retain the legacy agent path and receive no
+  protected identity merely because their slug collides.
+
+**Protected chat resolution:**
+
+Replace slug-only `isJarvisChat()` behavior with `isProtectedJarvisAgent()`.
+An unbound chat defaults to the protected built-in only after
+`findProtectedJarvisAgent()` succeeds. A user-created `jarvis` slug is not a
+protected default.
+
+**Voice envelope and transcript:**
+
+Every bound protected turn calls the same kernel with:
+
+```ts
+{
+  surface: 'voice',
+  accountId: session.accountId,
+  chatId: session.chatId,
+}
+```
+
+- User message, run, request, response, source refs, artifact refs, and spoken
+  text share that account/chat/run lineage.
+- `VoiceModal` transcript reads `session.chatId`, not mutable
+  `activeChatId`.
+- `focusVoiceChat()` may change visible navigation but cannot mutate the
+  session binding.
+- Store the current run ID only after Task 18 returns the canonical run.
+- Clear it only after the kernel reaches a verified terminal state.
+
+**Exact abort-registry dependency:**
+
+Consume Task 18's contract:
+
+```ts
+export type JarvisAbortKind =
+  | 'provider_stream'
+  | 'tts_generation'
+  | 'audio_playback'
+  | 'terminal'
+  | 'native_process'
+  | 'network'
+  | 'child_run'
+  | 'other';
+
+export type JarvisAbortRegistration = {
+  accountId: string;
+  runId: string;
+  registrationId: string;
+  kind: JarvisAbortKind;
+  parentRunId?: string;
+  abort: () => boolean | Promise<boolean>;
+};
+
+export function registerRunAborter(registration: JarvisAbortRegistration): () => void;
+
+export function requestRunCancellation(
+  accountId: string,
+  runId: string,
+): Promise<CancellationDelivery>;
+```
+
+For one voice run, register:
+
+```ts
+`${runId}:provider` // provider_stream
+`${runId}:tts` // tts_generation
+`${runId}:playback`; // audio_playback
+```
+
+Registration IDs are unique within account/run. Re-registering replaces only
+the same ID. Every disposer is idempotent and removes only its matching
+function.
+
+**Cancellation truth:**
+
+- `stopCurrentVoiceResponse()` calls
+  `requestRunCancellation(session.accountId, session.activeRunId)` and stops
+  local output.
+- Task 18 snapshots current run/descendant registrations and calls each
+  supported aborter exactly once.
+- An aborter returning `true` produces
+  `{ delivered: true, verified: false, reason: 'signal_delivered' }`, appends a
+  safe cancellation-request event, and leaves the run nonterminal.
+- Signal delivery alone never marks the run `cancelled`.
+- The provider, TTS generator, or playback owner calls Task 18's exact atomic
+  journal method only after its real abort/stop callback confirms termination:
+
+```ts
+await journal.transitionRun({
+  accountId,
+  runId,
+  expectedStatus: 'running',
+  nextStatus: 'cancelled',
+  completedAt: now,
+  event: {
+    idempotencyKey: `cancel-confirm:${runId}:${owner}`,
+    title: 'Run cancelled',
+    safeSummary: 'Cancellation confirmed by the active executor.',
+    sourceRefs: [],
+    artifactIds: [],
+    createdAt: now,
+  },
+});
+```
+
+`transitionRun()` supplies `updatedAt` from its injected clock and Task 9
+forces the transition event to `run_state` plus `cancelled`; callers do not
+supply run ID, sequence, event type, or status inside the event input.
+Task 18 validates legality, then delegates the row/event commit to Task 9's
+`compareAndAppendTransitionEvent()`; no second transition table or non-atomic
+event write is permitted.
+
+- If completion wins before cancellation is verified, the run may truthfully
+  complete. Catch Task 18's typed transition conflict and retain the committed
+  terminal truth.
+- Once `cancelled` is verified, reject late completion/failure transitions.
+- If aborters reject, throw, or are missing, report Task 18's exact
+  `delivery_rejected`, `delivery_error`, `unsupported`, or `executor_missing`
+  reason without claiming the operation stopped.
+- Never put raw audio, TTS text, prompt text, or provider deltas in
+  cancellation events.
+
+**Voice completion ordering:**
+
+For `surface: 'voice'`, do not mark the run completed until:
+
+1. provider response is final and validated;
+2. canonical assistant message/events/artifacts are committed;
+3. final `spokenText` playback completes or a truthful unavailable/degraded
+   speech outcome is recorded.
+
+A stop during synthesis/playback can therefore become verified
+`cancelled`; a completed transcript is not conflated with completed audio.
+
+- [ ] **Step 1: Write the focused failing tests**
+
+Cover one-time account/chat/session capture; no session without identity;
+route/Workbench/active-chat changes not replacing binding; account change
+ending the old binding; transcript using bound chat; protected voice surface;
+user-created slug collision remaining non-protected; provider/TTS/playback
+registrations sharing one run; exact disposer ownership; exact account/run
+cancel request; `signal_delivered` remaining unverified/nonterminal; real
+provider/TTS/playback callback verifying cancellation; completion winning
+before verified stop; late completion after verified cancellation rejected;
+truthful delivery rejection/error/unavailable; close cancelling before clear;
+and existing hands-free/push-to-talk mic behavior.
+
+- [ ] **Step 2: Run the focused RED test and confirm the expected cause**
+
+```powershell
+npm --prefix app test -- src/features/voice/voiceSessionBinding.test.ts src/features/voice/voiceChatRouting.test.ts src/features/voice/voiceTurnCommit.test.ts src/features/voice/store.test.ts src/features/voice/VoiceModal.turn.test.tsx src/features/voice/VoiceModal.stop.test.tsx src/features/voice/voiceRouter.test.ts src/features/voice/streamingVoice.test.ts src/lib/jarvis/kernel.integration.test.ts src/lib/ai/runtime.test.ts
+```
+
+Expected: FAIL because voice binding does not exist and stop still broadcasts
+an unscoped legacy cancellation event.
+
+- [ ] **Step 3: Implement canonical voice binding and abort ownership**
+
+Implement the immutable binding, protected chat resolution, canonical voice
+kernel call, bound transcript, three labelled abort registrations, verified
+cancellation callbacks, and completion ordering while preserving non-JARVIS
+voice and current mic modes.
+
+- [ ] **Step 4: Run focused and broader verification**
+
+```powershell
+npm --prefix app test -- src/features/voice/voiceSessionBinding.test.ts src/features/voice/voiceChatRouting.test.ts src/features/voice/voiceTurnCommit.test.ts src/features/voice/store.test.ts src/features/voice/VoiceModal.turn.test.tsx src/features/voice/VoiceModal.stop.test.tsx src/features/voice/voiceRouter.test.ts src/features/voice/streamingVoice.test.ts src/lib/jarvis/kernel.integration.test.ts src/lib/ai/runtime.test.ts
+npm run typecheck
+```
+
+Expected: the voice/kernel/runtime suite and root typecheck pass.
+
+- [ ] **Step 5: Stage literal files, inspect the cache, and commit**
+
+```powershell
+git add -- 'app/src/features/voice/voiceSessionBinding.ts' 'app/src/features/voice/voiceSessionBinding.test.ts' 'app/src/features/voice/voiceChatRouting.ts' 'app/src/features/voice/voiceChatRouting.test.ts' 'app/src/features/voice/voiceTurnCommit.ts' 'app/src/features/voice/voiceTurnCommit.test.ts' 'app/src/features/voice/store.ts' 'app/src/features/voice/store.test.ts' 'app/src/features/voice/VoiceModal.tsx' 'app/src/features/voice/VoiceModal.turn.test.tsx' 'app/src/features/voice/VoiceModal.stop.test.tsx' 'app/src/features/voice/voiceRouter.ts' 'app/src/features/voice/voiceRouter.test.ts' 'app/src/features/voice/streamingVoice.ts' 'app/src/features/voice/streamingVoice.test.ts' 'app/src/lib/jarvis/kernel.ts' 'app/src/lib/jarvis/kernel.integration.test.ts' 'app/src/lib/ai/runtime.ts' 'app/src/lib/ai/runtime.test.ts'
+git diff --cached --name-only
+git diff --cached --check
+git diff --cached -- 'app/src/features/voice/voiceSessionBinding.ts' 'app/src/features/voice/voiceSessionBinding.test.ts' 'app/src/features/voice/voiceChatRouting.ts' 'app/src/features/voice/voiceChatRouting.test.ts' 'app/src/features/voice/voiceTurnCommit.ts' 'app/src/features/voice/voiceTurnCommit.test.ts' 'app/src/features/voice/store.ts' 'app/src/features/voice/store.test.ts' 'app/src/features/voice/VoiceModal.tsx' 'app/src/features/voice/VoiceModal.turn.test.tsx' 'app/src/features/voice/VoiceModal.stop.test.tsx' 'app/src/features/voice/voiceRouter.ts' 'app/src/features/voice/voiceRouter.test.ts' 'app/src/features/voice/streamingVoice.ts' 'app/src/features/voice/streamingVoice.test.ts' 'app/src/lib/jarvis/kernel.ts' 'app/src/lib/jarvis/kernel.integration.test.ts' 'app/src/lib/ai/runtime.ts' 'app/src/lib/ai/runtime.test.ts'
+git diff --cached --name-only -- 'install/install.ps1'
+git commit -m "feat(voice): bind sessions to canonical Jarvis runs"
+git show --check --stat HEAD
+git diff-tree --no-commit-id --name-only -r HEAD
+git log --oneline origin/main..HEAD -- 'install/install.ps1'
+```
+
+Expected staged and committed names: exactly the nineteen files above. The
+installer and whitespace queries produce no output.
+
+## Task 17: Scheduled JARVIS and Hive Final Kernel Dispatch
+
+**Prerequisites:**
+
+- Task 21A voice binding is complete.
+- Tasks 16B, 18, 19, and 20 are canonical.
+- Task 13 has no silent prompt-transport downgrade.
+
+**Files:**
+
+- Create: `app/src/features/schedule/jarvisScheduleDispatch.ts`
+- Create: `app/src/features/schedule/jarvisScheduleDispatch.test.ts`
+- Modify: `app/src/features/schedule/jarvisScheduleRunner.ts`
+- Modify: `app/src/features/schedule/jarvisScheduleRunner.test.ts`
+- Modify: `app/src/features/schedule/jarvisScheduleRunner.retry.test.ts`
+- Modify: `app/src/features/schedule/jarvisSchedules.ts`
+- Modify: `app/src/features/schedule/jarvisSchedules.test.ts`
+- Create: `app/src/lib/ai/stacks/hiveFinalizer.ts`
+- Create: `app/src/lib/ai/stacks/hiveFinalizer.test.ts`
+- Modify: `app/src/lib/ai/stacks/runner.ts`
+- Modify: `app/src/lib/ai/stacks/runner.test.ts`
+- Modify: `app/src/lib/ai/stacks/hiveBalance.test.ts`
+
+**Interfaces:**
+
+- Consumes Task 16B's canonical kernel, Task 11's request-attempt rules, Task
+  18's persisted runs/child cancellation, Task 19's approval engine, and Task
+  20's artifacts.
+- Produces canonical scheduled and Hive-final runs while preserving worker
+  identities and schedule-saved model selection.
+- Does not dispatch canonical schedules through mutable UI state or bypass
+  approval for consequential side effects.
+
+**Versioned schedule run history:**
+
+Replace dispatch-as-success records with:
+
+```ts
+export type JarvisScheduleRunHistoryStatus =
+  | 'dispatched'
+  | 'completed'
+  | 'partial'
+  | 'failed'
+  | 'cancelled'
+  | 'timed_out';
+
+export interface JarvisScheduleRunHistoryEntryV1 {
+  schemaVersion: 1;
+  at: number;
+  runId: string;
+  requestId: string;
+  status: JarvisScheduleRunHistoryStatus;
+  summary?: string;
+}
+
+export interface JarvisScheduleLegacyRunHistoryEntry {
+  schemaVersion: 0;
+  at: number;
+  status: 'legacy_dispatched';
+  summary?: string;
+}
+
+export type JarvisScheduleRunHistoryEntry =
+  | JarvisScheduleRunHistoryEntryV1
+  | JarvisScheduleLegacyRunHistoryEntry;
+```
+
+`JarvisScheduleMetadata.runHistory` uses this union. Parsing stays backward
+compatible:
+
+- normalize old `{ status: 'success', summary: 'Run dispatched to Jarvis.' }`
+  to `schemaVersion: 0, status: 'legacy_dispatched'` without fabricating a
+  request/run ID;
+- keep old error history readable;
+- cap history at `JARVIS_SCHEDULE_HISTORY_CAP`;
+- treat metadata history as a compatibility summary only; Task 18 remains
+  lifecycle authority.
+
+**Exact schedule dispatcher:**
+
+```ts
+export interface ScheduledJarvisDispatchDeps {
+  journal: JarvisExecutionJournal;
+  resolveSavedModel(selection: ChatModelSelection): Promise<Readonly<JarvisModelSnapshot>>;
+  getIdentitySnapshot(): Promise<Readonly<JarvisIdentitySnapshot>>;
+  getActiveProfileSnapshot(accountId: string): Promise<Readonly<JarvisProfileSnapshot>>;
+  getCapabilitySnapshot(): Promise<Readonly<JarvisCapabilitySnapshot>>;
+  runKernel(input: Readonly<JarvisKernelTurnInput>): Promise<JarvisKernelTurnResult>;
+  newRequestId(): string;
+  now(): number;
+}
+
+export async function scheduleOccurrenceRunId(input: {
+  eventId: string;
+  dueAt: number;
+  logicalAttempt: number;
+}): Promise<string>;
+
+export async function dispatchScheduledJarvisOccurrence(
+  input: {
+    accountId: string;
+    workspaceId: string;
+    projectId?: string;
+    chatId: string;
+    eventId: string;
+    dueAt: number;
+    logicalAttempt: number;
+    prompt: string;
+    savedModelSelection: ChatModelSelection;
+    agent: Agent;
+    parentRunId?: string;
+  },
+  deps: ScheduledJarvisDispatchDeps,
+): Promise<JarvisKernelTurnResult>;
+```
+
+`scheduleOccurrenceRunId()` hashes:
+
+```ts
+`${eventId}\u0000${dueAt}\u0000${logicalAttempt}`;
+```
+
+with Task 2's SHA-256 helper and returns:
+
+```ts
+`jrun_${digest.slice(0, 32)}`;
+```
+
+`logicalAttempt` is `0` for the original occurrence. A duplicate poll for the
+same occurrence uses the same run ID and Task 18 idempotently returns the
+existing run. Only an explicit logical retry increments the ordinal.
+
+**Dispatch snapshot rules:**
+
+Immediately before building the envelope:
+
+1. resolve the schedule's saved `modelSelection`;
+2. capture the current protected identity snapshot;
+3. capture the active profile revision for `accountId`;
+4. capture the capability/entitlement snapshot;
+5. create/persist the canonical run;
+6. create a fresh request ID;
+7. build `surface: 'schedule'`.
+
+Pass these values as immutable snapshots and do not re-read them after
+dispatch starts.
+
+- Global model changes do not affect the run.
+- Profile edits after dispatch do not affect the run.
+- Identity revision changes after dispatch do not affect the run.
+- If the saved model is unavailable, signed out, or unsupported, fail the run
+  truthfully without switching models.
+
+**Approval and side-effect rules:**
+
+- A schedule trigger may create and start a run without interactive approval.
+- Any consequential action still creates a Task 19 approval and transitions
+  to `awaiting_approval`.
+- Scheduled dispatch passes no `autoApproveActions` flag.
+- A stored schedule cannot embed a consumed approval, credential, cookie,
+  token, or secret-handle ID.
+- Resuming after approval consumes the exact current approval once.
+- Re-running a completed occurrence cannot duplicate completed side effects.
+
+**Exact retry semantics:**
+
+Transport retry:
+
+```text
+new requestId
+same runId
+same saved model snapshot
+same identity/profile snapshots
+same non-secret parameters
+```
+
+It is allowed only when Task 19/executor evidence proves no consequential side
+effect completed.
+
+Logical retry:
+
+```text
+new requestId
+new runId from logicalAttempt + 1
+parentRunId = previous run
+fresh current identity/profile/capability snapshots
+same schedule-saved model selection resolved again
+```
+
+A normal poll after pre-dispatch local-storage failure is neither a transport
+nor logical provider retry. It reuses the occurrence's stable
+`logicalAttempt: 0` run ID and Task 18 idempotency.
+
+**Hive finalizer:**
+
+```ts
+export interface HiveWorkerResult {
+  stepId: string;
+  label: string;
+  agentId: string;
+  providerId: string;
+  modelId: string;
+  text?: string;
+  status: 'completed' | 'failed' | 'cancelled';
+  inputTokens?: number;
+  outputTokens?: number;
+  costUsd?: number;
+  errorCategory?: string;
+}
+
+export interface HiveFinalizerDeps {
+  runKernel(input: Readonly<JarvisKernelTurnInput>): Promise<JarvisKernelTurnResult>;
+  createSourceRef(result: HiveWorkerResult, accountId: string): JarvisSourceRef;
+}
+
+export async function finalizeHiveWithJarvis(
+  input: {
+    accountId: string;
+    workspaceId?: string;
+    projectId?: string;
+    chatId: string;
+    parentRunId?: string;
+    attempt: JarvisRequestAttempt;
+    agent: Agent;
+    userText: string;
+    workers: readonly HiveWorkerResult[];
+    identity: JarvisIdentitySnapshot;
+    profile: JarvisProfileSnapshot;
+    model: JarvisModelSnapshot;
+    capabilities: JarvisCapabilitySnapshot;
+  },
+  deps: HiveFinalizerDeps,
+): Promise<JarvisKernelTurnResult>;
+```
+
+Rules:
+
+- Worker prompts and identities remain unchanged.
+- Each worker output becomes an `agent_output` source ref with
+  `trust: 'external_untrusted'`.
+- Failed/cancelled workers contribute safe status metadata, never fabricated
+  text.
+- Final user-facing synthesis uses `surface: 'hive_final'` through the
+  protected compiler/pipeline.
+- Preserve all-success, partial, all-failed, cancellation, costs, worker
+  attribution, source refs, and errors in the final envelope/journal.
+- A worker result cannot claim plugin, MCP, terminal, or artifact success
+  without canonical evidence.
+- Consequential actions in final output still require Task 19 approval.
+- Cancellation reaches registered child runs and the finalizer; signal
+  delivery remains nonterminal until each owning executor confirms.
+
+**Runner integration:**
+
+`jarvisScheduleRunner.ts` stops dispatching generic `jarvis:send` events for
+canonical schedules. It calls `dispatchScheduledJarvisOccurrence()` through
+injected dependencies so active UI route/chat/model state cannot alter the
+run.
+
+`runStack()` keeps specialist steps, then calls
+`finalizeHiveWithJarvis()` once for the visible final response. It does not
+replace each specialist prompt with JARVIS identity.
+
+- [ ] **Step 1: Write the focused failing tests**
+
+Schedule cases: saved model over current global model; identity/profile
+captured once; later model/profile/identity changes not mutating the envelope;
+unavailable saved model failing without switch; canonical run creation;
+approval-required action waiting with no executor call; duplicate poll reuse;
+transport retry same run/new request; logical retry new run/new request/parent;
+no duplicated completed side effect; success/partial/failure/cancel/timeout/
+missed occurrence; bounded versioned history and legacy normalization.
+
+Hive cases: unchanged worker identities/prompts; protected `hive_final`;
+all-success/partial/all-failed/cancelled workers; attribution, refs, costs, and
+safe error categories; no personality overwrite or unverified success; final
+action approval; and truthful child/finalizer cancellation.
+
+- [ ] **Step 2: Run the focused RED test and confirm the expected cause**
+
+```powershell
+npm --prefix app test -- src/features/schedule/jarvisScheduleDispatch.test.ts src/features/schedule/jarvisScheduleRunner.test.ts src/features/schedule/jarvisScheduleRunner.retry.test.ts src/features/schedule/jarvisSchedules.test.ts src/lib/ai/stacks/hiveFinalizer.test.ts src/lib/ai/stacks/runner.test.ts src/lib/ai/stacks/hiveBalance.test.ts
+```
+
+Expected: FAIL because the schedule dispatcher and Hive finalizer do not exist;
+the current runner records dispatch as success and uses mutable UI dispatch.
+
+- [ ] **Step 3: Implement canonical scheduled and Hive-final dispatch**
+
+Implement stable occurrence IDs, persisted-run-first dispatch, immutable
+saved-model/identity/profile/capability snapshots, exact retry categories,
+approval preservation, versioned history, worker source refs, canonical final
+synthesis, and child cancellation without rewriting worker prompts.
+
+- [ ] **Step 4: Run focused and broader verification**
+
+```powershell
+npm --prefix app test -- src/features/schedule/jarvisScheduleDispatch.test.ts src/features/schedule/jarvisScheduleRunner.test.ts src/features/schedule/jarvisScheduleRunner.retry.test.ts src/features/schedule/jarvisSchedules.test.ts src/lib/ai/stacks/hiveFinalizer.test.ts src/lib/ai/stacks/runner.test.ts src/lib/ai/stacks/hiveBalance.test.ts
+npm run typecheck
+```
+
+Expected: the schedule/Hive suite and root typecheck pass.
+
+- [ ] **Step 5: Stage literal files, inspect the cache, and commit**
+
+```powershell
+git add -- 'app/src/features/schedule/jarvisScheduleDispatch.ts' 'app/src/features/schedule/jarvisScheduleDispatch.test.ts' 'app/src/features/schedule/jarvisScheduleRunner.ts' 'app/src/features/schedule/jarvisScheduleRunner.test.ts' 'app/src/features/schedule/jarvisScheduleRunner.retry.test.ts' 'app/src/features/schedule/jarvisSchedules.ts' 'app/src/features/schedule/jarvisSchedules.test.ts' 'app/src/lib/ai/stacks/hiveFinalizer.ts' 'app/src/lib/ai/stacks/hiveFinalizer.test.ts' 'app/src/lib/ai/stacks/runner.ts' 'app/src/lib/ai/stacks/runner.test.ts' 'app/src/lib/ai/stacks/hiveBalance.test.ts'
+git diff --cached --name-only
+git diff --cached --check
+git diff --cached -- 'app/src/features/schedule/jarvisScheduleDispatch.ts' 'app/src/features/schedule/jarvisScheduleDispatch.test.ts' 'app/src/features/schedule/jarvisScheduleRunner.ts' 'app/src/features/schedule/jarvisScheduleRunner.test.ts' 'app/src/features/schedule/jarvisScheduleRunner.retry.test.ts' 'app/src/features/schedule/jarvisSchedules.ts' 'app/src/features/schedule/jarvisSchedules.test.ts' 'app/src/lib/ai/stacks/hiveFinalizer.ts' 'app/src/lib/ai/stacks/hiveFinalizer.test.ts' 'app/src/lib/ai/stacks/runner.ts' 'app/src/lib/ai/stacks/runner.test.ts' 'app/src/lib/ai/stacks/hiveBalance.test.ts'
+git diff --cached --name-only -- 'install/install.ps1'
+git commit -m "feat(jarvis): bind schedules and Hive finals to the kernel"
+git show --check --stat HEAD
+git diff-tree --no-commit-id --name-only -r HEAD
+git log --oneline origin/main..HEAD -- 'install/install.ps1'
+```
+
+Expected staged and committed names: exactly the twelve files above. The
+installer and whitespace queries produce no output.
+
+## Task 21B: Voice Session Binding and Thin Truthful Command Center
 
 **Files:**
 
