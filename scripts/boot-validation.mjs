@@ -10,7 +10,7 @@
 import { chromium } from 'playwright-core';
 
 const BASE = process.env.CAPTURE_BASE_URL ?? 'http://127.0.0.1:8943';
-const CURRENT_VERSION = '0.1.48';
+const CURRENT_VERSION = '1.5.0';
 
 const seed = {
   state: {

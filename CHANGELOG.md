@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.5.0] - 2026-07-15
+
+### Added
+- Complete spatial Workbench with Browser, Preview Studio, editor, files, notes, Jarvis, terminal, device preview, templates, wallpapers, and persistent layouts.
+- Pixel Pets, durable Jarvis task execution and private memory, subscription-aware CLI providers, synchronized themes, and wallpaper entitlements.
+
+### Changed
+- Integrated all validated work from PRs #18 through #23 with the rescued Grok Workbench while preserving the existing installer and application functions.
+- Promoted the combined integration to the official v1.5.0 release line.
+
+### Fixed
+- Resolved integration overlaps across Tauri capabilities, Rust command registration, command-palette actions, terminal recovery, themes, pets, providers, and Workbench routing.
+- Fixed Preview Studio compilation on non-Windows platforms without changing its Windows behavior.
+
+
 All notable changes to Jarvis are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]

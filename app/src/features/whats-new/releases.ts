@@ -31,7 +31,7 @@ import { Sparkles, Wrench, Rocket, Package, AlertTriangle, type LucideIcon } fro
  * The version string is also what the auto-show flow stores in
  * localStorage so users only see each release's notes once.
  */
-export const CURRENT_VERSION = '0.1.48';
+export const CURRENT_VERSION = '1.5.0';
 
 /**
  * Section type for grouping changelog items inside a release.
@@ -339,6 +339,49 @@ export const SECTION_META: Record<
  *     when it isn't obvious.
  */
 export const RELEASES: readonly Release[] = [
+  {
+    version: '1.5.0',
+    date: '2026-07-15',
+    headline: 'Complete VibeSpace Workbench and agent platform',
+    summary:
+      'This major release combines terminal recovery, Pixel Pets, the full spatial Workbench, private Jarvis memory and task execution, subscription-aware CLI providers, the VibeSpace theme system, and the rescued Grok Browser, Preview Studio, editor, files, notes, Jarvis panels, wallpapers, and native desktop integrations.',
+    sections: [
+      {
+        kind: 'feature',
+        items: [
+          'Spatial Workbench with draggable and resizable panels, saved layouts, templates, detached windows, persistence, browser, editor, files, notes, Jarvis, terminal, device preview, and embedded surfaces.',
+          'Vibe Browser and Preview Studio with isolated browser profiles, local-server discovery, responsive device frames, navigation controls, and native Tauri surfaces.',
+          'Pixel Pets with transparent desktop overlay, AXO and GLITCH skins, shared chat and terminal surfaces, mini-panel controls, and persisted motion preferences.',
+          'Jarvis task execution with durable runs, approvals, cancellation, recovery, MCP and plugin lifecycle management, private learning, and account-scoped All About Me files.',
+          'Subscription-aware AI connections and native CLI bridge for Codex, Claude, Gemini, Copilot, Qwen, OpenCode, local models, and exact per-chat routing.',
+          'Wallpaper library with previews, local blob storage, entitlements, Orbit redemption, native master caching, Supabase functions, and bundled animated wallpapers.',
+        ],
+      },
+      {
+        kind: 'improvement',
+        items: [
+          'Terminal snapshots, layouts, drafts, and safe-shell sessions recover across restarts with bounded storage and secret redaction.',
+          'Four synchronized appearance themes work across the main app, detached Workbench, pet windows, and settings.',
+          'Files, chat activity, usage cards, provider selection, model routing, scheduled actions, and agent coordination include all validated improvements from PRs #18 through #23.',
+        ],
+      },
+      {
+        kind: 'fix',
+        items: [
+          'Resolved Workbench integration overlaps without deleting the validated installer or dropping terminal, pet, theme, provider, subscription, or Jarvis functionality.',
+          'Fixed cross-platform Preview Studio compilation while preserving owned preview-window behavior on Windows.',
+          'Fixed wallpaper IndexedDB blob type safety and preserved local object URL rehydration.',
+        ],
+      },
+      {
+        kind: 'shipped',
+        items: [
+          'Version synchronized to 1.5.0 across npm, package lock, Tauri, Cargo, boot validation, and in-app release metadata.',
+          'Cross-platform GitHub release builds Windows, macOS, and Linux installers and requires signed updater artifacts before automatic publication.',
+        ],
+      },
+    ],
+  },
   {
     version: '0.1.48',
     date: '2026-07-08',

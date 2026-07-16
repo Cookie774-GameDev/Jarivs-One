@@ -153,7 +153,17 @@ export function About() {
           <div className="relative">
             <div className="absolute -left-[21.5px] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-accent-copper bg-panel" />
             <div className="flex items-center justify-between gap-2">
-              <span className="font-semibold text-foreground text-secondary">v0.1.31 (Latest)</span>
+              <span className="font-semibold text-foreground text-secondary">v1.5.0 (Latest)</span>
+              <span className="text-metadata text-muted-foreground font-mono">July 15, 2026</span>
+            </div>
+            <p className="text-secondary text-muted-foreground mt-1 leading-relaxed">
+              Complete VibeSpace integration: terminal recovery, Pixel Pets, spatial Workbench, Jarvis execution and private memory, CLI providers, synchronized themes, Browser, Preview Studio, editor, files, notes, wallpapers, and native desktop tooling.
+            </p>
+          </div>
+          <div className="relative">
+            <div className="absolute -left-[21.5px] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-accent-copper bg-panel" />
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-semibold text-foreground text-secondary">v0.1.31</span>
               <span className="text-metadata text-muted-foreground font-mono">June 11, 2026</span>
             </div>
             <p className="text-secondary text-muted-foreground mt-1 leading-relaxed">
