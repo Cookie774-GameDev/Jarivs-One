@@ -23,20 +23,24 @@ function report(bindings: TaskRunPersistenceBindings, error: unknown): void {
 function isTaskRun(value: unknown): value is JarvisTaskRun {
   if (!value || typeof value !== 'object') return false;
   const run = value as Partial<JarvisTaskRun>;
-  return typeof run.id === 'string'
-    && typeof run.goal === 'string'
-    && typeof run.status === 'string'
-    && typeof run.startedAt === 'string'
-    && typeof run.updatedAt === 'string'
-    && Array.isArray(run.steps)
-    && run.steps.every((step) => Boolean(
-      step
-      && typeof step.id === 'string'
-      && typeof step.action === 'string'
-      && typeof step.label === 'string'
-      && typeof step.status === 'string'
-      && typeof step.recoverable === 'boolean',
-    ));
+  return (
+    typeof run.id === 'string' &&
+    typeof run.goal === 'string' &&
+    typeof run.status === 'string' &&
+    typeof run.startedAt === 'string' &&
+    typeof run.updatedAt === 'string' &&
+    Array.isArray(run.steps) &&
+    run.steps.every((step) =>
+      Boolean(
+        step &&
+        typeof step.id === 'string' &&
+        typeof step.action === 'string' &&
+        typeof step.label === 'string' &&
+        typeof step.status === 'string' &&
+        typeof step.recoverable === 'boolean',
+      ),
+    )
+  );
 }
 
 function parseRuns(raw: string | null): JarvisTaskRun[] {
@@ -73,7 +77,7 @@ function serializeRuns(runs: Record<string, JarvisTaskRun>): string {
  */
 export function startJarvisTaskRunPersistence(
   bindings: TaskRunPersistenceBindings,
-): () => void {
+): () => Promise<void> {
   const store = useJarvisTaskRunStore;
   let activeScope = '';
   let requestedAccountId = '';
@@ -90,7 +94,17 @@ export function startJarvisTaskRunPersistence(
   };
 
   const activate = async () => {
-    const accountId = bindings.getAccountId().trim() || 'local-unassigned';
+    const accountId = bindings.getAccountId().trim();
+    if (!accountId) {
+      activation += 1;
+      requestedAccountId = '';
+      if (activeScope) persist(activeScope);
+      activeScope = '';
+      applying = true;
+      store.getState().setAccountScope('');
+      applying = false;
+      return;
+    }
     if (accountId === requestedAccountId) return;
     requestedAccountId = accountId;
     const token = ++activation;
@@ -106,9 +120,7 @@ export function startJarvisTaskRunPersistence(
       activeScope = scope;
       const key = `${KEY_PREFIX}${scope}`;
       const current = safeLocalStorage.getItem(key) as string | null;
-      const legacy = current
-        ? null
-        : safeLocalStorage.getItem(LEGACY_KEY) as string | null;
+      const legacy = current ? null : (safeLocalStorage.getItem(LEGACY_KEY) as string | null);
       const runs = parseRuns(current ?? legacy);
       applying = true;
       store.getState().setAccountScope(scope);
@@ -129,10 +141,12 @@ export function startJarvisTaskRunPersistence(
     if (applying || !activeScope || state.runs === previous.runs) return;
     persist(activeScope, state.runs);
   });
-  const unsubscribeAccount = bindings.subscribeAccount?.(() => { void activate(); });
+  const unsubscribeAccount = bindings.subscribeAccount?.(() => {
+    void activate();
+  });
   void activate();
 
-  return () => {
+  return async () => {
     disposed = true;
     activation += 1;
     if (activeScope) persist(activeScope);

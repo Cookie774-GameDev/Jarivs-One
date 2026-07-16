@@ -20,32 +20,40 @@ interface LearningListenerBindings {
 
 function inferredCandidate(text: string): { value: string; category: JarvisMemoryCategory } | null {
   const normalized = text.replace(/\s+/g, ' ').trim();
-  const match = /\bI\s+(?:really\s+)?(?:prefer|like|want)\s+(.+)/i.exec(normalized)
-    ?? /\bplease\s+(always|never)\s+(.+)/i.exec(normalized);
+  const match =
+    /\bI\s+(?:really\s+)?(?:prefer|like|want)\s+(.+)/i.exec(normalized) ??
+    /\bplease\s+(always|never)\s+(.+)/i.exec(normalized);
   if (!match) return null;
-  const value = match[2]
-    ? `Please ${match[1]!.toLowerCase()} ${match[2]}`
-    : match[1]!;
+  const value = match[2] ? `Please ${match[1]!.toLowerCase()} ${match[2]}` : match[1]!;
   const clean = value.trim().slice(0, 500);
-  const category: JarvisMemoryCategory = /\b(?:response|reply|concise|verbose|emoji|tone|format|status update)\b/i.test(clean)
-    ? 'response-style'
-    : /\b(?:never|avoid|do not|don't)\b/i.test(clean)
-      ? 'avoid'
-      : /\b(?:tool|plugin|mcp|terminal|cli)\b/i.test(clean)
-        ? 'tool'
-        : /\b(?:project|repo|workspace|codebase)\b/i.test(clean)
-          ? 'project'
-          : 'workflow';
+  const category: JarvisMemoryCategory =
+    /\b(?:response|reply|concise|verbose|emoji|tone|format|status update)\b/i.test(clean)
+      ? 'response-style'
+      : /\b(?:never|avoid|do not|don't)\b/i.test(clean)
+        ? 'avoid'
+        : /\b(?:tool|plugin|mcp|terminal|cli)\b/i.test(clean)
+          ? 'tool'
+          : /\b(?:project|repo|workspace|codebase)\b/i.test(clean)
+            ? 'project'
+            : 'workflow';
   return { value: clean, category };
 }
 
 function defaultAccountLoad(accountId: string): Promise<string | null> {
-  return loadLearningFile(accountId).then((result) => result.markdown).catch(() => null);
+  return loadLearningFile(accountId)
+    .then((result) => result.markdown)
+    .catch(() => null);
 }
 
 function report(bindings: LearningListenerBindings, error: unknown): void {
   if (bindings.onError) bindings.onError(error);
   else console.warn('[jarvis-memory] persistence unavailable', error);
+}
+
+function requireAccountId(value: string): string {
+  const accountId = value.trim();
+  if (!accountId) throw new Error('Account id is required for learning persistence.');
+  return accountId;
 }
 
 function publishStatus(chatId: string | undefined, state: 'updating' | 'updated' | 'error'): void {
@@ -55,7 +63,7 @@ function publishStatus(chatId: string | undefined, state: 'updating' | 'updated'
 export function startJarvisLearningListener(
   bindings: LearningListenerBindings,
   eventName = 'jarvis:send',
-): () => void {
+): () => Promise<void> {
   safeLocalStorage.removeItem('jarvis-learning-memory-v1');
   const store = useJarvisLearningStore;
   const recentByAccount = new Map<string, Array<{ text: string; chatId?: string }>>();
@@ -64,51 +72,86 @@ export function startJarvisLearningListener(
   const debounceMs = bindings.debounceMs ?? 300;
   const accountLoads = new Map<string, Promise<void>>();
   const loadingAccounts = new Set<string>();
-  const timers = new Map<string, ReturnType<typeof setTimeout>>();
+  const timers = new Map<
+    string,
+    {
+      timer: ReturnType<typeof setTimeout>;
+      markdown: string;
+    }
+  >();
+  const inFlightSaves = new Set<Promise<void>>();
   let disposed = false;
 
   const loadAccount = (accountId: string) => {
     loadingAccounts.add(accountId);
     store.getState().setAccount(accountId);
-    const pending = load(accountId).then((markdown) => {
-      if (disposed || (bindings.getAccountId().trim() || 'local-unassigned') !== accountId) return;
-      store.getState().setAccount(accountId);
-      if (markdown) store.getState().importMarkdown(markdown);
-    }).catch((error) => report(bindings, error)).finally(() => {
-      loadingAccounts.delete(accountId);
-    });
+    const pending = load(accountId)
+      .then((markdown) => {
+        if (disposed || bindings.getAccountId().trim() !== accountId) return;
+        store.getState().setAccount(accountId);
+        if (markdown) store.getState().importMarkdown(markdown);
+      })
+      .catch((error) => report(bindings, error))
+      .finally(() => {
+        loadingAccounts.delete(accountId);
+      });
     accountLoads.set(accountId, pending);
     return pending;
   };
 
-  const accountId = bindings.getAccountId().trim() || 'local-unassigned';
+  const accountId = requireAccountId(bindings.getAccountId());
   loadAccount(accountId);
+
+  const writeProfile = (
+    active: string,
+    markdown: string,
+    chatId?: string,
+    announceCompletion = false,
+  ): Promise<void> => {
+    const pending = Promise.resolve()
+      .then(() => save(active, markdown))
+      .then(() => {
+        if (announceCompletion) publishStatus(chatId, 'updated');
+      })
+      .catch((error) => {
+        publishStatus(chatId, 'error');
+        report(bindings, error);
+      });
+    inFlightSaves.add(pending);
+    void pending.finally(() => {
+      inFlightSaves.delete(pending);
+    });
+    return pending;
+  };
+
+  const flushScheduled = (active?: string): Promise<void>[] => {
+    const flushes: Promise<void>[] = [];
+    for (const [accountId, pending] of timers) {
+      if (active && accountId !== active) continue;
+      clearTimeout(pending.timer);
+      timers.delete(accountId);
+      flushes.push(writeProfile(accountId, pending.markdown));
+    }
+    return flushes;
+  };
 
   const persistProfile = (active: string, markdown: string) => {
     const existing = timers.get(active);
-    if (existing) clearTimeout(existing);
+    if (existing) clearTimeout(existing.timer);
     const timer = setTimeout(() => {
       timers.delete(active);
-      void save(active, markdown).catch((error) => {
-        publishStatus(undefined, 'error');
-        report(bindings, error);
-      });
+      void writeProfile(active, markdown);
     }, debounceMs);
-    timers.set(active, timer);
+    timers.set(active, { timer, markdown });
   };
 
   const persistProfileNow = (active: string, markdown: string, chatId?: string) => {
     const existing = timers.get(active);
     if (existing) {
-      clearTimeout(existing);
+      clearTimeout(existing.timer);
       timers.delete(active);
     }
-    void save(active, markdown).then(() => {
-      publishStatus(chatId, 'updated');
-    }).catch((error) => {
-      publishStatus(chatId, 'error');
-      report(bindings, error);
-    });
+    void writeProfile(active, markdown, chatId, true);
   };
 
   const unsubscribe = store.subscribe((state, previous) => {
@@ -119,8 +162,20 @@ export function startJarvisLearningListener(
   });
 
   const unsubscribeAccount = bindings.subscribeAccount?.(() => {
-    const next = bindings.getAccountId().trim() || 'local-unassigned';
-    if (next !== store.getState().activeAccountId) loadAccount(next);
+    const next = bindings.getAccountId().trim();
+    const previous = store.getState().activeAccountId;
+    if (next === previous) return;
+    if (!next) {
+      void Promise.allSettled(flushScheduled(previous)).then(() => {
+        if (!disposed && !bindings.getAccountId().trim()) {
+          store.getState().clearAccountScope();
+        }
+      });
+      return;
+    }
+    void Promise.allSettled(flushScheduled(previous)).then(() => {
+      if (!disposed && bindings.getAccountId().trim() === next) loadAccount(next);
+    });
   });
 
   const onSend = (event: Event) => {
@@ -129,11 +184,12 @@ export function startJarvisLearningListener(
     const messageText = detail.text;
     const chatId = detail.chatId;
     const messageId = detail.messageId;
-    const currentAccount = bindings.getAccountId().trim() || 'local-unassigned';
+    const currentAccount = bindings.getAccountId().trim();
+    if (!currentAccount) return;
     const pendingLoad = accountLoads.get(currentAccount) ?? loadAccount(currentAccount);
     void (async () => {
       await pendingLoad;
-      if (disposed || (bindings.getAccountId().trim() || 'local-unassigned') !== currentAccount) return;
+      if (disposed || bindings.getAccountId().trim() !== currentAccount) return;
       store.getState().setAccount(currentAccount);
       const result = store.getState().recordUserMessage({
         text: messageText,
@@ -146,10 +202,13 @@ export function startJarvisLearningListener(
       }
       if (!result.qualifies) return;
 
-      const recent = [...(recentByAccount.get(currentAccount) ?? []), {
-        text: messageText,
-        chatId,
-      }].slice(-10);
+      const recent = [
+        ...(recentByAccount.get(currentAccount) ?? []),
+        {
+          text: messageText,
+          chatId,
+        },
+      ].slice(-10);
       recentByAccount.set(currentAccount, recent);
       if (!result.evaluateNow) return;
 
@@ -174,13 +233,13 @@ export function startJarvisLearningListener(
   };
 
   window.addEventListener(eventName, onSend);
-  return () => {
+  return async () => {
     disposed = true;
-    for (const timer of timers.values()) clearTimeout(timer);
-    timers.clear();
     unsubscribe();
     unsubscribeAccount?.();
     window.removeEventListener(eventName, onSend);
+    const pending = [...inFlightSaves, ...flushScheduled()];
+    await Promise.allSettled(pending);
   };
 }
 

@@ -16,18 +16,28 @@ describe('account-scoped Jarvis task persistence', () => {
       status: 'waiting-for-input',
       steps: [{ id: 'one', action: 'agent.status', label: 'Status', recoverable: true }],
     });
-    localStorage.setItem('jarvis-task-runs-v1', JSON.stringify({
-      state: { runs: { [legacy.id]: legacy } },
-      version: 1,
-    }));
+    localStorage.setItem(
+      'jarvis-task-runs-v1',
+      JSON.stringify({
+        state: { runs: { [legacy.id]: legacy } },
+        version: 1,
+      }),
+    );
 
     const stop = startJarvisTaskRunPersistence({
       getAccountId: () => 'private-account@example.com',
     });
 
-    await vi.waitFor(() => expect(useJarvisTaskRunStore.getState().runs['legacy-run']).toBeTruthy());
-    const keys = Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index) ?? '');
-    expect(keys).toContainEqual(expect.stringMatching(/^jarvis-task-runs-v2:account-[a-f0-9]{64}$/));
+    await vi.waitFor(() =>
+      expect(useJarvisTaskRunStore.getState().runs['legacy-run']).toBeTruthy(),
+    );
+    const keys = Array.from(
+      { length: localStorage.length },
+      (_, index) => localStorage.key(index) ?? '',
+    );
+    expect(keys).toContainEqual(
+      expect.stringMatching(/^jarvis-task-runs-v2:account-[a-f0-9]{64}$/),
+    );
     expect(keys.join('\n')).not.toContain('private-account@example.com');
     expect(localStorage.getItem('jarvis-task-runs-v1')).toBeNull();
     stop();
@@ -39,7 +49,10 @@ describe('account-scoped Jarvis task persistence', () => {
     const hydrated = vi.fn();
     const stop = startJarvisTaskRunPersistence({
       getAccountId: () => accountId,
-      subscribeAccount: (listener) => { accountChanged = listener; return () => undefined; },
+      subscribeAccount: (listener) => {
+        accountChanged = listener;
+        return () => undefined;
+      },
       onHydrated: hydrated,
     });
     await vi.waitFor(() => expect(hydrated).toHaveBeenCalledTimes(1));
@@ -68,5 +81,25 @@ describe('account-scoped Jarvis task persistence', () => {
     await vi.waitFor(() => expect(hydrated).toHaveBeenCalledTimes(3));
     expect(Object.keys(useJarvisTaskRunStore.getState().runs)).toEqual(['run-a']);
     stop();
+  });
+
+  it('keeps a blank canonical identity quarantined without hashing local-unassigned', async () => {
+    const hydrated = vi.fn();
+    const stop = startJarvisTaskRunPersistence({
+      getAccountId: () => '   ',
+      onHydrated: hydrated,
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(hydrated).not.toHaveBeenCalled();
+    expect(useJarvisTaskRunStore.getState()).toMatchObject({
+      accountScope: '',
+      runs: {},
+    });
+    expect(
+      Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index) ?? ''),
+    ).not.toContainEqual(expect.stringMatching(/^jarvis-task-runs-v2:/));
+    await stop();
   });
 });

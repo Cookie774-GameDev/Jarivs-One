@@ -1,4 +1,8 @@
-import { loadAllAboutMeFile, saveAllAboutMeFile, type AllAboutMeFileResult } from './allAboutMeFile';
+import {
+  loadAllAboutMeFile,
+  saveAllAboutMeFile,
+  type AllAboutMeFileResult,
+} from './allAboutMeFile';
 import { useAllAboutMeStore } from './store';
 import { safeLocalStorage } from '@/lib/persistence/safeLocalStorage';
 import { sanitizeAllAboutMeMarkdown } from './allAboutMeSecurity';
@@ -13,7 +17,13 @@ interface AllAboutMePersistenceBindings {
 }
 
 function account(value: string): string {
-  return value.trim() || 'local-unassigned';
+  return value.trim();
+}
+
+function requireAccountId(value: string): string {
+  const accountId = account(value);
+  if (!accountId) throw new Error('Account id is required for All About Me persistence.');
+  return accountId;
 }
 
 function report(bindings: AllAboutMePersistenceBindings, error: unknown): void {
@@ -33,27 +43,36 @@ function legacyProfile(accountId: string): { markdown: string; matched: boolean 
     const parsed = JSON.parse(raw) as {
       state?: { markdown?: unknown; accountScope?: unknown };
     };
-    const scope = typeof parsed.state?.accountScope === 'string'
-      ? account(parsed.state.accountScope)
-      : '';
+    const scope =
+      typeof parsed.state?.accountScope === 'string' ? account(parsed.state.accountScope) : '';
     if (scope && scope !== accountId) return { markdown: '', matched: false };
-    const markdown = typeof parsed.state?.markdown === 'string'
-      ? sanitizeAllAboutMeMarkdown(parsed.state.markdown)
-      : '';
+    const markdown =
+      typeof parsed.state?.markdown === 'string'
+        ? sanitizeAllAboutMeMarkdown(parsed.state.markdown)
+        : '';
     return { markdown, matched: true };
   } catch {
     return null;
   }
 }
 
-export function startAllAboutMePersistence(bindings: AllAboutMePersistenceBindings): () => void {
+export function startAllAboutMePersistence(
+  bindings: AllAboutMePersistenceBindings,
+): () => Promise<void> {
   const load = bindings.load ?? loadAllAboutMeFile;
   const save = bindings.save ?? saveAllAboutMeFile;
   const debounceMs = bindings.debounceMs ?? 300;
-  let activeAccount = account(bindings.getAccountId());
+  let activeAccount = requireAccountId(bindings.getAccountId());
   let disposed = false;
   let applying = false;
-  let timer: ReturnType<typeof setTimeout> | undefined;
+  let timer:
+    | {
+        handle: ReturnType<typeof setTimeout>;
+        accountId: string;
+        markdown: string;
+      }
+    | undefined;
+  const inFlight = new Set<Promise<unknown>>();
 
   useAllAboutMeStore.getState().setAccountScope(activeAccount);
 
@@ -85,29 +104,50 @@ export function startAllAboutMePersistence(bindings: AllAboutMePersistenceBindin
   };
 
   const persist = (accountId: string, markdown: string) => {
-    return Promise.resolve(save(accountId, markdown)).catch((error) => report(bindings, error));
+    const pending = Promise.resolve()
+      .then(() => save(accountId, markdown))
+      .catch((error) => report(bindings, error));
+    inFlight.add(pending);
+    void pending.finally(() => {
+      inFlight.delete(pending);
+    });
+    return pending;
   };
 
   const unsubscribeStore = useAllAboutMeStore.subscribe((state, previous) => {
     if (applying || state.markdown === previous.markdown) return;
-    if (timer) clearTimeout(timer);
+    if (timer) clearTimeout(timer.handle);
     const accountAtChange = activeAccount;
     const markdownAtChange = state.markdown;
-    timer = setTimeout(() => {
+    const handle = setTimeout(() => {
       timer = undefined;
       void persist(accountAtChange, markdownAtChange);
     }, debounceMs);
+    timer = {
+      handle,
+      accountId: accountAtChange,
+      markdown: markdownAtChange,
+    };
   });
 
   const switchAccount = () => {
     const next = account(bindings.getAccountId());
     if (next === activeAccount) return;
     if (timer) {
-      clearTimeout(timer);
+      clearTimeout(timer.handle);
       timer = undefined;
     }
     const previousAccount = activeAccount;
     const previousMarkdown = useAllAboutMeStore.getState().markdown;
+    if (!next) {
+      activeAccount = '';
+      void persist(previousAccount, previousMarkdown).then(() => {
+        if (!disposed && !account(bindings.getAccountId())) {
+          useAllAboutMeStore.getState().clearAccountScope();
+        }
+      });
+      return;
+    }
     activeAccount = next;
     applying = true;
     useAllAboutMeStore.getState().setAccountScope(next);
@@ -121,10 +161,18 @@ export function startAllAboutMePersistence(bindings: AllAboutMePersistenceBindin
   const unsubscribeAccount = bindings.subscribeAccount(switchAccount);
   void loadIntoStore(activeAccount, false);
 
-  return () => {
+  return async () => {
     disposed = true;
-    if (timer) clearTimeout(timer);
     unsubscribeStore();
     unsubscribeAccount();
+    const flush = timer
+      ? (() => {
+          clearTimeout(timer.handle);
+          const pending = persist(timer.accountId, timer.markdown);
+          timer = undefined;
+          return pending;
+        })()
+      : undefined;
+    await Promise.allSettled([...inFlight, ...(flush ? [flush] : [])]);
   };
 }

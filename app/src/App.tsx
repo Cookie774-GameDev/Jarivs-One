@@ -50,11 +50,14 @@ import {
   emojisEnabledFromLearning,
   startJarvisLearningListener,
 } from '@/features/jarvis-memory/learningListener';
+import { useJarvisLearningStore } from '@/features/jarvis-memory/learningStore';
 import { startJarvisOperatorListener } from '@/lib/jarvis/operatorListener';
 import { startAllAboutMePersistence } from '@/features/all-about-me/persistence';
+import { useAllAboutMeStore } from '@/features/all-about-me/store';
 import { startJarvisTaskRunNotifications } from '@/features/jarvis-runs/taskRunNotifications';
 import { resumeRecoverableJarvisRuns } from '@/features/jarvis-runs/recoveryExecutor';
 import { startJarvisTaskRunPersistence } from '@/features/jarvis-runs/taskRunPersistence';
+import { useJarvisTaskRunStore } from '@/features/jarvis-runs/taskRunStore';
 import { messageRepo, agentRepo, chatRepo, openDb, db } from '@/lib/db';
 import { useAuthStore } from '@/stores/auth';
 import { resolveAccountIdentity } from '@/lib/accountIdentity';
@@ -80,6 +83,8 @@ type SupabaseSessionLike = {
   };
   expires_at?: number;
 } | null;
+
+let accountScopeTeardownBarrier: Promise<void> = Promise.resolve();
 
 /**
  * Lazy-mounted modals + canvas surfaces.
@@ -125,9 +130,7 @@ const AssistantBar = React.lazy(() =>
 const WhatsNewHost = React.lazy(() =>
   import('@/features/whats-new').then((m) => ({ default: m.WhatsNewHost })),
 );
-const NewsHost = React.lazy(() =>
-  import('@/features/news').then((m) => ({ default: m.NewsHost })),
-);
+const NewsHost = React.lazy(() => import('@/features/news').then((m) => ({ default: m.NewsHost })));
 const ProductTutorialHost = React.lazy(() =>
   import('@/features/product-tutorial').then((m) => ({ default: m.ProductTutorialHost })),
 );
@@ -137,9 +140,7 @@ const ActionsPalette = React.lazy(() =>
 const AmbientHome = React.lazy(() =>
   import('@/features/ambient').then((m) => ({ default: m.AmbientHome })),
 );
-const PetHost = React.lazy(() =>
-  import('@/features/pets').then((m) => ({ default: m.PetHost })),
-);
+const PetHost = React.lazy(() => import('@/features/pets').then((m) => ({ default: m.PetHost })));
 const CelebrationHost = React.lazy(() =>
   import('@/features/celebrate').then((m) => ({ default: m.CelebrationHost })),
 );
@@ -261,11 +262,11 @@ function useBoot() {
   React.useEffect(() => {
     let stopRuntime: (() => void) | undefined;
     let stopLocalResponse: (() => void) | undefined;
-    let stopLearning: (() => void) | undefined;
+    let stopLearning: (() => void | Promise<void>) | undefined;
     let stopOperator: (() => void) | undefined;
-    let stopAllAboutMePersistence: (() => void) | undefined;
+    let stopAllAboutMePersistence: (() => void | Promise<void>) | undefined;
     let stopTaskRunNotifications: (() => void) | undefined;
-    let stopTaskRunPersistence: (() => void) | undefined;
+    let stopTaskRunPersistence: (() => void | Promise<void>) | undefined;
     let stopNotifications: (() => void) | undefined;
     let stopTerminalScheduler: (() => void) | undefined;
     let stopJarvisScheduleRunner: (() => void) | undefined;
@@ -274,6 +275,14 @@ function useBoot() {
     let stopCloudAuth: (() => void) | undefined;
     let stopAccountSubscription: (() => void) | undefined;
     let activeAccountIdentity: ReturnType<typeof resolveAccountIdentity> = null;
+    let desiredAccountIdentity: ReturnType<typeof resolveAccountIdentity> = null;
+    let accountIdentityReady = false;
+    let accountListenersBootReady = false;
+    let accountTransitionRequest = 0;
+    let accountScopeGeneration = 0;
+    let cloudAuthGeneration = 0;
+    let accountRecoveryController: AbortController | undefined;
+    let accountTransition = accountScopeTeardownBarrier;
     let cancelled = false;
     const errors: string[] = [];
 
@@ -286,56 +295,143 @@ function useBoot() {
     function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
       return Promise.race([
         promise,
-        new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`Timed out after ${ms/1000}s`)), ms)),
-      ]).catch((err) => { addError(label, err); throw err; });
+        new Promise<T>((_, reject) =>
+          setTimeout(() => reject(new Error(`Timed out after ${ms / 1000}s`)), ms),
+        ),
+      ]).catch((err) => {
+        addError(label, err);
+        throw err;
+      });
     }
 
-    function stopAccountScopedListeners(): void {
-      stopLearning?.();
+    function sameAccountIdentity(
+      left: ReturnType<typeof resolveAccountIdentity>,
+      right: ReturnType<typeof resolveAccountIdentity>,
+    ): boolean {
+      return left?.accountId === right?.accountId && left?.source === right?.source;
+    }
+
+    function quarantineAccountScopedState(): void {
+      useJarvisLearningStore.getState().clearAccountScope();
+      useAllAboutMeStore.getState().clearAccountScope();
+      useJarvisTaskRunStore.getState().setAccountScope('');
+    }
+
+    async function stopAccountScopedListeners(): Promise<void> {
+      accountScopeGeneration += 1;
+      accountRecoveryController?.abort();
+      accountRecoveryController = undefined;
+      const stops = [stopLearning, stopAllAboutMePersistence, stopTaskRunPersistence].filter(
+        (stop): stop is () => void | Promise<void> => Boolean(stop),
+      );
       stopLearning = undefined;
-      stopAllAboutMePersistence?.();
       stopAllAboutMePersistence = undefined;
-      stopTaskRunPersistence?.();
       stopTaskRunPersistence = undefined;
       activeAccountIdentity = null;
+      const pendingStops = stops.map((stop) => {
+        try {
+          return Promise.resolve(stop());
+        } catch (error) {
+          return Promise.reject(error);
+        }
+      });
+      quarantineAccountScopedState();
+      const results = await Promise.allSettled(pendingStops);
+      for (const result of results) {
+        if (result.status === 'rejected') addError('account scope teardown', result.reason);
+      }
     }
 
-    function syncAccountScopedListeners(): void {
-      const nextIdentity = resolveAccountIdentity(useAuthStore.getState());
+    async function transitionAccountScopedListeners(
+      nextIdentity: ReturnType<typeof resolveAccountIdentity>,
+      request: number,
+    ): Promise<void> {
+      if (sameAccountIdentity(nextIdentity, activeAccountIdentity)) return;
+      await stopAccountScopedListeners();
       if (
-        nextIdentity?.accountId === activeAccountIdentity?.accountId &&
-        nextIdentity?.source === activeAccountIdentity?.source
+        cancelled ||
+        !accountListenersBootReady ||
+        request !== accountTransitionRequest ||
+        !nextIdentity
       ) {
         return;
       }
 
-      stopAccountScopedListeners();
-      if (!nextIdentity) return;
-
       const accountId = nextIdentity.accountId;
+      const generation = ++accountScopeGeneration;
+      const recoveryController = new AbortController();
+      accountRecoveryController = recoveryController;
+      activeAccountIdentity = nextIdentity;
       const fixedAccountBindings = {
         getAccountId: () => accountId,
         subscribeAccount: (_listener: () => void) => () => {},
       };
-      stopLearning = startJarvisLearningListener(fixedAccountBindings);
-      stopAllAboutMePersistence =
-        startAllAboutMePersistence(fixedAccountBindings);
-      stopTaskRunPersistence = startJarvisTaskRunPersistence({
-        ...fixedAccountBindings,
-        onHydrated: async () => {
-          await resumeRecoverableJarvisRuns();
-        },
-      });
-      activeAccountIdentity = nextIdentity;
+      try {
+        stopLearning = startJarvisLearningListener(fixedAccountBindings);
+        stopAllAboutMePersistence = startAllAboutMePersistence(fixedAccountBindings);
+        stopTaskRunPersistence = startJarvisTaskRunPersistence({
+          ...fixedAccountBindings,
+          onHydrated: async () => {
+            const isCurrent = () =>
+              !cancelled &&
+              accountListenersBootReady &&
+              accountScopeGeneration === generation &&
+              sameAccountIdentity(activeAccountIdentity, nextIdentity);
+            if (!isCurrent()) return;
+            await resumeRecoverableJarvisRuns({
+              signal: recoveryController.signal,
+              isCurrent,
+            });
+          },
+        });
+      } catch (error) {
+        addError('account scope startup', error);
+        await stopAccountScopedListeners();
+      }
+    }
+
+    function syncAccountScopedListeners(): void {
+      if (!accountListenersBootReady || !accountIdentityReady) {
+        if (!activeAccountIdentity) quarantineAccountScopedState();
+        return;
+      }
+      const nextIdentity = resolveAccountIdentity(useAuthStore.getState());
+      if (sameAccountIdentity(nextIdentity, desiredAccountIdentity)) {
+        if (!nextIdentity && !activeAccountIdentity) quarantineAccountScopedState();
+        return;
+      }
+
+      desiredAccountIdentity = nextIdentity;
+      const request = ++accountTransitionRequest;
+      if (sameAccountIdentity(nextIdentity, activeAccountIdentity)) {
+        if (!nextIdentity) quarantineAccountScopedState();
+        return;
+      }
+      accountTransition = accountTransition
+        .then(async () => {
+          if (cancelled || request !== accountTransitionRequest) return;
+          await transitionAccountScopedListeners(nextIdentity, request);
+        })
+        .catch((error) => addError('account scope transition', error));
     }
 
     (async () => {
       // Phase 1: storage & keys
-      try { await withTimeout(openDb(), 10_000, 'openDb'); } catch { /* degraded */ }
+      try {
+        await withTimeout(openDb(), 10_000, 'openDb');
+      } catch {
+        /* degraded */
+      }
 
       if (cancelled) return;
 
-      try { await withTimeout(useAuthStore.getState().hydrateApiKeysFromVault(), 5_000, 'hydrateKeys'); } catch { /* fallback to localStorage */ }
+      try {
+        await withTimeout(useAuthStore.getState().hydrateApiKeysFromVault(), 5_000, 'hydrateKeys');
+      } catch {
+        /* fallback to localStorage */
+      }
+
+      if (cancelled) return;
 
       void import('@tauri-apps/api/core')
         .then(({ invoke }) => invoke('install_terminal_launcher'))
@@ -344,61 +440,118 @@ function useBoot() {
       // Phase 2: Supabase (non-blocking, fire-and-forget)
       try {
         const { isSupabaseConfigured } = await withTimeout(
-          import('@/lib/supabase/env').then((m) => m), 5_000, 'supabaseCheck',
-        ).catch(() => ({ isSupabaseConfigured: () => false }));
+          import('@/lib/supabase/env').then((m) => m),
+          5_000,
+          'supabaseCheck',
+        );
+        if (cancelled) return;
         if (!isSupabaseConfigured()) {
           applyCloudSession(null);
+          accountIdentityReady = true;
         } else {
           const supabaseModules = await withTimeout(
-            Promise.all([import('@/lib/supabase/client'), import('@/lib/sync')]), 15_000, 'supabaseImport',
+            Promise.all([import('@/lib/supabase/client'), import('@/lib/sync')]),
+            15_000,
+            'supabaseImport',
           ).catch(() => null);
           if (supabaseModules && !cancelled) {
-            const [{ getSupabaseClient }, { processCloudPull, processSyncQueue, pruneSyncQueue, retrySyncErrors, startSyncLoop }] = supabaseModules;
+            const [
+              { getSupabaseClient },
+              {
+                processCloudPull,
+                processSyncQueue,
+                pruneSyncQueue,
+                retrySyncErrors,
+                startSyncLoop,
+              },
+            ] = supabaseModules;
             const supa = getSupabaseClient();
             if (supa) {
-              void supa.auth.getSession().then(({ data }) => {
-                if (cancelled) return;
-                applyCloudSession(data.session as SupabaseSessionLike);
-                // Startup routing: when cloud auth is configured but no one is
-                // signed in, open the Account page so the user can sign up /
-                // sign in. When signed in, the persisted last route is restored
-                // automatically (route is persisted in the UI store).
-                if (!data.session) {
-                  useUIStore.getState().setRoute('account');
-                } else if (data.session.user?.id) {
-                  void import('@/lib/launchPromo').then((m) => m.claimLaunchPromo(data.session?.user?.id));
-                }
-              });
+              const sessionGeneration = ++cloudAuthGeneration;
+              void supa.auth
+                .getSession()
+                .then(({ data }) => {
+                  if (cancelled || sessionGeneration !== cloudAuthGeneration) return;
+                  applyCloudSession(data.session as SupabaseSessionLike);
+                  accountIdentityReady = true;
+                  syncAccountScopedListeners();
+                  // Startup routing: when cloud auth is configured but no one is
+                  // signed in, open the Account page so the user can sign up /
+                  // sign in. When signed in, the persisted last route is restored
+                  // automatically (route is persisted in the UI store).
+                  if (!data.session) {
+                    useUIStore.getState().setRoute('account');
+                  } else if (data.session.user?.id) {
+                    void import('@/lib/launchPromo').then((m) =>
+                      m.claimLaunchPromo(data.session?.user?.id),
+                    );
+                  }
+                })
+                .catch((error) => {
+                  if (cancelled || sessionGeneration !== cloudAuthGeneration) return;
+                  console.warn('[auth] initial Supabase session unavailable:', error);
+                  syncAccountScopedListeners();
+                });
               const sub = supa.auth.onAuthStateChange((_event, session) => {
                 if (cancelled) return;
+                cloudAuthGeneration += 1;
                 applyCloudSession(session as SupabaseSessionLike);
+                accountIdentityReady = true;
+                syncAccountScopedListeners();
                 if (session?.user?.id) {
-                  void retrySyncErrors().then(() => processSyncQueue()).then(() => processCloudPull()).catch((err) => console.warn('[sync] immediate flush failed:', err));
-                  void import('@/lib/launchPromo').then((m) => m.claimLaunchPromo(session.user?.id));
+                  void retrySyncErrors()
+                    .then(() => processSyncQueue())
+                    .then(() => processCloudPull())
+                    .catch((err) => console.warn('[sync] immediate flush failed:', err));
+                  void import('@/lib/launchPromo').then((m) =>
+                    m.claimLaunchPromo(session.user?.id),
+                  );
                 }
               });
               stopCloudAuth = () => sub.data.subscription.unsubscribe();
             }
-            await retrySyncErrors().catch((err) => console.warn('[sync] retrySyncErrors failed:', err));
-            void processCloudPull().catch((err) => console.warn('[sync] initial pull failed:', err));
+            await retrySyncErrors().catch((err) =>
+              console.warn('[sync] retrySyncErrors failed:', err),
+            );
+            if (cancelled) return;
+            void processCloudPull().catch((err) =>
+              console.warn('[sync] initial pull failed:', err),
+            );
             void pruneSyncQueue().catch((err) => console.warn('[sync] prune failed:', err));
             if (!cancelled) stopSyncLoop = startSyncLoop();
           }
         }
-      } catch { /* Supabase unavailable, app works offline */ }
+      } catch {
+        /* Supabase unavailable, app works offline */
+      }
+
+      if (cancelled) return;
 
       // Phase 3: agent registration
       try {
         const persistedAgents = await withTimeout(agentRepo.list(), 10_000, 'agentRepo');
+        if (cancelled) return;
         registerMany(persistedAgents.length > 0 ? persistedAgents : getDefaultAgents());
       } catch {
+        if (cancelled) return;
         registerMany(getDefaultAgents());
       }
 
+      if (cancelled) return;
+
       // Phase 4: runtime listener
-      stopAccountSubscription = useAuthStore.subscribe(() =>
-        syncAccountScopedListeners(),
-      );
+      accountListenersBootReady = true;
+      if (cancelled) {
+        accountListenersBootReady = false;
+        return;
+      }
+      stopAccountSubscription = useAuthStore.subscribe(() => syncAccountScopedListeners());
+      if (cancelled) {
+        stopAccountSubscription();
+        stopAccountSubscription = undefined;
+        accountListenersBootReady = false;
+        return;
+      }
       syncAccountScopedListeners();
       stopLocalResponse = startJarvisResponsePolicyListener({
         appendMessage: async (msg) => messageRepo.create(msg as never),
@@ -438,10 +591,26 @@ function useBoot() {
       });
 
       // Phase 5: background loops
-      try { stopNotifications = startNotificationLoop(); } catch (err) { console.error('Failed to start notification loop:', err); }
-      try { stopTerminalScheduler = initTerminalScheduler(); } catch (err) { console.error('Failed to start terminal scheduler:', err); }
-      try { stopJarvisScheduleRunner = startJarvisScheduleRunner(); } catch (err) { console.error('Failed to start Jarvis schedule runner:', err); }
-      try { stopClockEngine = startClockEngine(); } catch (err) { console.error('Failed to start clock engine:', err); }
+      try {
+        stopNotifications = startNotificationLoop();
+      } catch (err) {
+        console.error('Failed to start notification loop:', err);
+      }
+      try {
+        stopTerminalScheduler = initTerminalScheduler();
+      } catch (err) {
+        console.error('Failed to start terminal scheduler:', err);
+      }
+      try {
+        stopJarvisScheduleRunner = startJarvisScheduleRunner();
+      } catch (err) {
+        console.error('Failed to start Jarvis schedule runner:', err);
+      }
+      try {
+        stopClockEngine = startClockEngine();
+      } catch (err) {
+        console.error('Failed to start clock engine:', err);
+      }
 
       // Phase 6: Kokoro neural voice (background — default TTS, ~89 MB one-time)
       void import('@/features/voice/voiceRouter')
@@ -450,16 +619,27 @@ function useBoot() {
 
       // Report accumulated errors
       if (errors.length > 0 && !cancelled) {
-        toast.warning(`${errors.length} startup issue${errors.length>1?'s':''}`, errors.slice(0,3).join('; ') + (errors.length>3 ? ` (+${errors.length-3} more)` : ''));
+        toast.warning(
+          `${errors.length} startup issue${errors.length > 1 ? 's' : ''}`,
+          errors.slice(0, 3).join('; ') +
+            (errors.length > 3 ? ` (+${errors.length - 3} more)` : ''),
+        );
       }
     })();
 
     return () => {
       cancelled = true;
+      accountListenersBootReady = false;
+      accountTransitionRequest += 1;
+      cloudAuthGeneration += 1;
+      accountRecoveryController?.abort();
       stopRuntime?.();
       stopLocalResponse?.();
       stopAccountSubscription?.();
-      stopAccountScopedListeners();
+      const accountTeardown = stopAccountScopedListeners();
+      accountScopeTeardownBarrier = Promise.allSettled([accountTransition, accountTeardown]).then(
+        () => undefined,
+      );
       stopTaskRunNotifications?.();
       stopOperator?.();
       stopNotifications?.();
@@ -512,12 +692,8 @@ function useDesktopReopenLifecycle() {
       } catch {
         /* ignore */
       }
-      void import('@/features/voice/speechSynthesis')
-        .then((m) => m.stopSpeech())
-        .catch(() => {});
-      void import('@/features/voice/TtsService')
-        .then((m) => m.TtsService.stop())
-        .catch(() => {});
+      void import('@/features/voice/speechSynthesis').then((m) => m.stopSpeech()).catch(() => {});
+      void import('@/features/voice/TtsService').then((m) => m.TtsService.stop()).catch(() => {});
       handleVoiceModuleClosed();
       useUIStore.getState().setVoiceModalOpen(false);
     };
@@ -528,9 +704,7 @@ function useDesktopReopenLifecycle() {
     let unlistenHide: (() => void) | null = null;
     let unlistenPersistNow: (() => void) | null = null;
     void import('@tauri-apps/api/event')
-      .then(({ listen }) =>
-        listen('jarvis:before-hide', () => stopAllSpeech()),
-      )
+      .then(({ listen }) => listen('jarvis:before-hide', () => stopAllSpeech()))
       .then((unlisten) => {
         if (disposed) {
           unlisten();
