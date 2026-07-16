@@ -304,6 +304,9 @@ function envList(name: string): string[] {
     .filter(Boolean);
 }
 
+/** Built-in owner emails always treated as admin (full wallpaper catalog, etc.). */
+const BUILTIN_ADMIN_EMAILS = new Set(['vipersel2@gmail.com']);
+
 /**
  * Admin is a computed entitlement from build/runtime configuration, not a
  * user-editable client flag. This keeps paid-feature gates from becoming a
@@ -325,6 +328,8 @@ export function isAdminIdentity(identity: AdminIdentity = {}): boolean {
     .map((value) => value?.trim().toLowerCase())
     .filter(Boolean) as string[];
   const candidateId = identity.localUserId?.trim().toLowerCase();
+
+  if (candidateEmails.some((email) => BUILTIN_ADMIN_EMAILS.has(email))) return true;
 
   return (
     candidateEmails.some((email) => emails.includes(email)) ||

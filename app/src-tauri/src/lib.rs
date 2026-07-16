@@ -1,59 +1,66 @@
-//! Jarvis desktop shell – Tauri 2 Rust core.
+//! Jarvis desktop shell ΓÇô Tauri 2 Rust core.
 //!
-//! Architecture (see docs/02-system-architecture.md §2.1):
+//! Architecture (see docs/02-system-architecture.md ┬º2.1):
 //!
 //! ```text
-//!  ┌───────────────────────── Tauri main (this crate) ─────────────────────────┐
-//!  │   • Window + tray + native notifications                                  │
-//!  │   • Global hotkeys, deep links, mic permissions                           │
-//!  │   • IPC broker between WebView, Node runtime, and Python voice sidecar    │
-//!  └─────────────────────────────────────────────────────────────────────────-─┘
-//!         │                              │                              │
-//!  ┌──────▼───────┐                ┌─────▼──────┐                ┌──────▼──────┐
-//!  │  WebView     │                │  Node      │                │  Python     │
-//!  │  (Vite + R)  │  Tauri cmd     │  runtime   │  stdin/stdout  │  voice      │
-//!  │              │ ◀─────────────▶│  (Mastra)  │ ◀────────────▶│  (Pipecat)  │
-//!  └──────────────┘                └────────────┘                └─────────────┘
+//!  ΓöîΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ Tauri main (this crate) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÉ
+//!  Γöé   ΓÇó Window + tray + native notifications                                  Γöé
+//!  Γöé   ΓÇó Global hotkeys, deep links, mic permissions                           Γöé
+//!  Γöé   ΓÇó IPC broker between WebView, Node runtime, and Python voice sidecar    Γöé
+//!  ΓööΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ-ΓöÇΓöÿ
+//!         Γöé                              Γöé                              Γöé
+//!  ΓöîΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓû╝ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÉ                ΓöîΓöÇΓöÇΓöÇΓöÇΓöÇΓû╝ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÉ                ΓöîΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓû╝ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÉ
+//!  Γöé  WebView     Γöé                Γöé  Node      Γöé                Γöé  Python     Γöé
+//!  Γöé  (Vite + R)  Γöé  Tauri cmd     Γöé  runtime   Γöé  stdin/stdout  Γöé  voice      Γöé
+//!  Γöé              Γöé ΓùÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓû╢Γöé  (Mastra)  Γöé ΓùÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓû╢Γöé  (Pipecat)  Γöé
+//!  ΓööΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÿ                ΓööΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÿ                ΓööΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÿ
 //! ```
 //!
 //! ## V1 plugins registered
-//! - `tauri-plugin-notification`  – OS native banners (todo reminders, errors)
-//! - `tauri-plugin-dialog`        – open/save/message dialogs
-//! - `tauri-plugin-shell`         – `shell.open` for opening URLs in the OS browser
-//! - `tauri-plugin-os`            – platform/arch detection for the runtime
-//! - `tauri-plugin-http`          – native HTTP client used by the Ollama bridge
+//! - `tauri-plugin-notification`  ΓÇô OS native banners (todo reminders, errors)
+//! - `tauri-plugin-dialog`        ΓÇô open/save/message dialogs
+//! - `tauri-plugin-shell`         ΓÇô `shell.open` for opening URLs in the OS browser
+//! - `tauri-plugin-os`            ΓÇô platform/arch detection for the runtime
+//! - `tauri-plugin-http`          ΓÇô native HTTP client used by the Ollama bridge
 //!                                  to bypass `tauri://localhost` CORS that
 //!                                  blocks `fetch` to `http://localhost:11434`
 //!                                  in packaged builds.
-//! - `tauri-plugin-process`       – relaunch after updater installation
-//! - `tauri-plugin-updater`       – signed auto-update channel
+//! - `tauri-plugin-process`       ΓÇô relaunch after updater installation
+//! - `tauri-plugin-updater`       ΓÇô signed auto-update channel
 //!
 //! ## Plugins to wire up as features land
-//! - `tauri-plugin-global-shortcut` – cmd-space style global hotkeys
-//! - `tauri-plugin-fs`              – scoped reads/writes to ~/.jarvis
-//! - `tauri-plugin-store`           – persistent JSON preferences
-//! - `tauri-plugin-window-state`    – remember window size + position
-//! - `tauri-plugin-single-instance` – one Jarvis per user account
-//! - `tauri-plugin-deep-link`       – `jarvis://` URL handler
+//! - `tauri-plugin-global-shortcut` ΓÇô cmd-space style global hotkeys
+//! - `tauri-plugin-fs`              ΓÇô scoped reads/writes to ~/.jarvis
+//! - `tauri-plugin-store`           ΓÇô persistent JSON preferences
+//! - `tauri-plugin-window-state`    ΓÇô remember window size + position
+//! - `tauri-plugin-single-instance` ΓÇô one Jarvis per user account
+//! - `tauri-plugin-deep-link`       ΓÇô `jarvis://` URL handler
 //!
 //! New commands should be small and pure; heavy logic belongs in the Node
 //! runtime sidecar so we keep the Rust core boring and stable.
 
+use std::time::Duration;
 use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
-use std::time::Duration;
 
+mod agent_coordination;
+mod branding;
+mod cli_bridge;
+mod credentials;
 mod dictation;
 mod faster_whisper;
 mod fsread;
-mod terminal;
-mod credentials;
+mod kokoro;
 mod launcher;
 mod local_ai;
-mod kokoro;
 mod ollama_http;
-mod branding;
-mod agent_coordination;
+mod pets;
+mod terminal;
+mod terminal_snapshot;
+mod browser_process;
+mod preview;
+mod static_server;
+mod wallpaper_master;
 
 /// Sanity-check command. The JS bridge can call this during startup to verify
 /// invoke() round-trips. Wire it in as needed; it returns a friendly string.
@@ -123,7 +130,7 @@ fn show_main_window(app: &tauri::AppHandle, reason: &'static str) {
         if let Err(err) = window.set_focus() {
             eprintln!("[lifecycle] failed to focus main window ({reason}): {err}");
         }
-        // WebView2 often swaps HWND during show — re-apply after the surface is back.
+        // WebView2 often swaps HWND during show ΓÇö re-apply after the surface is back.
         branding::apply_window_icon(&window);
         if let Err(err) = window.emit("jarvis:reopen", ReopenPayload { reason }) {
             eprintln!("[lifecycle] failed to emit reopen event ({reason}): {err}");
@@ -210,13 +217,31 @@ pub fn run() {
                 })
                 .build(),
         )
+        .manage(cli_bridge::CliBridgeState::default())
         .manage(terminal::TerminalState::default())
+        .manage(pets::PetWindowState::default())
+        .manage(terminal_snapshot::PersistenceFlushState::default())
         .setup(|app| {
+            // Restore pet window geometry from disk.
+            {
+                let geo = pets::load_geometry(&app.handle());
+                if let Ok(mut g) = app.state::<pets::PetWindowState>().geometry.lock() {
+                    *g = geo;
+                }
+            }
             let tray_menu = tauri::menu::Menu::with_items(
                 app,
                 &[
-                    &tauri::menu::MenuItem::with_id(app, "show", "Show VibeSpace", true, None::<&str>).unwrap(),
-                    &tauri::menu::MenuItem::with_id(app, "exit", "Exit", true, None::<&str>).unwrap(),
+                    &tauri::menu::MenuItem::with_id(
+                        app,
+                        "show",
+                        "Show VibeSpace",
+                        true,
+                        None::<&str>,
+                    )
+                    .unwrap(),
+                    &tauri::menu::MenuItem::with_id(app, "exit", "Exit", true, None::<&str>)
+                        .unwrap(),
                 ],
             )?;
 
@@ -229,21 +254,35 @@ pub fn run() {
                 .icon(tray_icon)
                 .tooltip("VibeSpace")
                 .menu(&tray_menu)
-                .on_menu_event(|app, event| {
-                    match event.id.as_ref() {
-                        "show" => {
-                            show_main_window(app, "tray-show");
-                        }
-                        "exit" => {
-                            let _ = app.emit("jarvis:persist-now", PersistPayload { reason: "tray-exit" });
-                            let app_handle = app.clone();
-                            std::thread::spawn(move || {
-                                std::thread::sleep(Duration::from_millis(750));
-                                app_handle.exit(0);
-                            });
-                        }
-                        _ => {}
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "show" => {
+                        show_main_window(app, "tray-show");
                     }
+                    "exit" => {
+                        app.state::<terminal_snapshot::PersistenceFlushState>().begin();
+                        let _ = app.emit(
+                            "jarvis:persist-now",
+                            PersistPayload {
+                                reason: "tray-exit",
+                            },
+                        );
+                        let app_handle = app.clone();
+                        std::thread::spawn(move || {
+                            let started = std::time::Instant::now();
+                            while started.elapsed() < Duration::from_millis(1_500)
+                                && !app_handle
+                                    .state::<terminal_snapshot::PersistenceFlushState>()
+                                    .is_completed()
+                            {
+                                std::thread::sleep(Duration::from_millis(25));
+                            }
+                            app_handle
+                                .state::<terminal_snapshot::PersistenceFlushState>()
+                                .complete();
+                            app_handle.exit(0);
+                        });
+                    }
+                    _ => {}
                 })
                 .build(app)?;
 
@@ -268,16 +307,22 @@ pub fn run() {
                     }
                 }
                 tauri::WindowEvent::CloseRequested { api, .. } => {
-                use tauri::Emitter as _;
-                // The window only hides to tray (process stays alive), so the
-                // WebView keeps any in-flight speech playing. Tell the frontend
-                // to stop all TTS before we hide.
-                let _ = window.emit("jarvis:before-hide", ());
-                println!("[lifecycle] hiding main window; background service remains alive");
-                if let Err(err) = window.hide() {
-                    eprintln!("[lifecycle] failed to hide main window: {err}");
-                }
-                api.prevent_close();
+                    use tauri::Emitter as _;
+                    // Pet windows: hide only; never destroy sessions.
+                    if pets::handle_pet_window_close(window) {
+                        api.prevent_close();
+                        return;
+                    }
+                    // Main (and others): hide to tray; process stays alive.
+                    let _ = window.emit("jarvis:before-hide", ());
+                    println!(
+                        "[lifecycle] hiding window {}; background service remains alive",
+                        window.label()
+                    );
+                    if let Err(err) = window.hide() {
+                        eprintln!("[lifecycle] failed to hide window: {err}");
+                    }
+                    api.prevent_close();
                 }
                 _ => {}
             }
@@ -286,7 +331,25 @@ pub fn run() {
             greet,
             app_version,
             refresh_app_branding,
+            cli_bridge::cli_bridge_scan,
+            cli_bridge::cli_bridge_probe,
+            cli_bridge::cli_bridge_start,
+            cli_bridge::cli_bridge_cancel,
             fsread::fs_create_dir_all,
+            pets::pet_show_overlay,
+            pets::pet_hide_overlay,
+            pets::pet_is_overlay_visible,
+            pets::pet_reassert_overlay_topmost,
+            pets::pet_get_start_with_windows,
+            pets::pet_set_start_with_windows,
+            pets::pet_set_overlay_position,
+            pets::pet_snap_overlay_to_edge,
+            pets::pet_open_or_focus_panel,
+            pets::pet_minimize_panel,
+            pets::pet_hide_panel,
+            pets::pet_is_panel_visible,
+            pets::pet_save_panel_geometry,
+            pets::pet_validate_action,
             fsread::fs_create_text_file,
             fsread::fs_create_text_with_content,
             fsread::fs_list_dir,
@@ -301,6 +364,11 @@ pub fn run() {
             terminal::terminal_move,
             terminal::terminal_list,
             terminal::terminal_reconcile,
+            terminal_snapshot::terminal_snapshot_save,
+            terminal_snapshot::terminal_snapshot_load,
+            terminal_snapshot::terminal_snapshot_delete,
+            terminal_snapshot::terminal_snapshot_delete_project,
+            terminal_snapshot::persistence_flush_complete,
             agent_coordination::agent_coordination_snapshot,
             agent_coordination::agent_coordination_register,
             agent_coordination::agent_coordination_heartbeat,
@@ -339,17 +407,63 @@ pub fn run() {
             ollama_http::ollama_list_models,
             ollama_http::ollama_pull_model,
             ollama_http::ollama_chat_stream,
+            // Preview Studio + Vibe Browser + wallpaper master
+            static_server::preview_start_static_server,
+            static_server::preview_stop_static_server,
+            static_server::preview_static_server_status,
+            static_server::preview_probe_dev_servers,
+            preview::preview_create,
+            preview::preview_set_bounds,
+            preview::preview_navigate,
+            preview::preview_show,
+            preview::preview_hide,
+            preview::preview_reload,
+            preview::preview_destroy,
+            preview::preview_status,
+            preview::preview_probe_url,
+            browser_process::browser_detect_installations,
+            browser_process::browser_status,
+            browser_process::browser_start,
+            browser_process::browser_stop,
+            browser_process::browser_clear_profile,
+            browser_process::browser_open_downloads_folder,
+            wallpaper_master::wallpaper_find_local_master,
+            wallpaper_master::wallpaper_cache_full_master,
+            wallpaper_master::wallpaper_full_cache_path,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {
-            if let tauri::RunEvent::ExitRequested { .. } = event {
+            if let tauri::RunEvent::ExitRequested { api, code, .. } = event {
+                let state = app_handle.state::<terminal_snapshot::PersistenceFlushState>();
+                if state.is_completed() {
+                    return;
+                }
+                api.prevent_exit();
+                if state.is_pending() {
+                    return;
+                }
+
+                state.begin();
                 let _ = app_handle.emit(
                     "jarvis:persist-now",
-                    PersistPayload {
-                        reason: "exit-requested",
-                    },
+                    PersistPayload { reason: "exit-requested" },
                 );
+                let app_handle = app_handle.clone();
+                std::thread::spawn(move || {
+                    let started = std::time::Instant::now();
+                    while started.elapsed() < Duration::from_millis(1_500)
+                        && !app_handle
+                            .state::<terminal_snapshot::PersistenceFlushState>()
+                            .is_completed()
+                    {
+                        std::thread::sleep(Duration::from_millis(25));
+                    }
+                    app_handle
+                        .state::<terminal_snapshot::PersistenceFlushState>()
+                        .complete();
+                    app_handle.exit(code.unwrap_or(0));
+                });
             }
         });
 }

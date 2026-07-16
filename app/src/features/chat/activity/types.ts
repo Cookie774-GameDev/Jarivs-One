@@ -11,12 +11,18 @@ export interface ChatActivityEvent {
   title: string;
   subtitle?: string;
   ts: number;
+  /** When the work started (ms). Defaults to ts when omitted. */
+  startedAt?: number;
+  /** When the work finished (ms). */
+  endedAt?: number;
   agentId?: AgentId;
   agentSlug?: string;
   filePath?: string;
   url?: string;
   addedLines?: number;
   removedLines?: number;
+  inputTokens?: number;
+  outputTokens?: number;
   detail?: string;
   diff?: string;
 }

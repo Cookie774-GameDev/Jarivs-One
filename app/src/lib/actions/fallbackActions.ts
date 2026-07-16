@@ -1,4 +1,5 @@
 import type { ParsedActionProposal } from './types';
+import { defaultWriteFilePath, getCachedDefaultWriteDir } from './defaultWriteDir';
 
 let nextFallbackId = 1;
 
@@ -207,7 +208,26 @@ function extractScheduleCreateRequest(text: string): { title: string; prompt: st
   };
 }
 
+/**
+ * Question-block answer dumps look like:
+ *   "What do you want this skill to do?: make a reminder skill"
+ * Those must NOT re-open the Make with Jarvis creator — they are already
+ * inside the creator flow and should draft fields instead.
+ */
+export function isJarvisCreatorWizardAnswerDump(text: string): boolean {
+  const t = text.toLowerCase();
+  if (/\bwhat do you want this (skill|agent) to do\b/.test(t)) return true;
+  if (/\bhow should it behave in detail\b/.test(t)) return true;
+  if (/\bjarvis_creator_(skill|agent)\b/.test(t)) return true;
+  if (/\b(make|create) this (skill|agent) with jarvis\b/.test(t)) return true;
+  // Multi-line "prompt: answer" dumps from QuestionBlockCard
+  const qaLines = text.split(/\r?\n/).filter((line) => /^.+:\s*\S+/.test(line.trim()));
+  if (qaLines.length >= 2 && /\b(skill|agent)\b/i.test(text)) return true;
+  return false;
+}
+
 function extractCreatorStartRequest(text: string): { kind: 'agent' | 'skill' } | null {
+  if (isJarvisCreatorWizardAnswerDump(text)) return null;
   if (!/\b(make|create|build|draft|write|generate)\b/.test(text)) return null;
   const agentIndex = text.search(/\bagents?\b/);
   const skillIndex = text.search(/\bskills?\b/);
@@ -329,5 +349,100 @@ export function inferFallbackActionProposals(
     );
   }
 
+  const fileWrite = extractFileWriteRequest(userText, assistantText, {
+    defaultDir: getCachedDefaultWriteDir(),
+  });
+  if (fileWrite) {
+    proposals.push(
+      proposal(
+        'files.write',
+        { path: fileWrite.path, content: fileWrite.content },
+        `Write ${fileWrite.path} after user approval.`,
+      ),
+    );
+  }
+
   return proposals.slice(0, 3);
+}
+
+/**
+ * Infer a files.write proposal when the user clearly asks to create a text
+ * file. Absolute path preferred; if missing, use the general default folder
+ * (Downloads/Documents/VibeSpace). Tiny local models often refuse in prose
+ * instead of emitting the action block — this is the safety net.
+ */
+export function extractFileWriteRequest(
+  userText: string,
+  assistantText = '',
+  options?: { defaultDir?: string | null },
+): { path: string; content: string } | null {
+  const raw = userText.trim();
+  if (!raw) return null;
+  const lower = raw.toLowerCase();
+
+  // Must look like a create/write intent
+  if (!/\b(make|create|write|save|generate|draft)\b/.test(lower)) return null;
+  if (!/\b(file|txt|document|story|note|script)\b/.test(lower) && !/\.[a-z0-9]{1,8}\b/i.test(raw)) {
+    // still allow "write X to C:\path\file.txt"
+    if (!/\b(to|at|into|here)\b/.test(lower)) return null;
+  }
+
+  // Absolute Windows / UNC / POSIX path, optionally quoted
+  const pathMatch =
+    raw.match(/["'“”]((?:[A-Za-z]:[\\/][^"'“”]+|\\\\[^"'“”]+|\/[^"'“”]+))["'“”]/) ||
+    raw.match(/\b((?:[A-Za-z]:[\\/][^\s"'“”]+|\\\\[^\s"'“”]+|\/[^\s"'“”]+))/);
+
+  let path: string;
+  if (pathMatch?.[1]) {
+    path = pathMatch[1].replace(/[.,;:]+$/, '').trim();
+    if (!path) return null;
+    // If path is a directory (no extension), invent a sensible filename
+    if (!/\.[a-z0-9]{1,12}$/i.test(path.split(/[\\/]/).pop() || '')) {
+      const wantsTxt = /\b(txt|text|story|note|document)\b/i.test(raw);
+      const name = wantsTxt ? 'jarvis-note.txt' : 'jarvis-file.txt';
+      path = path.replace(/[\\/]+$/, '') + (path.includes('\\') ? `\\${name}` : `/${name}`);
+    }
+  } else {
+    // No path given — place a general file in the default write folder
+    if (!/\b(file|txt|document|story|note|script)\b/.test(lower)) return null;
+    const wantsTxt = /\b(txt|text|story|note|document)\b/i.test(raw);
+    const name = wantsTxt ? 'jarvis-note.txt' : 'jarvis-file.txt';
+    path = defaultWriteFilePath(name, options?.defaultDir ?? getCachedDefaultWriteDir());
+  }
+
+  // Content: after "write/about" or remaining prose without the path/make-file boilerplate
+  let content = '';
+  const pathToken = pathMatch?.[0] ?? '';
+  const aboutMatch = raw.match(/\b(?:write|about|with|containing|that says?)\b[:\s]+([\s\S]+)/i);
+  if (aboutMatch?.[1]) {
+    content = aboutMatch[1]
+      .replace(pathToken, ' ')
+      .replace(/["'“”]/g, ' ')
+      .replace(/\bok(ay)?\b/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  if (!content || content.length < 8) {
+    // Strip path and boilerplate; use leftover as content seed
+    content = raw
+      .replace(pathToken, ' ')
+      .replace(/\b(make|create|write|save|generate|draft)\b[\s\S]{0,40}\b(file|txt|document)\b/gi, ' ')
+      .replace(/\b(right\s+here|here|okay|please|and)\b/gi, ' ')
+      .replace(/["'“”]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  if (!content) {
+    content = 'Created by Jarvis.';
+  }
+
+  // If the model already refused, still propose the write so the user can Approve
+  void assistantText;
+
+  // Cap content for safety
+  if (content.length > 200_000) content = content.slice(0, 200_000);
+
+  return { path, content };
 }

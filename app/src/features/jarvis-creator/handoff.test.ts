@@ -3,7 +3,7 @@ import type { AgentId, ChatId, ProjectId, WorkspaceId } from '@/types/common';
 import { createJarvisCreatorChat } from './handoff';
 
 describe('createJarvisCreatorChat', () => {
-  it('creates an agent helper chat with Jarvis selected and a preload message', async () => {
+  it('creates an agent helper chat with Jarvis selected and question-only seed', async () => {
     const chatRepo = {
       create: vi.fn(async (input) => ({ ...input, id: 'chat_1' as ChatId, created_at: 1, updated_at: 1 })),
     };
@@ -30,17 +30,18 @@ describe('createJarvisCreatorChat', () => {
       mode: 'chat',
       active_agent_ids: ['agent_jarvis'],
     });
+    // No long setup essay — only the question card part.
     expect(messageRepo.create).toHaveBeenCalledWith({
       chat_id: 'chat_1',
       role: 'assistant',
       agent_id: 'agent_jarvis',
       parts: [
-        { kind: 'text', text: expect.stringContaining('Current agent: Existing Agent') },
         expect.objectContaining({
           kind: 'question_block',
           block: expect.objectContaining({
             id: 'jarvis_creator_agent',
             status: 'pending',
+            description: expect.stringContaining('Editing agent: Existing Agent'),
             questions: [
               expect.objectContaining({ id: 'goal', type: 'text' }),
               expect.objectContaining({ id: 'rules_boundaries', type: 'text' }),
@@ -49,6 +50,8 @@ describe('createJarvisCreatorChat', () => {
         }),
       ],
     });
+    const parts = messageRepo.create.mock.calls[0]?.[0].parts as Array<{ kind: string }>;
+    expect(parts.every((part) => part.kind === 'question_block')).toBe(true);
   });
 
   it('creates a skill helper chat without a project when project is not set', async () => {
@@ -71,14 +74,18 @@ describe('createJarvisCreatorChat', () => {
     });
 
     expect(chatRepo.create.mock.calls[0]?.[0]).not.toHaveProperty('project_id');
-    expect(messageRepo.create.mock.calls[0]?.[0].parts[0].text).toContain('Create a skill with Jarvis');
-    expect(messageRepo.create.mock.calls[0]?.[0].parts[0].text).toContain('Current skill: Custom Skill');
-    expect(messageRepo.create.mock.calls[0]?.[0].parts[1]).toMatchObject({
+    const parts = messageRepo.create.mock.calls[0]?.[0].parts as Array<{
+      kind: string;
+      block?: { id: string; description?: string };
+    }>;
+    expect(parts).toHaveLength(1);
+    expect(parts[0]).toMatchObject({
       kind: 'question_block',
       block: {
         id: 'jarvis_creator_skill',
-        status: 'pending',
       },
     });
+    expect(parts[0]?.block?.description).toContain('Editing skill: Custom Skill');
+    expect(parts[0]?.block?.description).toContain('Existing skill description');
   });
 });

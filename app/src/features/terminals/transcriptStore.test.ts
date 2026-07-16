@@ -595,4 +595,44 @@ describe('transcript persistence durability', () => {
     expect(window.localStorage.getItem(KEY)).toBeNull();
     expect(window.localStorage.getItem(BACKUP)).toBeNull();
   });
+
+  it('redacts likely secrets before transcript state reaches localStorage', () => {
+    const store = useTerminalTranscriptStore.getState();
+    store.registerSession('pty_secret', { agentSlug: null });
+    store.appendOutput(
+      'pty_secret',
+      'Authorization: Bearer synthetic_bearer_value_1234567890\nAPI_TOKEN=synthetic-token-value\n',
+    );
+    flushTranscriptStorage();
+
+    const persisted = deserializeTranscriptSessions(window.localStorage.getItem(KEY));
+    expect(persisted?.pty_secret?.text).toContain('[REDACTED]');
+    expect(persisted?.pty_secret?.text).not.toContain('synthetic_bearer_value');
+    expect(persisted?.pty_secret?.text).not.toContain('synthetic-token-value');
+  });
+
+  it('does not persist a draft at a likely hidden-input prompt', () => {
+    const store = useTerminalTranscriptStore.getState();
+    store.registerSession('pty_password', { agentSlug: null });
+    store.appendOutput('pty_password', 'Password:');
+    store.setCurrentInput('pty_password', 'synthetic-hidden-input');
+
+    expect(getSessionTranscript('pty_password')?.currentInput).toBe('');
+  });
+
+  it('repairs legacy protocol fragments in a deserialized draft', () => {
+    const serialized = JSON.stringify({
+      sessions: {
+        pty_legacy: {
+          sessionId: 'pty_legacy',
+          text: 'PS C:\\repo> ',
+          currentInput: 'npm test\u001b[A[<35;24;22M<35;25;22M',
+          lastWriteAt: 42,
+          bytesSeen: 1,
+        },
+      },
+    });
+
+    expect(deserializeTranscriptSessions(serialized)?.pty_legacy?.currentInput).toBe('npm test');
+  });
 });

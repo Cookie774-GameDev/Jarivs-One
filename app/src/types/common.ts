@@ -42,7 +42,7 @@ export const err = <E>(error: E): Result<never, E> => ({ ok: false, error });
 /**
  * Theme variants. V1 ships dark only but the hook is here.
  */
-export type Theme = 'dark' | 'light' | 'system' | 'jarvis';
+export type Theme = 'default' | 'light' | 'jarvis' | 'vibespace' | 'dark' | 'system';
 
 /**
  * Persona presets the user can pick for Jarvis.

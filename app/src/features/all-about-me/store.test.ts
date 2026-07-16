@@ -15,6 +15,7 @@ const answers: AllAboutMeAnswers = {
 
 describe('AllAboutMe store', () => {
   beforeEach(() => {
+    localStorage.clear();
     useAllAboutMeStore.setState(useAllAboutMeStore.getInitialState(), true);
   });
 
@@ -28,16 +29,16 @@ describe('AllAboutMe store', () => {
     expect(state.learningEnabled).toBe(true);
   });
 
-  it('tracks user message cadence for learning', () => {
+  it('keeps the stable profile out of automatic chat-learning cadence', () => {
     const store = useAllAboutMeStore.getState();
     store.saveQuizProfile(answers, '# AllAboutMe.md\nProfile');
     for (let i = 0; i < 10; i += 1) store.recordUserMessage();
 
     expect(useAllAboutMeStore.getState().totalUserMessages).toBe(10);
-    expect(useAllAboutMeStore.getState().needsLearningUpdate()).toBe(true);
+    expect(useAllAboutMeStore.getState().needsLearningUpdate()).toBe(false);
   });
 
-  it('records a chat-learning revision at the current message count', () => {
+  it('accepts an explicit curated revision while automatic cadence stays disabled', () => {
     const store = useAllAboutMeStore.getState();
     store.saveQuizProfile(answers, '# AllAboutMe.md\nOld profile');
     for (let i = 0; i < 10; i += 1) store.recordUserMessage();
@@ -88,5 +89,35 @@ describe('AllAboutMe store', () => {
     expect(useAllAboutMeStore.getState().deleteProfile('delete')).toBe(true);
     expect(useAllAboutMeStore.getState().markdown).toBe('');
     expect(useAllAboutMeStore.getState().testDraft).toBeNull();
+  });
+
+  it('can disable chat learning without deleting the profile', () => {
+    useAllAboutMeStore.getState().saveQuizProfile(answers, '# AllAboutMe.md\nProfile');
+    useAllAboutMeStore.getState().setLearningEnabled(false);
+
+    expect(useAllAboutMeStore.getState().learningEnabled).toBe(false);
+    expect(useAllAboutMeStore.getState().markdown).toContain('Profile');
+  });
+
+  it('does not persist credential-shaped lines in the stable profile', () => {
+    useAllAboutMeStore.getState().setMarkdown([
+      '# AllAboutMe.md',
+      'Likes concise answers.',
+      'apiKey=do-not-store-this',
+      'My password is hunter2',
+      'Still prefers official sources.',
+    ].join('\n'));
+
+    expect(useAllAboutMeStore.getState().markdown).toContain('Likes concise answers.');
+    expect(useAllAboutMeStore.getState().markdown).toContain('Still prefers official sources.');
+    expect(useAllAboutMeStore.getState().markdown).not.toContain('do-not-store-this');
+    expect(useAllAboutMeStore.getState().markdown).not.toContain('hunter2');
+  });
+
+  it('does not duplicate the private profile or account scope into localStorage', () => {
+    useAllAboutMeStore.getState().setAccountScope('private-account@example.com');
+    useAllAboutMeStore.getState().setMarkdown('# All About Me\n\nPrivate preference');
+
+    expect(localStorage.getItem('jarvis-all-about-me')).toBeNull();
   });
 });

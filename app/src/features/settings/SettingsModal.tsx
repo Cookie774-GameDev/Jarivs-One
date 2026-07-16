@@ -24,6 +24,7 @@ import {
   HardDriveDownload,
   Accessibility as AccessibilityIcon,
   Blocks,
+  Cable,
   Shield,
   Zap,
   type LucideIcon,
@@ -41,6 +42,9 @@ import { rememberSettingsTab } from './settingsTabMemory';
 
 const Account = lazy(() => import('./sections/Account').then((m) => ({ default: m.Account })));
 const Providers = lazy(() => import('./sections/Providers').then((m) => ({ default: m.Providers })));
+const SubscriptionCliBridge = lazy(() =>
+  import('./sections/SubscriptionCliBridge').then((m) => ({ default: m.SubscriptionCliBridge })),
+);
 const LocalModels = lazy(() =>
   import('./sections/LocalModels').then((m) => ({ default: m.LocalModels })),
 );
@@ -72,6 +76,7 @@ const JarvisActions = lazy(() =>
   import('./sections/JarvisActions').then((m) => ({ default: m.JarvisActions })),
 );
 
+
 interface TabDef {
   id: SettingsTab;
   label: string;
@@ -84,6 +89,7 @@ const TABS: TabDef[] = [
   { id: 'account', label: 'Account', icon: User2 },
   { id: 'plans', label: 'Plans', icon: Sparkles },
   { id: 'providers', label: 'Providers', icon: KeyRound },
+  { id: 'connections', label: 'AI Connections', icon: Cable },
   { id: 'hive', label: 'Hive', icon: Network, brandIcon: HiveModelTabIcon },
   { id: 'allaboutme', label: 'All About Me', icon: Brain },
   { id: 'plugins', label: 'Plugins', icon: Blocks },
@@ -141,6 +147,9 @@ function SettingsTabPanels({ tab, visited }: { tab: SettingsTab; visited: Readon
       </CachedTabPanel>
       <CachedTabPanel id="providers" active={tab === 'providers'} visited={visited.has('providers')}>
         <Providers />
+      </CachedTabPanel>
+      <CachedTabPanel id="connections" active={tab === 'connections'} visited={visited.has('connections')}>
+        <SubscriptionCliBridge />
       </CachedTabPanel>
       <CachedTabPanel id="hive" active={tab === 'hive'} visited={visited.has('hive')}>
         <Hive />

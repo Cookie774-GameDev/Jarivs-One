@@ -16,9 +16,13 @@ import {
   ListTodo,
   MessageSquare,
   Network,
+  Palette,
   Plug,
+  Redo2,
+  Shield,
   Sparkles,
   Terminal,
+  Undo2,
   Users,
   Wrench,
   Zap,
@@ -52,6 +56,13 @@ export const SLASH_CMD_ALIASES: Record<string, string> = {
   suabagent: 'subagents',
   subagnts: 'subagents',
   subagens: 'subagents',
+  clearfile: 'clearfiles',
+  'clear-files': 'clearfiles',
+  cearfile: 'clearfiles',
+  cearfiles: 'clearfiles',
+  permission: 'permissions',
+  perms: 'permissions',
+  access: 'permissions',
 };
 
 export function normalizeSlashCmd(raw: string): string {
@@ -59,7 +70,7 @@ export function normalizeSlashCmd(raw: string): string {
   return SLASH_CMD_ALIASES[cmd] ?? cmd;
 }
 
-export const CHAT_ATTACH_SLASH_CMDS = new Set(['context', 'plug', 'skills', 'allaboutme']);
+export const CHAT_ATTACH_SLASH_CMDS = new Set(['context', 'plug', 'skills', 'allaboutme', 'file']);
 
 export function isChatAttachSlashCmd(cmd: string): boolean {
   return CHAT_ATTACH_SLASH_CMDS.has(normalizeSlashCmd(cmd));
@@ -90,8 +101,18 @@ export function slashCmdMatchScore(query: string, def: SlashCommandDef): number 
 
 export const SLASH_COMMANDS: SlashCommandDef[] = [
   {
+    cmd: 'permissions',
+    aliases: ['permission', 'perms', 'access'],
+    description: 'Set chat mode: Agent, Plan, or Ask',
+    icon: Shield,
+    category: 'chat',
+    takesArg: true,
+    argPlaceholder: 'agent | plan | ask',
+    hasOptions: true,
+  },
+  {
     cmd: 'ask',
-    description: 'Ask only: answer without edits, commands, or plans',
+    description: 'Switch to Ask Mode (or ask a question)',
     icon: HelpCircle,
     category: 'chat',
     takesArg: true,
@@ -99,7 +120,7 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
   },
   {
     cmd: 'plan',
-    description: 'Plan mode: read-only plan with Build/Redo/Cancel',
+    description: 'Switch to Plan Mode (or plan a goal)',
     icon: ClipboardList,
     category: 'chat',
     takesArg: true,
@@ -108,7 +129,7 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
   {
     cmd: 'multitask',
     aliases: ['agent'],
-    description: 'Launch a chat-native Jarvis agent for a task',
+    description: 'Agent Mode task — launch a chat-native Jarvis agent',
     icon: Bot,
     category: 'chat',
     takesArg: true,
@@ -168,11 +189,12 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
   },
   {
     cmd: 'file',
-    description: 'Attach a project file',
+    description: 'Attach a file from the open project',
     icon: FileText,
     category: 'chat',
     takesArg: true,
-    argPlaceholder: '<filename>',
+    argPlaceholder: '<name or path>',
+    hasOptions: true,
   },
   {
     cmd: 'model',
@@ -185,13 +207,19 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
   },
   {
     cmd: 'attach',
-    description: 'Attach by path',
+    description: 'Attach by absolute path',
     icon: FileText,
     category: 'chat',
     takesArg: true,
     argPlaceholder: '<path>',
   },
-  { cmd: 'clearfiles', description: 'Clear file attachments', icon: FileText, category: 'chat' },
+  {
+    cmd: 'clearfiles',
+    aliases: ['clearfile', 'clear-files', 'cearfile'],
+    description: 'Clear all attached files & images from this message',
+    icon: FileText,
+    category: 'chat',
+  },
 
   { cmd: 'kanban', description: 'Reference Kanban', icon: ListTodo, category: 'navigation' },
   { cmd: 'history', description: 'Reference History', icon: History, category: 'navigation' },
@@ -200,7 +228,27 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
   { cmd: 'schedule', description: 'Reference Schedule', icon: CalendarDays, category: 'navigation' },
   { cmd: 'chat', description: 'Reference Chat', icon: MessageSquare, category: 'navigation' },
 
-  { cmd: 'usage', description: 'Show usage info', icon: BarChart3, category: 'utility' },
+  { cmd: 'usage', description: 'Show truthful current-chat usage and quota availability', icon: BarChart3, category: 'utility', argPlaceholder: '[refresh|session|all]' },
+  {
+    cmd: 'theme',
+    description: 'Switch Jarvis Core, VibeSpace, Default, or Light',
+    icon: Palette,
+    category: 'utility',
+    takesArg: true,
+    argPlaceholder: 'jarvis | vibespace | default | light',
+  },
+  {
+    cmd: 'undo',
+    description: 'Undo the last full chat turn (user + reply)',
+    icon: Undo2,
+    category: 'utility',
+  },
+  {
+    cmd: 'redo',
+    description: 'Redo the last undone chat turn',
+    icon: Redo2,
+    category: 'utility',
+  },
   { cmd: 'commands', description: 'Command catalog', icon: Zap, category: 'utility' },
   { cmd: 'help', description: 'Show help', icon: HelpCircle, category: 'utility' },
 ];

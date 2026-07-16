@@ -38,6 +38,10 @@ import {
 } from '@/features/context/tree';
 import { getJarvisProjectsDir, getStoredProjectRoot } from '@/features/files/projectFiles';
 import { loadCoordinationSummary } from '@/features/terminals/agentCoordinationClient';
+import {
+  loadJarvisCoordinationSnapshot,
+  summarizeJarvisChatCoordination,
+} from '@/features/jarvis-interaction/coordination';
 
 /**
  * Cap on the total bytes of file content we splice into a single AI
@@ -198,14 +202,33 @@ export async function getJarvisCoordinationContextBlock(
 ): Promise<string> {
   const projectRoot = getStoredProjectRoot(projectId);
   if (!projectRoot.trim()) return '';
-  const summary = (await loadCoordinationSummary(projectRoot)).trim();
+
+  // Two ledgers: terminal agents (`.vibespace` via native) and chat
+  // multitask/subagents (`.jarvis/agent-coordination.json`). Every Jarvis
+  // chat turn should see both when a project root is configured.
+  const sections: string[] = [];
+  try {
+    const terminalSummary = (await loadCoordinationSummary(projectRoot)).trim();
+    if (terminalSummary) sections.push(terminalSummary);
+  } catch {
+    // Terminal ledger optional in browser preview.
+  }
+  try {
+    const chatSnapshot = await loadJarvisCoordinationSnapshot(projectRoot);
+    const chatSummary = summarizeJarvisChatCoordination(chatSnapshot).trim();
+    if (chatSummary) sections.push(chatSummary);
+  } catch {
+    // Chat ledger optional when fs is unavailable.
+  }
+
+  const summary = sections.join('\n\n').trim();
   if (!summary) return '';
   const bounded = summary.length <= JARVIS_COORDINATION_CONTEXT_CHARS
     ? summary
     : `${summary.slice(0, JARVIS_COORDINATION_CONTEXT_CHARS)}\n…[coordination summary truncated by VibeSpace]`;
   return [
-    'Jarvis chat coordination awareness for the active project.',
-    'Treat this as read-only status context about terminal agents, claimed files, locks, and recent handoffs. Do not expose raw coordination files.',
+    'Jarvis chat coordination awareness for the active project (all chats).',
+    'Treat this as read-only status about terminal agents, chat multitask/subagents, claimed files, locks, and recent handoffs. Do not expose raw coordination files.',
     '',
     '```',
     bounded,

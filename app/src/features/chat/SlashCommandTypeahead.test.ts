@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { HelpCircle, Terminal, Wrench } from 'lucide-react';
 import {
   SLASH_COMMANDS,
+  findSlashCommandDef,
+  isChatAttachSlashCmd,
   normalizeSlashCmd,
   orderSlashCommandsForDisplay,
   slashCmdMatchScore,
@@ -53,6 +55,13 @@ describe('orderSlashCommandsForDisplay', () => {
     expect(normalizeSlashCmd('subagnts')).toBe('subagents');
     expect(normalizeSlashCmd('multiatask')).toBe('multitask');
     expect(normalizeSlashCmd('multitaksk')).toBe('multitask');
+    expect(normalizeSlashCmd('clearfile')).toBe('clearfiles');
+    expect(normalizeSlashCmd('cearfile')).toBe('clearfiles');
+  });
+
+  it('marks /file as a project-file attach picker command', () => {
+    expect(findSlashCommandDef('file')?.hasOptions).toBe(true);
+    expect(isChatAttachSlashCmd('file')).toBe(true);
   });
 
   it('matches alias queries to the canonical command', () => {
@@ -74,6 +83,27 @@ describe('orderSlashCommandsForDisplay', () => {
     expect(SLASH_COMMANDS.find((cmd) => cmd.cmd === 'subagents')).toMatchObject({
       cmd: 'subagents',
       category: 'chat',
+      takesArg: true,
+    });
+  });
+
+  it('includes /undo and /redo utility commands', () => {
+    expect(SLASH_COMMANDS.find((cmd) => cmd.cmd === 'undo')).toMatchObject({
+      cmd: 'undo',
+      category: 'utility',
+    });
+    expect(SLASH_COMMANDS.find((cmd) => cmd.cmd === 'redo')).toMatchObject({
+      cmd: 'redo',
+      category: 'utility',
+    });
+    expect(findSlashCommandDef('undo')?.cmd).toBe('undo');
+    expect(findSlashCommandDef('redo')?.cmd).toBe('redo');
+  });
+
+  it('includes the local /theme utility command', () => {
+    expect(findSlashCommandDef('theme')).toMatchObject({
+      cmd: 'theme',
+      category: 'utility',
       takesArg: true,
     });
   });

@@ -82,6 +82,7 @@ import {
 } from '@/features/schedule/jarvisSchedules';
 import { formatChatModelSelectionLabel, modelSelectionContextFromAuth } from '@/lib/ai/modelSelection';
 import { markTerminalExecution } from '@/features/terminals/terminalExecutionStore';
+import { createJarvisCoreActions } from './registryJarvisCore';
 
 /* --------------------------------------------------------------------------
  * Helpers
@@ -401,15 +402,27 @@ const THEME_ACTIONS: ActionDef[] = [
     },
   },
   {
+    id: 'theme.vibespace',
+    category: 'theme',
+    label: 'Switch to VibeSpace theme',
+    description: 'Set the workspace to the pastel origami palette.',
+    icon: Sparkles,
+    params: [],
+    run: async () => {
+      useUIStore.getState().setTheme('vibespace');
+      return ok('Theme: VibeSpace.');
+    },
+  },
+  {
     id: 'theme.dark',
     category: 'theme',
-    label: 'Switch to Dark theme',
-    description: 'Set the workspace to the warm wood (dark) palette.',
+    label: 'Switch to Default theme',
+    description: 'Set the workspace to the established warm dark palette.',
     icon: Moon,
     params: [],
     run: async () => {
-      useUIStore.getState().setTheme('dark');
-      return ok('Theme: Dark.');
+      useUIStore.getState().setTheme('default');
+      return ok('Theme: Default.');
     },
   },
   {
@@ -428,14 +441,14 @@ const THEME_ACTIONS: ActionDef[] = [
     id: 'theme.toggle',
     category: 'theme',
     label: 'Toggle theme',
-    description: 'Flip between Dark and Light.',
+    description: 'Flip between Default and Light.',
     icon: RotateCw,
     params: [],
     run: async () => {
       const cur = useUIStore.getState().theme;
-      const next = cur === 'dark' ? 'light' : 'dark';
+      const next = cur === 'default' ? 'light' : 'default';
       useUIStore.getState().setTheme(next);
-      return ok(`Theme: ${next === 'dark' ? 'Dark' : 'Light'}.`);
+      return ok(`Theme: ${next === 'default' ? 'Default' : 'Light'}.`);
     },
   },
 ];
@@ -1616,7 +1629,7 @@ const PRODUCTIVITY_ACTIONS: ActionDef[] = [
 
 /** All built-in actions in canonical display order. */
 export function getBuiltinActions(): ActionDef[] {
-  return [
+  const baseActions: ActionDef[] = [
     ...NAVIGATION_ACTIONS,
     ...SETTINGS_ACTIONS,
     ...THEME_ACTIONS,
@@ -1632,6 +1645,8 @@ export function getBuiltinActions(): ActionDef[] {
     ...APP_CONTROL_ACTIONS,
     ...PRESET_ACTIONS,
   ];
+  const byId = new Map(baseActions.map((action) => [action.id, action]));
+  return [...baseActions, ...createJarvisCoreActions((id) => byId.get(id))];
 }
 
 /**

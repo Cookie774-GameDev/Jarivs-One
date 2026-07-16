@@ -44,6 +44,8 @@ const RECENT_CAP = 5;
 /** Static example list shown in the footer. Kept here so it stays close
  * to the parser's vocabulary — easy to refresh when we add new verbs. */
 const EXAMPLE_HINTS = [
+  'spawn a web development workbench',
+  'change wallpaper to space clouds',
   'create project tiger',
   'open 4 terminals',
   'open claude in tiger',
@@ -94,6 +96,13 @@ function renderPreview(intent: AssistantIntent): React.ReactNode {
           {intent.project ? <> in <span className="text-foreground">'{intent.project}'</span></> : null}.
         </>
       );
+    case 'workbench':
+      if (intent.action === 'spawn') return <>→ Will {verb('spawn Workbench')} from <span className="text-foreground">{intent.templateId}</span>.</>;
+      if (intent.action === 'add-panel') return <>→ Will {verb(`add ${intent.count} ${intent.panelKind} panel${intent.count === 1 ? '' : 's'}`)} to Workbench.</>;
+      if (intent.action === 'set-wallpaper') return <>→ Will {verb('change Workbench wallpaper')} to <span className="text-foreground">{intent.wallpaperId}</span>.</>;
+      if (intent.action === 'pause-wallpaper') return <>→ Will {verb('pause Workbench wallpaper motion')}.</>;
+      if (intent.action === 'resume-wallpaper') return <>→ Will {verb('resume Workbench wallpaper motion')}.</>;
+      return <>→ Will {verb('open Workbench')}.</>;
     case 'create_custom_command':
       return <>→ Will {verb('create command')} <span className="text-foreground">'{intent.name}'</span> to run <span className="text-foreground">{intent.command}</span>.</>;
     case 'run_custom_command':

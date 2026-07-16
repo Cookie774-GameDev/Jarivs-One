@@ -1,4 +1,10 @@
-export { ChatActivityTimeline, ActivityRow } from './ChatActivityTimeline';
+export {
+  ChatActivityTimeline,
+  ActivityRow,
+  summarizeChatActivity,
+  parseTokensFromSubtitle,
+  selectActivityFeedEvents,
+} from './ChatActivityTimeline';
 export {
   useChatActivityStore,
   createChatActivityId,

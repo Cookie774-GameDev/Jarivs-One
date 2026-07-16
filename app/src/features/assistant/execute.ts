@@ -26,6 +26,7 @@ import { fireOutboundCall, sendOutboundMessage } from '@/features/call/outbound'
 import { formatContextTreeForPrompt, loadStoredContextTree } from '@/features/context/tree';
 import { useToolStore, slugify } from '@/features/tools/toolStore';
 import { runAction } from '@/lib/actions';
+import { useWorkbenchStore } from '@/features/workbench/store';
 import type { AgentId, ProjectId, WorkspaceId } from '@/types/common';
 import type { AssistantIntent, AssistantResult } from './intents';
 
@@ -83,6 +84,43 @@ function hueFromName(name: string): number {
 export async function executeIntent(intent: AssistantIntent): Promise<AssistantResult> {
   try {
     switch (intent.kind) {
+      // ----------------------------------------------------------------
+      case 'workbench': {
+        const workbench = useWorkbenchStore.getState();
+        const { openOrFocusWorkbenchWindow } = await import('@/features/workbench/window');
+        // Always surface Workbench in the main window so it is never missing.
+        useUIStore.getState().setRoute('workbench');
+        const openWindow = async () =>
+          openOrFocusWorkbenchWindow({ name: useWorkbenchStore.getState().name });
+        if (intent.action === 'open') {
+          await openWindow();
+          return ok('Opened Workbench.');
+        }
+        if (intent.action === 'spawn') {
+          if (!workbench.applyTemplate(intent.templateId)) {
+            return fail(`No Workbench template named '${intent.templateId}'.`);
+          }
+          await openWindow();
+          return ok(`Spawned the ${intent.templateId.replace(/-/g, ' ')} Workbench.`);
+        }
+        if (intent.action === 'add-panel') {
+          const count = Math.min(Math.max(1, intent.count), 10);
+          for (let index = 0; index < count; index += 1) {
+            workbench.addPanel(intent.panelKind);
+          }
+          await openWindow();
+          return ok(`Added ${count} ${intent.panelKind} panel${count === 1 ? '' : 's'} to Workbench.`);
+        }
+        if (intent.action === 'set-wallpaper') {
+          workbench.setWallpaper(intent.wallpaperId);
+          await openWindow();
+          return ok(`Changed the Workbench wallpaper to ${intent.wallpaperId.replace(/-/g, ' ')}.`);
+        }
+        const paused = intent.action === 'pause-wallpaper';
+        workbench.configureWallpaper({ paused });
+        return ok(paused ? 'Paused Workbench wallpaper motion.' : 'Resumed Workbench wallpaper motion.');
+      }
+
       // ----------------------------------------------------------------
       case 'create_project': {
         const workspaceId = getWorkspaceId();

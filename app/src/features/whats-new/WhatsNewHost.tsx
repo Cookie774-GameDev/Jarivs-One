@@ -24,21 +24,25 @@ export function WhatsNewHost() {
   const open = useUIStore((s) => s.whatsNewOpen);
   const setOpen = useUIStore((s) => s.setWhatsNewOpen);
   const onboardingComplete = useUIStore((s) => s.onboardingComplete);
+  const productTutorialStatus = useUIStore((s) => s.productTutorialStatus);
 
   const { hasUpdate, markSeen } = useWhatsNew();
 
   // One-shot auto-open on mount. We don't re-open if the user dismisses
   // and then the user re-opens manually — that's controlled by `open`.
+  // Defer while the first-run product tutorial offer is pending so the
+  // two overlays don't stack.
   const autoOpenedRef = React.useRef(false);
   React.useEffect(() => {
     if (autoOpenedRef.current) return;
     if (!onboardingComplete) return; // wait until past onboarding
+    if (productTutorialStatus === 'pending') return;
     if (!hasUpdate) return;
     autoOpenedRef.current = true;
     setOpen(true);
     // Note: we don't call markSeen() here — we mark on dismissal so the
     // user actually sees the modal before we forget about the bump.
-  }, [hasUpdate, onboardingComplete, setOpen]);
+  }, [hasUpdate, onboardingComplete, productTutorialStatus, setOpen]);
 
   return (
     <WhatsNewModal

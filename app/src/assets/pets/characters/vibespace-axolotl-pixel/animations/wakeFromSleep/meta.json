@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "characterId": "vibespace-axolotl-pixel",
+  "animationId": "wakeFromSleep",
+  "loop": false,
+  "oneShot": true,
+  "fps": 24,
+  "frameDurationMs": 42,
+  "frameCount": 8,
+  "canvas": {
+    "width": 128,
+    "height": 128
+  },
+  "frames": [
+    "frame_000.png",
+    "frame_001.png",
+    "frame_002.png",
+    "frame_003.png",
+    "frame_004.png",
+    "frame_005.png",
+    "frame_006.png",
+    "frame_007.png"
+  ],
+  "sourceProbe": {
+    "width": 1280,
+    "height": 720,
+    "fps": 24.0,
+    "nb_frames": 240,
+    "duration": 10.0
+  }
+}

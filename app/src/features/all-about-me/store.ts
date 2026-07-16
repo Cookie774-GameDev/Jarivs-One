@@ -1,12 +1,10 @@
 import { create } from 'zustand';
-import { createJSONStorage, persist } from 'zustand/middleware';
-import { safeLocalStorage } from '@/lib/persistence/safeLocalStorage';
 import {
   ALL_ABOUT_ME_UPDATE_INTERVAL,
   buildAllAboutMeMarkdown,
-  shouldUpdateAllAboutMe,
   type AllAboutMeAnswers,
 } from './profile';
+import { sanitizeAllAboutMeMarkdown } from './allAboutMeSecurity';
 
 export type AllAboutMeSource = 'empty' | 'quiz' | 'chat-learning' | 'manual';
 export type AllAboutMeTestMode = 'create' | 'update';
@@ -19,6 +17,7 @@ export interface AllAboutMeTestDraft {
 }
 
 interface AllAboutMeState {
+  accountScope: string;
   markdown: string;
   quizAnswers: AllAboutMeAnswers | null;
   testDraft: AllAboutMeTestDraft | null;
@@ -38,9 +37,11 @@ interface AllAboutMeState {
   setLearningEnabled: (enabled: boolean) => void;
   deleteProfile: (confirmation: string) => boolean;
   resetProfile: () => void;
+  setAccountScope: (accountId: string) => void;
 }
 
 const emptyState = {
+  accountScope: '',
   markdown: '',
   quizAnswers: null,
   testDraft: null,
@@ -52,12 +53,11 @@ const emptyState = {
 };
 
 export const useAllAboutMeStore = create<AllAboutMeState>()(
-  persist(
     (set, get) => ({
       ...emptyState,
 
       saveQuizProfile: (answers, markdown) => {
-        const nextMarkdown = markdown?.trim() || buildAllAboutMeMarkdown(answers);
+        const nextMarkdown = sanitizeAllAboutMeMarkdown(markdown?.trim() || buildAllAboutMeMarkdown(answers));
         set({
           quizAnswers: answers,
           markdown: nextMarkdown,
@@ -81,28 +81,23 @@ export const useAllAboutMeStore = create<AllAboutMeState>()(
 
       setMarkdown: (markdown) =>
         set({
-          markdown: markdown.trim(),
-          source: markdown.trim() ? 'manual' : 'empty',
-          updatedAt: markdown.trim() ? Date.now() : null,
+          markdown: sanitizeAllAboutMeMarkdown(markdown),
+          source: sanitizeAllAboutMeMarkdown(markdown) ? 'manual' : 'empty',
+          updatedAt: sanitizeAllAboutMeMarkdown(markdown) ? Date.now() : null,
         }),
 
       recordUserMessage: () =>
         set((state) => ({ totalUserMessages: state.totalUserMessages + 1 })),
 
-      needsLearningUpdate: () => {
-        const state = get();
-        return Boolean(
-          state.learningEnabled &&
-            state.markdown.trim() &&
-            shouldUpdateAllAboutMe({
-              totalUserMessages: state.totalUserMessages,
-              lastUpdatedAtMessageCount: state.lastUpdatedAtMessageCount,
-            }),
-        );
-      },
+      // All About Me is an intentional stable profile. Automatic interaction
+      // preferences belong exclusively to the account-scoped learning.md
+      // store, so the legacy runtime cadence is declined at its existing gate.
+      needsLearningUpdate: () => false,
 
+      // The runtime may still call this for an explicit user-requested profile
+      // refresh. Automatic calls are prevented by needsLearningUpdate().
       applyLearningRevision: (markdown) => {
-        const next = markdown.trim();
+        const next = sanitizeAllAboutMeMarkdown(markdown);
         if (!next) return;
         set((state) => ({
           markdown: next,
@@ -112,32 +107,21 @@ export const useAllAboutMeStore = create<AllAboutMeState>()(
         }));
       },
 
-      setLearningEnabled: () => set({ learningEnabled: true }),
+      setLearningEnabled: (enabled) => set({ learningEnabled: enabled }),
 
       deleteProfile: (confirmation) => {
         if (confirmation !== 'delete') return false;
-        set({ ...emptyState });
+        set({ ...emptyState, accountScope: get().accountScope });
         return true;
       },
 
-      resetProfile: () => set({ ...emptyState }),
+      resetProfile: () => set({ ...emptyState, accountScope: get().accountScope }),
+      setAccountScope: (rawAccountId) => {
+        const accountScope = rawAccountId.trim() || 'local-unassigned';
+        if (accountScope === get().accountScope) return;
+        set({ ...emptyState, accountScope });
+      },
     }),
-    {
-      name: 'jarvis-all-about-me',
-      storage: createJSONStorage(() => safeLocalStorage),
-      version: 1,
-      partialize: (state) => ({
-        markdown: state.markdown,
-        quizAnswers: state.quizAnswers,
-        testDraft: state.testDraft,
-        source: state.source,
-        updatedAt: state.updatedAt,
-        totalUserMessages: state.totalUserMessages,
-        lastUpdatedAtMessageCount: state.lastUpdatedAtMessageCount,
-        learningEnabled: state.learningEnabled,
-      }),
-    },
-  ),
 );
 
 export { ALL_ABOUT_ME_UPDATE_INTERVAL };

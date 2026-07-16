@@ -110,6 +110,30 @@ const TerminalsPage = React.lazy(() =>
     })),
 );
 
+const WorkbenchPage = React.lazy(() =>
+  import('@/features/workbench')
+    .then((m) => ({ default: m.WorkbenchPage }))
+    .catch(() => ({
+      default: () => <PlaceholderPage title="Workbench" hint="Module not loaded" />,
+    })),
+);
+
+const PreviewStudioPage = React.lazy(() =>
+  import('@/features/preview')
+    .then((m) => ({ default: m.PreviewStudio }))
+    .catch(() => ({
+      default: () => <PlaceholderPage title="Preview Studio" hint="Module not loaded" />,
+    })),
+);
+
+const BrowserPage = React.lazy(() =>
+  import('@/features/browser')
+    .then((m) => ({ default: m.BrowserPage }))
+    .catch(() => ({
+      default: () => <PlaceholderPage title="Vibe Browser" hint="Module not loaded" />,
+    })),
+);
+
 const KanbanPage = React.lazy(() =>
   import('@/features/kanban')
     .then((m) => ({ default: m.KanbanPage }))
@@ -192,6 +216,9 @@ const AccountPage = React.lazy(() =>
 // `Route` union in `ui.ts`, TypeScript will flag this map as incomplete.
 const routeMap: Record<Route, React.LazyExoticComponent<React.ComponentType>> = {
   chat: ChatRoute,
+  workbench: WorkbenchPage,
+  preview: PreviewStudioPage,
+  browser: BrowserPage,
   terminal: TerminalsPage,
   kanban: KanbanPage,
   schedule: SchedulePage,
@@ -212,6 +239,8 @@ export function PageRouter() {
   const visibleRoute = React.useDeferredValue(route);
   const Page = routeMap[visibleRoute] ?? ChatRoute;
   const [terminalMounted, setTerminalMounted] = React.useState(visibleRoute === 'terminal');
+  const [previewMounted, setPreviewMounted] = React.useState(visibleRoute === 'preview');
+  const [browserMounted, setBrowserMounted] = React.useState(visibleRoute === 'browser');
 
   React.useEffect(() => {
     if (visibleRoute !== 'terminal') return;
@@ -222,7 +251,16 @@ export function PageRouter() {
     return () => window.cancelAnimationFrame(raf);
   }, [visibleRoute]);
 
+  React.useEffect(() => {
+    if (visibleRoute === 'preview') setPreviewMounted(true);
+    if (visibleRoute === 'browser') setBrowserMounted(true);
+  }, [visibleRoute]);
+
   const shouldRenderTerminal = terminalMounted || visibleRoute === 'terminal';
+  const shouldRenderPreview = previewMounted || visibleRoute === 'preview';
+  const shouldRenderBrowser = browserMounted || visibleRoute === 'browser';
+  const isCachedSurface =
+    visibleRoute === 'terminal' || visibleRoute === 'preview' || visibleRoute === 'browser';
 
   return (
     <React.Suspense fallback={<PageLoading />}>
@@ -235,9 +273,25 @@ export function PageRouter() {
           <TerminalsPage />
         </div>
       ) : null}
-      {visibleRoute !== 'terminal' ? (
-        <Page key={visibleRoute} />
+      {shouldRenderPreview ? (
+        <div
+          data-preview-route-cache
+          aria-hidden={visibleRoute !== 'preview'}
+          className={visibleRoute === 'preview' ? 'h-full w-full' : 'hidden'}
+        >
+          <PreviewStudioPage />
+        </div>
       ) : null}
+      {shouldRenderBrowser ? (
+        <div
+          data-browser-route-cache
+          aria-hidden={visibleRoute !== 'browser'}
+          className={visibleRoute === 'browser' ? 'h-full w-full' : 'hidden'}
+        >
+          <BrowserPage />
+        </div>
+      ) : null}
+      {!isCachedSurface ? <Page key={visibleRoute} /> : null}
     </React.Suspense>
   );
 }

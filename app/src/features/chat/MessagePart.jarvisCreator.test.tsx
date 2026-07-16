@@ -32,7 +32,7 @@ describe('MessagePart Jarvis creator draft actions', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /Apply agent draft/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Push to agent/i }));
 
     expect(listener).toHaveBeenCalledOnce();
     expect(listener.mock.calls[0]?.[0]).toMatchObject({ detail: { name: 'Launch Planner' } });
@@ -63,7 +63,7 @@ describe('MessagePart Jarvis creator draft actions', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /Apply skill draft/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Push to skill/i }));
 
     expect(listener).toHaveBeenCalledOnce();
     expect(listener.mock.calls[0]?.[0]).toMatchObject({ detail: { title: 'Polish Writer' } });
@@ -79,11 +79,11 @@ describe('MessagePart Jarvis creator draft actions', () => {
         part={{
           kind: 'text',
           text: [
-            '**Additional aspects:**',
+            '**Skill Name:** "Smart Check Reminder"',
             '',
-            '* Allow users to customize their conversation experience.',
-            '* Selecting from a provided list of FAQs.',
-            '* Stopping conversations when the user asks for help.',
+            '**Behavior:**',
+            '1. Ask if the check was already completed.',
+            '2. Deliver a gentle reminder when needed.',
           ].join('\n'),
         }}
         creatorDraftKind="skill"
@@ -95,8 +95,9 @@ describe('MessagePart Jarvis creator draft actions', () => {
     expect(listener).toHaveBeenCalledOnce();
     expect(listener.mock.calls[0]?.[0]).toMatchObject({
       detail: {
-        title: 'Jarvis Skill Draft',
-        systemPromptAddendum: expect.stringContaining('Selecting from a provided list'),
+        title: 'Smart Check Reminder',
+        systemPromptAddendum: expect.stringContaining('gentle reminder'),
+        body: expect.stringContaining('# Smart Check Reminder'),
       },
     });
     window.removeEventListener(JARVIS_CREATOR_APPLY_SKILL_EVENT, listener);

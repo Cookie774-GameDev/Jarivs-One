@@ -37,4 +37,16 @@ describe('DevConsole redaction', () => {
     expect(redacted.text).toContain('[truncated');
     expect(redacted.rows).toHaveLength(26);
   });
+
+  it('redacts credential assignments inside otherwise safe fields', () => {
+    devConsole.log({
+      channel: 'action',
+      level: 'info',
+      message: 'Action search',
+      detail: { params: { query: 'find apiKey=do-not-log-this-value in files' } },
+    });
+    const serialized = JSON.stringify(useDevConsoleStore.getState().entries);
+    expect(serialized).not.toContain('do-not-log-this-value');
+    expect(serialized).toContain('[redacted]');
+  });
 });

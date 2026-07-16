@@ -9,6 +9,7 @@ import {
   registerJarvisChatAgent,
   saveJarvisCoordinationSnapshot,
 } from './coordination';
+import { formatActiveChatCommandMessage } from '@/features/chat/chatActiveCommands';
 import { buildJarvisChatAgentPrompt, createJarvisChatAgentCard } from './agents';
 import { useJarvisInteractionStore } from './sessionStore';
 import type { JarvisChatAgent } from './types';
@@ -75,10 +76,12 @@ export async function launchJarvisChatAgent(input: LaunchJarvisChatAgentInput): 
 
   const firstCard = cards[0];
   if (!firstCard) throw new Error('No Jarvis agent cards were created');
+  const commandName = input.commandName === 'subagents' ? 'subagents' : 'multitask';
   await repos.messageRepo.create({
     chat_id: input.parentChatId as ChatId,
     role: 'user',
-    parts: [{ kind: 'text', text: `Slash command /${input.commandName ?? 'multitask'} attached: ${input.task}` }],
+    // Active command in use — not an attachment chip.
+    parts: [{ kind: 'text', text: formatActiveChatCommandMessage(commandName, input.task) }],
   });
   await repos.messageRepo.create({
     chat_id: input.parentChatId as ChatId,

@@ -5,6 +5,8 @@ import { useChatMessages } from './hooks';
 import { MessageBubble } from './MessageBubble';
 import { ChatActivityTimeline } from './activity';
 import { ChatAgentActivityPanel } from '@/features/jarvis-interaction/AgentActivityCard';
+import { JarvisTaskProgressCard } from '@/features/jarvis-runs/JarvisTaskProgressCard';
+import { JarvisMemoryStatus } from '@/features/jarvis-memory/JarvisMemoryStatus';
 import type { ChatId, Message, Part } from '@/types';
 import type { JarvisCreatorKind } from '@/features/jarvis-creator/contracts';
 
@@ -72,23 +74,29 @@ export function ChatThread({ chatId, compact = false }: ChatThreadProps) {
     <div
       ref={scrollRef}
       onScroll={onScroll}
-      className="flex-1 min-h-0 overflow-y-auto"
+      className="min-h-0 flex-1 overflow-y-auto"
       role="log"
       aria-live="polite"
       aria-relevant="additions text"
+      data-tour="chat-thread"
     >
-      <div className={compact ? 'w-full px-2 py-3 flex flex-col gap-3' : 'mx-auto w-full max-w-[860px] px-4 py-6 flex flex-col gap-4'}>
+      <div
+        className={
+          compact
+            ? 'flex w-full flex-col gap-3 px-2 py-3'
+            : 'mx-auto flex w-full max-w-[860px] flex-col gap-4 px-4 py-6'
+        }
+      >
+        {/* Top of every chat; scrolls away with messages (not sticky). */}
+        <ChatActivityTimeline chatId={chatId} compact={compact} />
         {messages.length === 0 ? (
           <ThreadHint />
         ) : (
-          <>
-            <ChatActivityTimeline chatId={chatId} compact={compact} />
-            <AnimatePresence initial={false}>
-              {messages.map((m) => (
-                <MessageBubble key={m.id} message={m} compact={compact} creatorDraftKind={creatorDraftKind} />
-              ))}
-            </AnimatePresence>
-          </>
+          <AnimatePresence initial={false}>
+            {messages.map((m) => (
+              <MessageBubble key={m.id} message={m} compact={compact} creatorDraftKind={creatorDraftKind} />
+            ))}
+          </AnimatePresence>
         )}
         <ChatAgentActivityPanel
           chatId={chatId}
@@ -96,6 +104,8 @@ export function ChatThread({ chatId, compact = false }: ChatThreadProps) {
           compact={compact}
           className={compact ? 'mx-1 mb-6' : 'sticky bottom-0 z-10 mb-8'}
         />
+        <JarvisTaskProgressCard chatId={String(chatId)} compact={compact} />
+        <JarvisMemoryStatus chatId={String(chatId)} />
       </div>
     </div>
   );

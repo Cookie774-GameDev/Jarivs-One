@@ -1,7 +1,6 @@
 import type { AgentId, ChatId, ProjectId, WorkspaceId } from '@/types/common';
 import type { Chat, Message } from '@/types/chat';
 import {
-  buildJarvisCreatorPrompt,
   buildJarvisCreatorQuestionBlock,
   type JarvisCreatorKind,
 } from './contracts';
@@ -40,14 +39,25 @@ export async function createJarvisCreatorChat({
     mode: 'chat',
     active_agent_ids: [jarvisAgentId],
   });
+
+  // Question card only — no long setup essay above the prompts.
+  // Drafting instructions are injected by the AI runtime for creator chats.
+  const block = buildJarvisCreatorQuestionBlock(kind);
+  if (currentName?.trim()) {
+    const label = kind === 'agent' ? 'agent' : 'skill';
+    const descBits = [
+      block.description,
+      `Editing ${label}: ${currentName.trim()}.`,
+      currentDescription?.trim() ? `Current description: ${currentDescription.trim()}` : '',
+    ].filter(Boolean);
+    block.description = descBits.join(' ');
+  }
+
   await messageRepo.create({
     chat_id: chat.id,
     role: 'assistant',
     agent_id: jarvisAgentId,
-    parts: [
-      { kind: 'text', text: buildJarvisCreatorPrompt(kind, { currentName, currentDescription }) },
-      { kind: 'question_block', block: buildJarvisCreatorQuestionBlock(kind) },
-    ],
+    parts: [{ kind: 'question_block', block }],
   });
   return chat.id;
 }

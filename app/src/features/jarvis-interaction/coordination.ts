@@ -211,6 +211,60 @@ export function coordinationFilePath(projectRoot: string): string {
   return `${root}/.jarvis/agent-coordination.json`;
 }
 
+/**
+ * Compact, prompt-safe summary of chat multitask/subagent coordination.
+ * Used so every Jarvis chat turn can see active chat agents + file locks
+ * from `.jarvis/agent-coordination.json` (distinct from terminal `.vibespace`).
+ */
+export function summarizeJarvisChatCoordination(
+  snapshot: JarvisCoordinationSnapshot,
+): string {
+  const activeLocks = snapshot.locks.filter((lock) => lock.status === 'active');
+  if (snapshot.agents.length === 0 && activeLocks.length === 0) return '';
+
+  const lines: string[] = [
+    '## Chat multitask / subagent coordination',
+    `Ledger: ${coordinationFilePath(snapshot.projectRoot)}`,
+    `Updated: ${snapshot.generatedAt}`,
+    '',
+  ];
+
+  if (snapshot.agents.length > 0) {
+    lines.push('### Chat agents');
+    for (const agent of snapshot.agents.slice(0, 24)) {
+      const task = agent.task.replace(/\s+/g, ' ').trim().slice(0, 120);
+      lines.push(
+        `- ${agent.name} [${agent.status}] id=${agent.agentId} chat=${agent.chatId} model=${agent.modelLabel}`,
+      );
+      if (task) lines.push(`  task: ${task}`);
+      if (agent.currentStep) lines.push(`  step: ${agent.currentStep}`);
+      if (agent.lockedFiles.length > 0) {
+        lines.push(`  locked: ${agent.lockedFiles.slice(0, 8).join(', ')}`);
+      }
+    }
+  }
+
+  if (activeLocks.length > 0) {
+    lines.push('', '### Active file locks');
+    for (const lock of activeLocks.slice(0, 24)) {
+      lines.push(
+        `- ${lock.filePath} by ${lock.lockedByAgentName || lock.lockedByAgentId}` +
+          (lock.reason ? ` (${lock.reason})` : ''),
+      );
+    }
+  }
+
+  const recent = snapshot.events.slice(-8);
+  if (recent.length > 0) {
+    lines.push('', '### Recent events');
+    for (const event of recent) {
+      lines.push(`- [${event.type}] ${event.summary}`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
 export async function loadJarvisCoordinationSnapshot(projectRoot: string): Promise<JarvisCoordinationSnapshot> {
   const now = new Date().toISOString();
   const path = coordinationFilePath(projectRoot);

@@ -11,9 +11,9 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/toast';
+import { cn } from '@/lib/utils';
 import { generateAllAboutMeMarkdown, type AllAboutMeCompletion } from '@/features/all-about-me/ai';
 import {
   completeAllAboutMePrompt,
@@ -28,6 +28,7 @@ import {
   type AllAboutMeQuestionAnswer,
 } from '@/features/all-about-me/profile';
 import type { AllAboutMeTestMode } from '@/features/all-about-me/store';
+import { JarvisLearningControls } from '@/features/jarvis-memory/JarvisLearningControls';
 
 interface AllAboutMeProps {
   completePrompt?: AllAboutMeCompletion;
@@ -107,26 +108,46 @@ function QuestionField({
   prompt,
   value,
   onChange,
+  onCtrlEnter,
 }: {
   index: number;
   questionId: string;
   prompt: string;
   value: string;
   onChange: (value: string) => void;
+  onCtrlEnter: () => void;
 }) {
   return (
-    <div className="space-y-2">
-      <Label htmlFor={`all-about-me-${questionId}`}>{index + 1}. {prompt}</Label>
+    <div className="space-y-3">
+      <Label htmlFor={`all-about-me-${questionId}`} className="text-[15px] font-medium leading-snug text-foreground">
+        <span className="mr-2 text-metadata font-semibold text-accent-copper">{index + 1}.</span>
+        {prompt}
+      </Label>
       <Textarea
         id={`all-about-me-${questionId}`}
         value={value}
+        autoFocus
         onChange={(event) => onChange(event.currentTarget.value)}
-        placeholder="Quick answer..."
-        className="min-h-[74px]"
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+            event.preventDefault();
+            onCtrlEnter();
+          }
+        }}
+        placeholder="Type fast — Ctrl+Enter for next"
+        className="min-h-[88px] resize-none text-[15px] leading-relaxed"
       />
+      <p className="text-[11px] text-muted-foreground">
+        <kbd className="rounded border border-border bg-panel px-1 py-px font-mono text-[10px]">Ctrl</kbd>
+        {' + '}
+        <kbd className="rounded border border-border bg-panel px-1 py-px font-mono text-[10px]">Enter</kbd>
+        {' next question'}
+      </p>
     </div>
   );
 }
+
+type TestStep = 'questions' | 'grade';
 
 function ModelChoiceCard({
   option,
@@ -173,12 +194,9 @@ export function AllAboutMe({
   const quizAnswers = useAllAboutMeStore((state) => state.quizAnswers);
   const testDraft = useAllAboutMeStore((state) => state.testDraft);
   const updatedAt = useAllAboutMeStore((state) => state.updatedAt);
-  const totalUserMessages = useAllAboutMeStore((state) => state.totalUserMessages);
-  const lastUpdatedAtMessageCount = useAllAboutMeStore((state) => state.lastUpdatedAtMessageCount);
   const saveQuizProfile = useAllAboutMeStore((state) => state.saveQuizProfile);
   const saveTestDraft = useAllAboutMeStore((state) => state.saveTestDraft);
   const clearTestDraft = useAllAboutMeStore((state) => state.clearTestDraft);
-  const setLearningEnabled = useAllAboutMeStore((state) => state.setLearningEnabled);
   const deleteProfile = useAllAboutMeStore((state) => state.deleteProfile);
   const availableModels = React.useMemo(
     () => modelOptions ?? getAllAboutMeModelOptions(),
@@ -191,9 +209,26 @@ export function AllAboutMe({
     testDraft?.questionValues ?? initialQuestionValues(quizAnswers),
   );
   const [currentQuestionIndex, setCurrentQuestionIndex] = React.useState(0);
+  const [testStep, setTestStep] = React.useState<TestStep>('questions');
   const [generating, setGenerating] = React.useState(false);
   const [deleteArmed, setDeleteArmed] = React.useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = React.useState('');
+  const choiceAdvanceTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const navRef = React.useRef({ testStep: 'questions' as TestStep, currentQuestionIndex: 0 });
+  React.useEffect(() => {
+    navRef.current = { testStep, currentQuestionIndex };
+  }, [testStep, currentQuestionIndex]);
+
+  // Latest draft snapshot for close/unmount/pagehide — never lose answers.
+  const draftLiveRef = React.useRef({
+    testOpen: false,
+    selectedModelId,
+    testMode,
+    questionValues,
+  });
+  React.useEffect(() => {
+    draftLiveRef.current = { testOpen, selectedModelId, testMode, questionValues };
+  }, [testOpen, selectedModelId, testMode, questionValues]);
 
   React.useEffect(() => {
     const selectedExists = availableModels.some((option) => option.id === selectedModelId);
@@ -209,19 +244,30 @@ export function AllAboutMe({
   }, [quizAnswers, testDraft]);
 
   const selectedModel = availableModels.find((option) => option.id === selectedModelId) ?? null;
-  const writtenQuestions = ALL_ABOUT_ME_TEST_QUESTIONS.filter((question) => question.kind === 'written');
-  const canGenerate = Boolean(selectedModel) && writtenQuestions.every((question) => (
-    questionValues[question.id]?.trim().length
-  ));
+  // Submit is allowed with zero answers — only a real grading model is required.
+  const canGenerate = Boolean(selectedModel);
   const currentQuestion = ALL_ABOUT_ME_TEST_QUESTIONS[currentQuestionIndex] ?? ALL_ABOUT_ME_TEST_QUESTIONS[0]!;
   const answeredCount = ALL_ABOUT_ME_TEST_QUESTIONS.filter((question) => (questionValues[question.id] ?? '').trim()).length;
+  const totalQuestions = ALL_ABOUT_ME_TEST_QUESTIONS.length;
 
   function firstUnansweredIndex(values: Record<string, string>): number {
     const index = ALL_ABOUT_ME_TEST_QUESTIONS.findIndex((question) => !(values[question.id] ?? '').trim());
     return index === -1 ? 0 : index;
   }
 
-  function persistDraft(nextValues = questionValues, nextMode = testMode, nextModelId = selectedModelId) {
+  function hasAnswerProgress(values: Record<string, string>): boolean {
+    return Object.values(values).some((value) => (value ?? '').trim().length > 0);
+  }
+
+  /** Persist unfinished test progress to the AllAboutMe store (localStorage). */
+  function persistDraft(
+    nextValues = questionValues,
+    nextMode = testMode,
+    nextModelId = selectedModelId,
+    options?: { force?: boolean },
+  ) {
+    const force = options?.force === true;
+    if (!force && !hasAnswerProgress(nextValues) && !testOpen) return;
     saveTestDraft({
       selectedModelId: nextModelId,
       mode: nextMode,
@@ -229,35 +275,161 @@ export function AllAboutMe({
     });
   }
 
+  function flushLiveDraft(options?: { force?: boolean }) {
+    const live = draftLiveRef.current;
+    if (!live.testOpen && !options?.force) return;
+    if (!hasAnswerProgress(live.questionValues) && !live.testOpen) return;
+    useAllAboutMeStore.getState().saveTestDraft({
+      selectedModelId: live.selectedModelId,
+      mode: live.testMode,
+      questionValues: live.questionValues,
+    });
+  }
+
+  // Autosave on every answer/model change while the popup is open.
+  React.useEffect(() => {
+    if (!testOpen) return;
+    if (!hasAnswerProgress(questionValues)) return;
+    saveTestDraft({
+      selectedModelId,
+      mode: testMode,
+      questionValues,
+    });
+  }, [testOpen, questionValues, selectedModelId, testMode, saveTestDraft]);
+
+  // Accidental close of Settings (or tab unmount) must still keep answers.
+  React.useEffect(() => {
+    const onPageHide = () => flushLiveDraft({ force: true });
+    window.addEventListener('pagehide', onPageHide);
+    window.addEventListener('beforeunload', onPageHide);
+    return () => {
+      window.removeEventListener('pagehide', onPageHide);
+      window.removeEventListener('beforeunload', onPageHide);
+      flushLiveDraft({ force: true });
+    };
+  }, []);
+
+  function allQuestionsAnswered(values: Record<string, string>): boolean {
+    return ALL_ABOUT_ME_TEST_QUESTIONS.every((question) => (values[question.id] ?? '').trim().length > 0);
+  }
+
   function openTest(mode: AllAboutMeTestMode) {
+    if (choiceAdvanceTimerRef.current) {
+      clearTimeout(choiceAdvanceTimerRef.current);
+      choiceAdvanceTimerRef.current = null;
+    }
     const nextValues = testDraft?.mode === mode ? testDraft.questionValues : initialQuestionValues(quizAnswers);
     setTestMode(mode);
     setQuestionValues(nextValues);
-    setCurrentQuestionIndex(firstUnansweredIndex(nextValues));
+    const done = allQuestionsAnswered(nextValues);
+    const nextStep: TestStep = done ? 'grade' : 'questions';
+    const nextIndex = done ? ALL_ABOUT_ME_TEST_QUESTIONS.length - 1 : firstUnansweredIndex(nextValues);
+    setTestStep(nextStep);
+    setCurrentQuestionIndex(nextIndex);
+    navRef.current = { testStep: nextStep, currentQuestionIndex: nextIndex };
     setSelectedModelId(testDraft?.selectedModelId ?? availableModels[0]?.id ?? '');
     setTestOpen(true);
   }
 
-  function updateQuestionValue(questionId: string, value: string) {
+  function goNextQuestion() {
+    const { testStep: step, currentQuestionIndex: index } = navRef.current;
+    if (step !== 'questions') return;
+    if (index >= ALL_ABOUT_ME_TEST_QUESTIONS.length - 1) {
+      setTestStep('grade');
+      navRef.current = { testStep: 'grade', currentQuestionIndex: index };
+      return;
+    }
+    const next = Math.min(ALL_ABOUT_ME_TEST_QUESTIONS.length - 1, index + 1);
+    navRef.current = { testStep: 'questions', currentQuestionIndex: next };
+    setCurrentQuestionIndex(next);
+  }
+
+  function goPrevQuestion() {
+    const { testStep: step, currentQuestionIndex: index } = navRef.current;
+    if (step === 'grade') {
+      setTestStep('questions');
+      const last = ALL_ABOUT_ME_TEST_QUESTIONS.length - 1;
+      navRef.current = { testStep: 'questions', currentQuestionIndex: last };
+      setCurrentQuestionIndex(last);
+      return;
+    }
+    const prev = Math.max(0, index - 1);
+    navRef.current = { testStep: 'questions', currentQuestionIndex: prev };
+    setCurrentQuestionIndex(prev);
+  }
+
+  function jumpToQuestion(index: number) {
+    if (choiceAdvanceTimerRef.current) {
+      clearTimeout(choiceAdvanceTimerRef.current);
+      choiceAdvanceTimerRef.current = null;
+    }
+    const clamped = Math.max(0, Math.min(ALL_ABOUT_ME_TEST_QUESTIONS.length - 1, index));
+    setTestStep('questions');
+    setCurrentQuestionIndex(clamped);
+    navRef.current = { testStep: 'questions', currentQuestionIndex: clamped };
+  }
+
+  function goToSubmitPage() {
+    if (choiceAdvanceTimerRef.current) {
+      clearTimeout(choiceAdvanceTimerRef.current);
+      choiceAdvanceTimerRef.current = null;
+    }
+    setTestStep('grade');
+    navRef.current = {
+      testStep: 'grade',
+      currentQuestionIndex: navRef.current.currentQuestionIndex,
+    };
+  }
+
+  function updateQuestionValue(questionId: string, value: string, options?: { autoAdvanceChoice?: boolean }) {
     setQuestionValues((prev) => {
       const next = { ...prev, [questionId]: value };
+      // Immediate save — do not wait for Next/close.
+      saveTestDraft({
+        selectedModelId: draftLiveRef.current.selectedModelId,
+        mode: draftLiveRef.current.testMode,
+        questionValues: next,
+      });
       return next;
     });
+    if (options?.autoAdvanceChoice) {
+      if (choiceAdvanceTimerRef.current) clearTimeout(choiceAdvanceTimerRef.current);
+      // Snappy advance so multi-choice feels instant.
+      choiceAdvanceTimerRef.current = setTimeout(() => {
+        choiceAdvanceTimerRef.current = null;
+        goNextQuestion();
+      }, 120);
+    }
   }
 
   function pauseTest() {
-    persistDraft();
+    if (choiceAdvanceTimerRef.current) {
+      clearTimeout(choiceAdvanceTimerRef.current);
+      choiceAdvanceTimerRef.current = null;
+    }
+    persistDraft(questionValues, testMode, selectedModelId, { force: true });
     setTestOpen(false);
     toast.info('AllAboutMe test saved', 'Progress is autosaved. Resume it any time.');
   }
 
+  function closeTestSaving() {
+    if (choiceAdvanceTimerRef.current) {
+      clearTimeout(choiceAdvanceTimerRef.current);
+      choiceAdvanceTimerRef.current = null;
+    }
+    persistDraft(questionValues, testMode, selectedModelId, { force: true });
+    setTestOpen(false);
+  }
+
+  React.useEffect(() => {
+    return () => {
+      if (choiceAdvanceTimerRef.current) clearTimeout(choiceAdvanceTimerRef.current);
+    };
+  }, []);
+
   async function generateProfile() {
     if (!selectedModel) {
       toast.warning('Pick a real AI model first', 'AllAboutMe.md needs a configured model, not mock/demo.');
-      return;
-    }
-    if (!canGenerate) {
-      toast.warning('Finish the key questions first', 'Jarvis needs enough signal to build a useful profile.');
       return;
     }
     setGenerating(true);
@@ -280,7 +452,6 @@ export function AllAboutMe({
     }
   }
 
-  const updateDistance = Math.max(0, 10 - (totalUserMessages - lastUpdatedAtMessageCount));
   const noRealModels = availableModels.length === 0;
 
   return (
@@ -317,17 +488,16 @@ export function AllAboutMe({
               60-question test
             </CardTitle>
             <CardDescription>
-              Pick one real AI model in the popup, pause any time, and save progress automatically.
+              Fast one-question popup. Ctrl+Enter advances. Pick the grading model only at the end.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="rounded-xl border border-border bg-background/40 p-4 shadow-[inset_0_1px_0_hsl(var(--foreground)/0.04)]">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <div className="text-ui-strong text-foreground">Popup test page</div>
+                  <div className="text-ui-strong text-foreground">Quick popup test</div>
                   <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-                    A separate 60-question test opens in a focused popup, autosaves unfinished progress,
-                    and uses one real AI model from the dropdown for grading.
+                    Fly through 60 questions with a live progress bar. Answers autosave. Grade model is chosen after the last question.
                   </p>
                 </div>
                 <Badge variant="outline" className="text-metadata">
@@ -419,27 +589,17 @@ export function AllAboutMe({
               AllAboutMe.md
             </CardTitle>
             <CardDescription>
-              Jarvis reads this as bounded context and improves it from chat patterns.
+              A stable, user-controlled profile. Automatic interaction preferences are stored separately in learning.md.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-background/40 p-3">
+            <div className="rounded-md border border-border bg-background/40 p-3">
               <div>
-                <div className="text-ui-strong text-foreground">Chat learning</div>
+                <div className="text-ui-strong text-foreground">Intentional profile</div>
                 <p className="text-metadata text-muted-foreground">
-                  {markdown
-                    ? updateDistance === 0
-                      ? 'After every 10 user messages, Jarvis can learn on the next turn and writes a visible AllAboutMe.md activity row.'
-                      : `After every 10 user messages, Jarvis updates AllAboutMe.md. ${updateDistance} message${updateDistance === 1 ? '' : 's'} until the next check.`
-                    : 'After every 10 user messages, Jarvis can update AllAboutMe.md once the quiz creates a profile.'}
+                  Jarvis changes this document only when you complete the profile flow or make an explicit edit.
                 </p>
               </div>
-              <Switch
-                aria-label="AllAboutMe chat learning is always on"
-                checked
-                disabled
-                onCheckedChange={setLearningEnabled}
-              />
             </div>
             {markdown ? (
               <div className="rounded-md border border-border bg-background/40 p-3">
@@ -454,154 +614,261 @@ export function AllAboutMe({
               </pre>
             ) : (
               <div className="rounded-md border border-dashed border-border bg-background/40 p-5 text-secondary text-muted-foreground">
-                Finish the quiz to generate the first profile. Jarvis will use that document to
-                match your tone and keep improving it after every 10 user messages.
+                Finish the quiz to generate the first stable profile. Jarvis will use that document
+                as bounded context until you intentionally update or delete it.
               </div>
             )}
           </CardContent>
         </Card>
+
+        <JarvisLearningControls />
       </section>
 
       <Dialog
         open={testOpen}
         onOpenChange={(open) => {
-          if (!open && testOpen) persistDraft();
+          // Any close path (X, Escape, overlay, Settings dismiss) must save.
+          if (!open) {
+            if (choiceAdvanceTimerRef.current) {
+              clearTimeout(choiceAdvanceTimerRef.current);
+              choiceAdvanceTimerRef.current = null;
+            }
+            flushLiveDraft({ force: true });
+            persistDraft(questionValues, testMode, selectedModelId, { force: true });
+          }
           setTestOpen(open);
         }}
       >
-        <DialogContent hideClose className="max-h-[92vh] max-w-5xl overflow-hidden p-0">
-          <div className="border-b border-border bg-panel/95 px-5 py-4">
-            <DialogHeader>
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <DialogTitle>All About Me Test</DialogTitle>
-                  <DialogDescription>
-                    {testMode === 'update'
-                      ? 'Retake mode updates the existing AllAboutMe.md with newer scores and answers.'
-                      : 'Create mode builds the first detailed AllAboutMe.md profile.'}
+        <DialogContent hideClose className="max-h-[92vh] max-w-3xl overflow-hidden p-0">
+          {/* Status + progress + clickable question map */}
+          <div className="border-b border-border/80 bg-panel/95 px-4 pb-3 pt-3">
+            <div
+              className="h-1.5 w-full overflow-hidden rounded-full bg-border/60"
+              role="progressbar"
+              aria-label="All About Me test progress"
+              aria-valuemin={0}
+              aria-valuemax={totalQuestions}
+              aria-valuenow={answeredCount}
+            >
+              <div
+                className="h-full bg-gradient-to-r from-accent-copper via-accent-cyan to-accent-copper transition-[width] duration-200 ease-out"
+                style={{
+                  width: `${Math.round((answeredCount / totalQuestions) * 100)}%`,
+                }}
+              />
+            </div>
+
+            <DialogHeader className="mt-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <DialogTitle className="text-[17px]">All About Me Test</DialogTitle>
+                  <DialogDescription className="mt-0.5 text-[12px]">
+                    {testStep === 'grade'
+                      ? 'Submit page — pick a model and generate. Blank answers are fine.'
+                      : testMode === 'update'
+                        ? 'Retake — jump any number below, or Submit anytime.'
+                        : 'Click a number to jump. Submit anytime — even with zero answers.'}
                   </DialogDescription>
                 </div>
-                <Button type="button" variant="ghost" size="icon-sm" onClick={pauseTest} aria-label="Close and save test">
-                  <X className="h-4 w-4" />
-                </Button>
+                <div className="flex shrink-0 items-center gap-2">
+                  <Badge
+                    variant="outline"
+                    className="text-metadata tabular-nums"
+                    data-testid="all-about-me-question-progress"
+                  >
+                    {answeredCount}/{totalQuestions} done
+                  </Badge>
+                  <Button type="button" variant="ghost" size="icon-sm" onClick={closeTestSaving} aria-label="Close and save test">
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             </DialogHeader>
-            <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
-              <div className="space-y-2">
-                <Label htmlFor="all-about-me-model-select">AI model for grading</Label>
-                <select
-                  id="all-about-me-model-select"
-                  aria-label="AI model for grading"
-                  value={selectedModelId}
-                  onChange={(event) => {
-                    setSelectedModelId(event.currentTarget.value);
-                    persistDraft(questionValues, testMode, event.currentTarget.value);
-                  }}
-                  className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground"
-                >
-                  {availableModels.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.label} - {option.provider}/{option.model}
-                    </option>
-                  ))}
-                </select>
+
+            <div
+              className="mt-3 max-h-[88px] overflow-y-auto rounded-lg border border-border/60 bg-background/35 p-1.5"
+              role="navigation"
+              aria-label="Question map"
+              data-testid="all-about-me-question-map"
+            >
+              <div className="flex flex-wrap gap-1">
+                {ALL_ABOUT_ME_TEST_QUESTIONS.map((question, index) => {
+                  const answered = Boolean((questionValues[question.id] ?? '').trim());
+                  const isCurrent = testStep === 'questions' && index === currentQuestionIndex;
+                  return (
+                    <button
+                      key={question.id}
+                      type="button"
+                      data-testid={`all-about-me-q-chip-${index + 1}`}
+                      data-answered={answered ? 'true' : 'false'}
+                      data-current={isCurrent ? 'true' : 'false'}
+                      aria-label={`Question ${index + 1}${answered ? ', answered' : ', not answered'}${isCurrent ? ', current' : ''}`}
+                      aria-current={isCurrent ? 'step' : undefined}
+                      onClick={() => jumpToQuestion(index)}
+                      className={cn(
+                        'inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-md px-1 text-[10px] font-semibold tabular-nums transition-colors',
+                        isCurrent &&
+                          'ring-2 ring-accent-cyan/70 ring-offset-1 ring-offset-background',
+                        answered
+                          ? 'bg-accent-copper/25 text-accent-copper hover:bg-accent-copper/35'
+                          : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground',
+                      )}
+                    >
+                      {index + 1}
+                    </button>
+                  );
+                })}
               </div>
-              <div className="rounded-md border border-border bg-background/50 p-3">
-                <div className="text-xs uppercase tracking-[0.16em] text-accent-copper">Progress</div>
-                <div className="mt-1 text-sm text-foreground">
-                  {answeredCount}/{ALL_ABOUT_ME_TEST_QUESTIONS.length} answered
-                </div>
-              </div>
+            </div>
+            <div className="mt-1.5 flex flex-wrap items-center gap-3 text-[10px] text-muted-foreground">
+              <span className="inline-flex items-center gap-1">
+                <span className="inline-block h-2 w-2 rounded-sm bg-accent-copper/40" />
+                answered
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span className="inline-block h-2 w-2 rounded-sm bg-muted" />
+                open
+              </span>
+              <span className="text-accent-copper/90">Autosaved · click a number to jump</span>
             </div>
           </div>
 
-          <div className="max-h-[62vh] overflow-y-auto px-5 py-4">
-            <div className="mx-auto max-w-2xl rounded-2xl border border-border bg-background/35 p-5 shadow-[inset_0_1px_0_hsl(var(--foreground)/0.04)]">
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                <Badge variant="outline" className="text-metadata">
-                  Question {currentQuestionIndex + 1} of {ALL_ABOUT_ME_TEST_QUESTIONS.length}
-                </Badge>
-                <span className="text-xs text-accent-copper">You are flying through this.</span>
+          <div className="max-h-[min(58vh,520px)] overflow-y-auto px-5 py-5">
+            {testStep === 'questions' ? (
+              <div
+                key={currentQuestion.id}
+                className="mx-auto max-w-xl rounded-2xl border border-border/80 bg-gradient-to-b from-background/55 to-background/25 p-5 shadow-[0_12px_40px_rgba(0,0,0,0.18),inset_0_1px_0_hsl(var(--foreground)/0.04)]"
+              >
+                {currentQuestion.kind === 'written' ? (
+                  <QuestionField
+                    index={currentQuestionIndex}
+                    questionId={currentQuestion.id}
+                    prompt={currentQuestion.prompt}
+                    value={questionValues[currentQuestion.id] ?? ''}
+                    onChange={(value) => updateQuestionValue(currentQuestion.id, value)}
+                    onCtrlEnter={goNextQuestion}
+                  />
+                ) : (
+                  <div className="space-y-3">
+                    <div className="text-[15px] font-medium leading-snug text-foreground">
+                      <span className="mr-2 text-metadata font-semibold text-accent-copper">
+                        {currentQuestionIndex + 1}.
+                      </span>
+                      {currentQuestion.prompt}
+                    </div>
+                    <div className="grid gap-1.5">
+                      {(currentQuestion.options ?? []).map((option) => {
+                        const selected = questionValues[currentQuestion.id] === option;
+                        return (
+                          <button
+                            key={option}
+                            type="button"
+                            aria-pressed={selected}
+                            onClick={() =>
+                              updateQuestionValue(currentQuestion.id, option, { autoAdvanceChoice: true })
+                            }
+                            className={[
+                              'rounded-xl border px-3 py-2.5 text-left text-sm transition-all duration-100',
+                              selected
+                                ? 'border-accent-copper/70 bg-accent-copper/15 text-foreground shadow-[0_0_18px_hsl(var(--accent-copper)/0.15)]'
+                                : 'border-border/80 bg-background/40 text-muted-foreground hover:border-accent-cyan/40 hover:text-foreground',
+                            ].join(' ')}
+                          >
+                            {option}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">Tap a choice to advance instantly.</p>
+                  </div>
+                )}
               </div>
-              {currentQuestion.kind === 'written' ? (
-                <QuestionField
-                  key={currentQuestion.id}
-                  index={currentQuestionIndex}
-                  questionId={currentQuestion.id}
-                  prompt={currentQuestion.prompt}
-                  value={questionValues[currentQuestion.id] ?? ''}
-                  onChange={(value) => updateQuestionValue(currentQuestion.id, value)}
-                />
+            ) : (
+              <div className="mx-auto max-w-xl space-y-4">
+                <div className="rounded-2xl border border-border/80 bg-background/40 p-4">
+                  <div className="text-ui-strong text-foreground">Grade with which model?</div>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    This model writes your AllAboutMe.md from the answers you just gave.
+                  </p>
+                  <div className="mt-3 grid gap-2">
+                    {availableModels.map((option) => (
+                      <ModelChoiceCard
+                        key={option.id}
+                        option={option}
+                        selected={selectedModelId === option.id}
+                        onSelect={() => {
+                          setSelectedModelId(option.id);
+                          persistDraft(questionValues, testMode, option.id, { force: true });
+                        }}
+                      />
+                    ))}
+                  </div>
+                  {/* Accessible fallback for tests / keyboard users */}
+                  <label className="sr-only" htmlFor="all-about-me-model-select">
+                    AI model for grading
+                  </label>
+                  <select
+                    id="all-about-me-model-select"
+                    aria-label="AI model for grading"
+                    value={selectedModelId}
+                    onChange={(event) => {
+                      setSelectedModelId(event.currentTarget.value);
+                      persistDraft(questionValues, testMode, event.currentTarget.value, { force: true });
+                    }}
+                    className="mt-3 h-10 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground"
+                  >
+                    {availableModels.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label} - {option.provider}/{option.model}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="rounded-xl border border-dashed border-border/70 bg-panel/40 px-3 py-2 text-metadata text-muted-foreground">
+                  {answeredCount}/{totalQuestions} answered
+                  {answeredCount === 0
+                    ? ' · none required — you can still generate'
+                    : ' · ready to generate'}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border bg-panel/95 px-5 py-3">
+            <p className="text-[11px] text-muted-foreground">
+              {testStep === 'questions' ? (
+                <>
+                  <kbd className="rounded border border-border bg-background px-1 font-mono text-[10px]">Ctrl</kbd>
+                  +
+                  <kbd className="rounded border border-border bg-background px-1 font-mono text-[10px]">Enter</kbd>
+                  {' next · Submit anytime'}
+                </>
               ) : (
-                <div className="space-y-3">
-                  <div className="text-sm font-medium text-muted-foreground">
-                    {currentQuestionIndex + 1}. {currentQuestion.prompt}
-                  </div>
-                  <div className="grid gap-2">
-                    {(currentQuestion.options ?? []).map((option) => {
-                      const selected = questionValues[currentQuestion.id] === option;
-                      return (
-                        <button
-                          key={option}
-                          type="button"
-                          aria-pressed={selected}
-                          onClick={() => updateQuestionValue(currentQuestion.id, option)}
-                          className={[
-                            'rounded-md border px-3 py-2 text-left text-sm transition-colors',
-                            selected
-                              ? 'border-accent-copper/70 bg-accent-copper/10 text-foreground'
-                              : 'border-border bg-background/40 text-muted-foreground hover:text-foreground',
-                          ].join(' ')}
-                        >
-                          {option}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+                'Select model, then generate. Blank answers are allowed.'
               )}
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border bg-panel/95 px-5 py-4">
-            <p className="text-xs text-muted-foreground">
-              Closing this popup autosaves. Pause saves instantly so you can complete it later.
             </p>
             <div className="flex flex-wrap gap-2">
-              {markdown ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="text-destructive"
-                  onClick={() => {
-                    persistDraft();
-                    setTestOpen(false);
-                    setDeleteArmed(true);
-                  }}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  Delete AllAboutMe.md
-                </Button>
-              ) : null}
               <Button type="button" variant="ghost" onClick={pauseTest}>
                 <PauseCircle className="h-3.5 w-3.5" />
-                Pause and save
+                Pause
               </Button>
               <Button
                 type="button"
                 variant="ghost"
-                disabled={currentQuestionIndex === 0}
-                onClick={() => setCurrentQuestionIndex((index) => Math.max(0, index - 1))}
+                disabled={testStep === 'questions' && currentQuestionIndex === 0}
+                onClick={goPrevQuestion}
               >
                 Back
               </Button>
-              {currentQuestionIndex < ALL_ABOUT_ME_TEST_QUESTIONS.length - 1 ? (
-                <Button
-                  type="button"
-                  onClick={() => setCurrentQuestionIndex((index) => Math.min(ALL_ABOUT_ME_TEST_QUESTIONS.length - 1, index + 1))}
-                >
-                  Next
-                </Button>
+              {testStep === 'questions' ? (
+                <>
+                  <Button type="button" variant="secondary" onClick={goToSubmitPage}>
+                    Submit
+                  </Button>
+                  <Button type="button" onClick={goNextQuestion}>
+                    {currentQuestionIndex >= ALL_ABOUT_ME_TEST_QUESTIONS.length - 1 ? 'Submit' : 'Next'}
+                  </Button>
+                </>
               ) : (
                 <Button type="button" onClick={generateProfile} disabled={generating || !canGenerate}>
                   {generating ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}

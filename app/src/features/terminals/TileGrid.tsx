@@ -67,6 +67,9 @@ import { clearTerminalSession } from './terminalClear';
 import { toast } from '@/components/ui/toast';
 import { useTerminalTranscriptStore } from './transcriptStore';
 import type { AgentCoordinationMode } from './agentCoordination';
+import { usePetPresentationStore } from '@/features/pets/petPresentationStore';
+import { usePetSettingsStore } from '@/features/pets/petSettingsStore';
+import { Button } from '@/components/ui/button';
 import {
   parseTerminalRef,
   serializeTerminalRef,
@@ -204,8 +207,32 @@ function persistSavedSizes(projectId: string | null, s: SavedSizes): void {
   }
 }
 
+/** Equal fr units for every track — production tiles are always equal by default. */
 function defaultSizes(n: number): number[] {
   return Array.from({ length: n }, () => 1);
+}
+
+/**
+ * True when every track already shares the same fr weight (equal tiles).
+ * Used to avoid rewriting equal layouts while still repairing unequal ones.
+ */
+function tracksAreEqual(sizes: number[]): boolean {
+  if (sizes.length <= 1) return true;
+  const first = sizes[0]!;
+  return sizes.every((s) => Math.abs(s - first) < 1e-6);
+}
+
+/** CSS flex shorthand that forces equal share regardless of content min-size. */
+function equalFlexStyle(fr: number): React.CSSProperties {
+  return {
+    // Explicit grow/shrink/basis — `flex: N` alone can leave unequal basis
+    // from chrome content and make one tile look larger than its neighbor.
+    flexGrow: fr,
+    flexShrink: 1,
+    flexBasis: 0,
+    minWidth: 0,
+    minHeight: 0,
+  };
 }
 
 function mandatoryFontSize(paneCount: number): number {
@@ -275,11 +302,16 @@ export function TileGrid({
 
   const [colSizes, setColSizes] = React.useState<number[]>(() => {
     const s = savedSizes[layoutKey];
-    return s && s.cols.length === cols ? [...s.cols] : defaultSizes(cols);
+    // Prefer equal tiles: only restore custom ratios when they are still
+    // the right length AND already equal. Unequal saved ratios (from an
+    // old drag) made grids look broken — user requires equal sizing.
+    if (s && s.cols.length === cols && tracksAreEqual(s.cols)) return [...s.cols];
+    return defaultSizes(cols);
   });
   const [rowSizes, setRowSizes] = React.useState<number[]>(() => {
     const s = savedSizes[layoutKey];
-    return s && s.rows.length === rows ? [...s.rows] : defaultSizes(rows);
+    if (s && s.rows.length === rows && tracksAreEqual(s.rows)) return [...s.rows];
+    return defaultSizes(rows);
   });
 
   // When grid dimensions change (user added or removed tiles), swap the
@@ -298,8 +330,32 @@ export function TileGrid({
     const loaded = loadSavedSizes(projectId);
     setSavedSizes(loaded);
     const s = loaded[layoutKey];
-    setColSizes(s && s.cols.length === cols ? [...s.cols] : defaultSizes(cols));
-    setRowSizes(s && s.rows.length === rows ? [...s.rows] : defaultSizes(rows));
+    // Always land on equal tracks when layout/project changes unless the
+    // saved layout is already equal (keeps intentional even splits).
+    const nextCols =
+      s && s.cols.length === cols && tracksAreEqual(s.cols)
+        ? [...s.cols]
+        : defaultSizes(cols);
+    const nextRows =
+      s && s.rows.length === rows && tracksAreEqual(s.rows)
+        ? [...s.rows]
+        : defaultSizes(rows);
+    setColSizes(nextCols);
+    setRowSizes(nextRows);
+    // If we discarded unequal ratios, persist the repaired equal layout
+    // so the next reload stays consistent.
+    if (
+      s &&
+      ((s.cols.length === cols && !tracksAreEqual(s.cols)) ||
+        (s.rows.length === rows && !tracksAreEqual(s.rows)))
+    ) {
+      const repaired: SavedSizes = {
+        ...loaded,
+        [layoutKey]: { cols: nextCols, rows: nextRows },
+      };
+      setSavedSizes(repaired);
+      persistSavedSizes(projectId, repaired);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, layoutKey, cols, rows]);
 
@@ -611,8 +667,8 @@ export function TileGrid({
           rowChildren.push(
             <div
               key={leaf?.id ?? `__empty_${rowIdx}_${colIdx}`}
-              style={{ flex: colSizes[colIdx] ?? 1, minWidth: 0, minHeight: 0 }}
-              className="flex p-0.5"
+              style={equalFlexStyle(colSizes[colIdx] ?? 1)}
+              className="flex h-full min-h-0 min-w-0 p-0.5"
             >
               {leaf ? (
                 renderTile(leaf)
@@ -634,8 +690,8 @@ export function TileGrid({
         return (
           <React.Fragment key={`row-${rowIdx}`}>
             <div
-              style={{ flex: rowSizes[rowIdx] ?? 1, minHeight: 0, minWidth: 0 }}
-              className="flex flex-row"
+              style={equalFlexStyle(rowSizes[rowIdx] ?? 1)}
+              className="flex min-h-0 min-w-0 flex-row"
             >
               {rowChildren}
             </div>
@@ -746,6 +802,12 @@ function Tile({
   const [isEditingName, setIsEditingName] = React.useState(false);
   const [editNameValue, setEditNameValue] = React.useState('');
   const tileRef = React.useRef<HTMLDivElement>(null);
+  const presentedInPet = usePetPresentationStore((s) =>
+    leaf.sessionId ? s.isTerminalOnPet(leaf.sessionId) : false,
+  );
+  const registerTerminal = usePetPresentationStore((s) => s.registerTerminal);
+  const moveTerminal = usePetPresentationStore((s) => s.moveTerminal);
+  const setPanelActiveTerminalId = usePetPresentationStore((s) => s.setPanelActiveTerminalId);
 
   React.useEffect(() => {
     const onFocusTerminal = (e: Event) => {
@@ -1182,35 +1244,60 @@ function Tile({
         </div>
       </div>
       <div className="min-h-0 flex-1">
-        <TerminalView
-          sessionId={leaf.sessionId ?? null}
-          paneId={leaf.id}
-          command={leaf.command || defaultCommand}
-          startupCommand={leaf.startupCommand}
-          pendingCommand={leaf.pendingCommand}
-          pendingCommandId={leaf.pendingCommandId}
-          executionId={leaf.executionId}
-          cwd={leaf.cwd}
-          fontSize={fontSize}
-          agentSlug={leaf.agentSlug ?? null}
-          agentMode={resolvePaneAgentMode(leaf)}
-          onReady={onAttach}
-          onPendingCommandSent={onPendingCommandSent}
-          onExit={(code) => markTerminalExecution(
-            leaf.executionId,
-            code === 0 ? 'complete' : code === null ? 'cancelled' : 'failed',
-            { exitCode: code },
-          )}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
-          projectId={projectId}
-          projectName={projectName}
-          // The tile already provides a frame + chrome strip, so we ask
-          // TerminalView to skip its own border/title row to avoid the
-          // double-bordered look.
-          hideChrome
-          className="h-full w-full"
-        />
+        {/* Atomic presentation: only one xterm owner per PTY (main vs pet panel). */}
+        {presentedInPet && leaf.sessionId ? (
+          <div
+            className="flex h-full flex-col items-center justify-center gap-2 bg-paper-soft p-4 text-center"
+            data-terminal-presented-in-pet="true"
+            data-pty-id={leaf.sessionId}
+          >
+            <p className="text-sm text-muted-foreground">
+              This live terminal is in the Pet panel (same PTY — not restarted).
+            </p>
+            <Button size="sm" variant="outline" onClick={() => moveTerminal(leaf.sessionId!, 'main')}>
+              Bring back here
+            </Button>
+          </div>
+        ) : (
+          <TerminalView
+            sessionId={leaf.sessionId ?? null}
+            paneId={leaf.id}
+            command={leaf.command || defaultCommand}
+            startupCommand={leaf.startupCommand}
+            pendingCommand={leaf.pendingCommand}
+            pendingCommandId={leaf.pendingCommandId}
+            executionId={leaf.executionId}
+            cwd={leaf.cwd}
+            fontSize={fontSize}
+            agentSlug={leaf.agentSlug ?? null}
+            agentMode={resolvePaneAgentMode(leaf)}
+            onReady={(sid) => {
+              registerTerminal({
+                terminalId: sid,
+                ptyId: sid,
+                owner: 'main',
+                title: leaf.name || leaf.command || 'terminal',
+                cwd: leaf.cwd,
+                shell: leaf.command,
+                paneId: leaf.id,
+                status: 'running',
+              });
+              onAttach(sid);
+            }}
+            onPendingCommandSent={onPendingCommandSent}
+            onExit={(code) => markTerminalExecution(
+              leaf.executionId,
+              code === 0 ? 'complete' : code === null ? 'cancelled' : 'failed',
+              { exitCode: code },
+            )}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            projectId={projectId}
+            projectName={projectName}
+            hideChrome
+            className="h-full w-full"
+          />
+        )}
       </div>
       {contextMenu && (
         <TerminalContextMenu
@@ -1223,6 +1310,35 @@ function Tile({
           onClear={handleClear}
           onSplit={handleSplit}
           onCloseTerminal={onClose}
+          onSendToPetPanel={
+            leaf.sessionId
+              ? () => {
+                  registerTerminal({
+                    terminalId: leaf.sessionId!,
+                    ptyId: leaf.sessionId!,
+                    owner: 'main',
+                    title: leaf.name || leaf.command || 'terminal',
+                    cwd: leaf.cwd,
+                    shell: leaf.command,
+                    paneId: leaf.id,
+                    status: 'running',
+                  });
+                  const result = moveTerminal(leaf.sessionId!, 'pet-mini-panel');
+                  if (!result.ok) {
+                    toast.error(
+                      result.message ??
+                        'The Pet panel supports up to 4 terminals. Return or close one before adding another.',
+                    );
+                    return;
+                  }
+                  setPanelActiveTerminalId(leaf.sessionId!);
+                  usePetSettingsStore.getState().setEnabled(true);
+                  usePetSettingsStore.getState().setOverlayVisible(true);
+                  window.dispatchEvent(new CustomEvent('jarvis:pet:open-panel'));
+                  toast.success('Sent to Pet panel', 'Same live terminal — not restarted.');
+                }
+              : undefined
+          }
         />
       )}
     </div>

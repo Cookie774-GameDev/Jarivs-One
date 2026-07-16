@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibespace.local/schemas/pets/character-manifest.schema.json",
+  "title": "VibeSpace Pet Character Catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "defaultCharacterId", "characters"],
+  "properties": {
+    "schemaVersion": { "const": 2 },
+    "defaultCharacterId": { "$ref": "#/$defs/id" },
+    "characters": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/character" }
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 96,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "safeRelativePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^(?![A-Za-z]:)(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    },
+    "rigProfile": {
+      "type": "string",
+      "enum": [
+        "pixel-biped-axolotl",
+        "pixel-biped-cat",
+        "pixel-round-astronaut",
+        "pixel-floating-orb",
+        "pixel-hooded-mascot",
+        "pixel-generic-biped"
+      ]
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "externalGills": { "type": "boolean" },
+        "gillCountPerSide": { "type": "integer", "minimum": 0, "maximum": 8 },
+        "tail": { "type": "boolean" },
+        "ears": { "type": "boolean" },
+        "floating": { "type": "boolean" },
+        "separateHands": { "type": "boolean" },
+        "separateFeet": { "type": "boolean" },
+        "proceduralFace": { "type": "boolean" },
+        "walkCycle": { "type": "boolean" }
+      }
+    },
+    "character": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "displayName",
+        "sources",
+        "primarySource",
+        "renderMode",
+        "rigProfile",
+        "visualStyle",
+        "logoMode",
+        "capabilities"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/safeRelativePath" }
+        },
+        "primarySource": { "$ref": "#/$defs/safeRelativePath" },
+        "renderMode": { "const": "pixel-sprite" },
+        "rigProfile": { "$ref": "#/$defs/rigProfile" },
+        "visualStyle": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "logoMode": { "enum": ["v-mark", "none"] },
+        "capabilities": { "$ref": "#/$defs/capabilities" }
+      }
+    }
+  }
+}

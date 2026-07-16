@@ -1,0 +1,94 @@
+import { createDirectory, readTextFile, writeTextFile } from '@/lib/fs';
+import { getJarvisRootDir, joinPath } from '@/features/files/projectFiles';
+
+import { privateAccountDirectory } from './accountStorage';
+
+export interface LearningFileIo {
+  resolveRoot: () => Promise<string>;
+  createDirectory: (path: string) => Promise<void>;
+  readText: (path: string) => Promise<string | null>;
+  writeText: (path: string, value: string) => Promise<void>;
+}
+
+export interface LearningFileResult {
+  path: string;
+  markdown: string;
+  recovered: boolean;
+}
+
+const EMPTY_LEARNING = '# Jarvis Learning\n\nNo saved learning yet.\n';
+
+function valid(markdown: string | null): markdown is string {
+  return Boolean(markdown?.startsWith('# Jarvis Learning\n') && markdown.length <= 512 * 1024);
+}
+
+async function paths(root: string, accountId: string) {
+  const directory = joinPath(joinPath(root, 'Jarvis Memory'), await privateAccountDirectory(accountId));
+  const primary = joinPath(directory, 'learning.md');
+  return {
+    directory,
+    primary,
+    backup: `${primary}.bak`,
+    temporary: `${primary}.tmp`,
+  };
+}
+
+const nativeIo: LearningFileIo = {
+  resolveRoot: getJarvisRootDir,
+  createDirectory: async (path) => {
+    const result = await createDirectory(path);
+    if (!result.ok) throw new Error(`Could not create private memory directory (${result.error.code}).`);
+  },
+  readText: async (path) => {
+    const result = await readTextFile(path);
+    if (result.ok) return result.content;
+    if (result.error.code === 'not_found' || result.error.code === 'unavailable') return null;
+    throw new Error(`Could not read private memory (${result.error.code}).`);
+  },
+  writeText: async (path, value) => {
+    const result = await writeTextFile(path, value);
+    if (!result.ok) throw new Error(`Could not write private memory (${result.error.code}).`);
+  },
+};
+
+export async function saveLearningFile(
+  accountId: string,
+  markdown: string,
+  io: LearningFileIo = nativeIo,
+): Promise<LearningFileResult> {
+  if (!accountId.trim()) throw new Error('Account id is required for learning memory.');
+  if (!valid(markdown)) throw new Error('learning.md must begin with the Jarvis Learning heading and remain under 512 KB.');
+  const root = await io.resolveRoot();
+  if (!root) throw new Error('Private app-data storage is unavailable.');
+  const target = await paths(root, accountId);
+  await io.createDirectory(target.directory);
+  const current = await io.readText(target.primary);
+  if (valid(current)) await io.writeText(target.backup, current);
+  await io.writeText(target.temporary, markdown);
+  await io.writeText(target.primary, markdown);
+  return { path: target.primary, markdown, recovered: false };
+}
+
+export async function loadLearningFile(
+  accountId: string,
+  io: LearningFileIo = nativeIo,
+): Promise<LearningFileResult> {
+  if (!accountId.trim()) throw new Error('Account id is required for learning memory.');
+  const root = await io.resolveRoot();
+  if (!root) throw new Error('Private app-data storage is unavailable.');
+  const target = await paths(root, accountId);
+  await io.createDirectory(target.directory);
+  const primary = await io.readText(target.primary);
+  if (valid(primary)) return { path: target.primary, markdown: primary, recovered: false };
+  const backup = await io.readText(target.backup);
+  if (valid(backup)) {
+    await io.writeText(target.primary, backup);
+    return { path: target.primary, markdown: backup, recovered: true };
+  }
+  const temporary = await io.readText(target.temporary);
+  if (valid(temporary)) {
+    await io.writeText(target.primary, temporary);
+    return { path: target.primary, markdown: temporary, recovered: true };
+  }
+  return { path: target.primary, markdown: EMPTY_LEARNING, recovered: false };
+}

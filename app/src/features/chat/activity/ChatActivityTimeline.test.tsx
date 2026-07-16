@@ -1,11 +1,35 @@
 import * as React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
-import { ActivityRow } from './ChatActivityTimeline';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { ActivityRow, ChatActivityTimeline, summarizeChatActivity } from './ChatActivityTimeline';
+import { useChatActivityStore } from './activityStore';
 import type { ChatActivityEvent } from './types';
 
+describe('ChatActivityTimeline always-visible session panel', () => {
+  beforeEach(() => {
+    useChatActivityStore.setState({ eventsByChat: {} });
+  });
+
+  it('renders the Jarvis session dashboard even with no activity events', () => {
+    render(<ChatActivityTimeline chatId="chat_empty" />);
+
+    expect(screen.getByTestId('jarvis-session-panel')).toBeTruthy();
+    expect(screen.getByLabelText('Jarvis session')).toBeTruthy();
+    expect(screen.getByText('Jarvis session')).toBeTruthy();
+    expect(screen.getByText(/Ready — send a message/i)).toBeTruthy();
+    expect(screen.getByText('Idle')).toBeTruthy();
+  });
+
+  it('summarizes empty sessions as ready (not blank)', () => {
+    const summary = summarizeChatActivity([]);
+    expect(summary.eventCount).toBe(0);
+    expect(summary.isLive).toBe(false);
+    expect(summary.doingNow).toMatch(/Ready/i);
+  });
+});
+
 describe('ActivityRow', () => {
-  it('renders diff counts and expands the code diff on click', () => {
+  it('renders Edit-style file cards with line counts and expands the diff on click', () => {
     const event: ChatActivityEvent = {
       id: 'diff_1',
       chatId: 'chat_1',
@@ -22,6 +46,8 @@ describe('ActivityRow', () => {
 
     render(<ActivityRow event={event} />);
 
+    expect(screen.getByText('Edit')).toBeTruthy();
+    expect(screen.getByText('App.tsx')).toBeTruthy();
     expect(screen.getByText('+8')).toBeTruthy();
     expect(screen.getByText('-2')).toBeTruthy();
     expect(screen.queryByText((content) => content.includes('+new code'))).toBeNull();
@@ -31,7 +57,7 @@ describe('ActivityRow', () => {
     expect(screen.getByText((content) => content.includes('+new code'))).toBeTruthy();
   });
 
-  it('renders AllAboutMe learning file writes with diff counts', () => {
+  it('renders AllAboutMe learning file writes as Edit cards with diff counts', () => {
     const event: ChatActivityEvent = {
       id: 'diff_all_about_me',
       chatId: 'chat_1',
@@ -48,9 +74,9 @@ describe('ActivityRow', () => {
 
     render(<ActivityRow event={event} />);
 
-    expect(screen.getByText('AllAboutMe.md file written')).toBeTruthy();
+    expect(screen.getByText('Edit')).toBeTruthy();
+    expect(screen.getByText('AllAboutMe.md')).toBeTruthy();
     expect(screen.getByText('+3')).toBeTruthy();
     expect(screen.getByText('-1')).toBeTruthy();
   });
 });
-

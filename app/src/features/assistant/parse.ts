@@ -14,6 +14,7 @@
  *     "friday at 1pm" etc) is delegated to `parseEventInput` at execute time.
  */
 import type { AssistantIntent } from './intents';
+import type { WallpaperId, WorkbenchPanelKind } from '@/features/workbench/types';
 
 /** Filler phrases stripped from the start of the input. Order matters: longer first. */
 const FILLER_PREFIXES = [
@@ -65,7 +66,7 @@ const WEEKDAY_TO_NUM: Record<string, number> = {
 };
 
 /** Route ids accepted by `useUIStore.setRoute` (V3 top-level routes). */
-type NavRoute = 'chat' | 'terminal' | 'kanban' | 'schedule' | 'agents' | 'context' | 'skills' | 'benchmarks' | 'history' | 'tools' | 'files';
+type NavRoute = 'chat' | 'workbench' | 'terminal' | 'kanban' | 'schedule' | 'agents' | 'context' | 'skills' | 'benchmarks' | 'history' | 'tools' | 'files';
 
 /**
  * Map the noun the user actually typed to the canonical route id. Plurals
@@ -75,6 +76,7 @@ type NavRoute = 'chat' | 'terminal' | 'kanban' | 'schedule' | 'agents' | 'contex
  */
 const NAV_ROUTE_MAP: Record<string, NavRoute> = {
   chat: 'chat',
+  workbench: 'workbench',
   terminal: 'terminal',
   terminals: 'terminal',
   kanban: 'kanban',
@@ -99,6 +101,51 @@ const NAV_ROUTE_MAP: Record<string, NavRoute> = {
 function normalizeRoute(raw: string): NavRoute {
   return NAV_ROUTE_MAP[raw.trim().toLowerCase()] ?? 'chat';
 }
+
+const WORKBENCH_TEMPLATE_ALIASES: Record<string, string> = {
+  coding: 'coding',
+  code: 'coding',
+  'multi agent': 'multi-agent',
+  'multi-agent': 'multi-agent',
+  research: 'research',
+  web: 'web-development',
+  'web development': 'web-development',
+  'web-development': 'web-development',
+  supabase: 'supabase',
+  content: 'content',
+  blank: 'blank',
+};
+
+const WORKBENCH_PANEL_ALIASES: Record<string, WorkbenchPanelKind> = {
+  terminal: 'terminal', terminals: 'terminal',
+  browser: 'browser', browsers: 'browser',
+  jarvis: 'jarvis', chat: 'jarvis',
+  agent: 'agent', agents: 'agent',
+  file: 'files', files: 'files',
+  editor: 'editor', editors: 'editor',
+  kanban: 'kanban', board: 'kanban',
+  action: 'actions', actions: 'actions',
+  note: 'notes', notes: 'notes',
+  diagram: 'diagram', diagrams: 'diagram',
+  plugin: 'plugins', plugins: 'plugins', mcp: 'plugins',
+  github: 'github', supabase: 'supabase',
+  activity: 'activity',
+};
+
+const WALLPAPER_ALIASES: Record<string, WallpaperId> = {
+  none: 'none', off: 'none',
+  'warm gradient': 'warm-gradient',
+  'space clouds': 'space-clouds',
+  'interactive space clouds': 'space-clouds',
+  starfield: 'starfield', stars: 'starfield',
+  'orbital lights': 'orbital-lights',
+  particles: 'particles', 'particle field': 'particles',
+  'fluid gradient': 'fluid-gradient',
+  aurora: 'aurora',
+  'cozy night window': 'cozy-night-window',
+  'night window': 'cozy-night-window',
+  'grid pulse': 'grid-pulse', grid: 'grid-pulse',
+};
 
 /**
  * Strip filler prefixes, lowercase, and trim. Idempotent.
@@ -346,6 +393,45 @@ function parseSingleAssistantInput(raw: string): AssistantIntent {
   const s = clean(raw);
   if (!s) return { kind: 'unknown', raw: original };
 
+  // ---- Workbench orchestration ----
+  if (/^(?:open|show|go to|switch to)(?:\s+the)?\s+workbench$/i.test(s)) {
+    return { kind: 'workbench', action: 'open' };
+  }
+  const spawnWorkbench =
+    /^(?:spawn|create|build|start)(?:\s+a|\s+the)?(?:\s+(coding|code|multi[- ]agent|research|web(?:[- ]development)?|supabase|content|blank))?\s+workbench$/i.exec(s);
+  if (spawnWorkbench) {
+    const alias = spawnWorkbench[1]?.toLowerCase() ?? 'web development';
+    return {
+      kind: 'workbench',
+      action: 'spawn',
+      templateId: WORKBENCH_TEMPLATE_ALIASES[alias] ?? 'web-development',
+    };
+  }
+  const addWorkbenchPanel =
+    /^(?:add|open|create|place)\s+(?:(a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+)?(terminals?|browsers?|jarvis|chat|agents?|files?|editors?|kanban|board|actions?|notes?|diagrams?|plugins?|mcp|github|supabase|activity)(?:\s+(?:to|in|inside)\s+(?:the\s+)?workbench)$/i.exec(s);
+  if (addWorkbenchPanel) {
+    const panelKind = WORKBENCH_PANEL_ALIASES[addWorkbenchPanel[2].toLowerCase()];
+    if (panelKind) {
+      return {
+        kind: 'workbench',
+        action: 'add-panel',
+        panelKind,
+        count: parseTerminalCount(addWorkbenchPanel[1] === 'an' ? 'one' : addWorkbenchPanel[1]),
+      };
+    }
+  }
+  const setWallpaper = /^(?:change|set|switch)(?:\s+the)?\s+wallpaper\s+to\s+(.+)$/i.exec(s);
+  if (setWallpaper) {
+    const wallpaperId = WALLPAPER_ALIASES[setWallpaper[1].trim().toLowerCase()];
+    if (wallpaperId) return { kind: 'workbench', action: 'set-wallpaper', wallpaperId };
+  }
+  if (/^(?:pause|stop)\s+(?:the\s+)?wallpaper(?:\s+animation|\s+motion)?$/i.test(s)) {
+    return { kind: 'workbench', action: 'pause-wallpaper' };
+  }
+  if (/^(?:resume|start|play)\s+(?:the\s+)?wallpaper(?:\s+animation|\s+motion)?$/i.test(s)) {
+    return { kind: 'workbench', action: 'resume-wallpaper' };
+  }
+
   const openTerminalRunChain = tryOpenTerminalRunChain(s);
   if (openTerminalRunChain) return openTerminalRunChain;
 
@@ -372,7 +458,7 @@ function parseSingleAssistantInput(raw: string): AssistantIntent {
   // ---- open N terminals ----
   // Most-specific terminal pattern: explicit count.
   const openTerms =
-    /^open\s+(\d+)\s+terminals?(?:\s+(?:with|running)\s+(.+?))?(?:\s+in\s+(.+?))?(?:\s+project)?$/i.exec(s);
+    /^open\s+(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+terminals?(?:\s+(?:with|running)\s+(.+?))?(?:\s+in\s+(.+?))?(?:\s+project)?$/i.exec(s);
   if (openTerms) {
     const count = parseTerminalCount(openTerms[1]);
     const command = normalizeTerminalCommand(openTerms[2]);
@@ -519,13 +605,13 @@ function parseSingleAssistantInput(raw: string): AssistantIntent {
   // but ordering preserves the spec's "navigate-first" intent.
   // Strict form: any of the four nav verbs, no "my", no trailing "please".
   const navStrict =
-    /^(?:open|go to|show|switch to)\s+(terminal(?:s)?|kanban|context(?:s)?|skills|benchmarks?|history|agents?|tools?|files?|explorer|chat)$/i.exec(s);
+    /^(?:open|go to|show|switch to)\s+(workbench|terminal(?:s)?|kanban|context(?:s)?|skills|benchmarks?|history|agents?|tools?|files?|explorer|chat)$/i.exec(s);
   if (navStrict) {
     return { kind: 'navigate', route: normalizeRoute(navStrict[1]) };
   }
   // Polite form: only "open"/"show", optional "my", optional trailing "please".
   const navPolite =
-    /^(?:open|show)\s+(?:my\s+)?(terminal(?:s)?|kanban|context(?:s)?|skills|benchmarks?|history|agents?|tools?|files?|explorer|chat)\s*(?:please)?$/i.exec(s);
+    /^(?:open|show)\s+(?:my\s+)?(workbench|terminal(?:s)?|kanban|context(?:s)?|skills|benchmarks?|history|agents?|tools?|files?|explorer|chat)\s*(?:please)?$/i.exec(s);
   if (navPolite) {
     return { kind: 'navigate', route: normalizeRoute(navPolite[1]) };
   }
@@ -595,6 +681,8 @@ function parseSingleAssistantInput(raw: string): AssistantIntent {
  * pattern's keywords and suggest the closest ones.
  */
 const COMMAND_SUGGESTIONS = [
+  { keywords: 'spawn workbench', example: 'spawn a web development workbench' },
+  { keywords: 'workbench wallpaper', example: 'change the wallpaper to space clouds' },
   { keywords: 'create project', example: 'create project tiger' },
   { keywords: 'switch to project', example: 'switch to tiger project' },
   { keywords: 'create chat', example: 'create chat called planning' },

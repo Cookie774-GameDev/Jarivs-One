@@ -114,9 +114,18 @@ export function buildJarvisCreatorPrompt(kind: JarvisCreatorKind, context: Jarvi
     'Once the two answers are present, return an apply-ready draft immediately so the UI can show a button to push it into the editor.',
     isAgent
       ? 'Return agent fields: name, description, system_prompt, capabilities, tools_allowed, and temperature. Pick a useful temperature from 0.0 to 2.0: lower for precise agents, higher for creative agents.'
-      : 'Return skill fields: title, description, tools, systemPromptAddendum, body, and emoji. Skills do not pick models here; keep the output focused on reusable instructions.',
+      : [
+          'Return skill fields in a single fenced JSON object with EXACT keys:',
+          '  title (short skill name only)',
+          '  description (one-sentence picker blurb)',
+          '  tools (string array, e.g. ["files","terminal","web"])',
+          '  systemPromptAddendum (runtime instructions injected into chat — operating rules only, not the title line)',
+          '  body (library markdown: headings + full instructions for the skill library)',
+          '  emoji (optional single emoji)',
+          'Do NOT put the whole plan into systemPromptAddendum only. Fill title, description, systemPromptAddendum, and body separately.',
+        ].join('\n'),
     'Avoid weak prompts: generic assistant language, one-line system prompts, unspecified tools, missing boundaries, fake certainty, and filler bullets.',
-    'Use fenced JSON for apply-ready drafts. The user can still ask for changes before clicking Save.',
+    'Reply with ONLY a fenced ```json block for apply-ready drafts (no long essay outside JSON). The user can still ask for changes before clicking Save.',
     'The user must still click Save in the editor. Applying the draft only fills the visible fields.',
   ].join('\n');
 }
@@ -164,12 +173,41 @@ function parseAgentDraft(value: unknown): JarvisCreatorParseResult<'agent'> {
 
 function parseSkillDraft(value: unknown): JarvisCreatorParseResult<'skill'> {
   if (!isRecord(value)) return { ok: false, error: 'Jarvis returned JSON, but it was not an object.' };
+  // Accept common alias keys local models invent.
+  const title =
+    asString(value.title) ||
+    asString(value.name) ||
+    asString(value.skill_name) ||
+    asString(value.skillName);
+  const description =
+    asString(value.description) ||
+    asString(value.summary) ||
+    asString(value.blurb);
+  const systemPromptAddendum =
+    asString(value.systemPromptAddendum) ||
+    asString(value.system_prompt_addendum) ||
+    asString(value.runtime_instructions) ||
+    asString(value.runtimeInstructions) ||
+    asString(value.addendum) ||
+    asString(value.instructions);
+  const body =
+    asString(value.body) ||
+    asString(value.markdown) ||
+    asString(value.library_body) ||
+    asString(value.libraryBody);
+  const toolsRaw = value.tools ?? value.tool_list ?? value.toolList;
+  const tools = Array.isArray(toolsRaw)
+    ? asStringArray(toolsRaw)
+    : asString(toolsRaw)
+        .split(/[,;\n]+/)
+        .map((t) => t.trim())
+        .filter(Boolean);
   const draft: JarvisCreatorSkillDraft = {
-    title: asString(value.title),
-    description: asString(value.description),
-    tools: asStringArray(value.tools),
-    systemPromptAddendum: asString(value.systemPromptAddendum),
-    body: asString(value.body),
+    title,
+    description,
+    tools,
+    systemPromptAddendum,
+    body: body || systemPromptAddendum,
     emoji: asString(value.emoji) || undefined,
   };
   if (!draft.title || !draft.description || !draft.systemPromptAddendum) {
@@ -187,12 +225,19 @@ function stripMarkdown(value: string): string {
     .trim();
 }
 
+function unquote(value: string): string {
+  return value
+    .trim()
+    .replace(/^["“”']+|["“”']+$/g, '')
+    .trim();
+}
+
 function firstMeaningfulLine(text: string): string {
   return text
     .split(/\r?\n/)
     .filter((line) => !/^\s{0,3}#{1,6}\s+/.test(line))
     .map((line) => stripMarkdown(line))
-    .find((line) => line.length > 12 && !line.endsWith(':')) ?? '';
+    .find((line) => line.length > 12 && !line.endsWith(':') && !/^skill\s*name\b/i.test(line)) ?? '';
 }
 
 function firstHeading(text: string): string {
@@ -205,17 +250,37 @@ function firstHeading(text: string): string {
     .find((line) => line.length >= 3 && line.length <= 80) ?? '';
 }
 
+/** Match `Label: value` on a single line (markdown bold optional). */
 function labeledField(text: string, label: string): string {
   const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const match = text.match(new RegExp(`^\\s*(?:\\*\\*)?${escaped}(?:\\*\\*)?\\s*[:\\-]\\s*(.+)$`, 'im'));
-  return match ? stripMarkdown(match[1] ?? '') : '';
+  const match = text.match(
+    new RegExp(`^\\s*(?:\\*\\*)?${escaped}(?:\\*\\*)?\\s*[:\\-]\\s*(.+)$`, 'im'),
+  );
+  return match ? unquote(stripMarkdown(match[1] ?? '')) : '';
+}
+
+/**
+ * Capture a multi-line section that starts at `Label:` / `**Label:**` / `## Label`
+ * and runs until the next heading-like label.
+ */
+function labeledSection(text: string, labels: string[]): string {
+  const labelAlt = labels
+    .map((label) => label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('|');
+  const re = new RegExp(
+    `(?:^|\\n)\\s*(?:#{1,3}\\s*|(?:\\*\\*)?)(?:${labelAlt})(?:\\*\\*)?\\s*[:\\-]?\\s*\\n?([\\s\\S]*?)(?=\\n\\s*(?:#{1,3}\\s*|\\*\\*)?(?:Skill\\s*Name|Title|Name|Description|Summary|Behavior|Instructions|Runtime|Tools|Body|Avoid|When to use|Do not)(?:\\*\\*)?\\s*[:\\-]|$)`,
+    'i',
+  );
+  const match = text.match(re);
+  return (match?.[1] ?? '').trim();
 }
 
 function cleanDraftName(value: string): string {
-  return stripMarkdown(value)
-    .replace(/\b(?:agent|name)\s*[:\-]\s*/i, '')
-    .trim()
-    .slice(0, 80);
+  return unquote(
+    stripMarkdown(value)
+      .replace(/^(?:skill\s*)?(?:name|title)\s*[:\-]\s*/i, '')
+      .trim(),
+  ).slice(0, 80);
 }
 
 function looksLikeCreatorSkillMarkdown(text: string): boolean {
@@ -224,18 +289,19 @@ function looksLikeCreatorSkillMarkdown(text: string): boolean {
   // like "skill" in normal prose must not surface a Push button; when the
   // content is ambiguous we hide the action by default.
   const hints = [
-    /additional aspects|runtime instructions|custom instructions/.test(normalized),
+    /additional aspects|runtime instructions|custom instructions|skill name|systempromptaddendum/.test(normalized),
     /\bskill\b/.test(normalized),
-    /assistant should|conversation experience/.test(normalized),
-    /boundaries|do not|avoid|must not|when to use/.test(normalized),
+    /assistant should|conversation experience|reminder|behavior/.test(normalized),
+    /boundaries|do not|avoid|must not|when to use|introduction/.test(normalized),
     /^\s*(?:[-*+]|\d+\.)\s+/m.test(text),
+    /\*\*[^*]+\*\*\s*:/.test(text),
   ];
   return hints.filter(Boolean).length >= 2;
 }
 
 function looksLikeCreatorAgentMarkdown(text: string): boolean {
   const normalized = text.toLowerCase();
-  if (!normalized || normalized.includes('```json')) return false;
+  if (!normalized || /```json/i.test(normalized)) return false;
   const hints = [
     /\bagent\b/.test(normalized),
     /system[_ -]?prompt|persona|role|mission/.test(normalized),
@@ -246,6 +312,19 @@ function looksLikeCreatorAgentMarkdown(text: string): boolean {
   return hints.filter(Boolean).length >= 2 && (hints[0] || hints[1]);
 }
 
+function extractToolsFromText(text: string): string[] {
+  const labeled = labeledField(text, 'tools') || labeledField(text, 'tool list');
+  if (labeled) {
+    return labeled
+      .split(/[,;|]/)
+      .map((t) => t.trim())
+      .filter(Boolean);
+  }
+  const known = ['files', 'terminal', 'web', 'browser', 'shell', 'git', 'search'];
+  const found = known.filter((tool) => new RegExp(`\\b${tool}\\b`, 'i').test(text));
+  return found;
+}
+
 export function parseLooseJarvisCreatorAgentDraft(text: string): JarvisCreatorParseResult<'agent'> {
   const trimmed = text.trim();
   if (!trimmed || !looksLikeCreatorAgentMarkdown(trimmed)) {
@@ -254,22 +333,26 @@ export function parseLooseJarvisCreatorAgentDraft(text: string): JarvisCreatorPa
   const name =
     cleanDraftName(labeledField(trimmed, 'name')) ||
     cleanDraftName(labeledField(trimmed, 'agent')) ||
+    cleanDraftName(labeledField(trimmed, 'agent name')) ||
     cleanDraftName(firstHeading(trimmed)) ||
     'Jarvis Agent Draft';
   const firstLine = firstMeaningfulLine(trimmed);
   const descriptionSource =
     labeledField(trimmed, 'description') ||
+    labeledSection(trimmed, ['Description', 'Summary']) ||
     (firstLine && firstLine.toLowerCase() !== name.toLowerCase() ? firstLine : '') ||
     'Jarvis-generated agent draft.';
-  const instructions = stripMarkdown(trimmed);
+  const behavior =
+    labeledSection(trimmed, ['Behavior', 'Behavior rules', 'Instructions', 'System prompt', 'Rules']) ||
+    stripMarkdown(trimmed);
   const systemPrompt = [
     `You are ${name}.`,
-    instructions,
+    behavior,
     'Operate conservatively: ask before risky actions, do not request secrets, and state uncertainty plainly.',
   ].join('\n\n');
   const draft: JarvisCreatorAgentDraft = {
     name,
-    description: descriptionSource.slice(0, 180),
+    description: stripMarkdown(descriptionSource).slice(0, 180),
     system_prompt: systemPrompt,
     capabilities: ['reasoning'],
     tools_allowed: [],
@@ -278,24 +361,88 @@ export function parseLooseJarvisCreatorAgentDraft(text: string): JarvisCreatorPa
   return { ok: true, draft };
 }
 
+/**
+ * Markdown / prose fallback when the model does not return valid JSON.
+ * Must still fill title, description, runtime addendum, and library body
+ * with *distinct* usable content — not dump the entire reply into one field.
+ */
 export function parseLooseJarvisCreatorSkillDraft(text: string): JarvisCreatorParseResult<'skill'> {
   const trimmed = text.trim();
-  if (!trimmed || trimmed.includes('```json') || !looksLikeCreatorSkillMarkdown(trimmed)) {
+  // Allow loose parse even when a broken json fence is present (fall through).
+  const withoutBrokenJson = trimmed.replace(/```json[\s\S]*?```/gi, '').trim() || trimmed;
+  if (!withoutBrokenJson || !looksLikeCreatorSkillMarkdown(withoutBrokenJson)) {
     return { ok: false, error: 'Jarvis response does not look like a skill draft.' };
   }
-  const description = firstMeaningfulLine(trimmed) || 'Jarvis-generated skill draft.';
+
+  const title =
+    cleanDraftName(labeledField(withoutBrokenJson, 'Skill Name')) ||
+    cleanDraftName(labeledField(withoutBrokenJson, 'skill name')) ||
+    cleanDraftName(labeledField(withoutBrokenJson, 'Title')) ||
+    cleanDraftName(labeledField(withoutBrokenJson, 'Name')) ||
+    cleanDraftName(firstHeading(withoutBrokenJson)) ||
+    'Jarvis Skill Draft';
+
+  const descriptionRaw =
+    labeledField(withoutBrokenJson, 'Description') ||
+    labeledField(withoutBrokenJson, 'Summary') ||
+    labeledSection(withoutBrokenJson, ['Description', 'Summary']) ||
+    firstMeaningfulLine(withoutBrokenJson);
+  let description = stripMarkdown(descriptionRaw).slice(0, 180);
+  // Avoid stuffing "Skill Name: Foo" into description when that's all we found.
+  if (!description || /^skill\s*name\b/i.test(description) || description.toLowerCase() === title.toLowerCase()) {
+    description = `Skill that ${title.replace(/skill$/i, '').trim() || 'helps with this task'}`.slice(0, 180);
+  }
+
+  const behaviorSection =
+    labeledSection(withoutBrokenJson, [
+      'Behavior',
+      'Instructions',
+      'Runtime instructions',
+      'Runtime',
+      'How it works',
+      'Rules',
+    ]) || '';
+
+  // Runtime addendum: operating rules only — prefer Behavior section, else
+  // full text with title/description lines stripped.
+  let systemPromptAddendum = behaviorSection.trim();
+  if (!systemPromptAddendum) {
+    systemPromptAddendum = withoutBrokenJson
+      .split(/\r?\n/)
+      .filter((line) => {
+        const plain = stripMarkdown(line);
+        if (!plain) return false;
+        if (/^skill\s*name\b/i.test(plain)) return false;
+        if (/^title\b/i.test(plain)) return false;
+        if (/^description\b/i.test(plain)) return false;
+        if (plain.toLowerCase() === title.toLowerCase()) return false;
+        return true;
+      })
+      .join('\n')
+      .trim();
+  }
+  if (!systemPromptAddendum) {
+    systemPromptAddendum = `When this skill is active, act as ${title}. Follow the user's goal carefully and stay within stated boundaries.`;
+  }
+
+  const tools = extractToolsFromText(withoutBrokenJson);
+
+  const body = [
+    `# ${title}`,
+    '',
+    description,
+    '',
+    '## Instructions',
+    '',
+    systemPromptAddendum,
+  ].join('\n');
+
   const draft: JarvisCreatorSkillDraft = {
-    title: 'Jarvis Skill Draft',
-    description: description.slice(0, 180),
-    tools: [],
-    systemPromptAddendum: stripMarkdown(trimmed),
-    body: [
-      '# Jarvis Skill Draft',
-      '',
-      '## Instructions',
-      '',
-      trimmed,
-    ].join('\n'),
+    title,
+    description,
+    tools,
+    systemPromptAddendum,
+    body,
     emoji: '✨',
   };
   return { ok: true, draft };
@@ -309,9 +456,47 @@ export function parseJarvisCreatorDraft<K extends JarvisCreatorKind>(
     const parsed = extractJsonBlock(text);
     return (kind === 'agent' ? parseAgentDraft(parsed) : parseSkillDraft(parsed)) as JarvisCreatorParseResult<K>;
   } catch (err) {
+    // JSON failed — try markdown/prose fallback so Push still works.
+    if (kind === 'skill') {
+      const loose = parseLooseJarvisCreatorSkillDraft(text);
+      if (loose.ok) return loose as JarvisCreatorParseResult<K>;
+    } else {
+      const loose = parseLooseJarvisCreatorAgentDraft(text);
+      if (loose.ok) return loose as JarvisCreatorParseResult<K>;
+    }
     return {
       ok: false,
       error: `Jarvis did not return valid JSON: ${err instanceof Error ? err.message : String(err)}`,
     };
   }
+}
+
+/** Normalize a skill draft so every editor field is always filled. */
+export function normalizeJarvisCreatorSkillDraft(
+  draft: Partial<JarvisCreatorSkillDraft> | null | undefined,
+): JarvisCreatorSkillDraft | null {
+  if (!draft) return null;
+  const title = asString(draft.title) || 'Jarvis Skill Draft';
+  const description =
+    asString(draft.description) ||
+    `Custom skill: ${title}`.slice(0, 180);
+  const systemPromptAddendum =
+    asString(draft.systemPromptAddendum) ||
+    asString(draft.body) ||
+    `When this skill is active, act as ${title}.`;
+  const body =
+    asString(draft.body) ||
+    [`# ${title}`, '', description, '', '## Instructions', '', systemPromptAddendum].join('\n');
+  const tools = Array.isArray(draft.tools)
+    ? draft.tools.map((t) => String(t).trim()).filter(Boolean)
+    : [];
+  if (!title || !description || !systemPromptAddendum) return null;
+  return {
+    title,
+    description,
+    tools,
+    systemPromptAddendum,
+    body,
+    emoji: asString(draft.emoji) || '✨',
+  };
 }

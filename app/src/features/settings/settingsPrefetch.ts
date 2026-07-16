@@ -2,6 +2,7 @@ export type SettingsTab =
   | 'account'
   | 'plans'
   | 'providers'
+  | 'connections'
   | 'hive'
   | 'allaboutme'
   | 'plugins'
@@ -22,6 +23,7 @@ const TAB_IMPORTS: Record<SettingsTab, () => Promise<unknown>> = {
   account: () => import('./sections/Account'),
   plans: () => import('./sections/Plans'),
   providers: () => import('./sections/Providers'),
+  connections: () => import('./sections/SubscriptionCliBridge'),
   hive: () => import('./sections/Hive'),
   allaboutme: () => import('./sections/AllAboutMe').then((m) => ({ default: m.AllAboutMe })),
   plugins: () => import('@/features/plugins/Plugins'),

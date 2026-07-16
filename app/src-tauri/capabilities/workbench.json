@@ -1,0 +1,40 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "workbench-window",
+  "description": "Capability for user-created VibeSpace Workbench windows. It mirrors the main local app surface so existing terminal, notification, dialog, and scoped HTTP integrations remain functional after detaching. Remote content is never associated with this capability; browser panels remain sandboxed iframes without same-origin access.",
+  "windows": ["workbench-*"],
+  "permissions": [
+    "core:default",
+    "core:event:default",
+    "core:window:default",
+    "core:webview:default",
+    "core:webview:allow-create-webview-window",
+    "core:app:default",
+    "core:path:default",
+    "notification:default",
+    "dialog:default",
+    "shell:allow-open",
+    "os:default",
+    "process:default",
+    "updater:default",
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "http://localhost:11434/*" },
+        { "url": "http://127.0.0.1:11434/*" },
+        { "url": "https://api.openai.com/*" },
+        { "url": "https://api.anthropic.com/*" },
+        { "url": "https://generativelanguage.googleapis.com/*" },
+        { "url": "https://api.groq.com/*" },
+        { "url": "https://api.github.com/*" },
+        { "url": "https://api.figma.com/*" },
+        { "url": "https://*.supabase.co/*" },
+        { "url": "https://*.myshopify.com/*" },
+        { "url": "https://slack.com/*" },
+        { "url": "https://api.wulong.dev/*" },
+        { "url": "https://lmarena.ai/*" },
+        { "url": "https://arena.ai/*" }
+      ]
+    }
+  ]
+}

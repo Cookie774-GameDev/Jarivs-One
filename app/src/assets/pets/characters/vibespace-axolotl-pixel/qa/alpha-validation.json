@@ -1,0 +1,36 @@
+{
+  "canonicalPaletteColorCount": 32,
+  "logicalPixelScale": 6,
+  "nativeCanvas": [
+    209,
+    209
+  ],
+  "nativePaletteColorCount": 32,
+  "nativePartialAlphaPixels": 0,
+  "nativeTransparentRgbZero": true,
+  "schemaVersion": 1,
+  "softEffects": {
+    "ambient_glow": {
+      "opaquePixels": 0,
+      "partialAlphaPixels": 21880
+    },
+    "face_glow": {
+      "opaquePixels": 0,
+      "partialAlphaPixels": 5373
+    },
+    "outline_glow": {
+      "opaquePixels": 0,
+      "partialAlphaPixels": 2046
+    },
+    "rear_shadow": {
+      "opaquePixels": 0,
+      "partialAlphaPixels": 1841
+    }
+  },
+  "sourceCanvas": [
+    1254,
+    1254
+  ],
+  "sourcePartialAlphaPixels": 4065,
+  "status": "pass"
+}

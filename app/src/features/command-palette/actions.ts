@@ -1,10 +1,12 @@
 import { create } from 'zustand';
 import {
+  AppWindow,
   CalendarDays,
   CheckSquare,
   Code,
   FileText,
   History,
+  Grid2X2Plus,
   LayoutGrid,
   ListPlus,
   type LucideIcon,
@@ -12,14 +14,16 @@ import {
   MessageSquare,
   MessageSquarePlus,
   Mic,
-  Monitor,
   Moon,
   Moon as Ambient,
   PanelLeft,
   PanelRight,
   Palette,
   Rocket,
+  Sparkles,
   Settings,
+  Smartphone,
+  Globe2,
   Sun,
   User,
   Users,
@@ -29,6 +33,7 @@ import { useUIStore } from '@/stores/ui';
 import { useAgentStore } from '@/stores/agents';
 import { toast } from '@/components/ui/toast';
 import type { PageId } from './store';
+import { useWorkbenchStore } from '@/features/workbench/store';
 
 export type ActionId = string;
 
@@ -112,6 +117,61 @@ const STATIC_ACTIONS: Action[] = [
     keywords: ['todo', 'reminder', 'create'],
     perform: ({ closePalette }) => {
       emitJarvisEvent('jarvis:open-task-composer');
+      closePalette();
+    },
+  },
+  {
+    id: 'open-workbench',
+    label: 'Open Workbench',
+    description: 'Open Workbench in-app and try a separate window',
+    icon: AppWindow,
+    page: 'root',
+    keywords: ['canvas', 'workspace', 'desktop', 'spatial'],
+    perform: ({ closePalette }) => {
+      useUIStore.getState().setRoute('workbench');
+      void import('@/features/workbench/window').then(({ openOrFocusWorkbenchWindow }) =>
+        openOrFocusWorkbenchWindow({ name: useWorkbenchStore.getState().name }),
+      );
+      closePalette();
+    },
+  },
+  {
+    id: 'spawn-workbench',
+    label: 'Spawn Workbench',
+    description: 'Apply the web development layout and open Workbench',
+    icon: Grid2X2Plus,
+    page: 'root',
+    keywords: ['canvas', 'terminals', 'browser', 'web development', 'agents'],
+    perform: ({ closePalette }) => {
+      useWorkbenchStore.getState().applyTemplate('web-development');
+      useUIStore.getState().setRoute('workbench');
+      void import('@/features/workbench/window').then(({ openOrFocusWorkbenchWindow }) =>
+        openOrFocusWorkbenchWindow({ name: useWorkbenchStore.getState().name }),
+      );
+      closePalette();
+    },
+  },
+  {
+    id: 'open-preview-studio',
+    label: 'Open Preview Studio',
+    description: 'Responsive device previews for local servers and HTML',
+    icon: Smartphone,
+    page: 'root',
+    keywords: ['preview', 'iphone', 'ipad', 'responsive', 'localhost', 'vite'],
+    perform: ({ closePalette }) => {
+      useUIStore.getState().setRoute('preview');
+      closePalette();
+    },
+  },
+  {
+    id: 'open-vibe-browser',
+    label: 'Open Vibe Browser',
+    description: 'Isolated agent-capable browser runtime',
+    icon: Globe2,
+    page: 'root',
+    keywords: ['browser', 'edge', 'chrome', 'cdp', 'agent', 'web'],
+    perform: ({ closePalette }) => {
+      useUIStore.getState().setRoute('browser');
       closePalette();
     },
   },
@@ -209,7 +269,7 @@ const STATIC_ACTIONS: Action[] = [
       closePalette();
     },
   },
-  // V2 — Schedule
+  // V2 ΓÇö Schedule
   {
     id: 'open-schedule',
     label: 'Schedule',
@@ -224,7 +284,7 @@ const STATIC_ACTIONS: Action[] = [
     },
   },
 
-  // V2 — Quick Launch
+  // V2 ΓÇö Quick Launch
   {
     id: 'open-launcher',
     label: 'Quick Launch',
@@ -239,7 +299,7 @@ const STATIC_ACTIONS: Action[] = [
     },
   },
 
-  // V2 — Fullscreen workspace toggle
+  // V2 ΓÇö Fullscreen workspace toggle
   {
     id: 'toggle-fullscreen',
     label: 'Toggle fullscreen workspace',
@@ -254,7 +314,7 @@ const STATIC_ACTIONS: Action[] = [
     },
   },
 
-  // V2 — Ambient toggle
+  // V2 ΓÇö Ambient toggle
   {
     id: 'toggle-ambient',
     label: 'Ambient mode',
@@ -273,13 +333,24 @@ const STATIC_ACTIONS: Action[] = [
 
   // --- Theme sub-page -----------------------------------------------------
   {
-    id: 'theme-dark',
-    label: 'Dark',
+    id: 'theme-default',
+    label: 'Default',
     icon: Moon,
     page: 'theme',
     keywords: ['oled', 'night'],
     perform: ({ closePalette }) => {
-      useUIStore.getState().setTheme('dark');
+      useUIStore.getState().setTheme('default');
+      closePalette();
+    },
+  },
+  {
+    id: 'theme-vibespace',
+    label: 'VibeSpace',
+    icon: Sparkles,
+    page: 'theme',
+    keywords: ['pastel', 'origami', 'peach', 'lavender'],
+    perform: ({ closePalette }) => {
+      useUIStore.getState().setTheme('vibespace');
       closePalette();
     },
   },
@@ -305,18 +376,6 @@ const STATIC_ACTIONS: Action[] = [
       closePalette();
     },
   },
-  {
-    id: 'theme-system',
-    label: 'System',
-    icon: Monitor,
-    page: 'theme',
-    keywords: ['auto', 'os'],
-    perform: ({ closePalette }) => {
-      useUIStore.getState().setTheme('system');
-      closePalette();
-    },
-  },
-
   // --- Switch chat mode sub-page -----------------------------------------
   {
     id: 'mode-chat',

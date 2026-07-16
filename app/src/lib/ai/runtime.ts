@@ -14,8 +14,8 @@
  * Threading them in via `bindings` keeps this file independently buildable
  * and lets the consumer wire up the real repo at app boot time.
  */
-import type { Agent, AgentId, Message, MessageId, Part } from '@/types';
-import type { ChatId, ProjectId } from '@/types/common';
+import type { Agent, AgentId, Chat, Message, MessageId, Part } from '@/types';
+import type { ChatId } from '@/types/common';
 import { useAuthStore } from '@/stores/auth';
 import { useAgentStore } from '@/stores/agents';
 import { runAgent } from './router';
@@ -36,6 +36,8 @@ import { STREAMING_VOICE_END_EVENT } from '@/features/voice/speechSynthesis';
 import { registerActiveStreamingVoiceSession } from '@/features/voice/voiceRouter';
 import { deriveChatTitle, maybeRenameChat } from '@/features/chat/chatLifecycle';
 import { getStoredProjectRoot } from '@/features/files/projectFiles';
+import { resolveDefaultWriteDir } from '@/lib/actions/defaultWriteDir';
+import { buildUserIdentityContextBlock } from './userIdentity';
 import { composeSkillAddenda, resolveSkills } from '@/lib/agents/skills';
 import { createChatActivityId, useChatActivityStore } from '@/features/chat/activity';
 import {
@@ -49,6 +51,7 @@ import {
   applyChatModelSelectionToAgent,
   modelSelectionContextFromAuth,
   resolveActiveStackPreset,
+  selectionFromOption,
   validateSendModelAccess,
   type ChatModelSelection,
 } from './modelSelection';
@@ -337,16 +340,6 @@ function updateStructuredAgentStatus(
     currentStep,
     updatedAt: new Date().toISOString(),
   });
-}
-
-async function resolveChatProjectId(chatId: ChatId | string): Promise<ProjectId | null> {
-  try {
-    const chat = await chatRepo.getById(chatId as ChatId);
-    if (chat?.project_id) return chat.project_id;
-  } catch {
-    // Fall back to the currently active project below.
-  }
-  return useAuthStore.getState().projectId as ProjectId | null;
 }
 
 function resolveMentionedAgents(
@@ -745,9 +738,26 @@ export function startRuntimeListener(
     }
 
     const authState = useAuthStore.getState();
+    let chatRecord: Chat | undefined;
+    try {
+      chatRecord = await chatRepo.getById(chatId as ChatId);
+    } catch {
+      toast.error('Cannot send', 'The selected chat connection could not be verified.');
+      releaseVoiceTurnWithoutReply(detail, chatId);
+      return;
+    }
     const interactionMode = detail.interactionMode ?? useJarvisInteractionStore.getState().modeForChat(chatId);
     const modelCtx = modelSelectionContextFromAuth(authState);
-    const chatModelSelection = detail.modelSelectionOverride ?? authState.chatModelSelection;
+    const persistedConnection = chatRecord?.connection;
+    const storedModelId = persistedConnection?.modelId
+      ?? (authState.chatModelSelection.mode === 'single'
+        && authState.chatModelSelection.providerId === persistedConnection?.providerId
+        ? authState.chatModelSelection.modelId
+        : undefined);
+    const chatModelSelection = detail.modelSelectionOverride
+      ?? (persistedConnection && storedModelId
+        ? selectionFromOption(persistedConnection.providerId as import('@/types').ProviderId, storedModelId, persistedConnection)
+        : authState.chatModelSelection);
     const sendValidation = validateSendModelAccess(
       text,
       chatModelSelection,
@@ -755,7 +765,11 @@ export function startRuntimeListener(
       authState.stackCustomSteps,
       {
         voice: detail.speakReply === true,
-        attachments: { hasImages: (detail.imageAttachments?.length ?? 0) > 0 },
+        attachments: {
+          hasImages: (detail.imageAttachments?.length ?? 0) > 0,
+          hasFiles: (detail.filePaths?.length ?? 0) > 0,
+        },
+        tools: (detail.pluginIds?.length ?? 0) > 0,
       },
     );
     if (!sendValidation.ok) {
@@ -796,7 +810,7 @@ export function startRuntimeListener(
       return;
     }
 
-    const projectId = await resolveChatProjectId(chatId);
+    const projectId = chatRecord?.project_id ?? authState.projectId;
     rememberConversationDestination(chatId, text);
     const resolvedRequestContext = await resolveJarvisContext({
       projectId,
@@ -927,6 +941,8 @@ export function startRuntimeListener(
     let explicitFilesContext = '';
     let explicitTerminalContext = '';
     let jarvisCoordinationContext = '';
+    let userIdentityContext = '';
+    let defaultWriteFolderContext = '';
     let allAboutMeContext = '';
     let pluginContext = '';
     let pluginStatusContext = '';
@@ -1013,6 +1029,16 @@ export function startRuntimeListener(
       });
     }
     if (agent.slug === 'jarvis') {
+      userIdentityContext = buildUserIdentityContextBlock(authState.displayName);
+      try {
+        const defaultWriteFolder = await resolveDefaultWriteDir();
+        defaultWriteFolderContext = [
+          '## Default write folder',
+          `When the user requests a new file without a destination, use: ${defaultWriteFolder}`,
+        ].join('\n');
+      } catch {
+        // The file action still applies its own safe fallback directory.
+      }
       try {
         allAboutMeContext = buildAllAboutMeContextBlock(useAllAboutMeStore.getState().markdown);
       } catch (err) {
@@ -1068,6 +1094,8 @@ export function startRuntimeListener(
     const contextBlocks = [
       projectContext,
       projectContextTree,
+      userIdentityContext,
+      defaultWriteFolderContext,
       allAboutMeContext,
       pluginContext,
       pluginStatusContext,
@@ -1292,6 +1320,14 @@ export function startRuntimeListener(
         : await runAgent({
             agent: runnable,
             messages: llmMessages,
+            connectionId: persistedConnection?.id
+              ?? (chatModelSelection.mode === 'single' ? chatModelSelection.connectionId : undefined),
+            connectionRequirements: {
+              images: (detail.imageAttachments?.length ?? 0) > 0,
+              files: (detail.filePaths?.length ?? 0) > 0,
+              tools: (detail.pluginIds?.length ?? 0) > 0,
+            },
+            workingDirectory: projectId ? getStoredProjectRoot(projectId) ?? undefined : undefined,
             signal: controller.signal,
             onChunk: (chunk) => {
               if (chunk.delta && chunk.delta.length > 0) {

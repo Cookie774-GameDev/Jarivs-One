@@ -15,6 +15,11 @@ export {
   listActiveVoicePlugins,
 } from './activation';
 export { testPluginConnection, callPluginTool } from './runtime';
+export {
+  disconnectPlugin,
+  getPluginRuntimeContract,
+  validatePluginRuntimeContract,
+} from './contract';
 export { pluginSearchBlob } from './providerRegistry';
 export { PluginLogo } from './PluginLogo';
 export { getPluginLogoSources } from './pluginLogos';

@@ -1,6 +1,6 @@
 import * as React from 'react';
 import * as ReactDOM from 'react-dom';
-import { Sparkles, Copy, Edit2, Eraser, Columns, Rows, Trash2 } from 'lucide-react';
+import { Sparkles, Copy, Edit2, Eraser, Columns, Rows, Trash2, Cat } from 'lucide-react';
 
 interface TerminalContextMenuProps {
   x: number;
@@ -12,6 +12,8 @@ interface TerminalContextMenuProps {
   onClear: () => void;
   onSplit: (direction: 'col' | 'row') => void;
   onCloseTerminal: () => void;
+  /** Move live PTY presentation into the Pet mini-panel (no restart). */
+  onSendToPetPanel?: () => void;
 }
 
 export function TerminalContextMenu({
@@ -24,6 +26,7 @@ export function TerminalContextMenu({
   onClear,
   onSplit,
   onCloseTerminal,
+  onSendToPetPanel,
 }: TerminalContextMenuProps) {
   const menuRef = React.useRef<HTMLDivElement>(null);
 
@@ -100,7 +103,22 @@ export function TerminalContextMenu({
         <span>Ask Jarvis</span>
       </button>
 
-      <div className="my-1 border-t border-border/60" />
+      {onSendToPetPanel && (
+        <>
+          <button
+            type="button"
+            onClick={() => {
+              onSendToPetPanel();
+              onClose();
+            }}
+            className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-metadata hover:bg-accent-copper/10 hover:text-accent-copper transition-colors text-left"
+          >
+            <Cat className="h-3.5 w-3.5 text-accent-copper" />
+            <span>Send to Pet panel</span>
+          </button>
+          <div className="my-1 border-t border-border/60" />
+        </>
+      )}
 
       <button
         type="button"

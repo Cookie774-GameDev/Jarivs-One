@@ -2,6 +2,15 @@
 
 All notable changes to Jarvis are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Preview Studio** — top-level `preview` route for responsive device emulation (iPhone/iPad/laptop/desktop presets), localhost discovery, loopback static HTML serving, and an isolated preview surface (separate WebView window, no host IPC) with Workbench-styled chrome and recovery cards.
+- **Vibe Browser** — top-level `browser` route launching an isolated Edge/Chrome profile under app data, CDP on `127.0.0.1`, screencast viewport, multi-tab UI, agent control modes (default ask-before-action), and Stop Agent.
+- **Browser agent tools** — allow-listed tools (`browser.navigate`, `browser.readPage`, …) with approval gates; arbitrary JS execution is rejected.
+- Docs: `docs/PREVIEW_AND_BROWSER.md`.
+
 ## [0.1.48] - 2026-07-08
 
 ### Added

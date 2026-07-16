@@ -72,6 +72,7 @@ describe('SchedulePage Jarvis Action model picker', () => {
       all_day: false,
       reminders: [],
     });
+    expect(JSON.stringify(createEvent.mock.calls[0]?.[0])).toContain('google-gemini-api');
   });
 
   it('saves a recurring Jarvis Action when a repeat preset is selected', async () => {

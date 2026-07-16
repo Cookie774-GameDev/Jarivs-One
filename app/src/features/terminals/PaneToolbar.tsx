@@ -4,9 +4,9 @@
  * Rendered inside the chrome strip of every terminal pane. The full set:
  *
  *   - Font size cycle    (12 -> 14 -> 16 -> 12 ...)
- *   - Clear screen       (sends ^L so the shell redraws its prompt)
+ *   - Clear screen       (hold 1.5s → Confirm)
  *   - Fullscreen toggle  (hidden when there's only one pane in the page)
- *   - Close pane
+ *   - Close pane         (hold 1.5s → Confirm — same pattern as Clear)
  *
  * Splits-mode chrome composes this toolbar with two extra split-direction
  * buttons next to it (see `TerminalGrid.tsx`); both reuse the exported
@@ -16,6 +16,11 @@ import * as React from 'react';
 import { Maximize2, Minimize2, Type, Eraser, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { clearTerminalSession } from './terminalClear';
+import {
+  HOLD_TO_CONFIRM_MS,
+  createHoldToConfirmController,
+  type HoldConfirmPhase,
+} from './holdToConfirm';
 
 /**
  * Font size cycle order. Expanded range from 10 to 20 to allow richer
@@ -65,6 +70,48 @@ interface PaneToolbarProps {
   onClose: () => void;
 }
 
+function useHoldToConfirm(
+  canBegin?: () => boolean,
+): {
+  phase: HoldConfirmPhase;
+  begin: (e: React.PointerEvent) => void;
+  cancel: () => void;
+  confirm: () => boolean;
+} {
+  const [phase, setPhase] = React.useState<HoldConfirmPhase>('idle');
+  const canBeginRef = React.useRef(canBegin);
+  canBeginRef.current = canBegin;
+
+  const ctrlRef = React.useRef<ReturnType<typeof createHoldToConfirmController> | null>(null);
+  if (!ctrlRef.current) {
+    ctrlRef.current = createHoldToConfirmController({
+      onPhaseChange: setPhase,
+      canBegin: () => (canBeginRef.current ? canBeginRef.current() : true),
+    });
+  }
+
+  React.useEffect(() => {
+    return () => {
+      ctrlRef.current?.dispose();
+      ctrlRef.current = null;
+    };
+  }, []);
+
+  const begin = React.useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    ctrlRef.current?.beginHold();
+  }, []);
+
+  const cancel = React.useCallback(() => {
+    ctrlRef.current?.cancelHold();
+  }, []);
+
+  const confirm = React.useCallback(() => ctrlRef.current?.confirm() ?? false, []);
+
+  return { phase, begin, cancel, confirm };
+}
+
 export function PaneToolbar({
   sessionId,
   paneId,
@@ -75,50 +122,26 @@ export function PaneToolbar({
   onFullscreenToggle,
   onClose,
 }: PaneToolbarProps) {
-  const [holdState, setHoldState] = React.useState<'idle' | 'holding' | 'confirm'>('idle');
-  const holdTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const resetTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const canClear = React.useCallback(() => Boolean(sessionId), [sessionId]);
+  // Close always allowed — last pane is handled by tree resolve (reset leaf).
+  const canClose = React.useCallback(() => true, []);
 
-  const startHolding = (e: React.PointerEvent) => {
-    if (holdState !== 'idle' || !sessionId) return;
-    e.preventDefault();
-    setHoldState('holding');
-    holdTimerRef.current = setTimeout(() => {
-      setHoldState('confirm');
-      resetTimerRef.current = setTimeout(() => {
-        setHoldState('idle');
-      }, 3500);
-    }, 1500);
-  };
-
-  const cancelHolding = () => {
-    if (holdState === 'holding') {
-      if (holdTimerRef.current) {
-        clearTimeout(holdTimerRef.current);
-        holdTimerRef.current = null;
-      }
-      setHoldState('idle');
-    }
-  };
-
-  React.useEffect(() => {
-    return () => {
-      if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
-      if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
-    };
-  }, []);
+  const clearHold = useHoldToConfirm(canClear);
+  const closeHold = useHoldToConfirm(canClose);
 
   const handleConfirmClear = (e: React.MouseEvent) => {
+    e.preventDefault();
     e.stopPropagation();
+    if (!clearHold.confirm()) return;
     if (!sessionId) return;
-
     clearTerminalSession(sessionId, paneId);
+  };
 
-    if (resetTimerRef.current) {
-      clearTimeout(resetTimerRef.current);
-      resetTimerRef.current = null;
-    }
-    setHoldState('idle');
+  const handleConfirmClose = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!closeHold.confirm()) return;
+    onClose();
   };
 
   return (
@@ -131,30 +154,24 @@ export function PaneToolbar({
         <Type className="h-3 w-3" />
       </ChromeBtn>
 
-      {holdState === 'confirm' ? (
-        <button
-          type="button"
+      {clearHold.phase === 'confirm' ? (
+        <ConfirmChip
+          label="Confirm clear"
           onClick={handleConfirmClear}
-          className="inline-flex h-5 items-center justify-center rounded border border-accent-copper bg-accent-copper/20 px-1.5 text-[9px] font-bold uppercase tracking-wider text-accent-copper transition-all hover:bg-accent-copper/30 select-none animate-pulse"
           title="Click to confirm clearing terminal"
-        >
-          Confirm?
-        </button>
+        />
       ) : (
         <ChromeBtn
-          title="Hold 1.5s to clear screen"
-          onPointerDown={startHolding}
-          onPointerUp={cancelHolding}
-          onPointerLeave={cancelHolding}
+          title={`Hold ${HOLD_TO_CONFIRM_MS / 1000}s to clear screen`}
+          onPointerDown={clearHold.begin}
+          onPointerUp={clearHold.cancel}
+          onPointerLeave={clearHold.cancel}
+          onPointerCancel={clearHold.cancel}
           className="relative overflow-hidden select-none"
-          aria-label="Hold 1.5s to clear screen"
+          aria-label={`Hold ${HOLD_TO_CONFIRM_MS / 1000}s to clear screen`}
+          disabled={!sessionId}
         >
-          <div
-            className={cn(
-              "absolute left-0 bottom-0 top-0 bg-accent-copper/30 pointer-events-none transition-all ease-linear",
-              holdState === 'holding' ? "duration-[1500ms] w-full" : "duration-0 w-0"
-            )}
-          />
+          <HoldFill active={clearHold.phase === 'holding'} />
           <Eraser className="relative z-10 h-3 w-3" />
         </ChromeBtn>
       )}
@@ -173,10 +190,65 @@ export function PaneToolbar({
           )}
         </ChromeBtn>
       )}
-      <ChromeBtn title="Close pane" onClick={onClose} aria-label="Close pane">
-        <X className="h-3 w-3" />
-      </ChromeBtn>
+
+      {closeHold.phase === 'confirm' ? (
+        <ConfirmChip
+          label="Confirm close"
+          onClick={handleConfirmClose}
+          title="Click to confirm closing this terminal pane"
+        />
+      ) : (
+        <ChromeBtn
+          title={`Hold ${HOLD_TO_CONFIRM_MS / 1000}s to close pane`}
+          onPointerDown={closeHold.begin}
+          onPointerUp={closeHold.cancel}
+          onPointerLeave={closeHold.cancel}
+          onPointerCancel={closeHold.cancel}
+          className="relative overflow-hidden select-none"
+          aria-label={`Hold ${HOLD_TO_CONFIRM_MS / 1000}s to close pane`}
+        >
+          <HoldFill active={closeHold.phase === 'holding'} />
+          <X className="relative z-10 h-3 w-3" />
+        </ChromeBtn>
+      )}
     </div>
+  );
+}
+
+function HoldFill({ active }: { active: boolean }) {
+  return (
+    <div
+      className={cn(
+        'pointer-events-none absolute bottom-0 left-0 top-0 bg-accent-copper/30 transition-all ease-linear',
+        active ? 'w-full duration-[1500ms]' : 'w-0 duration-0',
+      )}
+    />
+  );
+}
+
+function ConfirmChip({
+  label,
+  title,
+  onClick,
+}: {
+  label: string;
+  title: string;
+  onClick: (e: React.MouseEvent) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      onPointerDown={(e) => {
+        // Prevent tile drag / right-drag handlers from swallowing the confirm.
+        e.stopPropagation();
+      }}
+      className="inline-flex h-5 items-center justify-center rounded border border-accent-copper bg-accent-copper/20 px-1.5 text-[9px] font-bold uppercase tracking-wider text-accent-copper transition-all hover:bg-accent-copper/30 select-none animate-pulse"
+      title={title}
+      aria-label={label}
+    >
+      Confirm?
+    </button>
   );
 }
 
@@ -190,11 +262,16 @@ export interface ChromeBtnProps
   children: React.ReactNode;
 }
 
-export function ChromeBtn({ children, className, ...rest }: ChromeBtnProps) {
+export function ChromeBtn({ children, className, onPointerDown, ...rest }: ChromeBtnProps) {
   return (
     <button
       type="button"
       {...rest}
+      onPointerDown={(e) => {
+        // Keep chrome controls interactive even when the tile shell listens for drags.
+        e.stopPropagation();
+        onPointerDown?.(e);
+      }}
       className={cn(
         'inline-flex h-5 w-5 items-center justify-center rounded',
         'text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
