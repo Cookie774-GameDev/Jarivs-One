@@ -1638,7 +1638,7 @@ git log --oneline origin/main..HEAD -- 'install/install.ps1'
 Expected staged and committed names: exactly the seven files above. The
 installer queries and whitespace checks produce no output.
 
-## Task 7: Additive Dexie v3 Schema and Testable Database Factory
+## Task 7: Additive Dexie v3 Schema and Injected Database Factory
 
 **Files:**
 
@@ -1649,9 +1649,183 @@ installer queries and whitespace checks produce no output.
 - Create: `app/src/test/indexedDb.ts`
 - Create: `app/src/lib/db/index.migration.test.ts`
 
-**Schema rule:** `STORES_V1` and `STORES_V2` remain byte-for-byte unchanged.
+**Interfaces:**
 
-Add:
+- Consumes: `JarvisIdentitySnapshot` and mutable `JarvisProfile` from Task 2;
+  `JarvisRun`, `JarvisEvent`, `JarvisApproval`, `JarvisArtifact`,
+  `JarvisModelSnapshot`, and `JarvisSourceRef` from Task 3.
+- Produces: additive snake_case V3 rows, six typed Dexie tables, the unique
+  `[run_id+idempotency_key]` event-delivery constraint, and an injected
+  database factory used by Tasks 8, 9, 18, 19, and 20.
+- Preserves: every character of `STORES_V1` and `STORES_V2` and every existing
+  V1/V2 row. V3 adds no destructive `.upgrade()` callback.
+
+**Exact row contracts:**
+
+Action `params` and `target_snapshot` remain canonical JSON payloads and
+retain their registered action field names. All kernel-owned row fields use
+snake_case:
+
+```ts
+export type JarvisModelSnapshotRow = {
+  connection_id?: string;
+  provider_id: string;
+  model_id: string;
+  connection_mode: 'native-api' | 'external-cli' | 'local';
+  capabilities: Record<string, boolean>;
+  effective_temperature?: number;
+  captured_at: number;
+};
+
+export type JarvisSourceRefRow = {
+  id: string;
+  kind:
+    | 'user_message'
+    | 'chat'
+    | 'project'
+    | 'project_file'
+    | 'context_node'
+    | 'memory'
+    | 'terminal'
+    | 'tool_result'
+    | 'plugin'
+    | 'mcp'
+    | 'web'
+    | 'schedule'
+    | 'artifact'
+    | 'agent_output';
+  label: string;
+  uri?: string;
+  account_id: string;
+  project_id?: string;
+  trust: 'user_direct' | 'app_verified' | 'external_untrusted';
+  sensitivity: 'public' | 'private' | 'restricted' | 'secret';
+  observed_at?: number;
+  content_hash?: string;
+};
+
+export type JarvisIdentityRevisionRow = {
+  id: string;
+  identity_id: 'jarvis';
+  version: number;
+  core_hash: string;
+  response_contract_hash: string;
+  created_at: number;
+};
+
+export type JarvisProfileRow = {
+  id: string;
+  account_id: string;
+  name: string;
+  active: 0 | 1;
+  identity_version: number;
+  revision_id: string;
+  soul_revision_id?: string;
+  custom_instructions: string;
+  instruction_source: 'none' | 'user' | 'legacy_user_extension';
+  memory_scope: 'none' | 'profile' | 'shared_selected';
+  voice_enabled: boolean;
+  source_prompt_hash?: string;
+  created_at: number;
+  updated_at: number;
+  migration_version: 3;
+  migration_source: 'legacy_agent' | 'clean_default';
+  migration_source_prompt_hash?: string;
+  migration_completed_at: number;
+};
+
+export type JarvisRunRow = {
+  id: string;
+  account_id: string;
+  workspace_id?: string;
+  project_id?: string;
+  chat_id?: string;
+  parent_run_id?: string;
+  source: 'typed_chat' | 'voice' | 'schedule' | 'hive_final' | 'phone' | 'browser_chat';
+  status:
+    | 'queued'
+    | 'compiling'
+    | 'running'
+    | 'awaiting_approval'
+    | 'partial'
+    | 'completed'
+    | 'failed'
+    | 'cancelled'
+    | 'timed_out';
+  agent_id: string;
+  identity_version: number;
+  profile_revision_id: string;
+  model: JarvisModelSnapshotRow;
+  created_at: number;
+  updated_at: number;
+  completed_at?: number;
+};
+
+export type JarvisEventRow = {
+  run_id: string;
+  seq: number;
+  idempotency_key: string;
+  type:
+    | 'run_state'
+    | 'model'
+    | 'context'
+    | 'retrieval'
+    | 'tool'
+    | 'terminal'
+    | 'approval'
+    | 'artifact'
+    | 'message'
+    | 'warning'
+    | 'error';
+  status?: string;
+  title: string;
+  safe_summary?: string;
+  source_refs: JarvisSourceRefRow[];
+  artifact_ids: string[];
+  created_at: number;
+};
+
+export type JarvisApprovalRow = {
+  id: string;
+  run_id: string;
+  action_id: string;
+  action_version: number;
+  params: unknown;
+  secret_handle_refs?: { field: string; handle_id: string }[];
+  params_hash: string;
+  target_snapshot?: unknown;
+  risk: 'safe' | 'confirm' | 'dangerous';
+  status: 'pending' | 'approved' | 'denied' | 'expired' | 'consumed';
+  created_at: number;
+  decided_at?: number;
+  consumed_at?: number;
+};
+
+export type JarvisArtifactRow = {
+  id: string;
+  run_id: string;
+  kind:
+    | 'file'
+    | 'link'
+    | 'text'
+    | 'image'
+    | 'document'
+    | 'code'
+    | 'terminal_output'
+    | 'provider_result';
+  title: string;
+  uri?: string;
+  mime_type?: string;
+  safe_summary?: string;
+  source_refs: JarvisSourceRefRow[];
+  created_at: number;
+};
+```
+
+Tasks 19 and 20 extend `JarvisApprovalRow` and `JarvisArtifactRow` without
+changing the V3 object-store or index declaration.
+
+**Exact additive schema:**
 
 ```ts
 export const DB_VERSION = 3;
@@ -1662,63 +1836,134 @@ export const STORES_V3 = {
   jarvis_profiles: 'id, account_id, [account_id+active], updated_at',
   jarvis_runs:
     'id, account_id, chat_id, parent_run_id, status, [account_id+updated_at], [chat_id+created_at]',
-  jarvis_events: '[run_id+seq], run_id, type, status, created_at',
+  jarvis_events:
+    '[run_id+seq], run_id, idempotency_key, &[run_id+idempotency_key], type, status, created_at',
   jarvis_approvals: 'id, run_id, status, params_hash, created_at',
   jarvis_artifacts: 'id, run_id, kind, created_at',
 } as const;
+
+export const STORES = STORES_V3;
 ```
 
-Persist profile activity as `0 | 1`, because IndexedDB keys cannot be boolean.
+Do not alter any character of the existing `STORES_V1` and `STORES_V2`
+objects. `active` is `0 | 1`; IndexedDB boolean keys are invalid.
 
-Export:
+**Exact database factory:**
 
 ```ts
+export type JarvisDexieDependencies = {
+  indexedDB: IDBFactory;
+  IDBKeyRange: typeof IDBKeyRange;
+};
+
 export class JarvisDexie extends Dexie {
-  /* typed tables */
+  jarvis_identity_revisions!: EntityTable<JarvisIdentityRevisionRow, 'id'>;
+  jarvis_profiles!: EntityTable<JarvisProfileRow, 'id'>;
+  jarvis_runs!: EntityTable<JarvisRunRow, 'id'>;
+  jarvis_events!: Table<JarvisEventRow, [string, number]>;
+  jarvis_approvals!: EntityTable<JarvisApprovalRow, 'id'>;
+  jarvis_artifacts!: EntityTable<JarvisArtifactRow, 'id'>;
+
+  constructor(name = DB_NAME, dependencies?: JarvisDexieDependencies) {
+    super(name, dependencies);
+    this.version(1).stores(STORES_V1);
+    this.version(2).stores(STORES_V2);
+    this.version(3).stores(STORES_V3);
+  }
 }
-export function createJarvisDb(name = DB_NAME): JarvisDexie;
+
+export function createJarvisDb(
+  name = DB_NAME,
+  dependencies?: JarvisDexieDependencies,
+): JarvisDexie {
+  return new JarvisDexie(name, dependencies);
+}
+
+export const db = createJarvisDb();
 ```
 
-Install `fake-indexeddb` as an app dev dependency.
+Import `Table` from Dexie for the compound event primary key. Do not type the
+event table as though `run_id` alone were its primary key.
 
-**Step 1: Write migration tests**
+`app/src/test/indexedDb.ts` exports:
 
-Cover:
+```ts
+import { IDBKeyRange, indexedDB } from 'fake-indexeddb';
 
-- fresh v3 creates all six stores;
-- v1 to v3 preserves every v1 row;
-- v2 to v3 preserves every v2 row;
-- reopening v3 is idempotent;
-- compound event keys support monotonically ordered retrieval.
+export const TEST_INDEXED_DB = { indexedDB, IDBKeyRange } as const;
 
-**Step 2: Observe failure**
+export function uniqueTestDbName(prefix: string): string {
+  return `${prefix}-${crypto.randomUUID()}`;
+}
+```
+
+Every migration test creates a unique database name, closes its database in
+`afterEach`, and deletes only that exact test database.
+
+- [ ] **Step 1: Write the failing additive-migration tests**
+
+In `index.migration.test.ts`, prove:
+
+- fresh V3 exposes every existing store plus the six kernel stores;
+- the exact `STORES_V1` and `STORES_V2` literals are unchanged;
+- V1→V3 preserves every inserted V1 row byte-for-byte;
+- V2→V3 preserves every inserted V1/V2 row byte-for-byte;
+- reopening V3 is idempotent;
+- `[run_id+seq]` retrieves event sequences `1, 2, 3` in order;
+- duplicate `(run_id, seq)` fails;
+- duplicate `(run_id, idempotency_key)` fails even with another sequence;
+- the same idempotency key succeeds in another run; and
+- the V3 declaration has no destructive `.upgrade()` callback.
+
+- [ ] **Step 2: Run the focused test and verify RED**
 
 ```powershell
 npm --prefix app test -- src/lib/db/index.migration.test.ts
 ```
 
-**Step 3: Install the test dependency**
+Expected: FAIL because the V3 rows, injected factory, test helper, and
+`fake-indexeddb` dependency do not exist.
+
+- [ ] **Step 3: Install the isolated IndexedDB test dependency**
 
 ```powershell
 npm install --workspace app --save-dev fake-indexeddb
 ```
 
-**Step 4: Implement the additive version chain**
+Expected: only `app/package.json` and `package-lock.json` change.
 
-Replay `version(1)`, `version(2)`, and `version(3)` explicitly. Do not add a
-destructive upgrade callback.
+- [ ] **Step 4: Implement the rows, additive version chain, and injected factory**
 
-**Step 5: Verify and commit**
+Add the exact row contracts, schema, factory, typed tables, and test helper
+above. Replay `version(1)`, `version(2)`, and `version(3)` explicitly, preserve
+the process singleton through `createJarvisDb()`, and add no data-copy or
+deletion callback.
+
+- [ ] **Step 5: Verify the migration implementation**
 
 ```powershell
 npm --prefix app test -- src/lib/db/index.migration.test.ts
 npm run typecheck
-git add app/package.json package-lock.json app/src/lib/db/schema.ts app/src/lib/db/index.ts app/src/test/indexedDb.ts app/src/lib/db/index.migration.test.ts
-git diff --cached --check
-git commit -m "feat(db): add shared intelligence kernel v3 stores"
 ```
 
-## Task 8: Account Activation and Legacy JARVIS Migration
+- [ ] **Step 6: Stage literal files, inspect the cache, and commit**
+
+```powershell
+git add -- 'app/package.json' 'package-lock.json' 'app/src/lib/db/schema.ts' 'app/src/lib/db/index.ts' 'app/src/test/indexedDb.ts' 'app/src/lib/db/index.migration.test.ts'
+git diff --cached --name-only
+git diff --cached --check
+git diff --cached -- 'app/package.json' 'package-lock.json' 'app/src/lib/db/schema.ts' 'app/src/lib/db/index.ts' 'app/src/test/indexedDb.ts' 'app/src/lib/db/index.migration.test.ts'
+git diff --cached --name-only -- 'install/install.ps1'
+git commit -m "feat(db): add shared intelligence kernel v3 stores"
+git show --check --stat HEAD
+git diff-tree --no-commit-id --name-only -r HEAD
+git log --oneline origin/main..HEAD -- 'install/install.ps1'
+```
+
+Expected staged and committed names: exactly the six files above. The
+installer queries and whitespace checks produce no output.
+
+## Task 8: Transactional Account Activation and Legacy JARVIS Migration
 
 **Files:**
 
@@ -1726,11 +1971,57 @@ git commit -m "feat(db): add shared intelligence kernel v3 stores"
 - Create: `app/src/lib/db/migrations/jarvisV3.test.ts`
 - Create: `app/src/lib/jarvis/persistenceCoordinator.ts`
 - Create: `app/src/lib/jarvis/persistenceCoordinator.test.ts`
-- Modify: `app/src/App.tsx`
 
-**Migration contract:**
+Do not claim or stage `app/src/App.tsx`. Task 8 builds and tests activation as
+a library. Task 1B/16A mounts the coordinator only after the authoritative App
+lock is formally released.
+
+**Interfaces:**
+
+- Consumes: `AccountIdentity` from Task 1, protected identity/profile factories
+  and `isProtectedJarvisAgent()` from Task 2, and `JarvisDexie` plus V3 tables
+  from Task 7.
+- Produces: deterministic account profile IDs, transactional migration
+  metadata, a retryable activation result, and an account-aware persistence
+  coordinator with explicit `activating | ready | degraded` states.
+- Preserves: V2 UI availability and every legacy Agent row. Activation failure
+  never deletes or rewrites V1/V2 data.
+
+**Exact migration and activation contracts:**
 
 ```ts
+export type JarvisV3MigrationSource = 'legacy_agent' | 'clean_default';
+
+export type JarvisV3MigrationResult = {
+  accountId: string;
+  profileId: string;
+  identityRevisionId: string;
+  migrationVersion: 3;
+  source: JarvisV3MigrationSource;
+  migrationSourcePromptHash?: string;
+  migrated: boolean;
+};
+
+export type JarvisV3MigrationErrorCode =
+  | 'migration_conflict'
+  | 'profile_integrity_error'
+  | 'invalid_account_identity';
+
+export class JarvisV3MigrationError extends Error {
+  readonly code: JarvisV3MigrationErrorCode;
+}
+
+export async function defaultJarvisProfileId(accountId: string): Promise<string>;
+
+export type JarvisV3ActivationResult =
+  | { state: 'ready'; migration: JarvisV3MigrationResult }
+  | {
+      state: 'degraded';
+      accountId: string;
+      category: 'database_open_failed' | 'migration_failed' | 'identity_not_ready';
+      retry: () => Promise<JarvisV3ActivationResult>;
+    };
+
 export async function migrateLegacyJarvisIdentityForAccount(
   db: JarvisDexie,
   identity: AccountIdentity,
@@ -1742,50 +2033,176 @@ export async function activateJarvisV3ForAccount(
 ): Promise<JarvisV3ActivationResult>;
 ```
 
-Rules:
+The coordinator exports:
 
-- Match only `builtin === true && slug === 'jarvis'`.
-- Add the protected identity revision once.
-- Add one default active profile per account.
-- Known shipped prompt hash becomes empty custom instructions.
-- Unknown prompt hash becomes normalized
-  `legacy_user_extension` instructions.
-- Preserve legacy Agent rows, provider/model, tools, capabilities, memory scope,
-  temperature, and non-JARVIS agents byte-for-byte.
-- Migrate legacy text only into the stable local account. A newly authenticated
-  cloud account receives a clean default profile until an explicit linkage
-  migration exists.
-- One transaction covers agent read, identity revision, and profile writes.
-- Failure leaves no partial v3 rows and does not prevent the V2 UI from opening.
+```ts
+export type JarvisPersistenceState =
+  | { status: 'activating'; accountId: string }
+  | { status: 'ready'; accountId: string; profileId: string }
+  | {
+      status: 'degraded';
+      accountId?: string;
+      category: 'database_open_failed' | 'migration_failed' | 'identity_not_ready';
+      retry: () => Promise<void>;
+    };
 
-**Step 1: Write failing tests**
+export function createJarvisPersistenceCoordinator(input: {
+  db: JarvisDexie;
+  readIdentity: () => AccountIdentity | null;
+  subscribeIdentity: (listener: () => void) => () => void;
+}): {
+  start(): () => void;
+  retry(): Promise<void>;
+  getState(): JarvisPersistenceState;
+  subscribe(listener: () => void): () => void;
+};
+```
 
-Use the complete case list above plus repeat activation, user-created `Jarvis`
-ignore, transaction rollback, and account-switch cache clearing.
+**Exact migration algorithm:**
 
-**Step 2: Observe failure**
+Perform the protected Agent read, identity-revision verification/write,
+profile verification/write, and migration-marker write within one
+`db.transaction('rw', db.agents, db.jarvis_identity_revisions,
+db.jarvis_profiles, async () => ...)`.
+
+Inside that transaction:
+
+1. Resolve a legacy row only with `isProtectedJarvisAgent(agent)`.
+2. For `identity.source === 'local'`, inspect that row's complete
+   `system_prompt`. For `identity.source === 'supabase'`, import no local
+   prompt text and use `clean_default`.
+3. Normalize and SHA-256 hash the complete legacy prompt through Task 2.
+4. A known shipped hash produces `custom_instructions: ''` and
+   `instruction_source: 'none'`.
+5. An unknown local hash preserves the complete normalized text as
+   `custom_instructions` with
+   `instruction_source: 'legacy_user_extension'`.
+6. Seed the deterministic protected identity revision exactly once.
+7. Seed the deterministic default profile for the account exactly once.
+8. Write `migration_version`, `migration_source`, optional
+   `migration_source_prompt_hash`, and `migration_completed_at` on that profile
+   in the same transaction.
+9. A repeat with the same account, version, source, and source hash returns the
+   existing rows with `migrated: false`.
+10. Do not modify a legacy Agent row, any user-created agent, provider, model,
+    tools, capabilities, memory scope, effort, temperature, or timestamp.
+
+A different source hash for an already completed migration version fails
+closed with `migration_conflict`; it never silently overwrites the profile.
+
+`defaultJarvisProfileId(accountId)` rejects blank or non-canonical
+leading/trailing-whitespace account IDs, SHA-256 hashes the exact UTF-8 account
+ID bytes, returns `jprof_${hexDigest.slice(0, 24)}`, and never exposes the raw
+account ID:
+
+```ts
+const identityRevisionId = `jident_jarvis_v${JARVIS_IDENTITY_VERSION}`;
+const profileId = await defaultJarvisProfileId(identity.accountId);
+const initialRevisionId = `${profileId}_r1`;
+```
+
+For every local `legacy_agent` source, set
+`migration_source_prompt_hash` and result `migrationSourcePromptHash` to the
+normalized complete prompt hash, including when it matches a known shipped
+prompt. Only a preserved unknown extension also sets domain
+`sourcePromptHash`/row `source_prompt_hash`. For `clean_default`, all source
+hash fields are absent.
+
+Before inserting, query every profile row for the account. More than one
+active row is `profile_integrity_error`. An existing deterministic profile
+with a different account, identity version, revision, or migration marker is
+`migration_conflict`. If either the deterministic identity revision ID or
+`[identity_id+version]` row exists, its complete mapped value must match the
+protected revision or activation fails closed. Wrap Web Crypto work performed
+while the transaction is open in `Dexie.waitFor(...)` so the transaction
+cannot auto-commit during hashing.
+
+The coordinator publishes `activating` before each activation attempt,
+publishes only the matching account's `ready` result, and maps safe failure
+categories to `degraded`. On identity change it synchronously discards the
+previous ready/profile state before starting the next activation. `stop()`
+unsubscribes and prevents late async publication; `retry()` reruns only the
+current identity.
+
+- [ ] **Step 1: Write the failing transactional migration tests**
+
+In `jarvisV3.test.ts`, prove:
+
+- a known local shipped prompt seeds empty custom instructions;
+- an edited local prompt is preserved completely as
+  `legacy_user_extension`;
+- a signed-in cloud identity receives `clean_default` and never local text;
+- only `builtin === true && slug === 'jarvis'` is selected and a user-created
+  slug collision is ignored;
+- the protected identity revision and one active profile seed once;
+- the same migration marker/source hash is a no-op, while a changed hash is a
+  typed conflict;
+- a known shipped local prompt records only the migration source hash and
+  leaves profile `sourcePromptHash` absent;
+- deterministic profile IDs are stable per account, differ across accounts,
+  and contain neither account ID;
+- multiple active profiles and conflicting identity revisions fail closed;
+- an injected failure after each write point leaves no identity, profile, or
+  migration marker;
+- the legacy Agent and every non-JARVIS row remain byte-for-byte unchanged.
+
+- [ ] **Step 2: Write the failing coordinator-state tests**
+
+In `persistenceCoordinator.test.ts`, prove:
+
+- startup emits `activating → ready`;
+- an account switch clears prior ready/profile state before activating the
+  next account;
+- database-open, migration, and missing-identity failures publish only their
+  bounded `degraded` category plus a working retry;
+- V2 UI availability is not conditioned on coordinator readiness; and
+- stop unsubscribes and prevents a late activation result from publishing.
+
+- [ ] **Step 3: Run the focused tests and verify RED**
 
 ```powershell
 npm --prefix app test -- src/lib/db/migrations/jarvisV3.test.ts src/lib/jarvis/persistenceCoordinator.test.ts
 ```
 
-**Step 3: Implement**
+Expected: FAIL because the migration and coordinator modules do not exist.
 
-The coordinator subscribes to real account identity changes, activates the
-account, clears cached profile data before switching, and exposes a typed
-`ready | degraded` state.
+- [ ] **Step 4: Implement the atomic migration and activation boundary**
 
-**Step 4: Verify and commit**
+Implement the exact contracts and transaction above. Use deterministic IDs,
+complete-row conflict checks, `Dexie.waitFor()` around hashing, and typed
+fail-closed errors. Do not mount the coordinator or change `App.tsx`.
+
+- [ ] **Step 5: Implement the account-aware coordinator**
+
+Implement start, retry, state reads, subscriptions, account generation guards,
+safe degraded mapping, and stop cleanup exactly as specified. A late result
+from a prior account must be ignored.
+
+- [ ] **Step 6: Verify the activation implementation**
 
 ```powershell
 npm --prefix app test -- src/lib/db/migrations/jarvisV3.test.ts src/lib/jarvis/persistenceCoordinator.test.ts
 npm run typecheck
-git add app/src/lib/db/migrations/jarvisV3.ts app/src/lib/db/migrations/jarvisV3.test.ts app/src/lib/jarvis/persistenceCoordinator.ts app/src/lib/jarvis/persistenceCoordinator.test.ts app/src/App.tsx
-git diff --cached --check
-git commit -m "feat(jarvis): migrate protected identity and profiles"
 ```
 
-## Task 9: Local-Only Row Mappers, Repositories, and Sync Interlock
+- [ ] **Step 7: Stage literal files, inspect the cache, and commit**
+
+```powershell
+git add -- 'app/src/lib/db/migrations/jarvisV3.ts' 'app/src/lib/db/migrations/jarvisV3.test.ts' 'app/src/lib/jarvis/persistenceCoordinator.ts' 'app/src/lib/jarvis/persistenceCoordinator.test.ts'
+git diff --cached --name-only
+git diff --cached --check
+git diff --cached -- 'app/src/lib/db/migrations/jarvisV3.ts' 'app/src/lib/db/migrations/jarvisV3.test.ts' 'app/src/lib/jarvis/persistenceCoordinator.ts' 'app/src/lib/jarvis/persistenceCoordinator.test.ts'
+git diff --cached --name-only -- 'install/install.ps1'
+git commit -m "feat(jarvis): add transactional account activation"
+git show --check --stat HEAD
+git diff-tree --no-commit-id --name-only -r HEAD
+git log --oneline origin/main..HEAD -- 'install/install.ps1'
+```
+
+Expected staged and committed names: exactly the four files above. The
+installer queries and whitespace checks produce no output.
+
+## Task 9: Explicit Mappers, Local-Only Repositories, and Sync Interlock
 
 **Files:**
 
@@ -1798,9 +2215,169 @@ git commit -m "feat(jarvis): migrate protected identity and profiles"
 - Modify: `app/src/lib/db/repositories.ts`
 - Modify: `app/src/lib/db/repositories.connection.test.ts`
 
-**Repository surface:**
+**Interfaces:**
+
+- Consumes: Task 2 identity/profile contracts, Task 3 execution contracts, the
+  V3 rows and injected `JarvisDexie` factory from Task 7, and migration
+  metadata from Task 8.
+- Produces: explicit domain↔row mappers, account-scoped repositories, a
+  caller-stable run ID contract, standalone idempotent non-transition event
+  appends, one atomic run-transition/event primitive for Task 18, profile
+  revision persistence, and the local-only sync denylist.
+- Boundary: Task 18 owns the legal transition matrix and must call
+  `assertJarvisRunTransition()` before the atomic repository primitive.
+  Task 9 contains no legal transition table.
+
+**Exact mapper contract:**
 
 ```ts
+export type JarvisProfileMigrationMetadata = {
+  migrationVersion: 3;
+  migrationSource: 'legacy_agent' | 'clean_default';
+  migrationSourcePromptHash?: string;
+  migrationCompletedAt: number;
+};
+
+export function toJarvisIdentityRevisionRow(
+  value: JarvisIdentityRevision,
+): JarvisIdentityRevisionRow;
+export function fromJarvisIdentityRevisionRow(
+  row: JarvisIdentityRevisionRow,
+): JarvisIdentityRevision;
+
+export function toJarvisProfileRow(input: {
+  profile: JarvisProfile;
+  migration: JarvisProfileMigrationMetadata;
+}): JarvisProfileRow;
+export function fromJarvisProfileRow(row: JarvisProfileRow): {
+  profile: JarvisProfile;
+  migration: JarvisProfileMigrationMetadata;
+};
+
+export function toJarvisRunRow(value: JarvisRun): JarvisRunRow;
+export function fromJarvisRunRow(row: JarvisRunRow): JarvisRun;
+export function toJarvisEventRow(value: JarvisEvent): JarvisEventRow;
+export function fromJarvisEventRow(row: JarvisEventRow): JarvisEvent;
+export function toJarvisApprovalRow(value: JarvisApproval): JarvisApprovalRow;
+export function fromJarvisApprovalRow(row: JarvisApprovalRow): JarvisApproval;
+export function toJarvisArtifactRow(value: JarvisArtifact): JarvisArtifactRow;
+export function fromJarvisArtifactRow(row: JarvisArtifactRow): JarvisArtifact;
+export function toJarvisModelSnapshotRow(value: JarvisModelSnapshot): JarvisModelSnapshotRow;
+export function fromJarvisModelSnapshotRow(row: JarvisModelSnapshotRow): JarvisModelSnapshot;
+export function toJarvisSourceRefRow(value: JarvisSourceRef): JarvisSourceRefRow;
+export function fromJarvisSourceRefRow(row: JarvisSourceRefRow): JarvisSourceRef;
+```
+
+No UI or runtime file imports a `*Row` type. Mappers clone arrays and nested
+records so a caller cannot mutate persisted state through shared references.
+
+**Exact repository interfaces:**
+
+```ts
+export interface JarvisIdentityRepository {
+  getVersion(identityId: 'jarvis', version: number): Promise<JarvisIdentityRevision | undefined>;
+  putIfAbsent(revision: JarvisIdentityRevision): Promise<JarvisIdentityRevision>;
+}
+
+export interface JarvisProfileRepository {
+  getById(accountId: string, profileId: string): Promise<JarvisProfile | undefined>;
+  getActive(accountId: string): Promise<JarvisProfile | undefined>;
+  putForAccount(
+    accountId: string,
+    input: {
+      profile: JarvisProfile;
+      migration: JarvisProfileMigrationMetadata;
+    },
+  ): Promise<JarvisProfile>;
+  updateCustomInstructions(
+    accountId: string,
+    profileId: string,
+    customInstructions: string,
+  ): Promise<JarvisProfile>;
+}
+
+export type JarvisRunTransitionEventInput = Omit<JarvisEvent, 'runId' | 'seq' | 'type' | 'status'>;
+
+export interface JarvisRunRepository {
+  createIdempotent(run: JarvisRun): Promise<JarvisRun>;
+  getById(accountId: string, runId: string): Promise<JarvisRun | undefined>;
+  listByAccount(
+    accountId: string,
+    options?: { statuses?: JarvisRunStatus[]; limit?: number },
+  ): Promise<JarvisRun[]>;
+  compareAndAppendTransitionEvent(input: {
+    accountId: string;
+    runId: string;
+    expectedStatus: JarvisRunStatus;
+    nextStatus: JarvisRunStatus;
+    updatedAt: number;
+    completedAt?: number;
+    event: JarvisRunTransitionEventInput;
+  }): Promise<
+    { applied: true; run: JarvisRun; event: JarvisEvent } | { applied: false; current: JarvisRun }
+  >;
+}
+
+export type JarvisNonTransitionEventInput = Omit<JarvisEvent, 'runId' | 'seq' | 'type'> & {
+  type: Exclude<JarvisEvent['type'], 'run_state'>;
+};
+
+export interface JarvisEventRepository {
+  appendIdempotent(
+    accountId: string,
+    runId: string,
+    event: JarvisNonTransitionEventInput,
+  ): Promise<JarvisEvent>;
+  listByRun(
+    accountId: string,
+    runId: string,
+    options?: { afterSeq?: number; limit?: number },
+  ): Promise<JarvisEvent[]>;
+}
+
+export interface JarvisApprovalRepository {
+  getById(accountId: string, approvalId: string): Promise<JarvisApproval | undefined>;
+  putForRun(accountId: string, approval: JarvisApproval): Promise<JarvisApproval>;
+}
+
+export interface JarvisArtifactRepository {
+  getById(accountId: string, artifactId: string): Promise<JarvisArtifact | undefined>;
+  listByRun(accountId: string, runId: string, limit?: number): Promise<JarvisArtifact[]>;
+  putForRun(accountId: string, artifact: JarvisArtifact): Promise<JarvisArtifact>;
+}
+
+export type JarvisRepositoryErrorCode =
+  | 'account_scope_mismatch'
+  | 'parent_run_not_found'
+  | 'run_id_conflict'
+  | 'event_idempotency_conflict'
+  | 'transition_event_requires_atomic_run_update'
+  | 'profile_integrity_error'
+  | 'invalid_limit';
+
+export class JarvisRepositoryError extends Error {
+  readonly code: JarvisRepositoryErrorCode;
+}
+
+export function newJarvisProfileRevisionId(): string;
+
+export type JarvisRepositories = {
+  identity: JarvisIdentityRepository;
+  profile: JarvisProfileRepository;
+  run: JarvisRunRepository;
+  event: JarvisEventRepository;
+  approval: JarvisApprovalRepository;
+  artifact: JarvisArtifactRepository;
+};
+
+export function createJarvisRepositories(
+  db: JarvisDexie,
+  dependencies?: {
+    now?: () => number;
+    newProfileRevisionId?: () => string;
+  },
+): JarvisRepositories;
+
 export const jarvisIdentityRepo: JarvisIdentityRepository;
 export const jarvisProfileRepo: JarvisProfileRepository;
 export const jarvisRunRepo: JarvisRunRepository;
@@ -1809,96 +2386,410 @@ export const jarvisApprovalRepo: JarvisApprovalRepository;
 export const jarvisArtifactRepo: JarvisArtifactRepository;
 ```
 
-All account-bearing methods receive `accountId`. Event, approval, and artifact
-reads verify parent-run ownership first. Sequence allocation and terminal
-transitions use Dexie transactions.
+All run/profile reads require an explicit `accountId`. Event, approval, and
+artifact methods load and verify parent-run ownership before reading or
+writing child rows. Run creation with `parentRunId` verifies that the parent
+belongs to the same account. Limits are positive integers capped at 500.
+`listByRun(accountId, runId, { afterSeq, limit })` returns ascending events
+strictly after `afterSeq`. When `afterSeq` is omitted, it reverse-scans the
+compound `[run_id+seq]` index for only the newest `limit` rows, then reverses
+that bounded tail into ascending sequence order before returning it. It never
+loads an unbounded run history.
 
-Add:
+`createIdempotent()` uses the caller-supplied `run.id`; the repository never
+generates a replacement. An exact retry returns the existing row after
+comparing the complete detached mapped value. A different row under the same
+ID throws `run_id_conflict`.
+
+`appendIdempotent()` is only for non-transition events. It rejects a runtime
+`run_state` input, including one forced through a cast, with
+`transition_event_requires_atomic_run_update`. In one Dexie transaction it:
+
+1. verifies parent-run account ownership;
+2. requires a non-empty `event.idempotencyKey`;
+3. returns an existing event for an exact retry after comparing every caller
+   field;
+4. rejects a changed payload under the same run/key with
+   `event_idempotency_conflict`;
+5. obtains `seq = currentMax + 1` from the upper bound of `[run_id+seq]`; and
+6. inserts one event row.
+
+An exact retry preserves the original `seq` and `createdAt`; the same
+idempotency key remains valid in another run.
+
+`compareAndAppendTransitionEvent()` is the only repository primitive that
+persists a run transition. Task 18 first loads the current run and calls
+`assertJarvisRunTransition(current.status, input.nextStatus)`. Task 9 then
+performs the compare, update, allocation, and insert in one
+`db.transaction('rw', db.jarvis_runs, db.jarvis_events, async () => ...)`.
+
+Inside that transaction:
+
+1. load the run and verify `accountId`;
+2. if `run.status !== expectedStatus`, return
+   `{ applied: false, current }` without writing either table;
+3. update the run to `nextStatus`, `updatedAt`, and the supplied
+   `completedAt`;
+4. allocate the next sequence from `[run_id+seq]`;
+5. construct the event from `event` while forcing
+   `runId`, `seq`, `type: 'run_state'`, and `status: nextStatus`; and
+6. insert the event before committing.
+
+An event constraint or injected insertion failure rolls back the run update.
+The returned `{ applied: true }` values are detached domain objects from the
+committed rows. The repository checks only expected-status equality; it does
+not import, implement, or infer the Task 18 legality matrix.
+
+`getActive()` reads every `[account_id+active] = [accountId, 1]` row and throws
+`profile_integrity_error` rather than selecting arbitrarily when more than one
+exists. `putForAccount()` verifies `profile.accountId === accountId`, prevents
+a second active profile, and persists supplied migration metadata unchanged.
+
+`newJarvisProfileRevisionId()` returns
+`jprof_rev_${crypto.randomUUID()}`. `updateCustomInstructions()` normalizes
+CRLF and lone CR to LF without trimming user text. Unchanged normalized text
+is a no-op. A changed value uses the injected generator for a new revision ID,
+sets `updatedAt` from the injected clock, sets `instructionSource` to `user`
+or `none`, clears domain `sourcePromptHash`, and preserves every migration
+marker.
+
+The new repositories never import generic repository mutation helpers, sync
+functions, or a transition table.
+
+**Exact sync interlock:**
 
 ```ts
-export const LOCAL_ONLY_SYNC_TABLES: ReadonlySet<string>;
+export const LOCAL_ONLY_SYNC_TABLES: ReadonlySet<string> = new Set([
+  'jarvis_identity_revisions',
+  'jarvis_profiles',
+  'jarvis_runs',
+  'jarvis_events',
+  'jarvis_approvals',
+  'jarvis_artifacts',
+] as const);
+
 export function assertCloudSyncTableAllowed(table: string): void;
 ```
 
-Guard enqueue, cloud-record construction, and queue processing. Sanitize
-already-pending built-in-JARVIS agent mutations so private prompt text cannot
-upload. Protected JARVIS agent sync payloads omit `system_prompt`.
+Call `assertCloudSyncTableAllowed()` from `enqueueMutation()`,
+`buildCloudSyncRecord()`, and queue processing. Poisoned queued kernel rows are
+marked `error` with safe code `local_only_table`; no payload is logged or
+uploaded.
 
-**Step 1: Write failing tests**
+For the existing `agents` table, protected JARVIS sync payloads omit
+`system_prompt`, and already-pending protected-agent rows are sanitized before
+upload. Use Task 2's shared predicate, not slug-only matching. Non-JARVIS agent
+sync and current connection serialization remain unchanged.
 
-Cover mapper round trips, account isolation, monotonic sequences,
-cross-account rejection, no sync-queue mutations, poisoned queued rows, and
-JARVIS prompt payload stripping.
+- [ ] **Step 1: Write the failing mapper tests**
 
-**Step 2: Observe failure**
+In `jarvisMappers.test.ts`, round-trip every identity revision, profile plus
+migration metadata, run, event, approval, artifact, model snapshot, and source
+ref. Assert exact camelCase↔snake_case names and mutate each mapper result to
+prove nested arrays/records are deeply detached.
+
+- [ ] **Step 2: Write the failing repository and atomic-transition tests**
+
+In `jarvisRepositories.test.ts`, prove:
+
+- run/profile account isolation and cross-account child read/write rejection;
+- parent-run creation rejects a parent owned by another account;
+- caller-stable run ID exact retry and changed-payload conflict;
+- standalone non-transition event sequences are `1, 2, 3`;
+- a same-key exact retry returns one row/sequence, a changed payload rejects,
+  and the same key in another run succeeds;
+- standalone append rejects `run_state`;
+- `compareAndAppendTransitionEvent()` updates the expected run and inserts one
+  forced `run_state` event with the same committed transaction;
+- a CAS miss returns the current run and changes neither the run nor event
+  count;
+- two concurrent expected-status attempts produce exactly one applied result
+  and one transition event;
+- duplicate-idempotency and injected event-insert failures roll back the run
+  status, timestamps, completion field, and event count;
+- the repository accepts a transition Task 18 may reject, proving there is no
+  hidden legality table;
+- `afterSeq` returns ascending later events, while omitted `afterSeq` returns
+  only the newest bounded tail reordered ascending without an unbounded load;
+- repository limits are positive and capped at 500;
+- active-profile integrity failure, stable profile ID, fresh revision ID,
+  line-ending normalization, no-op save, source-hash clearing, and migration
+  marker preservation.
+
+- [ ] **Step 3: Write the failing sync-interlock tests**
+
+In `sync.test.ts` and `repositories.connection.test.ts`, prove:
+
+- kernel repository writes create zero generic sync-queue rows;
+- enqueue, cloud-record construction, and queue processing each reject every
+  local-only table;
+- poisoned pending kernel rows never reach Supabase and expose only
+  `local_only_table`;
+- protected built-in JARVIS payloads and already-pending mutations omit
+  `system_prompt`;
+- a user-created slug collision keeps its ordinary prompt payload; and
+- current connection serialization remains green.
+
+- [ ] **Step 4: Run the focused tests and verify RED**
 
 ```powershell
-npm --prefix app test -- src/lib/db/jarvisMappers.test.ts src/lib/db/jarvisRepositories.test.ts src/lib/sync.test.ts
+npm --prefix app test -- src/lib/db/jarvisMappers.test.ts src/lib/db/jarvisRepositories.test.ts src/lib/sync.test.ts src/lib/db/repositories.connection.test.ts
 ```
 
-**Step 3: Implement**
+Expected: FAIL because the mapper/repository modules and local-only guards do
+not exist.
 
-The new repositories must not import generic repository mutation helpers or
-call sync functions.
+- [ ] **Step 5: Implement explicit mappers and repositories**
 
-**Step 4: Verify and commit**
+Implement the exact interfaces and rules above using the injected
+`JarvisDexie`. Keep row types below the repository boundary, compare complete
+detached rows for idempotency, and implement the coordinated
+`compareAndAppendTransitionEvent()` transaction without a legality table.
+
+- [ ] **Step 6: Implement all three sync boundaries and Agent sanitization**
+
+Add the exact denylist/assertion, fail closed at enqueue/build/process time,
+sanitize pending protected-agent records, preserve collision-agent prompts,
+and leave non-kernel sync behavior unchanged.
+
+- [ ] **Step 7: Verify the repository and sync implementation**
 
 ```powershell
 npm --prefix app test -- src/lib/db/jarvisMappers.test.ts src/lib/db/jarvisRepositories.test.ts src/lib/sync.test.ts src/lib/db/repositories.connection.test.ts
 npm run typecheck
-git add app/src/lib/db/jarvisMappers.ts app/src/lib/db/jarvisMappers.test.ts app/src/lib/db/jarvisRepositories.ts app/src/lib/db/jarvisRepositories.test.ts app/src/lib/sync.ts app/src/lib/sync.test.ts app/src/lib/db/repositories.ts app/src/lib/db/repositories.connection.test.ts
-git diff --cached --check
-git commit -m "fix(sync): keep kernel records and Jarvis prompts local"
 ```
 
-## Task 10: Seed and Agent Editor Compatibility
+- [ ] **Step 8: Stage literal files, inspect the cache, and commit**
+
+```powershell
+git add -- 'app/src/lib/db/jarvisMappers.ts' 'app/src/lib/db/jarvisMappers.test.ts' 'app/src/lib/db/jarvisRepositories.ts' 'app/src/lib/db/jarvisRepositories.test.ts' 'app/src/lib/sync.ts' 'app/src/lib/sync.test.ts' 'app/src/lib/db/repositories.ts' 'app/src/lib/db/repositories.connection.test.ts'
+git diff --cached --name-only
+git diff --cached --check
+git diff --cached -- 'app/src/lib/db/jarvisMappers.ts' 'app/src/lib/db/jarvisMappers.test.ts' 'app/src/lib/db/jarvisRepositories.ts' 'app/src/lib/db/jarvisRepositories.test.ts' 'app/src/lib/sync.ts' 'app/src/lib/sync.test.ts' 'app/src/lib/db/repositories.ts' 'app/src/lib/db/repositories.connection.test.ts'
+git diff --cached --name-only -- 'install/install.ps1'
+git commit -m "fix(sync): keep kernel records and Jarvis prompts local"
+git show --check --stat HEAD
+git diff-tree --no-commit-id --name-only -r HEAD
+git log --oneline origin/main..HEAD -- 'install/install.ps1'
+```
+
+Expected staged and committed names: exactly the eight files above. The
+installer queries and whitespace checks produce no output.
+
+## Task 10: Canonical Built-Ins and Profile-Aware Agent Editor
 
 **Files:**
 
+- Create: `app/src/lib/jarvis/builtinAgents.ts`
+- Create: `app/src/lib/jarvis/builtinAgents.test.ts`
 - Modify: `app/src/lib/db/seed.ts`
 - Create: `app/src/lib/db/seed.test.ts`
+- Modify: `app/src/lib/db/index.ts`
 - Modify: `app/src/features/agents/registry.ts`
 - Create: `app/src/features/agents/registry.test.ts`
 - Modify: `app/src/features/agents/AgentManager.tsx`
 - Modify: `app/src/features/agents/AgentManager.test.tsx`
 - Modify: `app/src/features/agents/AgentDetail.tsx`
 - Create: `app/src/features/agents/AgentDetail.test.tsx`
+- Modify: `app/src/types/agent.ts`
 
-**Behavior:**
+**Interfaces:**
 
-- One canonical built-in agent roster supplies seed and fallback registration.
-- Built-in JARVIS is detected only by `builtin === true && slug === 'jarvis'`.
-- Its editor field is labeled “Custom instructions.”
-- Prompt edits update the active account profile, not
+- Consumes: `resolveAccountIdentity()` from Task 1,
+  `isProtectedJarvisAgent()`, prompt normalization, and known shipped hashes
+  from Task 2; activation/profile IDs from Task 8; and
+  `jarvisProfileRepo` from Task 9.
+- Produces: the only fresh-install/fallback built-in roster, a compatibility
+  registry export, protected-JARVIS profile editing/detail behavior, and
+  explicit later ownership for every remaining slug-only production branch.
+- Preserves: every existing persisted agent on a non-fresh database and every
+  non-JARVIS edit, clone, delete, model, provider, tool, capability, memory,
+  effort, temperature, output-token, description, name, and color path.
+
+**Exact canonical roster contract:**
+
+`app/src/lib/jarvis/builtinAgents.ts` is the only roster definition. Preserve
+the newer two-agent product decision exactly: `jarvis` and `coder`.
+
+Move the currently shipped registry JARVIS prompt into this module as
+`LEGACY_JARVIS_AGENT_COMPATIBILITY_PROMPT`. It is compatibility data for the
+legacy `Agent.system_prompt` column, not Task 2's immutable identity text. Its
+normalized SHA-256 must equal
+`KNOWN_SHIPPED_JARVIS_PROMPT_HASHES.registry_ed91635_current`
+(`935b8911bd134646475507d2363a79c2f5e0c232e4561285a647f07f60195bda`).
+Move the current Coder prompt and both exact current registry definitions into
+the same module; `registry.ts` retains no roster fields or prompt text.
+
+```ts
+export const BUILTIN_AGENT_ROSTER_VERSION = 1;
+
+export function createBuiltinAgentRoster(input?: { now?: number; newId?: () => AgentId }): Agent[];
+
+export function getBuiltinAgentDefinition(
+  slug: 'jarvis' | 'coder',
+): Omit<Agent, 'id' | 'created_at' | 'updated_at'>;
+```
+
+`app/src/features/agents/registry.ts` becomes only:
+
+```ts
+export {
+  createBuiltinAgentRoster as getDefaultAgents,
+  getBuiltinAgentDefinition,
+} from '@/lib/jarvis/builtinAgents';
+```
+
+`seedIfEmpty()` calls `createBuiltinAgentRoster({ now: ts })` exactly once
+inside the existing fresh-database transaction and bulk-adds that returned
+array. Remove `DEFAULT_AGENT_SEEDS` and its re-export from
+`app/src/lib/db/index.ts`; update its stale reference in
+`app/src/types/agent.ts`. A non-fresh database never deletes, rewrites, or
+backfills historical seven-agent, two-agent, or user-created rows.
+
+**Protected predicate and collision rule:**
+
+Every Task 10 branch imports Task 2's one shared predicate:
+
+```ts
+export function isProtectedJarvisAgent(agent: Pick<Agent, 'builtin' | 'slug'>): boolean {
+  return agent.builtin === true && agent.slug === 'jarvis';
+}
+```
+
+Task 10 does not define a second predicate. A user-created
+`{ slug: 'jarvis', builtin: false }`, an agent with missing `builtin`, or a
+built-in display name `Jarvis` under another slug is not protected.
+
+The remaining current slug-only production sites are assigned, but not edited,
+here:
+
+- Task 1B owns `app/src/App.tsx` after its authoritative lock is released.
+- Task 16B owns `app/src/components/layout/Inspector.tsx`,
+  `app/src/features/chat/Composer.tsx`,
+  `app/src/features/files/FilesPage.tsx`,
+  `app/src/features/files/FileExplorerDialog.tsx`,
+  `app/src/lib/ai/modelSelection.ts`, and `app/src/lib/ai/runtime.ts`.
+
+Those later tasks import the same predicate and add collision regressions. No
+slug-only JARVIS branch or second protected-agent predicate may remain after
+Task 16B.
+
+**Exact protected editor/detail behavior:**
+
+- Resolve account scope only with
+  `resolveAccountIdentity({ cloudSession, localUserId })`. Never use
+  `local-unassigned` or fall back to local scope while a malformed cloud
+  session is present.
+- For protected JARVIS, load
+  `jarvisProfileRepo.getActive(accountId)` only after canonical identity
+  resolution.
+- Label the textarea and detail card `Custom instructions`.
+- The protected textarea value is `profile.customInstructions`, never
   `Agent.system_prompt`.
-- Model, tools, capabilities, memory scope, effort, and temperature keep their
-  current storage path during this slice.
-- Non-JARVIS agent editing is unchanged.
+- Saving protected text calls:
 
-**Step 1: Write failing tests**
-
-Cover canonical roster parity, JARVIS profile editing, immutable legacy prompt,
-non-JARVIS behavior, and profile/account switching.
-
-**Step 2: Observe failure**
-
-```powershell
-npm --prefix app test -- src/lib/db/seed.test.ts src/features/agents/registry.test.ts src/features/agents/AgentManager.test.tsx src/features/agents/AgentDetail.test.tsx
+```ts
+jarvisProfileRepo.updateCustomInstructions(accountId, profile.id, text);
 ```
 
-**Step 3: Implement**
+Task 9 creates a fresh profile `revisionId`, normalizes line endings, sets
+`instructionSource` to `user` for non-empty text and `none` for empty text,
+clears legacy domain `sourcePromptHash`, and preserves migration metadata.
+An unchanged normalized value is a no-op.
 
-Reuse identity/profile factories; do not duplicate canonical prompt text.
+- A protected-JARVIS `agentRepo.update()` patch must not contain
+  `system_prompt`. Simultaneous non-prompt edits retain their existing Agent
+  row path.
+- For non-JARVIS agents, preserve the existing `System prompt` label,
+  validation, persistence, clone, and delete behavior.
+- On account change, synchronously clear the previous profile text before
+  loading the next account.
+- Guard async profile loads with account ID/request generation so a stale
+  previous-account result cannot repopulate the editor or detail card.
+- While profile state is not ready, disable only protected JARVIS custom
+  instruction saving and show a bounded `Profile is still loading` state. The
+  remainder of the V2 editor stays usable.
+- `AgentDetail` reads protected JARVIS custom instructions from the active
+  profile and retains legacy system-prompt display only for non-JARVIS agents.
+- A user-created slug collision follows the ordinary non-JARVIS System prompt
+  path and is never hidden or routed to profile persistence.
 
-**Step 4: Verify and commit**
+- [ ] **Step 1: Write the failing canonical-roster and seed tests**
+
+In `builtinAgents.test.ts`, `registry.test.ts`, and `seed.test.ts`, prove:
+
+- the canonical roster contains exactly `jarvis` and `coder` with the current
+  shipped definitions;
+- the compatibility JARVIS prompt normalizes to the frozen current hash;
+- registry and seed return identical definitions apart from generated IDs and
+  timestamps;
+- protected built-in JARVIS is true, while false/missing `builtin`, display
+  name-only, and user-created slug-collision cases are false;
+- a fresh database seeds the canonical roster once; and
+- a non-fresh database preserves historical and custom rows byte-for-byte.
+
+- [ ] **Step 2: Write the failing profile-aware editor and detail tests**
+
+In `AgentManager.test.tsx` and `AgentDetail.test.tsx`, prove:
+
+- protected JARVIS displays `Custom instructions`;
+- protected save updates the active profile/revision and never patches
+  `system_prompt`;
+- unchanged normalized text creates no revision;
+- simultaneous non-prompt edits still update the Agent row;
+- an account switch clears and reloads profile text;
+- a stale previous-account load is ignored;
+- profile loading disables only the protected prompt save and leaves the V2
+  editor usable;
+- a user-created slug collision uses ordinary `System prompt` editing;
+- non-JARVIS save/clone/delete regressions remain green; and
+- `AgentDetail` uses profile text only for protected JARVIS.
+
+- [ ] **Step 3: Run the focused tests and verify RED**
 
 ```powershell
-npm --prefix app test -- src/lib/db/seed.test.ts src/features/agents/registry.test.ts src/features/agents/AgentManager.test.tsx src/features/agents/AgentDetail.test.tsx
+npm --prefix app test -- src/lib/jarvis/builtinAgents.test.ts src/lib/db/seed.test.ts src/features/agents/registry.test.ts src/features/agents/AgentManager.test.tsx src/features/agents/AgentDetail.test.tsx
+```
+
+Expected: FAIL because the canonical roster module and new tests do not exist,
+and the current protected editor still reads/writes `Agent.system_prompt`.
+
+- [ ] **Step 4: Implement the canonical roster and fresh-database seed**
+
+Move the exact two current registry definitions and compatibility prompts into
+`builtinAgents.ts`, reduce `registry.ts` to the compatibility export, route
+fresh seeding through `createBuiltinAgentRoster()`, and remove the stale
+`DEFAULT_AGENT_SEEDS` API without modifying persisted databases.
+
+- [ ] **Step 5: Implement profile-aware protected editing and detail display**
+
+Use the exact account resolver, protected predicate, repository call, loading
+state, generation guard, and Agent-row exclusions above. Preserve the complete
+non-JARVIS lifecycle.
+
+- [ ] **Step 6: Verify the implementation**
+
+```powershell
+npm --prefix app test -- src/lib/jarvis/builtinAgents.test.ts src/lib/db/seed.test.ts src/features/agents/registry.test.ts src/features/agents/AgentManager.test.tsx src/features/agents/AgentDetail.test.tsx
 npm run typecheck
-git add app/src/lib/db/seed.ts app/src/lib/db/seed.test.ts app/src/features/agents/registry.ts app/src/features/agents/registry.test.ts app/src/features/agents/AgentManager.tsx app/src/features/agents/AgentManager.test.tsx app/src/features/agents/AgentDetail.tsx app/src/features/agents/AgentDetail.test.tsx
-git diff --cached --check
-git commit -m "refactor(agents): route builtin Jarvis through profiles"
 ```
+
+- [ ] **Step 7: Stage literal files, inspect the cache, and commit**
+
+```powershell
+git add -- 'app/src/lib/jarvis/builtinAgents.ts' 'app/src/lib/jarvis/builtinAgents.test.ts' 'app/src/lib/db/seed.ts' 'app/src/lib/db/seed.test.ts' 'app/src/lib/db/index.ts' 'app/src/features/agents/registry.ts' 'app/src/features/agents/registry.test.ts' 'app/src/features/agents/AgentManager.tsx' 'app/src/features/agents/AgentManager.test.tsx' 'app/src/features/agents/AgentDetail.tsx' 'app/src/features/agents/AgentDetail.test.tsx' 'app/src/types/agent.ts'
+git diff --cached --name-only
+git diff --cached --check
+git diff --cached -- 'app/src/lib/jarvis/builtinAgents.ts' 'app/src/lib/jarvis/builtinAgents.test.ts' 'app/src/lib/db/seed.ts' 'app/src/lib/db/seed.test.ts' 'app/src/lib/db/index.ts' 'app/src/features/agents/registry.ts' 'app/src/features/agents/registry.test.ts' 'app/src/features/agents/AgentManager.tsx' 'app/src/features/agents/AgentManager.test.tsx' 'app/src/features/agents/AgentDetail.tsx' 'app/src/features/agents/AgentDetail.test.tsx' 'app/src/types/agent.ts'
+git diff --cached --name-only -- 'install/install.ps1'
+git commit -m "refactor(agents): route builtin Jarvis through profiles"
+git show --check --stat HEAD
+git diff-tree --no-commit-id --name-only -r HEAD
+git log --oneline origin/main..HEAD -- 'install/install.ps1'
+```
+
+Expected staged and committed names: exactly the twelve files above. The
+installer queries and whitespace checks produce no output.
 
 ## Task 11: Context Pack, Capability Snapshot, and Request Envelope Builder
 
