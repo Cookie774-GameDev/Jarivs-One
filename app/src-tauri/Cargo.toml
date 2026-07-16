@@ -16,7 +16,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["protocol-asset", "tray-icon", "image-png"] }
+tauri = { version = "2", features = ["protocol-asset", "tray-icon", "image-png", "macos-private-api"] }
 tauri-plugin-notification = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-shell = "2"
@@ -57,11 +57,11 @@ windows = { version = "0.61", features = [
     "Win32_UI_Input_KeyboardAndMouse",
 ] }
 
-# Default development profile â€“ optimise compile times.
+# Default development profile – optimise compile times.
 [profile.dev]
 incremental = true
 
-# Production profile â€“ Tauri's recommended settings for smaller, faster bundles.
+# Production profile – Tauri's recommended settings for smaller, faster bundles.
 #
 # We use `thin` LTO and 4 codegen-units instead of `lto=true` + `codegen-units=1`
 # because:
@@ -78,13 +78,8 @@ incremental = true
 codegen-units = 4
 lto = "thin"
 opt-level = "s"
-panic = "abort"
-strip = true
+strip = "symbols"
 
 [features]
-# Real Kokoro-82M local neural TTS: ONNX Runtime (`ort`) + pure-Rust misaki G2P.
-# OFF by default so the stable build is byte-for-byte unaffected and pulls none
-# of these native deps. The release build opts in with `--features kokoro`.
-# When the feature is off, `kokoro_speak` returns `engine_not_available` and the
-# app falls back to the Windows Natural voice — never a crash.
+default = []
 kokoro = ["dep:ort", "dep:misaki-rs", "dep:hound", "dep:ndarray", "dep:ndarray-npy"]
