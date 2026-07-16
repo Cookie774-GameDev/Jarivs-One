@@ -97,7 +97,11 @@ fn absolute_position(
     ))
 }
 
-fn apply_bounds(win: &tauri::WebviewWindow, main: &tauri::WebviewWindow, bounds: &PreviewBounds) -> CmdResult<()> {
+fn apply_bounds(
+    win: &tauri::WebviewWindow,
+    main: &tauri::WebviewWindow,
+    bounds: &PreviewBounds,
+) -> CmdResult<()> {
     let (pos, size) = absolute_position(main, bounds)?;
     win.set_position(pos)
         .map_err(|e| err("bounds_failed", e.to_string(), true))?;
@@ -107,7 +111,11 @@ fn apply_bounds(win: &tauri::WebviewWindow, main: &tauri::WebviewWindow, bounds:
 }
 
 #[tauri::command]
-pub fn preview_create(app: AppHandle, url: String, bounds: PreviewBounds) -> CmdResult<PreviewStatus> {
+pub fn preview_create(
+    app: AppHandle,
+    url: String,
+    bounds: PreviewBounds,
+) -> CmdResult<PreviewStatus> {
     let safe = sanitize_url(&url)?;
     let main = main_window(&app)?;
     let parsed: url::Url = safe
@@ -143,9 +151,11 @@ pub fn preview_create(app: AppHandle, url: String, bounds: PreviewBounds) -> Cmd
         .inner_size(size.width as f64, size.height as f64)
         .position(pos.x as f64, pos.y as f64);
 
-    // Best-effort parent association (platform support varies).
+    // Tauri exposes native owner association on Windows. Other platforms keep
+    // the same always-on-top overlay behavior without an unsupported API call.
+    #[cfg(windows)]
     let builder = match builder.owner(&main) {
-        Ok(b) => b,
+        Ok(builder) => builder,
         Err(_) => WebviewWindowBuilder::new(
             &app,
             PREVIEW_LABEL,
@@ -157,12 +167,18 @@ pub fn preview_create(app: AppHandle, url: String, bounds: PreviewBounds) -> Cmd
         .title("VibeSpace Preview")
         .decorations(false)
         .resizable(false)
+        .maximizable(false)
+        .minimizable(false)
+        .closable(false)
         .skip_taskbar(true)
         .always_on_top(true)
         .focused(false)
         .inner_size(size.width as f64, size.height as f64)
         .position(pos.x as f64, pos.y as f64),
     };
+
+    #[cfg(not(windows))]
+    let builder = builder;
 
     builder.build().map_err(|e| {
         err(
