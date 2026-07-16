@@ -57,6 +57,7 @@ import { resumeRecoverableJarvisRuns } from '@/features/jarvis-runs/recoveryExec
 import { startJarvisTaskRunPersistence } from '@/features/jarvis-runs/taskRunPersistence';
 import { messageRepo, agentRepo, chatRepo, openDb, db } from '@/lib/db';
 import { useAuthStore } from '@/stores/auth';
+import { resolveAccountIdentity } from '@/lib/accountIdentity';
 import { getDefaultAgents } from '@/features/agents';
 import { ensureActiveChat, branchChatFromMessage } from '@/features/chat/chatLifecycle';
 import type { ChatId, MessageId } from '@/types/common';
@@ -271,6 +272,8 @@ function useBoot() {
     let stopClockEngine: (() => void) | undefined;
     let stopSyncLoop: (() => void) | undefined;
     let stopCloudAuth: (() => void) | undefined;
+    let stopAccountSubscription: (() => void) | undefined;
+    let activeAccountIdentity: ReturnType<typeof resolveAccountIdentity> = null;
     let cancelled = false;
     const errors: string[] = [];
 
@@ -285,6 +288,45 @@ function useBoot() {
         promise,
         new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`Timed out after ${ms/1000}s`)), ms)),
       ]).catch((err) => { addError(label, err); throw err; });
+    }
+
+    function stopAccountScopedListeners(): void {
+      stopLearning?.();
+      stopLearning = undefined;
+      stopAllAboutMePersistence?.();
+      stopAllAboutMePersistence = undefined;
+      stopTaskRunPersistence?.();
+      stopTaskRunPersistence = undefined;
+      activeAccountIdentity = null;
+    }
+
+    function syncAccountScopedListeners(): void {
+      const nextIdentity = resolveAccountIdentity(useAuthStore.getState());
+      if (
+        nextIdentity?.accountId === activeAccountIdentity?.accountId &&
+        nextIdentity?.source === activeAccountIdentity?.source
+      ) {
+        return;
+      }
+
+      stopAccountScopedListeners();
+      if (!nextIdentity) return;
+
+      const accountId = nextIdentity.accountId;
+      const fixedAccountBindings = {
+        getAccountId: () => accountId,
+        subscribeAccount: (_listener: () => void) => () => {},
+      };
+      stopLearning = startJarvisLearningListener(fixedAccountBindings);
+      stopAllAboutMePersistence =
+        startAllAboutMePersistence(fixedAccountBindings);
+      stopTaskRunPersistence = startJarvisTaskRunPersistence({
+        ...fixedAccountBindings,
+        onHydrated: async () => {
+          await resumeRecoverableJarvisRuns();
+        },
+      });
+      activeAccountIdentity = nextIdentity;
     }
 
     (async () => {
@@ -354,20 +396,10 @@ function useBoot() {
       }
 
       // Phase 4: runtime listener
-      stopLearning = startJarvisLearningListener({
-        getAccountId: () => {
-          const auth = useAuthStore.getState();
-          return auth.cloudSession?.user_id ?? auth.localUserId ?? 'local-unassigned';
-        },
-        subscribeAccount: (listener) => useAuthStore.subscribe(() => listener()),
-      });
-      stopAllAboutMePersistence = startAllAboutMePersistence({
-        getAccountId: () => {
-          const auth = useAuthStore.getState();
-          return auth.cloudSession?.user_id ?? auth.localUserId ?? 'local-unassigned';
-        },
-        subscribeAccount: (listener) => useAuthStore.subscribe(() => listener()),
-      });
+      stopAccountSubscription = useAuthStore.subscribe(() =>
+        syncAccountScopedListeners(),
+      );
+      syncAccountScopedListeners();
       stopLocalResponse = startJarvisResponsePolicyListener({
         appendMessage: async (msg) => messageRepo.create(msg as never),
         emojisEnabled: emojisEnabledFromLearning,
@@ -376,16 +408,6 @@ function useBoot() {
         appendMessage: async (msg) => messageRepo.create(msg as never),
       });
       stopTaskRunNotifications = startJarvisTaskRunNotifications();
-      stopTaskRunPersistence = startJarvisTaskRunPersistence({
-        getAccountId: () => {
-          const auth = useAuthStore.getState();
-          return auth.cloudSession?.user_id ?? auth.localUserId ?? 'local-unassigned';
-        },
-        subscribeAccount: (listener) => useAuthStore.subscribe(() => listener()),
-        onHydrated: async () => {
-          await resumeRecoverableJarvisRuns();
-        },
-      });
       stopRuntime = startRuntimeListener({
         getAgentById: (id) => useAgentStore.getState().agents[id] ?? null,
         getAgentBySlug: (slug) => {
@@ -436,10 +458,9 @@ function useBoot() {
       cancelled = true;
       stopRuntime?.();
       stopLocalResponse?.();
-      stopLearning?.();
-      stopAllAboutMePersistence?.();
+      stopAccountSubscription?.();
+      stopAccountScopedListeners();
       stopTaskRunNotifications?.();
-      stopTaskRunPersistence?.();
       stopOperator?.();
       stopNotifications?.();
       stopTerminalScheduler?.();
