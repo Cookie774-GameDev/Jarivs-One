@@ -65,7 +65,7 @@ export type Agent = {
   /** Temperature 0..2 */
   temperature?: number;
   /** Max output tokens */
-  max_output_tokens?: number;
+  max_output_tokens?: number | null;
   /**
    * UI color hue (HSL hue 0..359). If omitted, derived deterministically from slug hash.
    */

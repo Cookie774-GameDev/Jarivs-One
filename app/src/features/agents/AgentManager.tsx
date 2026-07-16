@@ -281,12 +281,21 @@ export function AgentManager() {
   const dirty = !!(draft && baseline && draftsDiffer(draft, baseline));
   const agentModelAvailable =
     !draft || draft.providerChoice === 'default' || modelOptions.some((option) => option.id === draft.model);
+  const modelAssignmentUnchanged = Boolean(
+    draft &&
+      baseline &&
+      draft.providerChoice === baseline.providerChoice &&
+      draft.provider === baseline.provider &&
+      draft.model === baseline.model,
+  );
   const validationError = (() => {
     if (!draft) return 'No agent is selected.';
     if (!draft.name.trim()) return 'Agent name is required.';
     if (!draft.description.trim()) return 'Agent description is required.';
     if (!draft.system_prompt.trim()) return 'System prompt is required.';
-    if (!agentModelAvailable) return 'Select an available model before saving.';
+    if (!agentModelAvailable && !modelAssignmentUnchanged) {
+      return 'Select an available model before saving.';
+    }
     if (!Number.isFinite(draft.temperature) || draft.temperature < 0 || draft.temperature > 2) {
       return 'Temperature must be between 0 and 2.';
     }
@@ -357,7 +366,7 @@ export function AgentManager() {
       memory_scope: currentDraft.memory_scope,
       capabilities: normalizeUnordered(currentDraft.capabilities) as AgentCapability[],
       skills: normalizeUnordered(currentDraft.skills),
-      max_output_tokens: currentDraft.max_output_tokens ?? undefined,
+      max_output_tokens: currentDraft.max_output_tokens,
       color_hue: currentDraft.color_hue ?? undefined,
       effort: currentDraft.effort,
       effort_custom:
@@ -753,7 +762,8 @@ export function AgentManager() {
                   )}
                   {!agentModelAvailable && modelOptions.length > 0 ? (
                     <p className="mt-1 text-[11px] text-destructive">
-                      Select one of the connected models before saving this agent.
+                      This assigned model is not currently connected. You can save other edits or
+                      select a connected model.
                     </p>
                   ) : null}
                 </div>
@@ -886,18 +896,34 @@ export function AgentManager() {
                   </select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="agent-max-output">Max output tokens</Label>
-                  <Input
-                    id="agent-max-output"
-                    type="number"
-                    min={1}
-                    value={draft.max_output_tokens ?? ''}
-                    placeholder="Provider default"
+                  <Label htmlFor="agent-max-output-mode">Max output tokens</Label>
+                  <select
+                    id="agent-max-output-mode"
+                    value={draft.max_output_tokens === null ? 'default' : 'custom'}
                     onChange={(event) => setDraft((current) => current ? {
                       ...current,
-                      max_output_tokens: event.target.value ? Number(event.target.value) : null,
+                      max_output_tokens: event.target.value === 'default'
+                        ? null
+                        : (current.max_output_tokens ?? 4096),
                     } : current)}
-                  />
+                    className="flex h-8 w-full rounded-md border border-input bg-background px-2 text-body text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  >
+                    <option value="default">Use provider default</option>
+                    <option value="custom">Custom limit</option>
+                  </select>
+                  {draft.max_output_tokens !== null ? (
+                    <Input
+                      id="agent-max-output"
+                      aria-label="Custom max output tokens"
+                      type="number"
+                      min={1}
+                      value={draft.max_output_tokens}
+                      onChange={(event) => setDraft((current) => current ? {
+                        ...current,
+                        max_output_tokens: event.target.value ? Number(event.target.value) : null,
+                      } : current)}
+                    />
+                  ) : null}
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="agent-color-hue">Appearance hue</Label>

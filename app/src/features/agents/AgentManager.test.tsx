@@ -38,6 +38,7 @@ const baseAgent: Agent = {
   capabilities: ['writing'],
   skills: ['summarize'],
   temperature: 0.7,
+  max_output_tokens: 2048,
   effort: 'medium',
   persona: 'jarvis',
   builtin: false,
@@ -114,7 +115,8 @@ describe('AgentManager save lifecycle', () => {
     fireEvent.change(screen.getByLabelText('Memory scope'), { target: { value: 'workspace' } });
     fireEvent.change(screen.getByLabelText('Reasoning effort'), { target: { value: 'high' } });
     fireEvent.change(screen.getByLabelText('Persona'), { target: { value: 'athena' } });
-    fireEvent.change(screen.getByLabelText('Max output tokens'), { target: { value: '4096' } });
+    fireEvent.change(screen.getByLabelText('Max output tokens'), { target: { value: 'custom' } });
+    fireEvent.change(screen.getByLabelText('Custom max output tokens'), { target: { value: '4096' } });
     fireEvent.change(screen.getByLabelText('Appearance hue'), { target: { value: '210' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save agent' }));
 
@@ -129,6 +131,44 @@ describe('AgentManager save lifecycle', () => {
       max_output_tokens: 4096,
       color_hue: 210,
     }));
+  });
+
+  it('persists an explicit provider-default output token choice', async () => {
+    const agentRepo = await repoMocks();
+    render(<AgentManager />);
+
+    fireEvent.change(screen.getByLabelText('Max output tokens'), {
+      target: { value: 'default' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save agent' }));
+
+    await waitFor(() => expect(agentRepo.update).toHaveBeenCalledTimes(1));
+    expect(agentRepo.update).toHaveBeenCalledWith(
+      baseAgent.id,
+      expect.objectContaining({ max_output_tokens: null }),
+    );
+  });
+
+  it('allows unrelated edits when the assigned model is temporarily unavailable', async () => {
+    const agentRepo = await repoMocks();
+    useAuthStore.setState({ apiKeys: {} });
+    render(<AgentManager />);
+
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'Alpha While Offline' },
+    });
+    const save = screen.getByRole('button', { name: 'Save agent' });
+
+    expect(save).toHaveProperty('disabled', false);
+    fireEvent.click(save);
+    await waitFor(() => expect(agentRepo.update).toHaveBeenCalledTimes(1));
+    expect(agentRepo.update).toHaveBeenCalledWith(
+      baseAgent.id,
+      expect.objectContaining({
+        name: 'Alpha While Offline',
+        model: baseAgent.model,
+      }),
+    );
   });
 
   it('prevents duplicate saves while persistence is in flight', async () => {

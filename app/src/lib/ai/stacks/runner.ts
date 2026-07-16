@@ -62,7 +62,7 @@ async function runStep(
       systemPrompt: agent.system_prompt,
       messages,
       temperature: agent.temperature,
-      max_output_tokens: agent.max_output_tokens,
+      max_output_tokens: agent.max_output_tokens ?? undefined,
       provider_options: step.provider_options,
       signal,
     });
