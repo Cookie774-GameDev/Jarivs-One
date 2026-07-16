@@ -91,13 +91,24 @@ const bootStorage = vi.hoisted(() => {
   };
 });
 
-const cloudSync = vi.hoisted(() => ({
-  processCloudPull: vi.fn(async () => undefined),
-  processSyncQueue: vi.fn(async () => undefined),
-  pruneSyncQueue: vi.fn(async () => undefined),
-  retrySyncErrors: vi.fn(async () => undefined),
-  startSyncLoop: vi.fn(() => () => undefined),
-}));
+const cloudSync = vi.hoisted(() => {
+  const loopStops = [] as Array<ReturnType<typeof vi.fn>>;
+  const processCloudPull = vi.fn(async (): Promise<void> => undefined);
+  const processSyncQueue = vi.fn(async (): Promise<void> => undefined);
+  return {
+    loopStops,
+    processCloudPull,
+    processSyncQueue,
+    pruneSyncQueue: vi.fn(async (): Promise<void> => undefined),
+    retrySyncErrors: vi.fn(async (): Promise<void> => undefined),
+    startSyncLoop: vi.fn(() => {
+      const stop = vi.fn();
+      loopStops.push(stop);
+      void processSyncQueue().then(() => processCloudPull());
+      return stop;
+    }),
+  };
+});
 
 const launchPromo = vi.hoisted(() => ({
   claim: vi.fn(async () => undefined),
@@ -221,6 +232,7 @@ vi.mock('@/lib/supabase/env', () => ({
 
 vi.mock('@/lib/supabase/client', () => ({
   getSupabaseClient: () => cloudBoot.client,
+  isCloudSyncConfigured: () => cloudBoot.configured(),
 }));
 
 vi.mock('@/lib/sync', () => ({
@@ -363,10 +375,22 @@ function expectEveryListenerStartedWith(accountId: string, callIndex = 0): void 
   }
 }
 
+function deferredValue<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve: ((value: T) => void) | undefined;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return {
+    promise,
+    resolve: (value) => resolve?.(value),
+  };
+}
+
 describe('App canonical account identity boot', () => {
   beforeEach(() => {
     localStorage.clear();
     vi.clearAllMocks();
+    cloudSync.loopStops.length = 0;
     accountListeners.reset();
     cloudBoot.reset();
     useJarvisLearningStore.getState().clearForTests();
@@ -447,6 +471,46 @@ describe('App canonical account identity boot', () => {
     expectEveryListenerStartedWith('confirmed-cloud-user');
   });
 
+  it('starts one cloud sync loop only after valid normalized initial authority', async () => {
+    cloudBoot.setConfigured(true);
+    const session = cloudBoot.deferSession();
+    prepareAppIdentity({
+      cloudSession: null,
+      localUserId: 'stable-local-user',
+    });
+
+    render(<App />);
+    await waitForAccountScopeBoot();
+
+    const callsBeforeAuthority = {
+      retry: cloudSync.retrySyncErrors.mock.calls.length,
+      queue: cloudSync.processSyncQueue.mock.calls.length,
+      pull: cloudSync.processCloudPull.mock.calls.length,
+      prune: cloudSync.pruneSyncQueue.mock.calls.length,
+      start: cloudSync.startSyncLoop.mock.calls.length,
+    };
+
+    await act(async () => {
+      session.resolve(supabaseSession('  confirmed-cloud-user  '));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(cloudSync.startSyncLoop).toHaveBeenCalledTimes(1));
+    expect(callsBeforeAuthority).toEqual({
+      retry: 0,
+      queue: 0,
+      pull: 0,
+      prune: 0,
+      start: 0,
+    });
+    expect(cloudSync.retrySyncErrors).toHaveBeenCalledTimes(1);
+    expect(cloudSync.processSyncQueue).toHaveBeenCalledTimes(1);
+    expect(cloudSync.processCloudPull).toHaveBeenCalledTimes(1);
+    expect(cloudSync.pruneSyncQueue).toHaveBeenCalledTimes(1);
+    expect(cloudSync.loopStops).toHaveLength(1);
+    expectEveryListenerStartedWith('confirmed-cloud-user');
+  });
+
   it('keeps an initial present Supabase session with an empty user id fail-closed', async () => {
     cloudBoot.setConfigured(true);
     const session = cloudBoot.deferSession();
@@ -469,6 +533,11 @@ describe('App canonical account identity boot', () => {
     expect(useAuthStore.getState().cloudSession).toMatchObject({ user_id: '' });
     expect(cloudBoot.client.from).not.toHaveBeenCalled();
     expect(launchPromo.claim).not.toHaveBeenCalled();
+    expect(cloudSync.retrySyncErrors).not.toHaveBeenCalled();
+    expect(cloudSync.processSyncQueue).not.toHaveBeenCalled();
+    expect(cloudSync.processCloudPull).not.toHaveBeenCalled();
+    expect(cloudSync.pruneSyncQueue).not.toHaveBeenCalled();
+    expect(cloudSync.startSyncLoop).not.toHaveBeenCalled();
   });
 
   it('tears down local scope for a live present Supabase session with a missing user id', async () => {
@@ -531,6 +600,117 @@ describe('App canonical account identity boot', () => {
       pull: cloudSync.processCloudPull.mock.calls.length,
     }).toEqual(callsBeforeMalformedSession);
     expect(useAuthStore.getState().cloudSession).toMatchObject({ user_id: '' });
+  });
+
+  it.each([
+    ['signed-out', null],
+    ['malformed', supabaseSession('   ')],
+  ] as const)(
+    'stops the active cloud sync loop once for a live %s session',
+    async (_label, nextSession) => {
+      cloudBoot.setConfigured(true);
+      const session = cloudBoot.deferSession();
+      prepareAppIdentity({
+        cloudSession: null,
+        localUserId: 'stable-local-user',
+      });
+
+      render(<App />);
+      await waitForAccountScopeBoot();
+      await act(async () => {
+        session.resolve(supabaseSession('cloud-user'));
+        await Promise.resolve();
+      });
+      await waitFor(() => expect(cloudSync.startSyncLoop).toHaveBeenCalledTimes(1));
+      const stopLoop = cloudSync.loopStops[0]!;
+
+      let sameTurnStopCalls = 0;
+      act(() => {
+        cloudBoot.emitAuth(nextSession);
+        sameTurnStopCalls = stopLoop.mock.calls.length;
+      });
+
+      expect(sameTurnStopCalls).toBe(1);
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      expect(stopLoop).toHaveBeenCalledTimes(1);
+      expect(cloudSync.startSyncLoop).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('restarts cloud sync after a later valid sign-in without duplicate concurrent loops', async () => {
+    cloudBoot.setConfigured(true);
+    const session = cloudBoot.deferSession();
+    prepareAppIdentity({
+      cloudSession: null,
+      localUserId: 'stable-local-user',
+    });
+
+    render(<App />);
+    await waitForAccountScopeBoot();
+    await act(async () => {
+      session.resolve(supabaseSession('cloud-user-a'));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(cloudSync.startSyncLoop).toHaveBeenCalledTimes(1));
+    const firstStop = cloudSync.loopStops[0]!;
+
+    act(() => {
+      cloudBoot.emitAuth(null);
+    });
+    expect(firstStop).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      cloudBoot.emitAuth(supabaseSession('cloud-user-b'));
+    });
+    await waitFor(() => expect(cloudSync.startSyncLoop).toHaveBeenCalledTimes(2));
+    const secondStop = cloudSync.loopStops[1]!;
+
+    await act(async () => {
+      cloudBoot.emitAuth(supabaseSession('cloud-user-b'));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(cloudSync.startSyncLoop).toHaveBeenCalledTimes(2);
+    expect(firstStop).toHaveBeenCalledTimes(1);
+    expect(secondStop).not.toHaveBeenCalled();
+  });
+
+  it('does not continue delayed valid sync startup after authority becomes malformed', async () => {
+    cloudBoot.setConfigured(true);
+    prepareAppIdentity({
+      cloudSession: null,
+      localUserId: 'stable-local-user',
+    });
+
+    render(<App />);
+    await waitForAccountScopeBoot();
+    cloudSync.retrySyncErrors.mockClear();
+    cloudSync.processSyncQueue.mockClear();
+    cloudSync.processCloudPull.mockClear();
+    cloudSync.pruneSyncQueue.mockClear();
+    cloudSync.startSyncLoop.mockClear();
+    const pendingRetry = deferredValue<void>();
+    cloudSync.retrySyncErrors.mockImplementationOnce(() => pendingRetry.promise);
+
+    act(() => {
+      cloudBoot.emitAuth(supabaseSession('stale-cloud-user'));
+    });
+    expect(cloudSync.retrySyncErrors).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      cloudBoot.emitAuth(supabaseSession('   '));
+    });
+    await act(async () => {
+      pendingRetry.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(cloudSync.processSyncQueue).not.toHaveBeenCalled();
+    expect(cloudSync.processCloudPull).not.toHaveBeenCalled();
+    expect(cloudSync.pruneSyncQueue).not.toHaveBeenCalled();
+    expect(cloudSync.startSyncLoop).not.toHaveBeenCalled();
   });
 
   it('remains fail-closed when configured Supabase session recovery rejects', async () => {

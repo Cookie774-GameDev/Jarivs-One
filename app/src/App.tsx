@@ -277,6 +277,7 @@ function useBoot() {
     let stopJarvisScheduleRunner: (() => void) | undefined;
     let stopClockEngine: (() => void) | undefined;
     let stopSyncLoop: (() => void) | undefined;
+    let activeCloudSyncUserId = '';
     let stopCloudAuth: (() => void) | undefined;
     let stopAccountSubscription: (() => void) | undefined;
     let activeAccountIdentity: ReturnType<typeof resolveAccountIdentity> = null;
@@ -314,6 +315,13 @@ function useBoot() {
       right: ReturnType<typeof resolveAccountIdentity>,
     ): boolean {
       return left?.accountId === right?.accountId && left?.source === right?.source;
+    }
+
+    function stopActiveCloudSyncLoop(): void {
+      const stop = stopSyncLoop;
+      stopSyncLoop = undefined;
+      activeCloudSyncUserId = '';
+      stop?.();
     }
 
     function quarantineAccountScopedState(): void {
@@ -468,17 +476,46 @@ function useBoot() {
             'supabaseImport',
           ).catch(() => null);
           if (supabaseModules && !cancelled) {
-            const [
-              { getSupabaseClient },
-              {
-                processCloudPull,
-                processSyncQueue,
-                pruneSyncQueue,
-                retrySyncErrors,
-                startSyncLoop,
-              },
-            ] = supabaseModules;
+            const [{ getSupabaseClient }, { pruneSyncQueue, retrySyncErrors, startSyncLoop }] =
+              supabaseModules;
             const supa = getSupabaseClient();
+            const isCloudSyncAuthorityCurrent = (userId: string, generation: number) =>
+              !cancelled &&
+              generation === cloudAuthGeneration &&
+              useAuthStore.getState().cloudSession?.user_id.trim() === userId;
+            const startCloudSyncForAuthority = async (
+              userId: string,
+              generation: number,
+            ): Promise<void> => {
+              await retrySyncErrors().catch((err) =>
+                console.warn('[sync] retrySyncErrors failed:', err),
+              );
+              if (!isCloudSyncAuthorityCurrent(userId, generation)) return;
+              await pruneSyncQueue().catch((err) => console.warn('[sync] prune failed:', err));
+              if (!isCloudSyncAuthorityCurrent(userId, generation)) return;
+              if (stopSyncLoop && activeCloudSyncUserId === userId) return;
+              stopActiveCloudSyncLoop();
+              if (!isCloudSyncAuthorityCurrent(userId, generation)) return;
+              try {
+                stopSyncLoop = startSyncLoop();
+                activeCloudSyncUserId = userId;
+              } catch (err) {
+                console.warn('[sync] loop startup failed:', err);
+              }
+            };
+            const reconcileCloudSyncAuthority = (
+              session: SupabaseSessionLike,
+              generation: number,
+            ): void => {
+              const userId = cloudSessionUserId(session);
+              if (!userId) {
+                stopActiveCloudSyncLoop();
+                return;
+              }
+              if (stopSyncLoop && activeCloudSyncUserId === userId) return;
+              stopActiveCloudSyncLoop();
+              void startCloudSyncForAuthority(userId, generation);
+            };
             if (supa) {
               const sessionGeneration = ++cloudAuthGeneration;
               void supa.auth
@@ -488,6 +525,10 @@ function useBoot() {
                   applyCloudSession(data.session as SupabaseSessionLike);
                   accountIdentityReady = true;
                   syncAccountScopedListeners();
+                  reconcileCloudSyncAuthority(
+                    data.session as SupabaseSessionLike,
+                    sessionGeneration,
+                  );
                   const userId = cloudSessionUserId(data.session as SupabaseSessionLike);
                   // Startup routing: when cloud auth is configured but no one is
                   // signed in, open the Account page so the user can sign up /
@@ -510,26 +551,14 @@ function useBoot() {
                 applyCloudSession(session as SupabaseSessionLike);
                 accountIdentityReady = true;
                 syncAccountScopedListeners();
+                reconcileCloudSyncAuthority(session as SupabaseSessionLike, cloudAuthGeneration);
                 const userId = cloudSessionUserId(session as SupabaseSessionLike);
                 if (userId) {
-                  void retrySyncErrors()
-                    .then(() => processSyncQueue())
-                    .then(() => processCloudPull())
-                    .catch((err) => console.warn('[sync] immediate flush failed:', err));
                   void import('@/lib/launchPromo').then((m) => m.claimLaunchPromo(userId));
                 }
               });
               stopCloudAuth = () => sub.data.subscription.unsubscribe();
             }
-            await retrySyncErrors().catch((err) =>
-              console.warn('[sync] retrySyncErrors failed:', err),
-            );
-            if (cancelled) return;
-            void processCloudPull().catch((err) =>
-              console.warn('[sync] initial pull failed:', err),
-            );
-            void pruneSyncQueue().catch((err) => console.warn('[sync] prune failed:', err));
-            if (!cancelled) stopSyncLoop = startSyncLoop();
           }
         }
       } catch {
@@ -657,7 +686,7 @@ function useBoot() {
       stopTerminalScheduler?.();
       stopJarvisScheduleRunner?.();
       stopClockEngine?.();
-      stopSyncLoop?.();
+      stopActiveCloudSyncLoop();
       stopCloudAuth?.();
     };
     // Run once - boot is one-shot.
