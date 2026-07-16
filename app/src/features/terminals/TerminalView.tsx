@@ -75,6 +75,7 @@ import {
   applyTerminalFollowScroll,
   terminalUserHasScrolled,
 } from './terminalViewport';
+import { handleTerminalClipboardKey } from './terminalClipboard';
 import { COMPOSER_STT_STOP_EVENT, COMPOSER_STT_TOGGLE_EVENT } from '@/features/composer-stt';
 import { startSttVolumeMeter, stopSttVolumeMeter } from '@/features/composer-stt/sttVolume';
 import { VoiceService } from '@/features/voice/VoiceService';
@@ -649,7 +650,6 @@ export function TerminalView({
 
       try {
         const currentTerm = termRef.current;
-        const followUserScrolled = userHasScrolledRef.current;
         if (currentTerm) {
           latestTerminalWrite = new Promise<void>((resolve) => {
             currentTerm.write(displayData, () => {
@@ -659,10 +659,9 @@ export function TerminalView({
                   // Short buffers pin to top (PS prompt at top of pane); long
                   // scrollback follows the bottom only while the user hasn't
                   // scrolled away. Never thrash between top and bottom.
-                  applyTerminalFollowScroll(live, { userHasScrolled: followUserScrolled });
-                }
-                if (!followUserScrolled) {
-                  userHasScrolledRef.current = false;
+                  applyTerminalFollowScroll(live, {
+                    getUserHasScrolled: () => userHasScrolledRef.current,
+                  });
                 }
                 scheduleTerminalSnapshot();
               }
@@ -740,6 +739,9 @@ export function TerminalView({
       if (cancelled) return;
 
       term.open(containerEl);
+      term.attachCustomKeyEventHandler((event) =>
+        handleTerminalClipboardKey(event, term!, navigator.clipboard),
+      );
 
       // GPU renderer. xterm's default DOM renderer re-lays-out HTML rows on
       // every write, which is the dominant frame cost with a 10-pane grid of

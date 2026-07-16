@@ -57,7 +57,7 @@ describe('terminal viewport helpers', () => {
       scrollToTop: vi.fn(),
       scrollToBottom: vi.fn(),
     };
-    applyTerminalFollowScroll(short, { userHasScrolled: false });
+    applyTerminalFollowScroll(short, { getUserHasScrolled: () => false });
     expect(short.scrollToTop).toHaveBeenCalledTimes(1);
     expect(short.scrollToBottom).not.toHaveBeenCalled();
 
@@ -66,7 +66,7 @@ describe('terminal viewport helpers', () => {
       scrollToTop: vi.fn(),
       scrollToBottom: vi.fn(),
     };
-    applyTerminalFollowScroll(long, { userHasScrolled: false });
+    applyTerminalFollowScroll(long, { getUserHasScrolled: () => false });
     expect(long.scrollToBottom).toHaveBeenCalledTimes(1);
     expect(long.scrollToTop).not.toHaveBeenCalled();
 
@@ -75,8 +75,26 @@ describe('terminal viewport helpers', () => {
       scrollToTop: vi.fn(),
       scrollToBottom: vi.fn(),
     };
-    applyTerminalFollowScroll(scrolledAway, { userHasScrolled: true });
+    applyTerminalFollowScroll(scrolledAway, { getUserHasScrolled: () => true });
     expect(scrolledAway.scrollToTop).not.toHaveBeenCalled();
     expect(scrolledAway.scrollToBottom).not.toHaveBeenCalled();
+  });
+
+  it('reads the latest user scroll intent after an asynchronous terminal write', () => {
+    let userHasScrolled = false;
+    const live = {
+      ...terminal(39, 40),
+      scrollToTop: vi.fn(),
+      scrollToBottom: vi.fn(),
+    };
+    const getUserHasScrolled = () => userHasScrolled;
+
+    // The write started while following output, then the user scrolled before
+    // xterm invoked its completion callback.
+    userHasScrolled = true;
+    applyTerminalFollowScroll(live, { getUserHasScrolled });
+
+    expect(live.scrollToTop).not.toHaveBeenCalled();
+    expect(live.scrollToBottom).not.toHaveBeenCalled();
   });
 });

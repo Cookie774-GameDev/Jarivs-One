@@ -47,9 +47,12 @@ export function shouldAutoFollowTerminalOutput({
  */
 export function applyTerminalFollowScroll(
   term: TerminalLike,
-  opts: { userHasScrolled: boolean },
+  opts: { getUserHasScrolled: () => boolean },
 ): void {
-  if (!shouldAutoFollowTerminalOutput({ term, userHasScrolled: opts.userHasScrolled })) {
+  if (!shouldAutoFollowTerminalOutput({
+    term,
+    userHasScrolled: opts.getUserHasScrolled(),
+  })) {
     return;
   }
   if (shouldPinTerminalViewportToTop(term)) {
