@@ -1,7 +1,7 @@
 # Build cross-platform installers and publish to GitHub Releases.
 #
 # Triggered by pushing a `v*` tag, manually dispatching a tag build, or
-# creating the one-use `v1.5.0` release branch after the release PR merges.
+# pushing the one-use `v1.5.0` release branch after the release PR merges.
 # Produces:
 #   * Windows: NSIS .exe and .msi (x64)
 #   * macOS:   DMG (Apple Silicon + Intel)
@@ -13,6 +13,8 @@ on:
   push:
     tags:
       - 'v*'
+    branches:
+      - 'v1.5.0'
   create:
   workflow_dispatch:
     inputs:
@@ -22,10 +24,29 @@ on:
         default: 'v1.5.0'
 
 permissions:
+  actions: read
   contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: true
 
 jobs:
+  announce:
+    if: github.event_name != 'create' || (github.ref_type == 'branch' && github.ref_name == 'v1.5.0')
+    name: Announce release run
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Report live run on PR #27
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr comment 27 --repo "$GITHUB_REPOSITORY" --body "Official v1.5.0 release build started. Run ID: $GITHUB_RUN_ID | https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+
   release:
+    needs: announce
     if: github.event_name != 'create' || (github.ref_type == 'branch' && github.ref_name == 'v1.5.0')
     name: Build (${{ matrix.label }})
     strategy:
@@ -149,13 +170,21 @@ jobs:
         with:
           node-version: 22
 
+      - name: Stop if any platform build failed
+        if: needs.release.result != 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr comment 27 --repo "$GITHUB_REPOSITORY" --body "Official v1.5.0 release build failed on at least one platform. Run: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          exit 1
+
       - name: Download all release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
           mkdir -p assets
-          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir assets || true
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir assets
 
       - name: Require updater signatures and build latest.json
         env:
