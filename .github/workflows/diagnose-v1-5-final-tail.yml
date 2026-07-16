@@ -1,0 +1,51 @@
+name: Extract final VibeSpace v1.5.0 failure tail
+
+on:
+  create:
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  diagnose:
+    if: github.ref_type == 'branch' && github.ref_name == 'diagnose-v1.5.0-final-tail'
+    runs-on: ubuntu-22.04
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Extract the last meaningful lines
+        shell: bash
+        run: |
+          set -euo pipefail
+          for job in 87524666509 87524666481; do
+            gh api repos/$GITHUB_REPOSITORY/actions/jobs/$job/logs > "$job.log"
+            python - "$job" <<'PY'
+          import re, sys
+          from pathlib import Path
+          job = sys.argv[1]
+          ansi = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
+          lines = [ansi.sub('', line) for line in Path(f'{job}.log').read_text(errors='replace').splitlines()]
+          tail = lines[-140:]
+          keep = []
+          for line in tail:
+              low = line.lower()
+              if any(token in low for token in ['##[error]', 'error:', 'error ', 'failed', 'failure', 'private key', 'signing', 'signature', 'updater', 'could not', 'couldn\'t', 'exit code', 'process completed']):
+                  if 'compiling' not in low and 'downloaded' not in low:
+                      keep.append(line)
+          Path(f'{job}.errors.txt').write_text('\n'.join(keep[-80:]) or '\n'.join(tail[-60:]))
+          PY
+          done
+          {
+            echo 'Strict macOS release failure diagnostics:'
+            echo '```text'
+            echo '--- macOS arm64 ---'
+            cat 87524666509.errors.txt
+            echo
+            echo '--- macOS x64 ---'
+            cat 87524666481.errors.txt
+            echo '```'
+          } > comment.md
+          gh pr comment 27 --repo "$GITHUB_REPOSITORY" --body-file comment.md
