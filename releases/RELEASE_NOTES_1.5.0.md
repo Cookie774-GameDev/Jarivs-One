@@ -15,3 +15,7 @@ Released July 15, 2026.
 ## Integration guarantee
 
 This release is based on PR #26 and contains the validated work from PRs #18 through #23 plus the rescued Grok Workbench. Existing installer, terminal, pet, theme, subscription, provider, Jarvis, and update functions are preserved.
+
+## Required release gates
+
+The official release is published only after typecheck, production build, the full Vitest suite, release-manifest validation, Rust release validation, all cross-platform installer builds, updater signatures, `latest.json`, and `SHA256SUMS.txt` succeed.
