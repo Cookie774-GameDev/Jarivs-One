@@ -1,36 +1,11 @@
 # Build cross-platform installers and publish to GitHub Releases.
 #
-# Triggered by pushing a `v*` tag from any branch.
+# Triggered by pushing a `v*` tag, manually dispatching a tag build, or
+# creating the one-use `v1.5.0` release branch after the release PR merges.
 # Produces:
 #   * Windows: NSIS .exe and .msi (x64)
 #   * macOS:   DMG (Apple Silicon + Intel)
 #   * Linux:   AppImage and .deb (x86_64)
-#
-# Why CI instead of local builds?
-#   * Reproducible: every release built from a clean Ubuntu/macOS/Windows runner.
-#   * No-skin-in-the-game cross-compile: building macOS bundles requires an
-#     Apple host; Windows MSI requires WiX on Windows.
-#   * Sidesteps local Defender / toolchain races that block Tauri's release
-#     profile builds on developer machines.
-#
-# Setup checklist (one-time):
-#   1. Push the repo to GitHub: `git remote add origin git@github.com:Cookie774-GameDev/VibeSpace.git`
-#      then `git push -u origin main`.
-#   2. (Optional) Add code-signing secrets so binaries don't trigger
-#      SmartScreen / Gatekeeper warnings:
-#        WINDOWS_CERT_BASE64       - base64 of your .pfx
-#        WINDOWS_CERT_PASSWORD     - password for the .pfx
-#        APPLE_CERTIFICATE         - base64 of your Developer ID Application cert
-#        APPLE_CERTIFICATE_PASSWORD
-#        APPLE_SIGNING_IDENTITY    - "Developer ID Application: Your Name (TEAMID)"
-#        APPLE_ID                  - Apple ID for notarization
-#        APPLE_PASSWORD            - app-specific password
-#        APPLE_TEAM_ID
-#        TAURI_SIGNING_PRIVATE_KEY - Tauri updater signing private key
-#        TAURI_SIGNING_PRIVATE_KEY_PASSWORD
-#      Until those exist, builds will be unsigned and the install script will warn.
-#   3. To cut a release: `git tag v0.1.20 && git push origin v0.1.20`.
-#      The workflow creates a draft release; review it on GitHub and hit Publish.
 
 name: Release
 
@@ -38,23 +13,22 @@ on:
   push:
     tags:
       - 'v*'
-  # Allow manual trigger for testing without tagging.
+  create:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag to build (e.g. v0.1.17-test)'
+        description: 'Tag to build (e.g. v1.5.0)'
         required: true
-        default: 'v0.1.17-test'
+        default: 'v1.5.0'
 
 permissions:
   contents: write
 
 jobs:
   release:
+    if: github.event_name != 'create' || (github.ref_type == 'branch' && github.ref_name == 'v1.5.0')
     name: Build (${{ matrix.label }})
     strategy:
-      # One platform failing should not abort the others; users on
-      # working platforms still get installers.
       fail-fast: false
       matrix:
         include:
@@ -96,8 +70,6 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: app/src-tauri
-          # Keep the cache scoped per-target so we don't poison aarch64
-          # artifacts with x86_64 ones across the macOS jobs.
           key: ${{ matrix.target }}
 
       - name: Install Linux dependencies
@@ -114,27 +86,23 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
-      - name: Prepare unsigned release config
+      - name: Prepare signed updater release config
         shell: bash
         run: |
-          node -e "require('fs').writeFileSync('app/src-tauri/tauri.release.generated.json', JSON.stringify({ bundle: { createUpdaterArtifacts: false } }))"
+          node -e "require('fs').writeFileSync('app/src-tauri/tauri.release.generated.json', JSON.stringify({ bundle: { createUpdaterArtifacts: true } }))"
 
       - name: Build & publish (tauri-action)
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Frontend env vars baked into the Vite build at release time.
-          # Only the *publishable* keys belong here; service-role keys
-          # never go on the client.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-          # Never ship blanket admin bypasses in public release binaries.
           VITE_JARVIS_ADMIN: 'false'
           VITE_JARVIS_LOCAL_ADMIN: 'false'
           VITE_JARVIS_ADMIN_EMAILS: ''
           VITE_JARVIS_ADMIN_LOCAL_IDS: ''
-          # Windows Authenticode signing. The signCommand no-ops if these are blank
-          # unless JARVIS_WINDOWS_SIGN_REQUIRED=1 is set.
           WINDOWS_CERT_BASE64: ${{ secrets.WINDOWS_CERT_BASE64 }}
           WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
           WINDOWS_CERT_THUMBPRINT: ${{ secrets.WINDOWS_CERT_THUMBPRINT }}
@@ -144,12 +112,10 @@ jobs:
           projectPath: app
           tagName: ${{ github.event.inputs.tag || github.ref_name }}
           releaseName: 'VibeSpace ${{ github.event.inputs.tag || github.ref_name }}'
-          # Pull release notes from releases/RELEASE_NOTES_<version>.md when present;
-          # tauri-action falls back to the tag message when the file is missing.
           releaseBody: |
             ## VibeSpace ${{ github.event.inputs.tag || github.ref_name }}
 
-            See the matching `releases/RELEASE_NOTES_<version>.md` file in this tag for the full changelog.
+            See `releases/RELEASE_NOTES_1.5.0.md` in this release source for the full changelog.
 
             ### Install (one line)
 
@@ -158,34 +124,22 @@ jobs:
             irm https://raw.githubusercontent.com/${{ github.repository }}/main/install/install.ps1 | iex
             ```
 
-            **macOS**
+            **macOS / Linux**
             ```
             curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install/install.sh | bash
-            ```
-
-            **Linux (AppImage, default)**
-            ```
-            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install/install.sh | bash
-            ```
-
-            **Linux packages**
-            ```
-            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install/install.sh | JARVIS_FORMAT=deb bash
-            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install/install.sh | JARVIS_FORMAT=rpm bash
             ```
 
             ### Direct downloads
-            See assets below. Verify SHA-256 with `SHA256SUMS.txt`.
+            See the assets below and verify them with `SHA256SUMS.txt`.
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }} --config src-tauri/tauri.release.generated.json
 
-  # Aggregate SHA256SUMS.txt across all platforms once builds finish.
   checksums:
-    name: Generate SHA256SUMS
+    name: Generate updater manifest and SHA256SUMS
     needs: release
     runs-on: ubuntu-22.04
-    if: always()
+    if: always() && (github.event_name != 'create' || (github.ref_type == 'branch' && github.ref_name == 'v1.5.0'))
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -203,46 +157,33 @@ jobs:
           mkdir -p assets
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir assets || true
 
-      - name: Build updater manifest
+      - name: Require updater signatures and build latest.json
         env:
           TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
-          if compgen -G "assets/*.sig" > /dev/null; then
-            VERSION="${TAG#v}"
-            node scripts/build-updater-manifest.mjs \
-              --version "$VERSION" \
-              --assets-dir assets \
-              --base-url "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG" \
-              --outfile assets/latest.json \
-              --notes "VibeSpace $VERSION"
-          else
-            echo "No updater signatures found; latest.json not generated."
+          set -euo pipefail
+          if ! compgen -G "assets/*.sig" > /dev/null; then
+            echo "Signed updater artifacts are required for an official release."
+            exit 1
           fi
+          VERSION="${TAG#v}"
+          node scripts/build-updater-manifest.mjs \
+            --version "$VERSION" \
+            --assets-dir assets \
+            --base-url "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG" \
+            --outfile assets/latest.json \
+            --notes "VibeSpace $VERSION"
 
       - name: Compute hashes
         run: |
+          set -euo pipefail
           cd assets
-          if compgen -G "VibeSpace*" > /dev/null; then
-            sha256sum VibeSpace* Jarvis* 2>/dev/null | tee SHA256SUMS.txt
-          else
-            echo "No assets to hash; skipping." | tee SHA256SUMS.txt
-          fi
+          find . -maxdepth 1 -type f ! -name 'SHA256SUMS.txt' -printf '%f\n' | sort | xargs -r sha256sum | tee SHA256SUMS.txt
+          test -s SHA256SUMS.txt
 
-      - name: Upload SHA256SUMS.txt
+      - name: Upload updater manifest and hashes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
-          cd assets
-          if [ -s SHA256SUMS.txt ]; then
-            gh release upload "$TAG" SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --clobber
-          fi
-
-      - name: Upload latest.json
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.event.inputs.tag || github.ref_name }}
-        run: |
-          if [ -s assets/latest.json ]; then
-            gh release upload "$TAG" assets/latest.json --repo "$GITHUB_REPOSITORY" --clobber
-          fi
+          gh release upload "$TAG" assets/latest.json assets/SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --clobber
