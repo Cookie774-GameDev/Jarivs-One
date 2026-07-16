@@ -58,17 +58,41 @@ path>`. The name list must contain only the task's locked files, and
 
 Execute the task briefs in this dependency-safe order:
 
-`1A, 1B (lock-gated), 2, 3, 4, 5, 6, 7, 8, 9, 10, 18, 11, 12, 13, 16A, 14, 15, 19, 20, 16B, 21A, 17, 21B, 22`.
+`1A, 1B (review-fix gated), 2, 3, 4, 5, 6, 7, 8, 9, 10, 18, 11, 12, 13, 16A, 14, 15, 19A, 19B, 19C, 19D, 20A, 20B, 20C, 16B, 21A, 17, 21B, 21C, 22`.
 
-Task 1A is complete. Task 1B remains deferred while
-`AGENT-20260713-081843-S9BX` owns `app/src/App.tsx`; that lock does not block
-Tasks 2-13, but Task 1B must land before Task 16A starts. Task 18 precedes
-request consumers so it alone allocates caller-stable run IDs and owns legal
-state transitions. Task 16A establishes `legacy | shadow | kernel` shadow
-compilation before response cutover; Task 16B owns the tested production
-default switch to `kernel`. Task 21A binds voice before schedule/Hive Task 17,
-and Task 21B mounts the read-only Command Center only after all canonical
-lifecycle consumers exist.
+The plan retains `22` numbered task families and now contains `31` executable
+slices after the `1`, `16`, `19`, `20`, and `21` lettered splits. Task 1A is
+complete. Task 1B has initial commit `50f7ea5`, but independent review found five
+Important defects and its separately locked TDD review-fix slice remains in
+progress; Task 1B is not complete and still gates Task 16A. Task 18 precedes
+Its exact-file review-fix slice may proceed concurrently with Tasks 2–13, which
+do not consume App boot integration, but it must be accepted before Task 16A.
+Task 18 precedes request consumers so it alone allocates caller-stable run IDs
+and owns legal state transitions. Task 19 lands strictly as
+`19A -> 19B -> 19C -> 19D`; Task 20 lands strictly as
+`20A -> 20B -> 20C`. Task 16A establishes
+`legacy | shadow | kernel` shadow compilation before response cutover; Task 16B
+owns the tested production default switch to `kernel`. Task 21A binds voice
+before schedule/Hive Task 17, Task 21B mounts the read-only Command Center only
+after all canonical lifecycle consumers exist, Task 21C then lands the isolated
+development-only smoke fixtures, and docs/evidence-only Task 22 consumes those
+committed fixtures.
+
+### Parallelization matrix
+
+| Work                                                                   | Parallel status                                                                       | Required gate                                                                         |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Read-only discovery, independent review, and ignored brief preparation | May run concurrently only with distinct output paths and no overlapping logical locks | Re-read the root coordination ledger under its mutex before claiming any file         |
+| Task 1B review-fix slice                                               | May overlap only Tasks 2–13 under distinct exact-file locks                           | Accepted fixes and re-review are required before Task 16A                             |
+| Tasks 2–10, 18, and 11–13                                              | Sequential in the exact global order                                                  | Predecessor commit/review complete and exact product-file locks acquired              |
+| Tasks 16A, 14, and 15                                                  | Strictly serial                                                                       | Task 1B accepted, Task 13 complete, then the exact predecessor slice                  |
+| Tasks 19A–19D                                                          | Strictly serial                                                                       | Each slice consumes the preceding approval/cancellation authority                     |
+| Tasks 20A–20C                                                          | Strictly serial                                                                       | 20B consumes 20A's private receipt issuer; 20C starts only after real producers exist |
+| Tasks 16B, 21A, 17, 21B, 21C, and 22                                   | Strictly serial in that order                                                         | Canonical cutover, consumers, proof shell, smoke fixtures, then docs/evidence         |
+| Independent post-implementation review                                 | Read-only reviewers may run concurrently after the reviewed commit exists             | Every product fix becomes a separately locked serial TDD task and commit              |
+
+No product implementation overlap is authorized except the bounded Task 1B
+review-fix parallelism with Tasks 2–13 stated above.
 
 ## Contract Naming and Persistence Conventions
 
@@ -157,18 +181,20 @@ npm run typecheck
 Observed: focused Vitest passed 6/6; root typecheck passed; exact-file Prettier,
 whitespace, and commit-scope checks passed.
 
-### Task 1B: App account-scope integration - deferred
+### Task 1B: App account-scope integration - review fixes in progress
 
-**Lock prerequisite:** Do not edit or stage this task until the current
-`app/src/App.tsx` owner formally releases or hands off the exact file. Preserve
-that owner's staged App work during reconciliation.
+**Current status:** The initial strict-TDD slice was committed as `50f7ea5`.
+Independent review then found five Important defects. A separately locked TDD
+review-fix slice is active; no fix SHA is recorded yet. Task 1B remains
+incomplete and continues to gate Task 16A until the fixes pass focused and
+broader verification plus independent re-review.
 
 **Files:**
 
 - Modify: `app/src/App.tsx`
 - Create: `app/src/App.accountIdentity.test.tsx`
 
-- [ ] **Step 1: Write the failing App boot integration tests**
+- [x] **Step 1: Write the initial failing App boot integration tests**
 
 Mock only the account-scoped listener factories and prove:
 
@@ -183,17 +209,19 @@ Mock only the account-scoped listener factories and prove:
 - account transitions stop every old-scope listener before starting the new
   scope, without rewriting the stable local ID.
 
-- [ ] **Step 2: Observe the focused RED failure**
+- [x] **Step 2: Observe the initial focused RED failure**
 
 ```powershell
 npm --prefix app test -- src/App.accountIdentity.test.tsx
 ```
 
-Expected: FAIL because `App.tsx` still contains three
-`cloudSession?.user_id ?? localUserId ?? 'local-unassigned'` fallbacks and starts
-the listeners before canonical scope is ready.
+Observed before the initial production edit: the focused command exited `1`
+with five tests; one signed-out local-ID case passed and four behavior tests
+failed because malformed identity still started listeners, live invalidation
+did not tear down, and valid account changes did not stop/restart scoped
+listeners.
 
-- [ ] **Step 3: Integrate the canonical resolver**
+- [x] **Step 3: Land the initial canonical-resolver integration**
 
 Replace all three fallback expressions with the Task 1A resolver. Keep
 account-scoped start/stop ownership in one App boot lifecycle: no identity
@@ -202,17 +230,21 @@ before starting the new one, and App cleanup tears down the active scope.
 Delay only shared-kernel/account-scoped activation; do not delay the existing
 V2 UI, database seed, non-account-scoped runtime, or unrelated boot effects.
 
-- [ ] **Step 4: Verify the lock-gated slice**
+- [x] **Step 4: Verify the initial committed slice**
 
 ```powershell
 npm --prefix app test -- src/App.accountIdentity.test.tsx src/lib/accountIdentity.test.ts
 npm run typecheck
 ```
 
-Expected: both focused files and typecheck pass; the App test proves no
-cross-account fallback and no V2 shell boot regression.
+Observed for initial commit `50f7ea5`: the focused command passed `11/11` tests
+in `2/2` files, root typecheck passed, and the exact two-file diff/scope gates
+passed. Independent review later proved
+`npm exec -- prettier --check app/src/App.tsx app/src/App.accountIdentity.test.tsx`
+fails on `App.tsx`; formatting remains part of the active review-fix slice.
+This initial evidence does not close the other independent-review findings.
 
-- [ ] **Step 5: Stage exact files, inspect the cache, and commit**
+- [x] **Step 5: Stage exact files, inspect the cache, and create the initial commit**
 
 ```powershell
 git add -- app/src/App.tsx app/src/App.accountIdentity.test.tsx
@@ -221,6 +253,20 @@ git diff --cached --check
 git diff --cached -- app/src/App.tsx app/src/App.accountIdentity.test.tsx
 git commit -m "feat(jarvis): bind app boot to canonical account identity"
 ```
+
+Observed: `50f7ea50b17689ea86568a7363e21828c98dfde9` contains exactly
+`app/src/App.tsx` and `app/src/App.accountIdentity.test.tsx`. It is an initial
+implementation commit, not an accepted completion commit.
+
+- [ ] **Step 6: Complete the active five-finding review-fix TDD slice**
+
+For each Important review finding, add or strengthen a focused failing test,
+observe the expected RED, make the smallest fix within the separately
+registered exact-file scope, and rerun the focused Task 1A/1B tests, root
+typecheck, formatting, cached-name, cached-diff, whitespace, secret, and
+installer gates. Commit the fixes separately only after receiving the shared
+index slot, record the real fix SHA when it exists, and obtain independent
+re-review before marking Task 1B complete or starting Task 16A.
 
 ## Task 2: Protected JARVIS Identity and Profile Contracts
 
@@ -880,7 +926,8 @@ consumption, artifact backing, or response/executor truth:
 - Task 18 owns legal state transitions and cancellation outcomes.
 - Task 19 owns secret parameter rejection, risk derivation, and approval
   revalidation.
-- Task 20 owns artifact backing/state rules.
+- Task 20A owns artifact backing/state rules; Task 20B owns real producer
+  evidence, and Task 20C owns legacy lifecycle shutdown/projections.
 - Task 14 owns response truth and prose enforcement.
 
 - [ ] **Step 1: Write failing table-driven validator tests**
@@ -2919,9 +2966,75 @@ git log --oneline origin/main..HEAD -- 'install/install.ps1'
 Expected staged and committed names: exactly the thirteen files above. The
 installer queries and whitespace checks produce no output.
 
-## Task 18: Execution Journal State Machine and Abort Registry
+## Shared contracts consumed by Tasks 18–21C
 
-**Files:**
+```ts
+export const MAX_JARVIS_SELECTOR_ITEMS = 500 as const;
+
+export const JARVIS_RUN_TRANSITIONS = {
+  queued: ['compiling', 'running', 'awaiting_approval', 'failed', 'cancelled', 'timed_out'],
+  compiling: ['running', 'awaiting_approval', 'failed', 'cancelled', 'timed_out'],
+  running: ['awaiting_approval', 'partial', 'completed', 'failed', 'cancelled', 'timed_out'],
+  awaiting_approval: ['queued', 'running', 'failed', 'cancelled', 'timed_out'],
+  partial: [],
+  completed: [],
+  failed: [],
+  cancelled: [],
+  timed_out: [],
+} as const satisfies Record<JarvisRunStatus, readonly JarvisRunStatus[]>;
+
+export type CancellationDelivery = {
+  delivered: boolean;
+  verified: boolean;
+  reason:
+    | 'queued_removed'
+    | 'signal_delivered'
+    | 'handoff_pending'
+    | 'unsupported'
+    | 'executor_missing'
+    | 'delivery_rejected'
+    | 'delivery_error'
+    | 'already_terminal';
+};
+
+export type JarvisCancellationOwnerOutcome =
+  | {
+      kind: 'queued_removed';
+      ownerId: string;
+      queueItemId: string;
+    }
+  | {
+      kind: 'signal_delivered';
+      ownerId: string;
+      cancellationToken?: string;
+    }
+  | {
+      kind: 'handoff_pending';
+      ownerId: string;
+    }
+  | {
+      kind: 'already_exited';
+      ownerId: string;
+    }
+  | {
+      kind: 'unsupported';
+      ownerId: string;
+    }
+  | {
+      kind: 'delivery_rejected';
+      ownerId: string;
+    };
+```
+
+Self-transitions are rejected. Canonical event identity is `(runId, seq)`.
+Crash/retry delivery deduplication is a separate key,
+`(runId, idempotencyKey)`. Reusing an idempotency key returns the existing
+event only when the immutable event payload is identical; it never silently
+accepts a duplicate state transition. Terminal states are immutable.
+
+## Task 18 — Canonical execution journal, cancellation, and recovery
+
+**Exact files**
 
 - Create: `app/src/lib/jarvis/executionJournal/stateMachine.ts`
 - Create: `app/src/lib/jarvis/executionJournal/stateMachine.test.ts`
@@ -2929,64 +3042,281 @@ installer queries and whitespace checks produce no output.
 - Create: `app/src/lib/jarvis/executionJournal/journal.test.ts`
 - Create: `app/src/lib/jarvis/executionJournal/abortRegistry.ts`
 - Create: `app/src/lib/jarvis/executionJournal/abortRegistry.test.ts`
+- Create: `app/src/lib/jarvis/executionJournal/recovery.ts`
+- Create: `app/src/lib/jarvis/executionJournal/recovery.test.ts`
 - Create: `app/src/lib/jarvis/executionJournal/index.ts`
 
-**State-machine rule:**
-
-All transitions pass through:
+**Interfaces to implement**
 
 ```ts
-export function assertJarvisRunTransition(from: JarvisRunStatus, to: JarvisRunStatus): void;
-```
+export type AllocateJarvisRunInput = Omit<
+  JarvisRun,
+  'id' | 'status' | 'createdAt' | 'updatedAt' | 'completedAt'
+>;
 
-Terminal statuses are immutable. Event sequence allocation and run transition
-commit atomically. Idempotency keys prevent duplicate runs/events.
-
-Abort registry:
-
-```ts
-export type CancellationDelivery = {
-  delivered: boolean;
-  verified: boolean;
-  reason: 'queued_removed' | 'signal_delivered' | 'unsupported' | 'executor_missing';
+export type TransitionJarvisRunInput = {
+  accountId: string;
+  runId: string;
+  expectedStatus: JarvisRunStatus;
+  nextStatus: JarvisRunStatus;
+  event: JarvisRunTransitionEventInput;
+  completedAt?: number;
 };
 
-export function registerRunAborter(
-  runId: string,
-  aborter: () => boolean | Promise<boolean>,
-): () => void;
+export interface JarvisExecutionJournal {
+  allocateRun(input: AllocateJarvisRunInput): Promise<JarvisRun>;
+  getRun(accountId: string, runId: string): Promise<JarvisRun | undefined>;
+  appendEvent(
+    accountId: string,
+    runId: string,
+    event: Omit<JarvisEvent, 'runId' | 'seq'>,
+  ): Promise<JarvisEvent>;
+  transitionRun(input: TransitionJarvisRunInput): Promise<JarvisRun>;
+  requestCancellation(accountId: string, runId: string): Promise<CancellationDelivery>;
+}
 
-export function requestRunCancellation(
-  accountId: string,
-  runId: string,
-): Promise<CancellationDelivery>;
+export type JarvisAbortKind =
+  | 'provider_stream'
+  | 'tts_generation'
+  | 'audio_playback'
+  | 'terminal'
+  | 'native_process'
+  | 'network'
+  | 'child_run'
+  | 'other';
+
+export type JarvisAbortRegistration = {
+  accountId: string;
+  runId: string;
+  registrationId: string;
+  kind: JarvisAbortKind;
+  parentRunId?: string;
+  supported?: boolean;
+  abort: () => JarvisCancellationOwnerOutcome | Promise<JarvisCancellationOwnerOutcome>;
+};
+
+export interface JarvisAbortRegistry {
+  registerRunAborter(registration: JarvisAbortRegistration): () => void;
+  requestRunCancellation(accountId: string, runId: string): Promise<CancellationDelivery>;
+  clearRun(accountId: string, runId: string): void;
+}
+
+export type JarvisRecoveryDecision =
+  | {
+      kind: 'await_approval';
+      run: JarvisRun;
+      events: JarvisEvent[];
+      approvalId: string;
+    }
+  | {
+      kind: 'fail_closed';
+      run: JarvisRun;
+      reason:
+        | 'manual_retry_required'
+        | 'approval_missing'
+        | 'approval_not_pending'
+        | 'approval_consumed'
+        | 'approval_expired'
+        | 'approval_binding_mismatch'
+        | 'ambiguous_executor_state';
+    };
+
+export interface JarvisRecoveryScanner {
+  scanAccount(
+    accountId: string,
+    options?: { runLimit?: number; eventLimitPerRun?: number },
+  ): Promise<JarvisRecoveryDecision[]>;
+}
+
+export interface JarvisRecoveryApprovalVerifier {
+  verifyPendingApproval(input: {
+    accountId: string;
+    run: JarvisRun;
+    events: readonly JarvisEvent[];
+  }): Promise<
+    | { valid: true; approvalId: string }
+    | {
+        valid: false;
+        reason: Exclude<
+          Extract<JarvisRecoveryDecision, { kind: 'fail_closed' }>['reason'],
+          'manual_retry_required' | 'ambiguous_executor_state'
+        >;
+      }
+  >;
+}
 ```
 
-**Step 1: Write failing tests**
+`createJarvisExecutionJournal` receives the Task 9 repositories, a monotonic clock, a `newRunId` dependency whose production default is `() => \`jrun\_${crypto.randomUUID()}\``, and the abort registry. `allocateRun()`persists the caller-stable ID in`queued` before the compiler/provider receives it.
 
-Cover every legal/illegal transition, concurrent events, duplicate idempotency
-keys, terminal immutability, crash recovery, registration cleanup, abort tree,
-late abort, and cross-account access.
+`transitionRun()` first validates the matrix and then calls Task 9's single
+transactional
+`JarvisRunRepository.compareAndAppendTransitionEvent(input)` primitive:
 
-**Step 2: Observe failure**
+```ts
+export type JarvisRunTransitionEventInput =
+  Omit<JarvisEvent, 'runId' | 'seq' | 'type' | 'status'>;
 
-```powershell
-npm --prefix app test -- src/lib/jarvis/executionJournal
+compareAndAppendTransitionEvent(input: {
+  accountId: string;
+  runId: string;
+  expectedStatus: JarvisRunStatus;
+  nextStatus: JarvisRunStatus;
+  updatedAt: number;
+  completedAt?: number;
+  event: JarvisRunTransitionEventInput;
+}): Promise<
+  | { applied: true; run: JarvisRun; event: JarvisEvent }
+  | { applied: false; current: JarvisRun }
+>;
 ```
 
-**Step 3: Implement**
+That repository primitive performs the expected-status compare, updates the
+run, allocates the next event sequence, and inserts a forced
+`type: 'run_state'`, `status: nextStatus` event in one IndexedDB transaction.
+A conflict returns the current run without either write and becomes a typed
+`JarvisTransitionConflictError`; an event insert failure rolls back the run
+update. There is no status-first/event-later recovery path. Standalone
+`appendEvent()` remains only for non-transition events.
 
-Use the v3 repositories; never write a second canonical lifecycle to
-`JarvisTaskRun` or `ChatActivityEvent`.
+**Cancellation aggregation and terminality**
 
-**Step 4: Verify and commit**
+- Registrations are keyed by `(accountId, runId, registrationId)`.
+  Re-registering replaces only that ID. The returned disposer is idempotent
+  and removes only the same function instance. Every executor owner must
+  register **before** its work becomes enqueueable, visible, or otherwise
+  externally cancellable.
+- A cancellation request receives a stable internal request ID. The journal
+  appends exactly one closed-contract `JarvisEvent` with that request ID as
+  `idempotencyKey`, `type: 'warning'`,
+  `status: 'cancellation_requested'`, title `Cancellation requested`,
+  `safeSummary: 'Cancellation delivery is pending.'`, empty `sourceRefs`, and
+  empty `artifactIds`. There is no new
+  durable cancellation payload or table. The in-memory registry retains owner
+  delivery state for the exact account/run, snapshots current owners for the
+  run and registered descendants, and invokes each registration at most once
+  for that request. A registration added or replaced while that in-memory
+  request remains pending is invoked immediately; the caller does not need to
+  press Cancel a second time. On process restart the event is evidence of
+  intent only: owner delivery is not reconstructed or replayed, and Task 18
+  recovery returns `fail_closed`. This closes the live-process
+  drained/claimed-before-session gap without inventing durable abort state.
+- Repeated cancellation calls while that same in-memory request is pending
+  reuse its request ID and existing event and do not invoke the same
+  registration twice. They return the current aggregate delivery state rather
+  than append another warning event or create another fan-out.
+- A canonical terminal transition or `clearRun()` clears the in-memory pending
+  request and all per-request delivery bookkeeping. A late owner is never
+  invoked for a run that has become terminal.
+- There is no unconditional `queued -> cancelled` transition. The queue owner
+  must first return the typed
+  `{ kind: 'queued_removed', ownerId, queueItemId }` outcome after removing the
+  exact queue item. Only then may the journal compare-and-set
+  `queued -> cancelled`. A false exact removal, a claimed/drained item, or a
+  status compare conflict returns
+  `{ delivered: false, verified: false, reason: 'handoff_pending' }`, leaves
+  the in-memory request pending, and routes it to the current or later
+  execution owner; it never removes a neighbor and never claims verified
+  cancellation.
+- A queue/claim owner that knows work has transferred but cannot yet deliver a
+  native/provider abort returns `{ kind: 'handoff_pending', ownerId }`, which
+  maps to the same truthful public `handoff_pending` result. This is distinct
+  from an executor that actually rejects delivery.
+- `{ kind: 'signal_delivered', ... }` yields
+  `{ delivered: true, verified: false, reason: 'signal_delivered' }`. The
+  event remains nonterminal and the journal does **not** change the run status.
+  Only the owning provider/native/executor truth callback may verify that
+  matching work stopped and call
+  `transitionRun(... nextStatus: 'cancelled' ...)`.
+- `already_exited` never fabricates cancellation: the canonical exit/result
+  callback wins and the request returns `delivery_rejected` unless the run is
+  already terminal. All owners `unsupported` yields `unsupported`; no owner
+  yields `executor_missing`; owner rejection yields `delivery_rejected`; an
+  owner throw yields `delivery_error` when no signal was accepted.
+- An already-terminal run yields `{ delivered: false, verified: true, reason: 'already_terminal' }`.
+- A completion that wins the race after `signal_delivered` but before executor cancellation confirmation may truthfully transition the still-running run to `completed` or `failed`; the later cancellation confirmation then loses its expected-status compare. Once an executor has atomically transitioned the run to `cancelled`, every late completion/failure is rejected by the terminal matrix.
+- Parent cancellation includes children registered with `parentRunId`. Child failure does not cancel the parent unless the owning runtime explicitly requests that transition.
+
+**Recovery rules**
+
+- The scanner receives the read-only `JarvisRecoveryApprovalVerifier`; it has
+  no execute/consume method. Task 18 tests use a fake, and Task 19B wires the
+  canonical approval-engine verifier after Task 19A exists. A missing verifier
+  fails closed, so Task 18 does not create an approval dependency cycle.
+- Query only nonterminal statuses.
+- Clamp `runLimit` and `eventLimitPerRun` to `1..500`; defaults are `500`.
+- Read at most the newest `500` events per run. Task 9's
+  `listByRun(accountId, runId, { afterSeq?, limit? })` contract is exact: with
+  `afterSeq`, return ascending events strictly after it; without `afterSeq`,
+  reverse-scan `[run_id+seq]` for the newest bounded `limit`, then reverse only
+  that tail into ascending sequence order. Never load an unbounded history.
+- Recovery v1 has only `await_approval | fail_closed`; it has no `resume`
+  branch and never calls an executor.
+- `awaiting_approval` returns `await_approval` only when there is exactly one
+  canonical v1 approval that is pending, unconsumed, unexpired, and whose
+  ID equals the latest closed-contract approval event's `idempotencyKey`
+  (`type: 'approval'`, `status: 'pending'`, fixed safe title/summary, empty
+  refs/artifacts). Load that ID through the account-scoped repository, require
+  exact `runId`, then re-resolve the registered action/current target/current
+  capability/current entitlement authority and recompute the canonical
+  binding. The stored action/version/canonical params/target/capability/
+  entitlement values and hashes must all match. The event never stores those
+  values. Missing, duplicate, stale, denied, expired, consumed, legacy, or
+  mismatched approval data returns typed `fail_closed`.
+- `queued | compiling | running` found after restart always returns
+  `fail_closed: manual_retry_required` (or
+  `ambiguous_executor_state` when the durable evidence conflicts), makes zero
+  provider/action/native calls, and never replays a checkpoint.
+- Recovery never deletes rows, synthesizes completion, repeats a consumed
+  approval, invokes an executor, or resumes a terminal run.
+
+**Checkbox TDD steps**
+
+- [ ] Add state-machine tests for every legal edge, every illegal edge, self-transition rejection, and terminal immutability; run `npm --prefix app test -- src/lib/jarvis/executionJournal/stateMachine.test.ts` and confirm the new tests fail because the module is absent.
+- [ ] Implement only the transition table and typed validator; rerun the test and expect `PASS`.
+- [ ] Add journal tests for preallocated `jrun_` IDs, account scoping, atomic
+      status-plus-event commit, compare-and-set conflict with neither write
+      applied, `(runId, seq)` identity, identical retry dedupe by
+      `(runId, idempotencyKey)`, changed-payload idempotency conflict, and late
+      completion after a verified `cancelled` transition; run the journal test
+      and confirm red.
+- [ ] Implement the repository-backed journal and rerun state-machine plus journal tests to green.
+- [ ] Add abort-registry tests for owner-before-exposure registration, exact
+      queued removal before CAS, false removal, queue/status CAS conflict,
+      truthful `handoff_pending` for claimed/drained work, late owner registration
+      receiving the pending request without a second click, repeated UI calls
+      reusing one request/event and not redelivering to the same owner, multiple
+      labelled owners, reject, throw, unsupported, missing executor, already
+      exited, already terminal, parent/child fan-out, disposer cleanup,
+      `signal_delivered` leaving the run nonterminal, completion winning before
+      executor confirmation, and executor-confirmed cancellation rejecting later
+      completion; run the test and confirm red.
+- [ ] Implement abort registration and cancellation aggregation; rerun and expect green.
+- [ ] Add recovery tests for exact pending/unconsumed/unexpired v1 approval
+      matching across account/run/action/version/params/target/capability/
+      entitlement, every mismatch and duplicate candidate, every nonterminal
+      status, zero executor calls, no `resume` result, no replay, no terminal
+      scan, newest-event cap, caller limits `0`, `501`, and a very large integer,
+      and no durable deletion; run and confirm red.
+- [ ] Implement the bounded recovery scanner; rerun all Task 18 tests and expect green.
+- [ ] Run `npm --prefix app run typecheck`.
+- [ ] Run `npm --prefix app test -- src/lib/jarvis/executionJournal`.
+- [ ] Stage only the nine literal Task 18 paths listed in the command below; verify `git diff --cached --name-only` contains no other path and `git diff --cached --check` is empty.
+- [ ] Run the added-line secret scan against the staged diff; commit only after it returns no match.
+
+**Task 18 commit**
 
 ```powershell
-npm --prefix app test -- src/lib/jarvis/executionJournal
-npm run typecheck
-git add app/src/lib/jarvis/executionJournal
-git diff --cached --check
-git commit -m "feat(jarvis): add normalized execution journal"
+git add -- `
+  app/src/lib/jarvis/executionJournal/stateMachine.ts `
+  app/src/lib/jarvis/executionJournal/stateMachine.test.ts `
+  app/src/lib/jarvis/executionJournal/journal.ts `
+  app/src/lib/jarvis/executionJournal/journal.test.ts `
+  app/src/lib/jarvis/executionJournal/abortRegistry.ts `
+  app/src/lib/jarvis/executionJournal/abortRegistry.test.ts `
+  app/src/lib/jarvis/executionJournal/recovery.ts `
+  app/src/lib/jarvis/executionJournal/recovery.test.ts `
+  app/src/lib/jarvis/executionJournal/index.ts
+git commit -m "feat(jarvis): add canonical execution journal"
 ```
 
 ## Task 11: Context, Capability, Immutable Envelope, and Retry Identity
@@ -4350,16 +4680,304 @@ git log --oneline origin/main..HEAD -- 'install/install.ps1'
 Expected staged and committed names: exactly the thirteen files above. The
 installer and whitespace queries produce no output.
 
-## Task 19: Approval Engine, Deterministic Actions, and Real Cancellation
+## Task 19 — Versioned approvals and canonical consequential execution
 
-**Files:**
+Task 19 lands as four locked TDD slices. The task is incomplete until all four
+slices pass together. No slice may execute from `approvalBridge`,
+`autoApprove`, browser UI state, a message-part status, or a legacy task-store
+boolean.
 
+### Task 19A — Durable approval v1 and the single-use engine
+
+**Exact files**
+
+- Modify: `app/src/lib/jarvis/contracts/execution.ts`
+- Modify: `app/src/lib/jarvis/contracts/validators.ts`
+- Modify: `app/src/lib/jarvis/contracts/validators.test.ts`
+- Modify: `app/src/lib/jarvis/contracts/index.ts`
+- Modify: `app/src/lib/db/schema.ts`
+- Modify: `app/src/lib/db/jarvisMappers.ts`
+- Modify: `app/src/lib/db/jarvisMappers.test.ts`
+- Modify: `app/src/lib/db/jarvisRepositories.ts`
+- Modify: `app/src/lib/db/jarvisRepositories.test.ts`
+- Modify: `app/src/lib/jarvis/actions/catalog.ts`
+- Modify: `app/src/lib/jarvis/actions/catalog.test.ts`
+- Create: `app/src/lib/jarvis/secretHandlePort.ts`
+- Create: `app/src/lib/jarvis/secretHandlePort.test.ts`
 - Create: `app/src/lib/jarvis/approvalEngine.ts`
 - Create: `app/src/lib/jarvis/approvalEngine.test.ts`
+
+```ts
+export interface JarvisApprovalV1 extends JarvisApproval {
+  schemaVersion: 1;
+  capabilityId: string;
+  capabilitySnapshotHash: string;
+  expectedEffect: string;
+  expiresAt: number;
+}
+```
+
+Extend `JarvisApprovalRow` with the exact snake-case fields
+`schema_version`, `capability_id`, `capability_snapshot_hash`,
+`expected_effect`, and `expires_at`; do not change
+`STORES_V3.jarvis_approvals`.
+
+Task 19 changes the approval repository to return `JarvisApprovalV1` and adds
+an atomic status primitive:
+
+```ts
+export interface JarvisApprovalRepository {
+  getById(accountId: string, approvalId: string): Promise<JarvisApprovalV1 | undefined>;
+  putForRun(accountId: string, approval: JarvisApprovalV1): Promise<JarvisApprovalV1>;
+  compareAndSetStatus(input: {
+    accountId: string;
+    approvalId: string;
+    expectedStatus: JarvisApprovalV1['status'];
+    nextStatus: JarvisApprovalV1['status'];
+    decidedAt?: number;
+    consumedAt?: number;
+  }): Promise<
+    { applied: true; approval: JarvisApprovalV1 } | { applied: false; current: JarvisApprovalV1 }
+  >;
+}
+```
+
+`putForRun()` is immutable and idempotent: an exact retry returns the existing
+detached value; any changed immutable field under the same ID fails closed.
+`compareAndSetStatus()` may change only status and the matching decision or
+consumption timestamp in one transaction.
+
+Use RFC 8785-style canonical JSON bytes, not Task 2's text-normalizing hash:
+
+```ts
+export function canonicalizeJarvisApprovalJson(value: unknown): string;
+
+export async function hashCanonicalJarvisApprovalJson(value: unknown): Promise<string> {
+  const bytes = new TextEncoder().encode(canonicalizeJarvisApprovalJson(value));
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+```
+
+The canonicalizer recursively sorts object keys, preserves array order, uses
+ECMAScript JSON number/string serialization, normalizes `-0` as JSON `0`, and
+rejects `undefined`, functions, symbols, bigint, non-finite numbers, class
+instances, sparse arrays, and cycles. It never includes a rejected payload in
+an error.
+
+```ts
+export type JarvisApprovalErrorCode =
+  | 'run_scope_mismatch'
+  | 'action_unavailable'
+  | 'action_version_changed'
+  | 'invalid_parameters'
+  | 'secret_value_rejected'
+  | 'params_changed'
+  | 'target_changed'
+  | 'risk_changed'
+  | 'capability_changed'
+  | 'entitlement_changed'
+  | 'expired'
+  | 'not_pending'
+  | 'not_approved'
+  | 'already_consumed'
+  | 'secret_handle_invalid'
+  | 'secret_handle_scope_mismatch'
+  | 'secret_handle_duplicate_field'
+  | 'caller_secret_resolver_rejected';
+
+export class JarvisApprovalError extends Error {
+  readonly code: JarvisApprovalErrorCode;
+}
+
+export type JarvisSecretHandleScope = {
+  accountId: string;
+  actionId: string;
+  actionVersion: number;
+  field: string;
+  handleId: string;
+};
+
+export type JarvisSecretHandleValidation =
+  | { valid: true }
+  | {
+      valid: false;
+      reason:
+        | 'not_found'
+        | 'deleted'
+        | 'account_mismatch'
+        | 'action_mismatch'
+        | 'version_mismatch'
+        | 'field_mismatch';
+    };
+
+export interface JarvisSecretHandlePort {
+  validate(scope: JarvisSecretHandleScope): Promise<JarvisSecretHandleValidation>;
+  resolve(scope: JarvisSecretHandleScope): Promise<string | undefined>;
+}
+
+export type CreateJarvisApprovalInput = {
+  parentRun: JarvisRun;
+  actionId: string;
+  actionVersion: number;
+  params: Record<string, unknown>;
+  targetSnapshot?: unknown;
+  secretHandleRefs?: readonly { field: string; handleId: string }[];
+  capabilitySnapshot: JarvisCapabilitySnapshot;
+  expiresAt: number;
+};
+
+export type ExecuteJarvisApprovalInput = {
+  parentRun: JarvisRun;
+  approvalId: string;
+  currentTargetSnapshot?: unknown;
+  capabilitySnapshot: JarvisCapabilitySnapshot;
+  context: ActionRunContext;
+};
+
+export interface JarvisApprovalEngine {
+  readonly recoveryVerifier: JarvisRecoveryApprovalVerifier;
+  create(input: CreateJarvisApprovalInput): Promise<JarvisApprovalV1>;
+  decide(input: {
+    parentRun: JarvisRun;
+    approvalId: string;
+    decision: 'approve' | 'deny';
+  }): Promise<JarvisApprovalV1>;
+  execute(input: ExecuteJarvisApprovalInput): Promise<ActionResult>;
+  executeAutoApprovedSafe(
+    input: CreateJarvisApprovalInput & {
+      context: ActionRunContext;
+    },
+  ): Promise<ActionResult>;
+}
+```
+
+The engine receives repositories, clock/ID dependencies, the canonical action
+catalog resolver, canonical target/capability/entitlement binding selectors,
+one private `JarvisSecretHandlePort`, and one private
+`executeRegisteredAction` dependency. The read-only `recoveryVerifier` uses
+those same selectors and repositories but has no consumption/execution
+method. `secretHandlePort.ts` is intentionally not re-exported from the public
+contracts/actions barrel, and no UI module receives the port or the private
+executor. The action catalog declares the exact credential fields an action
+may consume; undeclared fields and duplicate declarations fail catalog
+validation.
+
+Creation rules:
+
+1. Load the canonical parent by `parentRun.accountId` and `parentRun.id` and
+   compare its immutable identity fields. `accountId` is never a model field.
+2. Resolve the registered action and require the requested version to equal
+   the registered version.
+3. Validate/coerce parameters through the registered schema, reject unknown
+   fields, then recursively reject credential-shaped keys or values supplied
+   by the model. Legitimate credentials arrive only as trusted
+   `secretHandleRefs`. Require one unique handle reference per declared
+   credential field, reject undeclared/duplicate/missing fields, and call
+   `JarvisSecretHandlePort.validate()` with the exact account/action/version/
+   field/handle scope before persisting the opaque reference.
+4. Derive approval risk only from the registered definition:
+   `read-only -> safe`, `safe-write -> confirm`, and
+   `external-side-effect | destructive | credential-sensitive -> dangerous`.
+   Caller/model risk is ignored.
+5. Set `capabilityId` to the definition's primary
+   `requiredCapabilities[0]`; catalog validation rejects a JARVIS-exposed
+   definition without exactly one primary capability.
+6. Hash a canonical authorization slice containing the primary capability,
+   every required capability's current ref/state/operations/evidence, and the
+   sorted entitlement snapshot. Reject unavailable/planned capability state,
+   missing required operations/entitlements, unverified entitlement
+   authority, or expired entitlements.
+7. Derive `expectedEffect` from the registered action definition and canonical
+   target, never from rationale or model prose.
+8. Persist exact canonical non-secret parameters, target, hashes, expiry, and
+   opaque handle references with `status: 'pending'`.
+
+Consumption repeats every check against the current definition, target,
+capability snapshot, entitlement snapshot, time, stored canonical parameters,
+and every secret handle's exact account/action/version/field scope. Any
+action/version/params/target/risk/capability/entitlement/handle drift fails
+before consumption. The engine rejects any caller-supplied
+`context.resolveSecret`, atomically changes `approved -> consumed`, and builds
+the **only** resolver passed to the private executor from the stored handle
+references. That closure calls `validate()` again immediately before each
+field is consumed and then calls `resolve()` just in time; a deleted or
+rebound handle fails closed and no other field can be queried. A concurrent
+consumer loses the compare-and-set. Execution failure remains a consumed
+attempt and is recorded truthfully in the run journal; approval is never
+rewound.
+
+`secretHandleRefs` are local opaque pointers. They may exist only in the local
+approval row and a private just-in-time resolver closure. The concrete factory
+in `secretHandlePort.ts` receives the existing keychain-backed credential-key
+reader at trusted composition time. Its private binder accepts only an exact
+account/action/version/field scope plus an existing credential key, mints the
+opaque handle ID internally, and stores only that scope/key binding. It never
+accepts a caller-supplied resolver function or raw secret value, and neither
+the binder nor the credential-key reader is exported through public
+barrels/UI/model code. `validate()` checks the binding; `resolve()` performs
+the keychain read just in time.
+
+The port stores no resolved value.
+Handle IDs and resolved values are forbidden from message parts, model input,
+copy text, toasts, DevConsole, events, artifacts, errors, snapshots, and test
+evidence. Synthetic opaque handles and synthetic secret values may exist only
+inside private unit-test setup/mocks; tests must prove they never reach
+snapshots, rendered copy, logs, errors, events, artifacts, messages, or
+evidence. The engine rejects model-provided raw secret values instead of
+replacing them.
+
+**TDD and commit**
+
+- [ ] Add validator/mapper/repository tests for every v1 field, detached
+      mapping, immutable exact retry, changed-payload conflict, and two consumers
+      racing for one approval; run the focused tests and confirm red.
+- [ ] Add approval-engine tests for canonical key ordering and number rules,
+      raw-secret rejection, parent-account inheritance, action/version/params/
+      target/risk/capability/entitlement/expiry drift, deny/expire/replay, and
+      executor failure after consumption; confirm red.
+- [ ] Add secret-port/engine tests for a valid scoped handle, forged and
+      deleted handles, cross-account, cross-action, cross-version, duplicate
+      field, undeclared/missing field, field mismatch, revalidation immediately
+      before resolution, internal opaque minting from an existing synthetic
+      credential key, rejection of a caller-supplied registrar/resolver/raw
+      value, and zero handle/value leakage through messages/events/artifacts/
+      errors/log/render/evidence spies; confirm red.
+- [ ] Implement the contract, mapper, repository CAS, and engine; rerun the
+      focused tests and `npm --prefix app run typecheck`.
+- [ ] Stage only these fifteen literal files, run cached-name/whitespace/
+      installer/secret checks, and commit.
+
+```powershell
+git add -- `
+  app/src/lib/jarvis/contracts/execution.ts `
+  app/src/lib/jarvis/contracts/validators.ts `
+  app/src/lib/jarvis/contracts/validators.test.ts `
+  app/src/lib/jarvis/contracts/index.ts `
+  app/src/lib/db/schema.ts `
+  app/src/lib/db/jarvisMappers.ts `
+  app/src/lib/db/jarvisMappers.test.ts `
+  app/src/lib/db/jarvisRepositories.ts `
+  app/src/lib/db/jarvisRepositories.test.ts `
+  app/src/lib/jarvis/actions/catalog.ts `
+  app/src/lib/jarvis/actions/catalog.test.ts `
+  app/src/lib/jarvis/secretHandlePort.ts `
+  app/src/lib/jarvis/secretHandlePort.test.ts `
+  app/src/lib/jarvis/approvalEngine.ts `
+  app/src/lib/jarvis/approvalEngine.test.ts
+git commit -m "feat(jarvis): add versioned approval engine"
+```
+
+### Task 19B — Canonical action, legacy-card, recovery, and auto-approve adapters
+
+**Exact files**
+
 - Modify: `app/src/features/jarvis-runs/approvalBridge.ts`
 - Modify: `app/src/features/jarvis-runs/approvalBridge.test.ts`
 - Modify: `app/src/features/jarvis-runs/taskRunStore.ts`
 - Modify: `app/src/features/jarvis-runs/taskRunStore.test.ts`
+- Modify: `app/src/features/jarvis-runs/recoveryExecutor.ts`
+- Modify: `app/src/features/jarvis-runs/recoveryExecutor.test.ts`
 - Modify: `app/src/lib/jarvis/actions/catalog.ts`
 - Modify: `app/src/lib/jarvis/actions/catalog.test.ts`
 - Modify: `app/src/lib/jarvis/actions/planner.ts`
@@ -4367,127 +4985,773 @@ installer and whitespace queries produce no output.
 - Modify: `app/src/lib/actions/types.ts`
 - Modify: `app/src/lib/actions/runner.ts`
 - Modify: `app/src/lib/actions/runner.test.ts`
+- Modify: `app/src/lib/actions/autoApprove.ts`
+- Modify: `app/src/lib/actions/autoApprove.test.ts`
 - Modify: `app/src/lib/actions/registryJarvisCore.ts`
 - Modify: `app/src/lib/actions/registryJarvisCore.test.ts`
 - Modify: `app/src/lib/jarvis/operatorListener.ts`
 - Modify: `app/src/lib/jarvis/operatorListener.test.ts`
 - Modify: `app/src/features/chat/ActionApprovalCard.tsx`
 - Modify: `app/src/features/chat/ActionApprovalCard.test.tsx`
-- Modify: `app/src/features/jarvis-runs/recoveryExecutor.ts`
-- Modify: `app/src/features/jarvis-runs/recoveryExecutor.test.ts`
+
+`approvalBridge` becomes an ID/presentation adapter only:
+
+```ts
+const APPROVAL_CALL_PREFIX = 'jarvisapproval:';
+
+export function createTaskApprovalCallId(approvalId: string): string;
+export function parseTaskApprovalCallId(callId: string): { approvalId: string } | null;
+export function presentJarvisApproval(approval: JarvisApprovalV1): {
+  actionId: string;
+  expectedEffect: string;
+  risk: JarvisApprovalV1['risk'];
+  parameters: readonly { field: string; safeValue: string }[];
+};
+```
+
+It has no `begin`, `finish`, `patchRun`, or local `cancelRun` authority.
+Historical `jarvisrun:` IDs remain renderable but return a truthful
+non-executable legacy state; no canonical run is fabricated for them.
+
+Add optional kernel execution binding to `ActionRunContext`:
+
+```ts
+export interface ActionRunContext {
+  source: 'user' | 'ai';
+  chatId?: string;
+  messageId?: string;
+  callId?: string;
+  runId?: string;
+  approvalId?: string;
+  signal?: AbortSignal;
+}
+
+export interface RegisteredActionExecutionContext extends ActionRunContext {
+  resolveSecret?: (field: string) => Promise<string | undefined>;
+}
+```
+
+Direct user palette actions keep their existing path. Built-in JARVIS AI
+execution with a `runId` must also carry an approval ID and is routed through
+the approval engine. Caller-facing `ActionRunContext` has no secret resolver;
+the engine creates `RegisteredActionExecutionContext` only after Task 19A
+consumes the canonical approval. Runtime guards still reject an untyped caller
+that injects a `resolveSecret` property. The private executor validates exact
+declared parameters, rejects unknown keys, redacts all diagnostic values by
+default, and logs only action ID, safe error category, duration, run ID, and
+approval ID hash prefix. It never logs params, result payloads, handles, raw
+errors, paths, command text, or stacks containing user data.
+
+`executeJarvisPlan()` no longer calls `definition.handler` directly. It
+requires an injected `executeApprovedStep(step)` callback. `operatorListener`
+allocates the canonical run through Task 18, creates canonical approval rows
+for approval-required steps before writing cards, and records lifecycle only
+through journal events/transitions. `recoveryExecutor` consumes Task 18's
+bounded recovery decisions; `await_approval` may only re-present the exact
+canonical pending approval, while every `fail_closed` result exposes safe
+manual-retry copy and makes zero executor calls. It never resumes
+queued/compiling/running work, replays a consumed approval, scans
+`JarvisTaskRun`, or mutates legacy lifecycle truth.
+
+`taskRunStore` remains temporarily for UI compatibility through Task 20C, but
+Task 19 removes its authority methods from approval and recovery call sites.
+Its `cancelRun()` delegates to `requestRunCancellation(accountId, runId)` and
+does not locally mark a run cancelled from UI intent or signal delivery.
+
+`autoApprovePendingActions()` recognizes only canonical approval call IDs.
+The account setting is merely a request to auto-run; it can call
+`executeAutoApprovedSafe()` only when the registered action derives `safe`,
+has approval policy `never`, the current capability/entitlement binding is
+valid, and the engine creates, approves, consumes, and executes the canonical
+record. `confirm` and `dangerous` remain pending regardless of the setting.
+Unknown/legacy IDs are skipped, never sent directly to `runAction()`.
+
+`ActionApprovalCard` renders the engine's bounded safe presentation. Approve
+performs `pending -> approved`, then engine execution; Cancel performs
+`pending -> denied`. “Approve all” calls each approval independently and
+stops at the first stale/denied/failed item. Card dismissal never cancels a
+run, approval never claims success, and message-part status mirrors canonical
+state only after repository readback.
+
+**TDD and commit**
+
+- [ ] Write red tests proving bridge/store/message state cannot authorize
+      execution, historical cards cannot run, direct JARVIS runner calls without
+      canonical approval fail closed, planner cannot call a handler directly,
+      recovery reads only canonical decisions, and `autoApprove` never executes
+      confirm/dangerous/legacy proposals.
+- [ ] Add operator/card tests for canonical run allocation, approval IDs in
+      message parts, safe presentation with no handle ID, approve/deny/replay,
+      stale capability error, and no success until verified executor result.
+- [ ] Implement and run:
+      `npm --prefix app test -- src/lib/jarvis/approvalEngine.test.ts src/features/jarvis-runs/approvalBridge.test.ts src/features/jarvis-runs/taskRunStore.test.ts src/features/jarvis-runs/recoveryExecutor.test.ts src/lib/jarvis/actions src/lib/actions/runner.test.ts src/lib/actions/autoApprove.test.ts src/lib/actions/registryJarvisCore.test.ts src/lib/jarvis/operatorListener.test.ts src/features/chat/ActionApprovalCard.test.tsx`.
+- [ ] Run typecheck and literal staging/security gates.
+
+```powershell
+git add -- `
+  app/src/features/jarvis-runs/approvalBridge.ts `
+  app/src/features/jarvis-runs/approvalBridge.test.ts `
+  app/src/features/jarvis-runs/taskRunStore.ts `
+  app/src/features/jarvis-runs/taskRunStore.test.ts `
+  app/src/features/jarvis-runs/recoveryExecutor.ts `
+  app/src/features/jarvis-runs/recoveryExecutor.test.ts `
+  app/src/lib/jarvis/actions/catalog.ts `
+  app/src/lib/jarvis/actions/catalog.test.ts `
+  app/src/lib/jarvis/actions/planner.ts `
+  app/src/lib/jarvis/actions/planner.test.ts `
+  app/src/lib/actions/types.ts `
+  app/src/lib/actions/runner.ts `
+  app/src/lib/actions/runner.test.ts `
+  app/src/lib/actions/autoApprove.ts `
+  app/src/lib/actions/autoApprove.test.ts `
+  app/src/lib/actions/registryJarvisCore.ts `
+  app/src/lib/actions/registryJarvisCore.test.ts `
+  app/src/lib/jarvis/operatorListener.ts `
+  app/src/lib/jarvis/operatorListener.test.ts `
+  app/src/features/chat/ActionApprovalCard.tsx `
+  app/src/features/chat/ActionApprovalCard.test.tsx
+git commit -m "feat(jarvis): route actions through canonical approvals"
+```
+
+### Task 19C — Verified terminal cancellation
+
+**Exact files**
+
 - Modify: `app/src/features/terminals/terminalExecutionStore.ts`
 - Modify: `app/src/features/terminals/terminalExecutionStore.test.ts`
 - Modify: `app/src/features/terminals/terminalCommandQueue.ts`
 - Modify: `app/src/features/terminals/terminalCommandQueue.stress.test.ts`
+- Modify: `app/src/features/terminals/TerminalsPage.tsx`
+- Modify: `app/src/features/terminals/TerminalsPage.command.test.ts`
 - Modify: `app/src/features/terminals/TerminalView.tsx`
+- Create: `app/src/features/terminals/TerminalView.execution.test.tsx`
 - Modify: `app/src/features/terminals/TileGrid.tsx`
 - Modify: `app/src/features/terminals/TileGrid.refit.test.tsx`
+- Modify: `app/src/lib/actions/registryJarvisCore.ts`
+- Modify: `app/src/lib/actions/registryJarvisCore.test.ts`
+- Modify: `app/src/features/chat/ActionApprovalCard.tsx`
+- Modify: `app/src/features/chat/ActionApprovalCard.test.tsx`
+- Modify: `app/src-tauri/src/terminal.rs`
 
-**Approval contract:**
+Queue items carry canonical `runId`, a stable `executionId`, and one stable
+opaque `cancellationToken`. The canonical queue insertion function registers
+the queue owner with Task 18 **before** inserting or exposing the item; if
+registration fails, enqueue fails with no item. `TerminalsPage` owns the next
+handoff. Claiming an item is an explicit atomic queue operation: it marks that
+exact item claimed and transfers/replaces the same owner registration before
+the item disappears from queue storage. Cancel-before-claim may return
+`queued_removed` only after exact removal and before the journal CAS.
+Claim-before-cancel, bulk drain, or CAS conflict keeps the request pending; a
+late startup/native owner receives it automatically. No code infers queued
+cancellation from a missing item, queue length, or local status.
 
-- Durable immutable reviewed parameters and parameter hash.
-- Account/run/action/capability scope.
-- Risk, expected effect, creation, expiry, decision, and single-use state.
-- Secret values replaced with keychain/credential handles before persistence.
-- Consumption verifies every bound field.
+The canonical spawn passes the stable token to `terminal_spawn`. Native
+`PtyHandle` owns a testable lifecycle arbiter shared by the reader and killer.
+The IPC request keeps `cancellationToken?: string` optional for existing
+manual/legacy cleanup callers. A matching token is mandatory only for
+canonical JARVIS cancellation verification. `terminal_kill` returns a typed
+result:
 
-**Behavior:**
+```ts
+export type NativeTerminalKillRequest = {
+  sessionId: string;
+  cancellationToken?: string;
+};
 
-- Deterministic actions create runs/events before execution.
-- Awaiting approval is distinct from queued/running.
-- Cancellation invokes the actual registered abort handle.
-- Removing a queued terminal command is verified cancellation. Signalling a
-  running PTY records delivery but only its exit callback may verify the
-  terminal cancelled/failed/completed state.
-- UI dismissal does not count as cancellation.
-- Submission does not count as success.
-- Recovery can resume only idempotent steps or require renewed approval.
+export type NativeTerminalKillResult = {
+  kind: 'missing' | 'already_exited' | 'delivery_rejected' | 'signal_delivered';
+  requestKind: 'canonical_cancellation' | 'manual_termination';
+  cancellationToken?: string;
+};
 
-**Step 1: Write failing tests**
-
-Cover approve/deny/expire/replay/tamper, secret rejection, action lifecycle,
-native/network abort propagation, race with completion, duplicate submission,
-recovery, and legacy card compatibility.
-
-**Step 2: Observe failure**
-
-```powershell
-npm --prefix app test -- src/lib/jarvis/approvalEngine.test.ts src/features/jarvis-runs/approvalBridge.test.ts src/features/jarvis-runs/taskRunStore.test.ts src/features/jarvis-runs/recoveryExecutor.test.ts src/lib/jarvis/actions src/lib/actions/runner.test.ts src/lib/actions/registryJarvisCore.test.ts src/lib/jarvis/operatorListener.test.ts src/features/chat/ActionApprovalCard.test.tsx src/features/terminals/terminalExecutionStore.test.ts src/features/terminals/terminalCommandQueue.stress.test.ts src/features/terminals/TileGrid.refit.test.tsx
+export type NativeTerminalExitPayload = {
+  sessionId: string;
+  code: number | null;
+  reason: 'natural_exit' | 'accepted_cancellation' | 'manual_termination';
+  cancellationToken?: string;
+};
 ```
 
-**Step 3: Implement**
+`terminal_kill` never removes the handle or aborts the reader task before
+lifecycle truth is emitted. The arbiter holds an exit observed during kill
+delivery until the delivery result is known, emits exactly one exit payload,
+and removes the session only after finalization. A kill error returns
+`delivery_rejected`; a missing session is `missing`; an exit that already won
+is `already_exited`; only a successful native signal delivery returns
+`signal_delivered`. A tokenless request remains supported and is labelled
+`manual_termination`; it can stop the PTY but can never verify canonical
+`cancelled`. The exit payload uses
+`accepted_cancellation` only when the accepted native token exactly matches
+the run's stored token. Wrong/stale tokens are `delivery_rejected`; missing
+tokens use the distinct manual path. Local UI intent, timeout intent, manual
+termination, and signal delivery alone cannot verify `cancelled`.
 
-The existing approval bridge becomes an adapter to the canonical engine.
+`TerminalView`, `TileGrid`, the card, the timeout path, and
+`registryJarvisCore` never call
+`markTerminalExecution(..., 'cancelled')` locally. The matching native
+`terminal://exit` callback is the sole cancellation verifier and attempts the
+canonical CAS. `natural_exit` maps `0 -> completed`, nonzero/null -> failed`.
+`manual_termination`is non-verifying and maps a still-nonterminal canonical
+run to truthful failure/manual-stop handling, never`cancelled`. Any close/
+stop control attached to a canonical run routes through Task 18 and supplies
+the stored token only through the registered native owner. Existing
+tokenless/manual callers may remain source-compatible, but they cannot enter
+the canonical cancellation verifier.
+If natural exit wins before cancellation acceptance, that result remains and
+the later cancellation CAS loses. The reader remains alive long enough to
+emit this truth in every race.
 
-**Step 4: Verify and commit**
+Tests cover cancel-before-claim, claim-before-cancel, drained-before-session
+with late-owner delivery, exact queue removal before CAS, queue/status CAS
+conflict, adjacent-item isolation, wrong/stale token, `missing`,
+`already_exited`, `delivery_rejected`, `signal_delivered` remaining
+nonterminal, exit-confirmed matching-token cancellation, natural completion
+winning, tokenless manual termination preserving compatibility without
+canonical cancellation, canonical-run UI close using Task 18,
+exit-during-kill arbitration, duplicate exit events, late completion after
+`cancelled`, and timeout delivery without a local terminal claim.
+`terminal.rs` owns focused Rust reducer/arbiter tests for every kill result,
+exit-during-delivery ordering, exact-once exit emission, token matching, and
+reader/session-map finalization.
+
+Run
+`npm --prefix app test -- src/features/terminals/terminalCommandQueue.stress.test.ts src/features/terminals/TerminalsPage.command.test.ts src/features/terminals/terminalExecutionStore.test.ts src/features/terminals/TerminalView.execution.test.tsx src/features/terminals/TileGrid.refit.test.tsx src/lib/actions/registryJarvisCore.test.ts src/features/chat/ActionApprovalCard.test.tsx`,
+`npm --prefix app run typecheck`,
+`cargo fmt --manifest-path app/src-tauri/Cargo.toml -- --check`, and
+`cargo test --manifest-path app/src-tauri/Cargo.toml terminal`.
 
 ```powershell
-npm --prefix app test -- src/lib/jarvis/approvalEngine.test.ts src/features/jarvis-runs src/lib/jarvis/actions src/lib/actions/runner.test.ts src/lib/actions/registryJarvisCore.test.ts src/lib/jarvis/operatorListener.test.ts src/features/chat/ActionApprovalCard.test.tsx src/features/terminals/terminalExecutionStore.test.ts src/features/terminals/terminalCommandQueue.stress.test.ts src/features/terminals/TileGrid.refit.test.tsx
-npm run typecheck
-git add app/src/lib/jarvis/approvalEngine.ts app/src/lib/jarvis/approvalEngine.test.ts app/src/features/jarvis-runs app/src/lib/jarvis/actions app/src/lib/jarvis/operatorListener.ts app/src/lib/jarvis/operatorListener.test.ts app/src/lib/actions/types.ts app/src/lib/actions/runner.ts app/src/lib/actions/runner.test.ts app/src/lib/actions/registryJarvisCore.ts app/src/lib/actions/registryJarvisCore.test.ts app/src/features/chat/ActionApprovalCard.tsx app/src/features/chat/ActionApprovalCard.test.tsx app/src/features/terminals/terminalExecutionStore.ts app/src/features/terminals/terminalExecutionStore.test.ts app/src/features/terminals/terminalCommandQueue.ts app/src/features/terminals/terminalCommandQueue.stress.test.ts app/src/features/terminals/TerminalView.tsx app/src/features/terminals/TileGrid.tsx app/src/features/terminals/TileGrid.refit.test.tsx
-git diff --cached --check
-git commit -m "feat(jarvis): unify approvals actions and cancellation"
+git add -- `
+  app/src/features/terminals/terminalExecutionStore.ts `
+  app/src/features/terminals/terminalExecutionStore.test.ts `
+  app/src/features/terminals/terminalCommandQueue.ts `
+  app/src/features/terminals/terminalCommandQueue.stress.test.ts `
+  app/src/features/terminals/TerminalsPage.tsx `
+  app/src/features/terminals/TerminalsPage.command.test.ts `
+  app/src/features/terminals/TerminalView.tsx `
+  app/src/features/terminals/TerminalView.execution.test.tsx `
+  app/src/features/terminals/TileGrid.tsx `
+  app/src/features/terminals/TileGrid.refit.test.tsx `
+  app/src/lib/actions/registryJarvisCore.ts `
+  app/src/lib/actions/registryJarvisCore.test.ts `
+  app/src/features/chat/ActionApprovalCard.tsx `
+  app/src/features/chat/ActionApprovalCard.test.tsx `
+  app/src-tauri/src/terminal.rs
+git commit -m "fix(jarvis): verify native terminal cancellation"
 ```
 
-## Task 20: Artifact Normalizer and Legacy Read-Only Projections
+### Task 19D — Browser Operator canonical adapter
 
-**Files:**
+**Exact files**
 
+- Modify: `app/src/features/browser/browserTypes.ts`
+- Modify: `app/src/features/browser/browserStore.ts`
+- Modify: `app/src/features/browser/browserStore.test.ts`
+- Modify: `app/src/features/browser/browserActions.ts`
+- Modify: `app/src/features/browser/browserActions.test.ts`
+- Modify: `app/src/features/browser/BrowserPage.tsx`
+- Modify: `app/src/features/browser/BrowserPage.approval.test.tsx`
+
+Extend the Task 6 view record with `runId` and `approvalId`; the browser store
+still persists neither reviewed records nor approvals. A consequential
+request requires a real parent run, converts the exact Task 6 canonical
+parameters/target/version into `JarvisApprovalV1`, and stores only the
+approval ID in the view projection. Browser Approve passes that ID plus the
+current origin/tab/frame/target/capability snapshot to the engine. The engine
+revalidates action version, canonical params, target, derived risk,
+capability, entitlement, expiry, account, and single-use state before calling
+the existing CDP executor. Deny changes the canonical approval to denied.
+
+The Task 6 direct programmatic safe path is removed. The only bypass boundary
+is a direct human gesture handled by the ordinary browser UI rather than a
+model/programmatic request. **Every**
+programmatic browser request, including read/list/inspect and other safe
+operations, requires a canonical parent run and enters the approval engine.
+Safe definitions use `executeAutoApprovedSafe()`; `confirm`/`dangerous` use
+the persisted approval flow. `user_only` rejects every programmatic request
+in every control mode. Missing parent run, CDP, capability, or entitlement
+renders unavailable and does not execute. Summary text is never reconstructed
+into a request, and browser typing continues to reject secret-shaped input
+rather than persisting or approving it.
+
+Programmatic `browser.stop` is a registered safe action, enters
+`executeAutoApprovedSafe()`, is bound to the exact canonical account/run, and
+then delegates to Task 18 cancellation. A direct human Stop control may call
+the same account/run cancellation port without fabricating a browser action.
+A browser abort registration is `supported: true` only
+when the concrete in-flight CDP operation accepts and observes a real
+`AbortSignal` (or an exact equivalent) and can report delivery. The current
+`browserClient.ts` command path has no such capability, so this slice does
+**not** modify that file and registers live CDP operations as
+`supported: false`. `store.abortAgentActions()` may clear purely local queued
+UI work, but it cannot report executor cancellation or transition the run.
+Adding `browserClient.ts` to this task is permitted only if the implementer
+first adds actual per-command cancellation plus race tests; otherwise YAGNI
+and honest `unsupported` are mandatory.
+
+- [ ] Add red adapter tests for exact record-to-v1 mapping, every safe
+      programmatic operation using `executeAutoApprovedSafe()`, direct human
+      navigation as the only bypass, parent account inheritance, action/risk/
+      target/capability/entitlement/expiry drift, replay, denial, missing CDP,
+      store non-persistence, `browser.stop` exact run binding, honest
+      `unsupported`, completion/cancel races, and no local terminal-state claim.
+- [ ] Implement and run all three browser test files plus the Task 19 engine
+      test and typecheck.
+- [ ] Stage exactly the seven files and run cached-name/secret/installer gates.
+
+```powershell
+git add -- `
+  app/src/features/browser/browserTypes.ts `
+  app/src/features/browser/browserStore.ts `
+  app/src/features/browser/browserStore.test.ts `
+  app/src/features/browser/browserActions.ts `
+  app/src/features/browser/browserActions.test.ts `
+  app/src/features/browser/BrowserPage.tsx `
+  app/src/features/browser/BrowserPage.approval.test.tsx
+git commit -m "feat(browser): consume canonical Jarvis approvals"
+```
+
+## Task 20 — Versioned artifacts and legacy compatibility shutdown
+
+Task 20 lands as an artifact contract slice, a concrete producer-adapter
+slice, and then the compatibility shutdown slice.
+
+### Task 20A — Artifact v1 contract, backing verification, and persistence
+
+**Exact files**
+
+- Modify: `app/src/lib/jarvis/contracts/execution.ts`
+- Modify: `app/src/lib/jarvis/contracts/validators.ts`
+- Modify: `app/src/lib/jarvis/contracts/validators.test.ts`
+- Modify: `app/src/lib/jarvis/contracts/index.ts`
+- Modify: `app/src/lib/db/schema.ts`
+- Modify: `app/src/lib/db/jarvisMappers.ts`
+- Modify: `app/src/lib/db/jarvisMappers.test.ts`
+- Modify: `app/src/lib/db/jarvisRepositories.ts`
+- Modify: `app/src/lib/db/jarvisRepositories.test.ts`
+- Create: `app/src/lib/jarvis/artifactReceipts.ts`
+- Create: `app/src/lib/jarvis/artifactReceipts.test.ts`
 - Create: `app/src/lib/jarvis/artifactNormalizer.ts`
 - Create: `app/src/lib/jarvis/artifactNormalizer.test.ts`
+
+```ts
+export type JarvisArtifactState = 'ready' | 'partial' | 'quarantined';
+
+export interface JarvisArtifactV1 extends JarvisArtifact {
+  schemaVersion: 1;
+  state: JarvisArtifactState;
+  contentHash?: string;
+  sizeBytes?: number;
+  preview?: {
+    kind: 'text' | 'image' | 'none';
+    text?: string;
+    truncated: boolean;
+    sizeBytes: number;
+  };
+  localReference?: {
+    kind: 'path' | 'blob_key' | 'message_part';
+    value: string;
+  };
+}
+
+export type JarvisArtifactExecutor =
+  | 'provider'
+  | 'file_action'
+  | 'terminal'
+  | 'plugin'
+  | 'mcp'
+  | 'schedule';
+
+declare const jarvisExecutorReceiptBrand: unique symbol;
+
+export type JarvisExecutorReceipt = Readonly<{
+  receiptId: string;
+  accountId: string;
+  runId: string;
+  executor: JarvisArtifactExecutor;
+  resultRef: string;
+  [jarvisExecutorReceiptBrand]: true;
+}>;
+
+export type JarvisArtifactBacking =
+  | { kind: 'uri'; uri: string }
+  | {
+      kind: 'local_reference';
+      localReference: NonNullable<JarvisArtifactV1['localReference']>;
+      content?: string | Uint8Array;
+    }
+  | {
+      kind: 'executor_result';
+      executor: JarvisArtifactExecutor;
+      resultRef: string;
+      content?: string | Uint8Array;
+    };
+
+export type NormalizeJarvisArtifactInput = {
+  run: JarvisRun;
+  artifact: Omit<
+    JarvisArtifactV1,
+    | 'schemaVersion'
+    | 'runId'
+    | 'state'
+    | 'contentHash'
+    | 'sizeBytes'
+    | 'preview'
+    | 'localReference'
+    | 'uri'
+  > & {
+    state?: JarvisArtifactState;
+  };
+  backing: JarvisArtifactBacking;
+  receipt: JarvisExecutorReceipt;
+};
+
+export async function normalizeJarvisArtifact(
+  input: NormalizeJarvisArtifactInput,
+): Promise<JarvisArtifactV1>;
+```
+
+`artifactReceipts.ts` owns a private runtime receipt registry in addition to
+the compile-time brand. A composition factory closes over the issuer and gives
+it only to Task 20B's trusted producer adapters; the returned/public pipeline
+contains the normalizer and named adapters, never the issuer.
+`verifyAndBindReceipt()` checks object identity against that registry,
+exact account/run/executor/resultRef equality, and binds the receipt to one
+artifact ID. An exact retry for the same artifact is idempotent; a forged
+literal/cast, unknown receipt, cross-account/run/executor use, changed result
+reference, second artifact, or other rebinding fails before persistence.
+Neither the private issuer nor the brand symbol is re-exported from the public
+contracts barrel.
+
+Extend `JarvisArtifactRow` with `schema_version`, `state`, `content_hash`,
+`size_bytes`, `preview`, and `local_reference`; do not change the V3 object
+store declaration. Change the artifact repository to accept/return
+`JarvisArtifactV1`, verify parent-account ownership, and make `putForRun()`
+immutable/idempotent.
+
+Backing rules:
+
+- `uri` must be a parseable allowlisted `https:`, `asset:`, or trusted local
+  application URI. A bare label is not backing.
+- A local reference must be non-empty and point to a path/blob/message part
+  produced by the receipt-bearing executor. The normalizer does not read arbitrary
+  paths to “prove” them.
+- An executor result requires a supported executor kind and stable non-secret
+  `resultRef`; normalize that reference to
+  `{ kind: 'message_part', value: resultRef }` unless a stronger local
+  reference is supplied.
+- A valid runtime-issued producer receipt is mandatory. Public
+  `verified: true`, source attachments, retrieval hits, planned capability
+  acknowledgements, missing targets, “queued” submissions, and unverified
+  provider prose are rejected with safe typed categories.
+- Hash exact content bytes with SHA-256 when content exists. `sizeBytes` is
+  exact byte length. Text preview is UTF-8, at most `16_384` bytes, and sets
+  `truncated`; image preview stores metadata/reference only, never inline raw
+  image bytes.
+- `partial` requires real partial backing. `quarantined` is allowed only for a
+  verified metadata-only executor result whose bytes were withheld upstream;
+  it uses `preview.kind: 'none'` and stores neither rejected bytes, preview
+  text, content hash, nor secret-shaped summary.
+- Any inline secret-bearing content or summary rejects the candidate and
+  persists no artifact. Do not “redact and save” rejected bytes.
+- `sourceRefs` preserve provenance, but an input source is never promoted to
+  an output without verified backing.
+
+**TDD and commit**
+
+- [ ] Add red receipt tests for runtime object identity, forged casts,
+      exact same-artifact retry, cross-account/run/executor/result mismatch, and
+      no rebinding; confirm red.
+- [ ] Add red normalizer tests for all eight kinds; URI/local/executor backing; exact
+      hashes and byte sizes; UTF-8 truncation; partial/quarantined metadata;
+      source-only/capability-only/queued rejection; secret content; account
+      isolation; immutable retry; and detached mapping.
+- [ ] Implement and run:
+      `npm --prefix app test -- src/lib/jarvis/artifactNormalizer.test.ts src/lib/jarvis/contracts/validators.test.ts src/lib/db/jarvisMappers.test.ts src/lib/db/jarvisRepositories.test.ts`.
+- [ ] Run typecheck, stage exactly thirteen paths, and run cached-name,
+      whitespace, secret, and installer checks.
+
+```powershell
+git add -- `
+  app/src/lib/jarvis/contracts/execution.ts `
+  app/src/lib/jarvis/contracts/validators.ts `
+  app/src/lib/jarvis/contracts/validators.test.ts `
+  app/src/lib/jarvis/contracts/index.ts `
+  app/src/lib/db/schema.ts `
+  app/src/lib/db/jarvisMappers.ts `
+  app/src/lib/db/jarvisMappers.test.ts `
+  app/src/lib/db/jarvisRepositories.ts `
+  app/src/lib/db/jarvisRepositories.test.ts `
+  app/src/lib/jarvis/artifactReceipts.ts `
+  app/src/lib/jarvis/artifactReceipts.test.ts `
+  app/src/lib/jarvis/artifactNormalizer.ts `
+  app/src/lib/jarvis/artifactNormalizer.test.ts
+git commit -m "feat(jarvis): normalize verified artifacts"
+```
+
+### Task 20B — Bind receipts to real executor producer adapters
+
+**Exact files**
+
+- Create: `app/src/lib/jarvis/artifactProducerAdapters.ts`
+- Create: `app/src/lib/jarvis/artifactProducerAdapters.test.ts`
+- Modify: `app/src/lib/ai/runtime.ts`
+- Modify: `app/src/lib/ai/runtime.test.ts`
+- Modify: `app/src/lib/actions/runner.ts`
+- Modify: `app/src/lib/actions/runner.test.ts`
+- Modify: `app/src/lib/actions/registryFiles.ts`
+- Modify: `app/src/lib/actions/registryFiles.test.ts`
+- Modify: `app/src/features/terminals/terminalExecutionStore.ts`
+- Modify: `app/src/features/terminals/terminalExecutionStore.test.ts`
+- Modify: `app/src/features/plugins/runtime.ts`
+- Modify: `app/src/features/plugins/runtime.test.ts`
+- Modify: `app/src/lib/mcp/registry.ts`
+- Modify: `app/src/lib/mcp/registry.test.ts`
+- Modify: `app/src/features/schedule/jarvisScheduleRunner.ts`
+- Modify: `app/src/features/schedule/jarvisScheduleRunner.test.ts`
+
+`artifactProducerAdapters.ts` is the only product module allowed to receive the
+private Task 20A receipt issuer. It exposes narrow producer-specific
+functions, not a generic `issueReceipt(executor)` escape hatch:
+
+```ts
+export interface JarvisArtifactProducerAdapters {
+  fromProviderResult(input: CanonicalProviderResultEvidence): JarvisExecutorReceipt;
+  fromFileActionResult(input: CanonicalFileActionEvidence): JarvisExecutorReceipt;
+  fromTerminalResult(input: CanonicalTerminalResultEvidence): JarvisExecutorReceipt;
+  fromPluginResult(input: CanonicalPluginResultEvidence): JarvisExecutorReceipt;
+  fromMcpResult(input: CanonicalMcpResultEvidence): JarvisExecutorReceipt;
+  fromScheduleResult(input: CanonicalScheduleResultEvidence): JarvisExecutorReceipt;
+}
+```
+
+Every input includes exact `accountId`, `runId`, stable non-secret
+`resultRef`, and the producer's typed success/partial evidence. Each adapter
+validates that the canonical run exists for that account, that the producer
+identity matches the adapter, and that the result is final enough to back an
+output:
+
+- provider: an observed canonical provider completion or real partial output
+  bound to the immutable provider/model snapshot; never unverified prose or a
+  request acknowledgment;
+- file/action: a successful registered action result plus the exact
+  file/blob/message-part reference actually created; never approval,
+  submission, or a path proposed before the write;
+- terminal: the matching Task 19C native terminal result or an explicitly
+  persisted transcript/file output; never queue claim, kill intent, or signal
+  delivery;
+- plugin and MCP: an observed successful typed invocation from the exact
+  plugin/server/tool identity; never connector availability or a proposed
+  call;
+- schedule: the observed canonical dispatch result; never schedule creation,
+  next-run calculation, or queued trigger.
+
+Receipts remain process-private evidence objects. Producer modules pass them
+directly to the normalizer and persist only the resulting artifact. They never
+serialize receipts into rows, messages, events, logs, UI state, or provider
+input. Task 16B's later canonical provider kernel and Task 17's later
+schedule/Hive dispatcher must call these same adapters; they may not add
+another receipt issuer.
+
+Tests must prove each of the six real adapters accepts its own exact result,
+rejects pending/queued/proposed/availability-only evidence, rejects
+cross-account/run/producer/result reuse, and cannot mint a receipt through a
+public boolean or generic executor string. Integration tests assert the
+normalizer accepts the adapter receipt once, exact retry is idempotent, and
+producer A cannot bind producer B's receipt.
+
+```powershell
+git add -- `
+  app/src/lib/jarvis/artifactProducerAdapters.ts `
+  app/src/lib/jarvis/artifactProducerAdapters.test.ts `
+  app/src/lib/ai/runtime.ts `
+  app/src/lib/ai/runtime.test.ts `
+  app/src/lib/actions/runner.ts `
+  app/src/lib/actions/runner.test.ts `
+  app/src/lib/actions/registryFiles.ts `
+  app/src/lib/actions/registryFiles.test.ts `
+  app/src/features/terminals/terminalExecutionStore.ts `
+  app/src/features/terminals/terminalExecutionStore.test.ts `
+  app/src/features/plugins/runtime.ts `
+  app/src/features/plugins/runtime.test.ts `
+  app/src/lib/mcp/registry.ts `
+  app/src/lib/mcp/registry.test.ts `
+  app/src/features/schedule/jarvisScheduleRunner.ts `
+  app/src/features/schedule/jarvisScheduleRunner.test.ts
+git commit -m "feat(jarvis): bind artifacts to executor receipts"
+```
+
+### Task 20C — Stop legacy lifecycle writers and expose read-only projections
+
+**Exact files**
+
 - Create: `app/src/lib/jarvis/executionJournal/legacyTaskRunAdapter.ts`
 - Create: `app/src/lib/jarvis/executionJournal/legacyTaskRunAdapter.test.ts`
 - Create: `app/src/lib/jarvis/executionJournal/legacyActivityProjection.ts`
 - Create: `app/src/lib/jarvis/executionJournal/legacyActivityProjection.test.ts`
-- Modify: `app/src/features/chat/activity/ChatActivityTimeline.tsx`
-- Modify: `app/src/features/chat/activity/ChatActivityTimeline.test.tsx`
+- Modify: `app/src/features/jarvis-runs/taskRunStore.ts`
+- Modify: `app/src/features/jarvis-runs/taskRunStore.test.ts`
+- Modify: `app/src/features/jarvis-runs/taskRunPersistence.ts`
+- Modify: `app/src/features/jarvis-runs/taskRunPersistence.test.ts`
+- Modify: `app/src/features/jarvis-runs/taskRunNotifications.ts`
+- Modify: `app/src/features/jarvis-runs/taskRunNotifications.test.ts`
 - Modify: `app/src/features/jarvis-runs/JarvisTaskProgressCard.tsx`
 - Modify: `app/src/features/jarvis-runs/JarvisTaskProgressCard.test.tsx`
+- Modify: `app/src/features/chat/activity/ChatActivityTimeline.tsx`
+- Modify: `app/src/features/chat/activity/ChatActivityTimeline.test.tsx`
+- Modify: `app/src/features/inspector/InspectorMilestonesPanel.tsx`
+- Create: `app/src/features/inspector/InspectorMilestonesPanel.test.tsx`
+- Modify: `app/src/App.tsx`
+- Create: `app/src/App.jarvisLegacyLifecycle.test.tsx`
 
-**Artifact rules:**
+```ts
+export type JarvisTaskRunProjection = {
+  canonical: boolean;
+  runId: string;
+  chatId?: string;
+  status: JarvisTaskRunStatus;
+  goal: string;
+  userVisibleSummary: string;
+  progress: number;
+  activeAgents: readonly string[];
+  activeTerminals: readonly string[];
+  updatedAt: string;
+  cancellable: boolean;
+};
 
-- Normalize only the approved v1 artifact kinds: `file`, `link`, `text`,
-  `image`, `document`, `code`, `terminal_output`, and `provider_result`.
-- Store provenance, source refs, content hash, MIME, size, state, preview
-  metadata, and local reference.
-- Inline secret-bearing content is rejected or redacted before persistence.
-- Existing task-run/activity components receive read-only projections.
-- Historical chats do not fabricate canonical runs.
-- Canonical terminal states are never written back into legacy stores.
+export function projectJarvisRunForLegacyUi(input: {
+  run: JarvisRun;
+  events: readonly JarvisEvent[];
+  artifacts: readonly JarvisArtifactV1[];
+}): JarvisTaskRunProjection;
 
-**Step 1: Write failing tests**
-
-Cover all artifact kinds, content hashes, invalid/secret payloads, projections,
-no duplicate state writes, and account isolation.
-
-**Step 2: Observe failure**
-
-```powershell
-npm --prefix app test -- src/lib/jarvis/artifactNormalizer.test.ts src/lib/jarvis/executionJournal/legacyTaskRunAdapter.test.ts src/lib/jarvis/executionJournal/legacyActivityProjection.test.ts
+export function projectJarvisEventsForLegacyActivity(input: {
+  run: JarvisRun;
+  events: readonly JarvisEvent[];
+  limit?: number;
+}): readonly ChatActivityEvent[];
 ```
 
-**Step 3: Implement**
+Status mapping is exact:
 
-Use bounded previews and preserve source/artifact IDs through response
-envelopes and UI projections.
+- `queued | compiling -> planning`;
+- `running -> running`;
+- `awaiting_approval -> waiting-for-approval`;
+- `partial -> waiting-for-input`;
+- `completed -> completed`;
+- `failed | timed_out -> failed`;
+- `cancelled -> cancelled`.
 
-**Step 4: Verify and commit**
+Both projections clamp limits to `1..500`, preserve canonical run/artifact/
+source IDs in internal keys, use only safe summaries, and never expose row
+types. Progress is derived from ordered canonical events and never invented
+from elapsed time. Historical chats without a canonical run remain historical;
+the adapter does not fabricate a run.
+
+`taskRunStore` becomes a view store with only account-scope replacement,
+canonical/legacy projection replacement, and test clearing. Remove
+`addRun`, `patchRun`, `updateStep`, `recoverInterruptedRuns`, local
+`cancelRun`, and any code path that can write lifecycle truth. Canonical rows
+win an ID collision; legacy rows are visibly non-canonical and never expose a
+cancel handler.
+
+Replace continuous persistence with a one-time read:
+
+```ts
+export async function readLegacyJarvisTaskRunsOnce(input: {
+  accountId: string;
+}): Promise<readonly JarvisTaskRun[]>;
+```
+
+It requires a nonblank canonical account ID, derives the existing hashed
+scope, reads at most `100` rows from the account-scoped V2 key and then the V1
+fallback only when needed, sanitizes them, and returns detached historical
+views. It subscribes to nothing, writes nothing, removes nothing, creates no
+migration marker, does not use `local-unassigned`, and never rewrites old
+status into canonical rows.
+
+`startJarvisTaskRunNotifications()` subscribes to canonical journal transition
+events, deduplicates by `(runId, seq)`, and emits generic copy for
+`awaiting_approval`, `partial`, `completed`, `failed`, `timed_out`, and
+verified `cancelled`. Signal delivery alone sends no “cancelled” notification.
+`handoff_pending` also sends no terminal notification. Legacy hydration emits
+no notifications.
+
+`JarvisTaskProgressCard`, `ChatActivityTimeline`, and the Inspector timeline
+consume the bounded projections. Progress-card Cancel renders only for a
+canonical nonterminal run with a real injected
+`requestRunCancellation(accountId, runId)` handler; it displays delivery
+versus verified state truthfully. Inspector's manual milestones remain
+editable and separate, while its timeline reads the canonical activity
+projection rather than `eventsByChat` lifecycle writes.
+
+After Task 1B has released `App.tsx`, replace the boot pair:
+
+```ts
+startJarvisTaskRunPersistence(...)
+startJarvisTaskRunNotifications()
+```
+
+with account-scoped startup that:
+
+1. synchronously clears the prior projection on account change;
+2. reads legacy history once;
+3. starts the canonical run/event/artifact projection and canonical
+   notifications;
+4. invokes Task 19 recovery only after the V3 persistence coordinator is
+   `ready`;
+5. stops every subscription before switching accounts or unmounting.
+
+There is no legacy `onHydrated -> resume` path and no automatic deletion of
+old localStorage data.
+
+**TDD and commit**
+
+- [ ] Add red adapter tests for every status, ordered/bounded events,
+      source/artifact distinction, no fabricated run, account isolation, and no
+      canonical writes.
+- [ ] Rewrite persistence tests to prove one read, zero writes/removals/
+      subscriptions, no fallback account, max 100, and detached history.
+- [ ] Rewrite notification tests around canonical `(runId, seq)` events and
+      prove no signal-only or legacy-hydration notification.
+- [ ] Add component/App tests for bounded projections, real-handler-only
+      cancel, Inspector boundary, account-switch cleanup, coordinator-ready
+      recovery, and absence of both legacy startup functions.
+- [ ] Run:
+      `npm --prefix app test -- src/lib/jarvis/executionJournal/legacyTaskRunAdapter.test.ts src/lib/jarvis/executionJournal/legacyActivityProjection.test.ts src/features/jarvis-runs/taskRunStore.test.ts src/features/jarvis-runs/taskRunPersistence.test.ts src/features/jarvis-runs/taskRunNotifications.test.ts src/features/jarvis-runs/JarvisTaskProgressCard.test.tsx src/features/chat/activity/ChatActivityTimeline.test.tsx src/features/inspector/InspectorMilestonesPanel.test.tsx src/App.jarvisLegacyLifecycle.test.tsx`.
+- [ ] Run typecheck and literal staging/security gates.
 
 ```powershell
-npm --prefix app test -- src/lib/jarvis/artifactNormalizer.test.ts src/lib/jarvis/executionJournal/legacyTaskRunAdapter.test.ts src/lib/jarvis/executionJournal/legacyActivityProjection.test.ts src/features/chat/activity/ChatActivityTimeline.test.tsx src/features/jarvis-runs/JarvisTaskProgressCard.test.tsx
-npm run typecheck
-git add app/src/lib/jarvis/artifactNormalizer.ts app/src/lib/jarvis/artifactNormalizer.test.ts app/src/lib/jarvis/executionJournal/legacyTaskRunAdapter.ts app/src/lib/jarvis/executionJournal/legacyTaskRunAdapter.test.ts app/src/lib/jarvis/executionJournal/legacyActivityProjection.ts app/src/lib/jarvis/executionJournal/legacyActivityProjection.test.ts app/src/features/chat/activity/ChatActivityTimeline.tsx app/src/features/chat/activity/ChatActivityTimeline.test.tsx app/src/features/jarvis-runs/JarvisTaskProgressCard.tsx app/src/features/jarvis-runs/JarvisTaskProgressCard.test.tsx
-git diff --cached --check
-git commit -m "feat(jarvis): normalize artifacts and project legacy activity"
+git add -- `
+  app/src/lib/jarvis/executionJournal/legacyTaskRunAdapter.ts `
+  app/src/lib/jarvis/executionJournal/legacyTaskRunAdapter.test.ts `
+  app/src/lib/jarvis/executionJournal/legacyActivityProjection.ts `
+  app/src/lib/jarvis/executionJournal/legacyActivityProjection.test.ts `
+  app/src/features/jarvis-runs/taskRunStore.ts `
+  app/src/features/jarvis-runs/taskRunStore.test.ts `
+  app/src/features/jarvis-runs/taskRunPersistence.ts `
+  app/src/features/jarvis-runs/taskRunPersistence.test.ts `
+  app/src/features/jarvis-runs/taskRunNotifications.ts `
+  app/src/features/jarvis-runs/taskRunNotifications.test.ts `
+  app/src/features/jarvis-runs/JarvisTaskProgressCard.tsx `
+  app/src/features/jarvis-runs/JarvisTaskProgressCard.test.tsx `
+  app/src/features/chat/activity/ChatActivityTimeline.tsx `
+  app/src/features/chat/activity/ChatActivityTimeline.test.tsx `
+  app/src/features/inspector/InspectorMilestonesPanel.tsx `
+  app/src/features/inspector/InspectorMilestonesPanel.test.tsx `
+  app/src/App.tsx `
+  app/src/App.jarvisLegacyLifecycle.test.tsx
+git commit -m "refactor(jarvis): make legacy lifecycle read only"
 ```
 
 ## Task 16B: Typed-Chat Kernel Cutover and Tested Default Switch
 
 **Prerequisites:**
 
-- Tasks 1B, 11-15, 16A, 18, 19, and 20 are complete.
+- Tasks 1B, 11-15, 16A, 18, 19A-19D, and 20A-20C are complete.
 - The production default in `kernelMode.ts` is still `shadow`.
-- Task 20 exposes canonical artifact lookup and read-only legacy projections.
+- Tasks 20A/20B expose backed canonical artifact lookup, and Task 20C exposes
+  read-only legacy projections with legacy lifecycle writers stopped.
 
 **Files:**
 
@@ -4529,8 +5793,9 @@ artifact references use explicit new message-part variants.
 
 **Interfaces:**
 
-- Consumes Tasks 11-15, Task 18's state machine/abort registry, Task 19's
-  approval engine, and Task 20's backed artifacts/projections.
+- Consumes Tasks 11-15, Task 18's state machine/abort registry, Tasks 19A-19D's
+  canonical approval/execution path, Tasks 20A/20B's backed artifacts, and Task
+  20C's read-only legacy projections.
 - Produces canonical protected typed-chat dispatch and source/artifact message
   projection for Task 21A and Task 17.
 - Owns the only production-default change from `shadow` to `kernel`.
@@ -4622,7 +5887,8 @@ For protected typed JARVIS:
 7. dispatch through Task 13 exactly once;
 8. pass deltas only through Task 15's preview gate/store;
 9. process the final/terminal response through Task 14;
-10. normalize verified artifacts through Task 20;
+10. normalize verified artifacts through Task 20A using Task 20B producer
+    receipts;
 11. project response/source/artifact refs into typed message parts;
 12. persist one canonical assistant message;
 13. append canonical events and perform Task 18's legal terminal transition
@@ -4725,7 +5991,7 @@ Rules:
 - preserve every existing structured `response.parts` item;
 - append each unique source ID once;
 - append each unique artifact ID once;
-- every `response.artifactIds` value resolves to a real Task 20 row with
+- every `response.artifactIds` value resolves to a real Task 20A row with
   backing; a missing row is a typed projection error, not a fake card;
 - keep source `accountId` in the canonical envelope/journal but not in visible
   projection copy;
@@ -5150,7 +6416,7 @@ installer and whitespace queries produce no output.
 **Prerequisites:**
 
 - Task 21A voice binding is complete.
-- Tasks 16B, 18, 19, and 20 are canonical.
+- Tasks 16B, 18, 19A-19D, and 20A-20C are canonical.
 - Task 13 has no silent prompt-transport downgrade.
 
 **Files:**
@@ -5171,8 +6437,8 @@ installer and whitespace queries produce no output.
 **Interfaces:**
 
 - Consumes Task 16B's canonical kernel, Task 11's request-attempt rules, Task
-  18's persisted runs/child cancellation, Task 19's approval engine, and Task
-  20's artifacts.
+  18's persisted runs/child cancellation, Tasks 19A/19B's approval engine, and
+  Tasks 20A/20B's backed artifacts.
 - Produces canonical scheduled and Hive-final runs while preserving worker
   identities and schedule-saved model selection.
 - Does not dispatch canonical schedules through mutable UI state or bypass
@@ -5465,103 +6731,395 @@ git log --oneline origin/main..HEAD -- 'install/install.ps1'
 Expected staged and committed names: exactly the twelve files above. The
 installer and whitespace queries produce no output.
 
-## Task 21B: Voice Session Binding and Thin Truthful Command Center
+## Task 21B — Command Center lower shell
 
-**Files:**
+**Exact files**
 
-- Create: `app/src/features/jarvis-command-center/commandCenterStore.ts`
-- Create: `app/src/features/jarvis-command-center/commandCenterStore.test.ts`
 - Create: `app/src/features/jarvis-command-center/types.ts`
 - Create: `app/src/features/jarvis-command-center/selectors.ts`
 - Create: `app/src/features/jarvis-command-center/selectors.test.ts`
+- Create: `app/src/features/jarvis-command-center/commandCenterStore.ts`
+- Create: `app/src/features/jarvis-command-center/commandCenterStore.test.ts`
 - Create: `app/src/features/jarvis-command-center/JarvisCommandCenter.tsx`
 - Create: `app/src/features/jarvis-command-center/JarvisCommandCenter.test.tsx`
-- Create: `app/src/features/jarvis-command-center/RunTranscript.tsx`
 - Create: `app/src/features/jarvis-command-center/JarvisOutputsTab.tsx`
 - Create: `app/src/features/jarvis-command-center/JarvisLiveSystemsTab.tsx`
 - Create: `app/src/features/jarvis-command-center/jarvis-command-center.css`
-- Modify: `app/src/features/voice/voiceChatRouting.ts`
-- Modify: `app/src/features/voice/voiceChatRouting.test.ts`
-- Modify: `app/src/features/voice/voiceTurnCommit.ts`
-- Modify: `app/src/features/voice/voiceTurnCommit.test.ts`
-- Modify: `app/src/features/voice/store.ts`
-- Modify: `app/src/features/voice/store.test.ts`
 - Modify: `app/src/features/chat/ChatThread.tsx`
 - Create: `app/src/features/chat/ChatThread.commandCenter.test.tsx`
 
-**Voice behavior:**
+Do not create a third lower tab or a graph/metrics subsystem. Task 21A owns
+voice-session transcript binding; 21B consumes the already bound run and
+renders only the lower proof shell.
 
-- Every voice session binds to the same chat/session/account IDs used by typed
-  chat.
-- Voice turns build `surface: 'voice'` envelopes.
-- Transcript, display, spoken text, run, sources, artifacts, and cancellation
-  share IDs.
-- Stop propagates through the abort registry to provider stream, TTS, and
-  playback.
+```ts
+export type JarvisCommandCenterExpansion = 'collapsed' | 'expanded';
+export type JarvisCommandCenterTab = 'outputs' | 'live_systems';
 
-**Thin Command Center scope:**
+export type JarvisCommandCenterHandlers = {
+  cancelRun?: (accountId: string, runId: string) => Promise<CancellationDelivery>;
+  retryRun?: (accountId: string, runId: string) => Promise<JarvisRun>;
+};
 
-- Current run and bounded transcript.
-- Honest progress and approval state.
-- Outputs panel backed by artifact repository.
-- Live Systems panel backed by capability/model/connector snapshots.
-- Source and worker attribution.
-- Retry/cancel only when real handlers exist.
-- No fake metrics, speculative connector states, or polling when subscriptions
-  exist.
+export type JarvisCommandCenterDataPort = {
+  getRunsForChat(input: {
+    accountId: string;
+    chatId: string;
+    limit: number;
+  }): Promise<readonly JarvisRun[]>;
+  getEventsForRun(input: {
+    accountId: string;
+    runId: string;
+    limit: number;
+  }): Promise<readonly JarvisEvent[]>;
+  getArtifactsForRun(input: {
+    accountId: string;
+    runId: string;
+    limit: number;
+  }): Promise<readonly JarvisArtifactV1[]>;
+  getCapabilitySnapshot(input: {
+    accountId: string;
+    runId: string;
+  }): Promise<JarvisCapabilitySnapshot | undefined>;
+  subscribe(accountId: string, chatId: string, listener: () => void): () => void;
+};
 
-This is a functional proof shell; the full visual Command Center is Phase 3 of
-the program plan.
-
-**Step 1: Write failing tests**
-
-Cover voice/chat binding, account switching, stop propagation, current run,
-bounded event list, artifact outputs, live/degraded/unavailable systems,
-keyboard/focus/accessibility, error/retry, and no fake data.
-
-**Step 2: Observe failure**
-
-```powershell
-npm --prefix app test -- src/features/voice/voiceChatRouting.test.ts src/features/voice/voiceTurnCommit.test.ts src/features/voice/store.test.ts src/features/jarvis-command-center
+export type JarvisCommandCenterSnapshot = {
+  accountId: string;
+  chatId: string;
+  expansion: JarvisCommandCenterExpansion;
+  activeTab: JarvisCommandCenterTab;
+  currentRun?: JarvisRun;
+  events: readonly JarvisEvent[];
+  outputs: readonly JarvisArtifactV1[];
+  liveSystems:
+    | { state: 'not_loaded' }
+    | { state: 'loading' }
+    | { state: 'ready'; nodes: readonly JarvisLiveSystemNode[] }
+    | { state: 'unavailable'; reason: string };
+  error?: string;
+};
 ```
 
-**Step 3: Implement**
+`createJarvisCommandCenterStore()` may mutate only local UI state
+(`expansion`, `activeTab`, loading/error) and replace snapshots read from the
+port. It exposes no run/event/approval/artifact mutation method. All
+repository requests pass `Math.min(500, Math.max(1, requestedLimit))`; store
+defaults are `runs: 100`, `events: 500`, `artifacts: 500`. It uses the data
+port subscription and does not poll.
 
-Subscribe to canonical repositories/events and mount the proof shell where
-`ChatActivityTimeline` currently appears for canonical built-in-JARVIS flows.
-Keep the compact legacy projection for non-canonical flows. Do not start the
-Origami or full Command Center visual redesign in this task.
+Selectors:
 
-**Step 4: Verify and commit**
+- current run is the newest canonical run for the exact account/chat;
+- events are ordered by `seq`, deduplicated by `(runId, seq)`, and capped at
+  `500`;
+- Outputs contains only persisted `JarvisArtifactV1` rows for the current run,
+  including explicit `partial`/`quarantined` state; source refs, attachments,
+  planned capabilities, acknowledgements, and message prose are excluded;
+- Live Systems contains only the immutable model snapshot and real capability
+  refs from the current snapshot or verified executor events. `planned` is
+  omitted. `unavailable` remains an explicit quiet unavailable row, not a live
+  node. No synthetic health, latency, utilization, rotating edge, worker, or
+  connector is generated.
 
-```powershell
-npm --prefix app test -- src/features/voice/voiceChatRouting.test.ts src/features/voice/voiceTurnCommit.test.ts src/features/voice/store.test.ts src/features/jarvis-command-center src/features/chat/ChatThread.commandCenter.test.tsx
-npm run typecheck
-git add app/src/features/voice/voiceChatRouting.ts app/src/features/voice/voiceChatRouting.test.ts app/src/features/voice/voiceTurnCommit.ts app/src/features/voice/voiceTurnCommit.test.ts app/src/features/voice/store.ts app/src/features/voice/store.test.ts app/src/features/jarvis-command-center app/src/features/chat/ChatThread.tsx app/src/features/chat/ChatThread.commandCenter.test.tsx
-git diff --cached --check
-git commit -m "feat(jarvis): bind voice and expose the kernel command center"
+The component has one header with truthful run state and a single
+collapse/expand control. The expanded lower tablist has exactly:
+
+```tsx
+<TabsTrigger value="outputs">Outputs</TabsTrigger>
+<TabsTrigger value="live_systems">Live Systems</TabsTrigger>
 ```
 
-## Task 22: Rollout, Full Verification, Review, and Successor Draft PR
+Collapsed mode renders neither tab body nor graph/layout component and never
+calls `getCapabilitySnapshot()`. `JarvisLiveSystemsTab` is loaded with
+`React.lazy()` only after the shell is expanded **and** `live_systems` becomes
+active; only then may the store request the capability snapshot. Collapsing
+disposes any layout subscription and a later expansion reuses immutable
+loaded data only if it still belongs to the same run.
 
-**Files:**
+Every capability request captures an exact `{ accountId, runId }` generation.
+The store discards a promise result if the account, run, expansion, active
+tab, or request generation changed before it settled. A stale cross-account
+response must not populate the new account even when both accounts have the
+same run ID.
+
+Cancel renders only for a nonterminal current run and an injected
+`cancelRun` handler. It reports `signal_delivered` as “Cancellation requested”
+and `handoff_pending` as “Waiting for the execution owner” until a canonical
+terminal transition arrives. Neither state is rendered as cancelled. Retry
+renders only for `failed | timed_out | cancelled` and an injected `retryRun`
+handler. No disabled fake controls are shown.
+
+`ChatThread` uses the Command Center for a canonical built-in-JARVIS run. It
+keeps `ChatActivityTimeline` and `JarvisTaskProgressCard` only for legacy/
+noncanonical history, preventing duplicate lifecycle surfaces. The shell sits
+below the message transcript and above ancillary memory/agent panels, uses
+existing theme tokens, preserves compact mode, and has keyboard-visible focus,
+tab/tabpanel labels, `aria-expanded`, and calm empty/error states.
+
+**Checkbox TDD steps**
+
+- [ ] Add selector tests for exact account/chat isolation, newest run, event
+      ordering/deduplication, caller limits `0/1/500/501/1_000_000`, real artifact
+      outputs, source exclusion, planned/unavailable capability handling, and no
+      synthetic node.
+- [ ] Add store tests proving subscription rather than polling, no lifecycle
+      mutation API, no capability read while collapsed or Outputs is active, one
+      lazy read on expanded Live Systems, exact account/run arguments,
+      cross-account same-run-ID isolation, stale asynchronous response
+      suppression after account/run/tab/collapse changes, run-switch
+      invalidation, and cleanup.
+- [ ] Add component tests for exactly two tabs, collapsed/expanded states,
+      quiet empty/partial/error/cancelled/unavailable copy, no graph subtree while
+      collapsed, lazy module boundary, real-handler-only cancel/retry, focus and
+      keyboard behavior.
+- [ ] Add ChatThread tests proving canonical/legacy routing and no duplicate
+      timeline/progress surface.
+- [ ] Run:
+      `npm --prefix app test -- src/features/jarvis-command-center src/features/chat/ChatThread.commandCenter.test.tsx`.
+- [ ] Run `npm --prefix app run typecheck`; stage exactly the twelve files;
+      run cached-name, whitespace, added-line secret, and installer checks.
+
+```powershell
+git add -- `
+  app/src/features/jarvis-command-center/types.ts `
+  app/src/features/jarvis-command-center/selectors.ts `
+  app/src/features/jarvis-command-center/selectors.test.ts `
+  app/src/features/jarvis-command-center/commandCenterStore.ts `
+  app/src/features/jarvis-command-center/commandCenterStore.test.ts `
+  app/src/features/jarvis-command-center/JarvisCommandCenter.tsx `
+  app/src/features/jarvis-command-center/JarvisCommandCenter.test.tsx `
+  app/src/features/jarvis-command-center/JarvisOutputsTab.tsx `
+  app/src/features/jarvis-command-center/JarvisLiveSystemsTab.tsx `
+  app/src/features/jarvis-command-center/jarvis-command-center.css `
+  app/src/features/chat/ChatThread.tsx `
+  app/src/features/chat/ChatThread.commandCenter.test.tsx
+git commit -m "feat(jarvis): add truthful command center shell"
+```
+
+## Task 21C — Development-only deterministic kernel smoke fixtures
+
+This is a product/development-tooling prerequisite, not part of docs-only
+Task 22. It lands and passes before Task 22 starts.
+
+**Exact files**
+
+- Create: `app/src/lib/jarvis/smoke/config.ts`
+- Create: `app/src/lib/jarvis/smoke/config.test.ts`
+- Create: `app/src/lib/jarvis/smoke/scenarios.ts`
+- Create: `app/src/lib/jarvis/smoke/scenarios.test.ts`
+- Create: `app/src/lib/jarvis/smoke/evidenceIds.ts`
+- Create: `app/src/lib/jarvis/smoke/evidenceIds.test.ts`
+- Create: `app/src/lib/jarvis/smoke/smokeHarnessContract.test.ts`
+- Create: `app/src/lib/ai/providers/kernelSmoke.ts`
+- Create: `app/src/lib/ai/providers/kernelSmoke.test.ts`
+- Modify: `app/src/lib/ai/providerRegistry.ts`
+- Modify: `app/src/lib/ai/providerRegistry.test.ts`
+- Modify: `app/src/lib/ai/adapters/catalog.ts`
+- Modify: `app/src/lib/ai/adapters/catalog.test.ts`
+- Modify: `app/src/lib/ai/adapters/cliBridge.ts`
+- Modify: `app/src-tauri/src/cli_bridge.rs`
+- Create: `app/src-tauri/examples/vibespace_kernel_smoke_cli.rs`
+- Modify: `app/src/features/chat/ChatThread.tsx`
+- Modify: `app/src/features/chat/ChatThread.commandCenter.test.tsx`
+- Modify: `app/src/features/chat/ActionApprovalCard.tsx`
+- Modify: `app/src/features/chat/ActionApprovalCard.test.tsx`
+- Modify: `app/src/features/jarvis-command-center/JarvisCommandCenter.tsx`
+- Modify: `app/src/features/jarvis-command-center/JarvisCommandCenter.test.tsx`
+- Modify: `app/src/features/jarvis-command-center/JarvisOutputsTab.tsx`
+- Modify: `app/src/features/jarvis-command-center/JarvisLiveSystemsTab.tsx`
+- Modify: `app/src/features/terminals/TerminalView.tsx`
+- Modify: `app/src/features/terminals/TerminalView.execution.test.tsx`
+- Create: `scripts/shared-intelligence-kernel-smoke.ps1`
+
+### 21C.1 Explicit opt-in and production inaccessibility
+
+```ts
+export type KernelSmokeConfigInput = {
+  devBuild: boolean;
+  explicitFlag: string | undefined;
+};
+
+export function isKernelSmokeEnabled(input: KernelSmokeConfigInput): boolean {
+  return input.devBuild === true && input.explicitFlag === '1';
+}
+```
+
+The deterministic provider is registered only when
+`isKernelSmokeEnabled({ devBuild: import.meta.env.DEV, explicitFlag:
+import.meta.env.VITE_SIK_SMOKE })` is true. There is no production fallback,
+query-string switch, localStorage switch, hidden UI toggle, or ordinary
+provider-catalog entry. When disabled, the provider ID and scenario controls
+are absent rather than merely disabled.
+
+The native fixture is a Cargo **example**, not another application binary.
+Task 22 builds it with:
+
+```powershell
+cargo build --manifest-path app/src-tauri/Cargo.toml `
+  --example vibespace_kernel_smoke_cli
+```
+
+`cli_bridge.rs` allows this one credential-free fixture only when all are
+true: `cfg!(debug_assertions)`, inherited
+`VIBESPACE_SIK_SMOKE=1`, the requested adapter is the dedicated smoke adapter,
+the canonicalized executable is the exact example under the current
+worktree's `app/src-tauri/target/debug/examples` root, and the existing executable
+fingerprint/containment checks pass. It remains rejected for release builds,
+flag-off development, basename collisions, symlinks/reparse escapes, and
+arbitrary custom paths. Existing provider executable allowlists are unchanged.
+
+Tests inject both `devBuild: false` and flag-off cases, prove the provider and
+scenario surface are absent, and exercise a pure Rust gate with
+`debug_build: false` so production rejection is tested even during a debug
+test run. No real credential, network provider, shell profile, or user config
+is required.
+
+### 21C.2 Deterministic scenarios and evidence IDs
+
+`scenarios.ts` is an immutable fixture catalog with safe, fixed, non-secret
+scenario IDs and typed provider/CLI event streams. It covers at minimum:
+
+```ts
+export type KernelSmokeScenarioId =
+  | 'transport_provider_success'
+  | 'transport_cli_success'
+  | 'approval_safe_auto'
+  | 'approval_confirm'
+  | 'approval_dangerous'
+  | 'artifact_provider'
+  | 'artifact_file_action'
+  | 'artifact_terminal'
+  | 'schedule_dispatch'
+  | 'hive_dispatch'
+  | 'partial_response'
+  | 'provider_failure'
+  | 'cancel_before_claim'
+  | 'cancel_running'
+  | 'cancel_completion_race';
+```
+
+Provider and CLI fixtures emit the same canonical semantic events for a given
+scenario while preserving their distinct Task 13 transports. Approval
+fixtures name registered action IDs/versions and safe canonical parameters;
+they do not bypass Task 19. Artifact fixtures produce real Task 20B producer
+evidence; they do not insert artifacts directly. Schedule and Hive fixtures
+enter the Task 17 dispatcher. Cancellation fixtures invoke the actual Task
+18/19C path. Partial/failure fixtures stop at the intended real boundary.
+No fixture directly mutates a run/event/approval/artifact repository or
+asserts a terminal state.
+
+`evidenceIds.ts` defines stable opaque selector constants used as
+`data-sik-evidence` values for the chat run shell, approval card, run status,
+Outputs tab, Live Systems tab, terminal execution, cancellation delivery, and
+error/partial states. IDs contain no account, run, action parameter, prompt,
+path, result, or secret data. Components consume constants rather than
+duplicated string literals; tests prove uniqueness and presence. These
+attributes are evidence selectors only, not an execution API.
+
+### 21C.3 Exact smoke setup/teardown helper
+
+`scripts/shared-intelligence-kernel-smoke.ps1` is the only native smoke
+launcher Task 22 uses. It accepts `-ValidateOnly` or an evidence directory and scenario list,
+selects a fresh unused loopback port, creates a unique Tauri identifier and a
+contained disposable app-data profile, builds the native CLI example, sets
+both explicit smoke flags only in the child environment, starts the isolated
+Tauri dev process hidden, and emits sanitized environment/PID/scenario
+evidence.
+
+The script has one outer `try/finally` covering **all** setup, startup,
+automation, restart, and cleanup. It initializes `$Dev = $null` before the
+`try`. The `finally` block tolerates failure before or during
+`Start-Process`, restores every inherited environment variable, re-enumerates
+only descendants of the captured root PID when one exists, verifies each
+PID's UTC creation time against the captured record immediately before
+stopping it, stops deepest descendants then the root, and never selects or
+kills by process name. It removes only a canonical profile path proven to be
+a strict descendant of the script's dedicated profile base. Evidence/logs
+are preserved on failure. Existing VibeSpace processes and ports are never
+attached to, reused, or stopped.
+
+`smokeHarnessContract.test.ts` statically verifies the safety-critical script
+contract: `$Dev = $null`, one outer `try/finally`, partial-start guards,
+creation-time checks, strict profile containment, hidden startup, unused-port
+selection, and absence of name-based kill commands. Task 22 still performs a
+real execution of the helper.
+
+### 21C.4 TDD, gates, and commit
+
+- [ ] Add config/provider/Rust gate tests proving dev+flag opt-in and
+      production inaccessibility; confirm red.
+- [ ] Add scenario tests proving exact deterministic semantic streams,
+      complete scenario coverage, no direct repository mutation hooks, and no
+      secret-shaped fixture fields; confirm red.
+- [ ] Add evidence-ID/component tests and the smoke-script contract test;
+      confirm red.
+- [ ] Implement the smallest provider, CLI fixture, selectors, and safe
+      launcher; run:
+      `npm --prefix app test -- src/lib/jarvis/smoke src/lib/ai/providers/kernelSmoke.test.ts src/lib/ai/providerRegistry.test.ts src/lib/ai/adapters/catalog.test.ts src/features/chat/ActionApprovalCard.test.tsx src/features/chat/ChatThread.commandCenter.test.tsx src/features/jarvis-command-center src/features/terminals/TerminalView.execution.test.tsx`.
+- [ ] Run `npm --prefix app run typecheck`,
+      `cargo fmt --manifest-path app/src-tauri/Cargo.toml -- --check`,
+      `cargo test --manifest-path app/src-tauri/Cargo.toml cli_bridge`, and build
+      the example.
+- [ ] Run the helper in validation-only mode, then one minimal real isolated
+      `transport_provider_success` smoke before committing.
+- [ ] Stage exactly the 27 files above; run cached-name, whitespace,
+      added-line secret, installer, and production-inaccessibility checks.
+
+```powershell
+git add -- `
+  app/src/lib/jarvis/smoke/config.ts `
+  app/src/lib/jarvis/smoke/config.test.ts `
+  app/src/lib/jarvis/smoke/scenarios.ts `
+  app/src/lib/jarvis/smoke/scenarios.test.ts `
+  app/src/lib/jarvis/smoke/evidenceIds.ts `
+  app/src/lib/jarvis/smoke/evidenceIds.test.ts `
+  app/src/lib/jarvis/smoke/smokeHarnessContract.test.ts `
+  app/src/lib/ai/providers/kernelSmoke.ts `
+  app/src/lib/ai/providers/kernelSmoke.test.ts `
+  app/src/lib/ai/providerRegistry.ts `
+  app/src/lib/ai/providerRegistry.test.ts `
+  app/src/lib/ai/adapters/catalog.ts `
+  app/src/lib/ai/adapters/catalog.test.ts `
+  app/src/lib/ai/adapters/cliBridge.ts `
+  app/src-tauri/src/cli_bridge.rs `
+  app/src-tauri/examples/vibespace_kernel_smoke_cli.rs `
+  app/src/features/chat/ChatThread.tsx `
+  app/src/features/chat/ChatThread.commandCenter.test.tsx `
+  app/src/features/chat/ActionApprovalCard.tsx `
+  app/src/features/chat/ActionApprovalCard.test.tsx `
+  app/src/features/jarvis-command-center/JarvisCommandCenter.tsx `
+  app/src/features/jarvis-command-center/JarvisCommandCenter.test.tsx `
+  app/src/features/jarvis-command-center/JarvisOutputsTab.tsx `
+  app/src/features/jarvis-command-center/JarvisLiveSystemsTab.tsx `
+  app/src/features/terminals/TerminalView.tsx `
+  app/src/features/terminals/TerminalView.execution.test.tsx `
+  scripts/shared-intelligence-kernel-smoke.ps1
+git commit -m "test(jarvis): add isolated kernel smoke fixtures"
+```
+
+## Task 22 — Docs-only native evidence and final review
+
+**Exact tracked files**
 
 - Create: `docs/architecture/shared-intelligence-kernel.md`
 - Create: `docs/testing/shared-intelligence-kernel-verification.md`
 - Create: `docs/security/shared-intelligence-kernel-threat-model.md`
-- Modify: `AGENT_COORDINATION.md` in the root checkout only while holding its
-  coordination mutex.
+- Update root-checkout `AGENT_COORDINATION.md` only under its mutex; never
+  stage it from this worktree.
 
-**Rollout behavior:**
+Task 22 itself is evidence/documentation-only. If any verification or review
+finds a product defect, stop Task 22 staging, register a separately named
+locked TDD fix task, add a failing focused test, make the smallest product
+fix, commit it separately, release its locks, and rerun Task 22 from the
+affected gate. Never hide a product fix inside the documentation commit.
 
-- Keep the forward-only Dexie v3 migration.
-- Provide a typed runtime gate for legacy-vs-kernel JARVIS execution.
-- Default the gate on only after focused integration tests pass.
-- Rollback disables new execution while preserving v3 data.
-- Record migration version, active account, compiled hash, run/event IDs, and
-  error categories without raw prompts or source bodies.
+### 22.1 Focused and repository gates
 
-**Step 1: Run focused kernel suites**
+Capture command, exit code, duration, commit SHA, and sanitized output under
+the ignored directory
+`.superpowers/sdd/evidence/task-22/<UTC timestamp>/`; raw evidence is never
+staged.
 
 ```powershell
 npm --prefix app test -- src/lib/accountIdentity.test.ts
@@ -5571,93 +7129,249 @@ npm --prefix app test -- src/lib/ai/runtime.test.ts src/lib/ai/runtimeSafety.tes
 npm --prefix app test -- src/features/voice
 npm --prefix app test -- src/features/schedule
 npm --prefix app test -- src/features/jarvis-runs
-npm --prefix app test -- src/features/jarvis-command-center
-```
-
-Expected: all pass with no skipped security/migration assertions.
-
-**Step 2: Run repository gates**
-
-```powershell
-npm run typecheck
+npm --prefix app test -- src/features/browser/browserActions.test.ts src/features/browser/browserStore.test.ts src/features/browser/BrowserPage.approval.test.tsx
+npm --prefix app test -- src/features/jarvis-command-center src/features/chat/ChatThread.commandCenter.test.tsx
+npm --prefix app test -- src/lib/jarvis/smoke src/lib/ai/providers/kernelSmoke.test.ts src/lib/ai/providerRegistry.test.ts
+npm --prefix app run typecheck
 npm --prefix app test
 npm run test:release-manifest
 npm run build
 cargo check --manifest-path app/src-tauri/Cargo.toml
-git diff --check
+cargo build --manifest-path app/src-tauri/Cargo.toml --example vibespace_kernel_smoke_cli
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/shared-intelligence-kernel-smoke.ps1 -ValidateOnly
 ```
 
-Run affected Rust tests when native cancellation/CLI transport code changes:
+If any Rust/native source differs from `origin/main`, also run:
 
 ```powershell
 cargo test --manifest-path app/src-tauri/Cargo.toml
 ```
 
-Expected: all configured gates pass. Diagnose and fix ordinary failures before
-continuing.
+No security, migration, cancellation, stress, or accessibility assertion may
+be skipped. A pre-existing unrelated failure is documented with command,
+output, and ownership, but every kernel-caused or kernel-blocking failure is
+fixed before continuing.
 
-**Step 3: Run an isolated localhost smoke**
+### 22.2 Performance and selector-limit evidence
 
-Select an unused port dynamically and set a disposable app-data/profile
-directory owned by this branch. Record the chosen values. Start only the new
-process, exercise typed JARVIS chat, model swap, structured block, voice stop,
-schedule, Hive final, approval, cancel, artifact, and Command Center scenarios,
-then stop only that process.
-
-Do not use port 5173 unless process inventory proves it is unused and not the
-protected instance.
-
-**Step 4: Security and performance review**
-
-Verify:
-
-- `.env*` and secret files never enter context;
-- no client email grants entitlements;
-- no kernel table or JARVIS prompt reaches sync;
-- external CLI prompt transport is present and safely escaped;
-- raw provider text cannot reach TTS;
-- approvals bind exact reviewed parameters;
-- cancellation reaches actual operations;
-- bounded event/context/artifact rendering and stated performance budgets;
-- account/profile switching cannot leak data.
-
-**Step 5: Independent review**
-
-Invoke `superpowers:requesting-code-review`. Address every actionable finding
-with TDD and rerun the affected gates. Do not treat a workflow acknowledgment
-as another user approval gate.
-
-**Step 6: Documentation and final kernel commit**
-
-Document architecture, data flow, stores, migrations, feature gate, privacy,
-threat model, rollback, test evidence, known external limitations, and how
-later goals consume the contracts.
+Task 12 creates the envelope-plus-compiler harness and Task 14 creates the
+response classifier-plus-linter harness. Run their exact files:
 
 ```powershell
-git add docs/architecture/shared-intelligence-kernel.md docs/testing/shared-intelligence-kernel-verification.md docs/security/shared-intelligence-kernel-threat-model.md
-git diff --cached --check
-git commit -m "docs: document the shared intelligence kernel"
+npm --prefix app test -- src/lib/jarvis/promptCompiler.performance.test.ts
+npm --prefix app test -- src/lib/jarvis/response/pipeline.performance.test.ts
+npm --prefix app test -- src/lib/db/jarvisRepositories.test.ts src/lib/jarvis/executionJournal/recovery.test.ts src/features/jarvis-command-center/selectors.test.ts
 ```
 
-**Step 7: Branch and PR preparation**
+Record sample count, sanitized input sizes, p50, p95, and maximum. Acceptance
+is p95 `<25 ms` for envelope validation/build plus compilation excluding
+retrieval/provider work, and p95 `<15 ms` for deterministic response
+classification plus lint with repair-spy count `0`. Selector evidence must
+show `0`, `501`, and very large caller limits are rejected or clamped as
+specified, no query returns more than `500`, and the collapsed Command Center
+performs zero Live Systems/graph calls.
 
-Run final:
+### 22.3 Reproducible isolated native Tauri smoke
+
+Task 22 consumes the committed Task 21C helper; it does not recreate or paste
+an alternate launcher. First rerun its production-inaccessibility and
+script-contract tests, then invoke the real helper from the isolated worktree:
+
+```powershell
+$Stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
+$Evidence = Join-Path (Resolve-Path '.').Path `
+  ".superpowers\sdd\evidence\task-22\$Stamp"
+
+& powershell.exe -NoProfile -ExecutionPolicy Bypass `
+  -File scripts/shared-intelligence-kernel-smoke.ps1 `
+  -EvidenceDirectory $Evidence `
+  -Scenarios @(
+    'transport_provider_success',
+    'transport_cli_success',
+    'approval_safe_auto',
+    'approval_confirm',
+    'approval_dangerous',
+    'artifact_provider',
+    'artifact_file_action',
+    'artifact_terminal',
+    'schedule_dispatch',
+    'hive_dispatch',
+    'partial_response',
+    'provider_failure',
+    'cancel_before_claim',
+    'cancel_running',
+    'cancel_completion_race'
+  )
+if ($LASTEXITCODE -ne 0) {
+  throw "Shared Intelligence Kernel smoke failed with exit code $LASTEXITCODE."
+}
+```
+
+The helper's implementation is the Task 22 process-safety boundary. Verify in
+the captured script/evidence that:
+
+- `$Dev = $null` is initialized before one outer `try/finally` that covers
+  directory creation, environment changes, build, partial/full process
+  startup, readiness, scenario automation, restart, and cleanup;
+- the root command remains
+  `npm run tauri:dev -- -- --config <temporary-overlay.json>`;
+- it uses a unique Tauri identifier, a freshly probed unused loopback port,
+  disposable `APPDATA`/`LOCALAPPDATA`, explicit Task 21C smoke flags, hidden
+  startup, and the credential-free native CLI example;
+- `finally` succeeds even when failure happens before `$Dev` is assigned or
+  while descendants are only partially started;
+- cleanup re-enumerates only the captured root's descendant tree, validates
+  every root/child PID's UTC creation time immediately before stop, stops
+  deepest-first, and never selects or kills by process name;
+- profile cleanup resolves the target and proves it is a strict descendant of
+  the dedicated smoke-profile base before recursive deletion;
+- logs and sanitized evidence survive failure, while the disposable app-data
+  profile is removed; and
+- the unrelated VibeSpace localhost instance, port, profile, process tree,
+  branch, and worktree are never attached to, reused, stopped, or modified.
+
+Drive the native window only through the Task 21C stable
+`data-sik-evidence` selectors and approved in-app/Windows automation. Record
+screenshots plus a sanitized matrix with run IDs/event sequences and producer
+receipt/result categories, never prompts, params, handles, paths, or secrets.
+The matrix proves:
+
+1. typed built-in-JARVIS provider transport and immutable model switching;
+2. the credential-free native CLI transport;
+3. structured question/action rendering, safe auto-approval, and independent
+   confirm/dangerous human approvals;
+4. cancel-before-claim exact `queued_removed`, claimed/drained
+   `handoff_pending`, running `signal_delivered`, matching native-exit
+   `cancelled`, and completion/cancel race truth;
+5. voice turn binding and Stop propagation without speaking raw stream text;
+6. schedule and Hive final dispatch through the canonical kernel;
+7. provider/file-action/terminal artifacts accepted through their exact
+   producer receipts and a source-only candidate rejected;
+8. collapsed Command Center with zero capability reads, Outputs, then lazy
+   Live Systems containing only real account/run-scoped nodes; and
+9. partial, failure, unavailable, and cancelled quiet states.
+
+The helper restarts the isolated app once with the same overlay/profile before
+its final cleanup. Verify canonical runs/events/artifacts survive; queued,
+running, and consumed approval work is not replayed; `awaiting_approval` is
+re-presented only for an exact pending/unconsumed/unexpired v1 record; every
+other nonterminal restart case fails closed with manual retry and zero
+executor calls.
+
+If the smoke fails, the helper's outer `finally` still performs the bounded
+cleanup. Preserve evidence, diagnose, create a separately locked product-fix
+task when needed, and rerun on a newly selected port/profile. Do not proceed
+with the Task 22 documentation commit until the complete matrix passes.
+
+### 22.4 Security, installer, and diff gates
+
+Run the exact added-line secret scan:
+
+```powershell
+git diff --unified=0 origin/main...HEAD |
+  Select-String -Pattern '^\+(?!\+\+\+).*(?i:api[_-]?key|access[_-]?token|refresh[_-]?token|password|secret|Bearer\s+|BEGIN [A-Z ]*PRIVATE KEY)'
+```
+
+Every match is manually classified; any real secret blocks continuation and
+is removed from history through a separately authorized safe remediation.
+Also verify local-only tables, prompts, source bodies, handles, raw provider
+text, and private paths do not enter sync, logs, TTS, events, artifacts, or
+docs.
+
+Prove the installer is absent from every successor-branch commit:
+
+```powershell
+git log --oneline origin/main..HEAD -- install/install.ps1
+$InstallerViolations = @(
+  git rev-list --reverse origin/main..HEAD | ForEach-Object {
+    $sha = $_
+    if (git diff-tree --no-commit-id --name-only -r $sha -- install/install.ps1) {
+      $sha
+    }
+  }
+)
+if ($InstallerViolations.Count -ne 0) {
+  throw "Installer touched by: $($InstallerViolations -join ', ')"
+}
+```
+
+Expected output from the first command is empty and violation count is zero.
+Run `git diff --check` and inspect `git diff --name-status
+origin/main...HEAD`; the protected deletion remains unstaged and absent from
+branch commits.
+
+### 22.5 Independent review and separate fix loop
+
+Invoke the requesting-code-review workflow after all gates and give reviewers
+the approved design, final plan, commit range, threat model, and evidence
+matrix. Review at minimum:
+
+- transition/cancellation races and atomicity;
+- approval canonicalization, drift, replay, and secret handles;
+- artifact backing/source distinction;
+- account switching, local-only persistence, and legacy shutdown;
+- typed/voice/schedule/Hive/CLI parity;
+- Command Center bounds/lazy behavior/accessibility;
+- native process/profile cleanup and rollback.
+
+For each actionable finding:
+
+1. acquire exact file locks under the root coordination mutex;
+2. append a separately named review-fix task to the execution log;
+3. write and run a failing focused test;
+4. implement the smallest fix;
+5. run focused plus affected integration gates;
+6. stage literal files and commit the fix separately;
+7. release locks and rerun Task 22 from the affected checkpoint.
+
+Workflow review acknowledgment is not another user approval gate.
+
+### 22.6 Documentation-only commit and successor draft PR
+
+The architecture document records authority order, request/response flow,
+transition matrix, atomic journal, approvals, artifacts, account isolation,
+legacy projections, Command Center, gate/rollback, and later-goal contracts.
+The verification document records exact SHAs, commands, exit codes,
+performance numbers, selector bounds, native environment, scenario matrix,
+review fixes, and remaining external-only limitations. The threat model
+records assets, trust boundaries, adversaries, secret handling, approval
+tamper/replay, cancellation races, artifact poisoning, sync leakage, and
+mitigations.
+
+```powershell
+git add -- `
+  docs/architecture/shared-intelligence-kernel.md `
+  docs/testing/shared-intelligence-kernel-verification.md `
+  docs/security/shared-intelligence-kernel-threat-model.md
+git diff --cached --name-only
+git diff --cached --check
+git diff --cached -- install/install.ps1
+git commit -m "docs: document shared intelligence kernel evidence"
+```
+
+Expected cached names are exactly the three docs. Then rerun:
 
 ```powershell
 git status --short --branch
 git log --oneline --decorate origin/main..HEAD
 git diff --stat origin/main...HEAD
 git diff --name-status origin/main...HEAD
-git show --check --oneline HEAD
+git show --check --stat HEAD
+git log --oneline origin/main..HEAD -- install/install.ps1
 ```
 
-Confirm `install/install.ps1` is absent from every commit. Use `github:yeet` to
-push normally and create/update the successor draft PR. Do not merge it.
+Push normally and create or update the successor pull request as **draft** by
+using the approved GitHub workflow/connector. Verify base `main`, exact
+successor head branch, `state: OPEN`, and `isDraft: true`. Record the URL in
+the verification doc/coordination log. Do not merge, mark ready, deploy,
+release, force-push reviewed history, or touch `grok-workbench-pr25-v2`.
 
 ## Kernel Completion Gate
 
 This plan is complete only when:
 
+- all `31` executable slices across the `22` numbered task families have landed
+  in the dependency-safe order, including Task 21C before docs-only Task 22;
 - all six v3 stores exist and migration tests prove V1/V2 preservation and
   idempotence;
 - canonical identity/profile migration preserves user extensions and account
@@ -5668,13 +7382,28 @@ This plan is complete only when:
 - structured blocks survive response enforcement byte-for-byte;
 - response truth, display text, and spoken text agree;
 - raw provider text cannot reach TTS;
-- normalized runs/events/approvals/artifacts drive real consumers;
-- approval and cancellation reach real operations;
+- the Task 18 journal is the only legal lifecycle writer, queued cancellation
+  removes owner work before terminal CAS, running cancellation remains
+  nonterminal until verified owner/executor truth, and restart recovery is
+  exactly `await_approval | fail_closed`;
+- Tasks 19A-19D preserve exact non-secret authority, private scoped
+  secret handles, single-use execution, native cancellation truth, and
+  canonical Browser Operator routing;
+- Tasks 20A/20B accept artifacts only through runtime-bound receipts from the
+  exact provider, file/action, terminal, plugin, MCP, or schedule producer;
+- Task 20C stops legacy lifecycle writers and exposes only bounded read-only
+  projections and canonical notifications;
 - typed chat, voice, schedules, Hive finals, and deterministic actions use the
   kernel;
-- the thin Command Center shows only live canonical state;
+- the Task 21B Command Center has exactly `Outputs` and `Live Systems`, enforces
+  account/run bounds, performs no capability read while collapsed, and shows
+  only canonical state;
+- Task 21C's opt-in development fixtures are production-inaccessible and its
+  isolated native helper proves safe setup, restart, and bounded PID/profile
+  cleanup without name-based process termination;
 - full typecheck, unit, manifest, build, Rust-affected, security, migration,
-  isolated smoke, and review gates have recorded evidence;
+  selector-limit, isolated smoke, and independent-review gates have recorded
+  evidence under Task 22;
 - the successor branch/draft PR excludes the protected branch/worktree,
   pre-existing localhost process, installer anomaly, production state, and real
   user data.
