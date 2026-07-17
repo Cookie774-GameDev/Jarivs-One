@@ -6,7 +6,12 @@
 
 **Implementation branch:** `codex/shared-intelligence-kernel-design-20260716`
 
-**Authoritative base:** `origin/main` at `8aa51f126bcbc56d36d1a1c4dd3ede56e2fd38a6`
+**Frozen implementation/merge base:** `8aa51f126bcbc56d36d1a1c4dd3ede56e2fd38a6`
+
+**Pre-plan-commit upstream observation:** predecessor HEAD
+`56d669f60b0eb93309f332ed700d9b0f4b0b82ee`; observed `origin/main`
+`65931c1cbb2982e6991238af45a3cf39702c7802`; divergence `22` ahead / `2`
+behind. Phase 0R refreshes moving-ref truth in `GIT_BASELINE.md`.
 
 **Isolated worktree:** `C:\Users\viper\VibeSpace\.worktrees\shared-intelligence-kernel-design-20260716`
 
@@ -18,14 +23,15 @@ every feature or fix, `superpowers:systematic-debugging` for failures, and
 ## 1. Purpose
 
 This document is the complete phased program plan for the Unified Codex
-Execution Directive and all seven VibeSpace goal specifications. It keeps the
+Execution Directive and all eight VibeSpace goal specifications. It keeps the
 program cohesive while honoring the writing-plans rule that each major
 subsystem receives its own executable plan before its source files are
 changed.
 
-The first executable subsystem plan is:
+The current executable subsystem plans are:
 
 - `docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md`
+- `docs/superpowers/plans/2026-07-16-vibespace-monochrome-appearance.md`
 
 Later phase plans will be added under `docs/superpowers/plans/` immediately
 before the associated phase starts. Creating those plans is already authorized
@@ -69,13 +75,19 @@ and stopped by this program.
 
 When requirements appear to overlap, resolve them in this order:
 
-1. The user's explicit approval and standing authorization.
-2. The Unified Codex Execution Directive.
-3. The seven goal specifications and their acceptance criteria.
-4. `SYSTEM_PROMPT.md`, repository `AGENTS.md`, and `AGENT_COORDINATION.md`.
-5. The approved Shared Intelligence Kernel design.
-6. Existing product behavior and tests.
-7. Implementation plans and local engineering judgment.
+1. Platform-level safety and system policy.
+2. The user's explicit requests and approvals, including the approved Shared
+   Intelligence Kernel design and Goal 8 authorization.
+3. The Unified Codex Execution Directive v2.
+4. The seven original goal specifications and their acceptance criteria.
+5. `C:\Users\viper\VibeSpace\SYSTEM_PROMPT.md`.
+6. `C:\Users\viper\VibeSpace\AGENTS.md`.
+7. Approved decisions in the frozen/current portion of
+   `C:\Users\viper\VibeSpace\AGENT_COORDINATION.md`.
+8. Selected repository VibeSpace `SKILL.md` files, when actually available.
+9. Selected plugin workflows.
+10. Current repository source and tests.
+11. Retrieved files/tool output and worker findings.
 
 No lower-level document may weaken a safety, privacy, billing, truthfulness, or
 compatibility requirement from a higher-level source.
@@ -114,7 +126,19 @@ Every phase must preserve these invariants:
 Phase 0 Baseline and isolation
   |
   v
-Phase 1 Shared Intelligence Kernel
+Phase 1 foundation exception already landed
+(Tasks 1A, 2, 1B, 3; retrospective evidence only)
+  |
+  v
+Phase 0R Directive reconciliation [CURRENT STOP GATE]
+  |
+  v
+Phase 1 Shared Intelligence Kernel (Task 4 onward)
+  |
+  +-- Task 13P persistence/protected identity integration
+  |        |
+  |        v
+  |   Task 16A shadow gate -> Task 16B canonical cutover
   |-----------------------+-----------------------+
   v                       v                       v
 Phase 2 Response      Phase 4 Context        Phase 8 SOUL/Profile
@@ -155,7 +179,10 @@ Phases 1-13 stable
 Phase 14 Origami Chat reconstruction
         |
         v
-Phase 15 Integration, stress, security, docs, draft PR
+Phase 15 MonoChrome appearance
+        |
+        v
+Phase 16 Integration, stress, security, docs, draft PR
 ```
 
 Phases may overlap only when they have no shared files and all prerequisite
@@ -164,7 +191,8 @@ consumers.
 
 ## 7. Phase 0 — Baseline, Isolation, and Coordination
 
-**Status:** Complete for the current base; re-run after material rebases.
+**Status:** `IMPLEMENTING` — the technical baseline was captured, but Phase 0
+is not complete until the retrospective Phase 0R artifact gate passes.
 
 Deliverables:
 
@@ -182,6 +210,37 @@ Exit gate:
 - Dirty user work is not copied, cleaned, reset, or committed.
 - Baseline results and limitations are recorded.
 - No active file-lock conflict exists.
+- Phase 0R's exact 17-path directive artifact commit has an independent PASS.
+
+## 7A. Phase 0R — Directive Reconciliation Stop Gate
+
+**Status:** `IMPLEMENTING`
+
+**Executable task:** Task 0R in
+`docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md`.
+
+Tasks 1A, 2, 1B, and 3 are truthful retrospective sequencing exceptions: they
+landed before the directive-mandated artifacts. Task 0R reconstructs their
+source-to-commit evidence without rewriting history or broadening their PASS
+scope. Task 2 remains `IMPLEMENTED_UNVERIFIED` until its fresh independent
+review closes. Task 0R assigns that exact review to a fresh non-implementer at
+commit `fd0cf3c`, runs the four-file focused tests plus app typecheck, and
+records immutable evidence. A PASS advances only the narrow four-file atoms.
+Changes requested register a bounded conditional Task 2R with exact findings,
+files, tests, owner, and re-review; it executes after the initial 17-artifact
+commit and before Task 4, followed by an affected-ledger evidence commit.
+That conditional repair is not included in the frozen 34-slice count unless a
+finding instantiates it; instantiation must update the registry, sequence,
+count, and affected artifacts before code execution.
+
+No Task 4 or later product edit, and no other goal phase, begins until all 17
+pre-edit artifacts exist, the ignored reproducible occurrence/checker workflow
+returns zero with zero unclassified candidates, the exact 17 paths are
+committed without `install/install.ps1`, and an independent full/traceability
+review returns PASS. `LOCAL_TEST_HANDOFF.md` remains a separately registered
+Phase 16 artifact and is not part of this 17-path gate.
+Task 4 also remains blocked until Task 2 has either received that independent
+PASS or completed and evidenced its conditional Task 2R correction.
 
 ## 8. Phase 1 — Shared Intelligence Kernel
 
@@ -205,6 +264,11 @@ Deliverables:
 - Typed chat, voice, schedule, Hive-final, and deterministic-action cutovers.
 - Normalized execution journal, real cancellation, approval engine, artifact
   normalizer, compatibility projections, and thin truthful Command Center.
+- Task 13P mounts the account-scoped persistence coordinator and the one
+  protected-agent identity helper before Task 16A consumes the ready gate;
+  Task 16B then consumes that same mounted gate and helper for canonical
+  runtime/UI cutover. Neither Task 16A nor Task 16B may bypass or duplicate
+  Task 13P's persistence or protected-identity authority.
 
 Exit gate:
 
@@ -626,7 +690,122 @@ Exit gate:
   pass.
 - Unrelated pages and existing visual work remain untouched.
 
-## 22. Phase 15 — Integration, Review, Documentation, and Draft PR
+## 22. Phase 15 — Reference-Locked MonoChrome Appearance
+
+**Executable plan:**
+`docs/superpowers/plans/2026-07-16-vibespace-monochrome-appearance.md`
+
+Dependencies:
+
+- Goals 1-7 have stable functional surfaces and route contracts.
+- Phase 14 Origami chat is stable and has a frozen acceptance oracle.
+- MC0B has a full green/accepted-known-failure stabilization ledger, frozen
+  source-derived route/primitive/overlay/detached/native manifests, and
+  immutable synthetic Default/VibeSpace/Jarvis/Origami baselines captured at
+  one exact source/harness commit before any MonoChrome product edit. Upstream
+  drift before MC1 forces recapture; after MC1 the accepted `B0` bundle is an
+  immutable comparison oracle. A later rebase is handled by recapturing in a
+  clean pre-MonoChrome worktree at the new base and replaying the commits, never
+  by taking a post-change “before” image.
+
+Required skills:
+
+- `frontend-design:frontend-design`
+- `superpowers:test-driven-development`
+- `superpowers:systematic-debugging`,
+  `superpowers:verification-before-completion`, and independent review skills.
+- Playwright for deterministic browser verification and
+  `computer-use:computer-use` only for isolated visible native Windows smoke.
+  Do not use existing Chrome state as the baseline harness.
+- Requested repository `$vibespace-*` skills and the agent-lock helper remain
+  `UNAVAILABLE` unless re-discovery proves their exact callable paths; never
+  fabricate skill/lock/model evidence.
+
+Deliverables:
+
+- Replace the selectable Light theme with the exact public MonoChrome name and
+  internal `monochrome` ID while preserving the four-theme order.
+- Generate one versioned theme dataset with distinct storage, runtime,
+  document-resolution, command, sync, hydration-merge, and prepaint policies.
+  Storage maps Light to MonoChrome and dark/system/unknown to Default; strict
+  sync rejects command aliases/dark/system; complete command compatibility
+  remains parser-only; Default preference still resolves to document `dark`.
+- Add pure v4-to-v5 migrate plus always-on current-version Zustand merge and
+  safe-local-storage quota recovery while preserving every unrelated setting,
+  method, and user record.
+- Apply the preference through a generated self-hosted CSP-safe prepaint asset
+  before React, synchronize it
+  across detached windows without feedback loops, and update Appearance,
+  slash commands, command palette, action registries, and xterm consistently.
+- Remove active Light CSS and implement MonoChrome under the isolated
+  `html[data-theme='monochrome']` root with true-black/near-black surfaces,
+  one-pixel neutral borders, small radii, compact sans text, JetBrains Mono
+  metadata, restrained semantic accents, minimal elevation, and no global
+  gradients, glass, glow, or remote assets.
+- Theme shared primitives, shell/navigation/overlays, and every final
+  integrated route using exact non-overlapping manifests and a development-
+  only real-component workbench.
+- Preserve Default, VibeSpace, Jarvis Core, Origami, Pixel Pet transparency,
+  remote provider pages, Canvas user content, all behavior, and all product
+  copy except the authorized theme replacement.
+- Add deterministic route screenshots, computed-style metrics, migration and
+  sync integration tests, functional regression, accessibility, performance,
+  security, Windows native/high-DPI, other-theme, and Origami checks.
+- Preserve PTY ANSI/true-color and explicit user/per-terminal palette
+  precedence across app-theme MutationObserver updates.
+- Use an isolated native session with a unique Tauri identifier, unused port,
+  child-only APPDATA/LOCALAPPDATA/USERPROFILE/HOME/WebView2/temp/browser
+  profile, an override selecting only the minimal committed
+  `monochrome-test` Tauri capability, and paired frontend/native
+  `monochrome-visual-test` runtime guards.
+  The guarded native build must suppress boot-time launcher, production
+  keychain, HKCU autostart/PATH, updater, tray/watchdog, single-instance reuse,
+  production AppUserModelID, and global-shortcut effects while direct
+  sensitive commands fail before touching an effect adapter. Require exact
+  owned-PID cleanup plus before/after proof that the existing VibeSpace
+  process/listener/profile/launcher/HKCU/keychain namespace/shortcut state is
+  unchanged. Prove shortcut/plugin suppression with injected effect counters,
+  not OS shortcut enumeration. Verify an optimized embedded Windows/WebView2
+  executable and unsigned unique-ID NSIS artifact without host installation;
+  installed-package behavior without a Sandbox/VM and unavailable macOS/Linux
+  runners remain exact `SKIPPED_NOT_APPLICABLE` rather than PASS.
+- Validate zoom 100/125/150/200, reflow, contrast/state semantics, forced
+  colors, target sizes, reduced motion, keyboard/focus, native dialogs/menus,
+  detached windows, Pixel Pet transparency, fonts, and GPU fallback. Require
+  4.5:1 normal-text contrast, 3:1 large-text and meaningful UI/focus/state
+  contrast, and 24x24 CSS-pixel targets or the WCAG 2.2 spacing exception while
+  preserving any existing 44x44 product contract. Two-axis document/app-chrome
+  scroll fails; deliberate inner Canvas/graph spatial viewports remain allowed.
+- Analyze and calibrate against the exact supplied reference recording when it
+  is available, without committing the recording, extracted frames, private
+  screenshots, or copied third-party identity/content.
+- Always create the six exact schema-validated reference artifacts
+  (`REFERENCE_ANALYSIS.md`, `FRAME_MANIFEST.json`, `DESIGN.md`,
+  `design-tokens.json`, `reference-spec.json`, `component-mapping.md`); when the
+  video is absent they truthfully use `blocked_missing_source` skeletons with
+  no fabricated measurements. Validate JSON artifacts directly and the three
+  Markdown artifacts through committed JSON-frontmatter schemas, required-body
+  structures, and cross-artifact IDs. Measured evidence covers every required
+  table/loading/transition frame, 400/500/600 font candidate, exact geometry
+  field, and motion category.
+
+Exit gate:
+
+- Every locally actionable MonoChrome requirement and MC requirement ID is
+  implemented and evidenced.
+- The registry contains exactly Jarvis Core, VibeSpace, Default, and
+  MonoChrome. Light is absent from the active registry, picker, autocomplete,
+  current help, command-palette/actions, active CSS, and app-owned xterm
+  palettes; the parser-only legacy `/theme light` alias remains and resolves to
+  MonoChrome.
+- Migration, startup, sync, route coverage, function, accessibility,
+  performance, security, native, and preserved-theme gates pass.
+- If `Screen Recording 2026-07-16 220632(1).mp4` remains unavailable, only the
+  measured reference-calibration and final video-fidelity evidence remain an
+  exact documented external hard gate; all other work is complete and Phase 16
+  continues through the successor draft PR.
+
+## 23. Phase 16 — Integration, Review, Documentation, and Draft PR
 
 **Plan file to create before edits:**
 `docs/superpowers/plans/2026-07-16-vibespace-final-integration.md`
@@ -651,16 +830,179 @@ Deliverables:
   Tauri checks/build where safe, Playwright, Windows Relay, migrations, RLS,
   Stripe test mode, security, stress, performance, accessibility, offline,
   recovery, and visual tests.
-- Run configured local/test providers and record skipped providers truthfully.
+- Run configured local/test providers and record unavailable non-applicable
+  providers with the exact `SKIPPED_NOT_APPLICABLE` result state and reason.
 - Conduct independent code, security, privacy, billing, migration, UX,
-  accessibility, and performance reviews; fix actionable findings and rerun
-  affected gates.
+  accessibility, performance, reference-fidelity, and preserved-theme reviews;
+  fix actionable findings and rerun affected gates.
 - Update architecture, schema, privacy, security, operations, test, migration,
-  rollback, provider-feasibility, and user documentation.
+  rollback, provider-feasibility, appearance/reference, and user documentation.
 - Inspect staged scope, commit intentionally, push normally, and create/update
-  the successor draft PR with evidence and remaining external gates.
+  the successor draft PR with evidence from all eight goals and remaining
+  external gates.
 - Prepare local handoff with test profile/port/process cleanup and exact
-  reproduction commands.
+  reproduction commands in `docs/unified-goals/LOCAL_TEST_HANDOFF.md`, including
+  branch/commit/draft PR, isolated profile, backups, start/migration commands,
+  flags/services, gates, reset, rollback, and process shutdown.
+
+### Phase 16 final handoff artifact boundary
+
+`docs/unified-goals/LOCAL_TEST_HANDOFF.md` is a separately registered,
+one-file final Phase 16 slice. It is not one of Task 0R's 17 pre-edit artifacts,
+is not a Task 22 deliverable, and must not be created, modified, staged, or
+claimed complete by Task 0R, Task 22, or any earlier slice. Create it only after
+all locally actionable implementation and documentation work is committed, the
+full final verification/review matrix has been observed, and every actionable
+finding has been fixed and reverified. Its statements must describe observed
+state; projected commands, unobserved PASS claims, secrets, and production
+credentials are forbidden.
+
+The handoff document must contain these exact sections and evidence fields:
+
+1. **Tested revision and draft PR:** successor branch name; intended base
+   branch; the full 40-character tested implementation commit SHA captured
+   immediately before the handoff-only commit; draft PR number, canonical URL,
+   base/head branches, current draft state, and check summary; and the date/time
+   at which those values were read back. The tested implementation SHA is not
+   the self-referential handoff commit SHA.
+2. **Isolated local state:** absolute disposable app-data/profile path; its
+   backup path and creation command; the separately reserved numeric localhost
+   port; the command used to prove the port was unused before startup; and an
+   explicit statement that the pre-existing VibeSpace profile, localhost
+   instance, `grok-workbench-pr25-v2`, and `install/install.ps1` were untouched.
+3. **Prerequisites and startup:** exact working directory; tool/runtime
+   prerequisites and observed versions; exact environment-variable assignments
+   that select the isolated profile and port; exact install/build/start
+   commands in execution order; expected health/readiness signal; and the
+   readback command that proves the process, profile, and port match the
+   isolated session. Secret values are represented only by variable names and
+   acquisition instructions, never copied into the file.
+4. **Migrations and seed/test data:** exact local or staging target (never
+   production); backup prerequisite; ordered migration/seed commands; expected
+   migration identifiers; schema/RLS/function readback commands; Stripe
+   test-mode setup when applicable; and the command/evidence proving that no
+   production project or live Stripe mode was selected.
+5. **Feature flags and services:** every required flag with its exact tested
+   value; every local/test provider, Relay, Supabase, Stripe-test, browser,
+   model, and auxiliary service with start command, endpoint/port, readiness
+   check, and truthful availability state. A missing optional provider is
+   recorded as `SKIPPED_NOT_APPLICABLE` with scope and reason, not silently
+   represented as passing.
+6. **Verification gates:** a table containing each required gate, its exact
+   command, tested commit SHA, execution time, result state, evidence/log path,
+   and limitation or not-applicable reason. It covers focused and full TypeScript,
+   Vitest, release-manifest, production-build, Rust/Tauri, Playwright, Windows
+   Relay, database/migration/RLS, Stripe-test, security, stress, performance,
+   accessibility, offline/recovery, visual/reference, privacy, billing, and
+   independent review gates that apply to the completed program.
+7. **Reset and restore:** exact commands to stop only this task's processes,
+   restore the isolated profile from its named backup, clear only disposable
+   task-owned test data, restart the isolated stack, and verify restored state;
+   each destructive command must include an absolute-path or target-identity
+   guard that fails closed outside the recorded disposable profile/test target.
+8. **Rollback:** the last known-good full commit SHA; non-force Git commands to
+   inspect or switch to it without rewriting reviewed history; application and
+   feature-flag rollback order; migration rollback or documented forward-repair
+   procedure with backup/verification; and explicit escalation for any rollback
+   that would touch production or real user data.
+9. **Shutdown and cleanup:** the exact recorded PIDs/process identities and
+   scoped stop commands; service shutdown order; commands proving the reserved
+   port is released and no task process remains; disposable-profile retention
+   or guarded deletion instructions; lock-release and coordination-ledger
+   update; and the final readback showing pre-existing processes/state remain
+   untouched.
+
+The handoff boundary executes in this order:
+
+1. Finish Task 22 and all other implementation/doc commits; leave the index
+   empty while preserving the unrelated unstaged installer deletion.
+2. Run the complete Phase 16 matrix against the implementation HEAD, fix every
+   actionable finding, rerun affected gates, normally push that tested commit,
+   create or refresh the successor draft PR, and read back its state.
+3. Record `git rev-parse HEAD` and require the returned value to match
+   `^[0-9a-f]{40}$`; use that value as the tested implementation SHA in the
+   handoff. Then create only
+   `docs/unified-goals/LOCAL_TEST_HANDOFF.md` from the observed evidence above.
+4. Stage exactly the handoff path:
+
+   ```powershell
+   git add -- docs/unified-goals/LOCAL_TEST_HANDOFF.md
+   ```
+
+5. Run these cached-scope checks before the handoff commit:
+
+   ```powershell
+   git diff --cached --check
+   $actual = @(git diff --cached --name-only)
+   $expected = @('docs/unified-goals/LOCAL_TEST_HANDOFF.md')
+   if (@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0) { throw 'Unexpected staged path in final handoff slice' }
+   if (git diff --cached --name-only -- install/install.ps1) { throw 'Protected installer path is staged' }
+   git diff --cached --exit-code -- install/install.ps1
+   git diff --cached --stat
+   ```
+
+   The name-only output must be exactly
+   `docs/unified-goals/LOCAL_TEST_HANDOFF.md`; the installer queries produce no
+   output. Any extra staged path aborts the slice and is resolved without
+   staging, restoring, or otherwise touching the protected installer deletion.
+
+6. Commit the one-file slice as
+   `git commit -m "docs: add verified local test handoff"`, push normally, and
+   update/read back the existing successor draft PR. Do not amend, force-push,
+   merge, publish, deploy, or rewrite reviewed history.
+
+7. Capture the resulting full handoff commit SHA as `H`, require it to match
+   `^[0-9a-f]{40}$`, and use `H` as the immutable evidence cutoff for a separate
+   post-handoff traceability closeout. This cutoff deliberately excludes the
+   closeout commit itself, so no tracked artifact needs to predict or recursively
+   record its own commit hash. Re-read the draft PR at `H` before generating the
+   closeout.
+8. Run the Task 0R validator in its explicit `evidence-closeout` mode with
+   cutoff `H`. For the registered handoff event it must compute exactly these
+   affected tracked ledgers and no others:
+   - `docs/unified-goals/REQUIREMENTS_MATRIX.md`
+   - `docs/unified-goals/TEST_MATRIX.md`
+   - `docs/unified-goals/GIT_BASELINE.md`
+
+   Update only their computed rows: the handoff requirement disposition, the
+   observed one-file/cached-scope/push/PR-readback tests, and Git/PR facts
+   explicitly labelled `recordedThroughCommit: H`. Regenerate the ignored
+   source manifest and deterministic validation report using the same
+   two-pass no-self-hash rule. All other Task 0R artifacts retain their prior
+   semantic content and hashes. If the validator computes a different affected
+   set, reports an unclassified row, or sees any post-`H` product/test fact,
+   abort and repair the maintenance classification before staging.
+
+9. Stage and verify exactly those three ledger paths:
+
+   ```powershell
+   $closeout = @(
+     'docs/unified-goals/REQUIREMENTS_MATRIX.md',
+     'docs/unified-goals/TEST_MATRIX.md',
+     'docs/unified-goals/GIT_BASELINE.md'
+   )
+   git add -- $closeout
+   git diff --cached --check
+   $actual = @(git diff --cached --name-only)
+   if (@(Compare-Object -ReferenceObject $closeout -DifferenceObject $actual).Count -ne 0) { throw 'Unexpected staged path in post-handoff closeout' }
+   if (git diff --cached --name-only -- install/install.ps1) { throw 'Protected installer path is staged' }
+   git diff --cached --exit-code -- install/install.ps1
+   ```
+
+   The explicit `evidence-closeout` validator mode is the sole exemption from
+   the ordinary all-affected-artifact regeneration rule: it is limited to the
+   registered parent cutoff `H`, these three derived ledgers, and evidence-only
+   facts. It cannot advance a product requirement, add a test result observed
+   after `H`, or rewrite any source/architecture/policy row.
+
+10. Commit as
+    `git commit -m "docs(unified): close final handoff evidence"`, push normally,
+    and read back the existing draft PR head. Record that readback in the run
+    log, not by recursively editing the three ledgers. The closeout commit is an
+    administrative evidence carrier whose parent cutoff is `H`; it is not a new
+    implementation/test requirement. Any later product, test, handoff, or PR
+    correction invalidates this terminal sequence and requires a new observed
+    Phase 16 handoff plus closeout—never an amend or force-push.
 
 Exit gate:
 
@@ -668,8 +1010,14 @@ Exit gate:
 - No required test is described as passing unless its output was observed.
 - No production deployment, main merge, production release, force push, live
   Stripe financial change, or destructive real-data action occurs.
+- The final handoff exists in its own one-file commit, names the full tested
+  implementation SHA and current draft PR, reproduces the isolated local stack,
+  and passes the exact cached-scope checks above.
+- The subsequent exact three-ledger evidence-only closeout validates at parent
+  cutoff `H`, leaves no stale handoff/test/Git row as of that cutoff, and passes
+  its exact cached-scope and installer-exclusion checks.
 
-## 23. Plan and Commit Discipline
+## 24. Plan and Commit Discipline
 
 For each executable phase:
 
@@ -688,7 +1036,7 @@ For each executable phase:
 The unexplained `install/install.ps1` deletion is never staged or included in
 any commit.
 
-## 24. Verification Matrix
+## 25. Verification Matrix
 
 At minimum, the final matrix includes:
 
@@ -708,14 +1056,27 @@ At minimum, the final matrix includes:
 - messaging/browser security and tool-bridge grants;
 - access/RLS/webhooks/Stripe-test/offline lease;
 - deterministic Origami visual and functional regression;
+- exact MonoChrome registry, boundary-specific generated parsing/resolution,
+  Light-to-MonoChrome v5 migration plus current-version merge, CSP-safe
+  prepaint, strict detached-window sync, parser-only aliases, Default-to-dark
+  resolution, and Pixel Pet transparency contracts;
+- deterministic MonoChrome workbench and full-route screenshots, computed
+  style metrics, functional invariants, reference-derived evidence when the
+  exact recording is available, and honest missing-video evidence otherwise;
+- Default, VibeSpace, Jarvis Core, and Origami visual isolation plus remote
+  provider and Canvas-content boundaries;
+- terminal explicit-override/ANSI precedence and isolated Tauri/WebView2/PID/
+  profile/process-safety evidence;
+- 100/125/150/200 zoom/reflow, contrast, target, forced-color, reduced-motion,
+  packaged-Windows and truthful cross-platform status matrices;
 - full typecheck, unit, build, Rust, Tauri-safe, Playwright, Windows,
   accessibility, security, stress, and performance gates.
 
-## 25. Program Definition of Done
+## 26. Program Definition of Done
 
 The program is complete only when:
 
-- all locally actionable requirements from the directive and seven goals are
+- all locally actionable requirements from the directive and eight goals are
   implemented on the successor branch;
 - shared contracts are used by real consumers rather than existing only as
   types;
@@ -723,6 +1084,13 @@ The program is complete only when:
 - capability, execution, billing, provider, and connector states are truthful;
 - private data and secrets remain inside their declared boundaries;
 - approval and cancellation semantics reach real operations;
+- MonoChrome replaces Light without changing preserved themes, Origami,
+  Pixel Pet transparency, remote provider pages, user content, product
+  behavior, or unrelated copy;
+- measured recording-derived claims are made only from the exact available
+  source; if it remains unavailable, the exact filename and search evidence
+  identify the narrow video-calibration hard gate while all other Goal 8 work
+  is complete;
 - every required automated and manual test has evidence or an exact
   user/external hard-gate explanation;
 - independent reviews have been addressed;
