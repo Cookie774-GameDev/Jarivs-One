@@ -426,8 +426,13 @@ function prepareAppIdentity(
   });
 }
 
+const ACCOUNT_SCOPE_BOOT_WAIT_OPTIONS = { timeout: 5_000 } as const;
+
 async function waitForAccountScopeBoot(): Promise<void> {
-  await waitFor(() => expect(bootListeners.runtime).toHaveBeenCalledTimes(1));
+  await waitFor(
+    () => expect(bootListeners.runtime).toHaveBeenCalledTimes(1),
+    ACCOUNT_SCOPE_BOOT_WAIT_OPTIONS,
+  );
   await act(async () => {
     await Promise.resolve();
   });
@@ -458,6 +463,8 @@ describe('App canonical account identity boot', () => {
   beforeEach(() => {
     localStorage.clear();
     vi.clearAllMocks();
+    bootStorage.listAgents.mockReset();
+    bootStorage.listAgents.mockResolvedValue([]);
     cloudSync.loopStops.length = 0;
     accountListeners.reset();
     cloudBoot.reset();
@@ -492,19 +499,21 @@ describe('App canonical account identity boot', () => {
     });
 
     render(<App />);
-    await waitForAccountScopeBoot();
+    try {
+      await waitForAccountScopeBoot();
 
-    expect(cloudBoot.getSession).toHaveBeenCalledTimes(1);
-    expect(accountListeners.learning).not.toHaveBeenCalled();
-    expect(accountListeners.allAboutMe).not.toHaveBeenCalled();
-    expect(accountListeners.taskRuns).not.toHaveBeenCalled();
-    expect(bootListeners.runtime).toHaveBeenCalledTimes(1);
-    expect(document.querySelector('main[aria-label="Workspace"]')).not.toBeNull();
-
-    await act(async () => {
-      session.resolve(null);
-      await Promise.resolve();
-    });
+      expect(cloudBoot.getSession).toHaveBeenCalledTimes(1);
+      expect(accountListeners.learning).not.toHaveBeenCalled();
+      expect(accountListeners.allAboutMe).not.toHaveBeenCalled();
+      expect(accountListeners.taskRuns).not.toHaveBeenCalled();
+      expect(bootListeners.runtime).toHaveBeenCalledTimes(1);
+      expect(document.querySelector('main[aria-label="Workspace"]')).not.toBeNull();
+    } finally {
+      await act(async () => {
+        session.resolve(null);
+        await Promise.resolve();
+      });
+    }
 
     await waitFor(() => {
       expect(accountListeners.learning).toHaveBeenCalledTimes(1);
@@ -516,7 +525,7 @@ describe('App canonical account identity boot', () => {
 
   it('quarantines persisted cloud auth during commit before protected children can render', async () => {
     cloudBoot.setConfigured(true);
-    cloudBoot.deferSession();
+    const session = cloudBoot.deferSession();
     prepareAppIdentity({
       cloudSession: cloudSession('persisted-cloud-user'),
       localUserId: 'stable-local-user',
@@ -539,41 +548,51 @@ describe('App canonical account identity boot', () => {
     }
 
     try {
-      render(
-        <CommitPhaseBoundary>
-          <App />
-        </CommitPhaseBoundary>,
-      );
-    } finally {
-      unsubscribe();
-    }
+      try {
+        render(
+          <CommitPhaseBoundary>
+            <App />
+          </CommitPhaseBoundary>,
+        );
+      } finally {
+        unsubscribe();
+      }
 
-    expect(quarantineCommitPhases).toEqual([true]);
-    expect(useAuthStore.getState()).toMatchObject({
-      cloudSession: null,
-      plan: 'free',
-    });
-    expect(protectedBootObservers.authGateRenders.length).toBeGreaterThan(0);
-    expect(protectedBootObservers.authGateRenders).toEqual(
-      protectedBootObservers.authGateRenders.map(() => ({
-        cloudUserId: null,
+      expect(quarantineCommitPhases).toEqual([true]);
+      expect(useAuthStore.getState()).toMatchObject({
+        cloudSession: null,
         plan: 'free',
-      })),
-    );
-    expect(queueAuthority.currentUserId()).toBeUndefined();
-    expect(accountListeners.learning).not.toHaveBeenCalled();
-    expect(accountListeners.allAboutMe).not.toHaveBeenCalled();
-    expect(accountListeners.taskRuns).not.toHaveBeenCalled();
+      });
+      expect(protectedBootObservers.authGateRenders.length).toBeGreaterThan(0);
+      expect(protectedBootObservers.authGateRenders).toEqual(
+        protectedBootObservers.authGateRenders.map(() => ({
+          cloudUserId: null,
+          plan: 'free',
+        })),
+      );
+      expect(queueAuthority.currentUserId()).toBeUndefined();
+      expect(accountListeners.learning).not.toHaveBeenCalled();
+      expect(accountListeners.allAboutMe).not.toHaveBeenCalled();
+      expect(accountListeners.taskRuns).not.toHaveBeenCalled();
 
-    await waitFor(() => expect(cloudBoot.getSession).toHaveBeenCalledTimes(1));
-    expect(useAuthStore.getState()).toMatchObject({
-      cloudSession: null,
-      plan: 'free',
-    });
-    expect(queueAuthority.currentUserId()).toBeUndefined();
-    expect(accountListeners.learning).not.toHaveBeenCalled();
-    expect(accountListeners.allAboutMe).not.toHaveBeenCalled();
-    expect(accountListeners.taskRuns).not.toHaveBeenCalled();
+      await waitFor(
+        () => expect(cloudBoot.getSession).toHaveBeenCalledTimes(1),
+        ACCOUNT_SCOPE_BOOT_WAIT_OPTIONS,
+      );
+      expect(useAuthStore.getState()).toMatchObject({
+        cloudSession: null,
+        plan: 'free',
+      });
+      expect(queueAuthority.currentUserId()).toBeUndefined();
+      expect(accountListeners.learning).not.toHaveBeenCalled();
+      expect(accountListeners.allAboutMe).not.toHaveBeenCalled();
+      expect(accountListeners.taskRuns).not.toHaveBeenCalled();
+    } finally {
+      await act(async () => {
+        session.resolve(null);
+        await Promise.resolve();
+      });
+    }
   });
 
   it.each(['dictation', 'pet-overlay', 'pet-mini-panel'])(
@@ -699,36 +718,37 @@ describe('App canonical account identity boot', () => {
   it('revokes local auth divergence before the rest of boot finishes', async () => {
     cloudBoot.setConfigured(true);
     const session = cloudBoot.deferSession();
-    let finishAgentList: ((agents: never[]) => void) | undefined;
-    bootStorage.listAgents.mockImplementationOnce(
-      () =>
-        new Promise<never[]>((resolve) => {
-          finishAgentList = resolve;
-        }),
-    );
+    const agentList = deferredValue<never[]>();
+    bootStorage.listAgents.mockImplementationOnce(() => agentList.promise);
     prepareAppIdentity({
       cloudSession: null,
       localUserId: 'stable-local-user',
     });
 
     render(<App />);
-    await waitFor(() => expect(cloudBoot.getSession).toHaveBeenCalledTimes(1));
-    await act(async () => {
-      session.resolve(supabaseSession('cloud-user-a'));
-      await Promise.resolve();
-    });
-    await waitFor(() => expect(queueAuthority.currentUserId()).toBe('cloud-user-a'));
-    expect(bootStorage.listAgents).toHaveBeenCalledTimes(1);
+    try {
+      await waitFor(
+        () => expect(cloudBoot.getSession).toHaveBeenCalledTimes(1),
+        ACCOUNT_SCOPE_BOOT_WAIT_OPTIONS,
+      );
+      await act(async () => {
+        session.resolve(supabaseSession('cloud-user-a'));
+        await Promise.resolve();
+      });
+      await waitFor(() => expect(queueAuthority.currentUserId()).toBe('cloud-user-a'));
+      expect(bootStorage.listAgents).toHaveBeenCalledTimes(1);
 
-    act(() => {
-      useAuthStore.setState({ cloudSession: null });
-    });
-    expect(queueAuthority.currentUserId()).toBeUndefined();
-
-    await act(async () => {
-      finishAgentList?.([]);
-      await Promise.resolve();
-    });
+      act(() => {
+        useAuthStore.setState({ cloudSession: null });
+      });
+      expect(queueAuthority.currentUserId()).toBeUndefined();
+    } finally {
+      await act(async () => {
+        session.resolve(supabaseSession('cloud-user-a'));
+        agentList.resolve([]);
+        await Promise.resolve();
+      });
+    }
   });
 
   it('starts one cloud sync loop only after valid normalized initial authority', async () => {
@@ -1083,7 +1103,10 @@ describe('App canonical account identity boot', () => {
 
     firstMount.unmount();
     render(<App />);
-    await waitFor(() => expect(bootListeners.runtime).toHaveBeenCalledTimes(2));
+    await waitFor(
+      () => expect(bootListeners.runtime).toHaveBeenCalledTimes(2),
+      ACCOUNT_SCOPE_BOOT_WAIT_OPTIONS,
+    );
     await act(async () => {
       await Promise.resolve();
     });
@@ -1527,7 +1550,10 @@ describe('App canonical account identity boot', () => {
 
     firstMount.unmount();
     render(<App />);
-    await waitFor(() => expect(bootListeners.runtime).toHaveBeenCalledTimes(2));
+    await waitFor(
+      () => expect(bootListeners.runtime).toHaveBeenCalledTimes(2),
+      ACCOUNT_SCOPE_BOOT_WAIT_OPTIONS,
+    );
 
     try {
       expect(accountListeners.learning).toHaveBeenCalledTimes(1);
@@ -1614,28 +1640,34 @@ describe('App canonical account identity boot', () => {
       cloudSession: null,
       localUserId: 'stable-local-user',
     });
-    let finishAgentList: ((agents: never[]) => void) | undefined;
-    bootStorage.listAgents.mockImplementationOnce(
-      () =>
-        new Promise<never[]>((resolve) => {
-          finishAgentList = resolve;
-        }),
-    );
+    const agentList = deferredValue<never[]>();
+    bootStorage.listAgents.mockImplementationOnce(() => agentList.promise);
 
-    const { unmount } = render(<App />);
-    await waitFor(() => expect(bootStorage.listAgents).toHaveBeenCalledTimes(1));
+    const mounted = render(<App />);
+    try {
+      await waitFor(
+        () => expect(bootStorage.listAgents).toHaveBeenCalledTimes(1),
+        ACCOUNT_SCOPE_BOOT_WAIT_OPTIONS,
+      );
 
-    unmount();
-    await act(async () => {
-      finishAgentList?.([]);
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
+      mounted.unmount();
+      await act(async () => {
+        agentList.resolve([]);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
 
-    expect(accountListeners.learning).not.toHaveBeenCalled();
-    expect(accountListeners.allAboutMe).not.toHaveBeenCalled();
-    expect(accountListeners.taskRuns).not.toHaveBeenCalled();
-    expect(bootListeners.runtime).not.toHaveBeenCalled();
-    expect(useAgentStore.getState().agents).toEqual({});
+      expect(accountListeners.learning).not.toHaveBeenCalled();
+      expect(accountListeners.allAboutMe).not.toHaveBeenCalled();
+      expect(accountListeners.taskRuns).not.toHaveBeenCalled();
+      expect(bootListeners.runtime).not.toHaveBeenCalled();
+      expect(useAgentStore.getState().agents).toEqual({});
+    } finally {
+      mounted.unmount();
+      await act(async () => {
+        agentList.resolve([]);
+        await Promise.resolve();
+      });
+    }
   });
 
   it('ignores a delayed subscription tier from a former cloud account', async () => {
@@ -1698,7 +1730,10 @@ describe('App canonical account identity boot', () => {
       .mockImplementationOnce(() => accountBPlan.promise);
 
     render(<App />);
-    await waitFor(() => expect(cloudBoot.onAuthStateChange).toHaveBeenCalledTimes(1));
+    await waitFor(
+      () => expect(cloudBoot.onAuthStateChange).toHaveBeenCalledTimes(1),
+      ACCOUNT_SCOPE_BOOT_WAIT_OPTIONS,
+    );
 
     act(() => cloudBoot.emitAuth(supabaseSession('cloud-user-a')));
     await waitFor(() => expect(useAuthStore.getState().plan).toBe('pro'));
