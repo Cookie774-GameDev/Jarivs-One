@@ -18,6 +18,16 @@
  */
 
 import { nanoid } from 'nanoid';
+import {
+  captureSyncQueueOwner,
+  cloudSyncQueueClaimKey,
+  cloudSyncQueueOwnerKey,
+  legacyCloudSyncQueueAuthorityKey,
+  materializeSyncQueueOwner,
+  ownersMayCoalesce,
+  parseSyncQueueOwner,
+  type SyncQueueOwnerSnapshot,
+} from '@/lib/cloudSyncQueueOwner';
 import type {
   AgentId,
   ChatId,
@@ -71,7 +81,7 @@ import {
   newWorkspaceId,
 } from '@/lib/ids';
 import { db } from './index';
-import type { Project, SettingsRow, StoreName, SyncOp, Workspace } from './schema';
+import type { Project, SettingsRow, StoreName, SyncOp, SyncQueueRow, Workspace } from './schema';
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -89,7 +99,11 @@ function sanitizeUpdate<T extends { id?: unknown; created_at?: unknown }>(
   return rest as Partial<T>;
 }
 
-async function requireRow<T>(loader: () => Promise<T | undefined>, table: string, id: string): Promise<T> {
+async function requireRow<T>(
+  loader: () => Promise<T | undefined>,
+  table: string,
+  id: string,
+): Promise<T> {
   const row = await loader();
   if (!row) throw new Error(`${table} ${id} not found`);
   return row;
@@ -115,6 +129,21 @@ const SYNCABLE_TABLES = new Set<StoreName>([
 
 const SYNC_ID_PREFIX = 'syq';
 
+export const SETTINGS_RESERVED_SYNC_METADATA_ERROR = 'SETTINGS_RESERVED_CLOUD_SYNC_METADATA_KEY';
+
+const RESERVED_SYNC_METADATA_KEY_FAMILIES = [
+  cloudSyncQueueClaimKey(''),
+  cloudSyncQueueOwnerKey(''),
+  legacyCloudSyncQueueAuthorityKey(''),
+] as const;
+
+function assertMutableSettingKey(key: string): void {
+  const reserved = RESERVED_SYNC_METADATA_KEY_FAMILIES.some(
+    (family) => key === family.slice(0, -1) || key.startsWith(family),
+  );
+  if (reserved) throw new Error(SETTINGS_RESERVED_SYNC_METADATA_ERROR);
+}
+
 function syncRowId(table: StoreName, row: unknown): string | null {
   if (!row || typeof row !== 'object') return null;
   const record = row as Record<string, unknown>;
@@ -131,55 +160,170 @@ function payloadForSync(table: StoreName, row: unknown): unknown {
   return payload;
 }
 
+function entityPayloadFreshness(payload: unknown): number | null {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+  const record = payload as Record<string, unknown>;
+  const value = record.updated_at ?? record.last_active_at;
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+type CoalescibleMutation = Readonly<{
+  op: SyncOp;
+  payload: unknown;
+  createdAt: number;
+  sourceId: string;
+  incoming: boolean;
+}>;
+
+function queueTime(value: number): number {
+  return Number.isFinite(value) ? value : Number.NEGATIVE_INFINITY;
+}
+
+function fresherMutation(
+  left: CoalescibleMutation,
+  right: CoalescibleMutation,
+): CoalescibleMutation {
+  const leftFreshness = entityPayloadFreshness(left.payload);
+  const rightFreshness = entityPayloadFreshness(right.payload);
+  if (leftFreshness !== null && rightFreshness !== null && leftFreshness !== rightFreshness) {
+    return leftFreshness > rightFreshness ? left : right;
+  }
+  const leftTime = queueTime(left.createdAt);
+  const rightTime = queueTime(right.createdAt);
+  if (leftTime !== rightTime) return leftTime > rightTime ? left : right;
+  if (left.incoming !== right.incoming) return left.incoming ? left : right;
+  return left.sourceId >= right.sourceId ? left : right;
+}
+
+function reduceCoalescibleMutations(
+  candidates: readonly SyncQueueRow[],
+  incomingOp: SyncOp,
+  incomingPayload: unknown,
+  incomingCreatedAt: number,
+): Readonly<{ op: SyncOp; payload: unknown }> {
+  const mutations: CoalescibleMutation[] = [
+    ...candidates.map((candidate) => ({
+      op: candidate.op,
+      payload: candidate.payload,
+      createdAt: candidate.created_at,
+      sourceId: candidate.id,
+      incoming: false,
+    })),
+    {
+      op: incomingOp,
+      payload: incomingPayload,
+      createdAt: incomingCreatedAt,
+      sourceId: '',
+      incoming: true,
+    },
+  ];
+  if (mutations.some((mutation) => mutation.op === 'delete')) {
+    return { op: 'delete', payload: null };
+  }
+  return {
+    op: mutations.some((mutation) => mutation.op === 'insert') ? 'insert' : 'update',
+    payload: mutations.reduce(fresherMutation).payload,
+  };
+}
+
+function laterPendingRow(left: SyncQueueRow, right: SyncQueueRow): SyncQueueRow {
+  const leftTime = queueTime(left.created_at);
+  const rightTime = queueTime(right.created_at);
+  if (leftTime !== rightTime) return leftTime > rightTime ? left : right;
+  return left.id >= right.id ? left : right;
+}
+
 async function enqueueLocalSync(
   op: SyncOp,
   table: StoreName,
   rowId: string,
   payload: unknown,
+  owner: SyncQueueOwnerSnapshot,
 ): Promise<void> {
   if (!SYNCABLE_TABLES.has(table)) return;
   try {
-    const pending = await db.sync_queue
-      .where('status')
-      .equals('pending')
-      .filter((row) => row.table === table && row.row_id === rowId)
-      .first();
     const ts = now();
-    if (pending) {
-      await db.sync_queue.update(pending.id, {
-        op: pending.op === 'insert' && op !== 'delete' ? 'insert' : op,
+    await db.transaction('rw', [db.sync_queue, db.settings], async () => {
+      const candidates = await db.sync_queue
+        .where('status')
+        .equals('pending')
+        .filter((row) => row.table === table && row.row_id === rowId)
+        .toArray();
+      const coalescible: (typeof candidates)[number][] = [];
+      for (const candidate of candidates) {
+        if (await db.settings.get(cloudSyncQueueClaimKey(candidate.id))) continue;
+        if (await db.settings.get(legacyCloudSyncQueueAuthorityKey(candidate.id))) continue;
+        const stored = await db.settings.get(cloudSyncQueueOwnerKey(candidate.id));
+        const candidateOwner = parseSyncQueueOwner(candidate.id, stored?.value);
+        if (candidateOwner && ownersMayCoalesce(candidateOwner, owner)) {
+          coalescible.push(candidate);
+        }
+      }
+      if (coalescible.length > 0) {
+        const survivor = coalescible.reduce(laterPendingRow);
+        const reduced = reduceCoalescibleMutations(coalescible, op, payload, ts);
+        await db.sync_queue.update(survivor.id, {
+          op: reduced.op,
+          payload: reduced.payload,
+          created_at: ts,
+          error: undefined,
+        });
+        for (const duplicate of coalescible) {
+          if (duplicate.id === survivor.id) continue;
+          await db.sync_queue.delete(duplicate.id);
+          await db.settings.delete(cloudSyncQueueOwnerKey(duplicate.id));
+        }
+        return;
+      }
+      const id = `${SYNC_ID_PREFIX}_${nanoid(16)}`;
+      await db.sync_queue.add({
+        id,
+        op,
+        table,
+        row_id: rowId,
         payload,
+        status: 'pending',
         created_at: ts,
-        error: undefined,
       });
-      return;
-    }
-    await db.sync_queue.add({
-      id: `${SYNC_ID_PREFIX}_${nanoid(16)}`,
-      op,
-      table,
-      row_id: rowId,
-      payload,
-      status: 'pending',
-      created_at: ts,
+      await db.settings.put({
+        key: cloudSyncQueueOwnerKey(id),
+        value: materializeSyncQueueOwner(id, owner),
+        updated_at: ts,
+      });
     });
   } catch (err) {
     console.warn('[sync] failed to enqueue local mutation', { table, rowId, op, err });
   }
 }
 
-async function syncInsert<T>(table: StoreName, row: T): Promise<void> {
+async function syncInsert<T>(
+  table: StoreName,
+  row: T,
+  owner: SyncQueueOwnerSnapshot,
+): Promise<void> {
   const rowId = syncRowId(table, row);
-  if (rowId) await enqueueLocalSync('insert', table, rowId, payloadForSync(table, row));
+  if (rowId) {
+    await enqueueLocalSync('insert', table, rowId, payloadForSync(table, row), owner);
+  }
 }
 
-async function syncUpdate<T>(table: StoreName, row: T): Promise<void> {
+async function syncUpdate<T>(
+  table: StoreName,
+  row: T,
+  owner: SyncQueueOwnerSnapshot,
+): Promise<void> {
   const rowId = syncRowId(table, row);
-  if (rowId) await enqueueLocalSync('update', table, rowId, payloadForSync(table, row));
+  if (rowId) {
+    await enqueueLocalSync('update', table, rowId, payloadForSync(table, row), owner);
+  }
 }
 
-async function syncDelete(table: StoreName, rowId: string): Promise<void> {
-  await enqueueLocalSync('delete', table, rowId, null);
+async function syncDelete(
+  table: StoreName,
+  rowId: string,
+  owner: SyncQueueOwnerSnapshot,
+): Promise<void> {
+  await enqueueLocalSync('delete', table, rowId, null, owner);
 }
 
 // ---------------------------------------------------------------------------
@@ -204,6 +348,7 @@ export const workspaceRepo = {
     return db.workspaces.orderBy('updated_at').reverse().toArray();
   },
   async create(input: WorkspaceCreateInput): Promise<Workspace> {
+    const syncOwner = captureSyncQueueOwner();
     const ts = now();
     const row: Workspace = {
       id: input.id ?? newWorkspaceId(),
@@ -213,18 +358,20 @@ export const workspaceRepo = {
       updated_at: ts,
     };
     await db.workspaces.add(row);
-    await syncInsert('workspaces', row);
+    await syncInsert('workspaces', row, syncOwner);
     return row;
   },
   async update(id: WorkspaceId, patch: Partial<Workspace>): Promise<Workspace> {
+    const syncOwner = captureSyncQueueOwner();
     await db.workspaces.update(id, { ...sanitizeUpdate(patch), updated_at: now() });
     const row = await requireRow(() => db.workspaces.get(id), 'workspace', id);
-    await syncUpdate('workspaces', row);
+    await syncUpdate('workspaces', row, syncOwner);
     return row;
   },
   async delete(id: WorkspaceId): Promise<void> {
+    const syncOwner = captureSyncQueueOwner();
     await db.workspaces.delete(id);
-    await syncDelete('workspaces', id);
+    await syncDelete('workspaces', id, syncOwner);
   },
 };
 
@@ -257,6 +404,7 @@ export const projectRepo = {
     return db.projects.where('workspace_id').equals(workspaceId).toArray();
   },
   async create(input: ProjectCreateInput): Promise<Project> {
+    const syncOwner = captureSyncQueueOwner();
     const ts = now();
     const row: Project = {
       id: input.id ?? newProjectId(),
@@ -267,18 +415,20 @@ export const projectRepo = {
       updated_at: ts,
     };
     await db.projects.add(row);
-    await syncInsert('projects', row);
+    await syncInsert('projects', row, syncOwner);
     return row;
   },
   async update(id: ProjectId, patch: Partial<Project>): Promise<Project> {
+    const syncOwner = captureSyncQueueOwner();
     await db.projects.update(id, { ...sanitizeUpdate(patch), updated_at: now() });
     const row = await requireRow(() => db.projects.get(id), 'project', id);
-    await syncUpdate('projects', row);
+    await syncUpdate('projects', row, syncOwner);
     return row;
   },
   async delete(id: ProjectId): Promise<void> {
+    const syncOwner = captureSyncQueueOwner();
     await db.projects.delete(id);
-    await syncDelete('projects', id);
+    await syncDelete('projects', id, syncOwner);
   },
 };
 
@@ -335,6 +485,7 @@ export const chatRepo = {
     return db.chats.where('project_id').equals(projectId).toArray();
   },
   async create(input: ChatCreateInput): Promise<Chat> {
+    const syncOwner = captureSyncQueueOwner();
     const ts = now();
     const row: Chat = {
       id: input.id ?? newChatId(),
@@ -351,23 +502,25 @@ export const chatRepo = {
       updated_at: ts,
     };
     await db.chats.add(row);
-    await syncInsert('chats', row);
+    await syncInsert('chats', row, syncOwner);
     return row;
   },
   async update(id: ChatId, patch: Partial<Chat>): Promise<Chat> {
+    const syncOwner = captureSyncQueueOwner();
     await db.chats.update(id, { ...sanitizeUpdate(patch), updated_at: now() });
     const row = await requireRow(() => db.chats.get(id), 'chat', id);
-    await syncUpdate('chats', row);
+    await syncUpdate('chats', row, syncOwner);
     return row;
   },
   async delete(id: ChatId): Promise<void> {
+    const syncOwner = captureSyncQueueOwner();
     const messages = await db.messages.where('chat_id').equals(id).toArray();
     await db.transaction('rw', db.chats, db.messages, async () => {
       await db.messages.where('chat_id').equals(id).delete();
       await db.chats.delete(id);
     });
-    await Promise.all(messages.map((message) => syncDelete('messages', message.id)));
-    await syncDelete('chats', id);
+    await Promise.all(messages.map((message) => syncDelete('messages', message.id, syncOwner)));
+    await syncDelete('chats', id, syncOwner);
   },
 };
 
@@ -405,7 +558,10 @@ export const messageRepo = {
     return rows;
   },
   async listByChat(chatId: ChatId): Promise<Message[]> {
-    return db.messages.where('[chat_id+created_at]').between([chatId, 0], [chatId, Infinity]).toArray();
+    return db.messages
+      .where('[chat_id+created_at]')
+      .between([chatId, 0], [chatId, Infinity])
+      .toArray();
   },
   async listChildren(parentId: MessageId): Promise<Message[]> {
     return db.messages.where('parent_id').equals(parentId).sortBy('created_at');
@@ -414,6 +570,7 @@ export const messageRepo = {
     return db.messages.where('chat_id').equals(chatId).count();
   },
   async create(input: MessageCreateInput): Promise<Message> {
+    const syncOwner = captureSyncQueueOwner();
     const ts = input.created_at ?? now();
     const row: Message = {
       id: input.id ?? newMessageId(),
@@ -429,20 +586,22 @@ export const messageRepo = {
     await db.messages.add(row);
     // Bump the parent chat's updated_at so chat lists reorder by recency.
     await db.chats.update(input.chat_id, { updated_at: ts });
+    await syncInsert('messages', row, syncOwner);
     const chat = await db.chats.get(input.chat_id);
-    await syncInsert('messages', row);
-    if (chat) await syncUpdate('chats', chat);
+    if (chat) await syncUpdate('chats', chat, syncOwner);
     return row;
   },
   async update(id: MessageId, patch: Partial<Message>): Promise<Message> {
+    const syncOwner = captureSyncQueueOwner();
     await db.messages.update(id, { ...sanitizeUpdate(patch), updated_at: now() });
     const row = await requireRow(() => db.messages.get(id), 'message', id);
-    await syncUpdate('messages', row);
+    await syncUpdate('messages', row, syncOwner);
     return row;
   },
   async delete(id: MessageId): Promise<void> {
+    const syncOwner = captureSyncQueueOwner();
     await db.messages.delete(id);
-    await syncDelete('messages', id);
+    await syncDelete('messages', id, syncOwner);
   },
 };
 
@@ -472,6 +631,7 @@ export const agentRepo = {
     return db.agents.toArray();
   },
   async create(input: AgentCreateInput): Promise<Agent> {
+    const syncOwner = captureSyncQueueOwner();
     const ts = now();
     const row: Agent = {
       ...input,
@@ -480,23 +640,25 @@ export const agentRepo = {
       updated_at: ts,
     } as Agent;
     await db.agents.add(row);
-    await syncInsert('agents', row);
+    await syncInsert('agents', row, syncOwner);
     return row;
   },
   async update(id: AgentId, patch: Partial<Agent>): Promise<Agent> {
+    const syncOwner = captureSyncQueueOwner();
     const existing = await requireRow(() => db.agents.get(id), 'agent', id);
     const row: Agent = { ...existing, ...sanitizeUpdate(patch), updated_at: now() };
     await db.agents.put(row);
-    await syncUpdate('agents', row);
+    await syncUpdate('agents', row, syncOwner);
     return row;
   },
   async delete(id: AgentId): Promise<void> {
+    const syncOwner = captureSyncQueueOwner();
     const existing = await db.agents.get(id);
     if (existing?.builtin) {
       throw new Error(`agent ${id} is built-in and cannot be deleted`);
     }
     await db.agents.delete(id);
-    await syncDelete('agents', id);
+    await syncDelete('agents', id, syncOwner);
   },
 };
 
@@ -520,6 +682,17 @@ export type TaskListFilter = {
 
 /** Statuses considered "open" - i.e. still actionable and not completed/cancelled. */
 const OPEN_STATUSES: TaskStatus[] = ['open', 'in_progress', 'blocked'];
+
+async function updateTaskWithOwner(
+  id: TaskId,
+  patch: Partial<Task>,
+  syncOwner: SyncQueueOwnerSnapshot,
+): Promise<Task> {
+  await db.tasks.update(id, { ...sanitizeUpdate(patch), updated_at: now() });
+  const row = await requireRow(() => db.tasks.get(id), 'task', id);
+  await syncUpdate('tasks', row, syncOwner);
+  return row;
+}
 
 /**
  * CRUD over the `tasks` table.
@@ -580,20 +753,24 @@ export const taskRepo = {
     return rows;
   },
   async listByStatus(workspaceId: WorkspaceId, status: TaskStatus): Promise<Task[]> {
-    return db.tasks
-      .where('[workspace_id+status]')
-      .equals([workspaceId, status])
-      .toArray();
+    return db.tasks.where('[workspace_id+status]').equals([workspaceId, status]).toArray();
   },
   async listDueBefore(workspaceId: WorkspaceId, ts: number): Promise<Task[]> {
     const rows = await db.tasks.where('workspace_id').equals(workspaceId).toArray();
     return rows.filter((t) => t.due_at !== undefined && t.due_at <= ts);
   },
-  async listScheduledBetween(workspaceId: WorkspaceId, fromTs: number, toTs: number): Promise<Task[]> {
+  async listScheduledBetween(
+    workspaceId: WorkspaceId,
+    fromTs: number,
+    toTs: number,
+  ): Promise<Task[]> {
     const rows = await db.tasks.where('workspace_id').equals(workspaceId).toArray();
-    return rows.filter((t) => t.scheduled_for !== undefined && t.scheduled_for >= fromTs && t.scheduled_for <= toTs);
+    return rows.filter(
+      (t) => t.scheduled_for !== undefined && t.scheduled_for >= fromTs && t.scheduled_for <= toTs,
+    );
   },
   async create(input: TaskCreateInput): Promise<Task> {
+    const syncOwner = captureSyncQueueOwner();
     const ts = now();
     const id = newTaskId();
     const reminders: Reminder[] = (input.reminders ?? []).map((r) => ({
@@ -634,18 +811,17 @@ export const taskRepo = {
       updated_at: ts,
     };
     await db.tasks.add(row);
-    await syncInsert('tasks', row);
+    await syncInsert('tasks', row, syncOwner);
     return row;
   },
   async update(id: TaskId, patch: Partial<Task>): Promise<Task> {
-    await db.tasks.update(id, { ...sanitizeUpdate(patch), updated_at: now() });
-    const row = await requireRow(() => db.tasks.get(id), 'task', id);
-    await syncUpdate('tasks', row);
-    return row;
+    const syncOwner = captureSyncQueueOwner();
+    return updateTaskWithOwner(id, patch, syncOwner);
   },
   async delete(id: TaskId): Promise<void> {
+    const syncOwner = captureSyncQueueOwner();
     await db.tasks.delete(id);
-    await syncDelete('tasks', id);
+    await syncDelete('tasks', id, syncOwner);
   },
 
   // ---------- Reminder helpers (live inside the task row) ----------
@@ -657,6 +833,7 @@ export const taskRepo = {
     taskId: TaskId,
     reminder: Omit<Reminder, 'id' | 'task_id' | 'snooze_history' | 'status'>,
   ): Promise<Task> {
+    const syncOwner = captureSyncQueueOwner();
     const task = await requireRow(() => db.tasks.get(taskId), 'task', taskId);
     const next: Reminder = {
       id: newReminderId(),
@@ -668,16 +845,28 @@ export const taskRepo = {
       snooze_history: [],
       status: 'scheduled',
     };
-    return taskRepo.update(taskId, { reminders: [...task.reminders, next] });
+    return updateTaskWithOwner(taskId, { reminders: [...task.reminders, next] }, syncOwner);
   },
-  async updateReminder(taskId: TaskId, reminderId: ReminderId, patch: Partial<Reminder>): Promise<Task> {
+  async updateReminder(
+    taskId: TaskId,
+    reminderId: ReminderId,
+    patch: Partial<Reminder>,
+  ): Promise<Task> {
+    const syncOwner = captureSyncQueueOwner();
     const task = await requireRow(() => db.tasks.get(taskId), 'task', taskId);
-    const reminders = task.reminders.map((r) => (r.id === reminderId ? { ...r, ...patch, id: r.id, task_id: r.task_id } : r));
-    return taskRepo.update(taskId, { reminders });
+    const reminders = task.reminders.map((r) =>
+      r.id === reminderId ? { ...r, ...patch, id: r.id, task_id: r.task_id } : r,
+    );
+    return updateTaskWithOwner(taskId, { reminders }, syncOwner);
   },
   async deleteReminder(taskId: TaskId, reminderId: ReminderId): Promise<Task> {
+    const syncOwner = captureSyncQueueOwner();
     const task = await requireRow(() => db.tasks.get(taskId), 'task', taskId);
-    return taskRepo.update(taskId, { reminders: task.reminders.filter((r) => r.id !== reminderId) });
+    return updateTaskWithOwner(
+      taskId,
+      { reminders: task.reminders.filter((r) => r.id !== reminderId) },
+      syncOwner,
+    );
   },
 };
 
@@ -728,23 +917,26 @@ export const memoryRepo = {
     if (filter?.tag) {
       rows = rows.filter((m) => m.tags.includes(filter.tag!));
     }
-    rows.sort((a, b) => (b.last_accessed_at ?? b.updated_at) - (a.last_accessed_at ?? a.updated_at));
+    rows.sort(
+      (a, b) => (b.last_accessed_at ?? b.updated_at) - (a.last_accessed_at ?? a.updated_at),
+    );
     if (filter?.limit) rows = rows.slice(0, filter.limit);
     return rows;
   },
   async listByWorkspace(workspaceId: WorkspaceId): Promise<MemoryItem[]> {
     return db.memory_items.where('workspace_id').equals(workspaceId).toArray();
   },
-  async listBySource(workspaceId: WorkspaceId, source: MemoryItem['source']): Promise<MemoryItem[]> {
-    return db.memory_items
-      .where('[workspace_id+source]')
-      .equals([workspaceId, source])
-      .toArray();
+  async listBySource(
+    workspaceId: WorkspaceId,
+    source: MemoryItem['source'],
+  ): Promise<MemoryItem[]> {
+    return db.memory_items.where('[workspace_id+source]').equals([workspaceId, source]).toArray();
   },
   async listByAgent(agentId: AgentId): Promise<MemoryItem[]> {
     return db.memory_items.where('agent_id').equals(agentId).toArray();
   },
   async create(input: MemoryCreateInput): Promise<MemoryItem> {
+    const syncOwner = captureSyncQueueOwner();
     const ts = now();
     const row: MemoryItem = {
       ...input,
@@ -753,30 +945,47 @@ export const memoryRepo = {
       updated_at: ts,
     } as MemoryItem;
     await db.memory_items.add(row);
-    await syncInsert('memory_items', row);
+    await syncInsert('memory_items', row, syncOwner);
     return row;
   },
   async update(id: string, patch: Partial<MemoryItem>): Promise<MemoryItem> {
+    const syncOwner = captureSyncQueueOwner();
     await db.memory_items.update(id, { ...sanitizeUpdate(patch), updated_at: now() });
     const row = await requireRow(() => db.memory_items.get(id), 'memory_item', id);
-    await syncUpdate('memory_items', row);
+    await syncUpdate('memory_items', row, syncOwner);
     return row;
   },
   async delete(id: string): Promise<void> {
+    const syncOwner = captureSyncQueueOwner();
     await db.memory_items.delete(id);
-    await syncDelete('memory_items', id);
+    await syncDelete('memory_items', id, syncOwner);
   },
   /** Stamp `last_accessed_at` to mark a memory item as recently used by retrieval. */
   async touchAccessed(id: string): Promise<void> {
+    const syncOwner = captureSyncQueueOwner();
     await db.memory_items.update(id, { last_accessed_at: now() });
     const row = await db.memory_items.get(id);
-    if (row) await syncUpdate('memory_items', row);
+    if (row) await syncUpdate('memory_items', row, syncOwner);
   },
 };
 
 // ---------------------------------------------------------------------------
 // Settings
 // ---------------------------------------------------------------------------
+
+async function createSettingWithOwner(
+  input: { key: string; value: unknown },
+  syncOwner: SyncQueueOwnerSnapshot,
+): Promise<SettingsRow> {
+  const row: SettingsRow = {
+    key: input.key,
+    value: input.value,
+    updated_at: now(),
+  };
+  await db.settings.put(row);
+  await syncUpdate('settings', row, syncOwner);
+  return row;
+}
 
 /**
  * Simple key/value store over the `settings` table.
@@ -798,16 +1007,20 @@ export const settingsRepo = {
     return db.settings.toArray();
   },
   async create(input: { key: string; value: unknown }): Promise<SettingsRow> {
-    const row: SettingsRow = { key: input.key, value: input.value, updated_at: now() };
-    await db.settings.put(row);
-    await syncUpdate('settings', row);
-    return row;
+    assertMutableSettingKey(input.key);
+    const syncOwner = captureSyncQueueOwner();
+    return createSettingWithOwner(input, syncOwner);
   },
   /** Upsert `value` at `key`. Idempotent. */
   async set(key: string, value: unknown): Promise<SettingsRow> {
-    return settingsRepo.create({ key, value });
+    assertMutableSettingKey(key);
+    const syncOwner = captureSyncQueueOwner();
+    return createSettingWithOwner({ key, value }, syncOwner);
   },
   async update(key: string, patch: Partial<SettingsRow>): Promise<SettingsRow> {
+    assertMutableSettingKey(key);
+    if (patch.key !== undefined) assertMutableSettingKey(patch.key);
+    const syncOwner = captureSyncQueueOwner();
     const existing = await db.settings.get(key);
     const next: SettingsRow = {
       key,
@@ -815,12 +1028,14 @@ export const settingsRepo = {
       updated_at: now(),
     };
     await db.settings.put(next);
-    await syncUpdate('settings', next);
+    await syncUpdate('settings', next, syncOwner);
     return next;
   },
   async delete(key: string): Promise<void> {
+    assertMutableSettingKey(key);
+    const syncOwner = captureSyncQueueOwner();
     await db.settings.delete(key);
-    await syncDelete('settings', key);
+    await syncDelete('settings', key, syncOwner);
   },
 };
 
@@ -839,7 +1054,10 @@ export type EventListFilter = {
   limit?: number;
 };
 
-export type EventCreateInput = Pick<EventRow, 'workspace_id' | 'title' | 'start_at' | 'end_at' | 'created_by'> &
+export type EventCreateInput = Pick<
+  EventRow,
+  'workspace_id' | 'title' | 'start_at' | 'end_at' | 'created_by'
+> &
   Partial<Omit<EventRow, 'id' | 'created_at' | 'updated_at'>> & {
     id?: EventId;
   };
@@ -873,7 +1091,12 @@ export const eventRepo = {
     if (filter?.workspace_id && filter.from_ms !== undefined && filter.to_ms !== undefined) {
       rows = await db.events
         .where('[workspace_id+start_at]')
-        .between([filter.workspace_id, filter.from_ms], [filter.workspace_id, filter.to_ms], true, false)
+        .between(
+          [filter.workspace_id, filter.from_ms],
+          [filter.workspace_id, filter.to_ms],
+          true,
+          false,
+        )
         .toArray();
     } else if (filter?.workspace_id) {
       rows = await db.events.where('workspace_id').equals(filter.workspace_id).toArray();
@@ -911,6 +1134,7 @@ export const eventRepo = {
       .slice(0, limit);
   },
   async create(input: EventCreateInput): Promise<EventRow> {
+    const syncOwner = captureSyncQueueOwner();
     const ts = now();
     const row: EventRow = {
       id: input.id ?? newEventId(),
@@ -935,18 +1159,20 @@ export const eventRepo = {
       updated_at: ts,
     };
     await db.events.add(row);
-    await syncInsert('events', row);
+    await syncInsert('events', row, syncOwner);
     return row;
   },
   async update(id: EventId, patch: Partial<EventRow>): Promise<EventRow> {
+    const syncOwner = captureSyncQueueOwner();
     await db.events.update(id, { ...sanitizeUpdate(patch), updated_at: now() });
     const row = await requireRow(() => db.events.get(id), 'event', id);
-    await syncUpdate('events', row);
+    await syncUpdate('events', row, syncOwner);
     return row;
   },
   async delete(id: EventId): Promise<void> {
+    const syncOwner = captureSyncQueueOwner();
     await db.events.delete(id);
-    await syncDelete('events', id);
+    await syncDelete('events', id, syncOwner);
   },
 };
 
@@ -981,6 +1207,7 @@ export const quickLinkGroupRepo = {
     return rows;
   },
   async create(input: QuickLinkGroupCreateInput): Promise<QuickLinkGroup> {
+    const syncOwner = captureSyncQueueOwner();
     const ts = now();
     const row: QuickLinkGroup = {
       id: input.id ?? newQuickLinkGroupId(),
@@ -992,18 +1219,22 @@ export const quickLinkGroupRepo = {
       updated_at: ts,
     };
     await db.quick_link_groups.add(row);
-    await syncInsert('quick_link_groups', row);
+    await syncInsert('quick_link_groups', row, syncOwner);
     return row;
   },
   async update(id: QuickLinkGroupId, patch: Partial<QuickLinkGroup>): Promise<QuickLinkGroup> {
+    const syncOwner = captureSyncQueueOwner();
     await db.quick_link_groups.update(id, { ...sanitizeUpdate(patch), updated_at: now() });
     const row = await requireRow(() => db.quick_link_groups.get(id), 'quick_link_group', id);
-    await syncUpdate('quick_link_groups', row);
+    await syncUpdate('quick_link_groups', row, syncOwner);
     return row;
   },
   async delete(id: QuickLinkGroupId): Promise<void> {
+    const syncOwner = captureSyncQueueOwner();
     // Detach links from the group rather than cascading. Keeps user data safe.
-    const affectedLinks = await db.quick_links.where('group_id').equals(id).toArray();
+    const affectedLinkIds = (await db.quick_links.where('group_id').equals(id).toArray()).map(
+      (link) => link.id,
+    );
     const ts = now();
     await db.transaction('rw', db.quick_link_groups, db.quick_links, async () => {
       await db.quick_links
@@ -1013,9 +1244,12 @@ export const quickLinkGroupRepo = {
       await db.quick_link_groups.delete(id);
     });
     await Promise.all(
-      affectedLinks.map((link) => syncUpdate('quick_links', { ...link, group_id: undefined, updated_at: ts })),
+      affectedLinkIds.map(async (linkId) => {
+        const link = await db.quick_links.get(linkId);
+        if (link) await syncUpdate('quick_links', link, syncOwner);
+      }),
     );
-    await syncDelete('quick_link_groups', id);
+    await syncDelete('quick_link_groups', id, syncOwner);
   },
 };
 
@@ -1035,7 +1269,10 @@ export const quickLinkRepo = {
     rows.sort((a, b) => a.position - b.position);
     return rows;
   },
-  async listByGroup(workspaceId: WorkspaceId, groupId: QuickLinkGroupId | undefined): Promise<QuickLink[]> {
+  async listByGroup(
+    workspaceId: WorkspaceId,
+    groupId: QuickLinkGroupId | undefined,
+  ): Promise<QuickLink[]> {
     const rows = await db.quick_links.where('workspace_id').equals(workspaceId).toArray();
     return rows
       .filter((l) => (groupId ? l.group_id === groupId : !l.group_id))
@@ -1049,6 +1286,7 @@ export const quickLinkRepo = {
       .sort((a, b) => (a.last_used_at ?? 0) - (b.last_used_at ?? 0));
   },
   async create(input: QuickLinkCreateInput): Promise<QuickLink> {
+    const syncOwner = captureSyncQueueOwner();
     const ts = now();
     const row: QuickLink = {
       id: input.id ?? newQuickLinkId(),
@@ -1069,23 +1307,26 @@ export const quickLinkRepo = {
       updated_at: ts,
     };
     await db.quick_links.add(row);
-    await syncInsert('quick_links', row);
+    await syncInsert('quick_links', row, syncOwner);
     return row;
   },
   async update(id: QuickLinkId, patch: Partial<QuickLink>): Promise<QuickLink> {
+    const syncOwner = captureSyncQueueOwner();
     await db.quick_links.update(id, { ...sanitizeUpdate(patch), updated_at: now() });
     const row = await requireRow(() => db.quick_links.get(id), 'quick_link', id);
-    await syncUpdate('quick_links', row);
+    await syncUpdate('quick_links', row, syncOwner);
     return row;
   },
   async delete(id: QuickLinkId): Promise<void> {
+    const syncOwner = captureSyncQueueOwner();
     await db.quick_links.delete(id);
-    await syncDelete('quick_links', id);
+    await syncDelete('quick_links', id, syncOwner);
   },
   async touchLastUsed(id: QuickLinkId): Promise<void> {
+    const syncOwner = captureSyncQueueOwner();
     await db.quick_links.update(id, { last_used_at: now() });
     const row = await db.quick_links.get(id);
-    if (row) await syncUpdate('quick_links', row);
+    if (row) await syncUpdate('quick_links', row, syncOwner);
   },
   /**
    * Re-order `dragId` to land just before `beforeId` (or at the end of the
@@ -1102,13 +1343,15 @@ export const quickLinkRepo = {
     beforeId: QuickLinkId | null,
     scope: QuickLink[],
   ): Promise<void> {
+    const syncOwner = captureSyncQueueOwner();
     if (dragId === beforeId) return;
     const ordered = scope.slice().sort((a, b) => a.position - b.position);
     const without = ordered.filter((l) => l.id !== dragId);
     const dragRow = ordered.find((l) => l.id === dragId);
     if (!dragRow) return;
 
-    const insertAt = beforeId === null ? without.length : without.findIndex((l) => l.id === beforeId);
+    const insertAt =
+      beforeId === null ? without.length : without.findIndex((l) => l.id === beforeId);
     if (beforeId !== null && insertAt === -1) return;
     without.splice(insertAt, 0, dragRow);
 
@@ -1124,7 +1367,7 @@ export const quickLinkRepo = {
     await Promise.all(
       without.map(async (link) => {
         const row = await db.quick_links.get(link.id);
-        if (row) await syncUpdate('quick_links', row);
+        if (row) await syncUpdate('quick_links', row, syncOwner);
       }),
     );
   },
@@ -1134,7 +1377,10 @@ export const quickLinkRepo = {
 // V2 — Terminals (presets, sessions, scrollback, layouts)
 // ===========================================================================
 
-export type TerminalPresetCreateInput = Pick<TerminalPreset, 'workspace_id' | 'name' | 'slug' | 'command'> &
+export type TerminalPresetCreateInput = Pick<
+  TerminalPreset,
+  'workspace_id' | 'name' | 'slug' | 'command'
+> &
   Partial<Omit<TerminalPreset, 'id' | 'created_at' | 'updated_at'>> & {
     id?: TerminalPresetId;
   };
@@ -1161,6 +1407,7 @@ export const terminalPresetRepo = {
     return db.terminal_presets.where('workspace_id').equals(workspaceId).toArray();
   },
   async create(input: TerminalPresetCreateInput): Promise<TerminalPreset> {
+    const syncOwner = captureSyncQueueOwner();
     const ts = now();
     const row: TerminalPreset = {
       id: input.id ?? newTerminalPresetId(),
@@ -1181,18 +1428,20 @@ export const terminalPresetRepo = {
       updated_at: ts,
     };
     await db.terminal_presets.add(row);
-    await syncInsert('terminal_presets', row);
+    await syncInsert('terminal_presets', row, syncOwner);
     return row;
   },
   async update(id: TerminalPresetId, patch: Partial<TerminalPreset>): Promise<TerminalPreset> {
+    const syncOwner = captureSyncQueueOwner();
     await db.terminal_presets.update(id, { ...sanitizeUpdate(patch), updated_at: now() });
     const row = await requireRow(() => db.terminal_presets.get(id), 'terminal_preset', id);
-    await syncUpdate('terminal_presets', row);
+    await syncUpdate('terminal_presets', row, syncOwner);
     return row;
   },
   async delete(id: TerminalPresetId): Promise<void> {
+    const syncOwner = captureSyncQueueOwner();
     await db.terminal_presets.delete(id);
-    await syncDelete('terminal_presets', id);
+    await syncDelete('terminal_presets', id, syncOwner);
   },
 };
 
@@ -1203,6 +1452,20 @@ export type TerminalSessionCreateInput = Pick<
   Partial<Omit<TerminalSession, 'id' | 'created_at' | 'last_active_at'>> & {
     id?: TerminalSessionId;
   };
+
+async function updateTerminalSessionWithOwner(
+  id: TerminalSessionId,
+  patch: Partial<TerminalSession>,
+  syncOwner: SyncQueueOwnerSnapshot,
+): Promise<TerminalSession> {
+  const sanitized: Partial<TerminalSession> = { ...patch };
+  delete (sanitized as { id?: unknown }).id;
+  delete (sanitized as { created_at?: unknown }).created_at;
+  await db.terminal_sessions.update(id, sanitized);
+  const row = await requireRow(() => db.terminal_sessions.get(id), 'terminal_session', id);
+  await syncUpdate('terminal_sessions', row, syncOwner);
+  return row;
+}
 
 /**
  * CRUD over the `terminal_sessions` table.
@@ -1238,6 +1501,7 @@ export const terminalSessionRepo = {
     return db.terminal_sessions.orderBy('last_active_at').reverse().limit(limit).toArray();
   },
   async create(input: TerminalSessionCreateInput): Promise<TerminalSession> {
+    const syncOwner = captureSyncQueueOwner();
     const ts = now();
     const row: TerminalSession = {
       id: input.id ?? newTerminalSessionId(),
@@ -1260,32 +1524,30 @@ export const terminalSessionRepo = {
       last_active_at: ts,
     };
     await db.terminal_sessions.add(row);
-    await syncInsert('terminal_sessions', row);
+    await syncInsert('terminal_sessions', row, syncOwner);
     return row;
   },
   async update(id: TerminalSessionId, patch: Partial<TerminalSession>): Promise<TerminalSession> {
-    const sanitized: Partial<TerminalSession> = { ...patch };
-    delete (sanitized as { id?: unknown }).id;
-    delete (sanitized as { created_at?: unknown }).created_at;
-    await db.terminal_sessions.update(id, sanitized);
-    const row = await requireRow(() => db.terminal_sessions.get(id), 'terminal_session', id);
-    await syncUpdate('terminal_sessions', row);
-    return row;
+    const syncOwner = captureSyncQueueOwner();
+    return updateTerminalSessionWithOwner(id, patch, syncOwner);
   },
   async touchActive(id: TerminalSessionId): Promise<void> {
+    const syncOwner = captureSyncQueueOwner();
     await db.terminal_sessions.update(id, { last_active_at: now() });
     const row = await db.terminal_sessions.get(id);
-    if (row) await syncUpdate('terminal_sessions', row);
+    if (row) await syncUpdate('terminal_sessions', row, syncOwner);
   },
   async markExited(id: TerminalSessionId, exitCode: number): Promise<TerminalSession> {
-    return terminalSessionRepo.update(id, { status: 'exited', exit_code: exitCode });
+    const syncOwner = captureSyncQueueOwner();
+    return updateTerminalSessionWithOwner(id, { status: 'exited', exit_code: exitCode }, syncOwner);
   },
   async delete(id: TerminalSessionId): Promise<void> {
+    const syncOwner = captureSyncQueueOwner();
     await db.transaction('rw', db.terminal_sessions, db.terminal_scrollback, async () => {
       await db.terminal_scrollback.where('session_id').equals(id).delete();
       await db.terminal_sessions.delete(id);
     });
-    await syncDelete('terminal_sessions', id);
+    await syncDelete('terminal_sessions', id, syncOwner);
   },
 };
 
@@ -1298,7 +1560,11 @@ export const terminalSessionRepo = {
  * 10KB/chunk). Older chunks are pruned on each append past the cap.
  */
 export const terminalScrollbackRepo = {
-  async append(sessionId: TerminalSessionId, data: string, cap = 5000): Promise<TerminalScrollbackChunk> {
+  async append(
+    sessionId: TerminalSessionId,
+    data: string,
+    cap = 5000,
+  ): Promise<TerminalScrollbackChunk> {
     const ts = now();
     const result = await db.transaction('rw', db.terminal_scrollback, async () => {
       // Find next sequence number for this session.
@@ -1328,7 +1594,10 @@ export const terminalScrollbackRepo = {
     });
     return result;
   },
-  async listBySession(sessionId: TerminalSessionId, limit?: number): Promise<TerminalScrollbackChunk[]> {
+  async listBySession(
+    sessionId: TerminalSessionId,
+    limit?: number,
+  ): Promise<TerminalScrollbackChunk[]> {
     const coll = db.terminal_scrollback.where('session_id').equals(sessionId);
     const rows = await coll.toArray();
     rows.sort((a, b) => a.chunk_seq - b.chunk_seq);
@@ -1358,22 +1627,29 @@ export const terminalLayoutRepo = {
     return db.terminal_layouts.get(projectId);
   },
   async upsert(layout: Omit<TerminalLayout, 'updated_at'>): Promise<TerminalLayout> {
+    const syncOwner = captureSyncQueueOwner();
     const next: TerminalLayout = { ...layout, updated_at: now() };
     await db.terminal_layouts.put(next);
-    await syncUpdate('terminal_layouts', next);
+    await syncUpdate('terminal_layouts', next, syncOwner);
     return next;
   },
   async update(projectId: ProjectId, patch: Partial<TerminalLayout>): Promise<TerminalLayout> {
+    const syncOwner = captureSyncQueueOwner();
     const sanitized: Partial<TerminalLayout> = { ...patch };
     delete (sanitized as { project_id?: unknown }).project_id;
     await db.terminal_layouts.update(projectId, { ...sanitized, updated_at: now() });
-    const row = await requireRow(() => db.terminal_layouts.get(projectId), 'terminal_layout', projectId);
-    await syncUpdate('terminal_layouts', row);
+    const row = await requireRow(
+      () => db.terminal_layouts.get(projectId),
+      'terminal_layout',
+      projectId,
+    );
+    await syncUpdate('terminal_layouts', row, syncOwner);
     return row;
   },
   async delete(projectId: ProjectId): Promise<void> {
+    const syncOwner = captureSyncQueueOwner();
     await db.terminal_layouts.delete(projectId);
-    await syncDelete('terminal_layouts', projectId);
+    await syncDelete('terminal_layouts', projectId, syncOwner);
   },
 };
 
@@ -1405,6 +1681,7 @@ export const integrationRepo = {
     return db.integrations.toArray();
   },
   async upsert(input: IntegrationCreateInput): Promise<Integration> {
+    const syncOwner = captureSyncQueueOwner();
     const ts = now();
     const existing = await integrationRepo.getByKind(input.kind);
     if (existing) {
@@ -1413,8 +1690,12 @@ export const integrationRepo = {
       delete (sanitized as { created_at?: unknown }).created_at;
       delete (sanitized as { kind?: unknown }).kind;
       await db.integrations.update(existing.id, { ...sanitized, updated_at: ts });
-      const row = await requireRow(() => db.integrations.get(existing.id), 'integration', existing.id);
-      await syncUpdate('integrations', row);
+      const row = await requireRow(
+        () => db.integrations.get(existing.id),
+        'integration',
+        existing.id,
+      );
+      await syncUpdate('integrations', row, syncOwner);
       return row;
     }
     const row: Integration = {
@@ -1431,17 +1712,19 @@ export const integrationRepo = {
       updated_at: ts,
     };
     await db.integrations.add(row);
-    await syncInsert('integrations', row);
+    await syncInsert('integrations', row, syncOwner);
     return row;
   },
   async update(id: IntegrationId, patch: Partial<Integration>): Promise<Integration> {
+    const syncOwner = captureSyncQueueOwner();
     await db.integrations.update(id, { ...sanitizeUpdate(patch), updated_at: now() });
     const row = await requireRow(() => db.integrations.get(id), 'integration', id);
-    await syncUpdate('integrations', row);
+    await syncUpdate('integrations', row, syncOwner);
     return row;
   },
   async delete(id: IntegrationId): Promise<void> {
+    const syncOwner = captureSyncQueueOwner();
     await db.integrations.delete(id);
-    await syncDelete('integrations', id);
+    await syncDelete('integrations', id, syncOwner);
   },
 };

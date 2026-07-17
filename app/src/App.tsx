@@ -61,6 +61,11 @@ import { useJarvisTaskRunStore } from '@/features/jarvis-runs/taskRunStore';
 import { messageRepo, agentRepo, chatRepo, openDb, db } from '@/lib/db';
 import { useAuthStore } from '@/stores/auth';
 import { resolveAccountIdentity } from '@/lib/accountIdentity';
+import {
+  activateSyncQueueCloudAuthority,
+  releaseSyncQueueCloudAuthority,
+  type SyncQueueCloudAuthorityLease,
+} from '@/lib/cloudSyncQueueOwner';
 import { getDefaultAgents } from '@/features/agents';
 import { ensureActiveChat, branchChatFromMessage } from '@/features/chat/chatLifecycle';
 import type { ChatId, MessageId } from '@/types/common';
@@ -85,6 +90,7 @@ type SupabaseSessionLike = {
 } | null;
 
 let accountScopeTeardownBarrier: Promise<void> = Promise.resolve();
+let cloudSyncTeardownBarrier: Promise<void> = Promise.resolve();
 
 function cloudSessionUserId(session: SupabaseSessionLike): string {
   return session?.user?.id?.trim() ?? '';
@@ -149,27 +155,37 @@ const CelebrationHost = React.lazy(() =>
   import('@/features/celebrate').then((m) => ({ default: m.CelebrationHost })),
 );
 
+let cloudPlanSyncGeneration = 0;
+
 function applyCloudSession(session: SupabaseSessionLike): void {
+  const requestGeneration = ++cloudPlanSyncGeneration;
+  const store = useAuthStore.getState();
   if (session === null) {
-    useAuthStore.getState().setCloudSession(null);
+    useAuthStore.setState({ cloudSession: null, plan: 'free' });
     return;
   }
   const userId = cloudSessionUserId(session);
-  useAuthStore.getState().setCloudSession({
-    user_id: userId,
-    email: session.user?.email ?? '',
-    expires_at: session.expires_at ?? 0,
+  const previousUserId = store.cloudSession?.user_id.trim() ?? '';
+  const resetPlan = !userId || previousUserId !== userId;
+  useAuthStore.setState({
+    cloudSession: {
+      user_id: userId,
+      email: session.user?.email ?? '',
+      expires_at: session.expires_at ?? 0,
+    },
+    ...(resetPlan ? { plan: 'free' as const } : {}),
   });
   if (!userId) return;
-  void syncPlanFromProfile(userId);
+  void syncPlanFromProfile(userId, requestGeneration);
 }
 
 /**
  * Pull the server-managed subscription tier into the local auth store so the
  * Plans/Account UI reflects Stripe state after sign-in and app restarts.
- * Fire-and-forget: failures leave the locally persisted plan untouched.
+ * Fire-and-forget: a new authority starts at the fail-closed free tier, and
+ * only the latest request for the still-active exact account may replace it.
  */
-async function syncPlanFromProfile(userId: string): Promise<void> {
+async function syncPlanFromProfile(userId: string, requestGeneration: number): Promise<void> {
   try {
     const { getSupabaseClient } = await import('@/lib/supabase/client');
     const supa = getSupabaseClient();
@@ -184,6 +200,12 @@ async function syncPlanFromProfile(userId: string): Promise<void> {
     const SYNCED_TIERS = new Set(['free', 'starter', 'pro', 'ultra', 'apex']);
     if (SYNCED_TIERS.has(tier)) {
       const store = useAuthStore.getState();
+      if (
+        requestGeneration !== cloudPlanSyncGeneration ||
+        store.cloudSession?.user_id.trim() !== userId
+      ) {
+        return;
+      }
       if (store.plan !== tier) store.setPlan(tier as import('@/lib/entitlements').PlanId);
     }
   } catch (err) {
@@ -276,8 +298,15 @@ function useBoot() {
     let stopTerminalScheduler: (() => void) | undefined;
     let stopJarvisScheduleRunner: (() => void) | undefined;
     let stopClockEngine: (() => void) | undefined;
-    let stopSyncLoop: (() => void) | undefined;
-    let activeCloudSyncUserId = '';
+    type CloudSyncAuthorityLifecycle = {
+      userId: string;
+      generation: number;
+      controller: AbortController;
+      startup: Promise<void>;
+      stopLoop?: () => Promise<void>;
+    };
+    let activeCloudSyncAuthority: CloudSyncAuthorityLifecycle | undefined;
+    let enqueueCloudAuthorityLease: SyncQueueCloudAuthorityLease | undefined;
     let stopCloudAuth: (() => void) | undefined;
     let stopAccountSubscription: (() => void) | undefined;
     let activeAccountIdentity: ReturnType<typeof resolveAccountIdentity> = null;
@@ -291,6 +320,8 @@ function useBoot() {
     let accountTransition = accountScopeTeardownBarrier;
     let cancelled = false;
     const errors: string[] = [];
+
+    quarantineAccountScopedState();
 
     function addError(label: string, err: unknown): void {
       const msg = err instanceof Error ? err.message : String(err);
@@ -317,11 +348,46 @@ function useBoot() {
       return left?.accountId === right?.accountId && left?.source === right?.source;
     }
 
-    function stopActiveCloudSyncLoop(): void {
-      const stop = stopSyncLoop;
-      stopSyncLoop = undefined;
-      activeCloudSyncUserId = '';
-      stop?.();
+    function releaseEnqueueCloudAuthority(expectedUserId?: string): void {
+      const lease = enqueueCloudAuthorityLease;
+      if (!lease || (expectedUserId && lease.userId !== expectedUserId)) return;
+      enqueueCloudAuthorityLease = undefined;
+      releaseSyncQueueCloudAuthority(lease);
+    }
+
+    function publishVerifiedEnqueueCloudAuthority(session: SupabaseSessionLike): void {
+      const userId = cloudSessionUserId(session);
+      if (enqueueCloudAuthorityLease?.userId === userId && userId) return;
+      releaseEnqueueCloudAuthority();
+      if (userId) {
+        enqueueCloudAuthorityLease = activateSyncQueueCloudAuthority(userId);
+      }
+    }
+
+    function revokeEnqueueAuthorityOnStoreDivergence(): void {
+      const lease = enqueueCloudAuthorityLease;
+      if (!lease) return;
+      const storedUserId = useAuthStore.getState().cloudSession?.user_id.trim() ?? '';
+      if (storedUserId !== lease.userId) {
+        releaseEnqueueCloudAuthority(lease.userId);
+      }
+    }
+
+    function stopActiveCloudSyncLoop(): Promise<void> {
+      const authority = activeCloudSyncAuthority;
+      activeCloudSyncAuthority = undefined;
+      if (!authority) return cloudSyncTeardownBarrier;
+
+      authority.controller.abort();
+      const loopSettlement = authority.stopLoop?.() ?? Promise.resolve();
+      const authoritySettlement = Promise.allSettled([authority.startup, loopSettlement]).then(
+        () => undefined,
+      );
+      const priorSettlement = cloudSyncTeardownBarrier;
+      cloudSyncTeardownBarrier = Promise.allSettled([priorSettlement, authoritySettlement]).then(
+        () => undefined,
+      );
+      return cloudSyncTeardownBarrier;
     }
 
     function quarantineAccountScopedState(): void {
@@ -436,6 +502,11 @@ function useBoot() {
         .catch((error) => addError('account scope transition', error));
     }
 
+    stopAccountSubscription = useAuthStore.subscribe(() => {
+      revokeEnqueueAuthorityOnStoreDivergence();
+      syncAccountScopedListeners();
+    });
+
     (async () => {
       // Phase 1: storage & keys
       try {
@@ -467,6 +538,7 @@ function useBoot() {
         );
         if (cancelled) return;
         if (!isSupabaseConfigured()) {
+          publishVerifiedEnqueueCloudAuthority(null);
           applyCloudSession(null);
           accountIdentityReady = true;
         } else {
@@ -479,26 +551,32 @@ function useBoot() {
             const [{ getSupabaseClient }, { pruneSyncQueue, retrySyncErrors, startSyncLoop }] =
               supabaseModules;
             const supa = getSupabaseClient();
-            const isCloudSyncAuthorityCurrent = (userId: string, generation: number) =>
+            const isCloudSyncAuthorityCurrent = (authority: CloudSyncAuthorityLifecycle) =>
               !cancelled &&
-              generation === cloudAuthGeneration &&
-              useAuthStore.getState().cloudSession?.user_id.trim() === userId;
+              activeCloudSyncAuthority === authority &&
+              !authority.controller.signal.aborted &&
+              authority.generation === cloudAuthGeneration &&
+              useAuthStore.getState().cloudSession?.user_id.trim() === authority.userId;
             const startCloudSyncForAuthority = async (
-              userId: string,
-              generation: number,
+              authority: CloudSyncAuthorityLifecycle,
+              priorSettlement: Promise<void>,
             ): Promise<void> => {
-              await retrySyncErrors().catch((err) =>
+              await priorSettlement;
+              if (!isCloudSyncAuthorityCurrent(authority)) return;
+              const syncAuthority = {
+                userId: authority.userId,
+                signal: authority.controller.signal,
+              };
+              await retrySyncErrors(syncAuthority).catch((err) =>
                 console.warn('[sync] retrySyncErrors failed:', err),
               );
-              if (!isCloudSyncAuthorityCurrent(userId, generation)) return;
-              await pruneSyncQueue().catch((err) => console.warn('[sync] prune failed:', err));
-              if (!isCloudSyncAuthorityCurrent(userId, generation)) return;
-              if (stopSyncLoop && activeCloudSyncUserId === userId) return;
-              stopActiveCloudSyncLoop();
-              if (!isCloudSyncAuthorityCurrent(userId, generation)) return;
+              if (!isCloudSyncAuthorityCurrent(authority)) return;
+              await pruneSyncQueue(syncAuthority).catch((err) =>
+                console.warn('[sync] prune failed:', err),
+              );
+              if (!isCloudSyncAuthorityCurrent(authority)) return;
               try {
-                stopSyncLoop = startSyncLoop();
-                activeCloudSyncUserId = userId;
+                authority.stopLoop = startSyncLoop(syncAuthority);
               } catch (err) {
                 console.warn('[sync] loop startup failed:', err);
               }
@@ -509,12 +587,32 @@ function useBoot() {
             ): void => {
               const userId = cloudSessionUserId(session);
               if (!userId) {
-                stopActiveCloudSyncLoop();
+                void stopActiveCloudSyncLoop();
                 return;
               }
-              if (stopSyncLoop && activeCloudSyncUserId === userId) return;
-              stopActiveCloudSyncLoop();
-              void startCloudSyncForAuthority(userId, generation);
+              const current = activeCloudSyncAuthority;
+              if (current && current.userId === userId && !current.controller.signal.aborted) {
+                current.generation = generation;
+                return;
+              }
+
+              const priorSettlement = stopActiveCloudSyncLoop();
+              const authority: CloudSyncAuthorityLifecycle = {
+                userId,
+                generation,
+                controller: new AbortController(),
+                startup: Promise.resolve(),
+              };
+              activeCloudSyncAuthority = authority;
+              authority.startup = startCloudSyncForAuthority(authority, priorSettlement).catch(
+                (err) => {
+                  if (activeCloudSyncAuthority === authority) {
+                    activeCloudSyncAuthority = undefined;
+                    releaseEnqueueCloudAuthority(authority.userId);
+                  }
+                  console.warn('[sync] authority startup failed:', err);
+                },
+              );
             };
             if (supa) {
               const sessionGeneration = ++cloudAuthGeneration;
@@ -522,6 +620,7 @@ function useBoot() {
                 .getSession()
                 .then(({ data }) => {
                   if (cancelled || sessionGeneration !== cloudAuthGeneration) return;
+                  publishVerifiedEnqueueCloudAuthority(data.session as SupabaseSessionLike);
                   applyCloudSession(data.session as SupabaseSessionLike);
                   accountIdentityReady = true;
                   syncAccountScopedListeners();
@@ -542,12 +641,15 @@ function useBoot() {
                 })
                 .catch((error) => {
                   if (cancelled || sessionGeneration !== cloudAuthGeneration) return;
+                  releaseEnqueueCloudAuthority();
+                  applyCloudSession(null);
                   console.warn('[auth] initial Supabase session unavailable:', error);
                   syncAccountScopedListeners();
                 });
               const sub = supa.auth.onAuthStateChange((_event, session) => {
                 if (cancelled) return;
                 cloudAuthGeneration += 1;
+                publishVerifiedEnqueueCloudAuthority(session as SupabaseSessionLike);
                 applyCloudSession(session as SupabaseSessionLike);
                 accountIdentityReady = true;
                 syncAccountScopedListeners();
@@ -558,10 +660,18 @@ function useBoot() {
                 }
               });
               stopCloudAuth = () => sub.data.subscription.unsubscribe();
+            } else {
+              releaseEnqueueCloudAuthority();
+              applyCloudSession(null);
             }
+          } else if (!cancelled) {
+            releaseEnqueueCloudAuthority();
+            applyCloudSession(null);
           }
         }
       } catch {
+        releaseEnqueueCloudAuthority();
+        applyCloudSession(null);
         /* Supabase unavailable, app works offline */
       }
 
@@ -585,10 +695,7 @@ function useBoot() {
         accountListenersBootReady = false;
         return;
       }
-      stopAccountSubscription = useAuthStore.subscribe(() => syncAccountScopedListeners());
       if (cancelled) {
-        stopAccountSubscription();
-        stopAccountSubscription = undefined;
         accountListenersBootReady = false;
         return;
       }
@@ -669,9 +776,11 @@ function useBoot() {
 
     return () => {
       cancelled = true;
+      releaseEnqueueCloudAuthority();
       accountListenersBootReady = false;
       accountTransitionRequest += 1;
       cloudAuthGeneration += 1;
+      cloudPlanSyncGeneration += 1;
       accountRecoveryController?.abort();
       stopRuntime?.();
       stopLocalResponse?.();
@@ -686,7 +795,7 @@ function useBoot() {
       stopTerminalScheduler?.();
       stopJarvisScheduleRunner?.();
       stopClockEngine?.();
-      stopActiveCloudSyncLoop();
+      void stopActiveCloudSyncLoop();
       stopCloudAuth?.();
     };
     // Run once - boot is one-shot.
@@ -1141,6 +1250,23 @@ function WorkspaceRoot() {
  */
 export function App() {
   const view = new URLSearchParams(window.location.search).get('view');
+  const auxiliaryView = view === 'dictation' || view === 'pet-overlay' || view === 'pet-mini-panel';
+  const cloudBootQuarantineStarted = React.useRef(false);
+  const [cloudBootQuarantined, setCloudBootQuarantined] = React.useState(false);
+
+  React.useLayoutEffect(() => {
+    if (auxiliaryView || cloudBootQuarantineStarted.current) return;
+    cloudBootQuarantineStarted.current = true;
+    // Persisted cloud identity and billing state are recovery hints, not
+    // authority. Hide them before AuthGate or any boot listener can observe
+    // the first main-window render; Supabase may restore them after verification.
+    applyCloudSession(null);
+    React.startTransition(() => setCloudBootQuarantined(true));
+  }, [auxiliaryView]);
+
+  // Commit the fail-closed store state before mounting any child that can
+  // subscribe to account identity or plan entitlements.
+  if (!auxiliaryView && !cloudBootQuarantined) return null;
 
   if (view === 'dictation') {
     return (

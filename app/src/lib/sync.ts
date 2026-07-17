@@ -4,9 +4,9 @@
  * Cloud sync is optional. When a Supabase client is configured and signed
  * in, the loop drains the local `sync_queue` table and pushes mutations to
  * Postgres.
- * When no client is configured the loop is effectively a no-op - the queue
- * still grows so that flipping cloud sync on later flushes accumulated
- * changes.
+ * When no verified cloud authority exists, mutations are retained with
+ * explicit local/unbound ownership. They remain local-only unless a future
+ * user-authorized migration can prove which account should receive them.
  *
  * The cloud target is `app_sync_records`, a generic per-user document table.
  * That keeps desktop local-first data safe even while the hosted Supabase
@@ -15,11 +15,32 @@
 
 import { nanoid } from 'nanoid';
 import { db, openDb } from './db';
-import type { StoreName, SyncOp, SyncQueueRow, SyncStatus } from './db';
+import type { SettingsRow, StoreName, SyncOp, SyncQueueRow, SyncStatus } from './db';
+import { runSignalBoundWrite } from './db/signalBoundTransaction';
 import { getSupabaseClient, isCloudSyncConfigured } from './supabase';
+import {
+  CLOUD_SYNC_QUEUE_CLAIM_STALE_AFTER_MS,
+  CLOUD_SYNC_QUEUE_QUARANTINE_ERROR,
+  captureSyncQueueOwner,
+  cloudSyncQueueClaimKey,
+  cloudSyncQueueOwnerKey,
+  isExactCloudOwner,
+  legacyCloudSyncQueueAuthorityKey,
+  materializeLegacyUnknownSyncQueueOwner,
+  materializeSyncQueueClaim,
+  materializeSyncQueueOwner,
+  parseSyncQueueClaim,
+  parseSyncQueueOwner,
+  type CloudSyncQueueOwnerRecordV2,
+  type LegacySyncQueueOwnerReason,
+  type SyncQueueClaimRecordV1,
+  type SyncQueueOwnerSnapshot,
+} from './cloudSyncQueueOwner';
 
 const SYNC_ID_PREFIX = 'syq';
 const newSyncId = (): string => `${SYNC_ID_PREFIX}_${nanoid(16)}`;
+const SYNC_CLAIM_ID_PREFIX = 'syc';
+const newSyncClaimId = (): string => `${SYNC_CLAIM_ID_PREFIX}_${nanoid(16)}`;
 const CLOUD_SYNC_RECORDS_TABLE = 'app_sync_records';
 const CLOUD_SYNC_CONFLICT_TARGET = 'user_id,table_name,row_id';
 const CUSTOM_TOOLS_SYNC_TABLE = 'custom_tools';
@@ -27,6 +48,318 @@ const PLUGIN_CONNECTIONS_SYNC_TABLE = 'plugin_connections';
 const PULL_CURSOR_KEY_PREFIX = 'cloud_sync:last_pull_at';
 let syncFlushInFlight = false;
 let syncPullInFlight = false;
+const QUEUE_AND_OWNER_TABLES = [db.sync_queue, db.settings] as const;
+
+export type CloudSyncAuthority = Readonly<{
+  userId: string;
+  signal: AbortSignal;
+}>;
+
+export type StopCloudSyncLoop = () => Promise<void>;
+
+function normalizedAuthorityUserId(userId: unknown): string {
+  return typeof userId === 'string' ? userId.trim() : '';
+}
+
+function requireCloudSyncAuthority(authority: CloudSyncAuthority): string {
+  const userId = normalizedAuthorityUserId(authority.userId);
+  if (!userId || userId !== authority.userId) {
+    throw new Error('Cloud sync authority requires an exact normalized user ID.');
+  }
+  return userId;
+}
+
+type AbortAwareResult<T> = Readonly<{ kind: 'value'; value: T }> | Readonly<{ kind: 'cancelled' }>;
+
+function awaitUnlessAborted<T>(
+  operation: PromiseLike<T>,
+  signal: AbortSignal,
+): Promise<AbortAwareResult<T>> {
+  if (signal.aborted) return Promise.resolve({ kind: 'cancelled' });
+  return new Promise<AbortAwareResult<T>>((resolve, reject) => {
+    let settled = false;
+    const finish = (result: AbortAwareResult<T>) => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener('abort', cancel);
+      resolve(result);
+    };
+    const cancel = () => finish({ kind: 'cancelled' });
+    signal.addEventListener('abort', cancel, { once: true });
+    Promise.resolve(operation).then(
+      (value) => finish({ kind: 'value', value }),
+      (error) => {
+        if (settled) return;
+        settled = true;
+        signal.removeEventListener('abort', cancel);
+        reject(error);
+      },
+    );
+  });
+}
+
+async function sessionMatchesAuthority(
+  authority: CloudSyncAuthority,
+  client: NonNullable<ReturnType<typeof getSupabaseClient>>,
+): Promise<boolean> {
+  if (authority.signal.aborted) return false;
+  const session = await awaitUnlessAborted(client.auth.getSession(), authority.signal);
+  if (session.kind === 'cancelled') return false;
+  return normalizedAuthorityUserId(session.value.data.session?.user?.id) === authority.userId;
+}
+
+type ClaimedSyncQueueRow = Readonly<{
+  row: SyncQueueRow;
+  owner: CloudSyncQueueOwnerRecordV2;
+  claim: SyncQueueClaimRecordV1;
+}>;
+
+function legacyOwnerReason(hasV2Record: boolean, hasV1Record: boolean): LegacySyncQueueOwnerReason {
+  if (hasV2Record) return 'malformed_v2_owner';
+  if (hasV1Record) return 'v1_drain_claim_only';
+  return 'missing_v2_owner';
+}
+
+async function quarantineLegacyActiveSyncRows(authority: CloudSyncAuthority): Promise<boolean> {
+  const result = await runSignalBoundWrite(
+    db,
+    authority.signal,
+    QUEUE_AND_OWNER_TABLES,
+    async (transaction) => {
+      const queue = transaction.table<SyncQueueRow, string>('sync_queue');
+      const settings = transaction.table<SettingsRow, string>('settings');
+      const activeRows = await queue
+        .where('status')
+        .anyOf(['pending', 'error', 'in_progress'] satisfies SyncStatus[])
+        .toArray();
+
+      for (const row of activeRows) {
+        const ownerKey = cloudSyncQueueOwnerKey(row.id);
+        const stored = await settings.get(ownerKey);
+        const storedClaim = await settings.get(cloudSyncQueueClaimKey(row.id));
+        if (row.status !== 'in_progress' && storedClaim) {
+          const quarantinedAt = Date.now();
+          await settings.put({
+            key: ownerKey,
+            value: materializeLegacyUnknownSyncQueueOwner(
+              row.id,
+              'malformed_v2_owner',
+              quarantinedAt,
+            ),
+            updated_at: quarantinedAt,
+          });
+          await queue.update(row.id, {
+            status: 'error' as SyncStatus,
+            error: CLOUD_SYNC_QUEUE_QUARANTINE_ERROR,
+          });
+          continue;
+        }
+        if (parseSyncQueueOwner(row.id, stored?.value)) continue;
+        const legacyStored = await settings.get(legacyCloudSyncQueueAuthorityKey(row.id));
+        const quarantinedAt = Date.now();
+        await settings.put({
+          key: ownerKey,
+          value: materializeLegacyUnknownSyncQueueOwner(
+            row.id,
+            legacyOwnerReason(Boolean(stored), Boolean(legacyStored)),
+            quarantinedAt,
+          ),
+          updated_at: quarantinedAt,
+        });
+        await queue.update(row.id, {
+          status: 'error' as SyncStatus,
+          error: CLOUD_SYNC_QUEUE_QUARANTINE_ERROR,
+        });
+      }
+    },
+  );
+  return result.kind === 'committed';
+}
+
+async function claimExactPendingQueueRow(
+  rowId: string,
+  authority: CloudSyncAuthority,
+): Promise<ClaimedSyncQueueRow | null> {
+  const result = await runSignalBoundWrite(
+    db,
+    authority.signal,
+    QUEUE_AND_OWNER_TABLES,
+    async (transaction) => {
+      const queue = transaction.table<SyncQueueRow, string>('sync_queue');
+      const settings = transaction.table<SettingsRow, string>('settings');
+      const row = await queue.get(rowId);
+      if (row?.status !== 'pending') return null;
+
+      const ownerKey = cloudSyncQueueOwnerKey(rowId);
+      const stored = await settings.get(ownerKey);
+      const owner = parseSyncQueueOwner(rowId, stored?.value);
+      if (!owner) {
+        const legacyStored = await settings.get(legacyCloudSyncQueueAuthorityKey(rowId));
+        const quarantinedAt = Date.now();
+        await settings.put({
+          key: ownerKey,
+          value: materializeLegacyUnknownSyncQueueOwner(
+            rowId,
+            legacyOwnerReason(Boolean(stored), Boolean(legacyStored)),
+            quarantinedAt,
+          ),
+          updated_at: quarantinedAt,
+        });
+        await queue.update(rowId, {
+          status: 'error' as SyncStatus,
+          error: CLOUD_SYNC_QUEUE_QUARANTINE_ERROR,
+        });
+        return null;
+      }
+      if (!isExactCloudOwner(owner, authority.userId)) return null;
+
+      const claimKey = cloudSyncQueueClaimKey(rowId);
+      if (await settings.get(claimKey)) {
+        const quarantinedAt = Date.now();
+        await settings.put({
+          key: ownerKey,
+          value: materializeLegacyUnknownSyncQueueOwner(rowId, 'malformed_v2_owner', quarantinedAt),
+          updated_at: quarantinedAt,
+        });
+        await queue.update(rowId, {
+          status: 'error' as SyncStatus,
+          error: CLOUD_SYNC_QUEUE_QUARANTINE_ERROR,
+        });
+        return null;
+      }
+
+      const claimedAt = Date.now();
+      const claim = materializeSyncQueueClaim(rowId, owner, claimedAt, newSyncClaimId());
+      await queue.update(rowId, {
+        status: 'in_progress' as SyncStatus,
+        attempted_at: claimedAt,
+        error: undefined,
+      });
+      await settings.put({
+        key: claimKey,
+        value: claim,
+        updated_at: claimedAt,
+      });
+      return {
+        row: {
+          ...row,
+          status: 'in_progress' as SyncStatus,
+          attempted_at: claimedAt,
+          error: undefined,
+        },
+        owner,
+        claim,
+      };
+    },
+  );
+  return result.kind === 'committed' ? result.value : null;
+}
+
+function claimMatchesOwner(
+  claim: SyncQueueClaimRecordV1,
+  owner: CloudSyncQueueOwnerRecordV2,
+): boolean {
+  return (
+    claim.rowId === owner.rowId &&
+    claim.userId === owner.userId &&
+    claim.ownerCapturedAt === owner.capturedAt
+  );
+}
+
+function sameClaim(current: SyncQueueClaimRecordV1, claimed: SyncQueueClaimRecordV1): boolean {
+  return (
+    current.rowId === claimed.rowId &&
+    current.userId === claimed.userId &&
+    current.ownerCapturedAt === claimed.ownerCapturedAt &&
+    current.claimedAt === claimed.claimedAt &&
+    current.claimId === claimed.claimId
+  );
+}
+
+function sameClaimedCloudOwner(
+  current: CloudSyncQueueOwnerRecordV2,
+  claimed: CloudSyncQueueOwnerRecordV2,
+): boolean {
+  return (
+    current.rowId === claimed.rowId &&
+    current.userId === claimed.userId &&
+    current.capturedAt === claimed.capturedAt
+  );
+}
+
+async function settleClaimedQueueRow(
+  claimed: ClaimedSyncQueueRow,
+  authority: CloudSyncAuthority,
+  patch: Partial<SyncQueueRow>,
+): Promise<boolean> {
+  const result = await runSignalBoundWrite(
+    db,
+    authority.signal,
+    QUEUE_AND_OWNER_TABLES,
+    async (transaction) => {
+      const queue = transaction.table<SyncQueueRow, string>('sync_queue');
+      const settings = transaction.table<SettingsRow, string>('settings');
+      const currentRow = await queue.get(claimed.row.id);
+      if (currentRow?.status !== 'in_progress') return false;
+      const ownerKey = cloudSyncQueueOwnerKey(claimed.row.id);
+      const storedOwner = await settings.get(ownerKey);
+      const currentOwner = parseSyncQueueOwner(claimed.row.id, storedOwner?.value);
+      const claimKey = cloudSyncQueueClaimKey(claimed.row.id);
+      const storedClaim = await settings.get(claimKey);
+      const currentClaim = parseSyncQueueClaim(claimed.row.id, storedClaim?.value);
+      if (!currentClaim || !sameClaim(currentClaim, claimed.claim)) return false;
+      if (
+        !currentOwner ||
+        currentOwner.state !== 'cloud' ||
+        !sameClaimedCloudOwner(currentOwner, claimed.owner) ||
+        !claimMatchesOwner(currentClaim, currentOwner)
+      ) {
+        const quarantinedAt = Date.now();
+        await settings.put({
+          key: ownerKey,
+          value: materializeLegacyUnknownSyncQueueOwner(
+            claimed.row.id,
+            'malformed_v2_owner',
+            quarantinedAt,
+          ),
+          updated_at: quarantinedAt,
+        });
+        await queue.update(claimed.row.id, {
+          status: 'error' as SyncStatus,
+          error: CLOUD_SYNC_QUEUE_QUARANTINE_ERROR,
+        });
+        return false;
+      }
+      await queue.update(claimed.row.id, patch);
+      await settings.delete(claimKey);
+      return true;
+    },
+  );
+  return result.kind === 'committed' && result.value;
+}
+
+async function ownedPendingQueueRows(
+  userId: string,
+  batchSize: number,
+): Promise<{ pendingCount: number; rows: SyncQueueRow[] }> {
+  const pending = await db.sync_queue
+    .where('status')
+    .equals('pending' as SyncStatus)
+    .toArray();
+  pending.sort((left, right) => left.created_at - right.created_at);
+  const owned: SyncQueueRow[] = [];
+  for (const row of pending) {
+    const stored = await db.settings.get(cloudSyncQueueOwnerKey(row.id));
+    const owner = parseSyncQueueOwner(row.id, stored?.value);
+    if (owner && isExactCloudOwner(owner, userId)) {
+      owned.push(row);
+    }
+  }
+  return {
+    pendingCount: pending.length,
+    rows: owned.slice(0, Math.max(0, batchSize)),
+  };
+}
 
 const PRIMARY_KEY_BY_TABLE: Partial<Record<StoreName, string>> = {
   settings: 'key',
@@ -79,11 +412,14 @@ function isoFromMs(ms: number, fallbackIso: string): string {
 
 export function buildCloudSyncRecord(
   row: SyncQueueRow,
-  userId: string,
+  owner: CloudSyncQueueOwnerRecordV2,
   nowIso = new Date().toISOString(),
 ): CloudSyncRecord {
+  if (owner.rowId !== row.id) {
+    throw new Error('Cloud sync record owner does not match its queue row.');
+  }
   return {
-    user_id: userId,
+    user_id: owner.userId,
     table_name: row.table,
     row_id: row.row_id,
     op: row.op,
@@ -101,6 +437,77 @@ function recordValue(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
+}
+
+type CloudPullCursorV2 = Readonly<{
+  schemaVersion: 2;
+  updatedAt: string;
+  tableName: string;
+  rowId: string;
+}>;
+
+function parseCloudPullCursor(value: unknown): CloudPullCursorV2 | null {
+  if (typeof value === 'string' && value.trim()) {
+    return {
+      schemaVersion: 2,
+      updatedAt: value,
+      tableName: '',
+      rowId: '',
+    };
+  }
+  const candidate = recordValue(value);
+  if (
+    candidate?.schemaVersion !== 2 ||
+    typeof candidate.updatedAt !== 'string' ||
+    !candidate.updatedAt.trim() ||
+    typeof candidate.tableName !== 'string' ||
+    !candidate.tableName ||
+    typeof candidate.rowId !== 'string' ||
+    !candidate.rowId
+  ) {
+    return null;
+  }
+  return {
+    schemaVersion: 2,
+    updatedAt: candidate.updatedAt,
+    tableName: candidate.tableName,
+    rowId: candidate.rowId,
+  };
+}
+
+function cloudPullCursorForRecord(row: CloudSyncRecord): CloudPullCursorV2 {
+  return {
+    schemaVersion: 2,
+    updatedAt: row.updated_at,
+    tableName: row.table_name,
+    rowId: row.row_id,
+  };
+}
+
+function sameCloudPullCursor(
+  left: CloudPullCursorV2 | null,
+  right: CloudPullCursorV2 | null,
+): boolean {
+  return (
+    left?.updatedAt === right?.updatedAt &&
+    left?.tableName === right?.tableName &&
+    left?.rowId === right?.rowId
+  );
+}
+
+function quotePostgrestFilterValue(value: string): string {
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
+function cloudPullAfterCursorFilter(cursor: CloudPullCursorV2): string {
+  const updatedAt = quotePostgrestFilterValue(cursor.updatedAt);
+  const tableName = quotePostgrestFilterValue(cursor.tableName);
+  const rowId = quotePostgrestFilterValue(cursor.rowId);
+  return [
+    `updated_at.gt.${updatedAt}`,
+    `and(updated_at.eq.${updatedAt},table_name.gt.${tableName})`,
+    `and(updated_at.eq.${updatedAt},table_name.eq.${tableName},row_id.gt.${rowId})`,
+  ].join(',');
 }
 
 function stringValue(value: unknown): string | null {
@@ -165,18 +572,20 @@ export function customToolFromCloudRecord(row: CloudSyncRecord): SyncedCustomToo
 /**
  * Enqueue a mutation for eventual upload to Supabase.
  *
- * Always writes locally regardless of whether cloud sync is configured -
- * if the user later flips it on, the queue catches up. Returns the queued
- * row's id so callers can correlate with sync logs.
+ * Always writes locally with the caller's immutable owner snapshot. Explicit
+ * unbound rows remain local-only unless a future authorized migration can
+ * prove their account. Returns the row id for sync-log correlation.
  */
 export async function enqueueMutation(
   op: SyncOp,
   table: string,
   row_id: string,
   payload: unknown,
+  ownerSnapshot: SyncQueueOwnerSnapshot = captureSyncQueueOwner(),
 ): Promise<string> {
-  await openDb();
   const id = newSyncId();
+  const createdAt = Date.now();
+  const owner = materializeSyncQueueOwner(id, ownerSnapshot);
   const row: SyncQueueRow = {
     id,
     op,
@@ -184,9 +593,19 @@ export async function enqueueMutation(
     row_id,
     payload,
     status: 'pending',
-    created_at: Date.now(),
+    created_at: createdAt,
   };
-  await db.sync_queue.add(row);
+  await openDb();
+  await db.transaction('rw', QUEUE_AND_OWNER_TABLES, async (transaction) => {
+    const queue = transaction.table<SyncQueueRow, string>('sync_queue');
+    const settings = transaction.table<SettingsRow, string>('settings');
+    await queue.add(row);
+    await settings.put({
+      key: cloudSyncQueueOwnerKey(id),
+      value: owner,
+      updated_at: createdAt,
+    });
+  });
   return id;
 }
 
@@ -224,59 +643,98 @@ export type SyncPullResult = {
  * Wrapped in try/catch so unexpected failures don't break the loop. Errors
  * are recorded on the offending row for later inspection.
  */
-export async function processSyncQueue(batchSize = 100): Promise<SyncFlushResult> {
+export async function processSyncQueue(
+  authority: CloudSyncAuthority,
+  batchSize = 100,
+): Promise<SyncFlushResult> {
+  requireCloudSyncAuthority(authority);
+  if (authority.signal.aborted) return { processed: 0, errored: 0, skipped: 0 };
   if (syncFlushInFlight) return { processed: 0, errored: 0, skipped: 0 };
   syncFlushInFlight = true;
   try {
-    await openDb();
+    const opened = await awaitUnlessAborted(openDb(), authority.signal);
+    if (opened.kind === 'cancelled') return { processed: 0, errored: 0, skipped: 0 };
+
+    if (!(await quarantineLegacyActiveSyncRows(authority))) {
+      return { processed: 0, errored: 0, skipped: 0 };
+    }
+    if (authority.signal.aborted) return { processed: 0, errored: 0, skipped: 0 };
 
     const client = getSupabaseClient();
-    const pending = await db.sync_queue
-      .where('status')
-      .equals('pending' as SyncStatus)
-      .limit(batchSize)
-      .toArray();
-    pending.sort((a, b) => a.created_at - b.created_at);
-
-    if (!client) {
-      return { processed: 0, errored: 0, skipped: pending.length };
+    const pending = await ownedPendingQueueRows(authority.userId, batchSize);
+    if (authority.signal.aborted) {
+      return { processed: 0, errored: 0, skipped: pending.pendingCount };
     }
 
-    const { data } = await client.auth.getSession();
-    const userId = data.session?.user?.id;
-    if (!userId) {
-      return { processed: 0, errored: 0, skipped: pending.length };
+    if (!client) {
+      return { processed: 0, errored: 0, skipped: pending.pendingCount };
+    }
+
+    if (!(await sessionMatchesAuthority(authority, client))) {
+      return { processed: 0, errored: 0, skipped: pending.pendingCount };
     }
 
     let processed = 0;
     let errored = 0;
+    let skipped = pending.pendingCount - pending.rows.length;
 
-    for (const row of pending) {
+    for (const candidate of pending.rows) {
+      if (authority.signal.aborted) break;
+      const claimed = await claimExactPendingQueueRow(candidate.id, authority);
+      if (authority.signal.aborted) break;
+      if (!claimed) {
+        skipped++;
+        continue;
+      }
+      if (authority.signal.aborted) break;
+
+      let remoteFailed = false;
+      let remoteFailure: unknown;
       try {
-        await db.sync_queue.update(row.id, {
-          status: 'in_progress' as SyncStatus,
-          attempted_at: Date.now(),
-        });
-
-        const cloudRecord = buildCloudSyncRecord(row, userId);
-        const { error } = await client
-          .from(CLOUD_SYNC_RECORDS_TABLE)
-          .upsert(cloudRecord, { onConflict: CLOUD_SYNC_CONFLICT_TARGET });
-        if (error) throw error;
-
-        await db.sync_queue.update(row.id, { status: 'done' as SyncStatus });
-        processed++;
+        const cloudRecord = buildCloudSyncRecord(claimed.row, claimed.owner);
+        const remote = await awaitUnlessAborted(
+          client
+            .from(CLOUD_SYNC_RECORDS_TABLE)
+            .upsert(cloudRecord, { onConflict: CLOUD_SYNC_CONFLICT_TARGET })
+            .abortSignal(authority.signal),
+          authority.signal,
+        );
+        if (remote.kind === 'cancelled') break;
+        if (remote.value.error) throw remote.value.error;
       } catch (e) {
-        const message = e instanceof Error ? e.message : String(e);
-        await db.sync_queue.update(row.id, {
+        if (authority.signal.aborted) break;
+        remoteFailed = true;
+        remoteFailure = e;
+      }
+
+      if (remoteFailed) {
+        const message =
+          remoteFailure instanceof Error ? remoteFailure.message : String(remoteFailure);
+        const settled = await settleClaimedQueueRow(claimed, authority, {
           status: 'error' as SyncStatus,
           error: message,
         });
+        if (authority.signal.aborted) break;
+        if (!settled) {
+          skipped++;
+          continue;
+        }
         errored++;
+        continue;
       }
+
+      const settled = await settleClaimedQueueRow(claimed, authority, {
+        status: 'done' as SyncStatus,
+      });
+      if (authority.signal.aborted) break;
+      if (!settled) {
+        skipped++;
+        continue;
+      }
+      processed++;
     }
 
-    return { processed, errored, skipped: 0 };
+    return { processed, errored, skipped };
   } finally {
     syncFlushInFlight = false;
   }
@@ -286,19 +744,119 @@ export async function processSyncQueue(batchSize = 100): Promise<SyncFlushResult
  * Reset rows that are stuck in `error` (or `in_progress` from a previous
  * crashed run) back to `pending` so they're picked up on the next drain.
  */
-export async function retrySyncErrors(): Promise<number> {
-  await openDb();
-  const stuck = await db.sync_queue
-    .where('status')
-    .anyOf(['error', 'in_progress'] satisfies SyncStatus[])
-    .toArray();
-  for (const row of stuck) {
-    await db.sync_queue.update(row.id, {
-      status: 'pending' as SyncStatus,
-      error: undefined,
-    });
-  }
-  return stuck.length;
+export async function retrySyncErrors(authority: CloudSyncAuthority): Promise<number> {
+  requireCloudSyncAuthority(authority);
+  if (authority.signal.aborted) return 0;
+  const opened = await awaitUnlessAborted(openDb(), authority.signal);
+  if (opened.kind === 'cancelled') return 0;
+  const result = await runSignalBoundWrite(
+    db,
+    authority.signal,
+    QUEUE_AND_OWNER_TABLES,
+    async (transaction) => {
+      const queue = transaction.table<SyncQueueRow, string>('sync_queue');
+      const settings = transaction.table<SettingsRow, string>('settings');
+      const stuck = await queue
+        .where('status')
+        .anyOf(['error', 'in_progress'] satisfies SyncStatus[])
+        .toArray();
+      let retried = 0;
+      for (const row of stuck) {
+        const ownerKey = cloudSyncQueueOwnerKey(row.id);
+        const stored = await settings.get(ownerKey);
+        const owner = parseSyncQueueOwner(row.id, stored?.value);
+        if (!owner) {
+          const legacyStored = await settings.get(legacyCloudSyncQueueAuthorityKey(row.id));
+          const quarantinedAt = Date.now();
+          await settings.put({
+            key: ownerKey,
+            value: materializeLegacyUnknownSyncQueueOwner(
+              row.id,
+              legacyOwnerReason(Boolean(stored), Boolean(legacyStored)),
+              quarantinedAt,
+            ),
+            updated_at: quarantinedAt,
+          });
+          await queue.update(row.id, {
+            status: 'error' as SyncStatus,
+            error: CLOUD_SYNC_QUEUE_QUARANTINE_ERROR,
+          });
+          continue;
+        }
+        const claimKey = cloudSyncQueueClaimKey(row.id);
+        const storedClaim = await settings.get(claimKey);
+        const claim = parseSyncQueueClaim(row.id, storedClaim?.value);
+        if (row.status !== 'in_progress' && storedClaim) {
+          const quarantinedAt = Date.now();
+          await settings.put({
+            key: ownerKey,
+            value: materializeLegacyUnknownSyncQueueOwner(
+              row.id,
+              'malformed_v2_owner',
+              quarantinedAt,
+            ),
+            updated_at: quarantinedAt,
+          });
+          await queue.update(row.id, {
+            status: 'error' as SyncStatus,
+            error: CLOUD_SYNC_QUEUE_QUARANTINE_ERROR,
+          });
+          continue;
+        }
+        if (row.status === 'in_progress' && !claim) {
+          const quarantinedAt = Date.now();
+          await settings.put({
+            key: ownerKey,
+            value: materializeLegacyUnknownSyncQueueOwner(
+              row.id,
+              'malformed_v2_owner',
+              quarantinedAt,
+            ),
+            updated_at: quarantinedAt,
+          });
+          await queue.update(row.id, {
+            status: 'error' as SyncStatus,
+            error: CLOUD_SYNC_QUEUE_QUARANTINE_ERROR,
+          });
+          continue;
+        }
+        if (
+          storedClaim &&
+          (!claim || owner.state !== 'cloud' || !claimMatchesOwner(claim, owner))
+        ) {
+          const quarantinedAt = Date.now();
+          await settings.put({
+            key: ownerKey,
+            value: materializeLegacyUnknownSyncQueueOwner(
+              row.id,
+              'malformed_v2_owner',
+              quarantinedAt,
+            ),
+            updated_at: quarantinedAt,
+          });
+          await queue.update(row.id, {
+            status: 'error' as SyncStatus,
+            error: CLOUD_SYNC_QUEUE_QUARANTINE_ERROR,
+          });
+          continue;
+        }
+        if (!isExactCloudOwner(owner, authority.userId)) continue;
+        if (claim) {
+          const claimAge = Date.now() - claim.claimedAt;
+          if (claimAge < CLOUD_SYNC_QUEUE_CLAIM_STALE_AFTER_MS) continue;
+          await settings.delete(claimKey);
+        }
+        await queue.update(row.id, {
+          status: 'pending' as SyncStatus,
+          attempted_at: undefined,
+          error: undefined,
+        });
+        retried++;
+      }
+      return retried;
+    },
+  );
+  return result.kind === 'committed' ? result.value : 0;
 }
 
 /**
@@ -306,33 +864,63 @@ export async function retrySyncErrors(): Promise<number> {
  * Default: keep 7 days of history.
  */
 export async function pruneSyncQueue(
+  authority: CloudSyncAuthority,
   olderThanMs: number = 7 * 24 * 60 * 60 * 1000,
 ): Promise<number> {
-  await openDb();
+  requireCloudSyncAuthority(authority);
+  if (authority.signal.aborted) return 0;
+  const opened = await awaitUnlessAborted(openDb(), authority.signal);
+  if (opened.kind === 'cancelled') return 0;
   const cutoff = Date.now() - olderThanMs;
-  const removed = await db.sync_queue
-    .where('status')
-    .equals('done' as SyncStatus)
-    .filter((r) => r.created_at < cutoff)
-    .delete();
-  return removed;
+  const result = await runSignalBoundWrite(
+    db,
+    authority.signal,
+    QUEUE_AND_OWNER_TABLES,
+    async (transaction) => {
+      const queue = transaction.table<SyncQueueRow, string>('sync_queue');
+      const settings = transaction.table<SettingsRow, string>('settings');
+      const doneRows = await queue
+        .where('status')
+        .equals('done' as SyncStatus)
+        .filter((row) => row.created_at < cutoff)
+        .toArray();
+      const ids: string[] = [];
+      for (const row of doneRows) {
+        const owner = parseSyncQueueOwner(
+          row.id,
+          (await settings.get(cloudSyncQueueOwnerKey(row.id)))?.value,
+        );
+        if (owner && isExactCloudOwner(owner, authority.userId)) {
+          ids.push(row.id);
+        }
+      }
+      if (ids.length === 0) return 0;
+      await queue.bulkDelete(ids);
+      if (authority.signal.aborted) return 0;
+      await settings.bulkDelete([
+        ...ids.map(cloudSyncQueueOwnerKey),
+        ...ids.map(legacyCloudSyncQueueAuthorityKey),
+        ...ids.map(cloudSyncQueueClaimKey),
+      ]);
+      return ids.length;
+    },
+  );
+  return result.kind === 'committed' ? result.value : 0;
 }
 
-async function applyCustomToolCloudRecord(row: CloudSyncRecord): Promise<boolean> {
-  const { useToolStore } = await import('@/features/tools/toolStore');
+async function applyCustomToolCloudRecord(
+  row: CloudSyncRecord,
+  signal: AbortSignal,
+): Promise<boolean> {
+  if (signal.aborted) return false;
+  const { applyCloudCustomToolForAccount } = await import('@/features/tools/toolStore');
+  if (signal.aborted) return false;
   if (row.op === 'delete') {
-    useToolStore.setState((state) => ({
-      tools: state.tools.filter((tool) => tool.slug !== row.row_id),
-    }));
+    applyCloudCustomToolForAccount(row.user_id, row.row_id, null);
   } else {
     const tool = customToolFromCloudRecord(row);
     if (!tool) return false;
-    useToolStore.setState((state) => ({
-      tools: [tool, ...state.tools.filter((existing) => existing.slug !== tool.slug)],
-    }));
-  }
-  if (typeof window !== 'undefined') {
-    queueMicrotask(() => window.dispatchEvent(new CustomEvent('jarvis:tools-updated')));
+    applyCloudCustomToolForAccount(row.user_id, row.row_id, tool);
   }
   return true;
 }
@@ -370,30 +958,30 @@ function pluginConnectionFromCloudRecord(row: CloudSyncRecord) {
   };
 }
 
-async function applyPluginConnectionCloudRecord(row: CloudSyncRecord): Promise<boolean> {
-  const { usePluginStore } = await import('@/features/plugins/store');
+async function applyPluginConnectionCloudRecord(
+  row: CloudSyncRecord,
+  signal: AbortSignal,
+): Promise<boolean> {
+  if (signal.aborted) return false;
+  const { applyCloudPluginConnectionForAccount } = await import('@/features/plugins/store');
+  if (signal.aborted) return false;
   if (row.op === 'delete') {
-    usePluginStore.setState((state) => {
-      const connections = { ...state.connections };
-      delete connections[row.row_id];
-      return { connections };
-    });
+    applyCloudPluginConnectionForAccount(row.user_id, row.row_id, null);
     return true;
   }
   const connection = pluginConnectionFromCloudRecord(row);
   if (!connection) return false;
-  usePluginStore.setState((state) => ({
-    connections: { ...state.connections, [connection.pluginId]: connection },
-  }));
+  applyCloudPluginConnectionForAccount(row.user_id, row.row_id, connection);
   return true;
 }
 
-async function applyCloudSyncRecord(row: CloudSyncRecord): Promise<boolean> {
+async function applyCloudSyncRecord(row: CloudSyncRecord, signal: AbortSignal): Promise<boolean> {
+  if (signal.aborted) return false;
   if (row.table_name === CUSTOM_TOOLS_SYNC_TABLE) {
-    return applyCustomToolCloudRecord(row);
+    return applyCustomToolCloudRecord(row, signal);
   }
   if (row.table_name === PLUGIN_CONNECTIONS_SYNC_TABLE) {
-    return applyPluginConnectionCloudRecord(row);
+    return applyPluginConnectionCloudRecord(row, signal);
   }
   return false;
 }
@@ -403,43 +991,61 @@ async function applyCloudSyncRecord(row: CloudSyncRecord): Promise<boolean> {
  * safely restore today. Unsupported table names still advance the cursor so
  * they do not replay forever while broader Dexie restore work is unfinished.
  */
-export async function processCloudPull(batchSize = 200): Promise<SyncPullResult> {
+export async function processCloudPull(
+  authority: CloudSyncAuthority,
+  batchSize = 200,
+): Promise<SyncPullResult> {
+  requireCloudSyncAuthority(authority);
+  if (authority.signal.aborted) return { applied: 0, skipped: 0, errored: 0 };
   if (syncPullInFlight) return { applied: 0, skipped: 0, errored: 0 };
   syncPullInFlight = true;
   try {
-    await openDb();
+    const opened = await awaitUnlessAborted(openDb(), authority.signal);
+    if (opened.kind === 'cancelled') return { applied: 0, skipped: 0, errored: 0 };
     const client = getSupabaseClient();
     if (!client) return { applied: 0, skipped: 0, errored: 0 };
 
-    const { data } = await client.auth.getSession();
-    const userId = data.session?.user?.id;
-    if (!userId) return { applied: 0, skipped: 0, errored: 0 };
+    if (!(await sessionMatchesAuthority(authority, client))) {
+      return { applied: 0, skipped: 0, errored: 0 };
+    }
 
-    const cursorKey = pullCursorKey(userId);
+    const cursorKey = pullCursorKey(authority.userId);
     const cursor = await db.settings.get(cursorKey);
-    const lastPulledAt = typeof cursor?.value === 'string' ? cursor.value : null;
+    if (authority.signal.aborted) return { applied: 0, skipped: 0, errored: 0 };
+    const lastCursor = parseCloudPullCursor(cursor?.value);
     let query = client
       .from(CLOUD_SYNC_RECORDS_TABLE)
       .select('user_id,table_name,row_id,op,payload,deleted_at,updated_at')
-      .eq('user_id', userId)
+      .eq('user_id', authority.userId)
       .order('updated_at', { ascending: true })
+      .order('table_name', { ascending: true })
+      .order('row_id', { ascending: true })
       .limit(batchSize);
-    if (lastPulledAt) query = query.gt('updated_at', lastPulledAt);
+    if (lastCursor) query = query.or(cloudPullAfterCursorFilter(lastCursor));
+    query = query.abortSignal(authority.signal);
 
-    const { data: rows, error } = await query;
+    const remote = await awaitUnlessAborted(query, authority.signal);
+    if (remote.kind === 'cancelled') return { applied: 0, skipped: 0, errored: 0 };
+    const { data: rows, error } = remote.value;
     if (error) throw error;
 
     let applied = 0;
     let skipped = 0;
     let errored = 0;
-    let cursorValue = lastPulledAt;
+    let cursorValue = lastCursor;
 
     for (const row of (rows ?? []) as CloudSyncRecord[]) {
+      if (authority.signal.aborted) break;
+      if (row.user_id !== authority.userId) {
+        skipped++;
+        continue;
+      }
       try {
-        const didApply = await applyCloudSyncRecord(row);
+        const didApply = await applyCloudSyncRecord(row, authority.signal);
+        if (authority.signal.aborted) break;
         if (didApply) applied++;
         else skipped++;
-        cursorValue = row.updated_at;
+        cursorValue = cloudPullCursorForRecord(row);
       } catch (e) {
         console.warn('[sync] cloud pull record failed:', e);
         errored++;
@@ -447,10 +1053,25 @@ export async function processCloudPull(batchSize = 200): Promise<SyncPullResult>
       }
     }
 
-    if (cursorValue && cursorValue !== lastPulledAt) {
-      await db.settings.put({ key: cursorKey, value: cursorValue, updated_at: Date.now() });
+    if (!authority.signal.aborted && cursorValue && !sameCloudPullCursor(cursorValue, lastCursor)) {
+      const cursorWrite = await runSignalBoundWrite(
+        db,
+        authority.signal,
+        [db.settings],
+        async (transaction) => {
+          await transaction.table<SettingsRow, string>('settings').put({
+            key: cursorKey,
+            value: cursorValue,
+            updated_at: Date.now(),
+          });
+        },
+      );
+      if (cursorWrite.kind === 'cancelled') {
+        return { applied: 0, skipped: 0, errored: 0 };
+      }
     }
 
+    if (authority.signal.aborted) return { applied: 0, skipped: 0, errored: 0 };
     return { applied, skipped, errored };
   } finally {
     syncPullInFlight = false;
@@ -465,42 +1086,73 @@ export async function processCloudPull(batchSize = 200): Promise<SyncPullResult>
  * The loop uses a single timer (not setInterval) so a long-running drain
  * never overlaps with the next tick.
  */
-export function startSyncLoop(intervalMs: number = 30_000): () => void {
-  let stopped = false;
+export function startSyncLoop(
+  parentAuthority: CloudSyncAuthority,
+  intervalMs: number = 30_000,
+): StopCloudSyncLoop {
+  const userId = requireCloudSyncAuthority(parentAuthority);
+  const controller = new AbortController();
+  const authority: CloudSyncAuthority = { userId, signal: controller.signal };
+  let stopped = parentAuthority.signal.aborted;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let currentTick: Promise<void> = Promise.resolve();
+  let stopPromise: Promise<void> | undefined;
 
   const tick = async (): Promise<void> => {
-    if (stopped) return;
+    if (stopped || authority.signal.aborted) return;
     try {
-      await processSyncQueue();
-      await processCloudPull();
+      await processSyncQueue(authority);
+      if (stopped || authority.signal.aborted) return;
+      await processCloudPull(authority);
     } catch (e) {
-      // Swallow - we'll retry on the next tick. Log so it's visible in dev.
-      // eslint-disable-next-line no-console
-      console.warn('[sync] tick failed:', e);
+      if (!stopped && !authority.signal.aborted) {
+        // Swallow - we'll retry on the next tick. Log so it's visible in dev.
+        // eslint-disable-next-line no-console
+        console.warn('[sync] tick failed:', e);
+      }
     }
-    if (!stopped) {
+    if (!stopped && !authority.signal.aborted) {
       timer = setTimeout(() => {
-        void tick();
+        currentTick = tick();
+        void currentTick;
       }, intervalMs);
     }
   };
 
-  // Kick off after a short delay so the app finishes booting first.
-  timer = setTimeout(
-    () => {
-      void tick();
-    },
-    Math.min(intervalMs, 2_000),
-  );
-
-  return function stop() {
+  function stop(): Promise<void> {
+    if (stopPromise) return stopPromise;
     stopped = true;
+    controller.abort();
+    parentAuthority.signal.removeEventListener('abort', abortFromParent);
     if (timer) {
       clearTimeout(timer);
       timer = undefined;
     }
+    stopPromise = currentTick.catch(() => undefined).then(() => undefined);
+    return stopPromise;
+  }
+
+  const abortFromParent = () => {
+    void stop();
   };
+  if (!parentAuthority.signal.aborted) {
+    parentAuthority.signal.addEventListener('abort', abortFromParent, { once: true });
+  } else {
+    controller.abort();
+  }
+
+  // Kick off after a short delay so the app finishes booting first.
+  if (!stopped) {
+    timer = setTimeout(
+      () => {
+        currentTick = tick();
+        void currentTick;
+      },
+      Math.min(intervalMs, 2_000),
+    );
+  }
+
+  return stop;
 }
 
 // Re-export for convenience so consumers don't need to import from supabase

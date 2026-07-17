@@ -101,8 +101,8 @@ const cloudSync = vi.hoisted(() => {
     processSyncQueue,
     pruneSyncQueue: vi.fn(async (): Promise<void> => undefined),
     retrySyncErrors: vi.fn(async (): Promise<void> => undefined),
-    startSyncLoop: vi.fn(() => {
-      const stop = vi.fn();
+    startSyncLoop: vi.fn((_authority?: { userId: string; signal: AbortSignal }) => {
+      const stop = vi.fn(async (): Promise<void> => undefined);
       loopStops.push(stop);
       void processSyncQueue().then(() => processCloudPull());
       return stop;
@@ -146,7 +146,12 @@ const cloudBoot = vi.hoisted(() => {
       },
     };
   });
-  const maybeSingle = vi.fn(async () => ({ data: null, error: null }));
+  const maybeSingle = vi.fn(
+    async (): Promise<{ data: { tier: string } | null; error: unknown | null }> => ({
+      data: null,
+      error: null,
+    }),
+  );
   const from = vi.fn(() => ({
     select: () => ({
       eq: () => ({
@@ -188,12 +193,15 @@ const cloudBoot = vi.hoisted(() => {
     },
     emitAuth: (session: Session) => authListener?.('SIGNED_IN', session),
     getSession,
+    maybeSingle,
     onAuthStateChange,
     reset: () => {
       configured = false;
       configurationError = undefined;
       getSessionImpl = async () => ({ data: { session: null } });
       authListener = undefined;
+      maybeSingle.mockReset();
+      maybeSingle.mockResolvedValue({ data: null, error: null });
     },
   };
 });
@@ -201,6 +209,45 @@ const cloudBoot = vi.hoisted(() => {
 const bootListeners = vi.hoisted(() => ({
   runtime: vi.fn(() => () => undefined),
 }));
+
+const queueAuthority = vi.hoisted(() => {
+  type Lease = Readonly<{ userId: string; generation: number }>;
+  let generation = 0;
+  let active: Lease | undefined;
+  const events: string[] = [];
+  const activate = vi.fn((userId: string): Lease => {
+    const lease = Object.freeze({ userId, generation: ++generation });
+    active = lease;
+    events.push(`queue:activate:${userId}`);
+    return lease;
+  });
+  const release = vi.fn((lease: Lease) => {
+    events.push(`queue:release:${lease.userId}`);
+    if (active === lease) active = undefined;
+  });
+  return {
+    activate,
+    events,
+    release,
+    currentUserId: () => active?.userId,
+    reset: () => {
+      active = undefined;
+      events.length = 0;
+      activate.mockClear();
+      release.mockClear();
+    },
+  };
+});
+
+const protectedBootObservers = vi.hoisted(() => {
+  const authGateRenders: Array<{ cloudUserId: string | null; plan: string }> = [];
+  return {
+    authGateRenders,
+    reset: () => {
+      authGateRenders.length = 0;
+    },
+  };
+});
 
 vi.mock('@/features/jarvis-memory/learningListener', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/features/jarvis-memory/learningListener')>();
@@ -242,6 +289,32 @@ vi.mock('@/lib/sync', () => ({
   retrySyncErrors: cloudSync.retrySyncErrors,
   startSyncLoop: cloudSync.startSyncLoop,
 }));
+
+vi.mock('@/lib/cloudSyncQueueOwner', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/cloudSyncQueueOwner')>();
+  return {
+    ...actual,
+    activateSyncQueueCloudAuthority: queueAuthority.activate,
+    releaseSyncQueueCloudAuthority: queueAuthority.release,
+  };
+});
+
+vi.mock('@/features/auth', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/auth')>();
+  const ReactModule = await import('react');
+  const { useAuthStore: authStore } = await import('@/stores/auth');
+  return {
+    ...actual,
+    AuthGate: function ObservedAuthGate(props: Parameters<typeof actual.AuthGate>[0]) {
+      const auth = authStore.getState();
+      protectedBootObservers.authGateRenders.push({
+        cloudUserId: auth.cloudSession?.user_id ?? null,
+        plan: auth.plan,
+      });
+      return ReactModule.createElement(actual.AuthGate, props);
+    },
+  };
+});
 
 vi.mock('@/lib/launchPromo', () => ({
   claimLaunchPromo: launchPromo.claim,
@@ -354,12 +427,7 @@ function prepareAppIdentity(
 }
 
 async function waitForAccountScopeBoot(): Promise<void> {
-  await waitFor(
-    () => {
-      expect(Object.keys(useAgentStore.getState().agents).length).toBeGreaterThan(0);
-    },
-    { timeout: 5_000 },
-  );
+  await waitFor(() => expect(bootListeners.runtime).toHaveBeenCalledTimes(1));
   await act(async () => {
     await Promise.resolve();
   });
@@ -393,6 +461,8 @@ describe('App canonical account identity boot', () => {
     cloudSync.loopStops.length = 0;
     accountListeners.reset();
     cloudBoot.reset();
+    queueAuthority.reset();
+    protectedBootObservers.reset();
     useJarvisLearningStore.getState().clearForTests();
     useAllAboutMeStore.setState(useAllAboutMeStore.getInitialState(), true);
     useJarvisTaskRunStore.getState().clearForTests();
@@ -403,6 +473,7 @@ describe('App canonical account identity boot', () => {
 
   afterEach(() => {
     cleanup();
+    window.history.replaceState({}, '', '/');
     vi.restoreAllMocks();
     useAuthStore.setState(originalAuth, true);
     useUIStore.setState(originalUi, true);
@@ -443,6 +514,88 @@ describe('App canonical account identity boot', () => {
     expectEveryListenerStartedWith('stable-local-user');
   });
 
+  it('quarantines persisted cloud auth during commit before protected children can render', async () => {
+    cloudBoot.setConfigured(true);
+    cloudBoot.deferSession();
+    prepareAppIdentity({
+      cloudSession: cloudSession('persisted-cloud-user'),
+      localUserId: 'stable-local-user',
+    });
+    useAuthStore.setState({ plan: 'apex' });
+
+    let commitStarted = false;
+    const quarantineCommitPhases: boolean[] = [];
+    const unsubscribe = useAuthStore.subscribe((state) => {
+      if (state.cloudSession === null && state.plan === 'free') {
+        quarantineCommitPhases.push(commitStarted);
+      }
+    });
+
+    function CommitPhaseBoundary({ children }: { children: React.ReactNode }) {
+      React.useInsertionEffect(() => {
+        commitStarted = true;
+      }, []);
+      return children;
+    }
+
+    try {
+      render(
+        <CommitPhaseBoundary>
+          <App />
+        </CommitPhaseBoundary>,
+      );
+    } finally {
+      unsubscribe();
+    }
+
+    expect(quarantineCommitPhases).toEqual([true]);
+    expect(useAuthStore.getState()).toMatchObject({
+      cloudSession: null,
+      plan: 'free',
+    });
+    expect(protectedBootObservers.authGateRenders.length).toBeGreaterThan(0);
+    expect(protectedBootObservers.authGateRenders).toEqual(
+      protectedBootObservers.authGateRenders.map(() => ({
+        cloudUserId: null,
+        plan: 'free',
+      })),
+    );
+    expect(queueAuthority.currentUserId()).toBeUndefined();
+    expect(accountListeners.learning).not.toHaveBeenCalled();
+    expect(accountListeners.allAboutMe).not.toHaveBeenCalled();
+    expect(accountListeners.taskRuns).not.toHaveBeenCalled();
+
+    await waitFor(() => expect(cloudBoot.getSession).toHaveBeenCalledTimes(1));
+    expect(useAuthStore.getState()).toMatchObject({
+      cloudSession: null,
+      plan: 'free',
+    });
+    expect(queueAuthority.currentUserId()).toBeUndefined();
+    expect(accountListeners.learning).not.toHaveBeenCalled();
+    expect(accountListeners.allAboutMe).not.toHaveBeenCalled();
+    expect(accountListeners.taskRuns).not.toHaveBeenCalled();
+  });
+
+  it.each(['dictation', 'pet-overlay', 'pet-mini-panel'])(
+    'does not quarantine persisted cloud state in the %s auxiliary view',
+    (view) => {
+      window.history.replaceState({}, '', `/?view=${view}`);
+      prepareAppIdentity({
+        cloudSession: cloudSession('persisted-cloud-user'),
+        localUserId: 'stable-local-user',
+      });
+      useAuthStore.setState({ plan: 'apex' });
+
+      render(<App />);
+
+      expect(useAuthStore.getState()).toMatchObject({
+        cloudSession: { user_id: 'persisted-cloud-user' },
+        plan: 'apex',
+      });
+      expect(protectedBootObservers.authGateRenders).toEqual([]);
+    },
+  );
+
   it('starts the exact cloud scope only after configured Supabase resolves it', async () => {
     cloudBoot.setConfigured(true);
     const session = cloudBoot.deferSession();
@@ -454,6 +607,7 @@ describe('App canonical account identity boot', () => {
     render(<App />);
     await waitForAccountScopeBoot();
 
+    expect(queueAuthority.currentUserId()).toBeUndefined();
     expect(accountListeners.learning).not.toHaveBeenCalled();
     expect(accountListeners.allAboutMe).not.toHaveBeenCalled();
     expect(accountListeners.taskRuns).not.toHaveBeenCalled();
@@ -469,6 +623,112 @@ describe('App canonical account identity boot', () => {
       expect(accountListeners.taskRuns).toHaveBeenCalledTimes(1);
     });
     expectEveryListenerStartedWith('confirmed-cloud-user');
+    expect(queueAuthority.currentUserId()).toBe('confirmed-cloud-user');
+  });
+
+  it('replaces queue authority before auth-store subscribers observe the new account', async () => {
+    cloudBoot.setConfigured(true);
+    const session = cloudBoot.deferSession();
+    prepareAppIdentity({
+      cloudSession: null,
+      localUserId: 'stable-local-user',
+    });
+
+    const mounted = render(<App />);
+    await waitForAccountScopeBoot();
+    await act(async () => {
+      session.resolve(supabaseSession('cloud-user-a'));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(queueAuthority.currentUserId()).toBe('cloud-user-a'));
+
+    queueAuthority.events.length = 0;
+    const unsubscribe = useAuthStore.subscribe((state) => {
+      queueAuthority.events.push(`store:${state.cloudSession?.user_id ?? 'signed-out'}`);
+    });
+    try {
+      act(() => {
+        cloudBoot.emitAuth(supabaseSession('cloud-user-b'));
+      });
+      expect(queueAuthority.events.slice(0, 3)).toEqual([
+        'queue:release:cloud-user-a',
+        'queue:activate:cloud-user-b',
+        'store:cloud-user-b',
+      ]);
+      expect(queueAuthority.currentUserId()).toBe('cloud-user-b');
+    } finally {
+      unsubscribe();
+      mounted.unmount();
+    }
+
+    expect(queueAuthority.currentUserId()).toBeUndefined();
+  });
+
+  it('releases verified queue authority on unverified local auth divergence', async () => {
+    cloudBoot.setConfigured(true);
+    const session = cloudBoot.deferSession();
+    prepareAppIdentity({
+      cloudSession: null,
+      localUserId: 'stable-local-user',
+    });
+
+    render(<App />);
+    await waitForAccountScopeBoot();
+    await act(async () => {
+      session.resolve(supabaseSession('cloud-user-a'));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(queueAuthority.currentUserId()).toBe('cloud-user-a'));
+
+    act(() => {
+      useAuthStore.setState({ cloudSession: null });
+    });
+    expect(queueAuthority.currentUserId()).toBeUndefined();
+
+    act(() => {
+      useAuthStore.setState({ cloudSession: cloudSession('cloud-user-b') });
+    });
+    expect(queueAuthority.currentUserId()).toBeUndefined();
+
+    act(() => {
+      cloudBoot.emitAuth(supabaseSession('cloud-user-b'));
+    });
+    expect(queueAuthority.currentUserId()).toBe('cloud-user-b');
+  });
+
+  it('revokes local auth divergence before the rest of boot finishes', async () => {
+    cloudBoot.setConfigured(true);
+    const session = cloudBoot.deferSession();
+    let finishAgentList: ((agents: never[]) => void) | undefined;
+    bootStorage.listAgents.mockImplementationOnce(
+      () =>
+        new Promise<never[]>((resolve) => {
+          finishAgentList = resolve;
+        }),
+    );
+    prepareAppIdentity({
+      cloudSession: null,
+      localUserId: 'stable-local-user',
+    });
+
+    render(<App />);
+    await waitFor(() => expect(cloudBoot.getSession).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      session.resolve(supabaseSession('cloud-user-a'));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(queueAuthority.currentUserId()).toBe('cloud-user-a'));
+    expect(bootStorage.listAgents).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      useAuthStore.setState({ cloudSession: null });
+    });
+    expect(queueAuthority.currentUserId()).toBeUndefined();
+
+    await act(async () => {
+      finishAgentList?.([]);
+      await Promise.resolve();
+    });
   });
 
   it('starts one cloud sync loop only after valid normalized initial authority', async () => {
@@ -538,6 +798,7 @@ describe('App canonical account identity boot', () => {
     expect(cloudSync.processCloudPull).not.toHaveBeenCalled();
     expect(cloudSync.pruneSyncQueue).not.toHaveBeenCalled();
     expect(cloudSync.startSyncLoop).not.toHaveBeenCalled();
+    expect(queueAuthority.currentUserId()).toBeUndefined();
   });
 
   it('tears down local scope for a live present Supabase session with a missing user id', async () => {
@@ -600,6 +861,7 @@ describe('App canonical account identity boot', () => {
       pull: cloudSync.processCloudPull.mock.calls.length,
     }).toEqual(callsBeforeMalformedSession);
     expect(useAuthStore.getState().cloudSession).toMatchObject({ user_id: '' });
+    expect(queueAuthority.currentUserId()).toBeUndefined();
   });
 
   it.each([
@@ -631,6 +893,7 @@ describe('App canonical account identity boot', () => {
       });
 
       expect(sameTurnStopCalls).toBe(1);
+      expect(queueAuthority.currentUserId()).toBeUndefined();
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 0));
       });
@@ -677,6 +940,171 @@ describe('App canonical account identity boot', () => {
     expect(secondStop).not.toHaveBeenCalled();
   });
 
+  it('waits for the previous loop to quiesce before starting the next cloud authority', async () => {
+    cloudBoot.setConfigured(true);
+    const session = cloudBoot.deferSession();
+    prepareAppIdentity({
+      cloudSession: null,
+      localUserId: 'stable-local-user',
+    });
+
+    render(<App />);
+    await waitForAccountScopeBoot();
+    await act(async () => {
+      session.resolve(supabaseSession('cloud-user-a'));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(cloudSync.startSyncLoop).toHaveBeenCalledTimes(1));
+    const firstAuthority = cloudSync.startSyncLoop.mock.calls[0]?.[0];
+    const firstStop = cloudSync.loopStops[0]!;
+    const pendingStop = deferredValue<void>();
+    firstStop.mockImplementationOnce(() => pendingStop.promise);
+
+    act(() => {
+      cloudBoot.emitAuth(supabaseSession('cloud-user-b'));
+    });
+
+    expect(firstAuthority?.signal.aborted).toBe(true);
+    expect(firstStop).toHaveBeenCalledTimes(1);
+    expect(cloudSync.retrySyncErrors).toHaveBeenCalledTimes(1);
+    expect(cloudSync.pruneSyncQueue).toHaveBeenCalledTimes(1);
+    expect(cloudSync.startSyncLoop).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      pendingStop.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    await waitFor(() => expect(cloudSync.startSyncLoop).toHaveBeenCalledTimes(2));
+    expect(cloudSync.retrySyncErrors).toHaveBeenCalledTimes(2);
+    expect(cloudSync.pruneSyncQueue).toHaveBeenCalledTimes(2);
+    expect(cloudSync.startSyncLoop.mock.calls[1]?.[0]).toMatchObject({
+      userId: 'cloud-user-b',
+    });
+  });
+
+  it('lets only the latest authority start while an older loop is quiescing', async () => {
+    cloudBoot.setConfigured(true);
+    const session = cloudBoot.deferSession();
+    prepareAppIdentity({
+      cloudSession: null,
+      localUserId: 'stable-local-user',
+    });
+
+    render(<App />);
+    await waitForAccountScopeBoot();
+    await act(async () => {
+      session.resolve(supabaseSession('cloud-user-a'));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(cloudSync.startSyncLoop).toHaveBeenCalledTimes(1));
+    const pendingStop = deferredValue<void>();
+    cloudSync.loopStops[0]!.mockImplementationOnce(() => pendingStop.promise);
+
+    act(() => {
+      cloudBoot.emitAuth(supabaseSession('cloud-user-b'));
+      cloudBoot.emitAuth(supabaseSession('cloud-user-c'));
+    });
+
+    expect(cloudSync.retrySyncErrors).toHaveBeenCalledTimes(1);
+    expect(cloudSync.startSyncLoop).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      pendingStop.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    await waitFor(() => expect(cloudSync.startSyncLoop).toHaveBeenCalledTimes(2));
+    expect(cloudSync.retrySyncErrors).toHaveBeenCalledTimes(2);
+    expect(cloudSync.startSyncLoop.mock.calls[1]?.[0]).toMatchObject({
+      userId: 'cloud-user-c',
+    });
+    expect(cloudSync.startSyncLoop.mock.calls.flatMap((call) => call[0]?.userId)).not.toContain(
+      'cloud-user-b',
+    );
+  });
+
+  it('does not duplicate startup when the same authority is reported while retry is pending', async () => {
+    cloudBoot.setConfigured(true);
+    const session = cloudBoot.deferSession();
+    const pendingRetry = deferredValue<void>();
+    cloudSync.retrySyncErrors.mockImplementationOnce(() => pendingRetry.promise);
+    prepareAppIdentity({
+      cloudSession: null,
+      localUserId: 'stable-local-user',
+    });
+
+    render(<App />);
+    await waitForAccountScopeBoot();
+    await act(async () => {
+      session.resolve(supabaseSession('cloud-user-a'));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(cloudSync.retrySyncErrors).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      cloudBoot.emitAuth(supabaseSession('cloud-user-a'));
+    });
+    expect(cloudSync.retrySyncErrors).toHaveBeenCalledTimes(1);
+    expect(cloudSync.pruneSyncQueue).not.toHaveBeenCalled();
+    expect(cloudSync.startSyncLoop).not.toHaveBeenCalled();
+
+    await act(async () => {
+      pendingRetry.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    await waitFor(() => expect(cloudSync.startSyncLoop).toHaveBeenCalledTimes(1));
+    expect(cloudSync.retrySyncErrors).toHaveBeenCalledTimes(1);
+    expect(cloudSync.pruneSyncQueue).toHaveBeenCalledTimes(1);
+    expect(cloudSync.startSyncLoop.mock.calls[0]?.[0]).toMatchObject({
+      userId: 'cloud-user-a',
+    });
+  });
+
+  it('keeps a remount behind the previous cloud loop quiescence barrier', async () => {
+    cloudBoot.setConfigured(true);
+    const session = cloudBoot.deferSession();
+    prepareAppIdentity({
+      cloudSession: null,
+      localUserId: 'stable-local-user',
+    });
+
+    const firstMount = render(<App />);
+    await waitForAccountScopeBoot();
+    await act(async () => {
+      session.resolve(supabaseSession('cloud-user-a'));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(cloudSync.startSyncLoop).toHaveBeenCalledTimes(1));
+    const firstAuthority = cloudSync.startSyncLoop.mock.calls[0]?.[0];
+    const pendingStop = deferredValue<void>();
+    cloudSync.loopStops[0]!.mockImplementationOnce(() => pendingStop.promise);
+
+    firstMount.unmount();
+    render(<App />);
+    await waitFor(() => expect(bootListeners.runtime).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(firstAuthority?.signal.aborted).toBe(true);
+    expect(cloudSync.loopStops[0]).toHaveBeenCalledTimes(1);
+    expect(cloudSync.retrySyncErrors).toHaveBeenCalledTimes(1);
+    expect(cloudSync.startSyncLoop).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      pendingStop.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    await waitFor(() => expect(cloudSync.startSyncLoop).toHaveBeenCalledTimes(2));
+    expect(cloudSync.retrySyncErrors).toHaveBeenCalledTimes(2);
+    expect(cloudSync.startSyncLoop.mock.calls[1]?.[0]).toMatchObject({
+      userId: 'cloud-user-a',
+    });
+  });
+
   it('does not continue delayed valid sync startup after authority becomes malformed', async () => {
     cloudBoot.setConfigured(true);
     prepareAppIdentity({
@@ -697,7 +1125,7 @@ describe('App canonical account identity boot', () => {
     act(() => {
       cloudBoot.emitAuth(supabaseSession('stale-cloud-user'));
     });
-    expect(cloudSync.retrySyncErrors).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(cloudSync.retrySyncErrors).toHaveBeenCalledTimes(1));
 
     act(() => {
       cloudBoot.emitAuth(supabaseSession('   '));
@@ -720,6 +1148,7 @@ describe('App canonical account identity boot', () => {
       cloudSession: cloudSession('persisted-cloud-user'),
       localUserId: 'stable-local-user',
     });
+    useAuthStore.setState({ plan: 'pro' });
 
     render(<App />);
     await waitForAccountScopeBoot();
@@ -734,14 +1163,20 @@ describe('App canonical account identity boot', () => {
     expect(accountListeners.taskRuns).not.toHaveBeenCalled();
     expect(bootListeners.runtime).toHaveBeenCalledTimes(1);
     expect(document.querySelector('main[aria-label="Workspace"]')).not.toBeNull();
+    expect(queueAuthority.currentUserId()).toBeUndefined();
+    expect(useAuthStore.getState()).toMatchObject({
+      cloudSession: null,
+      plan: 'free',
+    });
   });
 
   it('remains fail-closed when Supabase configuration detection fails', async () => {
     cloudBoot.failConfigurationCheck(new Error('configuration unavailable'));
     prepareAppIdentity({
-      cloudSession: null,
+      cloudSession: cloudSession('persisted-cloud-user'),
       localUserId: 'stable-local-user',
     });
+    useAuthStore.setState({ plan: 'pro' });
 
     render(<App />);
     await waitForAccountScopeBoot();
@@ -751,6 +1186,11 @@ describe('App canonical account identity boot', () => {
     expect(accountListeners.taskRuns).not.toHaveBeenCalled();
     expect(bootListeners.runtime).toHaveBeenCalledTimes(1);
     expect(document.querySelector('main[aria-label="Workspace"]')).not.toBeNull();
+    expect(queueAuthority.currentUserId()).toBeUndefined();
+    expect(useAuthStore.getState()).toMatchObject({
+      cloudSession: null,
+      plan: 'free',
+    });
   });
 
   it('starts no scoped listener when a blank cloud id is present at the Phase 4 boot boundary', async () => {
@@ -1196,5 +1636,78 @@ describe('App canonical account identity boot', () => {
     expect(accountListeners.taskRuns).not.toHaveBeenCalled();
     expect(bootListeners.runtime).not.toHaveBeenCalled();
     expect(useAgentStore.getState().agents).toEqual({});
+  });
+
+  it('ignores a delayed subscription tier from a former cloud account', async () => {
+    cloudBoot.setConfigured(true);
+    prepareAppIdentity({
+      cloudSession: null,
+      localUserId: 'stable-local-user',
+    });
+    useAuthStore.setState({ plan: 'free' });
+    const accountAPlan = deferredValue<{
+      data: { tier: string } | null;
+      error: null;
+    }>();
+    const accountBPlan = deferredValue<{
+      data: { tier: string } | null;
+      error: null;
+    }>();
+    cloudBoot.maybeSingle
+      .mockImplementationOnce(() => accountAPlan.promise)
+      .mockImplementationOnce(() => accountBPlan.promise);
+
+    render(<App />);
+    await waitForAccountScopeBoot();
+    expect(cloudBoot.onAuthStateChange).toHaveBeenCalledTimes(1);
+
+    act(() => cloudBoot.emitAuth(supabaseSession('cloud-user-a')));
+    await waitFor(() => expect(cloudBoot.maybeSingle).toHaveBeenCalledTimes(1));
+
+    act(() => cloudBoot.emitAuth(supabaseSession('cloud-user-b')));
+    await waitFor(() => expect(cloudBoot.maybeSingle).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      accountBPlan.resolve({ data: { tier: 'pro' }, error: null });
+      await accountBPlan.promise;
+    });
+    await waitFor(() => expect(useAuthStore.getState().plan).toBe('pro'));
+
+    await act(async () => {
+      accountAPlan.resolve({ data: { tier: 'apex' }, error: null });
+      await accountAPlan.promise;
+    });
+
+    expect(useAuthStore.getState().cloudSession?.user_id).toBe('cloud-user-b');
+    expect(useAuthStore.getState().plan).toBe('pro');
+  }, 10_000);
+
+  it('fails closed to the free tier while a new or signed-out authority has no verified profile', async () => {
+    cloudBoot.setConfigured(true);
+    prepareAppIdentity({
+      cloudSession: null,
+      localUserId: 'stable-local-user',
+    });
+    useAuthStore.setState({ plan: 'apex' });
+    const accountBPlan = deferredValue<{
+      data: { tier: string } | null;
+      error: null;
+    }>();
+    cloudBoot.maybeSingle
+      .mockResolvedValueOnce({ data: { tier: 'pro' }, error: null })
+      .mockImplementationOnce(() => accountBPlan.promise);
+
+    render(<App />);
+    await waitFor(() => expect(cloudBoot.onAuthStateChange).toHaveBeenCalledTimes(1));
+
+    act(() => cloudBoot.emitAuth(supabaseSession('cloud-user-a')));
+    await waitFor(() => expect(useAuthStore.getState().plan).toBe('pro'));
+
+    act(() => cloudBoot.emitAuth(supabaseSession('cloud-user-b')));
+    expect(useAuthStore.getState().plan).toBe('free');
+    expect(queueAuthority.currentUserId()).toBe('cloud-user-b');
+
+    act(() => cloudBoot.emitAuth(null));
+    expect(useAuthStore.getState().plan).toBe('free');
   });
 });

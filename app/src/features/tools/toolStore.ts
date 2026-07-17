@@ -30,6 +30,15 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { safeLocalStorage } from '@/lib/persistence/safeLocalStorage';
 import { Wrench } from 'lucide-react';
 import { getBuiltinAction } from '@/lib/actions/registry';
+import {
+  LOCAL_UNBOUND_SYNC_SCOPE_NAME,
+  captureSyncQueueOwner,
+  cloudSyncQueueAuthorityScopeName,
+  getCurrentSyncQueueAuthorityScope,
+  subscribeSyncQueueAuthorityScope,
+  type SyncQueueAuthorityScopeName,
+  type SyncQueueOwnerSnapshot,
+} from '@/lib/cloudSyncQueueOwner';
 import type { ActionDef, ActionParam, ActionResult, ActionRunContext } from '@/lib/actions/types';
 
 /* --------------------------------------------------------------------------
@@ -103,9 +112,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
 
-type ParamCheck =
-  | { ok: true; value: unknown }
-  | { ok: false; error: string };
+type ParamCheck = { ok: true; value: unknown } | { ok: false; error: string };
 
 function describeParamValue(value: unknown): string {
   if (value === null) return 'null';
@@ -133,24 +140,37 @@ function coerceToolParam(param: ActionParam, raw: unknown): ParamCheck {
         const value = Number(raw);
         if (Number.isFinite(value)) return { ok: true, value };
       }
-      return { ok: false, error: `Parameter "${param.key}" must be a number; got ${describeParamValue(raw)}.` };
+      return {
+        ok: false,
+        error: `Parameter "${param.key}" must be a number; got ${describeParamValue(raw)}.`,
+      };
     }
     case 'boolean': {
       if (typeof raw === 'boolean') return { ok: true, value: raw };
       if (typeof raw === 'string') {
         const value = raw.trim().toLowerCase();
         if (value === 'true' || value === 'on' || value === '1') return { ok: true, value: true };
-        if (value === 'false' || value === 'off' || value === '0') return { ok: true, value: false };
+        if (value === 'false' || value === 'off' || value === '0')
+          return { ok: true, value: false };
       }
-      return { ok: false, error: `Parameter "${param.key}" must be true/false; got ${describeParamValue(raw)}.` };
+      return {
+        ok: false,
+        error: `Parameter "${param.key}" must be true/false; got ${describeParamValue(raw)}.`,
+      };
     }
     case 'select': {
       if (typeof raw !== 'string') {
-        return { ok: false, error: `Parameter "${param.key}" must be a string; got ${describeParamValue(raw)}.` };
+        return {
+          ok: false,
+          error: `Parameter "${param.key}" must be a string; got ${describeParamValue(raw)}.`,
+        };
       }
       const allowed = (param.options ?? []).map((option) => option.value);
       if (allowed.length > 0 && !allowed.includes(raw)) {
-        return { ok: false, error: `Parameter "${param.key}" must be one of: ${allowed.join(', ')}.` };
+        return {
+          ok: false,
+          error: `Parameter "${param.key}" must be one of: ${allowed.join(', ')}.`,
+        };
       }
       return { ok: true, value: raw };
     }
@@ -158,8 +178,12 @@ function coerceToolParam(param: ActionParam, raw: unknown): ParamCheck {
     case 'string':
     default: {
       if (typeof raw === 'string') return { ok: true, value: raw };
-      if (typeof raw === 'number' || typeof raw === 'boolean') return { ok: true, value: String(raw) };
-      return { ok: false, error: `Parameter "${param.key}" must be a string; got ${describeParamValue(raw)}.` };
+      if (typeof raw === 'number' || typeof raw === 'boolean')
+        return { ok: true, value: String(raw) };
+      return {
+        ok: false,
+        error: `Parameter "${param.key}" must be a string; got ${describeParamValue(raw)}.`,
+      };
     }
   }
 }
@@ -204,10 +228,20 @@ function dispatchToolsUpdated(): void {
 
 const CUSTOM_TOOLS_SYNC_TABLE = 'custom_tools';
 
-function enqueueToolSync(op: 'insert' | 'update' | 'delete', tool: CustomTool): void {
+function ownerScopeName(owner: SyncQueueOwnerSnapshot): SyncQueueAuthorityScopeName {
+  return owner.state === 'cloud'
+    ? cloudSyncQueueAuthorityScopeName(owner.userId)
+    : LOCAL_UNBOUND_SYNC_SCOPE_NAME;
+}
+
+function enqueueToolSync(
+  op: 'insert' | 'update' | 'delete',
+  tool: CustomTool,
+  owner: SyncQueueOwnerSnapshot,
+): void {
   void import('@/lib/sync')
     .then(({ enqueueMutation }) =>
-      enqueueMutation(op, CUSTOM_TOOLS_SYNC_TABLE, tool.slug, op === 'delete' ? null : tool),
+      enqueueMutation(op, CUSTOM_TOOLS_SYNC_TABLE, tool.slug, op === 'delete' ? null : tool, owner),
     )
     .catch((err) => {
       console.warn('[sync] failed to enqueue custom tool mutation', {
@@ -228,7 +262,10 @@ export function normalizeToolSteps(value: unknown): CustomToolStep[] {
     steps.push({
       action,
       params: isRecord(rawStep.params) ? { ...rawStep.params } : {},
-      label: typeof rawStep.label === 'string' && rawStep.label.trim() ? rawStep.label.trim() : undefined,
+      label:
+        typeof rawStep.label === 'string' && rawStep.label.trim()
+          ? rawStep.label.trim()
+          : undefined,
     });
   }
   return steps.slice(0, 12);
@@ -247,8 +284,12 @@ export function parseToolStepsJson(json: string): CustomToolStep[] {
  * Store
  * --------------------------------------------------------------------------*/
 
+type ToolBuckets = Partial<Record<SyncQueueAuthorityScopeName, CustomTool[]>>;
+
 interface ToolStoreState {
   tools: CustomTool[];
+  toolBuckets: ToolBuckets;
+  activeScopeName: SyncQueueAuthorityScopeName;
 
   /** Sorted view (most-recently-updated first). */
   list: () => CustomTool[];
@@ -289,6 +330,57 @@ interface ToolStoreState {
   importMany: (incoming: ReadonlyArray<CustomTool>) => number;
 }
 
+function toolsForScope(
+  state: Pick<ToolStoreState, 'activeScopeName' | 'toolBuckets' | 'tools'>,
+  scopeName: SyncQueueAuthorityScopeName,
+): CustomTool[] {
+  return state.activeScopeName === scopeName ? state.tools : (state.toolBuckets[scopeName] ?? []);
+}
+
+function replaceToolsForScope(
+  state: Pick<ToolStoreState, 'activeScopeName' | 'toolBuckets'>,
+  scopeName: SyncQueueAuthorityScopeName,
+  tools: CustomTool[],
+): Pick<ToolStoreState, 'toolBuckets'> & Partial<Pick<ToolStoreState, 'tools'>> {
+  const toolBuckets = { ...state.toolBuckets, [scopeName]: tools };
+  return state.activeScopeName === scopeName ? { toolBuckets, tools } : { toolBuckets };
+}
+
+type PersistedToolStore = Pick<ToolStoreState, 'toolBuckets'>;
+
+function persistedToolBuckets(value: unknown): ToolBuckets {
+  if (!isRecord(value) || !isRecord(value.toolBuckets)) return {};
+  const buckets: ToolBuckets = {};
+  for (const [scopeName, tools] of Object.entries(value.toolBuckets)) {
+    if (!Array.isArray(tools)) continue;
+    if (scopeName === LOCAL_UNBOUND_SYNC_SCOPE_NAME) {
+      buckets[LOCAL_UNBOUND_SYNC_SCOPE_NAME] = tools as CustomTool[];
+      continue;
+    }
+    if (!scopeName.startsWith('cloud:')) continue;
+    const userId = scopeName.slice('cloud:'.length);
+    if (!userId || userId.trim() !== userId) continue;
+    const exactScopeName = cloudSyncQueueAuthorityScopeName(userId);
+    if (exactScopeName === scopeName) buckets[exactScopeName] = tools as CustomTool[];
+  }
+  return buckets;
+}
+
+function migrateToolStore(persistedState: unknown, version: number): PersistedToolStore {
+  if (version < 2) {
+    const legacyTools =
+      isRecord(persistedState) && Array.isArray(persistedState.tools)
+        ? (persistedState.tools as CustomTool[])
+        : [];
+    return {
+      toolBuckets: {
+        [LOCAL_UNBOUND_SYNC_SCOPE_NAME]: legacyTools,
+      },
+    };
+  }
+  return { toolBuckets: persistedToolBuckets(persistedState) };
+}
+
 /**
  * Build the runtime ActionDef for a saved tool. Defined as a private
  * helper so any future call sites use the same shape.
@@ -303,10 +395,7 @@ function toolToActionDef(t: CustomTool): ActionDef {
     icon: Wrench,
     params: [], // preset params live on the tool, not the form
     exposeToAI: true,
-    run: async (
-      _params: Record<string, unknown>,
-      ctx: ActionRunContext,
-    ): Promise<ActionResult> => {
+    run: async (_params: Record<string, unknown>, ctx: ActionRunContext): Promise<ActionResult> => {
       if (steps.length > 0) {
         const summaries: string[] = [];
         for (let stepIndex = 0; stepIndex < steps.length; stepIndex += 1) {
@@ -349,9 +438,10 @@ export const useToolStore = create<ToolStoreState>()(
   persist(
     (set, get) => ({
       tools: [],
+      toolBuckets: {},
+      activeScopeName: getCurrentSyncQueueAuthorityScope().name,
 
-      list: () =>
-        [...get().tools].sort((a, b) => b.updatedAt - a.updatedAt),
+      list: () => [...get().tools].sort((a, b) => b.updatedAt - a.updatedAt),
 
       bySlug: (slug) => get().tools.find((t) => t.slug === slug),
 
@@ -365,9 +455,11 @@ export const useToolStore = create<ToolStoreState>()(
       toActionDefs: () => get().tools.map(toolToActionDef),
 
       create: (input) => {
+        const owner = captureSyncQueueOwner();
+        const scopeName = ownerScopeName(owner);
         const now = Date.now();
         const baseSlug = (input.slug ?? slugify(input.name)) || 'tool';
-        const slug = uniqueSlug(baseSlug, get().tools);
+        const slug = uniqueSlug(baseSlug, toolsForScope(get(), scopeName));
         const tool: CustomTool = {
           slug,
           name: input.name,
@@ -380,56 +472,73 @@ export const useToolStore = create<ToolStoreState>()(
           updatedAt: now,
           published: null,
         };
-        set((s) => ({ tools: [tool, ...s.tools] }));
-        enqueueToolSync('insert', tool);
+        set((state) =>
+          replaceToolsForScope(state, scopeName, [tool, ...toolsForScope(state, scopeName)]),
+        );
+        enqueueToolSync('insert', tool, owner);
         dispatchToolsUpdated();
         return tool;
       },
 
       update: (slug, patch) => {
+        const owner = captureSyncQueueOwner();
+        const scopeName = ownerScopeName(owner);
         let updatedTool: CustomTool | undefined;
-        set((s) => ({
-          tools: s.tools.map((t) => {
+        set((state) => {
+          const tools = toolsForScope(state, scopeName).map((t) => {
             if (t.slug !== slug) return t;
             updatedTool = { ...t, ...patch, slug, updatedAt: Date.now() };
             return updatedTool;
-          }),
-        }));
-        if (updatedTool) enqueueToolSync('update', updatedTool);
+          });
+          return replaceToolsForScope(state, scopeName, tools);
+        });
+        if (updatedTool) enqueueToolSync('update', updatedTool, owner);
         dispatchToolsUpdated();
       },
 
       remove: (slug) => {
-        const removedTool = get().tools.find((t) => t.slug === slug);
-        set((s) => ({ tools: s.tools.filter((t) => t.slug !== slug) }));
-        if (removedTool) enqueueToolSync('delete', removedTool);
+        const owner = captureSyncQueueOwner();
+        const scopeName = ownerScopeName(owner);
+        const removedTool = toolsForScope(get(), scopeName).find((t) => t.slug === slug);
+        set((state) =>
+          replaceToolsForScope(
+            state,
+            scopeName,
+            toolsForScope(state, scopeName).filter((t) => t.slug !== slug),
+          ),
+        );
+        if (removedTool) enqueueToolSync('delete', removedTool, owner);
         dispatchToolsUpdated();
       },
 
       publish: async (slug) => {
-        const tool = get().tools.find((t) => t.slug === slug);
+        const owner = captureSyncQueueOwner();
+        const tool = toolsForScope(get(), ownerScopeName(owner)).find((t) => t.slug === slug);
         if (!tool) return { ok: false, error: `Unknown custom tool: ${slug}` };
-        enqueueToolSync('update', tool);
+        enqueueToolSync('update', tool, owner);
         return {
           ok: true,
-          summary: 'Queued for VibeSpace Cloud account sync.',
+          summary:
+            owner.state === 'cloud'
+              ? 'Queued for VibeSpace Cloud account sync.'
+              : 'Saved locally; VibeSpace Cloud account sync requires a verified sign-in.',
           data: { slug },
         };
       },
 
       importMany: (incoming) => {
         if (!Array.isArray(incoming) || incoming.length === 0) return 0;
-        const existing = get().tools;
+        const owner = captureSyncQueueOwner();
+        const scopeName = ownerScopeName(owner);
+        const existing = toolsForScope(get(), scopeName);
         const added: CustomTool[] = [];
         for (const raw of incoming) {
           if (!raw || typeof raw !== 'object') continue;
           const name = typeof raw.name === 'string' ? raw.name.trim() : '';
-          const baseAction =
-            typeof raw.baseAction === 'string' ? raw.baseAction.trim() : '';
+          const baseAction = typeof raw.baseAction === 'string' ? raw.baseAction.trim() : '';
           const steps = normalizeToolSteps((raw as { steps?: unknown }).steps);
           if (!name || (!baseAction && steps.length === 0)) continue;
-          const description =
-            typeof raw.description === 'string' ? raw.description : '';
+          const description = typeof raw.description === 'string' ? raw.description : '';
           const params =
             raw.params && typeof raw.params === 'object' && !Array.isArray(raw.params)
               ? (raw.params as Record<string, unknown>)
@@ -451,8 +560,10 @@ export const useToolStore = create<ToolStoreState>()(
           });
         }
         if (added.length === 0) return 0;
-        set((s) => ({ tools: [...added, ...s.tools] }));
-        added.forEach((tool) => enqueueToolSync('insert', tool));
+        set((state) =>
+          replaceToolsForScope(state, scopeName, [...added, ...toolsForScope(state, scopeName)]),
+        );
+        added.forEach((tool) => enqueueToolSync('insert', tool, owner));
         dispatchToolsUpdated();
         return added.length;
       },
@@ -460,9 +571,52 @@ export const useToolStore = create<ToolStoreState>()(
     {
       name: 'jarvis-tools',
       storage: createJSONStorage(() => safeLocalStorage),
-      // Persist only the tools array; everything else is derived state.
-      partialize: (s) => ({ tools: s.tools }),
-      version: 1,
+      partialize: (state) => ({ toolBuckets: state.toolBuckets }),
+      version: 2,
+      migrate: migrateToolStore,
+      merge: (persistedState, currentState) => {
+        const toolBuckets = persistedToolBuckets(persistedState);
+        const activeScopeName = getCurrentSyncQueueAuthorityScope().name;
+        return {
+          ...currentState,
+          toolBuckets,
+          activeScopeName,
+          tools: toolBuckets[activeScopeName] ?? [],
+        };
+      },
     },
   ),
 );
+
+export function applyCloudCustomToolForAccount(
+  exactUserId: string,
+  rowId: string,
+  tool: CustomTool | null,
+): void {
+  const scopeName = cloudSyncQueueAuthorityScopeName(exactUserId);
+  if (!rowId || rowId.trim() !== rowId) {
+    throw new Error('Cloud custom tool application requires an exact row ID.');
+  }
+  if (tool && tool.slug !== rowId) {
+    throw new Error('Cloud custom tool row ID must match the validated tool slug.');
+  }
+
+  let exposedViewChanged = false;
+  useToolStore.setState((state) => {
+    const tools = toolsForScope(state, scopeName);
+    const nextTools = tool
+      ? [tool, ...tools.filter((existing) => existing.slug !== rowId)]
+      : tools.filter((existing) => existing.slug !== rowId);
+    exposedViewChanged = state.activeScopeName === scopeName;
+    return replaceToolsForScope(state, scopeName, nextTools);
+  });
+  if (exposedViewChanged) dispatchToolsUpdated();
+}
+
+subscribeSyncQueueAuthorityScope((scope) => {
+  useToolStore.setState((state) => ({
+    activeScopeName: scope.name,
+    tools: state.toolBuckets[scope.name] ?? [],
+  }));
+  dispatchToolsUpdated();
+});
