@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { parseThemeSyncMessage } from './themeSync';
 
 describe('theme cross-window messages', () => {
-  it('accepts only the four public theme ids', () => {
+  it('accepts only the two public theme ids', () => {
     expect(parseThemeSyncMessage({ kind: 'theme', theme: 'vibespace' })).toBe('vibespace');
     expect(parseThemeSyncMessage({ kind: 'theme', theme: 'default' })).toBe('default');
+    expect(parseThemeSyncMessage({ kind: 'theme', theme: 'jarvis' })).toBeNull();
+    expect(parseThemeSyncMessage({ kind: 'theme', theme: 'light' })).toBeNull();
     expect(parseThemeSyncMessage({ kind: 'theme', theme: 'dark' })).toBeNull();
     expect(parseThemeSyncMessage({ kind: 'theme', theme: 'unknown' })).toBeNull();
   });

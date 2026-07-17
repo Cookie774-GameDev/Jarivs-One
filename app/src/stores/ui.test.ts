@@ -13,7 +13,7 @@ describe('UI theme resolution', () => {
     expect(resolveTheme('system', false)).toBe('light');
   });
 
-  it('keeps Jarvis Core as an independent selectable theme', () => {
+  it('keeps legacy Jarvis rendering available for migration compatibility', () => {
     expect(resolveTheme('jarvis')).toBe('jarvis');
     applyThemeToDocument('jarvis');
     expect(document.documentElement.getAttribute('data-theme')).toBe('jarvis');
@@ -34,10 +34,11 @@ describe('UI theme resolution', () => {
     expect(document.documentElement.getAttribute('data-theme-preference')).toBe('vibespace');
   });
 
-  it('applies theme changes synchronously through the UI store', () => {
+  it('migrates removed theme changes synchronously to Default through the UI store', () => {
     useUIStore.getState().setTheme('jarvis');
-    expect(useUIStore.getState().theme).toBe('jarvis');
-    expect(document.documentElement.getAttribute('data-theme')).toBe('jarvis');
+    expect(useUIStore.getState().theme).toBe('default');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+    expect(document.documentElement.getAttribute('data-theme-preference')).toBe('default');
   });
 });
 

@@ -1,15 +1,13 @@
-import { Cpu, Moon, Sparkles, Sun } from 'lucide-react';
+import { Moon, Sparkles } from 'lucide-react';
 import { useUIStore } from '@/stores/ui';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import { SELECTABLE_THEMES, type SelectableTheme } from '@/features/appearance/themes';
 
-const THEME_ICONS: Record<SelectableTheme, typeof Sun> = {
-  jarvis: Cpu,
+const THEME_ICONS: Record<SelectableTheme, typeof Moon> = {
   vibespace: Sparkles,
   default: Moon,
-  light: Sun,
 };
 
 const DENSITIES: { id: 'compact' | 'cozy'; label: string; description: string }[] = [

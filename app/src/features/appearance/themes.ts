@@ -1,6 +1,6 @@
 import type { Theme } from '@/types/common';
 
-export type SelectableTheme = 'jarvis' | 'vibespace' | 'default' | 'light';
+export type SelectableTheme = 'vibespace' | 'default';
 
 export type ThemeDefinition = {
   id: SelectableTheme;
@@ -9,10 +9,8 @@ export type ThemeDefinition = {
 };
 
 export const SELECTABLE_THEMES: readonly ThemeDefinition[] = [
-  { id: 'jarvis', label: 'Jarvis Core', description: 'High-contrast command center.' },
   { id: 'vibespace', label: 'VibeSpace', description: 'Pastel origami workspace.' },
   { id: 'default', label: 'Default', description: 'Warm, focused dark workspace.' },
-  { id: 'light', label: 'Light', description: 'Soft paper for bright rooms.' },
 ] as const;
 
 const SELECTABLE_THEME_IDS = new Set<SelectableTheme>(
@@ -32,14 +30,10 @@ export function isSelectableTheme(theme: Theme): theme is SelectableTheme {
 }
 
 const THEME_COMMAND_ALIASES: Record<string, SelectableTheme> = {
-  jarvis: 'jarvis',
-  'jarvis core': 'jarvis',
-  core: 'jarvis',
   vibespace: 'vibespace',
   vibe: 'vibespace',
   default: 'default',
   dark: 'default',
-  light: 'light',
 };
 
 export function parseThemeCommandArgument(value: string): SelectableTheme | null {

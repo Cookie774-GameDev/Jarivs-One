@@ -1,8 +1,8 @@
 import type { Theme } from '@/types/common';
-import type { SelectableTheme } from './themes';
+import { SELECTABLE_THEMES, type SelectableTheme } from './themes';
 
 const CHANNEL_NAME = 'vibespace:appearance';
-const PUBLIC_THEME_IDS = new Set<SelectableTheme>(['jarvis', 'vibespace', 'default', 'light']);
+const PUBLIC_THEME_IDS = new Set<SelectableTheme>(SELECTABLE_THEMES.map((theme) => theme.id));
 
 let channel: BroadcastChannel | null | undefined;
 
