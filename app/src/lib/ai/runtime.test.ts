@@ -4,6 +4,7 @@ import type { AgentId, ChatId, MessageId } from '@/types/common';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import { useAllAboutMeStore } from '@/features/all-about-me/store';
+import type { JarvisShadowCompilationDeps } from '@/lib/jarvis/shadowCompilation';
 
 const mocks = vi.hoisted(() => ({
   runAgent: vi.fn(),
@@ -77,7 +78,7 @@ import { startRuntimeListener } from './runtime';
 import { selectionFromOption } from './modelSelection';
 import { DEFAULT_CUSTOM_STEPS } from './stacks/presets';
 
-function agent(id: string, slug: string, systemPrompt: string): Agent {
+function agent(id: string, slug: string, systemPrompt: string, builtin = false): Agent {
   return {
     id: id as AgentId,
     slug,
@@ -88,6 +89,7 @@ function agent(id: string, slug: string, systemPrompt: string): Agent {
     tools_allowed: [],
     memory_scope: 'workspace',
     capabilities: [],
+    builtin,
     created_at: 1,
     updated_at: 1,
   };
@@ -115,6 +117,7 @@ describe('startRuntimeListener agent routing', () => {
       voiceEngine: 'system',
       stackPreset: 'off',
       stackCustomSteps: DEFAULT_CUSTOM_STEPS,
+      localUserId: 'runtime-test-account',
       plan: 'free',
       apiKeys: { groq: 'gsk_test' },
       defaultProvider: 'mock',
@@ -161,19 +164,21 @@ describe('startRuntimeListener agent routing', () => {
       updated_at: 1,
     };
 
-    const stop = trackListener(startRuntimeListener({
-      getAgentById: (id) => (id === apple.id ? apple : id === jarvis.id ? jarvis : null),
-      getAgentBySlug: (slug) => (slug === 'apple' ? apple : slug === 'jarvis' ? jarvis : null),
-      getAgentForChat: vi.fn(async () => apple),
-      getMessages: vi.fn(async () => [userMessage]),
-      appendMessage: vi.fn(async (msg) => ({
-        ...msg,
-        id: placeholderId,
-        created_at: 2,
-        updated_at: 2,
-      })),
-      updateMessage: vi.fn(async () => undefined),
-    }));
+    const stop = trackListener(
+      startRuntimeListener({
+        getAgentById: (id) => (id === apple.id ? apple : id === jarvis.id ? jarvis : null),
+        getAgentBySlug: (slug) => (slug === 'apple' ? apple : slug === 'jarvis' ? jarvis : null),
+        getAgentForChat: vi.fn(async () => apple),
+        getMessages: vi.fn(async () => [userMessage]),
+        appendMessage: vi.fn(async (msg) => ({
+          ...msg,
+          id: placeholderId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage: vi.fn(async () => undefined),
+      }),
+    );
 
     window.dispatchEvent(
       new CustomEvent('jarvis:send', {
@@ -204,19 +209,21 @@ describe('startRuntimeListener agent routing', () => {
       updated_at: 1,
     };
 
-    const stop = trackListener(startRuntimeListener({
-      getAgentById: (id) => (id === apple.id ? apple : id === jarvis.id ? jarvis : null),
-      getAgentBySlug: (slug) => (slug === 'apple' ? apple : slug === 'jarvis' ? jarvis : null),
-      getAgentForChat: vi.fn(async () => jarvis),
-      getMessages: vi.fn(async () => [userMessage]),
-      appendMessage: vi.fn(async (msg) => ({
-        ...msg,
-        id: placeholderId,
-        created_at: 2,
-        updated_at: 2,
-      })),
-      updateMessage: vi.fn(async () => undefined),
-    }));
+    const stop = trackListener(
+      startRuntimeListener({
+        getAgentById: (id) => (id === apple.id ? apple : id === jarvis.id ? jarvis : null),
+        getAgentBySlug: (slug) => (slug === 'apple' ? apple : slug === 'jarvis' ? jarvis : null),
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => [userMessage]),
+        appendMessage: vi.fn(async (msg) => ({
+          ...msg,
+          id: placeholderId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage: vi.fn(async () => undefined),
+      }),
+    );
 
     window.dispatchEvent(
       new CustomEvent('jarvis:send', {
@@ -239,19 +246,21 @@ describe('startRuntimeListener agent routing', () => {
     const onStreamEnd = (event: Event) => streamEnds.push(event);
     window.addEventListener('jarvis:streaming-voice:end', onStreamEnd);
 
-    const stop = trackListener(startRuntimeListener({
-      getAgentById: () => null,
-      getAgentBySlug: () => null,
-      getAgentForChat: vi.fn(async () => null),
-      getMessages: vi.fn(async () => []),
-      appendMessage: vi.fn(async (msg) => ({
-        ...msg,
-        id: 'msg_missing_agent_assistant' as MessageId,
-        created_at: 2,
-        updated_at: 2,
-      })),
-      updateMessage: vi.fn(async () => undefined),
-    }));
+    const stop = trackListener(
+      startRuntimeListener({
+        getAgentById: () => null,
+        getAgentBySlug: () => null,
+        getAgentForChat: vi.fn(async () => null),
+        getMessages: vi.fn(async () => []),
+        appendMessage: vi.fn(async (msg) => ({
+          ...msg,
+          id: 'msg_missing_agent_assistant' as MessageId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage: vi.fn(async () => undefined),
+      }),
+    );
 
     window.dispatchEvent(
       new CustomEvent('jarvis:send', {
@@ -280,20 +289,22 @@ describe('startRuntimeListener agent routing', () => {
       updated_at: 1,
     };
 
-    const stop = trackListener(startRuntimeListener({
-      getAgentById: (id) => (id === apple.id ? apple : id === jarvis.id ? jarvis : null),
-      getAgentBySlug: (slug) =>
-        slug === 'apple-agent' ? apple : slug === 'jarvis' ? jarvis : null,
-      getAgentForChat: vi.fn(async () => jarvis),
-      getMessages: vi.fn(async () => [userMessage]),
-      appendMessage: vi.fn(async (msg) => ({
-        ...msg,
-        id: placeholderId,
-        created_at: 2,
-        updated_at: 2,
-      })),
-      updateMessage: vi.fn(async () => undefined),
-    }));
+    const stop = trackListener(
+      startRuntimeListener({
+        getAgentById: (id) => (id === apple.id ? apple : id === jarvis.id ? jarvis : null),
+        getAgentBySlug: (slug) =>
+          slug === 'apple-agent' ? apple : slug === 'jarvis' ? jarvis : null,
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => [userMessage]),
+        appendMessage: vi.fn(async (msg) => ({
+          ...msg,
+          id: placeholderId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage: vi.fn(async () => undefined),
+      }),
+    );
 
     window.dispatchEvent(
       new CustomEvent('jarvis:send', {
@@ -326,20 +337,22 @@ describe('startRuntimeListener agent routing', () => {
       updated_at: 1,
     };
 
-    const stop = trackListener(startRuntimeListener({
-      getAgentById: (id) => (id === builder.id ? builder : id === jarvis.id ? jarvis : null),
-      getAgentBySlug: (slug) =>
-        slug === 'builder' ? builder : slug === 'jarvis' ? jarvis : null,
-      getAgentForChat: vi.fn(async () => jarvis),
-      getMessages: vi.fn(async () => [userMessage]),
-      appendMessage: vi.fn(async (msg) => ({
-        ...msg,
-        id: placeholderId,
-        created_at: 2,
-        updated_at: 2,
-      })),
-      updateMessage: vi.fn(async () => undefined),
-    }));
+    const stop = trackListener(
+      startRuntimeListener({
+        getAgentById: (id) => (id === builder.id ? builder : id === jarvis.id ? jarvis : null),
+        getAgentBySlug: (slug) =>
+          slug === 'builder' ? builder : slug === 'jarvis' ? jarvis : null,
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => [userMessage]),
+        appendMessage: vi.fn(async (msg) => ({
+          ...msg,
+          id: placeholderId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage: vi.fn(async () => undefined),
+      }),
+    );
 
     window.dispatchEvent(
       new CustomEvent('jarvis:send', {
@@ -383,21 +396,32 @@ describe('startRuntimeListener agent routing', () => {
       updated_at: 1,
     };
 
-    const stop = trackListener(startRuntimeListener({
-      getAgentById: (id) => (id === jarvis.id ? jarvis : null),
-      getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
-      getAgentForChat: vi.fn(async () => jarvis),
-      getMessages: vi.fn(async () => [userMessage]),
-      appendMessage: vi.fn(async (msg) => ({ ...msg, id: placeholderId, created_at: 2, updated_at: 2 })),
-      updateMessage: vi.fn(async () => undefined),
-    }));
+    const stop = trackListener(
+      startRuntimeListener({
+        getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+        getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => [userMessage]),
+        appendMessage: vi.fn(async (msg) => ({
+          ...msg,
+          id: placeholderId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage: vi.fn(async () => undefined),
+      }),
+    );
 
-    window.dispatchEvent(new CustomEvent('jarvis:send', { detail: { chatId, text: 'what changed here?' } }));
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', { detail: { chatId, text: 'what changed here?' } }),
+    );
 
     await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(1));
     expect(mocks.getProjectContextBlock).toHaveBeenCalledWith('project_chat');
     expect(mocks.getProjectContextTreeBlock).toHaveBeenCalledWith('project_chat');
-    expect(mocks.runAgent.mock.calls[0][0].agent.system_prompt).toContain('project-context-for-chat');
+    expect(mocks.runAgent.mock.calls[0][0].agent.system_prompt).toContain(
+      'project-context-for-chat',
+    );
     expect(mocks.runAgent.mock.calls[0][0].agent.system_prompt).toContain('context-map-for-chat');
 
     stop();
@@ -422,24 +446,45 @@ describe('startRuntimeListener agent routing', () => {
       updated_at: 1,
     };
 
-    const stop = trackListener(startRuntimeListener({
-      getAgentById: (id) =>
-        id === builder.id ? builder : id === reviewer.id ? reviewer : id === jarvis.id ? jarvis : null,
-      getAgentBySlug: (slug) =>
-        slug === 'builder' ? builder : slug === 'reviewer' ? reviewer : slug === 'jarvis' ? jarvis : null,
-      getAgentForChat: vi.fn(async () => jarvis),
-      getMessages: vi.fn(async () => [userMessage]),
-      appendMessage: vi.fn(async (msg) => ({ ...msg, id: placeholderId, created_at: 2, updated_at: 2 })),
-      updateMessage: vi.fn(async () => undefined),
-    }));
+    const stop = trackListener(
+      startRuntimeListener({
+        getAgentById: (id) =>
+          id === builder.id
+            ? builder
+            : id === reviewer.id
+              ? reviewer
+              : id === jarvis.id
+                ? jarvis
+                : null,
+        getAgentBySlug: (slug) =>
+          slug === 'builder'
+            ? builder
+            : slug === 'reviewer'
+              ? reviewer
+              : slug === 'jarvis'
+                ? jarvis
+                : null,
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => [userMessage]),
+        appendMessage: vi.fn(async (msg) => ({
+          ...msg,
+          id: placeholderId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage: vi.fn(async () => undefined),
+      }),
+    );
 
-    window.dispatchEvent(new CustomEvent('jarvis:send', {
-      detail: {
-        chatId,
-        text: '@builder @reviewer summarize the handoff',
-        mentionedAgentIds: [builder.id, reviewer.id],
-      },
-    }));
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: {
+          chatId,
+          text: '@builder @reviewer summarize the handoff',
+          mentionedAgentIds: [builder.id, reviewer.id],
+        },
+      }),
+    );
 
     await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(1));
     const prompt = mocks.runAgent.mock.calls[0][0].agent.system_prompt;
@@ -465,21 +510,32 @@ describe('startRuntimeListener agent routing', () => {
       updated_at: 1,
     };
 
-    const stop = trackListener(startRuntimeListener({
-      getAgentById: (id) => (id === jarvis.id ? jarvis : null),
-      getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
-      getAgentForChat: vi.fn(async () => jarvis),
-      getMessages: vi.fn(async () => [userMessage]),
-      appendMessage: vi.fn(async (msg) => ({ ...msg, id: placeholderId, created_at: 2, updated_at: 2 })),
-      updateMessage: vi.fn(async () => undefined),
-    }));
+    const stop = trackListener(
+      startRuntimeListener({
+        getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+        getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => [userMessage]),
+        appendMessage: vi.fn(async (msg) => ({
+          ...msg,
+          id: placeholderId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage: vi.fn(async () => undefined),
+      }),
+    );
 
-    window.dispatchEvent(new CustomEvent('jarvis:send', { detail: { chatId, text: 'what should I do next?' } }));
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', { detail: { chatId, text: 'what should I do next?' } }),
+    );
 
     await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(1));
     const prompt = mocks.runAgent.mock.calls[0][0].agent.system_prompt;
     expect(prompt).toContain('Answer in 1-3 short sentences');
-    expect(prompt).toContain('Name the relevant file, agent, terminal, context map, or page when it matters');
+    expect(prompt).toContain(
+      'Name the relevant file, agent, terminal, context map, or page when it matters',
+    );
     expect(prompt).toContain('/agents references the Agents page/editor');
 
     stop();
@@ -503,16 +559,25 @@ describe('startRuntimeListener agent routing', () => {
       updated_at: 1,
     };
 
-    const stop = trackListener(startRuntimeListener({
-      getAgentById: (id) => (id === jarvis.id ? jarvis : null),
-      getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
-      getAgentForChat: vi.fn(async () => jarvis),
-      getMessages: vi.fn(async () => [userMessage]),
-      appendMessage: vi.fn(async (msg) => ({ ...msg, id: placeholderId, created_at: 2, updated_at: 2 })),
-      updateMessage: vi.fn(async () => undefined),
-    }));
+    const stop = trackListener(
+      startRuntimeListener({
+        getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+        getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => [userMessage]),
+        appendMessage: vi.fn(async (msg) => ({
+          ...msg,
+          id: placeholderId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage: vi.fn(async () => undefined),
+      }),
+    );
 
-    window.dispatchEvent(new CustomEvent('jarvis:send', { detail: { chatId, text: 'write this like me' } }));
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', { detail: { chatId, text: 'write this like me' } }),
+    );
 
     await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(1));
     const prompt = mocks.runAgent.mock.calls[0][0].agent.system_prompt;
@@ -536,16 +601,25 @@ describe('startRuntimeListener agent routing', () => {
       updated_at: 1,
     };
 
-    const stop = trackListener(startRuntimeListener({
-      getAgentById: (id) => (id === jarvis.id ? jarvis : null),
-      getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
-      getAgentForChat: vi.fn(async () => jarvis),
-      getMessages: vi.fn(async () => [userMessage]),
-      appendMessage: vi.fn(async (msg) => ({ ...msg, id: placeholderId, created_at: 2, updated_at: 2 })),
-      updateMessage: vi.fn(async () => undefined),
-    }));
+    const stop = trackListener(
+      startRuntimeListener({
+        getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+        getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => [userMessage]),
+        appendMessage: vi.fn(async (msg) => ({
+          ...msg,
+          id: placeholderId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage: vi.fn(async () => undefined),
+      }),
+    );
 
-    window.dispatchEvent(new CustomEvent('jarvis:send', { detail: { chatId, text: 'hey what is my name' } }));
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', { detail: { chatId, text: 'hey what is my name' } }),
+    );
 
     await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(1));
     const prompt = mocks.runAgent.mock.calls[0][0].agent.system_prompt as string;
@@ -573,7 +647,13 @@ describe('startRuntimeListener agent routing', () => {
       id: `msg_all_about_me_learning_user_${index}` as MessageId,
       chat_id: chatId,
       role: 'user',
-      parts: [{ kind: 'text', text: index === 9 ? 'Please keep it short and launch-ready.' : `prior user message ${index}` }],
+      parts: [
+        {
+          kind: 'text',
+          text:
+            index === 9 ? 'Please keep it short and launch-ready.' : `prior user message ${index}`,
+        },
+      ],
       created_at: index + 1,
       updated_at: index + 1,
     }));
@@ -591,16 +671,31 @@ describe('startRuntimeListener agent routing', () => {
         model: 'mock-default',
       });
 
-    const stop = trackListener(startRuntimeListener({
-      getAgentById: (id) => (id === jarvis.id ? jarvis : null),
-      getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
-      getAgentForChat: vi.fn(async () => jarvis),
-      getMessages: vi.fn(async () => history),
-      appendMessage: vi.fn(async (msg) => ({ ...msg, id: placeholderId, created_at: 20, updated_at: 20 })),
-      updateMessage: vi.fn(async () => undefined),
-    }));
+    const stop = trackListener(
+      startRuntimeListener({
+        getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+        getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => history),
+        appendMessage: vi.fn(async (msg) => ({
+          ...msg,
+          id: placeholderId,
+          created_at: 20,
+          updated_at: 20,
+        })),
+        updateMessage: vi.fn(async () => undefined),
+      }),
+    );
 
-    window.dispatchEvent(new CustomEvent('jarvis:send', { detail: { chatId, text: 'Please keep it short and launch-ready.', forceAllAboutMeUpdate: true } }));
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: {
+          chatId,
+          text: 'Please keep it short and launch-ready.',
+          forceAllAboutMeUpdate: true,
+        },
+      }),
+    );
 
     await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(2));
     expect(useAllAboutMeStore.getState().markdown).toContain('Learned Patterns');
@@ -639,19 +734,21 @@ describe('startRuntimeListener agent routing', () => {
       model: 'mock-default',
     });
 
-    const stop = trackListener(startRuntimeListener({
-      getAgentById: (id) => (id === jarvis.id ? jarvis : null),
-      getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
-      getAgentForChat: vi.fn(async () => jarvis),
-      getMessages: vi.fn(async () => [userMessage]),
-      appendMessage: vi.fn(async (msg) => ({
-        ...msg,
-        id: placeholderId,
-        created_at: 2,
-        updated_at: 2,
-      })),
-      updateMessage: vi.fn(async () => undefined),
-    }));
+    const stop = trackListener(
+      startRuntimeListener({
+        getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+        getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => [userMessage]),
+        appendMessage: vi.fn(async (msg) => ({
+          ...msg,
+          id: placeholderId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage: vi.fn(async () => undefined),
+      }),
+    );
 
     window.dispatchEvent(
       new CustomEvent('jarvis:send', {
@@ -686,14 +783,21 @@ describe('startRuntimeListener agent routing', () => {
       provider: 'mock',
       model: 'mock-default',
     });
-    const stop = trackListener(startRuntimeListener({
-      getAgentById: (id) => (id === jarvis.id ? jarvis : null),
-      getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
-      getAgentForChat: vi.fn(async () => jarvis),
-      getMessages: vi.fn(async () => [userMessage]),
-      appendMessage: vi.fn(async (msg) => ({ ...msg, id: placeholderId, created_at: 2, updated_at: 2 })),
-      updateMessage: vi.fn(async () => undefined),
-    }));
+    const stop = trackListener(
+      startRuntimeListener({
+        getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+        getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => [userMessage]),
+        appendMessage: vi.fn(async (msg) => ({
+          ...msg,
+          id: placeholderId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage: vi.fn(async () => undefined),
+      }),
+    );
 
     window.dispatchEvent(
       new CustomEvent('jarvis:send', { detail: { chatId, text: 'hello', speakReply: true } }),
@@ -724,14 +828,21 @@ describe('startRuntimeListener agent routing', () => {
       provider: 'mock',
       model: 'mock-default',
     });
-    const stop = trackListener(startRuntimeListener({
-      getAgentById: (id) => (id === jarvis.id ? jarvis : null),
-      getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
-      getAgentForChat: vi.fn(async () => jarvis),
-      getMessages: vi.fn(async () => [userMessage]),
-      appendMessage: vi.fn(async (msg) => ({ ...msg, id: placeholderId, created_at: 2, updated_at: 2 })),
-      updateMessage: vi.fn(async () => undefined),
-    }));
+    const stop = trackListener(
+      startRuntimeListener({
+        getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+        getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => [userMessage]),
+        appendMessage: vi.fn(async (msg) => ({
+          ...msg,
+          id: placeholderId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage: vi.fn(async () => undefined),
+      }),
+    );
 
     window.dispatchEvent(new CustomEvent('jarvis:send', { detail: { chatId, text: 'hello' } }));
 
@@ -761,14 +872,21 @@ describe('startRuntimeListener agent routing', () => {
       provider: 'mock',
       model: 'mock-default',
     });
-    const stop = trackListener(startRuntimeListener({
-      getAgentById: (id) => (id === jarvis.id ? jarvis : null),
-      getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
-      getAgentForChat: vi.fn(async () => jarvis),
-      getMessages: vi.fn(async () => [userMessage]),
-      appendMessage: vi.fn(async (msg) => ({ ...msg, id: placeholderId, created_at: 2, updated_at: 2 })),
-      updateMessage: vi.fn(async () => undefined),
-    }));
+    const stop = trackListener(
+      startRuntimeListener({
+        getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+        getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => [userMessage]),
+        appendMessage: vi.fn(async (msg) => ({
+          ...msg,
+          id: placeholderId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage: vi.fn(async () => undefined),
+      }),
+    );
 
     window.dispatchEvent(
       new CustomEvent('jarvis:send', { detail: { chatId, text: 'hello', speakReply: true } }),
@@ -799,19 +917,21 @@ describe('startRuntimeListener agent routing', () => {
       };
     });
 
-    const stop = trackListener(startRuntimeListener({
-      getAgentById: (id) => (id === jarvis.id ? jarvis : null),
-      getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
-      getAgentForChat: vi.fn(async () => jarvis),
-      getMessages: vi.fn(async () => []),
-      appendMessage: vi.fn(async (msg) => ({
-        ...msg,
-        id: `msg_voice_${++placeholderSeq}` as MessageId,
-        created_at: placeholderSeq,
-        updated_at: placeholderSeq,
-      })),
-      updateMessage: vi.fn(async () => undefined),
-    }));
+    const stop = trackListener(
+      startRuntimeListener({
+        getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+        getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => []),
+        appendMessage: vi.fn(async (msg) => ({
+          ...msg,
+          id: `msg_voice_${++placeholderSeq}` as MessageId,
+          created_at: placeholderSeq,
+          updated_at: placeholderSeq,
+        })),
+        updateMessage: vi.fn(async () => undefined),
+      }),
+    );
 
     window.dispatchEvent(
       new CustomEvent('jarvis:send', { detail: { chatId, text: 'first', speakReply: true } }),
@@ -848,19 +968,21 @@ describe('startRuntimeListener agent routing', () => {
       model: 'llama3.2:1b',
     });
 
-    const stop = trackListener(startRuntimeListener({
-      getAgentById: (id) => (id === jarvis.id ? jarvis : null),
-      getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
-      getAgentForChat: vi.fn(async () => jarvis),
-      getMessages: vi.fn(async () => [userMessage]),
-      appendMessage: vi.fn(async (msg) => ({
-        ...msg,
-        id: placeholderId,
-        created_at: 2,
-        updated_at: 2,
-      })),
-      updateMessage,
-    }));
+    const stop = trackListener(
+      startRuntimeListener({
+        getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+        getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => [userMessage]),
+        appendMessage: vi.fn(async (msg) => ({
+          ...msg,
+          id: placeholderId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage,
+      }),
+    );
 
     window.dispatchEvent(
       new CustomEvent('jarvis:send', {
@@ -911,19 +1033,21 @@ describe('startRuntimeListener agent routing', () => {
       model: 'llama3.2:1b',
     });
 
-    const stop = trackListener(startRuntimeListener({
-      getAgentById: (id) => (id === jarvis.id ? jarvis : null),
-      getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
-      getAgentForChat: vi.fn(async () => jarvis),
-      getMessages: vi.fn(async () => [userMessage]),
-      appendMessage: vi.fn(async (msg) => ({
-        ...msg,
-        id: placeholderId,
-        created_at: 2,
-        updated_at: 2,
-      })),
-      updateMessage,
-    }));
+    const stop = trackListener(
+      startRuntimeListener({
+        getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+        getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => [userMessage]),
+        appendMessage: vi.fn(async (msg) => ({
+          ...msg,
+          id: placeholderId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage,
+      }),
+    );
 
     window.dispatchEvent(
       new CustomEvent('jarvis:send', {
@@ -971,19 +1095,21 @@ describe('startRuntimeListener agent routing', () => {
       model: 'llama3.2:1b',
     });
 
-    const stop = trackListener(startRuntimeListener({
-      getAgentById: (id) => (id === jarvis.id ? jarvis : null),
-      getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
-      getAgentForChat: vi.fn(async () => jarvis),
-      getMessages: vi.fn(async () => [userMessage]),
-      appendMessage: vi.fn(async (msg) => ({
-        ...msg,
-        id: placeholderId,
-        created_at: 2,
-        updated_at: 2,
-      })),
-      updateMessage,
-    }));
+    const stop = trackListener(
+      startRuntimeListener({
+        getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+        getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => [userMessage]),
+        appendMessage: vi.fn(async (msg) => ({
+          ...msg,
+          id: placeholderId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage,
+      }),
+    );
 
     // Composer strips the slash prefix before dispatch; text arrives as the remainder.
     window.dispatchEvent(
@@ -1035,19 +1161,21 @@ describe('startRuntimeListener agent routing', () => {
       '## Coordination Summary\n- Coder (opencode, idle, terminal term_1)',
     );
 
-    const stop = trackListener(startRuntimeListener({
-      getAgentById: (id) => (id === jarvis.id ? jarvis : null),
-      getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
-      getAgentForChat: vi.fn(async () => jarvis),
-      getMessages: vi.fn(async () => [userMessage]),
-      appendMessage: vi.fn(async (msg) => ({
-        ...msg,
-        id: placeholderId,
-        created_at: 2,
-        updated_at: 2,
-      })),
-      updateMessage,
-    }));
+    const stop = trackListener(
+      startRuntimeListener({
+        getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+        getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => [userMessage]),
+        appendMessage: vi.fn(async (msg) => ({
+          ...msg,
+          id: placeholderId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage,
+      }),
+    );
 
     window.dispatchEvent(
       new CustomEvent('jarvis:send', {
@@ -1133,19 +1261,21 @@ describe('startRuntimeListener agent routing', () => {
         model: 'gpt-5.4-mini',
       });
 
-    const stop = trackListener(startRuntimeListener({
-      getAgentById: (id) => (id === jarvis.id ? jarvis : null),
-      getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
-      getAgentForChat: vi.fn(async () => jarvis),
-      getMessages: vi.fn(async () => [userMessage]),
-      appendMessage: vi.fn(async (msg) => ({
-        ...msg,
-        id: placeholderId,
-        created_at: 2,
-        updated_at: 2,
-      })),
-      updateMessage,
-    }));
+    const stop = trackListener(
+      startRuntimeListener({
+        getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+        getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => [userMessage]),
+        appendMessage: vi.fn(async (msg) => ({
+          ...msg,
+          id: placeholderId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage,
+      }),
+    );
 
     window.dispatchEvent(
       new CustomEvent('jarvis:send', {
@@ -1188,29 +1318,38 @@ describe('startRuntimeListener agent routing', () => {
       provider: 'mock',
       model: 'mock-default',
     });
-    trackListener(startRuntimeListener({
-      getAgentById: () => jarvis,
-      getAgentBySlug: () => jarvis,
-      getAgentForChat: vi.fn(async () => jarvis),
-      getMessages: vi.fn(async () => [userMessage]),
-      appendMessage: vi.fn(async (message) => ({
-        ...message, id: 'msg_explicit_questions_assistant' as MessageId, created_at: 2, updated_at: 2,
-      })),
-      updateMessage,
-    }));
-    window.dispatchEvent(new CustomEvent('jarvis:send', {
-      detail: { chatId, text: 'Build a game, but ask me three questions first.' },
-    }));
+    trackListener(
+      startRuntimeListener({
+        getAgentById: () => jarvis,
+        getAgentBySlug: () => jarvis,
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => [userMessage]),
+        appendMessage: vi.fn(async (message) => ({
+          ...message,
+          id: 'msg_explicit_questions_assistant' as MessageId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage,
+      }),
+    );
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: { chatId, text: 'Build a game, but ask me three questions first.' },
+      }),
+    );
 
     await vi.waitFor(() => expect(updateMessage).toHaveBeenCalled());
-    const final = (updateMessage.mock.calls as unknown as Array<
-      [MessageId, { parts: Part[] }]
-    >).at(-1)?.[1].parts;
+    const final = (updateMessage.mock.calls as unknown as Array<[MessageId, { parts: Part[] }]>).at(
+      -1,
+    )?.[1].parts;
     const questionPart = final?.find((part) => part.kind === 'question_block');
     expect(questionPart?.kind).toBe('question_block');
     if (questionPart?.kind !== 'question_block') return;
     expect(questionPart.block.questions).toHaveLength(3);
-    expect(questionPart.block.questions.every((question) => question.options?.length === 3)).toBe(true);
+    expect(questionPart.block.questions.every((question) => question.options?.length === 3)).toBe(
+      true,
+    );
   });
 
   it('does not force an implementation plan card for informational Plan Mode requests', async () => {
@@ -1231,24 +1370,373 @@ describe('startRuntimeListener agent routing', () => {
       provider: 'mock',
       model: 'mock-default',
     });
-    trackListener(startRuntimeListener({
-      getAgentById: () => jarvis,
-      getAgentBySlug: () => jarvis,
-      getAgentForChat: vi.fn(async () => jarvis),
-      getMessages: vi.fn(async () => [userMessage]),
-      appendMessage: vi.fn(async (message) => ({
-        ...message, id: 'msg_plan_information_assistant' as MessageId, created_at: 2, updated_at: 2,
-      })),
-      updateMessage,
-    }));
-    window.dispatchEvent(new CustomEvent('jarvis:send', {
-      detail: { chatId, text: 'How do I make coffee step by step?', interactionMode: 'plan' },
-    }));
+    trackListener(
+      startRuntimeListener({
+        getAgentById: () => jarvis,
+        getAgentBySlug: () => jarvis,
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => [userMessage]),
+        appendMessage: vi.fn(async (message) => ({
+          ...message,
+          id: 'msg_plan_information_assistant' as MessageId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage,
+      }),
+    );
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: { chatId, text: 'How do I make coffee step by step?', interactionMode: 'plan' },
+      }),
+    );
 
     await vi.waitFor(() => expect(updateMessage).toHaveBeenCalled());
-    const final = (updateMessage.mock.calls as unknown as Array<
-      [MessageId, { parts: Part[] }]
-    >).at(-1)?.[1].parts;
-    expect(final).toEqual([{ kind: 'text', text: '1. Heat water.\n2. Brew the coffee.\n3. Serve.' }]);
+    const final = (updateMessage.mock.calls as unknown as Array<[MessageId, { parts: Part[] }]>).at(
+      -1,
+    )?.[1].parts;
+    expect(final).toEqual([
+      { kind: 'text', text: '1. Heat water.\n2. Brew the coffee.\n3. Serve.' },
+    ]);
+  });
+
+  function shadowHarness() {
+    let now = 100;
+    const deps: JarvisShadowCompilationDeps = {
+      createPersistedRun: vi.fn(async (input) => ({
+        ...input,
+        id: input.id!,
+        status: 'queued' as const,
+        createdAt: now,
+        updatedAt: now,
+      })),
+      buildEnvelope: vi.fn(
+        async (input) =>
+          ({
+            schemaVersion: 1,
+            requestId: input.attempt.requestId,
+            runId: input.attempt.runId,
+            accountId: input.accountId,
+            agent: input.agent,
+          }) as never,
+      ),
+      compilePrompt: vi.fn(() => ({
+        schemaVersion: 1 as const,
+        layers: [],
+        systemText: 'SHADOW PROMPT MUST NOT DISPATCH',
+        promptHash: 'd'.repeat(64),
+        identityVersion: 1,
+        profileRevisionId: 'shadow-runtime-profile',
+        diagnostics: { totalChars: 0, omittedSourceRefs: [], warnings: [] },
+      })),
+      transitionRun: vi.fn(async (input) => ({
+        id: input.runId,
+        accountId: input.accountId,
+        source: 'typed_chat' as const,
+        status: input.nextStatus,
+        agentId: 'agent_jarvis',
+        identityVersion: 1,
+        profileRevisionId: 'shadow-runtime-profile',
+        model: {
+          providerId: 'mock',
+          modelId: 'mock-default',
+          connectionMode: 'local' as const,
+          capabilities: {},
+          capturedAt: now,
+        },
+        createdAt: now,
+        updatedAt: now,
+      })),
+      recordDiagnostic: vi.fn(),
+      now: vi.fn(() => now++),
+    };
+    return deps;
+  }
+
+  function runtimeInterlocks() {
+    return {
+      assertCanonicalAccountIdentity: vi.fn(),
+      assertSourcesAdmitted: vi.fn(),
+      assertEntitlementAllowsRequestedCapability: vi.fn(),
+      assertBrowserOperatorAvailableOrQuarantined: vi.fn(),
+      assertPrivateSyncBoundary: vi.fn(),
+      assertSelectedPromptTransportSupported: vi.fn(),
+    };
+  }
+
+  function kernelRuntimeBindings(selectedAgent: Agent) {
+    const chatId = 'chat_kernel_gate' as ChatId;
+    const updateMessage = vi.fn(async () => undefined);
+    return {
+      chatId,
+      updateMessage,
+      bindings: {
+        getAgentById: () => selectedAgent,
+        getAgentBySlug: () => selectedAgent,
+        getAgentForChat: vi.fn(async () => selectedAgent),
+        getMessages: vi.fn(async () => [
+          {
+            id: 'msg_kernel_user' as MessageId,
+            chat_id: chatId,
+            role: 'user' as const,
+            parts: [{ kind: 'text' as const, text: 'Run the kernel gate.' }],
+            created_at: 1,
+            updated_at: 1,
+          },
+        ]),
+        appendMessage: vi.fn(async (message) => ({
+          ...message,
+          id: 'msg_kernel_assistant' as MessageId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage,
+      },
+    };
+  }
+
+  it('defaults protected built-in JARVIS to one shadow compile plus one unchanged legacy dispatch', async () => {
+    const protectedJarvis = agent('agent_jarvis', 'jarvis', 'LEGACY SYSTEM PROMPT', true);
+    const shadow = shadowHarness();
+    const interlocks = runtimeInterlocks();
+    const harness = kernelRuntimeBindings(protectedJarvis);
+    trackListener(
+      startRuntimeListener(harness.bindings, {
+        jarvisShadow: shadow,
+        jarvisInterlocks: interlocks,
+      }),
+    );
+
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: { chatId: harness.chatId, text: 'Run the kernel gate.' },
+      }),
+    );
+
+    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() =>
+      expect(shadow.transitionRun).toHaveBeenCalledWith(
+        expect.objectContaining({ nextStatus: 'completed' }),
+      ),
+    );
+    expect(shadow.createPersistedRun).toHaveBeenCalledOnce();
+    expect(shadow.createPersistedRun).toHaveBeenCalledWith(
+      expect.objectContaining({ accountId: 'runtime-test-account' }),
+    );
+    expect(JSON.stringify(vi.mocked(shadow.createPersistedRun).mock.calls)).not.toContain(
+      'local-unassigned',
+    );
+    expect(shadow.buildEnvelope).toHaveBeenCalledOnce();
+    expect(shadow.compilePrompt).toHaveBeenCalledOnce();
+    expect(mocks.runAgent.mock.calls[0]![0].agent.system_prompt).toContain('LEGACY SYSTEM PROMPT');
+    expect(mocks.runAgent.mock.calls[0]![0].agent.system_prompt).not.toContain(
+      'SHADOW PROMPT MUST NOT DISPATCH',
+    );
+    for (const assertion of Object.values(interlocks)) expect(assertion).toHaveBeenCalledOnce();
+  });
+
+  it('runs explicit legacy mode once without building a shadow envelope', async () => {
+    const protectedJarvis = agent('agent_jarvis', 'jarvis', 'LEGACY SYSTEM PROMPT', true);
+    const shadow = shadowHarness();
+    const interlocks = runtimeInterlocks();
+    const harness = kernelRuntimeBindings(protectedJarvis);
+    trackListener(
+      startRuntimeListener(harness.bindings, {
+        jarvisKernelMode: 'legacy',
+        jarvisShadow: shadow,
+        jarvisInterlocks: interlocks,
+      }),
+    );
+
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: { chatId: harness.chatId, text: 'Run the kernel gate.' },
+      }),
+    );
+
+    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(1));
+    expect(shadow.createPersistedRun).not.toHaveBeenCalled();
+    for (const assertion of Object.values(interlocks)) expect(assertion).toHaveBeenCalledOnce();
+  });
+
+  it('fails kernel mode before provider dispatch until the canonical dispatcher exists', async () => {
+    const protectedJarvis = agent('agent_jarvis', 'jarvis', 'LEGACY SYSTEM PROMPT', true);
+    const harness = kernelRuntimeBindings(protectedJarvis);
+    trackListener(
+      startRuntimeListener(harness.bindings, {
+        jarvisKernelMode: 'kernel',
+        jarvisInterlocks: runtimeInterlocks(),
+      }),
+    );
+
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: { chatId: harness.chatId, text: 'Run the kernel gate.' },
+      }),
+    );
+
+    await vi.waitFor(() =>
+      expect(mocks.devLog).toHaveBeenCalledWith(expect.objectContaining({ level: 'error' })),
+    );
+    expect(mocks.runAgent).not.toHaveBeenCalled();
+    expect(harness.bindings.appendMessage).not.toHaveBeenCalled();
+  });
+
+  it('skips shadow and mode interlocks for a user-created jarvis slug collision', async () => {
+    const collision = agent('agent_collision', 'jarvis', 'USER COLLISION', false);
+    const shadow = shadowHarness();
+    const interlocks = runtimeInterlocks();
+    interlocks.assertCanonicalAccountIdentity.mockImplementation(() => {
+      throw new Error('must not run for collision');
+    });
+    const harness = kernelRuntimeBindings(collision);
+    trackListener(
+      startRuntimeListener(harness.bindings, {
+        jarvisKernelMode: 'shadow',
+        jarvisShadow: shadow,
+        jarvisInterlocks: interlocks,
+      }),
+    );
+
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: { chatId: harness.chatId, text: 'Run the kernel gate.' },
+      }),
+    );
+
+    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(1));
+    expect(shadow.createPersistedRun).not.toHaveBeenCalled();
+    for (const assertion of Object.values(interlocks)) expect(assertion).not.toHaveBeenCalled();
+  });
+
+  it('records a safe failed shadow run while a compiler defect still allows legacy dispatch', async () => {
+    const protectedJarvis = agent('agent_jarvis', 'jarvis', 'LEGACY SYSTEM PROMPT', true);
+    const shadow = shadowHarness();
+    vi.mocked(shadow.compilePrompt).mockImplementation(() => {
+      throw new Error('private prompt text /users/viper/secret.txt');
+    });
+    const harness = kernelRuntimeBindings(protectedJarvis);
+    trackListener(
+      startRuntimeListener(harness.bindings, {
+        jarvisKernelMode: 'shadow',
+        jarvisShadow: shadow,
+        jarvisInterlocks: runtimeInterlocks(),
+      }),
+    );
+
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: { chatId: harness.chatId, text: 'Run the kernel gate.' },
+      }),
+    );
+
+    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledOnce());
+    expect(shadow.transitionRun).toHaveBeenCalledWith(
+      expect.objectContaining({ expectedStatus: 'queued', nextStatus: 'failed' }),
+    );
+    expect(JSON.stringify(vi.mocked(shadow.recordDiagnostic).mock.calls)).not.toContain('viper');
+  });
+
+  it('rejects an invalid protected mode before interlocks, persistence, or provider dispatch', async () => {
+    const protectedJarvis = agent('agent_jarvis', 'jarvis', 'LEGACY SYSTEM PROMPT', true);
+    const shadow = shadowHarness();
+    const interlocks = runtimeInterlocks();
+    const harness = kernelRuntimeBindings(protectedJarvis);
+    trackListener(
+      startRuntimeListener(harness.bindings, {
+        jarvisKernelMode: 'invalid' as never,
+        jarvisShadow: shadow,
+        jarvisInterlocks: interlocks,
+      }),
+    );
+
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: { chatId: harness.chatId, text: 'Run the kernel gate.' },
+      }),
+    );
+
+    await vi.waitFor(() =>
+      expect(mocks.devLog).toHaveBeenCalledWith(expect.objectContaining({ level: 'error' })),
+    );
+    expect(mocks.runAgent).not.toHaveBeenCalled();
+    expect(shadow.createPersistedRun).not.toHaveBeenCalled();
+    for (const assertion of Object.values(interlocks)) expect(assertion).not.toHaveBeenCalled();
+  });
+
+  it('keeps signal delivery nonterminal until the provider verifies cancellation', async () => {
+    const protectedJarvis = agent('agent_jarvis', 'jarvis', 'LEGACY SYSTEM PROMPT', true);
+    const shadow = shadowHarness();
+    let rejectProvider: ((reason: unknown) => void) | undefined;
+    mocks.runAgent.mockReturnValueOnce(
+      new Promise((_, reject) => {
+        rejectProvider = reject;
+      }),
+    );
+    const harness = kernelRuntimeBindings(protectedJarvis);
+    trackListener(
+      startRuntimeListener(harness.bindings, {
+        jarvisKernelMode: 'shadow',
+        jarvisShadow: shadow,
+        jarvisInterlocks: runtimeInterlocks(),
+      }),
+    );
+
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: { chatId: harness.chatId, text: 'Run the kernel gate.' },
+      }),
+    );
+    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledOnce());
+    window.dispatchEvent(
+      new CustomEvent('jarvis:cancel', {
+        detail: { messageId: 'msg_kernel_assistant' as MessageId },
+      }),
+    );
+    await Promise.resolve();
+    expect(shadow.transitionRun).not.toHaveBeenCalledWith(
+      expect.objectContaining({ nextStatus: 'cancelled' }),
+    );
+
+    rejectProvider?.(new DOMException('Provider stopped', 'AbortError'));
+    await vi.waitFor(() =>
+      expect(shadow.transitionRun).toHaveBeenCalledWith(
+        expect.objectContaining({ expectedStatus: 'running', nextStatus: 'cancelled' }),
+      ),
+    );
+  });
+
+  it.each([
+    ['legacy', 'assertPrivateSyncBoundary'],
+    ['shadow', 'assertPrivateSyncBoundary'],
+    ['kernel', 'assertPrivateSyncBoundary'],
+    ['legacy', 'assertSelectedPromptTransportSupported'],
+    ['shadow', 'assertSelectedPromptTransportSupported'],
+    ['kernel', 'assertSelectedPromptTransportSupported'],
+  ] as const)('keeps %s mode fail-closed when %s denies', async (mode, deniedMethod) => {
+    const protectedJarvis = agent('agent_jarvis', 'jarvis', 'LEGACY SYSTEM PROMPT', true);
+    const shadow = shadowHarness();
+    const interlocks = runtimeInterlocks();
+    interlocks[deniedMethod].mockImplementation(() => {
+      throw new Error(`${deniedMethod}_denied`);
+    });
+    const harness = kernelRuntimeBindings(protectedJarvis);
+    trackListener(
+      startRuntimeListener(harness.bindings, {
+        jarvisKernelMode: mode,
+        jarvisShadow: shadow,
+        jarvisInterlocks: interlocks,
+      }),
+    );
+
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: { chatId: harness.chatId, text: 'Run the kernel gate.' },
+      }),
+    );
+
+    await vi.waitFor(() => expect(mocks.devLog).toHaveBeenCalled());
+    expect(mocks.runAgent).not.toHaveBeenCalled();
+    expect(shadow.createPersistedRun).not.toHaveBeenCalled();
   });
 });

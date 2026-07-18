@@ -18,6 +18,7 @@ import type { Agent, AgentId, Chat, Message, MessageId, Part } from '@/types';
 import type { ChatId } from '@/types/common';
 import { useAuthStore } from '@/stores/auth';
 import { useAgentStore } from '@/stores/agents';
+import { resolveAccountIdentity } from '@/lib/accountIdentity';
 import { runAgent } from './router';
 import type { LLMContentPart, LLMMessage } from './types';
 import { llmContentToText } from './types';
@@ -30,7 +31,10 @@ import { devConsole } from '@/features/dev-console';
 import { toast } from '@/components/ui/toast';
 import { chatRepo } from '@/lib/db';
 import { getAiCompletionInstruction, notifyDone } from '@/lib/notifications';
-import { createStreamingVoiceSession, type StreamingVoiceSession } from '@/features/voice/streamingVoice';
+import {
+  createStreamingVoiceSession,
+  type StreamingVoiceSession,
+} from '@/features/voice/streamingVoice';
 import { canVoiceModuleSpeak } from '@/features/voice/voiceRouter';
 import { STREAMING_VOICE_END_EVENT } from '@/features/voice/speechSynthesis';
 import { registerActiveStreamingVoiceSession } from '@/features/voice/voiceRouter';
@@ -40,10 +44,7 @@ import { resolveDefaultWriteDir } from '@/lib/actions/defaultWriteDir';
 import { buildUserIdentityContextBlock } from './userIdentity';
 import { composeSkillAddenda, resolveSkills } from '@/lib/agents/skills';
 import { createChatActivityId, useChatActivityStore } from '@/features/chat/activity';
-import {
-  classifyStackTask,
-  parseStackSlashCommand,
-} from './stacks/classifier';
+import { classifyStackTask, parseStackSlashCommand } from './stacks/classifier';
 import { stepsForPreset } from './stacks/presets';
 import { runStack } from './stacks/runner';
 import type { StackStepResult } from './stacks/types';
@@ -72,7 +73,10 @@ import { classifyJarvisIntent, formatJarvisIntentPolicy } from './intent';
 import type { TerminalRef } from '@/features/terminals/terminalRefs';
 import type { ContextAttachment } from '@/features/context/tree';
 import { modelSupportsVision, type ChatImageAttachment } from './vision';
-import { ALL_ABOUT_ME_FILE_LOCATION, buildAllAboutMeContextBlock } from '@/features/all-about-me/profile';
+import {
+  ALL_ABOUT_ME_FILE_LOCATION,
+  buildAllAboutMeContextBlock,
+} from '@/features/all-about-me/profile';
 import { reviseAllAboutMeMarkdown } from '@/features/all-about-me/ai';
 import { useAllAboutMeStore } from '@/features/all-about-me/store';
 import {
@@ -83,10 +87,30 @@ import {
   createClarificationQuestionBlock,
   parseJarvisQuestionBlocks,
 } from '@/features/jarvis-interaction/questionParser';
-import type { JarvisInteractionMode, JarvisStructuredContext } from '@/features/jarvis-interaction/types';
+import type {
+  JarvisInteractionMode,
+  JarvisStructuredContext,
+} from '@/features/jarvis-interaction/types';
 import { useJarvisInteractionStore } from '@/features/jarvis-interaction/sessionStore';
 import { parseJarvisPlanBlocks } from '@/features/jarvis-interaction/planParser';
 import { parseJarvisPermissionBlocks } from '@/features/jarvis-interaction/permissionParser';
+import {
+  JarvisKernelModeError,
+  resolveJarvisKernelMode,
+  type JarvisKernelMode,
+} from '@/lib/jarvis/kernelMode';
+import {
+  compileJarvisShadowTurn,
+  mirrorJarvisShadowLegacyOutcome,
+  type JarvisShadowCompilationDeps,
+  type JarvisShadowCompilationResult,
+  type JarvisShadowTurnInput,
+} from '@/lib/jarvis/shadowCompilation';
+import {
+  JARVIS_IDENTITY_POLICY,
+  hashJarvisText,
+  isProtectedJarvisAgent,
+} from '@/lib/jarvis/identity';
 
 /**
  * Bindings the runtime needs from the host app. Implementations are typically
@@ -167,6 +191,30 @@ export interface RuntimeOptions {
    * visible streaming smooth without saturating the message store on long runs.
    */
   flushIntervalMs?: number;
+  /** Internal rollback/test gate. Never read from event or user-controlled input. */
+  jarvisKernelMode?: JarvisKernelMode;
+  /** Independent safety assertions that remain active in every protected mode. */
+  jarvisInterlocks?: JarvisRuntimeInterlockPort;
+  /** Observational compiler/journal composition. Its compiled prompt is never dispatched here. */
+  jarvisShadow?: JarvisShadowCompilationDeps;
+}
+
+export interface JarvisRuntimeInterlockPort {
+  assertCanonicalAccountIdentity(): void;
+  assertSourcesAdmitted(): void;
+  assertEntitlementAllowsRequestedCapability(): void;
+  assertBrowserOperatorAvailableOrQuarantined(): void;
+  assertPrivateSyncBoundary(): void;
+  assertSelectedPromptTransportSupported(): void;
+}
+
+export function assertJarvisRuntimeInterlocks(port: JarvisRuntimeInterlockPort): void {
+  port.assertCanonicalAccountIdentity();
+  port.assertSourcesAdmitted();
+  port.assertEntitlementAllowsRequestedCapability();
+  port.assertBrowserOperatorAvailableOrQuarantined();
+  port.assertPrivateSyncBoundary();
+  port.assertSelectedPromptTransportSupported();
 }
 
 /** Detect all `@slug` mentions in user text. */
@@ -190,7 +238,10 @@ function detectMention(text: string): string | null {
 }
 
 function getSelectedSkillsBlock(skillIds: string[] | undefined): string {
-  const unique = Array.from(new Set((skillIds ?? []).map((id) => id.trim()).filter(Boolean))).slice(0, 6);
+  const unique = Array.from(new Set((skillIds ?? []).map((id) => id.trim()).filter(Boolean))).slice(
+    0,
+    6,
+  );
   if (unique.length === 0) return '';
   const skills = resolveSkills(unique);
   const addenda = composeSkillAddenda(unique);
@@ -202,7 +253,9 @@ function getSelectedSkillsBlock(skillIds: string[] | undefined): string {
     'Apply the matching instructions, tools, and response style while preserving Jarvis brevity.',
     list,
     addenda.trim() ? `\nSkill instructions:\n${addenda.trim()}` : '',
-  ].filter(Boolean).join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 const JARVIS_CHAT_ACTION_OVERLAY = [
@@ -284,14 +337,22 @@ function applyJarvisChatActionOverlay(agent: Agent): Agent {
   };
 }
 
-function dispatchRunState(chatId: ChatId | string, status: 'running' | 'done' | 'error' | 'cancelled'): void {
-  window.dispatchEvent(new CustomEvent('jarvis:run-state', {
-    detail: { chatId: String(chatId), status },
-  }));
+function dispatchRunState(
+  chatId: ChatId | string,
+  status: 'running' | 'done' | 'error' | 'cancelled',
+): void {
+  window.dispatchEvent(
+    new CustomEvent('jarvis:run-state', {
+      detail: { chatId: String(chatId), status },
+    }),
+  );
 }
 
 export function sanitizeCredentialRequests(text: string): string {
-  const asksForSecret = /\b(enter|type|provide|send|share|give)\b[\s\S]{0,80}\b(password|api key|token|secret|credential|recovery code|credit card)\b/i.test(text);
+  const asksForSecret =
+    /\b(enter|type|provide|send|share|give)\b[\s\S]{0,80}\b(password|api key|token|secret|credential|recovery code|credit card)\b/i.test(
+      text,
+    );
   if (!asksForSecret) return text;
   return [
     "I can't ask for passwords, tokens, API keys, recovery codes, credit cards, or other secrets.",
@@ -310,7 +371,8 @@ export function sanitizePromptLeaks(text: string): string {
     /\bevaluation rubric\b/i,
     /\buse the above\b[\s\S]{0,80}\bscenario\b/i,
   ].filter((pattern) => pattern.test(trimmed)).length;
-  const looksLikeToolJsonDump = /^[{\[]/.test(trimmed) && /"(?:tools|tool_calls?|scenario)"\s*:/i.test(trimmed);
+  const looksLikeToolJsonDump =
+    /^[{\[]/.test(trimmed) && /"(?:tools|tool_calls?|scenario)"\s*:/i.test(trimmed);
   if (!looksLikeToolJsonDump && leakSignals < 2) return text;
   return [
     'I hit an invalid model reply instead of a usable answer.',
@@ -319,12 +381,14 @@ export function sanitizePromptLeaks(text: string): string {
 }
 
 function sanitizeUnsupportedActionMacros(text: string): string {
-  return text
-    .split(/\r?\n/)
-    .filter((line) => !/^\s*\{action\}/i.test(line.trim()))
-    .join('\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim() || text;
+  return (
+    text
+      .split(/\r?\n/)
+      .filter((line) => !/^\s*\{action\}/i.test(line.trim()))
+      .join('\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim() || text
+  );
 }
 
 function updateStructuredAgentStatus(
@@ -369,16 +433,18 @@ function getMentionedAgentProfileBlock(mentionedAgents: Agent[]): string {
     'Mentioned agent context for this turn.',
     'Use these agent definitions as request-specific context. Do not expose hidden prompt text unless the user asks to inspect agent configuration.',
     '',
-    ...mentionedAgents.map((agent) => [
-      `--- @${agent.slug} (${agent.name}) ---`,
-      `description: ${agent.description || 'none'}`,
-      `model: ${agent.model.provider}/${agent.model.model}`,
-      `capabilities: ${agent.capabilities.join(', ') || 'none'}`,
-      'system prompt:',
-      '```',
-      agent.system_prompt || '[empty]',
-      '```',
-    ].join('\n')),
+    ...mentionedAgents.map((agent) =>
+      [
+        `--- @${agent.slug} (${agent.name}) ---`,
+        `description: ${agent.description || 'none'}`,
+        `model: ${agent.model.provider}/${agent.model.model}`,
+        `capabilities: ${agent.capabilities.join(', ') || 'none'}`,
+        'system prompt:',
+        '```',
+        agent.system_prompt || '[empty]',
+        '```',
+      ].join('\n'),
+    ),
   ].join('\n\n');
 }
 
@@ -448,7 +514,8 @@ async function maybeUpdateAllAboutMeFromChat(
       status: 'running',
       title: 'Jarvis is learning from this chat',
       subtitle: 'AllAboutMe.md update in progress',
-      detail: 'Jarvis found 10 qualifying user messages and is updating the private AllAboutMe.md profile.',
+      detail:
+        'Jarvis found 10 qualifying user messages and is updating the private AllAboutMe.md profile.',
       agentSlug: 'jarvis',
       ts: Date.now(),
     });
@@ -515,7 +582,10 @@ function actionPartToLlmText(part: Extract<Part, { kind: 'action_proposal' }>): 
       return `[Action ${label}: running…]`;
     case 'success': {
       const summary =
-        part.result && typeof part.result === 'object' && part.result !== null && 'summary' in part.result
+        part.result &&
+        typeof part.result === 'object' &&
+        part.result !== null &&
+        'summary' in part.result
           ? String((part.result as { summary?: string }).summary ?? '')
           : '';
       return `[Action ${label}: completed.${summary ? ` ${summary}` : ''}]`;
@@ -541,11 +611,17 @@ function imagePartToLlm(part: Extract<Part, { kind: 'image' }>): LLMContentPart 
   };
 }
 
-function toLLMMessages(history: Message[], excludeId?: MessageId, includeImages = true): LLMMessage[] {
+function toLLMMessages(
+  history: Message[],
+  excludeId?: MessageId,
+  includeImages = true,
+): LLMMessage[] {
   const out: LLMMessage[] = [];
-  const lastUserIndex = history.reduce((last, message, index) => (
-    (!excludeId || message.id !== excludeId) && message.role === 'user' ? index : last
-  ), -1);
+  const lastUserIndex = history.reduce(
+    (last, message, index) =>
+      (!excludeId || message.id !== excludeId) && message.role === 'user' ? index : last,
+    -1,
+  );
   for (let index = 0; index < history.length; index += 1) {
     const m = history[index]!;
     if (excludeId && m.id === excludeId) continue;
@@ -598,7 +674,11 @@ function toLLMMessages(history: Message[], excludeId?: MessageId, includeImages 
  * wrote, and the AI sees the same context on the next turn so it can
  * self-correct rather than silently retrying broken JSON.
  */
-function textToParts(text: string, userText?: string, interactionMode: JarvisInteractionMode = 'agent'): Part[] {
+function textToParts(
+  text: string,
+  userText?: string,
+  interactionMode: JarvisInteractionMode = 'agent',
+): Part[] {
   const requestIntent = classifyJarvisIntent({ text: userText ?? '' });
   const questionResult = parseJarvisQuestionBlocks(text);
   if (questionResult.hasQuestionBlocks) return questionResult.parts;
@@ -619,13 +699,13 @@ function textToParts(text: string, userText?: string, interactionMode: JarvisInt
           .filter(Boolean)
           .join('\n\n')
       : text;
-    return [{ kind: 'text', text: prose || 'Ask Mode blocked an action proposal from this reply.' }];
+    return [
+      { kind: 'text', text: prose || 'Ask Mode blocked an action proposal from this reply.' },
+    ];
   }
   if (!result.hasActionBlocks) {
-    const fallbackProposals = userText
-      && interactionMode === 'agent'
-      ? inferFallbackActionProposals(userText, text)
-      : [];
+    const fallbackProposals =
+      userText && interactionMode === 'agent' ? inferFallbackActionProposals(userText, text) : [];
     if (fallbackProposals.length === 0) return [{ kind: 'text', text }];
     return [
       {
@@ -700,6 +780,126 @@ function textToSpeechOutput(text: string): string {
   return prose.length <= 900 ? prose : `${prose.slice(0, 897).trimEnd()}…`;
 }
 
+function createKernelRuntimeId(prefix: 'jrun' | 'jreq'): string {
+  const randomId = globalThis.crypto?.randomUUID?.();
+  if (randomId) return `${prefix}_${randomId}`;
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+}
+
+function connectionModeForProvider(providerId: string): 'native-api' | 'external-cli' | 'local' {
+  if (providerId === 'mock' || providerId === 'ollama') return 'local';
+  if (
+    providerId === 'claude' ||
+    providerId === 'codex' ||
+    providerId === 'copilot' ||
+    providerId === 'gemini-cli' ||
+    providerId === 'opencode' ||
+    providerId === 'qwen'
+  ) {
+    return 'external-cli';
+  }
+  return 'native-api';
+}
+
+async function createRuntimeShadowTurn(input: {
+  agent: Agent;
+  chatId: ChatId | string;
+  projectId?: string;
+  text: string;
+  messages: readonly LLMMessage[];
+  interactionMode: JarvisInteractionMode;
+  speakReply: boolean;
+}): Promise<JarvisShadowTurnInput> {
+  const identity = resolveAccountIdentity(useAuthStore.getState());
+  if (!identity) throw new Error('canonical_account_identity_unavailable');
+
+  const createdAt = Date.now();
+  const runId = createKernelRuntimeId('jrun');
+  const requestId = createKernelRuntimeId('jreq');
+  const providerId = String(input.agent.model.provider);
+  const model = {
+    providerId,
+    modelId: input.agent.model.model,
+    connectionMode: connectionModeForProvider(providerId),
+    capabilities: {},
+    ...(input.agent.temperature === undefined
+      ? {}
+      : { effectiveTemperature: input.agent.temperature }),
+    capturedAt: createdAt,
+  } as const;
+  const profileRevisionId = `shadow-legacy-${input.agent.updated_at}`;
+  const surface = input.speakReply ? ('voice' as const) : ('typed_chat' as const);
+  const [coreHash, responseContractHash] = await Promise.all([
+    hashJarvisText(JARVIS_IDENTITY_POLICY.identityCore),
+    hashJarvisText(JARVIS_IDENTITY_POLICY.responseContract),
+  ]);
+
+  return {
+    run: {
+      id: runId,
+      accountId: identity.accountId,
+      ...(input.projectId ? { projectId: input.projectId } : {}),
+      chatId: String(input.chatId),
+      source: surface,
+      agentId: input.agent.id,
+      identityVersion: JARVIS_IDENTITY_POLICY.identityVersion,
+      profileRevisionId,
+      model,
+    },
+    attempt: {
+      kind: 'initial',
+      requestId,
+      runId,
+      attemptNumber: 1,
+    },
+    request: {
+      accountId: identity.accountId,
+      ...(input.projectId ? { projectId: input.projectId } : {}),
+      chatId: String(input.chatId),
+      agent: { id: input.agent.id, slug: input.agent.slug, builtin: true },
+      surface,
+      interactionMode: input.interactionMode,
+      identity: {
+        identityVersion: JARVIS_IDENTITY_POLICY.identityVersion,
+        coreHash,
+        responseContractHash,
+      },
+      profile: {
+        profileId: `shadow-profile-${identity.accountId}`,
+        revisionId: profileRevisionId,
+        customInstructions: input.agent.system_prompt ?? '',
+        memoryScope: input.agent.memory_scope === 'agent' ? 'profile' : 'shared_selected',
+      },
+      model,
+      capabilities: {
+        capturedAt: createdAt,
+        tools: input.agent.tools_allowed.map((id) => ({
+          id,
+          state: 'planned' as const,
+          operations: [],
+        })),
+        plugins: [],
+        mcps: [],
+        terminals: [],
+        agents: [],
+        entitlements: { source: 'unavailable', capabilities: [] },
+      },
+      context: { items: [], budget: { maxChars: 0, usedChars: 0 }, exclusions: [] },
+      outputContract: {
+        preserveStructuredBlocks: true,
+        allowActionBlocks: input.interactionMode === 'agent',
+        allowPlanBlocks: input.interactionMode === 'plan',
+        allowQuestionBlocks: true,
+        allowPermissionBlocks: input.interactionMode === 'agent',
+        voiceDelivery: input.speakReply ? 'validated_stream' : 'none',
+      },
+      userText: input.text,
+      messageHistory: [...input.messages],
+      createdAt,
+    },
+  };
+}
+
 /**
  * Subscribe to the chat composer events. Returns an unsubscribe function that
  * removes listeners and aborts any in-flight runs.
@@ -713,6 +913,49 @@ export function startRuntimeListener(
   const flushIntervalMs = options.flushIntervalMs ?? 120;
 
   const inFlight = new Map<MessageId, AbortController>();
+  let defaultShadowDepsPromise: Promise<JarvisShadowCompilationDeps> | null = null;
+
+  const resolveShadowDeps = (): Promise<JarvisShadowCompilationDeps> => {
+    if (options.jarvisShadow) return Promise.resolve(options.jarvisShadow);
+    if (!defaultShadowDepsPromise) {
+      defaultShadowDepsPromise = Promise.all([
+        import('@/lib/db'),
+        import('@/lib/db/jarvisRepositories'),
+        import('@/lib/jarvis/executionJournal/journal'),
+        import('@/lib/jarvis/requestEnvelope'),
+        import('@/lib/jarvis/promptCompiler'),
+      ]).then(
+        ([
+          { db },
+          { createJarvisRepositories },
+          { createJarvisExecutionJournal },
+          envelope,
+          prompt,
+        ]) => {
+          const journal = createJarvisExecutionJournal(createJarvisRepositories(db));
+          return {
+            createPersistedRun: (input) => journal.allocateRun(input),
+            buildEnvelope: envelope.createJarvisRequestEnvelope,
+            compilePrompt: prompt.compileJarvisPrompt,
+            transitionRun: (input) => journal.transitionRun(input),
+            recordDiagnostic: (diagnostic) => {
+              devConsole.log({
+                channel: 'ai',
+                level: diagnostic.errorCategory ? 'warn' : 'info',
+                message: diagnostic.errorCategory
+                  ? 'JARVIS shadow compilation failed safely'
+                  : 'JARVIS shadow compilation complete',
+                detail: diagnostic,
+                durationMs: diagnostic.durationMs,
+              });
+            },
+            now: () => Date.now(),
+          } satisfies JarvisShadowCompilationDeps;
+        },
+      );
+    }
+    return defaultShadowDepsPromise;
+  };
 
   const releaseVoiceTurnWithoutReply = (detail: SendDetail, chatId: ChatId | string): void => {
     if (detail.speakReply !== true) return;
@@ -746,17 +989,24 @@ export function startRuntimeListener(
       releaseVoiceTurnWithoutReply(detail, chatId);
       return;
     }
-    const interactionMode = detail.interactionMode ?? useJarvisInteractionStore.getState().modeForChat(chatId);
+    const interactionMode =
+      detail.interactionMode ?? useJarvisInteractionStore.getState().modeForChat(chatId);
     const modelCtx = modelSelectionContextFromAuth(authState);
     const persistedConnection = chatRecord?.connection;
-    const storedModelId = persistedConnection?.modelId
-      ?? (authState.chatModelSelection.mode === 'single'
-        && authState.chatModelSelection.providerId === persistedConnection?.providerId
+    const storedModelId =
+      persistedConnection?.modelId ??
+      (authState.chatModelSelection.mode === 'single' &&
+      authState.chatModelSelection.providerId === persistedConnection?.providerId
         ? authState.chatModelSelection.modelId
         : undefined);
-    const chatModelSelection = detail.modelSelectionOverride
-      ?? (persistedConnection && storedModelId
-        ? selectionFromOption(persistedConnection.providerId as import('@/types').ProviderId, storedModelId, persistedConnection)
+    const chatModelSelection =
+      detail.modelSelectionOverride ??
+      (persistedConnection && storedModelId
+        ? selectionFromOption(
+            persistedConnection.providerId as import('@/types').ProviderId,
+            storedModelId,
+            persistedConnection,
+          )
         : authState.chatModelSelection);
     const sendValidation = validateSendModelAccess(
       text,
@@ -783,9 +1033,8 @@ export function startRuntimeListener(
     // Hive multi-model stacks are chat-only by design (Settings → Hive says
     // "Chat only"): voice turns always take the single-model path so spoken
     // replies stay fast and are never billed through a multi-step pipeline.
-    const stackPreset = detail.speakReply === true
-      ? 'off'
-      : resolveActiveStackPreset(chatModelSelection, stackSlash);
+    const stackPreset =
+      detail.speakReply === true ? 'off' : resolveActiveStackPreset(chatModelSelection, stackSlash);
     const stackText = stackSlash.matched ? stackSlash.text : text;
     const stackTaskType = stackSlash.taskType ?? classifyStackTask(stackText);
 
@@ -809,6 +1058,7 @@ export function startRuntimeListener(
       releaseVoiceTurnWithoutReply(detail, chatId);
       return;
     }
+    const isProtectedJarvis = isProtectedJarvisAgent(agent);
 
     const projectId = chatRecord?.project_id ?? authState.projectId;
     rememberConversationDestination(chatId, text);
@@ -816,11 +1066,7 @@ export function startRuntimeListener(
       projectId,
       chatId,
       currentText: text,
-      enabledCapabilities: [
-        ...agent.capabilities,
-        ...agent.tools_allowed,
-        ...(agent.skills ?? []),
-      ],
+      enabledCapabilities: [...agent.capabilities, ...agent.tools_allowed, ...(agent.skills ?? [])],
     });
     const requestIntent = classifyJarvisIntent({
       text,
@@ -835,15 +1081,19 @@ export function startRuntimeListener(
       kind: mentionedAgents.length > 1 ? 'subagent' : 'agent',
       status: 'running',
       title: `@${agent.slug} is working`,
-      subtitle: mentionedAgents.length > 1
-        ? `${mentionedAgents.length} mentioned agents in context`
-        : `${agent.model.provider}/${agent.model.model}`,
+      subtitle:
+        mentionedAgents.length > 1
+          ? `${mentionedAgents.length} mentioned agents in context`
+          : `${agent.model.provider}/${agent.model.model}`,
       agentId: agent.id,
       agentSlug: agent.slug,
       ts: Date.now(),
-      detail: mentionedAgents.length > 0
-        ? mentionedAgents.map((mentioned) => `@${mentioned.slug} — ${mentioned.description || mentioned.name}`).join('\n')
-        : undefined,
+      detail:
+        mentionedAgents.length > 0
+          ? mentionedAgents
+              .map((mentioned) => `@${mentioned.slug} — ${mentioned.description || mentioned.name}`)
+              .join('\n')
+          : undefined,
     });
     for (const path of detail.filePaths ?? []) {
       activity.record({
@@ -895,11 +1145,7 @@ export function startRuntimeListener(
       runnable = applyAvailableActions(runnable);
       runnable = applyJarvisChatActionOverlay(runnable);
     }
-    const stackStepsEarly = stepsForPreset(
-      stackPreset,
-      stackTaskType,
-      authState.stackCustomSteps,
-    );
+    const stackStepsEarly = stepsForPreset(stackPreset, stackTaskType, authState.stackCustomSteps);
     if (stackStepsEarly.length === 0) {
       runnable = applyChatModelSelectionToAgent(runnable, chatModelSelection);
     }
@@ -1007,7 +1253,10 @@ export function startRuntimeListener(
       });
     }
     try {
-      explicitFilesContext = await getExplicitFilesBlock(detail.filePaths ?? [], getStoredProjectRoot(projectId));
+      explicitFilesContext = await getExplicitFilesBlock(
+        detail.filePaths ?? [],
+        getStoredProjectRoot(projectId),
+      );
     } catch (err) {
       devConsole.log({
         channel: 'ai',
@@ -1183,11 +1432,30 @@ export function startRuntimeListener(
         voicePreset: voiceSettings.voicePreset,
       });
     }
-    const stackSteps = stepsForPreset(
-      stackPreset,
-      stackTaskType,
-      authState.stackCustomSteps,
-    );
+    const stackSteps = stepsForPreset(stackPreset, stackTaskType, authState.stackCustomSteps);
+    let activeKernelMode: JarvisKernelMode | null = null;
+    let shadowCompilation: Extract<JarvisShadowCompilationResult, { ok: true }> | null = null;
+    let activeShadowDeps: JarvisShadowCompilationDeps | null = null;
+
+    const mirrorShadowOutcome = async (
+      status: 'completed' | 'failed' | 'cancelled',
+      verifiedTerminal: boolean,
+    ): Promise<void> => {
+      if (!shadowCompilation || !activeShadowDeps) return;
+      try {
+        await mirrorJarvisShadowLegacyOutcome(
+          { shadow: shadowCompilation, outcome: { status, verifiedTerminal } },
+          activeShadowDeps,
+        );
+      } catch {
+        devConsole.log({
+          channel: 'ai',
+          level: 'warn',
+          message: 'JARVIS shadow terminal mirror failed',
+          detail: { runId: shadowCompilation.envelope.runId, status },
+        });
+      }
+    };
 
     const flushNow = () => {
       if (flushTimer) {
@@ -1227,6 +1495,19 @@ export function startRuntimeListener(
     };
 
     try {
+      if (isProtectedJarvis) {
+        activeKernelMode = resolveJarvisKernelMode(options.jarvisKernelMode);
+        if (options.jarvisInterlocks) {
+          assertJarvisRuntimeInterlocks(options.jarvisInterlocks);
+        }
+        if (activeKernelMode === 'kernel') {
+          throw new JarvisKernelModeError(
+            'kernel_mode_not_ready',
+            'Canonical JARVIS kernel dispatch is not installed yet.',
+          );
+        }
+      }
+
       // The composer (`features/chat/Composer.tsx`) has already
       // persisted the user message before dispatching `jarvis:send`,
       // so we DO NOT call `bindings.appendMessage` for the user turn
@@ -1245,10 +1526,40 @@ export function startRuntimeListener(
 
       // Read the now-current history; pass it (sans placeholder) to the model.
       const history = await bindings.getMessages(chatId);
-      const includeImages = stackStepsEarly.length > 0
-        ? stackStepsEarly.every((step) => modelSupportsVision(step.provider, step.model))
-        : modelSupportsVision(runnable.model.provider, runnable.model.model);
+      const includeImages =
+        stackStepsEarly.length > 0
+          ? stackStepsEarly.every((step) => modelSupportsVision(step.provider, step.model))
+          : modelSupportsVision(runnable.model.provider, runnable.model.model);
       const llmMessages = toLLMMessages(history, placeholder.id, includeImages);
+
+      if (isProtectedJarvis && activeKernelMode === 'shadow') {
+        const shadowTurn = await createRuntimeShadowTurn({
+          agent: runnable,
+          chatId,
+          ...(projectId ? { projectId } : {}),
+          text,
+          messages: llmMessages,
+          interactionMode,
+          speakReply: detail.speakReply === true,
+        });
+        try {
+          activeShadowDeps = await resolveShadowDeps();
+          const shadowResult = await compileJarvisShadowTurn(shadowTurn, activeShadowDeps);
+          if (shadowResult.ok) shadowCompilation = shadowResult;
+        } catch {
+          activeShadowDeps = null;
+          devConsole.log({
+            channel: 'ai',
+            level: 'warn',
+            message: 'JARVIS shadow infrastructure failed safely',
+            detail: {
+              requestId: shadowTurn.attempt.requestId,
+              runId: shadowTurn.attempt.runId,
+              errorCategory: 'shadow_infrastructure_failed',
+            },
+          });
+        }
+      }
 
       useAgentStore.getState().setRunState(agent.id, 'streaming');
       useAgentStore.getState().setVerb(agent.id, 'thinking');
@@ -1294,7 +1605,10 @@ export function startRuntimeListener(
                 void bindings.updateMessage(placeholderId, {
                   parts: [
                     ...stackSteps
-                      .slice(0, stackSteps.findIndex((item) => item.id === step.id))
+                      .slice(
+                        0,
+                        stackSteps.findIndex((item) => item.id === step.id),
+                      )
                       .map((spec) => ({
                         kind: 'stack_step' as const,
                         step_id: spec.id,
@@ -1320,14 +1634,17 @@ export function startRuntimeListener(
         : await runAgent({
             agent: runnable,
             messages: llmMessages,
-            connectionId: persistedConnection?.id
-              ?? (chatModelSelection.mode === 'single' ? chatModelSelection.connectionId : undefined),
+            connectionId:
+              persistedConnection?.id ??
+              (chatModelSelection.mode === 'single' ? chatModelSelection.connectionId : undefined),
             connectionRequirements: {
               images: (detail.imageAttachments?.length ?? 0) > 0,
               files: (detail.filePaths?.length ?? 0) > 0,
               tools: (detail.pluginIds?.length ?? 0) > 0,
             },
-            workingDirectory: projectId ? getStoredProjectRoot(projectId) ?? undefined : undefined,
+            workingDirectory: projectId
+              ? (getStoredProjectRoot(projectId) ?? undefined)
+              : undefined,
             signal: controller.signal,
             onChunk: (chunk) => {
               if (chunk.delta && chunk.delta.length > 0) {
@@ -1339,13 +1656,17 @@ export function startRuntimeListener(
             },
           }).then((result) => ({ ...result, stackResult: null }));
 
+      await mirrorShadowOutcome('completed', true);
+
       // Make sure no scheduled flush fires after the canonical write below.
       cancelPendingFlush();
 
       // Force a final write with whatever the provider says is canonical.
       // textToParts() splits the text on action-proposal fences so the
       // chat thread renders inline Approve/Cancel cards alongside prose.
-      const finalText = sanitizePromptLeaks(sanitizeUnsupportedActionMacros(sanitizeCredentialRequests(response.text || acc)));
+      const finalText = sanitizePromptLeaks(
+        sanitizeUnsupportedActionMacros(sanitizeCredentialRequests(response.text || acc)),
+      );
       const finalParts = response.stackResult
         ? [
             ...response.stackResult.steps.map(stackStepToPart),
@@ -1471,6 +1792,8 @@ export function startRuntimeListener(
         (err instanceof DOMException && err.name === 'AbortError') ||
         (err as Error)?.name === 'AbortError';
 
+      await mirrorShadowOutcome(aborted ? 'cancelled' : 'failed', true);
+
       if (placeholderId) {
         const suffix = aborted
           ? '_[cancelled]_'
@@ -1507,7 +1830,11 @@ export function startRuntimeListener(
         ts: Date.now(),
       });
       dispatchRunState(chatId, aborted ? 'cancelled' : 'error');
-      updateStructuredAgentStatus(detail.structuredContext, aborted ? 'cancelled' : 'failed', aborted ? 'Cancelled' : 'Failed');
+      updateStructuredAgentStatus(
+        detail.structuredContext,
+        aborted ? 'cancelled' : 'failed',
+        aborted ? 'Cancelled' : 'Failed',
+      );
 
       devConsole.log({
         channel: 'ai',
