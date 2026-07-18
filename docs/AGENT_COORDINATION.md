@@ -1929,3 +1929,18 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Task 9 exclusive paths** | `app/src/lib/db/jarvisMappers.ts`; `app/src/lib/db/jarvisMappers.test.ts`; `app/src/lib/db/jarvisRepositories.ts`; `app/src/lib/db/jarvisRepositories.test.ts`; `app/src/lib/sync.ts`; `app/src/lib/sync.test.ts`; `app/src/lib/db/repositories.ts`; `app/src/lib/db/repositories.connection.test.ts` |
 | **Concurrent agents** | Future-task preparation remains read-only. No other product implementation may overlap Task 9. |
 | **Protected state** | `install/install.ps1`, unified-goal documents, unrelated branches/worktrees and existing localhost/app-data profiles remain untouched and unstaged. |
+
+## 2026-07-18 - Task 9 accepted and Task 10 exact lock acquired
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-18 09:15 CT |
+| **Primary coordinator** | `AGENT-CODEX-20260718-SIK` |
+| **Task 9 commit** | `1c6a081` - exact eight-file local-only kernel persistence, account-scoped repositories, explicit mappers, and protected JARVIS prompt sync quarantine. |
+| **Task 9 verification** | Five focused integration files `171/171` PASS; root TypeScript PASS; exact-file Prettier and diff checks PASS; independent sync/security review PASS; repository review findings repaired under RED/GREEN and re-reviewed. |
+| **Task 9 lock** | Released. |
+| **Task 10 state** | **IMPLEMENTING** |
+| **Task 10 exclusive paths** | `app/src/lib/jarvis/builtinAgents.ts`; `app/src/lib/jarvis/builtinAgents.test.ts`; `app/src/lib/db/seed.ts`; `app/src/lib/db/seed.test.ts`; `app/src/features/agents/registry.ts`; `app/src/features/agents/registry.test.ts`; `app/src/lib/db/index.ts`; `app/src/lib/db/migrations/jarvisV3.test.ts`; `app/src/features/agents/AgentManager.tsx`; `app/src/features/agents/AgentManager.test.tsx`; `app/src/features/agents/AgentDetail.tsx`; `app/src/features/agents/AgentDetail.test.tsx`; `app/src/types/agent.ts` |
+| **Task 10 lane partition** | Canonical roster/seed/registry; AgentManager profile editing; AgentDetail profile display; migration/index integration. Lanes are disjoint and share only the frozen roster/profile APIs recorded by the approved plan. |
+| **Concurrent lifecycle follow-up** | A late exact-two-file reentrant subscription cleanup hardening in `persistenceCoordinator.ts` and its test is under independent review. Those Task 8 paths do not overlap Task 10 and must be committed separately or remediated before any broader gate. |
+| **Protected state** | `install/install.ps1`, unrelated branches/worktrees, the existing VibeSpace localhost instance, and its app-data profile remain untouched and unstaged. Task work uses separate ports/profiles when runtime verification begins. |
