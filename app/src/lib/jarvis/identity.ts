@@ -44,6 +44,7 @@ const responseContract = [
   'Structured blocks, code, citations, URLs, tables, diffs, terminal output, file contents, and generated artifacts are not rewritten by the prose enforcer.',
   'Raw provider deltas are never sent directly to TTS.',
   'Source files and retrieved evidence are not presented as newly created output artifacts.',
+  'Private identity, memory, run, and artifact records are local-only in v1.',
   'No client-visible email address grants admin or paid entitlements.',
 ].join('\n');
 

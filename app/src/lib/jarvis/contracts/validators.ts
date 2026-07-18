@@ -373,6 +373,18 @@ function hasOwn(record: RecordValue, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(record, key);
 }
 
+type OwnFieldInspection =
+  | { kind: 'missing' }
+  | { kind: 'accessor' }
+  | { kind: 'data'; value: unknown };
+
+function inspectOwnField(record: RecordValue, key: string): OwnFieldInspection {
+  const descriptor = Object.getOwnPropertyDescriptor(record, key);
+  if (!descriptor) return { kind: 'missing' };
+  if (!('value' in descriptor)) return { kind: 'accessor' };
+  return { kind: 'data', value: descriptor.value };
+}
+
 function validateUnknownKeys(
   record: RecordValue,
   allowedKeys: readonly string[],
@@ -380,8 +392,10 @@ function validateUnknownKeys(
   errors: ValidationErrors,
 ): void {
   const allowed = new Set(allowedKeys);
-  for (const key of Object.keys(record)) {
-    if (!allowed.has(key)) addError(errors, 'unknown_field', childPath(path, key));
+  for (const key of Reflect.ownKeys(record)) {
+    if (typeof key === 'string' && !allowed.has(key)) {
+      addError(errors, 'unknown_field', childPath(path, key));
+    }
   }
 }
 
@@ -417,11 +431,12 @@ function validateRequiredField(
   validator: ValueValidator,
 ): void {
   const valuePath = childPath(path, key);
-  if (!hasOwn(record, key)) {
+  const field = inspectOwnField(record, key);
+  if (field.kind === 'missing') {
     addError(errors, 'missing_field', valuePath);
     return;
   }
-  validator(record[key], valuePath, errors);
+  if (field.kind === 'data') validator(field.value, valuePath, errors);
 }
 
 function validateOptionalField(
@@ -431,8 +446,8 @@ function validateOptionalField(
   errors: ValidationErrors,
   validator: ValueValidator,
 ): void {
-  if (!hasOwn(record, key)) return;
-  validator(record[key], childPath(path, key), errors);
+  const field = inspectOwnField(record, key);
+  if (field.kind === 'data') validator(field.value, childPath(path, key), errors);
 }
 
 function requireField(
@@ -713,9 +728,12 @@ function validateModelCapabilities(
 ): void {
   const record = validateRecord(value, path, errors);
   if (!record) return;
-  for (const [key, enabled] of Object.entries(record)) {
+  for (const key of Reflect.ownKeys(record)) {
+    if (typeof key !== 'string') continue;
+    const field = inspectOwnField(record, key);
+    if (field.kind !== 'data') continue;
     validateIdentifier(key, childPath(path, key), errors);
-    validateBoolean(enabled, childPath(path, key), errors);
+    validateBoolean(field.value, childPath(path, key), errors);
   }
 }
 
@@ -797,20 +815,25 @@ function validateLlmContentPart(
   if (!record) return;
 
   const typePath = childPath(path, 'type');
-  if (!hasOwn(record, 'type')) {
+  const typeField = inspectOwnField(record, 'type');
+  if (typeField.kind === 'missing') {
     addError(errors, 'missing_field', typePath);
     validateUnknownKeys(record, ['type', 'text', 'data', 'mimeType', 'name'], path, errors);
     return;
   }
+  if (typeField.kind === 'accessor') {
+    validateUnknownKeys(record, ['type', 'text', 'data', 'mimeType', 'name'], path, errors);
+    return;
+  }
 
-  validateEnum(record.type, LLM_CONTENT_PART_TYPES, typePath, errors);
-  if (record.type === 'text') {
+  validateEnum(typeField.value, LLM_CONTENT_PART_TYPES, typePath, errors);
+  if (typeField.value === 'text') {
     validateUnknownKeys(record, ['type', 'text'], path, errors);
     validateRequiredField(record, 'text', path, errors, validateString);
     return;
   }
 
-  if (record.type === 'image') {
+  if (typeField.value === 'image') {
     validateUnknownKeys(record, ['type', 'data', 'mimeType', 'name'], path, errors);
     validateRequiredField(record, 'data', path, errors, validateString);
     validateRequiredField(record, 'mimeType', path, errors, validateString);
@@ -1290,17 +1313,15 @@ function validateContract<T>(
 ): JarvisContractValidationResult<T> {
   const errors: ValidationErrors = [];
   try {
-    validateJsonSafety(input, [], errors, new WeakSet<object>());
+    shapeValidator(input, [], errors);
   } catch {
     addError(errors, 'non_json_safe', []);
   }
 
-  if (errors.length === 0) {
-    try {
-      shapeValidator(input, [], errors);
-    } catch {
-      addError(errors, 'non_json_safe', []);
-    }
+  try {
+    validateJsonSafety(input, [], errors, new WeakSet<object>());
+  } catch {
+    addError(errors, 'non_json_safe', []);
   }
 
   if (errors.length > 0) return { ok: false, errors };

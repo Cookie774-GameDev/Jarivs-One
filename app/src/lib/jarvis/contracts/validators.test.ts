@@ -1684,6 +1684,52 @@ describe('closed and open object boundaries', () => {
     });
   }
 
+  it.each([
+    {
+      label: 'function-valued enumerable field',
+      input: () => addOwnField(validSourceRef(), [], 'unexpectedV1Field', () => undefined),
+    },
+    {
+      label: 'non-enumerable field',
+      input: () => {
+        const input = validSourceRef() as JarvisSourceRef & Record<string, unknown>;
+        Object.defineProperty(input, 'unexpectedV1Field', {
+          configurable: true,
+          enumerable: false,
+          value: 'synthetic-extra',
+        });
+        return input;
+      },
+    },
+  ])(
+    'prioritizes unknown_field for an unexpected own $label without weakening JSON safety',
+    ({ input }) => {
+      const path = ['unexpectedV1Field'] as const;
+      const errors = expectFailure(validateJarvisSourceRef(input()), 'unknown_field', path);
+
+      expect(errors[0]).toMatchObject({ code: 'unknown_field', path });
+      expect(errors).toEqual(
+        expect.arrayContaining([expect.objectContaining({ code: 'non_json_safe', path })]),
+      );
+    },
+  );
+
+  it('does not invoke an accessor while preserving JSON-safety rejection', () => {
+    const input = validSourceRef();
+    let reads = 0;
+    Object.defineProperty(input, 'label', {
+      configurable: true,
+      enumerable: true,
+      get: () => {
+        reads += 1;
+        return 'Synthetic source';
+      },
+    });
+
+    expectFailure(validateJarvisSourceRef(input), 'non_json_safe', ['label']);
+    expect(reads).toBe(0);
+  });
+
   it('allows JSON-safe open model capabilities, approval payloads, targets, and Part payloads', () => {
     const model = validModelSnapshot();
     model.capabilities.experimentalFlag = true;

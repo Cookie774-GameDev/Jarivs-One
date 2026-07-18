@@ -427,6 +427,7 @@ function prepareAppIdentity(
 }
 
 const ACCOUNT_SCOPE_BOOT_WAIT_OPTIONS = { timeout: 5_000 } as const;
+const ACCOUNT_SCOPE_BOOT_TEST_TIMEOUT = 30_000;
 
 async function waitForAccountScopeBoot(): Promise<void> {
   await waitFor(
@@ -459,7 +460,7 @@ function deferredValue<T>(): { promise: Promise<T>; resolve: (value: T) => void 
   };
 }
 
-describe('App canonical account identity boot', () => {
+function accountIdentityBootSuite(): void {
   beforeEach(() => {
     localStorage.clear();
     vi.clearAllMocks();
@@ -488,6 +489,12 @@ describe('App canonical account identity boot', () => {
     useJarvisLearningStore.getState().clearForTests();
     useAllAboutMeStore.setState(useAllAboutMeStore.getInitialState(), true);
     useJarvisTaskRunStore.getState().clearForTests();
+  });
+
+  it('reserves deterministic test-timeout headroom beyond the longest boot wait', () => {
+    expect(ACCOUNT_SCOPE_BOOT_TEST_TIMEOUT).toBeGreaterThanOrEqual(
+      ACCOUNT_SCOPE_BOOT_WAIT_OPTIONS.timeout * 6,
+    );
   });
 
   it('keeps every account listener closed until configured Supabase confirms signed-out state', async () => {
@@ -1745,4 +1752,10 @@ describe('App canonical account identity boot', () => {
     act(() => cloudBoot.emitAuth(null));
     expect(useAuthStore.getState().plan).toBe('free');
   });
-});
+}
+
+describe(
+  'App canonical account identity boot',
+  { timeout: ACCOUNT_SCOPE_BOOT_TEST_TIMEOUT },
+  accountIdentityBootSuite,
+);
