@@ -667,10 +667,16 @@ export const agentRepo = {
   async update(id: AgentId, patch: Partial<Agent>): Promise<Agent> {
     const syncOwner = captureSyncQueueOwner();
     const existing = await requireRow(() => db.agents.get(id), 'agent', id);
-    const row: Agent = { ...existing, ...sanitizeUpdate(patch), updated_at: now() };
+    const wasProtectedJarvisAgent = isProtectedJarvisAgent(existing);
+    const row: Agent = {
+      ...existing,
+      ...sanitizeUpdate(patch),
+      ...(wasProtectedJarvisAgent ? { builtin: existing.builtin, slug: existing.slug } : {}),
+      updated_at: now(),
+    };
     await db.agents.put(row);
     await syncUpdate('agents', row, syncOwner, {
-      wasProtectedJarvisAgent: isProtectedJarvisAgent(existing),
+      wasProtectedJarvisAgent,
     });
     return row;
   },

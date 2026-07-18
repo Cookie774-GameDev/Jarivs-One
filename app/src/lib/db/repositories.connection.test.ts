@@ -492,7 +492,7 @@ describe('chat repository connections and queue ownership', () => {
     expect(state.syncRows[0]!.payload).not.toHaveProperty('system_prompt');
   });
 
-  it('omits the former protected JARVIS prompt when an update clears builtin', async () => {
+  it('keeps protected builtin immutable and omits its prompt from later updates', async () => {
     const id = 'agt_builtin_jarvis' as Agent['id'];
     seedAgent(id, {
       slug: 'jarvis',
@@ -501,14 +501,25 @@ describe('chat repository connections and queue ownership', () => {
       system_prompt: 'protected prompt before builtin downgrade',
     });
 
-    const updated = await agentRepo.update(id, { builtin: false });
-
-    expect(updated.builtin).toBe(false);
+    const downgraded = await agentRepo.update(id, { builtin: false });
     expect(state.syncRows).toHaveLength(1);
     expect(state.syncRows[0]!.payload).not.toHaveProperty('system_prompt');
+    const updated = await agentRepo.update(id, { name: 'JARVIS after builtin downgrade attempt' });
+
+    expect(downgraded).toMatchObject({ builtin: true, slug: 'jarvis' });
+    expect(updated).toMatchObject({
+      builtin: true,
+      slug: 'jarvis',
+      name: 'JARVIS after builtin downgrade attempt',
+    });
+    expect(state.agents.get(id)).toMatchObject({ builtin: true, slug: 'jarvis' });
+    expect(state.syncRows).toHaveLength(1);
+    for (const row of state.syncRows) {
+      expect(row.payload).not.toHaveProperty('system_prompt');
+    }
   });
 
-  it('omits the former protected JARVIS prompt when an update changes its slug', async () => {
+  it('keeps protected slug immutable and omits its prompt from later updates', async () => {
     const id = 'agt_builtin_jarvis' as Agent['id'];
     seedAgent(id, {
       slug: 'jarvis',
@@ -517,11 +528,22 @@ describe('chat repository connections and queue ownership', () => {
       system_prompt: 'protected prompt before slug downgrade',
     });
 
-    const updated = await agentRepo.update(id, { slug: 'former-jarvis' });
-
-    expect(updated.slug).toBe('former-jarvis');
+    const downgraded = await agentRepo.update(id, { slug: 'former-jarvis' });
     expect(state.syncRows).toHaveLength(1);
     expect(state.syncRows[0]!.payload).not.toHaveProperty('system_prompt');
+    const updated = await agentRepo.update(id, { name: 'JARVIS after slug downgrade attempt' });
+
+    expect(downgraded).toMatchObject({ builtin: true, slug: 'jarvis' });
+    expect(updated).toMatchObject({
+      builtin: true,
+      slug: 'jarvis',
+      name: 'JARVIS after slug downgrade attempt',
+    });
+    expect(state.agents.get(id)).toMatchObject({ builtin: true, slug: 'jarvis' });
+    expect(state.syncRows).toHaveLength(1);
+    for (const row of state.syncRows) {
+      expect(row.payload).not.toHaveProperty('system_prompt');
+    }
   });
 
   it('retains the prompt for a user-created agent whose slug collides with jarvis', async () => {
@@ -544,10 +566,14 @@ describe('chat repository connections and queue ownership', () => {
     });
 
     state.syncRows.length = 0;
-    await agentRepo.update(id, { name: 'Updated User JARVIS' });
+    const updated = await agentRepo.update(id, {
+      name: 'Updated User JARVIS',
+      slug: 'renamed-user-jarvis',
+    });
+    expect(updated.slug).toBe('renamed-user-jarvis');
     expect(state.syncRows).toHaveLength(1);
     expect(state.syncRows[0]!.payload).toMatchObject({
-      slug: 'jarvis',
+      slug: 'renamed-user-jarvis',
       builtin: false,
       system_prompt: 'ordinary user-authored prompt',
     });
