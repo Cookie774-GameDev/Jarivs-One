@@ -2006,3 +2006,19 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Task 13 verification contract** | Strict RED/GREEN TDD for the fifteen-connection transport matrix, deterministic native/preamble construction, exact stdin/argv semantics for six CLIs, abort forwarding, fail-closed unsupported routes, and the closed branded provider-attempt evidence authority with exact durable digest/revalidation and zero-observation retry eligibility; then the exact eleven-file focused suite, root TypeScript, exact-path formatting/diff/credential gates, and high-risk local review. |
 | **Delegation/model rule** | The active collaboration interface still cannot explicitly select or attest GPT-5.6 Sol high. The attempt-evidence and router/adapter changes share security-critical contracts, so Task 13 remains local rather than creating unverifiable or overlapping delegation. |
 | **Protected state** | `install/install.ps1`, unified-goal artifacts, unrelated branches/worktrees, existing localhost, and existing app-data profiles remain untouched and unstaged. Task 13 uses no runtime port or app-data profile. |
+
+## 2026-07-18 - Task 13 accepted and Task 13P exact lock acquired
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-18 15:13 CT |
+| **Primary coordinator** | `AGENT-CODEX-20260718-SIK` |
+| **Task 13 commit** | `b5762ed` - exact thirty-two-file provider prompt transport matrix, immutable native/preamble construction, closed branded provider-attempt evidence authority, exact protected router binding, first-byte/CLI observation hooks, and abort-safe native/external dispatch. |
+| **Task 13 verification** | Required RED captured missing provider prompt/evidence modules, mutable-system fallback, absent response observations, late external abort checks, missing router binding/classification, and the pending-start cancellation race. Final exact eleven-file suite `130/130` PASS; root TypeScript PASS; exact-file Prettier, cached diff, exact `32`-path manifest, installer exclusion, and zero-candidate added-line credential scan PASS. |
+| **Task 13 review closure** | Local architecture/security review moved fetch evidence to the raw byte boundary before SSE parsing, preserved exact native and six-CLI prompt contracts, prevented unsupported detection/auth/spawn, repaired duplicate post-start cancellation, denied post-abort event forwarding, kept aborts outside retry evidence, and verified exact durable attempt binding/digest behavior. |
+| **Task 13 lock** | Released after commit-object verification. |
+| **Task 13P owner/state** | Primary coordinator `AGENT-CODEX-20260718-SIK`; **IMPLEMENTING**. |
+| **Task 13P exclusive files** | `app/src/App.tsx`; `app/src/App.accountIdentity.test.tsx`; `app/src/App.jarvisPersistenceCoordinator.test.tsx`; `app/src/lib/jarvis/persistenceCoordinator.ts`; `app/src/lib/jarvis/persistenceCoordinator.test.ts`; `app/src/lib/jarvis/identity.ts`; `app/src/lib/jarvis/identity.test.ts` |
+| **Task 13P verification contract** | Strict RED/GREEN TDD for one App-mounted account persistence coordinator, generation-bound ready/degraded/retry receipts, teardown-before-account-switch, stale-completion denial, unmount disposal, and protected-agent lookup through the canonical predicate; then the exact four-file focused suite, root TypeScript, exact seven-path format/diff/credential gates, and high-risk local review. |
+| **Delegation/model rule** | The active collaboration interface still cannot explicitly select or attest GPT-5.6 Sol high. Task 13P is tightly coupled to the authoritative App lifecycle and protected identity predicate, so it remains local rather than creating unverifiable or overlapping delegation. |
+| **Protected state** | `install/install.ps1`, unified-goal artifacts, unrelated branches/worktrees, existing localhost, and existing app-data profiles remain untouched and unstaged. Task 13P uses no runtime port or app-data profile. |
