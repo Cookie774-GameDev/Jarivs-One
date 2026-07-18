@@ -44,21 +44,11 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "idempotent": true,
       "migrationId": "MIG-001",
       "preservationContract": "Profile content, newest-write ordering, local identity and unrelated settings survive; no payload is copied across accounts and no local-unassigned owner is created.",
-      "requirementIds": [
-        "SIK-001",
-        "SIK-007",
-        "SIK-013",
-        "SIK-014"
-      ],
+      "requirementIds": ["SIK-001", "SIK-007", "SIK-013", "SIK-014"],
       "rollbackId": "RBK-001",
       "state": "PASS",
-      "taskIds": [
-        "Task 1B"
-      ],
-      "testIds": [
-        "TST-1B-001",
-        "TST-1B-003"
-      ],
+      "taskIds": ["Task 1B"],
+      "testIds": ["TST-1B-001", "TST-1B-003"],
       "toVersion": "durable explicit AccountIdentity ownership and serialized account lifecycle"
     },
     {
@@ -69,22 +59,11 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "idempotent": true,
       "migrationId": "MIG-002",
       "preservationContract": "Replay version 1 and 2 schemas exactly, retain every prior table/index and row, then add the six typed local-only kernel stores and required indexes without enqueueing them for sync.",
-      "requirementIds": [
-        "SIK-007",
-        "SIK-008",
-        "SIK-009",
-        "SIK-010",
-        "SIK-013",
-        "SIK-014"
-      ],
+      "requirementIds": ["SIK-007", "SIK-008", "SIK-009", "SIK-010", "SIK-013", "SIK-014"],
       "rollbackId": "RBK-002",
       "state": "PLANNED",
-      "taskIds": [
-        "Task 7"
-      ],
-      "testIds": [
-        "TST-MIG-002"
-      ],
+      "taskIds": ["Task 7"],
+      "testIds": ["TST-MIG-002"],
       "toVersion": "JarvisDexie v3 additive kernel stores"
     },
     {
@@ -95,22 +74,11 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "idempotent": true,
       "migrationId": "MIG-003",
       "preservationContract": "Within one account-scoped transaction, preserve allowed custom instructions and provenance, record only a source prompt hash for a known legacy prompt, never expose immutable identity text, and never replace a later valid profile revision.",
-      "requirementIds": [
-        "SIK-001",
-        "SIK-007",
-        "SIK-013",
-        "SIK-014"
-      ],
+      "requirementIds": ["SIK-001", "SIK-007", "SIK-013", "SIK-014"],
       "rollbackId": "RBK-003",
       "state": "PLANNED",
-      "taskIds": [
-        "Task 8",
-        "Task 9",
-        "Task 10"
-      ],
-      "testIds": [
-        "TST-MIG-003"
-      ],
+      "taskIds": ["Task 8", "Task 9", "Task 10"],
+      "testIds": ["TST-MIG-003"],
       "toVersion": "account-scoped protected JARVIS profile/revision with immutable migration v3 marker"
     },
     {
@@ -121,22 +89,11 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "idempotent": true,
       "migrationId": "MIG-004",
       "preservationContract": "Preserve legacy unscoped entries without adopting or activating them; preserve already-accounted v2 rows under their exact account; never migrate secret values or infer a credential grant from legacy metadata.",
-      "requirementIds": [
-        "SIK-008",
-        "SIK-010",
-        "SIK-011",
-        "SIK-013",
-        "SIK-014"
-      ],
+      "requirementIds": ["SIK-008", "SIK-010", "SIK-011", "SIK-013", "SIK-014"],
       "rollbackId": "RBK-004",
       "state": "PLANNED",
-      "taskIds": [
-        "Task 19A"
-      ],
-      "testIds": [
-        "TST-MIG-004",
-        "TST-SEC-001"
-      ],
+      "taskIds": ["Task 19A"],
+      "testIds": ["TST-MIG-004", "TST-SEC-001"],
       "toVersion": "jarvis-plugin-connections-v2 typed account-scoped metadata"
     },
     {
@@ -147,24 +104,11 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "idempotent": true,
       "migrationId": "MIG-005",
       "preservationContract": "Clone record-like v4 state and change only theme: Light becomes MonoChrome; dark, system, unknown and malformed storage become Default; every unrelated UI field and all user content remain byte/structurally equal.",
-      "requirementIds": [
-        "MC-001",
-        "MC-004",
-        "MC-005",
-        "MC-006",
-        "MC-007",
-        "MC-008",
-        "MC-032"
-      ],
+      "requirementIds": ["MC-001", "MC-004", "MC-005", "MC-006", "MC-007", "MC-008", "MC-032"],
       "rollbackId": "RBK-005",
       "state": "PLANNED",
-      "taskIds": [
-        "MC1",
-        "MC2"
-      ],
-      "testIds": [
-        "TST-MIG-005"
-      ],
+      "taskIds": ["MC1", "MC2"],
+      "testIds": ["TST-MIG-005"],
       "toVersion": "UI persisted store v5 with MonoChrome and no selectable Light"
     },
     {
@@ -175,22 +119,11 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "idempotent": true,
       "migrationId": "MIG-006",
       "preservationContract": "Use additive columns/tables/functions and explicit defaults; preserve existing tenants, subscriptions and RLS; execute only against the authorized local/staging Supabase project and Stripe test mode.",
-      "requirementIds": [
-        "SIK-012",
-        "SIK-013",
-        "SIK-016"
-      ],
+      "requirementIds": ["SIK-012", "SIK-013", "SIK-016"],
       "rollbackId": "RBK-006",
       "state": "PLANNED",
-      "taskIds": [
-        "Access phase",
-        "Subscription phase"
-      ],
-      "testIds": [
-        "TST-MIG-006",
-        "TST-SEC-009",
-        "TST-SEC-010"
-      ],
+      "taskIds": ["Access phase", "Subscription phase"],
+      "testIds": ["TST-MIG-006", "TST-SEC-009", "TST-SEC-010"],
       "toVersion": "versioned server-authoritative entitlement and billing-test schema"
     },
     {
@@ -201,26 +134,11 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "idempotent": true,
       "migrationId": "MIG-007",
       "preservationContract": "Allocate caller-stable run IDs before dispatch, append immutable events in sequence, retain legacy-compatible projections, and never infer completion from a dispatch record.",
-      "requirementIds": [
-        "SIK-007",
-        "SIK-009",
-        "SIK-014",
-        "SIK-015"
-      ],
+      "requirementIds": ["SIK-007", "SIK-009", "SIK-014", "SIK-015"],
       "rollbackId": "RBK-007",
       "state": "PLANNED",
-      "taskIds": [
-        "Task 14",
-        "Task 16A",
-        "Task 16B",
-        "Task 17",
-        "Task 18",
-        "Task 21B"
-      ],
-      "testIds": [
-        "TST-MIG-007",
-        "TST-KRN-002"
-      ],
+      "taskIds": ["Task 14", "Task 16A", "Task 16B", "Task 17", "Task 18", "Task 21B"],
+      "testIds": ["TST-MIG-007", "TST-KRN-002"],
       "toVersion": "canonical run/event journal with compatibility projections"
     }
   ],

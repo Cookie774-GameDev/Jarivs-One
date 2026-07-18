@@ -24,12 +24,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
 {
   "artifactId": "GIT_BASELINE",
   "batchId": "TASK0R-20260718-B",
-  "maintenanceTriggers": [
-    "GIT_BASELINE",
-    "GOAL_SAKURA",
-    "SAK",
-    "TASK0R-20260718-B"
-  ],
+  "maintenanceTriggers": ["GIT_BASELINE", "GOAL_SAKURA", "SAK", "TASK0R-20260718-B"],
   "rows": [
     {
       "baseCommit": "8aa51f126bcbc56d36d1a1c4dd3ede56e2fd38a6",
@@ -55,9 +50,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       },
       "repository": "Cookie774-GameDev/VibeSpace",
       "reviewIds": [],
-      "testIds": [
-        "TST-GIT-001"
-      ],
+      "testIds": ["TST-GIT-001"],
       "worktree": "C:\\Users\\viper\\VibeSpace\\.worktrees\\shared-intelligence-kernel-design-20260716"
     },
     {
@@ -65,10 +58,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "baselineHead": "918de28b21a2f9e6fe773c8d50d9e9d86fd1308c",
       "branch": "codex/shared-intelligence-kernel-design-20260716",
       "commitId": "918de28b21a2f9e6fe773c8d50d9e9d86fd1308c",
-      "evidenceRefs": [
-        "git branch --show-current",
-        "git worktree list --porcelain"
-      ],
+      "evidenceRefs": ["git branch --show-current", "git worktree list --porcelain"],
       "factKind": "ISOLATED_SUCCESSOR_WORKTREE",
       "gitEvidenceId": "GIT-002",
       "mergeBase": "8aa51f126bcbc56d36d1a1c4dd3ede56e2fd38a6",
@@ -81,9 +71,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       },
       "repository": "Cookie774-GameDev/VibeSpace",
       "reviewIds": [],
-      "testIds": [
-        "TST-GIT-001"
-      ],
+      "testIds": ["TST-GIT-001"],
       "worktree": "C:\\Users\\viper\\VibeSpace\\.worktrees\\shared-intelligence-kernel-design-20260716"
     },
     {
@@ -91,9 +79,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "baselineHead": "918de28b21a2f9e6fe773c8d50d9e9d86fd1308c",
       "branch": "integrate/grok-workbench-pr25-v2",
       "commitId": "f32f6a71519f48392c3626b89488651db2905ba9",
-      "evidenceRefs": [
-        "git worktree list --porcelain"
-      ],
+      "evidenceRefs": ["git worktree list --porcelain"],
       "factKind": "PROTECTED_UNRELATED_WORKTREE",
       "gitEvidenceId": "GIT-003",
       "mergeBase": "8aa51f126bcbc56d36d1a1c4dd3ede56e2fd38a6",
@@ -106,9 +92,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       },
       "repository": "Cookie774-GameDev/VibeSpace",
       "reviewIds": [],
-      "testIds": [
-        "TST-GIT-001"
-      ],
+      "testIds": ["TST-GIT-001"],
       "worktree": "C:\\Users\\viper\\VibeSpace\\.worktrees\\integrate-grok-pr25-v2"
     },
     {
@@ -125,9 +109,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "mergeBase": "8aa51f126bcbc56d36d1a1c4dd3ede56e2fd38a6",
       "observedAtUtc": "2026-07-17T09:35:42.8034625Z",
       "originMain": "65931c1cbb2982e6991238af45a3cf39702c7802",
-      "pathManifest": [
-        "install/install.ps1"
-      ],
+      "pathManifest": ["install/install.ps1"],
       "protectedState": {
         "blob": "f1e3a0834e099f147a1b2e754d8f018bdbc7c849",
         "indexMode": "100644",
@@ -137,10 +119,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       },
       "repository": "Cookie774-GameDev/VibeSpace",
       "reviewIds": [],
-      "testIds": [
-        "TST-0R-003",
-        "TST-GIT-001"
-      ],
+      "testIds": ["TST-0R-003", "TST-GIT-001"],
       "worktree": "C:\\Users\\viper\\VibeSpace\\.worktrees\\shared-intelligence-kernel-design-20260716"
     },
     {
@@ -148,10 +127,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "baselineHead": "918de28b21a2f9e6fe773c8d50d9e9d86fd1308c",
       "branch": "codex/shared-intelligence-kernel-design-20260716",
       "commitId": null,
-      "evidenceRefs": [
-        "Get-NetTCPConnection -State Listen",
-        "Get-Process by owning PID"
-      ],
+      "evidenceRefs": ["Get-NetTCPConnection -State Listen", "Get-Process by owning PID"],
       "factKind": "PROTECTED_EXISTING_LOCALHOST",
       "gitEvidenceId": "GIT-005",
       "mergeBase": "8aa51f126bcbc56d36d1a1c4dd3ede56e2fd38a6",
@@ -189,9 +165,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       },
       "repository": "Cookie774-GameDev/VibeSpace",
       "reviewIds": [],
-      "testIds": [
-        "TST-GIT-001"
-      ],
+      "testIds": ["TST-GIT-001"],
       "worktree": "C:\\Users\\viper\\VibeSpace\\.worktrees\\shared-intelligence-kernel-design-20260716"
     },
     {
@@ -199,9 +173,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "baselineHead": "918de28b21a2f9e6fe773c8d50d9e9d86fd1308c",
       "branch": "codex/shared-intelligence-kernel-design-20260716",
       "commitId": null,
-      "evidenceRefs": [
-        "Get-NetTCPConnection -State Listen -LocalPort 5199"
-      ],
+      "evidenceRefs": ["Get-NetTCPConnection -State Listen -LocalPort 5199"],
       "factKind": "ISOLATED_RUNTIME_PRELAUNCH_OBSERVATION",
       "gitEvidenceId": "GIT-006",
       "mergeBase": "8aa51f126bcbc56d36d1a1c4dd3ede56e2fd38a6",
@@ -223,11 +195,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       },
       "repository": "Cookie774-GameDev/VibeSpace",
       "reviewIds": [],
-      "testIds": [
-        "TST-NATIVE-001",
-        "TST-NATIVE-002",
-        "TST-NATIVE-003"
-      ],
+      "testIds": ["TST-NATIVE-001", "TST-NATIVE-002", "TST-NATIVE-003"],
       "worktree": "C:\\Users\\viper\\VibeSpace\\.worktrees\\shared-intelligence-kernel-design-20260716"
     },
     {
@@ -253,9 +221,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       },
       "repository": "Cookie774-GameDev/VibeSpace",
       "reviewIds": [],
-      "testIds": [
-        "TST-GIT-001"
-      ],
+      "testIds": ["TST-GIT-001"],
       "worktree": "C:\\Users\\viper\\VibeSpace\\.worktrees\\shared-intelligence-kernel-design-20260716"
     },
     {
@@ -280,9 +246,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       },
       "repository": "Cookie774-GameDev/VibeSpace",
       "reviewIds": [],
-      "testIds": [
-        "TST-GIT-001"
-      ],
+      "testIds": ["TST-GIT-001"],
       "worktree": "C:\\Users\\viper\\VibeSpace\\.worktrees\\shared-intelligence-kernel-design-20260716"
     },
     {
@@ -300,21 +264,14 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "mergeBase": "8aa51f126bcbc56d36d1a1c4dd3ede56e2fd38a6",
       "observedAtUtc": "2026-07-17T09:35:42.8034625Z",
       "originMain": "65931c1cbb2982e6991238af45a3cf39702c7802",
-      "pathManifest": [
-        "app/src/lib/accountIdentity.test.ts",
-        "app/src/lib/accountIdentity.ts"
-      ],
+      "pathManifest": ["app/src/lib/accountIdentity.test.ts", "app/src/lib/accountIdentity.ts"],
       "protectedState": {
         "retrospective": true,
         "scope": "two-file resolver atoms only"
       },
       "repository": "Cookie774-GameDev/VibeSpace",
-      "reviewIds": [
-        "Task1A-review-fix"
-      ],
-      "testIds": [
-        "TST-1A-001"
-      ],
+      "reviewIds": ["Task1A-review-fix"],
+      "testIds": ["TST-1A-001"],
       "worktree": "C:\\Users\\viper\\VibeSpace\\.worktrees\\shared-intelligence-kernel-design-20260716"
     },
     {
@@ -331,21 +288,14 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "mergeBase": "8aa51f126bcbc56d36d1a1c4dd3ede56e2fd38a6",
       "observedAtUtc": "2026-07-17T09:35:42.8034625Z",
       "originMain": "65931c1cbb2982e6991238af45a3cf39702c7802",
-      "pathManifest": [
-        "app/src/lib/accountIdentity.test.ts",
-        "app/src/lib/accountIdentity.ts"
-      ],
+      "pathManifest": ["app/src/lib/accountIdentity.test.ts", "app/src/lib/accountIdentity.ts"],
       "protectedState": {
         "retrospective": true,
         "scope": "two-file resolver hardening only"
       },
       "repository": "Cookie774-GameDev/VibeSpace",
-      "reviewIds": [
-        "Task1A-review-fix"
-      ],
-      "testIds": [
-        "TST-1A-001"
-      ],
+      "reviewIds": ["Task1A-review-fix"],
+      "testIds": ["TST-1A-001"],
       "worktree": "C:\\Users\\viper\\VibeSpace\\.worktrees\\shared-intelligence-kernel-design-20260716"
     },
     {
@@ -378,12 +328,8 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "task2R": "NOT_REQUIRED"
       },
       "repository": "Cookie774-GameDev/VibeSpace",
-      "reviewIds": [
-        "/root/monochrome_plan_final_gate"
-      ],
-      "testIds": [
-        "TST-2-001"
-      ],
+      "reviewIds": ["/root/monochrome_plan_final_gate"],
+      "testIds": ["TST-2-001"],
       "worktree": "C:\\Users\\viper\\VibeSpace\\.worktrees\\shared-intelligence-kernel-design-20260716"
     },
     {
@@ -430,13 +376,8 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "scope": "accepted 17-path ownership and serialization atoms"
       },
       "repository": "Cookie774-GameDev/VibeSpace",
-      "reviewIds": [
-        "Task1B-R8-independent-review"
-      ],
-      "testIds": [
-        "TST-1B-001",
-        "TST-1B-002"
-      ],
+      "reviewIds": ["Task1B-R8-independent-review"],
+      "testIds": ["TST-1B-001", "TST-1B-002"],
       "worktree": "C:\\Users\\viper\\VibeSpace\\.worktrees\\shared-intelligence-kernel-design-20260716"
     },
     {
@@ -474,13 +415,8 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "terminalDiagnostic": "PASS_4_OF_4"
       },
       "repository": "Cookie774-GameDev/VibeSpace",
-      "reviewIds": [
-        "Task3-independent-review"
-      ],
-      "testIds": [
-        "TST-3-001",
-        "TST-3-002"
-      ],
+      "reviewIds": ["Task3-independent-review"],
+      "testIds": ["TST-3-001", "TST-3-002"],
       "worktree": "C:\\Users\\viper\\VibeSpace\\.worktrees\\shared-intelligence-kernel-design-20260716"
     },
     {
@@ -488,26 +424,20 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "baselineHead": "918de28b21a2f9e6fe773c8d50d9e9d86fd1308c",
       "branch": "codex/shared-intelligence-kernel-design-20260716",
       "commitId": "56d669f60b0eb93309f332ed700d9b0f4b0b82ee",
-      "evidenceRefs": [
-        "git diff-tree --no-commit-id --name-only -r 56d669f"
-      ],
+      "evidenceRefs": ["git diff-tree --no-commit-id --name-only -r 56d669f"],
       "factKind": "TASK_1B_TEST_HARDENING",
       "gitEvidenceId": "GIT-014",
       "mergeBase": "8aa51f126bcbc56d36d1a1c4dd3ede56e2fd38a6",
       "observedAtUtc": "2026-07-17T09:35:42.8034625Z",
       "originMain": "65931c1cbb2982e6991238af45a3cf39702c7802",
-      "pathManifest": [
-        "app/src/App.accountIdentity.test.tsx"
-      ],
+      "pathManifest": ["app/src/App.accountIdentity.test.tsx"],
       "protectedState": {
         "retrospective": true,
         "standaloneProductRequirement": false
       },
       "repository": "Cookie774-GameDev/VibeSpace",
       "reviewIds": [],
-      "testIds": [
-        "TST-1B-001"
-      ],
+      "testIds": ["TST-1B-001"],
       "worktree": "C:\\Users\\viper\\VibeSpace\\.worktrees\\shared-intelligence-kernel-design-20260716"
     },
     {
@@ -540,9 +470,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "/root/monochrome_plan_final_gate",
         "/root/unified_plan_final_gate"
       ],
-      "testIds": [
-        "TST-PLAN-001"
-      ],
+      "testIds": ["TST-PLAN-001"],
       "worktree": "C:\\Users\\viper\\VibeSpace\\.worktrees\\shared-intelligence-kernel-design-20260716"
     },
     {
@@ -587,15 +515,8 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "stagedPathPolicy": "exact manifest only"
       },
       "repository": "Cookie774-GameDev/VibeSpace",
-      "reviewIds": [
-        "Task0R-classification-review-pending",
-        "Task0R-full-review-pending"
-      ],
-      "testIds": [
-        "TST-0R-001",
-        "TST-0R-002",
-        "TST-0R-003"
-      ],
+      "reviewIds": ["Task0R-classification-review-pending", "Task0R-full-review-pending"],
+      "testIds": ["TST-0R-001", "TST-0R-002", "TST-0R-003"],
       "worktree": "C:\\Users\\viper\\VibeSpace\\.worktrees\\shared-intelligence-kernel-design-20260716"
     },
     {
@@ -634,9 +555,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "protectedState": "immutable committed plan; supersedes historical ff3daa0 provenance",
       "repository": "C:\\Users\\viper\\VibeSpace",
       "reviewIds": [],
-      "testIds": [
-        "TST-TASK0R-001"
-      ],
+      "testIds": ["TST-TASK0R-001"],
       "worktree": "C:\\Users\\viper\\VibeSpace\\.worktrees\\shared-intelligence-kernel-design-20260716"
     },
     {
@@ -678,9 +597,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "protectedState": "ignored deterministic tools/evidence only until exact 17 documents are staged",
       "repository": "C:\\Users\\viper\\VibeSpace",
       "reviewIds": [],
-      "testIds": [
-        "TST-TASK0R-001"
-      ],
+      "testIds": ["TST-TASK0R-001"],
       "worktree": "C:\\Users\\viper\\VibeSpace\\.worktrees\\shared-intelligence-kernel-design-20260716"
     },
     {
@@ -688,10 +605,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "baselineHead": "918de28b21a2f9e6fe773c8d50d9e9d86fd1308c",
       "branch": "codex/shared-intelligence-kernel-design-20260716",
       "commitId": null,
-      "evidenceRefs": [
-        "git-status:installer deletion unstaged",
-        "port:5199 candidate only"
-      ],
+      "evidenceRefs": ["git-status:installer deletion unstaged", "port:5199 candidate only"],
       "factKind": "PROTECTED_STATE_BOUNDARY",
       "gitEvidenceId": "GIT-019",
       "mergeBase": "8aa51f126bcbc56d36d1a1c4dd3ede56e2fd38a6",
@@ -719,9 +633,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "protectedState": "install/install.ps1, unrelated Grok branch/worktree, and all pre-existing listeners/profiles remain untouched",
       "repository": "C:\\Users\\viper\\VibeSpace",
       "reviewIds": [],
-      "testIds": [
-        "TST-TASK0R-001"
-      ],
+      "testIds": ["TST-TASK0R-001"],
       "worktree": "C:\\Users\\viper\\VibeSpace\\.worktrees\\shared-intelligence-kernel-design-20260716"
     }
   ],

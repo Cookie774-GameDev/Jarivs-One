@@ -19,8 +19,6 @@ maintenanceTriggers:
 
 Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative for this batch; prose is explanatory only.
 
-Requested collaboration model/reasoning overrides are recorded separately from backend execution attestation; unattested worker identities remain explicitly unverified.
-
 The Sakura package closure is exactly six files under the frozen root. STYLE_SPEC is normative; the prototype, README, and agent prompt are context; both PNGs are binary references and remain private.
 
 ## Canonical data
