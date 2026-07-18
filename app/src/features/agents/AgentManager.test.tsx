@@ -396,7 +396,7 @@ describe('AgentManager protected JARVIS profile lifecycle', () => {
         '',
       ),
     );
-    expect(agentRepo.getById).not.toHaveBeenCalled();
+    expect(agentRepo.getById).toHaveBeenCalledWith(protectedJarvis.id);
     expect(agentRepo.update).not.toHaveBeenCalled();
     expect(agentRepo.create).not.toHaveBeenCalled();
   });
@@ -444,6 +444,50 @@ describe('AgentManager protected JARVIS profile lifecycle', () => {
 
     await screen.findByLabelText('Custom instructions');
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Missing protected row' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save agent' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'Protected JARVIS agent row is unavailable.',
+    );
+    expect(agentRepo.update).not.toHaveBeenCalled();
+    expect(agentRepo.create).not.toHaveBeenCalled();
+    expect(jarvisProfileRepo.updateCustomInstructions).not.toHaveBeenCalled();
+  });
+
+  it('fails closed before a profile-only write when the protected row is missing', async () => {
+    const agentRepo = await repoMocks(protectedJarvis);
+    const jarvisProfileRepo = await profileRepoMocks();
+    vi.mocked(agentRepo.getById).mockResolvedValue(undefined);
+    render(<AgentManager />);
+
+    fireEvent.change(await screen.findByLabelText('Custom instructions'), {
+      target: { value: 'Must not persist.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save agent' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'Protected JARVIS agent row is unavailable.',
+    );
+    expect(agentRepo.update).not.toHaveBeenCalled();
+    expect(agentRepo.create).not.toHaveBeenCalled();
+    expect(jarvisProfileRepo.updateCustomInstructions).not.toHaveBeenCalled();
+  });
+
+  it('fails closed before either write when the persisted row is no longer protected', async () => {
+    const agentRepo = await repoMocks(protectedJarvis);
+    const jarvisProfileRepo = await profileRepoMocks();
+    vi.mocked(agentRepo.getById).mockResolvedValue({
+      ...baseAgent,
+      id: protectedJarvis.id,
+      slug: 'reused-id',
+      builtin: false,
+    });
+    render(<AgentManager />);
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Must not persist' } });
+    fireEvent.change(await screen.findByLabelText('Custom instructions'), {
+      target: { value: 'Must not persist either.' },
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Save agent' }));
 
     expect((await screen.findByRole('alert')).textContent).toContain(
@@ -655,6 +699,65 @@ describe('AgentManager protected JARVIS profile lifecycle', () => {
     );
     expect(screen.getByLabelText('Name')).toHaveProperty('value', 'Newer name');
     expect(instructions).toHaveProperty('value', 'Newer profile.');
+    expect(screen.getByRole('button', { name: 'Save agent' })).toHaveProperty('disabled', false);
+  });
+
+  it('does not report success when an Agent edit arrives during the later profile write', async () => {
+    const agentRepo = await repoMocks(protectedJarvis);
+    const jarvisProfileRepo = await profileRepoMocks();
+    const pendingProfileWrite = deferred<JarvisProfile>();
+    vi.mocked(jarvisProfileRepo.updateCustomInstructions).mockReturnValue(
+      pendingProfileWrite.promise,
+    );
+    render(<AgentManager />);
+
+    const instructions = await screen.findByLabelText('Custom instructions');
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Submitted name' } });
+    fireEvent.change(instructions, { target: { value: 'Submitted profile.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save agent' }));
+    await waitFor(() => expect(agentRepo.update).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(jarvisProfileRepo.updateCustomInstructions).toHaveBeenCalledTimes(1),
+    );
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Late Agent edit' } });
+    pendingProfileWrite.resolve(
+      profileFixture({
+        revisionId: 'revision_2',
+        customInstructions: 'Submitted profile.',
+      }),
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Save agent' }).textContent?.trim()).toBe('Save'),
+    );
+    expect(screen.getByLabelText('Name')).toHaveProperty('value', 'Late Agent edit');
+    expect(screen.getByRole('button', { name: 'Save agent' })).toHaveProperty('disabled', false);
+  });
+
+  it('does not report an Agent-only save complete when a profile edit arrives in flight', async () => {
+    const agentRepo = await repoMocks(protectedJarvis);
+    const pendingAgentUpdate = deferred<Agent>();
+    vi.mocked(agentRepo.update).mockReturnValue(pendingAgentUpdate.promise);
+    await profileRepoMocks();
+    render(<AgentManager />);
+
+    const instructions = await screen.findByLabelText('Custom instructions');
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Submitted Agent name' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save agent' }));
+    await waitFor(() => expect(agentRepo.update).toHaveBeenCalledTimes(1));
+
+    fireEvent.change(instructions, { target: { value: 'Late profile edit.' } });
+    pendingAgentUpdate.resolve({
+      ...protectedJarvis,
+      name: 'Submitted Agent name',
+      updated_at: 4,
+    });
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Save agent' }).textContent?.trim()).toBe('Save'),
+    );
+    expect(instructions).toHaveProperty('value', 'Late profile edit.');
     expect(screen.getByRole('button', { name: 'Save agent' })).toHaveProperty('disabled', false);
   });
 

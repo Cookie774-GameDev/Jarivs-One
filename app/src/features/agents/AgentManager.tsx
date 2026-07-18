@@ -531,12 +531,15 @@ export function AgentManager() {
       let hasNewerAgentEdits = false;
       let hasNewerProfileEdits = false;
       let profileWriteCompleted = !currentProfileDirty;
+      let existingAgent: Agent | undefined;
+      if (currentProtectedJarvis || currentAgentDirty) {
+        existingAgent = await agentRepo.getById(selectedAgent.id);
+      }
+      if (currentProtectedJarvis && (!existingAgent || !isProtectedJarvisAgent(existingAgent))) {
+        throw new Error('Protected JARVIS agent row is unavailable.');
+      }
       if (currentAgentDirty) {
-        const existing = await agentRepo.getById(selectedAgent.id);
-        if (!existing && currentProtectedJarvis) {
-          throw new Error('Protected JARVIS agent row is unavailable.');
-        }
-        savedAgent = existing
+        savedAgent = existingAgent
           ? await agentRepo.update(selectedAgent.id, patch)
           : await agentRepo.create({ ...selectedAgent, ...patch, id: selectedAgent.id });
         agentChangesSaved = true;
@@ -607,11 +610,28 @@ export function AgentManager() {
         }
       }
 
+      const finalDraft = draftRef.current;
+      const finalBaseline = baselineRef.current;
+      const finalProfile = protectedProfileRef.current;
+      const finalIdentity = resolveAccountIdentity(useAuthStore.getState());
+      const finalAccountScopeKey = finalIdentity ? accountScopeKey(finalIdentity) : null;
+      const liveAgentDirty = !!(
+        finalDraft &&
+        finalBaseline &&
+        draftsDiffer(finalDraft, finalBaseline, currentProtectedJarvis)
+      );
+      const liveProfileDirty = !!(
+        currentProtectedJarvis &&
+        finalProfile.status === 'ready' &&
+        finalProfile.accountScopeKey === submittedAccountScopeKey &&
+        normalizeLineEndings(finalProfile.draft) !== normalizeLineEndings(finalProfile.baseline)
+      );
       if (
         selectedIdRef.current === submittedAgentId &&
+        (!currentProtectedJarvis || finalAccountScopeKey === submittedAccountScopeKey) &&
         profileWriteCompleted &&
-        !hasNewerAgentEdits &&
-        !hasNewerProfileEdits
+        !liveAgentDirty &&
+        !liveProfileDirty
       ) {
         setSaveState('saved');
         toast.success('Saved', `Updated "${savedAgent.name}"`);
