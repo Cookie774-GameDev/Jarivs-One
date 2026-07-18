@@ -2022,3 +2022,15 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Task 13P verification contract** | Strict RED/GREEN TDD for one App-mounted account persistence coordinator, generation-bound ready/degraded/retry receipts, teardown-before-account-switch, stale-completion denial, unmount disposal, and protected-agent lookup through the canonical predicate; then the exact four-file focused suite, root TypeScript, exact seven-path format/diff/credential gates, and high-risk local review. |
 | **Delegation/model rule** | The active collaboration interface still cannot explicitly select or attest GPT-5.6 Sol high. Task 13P is tightly coupled to the authoritative App lifecycle and protected identity predicate, so it remains local rather than creating unverifiable or overlapping delegation. |
 | **Protected state** | `install/install.ps1`, unified-goal artifacts, unrelated branches/worktrees, existing localhost, and existing app-data profiles remain untouched and unstaged. Task 13P uses no runtime port or app-data profile. |
+
+## 2026-07-18 - Task 13P accepted and Task 16A exact lock acquired
+
+| Field | Coordination record |
+|---|---|
+| **Task 13P result** | **PASS** at `983ca7a` (`feat(jarvis): mount account persistence coordinator`). The exact seven-file manifest was committed with the unrelated installer deletion excluded. |
+| **Task 13P evidence** | Focused App/coordinator/identity suite: 4 files, 87 tests passed. Root `npm run typecheck`: passed. Exact seven-path Prettier, cached-manifest, diff, and credential gates: passed. |
+| **Task 16A owner/state** | Primary coordinator `AGENT-CODEX-20260718-SIK`; **IMPLEMENTING**. |
+| **Task 16A exclusive files** | `app/src/lib/jarvis/kernelMode.ts`; `app/src/lib/jarvis/kernelMode.test.ts`; `app/src/lib/jarvis/shadowCompilation.ts`; `app/src/lib/jarvis/shadowCompilation.test.ts`; `app/src/lib/ai/runtime.ts`; `app/src/lib/ai/runtime.test.ts`; `app/src/lib/ai/runtimeSafety.test.ts` |
+| **Task 16A verification contract** | Strict RED/GREEN TDD for the three-state gate, persisted-run-first observational shadow compilation, safe diagnostic allowlist, all-mode interlocks, protected-agent-only shadowing, atomic terminal mirroring, and nonterminal delivered cancellation; then the exact four-file focused suite, root TypeScript, exact seven-path format/diff/credential gates, and high-risk local review. |
+| **Delegation/model rule** | No new subagent is created: the active interface cannot explicitly select or attest GPT-5.6 Sol high, and Task 16A is architecture-sensitive across one runtime seam. This preserves the user's minimum-sufficient delegation and model-verification addendum. |
+| **Protected state** | `install/install.ps1`, unified-goal artifacts, unrelated branches/worktrees, existing localhost, and existing app-data profiles remain untouched and unstaged. Task 16A uses no runtime port or app-data profile. |
