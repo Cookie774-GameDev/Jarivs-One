@@ -5,7 +5,13 @@
 import type { ProviderId } from '@/types/common';
 import { useAuthStore } from '@/stores/auth';
 import type { LLMContentPart, LLMProvider, LLMRequest, LLMResponse } from '../types';
-import { estimateCost, estimateInputTokens, llmContentToText } from '../types';
+import {
+  estimateCost,
+  estimateInputTokens,
+  llmContentToText,
+  observeResponseBody,
+  systemPromptForRequest,
+} from '../types';
 import { parseSSE } from './sse';
 
 export interface OpenAICompatibleConfig {
@@ -53,12 +59,15 @@ export function makeOpenAICompatibleProvider(cfg: OpenAICompatibleConfig): LLMPr
       if (!apiKey?.trim()) throw new Error(`${cfg.name} API key not set`);
 
       const model = req.agent.model.model || cfg.defaultModel;
+      const systemPrompt = systemPromptForRequest(req);
       const messages = [
-        { role: 'system' as const, content: req.agent.system_prompt },
-        ...req.messages.filter((m) => m.role !== 'system').map((m) => ({
-          role: m.role,
-          content: toOpenAiCompatibleContent(m.content),
-        })),
+        { role: 'system' as const, content: systemPrompt },
+        ...req.messages
+          .filter((m) => m.role !== 'system')
+          .map((m) => ({
+            role: m.role,
+            content: toOpenAiCompatibleContent(m.content),
+          })),
       ];
 
       const body = {
@@ -85,6 +94,13 @@ export function makeOpenAICompatibleProvider(cfg: OpenAICompatibleConfig): LLMPr
 
       if (!res.ok) {
         const errText = await res.text().catch(() => '');
+        if (errText.length > 0) {
+          req.onResponseObservation?.({
+            kind: 'bytes',
+            byteLength: new TextEncoder().encode(errText).byteLength,
+            observedAt: Date.now(),
+          });
+        }
         throw new Error(`${cfg.name} ${res.status}: ${errText.slice(0, 300) || res.statusText}`);
       }
       if (!res.body) throw new Error(`${cfg.name} returned an empty body`);
@@ -95,7 +111,10 @@ export function makeOpenAICompatibleProvider(cfg: OpenAICompatibleConfig): LLMPr
       let finishReason: string | undefined;
       let first = true;
 
-      for await (const evt of parseSSE(res.body, req.signal)) {
+      for await (const evt of parseSSE(
+        observeResponseBody(res.body, req.onResponseObservation),
+        req.signal,
+      )) {
         if (req.signal?.aborted) break;
         const raw = evt.data;
         if (raw === '[DONE]') break;
@@ -134,7 +153,7 @@ export function makeOpenAICompatibleProvider(cfg: OpenAICompatibleConfig): LLMPr
 
       if (inputTokens === 0) {
         inputTokens = estimateInputTokens(
-          [req.agent.system_prompt, ...req.messages.map((m) => llmContentToText(m.content))].join('\n'),
+          [systemPrompt, ...req.messages.map((m) => llmContentToText(m.content))].join('\n'),
         );
       }
       if (outputTokens === 0) outputTokens = estimateInputTokens(acc);

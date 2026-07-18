@@ -1,15 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeClaudeJsonl } from './claude';
+import { CLAUDE_CLI_DEFINITION } from './claude';
 import { normalizeCodexJsonl } from './codex';
+import { CODEX_CLI_DEFINITION } from './codex';
 import { normalizeCopilotJsonl } from './copilot';
-import {
-  DEFAULT_JSONL_LIMITS,
-  responseUsageSnapshot,
-  type JsonlParserLimits,
-} from './cliBridge';
+import { COPILOT_CLI_DEFINITION } from './copilot';
+import { DEFAULT_JSONL_LIMITS, responseUsageSnapshot, type JsonlParserLimits } from './cliBridge';
 import { normalizeGeminiJsonl } from './gemini';
+import { GEMINI_CLI_DEFINITION } from './gemini';
 import { normalizeOpenCodeJsonl } from './opencode';
+import { OPENCODE_CLI_DEFINITION } from './opencode';
 import { normalizeQwenJsonl } from './qwen';
+import { QWEN_CLI_DEFINITION } from './qwen';
 import type { ProviderEvent } from './types';
 
 function jsonl(...records: unknown[]): string {
@@ -19,6 +21,28 @@ function jsonl(...records: unknown[]): string {
 function joined(events: ProviderEvent[]): string {
   return JSON.stringify(events);
 }
+
+describe('protected prompt declarations', () => {
+  it('pins all six parser-backed CLI definitions to one preamble strategy', () => {
+    expect(
+      [
+        CODEX_CLI_DEFINITION,
+        CLAUDE_CLI_DEFINITION,
+        GEMINI_CLI_DEFINITION,
+        COPILOT_CLI_DEFINITION,
+        QWEN_CLI_DEFINITION,
+        OPENCODE_CLI_DEFINITION,
+      ].map(({ connectionId, promptTransport }) => [connectionId, promptTransport]),
+    ).toEqual([
+      ['openai-codex', 'prefixed-preamble'],
+      ['anthropic-claude-code', 'prefixed-preamble'],
+      ['google-gemini-cli', 'prefixed-preamble'],
+      ['github-copilot-cli', 'prefixed-preamble'],
+      ['qwen-code', 'prefixed-preamble'],
+      ['opencode-cli', 'prefixed-preamble'],
+    ]);
+  });
+});
 
 describe('Codex JSONL normalization', () => {
   it('preserves only bounded shared events from a successful turn', () => {
@@ -357,9 +381,7 @@ describe('bounded untrusted output handling', () => {
   it('rejects a malformed required terminal record', () => {
     expect(() =>
       normalizeOpenCodeJsonl(jsonl({ type: 'step_finish', part: { type: 'step-finish' } })),
-    ).toThrowError(
-      'Malformed OpenCode terminal event',
-    );
+    ).toThrowError('Malformed OpenCode terminal event');
   });
 
   it('rejects oversized lines and total input with explicit bounds', () => {

@@ -16,7 +16,13 @@
  *      usageMetadata?: { promptTokenCount, candidatesTokenCount } }`.
  */
 import type { LLMContentPart, LLMProvider, LLMRequest, LLMResponse, LLMMessage } from '../types';
-import { estimateCost, estimateInputTokens, llmContentToText } from '../types';
+import {
+  estimateCost,
+  estimateInputTokens,
+  llmContentToText,
+  observeResponseBody,
+  systemPromptForRequest,
+} from '../types';
 import { useAuthStore } from '@/stores/auth';
 import { parseSSE } from './sse';
 
@@ -59,6 +65,7 @@ export const googleProvider: LLMProvider = {
     if (!apiKey) throw new Error('Google API key not set');
 
     const model = req.agent.model.model || GOOGLE_DEFAULT_MODEL;
+    const systemPrompt = systemPromptForRequest(req);
 
     const contents = req.messages
       .filter((m) => m.role !== 'system')
@@ -76,7 +83,7 @@ export const googleProvider: LLMProvider = {
     const body = {
       contents,
       systemInstruction: {
-        parts: [{ text: req.agent.system_prompt }],
+        parts: [{ text: systemPrompt }],
       },
       generationConfig: {
         temperature: req.temperature ?? req.agent.temperature ?? 0.7,
@@ -97,6 +104,13 @@ export const googleProvider: LLMProvider = {
 
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
+      if (errText.length > 0) {
+        req.onResponseObservation?.({
+          kind: 'bytes',
+          byteLength: new TextEncoder().encode(errText).byteLength,
+          observedAt: Date.now(),
+        });
+      }
       throw new Error(`Google ${res.status}: ${errText.slice(0, 300) || res.statusText}`);
     }
     if (!res.body) throw new Error('Google returned an empty body');
@@ -107,7 +121,10 @@ export const googleProvider: LLMProvider = {
     let finishReason: string | undefined;
     let first = true;
 
-    for await (const evt of parseSSE(res.body, req.signal)) {
+    for await (const evt of parseSSE(
+      observeResponseBody(res.body, req.onResponseObservation),
+      req.signal,
+    )) {
       if (req.signal?.aborted) break;
       if (!evt.data) continue;
 
@@ -144,7 +161,8 @@ export const googleProvider: LLMProvider = {
     }
 
     if (inputTokens === 0) {
-      const inputText = req.agent.system_prompt + '\n' + req.messages.map((m) => llmContentToText(m.content)).join('\n');
+      const inputText =
+        systemPrompt + '\n' + req.messages.map((m) => llmContentToText(m.content)).join('\n');
       inputTokens = estimateInputTokens(inputText);
     }
     if (outputTokens === 0) outputTokens = estimateInputTokens(acc);

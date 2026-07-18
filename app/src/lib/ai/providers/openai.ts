@@ -14,7 +14,13 @@
  * event carries the final usage block.
  */
 import type { LLMContentPart, LLMProvider, LLMRequest, LLMResponse } from '../types';
-import { estimateCost, estimateInputTokens, llmContentToText } from '../types';
+import {
+  estimateCost,
+  estimateInputTokens,
+  llmContentToText,
+  observeResponseBody,
+  systemPromptForRequest,
+} from '../types';
 import { useAuthStore } from '@/stores/auth';
 import { parseSSE } from './sse';
 
@@ -48,15 +54,18 @@ export const openaiProvider: LLMProvider = {
     if (!apiKey) throw new Error('OpenAI API key not set');
 
     const model = req.agent.model.model || OPENAI_DEFAULT_MODEL;
+    const systemPrompt = systemPromptForRequest(req);
 
     // OpenAI puts the system prompt in the messages array (role: 'system').
     // Strip any existing system messages from the user list to avoid duplicates.
     const messages = [
-      { role: 'system' as const, content: req.agent.system_prompt },
-      ...req.messages.filter((m) => m.role !== 'system').map((m) => ({
-        role: m.role,
-        content: toOpenAiContent(m.content),
-      })),
+      { role: 'system' as const, content: systemPrompt },
+      ...req.messages
+        .filter((m) => m.role !== 'system')
+        .map((m) => ({
+          role: m.role,
+          content: toOpenAiContent(m.content),
+        })),
     ];
 
     const body = {
@@ -81,6 +90,13 @@ export const openaiProvider: LLMProvider = {
 
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
+      if (errText.length > 0) {
+        req.onResponseObservation?.({
+          kind: 'bytes',
+          byteLength: new TextEncoder().encode(errText).byteLength,
+          observedAt: Date.now(),
+        });
+      }
       throw new Error(`OpenAI ${res.status}: ${errText.slice(0, 300) || res.statusText}`);
     }
     if (!res.body) throw new Error('OpenAI returned an empty body');
@@ -91,7 +107,10 @@ export const openaiProvider: LLMProvider = {
     let finishReason: string | undefined;
     let first = true;
 
-    for await (const evt of parseSSE(res.body, req.signal)) {
+    for await (const evt of parseSSE(
+      observeResponseBody(res.body, req.onResponseObservation),
+      req.signal,
+    )) {
       if (req.signal?.aborted) break;
       const raw = evt.data;
       if (raw === '[DONE]') break;
@@ -127,7 +146,10 @@ export const openaiProvider: LLMProvider = {
     }
 
     if (inputTokens === 0) {
-      const inputText = [req.agent.system_prompt, ...req.messages.map((m) => llmContentToText(m.content))].join('\n');
+      const inputText = [
+        systemPrompt,
+        ...req.messages.map((m) => llmContentToText(m.content)),
+      ].join('\n');
       inputTokens = estimateInputTokens(inputText);
     }
     if (outputTokens === 0) outputTokens = estimateInputTokens(acc);

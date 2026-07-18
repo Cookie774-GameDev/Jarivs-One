@@ -370,6 +370,7 @@ const codexConnection: ProviderConnection = {
   authSource: 'codex-cli-login',
   modelId: 'gpt-5.2-codex',
   capabilities,
+  promptTransport: 'prefixed-preamble',
   enabled: true,
 };
 
@@ -382,6 +383,7 @@ const localConnection: ProviderConnection = {
   mode: 'local',
   authSource: 'none',
   modelId: 'llama3.2',
+  promptTransport: 'native-system',
 };
 
 describe('chat repository connections and queue ownership', () => {

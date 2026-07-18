@@ -266,7 +266,9 @@ describe('shell-free provider command vectors', () => {
       '--output-format=json',
       '--model=gpt-5',
     ]);
-    expect(buildQwenInvocation({ prompt: optionLookingPrompt, modelId: 'qwen3-coder' }).args).toEqual([
+    expect(
+      buildQwenInvocation({ prompt: optionLookingPrompt, modelId: 'qwen3-coder' }).args,
+    ).toEqual([
       '-p',
       optionLookingPrompt,
       '--output-format',
@@ -384,6 +386,7 @@ describe('typed Tauri CLI bridge client', () => {
     const controller = new AbortController();
     const stream = streamCliBridge(request, controller.signal);
     const firstEvent = stream.next();
+    const aborted = expect(firstEvent).rejects.toMatchObject({ name: 'AbortError' });
 
     await vi.waitFor(() => {
       expect(invoke).toHaveBeenCalledWith('cli_bridge_start', { request });
@@ -416,7 +419,7 @@ describe('typed Tauri CLI bridge client', () => {
           status: 'cancelled',
         },
       });
-      await firstEvent;
+      await aborted;
       await stream.return(undefined);
     }
 

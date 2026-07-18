@@ -122,6 +122,7 @@ export type ProviderRecordNormalizer = (
 export interface CliProviderDefinition {
   adapterId: string;
   connectionId: string;
+  promptTransport: 'prefixed-preamble' | 'unsupported';
   executableName: string;
   versionArgs: readonly string[];
   authProbeArgs?: readonly string[];
@@ -167,6 +168,10 @@ function isTerminalBridgeStatus(status: CliEventStatus): boolean {
   );
 }
 
+function cliAbortError(): DOMException {
+  return new DOMException('The provider CLI request was aborted.', 'AbortError');
+}
+
 /**
  * Starts one already-discovered executable through Task 2's Tauri supervisor.
  * The event listener is installed before start so short-lived CLIs cannot race it.
@@ -175,6 +180,7 @@ export async function* streamCliBridge(
   request: CliStartRequest,
   signal?: AbortSignal,
 ): AsyncGenerator<CliBridgeEvent> {
+  if (signal?.aborted) throw cliAbortError();
   const [{ invoke }, { listen }] = await Promise.all([
     import('@tauri-apps/api/core'),
     import('@tauri-apps/api/event'),
@@ -183,6 +189,7 @@ export async function* streamCliBridge(
   let wake: (() => void) | undefined;
   let terminalSeen = false;
   let started = false;
+  let cancelledAfterStart = false;
 
   const unlisten = await listen<CliBridgeEvent>(CLI_BRIDGE_EVENT, ({ payload }) => {
     if (payload.requestId !== request.requestId) return;
@@ -194,20 +201,24 @@ export async function* streamCliBridge(
 
   const abort = () => {
     void cancelCliBridge(request.requestId).catch(() => false);
+    wake?.();
+    wake = undefined;
   };
   signal?.addEventListener('abort', abort, { once: true });
 
   try {
     if (signal?.aborted) {
-      throw new Error('CLI request was cancelled before start');
+      throw cliAbortError();
     }
     await invoke<void>('cli_bridge_start', { request });
     started = true;
     if (signal?.aborted) {
       await cancelCliBridge(request.requestId).catch(() => false);
+      cancelledAfterStart = true;
     }
 
     while (!terminalSeen || queue.length > 0) {
+      if (signal?.aborted) throw cliAbortError();
       if (queue.length === 0) {
         await new Promise<void>((resolve) => {
           wake = resolve;
@@ -220,7 +231,7 @@ export async function* streamCliBridge(
   } finally {
     signal?.removeEventListener('abort', abort);
     unlisten();
-    if (started && !terminalSeen) {
+    if (started && !terminalSeen && !cancelledAfterStart) {
       await cancelCliBridge(request.requestId).catch(() => false);
     }
   }
@@ -568,6 +579,13 @@ async function* sendProviderRequest(
   definition: CliProviderDefinition,
   request: ProviderRequest,
 ): AsyncGenerator<ProviderEvent> {
+  if (request.signal?.aborted) throw cliAbortError();
+  if (
+    request.connection.id !== definition.connectionId ||
+    request.connection.promptTransport !== definition.promptTransport
+  ) {
+    throw new Error('CLI provider prompt transport declaration mismatch.');
+  }
   const executable = await findExecutable(definition.executableName);
   if (!executable) {
     throw new Error(`${definition.executableName} CLI is not installed`);
@@ -593,7 +611,15 @@ async function* sendProviderRequest(
     },
     request.signal,
   )) {
+    if (request.signal?.aborted) throw cliAbortError();
     if (event.status === 'data' && event.stream === 'stdout') {
+      if (event.data.length > 0) {
+        request.onResponseObservation?.({
+          kind: 'bytes',
+          byteLength: new TextEncoder().encode(event.data).byteLength,
+          observedAt: Date.now(),
+        });
+      }
       for (const normalized of parser.push(event.data)) yield normalized;
       continue;
     }
@@ -618,6 +644,7 @@ async function* sendProviderRequest(
       return;
     }
     if (event.status === 'cancelled') {
+      if (request.signal?.aborted) throw cliAbortError();
       yield { type: 'error', message: 'Provider CLI request was cancelled.' };
       return;
     }

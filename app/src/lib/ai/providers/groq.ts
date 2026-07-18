@@ -19,7 +19,13 @@
  * a backend or bundle a 2GB local model in the installer.
  */
 import type { LLMProvider, LLMRequest, LLMResponse } from '../types';
-import { estimateCost, estimateInputTokens, llmContentToText } from '../types';
+import {
+  estimateCost,
+  estimateInputTokens,
+  llmContentToText,
+  observeResponseBody,
+  systemPromptForRequest,
+} from '../types';
 import { useAuthStore } from '@/stores/auth';
 import { parseSSE } from './sse';
 
@@ -46,16 +52,19 @@ export const groqProvider: LLMProvider = {
     if (!apiKey) throw new Error('Groq API key not set');
 
     const model = req.agent.model.model || GROQ_DEFAULT_MODEL;
+    const systemPrompt = systemPromptForRequest(req);
 
     // Same shape as OpenAI: system prompt as a leading system message,
     // user/assistant messages follow. Strip any pre-existing system
     // entries from the user list so we don't end up with duplicates.
     const messages = [
-      { role: 'system' as const, content: req.agent.system_prompt },
-      ...req.messages.filter((m) => m.role !== 'system').map((m) => ({
-        role: m.role,
-        content: llmContentToText(m.content),
-      })),
+      { role: 'system' as const, content: systemPrompt },
+      ...req.messages
+        .filter((m) => m.role !== 'system')
+        .map((m) => ({
+          role: m.role,
+          content: llmContentToText(m.content),
+        })),
     ];
 
     const body = {
@@ -80,9 +89,14 @@ export const groqProvider: LLMProvider = {
 
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
-      throw new Error(
-        `Groq ${res.status}: ${errText.slice(0, 300) || res.statusText}`,
-      );
+      if (errText.length > 0) {
+        req.onResponseObservation?.({
+          kind: 'bytes',
+          byteLength: new TextEncoder().encode(errText).byteLength,
+          observedAt: Date.now(),
+        });
+      }
+      throw new Error(`Groq ${res.status}: ${errText.slice(0, 300) || res.statusText}`);
     }
     if (!res.body) throw new Error('Groq returned an empty body');
 
@@ -92,7 +106,10 @@ export const groqProvider: LLMProvider = {
     let finishReason: string | undefined;
     let first = true;
 
-    for await (const evt of parseSSE(res.body, req.signal)) {
+    for await (const evt of parseSSE(
+      observeResponseBody(res.body, req.onResponseObservation),
+      req.signal,
+    )) {
       if (req.signal?.aborted) break;
       const raw = evt.data;
       if (raw === '[DONE]') break;
@@ -103,9 +120,7 @@ export const groqProvider: LLMProvider = {
 
       // Errors come back as { error: { message, type, ... } } even mid-stream.
       if (data.error) {
-        throw new Error(
-          `Groq stream error: ${data.error.message ?? 'unknown'}`,
-        );
+        throw new Error(`Groq stream error: ${data.error.message ?? 'unknown'}`);
       }
 
       const choice = data.choices?.[0];

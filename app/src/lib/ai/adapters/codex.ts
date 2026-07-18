@@ -121,6 +121,7 @@ export function normalizeCodexJsonl(input: string, limits?: JsonlParserLimits): 
 export const CODEX_CLI_DEFINITION: CliProviderDefinition = Object.freeze({
   adapterId: 'codex-cli',
   connectionId: 'openai-codex',
+  promptTransport: 'prefixed-preamble',
   executableName: 'codex',
   versionArgs: Object.freeze(['--version']),
   authProbeArgs: Object.freeze(['login', 'status']),

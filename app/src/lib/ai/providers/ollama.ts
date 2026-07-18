@@ -27,7 +27,7 @@
  * vectors before any network call is made.
  */
 import type { LLMProvider, LLMRequest, LLMResponse } from '../types';
-import { estimateCost, estimateInputTokens, llmContentToText } from '../types';
+import { estimateCost, estimateInputTokens, llmContentToText, observeResponseBody } from '../types';
 import { useAuthStore } from '@/stores/auth';
 import { parseSSE } from './sse';
 import { nativeFetch } from '@/lib/nativeFetch';
@@ -272,7 +272,11 @@ export async function listOllamaModelInfo(signal?: AbortSignal): Promise<OllamaM
     }
   }
   try {
-    const res = await nativeFetch(`${resolvedOllamaBaseUrl()}/api/tags`, { signal, timeoutMs: 15_000, headers: ollamaHeaders() });
+    const res = await nativeFetch(`${resolvedOllamaBaseUrl()}/api/tags`, {
+      signal,
+      timeoutMs: 15_000,
+      headers: ollamaHeaders(),
+    });
     if (!res.ok) return [];
     const data = await res.json().catch(() => null);
     const models = data?.models;
@@ -434,11 +438,7 @@ export async function ensureOllamaReadySilent(
   onStatus?: (status: OllamaEnsureStatus) => void,
   options?: EnsureOllamaOptions,
 ): Promise<OllamaEnsureStatus> {
-  if (
-    readyCache &&
-    readyCache.status.ready &&
-    Date.now() - readyCache.at < READY_CACHE_MS
-  ) {
+  if (readyCache && readyCache.status.ready && Date.now() - readyCache.at < READY_CACHE_MS) {
     onStatus?.(readyCache.status);
     return readyCache.status;
   }
@@ -746,8 +746,8 @@ export async function pullOllamaModel(
         }
         unlisten = un;
         // Start the pull only after the listener is attached (no missed events).
-        invoke('ollama_pull_model', { model: name, baseUrl: resolvedOllamaBaseUrl() }).catch((err) =>
-          finish(() => reject(err instanceof Error ? err : new Error(String(err)))),
+        invoke('ollama_pull_model', { model: name, baseUrl: resolvedOllamaBaseUrl() }).catch(
+          (err) => finish(() => reject(err instanceof Error ? err : new Error(String(err)))),
         );
       });
     });
@@ -784,122 +784,122 @@ export async function pullOllamaModel(
   };
 
   try {
-    await withRetry(async (attempt) => {
-      if (composite.signal.aborted) throw new DOMException('Aborted by user', 'AbortError');
+    await withRetry(
+      async (attempt) => {
+        if (composite.signal.aborted) throw new DOMException('Aborted by user', 'AbortError');
 
-      const res = await nativeFetch(`${resolvedOllamaBaseUrl()}/api/pull`, {
-        method: 'POST',
-        headers: ollamaHeaders({ 'content-type': 'application/json' }),
-        body: JSON.stringify({ name, stream: true }),
-        signal: composite.signal,
-        timeoutMs: DOWNLOAD_TIMEOUT_MS,
-      });
-
-      if (!res.ok) {
-        const errText = await res.text().catch(() => '');
-        throw new Error(
-          `Ollama pull failed (${res.status}): ${errText.slice(0, 300) || res.statusText}`,
-        );
-      }
-
-      if (!res.body) {
-        const data = await res.json().catch(() => null);
-        if (data?.error) throw new Error(String(data.error));
-        onProgress?.({ status: 'success', done: true, percent: 100 });
-        return;
-      }
-
-      const decoder = new TextDecoder();
-      const reader = res.body.getReader();
-      let buffer = '';
-      let sawSuccess = false;
-      let bytesReceived = 0;
-      let chunksProcessed = 0;
-
-      const processLine = (line: string) => {
-        const trimmed = line.trim();
-        if (!trimmed) return;
-        const data = safeJSON(trimmed);
-        if (!data)
-          throw new Error(`Ollama returned invalid pull progress: ${trimmed.slice(0, 120)}`);
-        if (data.error) throw new Error(`Ollama pull failed: ${String(data.error)}`);
-
-        const total =
-          typeof data.total === 'number' && data.total > 0 ? data.total : undefined;
-        const completed =
-          typeof data.completed === 'number' && data.completed >= 0
-            ? data.completed
-            : undefined;
-        const percent =
-          total && completed !== undefined
-            ? Math.min(100, Math.max(0, Math.round((completed / total) * 100)))
-            : undefined;
-        const status = typeof data.status === 'string' ? data.status : 'downloading';
-        const done = status === 'success';
-        if (done) sawSuccess = true;
-
-        onProgress?.({
-          status,
-          digest: typeof data.digest === 'string' ? data.digest : undefined,
-          total,
-          completed,
-          percent,
-          done,
+        const res = await nativeFetch(`${resolvedOllamaBaseUrl()}/api/pull`, {
+          method: 'POST',
+          headers: ollamaHeaders({ 'content-type': 'application/json' }),
+          body: JSON.stringify({ name, stream: true }),
+          signal: composite.signal,
+          timeoutMs: DOWNLOAD_TIMEOUT_MS,
         });
-      };
 
-      try {
-        for (;;) {
-          if (composite.signal.aborted)
-            throw new DOMException('Aborted by user', 'AbortError');
-
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          bytesReceived += value ? value.byteLength : 0;
-          if (bytesReceived > MAX_DOWNLOAD_BYTES) {
-            composite.abort(
-              new Error(
-                `Download exceeds maximum allowed size (${Math.round(MAX_DOWNLOAD_BYTES / 1e9)} GB).`,
-              ),
-            );
-            throw new Error(
-              `Download exceeds maximum allowed size (${Math.round(MAX_DOWNLOAD_BYTES / 1e9)} GB).`,
-            );
-          }
-
-          buffer += decoder.decode(value, { stream: true });
-          chunksProcessed++;
-
-          let newline = buffer.indexOf('\n');
-          while (newline >= 0) {
-            processLine(buffer.slice(0, newline));
-            buffer = buffer.slice(newline + 1);
-            newline = buffer.indexOf('\n');
-          }
-
-          // Yield to the event loop every 16 chunks so the UI stays responsive
-          if (chunksProcessed % 16 === 0) {
-            await new Promise<void>((resolve) => setTimeout(resolve, 0));
-          }
+        if (!res.ok) {
+          const errText = await res.text().catch(() => '');
+          throw new Error(
+            `Ollama pull failed (${res.status}): ${errText.slice(0, 300) || res.statusText}`,
+          );
         }
 
-        // Flush remaining buffer
-        const remainder = decoder.decode();
-        if (remainder.trim()) processLine(remainder);
-      } finally {
-        // Always release the reader lock
+        if (!res.body) {
+          const data = await res.json().catch(() => null);
+          if (data?.error) throw new Error(String(data.error));
+          onProgress?.({ status: 'success', done: true, percent: 100 });
+          return;
+        }
+
+        const decoder = new TextDecoder();
+        const reader = res.body.getReader();
+        let buffer = '';
+        let sawSuccess = false;
+        let bytesReceived = 0;
+        let chunksProcessed = 0;
+
+        const processLine = (line: string) => {
+          const trimmed = line.trim();
+          if (!trimmed) return;
+          const data = safeJSON(trimmed);
+          if (!data)
+            throw new Error(`Ollama returned invalid pull progress: ${trimmed.slice(0, 120)}`);
+          if (data.error) throw new Error(`Ollama pull failed: ${String(data.error)}`);
+
+          const total = typeof data.total === 'number' && data.total > 0 ? data.total : undefined;
+          const completed =
+            typeof data.completed === 'number' && data.completed >= 0 ? data.completed : undefined;
+          const percent =
+            total && completed !== undefined
+              ? Math.min(100, Math.max(0, Math.round((completed / total) * 100)))
+              : undefined;
+          const status = typeof data.status === 'string' ? data.status : 'downloading';
+          const done = status === 'success';
+          if (done) sawSuccess = true;
+
+          onProgress?.({
+            status,
+            digest: typeof data.digest === 'string' ? data.digest : undefined,
+            total,
+            completed,
+            percent,
+            done,
+          });
+        };
+
         try {
-          reader.releaseLock();
-        } catch {
-          // already released
-        }
-      }
+          for (;;) {
+            if (composite.signal.aborted) throw new DOMException('Aborted by user', 'AbortError');
 
-      if (!sawSuccess) {
-        onProgress?.({ status: 'success', done: true, percent: 100 });
-      }
-    }, 2, 2000);
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            bytesReceived += value ? value.byteLength : 0;
+            if (bytesReceived > MAX_DOWNLOAD_BYTES) {
+              composite.abort(
+                new Error(
+                  `Download exceeds maximum allowed size (${Math.round(MAX_DOWNLOAD_BYTES / 1e9)} GB).`,
+                ),
+              );
+              throw new Error(
+                `Download exceeds maximum allowed size (${Math.round(MAX_DOWNLOAD_BYTES / 1e9)} GB).`,
+              );
+            }
+
+            buffer += decoder.decode(value, { stream: true });
+            chunksProcessed++;
+
+            let newline = buffer.indexOf('\n');
+            while (newline >= 0) {
+              processLine(buffer.slice(0, newline));
+              buffer = buffer.slice(newline + 1);
+              newline = buffer.indexOf('\n');
+            }
+
+            // Yield to the event loop every 16 chunks so the UI stays responsive
+            if (chunksProcessed % 16 === 0) {
+              await new Promise<void>((resolve) => setTimeout(resolve, 0));
+            }
+          }
+
+          // Flush remaining buffer
+          const remainder = decoder.decode();
+          if (remainder.trim()) processLine(remainder);
+        } finally {
+          // Always release the reader lock
+          try {
+            reader.releaseLock();
+          } catch {
+            // already released
+          }
+        }
+
+        if (!sawSuccess) {
+          onProgress?.({ status: 'success', done: true, percent: 100 });
+        }
+      },
+      2,
+      2000,
+    );
   } catch (err) {
     // Best-effort cleanup: tell Ollama to delete partial download
     void cleanupPartialModel(name);
@@ -919,7 +919,12 @@ export async function pullOllamaModel(
     const installed = await listOllamaModels();
     const normalized = name.trim().toLowerCase();
     const found = installed.some(
-      (n) => n.trim().toLowerCase() === normalized || n.trim().toLowerCase().startsWith(normalized + ':'),
+      (n) =>
+        n.trim().toLowerCase() === normalized ||
+        n
+          .trim()
+          .toLowerCase()
+          .startsWith(normalized + ':'),
     );
     if (!found) {
       throw new Error(
@@ -971,8 +976,9 @@ export const ollamaProvider: LLMProvider = {
       );
     }
 
+    const systemPrompt = req.systemPrompt ?? buildOllamaSystemPrompt(req.agent.system_prompt);
     const messages = [
-      { role: 'system' as const, content: buildOllamaSystemPrompt(req.agent.system_prompt) },
+      { role: 'system' as const, content: systemPrompt },
       ...compactOllamaMessages(req.messages).map((m) => ({
         role: m.role,
         content: llmContentToText(m.content),
@@ -1006,6 +1012,7 @@ export const ollamaProvider: LLMProvider = {
           `ollama:chat:${requestId}`,
           (event) => {
             if (settled) return;
+            req.onResponseObservation?.({ kind: 'sdk_chunk', observedAt: Date.now() });
             const d = event.payload;
             if (d.error) {
               finish(() => reject(new Error(`Ollama: ${d.error}`)));
@@ -1078,6 +1085,13 @@ export const ollamaProvider: LLMProvider = {
 
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
+      if (errText.length > 0) {
+        req.onResponseObservation?.({
+          kind: 'bytes',
+          byteLength: new TextEncoder().encode(errText).byteLength,
+          observedAt: Date.now(),
+        });
+      }
       throw new Error(`Ollama ${res.status}: ${errText.slice(0, 300) || res.statusText}`);
     }
     if (!res.body) throw new Error('Ollama returned an empty body');
@@ -1089,7 +1103,10 @@ export const ollamaProvider: LLMProvider = {
     let first = true;
     let totalResponseBytes = 0;
 
-    for await (const evt of parseSSE(res.body, req.signal)) {
+    for await (const evt of parseSSE(
+      observeResponseBody(res.body, req.onResponseObservation),
+      req.signal,
+    )) {
       if (req.signal?.aborted) break;
       const raw = evt.data;
       if (raw === '[DONE]') break;

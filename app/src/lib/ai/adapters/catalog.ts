@@ -41,6 +41,7 @@ export interface ExternalCliCatalogDescriptor {
   adapterId: string;
   connectionId: string;
   executableName: string;
+  promptTransport: 'prefixed-preamble' | 'unsupported';
   versionArgs: readonly string[];
   authProbeArgs?: readonly string[];
   modelListArgs?: readonly string[];
@@ -74,6 +75,7 @@ function externalConnection(input: {
   providerId: string;
   displayName: string;
   authSource: string;
+  promptTransport: 'prefixed-preamble' | 'unsupported';
   capabilities?: Partial<ProviderCapabilities>;
 }): Readonly<ProviderConnection> {
   return Object.freeze({
@@ -84,6 +86,7 @@ function externalConnection(input: {
     mode: 'external-cli' as const,
     authSource: input.authSource,
     capabilities: externalCapabilities(input.capabilities),
+    promptTransport: input.promptTransport,
     enabled: true,
   });
 }
@@ -94,6 +97,7 @@ export const CODEX_CLI_CONNECTION = externalConnection({
   providerId: 'openai',
   displayName: 'Codex CLI',
   authSource: 'codex-cli-session',
+  promptTransport: CODEX_CLI_DEFINITION.promptTransport,
 });
 
 export const CLAUDE_CLI_CONNECTION = externalConnection({
@@ -102,6 +106,7 @@ export const CLAUDE_CLI_CONNECTION = externalConnection({
   providerId: 'anthropic',
   displayName: 'Claude Code CLI',
   authSource: 'claude-code-session',
+  promptTransport: CLAUDE_CLI_DEFINITION.promptTransport,
 });
 
 export const GEMINI_CLI_CONNECTION = externalConnection({
@@ -110,6 +115,7 @@ export const GEMINI_CLI_CONNECTION = externalConnection({
   providerId: 'google',
   displayName: 'Gemini CLI',
   authSource: 'gemini-cli-session',
+  promptTransport: GEMINI_CLI_DEFINITION.promptTransport,
   capabilities: { modelSelection: false },
 });
 
@@ -119,6 +125,7 @@ export const COPILOT_CLI_CONNECTION = externalConnection({
   providerId: 'github',
   displayName: 'GitHub Copilot CLI',
   authSource: 'github-copilot-session',
+  promptTransport: COPILOT_CLI_DEFINITION.promptTransport,
   capabilities: { streaming: false, usage: false },
 });
 
@@ -128,6 +135,7 @@ export const QWEN_CLI_CONNECTION = externalConnection({
   providerId: 'qwen',
   displayName: 'Qwen Code CLI',
   authSource: 'qwen-code-session',
+  promptTransport: QWEN_CLI_DEFINITION.promptTransport,
 });
 
 export const OPENCODE_CLI_CONNECTION = externalConnection({
@@ -136,6 +144,7 @@ export const OPENCODE_CLI_CONNECTION = externalConnection({
   providerId: 'opencode',
   displayName: 'OpenCode Bridge',
   authSource: 'opencode-provider-session',
+  promptTransport: OPENCODE_CLI_DEFINITION.promptTransport,
 });
 
 function family(
@@ -144,6 +153,17 @@ function family(
   connections: readonly Readonly<ProviderConnection>[],
   externalCli?: ExternalCliCatalogDescriptor,
 ): Readonly<ProviderFamilyDescriptor> {
+  for (const connection of connections) {
+    if (connection.mode !== 'external-cli') continue;
+    if (
+      !externalCli ||
+      externalCli.adapterId !== connection.adapterId ||
+      externalCli.connectionId !== connection.id ||
+      externalCli.promptTransport !== connection.promptTransport
+    ) {
+      throw new Error(`External prompt transport mismatch: ${connection.id}`);
+    }
+  }
   return Object.freeze({
     id,
     displayName,
@@ -159,6 +179,7 @@ function externalCliDescriptor(
     adapterId: definition.adapterId,
     connectionId: definition.connectionId,
     executableName: definition.executableName,
+    promptTransport: definition.promptTransport,
     versionArgs: definition.versionArgs,
     ...(definition.authProbeArgs ? { authProbeArgs: definition.authProbeArgs } : {}),
     ...(definition.modelListArgs ? { modelListArgs: definition.modelListArgs } : {}),

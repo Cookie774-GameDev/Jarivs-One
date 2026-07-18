@@ -117,6 +117,7 @@ export function normalizeOpenCodeJsonl(input: string, limits?: JsonlParserLimits
 export const OPENCODE_CLI_DEFINITION: CliProviderDefinition = Object.freeze({
   adapterId: 'opencode-cli',
   connectionId: 'opencode-cli',
+  promptTransport: 'prefixed-preamble',
   executableName: 'opencode',
   versionArgs: Object.freeze(['--version']),
   authProbeArgs: Object.freeze(['auth', 'list']),

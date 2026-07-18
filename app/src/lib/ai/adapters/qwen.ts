@@ -79,6 +79,7 @@ export function normalizeQwenJsonl(input: string, limits?: JsonlParserLimits): P
 export const QWEN_CLI_DEFINITION: CliProviderDefinition = Object.freeze({
   adapterId: 'qwen-code-cli',
   connectionId: 'qwen-code',
+  promptTransport: 'prefixed-preamble',
   executableName: 'qwen',
   versionArgs: Object.freeze(['--version']),
   buildInvocation: buildQwenInvocation,

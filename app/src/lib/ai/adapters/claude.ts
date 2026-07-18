@@ -167,6 +167,7 @@ export function normalizeClaudeJsonl(input: string, limits?: JsonlParserLimits):
 export const CLAUDE_CLI_DEFINITION: CliProviderDefinition = Object.freeze({
   adapterId: 'claude-code-cli',
   connectionId: 'anthropic-claude-code',
+  promptTransport: 'prefixed-preamble',
   executableName: 'claude',
   versionArgs: Object.freeze(['--version']),
   authProbeArgs: Object.freeze(['auth', 'status']),

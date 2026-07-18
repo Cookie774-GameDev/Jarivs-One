@@ -11,11 +11,19 @@
  * trying to fall back.
  */
 import type { Agent, ProviderId } from '@/types';
+import type { CompiledJarvisPrompt } from '@/lib/jarvis/contracts';
 import { useAuthStore } from '@/stores/auth';
 import { useAgentStore } from '@/stores/agents';
 import { toast } from '@/components/ui/toast';
 import { devConsole } from '@/features/dev-console';
-import type { LLMProvider, LLMRequest, LLMResponse, LLMStreamChunk, LLMMessage } from './types';
+import type {
+  LLMMessage,
+  LLMProvider,
+  LLMRequest,
+  LLMResponse,
+  LLMResponseObservation,
+  LLMStreamChunk,
+} from './types';
 import { mockProvider } from './providers/mock';
 import { anthropicProvider } from './providers/anthropic';
 import { openaiProvider } from './providers/openai';
@@ -45,6 +53,14 @@ import { copilotCliAdapter } from './adapters/copilot';
 import { qwenCliAdapter } from './adapters/qwen';
 import { openCodeCliAdapter } from './adapters/opencode';
 import { llmContentToText } from './types';
+import {
+  UnsupportedPromptTransportError,
+  buildProviderPromptTransport,
+} from './providerPromptTransport';
+import {
+  JarvisProviderAttemptFailureError,
+  createJarvisProviderAttemptEvidenceAuthority,
+} from './providerAttemptEvidence';
 
 export class NoModelSelectedError extends Error {
   constructor() {
@@ -88,6 +104,69 @@ const externalAdapters: Readonly<Record<string, ProviderAdapter>> = Object.freez
   [openCodeCliAdapter.id]: openCodeCliAdapter,
 });
 
+async function sha256Hex(canonical: string): Promise<string> {
+  const digest = await globalThis.crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(canonical),
+  );
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+const providerAttemptEvidenceAuthority = createJarvisProviderAttemptEvidenceAuthority({
+  sha256: sha256Hex,
+});
+
+type ProtectedAttemptBinding = Readonly<{
+  accountId: string;
+  runId: string;
+  requestId: string;
+  attemptNumber: number;
+  providerId: string;
+  modelId: string;
+}>;
+
+type ProtectedAttemptHooks = Readonly<{
+  onResponseObservation: (observation: LLMResponseObservation) => void;
+  onActionDispatch: (input: { observedAt: number }) => void;
+}>;
+
+function isAbortError(error: unknown): boolean {
+  return (
+    (error instanceof DOMException && error.name === 'AbortError') ||
+    (typeof error === 'object' && error !== null && 'name' in error && error.name === 'AbortError')
+  );
+}
+
+async function runProtectedProviderAttempt<T>(
+  binding: ProtectedAttemptBinding,
+  dispatch: (hooks: ProtectedAttemptHooks) => Promise<T>,
+): Promise<T> {
+  const tracker = providerAttemptEvidenceAuthority.begin(binding);
+  const hooks: ProtectedAttemptHooks = Object.freeze({
+    onResponseObservation: (observation) => {
+      providerAttemptEvidenceAuthority.noteResponseObservation(tracker, observation);
+    },
+    onActionDispatch: (input) => {
+      providerAttemptEvidenceAuthority.noteActionDispatch(tracker, input);
+    },
+  });
+  try {
+    const result = await dispatch(hooks);
+    providerAttemptEvidenceAuthority.complete(tracker);
+    return result;
+  } catch (error) {
+    if (isAbortError(error)) {
+      providerAttemptEvidenceAuthority.complete(tracker);
+      throw error;
+    }
+    const classification = await providerAttemptEvidenceAuthority.classifyFailure(tracker, {
+      failureCategory: 'provider_transport_failure',
+      failedAt: Date.now(),
+    });
+    throw new JarvisProviderAttemptFailureError(classification);
+  }
+}
+
 export interface ConnectionRequirements {
   images?: boolean;
   files?: boolean;
@@ -126,8 +205,14 @@ export async function runExternalConnection(args: {
   signal?: AbortSignal;
   requirements?: ConnectionRequirements;
   onChunk?: (chunk: LLMStreamChunk) => void;
+  onResponseObservation?: (observation: LLMResponseObservation) => void;
+  onActionDispatch?: (input: { observedAt: number }) => void;
 }): Promise<LLMResponse> {
   const { connection, adapter } = args;
+  if (args.signal?.aborted) throw new DOMException('The request was aborted.', 'AbortError');
+  if (connection.promptTransport === 'unsupported') {
+    throw new UnsupportedPromptTransportError(connection.id);
+  }
   if (!connection.enabled) throw new Error(`Provider connection is disabled: ${connection.id}`);
   if (connection.mode !== 'external-cli') {
     throw new Error(`Provider connection is not an external agent: ${connection.id}`);
@@ -142,7 +227,9 @@ export async function runExternalConnection(args: {
   if (detection.status !== 'available') {
     throw new Error(`${connection.displayName} is unavailable`);
   }
-  const auth = adapter.probeAuth ? await adapter.probeAuth(connection) : { status: 'unknown' as const };
+  const auth = adapter.probeAuth
+    ? await adapter.probeAuth(connection)
+    : { status: 'unknown' as const };
   if (auth.status === 'unauthenticated') throw new Error(`${connection.displayName} is signed out`);
   if (args.signal?.aborted) throw new DOMException('The request was aborted.', 'AbortError');
 
@@ -158,7 +245,12 @@ export async function runExternalConnection(args: {
     systemPrompt: args.systemPrompt,
     workingDirectory: args.workingDirectory,
     signal: args.signal,
+    onResponseObservation: args.onResponseObservation,
+    onActionDispatch: args.onActionDispatch,
   })) {
+    if (args.signal?.aborted) {
+      throw new DOMException('The request was aborted.', 'AbortError');
+    }
     if (event.type === 'text') {
       text += event.delta;
       args.onChunk?.({ delta: event.delta, first });
@@ -170,6 +262,9 @@ export async function runExternalConnection(args: {
     } else if (event.type === 'done') {
       finishReason = event.finishReason;
     }
+  }
+  if (args.signal?.aborted) {
+    throw new DOMException('The request was aborted.', 'AbortError');
   }
   args.onChunk?.({ delta: '', done: true });
   return {
@@ -185,9 +280,10 @@ export async function runExternalConnection(args: {
   };
 }
 
-function resolveExplicitSingleSelection(
-  auth: ReturnType<typeof useAuthStore.getState>,
-): { provider: LLMProvider; model: string } {
+function resolveExplicitSingleSelection(auth: ReturnType<typeof useAuthStore.getState>): {
+  provider: LLMProvider;
+  model: string;
+} {
   const sel = auth.chatModelSelection ?? EMPTY_CHAT_MODEL_SELECTION;
   if (sel.mode !== 'single') throw new NoModelSelectedError();
   const p = providers[sel.providerId];
@@ -195,9 +291,10 @@ function resolveExplicitSingleSelection(
   return { provider: p, model: sel.modelId };
 }
 
-function resolveLocalSelection(
-  auth: ReturnType<typeof useAuthStore.getState>,
-): { provider: LLMProvider; model: string } {
+function resolveLocalSelection(auth: ReturnType<typeof useAuthStore.getState>): {
+  provider: LLMProvider;
+  model: string;
+} {
   const sel = auth.chatModelSelection ?? EMPTY_CHAT_MODEL_SELECTION;
   if (sel.mode !== 'single') throw new NoModelSelectedError();
   if (sel.providerId !== 'ollama' && sel.providerId !== 'local') {
@@ -265,42 +362,112 @@ export async function runAgent(req: {
   connectionId?: string;
   connectionRequirements?: ConnectionRequirements;
   workingDirectory?: string;
+  compiledPrompt?: Readonly<CompiledJarvisPrompt>;
+  requestId?: string;
+  protectedAttempt?: Readonly<{
+    accountId: string;
+    runId: string;
+    requestId: string;
+    attemptNumber: number;
+  }>;
 }): Promise<LLMResponse> {
+  if (req.signal?.aborted) {
+    throw new DOMException('The request was aborted.', 'AbortError');
+  }
+
+  const protectedDispatch = req.compiledPrompt !== undefined;
+  if (protectedDispatch) {
+    if (!req.connectionId || !req.requestId || !req.protectedAttempt) {
+      throw new Error('Protected provider dispatch requires exact connection and attempt binding.');
+    }
+    if (req.requestId !== req.protectedAttempt.requestId) {
+      throw new Error('Protected provider request IDs do not match.');
+    }
+  }
+
   const connectionId = req.connectionId;
+  let selectedConnection: ProviderConnection | undefined;
+  let protectedTransport: ReturnType<typeof buildProviderPromptTransport> | undefined;
   if (connectionId) {
     const connection = getProviderConnectionDescriptor(connectionId);
+    selectedConnection = connection;
     if (!connection.enabled) throw new Error(`Provider connection is disabled: ${connectionId}`);
     assertConnectionCapabilities(connection, req.connectionRequirements);
     const expectedProvider = connection.mode === 'local' ? 'ollama' : connection.providerId;
-    if (req.agent.model.provider !== expectedProvider && !(connection.mode === 'local' && req.agent.model.provider === 'local')) {
+    if (
+      req.agent.model.provider !== expectedProvider &&
+      !(connection.mode === 'local' && req.agent.model.provider === 'local')
+    ) {
       throw new Error(`Selected model does not match provider connection: ${connectionId}`);
+    }
+    if (protectedDispatch) {
+      protectedTransport = buildProviderPromptTransport({
+        compiled: req.compiledPrompt!,
+        connection,
+        messages: req.messages,
+      });
     }
     if (connection.mode === 'external-cli') {
       const adapter = externalAdapters[connection.adapterId];
       if (!adapter) throw new Error(`Provider adapter is unavailable: ${connection.adapterId}`);
-      const prompt = req.messages.map((message) => `${message.role}: ${llmContentToText(message.content)}`).join('\n\n');
-      const response = await runExternalConnection({
-        connection,
-        adapter,
-        requestId: globalThis.crypto?.randomUUID?.() ?? `req-${Date.now()}`,
-        prompt,
-        modelId: req.agent.model.model,
-        systemPrompt: req.agent.system_prompt,
-        workingDirectory: req.workingDirectory,
-        signal: req.signal,
-        requirements: req.connectionRequirements,
-        onChunk: req.onChunk,
-      });
-      useAgentStore.getState().addTokens(
-        req.agent.id,
-        response.usage.input_tokens,
-        response.usage.output_tokens,
-        response.usage.cost_usd,
-      );
+      const prompt = protectedDispatch
+        ? protectedTransport?.strategy === 'prefixed-preamble'
+          ? protectedTransport.prompt
+          : (() => {
+              throw new Error('Protected external provider transport is invalid.');
+            })()
+        : req.messages
+            .map((message) => `${message.role}: ${llmContentToText(message.content)}`)
+            .join('\n\n');
+      const dispatchExternal = (hooks?: ProtectedAttemptHooks) =>
+        runExternalConnection({
+          connection,
+          adapter,
+          requestId: req.requestId ?? globalThis.crypto?.randomUUID?.() ?? `req-${Date.now()}`,
+          prompt,
+          modelId: req.agent.model.model,
+          systemPrompt: protectedDispatch ? undefined : req.agent.system_prompt,
+          workingDirectory: req.workingDirectory,
+          signal: req.signal,
+          requirements: req.connectionRequirements,
+          onChunk: req.onChunk,
+          onResponseObservation: hooks?.onResponseObservation,
+          onActionDispatch: hooks?.onActionDispatch,
+        });
+      const response = protectedDispatch
+        ? await runProtectedProviderAttempt(
+            {
+              ...req.protectedAttempt!,
+              providerId: connection.providerId,
+              modelId: req.agent.model.model,
+            },
+            dispatchExternal,
+          )
+        : await dispatchExternal();
+      useAgentStore
+        .getState()
+        .addTokens(
+          req.agent.id,
+          response.usage.input_tokens,
+          response.usage.output_tokens,
+          response.usage.cost_usd,
+        );
       return response;
     }
   }
   const { provider, model } = resolveProviderAndModel(req.agent);
+
+  if (protectedDispatch) {
+    if (!selectedConnection || selectedConnection.mode === 'external-cli') {
+      throw new Error('Protected native provider connection is missing.');
+    }
+    if (provider.id !== selectedConnection.providerId || model !== req.agent.model.model) {
+      throw new Error('Protected provider selection changed before dispatch.');
+    }
+    if (protectedTransport?.strategy !== 'native-system') {
+      throw new Error('Protected native provider transport is invalid.');
+    }
+  }
 
   const effectiveAgent: Agent =
     provider.id === req.agent.model.provider && model === req.agent.model.model
@@ -317,7 +484,13 @@ export async function runAgent(req: {
 
   const llmReq: LLMRequest = {
     agent: effectiveAgent,
-    messages: req.messages,
+    messages:
+      protectedTransport?.strategy === 'native-system'
+        ? [...protectedTransport.messages]
+        : req.messages,
+    ...(protectedTransport?.strategy === 'native-system'
+      ? { systemPrompt: protectedTransport.systemPrompt }
+      : {}),
     signal: req.signal,
     onChunk: wrappedOnChunk,
     temperature: req.temperature,
@@ -326,30 +499,45 @@ export async function runAgent(req: {
   };
 
   let response: LLMResponse;
-  try {
-    response = await provider.run(llmReq);
-  } catch (err) {
-    if (err instanceof DOMException && err.name === 'AbortError') throw err;
-    if ((err as Error)?.name === 'AbortError') throw err;
-
-    if (provider.id === 'mock') throw err;
-    if (emittedAny) throw err;
-
-    const reason = err instanceof Error ? err.message : String(err);
-    toast.warning(`Provider ${provider.name} failed`, reason.slice(0, 240));
-    devConsole.log({
-      channel: 'ai',
-      level: 'warn',
-      message: `AI provider failed: ${provider.id}`,
-      detail: {
-        agent: req.agent.slug,
-        provider: provider.id,
-        model,
-        reason: reason.slice(0, 500),
+  if (protectedDispatch) {
+    response = await runProtectedProviderAttempt(
+      {
+        ...req.protectedAttempt!,
+        providerId: selectedConnection!.providerId,
+        modelId: model,
       },
-    });
+      (hooks) =>
+        provider.run({
+          ...llmReq,
+          onResponseObservation: hooks.onResponseObservation,
+          onActionDispatch: hooks.onActionDispatch,
+        }),
+    );
+  } else {
+    try {
+      response = await provider.run(llmReq);
+    } catch (err) {
+      if (isAbortError(err)) throw err;
 
-    throw err;
+      if (provider.id === 'mock') throw err;
+      if (emittedAny) throw err;
+
+      const reason = err instanceof Error ? err.message : String(err);
+      toast.warning(`Provider ${provider.name} failed`, reason.slice(0, 240));
+      devConsole.log({
+        channel: 'ai',
+        level: 'warn',
+        message: `AI provider failed: ${provider.id}`,
+        detail: {
+          agent: req.agent.slug,
+          provider: provider.id,
+          model,
+          reason: reason.slice(0, 500),
+        },
+      });
+
+      throw err;
+    }
   }
 
   useAgentStore
