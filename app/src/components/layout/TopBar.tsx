@@ -31,7 +31,8 @@ import { useCallStore } from '@/features/call/store';
 import { isCallConfigured, loadCallService } from '@/features/call';
 import { toast } from '@/components/ui/toast';
 import { useWhatsNew } from '@/features/whats-new';
-import { isAdminIdentity, planAllowsJarvisCall } from '@/lib/entitlements';
+import { planAllowsJarvisCall } from '@/lib/entitlements';
+import { useAppAdmin } from '@/lib/admin';
 
 /**
  * TopBar - 40px chrome at the very top of the app.
@@ -138,12 +139,8 @@ export function TopBar() {
   const { hasUpdate: hasUnseenWhatsNew, currentVersion } = useWhatsNew();
 
   // V3 — route store (defensive read; field may be absent pre-Slice 4).
-  const route = useUIStore(
-    (s) => ((s as unknown) as RouteStoreShape).route ?? 'chat',
-  );
-  const setRouteRaw = useUIStore(
-    (s) => ((s as unknown) as RouteStoreShape).setRoute,
-  );
+  const route = useUIStore((s) => (s as unknown as RouteStoreShape).route ?? 'chat');
+  const setRouteRaw = useUIStore((s) => (s as unknown as RouteStoreShape).setRoute);
 
   const setRouteWarned = React.useRef(false);
   const setRoute = React.useCallback(
@@ -237,12 +234,16 @@ export function TopBar() {
         >
           {/* Always-on Jarvis halo — soft purple→cyan pulse so the activation
               point reads as "alive". Intensifies into a ping while listening. */}
-          <span aria-hidden className="jarvis-j-glow pointer-events-none absolute -inset-1 rounded-full" />
+          <span
+            aria-hidden
+            className="jarvis-j-glow pointer-events-none absolute -inset-1 rounded-full"
+          />
           {voiceListening && (
             <span
               className="absolute inset-0 rounded-full animate-ping"
               style={{
-                background: 'radial-gradient(circle at 38% 34%, #fff7cb 0%, #ffd45a 18%, #ff980f 48%, #cf6205 72%, #5b2300 100%)',
+                background:
+                  'radial-gradient(circle at 38% 34%, #fff7cb 0%, #ffd45a 18%, #ff980f 48%, #cf6205 72%, #5b2300 100%)',
                 opacity: 0.4,
               }}
             />
@@ -319,9 +320,7 @@ export function TopBar() {
                           className={cn(
                             'w-full rounded px-2 py-1.5 text-left text-secondary transition-colors',
                             'hover:bg-muted hover:text-foreground',
-                            active
-                              ? 'text-accent-copper font-medium'
-                              : 'text-foreground/90',
+                            active ? 'text-accent-copper font-medium' : 'text-foreground/90',
                           )}
                         >
                           {ROUTE_LABELS[r]}
@@ -413,7 +412,11 @@ export function TopBar() {
               aria-label={chatFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
               aria-pressed={chatFullscreen}
             >
-              {chatFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+              {chatFullscreen ? (
+                <Minimize2 className="h-4 w-4" />
+              ) : (
+                <Maximize2 className="h-4 w-4" />
+              )}
             </Button>
           </Hint>
 
@@ -428,7 +431,10 @@ export function TopBar() {
             </Button>
           </Hint>
 
-          <Hint label={composerSttListening ? 'Stop dictation' : 'Voice to text'} hotkey={HOTKEYS.COMPOSER_STT}>
+          <Hint
+            label={composerSttListening ? 'Stop dictation' : 'Voice to text'}
+            hotkey={HOTKEYS.COMPOSER_STT}
+          >
             <Button
               variant="ghost"
               size="icon-sm"
@@ -755,9 +761,7 @@ function MenuRow({ icon, label, hotkey, onClick, accent, suffix }: MenuRowProps)
         <span className="shrink-0 text-muted-foreground">{icon}</span>
         <span className="flex-1 truncate">{label}</span>
         {suffix && (
-          <span className="shrink-0 text-metadata text-muted-foreground/80">
-            {suffix}
-          </span>
+          <span className="shrink-0 text-metadata text-muted-foreground/80">{suffix}</span>
         )}
         {hotkey && !suffix && (
           <kbd
@@ -792,12 +796,9 @@ function CompactCallRow({ closeAfter }: { closeAfter: (fn: () => void) => () => 
   const status = useCallStore((state) => state.status);
   const setCallModalOpen = useUIStore((state) => state.setCallModalOpen);
   const plan = useAuthStore((state) => state.plan);
-  const email = useAuthStore((state) => state.email);
-  const cloudEmail = useAuthStore((state) => state.cloudSession?.email);
-  const localUserId = useAuthStore((state) => state.localUserId);
   const inCall = status !== 'idle';
   const configured = isCallConfigured();
-  const admin = isAdminIdentity({ email, cloudEmail, localUserId });
+  const admin = useAppAdmin();
   const entitled = planAllowsJarvisCall(plan, admin);
 
   const onActivate = closeAfter(() => {
@@ -816,7 +817,10 @@ function CompactCallRow({ closeAfter }: { closeAfter: (fn: () => void) => () => 
       return;
     }
     if (!entitled) {
-      toast.warning('Jarvis Call requires a plan', 'Upgrade to a voice-enabled plan or use an admin-enabled build.');
+      toast.warning(
+        'Jarvis Call requires a plan',
+        'Upgrade to a voice-enabled plan or use an admin-enabled build.',
+      );
       return;
     }
     setCallModalOpen(true);
@@ -857,13 +861,10 @@ function CallTopBarButton() {
   const status = useCallStore((state) => state.status);
   const setCallModalOpen = useUIStore((state) => state.setCallModalOpen);
   const plan = useAuthStore((state) => state.plan);
-  const email = useAuthStore((state) => state.email);
-  const cloudEmail = useAuthStore((state) => state.cloudSession?.email);
-  const localUserId = useAuthStore((state) => state.localUserId);
 
   const inCall = status !== 'idle';
   const configured = isCallConfigured();
-  const admin = isAdminIdentity({ email, cloudEmail, localUserId });
+  const admin = useAppAdmin();
   const entitled = planAllowsJarvisCall(plan, admin);
 
   const handleClick = () => {
@@ -881,14 +882,27 @@ function CallTopBarButton() {
       return;
     }
     if (!entitled) {
-      toast.warning('Jarvis Call requires a plan', 'Upgrade to a voice-enabled plan or use an admin-enabled build.');
+      toast.warning(
+        'Jarvis Call requires a plan',
+        'Upgrade to a voice-enabled plan or use an admin-enabled build.',
+      );
       return;
     }
     setCallModalOpen(true);
   };
 
   return (
-    <Hint label={inCall ? 'Hang up' : !configured ? 'Phone & Voice not configured' : entitled ? 'Call Jarvis' : 'Jarvis Call requires a voice plan'}>
+    <Hint
+      label={
+        inCall
+          ? 'Hang up'
+          : !configured
+            ? 'Phone & Voice not configured'
+            : entitled
+              ? 'Call Jarvis'
+              : 'Jarvis Call requires a voice plan'
+      }
+    >
       <Button
         variant="ghost"
         size="icon-sm"

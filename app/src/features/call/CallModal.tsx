@@ -1,15 +1,11 @@
 import { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Mic, MicOff, PhoneOff, Lock, Unlock } from 'lucide-react';
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-  DialogDescription,
-} from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { isAdminIdentity, planAllowsJarvisCall } from '@/lib/entitlements';
+import { planAllowsJarvisCall } from '@/lib/entitlements';
+import { useAppAdmin } from '@/lib/admin';
 import { useUIStore } from '@/stores/ui';
 import { useAuthStore } from '@/stores/auth';
 import { Orb } from '@/features/voice/Orb';
@@ -53,12 +49,9 @@ export function CallModal() {
   const callId = useCallStore((s) => s.callId);
   const setStatus = useCallStore((s) => s.setStatus);
   const plan = useAuthStore((s) => s.plan);
-  const email = useAuthStore((s) => s.email);
-  const cloudEmail = useAuthStore((s) => s.cloudSession?.email);
-  const localUserId = useAuthStore((s) => s.localUserId);
 
   const transcriptRef = useRef<HTMLDivElement | null>(null);
-  const admin = isAdminIdentity({ email, cloudEmail, localUserId });
+  const admin = useAppAdmin();
   const entitled = planAllowsJarvisCall(plan, admin);
 
   // Auto-start when the modal opens with no call yet.
@@ -75,7 +68,10 @@ export function CallModal() {
 
   // Auto-scroll transcript
   useEffect(() => {
-    transcriptRef.current?.scrollTo({ top: transcriptRef.current.scrollHeight, behavior: 'smooth' });
+    transcriptRef.current?.scrollTo({
+      top: transcriptRef.current.scrollHeight,
+      behavior: 'smooth',
+    });
   }, [transcript.length]);
 
   // Close on Esc only when not in an active call (avoid accidental hangup)
@@ -119,7 +115,13 @@ export function CallModal() {
   })() as 'idle' | 'listening' | 'thinking' | 'speaking' | 'error';
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v && status === 'in-call') return; setOpen(v); }}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v && status === 'in-call') return;
+        setOpen(v);
+      }}
+    >
       <DialogContent className="sm:max-w-[520px] p-0 overflow-hidden">
         <div className="px-6 pt-6 pb-4 flex flex-col items-center gap-3">
           <DialogTitle className="text-base font-semibold tracking-tight">
@@ -203,7 +205,8 @@ export function CallModal() {
           <div className="px-6 py-3 bg-amber-500/10 border-b border-amber-500/30 text-xs flex items-center gap-2">
             <Lock className="h-3.5 w-3.5 text-amber-500" />
             <span>
-              <strong>{awaitingConfirm.tool}</strong>: {awaitingConfirm.summary}. Say <em>yes</em> to confirm.
+              <strong>{awaitingConfirm.tool}</strong>: {awaitingConfirm.summary}. Say <em>yes</em>{' '}
+              to confirm.
             </span>
           </div>
         )}
