@@ -100,7 +100,10 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "SKL-038",
         "SKL-044"
       ],
-      "taskIds": ["PHASE0R", "PROGRAM-INTEGRATION"],
+      "taskIds": [
+        "PHASE0R",
+        "PROGRAM-INTEGRATION"
+      ],
       "workerId": "WRK-001"
     },
     {
@@ -122,7 +125,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "collaboration:/root/task0r_tool_architect",
         "path:docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md#task-0r-directive-artifacts-and-retrospective-traceability"
       ],
-      "fallbackReason": "spawn API exposes neither a model selector nor backend model label.",
+      "fallbackReason": "spawn API accepts requested model/reasoning overrides but does not attest the backend that actually executed the worker.",
       "plannedFiles": [
         ".superpowers/sdd/task-0r/classification-review.jsonl",
         ".superpowers/sdd/task-0r/extract-occurrences.mjs",
@@ -137,8 +140,14 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "requestedModel": "GPT-5.6 Sol",
       "requestedReasoning": "Max",
       "role": "Task 0R deterministic extractor, validator, and test architect",
-      "skillIds": ["SKL-033", "SKL-034", "SKL-037"],
-      "taskIds": ["PHASE0R-TOOLS"],
+      "skillIds": [
+        "SKL-033",
+        "SKL-034",
+        "SKL-037"
+      ],
+      "taskIds": [
+        "PHASE0R-TOOLS"
+      ],
       "workerId": "WRK-002"
     },
     {
@@ -156,7 +165,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "collaboration:/root/task0r_architecture_docs:initial-and-repair-turns",
         "path:docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md#task-0r-directive-artifacts-and-retrospective-traceability"
       ],
-      "fallbackReason": "spawn API exposes neither a model selector nor backend model label.",
+      "fallbackReason": "spawn API accepts requested model/reasoning overrides but does not attest the backend that actually executed the worker.",
       "plannedFiles": [
         "docs/unified-goals/CONFLICT_RESOLUTION.md",
         "docs/unified-goals/CURRENT_ARCHITECTURE.md",
@@ -167,8 +176,13 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "requestedModel": "GPT-5.6 Sol",
       "requestedReasoning": "Max",
       "role": "Task 0R current, target, and dependency architecture author",
-      "skillIds": ["SKL-023", "SKL-038"],
-      "taskIds": ["PHASE0R-ARCHITECTURE"],
+      "skillIds": [
+        "SKL-023",
+        "SKL-038"
+      ],
+      "taskIds": [
+        "PHASE0R-ARCHITECTURE"
+      ],
       "workerId": "WRK-003"
     },
     {
@@ -186,7 +200,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "collaboration:/root/task0r_skill_model_docs",
         "path:docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md#task-0r-directive-artifacts-and-retrospective-traceability"
       ],
-      "fallbackReason": "spawn API exposes neither a model selector nor backend model label.",
+      "fallbackReason": "spawn API accepts requested model/reasoning overrides but does not attest the backend that actually executed the worker.",
       "plannedFiles": [
         "docs/unified-goals/MODEL_AND_REASONING_EVIDENCE.md",
         "docs/unified-goals/SKILL_CAPABILITY_MATRIX.md",
@@ -197,8 +211,13 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "requestedModel": "GPT-5.6 Sol",
       "requestedReasoning": "Max",
       "role": "Task 0R worker, skill, invocation, and model-provenance author",
-      "skillIds": ["SKL-037", "SKL-038"],
-      "taskIds": ["PHASE0R-SKILL-MODEL"],
+      "skillIds": [
+        "SKL-037",
+        "SKL-038"
+      ],
+      "taskIds": [
+        "PHASE0R-SKILL-MODEL"
+      ],
       "workerId": "WRK-004"
     },
     {
@@ -211,14 +230,22 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "collaboration:/root/kernel_plan_repair_review",
         "path:docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md"
       ],
-      "fallbackReason": "spawn API exposes neither a model selector nor backend model label.",
-      "plannedFiles": ["docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md"],
+      "fallbackReason": "spawn API accepts requested model/reasoning overrides but does not attest the backend that actually executed the worker.",
+      "plannedFiles": [
+        "docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md"
+      ],
       "provisioningSurface": "collaboration.spawn_agent",
       "requestedModel": "GPT-5.6 Sol",
       "requestedReasoning": "Max",
       "role": "Read-only kernel plan repair reviewer",
-      "skillIds": ["SKL-028", "SKL-029", "SKL-037"],
-      "taskIds": ["PLAN-KERNEL-REPAIR-REVIEW"],
+      "skillIds": [
+        "SKL-028",
+        "SKL-029",
+        "SKL-037"
+      ],
+      "taskIds": [
+        "PLAN-KERNEL-REPAIR-REVIEW"
+      ],
       "workerId": "WRK-005"
     },
     {
@@ -231,14 +258,23 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "collaboration:/root/monochrome_repair_review",
         "path:docs/superpowers/plans/2026-07-16-vibespace-monochrome-appearance.md"
       ],
-      "fallbackReason": "spawn API exposes neither a model selector nor backend model label.",
-      "plannedFiles": ["docs/superpowers/plans/2026-07-16-vibespace-monochrome-appearance.md"],
+      "fallbackReason": "spawn API accepts requested model/reasoning overrides but does not attest the backend that actually executed the worker.",
+      "plannedFiles": [
+        "docs/superpowers/plans/2026-07-16-vibespace-monochrome-appearance.md"
+      ],
       "provisioningSurface": "collaboration.spawn_agent",
       "requestedModel": "GPT-5.6 Sol",
       "requestedReasoning": "Max",
       "role": "Read-only MonoChrome plan repair reviewer",
-      "skillIds": ["SKL-026", "SKL-028", "SKL-029", "SKL-037"],
-      "taskIds": ["PLAN-MONOCHROME-REPAIR-REVIEW"],
+      "skillIds": [
+        "SKL-026",
+        "SKL-028",
+        "SKL-029",
+        "SKL-037"
+      ],
+      "taskIds": [
+        "PLAN-MONOCHROME-REPAIR-REVIEW"
+      ],
       "workerId": "WRK-006"
     },
     {
@@ -251,7 +287,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "collaboration:/root/traceability_repair_review",
         "path:docs/unified-goals/EXECUTION_PLAN.md"
       ],
-      "fallbackReason": "spawn API exposes neither a model selector nor backend model label.",
+      "fallbackReason": "spawn API accepts requested model/reasoning overrides but does not attest the backend that actually executed the worker.",
       "plannedFiles": [
         "docs/superpowers/plans/2026-07-16-vibespace-monochrome-appearance.md",
         "docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md",
@@ -261,8 +297,14 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "requestedModel": "GPT-5.6 Sol",
       "requestedReasoning": "Max",
       "role": "Read-only cross-plan traceability reviewer",
-      "skillIds": ["SKL-028", "SKL-029", "SKL-037"],
-      "taskIds": ["PLAN-TRACEABILITY-REPAIR-REVIEW"],
+      "skillIds": [
+        "SKL-028",
+        "SKL-029",
+        "SKL-037"
+      ],
+      "taskIds": [
+        "PLAN-TRACEABILITY-REPAIR-REVIEW"
+      ],
       "workerId": "WRK-007"
     },
     {
@@ -275,14 +317,22 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "collaboration:/root/kernel_plan_final_gate",
         "path:docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md"
       ],
-      "fallbackReason": "spawn API exposes neither a model selector nor backend model label.",
-      "plannedFiles": ["docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md"],
+      "fallbackReason": "spawn API accepts requested model/reasoning overrides but does not attest the backend that actually executed the worker.",
+      "plannedFiles": [
+        "docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md"
+      ],
       "provisioningSurface": "collaboration.spawn_agent",
       "requestedModel": "GPT-5.6 Sol",
       "requestedReasoning": "Max",
       "role": "Read-only kernel plan final-gate reviewer",
-      "skillIds": ["SKL-028", "SKL-029", "SKL-037"],
-      "taskIds": ["PLAN-KERNEL-FINAL-GATE"],
+      "skillIds": [
+        "SKL-028",
+        "SKL-029",
+        "SKL-037"
+      ],
+      "taskIds": [
+        "PLAN-KERNEL-FINAL-GATE"
+      ],
       "workerId": "WRK-008"
     },
     {
@@ -295,14 +345,22 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "collaboration:/root/unified_plan_final_gate",
         "path:docs/unified-goals/EXECUTION_PLAN.md"
       ],
-      "fallbackReason": "spawn API exposes neither a model selector nor backend model label.",
-      "plannedFiles": ["docs/unified-goals/EXECUTION_PLAN.md"],
+      "fallbackReason": "spawn API accepts requested model/reasoning overrides but does not attest the backend that actually executed the worker.",
+      "plannedFiles": [
+        "docs/unified-goals/EXECUTION_PLAN.md"
+      ],
       "provisioningSurface": "collaboration.spawn_agent",
       "requestedModel": "GPT-5.6 Sol",
       "requestedReasoning": "Max",
       "role": "Read-only unified plan final-gate reviewer",
-      "skillIds": ["SKL-028", "SKL-029", "SKL-037"],
-      "taskIds": ["PLAN-UNIFIED-FINAL-GATE"],
+      "skillIds": [
+        "SKL-028",
+        "SKL-029",
+        "SKL-037"
+      ],
+      "taskIds": [
+        "PLAN-UNIFIED-FINAL-GATE"
+      ],
       "workerId": "WRK-009"
     },
     {
@@ -324,7 +382,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "test:npm --prefix app run typecheck:PASS",
         "test:npm --prefix app test -- src/lib/jarvis/identity.test.ts src/lib/jarvis/profiles/types.test.ts:2-files-28-tests-PASS"
       ],
-      "fallbackReason": "spawn API exposes neither a model selector nor backend model label.",
+      "fallbackReason": "spawn API accepts requested model/reasoning overrides but does not attest the backend that actually executed the worker.",
       "plannedFiles": [
         "app/src/lib/jarvis/identity.test.ts",
         "app/src/lib/jarvis/identity.ts",
@@ -336,8 +394,15 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "requestedModel": "GPT-5.6 Sol",
       "requestedReasoning": "Max",
       "role": "Read-only MonoChrome final-gate and fresh Task 2 acceptance reviewer",
-      "skillIds": ["SKL-028", "SKL-029", "SKL-037"],
-      "taskIds": ["PLAN-MONOCHROME-FINAL-GATE", "TASK2-ACCEPTANCE-REVIEW"],
+      "skillIds": [
+        "SKL-028",
+        "SKL-029",
+        "SKL-037"
+      ],
+      "taskIds": [
+        "PLAN-MONOCHROME-FINAL-GATE",
+        "TASK2-ACCEPTANCE-REVIEW"
+      ],
       "workerId": "WRK-010"
     },
     {
@@ -346,15 +411,19 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "actualReasoning": "not exposed/unverified",
       "agentId": "/root/plan_final_review",
       "coordinationStatus": "COMPLETE",
-      "evidenceRefs": ["environment-subagent:plan_final_review:Hypatia"],
-      "fallbackReason": "spawn API exposes neither a model selector nor backend model label.",
+      "evidenceRefs": [
+        "environment-subagent:plan_final_review:Hypatia"
+      ],
+      "fallbackReason": "spawn API accepts requested model/reasoning overrides but does not attest the backend that actually executed the worker.",
       "plannedFiles": [],
       "provisioningSurface": "collaboration.spawn_agent",
       "requestedModel": "GPT-5.6 Sol",
       "requestedReasoning": "Max",
       "role": "Historical full-plan reviewer; session display name Hypatia",
       "skillIds": [],
-      "taskIds": ["PLAN-FINAL-REVIEW-HISTORICAL"],
+      "taskIds": [
+        "PLAN-FINAL-REVIEW-HISTORICAL"
+      ],
       "workerId": "WRK-011"
     },
     {
@@ -367,14 +436,18 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "commit:e2fdfa0a208186b2a6afe3709c25c4600e68100b",
         "environment-subagent:r8_repository_fix2:Linnaeus"
       ],
-      "fallbackReason": "spawn API exposes neither a model selector nor backend model label.",
+      "fallbackReason": "spawn API accepts requested model/reasoning overrides but does not attest the backend that actually executed the worker.",
       "plannedFiles": [],
       "provisioningSurface": "collaboration.spawn_agent",
       "requestedModel": "GPT-5.6 Sol",
       "requestedReasoning": "Max",
       "role": "Historical Task 1B R8 repository worker; session display name Linnaeus",
-      "skillIds": ["SKL-034"],
-      "taskIds": ["TASK1B-R8"],
+      "skillIds": [
+        "SKL-034"
+      ],
+      "taskIds": [
+        "TASK1B-R8"
+      ],
       "workerId": "WRK-012"
     },
     {
@@ -387,14 +460,18 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "commit:e2fdfa0a208186b2a6afe3709c25c4600e68100b",
         "environment-subagent:r8_store_scope:Averroes"
       ],
-      "fallbackReason": "spawn API exposes neither a model selector nor backend model label.",
+      "fallbackReason": "spawn API accepts requested model/reasoning overrides but does not attest the backend that actually executed the worker.",
       "plannedFiles": [],
       "provisioningSurface": "collaboration.spawn_agent",
       "requestedModel": "GPT-5.6 Sol",
       "requestedReasoning": "Max",
       "role": "Historical Task 1B R8 store-scope worker; session display name Averroes",
-      "skillIds": ["SKL-034"],
-      "taskIds": ["TASK1B-R8"],
+      "skillIds": [
+        "SKL-034"
+      ],
+      "taskIds": [
+        "TASK1B-R8"
+      ],
       "workerId": "WRK-013"
     },
     {
@@ -407,13 +484,21 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "path:docs/unified-goals/EXECUTION_PLAN.md#9-phase-2--jarvis-response-intelligence"
       ],
       "fallbackReason": "worker has not been provisioned.",
-      "plannedFiles": ["docs/superpowers/plans/2026-07-16-jarvis-response-intelligence.md"],
+      "plannedFiles": [
+        "docs/superpowers/plans/2026-07-16-jarvis-response-intelligence.md"
+      ],
       "provisioningSurface": "planned/not provisioned",
       "requestedModel": "GPT-5.6 Sol",
       "requestedReasoning": "Max",
       "role": "Queued Response Intelligence phase-plan owner",
-      "skillIds": ["SKL-023", "SKL-034", "SKL-038"],
-      "taskIds": ["PHASE2-PLAN"],
+      "skillIds": [
+        "SKL-023",
+        "SKL-034",
+        "SKL-038"
+      ],
+      "taskIds": [
+        "PHASE2-PLAN"
+      ],
       "workerId": "WRK-014"
     },
     {
@@ -426,13 +511,21 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "path:docs/unified-goals/EXECUTION_PLAN.md#10-phase-3--jarvis-command-center"
       ],
       "fallbackReason": "worker has not been provisioned.",
-      "plannedFiles": ["docs/superpowers/plans/2026-07-16-jarvis-command-center.md"],
+      "plannedFiles": [
+        "docs/superpowers/plans/2026-07-16-jarvis-command-center.md"
+      ],
       "provisioningSurface": "planned/not provisioned",
       "requestedModel": "GPT-5.6 Sol",
       "requestedReasoning": "Max",
       "role": "Queued Command Center phase-plan owner",
-      "skillIds": ["SKL-023", "SKL-034", "SKL-038"],
-      "taskIds": ["PHASE3-PLAN"],
+      "skillIds": [
+        "SKL-023",
+        "SKL-034",
+        "SKL-038"
+      ],
+      "taskIds": [
+        "PHASE3-PLAN"
+      ],
       "workerId": "WRK-015"
     },
     {
@@ -445,13 +538,21 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "path:docs/unified-goals/EXECUTION_PLAN.md#11-phase-4--context-map-20-and-local-second-brain"
       ],
       "fallbackReason": "worker has not been provisioned.",
-      "plannedFiles": ["docs/superpowers/plans/2026-07-16-context-map-second-brain.md"],
+      "plannedFiles": [
+        "docs/superpowers/plans/2026-07-16-context-map-second-brain.md"
+      ],
       "provisioningSurface": "planned/not provisioned",
       "requestedModel": "GPT-5.6 Sol",
       "requestedReasoning": "Max",
       "role": "Queued Context foundation phase-plan owner",
-      "skillIds": ["SKL-023", "SKL-034", "SKL-038"],
-      "taskIds": ["PHASE4-PLAN"],
+      "skillIds": [
+        "SKL-023",
+        "SKL-034",
+        "SKL-038"
+      ],
+      "taskIds": [
+        "PHASE4-PLAN"
+      ],
       "workerId": "WRK-016"
     },
     {
@@ -464,13 +565,22 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "path:docs/unified-goals/EXECUTION_PLAN.md#12-phase-5--terminal-context-and-command-layer"
       ],
       "fallbackReason": "worker has not been provisioned.",
-      "plannedFiles": ["docs/superpowers/plans/2026-07-16-terminal-context-command-layer.md"],
+      "plannedFiles": [
+        "docs/superpowers/plans/2026-07-16-terminal-context-command-layer.md"
+      ],
       "provisioningSurface": "planned/not provisioned",
       "requestedModel": "GPT-5.6 Sol",
       "requestedReasoning": "Max",
       "role": "Queued Terminal context and command-layer phase-plan owner",
-      "skillIds": ["SKL-024", "SKL-033", "SKL-034", "SKL-038"],
-      "taskIds": ["PHASE5-PLAN"],
+      "skillIds": [
+        "SKL-024",
+        "SKL-033",
+        "SKL-034",
+        "SKL-038"
+      ],
+      "taskIds": [
+        "PHASE5-PLAN"
+      ],
       "workerId": "WRK-017"
     },
     {
@@ -479,15 +589,25 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "actualReasoning": "not provisioned",
       "agentId": null,
       "coordinationStatus": "QUEUED",
-      "evidenceRefs": ["path:docs/unified-goals/EXECUTION_PLAN.md#13-phase-6--prompt-forge"],
+      "evidenceRefs": [
+        "path:docs/unified-goals/EXECUTION_PLAN.md#13-phase-6--prompt-forge"
+      ],
       "fallbackReason": "worker has not been provisioned.",
-      "plannedFiles": ["docs/superpowers/plans/2026-07-16-prompt-forge.md"],
+      "plannedFiles": [
+        "docs/superpowers/plans/2026-07-16-prompt-forge.md"
+      ],
       "provisioningSurface": "planned/not provisioned",
       "requestedModel": "GPT-5.6 Sol",
       "requestedReasoning": "Max",
       "role": "Queued Prompt Forge phase-plan owner",
-      "skillIds": ["SKL-023", "SKL-034", "SKL-038"],
-      "taskIds": ["PHASE6-PLAN"],
+      "skillIds": [
+        "SKL-023",
+        "SKL-034",
+        "SKL-038"
+      ],
+      "taskIds": [
+        "PHASE6-PLAN"
+      ],
       "workerId": "WRK-018"
     },
     {
@@ -500,13 +620,21 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "path:docs/unified-goals/EXECUTION_PLAN.md#14-phase-7--infinite-idea-canvas"
       ],
       "fallbackReason": "worker has not been provisioned.",
-      "plannedFiles": ["docs/superpowers/plans/2026-07-16-infinite-idea-canvas.md"],
+      "plannedFiles": [
+        "docs/superpowers/plans/2026-07-16-infinite-idea-canvas.md"
+      ],
       "provisioningSurface": "planned/not provisioned",
       "requestedModel": "GPT-5.6 Sol",
       "requestedReasoning": "Max",
       "role": "Queued Infinite Canvas phase-plan owner",
-      "skillIds": ["SKL-026", "SKL-034", "SKL-038"],
-      "taskIds": ["PHASE7-PLAN"],
+      "skillIds": [
+        "SKL-026",
+        "SKL-034",
+        "SKL-038"
+      ],
+      "taskIds": [
+        "PHASE7-PLAN"
+      ],
       "workerId": "WRK-019"
     },
     {
@@ -519,13 +647,21 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "path:docs/unified-goals/EXECUTION_PLAN.md#15-phase-8--soul-profiles-memory-recall-and-learning"
       ],
       "fallbackReason": "worker has not been provisioned.",
-      "plannedFiles": ["docs/superpowers/plans/2026-07-16-soul-profiles-memory.md"],
+      "plannedFiles": [
+        "docs/superpowers/plans/2026-07-16-soul-profiles-memory.md"
+      ],
       "provisioningSurface": "planned/not provisioned",
       "requestedModel": "GPT-5.6 Sol",
       "requestedReasoning": "Max",
       "role": "Queued SOUL, profile, and memory phase-plan owner",
-      "skillIds": ["SKL-023", "SKL-034", "SKL-038"],
-      "taskIds": ["PHASE8-PLAN"],
+      "skillIds": [
+        "SKL-023",
+        "SKL-034",
+        "SKL-038"
+      ],
+      "taskIds": [
+        "PHASE8-PLAN"
+      ],
       "workerId": "WRK-020"
     },
     {
@@ -538,13 +674,22 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "path:docs/unified-goals/EXECUTION_PLAN.md#16-phase-9--skills-20-and-workflow-rpc"
       ],
       "fallbackReason": "worker has not been provisioned.",
-      "plannedFiles": ["docs/superpowers/plans/2026-07-16-skills-workflow-rpc.md"],
+      "plannedFiles": [
+        "docs/superpowers/plans/2026-07-16-skills-workflow-rpc.md"
+      ],
       "provisioningSurface": "planned/not provisioned",
       "requestedModel": "GPT-5.6 Sol",
       "requestedReasoning": "Max",
       "role": "Queued Skills and Workflow RPC phase-plan owner",
-      "skillIds": ["SKL-025", "SKL-030", "SKL-034", "SKL-038"],
-      "taskIds": ["PHASE9-PLAN"],
+      "skillIds": [
+        "SKL-025",
+        "SKL-030",
+        "SKL-034",
+        "SKL-038"
+      ],
+      "taskIds": [
+        "PHASE9-PLAN"
+      ],
       "workerId": "WRK-021"
     },
     {
@@ -557,13 +702,22 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "path:docs/unified-goals/EXECUTION_PLAN.md#17-phase-10--parallel-agent-runtime"
       ],
       "fallbackReason": "worker has not been provisioned.",
-      "plannedFiles": ["docs/superpowers/plans/2026-07-16-parallel-agent-runtime.md"],
+      "plannedFiles": [
+        "docs/superpowers/plans/2026-07-16-parallel-agent-runtime.md"
+      ],
       "provisioningSurface": "planned/not provisioned",
       "requestedModel": "GPT-5.6 Sol",
       "requestedReasoning": "Max",
       "role": "Queued Parallel Agent Runtime phase-plan owner",
-      "skillIds": ["SKL-025", "SKL-030", "SKL-034", "SKL-038"],
-      "taskIds": ["PHASE10-PLAN"],
+      "skillIds": [
+        "SKL-025",
+        "SKL-030",
+        "SKL-034",
+        "SKL-038"
+      ],
+      "taskIds": [
+        "PHASE10-PLAN"
+      ],
       "workerId": "WRK-022"
     },
     {
@@ -576,13 +730,21 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "path:docs/unified-goals/EXECUTION_PLAN.md#18-phase-11--messaging-gateway-and-browser-operator"
       ],
       "fallbackReason": "worker has not been provisioned.",
-      "plannedFiles": ["docs/superpowers/plans/2026-07-16-messaging-browser-operator.md"],
+      "plannedFiles": [
+        "docs/superpowers/plans/2026-07-16-messaging-browser-operator.md"
+      ],
       "provisioningSurface": "planned/not provisioned",
       "requestedModel": "GPT-5.6 Sol",
       "requestedReasoning": "Max",
       "role": "Queued Messaging and Browser Operator phase-plan owner",
-      "skillIds": ["SKL-023", "SKL-034", "SKL-038"],
-      "taskIds": ["PHASE11-PLAN"],
+      "skillIds": [
+        "SKL-023",
+        "SKL-034",
+        "SKL-038"
+      ],
+      "taskIds": [
+        "PHASE11-PLAN"
+      ],
       "workerId": "WRK-023"
     },
     {
@@ -595,13 +757,21 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "path:docs/unified-goals/EXECUTION_PLAN.md#19-phase-12--browser-chat-and-local-tool-bridge"
       ],
       "fallbackReason": "worker has not been provisioned.",
-      "plannedFiles": ["docs/superpowers/plans/2026-07-16-browser-chat-local-tool-bridge.md"],
+      "plannedFiles": [
+        "docs/superpowers/plans/2026-07-16-browser-chat-local-tool-bridge.md"
+      ],
       "provisioningSurface": "planned/not provisioned",
       "requestedModel": "GPT-5.6 Sol",
       "requestedReasoning": "Max",
       "role": "Queued Browser Chat and Local Tool Bridge phase-plan owner",
-      "skillIds": ["SKL-023", "SKL-034", "SKL-038"],
-      "taskIds": ["PHASE12-PLAN"],
+      "skillIds": [
+        "SKL-023",
+        "SKL-034",
+        "SKL-038"
+      ],
+      "taskIds": [
+        "PHASE12-PLAN"
+      ],
       "workerId": "WRK-024"
     },
     {
@@ -614,13 +784,22 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "path:docs/unified-goals/EXECUTION_PLAN.md#20-phase-13--vibespace-access-supabase-and-stripe-test-mode"
       ],
       "fallbackReason": "worker has not been provisioned.",
-      "plannedFiles": ["docs/superpowers/plans/2026-07-16-vibespace-access.md"],
+      "plannedFiles": [
+        "docs/superpowers/plans/2026-07-16-vibespace-access.md"
+      ],
       "provisioningSurface": "planned/not provisioned",
       "requestedModel": "GPT-5.6 Sol",
       "requestedReasoning": "Max",
       "role": "Queued VibeSpace Access non-production phase-plan owner",
-      "skillIds": ["SKL-031", "SKL-032", "SKL-034", "SKL-038"],
-      "taskIds": ["PHASE13-PLAN"],
+      "skillIds": [
+        "SKL-031",
+        "SKL-032",
+        "SKL-034",
+        "SKL-038"
+      ],
+      "taskIds": [
+        "PHASE13-PLAN"
+      ],
       "workerId": "WRK-025"
     },
     {
@@ -633,13 +812,22 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "path:docs/unified-goals/EXECUTION_PLAN.md#21-phase-14--reference-locked-origami-chat"
       ],
       "fallbackReason": "worker has not been provisioned.",
-      "plannedFiles": ["docs/superpowers/plans/2026-07-16-origami-chat-reconstruction.md"],
+      "plannedFiles": [
+        "docs/superpowers/plans/2026-07-16-origami-chat-reconstruction.md"
+      ],
       "provisioningSurface": "planned/not provisioned",
       "requestedModel": "GPT-5.6 Sol",
       "requestedReasoning": "Max",
       "role": "Queued Origami reconstruction phase-plan owner",
-      "skillIds": ["SKL-024", "SKL-026", "SKL-034", "SKL-038"],
-      "taskIds": ["PHASE14-PLAN"],
+      "skillIds": [
+        "SKL-024",
+        "SKL-026",
+        "SKL-034",
+        "SKL-038"
+      ],
+      "taskIds": [
+        "PHASE14-PLAN"
+      ],
       "workerId": "WRK-026"
     },
     {
@@ -653,13 +841,23 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "path:docs/unified-goals/EXECUTION_PLAN.md#22-phase-15--reference-locked-monochrome-appearance"
       ],
       "fallbackReason": "worker has not been provisioned.",
-      "plannedFiles": ["docs/superpowers/plans/2026-07-16-vibespace-monochrome-appearance.md"],
+      "plannedFiles": [
+        "docs/superpowers/plans/2026-07-16-vibespace-monochrome-appearance.md"
+      ],
       "provisioningSurface": "planned/not provisioned",
       "requestedModel": "GPT-5.6 Sol",
       "requestedReasoning": "Max",
       "role": "Queued MonoChrome implementation coordinator",
-      "skillIds": ["SKL-024", "SKL-026", "SKL-033", "SKL-034", "SKL-037"],
-      "taskIds": ["PHASE15-IMPLEMENTATION"],
+      "skillIds": [
+        "SKL-024",
+        "SKL-026",
+        "SKL-033",
+        "SKL-034",
+        "SKL-037"
+      ],
+      "taskIds": [
+        "PHASE15-IMPLEMENTATION"
+      ],
       "workerId": "WRK-027"
     },
     {
@@ -668,15 +866,28 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "actualReasoning": "not provisioned",
       "agentId": null,
       "coordinationStatus": "QUEUED",
-      "evidenceRefs": ["docs/unified-goals/EXECUTION_PLAN.md:PLN-020 Phase 17 final integration"],
+      "evidenceRefs": [
+        "docs/unified-goals/EXECUTION_PLAN.md:PLN-020 Phase 17 final integration"
+      ],
       "fallbackReason": "worker has not been provisioned.",
-      "plannedFiles": ["docs/superpowers/plans/2026-07-16-vibespace-final-integration.md"],
+      "plannedFiles": [
+        "docs/superpowers/plans/2026-07-16-vibespace-final-integration.md"
+      ],
       "provisioningSurface": "planned/not provisioned",
       "requestedModel": "GPT-5.6 Sol",
       "requestedReasoning": "Max",
       "role": "Queued final integration and successor draft-PR plan owner",
-      "skillIds": ["SKL-024", "SKL-027", "SKL-029", "SKL-031", "SKL-032", "SKL-037"],
-      "taskIds": ["PHASE17-PLAN"],
+      "skillIds": [
+        "SKL-024",
+        "SKL-027",
+        "SKL-029",
+        "SKL-031",
+        "SKL-032",
+        "SKL-037"
+      ],
+      "taskIds": [
+        "PHASE17-PLAN"
+      ],
       "workerId": "WRK-028"
     },
     {
@@ -699,7 +910,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "collaboration:/root/task0r_root_docs_review",
         "review:independent-findings-issued"
       ],
-      "fallbackReason": "spawn API exposes neither a model selector nor backend model label.",
+      "fallbackReason": "spawn API accepts requested model/reasoning overrides but does not attest the backend that actually executed the worker.",
       "plannedFiles": [
         "docs/unified-goals/ATTACHMENT_INVENTORY.md",
         "docs/unified-goals/CONFLICT_RESOLUTION.md",
@@ -716,8 +927,14 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "requestedModel": "GPT-5.6 Sol",
       "requestedReasoning": "Max",
       "role": "Read-only reviewer of the Task 0R root-ledger artifact set",
-      "skillIds": ["SKL-028", "SKL-029", "SKL-037"],
-      "taskIds": ["PHASE0R-ROOT-DOCS-REVIEW"],
+      "skillIds": [
+        "SKL-028",
+        "SKL-029",
+        "SKL-037"
+      ],
+      "taskIds": [
+        "PHASE0R-ROOT-DOCS-REVIEW"
+      ],
       "workerId": "WRK-029"
     },
     {
@@ -747,7 +964,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "collaboration:/root/task0r_crossdocs_review",
         "review:independent-findings-issued"
       ],
-      "fallbackReason": "spawn API exposes neither a model selector nor backend model label.",
+      "fallbackReason": "spawn API accepts requested model/reasoning overrides but does not attest the backend that actually executed the worker.",
       "plannedFiles": [
         "docs/unified-goals/ATTACHMENT_INVENTORY.md",
         "docs/unified-goals/CONFLICT_RESOLUTION.md",
@@ -771,8 +988,14 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "requestedModel": "GPT-5.6 Sol",
       "requestedReasoning": "Max",
       "role": "Read-only reviewer of cross-document Task 0R consistency and closure",
-      "skillIds": ["SKL-028", "SKL-029", "SKL-037"],
-      "taskIds": ["PHASE0R-CROSS-DOCS-REVIEW"],
+      "skillIds": [
+        "SKL-028",
+        "SKL-029",
+        "SKL-037"
+      ],
+      "taskIds": [
+        "PHASE0R-CROSS-DOCS-REVIEW"
+      ],
       "workerId": "WRK-030"
     },
     {
@@ -781,15 +1004,22 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "actualReasoning": "not exposed/unverified",
       "agentId": "/root/task0r_artifact_audit",
       "coordinationStatus": "COMPLETE",
-      "evidenceRefs": ["AGENT_COORDINATION.md:Task0R Batch B read-only audit outcomes"],
-      "fallbackReason": "spawn API exposes neither a model selector nor backend model label.",
+      "evidenceRefs": [
+        "AGENT_COORDINATION.md:Task0R Batch B read-only audit outcomes"
+      ],
+      "fallbackReason": "spawn API accepts requested model/reasoning overrides but does not attest the backend that actually executed the worker.",
       "plannedFiles": [],
       "provisioningSurface": "collaboration.spawn_agent",
       "requestedModel": "GPT-5.6 Sol",
       "requestedReasoning": "Max",
       "role": "Classification/example and artifact-coverage audit",
-      "skillIds": ["SKL-006", "SKL-007"],
-      "taskIds": ["Task 0R"],
+      "skillIds": [
+        "SKL-006",
+        "SKL-007"
+      ],
+      "taskIds": [
+        "Task 0R"
+      ],
       "workerId": "WRK-031"
     },
     {
@@ -798,15 +1028,22 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "actualReasoning": "not exposed/unverified",
       "agentId": "/root/task0r_renderer_audit",
       "coordinationStatus": "COMPLETE",
-      "evidenceRefs": ["AGENT_COORDINATION.md:Task0R Batch B read-only audit outcomes"],
-      "fallbackReason": "spawn API exposes neither a model selector nor backend model label.",
+      "evidenceRefs": [
+        "AGENT_COORDINATION.md:Task0R Batch B read-only audit outcomes"
+      ],
+      "fallbackReason": "spawn API accepts requested model/reasoning overrides but does not attest the backend that actually executed the worker.",
       "plannedFiles": [],
       "provisioningSurface": "collaboration.spawn_agent",
       "requestedModel": "GPT-5.6 Sol",
       "requestedReasoning": "Max",
       "role": "Family-routing and phase-render audit",
-      "skillIds": ["SKL-006", "SKL-007"],
-      "taskIds": ["Task 0R"],
+      "skillIds": [
+        "SKL-006",
+        "SKL-007"
+      ],
+      "taskIds": [
+        "Task 0R"
+      ],
       "workerId": "WRK-032"
     },
     {
@@ -815,15 +1052,22 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "actualReasoning": "not exposed/unverified",
       "agentId": "/root/task0r_tests",
       "coordinationStatus": "COMPLETE",
-      "evidenceRefs": ["AGENT_COORDINATION.md:Task0R Batch B read-only audit outcomes"],
-      "fallbackReason": "spawn API exposes neither a model selector nor backend model label.",
+      "evidenceRefs": [
+        "AGENT_COORDINATION.md:Task0R Batch B read-only audit outcomes"
+      ],
+      "fallbackReason": "spawn API accepts requested model/reasoning overrides but does not attest the backend that actually executed the worker.",
       "plannedFiles": [],
       "provisioningSurface": "collaboration.spawn_agent",
       "requestedModel": "GPT-5.6 Sol",
       "requestedReasoning": "Max",
       "role": "Critical-policy and validator TDD audit",
-      "skillIds": ["SKL-006", "SKL-007"],
-      "taskIds": ["Task 0R"],
+      "skillIds": [
+        "SKL-006",
+        "SKL-007"
+      ],
+      "taskIds": [
+        "Task 0R"
+      ],
       "workerId": "WRK-033"
     },
     {
@@ -837,13 +1081,24 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "plan:docs/superpowers/plans/2026-07-17-vibespace-sakura-appearance.md"
       ],
       "fallbackReason": "worker has not been provisioned.",
-      "plannedFiles": ["exact paths frozen by the committed Sakura plan"],
+      "plannedFiles": [
+        "exact paths frozen by the committed Sakura plan"
+      ],
       "provisioningSurface": "planned/not provisioned",
       "requestedModel": "GPT-5.6 Sol",
       "requestedReasoning": "Max",
       "role": "Queued Phase 16 Sakura implementation coordinator",
-      "skillIds": ["SKL-024", "SKL-026", "SKL-029", "SKL-030", "SKL-034", "SKL-037"],
-      "taskIds": ["PHASE16-SAKURA"],
+      "skillIds": [
+        "SKL-024",
+        "SKL-026",
+        "SKL-029",
+        "SKL-030",
+        "SKL-034",
+        "SKL-037"
+      ],
+      "taskIds": [
+        "PHASE16-SAKURA"
+      ],
       "workerId": "WRK-034"
     }
   ],

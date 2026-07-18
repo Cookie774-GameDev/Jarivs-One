@@ -44,7 +44,9 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       ],
       "invocationReason": "Route the approved program through the applicable planning, isolation, delegation, testing, debugging, verification, and design workflows.",
       "skillId": "SKL-036",
-      "taskIds": ["PROGRAM-PROCESS"],
+      "taskIds": [
+        "PROGRAM-PROCESS"
+      ],
       "usageId": "USE-001",
       "workerId": "WRK-001"
     },
@@ -59,7 +61,9 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       ],
       "invocationReason": "Establish intent, architecture boundaries, isolation constraints, and acceptance direction before creating implementation plans.",
       "skillId": "SKL-023",
-      "taskIds": ["PROGRAM-PLANNING"],
+      "taskIds": [
+        "PROGRAM-PLANNING"
+      ],
       "usageId": "USE-002",
       "workerId": "WRK-001"
     },
@@ -76,7 +80,10 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       ],
       "invocationReason": "Convert the approved multi-goal specification into executable, reviewable phases before product edits.",
       "skillId": "SKL-038",
-      "taskIds": ["PHASE0R", "PROGRAM-PLANNING"],
+      "taskIds": [
+        "PHASE0R",
+        "PROGRAM-PLANNING"
+      ],
       "usageId": "USE-003",
       "workerId": "WRK-001"
     },
@@ -92,7 +99,10 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       ],
       "invocationReason": "Isolate the large implementation program from unrelated branches, dirty state, processes, and profiles.",
       "skillId": "SKL-035",
-      "taskIds": ["PHASE0R", "PROGRAM-ISOLATION"],
+      "taskIds": [
+        "PHASE0R",
+        "PROGRAM-ISOLATION"
+      ],
       "usageId": "USE-004",
       "workerId": "WRK-001"
     },
@@ -109,7 +119,10 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       ],
       "invocationReason": "Run independent, non-overlapping tasks in parallel while retaining one integration owner.",
       "skillId": "SKL-025",
-      "taskIds": ["PHASE0R", "PROGRAM-PARALLELISM"],
+      "taskIds": [
+        "PHASE0R",
+        "PROGRAM-PARALLELISM"
+      ],
       "usageId": "USE-005",
       "workerId": "WRK-001"
     },
@@ -124,7 +137,10 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       ],
       "invocationReason": "Execute approved plan slices through scoped workers in the current session.",
       "skillId": "SKL-030",
-      "taskIds": ["PHASE0R", "PROGRAM-IMPLEMENTATION"],
+      "taskIds": [
+        "PHASE0R",
+        "PROGRAM-IMPLEMENTATION"
+      ],
       "usageId": "USE-006",
       "workerId": "WRK-001"
     },
@@ -164,7 +180,11 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       ],
       "invocationReason": "Investigate failed tests, rejected reviews, and unexpected behavior from evidence before proposing fixes.",
       "skillId": "SKL-033",
-      "taskIds": ["PROGRAM-FAILURE-REPAIR", "TASK1B-R8", "TASK3-DIAGNOSTIC"],
+      "taskIds": [
+        "PROGRAM-FAILURE-REPAIR",
+        "TASK1B-R8",
+        "TASK3-DIAGNOSTIC"
+      ],
       "usageId": "USE-008",
       "workerId": "WRK-001"
     },
@@ -181,7 +201,11 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       ],
       "invocationReason": "Require fresh, directly observed evidence before any completion, acceptance, commit, or handoff claim.",
       "skillId": "SKL-037",
-      "taskIds": ["PHASE0R", "PROGRAM-VERIFICATION", "TASK2-ACCEPTANCE-REVIEW"],
+      "taskIds": [
+        "PHASE0R",
+        "PROGRAM-VERIFICATION",
+        "TASK2-ACCEPTANCE-REVIEW"
+      ],
       "usageId": "USE-009",
       "workerId": "WRK-001"
     },
@@ -196,7 +220,9 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       ],
       "invocationReason": "Translate Goal 8's visual references into a distinctive implementation and measurable acceptance plan.",
       "skillId": "SKL-026",
-      "taskIds": ["PHASE15-IMPLEMENTATION"],
+      "taskIds": [
+        "PHASE15-IMPLEMENTATION"
+      ],
       "usageId": "USE-010",
       "workerId": "WRK-001"
     },
@@ -212,7 +238,10 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       ],
       "invocationReason": "Inspect the connected GitHub repository, remote successor branch, and draft-PR baseline before later publication work.",
       "skillId": "SKL-044",
-      "taskIds": ["PHASE0R", "PROGRAM-GIT-BASELINE"],
+      "taskIds": [
+        "PHASE0R",
+        "PROGRAM-GIT-BASELINE"
+      ],
       "usageId": "USE-011",
       "workerId": "WRK-001"
     },
@@ -229,7 +258,10 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       ],
       "invocationReason": "Request independent review of major Task 0R artifacts, traceability routing, and repaired cross-document contracts before committing.",
       "skillId": "SKL-029",
-      "taskIds": ["PHASE0R", "PROGRAM-REVIEW"],
+      "taskIds": [
+        "PHASE0R",
+        "PROGRAM-REVIEW"
+      ],
       "usageId": "USE-012",
       "workerId": "WRK-001"
     },
@@ -245,36 +277,55 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       ],
       "invocationReason": "Evaluate independent review findings technically and implement only evidence-supported corrections.",
       "skillId": "SKL-028",
-      "taskIds": ["PHASE0R", "PROGRAM-REVIEW-REPAIR"],
+      "taskIds": [
+        "PHASE0R",
+        "PROGRAM-REVIEW-REPAIR"
+      ],
       "usageId": "USE-013",
       "workerId": "WRK-001"
     },
     {
-      "evidenceRefs": [".superpowers/sdd/task-0r/task-0r.test.mjs"],
-      "influencedActions": ["Committed final Sakura plan provenance and Phase 16 sequencing."],
+      "evidenceRefs": [
+        ".superpowers/sdd/task-0r/task-0r.test.mjs"
+      ],
+      "influencedActions": [
+        "Committed final Sakura plan provenance and Phase 16 sequencing."
+      ],
       "invocationReason": "Build the approved complete phased plan before product edits.",
       "skillId": "SKL-003",
-      "taskIds": ["Task 0R"],
+      "taskIds": [
+        "Task 0R"
+      ],
       "usageId": "USE-014",
       "workerId": "WRK-001"
     },
     {
-      "evidenceRefs": [".superpowers/sdd/task-0r/task-0r.test.mjs"],
-      "influencedActions": ["Produced the exact 75-row exclusion set and coverage checklist."],
+      "evidenceRefs": [
+        ".superpowers/sdd/task-0r/task-0r.test.mjs"
+      ],
+      "influencedActions": [
+        "Produced the exact 75-row exclusion set and coverage checklist."
+      ],
       "invocationReason": "Use independent parallel read-only audits for classification and artifact coverage.",
       "skillId": "SKL-006",
-      "taskIds": ["Task 0R"],
+      "taskIds": [
+        "Task 0R"
+      ],
       "usageId": "USE-015",
       "workerId": "WRK-031"
     },
     {
-      "evidenceRefs": [".superpowers/sdd/task-0r/task-0r.test.mjs"],
+      "evidenceRefs": [
+        ".superpowers/sdd/task-0r/task-0r.test.mjs"
+      ],
       "influencedActions": [
         "Hardened duplicate lifecycle, critical exclusions, closure, and historical PASS allowlist."
       ],
       "invocationReason": "Add failing validator tests before projection and policy fixes.",
       "skillId": "SKL-007",
-      "taskIds": ["Task 0R"],
+      "taskIds": [
+        "Task 0R"
+      ],
       "usageId": "USE-016",
       "workerId": "WRK-033"
     }
