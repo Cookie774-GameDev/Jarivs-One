@@ -9,9 +9,9 @@
  * The db is opened lazily; calling `openDb()` is idempotent and safe to call
  * from multiple call sites (initial bootstrap, seed, sync loop).
  *
- * V1 → V2 migration: Dexie sees DB_VERSION=2 and the V2 store list, then
- * auto-creates the new tables next time the user opens the app. No data is
- * touched in the V1 tables. New install paths skip straight to V2.
+ * V1 → V3 migrations are purely additive. Dexie replays each version's store
+ * list, creates the newer tables, and leaves every existing row untouched.
+ * New installs open directly on V3.
  */
 
 import Dexie, { type EntityTable, type Table } from 'dexie';

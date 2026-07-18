@@ -265,7 +265,7 @@ export type JarvisArtifactRow = {
 };
 
 export const DB_NAME = 'jarvis-v1';
-/** Current schema version — bumped to 2 in V2 (additive new tables). */
+/** Current schema version — bumped to 3 for the additive kernel stores. */
 export const DB_VERSION = 3;
 
 /**
@@ -283,15 +283,18 @@ export const DB_VERSION = 3;
  * V1 schema. Pinned for replay so existing users migrate cleanly.
  * Do not edit retroactively.
  */
+// prettier-ignore
 export const STORES_V1 = {
   workspaces: 'id, name, owner_id, updated_at',
   projects: 'id, workspace_id, name, updated_at',
-  chats: 'id, workspace_id, project_id, [archived+updated_at], updated_at',
+  chats:
+    'id, workspace_id, project_id, [archived+updated_at], updated_at',
   messages: 'id, chat_id, [chat_id+created_at], parent_id',
   agents: 'id, &slug',
   tasks:
     'id, workspace_id, project_id, status, [status+priority], due_at, scheduled_for, [workspace_id+status]',
-  memory_items: 'id, workspace_id, project_id, agent_id, [workspace_id+source], last_accessed_at',
+  memory_items:
+    'id, workspace_id, project_id, agent_id, [workspace_id+source], last_accessed_at',
   settings: 'key',
   sync_queue: 'id, status, created_at',
 } as const;
@@ -314,15 +317,19 @@ export const STORES_V1 = {
  *   terminal_layouts:      project_id is the pkey (single layout per project)
  *   integrations:          unique kind so at most one per kind per user
  */
+// prettier-ignore
 export const STORES_V2 = {
   ...STORES_V1,
-  events: 'id, workspace_id, project_id, start_at, [workspace_id+start_at], status',
+  events:
+    'id, workspace_id, project_id, start_at, [workspace_id+start_at], status',
   quick_links:
     'id, workspace_id, group_id, [workspace_id+position], [workspace_id+group_id+position], last_used_at',
   quick_link_groups: 'id, workspace_id, [workspace_id+position]',
   terminal_presets: 'id, workspace_id, &[workspace_id+slug]',
-  terminal_sessions: 'id, project_id, workspace_id, status, [project_id+status], last_active_at',
-  terminal_scrollback: '[session_id+chunk_seq], session_id, created_at',
+  terminal_sessions:
+    'id, project_id, workspace_id, status, [project_id+status], last_active_at',
+  terminal_scrollback:
+    '[session_id+chunk_seq], session_id, created_at',
   terminal_layouts: 'project_id, updated_at',
   integrations: 'id, &kind',
 } as const;

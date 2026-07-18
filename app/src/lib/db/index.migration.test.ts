@@ -3,15 +3,35 @@ import { join } from 'node:path';
 import Dexie, { type EntityTable, type Table } from 'dexie';
 import { afterEach, describe, expect, expectTypeOf, it } from 'vitest';
 import type { Agent } from '@/types/agent';
+import type { Chat, Message } from '@/types/chat';
+import type { EventRow } from '@/types/event';
+import type { Integration } from '@/types/integration';
+import type { MemoryItem } from '@/types/memory';
+import type { QuickLink, QuickLinkGroup } from '@/types/quick-link';
+import type { Task } from '@/types/task';
+import type {
+  TerminalLayout,
+  TerminalPreset,
+  TerminalScrollbackChunk,
+  TerminalSession,
+} from '@/types/terminal';
 import { TEST_INDEXED_DB, uniqueTestDbName } from '@/test/indexedDb';
-import { createJarvisDb, type JarvisDexie } from './index';
+import { createJarvisDb, type JarvisDexie, type JarvisDexieDependencies } from './index';
 import {
   DB_VERSION,
   STORES_V1,
   STORES_V2,
   STORES_V3,
+  type JarvisApprovalRow,
+  type JarvisArtifactRow,
   type JarvisEventRow,
+  type JarvisIdentityRevisionRow,
+  type JarvisProfileRow,
+  type JarvisRunRow,
+  type Project,
   type SettingsRow,
+  type SyncQueueRow,
+  type Workspace,
 } from './schema';
 
 const EXPECTED_STORES_V1 = {
@@ -39,6 +59,49 @@ const EXPECTED_STORES_V2 = {
   terminal_layouts: 'project_id, updated_at',
   integrations: 'id, &kind',
 } as const;
+
+const EXPECTED_STORES_V3 = {
+  ...EXPECTED_STORES_V2,
+  jarvis_identity_revisions: 'id, identity_id, version, &[identity_id+version], created_at',
+  jarvis_profiles: 'id, account_id, [account_id+active], updated_at',
+  jarvis_runs:
+    'id, account_id, chat_id, parent_run_id, status, [account_id+updated_at], [chat_id+created_at]',
+  jarvis_events:
+    '[run_id+seq], run_id, idempotency_key, &[run_id+idempotency_key], type, status, created_at',
+  jarvis_approvals: 'id, run_id, status, params_hash, created_at',
+  jarvis_artifacts: 'id, run_id, kind, created_at',
+} as const;
+
+const EXPECTED_STORES_V1_SOURCE = `export const STORES_V1 = {
+  workspaces: 'id, name, owner_id, updated_at',
+  projects: 'id, workspace_id, name, updated_at',
+  chats:
+    'id, workspace_id, project_id, [archived+updated_at], updated_at',
+  messages: 'id, chat_id, [chat_id+created_at], parent_id',
+  agents: 'id, &slug',
+  tasks:
+    'id, workspace_id, project_id, status, [status+priority], due_at, scheduled_for, [workspace_id+status]',
+  memory_items:
+    'id, workspace_id, project_id, agent_id, [workspace_id+source], last_accessed_at',
+  settings: 'key',
+  sync_queue: 'id, status, created_at',
+} as const;`;
+
+const EXPECTED_STORES_V2_SOURCE = `export const STORES_V2 = {
+  ...STORES_V1,
+  events:
+    'id, workspace_id, project_id, start_at, [workspace_id+start_at], status',
+  quick_links:
+    'id, workspace_id, group_id, [workspace_id+position], [workspace_id+group_id+position], last_used_at',
+  quick_link_groups: 'id, workspace_id, [workspace_id+position]',
+  terminal_presets: 'id, workspace_id, &[workspace_id+slug]',
+  terminal_sessions:
+    'id, project_id, workspace_id, status, [project_id+status], last_active_at',
+  terminal_scrollback:
+    '[session_id+chunk_seq], session_id, created_at',
+  terminal_layouts: 'project_id, updated_at',
+  integrations: 'id, &kind',
+} as const;`;
 
 const V1_ROWS = {
   workspaces: {
@@ -155,6 +218,7 @@ const V2_ROWS = {
 } as const;
 
 const createdNames = new Set<string>();
+const openedDatabases = new Set<Dexie>();
 
 function testDbName(prefix: string): string {
   const name = uniqueTestDbName(prefix);
@@ -169,9 +233,16 @@ async function deleteTestDb(name: string): Promise<void> {
 
 async function createLegacyDb(name: string, version: 1 | 2): Promise<Dexie> {
   const database = new Dexie(name, TEST_INDEXED_DB);
+  openedDatabases.add(database);
   database.version(1).stores(STORES_V1);
   if (version === 2) database.version(2).stores(STORES_V2);
   await database.open();
+  return database;
+}
+
+function createTestJarvisDb(name: string): JarvisDexie {
+  const database = createJarvisDb(name, TEST_INDEXED_DB);
+  openedDatabases.add(database);
   return database;
 }
 
@@ -187,21 +258,34 @@ async function expectRows(database: Dexie, rows: Record<string, object>): Promis
   }
 }
 
+function frozenStoreBlock(source: string, name: 'STORES_V1' | 'STORES_V2'): string {
+  const normalized = source.replace(/\r\n/g, '\n');
+  const start = normalized.indexOf(`export const ${name} =`);
+  const end = normalized.indexOf('\n} as const;', start);
+  if (start < 0 || end < 0) throw new Error(`Missing frozen ${name} block.`);
+  return normalized.slice(start, end + '\n} as const;'.length);
+}
+
 afterEach(async () => {
+  for (const database of openedDatabases) database.close();
   for (const name of createdNames) await deleteTestDb(name);
+  openedDatabases.clear();
   createdNames.clear();
 });
 
 describe('Jarvis Dexie V3 additive migration', () => {
   it('keeps the exact V1 and V2 declarations and advances only the active version', () => {
+    const schemaSource = readFileSync(join(__dirname, 'schema.ts'), 'utf8');
     expect(STORES_V1).toEqual(EXPECTED_STORES_V1);
     expect(STORES_V2).toEqual(EXPECTED_STORES_V2);
+    expect(STORES_V3).toEqual(EXPECTED_STORES_V3);
+    expect(frozenStoreBlock(schemaSource, 'STORES_V1')).toBe(EXPECTED_STORES_V1_SOURCE);
+    expect(frozenStoreBlock(schemaSource, 'STORES_V2')).toBe(EXPECTED_STORES_V2_SOURCE);
     expect(DB_VERSION).toBe(3);
-    expect(STORES_V3).toMatchObject(STORES_V2);
   });
 
   it('opens every legacy and kernel store on a fresh V3 database', async () => {
-    const database = createJarvisDb(testDbName('jarvis-v3-fresh'), TEST_INDEXED_DB);
+    const database = createTestJarvisDb(testDbName('jarvis-v3-fresh'));
     await database.open();
 
     expect(database.tables.map((table) => table.name).sort()).toEqual(
@@ -211,10 +295,52 @@ describe('Jarvis Dexie V3 additive migration', () => {
     expect(database.settings.name).toBe('settings');
     expect(database.jarvis_events.name).toBe('jarvis_events');
 
-    expectTypeOf(database).toMatchTypeOf<JarvisDexie>();
-    expectTypeOf(database.agents).toMatchTypeOf<EntityTable<Agent, 'id'>>();
-    expectTypeOf(database.settings).toMatchTypeOf<EntityTable<SettingsRow, 'key'>>();
-    expectTypeOf(database.jarvis_events).toMatchTypeOf<Table<JarvisEventRow, [string, number]>>();
+    expectTypeOf<JarvisDexie['workspaces']>().toEqualTypeOf<EntityTable<Workspace, 'id'>>();
+    expectTypeOf<JarvisDexie['projects']>().toEqualTypeOf<EntityTable<Project, 'id'>>();
+    expectTypeOf<JarvisDexie['chats']>().toEqualTypeOf<EntityTable<Chat, 'id'>>();
+    expectTypeOf<JarvisDexie['messages']>().toEqualTypeOf<EntityTable<Message, 'id'>>();
+    expectTypeOf<JarvisDexie['agents']>().toEqualTypeOf<EntityTable<Agent, 'id'>>();
+    expectTypeOf<JarvisDexie['tasks']>().toEqualTypeOf<EntityTable<Task, 'id'>>();
+    expectTypeOf<JarvisDexie['memory_items']>().toEqualTypeOf<EntityTable<MemoryItem, 'id'>>();
+    expectTypeOf<JarvisDexie['settings']>().toEqualTypeOf<EntityTable<SettingsRow, 'key'>>();
+    expectTypeOf<JarvisDexie['sync_queue']>().toEqualTypeOf<EntityTable<SyncQueueRow, 'id'>>();
+    expectTypeOf<JarvisDexie['events']>().toEqualTypeOf<EntityTable<EventRow, 'id'>>();
+    expectTypeOf<JarvisDexie['quick_links']>().toEqualTypeOf<EntityTable<QuickLink, 'id'>>();
+    expectTypeOf<JarvisDexie['quick_link_groups']>().toEqualTypeOf<
+      EntityTable<QuickLinkGroup, 'id'>
+    >();
+    expectTypeOf<JarvisDexie['terminal_presets']>().toEqualTypeOf<
+      EntityTable<TerminalPreset, 'id'>
+    >();
+    expectTypeOf<JarvisDexie['terminal_sessions']>().toEqualTypeOf<
+      EntityTable<TerminalSession, 'id'>
+    >();
+    expectTypeOf<JarvisDexie['terminal_scrollback']>().toEqualTypeOf<
+      EntityTable<TerminalScrollbackChunk, 'session_id'>
+    >();
+    expectTypeOf<JarvisDexie['terminal_layouts']>().toEqualTypeOf<
+      EntityTable<TerminalLayout, 'project_id'>
+    >();
+    expectTypeOf<JarvisDexie['integrations']>().toEqualTypeOf<EntityTable<Integration, 'id'>>();
+    expectTypeOf<JarvisDexie['jarvis_identity_revisions']>().toEqualTypeOf<
+      EntityTable<JarvisIdentityRevisionRow, 'id'>
+    >();
+    expectTypeOf<JarvisDexie['jarvis_profiles']>().toEqualTypeOf<
+      EntityTable<JarvisProfileRow, 'id'>
+    >();
+    expectTypeOf<JarvisDexie['jarvis_runs']>().toEqualTypeOf<EntityTable<JarvisRunRow, 'id'>>();
+    expectTypeOf<JarvisDexie['jarvis_events']>().toEqualTypeOf<
+      Table<JarvisEventRow, [string, number]>
+    >();
+    expectTypeOf<JarvisDexie['jarvis_approvals']>().toEqualTypeOf<
+      EntityTable<JarvisApprovalRow, 'id'>
+    >();
+    expectTypeOf<JarvisDexie['jarvis_artifacts']>().toEqualTypeOf<
+      EntityTable<JarvisArtifactRow, 'id'>
+    >();
+    expectTypeOf(createJarvisDb).toEqualTypeOf<
+      (name?: string, dependencies?: JarvisDexieDependencies) => JarvisDexie
+    >();
     database.close();
   });
 
@@ -224,7 +350,7 @@ describe('Jarvis Dexie V3 additive migration', () => {
     await insertRows(legacy, V1_ROWS);
     legacy.close();
 
-    const upgraded = createJarvisDb(name, TEST_INDEXED_DB);
+    const upgraded = createTestJarvisDb(name);
     await upgraded.open();
     await expectRows(upgraded, V1_ROWS);
     upgraded.close();
@@ -236,7 +362,7 @@ describe('Jarvis Dexie V3 additive migration', () => {
     await insertRows(legacy, V2_ROWS);
     legacy.close();
 
-    const upgraded = createJarvisDb(name, TEST_INDEXED_DB);
+    const upgraded = createTestJarvisDb(name);
     await upgraded.open();
     await expectRows(upgraded, V2_ROWS);
     upgraded.close();
@@ -244,19 +370,19 @@ describe('Jarvis Dexie V3 additive migration', () => {
 
   it('reopens V3 idempotently without replacing existing rows', async () => {
     const name = testDbName('jarvis-v3-reopen');
-    const first = createJarvisDb(name, TEST_INDEXED_DB);
+    const first = createTestJarvisDb(name);
     await first.open();
     await first.workspaces.put(structuredClone(V1_ROWS.workspaces) as never);
     first.close();
 
-    const reopened = createJarvisDb(name, TEST_INDEXED_DB);
+    const reopened = createTestJarvisDb(name);
     await reopened.open();
     await expect(reopened.workspaces.toArray()).resolves.toEqual([V1_ROWS.workspaces]);
     reopened.close();
   });
 
   it('enforces ordered compound event keys and per-run delivery idempotency', async () => {
-    const database = createJarvisDb(testDbName('jarvis-v3-events'), TEST_INDEXED_DB);
+    const database = createTestJarvisDb(testDbName('jarvis-v3-events'));
     await database.open();
     const event = (runId: string, seq: number, idempotencyKey: string): JarvisEventRow => ({
       run_id: runId,
@@ -274,12 +400,11 @@ describe('Jarvis Dexie V3 additive migration', () => {
       event('run-a', 1, 'delivery-1'),
       event('run-a', 2, 'delivery-2'),
     ]);
-    const ordered = await database.jarvis_events.bulkGet([
-      ['run-a', 1],
-      ['run-a', 2],
-      ['run-a', 3],
-    ]);
-    expect(ordered.map((row) => row?.seq)).toEqual([1, 2, 3]);
+    const ordered = await database.jarvis_events
+      .where('[run_id+seq]')
+      .between(['run-a', Number.MIN_SAFE_INTEGER], ['run-a', Number.MAX_SAFE_INTEGER])
+      .toArray();
+    expect(ordered.map((row) => row.seq)).toEqual([1, 2, 3]);
 
     await expect(
       database.jarvis_events.add(event('run-a', 1, 'delivery-other')),
