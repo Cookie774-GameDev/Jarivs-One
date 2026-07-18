@@ -37,6 +37,7 @@ vi.mock('@/features/jarvis-interaction/coordination', () => ({
 
 import { useTerminalTranscriptStore } from '@/features/terminals/transcriptStore';
 import {
+  getConnectedFilesBlock,
   getExplicitFilesBlock,
   getExplicitTerminalBlock,
   getJarvisCoordinationContextBlock,
@@ -49,6 +50,7 @@ import {
 describe('AI explicit file context safeguards', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.localStorage.clear();
     useTerminalTranscriptStore.getState().reset();
     fsMocks.getStoredProjectRoot.mockReturnValue('');
     fsMocks.getJarvisProjectsDir.mockResolvedValue('C:\\Jarvis\\Projects');
@@ -65,7 +67,10 @@ describe('AI explicit file context safeguards', () => {
   });
 
   it('remembers a conversation folder and prefers a newer active project', async () => {
-    rememberConversationDestination('chat_1', 'Put future files here:\nC:\\Users\\viper\\projects\\FarmLife');
+    rememberConversationDestination(
+      'chat_1',
+      'Put future files here:\nC:\\Users\\viper\\projects\\FarmLife',
+    );
     expect(extractExplicitDestination('Use `C:\\Users\\viper\\projects\\FarmLife`')).toBe(
       'C:\\Users\\viper\\projects\\FarmLife',
     );
@@ -95,22 +100,133 @@ describe('AI explicit file context safeguards', () => {
 
     const block = await getExplicitFilesBlock(['C:\\repo\\large.log']);
 
-    expect(fsMocks.readTextFileSample).toHaveBeenCalledWith('C:\\repo\\large.log', 64 * 1024, { root: undefined });
+    expect(fsMocks.readTextFileSample).toHaveBeenCalledWith('C:\\repo\\large.log', 64 * 1024, {
+      root: undefined,
+    });
     expect(block).toContain('C:\\repo\\large.log (truncated)');
     expect(block.length).toBeLessThan(18_000);
   });
 
   it('adds media attachments as metadata without reading binary bytes', async () => {
-    const block = await getExplicitFilesBlock([
-      'C:\\repo\\assets\\hero.png',
-      'C:\\repo\\clips\\demo.mp4',
-    ]);
+    fsMocks.readTextFileSample.mockResolvedValue({ ok: true, path: '', content: 'discarded' });
+    const block = await getExplicitFilesBlock(
+      ['C:\\repo\\assets\\hero.png', 'C:\\repo\\clips\\demo.mp4'],
+      'C:\\repo',
+    );
 
-    expect(fsMocks.readTextFileSample).not.toHaveBeenCalled();
+    expect(fsMocks.readTextFileSample).toHaveBeenCalledWith('C:\\repo\\assets\\hero.png', 1, {
+      root: 'C:\\repo',
+    });
+    expect(fsMocks.readTextFileSample).toHaveBeenCalledWith('C:\\repo\\clips\\demo.mp4', 1, {
+      root: 'C:\\repo',
+    });
     expect(block).toContain('Media file metadata only (image).');
     expect(block).toContain('Media file metadata only (video).');
     expect(block).toContain('Binary bytes were not read into the prompt.');
+    expect(block).not.toContain('discarded');
   });
+
+  it('applies the same pre-read policy to connected and explicit provider credential paths', async () => {
+    fsMocks.getStoredProjectRoot.mockReturnValue('C:\\repo');
+    window.localStorage.setItem(
+      'jarvis-terminal-pane-tree:project_a',
+      JSON.stringify({
+        kind: 'leaf',
+        agentSlug: 'coder',
+        connectedFiles: [
+          'C:\\repo\\.codex\\auth.json',
+          'C:\\repo\\.credentials\\session.json',
+          'C:\\repo\\Chrome\\User Data\\Default\\Login Data',
+        ],
+      }),
+    );
+
+    const [connected, explicit] = await Promise.all([
+      getConnectedFilesBlock('coder', 'project_a'),
+      getExplicitFilesBlock(
+        ['C:\\repo\\.config\\opencode\\auth.json', 'C:\\repo\\.claude\\.credentials.json'],
+        'C:\\repo',
+      ),
+    ]);
+
+    expect(fsMocks.readTextFileSample).not.toHaveBeenCalled();
+    expect(connected).toContain('credential_path');
+    expect(explicit).toContain('credential_path');
+    expect(connected).not.toContain('C:\\repo');
+    expect(explicit).not.toContain('C:\\repo');
+  });
+
+  it('drops content-denied connected and explicit samples without reflecting their path or secret', async () => {
+    fsMocks.getStoredProjectRoot.mockReturnValue('C:\\repo');
+    window.localStorage.setItem(
+      'jarvis-terminal-pane-tree:project_a',
+      JSON.stringify({
+        kind: 'leaf',
+        agentSlug: 'coder',
+        connectedFiles: ['C:\\repo\\ghp_1234567890abcdefghijkl.txt'],
+      }),
+    );
+    fsMocks.readTextFileSample.mockImplementation(async (path: string) => ({
+      ok: true,
+      path,
+      content: 'const CLIENT_SECRET = "synthetic-secret";',
+    }));
+
+    const connected = await getConnectedFilesBlock('coder', 'project_a');
+    const explicit = await getExplicitFilesBlock(['C:\\repo\\line\nbreak.txt'], 'C:\\repo');
+
+    for (const block of [connected, explicit]) {
+      expect(block).toContain('secret_content');
+      expect(block).not.toContain('synthetic-secret');
+      expect(block).not.toContain('C:\\repo');
+      expect(block).not.toContain('ghp_1234567890abcdefghijkl');
+      expect(block).not.toContain('line');
+      expect(block).not.toContain('break');
+      expect(block).toContain('source:');
+    }
+  });
+
+  it('validates connected media with a one-byte read and discards the sample', async () => {
+    fsMocks.getStoredProjectRoot.mockReturnValue('C:\\repo');
+    window.localStorage.setItem(
+      'jarvis-terminal-pane-tree:project_a',
+      JSON.stringify({
+        kind: 'leaf',
+        agentSlug: 'coder',
+        connectedFiles: ['C:\\repo\\hero.png'],
+      }),
+    );
+    fsMocks.readTextFileSample.mockResolvedValue({
+      ok: true,
+      path: 'C:\\repo\\hero.png',
+      content: 'discarded-byte',
+    });
+
+    const block = await getConnectedFilesBlock('coder', 'project_a');
+
+    expect(fsMocks.readTextFileSample).toHaveBeenCalledWith('C:\\repo\\hero.png', 1, {
+      root: 'C:\\repo',
+    });
+    expect(block).toContain('Media file metadata only (image).');
+    expect(block).not.toContain('discarded-byte');
+  });
+
+  it.each(['outside_root', 'too_large'] as const)(
+    'returns only a safe media denial for %s',
+    async (code) => {
+      fsMocks.readTextFileSample.mockResolvedValue({
+        ok: false,
+        path: 'C:\\private\\hero.png',
+        error: { code, raw: 'C:\\private\\synthetic-secret' },
+      });
+
+      const block = await getExplicitFilesBlock(['C:\\private\\hero.png'], 'C:\\private');
+
+      expect(block).toContain(code === 'outside_root' ? 'outside_allowed_root' : 'too_large');
+      expect(block).not.toContain('C:\\private');
+      expect(block).not.toContain('synthetic-secret');
+    },
+  );
 
   it('frames attached terminal transcripts as evidence instead of completion guesses', () => {
     const store = useTerminalTranscriptStore.getState();
@@ -123,12 +239,14 @@ describe('AI explicit file context safeguards', () => {
     store.appendOutput('pty_done', 'Running tests...\nAll tests passed\n');
     store.setCurrentInput('pty_done', 'npm run build');
 
-    const block = getExplicitTerminalBlock([{
-      sessionId: 'pty_done',
-      paneId: 'pane_terminal',
-      label: 'opencode',
-      agentSlug: 'coder',
-    }]);
+    const block = getExplicitTerminalBlock([
+      {
+        sessionId: 'pty_done',
+        paneId: 'pane_terminal',
+        label: 'opencode',
+        agentSlug: 'coder',
+      },
+    ]);
 
     expect(block).toContain('Treat the transcript as evidence, not proof of completion.');
     expect(block).toContain('Never say you lack authorization');

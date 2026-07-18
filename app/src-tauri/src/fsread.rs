@@ -159,7 +159,11 @@ pub fn fs_read_text(path: String, root: Option<String>) -> Result<String, String
 }
 
 #[tauri::command]
-pub fn fs_read_text_sample(path: String, max_bytes: Option<u64>, root: Option<String>) -> Result<String, String> {
+pub fn fs_read_text_sample(
+    path: String,
+    max_bytes: Option<u64>,
+    root: Option<String>,
+) -> Result<String, String> {
     let p = existing_path(&path, root.as_deref())?;
     let meta = match std::fs::metadata(&p) {
         Ok(m) => m,
@@ -174,7 +178,9 @@ pub fn fs_read_text_sample(path: String, max_bytes: Option<u64>, root: Option<St
     if meta.len() > MAX_FILE_BYTES {
         return Err("too_large".to_string());
     }
-    let limit = max_bytes.unwrap_or(MAX_SAMPLE_BYTES).clamp(1, MAX_SAMPLE_BYTES);
+    let limit = max_bytes
+        .unwrap_or(MAX_SAMPLE_BYTES)
+        .clamp(1, MAX_SAMPLE_BYTES);
     let mut file = std::fs::File::open(&p).map_err(|e| format!("io: {}", e))?;
     let mut bytes = Vec::with_capacity(limit as usize);
     file.by_ref()
@@ -185,7 +191,11 @@ pub fn fs_read_text_sample(path: String, max_bytes: Option<u64>, root: Option<St
 }
 
 fn image_mime_for_path(path: &std::path::Path) -> Option<&'static str> {
-    match path.extension().and_then(|ext| ext.to_str()).map(|ext| ext.to_ascii_lowercase()) {
+    match path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.to_ascii_lowercase())
+    {
         Some(ext) if ext == "png" => Some("image/png"),
         Some(ext) if ext == "jpg" || ext == "jpeg" => Some("image/jpeg"),
         Some(ext) if ext == "webp" => Some("image/webp"),
@@ -263,7 +273,11 @@ pub fn fs_list_dir(path: String, root: Option<String>) -> Result<Vec<FsEntry>, S
             modified_ms,
         });
     }
-    out.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())));
+    out.sort_by(|a, b| {
+        b.is_dir
+            .cmp(&a.is_dir)
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+    });
     Ok(out)
 }
 
@@ -306,8 +320,7 @@ pub fn fs_create_text_with_content(
                 format!("io: {}", e)
             }
         })?;
-    std::io::Write::write_all(&mut file, content.as_bytes())
-        .map_err(|e| format!("io: {}", e))
+    std::io::Write::write_all(&mut file, content.as_bytes()).map_err(|e| format!("io: {}", e))
 }
 
 #[tauri::command]
@@ -355,6 +368,99 @@ mod tests {
     }
 
     #[test]
+    fn sample_rejects_outside_root() {
+        let root = test_root("sample-root");
+        let outside = test_root("sample-outside");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        let file = outside.join("notes.txt");
+        std::fs::write(&file, b"outside").unwrap();
+
+        assert_eq!(
+            fs_read_text_sample(
+                file.to_string_lossy().to_string(),
+                Some(1),
+                Some(root.to_string_lossy().to_string()),
+            ),
+            Err("outside_root".to_string())
+        );
+
+        std::fs::remove_dir_all(root).unwrap();
+        std::fs::remove_dir_all(outside).unwrap();
+    }
+
+    #[test]
+    fn sample_rejects_too_large() {
+        let root = test_root("sample-large");
+        std::fs::create_dir_all(&root).unwrap();
+        let file = root.join("oversized.txt");
+        let handle = std::fs::File::create(&file).unwrap();
+        handle.set_len(MAX_FILE_BYTES + 1).unwrap();
+        drop(handle);
+
+        assert_eq!(
+            fs_read_text_sample(
+                file.to_string_lossy().to_string(),
+                Some(1),
+                Some(root.to_string_lossy().to_string()),
+            ),
+            Err("too_large".to_string())
+        );
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn sample_rejects_symlink_file_escape() {
+        let root = test_root("sample-symlink-file-root");
+        let outside = test_root("sample-symlink-file-outside");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        let outside_file = outside.join("secret.txt");
+        std::fs::write(&outside_file, b"secret").unwrap();
+        let link = root.join("linked.txt");
+        std::os::unix::fs::symlink(&outside_file, &link).unwrap();
+
+        assert_eq!(
+            fs_read_text_sample(
+                link.to_string_lossy().to_string(),
+                Some(1),
+                Some(root.to_string_lossy().to_string()),
+            ),
+            Err("outside_root".to_string())
+        );
+
+        std::fs::remove_dir_all(root).unwrap();
+        std::fs::remove_dir_all(outside).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn sample_rejects_symlink_directory_escape() {
+        let root = test_root("sample-symlink-dir-root");
+        let outside = test_root("sample-symlink-dir-outside");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        let outside_file = outside.join("secret.txt");
+        std::fs::write(&outside_file, b"secret").unwrap();
+        let link = root.join("linked");
+        std::os::unix::fs::symlink(&outside, &link).unwrap();
+
+        assert_eq!(
+            fs_read_text_sample(
+                link.join("secret.txt").to_string_lossy().to_string(),
+                Some(1),
+                Some(root.to_string_lossy().to_string()),
+            ),
+            Err("outside_root".to_string())
+        );
+
+        std::fs::remove_dir_all(root).unwrap();
+        std::fs::remove_dir_all(outside).unwrap();
+    }
+
+    #[test]
     fn creates_content_once_and_refuses_overwrite() {
         let root = test_root("create");
         std::fs::create_dir_all(&root).unwrap();
@@ -382,7 +488,11 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         let nested = root.join("Projects").join("FarmLife");
         let root_text = root.to_string_lossy().to_string();
-        fs_create_dir_all(nested.to_string_lossy().to_string(), Some(root_text.clone())).unwrap();
+        fs_create_dir_all(
+            nested.to_string_lossy().to_string(),
+            Some(root_text.clone()),
+        )
+        .unwrap();
         assert!(nested.is_dir());
         let collision = root.join("Projects").join("not-a-folder");
         std::fs::write(&collision, b"file").unwrap();
