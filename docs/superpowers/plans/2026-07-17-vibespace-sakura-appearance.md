@@ -450,7 +450,11 @@ state. Requested `webapp-testing`, `code-review`, `pr-review-toolkit`, and
 - Create: `scripts/visual-sakura/manifests/routes.json`
 - Create: `scripts/visual-sakura/manifests/primitives.json`
 - Create: `scripts/visual-sakura/manifests/windows-overlays.json`
+- Create: `scripts/visual-sakura/manifests/motion.json`
+- Create: `scripts/visual-sakura/manifests/motion.schema.json`
 - Create: `scripts/visual-sakura/manifests/performance-budgets.json`
+- Create: `scripts/visual-sakura/manifests/pr-media.json`
+- Create: `scripts/visual-sakura/manifests/pr-media.schema.json`
 - Create: `scripts/visual-sakura/manifests/session.schema.json`
 - Create: `scripts/visual-sakura/manifest-contract.test.mjs`
 - Create: `scripts/visual-sakura/performance-budget.test.mjs`
@@ -497,6 +501,18 @@ state. Requested `webapp-testing`, `code-review`, `pr-review-toolkit`, and
       ordering, nonexistent files, a production-reachable Sakura style-board
       fixture, missing states, unowned windows, and source drift. The real
       product Workbench must remain production-reachable.
+- [ ] Populate `motion.json` with every source-discovered React Motion spring,
+      transition, and animation reachable from a Sakura route/state, including
+      literal source/test path, owning route lane, accepted non-Sakura oracle,
+      Sakura policy, reduced-motion policy, and independently reviewed semantic
+      exception or `null`. Validate it against `motion.schema.json`; missing or
+      extra reachable motion and unreviewed raw-spring exceptions fail closed.
+- [ ] Define `pr-media.json` as the only shareable-media allowlist. Its schema
+      records fixture ID, capture command, source session, redaction status,
+      metadata scrub result, privacy/secret/OCR scan result, dimensions,
+      duration, bytes, SHA-256, committed destination, and draft-PR purpose.
+      Raw reference files, private crops, real user data, traces, profiles, and
+      any capture outside deterministic account-free fixtures are ineligible.
 - [ ] Run `node --test scripts/visual-sakura/manifest-contract.test.mjs` and
       capture the intended RED before populating the manifests.
 - [ ] Create deterministic account-free fixtures and capture preserved-theme,
@@ -552,8 +568,10 @@ state. Requested `webapp-testing`, `code-review`, `pr-review-toolkit`, and
 - Create: `app/src/features/command-palette/actions.theme.test.ts`
 - Modify: `app/src/lib/actions/registry.ts`
 - Modify: `app/src/lib/actions/registryTheme.test.ts`
+- Modify: `app/src/lib/actions/registryJarvisCore.ts`
+- Modify: `app/src/lib/actions/registryJarvisCore.test.ts`
 - Modify after SK0B confirmation: every additional JARVIS appearance action
-  registry/catalog/test path; the known real registry path above is mandatory
+  registry/catalog/test path; all four known registry paths above are mandatory
 
 **Commit:** `feat(appearance): add Sakura theme registry and commands`
 
@@ -681,7 +699,10 @@ state. Requested `webapp-testing`, `code-review`, `pr-review-toolkit`, and
 - [ ] Add a source scanner over the exact motion manifest and Playwright
       overshoot/duration probes. CSS checks alone do not prove React Motion
       behavior; raw explicit springs reachable under Sakura fail closed unless
-      an independently reviewed semantic exception exists in the manifest.
+      an independently reviewed semantic exception exists in
+      `scripts/visual-sakura/manifests/motion.json`. Validate the manifest
+      against its schema, require exact source reachability/owner-lane closure,
+      and fail on stale locations or uncovered transitions.
 - [ ] Run CSS/contrast GREEN, exact computed-style comparisons across all prior
       themes, frozen performance-budget tests, build/bundle metrics,
       CSP/security scans, and visual review.
@@ -779,6 +800,7 @@ state. Requested `webapp-testing`, `code-review`, `pr-review-toolkit`, and
 
 - Update: `scripts/visual-sakura/manifests/routes.json`
 - Update: `scripts/visual-sakura/manifests/windows-overlays.json`
+- Update: `scripts/visual-sakura/manifests/motion.json`
 - Update: `docs/appearance/sakura/ROUTE_MATRIX.md`
 - Update: this plan only if literal execution paths differ from the manifests
 
@@ -790,6 +812,9 @@ state. Requested `webapp-testing`, `code-review`, `pr-review-toolkit`, and
 - [ ] Record exact component/test paths, requirements, predecessor commit,
       baseline capture IDs, functional tests, screenshots, accessibility
       states, and exclusions for every row.
+- [ ] Reconcile every `motion.json` row to exactly one route lane and literal
+      implementation/test path after SK5. Re-run the source scanner so new,
+      moved, stale, duplicate, or unowned motion fails before lane locks open.
 - [ ] Prove routes are complete, unique, source-backed, and non-overlapping.
       Missing or extra source routes fail closed.
 - [ ] Acquire literal non-overlapping locks. Parallelize only if actual agent
@@ -1051,6 +1076,10 @@ accepted SK6 manifest.
 - Create: `docs/appearance/sakura/ROLLBACK.md`
 - Create: `docs/appearance/sakura/FINAL_HANDOFF.md`
 - Finalize: `docs/appearance/sakura/FINAL_PR_CHECKLIST.md`
+- Finalize: `scripts/visual-sakura/manifests/pr-media.json`
+- Create only from its allowlist: `docs/screenshots/sakura/` sanitized fixture
+  screenshots and compressed interaction clip with exact filenames frozen in
+  SK0B
 - Update: exact current appearance/architecture docs frozen in SK0B
 - Update only after local acceptance: successor draft PR body
 
@@ -1091,6 +1120,19 @@ npx playwright test --config playwright.sakura.config.ts
       IndexedDB, cache, log, browser-data, temp, and session file are ignored and
       absent from staged/committed paths. Preserve the task-owned runtime
       profile while the required handoff app remains runnable.
+- [ ] Export only the small deterministic fixture captures named by
+      `scripts/visual-sakura/manifests/pr-media.json` from the ignored session
+      root into `docs/screenshots/sakura/`. Strip EXIF,
+      filenames, paths, timestamps, and audio; run OCR/privacy/secret/license
+      scans; verify exact dimensions/duration/byte budgets and SHA-256; then
+      independently inspect the sanitized output before staging. Commit only
+      allowlisted account-free screenshots and the compressed interaction clip.
+      Raw traces and all non-allowlisted media remain local and ignored.
+- [ ] Run a staged-path contract that permits those sanitized media paths only
+      when every schema field and scan is PASS, then use their committed raw-file
+      links in the draft PR. If any media fails scanning or repository policy,
+      omit it, record the failed/blocked evidence honestly, and do not upload a
+      private local artifact through an ad hoc channel.
 - [ ] Add a Sakura section to the existing successor draft PR with source
       hierarchy, exact local reference root/inventory, design description,
       final appearance matrix, Appearance,
