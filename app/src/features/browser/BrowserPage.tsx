@@ -22,7 +22,7 @@ import {
   isTauriRuntime,
   resolvePageWsUrl,
 } from './browserClient';
-import { executeBrowserTool, requestBrowserTool } from './browserActions';
+import { consumeBrowserReviewedAction } from './browserActions';
 import { useBrowserStore } from './browserStore';
 import './browser.css';
 
@@ -65,6 +65,7 @@ export function BrowserPage() {
 
   const active = tabs.find((t) => t.id === activeTabId);
   const pending = agentActions.filter((a) => a.status === 'pending');
+  const reviewedOutcomes = agentActions.filter((a) => a.status !== 'pending').slice(0, 5);
 
   const refreshStatus = React.useCallback(async () => {
     const status = await browserStatus();
@@ -152,14 +153,19 @@ export function BrowserPage() {
       setDraftUrl(url);
       try {
         if (!cdpRef.current) {
-          const status = runtime?.running ? runtime : (await browserStart()).ok
-            ? await browserStatus()
-            : null;
+          const status = runtime?.running
+            ? runtime
+            : (await browserStart()).ok
+              ? await browserStatus()
+              : null;
           if (status?.cdp_ws_url) {
             setRuntime(status);
             await connectCdp(status.cdp_ws_url);
           } else {
-            toast.warning('Agent runtime', 'Could not start Edge/Chrome CDP — switching to Simple Browser.');
+            toast.warning(
+              'Agent runtime',
+              'Could not start Edge/Chrome CDP — switching to Simple Browser.',
+            );
             setEngine('iframe');
             navigateIframe(url);
             return;
@@ -262,7 +268,13 @@ export function BrowserPage() {
             </button>
           </div>
         ))}
-        <Button type="button" size="icon-sm" variant="ghost" aria-label="New tab" onClick={() => newTab('about:blank')}>
+        <Button
+          type="button"
+          size="icon-sm"
+          variant="ghost"
+          aria-label="New tab"
+          onClick={() => newTab('about:blank')}
+        >
           <Plus />
         </Button>
       </div>
@@ -309,7 +321,10 @@ export function BrowserPage() {
             void go();
           }}
         >
-          <Globe2 className="h-3.5 w-3.5" style={{ color: 'hsl(var(--accent-copper))', flex: '0 0 auto' }} />
+          <Globe2
+            className="h-3.5 w-3.5"
+            style={{ color: 'hsl(var(--accent-copper))', flex: '0 0 auto' }}
+          />
           <input
             aria-label="Address bar"
             value={draftUrl === 'about:blank' ? '' : draftUrl}
@@ -340,10 +355,20 @@ export function BrowserPage() {
           </Button>
         )}
 
-        <Button type="button" size="sm" variant="ghost" onClick={() => setSidebarOpen(!sidebarOpen)}>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+        >
           Profile
         </Button>
-        <Button type="button" size="sm" variant="ghost" onClick={() => setConsoleOpen(!consoleOpen)}>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={() => setConsoleOpen(!consoleOpen)}
+        >
           Console
         </Button>
         <Button
@@ -366,7 +391,11 @@ export function BrowserPage() {
             size="sm"
             variant="ghost"
             disabled={!isTauriRuntime()}
-            title={isTauriRuntime() ? 'Optional isolated Edge/Chrome for agent control' : 'Desktop app only'}
+            title={
+              isTauriRuntime()
+                ? 'Optional isolated Edge/Chrome for agent control'
+                : 'Desktop app only'
+            }
             onClick={() => void startAgentRuntime()}
           >
             Agent runtime
@@ -379,12 +408,13 @@ export function BrowserPage() {
           <aside className="browser-sidebar" aria-label="Browser sidebar">
             <h3>Engine</h3>
             <p>
-              <strong style={{ color: 'hsl(var(--foreground))' }}>Simple Browser</strong> embeds pages in-app
-              (same idea as VS Code / Canvas simple browser). Best for localhost and sites that allow framing.
+              <strong style={{ color: 'hsl(var(--foreground))' }}>Simple Browser</strong> embeds
+              pages in-app (same idea as VS Code / Canvas simple browser). Best for localhost and
+              sites that allow framing.
             </p>
             <p style={{ marginTop: 8 }}>
-              <strong style={{ color: 'hsl(var(--foreground))' }}>Agent runtime</strong> launches an isolated
-              Edge/Chrome profile with CDP for automation. Optional.
+              <strong style={{ color: 'hsl(var(--foreground))' }}>Agent runtime</strong> launches an
+              isolated Edge/Chrome profile with CDP for automation. Optional.
             </p>
             <h3 style={{ marginTop: 14 }}>Profile</h3>
             <p>Isolated app-data profile — never your everyday browser.</p>
@@ -410,7 +440,13 @@ export function BrowserPage() {
             <Button type="button" size="sm" variant="ghost" onClick={() => restoreClosed()}>
               Restore closed tab
             </Button>
-            <Button type="button" size="sm" variant="ghost" style={{ marginTop: 6 }} onClick={() => void refreshStatus()}>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              style={{ marginTop: 6 }}
+              onClick={() => void refreshStatus()}
+            >
               Refresh diagnostics
             </Button>
           </aside>
@@ -418,7 +454,11 @@ export function BrowserPage() {
 
         <div className="browser-viewport" data-testid="browser-viewport">
           {engine === 'agent' && frameDataUrl ? (
-            <img src={frameDataUrl} alt="Live agent browser view" className="browser-viewport-cast" />
+            <img
+              src={frameDataUrl}
+              alt="Live agent browser view"
+              className="browser-viewport-cast"
+            />
           ) : showUrl ? (
             <div className="browser-iframe-wrap">
               <iframe
@@ -430,7 +470,8 @@ export function BrowserPage() {
                 sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads"
                 referrerPolicy="no-referrer-when-downgrade"
                 onLoad={() => {
-                  if (active) updateTab(active.id, { loading: false, title: active.title || showUrl });
+                  if (active)
+                    updateTab(active.id, { loading: false, title: active.title || showUrl });
                   setIframeBlocked(false);
                 }}
                 onError={() => setIframeBlocked(true)}
@@ -439,14 +480,24 @@ export function BrowserPage() {
                 <div className="browser-iframe-block">
                   <h3>Page blocked embedding</h3>
                   <p>
-                    This site refuses to load in an in-app browser (X-Frame-Options / CSP), same limitation as
-                    VS Code Simple Browser.
+                    This site refuses to load in an in-app browser (X-Frame-Options / CSP), same
+                    limitation as VS Code Simple Browser.
                   </p>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <Button type="button" size="sm" variant="accent" onClick={() => void openExternal(showUrl)}>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="accent"
+                      onClick={() => void openExternal(showUrl)}
+                    >
                       Open externally
                     </Button>
-                    <Button type="button" size="sm" variant="outline" onClick={() => void startAgentRuntime()}>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void startAgentRuntime()}
+                    >
                       Try agent runtime
                     </Button>
                   </div>
@@ -458,8 +509,8 @@ export function BrowserPage() {
               <p className="browser-kicker">Vibe Browser</p>
               <h2>Browse inside the workspace</h2>
               <p>
-                Type a URL above (try <code>http://localhost:5173</code>) and press Go. Simple Browser mode
-                works immediately — no extra runtime required.
+                Type a URL above (try <code>http://localhost:5173</code>) and press Go. Simple
+                Browser mode works immediately — no extra runtime required.
               </p>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <Button
@@ -490,28 +541,21 @@ export function BrowserPage() {
         </div>
       </div>
 
-      {(consoleOpen || pending.length > 0) && (
+      {(consoleOpen || pending.length > 0 || reviewedOutcomes.length > 0) && (
         <div className="browser-console" aria-label="Browser console and approvals">
           {pending.map((action) => (
             <div key={action.id} className="browser-approval">
               <strong>
-                {action.risk.toUpperCase()} · {action.tool}
+                {action.risk.toUpperCase()} · {action.kind}
               </strong>
-              <div>{action.summary}</div>
+              <div>{action.safeSummary}</div>
               <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
                 <Button
                   type="button"
                   size="sm"
                   variant="accent"
                   onClick={() => {
-                    void (async () => {
-                      resolveAgentAction(action.id, 'running');
-                      const result = await executeBrowserTool(
-                        { tool: action.tool, summary: action.summary },
-                        cdpRef.current,
-                      );
-                      resolveAgentAction(action.id, result.ok ? 'done' : 'failed', result.message);
-                    })();
+                    void consumeBrowserReviewedAction(action.id, cdpRef.current);
                   }}
                 >
                   Approve
@@ -520,11 +564,19 @@ export function BrowserPage() {
                   type="button"
                   size="sm"
                   variant="ghost"
-                  onClick={() => resolveAgentAction(action.id, 'denied')}
+                  onClick={() => resolveAgentAction(action.id, 'denied', 'Denied by user.')}
                 >
                   Deny
                 </Button>
               </div>
+            </div>
+          ))}
+          {reviewedOutcomes.map((action) => (
+            <div key={action.id} className="browser-approval" data-status={action.status}>
+              <strong>
+                {action.status.toUpperCase()} · {action.kind}
+              </strong>
+              {action.result ? <div>{action.result}</div> : null}
             </div>
           ))}
           {consoleOpen
