@@ -1844,3 +1844,29 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Required transport** | `fetchCloudAdminEntitlementSnapshot(userId)` must validate the active Supabase session before and after the await, invoke the existing authenticated `get-message-usage` Edge Function, runtime-require a boolean `admin_unlimited`, and assert the direct RPC path is never called. The Edge Function validates the JWT, derives the caller account server-side, and performs the service-role RPC. |
 | **Fail-closed semantics** | Edge transport/session/error/throw/malformed responses map to `unavailable`. A successful Edge response with `admin_unlimited: false` is an authoritative fail-closed denial with an empty capability list and must suppress development fallback; it cannot grant `app.admin`. |
 | **Test correction** | Any Task 5 RED fixture that was changed back to `supabase.rpc` is stale relative to migration `0028` and this authority resolution. Restore `auth.getSession` plus `functions.invoke` mocks and explicit `rpc`-never-called assertions before implementing or committing. |
+
+## 2026-07-18 - Task 0R collaboration capability evidence re-audited
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-18 05:19 CT |
+| **Primary coordinator** | `AGENT-CODEX-20260718-SIK` |
+| **State** | **BINDING_CORRECTION** - the `REPAIR_REQUIRED` direction recorded by `6417e17` is superseded. |
+| **Observed interface** | The collaboration `spawn_agent` interface available to the primary coordinator accepts only `task_name`, `message`, and `fork_turns`. It exposes no model selector, no reasoning-effort selector, and no backend execution label. |
+| **Truthful evidence rule** | Requested GPT-5.6/Sol Max assignment remains recorded separately from execution attestation; the actual subagent backend is unverified. Do not regenerate the 17 artifacts to claim selectors that this runtime does not expose. |
+| **Registry state** | Keep the 17 unified artifacts at their validated byte-stable state while product implementation continues. Any future capability change requires direct executable interface evidence before registry mutation. |
+
+## 2026-07-18 - Task 5 accepted and Task 6 exact lock acquired
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-18 05:19 CT |
+| **Primary coordinator** | `AGENT-CODEX-20260718-SIK` |
+| **Task 5 commit** | `1beae0e4e2bd601c8ce04f5584f89d7cc550ae1b` - exact eleven-file entitlement interlock using the authenticated `get-message-usage` Edge route required by migration `0028` and binding commit `7e0b440`. |
+| **Task 5 verification** | Focused tests 35/35 PASS; full TypeScript PASS; exact-file Prettier and diff checks PASS; two independent repaired-snapshot reviews PASS; direct client admin RPC, hard-coded owner authority, and `isAdminIdentity()` removed. |
+| **Task 5 lock** | Released. |
+| **Task 6 owner** | `/root/task6_browser_approval` |
+| **Task 6 state** | **IMPLEMENTING** |
+| **Task 6 exclusive product paths** | `app/src/features/browser/browserTypes.ts`; `app/src/features/browser/browserStore.ts`; `app/src/features/browser/browserActions.ts`; `app/src/features/browser/browserActions.test.ts`; `app/src/features/browser/browserStore.test.ts`; `app/src/features/browser/BrowserPage.tsx`; `app/src/features/browser/BrowserPage.approval.test.tsx` |
+| **Concurrent agents** | Future-task preparation remains read-only. No other product implementation may overlap Task 6. |
+| **Protected state** | `docs/unified-goals/**`, `install/install.ps1`, unrelated branches/worktrees and existing localhost/app-data profiles remain out of scope. |
