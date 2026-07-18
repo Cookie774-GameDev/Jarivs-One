@@ -1786,6 +1786,18 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Concurrent Task 4 isolation** | Task 4 paths remain exclusively owned by `/root/task4_source_policy` and must not be touched, staged, or committed by this remediation. |
 | **Protected state** | `docs/unified-goals/**`, `install/install.ps1`, unrelated worktrees/branches, production services/data/billing, and Task 4 files remain out of scope. |
 
+## 2026-07-18 - Tasks 1-3 prerequisite remediation verified
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-18 04:17 CT |
+| **Owner** | `/root/task0r_binding_review` |
+| **State** | **VERIFIED_COMPLETE** - logical locks release with the containing remediation commit |
+| **Result** | Restored the immutable local-only privacy rule; prioritized `unknown_field` for every unexpected own string key while retaining `non_json_safe` evidence and descriptor-safe accessor handling; added deterministic account-boot test timeout headroom without product behavior changes. |
+| **TDD evidence** | Initial focused RED: 4 intended failures; accessor-purity self-review RED: getter read `1` versus expected `0`. Focused GREEN: 4/4 and 3/3. |
+| **Final verification** | Task 2 identity/profile `29/29` PASS; Task 3 validators `377/377` PASS; App account identity `35/35` PASS; loaded Task 1 matrix `150/150` PASS; root TypeScript typecheck PASS; exact-file Prettier and diff checks PASS. |
+| **Isolation** | No Task 4 file, `docs/unified-goals/**`, installer, unrelated worktree, production service/data, billing, deploy, release, or merge is included. |
+
 ## 2026-07-18 - Task 4 and Tasks 1-3 remediation accepted
 
 | Field | Value |
