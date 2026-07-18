@@ -109,8 +109,49 @@ describe('createJarvisPersistenceCoordinator', () => {
       start(): () => void;
       retry(): Promise<void>;
       getState(): JarvisPersistenceState;
+      getReadyReceipt(): Readonly<{ accountId: string; generation: number; state: 'ready' }> | null;
       subscribe(listener: () => void): () => void;
     }>();
+  });
+
+  it('publishes and synchronously revokes exact generation-bound ready receipts', async () => {
+    const accountA = { accountId: 'receipt-account-a', source: 'local' } as const;
+    const accountB = { accountId: 'receipt-account-b', source: 'supabase' } as const;
+    const accountAActivation = deferred<ReturnType<typeof ready>>();
+    const accountBActivation = deferred<ReturnType<typeof ready>>();
+    const harness = identityHarness(accountA);
+    activateMock
+      .mockReturnValueOnce(accountAActivation.promise)
+      .mockReturnValueOnce(accountBActivation.promise);
+    const coordinator = createJarvisPersistenceCoordinator({
+      db: fakeDb(),
+      readIdentity: harness.readIdentity,
+      subscribeIdentity: harness.subscribeIdentity,
+    });
+
+    const stop = coordinator.start();
+    expect(coordinator.getReadyReceipt()).toBeNull();
+
+    accountAActivation.resolve(ready(accountA.accountId));
+    await flushActivation();
+    const receiptA = coordinator.getReadyReceipt();
+    expect(receiptA).toEqual({
+      accountId: accountA.accountId,
+      generation: 1,
+      state: 'ready',
+    });
+    expect(Object.isFrozen(receiptA)).toBe(true);
+
+    harness.setIdentity(accountB);
+    expect(coordinator.getReadyReceipt()).toBeNull();
+    accountBActivation.resolve(ready(accountB.accountId));
+    await flushActivation();
+    expect(coordinator.getReadyReceipt()).toEqual({
+      accountId: accountB.accountId,
+      generation: 2,
+      state: 'ready',
+    });
+    stop();
   });
 
   it('publishes activating before ready on startup', async () => {
@@ -621,12 +662,11 @@ describe('createJarvisPersistenceCoordinator', () => {
     stop();
   });
 
-  it('makes a stale degraded retry closure rerun only the current identity', async () => {
+  it('makes a stale degraded retry closure inert outside its generation', async () => {
     const harness = identityHarness({ accountId: 'old-account', source: 'local' });
     activateMock
       .mockResolvedValueOnce(degraded('old-account', 'migration_failed'))
-      .mockResolvedValueOnce(ready('new-account'))
-      .mockResolvedValueOnce(ready('new-account', 'new-account-retried'));
+      .mockResolvedValueOnce(ready('new-account'));
     const coordinator = createJarvisPersistenceCoordinator({
       db: fakeDb(),
       readIdentity: harness.readIdentity,
@@ -644,11 +684,10 @@ describe('createJarvisPersistenceCoordinator', () => {
     expect(coordinator.getState()).toEqual({
       status: 'ready',
       accountId: 'new-account',
-      profileId: 'new-account-retried',
+      profileId: 'profile-new-account',
     });
     expect(activateMock.mock.calls.map((call) => call[1])).toEqual([
       { accountId: 'old-account', source: 'local' },
-      { accountId: 'new-account', source: 'supabase' },
       { accountId: 'new-account', source: 'supabase' },
     ]);
     stop();

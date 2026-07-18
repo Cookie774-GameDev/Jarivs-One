@@ -249,6 +249,62 @@ const protectedBootObservers = vi.hoisted(() => {
   };
 });
 
+const appPersistence = vi.hoisted(() => {
+  const create = vi.fn(
+    (input: {
+      readIdentity: () => { accountId: string } | null;
+      subscribeIdentity: (listener: () => void) => () => void;
+    }) => {
+      let generation = 0;
+      let receipt: Readonly<{ accountId: string; generation: number; state: 'ready' }> | null =
+        null;
+      let state: unknown = { status: 'degraded', category: 'identity_not_ready' };
+      const listeners = new Set<() => void>();
+      let stopIdentity: (() => void) | undefined;
+      let stopped = false;
+      const activate = () => {
+        if (stopped) return;
+        const identity = input.readIdentity();
+        generation += 1;
+        receipt = identity
+          ? Object.freeze({ accountId: identity.accountId, generation, state: 'ready' as const })
+          : null;
+        state = identity
+          ? {
+              status: 'ready',
+              accountId: identity.accountId,
+              profileId: `profile-${identity.accountId}`,
+            }
+          : { status: 'degraded', category: 'identity_not_ready' };
+        for (const listener of [...listeners]) listener();
+      };
+      return {
+        start: () => {
+          stopIdentity = input.subscribeIdentity(activate);
+          activate();
+          return () => {
+            if (stopped) return;
+            stopped = true;
+            receipt = null;
+            stopIdentity?.();
+          };
+        },
+        retry: async () => activate(),
+        getState: () => state,
+        getReadyReceipt: () => receipt,
+        subscribe: (listener: () => void) => {
+          listeners.add(listener);
+          return () => listeners.delete(listener);
+        },
+      };
+    },
+  );
+  return {
+    create,
+    reset: () => create.mockClear(),
+  };
+});
+
 vi.mock('@/features/jarvis-memory/learningListener', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/features/jarvis-memory/learningListener')>();
   return {
@@ -327,6 +383,10 @@ vi.mock('@/lib/ai/runtime', async (importOriginal) => {
     startRuntimeListener: bootListeners.runtime,
   };
 });
+
+vi.mock('@/lib/jarvis/persistenceCoordinator', () => ({
+  createJarvisPersistenceCoordinator: appPersistence.create,
+}));
 
 vi.mock('@/lib/db', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/db')>();
@@ -471,6 +531,7 @@ function accountIdentityBootSuite(): void {
     cloudBoot.reset();
     queueAuthority.reset();
     protectedBootObservers.reset();
+    appPersistence.reset();
     useJarvisLearningStore.getState().clearForTests();
     useAllAboutMeStore.setState(useAllAboutMeStore.getInitialState(), true);
     useJarvisTaskRunStore.getState().clearForTests();

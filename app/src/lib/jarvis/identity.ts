@@ -120,6 +120,12 @@ export function isProtectedJarvisAgent(agent: Pick<Agent, 'builtin' | 'slug'>): 
   return agent.builtin === true && agent.slug === JARVIS_IDENTITY_ID;
 }
 
+export function findProtectedJarvisAgent<T extends Pick<Agent, 'builtin' | 'slug'>>(
+  agents: readonly T[],
+): T | null {
+  return agents.find((agent) => isProtectedJarvisAgent(agent)) ?? null;
+}
+
 export function getJarvisDeliveryPolicy(
   surface: JarvisDeliverySurface,
 ): Readonly<JarvisDeliveryPolicy> {

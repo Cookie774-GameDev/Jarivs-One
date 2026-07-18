@@ -6,6 +6,7 @@ import {
   JARVIS_IDENTITY_VERSION,
   KNOWN_SHIPPED_JARVIS_PROMPT_HASHES,
   createJarvisIdentitySnapshot,
+  findProtectedJarvisAgent,
   getJarvisDeliveryPolicy,
   hashJarvisText,
   isKnownShippedJarvisPrompt,
@@ -247,6 +248,14 @@ describe('protected JARVIS identity contracts', () => {
       expect(isProtectedJarvisAgent(agent)).toBe(expected);
     },
   );
+
+  it('finds only the built-in protected JARVIS and ignores a user slug collision', () => {
+    const collision = { builtin: false, slug: 'jarvis', marker: 'user-agent' } as const;
+    const protectedJarvis = { builtin: true, slug: 'jarvis', marker: 'protected' } as const;
+
+    expect(findProtectedJarvisAgent([collision, protectedJarvis])).toBe(protectedJarvis);
+    expect(findProtectedJarvisAgent([collision])).toBeNull();
+  });
 
   it('exposes one exact deeply frozen identity and delivery policy', () => {
     const expectedIdentityCore = EXPECTED_IDENTITY_CORE_RULES.join('\n');

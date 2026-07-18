@@ -62,6 +62,11 @@ import { messageRepo, agentRepo, chatRepo, openDb, db } from '@/lib/db';
 import { useAuthStore } from '@/stores/auth';
 import { resolveAccountIdentity } from '@/lib/accountIdentity';
 import {
+  createJarvisPersistenceCoordinator,
+  type JarvisPersistenceReadyReceipt,
+} from '@/lib/jarvis/persistenceCoordinator';
+import { findProtectedJarvisAgent } from '@/lib/jarvis/identity';
+import {
   activateSyncQueueCloudAuthority,
   releaseSyncQueueCloudAuthority,
   type SyncQueueCloudAuthorityLease,
@@ -309,8 +314,14 @@ function useBoot() {
     let enqueueCloudAuthorityLease: SyncQueueCloudAuthorityLease | undefined;
     let stopCloudAuth: (() => void) | undefined;
     let stopAccountSubscription: (() => void) | undefined;
+    let persistenceCoordinator: ReturnType<typeof createJarvisPersistenceCoordinator> | undefined;
+    let stopPersistenceCoordinator: (() => void) | undefined;
+    let stopPersistenceState: (() => void) | undefined;
+    let persistenceReadyReceipt: JarvisPersistenceReadyReceipt | null = null;
     let activeAccountIdentity: ReturnType<typeof resolveAccountIdentity> = null;
+    let activePersistenceGeneration: number | null = null;
     let desiredAccountIdentity: ReturnType<typeof resolveAccountIdentity> = null;
+    let desiredPersistenceReceipt: JarvisPersistenceReadyReceipt | null = null;
     let accountIdentityReady = false;
     let accountListenersBootReady = false;
     let accountTransitionRequest = 0;
@@ -346,6 +357,17 @@ function useBoot() {
       right: ReturnType<typeof resolveAccountIdentity>,
     ): boolean {
       return left?.accountId === right?.accountId && left?.source === right?.source;
+    }
+
+    function sameReadyReceipt(
+      left: JarvisPersistenceReadyReceipt | null,
+      right: JarvisPersistenceReadyReceipt | null,
+    ): boolean {
+      return (
+        left?.accountId === right?.accountId &&
+        left?.generation === right?.generation &&
+        left?.state === right?.state
+      );
     }
 
     function releaseEnqueueCloudAuthority(expectedUserId?: string): void {
@@ -407,6 +429,7 @@ function useBoot() {
       stopAllAboutMePersistence = undefined;
       stopTaskRunPersistence = undefined;
       activeAccountIdentity = null;
+      activePersistenceGeneration = null;
       const pendingStops = stops.map((stop) => {
         try {
           return Promise.resolve(stop());
@@ -423,15 +446,23 @@ function useBoot() {
 
     async function transitionAccountScopedListeners(
       nextIdentity: ReturnType<typeof resolveAccountIdentity>,
+      readyReceipt: JarvisPersistenceReadyReceipt,
       request: number,
     ): Promise<void> {
-      if (sameAccountIdentity(nextIdentity, activeAccountIdentity)) return;
+      if (
+        sameAccountIdentity(nextIdentity, activeAccountIdentity) &&
+        activePersistenceGeneration === readyReceipt.generation
+      ) {
+        return;
+      }
       await stopAccountScopedListeners();
       if (
         cancelled ||
         !accountListenersBootReady ||
         request !== accountTransitionRequest ||
-        !nextIdentity
+        !nextIdentity ||
+        !sameAccountIdentity(nextIdentity, resolveAccountIdentity(useAuthStore.getState())) ||
+        !sameReadyReceipt(readyReceipt, persistenceReadyReceipt)
       ) {
         return;
       }
@@ -441,6 +472,7 @@ function useBoot() {
       const recoveryController = new AbortController();
       accountRecoveryController = recoveryController;
       activeAccountIdentity = nextIdentity;
+      activePersistenceGeneration = readyReceipt.generation;
       const fixedAccountBindings = {
         getAccountId: () => accountId,
         subscribeAccount: (_listener: () => void) => () => {},
@@ -455,7 +487,9 @@ function useBoot() {
               !cancelled &&
               accountListenersBootReady &&
               accountScopeGeneration === generation &&
-              sameAccountIdentity(activeAccountIdentity, nextIdentity);
+              sameAccountIdentity(activeAccountIdentity, nextIdentity) &&
+              activePersistenceGeneration === readyReceipt.generation &&
+              sameReadyReceipt(persistenceReadyReceipt, readyReceipt);
             if (!isCurrent()) return;
             await resumeRecoverableJarvisRuns({
               signal: recoveryController.signal,
@@ -475,18 +509,23 @@ function useBoot() {
         return;
       }
       const nextIdentity = resolveAccountIdentity(useAuthStore.getState());
-      if (sameAccountIdentity(nextIdentity, desiredAccountIdentity)) {
-        if (!nextIdentity && !activeAccountIdentity) quarantineAccountScopedState();
-        return;
-      }
+      const nextReadyReceipt =
+        nextIdentity && persistenceReadyReceipt?.accountId === nextIdentity.accountId
+          ? persistenceReadyReceipt
+          : null;
 
-      desiredAccountIdentity = nextIdentity;
-      const request = ++accountTransitionRequest;
-      if (sameAccountIdentity(nextIdentity, activeAccountIdentity)) {
-        if (!nextIdentity) quarantineAccountScopedState();
-        return;
-      }
-      if (!nextIdentity) {
+      if (!nextIdentity || !nextReadyReceipt) {
+        if (!desiredAccountIdentity && !desiredPersistenceReceipt && !activeAccountIdentity) {
+          quarantineAccountScopedState();
+          return;
+        }
+        desiredAccountIdentity = null;
+        desiredPersistenceReceipt = null;
+        accountTransitionRequest += 1;
+        if (!activeAccountIdentity) {
+          quarantineAccountScopedState();
+          return;
+        }
         const precedingTransition = accountTransition;
         const immediateTeardown = stopAccountScopedListeners();
         accountTransition = Promise.allSettled([precedingTransition, immediateTeardown]).then(
@@ -494,12 +533,43 @@ function useBoot() {
         );
         return;
       }
+
+      if (
+        sameAccountIdentity(nextIdentity, desiredAccountIdentity) &&
+        sameReadyReceipt(nextReadyReceipt, desiredPersistenceReceipt)
+      ) {
+        return;
+      }
+
+      desiredAccountIdentity = nextIdentity;
+      desiredPersistenceReceipt = nextReadyReceipt;
+      const request = ++accountTransitionRequest;
+      if (
+        sameAccountIdentity(nextIdentity, activeAccountIdentity) &&
+        activePersistenceGeneration === nextReadyReceipt.generation
+      ) {
+        return;
+      }
       accountTransition = accountTransition
         .then(async () => {
           if (cancelled || request !== accountTransitionRequest) return;
-          await transitionAccountScopedListeners(nextIdentity, request);
+          await transitionAccountScopedListeners(nextIdentity, nextReadyReceipt, request);
         })
         .catch((error) => addError('account scope transition', error));
+    }
+
+    function ensurePersistenceCoordinatorStarted(): void {
+      if (
+        cancelled ||
+        !accountIdentityReady ||
+        !persistenceCoordinator ||
+        stopPersistenceCoordinator
+      ) {
+        return;
+      }
+      stopPersistenceCoordinator = persistenceCoordinator.start();
+      persistenceReadyReceipt = persistenceCoordinator.getReadyReceipt();
+      syncAccountScopedListeners();
     }
 
     stopAccountSubscription = useAuthStore.subscribe(() => {
@@ -509,13 +579,30 @@ function useBoot() {
 
     (async () => {
       // Phase 1: storage & keys
+      let databaseOpened = false;
       try {
         await withTimeout(openDb(), 10_000, 'openDb');
+        databaseOpened = true;
       } catch {
         /* degraded */
       }
 
       if (cancelled) return;
+
+      if (databaseOpened) {
+        persistenceCoordinator = createJarvisPersistenceCoordinator({
+          db,
+          readIdentity: () =>
+            accountIdentityReady ? resolveAccountIdentity(useAuthStore.getState()) : null,
+          subscribeIdentity: (listener) => useAuthStore.subscribe(listener),
+        });
+        stopPersistenceState = persistenceCoordinator.subscribe(() => {
+          persistenceReadyReceipt = persistenceCoordinator?.getReadyReceipt() ?? null;
+          syncAccountScopedListeners();
+        });
+        persistenceReadyReceipt = persistenceCoordinator.getReadyReceipt();
+        ensurePersistenceCoordinatorStarted();
+      }
 
       try {
         await withTimeout(useAuthStore.getState().hydrateApiKeysFromVault(), 5_000, 'hydrateKeys');
@@ -541,6 +628,7 @@ function useBoot() {
           publishVerifiedEnqueueCloudAuthority(null);
           applyCloudSession(null);
           accountIdentityReady = true;
+          ensurePersistenceCoordinatorStarted();
         } else {
           const supabaseModules = await withTimeout(
             Promise.all([import('@/lib/supabase/client'), import('@/lib/sync')]),
@@ -623,6 +711,7 @@ function useBoot() {
                   publishVerifiedEnqueueCloudAuthority(data.session as SupabaseSessionLike);
                   applyCloudSession(data.session as SupabaseSessionLike);
                   accountIdentityReady = true;
+                  ensurePersistenceCoordinatorStarted();
                   syncAccountScopedListeners();
                   reconcileCloudSyncAuthority(
                     data.session as SupabaseSessionLike,
@@ -652,6 +741,7 @@ function useBoot() {
                 publishVerifiedEnqueueCloudAuthority(session as SupabaseSessionLike);
                 applyCloudSession(session as SupabaseSessionLike);
                 accountIdentityReady = true;
+                ensurePersistenceCoordinatorStarted();
                 syncAccountScopedListeners();
                 reconcileCloudSyncAuthority(session as SupabaseSessionLike, cloudAuthGeneration);
                 const userId = cloudSessionUserId(session as SupabaseSessionLike);
@@ -722,7 +812,11 @@ function useBoot() {
           if (chatAgentId && useAgentStore.getState().agents[chatAgentId]) {
             return useAgentStore.getState().agents[chatAgentId];
           }
-          return agents.find((a) => a.slug === 'jarvis') ?? agents[0] ?? null;
+          return (
+            findProtectedJarvisAgent(agents) ??
+            agents.find((agent) => agent.slug !== 'jarvis') ??
+            null
+          );
         },
         getMessages: async (chatId) => {
           return messageRepo.listByChat(chatId as never);
@@ -785,6 +879,9 @@ function useBoot() {
       stopRuntime?.();
       stopLocalResponse?.();
       stopAccountSubscription?.();
+      stopPersistenceState?.();
+      persistenceReadyReceipt = null;
+      stopPersistenceCoordinator?.();
       const accountTeardown = stopAccountScopedListeners();
       accountScopeTeardownBarrier = Promise.allSettled([accountTransition, accountTeardown]).then(
         () => undefined,

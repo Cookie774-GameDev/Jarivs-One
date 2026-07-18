@@ -12,6 +12,12 @@ export type JarvisPersistenceState =
       retry: () => Promise<void>;
     };
 
+export type JarvisPersistenceReadyReceipt = Readonly<{
+  accountId: string;
+  generation: number;
+  state: 'ready';
+}>;
+
 type JarvisPersistenceFailureCategory = Extract<
   JarvisPersistenceState,
   { status: 'degraded' }
@@ -33,14 +39,16 @@ export function createJarvisPersistenceCoordinator(input: {
   start(): () => void;
   retry(): Promise<void>;
   getState(): JarvisPersistenceState;
+  getReadyReceipt(): JarvisPersistenceReadyReceipt | null;
   subscribe(listener: () => void): () => void;
 } {
   const listeners = new Set<() => void>();
   let state: JarvisPersistenceState = {
     status: 'degraded',
     category: 'identity_not_ready',
-    retry,
+    retry: retryForGeneration(0),
   };
+  let readyReceipt: JarvisPersistenceReadyReceipt | null = null;
   let started = false;
   let stopped = false;
   let generation = 0;
@@ -49,7 +57,11 @@ export function createJarvisPersistenceCoordinator(input: {
   let unsubscribeIdentity: (() => void) | null = null;
   let activeStop: (() => void) | null = null;
 
-  function publish(next: JarvisPersistenceState): void {
+  function publish(
+    next: JarvisPersistenceState,
+    receipt: JarvisPersistenceReadyReceipt | null = null,
+  ): void {
+    readyReceipt = receipt;
     state = next;
     for (const listener of [...listeners]) {
       try {
@@ -58,6 +70,14 @@ export function createJarvisPersistenceCoordinator(input: {
         // Subscribers are observation-only and cannot block coordinator progress.
       }
     }
+  }
+
+  function retryForGeneration(expectedGeneration: number): () => Promise<void> {
+    return async () => {
+      if (!started || stopped || generation !== expectedGeneration) return;
+      if (!ensureIdentitySubscription()) return;
+      await beginAttempt(true);
+    };
   }
 
   function readCurrentIdentity(): AccountIdentity | null {
@@ -136,7 +156,11 @@ export function createJarvisPersistenceCoordinator(input: {
       unsubscribeIdentity = null;
       currentIdentityKey = null;
       generation += 1;
-      publish({ status: 'degraded', category: 'identity_not_ready', retry });
+      publish({
+        status: 'degraded',
+        category: 'identity_not_ready',
+        retry: retryForGeneration(generation),
+      });
       return false;
     }
   }
@@ -147,7 +171,11 @@ export function createJarvisPersistenceCoordinator(input: {
     if (!identity) {
       currentIdentityKey = null;
       generation += 1;
-      publish({ status: 'degraded', category: 'identity_not_ready', retry });
+      publish({
+        status: 'degraded',
+        category: 'identity_not_ready',
+        retry: retryForGeneration(generation),
+      });
       return;
     }
 
@@ -168,15 +196,22 @@ export function createJarvisPersistenceCoordinator(input: {
             status: 'degraded',
             accountId: identity.accountId,
             category: 'migration_failed',
-            retry,
+            retry: retryForGeneration(attemptGeneration),
           });
           return;
         }
-        publish({
-          status: 'ready',
-          accountId: identity.accountId,
-          profileId: result.migration.profileId,
-        });
+        publish(
+          {
+            status: 'ready',
+            accountId: identity.accountId,
+            profileId: result.migration.profileId,
+          },
+          Object.freeze({
+            accountId: identity.accountId,
+            generation: attemptGeneration,
+            state: 'ready' as const,
+          }),
+        );
         return;
       }
 
@@ -185,7 +220,7 @@ export function createJarvisPersistenceCoordinator(input: {
           status: 'degraded',
           accountId: identity.accountId,
           category: 'migration_failed',
-          retry,
+          retry: retryForGeneration(attemptGeneration),
         });
         return;
       }
@@ -193,7 +228,7 @@ export function createJarvisPersistenceCoordinator(input: {
         status: 'degraded',
         accountId: identity.accountId,
         category: boundedFailureCategory(result.category),
-        retry,
+        retry: retryForGeneration(attemptGeneration),
       });
     } catch {
       if (!stillOwnsAttempt(attemptGeneration, key)) return;
@@ -201,7 +236,7 @@ export function createJarvisPersistenceCoordinator(input: {
         status: 'degraded',
         accountId: identity.accountId,
         category: 'migration_failed',
-        retry,
+        retry: retryForGeneration(attemptGeneration),
       });
     }
   }
@@ -216,6 +251,7 @@ export function createJarvisPersistenceCoordinator(input: {
     started = false;
     stopped = true;
     const stoppedGeneration = ++generation;
+    readyReceipt = null;
     subscriptionEpoch += 1;
     currentIdentityKey = null;
     const unsubscribe = unsubscribeIdentity;
@@ -248,6 +284,7 @@ export function createJarvisPersistenceCoordinator(input: {
     start,
     retry,
     getState: () => state,
+    getReadyReceipt: () => readyReceipt,
     subscribe(listener) {
       listeners.add(listener);
       return () => {
