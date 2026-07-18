@@ -1883,3 +1883,34 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Task 6 exclusive product paths** | `app/src/features/browser/browserTypes.ts`; `app/src/features/browser/browserStore.ts`; `app/src/features/browser/browserActions.ts`; `app/src/features/browser/browserActions.test.ts`; `app/src/features/browser/browserStore.test.ts`; `app/src/features/browser/BrowserPage.tsx`; `app/src/features/browser/BrowserPage.approval.test.tsx` |
 | **Concurrent agents** | Future-task preparation remains read-only. No other product implementation may overlap Task 6. |
 | **Protected state** | `docs/unified-goals/**`, `install/install.ps1`, unrelated branches/worktrees and existing localhost/app-data profiles remain out of scope. |
+
+## 2026-07-18 - Task 6 accepted and Task 7 exact lock acquired
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-18 06:03 CT |
+| **Primary coordinator** | `AGENT-CODEX-20260718-SIK` |
+| **Task 6 commit** | `d9642b1` - exact seven-file Browser Operator approval-integrity quarantine. |
+| **Task 6 verification** | Focused tests `49/49` PASS; full TypeScript PASS; exact-file Prettier and diff checks PASS; protected parameter key/value shapes reject before insertion; every programmatic risk/mode remains unavailable until the canonical Task 19D adapter is mounted. |
+| **Task 6 lock** | Released. |
+| **Task 7 state** | **VERIFIED_COMPLETE** - commits `3d4bd46` and `f0fe971`; lock released. |
+| **Task 7 exclusive paths** | `app/src/lib/db/schema.ts`; `app/src/lib/db/index.ts`; `app/src/test/indexedDb.ts`; `app/src/lib/db/index.migration.test.ts` |
+| **Task 7 verification** | Migration suite `7/7` PASS; full TypeScript PASS; exact-file Prettier and diff checks PASS; source-level frozen V1/V2 blocks are byte-text equal to the accepted baseline; all V1/V2/V3 table types and exact V3 strings are compile-time guarded. |
+| **Package boundary** | The accepted `fake-indexeddb` development dependency is consumed as landed; `app/package.json` and lockfiles are excluded. |
+| **Task 8 state** | **IMPLEMENTING** |
+| **Task 8 exclusive paths** | `app/src/lib/db/migrations/jarvisV3.ts`; `app/src/lib/db/migrations/jarvisV3.test.ts`; `app/src/lib/jarvis/persistenceCoordinator.ts`; `app/src/lib/jarvis/persistenceCoordinator.test.ts` |
+| **Task 8 App boundary** | `app/src/App.tsx` is explicitly excluded; Task 13P owns mounting the coordinator after the authoritative App lock releases. |
+| **Protected state** | `install/install.ps1`, unified-goal documents, unrelated branches/worktrees and existing localhost/app-data profiles remain untouched and unstaged. |
+
+## 2026-07-18 - Task 6 repaired, Task 7 independently accepted, and Task 8 owner bound
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-18 06:48 CT |
+| **Primary coordinator** | `AGENT-CODEX-20260718-SIK` |
+| **Task 6 correction** | The provisional `49/49` acceptance above was reopened after independent review. Commit `4133946` repairs terminal-record resurrection, sparse/accessor array canonicalization, credential-stem suffix rejection, the public executor bypass, and self-attested live frame/target evidence. |
+| **Task 6 final evidence** | Two-stage RED captured `2` and then `9` expected failures. Final focused suite `60/60` PASS; full TypeScript, exact-file Prettier, and diff checks PASS; two fresh repaired-snapshot security/spec reviews PASS. Task 6 is **VERIFIED_COMPLETE** and its lock is released. |
+| **Task 7 independent evidence** | Root migration suite `7/7` PASS; exact-file Prettier and diff checks PASS; full TypeScript already passed with both Task 7 commits present; independent schema and security/data-integrity reviews PASS. Task 7 remains **VERIFIED_COMPLETE**. |
+| **Task 8 owner** | `/root/task8_persistence` |
+| **Task 8 state** | **IMPLEMENTING** under the exact four-file lock recorded above. |
+| **Isolation** | Task 8 must not edit `app/src/App.tsx`, Task 6/7 paths, unified-goal documents, `install/install.ps1`, unrelated branches/worktrees, or existing localhost/app-data profiles. |
