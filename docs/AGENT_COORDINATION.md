@@ -1914,3 +1914,18 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Task 8 owner** | `/root/task8_persistence` |
 | **Task 8 state** | **IMPLEMENTING** under the exact four-file lock recorded above. |
 | **Isolation** | Task 8 must not edit `app/src/App.tsx`, Task 6/7 paths, unified-goal documents, `install/install.ps1`, unrelated branches/worktrees, or existing localhost/app-data profiles. |
+
+## 2026-07-18 - Task 8 accepted and Task 9 exact lock acquired
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-18 07:32 CT |
+| **Primary coordinator** | `AGENT-CODEX-20260718-SIK` |
+| **Task 8 commit** | `aa69319` - exact four-file transactional account activation and generation-safe persistence coordinator. |
+| **Task 8 verification** | Focused tests `39/39` PASS; full TypeScript PASS; exact-file Prettier and diff checks PASS; independent repaired-snapshot review reports no remaining acceptance findings. |
+| **Task 8 binding decisions** | The shipped protected identity revision is exact-key/exact-value bound to `2026-07-16T00:00:00.000Z`; new profiles use least-authority `memory_scope: none` and `voice_enabled: false`; malformed or pre-existing conflicting active-profile state fails closed. |
+| **Task 8 lock** | Released. `app/src/App.tsx` remains untouched for Task 13P. |
+| **Task 9 state** | **IMPLEMENTING** |
+| **Task 9 exclusive paths** | `app/src/lib/db/jarvisMappers.ts`; `app/src/lib/db/jarvisMappers.test.ts`; `app/src/lib/db/jarvisRepositories.ts`; `app/src/lib/db/jarvisRepositories.test.ts`; `app/src/lib/sync.ts`; `app/src/lib/sync.test.ts`; `app/src/lib/db/repositories.ts`; `app/src/lib/db/repositories.connection.test.ts` |
+| **Concurrent agents** | Future-task preparation remains read-only. No other product implementation may overlap Task 9. |
+| **Protected state** | `install/install.ps1`, unified-goal documents, unrelated branches/worktrees and existing localhost/app-data profiles remain untouched and unstaged. |
