@@ -44,16 +44,9 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "evidenceRefs": [],
       "impact": "credential disclosure or unauthorized external access",
       "owner": "Kernel Tasks 4, 11, 12, 19A, 20 and Phase 16 security review",
-      "requirementIds": [
-        "SIK-002",
-        "SIK-010",
-        "SIK-011",
-        "SIK-013"
-      ],
+      "requirementIds": ["SIK-002", "SIK-010", "SIK-011", "SIK-013"],
       "state": "PLANNED",
-      "testIds": [
-        "TST-PLAN-SIK"
-      ],
+      "testIds": ["TST-PLAN-SIK"],
       "threatId": "THR-001",
       "vector": "file/context ingestion, provider payloads, approvals, artifacts, logs, diagnostics"
     },
@@ -69,17 +62,9 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "evidenceRefs": [],
       "impact": "prompt injection or authority inversion",
       "owner": "Kernel Tasks 11-13 and 19A-20C",
-      "requirementIds": [
-        "SIK-001",
-        "SIK-002",
-        "SIK-003",
-        "SIK-010",
-        "SIK-016"
-      ],
+      "requirementIds": ["SIK-001", "SIK-002", "SIK-003", "SIK-010", "SIK-016"],
       "state": "PLANNED",
-      "testIds": [
-        "TST-PLAN-SIK"
-      ],
+      "testIds": ["TST-PLAN-SIK"],
       "threatId": "THR-002",
       "vector": "web pages, memory, files, provider output, subagent results, tool results"
     },
@@ -93,23 +78,12 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "CTL-QUIESCE-OLD-LIFECYCLE",
         "CTL-NO-UNASSIGNED"
       ],
-      "evidenceRefs": [
-        "commit:a33eeb6",
-        "commit:7b51641",
-        "commit:e2fdfa0"
-      ],
+      "evidenceRefs": ["commit:a33eeb6", "commit:7b51641", "commit:e2fdfa0"],
       "impact": "cross-account disclosure, overwrite, or upload",
       "owner": "Tasks 1A, 1B, 7-9, 13P and 16B",
-      "requirementIds": [
-        "SIK-001",
-        "SIK-007",
-        "SIK-013",
-        "SIK-014"
-      ],
+      "requirementIds": ["SIK-001", "SIK-007", "SIK-013", "SIK-014"],
       "state": "IMPLEMENTING",
-      "testIds": [
-        "TST-PLAN-SIK"
-      ],
+      "testIds": ["TST-PLAN-SIK"],
       "threatId": "THR-003",
       "vector": "boot, account switch, delayed write, migration, sync pull/push, stale callback"
     },
@@ -125,16 +99,9 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "evidenceRefs": [],
       "impact": "work continues after cancellation and state becomes misleading",
       "owner": "Kernel Tasks 14, 16B, 17-20C and terminal/browser/agent phases",
-      "requirementIds": [
-        "SIK-007",
-        "SIK-008",
-        "SIK-014",
-        "SIK-015"
-      ],
+      "requirementIds": ["SIK-007", "SIK-008", "SIK-014", "SIK-015"],
       "state": "PLANNED",
-      "testIds": [
-        "TST-PLAN-SIK"
-      ],
+      "testIds": ["TST-PLAN-SIK"],
       "threatId": "THR-004",
       "vector": "provider stream, PTY, browser CDP, voice playback, schedule, parallel worker"
     },
@@ -150,15 +117,9 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "evidenceRefs": [],
       "impact": "unreviewed or stale externally consequential action",
       "owner": "Kernel Tasks 15, 19B, 20 and Browser Operator phase",
-      "requirementIds": [
-        "SIK-007",
-        "SIK-008",
-        "SIK-010"
-      ],
+      "requirementIds": ["SIK-007", "SIK-008", "SIK-010"],
       "state": "PLANNED",
-      "testIds": [
-        "TST-PLAN-SIK"
-      ],
+      "testIds": ["TST-PLAN-SIK"],
       "threatId": "THR-005",
       "vector": "approval creation, decision, retry, restored run, time-of-check/time-of-use gap"
     },
@@ -174,15 +135,9 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "evidenceRefs": [],
       "impact": "submission or unverified output is misreported as completion",
       "owner": "Kernel Tasks 14-18, 20 and 21B",
-      "requirementIds": [
-        "SIK-007",
-        "SIK-009",
-        "SIK-015"
-      ],
+      "requirementIds": ["SIK-007", "SIK-009", "SIK-015"],
       "state": "PLANNED",
-      "testIds": [
-        "TST-PLAN-SIK"
-      ],
+      "testIds": ["TST-PLAN-SIK"],
       "threatId": "THR-006",
       "vector": "tool dispatch, job execution, schedule, output projection"
     },
@@ -199,15 +154,9 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "evidenceRefs": [],
       "impact": "paid/admin authorization bypass",
       "owner": "Access/Subscription phases and staging security review",
-      "requirementIds": [
-        "SIK-012",
-        "SIK-013",
-        "SIK-016"
-      ],
+      "requirementIds": ["SIK-012", "SIK-013", "SIK-016"],
       "state": "PLANNED",
-      "testIds": [
-        "TST-PLAN-SIK"
-      ],
+      "testIds": ["TST-PLAN-SIK"],
       "threatId": "THR-007",
       "vector": "local storage, Zustand, JWT interpretation, Supabase RPC, Stripe test fixture"
     },
@@ -224,16 +173,9 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "evidenceRefs": [],
       "impact": "browser or local-tool bridge escapes reviewed scope",
       "owner": "Browser Operator and Local Tool Bridge phases",
-      "requirementIds": [
-        "SIK-008",
-        "SIK-010",
-        "SIK-011",
-        "SIK-016"
-      ],
+      "requirementIds": ["SIK-008", "SIK-010", "SIK-011", "SIK-016"],
       "state": "PLANNED",
-      "testIds": [
-        "TST-PLAN-SIK"
-      ],
+      "testIds": ["TST-PLAN-SIK"],
       "threatId": "THR-008",
       "vector": "CDP target/frame/navigation, bridge RPC, tool manifest, approval retry"
     },
@@ -246,20 +188,12 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "CTL-SCHEMA-EXCLUSION",
         "CTL-PAYLOAD-INSPECTION"
       ],
-      "evidenceRefs": [
-        "commit:e2fdfa0"
-      ],
+      "evidenceRefs": ["commit:e2fdfa0"],
       "impact": "private kernel data is uploaded without explicit authorization",
       "owner": "Tasks 1B, 7, 13P, 16B and Phase 16 privacy review",
-      "requirementIds": [
-        "SIK-010",
-        "SIK-011",
-        "SIK-013"
-      ],
+      "requirementIds": ["SIK-010", "SIK-011", "SIK-013"],
       "state": "IMPLEMENTING",
-      "testIds": [
-        "TST-PLAN-SIK"
-      ],
+      "testIds": ["TST-PLAN-SIK"],
       "threatId": "THR-009",
       "vector": "sync queue, repository mapper, telemetry, provider payload, export"
     },
@@ -276,15 +210,9 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "evidenceRefs": [],
       "impact": "unvalidated or structured content is spoken",
       "owner": "Kernel Tasks 3, 14, 15, 16B, 21A and voice phase",
-      "requirementIds": [
-        "SIK-004",
-        "SIK-005",
-        "SIK-006"
-      ],
+      "requirementIds": ["SIK-004", "SIK-005", "SIK-006"],
       "state": "PLANNED",
-      "testIds": [
-        "TST-PLAN-SIK"
-      ],
+      "testIds": ["TST-PLAN-SIK"],
       "threatId": "THR-010",
       "vector": "stream chunk, structured response, tool result, error text"
     },
@@ -301,16 +229,9 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "evidenceRefs": [],
       "impact": "remote content mutation, copied identity, or unrelated user-data change",
       "owner": "MonoChrome Tasks MC1-MC10",
-      "requirementIds": [
-        "MC-024",
-        "MC-025",
-        "MC-030",
-        "MC-032"
-      ],
+      "requirementIds": ["MC-024", "MC-025", "MC-030", "MC-032"],
       "state": "PLANNED",
-      "testIds": [
-        "TST-PLAN-MC"
-      ],
+      "testIds": ["TST-PLAN-MC"],
       "threatId": "THR-011",
       "vector": "Browser Chat content, CSS selectors, theme messages, reference media, migration"
     },
@@ -324,22 +245,12 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "CTL-PROTECTED-DIRTY",
         "CTL-ISOLATED-LOCALHOST"
       ],
-      "evidenceRefs": [
-        "GIT-001",
-        "GIT-004",
-        "GIT-005"
-      ],
+      "evidenceRefs": ["GIT-001", "GIT-004", "GIT-005"],
       "impact": "unrelated user work or running state is overwritten",
       "owner": "Main coordinator and every file-changing worker",
-      "requirementIds": [
-        "AUTH-001",
-        "DIR-001"
-      ],
+      "requirementIds": ["AUTH-001", "DIR-001"],
       "state": "IMPLEMENTING",
-      "testIds": [
-        "TST-PLAN-AUTH",
-        "TST-PLAN-DIR"
-      ],
+      "testIds": ["TST-PLAN-AUTH", "TST-PLAN-DIR"],
       "threatId": "THR-012",
       "vector": "shared worktree, broad staging, process cleanup, default profile, force push"
     },
@@ -356,15 +267,9 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "evidenceRefs": [],
       "impact": "duplicate or untracked external effect after database rollback",
       "owner": "Kernel Tasks 16B-20C and external adapters",
-      "requirementIds": [
-        "SIK-007",
-        "SIK-008",
-        "SIK-009"
-      ],
+      "requirementIds": ["SIK-007", "SIK-008", "SIK-009"],
       "state": "PLANNED",
-      "testIds": [
-        "TST-PLAN-SIK"
-      ],
+      "testIds": ["TST-PLAN-SIK"],
       "threatId": "THR-013",
       "vector": "provider, browser, native, message, or test-billing dispatch followed by persistence failure"
     },
@@ -381,16 +286,9 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "evidenceRefs": [],
       "impact": "memory poisoning changes protected behavior or leaks another scope",
       "owner": "SOUL/Memory and Context phases",
-      "requirementIds": [
-        "SIK-001",
-        "SIK-002",
-        "SIK-010",
-        "SIK-013"
-      ],
+      "requirementIds": ["SIK-001", "SIK-002", "SIK-010", "SIK-013"],
       "state": "PLANNED",
-      "testIds": [
-        "TST-PLAN-SIK"
-      ],
+      "testIds": ["TST-PLAN-SIK"],
       "threatId": "THR-014",
       "vector": "memory write/retrieval, profile import, context graph"
     },
@@ -403,9 +301,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "CTRL-SAKURA-MOTION",
         "CTRL-SAKURA-ROLLBACK"
       ],
-      "evidenceRefs": [
-        "docs/superpowers/plans/2026-07-17-vibespace-sakura-appearance.md"
-      ],
+      "evidenceRefs": ["docs/superpowers/plans/2026-07-17-vibespace-sakura-appearance.md"],
       "impact": "behavior regression, inaccessible UI, data loss, performance degradation, or provider boundary violation",
       "owner": "future Sakura security/review owner",
       "requirementIds": [
@@ -461,9 +357,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "SAK-050"
       ],
       "state": "PLANNED",
-      "testIds": [
-        "TST-PLAN-SAK"
-      ],
+      "testIds": ["TST-PLAN-SAK"],
       "threatId": "THR-015",
       "vector": "unscoped CSS/scene layers, prototype code reuse, random/per-frame work, webview bleed, or migration selecting Sakura"
     }

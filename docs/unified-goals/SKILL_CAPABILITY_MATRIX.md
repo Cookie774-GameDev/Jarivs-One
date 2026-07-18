@@ -45,15 +45,8 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "provenanceClass": "REQUESTED_REPOSITORY",
       "sha256": null,
       "skillId": "SKL-001",
-      "substituteSkillIds": [
-        "SKL-024",
-        "SKL-026"
-      ],
-      "taskIds": [
-        "PHASE14-PLAN",
-        "PHASE15-IMPLEMENTATION",
-        "PHASE17-PLAN"
-      ],
+      "substituteSkillIds": ["SKL-024", "SKL-026"],
+      "taskIds": ["PHASE14-PLAN", "PHASE15-IMPLEMENTATION", "PHASE17-PLAN"],
       "version": null
     },
     {
@@ -68,14 +61,8 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "provenanceClass": "REQUESTED_REPOSITORY",
       "sha256": null,
       "skillId": "SKL-002",
-      "substituteSkillIds": [
-        "SKL-025",
-        "SKL-030"
-      ],
-      "taskIds": [
-        "PHASE0R",
-        "PHASE10-PLAN"
-      ],
+      "substituteSkillIds": ["SKL-025", "SKL-030"],
+      "taskIds": ["PHASE0R", "PHASE10-PLAN"],
       "version": null
     },
     {
@@ -90,15 +77,8 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "provenanceClass": "REQUESTED_REPOSITORY",
       "sha256": null,
       "skillId": "SKL-003",
-      "substituteSkillIds": [
-        "SKL-028",
-        "SKL-029",
-        "SKL-037"
-      ],
-      "taskIds": [
-        "PHASE0R",
-        "PHASE17-PLAN"
-      ],
+      "substituteSkillIds": ["SKL-028", "SKL-029", "SKL-037"],
+      "taskIds": ["PHASE0R", "PHASE17-PLAN"],
       "version": null
     },
     {
@@ -113,14 +93,8 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "provenanceClass": "REQUESTED_REPOSITORY",
       "sha256": null,
       "skillId": "SKL-004",
-      "substituteSkillIds": [
-        "SKL-024",
-        "SKL-037"
-      ],
-      "taskIds": [
-        "PHASE15-IMPLEMENTATION",
-        "PHASE17-PLAN"
-      ],
+      "substituteSkillIds": ["SKL-024", "SKL-037"],
+      "taskIds": ["PHASE15-IMPLEMENTATION", "PHASE17-PLAN"],
       "version": null
     },
     {
@@ -135,12 +109,8 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "provenanceClass": "REQUESTED_REPOSITORY",
       "sha256": null,
       "skillId": "SKL-005",
-      "substituteSkillIds": [
-        "SKL-033"
-      ],
-      "taskIds": [
-        "PROGRAM-FAILURE-REPAIR"
-      ],
+      "substituteSkillIds": ["SKL-033"],
+      "taskIds": ["PROGRAM-FAILURE-REPAIR"],
       "version": null
     },
     {
@@ -155,14 +125,8 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "provenanceClass": "REQUESTED_REPOSITORY",
       "sha256": null,
       "skillId": "SKL-006",
-      "substituteSkillIds": [
-        "SKL-023",
-        "SKL-038"
-      ],
-      "taskIds": [
-        "PHASE0R",
-        "PROGRAM-PLANNING"
-      ],
+      "substituteSkillIds": ["SKL-023", "SKL-038"],
+      "taskIds": ["PHASE0R", "PROGRAM-PLANNING"],
       "version": null
     },
     {
@@ -177,14 +141,8 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "provenanceClass": "REQUESTED_REPOSITORY",
       "sha256": null,
       "skillId": "SKL-007",
-      "substituteSkillIds": [
-        "SKL-037",
-        "SKL-038"
-      ],
-      "taskIds": [
-        "PHASE0R",
-        "PHASE17-PLAN"
-      ],
+      "substituteSkillIds": ["SKL-037", "SKL-038"],
+      "taskIds": ["PHASE0R", "PHASE17-PLAN"],
       "version": null
     },
     {
@@ -199,12 +157,8 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "provenanceClass": "REQUESTED_REPOSITORY",
       "sha256": null,
       "skillId": "SKL-008",
-      "substituteSkillIds": [
-        "SKL-027"
-      ],
-      "taskIds": [
-        "PHASE17-PLAN"
-      ],
+      "substituteSkillIds": ["SKL-027"],
+      "taskIds": ["PHASE17-PLAN"],
       "version": null
     },
     {
@@ -219,15 +173,8 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "provenanceClass": "REQUESTED_REPOSITORY",
       "sha256": null,
       "skillId": "SKL-009",
-      "substituteSkillIds": [
-        "SKL-033",
-        "SKL-034"
-      ],
-      "taskIds": [
-        "KERNEL-PERSISTENCE",
-        "PHASE4-PLAN",
-        "PHASE8-PLAN"
-      ],
+      "substituteSkillIds": ["SKL-033", "SKL-034"],
+      "taskIds": ["KERNEL-PERSISTENCE", "PHASE4-PLAN", "PHASE8-PLAN"],
       "version": null
     },
     {
@@ -242,14 +189,8 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "provenanceClass": "REQUESTED_REPOSITORY",
       "sha256": null,
       "skillId": "SKL-010",
-      "substituteSkillIds": [
-        "SKL-034",
-        "SKL-037"
-      ],
-      "taskIds": [
-        "KERNEL-CUTOVER",
-        "PHASE17-PLAN"
-      ],
+      "substituteSkillIds": ["SKL-034", "SKL-037"],
+      "taskIds": ["KERNEL-CUTOVER", "PHASE17-PLAN"],
       "version": null
     },
     {
@@ -264,14 +205,8 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "provenanceClass": "REQUESTED_REPOSITORY",
       "sha256": null,
       "skillId": "SKL-011",
-      "substituteSkillIds": [
-        "SKL-033",
-        "SKL-037"
-      ],
-      "taskIds": [
-        "PHASE17-PLAN",
-        "PROGRAM-PERFORMANCE"
-      ],
+      "substituteSkillIds": ["SKL-033", "SKL-037"],
+      "taskIds": ["PHASE17-PLAN", "PROGRAM-PERFORMANCE"],
       "version": null
     },
     {
@@ -286,14 +221,8 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "provenanceClass": "REQUESTED_REPOSITORY",
       "sha256": null,
       "skillId": "SKL-012",
-      "substituteSkillIds": [
-        "SKL-033",
-        "SKL-034"
-      ],
-      "taskIds": [
-        "KERNEL-PROVIDERS",
-        "PHASE12-PLAN"
-      ],
+      "substituteSkillIds": ["SKL-033", "SKL-034"],
+      "taskIds": ["KERNEL-PROVIDERS", "PHASE12-PLAN"],
       "version": null
     },
     {
@@ -308,13 +237,8 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "provenanceClass": "REQUESTED_REPOSITORY",
       "sha256": null,
       "skillId": "SKL-013",
-      "substituteSkillIds": [
-        "SKL-026",
-        "SKL-034"
-      ],
-      "taskIds": [
-        "PROGRAM-FRONTEND"
-      ],
+      "substituteSkillIds": ["SKL-026", "SKL-034"],
+      "taskIds": ["PROGRAM-FRONTEND"],
       "version": null
     },
     {
@@ -329,16 +253,8 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "provenanceClass": "REQUESTED_REPOSITORY",
       "sha256": null,
       "skillId": "SKL-014",
-      "substituteSkillIds": [
-        "SKL-028",
-        "SKL-029",
-        "SKL-033",
-        "SKL-037"
-      ],
-      "taskIds": [
-        "PHASE17-PLAN",
-        "PROGRAM-SECURITY"
-      ],
+      "substituteSkillIds": ["SKL-028", "SKL-029", "SKL-033", "SKL-037"],
+      "taskIds": ["PHASE17-PLAN", "PROGRAM-SECURITY"],
       "version": null
     },
     {
@@ -353,14 +269,8 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "provenanceClass": "REQUESTED_REPOSITORY",
       "sha256": null,
       "skillId": "SKL-015",
-      "substituteSkillIds": [
-        "SKL-031",
-        "SKL-032",
-        "SKL-034"
-      ],
-      "taskIds": [
-        "PHASE13-PLAN"
-      ],
+      "substituteSkillIds": ["SKL-031", "SKL-032", "SKL-034"],
+      "taskIds": ["PHASE13-PLAN"],
       "version": null
     },
     {
@@ -375,13 +285,8 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "provenanceClass": "REQUESTED_REPOSITORY",
       "sha256": null,
       "skillId": "SKL-016",
-      "substituteSkillIds": [
-        "SKL-031",
-        "SKL-032"
-      ],
-      "taskIds": [
-        "PHASE13-PLAN"
-      ],
+      "substituteSkillIds": ["SKL-031", "SKL-032"],
+      "taskIds": ["PHASE13-PLAN"],
       "version": null
     },
     {
@@ -396,12 +301,8 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "provenanceClass": "REQUESTED_REPOSITORY",
       "sha256": null,
       "skillId": "SKL-017",
-      "substituteSkillIds": [
-        "SKL-036"
-      ],
-      "taskIds": [
-        "PROGRAM-PROCESS"
-      ],
+      "substituteSkillIds": ["SKL-036"],
+      "taskIds": ["PROGRAM-PROCESS"],
       "version": null
     },
     {
@@ -416,16 +317,8 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "provenanceClass": "REQUESTED_REPOSITORY",
       "sha256": null,
       "skillId": "SKL-018",
-      "substituteSkillIds": [
-        "SKL-024",
-        "SKL-033",
-        "SKL-034"
-      ],
-      "taskIds": [
-        "PHASE15-IMPLEMENTATION",
-        "PHASE17-PLAN",
-        "PHASE5-PLAN"
-      ],
+      "substituteSkillIds": ["SKL-024", "SKL-033", "SKL-034"],
+      "taskIds": ["PHASE15-IMPLEMENTATION", "PHASE17-PLAN", "PHASE5-PLAN"],
       "version": null
     },
     {
@@ -440,14 +333,8 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "provenanceClass": "REQUESTED_REPOSITORY",
       "sha256": null,
       "skillId": "SKL-019",
-      "substituteSkillIds": [
-        "SKL-024",
-        "SKL-033",
-        "SKL-034"
-      ],
-      "taskIds": [
-        "PHASE5-PLAN"
-      ],
+      "substituteSkillIds": ["SKL-024", "SKL-033", "SKL-034"],
+      "taskIds": ["PHASE5-PLAN"],
       "version": null
     },
     {
@@ -462,14 +349,8 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "provenanceClass": "REQUESTED_REPOSITORY",
       "sha256": null,
       "skillId": "SKL-020",
-      "substituteSkillIds": [
-        "SKL-034",
-        "SKL-037"
-      ],
-      "taskIds": [
-        "PHASE17-PLAN",
-        "PROGRAM-TESTING"
-      ],
+      "substituteSkillIds": ["SKL-034", "SKL-037"],
+      "taskIds": ["PHASE17-PLAN", "PROGRAM-TESTING"],
       "version": null
     },
     {
@@ -484,13 +365,8 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "provenanceClass": "REQUESTED_REPOSITORY",
       "sha256": null,
       "skillId": "SKL-021",
-      "substituteSkillIds": [
-        "SKL-026"
-      ],
-      "taskIds": [
-        "PHASE14-PLAN",
-        "PHASE15-IMPLEMENTATION"
-      ],
+      "substituteSkillIds": ["SKL-026"],
+      "taskIds": ["PHASE14-PLAN", "PHASE15-IMPLEMENTATION"],
       "version": null
     },
     {
@@ -505,15 +381,8 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "provenanceClass": "REQUESTED_REPOSITORY",
       "sha256": null,
       "skillId": "SKL-022",
-      "substituteSkillIds": [
-        "SKL-024",
-        "SKL-033",
-        "SKL-034"
-      ],
-      "taskIds": [
-        "KERNEL-VOICE",
-        "PHASE17-PLAN"
-      ],
+      "substituteSkillIds": ["SKL-024", "SKL-033", "SKL-034"],
+      "taskIds": ["KERNEL-VOICE", "PHASE17-PLAN"],
       "version": null
     },
     {
@@ -529,11 +398,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "sha256": "E14914605F640E0841758E45D0AB2A53243B59B921F929E47921C99668F2E61D",
       "skillId": "SKL-023",
       "substituteSkillIds": [],
-      "taskIds": [
-        "PHASE0R",
-        "PHASE16-SAKURA",
-        "PROGRAM-PLANNING"
-      ],
+      "taskIds": ["PHASE0R", "PHASE16-SAKURA", "PROGRAM-PLANNING"],
       "version": "6.1.1"
     },
     {
@@ -549,12 +414,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "sha256": "0885A6D35C6BBFF4A8B5F2FCB6CD6E1D4B5489C7ADE022EB185E36AEB3273DD0",
       "skillId": "SKL-024",
       "substituteSkillIds": [],
-      "taskIds": [
-        "PHASE14-PLAN",
-        "PHASE15-IMPLEMENTATION",
-        "PHASE16-SAKURA",
-        "PHASE17-PLAN"
-      ],
+      "taskIds": ["PHASE14-PLAN", "PHASE15-IMPLEMENTATION", "PHASE16-SAKURA", "PHASE17-PLAN"],
       "version": "26.707.72221"
     },
     {
@@ -570,12 +430,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "sha256": "F0DF13F584049059CC5619F90061405B89DCC6E28AB3F2A8517D27D99C7A46A6",
       "skillId": "SKL-025",
       "substituteSkillIds": [],
-      "taskIds": [
-        "PHASE0R",
-        "PHASE10-PLAN",
-        "PHASE16-SAKURA",
-        "PROGRAM-PARALLELISM"
-      ],
+      "taskIds": ["PHASE0R", "PHASE10-PLAN", "PHASE16-SAKURA", "PROGRAM-PARALLELISM"],
       "version": "6.1.1"
     },
     {
@@ -591,11 +446,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "sha256": "35C43B9D10C2388DBB228047AD028C989A14033750812125F351C85AA42C7A4A",
       "skillId": "SKL-026",
       "substituteSkillIds": [],
-      "taskIds": [
-        "PHASE14-PLAN",
-        "PHASE15-IMPLEMENTATION",
-        "PHASE16-SAKURA"
-      ],
+      "taskIds": ["PHASE14-PLAN", "PHASE15-IMPLEMENTATION", "PHASE16-SAKURA"],
       "version": "local"
     },
     {
@@ -611,10 +462,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "sha256": "E93C6EA769BA673D30749A981CD8AD75B687F454E3C8E2E45E7CFCBD412DF12C",
       "skillId": "SKL-027",
       "substituteSkillIds": [],
-      "taskIds": [
-        "PHASE16-SAKURA",
-        "PHASE17-PLAN"
-      ],
+      "taskIds": ["PHASE16-SAKURA", "PHASE17-PLAN"],
       "version": "0.1.8-2841cf9749ae"
     },
     {
@@ -630,11 +478,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "sha256": "647036BBDAB7BF2317E14E079595E984C9030F64295E2B4C0FB57DBEB48F25DD",
       "skillId": "SKL-028",
       "substituteSkillIds": [],
-      "taskIds": [
-        "PHASE0R",
-        "PHASE16-SAKURA",
-        "PROGRAM-REVIEW"
-      ],
+      "taskIds": ["PHASE0R", "PHASE16-SAKURA", "PROGRAM-REVIEW"],
       "version": "6.1.1"
     },
     {
@@ -650,12 +494,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "sha256": "1017CCDD5BC61FAB67C654CF118CBDB520464B313073A0A6B9A6B9AA647A3AD6",
       "skillId": "SKL-029",
       "substituteSkillIds": [],
-      "taskIds": [
-        "PHASE0R",
-        "PHASE16-SAKURA",
-        "PHASE17-PLAN",
-        "PROGRAM-REVIEW"
-      ],
+      "taskIds": ["PHASE0R", "PHASE16-SAKURA", "PHASE17-PLAN", "PROGRAM-REVIEW"],
       "version": "6.1.1"
     },
     {
@@ -671,12 +510,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "sha256": "41AB239A6AD1C487CD839FDAC972A8C9CF0F5E90EFA59A63F963767864F0DF4C",
       "skillId": "SKL-030",
       "substituteSkillIds": [],
-      "taskIds": [
-        "PHASE0R",
-        "PHASE10-PLAN",
-        "PHASE16-SAKURA",
-        "PROGRAM-IMPLEMENTATION"
-      ],
+      "taskIds": ["PHASE0R", "PHASE10-PLAN", "PHASE16-SAKURA", "PROGRAM-IMPLEMENTATION"],
       "version": "6.1.1"
     },
     {
@@ -692,10 +526,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "sha256": "1171386737B231610FA42485707272765C3516A9BBC0BD2C6C161A8CEE3D7D33",
       "skillId": "SKL-031",
       "substituteSkillIds": [],
-      "taskIds": [
-        "PHASE13-PLAN",
-        "PHASE17-PLAN"
-      ],
+      "taskIds": ["PHASE13-PLAN", "PHASE17-PLAN"],
       "version": "1.0.0"
     },
     {
@@ -711,10 +542,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "sha256": "CCD6E4596BD51CF344FE76C464867C541CCC16B6D90AE7A9DB449FB17588613B",
       "skillId": "SKL-032",
       "substituteSkillIds": [],
-      "taskIds": [
-        "PHASE13-PLAN",
-        "PHASE17-PLAN"
-      ],
+      "taskIds": ["PHASE13-PLAN", "PHASE17-PLAN"],
       "version": "1.0.0"
     },
     {
@@ -730,10 +558,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "sha256": "3B20719ECA4F0461CB51A195221320D775DCF03B6859271066A03A5132A6CE7A",
       "skillId": "SKL-033",
       "substituteSkillIds": [],
-      "taskIds": [
-        "PHASE16-SAKURA",
-        "PROGRAM-FAILURE-REPAIR"
-      ],
+      "taskIds": ["PHASE16-SAKURA", "PROGRAM-FAILURE-REPAIR"],
       "version": "6.1.1"
     },
     {
@@ -749,11 +574,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "sha256": "B5B4717B8B761CCE15A6CFE9022E33FD959E0894C0C39D72C9CB49C23486C10E",
       "skillId": "SKL-034",
       "substituteSkillIds": [],
-      "taskIds": [
-        "PHASE16-SAKURA",
-        "PROGRAM-IMPLEMENTATION",
-        "PROGRAM-TESTING"
-      ],
+      "taskIds": ["PHASE16-SAKURA", "PROGRAM-IMPLEMENTATION", "PROGRAM-TESTING"],
       "version": "6.1.1"
     },
     {
@@ -769,11 +590,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "sha256": "E2C3EC142E52868A51AF246C620CD76AB648DCF27D6900D47E6FFD07159A9794",
       "skillId": "SKL-035",
       "substituteSkillIds": [],
-      "taskIds": [
-        "PHASE0R",
-        "PHASE16-SAKURA",
-        "PROGRAM-ISOLATION"
-      ],
+      "taskIds": ["PHASE0R", "PHASE16-SAKURA", "PROGRAM-ISOLATION"],
       "version": "6.1.1"
     },
     {
@@ -789,9 +606,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "sha256": "55379FE7C1C473A02C61961C822996BFF30E1320D6921D9062509BC508482C05",
       "skillId": "SKL-036",
       "substituteSkillIds": [],
-      "taskIds": [
-        "PROGRAM-PROCESS"
-      ],
+      "taskIds": ["PROGRAM-PROCESS"],
       "version": "6.1.1"
     },
     {
@@ -807,12 +622,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "sha256": "EA52D15AABAF72BC6B558EFE2C126F161B53961090DDCD712000273BFE8C7B6C",
       "skillId": "SKL-037",
       "substituteSkillIds": [],
-      "taskIds": [
-        "PHASE0R",
-        "PHASE16-SAKURA",
-        "PHASE17-PLAN",
-        "PROGRAM-VERIFICATION"
-      ],
+      "taskIds": ["PHASE0R", "PHASE16-SAKURA", "PHASE17-PLAN", "PROGRAM-VERIFICATION"],
       "version": "6.1.1"
     },
     {
@@ -828,11 +638,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "sha256": "272E1AF349F5062C28DC282B3E21B220D58D683A7314A10C455B7432EC91D845",
       "skillId": "SKL-038",
       "substituteSkillIds": [],
-      "taskIds": [
-        "PHASE0R",
-        "PHASE16-SAKURA",
-        "PROGRAM-PLANNING"
-      ],
+      "taskIds": ["PHASE0R", "PHASE16-SAKURA", "PROGRAM-PLANNING"],
       "version": "6.1.1"
     },
     {
@@ -849,10 +655,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "sha256": "315A345A2D8FE82430D6D1ABB5DC6AB1BAF7065C44A67E0B2BA34D888B0E24A8",
       "skillId": "SKL-039",
       "substituteSkillIds": [],
-      "taskIds": [
-        "PHASE9-PLAN",
-        "REPOSITORY-BASELINE"
-      ],
+      "taskIds": ["PHASE9-PLAN", "REPOSITORY-BASELINE"],
       "version": "repository@918de28b21a2f9e6fe773c8d50d9e9d86fd1308c"
     },
     {
@@ -869,10 +672,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "sha256": "315A345A2D8FE82430D6D1ABB5DC6AB1BAF7065C44A67E0B2BA34D888B0E24A8",
       "skillId": "SKL-040",
       "substituteSkillIds": [],
-      "taskIds": [
-        "PHASE9-PLAN",
-        "REPOSITORY-BASELINE"
-      ],
+      "taskIds": ["PHASE9-PLAN", "REPOSITORY-BASELINE"],
       "version": "repository@918de28b21a2f9e6fe773c8d50d9e9d86fd1308c"
     },
     {
@@ -889,10 +689,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "sha256": "315A345A2D8FE82430D6D1ABB5DC6AB1BAF7065C44A67E0B2BA34D888B0E24A8",
       "skillId": "SKL-041",
       "substituteSkillIds": [],
-      "taskIds": [
-        "PHASE9-PLAN",
-        "REPOSITORY-BASELINE"
-      ],
+      "taskIds": ["PHASE9-PLAN", "REPOSITORY-BASELINE"],
       "version": "repository@918de28b21a2f9e6fe773c8d50d9e9d86fd1308c"
     },
     {
@@ -909,10 +706,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "sha256": "315A345A2D8FE82430D6D1ABB5DC6AB1BAF7065C44A67E0B2BA34D888B0E24A8",
       "skillId": "SKL-042",
       "substituteSkillIds": [],
-      "taskIds": [
-        "PHASE9-PLAN",
-        "REPOSITORY-BASELINE"
-      ],
+      "taskIds": ["PHASE9-PLAN", "REPOSITORY-BASELINE"],
       "version": "repository@918de28b21a2f9e6fe773c8d50d9e9d86fd1308c"
     },
     {
@@ -929,10 +723,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "sha256": "315A345A2D8FE82430D6D1ABB5DC6AB1BAF7065C44A67E0B2BA34D888B0E24A8",
       "skillId": "SKL-043",
       "substituteSkillIds": [],
-      "taskIds": [
-        "PHASE9-PLAN",
-        "REPOSITORY-BASELINE"
-      ],
+      "taskIds": ["PHASE9-PLAN", "REPOSITORY-BASELINE"],
       "version": "repository@918de28b21a2f9e6fe773c8d50d9e9d86fd1308c"
     },
     {
@@ -948,11 +739,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "sha256": "81DBDD90934FE86A79DDC4790FD211E5FCA866302A74090AD153395F56F2BD42",
       "skillId": "SKL-044",
       "substituteSkillIds": [],
-      "taskIds": [
-        "PHASE0R",
-        "PHASE17-PLAN",
-        "PROGRAM-GIT-BASELINE"
-      ],
+      "taskIds": ["PHASE0R", "PHASE17-PLAN", "PROGRAM-GIT-BASELINE"],
       "version": "0.1.8-2841cf9749ae"
     }
   ],

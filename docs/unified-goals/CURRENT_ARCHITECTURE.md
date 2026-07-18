@@ -47,9 +47,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       ],
       "cutover": "Task 13P later mounts persistence/protected-agent resolution; Tasks 16W, 16A, and 16B replace ad hoc composition with one trusted kernel host and canonical runtime gate.",
       "evidenceLimit": "The source proves current wiring only; it does not prove the target kernel host exists.",
-      "evidenceRefs": [
-        "app/src/App.tsx:283-752"
-      ],
+      "evidenceRefs": ["app/src/App.tsx:283-752"],
       "id": "CUR-001",
       "implementationState": "IMPLEMENTING",
       "inferredTargetSources": [
@@ -65,18 +63,10 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "startJarvisOperatorListener"
       ],
       "observationClass": "OBSERVED",
-      "observedSources": [
-        "app/src/App.tsx:283-752"
-      ],
-      "sourceRefs": [
-        "REPO_HEAD"
-      ],
+      "observedSources": ["app/src/App.tsx:283-752"],
+      "sourceRefs": ["REPO_HEAD"],
       "status": "IMPLEMENTING",
-      "storage": [
-        "Dexie singleton",
-        "Zustand stores",
-        "Supabase-backed optional sync"
-      ],
+      "storage": ["Dexie singleton", "Zustand stores", "Supabase-backed optional sync"],
       "trustBoundary": "The root host sequences database boot, account readiness, account-scoped listeners, cloud-sync authority, and UI runtime listeners."
     },
     {
@@ -89,10 +79,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       ],
       "cutover": "Tasks 7-9 and 13P must consume this identity explicitly and may not add local-unassigned.",
       "evidenceLimit": "PASS is restricted to the accepted Task 1A resolver atoms and Task 1B's separately accepted integration scope.",
-      "evidenceRefs": [
-        "app/src/lib/accountIdentity.ts:3-52",
-        "app/src/App.tsx:314-702"
-      ],
+      "evidenceRefs": ["app/src/lib/accountIdentity.ts:3-52", "app/src/App.tsx:314-702"],
       "id": "CUR-002",
       "implementationState": "PASS",
       "inferredTargetSources": [
@@ -111,14 +98,9 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "app/src/App.tsx:62-75",
         "app/src/App.tsx:314-702"
       ],
-      "sourceRefs": [
-        "REPO_HEAD"
-      ],
+      "sourceRefs": ["REPO_HEAD"],
       "status": "PASS",
-      "storage": [
-        "auth store cloudSession",
-        "auth store localUserId"
-      ],
+      "storage": ["auth store cloudSession", "auth store localUserId"],
       "trustBoundary": "An authenticated Supabase user ID wins; otherwise a non-empty durable local user ID is used; unavailable identity returns null or throws."
     },
     {
@@ -157,13 +139,9 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "app/src/lib/jarvis/identity.ts:3-154",
         "app/src/lib/jarvis/profiles/types.ts:1-36"
       ],
-      "sourceRefs": [
-        "REPO_HEAD"
-      ],
+      "sourceRefs": ["REPO_HEAD"],
       "status": "PASS",
-      "storage": [
-        "contracts only at this baseline; Task 7-9 persistence is not yet present"
-      ],
+      "storage": ["contracts only at this baseline; Task 7-9 persistence is not yet present"],
       "trustBoundary": "The policy text declares JARVIS-only identity, immutable revision authority, lower-authority profile/memory/context layers, exact approval truth, structured-content preservation, and validated speech."
     },
     {
@@ -179,10 +157,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       ],
       "cutover": "Tasks 7-9, 11-20C, 16B, 21A, 17, and 21B turn these types into persisted canonical behavior.",
       "evidenceLimit": "PASS is restricted to Task 3's accepted contract-purity and validator scope; production producers/consumers are not thereby accepted.",
-      "evidenceRefs": [
-        "app/src/lib/jarvis/contracts/",
-        "d9bb11de3ff54472748999b07c678197383c52b4"
-      ],
+      "evidenceRefs": ["app/src/lib/jarvis/contracts/", "d9bb11de3ff54472748999b07c678197383c52b4"],
       "id": "CUR-004",
       "implementationState": "PASS",
       "inferredTargetSources": [
@@ -210,13 +185,9 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "app/src/lib/jarvis/contracts/capability.ts:1-34",
         "app/src/lib/jarvis/contracts/validators.ts:1310-1370"
       ],
-      "sourceRefs": [
-        "REPO_HEAD"
-      ],
+      "sourceRefs": ["REPO_HEAD"],
       "status": "PASS",
-      "storage": [
-        "TypeScript contracts only; no canonical v3 repositories at this baseline"
-      ],
+      "storage": ["TypeScript contracts only; no canonical v3 repositories at this baseline"],
       "trustBoundary": "Requests carry account, identity/profile, capability/model, context, output, and time snapshots; sources carry trust and sensitivity; response state distinguishes display, speech, sources, and artifact IDs."
     },
     {
@@ -256,10 +227,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "app/src/lib/ai/router.ts:252-330",
         "app/src/lib/jarvis/promptLayers.ts:1-178"
       ],
-      "sourceRefs": [
-        "REPO_HEAD",
-        "SIK"
-      ],
+      "sourceRefs": ["REPO_HEAD", "SIK"],
       "status": "PLANNED",
       "storage": [
         "chat/messages through existing repositories",
@@ -307,10 +275,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "app/src/features/terminals/terminalExecutionStore.ts:4-108",
         "app/src/lib/ai/runtime.ts:287-291"
       ],
-      "sourceRefs": [
-        "REPO_HEAD",
-        "SIK"
-      ],
+      "sourceRefs": ["REPO_HEAD", "SIK"],
       "status": "PLANNED",
       "storage": [
         "Zustand chat activity",
@@ -358,10 +323,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "app/src/lib/sync.ts:1-18",
         "app/src/lib/sync.ts:573-615"
       ],
-      "sourceRefs": [
-        "REPO_HEAD",
-        "SIK"
-      ],
+      "sourceRefs": ["REPO_HEAD", "SIK"],
       "status": "IMPLEMENTING",
       "storage": [
         "DB_NAME jarvis-v1",
@@ -377,12 +339,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "architectureId": "CUR-008",
       "canonicalOwner": "Fragmented between action runner, approval cards, task-run bridge, and browser store",
       "concern": "Action and Browser Operator approval semantics",
-      "consumers": [
-        "chat action proposals",
-        "plugins",
-        "terminal actions",
-        "browser page"
-      ],
+      "consumers": ["chat action proposals", "plugins", "terminal actions", "browser page"],
       "cutover": "Tasks 5-6 land immediate interlocks; Tasks 19A-19D add one single-use engine and canonical adapters.",
       "evidenceLimit": "A visible approval card or queued action is not verified execution completion.",
       "evidenceRefs": [
@@ -408,26 +365,16 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "app/src/features/jarvis-runs/approvalBridge.ts:1-89",
         "app/src/features/browser/browserActions.ts:6-120"
       ],
-      "sourceRefs": [
-        "REPO_HEAD",
-        "SIK"
-      ],
+      "sourceRefs": ["REPO_HEAD", "SIK"],
       "status": "PLANNED",
-      "storage": [
-        "UI/card state",
-        "JarvisTaskRun store",
-        "browser pending-action store"
-      ],
+      "storage": ["UI/card state", "JarvisTaskRun store", "browser pending-action store"],
       "trustBoundary": "The action runner deduplicates only in-flight keys; browser behavior derives approval from tab control mode and risk, and safe paths can execute directly. Neither is the planned durable account/run/action/version/params-hash engine."
     },
     {
       "architectureId": "CUR-009",
       "canonicalOwner": "app/src/features/voice/streamingVoice.ts",
       "concern": "Streaming speech consumes incremental response text",
-      "consumers": [
-        "AI runtime voice replies",
-        "Kokoro or configured speech engine"
-      ],
+      "consumers": ["AI runtime voice replies", "Kokoro or configured speech engine"],
       "cutover": "Task 15 prepares preview/speech gates; Task 21A binds voice to the canonical kernel and verified response settlement.",
       "evidenceLimit": "Current cleanup is not evidence that raw provider deltas can never reach TTS.",
       "evidenceRefs": [
@@ -450,30 +397,19 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "app/src/features/voice/streamingVoice.ts:1-137",
         "app/src/lib/ai/runtime.ts:1131-1169"
       ],
-      "sourceRefs": [
-        "REPO_HEAD",
-        "SIK"
-      ],
+      "sourceRefs": ["REPO_HEAD", "SIK"],
       "status": "PLANNED",
-      "storage": [
-        "ephemeral speech queue and voice session"
-      ],
+      "storage": ["ephemeral speech queue and voice session"],
       "trustBoundary": "Incremental text cleanup and voice-session liveness gate speech, but the current stream API receives accumulated provider text before the target JarvisResponseEnvelope speech gate exists."
     },
     {
       "architectureId": "CUR-010",
       "canonicalOwner": "app/src/features/context/tree.ts",
       "concern": "Context scanning admits dot-env candidates",
-      "consumers": [
-        "Context page",
-        "AI context attachments",
-        "terminal context"
-      ],
+      "consumers": ["Context page", "AI context attachments", "terminal context"],
       "cutover": "Task 4 is the immediate pre-kernel interlock; Phase 4 later adds a complete deny-by-default local-source policy.",
       "evidenceLimit": "This is a source-observed unsafe admission rule, not a claim that any secret was read in this run.",
-      "evidenceRefs": [
-        "app/src/features/context/tree.ts:639-732"
-      ],
+      "evidenceRefs": ["app/src/features/context/tree.ts:639-732"],
       "id": "CUR-010",
       "implementationState": "PLANNED",
       "inferredTargetSources": [
@@ -486,17 +422,10 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "context tree generation"
       ],
       "observationClass": "OBSERVED",
-      "observedSources": [
-        "app/src/features/context/tree.ts:639-732"
-      ],
-      "sourceRefs": [
-        "REPO_HEAD",
-        "SIK"
-      ],
+      "observedSources": ["app/src/features/context/tree.ts:639-732"],
+      "sourceRefs": ["REPO_HEAD", "SIK"],
       "status": "PLANNED",
-      "storage": [
-        "local context map data and derived summaries"
-      ],
+      "storage": ["local context map data and derived summaries"],
       "trustBoundary": "The current scanner explicitly admits basenames beginning with .env, conflicting with the kernel's fail-closed secret-source rule."
     },
     {
@@ -534,10 +463,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "app/src/lib/entitlements.ts:307-351",
         "app/src/App.tsx:183-212"
       ],
-      "sourceRefs": [
-        "REPO_HEAD",
-        "SIK"
-      ],
+      "sourceRefs": ["REPO_HEAD", "SIK"],
       "status": "PLANNED",
       "storage": [
         "auth store plan mirror",
@@ -550,11 +476,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "architectureId": "CUR-012",
       "canonicalOwner": "app/src/features/chat/ChatThread.tsx",
       "concern": "Chat surface composes multiple legacy projections",
-      "consumers": [
-        "ChatView",
-        "compact/pet thread",
-        "future Origami Chat"
-      ],
+      "consumers": ["ChatView", "compact/pet thread", "future Origami Chat"],
       "cutover": "Task 20C supplies compatibility projections; Task 21B receives only an account-bound read/retry/cancel host port; Unified Phases 2-3 expand response behavior and the full Command Center.",
       "evidenceLimit": "The current chat dashboard is not the target Command Center and must not be described as one.",
       "evidenceRefs": [
@@ -579,17 +501,9 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "app/src/features/chat/ChatThread.tsx:1-141",
         "app/src/features/chat/ChatView.tsx:1-103"
       ],
-      "sourceRefs": [
-        "REPO_HEAD",
-        "SIK"
-      ],
+      "sourceRefs": ["REPO_HEAD", "SIK"],
       "status": "PLANNED",
-      "storage": [
-        "message repository",
-        "activity store",
-        "task-run store",
-        "memory store"
-      ],
+      "storage": ["message repository", "activity store", "task-run store", "memory store"],
       "trustBoundary": "The UI renders useful state from several stores, but there is no baseline source proving a live normalized Command Center read port or canonical Outputs/Live Systems selectors."
     },
     {
@@ -633,10 +547,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "app/src/features/appearance/themeSync.ts:1-37",
         "app/index.html:1-10"
       ],
-      "sourceRefs": [
-        "REPO_HEAD",
-        "MC"
-      ],
+      "sourceRefs": ["REPO_HEAD", "MC"],
       "status": "PLANNED",
       "storage": [
         "Zustand jarvis-ui store version 4",
@@ -686,10 +597,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "app/src-tauri/capabilities/pet-overlay.json",
         "app/src-tauri/capabilities/pet-mini-panel.json"
       ],
-      "sourceRefs": [
-        "REPO_HEAD",
-        "MC"
-      ],
+      "sourceRefs": ["REPO_HEAD", "MC"],
       "status": "PLANNED",
       "storage": [
         "production APPDATA/keychain/launcher/updater namespaces determined by native configuration"
@@ -700,10 +608,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "architectureId": "CUR-015",
       "canonicalOwner": "No dedicated product implementation at this baseline; current chat owners are ChatView and ChatThread",
       "concern": "Origami Chat visual implementation",
-      "consumers": [
-        "current Chat route",
-        "future reference-locked Origami surface"
-      ],
+      "consumers": ["current Chat route", "future reference-locked Origami surface"],
       "cutover": "Unified Phase 14 first writes an exact executable plan, freezes deterministic state, then changes only the authorized Chat visual surface while preserving behavior.",
       "evidenceLimit": "No target-fidelity or Origami acceptance claim is made.",
       "evidenceRefs": [
@@ -726,24 +631,16 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "app/src/features/chat/ChatThread.tsx:1-141",
         "app/src/styles/vibespace-theme.css:1"
       ],
-      "sourceRefs": [
-        "REPO_HEAD",
-        "ORIGAMI"
-      ],
+      "sourceRefs": ["REPO_HEAD", "ORIGAMI"],
       "status": "PLANNED",
-      "storage": [
-        "existing chat/message data only"
-      ],
+      "storage": ["existing chat/message data only"],
       "trustBoundary": "The external Origami pack is a future visual authority and its private reference media is not copied into Git. The word origami in the existing VibeSpace theme is not proof of the required Chat reconstruction."
     },
     {
       "architectureId": "CUR-016",
       "canonicalOwner": "Root AGENT_COORDINATION.md append-only ledger",
       "concern": "Coordination lock surface",
-      "consumers": [
-        "primary coordinator",
-        "every product implementer and reviewer"
-      ],
+      "consumers": ["primary coordinator", "every product implementer and reviewer"],
       "cutover": "Continue truthful ledger-based coordination; rediscover and record the helper only if the exact file later appears.",
       "evidenceLimit": "No lock-helper invocation or receipt is claimed.",
       "evidenceRefs": [
@@ -765,27 +662,16 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "filesystem Test-Path at evidence cutoff returned false for both expected helper paths",
         "docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md:40-60"
       ],
-      "sourceRefs": [
-        "POLICY",
-        "COORD",
-        "REPO_HEAD"
-      ],
+      "sourceRefs": ["POLICY", "COORD", "REPO_HEAD"],
       "status": "PLANNED",
-      "storage": [
-        "root coordination ledger",
-        "Git index for exact scope checks"
-      ],
+      "storage": ["root coordination ledger", "Git index for exact scope checks"],
       "trustBoundary": "The committed plans require exact coordination and file non-overlap, but .agents/tools/agent-lock.mjs is absent in both the isolated worktree and root repository at the evidence cutoff."
     },
     {
       "architectureId": "CUR-017",
       "canonicalOwner": "No product implementation owner yet; Task 0R owns only source reconciliation",
       "concern": "Sakura appearance source and implementation state",
-      "consumers": [
-        "PLN-021",
-        "DEP-050",
-        "future SK0A-SK10 owners"
-      ],
+      "consumers": ["PLN-021", "DEP-050", "future SK0A-SK10 owners"],
       "evidenceRefs": [
         "docs/superpowers/plans/2026-07-17-vibespace-sakura-appearance.md",
         "source-manifest:sakuraReferenceClosure"
