@@ -14,6 +14,7 @@
  */
 
 import { nanoid } from 'nanoid';
+import { isProtectedJarvisAgent } from './jarvis/identity';
 import { db, openDb } from './db';
 import type { SettingsRow, StoreName, SyncOp, SyncQueueRow, SyncStatus } from './db';
 import { runSignalBoundWrite } from './db/signalBoundTransaction';
@@ -46,9 +47,30 @@ const CLOUD_SYNC_CONFLICT_TARGET = 'user_id,table_name,row_id';
 const CUSTOM_TOOLS_SYNC_TABLE = 'custom_tools';
 const PLUGIN_CONNECTIONS_SYNC_TABLE = 'plugin_connections';
 const PULL_CURSOR_KEY_PREFIX = 'cloud_sync:last_pull_at';
+const LOCAL_ONLY_SYNC_ERROR = 'local_only_table';
 let syncFlushInFlight = false;
 let syncPullInFlight = false;
 const QUEUE_AND_OWNER_TABLES = [db.sync_queue, db.settings] as const;
+
+export const LOCAL_ONLY_SYNC_TABLES: ReadonlySet<string> = new Set([
+  'jarvis_identity_revisions',
+  'jarvis_profiles',
+  'jarvis_runs',
+  'jarvis_events',
+  'jarvis_approvals',
+  'jarvis_artifacts',
+] as const);
+
+class LocalOnlySyncTableError extends Error {
+  constructor() {
+    super(LOCAL_ONLY_SYNC_ERROR);
+    this.name = 'LocalOnlySyncTableError';
+  }
+}
+
+export function assertCloudSyncTableAllowed(table: string): void {
+  if (LOCAL_ONLY_SYNC_TABLES.has(table)) throw new LocalOnlySyncTableError();
+}
 
 export type CloudSyncAuthority = Readonly<{
   userId: string;
@@ -120,6 +142,40 @@ function legacyOwnerReason(hasV2Record: boolean, hasV1Record: boolean): LegacySy
   return 'missing_v2_owner';
 }
 
+async function quarantineActiveLocalOnlySyncRows(
+  authority: CloudSyncAuthority,
+): Promise<number | null> {
+  const result = await runSignalBoundWrite(
+    db,
+    authority.signal,
+    QUEUE_AND_OWNER_TABLES,
+    async (transaction) => {
+      const queue = transaction.table<SyncQueueRow, string>('sync_queue');
+      const settings = transaction.table<SettingsRow, string>('settings');
+      const activeRows = await queue
+        .where('status')
+        .anyOf(['pending', 'in_progress'] satisfies SyncStatus[])
+        .toArray();
+      let quarantined = 0;
+      for (const row of activeRows) {
+        try {
+          assertCloudSyncTableAllowed(row.table);
+        } catch (error) {
+          if (!(error instanceof LocalOnlySyncTableError)) throw error;
+          await queue.update(row.id, {
+            status: 'error' as SyncStatus,
+            error: LOCAL_ONLY_SYNC_ERROR,
+          });
+          await settings.delete(cloudSyncQueueClaimKey(row.id));
+          quarantined++;
+        }
+      }
+      return quarantined;
+    },
+  );
+  return result.kind === 'committed' ? result.value : null;
+}
+
 async function quarantineLegacyActiveSyncRows(authority: CloudSyncAuthority): Promise<boolean> {
   const result = await runSignalBoundWrite(
     db,
@@ -134,6 +190,7 @@ async function quarantineLegacyActiveSyncRows(authority: CloudSyncAuthority): Pr
         .toArray();
 
       for (const row of activeRows) {
+        if (LOCAL_ONLY_SYNC_TABLES.has(row.table)) continue;
         const ownerKey = cloudSyncQueueOwnerKey(row.id);
         const stored = await settings.get(ownerKey);
         const storedClaim = await settings.get(cloudSyncQueueClaimKey(row.id));
@@ -399,9 +456,30 @@ type SyncedCustomToolStep = {
   label?: string;
 };
 
-function payloadForCloudRecord(payload: unknown): Record<string, unknown> | null {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
-  return payload as Record<string, unknown>;
+function sanitizeProtectedAgentSyncPayload(table: string, payload: unknown): unknown {
+  if (table !== 'agents' || !payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return payload;
+  }
+  const record = payload as Record<string, unknown>;
+  if (
+    typeof record.slug !== 'string' ||
+    !isProtectedJarvisAgent({ builtin: record.builtin === true, slug: record.slug })
+  ) {
+    return payload;
+  }
+
+  const sanitized: Record<string, unknown> = {};
+  for (const key of Object.keys(record)) {
+    if (key !== 'system_prompt') sanitized[key] = record[key];
+  }
+  return sanitized;
+}
+
+function payloadForCloudRecord(table: string, payload: unknown): Record<string, unknown> | null {
+  const sanitized = sanitizeProtectedAgentSyncPayload(table, payload);
+  return sanitized && typeof sanitized === 'object' && !Array.isArray(sanitized)
+    ? (sanitized as Record<string, unknown>)
+    : null;
 }
 
 function isoFromMs(ms: number, fallbackIso: string): string {
@@ -415,6 +493,7 @@ export function buildCloudSyncRecord(
   owner: CloudSyncQueueOwnerRecordV2,
   nowIso = new Date().toISOString(),
 ): CloudSyncRecord {
+  assertCloudSyncTableAllowed(row.table);
   if (owner.rowId !== row.id) {
     throw new Error('Cloud sync record owner does not match its queue row.');
   }
@@ -423,7 +502,7 @@ export function buildCloudSyncRecord(
     table_name: row.table,
     row_id: row.row_id,
     op: row.op,
-    payload: row.op === 'delete' ? null : payloadForCloudRecord(row.payload),
+    payload: row.op === 'delete' ? null : payloadForCloudRecord(row.table, row.payload),
     deleted_at: row.op === 'delete' ? nowIso : null,
     updated_at: isoFromMs(row.created_at, nowIso),
   };
@@ -583,6 +662,8 @@ export async function enqueueMutation(
   payload: unknown,
   ownerSnapshot: SyncQueueOwnerSnapshot = captureSyncQueueOwner(),
 ): Promise<string> {
+  assertCloudSyncTableAllowed(table);
+  const sanitizedPayload = sanitizeProtectedAgentSyncPayload(table, payload);
   const id = newSyncId();
   const createdAt = Date.now();
   const owner = materializeSyncQueueOwner(id, ownerSnapshot);
@@ -591,7 +672,7 @@ export async function enqueueMutation(
     op,
     table,
     row_id,
-    payload,
+    payload: sanitizedPayload,
     status: 'pending',
     created_at: createdAt,
   };
@@ -655,27 +736,35 @@ export async function processSyncQueue(
     const opened = await awaitUnlessAborted(openDb(), authority.signal);
     if (opened.kind === 'cancelled') return { processed: 0, errored: 0, skipped: 0 };
 
-    if (!(await quarantineLegacyActiveSyncRows(authority))) {
-      return { processed: 0, errored: 0, skipped: 0 };
+    const localOnlyErrored = await quarantineActiveLocalOnlySyncRows(authority);
+    if (localOnlyErrored === null) return { processed: 0, errored: 0, skipped: 0 };
+    if (authority.signal.aborted) {
+      return { processed: 0, errored: localOnlyErrored, skipped: 0 };
     }
-    if (authority.signal.aborted) return { processed: 0, errored: 0, skipped: 0 };
+
+    if (!(await quarantineLegacyActiveSyncRows(authority))) {
+      return { processed: 0, errored: localOnlyErrored, skipped: 0 };
+    }
+    if (authority.signal.aborted) {
+      return { processed: 0, errored: localOnlyErrored, skipped: 0 };
+    }
 
     const client = getSupabaseClient();
     const pending = await ownedPendingQueueRows(authority.userId, batchSize);
     if (authority.signal.aborted) {
-      return { processed: 0, errored: 0, skipped: pending.pendingCount };
+      return { processed: 0, errored: localOnlyErrored, skipped: pending.pendingCount };
     }
 
     if (!client) {
-      return { processed: 0, errored: 0, skipped: pending.pendingCount };
+      return { processed: 0, errored: localOnlyErrored, skipped: pending.pendingCount };
     }
 
     if (!(await sessionMatchesAuthority(authority, client))) {
-      return { processed: 0, errored: 0, skipped: pending.pendingCount };
+      return { processed: 0, errored: localOnlyErrored, skipped: pending.pendingCount };
     }
 
     let processed = 0;
-    let errored = 0;
+    let errored = localOnlyErrored;
     let skipped = pending.pendingCount - pending.rows.length;
 
     for (const candidate of pending.rows) {
@@ -687,6 +776,23 @@ export async function processSyncQueue(
         continue;
       }
       if (authority.signal.aborted) break;
+
+      try {
+        assertCloudSyncTableAllowed(claimed.row.table);
+      } catch (error) {
+        if (!(error instanceof LocalOnlySyncTableError)) throw error;
+        const settled = await settleClaimedQueueRow(claimed, authority, {
+          status: 'error' as SyncStatus,
+          error: LOCAL_ONLY_SYNC_ERROR,
+        });
+        if (authority.signal.aborted) break;
+        if (!settled) {
+          skipped++;
+          continue;
+        }
+        errored++;
+        continue;
+      }
 
       let remoteFailed = false;
       let remoteFailure: unknown;

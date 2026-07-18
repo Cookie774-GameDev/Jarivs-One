@@ -18,6 +18,8 @@ const syncHarness = vi.hoisted(() => {
 
   const queueRows = new Map<string, QueueRow>();
   const settingsRows = new Map<string, { key: string; value: unknown; updated_at: number }>();
+  const cloneQueueRow = <T extends QueueRow>(row: T): T =>
+    Object.defineProperties({}, Object.getOwnPropertyDescriptors(row)) as T;
   type TestTransaction = {
     active: boolean;
     aborted: boolean;
@@ -62,7 +64,7 @@ const syncHarness = vi.hoisted(() => {
           .filter((row) => !statuses || statuses.includes(String(row.status)))
           .filter((row) => !predicate || predicate(row))
           .slice(0, limit)
-          .map((row) => ({ ...row }));
+          .map(cloneQueueRow);
         if (statuses?.includes('pending') && afterPendingSnapshot) {
           const callback = afterPendingSnapshot;
           afterPendingSnapshot = undefined;
@@ -84,10 +86,10 @@ const syncHarness = vi.hoisted(() => {
       where: vi.fn(() => makeQueueQuery()),
       get: vi.fn(async (id: string) => {
         const row = queueRows.get(id);
-        return row ? { ...row } : undefined;
+        return row ? cloneQueueRow(row) : undefined;
       }),
       add: vi.fn(async (row: QueueRow) => {
-        queueRows.set(String(row.id), { ...row });
+        queueRows.set(String(row.id), cloneQueueRow(row));
         return row.id;
       }),
       update: vi.fn(async (id: string, changes: Record<string, unknown>) => {
@@ -98,7 +100,7 @@ const syncHarness = vi.hoisted(() => {
         }
         const row = queueRows.get(id);
         if (!row) return 0;
-        queueRows.set(id, { ...row, ...changes });
+        queueRows.set(id, Object.assign(cloneQueueRow(row), changes));
         return 1;
       }),
       bulkDelete: vi.fn(async (ids: string[]) => {
@@ -137,7 +139,7 @@ const syncHarness = vi.hoisted(() => {
       const body = args.at(-1);
       if (typeof body !== 'function') throw new Error('missing transaction body');
       const queueSnapshot = new Map(
-        [...queueRows].map(([key, value]) => [key, { ...value }] as const),
+        [...queueRows].map(([key, value]) => [key, cloneQueueRow(value)] as const),
       );
       const settingsSnapshot = new Map(
         [...settingsRows].map(([key, value]) => [key, { ...value }] as const),
@@ -241,7 +243,9 @@ const syncHarness = vi.hoisted(() => {
   const upsert = vi.fn(() => upsertBuilder);
   const select = vi.fn(() => pullBuilder);
   const from = vi.fn(() => ({ upsert, select }));
-  const getSupabaseClient = vi.fn(() => ({ auth: { getSession }, from }));
+  const supabaseClient = { auth: { getSession }, from };
+  let cloudClientAvailable = true;
+  const getSupabaseClient = vi.fn(() => (cloudClientAvailable ? supabaseClient : null));
   const toolSetState = vi.fn();
   const pluginSetState = vi.fn();
   const toolApplyForAccount = vi.fn();
@@ -263,6 +267,7 @@ const syncHarness = vi.hoisted(() => {
     upsertSignal = undefined;
     pullSignal = undefined;
     queuedPullResults.length = 0;
+    cloudClientAvailable = true;
     activeIdentity = { accountId: 'user-a', source: 'supabase' };
     deferredQueueUpdate = undefined;
     deferredSettingsPut = undefined;
@@ -316,6 +321,9 @@ const syncHarness = vi.hoisted(() => {
       upsertDeferred.resolve(value);
     },
     settingsRows,
+    setCloudClientAvailable(available: boolean) {
+      cloudClientAvailable = available;
+    },
     failNextSettingsPut(error: Error) {
       nextSettingsPutError = error;
     },
@@ -432,6 +440,8 @@ vi.mock('@/features/plugins/store', () => ({
 }));
 
 import {
+  LOCAL_ONLY_SYNC_TABLES,
+  assertCloudSyncTableAllowed,
   buildCloudSyncRecord,
   customToolFromCloudRecord,
   enqueueMutation,
@@ -451,6 +461,15 @@ import {
   materializeSyncQueueOwner,
 } from './cloudSyncQueueOwner';
 
+const EXPECTED_LOCAL_ONLY_SYNC_TABLES = [
+  'jarvis_identity_revisions',
+  'jarvis_profiles',
+  'jarvis_runs',
+  'jarvis_events',
+  'jarvis_approvals',
+  'jarvis_artifacts',
+] as const;
+
 beforeEach(() => {
   syncHarness.reset();
 });
@@ -469,6 +488,29 @@ describe('sync table metadata', () => {
     expect(primaryKeyForSyncTable('settings')).toBe('key');
     expect(primaryKeyForSyncTable('terminal_layouts')).toBe('project_id');
   });
+
+  it('defines the exact Shared Intelligence Kernel local-only table boundary', () => {
+    expect([...LOCAL_ONLY_SYNC_TABLES]).toEqual(EXPECTED_LOCAL_ONLY_SYNC_TABLES);
+    for (const table of EXPECTED_LOCAL_ONLY_SYNC_TABLES) {
+      expect(() => assertCloudSyncTableAllowed(table)).toThrowError('local_only_table');
+    }
+    expect(() => assertCloudSyncTableAllowed('agents')).not.toThrow();
+  });
+
+  it.each(EXPECTED_LOCAL_ONLY_SYNC_TABLES)(
+    'rejects enqueue for local-only table %s before database work',
+    async (table) => {
+      await expect(
+        enqueueMutation('insert', table, 'local-kernel-row', {
+          system_prompt: 'must stay local',
+        }),
+      ).rejects.toThrowError('local_only_table');
+
+      expect(syncHarness.openDb).not.toHaveBeenCalled();
+      expect(syncHarness.queueRows.size).toBe(0);
+      expect(syncHarness.settingsRows.size).toBe(0);
+    },
+  );
 });
 
 describe('cloud sync records', () => {
@@ -520,6 +562,99 @@ describe('cloud sync records', () => {
       payload: null,
       deleted_at: '2026-06-04T12:05:00.000Z',
       updated_at: '2026-06-04T12:00:00.000Z',
+    });
+  });
+
+  it.each(EXPECTED_LOCAL_ONLY_SYNC_TABLES)(
+    'rejects cloud-record construction for local-only table %s before reading payload',
+    (table) => {
+      let payloadReads = 0;
+      const row = { ...baseRow, table };
+      Object.defineProperty(row, 'payload', {
+        enumerable: true,
+        get() {
+          payloadReads += 1;
+          return { system_prompt: 'must stay local' };
+        },
+      });
+
+      expect(() => buildCloudSyncRecord(row, cloudOwner)).toThrowError('local_only_table');
+      expect(payloadReads).toBe(0);
+    },
+  );
+
+  it('omits the protected built-in JARVIS prompt from an already-queued agent record', () => {
+    const protectedAgentRow: SyncQueueRow = {
+      ...baseRow,
+      table: 'agents',
+      row_id: 'agt_jarvis',
+      payload: {
+        id: 'agt_jarvis',
+        slug: 'jarvis',
+        builtin: true,
+        name: 'JARVIS',
+        system_prompt: 'protected local identity prompt',
+      },
+    };
+
+    expect(buildCloudSyncRecord(protectedAgentRow, cloudOwner).payload).toEqual({
+      id: 'agt_jarvis',
+      slug: 'jarvis',
+      builtin: true,
+      name: 'JARVIS',
+    });
+  });
+
+  it('does not evaluate an enumerable protected JARVIS prompt accessor while sanitizing it', () => {
+    let promptReads = 0;
+    const payload: Record<string, unknown> = {
+      id: 'agt_jarvis_accessor',
+      slug: 'jarvis',
+      builtin: true,
+      name: 'JARVIS',
+    };
+    Object.defineProperty(payload, 'system_prompt', {
+      configurable: true,
+      enumerable: true,
+      get() {
+        promptReads += 1;
+        return 'protected accessor prompt';
+      },
+    });
+    const protectedAgentRow: SyncQueueRow = {
+      ...baseRow,
+      table: 'agents',
+      row_id: 'agt_jarvis_accessor',
+      payload,
+    };
+
+    expect(buildCloudSyncRecord(protectedAgentRow, cloudOwner).payload).toEqual({
+      id: 'agt_jarvis_accessor',
+      slug: 'jarvis',
+      builtin: true,
+      name: 'JARVIS',
+    });
+    expect(promptReads).toBe(0);
+  });
+
+  it('retains the prompt for a user-created agent whose slug collides with jarvis', () => {
+    const userAgentRow: SyncQueueRow = {
+      ...baseRow,
+      table: 'agents',
+      row_id: 'agt_user_jarvis',
+      payload: {
+        id: 'agt_user_jarvis',
+        slug: 'jarvis',
+        builtin: false,
+        name: 'User JARVIS',
+        system_prompt: 'ordinary user-authored prompt',
+      },
+    };
+
+    expect(buildCloudSyncRecord(userAgentRow, cloudOwner).payload).toMatchObject({
+      slug: 'jarvis',
+      builtin: false,
+      system_prompt: 'ordinary user-authored prompt',
     });
   });
 
@@ -611,6 +746,296 @@ describe('cloud sync authority lifecycle', () => {
   };
 
   const claimKey = cloudSyncQueueClaimKey;
+
+  it('sanitizes protected direct enqueue payloads before queue construction and retains collisions', async () => {
+    let promptReads = 0;
+    const protectedPayload: Record<string, unknown> = {
+      id: 'agt_direct_jarvis',
+      slug: 'jarvis',
+      builtin: true,
+      name: 'JARVIS',
+    };
+    Object.defineProperty(protectedPayload, 'system_prompt', {
+      configurable: true,
+      enumerable: true,
+      get() {
+        promptReads += 1;
+        return 'direct protected accessor prompt';
+      },
+    });
+
+    const protectedRowId = await enqueueMutation(
+      'update',
+      'agents',
+      'agt_direct_jarvis',
+      protectedPayload,
+    );
+    const protectedQueuedPayload = syncHarness.queueRows.get(protectedRowId)?.payload as Record<
+      string,
+      unknown
+    >;
+
+    expect(promptReads).toBe(0);
+    expect(Object.prototype.hasOwnProperty.call(protectedQueuedPayload, 'system_prompt')).toBe(
+      false,
+    );
+    expect(protectedQueuedPayload).toMatchObject({
+      id: 'agt_direct_jarvis',
+      slug: 'jarvis',
+      builtin: true,
+      name: 'JARVIS',
+    });
+
+    const collisionRowId = await enqueueMutation('update', 'agents', 'agt_direct_collision', {
+      id: 'agt_direct_collision',
+      slug: 'jarvis',
+      builtin: false,
+      name: 'User JARVIS',
+      system_prompt: 'ordinary collision prompt',
+    });
+    expect(syncHarness.queueRows.get(collisionRowId)?.payload).toMatchObject({
+      slug: 'jarvis',
+      builtin: false,
+      system_prompt: 'ordinary collision prompt',
+    });
+  });
+
+  it('preserves allowed non-agent direct enqueue payloads unchanged', async () => {
+    const payload = 'legacy scalar payload';
+    const rowId = await enqueueMutation('update', 'workspaces', 'wsp_scalar_payload', payload);
+
+    expect(syncHarness.queueRows.get(rowId)?.payload).toBe(payload);
+  });
+
+  it('quarantines every pending local-only row before client eligibility without reading payloads or adopting owners', async () => {
+    let payloadReads = 0;
+    const rowIds = [
+      'syq_kernel_current',
+      'syq_kernel_unbound',
+      'syq_kernel_foreign',
+      'syq_kernel_malformed',
+      'syq_kernel_missing',
+    ] as const;
+    for (const [index, id] of rowIds.entries()) {
+      const row: SyncQueueRow = {
+        ...pendingRow(),
+        id,
+        table: EXPECTED_LOCAL_ONLY_SYNC_TABLES[index % EXPECTED_LOCAL_ONLY_SYNC_TABLES.length]!,
+        row_id: `kernel-${index}`,
+      };
+      Object.defineProperty(row, 'payload', {
+        configurable: true,
+        enumerable: true,
+        get() {
+          payloadReads += 1;
+          return { system_prompt: `private-kernel-payload-${index}` };
+        },
+      });
+      syncHarness.queueRows.set(id, row);
+    }
+    bindOwner(rowIds[0], { state: 'cloud', userId: 'user-a', capturedAt: 1 });
+    bindOwner(rowIds[1], { state: 'unbound', capturedAt: 2 });
+    bindOwner(rowIds[2], { state: 'cloud', userId: 'user-b', capturedAt: 3 });
+    syncHarness.settingsRows.set(cloudSyncQueueOwnerKey(rowIds[3]), {
+      key: cloudSyncQueueOwnerKey(rowIds[3]),
+      value: {
+        schemaVersion: 2,
+        rowId: rowIds[3],
+        state: 'cloud',
+        userId: 42,
+        capturedAt: 4,
+      },
+      updated_at: 4,
+    });
+    const ownerRowsBefore = new Map(
+      [...syncHarness.settingsRows].map(([key, value]) => [key, structuredClone(value)] as const),
+    );
+    syncHarness.setCloudClientAvailable(false);
+
+    await expect(
+      processSyncQueue({ userId: 'user-a', signal: new AbortController().signal }),
+    ).resolves.toEqual({ processed: 0, errored: rowIds.length, skipped: 0 });
+
+    expect(payloadReads).toBe(0);
+    expect(syncHarness.getSession).not.toHaveBeenCalled();
+    expect(syncHarness.from).not.toHaveBeenCalled();
+    expect(syncHarness.upsert).not.toHaveBeenCalled();
+    for (const id of rowIds) {
+      expect(syncHarness.queueRows.get(id)?.status).toBe('error');
+      expect(syncHarness.queueRows.get(id)?.error).toBe('local_only_table');
+      expect(syncHarness.settingsRows.get(claimKey(id))).toBeUndefined();
+    }
+    expect(syncHarness.settingsRows).toEqual(ownerRowsBefore);
+  });
+
+  it.each([
+    ['pending', 'valid'],
+    ['pending', 'malformed'],
+    ['in_progress', 'valid'],
+    ['in_progress', 'malformed'],
+  ] as const)(
+    'settles a %s local-only row with %s stale claim metadata before client eligibility',
+    async (status, claimKind) => {
+      const id = `syq_kernel_${status}_${claimKind}_claim`;
+      let payloadReads = 0;
+      const row: SyncQueueRow = {
+        ...pendingRow(),
+        id,
+        status,
+        table: 'jarvis_profiles',
+        row_id: `jprof_${status}_${claimKind}`,
+      };
+      Object.defineProperty(row, 'payload', {
+        configurable: true,
+        enumerable: true,
+        get() {
+          payloadReads += 1;
+          return { custom_instructions: 'private accessor payload' };
+        },
+      });
+      syncHarness.queueRows.set(id, row);
+      bindOwner(id, { state: 'cloud', userId: 'user-a', capturedAt: 1 });
+      const ownerBefore = structuredClone(syncHarness.settingsRows.get(cloudSyncQueueOwnerKey(id)));
+      syncHarness.settingsRows.set(claimKey(id), {
+        key: claimKey(id),
+        value:
+          claimKind === 'valid'
+            ? {
+                schemaVersion: 1,
+                rowId: id,
+                userId: 'user-a',
+                ownerCapturedAt: 1,
+                claimedAt: 1,
+                claimId: `claim-${status}`,
+              }
+            : { malformed: 'claim metadata' },
+        updated_at: 1,
+      });
+      syncHarness.setCloudClientAvailable(false);
+
+      await expect(
+        processSyncQueue({ userId: 'user-a', signal: new AbortController().signal }),
+      ).resolves.toEqual({ processed: 0, errored: 1, skipped: 0 });
+
+      expect(payloadReads).toBe(0);
+      expect(syncHarness.queueRows.get(id)).toMatchObject({
+        status: 'error',
+        error: 'local_only_table',
+      });
+      expect(syncHarness.settingsRows.get(cloudSyncQueueOwnerKey(id))).toEqual(ownerBefore);
+      expect(syncHarness.settingsRows.has(claimKey(id))).toBe(false);
+      expect(syncHarness.getSession).not.toHaveBeenCalled();
+      expect(syncHarness.upsert).not.toHaveBeenCalled();
+    },
+  );
+
+  it('quarantines local-only rows before a session mismatch while preserving allowed pending rows', async () => {
+    const kernelId = 'syq_kernel_session_mismatch';
+    const allowedId = 'syq_allowed_session_mismatch';
+    syncHarness.queueRows.set(kernelId, {
+      ...pendingRow(),
+      id: kernelId,
+      table: 'jarvis_profiles',
+      row_id: 'jprof_private',
+      payload: { custom_instructions: 'private profile text' },
+    });
+    syncHarness.queueRows.set(allowedId, {
+      ...pendingRow(),
+      id: allowedId,
+      row_id: 'wsp_allowed',
+    });
+    bindOwner(kernelId, { state: 'cloud', userId: 'user-a', capturedAt: 1 });
+    bindOwner(allowedId, { state: 'cloud', userId: 'user-a', capturedAt: 2 });
+    syncHarness.getSession.mockResolvedValueOnce({
+      data: { session: { user: { id: 'user-b' } } },
+    });
+
+    await expect(
+      processSyncQueue({ userId: 'user-a', signal: new AbortController().signal }),
+    ).resolves.toEqual({ processed: 0, errored: 1, skipped: 1 });
+
+    expect(syncHarness.queueRows.get(kernelId)?.status).toBe('error');
+    expect(syncHarness.queueRows.get(kernelId)?.error).toBe('local_only_table');
+    expect(syncHarness.queueRows.get(allowedId)?.status).toBe('pending');
+    expect(syncHarness.upsert).not.toHaveBeenCalled();
+  });
+
+  it('settles poisoned local-only rows with a safe error before upload or logging', async () => {
+    for (const [index, table] of EXPECTED_LOCAL_ONLY_SYNC_TABLES.entries()) {
+      const id = `syq_local_only_${index}`;
+      syncHarness.queueRows.set(id, {
+        ...pendingRow(),
+        id,
+        table,
+        row_id: `kernel-row-${index}`,
+        payload: { system_prompt: `private-kernel-payload-${index}` },
+      });
+      bindOwner(id, {
+        state: 'cloud',
+        userId: 'user-a',
+        capturedAt: index + 1,
+      });
+    }
+    syncHarness.resolveUpsert({ error: null });
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => undefined);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    try {
+      await expect(
+        processSyncQueue({ userId: 'user-a', signal: new AbortController().signal }),
+      ).resolves.toEqual({ processed: 0, errored: 6, skipped: 0 });
+
+      expect(syncHarness.from).not.toHaveBeenCalled();
+      expect(syncHarness.upsert).not.toHaveBeenCalled();
+      for (const row of syncHarness.queueRows.values()) {
+        expect(row).toMatchObject({ status: 'error', error: 'local_only_table' });
+      }
+      for (const spy of [debug, error, info, log, warn]) expect(spy).not.toHaveBeenCalled();
+    } finally {
+      debug.mockRestore();
+      error.mockRestore();
+      info.mockRestore();
+      log.mockRestore();
+      warn.mockRestore();
+    }
+  });
+
+  it('sanitizes a protected agent row at the final upload boundary', async () => {
+    const id = 'syq_protected_agent';
+    syncHarness.queueRows.set(id, {
+      ...pendingRow(),
+      id,
+      table: 'agents',
+      row_id: 'agt_jarvis',
+      payload: {
+        id: 'agt_jarvis',
+        slug: 'jarvis',
+        builtin: true,
+        name: 'JARVIS',
+        system_prompt: 'already queued private prompt',
+      },
+    });
+    bindOwner(id, { state: 'cloud', userId: 'user-a', capturedAt: 1 });
+    syncHarness.resolveUpsert({ error: null });
+
+    await processSyncQueue({ userId: 'user-a', signal: new AbortController().signal });
+
+    expect(syncHarness.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        table_name: 'agents',
+        payload: {
+          id: 'agt_jarvis',
+          slug: 'jarvis',
+          builtin: true,
+          name: 'JARVIS',
+        },
+      }),
+      expect.anything(),
+    );
+  });
 
   it('atomically stamps the canonical owner before a direct mutation becomes pending', async () => {
     const rowId = await enqueueMutation('update', 'workspaces', 'wsp_1', {

@@ -28,6 +28,7 @@ import {
   parseSyncQueueOwner,
   type SyncQueueOwnerSnapshot,
 } from '@/lib/cloudSyncQueueOwner';
+import { isProtectedJarvisAgent } from '@/lib/jarvis/identity';
 import type {
   AgentId,
   ChatId,
@@ -152,12 +153,31 @@ function syncRowId(table: StoreName, row: unknown): string | null {
   return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
-function payloadForSync(table: StoreName, row: unknown): unknown {
-  if (table !== 'chats' || !row || typeof row !== 'object' || Array.isArray(row)) {
+function payloadForSync(
+  table: StoreName,
+  row: unknown,
+  options: { wasProtectedJarvisAgent?: boolean } = {},
+): unknown {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) return row;
+  const record = row as Record<string, unknown>;
+  if (table === 'chats') {
+    const { connection: _localConnection, ...payload } = record;
+    return payload;
+  }
+  if (
+    table !== 'agents' ||
+    (!options.wasProtectedJarvisAgent &&
+      (typeof record.slug !== 'string' ||
+        !isProtectedJarvisAgent({ builtin: record.builtin === true, slug: record.slug })))
+  ) {
     return row;
   }
-  const { connection: _localConnection, ...payload } = row as Record<string, unknown>;
-  return payload;
+
+  const sanitized: Record<string, unknown> = {};
+  for (const key of Object.keys(record)) {
+    if (key !== 'system_prompt') sanitized[key] = record[key];
+  }
+  return sanitized;
 }
 
 function entityPayloadFreshness(payload: unknown): number | null {
@@ -311,10 +331,11 @@ async function syncUpdate<T>(
   table: StoreName,
   row: T,
   owner: SyncQueueOwnerSnapshot,
+  options?: { wasProtectedJarvisAgent?: boolean },
 ): Promise<void> {
   const rowId = syncRowId(table, row);
   if (rowId) {
-    await enqueueLocalSync('update', table, rowId, payloadForSync(table, row), owner);
+    await enqueueLocalSync('update', table, rowId, payloadForSync(table, row, options), owner);
   }
 }
 
@@ -648,7 +669,9 @@ export const agentRepo = {
     const existing = await requireRow(() => db.agents.get(id), 'agent', id);
     const row: Agent = { ...existing, ...sanitizeUpdate(patch), updated_at: now() };
     await db.agents.put(row);
-    await syncUpdate('agents', row, syncOwner);
+    await syncUpdate('agents', row, syncOwner, {
+      wasProtectedJarvisAgent: isProtectedJarvisAgent(existing),
+    });
     return row;
   },
   async delete(id: AgentId): Promise<void> {

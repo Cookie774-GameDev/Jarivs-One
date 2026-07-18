@@ -10,11 +10,13 @@ import {
   type SyncQueueCloudAuthorityLease,
   type SyncQueueOwnerRecordV2,
 } from '@/lib/cloudSyncQueueOwner';
+import type { Agent } from '@/types/agent';
 import type { Chat, Message } from '@/types/chat';
 import type { QuickLink, QuickLinkGroup } from '@/types/quick-link';
 import type { SyncQueueRow } from './schema';
 
 const state = vi.hoisted(() => ({
+  agents: new Map<string, Record<string, unknown>>(),
   chats: new Map<string, Record<string, unknown>>(),
   messages: new Map<string, Record<string, unknown>>(),
   quickLinks: new Map<string, Record<string, unknown>>(),
@@ -37,6 +39,34 @@ const state = vi.hoisted(() => ({
 
 vi.mock('./index', () => ({
   db: {
+    agents: {
+      async add(row: Record<string, unknown>) {
+        state.agents.set(row.id as string, { ...row });
+      },
+      async get(id: string) {
+        return state.agents.get(id);
+      },
+      async put(row: Record<string, unknown>) {
+        state.agents.set(row.id as string, { ...row });
+      },
+      async delete(id: string) {
+        state.agents.delete(id);
+      },
+      async toArray() {
+        return [...state.agents.values()].map((row) => ({ ...row }));
+      },
+      where(index: string) {
+        return {
+          equals(value: unknown) {
+            return {
+              async first() {
+                return [...state.agents.values()].find((row) => row[index] === value);
+              },
+            };
+          },
+        };
+      },
+    },
     chats: {
       async add(row: Record<string, unknown>) {
         state.chats.set(row.id as string, { ...row });
@@ -172,6 +202,7 @@ vi.mock('./index', () => ({
     async transaction(...args: unknown[]) {
       const body = args.at(-1);
       if (typeof body !== 'function') throw new Error('missing transaction body');
+      const agentsBefore = structuredClone([...state.agents.entries()]);
       const chatsBefore = structuredClone([...state.chats.entries()]);
       const messagesBefore = structuredClone([...state.messages.entries()]);
       const quickLinksBefore = structuredClone([...state.quickLinks.entries()]);
@@ -188,6 +219,8 @@ vi.mock('./index', () => ({
         }
         return result;
       } catch (error) {
+        state.agents.clear();
+        for (const [key, row] of agentsBefore) state.agents.set(key, row);
         state.chats.clear();
         for (const [key, row] of chatsBefore) state.chats.set(key, row);
         state.messages.clear();
@@ -206,6 +239,7 @@ vi.mock('./index', () => ({
 }));
 
 import {
+  agentRepo,
   chatRepo,
   messageRepo,
   quickLinkGroupRepo,
@@ -245,6 +279,38 @@ function seedChat(id: Chat['id'], title = 'Seeded chat'): void {
     created_at: 1,
     updated_at: 1,
   } satisfies Chat);
+}
+
+function agentInput(
+  id: Agent['id'],
+  overrides: Partial<Pick<Agent, 'builtin' | 'name' | 'slug' | 'system_prompt'>> = {},
+): Parameters<typeof agentRepo.create>[0] {
+  return {
+    id,
+    slug: 'assistant',
+    name: 'Assistant',
+    description: 'Test agent',
+    system_prompt: 'ordinary prompt',
+    model: { provider: 'openai', model: 'gpt-test' },
+    tools_allowed: ['*'],
+    memory_scope: 'workspace',
+    capabilities: ['planning'],
+    builtin: false,
+    ...overrides,
+  };
+}
+
+function seedAgent(
+  id: Agent['id'],
+  overrides: Partial<Pick<Agent, 'builtin' | 'name' | 'slug' | 'system_prompt'>> = {},
+): Agent {
+  const row = {
+    ...agentInput(id, overrides),
+    created_at: 1,
+    updated_at: 1,
+  } as Agent;
+  state.agents.set(id, { ...row });
+  return row;
 }
 
 function seedQuickLinkGroup(id: QuickLinkGroup['id']): QuickLinkGroup {
@@ -320,6 +386,7 @@ const localConnection: ProviderConnection = {
 
 describe('chat repository connections and queue ownership', () => {
   beforeEach(() => {
+    state.agents.clear();
     state.chats.clear();
     state.messages.clear();
     state.quickLinks.clear();
@@ -384,6 +451,106 @@ describe('chat repository connections and queue ownership', () => {
     const queued = state.syncRows[0] as unknown as SyncQueueRow;
     expect(queued.table).toBe('chats');
     expect(queued.payload).not.toHaveProperty('connection');
+  });
+
+  it('omits the protected built-in JARVIS prompt when queueing agent creation', async () => {
+    const id = 'agt_builtin_jarvis' as Agent['id'];
+    const systemPrompt = 'protected local identity prompt';
+
+    const created = await agentRepo.create(
+      agentInput(id, {
+        slug: 'jarvis',
+        name: 'JARVIS',
+        builtin: true,
+        system_prompt: systemPrompt,
+      }),
+    );
+
+    expect(created.system_prompt).toBe(systemPrompt);
+    expect(state.agents.get(id)?.system_prompt).toBe(systemPrompt);
+    expect(state.syncRows).toHaveLength(1);
+    expect(state.syncRows[0]).toMatchObject({ table: 'agents', row_id: id });
+    expect(state.syncRows[0]!.payload).not.toHaveProperty('system_prompt');
+  });
+
+  it('omits the protected built-in JARVIS prompt when queueing agent updates', async () => {
+    const id = 'agt_builtin_jarvis' as Agent['id'];
+    seedAgent(id, {
+      slug: 'jarvis',
+      name: 'JARVIS',
+      builtin: true,
+      system_prompt: 'old protected prompt',
+    });
+
+    const updated = await agentRepo.update(id, {
+      system_prompt: 'new protected prompt',
+    });
+
+    expect(updated.system_prompt).toBe('new protected prompt');
+    expect(state.agents.get(id)?.system_prompt).toBe('new protected prompt');
+    expect(state.syncRows).toHaveLength(1);
+    expect(state.syncRows[0]!.payload).not.toHaveProperty('system_prompt');
+  });
+
+  it('omits the former protected JARVIS prompt when an update clears builtin', async () => {
+    const id = 'agt_builtin_jarvis' as Agent['id'];
+    seedAgent(id, {
+      slug: 'jarvis',
+      name: 'JARVIS',
+      builtin: true,
+      system_prompt: 'protected prompt before builtin downgrade',
+    });
+
+    const updated = await agentRepo.update(id, { builtin: false });
+
+    expect(updated.builtin).toBe(false);
+    expect(state.syncRows).toHaveLength(1);
+    expect(state.syncRows[0]!.payload).not.toHaveProperty('system_prompt');
+  });
+
+  it('omits the former protected JARVIS prompt when an update changes its slug', async () => {
+    const id = 'agt_builtin_jarvis' as Agent['id'];
+    seedAgent(id, {
+      slug: 'jarvis',
+      name: 'JARVIS',
+      builtin: true,
+      system_prompt: 'protected prompt before slug downgrade',
+    });
+
+    const updated = await agentRepo.update(id, { slug: 'former-jarvis' });
+
+    expect(updated.slug).toBe('former-jarvis');
+    expect(state.syncRows).toHaveLength(1);
+    expect(state.syncRows[0]!.payload).not.toHaveProperty('system_prompt');
+  });
+
+  it('retains the prompt for a user-created agent whose slug collides with jarvis', async () => {
+    const id = 'agt_user_jarvis' as Agent['id'];
+
+    await agentRepo.create(
+      agentInput(id, {
+        slug: 'jarvis',
+        name: 'User JARVIS',
+        builtin: false,
+        system_prompt: 'ordinary user-authored prompt',
+      }),
+    );
+
+    expect(state.syncRows).toHaveLength(1);
+    expect(state.syncRows[0]!.payload).toMatchObject({
+      slug: 'jarvis',
+      builtin: false,
+      system_prompt: 'ordinary user-authored prompt',
+    });
+
+    state.syncRows.length = 0;
+    await agentRepo.update(id, { name: 'Updated User JARVIS' });
+    expect(state.syncRows).toHaveLength(1);
+    expect(state.syncRows[0]!.payload).toMatchObject({
+      slug: 'jarvis',
+      builtin: false,
+      system_prompt: 'ordinary user-authored prompt',
+    });
   });
 
   it('captures user A before a deferred public update and keeps that owner after switching to B', async () => {
