@@ -6,6 +6,7 @@ import type {
   JarvisRun,
 } from '@/lib/jarvis/contracts/execution';
 import type { JarvisSourceRef } from '@/lib/jarvis/contracts/source';
+import { validateJarvisEvent, validateJarvisRun } from '@/lib/jarvis/contracts/validators';
 import type { JarvisIdentityRevision } from '@/lib/jarvis/identity';
 import type { JarvisProfile } from '@/lib/jarvis/profiles/types';
 import type {
@@ -28,6 +29,14 @@ export type JarvisProfileMigrationMetadata = {
 
 function cloneDetached<T>(value: T): T {
   return structuredClone(value);
+}
+
+function assertValidJarvisRun(value: unknown): asserts value is JarvisRun {
+  if (!validateJarvisRun(value).ok) throw new Error('Invalid Jarvis run');
+}
+
+function assertValidJarvisEvent(value: unknown): asserts value is JarvisEvent {
+  if (!validateJarvisEvent(value).ok) throw new Error('Invalid Jarvis event');
 }
 
 export function toJarvisIdentityRevisionRow(
@@ -178,6 +187,7 @@ export function fromJarvisSourceRefRow(row: JarvisSourceRefRow): JarvisSourceRef
 }
 
 export function toJarvisRunRow(value: JarvisRun): JarvisRunRow {
+  assertValidJarvisRun(value);
   return {
     id: value.id,
     account_id: value.accountId,
@@ -194,11 +204,14 @@ export function toJarvisRunRow(value: JarvisRun): JarvisRunRow {
     created_at: value.createdAt,
     updated_at: value.updatedAt,
     ...(value.completedAt === undefined ? {} : { completed_at: value.completedAt }),
+    ...(value.transportAttempts === undefined
+      ? {}
+      : { transport_attempts: cloneDetached([...value.transportAttempts]) }),
   };
 }
 
 export function fromJarvisRunRow(row: JarvisRunRow): JarvisRun {
-  return {
+  const value: JarvisRun = {
     id: row.id,
     accountId: row.account_id,
     ...(row.workspace_id === undefined ? {} : { workspaceId: row.workspace_id }),
@@ -214,10 +227,16 @@ export function fromJarvisRunRow(row: JarvisRunRow): JarvisRun {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     ...(row.completed_at === undefined ? {} : { completedAt: row.completed_at }),
+    ...(row.transport_attempts === undefined
+      ? {}
+      : { transportAttempts: cloneDetached(row.transport_attempts) }),
   };
+  assertValidJarvisRun(value);
+  return value;
 }
 
 export function toJarvisEventRow(value: JarvisEvent): JarvisEventRow {
+  assertValidJarvisEvent(value);
   return {
     run_id: value.runId,
     seq: value.seq,
@@ -229,11 +248,23 @@ export function toJarvisEventRow(value: JarvisEvent): JarvisEventRow {
     source_refs: value.sourceRefs.map(toJarvisSourceRefRow),
     artifact_ids: [...value.artifactIds],
     created_at: value.createdAt,
+    ...(value.executionEvidence === undefined
+      ? {}
+      : { execution_evidence: cloneDetached(value.executionEvidence) }),
+    ...(value.canonicalResultEvidence === undefined
+      ? {}
+      : { canonical_result_evidence: cloneDetached(value.canonicalResultEvidence) }),
+    ...(value.producerSourceEvidence === undefined
+      ? {}
+      : { producer_source_evidence: cloneDetached(value.producerSourceEvidence) }),
+    ...(value.liveEvidence === undefined
+      ? {}
+      : { live_evidence: cloneDetached(value.liveEvidence) }),
   };
 }
 
 export function fromJarvisEventRow(row: JarvisEventRow): JarvisEvent {
-  return {
+  const value: JarvisEvent = {
     runId: row.run_id,
     seq: row.seq,
     idempotencyKey: row.idempotency_key,
@@ -244,7 +275,19 @@ export function fromJarvisEventRow(row: JarvisEventRow): JarvisEvent {
     sourceRefs: row.source_refs.map(fromJarvisSourceRefRow),
     artifactIds: [...row.artifact_ids],
     createdAt: row.created_at,
+    ...(row.execution_evidence === undefined
+      ? {}
+      : { executionEvidence: cloneDetached(row.execution_evidence) }),
+    ...(row.canonical_result_evidence === undefined
+      ? {}
+      : { canonicalResultEvidence: cloneDetached(row.canonical_result_evidence) }),
+    ...(row.producer_source_evidence === undefined
+      ? {}
+      : { producerSourceEvidence: cloneDetached(row.producer_source_evidence) }),
+    ...(row.live_evidence === undefined ? {} : { liveEvidence: cloneDetached(row.live_evidence) }),
   };
+  assertValidJarvisEvent(value);
+  return value;
 }
 
 export function toJarvisApprovalRow(value: JarvisApproval): JarvisApprovalRow {

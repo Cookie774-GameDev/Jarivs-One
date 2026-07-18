@@ -15,6 +15,13 @@
  */
 
 import type { ProjectId, WorkspaceId } from '@/types/common';
+import type {
+  JarvisCanonicalResultEvidenceV1,
+  JarvisDurableLiveEvidenceV1,
+  JarvisExecutionEvidenceV1,
+  JarvisProducerSourceEvidenceV1,
+  JarvisTransportAttemptV1,
+} from '@/lib/jarvis/contracts/execution';
 
 /**
  * A workspace is the top-level container in Jarvis. Multi-workspace support is
@@ -202,6 +209,7 @@ export type JarvisRunRow = {
   created_at: number;
   updated_at: number;
   completed_at?: number;
+  transport_attempts?: JarvisTransportAttemptV1[];
 };
 
 export type JarvisEventRow = {
@@ -226,6 +234,10 @@ export type JarvisEventRow = {
   source_refs: JarvisSourceRefRow[];
   artifact_ids: string[];
   created_at: number;
+  execution_evidence?: JarvisExecutionEvidenceV1;
+  canonical_result_evidence?: JarvisCanonicalResultEvidenceV1;
+  producer_source_evidence?: JarvisProducerSourceEvidenceV1;
+  live_evidence?: JarvisDurableLiveEvidenceV1;
 };
 
 export type JarvisApprovalRow = {

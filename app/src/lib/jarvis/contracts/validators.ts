@@ -1,5 +1,17 @@
 import type { JarvisCapabilitySnapshot, JarvisModelSnapshot } from './capability';
-import type { JarvisApproval, JarvisArtifact, JarvisEvent, JarvisRun } from './execution';
+import type {
+  JarvisApproval,
+  JarvisArtifact,
+  JarvisCanonicalResultEvidenceV1,
+  JarvisDurableLiveEvidenceV1,
+  JarvisEvent,
+  JarvisExecutionEvidenceV1,
+  JarvisPreEffectTransportFailureEvidence,
+  JarvisProducerSourceEvidenceV1,
+  JarvisRun,
+  JarvisTransportAttemptV1,
+  JarvisZeroConsequentialEffectEvidenceV1,
+} from './execution';
 import type { CompiledJarvisPrompt } from './prompt';
 import type { JarvisRequestEnvelope } from './request';
 import type { JarvisResponseEnvelope } from './response';
@@ -133,6 +145,58 @@ const EVENT_TYPES = [
   'warning',
   'error',
 ] as const;
+
+const TRANSPORT_ATTEMPT_KINDS = ['initial', 'transport_retry'] as const;
+const TRANSPORT_ATTEMPT_STATES = [
+  'provider_in_flight',
+  'retryable_failed',
+  'completed',
+  'effect_uncertain',
+] as const;
+const EFFECT_BARRIER_STATES = ['open', 'dirty', 'sealed_for_retry'] as const;
+const EXECUTION_EVIDENCE_KINDS = [
+  'consequential_effect_claimed',
+  'consequential_effect_completed',
+] as const;
+const EXECUTION_OWNER_KINDS = [
+  'approval',
+  'artifact',
+  'action',
+  'file',
+  'terminal',
+  'plugin',
+  'mcp',
+  'browser',
+  'schedule',
+] as const;
+const CANONICAL_RESULT_KINDS = [
+  'kernel_turn_committed',
+  'scheduled_transport_settled',
+  'hive_child_provider_result',
+] as const;
+const TERMINAL_EVIDENCE_STATES = ['completed', 'degraded'] as const;
+const LIVE_PRODUCER_KINDS = [
+  'provider',
+  'action',
+  'file_action',
+  'terminal',
+  'plugin',
+  'mcp',
+  'schedule',
+  'voice',
+  'hive',
+] as const;
+const LIVE_TRANSITIONS = ['started', 'ready', 'busy', 'completed', 'degraded'] as const;
+const LIVE_CAPABILITY_CATEGORIES = [
+  'tool',
+  'plugin',
+  'mcp',
+  'terminal',
+  'agent',
+  'entitlement',
+] as const;
+const MODEL_LIVE_OPERATIONS = ['generate', 'stream', 'embed'] as const;
+const CAPABILITY_LIVE_OPERATIONS = ['execute', 'cancel', 'inspect'] as const;
 
 const APPROVAL_RISKS = ['safe', 'confirm', 'dangerous'] as const;
 const APPROVAL_STATUSES = ['pending', 'approved', 'denied', 'expired', 'consumed'] as const;
@@ -499,9 +563,65 @@ function validateSequence(value: unknown, path: ValidationPath, errors: Validati
   if (!Number.isInteger(value) || value < 0) addError(errors, 'invalid_type', path);
 }
 
+function validatePositiveInteger(
+  value: unknown,
+  path: ValidationPath,
+  errors: ValidationErrors,
+): void {
+  if (typeof value !== 'number') {
+    addError(errors, 'invalid_type', path);
+    return;
+  }
+  if (!Number.isFinite(value)) {
+    addError(errors, 'non_finite_number', path);
+    return;
+  }
+  if (!Number.isSafeInteger(value) || value <= 0) addError(errors, 'invalid_type', path);
+}
+
+function validateNonNegativeInteger(
+  value: unknown,
+  path: ValidationPath,
+  errors: ValidationErrors,
+): void {
+  if (typeof value !== 'number') {
+    addError(errors, 'invalid_type', path);
+    return;
+  }
+  if (!Number.isFinite(value)) {
+    addError(errors, 'non_finite_number', path);
+    return;
+  }
+  if (!Number.isSafeInteger(value) || value < 0) addError(errors, 'invalid_type', path);
+}
+
+function validatePrefixedIdentifier(
+  value: unknown,
+  prefix: string,
+  path: ValidationPath,
+  errors: ValidationErrors,
+): void {
+  validateIdentifier(value, path, errors);
+  if (typeof value === 'string' && !value.startsWith(prefix)) {
+    addError(errors, 'invalid_identifier', path);
+  }
+}
+
+function requireEqualBinding(
+  record: RecordValue,
+  key: string,
+  expected: unknown,
+  path: ValidationPath,
+  errors: ValidationErrors,
+): void {
+  if (dataField(record, key) !== expected) {
+    addError(errors, 'invalid_identifier', childPath(path, key));
+  }
+}
+
 function validateLiteral(
   value: unknown,
-  literal: 1 | true,
+  literal: 0 | 1 | false | true,
   path: ValidationPath,
   errors: ValidationErrors,
 ): void {
@@ -533,6 +653,35 @@ function validateArray(
   }
   for (let index = 0; index < value.length; index += 1) {
     elementValidator(value[index], childPath(path, index), errors);
+  }
+}
+
+function dataField(record: RecordValue, key: string): unknown {
+  const field = inspectOwnField(record, key);
+  return field.kind === 'data' ? field.value : undefined;
+}
+
+function rejectUnlessEqual(
+  actual: unknown,
+  expected: unknown,
+  path: ValidationPath,
+  errors: ValidationErrors,
+): void {
+  if (actual !== expected) addError(errors, 'invalid_type', path);
+}
+
+function validateClosedOperationArray(
+  value: unknown,
+  members: readonly string[],
+  path: ValidationPath,
+  errors: ValidationErrors,
+): void {
+  validateArray(value, path, errors, (entry, entryPath, entryErrors) =>
+    validateEnum(entry, members, entryPath, entryErrors),
+  );
+  if (!Array.isArray(value)) return;
+  if (value.length === 0 || new Set(value).size !== value.length) {
+    addError(errors, 'invalid_type', path);
   }
 }
 
@@ -1148,6 +1297,645 @@ function validateResponseEnvelopeShape(
   validateRequiredField(record, 'completedAt', path, errors, validateFiniteNumber);
 }
 
+function validatePreEffectTransportFailureShape(
+  value: unknown,
+  path: ValidationPath,
+  errors: ValidationErrors,
+): void {
+  const record = validateClosedRecord(
+    value,
+    [
+      'schemaVersion',
+      'accountId',
+      'runId',
+      'requestId',
+      'attemptNumber',
+      'providerId',
+      'modelId',
+      'boundary',
+      'responseStarted',
+      'chunkCount',
+      'actionDispatchCount',
+      'failureCategory',
+      'evidenceRef',
+      'verifiedAt',
+    ],
+    path,
+    errors,
+  );
+  if (!record) return;
+  validateRequiredField(record, 'schemaVersion', path, errors, (entry, entryPath, entryErrors) =>
+    validateLiteral(entry, 1, entryPath, entryErrors),
+  );
+  for (const key of [
+    'accountId',
+    'runId',
+    'requestId',
+    'providerId',
+    'modelId',
+    'failureCategory',
+    'evidenceRef',
+  ]) {
+    validateRequiredField(record, key, path, errors, validateIdentifier);
+  }
+  validateRequiredField(record, 'attemptNumber', path, errors, validatePositiveInteger);
+  validateRequiredField(record, 'boundary', path, errors, (entry, entryPath, entryErrors) =>
+    rejectUnlessEqual(entry, 'before_first_response_byte', entryPath, entryErrors),
+  );
+  validateRequiredField(record, 'responseStarted', path, errors, (entry, entryPath, entryErrors) =>
+    validateLiteral(entry, false, entryPath, entryErrors),
+  );
+  for (const key of ['chunkCount', 'actionDispatchCount']) {
+    validateRequiredField(record, key, path, errors, (entry, entryPath, entryErrors) =>
+      validateLiteral(entry, 0, entryPath, entryErrors),
+    );
+  }
+  validateRequiredField(record, 'verifiedAt', path, errors, validateFiniteNumber);
+}
+
+function validateZeroCountEvidenceShape(
+  value: unknown,
+  path: ValidationPath,
+  errors: ValidationErrors,
+): void {
+  const record = validateClosedRecord(value, ['count', 'evidenceRef'], path, errors);
+  if (!record) return;
+  validateRequiredField(record, 'count', path, errors, (entry, entryPath, entryErrors) =>
+    validateLiteral(entry, 0, entryPath, entryErrors),
+  );
+  validateRequiredField(record, 'evidenceRef', path, errors, validateIdentifier);
+}
+
+function validateZeroEffectEvidenceShape(
+  value: unknown,
+  path: ValidationPath,
+  errors: ValidationErrors,
+): void {
+  const record = validateClosedRecord(
+    value,
+    [
+      'schemaVersion',
+      'accountId',
+      'runId',
+      'attemptNumber',
+      'requestId',
+      'assessedAt',
+      'providerBoundary',
+      'effectBarrier',
+      'approvals',
+      'artifacts',
+      'executorClaims',
+    ],
+    path,
+    errors,
+  );
+  if (!record) return;
+  validateRequiredField(record, 'schemaVersion', path, errors, (entry, entryPath, entryErrors) =>
+    validateLiteral(entry, 1, entryPath, entryErrors),
+  );
+  for (const key of ['accountId', 'runId', 'requestId']) {
+    validateRequiredField(record, key, path, errors, validateIdentifier);
+  }
+  validateRequiredField(record, 'attemptNumber', path, errors, validatePositiveInteger);
+  validateRequiredField(record, 'assessedAt', path, errors, validateFiniteNumber);
+  validateRequiredField(
+    record,
+    'providerBoundary',
+    path,
+    errors,
+    validatePreEffectTransportFailureShape,
+  );
+  validateRequiredField(record, 'effectBarrier', path, errors, (entry, entryPath, entryErrors) => {
+    const barrier = validateClosedRecord(entry, ['state', 'version'], entryPath, entryErrors);
+    if (!barrier) return;
+    validateRequiredField(
+      barrier,
+      'state',
+      entryPath,
+      entryErrors,
+      (state, statePath, stateErrors) => rejectUnlessEqual(state, 'open', statePath, stateErrors),
+    );
+    validateRequiredField(
+      barrier,
+      'version',
+      entryPath,
+      entryErrors,
+      (version, versionPath, versionErrors) =>
+        validateLiteral(version, 0, versionPath, versionErrors),
+    );
+  });
+  for (const key of ['approvals', 'artifacts']) {
+    validateRequiredField(record, key, path, errors, validateZeroCountEvidenceShape);
+  }
+  validateRequiredField(record, 'executorClaims', path, errors, (entry, entryPath, entryErrors) => {
+    const claims = validateClosedRecord(
+      entry,
+      ['count', 'throughSeq', 'evidenceRef'],
+      entryPath,
+      entryErrors,
+    );
+    if (!claims) return;
+    validateRequiredField(
+      claims,
+      'count',
+      entryPath,
+      entryErrors,
+      (count, countPath, countErrors) => validateLiteral(count, 0, countPath, countErrors),
+    );
+    validateRequiredField(claims, 'throughSeq', entryPath, entryErrors, validateSequence);
+    validateRequiredField(claims, 'evidenceRef', entryPath, entryErrors, validateIdentifier);
+  });
+  const boundary = dataField(record, 'providerBoundary');
+  if (isRecordValue(boundary)) {
+    for (const key of ['accountId', 'runId', 'requestId', 'attemptNumber']) {
+      requireEqualBinding(
+        boundary,
+        key,
+        dataField(record, key),
+        childPath(path, 'providerBoundary'),
+        errors,
+      );
+    }
+  }
+}
+
+function validateTransportBarrierShape(
+  value: unknown,
+  path: ValidationPath,
+  errors: ValidationErrors,
+): void {
+  const record = validateClosedRecord(value, ['state', 'version', 'updatedAt'], path, errors);
+  if (!record) return;
+  validateRequiredField(record, 'state', path, errors, (entry, entryPath, entryErrors) =>
+    validateEnum(entry, EFFECT_BARRIER_STATES, entryPath, entryErrors),
+  );
+  validateRequiredField(record, 'version', path, errors, validateNonNegativeInteger);
+  validateRequiredField(record, 'updatedAt', path, errors, validateFiniteNumber);
+  const state = dataField(record, 'state');
+  const version = dataField(record, 'version');
+  if ((state === 'open' || state === 'sealed_for_retry') && version !== 0) {
+    addError(errors, 'invalid_type', childPath(path, 'version'));
+  }
+  if (state === 'dirty' && (typeof version !== 'number' || version < 1)) {
+    addError(errors, 'invalid_type', childPath(path, 'version'));
+  }
+}
+
+function validateTransportAttemptShape(
+  value: unknown,
+  path: ValidationPath,
+  errors: ValidationErrors,
+): void {
+  const record = validateClosedRecord(
+    value,
+    [
+      'schemaVersion',
+      'attemptNumber',
+      'kind',
+      'requestId',
+      'state',
+      'startedEventSeq',
+      'effectBarrier',
+      'createdAt',
+      'updatedAt',
+      'failureCategory',
+      'zeroEffectEvidence',
+    ],
+    path,
+    errors,
+  );
+  if (!record) return;
+  validateRequiredField(record, 'schemaVersion', path, errors, (entry, entryPath, entryErrors) =>
+    validateLiteral(entry, 1, entryPath, entryErrors),
+  );
+  validateRequiredField(record, 'attemptNumber', path, errors, validatePositiveInteger);
+  validateRequiredField(record, 'kind', path, errors, (entry, entryPath, entryErrors) =>
+    validateEnum(entry, TRANSPORT_ATTEMPT_KINDS, entryPath, entryErrors),
+  );
+  validateRequiredField(record, 'requestId', path, errors, validateIdentifier);
+  validateRequiredField(record, 'state', path, errors, (entry, entryPath, entryErrors) =>
+    validateEnum(entry, TRANSPORT_ATTEMPT_STATES, entryPath, entryErrors),
+  );
+  validateRequiredField(record, 'startedEventSeq', path, errors, validatePositiveInteger);
+  validateRequiredField(record, 'effectBarrier', path, errors, validateTransportBarrierShape);
+  validateRequiredField(record, 'createdAt', path, errors, validateFiniteNumber);
+  validateRequiredField(record, 'updatedAt', path, errors, validateFiniteNumber);
+  validateOptionalField(record, 'failureCategory', path, errors, validateIdentifier);
+  validateOptionalField(
+    record,
+    'zeroEffectEvidence',
+    path,
+    errors,
+    validateZeroEffectEvidenceShape,
+  );
+
+  const state = dataField(record, 'state');
+  const failureCategory = dataField(record, 'failureCategory');
+  const zeroEffectEvidence = dataField(record, 'zeroEffectEvidence');
+  if (state === 'retryable_failed') {
+    requireField(record, 'failureCategory', path, errors);
+    requireField(record, 'zeroEffectEvidence', path, errors);
+  } else if (state === 'effect_uncertain') {
+    requireField(record, 'failureCategory', path, errors);
+    if (hasOwn(record, 'zeroEffectEvidence')) {
+      addError(errors, 'invalid_type', childPath(path, 'zeroEffectEvidence'));
+    }
+  } else {
+    if (hasOwn(record, 'failureCategory')) {
+      addError(errors, 'invalid_type', childPath(path, 'failureCategory'));
+    }
+    if (hasOwn(record, 'zeroEffectEvidence')) {
+      addError(errors, 'invalid_type', childPath(path, 'zeroEffectEvidence'));
+    }
+  }
+  if (isRecordValue(zeroEffectEvidence)) {
+    for (const key of ['requestId', 'attemptNumber']) {
+      requireEqualBinding(
+        zeroEffectEvidence,
+        key,
+        dataField(record, key),
+        childPath(path, 'zeroEffectEvidence'),
+        errors,
+      );
+    }
+    const boundary = dataField(zeroEffectEvidence, 'providerBoundary');
+    if (isRecordValue(boundary)) {
+      requireEqualBinding(
+        boundary,
+        'failureCategory',
+        failureCategory,
+        childPath(childPath(path, 'zeroEffectEvidence'), 'providerBoundary'),
+        errors,
+      );
+    }
+  }
+}
+
+function validateTransportAttemptArray(
+  value: unknown,
+  path: ValidationPath,
+  errors: ValidationErrors,
+): void {
+  validateArray(value, path, errors, validateTransportAttemptShape);
+  if (!Array.isArray(value)) return;
+  if (value.length > 32) addError(errors, 'invalid_type', path);
+  const requestIds = new Set<string>();
+  value.forEach((attempt, index) => {
+    if (!isRecordValue(attempt)) return;
+    const attemptPath = childPath(path, index);
+    if (dataField(attempt, 'attemptNumber') !== index + 1) {
+      addError(errors, 'invalid_type', childPath(attemptPath, 'attemptNumber'));
+    }
+    const expectedKind = index === 0 ? 'initial' : 'transport_retry';
+    if (dataField(attempt, 'kind') !== expectedKind) {
+      addError(errors, 'invalid_type', childPath(attemptPath, 'kind'));
+    }
+    const requestId = dataField(attempt, 'requestId');
+    if (typeof requestId === 'string') {
+      if (requestIds.has(requestId)) {
+        addError(errors, 'invalid_identifier', childPath(attemptPath, 'requestId'));
+      }
+      requestIds.add(requestId);
+    }
+    if (index < value.length - 1 && dataField(attempt, 'state') === 'retryable_failed') {
+      const barrier = dataField(attempt, 'effectBarrier');
+      if (!isRecordValue(barrier) || dataField(barrier, 'state') !== 'sealed_for_retry') {
+        addError(errors, 'invalid_type', childPath(attemptPath, 'effectBarrier'));
+      }
+    }
+  });
+}
+
+function validateExecutionEvidenceShape(
+  value: unknown,
+  path: ValidationPath,
+  errors: ValidationErrors,
+): void {
+  const record = validateClosedRecord(
+    value,
+    [
+      'schemaVersion',
+      'requestId',
+      'attemptNumber',
+      'kind',
+      'ownerKind',
+      'ownerId',
+      'evidenceRef',
+      'observedAt',
+    ],
+    path,
+    errors,
+  );
+  if (!record) return;
+  validateRequiredField(record, 'schemaVersion', path, errors, (entry, entryPath, entryErrors) =>
+    validateLiteral(entry, 1, entryPath, entryErrors),
+  );
+  validateRequiredField(record, 'requestId', path, errors, validateIdentifier);
+  validateRequiredField(record, 'attemptNumber', path, errors, validatePositiveInteger);
+  validateRequiredField(record, 'kind', path, errors, (entry, entryPath, entryErrors) =>
+    validateEnum(entry, EXECUTION_EVIDENCE_KINDS, entryPath, entryErrors),
+  );
+  validateRequiredField(record, 'ownerKind', path, errors, (entry, entryPath, entryErrors) =>
+    validateEnum(entry, EXECUTION_OWNER_KINDS, entryPath, entryErrors),
+  );
+  for (const key of ['ownerId', 'evidenceRef']) {
+    validateRequiredField(record, key, path, errors, validateIdentifier);
+  }
+  validateRequiredField(record, 'observedAt', path, errors, validateFiniteNumber);
+}
+
+function validateCanonicalResultEvidenceShape(
+  value: unknown,
+  path: ValidationPath,
+  errors: ValidationErrors,
+): void {
+  const record = validateClosedRecord(
+    value,
+    [
+      'schemaVersion',
+      'kind',
+      'accountId',
+      'runId',
+      'requestId',
+      'attemptNumber',
+      'parentRunId',
+      'stepId',
+      'state',
+      'resultRef',
+      'observedAt',
+    ],
+    path,
+    errors,
+  );
+  if (!record) return;
+  validateRequiredField(record, 'schemaVersion', path, errors, (entry, entryPath, entryErrors) =>
+    validateLiteral(entry, 1, entryPath, entryErrors),
+  );
+  validateRequiredField(record, 'kind', path, errors, (entry, entryPath, entryErrors) =>
+    validateEnum(entry, CANONICAL_RESULT_KINDS, entryPath, entryErrors),
+  );
+  for (const key of ['accountId', 'runId', 'requestId']) {
+    validateRequiredField(record, key, path, errors, validateIdentifier);
+  }
+  validateRequiredField(record, 'attemptNumber', path, errors, validatePositiveInteger);
+  validateOptionalField(record, 'parentRunId', path, errors, validateIdentifier);
+  validateOptionalField(record, 'stepId', path, errors, validateIdentifier);
+  validateRequiredField(record, 'state', path, errors, (entry, entryPath, entryErrors) =>
+    validateEnum(entry, TERMINAL_EVIDENCE_STATES, entryPath, entryErrors),
+  );
+  validateRequiredField(record, 'resultRef', path, errors, (entry, entryPath, entryErrors) =>
+    validatePrefixedIdentifier(entry, 'jresult_', entryPath, entryErrors),
+  );
+  validateRequiredField(record, 'observedAt', path, errors, validateFiniteNumber);
+  if (dataField(record, 'kind') === 'hive_child_provider_result') {
+    requireField(record, 'parentRunId', path, errors);
+    requireField(record, 'stepId', path, errors);
+  }
+}
+
+const PRODUCER_IDENTITY_KEYS: Record<(typeof LIVE_PRODUCER_KINDS)[number], readonly string[]> = {
+  provider: ['producerKind', 'providerId', 'modelId', 'modelSnapshotRef'],
+  action: ['producerKind', 'actionId', 'actionVersion', 'executionId'],
+  file_action: ['producerKind', 'actionId', 'actionVersion', 'resultId'],
+  terminal: ['producerKind', 'sessionId', 'executionId'],
+  plugin: ['producerKind', 'pluginId', 'invocationId'],
+  mcp: ['producerKind', 'serverId', 'toolName', 'invocationId'],
+  schedule: ['producerKind', 'eventId', 'occurrenceId'],
+  voice: ['producerKind', 'sessionId', 'engineKind', 'executionId'],
+  hive: ['producerKind', 'stackId', 'stepId', 'workerId'],
+};
+
+function validateLiveProducerIdentityShape(
+  value: unknown,
+  path: ValidationPath,
+  errors: ValidationErrors,
+): void {
+  const record = validateRecord(value, path, errors);
+  if (!record) return;
+  const rawKind = dataField(record, 'producerKind');
+  const kind =
+    typeof rawKind === 'string' && LIVE_PRODUCER_KINDS.includes(rawKind as never)
+      ? (rawKind as (typeof LIVE_PRODUCER_KINDS)[number])
+      : undefined;
+  validateUnknownKeys(
+    record,
+    kind ? PRODUCER_IDENTITY_KEYS[kind] : Object.values(PRODUCER_IDENTITY_KEYS).flat(),
+    path,
+    errors,
+  );
+  validateRequiredField(record, 'producerKind', path, errors, (entry, entryPath, entryErrors) =>
+    validateEnum(entry, LIVE_PRODUCER_KINDS, entryPath, entryErrors),
+  );
+  if (!kind) return;
+  for (const key of PRODUCER_IDENTITY_KEYS[kind].slice(1)) {
+    const validator: ValueValidator =
+      key === 'actionVersion'
+        ? validatePositiveInteger
+        : key === 'engineKind'
+          ? (entry, entryPath, entryErrors) =>
+              validateEnum(entry, ['tts', 'playback'], entryPath, entryErrors)
+          : validateIdentifier;
+    validateRequiredField(record, key, path, errors, validator);
+  }
+}
+
+function validateResultAuthorityShape(
+  value: unknown,
+  path: ValidationPath,
+  errors: ValidationErrors,
+): void {
+  const record = validateClosedRecord(value, ['runId', 'eventSeq', 'evidenceRef'], path, errors);
+  if (!record) return;
+  validateRequiredField(record, 'runId', path, errors, validateIdentifier);
+  validateRequiredField(record, 'eventSeq', path, errors, validatePositiveInteger);
+  validateRequiredField(record, 'evidenceRef', path, errors, (entry, entryPath, entryErrors) =>
+    validatePrefixedIdentifier(entry, 'jresult_', entryPath, entryErrors),
+  );
+}
+
+function validateProducerSourceEvidenceShape(
+  value: unknown,
+  path: ValidationPath,
+  errors: ValidationErrors,
+): void {
+  const record = validateRecord(value, path, errors);
+  if (!record) return;
+  const phase = dataField(record, 'phase');
+  validateUnknownKeys(
+    record,
+    [
+      'schemaVersion',
+      'accountId',
+      'runId',
+      'requestId',
+      'attemptNumber',
+      'producerKind',
+      'producerIdentity',
+      'resultRef',
+      'observedAt',
+      'phase',
+      'state',
+      ...(phase === 'result' ? ['resultAuthority'] : []),
+    ],
+    path,
+    errors,
+  );
+  validateRequiredField(record, 'schemaVersion', path, errors, (entry, entryPath, entryErrors) =>
+    validateLiteral(entry, 1, entryPath, entryErrors),
+  );
+  for (const key of ['accountId', 'runId', 'requestId', 'resultRef']) {
+    validateRequiredField(record, key, path, errors, validateIdentifier);
+  }
+  validateRequiredField(record, 'attemptNumber', path, errors, validatePositiveInteger);
+  validateRequiredField(record, 'producerKind', path, errors, (entry, entryPath, entryErrors) =>
+    validateEnum(entry, LIVE_PRODUCER_KINDS, entryPath, entryErrors),
+  );
+  validateRequiredField(
+    record,
+    'producerIdentity',
+    path,
+    errors,
+    validateLiveProducerIdentityShape,
+  );
+  validateRequiredField(record, 'observedAt', path, errors, validateFiniteNumber);
+  validateRequiredField(record, 'phase', path, errors, (entry, entryPath, entryErrors) =>
+    validateEnum(entry, ['start', 'result'], entryPath, entryErrors),
+  );
+  validateRequiredField(record, 'state', path, errors, (entry, entryPath, entryErrors) =>
+    validateEnum(
+      entry,
+      phase === 'result' ? TERMINAL_EVIDENCE_STATES : ['started', 'ready', 'busy'],
+      entryPath,
+      entryErrors,
+    ),
+  );
+  if (phase === 'result') {
+    validateOptionalField(record, 'resultAuthority', path, errors, validateResultAuthorityShape);
+  }
+  const producerKind = dataField(record, 'producerKind');
+  const identity = dataField(record, 'producerIdentity');
+  if (isRecordValue(identity)) {
+    requireEqualBinding(
+      identity,
+      'producerKind',
+      producerKind,
+      childPath(path, 'producerIdentity'),
+      errors,
+    );
+  }
+  if (phase === 'result' && (producerKind === 'schedule' || producerKind === 'hive')) {
+    requireField(record, 'resultAuthority', path, errors);
+  }
+}
+
+function validateDurableLiveEvidenceShape(
+  value: unknown,
+  path: ValidationPath,
+  errors: ValidationErrors,
+): void {
+  const record = validateRecord(value, path, errors);
+  if (!record) return;
+  const kind = dataField(record, 'kind');
+  const commonKeys = [
+    'schemaVersion',
+    'kind',
+    'accountId',
+    'runId',
+    'requestId',
+    'attemptNumber',
+    'registrationId',
+    'producerKind',
+    'producerIdentity',
+    'transition',
+    'operations',
+    'resultRef',
+    'resultEventSeq',
+    'observedAt',
+    'previousProofRef',
+  ];
+  validateUnknownKeys(
+    record,
+    [
+      ...commonKeys,
+      ...(kind === 'model'
+        ? ['providerId', 'modelId', 'modelSnapshotRef']
+        : kind === 'capability'
+          ? ['category', 'capabilityId']
+          : []),
+    ],
+    path,
+    errors,
+  );
+  validateRequiredField(record, 'schemaVersion', path, errors, (entry, entryPath, entryErrors) =>
+    validateLiteral(entry, 1, entryPath, entryErrors),
+  );
+  validateRequiredField(record, 'kind', path, errors, (entry, entryPath, entryErrors) =>
+    validateEnum(entry, ['model', 'capability'], entryPath, entryErrors),
+  );
+  for (const key of ['accountId', 'runId', 'requestId', 'registrationId', 'resultRef']) {
+    validateRequiredField(record, key, path, errors, validateIdentifier);
+  }
+  validateRequiredField(record, 'attemptNumber', path, errors, validatePositiveInteger);
+  validateRequiredField(record, 'producerKind', path, errors, (entry, entryPath, entryErrors) =>
+    validateEnum(entry, LIVE_PRODUCER_KINDS, entryPath, entryErrors),
+  );
+  validateRequiredField(
+    record,
+    'producerIdentity',
+    path,
+    errors,
+    validateLiveProducerIdentityShape,
+  );
+  validateRequiredField(record, 'transition', path, errors, (entry, entryPath, entryErrors) =>
+    validateEnum(entry, LIVE_TRANSITIONS, entryPath, entryErrors),
+  );
+  validateRequiredField(record, 'resultEventSeq', path, errors, validatePositiveInteger);
+  validateRequiredField(record, 'observedAt', path, errors, validateFiniteNumber);
+  validateOptionalField(record, 'previousProofRef', path, errors, (entry, entryPath, entryErrors) =>
+    validatePrefixedIdentifier(entry, 'jlive_', entryPath, entryErrors),
+  );
+  const producerKind = dataField(record, 'producerKind');
+  const identity = dataField(record, 'producerIdentity');
+  if (isRecordValue(identity)) {
+    requireEqualBinding(
+      identity,
+      'producerKind',
+      producerKind,
+      childPath(path, 'producerIdentity'),
+      errors,
+    );
+  }
+  if (kind === 'model') {
+    validateRequiredField(record, 'operations', path, errors, (entry, entryPath, entryErrors) =>
+      validateClosedOperationArray(entry, MODEL_LIVE_OPERATIONS, entryPath, entryErrors),
+    );
+    rejectUnlessEqual(producerKind, 'provider', childPath(path, 'producerKind'), errors);
+    for (const key of ['providerId', 'modelId', 'modelSnapshotRef']) {
+      validateRequiredField(record, key, path, errors, validateIdentifier);
+      if (isRecordValue(identity)) {
+        rejectUnlessEqual(
+          dataField(record, key),
+          dataField(identity, key),
+          childPath(path, key),
+          errors,
+        );
+      }
+    }
+  } else if (kind === 'capability') {
+    validateRequiredField(record, 'operations', path, errors, (entry, entryPath, entryErrors) =>
+      validateClosedOperationArray(entry, CAPABILITY_LIVE_OPERATIONS, entryPath, entryErrors),
+    );
+    validateRequiredField(record, 'category', path, errors, (entry, entryPath, entryErrors) =>
+      validateEnum(entry, LIVE_CAPABILITY_CATEGORIES, entryPath, entryErrors),
+    );
+    validateRequiredField(record, 'capabilityId', path, errors, validateIdentifier);
+    if (producerKind === 'provider')
+      addError(errors, 'invalid_type', childPath(path, 'producerKind'));
+  } else {
+    validateRequiredField(record, 'operations', path, errors, validateStringArray);
+  }
+}
+
 function validateRunShape(value: unknown, path: ValidationPath, errors: ValidationErrors): void {
   const record = validateClosedRecord(
     value,
@@ -1167,6 +1955,7 @@ function validateRunShape(value: unknown, path: ValidationPath, errors: Validati
       'createdAt',
       'updatedAt',
       'completedAt',
+      'transportAttempts',
     ],
     path,
     errors,
@@ -1189,7 +1978,42 @@ function validateRunShape(value: unknown, path: ValidationPath, errors: Validati
   validateRequiredField(record, 'model', path, errors, validateModelSnapshotShape);
   validateRequiredField(record, 'createdAt', path, errors, validateFiniteNumber);
   validateRequiredField(record, 'updatedAt', path, errors, validateFiniteNumber);
-  validateOptionalField(record, 'completedAt', path, errors, validateFiniteNumber);
+  if (dataField(record, 'completedAt') !== undefined) {
+    validateRequiredField(record, 'completedAt', path, errors, validateFiniteNumber);
+  }
+  validateOptionalField(record, 'transportAttempts', path, errors, validateTransportAttemptArray);
+  const attempts = dataField(record, 'transportAttempts');
+  if (Array.isArray(attempts) && attempts.length > 0) {
+    if (dataField(record, 'source') !== 'schedule')
+      addError(errors, 'invalid_type', childPath(path, 'source'));
+    for (let index = 0; index < attempts.length; index += 1) {
+      const attempt = attempts[index];
+      if (!isRecordValue(attempt)) continue;
+      const proof = dataField(attempt, 'zeroEffectEvidence');
+      if (!isRecordValue(proof)) continue;
+      const proofPath = childPath(childPath(path, 'transportAttempts'), index);
+      requireEqualBinding(proof, 'accountId', dataField(record, 'accountId'), proofPath, errors);
+      requireEqualBinding(proof, 'runId', dataField(record, 'id'), proofPath, errors);
+      const boundary = dataField(proof, 'providerBoundary');
+      const model = dataField(record, 'model');
+      if (isRecordValue(boundary) && isRecordValue(model)) {
+        requireEqualBinding(
+          boundary,
+          'providerId',
+          dataField(model, 'providerId'),
+          childPath(proofPath, 'zeroEffectEvidence'),
+          errors,
+        );
+        requireEqualBinding(
+          boundary,
+          'modelId',
+          dataField(model, 'modelId'),
+          childPath(proofPath, 'zeroEffectEvidence'),
+          errors,
+        );
+      }
+    }
+  }
 }
 
 function validateEventShape(value: unknown, path: ValidationPath, errors: ValidationErrors): void {
@@ -1206,6 +2030,10 @@ function validateEventShape(value: unknown, path: ValidationPath, errors: Valida
       'sourceRefs',
       'artifactIds',
       'createdAt',
+      'executionEvidence',
+      'canonicalResultEvidence',
+      'producerSourceEvidence',
+      'liveEvidence',
     ],
     path,
     errors,
@@ -1223,6 +2051,76 @@ function validateEventShape(value: unknown, path: ValidationPath, errors: Valida
   validateRequiredField(record, 'sourceRefs', path, errors, validateSourceRefArray);
   validateRequiredField(record, 'artifactIds', path, errors, validateIdentifierArray);
   validateRequiredField(record, 'createdAt', path, errors, validateFiniteNumber);
+  validateOptionalField(record, 'executionEvidence', path, errors, validateExecutionEvidenceShape);
+  validateOptionalField(
+    record,
+    'canonicalResultEvidence',
+    path,
+    errors,
+    validateCanonicalResultEvidenceShape,
+  );
+  validateOptionalField(
+    record,
+    'producerSourceEvidence',
+    path,
+    errors,
+    validateProducerSourceEvidenceShape,
+  );
+  validateOptionalField(record, 'liveEvidence', path, errors, validateDurableLiveEvidenceShape);
+  const runId = dataField(record, 'runId');
+  const seq = dataField(record, 'seq');
+  for (const key of ['canonicalResultEvidence', 'producerSourceEvidence', 'liveEvidence']) {
+    const evidence = dataField(record, key);
+    if (isRecordValue(evidence))
+      requireEqualBinding(evidence, 'runId', runId, childPath(path, key), errors);
+  }
+  const sourceEvidence = dataField(record, 'producerSourceEvidence');
+  if (isRecordValue(sourceEvidence)) {
+    const authority = dataField(sourceEvidence, 'resultAuthority');
+    if (isRecordValue(authority)) {
+      const authoritySeq = dataField(authority, 'eventSeq');
+      if (typeof seq === 'number' && (typeof authoritySeq !== 'number' || authoritySeq >= seq)) {
+        addError(
+          errors,
+          'invalid_type',
+          childPath(childPath(path, 'producerSourceEvidence'), 'resultAuthority'),
+        );
+      }
+    }
+  }
+  const liveEvidence = dataField(record, 'liveEvidence');
+  if (isRecordValue(liveEvidence)) {
+    const resultEventSeq = dataField(liveEvidence, 'resultEventSeq');
+    if (typeof seq === 'number' && (typeof resultEventSeq !== 'number' || resultEventSeq >= seq)) {
+      addError(
+        errors,
+        'invalid_type',
+        childPath(childPath(path, 'liveEvidence'), 'resultEventSeq'),
+      );
+    }
+  }
+  if (hasOwn(record, 'producerSourceEvidence') && hasOwn(record, 'liveEvidence')) {
+    addError(errors, 'invalid_type', childPath(path, 'liveEvidence'));
+  }
+  let firstAttemptBinding: RecordValue | undefined;
+  for (const key of [
+    'executionEvidence',
+    'canonicalResultEvidence',
+    'producerSourceEvidence',
+    'liveEvidence',
+  ]) {
+    const evidence = dataField(record, key);
+    if (!isRecordValue(evidence)) continue;
+    if (!firstAttemptBinding) {
+      firstAttemptBinding = evidence;
+      continue;
+    }
+    for (const bindingKey of ['requestId', 'attemptNumber']) {
+      if (dataField(evidence, bindingKey) !== dataField(firstAttemptBinding, bindingKey)) {
+        addError(errors, 'invalid_type', childPath(childPath(path, key), bindingKey));
+      }
+    }
+  }
 }
 
 function validateSecretHandleShape(
@@ -1376,6 +2274,48 @@ export function validateJarvisRun(input: unknown): JarvisContractValidationResul
 
 export function validateJarvisEvent(input: unknown): JarvisContractValidationResult<JarvisEvent> {
   return validateContract(input, validateEventShape);
+}
+
+export function validateJarvisPreEffectTransportFailureEvidence(
+  input: unknown,
+): JarvisContractValidationResult<JarvisPreEffectTransportFailureEvidence> {
+  return validateContract(input, validatePreEffectTransportFailureShape);
+}
+
+export function validateJarvisZeroConsequentialEffectEvidence(
+  input: unknown,
+): JarvisContractValidationResult<JarvisZeroConsequentialEffectEvidenceV1> {
+  return validateContract(input, validateZeroEffectEvidenceShape);
+}
+
+export function validateJarvisTransportAttempt(
+  input: unknown,
+): JarvisContractValidationResult<JarvisTransportAttemptV1> {
+  return validateContract(input, validateTransportAttemptShape);
+}
+
+export function validateJarvisExecutionEvidence(
+  input: unknown,
+): JarvisContractValidationResult<JarvisExecutionEvidenceV1> {
+  return validateContract(input, validateExecutionEvidenceShape);
+}
+
+export function validateJarvisCanonicalResultEvidence(
+  input: unknown,
+): JarvisContractValidationResult<JarvisCanonicalResultEvidenceV1> {
+  return validateContract(input, validateCanonicalResultEvidenceShape);
+}
+
+export function validateJarvisProducerSourceEvidence(
+  input: unknown,
+): JarvisContractValidationResult<JarvisProducerSourceEvidenceV1> {
+  return validateContract(input, validateProducerSourceEvidenceShape);
+}
+
+export function validateJarvisDurableLiveEvidence(
+  input: unknown,
+): JarvisContractValidationResult<JarvisDurableLiveEvidenceV1> {
+  return validateContract(input, validateDurableLiveEvidenceShape);
 }
 
 export function validateJarvisApproval(

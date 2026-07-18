@@ -3,8 +3,13 @@ import type { JarvisModelSnapshot } from '@/lib/jarvis/contracts/capability';
 import type {
   JarvisApproval,
   JarvisArtifact,
+  JarvisCanonicalResultEvidenceV1,
+  JarvisDurableLiveEvidenceV1,
   JarvisEvent,
+  JarvisExecutionEvidenceV1,
+  JarvisProducerSourceEvidenceV1,
   JarvisRun,
+  JarvisTransportAttemptV1,
 } from '@/lib/jarvis/contracts/execution';
 import type { JarvisSourceRef } from '@/lib/jarvis/contracts/source';
 import type { JarvisIdentityRevision } from '@/lib/jarvis/identity';
@@ -647,6 +652,385 @@ describe('approval and artifact mappers', () => {
     const mappedArtifact = fromJarvisArtifactRow(artifactRow);
     for (const key of ['uri', 'mimeType', 'safeSummary']) {
       expect(mappedArtifact).not.toHaveProperty(key);
+    }
+  });
+});
+
+function task18Attempt(): JarvisTransportAttemptV1 {
+  return {
+    schemaVersion: 1,
+    attemptNumber: 1,
+    kind: 'initial',
+    requestId: 'request-1',
+    state: 'retryable_failed',
+    startedEventSeq: 1,
+    effectBarrier: { state: 'open', version: 0, updatedAt: 8_010 },
+    createdAt: 8_000,
+    updatedAt: 8_100,
+    failureCategory: 'network_unavailable',
+    zeroEffectEvidence: {
+      schemaVersion: 1,
+      accountId: 'account-1',
+      runId: 'run-1',
+      requestId: 'request-1',
+      attemptNumber: 1,
+      assessedAt: 8_090,
+      providerBoundary: {
+        schemaVersion: 1,
+        accountId: 'account-1',
+        runId: 'run-1',
+        requestId: 'request-1',
+        attemptNumber: 1,
+        providerId: 'provider-1',
+        modelId: 'model-1',
+        boundary: 'before_first_response_byte',
+        responseStarted: false,
+        chunkCount: 0,
+        actionDispatchCount: 0,
+        failureCategory: 'network_unavailable',
+        evidenceRef: 'provider-failure-1',
+        verifiedAt: 8_080,
+      },
+      effectBarrier: { state: 'open', version: 0 },
+      approvals: { count: 0, evidenceRef: 'approvals-1' },
+      artifacts: { count: 0, evidenceRef: 'artifacts-1' },
+      executorClaims: { count: 0, throughSeq: 4, evidenceRef: 'claims-1' },
+    },
+  };
+}
+
+const task18SourceVariants: readonly JarvisProducerSourceEvidenceV1[] = [
+  {
+    schemaVersion: 1,
+    accountId: 'account-1',
+    runId: 'run-1',
+    requestId: 'request-1',
+    attemptNumber: 1,
+    producerKind: 'provider',
+    producerIdentity: {
+      producerKind: 'provider',
+      providerId: 'provider-1',
+      modelId: 'model-1',
+      modelSnapshotRef: 'snapshot-1',
+    },
+    resultRef: 'provider-result-1',
+    observedAt: 8_200,
+    phase: 'start',
+    state: 'started',
+  },
+  {
+    schemaVersion: 1,
+    accountId: 'account-1',
+    runId: 'run-1',
+    requestId: 'request-1',
+    attemptNumber: 1,
+    producerKind: 'action',
+    producerIdentity: {
+      producerKind: 'action',
+      actionId: 'action-1',
+      actionVersion: 1,
+      executionId: 'execution-1',
+    },
+    resultRef: 'action-result-1',
+    observedAt: 8_210,
+    phase: 'result',
+    state: 'completed',
+  },
+  {
+    schemaVersion: 1,
+    accountId: 'account-1',
+    runId: 'run-1',
+    requestId: 'request-1',
+    attemptNumber: 1,
+    producerKind: 'file_action',
+    producerIdentity: {
+      producerKind: 'file_action',
+      actionId: 'file-action-1',
+      actionVersion: 1,
+      resultId: 'file-result-1',
+    },
+    resultRef: 'file-action-result-1',
+    observedAt: 8_220,
+    phase: 'start',
+    state: 'busy',
+  },
+  {
+    schemaVersion: 1,
+    accountId: 'account-1',
+    runId: 'run-1',
+    requestId: 'request-1',
+    attemptNumber: 1,
+    producerKind: 'terminal',
+    producerIdentity: {
+      producerKind: 'terminal',
+      sessionId: 'session-1',
+      executionId: 'terminal-execution-1',
+    },
+    resultRef: 'terminal-result-1',
+    observedAt: 8_230,
+    phase: 'result',
+    state: 'degraded',
+  },
+  {
+    schemaVersion: 1,
+    accountId: 'account-1',
+    runId: 'run-1',
+    requestId: 'request-1',
+    attemptNumber: 1,
+    producerKind: 'plugin',
+    producerIdentity: {
+      producerKind: 'plugin',
+      pluginId: 'plugin-1',
+      invocationId: 'plugin-invocation-1',
+    },
+    resultRef: 'plugin-result-1',
+    observedAt: 8_240,
+    phase: 'start',
+    state: 'ready',
+  },
+  {
+    schemaVersion: 1,
+    accountId: 'account-1',
+    runId: 'run-1',
+    requestId: 'request-1',
+    attemptNumber: 1,
+    producerKind: 'mcp',
+    producerIdentity: {
+      producerKind: 'mcp',
+      serverId: 'server-1',
+      toolName: 'tool-1',
+      invocationId: 'mcp-invocation-1',
+    },
+    resultRef: 'mcp-result-1',
+    observedAt: 8_250,
+    phase: 'result',
+    state: 'completed',
+  },
+  {
+    schemaVersion: 1,
+    accountId: 'account-1',
+    runId: 'run-1',
+    requestId: 'request-1',
+    attemptNumber: 1,
+    producerKind: 'schedule',
+    producerIdentity: {
+      producerKind: 'schedule',
+      eventId: 'schedule-event-1',
+      occurrenceId: 'occurrence-1',
+    },
+    resultRef: 'schedule-result-1',
+    observedAt: 8_260,
+    phase: 'result',
+    state: 'completed',
+    resultAuthority: { runId: 'run-1', eventSeq: 3, evidenceRef: 'jresult_schedule-1' },
+  },
+  {
+    schemaVersion: 1,
+    accountId: 'account-1',
+    runId: 'run-1',
+    requestId: 'request-1',
+    attemptNumber: 1,
+    producerKind: 'voice',
+    producerIdentity: {
+      producerKind: 'voice',
+      sessionId: 'voice-session-1',
+      engineKind: 'playback',
+      executionId: 'voice-execution-1',
+    },
+    resultRef: 'voice-result-1',
+    observedAt: 8_270,
+    phase: 'start',
+    state: 'busy',
+  },
+  {
+    schemaVersion: 1,
+    accountId: 'account-1',
+    runId: 'run-1',
+    requestId: 'request-1',
+    attemptNumber: 1,
+    producerKind: 'hive',
+    producerIdentity: {
+      producerKind: 'hive',
+      stackId: 'stack-1',
+      stepId: 'step-1',
+      workerId: 'worker-1',
+    },
+    resultRef: 'hive-result-1',
+    observedAt: 8_280,
+    phase: 'result',
+    state: 'degraded',
+    resultAuthority: { runId: 'run-child-1', eventSeq: 2, evidenceRef: 'jresult_hive-1' },
+  },
+];
+
+function task18EvidenceEvent(
+  sourceEvidence: JarvisProducerSourceEvidenceV1 = task18SourceVariants[0]!,
+): JarvisEvent {
+  const executionEvidence: JarvisExecutionEvidenceV1 = {
+    schemaVersion: 1,
+    requestId: 'request-1',
+    attemptNumber: 1,
+    kind: 'consequential_effect_completed',
+    ownerKind: 'action',
+    ownerId: 'action-1',
+    evidenceRef: 'effect-completed-1',
+    observedAt: 8_300,
+  };
+  const canonicalResultEvidence: JarvisCanonicalResultEvidenceV1 = {
+    schemaVersion: 1,
+    kind: 'kernel_turn_committed',
+    accountId: 'account-1',
+    runId: 'run-1',
+    requestId: 'request-1',
+    attemptNumber: 1,
+    state: 'completed',
+    resultRef: 'jresult_kernel-turn-1',
+    observedAt: 8_310,
+  };
+  return {
+    ...event(),
+    executionEvidence,
+    canonicalResultEvidence,
+    producerSourceEvidence: sourceEvidence,
+  };
+}
+
+function task18LiveEvidenceEvent(): JarvisEvent {
+  const liveEvidence: JarvisDurableLiveEvidenceV1 = {
+    schemaVersion: 1,
+    kind: 'capability',
+    accountId: 'account-1',
+    runId: 'run-1',
+    requestId: 'request-1',
+    attemptNumber: 1,
+    registrationId: 'action-registration-1',
+    producerKind: 'action',
+    producerIdentity: {
+      producerKind: 'action',
+      actionId: 'action-1',
+      actionVersion: 1,
+      executionId: 'execution-1',
+    },
+    transition: 'completed',
+    operations: ['execute', 'inspect'],
+    resultRef: 'action-result-1',
+    resultEventSeq: 6,
+    observedAt: 8_320,
+    previousProofRef: 'jlive_action-previous',
+    category: 'tool',
+    capabilityId: 'action-capability-1',
+  };
+  return { ...event(), seq: 7, liveEvidence };
+}
+
+describe('Task 18 execution evidence mappers', () => {
+  it('persists transport attempts under the sole snake-case run key and detaches both ways', () => {
+    const value: JarvisRun = {
+      ...run(),
+      source: 'schedule',
+      transportAttempts: [task18Attempt()],
+    };
+    const row = toJarvisRunRow(value);
+    const attempts = value.transportAttempts!;
+
+    expect(row.transport_attempts).toEqual(attempts);
+    expect(row).not.toHaveProperty('transportAttempts');
+    expect(row.transport_attempts).not.toBe(attempts);
+    expect(row.transport_attempts![0]).not.toBe(attempts[0]);
+    expect(row.transport_attempts![0]!.effectBarrier).not.toBe(attempts[0]!.effectBarrier);
+    expect(row.transport_attempts![0]!.zeroEffectEvidence).not.toBe(
+      attempts[0]!.zeroEffectEvidence,
+    );
+
+    const mapped = fromJarvisRunRow(row);
+    expect(mapped.transportAttempts).toEqual(attempts);
+    expect(mapped.transportAttempts).not.toBe(row.transport_attempts);
+    expect(mapped.transportAttempts![0]!.zeroEffectEvidence).not.toBe(
+      row.transport_attempts![0]!.zeroEffectEvidence,
+    );
+
+    (
+      row.transport_attempts![0]!.effectBarrier as {
+        state: JarvisTransportAttemptV1['effectBarrier']['state'];
+      }
+    ).state = 'dirty';
+    expect(attempts[0]!.effectBarrier.state).toBe('open');
+  });
+
+  it.each(task18SourceVariants)(
+    'round-trips and detaches the $producerKind producer-source member',
+    (producerSourceEvidence) => {
+      const value = task18EvidenceEvent(producerSourceEvidence);
+      const row = toJarvisEventRow(value);
+      expect(row.producer_source_evidence).toEqual(producerSourceEvidence);
+      expect(row.producer_source_evidence).not.toBe(producerSourceEvidence);
+      expect(row.producer_source_evidence!.producerIdentity).not.toBe(
+        producerSourceEvidence.producerIdentity,
+      );
+      expect(row).not.toHaveProperty('producerSourceEvidence');
+
+      const mapped = fromJarvisEventRow(row);
+      expect(mapped.producerSourceEvidence).toEqual(producerSourceEvidence);
+      expect(mapped.producerSourceEvidence).not.toBe(row.producer_source_evidence);
+      expect(mapped.producerSourceEvidence!.producerIdentity).not.toBe(
+        row.producer_source_evidence!.producerIdentity,
+      );
+    },
+  );
+
+  it('maps all structured event evidence to exact snake-case keys as detached values', () => {
+    const value = task18EvidenceEvent();
+    const row = toJarvisEventRow(value);
+    expect(row.execution_evidence).toEqual(value.executionEvidence);
+    expect(row.canonical_result_evidence).toEqual(value.canonicalResultEvidence);
+    expect(row.producer_source_evidence).toEqual(value.producerSourceEvidence);
+    expect(row).not.toHaveProperty('executionEvidence');
+    expect(row).not.toHaveProperty('canonicalResultEvidence');
+    expect(row.execution_evidence).not.toBe(value.executionEvidence);
+    expect(row.canonical_result_evidence).not.toBe(value.canonicalResultEvidence);
+
+    const mapped = fromJarvisEventRow(row);
+    expect(mapped).toEqual(value);
+    expect(mapped.executionEvidence).not.toBe(row.execution_evidence);
+    expect(mapped.canonicalResultEvidence).not.toBe(row.canonical_result_evidence);
+  });
+
+  it('maps durable live evidence separately and detaches its union member both ways', () => {
+    const value = task18LiveEvidenceEvent();
+    const row = toJarvisEventRow(value);
+    expect(row.live_evidence).toEqual(value.liveEvidence);
+    expect(row.live_evidence).not.toBe(value.liveEvidence);
+    expect(row.live_evidence!.producerIdentity).not.toBe(value.liveEvidence!.producerIdentity);
+    expect(row).not.toHaveProperty('liveEvidence');
+
+    const mapped = fromJarvisEventRow(row);
+    expect(mapped.liveEvidence).toEqual(value.liveEvidence);
+    expect(mapped.liveEvidence).not.toBe(row.live_evidence);
+    expect(mapped.liveEvidence!.producerIdentity).not.toBe(row.live_evidence!.producerIdentity);
+  });
+
+  it('omits every absent Task 18 optional persistence key in both directions', () => {
+    const runRow = toJarvisRunRow(run());
+    expect(runRow).not.toHaveProperty('transport_attempts');
+    expect(fromJarvisRunRow(runRow)).not.toHaveProperty('transportAttempts');
+
+    const eventRow = toJarvisEventRow(event());
+    for (const key of [
+      'execution_evidence',
+      'canonical_result_evidence',
+      'producer_source_evidence',
+      'live_evidence',
+    ]) {
+      expect(eventRow).not.toHaveProperty(key);
+    }
+    const mapped = fromJarvisEventRow(eventRow);
+    for (const key of [
+      'executionEvidence',
+      'canonicalResultEvidence',
+      'producerSourceEvidence',
+      'liveEvidence',
+    ]) {
+      expect(mapped).not.toHaveProperty(key);
     }
   });
 });

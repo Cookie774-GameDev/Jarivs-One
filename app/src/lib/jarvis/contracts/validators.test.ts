@@ -13,9 +13,14 @@ import {
   type JarvisContractValidationResult,
   type JarvisEntitlementSnapshot,
   type JarvisEvent,
+  type JarvisCanonicalResultEvidenceV1,
+  type JarvisDurableLiveEvidenceV1,
+  type JarvisExecutionEvidenceV1,
   type JarvisExecutionState,
+  type JarvisLiveProducerIdentity,
   type JarvisModelSnapshot,
   type JarvisOutputContract,
+  type JarvisProducerSourceEvidenceV1,
   type JarvisRequestEnvelope,
   type JarvisResponseEnvelope,
   type JarvisResponseMode,
@@ -23,6 +28,8 @@ import {
   type JarvisRunStatus,
   type JarvisSourceRef,
   type JarvisSourceKind,
+  type JarvisTransportAttemptV1,
+  type JarvisZeroConsequentialEffectEvidenceV1,
   type PromptAuthority,
   validateCompiledJarvisPrompt,
   validateJarvisApproval,
@@ -2591,5 +2598,373 @@ describe('semantic boundaries remain deferred', () => {
     const artifact = validArtifact();
     delete artifact.uri;
     expectSuccess(validateJarvisArtifact(artifact));
+  });
+});
+
+function task18ZeroEffectEvidence(
+  attemptNumber = 1,
+  requestId = `request-${attemptNumber}`,
+): JarvisZeroConsequentialEffectEvidenceV1 {
+  return {
+    schemaVersion: 1,
+    accountId: 'account-1',
+    runId: 'run-1',
+    attemptNumber,
+    requestId,
+    assessedAt: 500,
+    providerBoundary: {
+      schemaVersion: 1,
+      accountId: 'account-1',
+      runId: 'run-1',
+      requestId,
+      attemptNumber,
+      providerId: 'provider-1',
+      modelId: 'model-1',
+      boundary: 'before_first_response_byte',
+      responseStarted: false,
+      chunkCount: 0,
+      actionDispatchCount: 0,
+      failureCategory: 'network_unavailable',
+      evidenceRef: `provider-failure-${attemptNumber}`,
+      verifiedAt: 490,
+    },
+    effectBarrier: { state: 'open', version: 0 },
+    approvals: { count: 0, evidenceRef: `approvals-${attemptNumber}` },
+    artifacts: { count: 0, evidenceRef: `artifacts-${attemptNumber}` },
+    executorClaims: {
+      count: 0,
+      throughSeq: 4,
+      evidenceRef: `executor-claims-${attemptNumber}`,
+    },
+  };
+}
+
+function task18TransportAttempt(
+  overrides: Partial<JarvisTransportAttemptV1> = {},
+): JarvisTransportAttemptV1 {
+  return {
+    schemaVersion: 1,
+    attemptNumber: 1,
+    kind: 'initial',
+    requestId: 'request-1',
+    state: 'provider_in_flight',
+    startedEventSeq: 1,
+    effectBarrier: { state: 'open', version: 0, updatedAt: 410 },
+    createdAt: 400,
+    updatedAt: 410,
+    ...overrides,
+  };
+}
+
+const task18ProducerIdentities = [
+  {
+    producerKind: 'provider',
+    providerId: 'provider-1',
+    modelId: 'model-1',
+    modelSnapshotRef: 'model-snapshot-1',
+  },
+  {
+    producerKind: 'action',
+    actionId: 'action-1',
+    actionVersion: 1,
+    executionId: 'execution-1',
+  },
+  {
+    producerKind: 'file_action',
+    actionId: 'file-action-1',
+    actionVersion: 1,
+    resultId: 'file-result-1',
+  },
+  { producerKind: 'terminal', sessionId: 'session-1', executionId: 'terminal-execution-1' },
+  { producerKind: 'plugin', pluginId: 'plugin-1', invocationId: 'plugin-invocation-1' },
+  {
+    producerKind: 'mcp',
+    serverId: 'server-1',
+    toolName: 'tool-1',
+    invocationId: 'mcp-invocation-1',
+  },
+  { producerKind: 'schedule', eventId: 'schedule-event-1', occurrenceId: 'occurrence-1' },
+  {
+    producerKind: 'voice',
+    sessionId: 'voice-session-1',
+    engineKind: 'tts',
+    executionId: 'voice-execution-1',
+  },
+  { producerKind: 'hive', stackId: 'stack-1', stepId: 'step-1', workerId: 'worker-1' },
+] as const satisfies readonly JarvisLiveProducerIdentity[];
+
+function task18ProducerSource(
+  producerIdentity: JarvisLiveProducerIdentity,
+  phase: 'start' | 'result' = 'start',
+): JarvisProducerSourceEvidenceV1 {
+  const base = {
+    schemaVersion: 1 as const,
+    accountId: 'account-1',
+    runId: 'run-1',
+    requestId: 'request-1',
+    attemptNumber: 1,
+    producerKind: producerIdentity.producerKind,
+    producerIdentity,
+    resultRef: `${producerIdentity.producerKind}-result-1`,
+    observedAt: 520,
+  };
+  if (phase === 'start') {
+    return { ...base, phase: 'start', state: 'started' } as JarvisProducerSourceEvidenceV1;
+  }
+  return {
+    ...base,
+    phase: 'result',
+    state: 'completed',
+    ...(['schedule', 'hive'].includes(producerIdentity.producerKind)
+      ? {
+          resultAuthority: {
+            runId: producerIdentity.producerKind === 'hive' ? 'run-child-1' : 'run-1',
+            eventSeq: 1,
+            evidenceRef: `jresult_${producerIdentity.producerKind}-1` as const,
+          },
+        }
+      : {}),
+  } as JarvisProducerSourceEvidenceV1;
+}
+
+function task18CanonicalResult(): JarvisCanonicalResultEvidenceV1 {
+  return {
+    schemaVersion: 1,
+    kind: 'kernel_turn_committed',
+    accountId: 'account-1',
+    runId: 'run-1',
+    requestId: 'request-1',
+    attemptNumber: 1,
+    state: 'completed',
+    resultRef: 'jresult_kernel-turn-1',
+    observedAt: 530,
+  };
+}
+
+function task18ExecutionEvidence(): JarvisExecutionEvidenceV1 {
+  return {
+    schemaVersion: 1,
+    requestId: 'request-1',
+    attemptNumber: 1,
+    kind: 'consequential_effect_claimed',
+    ownerKind: 'action',
+    ownerId: 'action-1',
+    evidenceRef: 'effect-claim-1',
+    observedAt: 540,
+  };
+}
+
+function task18LiveEvidence(
+  producerIdentity: JarvisLiveProducerIdentity,
+): JarvisDurableLiveEvidenceV1 {
+  const common = {
+    schemaVersion: 1 as const,
+    accountId: 'account-1',
+    runId: 'run-1',
+    requestId: 'request-1',
+    attemptNumber: 1,
+    registrationId: `${producerIdentity.producerKind}-registration-1`,
+    producerKind: producerIdentity.producerKind,
+    producerIdentity,
+    transition: 'started' as const,
+    resultRef: `${producerIdentity.producerKind}-result-1`,
+    resultEventSeq: 1,
+    observedAt: 550,
+  };
+  if (producerIdentity.producerKind === 'provider') {
+    return {
+      ...common,
+      kind: 'model',
+      producerKind: 'provider',
+      operations: ['generate', 'stream'],
+      providerId: producerIdentity.providerId,
+      modelId: producerIdentity.modelId,
+      modelSnapshotRef: producerIdentity.modelSnapshotRef,
+    };
+  }
+  return {
+    ...common,
+    kind: 'capability',
+    operations: ['execute', 'cancel'],
+    category: producerIdentity.producerKind === 'terminal' ? 'terminal' : 'tool',
+    capabilityId: `${producerIdentity.producerKind}-capability-1`,
+  } as JarvisDurableLiveEvidenceV1;
+}
+
+describe('Task 18 closed execution evidence contracts', () => {
+  it('accepts a bounded, ordered scheduled transport-attempt ledger', () => {
+    const run = {
+      ...validRun(),
+      source: 'schedule',
+      status: 'running',
+      transportAttempts: [
+        task18TransportAttempt({
+          state: 'retryable_failed',
+          effectBarrier: { state: 'sealed_for_retry', version: 0, updatedAt: 510 },
+          failureCategory: 'network_unavailable',
+          zeroEffectEvidence: task18ZeroEffectEvidence(),
+        }),
+        task18TransportAttempt({
+          attemptNumber: 2,
+          kind: 'transport_retry',
+          requestId: 'request-2',
+          startedEventSeq: 5,
+          createdAt: 600,
+          updatedAt: 610,
+          effectBarrier: { state: 'open', version: 0, updatedAt: 610 },
+        }),
+      ],
+    } satisfies JarvisRun;
+
+    expectSuccess(validateJarvisRun(run));
+  });
+
+  it.each([
+    ['reused attempt number', [task18TransportAttempt(), task18TransportAttempt()]],
+    ['reused request id', [task18TransportAttempt(), task18TransportAttempt({ attemptNumber: 2 })]],
+    ['non-schedule owner', [task18TransportAttempt()]],
+  ] as const)('rejects %s in a transport-attempt ledger', (_label, attempts) => {
+    const run = {
+      ...validRun(),
+      source: _label === 'non-schedule owner' ? 'typed_chat' : 'schedule',
+      transportAttempts: attempts,
+    };
+    expect(validateJarvisRun(run).ok).toBe(false);
+  });
+
+  it('rejects unknown fields at every transport-attempt boundary', () => {
+    const attempt = task18TransportAttempt() as JarvisTransportAttemptV1 & {
+      effectBarrier: JarvisTransportAttemptV1['effectBarrier'] & { surprise?: true };
+    };
+    attempt.effectBarrier = { ...attempt.effectBarrier, surprise: true };
+    const result = validateJarvisRun({
+      ...validRun(),
+      source: 'schedule',
+      transportAttempts: [attempt],
+    });
+    expectFailure(result, 'unknown_field', ['transportAttempts', 0, 'effectBarrier', 'surprise']);
+  });
+
+  it('accepts structured execution and canonical-result evidence', () => {
+    expectSuccess(
+      validateJarvisEvent({
+        ...validEvent(),
+        seq: 4,
+        executionEvidence: task18ExecutionEvidence(),
+        canonicalResultEvidence: task18CanonicalResult(),
+      }),
+    );
+  });
+
+  it.each(task18ProducerIdentities)(
+    'accepts exact start/result source members for $producerKind',
+    (producerIdentity) => {
+      expectSuccess(
+        validateJarvisEvent({
+          ...validEvent(),
+          seq: 4,
+          producerSourceEvidence: task18ProducerSource(producerIdentity),
+        }),
+      );
+      expectSuccess(
+        validateJarvisEvent({
+          ...validEvent(),
+          seq: 4,
+          producerSourceEvidence: task18ProducerSource(producerIdentity, 'result'),
+        }),
+      );
+    },
+  );
+
+  it.each(task18ProducerIdentities)(
+    'accepts exact durable live evidence for $producerKind',
+    (producerIdentity) => {
+      expectSuccess(
+        validateJarvisEvent({
+          ...validEvent(),
+          seq: 4,
+          liveEvidence: task18LiveEvidence(producerIdentity),
+        }),
+      );
+    },
+  );
+
+  it('rejects producer-kind/identity mismatch and crossed phase/state pairs', () => {
+    const mismatch = task18ProducerSource(task18ProducerIdentities[0]) as unknown as Record<
+      string,
+      unknown
+    >;
+    mismatch.producerKind = 'action';
+    expect(validateJarvisEvent({ ...validEvent(), producerSourceEvidence: mismatch }).ok).toBe(
+      false,
+    );
+
+    const crossed = {
+      ...task18ProducerSource(task18ProducerIdentities[1]),
+      state: 'completed',
+    };
+    expect(validateJarvisEvent({ ...validEvent(), producerSourceEvidence: crossed }).ok).toBe(
+      false,
+    );
+  });
+
+  it('rejects co-carried execution and producer-source evidence bound to different attempts', () => {
+    const source = {
+      ...task18ProducerSource(task18ProducerIdentities[1]),
+      requestId: 'request-other',
+      attemptNumber: 2,
+    };
+    expect(
+      validateJarvisEvent({
+        ...validEvent(),
+        executionEvidence: task18ExecutionEvidence(),
+        producerSourceEvidence: source,
+      }).ok,
+    ).toBe(false);
+  });
+
+  it('requires schedule and Hive result members to name an earlier canonical authority row', () => {
+    for (const producerIdentity of [task18ProducerIdentities[6], task18ProducerIdentities[8]]) {
+      const source = task18ProducerSource(producerIdentity, 'result');
+      const withoutAuthority = { ...source } as Record<string, unknown>;
+      delete withoutAuthority.resultAuthority;
+      expect(
+        validateJarvisEvent({ ...validEvent(), seq: 4, producerSourceEvidence: withoutAuthority })
+          .ok,
+      ).toBe(false);
+
+      const selfAuthority = {
+        ...source,
+        resultAuthority: {
+          ...(source as Extract<JarvisProducerSourceEvidenceV1, { phase: 'result' }>)
+            .resultAuthority,
+          eventSeq: 4,
+        },
+      };
+      expect(
+        validateJarvisEvent({ ...validEvent(), seq: 4, producerSourceEvidence: selfAuthority }).ok,
+      ).toBe(false);
+    }
+  });
+
+  it('rejects unknown union-member fields and a live candidate that certifies itself', () => {
+    const live = {
+      ...task18LiveEvidence(task18ProducerIdentities[0]),
+      category: 'tool',
+      resultEventSeq: 4,
+    };
+    const result = validateJarvisEvent({ ...validEvent(), seq: 4, liveEvidence: live });
+    expectFailure(result, 'unknown_field', ['liveEvidence', 'category']);
+    expect(result.ok).toBe(false);
+  });
+
+  it('rejects an event carrying both producer-source and live evidence', () => {
+    const result = validateJarvisEvent({
+      ...validEvent(),
+      seq: 4,
+      producerSourceEvidence: task18ProducerSource(task18ProducerIdentities[0]),
+      liveEvidence: task18LiveEvidence(task18ProducerIdentities[0]),
+    });
+    expect(result.ok).toBe(false);
   });
 });

@@ -2,8 +2,14 @@ import { createJarvisDb, type JarvisDexie } from '@/lib/db';
 import type {
   JarvisApproval,
   JarvisArtifact,
+  JarvisAttemptEffectClaimInput,
+  JarvisDurableLiveEvidenceV1,
   JarvisEvent,
+  JarvisPreEffectTransportFailureEvidence,
+  JarvisProducerSourceEvidenceV1,
   JarvisRun,
+  JarvisTransportAttemptV1,
+  JarvisZeroConsequentialEffectEvidenceV1,
 } from '@/lib/jarvis/contracts/execution';
 import type { JarvisIdentityRevision } from '@/lib/jarvis/identity';
 import type { JarvisProfile } from '@/lib/jarvis/profiles/types';
@@ -16,6 +22,7 @@ import {
 } from './jarvisMappers';
 import {
   JarvisRepositoryError,
+  createJarvisLiveEvidenceEventCommitAuthority,
   createJarvisRepositories,
   jarvisApprovalRepo,
   jarvisArtifactRepo,
@@ -24,6 +31,7 @@ import {
   jarvisProfileRepo,
   jarvisRunRepo,
   newJarvisProfileRevisionId,
+  type JarvisTransportAttemptMutationInput,
 } from './jarvisRepositories';
 
 const NOW = 1_786_100_000_000;
@@ -76,6 +84,21 @@ type ExpectedJarvisRepositories = {
     }): Promise<
       { applied: true; run: JarvisRun; event: JarvisEvent } | { applied: false; current: JarvisRun }
     >;
+    compareAndMutateTransportAttempt(
+      input: JarvisTransportAttemptMutationInput,
+    ): Promise<
+      | { applied: true; run: JarvisRun; event: JarvisEvent }
+      | { applied: false; current: JarvisRun; reason: 'status_conflict' | 'attempt_conflict' }
+    >;
+    claimAttemptEffect(input: JarvisAttemptEffectClaimInput): Promise<
+      | { applied: true; kind: 'barrier_claimed'; run: JarvisRun; event: JarvisEvent }
+      | { applied: true; kind: 'not_applicable'; run: JarvisRun }
+      | {
+          applied: false;
+          reason: 'status_conflict' | 'attempt_conflict' | 'attempt_sealed';
+          current: JarvisRun;
+        }
+    >;
   };
   event: {
     appendIdempotent(
@@ -88,6 +111,7 @@ type ExpectedJarvisRepositories = {
       runId: string,
       options?: { afterSeq?: number; limit?: number },
     ): Promise<JarvisEvent[]>;
+    getBySeq(accountId: string, runId: string, seq: number): Promise<JarvisEvent | undefined>;
   };
   approval: {
     getById(accountId: string, approvalId: string): Promise<JarvisApproval | undefined>;
@@ -125,6 +149,150 @@ function runFixture(overrides: Partial<JarvisRun> = {}): JarvisRun {
     updatedAt: NOW - 10,
     ...overrides,
   };
+}
+
+function transportAttemptFixture(
+  overrides: Partial<Omit<JarvisTransportAttemptV1, 'startedEventSeq'>> = {},
+): Omit<JarvisTransportAttemptV1, 'startedEventSeq'> {
+  return {
+    schemaVersion: 1,
+    attemptNumber: 1,
+    kind: 'initial',
+    requestId: 'request-alpha',
+    state: 'provider_in_flight',
+    effectBarrier: {
+      state: 'open',
+      version: 0,
+      updatedAt: NOW,
+    },
+    createdAt: NOW,
+    updatedAt: NOW,
+    ...overrides,
+  };
+}
+
+function providerFailureFixture(
+  overrides: Partial<JarvisPreEffectTransportFailureEvidence> = {},
+): JarvisPreEffectTransportFailureEvidence {
+  return {
+    schemaVersion: 1,
+    accountId: 'account-alpha',
+    runId: 'run-alpha',
+    requestId: 'request-alpha',
+    attemptNumber: 1,
+    providerId: 'provider-alpha',
+    modelId: 'model-alpha',
+    boundary: 'before_first_response_byte',
+    responseStarted: false,
+    chunkCount: 0,
+    actionDispatchCount: 0,
+    failureCategory: 'network_unavailable',
+    evidenceRef: 'provider-failure-alpha',
+    verifiedAt: NOW + 1,
+    ...overrides,
+  };
+}
+
+function zeroEffectEvidenceFixture(
+  overrides: Partial<JarvisZeroConsequentialEffectEvidenceV1> = {},
+): JarvisZeroConsequentialEffectEvidenceV1 {
+  const providerBoundary = providerFailureFixture();
+  return {
+    schemaVersion: 1,
+    accountId: providerBoundary.accountId,
+    runId: providerBoundary.runId,
+    attemptNumber: providerBoundary.attemptNumber,
+    requestId: providerBoundary.requestId,
+    assessedAt: NOW + 2,
+    providerBoundary,
+    effectBarrier: { state: 'open', version: 0 },
+    approvals: { count: 0, evidenceRef: 'approvals-zero-alpha' },
+    artifacts: { count: 0, evidenceRef: 'artifacts-zero-alpha' },
+    executorClaims: { count: 0, throughSeq: 1, evidenceRef: 'claims-zero-alpha' },
+    ...overrides,
+  };
+}
+
+function effectClaimFixture(
+  overrides: Partial<JarvisAttemptEffectClaimInput> = {},
+): JarvisAttemptEffectClaimInput {
+  return {
+    accountId: 'account-alpha',
+    runId: 'run-alpha',
+    requestId: 'request-alpha',
+    attemptNumber: 1,
+    ownerKind: 'action',
+    ownerId: 'action-alpha',
+    evidenceRef: 'effect-claim-alpha',
+    claimedAt: NOW + 1,
+    ...overrides,
+  };
+}
+
+function executionEvidenceForClaim(
+  claim: JarvisAttemptEffectClaimInput,
+): NonNullable<JarvisEvent['executionEvidence']> {
+  return {
+    schemaVersion: 1,
+    requestId: claim.requestId,
+    attemptNumber: claim.attemptNumber,
+    kind: 'consequential_effect_claimed',
+    ownerKind: claim.ownerKind,
+    ownerId: claim.ownerId,
+    evidenceRef: claim.evidenceRef,
+    observedAt: claim.claimedAt,
+  };
+}
+
+function liveEvidenceFixture(
+  overrides: Partial<JarvisDurableLiveEvidenceV1> = {},
+): JarvisDurableLiveEvidenceV1 {
+  return {
+    schemaVersion: 1,
+    kind: 'model',
+    accountId: 'account-alpha',
+    runId: 'run-alpha',
+    requestId: 'request-alpha',
+    attemptNumber: 1,
+    registrationId: 'registration-alpha',
+    producerKind: 'provider',
+    producerIdentity: {
+      producerKind: 'provider',
+      providerId: 'provider-alpha',
+      modelId: 'model-alpha',
+      modelSnapshotRef: 'model-snapshot-alpha',
+    },
+    transition: 'started',
+    operations: ['generate', 'stream'],
+    resultRef: 'provider-start-alpha',
+    resultEventSeq: 1,
+    observedAt: NOW + 2,
+    providerId: 'provider-alpha',
+    modelId: 'model-alpha',
+    modelSnapshotRef: 'model-snapshot-alpha',
+    ...overrides,
+  } as JarvisDurableLiveEvidenceV1;
+}
+
+function producerSourceEvidenceFixture(
+  evidence: JarvisDurableLiveEvidenceV1,
+): JarvisProducerSourceEvidenceV1 {
+  const common = {
+    schemaVersion: 1 as const,
+    accountId: evidence.accountId,
+    runId: evidence.runId,
+    requestId: evidence.requestId,
+    attemptNumber: evidence.attemptNumber,
+    producerKind: evidence.producerKind,
+    producerIdentity: structuredClone(evidence.producerIdentity),
+    resultRef: evidence.resultRef,
+    observedAt: evidence.observedAt,
+  };
+  return (
+    evidence.transition === 'completed' || evidence.transition === 'degraded'
+      ? { ...common, phase: 'result', state: evidence.transition }
+      : { ...common, phase: 'start', state: evidence.transition }
+  ) as JarvisProducerSourceEvidenceV1;
 }
 
 function profileFixture(overrides: Partial<JarvisProfile> = {}): JarvisProfile {
@@ -266,6 +434,9 @@ describe('Jarvis repository surface', () => {
       | 'run_id_conflict'
       | 'event_idempotency_conflict'
       | 'transition_event_requires_atomic_run_update'
+      | 'live_evidence_integrity_error'
+      | 'transport_attempt_integrity_error'
+      | 'attempt_effect_integrity_error'
       | 'profile_integrity_error'
       | 'invalid_limit'
     >();
@@ -280,12 +451,18 @@ describe('Jarvis repository surface', () => {
       'updateCustomInstructions',
     ]);
     expect(Object.keys(jarvisRunRepo).sort()).toEqual([
+      'claimAttemptEffect',
       'compareAndAppendTransitionEvent',
+      'compareAndMutateTransportAttempt',
       'createIdempotent',
       'getById',
       'listByAccount',
     ]);
-    expect(Object.keys(jarvisEventRepo).sort()).toEqual(['appendIdempotent', 'listByRun']);
+    expect(Object.keys(jarvisEventRepo).sort()).toEqual([
+      'appendIdempotent',
+      'getBySeq',
+      'listByRun',
+    ]);
     expect(Object.keys(jarvisApprovalRepo).sort()).toEqual(['getById', 'putForRun']);
     expect(Object.keys(jarvisArtifactRepo).sort()).toEqual(['getById', 'listByRun', 'putForRun']);
   });
@@ -430,6 +607,34 @@ describe('Jarvis identity and account-scoped run repositories', () => {
 });
 
 describe('Jarvis event repository', () => {
+  it('reads an exact detached sequence only through its account-owned parent', async () => {
+    const database = await openTestDb('jarvis-event-get-by-seq');
+    const repositories = createJarvisRepositories(database);
+    await repositories.run.createIdempotent(runFixture());
+    const written = await repositories.event.appendIdempotent(
+      'account-alpha',
+      'run-alpha',
+      nonTransitionEventFixture(),
+    );
+
+    const read = await repositories.event.getBySeq('account-alpha', 'run-alpha', written.seq);
+    expect(read).toEqual(written);
+    expect(await repositories.event.getBySeq('account-alpha', 'run-alpha', written.seq + 1)).toBe(
+      undefined,
+    );
+    await expectRepositoryError(
+      repositories.event.getBySeq('account-beta', 'run-alpha', written.seq),
+      'parent_run_not_found',
+    );
+
+    if (!read) throw new Error('Expected the committed event');
+    read.sourceRefs[0]!.label = 'mutated by caller';
+    expect(
+      (await repositories.event.getBySeq('account-alpha', 'run-alpha', written.seq))?.sourceRefs[0]
+        ?.label,
+    ).toBe('Prompt');
+  });
+
   it('allocates ascending sequences and makes exact non-transition retries idempotent per run', async () => {
     const db = await openTestDb('jarvis-repositories-events');
     const repositories = createJarvisRepositories(db);
@@ -750,6 +955,559 @@ describe('atomic run transition/event compare-and-set', () => {
     expect(result.applied && result.run.status).toBe('compiling');
     expect(result.applied && result.run.completedAt).toBeUndefined();
     expect(await db.jarvis_runs.get(run.id)).not.toHaveProperty('completed_at');
+  });
+});
+
+describe('transport-attempt and effect-barrier repository CAS', () => {
+  it('atomically begins the first scheduled attempt and records its forced transition sequence', async () => {
+    const database = await openTestDb('jarvis-transport-begin-initial');
+    const repositories = createJarvisRepositories(database);
+    const run = runFixture({ source: 'schedule' });
+    await repositories.run.createIdempotent(run);
+
+    const result = await repositories.run.compareAndMutateTransportAttempt({
+      kind: 'begin_initial',
+      accountId: run.accountId,
+      runId: run.id,
+      expectedStatus: 'queued',
+      attempt: transportAttemptFixture(),
+      updatedAt: NOW,
+    });
+
+    expect(result).toMatchObject({
+      applied: true,
+      run: {
+        id: run.id,
+        status: 'running',
+        transportAttempts: [
+          {
+            attemptNumber: 1,
+            requestId: 'request-alpha',
+            state: 'provider_in_flight',
+            startedEventSeq: 1,
+          },
+        ],
+      },
+      event: {
+        runId: run.id,
+        seq: 1,
+        type: 'run_state',
+        status: 'running',
+      },
+    });
+    expect((await database.jarvis_runs.get(run.id))?.transport_attempts?.[0]?.startedEventSeq).toBe(
+      1,
+    );
+    expect(await database.jarvis_events.count()).toBe(1);
+  });
+
+  it('rejects non-schedule, stale-status, malformed, and duplicate initial attempts without writes', async () => {
+    for (const [name, run, input] of [
+      [
+        'non-schedule',
+        runFixture(),
+        { expectedStatus: 'queued' as const, attempt: transportAttemptFixture() },
+      ],
+      [
+        'stale-status',
+        runFixture({ source: 'schedule', status: 'running' }),
+        { expectedStatus: 'queued' as const, attempt: transportAttemptFixture() },
+      ],
+      [
+        'wrong-number',
+        runFixture({ source: 'schedule' }),
+        {
+          expectedStatus: 'queued' as const,
+          attempt: transportAttemptFixture({ attemptNumber: 2 }),
+        },
+      ],
+    ] as const) {
+      const database = await openTestDb(`jarvis-transport-initial-${name}`);
+      const repositories = createJarvisRepositories(database);
+      await repositories.run.createIdempotent(run);
+      const result = await repositories.run.compareAndMutateTransportAttempt({
+        kind: 'begin_initial',
+        accountId: run.accountId,
+        runId: run.id,
+        expectedStatus: input.expectedStatus,
+        attempt: input.attempt,
+        updatedAt: NOW,
+      });
+
+      expect(result).toMatchObject({
+        applied: false,
+        reason: name === 'stale-status' ? 'status_conflict' : 'attempt_conflict',
+      });
+      expect(await database.jarvis_events.count()).toBe(0);
+      expect(await repositories.run.getById(run.accountId, run.id)).toEqual(run);
+    }
+  });
+
+  it('settles exact pre-effect failure as retryable while leaving the logical run running', async () => {
+    const database = await openTestDb('jarvis-transport-settle-retryable');
+    const repositories = createJarvisRepositories(database);
+    const run = runFixture({ source: 'schedule' });
+    await repositories.run.createIdempotent(run);
+    await repositories.run.compareAndMutateTransportAttempt({
+      kind: 'begin_initial',
+      accountId: run.accountId,
+      runId: run.id,
+      expectedStatus: 'queued',
+      attempt: transportAttemptFixture(),
+      updatedAt: NOW,
+    });
+    const providerFailure = providerFailureFixture();
+    const zeroEffectEvidence = zeroEffectEvidenceFixture({ providerBoundary: providerFailure });
+
+    const result = await repositories.run.compareAndMutateTransportAttempt({
+      kind: 'settle_retryable',
+      accountId: run.accountId,
+      runId: run.id,
+      expectedStatus: 'running',
+      expectedAttemptNumber: 1,
+      expectedBarrierVersion: 0,
+      expectedEventTailSeq: 1,
+      providerFailure,
+      zeroEffectEvidence,
+      updatedAt: NOW + 3,
+    });
+
+    expect(result).toMatchObject({
+      applied: true,
+      run: {
+        status: 'running',
+        transportAttempts: [
+          {
+            state: 'retryable_failed',
+            failureCategory: providerFailure.failureCategory,
+            zeroEffectEvidence,
+            effectBarrier: { state: 'open', version: 0 },
+          },
+        ],
+      },
+      event: {
+        seq: 2,
+        type: 'warning',
+        status: 'transport_retry_available',
+      },
+    });
+  });
+
+  it('bridges only its exact retry-available warning before atomically sealing and beginning retry', async () => {
+    const database = await openTestDb('jarvis-transport-begin-retry');
+    const repositories = createJarvisRepositories(database);
+    const run = runFixture({ source: 'schedule' });
+    await repositories.run.createIdempotent(run);
+    await repositories.run.compareAndMutateTransportAttempt({
+      kind: 'begin_initial',
+      accountId: run.accountId,
+      runId: run.id,
+      expectedStatus: 'queued',
+      attempt: transportAttemptFixture(),
+      updatedAt: NOW,
+    });
+    const providerFailure = providerFailureFixture();
+    const proof = zeroEffectEvidenceFixture({ providerBoundary: providerFailure });
+    await repositories.run.compareAndMutateTransportAttempt({
+      kind: 'settle_retryable',
+      accountId: run.accountId,
+      runId: run.id,
+      expectedStatus: 'running',
+      expectedAttemptNumber: 1,
+      expectedBarrierVersion: 0,
+      expectedEventTailSeq: 1,
+      providerFailure,
+      zeroEffectEvidence: proof,
+      updatedAt: NOW + 3,
+    });
+
+    const result = await repositories.run.compareAndMutateTransportAttempt({
+      kind: 'begin_retry',
+      accountId: run.accountId,
+      runId: run.id,
+      expectedStatus: 'running',
+      expectedLatestAttemptNumber: 1,
+      expectedBarrierVersion: 0,
+      expectedEventTailSeq: 2,
+      revalidatedEvidence: proof,
+      attempt: transportAttemptFixture({
+        attemptNumber: 2,
+        kind: 'transport_retry',
+        requestId: 'request-beta',
+        createdAt: NOW + 4,
+        updatedAt: NOW + 4,
+        effectBarrier: { state: 'open', version: 0, updatedAt: NOW + 4 },
+      }),
+      updatedAt: NOW + 4,
+    });
+
+    expect(result).toMatchObject({
+      applied: true,
+      run: {
+        status: 'running',
+        transportAttempts: [
+          { attemptNumber: 1, effectBarrier: { state: 'sealed_for_retry', version: 0 } },
+          {
+            attemptNumber: 2,
+            requestId: 'request-beta',
+            state: 'provider_in_flight',
+            startedEventSeq: 3,
+          },
+        ],
+      },
+      event: { seq: 3, type: 'warning', status: 'transport_retry_started' },
+    });
+  });
+
+  it('rejects any row beyond or instead of the exact retry-available bridge warning', async () => {
+    const database = await openTestDb('jarvis-transport-retry-tail-conflict');
+    const repositories = createJarvisRepositories(database);
+    const run = runFixture({ source: 'schedule' });
+    await repositories.run.createIdempotent(run);
+    await repositories.run.compareAndMutateTransportAttempt({
+      kind: 'begin_initial',
+      accountId: run.accountId,
+      runId: run.id,
+      expectedStatus: 'queued',
+      attempt: transportAttemptFixture(),
+      updatedAt: NOW,
+    });
+    const providerFailure = providerFailureFixture();
+    const proof = zeroEffectEvidenceFixture({ providerBoundary: providerFailure });
+    await repositories.run.compareAndMutateTransportAttempt({
+      kind: 'settle_retryable',
+      accountId: run.accountId,
+      runId: run.id,
+      expectedStatus: 'running',
+      expectedAttemptNumber: 1,
+      expectedBarrierVersion: 0,
+      expectedEventTailSeq: 1,
+      providerFailure,
+      zeroEffectEvidence: proof,
+      updatedAt: NOW + 3,
+    });
+    await repositories.event.appendIdempotent(
+      run.accountId,
+      run.id,
+      nonTransitionEventFixture({ idempotencyKey: 'intervening-effect', createdAt: NOW + 4 }),
+    );
+
+    const before = await repositories.run.getById(run.accountId, run.id);
+    const result = await repositories.run.compareAndMutateTransportAttempt({
+      kind: 'begin_retry',
+      accountId: run.accountId,
+      runId: run.id,
+      expectedStatus: 'running',
+      expectedLatestAttemptNumber: 1,
+      expectedBarrierVersion: 0,
+      expectedEventTailSeq: 3,
+      revalidatedEvidence: proof,
+      attempt: transportAttemptFixture({
+        attemptNumber: 2,
+        kind: 'transport_retry',
+        requestId: 'request-beta',
+        createdAt: NOW + 5,
+        updatedAt: NOW + 5,
+        effectBarrier: { state: 'open', version: 0, updatedAt: NOW + 5 },
+      }),
+      updatedAt: NOW + 5,
+    });
+
+    expect(result).toMatchObject({ applied: false, reason: 'attempt_conflict' });
+    expect(await repositories.run.getById(run.accountId, run.id)).toEqual(before);
+    expect(await database.jarvis_events.count()).toBe(3);
+  });
+
+  it('atomically marks an uncertain attempt and the logical run failed', async () => {
+    const database = await openTestDb('jarvis-transport-settle-uncertain');
+    const repositories = createJarvisRepositories(database);
+    const run = runFixture({ source: 'schedule' });
+    await repositories.run.createIdempotent(run);
+    await repositories.run.compareAndMutateTransportAttempt({
+      kind: 'begin_initial',
+      accountId: run.accountId,
+      runId: run.id,
+      expectedStatus: 'queued',
+      attempt: transportAttemptFixture(),
+      updatedAt: NOW,
+    });
+
+    const result = await repositories.run.compareAndMutateTransportAttempt({
+      kind: 'settle_uncertain_failed',
+      accountId: run.accountId,
+      runId: run.id,
+      expectedStatus: 'running',
+      expectedAttemptNumber: 1,
+      providerFailure: providerFailureFixture(),
+      updatedAt: NOW + 2,
+      completedAt: NOW + 2,
+    });
+
+    expect(result).toMatchObject({
+      applied: true,
+      run: {
+        status: 'failed',
+        completedAt: NOW + 2,
+        transportAttempts: [{ state: 'effect_uncertain' }],
+      },
+      event: { seq: 2, type: 'run_state', status: 'failed' },
+    });
+  });
+
+  it('claims scheduled effects atomically and advances a monotonic dirty barrier', async () => {
+    const database = await openTestDb('jarvis-attempt-effect-claim');
+    const repositories = createJarvisRepositories(database);
+    const run = runFixture({ source: 'schedule' });
+    await repositories.run.createIdempotent(run);
+    await repositories.run.compareAndMutateTransportAttempt({
+      kind: 'begin_initial',
+      accountId: run.accountId,
+      runId: run.id,
+      expectedStatus: 'queued',
+      attempt: transportAttemptFixture(),
+      updatedAt: NOW,
+    });
+
+    const first = await repositories.run.claimAttemptEffect(effectClaimFixture());
+    const second = await repositories.run.claimAttemptEffect(
+      effectClaimFixture({
+        ownerKind: 'artifact',
+        ownerId: 'artifact-alpha',
+        evidenceRef: 'effect-claim-beta',
+        claimedAt: NOW + 2,
+      }),
+    );
+
+    expect(first).toMatchObject({
+      applied: true,
+      kind: 'barrier_claimed',
+      run: { transportAttempts: [{ effectBarrier: { state: 'dirty', version: 1 } }] },
+      event: {
+        seq: 2,
+        type: 'tool',
+        status: 'consequential_effect_claimed',
+        executionEvidence: {
+          kind: 'consequential_effect_claimed',
+          ownerKind: 'action',
+          ownerId: 'action-alpha',
+        },
+      },
+    });
+    expect(second).toMatchObject({
+      applied: true,
+      kind: 'barrier_claimed',
+      run: { transportAttempts: [{ effectBarrier: { state: 'dirty', version: 2 } }] },
+      event: { seq: 3, executionEvidence: { ownerKind: 'artifact' } },
+    });
+  });
+
+  it('returns not_applicable only for a running nonscheduled run with no ledger', async () => {
+    const database = await openTestDb('jarvis-attempt-effect-not-applicable');
+    const repositories = createJarvisRepositories(database);
+    const ordinary = runFixture({ status: 'running' });
+    await repositories.run.createIdempotent(ordinary);
+
+    await expect(repositories.run.claimAttemptEffect(effectClaimFixture())).resolves.toMatchObject({
+      applied: true,
+      kind: 'not_applicable',
+      run: ordinary,
+    });
+    expect(await database.jarvis_events.count()).toBe(0);
+
+    const scheduled = runFixture({ id: 'run-scheduled', source: 'schedule', status: 'running' });
+    await repositories.run.createIdempotent(scheduled);
+    await expect(
+      repositories.run.claimAttemptEffect(effectClaimFixture({ runId: scheduled.id })),
+    ).resolves.toMatchObject({ applied: false, reason: 'attempt_conflict' });
+  });
+
+  it('rolls back the dirty barrier when the effect-claim event insert fails', async () => {
+    const database = await openTestDb('jarvis-attempt-effect-rollback');
+    const repositories = createJarvisRepositories(database);
+    const run = runFixture({ source: 'schedule' });
+    await repositories.run.createIdempotent(run);
+    await repositories.run.compareAndMutateTransportAttempt({
+      kind: 'begin_initial',
+      accountId: run.accountId,
+      runId: run.id,
+      expectedStatus: 'queued',
+      attempt: transportAttemptFixture(),
+      updatedAt: NOW,
+    });
+    const before = await repositories.run.getById(run.accountId, run.id);
+    vi.spyOn(database.jarvis_events, 'add').mockRejectedValueOnce(new Error('claim insert failed'));
+
+    await expect(repositories.run.claimAttemptEffect(effectClaimFixture())).rejects.toThrow(
+      'claim insert failed',
+    );
+    expect(await repositories.run.getById(run.accountId, run.id)).toEqual(before);
+    expect(await database.jarvis_events.count()).toBe(1);
+  });
+});
+
+describe('test-only live-evidence event commit authority', () => {
+  it('commits fixed safe model and capability events after an owned source sequence', async () => {
+    const database = await openTestDb('jarvis-live-evidence-commit');
+    const repositories = createJarvisRepositories(database);
+    const authority = createJarvisLiveEvidenceEventCommitAuthority(database);
+    const run = runFixture({ status: 'running' });
+    await repositories.run.createIdempotent(run);
+    const initialModelEvidence = liveEvidenceFixture();
+    const modelSource = await repositories.event.appendIdempotent(
+      run.accountId,
+      run.id,
+      nonTransitionEventFixture({
+        idempotencyKey: 'producer-source',
+        type: 'model',
+        status: 'started',
+        createdAt: initialModelEvidence.observedAt,
+        producerSourceEvidence: producerSourceEvidenceFixture(initialModelEvidence),
+      }),
+    );
+    const modelEvidence = { ...initialModelEvidence, resultEventSeq: modelSource.seq };
+
+    const model = await authority.appendLiveEvidence({
+      accountId: run.accountId,
+      runId: run.id,
+      evidence: modelEvidence,
+    });
+    expect(model).toMatchObject({
+      runId: run.id,
+      seq: 2,
+      idempotencyKey: expect.stringMatching(/^jlive-event:[0-9a-f]{64}$/),
+      type: 'model',
+      status: 'started',
+      sourceRefs: [],
+      artifactIds: [],
+      liveEvidence: modelEvidence,
+    });
+
+    const initialCapabilityEvidence: JarvisDurableLiveEvidenceV1 = {
+      schemaVersion: 1,
+      kind: 'capability',
+      accountId: run.accountId,
+      runId: run.id,
+      requestId: 'request-alpha',
+      attemptNumber: 1,
+      registrationId: 'registration-capability',
+      producerKind: 'action',
+      producerIdentity: {
+        producerKind: 'action',
+        actionId: 'action-alpha',
+        actionVersion: 1,
+        executionId: 'execution-alpha',
+      },
+      transition: 'busy',
+      operations: ['execute', 'cancel'],
+      resultRef: 'action-start-alpha',
+      resultEventSeq: 1,
+      observedAt: NOW + 3,
+      category: 'tool',
+      capabilityId: 'action-alpha',
+    };
+    const capabilitySource = await repositories.event.appendIdempotent(
+      run.accountId,
+      run.id,
+      nonTransitionEventFixture({
+        idempotencyKey: 'capability-producer-source',
+        type: 'tool',
+        status: 'busy',
+        createdAt: initialCapabilityEvidence.observedAt,
+        producerSourceEvidence: producerSourceEvidenceFixture(initialCapabilityEvidence),
+      }),
+    );
+    const capabilityEvidence = {
+      ...initialCapabilityEvidence,
+      resultEventSeq: capabilitySource.seq,
+    };
+    const capability = await authority.appendLiveEvidence({
+      accountId: run.accountId,
+      runId: run.id,
+      evidence: capabilityEvidence,
+    });
+    expect(capability).toMatchObject({
+      seq: 4,
+      type: 'tool',
+      status: 'busy',
+      sourceRefs: [],
+      artifactIds: [],
+      liveEvidence: capabilityEvidence,
+    });
+  });
+
+  it('returns the identical row and rejects a changed payload for the same proof link', async () => {
+    const database = await openTestDb('jarvis-live-evidence-idempotency');
+    const repositories = createJarvisRepositories(database);
+    const authority = createJarvisLiveEvidenceEventCommitAuthority(database);
+    const run = runFixture({ status: 'running' });
+    await repositories.run.createIdempotent(run);
+    const initialEvidence = liveEvidenceFixture();
+    const source = await repositories.event.appendIdempotent(
+      run.accountId,
+      run.id,
+      nonTransitionEventFixture({
+        idempotencyKey: 'producer-source',
+        type: 'model',
+        status: 'started',
+        createdAt: initialEvidence.observedAt,
+        producerSourceEvidence: producerSourceEvidenceFixture(initialEvidence),
+      }),
+    );
+    const evidence = { ...initialEvidence, resultEventSeq: source.seq };
+
+    const first = await authority.appendLiveEvidence({
+      accountId: run.accountId,
+      runId: run.id,
+      evidence,
+    });
+    const retry = await authority.appendLiveEvidence({
+      accountId: run.accountId,
+      runId: run.id,
+      evidence: structuredClone(evidence),
+    });
+    expect(retry).toEqual(first);
+    await expectRepositoryError(
+      authority.appendLiveEvidence({
+        accountId: run.accountId,
+        runId: run.id,
+        evidence: { ...evidence, resultRef: 'changed-under-same-initial-link' },
+      }),
+      'event_idempotency_conflict',
+    );
+    expect(await database.jarvis_events.count()).toBe(2);
+  });
+
+  it('rejects foreign repetition, missing source rows, and operations outside the closed set', async () => {
+    const database = await openTestDb('jarvis-live-evidence-validation');
+    const repositories = createJarvisRepositories(database);
+    const authority = createJarvisLiveEvidenceEventCommitAuthority(database);
+    const run = runFixture({ status: 'running' });
+    await repositories.run.createIdempotent(run);
+
+    for (const evidence of [
+      liveEvidenceFixture({ accountId: 'account-beta' }),
+      liveEvidenceFixture({ runId: 'run-beta' }),
+      liveEvidenceFixture({ operations: ['generate', 'delete_everything'] }),
+    ]) {
+      await expectRepositoryError(
+        authority.appendLiveEvidence({
+          accountId: run.accountId,
+          runId: run.id,
+          evidence,
+        }),
+        'live_evidence_integrity_error',
+      );
+    }
+
+    await expectRepositoryError(
+      authority.appendLiveEvidence({
+        accountId: run.accountId,
+        runId: run.id,
+        evidence: liveEvidenceFixture(),
+      }),
+      'live_evidence_integrity_error',
+    );
+    expect(await database.jarvis_events.count()).toBe(0);
   });
 });
 
@@ -1104,5 +1862,741 @@ describe('bounded limits, detached projections, and local-only writes', () => {
       [],
     );
     expect(await db.sync_queue.count()).toBe(0);
+  });
+});
+
+describe('Task 18 live-evidence commit authority', () => {
+  async function createLiveEvidenceHarness(prefix: string) {
+    const database = await openTestDb(prefix);
+    const repositories = createJarvisRepositories(database);
+    const parent = runFixture({ status: 'running' });
+    await repositories.run.createIdempotent(parent);
+    const initial = liveEvidenceFixture();
+    if (initial.kind !== 'model') throw new Error('Expected model live-evidence fixture');
+    const source = await repositories.event.appendIdempotent(
+      parent.accountId,
+      parent.id,
+      nonTransitionEventFixture({
+        idempotencyKey: 'provider-source-alpha',
+        type: 'model',
+        status: 'started',
+        title: 'Provider started',
+        createdAt: initial.observedAt,
+        producerSourceEvidence: producerSourceEvidenceFixture(initial),
+      }),
+    );
+    return {
+      database,
+      repositories,
+      parent,
+      evidence: liveEvidenceFixture({ resultEventSeq: source.seq }),
+      authority: createJarvisLiveEvidenceEventCommitAuthority(database),
+    };
+  }
+
+  it('forces a safe account-owned event with a detached exact sequence readback', async () => {
+    const harness = await createLiveEvidenceHarness('jarvis-live-evidence-commit');
+    const committed = await harness.authority.appendLiveEvidence({
+      accountId: harness.parent.accountId,
+      runId: harness.parent.id,
+      evidence: harness.evidence,
+    });
+
+    expect(committed).toMatchObject({
+      runId: harness.parent.id,
+      seq: 2,
+      type: 'model',
+      status: 'started',
+      title: 'Model live evidence committed',
+      safeSummary: 'Canonical live evidence was recorded.',
+      sourceRefs: [],
+      artifactIds: [],
+      createdAt: harness.evidence.observedAt,
+      liveEvidence: harness.evidence,
+    });
+    expect(committed.idempotencyKey).toMatch(/^jlive-event:[a-f0-9]{64}$/);
+    (committed.liveEvidence!.operations as string[])[0] = 'mutated';
+    expect(
+      (
+        await harness.repositories.event.getBySeq(
+          harness.parent.accountId,
+          harness.parent.id,
+          committed.seq,
+        )
+      )?.liveEvidence?.operations,
+    ).toEqual(['generate', 'stream']);
+  });
+
+  it('deduplicates identical evidence and rejects changed payload for the same occurrence', async () => {
+    const harness = await createLiveEvidenceHarness('jarvis-live-evidence-idempotency');
+    const input = {
+      accountId: harness.parent.accountId,
+      runId: harness.parent.id,
+      evidence: harness.evidence,
+    };
+    const first = await harness.authority.appendLiveEvidence(input);
+    expect(
+      await harness.authority.appendLiveEvidence({
+        ...input,
+        evidence: structuredClone(input.evidence),
+      }),
+    ).toEqual(first);
+    await expectRepositoryError(
+      harness.authority.appendLiveEvidence({
+        ...input,
+        evidence: { ...harness.evidence, operations: ['changed-operation'] },
+      }),
+      'live_evidence_integrity_error',
+    );
+    expect(await harness.database.jarvis_events.count()).toBe(2);
+  });
+
+  it('rejects foreign scope, mismatched repeated identity, and noncanonical transition links', async () => {
+    const harness = await createLiveEvidenceHarness('jarvis-live-evidence-invalid');
+    await expectRepositoryError(
+      harness.authority.appendLiveEvidence({
+        accountId: 'account-beta',
+        runId: harness.parent.id,
+        evidence: harness.evidence,
+      }),
+      'parent_run_not_found',
+    );
+    for (const evidence of [
+      { ...harness.evidence, accountId: 'account-beta' },
+      { ...harness.evidence, resultEventSeq: 999 },
+    ]) {
+      await expectRepositoryError(
+        harness.authority.appendLiveEvidence({
+          accountId: harness.parent.accountId,
+          runId: harness.parent.id,
+          evidence,
+        }),
+        'live_evidence_integrity_error',
+      );
+    }
+    expect(await harness.database.jarvis_events.count()).toBe(1);
+  });
+
+  it('rolls back allocation when event insertion fails', async () => {
+    const harness = await createLiveEvidenceHarness('jarvis-live-evidence-rollback');
+    vi.spyOn(harness.database.jarvis_events, 'add').mockRejectedValueOnce(
+      new Error('injected live evidence failure'),
+    );
+    await expect(
+      harness.authority.appendLiveEvidence({
+        accountId: harness.parent.accountId,
+        runId: harness.parent.id,
+        evidence: harness.evidence,
+      }),
+    ).rejects.toThrow('injected live evidence failure');
+    expect(await harness.database.jarvis_events.count()).toBe(1);
+  });
+});
+
+describe('Task 18 transport-attempt CAS', () => {
+  async function beginInitial(prefix: string) {
+    const database = await openTestDb(prefix);
+    const repositories = createJarvisRepositories(database);
+    const queued = runFixture({ source: 'schedule' });
+    await repositories.run.createIdempotent(queued);
+    const result = await repositories.run.compareAndMutateTransportAttempt({
+      kind: 'begin_initial',
+      accountId: queued.accountId,
+      runId: queued.id,
+      expectedStatus: 'queued',
+      attempt: transportAttemptFixture(),
+      updatedAt: NOW,
+    });
+    if (!result.applied) throw new Error(`Expected begin_initial: ${result.reason}`);
+    return { database, repositories, queued, result };
+  }
+
+  it('atomically begins attempt one and forces queued -> running with its event sequence', async () => {
+    const { database, queued, result } = await beginInitial('jarvis-attempt-begin-initial');
+    expect(result.run).toMatchObject({
+      ...queued,
+      status: 'running',
+      updatedAt: NOW,
+      transportAttempts: [{ ...transportAttemptFixture(), startedEventSeq: 1 }],
+    });
+    expect(result.event).toMatchObject({
+      runId: queued.id,
+      seq: 1,
+      type: 'run_state',
+      status: 'running',
+    });
+    expect(await database.jarvis_events.count()).toBe(1);
+  });
+
+  it('rejects status, source, history, request, and attempt-number mismatches without writes', async () => {
+    const cases: Array<{
+      name: string;
+      run: JarvisRun;
+      attempt: ReturnType<typeof transportAttemptFixture>;
+    }> = [
+      {
+        name: 'status',
+        run: runFixture({ source: 'schedule', status: 'running' }),
+        attempt: transportAttemptFixture(),
+      },
+      { name: 'source', run: runFixture(), attempt: transportAttemptFixture() },
+      {
+        name: 'history',
+        run: runFixture({
+          source: 'schedule',
+          transportAttempts: [{ ...transportAttemptFixture(), startedEventSeq: 1 }],
+        }),
+        attempt: transportAttemptFixture(),
+      },
+      {
+        name: 'number',
+        run: runFixture({ source: 'schedule' }),
+        attempt: transportAttemptFixture({ attemptNumber: 2 }),
+      },
+      {
+        name: 'request',
+        run: runFixture({ source: 'schedule' }),
+        attempt: transportAttemptFixture({ requestId: '' }),
+      },
+    ];
+    for (const value of cases) {
+      const database = await openTestDb(`jarvis-attempt-invalid-${value.name}`);
+      const repositories = createJarvisRepositories(database);
+      await repositories.run.createIdempotent(value.run);
+      const result = await repositories.run.compareAndMutateTransportAttempt({
+        kind: 'begin_initial',
+        accountId: value.run.accountId,
+        runId: value.run.id,
+        expectedStatus: 'queued',
+        attempt: value.attempt,
+        updatedAt: NOW,
+      });
+      expect(result.applied).toBe(false);
+      expect(await database.jarvis_events.count()).toBe(0);
+    }
+  });
+
+  it('settles a proven zero-effect failure without terminalizing the run', async () => {
+    const { database, repositories } = await beginInitial('jarvis-attempt-settle-retryable');
+    const result = await repositories.run.compareAndMutateTransportAttempt({
+      kind: 'settle_retryable',
+      accountId: 'account-alpha',
+      runId: 'run-alpha',
+      expectedStatus: 'running',
+      expectedAttemptNumber: 1,
+      expectedBarrierVersion: 0,
+      expectedEventTailSeq: 1,
+      providerFailure: providerFailureFixture(),
+      zeroEffectEvidence: zeroEffectEvidenceFixture(),
+      updatedAt: NOW + 3,
+    });
+    expect(result.applied).toBe(true);
+    if (!result.applied) return;
+    expect(result.run.status).toBe('running');
+    expect(result.run.transportAttempts?.[0]).toMatchObject({
+      state: 'retryable_failed',
+      failureCategory: 'network_unavailable',
+      zeroEffectEvidence: zeroEffectEvidenceFixture(),
+    });
+    expect(result.event).toMatchObject({
+      seq: 2,
+      type: 'warning',
+      status: 'transport_retry_available',
+    });
+    expect(await database.jarvis_events.count()).toBe(2);
+  });
+
+  it('begins retry only when the canonical availability event is the uninterrupted tail', async () => {
+    const { repositories } = await beginInitial('jarvis-attempt-begin-retry');
+    const evidence = zeroEffectEvidenceFixture();
+    await repositories.run.compareAndMutateTransportAttempt({
+      kind: 'settle_retryable',
+      accountId: 'account-alpha',
+      runId: 'run-alpha',
+      expectedStatus: 'running',
+      expectedAttemptNumber: 1,
+      expectedBarrierVersion: 0,
+      expectedEventTailSeq: 1,
+      providerFailure: providerFailureFixture(),
+      zeroEffectEvidence: evidence,
+      updatedAt: NOW + 3,
+    });
+    const retry = await repositories.run.compareAndMutateTransportAttempt({
+      kind: 'begin_retry',
+      accountId: 'account-alpha',
+      runId: 'run-alpha',
+      expectedStatus: 'running',
+      expectedLatestAttemptNumber: 1,
+      expectedBarrierVersion: 0,
+      expectedEventTailSeq: 2,
+      revalidatedEvidence: evidence,
+      attempt: transportAttemptFixture({
+        attemptNumber: 2,
+        kind: 'transport_retry',
+        requestId: 'request-beta',
+        createdAt: NOW + 4,
+        updatedAt: NOW + 4,
+        effectBarrier: { state: 'open', version: 0, updatedAt: NOW + 4 },
+      }),
+      updatedAt: NOW + 4,
+    });
+    expect(retry.applied).toBe(true);
+    if (!retry.applied) return;
+    expect(retry.event).toMatchObject({ seq: 3, status: 'transport_retry_started' });
+    expect(retry.run.transportAttempts).toHaveLength(2);
+    expect(retry.run.transportAttempts?.[0]?.effectBarrier.state).toBe('sealed_for_retry');
+    expect(retry.run.transportAttempts?.[1]).toMatchObject({
+      attemptNumber: 2,
+      requestId: 'request-beta',
+      startedEventSeq: 3,
+    });
+  });
+
+  it('rejects retry after any intervening or mismatched tail event', async () => {
+    const { database, repositories } = await beginInitial('jarvis-attempt-retry-tail-conflict');
+    const evidence = zeroEffectEvidenceFixture();
+    await repositories.run.compareAndMutateTransportAttempt({
+      kind: 'settle_retryable',
+      accountId: 'account-alpha',
+      runId: 'run-alpha',
+      expectedStatus: 'running',
+      expectedAttemptNumber: 1,
+      expectedBarrierVersion: 0,
+      expectedEventTailSeq: 1,
+      providerFailure: providerFailureFixture(),
+      zeroEffectEvidence: evidence,
+      updatedAt: NOW + 3,
+    });
+    await repositories.event.appendIdempotent(
+      'account-alpha',
+      'run-alpha',
+      nonTransitionEventFixture({ idempotencyKey: 'intervening-event', createdAt: NOW + 4 }),
+    );
+    const before = await repositories.run.getById('account-alpha', 'run-alpha');
+    const result = await repositories.run.compareAndMutateTransportAttempt({
+      kind: 'begin_retry',
+      accountId: 'account-alpha',
+      runId: 'run-alpha',
+      expectedStatus: 'running',
+      expectedLatestAttemptNumber: 1,
+      expectedBarrierVersion: 0,
+      expectedEventTailSeq: 3,
+      revalidatedEvidence: evidence,
+      attempt: transportAttemptFixture({
+        attemptNumber: 2,
+        kind: 'transport_retry',
+        requestId: 'request-beta',
+      }),
+      updatedAt: NOW + 5,
+    });
+    expect(result).toEqual({ applied: false, current: before, reason: 'attempt_conflict' });
+    expect(await database.jarvis_events.count()).toBe(3);
+  });
+
+  it('terminalizes uncertain failure atomically and rolls back event insertion failure', async () => {
+    const first = await beginInitial('jarvis-attempt-uncertain');
+    const terminal = await first.repositories.run.compareAndMutateTransportAttempt({
+      kind: 'settle_uncertain_failed',
+      accountId: 'account-alpha',
+      runId: 'run-alpha',
+      expectedStatus: 'running',
+      expectedAttemptNumber: 1,
+      providerFailure: providerFailureFixture(),
+      updatedAt: NOW + 5,
+      completedAt: NOW + 5,
+    });
+    expect(terminal.applied).toBe(true);
+    if (terminal.applied) {
+      expect(terminal.run).toMatchObject({ status: 'failed', completedAt: NOW + 5 });
+      expect(terminal.run.transportAttempts?.[0]?.state).toBe('effect_uncertain');
+      expect(terminal.event).toMatchObject({ type: 'run_state', status: 'failed' });
+    }
+
+    const rollback = await beginInitial('jarvis-attempt-uncertain-rollback');
+    const before = await rollback.repositories.run.getById('account-alpha', 'run-alpha');
+    vi.spyOn(rollback.database.jarvis_events, 'add').mockRejectedValueOnce(
+      new Error('injected attempt event failure'),
+    );
+    await expect(
+      rollback.repositories.run.compareAndMutateTransportAttempt({
+        kind: 'settle_uncertain_failed',
+        accountId: 'account-alpha',
+        runId: 'run-alpha',
+        expectedStatus: 'running',
+        expectedAttemptNumber: 1,
+        providerFailure: providerFailureFixture(),
+        updatedAt: NOW + 5,
+        completedAt: NOW + 5,
+      }),
+    ).rejects.toThrow('injected attempt event failure');
+    expect(await rollback.repositories.run.getById('account-alpha', 'run-alpha')).toEqual(before);
+    expect(await rollback.database.jarvis_events.count()).toBe(1);
+  });
+});
+
+describe('Task 18 attempt-effect claim authority', () => {
+  it('snapshots a claim before the owned-run read so caller mutation cannot cross run scope', async () => {
+    const database = await openTestDb('jarvis-effect-mutable-claim-snapshot');
+    const repositories = createJarvisRepositories(database);
+    const scheduled = (id: string, accountId: string) =>
+      runFixture({
+        id,
+        accountId,
+        source: 'schedule',
+        status: 'running',
+        transportAttempts: [{ ...transportAttemptFixture(), startedEventSeq: 1 }],
+      });
+    await repositories.run.createIdempotent(scheduled('run-alpha', 'account-alpha'));
+    await repositories.run.createIdempotent(scheduled('run-beta', 'account-beta'));
+    const claim = effectClaimFixture() as {
+      -readonly [K in keyof JarvisAttemptEffectClaimInput]: JarvisAttemptEffectClaimInput[K];
+    };
+    const originalGet = database.jarvis_runs.get.bind(database.jarvis_runs);
+    const get = vi.spyOn(database.jarvis_runs, 'get').mockImplementationOnce((runId) => {
+      const ownedRead = originalGet(runId);
+      claim.runId = 'run-beta';
+      claim.accountId = 'account-beta';
+      return ownedRead;
+    });
+
+    let result: Awaited<ReturnType<typeof repositories.run.claimAttemptEffect>>;
+    try {
+      result = await repositories.run.claimAttemptEffect(claim);
+    } finally {
+      get.mockRestore();
+    }
+
+    expect(result).toMatchObject({
+      applied: true,
+      kind: 'barrier_claimed',
+      event: { runId: 'run-alpha' },
+    });
+    await expect(repositories.run.getById('account-alpha', 'run-alpha')).resolves.toMatchObject({
+      transportAttempts: [{ effectBarrier: { state: 'dirty', version: 1 } }],
+    });
+    await expect(repositories.run.getById('account-beta', 'run-beta')).resolves.toMatchObject({
+      transportAttempts: [{ effectBarrier: { state: 'open', version: 0 } }],
+    });
+    expect(await repositories.event.listByRun('account-alpha', 'run-alpha')).toHaveLength(1);
+    expect(await repositories.event.listByRun('account-beta', 'run-beta')).toHaveLength(0);
+  });
+
+  it('snapshots generic append accessors once before reserved namespace and evidence checks', async () => {
+    const database = await openTestDb('jarvis-effect-accessor-append-snapshot');
+    const repositories = createJarvisRepositories(database);
+    await repositories.run.createIdempotent(runFixture());
+    const claim = effectClaimFixture();
+    const reservedKey = `jeffect:${claim.runId}:${claim.requestId}:${claim.attemptNumber}:${claim.ownerKind}:${claim.ownerId}:${claim.evidenceRef}`;
+    let keyReads = 0;
+    let evidenceReads = 0;
+    const input = { ...nonTransitionEventFixture({ idempotencyKey: 'ordinary-event-key' }) };
+    Object.defineProperties(input, {
+      idempotencyKey: {
+        configurable: true,
+        enumerable: true,
+        get: () => (++keyReads <= 2 ? 'ordinary-event-key' : reservedKey),
+      },
+      executionEvidence: {
+        configurable: true,
+        enumerable: true,
+        get: () => (++evidenceReads === 1 ? undefined : executionEvidenceForClaim(claim)),
+      },
+    });
+
+    await expect(
+      repositories.event.appendIdempotent(claim.accountId, claim.runId, input),
+    ).rejects.toMatchObject({ code: 'event_idempotency_conflict' });
+    const rows = await database.jarvis_events.toArray();
+    expect(rows).toHaveLength(0);
+    expect(keyReads).toBe(1);
+    expect(evidenceReads).toBe(1);
+  });
+
+  it('fails closed before writes when claim detachment evaluates a throwing accessor', async () => {
+    const database = await openTestDb('jarvis-effect-claim-clone-failure');
+    const repositories = createJarvisRepositories(database);
+    await repositories.run.createIdempotent(
+      runFixture({
+        source: 'schedule',
+        status: 'running',
+        transportAttempts: [{ ...transportAttemptFixture(), startedEventSeq: 1 }],
+      }),
+    );
+    const claim = effectClaimFixture();
+    Object.defineProperty(claim, 'ownerId', {
+      configurable: true,
+      enumerable: true,
+      get: () => {
+        throw new Error('untrusted claim accessor');
+      },
+    });
+
+    await expect(repositories.run.claimAttemptEffect(claim)).rejects.toMatchObject({
+      code: 'attempt_effect_integrity_error',
+    });
+    await expect(repositories.run.getById('account-alpha', 'run-alpha')).resolves.toMatchObject({
+      transportAttempts: [{ effectBarrier: { state: 'open', version: 0 } }],
+    });
+    expect(await database.jarvis_events.count()).toBe(0);
+  });
+
+  it('fails closed before writes when generic append detachment evaluates a throwing accessor', async () => {
+    const database = await openTestDb('jarvis-effect-append-clone-failure');
+    const repositories = createJarvisRepositories(database);
+    await repositories.run.createIdempotent(runFixture());
+    const input = { ...nonTransitionEventFixture() };
+    Object.defineProperty(input, 'idempotencyKey', {
+      configurable: true,
+      enumerable: true,
+      get: () => {
+        throw new Error('untrusted event accessor');
+      },
+    });
+
+    await expect(
+      repositories.event.appendIdempotent('account-alpha', 'run-alpha', input),
+    ).rejects.toMatchObject({ code: 'event_idempotency_conflict' });
+    expect(await database.jarvis_events.count()).toBe(0);
+  });
+
+  it('rejects generic event append using the reserved effect-claim idempotency namespace', async () => {
+    const database = await openTestDb('jarvis-effect-reserved-idempotency');
+    const repositories = createJarvisRepositories(database);
+    await repositories.run.createIdempotent(runFixture());
+    const claim = effectClaimFixture();
+
+    await expect(
+      repositories.event.appendIdempotent(
+        claim.accountId,
+        claim.runId,
+        nonTransitionEventFixture({
+          idempotencyKey: `jeffect:${claim.runId}:${claim.requestId}:${claim.attemptNumber}:${claim.ownerKind}:${claim.ownerId}:${claim.evidenceRef}`,
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'attempt_effect_integrity_error' });
+    expect(await database.jarvis_events.count()).toBe(0);
+  });
+
+  it('rejects generic event append carrying reserved consequential-effect claim evidence', async () => {
+    const database = await openTestDb('jarvis-effect-reserved-evidence');
+    const repositories = createJarvisRepositories(database);
+    await repositories.run.createIdempotent(runFixture());
+    const claim = effectClaimFixture();
+
+    await expect(
+      repositories.event.appendIdempotent(
+        claim.accountId,
+        claim.runId,
+        nonTransitionEventFixture({
+          idempotencyKey: 'ordinary-event-key',
+          type: 'tool',
+          status: 'consequential_effect_claimed',
+          executionEvidence: executionEvidenceForClaim(claim),
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'attempt_effect_integrity_error' });
+    expect(await database.jarvis_events.count()).toBe(0);
+  });
+
+  it('rejects a pre-existing exact claim row while the attempt barrier remains open', async () => {
+    const database = await openTestDb('jarvis-effect-preempted-open-barrier');
+    const repositories = createJarvisRepositories(database);
+    const claim = effectClaimFixture();
+    await repositories.run.createIdempotent(
+      runFixture({
+        source: 'schedule',
+        status: 'running',
+        transportAttempts: [{ ...transportAttemptFixture(), startedEventSeq: 1 }],
+      }),
+    );
+    await database.jarvis_events.add(
+      toJarvisEventRow({
+        runId: claim.runId,
+        seq: 1,
+        idempotencyKey: `jeffect:${claim.runId}:${claim.requestId}:${claim.attemptNumber}:${claim.ownerKind}:${claim.ownerId}:${claim.evidenceRef}`,
+        type: 'tool',
+        status: 'consequential_effect_claimed',
+        title: 'Consequential effect claimed',
+        safeSummary: 'An execution owner claimed the current attempt barrier.',
+        sourceRefs: [],
+        artifactIds: [],
+        createdAt: claim.claimedAt,
+        executionEvidence: executionEvidenceForClaim(claim),
+      }),
+    );
+
+    await expect(repositories.run.claimAttemptEffect(claim)).rejects.toMatchObject({
+      code: 'attempt_effect_integrity_error',
+    });
+    await expect(repositories.run.getById(claim.accountId, claim.runId)).resolves.toMatchObject({
+      transportAttempts: [{ effectBarrier: { state: 'open', version: 0 } }],
+    });
+  });
+
+  it('rejects idempotent claim success when the persisted canonical event row changed', async () => {
+    const database = await openTestDb('jarvis-effect-idempotency-canonical-row');
+    const repositories = createJarvisRepositories(database);
+    const claim = effectClaimFixture();
+    await repositories.run.createIdempotent(
+      runFixture({
+        source: 'schedule',
+        status: 'running',
+        transportAttempts: [{ ...transportAttemptFixture(), startedEventSeq: 1 }],
+      }),
+    );
+    const first = await repositories.run.claimAttemptEffect(claim);
+    expect(first).toMatchObject({ applied: true, kind: 'barrier_claimed' });
+    if (!first.applied || first.kind !== 'barrier_claimed') return;
+    await database.jarvis_events.update([claim.runId, first.event.seq], {
+      title: 'Changed effect claim title',
+    });
+
+    await expect(repositories.run.claimAttemptEffect(claim)).rejects.toMatchObject({
+      code: 'attempt_effect_integrity_error',
+    });
+    await expect(repositories.run.getById(claim.accountId, claim.runId)).resolves.toMatchObject({
+      transportAttempts: [{ effectBarrier: { state: 'dirty', version: 1 } }],
+    });
+  });
+
+  it('returns not_applicable only for an account-owned unscheduled run without a ledger', async () => {
+    const database = await openTestDb('jarvis-effect-not-applicable');
+    const repositories = createJarvisRepositories(database);
+    const value = runFixture({ status: 'running' });
+    await repositories.run.createIdempotent(value);
+    await expect(repositories.run.claimAttemptEffect(effectClaimFixture())).resolves.toEqual({
+      applied: true,
+      kind: 'not_applicable',
+      run: value,
+    });
+    expect(await database.jarvis_events.count()).toBe(0);
+  });
+
+  it('atomically dirties and increments the exact current attempt barrier with a forced event', async () => {
+    const database = await openTestDb('jarvis-effect-claim');
+    const repositories = createJarvisRepositories(database);
+    const value = runFixture({
+      source: 'schedule',
+      status: 'running',
+      transportAttempts: [{ ...transportAttemptFixture(), startedEventSeq: 1 }],
+    });
+    await repositories.run.createIdempotent(value);
+    const result = await repositories.run.claimAttemptEffect(effectClaimFixture());
+    expect(result.applied).toBe(true);
+    if (!result.applied || result.kind !== 'barrier_claimed') return;
+    expect(result.run.transportAttempts?.[0]?.effectBarrier).toEqual({
+      state: 'dirty',
+      version: 1,
+      updatedAt: NOW + 1,
+    });
+    expect(result.event).toMatchObject({
+      type: 'tool',
+      status: 'consequential_effect_claimed',
+      executionEvidence: {
+        schemaVersion: 1,
+        requestId: 'request-alpha',
+        attemptNumber: 1,
+        kind: 'consequential_effect_claimed',
+        ownerKind: 'action',
+        ownerId: 'action-alpha',
+        evidenceRef: 'effect-claim-alpha',
+        observedAt: NOW + 1,
+      },
+    });
+  });
+
+  it('deduplicates the same claim and increments monotonically for a distinct claim', async () => {
+    const database = await openTestDb('jarvis-effect-idempotency');
+    const repositories = createJarvisRepositories(database);
+    await repositories.run.createIdempotent(
+      runFixture({
+        source: 'schedule',
+        status: 'running',
+        transportAttempts: [{ ...transportAttemptFixture(), startedEventSeq: 1 }],
+      }),
+    );
+    const first = await repositories.run.claimAttemptEffect(effectClaimFixture());
+    expect(await repositories.run.claimAttemptEffect(effectClaimFixture())).toEqual(first);
+    const second = await repositories.run.claimAttemptEffect(
+      effectClaimFixture({
+        ownerId: 'action-beta',
+        evidenceRef: 'effect-claim-beta',
+        claimedAt: NOW + 2,
+      }),
+    );
+    expect(second.applied).toBe(true);
+    if (second.applied && second.kind === 'barrier_claimed') {
+      expect(second.run.transportAttempts?.[0]?.effectBarrier.version).toBe(2);
+    }
+    expect(await database.jarvis_events.count()).toBe(2);
+  });
+
+  it.each([
+    ['status_conflict', { status: 'completed' as const }, effectClaimFixture()],
+    ['attempt_conflict', {}, effectClaimFixture({ requestId: 'stale-request' })],
+    [
+      'attempt_sealed',
+      {
+        transportAttempts: [
+          {
+            ...transportAttemptFixture({
+              effectBarrier: { state: 'sealed_for_retry', version: 0, updatedAt: NOW },
+            }),
+            startedEventSeq: 1,
+          },
+        ],
+      },
+      effectClaimFixture(),
+    ],
+  ] as const)(
+    'returns %s without writes for stale or sealed authority',
+    async (reason, runOverrides, claim) => {
+      const database = await openTestDb(`jarvis-effect-${reason}`);
+      const repositories = createJarvisRepositories(database);
+      const value = runFixture({
+        source: 'schedule',
+        status: 'running',
+        transportAttempts: [{ ...transportAttemptFixture(), startedEventSeq: 1 }],
+        ...runOverrides,
+      });
+      await repositories.run.createIdempotent(value);
+      const result = await repositories.run.claimAttemptEffect(claim);
+      expect(result).toEqual({ applied: false, reason, current: value });
+      expect(await database.jarvis_events.count()).toBe(0);
+    },
+  );
+
+  it('serializes effect claim versus retryable settlement so only one boundary wins', async () => {
+    const database = await openTestDb('jarvis-effect-settlement-race');
+    const repositories = createJarvisRepositories(database);
+    await repositories.run.createIdempotent(
+      runFixture({
+        source: 'schedule',
+        status: 'running',
+        transportAttempts: [{ ...transportAttemptFixture(), startedEventSeq: 1 }],
+      }),
+    );
+    await repositories.event.appendIdempotent(
+      'account-alpha',
+      'run-alpha',
+      nonTransitionEventFixture({ idempotencyKey: 'attempt-start-placeholder' }),
+    );
+    const [claim, settle] = await Promise.all([
+      repositories.run.claimAttemptEffect(effectClaimFixture()),
+      repositories.run.compareAndMutateTransportAttempt({
+        kind: 'settle_retryable',
+        accountId: 'account-alpha',
+        runId: 'run-alpha',
+        expectedStatus: 'running',
+        expectedAttemptNumber: 1,
+        expectedBarrierVersion: 0,
+        expectedEventTailSeq: 1,
+        providerFailure: providerFailureFixture(),
+        zeroEffectEvidence: zeroEffectEvidenceFixture(),
+        updatedAt: NOW + 3,
+      }),
+    ]);
+    expect(Number(claim.applied) + Number(settle.applied)).toBe(1);
+    expect(await database.jarvis_events.count()).toBe(2);
   });
 });
