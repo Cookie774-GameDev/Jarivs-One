@@ -44,6 +44,7 @@ export function createJarvisPersistenceCoordinator(input: {
   let started = false;
   let stopped = false;
   let generation = 0;
+  let subscriptionEpoch = 0;
   let currentIdentityKey: string | null = null;
   let unsubscribeIdentity: (() => void) | null = null;
   let activeStop: (() => void) | null = null;
@@ -91,14 +92,25 @@ export function createJarvisPersistenceCoordinator(input: {
 
   function ensureIdentitySubscription(): boolean {
     if (unsubscribeIdentity) return true;
+    const attemptEpoch = ++subscriptionEpoch;
+    let armed = false;
     try {
-      const unsubscribe = input.subscribeIdentity(() => {
+      const providerUnsubscribe = input.subscribeIdentity(() => {
+        if (!armed || attemptEpoch !== subscriptionEpoch || !started || stopped) return;
         void beginAttempt(false);
       });
-      if (typeof unsubscribe !== 'function') throw new Error('Invalid identity subscription.');
-      unsubscribeIdentity = unsubscribe;
+      if (typeof providerUnsubscribe !== 'function') {
+        throw new Error('Invalid identity subscription.');
+      }
+      unsubscribeIdentity = () => {
+        armed = false;
+        providerUnsubscribe();
+      };
+      armed = true;
       return true;
     } catch {
+      armed = false;
+      if (subscriptionEpoch === attemptEpoch) subscriptionEpoch += 1;
       unsubscribeIdentity = null;
       currentIdentityKey = null;
       generation += 1;
@@ -177,11 +189,12 @@ export function createJarvisPersistenceCoordinator(input: {
     await beginAttempt(true);
   }
 
-  function stop(): void {
-    if (!started) return;
+  function stop(expectedStop: () => void): void {
+    if (!started || activeStop !== expectedStop) return;
     started = false;
     stopped = true;
     const stoppedGeneration = ++generation;
+    subscriptionEpoch += 1;
     currentIdentityKey = null;
     const unsubscribe = unsubscribeIdentity;
     unsubscribeIdentity = null;
@@ -202,10 +215,11 @@ export function createJarvisPersistenceCoordinator(input: {
     if (started && activeStop) return activeStop;
     started = true;
     stopped = false;
-    activeStop = stop;
-    if (!ensureIdentitySubscription()) return activeStop;
+    const stopForGeneration = () => stop(stopForGeneration);
+    activeStop = stopForGeneration;
+    if (!ensureIdentitySubscription()) return stopForGeneration;
     void beginAttempt(true);
-    return activeStop;
+    return stopForGeneration;
   }
 
   return {

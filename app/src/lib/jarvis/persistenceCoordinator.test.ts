@@ -142,6 +142,97 @@ describe('createJarvisPersistenceCoordinator', () => {
     stop();
   });
 
+  it('returns the generation-local disposer when a subscriber stops during activating publish', async () => {
+    const identity = { accountId: 'activating-stop-account', source: 'local' } as const;
+    const firstActivation = deferred<ReturnType<typeof ready>>();
+    const lifecycle: { stop: (() => void) | null } = { stop: null };
+    activateMock
+      .mockReturnValueOnce(firstActivation.promise)
+      .mockResolvedValueOnce(ready(identity.accountId, 'profile-after-activating-stop'));
+    const harness = identityHarness(identity);
+    const coordinator = createJarvisPersistenceCoordinator({
+      db: fakeDb(),
+      readIdentity: harness.readIdentity,
+      subscribeIdentity: harness.subscribeIdentity,
+    });
+    coordinator.subscribe(() => {
+      if (coordinator.getState().status !== 'activating' || lifecycle.stop) return;
+      lifecycle.stop = coordinator.start();
+      lifecycle.stop();
+    });
+
+    const returnedStop = coordinator.start();
+
+    expect(typeof returnedStop).toBe('function');
+    expect(returnedStop).toBe(lifecycle.stop);
+    expect(() => returnedStop()).not.toThrow();
+
+    const restartedStop = coordinator.start();
+    expect(restartedStop).not.toBe(returnedStop);
+    returnedStop();
+    expect(coordinator.getState()).toEqual({
+      status: 'activating',
+      accountId: identity.accountId,
+    });
+    await flushActivation();
+    expect(coordinator.getState()).toEqual({
+      status: 'ready',
+      accountId: identity.accountId,
+      profileId: 'profile-after-activating-stop',
+    });
+
+    firstActivation.resolve(ready(identity.accountId, 'late-first-profile'));
+    await flushActivation();
+    expect(coordinator.getState()).toMatchObject({
+      status: 'ready',
+      profileId: 'profile-after-activating-stop',
+    });
+    restartedStop();
+  });
+
+  it('returns the generation-local disposer when a subscriber stops during degraded publish', async () => {
+    const identity = { accountId: 'degraded-stop-account', source: 'local' } as const;
+    const lifecycle: { stop: (() => void) | null } = { stop: null };
+    let subscribeCalls = 0;
+    activateMock.mockResolvedValueOnce(ready(identity.accountId));
+    const coordinator = createJarvisPersistenceCoordinator({
+      db: fakeDb(),
+      readIdentity: () => identity,
+      subscribeIdentity: () => {
+        subscribeCalls += 1;
+        if (subscribeCalls === 1) throw new Error('sensitive subscription detail');
+        return vi.fn();
+      },
+    });
+    coordinator.subscribe(() => {
+      if (coordinator.getState().status !== 'degraded' || lifecycle.stop) return;
+      lifecycle.stop = coordinator.start();
+      lifecycle.stop();
+    });
+
+    const returnedStop = coordinator.start();
+
+    expect(typeof returnedStop).toBe('function');
+    expect(returnedStop).toBe(lifecycle.stop);
+    expect(() => returnedStop()).not.toThrow();
+
+    const restartedStop = coordinator.start();
+    expect(restartedStop).not.toBe(returnedStop);
+    returnedStop();
+    expect(coordinator.getState()).toEqual({
+      status: 'activating',
+      accountId: identity.accountId,
+    });
+    await flushActivation();
+    expect(coordinator.getState()).toEqual({
+      status: 'ready',
+      accountId: identity.accountId,
+      profileId: `profile-${identity.accountId}`,
+    });
+    expect(subscribeCalls).toBe(2);
+    restartedStop();
+  });
+
   it('quarantines a subscription startup failure and remains retryable and stop-safe', async () => {
     let identity: AccountIdentity = {
       accountId: 'subscription-failure-account',
@@ -212,6 +303,74 @@ describe('createJarvisPersistenceCoordinator', () => {
     }).not.toThrow();
     expect(unsubscribeCalls).toBe(1);
     expect(subscription.listener).toBeNull();
+  });
+
+  it('never arms a callback captured by a subscription attempt that throws', async () => {
+    let identity: AccountIdentity = {
+      accountId: 'failed-subscription-account',
+      source: 'local',
+    };
+    const capturedListeners: Array<() => void> = [];
+    let unsubscribeCalls = 0;
+    activateMock.mockImplementation(async (_db, current: AccountIdentity) =>
+      ready(current.accountId),
+    );
+    const coordinator = createJarvisPersistenceCoordinator({
+      db: fakeDb(),
+      readIdentity: () => identity,
+      subscribeIdentity: (listener) => {
+        capturedListeners.push(listener);
+        if (capturedListeners.length === 1) {
+          throw new Error('failed after capturing listener');
+        }
+        return () => {
+          unsubscribeCalls += 1;
+        };
+      },
+    });
+
+    const stop = coordinator.start();
+    const unavailable = coordinator.getState();
+    if (unavailable.status !== 'degraded') throw new Error('Expected degraded state.');
+
+    capturedListeners[0]!();
+    await flushActivation();
+
+    expect(activateMock).not.toHaveBeenCalled();
+    expect(coordinator.getState()).toEqual(unavailable);
+
+    await unavailable.retry();
+    expect(activateMock).toHaveBeenCalledTimes(1);
+    expect(coordinator.getState()).toEqual({
+      status: 'ready',
+      accountId: 'failed-subscription-account',
+      profileId: 'profile-failed-subscription-account',
+    });
+
+    identity = { accountId: 'current-subscription-account', source: 'supabase' };
+    capturedListeners[0]!();
+    await flushActivation();
+    expect(activateMock).toHaveBeenCalledTimes(1);
+    expect(coordinator.getState()).toMatchObject({
+      status: 'ready',
+      accountId: 'failed-subscription-account',
+    });
+
+    capturedListeners[1]!();
+    expect(coordinator.getState()).toEqual({
+      status: 'activating',
+      accountId: 'current-subscription-account',
+    });
+    await flushActivation();
+    expect(activateMock).toHaveBeenCalledTimes(2);
+    expect(coordinator.getState()).toEqual({
+      status: 'ready',
+      accountId: 'current-subscription-account',
+      profileId: 'profile-current-subscription-account',
+    });
+
+    stop();
+    expect(unsubscribeCalls).toBe(1);
   });
 
   it('isolates a throwing subscriber while notifying peers and completing activation', async () => {
@@ -536,6 +695,50 @@ describe('createJarvisPersistenceCoordinator', () => {
     expect(subscribeCalls).toBe(2);
     expect(() => restartedStop()).not.toThrow();
     expect(unsubscribeCalls).toBe(2);
+  });
+
+  it('keeps a restarted generation live when its prior disposer is invoked', async () => {
+    const harness = identityHarness({ accountId: 'restart-account', source: 'local' });
+    activateMock
+      .mockResolvedValueOnce(ready('restart-account', 'first-profile'))
+      .mockResolvedValueOnce(ready('restart-account', 'second-profile'))
+      .mockResolvedValueOnce(ready('next-account', 'next-profile'));
+    const coordinator = createJarvisPersistenceCoordinator({
+      db: fakeDb(),
+      readIdentity: harness.readIdentity,
+      subscribeIdentity: harness.subscribeIdentity,
+    });
+
+    const firstStop = coordinator.start();
+    await flushActivation();
+    firstStop();
+    expect(harness.unsubscribeCalls).toBe(1);
+
+    const secondStop = coordinator.start();
+    expect(secondStop).not.toBe(firstStop);
+    await flushActivation();
+    expect(coordinator.getState()).toEqual({
+      status: 'ready',
+      accountId: 'restart-account',
+      profileId: 'second-profile',
+    });
+
+    firstStop();
+    expect(harness.unsubscribeCalls).toBe(1);
+    harness.setIdentity({ accountId: 'next-account', source: 'supabase' });
+    expect(coordinator.getState()).toEqual({
+      status: 'activating',
+      accountId: 'next-account',
+    });
+    await flushActivation();
+    expect(coordinator.getState()).toEqual({
+      status: 'ready',
+      accountId: 'next-account',
+      profileId: 'next-profile',
+    });
+
+    secondStop();
+    expect(harness.unsubscribeCalls).toBe(2);
   });
 
   it('ignores a stale result from a prior account generation', async () => {
