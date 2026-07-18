@@ -1,14 +1,19 @@
 import * as React from 'react';
-import { act, render, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useUIStore } from '@/stores/ui';
 import { useAuthStore } from '@/stores/auth';
-import { STREAMING_VOICE_END_EVENT } from './speechSynthesis';
+import { SPEECH_SYNTHESIS_START_EVENT, STREAMING_VOICE_END_EVENT } from './speechSynthesis';
 
 type VoiceHandler = (payload?: unknown) => void;
 
 const voiceListeners = vi.hoisted(() => ({
   handlers: new Map<string, Set<VoiceHandler>>(),
+}));
+
+const routerMocks = vi.hoisted(() => ({
+  handleVoiceModuleClosed: vi.fn(),
+  stopCurrentVoiceResponse: vi.fn(),
 }));
 
 vi.mock('./VoiceService', () => ({
@@ -65,10 +70,7 @@ vi.mock('./voiceChatRouting', () => ({
   })),
 }));
 
-vi.mock('./voiceRouter', () => ({
-  handleVoiceModuleClosed: vi.fn(),
-  stopCurrentVoiceResponse: vi.fn(),
-}));
+vi.mock('./voiceRouter', () => routerMocks);
 
 import { VoiceModal } from './VoiceModal';
 import { messageRepo } from '@/lib/db';
@@ -197,6 +199,20 @@ describe('VoiceModal hands-free turn-taking', () => {
     expect(messageRepo.create).not.toHaveBeenCalled();
     expect(useVoiceStore.getState().partialTranscript).toBe('');
 
+    window.removeEventListener('jarvis:send', send as EventListener);
+  });
+
+  it('releases the active turn immediately after the user stops speech', async () => {
+    const send = vi.fn();
+    window.addEventListener('jarvis:send', send as EventListener);
+    render(<VoiceModal />);
+
+    act(() => window.dispatchEvent(new CustomEvent(SPEECH_SYNTHESIS_START_EVENT)));
+    fireEvent.click(screen.getByRole('button', { name: /Stop response/i }));
+    act(() => emitVoice('voice:final', { text: 'new request send it' }));
+
+    await waitFor(() => expect(send).toHaveBeenCalledOnce());
+    expect(routerMocks.stopCurrentVoiceResponse).toHaveBeenCalledOnce();
     window.removeEventListener('jarvis:send', send as EventListener);
   });
 });

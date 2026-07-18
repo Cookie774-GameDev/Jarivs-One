@@ -7,7 +7,7 @@ import {
 } from './speechSynthesis';
 
 const mocks = vi.hoisted(() => ({
-  speakWithSettings: vi.fn(async () => undefined),
+  speakWithSettings: vi.fn(async (): Promise<void> => undefined),
   authState: {
     voiceEngine: 'system',
     voicePreset: 'jarvis-prime',
@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
     stop: vi.fn(),
   },
   createKokoroStreamingPlayer: vi.fn(),
+  stopAllVoiceOutput: vi.fn(),
   canSpeak: true,
   sessionId: 1,
 }));
@@ -38,12 +39,25 @@ vi.mock('./voiceRouter', () => ({
   createKokoroStreamingPlayer: mocks.createKokoroStreamingPlayer,
   registerActiveStreamingVoiceSession: vi.fn(),
   speakWithSettings: mocks.speakWithSettings,
-  stopAllVoiceOutput: vi.fn(),
+  stopAllVoiceOutput: mocks.stopAllVoiceOutput,
   canVoiceModuleSpeak: () => mocks.canSpeak,
   getActiveVoiceSessionId: () => mocks.sessionId,
 }));
 
 import { StreamingVoiceSession } from './streamingVoice';
+import { validateSpeechChunk } from './speechGate';
+
+function validated(text: string) {
+  const decision = validateSpeechChunk({
+    text,
+    completeSentence: true,
+    insideFence: false,
+    mode: 'direct_answer',
+    lintViolations: [],
+  });
+  if (!decision.allowed) throw new Error(decision.reason);
+  return decision.chunk;
+}
 
 describe('StreamingVoiceSession lifecycle', () => {
   beforeEach(() => {
@@ -57,6 +71,7 @@ describe('StreamingVoiceSession lifecycle', () => {
     mocks.kokoroStream.stop.mockClear();
     mocks.createKokoroStreamingPlayer.mockReset();
     mocks.createKokoroStreamingPlayer.mockReturnValue(mocks.kokoroStream);
+    mocks.stopAllVoiceOutput.mockClear();
   });
 
   afterEach(() => {
@@ -146,5 +161,101 @@ describe('StreamingVoiceSession lifecycle', () => {
     expect(mocks.kokoroStream.complete).toHaveBeenCalledTimes(1);
     expect(mocks.speakWithSettings).not.toHaveBeenCalled();
     expect(events).toEqual(['start', 'end']);
+  });
+
+  it('accepts only gate-branded chunks on the new streaming path', async () => {
+    const session = new StreamingVoiceSession();
+    session.enqueueValidatedChunk(validated('First sentence.'));
+    await session.completeValidated({
+      spokenText: 'Second sentence.',
+      mode: 'direct_answer',
+    });
+
+    expect(mocks.speakWithSettings).toHaveBeenNthCalledWith(
+      1,
+      'First sentence.',
+      expect.any(Object),
+    );
+    expect(mocks.speakWithSettings).toHaveBeenNthCalledWith(
+      2,
+      'Second sentence.',
+      expect.any(Object),
+    );
+  });
+
+  it.each([
+    {
+      spokenText: 'The selected model is unavailable.',
+      mode: 'warning' as const,
+    },
+    {
+      spokenText: 'The operation failed before completion.',
+      mode: 'action_failure' as const,
+      executionState: {
+        status: 'failed' as const,
+        verifiedBy: 'journal' as const,
+        lastEventSeq: 3,
+      },
+    },
+    {
+      spokenText: 'The action was cancelled before completion.',
+      mode: 'status' as const,
+      executionState: {
+        status: 'cancelled' as const,
+        verifiedBy: 'journal' as const,
+        lastEventSeq: 4,
+      },
+    },
+  ])('speaks final validated severity without changing its truth', async (response) => {
+    const session = new StreamingVoiceSession();
+    await session.completeValidated(response);
+    expect(mocks.speakWithSettings).toHaveBeenCalledWith(response.spokenText, expect.any(Object));
+  });
+
+  it('clears queued speech on stop and never starts the next chunk', async () => {
+    let releaseFirst: (() => void) | undefined;
+    mocks.speakWithSettings.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseFirst = resolve;
+        }),
+    );
+    const session = new StreamingVoiceSession();
+    session.enqueueValidatedChunk(validated('First sentence.'));
+    session.enqueueValidatedChunk(validated('Second sentence.'));
+    await vi.waitFor(() => expect(mocks.speakWithSettings).toHaveBeenCalledTimes(1));
+
+    session.stop();
+    releaseFirst?.();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(mocks.stopAllVoiceOutput).toHaveBeenCalledOnce();
+    expect(mocks.speakWithSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not emit a late completion or restart playback after halt', async () => {
+    let releaseFirst: (() => void) | undefined;
+    mocks.speakWithSettings.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseFirst = resolve;
+        }),
+    );
+    const end = vi.fn();
+    window.addEventListener(STREAMING_VOICE_END_EVENT, end);
+    const session = new StreamingVoiceSession();
+    session.enqueueValidatedChunk(validated('Only sentence.'));
+    await vi.waitFor(() => expect(mocks.speakWithSettings).toHaveBeenCalledOnce());
+    const completion = session.completeValidated({ mode: 'direct_answer' });
+
+    session.haltPlayback();
+    releaseFirst?.();
+    await completion;
+    await Promise.resolve();
+
+    expect(end).toHaveBeenCalledOnce();
+    expect(mocks.speakWithSettings).toHaveBeenCalledOnce();
+    window.removeEventListener(STREAMING_VOICE_END_EVENT, end);
   });
 });

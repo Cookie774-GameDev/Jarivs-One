@@ -16,15 +16,17 @@ import type { ChatId, Message } from '@/types';
 import type { VoiceState } from './store';
 import { useVoiceStore } from './store';
 import { VoiceService } from './VoiceService';
-import { SPEECH_SYNTHESIS_END_EVENT, SPEECH_SYNTHESIS_START_EVENT, STREAMING_VOICE_END_EVENT, STREAMING_VOICE_START_EVENT } from './speechSynthesis';
+import {
+  SPEECH_SYNTHESIS_END_EVENT,
+  SPEECH_SYNTHESIS_START_EVENT,
+  STREAMING_VOICE_END_EVENT,
+  STREAMING_VOICE_START_EVENT,
+} from './speechSynthesis';
 import { PERSONAS } from './personas';
 import { VoiceActivityWaveform } from './VoiceActivityWaveform';
 import { handleVoiceModuleClosed, stopCurrentVoiceResponse } from './voiceRouter';
 import { resolveVoiceListenTimeoutMs } from './voiceConversation';
-import {
-  modelSelectionContextFromAuth,
-  validateSendModelAccess,
-} from '@/lib/ai/modelSelection';
+import { modelSelectionContextFromAuth, validateSendModelAccess } from '@/lib/ai/modelSelection';
 import {
   processVoiceFinalEvent,
   shouldAutoSendOnSilence,
@@ -83,25 +85,27 @@ const SymbioteOrb = React.memo(function SymbioteOrb({
   const half = size / 2;
 
   return (
-    <div
-      className="relative shrink-0"
-      style={{ width: size, height: size }}
-    >
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
       {/* Ambient halo */}
       <motion.div
         className="absolute rounded-full pointer-events-none"
         style={{
           inset: -size * 0.25,
-          background: 'radial-gradient(circle, rgba(255,167,31,0.4) 0%, rgba(207,98,5,0.15) 45%, transparent 70%)',
+          background:
+            'radial-gradient(circle, rgba(255,167,31,0.4) 0%, rgba(207,98,5,0.15) 45%, transparent 70%)',
           filter: 'blur(6px)',
         }}
         animate={{
           scale: isSpeaking
             ? [1, 1.6, 1.15, 1.7, 1.3, 1.55, 1]
-            : isListening ? [1, 1.25, 1.08, 1.2, 1] : [1, 1.06, 1],
+            : isListening
+              ? [1, 1.25, 1.08, 1.2, 1]
+              : [1, 1.06, 1],
           opacity: isSpeaking
             ? [0.5, 1, 0.7, 1, 0.6, 0.9, 0.5]
-            : isListening ? [0.4, 0.7, 0.4] : [0.25, 0.4, 0.25],
+            : isListening
+              ? [0.4, 0.7, 0.4]
+              : [0.25, 0.4, 0.25],
         }}
         transition={{
           duration: isSpeaking ? 0.5 : isListening ? 2 : 3.5,
@@ -113,58 +117,66 @@ const SymbioteOrb = React.memo(function SymbioteOrb({
       {/* Symbiote tendrils — only while active to keep the rest of the app responsive */}
       {showTendrils
         ? TENDRIL_SEEDS.slice(0, 6).map((seed, i) => {
-        const rad = (seed.angle * Math.PI) / 180;
-        const maxLen = half * seed.lenScale * (isSpeaking ? 2.2 : isListening ? 1.2 : isThinking ? 0.7 : 0.35);
-        const duration = seed.durationBase * (isSpeaking ? 0.22 : isListening ? 0.55 : isThinking ? 0.7 : 1);
-        const w = seed.widthBase * (isSpeaking ? 1.5 : isListening ? 1.1 : 0.8);
-        const cx = half;
-        const cy = half;
-        const tipX1 = Math.cos(rad) * maxLen;
-        const tipY1 = Math.sin(rad) * maxLen;
-        const tipX2 = Math.cos(rad + 0.4) * maxLen * 0.7;
-        const tipY2 = Math.sin(rad + 0.4) * maxLen * 0.7;
-        const tipX3 = Math.cos(rad - 0.3) * maxLen * 0.9;
-        const tipY3 = Math.sin(rad - 0.3) * maxLen * 0.9;
-        const tipX4 = Math.cos(rad + 0.15) * maxLen * 0.5;
-        const tipY4 = Math.sin(rad + 0.15) * maxLen * 0.5;
+            const rad = (seed.angle * Math.PI) / 180;
+            const maxLen =
+              half *
+              seed.lenScale *
+              (isSpeaking ? 2.2 : isListening ? 1.2 : isThinking ? 0.7 : 0.35);
+            const duration =
+              seed.durationBase * (isSpeaking ? 0.22 : isListening ? 0.55 : isThinking ? 0.7 : 1);
+            const w = seed.widthBase * (isSpeaking ? 1.5 : isListening ? 1.1 : 0.8);
+            const cx = half;
+            const cy = half;
+            const tipX1 = Math.cos(rad) * maxLen;
+            const tipY1 = Math.sin(rad) * maxLen;
+            const tipX2 = Math.cos(rad + 0.4) * maxLen * 0.7;
+            const tipY2 = Math.sin(rad + 0.4) * maxLen * 0.7;
+            const tipX3 = Math.cos(rad - 0.3) * maxLen * 0.9;
+            const tipY3 = Math.sin(rad - 0.3) * maxLen * 0.9;
+            const tipX4 = Math.cos(rad + 0.15) * maxLen * 0.5;
+            const tipY4 = Math.sin(rad + 0.15) * maxLen * 0.5;
 
-        return (
-          <motion.div
-            key={i}
-            className="absolute rounded-full"
-            style={{
-              left: cx,
-              top: cy,
-              width: w,
-              height: w,
-              background:
-                'radial-gradient(circle at 35% 30%, #4a4a48 0%, #111 28%, #020202 72%, #000 100%)',
-              boxShadow: `0 0 ${w * 1.8}px rgba(255,174,44,${isSpeaking ? 0.35 : isListening ? 0.2 : 0.08}), inset 0 0 ${w}px rgba(255,255,255,0.16)`,
-              transformOrigin: 'center center',
-            }}
-            animate={{
-              x: [0, tipX1, tipX2, tipX4, tipX3, 0],
-              y: [0, tipY1, tipY2, tipY4, tipY3, 0],
-              scaleX: isSpeaking
-                ? [1, 5, 2.5, 4, 3, 1]
-                : isListening ? [1, 2.5, 1.5, 2, 1] : [1, 1.3, 1],
-              scaleY: isSpeaking
-                ? [1, 0.4, 0.7, 0.35, 0.6, 1]
-                : [1, 0.7, 1],
-              opacity: isSpeaking
-                ? [0.2, 1, 0.6, 0.9, 0.7, 0.2]
-                : isListening ? [0.1, 0.7, 0.3, 0.6, 0.1] : active ? [0.05, 0.2, 0.05] : [0.03, 0.1, 0.03],
-              rotate: [0, seed.angle, seed.angle + 20, seed.angle - 15, seed.angle + 8, 0],
-            }}
-            transition={{
-              duration,
-              repeat: Infinity,
-              ease: [0.42, 0, 0.58, 1],
-              delay: i * 0.09,
-            }}
-          />
-        );
-      })
+            return (
+              <motion.div
+                key={i}
+                className="absolute rounded-full"
+                style={{
+                  left: cx,
+                  top: cy,
+                  width: w,
+                  height: w,
+                  background:
+                    'radial-gradient(circle at 35% 30%, #4a4a48 0%, #111 28%, #020202 72%, #000 100%)',
+                  boxShadow: `0 0 ${w * 1.8}px rgba(255,174,44,${isSpeaking ? 0.35 : isListening ? 0.2 : 0.08}), inset 0 0 ${w}px rgba(255,255,255,0.16)`,
+                  transformOrigin: 'center center',
+                }}
+                animate={{
+                  x: [0, tipX1, tipX2, tipX4, tipX3, 0],
+                  y: [0, tipY1, tipY2, tipY4, tipY3, 0],
+                  scaleX: isSpeaking
+                    ? [1, 5, 2.5, 4, 3, 1]
+                    : isListening
+                      ? [1, 2.5, 1.5, 2, 1]
+                      : [1, 1.3, 1],
+                  scaleY: isSpeaking ? [1, 0.4, 0.7, 0.35, 0.6, 1] : [1, 0.7, 1],
+                  opacity: isSpeaking
+                    ? [0.2, 1, 0.6, 0.9, 0.7, 0.2]
+                    : isListening
+                      ? [0.1, 0.7, 0.3, 0.6, 0.1]
+                      : active
+                        ? [0.05, 0.2, 0.05]
+                        : [0.03, 0.1, 0.03],
+                  rotate: [0, seed.angle, seed.angle + 20, seed.angle - 15, seed.angle + 8, 0],
+                }}
+                transition={{
+                  duration,
+                  repeat: Infinity,
+                  ease: [0.42, 0, 0.58, 1],
+                  delay: i * 0.09,
+                }}
+              />
+            );
+          })
         : null}
 
       {/* Core orb - morphing border-radius for organic shape */}
@@ -175,20 +187,35 @@ const SymbioteOrb = React.memo(function SymbioteOrb({
           height: coreSize,
           left: (size - coreSize) / 2,
           top: (size - coreSize) / 2,
-          background: 'radial-gradient(circle at 38% 34%, #fff7cb 0%, #ffd45a 18%, #ff980f 48%, #cf6205 72%, #5b2300 100%)',
+          background:
+            'radial-gradient(circle at 38% 34%, #fff7cb 0%, #ffd45a 18%, #ff980f 48%, #cf6205 72%, #5b2300 100%)',
           boxShadow: '0 0 10px rgba(255,167,31,0.9), 0 0 20px rgba(255,152,15,0.4)',
         }}
         animate={{
           borderRadius: isSpeaking
-            ? ['50%', '38% 62% 58% 42% / 58% 38% 62% 42%', '62% 38% 42% 58% / 38% 58% 42% 62%', '42% 58% 52% 48% / 52% 42% 58% 48%', '55% 45% 48% 52% / 48% 55% 45% 52%', '50%']
+            ? [
+                '50%',
+                '38% 62% 58% 42% / 58% 38% 62% 42%',
+                '62% 38% 42% 58% / 38% 58% 42% 62%',
+                '42% 58% 52% 48% / 52% 42% 58% 48%',
+                '55% 45% 48% 52% / 48% 55% 45% 52%',
+                '50%',
+              ]
             : isListening
-              ? ['50%', '44% 56% 54% 46% / 54% 44% 56% 46%', '56% 44% 46% 54% / 44% 54% 46% 56%', '50%']
+              ? [
+                  '50%',
+                  '44% 56% 54% 46% / 54% 44% 56% 46%',
+                  '56% 44% 46% 54% / 44% 54% 46% 56%',
+                  '50%',
+                ]
               : ['50%', '47% 53% 51% 49% / 51% 47% 53% 49%', '50%'],
           x: isSpeaking ? [0, 3, -2, 3.5, -2.5, 1, 0] : isListening ? [0, 1, -0.5, 0] : 0,
           y: isSpeaking ? [0, -2, 3, -3.5, 2, -1, 0] : isListening ? [0, -0.5, 1, 0] : 0,
           scale: isSpeaking
             ? [1, 1.14, 0.88, 1.18, 0.92, 1.06, 1]
-            : isListening ? [1, 1.06, 0.97, 1] : [1, 1.02, 1],
+            : isListening
+              ? [1, 1.06, 0.97, 1]
+              : [1, 1.02, 1],
         }}
         transition={{
           duration: isSpeaking ? 0.55 : isListening ? 2 : 4,
@@ -199,8 +226,12 @@ const SymbioteOrb = React.memo(function SymbioteOrb({
         <div
           className="absolute rounded-full"
           style={{
-            top: '12%', left: '16%', width: '36%', height: '26%',
-            background: 'radial-gradient(ellipse at center, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.08) 60%, transparent 100%)',
+            top: '12%',
+            left: '16%',
+            width: '36%',
+            height: '26%',
+            background:
+              'radial-gradient(ellipse at center, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.08) 60%, transparent 100%)',
             filter: 'blur(1.5px)',
           }}
         />
@@ -230,6 +261,7 @@ export function VoiceModal() {
   const cooldownTimerRef = React.useRef<number | null>(null);
   const speakingRef = React.useRef(false);
   const streamingReplyRef = React.useRef(false);
+  const manuallyStoppedReplyRef = React.useRef(false);
   const listeningArmedRef = React.useRef(false);
   const turnBusyRef = React.useRef(false);
   // True when the mic was actively listening as external speech (e.g. a
@@ -245,35 +277,41 @@ export function VoiceModal() {
   const dragStart = React.useRef({ x: 0, y: 0, mx: 0, my: 0 });
   const panelRef = React.useRef<HTMLDivElement>(null);
 
-  const handleDragStart = React.useCallback((e: React.PointerEvent) => {
-    if (e.button !== 0) return;
-    if ((e.target as HTMLElement).closest('button')) return;
-    e.preventDefault();
-    isDragging.current = true;
-    dragStart.current = { x: dragX.get(), y: dragY.get(), mx: e.clientX, my: e.clientY };
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-  }, [dragX, dragY]);
+  const handleDragStart = React.useCallback(
+    (e: React.PointerEvent) => {
+      if (e.button !== 0) return;
+      if ((e.target as HTMLElement).closest('button')) return;
+      e.preventDefault();
+      isDragging.current = true;
+      dragStart.current = { x: dragX.get(), y: dragY.get(), mx: e.clientX, my: e.clientY };
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    },
+    [dragX, dragY],
+  );
 
-  const handleDragMove = React.useCallback((e: React.PointerEvent) => {
-    if (!isDragging.current) return;
-    const panel = panelRef.current;
-    if (!panel) return;
-    const rect = panel.getBoundingClientRect();
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    const rawX = dragStart.current.x + (e.clientX - dragStart.current.mx);
-    const rawY = dragStart.current.y + (e.clientY - dragStart.current.my);
-    const minX = -(rect.left - dragX.get() + rawX - rawX) + 8;
-    const maxX = vw - rect.width - (rect.left - dragX.get()) - 8;
-    const minY = -(rect.top - dragY.get()) + 8;
-    const maxY = vh - rect.height - (rect.top - dragY.get()) - 8;
-    const baseLeft = rect.left - dragX.get();
-    const baseTop = rect.top - dragY.get();
-    const clampedX = Math.max(-(baseLeft - 8), Math.min(rawX, vw - rect.width - baseLeft - 8));
-    const clampedY = Math.max(-(baseTop - 8), Math.min(rawY, vh - rect.height - baseTop - 8));
-    dragX.set(clampedX);
-    dragY.set(clampedY);
-  }, [dragX, dragY]);
+  const handleDragMove = React.useCallback(
+    (e: React.PointerEvent) => {
+      if (!isDragging.current) return;
+      const panel = panelRef.current;
+      if (!panel) return;
+      const rect = panel.getBoundingClientRect();
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const rawX = dragStart.current.x + (e.clientX - dragStart.current.mx);
+      const rawY = dragStart.current.y + (e.clientY - dragStart.current.my);
+      const minX = -(rect.left - dragX.get() + rawX - rawX) + 8;
+      const maxX = vw - rect.width - (rect.left - dragX.get()) - 8;
+      const minY = -(rect.top - dragY.get()) + 8;
+      const maxY = vh - rect.height - (rect.top - dragY.get()) - 8;
+      const baseLeft = rect.left - dragX.get();
+      const baseTop = rect.top - dragY.get();
+      const clampedX = Math.max(-(baseLeft - 8), Math.min(rawX, vw - rect.width - baseLeft - 8));
+      const clampedY = Math.max(-(baseTop - 8), Math.min(rawY, vh - rect.height - baseTop - 8));
+      dragX.set(clampedX);
+      dragY.set(clampedY);
+    },
+    [dragX, dragY],
+  );
 
   const handleDragEnd = React.useCallback(() => {
     isDragging.current = false;
@@ -313,6 +351,7 @@ export function VoiceModal() {
 
   /** Stop the current spoken reply and hand control straight back to the user. */
   const stopSpeaking = React.useCallback(() => {
+    manuallyStoppedReplyRef.current = true;
     stopCurrentVoiceResponse();
     speakingRef.current = false;
     streamingReplyRef.current = false;
@@ -373,14 +412,24 @@ export function VoiceModal() {
 
     const restartListening = () => {
       if (turnBusyRef.current) return;
-      if (!useUIStore.getState().voiceModalOpen || speakingRef.current || !listeningArmedRef.current) return;
+      if (
+        !useUIStore.getState().voiceModalOpen ||
+        speakingRef.current ||
+        !listeningArmedRef.current
+      )
+        return;
       if (!handsFree() && !listeningArmedRef.current) return;
       if (VoiceService.isListening() || VoiceService.wantsListening()) return;
       if (restartTimerRef.current !== null) window.clearTimeout(restartTimerRef.current);
       restartTimerRef.current = window.setTimeout(() => {
         restartTimerRef.current = null;
         if (turnBusyRef.current) return;
-        if (!useUIStore.getState().voiceModalOpen || speakingRef.current || !listeningArmedRef.current) return;
+        if (
+          !useUIStore.getState().voiceModalOpen ||
+          speakingRef.current ||
+          !listeningArmedRef.current
+        )
+          return;
         if (VoiceService.isListening() || VoiceService.wantsListening()) return;
         startListening();
       }, 180);
@@ -594,6 +643,7 @@ export function VoiceModal() {
     ];
 
     const onStreamingStart = () => {
+      manuallyStoppedReplyRef.current = false;
       streamingReplyRef.current = true;
       turnBusyRef.current = true;
       if (speakingRef.current) return;
@@ -604,9 +654,11 @@ export function VoiceModal() {
     const onStreamingEnd = () => {
       streamingReplyRef.current = false;
       speakingRef.current = false;
+      if (manuallyStoppedReplyRef.current) return;
       scheduleRestartAfterReply();
     };
     const onSpeechStart = () => {
+      manuallyStoppedReplyRef.current = false;
       if (streamingReplyRef.current) return;
       // Capture BEFORE flipping turnBusy: a mid-listen preview (turn not
       // busy, mic live) must resume the mic after the speech ends.
@@ -620,6 +672,7 @@ export function VoiceModal() {
     const onSpeechEnd = () => {
       if (streamingReplyRef.current) return;
       speakingRef.current = false;
+      if (manuallyStoppedReplyRef.current) return;
       scheduleRestartAfterReply();
     };
     window.addEventListener(STREAMING_VOICE_START_EVENT, onStreamingStart);
@@ -640,6 +693,7 @@ export function VoiceModal() {
       listeningArmedRef.current = false;
       turnBusyRef.current = false;
       streamingReplyRef.current = false;
+      manuallyStoppedReplyRef.current = false;
       window.removeEventListener(STREAMING_VOICE_START_EVENT, onStreamingStart);
       window.removeEventListener(STREAMING_VOICE_END_EVENT, onStreamingEnd);
       window.removeEventListener(SPEECH_SYNTHESIS_START_EVENT, onSpeechStart);
@@ -772,10 +826,7 @@ export function VoiceModal() {
           className="relative z-[1] flex w-full items-center justify-center gap-1 border-t border-white/[0.06] px-2 py-px text-[8px] text-muted-foreground/55 transition-colors hover:bg-white/[0.035] hover:text-muted-foreground"
         >
           <span>Transcript</span>
-          {showTranscript
-            ? <ChevronUp className="h-2 w-2" />
-            : <ChevronDown className="h-2 w-2" />
-          }
+          {showTranscript ? <ChevronUp className="h-2 w-2" /> : <ChevronDown className="h-2 w-2" />}
         </button>
 
         <AnimatePresence>
@@ -811,12 +862,23 @@ export function VoiceModal() {
                             : 'border-accent-copper/80 text-accent-copper',
                         )}
                       >
-                        {user ? <UserRound className="h-1.5 w-1.5" /> : <Bot className="h-1.5 w-1.5" />}
+                        {user ? (
+                          <UserRound className="h-1.5 w-1.5" />
+                        ) : (
+                          <Bot className="h-1.5 w-1.5" />
+                        )}
                       </span>
-                      <span className={cn('text-[8px] font-medium', user ? 'text-info' : 'text-accent-copper')}>
+                      <span
+                        className={cn(
+                          'text-[8px] font-medium',
+                          user ? 'text-info' : 'text-accent-copper',
+                        )}
+                      >
                         {user ? 'You' : 'Jarvis:'}
                       </span>
-                      <span className="min-w-0 truncate text-foreground/80">{message.displayText}</span>
+                      <span className="min-w-0 truncate text-foreground/80">
+                        {message.displayText}
+                      </span>
                     </div>
                   );
                 })}

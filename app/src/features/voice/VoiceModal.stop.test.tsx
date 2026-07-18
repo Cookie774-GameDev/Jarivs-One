@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/auth';
 import {
   SPEECH_SYNTHESIS_END_EVENT,
   SPEECH_SYNTHESIS_START_EVENT,
+  STREAMING_VOICE_END_EVENT,
 } from './speechSynthesis';
 
 type VoiceHandler = (payload?: unknown) => void;
@@ -197,6 +198,25 @@ describe('VoiceModal stop control and mic recovery', () => {
 
     // Preview ends - after the cooldown, the mic must come back on its own.
     act(() => {
+      window.dispatchEvent(new CustomEvent(SPEECH_SYNTHESIS_END_EVENT));
+      vi.advanceTimersByTime(2000);
+    });
+
+    expect(VoiceService.startListening).toHaveBeenCalledTimes(2);
+    expect(useVoiceStore.getState().state).toBe('listening');
+  });
+
+  it('ignores late completion events after an explicit hands-free stop', async () => {
+    vi.useFakeTimers();
+    setupAuth(true);
+    render(<VoiceModal />);
+    act(() => window.dispatchEvent(new CustomEvent(SPEECH_SYNTHESIS_START_EVENT)));
+    fireEvent.click(screen.getByRole('button', { name: /Stop response/i }));
+    expect(VoiceService.startListening).toHaveBeenCalledTimes(2);
+
+    voiceMockState.listening = false;
+    act(() => {
+      window.dispatchEvent(new CustomEvent(STREAMING_VOICE_END_EVENT));
       window.dispatchEvent(new CustomEvent(SPEECH_SYNTHESIS_END_EVENT));
       vi.advanceTimersByTime(2000);
     });

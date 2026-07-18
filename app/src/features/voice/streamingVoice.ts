@@ -2,6 +2,7 @@
  * Incremental TTS while the AI response is still streaming.
  */
 import type { VoiceEngine, VoicePresetId } from '@/types/common';
+import type { JarvisResponseEnvelope } from '@/lib/jarvis/contracts';
 import { useAuthStore } from '@/stores/auth';
 import { pullNewSpeechSegments, pullRemainingSpeech } from './textCleanup';
 import {
@@ -19,6 +20,7 @@ import {
   STREAMING_VOICE_END_EVENT,
   STREAMING_VOICE_START_EVENT,
 } from './speechSynthesis';
+import { validateSpeechChunk, type ValidatedSpeechChunk } from './speechGate';
 
 export interface StreamingVoiceOptions {
   voiceEngine?: VoiceEngine;
@@ -30,6 +32,8 @@ export class StreamingVoiceSession {
   private queue: Promise<void> = Promise.resolve();
   private started = false;
   private stopped = false;
+  private validatedSpokenText = '';
+  private readonly playbackAbort = new AbortController();
   private readonly engine: VoiceEngine;
   private readonly voicePreset: VoicePresetId;
   private readonly kokoroStream: KokoroStreamingPlayer | null;
@@ -54,6 +58,7 @@ export class StreamingVoiceSession {
     );
   }
 
+  /** @deprecated Temporary raw compatibility boundary; Task 16B removes its final caller. */
   onDelta(accumulatedRaw: string): void {
     if (!this.isSessionLive() || !accumulatedRaw.trim()) return;
     const { segments, nextSpokenCleanLength } = pullNewSpeechSegments(
@@ -63,7 +68,7 @@ export class StreamingVoiceSession {
     if (segments.length === 0) return;
     this.spokenCleanLength = nextSpokenCleanLength;
     const batch = segments.join(' ').trim();
-    if (batch) this.enqueue(batch);
+    if (batch) this.enqueueSpeechText(batch);
   }
 
   async onComplete(finalRaw: string): Promise<void> {
@@ -74,7 +79,7 @@ export class StreamingVoiceSession {
     );
     this.spokenCleanLength = nextSpokenCleanLength;
     if (remainder.trim()) {
-      this.enqueue(remainder);
+      this.enqueueSpeechText(remainder);
     }
     if (this.kokoroStream) {
       await this.kokoroStream.complete();
@@ -87,10 +92,50 @@ export class StreamingVoiceSession {
     }
   }
 
+  enqueueValidatedChunk(chunk: ValidatedSpeechChunk): void {
+    const text = chunk.trim();
+    if (!text || !this.isSessionLive()) return;
+    this.validatedSpokenText = [this.validatedSpokenText, text].filter(Boolean).join(' ');
+    this.enqueueSpeechText(text);
+  }
+
+  async completeValidated(
+    response: Readonly<Pick<JarvisResponseEnvelope, 'spokenText' | 'mode' | 'executionState'>>,
+  ): Promise<void> {
+    if (!this.isSessionLive()) return;
+    const finalText = response.spokenText?.trim() ?? '';
+    if (finalText) {
+      const decision = validateSpeechChunk({
+        text: finalText,
+        completeSentence: true,
+        insideFence: false,
+        mode: response.mode,
+        ...(response.executionState ? { executionState: response.executionState } : {}),
+        lintViolations: [],
+      });
+      if (!decision.allowed) throw new Error(`validated_speech_rejected:${decision.reason}`);
+      const prefix = this.validatedSpokenText;
+      const remainder =
+        prefix && finalText.startsWith(`${prefix} `)
+          ? finalText.slice(prefix.length).trim()
+          : finalText === prefix
+            ? ''
+            : finalText;
+      if (remainder) this.enqueueValidatedChunk(remainder as ValidatedSpeechChunk);
+    }
+    if (this.kokoroStream) await this.kokoroStream.complete();
+    else await this.queue;
+    if (!this.stopped) {
+      window.dispatchEvent(new CustomEvent(STREAMING_VOICE_END_EVENT));
+      window.dispatchEvent(new CustomEvent(SPEECH_SYNTHESIS_END_EVENT));
+    }
+  }
+
   /** Stop playback without clearing the global streaming session registry. */
   haltPlayback(): void {
     const wasActive = this.started && !this.stopped;
     this.stopped = true;
+    this.playbackAbort.abort();
     if (wasActive) {
       window.dispatchEvent(new CustomEvent(STREAMING_VOICE_END_EVENT));
       window.dispatchEvent(new CustomEvent(SPEECH_SYNTHESIS_END_EVENT));
@@ -104,7 +149,7 @@ export class StreamingVoiceSession {
     stopAllVoiceOutput();
   }
 
-  private enqueue(text: string): void {
+  private enqueueSpeechText(text: string): void {
     if (!this.isSessionLive()) return;
     if (this.kokoroStream) {
       if (!this.started) {
@@ -123,10 +168,15 @@ export class StreamingVoiceSession {
         window.dispatchEvent(new CustomEvent(STREAMING_VOICE_START_EVENT));
         window.dispatchEvent(new CustomEvent(SPEECH_SYNTHESIS_START_EVENT));
       }
-      await speakWithSettings(text, {
-        voiceEngine: this.engine,
-        voicePreset: this.voicePreset,
-      });
+      try {
+        await speakWithSettings(text, {
+          voiceEngine: this.engine,
+          voicePreset: this.voicePreset,
+          signal: this.playbackAbort.signal,
+        });
+      } catch (error) {
+        if (!this.stopped) throw error;
+      }
     });
   }
 }
