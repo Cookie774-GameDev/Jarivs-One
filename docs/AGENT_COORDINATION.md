@@ -1821,6 +1821,19 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Concurrent agents** | Future-task preparation remains read-only. No other product implementation may overlap Task 5. |
 | **Protected state** | `docs/unified-goals/**`, `install/install.ps1`, unrelated branches/worktrees and existing localhost/app-data profiles remain out of scope. |
 
+## 2026-07-18 - Task 5 finite-expiry remediation lock acquired
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-18 05:30 CT |
+| **Owner** | Primary coordinator `AGENT-CODEX-20260718-SIK` |
+| **State** | **VERIFIED_COMPLETE** - lock released by commit `c1456a4`. |
+| **Exclusive product paths** | `app/src/lib/entitlements.ts`; `app/src/lib/entitlements.test.ts`; `app/src/lib/admin.ts`; `app/src/lib/admin.test.ts` |
+| **TDD evidence** | Three focused assertions fail because a server snapshot with no finite expiry is accepted by the direct selector and account-bound provider. Authority must have an explicit finite future expiry. |
+| **Final verification** | Focused entitlement/admin tests `37/37` PASS; exact-file Prettier and diff checks PASS. The full app typecheck reaches only the concurrent Task 6 RED tests, which currently reference its not-yet-implemented browser approval exports; no Task 5 diagnostic is present. |
+| **Task 6 isolation** | Task 6's seven browser paths remain exclusively owned by `/root/task6_browser_approval`; this remediation does not overlap them. |
+| **Protected state** | `install/install.ps1`, unified-goal documents, unrelated branches/worktrees and existing localhost/app-data profiles remain untouched and unstaged. |
+
 ## 2026-07-18 - Task 0R model-evidence correction required
 
 | Field | Value |
