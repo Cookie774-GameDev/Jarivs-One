@@ -1773,3 +1773,38 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Exclusive product paths** | `app/src/lib/jarvis/sourcePolicy.ts`; `app/src/lib/jarvis/sourcePolicy.test.ts`; `app/src/features/context/tree.ts`; `app/src/features/context/tree.test.ts`; `app/src/lib/ai/context.ts`; `app/src/lib/ai/context.test.ts`; `app/src-tauri/src/fsread.rs` |
 | **Concurrent agents** | Task 5 and Task 6 preparation is read-only only. No other product implementation may overlap Task 4. |
 | **Protected state** | `install/install.ps1`, unrelated worktrees/branches, existing localhost processes, production data/services, and production billing remain out of scope. |
+
+## 2026-07-18 - Tasks 1-3 prerequisite remediation lock acquired
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-18 03:26 CT |
+| **Owner** | `/root/task0r_binding_review` under primary coordinator `AGENT-CODEX-20260718-SIK` |
+| **State** | **IMPLEMENTING** |
+| **Exclusive paths** | `app/src/lib/jarvis/identity.ts`; `app/src/lib/jarvis/identity.test.ts`; `app/src/lib/jarvis/contracts/validators.ts`; `app/src/lib/jarvis/contracts/validators.test.ts`; `app/src/App.accountIdentity.test.tsx` |
+| **Remediation scope** | Restore the approved local-only identity-policy invariant, exact unexpected-own-string-key taxonomy without weakening JSON safety, and deterministic Task 1 account-boot test timeout headroom. Strict TDD; no product behavior change outside the two contract fixes. |
+| **Concurrent Task 4 isolation** | Task 4 paths remain exclusively owned by `/root/task4_source_policy` and must not be touched, staged, or committed by this remediation. |
+| **Protected state** | `docs/unified-goals/**`, `install/install.ps1`, unrelated worktrees/branches, production services/data/billing, and Task 4 files remain out of scope. |
+
+## 2026-07-18 - Task 4 and Tasks 1-3 remediation accepted
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-18 04:18 CT |
+| **Primary coordinator** | `AGENT-CODEX-20260718-SIK` |
+| **Task 4 commit** | `cffdaf5b267439b24e0b62c91a8ba72a3ced9a8c` - exact seven-file source-policy interlock; 98/98 focused frontend tests, full TypeScript, scoped Rust formatting, native 2/2 characterization, and two independent repaired-snapshot reviews PASS. |
+| **Tasks 1-3 remediation commit** | `4f7c5f7a057649cdc09bb21955fa5a8dc281bdb7` - local-only identity invariant, closed-record own-field taxonomy/accessor safety, and deterministic account-boot timeout headroom; 437/437 focused tests, formatting, full TypeScript, and independent review PASS. |
+| **Registry repair** | Delayed renderer commit `c8d68d8` was reversed by `cd70cf0`; all 17 unified artifacts are byte-identical to validated commit `165a06c`. |
+| **Lock state** | Task 4 and Tasks 1-3 remediation locks released. Product implementation remains strictly serialized. |
+| **Protected state** | `install/install.ps1`, unrelated branches/worktrees and localhost/app-data profiles remain untouched and unstaged. |
+
+## 2026-07-18 - Task 5 exact implementation lock acquired
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-18 04:18 CT |
+| **Owner** | `/root/task5_entitlements` under primary coordinator `AGENT-CODEX-20260718-SIK` |
+| **State** | **IMPLEMENTING** |
+| **Exclusive product paths** | `app/src/lib/entitlements.ts`; `app/src/lib/entitlements.test.ts`; `app/src/lib/admin.ts`; `app/src/lib/admin.test.ts`; `app/src/components/layout/TopBar.tsx`; `app/src/features/account/AccountPage.tsx`; `app/src/features/ambient/AmbientAudioHost.tsx`; `app/src/features/call/CallButton.tsx`; `app/src/features/call/CallModal.tsx`; `app/src/features/settings/sections/Ambient.tsx`; `app/src/features/settings/sections/Admin.tsx` |
+| **Concurrent agents** | Future-task preparation remains read-only. No other product implementation may overlap Task 5. |
+| **Protected state** | `docs/unified-goals/**`, `install/install.ps1`, unrelated branches/worktrees and existing localhost/app-data profiles remain out of scope. |
