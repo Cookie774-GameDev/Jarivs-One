@@ -70,6 +70,28 @@ describe('browser reviewed-action store', () => {
     expect(useBrowserStore.getState().agentActions[0]?.status).toBe('unavailable');
   });
 
+  it('does not resurrect a terminal record when its ID is re-enqueued', () => {
+    useBrowserStore.getState().enqueueAgentAction(record(1));
+    useBrowserStore.getState().resolveAgentAction('action-1', 'denied', 'Denied by user.');
+    useBrowserStore.getState().setAgentArmed(false);
+
+    useBrowserStore.getState().enqueueAgentAction({
+      ...record(1),
+      parameters: { selector: '#changed' },
+      parametersHash: 'c'.repeat(64),
+      reviewedHash: 'd'.repeat(64),
+    });
+
+    expect(useBrowserStore.getState().agentActions).toHaveLength(1);
+    expect(useBrowserStore.getState().agentActions[0]).toMatchObject({
+      id: 'action-1',
+      status: 'denied',
+      result: 'Denied by user.',
+      parameters: { selector: '#continue', x: 10, y: 20 },
+    });
+    expect(useBrowserStore.getState().agentArmed).toBe(false);
+  });
+
   it('denies pending records when local browser agent work is stopped', () => {
     useBrowserStore.getState().enqueueAgentAction(record(1));
     useBrowserStore.getState().abortAgentActions();

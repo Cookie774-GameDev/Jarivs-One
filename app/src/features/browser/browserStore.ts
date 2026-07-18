@@ -184,6 +184,8 @@ export const useBrowserStore = create<BrowserState>()(
         })),
       clearConsole: () => set({ consoleEntries: [] }),
       enqueueAgentAction: (action) => {
+        const existing = get().agentActions.find((candidate) => candidate.id === action.id);
+        if (existing) return existing.id;
         const entry = cloneReviewedAction({ ...action, status: 'pending', result: undefined });
         set((s) => ({
           agentActions: [

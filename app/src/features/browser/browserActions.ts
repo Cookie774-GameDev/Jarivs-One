@@ -171,7 +171,31 @@ function canonicalizeValue(value: unknown, active: Set<object>): string {
   active.add(value);
   try {
     if (Array.isArray(value)) {
-      return `[${value.map((entry) => canonicalizeValue(entry, active)).join(',')}]`;
+      const indexes: number[] = [];
+      for (const key of Reflect.ownKeys(value)) {
+        if (key === 'length') continue;
+        if (typeof key !== 'string' || !/^(?:0|[1-9]\d*)$/.test(key)) {
+          throw new TypeError('Browser parameter arrays require only indexed values.');
+        }
+        const index = Number(key);
+        const descriptor = Object.getOwnPropertyDescriptor(value, key);
+        if (
+          !Number.isSafeInteger(index) ||
+          index >= value.length ||
+          !descriptor?.enumerable ||
+          !('value' in descriptor)
+        ) {
+          throw new TypeError('Browser parameter arrays require plain indexed values.');
+        }
+        indexes.push(index);
+      }
+      if (indexes.length !== value.length) {
+        throw new TypeError('Browser parameter arrays cannot contain sparse holes.');
+      }
+      return `[${indexes
+        .sort((left, right) => left - right)
+        .map((index) => canonicalizeValue(value[index], active))
+        .join(',')}]`;
     }
 
     const prototype = Object.getPrototypeOf(value);
@@ -260,7 +284,23 @@ function normalizedFrameId(frameId: string | undefined): string | null {
 
 function protectedParameterKey(key: string): boolean {
   const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, '');
-  return PROTECTED_PARAMETER_KEYS.has(normalized);
+  if (PROTECTED_PARAMETER_KEYS.has(normalized)) return true;
+  return [
+    'password',
+    'passphrase',
+    'cookie',
+    'authorization',
+    'apikey',
+    'token',
+    'clientsecret',
+    'privatekey',
+    'recoverycode',
+    'recoveryphrase',
+    'seedphrase',
+    'mnemonic',
+    'credentialhandle',
+    'secrethandle',
+  ].some((stem) => normalized.includes(stem));
 }
 
 function protectedParameterValue(value: string): boolean {
@@ -584,11 +624,8 @@ export async function consumeBrowserReviewedAction(
       accountId: identity?.accountId ?? '',
       origin: originForUrl(currentUrl),
       tabId: tab?.id ?? '',
-      frameId: action.frameId,
-      target: {
-        ...action.target,
-        currentUrl,
-      },
+      frameId: undefined,
+      target: { currentUrl },
       now: Date.now(),
     },
   );
@@ -596,6 +633,8 @@ export async function consumeBrowserReviewedAction(
   if (!validation.ok) {
     if (validation.reason === 'expired') {
       store.resolveAgentAction(action.id, 'expired', 'Browser Operator review expired.');
+    } else if (validation.reason !== 'not_pending') {
+      store.resolveAgentAction(action.id, 'unavailable', UNAVAILABLE_MESSAGE);
     }
     return unavailableResult(action.kind, {
       actionId: action.id,
@@ -612,113 +651,11 @@ export async function consumeBrowserReviewedAction(
   };
 }
 
-/**
- * Legacy executor retained for direct, non-programmatic browser integrations.
- * Browser Operator requests and reviewed records never call this function until
- * the canonical approval adapter is mounted by Task 16B/19D.
- */
+/** Compatibility export quarantined until Task 16B/19D mounts the canonical adapter. */
 export async function executeBrowserTool(
   req: BrowserToolRequest,
   cdp: CdpSession | null,
 ): Promise<BrowserToolResult> {
-  const store = useBrowserStore.getState();
-  const tab = store.activeTab();
-
-  try {
-    switch (req.tool) {
-      case 'browser.listTabs':
-        return {
-          ok: true,
-          tool: req.tool,
-          message: `${store.tabs.length} tabs`,
-          data: store.tabs.map((entry) => ({ id: entry.id, url: entry.url, title: entry.title })),
-        };
-      case 'browser.getCurrentUrl':
-        return { ok: true, tool: req.tool, message: tab?.url ?? '', data: { url: tab?.url } };
-      case 'browser.getConsoleErrors':
-        return {
-          ok: true,
-          tool: req.tool,
-          message: 'console errors',
-          data: store.consoleEntries.filter((entry) => entry.level === 'error').slice(0, 30),
-        };
-      case 'browser.newTab': {
-        const url = String(req.params?.url ?? 'about:blank');
-        const id = store.newTab(url);
-        if (cdp && url !== 'about:blank') await cdp.navigate(url);
-        return { ok: true, tool: req.tool, message: 'Tab created', data: { id, url } };
-      }
-      case 'browser.closeTab': {
-        const id = String(req.params?.tabId ?? store.activeTabId);
-        store.closeTab(id);
-        return { ok: true, tool: req.tool, message: 'Tab closed' };
-      }
-      case 'browser.switchTab': {
-        const id = String(req.params?.tabId ?? '');
-        store.setActiveTab(id);
-        return { ok: true, tool: req.tool, message: 'Switched tab' };
-      }
-      case 'browser.navigate':
-      case 'browser.open': {
-        const url = String(req.params?.url ?? '');
-        if (!url) return { ok: false, tool: req.tool, message: 'url required' };
-        if (tab) store.updateTab(tab.id, { url, title: url, loading: true });
-        store.setDraftUrl(url);
-        if (cdp) await cdp.navigate(url);
-        if (tab) store.updateTab(tab.id, { loading: false });
-        return { ok: true, tool: req.tool, message: 'Navigation completed.' };
-      }
-      case 'browser.reload':
-        if (cdp) await cdp.reload(Boolean(req.params?.hard));
-        return { ok: true, tool: req.tool, message: 'Reloaded' };
-      case 'browser.click': {
-        if (!cdp) return { ok: false, tool: req.tool, message: 'CDP not connected' };
-        const x = Number(req.params?.x ?? 0);
-        const y = Number(req.params?.y ?? 0);
-        await cdp.inputClick(x, y);
-        return { ok: true, tool: req.tool, message: 'Click completed.' };
-      }
-      case 'browser.type': {
-        if (!cdp) return { ok: false, tool: req.tool, message: 'CDP not connected' };
-        if (req.params?.secret === true) {
-          return { ok: false, tool: req.tool, message: 'Refusing to type protected values.' };
-        }
-        await cdp.inputType(String(req.params?.text ?? ''));
-        return { ok: true, tool: req.tool, message: 'Text entry completed.' };
-      }
-      case 'browser.press': {
-        if (!cdp) return { ok: false, tool: req.tool, message: 'CDP not connected' };
-        await cdp.inputKey(String(req.params?.key ?? 'Enter'));
-        return { ok: true, tool: req.tool, message: 'Key press completed.' };
-      }
-      case 'browser.readPage': {
-        if (!cdp) return { ok: false, tool: req.tool, message: 'CDP not connected' };
-        const result = await cdp.evaluate(
-          `(() => ({
-            title: document.title,
-            url: location.href,
-            headings: [...document.querySelectorAll('h1,h2,h3')].slice(0,20).map(h => h.innerText.trim()).filter(Boolean),
-            text: (document.body?.innerText || '').slice(0, 4000)
-          }))()`,
-        );
-        return { ok: true, tool: req.tool, message: 'Page snapshot', data: result };
-      }
-      case 'browser.screenshot':
-        return {
-          ok: true,
-          tool: req.tool,
-          message: 'Use live screencast frame',
-          data: { frame: store.frameDataUrl },
-        };
-      case 'browser.wait':
-        await new Promise((resolve) =>
-          setTimeout(resolve, Math.min(10_000, Number(req.params?.ms ?? 500))),
-        );
-        return { ok: true, tool: req.tool, message: 'Waited' };
-      default:
-        return { ok: false, tool: req.tool, message: 'Not implemented yet' };
-    }
-  } catch {
-    return { ok: false, tool: req.tool, message: 'Browser operation failed.' };
-  }
+  void cdp;
+  return unavailableResult(req.tool);
 }

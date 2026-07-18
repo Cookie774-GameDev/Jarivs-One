@@ -7,6 +7,7 @@ import {
   canonicalizeBrowserJson,
   classifyRisk,
   consumeBrowserReviewedAction,
+  executeBrowserTool,
   requestBrowserTool,
   validateBrowserReviewedAction,
   validateBrowserTool,
@@ -134,6 +135,17 @@ describe('browser operator approval integrity', () => {
     const cycle: Record<string, unknown> = {};
     cycle.self = cycle;
     expect(() => canonicalizeBrowserJson(cycle as never)).toThrow();
+  });
+
+  it('rejects sparse arrays and arrays with hidden non-index data', () => {
+    const sparse: unknown[] = [];
+    sparse.length = 2;
+    sparse[1] = 'present';
+    expect(() => canonicalizeBrowserJson(sparse as never)).toThrow(/array/i);
+
+    const augmented = ['present'] as unknown[] & { authorization?: string };
+    augmented.authorization = '[redacted]';
+    expect(() => canonicalizeBrowserJson(augmented as never)).toThrow(/array/i);
   });
 
   it('rejects user-only requests, including safe reads, without storing a record', async () => {
@@ -440,9 +452,85 @@ describe('browser operator approval integrity', () => {
   });
 
   it.each([
+    { passwordValue: '[credential-redacted]' },
+    { accessTokenValue: '[credential-redacted]' },
+    { sessionCookie: '[credential-redacted]' },
+    { clientSecretValue: '[credential-redacted]' },
+  ] as BrowserJsonObject[])(
+    'rejects credential-stem keys with descriptive suffixes: %j',
+    async (params) => {
+      const result = await requestBrowserTool({ tool: 'browser.type', params, requester }, null);
+
+      expect(result.message).toBe('Browser Operator request contains protected parameters.');
+      expect(useBrowserStore.getState().agentActions).toEqual([]);
+      expect(JSON.stringify(result)).not.toContain('[credential-redacted]');
+    },
+  );
+
+  it.each([
+    ['browser.navigate', { url: 'https://example.test/changed' }],
+    ['browser.click', { x: 20, y: 30 }],
+    ['browser.type', { text: 'ordinary text' }],
+    ['browser.readPage', {}],
+  ] as const)('quarantines direct %s executor calls without effects', async (tool, params) => {
+    const cdp = {
+      navigate: vi.fn(),
+      inputClick: vi.fn(),
+      inputType: vi.fn(),
+      evaluate: vi.fn(),
+    };
+    const before = useBrowserStore.getState();
+
+    const result = await executeBrowserTool({ tool, params }, cdp as never);
+
+    expect(result).toEqual({
+      ok: false,
+      tool,
+      message: 'Browser Operator execution is unavailable until canonical approval is active.',
+      data: { status: 'unavailable' },
+    });
+    expect(cdp.navigate).not.toHaveBeenCalled();
+    expect(cdp.inputClick).not.toHaveBeenCalled();
+    expect(cdp.inputType).not.toHaveBeenCalled();
+    expect(cdp.evaluate).not.toHaveBeenCalled();
+    expect(useBrowserStore.getState().tabs).toEqual(before.tabs);
+    expect(useBrowserStore.getState().draftUrl).toBe(before.draftUrl);
+    expect(useBrowserStore.getState().agentActions).toEqual(before.agentActions);
+  });
+
+  it('does not use a stored frame or target as live evidence during consumption', async () => {
+    const framed = await queuedAction();
+    const framedResult = await consumeBrowserReviewedAction(framed.id, null);
+    expect(framedResult).toMatchObject({
+      ok: false,
+      data: { status: 'unavailable', actionId: framed.id, reason: 'frame_changed' },
+    });
+    expect(useBrowserStore.getState().agentActions[0]).toMatchObject({
+      id: framed.id,
+      status: 'unavailable',
+    });
+
+    setBrowser();
+    const targeted = await queuedAction({
+      tool: 'browser.click',
+      params: { selector: '#continue' },
+      requester,
+    });
+    const targetedResult = await consumeBrowserReviewedAction(targeted.id, null);
+    expect(targetedResult).toMatchObject({
+      ok: false,
+      data: { status: 'unavailable', actionId: targeted.id, reason: 'target_changed' },
+    });
+    expect(useBrowserStore.getState().agentActions[0]).toMatchObject({
+      id: targeted.id,
+      status: 'unavailable',
+    });
+  });
+
+  it.each([
     ['browser.readPage', {}, 'safe'],
-    ['browser.click', { x: 1, y: 2 }, 'confirm'],
-    ['browser.click', { intent: 'purchase', x: 1, y: 2 }, 'dangerous'],
+    ['browser.press', { key: 'Enter' }, 'confirm'],
+    ['browser.submit', {}, 'dangerous'],
   ] as const)(
     'consumes a locally reviewed %s action exactly once as unavailable',
     async (tool, params, risk) => {
