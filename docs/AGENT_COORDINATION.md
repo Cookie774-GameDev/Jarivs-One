@@ -1820,3 +1820,15 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Exclusive product paths** | `app/src/lib/entitlements.ts`; `app/src/lib/entitlements.test.ts`; `app/src/lib/admin.ts`; `app/src/lib/admin.test.ts`; `app/src/components/layout/TopBar.tsx`; `app/src/features/account/AccountPage.tsx`; `app/src/features/ambient/AmbientAudioHost.tsx`; `app/src/features/call/CallButton.tsx`; `app/src/features/call/CallModal.tsx`; `app/src/features/settings/sections/Ambient.tsx`; `app/src/features/settings/sections/Admin.tsx` |
 | **Concurrent agents** | Future-task preparation remains read-only. No other product implementation may overlap Task 5. |
 | **Protected state** | `docs/unified-goals/**`, `install/install.ps1`, unrelated branches/worktrees and existing localhost/app-data profiles remain out of scope. |
+
+## 2026-07-18 - Task 0R model-evidence correction required
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-18 04:28 CT |
+| **Primary coordinator** | `AGENT-CODEX-20260718-SIK` |
+| **State** | **REPAIR_REQUIRED** - product implementation continues; the 17-document Task 0R batch must be regenerated from truthful collaboration capability evidence before its final acceptance gate is reclaimed. |
+| **Executable evidence** | Against HEAD after `91a56aa`, the Task 0R validator reports `34` problems: `17` substantive `MODEL_EVIDENCE` failures (`MOD-001` through `MOD-012` and `MOD-028` through `MOD-032`) plus `17` expected `STAGED_SCOPE` failures because the document batch was not staged for this audit. Report SHA-256: `B510C1662C54F426CB67E7EC605DC8DDB0C0DC2C23D7A5329CEE7752CC8E8459`. |
+| **Root cause** | The restored `165a06c` snapshot says the collaboration spawn API exposes neither a model selector nor a reasoning selector. The active API exposes request selectors for `model` and `reasoning_effort`; only backend execution identity remains unattested. Byte identity to `165a06c` therefore does not satisfy the truthfulness gate. |
+| **Required repair** | Regenerate the exact 17 artifacts with selector-request evidence and unattested-backend wording, stage the exact batch under an isolated validation index, require all 21 gates to pass with the pinned canonical report hash, then commit once the competing renderer is quiescent. Do not satisfy this gate by reverting to the known-failing snapshot. |
+| **Isolation** | This correction does not alter or pause Task 5 product implementation and does not authorize installer, unrelated branch/runtime, production, billing, deploy, release, merge, or real-data changes. |
