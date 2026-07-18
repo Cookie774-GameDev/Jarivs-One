@@ -1749,3 +1749,27 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 - The installer is explicitly preserved from PR #25.
 - Resolved overlaps retain Pixel Pets, terminal persistence, CLI/subscription work, appearance themes, Workbench, Preview Studio, Vibe Browser, wallpaper library, and their tests.
 - No release, production deployment, billing mutation, or production database operation is performed by this repair.
+
+## 2026-07-18 - Shared Intelligence Kernel program implementation resumed
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-18 02:35 CT |
+| **Agent ID** | `AGENT-CODEX-20260718-SIK` |
+| **Branch / worktree** | `codex/shared-intelligence-kernel-design-20260716` / `.worktrees/shared-intelligence-kernel-design-20260716` |
+| **Authority** | User approved specification commit `88c3e54887427d363df9b0aebd961ead8a02a733`, the seven goal specifications, the Unified Codex Execution Directive, MonoChrome, and Sakura for all non-production implementation work. |
+| **Status** | **IMPLEMENTING** - Task 0R deterministic registry and executable plans are being closed, followed by the shared foundation and authorized goal phases. |
+| **Coordination locks reacquired** | `docs/unified-goals/**`; `.superpowers/sdd/task-0r/**`; the exact file manifests owned by committed SIK, MonoChrome, and Sakura implementation plans; successor branch/draft-PR evidence. Locks exclude unrelated branch/worktree state. |
+| **Protected state** | Keep `install/install.ps1` unstaged; do not touch `grok-workbench-pr25-v2`, its localhost runtime, or its app-data profile; use a separate unused port and disposable test profile; no production deploy, release, merge, live billing mutation, or real-data deletion. |
+| **Task 0R gate** | Exact 17-document staged batch; 54 frozen sources; 24,353 reviewed occurrences; 15,068 requirements; 107 pinned SIK/MonoChrome/Sakura reservations; all 21 validator gates PASS with report SHA-256 `26289399D8BE14B9853A8F46FDB47358A98E8FA3025FB29437712FFC54B8AEB1`. |
+
+## 2026-07-18 - Task 4 exact implementation lock acquired
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-18 02:45 CT |
+| **Owner** | `/root/task4_source_policy` under primary coordinator `AGENT-CODEX-20260718-SIK` |
+| **State** | **IMPLEMENTING** |
+| **Exclusive product paths** | `app/src/lib/jarvis/sourcePolicy.ts`; `app/src/lib/jarvis/sourcePolicy.test.ts`; `app/src/features/context/tree.ts`; `app/src/features/context/tree.test.ts`; `app/src/lib/ai/context.ts`; `app/src/lib/ai/context.test.ts`; `app/src-tauri/src/fsread.rs` |
+| **Concurrent agents** | Task 5 and Task 6 preparation is read-only only. No other product implementation may overlap Task 4. |
+| **Protected state** | `install/install.ps1`, unrelated worktrees/branches, existing localhost processes, production data/services, and production billing remain out of scope. |
