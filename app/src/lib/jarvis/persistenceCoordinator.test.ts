@@ -142,6 +142,115 @@ describe('createJarvisPersistenceCoordinator', () => {
     stop();
   });
 
+  it('quarantines a subscription startup failure and remains retryable and stop-safe', async () => {
+    let identity: AccountIdentity = {
+      accountId: 'subscription-failure-account',
+      source: 'local',
+    };
+    let subscribeCalls = 0;
+    let unsubscribeCalls = 0;
+    const subscription: { listener: (() => void) | null } = { listener: null };
+    activateMock
+      .mockResolvedValueOnce(ready(identity.accountId))
+      .mockResolvedValueOnce(ready('recovered-account'));
+    const coordinator = createJarvisPersistenceCoordinator({
+      db: fakeDb(),
+      readIdentity: () => identity,
+      subscribeIdentity: (listener) => {
+        subscribeCalls += 1;
+        if (subscribeCalls === 1) throw new Error('sensitive subscription detail');
+        subscription.listener = listener;
+        return () => {
+          unsubscribeCalls += 1;
+          subscription.listener = null;
+        };
+      },
+    });
+
+    let stop!: () => void;
+    expect(() => {
+      stop = coordinator.start();
+    }).not.toThrow();
+    const unavailable = coordinator.getState();
+    expect(unavailable).toMatchObject({
+      status: 'degraded',
+      category: 'identity_not_ready',
+    });
+    expect(unavailable).not.toHaveProperty('accountId');
+    expect(activateMock).not.toHaveBeenCalled();
+    expect(coordinator.start()).toBe(stop);
+    expect(subscribeCalls).toBe(1);
+    if (unavailable.status !== 'degraded') throw new Error('Expected degraded state.');
+
+    await unavailable.retry();
+
+    expect(coordinator.getState()).toEqual({
+      status: 'ready',
+      accountId: identity.accountId,
+      profileId: `profile-${identity.accountId}`,
+    });
+    expect(subscribeCalls).toBe(2);
+
+    identity = { accountId: 'recovered-account', source: 'supabase' };
+    if (!subscription.listener) throw new Error('Expected the recovered identity subscription.');
+    subscription.listener();
+    expect(coordinator.getState()).toEqual({
+      status: 'activating',
+      accountId: 'recovered-account',
+    });
+    expect(coordinator.getState()).not.toHaveProperty('profileId');
+    await flushActivation();
+    expect(coordinator.getState()).toEqual({
+      status: 'ready',
+      accountId: 'recovered-account',
+      profileId: 'profile-recovered-account',
+    });
+    expect(subscribeCalls).toBe(2);
+    expect(() => {
+      stop();
+      stop();
+    }).not.toThrow();
+    expect(unsubscribeCalls).toBe(1);
+    expect(subscription.listener).toBeNull();
+  });
+
+  it('isolates a throwing subscriber while notifying peers and completing activation', async () => {
+    const identity = { accountId: 'listener-isolation-account', source: 'local' } as const;
+    const harness = identityHarness(identity);
+    activateMock.mockResolvedValueOnce(ready(identity.accountId));
+    const coordinator = createJarvisPersistenceCoordinator({
+      db: fakeDb(),
+      readIdentity: harness.readIdentity,
+      subscribeIdentity: harness.subscribeIdentity,
+    });
+    const throwingListener = vi.fn(() => {
+      throw new Error('sensitive subscriber detail');
+    });
+    const observedStates: JarvisPersistenceState[] = [];
+    coordinator.subscribe(throwingListener);
+    coordinator.subscribe(() => observedStates.push(coordinator.getState()));
+
+    const stop = coordinator.start();
+    await flushActivation();
+
+    expect(coordinator.getState()).toEqual({
+      status: 'ready',
+      accountId: identity.accountId,
+      profileId: `profile-${identity.accountId}`,
+    });
+    expect(throwingListener).toHaveBeenCalledTimes(2);
+    expect(observedStates).toEqual([
+      { status: 'activating', accountId: identity.accountId },
+      {
+        status: 'ready',
+        accountId: identity.accountId,
+        profileId: `profile-${identity.accountId}`,
+      },
+    ]);
+    expect(activateMock).toHaveBeenCalledTimes(1);
+    stop();
+  });
+
   it('synchronously clears the old ready profile before awaiting a changed account', async () => {
     const accountA = { accountId: 'account-a', source: 'local' } as const;
     const accountB = { accountId: 'account-b', source: 'supabase' } as const;
@@ -375,6 +484,58 @@ describe('createJarvisPersistenceCoordinator', () => {
     expect(coordinator.getState()).toEqual({ status: 'activating', accountId: 'late-account' });
     expect(listener).toHaveBeenCalledTimes(1);
     expect(harness.unsubscribeCalls).toBe(1);
+  });
+
+  it('contains a throwing provider unsubscribe and completes stop cleanup', async () => {
+    const identity = { accountId: 'throwing-unsubscribe-account', source: 'local' } as const;
+    const lateActivation = deferred<ReturnType<typeof ready>>();
+    let subscribeCalls = 0;
+    let unsubscribeCalls = 0;
+    activateMock
+      .mockReturnValueOnce(lateActivation.promise)
+      .mockResolvedValueOnce(ready(identity.accountId, 'profile-after-restart'));
+    const coordinator = createJarvisPersistenceCoordinator({
+      db: fakeDb(),
+      readIdentity: () => identity,
+      subscribeIdentity: () => {
+        subscribeCalls += 1;
+        return () => {
+          unsubscribeCalls += 1;
+          throw new Error('sensitive unsubscribe detail');
+        };
+      },
+    });
+    const listener = vi.fn();
+    coordinator.subscribe(listener);
+    const stop = coordinator.start();
+    expect(coordinator.getState()).toEqual({
+      status: 'activating',
+      accountId: identity.accountId,
+    });
+
+    expect(() => {
+      stop();
+      stop();
+    }).not.toThrow();
+    expect(unsubscribeCalls).toBe(1);
+    lateActivation.resolve(ready(identity.accountId, 'late-profile'));
+    await flushActivation();
+    expect(coordinator.getState()).toEqual({
+      status: 'activating',
+      accountId: identity.accountId,
+    });
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    const restartedStop = coordinator.start();
+    await flushActivation();
+    expect(coordinator.getState()).toEqual({
+      status: 'ready',
+      accountId: identity.accountId,
+      profileId: 'profile-after-restart',
+    });
+    expect(subscribeCalls).toBe(2);
+    expect(() => restartedStop()).not.toThrow();
+    expect(unsubscribeCalls).toBe(2);
   });
 
   it('ignores a stale result from a prior account generation', async () => {

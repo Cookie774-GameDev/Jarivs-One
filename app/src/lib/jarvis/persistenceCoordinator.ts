@@ -50,7 +50,13 @@ export function createJarvisPersistenceCoordinator(input: {
 
   function publish(next: JarvisPersistenceState): void {
     state = next;
-    for (const listener of [...listeners]) listener();
+    for (const listener of [...listeners]) {
+      try {
+        listener();
+      } catch {
+        // Subscribers are observation-only and cannot block coordinator progress.
+      }
+    }
   }
 
   function readCurrentIdentity(): AccountIdentity | null {
@@ -81,6 +87,24 @@ export function createJarvisPersistenceCoordinator(input: {
     }
     const current = readCurrentIdentity();
     return current !== null && identityKey(current) === key;
+  }
+
+  function ensureIdentitySubscription(): boolean {
+    if (unsubscribeIdentity) return true;
+    try {
+      const unsubscribe = input.subscribeIdentity(() => {
+        void beginAttempt(false);
+      });
+      if (typeof unsubscribe !== 'function') throw new Error('Invalid identity subscription.');
+      unsubscribeIdentity = unsubscribe;
+      return true;
+    } catch {
+      unsubscribeIdentity = null;
+      currentIdentityKey = null;
+      generation += 1;
+      publish({ status: 'degraded', category: 'identity_not_ready', retry });
+      return false;
+    }
   }
 
   async function beginAttempt(force: boolean): Promise<void> {
@@ -149,6 +173,7 @@ export function createJarvisPersistenceCoordinator(input: {
   }
 
   async function retry(): Promise<void> {
+    if (!started || stopped || !ensureIdentitySubscription()) return;
     await beginAttempt(true);
   }
 
@@ -156,21 +181,29 @@ export function createJarvisPersistenceCoordinator(input: {
     if (!started) return;
     started = false;
     stopped = true;
-    generation += 1;
+    const stoppedGeneration = ++generation;
     currentIdentityKey = null;
-    unsubscribeIdentity?.();
+    const unsubscribe = unsubscribeIdentity;
     unsubscribeIdentity = null;
     activeStop = null;
+    try {
+      unsubscribe?.();
+    } catch {
+      // Provider cleanup cannot bypass coordinator invalidation.
+    } finally {
+      if (!started && generation === stoppedGeneration) {
+        unsubscribeIdentity = null;
+        activeStop = null;
+      }
+    }
   }
 
   function start(): () => void {
     if (started && activeStop) return activeStop;
     started = true;
     stopped = false;
-    unsubscribeIdentity = input.subscribeIdentity(() => {
-      void beginAttempt(false);
-    });
     activeStop = stop;
+    if (!ensureIdentitySubscription()) return activeStop;
     void beginAttempt(true);
     return activeStop;
   }
