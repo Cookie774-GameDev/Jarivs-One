@@ -1973,3 +1973,19 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Task 11 exclusive files** | `app/src/lib/jarvis/contextPack.ts`; `app/src/lib/jarvis/contextPack.test.ts`; `app/src/lib/jarvis/capabilitySnapshot.ts`; `app/src/lib/jarvis/capabilitySnapshot.test.ts`; `app/src/lib/jarvis/requestEnvelope.ts`; `app/src/lib/jarvis/requestEnvelope.test.ts`; `app/src/lib/ai/context.ts`; `app/src/lib/ai/context.test.ts` |
 | **Task 11 verification contract** | Strict RED/GREEN TDD for request-attempt identity, source-admitted deterministic context budgeting, account-bound verified capability snapshots, detached cycle-safe deep freezing, and the existing non-JARVIS AI-context adapter; then focused four-file suite, full TypeScript, exact-path format/diff/credential gates, and independent review only if the final risk warrants it. |
 | **Protected state** | `install/install.ps1`, unified-goal artifacts, unrelated branches/worktrees, existing localhost, and existing app-data profiles remain untouched and unstaged. Task 11 uses no runtime port or app-data profile. |
+
+## 2026-07-18 - Task 11 accepted and Task 12 exact lock acquired
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-18 14:16 CT |
+| **Primary coordinator** | `AGENT-CODEX-20260718-SIK` |
+| **Task 11 commit** | `4c05d77` - exact eight-file deterministic context pack, verified capability snapshot/provider, retry identity validator, detached cycle-safe freezer, immutable request envelope, and protected AI-context adapter. |
+| **Task 11 verification** | Required RED captured three unresolved modules plus the absent adapter while all eleven existing AI-context tests stayed green. Final focused suite `49/49` PASS; root TypeScript PASS; exact-file Prettier, cached diff, manifest, and zero-candidate added-line credential scan PASS. Commit path count is exactly `8`; `git show --check` is clean. |
+| **Task 11 review closure** | Local architecture/security review repaired non-finite score tie handling, locale-sensitive ordering, prototype-key-safe copying, explicit Task 4 secret-filename re-admission coverage, cycle handling, and missing retry-identity edges before the final gates. |
+| **Task 11 lock** | Released after commit verification. |
+| **Task 12 owner/state** | Primary coordinator `AGENT-CODEX-20260718-SIK`; **IMPLEMENTING**. |
+| **Task 12 exclusive files** | `app/src/lib/jarvis/promptCompiler.ts`; `app/src/lib/jarvis/promptCompiler.test.ts`; `app/src/lib/jarvis/promptCompiler.performance.test.ts`; `app/src/lib/jarvis/promptLayers.ts`; `app/src/lib/jarvis/promptLayers.test.ts` |
+| **Task 12 verification contract** | Strict RED/GREEN TDD for protected-agent gating, compiler-owned secret defense, exact seven-layer authority order, deterministic hashes/budgets, exactly-once profile and All About Me context, safe frozen diagnostics, no-global-read purity, compatibility-wrapper identity, and representative 200-iteration p95 under `25ms`; then focused three-file suite, root TypeScript, exact-path formatting/diff/credential gates, and risk-proportionate review. |
+| **Delegation/model rule** | The model selector remains unavailable in the active collaboration interface. Task 12 is tightly architecture-sensitive and stays with the primary coordinator; no unverifiable delegated model assignment is created. |
+| **Protected state** | `install/install.ps1`, unified-goal artifacts, unrelated branches/worktrees, existing localhost, and existing app-data profiles remain untouched and unstaged. Task 12 uses no runtime port or app-data profile. |
