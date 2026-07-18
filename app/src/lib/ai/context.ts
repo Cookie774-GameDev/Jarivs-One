@@ -33,6 +33,8 @@ import {
   classifyJarvisSource,
   type JarvisSourceChannel,
 } from '@/lib/jarvis/sourcePolicy';
+import { buildJarvisContextPack, type JarvisContextPackInput } from '@/lib/jarvis/contextPack';
+import type { JarvisContextPack } from '@/lib/jarvis/contracts';
 import { useTerminalTranscriptStore } from '@/features/terminals/transcriptStore';
 import {
   parseTerminalRef,
@@ -89,6 +91,16 @@ const MEDIA_CONTEXT_EXTENSIONS = new Set([
   'aac',
 ]);
 const CONVERSATION_DESTINATION_PREFIX = 'jarvis-conversation-destination-v1';
+
+/**
+ * Narrow adapter for callers entering the protected JARVIS kernel. Legacy
+ * prompt-block helpers below remain unchanged for non-JARVIS agents.
+ */
+export function buildJarvisContextPackForAi(
+  input: JarvisContextPackInput,
+): Promise<Readonly<JarvisContextPack>> {
+  return buildJarvisContextPack(input);
+}
 
 export interface ResolvedJarvisContext {
   activeProjectId?: string;

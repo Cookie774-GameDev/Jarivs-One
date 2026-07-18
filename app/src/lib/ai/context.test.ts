@@ -37,6 +37,7 @@ vi.mock('@/features/jarvis-interaction/coordination', () => ({
 
 import { useTerminalTranscriptStore } from '@/features/terminals/transcriptStore';
 import {
+  buildJarvisContextPackForAi,
   getConnectedFilesBlock,
   getExplicitFilesBlock,
   getExplicitTerminalBlock,
@@ -292,5 +293,37 @@ describe('AI explicit file context safeguards', () => {
     expect(block).toContain('Chat multitask / subagent coordination');
     expect(block).toContain('Multitask A');
     expect(block).toContain('all chats');
+  });
+
+  it('adapts admitted JARVIS candidates into the immutable context boundary', async () => {
+    const pack = await buildJarvisContextPackForAi({
+      accountId: 'account-1',
+      maxChars: 100,
+      candidates: [
+        {
+          source: {
+            id: 'explicit-source',
+            kind: 'project_file',
+            label: 'notes.txt',
+            uri: 'C:\\repo\\notes.txt',
+            accountId: 'account-1',
+            trust: 'user_direct',
+            sensitivity: 'private',
+          },
+          purpose: 'answer',
+          excerpt: 'Approved notes',
+          explicitlyAttached: true,
+          authorizedBody: true,
+        },
+      ],
+    });
+
+    expect(pack.items[0]).toEqual(
+      expect.objectContaining({
+        source: expect.objectContaining({ id: 'explicit-source' }),
+        excerpt: 'Approved notes',
+      }),
+    );
+    expect(Object.isFrozen(pack)).toBe(true);
   });
 });
