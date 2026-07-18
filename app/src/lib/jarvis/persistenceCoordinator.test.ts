@@ -233,6 +233,75 @@ describe('createJarvisPersistenceCoordinator', () => {
     restartedStop();
   });
 
+  it('cleans a subscription returned after reentrant stop and resubscribes on the next start', async () => {
+    let identity: AccountIdentity = { accountId: 'reentrant-account-a', source: 'local' };
+    const provider: { listener: (() => void) | null } = { listener: null };
+    const staleUnsubscribe = vi.fn();
+    const liveUnsubscribe = vi.fn();
+    let subscribeCalls = 0;
+    let coordinator!: ReturnType<typeof createJarvisPersistenceCoordinator>;
+    activateMock
+      .mockResolvedValueOnce(ready(identity.accountId))
+      .mockResolvedValueOnce(ready('reentrant-account-b'));
+    coordinator = createJarvisPersistenceCoordinator({
+      db: fakeDb(),
+      readIdentity: () => identity,
+      subscribeIdentity: (listener) => {
+        subscribeCalls += 1;
+        if (subscribeCalls === 1) {
+          coordinator.start()();
+          return staleUnsubscribe;
+        }
+        provider.listener = listener;
+        return () => {
+          liveUnsubscribe();
+          provider.listener = null;
+        };
+      },
+    });
+
+    const staleStop = coordinator.start();
+
+    expect(typeof staleStop).toBe('function');
+    expect(staleUnsubscribe).toHaveBeenCalledTimes(1);
+    expect(activateMock).not.toHaveBeenCalled();
+    expect(() => staleStop()).not.toThrow();
+
+    const liveStop = coordinator.start();
+    expect(liveStop).not.toBe(staleStop);
+    expect(subscribeCalls).toBe(2);
+    expect(coordinator.getState()).toEqual({
+      status: 'activating',
+      accountId: 'reentrant-account-a',
+    });
+    await flushActivation();
+    expect(coordinator.getState()).toEqual({
+      status: 'ready',
+      accountId: 'reentrant-account-a',
+      profileId: 'profile-reentrant-account-a',
+    });
+
+    identity = { accountId: 'reentrant-account-b', source: 'supabase' };
+    if (!provider.listener) throw new Error('Expected the fresh identity subscription.');
+    provider.listener();
+    expect(coordinator.getState()).toEqual({
+      status: 'activating',
+      accountId: 'reentrant-account-b',
+    });
+    await flushActivation();
+    expect(coordinator.getState()).toEqual({
+      status: 'ready',
+      accountId: 'reentrant-account-b',
+      profileId: 'profile-reentrant-account-b',
+    });
+    expect(subscribeCalls).toBe(2);
+    expect(staleUnsubscribe).toHaveBeenCalledTimes(1);
+
+    liveStop();
+    expect(liveUnsubscribe).toHaveBeenCalledTimes(1);
+    expect(provider.listener).toBeNull();
+  });
+
   it('quarantines a subscription startup failure and remains retryable and stop-safe', async () => {
     let identity: AccountIdentity = {
       accountId: 'subscription-failure-account',

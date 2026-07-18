@@ -93,7 +93,20 @@ export function createJarvisPersistenceCoordinator(input: {
   function ensureIdentitySubscription(): boolean {
     if (unsubscribeIdentity) return true;
     const attemptEpoch = ++subscriptionEpoch;
+    const attemptGeneration = generation;
+    const attemptStop = activeStop;
     let armed = false;
+
+    function stillOwnsSubscriptionAttempt(): boolean {
+      return (
+        started &&
+        !stopped &&
+        activeStop === attemptStop &&
+        generation === attemptGeneration &&
+        subscriptionEpoch === attemptEpoch
+      );
+    }
+
     try {
       const providerUnsubscribe = input.subscribeIdentity(() => {
         if (!armed || attemptEpoch !== subscriptionEpoch || !started || stopped) return;
@@ -101,6 +114,14 @@ export function createJarvisPersistenceCoordinator(input: {
       });
       if (typeof providerUnsubscribe !== 'function') {
         throw new Error('Invalid identity subscription.');
+      }
+      if (!stillOwnsSubscriptionAttempt()) {
+        try {
+          providerUnsubscribe();
+        } catch {
+          // A stale provider subscription has no authority to leak cleanup failures.
+        }
+        return false;
       }
       unsubscribeIdentity = () => {
         armed = false;
@@ -110,6 +131,7 @@ export function createJarvisPersistenceCoordinator(input: {
       return true;
     } catch {
       armed = false;
+      if (!stillOwnsSubscriptionAttempt()) return false;
       if (subscriptionEpoch === attemptEpoch) subscriptionEpoch += 1;
       unsubscribeIdentity = null;
       currentIdentityKey = null;
