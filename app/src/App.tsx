@@ -96,6 +96,7 @@ type SupabaseSessionLike = {
 
 let accountScopeTeardownBarrier: Promise<void> = Promise.resolve();
 let cloudSyncTeardownBarrier: Promise<void> = Promise.resolve();
+let invalidateActiveKernelAccount: (accountId: string) => void = () => {};
 
 function cloudSessionUserId(session: SupabaseSessionLike): string {
   return session?.user?.id?.trim() ?? '';
@@ -422,6 +423,8 @@ function useBoot() {
       accountScopeGeneration += 1;
       accountRecoveryController?.abort();
       accountRecoveryController = undefined;
+      const oldAccountId = activeAccountIdentity?.accountId;
+      if (oldAccountId) invalidateActiveKernelAccount(oldAccountId);
       const stops = [stopLearning, stopAllAboutMePersistence, stopTaskRunPersistence].filter(
         (stop): stop is () => void | Promise<void> => Boolean(stop),
       );
@@ -898,6 +901,56 @@ function useBoot() {
     // Run once - boot is one-shot.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+}
+
+function KernelBridgeBootstrap() {
+  const [ready, setReady] = React.useState(false);
+
+  React.useEffect(() => {
+    let disposed = false;
+    let disposeBoundary: (() => void | Promise<void>) | undefined;
+    let accountInvalidator: ((accountId: string) => void) | undefined;
+
+    void import('@/lib/jarvis/kernelHost')
+      .then(async ({ createUnavailableKernelHostRuntime, startJarvisKernelHost }) => {
+        const session = await startJarvisKernelHost({
+          createRuntime: createUnavailableKernelHostRuntime,
+        });
+        if (disposed) {
+          if (session.role === 'host') await session.dispose();
+          return;
+        }
+        if (session.role === 'host') {
+          accountInvalidator = session.invalidateAccount;
+          invalidateActiveKernelAccount = accountInvalidator;
+          disposeBoundary = session.dispose;
+          return;
+        }
+        const { createJarvisKernelClient } = await import('@/lib/jarvis/kernelClient');
+        const client = createJarvisKernelClient();
+        if (disposed) {
+          client.dispose();
+          return;
+        }
+        disposeBoundary = client.dispose;
+      })
+      .catch(() => {
+        /* Native/browser ownership remains unavailable and fail-closed. */
+      })
+      .finally(() => {
+        if (!disposed) React.startTransition(() => setReady(true));
+      });
+
+    return () => {
+      disposed = true;
+      if (accountInvalidator && invalidateActiveKernelAccount === accountInvalidator) {
+        invalidateActiveKernelAccount = () => {};
+      }
+      void Promise.resolve(disposeBoundary?.()).catch(() => undefined);
+    };
+  }, []);
+
+  return <AuthGate>{ready ? <WorkspaceRoot /> : null}</AuthGate>;
 }
 
 function useDesktopReopenLifecycle() {
@@ -1404,9 +1457,7 @@ export function App() {
   return (
     <ErrorBoundary>
       <ThemeHost />
-      <AuthGate>
-        <WorkspaceRoot />
-      </AuthGate>
+      <KernelBridgeBootstrap />
       <DevConsoleHost />
     </ErrorBoundary>
   );

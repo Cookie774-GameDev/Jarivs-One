@@ -2,9 +2,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   buildWorkbenchWindowUrl,
   isWorkbenchDetachedSearch,
+  isWorkbenchKernelClientSurface,
   openOrFocusWorkbenchWindow,
   WORKBENCH_APP_PATH,
   WORKBENCH_BROWSER_WINDOW_FEATURES,
+  WORKBENCH_KERNEL_AUTHORITY,
   WORKBENCH_WINDOW_LABEL,
 } from './window';
 
@@ -24,6 +26,9 @@ describe('Workbench window helpers', () => {
 
   it('uses a window label that matches the Tauri workbench-* capability', () => {
     expect(WORKBENCH_WINDOW_LABEL.startsWith('workbench-')).toBe(true);
+    expect(WORKBENCH_KERNEL_AUTHORITY).toBe('client-only');
+    expect(isWorkbenchKernelClientSurface('?workbench=1')).toBe(true);
+    expect(isWorkbenchKernelClientSurface('?workbench=0')).toBe(false);
   });
 
   it('uses a features string without noopener/noreferrer', () => {

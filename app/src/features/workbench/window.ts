@@ -6,6 +6,8 @@ import { resolveWorkbenchName, workbenchWindowTitle } from './workbenchName';
  */
 export const WORKBENCH_WINDOW_LABEL = 'workbench-main';
 export const WORKBENCH_QUERY = 'workbench=1';
+/** Detached Workbench is always a typed kernel client and never an authority host. */
+export const WORKBENCH_KERNEL_AUTHORITY = 'client-only' as const;
 
 /**
  * Relative app path for Tauri webviews (same pattern as dictation window).
@@ -28,6 +30,11 @@ export interface DetachedWorkbenchResult {
 export function isWorkbenchDetachedSearch(search?: string): boolean {
   const value = search ?? (typeof window !== 'undefined' ? window.location.search : '');
   return new URLSearchParams(value).get('workbench') === '1';
+}
+
+/** Detached Workbench is always a typed kernel client; native code remains authoritative. */
+export function isWorkbenchKernelClientSurface(search?: string): boolean {
+  return isWorkbenchDetachedSearch(search);
 }
 
 export function isTauriRuntime(): boolean {
@@ -81,7 +88,8 @@ export async function openOrFocusWorkbenchWindow(options?: {
     } catch (cause) {
       return {
         ok: false,
-        reason: cause instanceof Error ? cause.message : 'Could not open a Workbench browser window.',
+        reason:
+          cause instanceof Error ? cause.message : 'Could not open a Workbench browser window.',
       };
     }
   }
@@ -141,7 +149,8 @@ export async function openOrFocusWorkbenchWindow(options?: {
       const timeout = window.setTimeout(() => {
         finish({
           ok: false,
-          reason: 'Workbench window creation timed out. Opening Workbench in the main window instead.',
+          reason:
+            'Workbench window creation timed out. Opening Workbench in the main window instead.',
         });
       }, 4000);
 

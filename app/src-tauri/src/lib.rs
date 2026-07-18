@@ -51,6 +51,7 @@ mod dictation;
 mod faster_whisper;
 mod fsread;
 mod kokoro;
+mod kernel_host;
 mod launcher;
 mod local_ai;
 mod ollama_http;
@@ -218,6 +219,7 @@ pub fn run() {
                 .build(),
         )
         .manage(cli_bridge::CliBridgeState::default())
+        .manage(kernel_host::KernelHostState::default())
         .manage(terminal::TerminalState::default())
         .manage(pets::PetWindowState::default())
         .manage(terminal_snapshot::PersistenceFlushState::default())
@@ -331,6 +333,10 @@ pub fn run() {
             greet,
             app_version,
             refresh_app_branding,
+            kernel_host::register_kernel_host,
+            kernel_host::kernel_client_request,
+            kernel_host::kernel_host_respond,
+            kernel_host::release_kernel_host,
             cli_bridge::cli_bridge_scan,
             cli_bridge::cli_bridge_probe,
             cli_bridge::cli_bridge_start,
@@ -434,6 +440,10 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                kernel_host::release_on_process_exit(app_handle);
+                return;
+            }
             if let tauri::RunEvent::ExitRequested { api, code, .. } = event {
                 let state = app_handle.state::<terminal_snapshot::PersistenceFlushState>();
                 if state.is_completed() {
