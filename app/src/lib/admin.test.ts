@@ -410,6 +410,20 @@ describe('createJarvisEntitlementSnapshotProvider', () => {
       capabilities: [],
     });
 
+    const missingExpiryProvider = createJarvisEntitlementSnapshotProvider({
+      getActiveAccountId: () => activeAccountId,
+      loadForActiveAccount: async () => ({
+        source: 'server',
+        capabilities: [APP_ADMIN_CAPABILITY],
+        verifiedAt: NOW,
+      }),
+      now: () => now,
+    });
+    await expect(missingExpiryProvider.getForAccount('account-a')).resolves.toEqual({
+      source: 'unavailable',
+      capabilities: [],
+    });
+
     now = NOW - 1;
     const valid = await expiredProvider.getForAccount('account-a');
     expect(valid.source).toBe('server');

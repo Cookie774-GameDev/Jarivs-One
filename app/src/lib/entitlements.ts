@@ -385,7 +385,7 @@ export function entitlementSnapshotAllowsAdmin(
 ): boolean {
   const context = entitlementContext(contextInput);
   if (!Number.isFinite(snapshot.verifiedAt)) return false;
-  if (snapshot.expiresAt !== undefined && !(snapshot.expiresAt > context.now)) return false;
+  if (!Number.isFinite(snapshot.expiresAt) || !(snapshot.expiresAt! > context.now)) return false;
   if (!snapshot.capabilities.includes(APP_ADMIN_CAPABILITY)) return false;
   if (snapshot.source === 'server') return true;
   return snapshot.source === 'local_development' && !context.production;

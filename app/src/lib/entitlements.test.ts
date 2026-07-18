@@ -125,6 +125,23 @@ describe('entitlementSnapshotAllowsAdmin', () => {
         expiresAt: NOW + 1,
       },
     ],
+    [
+      'missing expiry',
+      {
+        source: 'server',
+        capabilities: [APP_ADMIN_CAPABILITY],
+        verifiedAt: NOW - 1,
+      },
+    ],
+    [
+      'non-finite expiry',
+      {
+        source: 'server',
+        capabilities: [APP_ADMIN_CAPABILITY],
+        verifiedAt: NOW - 1,
+        expiresAt: Number.POSITIVE_INFINITY,
+      },
+    ],
   ] satisfies Array<[string, JarvisEntitlementSnapshot]>)('rejects %s', (_name, snapshot) => {
     expect(evaluate(snapshot)).toBe(false);
   });

@@ -177,7 +177,7 @@ export interface JarvisEntitlementSnapshotProvider {
 
 function snapshotIsCurrent(snapshot: JarvisEntitlementSnapshot, now: number): boolean {
   if (snapshot.source === 'unavailable' || !Number.isFinite(snapshot.verifiedAt)) return false;
-  return snapshot.expiresAt === undefined || snapshot.expiresAt > now;
+  return Number.isFinite(snapshot.expiresAt) && snapshot.expiresAt! > now;
 }
 
 export function createJarvisEntitlementSnapshotProvider(input: {
