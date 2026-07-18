@@ -1,11 +1,12 @@
 import * as React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Agent, AgentId } from '@/types';
 import { useAgentStore } from '@/stores/agents';
 import { useAuthStore } from '@/stores/auth';
 import { syncDiscoveredOllamaModels } from '@/lib/ai/models';
 import { resetProviderModelCache } from '@/lib/ai/providerModelCatalog';
+import type { JarvisProfile } from '@/lib/jarvis/profiles/types';
 import { AgentManager } from './AgentManager';
 
 vi.mock('@/lib/db', async () => {
@@ -20,6 +21,13 @@ vi.mock('@/lib/db', async () => {
     },
   };
 });
+
+vi.mock('@/lib/db/jarvisRepositories', () => ({
+  jarvisProfileRepo: {
+    getActive: vi.fn(),
+    updateCustomInstructions: vi.fn(),
+  },
+}));
 
 vi.mock('@/lib/ai/providers/ollama', () => ({
   isOllamaReachable: vi.fn(async () => false),
@@ -53,16 +61,86 @@ const secondAgent: Agent = {
   updated_at: 2,
 };
 
-async function repoMocks() {
+const protectedJarvis: Agent = {
+  ...baseAgent,
+  id: 'agent_jarvis' as AgentId,
+  slug: 'jarvis',
+  name: 'JARVIS',
+  system_prompt: 'Legacy protected prompt',
+  builtin: true,
+};
+
+const jarvisSlugCollision: Agent = {
+  ...baseAgent,
+  id: 'agent_jarvis_collision' as AgentId,
+  slug: 'jarvis',
+  name: 'User Jarvis',
+  builtin: false,
+};
+
+function profileFixture(overrides: Partial<JarvisProfile> = {}): JarvisProfile {
+  return {
+    id: 'profile_local-user-a',
+    revisionId: 'revision_1',
+    accountId: 'local-user-a',
+    name: 'JARVIS',
+    customInstructions: 'Be concise.',
+    instructionSource: 'user',
+    memoryScope: 'profile',
+    voiceEnabled: false,
+    active: true,
+    identityVersion: 1,
+    createdAt: 1,
+    updatedAt: 1,
+    ...overrides,
+  };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
+async function repoMocks(agent: Agent = baseAgent) {
   const { agentRepo } = await import('@/lib/db');
-  vi.mocked(agentRepo.getById).mockResolvedValue(baseAgent);
+  vi.mocked(agentRepo.getById).mockResolvedValue(agent);
+  vi.mocked(agentRepo.create).mockImplementation(async (created) => ({
+    ...created,
+    id: created.id ?? agent.id,
+    created_at: agent.created_at,
+    updated_at: agent.updated_at,
+  }));
   vi.mocked(agentRepo.update).mockImplementation(async (_id, patch) => ({
-    ...baseAgent,
+    ...agent,
     ...patch,
-    model: patch.model ?? baseAgent.model,
+    model: patch.model ?? agent.model,
     updated_at: 3,
   }));
+  vi.mocked(agentRepo.delete).mockResolvedValue(undefined);
   return agentRepo;
+}
+
+async function profileRepoMocks(profile: JarvisProfile | undefined = profileFixture()) {
+  const { jarvisProfileRepo } = await import('@/lib/db/jarvisRepositories');
+  vi.mocked(jarvisProfileRepo.getActive).mockResolvedValue(profile);
+  vi.mocked(jarvisProfileRepo.updateCustomInstructions).mockImplementation(
+    async (_accountId, _profileId, customInstructions) => ({
+      ...(profile ?? profileFixture()),
+      customInstructions: customInstructions.replace(/\r\n?/g, '\n'),
+      instructionSource: customInstructions.length === 0 ? 'none' : 'user',
+      revisionId: 'revision_2',
+      updatedAt: 2,
+    }),
+  );
+  return jarvisProfileRepo;
+}
+
+function registerOnly(agent: Agent) {
+  useAgentStore.setState({ agents: {}, runStates: {}, verbs: {}, tokens: {} });
+  useAgentStore.getState().registerMany([agent]);
 }
 
 describe('AgentManager save lifecycle', () => {
@@ -77,10 +155,13 @@ describe('AgentManager save lifecycle', () => {
       plan: 'free',
       defaultProvider: 'google',
       defaultLocalModel: '',
+      cloudSession: null,
+      localUserId: 'local-user-a',
     });
     useAgentStore.setState({ agents: {}, runStates: {}, verbs: {}, tokens: {} });
     useAgentStore.getState().registerMany([baseAgent, secondAgent]);
     await repoMocks();
+    await profileRepoMocks();
   });
 
   it('enables Save immediately for valid name and prompt changes, then resets after persistence', async () => {
@@ -99,9 +180,14 @@ describe('AgentManager save lifecycle', () => {
     await waitFor(() => expect(agentRepo.update).toHaveBeenCalledTimes(1));
     expect(agentRepo.update).toHaveBeenCalledWith(
       baseAgent.id,
-      expect.objectContaining({ name: 'Alpha Renamed', system_prompt: 'Updated prompt\n\nKeep formatting.' }),
+      expect.objectContaining({
+        name: 'Alpha Renamed',
+        system_prompt: 'Updated prompt\n\nKeep formatting.',
+      }),
     );
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Save agent' })).toHaveProperty('disabled', true));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Save agent' })).toHaveProperty('disabled', true),
+    );
   });
 
   it('tracks skills, tools, capabilities, model settings, toggles, and advanced fields', async () => {
@@ -109,8 +195,12 @@ describe('AgentManager save lifecycle', () => {
     render(<AgentManager />);
 
     fireEvent.change(screen.getByLabelText('Skills'), { target: { value: 'summarize, planning' } });
-    fireEvent.change(screen.getByLabelText('Allowed tools'), { target: { value: 'files.read, files.write' } });
-    fireEvent.change(screen.getByLabelText('Capabilities'), { target: { value: 'writing, planning' } });
+    fireEvent.change(screen.getByLabelText('Allowed tools'), {
+      target: { value: 'files.read, files.write' },
+    });
+    fireEvent.change(screen.getByLabelText('Capabilities'), {
+      target: { value: 'writing, planning' },
+    });
     fireEvent.change(screen.getByLabelText('Memory scope'), { target: { value: 'workspace' } });
     fireEvent.change(screen.getByLabelText('Reasoning effort'), { target: { value: 'high' } });
     fireEvent.change(screen.getByLabelText('Persona'), { target: { value: 'athena' } });
@@ -119,22 +209,29 @@ describe('AgentManager save lifecycle', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save agent' }));
 
     await waitFor(() => expect(agentRepo.update).toHaveBeenCalledTimes(1));
-    expect(agentRepo.update).toHaveBeenCalledWith(baseAgent.id, expect.objectContaining({
-      skills: ['planning', 'summarize'],
-      tools_allowed: ['files.read', 'files.write'],
-      capabilities: ['planning', 'writing'],
-      memory_scope: 'workspace',
-      effort: 'high',
-      persona: 'athena',
-      max_output_tokens: 4096,
-      color_hue: 210,
-    }));
+    expect(agentRepo.update).toHaveBeenCalledWith(
+      baseAgent.id,
+      expect.objectContaining({
+        skills: ['planning', 'summarize'],
+        tools_allowed: ['files.read', 'files.write'],
+        capabilities: ['planning', 'writing'],
+        memory_scope: 'workspace',
+        effort: 'high',
+        persona: 'athena',
+        max_output_tokens: 4096,
+        color_hue: 210,
+      }),
+    );
   });
 
   it('prevents duplicate saves while persistence is in flight', async () => {
     const agentRepo = await repoMocks();
     let resolveUpdate!: (agent: Agent) => void;
-    vi.mocked(agentRepo.update).mockReturnValue(new Promise((resolve) => { resolveUpdate = resolve; }));
+    vi.mocked(agentRepo.update).mockReturnValue(
+      new Promise((resolve) => {
+        resolveUpdate = resolve;
+      }),
+    );
     render(<AgentManager />);
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'One Save' } });
     const save = screen.getByRole('button', { name: 'Save agent' });
@@ -144,7 +241,51 @@ describe('AgentManager save lifecycle', () => {
     expect(screen.getByRole('button', { name: 'Save agent' }).textContent).toContain('Saving...');
 
     resolveUpdate({ ...baseAgent, name: 'One Save', updated_at: 4 });
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Save agent' }).textContent).toContain('Saved'));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Save agent' }).textContent).toContain('Saved'),
+    );
+  });
+
+  it('preserves newer edits made while an agent save is in flight', async () => {
+    const agentRepo = await repoMocks();
+    const pendingUpdate = deferred<Agent>();
+    vi.mocked(agentRepo.update).mockReturnValue(pendingUpdate.promise);
+    render(<AgentManager />);
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Submitted name' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save agent' }));
+    await waitFor(() => expect(agentRepo.update).toHaveBeenCalledTimes(1));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Newer unsaved name' } });
+
+    pendingUpdate.resolve({ ...baseAgent, name: 'Submitted name', updated_at: 4 });
+    await waitFor(() =>
+      expect(screen.getByLabelText('Name')).toHaveProperty('value', 'Newer unsaved name'),
+    );
+    expect(screen.getByRole('button', { name: 'Save agent' })).toHaveProperty('disabled', false);
+  });
+
+  it('does not let a stale save completion overwrite a newly selected editor', async () => {
+    const agentRepo = await repoMocks();
+    const pendingUpdate = deferred<Agent>();
+    vi.mocked(agentRepo.update).mockReturnValue(pendingUpdate.promise);
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    render(<AgentManager />);
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Alpha Saved Later' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save agent' }));
+    await waitFor(() => expect(agentRepo.update).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole('button', { name: /Beta Agent/i }));
+    await waitFor(() =>
+      expect(screen.getByLabelText('Name')).toHaveProperty('value', 'Beta Agent'),
+    );
+
+    act(() => pendingUpdate.resolve({ ...baseAgent, name: 'Alpha Saved Later', updated_at: 4 }));
+    await waitFor(() =>
+      expect(useAgentStore.getState().agents[baseAgent.id]?.name).toBe('Alpha Saved Later'),
+    );
+    expect(screen.getByLabelText('Name')).toHaveProperty('value', 'Beta Agent');
+    expect(screen.getByRole('button', { name: 'Save agent' })).toHaveProperty('disabled', true);
   });
 
   it('preserves edits after failure and retries through the same Save action', async () => {
@@ -181,5 +322,385 @@ describe('AgentManager save lifecycle', () => {
     fireEvent.click(screen.getByRole('button', { name: /Reset/i }));
     expect(screen.getByLabelText('Name')).toHaveProperty('value', 'Alpha Agent');
     expect(screen.getByRole('button', { name: 'Save agent' })).toHaveProperty('disabled', true);
+  });
+
+  it('preserves ordinary Agent clone and delete behavior', async () => {
+    const agentRepo = await repoMocks();
+    render(<AgentManager />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clone' }));
+    await waitFor(() => expect(agentRepo.create).toHaveBeenCalledTimes(1));
+    expect(agentRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'Alpha Agent (copy)',
+        system_prompt: baseAgent.system_prompt,
+      }),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    const clonedAgent = vi.mocked(agentRepo.create).mock.calls[0]?.[0];
+    await waitFor(() => expect(agentRepo.delete).toHaveBeenCalledWith(clonedAgent?.id));
+  });
+});
+
+describe('AgentManager protected JARVIS profile lifecycle', () => {
+  beforeEach(async () => {
+    vi.restoreAllMocks();
+    vi.clearAllMocks();
+    resetProviderModelCache();
+    syncDiscoveredOllamaModels([]);
+    useAuthStore.setState({
+      apiKeys: { google: 'test-key' },
+      offlineMode: false,
+      plan: 'free',
+      defaultProvider: 'google',
+      defaultLocalModel: '',
+      cloudSession: null,
+      localUserId: 'local-user-a',
+    });
+    registerOnly(protectedJarvis);
+    await repoMocks(protectedJarvis);
+    await profileRepoMocks();
+  });
+
+  it('loads active-profile Custom instructions instead of Agent.system_prompt', async () => {
+    const jarvisProfileRepo = await profileRepoMocks(
+      profileFixture({ customInstructions: 'Use my profile.' }),
+    );
+    render(<AgentManager />);
+
+    expect(await screen.findByLabelText('Custom instructions')).toHaveProperty(
+      'value',
+      'Use my profile.',
+    );
+    expect(screen.queryByLabelText('System prompt')).toBeNull();
+    expect(jarvisProfileRepo.getActive).toHaveBeenCalledWith('local-user-a');
+  });
+
+  it('saves an empty profile-only edit without persisting Agent.system_prompt', async () => {
+    const agentRepo = await repoMocks(protectedJarvis);
+    const jarvisProfileRepo = await profileRepoMocks(
+      profileFixture({ customInstructions: 'Remove me.' }),
+    );
+    render(<AgentManager />);
+
+    fireEvent.change(await screen.findByLabelText('Custom instructions'), {
+      target: { value: '' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save agent' }));
+
+    await waitFor(() =>
+      expect(jarvisProfileRepo.updateCustomInstructions).toHaveBeenCalledWith(
+        'local-user-a',
+        'profile_local-user-a',
+        '',
+      ),
+    );
+    expect(agentRepo.getById).not.toHaveBeenCalled();
+    expect(agentRepo.update).not.toHaveBeenCalled();
+    expect(agentRepo.create).not.toHaveBeenCalled();
+  });
+
+  it('treats line-ending-only profile edits as normalized no-ops', async () => {
+    const jarvisProfileRepo = await profileRepoMocks(
+      profileFixture({ customInstructions: 'First\r\nSecond' }),
+    );
+    render(<AgentManager />);
+
+    const instructions = await screen.findByLabelText('Custom instructions');
+    fireEvent.change(instructions, { target: { value: 'First\nSecond' } });
+
+    expect(screen.getByRole('button', { name: 'Save agent' })).toHaveProperty('disabled', true);
+    expect(jarvisProfileRepo.updateCustomInstructions).not.toHaveBeenCalled();
+  });
+
+  it('saves non-prompt Agent fields and profile instructions together without owning system_prompt', async () => {
+    const agentRepo = await repoMocks(protectedJarvis);
+    const jarvisProfileRepo = await profileRepoMocks();
+    render(<AgentManager />);
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'JARVIS Renamed' } });
+    fireEvent.change(await screen.findByLabelText('Custom instructions'), {
+      target: { value: 'Use tools carefully.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save agent' }));
+
+    await waitFor(() => expect(agentRepo.update).toHaveBeenCalledTimes(1));
+    const patch = vi.mocked(agentRepo.update).mock.calls[0]?.[1];
+    expect(patch).toEqual(expect.objectContaining({ name: 'JARVIS Renamed' }));
+    expect(patch).not.toHaveProperty('system_prompt');
+    expect(jarvisProfileRepo.updateCustomInstructions).toHaveBeenCalledWith(
+      'local-user-a',
+      'profile_local-user-a',
+      'Use tools carefully.',
+    );
+  });
+
+  it('fails closed instead of recreating a missing protected row with its legacy prompt', async () => {
+    const agentRepo = await repoMocks(protectedJarvis);
+    const jarvisProfileRepo = await profileRepoMocks();
+    vi.mocked(agentRepo.getById).mockResolvedValue(undefined);
+    render(<AgentManager />);
+
+    await screen.findByLabelText('Custom instructions');
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Missing protected row' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save agent' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'Protected JARVIS agent row is unavailable.',
+    );
+    expect(agentRepo.update).not.toHaveBeenCalled();
+    expect(agentRepo.create).not.toHaveBeenCalled();
+    expect(jarvisProfileRepo.updateCustomInstructions).not.toHaveBeenCalled();
+  });
+
+  it('clones protected JARVIS from visible profile instructions, never its hidden legacy prompt', async () => {
+    const agentRepo = await repoMocks(protectedJarvis);
+    await profileRepoMocks(profileFixture({ customInstructions: 'Visible clone instructions.' }));
+    render(<AgentManager />);
+
+    await waitFor(() =>
+      expect(screen.getByLabelText('Custom instructions')).toHaveProperty(
+        'value',
+        'Visible clone instructions.',
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Clone' }));
+
+    await waitFor(() => expect(agentRepo.create).toHaveBeenCalledTimes(1));
+    const clone = vi.mocked(agentRepo.create).mock.calls[0]?.[0];
+    expect(clone).toMatchObject({
+      builtin: false,
+      system_prompt: 'Visible clone instructions.',
+    });
+    expect(clone?.system_prompt).not.toBe(protectedJarvis.system_prompt);
+  });
+
+  it('reports a partial combined save truthfully and retries only the profile write', async () => {
+    const agentRepo = await repoMocks(protectedJarvis);
+    const jarvisProfileRepo = await profileRepoMocks();
+    vi.mocked(jarvisProfileRepo.updateCustomInstructions).mockRejectedValueOnce(
+      new Error('Profile storage unavailable'),
+    );
+    render(<AgentManager />);
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'JARVIS Persisted' } });
+    fireEvent.change(await screen.findByLabelText('Custom instructions'), {
+      target: { value: 'Retry profile only.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save agent' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('Agent changes were saved');
+    expect(alert.textContent).toContain('custom instructions were not saved');
+    expect(agentRepo.update).toHaveBeenCalledTimes(1);
+    expect(jarvisProfileRepo.updateCustomInstructions).toHaveBeenCalledTimes(1);
+    expect(screen.getByLabelText('Name')).toHaveProperty('value', 'JARVIS Persisted');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry save' }));
+    await waitFor(() =>
+      expect(jarvisProfileRepo.updateCustomInstructions).toHaveBeenCalledTimes(2),
+    );
+    expect(agentRepo.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps ordinary V2 fields saveable while only Custom instructions are loading', async () => {
+    const agentRepo = await repoMocks(protectedJarvis);
+    const pendingProfile = deferred<JarvisProfile | undefined>();
+    const jarvisProfileRepo = await profileRepoMocks();
+    vi.mocked(jarvisProfileRepo.getActive).mockReturnValue(pendingProfile.promise);
+    render(<AgentManager />);
+
+    const instructions = await screen.findByLabelText('Custom instructions');
+    expect(instructions).toHaveProperty('disabled', true);
+    expect(screen.getByText('Profile is still loading')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'JARVIS V2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save agent' }));
+
+    await waitFor(() => expect(agentRepo.update).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(agentRepo.update).mock.calls[0]?.[1]).not.toHaveProperty('system_prompt');
+    expect(jarvisProfileRepo.updateCustomInstructions).not.toHaveBeenCalled();
+
+    pendingProfile.resolve(profileFixture());
+    await waitFor(() => expect(instructions).toHaveProperty('disabled', false));
+  });
+
+  it('clears prior-account profile text immediately when the account changes', async () => {
+    const profileB = profileFixture({
+      id: 'profile_local-user-b',
+      accountId: 'local-user-b',
+      customInstructions: 'Account B instructions.',
+    });
+    const pendingProfileB = deferred<JarvisProfile | undefined>();
+    const jarvisProfileRepo = await profileRepoMocks(
+      profileFixture({ customInstructions: 'Account A instructions.' }),
+    );
+    vi.mocked(jarvisProfileRepo.getActive).mockImplementation((accountId) =>
+      accountId === 'local-user-b'
+        ? pendingProfileB.promise
+        : Promise.resolve(profileFixture({ customInstructions: 'Account A instructions.' })),
+    );
+    render(<AgentManager />);
+
+    const instructions = await screen.findByLabelText('Custom instructions');
+    await waitFor(() => expect(instructions).toHaveProperty('value', 'Account A instructions.'));
+    act(() => useAuthStore.setState({ localUserId: 'local-user-b' }));
+
+    await waitFor(() => expect(instructions).toHaveProperty('value', ''));
+    expect(instructions).toHaveProperty('disabled', true);
+    pendingProfileB.resolve(profileB);
+    await waitFor(() => expect(instructions).toHaveProperty('value', 'Account B instructions.'));
+  });
+
+  it('ignores a stale prior-account load that resolves after the current account', async () => {
+    const pendingProfileA = deferred<JarvisProfile | undefined>();
+    const profileB = profileFixture({
+      id: 'profile_local-user-b',
+      accountId: 'local-user-b',
+      customInstructions: 'Current account.',
+    });
+    const jarvisProfileRepo = await profileRepoMocks();
+    vi.mocked(jarvisProfileRepo.getActive).mockImplementation((accountId) =>
+      accountId === 'local-user-a' ? pendingProfileA.promise : Promise.resolve(profileB),
+    );
+    render(<AgentManager />);
+
+    await screen.findByLabelText('Custom instructions');
+    act(() => useAuthStore.setState({ localUserId: 'local-user-b' }));
+    await waitFor(() =>
+      expect(screen.getByLabelText('Custom instructions')).toHaveProperty(
+        'value',
+        'Current account.',
+      ),
+    );
+
+    pendingProfileA.resolve(profileFixture({ customInstructions: 'Stale account.' }));
+    await waitFor(() =>
+      expect(screen.getByLabelText('Custom instructions')).toHaveProperty(
+        'value',
+        'Current account.',
+      ),
+    );
+  });
+
+  it('does not write a captured profile after the account changes during an agent save', async () => {
+    const agentRepo = await repoMocks(protectedJarvis);
+    const pendingAgentRead = deferred<Agent | undefined>();
+    vi.mocked(agentRepo.getById).mockReturnValue(pendingAgentRead.promise);
+    const jarvisProfileRepo = await profileRepoMocks();
+    render(<AgentManager />);
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'JARVIS Submitted' } });
+    fireEvent.change(await screen.findByLabelText('Custom instructions'), {
+      target: { value: 'Submitted profile text.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save agent' }));
+    await waitFor(() => expect(agentRepo.getById).toHaveBeenCalledTimes(1));
+
+    act(() => useAuthStore.setState({ localUserId: 'local-user-b' }));
+    pendingAgentRead.resolve(protectedJarvis);
+    await waitFor(() => expect(agentRepo.update).toHaveBeenCalledTimes(1));
+    expect(jarvisProfileRepo.updateCustomInstructions).not.toHaveBeenCalled();
+  });
+
+  it('clears a local profile when identity source changes with the same account id', async () => {
+    const nextProfile = deferred<JarvisProfile | undefined>();
+    const jarvisProfileRepo = await profileRepoMocks(
+      profileFixture({ customInstructions: 'Local-source instructions.' }),
+    );
+    vi.mocked(jarvisProfileRepo.getActive)
+      .mockResolvedValueOnce(profileFixture({ customInstructions: 'Local-source instructions.' }))
+      .mockReturnValueOnce(nextProfile.promise);
+    render(<AgentManager />);
+
+    const instructions = await screen.findByLabelText('Custom instructions');
+    expect(instructions).toHaveProperty('value', 'Local-source instructions.');
+    act(() =>
+      useAuthStore.setState({
+        cloudSession: {
+          user_id: 'local-user-a',
+          email: 'cloud@example.com',
+          expires_at: Date.now() + 60_000,
+        },
+      }),
+    );
+
+    await waitFor(() => expect(instructions).toHaveProperty('value', ''));
+    expect(instructions).toHaveProperty('disabled', true);
+  });
+
+  it('preserves newer agent and profile edits made during a combined save', async () => {
+    const agentRepo = await repoMocks(protectedJarvis);
+    const pendingUpdate = deferred<Agent>();
+    vi.mocked(agentRepo.update).mockReturnValue(pendingUpdate.promise);
+    const jarvisProfileRepo = await profileRepoMocks();
+    render(<AgentManager />);
+
+    const instructions = await screen.findByLabelText('Custom instructions');
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Submitted name' } });
+    fireEvent.change(instructions, { target: { value: 'Submitted profile.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save agent' }));
+    await waitFor(() => expect(agentRepo.update).toHaveBeenCalledTimes(1));
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Newer name' } });
+    fireEvent.change(instructions, { target: { value: 'Newer profile.' } });
+    pendingUpdate.resolve({ ...protectedJarvis, name: 'Submitted name', updated_at: 4 });
+
+    await waitFor(() =>
+      expect(jarvisProfileRepo.updateCustomInstructions).toHaveBeenCalledWith(
+        'local-user-a',
+        'profile_local-user-a',
+        'Submitted profile.',
+      ),
+    );
+    expect(screen.getByLabelText('Name')).toHaveProperty('value', 'Newer name');
+    expect(instructions).toHaveProperty('value', 'Newer profile.');
+    expect(screen.getByRole('button', { name: 'Save agent' })).toHaveProperty('disabled', false);
+  });
+
+  it('does not fall back to local identity when a malformed cloud identity exists', async () => {
+    const agentRepo = await repoMocks(protectedJarvis);
+    const jarvisProfileRepo = await profileRepoMocks();
+    useAuthStore.setState({
+      cloudSession: {
+        user_id: '   ',
+        email: 'broken@example.com',
+        expires_at: Date.now() + 60_000,
+      },
+      localUserId: 'local-user-a',
+    });
+    render(<AgentManager />);
+
+    const instructions = await screen.findByLabelText('Custom instructions');
+    expect(instructions).toHaveProperty('value', '');
+    expect(instructions).toHaveProperty('disabled', true);
+    expect(jarvisProfileRepo.getActive).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'JARVIS Local Field' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save agent' }));
+    await waitFor(() => expect(agentRepo.update).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(agentRepo.update).mock.calls[0]?.[1]).not.toHaveProperty('system_prompt');
+  });
+
+  it('treats a non-builtin jarvis slug collision as an ordinary Agent prompt', async () => {
+    const agentRepo = await repoMocks(jarvisSlugCollision);
+    const jarvisProfileRepo = await profileRepoMocks();
+    registerOnly(jarvisSlugCollision);
+    render(<AgentManager />);
+
+    expect(screen.getByLabelText('System prompt')).toHaveProperty('value', baseAgent.system_prompt);
+    expect(screen.queryByLabelText('Custom instructions')).toBeNull();
+    expect(jarvisProfileRepo.getActive).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('System prompt'), {
+      target: { value: 'Ordinary user prompt.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save agent' }));
+    await waitFor(() =>
+      expect(agentRepo.update).toHaveBeenCalledWith(
+        jarvisSlugCollision.id,
+        expect.objectContaining({ system_prompt: 'Ordinary user prompt.' }),
+      ),
+    );
   });
 });

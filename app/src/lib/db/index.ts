@@ -146,4 +146,4 @@ export type {
   StoreName,
 } from './schema';
 export * from './repositories';
-export { seedIfEmpty, DEFAULT_AGENT_SEEDS } from './seed';
+export { seedIfEmpty } from './seed';

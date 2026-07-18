@@ -42,6 +42,10 @@ import { toast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
 import { newAgentId } from '@/lib/ids';
 import { agentRepo } from '@/lib/db';
+import { jarvisProfileRepo } from '@/lib/db/jarvisRepositories';
+import { resolveAccountIdentity } from '@/lib/accountIdentity';
+import { isProtectedJarvisAgent } from '@/lib/jarvis/identity';
+import type { JarvisProfile } from '@/lib/jarvis/profiles/types';
 import { AgentBadge } from './AgentBadge';
 import { getDefaultAgents } from './registry';
 import { getAgentRole, ROLE_PERSONAS, type AgentRole } from './personas';
@@ -142,8 +146,8 @@ function normalizeUnordered(values: readonly string[]): string[] {
   );
 }
 
-function normalizedDraft(draft: DraftState): unknown {
-  return {
+function normalizedDraft(draft: DraftState, ignoreSystemPrompt = false): unknown {
+  const normalized = {
     ...draft,
     name: draft.name.trim(),
     description: draft.description.trim(),
@@ -153,10 +157,19 @@ function normalizedDraft(draft: DraftState): unknown {
     skills: normalizeUnordered(draft.skills),
     effort_custom: draft.effort === 'custom' ? draft.effort_custom : null,
   };
+  if (ignoreSystemPrompt) delete (normalized as Partial<DraftState>).system_prompt;
+  return normalized;
 }
 
-function draftsDiffer(draft: DraftState, baseline: DraftState): boolean {
-  return JSON.stringify(normalizedDraft(draft)) !== JSON.stringify(normalizedDraft(baseline));
+function draftsDiffer(
+  draft: DraftState,
+  baseline: DraftState,
+  ignoreSystemPrompt = false,
+): boolean {
+  return (
+    JSON.stringify(normalizedDraft(draft, ignoreSystemPrompt)) !==
+    JSON.stringify(normalizedDraft(baseline, ignoreSystemPrompt))
+  );
 }
 
 function parseList(value: string): string[] {
@@ -171,6 +184,39 @@ function formatList(values: readonly string[]): string {
 }
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
+
+type SaveErrorState = {
+  kind: 'agent' | 'profile' | 'partial';
+  message: string;
+};
+
+type ProtectedProfileState =
+  | { status: 'idle'; requestGeneration: number }
+  | {
+      status: 'loading';
+      requestGeneration: number;
+      accountId: string;
+      accountScopeKey: string;
+    }
+  | {
+      status: 'unavailable';
+      requestGeneration: number;
+      accountId?: string;
+      accountScopeKey?: string;
+    }
+  | {
+      status: 'ready';
+      requestGeneration: number;
+      accountId: string;
+      accountScopeKey: string;
+      profile: JarvisProfile;
+      draft: string;
+      baseline: string;
+    };
+
+function accountScopeKey(identity: { source: 'supabase' | 'local'; accountId: string }): string {
+  return `${identity.source}\u0000${identity.accountId}`;
+}
 
 export function AgentManager() {
   const agents = useAgentStore((s) => s.agents);
@@ -197,19 +243,28 @@ export function AgentManager() {
     setSelectedId(agentList[0]?.id ?? null);
   }, [agentList, agents, selectedId]);
 
-  const selectedAgent: Agent | null = selectedId ? agents[selectedId] ?? null : null;
+  const selectedAgent: Agent | null = selectedId ? (agents[selectedId] ?? null) : null;
 
   // Draft is reset whenever the *selection* changes (not when the agent
   // reference updates after a save).
   const [draft, setDraft] = React.useState<DraftState | null>(null);
   const [baseline, setBaseline] = React.useState<DraftState | null>(null);
   const [saveState, setSaveState] = React.useState<SaveState>('idle');
-  const [saveError, setSaveError] = React.useState<string | null>(null);
+  const [saveError, setSaveError] = React.useState<SaveErrorState | null>(null);
   const draftRef = React.useRef<DraftState | null>(null);
   const baselineRef = React.useRef<DraftState | null>(null);
   const savingRef = React.useRef(false);
+  const selectedIdRef = React.useRef<AgentId | null>(selectedId);
+  const [protectedProfile, setProtectedProfile] = React.useState<ProtectedProfileState>({
+    status: 'idle',
+    requestGeneration: 0,
+  });
+  const protectedProfileRef = React.useRef<ProtectedProfileState>(protectedProfile);
+  const profileRequestGenerationRef = React.useRef(0);
   draftRef.current = draft;
   baselineRef.current = baseline;
+  protectedProfileRef.current = protectedProfile;
+  selectedIdRef.current = selectedId;
   React.useEffect(() => {
     const next = selectedAgent ? agentToDraft(selectedAgent) : null;
     setDraft(next);
@@ -225,16 +280,21 @@ export function AgentManager() {
     const handleApply = (event: Event) => {
       const detail = (event as CustomEvent<JarvisCreatorAgentDraft>).detail;
       if (!detail?.name || !detail.description || !detail.system_prompt) return;
-      setDraft((current) => current ? {
-        ...current,
-        name: detail.name,
-        description: detail.description,
-        system_prompt: detail.system_prompt,
-        temperature: detail.temperature,
-      } : current);
+      setDraft((current) =>
+        current
+          ? {
+              ...current,
+              name: detail.name,
+              description: detail.description,
+              system_prompt: detail.system_prompt,
+              temperature: detail.temperature,
+            }
+          : current,
+      );
     };
     window.addEventListener(JARVIS_CREATOR_APPLY_AGENT_EVENT, handleApply as EventListener);
-    return () => window.removeEventListener(JARVIS_CREATOR_APPLY_AGENT_EVENT, handleApply as EventListener);
+    return () =>
+      window.removeEventListener(JARVIS_CREATOR_APPLY_AGENT_EVENT, handleApply as EventListener);
   }, []);
 
   const apiKeys = useAuthStore((s) => s.apiKeys);
@@ -242,7 +302,69 @@ export function AgentManager() {
   const plan = useAuthStore((s) => s.plan);
   const defaultProvider = useAuthStore((s) => s.defaultProvider);
   const defaultLocalModel = useAuthStore((s) => s.defaultLocalModel);
+  const cloudSession = useAuthStore((s) => s.cloudSession);
+  const localUserId = useAuthStore((s) => s.localUserId);
+  const accountIdentity = resolveAccountIdentity({ cloudSession, localUserId });
+  const currentAccountScopeKey = accountIdentity ? accountScopeKey(accountIdentity) : null;
+  const protectedJarvis = selectedAgent ? isProtectedJarvisAgent(selectedAgent) : false;
   const ollamaOptions = useOllamaModelOptions();
+
+  React.useEffect(() => {
+    const requestGeneration = ++profileRequestGenerationRef.current;
+    if (!protectedJarvis) {
+      setProtectedProfile({ status: 'idle', requestGeneration });
+      return;
+    }
+    if (!accountIdentity) {
+      setProtectedProfile({ status: 'unavailable', requestGeneration });
+      return;
+    }
+
+    const { accountId } = accountIdentity;
+    const requestedAccountScopeKey = accountScopeKey(accountIdentity);
+    let cancelled = false;
+    setProtectedProfile({
+      status: 'loading',
+      requestGeneration,
+      accountId,
+      accountScopeKey: requestedAccountScopeKey,
+    });
+    void jarvisProfileRepo.getActive(accountId).then(
+      (profile) => {
+        if (cancelled || profileRequestGenerationRef.current !== requestGeneration) return;
+        if (!profile || !profile.active || profile.accountId !== accountId) {
+          setProtectedProfile({
+            status: 'unavailable',
+            requestGeneration,
+            accountId,
+            accountScopeKey: requestedAccountScopeKey,
+          });
+          return;
+        }
+        setProtectedProfile({
+          status: 'ready',
+          requestGeneration,
+          accountId,
+          accountScopeKey: requestedAccountScopeKey,
+          profile,
+          draft: profile.customInstructions,
+          baseline: profile.customInstructions,
+        });
+      },
+      () => {
+        if (cancelled || profileRequestGenerationRef.current !== requestGeneration) return;
+        setProtectedProfile({
+          status: 'unavailable',
+          requestGeneration,
+          accountId,
+          accountScopeKey: requestedAccountScopeKey,
+        });
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [accountIdentity?.accountId, accountIdentity?.source, protectedJarvis, selectedAgent?.id]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -278,14 +400,32 @@ export function AgentManager() {
     return getModelsForProvider(draft.providerChoice, providerCtx);
   }, [draft, providerCtx, ollamaOptions]);
 
-  const dirty = !!(draft && baseline && draftsDiffer(draft, baseline));
+  const visibleProtectedProfile =
+    protectedJarvis &&
+    currentAccountScopeKey !== null &&
+    'accountId' in protectedProfile &&
+    protectedProfile.accountScopeKey === currentAccountScopeKey
+      ? protectedProfile
+      : null;
+  const protectedProfileReady = visibleProtectedProfile?.status === 'ready';
+  const customInstructions =
+    visibleProtectedProfile?.status === 'ready' ? visibleProtectedProfile.draft : '';
+  const agentDirty = !!(draft && baseline && draftsDiffer(draft, baseline, protectedJarvis));
+  const profileDirty = !!(
+    visibleProtectedProfile?.status === 'ready' &&
+    normalizeLineEndings(visibleProtectedProfile.draft) !==
+      normalizeLineEndings(visibleProtectedProfile.baseline)
+  );
+  const dirty = agentDirty || profileDirty;
   const agentModelAvailable =
-    !draft || draft.providerChoice === 'default' || modelOptions.some((option) => option.id === draft.model);
+    !draft ||
+    draft.providerChoice === 'default' ||
+    modelOptions.some((option) => option.id === draft.model);
   const validationError = (() => {
     if (!draft) return 'No agent is selected.';
     if (!draft.name.trim()) return 'Agent name is required.';
     if (!draft.description.trim()) return 'Agent description is required.';
-    if (!draft.system_prompt.trim()) return 'System prompt is required.';
+    if (!protectedJarvis && !draft.system_prompt.trim()) return 'System prompt is required.';
     if (!agentModelAvailable) return 'Select an available model before saving.';
     if (!Number.isFinite(draft.temperature) || draft.temperature < 0 || draft.temperature > 2) {
       return 'Temperature must be between 0 and 2.';
@@ -328,16 +468,35 @@ export function AgentManager() {
   const handleSave = React.useCallback(async () => {
     const currentDraft = draftRef.current;
     const currentBaseline = baselineRef.current;
+    const currentProtectedJarvis = selectedAgent ? isProtectedJarvisAgent(selectedAgent) : false;
+    const currentProfile = protectedProfileRef.current;
+    const currentIdentity = resolveAccountIdentity(useAuthStore.getState());
+    const submittedAgentId = selectedAgent?.id ?? null;
+    const submittedAccountScopeKey = currentIdentity ? accountScopeKey(currentIdentity) : null;
+    const currentAgentDirty = !!(
+      currentDraft &&
+      currentBaseline &&
+      draftsDiffer(currentDraft, currentBaseline, currentProtectedJarvis)
+    );
+    const currentProfileDirty = !!(
+      currentProtectedJarvis &&
+      currentIdentity &&
+      currentProfile.status === 'ready' &&
+      currentProfile.accountScopeKey === submittedAccountScopeKey &&
+      currentProfile.requestGeneration === profileRequestGenerationRef.current &&
+      normalizeLineEndings(currentProfile.draft) !== normalizeLineEndings(currentProfile.baseline)
+    );
     if (
       savingRef.current ||
       !selectedAgent ||
       !currentDraft ||
       !currentBaseline ||
-      !draftsDiffer(currentDraft, currentBaseline)
-    ) return;
+      (!currentAgentDirty && !currentProfileDirty)
+    )
+      return;
     if (validationError) {
       setSaveState('error');
-      setSaveError(validationError);
+      setSaveError({ kind: 'agent', message: validationError });
       return;
     }
     savingRef.current = true;
@@ -346,7 +505,6 @@ export function AgentManager() {
     const patch: Partial<Agent> = {
       name: currentDraft.name,
       description: currentDraft.description,
-      system_prompt: currentDraft.system_prompt,
       model: {
         ...selectedAgent.model,
         provider: currentDraft.provider,
@@ -366,24 +524,113 @@ export function AgentManager() {
           : undefined,
       persona: currentDraft.persona,
     };
+    if (!currentProtectedJarvis) patch.system_prompt = currentDraft.system_prompt;
+    let agentChangesSaved = false;
     try {
-      const existing = await agentRepo.getById(selectedAgent.id);
-      const saved = existing
-        ? await agentRepo.update(selectedAgent.id, patch)
-        : await agentRepo.create({ ...selectedAgent, ...patch, id: selectedAgent.id });
-      registerAgent(saved);
-      const syncedDraft = agentToDraft(saved);
-      setDraft(syncedDraft);
-      setBaseline(syncedDraft);
-      draftRef.current = syncedDraft;
-      baselineRef.current = syncedDraft;
-      setSaveState('saved');
-      toast.success('Saved', `Updated "${saved.name}"`);
+      let savedAgent = selectedAgent;
+      let hasNewerAgentEdits = false;
+      let hasNewerProfileEdits = false;
+      let profileWriteCompleted = !currentProfileDirty;
+      if (currentAgentDirty) {
+        const existing = await agentRepo.getById(selectedAgent.id);
+        if (!existing && currentProtectedJarvis) {
+          throw new Error('Protected JARVIS agent row is unavailable.');
+        }
+        savedAgent = existing
+          ? await agentRepo.update(selectedAgent.id, patch)
+          : await agentRepo.create({ ...selectedAgent, ...patch, id: selectedAgent.id });
+        agentChangesSaved = true;
+        registerAgent(savedAgent);
+        if (selectedIdRef.current === submittedAgentId) {
+          const syncedDraft = agentToDraft(savedAgent);
+          const latestDraft = draftRef.current;
+          hasNewerAgentEdits = !!(
+            latestDraft && draftsDiffer(latestDraft, currentDraft, currentProtectedJarvis)
+          );
+          const nextDraft = hasNewerAgentEdits && latestDraft ? latestDraft : syncedDraft;
+          setDraft(nextDraft);
+          setBaseline(syncedDraft);
+          draftRef.current = nextDraft;
+          baselineRef.current = syncedDraft;
+        }
+      }
+
+      if (currentProfileDirty && currentIdentity && currentProfile.status === 'ready') {
+        const liveIdentity = resolveAccountIdentity(useAuthStore.getState());
+        const liveAccountScopeKey = liveIdentity ? accountScopeKey(liveIdentity) : null;
+        const liveSelectedId = selectedIdRef.current;
+        const liveSelectedAgent = liveSelectedId
+          ? useAgentStore.getState().agents[liveSelectedId]
+          : null;
+        const latestProfile = protectedProfileRef.current;
+        const profileWriteStillAuthorized =
+          liveSelectedId === submittedAgentId &&
+          liveSelectedAgent !== undefined &&
+          liveSelectedAgent !== null &&
+          isProtectedJarvisAgent(liveSelectedAgent) &&
+          liveAccountScopeKey === submittedAccountScopeKey &&
+          profileRequestGenerationRef.current === currentProfile.requestGeneration &&
+          latestProfile.status === 'ready' &&
+          latestProfile.requestGeneration === currentProfile.requestGeneration &&
+          latestProfile.accountScopeKey === submittedAccountScopeKey &&
+          latestProfile.profile.id === currentProfile.profile.id;
+
+        if (profileWriteStillAuthorized) {
+          const savedProfile = await jarvisProfileRepo.updateCustomInstructions(
+            currentIdentity.accountId,
+            currentProfile.profile.id,
+            currentProfile.draft,
+          );
+          const profileAfterSave = protectedProfileRef.current;
+          if (
+            selectedIdRef.current === submittedAgentId &&
+            profileAfterSave.status === 'ready' &&
+            profileAfterSave.requestGeneration === currentProfile.requestGeneration &&
+            profileAfterSave.accountScopeKey === submittedAccountScopeKey &&
+            profileAfterSave.profile.id === currentProfile.profile.id
+          ) {
+            hasNewerProfileEdits =
+              normalizeLineEndings(profileAfterSave.draft) !==
+              normalizeLineEndings(currentProfile.draft);
+            const nextProfile: ProtectedProfileState = {
+              ...profileAfterSave,
+              profile: savedProfile,
+              draft: hasNewerProfileEdits
+                ? profileAfterSave.draft
+                : savedProfile.customInstructions,
+              baseline: savedProfile.customInstructions,
+            };
+            protectedProfileRef.current = nextProfile;
+            setProtectedProfile(nextProfile);
+            profileWriteCompleted = true;
+          }
+        }
+      }
+
+      if (
+        selectedIdRef.current === submittedAgentId &&
+        profileWriteCompleted &&
+        !hasNewerAgentEdits &&
+        !hasNewerProfileEdits
+      ) {
+        setSaveState('saved');
+        toast.success('Saved', `Updated "${savedAgent.name}"`);
+      } else if (selectedIdRef.current === submittedAgentId) {
+        setSaveState('idle');
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Could not save this agent.';
-      setSaveState('error');
-      setSaveError(message);
-      toast.error('Save failed', message);
+      if (selectedIdRef.current === submittedAgentId) {
+        const kind: SaveErrorState['kind'] =
+          agentChangesSaved && currentProfileDirty
+            ? 'partial'
+            : currentProfileDirty && !currentAgentDirty
+              ? 'profile'
+              : 'agent';
+        setSaveState('error');
+        setSaveError({ kind, message });
+        toast.error(kind === 'partial' ? 'Profile save failed' : 'Save failed', message);
+      }
     } finally {
       savingRef.current = false;
     }
@@ -394,15 +641,13 @@ export function AgentManager() {
       if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 's') return;
       const target = event.target;
       if (target instanceof HTMLInputElement && target.type === 'file') return;
-      const currentDraft = draftRef.current;
-      const currentBaseline = baselineRef.current;
-      if (!currentDraft || !currentBaseline || !draftsDiffer(currentDraft, currentBaseline)) return;
+      if (!dirty) return;
       event.preventDefault();
       void handleSave();
     };
     window.addEventListener('keydown', handleKeyboardSave);
     return () => window.removeEventListener('keydown', handleKeyboardSave);
-  }, [handleSave]);
+  }, [dirty, handleSave]);
 
   React.useEffect(() => {
     if (saveState !== 'saved') return;
@@ -418,15 +663,37 @@ export function AgentManager() {
 
   const handleReset = () => {
     if (!baseline) return;
-    const next = { ...baseline, tools_allowed: [...baseline.tools_allowed], capabilities: [...baseline.capabilities], skills: [...baseline.skills] };
+    const next = {
+      ...baseline,
+      tools_allowed: [...baseline.tools_allowed],
+      capabilities: [...baseline.capabilities],
+      skills: [...baseline.skills],
+    };
     setDraft(next);
     draftRef.current = next;
+    setProtectedProfile((current) => {
+      if (
+        current.status !== 'ready' ||
+        currentAccountScopeKey === null ||
+        current.accountScopeKey !== currentAccountScopeKey
+      )
+        return current;
+      return { ...current, draft: current.baseline };
+    });
     setSaveState('idle');
     setSaveError(null);
   };
 
   const handleClone = async () => {
     if (!selectedAgent || !draft) return;
+    let clonedSystemPrompt = draft.system_prompt;
+    if (protectedJarvis) {
+      if (visibleProtectedProfile?.status !== 'ready') {
+        toast.error('Clone failed', 'Profile is still loading.');
+        return;
+      }
+      clonedSystemPrompt = visibleProtectedProfile.draft;
+    }
     const id = newAgentId();
     const t = Date.now();
     const cloned: Agent = {
@@ -436,7 +703,7 @@ export function AgentManager() {
       slug: `${selectedAgent.slug}_copy_${id.slice(-4)}`,
       name: draft.name + ' (copy)',
       description: draft.description,
-      system_prompt: draft.system_prompt,
+      system_prompt: clonedSystemPrompt,
       model: { ...selectedAgent.model, provider: draft.provider, model: draft.model },
       temperature: draft.temperature,
       builtin: false,
@@ -449,7 +716,10 @@ export function AgentManager() {
       setSelectedId(saved.id);
       toast.success('Cloned', `Created "${saved.name}"`);
     } catch (err) {
-      toast.error('Clone failed', err instanceof Error ? err.message : 'Could not clone this agent.');
+      toast.error(
+        'Clone failed',
+        err instanceof Error ? err.message : 'Could not clone this agent.',
+      );
     }
   };
 
@@ -477,7 +747,10 @@ export function AgentManager() {
       setSelectedId(saved.id);
       toast.success('Created', `"${saved.name}" is ready to edit.`);
     } catch (err) {
-      toast.error('Create failed', err instanceof Error ? err.message : 'Could not create this agent.');
+      toast.error(
+        'Create failed',
+        err instanceof Error ? err.message : 'Could not create this agent.',
+      );
     }
   };
 
@@ -497,7 +770,10 @@ export function AgentManager() {
       unregisterAgent(selectedAgent.id);
       toast.info('Deleted', `Removed "${name}"`);
     } catch (err) {
-      toast.error('Delete failed', err instanceof Error ? err.message : 'Could not delete this agent.');
+      toast.error(
+        'Delete failed',
+        err instanceof Error ? err.message : 'Could not delete this agent.',
+      );
     }
   };
 
@@ -532,9 +808,7 @@ export function AgentManager() {
         <div className="flex-1 overflow-y-auto py-1 scrollbar-hidden">
           {agentList.length === 0 ? (
             <div className="p-4 text-center">
-              <div className="text-secondary text-muted-foreground mb-3">
-                No agents loaded yet.
-              </div>
+              <div className="text-secondary text-muted-foreground mb-3">No agents loaded yet.</div>
               <Button variant="accent" size="sm" onClick={seedDefaults}>
                 <Sparkles className="h-3.5 w-3.5" />
                 Seed defaults
@@ -653,14 +927,21 @@ export function AgentManager() {
             <Separator />
 
             {/* Editable fields */}
-              <div className="space-y-4">
+            <div className="space-y-4">
               {saveError ? (
                 <div
                   role="alert"
                   className="flex items-start gap-2 rounded-md border border-destructive/35 bg-destructive/5 px-3 py-2 text-secondary text-destructive"
                 >
                   <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                  <span>The Agent was not saved. Your edits are still here. {saveError}</span>
+                  <span>
+                    {saveError.kind === 'partial'
+                      ? 'Agent changes were saved, but custom instructions were not saved. Your profile edit is still here. '
+                      : saveError.kind === 'profile'
+                        ? 'Custom instructions were not saved. Your edits are still here. '
+                        : 'The Agent was not saved. Your edits are still here. '}
+                    {saveError.message}
+                  </span>
                 </div>
               ) : null}
               <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
@@ -669,9 +950,7 @@ export function AgentManager() {
                   <Input
                     id="agent-name"
                     value={draft.name}
-                    onChange={(e) =>
-                      setDraft((d) => (d ? { ...d, name: e.target.value } : d))
-                    }
+                    onChange={(e) => setDraft((d) => (d ? { ...d, name: e.target.value } : d))}
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -721,9 +1000,7 @@ export function AgentManager() {
                     <select
                       id="agent-model"
                       value={agentModelAvailable ? draft.model : ''}
-                      onChange={(e) =>
-                        setDraft((d) => (d ? { ...d, model: e.target.value } : d))
-                      }
+                      onChange={(e) => setDraft((d) => (d ? { ...d, model: e.target.value } : d))}
                       className={cn(
                         'flex h-8 w-full rounded-md border border-input bg-background px-2 text-body text-foreground',
                         'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
@@ -782,18 +1059,44 @@ export function AgentManager() {
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="agent-prompt">System prompt</Label>
+                <Label htmlFor="agent-prompt">
+                  {protectedJarvis ? 'Custom instructions' : 'System prompt'}
+                </Label>
                 <Textarea
                   id="agent-prompt"
-                  value={draft.system_prompt}
-                  onChange={(e) =>
-                    setDraft((d) => (d ? { ...d, system_prompt: e.target.value } : d))
-                  }
+                  value={protectedJarvis ? customInstructions : draft.system_prompt}
+                  disabled={protectedJarvis && !protectedProfileReady}
+                  onChange={(e) => {
+                    if (!protectedJarvis) {
+                      setDraft((d) => (d ? { ...d, system_prompt: e.target.value } : d));
+                      return;
+                    }
+                    const nextInstructions = e.target.value;
+                    setProtectedProfile((current) => {
+                      if (
+                        current.status !== 'ready' ||
+                        !accountIdentity ||
+                        current.accountId !== accountIdentity.accountId
+                      )
+                        return current;
+                      return { ...current, draft: nextInstructions };
+                    });
+                  }}
                   className="min-h-[260px] font-mono text-secondary leading-relaxed"
                 />
+                {protectedJarvis && !protectedProfileReady ? (
+                  <p className="text-metadata text-muted-foreground">Profile is still loading</p>
+                ) : null}
                 <div className="text-metadata text-muted-foreground">
-                  {draft.system_prompt.length.toLocaleString()} chars · ~
-                  {Math.ceil(draft.system_prompt.length / 4).toLocaleString()} tokens
+                  {(protectedJarvis
+                    ? customInstructions
+                    : draft.system_prompt
+                  ).length.toLocaleString()}{' '}
+                  chars · ~
+                  {Math.ceil(
+                    (protectedJarvis ? customInstructions : draft.system_prompt).length / 4,
+                  ).toLocaleString()}{' '}
+                  tokens
                 </div>
               </div>
 
@@ -807,10 +1110,16 @@ export function AgentManager() {
                     id="agent-capabilities"
                     value={formatList(draft.capabilities)}
                     placeholder="writing, planning"
-                    onChange={(event) => setDraft((current) => current ? {
-                      ...current,
-                      capabilities: parseList(event.target.value) as AgentCapability[],
-                    } : current)}
+                    onChange={(event) =>
+                      setDraft((current) =>
+                        current
+                          ? {
+                              ...current,
+                              capabilities: parseList(event.target.value) as AgentCapability[],
+                            }
+                          : current,
+                      )
+                    }
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -819,10 +1128,16 @@ export function AgentManager() {
                     id="agent-skills"
                     value={formatList(draft.skills)}
                     placeholder="skill ids, comma separated"
-                    onChange={(event) => setDraft((current) => current ? {
-                      ...current,
-                      skills: parseList(event.target.value),
-                    } : current)}
+                    onChange={(event) =>
+                      setDraft((current) =>
+                        current
+                          ? {
+                              ...current,
+                              skills: parseList(event.target.value),
+                            }
+                          : current,
+                      )
+                    }
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -831,10 +1146,16 @@ export function AgentManager() {
                     id="agent-tools"
                     value={formatList(draft.tools_allowed)}
                     placeholder="* or tool ids"
-                    onChange={(event) => setDraft((current) => current ? {
-                      ...current,
-                      tools_allowed: parseList(event.target.value),
-                    } : current)}
+                    onChange={(event) =>
+                      setDraft((current) =>
+                        current
+                          ? {
+                              ...current,
+                              tools_allowed: parseList(event.target.value),
+                            }
+                          : current,
+                      )
+                    }
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -842,10 +1163,16 @@ export function AgentManager() {
                   <select
                     id="agent-memory-scope"
                     value={draft.memory_scope}
-                    onChange={(event) => setDraft((current) => current ? {
-                      ...current,
-                      memory_scope: event.target.value as MemoryScope,
-                    } : current)}
+                    onChange={(event) =>
+                      setDraft((current) =>
+                        current
+                          ? {
+                              ...current,
+                              memory_scope: event.target.value as MemoryScope,
+                            }
+                          : current,
+                      )
+                    }
                     className="flex h-8 w-full rounded-md border border-input bg-background px-2 text-body text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   >
                     <option value="agent">Agent</option>
@@ -858,14 +1185,22 @@ export function AgentManager() {
                   <select
                     id="agent-effort"
                     value={draft.effort}
-                    onChange={(event) => setDraft((current) => current ? {
-                      ...current,
-                      effort: event.target.value as AgentEffort,
-                    } : current)}
+                    onChange={(event) =>
+                      setDraft((current) =>
+                        current
+                          ? {
+                              ...current,
+                              effort: event.target.value as AgentEffort,
+                            }
+                          : current,
+                      )
+                    }
                     className="flex h-8 w-full rounded-md border border-input bg-background px-2 text-body text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   >
                     {['minimal', 'low', 'medium', 'high', 'max', 'custom'].map((effort) => (
-                      <option key={effort} value={effort}>{effort}</option>
+                      <option key={effort} value={effort}>
+                        {effort}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -874,14 +1209,22 @@ export function AgentManager() {
                   <select
                     id="agent-persona"
                     value={draft.persona}
-                    onChange={(event) => setDraft((current) => current ? {
-                      ...current,
-                      persona: event.target.value as AgentPersona,
-                    } : current)}
+                    onChange={(event) =>
+                      setDraft((current) =>
+                        current
+                          ? {
+                              ...current,
+                              persona: event.target.value as AgentPersona,
+                            }
+                          : current,
+                      )
+                    }
                     className="flex h-8 w-full rounded-md border border-input bg-background px-2 text-body text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   >
                     {['jarvis', 'athena', 'edge', 'watson', 'hal', 'custom'].map((persona) => (
-                      <option key={persona} value={persona}>{persona}</option>
+                      <option key={persona} value={persona}>
+                        {persona}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -893,10 +1236,18 @@ export function AgentManager() {
                     min={1}
                     value={draft.max_output_tokens ?? ''}
                     placeholder="Provider default"
-                    onChange={(event) => setDraft((current) => current ? {
-                      ...current,
-                      max_output_tokens: event.target.value ? Number(event.target.value) : null,
-                    } : current)}
+                    onChange={(event) =>
+                      setDraft((current) =>
+                        current
+                          ? {
+                              ...current,
+                              max_output_tokens: event.target.value
+                                ? Number(event.target.value)
+                                : null,
+                            }
+                          : current,
+                      )
+                    }
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -908,10 +1259,16 @@ export function AgentManager() {
                     max={359}
                     value={draft.color_hue ?? ''}
                     placeholder="Automatic"
-                    onChange={(event) => setDraft((current) => current ? {
-                      ...current,
-                      color_hue: event.target.value ? Number(event.target.value) : null,
-                    } : current)}
+                    onChange={(event) =>
+                      setDraft((current) =>
+                        current
+                          ? {
+                              ...current,
+                              color_hue: event.target.value ? Number(event.target.value) : null,
+                            }
+                          : current,
+                      )
+                    }
                   />
                 </div>
               </div>

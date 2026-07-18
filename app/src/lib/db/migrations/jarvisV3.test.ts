@@ -1,5 +1,7 @@
-import { DEFAULT_AGENT_SEEDS, createJarvisDb, type JarvisDexie } from '@/lib/db';
+import { createJarvisDb, type JarvisDexie } from '@/lib/db';
+import { createJarvisRepositories } from '@/lib/db/jarvisRepositories';
 import type { JarvisIdentityRevisionRow, JarvisProfileRow } from '@/lib/db/schema';
+import { LEGACY_JARVIS_AGENT_COMPATIBILITY_PROMPT } from '@/lib/jarvis/builtinAgents';
 import { TEST_INDEXED_DB, uniqueTestDbName } from '@/test/indexedDb';
 import type { Agent } from '@/types/agent';
 import {
@@ -16,11 +18,7 @@ import {
   type JarvisV3MigrationResult,
 } from './jarvisV3';
 
-const shippedJarvisSeed = DEFAULT_AGENT_SEEDS.find((seed) => seed.slug === 'jarvis');
-
-if (!shippedJarvisSeed) throw new Error('The shipped JARVIS seed is required by this test suite.');
-
-const SHIPPED_PROMPT: string = shippedJarvisSeed.system_prompt;
+const SHIPPED_PROMPT = LEGACY_JARVIS_AGENT_COMPATIBILITY_PROMPT;
 
 const NOW = 1_786_000_000_000;
 const IDENTITY_REVISION_CREATED_AT = Date.UTC(2026, 6, 16);
@@ -657,5 +655,53 @@ describe('activateJarvisV3ForAccount', () => {
     await expect(
       activateJarvisV3ForAccount(db, { accountId: 'migration-account', source: 'supabase' }),
     ).resolves.toMatchObject({ state: 'degraded', category: 'migration_failed' });
+  });
+
+  it('preserves a repository-created later profile revision across reactivation', async () => {
+    const db = await openTestDb('jarvis-v3-reactivation-profile-revision');
+    const accountId = 'reactivation-account';
+    const firstActivation = await activateJarvisV3ForAccount(db, {
+      accountId,
+      source: 'local',
+    });
+    expect(firstActivation).toMatchObject({
+      state: 'ready',
+      migration: { accountId, migrated: true },
+    });
+    if (firstActivation.state !== 'ready') throw new Error('Expected ready first activation.');
+
+    const repositories = createJarvisRepositories(db, {
+      now: () => NOW + 500,
+      newProfileRevisionId: () => 'jprof_rev_reactivation',
+    });
+    const beforeUpdate = await db.jarvis_profiles.get(firstActivation.migration.profileId);
+    if (!beforeUpdate) throw new Error('Expected the activated profile row.');
+
+    const updated = await repositories.profile.updateCustomInstructions(
+      accountId,
+      beforeUpdate.id,
+      'First line\r\nSecond line',
+    );
+    expect(updated).toMatchObject({
+      id: beforeUpdate.id,
+      accountId,
+      revisionId: 'jprof_rev_reactivation',
+      customInstructions: 'First line\nSecond line',
+      instructionSource: 'user',
+      updatedAt: NOW + 500,
+    });
+
+    const reactivated = await activateJarvisV3ForAccount(db, { accountId, source: 'local' });
+    expect(reactivated).toMatchObject({
+      state: 'ready',
+      migration: { accountId, profileId: beforeUpdate.id, migrated: false },
+    });
+    expect(await db.jarvis_profiles.get(beforeUpdate.id)).toEqual({
+      ...beforeUpdate,
+      revision_id: 'jprof_rev_reactivation',
+      custom_instructions: 'First line\nSecond line',
+      instruction_source: 'user',
+      updated_at: NOW + 500,
+    });
   });
 });

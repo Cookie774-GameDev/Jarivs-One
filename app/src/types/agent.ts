@@ -115,7 +115,7 @@ export type AgentPersona = 'jarvis' | 'athena' | 'edge' | 'watson' | 'hal' | 'cu
 
 /**
  * Where the agent definition came from.
- *   builtin   — seeded from DEFAULT_AGENT_SEEDS in code
+ *   builtin   — seeded from the canonical built-in agent roster in code
  *   user-md   — imported from a `.jarvis-agent.md` file
  *   user-form — created via Settings → Agents form
  */

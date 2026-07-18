@@ -22,13 +22,7 @@
  */
 
 import * as React from 'react';
-import {
-  ArrowLeft,
-  MessageSquare,
-  Pencil,
-  Sparkles,
-  Bot,
-} from 'lucide-react';
+import { ArrowLeft, MessageSquare, Pencil, Sparkles, Bot } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -39,6 +33,9 @@ import { useAgentStore } from '@/stores/agents';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import { chatRepo } from '@/lib/db';
+import { jarvisProfileRepo } from '@/lib/db/jarvisRepositories';
+import { resolveAccountIdentity } from '@/lib/accountIdentity';
+import { isProtectedJarvisAgent } from '@/lib/jarvis/identity';
 import type { AgentId, Agent, ProjectId, WorkspaceId } from '@/types';
 import { getProviderDisplayName } from '@/lib/ai/providerRegistry';
 import { getModelLabelForProvider } from '@/lib/ai/providerModelCatalog';
@@ -55,11 +52,48 @@ export function AgentDetail() {
 
   const workspaceId = useAuthStore((s) => s.workspaceId) as WorkspaceId | null;
   const projectId = useAuthStore((s) => s.projectId) as ProjectId | null;
+  const cloudSession = useAuthStore((s) => s.cloudSession);
+  const localUserId = useAuthStore((s) => s.localUserId);
   const providerCtx = useProviderConnectionContext();
 
-  const agent: Agent | null = activeAgentId
-    ? agents[activeAgentId as AgentId] ?? null
+  const agent: Agent | null = activeAgentId ? (agents[activeAgentId as AgentId] ?? null) : null;
+  const protectedJarvis = agent !== null && isProtectedJarvisAgent(agent);
+  const accountIdentity = resolveAccountIdentity({ cloudSession, localUserId });
+  const accountId = accountIdentity?.accountId ?? null;
+  const accountScopeKey = accountIdentity
+    ? `${accountIdentity.source}\u0000${accountIdentity.accountId}`
     : null;
+  const profileLoadGeneration = React.useRef(0);
+  const [protectedProfile, setProtectedProfile] = React.useState<{
+    accountScopeKey: string;
+    customInstructions: string;
+  } | null>(null);
+
+  React.useEffect(() => {
+    const generation = ++profileLoadGeneration.current;
+    setProtectedProfile(null);
+    if (!protectedJarvis || accountId === null || accountScopeKey === null) return;
+
+    void jarvisProfileRepo
+      .getActive(accountId)
+      .then((profile) => {
+        if (profileLoadGeneration.current !== generation) return;
+        if (!profile || profile.accountId !== accountId) return;
+        setProtectedProfile({
+          accountScopeKey,
+          customInstructions: profile.customInstructions,
+        });
+      })
+      .catch(() => {
+        // Missing or unavailable profile state remains a bounded loading view.
+      });
+
+    return () => {
+      if (profileLoadGeneration.current === generation) {
+        profileLoadGeneration.current += 1;
+      }
+    };
+  }, [accountId, accountScopeKey, protectedJarvis]);
 
   const handleBack = () => {
     setRoute('agents');
@@ -88,10 +122,7 @@ export function AgentDetail() {
       setRoute('chat');
       toast.success(`@${agent.slug} ready`, `New chat started with ${agent.name}.`);
     } catch (err) {
-      toast.error(
-        'Could not start chat',
-        err instanceof Error ? err.message : 'Try again.',
-      );
+      toast.error('Could not start chat', err instanceof Error ? err.message : 'Try again.');
     }
   };
 
@@ -104,8 +135,8 @@ export function AgentDetail() {
           <Bot className="mx-auto h-10 w-10 text-muted-foreground/60" />
           <div className="text-page-title text-foreground">No agent selected</div>
           <p className="text-secondary text-muted-foreground">
-            Pick an agent from the sidebar to see its details, or open the
-            agent manager to browse all agents.
+            Pick an agent from the sidebar to see its details, or open the agent manager to browse
+            all agents.
           </p>
           <Button
             variant="accent"
@@ -124,27 +155,28 @@ export function AgentDetail() {
 
   const role = getAgentRole(agent);
   const persona = role ? ROLE_PERSONAS[role] : null;
+  const protectedInstructions =
+    protectedJarvis &&
+    accountScopeKey !== null &&
+    protectedProfile?.accountScopeKey === accountScopeKey
+      ? protectedProfile.customInstructions
+      : null;
+  const promptLabel = protectedJarvis ? 'Custom instructions' : 'System prompt';
+  const displayedPrompt = protectedJarvis ? protectedInstructions : agent.system_prompt;
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-background">
       {/* Compact toolbar — back arrow + actions */}
       <div className="shrink-0 flex items-center justify-between gap-3 px-3 py-1 border-b border-border bg-paper-soft">
         <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={handleBack}
-            aria-label="Back to agents"
-          >
+          <Button variant="ghost" size="icon-sm" onClick={handleBack} aria-label="Back to agents">
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <span className="font-display text-foreground text-secondary tracking-tight">
-            Agent
+          <span className="font-display text-foreground text-secondary tracking-tight">Agent</span>
+          <span aria-hidden className="text-border-mid">
+            ·
           </span>
-          <span aria-hidden className="text-border-mid">·</span>
-          <span className="font-mono text-metadata text-muted-foreground">
-            {agent.slug}
-          </span>
+          <span className="font-mono text-metadata text-muted-foreground">{agent.slug}</span>
         </div>
         <div className="flex items-center gap-1.5">
           <Button variant="ghost" size="sm" onClick={handleEdit}>
@@ -175,9 +207,7 @@ export function AgentDetail() {
                   </Badge>
                 )}
               </div>
-              <p className="mt-1 text-secondary text-muted-foreground">
-                {agent.description}
-              </p>
+              <p className="mt-1 text-secondary text-muted-foreground">{agent.description}</p>
               {persona && (
                 <p className="mt-2 text-metadata text-muted-foreground/80">
                   <Sparkles className="inline h-3 w-3 mr-1 text-accent-copper" />
@@ -247,18 +277,27 @@ export function AgentDetail() {
             </div>
           </div>
 
-          {/* System prompt card */}
+          {/* Prompt / protected profile instructions card */}
           <div className="surface-panel rounded-lg p-5">
             <div className="flex items-center justify-between mb-2">
-              <div className="text-ui-strong text-foreground">System prompt</div>
+              <div className="text-ui-strong text-foreground">{promptLabel}</div>
               <div className="text-metadata text-muted-foreground">
-                {agent.system_prompt.length.toLocaleString()} chars · ~
-                {Math.ceil(agent.system_prompt.length / 4).toLocaleString()} tokens
+                {(displayedPrompt ?? '').length.toLocaleString()} chars · ~
+                {Math.ceil((displayedPrompt ?? '').length / 4).toLocaleString()} tokens
               </div>
             </div>
-            <pre className="whitespace-pre-wrap break-words font-mono text-secondary leading-relaxed text-foreground/90 bg-paper-soft rounded-md p-4 border border-border max-h-[420px] overflow-y-auto">
-              {agent.system_prompt}
-            </pre>
+            {displayedPrompt === null ? (
+              <div
+                role="status"
+                className="font-mono text-secondary text-muted-foreground bg-paper-soft rounded-md p-4 border border-border"
+              >
+                Profile is still loading
+              </div>
+            ) : (
+              <pre className="whitespace-pre-wrap break-words font-mono text-secondary leading-relaxed text-foreground/90 bg-paper-soft rounded-md p-4 border border-border max-h-[420px] overflow-y-auto">
+                {displayedPrompt}
+              </pre>
+            )}
           </div>
         </div>
       </div>
