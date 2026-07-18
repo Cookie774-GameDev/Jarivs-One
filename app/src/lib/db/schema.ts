@@ -14,10 +14,7 @@
  * user-facing types in `src/types/`, so they're defined here.
  */
 
-import type {
-  ProjectId,
-  WorkspaceId,
-} from '@/types/common';
+import type { ProjectId, WorkspaceId } from '@/types/common';
 
 /**
  * A workspace is the top-level container in Jarvis. Multi-workspace support is
@@ -113,9 +110,163 @@ export type SyncQueueRow = {
   created_at: number;
 };
 
+export type JarvisModelSnapshotRow = {
+  connection_id?: string;
+  provider_id: string;
+  model_id: string;
+  connection_mode: 'native-api' | 'external-cli' | 'local';
+  capabilities: Record<string, boolean>;
+  effective_temperature?: number;
+  captured_at: number;
+};
+
+export type JarvisSourceRefRow = {
+  id: string;
+  kind:
+    | 'user_message'
+    | 'chat'
+    | 'project'
+    | 'project_file'
+    | 'context_node'
+    | 'memory'
+    | 'terminal'
+    | 'tool_result'
+    | 'plugin'
+    | 'mcp'
+    | 'web'
+    | 'schedule'
+    | 'artifact'
+    | 'agent_output';
+  label: string;
+  uri?: string;
+  account_id: string;
+  project_id?: string;
+  trust: 'user_direct' | 'app_verified' | 'external_untrusted';
+  sensitivity: 'public' | 'private' | 'restricted' | 'secret';
+  observed_at?: number;
+  content_hash?: string;
+};
+
+export type JarvisIdentityRevisionRow = {
+  id: string;
+  identity_id: 'jarvis';
+  version: number;
+  core_hash: string;
+  response_contract_hash: string;
+  created_at: number;
+};
+
+export type JarvisProfileRow = {
+  id: string;
+  account_id: string;
+  name: string;
+  active: 0 | 1;
+  identity_version: number;
+  revision_id: string;
+  soul_revision_id?: string;
+  custom_instructions: string;
+  instruction_source: 'none' | 'user' | 'legacy_user_extension';
+  memory_scope: 'none' | 'profile' | 'shared_selected';
+  voice_enabled: boolean;
+  source_prompt_hash?: string;
+  created_at: number;
+  updated_at: number;
+  migration_version: 3;
+  migration_source: 'legacy_agent' | 'clean_default';
+  migration_source_prompt_hash?: string;
+  migration_completed_at: number;
+};
+
+export type JarvisRunRow = {
+  id: string;
+  account_id: string;
+  workspace_id?: string;
+  project_id?: string;
+  chat_id?: string;
+  parent_run_id?: string;
+  source: 'typed_chat' | 'voice' | 'schedule' | 'hive_final' | 'phone' | 'browser_chat';
+  status:
+    | 'queued'
+    | 'compiling'
+    | 'running'
+    | 'awaiting_approval'
+    | 'partial'
+    | 'completed'
+    | 'failed'
+    | 'cancelled'
+    | 'timed_out';
+  agent_id: string;
+  identity_version: number;
+  profile_revision_id: string;
+  model: JarvisModelSnapshotRow;
+  created_at: number;
+  updated_at: number;
+  completed_at?: number;
+};
+
+export type JarvisEventRow = {
+  run_id: string;
+  seq: number;
+  idempotency_key: string;
+  type:
+    | 'run_state'
+    | 'model'
+    | 'context'
+    | 'retrieval'
+    | 'tool'
+    | 'terminal'
+    | 'approval'
+    | 'artifact'
+    | 'message'
+    | 'warning'
+    | 'error';
+  status?: string;
+  title: string;
+  safe_summary?: string;
+  source_refs: JarvisSourceRefRow[];
+  artifact_ids: string[];
+  created_at: number;
+};
+
+export type JarvisApprovalRow = {
+  id: string;
+  run_id: string;
+  action_id: string;
+  action_version: number;
+  params: unknown;
+  secret_handle_refs?: { field: string; handle_id: string }[];
+  params_hash: string;
+  target_snapshot?: unknown;
+  risk: 'safe' | 'confirm' | 'dangerous';
+  status: 'pending' | 'approved' | 'denied' | 'expired' | 'consumed';
+  created_at: number;
+  decided_at?: number;
+  consumed_at?: number;
+};
+
+export type JarvisArtifactRow = {
+  id: string;
+  run_id: string;
+  kind:
+    | 'file'
+    | 'link'
+    | 'text'
+    | 'image'
+    | 'document'
+    | 'code'
+    | 'terminal_output'
+    | 'provider_result';
+  title: string;
+  uri?: string;
+  mime_type?: string;
+  safe_summary?: string;
+  source_refs: JarvisSourceRefRow[];
+  created_at: number;
+};
+
 export const DB_NAME = 'jarvis-v1';
 /** Current schema version — bumped to 2 in V2 (additive new tables). */
-export const DB_VERSION = 2;
+export const DB_VERSION = 3;
 
 /**
  * Dexie store schema strings.
@@ -135,14 +286,12 @@ export const DB_VERSION = 2;
 export const STORES_V1 = {
   workspaces: 'id, name, owner_id, updated_at',
   projects: 'id, workspace_id, name, updated_at',
-  chats:
-    'id, workspace_id, project_id, [archived+updated_at], updated_at',
+  chats: 'id, workspace_id, project_id, [archived+updated_at], updated_at',
   messages: 'id, chat_id, [chat_id+created_at], parent_id',
   agents: 'id, &slug',
   tasks:
     'id, workspace_id, project_id, status, [status+priority], due_at, scheduled_for, [workspace_id+status]',
-  memory_items:
-    'id, workspace_id, project_id, agent_id, [workspace_id+source], last_accessed_at',
+  memory_items: 'id, workspace_id, project_id, agent_id, [workspace_id+source], last_accessed_at',
   settings: 'key',
   sync_queue: 'id, status, created_at',
 } as const;
@@ -167,21 +316,30 @@ export const STORES_V1 = {
  */
 export const STORES_V2 = {
   ...STORES_V1,
-  events:
-    'id, workspace_id, project_id, start_at, [workspace_id+start_at], status',
+  events: 'id, workspace_id, project_id, start_at, [workspace_id+start_at], status',
   quick_links:
     'id, workspace_id, group_id, [workspace_id+position], [workspace_id+group_id+position], last_used_at',
   quick_link_groups: 'id, workspace_id, [workspace_id+position]',
   terminal_presets: 'id, workspace_id, &[workspace_id+slug]',
-  terminal_sessions:
-    'id, project_id, workspace_id, status, [project_id+status], last_active_at',
-  terminal_scrollback:
-    '[session_id+chunk_seq], session_id, created_at',
+  terminal_sessions: 'id, project_id, workspace_id, status, [project_id+status], last_active_at',
+  terminal_scrollback: '[session_id+chunk_seq], session_id, created_at',
   terminal_layouts: 'project_id, updated_at',
   integrations: 'id, &kind',
 } as const;
 
 /** Active store list — points to the latest version. */
-export const STORES = STORES_V2;
+export const STORES_V3 = {
+  ...STORES_V2,
+  jarvis_identity_revisions: 'id, identity_id, version, &[identity_id+version], created_at',
+  jarvis_profiles: 'id, account_id, [account_id+active], updated_at',
+  jarvis_runs:
+    'id, account_id, chat_id, parent_run_id, status, [account_id+updated_at], [chat_id+created_at]',
+  jarvis_events:
+    '[run_id+seq], run_id, idempotency_key, &[run_id+idempotency_key], type, status, created_at',
+  jarvis_approvals: 'id, run_id, status, params_hash, created_at',
+  jarvis_artifacts: 'id, run_id, kind, created_at',
+} as const;
+
+export const STORES = STORES_V3;
 
 export type StoreName = keyof typeof STORES;

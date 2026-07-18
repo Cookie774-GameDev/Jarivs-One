@@ -14,7 +14,7 @@
  * touched in the V1 tables. New install paths skip straight to V2.
  */
 
-import Dexie, { type EntityTable } from 'dexie';
+import Dexie, { type EntityTable, type Table } from 'dexie';
 import type { Agent } from '@/types/agent';
 import type { Chat, Message } from '@/types/chat';
 import type { EventRow } from '@/types/event';
@@ -30,9 +30,15 @@ import type {
 } from '@/types/terminal';
 import {
   DB_NAME,
-  DB_VERSION,
   STORES_V1,
   STORES_V2,
+  STORES_V3,
+  type JarvisApprovalRow,
+  type JarvisArtifactRow,
+  type JarvisEventRow,
+  type JarvisIdentityRevisionRow,
+  type JarvisProfileRow,
+  type JarvisRunRow,
   type Project,
   type SettingsRow,
   type SyncQueueRow,
@@ -44,7 +50,12 @@ import {
  * keyed on the row's primary key field, which gives us proper typing on
  * `db.tasks.get(id)`, `.add(row)`, `.update(id, patch)` etc.
  */
-class JarvisDexie extends Dexie {
+export type JarvisDexieDependencies = {
+  indexedDB: IDBFactory;
+  IDBKeyRange: typeof IDBKeyRange;
+};
+
+export class JarvisDexie extends Dexie {
   // V1 tables
   workspaces!: EntityTable<Workspace, 'id'>;
   projects!: EntityTable<Project, 'id'>;
@@ -71,12 +82,28 @@ class JarvisDexie extends Dexie {
   terminal_layouts!: EntityTable<TerminalLayout, 'project_id'>;
   integrations!: EntityTable<Integration, 'id'>;
 
-  constructor() {
-    super(DB_NAME);
-    // Replay history so existing V1 users auto-migrate to V2.
+  // V3 kernel tables (additive)
+  jarvis_identity_revisions!: EntityTable<JarvisIdentityRevisionRow, 'id'>;
+  jarvis_profiles!: EntityTable<JarvisProfileRow, 'id'>;
+  jarvis_runs!: EntityTable<JarvisRunRow, 'id'>;
+  jarvis_events!: Table<JarvisEventRow, [string, number]>;
+  jarvis_approvals!: EntityTable<JarvisApprovalRow, 'id'>;
+  jarvis_artifacts!: EntityTable<JarvisArtifactRow, 'id'>;
+
+  constructor(name = DB_NAME, dependencies?: JarvisDexieDependencies) {
+    super(name, dependencies);
+    // Replay every additive schema version for existing installations.
     this.version(1).stores(STORES_V1);
-    this.version(DB_VERSION).stores(STORES_V2);
+    this.version(2).stores(STORES_V2);
+    this.version(3).stores(STORES_V3);
   }
+}
+
+export function createJarvisDb(
+  name = DB_NAME,
+  dependencies?: JarvisDexieDependencies,
+): JarvisDexie {
+  return new JarvisDexie(name, dependencies);
 }
 
 /**
@@ -84,7 +111,7 @@ class JarvisDexie extends Dexie {
  * underlying IndexedDB connection - the first read or write triggers it,
  * or call `openDb()` explicitly during bootstrap.
  */
-export const db: JarvisDexie = new JarvisDexie();
+export const db: JarvisDexie = createJarvisDb();
 
 let _openPromise: Promise<JarvisDexie> | null = null;
 
@@ -109,7 +136,14 @@ export async function closeDb(): Promise<void> {
 }
 
 export { DB_NAME, DB_VERSION } from './schema';
-export type { Workspace, Project, SettingsRow, SyncQueueRow, SyncOp, SyncStatus, StoreName } from './schema';
+export type {
+  Workspace,
+  Project,
+  SettingsRow,
+  SyncQueueRow,
+  SyncOp,
+  SyncStatus,
+  StoreName,
+} from './schema';
 export * from './repositories';
 export { seedIfEmpty, DEFAULT_AGENT_SEEDS } from './seed';
-
