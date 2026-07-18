@@ -24,33 +24,21 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
 {
   "artifactId": "TEST_MATRIX",
   "batchId": "TASK0R-20260718-B",
-  "maintenanceTriggers": [
-    "GIT_BASELINE",
-    "GOAL_SAKURA",
-    "SAK",
-    "TASK0R-20260718-B",
-    "TEST_MATRIX"
-  ],
+  "maintenanceTriggers": ["GIT_BASELINE", "GOAL_SAKURA", "SAK", "TASK0R-20260718-B", "TEST_MATRIX"],
   "rows": [
     {
       "blocker": null,
       "command": "node --test .superpowers/sdd/task-0r/task-0r.test.mjs",
       "environment": "Node.js deterministic Task 0R unit suite",
       "evidenceClass": "INTEGRATION",
-      "evidenceRefs": [
-        "observed 31/31 passing Task 0R unit tests"
-      ],
+      "evidenceRefs": ["observed 31/31 passing Task 0R unit tests"],
       "expectedSuccessReportSha256": "26289399D8BE14B9853A8F46FDB47358A98E8FA3025FB29437712FFC54B8AEB1",
       "fixture": "extractor, review policy, renderer, validator, and atomic-write fixtures",
       "observedEvidence": "PASS: 31 tests passed, 0 failed.",
       "oracle": "All deterministic Task 0R unit contracts pass.",
-      "requirementIds": [
-        "DIR-001"
-      ],
+      "requirementIds": ["DIR-001"],
       "resultState": "PASS",
-      "taskIds": [
-        "Task 0R"
-      ],
+      "taskIds": ["Task 0R"],
       "testId": "TST-0R-001"
     },
     {
@@ -65,13 +53,9 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "fixture": "cloud session, malformed cloud ID, durable local ID, no identity and sign-in/out cases",
       "observedEvidence": "Focused Vitest PASS 6/6; root typecheck PASS; exact-file formatting/scope checks PASS.",
       "oracle": "Supabase identity wins, malformed cloud session fails closed, signed-out local identity remains stable, no identity never becomes local-unassigned.",
-      "requirementIds": [
-        "SIK-094"
-      ],
+      "requirementIds": ["SIK-094"],
       "resultState": "PASS",
-      "taskIds": [
-        "Task 1A"
-      ],
+      "taskIds": ["Task 1A"],
       "testId": "TST-1A-001"
     },
     {
@@ -79,20 +63,13 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "command": "npm --prefix app test -- src/App.accountIdentity.test.tsx src/features/plugins/store.test.ts src/features/tools/toolStore.test.ts src/lib/cloudSyncQueueOwner.test.ts src/lib/db/repositories.connection.test.ts src/lib/db/signalBoundTransaction.test.ts src/lib/sync.test.ts src/lib/sync.transaction.test.ts",
       "environment": "accepted Task 1B R8 revision; Vitest with account lifecycle, repository and sync integration fixtures",
       "evidenceClass": "INTEGRATION",
-      "evidenceRefs": [
-        "commit:e2fdfa0a208186b2a6afe3709c25c4600e68100b",
-        "review:Task1B-R8"
-      ],
+      "evidenceRefs": ["commit:e2fdfa0a208186b2a6afe3709c25c4600e68100b", "review:Task1B-R8"],
       "fixture": "boot, same-account epoch, account switch, delayed legacy/profile writes, plugin/tool stores, repository reads, transaction and in-flight sync races",
       "observedEvidence": "Integrated matrix PASS 143/143 in 8/8 files; consumer matrix PASS 46/46 in 7/7 files; full app suite PASS 1760/1760 in 311/311 files.",
       "oracle": "Every account-bearing path uses durable current authority; old lifecycle work cannot upload or overwrite after switch; newest valid writes are preserved.",
-      "requirementIds": [
-        "SIK-094"
-      ],
+      "requirementIds": ["SIK-094"],
       "resultState": "PASS",
-      "taskIds": [
-        "Task 1B"
-      ],
+      "taskIds": ["Task 1B"],
       "testId": "TST-1B-001"
     },
     {
@@ -100,19 +77,13 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "command": "npm --prefix app test -- src/features/all-about-me/persistence.test.ts",
       "environment": "accepted persistence-migration revision 98c7304; Vitest with legacy profile and account-ownership fixtures",
       "evidenceClass": "INTEGRATION",
-      "evidenceRefs": [
-        "commit:98c7304145a656205e96493b0d85018a53e27a9b"
-      ],
+      "evidenceRefs": ["commit:98c7304145a656205e96493b0d85018a53e27a9b"],
       "fixture": "legacy profile payloads, durable account ownership, repeat migration and newest-write preservation",
       "observedEvidence": "Focused persistence migration PASS 11/11.",
       "oracle": "Legacy profile data is preserved and claimed only by durable explicit account authority; repeat migration is stable and no local-unassigned owner is created.",
-      "requirementIds": [
-        "SIK-094"
-      ],
+      "requirementIds": ["SIK-094"],
       "resultState": "PASS",
-      "taskIds": [
-        "Task 1B prerequisite"
-      ],
+      "taskIds": ["Task 1B prerequisite"],
       "testId": "TST-1B-003"
     },
     {
@@ -144,9 +115,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "SIK-123"
       ],
       "resultState": "PASS",
-      "taskIds": [
-        "Task 2"
-      ],
+      "taskIds": ["Task 2"],
       "testId": "TST-2-001"
     },
     {
@@ -154,9 +123,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "command": "npm --prefix app test -- src/lib/jarvis/contracts/validators.test.ts && npm run typecheck && npm --prefix app run build",
       "environment": "accepted Task 3 nine-path contract revision; Vitest, TypeScript and production build",
       "evidenceClass": "INTEGRATION",
-      "evidenceRefs": [
-        "commit:d9bb11de3ff54472748999b07c678197383c52b4"
-      ],
+      "evidenceRefs": ["commit:d9bb11de3ff54472748999b07c678197383c52b4"],
       "fixture": "typed request/response/execution/capability/source contracts and malformed boundary values",
       "observedEvidence": "Exact Task 3 matrix PASS 374/374; typecheck PASS; production build PASS.",
       "oracle": "Pure contracts validate exact discriminants and reject malformed schema/enum/timestamp/number values without side effects.",
@@ -170,9 +137,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "SIK-462"
       ],
       "resultState": "PASS",
-      "taskIds": [
-        "Task 3"
-      ],
+      "taskIds": ["Task 3"],
       "testId": "TST-3-001"
     },
     {
@@ -180,17 +145,13 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "command": "npm --prefix app test",
       "environment": "Task 3 revision; full app Vitest suite",
       "evidenceClass": "INTEGRATION",
-      "evidenceRefs": [
-        "commit:d9bb11de3ff54472748999b07c678197383c52b4"
-      ],
+      "evidenceRefs": ["commit:d9bb11de3ff54472748999b07c678197383c52b4"],
       "fixture": "full app suite at Task 3 revision",
       "observedEvidence": "FAIL: 2132/2134 passed; this row truthfully remains FAIL and does not narrow or widen Task 3's exact PASS.",
       "oracle": "Every test must pass for a broad-suite PASS claim.",
       "requirementIds": [],
       "resultState": "FAIL",
-      "taskIds": [
-        "Task 3"
-      ],
+      "taskIds": ["Task 3"],
       "testId": "TST-3-002"
     },
     {
@@ -258,9 +219,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "SAK-050"
       ],
       "resultState": "PASS",
-      "taskIds": [
-        "Task 0R"
-      ],
+      "taskIds": ["Task 0R"],
       "testId": "TST-PLAN-002"
     },
     {
@@ -268,9 +227,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "command": "Run the exact ACCESS phase test manifest after its file-discovery gate closes.",
       "environment": "isolated successor worktree; non-production test data and providers only",
       "evidenceClass": "INTEGRATION",
-      "evidenceRefs": [
-        "plan:PLN-014"
-      ],
+      "evidenceRefs": ["plan:PLN-014"],
       "fixture": "Deterministic ACCESS unit, integration, native, security, accessibility, and regression fixtures as applicable",
       "observedEvidence": "Not run; implementation is pending.",
       "oracle": "Every linked ACCESS requirement satisfies its complete source-defined acceptance criteria without protected-state or production mutation.",
@@ -679,9 +636,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "ACCESS-426"
       ],
       "resultState": null,
-      "taskIds": [
-        "Access phase"
-      ],
+      "taskIds": ["Access phase"],
       "testId": "TST-PLAN-ACCESS"
     },
     {
@@ -689,9 +644,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "command": "Run the exact AGENT phase test manifest after its file-discovery gate closes.",
       "environment": "isolated successor worktree; non-production test data and providers only",
       "evidenceClass": "INTEGRATION",
-      "evidenceRefs": [
-        "plan:PLN-016"
-      ],
+      "evidenceRefs": ["plan:PLN-016"],
       "fixture": "Deterministic AGENT unit, integration, native, security, accessibility, and regression fixtures as applicable",
       "observedEvidence": "Not run; implementation is pending.",
       "oracle": "Every linked AGENT requirement satisfies its complete source-defined acceptance criteria without protected-state or production mutation.",
@@ -855,9 +808,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "AGENT-160"
       ],
       "resultState": null,
-      "taskIds": [
-        "Parallel Agents phase"
-      ],
+      "taskIds": ["Parallel Agents phase"],
       "testId": "TST-PLAN-AGENT"
     },
     {
@@ -865,21 +816,13 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "command": "Run the exact AUTH phase test manifest after its file-discovery gate closes.",
       "environment": "isolated successor worktree; non-production test data and providers only",
       "evidenceClass": "INTEGRATION",
-      "evidenceRefs": [
-        "plan:PLN-006"
-      ],
+      "evidenceRefs": ["plan:PLN-006"],
       "fixture": "Deterministic AUTH unit, integration, native, security, accessibility, and regression fixtures as applicable",
       "observedEvidence": "Not run; implementation is pending.",
       "oracle": "Every linked AUTH requirement satisfies its complete source-defined acceptance criteria without protected-state or production mutation.",
-      "requirementIds": [
-        "AUTH-001",
-        "AUTH-002",
-        "AUTH-003"
-      ],
+      "requirementIds": ["AUTH-001", "AUTH-002", "AUTH-003"],
       "resultState": null,
-      "taskIds": [
-        "Task 0R"
-      ],
+      "taskIds": ["Task 0R"],
       "testId": "TST-PLAN-AUTH"
     },
     {
@@ -887,9 +830,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "command": "Run the exact BCHAT phase test manifest after its file-discovery gate closes.",
       "environment": "isolated successor worktree; non-production test data and providers only",
       "evidenceClass": "INTEGRATION",
-      "evidenceRefs": [
-        "plan:PLN-017"
-      ],
+      "evidenceRefs": ["plan:PLN-017"],
       "fixture": "Deterministic BCHAT unit, integration, native, security, accessibility, and regression fixtures as applicable",
       "observedEvidence": "Not run; implementation is pending.",
       "oracle": "Every linked BCHAT requirement satisfies its complete source-defined acceptance criteria without protected-state or production mutation.",
@@ -1257,9 +1198,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "BCHAT-374"
       ],
       "resultState": null,
-      "taskIds": [
-        "Browser Chat phase"
-      ],
+      "taskIds": ["Browser Chat phase"],
       "testId": "TST-PLAN-BCHAT"
     },
     {
@@ -1267,9 +1206,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "command": "Run the exact BRIDGE phase test manifest after its file-discovery gate closes.",
       "environment": "isolated successor worktree; non-production test data and providers only",
       "evidenceClass": "INTEGRATION",
-      "evidenceRefs": [
-        "plan:PLN-017"
-      ],
+      "evidenceRefs": ["plan:PLN-017"],
       "fixture": "Deterministic BRIDGE unit, integration, native, security, accessibility, and regression fixtures as applicable",
       "observedEvidence": "Not run; implementation is pending.",
       "oracle": "Every linked BRIDGE requirement satisfies its complete source-defined acceptance criteria without protected-state or production mutation.",
@@ -1864,9 +1801,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "BRIDGE-600"
       ],
       "resultState": null,
-      "taskIds": [
-        "Local Tool Bridge phase"
-      ],
+      "taskIds": ["Local Tool Bridge phase"],
       "testId": "TST-PLAN-BRIDGE"
     },
     {
@@ -1874,9 +1809,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "command": "Run the exact BROWSER phase test manifest after its file-discovery gate closes.",
       "environment": "isolated successor worktree; non-production test data and providers only",
       "evidenceClass": "INTEGRATION",
-      "evidenceRefs": [
-        "plan:PLN-016"
-      ],
+      "evidenceRefs": ["plan:PLN-016"],
       "fixture": "Deterministic BROWSER unit, integration, native, security, accessibility, and regression fixtures as applicable",
       "observedEvidence": "Not run; implementation is pending.",
       "oracle": "Every linked BROWSER requirement satisfies its complete source-defined acceptance criteria without protected-state or production mutation.",
@@ -2075,9 +2008,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "BROWSER-194"
       ],
       "resultState": null,
-      "taskIds": [
-        "Messaging and Browser Operator phase"
-      ],
+      "taskIds": ["Messaging and Browser Operator phase"],
       "testId": "TST-PLAN-BROWSER"
     },
     {
@@ -2085,9 +2016,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "command": "Run the exact CANVAS phase test manifest after its file-discovery gate closes.",
       "environment": "isolated successor worktree; non-production test data and providers only",
       "evidenceClass": "INTEGRATION",
-      "evidenceRefs": [
-        "plan:PLN-013"
-      ],
+      "evidenceRefs": ["plan:PLN-013"],
       "fixture": "Deterministic CANVAS unit, integration, native, security, accessibility, and regression fixtures as applicable",
       "observedEvidence": "Not run; implementation is pending.",
       "oracle": "Every linked CANVAS requirement satisfies its complete source-defined acceptance criteria without protected-state or production mutation.",
@@ -2999,9 +2928,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "CANVAS-920"
       ],
       "resultState": null,
-      "taskIds": [
-        "Infinite Canvas phase"
-      ],
+      "taskIds": ["Infinite Canvas phase"],
       "testId": "TST-PLAN-CANVAS"
     },
     {
@@ -3009,9 +2936,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "command": "Run the exact COORD phase test manifest after its file-discovery gate closes.",
       "environment": "isolated successor worktree; non-production test data and providers only",
       "evidenceClass": "INTEGRATION",
-      "evidenceRefs": [
-        "plan:PLN-006"
-      ],
+      "evidenceRefs": ["plan:PLN-006"],
       "fixture": "Deterministic COORD unit, integration, native, security, accessibility, and regression fixtures as applicable",
       "observedEvidence": "Not run; implementation is pending.",
       "oracle": "Every linked COORD requirement satisfies its complete source-defined acceptance criteria without protected-state or production mutation.",
@@ -3219,9 +3144,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "COORD-4348"
       ],
       "resultState": null,
-      "taskIds": [
-        "Task 0R"
-      ],
+      "taskIds": ["Task 0R"],
       "testId": "TST-PLAN-COORD"
     },
     {
@@ -3229,9 +3152,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "command": "Run the exact CTX phase test manifest after its file-discovery gate closes.",
       "environment": "isolated successor worktree; non-production test data and providers only",
       "evidenceClass": "INTEGRATION",
-      "evidenceRefs": [
-        "plan:PLN-010"
-      ],
+      "evidenceRefs": ["plan:PLN-010"],
       "fixture": "Deterministic CTX unit, integration, native, security, accessibility, and regression fixtures as applicable",
       "observedEvidence": "Not run; implementation is pending.",
       "oracle": "Every linked CTX requirement satisfies its complete source-defined acceptance criteria without protected-state or production mutation.",
@@ -4841,9 +4762,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "CTX-999"
       ],
       "resultState": null,
-      "taskIds": [
-        "Context Map and Knowledge Graph phase"
-      ],
+      "taskIds": ["Context Map and Knowledge Graph phase"],
       "testId": "TST-PLAN-CTX"
     },
     {
@@ -4851,9 +4770,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "command": "Run the exact DIR phase test manifest after its file-discovery gate closes.",
       "environment": "isolated successor worktree; non-production test data and providers only",
       "evidenceClass": "INTEGRATION",
-      "evidenceRefs": [
-        "plan:PLN-006"
-      ],
+      "evidenceRefs": ["plan:PLN-006"],
       "fixture": "Deterministic DIR unit, integration, native, security, accessibility, and regression fixtures as applicable",
       "observedEvidence": "Not run; implementation is pending.",
       "oracle": "Every linked DIR requirement satisfies its complete source-defined acceptance criteria without protected-state or production mutation.",
@@ -6396,9 +6313,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "DIR-999"
       ],
       "resultState": null,
-      "taskIds": [
-        "Task 0R"
-      ],
+      "taskIds": ["Task 0R"],
       "testId": "TST-PLAN-DIR"
     },
     {
@@ -6406,9 +6321,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "command": "Run the exact JCC phase test manifest after its file-discovery gate closes.",
       "environment": "isolated successor worktree; non-production test data and providers only",
       "evidenceClass": "INTEGRATION",
-      "evidenceRefs": [
-        "plan:PLN-009"
-      ],
+      "evidenceRefs": ["plan:PLN-009"],
       "fixture": "Deterministic JCC unit, integration, native, security, accessibility, and regression fixtures as applicable",
       "observedEvidence": "Not run; implementation is pending.",
       "oracle": "Every linked JCC requirement satisfies its complete source-defined acceptance criteria without protected-state or production mutation.",
@@ -7344,9 +7257,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "JCC-989"
       ],
       "resultState": null,
-      "taskIds": [
-        "JARVIS Command Center phase"
-      ],
+      "taskIds": ["JARVIS Command Center phase"],
       "testId": "TST-PLAN-JCC"
     },
     {
@@ -7354,9 +7265,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "command": "Run the exact JRI phase test manifest after its file-discovery gate closes.",
       "environment": "isolated successor worktree; non-production test data and providers only",
       "evidenceClass": "INTEGRATION",
-      "evidenceRefs": [
-        "plan:PLN-008"
-      ],
+      "evidenceRefs": ["plan:PLN-008"],
       "fixture": "Deterministic JRI unit, integration, native, security, accessibility, and regression fixtures as applicable",
       "observedEvidence": "Not run; implementation is pending.",
       "oracle": "Every linked JRI requirement satisfies its complete source-defined acceptance criteria without protected-state or production mutation.",
@@ -8114,9 +8023,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "JRI-805"
       ],
       "resultState": null,
-      "taskIds": [
-        "JARVIS Response Intelligence phase"
-      ],
+      "taskIds": ["JARVIS Response Intelligence phase"],
       "testId": "TST-PLAN-JRI"
     },
     {
@@ -8124,9 +8031,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "command": "Run the exact MC phase test manifest after its file-discovery gate closes.",
       "environment": "isolated successor worktree; non-production test data and providers only",
       "evidenceClass": "INTEGRATION",
-      "evidenceRefs": [
-        "plan:PLN-019"
-      ],
+      "evidenceRefs": ["plan:PLN-019"],
       "fixture": "Deterministic MC unit, integration, native, security, accessibility, and regression fixtures as applicable",
       "observedEvidence": "Not run; implementation is pending.",
       "oracle": "Every linked MC requirement satisfies its complete source-defined acceptance criteria without protected-state or production mutation.",
@@ -9782,9 +9687,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "MC-999"
       ],
       "resultState": null,
-      "taskIds": [
-        "MC1"
-      ],
+      "taskIds": ["MC1"],
       "testId": "TST-PLAN-MC"
     },
     {
@@ -9792,9 +9695,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "command": "Run the exact MEM phase test manifest after its file-discovery gate closes.",
       "environment": "isolated successor worktree; non-production test data and providers only",
       "evidenceClass": "INTEGRATION",
-      "evidenceRefs": [
-        "plan:PLN-015"
-      ],
+      "evidenceRefs": ["plan:PLN-015"],
       "fixture": "Deterministic MEM unit, integration, native, security, accessibility, and regression fixtures as applicable",
       "observedEvidence": "Not run; implementation is pending.",
       "oracle": "Every linked MEM requirement satisfies its complete source-defined acceptance criteria without protected-state or production mutation.",
@@ -10206,9 +10107,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "MEM-409"
       ],
       "resultState": null,
-      "taskIds": [
-        "SOUL profile and memory phase"
-      ],
+      "taskIds": ["SOUL profile and memory phase"],
       "testId": "TST-PLAN-MEM"
     },
     {
@@ -10216,9 +10115,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "command": "Run the exact MSG phase test manifest after its file-discovery gate closes.",
       "environment": "isolated successor worktree; non-production test data and providers only",
       "evidenceClass": "INTEGRATION",
-      "evidenceRefs": [
-        "plan:PLN-016"
-      ],
+      "evidenceRefs": ["plan:PLN-016"],
       "fixture": "Deterministic MSG unit, integration, native, security, accessibility, and regression fixtures as applicable",
       "observedEvidence": "Not run; implementation is pending.",
       "oracle": "Every linked MSG requirement satisfies its complete source-defined acceptance criteria without protected-state or production mutation.",
@@ -10499,9 +10396,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "MSG-277"
       ],
       "resultState": null,
-      "taskIds": [
-        "Messaging and Browser Operator phase"
-      ],
+      "taskIds": ["Messaging and Browser Operator phase"],
       "testId": "TST-PLAN-MSG"
     },
     {
@@ -10509,9 +10404,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "command": "Run the exact ORIGAMI phase test manifest after its file-discovery gate closes.",
       "environment": "isolated successor worktree; non-production test data and providers only",
       "evidenceClass": "INTEGRATION",
-      "evidenceRefs": [
-        "plan:PLN-018"
-      ],
+      "evidenceRefs": ["plan:PLN-018"],
       "fixture": "Deterministic ORIGAMI unit, integration, native, security, accessibility, and regression fixtures as applicable",
       "observedEvidence": "Not run; implementation is pending.",
       "oracle": "Every linked ORIGAMI requirement satisfies its complete source-defined acceptance criteria without protected-state or production mutation.",
@@ -10925,9 +10818,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "ORIGAMI-407"
       ],
       "resultState": null,
-      "taskIds": [
-        "Origami Chat phase"
-      ],
+      "taskIds": ["Origami Chat phase"],
       "testId": "TST-PLAN-ORIGAMI"
     },
     {
@@ -10935,9 +10826,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "command": "Run the exact PF phase test manifest after its file-discovery gate closes.",
       "environment": "isolated successor worktree; non-production test data and providers only",
       "evidenceClass": "INTEGRATION",
-      "evidenceRefs": [
-        "plan:PLN-012"
-      ],
+      "evidenceRefs": ["plan:PLN-012"],
       "fixture": "Deterministic PF unit, integration, native, security, accessibility, and regression fixtures as applicable",
       "observedEvidence": "Not run; implementation is pending.",
       "oracle": "Every linked PF requirement satisfies its complete source-defined acceptance criteria without protected-state or production mutation.",
@@ -11679,9 +11568,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "PF-754"
       ],
       "resultState": null,
-      "taskIds": [
-        "Prompt Forge phase"
-      ],
+      "taskIds": ["Prompt Forge phase"],
       "testId": "TST-PLAN-PF"
     },
     {
@@ -11689,9 +11576,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "command": "Run the exact POLICY phase test manifest after its file-discovery gate closes.",
       "environment": "isolated successor worktree; non-production test data and providers only",
       "evidenceClass": "INTEGRATION",
-      "evidenceRefs": [
-        "plan:PLN-006"
-      ],
+      "evidenceRefs": ["plan:PLN-006"],
       "fixture": "Deterministic POLICY unit, integration, native, security, accessibility, and regression fixtures as applicable",
       "observedEvidence": "Not run; implementation is pending.",
       "oracle": "Every linked POLICY requirement satisfies its complete source-defined acceptance criteria without protected-state or production mutation.",
@@ -11753,9 +11638,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "POLICY-086"
       ],
       "resultState": null,
-      "taskIds": [
-        "Task 0R"
-      ],
+      "taskIds": ["Task 0R"],
       "testId": "TST-PLAN-POLICY"
     },
     {
@@ -11763,9 +11646,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "command": "Run the exact SAK phase test manifest after its file-discovery gate closes.",
       "environment": "isolated successor worktree; non-production test data and providers only",
       "evidenceClass": "INTEGRATION",
-      "evidenceRefs": [
-        "plan:PLN-021"
-      ],
+      "evidenceRefs": ["plan:PLN-021"],
       "fixture": "Deterministic SAK unit, integration, native, security, accessibility, and regression fixtures as applicable",
       "observedEvidence": "Not run; implementation is pending.",
       "oracle": "Every linked SAK requirement satisfies its complete source-defined acceptance criteria without protected-state or production mutation.",
@@ -13480,9 +13361,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "SAK-999"
       ],
       "resultState": null,
-      "taskIds": [
-        "SK0A"
-      ],
+      "taskIds": ["SK0A"],
       "testId": "TST-PLAN-SAK"
     },
     {
@@ -13490,9 +13369,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "command": "Run the exact SIK phase test manifest after its file-discovery gate closes.",
       "environment": "isolated successor worktree; non-production test data and providers only",
       "evidenceClass": "INTEGRATION",
-      "evidenceRefs": [
-        "plan:PLN-007"
-      ],
+      "evidenceRefs": ["plan:PLN-007"],
       "fixture": "Deterministic SIK unit, integration, native, security, accessibility, and regression fixtures as applicable",
       "observedEvidence": "Not run; implementation is pending.",
       "oracle": "Every linked SIK requirement satisfies its complete source-defined acceptance criteria without protected-state or production mutation.",
@@ -13938,9 +13815,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "SIK-466"
       ],
       "resultState": null,
-      "taskIds": [
-        "Task 4"
-      ],
+      "taskIds": ["Task 4"],
       "testId": "TST-PLAN-SIK"
     },
     {
@@ -13948,9 +13823,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "command": "Run the exact SKILL phase test manifest after its file-discovery gate closes.",
       "environment": "isolated successor worktree; non-production test data and providers only",
       "evidenceClass": "INTEGRATION",
-      "evidenceRefs": [
-        "plan:PLN-016"
-      ],
+      "evidenceRefs": ["plan:PLN-016"],
       "fixture": "Deterministic SKILL unit, integration, native, security, accessibility, and regression fixtures as applicable",
       "observedEvidence": "Not run; implementation is pending.",
       "oracle": "Every linked SKILL requirement satisfies its complete source-defined acceptance criteria without protected-state or production mutation.",
@@ -14278,9 +14151,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "SKILL-323"
       ],
       "resultState": null,
-      "taskIds": [
-        "Skills and Workflow RPC phase"
-      ],
+      "taskIds": ["Skills and Workflow RPC phase"],
       "testId": "TST-PLAN-SKILL"
     },
     {
@@ -14288,9 +14159,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "command": "Run the exact SOUL phase test manifest after its file-discovery gate closes.",
       "environment": "isolated successor worktree; non-production test data and providers only",
       "evidenceClass": "INTEGRATION",
-      "evidenceRefs": [
-        "plan:PLN-015"
-      ],
+      "evidenceRefs": ["plan:PLN-015"],
       "fixture": "Deterministic SOUL unit, integration, native, security, accessibility, and regression fixtures as applicable",
       "observedEvidence": "Not run; implementation is pending.",
       "oracle": "Every linked SOUL requirement satisfies its complete source-defined acceptance criteria without protected-state or production mutation.",
@@ -14985,9 +14854,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "SOUL-725"
       ],
       "resultState": null,
-      "taskIds": [
-        "SOUL profile and memory phase"
-      ],
+      "taskIds": ["SOUL profile and memory phase"],
       "testId": "TST-PLAN-SOUL"
     },
     {
@@ -14995,9 +14862,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "command": "Run the exact SUB phase test manifest after its file-discovery gate closes.",
       "environment": "isolated successor worktree; non-production test data and providers only",
       "evidenceClass": "INTEGRATION",
-      "evidenceRefs": [
-        "plan:PLN-014"
-      ],
+      "evidenceRefs": ["plan:PLN-014"],
       "fixture": "Deterministic SUB unit, integration, native, security, accessibility, and regression fixtures as applicable",
       "observedEvidence": "Not run; implementation is pending.",
       "oracle": "Every linked SUB requirement satisfies its complete source-defined acceptance criteria without protected-state or production mutation.",
@@ -15332,9 +15197,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "SUB-472"
       ],
       "resultState": null,
-      "taskIds": [
-        "Subscription phase"
-      ],
+      "taskIds": ["Subscription phase"],
       "testId": "TST-PLAN-SUB"
     },
     {
@@ -15342,9 +15205,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "command": "Run the exact SYS phase test manifest after its file-discovery gate closes.",
       "environment": "isolated successor worktree; non-production test data and providers only",
       "evidenceClass": "INTEGRATION",
-      "evidenceRefs": [
-        "plan:PLN-006"
-      ],
+      "evidenceRefs": ["plan:PLN-006"],
       "fixture": "Deterministic SYS unit, integration, native, security, accessibility, and regression fixtures as applicable",
       "observedEvidence": "Not run; implementation is pending.",
       "oracle": "Every linked SYS requirement satisfies its complete source-defined acceptance criteria without protected-state or production mutation.",
@@ -15519,9 +15380,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "SYS-168"
       ],
       "resultState": null,
-      "taskIds": [
-        "Task 0R"
-      ],
+      "taskIds": ["Task 0R"],
       "testId": "TST-PLAN-SYS"
     },
     {
@@ -15529,9 +15388,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "command": "Run the exact TERM phase test manifest after its file-discovery gate closes.",
       "environment": "isolated successor worktree; non-production test data and providers only",
       "evidenceClass": "INTEGRATION",
-      "evidenceRefs": [
-        "plan:PLN-011"
-      ],
+      "evidenceRefs": ["plan:PLN-011"],
       "fixture": "Deterministic TERM unit, integration, native, security, accessibility, and regression fixtures as applicable",
       "observedEvidence": "Not run; implementation is pending.",
       "oracle": "Every linked TERM requirement satisfies its complete source-defined acceptance criteria without protected-state or production mutation.",
@@ -15775,9 +15632,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "TERM-239"
       ],
       "resultState": null,
-      "taskIds": [
-        "Terminal phase"
-      ],
+      "taskIds": ["Terminal phase"],
       "testId": "TST-PLAN-TERM"
     },
     {
@@ -15802,10 +15657,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "SAK-010"
       ],
       "resultState": null,
-      "taskIds": [
-        "SK0A",
-        "Sakura final gate"
-      ],
+      "taskIds": ["SK0A", "Sakura final gate"],
       "testId": "TST-SAK-001"
     },
     {
@@ -15830,10 +15682,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "SAK-020"
       ],
       "resultState": null,
-      "taskIds": [
-        "SK0A",
-        "Sakura final gate"
-      ],
+      "taskIds": ["SK0A", "Sakura final gate"],
       "testId": "TST-SAK-002"
     },
     {
@@ -15858,10 +15707,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "SAK-030"
       ],
       "resultState": null,
-      "taskIds": [
-        "SK0A",
-        "Sakura final gate"
-      ],
+      "taskIds": ["SK0A", "Sakura final gate"],
       "testId": "TST-SAK-003"
     },
     {
@@ -15886,10 +15732,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "SAK-040"
       ],
       "resultState": null,
-      "taskIds": [
-        "SK0A",
-        "Sakura final gate"
-      ],
+      "taskIds": ["SK0A", "Sakura final gate"],
       "testId": "TST-SAK-004"
     },
     {
@@ -15914,10 +15757,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "SAK-050"
       ],
       "resultState": null,
-      "taskIds": [
-        "SK0A",
-        "Sakura final gate"
-      ],
+      "taskIds": ["SK0A", "Sakura final gate"],
       "testId": "TST-SAK-005"
     },
     {
@@ -15925,18 +15765,14 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "command": "node --test .superpowers/sdd/task-0r/task-0r.test.mjs",
       "environment": "isolated successor worktree; Node.js v24.16.0",
       "evidenceClass": "INTEGRATION",
-      "evidenceRefs": [
-        ".superpowers/sdd/task-0r/task-0r.test.mjs"
-      ],
+      "evidenceRefs": [".superpowers/sdd/task-0r/task-0r.test.mjs"],
       "expectedSuccessReportSha256": "26289399D8BE14B9853A8F46FDB47358A98E8FA3025FB29437712FFC54B8AEB1",
       "fixture": "54-source/24,353-occurrence Batch B manifest, review ledger, validators, Sakura closure, and phase sequencing",
       "observedEvidence": "Fresh focused validator unit suite passes; final count is recorded in ignored validation evidence.",
       "oracle": "All deterministic extractor, classification, projection, closure, state, staging, and report-contract tests pass.",
       "requirementIds": [],
       "resultState": "PASS",
-      "taskIds": [
-        "Task 0R"
-      ],
+      "taskIds": ["Task 0R"],
       "testId": "TST-TASK0R-001"
     },
     {
@@ -30943,9 +30779,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "TERM-239"
       ],
       "resultState": null,
-      "taskIds": [
-        "Task 0R"
-      ],
+      "taskIds": ["Task 0R"],
       "testId": "TST-TRACE-001"
     }
   ],

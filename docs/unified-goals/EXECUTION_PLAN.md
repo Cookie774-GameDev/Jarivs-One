@@ -38,34 +38,19 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
   "rows": [
     {
       "blocker": "Task 0R stop gate is still open",
-      "evidenceRefs": [
-        "commit:918de28b21a2f9e6fe773c8d50d9e9d86fd1308c",
-        "GIT-001",
-        "GIT-002"
-      ],
-      "exitCriteria": [
-        "Task 0R exact docs commit and independent PASS"
-      ],
-      "fileManifest": [
-        "docs/unified-goals/EXECUTION_PLAN.md"
-      ],
-      "gateIds": [
-        "GATE-0R"
-      ],
+      "evidenceRefs": ["commit:918de28b21a2f9e6fe773c8d50d9e9d86fd1308c", "GIT-001", "GIT-002"],
+      "exitCriteria": ["Task 0R exact docs commit and independent PASS"],
+      "fileManifest": ["docs/unified-goals/EXECUTION_PLAN.md"],
+      "gateIds": ["GATE-0R"],
       "outcome": "Baseline and isolation exist; overall phase remains open until retrospective directive reconciliation closes.",
       "owner": "/root",
       "phaseId": "PHASE-0",
       "planId": "PLN-001",
       "predecessorPlanIds": [],
-      "requirementIds": [
-        "AUTH-001",
-        "DIR-001"
-      ],
+      "requirementIds": ["AUTH-001", "DIR-001"],
       "retrospective": false,
       "status": "IMPLEMENTING",
-      "taskIds": [
-        "Phase 0"
-      ],
+      "taskIds": ["Phase 0"],
       "title": "Baseline, isolation and coordination"
     },
     {
@@ -75,33 +60,18 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "commit:7b51641fd159e5b58ef9604db9fa1010854aaa0a",
         "TST-1A-001"
       ],
-      "exitCriteria": [
-        "focused resolver tests PASS",
-        "typecheck PASS",
-        "review fix accepted"
-      ],
-      "fileManifest": [
-        "app/src/lib/accountIdentity.test.ts",
-        "app/src/lib/accountIdentity.ts"
-      ],
-      "gateIds": [
-        "GATE-1A"
-      ],
+      "exitCriteria": ["focused resolver tests PASS", "typecheck PASS", "review fix accepted"],
+      "fileManifest": ["app/src/lib/accountIdentity.test.ts", "app/src/lib/accountIdentity.ts"],
+      "gateIds": ["GATE-1A"],
       "outcome": "Exact two-file canonical account resolver atoms accepted.",
       "owner": "historical Task 1A owner; reconstructed by /root",
       "phaseId": "PHASE-1-FOUNDATION",
       "planId": "PLN-002",
-      "predecessorPlanIds": [
-        "PLN-001"
-      ],
-      "requirementIds": [
-        "SIK-094"
-      ],
+      "predecessorPlanIds": ["PLN-001"],
+      "requirementIds": ["SIK-094"],
       "retrospective": true,
       "status": "COMPLETE",
-      "taskIds": [
-        "Task 1A"
-      ],
+      "taskIds": ["Task 1A"],
       "title": "Canonical account identity resolver"
     },
     {
@@ -112,27 +82,19 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "reviewSha256:4533FFEF08FABC763DA2B87F16398E4A9B80C004A1B150E0D7B09E169DE61263",
         "TST-2-001"
       ],
-      "exitCriteria": [
-        "fresh independent review PASS",
-        "focused 28/28 PASS",
-        "app typecheck PASS"
-      ],
+      "exitCriteria": ["fresh independent review PASS", "focused 28/28 PASS", "app typecheck PASS"],
       "fileManifest": [
         "app/src/lib/jarvis/identity.test.ts",
         "app/src/lib/jarvis/identity.ts",
         "app/src/lib/jarvis/profiles/types.test.ts",
         "app/src/lib/jarvis/profiles/types.ts"
       ],
-      "gateIds": [
-        "GATE-2"
-      ],
+      "gateIds": ["GATE-2"],
       "outcome": "Exact four protected identity/profile atoms accepted; Task 2R was not instantiated.",
       "owner": "historical Task 2 owner; fresh reviewer /root/monochrome_plan_final_gate",
       "phaseId": "PHASE-1-FOUNDATION",
       "planId": "PLN-003",
-      "predecessorPlanIds": [
-        "PLN-002"
-      ],
+      "predecessorPlanIds": ["PLN-002"],
       "requirementIds": [
         "SIK-111",
         "SIK-112",
@@ -150,9 +112,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       ],
       "retrospective": true,
       "status": "COMPLETE",
-      "taskIds": [
-        "Task 2"
-      ],
+      "taskIds": ["Task 2"],
       "title": "Protected JARVIS identity and profile contracts"
     },
     {
@@ -189,24 +149,16 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "app/src/lib/sync.ts",
         "package-lock.json"
       ],
-      "gateIds": [
-        "GATE-1B-R8"
-      ],
+      "gateIds": ["GATE-1B-R8"],
       "outcome": "Accepted 17-path account ownership, serialization and sync-authority atoms; Rust OS limitation recorded separately.",
       "owner": "historical Task 1B R8 owners; reconstructed by /root",
       "phaseId": "PHASE-1-FOUNDATION",
       "planId": "PLN-004",
-      "predecessorPlanIds": [
-        "PLN-003"
-      ],
-      "requirementIds": [
-        "SIK-094"
-      ],
+      "predecessorPlanIds": ["PLN-003"],
+      "requirementIds": ["SIK-094"],
       "retrospective": true,
       "status": "COMPLETE",
-      "taskIds": [
-        "Task 1B"
-      ],
+      "taskIds": ["Task 1B"],
       "title": "App account-scope integration"
     },
     {
@@ -233,16 +185,12 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "app/src/lib/jarvis/contracts/validators.test.ts",
         "app/src/lib/jarvis/contracts/validators.ts"
       ],
-      "gateIds": [
-        "GATE-3"
-      ],
+      "gateIds": ["GATE-3"],
       "outcome": "Exact nine-path pure kernel contract atoms accepted; broad-suite 2132/2134 failure remains explicit.",
       "owner": "historical Task 3 owners; reconstructed by /root",
       "phaseId": "PHASE-1-FOUNDATION",
       "planId": "PLN-005",
-      "predecessorPlanIds": [
-        "PLN-004"
-      ],
+      "predecessorPlanIds": ["PLN-004"],
       "requirementIds": [
         "SIK-456",
         "SIK-457",
@@ -254,19 +202,12 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       ],
       "retrospective": true,
       "status": "COMPLETE",
-      "taskIds": [
-        "Task 3"
-      ],
+      "taskIds": ["Task 3"],
       "title": "Core kernel domain contracts"
     },
     {
       "blocker": "Occurrence classification acceptance, requirements matrix, deterministic validator bootstrap, exact docs commit and full independent review remain",
-      "evidenceRefs": [
-        "GIT-016",
-        "TST-0R-001",
-        "TST-0R-002",
-        "TST-0R-003"
-      ],
+      "evidenceRefs": ["GIT-016", "TST-0R-001", "TST-0R-002", "TST-0R-003"],
       "exitCriteria": [
         "zero pending/unclassified occurrences",
         "validator exit 0",
@@ -292,16 +233,12 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "docs/unified-goals/TEST_MATRIX.md",
         "docs/unified-goals/THREAT_MODEL.md"
       ],
-      "gateIds": [
-        "GATE-0R"
-      ],
+      "gateIds": ["GATE-0R"],
       "outcome": "Implementing; no product code is authorized until this row closes.",
       "owner": "/root with disjoint Task 0R authors and independent reviewers",
       "phaseId": "PHASE-0R",
       "planId": "PLN-006",
-      "predecessorPlanIds": [
-        "PLN-005"
-      ],
+      "predecessorPlanIds": ["PLN-005"],
       "requirementIds": [
         "AUTH-001",
         "AUTH-002",
@@ -2269,9 +2206,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       ],
       "retrospective": true,
       "status": "IMPLEMENTING",
-      "taskIds": [
-        "Task 0R"
-      ],
+      "taskIds": ["Task 0R"],
       "title": "Directive artifacts and retrospective traceability"
     },
     {
@@ -2279,21 +2214,14 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "evidenceRefs": [
         "plan:docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md"
       ],
-      "exitCriteria": [
-        "all Tasks 4-22 accepted",
-        "Task 22 independent full gate PASS"
-      ],
+      "exitCriteria": ["all Tasks 4-22 accepted", "Task 22 independent full gate PASS"],
       "fileManifest": [],
-      "gateIds": [
-        "GATE-KERNEL-22"
-      ],
+      "gateIds": ["GATE-KERNEL-22"],
       "outcome": "Queued behind Task 0R; each slice uses its frozen literal manifest and TDD/review gates.",
       "owner": "future disjoint kernel task owners",
       "phaseId": "PHASE-1-KERNEL",
       "planId": "PLN-007",
-      "predecessorPlanIds": [
-        "PLN-006"
-      ],
+      "predecessorPlanIds": ["PLN-006"],
       "requirementIds": [
         "SIK-001",
         "SIK-002",
@@ -2772,24 +2700,18 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
     },
     {
       "blocker": "PLN-007 canonical request/response contracts",
-      "evidenceRefs": [
-        "source:JRI"
-      ],
+      "evidenceRefs": ["source:JRI"],
       "exitCriteria": [
         "phase plan with literal manifest",
         "functional/security/performance/native gates PASS"
       ],
       "fileManifest": [],
-      "gateIds": [
-        "GATE-JRI"
-      ],
+      "gateIds": ["GATE-JRI"],
       "outcome": "Queued; extends the canonical response/request boundaries.",
       "owner": "future JRI phase owner",
       "phaseId": "PHASE-2",
       "planId": "PLN-008",
-      "predecessorPlanIds": [
-        "PLN-007"
-      ],
+      "predecessorPlanIds": ["PLN-007"],
       "requirementIds": [
         "JRI-001",
         "JRI-002",
@@ -3545,31 +3467,20 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       ],
       "retrospective": false,
       "status": "QUEUED",
-      "taskIds": [
-        "JARVIS Response Intelligence phase"
-      ],
+      "taskIds": ["JARVIS Response Intelligence phase"],
       "title": "Response Intelligence"
     },
     {
       "blocker": "PLN-007 journal/artifact contracts and PLN-008 response surface",
-      "evidenceRefs": [
-        "source:JCC"
-      ],
-      "exitCriteria": [
-        "thin Command Center proves canonical transcript/output/run state"
-      ],
+      "evidenceRefs": ["source:JCC"],
+      "exitCriteria": ["thin Command Center proves canonical transcript/output/run state"],
       "fileManifest": [],
-      "gateIds": [
-        "GATE-JCC"
-      ],
+      "gateIds": ["GATE-JCC"],
       "outcome": "Queued; no parallel execution truth store is permitted.",
       "owner": "future JCC phase owner",
       "phaseId": "PHASE-3",
       "planId": "PLN-009",
-      "predecessorPlanIds": [
-        "PLN-007",
-        "PLN-008"
-      ],
+      "predecessorPlanIds": ["PLN-007", "PLN-008"],
       "requirementIds": [
         "JCC-001",
         "JCC-002",
@@ -4503,31 +4414,23 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       ],
       "retrospective": false,
       "status": "QUEUED",
-      "taskIds": [
-        "JARVIS Command Center phase"
-      ],
+      "taskIds": ["JARVIS Command Center phase"],
       "title": "Command Center"
     },
     {
       "blocker": "PLN-007 provenance/secret/request contracts",
-      "evidenceRefs": [
-        "source:CTX"
-      ],
+      "evidenceRefs": ["source:CTX"],
       "exitCriteria": [
         "phase plan with literal manifest",
         "secret/provenance/search/graph gates PASS"
       ],
       "fileManifest": [],
-      "gateIds": [
-        "GATE-CTX"
-      ],
+      "gateIds": ["GATE-CTX"],
       "outcome": "Queued; retrieval remains untrusted evidence.",
       "owner": "future Context phase owner",
       "phaseId": "PHASE-4",
       "planId": "PLN-010",
-      "predecessorPlanIds": [
-        "PLN-007"
-      ],
+      "predecessorPlanIds": ["PLN-007"],
       "requirementIds": [
         "CTX-001",
         "CTX-002",
@@ -6135,31 +6038,20 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       ],
       "retrospective": false,
       "status": "QUEUED",
-      "taskIds": [
-        "Context Map and Knowledge Graph phase"
-      ],
+      "taskIds": ["Context Map and Knowledge Graph phase"],
       "title": "Context foundation"
     },
     {
       "blocker": "PLN-010 context and PLN-007 approval/cancellation contracts",
-      "evidenceRefs": [
-        "source:TERM"
-      ],
-      "exitCriteria": [
-        "real PTY cancellation/approval/persistence and native gates PASS"
-      ],
+      "evidenceRefs": ["source:TERM"],
+      "exitCriteria": ["real PTY cancellation/approval/persistence and native gates PASS"],
       "fileManifest": [],
-      "gateIds": [
-        "GATE-TERM"
-      ],
+      "gateIds": ["GATE-TERM"],
       "outcome": "Queued; terminal effects route through canonical approval and run state.",
       "owner": "future Terminal phase owner",
       "phaseId": "PHASE-5",
       "planId": "PLN-011",
-      "predecessorPlanIds": [
-        "PLN-007",
-        "PLN-010"
-      ],
+      "predecessorPlanIds": ["PLN-007", "PLN-010"],
       "requirementIds": [
         "TERM-002",
         "TERM-003",
@@ -6401,31 +6293,22 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       ],
       "retrospective": false,
       "status": "QUEUED",
-      "taskIds": [
-        "Terminal phase"
-      ],
+      "taskIds": ["Terminal phase"],
       "title": "Terminal integration"
     },
     {
       "blocker": "PLN-010 and PLN-011",
-      "evidenceRefs": [
-        "source:PF"
-      ],
+      "evidenceRefs": ["source:PF"],
       "exitCriteria": [
         "Prompt Forge uses canonical compiler/artifacts and preserves existing behavior"
       ],
       "fileManifest": [],
-      "gateIds": [
-        "GATE-PF"
-      ],
+      "gateIds": ["GATE-PF"],
       "outcome": "Queued; no second prompt compiler or artifact vocabulary.",
       "owner": "future Prompt Forge phase owner",
       "phaseId": "PHASE-6",
       "planId": "PLN-012",
-      "predecessorPlanIds": [
-        "PLN-010",
-        "PLN-011"
-      ],
+      "predecessorPlanIds": ["PLN-010", "PLN-011"],
       "requirementIds": [
         "PF-001",
         "PF-002",
@@ -7165,31 +7048,22 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       ],
       "retrospective": false,
       "status": "QUEUED",
-      "taskIds": [
-        "Prompt Forge phase"
-      ],
+      "taskIds": ["Prompt Forge phase"],
       "title": "Prompt Forge"
     },
     {
       "blocker": "PLN-007 and PLN-012",
-      "evidenceRefs": [
-        "source:CANVAS"
-      ],
+      "evidenceRefs": ["source:CANVAS"],
       "exitCriteria": [
         "Canvas persistence/export/performance and canonical job/artifact gates PASS"
       ],
       "fileManifest": [],
-      "gateIds": [
-        "GATE-CANVAS"
-      ],
+      "gateIds": ["GATE-CANVAS"],
       "outcome": "Queued; uses shared jobs/artifacts and preserves canvas content.",
       "owner": "future Canvas phase owner",
       "phaseId": "PHASE-7",
       "planId": "PLN-013",
-      "predecessorPlanIds": [
-        "PLN-007",
-        "PLN-012"
-      ],
+      "predecessorPlanIds": ["PLN-007", "PLN-012"],
       "requirementIds": [
         "CANVAS-001",
         "CANVAS-002",
@@ -8099,31 +7973,20 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       ],
       "retrospective": false,
       "status": "QUEUED",
-      "taskIds": [
-        "Infinite Canvas phase"
-      ],
+      "taskIds": ["Infinite Canvas phase"],
       "title": "Infinite Canvas"
     },
     {
       "blocker": "PLN-007 entitlement boundary",
-      "evidenceRefs": [
-        "source:ACCESS",
-        "source:SUB"
-      ],
-      "exitCriteria": [
-        "server-authoritative entitlement/RLS/webhook/offline gates PASS"
-      ],
+      "evidenceRefs": ["source:ACCESS", "source:SUB"],
+      "exitCriteria": ["server-authoritative entitlement/RLS/webhook/offline gates PASS"],
       "fileManifest": [],
-      "gateIds": [
-        "GATE-ACCESS-SUB-TEST-MODE"
-      ],
+      "gateIds": ["GATE-ACCESS-SUB-TEST-MODE"],
       "outcome": "Queued; local/client identity cannot grant production privilege and all Stripe activity remains in test mode.",
       "owner": "future Access/Subscription phase owner",
       "phaseId": "PHASE-13",
       "planId": "PLN-014",
-      "predecessorPlanIds": [
-        "PLN-007"
-      ],
+      "predecessorPlanIds": ["PLN-007"],
       "requirementIds": [
         "ACCESS-001",
         "ACCESS-002",
@@ -8858,33 +8721,20 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       ],
       "retrospective": false,
       "status": "QUEUED",
-      "taskIds": [
-        "Access phase",
-        "Subscription phase"
-      ],
+      "taskIds": ["Access phase", "Subscription phase"],
       "title": "Access, entitlement and subscription test mode"
     },
     {
       "blocker": "PLN-007 profile/persistence and PLN-010 context contracts",
-      "evidenceRefs": [
-        "source:SOUL",
-        "source:MEM"
-      ],
-      "exitCriteria": [
-        "profile/memory account/provenance/poisoning/correction gates PASS"
-      ],
+      "evidenceRefs": ["source:SOUL", "source:MEM"],
+      "exitCriteria": ["profile/memory account/provenance/poisoning/correction gates PASS"],
       "fileManifest": [],
-      "gateIds": [
-        "GATE-SOUL-MEM"
-      ],
+      "gateIds": ["GATE-SOUL-MEM"],
       "outcome": "Queued; memory extends context and never replaces protected identity.",
       "owner": "future SOUL/Memory phase owner",
       "phaseId": "PHASE-8",
       "planId": "PLN-015",
-      "predecessorPlanIds": [
-        "PLN-007",
-        "PLN-010"
-      ],
+      "predecessorPlanIds": ["PLN-007", "PLN-010"],
       "requirementIds": [
         "MEM-002",
         "MEM-003",
@@ -9982,35 +9832,22 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       ],
       "retrospective": false,
       "status": "QUEUED",
-      "taskIds": [
-        "SOUL profile and memory phase"
-      ],
+      "taskIds": ["SOUL profile and memory phase"],
       "title": "SOUL, profile and memory"
     },
     {
       "blocker": "PLN-007, PLN-009 and PLN-015",
-      "evidenceRefs": [
-        "source:SKILL",
-        "source:AGENT",
-        "source:MSG",
-        "source:BROWSER"
-      ],
+      "evidenceRefs": ["source:SKILL", "source:AGENT", "source:MSG", "source:BROWSER"],
       "exitCriteria": [
         "skill RPC/supply-chain, agent budget/cancel, messaging and browser security gates PASS"
       ],
       "fileManifest": [],
-      "gateIds": [
-        "GATE-SKILL-AGENT-MSG-BROWSER"
-      ],
+      "gateIds": ["GATE-SKILL-AGENT-MSG-BROWSER"],
       "outcome": "Queued; all effects use shared approvals, runs and cancellation.",
       "owner": "future Skills/Agents/Messaging/Browser owners",
       "phaseId": "PHASE-9-11",
       "planId": "PLN-016",
-      "predecessorPlanIds": [
-        "PLN-007",
-        "PLN-009",
-        "PLN-015"
-      ],
+      "predecessorPlanIds": ["PLN-007", "PLN-009", "PLN-015"],
       "requirementIds": [
         "AGENT-002",
         "AGENT-003",
@@ -10968,25 +10805,15 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
     },
     {
       "blocker": "PLN-016 messaging/browser operator contracts",
-      "evidenceRefs": [
-        "source:BCHAT",
-        "source:BRIDGE"
-      ],
-      "exitCriteria": [
-        "remote content isolation and local bridge security gates PASS"
-      ],
+      "evidenceRefs": ["source:BCHAT", "source:BRIDGE"],
+      "exitCriteria": ["remote content isolation and local bridge security gates PASS"],
       "fileManifest": [],
-      "gateIds": [
-        "GATE-BCHAT-BRIDGE",
-        "GATE-PROVIDER-FEASIBILITY"
-      ],
+      "gateIds": ["GATE-BCHAT-BRIDGE", "GATE-PROVIDER-FEASIBILITY"],
       "outcome": "Queued; Browser Chat remote content is not injected and provider feasibility remains an explicit gate.",
       "owner": "future Browser Chat/Local Tool Bridge owners",
       "phaseId": "PHASE-12",
       "planId": "PLN-017",
-      "predecessorPlanIds": [
-        "PLN-016"
-      ],
+      "predecessorPlanIds": ["PLN-016"],
       "requirementIds": [
         "BCHAT-001",
         "BCHAT-002",
@@ -11940,25 +11767,18 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       ],
       "retrospective": false,
       "status": "QUEUED",
-      "taskIds": [
-        "Browser Chat phase",
-        "Local Tool Bridge phase"
-      ],
+      "taskIds": ["Browser Chat phase", "Local Tool Bridge phase"],
       "title": "Browser Chat and Local Tool Bridge"
     },
     {
       "blocker": "PLN-007 and final integrated chat surface",
-      "evidenceRefs": [
-        "source:ORIGAMI"
-      ],
+      "evidenceRefs": ["source:ORIGAMI"],
       "exitCriteria": [
         "23-file pack closure",
         "deterministic visual/function/accessibility isolation PASS"
       ],
       "fileManifest": [],
-      "gateIds": [
-        "GATE-ORIGAMI"
-      ],
+      "gateIds": ["GATE-ORIGAMI"],
       "outcome": "Queued; implemented as an isolated appearance surface without changing canonical chat behavior.",
       "owner": "future Origami phase owner",
       "phaseId": "PHASE-14",
@@ -12386,9 +12206,7 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       ],
       "retrospective": false,
       "status": "QUEUED",
-      "taskIds": [
-        "Origami Chat phase"
-      ],
+      "taskIds": ["Origami Chat phase"],
       "title": "Origami Chat"
     },
     {
@@ -12402,16 +12220,12 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "all 41 canonical MC rows truthfully evidenced"
       ],
       "fileManifest": [],
-      "gateIds": [
-        "GATE-MONOCHROME"
-      ],
+      "gateIds": ["GATE-MONOCHROME"],
       "outcome": "Queued after functional surfaces; missing exact recording blocks only honest video-derived calibration evidence.",
       "owner": "future MonoChrome task owners",
       "phaseId": "PHASE-15",
       "planId": "PLN-019",
-      "predecessorPlanIds": [
-        "PLN-018"
-      ],
+      "predecessorPlanIds": ["PLN-018"],
       "requirementIds": [
         "MC-001",
         "MC-002",
@@ -14082,22 +13896,14 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
     },
     {
       "blocker": "PLN-007 through PLN-021",
-      "evidenceRefs": [
-        "GIT-008",
-        "TST-NATIVE-001"
-      ],
+      "evidenceRefs": ["GIT-008", "TST-NATIVE-001"],
       "exitCriteria": [
         "full current-revision matrix PASS or exact hard-gate states",
         "successor draft PR created/read back",
         "local handoff and rollback evidence complete"
       ],
-      "fileManifest": [
-        "docs/unified-goals/LOCAL_TEST_HANDOFF.md"
-      ],
-      "gateIds": [
-        "GATE-FINAL-INTEGRATION",
-        "GATE-DRAFT-PR"
-      ],
+      "fileManifest": ["docs/unified-goals/LOCAL_TEST_HANDOFF.md"],
+      "gateIds": ["GATE-FINAL-INTEGRATION", "GATE-DRAFT-PR"],
       "outcome": "Queued; draft PR only, no merge/release/production deployment.",
       "owner": "/root with independent final reviewers",
       "phaseId": "PHASE-17",
@@ -14118,17 +13924,10 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "PLN-019",
         "PLN-021"
       ],
-      "requirementIds": [
-        "SAK-044",
-        "SAK-045",
-        "SAK-046",
-        "SAK-050"
-      ],
+      "requirementIds": ["SAK-044", "SAK-045", "SAK-046", "SAK-050"],
       "retrospective": false,
       "status": "QUEUED",
-      "taskIds": [
-        "Phase 17"
-      ],
+      "taskIds": ["Phase 17"],
       "title": "Integration, review, handoff and successor draft PR"
     },
     {
@@ -14142,16 +13941,12 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "all 50 canonical SAK rows truthfully evidenced"
       ],
       "fileManifest": [],
-      "gateIds": [
-        "GATE-SAKURA"
-      ],
+      "gateIds": ["GATE-SAKURA"],
       "outcome": "QUEUED_AFTER_MONOCHROME: Sakura begins only after an accepted MonoChrome baseline; appearance-only implementation preserves behavior and all prior themes.",
       "owner": "future Sakura task owners",
       "phaseId": "PHASE-16",
       "planId": "PLN-021",
-      "predecessorPlanIds": [
-        "PLN-019"
-      ],
+      "predecessorPlanIds": ["PLN-019"],
       "requirementIds": [
         "SAK-001",
         "SAK-002",
