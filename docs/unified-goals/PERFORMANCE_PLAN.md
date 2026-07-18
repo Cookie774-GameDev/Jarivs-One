@@ -41,10 +41,17 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "measurementCommand": "npm --prefix app test -- src/lib/jarvis/promptCompiler.performance.test.ts",
       "oracle": "warm up first; measure the plan-defined sample set with performance.now(); sort samples; print count, sanitized sizes, p50, p95 and max; p95 must be below 25 ms",
       "performanceId": "PRF-001",
-      "requirementIds": ["SIK-002", "SIK-003", "SIK-014"],
+      "requirementIds": [
+        "SIK-002",
+        "SIK-003",
+        "SIK-014"
+      ],
       "resultState": null,
       "sampleCount": 1000,
-      "taskIds": ["Task 12", "Task 22"]
+      "taskIds": [
+        "Task 12",
+        "Task 22"
+      ]
     },
     {
       "blocker": "Measurement is planned and not run.",
@@ -55,10 +62,18 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "measurementCommand": "npm --prefix app test -- src/lib/jarvis/response/pipeline.performance.test.ts",
       "oracle": "warm up first; sort measured samples; print count, sanitized length, violation count, p50, p95 and max; p95 must be below 15 ms",
       "performanceId": "PRF-002",
-      "requirementIds": ["SIK-004", "SIK-005", "SIK-006", "SIK-014"],
+      "requirementIds": [
+        "SIK-004",
+        "SIK-005",
+        "SIK-006",
+        "SIK-014"
+      ],
       "resultState": null,
       "sampleCount": 1000,
-      "taskIds": ["Task 14", "Task 22"]
+      "taskIds": [
+        "Task 14",
+        "Task 22"
+      ]
     },
     {
       "blocker": "Canonical journal repositories and recovery/selectors fixture are planned for Tasks 7, 9, 18, and 22",
@@ -69,10 +84,19 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "measurementCommand": "npm --prefix app test -- src/lib/db/jarvisRepositories.test.ts src/lib/jarvis/executionJournal/recovery.test.ts src/features/jarvis-command-center/selectors.test.ts",
       "oracle": "report dataset size, operation count, p50/p95/max and sanitized heap delta; assert ordering, account scope, bounded pagination and complete cleanup",
       "performanceId": "PRF-003",
-      "requirementIds": ["SIK-007", "SIK-013", "SIK-014"],
+      "requirementIds": [
+        "SIK-007",
+        "SIK-013",
+        "SIK-014"
+      ],
       "resultState": null,
       "sampleCount": 30,
-      "taskIds": ["Task 7", "Task 9", "Task 18", "Task 22"]
+      "taskIds": [
+        "Task 7",
+        "Task 9",
+        "Task 18",
+        "Task 22"
+      ]
     },
     {
       "blocker": "Measurement is planned and not run.",
@@ -83,10 +107,20 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "measurementCommand": "npm --prefix app test -- src/features/appearance/themePrepaint.integration.test.ts src/features/appearance/themeSync.test.ts src/stores/ui.themePersistence.test.ts && npx playwright test tests/visual/monochrome/monochrome.behavior.spec.ts --config playwright.monochrome.config.ts",
       "oracle": "observe prepaint ordering, PerformanceObserver long tasks, route instance identity, request log and style/layout/paint timing; fail on any remount/reload/network or long task above 50 ms",
       "performanceId": "PRF-004",
-      "requirementIds": ["MC-009", "MC-011", "MC-031", "MC-034", "MC-036"],
+      "requirementIds": [
+        "MC-009",
+        "MC-011",
+        "MC-031",
+        "MC-034",
+        "MC-036"
+      ],
       "resultState": null,
       "sampleCount": 30,
-      "taskIds": ["MC1", "MC2", "MC9"]
+      "taskIds": [
+        "MC1",
+        "MC2",
+        "MC9"
+      ]
     },
     {
       "blocker": "Measurement is planned and not run.",
@@ -97,10 +131,20 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "measurementCommand": "npx playwright test tests/visual/monochrome/monochrome.visual.spec.ts tests/visual/monochrome/monochrome.a11y.spec.ts --config playwright.monochrome.config.ts",
       "oracle": "compare three-run pre-change and MonoChrome traces on identical fixture; report frame p50/p95/max, style/layout/paint, heap and selector counts; audit forbidden effects",
       "performanceId": "PRF-005",
-      "requirementIds": ["MC-017", "MC-021", "MC-026", "MC-027", "MC-040"],
+      "requirementIds": [
+        "MC-017",
+        "MC-021",
+        "MC-026",
+        "MC-027",
+        "MC-040"
+      ],
       "resultState": null,
       "sampleCount": 30,
-      "taskIds": ["MC4", "MC5", "MC9"]
+      "taskIds": [
+        "MC4",
+        "MC5",
+        "MC9"
+      ]
     },
     {
       "blocker": "Measurement is planned and not run.",
@@ -111,17 +155,30 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "measurementCommand": "npm run build && npx playwright test tests/visual/monochrome/monochrome.behavior.spec.ts tests/visual/monochrome/monochrome.visual.spec.ts --config playwright.monochrome.config.ts",
       "oracle": "record parent/current asset bytes, CSS selector count, startup/navigation p50/p95/max and peak memory; fail unreviewed regressions above 10%",
       "performanceId": "PRF-006",
-      "requirementIds": ["MC-021", "MC-022", "MC-023", "MC-041", "SIK-014"],
+      "requirementIds": [
+        "MC-021",
+        "MC-022",
+        "MC-023",
+        "MC-041",
+        "SIK-014"
+      ],
       "resultState": null,
       "sampleCount": 10,
-      "taskIds": ["Task 22", "MC9", "MC10", "Phase 16"]
+      "taskIds": [
+        "Task 22",
+        "MC9",
+        "MC10",
+        "Phase 16"
+      ]
     },
     {
       "blocker": "Sakura implementation and measurements are planned and not run.",
       "budget": "No random/per-frame React work; deterministic 6-12 petals; locally frozen frame/render/interaction budgets from SK0B",
       "dataset": "all frozen Sakura routes/states at 1440x900 plus constrained/reduced-motion/static-rendering cases",
       "environment": "isolated Sakura localhost runtime on a freshly proven unused port and disposable app-data profile",
-      "evidenceRefs": ["PLN-021"],
+      "evidenceRefs": [
+        "PLN-021"
+      ],
       "measurementCommand": "Run the frozen Sakura Playwright, browser performance, reduced-motion, native, and stress manifests.",
       "oracle": "Every frozen Sakura budget passes while representative non-Sakura routes remain equivalent.",
       "performanceId": "PRF-007",
@@ -137,7 +194,12 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       ],
       "resultState": null,
       "sampleCount": 30,
-      "taskIds": ["SK2", "SK3", "SK7G", "SK9"]
+      "taskIds": [
+        "SK2",
+        "SK3",
+        "SK7G",
+        "SK9"
+      ]
     }
   ],
   "schemaVersion": "task-0r.artifact/v1"

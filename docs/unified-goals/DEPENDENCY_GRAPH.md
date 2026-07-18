@@ -46,11 +46,19 @@ flowchart LR
         "docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md:### Task 1A: Resolver contract - complete"
       ],
       "exitCriteria": "Accepted narrow account resolver atoms at a33eeb6/7b51641.",
-      "gateIds": ["GATE-KERNEL-001"],
-      "lockNames": ["LOCK-COORD-EXACT-FILES"],
-      "outputIds": ["OUT-KERNEL-001"],
+      "gateIds": [
+        "GATE-KERNEL-001"
+      ],
+      "lockNames": [
+        "LOCK-COORD-EXACT-FILES"
+      ],
+      "outputIds": [
+        "OUT-KERNEL-001"
+      ],
       "predecessorIds": [],
-      "requirementIds": ["SIK-094"],
+      "requirementIds": [
+        "SIK-094"
+      ],
       "rowType": "KERNEL_TASK",
       "status": "COMPLETE",
       "taskId": "1A"
@@ -63,10 +71,18 @@ flowchart LR
         "docs/unified-goals/TEST_MATRIX.md:147-164"
       ],
       "exitCriteria": "Reviewed revision 56d669f60b0eb93309f332ed700d9b0f4b0b82ee against implementation fd0cf3cb71f552884a3eeff0de45207ef13f3f4d; focused 28/28 and app typecheck PASS; /root/monochrome_plan_final_gate PASS; report SHA-256 4533FFEF08FABC763DA2B87F16398E4A9B80C004A1B150E0D7B09E169DE61263; Task 2R NOT_REQUIRED.",
-      "gateIds": ["GATE-KERNEL-002"],
-      "lockNames": ["LOCK-COORD-EXACT-FILES"],
-      "outputIds": ["OUT-KERNEL-002"],
-      "predecessorIds": ["DEP-001"],
+      "gateIds": [
+        "GATE-KERNEL-002"
+      ],
+      "lockNames": [
+        "LOCK-COORD-EXACT-FILES"
+      ],
+      "outputIds": [
+        "OUT-KERNEL-002"
+      ],
+      "predecessorIds": [
+        "DEP-001"
+      ],
       "requirementIds": [
         "SIK-111",
         "SIK-112",
@@ -93,11 +109,21 @@ flowchart LR
         "docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md:### Task 1B: App account-scope integration - complete at accepted R8"
       ],
       "exitCriteria": "Exact 17-path account-claim integration independently accepted at e2fdfa0.",
-      "gateIds": ["GATE-KERNEL-003"],
-      "lockNames": ["LOCK-COORD-EXACT-FILES"],
-      "outputIds": ["OUT-KERNEL-003"],
-      "predecessorIds": ["DEP-002"],
-      "requirementIds": ["SIK-094"],
+      "gateIds": [
+        "GATE-KERNEL-003"
+      ],
+      "lockNames": [
+        "LOCK-COORD-EXACT-FILES"
+      ],
+      "outputIds": [
+        "OUT-KERNEL-003"
+      ],
+      "predecessorIds": [
+        "DEP-002"
+      ],
+      "requirementIds": [
+        "SIK-094"
+      ],
       "rowType": "KERNEL_TASK",
       "status": "COMPLETE",
       "taskId": "1B"
@@ -109,10 +135,18 @@ flowchart LR
         "docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md:## Task 3: Core Kernel Domain Contracts and Validators"
       ],
       "exitCriteria": "Exact nine-path contract and validator scope independently accepted at d9bb11d.",
-      "gateIds": ["GATE-KERNEL-004"],
-      "lockNames": ["LOCK-COORD-EXACT-FILES"],
-      "outputIds": ["OUT-KERNEL-004"],
-      "predecessorIds": ["DEP-003"],
+      "gateIds": [
+        "GATE-KERNEL-004"
+      ],
+      "lockNames": [
+        "LOCK-COORD-EXACT-FILES"
+      ],
+      "outputIds": [
+        "OUT-KERNEL-004"
+      ],
+      "predecessorIds": [
+        "DEP-003"
+      ],
       "requirementIds": [
         "SIK-456",
         "SIK-457",
@@ -138,9 +172,15 @@ flowchart LR
         "GATE-TASK0R-VALIDATOR",
         "GATE-TASK0R-INDEPENDENT-REVIEW"
       ],
-      "lockNames": ["LOCK-COORD-EXACT-FILES"],
-      "outputIds": ["OUT-TASK0R-ARTIFACTS"],
-      "predecessorIds": ["DEP-004"],
+      "lockNames": [
+        "LOCK-COORD-EXACT-FILES"
+      ],
+      "outputIds": [
+        "OUT-TASK0R-ARTIFACTS"
+      ],
+      "predecessorIds": [
+        "DEP-004"
+      ],
       "requirementIds": [
         "AUTH-001",
         "AUTH-002",
@@ -2116,10 +2156,18 @@ flowchart LR
         "docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md:## Task 4: Immediate Context Secret Interlock"
       ],
       "exitCriteria": "Automatic context secret/path denial and ordinary-file behavior pass focused tests and independent review.",
-      "gateIds": ["GATE-KERNEL-006"],
-      "lockNames": ["LOCK-COORD-EXACT-FILES"],
-      "outputIds": ["OUT-KERNEL-006"],
-      "predecessorIds": ["DEP-005"],
+      "gateIds": [
+        "GATE-KERNEL-006"
+      ],
+      "lockNames": [
+        "LOCK-COORD-EXACT-FILES"
+      ],
+      "outputIds": [
+        "OUT-KERNEL-006"
+      ],
+      "predecessorIds": [
+        "DEP-005"
+      ],
       "requirementIds": [
         "SIK-001",
         "SIK-002",
@@ -2571,11 +2619,21 @@ flowchart LR
         "docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md:## Task 5: Client Entitlement Interlock"
       ],
       "exitCriteria": "Client email/toggle/config cannot grant production paid or admin authority; focused review passes.",
-      "gateIds": ["GATE-KERNEL-007"],
-      "lockNames": ["LOCK-COORD-EXACT-FILES"],
-      "outputIds": ["OUT-KERNEL-007"],
-      "predecessorIds": ["DEP-006"],
-      "requirementIds": ["SIK-012"],
+      "gateIds": [
+        "GATE-KERNEL-007"
+      ],
+      "lockNames": [
+        "LOCK-COORD-EXACT-FILES"
+      ],
+      "outputIds": [
+        "OUT-KERNEL-007"
+      ],
+      "predecessorIds": [
+        "DEP-006"
+      ],
+      "requirementIds": [
+        "SIK-012"
+      ],
       "rowType": "KERNEL_TASK",
       "status": "QUEUED",
       "taskId": "5"
@@ -2586,11 +2644,21 @@ flowchart LR
         "docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md:## Task 6: Browser Operator Approval Integrity Interlock"
       ],
       "exitCriteria": "Browser approval replay/parameter mismatch fails closed before effects; focused review passes.",
-      "gateIds": ["GATE-KERNEL-008"],
-      "lockNames": ["LOCK-COORD-EXACT-FILES"],
-      "outputIds": ["OUT-KERNEL-008"],
-      "predecessorIds": ["DEP-007"],
-      "requirementIds": ["SIK-008"],
+      "gateIds": [
+        "GATE-KERNEL-008"
+      ],
+      "lockNames": [
+        "LOCK-COORD-EXACT-FILES"
+      ],
+      "outputIds": [
+        "OUT-KERNEL-008"
+      ],
+      "predecessorIds": [
+        "DEP-007"
+      ],
+      "requirementIds": [
+        "SIK-008"
+      ],
       "rowType": "KERNEL_TASK",
       "status": "QUEUED",
       "taskId": "6"
@@ -2601,11 +2669,26 @@ flowchart LR
         "docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md:## Task 7: Additive Dexie v3 Schema and Injected Database Factory"
       ],
       "exitCriteria": "Dexie v3 is additive, v2 data survives, injected database tests and independent migration review pass.",
-      "gateIds": ["GATE-KERNEL-009"],
-      "lockNames": ["LOCK-COORD-EXACT-FILES"],
-      "outputIds": ["OUT-KERNEL-009"],
-      "predecessorIds": ["DEP-008"],
-      "requirementIds": ["SIK-001", "SIK-007", "SIK-008", "SIK-009", "SIK-010", "SIK-013"],
+      "gateIds": [
+        "GATE-KERNEL-009"
+      ],
+      "lockNames": [
+        "LOCK-COORD-EXACT-FILES"
+      ],
+      "outputIds": [
+        "OUT-KERNEL-009"
+      ],
+      "predecessorIds": [
+        "DEP-008"
+      ],
+      "requirementIds": [
+        "SIK-001",
+        "SIK-007",
+        "SIK-008",
+        "SIK-009",
+        "SIK-010",
+        "SIK-013"
+      ],
       "rowType": "KERNEL_TASK",
       "status": "QUEUED",
       "taskId": "7"
@@ -2616,11 +2699,23 @@ flowchart LR
         "docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md:## Task 8: Transactional Account Activation and Legacy JARVIS Migration"
       ],
       "exitCriteria": "Fresh/upgrade/repeat/account-switch migration preserves user extensions and passes independent review.",
-      "gateIds": ["GATE-KERNEL-010"],
-      "lockNames": ["LOCK-COORD-EXACT-FILES"],
-      "outputIds": ["OUT-KERNEL-010"],
-      "predecessorIds": ["DEP-009"],
-      "requirementIds": ["SIK-001", "SIK-013", "SIK-014"],
+      "gateIds": [
+        "GATE-KERNEL-010"
+      ],
+      "lockNames": [
+        "LOCK-COORD-EXACT-FILES"
+      ],
+      "outputIds": [
+        "OUT-KERNEL-010"
+      ],
+      "predecessorIds": [
+        "DEP-009"
+      ],
+      "requirementIds": [
+        "SIK-001",
+        "SIK-013",
+        "SIK-014"
+      ],
       "rowType": "KERNEL_TASK",
       "status": "QUEUED",
       "taskId": "8"
@@ -2631,11 +2726,25 @@ flowchart LR
         "docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md:## Task 9: Explicit Mappers, Local-Only Repositories, and Sync Interlock"
       ],
       "exitCriteria": "Mapper round trips, account isolation, local-only repositories, zero generic-sync writes, and review pass.",
-      "gateIds": ["GATE-KERNEL-011"],
-      "lockNames": ["LOCK-COORD-EXACT-FILES"],
-      "outputIds": ["OUT-KERNEL-011"],
-      "predecessorIds": ["DEP-010"],
-      "requirementIds": ["SIK-007", "SIK-008", "SIK-009", "SIK-010", "SIK-013"],
+      "gateIds": [
+        "GATE-KERNEL-011"
+      ],
+      "lockNames": [
+        "LOCK-COORD-EXACT-FILES"
+      ],
+      "outputIds": [
+        "OUT-KERNEL-011"
+      ],
+      "predecessorIds": [
+        "DEP-010"
+      ],
+      "requirementIds": [
+        "SIK-007",
+        "SIK-008",
+        "SIK-009",
+        "SIK-010",
+        "SIK-013"
+      ],
       "rowType": "KERNEL_TASK",
       "status": "QUEUED",
       "taskId": "9"
@@ -2646,11 +2755,22 @@ flowchart LR
         "docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md:## Task 10: Canonical Built-Ins and Profile-Aware Agent Editor"
       ],
       "exitCriteria": "Protected JARVIS core, separate custom instructions, other-agent isolation, and independent review pass.",
-      "gateIds": ["GATE-KERNEL-012"],
-      "lockNames": ["LOCK-COORD-EXACT-FILES"],
-      "outputIds": ["OUT-KERNEL-012"],
-      "predecessorIds": ["DEP-011"],
-      "requirementIds": ["SIK-001", "SIK-014"],
+      "gateIds": [
+        "GATE-KERNEL-012"
+      ],
+      "lockNames": [
+        "LOCK-COORD-EXACT-FILES"
+      ],
+      "outputIds": [
+        "OUT-KERNEL-012"
+      ],
+      "predecessorIds": [
+        "DEP-011"
+      ],
+      "requirementIds": [
+        "SIK-001",
+        "SIK-014"
+      ],
       "rowType": "KERNEL_TASK",
       "status": "QUEUED",
       "taskId": "10"
@@ -2661,11 +2781,21 @@ flowchart LR
         "docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md:## Task 18 — Canonical execution journal, cancellation, and recovery"
       ],
       "exitCriteria": "Run allocation, transitions, idempotency, recovery, real cancellation, result authority, and review pass.",
-      "gateIds": ["GATE-KERNEL-013"],
-      "lockNames": ["LOCK-COORD-EXACT-FILES"],
-      "outputIds": ["OUT-KERNEL-013"],
-      "predecessorIds": ["DEP-012"],
-      "requirementIds": ["SIK-007"],
+      "gateIds": [
+        "GATE-KERNEL-013"
+      ],
+      "lockNames": [
+        "LOCK-COORD-EXACT-FILES"
+      ],
+      "outputIds": [
+        "OUT-KERNEL-013"
+      ],
+      "predecessorIds": [
+        "DEP-012"
+      ],
+      "requirementIds": [
+        "SIK-007"
+      ],
       "rowType": "KERNEL_TASK",
       "status": "QUEUED",
       "taskId": "18"
@@ -2676,11 +2806,22 @@ flowchart LR
         "docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md:## Task 11: Context, Capability, Immutable Envelope, and Retry Identity"
       ],
       "exitCriteria": "Runtime-authorized immutable envelope, context/capability/model snapshots, retry lineage, and review pass.",
-      "gateIds": ["GATE-KERNEL-014"],
-      "lockNames": ["LOCK-COORD-EXACT-FILES"],
-      "outputIds": ["OUT-KERNEL-014"],
-      "predecessorIds": ["DEP-013"],
-      "requirementIds": ["SIK-002", "SIK-010"],
+      "gateIds": [
+        "GATE-KERNEL-014"
+      ],
+      "lockNames": [
+        "LOCK-COORD-EXACT-FILES"
+      ],
+      "outputIds": [
+        "OUT-KERNEL-014"
+      ],
+      "predecessorIds": [
+        "DEP-013"
+      ],
+      "requirementIds": [
+        "SIK-002",
+        "SIK-010"
+      ],
       "rowType": "KERNEL_TASK",
       "status": "QUEUED",
       "taskId": "11"
@@ -2691,11 +2832,24 @@ flowchart LR
         "docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md:## Task 12: Pure Protected Prompt Compiler with Defense in Depth"
       ],
       "exitCriteria": "Pure compiler layer order/hash/budget/injection/secret/non-JARVIS tests and review pass.",
-      "gateIds": ["GATE-KERNEL-015"],
-      "lockNames": ["LOCK-COORD-EXACT-FILES"],
-      "outputIds": ["OUT-KERNEL-015"],
-      "predecessorIds": ["DEP-014"],
-      "requirementIds": ["SIK-002", "SIK-003", "SIK-010", "SIK-011"],
+      "gateIds": [
+        "GATE-KERNEL-015"
+      ],
+      "lockNames": [
+        "LOCK-COORD-EXACT-FILES"
+      ],
+      "outputIds": [
+        "OUT-KERNEL-015"
+      ],
+      "predecessorIds": [
+        "DEP-014"
+      ],
+      "requirementIds": [
+        "SIK-002",
+        "SIK-003",
+        "SIK-010",
+        "SIK-011"
+      ],
       "rowType": "KERNEL_TASK",
       "status": "QUEUED",
       "taskId": "12"
@@ -2706,11 +2860,22 @@ flowchart LR
         "docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md:## Task 13: Exact Provider Prompt Transport for Every Adapter"
       ],
       "exitCriteria": "Every registered adapter preserves the exact compiled contract or fails closed; review passes.",
-      "gateIds": ["GATE-KERNEL-016"],
-      "lockNames": ["LOCK-COORD-EXACT-FILES"],
-      "outputIds": ["OUT-KERNEL-016"],
-      "predecessorIds": ["DEP-015"],
-      "requirementIds": ["SIK-003", "SIK-014"],
+      "gateIds": [
+        "GATE-KERNEL-016"
+      ],
+      "lockNames": [
+        "LOCK-COORD-EXACT-FILES"
+      ],
+      "outputIds": [
+        "OUT-KERNEL-016"
+      ],
+      "predecessorIds": [
+        "DEP-015"
+      ],
+      "requirementIds": [
+        "SIK-003",
+        "SIK-014"
+      ],
       "rowType": "KERNEL_TASK",
       "status": "QUEUED",
       "taskId": "13"
@@ -2721,11 +2886,23 @@ flowchart LR
         "docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md:## Task 13P: Mount Account Persistence and Protected-Agent Resolution"
       ],
       "exitCriteria": "App mounts account persistence readiness and one protected-agent resolver; integration review passes.",
-      "gateIds": ["GATE-KERNEL-017"],
-      "lockNames": ["LOCK-COORD-EXACT-FILES"],
-      "outputIds": ["OUT-KERNEL-017"],
-      "predecessorIds": ["DEP-016"],
-      "requirementIds": ["SIK-001", "SIK-013", "SIK-014"],
+      "gateIds": [
+        "GATE-KERNEL-017"
+      ],
+      "lockNames": [
+        "LOCK-COORD-EXACT-FILES"
+      ],
+      "outputIds": [
+        "OUT-KERNEL-017"
+      ],
+      "predecessorIds": [
+        "DEP-016"
+      ],
+      "requirementIds": [
+        "SIK-001",
+        "SIK-013",
+        "SIK-014"
+      ],
       "rowType": "KERNEL_TASK",
       "status": "QUEUED",
       "taskId": "13P"
@@ -2736,11 +2913,23 @@ flowchart LR
         "docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md:## Task 16A: Shadow Compilation and the Three-State Runtime Gate"
       ],
       "exitCriteria": "Legacy/shadow/kernel gate, no-effect comparison, independent interlocks, rollback flag, and review pass.",
-      "gateIds": ["GATE-KERNEL-018"],
-      "lockNames": ["LOCK-COORD-EXACT-FILES"],
-      "outputIds": ["OUT-KERNEL-018"],
-      "predecessorIds": ["DEP-017"],
-      "requirementIds": ["SIK-002", "SIK-003", "SIK-014"],
+      "gateIds": [
+        "GATE-KERNEL-018"
+      ],
+      "lockNames": [
+        "LOCK-COORD-EXACT-FILES"
+      ],
+      "outputIds": [
+        "OUT-KERNEL-018"
+      ],
+      "predecessorIds": [
+        "DEP-017"
+      ],
+      "requirementIds": [
+        "SIK-002",
+        "SIK-003",
+        "SIK-014"
+      ],
       "rowType": "KERNEL_TASK",
       "status": "QUEUED",
       "taskId": "16A"
@@ -2751,11 +2940,22 @@ flowchart LR
         "docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md:## Task 14: Conditional Prose Repair and Verified Response Truth"
       ],
       "exitCriteria": "All response modes, structured round trips, truth/leak/repair/fallback tests, and review pass.",
-      "gateIds": ["GATE-KERNEL-019"],
-      "lockNames": ["LOCK-COORD-EXACT-FILES"],
-      "outputIds": ["OUT-KERNEL-019"],
-      "predecessorIds": ["DEP-018"],
-      "requirementIds": ["SIK-004", "SIK-005"],
+      "gateIds": [
+        "GATE-KERNEL-019"
+      ],
+      "lockNames": [
+        "LOCK-COORD-EXACT-FILES"
+      ],
+      "outputIds": [
+        "OUT-KERNEL-019"
+      ],
+      "predecessorIds": [
+        "DEP-018"
+      ],
+      "requirementIds": [
+        "SIK-004",
+        "SIK-005"
+      ],
       "rowType": "KERNEL_TASK",
       "status": "QUEUED",
       "taskId": "14"
@@ -2766,11 +2966,21 @@ flowchart LR
         "docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md:## Task 15: Preview and Speech Gate Preparation Only"
       ],
       "exitCriteria": "Sanitized preview and speech-ready gates pass without premature voice consumer cutover.",
-      "gateIds": ["GATE-KERNEL-020"],
-      "lockNames": ["LOCK-COORD-EXACT-FILES"],
-      "outputIds": ["OUT-KERNEL-020"],
-      "predecessorIds": ["DEP-019"],
-      "requirementIds": ["SIK-006"],
+      "gateIds": [
+        "GATE-KERNEL-020"
+      ],
+      "lockNames": [
+        "LOCK-COORD-EXACT-FILES"
+      ],
+      "outputIds": [
+        "OUT-KERNEL-020"
+      ],
+      "predecessorIds": [
+        "DEP-019"
+      ],
+      "requirementIds": [
+        "SIK-006"
+      ],
       "rowType": "KERNEL_TASK",
       "status": "QUEUED",
       "taskId": "15"
@@ -2781,11 +2991,24 @@ flowchart LR
         "docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md:## Task 16W: One Trusted Kernel Host Across Webviews"
       ],
       "exitCriteria": "Non-stealable primary host and typed secondary-window client fail closed and pass review.",
-      "gateIds": ["GATE-KERNEL-021"],
-      "lockNames": ["LOCK-COORD-EXACT-FILES"],
-      "outputIds": ["OUT-KERNEL-021"],
-      "predecessorIds": ["DEP-020"],
-      "requirementIds": ["SIK-007", "SIK-008", "SIK-009", "SIK-013"],
+      "gateIds": [
+        "GATE-KERNEL-021"
+      ],
+      "lockNames": [
+        "LOCK-COORD-EXACT-FILES"
+      ],
+      "outputIds": [
+        "OUT-KERNEL-021"
+      ],
+      "predecessorIds": [
+        "DEP-020"
+      ],
+      "requirementIds": [
+        "SIK-007",
+        "SIK-008",
+        "SIK-009",
+        "SIK-013"
+      ],
       "rowType": "KERNEL_TASK",
       "status": "QUEUED",
       "taskId": "16W"
@@ -2796,11 +3019,22 @@ flowchart LR
         "docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md:### Task 19A — Durable approval v1 and the single-use engine"
       ],
       "exitCriteria": "Durable approval engine revalidates exact account/grant/params/target/expiry under stable locks and passes review.",
-      "gateIds": ["GATE-KERNEL-022"],
-      "lockNames": ["LOCK-COORD-EXACT-FILES"],
-      "outputIds": ["OUT-KERNEL-022"],
-      "predecessorIds": ["DEP-021"],
-      "requirementIds": ["SIK-007", "SIK-008"],
+      "gateIds": [
+        "GATE-KERNEL-022"
+      ],
+      "lockNames": [
+        "LOCK-COORD-EXACT-FILES"
+      ],
+      "outputIds": [
+        "OUT-KERNEL-022"
+      ],
+      "predecessorIds": [
+        "DEP-021"
+      ],
+      "requirementIds": [
+        "SIK-007",
+        "SIK-008"
+      ],
       "rowType": "KERNEL_TASK",
       "status": "QUEUED",
       "taskId": "19A"
@@ -2811,11 +3045,22 @@ flowchart LR
         "docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md:### Task 19B — Canonical action, legacy-card, recovery, and auto-approve adapters"
       ],
       "exitCriteria": "Real canonical action adapters execute at most one effect and preserve recovery/legacy projection truth.",
-      "gateIds": ["GATE-KERNEL-023"],
-      "lockNames": ["LOCK-COORD-EXACT-FILES"],
-      "outputIds": ["OUT-KERNEL-023"],
-      "predecessorIds": ["DEP-022"],
-      "requirementIds": ["SIK-007", "SIK-008"],
+      "gateIds": [
+        "GATE-KERNEL-023"
+      ],
+      "lockNames": [
+        "LOCK-COORD-EXACT-FILES"
+      ],
+      "outputIds": [
+        "OUT-KERNEL-023"
+      ],
+      "predecessorIds": [
+        "DEP-022"
+      ],
+      "requirementIds": [
+        "SIK-007",
+        "SIK-008"
+      ],
       "rowType": "KERNEL_TASK",
       "status": "QUEUED",
       "taskId": "19B"
@@ -2826,11 +3071,22 @@ flowchart LR
         "docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md:### Task 19C — Verified terminal cancellation"
       ],
       "exitCriteria": "Terminal cancellation reaches the real PTY/process and journals verified terminal state.",
-      "gateIds": ["GATE-KERNEL-024"],
-      "lockNames": ["LOCK-COORD-EXACT-FILES"],
-      "outputIds": ["OUT-KERNEL-024"],
-      "predecessorIds": ["DEP-023"],
-      "requirementIds": ["SIK-007", "SIK-008"],
+      "gateIds": [
+        "GATE-KERNEL-024"
+      ],
+      "lockNames": [
+        "LOCK-COORD-EXACT-FILES"
+      ],
+      "outputIds": [
+        "OUT-KERNEL-024"
+      ],
+      "predecessorIds": [
+        "DEP-023"
+      ],
+      "requirementIds": [
+        "SIK-007",
+        "SIK-008"
+      ],
       "rowType": "KERNEL_TASK",
       "status": "QUEUED",
       "taskId": "19C"
@@ -2841,11 +3097,22 @@ flowchart LR
         "docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md:### Task 19D — Browser Operator canonical adapter"
       ],
       "exitCriteria": "Browser Operator exact approval/live capability/origin/target/cancel/unavailable tests and review pass.",
-      "gateIds": ["GATE-KERNEL-025"],
-      "lockNames": ["LOCK-COORD-EXACT-FILES"],
-      "outputIds": ["OUT-KERNEL-025"],
-      "predecessorIds": ["DEP-024"],
-      "requirementIds": ["SIK-007", "SIK-008"],
+      "gateIds": [
+        "GATE-KERNEL-025"
+      ],
+      "lockNames": [
+        "LOCK-COORD-EXACT-FILES"
+      ],
+      "outputIds": [
+        "OUT-KERNEL-025"
+      ],
+      "predecessorIds": [
+        "DEP-024"
+      ],
+      "requirementIds": [
+        "SIK-007",
+        "SIK-008"
+      ],
       "rowType": "KERNEL_TASK",
       "status": "QUEUED",
       "taskId": "19D"
@@ -2856,11 +3123,22 @@ flowchart LR
         "docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md:### Task 20A — Artifact v1 contract, backing verification, and persistence"
       ],
       "exitCriteria": "Private artifact issuer verifies real backing, account/run/source separation, idempotency, and review.",
-      "gateIds": ["GATE-KERNEL-026"],
-      "lockNames": ["LOCK-COORD-EXACT-FILES"],
-      "outputIds": ["OUT-KERNEL-026"],
-      "predecessorIds": ["DEP-025"],
-      "requirementIds": ["SIK-009", "SIK-010"],
+      "gateIds": [
+        "GATE-KERNEL-026"
+      ],
+      "lockNames": [
+        "LOCK-COORD-EXACT-FILES"
+      ],
+      "outputIds": [
+        "OUT-KERNEL-026"
+      ],
+      "predecessorIds": [
+        "DEP-025"
+      ],
+      "requirementIds": [
+        "SIK-009",
+        "SIK-010"
+      ],
       "rowType": "KERNEL_TASK",
       "status": "QUEUED",
       "taskId": "20A"
@@ -2871,11 +3149,22 @@ flowchart LR
         "docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md:### Task 20B — Bind receipts to real executor producer adapters"
       ],
       "exitCriteria": "Real file/link/terminal/provider producers issue no phantom artifacts and pass review.",
-      "gateIds": ["GATE-KERNEL-027"],
-      "lockNames": ["LOCK-COORD-EXACT-FILES"],
-      "outputIds": ["OUT-KERNEL-027"],
-      "predecessorIds": ["DEP-026"],
-      "requirementIds": ["SIK-009", "SIK-010"],
+      "gateIds": [
+        "GATE-KERNEL-027"
+      ],
+      "lockNames": [
+        "LOCK-COORD-EXACT-FILES"
+      ],
+      "outputIds": [
+        "OUT-KERNEL-027"
+      ],
+      "predecessorIds": [
+        "DEP-026"
+      ],
+      "requirementIds": [
+        "SIK-009",
+        "SIK-010"
+      ],
       "rowType": "KERNEL_TASK",
       "status": "QUEUED",
       "taskId": "20B"
@@ -2886,11 +3175,23 @@ flowchart LR
         "docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md:### Task 20C — Stop legacy lifecycle writers and expose read-only projections"
       ],
       "exitCriteria": "Legacy lifecycle/artifact writers stop; bounded read-only projections retain compatibility and pass review.",
-      "gateIds": ["GATE-KERNEL-028"],
-      "lockNames": ["LOCK-COORD-EXACT-FILES"],
-      "outputIds": ["OUT-KERNEL-028"],
-      "predecessorIds": ["DEP-027"],
-      "requirementIds": ["SIK-007", "SIK-009", "SIK-014"],
+      "gateIds": [
+        "GATE-KERNEL-028"
+      ],
+      "lockNames": [
+        "LOCK-COORD-EXACT-FILES"
+      ],
+      "outputIds": [
+        "OUT-KERNEL-028"
+      ],
+      "predecessorIds": [
+        "DEP-027"
+      ],
+      "requirementIds": [
+        "SIK-007",
+        "SIK-009",
+        "SIK-014"
+      ],
       "rowType": "KERNEL_TASK",
       "status": "QUEUED",
       "taskId": "20C"
@@ -2901,10 +3202,18 @@ flowchart LR
         "docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md:## Task 16B: Typed-Chat Kernel Cutover and Tested Default Switch"
       ],
       "exitCriteria": "Typed JARVIS uses the mounted canonical runtime and kernel becomes the tested default with rollback interlocks.",
-      "gateIds": ["GATE-KERNEL-029"],
-      "lockNames": ["LOCK-COORD-EXACT-FILES"],
-      "outputIds": ["OUT-KERNEL-029"],
-      "predecessorIds": ["DEP-028"],
+      "gateIds": [
+        "GATE-KERNEL-029"
+      ],
+      "lockNames": [
+        "LOCK-COORD-EXACT-FILES"
+      ],
+      "outputIds": [
+        "OUT-KERNEL-029"
+      ],
+      "predecessorIds": [
+        "DEP-028"
+      ],
       "requirementIds": [
         "SIK-001",
         "SIK-002",
@@ -2924,11 +3233,23 @@ flowchart LR
         "docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md:## Task 21A: Voice-Session Binding Through the Canonical Kernel"
       ],
       "exitCriteria": "Voice uses canonical runs/responses/cancellation and no raw provider text reaches TTS.",
-      "gateIds": ["GATE-KERNEL-030"],
-      "lockNames": ["LOCK-COORD-EXACT-FILES"],
-      "outputIds": ["OUT-KERNEL-030"],
-      "predecessorIds": ["DEP-029"],
-      "requirementIds": ["SIK-004", "SIK-006", "SIK-007"],
+      "gateIds": [
+        "GATE-KERNEL-030"
+      ],
+      "lockNames": [
+        "LOCK-COORD-EXACT-FILES"
+      ],
+      "outputIds": [
+        "OUT-KERNEL-030"
+      ],
+      "predecessorIds": [
+        "DEP-029"
+      ],
+      "requirementIds": [
+        "SIK-004",
+        "SIK-006",
+        "SIK-007"
+      ],
       "rowType": "KERNEL_TASK",
       "status": "QUEUED",
       "taskId": "21A"
@@ -2939,11 +3260,24 @@ flowchart LR
         "docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md:## Task 17: Scheduled JARVIS and Hive Final Kernel Dispatch"
       ],
       "exitCriteria": "Opaque scheduled authority/retries and canonical Hive child/final lineage pass the exact 31-path review.",
-      "gateIds": ["GATE-KERNEL-031"],
-      "lockNames": ["LOCK-COORD-EXACT-FILES"],
-      "outputIds": ["OUT-KERNEL-031"],
-      "predecessorIds": ["DEP-030"],
-      "requirementIds": ["SIK-004", "SIK-007", "SIK-009", "SIK-014"],
+      "gateIds": [
+        "GATE-KERNEL-031"
+      ],
+      "lockNames": [
+        "LOCK-COORD-EXACT-FILES"
+      ],
+      "outputIds": [
+        "OUT-KERNEL-031"
+      ],
+      "predecessorIds": [
+        "DEP-030"
+      ],
+      "requirementIds": [
+        "SIK-004",
+        "SIK-007",
+        "SIK-009",
+        "SIK-014"
+      ],
       "rowType": "KERNEL_TASK",
       "status": "QUEUED",
       "taskId": "17"
@@ -2954,11 +3288,21 @@ flowchart LR
         "docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md:## Task 21B — Command Center lower shell"
       ],
       "exitCriteria": "Account-bound read-only Command Center and run-ID-only host commands pass the exact 20-path review.",
-      "gateIds": ["GATE-KERNEL-032"],
-      "lockNames": ["LOCK-COORD-EXACT-FILES"],
-      "outputIds": ["OUT-KERNEL-032"],
-      "predecessorIds": ["DEP-031"],
-      "requirementIds": ["SIK-015"],
+      "gateIds": [
+        "GATE-KERNEL-032"
+      ],
+      "lockNames": [
+        "LOCK-COORD-EXACT-FILES"
+      ],
+      "outputIds": [
+        "OUT-KERNEL-032"
+      ],
+      "predecessorIds": [
+        "DEP-031"
+      ],
+      "requirementIds": [
+        "SIK-015"
+      ],
       "rowType": "KERNEL_TASK",
       "status": "QUEUED",
       "taskId": "21B"
@@ -2969,11 +3313,21 @@ flowchart LR
         "docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md:## Task 21C — Development-only deterministic kernel smoke fixtures"
       ],
       "exitCriteria": "Deterministic smoke fixtures are isolated and absent from production navigation.",
-      "gateIds": ["GATE-KERNEL-033"],
-      "lockNames": ["LOCK-COORD-EXACT-FILES"],
-      "outputIds": ["OUT-KERNEL-033"],
-      "predecessorIds": ["DEP-032"],
-      "requirementIds": ["SIK-015"],
+      "gateIds": [
+        "GATE-KERNEL-033"
+      ],
+      "lockNames": [
+        "LOCK-COORD-EXACT-FILES"
+      ],
+      "outputIds": [
+        "OUT-KERNEL-033"
+      ],
+      "predecessorIds": [
+        "DEP-032"
+      ],
+      "requirementIds": [
+        "SIK-015"
+      ],
       "rowType": "KERNEL_TASK",
       "status": "QUEUED",
       "taskId": "21C"
@@ -2984,10 +3338,18 @@ flowchart LR
         "docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md:## Task 22 — Docs-only native evidence and final review"
       ],
       "exitCriteria": "Every locally actionable SIK criterion has native/manual/automated evidence and independent final review without merge/deploy claim.",
-      "gateIds": ["GATE-KERNEL-034"],
-      "lockNames": ["LOCK-COORD-EXACT-FILES"],
-      "outputIds": ["OUT-KERNEL-034"],
-      "predecessorIds": ["DEP-033"],
+      "gateIds": [
+        "GATE-KERNEL-034"
+      ],
+      "lockNames": [
+        "LOCK-COORD-EXACT-FILES"
+      ],
+      "outputIds": [
+        "OUT-KERNEL-034"
+      ],
+      "predecessorIds": [
+        "DEP-033"
+      ],
       "requirementIds": [
         "SIK-001",
         "SIK-002",
@@ -3016,11 +3378,19 @@ flowchart LR
         "docs/unified-goals/EXECUTION_PLAN.md:## 9. Phase 2 — JARVIS Response Intelligence"
       ],
       "exitCriteria": "Response Intelligence cross-provider, truth, voice, schedule, Hive, and regression matrix passes.",
-      "gateIds": ["GATE-PHASE-2"],
-      "lockNames": ["LOCK-DEFERRED-EXACT-PLAN"],
-      "outputIds": ["OUT-PHASE-2"],
+      "gateIds": [
+        "GATE-PHASE-2"
+      ],
+      "lockNames": [
+        "LOCK-DEFERRED-EXACT-PLAN"
+      ],
+      "outputIds": [
+        "OUT-PHASE-2"
+      ],
       "phaseId": "PHASE-2",
-      "predecessorIds": ["DEP-034"],
+      "predecessorIds": [
+        "DEP-034"
+      ],
       "requirementIds": [
         "JRI-001",
         "JRI-002",
@@ -3784,11 +4154,19 @@ flowchart LR
         "docs/unified-goals/EXECUTION_PLAN.md:## 10. Phase 3 — JARVIS Command Center"
       ],
       "exitCriteria": "Full live Command Center state, recovery, accessibility, and performance acceptance passes.",
-      "gateIds": ["GATE-PHASE-3"],
-      "lockNames": ["LOCK-DEFERRED-EXACT-PLAN"],
-      "outputIds": ["OUT-PHASE-3"],
+      "gateIds": [
+        "GATE-PHASE-3"
+      ],
+      "lockNames": [
+        "LOCK-DEFERRED-EXACT-PLAN"
+      ],
+      "outputIds": [
+        "OUT-PHASE-3"
+      ],
       "phaseId": "PHASE-3",
-      "predecessorIds": ["DEP-035"],
+      "predecessorIds": [
+        "DEP-035"
+      ],
       "requirementIds": [
         "JCC-001",
         "JCC-002",
@@ -4730,11 +5108,19 @@ flowchart LR
         "docs/unified-goals/EXECUTION_PLAN.md:## 11. Phase 4 — Context Map 2.0 and Local Second Brain"
       ],
       "exitCriteria": "Context privacy, retrieval, offline, migration, performance, and manual acceptance passes.",
-      "gateIds": ["GATE-PHASE-4"],
-      "lockNames": ["LOCK-DEFERRED-EXACT-PLAN"],
-      "outputIds": ["OUT-PHASE-4"],
+      "gateIds": [
+        "GATE-PHASE-4"
+      ],
+      "lockNames": [
+        "LOCK-DEFERRED-EXACT-PLAN"
+      ],
+      "outputIds": [
+        "OUT-PHASE-4"
+      ],
       "phaseId": "PHASE-4",
-      "predecessorIds": ["DEP-034"],
+      "predecessorIds": [
+        "DEP-034"
+      ],
       "requirementIds": [
         "CTX-001",
         "CTX-002",
@@ -6350,11 +6736,19 @@ flowchart LR
         "docs/unified-goals/EXECUTION_PLAN.md:## 12. Phase 5 — Terminal Context and Command Layer"
       ],
       "exitCriteria": "PTY compatibility, command safety, real cancellation, recovery, and offline acceptance passes.",
-      "gateIds": ["GATE-PHASE-5"],
-      "lockNames": ["LOCK-DEFERRED-EXACT-PLAN"],
-      "outputIds": ["OUT-PHASE-5"],
+      "gateIds": [
+        "GATE-PHASE-5"
+      ],
+      "lockNames": [
+        "LOCK-DEFERRED-EXACT-PLAN"
+      ],
+      "outputIds": [
+        "OUT-PHASE-5"
+      ],
       "phaseId": "PHASE-5",
-      "predecessorIds": ["DEP-037"],
+      "predecessorIds": [
+        "DEP-037"
+      ],
       "requirementIds": [
         "TERM-002",
         "TERM-003",
@@ -6600,13 +6994,23 @@ flowchart LR
     },
     {
       "dependencyId": "DEP-039",
-      "evidenceRefs": ["docs/unified-goals/EXECUTION_PLAN.md:## 13. Phase 6 — Prompt Forge"],
+      "evidenceRefs": [
+        "docs/unified-goals/EXECUTION_PLAN.md:## 13. Phase 6 — Prompt Forge"
+      ],
       "exitCriteria": "Prompt preservation, diff/source/model/cost/cancel/security/accessibility acceptance passes.",
-      "gateIds": ["GATE-PHASE-6"],
-      "lockNames": ["LOCK-DEFERRED-EXACT-PLAN"],
-      "outputIds": ["OUT-PHASE-6"],
+      "gateIds": [
+        "GATE-PHASE-6"
+      ],
+      "lockNames": [
+        "LOCK-DEFERRED-EXACT-PLAN"
+      ],
+      "outputIds": [
+        "OUT-PHASE-6"
+      ],
       "phaseId": "PHASE-6",
-      "predecessorIds": ["DEP-037"],
+      "predecessorIds": [
+        "DEP-037"
+      ],
       "requirementIds": [
         "PF-001",
         "PF-002",
@@ -7354,11 +7758,19 @@ flowchart LR
         "docs/unified-goals/EXECUTION_PLAN.md:## 14. Phase 7 — Infinite Idea Canvas"
       ],
       "exitCriteria": "Canvas core/rich/AI/persistence/accessibility/performance/recovery acceptance passes.",
-      "gateIds": ["GATE-PHASE-7"],
-      "lockNames": ["LOCK-DEFERRED-EXACT-PLAN"],
-      "outputIds": ["OUT-PHASE-7"],
+      "gateIds": [
+        "GATE-PHASE-7"
+      ],
+      "lockNames": [
+        "LOCK-DEFERRED-EXACT-PLAN"
+      ],
+      "outputIds": [
+        "OUT-PHASE-7"
+      ],
       "phaseId": "PHASE-7",
-      "predecessorIds": ["DEP-039"],
+      "predecessorIds": [
+        "DEP-039"
+      ],
       "requirementIds": [
         "CANVAS-001",
         "CANVAS-002",
@@ -8276,11 +8688,19 @@ flowchart LR
         "docs/unified-goals/EXECUTION_PLAN.md:## 15. Phase 8 — SOUL, Profiles, Memory, Recall, and Learning"
       ],
       "exitCriteria": "SOUL/memory migration, isolation, poisoning/correction, import/export, offline, and privacy acceptance passes.",
-      "gateIds": ["GATE-PHASE-8"],
-      "lockNames": ["LOCK-DEFERRED-EXACT-PLAN"],
-      "outputIds": ["OUT-PHASE-8"],
+      "gateIds": [
+        "GATE-PHASE-8"
+      ],
+      "lockNames": [
+        "LOCK-DEFERRED-EXACT-PLAN"
+      ],
+      "outputIds": [
+        "OUT-PHASE-8"
+      ],
       "phaseId": "PHASE-8",
-      "predecessorIds": ["DEP-034"],
+      "predecessorIds": [
+        "DEP-034"
+      ],
       "requirementIds": [
         "MEM-002",
         "MEM-003",
@@ -9386,11 +9806,19 @@ flowchart LR
         "docs/unified-goals/EXECUTION_PLAN.md:## 16. Phase 9 — Skills 2.0 and Workflow RPC"
       ],
       "exitCriteria": "Skills manifest/trust/permission and workflow RPC/retry/cancel/checkpoint/supply-chain acceptance passes.",
-      "gateIds": ["GATE-PHASE-9"],
-      "lockNames": ["LOCK-DEFERRED-EXACT-PLAN"],
-      "outputIds": ["OUT-PHASE-9"],
+      "gateIds": [
+        "GATE-PHASE-9"
+      ],
+      "lockNames": [
+        "LOCK-DEFERRED-EXACT-PLAN"
+      ],
+      "outputIds": [
+        "OUT-PHASE-9"
+      ],
       "phaseId": "PHASE-9",
-      "predecessorIds": ["DEP-041"],
+      "predecessorIds": [
+        "DEP-041"
+      ],
       "requirementIds": [
         "SKILL-002",
         "SKILL-003",
@@ -9724,11 +10152,19 @@ flowchart LR
         "docs/unified-goals/EXECUTION_PLAN.md:## 17. Phase 10 — Parallel Agent Runtime"
       ],
       "exitCriteria": "Parallelism/order/failure/cancellation/budget/privacy/recovery/stress acceptance passes.",
-      "gateIds": ["GATE-PHASE-10"],
-      "lockNames": ["LOCK-DEFERRED-EXACT-PLAN"],
-      "outputIds": ["OUT-PHASE-10"],
+      "gateIds": [
+        "GATE-PHASE-10"
+      ],
+      "lockNames": [
+        "LOCK-DEFERRED-EXACT-PLAN"
+      ],
+      "outputIds": [
+        "OUT-PHASE-10"
+      ],
       "phaseId": "PHASE-10",
-      "predecessorIds": ["DEP-042"],
+      "predecessorIds": [
+        "DEP-042"
+      ],
       "requirementIds": [
         "AGENT-002",
         "AGENT-003",
@@ -9898,11 +10334,20 @@ flowchart LR
         "docs/unified-goals/EXECUTION_PLAN.md:## 18. Phase 11 — Messaging Gateway and Browser Operator"
       ],
       "exitCriteria": "Messaging confirmation/idempotency and Browser Operator integrity/security/recovery acceptance passes.",
-      "gateIds": ["GATE-PHASE-11"],
-      "lockNames": ["LOCK-DEFERRED-EXACT-PLAN"],
-      "outputIds": ["OUT-PHASE-11"],
+      "gateIds": [
+        "GATE-PHASE-11"
+      ],
+      "lockNames": [
+        "LOCK-DEFERRED-EXACT-PLAN"
+      ],
+      "outputIds": [
+        "OUT-PHASE-11"
+      ],
       "phaseId": "PHASE-11",
-      "predecessorIds": ["DEP-036", "DEP-043"],
+      "predecessorIds": [
+        "DEP-036",
+        "DEP-043"
+      ],
       "requirementIds": [
         "BROWSER-002",
         "BROWSER-003",
@@ -10381,11 +10826,20 @@ flowchart LR
         "docs/unified-goals/EXECUTION_PLAN.md:## 19. Phase 12 — Browser Chat and Local Tool Bridge"
       ],
       "exitCriteria": "No credential capture; provider/grant/origin/relay/crash/privacy/legal/accessibility acceptance passes.",
-      "gateIds": ["GATE-PHASE-12", "GATE-PROVIDER-FEASIBILITY"],
-      "lockNames": ["LOCK-DEFERRED-EXACT-PLAN"],
-      "outputIds": ["OUT-PHASE-12"],
+      "gateIds": [
+        "GATE-PHASE-12",
+        "GATE-PROVIDER-FEASIBILITY"
+      ],
+      "lockNames": [
+        "LOCK-DEFERRED-EXACT-PLAN"
+      ],
+      "outputIds": [
+        "OUT-PHASE-12"
+      ],
       "phaseId": "PHASE-12",
-      "predecessorIds": ["DEP-044"],
+      "predecessorIds": [
+        "DEP-044"
+      ],
       "requirementIds": [
         "BCHAT-001",
         "BCHAT-002",
@@ -11347,11 +11801,19 @@ flowchart LR
         "docs/unified-goals/EXECUTION_PLAN.md:## 20. Phase 13 — VibeSpace Access, Supabase, and Stripe Test Mode"
       ],
       "exitCriteria": "RLS/webhook/test-clock/checkout/lease/isolation/revocation acceptance passes; live financial changes remain gated.",
-      "gateIds": ["GATE-PHASE-13-TEST-MODE"],
-      "lockNames": ["LOCK-DEFERRED-EXACT-PLAN"],
-      "outputIds": ["OUT-PHASE-13"],
+      "gateIds": [
+        "GATE-PHASE-13-TEST-MODE"
+      ],
+      "lockNames": [
+        "LOCK-DEFERRED-EXACT-PLAN"
+      ],
+      "outputIds": [
+        "OUT-PHASE-13"
+      ],
       "phaseId": "PHASE-13",
-      "predecessorIds": ["DEP-034"],
+      "predecessorIds": [
+        "DEP-034"
+      ],
       "requirementIds": [
         "ACCESS-001",
         "ACCESS-002",
@@ -12095,9 +12557,16 @@ flowchart LR
         "docs/unified-goals/ATTACHMENT_INVENTORY.md:466-644"
       ],
       "exitCriteria": "Reference-locked Origami full/region visual, functional, scope, and accessibility acceptance passes and oracle freezes.",
-      "gateIds": ["GATE-ORIGAMI-STABLE-FUNCTIONS", "GATE-ORIGAMI-PACK"],
-      "lockNames": ["LOCK-DEFERRED-EXACT-PLAN"],
-      "outputIds": ["OUT-PHASE-14-ORIGAMI"],
+      "gateIds": [
+        "GATE-ORIGAMI-STABLE-FUNCTIONS",
+        "GATE-ORIGAMI-PACK"
+      ],
+      "lockNames": [
+        "LOCK-DEFERRED-EXACT-PLAN"
+      ],
+      "outputIds": [
+        "OUT-PHASE-14-ORIGAMI"
+      ],
       "phaseId": "PHASE-14-ORIGAMI",
       "predecessorIds": [
         "DEP-035",
@@ -12538,10 +13007,16 @@ flowchart LR
         "GATE-MC8B-VIDEO-OPTIONAL-EXTERNAL",
         "GATE-MC9-NATIVE-ISOLATION"
       ],
-      "lockNames": ["LOCK-MONOCHROME-EXACT-MANIFESTS"],
-      "outputIds": ["OUT-PHASE-15-MONOCHROME"],
+      "lockNames": [
+        "LOCK-MONOCHROME-EXACT-MANIFESTS"
+      ],
+      "outputIds": [
+        "OUT-PHASE-15-MONOCHROME"
+      ],
       "phaseId": "PHASE-15-GOAL-8",
-      "predecessorIds": ["DEP-047"],
+      "predecessorIds": [
+        "DEP-047"
+      ],
       "requirementIds": [
         "MC-001",
         "MC-002",
@@ -14199,17 +14674,26 @@ flowchart LR
     },
     {
       "dependencyId": "DEP-049",
-      "evidenceRefs": ["docs/unified-goals/EXECUTION_PLAN.md:Phase 17 final integration"],
+      "evidenceRefs": [
+        "docs/unified-goals/EXECUTION_PLAN.md:Phase 17 final integration"
+      ],
       "exitCriteria": "Final integration, local handoff, evidence closeout, and successor draft PR complete after Sakura without production mutation.",
-      "gateIds": ["GATE-ALL-LOCAL-ACTIONABLE", "GATE-NO-PRODUCTION-MUTATION"],
-      "lockNames": ["LOCK-DEFERRED-EXACT-PLAN"],
+      "gateIds": [
+        "GATE-ALL-LOCAL-ACTIONABLE",
+        "GATE-NO-PRODUCTION-MUTATION"
+      ],
+      "lockNames": [
+        "LOCK-DEFERRED-EXACT-PLAN"
+      ],
       "outputIds": [
         "OUT-PHASE-17-HANDOFF",
         "OUT-PHASE-17-EVIDENCE-CLOSEOUT",
         "OUT-SUCCESSOR-DRAFT-PR"
       ],
       "phaseId": "PHASE-17",
-      "predecessorIds": ["DEP-050"],
+      "predecessorIds": [
+        "DEP-050"
+      ],
       "requirementIds": [
         "MC-021",
         "MC-022",
@@ -14241,10 +14725,16 @@ flowchart LR
         "GATE-SAKURA-POST-MONOCHROME",
         "GATE-SAKURA-ISOLATED-RUNTIME"
       ],
-      "lockNames": ["LOCK-SAKURA-EXACT-MANIFESTS"],
-      "outputIds": ["OUT-PHASE-16-SAKURA"],
+      "lockNames": [
+        "LOCK-SAKURA-EXACT-MANIFESTS"
+      ],
+      "outputIds": [
+        "OUT-PHASE-16-SAKURA"
+      ],
       "phaseId": "PHASE-16",
-      "predecessorIds": ["DEP-048"],
+      "predecessorIds": [
+        "DEP-048"
+      ],
       "requirementIds": [
         "SAK-001",
         "SAK-002",

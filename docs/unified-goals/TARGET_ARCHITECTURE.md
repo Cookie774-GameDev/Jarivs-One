@@ -67,10 +67,17 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "requireAccountIdentity",
         "account-bound repository/session factories"
       ],
-      "migrationIds": ["MIG-001"],
+      "migrationIds": [
+        "MIG-001"
+      ],
       "observationClass": "TARGET",
-      "rollbackIds": ["RBK-001"],
-      "sourceRefs": ["SIK", "DIR"],
+      "rollbackIds": [
+        "RBK-001"
+      ],
+      "sourceRefs": [
+        "SIK",
+        "DIR"
+      ],
       "status": "IMPLEMENTING",
       "storage": [
         "durable local user identity",
@@ -117,10 +124,20 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "isProtectedJarvisAgent",
         "resolveProtectedJarvisAgent"
       ],
-      "migrationIds": ["MIG-001", "MIG-003"],
+      "migrationIds": [
+        "MIG-001",
+        "MIG-003"
+      ],
       "observationClass": "TARGET",
-      "rollbackIds": ["RBK-001", "RBK-003"],
-      "sourceRefs": ["SIK", "JRI", "SOUL"],
+      "rollbackIds": [
+        "RBK-001",
+        "RBK-003"
+      ],
+      "sourceRefs": [
+        "SIK",
+        "JRI",
+        "SOUL"
+      ],
       "status": "COMPLETE",
       "storage": [
         "versioned account-scoped identity revisions",
@@ -166,10 +183,21 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "account session/read port",
         "idempotent v2-to-v3 migration"
       ],
-      "migrationIds": ["MIG-001", "MIG-002", "MIG-003"],
+      "migrationIds": [
+        "MIG-001",
+        "MIG-002",
+        "MIG-003"
+      ],
       "observationClass": "TARGET",
-      "rollbackIds": ["RBK-001", "RBK-002", "RBK-003"],
-      "sourceRefs": ["SIK", "DIR"],
+      "rollbackIds": [
+        "RBK-001",
+        "RBK-002",
+        "RBK-003"
+      ],
+      "sourceRefs": [
+        "SIK",
+        "DIR"
+      ],
       "status": "PLANNED",
       "storage": [
         "jarvis_identity_revisions",
@@ -220,10 +248,19 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "CompiledJarvisPrompt",
         "compileJarvisPrompt"
       ],
-      "migrationIds": ["MIG-003"],
+      "migrationIds": [
+        "MIG-003"
+      ],
       "observationClass": "TARGET",
-      "rollbackIds": ["RBK-003"],
-      "sourceRefs": ["SIK", "CTX", "PF", "BCHAT"],
+      "rollbackIds": [
+        "RBK-003"
+      ],
+      "sourceRefs": [
+        "SIK",
+        "CTX",
+        "PF",
+        "BCHAT"
+      ],
       "status": "PLANNED",
       "storage": [
         "immutable per-request snapshots and hashes",
@@ -262,7 +299,11 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "migrationIds": [],
       "observationClass": "TARGET",
       "rollbackIds": [],
-      "sourceRefs": ["SIK", "JRI", "BCHAT"],
+      "sourceRefs": [
+        "SIK",
+        "JRI",
+        "BCHAT"
+      ],
       "status": "PLANNED",
       "storage": [
         "safe transport diagnostics and prompt hash only; no credentials or raw secret values"
@@ -304,10 +345,19 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "primary host account session",
         "secondary-window kernel client"
       ],
-      "migrationIds": ["MIG-002", "MIG-003"],
+      "migrationIds": [
+        "MIG-002",
+        "MIG-003"
+      ],
       "observationClass": "TARGET",
-      "rollbackIds": ["RBK-002", "RBK-003"],
-      "sourceRefs": ["SIK", "DIR"],
+      "rollbackIds": [
+        "RBK-002",
+        "RBK-003"
+      ],
+      "sourceRefs": [
+        "SIK",
+        "DIR"
+      ],
       "status": "PLANNED",
       "storage": [
         "runtime mode preference",
@@ -354,7 +404,11 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "migrationIds": [],
       "observationClass": "TARGET",
       "rollbackIds": [],
-      "sourceRefs": ["SIK", "JRI", "JCC"],
+      "sourceRefs": [
+        "SIK",
+        "JRI",
+        "JCC"
+      ],
       "status": "PLANNED",
       "storage": [
         "verified response envelope",
@@ -397,10 +451,19 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "recoverRuns",
         "JarvisLiveEvidenceHost"
       ],
-      "migrationIds": ["MIG-002", "MIG-007"],
+      "migrationIds": [
+        "MIG-002",
+        "MIG-007"
+      ],
       "observationClass": "TARGET",
-      "rollbackIds": ["RBK-002", "RBK-007"],
-      "sourceRefs": ["SIK", "JCC"],
+      "rollbackIds": [
+        "RBK-002",
+        "RBK-007"
+      ],
+      "sourceRefs": [
+        "SIK",
+        "JCC"
+      ],
       "status": "PLANNED",
       "storage": [
         "account-scoped runs",
@@ -445,10 +508,20 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "cancelTerminal",
         "executeBrowserAction"
       ],
-      "migrationIds": ["MIG-002", "MIG-004"],
+      "migrationIds": [
+        "MIG-002",
+        "MIG-004"
+      ],
       "observationClass": "TARGET",
-      "rollbackIds": ["RBK-002", "RBK-004"],
-      "sourceRefs": ["SIK", "BROWSER", "ACCESS"],
+      "rollbackIds": [
+        "RBK-002",
+        "RBK-004"
+      ],
+      "sourceRefs": [
+        "SIK",
+        "BROWSER",
+        "ACCESS"
+      ],
       "status": "PLANNED",
       "storage": [
         "versioned approval rows",
@@ -489,10 +562,22 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "artifact/source selectors",
         "legacy read-only projections"
       ],
-      "migrationIds": ["MIG-002", "MIG-007"],
+      "migrationIds": [
+        "MIG-002",
+        "MIG-007"
+      ],
       "observationClass": "TARGET",
-      "rollbackIds": ["RBK-002", "RBK-007"],
-      "sourceRefs": ["SIK", "JCC", "PF", "CANVAS", "BCHAT"],
+      "rollbackIds": [
+        "RBK-002",
+        "RBK-007"
+      ],
+      "sourceRefs": [
+        "SIK",
+        "JCC",
+        "PF",
+        "CANVAS",
+        "BCHAT"
+      ],
       "status": "PLANNED",
       "storage": [
         "account/run-bound artifacts",
@@ -536,10 +621,20 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "Hive worker execution/final dispatch",
         "logical versus transport retry"
       ],
-      "migrationIds": ["MIG-002", "MIG-007"],
+      "migrationIds": [
+        "MIG-002",
+        "MIG-007"
+      ],
       "observationClass": "TARGET",
-      "rollbackIds": ["RBK-002", "RBK-007"],
-      "sourceRefs": ["SIK", "JRI", "JCC"],
+      "rollbackIds": [
+        "RBK-002",
+        "RBK-007"
+      ],
+      "sourceRefs": [
+        "SIK",
+        "JRI",
+        "JCC"
+      ],
       "status": "PLANNED",
       "storage": [
         "canonical runs/events/results",
@@ -578,19 +673,34 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "retryScheduledTransport(runId)",
         "retryLogicalRun(runId)"
       ],
-      "migrationIds": ["MIG-002", "MIG-007"],
+      "migrationIds": [
+        "MIG-002",
+        "MIG-007"
+      ],
       "observationClass": "TARGET",
-      "rollbackIds": ["RBK-002", "RBK-007"],
-      "sourceRefs": ["SIK", "JCC"],
+      "rollbackIds": [
+        "RBK-002",
+        "RBK-007"
+      ],
+      "sourceRefs": [
+        "SIK",
+        "JCC"
+      ],
       "status": "PLANNED",
-      "storage": ["read-only canonical journal/artifact/source snapshots"],
+      "storage": [
+        "read-only canonical journal/artifact/source snapshots"
+      ],
       "trustBoundary": "The UI receives an account-bound read port and run-ID-only commands, never raw repositories, runtime, sessions, lifecycle mutation ports, or proof/time authority."
     },
     {
       "architectureId": "TGT-013",
       "canonicalOwner": "Development-only smoke fixtures followed by docs-only native/final review",
       "concern": "Deterministic smoke and final kernel evidence",
-      "consumers": ["Task 22 reviewers", "Phase 17 integration matrix", "draft PR evidence"],
+      "consumers": [
+        "Task 22 reviewers",
+        "Phase 17 integration matrix",
+        "draft PR evidence"
+      ],
       "cutover": "Task 21C lands fixtures only after the Command Center; Task 22 consumes committed fixtures and closes kernel evidence before later goal implementation.",
       "evidenceRefs": [
         "docs/superpowers/plans/2026-07-16-vibespace-shared-intelligence-kernel.md:## Task 21C — Development-only deterministic kernel smoke fixtures",
@@ -613,8 +723,13 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       ],
       "migrationIds": [],
       "observationClass": "TARGET",
-      "rollbackIds": ["RBK-008"],
-      "sourceRefs": ["SIK", "DIR"],
+      "rollbackIds": [
+        "RBK-008"
+      ],
+      "sourceRefs": [
+        "SIK",
+        "DIR"
+      ],
       "status": "PLANNED",
       "storage": [
         "development fixture state",
@@ -627,7 +742,13 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "architectureId": "TGT-014",
       "canonicalOwner": "Future Phase 2 executable plan extending the kernel response contracts",
       "concern": "JARVIS Response Intelligence",
-      "consumers": ["typed JARVIS", "voice", "schedule", "Hive final", "Command Center narration"],
+      "consumers": [
+        "typed JARVIS",
+        "voice",
+        "schedule",
+        "Hive final",
+        "Command Center narration"
+      ],
       "cutover": "Create docs/superpowers/plans/2026-07-16-jarvis-response-intelligence.md with exact manifests before edits; consume Phase 1 interfaces instead of replacing them.",
       "evidenceRefs": [
         "docs/unified-goals/EXECUTION_PLAN.md:## 9. Phase 2 — JARVIS Response Intelligence"
@@ -648,7 +769,10 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "migrationIds": [],
       "observationClass": "TARGET",
       "rollbackIds": [],
-      "sourceRefs": ["JRI", "SIK"],
+      "sourceRefs": [
+        "JRI",
+        "SIK"
+      ],
       "status": "PLANNED",
       "storage": [
         "versioned policy/config and fixtures; canonical runs/responses remain kernel-owned"
@@ -659,7 +783,11 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "architectureId": "TGT-015",
       "canonicalOwner": "Future Phase 3 executable plan extending Task 21B read ports",
       "concern": "Full JARVIS Command Center",
-      "consumers": ["Command Center route", "assistive technology", "operator recovery workflows"],
+      "consumers": [
+        "Command Center route",
+        "assistive technology",
+        "operator recovery workflows"
+      ],
       "cutover": "Create docs/superpowers/plans/2026-07-16-jarvis-command-center.md with exact manifests after Phase 2 and before edits.",
       "evidenceRefs": [
         "docs/unified-goals/EXECUTION_PLAN.md:## 10. Phase 3 — JARVIS Command Center"
@@ -678,19 +806,34 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "Live Systems",
         "voice/session boundary"
       ],
-      "migrationIds": ["MIG-007"],
+      "migrationIds": [
+        "MIG-007"
+      ],
       "observationClass": "TARGET",
-      "rollbackIds": ["RBK-007"],
-      "sourceRefs": ["JCC", "SIK"],
+      "rollbackIds": [
+        "RBK-007"
+      ],
+      "sourceRefs": [
+        "JCC",
+        "SIK"
+      ],
       "status": "PLANNED",
-      "storage": ["read models and UI preference only; lifecycle truth remains kernel-owned"],
+      "storage": [
+        "read models and UI preference only; lifecycle truth remains kernel-owned"
+      ],
       "trustBoundary": "Every displayed node resolves to live normalized state; disconnected/degraded/unavailable is explicit; UI cannot manufacture telemetry."
     },
     {
       "architectureId": "TGT-016",
       "canonicalOwner": "Future Phase 4 executable plan extending JarvisSourceRef and JarvisContextPack",
       "concern": "Context Map 2.0 and local Second Brain",
-      "consumers": ["JARVIS", "Terminal", "Prompt Forge", "Canvas", "Command Center"],
+      "consumers": [
+        "JARVIS",
+        "Terminal",
+        "Prompt Forge",
+        "Canvas",
+        "Command Center"
+      ],
       "cutover": "Create docs/superpowers/plans/2026-07-16-context-map-second-brain.md with exact manifests before edits; reuse kernel sources/artifacts/jobs/journal.",
       "evidenceRefs": [
         "docs/unified-goals/EXECUTION_PLAN.md:## 11. Phase 4 — Context Map 2.0 and Local Second Brain"
@@ -711,7 +854,10 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "migrationIds": [],
       "observationClass": "TARGET",
       "rollbackIds": [],
-      "sourceRefs": ["CTX", "SIK"],
+      "sourceRefs": [
+        "CTX",
+        "SIK"
+      ],
       "status": "PLANNED",
       "storage": [
         "local-first indexed sources, chunks, relations, notes, views, freshness and provenance"
@@ -722,7 +868,12 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "architectureId": "TGT-017",
       "canonicalOwner": "Future Phase 5 executable plan",
       "concern": "Terminal context and command layer",
-      "consumers": ["terminal panes", "JARVIS", "agents", "Command Center"],
+      "consumers": [
+        "terminal panes",
+        "JARVIS",
+        "agents",
+        "Command Center"
+      ],
       "cutover": "Create docs/superpowers/plans/2026-07-16-terminal-context-command-layer.md with exact manifests after Phase 4 contracts.",
       "evidenceRefs": [
         "docs/unified-goals/EXECUTION_PLAN.md:## 12. Phase 5 — Terminal Context and Command Layer"
@@ -744,7 +895,11 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "migrationIds": [],
       "observationClass": "TARGET",
       "rollbackIds": [],
-      "sourceRefs": ["TERM", "CTX", "SIK"],
+      "sourceRefs": [
+        "TERM",
+        "CTX",
+        "SIK"
+      ],
       "status": "PLANNED",
       "storage": [
         "terminal session/context references and canonical run/events; existing PTY persistence preserved"
@@ -755,9 +910,17 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "architectureId": "TGT-018",
       "canonicalOwner": "Future Phase 6 executable plan extending the kernel compiler, retrieval, jobs, and artifacts",
       "concern": "Prompt Forge",
-      "consumers": ["chat", "agents", "tasks", "workflows", "Canvas"],
+      "consumers": [
+        "chat",
+        "agents",
+        "tasks",
+        "workflows",
+        "Canvas"
+      ],
       "cutover": "Create docs/superpowers/plans/2026-07-16-prompt-forge.md with exact manifests after Context and kernel foundations.",
-      "evidenceRefs": ["docs/unified-goals/EXECUTION_PLAN.md:## 13. Phase 6 — Prompt Forge"],
+      "evidenceRefs": [
+        "docs/unified-goals/EXECUTION_PLAN.md:## 13. Phase 6 — Prompt Forge"
+      ],
       "fileOwnership": {
         "authorityRef": "docs/unified-goals/EXECUTION_PLAN.md:## 13. Phase 6 — Prompt Forge",
         "kind": "DEFERRED_EXACT_PLAN_REQUIRED",
@@ -775,16 +938,27 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "migrationIds": [],
       "observationClass": "TARGET",
       "rollbackIds": [],
-      "sourceRefs": ["PF", "CTX", "SIK"],
+      "sourceRefs": [
+        "PF",
+        "CTX",
+        "SIK"
+      ],
       "status": "PLANNED",
-      "storage": ["local prompt versions/artifacts, source refs, job/run records"],
+      "storage": [
+        "local prompt versions/artifacts, source refs, job/run records"
+      ],
       "trustBoundary": "No silent outcome change, unsupported capability claim, prompt injection, secret inclusion, or unbounded public research."
     },
     {
       "architectureId": "TGT-019",
       "canonicalOwner": "Future Phase 7 executable plan with its own domain model",
       "concern": "Infinite Idea Canvas",
-      "consumers": ["Canvas UI", "Prompt Forge", "AI transformations", "exports"],
+      "consumers": [
+        "Canvas UI",
+        "Prompt Forge",
+        "AI transformations",
+        "exports"
+      ],
       "cutover": "Create docs/superpowers/plans/2026-07-16-infinite-idea-canvas.md with exact manifests after Prompt Forge.",
       "evidenceRefs": [
         "docs/unified-goals/EXECUTION_PLAN.md:## 14. Phase 7 — Infinite Idea Canvas"
@@ -805,16 +979,29 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "migrationIds": [],
       "observationClass": "TARGET",
       "rollbackIds": [],
-      "sourceRefs": ["CANVAS", "PF", "SIK"],
+      "sourceRefs": [
+        "CANVAS",
+        "PF",
+        "SIK"
+      ],
       "status": "PLANNED",
-      "storage": ["separate local Canvas model", "kernel run/artifact/source references"],
+      "storage": [
+        "separate local Canvas model",
+        "kernel run/artifact/source references"
+      ],
       "trustBoundary": "Canvas state is not the kernel run/artifact model; AI effects are journaled jobs, sources retain provenance, and large media/work is bounded."
     },
     {
       "architectureId": "TGT-020",
       "canonicalOwner": "Future Phase 8 executable plan extending protected profile/provenance/local-store contracts",
       "concern": "SOUL, profiles, memory, recall, and learning",
-      "consumers": ["JARVIS compiler", "recall UI", "Skills", "agents", "Command Center"],
+      "consumers": [
+        "JARVIS compiler",
+        "recall UI",
+        "Skills",
+        "agents",
+        "Command Center"
+      ],
       "cutover": "Create docs/superpowers/plans/2026-07-16-soul-profiles-memory.md with exact manifests before edits and preserve legacy user extensions.",
       "evidenceRefs": [
         "docs/unified-goals/EXECUTION_PLAN.md:## 15. Phase 8 — SOUL, Profiles, Memory, Recall, and Learning"
@@ -833,10 +1020,18 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "profile/account switch",
         "import/export/rollback"
       ],
-      "migrationIds": ["MIG-003"],
+      "migrationIds": [
+        "MIG-003"
+      ],
       "observationClass": "TARGET",
-      "rollbackIds": ["RBK-003"],
-      "sourceRefs": ["SOUL", "MEM", "SIK"],
+      "rollbackIds": [
+        "RBK-003"
+      ],
+      "sourceRefs": [
+        "SOUL",
+        "MEM",
+        "SIK"
+      ],
       "status": "PLANNED",
       "storage": [
         "account/profile-scoped local records",
@@ -848,7 +1043,12 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "architectureId": "TGT-021",
       "canonicalOwner": "Future Phase 9 executable plan",
       "concern": "Skills 2.0 and Workflow RPC",
-      "consumers": ["agents", "JARVIS", "workflow composer", "parallel runtime"],
+      "consumers": [
+        "agents",
+        "JARVIS",
+        "workflow composer",
+        "parallel runtime"
+      ],
       "cutover": "Create docs/superpowers/plans/2026-07-16-skills-workflow-rpc.md with exact manifests after Phase 8.",
       "evidenceRefs": [
         "docs/unified-goals/EXECUTION_PLAN.md:## 16. Phase 9 — Skills 2.0 and Workflow RPC"
@@ -870,7 +1070,11 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "migrationIds": [],
       "observationClass": "TARGET",
       "rollbackIds": [],
-      "sourceRefs": ["SKILL", "SOUL", "SIK"],
+      "sourceRefs": [
+        "SKILL",
+        "SOUL",
+        "SIK"
+      ],
       "status": "PLANNED",
       "storage": [
         "skill packages/manifests",
@@ -883,7 +1087,12 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "architectureId": "TGT-022",
       "canonicalOwner": "Future Phase 10 executable plan consuming Workflow RPC and the kernel journal",
       "concern": "Parallel agent runtime",
-      "consumers": ["JARVIS", "workflow engine", "Command Center", "messaging/browser workflows"],
+      "consumers": [
+        "JARVIS",
+        "workflow engine",
+        "Command Center",
+        "messaging/browser workflows"
+      ],
       "cutover": "Create docs/superpowers/plans/2026-07-16-parallel-agent-runtime.md with exact manifests after Skills/RPC.",
       "evidenceRefs": [
         "docs/unified-goals/EXECUTION_PLAN.md:## 17. Phase 10 — Parallel Agent Runtime"
@@ -906,16 +1115,27 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "migrationIds": [],
       "observationClass": "TARGET",
       "rollbackIds": [],
-      "sourceRefs": ["AGENT", "SKILL", "SIK"],
+      "sourceRefs": [
+        "AGENT",
+        "SKILL",
+        "SIK"
+      ],
       "status": "PLANNED",
-      "storage": ["canonical parent/child runs/events/artifacts/checkpoints"],
+      "storage": [
+        "canonical parent/child runs/events/artifacts/checkpoints"
+      ],
       "trustBoundary": "Worker identity/attribution is distinct from JARVIS voice; budgets, locks, privacy inheritance, effect idempotency, and orphan recovery are enforced."
     },
     {
       "architectureId": "TGT-023",
       "canonicalOwner": "Future Phase 11 executable plan extending canonical approvals, journal, artifacts, source policy, and worker runtime",
       "concern": "Messaging gateway and Browser Operator",
-      "consumers": ["messaging UI", "Browser Operator", "agents", "Command Center"],
+      "consumers": [
+        "messaging UI",
+        "Browser Operator",
+        "agents",
+        "Command Center"
+      ],
       "cutover": "Create docs/superpowers/plans/2026-07-16-messaging-browser-operator.md with exact manifests after Phase 10.",
       "evidenceRefs": [
         "docs/unified-goals/EXECUTION_PLAN.md:## 18. Phase 11 — Messaging Gateway and Browser Operator"
@@ -936,16 +1156,29 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "migrationIds": [],
       "observationClass": "TARGET",
       "rollbackIds": [],
-      "sourceRefs": ["MSG", "BROWSER", "AGENT", "SIK"],
+      "sourceRefs": [
+        "MSG",
+        "BROWSER",
+        "AGENT",
+        "SIK"
+      ],
       "status": "PLANNED",
-      "storage": ["message state/audit events", "browser approval/run/artifact references"],
+      "storage": [
+        "message state/audit events",
+        "browser approval/run/artifact references"
+      ],
       "trustBoundary": "Consequential send/browser effects require explicit exact approval; credentials/cookies, prompt injection, origin, uploads/downloads, and replay are bounded."
     },
     {
       "architectureId": "TGT-024",
       "canonicalOwner": "Future Phase 12 executable plan gated by per-provider feasibility",
       "concern": "Browser Chat and local tool bridge",
-      "consumers": ["Browser Chat", "local tools", "providers", "Command Center"],
+      "consumers": [
+        "Browser Chat",
+        "local tools",
+        "providers",
+        "Command Center"
+      ],
       "cutover": "Create docs/superpowers/plans/2026-07-16-browser-chat-local-tool-bridge.md with exact manifests only after Phase 11 and provider feasibility spikes.",
       "evidenceRefs": [
         "docs/unified-goals/EXECUTION_PLAN.md:## 19. Phase 12 — Browser Chat and Local Tool Bridge"
@@ -967,7 +1200,12 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "migrationIds": [],
       "observationClass": "TARGET",
       "rollbackIds": [],
-      "sourceRefs": ["BCHAT", "BRIDGE", "BROWSER", "SIK"],
+      "sourceRefs": [
+        "BCHAT",
+        "BRIDGE",
+        "BROWSER",
+        "SIK"
+      ],
       "status": "PLANNED",
       "storage": [
         "local chat/provider profiles",
@@ -980,7 +1218,12 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "architectureId": "TGT-025",
       "canonicalOwner": "Future Phase 13 executable plan and server-authoritative staging contracts",
       "concern": "VibeSpace Access, Supabase, and Stripe test mode",
-      "consumers": ["paywall", "account/plans", "kernel entitlement snapshots", "server metering"],
+      "consumers": [
+        "paywall",
+        "account/plans",
+        "kernel entitlement snapshots",
+        "server metering"
+      ],
       "cutover": "Create docs/superpowers/plans/2026-07-16-vibespace-access.md with exact manifests and use the required Supabase skills before edits/migrations.",
       "evidenceRefs": [
         "docs/unified-goals/EXECUTION_PLAN.md:## 20. Phase 13 — VibeSpace Access, Supabase, and Stripe Test Mode"
@@ -999,10 +1242,18 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "Stripe test checkout/portal/test clock",
         "offline lease"
       ],
-      "migrationIds": ["MIG-006"],
+      "migrationIds": [
+        "MIG-006"
+      ],
       "observationClass": "TARGET",
-      "rollbackIds": ["RBK-006"],
-      "sourceRefs": ["ACCESS", "SUB", "SIK"],
+      "rollbackIds": [
+        "RBK-006"
+      ],
+      "sourceRefs": [
+        "ACCESS",
+        "SUB",
+        "SIK"
+      ],
       "status": "PLANNED",
       "storage": [
         "Supabase staging schema/audit",
@@ -1015,7 +1266,10 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "architectureId": "TGT-026",
       "canonicalOwner": "Future Phase 14 executable plan plus the canonical Origami goal and implementation pack",
       "concern": "Reference-locked Origami Chat",
-      "consumers": ["Chat route", "MonoChrome B0 preserved-theme oracle"],
+      "consumers": [
+        "Chat route",
+        "MonoChrome B0 preserved-theme oracle"
+      ],
       "cutover": "Create docs/superpowers/plans/2026-07-16-origami-chat-reconstruction.md with exact manifests after Phases 1-13 stabilize; freeze acceptance before MC0B.",
       "evidenceRefs": [
         "docs/unified-goals/EXECUTION_PLAN.md:## 21. Phase 14 — Reference-Locked Origami Chat",
@@ -1037,7 +1291,10 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       "migrationIds": [],
       "observationClass": "TARGET",
       "rollbackIds": [],
-      "sourceRefs": ["ORIGAMI", "SIK"],
+      "sourceRefs": [
+        "ORIGAMI",
+        "SIK"
+      ],
       "status": "PLANNED",
       "storage": [
         "tracked implementation assets allowed by the exact plan",
@@ -1088,10 +1345,18 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "terminal theme resolver",
         "isolated monochrome-test runtime profile"
       ],
-      "migrationIds": ["MIG-005"],
+      "migrationIds": [
+        "MIG-005"
+      ],
       "observationClass": "TARGET",
-      "rollbackIds": ["RBK-005", "RBK-010"],
-      "sourceRefs": ["MC", "AUTH"],
+      "rollbackIds": [
+        "RBK-005",
+        "RBK-010"
+      ],
+      "sourceRefs": [
+        "MC",
+        "AUTH"
+      ],
       "status": "PLANNED",
       "storage": [
         "UI preference v5 only",
@@ -1112,7 +1377,9 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "future production decision"
       ],
       "cutover": "Create the final-integration plan after Sakura Phase 16 and every other locally actionable predecessor complete or reach an exact hard gate.",
-      "evidenceRefs": ["docs/unified-goals/EXECUTION_PLAN.md:Phase 17 final integration"],
+      "evidenceRefs": [
+        "docs/unified-goals/EXECUTION_PLAN.md:Phase 17 final integration"
+      ],
       "fileOwnership": {
         "authorityRef": "docs/unified-goals/EXECUTION_PLAN.md:PLN-020 Phase 17 final integration",
         "kind": "DEFERRED_EXACT_PLAN_REQUIRED",
@@ -1126,7 +1393,15 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "three-ledger evidence closeout",
         "successor draft PR"
       ],
-      "migrationIds": ["MIG-001", "MIG-002", "MIG-003", "MIG-004", "MIG-005", "MIG-006", "MIG-007"],
+      "migrationIds": [
+        "MIG-001",
+        "MIG-002",
+        "MIG-003",
+        "MIG-004",
+        "MIG-005",
+        "MIG-006",
+        "MIG-007"
+      ],
       "observationClass": "TARGET",
       "rollbackIds": [
         "RBK-001",
@@ -1141,7 +1416,10 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
         "RBK-010",
         "RBK-011"
       ],
-      "sourceRefs": ["DIR", "AUTH"],
+      "sourceRefs": [
+        "DIR",
+        "AUTH"
+      ],
       "status": "PLANNED",
       "storage": [
         "tracked handoff/evidence docs",
@@ -1179,8 +1457,13 @@ Deterministic Task 0R Batch B artifact. Canonical rows below are authoritative f
       ],
       "migrationIds": [],
       "observationClass": "TARGET",
-      "rollbackIds": ["RBK-011"],
-      "sourceRefs": ["GOAL_SAKURA", "SAKURA_STYLE_SPEC"],
+      "rollbackIds": [
+        "RBK-011"
+      ],
+      "sourceRefs": [
+        "GOAL_SAKURA",
+        "SAKURA_STYLE_SPEC"
+      ],
       "status": "PLANNED",
       "storage": [
         "existing UI preference store only",
