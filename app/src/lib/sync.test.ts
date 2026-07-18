@@ -1501,6 +1501,87 @@ describe('cloud sync authority lifecycle', () => {
     });
   });
 
+  it('keeps an owned local-only error quarantined before owner parsing and deletes its stale claim', async () => {
+    const id = 'syq_local_only_owned_error';
+    syncHarness.queueRows.set(id, {
+      ...pendingRow(),
+      id,
+      table: 'jarvis_runs',
+      status: 'error',
+      error: 'remote unavailable',
+    });
+    bindOwner(id, { state: 'cloud', userId: 'user-a', capturedAt: 1 });
+    syncHarness.settingsRows.set(claimKey(id), {
+      key: claimKey(id),
+      value: { forensic: 'stale local-only claim' },
+      updated_at: 1,
+    });
+    const ownerBefore = structuredClone(syncHarness.settingsRows.get(cloudSyncQueueOwnerKey(id)));
+
+    await expect(
+      retrySyncErrors({ userId: 'user-a', signal: new AbortController().signal }),
+    ).resolves.toBe(0);
+
+    expect(syncHarness.queueRows.get(id)).toMatchObject({
+      status: 'error',
+      error: 'local_only_table',
+    });
+    expect(syncHarness.settingsRows.get(cloudSyncQueueOwnerKey(id))).toEqual(ownerBefore);
+    expect(syncHarness.settingsRows.has(claimKey(id))).toBe(false);
+    expect(syncHarness.db.settings.get).not.toHaveBeenCalled();
+    expect(syncHarness.from).not.toHaveBeenCalled();
+    expect(syncHarness.upsert).not.toHaveBeenCalled();
+  });
+
+  it('keeps malformed and missing-owner local-only errors quarantined without adopting owners', async () => {
+    const malformedId = 'syq_local_only_malformed_owner';
+    const missingId = 'syq_local_only_missing_owner';
+    for (const [id, table] of [
+      [malformedId, 'jarvis_events'],
+      [missingId, 'jarvis_artifacts'],
+    ] as const) {
+      syncHarness.queueRows.set(id, {
+        ...pendingRow(),
+        id,
+        table,
+        status: 'error',
+        error: 'remote unavailable',
+      });
+      syncHarness.settingsRows.set(claimKey(id), {
+        key: claimKey(id),
+        value: { forensic: `stale claim for ${id}` },
+        updated_at: 1,
+      });
+    }
+    syncHarness.settingsRows.set(cloudSyncQueueOwnerKey(malformedId), {
+      key: cloudSyncQueueOwnerKey(malformedId),
+      value: { schemaVersion: 2, state: 'cloud', userId: 42 },
+      updated_at: 1,
+    });
+    const malformedOwnerBefore = structuredClone(
+      syncHarness.settingsRows.get(cloudSyncQueueOwnerKey(malformedId)),
+    );
+
+    await expect(
+      retrySyncErrors({ userId: 'user-a', signal: new AbortController().signal }),
+    ).resolves.toBe(0);
+
+    for (const id of [malformedId, missingId]) {
+      expect(syncHarness.queueRows.get(id)).toMatchObject({
+        status: 'error',
+        error: 'local_only_table',
+      });
+      expect(syncHarness.settingsRows.has(claimKey(id))).toBe(false);
+    }
+    expect(syncHarness.settingsRows.get(cloudSyncQueueOwnerKey(malformedId))).toEqual(
+      malformedOwnerBefore,
+    );
+    expect(syncHarness.settingsRows.has(cloudSyncQueueOwnerKey(missingId))).toBe(false);
+    expect(syncHarness.db.settings.get).not.toHaveBeenCalled();
+    expect(syncHarness.from).not.toHaveBeenCalled();
+    expect(syncHarness.upsert).not.toHaveBeenCalled();
+  });
+
   it('keeps an exact upload claim live immediately before the stale boundary and retries at it', async () => {
     const clock = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
     syncHarness.queueRows.set('syq_claimed', {

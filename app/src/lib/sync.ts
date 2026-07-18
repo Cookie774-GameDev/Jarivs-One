@@ -868,6 +868,14 @@ export async function retrySyncErrors(authority: CloudSyncAuthority): Promise<nu
         .toArray();
       let retried = 0;
       for (const row of stuck) {
+        if (LOCAL_ONLY_SYNC_TABLES.has(row.table)) {
+          await queue.update(row.id, {
+            status: 'error' as SyncStatus,
+            error: LOCAL_ONLY_SYNC_ERROR,
+          });
+          await settings.delete(cloudSyncQueueClaimKey(row.id));
+          continue;
+        }
         const ownerKey = cloudSyncQueueOwnerKey(row.id);
         const stored = await settings.get(ownerKey);
         const owner = parseSyncQueueOwner(row.id, stored?.value);
