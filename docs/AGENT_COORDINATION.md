@@ -1832,3 +1832,15 @@ Update **Active version target**, roll **Committed this version** into CHANGELOG
 | **Root cause** | The restored `165a06c` snapshot says the collaboration spawn API exposes neither a model selector nor a reasoning selector. The active API exposes request selectors for `model` and `reasoning_effort`; only backend execution identity remains unattested. Byte identity to `165a06c` therefore does not satisfy the truthfulness gate. |
 | **Required repair** | Regenerate the exact 17 artifacts with selector-request evidence and unattested-backend wording, stage the exact batch under an isolated validation index, require all 21 gates to pass with the pinned canonical report hash, then commit once the competing renderer is quiescent. Do not satisfy this gate by reverting to the known-failing snapshot. |
 | **Isolation** | This correction does not alter or pause Task 5 product implementation and does not authorize installer, unrelated branch/runtime, production, billing, deploy, release, merge, or real-data changes. |
+
+## 2026-07-18 - Task 5 authenticated entitlement transport clarification
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2026-07-18 04:32 CT |
+| **Primary coordinator** | `AGENT-CODEX-20260718-SIK` |
+| **State** | **BINDING_IMPLEMENTATION_DECISION** within the existing Task 5 lock; no additional file scope is required. |
+| **Conflict evidence** | `supabase/migrations/0028_revoke_is_app_admin_client.sql` revokes `is_app_admin(uuid)` execution from `authenticated` and grants it only to `service_role`, so a direct browser `client.rpc('is_app_admin', ...)` path cannot provide the approved server authority. |
+| **Required transport** | `fetchCloudAdminEntitlementSnapshot(userId)` must validate the active Supabase session before and after the await, invoke the existing authenticated `get-message-usage` Edge Function, runtime-require a boolean `admin_unlimited`, and assert the direct RPC path is never called. The Edge Function validates the JWT, derives the caller account server-side, and performs the service-role RPC. |
+| **Fail-closed semantics** | Edge transport/session/error/throw/malformed responses map to `unavailable`. A successful Edge response with `admin_unlimited: false` is an authoritative fail-closed denial with an empty capability list and must suppress development fallback; it cannot grant `app.admin`. |
+| **Test correction** | Any Task 5 RED fixture that was changed back to `supabase.rpc` is stale relative to migration `0028` and this authority resolution. Restore `auth.getSession` plus `functions.invoke` mocks and explicit `rpc`-never-called assertions before implementing or committing. |
