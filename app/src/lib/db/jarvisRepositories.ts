@@ -489,6 +489,7 @@ async function lastEventForRun(database: JarvisDexie, runId: string) {
 export type CreatePendingApprovalInContextInput = Readonly<{
   accountId: string;
   approval: JarvisApprovalV1;
+  expectedEventTailSeq: number;
 }>;
 
 export type DecideApprovalInContextInput = Readonly<{
@@ -499,6 +500,7 @@ export type DecideApprovalInContextInput = Readonly<{
   approvalId: string;
   decision: 'approve' | 'deny' | 'expire';
   decidedAt: number;
+  expectedEventTailSeq: number;
 }>;
 
 export type ClaimApprovedExecutionInContextInput = Readonly<{
@@ -511,6 +513,7 @@ export type ClaimApprovedExecutionInContextInput = Readonly<{
   ownerId: string;
   evidenceRef: string;
   startedAt: number;
+  expectedEventTailSeq: number;
 }>;
 
 export type ClaimSafeAutoExecutionInContextInput = Readonly<{
@@ -520,6 +523,7 @@ export type ClaimSafeAutoExecutionInContextInput = Readonly<{
   ownerId: string;
   evidenceRef: string;
   startedAt: number;
+  expectedEventTailSeq: number;
 }>;
 
 type ApprovalAttemptPhase = 'create' | 'pending' | 'claim' | 'safe_auto';
@@ -729,6 +733,81 @@ function withClaimAccount(event: JarvisEvent, accountId: string): JarvisEvent {
   };
 }
 
+function requireExpectedApprovalTail(expectedEventTailSeq: number, actualTailSeq: number): void {
+  if (!Number.isSafeInteger(expectedEventTailSeq) || expectedEventTailSeq < 0) {
+    repositoryError('approval_integrity_error');
+  }
+  if (actualTailSeq !== expectedEventTailSeq) repositoryError('approval_scope_mismatch');
+}
+
+async function hasCommittedCancellationIntent(
+  context: KernelApprovalTransactionContext,
+  runId: string,
+): Promise<boolean> {
+  return Boolean(
+    await context.jarvis_events
+      .where('run_id')
+      .equals(runId)
+      .filter((row) => row.status === 'cancellation_requested')
+      .first(),
+  );
+}
+
+async function readBackApprovalCommit(
+  context: KernelApprovalTransactionContext,
+  expectedRunRow: ReturnType<typeof toJarvisRunRow>,
+  expectedApprovalRow: ReturnType<typeof toJarvisApprovalRow>,
+  expectedEventRows: readonly ReturnType<typeof toJarvisEventRow>[],
+) {
+  const [runRow, approvalRow, eventRows] = await Promise.all([
+    context.jarvis_runs.get(expectedRunRow.id),
+    context.jarvis_approvals.get(expectedApprovalRow.id),
+    Promise.all(expectedEventRows.map((row) => context.jarvis_events.get([row.run_id, row.seq]))),
+  ]);
+  if (
+    !runRow ||
+    !approvalRow ||
+    !valuesEqual(runRow, expectedRunRow) ||
+    !valuesEqual(approvalRow, expectedApprovalRow) ||
+    eventRows.some((row, index) => !row || !valuesEqual(row, expectedEventRows[index]))
+  ) {
+    repositoryError('approval_integrity_error');
+  }
+  return {
+    run: fromJarvisRunRow(runRow),
+    approval: fromJarvisApprovalRow(approvalRow),
+    events: eventRows.map((row) => fromJarvisEventRow(row!)),
+  };
+}
+
+function replayRunMatches(
+  run: JarvisRun,
+  input: {
+    status: 'awaiting_approval' | 'running';
+    updatedAt: number;
+    requestId: string;
+    attemptNumber: number;
+    minimumBarrierVersion?: number;
+  },
+): boolean {
+  if (run.status !== input.status || run.updatedAt !== input.updatedAt) return false;
+  const attempts = run.transportAttempts;
+  if (!attempts || attempts.length === 0) {
+    return run.source !== 'schedule' && input.attemptNumber === 1;
+  }
+  const latest = attempts.at(-1);
+  return Boolean(
+    run.source === 'schedule' &&
+    latest &&
+    latest.state === 'provider_in_flight' &&
+    latest.requestId === input.requestId &&
+    latest.attemptNumber === input.attemptNumber &&
+    latest.effectBarrier.state === 'dirty' &&
+    latest.effectBarrier.version >= (input.minimumBarrierVersion ?? 1) &&
+    latest.effectBarrier.updatedAt <= input.updatedAt,
+  );
+}
+
 /** @internal Requires the caller's already-open exact three-table transaction. */
 export async function createPendingApprovalInContext(
   context: KernelApprovalTransactionContext,
@@ -739,13 +818,6 @@ export async function createPendingApprovalInContext(
     repositoryError('approval_integrity_error');
   }
   const run = await requireApprovalOwnedRun(context, input.accountId, input.approval.runId);
-  if (run.status !== 'running') repositoryError('approval_status_conflict');
-  const attempts = currentApprovalAttempts(
-    run,
-    input.approval.requestId,
-    input.approval.attemptNumber,
-    'create',
-  );
   const [existing, open, cancellation, tail] = await Promise.all([
     context.jarvis_approvals.get(input.approval.id),
     context.jarvis_approvals
@@ -760,8 +832,8 @@ export async function createPendingApprovalInContext(
       .first(),
     lastApprovalContextEvent(context, run.id),
   ]);
-  if (existing || open || cancellation) repositoryError('approval_status_conflict');
-  const eventSeq = nextSequence(tail?.seq);
+  requireExpectedApprovalTail(input.expectedEventTailSeq, input.expectedEventTailSeq);
+  const eventSeq = input.expectedEventTailSeq + 1;
   const events = [
     approvalRunEvent({
       runId: run.id,
@@ -782,6 +854,35 @@ export async function createPendingApprovalInContext(
       createdAt: input.approval.createdAt,
     }),
   ];
+  const eventRows = events.map(toJarvisEventRow);
+  if (existing) {
+    if (
+      cancellation ||
+      !open ||
+      open.id !== existing.id ||
+      !valuesEqual(existing, desiredRow) ||
+      (tail?.seq ?? 0) !== input.expectedEventTailSeq + eventRows.length ||
+      !replayRunMatches(run, {
+        status: 'awaiting_approval',
+        updatedAt: input.approval.createdAt,
+        requestId: input.approval.requestId,
+        attemptNumber: input.approval.attemptNumber,
+      })
+    ) {
+      repositoryError('approval_status_conflict');
+    }
+    return readBackApprovalCommit(context, toJarvisRunRow(run), desiredRow, eventRows);
+  }
+  requireExpectedApprovalTail(input.expectedEventTailSeq, tail?.seq ?? 0);
+  if (run.status !== 'running') repositoryError('approval_status_conflict');
+  if (input.approval.createdAt < run.updatedAt) repositoryError('approval_integrity_error');
+  const attempts = currentApprovalAttempts(
+    run,
+    input.approval.requestId,
+    input.approval.attemptNumber,
+    'create',
+  );
+  if (open || cancellation) repositoryError('approval_status_conflict');
   const updatedRun: JarvisRun = {
     ...run,
     status: 'awaiting_approval',
@@ -791,15 +892,10 @@ export async function createPendingApprovalInContext(
       : {}),
   };
   const runRow = toJarvisRunRow(updatedRun);
-  const eventRows = events.map(toJarvisEventRow);
   await context.jarvis_runs.put(runRow);
   await context.jarvis_approvals.add(desiredRow);
   await context.jarvis_events.bulkAdd(eventRows);
-  return {
-    run: fromJarvisRunRow(runRow),
-    approval: fromJarvisApprovalRow(desiredRow),
-    events: eventRows.map(fromJarvisEventRow),
-  };
+  return readBackApprovalCommit(context, runRow, desiredRow, eventRows);
 }
 
 /** @internal Requires the caller's already-open exact three-table transaction. */
@@ -807,22 +903,30 @@ export async function decideApprovalInContext(
   context: KernelApprovalTransactionContext,
   input: DecideApprovalInContextInput,
 ) {
-  if (!isFiniteTimestamp(input.decidedAt)) repositoryError('approval_integrity_error');
+  if (
+    !isFiniteTimestamp(input.decidedAt) ||
+    (input.decision !== 'approve' && input.decision !== 'deny' && input.decision !== 'expire')
+  ) {
+    repositoryError('approval_integrity_error');
+  }
   requireApprovalInputText(input.approvalId);
+  requireExpectedApprovalTail(input.expectedEventTailSeq, input.expectedEventTailSeq);
   const run = await requireApprovalOwnedRun(context, input.accountId, input.runId);
-  if (run.status !== 'awaiting_approval') repositoryError('approval_status_conflict');
-  currentApprovalAttempts(run, input.requestId, input.attemptNumber, 'pending');
-  const [row, tail] = await Promise.all([
+  const [row, tail, cancellation] = await Promise.all([
     context.jarvis_approvals.get(input.approvalId),
     lastApprovalContextEvent(context, run.id),
+    hasCommittedCancellationIntent(context, run.id),
   ]);
   if (!row || row.run_id !== run.id) repositoryError('approval_scope_mismatch');
   const approval = fromJarvisApprovalRow(row);
   if (approval.requestId !== input.requestId || approval.attemptNumber !== input.attemptNumber) {
     repositoryError('approval_scope_mismatch');
   }
-  if (approval.status !== 'pending') repositoryError('approval_status_conflict');
-  if (input.decision === 'approve' && approval.expiresAt <= input.decidedAt) {
+  if (
+    input.decidedAt < approval.createdAt ||
+    (input.decision === 'approve' && approval.expiresAt <= input.decidedAt) ||
+    (input.decision === 'expire' && approval.expiresAt > input.decidedAt)
+  ) {
     repositoryError('approval_status_conflict');
   }
   const status =
@@ -837,7 +941,7 @@ export async function decideApprovalInContext(
     decidedAt: input.decidedAt,
   };
   const approvalRow = toJarvisApprovalRow(updatedApproval);
-  const seq = nextSequence(tail?.seq);
+  const seq = input.expectedEventTailSeq + 1;
   const events: JarvisEvent[] = [
     approvalEvent({
       runId: run.id,
@@ -854,11 +958,6 @@ export async function decideApprovalInContext(
       createdAt: input.decidedAt,
     }),
   ];
-  const updatedRun: JarvisRun = {
-    ...run,
-    status: status === 'approved' ? 'awaiting_approval' : 'running',
-    updatedAt: input.decidedAt,
-  };
   if (status !== 'approved') {
     events.push(
       approvalRunEvent({
@@ -872,30 +971,52 @@ export async function decideApprovalInContext(
       }),
     );
   }
-  const runRow = toJarvisRunRow(updatedRun);
   const eventRows = events.map(toJarvisEventRow);
+  const nextRunStatus = status === 'approved' ? 'awaiting_approval' : 'running';
+  if (approval.status === status) {
+    currentApprovalAttempts(run, input.requestId, input.attemptNumber, 'pending');
+    if (
+      cancellation ||
+      (tail?.seq ?? 0) !== input.expectedEventTailSeq + eventRows.length ||
+      !replayRunMatches(run, {
+        status: nextRunStatus,
+        updatedAt: input.decidedAt,
+        requestId: input.requestId,
+        attemptNumber: input.attemptNumber,
+      })
+    ) {
+      repositoryError('approval_status_conflict');
+    }
+    return readBackApprovalCommit(context, toJarvisRunRow(run), approvalRow, eventRows);
+  }
+  requireExpectedApprovalTail(input.expectedEventTailSeq, tail?.seq ?? 0);
+  if (
+    cancellation ||
+    run.status !== 'awaiting_approval' ||
+    approval.status !== 'pending' ||
+    input.decidedAt < run.updatedAt
+  ) {
+    repositoryError('approval_status_conflict');
+  }
+  currentApprovalAttempts(run, input.requestId, input.attemptNumber, 'pending');
+  const updatedRun: JarvisRun = {
+    ...run,
+    status: nextRunStatus,
+    updatedAt: input.decidedAt,
+  };
+  const runRow = toJarvisRunRow(updatedRun);
   await context.jarvis_runs.put(runRow);
   await context.jarvis_approvals.put(approvalRow);
   await context.jarvis_events.bulkAdd(eventRows);
-  return {
-    run: fromJarvisRunRow(runRow),
-    approval: fromJarvisApprovalRow(approvalRow),
-    events: eventRows.map(fromJarvisEventRow),
-  };
+  return readBackApprovalCommit(context, runRow, approvalRow, eventRows);
 }
 
-async function claimApprovalInContext(
-  context: KernelApprovalTransactionContext,
+function buildApprovalClaimRows(
   input: ClaimApprovedExecutionInContextInput,
   approval: JarvisApprovalV1,
   run: JarvisRun,
-  phase: 'claim' | 'safe_auto',
+  attempts: readonly JarvisTransportAttemptV1[] | undefined,
 ) {
-  if (!isFiniteTimestamp(input.startedAt)) repositoryError('approval_integrity_error');
-  requireApprovalInputText(input.ownerId);
-  requireApprovalInputText(input.evidenceRef);
-  const attempts = currentApprovalAttempts(run, input.requestId, input.attemptNumber, phase);
-  const tail = await lastApprovalContextEvent(context, run.id);
   const consumed: JarvisApprovalV1 = {
     ...approval,
     status: 'consumed',
@@ -909,20 +1030,35 @@ async function claimApprovalInContext(
     ...(attempts ? { transportAttempts: dirtyApprovalAttempt(attempts, input.startedAt) } : {}),
   };
   const event = withClaimAccount(
-    approvalClaimEvent({ ...input, approval: consumed, seq: nextSequence(tail?.seq) }),
+    approvalClaimEvent({
+      ...input,
+      approval: consumed,
+      seq: input.expectedEventTailSeq + 1,
+    }),
     input.accountId,
   );
-  const approvalRow = toJarvisApprovalRow(consumed);
-  const runRow = toJarvisRunRow(updatedRun);
-  const eventRow = toJarvisEventRow(event);
+  return {
+    approvalRow: toJarvisApprovalRow(consumed),
+    runRow: toJarvisRunRow(updatedRun),
+    eventRow: toJarvisEventRow(event),
+  };
+}
+
+async function commitApprovalClaim(
+  context: KernelApprovalTransactionContext,
+  rows: ReturnType<typeof buildApprovalClaimRows>,
+  addApproval: boolean,
+) {
+  const { approvalRow, runRow, eventRow } = rows;
   await context.jarvis_runs.put(runRow);
-  if (phase === 'safe_auto') await context.jarvis_approvals.add(approvalRow);
+  if (addApproval) await context.jarvis_approvals.add(approvalRow);
   else await context.jarvis_approvals.put(approvalRow);
   await context.jarvis_events.add(eventRow);
+  const readback = await readBackApprovalCommit(context, runRow, approvalRow, [eventRow]);
   return {
-    run: fromJarvisRunRow(runRow),
-    approval: fromJarvisApprovalRow(approvalRow),
-    startEvent: fromJarvisEventRow(eventRow),
+    run: readback.run,
+    approval: readback.approval,
+    startEvent: readback.events[0]!,
   };
 }
 
@@ -931,18 +1067,82 @@ export async function claimApprovedExecutionInContext(
   context: KernelApprovalTransactionContext,
   input: ClaimApprovedExecutionInContextInput,
 ) {
+  if (!isFiniteTimestamp(input.startedAt)) repositoryError('approval_integrity_error');
+  requireApprovalInputText(input.ownerId);
+  requireApprovalInputText(input.evidenceRef);
+  requireExpectedApprovalTail(input.expectedEventTailSeq, input.expectedEventTailSeq);
   const run = await requireApprovalOwnedRun(context, input.accountId, input.runId);
-  if (run.status !== 'awaiting_approval') repositoryError('approval_status_conflict');
-  const row = await context.jarvis_approvals.get(input.approvalId);
+  const [row, tail, cancellation] = await Promise.all([
+    context.jarvis_approvals.get(input.approvalId),
+    lastApprovalContextEvent(context, run.id),
+    hasCommittedCancellationIntent(context, run.id),
+  ]);
   if (!row || row.run_id !== run.id) repositoryError('approval_scope_mismatch');
   const approval = fromJarvisApprovalRow(row);
   if (approval.requestId !== input.requestId || approval.attemptNumber !== input.attemptNumber) {
     repositoryError('approval_scope_mismatch');
   }
-  if (approval.status !== 'approved' || approval.expiresAt <= input.startedAt) {
+  if (input.startedAt < approval.createdAt || approval.expiresAt <= input.startedAt) {
     repositoryError('approval_status_conflict');
   }
-  return claimApprovalInContext(context, input, approval, run, 'claim');
+  const consumed: JarvisApprovalV1 = {
+    ...approval,
+    status: 'consumed',
+    consumedAt: input.startedAt,
+  };
+  const approvalRow = toJarvisApprovalRow(consumed);
+  const eventRow = toJarvisEventRow(
+    withClaimAccount(
+      approvalClaimEvent({
+        ...input,
+        approval: consumed,
+        seq: input.expectedEventTailSeq + 1,
+      }),
+      input.accountId,
+    ),
+  );
+  if (approval.status === 'consumed') {
+    const committedEvent = await context.jarvis_events.get([eventRow.run_id, eventRow.seq]);
+    currentApprovalAttempts(run, input.requestId, input.attemptNumber, 'claim');
+    if (
+      cancellation ||
+      !committedEvent ||
+      !valuesEqual(committedEvent, eventRow) ||
+      (tail?.seq ?? 0) !== input.expectedEventTailSeq + 1 ||
+      !replayRunMatches(run, {
+        status: 'running',
+        updatedAt: input.startedAt,
+        requestId: input.requestId,
+        attemptNumber: input.attemptNumber,
+        minimumBarrierVersion: 2,
+      })
+    ) {
+      repositoryError('approval_status_conflict');
+    }
+    const readback = await readBackApprovalCommit(context, toJarvisRunRow(run), approvalRow, [
+      eventRow,
+    ]);
+    return {
+      run: readback.run,
+      approval: readback.approval,
+      startEvent: readback.events[0]!,
+    };
+  }
+  requireExpectedApprovalTail(input.expectedEventTailSeq, tail?.seq ?? 0);
+  if (
+    cancellation ||
+    run.status !== 'awaiting_approval' ||
+    approval.status !== 'approved' ||
+    input.startedAt < run.updatedAt
+  ) {
+    repositoryError('approval_status_conflict');
+  }
+  const attempts = currentApprovalAttempts(run, input.requestId, input.attemptNumber, 'claim');
+  return commitApprovalClaim(
+    context,
+    buildApprovalClaimRows(input, approval, run, attempts),
+    false,
+  );
 }
 
 /** @internal Requires the caller's already-open exact three-table transaction. */
@@ -956,28 +1156,89 @@ export async function claimSafeAutoExecutionInContext(
   if (input.approval.expiresAt <= input.startedAt) {
     repositoryError('approval_status_conflict');
   }
+  if (!isFiniteTimestamp(input.startedAt)) repositoryError('approval_integrity_error');
+  requireApprovalInputText(input.ownerId);
+  requireApprovalInputText(input.evidenceRef);
+  requireExpectedApprovalTail(input.expectedEventTailSeq, input.expectedEventTailSeq);
   toJarvisApprovalRow(input.approval);
   const run = await requireApprovalOwnedRun(context, input.accountId, input.approval.runId);
-  if (run.status !== 'running') repositoryError('approval_status_conflict');
-  if (await context.jarvis_approvals.get(input.approval.id)) {
+  const [existing, tail, cancellation] = await Promise.all([
+    context.jarvis_approvals.get(input.approval.id),
+    lastApprovalContextEvent(context, run.id),
+    hasCommittedCancellationIntent(context, run.id),
+  ]);
+  if (input.startedAt < input.approval.createdAt) {
     repositoryError('approval_status_conflict');
   }
-  return claimApprovalInContext(
-    context,
-    {
-      accountId: input.accountId,
-      runId: input.approval.runId,
-      requestId: input.approval.requestId,
-      attemptNumber: input.approval.attemptNumber,
-      approvalId: input.approval.id,
-      producerKind: input.producerKind,
-      ownerId: input.ownerId,
-      evidenceRef: input.evidenceRef,
-      startedAt: input.startedAt,
-    },
-    input.approval,
+  const claimInput: ClaimApprovedExecutionInContextInput = {
+    accountId: input.accountId,
+    runId: input.approval.runId,
+    requestId: input.approval.requestId,
+    attemptNumber: input.approval.attemptNumber,
+    approvalId: input.approval.id,
+    producerKind: input.producerKind,
+    ownerId: input.ownerId,
+    evidenceRef: input.evidenceRef,
+    startedAt: input.startedAt,
+    expectedEventTailSeq: input.expectedEventTailSeq,
+  };
+  const consumed: JarvisApprovalV1 = {
+    ...input.approval,
+    status: 'consumed',
+    consumedAt: input.startedAt,
+    decidedAt: input.startedAt,
+  };
+  const approvalRow = toJarvisApprovalRow(consumed);
+  const eventRow = toJarvisEventRow(
+    withClaimAccount(
+      approvalClaimEvent({
+        ...claimInput,
+        approval: consumed,
+        seq: input.expectedEventTailSeq + 1,
+      }),
+      input.accountId,
+    ),
+  );
+  if (existing) {
+    const committedEvent = await context.jarvis_events.get([eventRow.run_id, eventRow.seq]);
+    if (
+      cancellation ||
+      !valuesEqual(existing, approvalRow) ||
+      !committedEvent ||
+      !valuesEqual(committedEvent, eventRow) ||
+      (tail?.seq ?? 0) !== input.expectedEventTailSeq + 1 ||
+      !replayRunMatches(run, {
+        status: 'running',
+        updatedAt: input.startedAt,
+        requestId: input.approval.requestId,
+        attemptNumber: input.approval.attemptNumber,
+      })
+    ) {
+      repositoryError('approval_status_conflict');
+    }
+    const readback = await readBackApprovalCommit(context, toJarvisRunRow(run), approvalRow, [
+      eventRow,
+    ]);
+    return {
+      run: readback.run,
+      approval: readback.approval,
+      startEvent: readback.events[0]!,
+    };
+  }
+  requireExpectedApprovalTail(input.expectedEventTailSeq, tail?.seq ?? 0);
+  if (cancellation || run.status !== 'running' || input.startedAt < run.updatedAt) {
+    repositoryError('approval_status_conflict');
+  }
+  const attempts = currentApprovalAttempts(
     run,
+    input.approval.requestId,
+    input.approval.attemptNumber,
     'safe_auto',
+  );
+  return commitApprovalClaim(
+    context,
+    buildApprovalClaimRows(claimInput, input.approval, run, attempts),
+    true,
   );
 }
 
