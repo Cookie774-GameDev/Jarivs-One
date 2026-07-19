@@ -17,6 +17,10 @@ import {
 import type { PluginStore } from './store';
 import type { PluginHttpTest, PluginManifest, PluginTestResult } from './types';
 import { isConnectableStatus } from './types';
+import type {
+  CanonicalPluginEvidence,
+  CanonicalPluginEvidenceAuthority,
+} from '@/lib/jarvis/artifactProducerAdapters';
 
 type CredentialMap = Record<string, string>;
 
@@ -50,6 +54,120 @@ export interface PreparedRegisteredPluginToolExecutor extends RegisteredPluginTo
     context: RegisteredActionExecutionContext;
     credentialValues: Readonly<Record<string, string>>;
   }): Promise<ActionResult>;
+}
+
+type CanonicalPluginRegistration = Extract<JarvisRegisteredActionExecutor, { kind: 'plugin_tool' }>;
+
+export interface CanonicalPluginArtifactResultReadPort {
+  readCanonicalPluginResult(evidence: CanonicalPluginEvidence): Promise<Readonly<{
+    evidence: CanonicalPluginEvidence;
+    registration: CanonicalPluginRegistration;
+    executor: RegisteredPluginToolExecutor;
+  }> | null>;
+}
+
+export interface CanonicalPluginArtifactGrantAuthority {
+  revalidateCanonicalPluginGrant(input: {
+    evidence: CanonicalPluginEvidence;
+    registration: CanonicalPluginRegistration;
+  }): Promise<boolean>;
+}
+
+const canonicalRegisteredPluginExecutors = new WeakSet<object>();
+
+function validPluginEvidence(evidence: CanonicalPluginEvidence): boolean {
+  const stable = (value: string) =>
+    value.length > 0 && value.trim() === value && !value.includes('\u0000');
+  return (
+    Object.isFrozen(evidence) &&
+    evidence.producerId === 'plugin_result' &&
+    (evidence.state === 'succeeded' || evidence.state === 'partial') &&
+    Number.isSafeInteger(evidence.attemptNumber) &&
+    evidence.attemptNumber > 0 &&
+    Number.isSafeInteger(evidence.verifiedAt) &&
+    evidence.verifiedAt >= 0 &&
+    stable(evidence.accountId) &&
+    stable(evidence.runId) &&
+    stable(evidence.requestId) &&
+    stable(evidence.resultRef) &&
+    stable(evidence.pluginId) &&
+    stable(evidence.invocationId)
+  );
+}
+
+function samePluginEvidence(
+  left: CanonicalPluginEvidence,
+  right: CanonicalPluginEvidence,
+): boolean {
+  return (
+    left.producerId === right.producerId &&
+    left.accountId === right.accountId &&
+    left.runId === right.runId &&
+    left.requestId === right.requestId &&
+    left.attemptNumber === right.attemptNumber &&
+    left.resultRef === right.resultRef &&
+    left.state === right.state &&
+    left.verifiedAt === right.verifiedAt &&
+    left.pluginId === right.pluginId &&
+    left.invocationId === right.invocationId
+  );
+}
+
+/** @internal Supplied only to the trusted artifact runtime composition. */
+export function createCanonicalPluginEvidenceAuthority(input: {
+  executor: RegisteredPluginToolExecutor;
+  activeAccountId(): string | undefined;
+  results: CanonicalPluginArtifactResultReadPort;
+  grants: CanonicalPluginArtifactGrantAuthority;
+}): CanonicalPluginEvidenceAuthority {
+  if (!canonicalRegisteredPluginExecutors.has(input.executor as object)) {
+    throw new TypeError('canonical_plugin_executor_invalid');
+  }
+  return Object.freeze({
+    async verify(evidence: CanonicalPluginEvidence) {
+      if (!validPluginEvidence(evidence) || input.activeAccountId() !== evidence.accountId) {
+        return null;
+      }
+      let record: Awaited<ReturnType<typeof input.results.readCanonicalPluginResult>>;
+      try {
+        record = await input.results.readCanonicalPluginResult(evidence);
+      } catch {
+        return null;
+      }
+      if (
+        !record ||
+        !Object.isFrozen(record) ||
+        record.executor !== input.executor ||
+        !validPluginEvidence(record.evidence) ||
+        !samePluginEvidence(evidence, record.evidence) ||
+        !Object.isFrozen(record.registration) ||
+        !isRegisteredPluginToolExecutor(record.registration) ||
+        record.registration.pluginId !== evidence.pluginId
+      ) {
+        return null;
+      }
+      const manifest = getPluginManifest(record.registration.pluginId);
+      if (
+        !manifest ||
+        !isConnectableStatus(manifest.status) ||
+        !manifest.tools.some((tool) => tool.name === record.registration.toolName)
+      ) {
+        return null;
+      }
+      let grantCurrent = false;
+      try {
+        grantCurrent = await input.grants.revalidateCanonicalPluginGrant({
+          evidence: record.evidence,
+          registration: record.registration,
+        });
+      } catch {
+        return null;
+      }
+      return grantCurrent && input.activeAccountId() === evidence.accountId
+        ? record.evidence
+        : null;
+    },
+  });
 }
 
 function safeFailure(reason: string): Error {
@@ -604,6 +722,8 @@ export function createAccountScopedPluginRuntime(input: {
       return runPreparedTool({ manifest, tool, values, signal: context.signal });
     },
   });
+
+  canonicalRegisteredPluginExecutors.add(registeredTools);
 
   return Object.freeze({ management, registeredTools });
 }

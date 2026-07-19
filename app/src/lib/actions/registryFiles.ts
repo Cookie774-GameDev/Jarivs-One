@@ -16,9 +16,43 @@ import {
 } from '@/features/files/projectFiles';
 import { isPathInsideRoot } from './filePolicy';
 import type { ActionDef, ActionResult } from './types';
+import type { CanonicalFileActionEvidence } from '@/lib/jarvis/artifactProducerAdapters';
 
 const ok = (summary: string, data?: unknown): ActionResult => ({ ok: true, summary, data });
 const fail = (error: string): ActionResult => ({ ok: false, error });
+
+function persistedReference(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0 && value.trim() === value;
+}
+
+/** @internal Validates only persisted file-operation results, never proposals or submissions. */
+export function isCanonicalFileArtifactResult(
+  evidence: CanonicalFileActionEvidence,
+  result: ActionResult,
+): boolean {
+  if (!result.ok || !result.data || typeof result.data !== 'object' || Array.isArray(result.data)) {
+    return false;
+  }
+  const data = result.data as Record<string, unknown>;
+  if (evidence.state === 'partial') {
+    return (
+      data.partial === true &&
+      (persistedReference(data.path) ||
+        persistedReference(data.blobKey) ||
+        persistedReference(data.messagePart))
+    );
+  }
+  if (evidence.actionId === 'files.create') {
+    return data.operation === 'create' && persistedReference(data.path);
+  }
+  if (evidence.actionId === 'files.edit') {
+    return data.operation === 'edit' && persistedReference(data.path);
+  }
+  if (evidence.actionId === 'files.read') {
+    return persistedReference(data.path) && typeof data.content === 'string';
+  }
+  return false;
+}
 
 function isAbsolutePath(path: string): boolean {
   return /^[A-Za-z]:[\\/]/.test(path) || path.startsWith('/');
@@ -29,9 +63,10 @@ function samePath(left: string, right: string): boolean {
   return normalize(left) === normalize(right);
 }
 
-async function allowedRoot(requested?: string): Promise<
-  | { ok: true; root: string; jarvisRoot: string; isDefault: boolean }
-  | { ok: false; error: string }
+async function allowedRoot(
+  requested?: string,
+): Promise<
+  { ok: true; root: string; jarvisRoot: string; isDefault: boolean } | { ok: false; error: string }
 > {
   const projectId = useAuthStore.getState().projectId;
   const activeRoot = getStoredProjectRoot(projectId ? String(projectId) : null).trim();
@@ -39,17 +74,27 @@ async function allowedRoot(requested?: string): Promise<
   const defaultRoot = await getJarvisProjectsDir();
   const requestedRoot = requested?.trim();
   const root = requestedRoot || activeRoot || defaultRoot;
-  if (!root || !isAbsolutePath(root)) return { ok: false, error: 'No allowed project folder is available.' };
+  if (!root || !isAbsolutePath(root))
+    return { ok: false, error: 'No allowed project folder is available.' };
   const allowed = [activeRoot, defaultRoot].filter(Boolean);
   if (!allowed.some((candidate) => samePath(candidate, root))) {
-    return { ok: false, error: 'The requested folder is not the active project or Jarvis Projects folder.' };
+    return {
+      ok: false,
+      error: 'The requested folder is not the active project or Jarvis Projects folder.',
+    };
   }
-  return { ok: true, root, jarvisRoot, isDefault: Boolean(defaultRoot && samePath(defaultRoot, root)) };
+  return {
+    ok: true,
+    root,
+    jarvisRoot,
+    isDefault: Boolean(defaultRoot && samePath(defaultRoot, root)),
+  };
 }
 
 async function validatePath(path: unknown, rootParam: unknown) {
   const value = typeof path === 'string' ? path.trim() : '';
-  if (!value || !isAbsolutePath(value)) return { ok: false as const, error: 'An absolute file path is required.' };
+  if (!value || !isAbsolutePath(value))
+    return { ok: false as const, error: 'An absolute file path is required.' };
   const root = await allowedRoot(typeof rootParam === 'string' ? rootParam : undefined);
   if (!root.ok) return root;
   if (!isPathInsideRoot(value, root.root)) {
@@ -69,7 +114,8 @@ export const FILE_ACTIONS: ActionDef[] = [
     id: 'files.create',
     category: 'file',
     label: 'Create a new text file',
-    description: 'Create one new text file inside the active project or Jarvis Projects. Never overwrites.',
+    description:
+      'Create one new text file inside the active project or Jarvis Projects. Never overwrites.',
     icon: FilePlus2,
     params: [
       { key: 'path', label: 'Absolute file path', type: 'string', required: true },
@@ -86,11 +132,14 @@ export const FILE_ACTIONS: ActionDef[] = [
       }
       const madeParent = await createDirectory(dirname(resolved.path), { root: resolved.root });
       if (!madeParent.ok) return fail(describeFsError(madeParent.error));
-      const created = await createTextFileWithContent(resolved.path, content, { root: resolved.root });
+      const created = await createTextFileWithContent(resolved.path, content, {
+        root: resolved.root,
+      });
       if (!created.ok) {
-        const message = created.error.code === 'already_exists'
-          ? 'A file already exists at that path. Choose update, a numbered copy, or another name.'
-          : describeFsError(created.error);
+        const message =
+          created.error.code === 'already_exists'
+            ? 'A file already exists at that path. Choose update, a numbered copy, or another name.'
+            : describeFsError(created.error);
         return fail(message);
       }
       return ok(`Created ${resolved.path}.`, { path: resolved.path, operation: 'create' });
@@ -100,7 +149,8 @@ export const FILE_ACTIONS: ActionDef[] = [
     id: 'files.edit',
     category: 'file',
     label: 'Replace an existing text file',
-    description: 'Replace the contents of a specific existing text file inside an allowed project root.',
+    description:
+      'Replace the contents of a specific existing text file inside an allowed project root.',
     icon: FileText,
     destructive: true,
     params: [

@@ -20,11 +20,13 @@ vi.mock('@/components/ui/toast', () => ({
 }));
 
 import {
+  createCanonicalFileActionEvidenceAuthority,
   createJarvisApprovedActionRunner,
   runAction,
   resolveAction,
   getAllActions,
 } from '@/lib/actions/runner';
+import type { CanonicalFileActionEvidence } from '@/lib/jarvis/artifactProducerAdapters';
 import { toast } from '@/components/ui/toast';
 import { useToolStore } from '@/features/tools/toolStore';
 import { useTerminalCommandQueue } from '@/features/terminals/terminalCommandQueue';
@@ -251,5 +253,64 @@ describe('runAction', () => {
     expect(serialized).not.toContain(secretCommand);
     expect(serialized).toContain('[omitted]');
     expect(serialized).toContain('C:\\\\Projects\\\\Safe');
+  });
+});
+
+describe('canonical file-action artifact evidence authority', () => {
+  const exact = Object.freeze({
+    producerId: 'file_action_result',
+    accountId: 'account-file',
+    runId: 'jrun_file',
+    requestId: 'jrequest_file',
+    attemptNumber: 1,
+    resultRef: 'jresult_file',
+    state: 'succeeded',
+    verifiedAt: 1_786_202_200_000,
+    actionId: 'files.create',
+    actionVersion: 1,
+  }) satisfies CanonicalFileActionEvidence;
+
+  it('accepts only an exact canonical re-read backed by a persisted file result', async () => {
+    const readCanonicalFileActionResult = vi.fn(async () =>
+      Object.freeze({
+        evidence: exact,
+        result: Object.freeze({
+          ok: true as const,
+          summary: 'Created file.',
+          data: Object.freeze({ path: 'C:\\Projects\\FarmLife\\created.md', operation: 'create' }),
+        }),
+      }),
+    );
+    const authority = createCanonicalFileActionEvidenceAuthority({
+      readCanonicalFileActionResult,
+    });
+
+    await expect(authority.verify(exact)).resolves.toBe(exact);
+    await expect(
+      authority.verify(Object.freeze({ ...exact, runId: 'jrun_other' })),
+    ).resolves.toBeNull();
+  });
+
+  it('rejects proposed, failed, mismatched, and invalid numeric results', async () => {
+    const readCanonicalFileActionResult = vi.fn(async () =>
+      Object.freeze({
+        evidence: exact,
+        result: Object.freeze({ ok: false as const, error: 'write failed' }),
+      }),
+    );
+    const authority = createCanonicalFileActionEvidenceAuthority({
+      readCanonicalFileActionResult,
+    });
+
+    await expect(authority.verify(exact)).resolves.toBeNull();
+    await expect(
+      authority.verify(Object.freeze({ ...exact, state: 'proposed' }) as never),
+    ).resolves.toBeNull();
+    await expect(
+      authority.verify(Object.freeze({ ...exact, actionId: 'settings.open' })),
+    ).resolves.toBeNull();
+    await expect(
+      authority.verify(Object.freeze({ ...exact, verifiedAt: 1.5 })),
+    ).resolves.toBeNull();
   });
 });

@@ -17,6 +17,11 @@
  *  - `invoke` rejects with an error whose message includes the tool name.
  */
 
+import type {
+  CanonicalMcpEvidence,
+  CanonicalMcpEvidenceAuthority,
+} from '@/lib/jarvis/artifactProducerAdapters';
+
 export interface ToolDef<I = unknown, O = unknown> {
   /** Stable, dot-namespaced id (e.g. `'fs.read'`, `'voice.speak'`). */
   name: string;
@@ -112,6 +117,81 @@ function subscribe(fn: Subscriber): () => void {
   return () => {
     subscribers.delete(fn);
   };
+}
+
+export interface CanonicalMcpArtifactResultReadPort {
+  readCanonicalMcpResult(evidence: CanonicalMcpEvidence): Promise<Readonly<{
+    evidence: CanonicalMcpEvidence;
+    registrationName: string;
+    tool: ToolDef;
+  }> | null>;
+}
+
+function validMcpEvidence(evidence: CanonicalMcpEvidence): boolean {
+  const stable = (value: string) =>
+    value.length > 0 && value.trim() === value && !value.includes('\u0000');
+  return (
+    Object.isFrozen(evidence) &&
+    evidence.producerId === 'mcp_result' &&
+    (evidence.state === 'succeeded' || evidence.state === 'partial') &&
+    Number.isSafeInteger(evidence.attemptNumber) &&
+    evidence.attemptNumber > 0 &&
+    Number.isSafeInteger(evidence.verifiedAt) &&
+    evidence.verifiedAt >= 0 &&
+    stable(evidence.accountId) &&
+    stable(evidence.runId) &&
+    stable(evidence.requestId) &&
+    stable(evidence.resultRef) &&
+    stable(evidence.serverId) &&
+    stable(evidence.toolName) &&
+    stable(evidence.invocationId)
+  );
+}
+
+function sameMcpEvidence(left: CanonicalMcpEvidence, right: CanonicalMcpEvidence): boolean {
+  return (
+    left.producerId === right.producerId &&
+    left.accountId === right.accountId &&
+    left.runId === right.runId &&
+    left.requestId === right.requestId &&
+    left.attemptNumber === right.attemptNumber &&
+    left.resultRef === right.resultRef &&
+    left.state === right.state &&
+    left.verifiedAt === right.verifiedAt &&
+    left.serverId === right.serverId &&
+    left.toolName === right.toolName &&
+    left.invocationId === right.invocationId
+  );
+}
+
+/** @internal Supplied only to the trusted artifact runtime composition. */
+export function createCanonicalMcpEvidenceAuthority(
+  port: CanonicalMcpArtifactResultReadPort,
+): CanonicalMcpEvidenceAuthority {
+  return Object.freeze({
+    async verify(evidence: CanonicalMcpEvidence) {
+      if (!validMcpEvidence(evidence)) return null;
+      let record: Awaited<ReturnType<typeof port.readCanonicalMcpResult>>;
+      try {
+        record = await port.readCanonicalMcpResult(evidence);
+      } catch {
+        return null;
+      }
+      const registrationName = `${evidence.serverId}.${evidence.toolName}`;
+      if (
+        !record ||
+        !Object.isFrozen(record) ||
+        !validMcpEvidence(record.evidence) ||
+        !sameMcpEvidence(evidence, record.evidence) ||
+        record.registrationName !== registrationName ||
+        record.tool.name !== registrationName ||
+        tools.get(registrationName) !== record.tool
+      ) {
+        return null;
+      }
+      return record.evidence;
+    },
+  });
 }
 
 /**

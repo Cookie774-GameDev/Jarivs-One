@@ -111,6 +111,77 @@ import {
   hashJarvisText,
   isProtectedJarvisAgent,
 } from '@/lib/jarvis/identity';
+import type {
+  CanonicalProviderEvidence,
+  CanonicalProviderEvidenceAuthority,
+} from '@/lib/jarvis/artifactProducerAdapters';
+
+/** @internal Re-reads canonical provider results without exposing the result store. */
+export interface CanonicalProviderArtifactEvidenceReadPort {
+  readCanonicalProviderEvidence(
+    evidence: CanonicalProviderEvidence,
+  ): Promise<CanonicalProviderEvidence | null>;
+}
+
+function validProviderEvidence(evidence: CanonicalProviderEvidence): boolean {
+  const stable = (value: string) =>
+    value.length > 0 && value.trim() === value && !value.includes('\u0000');
+  return (
+    Object.isFrozen(evidence) &&
+    evidence.producerId === 'provider_response' &&
+    (evidence.state === 'completed' || evidence.state === 'partial') &&
+    Number.isSafeInteger(evidence.attemptNumber) &&
+    evidence.attemptNumber > 0 &&
+    Number.isSafeInteger(evidence.verifiedAt) &&
+    evidence.verifiedAt >= 0 &&
+    stable(evidence.accountId) &&
+    stable(evidence.runId) &&
+    stable(evidence.requestId) &&
+    stable(evidence.resultRef) &&
+    stable(evidence.providerId) &&
+    stable(evidence.modelId) &&
+    stable(evidence.modelSnapshotRef)
+  );
+}
+
+function sameProviderEvidence(
+  left: CanonicalProviderEvidence,
+  right: CanonicalProviderEvidence,
+): boolean {
+  return (
+    left.producerId === right.producerId &&
+    left.accountId === right.accountId &&
+    left.runId === right.runId &&
+    left.requestId === right.requestId &&
+    left.attemptNumber === right.attemptNumber &&
+    left.resultRef === right.resultRef &&
+    left.state === right.state &&
+    left.verifiedAt === right.verifiedAt &&
+    left.providerId === right.providerId &&
+    left.modelId === right.modelId &&
+    left.modelSnapshotRef === right.modelSnapshotRef
+  );
+}
+
+/** @internal Supplied only to the trusted artifact runtime composition. */
+export function createCanonicalProviderEvidenceAuthority(
+  port: CanonicalProviderArtifactEvidenceReadPort,
+): CanonicalProviderEvidenceAuthority {
+  return Object.freeze({
+    async verify(evidence: CanonicalProviderEvidence) {
+      if (!validProviderEvidence(evidence)) return null;
+      let current: CanonicalProviderEvidence | null;
+      try {
+        current = await port.readCanonicalProviderEvidence(evidence);
+      } catch {
+        return null;
+      }
+      return current && validProviderEvidence(current) && sameProviderEvidence(evidence, current)
+        ? current
+        : null;
+    },
+  });
+}
 
 /**
  * Bindings the runtime needs from the host app. Implementations are typically

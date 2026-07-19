@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import {
   attachTerminalExecution,
   claimTerminalExecution,
+  createCanonicalTerminalEvidenceAuthority,
   createJarvisTerminalExecutionAcceptor,
   failTerminalExecutionBeforeNativeExit,
   markTerminalExecution,
@@ -26,6 +27,7 @@ import type {
 } from '@/lib/jarvis/contracts/execution';
 import type { JarvisTerminalOwnedExecution } from '@/lib/jarvis/approvalEngine';
 import type { JarvisQueuedCancellationTransitionAuthority } from '@/lib/jarvis/executionJournal/abortRegistry';
+import type { CanonicalTerminalEvidence } from '@/lib/jarvis/artifactProducerAdapters';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@tauri-apps/api/event', () => ({
@@ -681,5 +683,59 @@ describe('terminal execution lifecycle', () => {
       terminalStatus: 'completed',
     });
     expect(harness.requestCancellation).not.toHaveBeenCalled();
+  });
+});
+
+describe('canonical terminal artifact evidence authority', () => {
+  const exact = Object.freeze({
+    producerId: 'terminal_exit',
+    accountId: 'account-terminal',
+    runId: 'jrun_terminal',
+    requestId: 'jrequest_terminal',
+    attemptNumber: 1,
+    resultRef: 'jterminal_result:jterm_terminal:pty_terminal:natural_exit:0',
+    state: 'exited',
+    verifiedAt: 1_786_202_300_000,
+    sessionId: 'pty_terminal',
+    executionId: 'jterm_terminal',
+  }) satisfies CanonicalTerminalEvidence;
+
+  it('accepts only the exact frozen Task 19C result re-read', async () => {
+    const readCanonicalTerminalEvidence = vi.fn(async () => exact);
+    const authority = createCanonicalTerminalEvidenceAuthority({
+      readCanonicalTerminalEvidence,
+    });
+
+    await expect(authority.verify(exact)).resolves.toBe(exact);
+    for (const changed of [
+      Object.freeze({ ...exact, runId: 'jrun_other' }),
+      Object.freeze({ ...exact, requestId: 'jrequest_other' }),
+      Object.freeze({ ...exact, resultRef: 'jterminal_result:other' }),
+      Object.freeze({ ...exact, sessionId: 'pty_other' }),
+      Object.freeze({ ...exact, executionId: 'jterm_other' }),
+    ]) {
+      await expect(authority.verify(changed)).resolves.toBeNull();
+    }
+  });
+
+  it('accepts a real persisted partial and rejects queued or invalid terminal evidence', async () => {
+    const partial = Object.freeze({
+      ...exact,
+      resultRef: 'jterminal_partial:jterm_terminal:pty_terminal:transcript-1',
+      state: 'partial' as const,
+    });
+    const readCanonicalTerminalEvidence = vi.fn(async () => partial);
+    const authority = createCanonicalTerminalEvidenceAuthority({
+      readCanonicalTerminalEvidence,
+    });
+
+    await expect(authority.verify(partial)).resolves.toBe(partial);
+    await expect(
+      authority.verify(Object.freeze({ ...exact, state: 'queued' }) as never),
+    ).resolves.toBeNull();
+    await expect(authority.verify({ ...exact })).resolves.toBeNull();
+    await expect(
+      authority.verify(Object.freeze({ ...exact, verifiedAt: Number.POSITIVE_INFINITY })),
+    ).resolves.toBeNull();
   });
 });

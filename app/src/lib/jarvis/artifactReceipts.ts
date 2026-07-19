@@ -143,7 +143,7 @@ export function createArtifactReceiptAuthority(input: {
         writable: false,
       });
       const receipt = Object.freeze(receiptValue);
-      issued.set(receipt, copyBinding(binding));
+      issued.set(receipt, Object.freeze(copyBinding(binding)));
       return receipt;
     },
 

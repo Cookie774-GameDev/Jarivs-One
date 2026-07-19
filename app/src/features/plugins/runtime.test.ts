@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import * as runtimeModule from './runtime';
-import { createAccountScopedPluginRuntime } from './runtime';
+import {
+  createAccountScopedPluginRuntime,
+  createCanonicalPluginEvidenceAuthority,
+} from './runtime';
 import {
   createJarvisExistingCredentialAuthorization,
   createPluginCredentialAccountGrantRepository,
@@ -16,6 +19,7 @@ import {
   createJarvisActionCatalog,
   type JarvisRegisteredActionDefinition,
 } from '@/lib/jarvis/actions/catalog';
+import type { CanonicalPluginEvidence } from '@/lib/jarvis/artifactProducerAdapters';
 
 function memoryStorage(): StrictPluginCredentialGrantStorage {
   let raw: string | null = null;
@@ -95,6 +99,7 @@ function fixture(
     connections,
     removals,
     values,
+    activeAccountId: () => activeAccountId,
     setActiveAccountId(value: string | undefined) {
       activeAccountId = value;
     },
@@ -103,7 +108,10 @@ function fixture(
 
 describe('account-scoped plugin runtime', () => {
   it('exports the closed factory without legacy generic plugin call APIs', () => {
-    expect(Object.keys(runtimeModule).sort()).toEqual(['createAccountScopedPluginRuntime']);
+    expect(Object.keys(runtimeModule).sort()).toEqual([
+      'createAccountScopedPluginRuntime',
+      'createCanonicalPluginEvidenceAuthority',
+    ]);
     expect(runtimeModule).not.toHaveProperty('testPluginConnection');
     expect(runtimeModule).not.toHaveProperty('callPluginTool');
   });
@@ -474,5 +482,120 @@ describe('account-scoped plugin runtime', () => {
         context,
       }),
     ).rejects.toThrow();
+  });
+});
+
+describe('canonical plugin artifact evidence authority', () => {
+  const evidence = Object.freeze({
+    producerId: 'plugin_result',
+    accountId: 'account-a',
+    runId: 'jrun_plugin',
+    requestId: 'jrequest_plugin',
+    attemptNumber: 1,
+    resultRef: 'jplugin_result_invocation-1',
+    state: 'succeeded',
+    verifiedAt: 1_786_202_400_000,
+    pluginId: 'mock-connector',
+    invocationId: 'invocation-1',
+  }) satisfies CanonicalPluginEvidence;
+
+  function registration() {
+    const source: JarvisRegisteredActionDefinition = {
+      id: 'mock.artifact-ping',
+      version: 1,
+      title: 'Ping mock connector for artifact evidence',
+      description: 'Runs one fixed deterministic connector ping.',
+      inputSchema: { type: 'object', properties: {}, required: [], additionalProperties: false },
+      outputSchema: { type: 'object', additionalProperties: true },
+      requiredCapabilities: ['plugin.mock.ping'],
+      requiredEntitlements: [],
+      risk: 'read-only',
+      approval: 'never',
+      expectedEffect: 'Read one deterministic local connector response.',
+      exposeToAI: true,
+      executor: { kind: 'plugin_tool', pluginId: 'mock-connector', toolName: 'ping' },
+      credentialBindings: [],
+      validateParameters: () => ({}),
+      deriveTarget: ({ accountId }) => ({
+        kind: 'plugin_tool',
+        accountId,
+        pluginId: 'mock-connector',
+        toolName: 'ping',
+        resourceId: 'mock-connector',
+      }),
+    };
+    const resolved = createJarvisActionCatalog([source]).resolve(source.id)!.executor;
+    if (resolved.kind !== 'plugin_tool') throw new Error('expected plugin tool');
+    return resolved;
+  }
+
+  it('requires the private registered executor, active account, grant revalidation, and literal registration', async () => {
+    const test = fixture();
+    const literalRegistration = registration();
+    const readCanonicalPluginResult = vi.fn(async () =>
+      Object.freeze({
+        evidence,
+        registration: literalRegistration,
+        executor: test.runtime.registeredTools,
+      }),
+    );
+    const revalidateCanonicalPluginGrant = vi.fn(async () => true);
+    const authority = createCanonicalPluginEvidenceAuthority({
+      executor: test.runtime.registeredTools,
+      activeAccountId: test.activeAccountId,
+      results: { readCanonicalPluginResult },
+      grants: { revalidateCanonicalPluginGrant },
+    });
+
+    await expect(authority.verify(evidence)).resolves.toBe(evidence);
+    expect(revalidateCanonicalPluginGrant).toHaveBeenCalledWith({
+      evidence,
+      registration: literalRegistration,
+    });
+
+    test.setActiveAccountId('account-b');
+    await expect(authority.verify(evidence)).resolves.toBeNull();
+    test.setActiveAccountId('account-a');
+    revalidateCanonicalPluginGrant.mockResolvedValueOnce(false);
+    await expect(authority.verify(evidence)).resolves.toBeNull();
+    readCanonicalPluginResult.mockResolvedValueOnce(
+      Object.freeze({
+        evidence,
+        registration: Object.freeze({ ...literalRegistration }),
+        executor: test.runtime.registeredTools,
+      }),
+    );
+    await expect(authority.verify(evidence)).resolves.toBeNull();
+  });
+
+  it('rejects a non-runtime executor and cross-result evidence', async () => {
+    const test = fixture();
+    const literalRegistration = registration();
+    const readCanonicalPluginResult = vi.fn(async () =>
+      Object.freeze({
+        evidence,
+        registration: literalRegistration,
+        executor: test.runtime.registeredTools,
+      }),
+    );
+    expect(() =>
+      createCanonicalPluginEvidenceAuthority({
+        executor: Object.freeze({ execute: vi.fn() }),
+        activeAccountId: test.activeAccountId,
+        results: { readCanonicalPluginResult },
+        grants: { revalidateCanonicalPluginGrant: vi.fn(async () => true) },
+      }),
+    ).toThrow('canonical_plugin_executor_invalid');
+
+    const authority = createCanonicalPluginEvidenceAuthority({
+      executor: test.runtime.registeredTools,
+      activeAccountId: test.activeAccountId,
+      results: { readCanonicalPluginResult },
+      grants: { revalidateCanonicalPluginGrant: vi.fn(async () => true) },
+    });
+    await expect(
+      authority.verify(Object.freeze({ ...evidence, invocationId: 'invocation-other' })),
+    ).resolves.toBeNull();
+    expect(runtimeModule).not.toHaveProperty('callPluginTool');
   });
 });

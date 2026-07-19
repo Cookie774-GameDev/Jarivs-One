@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import {
   createArtifactReceiptAuthority,
@@ -23,6 +25,14 @@ function binding(overrides: Partial<ArtifactReceiptBinding> = {}): ArtifactRecei
 }
 
 describe('private artifact receipt authority', () => {
+  it('freezes the detached binding snapshot before retaining it privately', () => {
+    const source = readFileSync(
+      resolve(process.cwd(), 'src/lib/jarvis/artifactReceipts.ts'),
+      'utf8',
+    );
+    expect(source).toContain('issued.set(receipt, Object.freeze(copyBinding(binding)))');
+  });
+
   it('issues an opaque runtime object and binds the exact evidence once', () => {
     const randomUUID = vi.fn(() => 'receipt-alpha');
     const authority = createArtifactReceiptAuthority({ randomUUID, now: () => NOW + 1 });

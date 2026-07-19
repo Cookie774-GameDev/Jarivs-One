@@ -23,6 +23,10 @@ import {
   jarvisTerminalCommandQueueAuthority,
   useTerminalCommandQueue,
 } from './terminalCommandQueue';
+import type {
+  CanonicalTerminalEvidence,
+  CanonicalTerminalEvidenceAuthority,
+} from '@/lib/jarvis/artifactProducerAdapters';
 
 export type TerminalExecutionStatus =
   | 'queued'
@@ -80,6 +84,76 @@ export type JarvisTerminalExecutionAcceptorDependencies = Readonly<{
   registrationAuthority: JarvisAbortRegistrationAuthority;
   queuedTransitionAuthority: JarvisQueuedCancellationTransitionAuthority;
 }>;
+
+/** @internal Re-reads the canonical Task 19C terminal result journal. */
+export interface CanonicalTerminalArtifactEvidenceReadPort {
+  readCanonicalTerminalEvidence(
+    evidence: CanonicalTerminalEvidence,
+  ): Promise<CanonicalTerminalEvidence | null>;
+}
+
+function validTerminalEvidence(evidence: CanonicalTerminalEvidence): boolean {
+  const stable = (value: string) =>
+    value.length > 0 && value.trim() === value && !value.includes('\u0000');
+  const resultPrefix =
+    evidence.state === 'exited'
+      ? `jterminal_result:${evidence.executionId}:${evidence.sessionId}:`
+      : `jterminal_partial:${evidence.executionId}:${evidence.sessionId}:`;
+  return (
+    Object.isFrozen(evidence) &&
+    evidence.producerId === 'terminal_exit' &&
+    (evidence.state === 'exited' || evidence.state === 'partial') &&
+    Number.isSafeInteger(evidence.attemptNumber) &&
+    evidence.attemptNumber > 0 &&
+    Number.isSafeInteger(evidence.verifiedAt) &&
+    evidence.verifiedAt >= 0 &&
+    stable(evidence.accountId) &&
+    stable(evidence.runId) &&
+    stable(evidence.requestId) &&
+    stable(evidence.resultRef) &&
+    stable(evidence.sessionId) &&
+    canonicalExecutionId(evidence.executionId) &&
+    evidence.resultRef.startsWith(resultPrefix)
+  );
+}
+
+function sameTerminalEvidence(
+  left: CanonicalTerminalEvidence,
+  right: CanonicalTerminalEvidence,
+): boolean {
+  return (
+    left.producerId === right.producerId &&
+    left.accountId === right.accountId &&
+    left.runId === right.runId &&
+    left.requestId === right.requestId &&
+    left.attemptNumber === right.attemptNumber &&
+    left.resultRef === right.resultRef &&
+    left.state === right.state &&
+    left.verifiedAt === right.verifiedAt &&
+    left.sessionId === right.sessionId &&
+    left.executionId === right.executionId
+  );
+}
+
+/** @internal Supplied only to the trusted artifact runtime composition. */
+export function createCanonicalTerminalEvidenceAuthority(
+  port: CanonicalTerminalArtifactEvidenceReadPort,
+): CanonicalTerminalEvidenceAuthority {
+  return Object.freeze({
+    async verify(evidence: CanonicalTerminalEvidence) {
+      if (!validTerminalEvidence(evidence)) return null;
+      let current: CanonicalTerminalEvidence | null;
+      try {
+        current = await port.readCanonicalTerminalEvidence(evidence);
+      } catch {
+        return null;
+      }
+      return current && validTerminalEvidence(current) && sameTerminalEvidence(evidence, current)
+        ? current
+        : null;
+    },
+  });
+}
 
 interface TerminalExecutionState {
   executions: Record<string, TerminalExecution>;

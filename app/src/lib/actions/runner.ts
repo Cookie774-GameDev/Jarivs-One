@@ -23,6 +23,85 @@ import type {
 import { getBuiltinAction, getBuiltinActions } from './registry';
 import type { ActionDef, ActionParam, ActionResult, ActionRunContext } from './types';
 import { hasJarvisApprovalCorrelation } from './types';
+import type {
+  CanonicalFileActionEvidence,
+  CanonicalFileActionEvidenceAuthority,
+} from '@/lib/jarvis/artifactProducerAdapters';
+import { isCanonicalFileArtifactResult } from './registryFiles';
+
+/** @internal Re-reads a committed action result and its exact producer evidence. */
+export interface CanonicalFileActionResultReadPort {
+  readCanonicalFileActionResult(evidence: CanonicalFileActionEvidence): Promise<Readonly<{
+    evidence: CanonicalFileActionEvidence;
+    result: ActionResult;
+  }> | null>;
+}
+
+function validFileActionEvidence(evidence: CanonicalFileActionEvidence): boolean {
+  const stable = (value: string) =>
+    value.length > 0 && value.trim() === value && !value.includes('\u0000');
+  return (
+    Object.isFrozen(evidence) &&
+    evidence.producerId === 'file_action_result' &&
+    (evidence.state === 'succeeded' || evidence.state === 'partial') &&
+    evidence.actionVersion === 1 &&
+    Number.isSafeInteger(evidence.attemptNumber) &&
+    evidence.attemptNumber > 0 &&
+    Number.isSafeInteger(evidence.verifiedAt) &&
+    evidence.verifiedAt >= 0 &&
+    stable(evidence.accountId) &&
+    stable(evidence.runId) &&
+    stable(evidence.requestId) &&
+    stable(evidence.resultRef) &&
+    stable(evidence.actionId)
+  );
+}
+
+function sameFileActionEvidence(
+  left: CanonicalFileActionEvidence,
+  right: CanonicalFileActionEvidence,
+): boolean {
+  return (
+    left.producerId === right.producerId &&
+    left.accountId === right.accountId &&
+    left.runId === right.runId &&
+    left.requestId === right.requestId &&
+    left.attemptNumber === right.attemptNumber &&
+    left.resultRef === right.resultRef &&
+    left.state === right.state &&
+    left.verifiedAt === right.verifiedAt &&
+    left.actionId === right.actionId &&
+    left.actionVersion === right.actionVersion
+  );
+}
+
+/** @internal Supplied only to the trusted artifact runtime composition. */
+export function createCanonicalFileActionEvidenceAuthority(
+  port: CanonicalFileActionResultReadPort,
+): CanonicalFileActionEvidenceAuthority {
+  return Object.freeze({
+    async verify(evidence: CanonicalFileActionEvidence) {
+      if (!validFileActionEvidence(evidence)) return null;
+      const action = resolveAction(evidence.actionId);
+      if (!action || action.category !== 'file') return null;
+      let current: Awaited<ReturnType<typeof port.readCanonicalFileActionResult>>;
+      try {
+        current = await port.readCanonicalFileActionResult(evidence);
+      } catch {
+        return null;
+      }
+      if (
+        !current ||
+        !validFileActionEvidence(current.evidence) ||
+        !sameFileActionEvidence(evidence, current.evidence) ||
+        !isCanonicalFileArtifactResult(current.evidence, current.result)
+      ) {
+        return null;
+      }
+      return current.evidence;
+    },
+  });
+}
 
 /**
  * Resolve an action id to its definition.

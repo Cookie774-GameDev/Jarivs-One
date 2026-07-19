@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import { useAllAboutMeStore } from '@/features/all-about-me/store';
 import type { JarvisShadowCompilationDeps } from '@/lib/jarvis/shadowCompilation';
+import type { CanonicalProviderEvidence } from '@/lib/jarvis/artifactProducerAdapters';
 
 const mocks = vi.hoisted(() => ({
   runAgent: vi.fn(),
@@ -74,7 +75,7 @@ vi.mock('./context', () => ({
   formatResolvedJarvisContext: () => '',
 }));
 
-import { startRuntimeListener } from './runtime';
+import { createCanonicalProviderEvidenceAuthority, startRuntimeListener } from './runtime';
 import { selectionFromOption } from './modelSelection';
 import { DEFAULT_CUSTOM_STEPS } from './stacks/presets';
 
@@ -1738,5 +1739,57 @@ describe('startRuntimeListener agent routing', () => {
     await vi.waitFor(() => expect(mocks.devLog).toHaveBeenCalled());
     expect(mocks.runAgent).not.toHaveBeenCalled();
     expect(shadow.createPersistedRun).not.toHaveBeenCalled();
+  });
+});
+
+describe('canonical provider artifact evidence authority', () => {
+  const exact = Object.freeze({
+    producerId: 'provider_response',
+    accountId: 'account-provider',
+    runId: 'jrun_provider',
+    requestId: 'jrequest_provider',
+    attemptNumber: 1,
+    resultRef: 'jprovider_result_provider',
+    state: 'completed',
+    verifiedAt: 1_786_202_000_000,
+    providerId: 'openai',
+    modelId: 'gpt-sol',
+    modelSnapshotRef: 'openai:gpt-sol:2026-07-19',
+  }) satisfies CanonicalProviderEvidence;
+
+  it('accepts only the exact frozen canonical provider result re-read', async () => {
+    const readCanonicalProviderEvidence = vi.fn(async () => exact);
+    const authority = createCanonicalProviderEvidenceAuthority({
+      readCanonicalProviderEvidence,
+    });
+
+    await expect(authority.verify(exact)).resolves.toBe(exact);
+    for (const changed of [
+      Object.freeze({ ...exact, runId: 'jrun_other' }),
+      Object.freeze({ ...exact, providerId: 'other-provider' }),
+      Object.freeze({ ...exact, modelId: 'other-model' }),
+      Object.freeze({ ...exact, modelSnapshotRef: 'other-snapshot' }),
+    ]) {
+      await expect(authority.verify(changed)).resolves.toBeNull();
+    }
+  });
+
+  it('rejects non-frozen, nonterminal, and invalid numeric provider evidence before re-read', async () => {
+    const readCanonicalProviderEvidence = vi.fn(async () => exact);
+    const authority = createCanonicalProviderEvidenceAuthority({
+      readCanonicalProviderEvidence,
+    });
+
+    await expect(authority.verify({ ...exact })).resolves.toBeNull();
+    await expect(
+      authority.verify(Object.freeze({ ...exact, state: 'queued' }) as never),
+    ).resolves.toBeNull();
+    await expect(
+      authority.verify(Object.freeze({ ...exact, attemptNumber: 1.5 })),
+    ).resolves.toBeNull();
+    await expect(
+      authority.verify(Object.freeze({ ...exact, verifiedAt: Number.NaN })),
+    ).resolves.toBeNull();
+    expect(readCanonicalProviderEvidence).not.toHaveBeenCalled();
   });
 });
