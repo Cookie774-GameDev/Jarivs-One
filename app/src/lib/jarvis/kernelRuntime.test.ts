@@ -1,11 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createJarvisDb, type JarvisDexie } from '@/lib/db';
-import {
-  fromJarvisApprovalRow,
-  fromJarvisRunRow,
-  toJarvisRunRow,
-} from '@/lib/db/jarvisMappers';
+import { fromJarvisApprovalRow, fromJarvisRunRow, toJarvisRunRow } from '@/lib/db/jarvisMappers';
 import { createJarvisRepositories } from '@/lib/db/jarvisRepositories';
 import { TEST_INDEXED_DB, uniqueTestDbName } from '@/test/indexedDb';
 import { useAuthStore } from '@/stores/auth';
@@ -240,9 +236,7 @@ describe('createJarvisKernelRuntime primary-host lifecycle', () => {
 
     expect(() => first.assertCurrent()).toThrow('kernel_host_session_stale');
     await expect(first.read.snapshot('run-alpha')).rejects.toThrow('kernel_host_session_stale');
-    expect(() => first.read.subscribe('run-alpha', vi.fn())).toThrow(
-      'kernel_host_session_stale',
-    );
+    expect(() => first.read.subscribe('run-alpha', vi.fn())).toThrow('kernel_host_session_stale');
     expect(() => second.assertCurrent()).not.toThrow();
     unsubscribe();
   });
@@ -986,7 +980,10 @@ describe('createJarvisKernelRuntime primary-host lifecycle', () => {
       artifactEvidenceAuthorities: artifactAuthorities() as never,
       journal: { allocateRun: vi.fn(), getRun: vi.fn() } as never,
       cancellationDeliveryAuthority: {
-        prepare: vi.fn(async () => ({ kind: 'prepared' as const, plan: cancellationPlan as never })),
+        prepare: vi.fn(async () => ({
+          kind: 'prepared' as const,
+          plan: cancellationPlan as never,
+        })),
         deliver: vi.fn(async () => ({
           kind: 'signal_delivered' as const,
           cancellationRequestId: cancellationPlan.cancellationRequestId,

@@ -82,9 +82,7 @@ import {
   type JarvisProviderStartedReceipt,
 } from './kernel';
 
-const jarvisKernelAccountBindingBrand: unique symbol = Symbol(
-  'jarvis.kernel.account-binding',
-);
+const jarvisKernelAccountBindingBrand: unique symbol = Symbol('jarvis.kernel.account-binding');
 
 /** @internal Issued only by the closed kernel runtime binding authority. */
 export interface JarvisKernelAccountBinding {
@@ -99,9 +97,7 @@ export interface JarvisKernelAccountBinding {
 const preparedJarvisScheduledAttemptBrand: unique symbol = Symbol(
   'jarvis.prepared-scheduled-attempt',
 );
-const jarvisScheduledKernelHandleBrand: unique symbol = Symbol(
-  'jarvis.kernel.schedule-handle',
-);
+const jarvisScheduledKernelHandleBrand: unique symbol = Symbol('jarvis.kernel.schedule-handle');
 
 export type PreparedJarvisScheduledKernelAttempt = Readonly<{
   [preparedJarvisScheduledAttemptBrand]: true;
@@ -178,9 +174,7 @@ function failNotReady(): never {
 async function sha256Canonical(value: unknown): Promise<string> {
   const canonical = canonicalizeJarvisApprovalJson(value);
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical));
-  return [...new Uint8Array(digest)]
-    .map((byte) => byte.toString(16).padStart(2, '0'))
-    .join('');
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
 function sameIdentity(
@@ -292,10 +286,7 @@ type CancellationIntentCommitOutcome =
       >;
     }>;
 
-async function lastEvent(
-  context: KernelLifecycleTransactionContext,
-  runId: string,
-) {
+async function lastEvent(context: KernelLifecycleTransactionContext, runId: string) {
   return context.jarvis_events
     .where('[run_id+seq]')
     .between([runId, Dexie.minKey], [runId, Dexie.maxKey], true, true)
@@ -756,12 +747,7 @@ export function createJarvisKernelRuntime(
       if (!current()) throw new Error('kernel_account_authority_revoked');
       const tail = await input.db.jarvis_events
         .where('[run_id+seq]')
-        .between(
-          [scope.parentRun.id, Dexie.minKey],
-          [scope.parentRun.id, Dexie.maxKey],
-          true,
-          true,
-        )
+        .between([scope.parentRun.id, Dexie.minKey], [scope.parentRun.id, Dexie.maxKey], true, true)
         .last();
       if (!current()) throw new Error('kernel_account_authority_revoked');
       return tail?.seq ?? 0;
@@ -815,9 +801,7 @@ export function createJarvisKernelRuntime(
       };
     };
 
-    type ClaimedApprovalMutation = Awaited<
-      ReturnType<typeof claimApprovedExecutionInContext>
-    >;
+    type ClaimedApprovalMutation = Awaited<ReturnType<typeof claimApprovedExecutionInContext>>;
 
     const issueActionExecution = async (
       claimed: ClaimedApprovalMutation,
@@ -962,32 +946,30 @@ export function createJarvisKernelRuntime(
       };
 
       try {
-        registration = (
-          producerKind === 'action'
-            ? await liveOwner.action.startCapability({
+        registration = (producerKind === 'action'
+          ? await liveOwner.action.startCapability({
+              ...startInput,
+              evidence: initialEvidence as JarvisCanonicalLiveProducerEvidence<'action'>,
+            })
+          : producerKind === 'file_action'
+            ? await liveOwner.fileAction.startCapability({
                 ...startInput,
-                evidence: initialEvidence as JarvisCanonicalLiveProducerEvidence<'action'>,
+                evidence: initialEvidence as JarvisCanonicalLiveProducerEvidence<'file_action'>,
               })
-            : producerKind === 'file_action'
-              ? await liveOwner.fileAction.startCapability({
+            : producerKind === 'terminal'
+              ? await liveOwner.terminal.startCapability({
                   ...startInput,
-                  evidence: initialEvidence as JarvisCanonicalLiveProducerEvidence<'file_action'>,
+                  evidence: initialEvidence as JarvisCanonicalLiveProducerEvidence<'terminal'>,
                 })
-              : producerKind === 'terminal'
-                ? await liveOwner.terminal.startCapability({
+              : producerKind === 'plugin'
+                ? await liveOwner.plugin.startCapability({
                     ...startInput,
-                    evidence: initialEvidence as JarvisCanonicalLiveProducerEvidence<'terminal'>,
+                    evidence: initialEvidence as JarvisCanonicalLiveProducerEvidence<'plugin'>,
                   })
-                : producerKind === 'plugin'
-                  ? await liveOwner.plugin.startCapability({
-                      ...startInput,
-                      evidence: initialEvidence as JarvisCanonicalLiveProducerEvidence<'plugin'>,
-                    })
-                  : await liveOwner.mcp.startCapability({
-                      ...startInput,
-                      evidence: initialEvidence as JarvisCanonicalLiveProducerEvidence<'mcp'>,
-                    })
-        ) as unknown as JarvisLiveEvidenceRegistration<typeof producerKind>;
+                : await liveOwner.mcp.startCapability({
+                    ...startInput,
+                    evidence: initialEvidence as JarvisCanonicalLiveProducerEvidence<'mcp'>,
+                  })) as unknown as JarvisLiveEvidenceRegistration<typeof producerKind>;
       } catch (error) {
         releaseBinding();
         if (!childCurrent()) return { kind: 'account_authority_revoked' };
@@ -1092,11 +1074,7 @@ export function createJarvisKernelRuntime(
                   .first(),
                 lastEvent(context, scope.parentRun.id),
               ]);
-              if (
-                !intent ||
-                run.status !== 'running' ||
-                cancellation.verifiedAt < run.updatedAt
-              ) {
+              if (!intent || run.status !== 'running' || cancellation.verifiedAt < run.updatedAt) {
                 throw new Error('kernel_terminal_cancellation_conflict');
               }
               binding.assertCurrent();
@@ -1476,7 +1454,8 @@ export function createJarvisKernelRuntime(
           idempotencyKey: `kernel-live:${evidence.registrationId}:${evidence.transition}:${evidence.resultRef}`,
           type: evidence.kind === 'model' ? 'model' : 'tool',
           status: evidence.transition,
-          title: evidence.kind === 'model' ? 'Provider evidence updated' : 'Capability evidence updated',
+          title:
+            evidence.kind === 'model' ? 'Provider evidence updated' : 'Capability evidence updated',
           safeSummary: 'Verified live execution evidence was updated.',
           sourceRefs: [],
           artifactIds: [],
@@ -1489,7 +1468,10 @@ export function createJarvisKernelRuntime(
         return result.value;
       },
     });
-    const liveOwner = liveEvidence.bindLifecycle({ scope: frozenScope, append: appendLiveEvidence });
+    const liveOwner = liveEvidence.bindLifecycle({
+      scope: frozenScope,
+      append: appendLiveEvidence,
+    });
 
     const lifecycle: JarvisBoundKernelLifecycle = Object.freeze({
       revocationSignal: binding.revocationSignal,
@@ -1622,11 +1604,9 @@ export function createJarvisKernelRuntime(
         if (!providerRegistration || !providerReceipt) {
           throw new Error('kernel_provider_registration_missing');
         }
-        const rows = await repositories.event.listByRun(
-          frozenScope.accountId,
-          frozenScope.runId,
-          { limit: 500 },
-        );
+        const rows = await repositories.event.listByRun(frozenScope.accountId, frozenScope.runId, {
+          limit: 500,
+        });
         if (!current()) return { kind: 'account_authority_revoked' as const };
         const resultEvent = [...rows].reverse().find((event) => {
           const source = event.producerSourceEvidence;
@@ -1728,9 +1708,7 @@ export function createJarvisKernelRuntime(
       }
       try {
         const boundArtifactEffectClaims: JarvisArtifactEffectClaimCapability = Object.freeze({
-          async claim(
-            claim: Parameters<JarvisArtifactEffectClaimCapability['claim']>[0],
-          ) {
+          async claim(claim: Parameters<JarvisArtifactEffectClaimCapability['claim']>[0]) {
             binding.assertCurrent();
             if (
               claim.accountId !== turnInput.accountId ||
@@ -1775,9 +1753,10 @@ export function createJarvisKernelRuntime(
         binding.dispose();
       }
     },
-    async requestCancellation(
-      cancelInput: { accountId: string; runId: string },
-    ): Promise<JarvisCancellationRequestResult> {
+    async requestCancellation(cancelInput: {
+      accountId: string;
+      runId: string;
+    }): Promise<JarvisCancellationRequestResult> {
       let binding: JarvisKernelAccountBinding;
       try {
         binding = issueAccountBinding(cancelInput.accountId);
