@@ -104,6 +104,11 @@ export interface RegisteredActionExecutionContext extends ActionRunContext {
   attemptNumber: number;
 }
 
+/** True when a caller is attempting the canonical JARVIS approval path. */
+export function hasJarvisApprovalCorrelation(context: ActionRunContext): boolean {
+  return context.runId !== undefined || context.approvalId !== undefined;
+}
+
 /** Discriminated result. Every runner must return one of these. */
 export type ActionResult =
   | {

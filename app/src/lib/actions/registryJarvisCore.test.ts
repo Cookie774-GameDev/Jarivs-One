@@ -29,6 +29,10 @@ describe('Jarvis canonical core actions', () => {
     expect(actions.map((item) => item.id)).toEqual(CORE_ACTION_IDS);
     expect(new Set(actions.map((item) => item.id)).size).toBe(actions.length);
     expect(actions.map((item) => item.id)).not.toContain('plugin.invoke');
+    const modelParameterKeys = actions.flatMap((item) => item.params.map((param) => param.key));
+    expect(modelParameterKeys).not.toContain('approvalId');
+    expect(modelParameterKeys).not.toContain('secretHandleRefs');
+    expect(modelParameterKeys).not.toContain('resolveSecret');
   });
 
   it('never exposes a model-controlled filesystem root on automatic file search', () => {
@@ -64,6 +68,19 @@ describe('Jarvis canonical core actions', () => {
     await expect(action.run({}, { source: 'ai' })).resolves.toEqual({
       ok: false,
       error: 'Required host action terminal.bulkOpen is unavailable.',
+    });
+  });
+
+  it('does not claim legacy task cancellation before canonical kernel injection', async () => {
+    const cancel = createJarvisCoreActions(() => undefined).find(
+      (item) => item.id === 'task.cancel',
+    )!;
+
+    expect(cancel.autoApprove).not.toBe(true);
+    expect(cancel.destructive).toBe(true);
+    await expect(cancel.run({ runId: 'legacy-run' }, { source: 'ai' })).resolves.toEqual({
+      ok: false,
+      error: 'Canonical task cancellation is unavailable until the kernel port is connected.',
     });
   });
 

@@ -47,8 +47,19 @@ export interface JarvisTaskRun {
   completedAt?: string;
 }
 
+export function presentLegacyJarvisTaskRun(run: Readonly<JarvisTaskRun>) {
+  return Object.freeze({
+    kind: 'legacy_non_executable' as const,
+    runId: run.id,
+    status: run.status,
+    message:
+      'This historical task card is view-only. Review current state and retry manually if needed.',
+  });
+}
+
 const REDACTED = '[redacted]';
-const SENSITIVE_INPUT_KEY_RE = /(?:authorization|cookie|token|jwt|api[_-]?key|apikey|password|secret|credential|private[_-]?key|signing[_-]?key|service[_-]?role)/i;
+const SENSITIVE_INPUT_KEY_RE =
+  /(?:authorization|cookie|token|jwt|api[_-]?key|apikey|password|secret|credential|private[_-]?key|signing[_-]?key|service[_-]?role)/i;
 const SECRET_VALUE_PATTERNS: RegExp[] = [
   /\bBearer\s+[A-Za-z0-9._~+/-]+=*/gi,
   /\bgh[pousr]_[A-Za-z0-9]{20,}\b/g,
@@ -62,8 +73,10 @@ const SECRET_VALUE_PATTERNS: RegExp[] = [
 
 function redactTaskString(value: string): string {
   const trimmed = value.trim();
-  if ((trimmed.startsWith('{') && trimmed.endsWith('}'))
-    || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+  if (
+    (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+    (trimmed.startsWith('[') && trimmed.endsWith(']'))
+  ) {
     try {
       return JSON.stringify(sanitizeTaskValue(JSON.parse(trimmed), 0));
     } catch {
@@ -80,7 +93,8 @@ function sanitizeTaskValue(value: unknown, depth: number): unknown {
   if (value == null || typeof value === 'number' || typeof value === 'boolean') return value;
   if (typeof value === 'string') return redactTaskString(value);
   if (depth >= 8) return '[truncated]';
-  if (Array.isArray(value)) return value.slice(0, 100).map((item) => sanitizeTaskValue(item, depth + 1));
+  if (Array.isArray(value))
+    return value.slice(0, 100).map((item) => sanitizeTaskValue(item, depth + 1));
   if (typeof value !== 'object') return String(value);
 
   return Object.fromEntries(
@@ -117,7 +131,9 @@ interface NewJarvisTaskRun {
   chatId?: string;
   goal: string;
   status?: JarvisTaskRunStatus;
-  steps: Array<Pick<JarvisTaskStep, 'id' | 'action' | 'label' | 'recoverable'> & Partial<JarvisTaskStep>>;
+  steps: Array<
+    Pick<JarvisTaskStep, 'id' | 'action' | 'label' | 'recoverable'> & Partial<JarvisTaskStep>
+  >;
 }
 
 interface JarvisTaskRunStore {
@@ -131,6 +147,7 @@ interface JarvisTaskRunStore {
   updateStep: (runId: string, stepId: string, patch: Partial<Omit<JarvisTaskStep, 'id'>>) => void;
   removeRun: (runId: string) => void;
   recoverInterruptedRuns: () => void;
+  /** @deprecated View compatibility only; canonical cancellation is injected by Task 16B. */
   cancelRun: (runId: string) => void;
   clearForTests: () => void;
 }
@@ -154,7 +171,12 @@ function summarize(steps: JarvisTaskStep[]): { progress: number; summary: string
 function normalizeRun(run: JarvisTaskRun): JarvisTaskRun {
   const sanitized = sanitizeRun(run);
   const { progress, summary } = summarize(sanitized.steps);
-  return { ...sanitized, progress, userVisibleSummary: summary, updatedAt: new Date().toISOString() };
+  return {
+    ...sanitized,
+    progress,
+    userVisibleSummary: summary,
+    updatedAt: new Date().toISOString(),
+  };
 }
 
 export function createJarvisTaskRun(input: NewJarvisTaskRun): JarvisTaskRun {
@@ -185,7 +207,9 @@ export function recoverJarvisTaskRuns(runs: JarvisTaskRun[]): JarvisTaskRun[] {
     const normalizedRun = sanitizeRun(run);
     if (!['planning', 'waiting-for-approval', 'running'].includes(run.status)) return normalizedRun;
 
-    const unfinished = normalizedRun.steps.filter((step) => !['completed', 'cancelled'].includes(step.status));
+    const unfinished = normalizedRun.steps.filter(
+      (step) => !['completed', 'cancelled'].includes(step.status),
+    );
     const canRecover = unfinished.length > 0 && unfinished.every((step) => step.recoverable);
     if (canRecover) {
       return {
@@ -208,91 +232,66 @@ export function recoverJarvisTaskRuns(runs: JarvisTaskRun[]): JarvisTaskRun[] {
   });
 }
 
-export const useJarvisTaskRunStore = create<JarvisTaskRunStore>()(
-    (set, get) => ({
-      accountScope: '',
-      runs: {},
-      setAccountScope: (scope) => {
-        if (scope === get().accountScope) return;
-        set({ accountScope: scope, runs: {} });
-      },
-      replaceForAccount: (scope, runs) => {
-        if (!scope || scope !== get().accountScope) return;
-        const recovered = recoverJarvisTaskRuns(runs.map(sanitizeRun));
-        set({
-          runs: Object.fromEntries(recovered.map((run) => [run.id, run])),
-        });
-      },
-      addRun: (run) => set((state) => ({ runs: { ...state.runs, [run.id]: sanitizeRun(run) } })),
-      patchRun: (runId, patch) =>
-        set((state) => {
-          const current = state.runs[runId];
-          if (!current) return state;
-          const now = new Date().toISOString();
-          const nextStatus = patch.status ?? current.status;
-          const terminal = ['completed', 'failed', 'cancelled'].includes(nextStatus);
-          const next = sanitizeRun({
-            ...current,
-            ...patch,
-            completedAt: terminal ? (current.completedAt ?? now) : undefined,
-            updatedAt: now,
-          });
-          return {
-            runs: {
-              ...state.runs,
-              [runId]: next,
-            },
-          };
-        }),
-      updateStep: (runId, stepId, patch) =>
-        set((state) => {
-          const current = state.runs[runId];
-          if (!current) return state;
-          const safePatch = patch.input === undefined
-            ? patch
-            : { ...patch, input: sanitizeTaskInput(patch.input) };
-          const steps = current.steps.map((step) => (step.id === stepId ? { ...step, ...safePatch } : step));
-          return {
-            runs: { ...state.runs, [runId]: normalizeRun({ ...current, steps }) },
-          };
-        }),
-      removeRun: (runId) =>
-        set((state) => {
-          const runs = { ...state.runs };
-          delete runs[runId];
-          return { runs };
-        }),
-      recoverInterruptedRuns: () =>
-        set((state) => ({
-          runs: Object.fromEntries(
-            recoverJarvisTaskRuns(Object.values(state.runs)).map((run) => [run.id, run]),
-          ),
-        })),
-      cancelRun: (runId) =>
-        set((state) => {
-          const current = state.runs[runId];
-          if (!current || ['completed', 'failed', 'cancelled'].includes(current.status)) return state;
-          const now = new Date().toISOString();
-          return {
-            runs: {
-              ...state.runs,
-              [runId]: {
-                ...current,
-                status: 'cancelled',
-                activeAgents: [],
-                activeTerminals: [],
-                steps: current.steps.map((step) =>
-                  ['completed', 'failed', 'cancelled'].includes(step.status)
-                    ? step
-                    : { ...step, status: 'cancelled', completedAt: now },
-                ),
-                userVisibleSummary: 'Task cancelled.',
-                completedAt: now,
-                updatedAt: now,
-              },
-            },
-          };
-        }),
-      clearForTests: () => set({ accountScope: '', runs: {} }),
+export const useJarvisTaskRunStore = create<JarvisTaskRunStore>()((set, get) => ({
+  accountScope: '',
+  runs: {},
+  setAccountScope: (scope) => {
+    if (scope === get().accountScope) return;
+    set({ accountScope: scope, runs: {} });
+  },
+  replaceForAccount: (scope, runs) => {
+    if (!scope || scope !== get().accountScope) return;
+    const recovered = recoverJarvisTaskRuns(runs.map(sanitizeRun));
+    set({
+      runs: Object.fromEntries(recovered.map((run) => [run.id, run])),
+    });
+  },
+  addRun: (run) => set((state) => ({ runs: { ...state.runs, [run.id]: sanitizeRun(run) } })),
+  patchRun: (runId, patch) =>
+    set((state) => {
+      const current = state.runs[runId];
+      if (!current) return state;
+      const now = new Date().toISOString();
+      const nextStatus = patch.status ?? current.status;
+      const terminal = ['completed', 'failed', 'cancelled'].includes(nextStatus);
+      const next = sanitizeRun({
+        ...current,
+        ...patch,
+        completedAt: terminal ? (current.completedAt ?? now) : undefined,
+        updatedAt: now,
+      });
+      return {
+        runs: {
+          ...state.runs,
+          [runId]: next,
+        },
+      };
     }),
-);
+  updateStep: (runId, stepId, patch) =>
+    set((state) => {
+      const current = state.runs[runId];
+      if (!current) return state;
+      const safePatch =
+        patch.input === undefined ? patch : { ...patch, input: sanitizeTaskInput(patch.input) };
+      const steps = current.steps.map((step) =>
+        step.id === stepId ? { ...step, ...safePatch } : step,
+      );
+      return {
+        runs: { ...state.runs, [runId]: normalizeRun({ ...current, steps }) },
+      };
+    }),
+  removeRun: (runId) =>
+    set((state) => {
+      const runs = { ...state.runs };
+      delete runs[runId];
+      return { runs };
+    }),
+  recoverInterruptedRuns: () =>
+    set((state) => ({
+      runs: Object.fromEntries(
+        recoverJarvisTaskRuns(Object.values(state.runs)).map((run) => [run.id, run]),
+      ),
+    })),
+  cancelRun: (_runId) => undefined,
+  clearForTests: () => set({ accountScope: '', runs: {} }),
+}));

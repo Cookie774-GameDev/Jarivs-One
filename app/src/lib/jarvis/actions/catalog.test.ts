@@ -5,6 +5,7 @@ import {
   DEFAULT_JARVIS_ACTION_REGISTRATIONS,
   buildJarvisActionCatalog,
   createJarvisActionCatalog,
+  isJarvisAutoApprovableRegistration,
   isRegisteredPluginToolExecutor,
   validateJarvisActionCatalog,
   type JarvisRegisteredActionDefinition,
@@ -44,6 +45,12 @@ function registration(
 }
 
 describe('Jarvis action catalog', () => {
+  it('permits auto approval only for literal read-only/never registrations', () => {
+    expect(isJarvisAutoApprovableRegistration(registration())).toBe(true);
+    expect(isJarvisAutoApprovableRegistration(registration({ risk: 'safe-write' }))).toBe(false);
+    expect(isJarvisAutoApprovableRegistration(registration({ approval: 'always' }))).toBe(false);
+  });
+
   it('normalizes every executable action into a versioned typed definition', () => {
     const catalog = buildJarvisActionCatalog(getAllActions());
 

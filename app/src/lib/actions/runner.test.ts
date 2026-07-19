@@ -19,7 +19,12 @@ vi.mock('@/components/ui/toast', () => ({
   },
 }));
 
-import { runAction, resolveAction, getAllActions } from '@/lib/actions/runner';
+import {
+  createJarvisApprovedActionRunner,
+  runAction,
+  resolveAction,
+  getAllActions,
+} from '@/lib/actions/runner';
 import { toast } from '@/components/ui/toast';
 import { useToolStore } from '@/features/tools/toolStore';
 import { useTerminalCommandQueue } from '@/features/terminals/terminalCommandQueue';
@@ -102,22 +107,13 @@ describe('runAction', () => {
   });
 
   it('rejects required-param omissions before dispatching the runner', async () => {
-    const result = await runAction(
-      'terminal.run',
-      {},
-      { source: 'user' },
-    );
+    const result = await runAction('terminal.run', {}, { source: 'user' });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toMatch(/required/i);
   });
 
   it('suppresses the toast when emitToast is false', async () => {
-    const result = await runAction(
-      'does.not.exist',
-      {},
-      { source: 'user' },
-      { emitToast: false },
-    );
+    const result = await runAction('does.not.exist', {}, { source: 'user' }, { emitToast: false });
     expect(result.ok).toBe(false);
     expect(toast.error).not.toHaveBeenCalled();
   });
@@ -195,6 +191,51 @@ describe('runAction', () => {
     ]);
     expect(first).toEqual(second);
     expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails closed for direct JARVIS-correlated dispatch and delegates only through the narrow port', async () => {
+    const definition = resolveAction('settings.open');
+    expect(definition).toBeTruthy();
+    const direct = vi.spyOn(definition!, 'run');
+
+    await expect(
+      runAction(
+        'settings.open',
+        {},
+        {
+          source: 'ai',
+          runId: 'jrun_approved',
+          approvalId: 'jappr_approved',
+        },
+        { emitToast: false },
+      ),
+    ).resolves.toEqual({
+      ok: false,
+      error: 'Canonical JARVIS actions require the approval authority.',
+    });
+    expect(direct).not.toHaveBeenCalled();
+
+    const execute = vi.fn(async () => ({
+      kind: 'committed' as const,
+      value: {
+        kind: 'settled' as const,
+        result: { ok: true as const, summary: 'Approved execution completed.' },
+      },
+    }));
+    const approvedRunner = createJarvisApprovedActionRunner({ execute } as never);
+    const input = {
+      parentRun: { id: 'jrun_approved' },
+      approvalId: 'jappr_approved',
+      context: { source: 'ai' as const },
+    } as never;
+    await expect(approvedRunner.execute(input)).resolves.toEqual({
+      kind: 'committed',
+      value: {
+        kind: 'settled',
+        result: { ok: true, summary: 'Approved execution completed.' },
+      },
+    });
+    expect(execute).toHaveBeenCalledWith(input);
   });
 
   it('omits command payloads from action diagnostics', async () => {

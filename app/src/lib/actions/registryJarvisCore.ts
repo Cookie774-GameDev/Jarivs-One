@@ -218,17 +218,6 @@ async function terminalSessions(params: Record<string, unknown>) {
     .sort((a, b) => b.lastWriteAt - a.lastWriteAt);
 }
 
-async function taskWasCancelled(callId: string | undefined): Promise<() => boolean> {
-  if (!callId?.startsWith('jarvisrun:')) return () => false;
-  const [{ parseTaskApprovalCallId }, { useJarvisTaskRunStore }] = await Promise.all([
-    import('@/features/jarvis-runs/approvalBridge'),
-    import('@/features/jarvis-runs/taskRunStore'),
-  ]);
-  const parsed = parseTaskApprovalCallId(callId);
-  if (!parsed) return () => false;
-  return () => useJarvisTaskRunStore.getState().runs[parsed.runId]?.status === 'cancelled';
-}
-
 export function createJarvisCoreActions(resolveLegacy: LegacyResolver): ActionDef[] {
   return [
     {
@@ -327,15 +316,9 @@ export function createJarvisCoreActions(resolveLegacy: LegacyResolver): ActionDe
                 (id): id is string => typeof id === 'string' && id.length > 0,
               )
             : [];
-        const { patchTaskRunResources } = await import('@/features/jarvis-runs/approvalBridge');
-        patchTaskRunResources(ctx.callId, { activeTerminals: executionIds });
-        const cancelled = await taskWasCancelled(ctx.callId);
+        const cancelled = () => ctx.signal?.aborted ?? false;
         let verified: Awaited<ReturnType<typeof waitForTerminalExecutions>>;
-        try {
-          verified = await waitForTerminalExecutions(executionIds, { cancelled });
-        } finally {
-          patchTaskRunResources(ctx.callId, { activeTerminals: [] });
-        }
+        verified = await waitForTerminalExecutions(executionIds, { cancelled });
         if (!verified.ok) {
           if (/\bcancelled\b/i.test(verified.error)) {
             const [{ cancelQueuedTerminalCommand }, executionStore, { invoke }] = await Promise.all(
@@ -682,28 +665,22 @@ export function createJarvisCoreActions(resolveLegacy: LegacyResolver): ActionDe
             })),
           );
         }
-        const { patchTaskRunResources } = await import('@/features/jarvis-runs/approvalBridge');
-        patchTaskRunResources(ctx.callId, { activeAgents: launchedIds });
-        const cancelled = await taskWasCancelled(ctx.callId);
+        const cancelled = () => ctx.signal?.aborted ?? false;
         let observed: Awaited<ReturnType<typeof waitForAgentBatch>>;
-        try {
-          observed = await waitForAgentBatch(launchedIds, {
-            timeoutMs: numberInRange(params, 'timeoutMs', 300_000, 1_000, 900_000),
-            read: () =>
-              Object.fromEntries(
-                useJarvisInteractionStore
-                  .getState()
-                  .agentsForChat(ctx.chatId!)
-                  .map((agent) => [
-                    String(agent.agentId),
-                    { status: agent.status, summary: agent.summary, error: agent.error },
-                  ]),
-              ),
-            cancelled,
-          });
-        } finally {
-          patchTaskRunResources(ctx.callId, { activeAgents: [] });
-        }
+        observed = await waitForAgentBatch(launchedIds, {
+          timeoutMs: numberInRange(params, 'timeoutMs', 300_000, 1_000, 900_000),
+          read: () =>
+            Object.fromEntries(
+              useJarvisInteractionStore
+                .getState()
+                .agentsForChat(ctx.chatId!)
+                .map((agent) => [
+                  String(agent.agentId),
+                  { status: agent.status, summary: agent.summary, error: agent.error },
+                ]),
+            ),
+          cancelled,
+        });
         if (!observed.ok) {
           if (/\bcancelled\b/i.test(observed.error)) {
             for (const child of launchedChildren) {
@@ -1102,29 +1079,11 @@ export function createJarvisCoreActions(resolveLegacy: LegacyResolver): ActionDe
       id: 'task.cancel',
       category: 'custom',
       label: 'Cancel Jarvis task',
-      description: 'Cancel a persistent Jarvis task run and all unfinished tracked steps.',
-      autoApprove: true,
+      description: 'Request canonical Jarvis task cancellation when the kernel port is connected.',
+      destructive: true,
       params: [{ key: 'runId', label: 'Task run id', type: 'string' }],
-      run: async (params, ctx) => {
-        const { useJarvisTaskRunStore } = await import('@/features/jarvis-runs/taskRunStore');
-        const state = useJarvisTaskRunStore.getState();
-        const requested = text(params, 'runId');
-        const run = requested
-          ? state.runs[requested]
-          : Object.values(state.runs)
-              .filter(
-                (candidate) =>
-                  (!ctx.chatId || candidate.chatId === ctx.chatId) &&
-                  !['completed', 'failed', 'cancelled'].includes(candidate.status),
-              )
-              .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
-        if (!run)
-          return fail(
-            requested ? `Task run ${requested} was not found.` : 'No active task run was found.',
-          );
-        state.cancelRun(run.id);
-        return ok(`Cancelled task: ${run.goal}`, { runId: run.id });
-      },
+      run: async () =>
+        fail('Canonical task cancellation is unavailable until the kernel port is connected.'),
     },
     {
       id: 'settings.update',

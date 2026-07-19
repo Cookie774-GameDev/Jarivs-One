@@ -38,13 +38,16 @@ export interface JarvisPlanReview {
 }
 
 function newId(prefix: string): string {
-  const suffix = typeof crypto !== 'undefined' && 'randomUUID' in crypto
-    ? crypto.randomUUID()
-    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  const suffix =
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
   return `${prefix}-${suffix}`;
 }
 
-function definitionMap(catalog: readonly JarvisActionDefinition[]): Map<string, JarvisActionDefinition> {
+function definitionMap(
+  catalog: readonly JarvisActionDefinition[],
+): Map<string, JarvisActionDefinition> {
   return new Map(catalog.map((definition) => [definition.id, definition]));
 }
 
@@ -87,8 +90,10 @@ export function createJarvisPlan(input: {
 }): JarvisExecutionPlan {
   const definitions = definitionMap(input.catalog);
   if (!input.goal.trim()) throw new Error('A Jarvis plan goal is required.');
-  if (input.requestedSteps.length === 0) throw new Error('A Jarvis plan requires at least one step.');
-  if (input.requestedSteps.length > 24) throw new Error('A Jarvis plan may contain at most 24 steps.');
+  if (input.requestedSteps.length === 0)
+    throw new Error('A Jarvis plan requires at least one step.');
+  if (input.requestedSteps.length > 24)
+    throw new Error('A Jarvis plan may contain at most 24 steps.');
 
   const now = (input.now ?? new Date()).toISOString();
   const planId = newId('jarvis-plan');
@@ -131,12 +136,15 @@ export function reviewJarvisPlan(
       reasons.push(`${step.action} is no longer registered.`);
       continue;
     }
-    const needsApproval = definition.approval === 'always'
-      || definition.approval === 'depends-on-input'
-      || (definition.approval === 'first-time' && !approved.has(definition.id));
+    const needsApproval =
+      definition.approval === 'always' ||
+      definition.approval === 'depends-on-input' ||
+      (definition.approval === 'first-time' && !approved.has(definition.id));
     if (!needsApproval) continue;
     approvalStepIds.push(step.id);
-    reasons.push(`${definition.title}: ${definition.risk} action requires ${definition.approval} approval.`);
+    reasons.push(
+      `${definition.title}: ${definition.risk} action requires ${definition.approval} approval.`,
+    );
   }
   return {
     requiresApproval: approvalStepIds.length > 0,
@@ -151,12 +159,19 @@ function abortError(): DOMException {
   return new DOMException('Jarvis task cancelled.', 'AbortError');
 }
 
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, signal?: AbortSignal): Promise<T> {
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<T> {
   if (signal?.aborted) throw abortError();
   let timeout: ReturnType<typeof setTimeout> | undefined;
   let abortHandler: (() => void) | undefined;
   const timeoutPromise = new Promise<never>((_, reject) => {
-    timeout = setTimeout(() => reject(new Error(`Action timed out after ${timeoutMs} ms.`)), timeoutMs);
+    timeout = setTimeout(
+      () => reject(new Error(`Action timed out after ${timeoutMs} ms.`)),
+      timeoutMs,
+    );
     if (signal) {
       abortHandler = () => reject(abortError());
       signal.addEventListener('abort', abortHandler, { once: true });
@@ -174,13 +189,14 @@ export async function executeJarvisPlan(
   plan: JarvisExecutionPlan,
   catalog: readonly JarvisActionDefinition[],
   options: {
+    executeApprovedStep: (step: Readonly<JarvisPlanStep>) => Promise<ActionResult>;
     signal?: AbortSignal;
     timeoutMs?: number;
     approved?: boolean;
     previouslyApproved?: string[];
     context?: ActionRunContext;
     onProgress?: (plan: JarvisExecutionPlan) => void;
-  } = {},
+  },
 ): Promise<JarvisExecutionPlan> {
   const cached = completedExecutions.get(plan.idempotencyKey);
   if (cached) return cached;
@@ -189,7 +205,11 @@ export async function executeJarvisPlan(
     previouslyApproved: options.previouslyApproved ?? [],
   });
   if (review.requiresApproval && !options.approved) {
-    const waiting = { ...plan, status: 'waiting-for-approval' as const, updatedAt: new Date().toISOString() };
+    const waiting = {
+      ...plan,
+      status: 'waiting-for-approval' as const,
+      updatedAt: new Date().toISOString(),
+    };
     options.onProgress?.(waiting);
     return waiting;
   }
@@ -219,7 +239,7 @@ export async function executeJarvisPlan(
     options.onProgress?.(structuredClone(next));
     try {
       const result = await withTimeout(
-        definition.handler(step.input, options.context ?? { source: 'ai', callId: step.id }),
+        options.executeApprovedStep(Object.freeze(structuredClone(step))),
         options.timeoutMs ?? 30_000,
         options.signal,
       );
@@ -233,7 +253,10 @@ export async function executeJarvisPlan(
       const evidence = result.summary?.trim();
       if (!evidence) {
         step.status = 'failed';
-        step.verification = { status: 'unknown', evidence: 'Handler returned success without verifiable evidence.' };
+        step.verification = {
+          status: 'unknown',
+          evidence: 'Handler returned success without verifiable evidence.',
+        };
         next.status = 'failed';
         break;
       }
@@ -256,7 +279,8 @@ export async function executeJarvisPlan(
 
   if (next.status === 'running') next.status = 'completed';
   next.updatedAt = new Date().toISOString();
-  if (next.status === 'completed') completedExecutions.set(next.idempotencyKey, structuredClone(next));
+  if (next.status === 'completed')
+    completedExecutions.set(next.idempotencyKey, structuredClone(next));
   options.onProgress?.(structuredClone(next));
   return next;
 }

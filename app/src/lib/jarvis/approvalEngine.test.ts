@@ -1,13 +1,23 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { ActionResult } from '@/lib/actions/types';
-import type { JarvisApprovalRepository, JarvisRunRepository } from '@/lib/db/jarvisRepositories';
+import type {
+  JarvisApprovalRepository,
+  JarvisArtifactRepository,
+  JarvisEventRepository,
+  JarvisRunRepository,
+} from '@/lib/db/jarvisRepositories';
+import type { JarvisProviderAttemptEvidenceAuthority } from '@/lib/ai/providerAttemptEvidence';
 import type {
   JarvisApprovalV1,
   JarvisAuthorityBoundResult,
+  JarvisCanonicalLiveProducerEvidence,
   JarvisCapabilitySnapshot,
   JarvisEntitlementSnapshot,
+  JarvisEvent,
+  JarvisPreEffectTransportFailureEvidence,
   JarvisRun,
+  JarvisTransportAttemptV1,
 } from '@/lib/jarvis/contracts';
 import {
   createJarvisActionCatalog,
@@ -16,12 +26,15 @@ import {
 import type { JarvisRequestAttempt } from '@/lib/jarvis/requestEnvelope';
 import {
   createJarvisApprovalBindingSelectors,
+  createJarvisActionLiveEvidenceVerifiers,
+  createJarvisConsequentialEffectSafetyAuthority,
   createJarvisApprovalEngine,
   JarvisApprovalError,
   jarvisIssuedActionExecutionBrand,
   jarvisIssuedApprovalLifecycleBrand,
   type JarvisIssuedActionExecution,
   type JarvisIssuedApprovalLifecycle,
+  type JarvisApprovalEngineDependencies,
 } from './approvalEngine';
 
 const now = 10_000;
@@ -165,7 +178,9 @@ function fixture(actionRegistration: JarvisRegisteredActionDefinition = registra
     entitlementSnapshots,
   });
   const executeRegisteredAction = vi.fn(
-    async (): Promise<{ kind: 'executor_returned'; result: ActionResult }> => ({
+    async (
+      _input: Parameters<JarvisApprovalEngineDependencies['executeRegisteredAction']>[0],
+    ): Promise<{ kind: 'executor_returned'; result: ActionResult }> => ({
       kind: 'executor_returned',
       result: { ok: true, summary: 'created' },
     }),
@@ -342,6 +357,47 @@ describe('createJarvisApprovalEngine', () => {
     expect(putPreparedApproval).not.toHaveBeenCalled();
   });
 
+  it('rejects nested cast authority instead of forwarding supplied run or attempt objects', async () => {
+    const setup = fixture();
+    const putPreparedApproval = vi.fn(async (input) => ({
+      kind: 'committed' as const,
+      value: input as unknown as JarvisApprovalV1,
+    }));
+    const capability = setup.engine.bindIssuedLifecycle(lifecycle({ putPreparedApproval }));
+    const base = {
+      parentRun: setup.run,
+      attempt: requestAttempt(),
+      actionId: 'notes.create',
+      actionVersion: 1,
+      params: { title: 'hello' },
+      expiresAt: now + 1_000,
+    };
+
+    await expect(
+      capability.create({
+        ...base,
+        parentRun: {
+          ...setup.run,
+          credentialProof: { rawSecret: 'synthetic-unit-test-value' },
+        },
+      } as never),
+    ).rejects.toSatisfy((error: unknown) =>
+      expectApprovalError(error, 'caller_secret_resolver_rejected'),
+    );
+    await expect(
+      capability.create({
+        ...base,
+        attempt: {
+          ...requestAttempt(),
+          credentialLocator: { pluginId: 'foreign', fieldId: 'token' },
+        },
+      } as never),
+    ).rejects.toSatisfy((error: unknown) =>
+      expectApprovalError(error, 'caller_secret_resolver_rejected'),
+    );
+    expect(putPreparedApproval).not.toHaveBeenCalled();
+  });
+
   it('requires executable operation authority for every required capability', async () => {
     const setup = fixture();
     setup.capabilitySnapshots.getForAccount.mockResolvedValue({
@@ -403,12 +459,12 @@ describe('createJarvisApprovalEngine', () => {
 
   it('does not forward auto-approval context or cast authority into lifecycle input', async () => {
     const setup = fixture(registration({ risk: 'read-only', approval: 'never' }));
-    const claimAutoApprovedExecution = vi.fn(async () => ({
-      kind: 'account_authority_revoked' as const,
-    }));
-    const capability = setup.engine.bindIssuedLifecycle(
-      lifecycle({ claimAutoApprovedExecution }),
+    const claimAutoApprovedExecution = vi.fn(
+      async (
+        _input: Parameters<JarvisIssuedApprovalLifecycle['claimAutoApprovedExecution']>[0],
+      ) => ({ kind: 'account_authority_revoked' as const }),
     );
+    const capability = setup.engine.bindIssuedLifecycle(lifecycle({ claimAutoApprovedExecution }));
 
     await expect(
       capability.executeAutoApprovedSafe({
@@ -437,7 +493,11 @@ describe('createJarvisApprovalEngine', () => {
         actionVersion: 1,
         params: { title: 'hello' },
         expiresAt: now + 1_000,
-        context: { source: 'ai', chatId: 'chat-1' },
+        context: {
+          source: 'ai',
+          chatId: 'chat-1',
+          signal: new AbortController().signal,
+        },
       }),
     ).rejects.toThrow(/authority|revoked/i);
     expect(claimAutoApprovedExecution).toHaveBeenCalledOnce();
@@ -529,7 +589,8 @@ describe('createJarvisApprovalEngine', () => {
       requestCancellation: vi.fn(),
       dispose: vi.fn(() => sequence.push('dispose')),
     };
-    setup.executeRegisteredAction.mockImplementation(async () => {
+    setup.executeRegisteredAction.mockImplementation(async ({ context }) => {
+      expect(context).not.toHaveProperty('signal');
       sequence.push('dispatch');
       return { kind: 'executor_returned', result: { ok: true, summary: 'created' } };
     });
@@ -591,7 +652,7 @@ describe('createJarvisApprovalEngine', () => {
     const result = await capability.execute({
       parentRun: setup.run,
       approvalId: approval.id,
-      context: { source: 'ai' },
+      context: { source: 'ai', signal: new AbortController().signal },
     });
 
     expect(result).toEqual({ kind: 'settled', result: { ok: true, summary: 'created' } });
@@ -731,6 +792,39 @@ describe('createJarvisApprovalEngine', () => {
       }),
     ).resolves.toEqual({ valid: true, approvalId: approval.id });
 
+    const canonicalAwaitingRun = structuredClone(setup.run);
+    setup.run.status = 'completed';
+    await expect(
+      setup.engine.recoveryVerifier.verifyPendingApproval({
+        accountId: 'account-a',
+        run: canonicalAwaitingRun,
+        events,
+      }),
+    ).resolves.toEqual({ valid: false, reason: 'approval_binding_mismatch' });
+    setup.run.status = 'awaiting_approval';
+
+    const staleAttemptRun = structuredClone(setup.run);
+    const canonicalAttempts = setup.run.transportAttempts!;
+    setup.run.transportAttempts = [
+      ...canonicalAttempts,
+      {
+        ...setup.run.transportAttempts![0]!,
+        attemptNumber: 2,
+        requestId: 'request-2',
+        startedEventSeq: 3,
+        createdAt: now - 5,
+        updatedAt: now - 5,
+      },
+    ];
+    await expect(
+      setup.engine.recoveryVerifier.verifyPendingApproval({
+        accountId: 'account-a',
+        run: staleAttemptRun,
+        events,
+      }),
+    ).resolves.toEqual({ valid: false, reason: 'approval_binding_mismatch' });
+    setup.run.transportAttempts = canonicalAttempts;
+
     setup.capabilitySnapshots.getForAccount.mockResolvedValue({
       ...capabilitySnapshot(),
       tools: [
@@ -790,5 +884,723 @@ describe('createJarvisApprovalEngine', () => {
         events,
       }),
     ).resolves.toEqual({ valid: false, reason: 'approval_binding_mismatch' });
+  });
+});
+
+describe('createJarvisConsequentialEffectSafetyAuthority', () => {
+  function scheduledFixture() {
+    const attempt: JarvisTransportAttemptV1 = {
+      schemaVersion: 1,
+      attemptNumber: 1,
+      kind: 'initial',
+      requestId: 'request-1',
+      state: 'provider_in_flight',
+      startedEventSeq: 3,
+      effectBarrier: { state: 'open', version: 0, updatedAt: 9_000 },
+      createdAt: 9_000,
+      updatedAt: 9_000,
+    };
+    const run = parentRun({
+      source: 'schedule',
+      transportAttempts: [attempt],
+      model: {
+        providerId: 'provider-a',
+        modelId: 'model-a',
+        connectionMode: 'native-api',
+        capabilities: {},
+        capturedAt: 8_000,
+      },
+    });
+    const providerFailure: JarvisPreEffectTransportFailureEvidence = {
+      schemaVersion: 1,
+      accountId: run.accountId,
+      runId: run.id,
+      requestId: attempt.requestId,
+      attemptNumber: attempt.attemptNumber,
+      providerId: run.model.providerId,
+      modelId: run.model.modelId,
+      boundary: 'before_first_response_byte',
+      responseStarted: false,
+      chunkCount: 0,
+      actionDispatchCount: 0,
+      failureCategory: 'transport_unavailable',
+      evidenceRef: 'provider-failure-1',
+      verifiedAt: 9_500,
+    };
+    const approvals: Pick<JarvisApprovalRepository, 'listByRun'> = {
+      listByRun: vi.fn(async () => []),
+    };
+    const artifacts: Pick<JarvisArtifactRepository, 'listByRun'> = {
+      listByRun: vi.fn(async () => []),
+    };
+    const events: Pick<JarvisEventRepository, 'listByRun'> = {
+      listByRun: vi.fn(async () => [
+        {
+          runId: run.id,
+          seq: 4,
+          idempotencyKey: 'warning-1',
+          type: 'warning' as const,
+          title: 'Provider unavailable',
+          safeSummary: 'The provider did not start a response.',
+          sourceRefs: [],
+          artifactIds: [],
+          createdAt: 9_600,
+        },
+      ]),
+    };
+    const providerAttemptEvidence: Pick<
+      JarvisProviderAttemptEvidenceAuthority,
+      'revalidateFailure'
+    > = {
+      revalidateFailure: vi.fn(async () => structuredClone(providerFailure)),
+    };
+    const authority = createJarvisConsequentialEffectSafetyAuthority({
+      approvals: approvals as JarvisApprovalRepository,
+      artifacts: artifacts as JarvisArtifactRepository,
+      events: events as JarvisEventRepository,
+      providerAttemptEvidence,
+      now: () => 10_000,
+    });
+    return {
+      run,
+      attempt,
+      providerFailure,
+      approvals,
+      artifacts,
+      events,
+      providerAttemptEvidence,
+      authority,
+    };
+  }
+
+  it('proves only exact pre-byte failure plus a complete zero-effect journal tail', async () => {
+    const setup = scheduledFixture();
+
+    const proof = await setup.authority.proveZeroConsequentialEffect({
+      run: setup.run,
+      attempt: setup.attempt,
+      providerFailure: setup.providerFailure,
+    });
+
+    expect(proof).toEqual({
+      schemaVersion: 1,
+      accountId: 'account-a',
+      runId: 'jrun_1',
+      requestId: 'request-1',
+      attemptNumber: 1,
+      assessedAt: 10_000,
+      providerBoundary: setup.providerFailure,
+      effectBarrier: { state: 'open', version: 0 },
+      approvals: { count: 0, evidenceRef: 'approvals-zero:jrun_1:request-1:1' },
+      artifacts: { count: 0, evidenceRef: 'artifacts-zero:jrun_1:request-1:1' },
+      executorClaims: { count: 0, throughSeq: 4, evidenceRef: 'claims-zero:jrun_1:4' },
+    });
+    expect(setup.providerAttemptEvidence.revalidateFailure).toHaveBeenCalledWith({
+      evidence: setup.providerFailure,
+      accountId: 'account-a',
+      runId: 'jrun_1',
+      requestId: 'request-1',
+      attemptNumber: 1,
+      providerId: 'provider-a',
+      modelId: 'model-a',
+    });
+    expect(setup.approvals.listByRun).toHaveBeenCalledWith('account-a', 'jrun_1', {
+      requestId: 'request-1',
+      attemptNumber: 1,
+      limit: 1,
+    });
+    expect(setup.artifacts.listByRun).toHaveBeenCalledWith('account-a', 'jrun_1', 1);
+    expect(setup.events.listByRun).toHaveBeenCalledWith('account-a', 'jrun_1', {
+      afterSeq: 3,
+      limit: 500,
+    });
+  });
+
+  it('denies any effect claim, binding drift, or inconclusive bounded tail', async () => {
+    const setup = scheduledFixture();
+    vi.mocked(setup.events.listByRun).mockResolvedValueOnce([
+      {
+        runId: setup.run.id,
+        seq: 4,
+        idempotencyKey: 'claim-1',
+        type: 'tool',
+        title: 'Action claimed',
+        sourceRefs: [],
+        artifactIds: [],
+        createdAt: 9_600,
+        executionEvidence: {
+          schemaVersion: 1,
+          requestId: 'request-1',
+          attemptNumber: 1,
+          kind: 'consequential_effect_claimed',
+          ownerKind: 'action',
+          ownerId: 'execution-1',
+          evidenceRef: 'claim-evidence-1',
+          observedAt: 9_600,
+        },
+      },
+    ]);
+    await expect(
+      setup.authority.proveZeroConsequentialEffect({
+        run: setup.run,
+        attempt: setup.attempt,
+        providerFailure: setup.providerFailure,
+      }),
+    ).resolves.toBeNull();
+
+    vi.mocked(setup.providerAttemptEvidence.revalidateFailure).mockResolvedValueOnce(null);
+    await expect(
+      setup.authority.proveZeroConsequentialEffect({
+        run: setup.run,
+        attempt: setup.attempt,
+        providerFailure: setup.providerFailure,
+      }),
+    ).resolves.toBeNull();
+
+    vi.mocked(setup.providerAttemptEvidence.revalidateFailure).mockResolvedValueOnce(
+      setup.providerFailure,
+    );
+    vi.mocked(setup.events.listByRun).mockResolvedValueOnce(
+      Array.from({ length: 500 }, (_, index) => ({
+        runId: setup.run.id,
+        seq: index + 4,
+        idempotencyKey: `warning-${index}`,
+        type: 'warning' as const,
+        title: 'Bounded event',
+        sourceRefs: [],
+        artifactIds: [],
+        createdAt: 9_600 + index,
+      })),
+    );
+    await expect(
+      setup.authority.proveZeroConsequentialEffect({
+        run: setup.run,
+        attempt: setup.attempt,
+        providerFailure: setup.providerFailure,
+      }),
+    ).resolves.toBeNull();
+  });
+
+  it('denies response and action observations even when no effect claim is present', async () => {
+    const setup = scheduledFixture();
+    vi.mocked(setup.events.listByRun).mockResolvedValueOnce([
+      {
+        runId: setup.run.id,
+        seq: 4,
+        idempotencyKey: 'action-observation-1',
+        type: 'tool',
+        status: 'running',
+        title: 'Action observed',
+        sourceRefs: [],
+        artifactIds: [],
+        createdAt: 9_600,
+        producerSourceEvidence: {
+          schemaVersion: 1,
+          accountId: setup.run.accountId,
+          runId: setup.run.id,
+          requestId: setup.attempt.requestId,
+          attemptNumber: setup.attempt.attemptNumber,
+          producerKind: 'action',
+          producerIdentity: {
+            producerKind: 'action',
+            actionId: 'notes.create',
+            actionVersion: 1,
+            executionId: 'execution-1',
+          },
+          phase: 'start',
+          state: 'busy',
+          resultRef: 'action-observation-1',
+          observedAt: 9_600,
+        },
+      },
+    ]);
+    await expect(
+      setup.authority.proveZeroConsequentialEffect({
+        run: setup.run,
+        attempt: setup.attempt,
+        providerFailure: setup.providerFailure,
+      }),
+    ).resolves.toBeNull();
+
+    vi.mocked(setup.events.listByRun).mockResolvedValueOnce([
+      {
+        runId: setup.run.id,
+        seq: 4,
+        idempotencyKey: 'provider-result-1',
+        type: 'model',
+        status: 'completed',
+        title: 'Provider result observed',
+        sourceRefs: [],
+        artifactIds: [],
+        createdAt: 9_600,
+        canonicalResultEvidence: {
+          schemaVersion: 1,
+          kind: 'scheduled_transport_settled',
+          accountId: setup.run.accountId,
+          runId: setup.run.id,
+          requestId: setup.attempt.requestId,
+          attemptNumber: setup.attempt.attemptNumber,
+          state: 'completed',
+          resultRef: 'jresult_provider_1',
+          observedAt: 9_600,
+        },
+      },
+    ]);
+    await expect(
+      setup.authority.proveZeroConsequentialEffect({
+        run: setup.run,
+        attempt: setup.attempt,
+        providerFailure: setup.providerFailure,
+      }),
+    ).resolves.toBeNull();
+  });
+
+  it('revalidates from the stored complete tail and denies a newly observed approval', async () => {
+    const setup = scheduledFixture();
+    const proof = await setup.authority.proveZeroConsequentialEffect({
+      run: setup.run,
+      attempt: setup.attempt,
+      providerFailure: setup.providerFailure,
+    });
+    expect(proof).not.toBeNull();
+    vi.mocked(setup.events.listByRun).mockResolvedValueOnce([
+      {
+        runId: setup.run.id,
+        seq: 4,
+        idempotencyKey: 'warning-1',
+        type: 'warning',
+        title: 'Provider unavailable',
+        sourceRefs: [],
+        artifactIds: [],
+        createdAt: 9_600,
+      },
+    ]);
+
+    const revalidated = await setup.authority.revalidateZeroConsequentialEffect({
+      run: setup.run,
+      attempt: setup.attempt,
+      evidence: proof!,
+    });
+
+    expect(revalidated?.executorClaims.throughSeq).toBe(4);
+    expect(setup.events.listByRun).toHaveBeenLastCalledWith('account-a', 'jrun_1', {
+      afterSeq: 3,
+      limit: 500,
+    });
+
+    vi.mocked(setup.approvals.listByRun).mockResolvedValueOnce([{} as JarvisApprovalV1]);
+    vi.mocked(setup.events.listByRun).mockResolvedValueOnce([
+      {
+        runId: setup.run.id,
+        seq: 4,
+        idempotencyKey: 'warning-1',
+        type: 'warning',
+        title: 'Provider unavailable',
+        sourceRefs: [],
+        artifactIds: [],
+        createdAt: 9_600,
+      },
+    ]);
+    await expect(
+      setup.authority.revalidateZeroConsequentialEffect({
+        run: setup.run,
+        attempt: setup.attempt,
+        evidence: revalidated!,
+      }),
+    ).resolves.toBeNull();
+  });
+
+  it('rejects forged future checkpoints and re-scans the complete proof prefix', async () => {
+    const setup = scheduledFixture();
+    const proof = await setup.authority.proveZeroConsequentialEffect({
+      run: setup.run,
+      attempt: setup.attempt,
+      providerFailure: setup.providerFailure,
+    });
+    expect(proof).not.toBeNull();
+
+    const forged = {
+      ...proof!,
+      executorClaims: {
+        ...proof!.executorClaims,
+        throughSeq: 400,
+        evidenceRef: `claims-zero:${setup.run.id}:400`,
+      },
+    };
+    vi.mocked(setup.events.listByRun).mockResolvedValueOnce([]);
+    await expect(
+      setup.authority.revalidateZeroConsequentialEffect({
+        run: setup.run,
+        attempt: setup.attempt,
+        evidence: forged,
+      }),
+    ).resolves.toBeNull();
+    expect(setup.events.listByRun).toHaveBeenLastCalledWith('account-a', 'jrun_1', {
+      afterSeq: setup.attempt.startedEventSeq,
+      limit: 500,
+    });
+
+    vi.mocked(setup.events.listByRun).mockResolvedValueOnce([
+      {
+        runId: setup.run.id,
+        seq: 4,
+        idempotencyKey: 'hidden-claim',
+        type: 'tool',
+        title: 'Hidden action claim',
+        sourceRefs: [],
+        artifactIds: [],
+        createdAt: 9_600,
+        executionEvidence: {
+          schemaVersion: 1,
+          requestId: setup.attempt.requestId,
+          attemptNumber: setup.attempt.attemptNumber,
+          kind: 'consequential_effect_claimed',
+          ownerKind: 'action',
+          ownerId: 'execution-hidden',
+          evidenceRef: 'claim-hidden',
+          observedAt: 9_600,
+        },
+      },
+    ]);
+    await expect(
+      setup.authority.revalidateZeroConsequentialEffect({
+        run: setup.run,
+        attempt: setup.attempt,
+        evidence: proof!,
+      }),
+    ).resolves.toBeNull();
+  });
+});
+
+describe('createJarvisActionLiveEvidenceVerifiers', () => {
+  it('accepts only the exact durable action claim/result source pair', async () => {
+    const attempt: JarvisTransportAttemptV1 = {
+      schemaVersion: 1,
+      attemptNumber: 1,
+      kind: 'initial',
+      requestId: 'request-1',
+      state: 'completed',
+      startedEventSeq: 1,
+      effectBarrier: { state: 'dirty', version: 1, updatedAt: 9_000 },
+      createdAt: 8_000,
+      updatedAt: 9_000,
+    };
+    const run = parentRun({ transportAttempts: [attempt] });
+    const producerIdentity = {
+      producerKind: 'action' as const,
+      actionId: 'notes.create',
+      actionVersion: 1,
+      executionId: 'execution-1',
+    };
+    const events: JarvisEvent[] = [
+      {
+        runId: run.id,
+        seq: 2,
+        idempotencyKey: 'claim-1',
+        type: 'tool',
+        status: 'running',
+        title: 'Action started',
+        sourceRefs: [],
+        artifactIds: [],
+        createdAt: 9_000,
+        executionEvidence: {
+          schemaVersion: 1,
+          requestId: 'request-1',
+          attemptNumber: 1,
+          kind: 'consequential_effect_claimed',
+          ownerKind: 'action',
+          ownerId: 'execution-1',
+          evidenceRef: 'effect-claim-1',
+          observedAt: 9_000,
+        },
+        producerSourceEvidence: {
+          schemaVersion: 1,
+          accountId: 'account-a',
+          runId: run.id,
+          requestId: 'request-1',
+          attemptNumber: 1,
+          producerKind: 'action',
+          producerIdentity,
+          phase: 'start',
+          state: 'busy',
+          resultRef: 'effect-claim-1',
+          observedAt: 9_000,
+        },
+      },
+      {
+        runId: run.id,
+        seq: 3,
+        idempotencyKey: 'result-1',
+        type: 'tool',
+        status: 'completed',
+        title: 'Action completed',
+        sourceRefs: [],
+        artifactIds: [],
+        createdAt: 9_500,
+        executionEvidence: {
+          schemaVersion: 1,
+          requestId: 'request-1',
+          attemptNumber: 1,
+          kind: 'consequential_effect_completed',
+          ownerKind: 'action',
+          ownerId: 'execution-1',
+          evidenceRef: 'jresult_action_1',
+          observedAt: 9_500,
+        },
+        producerSourceEvidence: {
+          schemaVersion: 1,
+          accountId: 'account-a',
+          runId: run.id,
+          requestId: 'request-1',
+          attemptNumber: 1,
+          producerKind: 'action',
+          producerIdentity,
+          phase: 'result',
+          state: 'completed',
+          resultRef: 'jresult_action_1',
+          observedAt: 9_500,
+        },
+      },
+    ];
+    const runRepository: Pick<JarvisRunRepository, 'getById'> = {
+      getById: vi.fn(async () => structuredClone(run)),
+    };
+    const eventRepository: Pick<JarvisEventRepository, 'listByRun' | 'getBySeq'> = {
+      listByRun: vi.fn(async () => structuredClone(events)),
+      getBySeq: vi.fn(async (_accountId, _runId, seq) =>
+        structuredClone(events.find((event) => event.seq === seq)),
+      ),
+    };
+    const verifiers = createJarvisActionLiveEvidenceVerifiers({
+      runs: runRepository as JarvisRunRepository,
+      events: eventRepository as JarvisEventRepository,
+    });
+    const evidence: JarvisCanonicalLiveProducerEvidence<'action'> = {
+      schemaVersion: 1,
+      producerKind: 'action',
+      producerIdentity,
+      accountId: 'account-a',
+      runId: run.id,
+      requestId: 'request-1',
+      attemptNumber: 1,
+      resultRef: 'jresult_action_1',
+      resultEventSeq: 3,
+      state: 'completed',
+      verifiedAt: 9_500,
+    };
+
+    await expect(verifiers.action.verify(evidence)).resolves.toEqual(evidence);
+    expect(runRepository.getById).toHaveBeenCalledWith('account-a', run.id);
+    expect(eventRepository.getBySeq).toHaveBeenCalledWith('account-a', run.id, 3);
+    await expect(verifiers.action.verify({ ...evidence, verifiedAt: 9_501 })).resolves.toBeNull();
+    await expect(verifiers.action.verify({ ...evidence, resultRef: ' ' })).resolves.toBeNull();
+    vi.mocked(runRepository.getById).mockResolvedValueOnce({
+      ...structuredClone(run),
+      accountId: 'account-foreign',
+    });
+    await expect(verifiers.action.verify(evidence)).resolves.toBeNull();
+
+    const validResult = structuredClone(events[1]!);
+    events[1] = {
+      ...events[1]!,
+      executionEvidence: { ...events[1]!.executionEvidence!, ownerId: 'forged-execution' },
+    };
+    await expect(verifiers.action.verify(evidence)).resolves.toBeNull();
+
+    events[1] = {
+      ...validResult,
+      producerSourceEvidence: {
+        ...validResult.producerSourceEvidence!,
+        observedAt: validResult.producerSourceEvidence!.observedAt + 1,
+      },
+    } as JarvisEvent;
+    await expect(verifiers.action.verify(evidence)).resolves.toBeNull();
+
+    events[1] = validResult;
+    events.push({
+      ...structuredClone(validResult),
+      seq: 4,
+      idempotencyKey: 'duplicate-result-1',
+    });
+    await expect(verifiers.action.verify(evidence)).resolves.toBeNull();
+    events.pop();
+
+    events[1] = { ...validResult, status: 'running' };
+    await expect(verifiers.action.verify(evidence)).resolves.toBeNull();
+    await expect(
+      verifiers.plugin.verify({ ...evidence, producerKind: 'plugin' } as never),
+    ).resolves.toBeNull();
+  });
+
+  it.each([
+    {
+      kind: 'action' as const,
+      verifier: 'action' as const,
+      ownerKind: 'action' as const,
+      ownerId: 'execution-1',
+      identity: {
+        producerKind: 'action' as const,
+        actionId: 'notes.create',
+        actionVersion: 1,
+        executionId: 'execution-1',
+      },
+    },
+    {
+      kind: 'file_action' as const,
+      verifier: 'fileAction' as const,
+      ownerKind: 'file' as const,
+      ownerId: 'file-result-1',
+      identity: {
+        producerKind: 'file_action' as const,
+        actionId: 'file.write',
+        actionVersion: 1,
+        resultId: 'file-result-1',
+      },
+    },
+    {
+      kind: 'terminal' as const,
+      verifier: 'terminal' as const,
+      ownerKind: 'terminal' as const,
+      ownerId: 'terminal-execution-1',
+      identity: {
+        producerKind: 'terminal' as const,
+        sessionId: 'terminal-session-1',
+        executionId: 'terminal-execution-1',
+      },
+    },
+    {
+      kind: 'plugin' as const,
+      verifier: 'plugin' as const,
+      ownerKind: 'plugin' as const,
+      ownerId: 'plugin-invocation-1',
+      identity: {
+        producerKind: 'plugin' as const,
+        pluginId: 'plugin-1',
+        invocationId: 'plugin-invocation-1',
+      },
+    },
+    {
+      kind: 'mcp' as const,
+      verifier: 'mcp' as const,
+      ownerKind: 'mcp' as const,
+      ownerId: 'mcp-invocation-1',
+      identity: {
+        producerKind: 'mcp' as const,
+        serverId: 'server-1',
+        toolName: 'tool-1',
+        invocationId: 'mcp-invocation-1',
+      },
+    },
+  ])('verifies the exact $kind producer pair', async (producer) => {
+    const attempt: JarvisTransportAttemptV1 = {
+      schemaVersion: 1,
+      attemptNumber: 1,
+      kind: 'initial',
+      requestId: 'request-1',
+      state: 'completed',
+      startedEventSeq: 1,
+      effectBarrier: { state: 'dirty', version: 1, updatedAt: 9_000 },
+      createdAt: 8_000,
+      updatedAt: 9_000,
+    };
+    const run = parentRun({ transportAttempts: [attempt] });
+    const events = [
+      {
+        runId: run.id,
+        seq: 2,
+        idempotencyKey: `${producer.kind}-claim`,
+        type: 'tool' as const,
+        status: 'running',
+        title: 'Capability started',
+        sourceRefs: [],
+        artifactIds: [],
+        createdAt: 9_000,
+        executionEvidence: {
+          schemaVersion: 1 as const,
+          requestId: 'request-1',
+          attemptNumber: 1,
+          kind: 'consequential_effect_claimed' as const,
+          ownerKind: producer.ownerKind,
+          ownerId: producer.ownerId,
+          evidenceRef: `${producer.kind}-claim-ref`,
+          observedAt: 9_000,
+        },
+        producerSourceEvidence: {
+          schemaVersion: 1 as const,
+          accountId: 'account-a',
+          runId: run.id,
+          requestId: 'request-1',
+          attemptNumber: 1,
+          producerKind: producer.kind,
+          producerIdentity: producer.identity,
+          phase: 'start' as const,
+          state: 'busy' as const,
+          resultRef: `${producer.kind}-claim-ref`,
+          observedAt: 9_000,
+        },
+      },
+      {
+        runId: run.id,
+        seq: 3,
+        idempotencyKey: `${producer.kind}-result`,
+        type: 'tool' as const,
+        status: 'completed',
+        title: 'Capability completed',
+        sourceRefs: [],
+        artifactIds: [],
+        createdAt: 9_500,
+        executionEvidence: {
+          schemaVersion: 1 as const,
+          requestId: 'request-1',
+          attemptNumber: 1,
+          kind: 'consequential_effect_completed' as const,
+          ownerKind: producer.ownerKind,
+          ownerId: producer.ownerId,
+          evidenceRef: `jresult_${producer.kind}_1`,
+          observedAt: 9_500,
+        },
+        producerSourceEvidence: {
+          schemaVersion: 1 as const,
+          accountId: 'account-a',
+          runId: run.id,
+          requestId: 'request-1',
+          attemptNumber: 1,
+          producerKind: producer.kind,
+          producerIdentity: producer.identity,
+          phase: 'result' as const,
+          state: 'completed' as const,
+          resultRef: `jresult_${producer.kind}_1`,
+          observedAt: 9_500,
+        },
+      },
+    ] as JarvisEvent[];
+    const verifiers = createJarvisActionLiveEvidenceVerifiers({
+      runs: { getById: vi.fn(async () => structuredClone(run)) } as never,
+      events: {
+        listByRun: vi.fn(async () => structuredClone(events)),
+        getBySeq: vi.fn(async (_accountId, _runId, seq) =>
+          structuredClone(events.find((event) => event.seq === seq)),
+        ),
+      } as never,
+    });
+    const evidence = {
+      schemaVersion: 1 as const,
+      producerKind: producer.kind,
+      producerIdentity: producer.identity,
+      accountId: 'account-a',
+      runId: run.id,
+      requestId: 'request-1',
+      attemptNumber: 1,
+      resultRef: `jresult_${producer.kind}_1`,
+      resultEventSeq: 3,
+      state: 'completed' as const,
+      verifiedAt: 9_500,
+    };
+
+    await expect(
+      (verifiers[producer.verifier] as { verify(value: never): Promise<unknown> }).verify(
+        evidence as never,
+      ),
+    ).resolves.toEqual(evidence);
   });
 });

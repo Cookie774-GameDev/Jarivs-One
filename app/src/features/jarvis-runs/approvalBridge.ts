@@ -1,89 +1,82 @@
-import type { ActionResult } from '@/lib/actions/types';
+import type { JarvisApprovalV1 } from '@/lib/jarvis/contracts';
 
-import { useJarvisTaskRunStore } from './taskRunStore';
+const APPROVAL_CALL_PREFIX = 'jarvisapproval:';
+const MAX_ACTION_ID_LENGTH = 128;
+const MAX_EXPECTED_EFFECT_LENGTH = 512;
+const MAX_PARAMETER_FIELD_LENGTH = 128;
+const MAX_PARAMETER_VALUE_LENGTH = 160;
+const MAX_PARAMETER_COUNT = 32;
 
-const PREFIX = 'jarvisrun:';
-
-export function createTaskApprovalCallId(runId: string, stepId: string): string {
-  return `${PREFIX}${encodeURIComponent(runId)}:${encodeURIComponent(stepId)}`;
+export function createTaskApprovalCallId(approvalId: string): string {
+  if (!approvalId || approvalId.trim() !== approvalId) throw new Error('Approval ID is invalid.');
+  return `${APPROVAL_CALL_PREFIX}${encodeURIComponent(approvalId)}`;
 }
 
-export function parseTaskApprovalCallId(callId: string): { runId: string; stepId: string } | null {
-  if (!callId.startsWith(PREFIX)) return null;
-  const parts = callId.slice(PREFIX.length).split(':');
-  if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
+export function parseTaskApprovalCallId(callId: string): { approvalId: string } | null {
+  if (!callId.startsWith(APPROVAL_CALL_PREFIX)) return null;
+  const encoded = callId.slice(APPROVAL_CALL_PREFIX.length);
+  if (!encoded || encoded.includes(':')) return null;
   try {
-    return { runId: decodeURIComponent(parts[0]), stepId: decodeURIComponent(parts[1]) };
+    const approvalId = decodeURIComponent(encoded);
+    if (!approvalId || approvalId.trim() !== approvalId) return null;
+    if (createTaskApprovalCallId(approvalId) !== callId) return null;
+    return { approvalId };
   } catch {
     return null;
   }
 }
 
-export function patchTaskRunResources(
-  callId: string | undefined,
-  patch: { activeAgents?: string[]; activeTerminals?: string[] },
-): void {
-  if (!callId) return;
-  const parsed = parseTaskApprovalCallId(callId);
-  if (!parsed) return;
-  const store = useJarvisTaskRunStore.getState();
-  const run = store.runs[parsed.runId];
-  if (!run || ['completed', 'failed', 'cancelled'].includes(run.status)) return;
-  store.patchRun(parsed.runId, patch);
+const SENSITIVE_PARAMETER_FIELD =
+  /(?:authorization|cookie|token|jwt|api[_-]?key|password|secret|credential|private[_-]?key)/i;
+const SECRET_PARAMETER_VALUE =
+  /\b(?:Bearer\s+\S+|gh[pousr]_[A-Za-z0-9]{20,}|(?:sk|rk)_(?:live|test)_[A-Za-z0-9_]{8,}|sk-[A-Za-z0-9_-]{12,}|whsec_[A-Za-z0-9_]{8,}|jsecret_[A-Za-z0-9_-]+)\b/i;
+
+function bounded(value: string, limit: number): string {
+  return value.length <= limit ? value : `${value.slice(0, Math.max(0, limit - 3))}...`;
 }
 
-export function beginTaskApprovalStep(callId: string): boolean {
-  const parsed = parseTaskApprovalCallId(callId);
-  if (!parsed) return true;
-  const store = useJarvisTaskRunStore.getState();
-  const run = store.runs[parsed.runId];
-  const step = run?.steps.find((candidate) => candidate.id === parsed.stepId);
-  if (!run || !step || ['completed', 'failed', 'cancelled'].includes(run.status)
-    || ['completed', 'failed', 'cancelled'].includes(step.status)) return false;
-  store.patchRun(parsed.runId, { status: 'running', userVisibleSummary: 'Approved action is running.' });
-  store.updateStep(parsed.runId, parsed.stepId, {
-    status: 'running',
-    startedAt: new Date().toISOString(),
+function safeParameterValue(
+  field: string,
+  value: unknown,
+  secretHandleIds: ReadonlySet<string>,
+): string {
+  if (SENSITIVE_PARAMETER_FIELD.test(field)) return '[redacted]';
+  if (value === null) return 'null';
+  if (typeof value === 'boolean' || typeof value === 'number') return String(value);
+  if (typeof value !== 'string') return '[structured value]';
+  const normalized = value.replace(/[\r\n\t]+/g, ' ').trim();
+  if (secretHandleIds.has(normalized) || SECRET_PARAMETER_VALUE.test(normalized))
+    return '[redacted]';
+  return bounded(normalized, MAX_PARAMETER_VALUE_LENGTH);
+}
+
+export function presentJarvisApproval(approval: JarvisApprovalV1): {
+  actionId: string;
+  expectedEffect: string;
+  risk: JarvisApprovalV1['risk'];
+  parameters: readonly { field: string; safeValue: string }[];
+} {
+  const parameters =
+    approval.params && typeof approval.params === 'object' && !Array.isArray(approval.params)
+      ? (approval.params as Record<string, unknown>)
+      : {};
+  const secretHandleIds = new Set(
+    (approval.secretHandleRefs ?? []).map(({ handleId }) => handleId),
+  );
+  return Object.freeze({
+    actionId: bounded(approval.actionId, MAX_ACTION_ID_LENGTH),
+    expectedEffect: bounded(approval.expectedEffect, MAX_EXPECTED_EFFECT_LENGTH),
+    risk: approval.risk,
+    parameters: Object.freeze(
+      Object.entries(parameters)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .slice(0, MAX_PARAMETER_COUNT)
+        .map(([field, value]) =>
+          Object.freeze({
+            field: bounded(field, MAX_PARAMETER_FIELD_LENGTH),
+            safeValue: safeParameterValue(field, value, secretHandleIds),
+          }),
+        ),
+    ),
   });
-  return true;
-}
-
-export function finishTaskApprovalStep(callId: string, result: ActionResult): void {
-  const parsed = parseTaskApprovalCallId(callId);
-  if (!parsed) return;
-  const store = useJarvisTaskRunStore.getState();
-  if (!store.runs[parsed.runId] || store.runs[parsed.runId]?.status === 'cancelled') return;
-  const now = new Date().toISOString();
-  if (!result.ok) {
-    store.updateStep(parsed.runId, parsed.stepId, {
-      status: 'failed',
-      error: result.error,
-      completedAt: now,
-    });
-    store.patchRun(parsed.runId, { status: /\bblocked\b/i.test(result.error) ? 'blocked' : 'failed', userVisibleSummary: result.error });
-    return;
-  }
-  const summary = result.summary?.trim() || 'Action completed and returned no summary.';
-  store.updateStep(parsed.runId, parsed.stepId, {
-    status: 'completed',
-    summary,
-    completedAt: now,
-  });
-  const latest = useJarvisTaskRunStore.getState().runs[parsed.runId];
-  if (!latest) return;
-  if (latest.steps.every((step) => step.status === 'completed')) {
-    store.patchRun(parsed.runId, {
-      status: 'completed',
-      progress: 100,
-      userVisibleSummary: latest.steps.map((step) => step.summary).filter(Boolean).join(' '),
-    });
-  } else {
-    store.patchRun(parsed.runId, { status: 'running' });
-  }
-}
-
-export function cancelTaskApprovalStep(callId: string): void {
-  const parsed = parseTaskApprovalCallId(callId);
-  if (!parsed) return;
-  useJarvisTaskRunStore.getState().cancelRun(parsed.runId);
 }

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   createJarvisTaskRun,
+  presentLegacyJarvisTaskRun,
   recoverJarvisTaskRuns,
   useJarvisTaskRunStore,
 } from './taskRunStore';
@@ -9,6 +10,28 @@ describe('Jarvis persistent task runs', () => {
   beforeEach(() => {
     localStorage.clear();
     useJarvisTaskRunStore.getState().clearForTests();
+  });
+
+  it('projects historical task state as truthful and non-executable', () => {
+    const run = createJarvisTaskRun({
+      goal: 'Historical action',
+      status: 'waiting-for-approval',
+      steps: [{ id: 'one', action: 'terminal.create', label: 'Create', recoverable: false }],
+    });
+    const presentation = presentLegacyJarvisTaskRun(run);
+    expect(presentation).toEqual({
+      kind: 'legacy_non_executable',
+      runId: run.id,
+      status: 'waiting-for-approval',
+      message:
+        'This historical task card is view-only. Review current state and retry manually if needed.',
+    });
+    expect(presentation).not.toHaveProperty('execute');
+    expect(presentation).not.toHaveProperty('cancel');
+
+    useJarvisTaskRunStore.getState().addRun(run);
+    useJarvisTaskRunStore.getState().cancelRun(run.id);
+    expect(useJarvisTaskRunStore.getState().runs[run.id]?.status).toBe('waiting-for-approval');
   });
 
   it('tracks step progress and active resources without flooding chat', () => {
@@ -45,7 +68,9 @@ describe('Jarvis persistent task runs', () => {
     useJarvisTaskRunStore.getState().addRun(run);
     useJarvisTaskRunStore.getState().patchRun(run.id, { status: 'completed' });
 
-    expect(useJarvisTaskRunStore.getState().runs[run.id]?.completedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(useJarvisTaskRunStore.getState().runs[run.id]?.completedAt).toMatch(
+      /^\d{4}-\d{2}-\d{2}T/,
+    );
   });
 
   it('recovers only idempotent recoverable work after an app restart', () => {
@@ -74,17 +99,19 @@ describe('Jarvis persistent task runs', () => {
     const run = createJarvisTaskRun({
       goal: 'Invoke with password=goal-secret and token is natural-secret safely',
       status: 'running',
-      steps: [{
-        id: 'invoke',
-        action: 'mcp.invoke',
-        label: 'Invoke with token=label-secret',
-        recoverable: true,
-        input: {
-          apiKey: 'sk-secret-value-that-must-not-persist',
-          inputJson: JSON.stringify({ authorization: 'Bearer private-token', query: 'safe' }),
-          nested: { password: 'do-not-store', query: 'keep-me' },
+      steps: [
+        {
+          id: 'invoke',
+          action: 'mcp.invoke',
+          label: 'Invoke with token=label-secret',
+          recoverable: true,
+          input: {
+            apiKey: 'sk-secret-value-that-must-not-persist',
+            inputJson: JSON.stringify({ authorization: 'Bearer private-token', query: 'safe' }),
+            nested: { password: 'do-not-store', query: 'keep-me' },
+          },
         },
-      }],
+      ],
     });
 
     useJarvisTaskRunStore.getState().addRun(run);

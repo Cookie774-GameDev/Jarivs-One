@@ -3,17 +3,34 @@ import type {
   ActionRunContext,
   RegisteredActionExecutionContext,
 } from '@/lib/actions/types';
-import type { JarvisApprovalRepository, JarvisRunRepository } from '@/lib/db/jarvisRepositories';
+import type {
+  JarvisApprovalRepository,
+  JarvisArtifactRepository,
+  JarvisEventRepository,
+  JarvisRunRepository,
+} from '@/lib/db/jarvisRepositories';
+import type { JarvisProviderAttemptEvidenceAuthority } from '@/lib/ai/providerAttemptEvidence';
 import type { JarvisEntitlementSnapshotProvider } from '@/lib/admin';
 import type {
   JarvisApprovalV1,
   JarvisAuthorityBoundResult,
   JarvisCancellationRequestResult,
+  JarvisCanonicalLiveProducerEvidence,
   JarvisCapabilitySnapshot,
+  JarvisConsequentialEffectSafetyAuthority,
   JarvisEntitlementSnapshot,
   JarvisEvent,
+  JarvisLiveProducerIdentity,
+  JarvisPreEffectTransportFailureEvidence,
   JarvisRecoveryApprovalVerifier,
   JarvisRun,
+  JarvisTransportAttemptV1,
+  JarvisZeroConsequentialEffectEvidenceV1,
+} from '@/lib/jarvis/contracts';
+import type { JarvisCanonicalLiveProducerVerifier } from '@/lib/jarvis/contracts/execution';
+import {
+  canonicalizeJarvisApprovalJson,
+  validateJarvisZeroConsequentialEffectEvidence,
 } from '@/lib/jarvis/contracts';
 import type { JarvisLiveEvidenceProof } from '@/lib/jarvis/contracts/execution';
 import type { JarvisCapabilitySnapshotProvider } from '@/lib/jarvis/capabilitySnapshot';
@@ -22,7 +39,10 @@ import type {
   JarvisCanonicalActionTarget,
   JarvisRegisteredActionDefinition,
 } from '@/lib/jarvis/actions/catalog';
-import type { JarvisRequestAttempt } from '@/lib/jarvis/requestEnvelope';
+import {
+  validateJarvisRequestAttempt,
+  type JarvisRequestAttempt,
+} from '@/lib/jarvis/requestEnvelope';
 import type { JarvisSecretHandlePort } from '@/lib/jarvis/secretHandlePort';
 
 export interface JarvisApprovalBindingSelectors {
@@ -176,6 +196,24 @@ export interface JarvisApprovalActionCapability {
   executeAutoApprovedSafe(
     input: CreateJarvisApprovalInput & { context: ActionRunContext },
   ): Promise<JarvisCanonicalActionExecutionResult>;
+}
+
+/** Narrow feature-facing contract. Task 16B supplies the sole production implementation. */
+export interface JarvisKernelActionPort {
+  create(
+    input: Readonly<CreateJarvisApprovalInput>,
+  ): Promise<JarvisAuthorityBoundResult<JarvisApprovalV1>>;
+  decide(input: {
+    parentRun: JarvisRun;
+    approvalId: string;
+    decision: 'approve' | 'deny';
+  }): Promise<JarvisAuthorityBoundResult<JarvisApprovalV1>>;
+  execute(
+    input: Readonly<ExecuteJarvisApprovalInput>,
+  ): Promise<JarvisAuthorityBoundResult<JarvisCanonicalActionExecutionResult>>;
+  executeAutoApprovedSafe(
+    input: Readonly<CreateJarvisApprovalInput & { context: ActionRunContext }>,
+  ): Promise<JarvisAuthorityBoundResult<JarvisCanonicalActionExecutionResult>>;
 }
 
 export const jarvisIssuedApprovalLifecycleBrand: unique symbol = Symbol(
@@ -490,6 +528,69 @@ function assertExactOwnKeys(value: object, allowed: readonly string[]): void {
   }
 }
 
+function exactRequestAttempt(attempt: JarvisRequestAttempt): JarvisRequestAttempt {
+  if (!attempt || typeof attempt !== 'object' || Array.isArray(attempt)) {
+    approvalError('run_scope_mismatch');
+  }
+  const common = ['kind', 'requestId', 'runId', 'attemptNumber'];
+  const retry = ['previousRequestId', 'previousRunId', 'previousAttemptNumber'];
+  assertExactOwnKeys(
+    attempt,
+    attempt.kind === 'transport_retry' || attempt.kind === 'logical_retry'
+      ? [...common, ...retry]
+      : common,
+  );
+  try {
+    validateJarvisRequestAttempt(attempt);
+  } catch {
+    approvalError('run_scope_mismatch');
+  }
+  if (attempt.kind === 'initial') {
+    return {
+      kind: 'initial',
+      requestId: attempt.requestId,
+      runId: attempt.runId,
+      attemptNumber: 1,
+    };
+  }
+  if (attempt.kind === 'transport_retry' || attempt.kind === 'logical_retry') {
+    return {
+      kind: attempt.kind,
+      requestId: attempt.requestId,
+      runId: attempt.runId,
+      attemptNumber: attempt.attemptNumber,
+      previousRequestId: attempt.previousRequestId,
+      previousRunId: attempt.previousRunId,
+      previousAttemptNumber: attempt.previousAttemptNumber,
+    } as JarvisRequestAttempt;
+  }
+  approvalError('run_scope_mismatch');
+}
+
+function assertExactRunInput(run: JarvisRun): void {
+  if (!run || typeof run !== 'object' || Array.isArray(run)) {
+    approvalError('run_scope_mismatch');
+  }
+  assertExactOwnKeys(run, [
+    'id',
+    'accountId',
+    'workspaceId',
+    'projectId',
+    'chatId',
+    'parentRunId',
+    'source',
+    'status',
+    'agentId',
+    'identityVersion',
+    'profileRevisionId',
+    'model',
+    'createdAt',
+    'updatedAt',
+    'completedAt',
+    'transportAttempts',
+  ]);
+}
+
 function createInputOnly(input: CreateJarvisApprovalInput): CreateJarvisApprovalInput {
   return {
     parentRun: input.parentRun,
@@ -517,6 +618,7 @@ function assertContextBinding(
     'approvalId',
     'requestId',
     'attemptNumber',
+    'signal',
   ]);
   const expected = {
     accountId: lifecycle.accountId,
@@ -529,6 +631,14 @@ function assertContextBinding(
     if (record[key] !== undefined && record[key] !== value) approvalError('run_scope_mismatch');
   }
   if (context.source !== 'user' && context.source !== 'ai') approvalError('run_scope_mismatch');
+  if (
+    context.signal !== undefined &&
+    (typeof context.signal !== 'object' ||
+      typeof context.signal.aborted !== 'boolean' ||
+      typeof context.signal.addEventListener !== 'function')
+  ) {
+    approvalError('run_scope_mismatch');
+  }
   return Object.freeze({
     source: context.source,
     ...(context.chatId === undefined ? {} : { chatId: context.chatId }),
@@ -578,6 +688,430 @@ function exactPendingApprovalEvent(
       event.safeSummary === 'Review the registered action before it runs.',
   );
   return candidates.length === 1 ? candidates[0] : undefined;
+}
+
+const ZERO_EFFECT_EVENT_LIMIT = 500;
+
+function exactProviderFailure(
+  failure: JarvisPreEffectTransportFailureEvidence,
+  run: Readonly<JarvisRun>,
+  attempt: Readonly<JarvisTransportAttemptV1>,
+): boolean {
+  return (
+    failure.schemaVersion === 1 &&
+    failure.accountId === run.accountId &&
+    failure.runId === run.id &&
+    failure.requestId === attempt.requestId &&
+    failure.attemptNumber === attempt.attemptNumber &&
+    failure.providerId === run.model.providerId &&
+    failure.modelId === run.model.modelId &&
+    failure.boundary === 'before_first_response_byte' &&
+    failure.responseStarted === false &&
+    failure.chunkCount === 0 &&
+    failure.actionDispatchCount === 0 &&
+    !!failure.failureCategory.trim() &&
+    !!failure.evidenceRef.trim() &&
+    Number.isFinite(failure.verifiedAt)
+  );
+}
+
+function exactAttemptBinding(
+  run: Readonly<JarvisRun>,
+  attempt: Readonly<JarvisTransportAttemptV1>,
+): boolean {
+  const persisted = run.transportAttempts?.at(-1);
+  if (!persisted || run.source !== 'schedule' || run.status !== 'running') return false;
+  try {
+    return (
+      persisted.requestId === attempt.requestId &&
+      persisted.attemptNumber === attempt.attemptNumber &&
+      canonicalizeJarvisApprovalJson(persisted) === canonicalizeJarvisApprovalJson(attempt) &&
+      attempt.effectBarrier.state === 'open' &&
+      attempt.effectBarrier.version === 0 &&
+      (attempt.state === 'provider_in_flight' || attempt.state === 'retryable_failed')
+    );
+  } catch {
+    return false;
+  }
+}
+
+function sameProviderFailure(
+  left: JarvisPreEffectTransportFailureEvidence,
+  right: JarvisPreEffectTransportFailureEvidence,
+): boolean {
+  try {
+    return canonicalizeJarvisApprovalJson(left) === canonicalizeJarvisApprovalJson(right);
+  } catch {
+    return false;
+  }
+}
+
+async function inspectZeroEffectTail(input: {
+  events: JarvisEventRepository;
+  accountId: string;
+  runId: string;
+  afterSeq: number;
+}): Promise<number | null> {
+  const rows = await input.events.listByRun(input.accountId, input.runId, {
+    afterSeq: input.afterSeq,
+    limit: ZERO_EFFECT_EVENT_LIMIT,
+  });
+  if (rows.length >= ZERO_EFFECT_EVENT_LIMIT) return null;
+  let throughSeq = input.afterSeq;
+  for (const row of rows) {
+    if (row.runId !== input.runId || row.seq !== throughSeq + 1) return null;
+    if (
+      row.executionEvidence !== undefined ||
+      row.canonicalResultEvidence !== undefined ||
+      row.producerSourceEvidence !== undefined ||
+      row.liveEvidence !== undefined
+    ) {
+      return null;
+    }
+    throughSeq = row.seq;
+  }
+  return throughSeq;
+}
+
+/** @internal Imported only by the trusted schedule/kernel runtime. */
+export function createJarvisConsequentialEffectSafetyAuthority(input: {
+  approvals: JarvisApprovalRepository;
+  artifacts: JarvisArtifactRepository;
+  events: JarvisEventRepository;
+  providerAttemptEvidence: Pick<JarvisProviderAttemptEvidenceAuthority, 'revalidateFailure'>;
+  now: () => number;
+}): JarvisConsequentialEffectSafetyAuthority {
+  async function revalidateProvider(
+    run: Readonly<JarvisRun>,
+    attempt: Readonly<JarvisTransportAttemptV1>,
+    failure: JarvisPreEffectTransportFailureEvidence,
+  ): Promise<JarvisPreEffectTransportFailureEvidence | null> {
+    if (!exactAttemptBinding(run, attempt) || !exactProviderFailure(failure, run, attempt)) {
+      return null;
+    }
+    const verified = await input.providerAttemptEvidence.revalidateFailure({
+      evidence: failure,
+      accountId: run.accountId,
+      runId: run.id,
+      requestId: attempt.requestId,
+      attemptNumber: attempt.attemptNumber,
+      providerId: run.model.providerId,
+      modelId: run.model.modelId,
+    });
+    return verified && sameProviderFailure(verified, failure) ? verified : null;
+  }
+
+  async function inspectZeroState(
+    run: Readonly<JarvisRun>,
+    attempt: Readonly<JarvisTransportAttemptV1>,
+    afterSeq: number,
+  ): Promise<number | null> {
+    const [approvals, artifacts, throughSeq] = await Promise.all([
+      input.approvals.listByRun(run.accountId, run.id, {
+        requestId: attempt.requestId,
+        attemptNumber: attempt.attemptNumber,
+        limit: 1,
+      }),
+      input.artifacts.listByRun(run.accountId, run.id, 1),
+      inspectZeroEffectTail({
+        events: input.events,
+        accountId: run.accountId,
+        runId: run.id,
+        afterSeq,
+      }),
+    ]);
+    if (approvals.length !== 0 || artifacts.length !== 0 || throughSeq === null) return null;
+    return throughSeq;
+  }
+
+  function buildProof(
+    run: Readonly<JarvisRun>,
+    attempt: Readonly<JarvisTransportAttemptV1>,
+    providerBoundary: JarvisPreEffectTransportFailureEvidence,
+    throughSeq: number,
+  ): JarvisZeroConsequentialEffectEvidenceV1 | null {
+    const assessedAt = input.now();
+    if (!Number.isFinite(assessedAt)) return null;
+    return Object.freeze({
+      schemaVersion: 1,
+      accountId: run.accountId,
+      runId: run.id,
+      requestId: attempt.requestId,
+      attemptNumber: attempt.attemptNumber,
+      assessedAt,
+      providerBoundary: structuredClone(providerBoundary),
+      effectBarrier: Object.freeze({ state: 'open', version: 0 }),
+      approvals: Object.freeze({
+        count: 0,
+        evidenceRef: `approvals-zero:${run.id}:${attempt.requestId}:${attempt.attemptNumber}`,
+      }),
+      artifacts: Object.freeze({
+        count: 0,
+        evidenceRef: `artifacts-zero:${run.id}:${attempt.requestId}:${attempt.attemptNumber}`,
+      }),
+      executorClaims: Object.freeze({
+        count: 0,
+        throughSeq,
+        evidenceRef: `claims-zero:${run.id}:${throughSeq}`,
+      }),
+    });
+  }
+
+  return Object.freeze({
+    async proveZeroConsequentialEffect({
+      run,
+      attempt,
+      providerFailure,
+    }: Parameters<JarvisConsequentialEffectSafetyAuthority['proveZeroConsequentialEffect']>[0]) {
+      try {
+        const providerBoundary = await revalidateProvider(run, attempt, providerFailure);
+        if (!providerBoundary || attempt.state !== 'provider_in_flight') return null;
+        const throughSeq = await inspectZeroState(run, attempt, attempt.startedEventSeq);
+        return throughSeq === null ? null : buildProof(run, attempt, providerBoundary, throughSeq);
+      } catch {
+        return null;
+      }
+    },
+    async revalidateZeroConsequentialEffect({
+      run,
+      attempt,
+      evidence,
+    }: Parameters<
+      JarvisConsequentialEffectSafetyAuthority['revalidateZeroConsequentialEffect']
+    >[0]) {
+      try {
+        if (!validateJarvisZeroConsequentialEffectEvidence(evidence).ok) return null;
+        if (
+          evidence.accountId !== run.accountId ||
+          evidence.runId !== run.id ||
+          evidence.requestId !== attempt.requestId ||
+          evidence.attemptNumber !== attempt.attemptNumber ||
+          evidence.effectBarrier.state !== 'open' ||
+          evidence.effectBarrier.version !== 0 ||
+          evidence.approvals.count !== 0 ||
+          evidence.artifacts.count !== 0 ||
+          evidence.executorClaims.count !== 0 ||
+          evidence.executorClaims.throughSeq < attempt.startedEventSeq ||
+          evidence.approvals.evidenceRef !==
+            `approvals-zero:${run.id}:${attempt.requestId}:${attempt.attemptNumber}` ||
+          evidence.artifacts.evidenceRef !==
+            `artifacts-zero:${run.id}:${attempt.requestId}:${attempt.attemptNumber}` ||
+          evidence.executorClaims.evidenceRef !==
+            `claims-zero:${run.id}:${evidence.executorClaims.throughSeq}`
+        ) {
+          return null;
+        }
+        const providerBoundary = await revalidateProvider(run, attempt, evidence.providerBoundary);
+        if (!providerBoundary) return null;
+        const throughSeq = await inspectZeroState(run, attempt, attempt.startedEventSeq);
+        if (throughSeq === null || throughSeq < evidence.executorClaims.throughSeq) return null;
+        return buildProof(run, attempt, providerBoundary, throughSeq);
+      } catch {
+        return null;
+      }
+    },
+  });
+}
+
+function ownerForProducer(
+  kind: 'action' | 'file_action' | 'terminal' | 'plugin' | 'mcp',
+  identity: JarvisLiveProducerIdentity,
+): { ownerKind: 'action' | 'file' | 'terminal' | 'plugin' | 'mcp'; ownerId: string } | null {
+  if (kind === 'action' && identity.producerKind === 'action') {
+    return { ownerKind: 'action', ownerId: identity.executionId };
+  }
+  if (kind === 'file_action' && identity.producerKind === 'file_action') {
+    return { ownerKind: 'file', ownerId: identity.resultId };
+  }
+  if (kind === 'terminal' && identity.producerKind === 'terminal') {
+    return { ownerKind: 'terminal', ownerId: identity.executionId };
+  }
+  if (kind === 'plugin' && identity.producerKind === 'plugin') {
+    return { ownerKind: 'plugin', ownerId: identity.invocationId };
+  }
+  if (kind === 'mcp' && identity.producerKind === 'mcp') {
+    return { ownerKind: 'mcp', ownerId: identity.invocationId };
+  }
+  return null;
+}
+
+function sameCanonicalValue(left: unknown, right: unknown): boolean {
+  try {
+    return canonicalizeJarvisApprovalJson(left) === canonicalizeJarvisApprovalJson(right);
+  } catch {
+    return false;
+  }
+}
+
+function sourceMatchesEvidence<K extends 'action' | 'file_action' | 'terminal' | 'plugin' | 'mcp'>(
+  row: JarvisEvent,
+  evidence: JarvisCanonicalLiveProducerEvidence<K>,
+  phase: 'start' | 'result',
+): boolean {
+  const source = row.producerSourceEvidence;
+  if (
+    !source ||
+    source.schemaVersion !== 1 ||
+    source.phase !== phase ||
+    source.accountId !== evidence.accountId ||
+    source.runId !== evidence.runId ||
+    source.requestId !== evidence.requestId ||
+    source.attemptNumber !== evidence.attemptNumber ||
+    source.producerKind !== evidence.producerKind ||
+    !sameCanonicalValue(source.producerIdentity, evidence.producerIdentity)
+  ) {
+    return false;
+  }
+  if (phase === 'result') {
+    return (
+      source.resultRef === evidence.resultRef &&
+      source.state === evidence.state &&
+      source.observedAt === evidence.verifiedAt
+    );
+  }
+  return source.state === 'started' || source.state === 'ready' || source.state === 'busy';
+}
+
+function createActionLiveVerifier<
+  K extends 'action' | 'file_action' | 'terminal' | 'plugin' | 'mcp',
+>(
+  kind: K,
+  input: { runs: JarvisRunRepository; events: JarvisEventRepository },
+): JarvisCanonicalLiveProducerVerifier<K> {
+  return Object.freeze({
+    async verify(evidence: JarvisCanonicalLiveProducerEvidence<K>) {
+      try {
+        const producerIdentity = evidence.producerIdentity as JarvisLiveProducerIdentity;
+        if (
+          evidence.schemaVersion !== 1 ||
+          evidence.producerKind !== kind ||
+          producerIdentity.producerKind !== kind ||
+          !evidence.accountId.trim() ||
+          !evidence.runId.trim() ||
+          !evidence.requestId.trim() ||
+          !Number.isSafeInteger(evidence.attemptNumber) ||
+          evidence.attemptNumber < 1 ||
+          !Number.isSafeInteger(evidence.resultEventSeq) ||
+          evidence.resultEventSeq < 1 ||
+          !evidence.resultRef.trim() ||
+          (evidence.state !== 'completed' && evidence.state !== 'degraded') ||
+          !Number.isFinite(evidence.verifiedAt)
+        ) {
+          return null;
+        }
+        const owner = ownerForProducer(kind, producerIdentity);
+        if (!owner) return null;
+        const run = await input.runs.getById(evidence.accountId, evidence.runId);
+        if (!run || run.id !== evidence.runId || run.accountId !== evidence.accountId) return null;
+        const attempt = run?.transportAttempts?.find(
+          (candidate) =>
+            candidate.requestId === evidence.requestId &&
+            candidate.attemptNumber === evidence.attemptNumber,
+        );
+        if (!attempt || attempt.startedEventSeq >= evidence.resultEventSeq) return null;
+
+        const [resultRow, tail] = await Promise.all([
+          input.events.getBySeq(evidence.accountId, evidence.runId, evidence.resultEventSeq),
+          input.events.listByRun(evidence.accountId, evidence.runId, {
+            afterSeq: attempt.startedEventSeq,
+            limit: ZERO_EFFECT_EVENT_LIMIT,
+          }),
+        ]);
+        if (!resultRow || tail.length >= ZERO_EFFECT_EVENT_LIMIT) return null;
+        let expectedSeq = attempt.startedEventSeq + 1;
+        for (const row of tail) {
+          if (row.runId !== evidence.runId || row.seq !== expectedSeq) return null;
+          expectedSeq += 1;
+        }
+        const listedResult = tail.find((row) => row.seq === evidence.resultEventSeq);
+        if (!listedResult || !sameCanonicalValue(listedResult, resultRow)) return null;
+        const ownerRows = tail.filter((row) => {
+          const execution = row.executionEvidence;
+          const source = row.producerSourceEvidence;
+          const executionOwner =
+            execution?.requestId === evidence.requestId &&
+            execution.attemptNumber === evidence.attemptNumber &&
+            execution.ownerKind === owner.ownerKind &&
+            execution.ownerId === owner.ownerId;
+          const sourceOwner =
+            source?.accountId === evidence.accountId &&
+            source.runId === evidence.runId &&
+            source.requestId === evidence.requestId &&
+            source.attemptNumber === evidence.attemptNumber &&
+            source.producerKind === evidence.producerKind &&
+            sameCanonicalValue(source.producerIdentity, evidence.producerIdentity);
+          return executionOwner || sourceOwner;
+        });
+        if (ownerRows.length !== 2) return null;
+        const [startRow, completedRow] = ownerRows;
+        if (
+          !startRow ||
+          !completedRow ||
+          startRow.seq >= completedRow.seq ||
+          completedRow.seq !== evidence.resultEventSeq ||
+          startRow.type !== 'tool' ||
+          startRow.status !== 'running' ||
+          completedRow.type !== 'tool' ||
+          completedRow.status !== evidence.state
+        ) {
+          return null;
+        }
+        const startExecution = startRow.executionEvidence;
+        const startSource = startRow.producerSourceEvidence;
+        if (
+          !sourceMatchesEvidence(startRow, evidence, 'start') ||
+          startExecution?.kind !== 'consequential_effect_claimed' ||
+          startExecution.requestId !== evidence.requestId ||
+          startExecution.attemptNumber !== evidence.attemptNumber ||
+          startExecution.ownerKind !== owner.ownerKind ||
+          startExecution.ownerId !== owner.ownerId ||
+          startSource?.resultRef !== startExecution.evidenceRef ||
+          startSource.observedAt !== startExecution.observedAt
+        ) {
+          return null;
+        }
+        const resultExecution = completedRow.executionEvidence;
+        const resultSource = completedRow.producerSourceEvidence;
+        if (
+          !sameCanonicalValue(completedRow, resultRow) ||
+          !sourceMatchesEvidence(completedRow, evidence, 'result') ||
+          resultExecution?.kind !== 'consequential_effect_completed' ||
+          resultExecution.requestId !== evidence.requestId ||
+          resultExecution.attemptNumber !== evidence.attemptNumber ||
+          resultExecution.ownerKind !== owner.ownerKind ||
+          resultExecution.ownerId !== owner.ownerId ||
+          resultExecution.evidenceRef !== evidence.resultRef ||
+          resultSource?.resultRef !== resultExecution.evidenceRef ||
+          resultSource.observedAt !== resultExecution.observedAt
+        ) {
+          return null;
+        }
+        return Object.freeze(structuredClone(evidence));
+      } catch {
+        return null;
+      }
+    },
+  });
+}
+
+/** @internal Imported in production only by the trusted AI runtime. */
+export function createJarvisActionLiveEvidenceVerifiers(input: {
+  runs: JarvisRunRepository;
+  events: JarvisEventRepository;
+}): Readonly<{
+  action: JarvisCanonicalLiveProducerVerifier<'action'>;
+  fileAction: JarvisCanonicalLiveProducerVerifier<'file_action'>;
+  terminal: JarvisCanonicalLiveProducerVerifier<'terminal'>;
+  plugin: JarvisCanonicalLiveProducerVerifier<'plugin'>;
+  mcp: JarvisCanonicalLiveProducerVerifier<'mcp'>;
+}> {
+  return Object.freeze({
+    action: createActionLiveVerifier('action', input),
+    fileAction: createActionLiveVerifier('file_action', input),
+    terminal: createActionLiveVerifier('terminal', input),
+    plugin: createActionLiveVerifier('plugin', input),
+    mcp: createActionLiveVerifier('mcp', input),
+  });
 }
 
 export function createJarvisApprovalEngine(
@@ -684,9 +1218,11 @@ export function createJarvisApprovalEngine(
       'params',
       'expiresAt',
     ]);
+    assertExactRunInput(createInput.parentRun);
+    const attempt = exactRequestAttempt(createInput.attempt);
     assertLive(state);
-    assertLifecycleBinding(lifecycle, createInput.parentRun, createInput.attempt);
-    await loadCanonicalParent(lifecycle, createInput.parentRun);
+    assertLifecycleBinding(lifecycle, createInput.parentRun, attempt);
+    const canonicalParent = await loadCanonicalParent(lifecycle, createInput.parentRun);
     assertLive(state);
     const registration = resolveRegistration(createInput.actionId, createInput.actionVersion);
     const params = validateParams(registration, createInput.params);
@@ -703,8 +1239,8 @@ export function createJarvisApprovalEngine(
       authorization.target,
     )}`;
     return {
-      parentRun: structuredClone(createInput.parentRun),
-      attempt: structuredClone(createInput.attempt),
+      parentRun: structuredClone(canonicalParent),
+      attempt: structuredClone(attempt),
       actionId: createInput.actionId,
       actionVersion: createInput.actionVersion,
       params: structuredClone(params),
@@ -906,12 +1442,30 @@ export function createJarvisApprovalEngine(
       run: JarvisRun;
       events: readonly JarvisEvent[];
     }) {
-      if (accountId !== run.accountId || run.status !== 'awaiting_approval') {
+      if (accountId !== run.accountId) {
+        return { valid: false as const, reason: 'approval_binding_mismatch' as const };
+      }
+      const currentRun = await input.runs.getById(accountId, run.id);
+      if (
+        !currentRun ||
+        currentRun.status !== 'awaiting_approval' ||
+        run.status !== currentRun.status ||
+        !sameCanonical(
+          immutableRunIdentity(currentRun),
+          immutableRunIdentity(run),
+          input.canonicalizeJson,
+        ) ||
+        !sameCanonical(
+          currentRun.transportAttempts ?? [],
+          run.transportAttempts ?? [],
+          input.canonicalizeJson,
+        )
+      ) {
         return { valid: false as const, reason: 'approval_binding_mismatch' as const };
       }
       const event = exactPendingApprovalEvent(events, run.id);
       if (!event) return { valid: false as const, reason: 'approval_missing' as const };
-      const latestAttempt = run.transportAttempts?.at(-1);
+      const latestAttempt = currentRun.transportAttempts?.at(-1);
       if (
         !latestAttempt ||
         latestAttempt.state !== 'provider_in_flight' ||
@@ -944,17 +1498,6 @@ export function createJarvisApprovalEngine(
         approval.runId !== run.id ||
         approval.requestId !== latestAttempt.requestId ||
         approval.attemptNumber !== latestAttempt.attemptNumber
-      ) {
-        return { valid: false as const, reason: 'approval_binding_mismatch' as const };
-      }
-      const currentRun = await input.runs.getById(accountId, run.id);
-      if (
-        !currentRun ||
-        !sameCanonical(
-          immutableRunIdentity(currentRun),
-          immutableRunIdentity(run),
-          input.canonicalizeJson,
-        )
       ) {
         return { valid: false as const, reason: 'approval_binding_mismatch' as const };
       }

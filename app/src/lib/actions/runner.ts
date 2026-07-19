@@ -16,13 +16,13 @@
 import { toast } from '@/components/ui/toast';
 import { useToolStore } from '@/features/tools/toolStore';
 import { devConsole } from '@/features/dev-console';
-import { getBuiltinAction, getBuiltinActions } from './registry';
 import type {
-  ActionDef,
-  ActionParam,
-  ActionResult,
-  ActionRunContext,
-} from './types';
+  ExecuteJarvisApprovalInput,
+  JarvisKernelActionPort,
+} from '@/lib/jarvis/approvalEngine';
+import { getBuiltinAction, getBuiltinActions } from './registry';
+import type { ActionDef, ActionParam, ActionResult, ActionRunContext } from './types';
+import { hasJarvisApprovalCorrelation } from './types';
 
 /**
  * Resolve an action id to its definition.
@@ -80,9 +80,7 @@ export function getAllActions(): ActionDef[] {
  * number, "true"/"false" ↔ boolean). Anything more aggressive risks
  * masking real bugs in the AI's output.
  */
-type ParamCheck =
-  | { ok: true; value: unknown }
-  | { ok: false; error: string };
+type ParamCheck = { ok: true; value: unknown } | { ok: false; error: string };
 
 function coerceAndValidate(p: ActionParam, raw: unknown): ParamCheck {
   // Empty values get the default (or fall through unchanged).
@@ -183,13 +181,16 @@ function describe(v: unknown): string {
  * supplied but the action didn't declare) pass through verbatim — the
  * runner can use them, an action that forgot to declare them won't.
  */
-const OMITTED_ACTION_PARAM_RE = /^(?:command|script|content|prompt|rolesJson|stepsJson|body|payload)$/i;
+const OMITTED_ACTION_PARAM_RE =
+  /^(?:command|script|content|prompt|rolesJson|stepsJson|body|payload)$/i;
 
 function actionParamsForLog(params: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(Object.entries(params).map(([key, value]) => [
-    key,
-    OMITTED_ACTION_PARAM_RE.test(key) ? '[omitted]' : value,
-  ]));
+  return Object.fromEntries(
+    Object.entries(params).map(([key, value]) => [
+      key,
+      OMITTED_ACTION_PARAM_RE.test(key) ? '[omitted]' : value,
+    ]),
+  );
 }
 
 function validateAndCoerceParams(
@@ -231,6 +232,12 @@ async function runActionOnce(
 ): Promise<ActionResult> {
   const emitToast = options.emitToast ?? true;
   const startedAt = Date.now();
+  if (ctx.source === 'ai' && hasJarvisApprovalCorrelation(ctx)) {
+    return {
+      ok: false,
+      error: 'Canonical JARVIS actions require the approval authority.',
+    };
+  }
   // DevConsole breadcrumb — every action attempt shows up in the
   // `action` channel so the user (or an LLM debugging the runtime)
   // can see exactly what got tried, with what params, and what
@@ -284,9 +291,7 @@ async function runActionOnce(
     devConsole.log({
       channel: 'action',
       level: result.ok ? 'info' : 'error',
-      message: result.ok
-        ? `Action ✓ ${id}`
-        : `Action ✗ ${id}: ${result.error}`,
+      message: result.ok ? `Action ✓ ${id}` : `Action ✗ ${id}: ${result.error}`,
       durationMs: Date.now() - startedAt,
       detail: {
         id,
@@ -317,6 +322,15 @@ async function runActionOnce(
 }
 
 const inFlightActionRuns = new Map<string, Promise<ActionResult>>();
+
+/** @internal Pure adapter; Task 16B injects the host-owned action port. */
+export function createJarvisApprovedActionRunner(port: Pick<JarvisKernelActionPort, 'execute'>) {
+  return Object.freeze({
+    execute(input: Readonly<ExecuteJarvisApprovalInput>) {
+      return port.execute(input);
+    },
+  });
+}
 
 /** Execute one approved proposal at most once while it is in flight. */
 export function runAction(

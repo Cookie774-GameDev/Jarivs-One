@@ -273,6 +273,12 @@ export function isRegisteredPluginToolExecutor(
   return typeof value === 'object' && value !== null && canonicalPluginExecutors.has(value);
 }
 
+export function isJarvisAutoApprovableRegistration(
+  registration: Pick<JarvisRegisteredActionDefinition, 'risk' | 'approval'>,
+): boolean {
+  return registration.risk === 'read-only' && registration.approval === 'never';
+}
+
 export function createJarvisActionCatalog(
   registrations: readonly JarvisRegisteredActionDefinition[],
 ): JarvisActionCatalog {
