@@ -1,11 +1,20 @@
 import * as React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { CalendarClock, Check, GripVertical, MoreHorizontal, Plus, Sparkles, Trash2 } from 'lucide-react';
+import {
+  CalendarClock,
+  Check,
+  GripVertical,
+  MoreHorizontal,
+  Plus,
+  Sparkles,
+  Trash2,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
-import { ActivityRow, useChatActivityStore } from '@/features/chat/activity';
+import { ActivityRow } from '@/features/chat/activity';
+import { useJarvisTaskRunStore } from '@/features/jarvis-runs/taskRunStore';
 import { useMilestonesStore } from './milestonesStore';
 import { isMilestoneKind } from './types';
 import type { MilestoneItem } from './types';
@@ -24,7 +33,7 @@ export function InspectorMilestonesPanel({ view, onViewChange }: InspectorMilest
   const updateMilestone = useMilestonesStore((s) => s.updateMilestone);
   const removeMilestone = useMilestonesStore((s) => s.removeMilestone);
   const toggleDone = useMilestonesStore((s) => s.toggleDone);
-  const eventsByChat = useChatActivityStore((s) => s.eventsByChat);
+  const eventsByChat = useJarvisTaskRunStore((s) => s.activityByChat);
   const activityEvents = React.useMemo(() => {
     const chatKeys = Object.keys(eventsByChat);
     if (chatKeys.length === 0) return [];
@@ -106,8 +115,8 @@ export function InspectorMilestonesPanel({ view, onViewChange }: InspectorMilest
           </div>
         ) : (
           <div className="rounded-md border border-border bg-elevated px-3 py-3 text-secondary text-muted-foreground">
-            Jarvis agent, file, URL, and diff activity will appear here as chat workflows run.
-            Use <span className="text-foreground">Milestone List</span> for manual checkpoints.
+            Jarvis agent, file, URL, and diff activity will appear here as chat workflows run. Use{' '}
+            <span className="text-foreground">Milestone List</span> for manual checkpoints.
           </div>
         )
       ) : (
@@ -122,7 +131,13 @@ export function InspectorMilestonesPanel({ view, onViewChange }: InspectorMilest
               placeholder="Add milestone…"
               className="h-8 text-secondary"
             />
-            <Button type="button" size="sm" variant="accent" onClick={onAdd} disabled={!draft.trim()}>
+            <Button
+              type="button"
+              size="sm"
+              variant="accent"
+              onClick={onAdd}
+              disabled={!draft.trim()}
+            >
               <Plus className="h-3.5 w-3.5" />
             </Button>
           </div>
@@ -163,7 +178,9 @@ function MilestoneRow({
   item: MilestoneItem;
   celebrating: boolean;
   onCheck: () => void;
-  onUpdate: (patch: Partial<Pick<MilestoneItem, 'title' | 'description' | 'status' | 'deadlineAt'>>) => void;
+  onUpdate: (
+    patch: Partial<Pick<MilestoneItem, 'title' | 'description' | 'status' | 'deadlineAt'>>,
+  ) => void;
   onRemove: () => void;
 }) {
   const done = item.status === 'done';

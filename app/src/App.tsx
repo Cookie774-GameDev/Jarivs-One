@@ -22,6 +22,7 @@
  *   - useIdleDetection() to flip ambient mode on inactivity (V2)
  */
 import * as React from 'react';
+import { liveQuery } from 'dexie';
 import { applyThemeToDocument, useUIStore } from '@/stores/ui';
 import { handleVoiceModuleClosed, syncVoiceModuleOpenState } from '@/features/voice/voiceRouter';
 import { useAgentStore } from '@/stores/agents';
@@ -55,10 +56,21 @@ import { startJarvisOperatorListener } from '@/lib/jarvis/operatorListener';
 import { startAllAboutMePersistence } from '@/features/all-about-me/persistence';
 import { useAllAboutMeStore } from '@/features/all-about-me/store';
 import { startJarvisTaskRunNotifications } from '@/features/jarvis-runs/taskRunNotifications';
-import { resumeRecoverableJarvisRuns } from '@/features/jarvis-runs/recoveryExecutor';
-import { startJarvisTaskRunPersistence } from '@/features/jarvis-runs/taskRunPersistence';
-import { useJarvisTaskRunStore } from '@/features/jarvis-runs/taskRunStore';
+import {
+  resumeRecoverableJarvisRuns,
+  type JarvisRecoveryPresentation,
+} from '@/features/jarvis-runs/recoveryExecutor';
+import { readLegacyJarvisTaskRunsOnce } from '@/features/jarvis-runs/taskRunPersistence';
+import { useJarvisTaskRunStore, type JarvisTaskRun } from '@/features/jarvis-runs/taskRunStore';
+import { privateAccountDirectory } from '@/features/jarvis-memory/accountStorage';
+import type { ChatActivityEvent } from '@/features/chat/activity/types';
 import { messageRepo, agentRepo, chatRepo, openDb, db } from '@/lib/db';
+import {
+  jarvisApprovalRepo,
+  jarvisArtifactRepo,
+  jarvisEventRepo,
+  jarvisRunRepo,
+} from '@/lib/db/jarvisRepositories';
 import { useAuthStore } from '@/stores/auth';
 import { resolveAccountIdentity } from '@/lib/accountIdentity';
 import {
@@ -66,6 +78,13 @@ import {
   type JarvisPersistenceReadyReceipt,
 } from '@/lib/jarvis/persistenceCoordinator';
 import { findProtectedJarvisAgent } from '@/lib/jarvis/identity';
+import type { JarvisEvent } from '@/lib/jarvis/contracts/execution';
+import {
+  projectJarvisRunForLegacyUi,
+  type JarvisTaskRunProjection,
+} from '@/lib/jarvis/executionJournal/legacyTaskRunAdapter';
+import { projectJarvisEventsForLegacyActivity } from '@/lib/jarvis/executionJournal/legacyActivityProjection';
+import { createJarvisRecoveryScanner } from '@/lib/jarvis/executionJournal';
 import {
   activateSyncQueueCloudAuthority,
   releaseSyncQueueCloudAuthority,
@@ -102,6 +121,221 @@ let invalidateActiveKernelAccount: (accountId: string) => void = () => {};
 
 function cloudSessionUserId(session: SupabaseSessionLike): string {
   return session?.user?.id?.trim() ?? '';
+}
+
+type CanonicalProjectionSubscriptionInput = {
+  accountId: string;
+  accountScope: string;
+  isCurrent: () => boolean;
+  onTransition: (event: JarvisEvent) => void;
+  onError?: (error: unknown) => void;
+};
+
+export interface JarvisLegacyLifecycleAccountServices {
+  deriveAccountScope(accountId: string): Promise<string>;
+  readLegacyRuns(input: { accountId: string }): Promise<readonly JarvisTaskRun[]>;
+  setAccountScope(scope: string): void;
+  replaceLegacyRuns(scope: string, runs: readonly JarvisTaskRun[]): void;
+  startNotifications(input: {
+    subscribe: (listener: (event: JarvisEvent) => void) => () => void;
+    onError?: (error: unknown) => void;
+  }): () => void;
+  startCanonicalProjection(input: CanonicalProjectionSubscriptionInput): () => void;
+  resumeRecovery(input: {
+    accountId: string;
+    readyReceipt: JarvisPersistenceReadyReceipt;
+    signal?: AbortSignal;
+    isCurrent: () => boolean;
+  }): Promise<number>;
+}
+
+function reportLifecycleError(error: unknown): void {
+  console.warn(
+    '[jarvis-task] canonical lifecycle projection unavailable',
+    error instanceof Error ? error.message : String(error),
+  );
+}
+
+async function readCanonicalProjectionSnapshot(accountId: string): Promise<{
+  runs: JarvisTaskRunProjection[];
+  activityByChat: Record<string, readonly ChatActivityEvent[]>;
+  events: JarvisEvent[];
+}> {
+  const runs = await jarvisRunRepo.listByAccount(accountId, { limit: 500 });
+  const rows = await Promise.all(
+    runs.map(async (run) => {
+      const [events, artifacts] = await Promise.all([
+        jarvisEventRepo.listByRun(accountId, run.id, { limit: 500 }),
+        jarvisArtifactRepo.listByRun(accountId, run.id, 500),
+      ]);
+      return { run, events, artifacts };
+    }),
+  );
+  const activityByChat: Record<string, ChatActivityEvent[]> = {};
+  const projections: JarvisTaskRunProjection[] = [];
+  const allEvents: JarvisEvent[] = [];
+  for (const row of rows) {
+    projections.push(projectJarvisRunForLegacyUi(row));
+    allEvents.push(...row.events);
+    for (const activity of projectJarvisEventsForLegacyActivity({
+      run: row.run,
+      events: row.events,
+      limit: 500,
+    })) {
+      const chatId = String(activity.chatId);
+      const existing = activityByChat[chatId] ?? [];
+      existing.push(activity);
+      activityByChat[chatId] = existing;
+    }
+  }
+  for (const [chatId, events] of Object.entries(activityByChat)) {
+    activityByChat[chatId] = events.sort((left, right) => left.ts - right.ts).slice(-500);
+  }
+  return { runs: projections, activityByChat, events: allEvents };
+}
+
+function startCanonicalJarvisProjection(input: CanonicalProjectionSubscriptionInput): () => void {
+  let initialized = false;
+  let seenEvents = new Set<string>();
+  const subscription = liveQuery(() => readCanonicalProjectionSnapshot(input.accountId)).subscribe({
+    next(snapshot) {
+      if (!input.isCurrent()) return;
+      useJarvisTaskRunStore
+        .getState()
+        .replaceCanonicalForAccount(input.accountScope, snapshot.runs, snapshot.activityByChat);
+      const currentKeys = new Set(snapshot.events.map((event) => `${event.runId}:${event.seq}`));
+      if (initialized) {
+        for (const event of snapshot.events) {
+          if (!seenEvents.has(`${event.runId}:${event.seq}`)) input.onTransition(event);
+        }
+      }
+      initialized = true;
+      seenEvents = currentKeys;
+    },
+    error(error) {
+      input.onError?.(error);
+    },
+  });
+  return () => subscription.unsubscribe();
+}
+
+async function resumeCanonicalJarvisRecovery(input: {
+  accountId: string;
+  readyReceipt: JarvisPersistenceReadyReceipt;
+  signal?: AbortSignal;
+  isCurrent: () => boolean;
+}): Promise<number> {
+  if (
+    input.readyReceipt.state !== 'ready' ||
+    input.readyReceipt.accountId !== input.accountId ||
+    !input.isCurrent()
+  ) {
+    return 0;
+  }
+  const scanner = createJarvisRecoveryScanner({ runs: jarvisRunRepo, events: jarvisEventRepo });
+  return resumeRecoverableJarvisRuns({
+    accountId: input.accountId,
+    scanner,
+    approvals: jarvisApprovalRepo,
+    signal: input.signal,
+    isCurrent: input.isCurrent,
+    onPresentation: (presentation: JarvisRecoveryPresentation) => {
+      if (typeof window !== 'undefined' && input.isCurrent()) {
+        window.dispatchEvent(
+          new CustomEvent('jarvis:recovery-presentation', { detail: presentation }),
+        );
+      }
+    },
+  });
+}
+
+const DEFAULT_JARVIS_LEGACY_LIFECYCLE_SERVICES: JarvisLegacyLifecycleAccountServices = {
+  deriveAccountScope: privateAccountDirectory,
+  readLegacyRuns: readLegacyJarvisTaskRunsOnce,
+  setAccountScope: (scope) => useJarvisTaskRunStore.getState().setAccountScope(scope),
+  replaceLegacyRuns: (scope, runs) =>
+    useJarvisTaskRunStore.getState().replaceLegacyForAccount(scope, runs),
+  startNotifications: (input) => startJarvisTaskRunNotifications(input),
+  startCanonicalProjection: startCanonicalJarvisProjection,
+  resumeRecovery: resumeCanonicalJarvisRecovery,
+};
+
+export async function startJarvisLegacyLifecycleAccountSession(input: {
+  accountId: string;
+  readyReceipt: JarvisPersistenceReadyReceipt;
+  signal?: AbortSignal;
+  isCurrent: () => boolean;
+  services?: JarvisLegacyLifecycleAccountServices;
+  onError?: (error: unknown) => void;
+}): Promise<() => void> {
+  const services = input.services ?? DEFAULT_JARVIS_LEGACY_LIFECYCLE_SERVICES;
+  const onError = input.onError ?? reportLifecycleError;
+  let accountScope = '';
+  let disposed = false;
+  let stopNotifications: (() => void) | undefined;
+  let stopCanonical: (() => void) | undefined;
+  const transitionListeners = new Set<(event: JarvisEvent) => void>();
+  services.setAccountScope('');
+
+  const stop = () => {
+    if (disposed) return;
+    disposed = true;
+    stopCanonical?.();
+    stopNotifications?.();
+    transitionListeners.clear();
+    if (accountScope && input.isCurrent()) services.setAccountScope('');
+  };
+
+  try {
+    if (
+      input.readyReceipt.state !== 'ready' ||
+      input.readyReceipt.accountId !== input.accountId ||
+      !input.isCurrent()
+    ) {
+      return stop;
+    }
+    accountScope = await services.deriveAccountScope(input.accountId);
+    if (!input.isCurrent()) return stop;
+    services.setAccountScope(accountScope);
+    const legacyRuns = await services.readLegacyRuns({ accountId: input.accountId });
+    if (!input.isCurrent()) return stop;
+    services.replaceLegacyRuns(accountScope, legacyRuns);
+    stopNotifications = services.startNotifications({
+      subscribe(listener) {
+        transitionListeners.add(listener);
+        return () => transitionListeners.delete(listener);
+      },
+      onError,
+    });
+    stopCanonical = services.startCanonicalProjection({
+      accountId: input.accountId,
+      accountScope,
+      isCurrent: input.isCurrent,
+      onTransition: (event) => {
+        for (const listener of transitionListeners) listener(event);
+      },
+      onError,
+    });
+    if (!input.isCurrent()) {
+      stop();
+      return () => undefined;
+    }
+    await services.resumeRecovery({
+      accountId: input.accountId,
+      readyReceipt: input.readyReceipt,
+      signal: input.signal,
+      isCurrent: input.isCurrent,
+    });
+    if (!input.isCurrent()) {
+      stop();
+      return () => undefined;
+    }
+    return stop;
+  } catch (error) {
+    onError(error);
+    stop();
+    return () => undefined;
+  }
 }
 
 /**
@@ -300,8 +534,7 @@ function useBoot() {
     let stopLearning: (() => void | Promise<void>) | undefined;
     let stopOperator: (() => void) | undefined;
     let stopAllAboutMePersistence: (() => void | Promise<void>) | undefined;
-    let stopTaskRunNotifications: (() => void) | undefined;
-    let stopTaskRunPersistence: (() => void | Promise<void>) | undefined;
+    let stopTaskRunLifecycle: (() => void) | undefined;
     let stopNotifications: (() => void) | undefined;
     let stopTerminalScheduler: (() => void) | undefined;
     let stopJarvisScheduleRunner: (() => void) | undefined;
@@ -427,12 +660,12 @@ function useBoot() {
       accountRecoveryController = undefined;
       const oldAccountId = activeAccountIdentity?.accountId;
       if (oldAccountId) invalidateActiveKernelAccount(oldAccountId);
-      const stops = [stopLearning, stopAllAboutMePersistence, stopTaskRunPersistence].filter(
+      const stops = [stopLearning, stopAllAboutMePersistence, stopTaskRunLifecycle].filter(
         (stop): stop is () => void | Promise<void> => Boolean(stop),
       );
       stopLearning = undefined;
       stopAllAboutMePersistence = undefined;
-      stopTaskRunPersistence = undefined;
+      stopTaskRunLifecycle = undefined;
       activeAccountIdentity = null;
       activePersistenceGeneration = null;
       const pendingStops = stops.map((stop) => {
@@ -485,22 +718,19 @@ function useBoot() {
       try {
         stopLearning = startJarvisLearningListener(fixedAccountBindings);
         stopAllAboutMePersistence = startAllAboutMePersistence(fixedAccountBindings);
-        stopTaskRunPersistence = startJarvisTaskRunPersistence({
-          ...fixedAccountBindings,
-          onHydrated: async () => {
-            const isCurrent = () =>
-              !cancelled &&
-              accountListenersBootReady &&
-              accountScopeGeneration === generation &&
-              sameAccountIdentity(activeAccountIdentity, nextIdentity) &&
-              activePersistenceGeneration === readyReceipt.generation &&
-              sameReadyReceipt(persistenceReadyReceipt, readyReceipt);
-            if (!isCurrent()) return;
-            await resumeRecoverableJarvisRuns({
-              signal: recoveryController.signal,
-              isCurrent,
-            });
-          },
+        const isCurrent = () =>
+          !cancelled &&
+          accountListenersBootReady &&
+          accountScopeGeneration === generation &&
+          sameAccountIdentity(activeAccountIdentity, nextIdentity) &&
+          activePersistenceGeneration === readyReceipt.generation &&
+          sameReadyReceipt(persistenceReadyReceipt, readyReceipt);
+        stopTaskRunLifecycle = await startJarvisLegacyLifecycleAccountSession({
+          accountId,
+          readyReceipt,
+          signal: recoveryController.signal,
+          isCurrent,
+          onError: (error) => addError('canonical task projection', error),
         });
       } catch (error) {
         addError('account scope startup', error);
@@ -802,7 +1032,6 @@ function useBoot() {
       stopOperator = startJarvisOperatorListener({
         appendMessage: async (msg) => messageRepo.create(msg as never),
       });
-      stopTaskRunNotifications = startJarvisTaskRunNotifications();
       stopRuntime = startRuntimeListener({
         getAgentById: (id) => useAgentStore.getState().agents[id] ?? null,
         getAgentBySlug: (slug) => {
@@ -891,7 +1120,6 @@ function useBoot() {
       accountScopeTeardownBarrier = Promise.allSettled([accountTransition, accountTeardown]).then(
         () => undefined,
       );
-      stopTaskRunNotifications?.();
       stopOperator?.();
       stopNotifications?.();
       stopTerminalScheduler?.();

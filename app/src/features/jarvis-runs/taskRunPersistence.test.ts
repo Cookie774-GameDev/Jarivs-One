@@ -1,118 +1,139 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createJarvisTaskRun, useJarvisTaskRunStore } from './taskRunStore';
-import { startJarvisTaskRunPersistence } from './taskRunPersistence';
+import type { JarvisTaskRun } from './taskRunStore';
+import { readLegacyJarvisTaskRunsOnce } from './taskRunPersistence';
 
 const accountStorage = vi.hoisted(() => ({
-  privateAccountDirectory: vi.fn<(accountId: string) => Promise<string>>(),
+  privateAccountDirectory: vi.fn(async (accountId: string) => `scope-${accountId}`),
 }));
 
-vi.mock('@/features/jarvis-memory/accountStorage', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/features/jarvis-memory/accountStorage')>();
-  accountStorage.privateAccountDirectory.mockImplementation(actual.privateAccountDirectory);
-  return {
-    ...actual,
-    privateAccountDirectory: accountStorage.privateAccountDirectory,
-  };
-});
+vi.mock('@/features/jarvis-memory/accountStorage', () => ({
+  privateAccountDirectory: accountStorage.privateAccountDirectory,
+}));
 
-describe('account-scoped Jarvis task persistence', () => {
+const NOW = '2026-07-19T07:00:00.000Z';
+
+function legacyRun(id: string): JarvisTaskRun {
+  return {
+    id,
+    chatId: 'chat-alpha',
+    goal: `Historical ${id}`,
+    status: 'waiting-for-input',
+    steps: [
+      {
+        id: 'step-one',
+        action: 'status.read',
+        label: 'Read',
+        input: {},
+        recoverable: true,
+        status: 'waiting',
+      },
+    ],
+    progress: 50,
+    activeAgents: [],
+    activeTerminals: [],
+    userVisibleSummary: 'Historical summary',
+    startedAt: NOW,
+    updatedAt: NOW,
+  };
+}
+
+describe('readLegacyJarvisTaskRunsOnce', () => {
   beforeEach(() => {
     accountStorage.privateAccountDirectory.mockClear();
     localStorage.clear();
-    useJarvisTaskRunStore.getState().clearForTests();
   });
 
-  it('migrates legacy runs into a cryptographic account key without exposing the account id', async () => {
-    const legacy = createJarvisTaskRun({
-      id: 'legacy-run',
-      goal: 'Resume safe inspection',
-      status: 'waiting-for-input',
-      steps: [{ id: 'one', action: 'agent.status', label: 'Status', recoverable: true }],
-    });
+  it('requires a nonblank canonical account and never hashes a fallback identity', async () => {
+    await expect(readLegacyJarvisTaskRunsOnce({ accountId: '   ' })).rejects.toThrow(
+      /account id is required/i,
+    );
+    expect(accountStorage.privateAccountDirectory).not.toHaveBeenCalled();
+    expect(
+      Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index)),
+    ).not.toContain('jarvis-task-runs-v2:local-unassigned');
+  });
+
+  it('reads the hashed V2 scope once with zero writes, removals, or subscriptions', async () => {
+    const stored = legacyRun('v2-run');
+    localStorage.setItem(
+      'jarvis-task-runs-v2:scope-account-alpha',
+      JSON.stringify({ version: 2, runs: [stored] }),
+    );
+    const setItem = vi.spyOn(Storage.prototype, 'setItem');
+    const removeItem = vi.spyOn(Storage.prototype, 'removeItem');
+    const addEventListener = vi.spyOn(window, 'addEventListener');
+
+    const result = await readLegacyJarvisTaskRunsOnce({ accountId: 'account-alpha' });
+
+    expect(accountStorage.privateAccountDirectory).toHaveBeenCalledOnce();
+    expect(result.map((item) => item.id)).toEqual(['v2-run']);
+    expect(setItem).not.toHaveBeenCalled();
+    expect(removeItem).not.toHaveBeenCalled();
+    expect(addEventListener).not.toHaveBeenCalled();
+    setItem.mockRestore();
+    removeItem.mockRestore();
+    addEventListener.mockRestore();
+  });
+
+  it('uses V1 only when V2 has no valid historical rows and never migrates or deletes it', async () => {
+    localStorage.setItem(
+      'jarvis-task-runs-v2:scope-account-alpha',
+      JSON.stringify({ version: 2, runs: [{ malformed: true }] }),
+    );
     localStorage.setItem(
       'jarvis-task-runs-v1',
-      JSON.stringify({
-        state: { runs: { [legacy.id]: legacy } },
-        version: 1,
-      }),
+      JSON.stringify({ version: 1, state: { runs: { legacy: legacyRun('legacy') } } }),
     );
+    const setItem = vi.spyOn(Storage.prototype, 'setItem');
+    const removeItem = vi.spyOn(Storage.prototype, 'removeItem');
 
-    const stop = startJarvisTaskRunPersistence({
-      getAccountId: () => 'private-account@example.com',
-    });
+    const result = await readLegacyJarvisTaskRunsOnce({ accountId: 'account-alpha' });
 
-    await vi.waitFor(() =>
-      expect(useJarvisTaskRunStore.getState().runs['legacy-run']).toBeTruthy(),
-    );
-    const keys = Array.from(
-      { length: localStorage.length },
-      (_, index) => localStorage.key(index) ?? '',
-    );
-    expect(keys).toContainEqual(
-      expect.stringMatching(/^jarvis-task-runs-v2:account-[a-f0-9]{64}$/),
-    );
-    expect(keys.join('\n')).not.toContain('private-account@example.com');
-    expect(localStorage.getItem('jarvis-task-runs-v1')).toBeNull();
-    stop();
+    expect(result.map((item) => item.id)).toEqual(['legacy']);
+    expect(setItem).not.toHaveBeenCalled();
+    expect(removeItem).not.toHaveBeenCalled();
+    expect(localStorage.getItem('jarvis-task-runs-v1')).not.toBeNull();
+    setItem.mockRestore();
+    removeItem.mockRestore();
   });
 
-  it('clears visible runs before loading another account and restores only that account', async () => {
-    let accountId = 'account-a';
-    let accountChanged: () => void = () => undefined;
-    const hydrated = vi.fn();
-    const stop = startJarvisTaskRunPersistence({
-      getAccountId: () => accountId,
-      subscribeAccount: (listener) => {
-        accountChanged = listener;
-        return () => undefined;
-      },
-      onHydrated: hydrated,
-    });
-    await vi.waitFor(() => expect(hydrated).toHaveBeenCalledTimes(1));
-    const runA = createJarvisTaskRun({
-      id: 'run-a',
-      goal: 'Account A task',
-      steps: [{ id: 'one', action: 'agent.status', label: 'Status', recoverable: true }],
-    });
-    useJarvisTaskRunStore.getState().addRun(runA);
+  it('never reads V1 when V2 contains at least one valid row', async () => {
+    localStorage.setItem(
+      'jarvis-task-runs-v2:scope-account-alpha',
+      JSON.stringify({ version: 2, runs: [legacyRun('v2')] }),
+    );
+    localStorage.setItem(
+      'jarvis-task-runs-v1',
+      JSON.stringify({ version: 1, runs: [legacyRun('v1')] }),
+    );
+    const getItem = vi.spyOn(Storage.prototype, 'getItem');
 
-    accountId = 'account-b';
-    accountChanged();
-    expect(useJarvisTaskRunStore.getState().runs).toEqual({});
-    await vi.waitFor(() => expect(hydrated).toHaveBeenCalledTimes(2));
-    expect(useJarvisTaskRunStore.getState().runs).toEqual({});
+    const result = await readLegacyJarvisTaskRunsOnce({ accountId: 'account-alpha' });
 
-    const runB = createJarvisTaskRun({
-      id: 'run-b',
-      goal: 'Account B task',
-      steps: [{ id: 'one', action: 'agent.status', label: 'Status', recoverable: true }],
-    });
-    useJarvisTaskRunStore.getState().addRun(runB);
-    accountId = 'account-a';
-    accountChanged();
-    expect(useJarvisTaskRunStore.getState().runs).toEqual({});
-    await vi.waitFor(() => expect(hydrated).toHaveBeenCalledTimes(3));
-    expect(Object.keys(useJarvisTaskRunStore.getState().runs)).toEqual(['run-a']);
-    stop();
+    expect(result.map((item) => item.id)).toEqual(['v2']);
+    expect(getItem.mock.calls.map(([key]) => key)).not.toContain('jarvis-task-runs-v1');
+    getItem.mockRestore();
   });
 
-  it('keeps a blank canonical identity quarantined without hashing local-unassigned', async () => {
-    const hydrated = vi.fn();
-    const stop = startJarvisTaskRunPersistence({
-      getAccountId: () => '   ',
-      onHydrated: hydrated,
-    });
+  it('returns at most 100 sanitized detached historical rows', async () => {
+    const runs = Array.from({ length: 105 }, (_, index) => legacyRun(`run-${index}`));
+    runs[0]!.goal = 'Use password=never-return-this';
+    runs[0]!.steps[0]!.input = { apiKey: 'sk-private-credential', query: 'safe' };
+    localStorage.setItem(
+      'jarvis-task-runs-v2:scope-account-alpha',
+      JSON.stringify({ version: 2, runs }),
+    );
 
-    expect(accountStorage.privateAccountDirectory).not.toHaveBeenCalled();
-    expect(hydrated).not.toHaveBeenCalled();
-    expect(useJarvisTaskRunStore.getState()).toMatchObject({
-      accountScope: '',
-      runs: {},
-    });
+    const result = await readLegacyJarvisTaskRunsOnce({ accountId: 'account-alpha' });
+
+    expect(result).toHaveLength(100);
+    expect(JSON.stringify(result)).not.toMatch(/never-return-this|sk-private-credential/);
+    expect(result[0]?.steps[0]?.input).toEqual({ apiKey: '[redacted]', query: 'safe' });
+    (result[0] as JarvisTaskRun).goal = 'mutated detached view';
     expect(
-      Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index) ?? ''),
-    ).not.toContainEqual(expect.stringMatching(/^jarvis-task-runs-v2:/));
-    await stop();
+      JSON.parse(localStorage.getItem('jarvis-task-runs-v2:scope-account-alpha') ?? '{}').runs[0]
+        .goal,
+    ).toBe('Use password=never-return-this');
   });
 });

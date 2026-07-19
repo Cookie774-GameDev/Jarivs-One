@@ -28,7 +28,6 @@ const accountListeners = vi.hoisted(() => {
     events,
     learning: factory('learning'),
     allAboutMe: factory('all-about-me'),
-    taskRuns: factory('task-runs'),
     deferStop: (name: string, accountId: string) => {
       let resolve: (() => void) | undefined;
       const promise = new Promise<void>((done) => {
@@ -321,14 +320,6 @@ vi.mock('@/features/all-about-me/persistence', async (importOriginal) => {
   };
 });
 
-vi.mock('@/features/jarvis-runs/taskRunPersistence', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/features/jarvis-runs/taskRunPersistence')>();
-  return {
-    ...actual,
-    startJarvisTaskRunPersistence: accountListeners.taskRuns,
-  };
-});
-
 vi.mock('@/lib/supabase/env', () => ({
   isSupabaseConfigured: () => cloudBoot.configured(),
 }));
@@ -426,7 +417,8 @@ vi.mock('@/features/whats-new', () => ({
 import { App } from './App';
 import { useAllAboutMeStore } from '@/features/all-about-me/store';
 import { useJarvisLearningStore } from '@/features/jarvis-memory/learningStore';
-import { createJarvisTaskRun, useJarvisTaskRunStore } from '@/features/jarvis-runs/taskRunStore';
+import { useJarvisTaskRunStore } from '@/features/jarvis-runs/taskRunStore';
+import type { JarvisTaskRunProjection } from '@/lib/jarvis/executionJournal/legacyTaskRunAdapter';
 import { useAgentStore } from '@/stores/agents';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
@@ -499,14 +491,32 @@ async function waitForAccountScopeBoot(): Promise<void> {
   });
 }
 
-function expectEveryListenerStartedWith(accountId: string, callIndex = 0): void {
-  for (const listener of [
-    accountListeners.learning,
-    accountListeners.allAboutMe,
-    accountListeners.taskRuns,
-  ]) {
-    expect(listener.mock.calls[callIndex]?.[0].getAccountId()).toBe(accountId);
-  }
+function seedCanonicalTaskProjection(scope: string, runId: string, goal: string): void {
+  const projection: JarvisTaskRunProjection = {
+    canonical: true,
+    runId,
+    chatId: 'chat-account-isolation',
+    status: 'running',
+    goal,
+    userVisibleSummary: 'Canonical task projection',
+    progress: 50,
+    activeAgents: [],
+    activeTerminals: [],
+    updatedAt: '2026-07-19T08:00:00.000Z',
+    cancellable: true,
+    transportRetryAvailable: false,
+  };
+  const store = useJarvisTaskRunStore.getState();
+  store.setAccountScope(scope);
+  store.replaceCanonicalForAccount(scope, [projection], {});
+}
+
+async function expectEveryListenerStartedWith(accountId: string, callIndex = 0): Promise<void> {
+  await waitFor(() => {
+    for (const listener of [accountListeners.learning, accountListeners.allAboutMe]) {
+      expect(listener.mock.calls[callIndex]?.[0].getAccountId()).toBe(accountId);
+    }
+  }, ACCOUNT_SCOPE_BOOT_WAIT_OPTIONS);
 }
 
 function deferredValue<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
@@ -573,7 +583,6 @@ function accountIdentityBootSuite(): void {
       expect(cloudBoot.getSession).toHaveBeenCalledTimes(1);
       expect(accountListeners.learning).not.toHaveBeenCalled();
       expect(accountListeners.allAboutMe).not.toHaveBeenCalled();
-      expect(accountListeners.taskRuns).not.toHaveBeenCalled();
       expect(bootListeners.runtime).toHaveBeenCalledTimes(1);
       expect(document.querySelector('main[aria-label="Workspace"]')).not.toBeNull();
     } finally {
@@ -586,9 +595,8 @@ function accountIdentityBootSuite(): void {
     await waitFor(() => {
       expect(accountListeners.learning).toHaveBeenCalledTimes(1);
       expect(accountListeners.allAboutMe).toHaveBeenCalledTimes(1);
-      expect(accountListeners.taskRuns).toHaveBeenCalledTimes(1);
     });
-    expectEveryListenerStartedWith('stable-local-user');
+    await expectEveryListenerStartedWith('stable-local-user');
   });
 
   it('quarantines persisted cloud auth during commit before protected children can render', async () => {
@@ -641,7 +649,6 @@ function accountIdentityBootSuite(): void {
       expect(queueAuthority.currentUserId()).toBeUndefined();
       expect(accountListeners.learning).not.toHaveBeenCalled();
       expect(accountListeners.allAboutMe).not.toHaveBeenCalled();
-      expect(accountListeners.taskRuns).not.toHaveBeenCalled();
 
       await waitFor(
         () => expect(cloudBoot.getSession).toHaveBeenCalledTimes(1),
@@ -654,7 +661,6 @@ function accountIdentityBootSuite(): void {
       expect(queueAuthority.currentUserId()).toBeUndefined();
       expect(accountListeners.learning).not.toHaveBeenCalled();
       expect(accountListeners.allAboutMe).not.toHaveBeenCalled();
-      expect(accountListeners.taskRuns).not.toHaveBeenCalled();
     } finally {
       await act(async () => {
         session.resolve(null);
@@ -697,7 +703,6 @@ function accountIdentityBootSuite(): void {
     expect(queueAuthority.currentUserId()).toBeUndefined();
     expect(accountListeners.learning).not.toHaveBeenCalled();
     expect(accountListeners.allAboutMe).not.toHaveBeenCalled();
-    expect(accountListeners.taskRuns).not.toHaveBeenCalled();
 
     await act(async () => {
       session.resolve(supabaseSession('confirmed-cloud-user'));
@@ -707,9 +712,8 @@ function accountIdentityBootSuite(): void {
     await waitFor(() => {
       expect(accountListeners.learning).toHaveBeenCalledTimes(1);
       expect(accountListeners.allAboutMe).toHaveBeenCalledTimes(1);
-      expect(accountListeners.taskRuns).toHaveBeenCalledTimes(1);
     });
-    expectEveryListenerStartedWith('confirmed-cloud-user');
+    await expectEveryListenerStartedWith('confirmed-cloud-user');
     expect(queueAuthority.currentUserId()).toBe('confirmed-cloud-user');
   });
 
@@ -856,7 +860,7 @@ function accountIdentityBootSuite(): void {
     expect(cloudSync.processCloudPull).toHaveBeenCalledTimes(1);
     expect(cloudSync.pruneSyncQueue).toHaveBeenCalledTimes(1);
     expect(cloudSync.loopStops).toHaveLength(1);
-    expectEveryListenerStartedWith('confirmed-cloud-user');
+    await expectEveryListenerStartedWith('confirmed-cloud-user');
   });
 
   it('keeps an initial present Supabase session with an empty user id fail-closed', async () => {
@@ -877,7 +881,6 @@ function accountIdentityBootSuite(): void {
 
     expect(accountListeners.learning).not.toHaveBeenCalled();
     expect(accountListeners.allAboutMe).not.toHaveBeenCalled();
-    expect(accountListeners.taskRuns).not.toHaveBeenCalled();
     expect(useAuthStore.getState().cloudSession).toMatchObject({ user_id: '' });
     expect(cloudBoot.client.from).not.toHaveBeenCalled();
     expect(launchPromo.claim).not.toHaveBeenCalled();
@@ -898,7 +901,7 @@ function accountIdentityBootSuite(): void {
 
     render(<App />);
     await waitForAccountScopeBoot();
-    expectEveryListenerStartedWith('stable-local-user');
+    await expectEveryListenerStartedWith('stable-local-user');
 
     act(() => {
       cloudBoot.emitAuth({
@@ -907,14 +910,12 @@ function accountIdentityBootSuite(): void {
       });
     });
 
-    expect(accountListeners.events.slice(-3)).toEqual([
+    expect(accountListeners.events.slice(-2)).toEqual([
       'stop:learning:stable-local-user',
       'stop:all-about-me:stable-local-user',
-      'stop:task-runs:stable-local-user',
     ]);
     expect(accountListeners.learning).toHaveBeenCalledTimes(1);
     expect(accountListeners.allAboutMe).toHaveBeenCalledTimes(1);
-    expect(accountListeners.taskRuns).toHaveBeenCalledTimes(1);
     expect(useAuthStore.getState().cloudSession).toMatchObject({ user_id: '' });
   });
 
@@ -927,7 +928,7 @@ function accountIdentityBootSuite(): void {
 
     render(<App />);
     await waitForAccountScopeBoot();
-    expectEveryListenerStartedWith('stable-local-user');
+    await expectEveryListenerStartedWith('stable-local-user');
     const callsBeforeMalformedSession = {
       profile: cloudBoot.client.from.mock.calls.length,
       promo: launchPromo.claim.mock.calls.length,
@@ -1251,7 +1252,6 @@ function accountIdentityBootSuite(): void {
 
     expect(accountListeners.learning).not.toHaveBeenCalled();
     expect(accountListeners.allAboutMe).not.toHaveBeenCalled();
-    expect(accountListeners.taskRuns).not.toHaveBeenCalled();
     expect(bootListeners.runtime).toHaveBeenCalledTimes(1);
     expect(document.querySelector('main[aria-label="Workspace"]')).not.toBeNull();
     expect(queueAuthority.currentUserId()).toBeUndefined();
@@ -1274,7 +1274,6 @@ function accountIdentityBootSuite(): void {
 
     expect(accountListeners.learning).not.toHaveBeenCalled();
     expect(accountListeners.allAboutMe).not.toHaveBeenCalled();
-    expect(accountListeners.taskRuns).not.toHaveBeenCalled();
     expect(bootListeners.runtime).toHaveBeenCalledTimes(1);
     expect(document.querySelector('main[aria-label="Workspace"]')).not.toBeNull();
     expect(queueAuthority.currentUserId()).toBeUndefined();
@@ -1298,20 +1297,10 @@ function accountIdentityBootSuite(): void {
     });
     useAllAboutMeStore.getState().setAccountScope('previous-private-account');
     useAllAboutMeStore.getState().setMarkdown('# All About Me\n\nPrevious private profile');
-    useJarvisTaskRunStore.getState().setAccountScope('previous-private-scope');
-    useJarvisTaskRunStore.getState().addRun(
-      createJarvisTaskRun({
-        id: 'previous-private-run',
-        goal: 'Previous private task',
-        steps: [
-          {
-            id: 'inspect',
-            action: 'agent.status',
-            label: 'Inspect',
-            recoverable: true,
-          },
-        ],
-      }),
+    seedCanonicalTaskProjection(
+      'previous-private-scope',
+      'previous-private-run',
+      'Previous private task',
     );
     const stopPhaseBoundary = useAgentStore.subscribe((state, previous) => {
       if (Object.keys(previous.agents).length === 0 && Object.keys(state.agents).length > 0) {
@@ -1328,7 +1317,6 @@ function accountIdentityBootSuite(): void {
       });
       expect(accountListeners.learning).not.toHaveBeenCalled();
       expect(accountListeners.allAboutMe).not.toHaveBeenCalled();
-      expect(accountListeners.taskRuns).not.toHaveBeenCalled();
       expect(useAuthStore.getState().localUserId).toBe('stable-local-user');
       expect(useJarvisLearningStore.getState()).toMatchObject({
         activeAccountId: '',
@@ -1364,7 +1352,7 @@ function accountIdentityBootSuite(): void {
 
     render(<App />);
     await waitForAccountScopeBoot();
-    expectEveryListenerStartedWith('stable-local-user');
+    await expectEveryListenerStartedWith('stable-local-user');
     useJarvisLearningStore.getState().setAccount('stable-local-user');
     useJarvisLearningStore.getState().remember({
       value: 'Stable user private learning',
@@ -1373,20 +1361,10 @@ function accountIdentityBootSuite(): void {
     });
     useAllAboutMeStore.getState().setAccountScope('stable-local-user');
     useAllAboutMeStore.getState().setMarkdown('# All About Me\n\nStable user profile');
-    useJarvisTaskRunStore.getState().setAccountScope('stable-local-scope');
-    useJarvisTaskRunStore.getState().addRun(
-      createJarvisTaskRun({
-        id: 'stable-local-run',
-        goal: 'Stable local private task',
-        steps: [
-          {
-            id: 'inspect',
-            action: 'agent.status',
-            label: 'Inspect',
-            recoverable: true,
-          },
-        ],
-      }),
+    seedCanonicalTaskProjection(
+      'stable-local-scope',
+      'stable-local-run',
+      'Stable local private task',
     );
 
     let sameTurnState:
@@ -1412,10 +1390,9 @@ function accountIdentityBootSuite(): void {
     });
 
     await waitFor(() => {
-      expect(accountListeners.events.slice(-3)).toEqual([
+      expect(accountListeners.events.slice(-2)).toEqual([
         'stop:learning:stable-local-user',
         'stop:all-about-me:stable-local-user',
-        'stop:task-runs:stable-local-user',
       ]);
     });
     await act(async () => {
@@ -1429,7 +1406,6 @@ function accountIdentityBootSuite(): void {
     });
     expect(accountListeners.learning).toHaveBeenCalledTimes(1);
     expect(accountListeners.allAboutMe).toHaveBeenCalledTimes(1);
-    expect(accountListeners.taskRuns).toHaveBeenCalledTimes(1);
     expect(useAuthStore.getState().localUserId).toBe('stable-local-user');
     expect(useJarvisLearningStore.getState()).toMatchObject({
       activeAccountId: '',
@@ -1463,7 +1439,7 @@ function accountIdentityBootSuite(): void {
     render(<App />);
     await waitForAccountScopeBoot();
 
-    expectEveryListenerStartedWith('signed-out-local-user');
+    await expectEveryListenerStartedWith('signed-out-local-user');
   });
 
   it('starts every scoped listener with the exact authenticated cloud account id', async () => {
@@ -1482,10 +1458,9 @@ function accountIdentityBootSuite(): void {
     await waitFor(() => {
       expect(accountListeners.learning).toHaveBeenCalledTimes(2);
       expect(accountListeners.allAboutMe).toHaveBeenCalledTimes(2);
-      expect(accountListeners.taskRuns).toHaveBeenCalledTimes(2);
     });
 
-    expectEveryListenerStartedWith('cloud-user', 1);
+    await expectEveryListenerStartedWith('cloud-user', 1);
     expect(useAuthStore.getState().localUserId).toBe('stable-local-user');
   });
 
@@ -1499,7 +1474,7 @@ function accountIdentityBootSuite(): void {
 
     render(<App />);
     await waitForAccountScopeBoot();
-    expectEveryListenerStartedWith('stable-local-user');
+    await expectEveryListenerStartedWith('stable-local-user');
     useJarvisLearningStore.getState().setAccount('stable-local-user');
     useJarvisLearningStore.getState().remember({
       value: 'Private learning pending flush',
@@ -1508,35 +1483,23 @@ function accountIdentityBootSuite(): void {
     });
     useAllAboutMeStore.getState().setAccountScope('stable-local-user');
     useAllAboutMeStore.getState().setMarkdown('# All About Me\n\nPrivate pending profile');
-    useJarvisTaskRunStore.getState().setAccountScope('stable-local-scope');
-    useJarvisTaskRunStore.getState().addRun(
-      createJarvisTaskRun({
-        id: 'pending-private-run',
-        goal: 'Pending private task',
-        steps: [
-          {
-            id: 'inspect',
-            action: 'agent.status',
-            label: 'Inspect',
-            recoverable: true,
-          },
-        ],
-      }),
+    seedCanonicalTaskProjection(
+      'stable-local-scope',
+      'pending-private-run',
+      'Pending private task',
     );
 
     act(() => {
       useAuthStore.setState({ cloudSession: cloudSession('cloud-user') });
     });
     await waitFor(() => {
-      expect(accountListeners.events.slice(-3)).toEqual([
+      expect(accountListeners.events.slice(-2)).toEqual([
         'stop:learning:stable-local-user',
         'stop:all-about-me:stable-local-user',
-        'stop:task-runs:stable-local-user',
       ]);
     });
     expect(accountListeners.learning).toHaveBeenCalledTimes(1);
     expect(accountListeners.allAboutMe).toHaveBeenCalledTimes(1);
-    expect(accountListeners.taskRuns).toHaveBeenCalledTimes(1);
     expect(useJarvisLearningStore.getState().profiles).toEqual({});
     expect(useAllAboutMeStore.getState()).toMatchObject({
       accountScope: '',
@@ -1561,9 +1524,8 @@ function accountIdentityBootSuite(): void {
     await waitFor(() => {
       expect(accountListeners.learning).toHaveBeenCalledTimes(2);
       expect(accountListeners.allAboutMe).toHaveBeenCalledTimes(2);
-      expect(accountListeners.taskRuns).toHaveBeenCalledTimes(2);
     });
-    expectEveryListenerStartedWith('cloud-user', 1);
+    await expectEveryListenerStartedWith('cloud-user', 1);
   });
 
   it('invalidates a pending valid switch when identity becomes malformed during teardown', async () => {
@@ -1576,14 +1538,12 @@ function accountIdentityBootSuite(): void {
 
     render(<App />);
     await waitForAccountScopeBoot();
-    expectEveryListenerStartedWith('stable-local-user');
+    await expectEveryListenerStartedWith('stable-local-user');
 
     act(() => {
       useAuthStore.setState({ cloudSession: cloudSession('stale-cloud-target') });
     });
-    await waitFor(() => {
-      expect(accountListeners.events).toContain('stop:task-runs:stable-local-user');
-    });
+    await waitFor(() => {});
 
     act(() => {
       useAuthStore.setState({ cloudSession: cloudSession('   ') });
@@ -1597,7 +1557,6 @@ function accountIdentityBootSuite(): void {
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(accountListeners.learning).toHaveBeenCalledTimes(1);
     expect(accountListeners.allAboutMe).toHaveBeenCalledTimes(1);
-    expect(accountListeners.taskRuns).toHaveBeenCalledTimes(1);
     expect(accountListeners.events).not.toContain('start:learning:stale-cloud-target');
     expect(useJarvisLearningStore.getState().profiles).toEqual({});
     expect(useAllAboutMeStore.getState().markdown).toBe('');
@@ -1612,7 +1571,7 @@ function accountIdentityBootSuite(): void {
 
     const firstMount = render(<App />);
     await waitForAccountScopeBoot();
-    expectEveryListenerStartedWith('stable-local-user');
+    await expectEveryListenerStartedWith('stable-local-user');
     const finishLearningFlush = accountListeners.deferStop('learning', 'stable-local-user');
     const finishProfileFlush = accountListeners.deferStop('all-about-me', 'stable-local-user');
 
@@ -1626,7 +1585,6 @@ function accountIdentityBootSuite(): void {
     try {
       expect(accountListeners.learning).toHaveBeenCalledTimes(1);
       expect(accountListeners.allAboutMe).toHaveBeenCalledTimes(1);
-      expect(accountListeners.taskRuns).toHaveBeenCalledTimes(1);
     } finally {
       await act(async () => {
         finishLearningFlush();
@@ -1637,7 +1595,6 @@ function accountIdentityBootSuite(): void {
     await waitFor(() => {
       expect(accountListeners.learning).toHaveBeenCalledTimes(2);
       expect(accountListeners.allAboutMe).toHaveBeenCalledTimes(2);
-      expect(accountListeners.taskRuns).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -1649,7 +1606,7 @@ function accountIdentityBootSuite(): void {
 
     const { unmount } = render(<App />);
     await waitForAccountScopeBoot();
-    expectEveryListenerStartedWith('stable-local-user');
+    await expectEveryListenerStartedWith('stable-local-user');
 
     act(() => {
       useAuthStore.setState({ cloudSession: cloudSession('cloud-user') });
@@ -1658,21 +1615,17 @@ function accountIdentityBootSuite(): void {
     await waitFor(() => {
       expect(accountListeners.learning).toHaveBeenCalledTimes(2);
       expect(accountListeners.allAboutMe).toHaveBeenCalledTimes(2);
-      expect(accountListeners.taskRuns).toHaveBeenCalledTimes(2);
     });
 
     expect(accountListeners.events).toEqual([
       'start:learning:stable-local-user',
       'start:all-about-me:stable-local-user',
-      'start:task-runs:stable-local-user',
       'stop:learning:stable-local-user',
       'stop:all-about-me:stable-local-user',
-      'stop:task-runs:stable-local-user',
       'start:learning:cloud-user',
       'start:all-about-me:cloud-user',
-      'start:task-runs:cloud-user',
     ]);
-    expectEveryListenerStartedWith('cloud-user', 1);
+    await expectEveryListenerStartedWith('cloud-user', 1);
     expect(useAuthStore.getState().localUserId).toBe('stable-local-user');
 
     act(() => {
@@ -1682,24 +1635,20 @@ function accountIdentityBootSuite(): void {
     await waitFor(() => {
       expect(accountListeners.learning).toHaveBeenCalledTimes(3);
       expect(accountListeners.allAboutMe).toHaveBeenCalledTimes(3);
-      expect(accountListeners.taskRuns).toHaveBeenCalledTimes(3);
     });
 
-    expect(accountListeners.events.slice(9)).toEqual([
+    expect(accountListeners.events.slice(6)).toEqual([
       'stop:learning:cloud-user',
       'stop:all-about-me:cloud-user',
-      'stop:task-runs:cloud-user',
       'start:learning:stable-local-user',
       'start:all-about-me:stable-local-user',
-      'start:task-runs:stable-local-user',
     ]);
     expect(useAuthStore.getState().localUserId).toBe('stable-local-user');
 
     unmount();
-    expect(accountListeners.events.slice(-3)).toEqual([
+    expect(accountListeners.events.slice(-2)).toEqual([
       'stop:learning:stable-local-user',
       'stop:all-about-me:stable-local-user',
-      'stop:task-runs:stable-local-user',
     ]);
   });
 
@@ -1726,7 +1675,6 @@ function accountIdentityBootSuite(): void {
 
       expect(accountListeners.learning).not.toHaveBeenCalled();
       expect(accountListeners.allAboutMe).not.toHaveBeenCalled();
-      expect(accountListeners.taskRuns).not.toHaveBeenCalled();
       expect(bootListeners.runtime).not.toHaveBeenCalled();
       expect(useAgentStore.getState().agents).toEqual({});
     } finally {

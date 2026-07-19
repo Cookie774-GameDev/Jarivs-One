@@ -18,7 +18,6 @@ const accountListeners = vi.hoisted(() => {
     events,
     learning: factory('learning'),
     allAboutMe: factory('all-about-me'),
-    taskRuns: factory('task-runs'),
     deferStop(name: string, accountId: string) {
       let resolve: (() => void) | undefined;
       const promise = new Promise<void>((done) => {
@@ -147,11 +146,6 @@ vi.mock('@/features/jarvis-memory/learningListener', async (importOriginal) => {
 vi.mock('@/features/all-about-me/persistence', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/features/all-about-me/persistence')>();
   return { ...actual, startAllAboutMePersistence: accountListeners.allAboutMe };
-});
-
-vi.mock('@/features/jarvis-runs/taskRunPersistence', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/features/jarvis-runs/taskRunPersistence')>();
-  return { ...actual, startJarvisTaskRunPersistence: accountListeners.taskRuns };
 });
 
 vi.mock('@/lib/supabase/env', () => ({ isSupabaseConfigured: () => false }));
@@ -299,7 +293,6 @@ describe('App JARVIS persistence coordinator mount', { timeout: 20_000 }, () => 
     });
     await waitFor(() => expect(accountListeners.learning).toHaveBeenCalledOnce());
     expect(accountListeners.allAboutMe).toHaveBeenCalledOnce();
-    expect(accountListeners.taskRuns).toHaveBeenCalledOnce();
 
     mounted.unmount();
     expect(instance.unsubscribeState).toHaveBeenCalledOnce();

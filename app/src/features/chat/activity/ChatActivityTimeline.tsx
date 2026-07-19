@@ -18,7 +18,7 @@ import {
 import { Badge, Button } from '@/components/ui';
 import { cn, formatRelative } from '@/lib/utils';
 import type { ChatId } from '@/types/common';
-import { useChatActivityStore } from './activityStore';
+import { useJarvisTaskRunStore } from '@/features/jarvis-runs/taskRunStore';
 import type { ChatActivityEvent, ChatActivityKind, ChatActivityStatus } from './types';
 
 const KIND_ICON: Record<ChatActivityKind, typeof Bot> = {
@@ -35,7 +35,11 @@ const STATUS_META: Record<
   { label: string; variant: 'secondary' | 'success' | 'destructive'; icon: React.ReactElement }
 > = {
   pending: { label: 'Queued', variant: 'secondary', icon: <Loader2 className="h-3 w-3" /> },
-  running: { label: 'Running', variant: 'secondary', icon: <Loader2 className="h-3 w-3 animate-spin" /> },
+  running: {
+    label: 'Running',
+    variant: 'secondary',
+    icon: <Loader2 className="h-3 w-3 animate-spin" />,
+  },
   done: { label: 'Done', variant: 'success', icon: <CheckCircle2 className="h-3 w-3" /> },
   cancelled: { label: 'Cancelled', variant: 'secondary', icon: <XCircle className="h-3 w-3" /> },
   error: { label: 'Failed', variant: 'destructive', icon: <XCircle className="h-3 w-3" /> },
@@ -110,7 +114,7 @@ export function parseTokensFromSubtitle(subtitle: string | undefined): {
 }
 
 /** Aggregate stats for the session header. */
-export function summarizeChatActivity(events: ChatActivityEvent[], nowMs = Date.now()) {
+export function summarizeChatActivity(events: readonly ChatActivityEvent[], nowMs = Date.now()) {
   let inputTokens = 0;
   let outputTokens = 0;
   let addedLines = 0;
@@ -202,24 +206,45 @@ export function summarizeChatActivity(events: ChatActivityEvent[], nowMs = Date.
  * Expandable feed prefers useful ops over a wall of "@jarvis finished".
  * Keeps: files, diffs, tools, urls, running work, and the latest agent only.
  */
-export function selectActivityFeedEvents(events: ChatActivityEvent[]): ChatActivityEvent[] {
+export function selectActivityFeedEvents(
+  events: readonly ChatActivityEvent[],
+): ChatActivityEvent[] {
   if (events.length === 0) return [];
   const sorted = [...events].sort((a, b) => a.ts - b.ts);
   const lastAgent = [...sorted].reverse().find((e) => e.kind === 'agent' || e.kind === 'subagent');
-  return sorted.filter((event) => {
-    if (event.status === 'running' || event.status === 'pending') return true;
-    if (event.kind === 'diff' || event.kind === 'file' || event.kind === 'tool' || event.kind === 'url') {
-      return true;
-    }
-    if ((event.kind === 'agent' || event.kind === 'subagent') && lastAgent && event.id === lastAgent.id) {
-      return true;
-    }
-    return false;
-  }).slice(-16);
+  return sorted
+    .filter((event) => {
+      if (event.status === 'running' || event.status === 'pending') return true;
+      if (
+        event.kind === 'diff' ||
+        event.kind === 'file' ||
+        event.kind === 'tool' ||
+        event.kind === 'url'
+      ) {
+        return true;
+      }
+      if (
+        (event.kind === 'agent' || event.kind === 'subagent') &&
+        lastAgent &&
+        event.id === lastAgent.id
+      ) {
+        return true;
+      }
+      return false;
+    })
+    .slice(-16);
 }
 
-export function ChatActivityTimeline({ chatId, compact = false }: { chatId: ChatId | string; compact?: boolean }) {
-  const events = useChatActivityStore((state) => state.eventsByChat[String(chatId)] ?? EMPTY_EVENTS);
+export function ChatActivityTimeline({
+  chatId,
+  compact = false,
+}: {
+  chatId: ChatId | string;
+  compact?: boolean;
+}) {
+  const events = useJarvisTaskRunStore(
+    (state) => state.activityByChat[String(chatId)] ?? EMPTY_EVENTS,
+  );
   // Default collapsed so the panel is a stats dashboard, not a wall of Done rows.
   const [collapsed, setCollapsed] = React.useState(() => {
     const stored = loadCollapsed();
@@ -299,7 +324,9 @@ export function ChatActivityTimeline({ chatId, compact = false }: { chatId: Chat
             aria-label={collapsed ? 'Expand session details' : 'Collapse session details'}
           >
             {collapsed ? 'Expand' : 'Collapse'}
-            <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', !collapsed && 'rotate-180')} />
+            <ChevronDown
+              className={cn('h-3.5 w-3.5 transition-transform', !collapsed && 'rotate-180')}
+            />
           </Button>
         </div>
 
@@ -326,12 +353,18 @@ export function ChatActivityTimeline({ chatId, compact = false }: { chatId: Chat
           />
           <StatChip
             label="Tokens in"
-            value={<span className="font-mono tabular-nums">{summary.inputTokens.toLocaleString()}</span>}
+            value={
+              <span className="font-mono tabular-nums">{summary.inputTokens.toLocaleString()}</span>
+            }
             hint="Total input tokens this chat"
           />
           <StatChip
             label="Tokens out"
-            value={<span className="font-mono tabular-nums">{summary.outputTokens.toLocaleString()}</span>}
+            value={
+              <span className="font-mono tabular-nums">
+                {summary.outputTokens.toLocaleString()}
+              </span>
+            }
             hint="Total output tokens this chat"
           />
           <StatChip
@@ -347,9 +380,7 @@ export function ChatActivityTimeline({ chatId, compact = false }: { chatId: Chat
           <StatChip
             label={summary.isLive ? 'Running for' : 'Duration'}
             value={
-              <span className="font-mono tabular-nums">
-                {formatDuration(summary.durationMs)}
-              </span>
+              <span className="font-mono tabular-nums">{formatDuration(summary.durationMs)}</span>
             }
             hint={summary.isLive ? 'Elapsed since first activity' : 'Start → last finish'}
           />
@@ -395,17 +426,20 @@ function StatChip({
   hint?: string;
 }) {
   return (
-    <div
-      className="rounded-lg border border-border/70 bg-background/50 px-2 py-1.5"
-      title={hint}
-    >
+    <div className="rounded-lg border border-border/70 bg-background/50 px-2 py-1.5" title={hint}>
       <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
       <div className="mt-0.5 text-[12px] font-medium text-foreground">{value}</div>
     </div>
   );
 }
 
-export function ActivityRow({ event, nowMs = Date.now() }: { event: ChatActivityEvent; nowMs?: number }) {
+export function ActivityRow({
+  event,
+  nowMs = Date.now(),
+}: {
+  event: ChatActivityEvent;
+  nowMs?: number;
+}) {
   const [open, setOpen] = React.useState(false);
   const Icon = KIND_ICON[event.kind] ?? Bot;
   const meta = STATUS_META[event.status];
@@ -436,7 +470,11 @@ export function ActivityRow({ event, nowMs = Date.now() }: { event: ChatActivity
                 : 'border-border bg-background text-muted-foreground',
             )}
           >
-            {event.kind === 'diff' ? <Pencil className="h-3.5 w-3.5" /> : <FileCode2 className="h-3.5 w-3.5" />}
+            {event.kind === 'diff' ? (
+              <Pencil className="h-3.5 w-3.5" />
+            ) : (
+              <FileCode2 className="h-3.5 w-3.5" />
+            )}
           </span>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-1.5">
@@ -453,7 +491,10 @@ export function ActivityRow({ event, nowMs = Date.now() }: { event: ChatActivity
                 </span>
               ) : null}
             </div>
-            <p className="truncate font-mono text-[10px] text-muted-foreground" title={event.filePath}>
+            <p
+              className="truncate font-mono text-[10px] text-muted-foreground"
+              title={event.filePath}
+            >
               {event.filePath}
             </p>
           </div>
@@ -462,7 +503,12 @@ export function ActivityRow({ event, nowMs = Date.now() }: { event: ChatActivity
             {meta.label}
           </Badge>
           {hasBody ? (
-            <ChevronDown className={cn('h-3.5 w-3.5 text-muted-foreground transition-transform', open && 'rotate-180')} />
+            <ChevronDown
+              className={cn(
+                'h-3.5 w-3.5 text-muted-foreground transition-transform',
+                open && 'rotate-180',
+              )}
+            />
           ) : null}
         </button>
         <AnimatePresence initial={false}>
@@ -504,10 +550,16 @@ export function ActivityRow({ event, nowMs = Date.now() }: { event: ChatActivity
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <p className="truncate text-secondary text-foreground">{event.title}</p>
-            {event.kind === 'file' && event.filePath && <ImageAwareFileBadge path={event.filePath} />}
+            {event.kind === 'file' && event.filePath && (
+              <ImageAwareFileBadge path={event.filePath} />
+            )}
           </div>
           <p className="truncate text-metadata text-muted-foreground">
-            {event.subtitle ?? event.agentSlug ?? event.filePath ?? event.url ?? formatRelative(event.ts)}
+            {event.subtitle ??
+              event.agentSlug ??
+              event.filePath ??
+              event.url ??
+              formatRelative(event.ts)}
             {event.inputTokens != null || event.outputTokens != null
               ? ` · ${event.inputTokens ?? 0}+${event.outputTokens ?? 0} tok · ${durationLabel}`
               : ` · ${durationLabel}`}
@@ -518,7 +570,12 @@ export function ActivityRow({ event, nowMs = Date.now() }: { event: ChatActivity
           {meta.label}
         </Badge>
         {hasBody ? (
-          <ChevronDown className={cn('h-3.5 w-3.5 text-muted-foreground transition-transform', open && 'rotate-180')} />
+          <ChevronDown
+            className={cn(
+              'h-3.5 w-3.5 text-muted-foreground transition-transform',
+              open && 'rotate-180',
+            )}
+          />
         ) : null}
       </button>
       <AnimatePresence initial={false}>
@@ -531,7 +588,9 @@ export function ActivityRow({ event, nowMs = Date.now() }: { event: ChatActivity
           >
             <div className="space-y-2 px-3 py-2.5">
               {event.detail ? (
-                <p className="whitespace-pre-wrap text-secondary text-muted-foreground">{event.detail}</p>
+                <p className="whitespace-pre-wrap text-secondary text-muted-foreground">
+                  {event.detail}
+                </p>
               ) : null}
               {event.diff ? <DiffPreview diff={event.diff} /> : null}
             </div>
@@ -548,12 +607,17 @@ function DiffPreview({ diff }: { diff: string }) {
     <pre className="max-h-80 overflow-auto rounded-md border border-border bg-background p-2 font-mono text-[11px] leading-relaxed">
       {lines.map((line, i) => {
         let cls = 'text-foreground/85';
-        if (line.startsWith('+') && !line.startsWith('+++')) cls = 'bg-emerald-500/10 text-emerald-300';
-        else if (line.startsWith('-') && !line.startsWith('---')) cls = 'bg-rose-500/10 text-rose-300';
+        if (line.startsWith('+') && !line.startsWith('+++'))
+          cls = 'bg-emerald-500/10 text-emerald-300';
+        else if (line.startsWith('-') && !line.startsWith('---'))
+          cls = 'bg-rose-500/10 text-rose-300';
         else if (line.startsWith('@@')) cls = 'text-accent-honey';
         else if (line.startsWith('---') || line.startsWith('+++')) cls = 'text-muted-foreground';
         return (
-          <div key={`${i}-${line.slice(0, 24)}`} className={cn('whitespace-pre-wrap break-all', cls)}>
+          <div
+            key={`${i}-${line.slice(0, 24)}`}
+            className={cn('whitespace-pre-wrap break-all', cls)}
+          >
             {line || ' '}
           </div>
         );

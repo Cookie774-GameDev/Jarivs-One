@@ -1,46 +1,56 @@
 import { notifyDone } from '@/lib/notifications';
+import type { JarvisEvent, JarvisRunStatus } from '@/lib/jarvis/contracts/execution';
 import { notify as nativeNotify } from '@/lib/tauri';
 
-import { useJarvisTaskRunStore, type JarvisTaskRunStatus } from './taskRunStore';
-
 interface TaskRunNotificationBindings {
-  notify?: (title: string, body: string, status: JarvisTaskRunStatus) => Promise<unknown> | unknown;
+  subscribe: (listener: (event: JarvisEvent) => void) => () => void;
+  notify?: (title: string, body: string, status: JarvisRunStatus) => Promise<unknown> | unknown;
   onError?: (error: unknown) => void;
 }
 
-const COPY: Partial<Record<JarvisTaskRunStatus, [string, string]>> = {
+const COPY: Partial<Record<JarvisRunStatus, readonly [string, string]>> = {
+  awaiting_approval: ['Jarvis task needs approval', 'Open VibeSpace to review the pending action.'],
+  partial: ['Jarvis task needs input', 'Open VibeSpace to provide the requested input.'],
   completed: ['Jarvis task completed', 'Open VibeSpace to view the verified result.'],
   failed: ['Jarvis task failed', 'Open VibeSpace to review the failure and next step.'],
-  'waiting-for-input': ['Jarvis task needs input', 'Open VibeSpace to provide the requested input.'],
-  'waiting-for-approval': ['Jarvis task needs approval', 'Open VibeSpace to review the pending action.'],
-  blocked: ['Jarvis task blocked', 'Open VibeSpace to review what is blocking progress.'],
+  timed_out: ['Jarvis task timed out', 'Open VibeSpace to review the timeout and next step.'],
+  cancelled: ['Jarvis task cancelled', 'Open VibeSpace to view the verified cancellation.'],
 };
 
-async function defaultNotify(title: string, body: string, status: JarvisTaskRunStatus): Promise<void> {
+async function defaultNotify(title: string, body: string, status: JarvisRunStatus): Promise<void> {
   if (status === 'completed') {
     await notifyDone('tasks', title, body, { allowFallbackToast: true });
     return;
   }
   if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('jarvis:task-notification', { detail: { title, status } }));
+    window.dispatchEvent(
+      new CustomEvent('jarvis:task-notification', { detail: { title, status } }),
+    );
   }
   await nativeNotify(title, body, { fallbackToast: true });
 }
 
-export function startJarvisTaskRunNotifications(
-  bindings: TaskRunNotificationBindings = {},
-): () => void {
+export function startJarvisTaskRunNotifications(bindings: TaskRunNotificationBindings): () => void {
   const notify = bindings.notify ?? defaultNotify;
-  return useJarvisTaskRunStore.subscribe((state, previous) => {
-    for (const run of Object.values(state.runs)) {
-      const oldStatus = previous.runs[run.id]?.status;
-      if (oldStatus === run.status) continue;
-      const copy = COPY[run.status];
-      if (!copy) continue;
-      void Promise.resolve(notify(copy[0], copy[1], run.status)).catch((error) => {
-        if (bindings.onError) bindings.onError(error);
-        else console.warn('[jarvis-task] notification unavailable', error);
-      });
+  const seen = new Set<string>();
+  const seenOrder: string[] = [];
+  return bindings.subscribe((event) => {
+    if (event.type !== 'run_state') return;
+    const status = event.status as JarvisRunStatus | undefined;
+    if (!status) return;
+    const copy = COPY[status];
+    if (!copy) return;
+    const key = `${event.runId}:${event.seq}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    seenOrder.push(key);
+    if (seenOrder.length > 5_000) {
+      const expired = seenOrder.shift();
+      if (expired) seen.delete(expired);
     }
+    void Promise.resolve(notify(copy[0], copy[1], status)).catch((error) => {
+      if (bindings.onError) bindings.onError(error);
+      else console.warn('[jarvis-task] notification unavailable', error);
+    });
   });
 }
