@@ -2208,3 +2208,27 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 | **Task 20C lock** | Released after immutable manifests, exact integration verification, two review-fix RED/GREEN cycles, and clean xhigh re-review. |
 | **Task 16B coordination state** | Overall primary coordination remains **IMPLEMENTING**. A separate authorized Codex desktop coordinator has started a non-overlapping Task 16B foundation handoff in `app/src/types/chat.ts`, `app/src/lib/jarvis/kernelMessageProjection.ts`, its focused test, and the `MessagePart` projection boundary. Those live changes remain unstaged and will be preserved, reconciled against the Task 16B plan, verified, and independently reviewed rather than restarted. |
 | **Protected state** | The unrelated `install/install.ps1` deletion, `grok-workbench-pr25-v2`, existing VibeSpace localhost/profile, separate coordinator, unrelated worktrees/processes, production state, and real user data remain untouched and unstaged. |
+
+## 2026-07-19 - Task 21A resumed and exact two-phase commit-port lock acquired
+
+| Field | Coordination record |
+| --- | --- |
+| **Timestamp** | 2026-07-19 15:45 CT |
+| **Overall state** | **IMPLEMENTING**. The earlier goal-level blocked marker was caused only by a transient selected-model capacity error; there is no specification, approval, credential, or code hard gate. |
+| **Task 21A owner/state** | Primary coordinator `AGENT-CODEX-20260718-SIK`; **IMPLEMENTING**. The immutable voice-session, protected-routing, canonical cancellation, deferred-kernel, live-evidence-verifier, response-ready RED/GREEN, and bounded-recovery handoffs are preserved as live unstaged work. |
+| **Exact active lock** | `app/src/lib/jarvis/kernelTurnCommit.ts`; `app/src/lib/jarvis/kernelTurnCommit.test.ts`. Phase 1 was reconciled after the concurrent authorized handoff stabilized; this lock owns phase-2 exact two-table terminal persistence, idempotent recovery-compatible behavior, focused verification, and handoff. |
+| **Delegation/model rule** | The latest VibeSpace-only user rule requires GPT-5.6 Sol **high** for every delegated subagent. The current collaboration interface cannot explicitly select or attest that model, so no new subagent is started for this tightly coupled two-file commit boundary. |
+| **Protected state** | The unrelated `install/install.ps1` deletion remains untouched and unstaged. The unrelated Grok branch/worktree, existing localhost/profile, other processes/worktrees, production state, live Stripe, and real user data remain untouched. |
+
+## 2026-07-19 - Task 21A accepted and Task 17 canonical schedule/Hive lock acquired
+
+| Field | Coordination record |
+| --- | --- |
+| **Timestamp** | 2026-07-19 18:00 CT |
+| **Overall state** | **IMPLEMENTING**. Task 21A is complete; execution continues directly into Task 17. No specification, approval, credential, or code hard gate is active. |
+| **Task 21A final result** | **PASS** at `1ecdf641` (`feat(voice): bind sessions to canonical Jarvis runs`) plus `217efdb` (`fix(voice): seal cancellation and session lineage`). The correction closes immutable session/account/chat lineage, stale-session ABA teardown, exact run compare-and-clear on success and failure, and closed latest-owner cancellation sealing before terminal voice cancellation. |
+| **Task 21A evidence** | Final frozen verification passed 16 files / 264 tests; full app typecheck passed; exact formatting, diff, manifest, commit-whitespace, coordination exclusion, and installer exclusion checks passed. The bounded correction review found one Important failed-run release gap; its RED regression reproduced the retained run, the `finally` compare-and-clear fix passed, and focused re-review returned PASS with no remaining finding. |
+| **Delegation/model correction** | The current collaboration interface does expose explicit dispatch selectors. The Task 21A correction reviewer was dispatched with `gpt-5.6-sol` and `high` as required. The reviewer runtime reported only generic `GPT-5 Codex`, so no finer actual-model attestation is claimed. This supersedes only the stale interface-capability statement in the prior historical row. |
+| **Task 21A lock** | Released after the two commits, fresh final verification, and PASS re-review. |
+| **Task 17 owner/state** | Primary coordinator `AGENT-CODEX-20260718-SIK`; **IMPLEMENTING**. Canonical schedule dispatch, transport/logical retry, Hive worker execution, final synthesis, verifier wiring, contracts, persistence, and exact focused-test paths listed in frozen Task 17 are locked for coordinated implementation. |
+| **Protected state** | The unrelated `install/install.ps1` deletion remains untouched and unstaged. `grok-workbench-pr25-v2`, the existing VibeSpace localhost/profile, unrelated worktrees/processes, production state, live Stripe, and real user data remain untouched. |
