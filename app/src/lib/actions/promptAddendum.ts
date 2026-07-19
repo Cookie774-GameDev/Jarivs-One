@@ -57,7 +57,10 @@ export function buildAddendumText(): string {
 
   let customs: ActionDef[] = [];
   try {
-    customs = useToolStore.getState().toActionDefs().filter((a) => a.exposeToAI !== false);
+    customs = useToolStore
+      .getState()
+      .toActionDefs()
+      .filter((a) => a.exposeToAI !== false);
   } catch {
     customs = [];
   }
@@ -123,12 +126,12 @@ export function buildAddendumText(): string {
     '- For "open 5 terminals with opencode" (or any bulk count), use `terminal.bulkOpen` with params like `{"count":5,"command":"opencode"}` or the preset `terminal.bulkOpen.5` — the user must click **Approve** before panes open.',
     '- `terminal.bulkOpen`, `terminal.claude`, and `terminal.opencode` are destructive: always include a clear rationale and wait for approval.',
     '- For COMBINED requests ("close all terminals, open 10 with claude, five as code agents with prompt X and five as reviewers with prompt Y"), emit ONE `terminal.orchestrate` block: `{"closeExisting":true,"command":"claude","rolesJson":"[{\\"count\\":5,\\"agentSlug\\":\\"code-agent\\",\\"prompt\\":\\"...\\"},{\\"count\\":5,\\"agentSlug\\":\\"code-reviewer\\",\\"prompt\\":\\"...\\"}]"}`. Role prompts are delivered through AGENTS.md briefing files, never typed into the shell. One approval covers the whole plan.',
-    '- Plugin tools: when the user attaches a plugin via /plug or mentions one in chat, use `plugin.call` with `{"pluginId":"<id>","toolName":"<tool>"}` — credentials never appear in prompts.',
+    '- Plugin attachments are capability descriptors only. Credentials never appear in prompts; only literal actions in the registered security catalog are executable.',
     '- Desktop files: use `files.write` with absolute `path` + `content` to create/edit text files; use `files.read` to sample a text file. You have filesystem access in the VibeSpace desktop app — do not claim you cannot write.',
     '- If the user wants a file but gives no path, write under the Default write folder from context (Downloads or Documents/VibeSpace) with a clear filename. Do not refuse for "unknown location".',
     '- Important missing decisions: emit a fenced `jarvis_question` JSON block so the app shows a question card. Answers return as structured context — then continue with an action or answer.',
     '- PowerShell: use `shell.powershell` with `{"command":"..."}` (or `terminal.run`) after approval. Do not tell the user to run commands manually when an action exists.',
-    '- Do not claim a plugin tool ran unless an approved `plugin.call` action returned a result.',
+    '- Do not claim a plugin tool ran unless a literal registered action returned a result.',
     '- Skills: the user can type `/skills` and choose a skill for the current turn. If they ask by voice or text which skills exist, use the Available skills section below.',
     '- Avoid triple-backticks inside `params` values; they break the fence.',
     '',
@@ -188,11 +191,13 @@ export function buildAddendumText(): string {
     'you should use the appropriate `nav.*` action to navigate. When they say',
     '"fullscreen" or "make the chat big", use `chat.fullscreen`. When they',
     'ask "what\'s scheduled today?", navigate to the schedule route so they can',
-    'see it, or check the Inspector\'s Today tab.',
+    "see it, or check the Inspector's Today tab.",
     '',
     '## Available skills',
     '',
-    skills.map((skill) => `- **${skill.name}** (\`${skill.id}\`) — ${skill.description}`).join('\n'),
+    skills
+      .map((skill) => `- **${skill.name}** (\`${skill.id}\`) — ${skill.description}`)
+      .join('\n'),
     '',
     sections.join('\n\n'),
     '',

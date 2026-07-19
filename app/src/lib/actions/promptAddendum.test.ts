@@ -18,10 +18,7 @@ vi.mock('@/components/ui/toast', () => ({
   },
 }));
 
-import {
-  buildAddendumText,
-  applyAvailableActions,
-} from '@/lib/actions/promptAddendum';
+import { buildAddendumText, applyAvailableActions } from '@/lib/actions/promptAddendum';
 import { useToolStore } from '@/features/tools/toolStore';
 import type { Agent, AgentId } from '@/types';
 
@@ -65,6 +62,8 @@ describe('buildAddendumText', () => {
     expect(text).not.toContain('Coding');
     expect(text).not.toContain('wellness.eyeBreak');
     expect(text).not.toContain('clock.timer');
+    expect(text).not.toContain('plugin.call');
+    expect(text).not.toContain('plugin.invoke');
   });
 
   it('appends custom tools that are exposed to AI', () => {

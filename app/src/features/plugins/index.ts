@@ -1,10 +1,5 @@
 export { Plugins } from './Plugins';
-export {
-  PLUGIN_CATALOG,
-  catalogStats,
-  getPluginManifest,
-  validatePluginCatalog,
-} from './catalog';
+export { PLUGIN_CATALOG, catalogStats, getPluginManifest, validatePluginCatalog } from './catalog';
 export { usePluginStore } from './store';
 export { getPluginContextBlock, getPluginStatusContextBlock } from './context';
 export { extractPluginMentions, resolvePluginSlug } from './mentions';
@@ -14,12 +9,7 @@ export {
   listActivePlugins,
   listActiveVoicePlugins,
 } from './activation';
-export { testPluginConnection, callPluginTool } from './runtime';
-export {
-  disconnectPlugin,
-  getPluginRuntimeContract,
-  validatePluginRuntimeContract,
-} from './contract';
+export { getPluginRuntimeContract, validatePluginRuntimeContract } from './contract';
 export { pluginSearchBlob } from './providerRegistry';
 export { PluginLogo } from './PluginLogo';
 export { getPluginLogoSources } from './pluginLogos';

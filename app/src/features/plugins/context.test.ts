@@ -2,90 +2,66 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { getPluginContextBlock, getPluginStatusContextBlock } from './context';
 import { usePluginStore } from './store';
 
-describe('plugin terminal context', () => {
-  beforeEach(() => {
-    usePluginStore.setState({ connections: {} });
-  });
+function github(accountId: string, enabledProjectIds = ['project-a']) {
+  return {
+    accountId,
+    pluginId: 'github',
+    state: 'connected' as const,
+    enabled: true,
+    enabledProjectIds,
+    accountLabel: 'octocat',
+    configuredFields: ['token'],
+    updatedAt: Date.now(),
+  };
+}
 
-  it('includes only connected and enabled project plugins without secrets', () => {
+describe('plugin context account boundary', () => {
+  beforeEach(() => usePluginStore.setState({ connectionsByAccount: {} }));
+
+  it('reads only connected plugins owned by the canonical account and never advertises a generic tool', () => {
     usePluginStore.setState({
-      connections: {
-        github: {
-          pluginId: 'github',
-          state: 'connected',
-          enabled: true,
-          enabledProjectIds: ['project-a'],
-          accountLabel: 'octocat',
-          configuredFields: ['token'],
-          updatedAt: Date.now(),
-        },
-        figma: {
-          pluginId: 'figma',
-          state: 'connected',
-          enabled: false,
-          enabledProjectIds: ['*'],
-          accountLabel: 'designer@example.com',
-          configuredFields: ['token'],
-          updatedAt: Date.now(),
-        },
+      connectionsByAccount: {
+        'account-a': { github: github('account-a') },
+        'account-b': { github: github('account-b', ['*']) },
       },
     });
-    const block = getPluginContextBlock('project-a');
+
+    const block = getPluginContextBlock('account-a', 'project-a');
     expect(block).toContain('GitHub');
-    expect(block).toContain('identity');
-    expect(block).not.toContain('Figma');
+    expect(block).toContain('octocat');
     expect(block).not.toContain('token');
-    expect(getPluginContextBlock('project-b')).toBe('');
+    expect(block).not.toContain('plugin.call');
+    expect(block).not.toContain('plugin.invoke');
+    expect(getPluginContextBlock('account-a', 'project-b')).toBe('');
+    expect(getPluginContextBlock('', 'project-a')).toBe('');
+    expect(getPluginContextBlock('project-a', ['github'])).toBe('');
   });
 
-  it('merges explicit plugin ids with connected plugins', () => {
+  it('merges explicit descriptors without claiming they are executable', () => {
     usePluginStore.setState({
-      connections: {
-        github: {
-          pluginId: 'github',
-          state: 'connected',
-          enabled: true,
-          enabledProjectIds: ['project-a'],
-          accountLabel: 'octocat',
-          configuredFields: ['token'],
-          updatedAt: Date.now(),
-        },
-      },
+      connectionsByAccount: { 'account-a': { github: github('account-a') } },
     });
-    const block = getPluginContextBlock('project-a', ['slack']);
+    const block = getPluginContextBlock('account-a', 'project-a', ['slack']);
     expect(block).toContain('GitHub');
     expect(block).toContain('Slack');
     expect(block).toContain('mentioned, not connected');
+    expect(block).toContain('descriptors only');
   });
 
-  it('summarizes connected plugin status without secrets for plugin questions', () => {
+  it('summarizes status only for the named account', () => {
     usePluginStore.setState({
-      connections: {
-        github: {
-          pluginId: 'github',
-          state: 'connected',
-          enabled: true,
-          enabledProjectIds: ['project-a'],
-          accountLabel: 'octocat',
-          configuredFields: ['token'],
-          updatedAt: Date.now(),
-        },
-        slack: {
-          pluginId: 'slack',
-          state: 'connected',
-          enabled: false,
-          enabledProjectIds: ['*'],
-          accountLabel: 'workspace',
-          configuredFields: ['botToken'],
-          updatedAt: Date.now(),
-        },
+      connectionsByAccount: {
+        'account-a': { github: github('account-a') },
+        'account-b': { github: { ...github('account-b'), enabled: false } },
       },
     });
-
-    const block = getPluginStatusContextBlock('project-a');
-    expect(block).toContain('GitHub [connected, enabled here]');
-    expect(block).toContain('Slack [connected, disabled]');
-    expect(block).not.toContain('token');
-    expect(block).not.toContain('botToken');
+    expect(getPluginStatusContextBlock('account-a', 'project-a', undefined)).toContain(
+      'GitHub [connected, enabled here]',
+    );
+    expect(getPluginStatusContextBlock('account-b', 'project-a', undefined)).toContain(
+      'GitHub [connected, disabled]',
+    );
+    expect(getPluginStatusContextBlock('', 'project-a', undefined)).toBe('');
+    expect(getPluginStatusContextBlock('project-a', 'plugins')).toBe('');
   });
 });

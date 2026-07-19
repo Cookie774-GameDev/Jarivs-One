@@ -84,6 +84,8 @@ import {
   flushWorkspacePersistenceAndAcknowledge,
 } from '@/lib/persistence/workspaceFlush';
 import { GlobalDictationOverlay } from '@/features/global-dictation/GlobalDictationOverlay';
+import { PluginManagementCapabilityProvider } from '@/features/plugins/managementContext';
+import type { PluginManagementCapability } from '@/features/plugins/runtime';
 import type { Agent, AgentId, Message } from '@/types';
 
 type SupabaseSessionLike = {
@@ -905,16 +907,163 @@ function useBoot() {
 
 function KernelBridgeBootstrap() {
   const [ready, setReady] = React.useState(false);
+  const [pluginManagement, setPluginManagement] = React.useState<
+    PluginManagementCapability | undefined
+  >(undefined);
 
   React.useEffect(() => {
     let disposed = false;
     let disposeBoundary: (() => void | Promise<void>) | undefined;
     let accountInvalidator: ((accountId: string) => void) | undefined;
+    let securityRuntime:
+      | {
+          pluginManagement: PluginManagementCapability;
+          invalidateAccount(accountId: string): void;
+          invalidateAll(): void;
+        }
+      | undefined;
+    const invalidateSecurityRuntime = () => securityRuntime?.invalidateAll();
 
     void import('@/lib/jarvis/kernelHost')
       .then(async ({ createUnavailableKernelHostRuntime, startJarvisKernelHost }) => {
         const session = await startJarvisKernelHost({
-          createRuntime: createUnavailableKernelHostRuntime,
+          createRuntime: async () => {
+            // Browser preview may own its best-effort Web Lock, but it never
+            // constructs credential or approval authority. Native registration
+            // has already succeeded before this callback is invoked.
+            if (!(typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window)) {
+              return createUnavailableKernelHostRuntime();
+            }
+
+            const [
+              { createJarvisSecurityRuntime },
+              {
+                createJarvisExistingCredentialAuthorization,
+                createPluginCredentialAccountGrantRepository,
+                createStrictPluginCredentialGrantStorage,
+              },
+              { usePluginStore },
+              { createJarvisRepositories },
+              { createJarvisCapabilitySnapshotProvider },
+              { createJarvisEntitlementSnapshotProvider, fetchCloudAdminEntitlementSnapshot },
+              { createJarvisActionCatalog, DEFAULT_JARVIS_ACTION_REGISTRATIONS },
+              { getBuiltinAction },
+              { resolveLocalDevelopmentEntitlementSnapshot },
+            ] = await Promise.all([
+              import('@/lib/jarvis/jarvisSecurityRuntime'),
+              import('@/features/plugins/credentialAuthorization'),
+              import('@/features/plugins/store'),
+              import('@/lib/db/jarvisRepositories'),
+              import('@/lib/jarvis/capabilitySnapshot'),
+              import('@/lib/admin'),
+              import('@/lib/jarvis/actions/catalog'),
+              import('@/lib/actions/registry'),
+              import('@/lib/entitlements'),
+            ]);
+            await openDb();
+            if (disposed) return createUnavailableKernelHostRuntime();
+
+            const randomUUID = () => crypto.randomUUID();
+            const now = () => Date.now();
+            const bootId = `kernel-security-${randomUUID()}`;
+            const activeAccountId = () =>
+              resolveAccountIdentity(useAuthStore.getState())?.accountId;
+            const catalog = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS);
+            const entitlementSnapshots = createJarvisEntitlementSnapshotProvider({
+              getActiveAccountId: activeAccountId,
+              async loadForActiveAccount(accountId) {
+                const auth = useAuthStore.getState();
+                if (auth.cloudSession?.user_id.trim() === accountId) {
+                  return await fetchCloudAdminEntitlementSnapshot(accountId);
+                }
+                if (resolveAccountIdentity(auth)?.accountId !== accountId) {
+                  return { source: 'unavailable' as const, capabilities: [] };
+                }
+                return resolveLocalDevelopmentEntitlementSnapshot(
+                  {
+                    email: auth.email,
+                    cloudEmail: auth.cloudSession?.email,
+                    localUserId: auth.localUserId,
+                  },
+                  { context: { now: now(), production: import.meta.env.PROD } },
+                );
+              },
+              now,
+            });
+            const capabilitySnapshots = createJarvisCapabilitySnapshotProvider({
+              getActiveAccountId: activeAccountId,
+              async resolveInputForActiveAccount(accountId) {
+                const capturedAt = now();
+                const tools = catalog
+                  .listExposed()
+                  .filter(
+                    (registration) =>
+                      registration.executor.kind === 'builtin' &&
+                      getBuiltinAction(registration.executor.registryActionId) !== undefined,
+                  )
+                  .map((registration) => ({
+                    id: registration.requiredCapabilities[0],
+                    state: 'available' as const,
+                    operations: ['execute'],
+                    evidenceRef: `registered:${registration.id}:${registration.version}:${bootId}`,
+                    lastVerifiedAt: capturedAt,
+                  }));
+                return {
+                  capturedAt,
+                  tools,
+                  plugins: [],
+                  mcps: [],
+                  terminals: [],
+                  agents: [],
+                  entitlements: await entitlementSnapshots.getForAccount(accountId),
+                };
+              },
+            });
+            const credentialGrants = createPluginCredentialAccountGrantRepository({
+              storage: createStrictPluginCredentialGrantStorage(window.localStorage),
+            });
+            const credentialAuthorization = createJarvisExistingCredentialAuthorization({
+              grants: credentialGrants,
+              getActiveAccountId: activeAccountId,
+            });
+
+            securityRuntime = createJarvisSecurityRuntime({
+              repositories: createJarvisRepositories(db),
+              catalog,
+              capabilitySnapshots,
+              entitlementSnapshots,
+              credentialGrants,
+              credentialAuthorization,
+              pluginConnections: {
+                upsertConnection: (connection) =>
+                  usePluginStore.getState().upsertConnection(connection),
+                removeConnection: (accountId, pluginId) =>
+                  usePluginStore.getState().removeConnection(accountId, pluginId),
+              },
+              activeAccountId,
+              executeRegisteredAction: async () => ({
+                kind: 'executor_returned' as const,
+                result: { ok: false as const, error: 'registered_action_dispatch_unavailable' },
+              }),
+              bootId,
+              randomUUID,
+              now,
+            });
+            window.addEventListener('pagehide', invalidateSecurityRuntime);
+            if (!disposed) {
+              React.startTransition(() => setPluginManagement(securityRuntime?.pluginManagement));
+            }
+            const unavailable = createUnavailableKernelHostRuntime();
+            return Object.freeze({
+              handleRequest: unavailable.handleRequest,
+              invalidateAccount: (accountId: string) =>
+                securityRuntime?.invalidateAccount(accountId),
+              dispose() {
+                window.removeEventListener('pagehide', invalidateSecurityRuntime);
+                securityRuntime?.invalidateAll();
+              },
+            });
+          },
         });
         if (disposed) {
           if (session.role === 'host') await session.dispose();
@@ -943,6 +1092,8 @@ function KernelBridgeBootstrap() {
 
     return () => {
       disposed = true;
+      window.removeEventListener('pagehide', invalidateSecurityRuntime);
+      securityRuntime?.invalidateAll();
       if (accountInvalidator && invalidateActiveKernelAccount === accountInvalidator) {
         invalidateActiveKernelAccount = () => {};
       }
@@ -950,7 +1101,13 @@ function KernelBridgeBootstrap() {
     };
   }, []);
 
-  return <AuthGate>{ready ? <WorkspaceRoot /> : null}</AuthGate>;
+  return (
+    <AuthGate>
+      <PluginManagementCapabilityProvider value={pluginManagement}>
+        {ready ? <WorkspaceRoot /> : null}
+      </PluginManagementCapabilityProvider>
+    </AuthGate>
+  );
 }
 
 function useDesktopReopenLifecycle() {

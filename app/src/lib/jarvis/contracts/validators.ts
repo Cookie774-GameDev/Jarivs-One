@@ -1,6 +1,6 @@
 import type { JarvisCapabilitySnapshot, JarvisModelSnapshot } from './capability';
 import type {
-  JarvisApproval,
+  JarvisApprovalV1,
   JarvisArtifact,
   JarvisCanonicalResultEvidenceV1,
   JarvisDurableLiveEvidenceV1,
@@ -2142,10 +2142,17 @@ function validateApprovalShape(
   const record = validateClosedRecord(
     value,
     [
+      'schemaVersion',
       'id',
       'runId',
+      'requestId',
+      'attemptNumber',
       'actionId',
       'actionVersion',
+      'capabilityId',
+      'capabilitySnapshotHash',
+      'expectedEffect',
+      'expiresAt',
       'params',
       'secretHandleRefs',
       'paramsHash',
@@ -2160,10 +2167,19 @@ function validateApprovalShape(
     errors,
   );
   if (!record) return;
+  validateRequiredField(record, 'schemaVersion', path, errors, (entry, entryPath, entryErrors) =>
+    validateLiteral(entry, 1, entryPath, entryErrors),
+  );
   validateRequiredField(record, 'id', path, errors, validateIdentifier);
   validateRequiredField(record, 'runId', path, errors, validateIdentifier);
+  validateRequiredField(record, 'requestId', path, errors, validateIdentifier);
+  validateRequiredField(record, 'attemptNumber', path, errors, validatePositiveInteger);
   validateRequiredField(record, 'actionId', path, errors, validateIdentifier);
-  validateRequiredField(record, 'actionVersion', path, errors, validateFiniteNumber);
+  validateRequiredField(record, 'actionVersion', path, errors, validatePositiveInteger);
+  validateRequiredField(record, 'capabilityId', path, errors, validateIdentifier);
+  validateRequiredField(record, 'capabilitySnapshotHash', path, errors, validateIdentifier);
+  validateRequiredField(record, 'expectedEffect', path, errors, validateIdentifier);
+  validateRequiredField(record, 'expiresAt', path, errors, validateFiniteNumber);
   requireField(record, 'params', path, errors);
   validateOptionalField(record, 'secretHandleRefs', path, errors, (entry, entryPath, entryErrors) =>
     validateArray(entry, entryPath, entryErrors, validateSecretHandleShape),
@@ -2320,7 +2336,7 @@ export function validateJarvisDurableLiveEvidence(
 
 export function validateJarvisApproval(
   input: unknown,
-): JarvisContractValidationResult<JarvisApproval> {
+): JarvisContractValidationResult<JarvisApprovalV1> {
   return validateContract(input, validateApprovalShape);
 }
 

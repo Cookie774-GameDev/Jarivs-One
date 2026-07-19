@@ -1,12 +1,16 @@
 import type { JarvisModelSnapshot } from '@/lib/jarvis/contracts/capability';
 import type {
-  JarvisApproval,
+  JarvisApprovalV1,
   JarvisArtifact,
   JarvisEvent,
   JarvisRun,
 } from '@/lib/jarvis/contracts/execution';
 import type { JarvisSourceRef } from '@/lib/jarvis/contracts/source';
-import { validateJarvisEvent, validateJarvisRun } from '@/lib/jarvis/contracts/validators';
+import {
+  validateJarvisApproval,
+  validateJarvisEvent,
+  validateJarvisRun,
+} from '@/lib/jarvis/contracts/validators';
 import type { JarvisIdentityRevision } from '@/lib/jarvis/identity';
 import type { JarvisProfile } from '@/lib/jarvis/profiles/types';
 import type {
@@ -37,6 +41,10 @@ function assertValidJarvisRun(value: unknown): asserts value is JarvisRun {
 
 function assertValidJarvisEvent(value: unknown): asserts value is JarvisEvent {
   if (!validateJarvisEvent(value).ok) throw new Error('Invalid Jarvis event');
+}
+
+function assertValidJarvisApproval(value: unknown): asserts value is JarvisApprovalV1 {
+  if (!validateJarvisApproval(value).ok) throw new Error('Invalid Jarvis approval');
 }
 
 export function toJarvisIdentityRevisionRow(
@@ -290,12 +298,20 @@ export function fromJarvisEventRow(row: JarvisEventRow): JarvisEvent {
   return value;
 }
 
-export function toJarvisApprovalRow(value: JarvisApproval): JarvisApprovalRow {
+export function toJarvisApprovalRow(value: JarvisApprovalV1): JarvisApprovalRow {
+  assertValidJarvisApproval(value);
   return {
+    schema_version: value.schemaVersion,
     id: value.id,
     run_id: value.runId,
+    request_id: value.requestId,
+    attempt_number: value.attemptNumber,
     action_id: value.actionId,
     action_version: value.actionVersion,
+    capability_id: value.capabilityId,
+    capability_snapshot_hash: value.capabilitySnapshotHash,
+    expected_effect: value.expectedEffect,
+    expires_at: value.expiresAt,
     params: cloneDetached(value.params),
     ...(value.secretHandleRefs === undefined
       ? {}
@@ -317,12 +333,19 @@ export function toJarvisApprovalRow(value: JarvisApproval): JarvisApprovalRow {
   };
 }
 
-export function fromJarvisApprovalRow(row: JarvisApprovalRow): JarvisApproval {
-  return {
+export function fromJarvisApprovalRow(row: JarvisApprovalRow): JarvisApprovalV1 {
+  const value: JarvisApprovalV1 = {
+    schemaVersion: row.schema_version,
     id: row.id,
     runId: row.run_id,
+    requestId: row.request_id,
+    attemptNumber: row.attempt_number,
     actionId: row.action_id,
     actionVersion: row.action_version,
+    capabilityId: row.capability_id,
+    capabilitySnapshotHash: row.capability_snapshot_hash,
+    expectedEffect: row.expected_effect,
+    expiresAt: row.expires_at,
     params: cloneDetached(row.params),
     ...(row.secret_handle_refs === undefined
       ? {}
@@ -342,6 +365,8 @@ export function fromJarvisApprovalRow(row: JarvisApprovalRow): JarvisApproval {
     ...(row.decided_at === undefined ? {} : { decidedAt: row.decided_at }),
     ...(row.consumed_at === undefined ? {} : { consumedAt: row.consumed_at }),
   };
+  assertValidJarvisApproval(value);
+  return value;
 }
 
 export function toJarvisArtifactRow(value: JarvisArtifact): JarvisArtifactRow {

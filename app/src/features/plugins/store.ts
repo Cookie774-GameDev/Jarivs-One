@@ -1,96 +1,82 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { safeLocalStorage } from '@/lib/persistence/safeLocalStorage';
-import {
-  LOCAL_UNBOUND_SYNC_SCOPE_NAME,
-  captureSyncQueueOwner,
-  cloudSyncQueueAuthorityScopeName,
-  getCurrentSyncQueueAuthorityScope,
-  subscribeSyncQueueAuthorityScope,
-  type SyncQueueAuthorityScopeName,
-  type SyncQueueOwnerSnapshot,
-} from '@/lib/cloudSyncQueueOwner';
-import type { PluginConnection } from './types';
+import { captureSyncQueueOwner, type SyncQueueOwnerSnapshot } from '@/lib/cloudSyncQueueOwner';
+import type { PluginConnection, PluginConnectionsByAccount } from './types';
 
 export const PLUGIN_CONNECTIONS_SYNC_TABLE = 'plugin_connections';
+const EMPTY_PLUGIN_CONNECTIONS: Readonly<Record<string, PluginConnection>> = Object.freeze({});
 
-type PluginConnections = Record<string, PluginConnection>;
-type PluginConnectionBuckets = Partial<Record<SyncQueueAuthorityScopeName, PluginConnections>>;
-
-type PluginStore = {
-  connections: Record<string, PluginConnection>;
-  connectionBuckets: PluginConnectionBuckets;
-  activeScopeName: SyncQueueAuthorityScopeName;
-  upsertConnection: (connection: PluginConnection) => void;
-  removeConnection: (pluginId: string) => void;
-  setEnabled: (pluginId: string, enabled: boolean) => void;
-};
-
-function ownerScopeName(owner: SyncQueueOwnerSnapshot): SyncQueueAuthorityScopeName {
-  return owner.state === 'cloud'
-    ? cloudSyncQueueAuthorityScopeName(owner.userId)
-    : LOCAL_UNBOUND_SYNC_SCOPE_NAME;
+export interface PluginStore {
+  connectionsByAccount: PluginConnectionsByAccount;
+  upsertConnection(connection: PluginConnection): void;
+  removeConnection(accountId: string, pluginId: string): void;
+  setEnabled(accountId: string, pluginId: string, enabled: boolean): void;
 }
 
-function connectionsForScope(
-  state: Pick<PluginStore, 'activeScopeName' | 'connectionBuckets' | 'connections'>,
-  scopeName: SyncQueueAuthorityScopeName,
-): PluginConnections {
-  return state.activeScopeName === scopeName
-    ? state.connections
-    : (state.connectionBuckets[scopeName] ?? {});
+function exactId(value: string, label: string): string {
+  if (!value || value.trim() !== value) throw new Error(`${label} must be a nonblank exact ID.`);
+  return value;
 }
 
-function replaceConnectionsForScope(
-  state: Pick<PluginStore, 'activeScopeName' | 'connectionBuckets'>,
-  scopeName: SyncQueueAuthorityScopeName,
-  connections: PluginConnections,
-): Pick<PluginStore, 'connectionBuckets'> & Partial<Pick<PluginStore, 'connections'>> {
-  const connectionBuckets = { ...state.connectionBuckets, [scopeName]: connections };
-  return state.activeScopeName === scopeName
-    ? { connectionBuckets, connections }
-    : { connectionBuckets };
+export function selectPluginConnectionsForAccount(
+  state: Pick<PluginStore, 'connectionsByAccount'>,
+  accountId: string,
+): Readonly<Record<string, PluginConnection>> {
+  if (!accountId || accountId.trim() !== accountId) return EMPTY_PLUGIN_CONNECTIONS;
+  return state.connectionsByAccount[accountId] ?? EMPTY_PLUGIN_CONNECTIONS;
+}
+
+export function pluginConnectionSyncRowId(accountId: string, pluginId: string): string {
+  return `v2:${encodeURIComponent(exactId(accountId, 'Account ID'))}:${encodeURIComponent(
+    exactId(pluginId, 'Plugin ID'),
+  )}`;
+}
+
+function decodePluginConnectionSyncRowId(
+  rowId: string,
+): Readonly<{ accountId: string; pluginId: string }> | undefined {
+  const parts = rowId.split(':');
+  if (parts.length !== 3 || parts[0] !== 'v2') return undefined;
+  try {
+    const accountId = decodeURIComponent(parts[1] ?? '');
+    const pluginId = decodeURIComponent(parts[2] ?? '');
+    if (pluginConnectionSyncRowId(accountId, pluginId) !== rowId) return undefined;
+    return { accountId, pluginId };
+  } catch {
+    return undefined;
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
 
-type PersistedPluginStore = Pick<PluginStore, 'connectionBuckets'>;
-
-function persistedConnectionBuckets(value: unknown): PluginConnectionBuckets {
-  if (!isRecord(value) || !isRecord(value.connectionBuckets)) return {};
-  const buckets: PluginConnectionBuckets = {};
-  for (const [scopeName, connections] of Object.entries(value.connectionBuckets)) {
-    if (!isRecord(connections)) continue;
-    if (scopeName === LOCAL_UNBOUND_SYNC_SCOPE_NAME) {
-      buckets[LOCAL_UNBOUND_SYNC_SCOPE_NAME] = connections as PluginConnections;
-      continue;
+function persistedConnectionsByAccount(value: unknown): PluginConnectionsByAccount {
+  if (!isRecord(value) || !isRecord(value.connectionsByAccount)) return {};
+  const result: Record<string, Record<string, PluginConnection>> = {};
+  for (const [accountId, rawConnections] of Object.entries(value.connectionsByAccount)) {
+    if (!accountId || accountId.trim() !== accountId || !isRecord(rawConnections)) continue;
+    const connections: Record<string, PluginConnection> = {};
+    for (const [pluginId, candidate] of Object.entries(rawConnections)) {
+      if (
+        !pluginId ||
+        pluginId.trim() !== pluginId ||
+        !isRecord(candidate) ||
+        candidate.accountId !== accountId ||
+        candidate.pluginId !== pluginId
+      ) {
+        continue;
+      }
+      connections[pluginId] = candidate as PluginConnection;
     }
-    if (!scopeName.startsWith('cloud:')) continue;
-    const userId = scopeName.slice('cloud:'.length);
-    if (!userId || userId.trim() !== userId) continue;
-    const exactScopeName = cloudSyncQueueAuthorityScopeName(userId);
-    if (exactScopeName === scopeName) {
-      buckets[exactScopeName] = connections as PluginConnections;
-    }
+    if (Object.keys(connections).length > 0) result[accountId] = connections;
   }
-  return buckets;
+  return result;
 }
 
-function migratePluginStore(persistedState: unknown, version: number): PersistedPluginStore {
-  if (version < 1) {
-    const legacyConnections =
-      isRecord(persistedState) && isRecord(persistedState.connections)
-        ? (persistedState.connections as PluginConnections)
-        : {};
-    return {
-      connectionBuckets: {
-        [LOCAL_UNBOUND_SYNC_SCOPE_NAME]: legacyConnections,
-      },
-    };
-  }
-  return { connectionBuckets: persistedConnectionBuckets(persistedState) };
+function mayQueueForAccount(owner: SyncQueueOwnerSnapshot, accountId: string): boolean {
+  return owner.state !== 'cloud' || owner.userId === accountId;
 }
 
 function queueConnection(
@@ -98,18 +84,20 @@ function queueConnection(
   op: 'insert' | 'update' | 'delete',
   owner: SyncQueueOwnerSnapshot,
 ): void {
+  if (!mayQueueForAccount(owner, connection.accountId)) return;
   void import('@/lib/sync')
     .then(({ enqueueMutation }) =>
       enqueueMutation(
         op,
         PLUGIN_CONNECTIONS_SYNC_TABLE,
-        connection.pluginId,
-        op === 'delete' ? null : connection,
+        pluginConnectionSyncRowId(connection.accountId, connection.pluginId),
+        connection,
         owner,
       ),
     )
     .catch((error) => {
       console.warn('[plugins] failed to queue connection metadata sync', {
+        accountId: connection.accountId,
         pluginId: connection.pluginId,
         error: error instanceof Error ? error.message : String(error),
       });
@@ -119,91 +107,95 @@ function queueConnection(
 export const usePluginStore = create<PluginStore>()(
   persist(
     (set, get) => ({
-      connections: {},
-      connectionBuckets: {},
-      activeScopeName: getCurrentSyncQueueAuthorityScope().name,
+      connectionsByAccount: {},
       upsertConnection: (connection) => {
-        const owner = captureSyncQueueOwner();
-        const scopeName = ownerScopeName(owner);
-        const exists = Boolean(connectionsForScope(get(), scopeName)[connection.pluginId]);
+        exactId(connection.accountId, 'Account ID');
+        exactId(connection.pluginId, 'Plugin ID');
+        const existing = selectPluginConnectionsForAccount(get(), connection.accountId)[
+          connection.pluginId
+        ];
         set((state) => ({
-          ...replaceConnectionsForScope(state, scopeName, {
-            ...connectionsForScope(state, scopeName),
-            [connection.pluginId]: connection,
-          }),
+          connectionsByAccount: {
+            ...state.connectionsByAccount,
+            [connection.accountId]: {
+              ...selectPluginConnectionsForAccount(state, connection.accountId),
+              [connection.pluginId]: connection,
+            },
+          },
         }));
-        queueConnection(connection, exists ? 'update' : 'insert', owner);
+        queueConnection(connection, existing ? 'update' : 'insert', captureSyncQueueOwner());
       },
-      removeConnection: (pluginId) => {
-        const owner = captureSyncQueueOwner();
-        const scopeName = ownerScopeName(owner);
-        const existing = connectionsForScope(get(), scopeName)[pluginId];
+      removeConnection: (accountId, pluginId) => {
+        exactId(accountId, 'Account ID');
+        exactId(pluginId, 'Plugin ID');
+        const existing = selectPluginConnectionsForAccount(get(), accountId)[pluginId];
         if (!existing) return;
         set((state) => {
-          const next = { ...connectionsForScope(state, scopeName) };
-          delete next[pluginId];
-          return replaceConnectionsForScope(state, scopeName, next);
+          const connections = { ...selectPluginConnectionsForAccount(state, accountId) };
+          delete connections[pluginId];
+          const connectionsByAccount = { ...state.connectionsByAccount };
+          if (Object.keys(connections).length > 0) connectionsByAccount[accountId] = connections;
+          else delete connectionsByAccount[accountId];
+          return { connectionsByAccount };
         });
-        queueConnection(existing, 'delete', owner);
+        queueConnection(existing, 'delete', captureSyncQueueOwner());
       },
-      setEnabled: (pluginId, enabled) => {
-        const owner = captureSyncQueueOwner();
-        const scopeName = ownerScopeName(owner);
-        const existing = connectionsForScope(get(), scopeName)[pluginId];
+      setEnabled: (accountId, pluginId, enabled) => {
+        exactId(accountId, 'Account ID');
+        exactId(pluginId, 'Plugin ID');
+        const existing = selectPluginConnectionsForAccount(get(), accountId)[pluginId];
         if (!existing) return;
         const updated = { ...existing, enabled, updatedAt: Date.now() };
         set((state) => ({
-          ...replaceConnectionsForScope(state, scopeName, {
-            ...connectionsForScope(state, scopeName),
-            [pluginId]: updated,
-          }),
+          connectionsByAccount: {
+            ...state.connectionsByAccount,
+            [accountId]: {
+              ...selectPluginConnectionsForAccount(state, accountId),
+              [pluginId]: updated,
+            },
+          },
         }));
-        queueConnection(updated, 'update', owner);
+        queueConnection(updated, 'update', captureSyncQueueOwner());
       },
     }),
     {
-      name: 'jarvis-plugin-connections',
+      name: 'jarvis-plugin-connections-v2',
       storage: createJSONStorage(() => safeLocalStorage),
-      partialize: (state) => ({ connectionBuckets: state.connectionBuckets }),
-      version: 1,
-      migrate: migratePluginStore,
-      merge: (persistedState, currentState) => {
-        const connectionBuckets = persistedConnectionBuckets(persistedState);
-        const activeScopeName = getCurrentSyncQueueAuthorityScope().name;
-        return {
-          ...currentState,
-          connectionBuckets,
-          activeScopeName,
-          connections: connectionBuckets[activeScopeName] ?? {},
-        };
-      },
+      partialize: (state) => ({ connectionsByAccount: state.connectionsByAccount }),
+      version: 2,
+      migrate: (persistedState) => ({
+        connectionsByAccount: persistedConnectionsByAccount(persistedState),
+      }),
+      merge: (persistedState, currentState) => ({
+        ...currentState,
+        connectionsByAccount: persistedConnectionsByAccount(persistedState),
+      }),
     },
   ),
 );
 
 export function applyCloudPluginConnectionForAccount(
   exactUserId: string,
-  pluginId: string,
+  rowId: string,
   connection: PluginConnection | null,
-): void {
-  const scopeName = cloudSyncQueueAuthorityScopeName(exactUserId);
-  if (!pluginId || pluginId.trim() !== pluginId) {
-    throw new Error('Cloud plugin connection application requires an exact plugin ID.');
-  }
-  if (connection && connection.pluginId !== pluginId) {
-    throw new Error('Cloud plugin row ID must match the validated connection plugin ID.');
+): boolean {
+  if (!exactUserId || exactUserId.trim() !== exactUserId) return false;
+  const decoded = decodePluginConnectionSyncRowId(rowId);
+  if (!decoded || decoded.accountId !== exactUserId) return false;
+  if (
+    connection &&
+    (connection.accountId !== exactUserId || connection.pluginId !== decoded.pluginId)
+  ) {
+    return false;
   }
   usePluginStore.setState((state) => {
-    const connections = { ...connectionsForScope(state, scopeName) };
-    if (connection) connections[pluginId] = connection;
-    else delete connections[pluginId];
-    return replaceConnectionsForScope(state, scopeName, connections);
+    const connections = { ...selectPluginConnectionsForAccount(state, exactUserId) };
+    if (connection) connections[decoded.pluginId] = connection;
+    else delete connections[decoded.pluginId];
+    const connectionsByAccount = { ...state.connectionsByAccount };
+    if (Object.keys(connections).length > 0) connectionsByAccount[exactUserId] = connections;
+    else delete connectionsByAccount[exactUserId];
+    return { connectionsByAccount };
   });
+  return true;
 }
-
-subscribeSyncQueueAuthorityScope((scope) => {
-  usePluginStore.setState((state) => ({
-    activeScopeName: scope.name,
-    connections: state.connectionBuckets[scope.name] ?? {},
-  }));
-});

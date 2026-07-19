@@ -1,50 +1,179 @@
 import { nativeFetch } from '@/lib/nativeFetch';
+import {
+  isRegisteredPluginToolExecutor,
+  type JarvisRegisteredActionExecutor,
+} from '@/lib/jarvis/actions/catalog';
+import type { ActionResult, RegisteredActionExecutionContext } from '@/lib/actions/types';
 import { getPluginManifest } from './catalog';
-import { getPluginCredential } from './credentials';
+import type { ExistingPluginCredentialAdapter } from './credentials';
+import {
+  withPluginCredentialLocatorLocks,
+  type ExistingPluginCredentialLocator,
+  type JarvisExistingCredentialAuthorization,
+  type JarvisExistingCredentialAuthorizationAuthority,
+  type PluginCredentialAccountGrantRepository,
+  type PluginCredentialAccountGrantV1,
+} from './credentialAuthorization';
+import type { PluginStore } from './store';
 import type { PluginHttpTest, PluginManifest, PluginTestResult } from './types';
 import { isConnectableStatus } from './types';
 
 type CredentialMap = Record<string, string>;
 
-async function credentialsFor(pluginId: string): Promise<CredentialMap> {
+export interface PluginManagementCapability {
+  saveCredential(input: {
+    accountId: string;
+    pluginId: string;
+    fieldId: string;
+    value: string;
+  }): Promise<void>;
+  testConnection(input: { accountId: string; pluginId: string }): Promise<PluginTestResult>;
+  disconnect(input: { accountId: string; pluginId: string }): Promise<void>;
+}
+
+/** @internal Closed inside the trusted JARVIS security composition. */
+export interface RegisteredPluginToolExecutor {
+  execute(input: {
+    accountId: string;
+    registration: Extract<JarvisRegisteredActionExecutor, { kind: 'plugin_tool' }>;
+    params: Readonly<Record<string, unknown>>;
+    context: RegisteredActionExecutionContext;
+  }): Promise<ActionResult>;
+}
+
+/** @internal Trusted execution surface used only after approval-bound handles resolve. */
+export interface PreparedRegisteredPluginToolExecutor extends RegisteredPluginToolExecutor {
+  startPrepared(input: {
+    accountId: string;
+    registration: Extract<JarvisRegisteredActionExecutor, { kind: 'plugin_tool' }>;
+    params: Readonly<Record<string, unknown>>;
+    context: RegisteredActionExecutionContext;
+    credentialValues: Readonly<Record<string, string>>;
+  }): Promise<ActionResult>;
+}
+
+function safeFailure(reason: string): Error {
+  return new Error(`Plugin credential authority denied the operation: ${reason}.`);
+}
+
+function exactNonblank(value: string, label: string): string {
+  if (!value || value.trim() !== value) throw safeFailure(`${label}_invalid`);
+  return value;
+}
+
+function assertActiveAccount(
+  requestedAccountId: string,
+  activeAccountId: () => string | undefined,
+): void {
+  exactNonblank(requestedAccountId, 'account');
+  if (activeAccountId() !== requestedAccountId) throw safeFailure('account_mismatch');
+}
+
+function manifestFor(pluginId: string): PluginManifest {
+  exactNonblank(pluginId, 'plugin');
   const manifest = getPluginManifest(pluginId);
-  if (!manifest) return {};
-  const entries = await Promise.all(
-    manifest.fields.map(
-      async (field) => [field.id, await getPluginCredential(pluginId, field.id)] as const,
-    ),
-  );
-  return Object.fromEntries(
-    entries.filter((entry): entry is readonly [string, string] => Boolean(entry[1])),
+  if (!manifest) throw safeFailure('plugin_unavailable');
+  return manifest;
+}
+
+function locatorFor(manifest: PluginManifest, fieldId: string): ExistingPluginCredentialLocator {
+  exactNonblank(fieldId, 'field');
+  if (!manifest.fields.some((field) => field.id === fieldId)) {
+    throw safeFailure('credential_locator_unavailable');
+  }
+  return Object.freeze({ pluginId: manifest.id, fieldId });
+}
+
+function locatorsFor(manifest: PluginManifest): readonly ExistingPluginCredentialLocator[] {
+  return manifest.fields.map((field) =>
+    Object.freeze({
+      pluginId: manifest.id,
+      fieldId: field.id,
+    }),
   );
 }
 
-function readableError(status: number, body: string): string {
-  const detail = body.trim().slice(0, 180);
-  return detail
-    ? `Connection rejected (${status}): ${detail}`
-    : `Connection rejected with HTTP ${status}.`;
+function grantIdentity(grant: PluginCredentialAccountGrantV1) {
+  return {
+    accountId: grant.accountId,
+    pluginId: grant.pluginId,
+    fieldId: grant.fieldId,
+    grantId: grant.grantId,
+    revision: grant.revision,
+  };
+}
+
+async function authorizeLocators(input: {
+  accountId: string;
+  locators: readonly ExistingPluginCredentialLocator[];
+  authority: JarvisExistingCredentialAuthorizationAuthority;
+}): Promise<readonly JarvisExistingCredentialAuthorization[]> {
+  const authorizations: JarvisExistingCredentialAuthorization[] = [];
+  for (const locator of input.locators) {
+    const decision = await input.authority.authorize({
+      accountId: input.accountId,
+      locator,
+    });
+    if (!decision.authorized) throw safeFailure(decision.reason);
+    authorizations.push(decision.authorization);
+  }
+  return authorizations;
+}
+
+async function readAuthorizedCredentials(input: {
+  accountId: string;
+  locators: readonly ExistingPluginCredentialLocator[];
+  activeAccountId: () => string | undefined;
+  authority: JarvisExistingCredentialAuthorizationAuthority;
+  adapter: ExistingPluginCredentialAdapter;
+}): Promise<CredentialMap> {
+  if (input.locators.length === 0) {
+    assertActiveAccount(input.accountId, input.activeAccountId);
+    return {};
+  }
+  const authorizations = await authorizeLocators({
+    accountId: input.accountId,
+    locators: input.locators,
+    authority: input.authority,
+  });
+  return await withPluginCredentialLocatorLocks(input.locators, async (locks) => {
+    assertActiveAccount(input.accountId, input.activeAccountId);
+    const values: CredentialMap = {};
+    for (const authorization of authorizations) {
+      const before = await input.authority.revalidateLocked({ authorization, locks });
+      if (!before.authorized) throw safeFailure(before.reason);
+      let value: string | undefined;
+      try {
+        value = await input.adapter.readExistingCredential(authorization.locator);
+      } catch {
+        throw safeFailure('credential_grant_unavailable');
+      }
+      const after = await input.authority.revalidateLocked({ authorization, locks });
+      if (!after.authorized) throw safeFailure(after.reason);
+      if (value === undefined) throw safeFailure('credential_grant_unavailable');
+      values[authorization.locator.fieldId] = value;
+    }
+    return values;
+  });
 }
 
 function required(values: CredentialMap, key: string, label: string): string {
   const value = values[key]?.trim();
-  if (!value) throw new Error(`${label} is required.`);
+  if (!value) throw safeFailure(`${label.toLowerCase().replace(/\s+/g, '_')}_required`);
   return value;
 }
 
 function normalizeStoreDomain(raw: string): string {
   const store = raw.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
   if (!/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/i.test(store)) {
-    throw new Error('Use the permanent store domain, for example your-store.myshopify.com.');
+    throw safeFailure('store_domain_invalid');
   }
   return store;
 }
 
 function mailchimpDatacenter(apiKey: string): string {
   const suffix = apiKey.trim().split('-').pop();
-  if (!suffix || !/^[a-z]{2}\d+$/i.test(suffix)) {
-    throw new Error('Mailchimp API key must include a datacenter suffix, for example ...-us1.');
-  }
+  if (!suffix || !/^[a-z]{2}\d+$/i.test(suffix)) throw safeFailure('datacenter_invalid');
   return suffix.toLowerCase();
 }
 
@@ -52,40 +181,32 @@ function substitute(template: string, values: CredentialMap, manifest: PluginMan
   return template.replace(/\{\{(\w+)\}\}/g, (_, key: string) => {
     if (key === 'store') return normalizeStoreDomain(required(values, 'store', 'Store domain'));
     if (key === 'basic_email_key') {
-      const email = required(values, 'email', 'Account email');
-      const apiKey = required(values, 'api_key', 'Management API key');
-      return btoa(`${email}:${apiKey}`);
+      return btoa(
+        `${required(values, 'email', 'Account email')}:${required(values, 'api_key', 'Management API key')}`,
+      );
     }
     if (key === 'basic_auth') {
-      const accountSid = required(values, 'account_sid', 'Account SID');
-      const authToken = required(values, 'auth_token', 'Auth token');
-      return btoa(`${accountSid}:${authToken}`);
+      return btoa(
+        `${required(values, 'account_sid', 'Account SID')}:${required(values, 'auth_token', 'Auth token')}`,
+      );
     }
-    if (key === 'stripe_basic') {
-      const secretKey = required(values, 'secret_key', 'Secret key');
-      return btoa(`${secretKey}:`);
-    }
-    if (key === 'datacenter') {
-      return mailchimpDatacenter(required(values, 'api_key', 'API key'));
-    }
+    if (key === 'stripe_basic') return btoa(`${required(values, 'secret_key', 'Secret key')}:`);
+    if (key === 'datacenter') return mailchimpDatacenter(required(values, 'api_key', 'API key'));
     if (key === 'mongo_basic') {
-      const publicKey = required(values, 'public_key', 'Public key');
-      const privateKey = required(values, 'private_key', 'Private key');
-      return btoa(`${publicKey}:${privateKey}`);
+      return btoa(
+        `${required(values, 'public_key', 'Public key')}:${required(values, 'private_key', 'Private key')}`,
+      );
     }
     if (key === 'woo_basic') {
-      const consumerKey = required(values, 'consumer_key', 'Consumer key');
-      const consumerSecret = required(values, 'consumer_secret', 'Consumer secret');
-      return btoa(`${consumerKey}:${consumerSecret}`);
+      return btoa(
+        `${required(values, 'consumer_key', 'Consumer key')}:${required(values, 'consumer_secret', 'Consumer secret')}`,
+      );
     }
-    if (key === 'chargebee_basic') {
-      const apiKey = required(values, 'api_key', 'API key');
-      return btoa(`${apiKey}:`);
-    }
+    if (key === 'chargebee_basic') return btoa(`${required(values, 'api_key', 'API key')}:`);
     if (key === 'wp_basic') {
-      const username = required(values, 'username', 'Username');
-      const appPassword = required(values, 'app_password', 'Application password');
-      return btoa(`${username}:${appPassword}`);
+      return btoa(
+        `${required(values, 'username', 'Username')}:${required(values, 'app_password', 'Application password')}`,
+      );
     }
     const field = manifest.fields.find((candidate) => candidate.id === key);
     return required(values, key, field?.label ?? key);
@@ -97,31 +218,11 @@ function readPath(data: unknown, path: string): unknown {
     if (current == null || typeof current !== 'object') return undefined;
     const match = /^(\w+)\[(\d+)\]$/.exec(segment);
     if (match) {
-      const [, prop, index] = match;
-      const list = (current as Record<string, unknown>)[prop];
-      return Array.isArray(list) ? list[Number(index)] : undefined;
+      const list = (current as Record<string, unknown>)[match[1]!];
+      return Array.isArray(list) ? list[Number(match[2])] : undefined;
     }
     return (current as Record<string, unknown>)[segment];
   }, data);
-}
-
-async function requestProbe(
-  url: string,
-  init: RequestInit,
-  acceptEmpty?: boolean,
-): Promise<{ data: Record<string, unknown>; hostname?: string }> {
-  const response = await nativeFetch(url, { ...init, signal: AbortSignal.timeout(12_000) });
-  const body = await response.text();
-  if (!response.ok && !acceptEmpty) throw new Error(readableError(response.status, body));
-  if (!body.trim()) {
-    return { data: {}, hostname: safeHostname(url) };
-  }
-  try {
-    return { data: JSON.parse(body) as Record<string, unknown>, hostname: safeHostname(url) };
-  } catch {
-    if (acceptEmpty && response.ok) return { data: {}, hostname: safeHostname(url) };
-    throw new Error('Provider returned a non-JSON response.');
-  }
 }
 
 function safeHostname(url: string): string | undefined {
@@ -132,28 +233,41 @@ function safeHostname(url: string): string | undefined {
   }
 }
 
+async function requestProbe(
+  url: string,
+  init: RequestInit,
+  signal: AbortSignal,
+  acceptEmpty?: boolean,
+): Promise<{ data: Record<string, unknown>; hostname?: string }> {
+  const response = await nativeFetch(url, { ...init, signal, timeoutMs: 12_000 });
+  const body = await response.text();
+  if (!response.ok && !acceptEmpty) throw safeFailure(`connection_rejected_${response.status}`);
+  if (!body.trim()) return { data: {}, hostname: safeHostname(url) };
+  try {
+    return { data: JSON.parse(body) as Record<string, unknown>, hostname: safeHostname(url) };
+  } catch {
+    if (acceptEmpty && response.ok) return { data: {}, hostname: safeHostname(url) };
+    throw safeFailure('provider_response_invalid');
+  }
+}
+
 async function runHttpTest(
   manifest: PluginManifest,
   values: CredentialMap,
   test: PluginHttpTest,
+  signal: AbortSignal,
 ): Promise<PluginTestResult> {
   const url = substitute(test.url, values, manifest);
   const headers: Record<string, string> = {};
   for (const [header, value] of Object.entries(test.headers ?? {})) {
     headers[header] = substitute(value, values, manifest);
   }
-  const init: RequestInit = {
-    method: test.method ?? 'GET',
-    headers,
-  };
+  const init: RequestInit = { method: test.method ?? 'GET', headers };
   if (test.body) init.body = substitute(test.body, values, manifest);
-
-  const { data, hostname } = await requestProbe(url, init, test.acceptEmpty);
-
+  const { data, hostname } = await requestProbe(url, init, signal, test.acceptEmpty);
   if (Object.prototype.hasOwnProperty.call(data, 'ok') && data.ok !== true) {
-    throw new Error(String(data.error ?? 'Provider rejected the credentials.'));
+    throw safeFailure('provider_rejected');
   }
-
   let accountLabel: string | undefined;
   if (test.accountLabelPath) {
     const value = readPath(data, test.accountLabelPath);
@@ -168,84 +282,328 @@ function manualSetupResult(manifest: PluginManifest): PluginTestResult {
     ok: false,
     error:
       manifest.authType === 'oauth'
-        ? 'Manual Setup Required: complete OAuth authorization in the provider console, then return and test again.'
-        : 'Manual Setup Required: credentials saved. Complete provider setup using the official link, then test when automated validation is available.',
+        ? 'Manual Setup Required: complete OAuth authorization, then test again.'
+        : 'Manual Setup Required: complete provider setup, then test again.',
   };
 }
 
-export async function testPluginConnection(pluginId: string): Promise<PluginTestResult> {
-  try {
-    const manifest = getPluginManifest(pluginId);
-    if (!manifest) return { ok: false, error: 'Unknown plugin.' };
+async function testManifestConnection(
+  manifest: PluginManifest,
+  values: CredentialMap,
+  signal: AbortSignal = AbortSignal.timeout(12_000),
+): Promise<PluginTestResult> {
+  if (manifest.id === 'mock-connector' || manifest.authType === 'none') {
+    return { ok: true, accountLabel: 'Local test connector' };
+  }
+  for (const field of manifest.fields) {
+    if (field.required && !values[field.id]?.trim())
+      throw safeFailure('required_field_unavailable');
+  }
+  if (manifest.httpTest) return await runHttpTest(manifest, values, manifest.httpTest, signal);
+  if (
+    manifest.authType === 'oauth' ||
+    manifest.status === 'needs_credentials' ||
+    manifest.status === 'blocked' ||
+    manifest.authType === 'service_account'
+  ) {
+    return manualSetupResult(manifest);
+  }
+  return { ok: false, error: 'This catalog entry does not have a live connector yet.' };
+}
 
-    if (pluginId === 'mock-connector' || manifest.authType === 'none') {
-      return { ok: true, accountLabel: 'Local test connector' };
-    }
-
-    const values = await credentialsFor(pluginId);
-    for (const field of manifest.fields) {
-      if (field.required && !values[field.id]?.trim()) {
-        throw new Error(`${field.label} is required.`);
+export function createAccountScopedPluginRuntime(input: {
+  activeAccountId(): string | undefined;
+  grants: PluginCredentialAccountGrantRepository;
+  credentialAuthorization: JarvisExistingCredentialAuthorizationAuthority;
+  credentialAdapter: ExistingPluginCredentialAdapter;
+  connections: Pick<PluginStore, 'upsertConnection' | 'removeConnection'>;
+  randomUUID: () => string;
+  now: () => number;
+}): Readonly<{
+  management: PluginManagementCapability;
+  registeredTools: PreparedRegisteredPluginToolExecutor;
+}> {
+  const management: PluginManagementCapability = Object.freeze({
+    async saveCredential({
+      accountId,
+      pluginId,
+      fieldId,
+      value,
+    }: {
+      accountId: string;
+      pluginId: string;
+      fieldId: string;
+      value: string;
+    }) {
+      assertActiveAccount(accountId, input.activeAccountId);
+      const manifest = manifestFor(pluginId);
+      const locator = locatorFor(manifest, fieldId);
+      const normalizedValue = value.trim();
+      if (!normalizedValue) throw safeFailure('credential_value_invalid');
+      await withPluginCredentialLocatorLocks([locator], async (locks) => {
+        assertActiveAccount(accountId, input.activeAccountId);
+        const current = await input.grants.getLocked({ locks, locator });
+        const nextRevision = current && current.accountId === accountId ? current.revision + 1 : 1;
+        if (!Number.isSafeInteger(nextRevision) || nextRevision <= 0) {
+          throw safeFailure('credential_revision_invalid');
+        }
+        if (current) {
+          await input.grants.removeExact({
+            locks,
+            locator,
+            expected: grantIdentity(current),
+          });
+        }
+        try {
+          await input.credentialAdapter.writeExistingCredential(locator, normalizedValue);
+        } catch {
+          throw safeFailure('credential_write_failed');
+        }
+        assertActiveAccount(accountId, input.activeAccountId);
+        const grantId = input.randomUUID();
+        const grantedAt = input.now();
+        if (
+          !grantId ||
+          grantId.trim() !== grantId ||
+          grantId === current?.grantId ||
+          !Number.isFinite(grantedAt)
+        ) {
+          throw safeFailure('credential_grant_invalid');
+        }
+        const freshGrant: PluginCredentialAccountGrantV1 = {
+          schemaVersion: 1,
+          accountId,
+          pluginId: locator.pluginId,
+          fieldId: locator.fieldId,
+          grantId,
+          revision: nextRevision,
+          grantedAt,
+          source: 'explicit_account_save',
+        };
+        try {
+          await input.grants.replaceExact({
+            locks,
+            expected: { state: 'absent' },
+            grant: freshGrant,
+          });
+        } catch {
+          try {
+            await input.grants.removeExact({
+              locks,
+              locator,
+              expected: grantIdentity(freshGrant),
+            });
+          } catch {
+            // An absent or concurrently rejected put is already fail-closed.
+          }
+          throw safeFailure('credential_grant_storage_failed');
+        }
+      });
+    },
+    async testConnection({ accountId, pluginId }: { accountId: string; pluginId: string }) {
+      assertActiveAccount(accountId, input.activeAccountId);
+      const manifest = manifestFor(pluginId);
+      let result: PluginTestResult;
+      try {
+        const values = await readAuthorizedCredentials({
+          accountId,
+          locators: locatorsFor(manifest),
+          activeAccountId: input.activeAccountId,
+          authority: input.credentialAuthorization,
+          adapter: input.credentialAdapter,
+        });
+        result = await testManifestConnection(manifest, values);
+      } catch (error) {
+        result = {
+          ok: false,
+          error: error instanceof Error ? error.message : 'Plugin unavailable.',
+        };
       }
-    }
+      assertActiveAccount(accountId, input.activeAccountId);
+      input.connections.upsertConnection({
+        accountId,
+        pluginId: manifest.id,
+        state: result.ok ? 'connected' : 'error',
+        enabled: result.ok,
+        enabledProjectIds: [],
+        accountLabel: result.accountLabel,
+        lastTestedAt: input.now(),
+        error: result.error,
+        configuredFields: manifest.fields.map((field) => field.id),
+        updatedAt: input.now(),
+      });
+      return result;
+    },
+    async disconnect({ accountId, pluginId }: { accountId: string; pluginId: string }) {
+      assertActiveAccount(accountId, input.activeAccountId);
+      const manifest = manifestFor(pluginId);
+      const locators = locatorsFor(manifest);
+      if (locators.length === 0) {
+        assertActiveAccount(accountId, input.activeAccountId);
+        input.connections.removeConnection(accountId, manifest.id);
+        return;
+      }
+      const authorizations = await authorizeLocators({
+        accountId,
+        locators,
+        authority: input.credentialAuthorization,
+      });
+      await withPluginCredentialLocatorLocks(locators, async (locks) => {
+        assertActiveAccount(accountId, input.activeAccountId);
+        for (const authorization of authorizations) {
+          const decision = await input.credentialAuthorization.revalidateLocked({
+            authorization,
+            locks,
+          });
+          if (!decision.authorized) throw safeFailure(decision.reason);
+        }
+        assertActiveAccount(accountId, input.activeAccountId);
+        for (const authorization of authorizations) {
+          assertActiveAccount(accountId, input.activeAccountId);
+          await input.grants.removeExact({
+            locks,
+            locator: authorization.locator,
+            expected: {
+              accountId: authorization.accountId,
+              pluginId: authorization.locator.pluginId,
+              fieldId: authorization.locator.fieldId,
+              grantId: authorization.grantId,
+              revision: authorization.revision,
+            },
+          });
+          try {
+            await input.credentialAdapter.deleteExistingCredential(authorization.locator);
+          } catch {
+            throw safeFailure('credential_delete_failed');
+          }
+        }
+        assertActiveAccount(accountId, input.activeAccountId);
+        input.connections.removeConnection(accountId, manifest.id);
+      });
+    },
+  });
 
-    if (manifest.httpTest) {
-      return await runHttpTest(manifest, values, manifest.httpTest);
+  function validateRegisteredTool(inputValue: {
+    accountId: string;
+    registration: Extract<JarvisRegisteredActionExecutor, { kind: 'plugin_tool' }>;
+    params: Readonly<Record<string, unknown>>;
+    context: RegisteredActionExecutionContext;
+  }): { manifest: PluginManifest; tool: PluginManifest['tools'][number] } {
+    assertActiveAccount(inputValue.accountId, input.activeAccountId);
+    if (inputValue.context.accountId !== inputValue.accountId)
+      throw safeFailure('account_mismatch');
+    if (!isRegisteredPluginToolExecutor(inputValue.registration)) {
+      throw safeFailure('plugin_registration_unavailable');
     }
-
-    if (manifest.authType === 'oauth') {
-      // No live verification endpoint for this OAuth connector: saved fields
-      // alone do not prove a working connection, so never report success.
-      return manualSetupResult(manifest);
+    if (!Object.isFrozen(inputValue.registration)) {
+      throw safeFailure('plugin_registration_unavailable');
     }
-
     if (
-      manifest.status === 'needs_credentials' ||
-      manifest.status === 'blocked' ||
-      manifest.authType === 'service_account'
+      Object.prototype.hasOwnProperty.call(inputValue.params, 'pluginId') ||
+      Object.prototype.hasOwnProperty.call(inputValue.params, 'toolName')
     ) {
-      return manualSetupResult(manifest);
+      throw safeFailure('model_selected_plugin_target_rejected');
     }
+    const manifest = manifestFor(inputValue.registration.pluginId);
+    if (!isConnectableStatus(manifest.status)) throw safeFailure('plugin_unavailable');
+    const tool = manifest.tools.find(
+      (candidate) => candidate.name === inputValue.registration.toolName,
+    );
+    if (!tool) throw safeFailure('plugin_tool_unavailable');
+    return { manifest, tool };
+  }
 
-    return { ok: false, error: 'This catalog entry does not have a live connector yet.' };
-  } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  function runPreparedTool(inputValue: {
+    manifest: PluginManifest;
+    tool: PluginManifest['tools'][number];
+    values: CredentialMap;
+    signal: AbortSignal;
+  }): Promise<ActionResult> {
+    const { manifest, tool, values, signal } = inputValue;
+    if (manifest.id === 'mock-connector' && tool.name === 'ping') {
+      return Promise.resolve({
+        ok: true,
+        summary: 'Fixed plugin tool completed.',
+        data: { ok: true, message: 'pong' },
+      });
+    }
+    if (tool.name === 'list_tools') {
+      return Promise.resolve({
+        ok: true,
+        summary: 'Fixed plugin tool completed.',
+        data: {
+          tools: manifest.tools.map(({ name, description, readOnly }) => ({
+            name,
+            description,
+            readOnly,
+          })),
+        },
+      });
+    }
+    return testManifestConnection(manifest, values, signal).then((result): ActionResult => {
+      if (!result.ok) return { ok: false, error: result.error ?? 'Plugin connection failed.' };
+      return {
+        ok: true,
+        summary: 'Fixed plugin tool completed.',
+        data: { accountLabel: result.accountLabel, capabilityOnly: true },
+      };
+    });
   }
-}
 
-export async function callPluginTool(
-  pluginId: string,
-  toolName: string,
-): Promise<Record<string, unknown>> {
-  const manifest = getPluginManifest(pluginId);
-  if (!manifest || !isConnectableStatus(manifest.status)) {
-    throw new Error('Plugin is not available.');
-  }
-  if (manifest.status === 'needs_credentials' || manifest.status === 'blocked') {
-    throw new Error('Plugin requires manual setup before tools can run.');
-  }
-  const tool = manifest.tools.find((candidate) => candidate.name === toolName);
-  if (!tool) throw new Error(`Unknown plugin tool: ${toolName}`);
-  if (pluginId === 'mock-connector' && toolName === 'ping') {
-    return { ok: true, pluginId, tool: toolName, message: 'pong' };
-  }
-  if (toolName === 'list_tools') {
-    return {
-      ok: true,
-      tools: manifest.tools.map(({ name, description, readOnly }) => ({
-        name,
-        description,
-        readOnly,
-      })),
-    };
-  }
-  const test = await testPluginConnection(pluginId);
-  if (!test.ok) throw new Error(test.error ?? 'Plugin connection failed.');
-  return {
-    ok: true,
-    pluginId,
-    tool: toolName,
-    accountLabel: test.accountLabel,
-    capabilityOnly: true,
-  };
+  const registeredTools: PreparedRegisteredPluginToolExecutor = Object.freeze({
+    async execute({
+      accountId,
+      registration,
+      params,
+      context,
+    }: Parameters<RegisteredPluginToolExecutor['execute']>[0]): Promise<ActionResult> {
+      const { manifest, tool } = validateRegisteredTool({
+        accountId,
+        registration,
+        params,
+        context,
+      });
+      const values = await readAuthorizedCredentials({
+        accountId,
+        locators: locatorsFor(manifest),
+        activeAccountId: input.activeAccountId,
+        authority: input.credentialAuthorization,
+        adapter: input.credentialAdapter,
+      });
+      return await runPreparedTool({
+        manifest,
+        tool,
+        values,
+        signal: context.signal ?? AbortSignal.timeout(12_000),
+      });
+    },
+    startPrepared({
+      accountId,
+      registration,
+      params,
+      context,
+      credentialValues,
+    }: Parameters<
+      PreparedRegisteredPluginToolExecutor['startPrepared']
+    >[0]): Promise<ActionResult> {
+      const { manifest, tool } = validateRegisteredTool({
+        accountId,
+        registration,
+        params,
+        context,
+      });
+      if (!context.signal) throw safeFailure('effect_signal_unavailable');
+      const declaredFields = new Set(manifest.fields.map((field) => field.id));
+      const values: CredentialMap = {};
+      for (const [fieldId, value] of Object.entries(credentialValues)) {
+        if (!declaredFields.has(fieldId) || typeof value !== 'string') {
+          throw safeFailure('prepared_credentials_invalid');
+        }
+        values[fieldId] = value;
+      }
+      return runPreparedTool({ manifest, tool, values, signal: context.signal });
+    },
+  });
+
+  return Object.freeze({ management, registeredTools });
 }

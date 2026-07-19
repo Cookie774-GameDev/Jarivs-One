@@ -1,10 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  LOCAL_UNBOUND_SYNC_SCOPE_NAME,
-  activateSyncQueueCloudAuthority,
-  releaseSyncQueueCloudAuthority,
-  type SyncQueueCloudAuthorityLease,
-} from '@/lib/cloudSyncQueueOwner';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PluginConnection } from './types';
 
 const syncMock = vi.hoisted(() => ({
@@ -13,18 +7,16 @@ const syncMock = vi.hoisted(() => ({
 
 vi.mock('@/lib/sync', () => syncMock);
 
-import { applyCloudPluginConnectionForAccount, usePluginStore } from './store';
+import {
+  applyCloudPluginConnectionForAccount,
+  pluginConnectionSyncRowId,
+  selectPluginConnectionsForAccount,
+  usePluginStore,
+} from './store';
 
-const leases: SyncQueueCloudAuthorityLease[] = [];
-
-function activate(userId: string): SyncQueueCloudAuthorityLease {
-  const lease = activateSyncQueueCloudAuthority(userId);
-  leases.push(lease);
-  return lease;
-}
-
-function connection(pluginId: string, enabled = true): PluginConnection {
+function connection(accountId: string, pluginId: string, enabled = true): PluginConnection {
   return {
+    accountId,
     pluginId,
     state: 'connected',
     enabled,
@@ -38,149 +30,118 @@ describe('plugin connection account scopes', () => {
   beforeEach(() => {
     localStorage.clear();
     syncMock.enqueueMutation.mockClear();
-    usePluginStore.setState({
-      connections: {},
-      connectionBuckets: {},
-      activeScopeName: LOCAL_UNBOUND_SYNC_SCOPE_NAME,
-    });
+    usePluginStore.setState({ connectionsByAccount: {} });
   });
 
-  afterEach(() => {
-    for (const lease of leases.splice(0).reverse()) {
-      releaseSyncQueueCloudAuthority(lease);
-    }
+  it('uses a reversible, collision-safe v2 sync row id', () => {
+    expect(pluginConnectionSyncRowId('acct/a b', 'github/issues')).toBe(
+      'v2:acct%2Fa%20b:github%2Fissues',
+    );
   });
 
-  it('keeps completed A records and B edits in separate account buckets', async () => {
-    const leaseA = activate('user-a');
-    applyCloudPluginConnectionForAccount('user-a', 'github', connection('github'));
-    expect(Object.keys(usePluginStore.getState().connections)).toEqual(['github']);
+  it('returns one stable empty snapshot for a missing account', () => {
+    const state = usePluginStore.getState();
+    expect(selectPluginConnectionsForAccount(state, 'missing')).toBe(
+      selectPluginConnectionsForAccount(state, 'missing'),
+    );
+  });
 
-    activate('user-b');
-    releaseSyncQueueCloudAuthority(leaseA);
-    expect(usePluginStore.getState().connections).toEqual({});
+  it('keeps mutations in the explicitly named account and repeats both ids in sync payloads', async () => {
+    applyCloudPluginConnectionForAccount(
+      'user-a',
+      'v2:user-a:github',
+      connection('user-a', 'github'),
+    );
+    usePluginStore.getState().upsertConnection(connection('user-b', 'linear'));
 
-    applyCloudPluginConnectionForAccount('user-a', 'slack', connection('slack'));
-    expect(usePluginStore.getState().connections).toEqual({});
+    expect(
+      Object.keys(selectPluginConnectionsForAccount(usePluginStore.getState(), 'user-a')),
+    ).toEqual(['github']);
+    expect(
+      Object.keys(selectPluginConnectionsForAccount(usePluginStore.getState(), 'user-b')),
+    ).toEqual(['linear']);
 
-    usePluginStore.getState().upsertConnection(connection('linear'));
-    await vi.waitFor(() => {
+    await vi.waitFor(() =>
       expect(syncMock.enqueueMutation).toHaveBeenCalledWith(
         'insert',
         'plugin_connections',
-        'linear',
-        expect.objectContaining({ pluginId: 'linear' }),
-        expect.objectContaining({ state: 'cloud', userId: 'user-b' }),
-      );
-    });
+        'v2:user-b:linear',
+        expect.objectContaining({ accountId: 'user-b', pluginId: 'linear' }),
+        expect.any(Object),
+      ),
+    );
 
-    activate('user-a');
-    expect(Object.keys(usePluginStore.getState().connections).sort()).toEqual(['github', 'slack']);
+    usePluginStore.getState().setEnabled('user-b', 'linear', false);
+    usePluginStore.getState().removeConnection('user-b', 'linear');
+
+    expect(
+      selectPluginConnectionsForAccount(usePluginStore.getState(), 'user-a').github,
+    ).toBeDefined();
+    expect(
+      selectPluginConnectionsForAccount(usePluginStore.getState(), 'user-b').linear,
+    ).toBeUndefined();
   });
 
-  it('migrates legacy unscoped connections losslessly into local/unbound storage only', async () => {
-    const legacyConnection = connection('legacy-local');
+  it('does not claim legacy unscoped persisted connections for any account', async () => {
+    const legacy = { ...connection('foreign', 'legacy-local') } as Record<string, unknown>;
+    delete legacy.accountId;
     localStorage.setItem(
       'jarvis-plugin-connections',
+      JSON.stringify({ state: { connections: { 'legacy-local': legacy } }, version: 1 }),
+    );
+
+    await usePluginStore.persist.rehydrate();
+
+    expect(selectPluginConnectionsForAccount(usePluginStore.getState(), 'user-a')).toEqual({});
+    expect(localStorage.getItem('jarvis-plugin-connections')).not.toBeNull();
+    expect(JSON.parse(localStorage.getItem('jarvis-plugin-connections-v2') ?? '{}')).toEqual({
+      state: { connectionsByAccount: {} },
+      version: 2,
+    });
+  });
+
+  it('rehydrates only already-accounted v2 rows with matching nested identities', async () => {
+    localStorage.setItem(
+      'jarvis-plugin-connections-v2',
       JSON.stringify({
-        state: { connections: { [legacyConnection.pluginId]: legacyConnection } },
-        version: 0,
+        state: {
+          connectionsByAccount: {
+            'user-a': {
+              github: connection('user-a', 'github'),
+              linear: connection('user-b', 'linear'),
+            },
+          },
+        },
+        version: 2,
       }),
     );
 
     await usePluginStore.persist.rehydrate();
-    expect(usePluginStore.getState().connections).toEqual({
-      [legacyConnection.pluginId]: legacyConnection,
-    });
 
-    const cloudLease = activate('user-a');
-    expect(usePluginStore.getState().connections).toEqual({});
-    releaseSyncQueueCloudAuthority(cloudLease);
-    expect(usePluginStore.getState().connections).toEqual({
-      [legacyConnection.pluginId]: legacyConnection,
+    expect(selectPluginConnectionsForAccount(usePluginStore.getState(), 'user-a')).toEqual({
+      github: connection('user-a', 'github'),
     });
-
-    const persisted = JSON.parse(localStorage.getItem('jarvis-plugin-connections') ?? '{}') as {
-      state?: Record<string, unknown>;
-      version?: number;
-    };
-    expect(persisted).toEqual({
-      state: {
-        connectionBuckets: {
-          [LOCAL_UNBOUND_SYNC_SCOPE_NAME]: {
-            [legacyConnection.pluginId]: legacyConnection,
-          },
-        },
-      },
-      version: 1,
-    });
+    expect(selectPluginConnectionsForAccount(usePluginStore.getState(), 'user-b')).toEqual({});
   });
 
-  it('keeps B enable and remove mutations in B and queues them with B ownership', async () => {
-    activate('user-a');
-    applyCloudPluginConnectionForAccount('user-a', 'github', connection('github'));
+  it('accepts cloud updates only when account, decoded row id, payload and connection agree', () => {
+    const value = connection('user-a', 'github');
 
-    activate('user-b');
-    usePluginStore.getState().upsertConnection(connection('linear'));
-    await vi.waitFor(() =>
-      expect(syncMock.enqueueMutation).toHaveBeenCalledWith(
-        'insert',
-        'plugin_connections',
-        'linear',
-        expect.any(Object),
-        expect.objectContaining({ state: 'cloud', userId: 'user-b' }),
-      ),
+    expect(applyCloudPluginConnectionForAccount('user-a', 'v2:user-a:github', value)).toBe(true);
+    expect(selectPluginConnectionsForAccount(usePluginStore.getState(), 'user-a').github).toEqual(
+      value,
     );
-    usePluginStore.getState().upsertConnection(connection('slack'));
-    await vi.waitFor(() =>
-      expect(syncMock.enqueueMutation).toHaveBeenCalledWith(
-        'insert',
-        'plugin_connections',
-        'slack',
-        expect.any(Object),
-        expect.objectContaining({ state: 'cloud', userId: 'user-b' }),
-      ),
-    );
-    syncMock.enqueueMutation.mockClear();
 
-    usePluginStore.getState().setEnabled('linear', false);
-    await vi.waitFor(() => {
-      expect(syncMock.enqueueMutation).toHaveBeenCalledWith(
-        'update',
-        'plugin_connections',
-        'linear',
-        expect.objectContaining({ enabled: false }),
-        expect.objectContaining({ state: 'cloud', userId: 'user-b' }),
-      );
-    });
-    usePluginStore.getState().removeConnection('slack');
-    await vi.waitFor(() => {
-      expect(syncMock.enqueueMutation).toHaveBeenCalledWith(
-        'delete',
-        'plugin_connections',
-        'slack',
-        null,
-        expect.objectContaining({ state: 'cloud', userId: 'user-b' }),
-      );
-    });
+    expect(applyCloudPluginConnectionForAccount('user-a', 'v2:user-b:github', value)).toBe(false);
+    expect(applyCloudPluginConnectionForAccount('user-a', 'github', value)).toBe(false);
+    expect(
+      applyCloudPluginConnectionForAccount('user-a', 'v2:user-a:github', {
+        ...value,
+        accountId: 'user-b',
+      }),
+    ).toBe(false);
 
-    activate('user-a');
-    expect(Object.keys(usePluginStore.getState().connections)).toEqual(['github']);
-    activate('user-b');
-    expect(usePluginStore.getState().connections.linear?.enabled).toBe(false);
-    expect(usePluginStore.getState().connections.slack).toBeUndefined();
-  });
-
-  it('applies cloud deletes only to the named account bucket', () => {
-    activate('user-a');
-    applyCloudPluginConnectionForAccount('user-a', 'github', connection('github'));
-    applyCloudPluginConnectionForAccount('user-a', 'slack', connection('slack'));
-
-    activate('user-b');
-    applyCloudPluginConnectionForAccount('user-a', 'slack', null);
-    expect(usePluginStore.getState().connections).toEqual({});
-
-    activate('user-a');
-    expect(Object.keys(usePluginStore.getState().connections)).toEqual(['github']);
+    expect(applyCloudPluginConnectionForAccount('user-a', 'v2:user-a:github', null)).toBe(true);
+    expect(selectPluginConnectionsForAccount(usePluginStore.getState(), 'user-a')).toEqual({});
   });
 });

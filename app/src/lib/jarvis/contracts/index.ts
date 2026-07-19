@@ -30,7 +30,9 @@ export type {
   JarvisAbortRegistration,
   JarvisAccountLiveEvidenceReadPort,
   JarvisApproval,
+  JarvisApprovalV1,
   JarvisArtifact,
+  JarvisAuthorityBoundResult,
   JarvisAttemptEffectBarrierAuthority,
   JarvisAttemptEffectClaimInput,
   JarvisAttemptEffectClaimResult,
@@ -71,7 +73,11 @@ export type {
   TransitionJarvisRunInput,
 } from './execution';
 
-export { MAX_JARVIS_SELECTOR_ITEMS } from './execution';
+export {
+  canonicalizeJarvisApprovalJson,
+  hashCanonicalJarvisApprovalJson,
+  MAX_JARVIS_SELECTOR_ITEMS,
+} from './execution';
 
 export type {
   JarvisContractValidationError,

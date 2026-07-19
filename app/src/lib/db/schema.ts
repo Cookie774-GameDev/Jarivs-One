@@ -241,10 +241,17 @@ export type JarvisEventRow = {
 };
 
 export type JarvisApprovalRow = {
+  schema_version: 1;
   id: string;
   run_id: string;
+  request_id: string;
+  attempt_number: number;
   action_id: string;
   action_version: number;
+  capability_id: string;
+  capability_snapshot_hash: string;
+  expected_effect: string;
+  expires_at: number;
   params: unknown;
   secret_handle_refs?: { field: string; handle_id: string }[];
   params_hash: string;

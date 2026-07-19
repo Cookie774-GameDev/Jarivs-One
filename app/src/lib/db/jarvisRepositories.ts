@@ -1,6 +1,6 @@
 import Dexie from 'dexie';
 import type {
-  JarvisApproval,
+  JarvisApprovalV1,
   JarvisArtifact,
   JarvisAttemptEffectClaimInput,
   JarvisAttemptEffectClaimResult,
@@ -26,7 +26,6 @@ import {
   fromJarvisIdentityRevisionRow,
   fromJarvisProfileRow,
   fromJarvisRunRow,
-  toJarvisApprovalRow,
   toJarvisArtifactRow,
   toJarvisEventRow,
   toJarvisIdentityRevisionRow,
@@ -163,8 +162,17 @@ export interface JarvisLiveEvidenceEventCommitAuthority {
 }
 
 export interface JarvisApprovalRepository {
-  getById(accountId: string, approvalId: string): Promise<JarvisApproval | undefined>;
-  putForRun(accountId: string, approval: JarvisApproval): Promise<JarvisApproval>;
+  getById(accountId: string, approvalId: string): Promise<JarvisApprovalV1 | undefined>;
+  listByRun(
+    accountId: string,
+    runId: string,
+    options?: {
+      requestId?: string;
+      attemptNumber?: number;
+      createdAtOrAfter?: number;
+      limit?: number;
+    },
+  ): Promise<JarvisApprovalV1[]>;
 }
 
 export interface JarvisArtifactRepository {
@@ -1032,23 +1040,35 @@ export function createJarvisRepositories(
       return fromJarvisApprovalRow(row);
     },
 
-    async putForRun(accountId, value) {
+    async listByRun(accountId, runId, options = {}) {
       assertAccountId(accountId);
-      return database.transaction(
-        'rw',
-        database.jarvis_runs,
-        database.jarvis_approvals,
-        async () => {
-          await requireOwnedRun(database, accountId, value.runId);
-          const existing = await database.jarvis_approvals.get(value.id);
-          if (existing && existing.run_id !== value.runId) {
-            repositoryError('parent_run_not_found');
-          }
-          const row = toJarvisApprovalRow(value);
-          await database.jarvis_approvals.put(row);
-          return fromJarvisApprovalRow(row);
-        },
-      );
+      const limit = normalizedLimit(options.limit);
+      if (options.requestId !== undefined && !options.requestId.trim()) {
+        repositoryError('account_scope_mismatch');
+      }
+      if (
+        options.attemptNumber !== undefined &&
+        (!Number.isSafeInteger(options.attemptNumber) || options.attemptNumber < 1)
+      ) {
+        repositoryError('invalid_limit');
+      }
+      if (options.createdAtOrAfter !== undefined && !Number.isFinite(options.createdAtOrAfter)) {
+        repositoryError('invalid_limit');
+      }
+      await requireOwnedRun(database, accountId, runId);
+      const rows = await database.jarvis_approvals.where('run_id').equals(runId).toArray();
+      return rows
+        .filter(
+          (row) =>
+            (options.requestId === undefined || row.request_id === options.requestId) &&
+            (options.attemptNumber === undefined || row.attempt_number === options.attemptNumber) &&
+            (options.createdAtOrAfter === undefined || row.created_at >= options.createdAtOrAfter),
+        )
+        .sort(
+          (left, right) => left.created_at - right.created_at || left.id.localeCompare(right.id),
+        )
+        .slice(0, limit)
+        .map(fromJarvisApprovalRow);
     },
   };
 

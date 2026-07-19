@@ -1,6 +1,6 @@
 import { createJarvisDb, type JarvisDexie } from '@/lib/db';
 import type {
-  JarvisApproval,
+  JarvisApprovalV1,
   JarvisArtifact,
   JarvisAttemptEffectClaimInput,
   JarvisDurableLiveEvidenceV1,
@@ -15,6 +15,7 @@ import type { JarvisIdentityRevision } from '@/lib/jarvis/identity';
 import type { JarvisProfile } from '@/lib/jarvis/profiles/types';
 import { TEST_INDEXED_DB, uniqueTestDbName } from '@/test/indexedDb';
 import {
+  toJarvisApprovalRow,
   toJarvisEventRow,
   toJarvisProfileRow,
   toJarvisRunRow,
@@ -114,8 +115,17 @@ type ExpectedJarvisRepositories = {
     getBySeq(accountId: string, runId: string, seq: number): Promise<JarvisEvent | undefined>;
   };
   approval: {
-    getById(accountId: string, approvalId: string): Promise<JarvisApproval | undefined>;
-    putForRun(accountId: string, approval: JarvisApproval): Promise<JarvisApproval>;
+    getById(accountId: string, approvalId: string): Promise<JarvisApprovalV1 | undefined>;
+    listByRun(
+      accountId: string,
+      runId: string,
+      options?: {
+        requestId?: string;
+        attemptNumber?: number;
+        createdAtOrAfter?: number;
+        limit?: number;
+      },
+    ): Promise<JarvisApprovalV1[]>;
   };
   artifact: {
     getById(accountId: string, artifactId: string): Promise<JarvisArtifact | undefined>;
@@ -357,12 +367,19 @@ function transitionEventFixture(
   };
 }
 
-function approvalFixture(overrides: Partial<JarvisApproval> = {}): JarvisApproval {
+function approvalFixture(overrides: Partial<JarvisApprovalV1> = {}): JarvisApprovalV1 {
   return {
+    schemaVersion: 1,
     id: 'approval-alpha',
     runId: 'run-alpha',
+    requestId: 'request-alpha',
+    attemptNumber: 1,
     actionId: 'action-alpha',
     actionVersion: 1,
+    capabilityId: 'files.write',
+    capabilitySnapshotHash: 'capability-snapshot-hash-alpha',
+    expectedEffect: 'Writes the reviewed file.',
+    expiresAt: NOW + 60_000,
     params: { path: 'C:/safe/file.txt', nested: { overwrite: false } },
     secretHandleRefs: [{ field: 'token', handleId: 'secret-handle-alpha' }],
     paramsHash: 'params-hash-alpha',
@@ -463,7 +480,7 @@ describe('Jarvis repository surface', () => {
       'getBySeq',
       'listByRun',
     ]);
-    expect(Object.keys(jarvisApprovalRepo).sort()).toEqual(['getById', 'putForRun']);
+    expect(Object.keys(jarvisApprovalRepo).sort()).toEqual(['getById', 'listByRun']);
     expect(Object.keys(jarvisArtifactRepo).sort()).toEqual(['getById', 'listByRun', 'putForRun']);
   });
 });
@@ -1653,7 +1670,7 @@ describe('profile mutation and integrity', () => {
 });
 
 describe('approval and artifact child ownership', () => {
-  it('writes and reads children only through an account-owned parent run', async () => {
+  it('reads approvals only through an account-owned parent run', async () => {
     const db = await openTestDb('jarvis-repositories-children');
     const repositories = createJarvisRepositories(db);
     const run = runFixture();
@@ -1661,19 +1678,24 @@ describe('approval and artifact child ownership', () => {
     const approval = approvalFixture();
     const artifact = artifactFixture();
 
-    expect(await repositories.approval.putForRun(run.accountId, approval)).toEqual(approval);
+    await db.jarvis_approvals.put(toJarvisApprovalRow(approval));
     expect(await repositories.artifact.putForRun(run.accountId, artifact)).toEqual(artifact);
     expect(await repositories.approval.getById(run.accountId, approval.id)).toEqual(approval);
+    expect(await repositories.approval.listByRun(run.accountId, run.id)).toEqual([approval]);
     expect(await repositories.artifact.getById(run.accountId, artifact.id)).toEqual(artifact);
     expect(await repositories.artifact.listByRun(run.accountId, run.id)).toEqual([artifact]);
 
     expect(await repositories.approval.getById('account-beta', approval.id)).toBeUndefined();
-    expect(await repositories.approval.getById('account-beta', 'missing-approval')).toBeUndefined();
+    await expectRepositoryError(
+      repositories.approval.listByRun('account-beta', run.id),
+      'parent_run_not_found',
+    );
     expect(await repositories.artifact.getById('account-beta', artifact.id)).toBeUndefined();
     expect(await repositories.artifact.getById('account-beta', 'missing-artifact')).toBeUndefined();
+    expect(repositories.approval).not.toHaveProperty('putForRun');
   });
 
-  it('uses the same parent-not-found error for missing and foreign child parents', async () => {
+  it('uses the same parent-not-found error for missing and foreign child list parents', async () => {
     const db = await openTestDb('jarvis-repositories-child-parent-oracle');
     const repositories = createJarvisRepositories(db);
     const foreignRun = runFixture({ id: 'run-foreign', accountId: 'account-beta' });
@@ -1681,10 +1703,7 @@ describe('approval and artifact child ownership', () => {
 
     for (const runId of ['missing-run', foreignRun.id]) {
       await expectRepositoryError(
-        repositories.approval.putForRun(
-          'account-alpha',
-          approvalFixture({ id: `approval-${runId}`, runId }),
-        ),
+        repositories.approval.listByRun('account-alpha', runId),
         'parent_run_not_found',
       );
       await expectRepositoryError(
@@ -1701,7 +1720,7 @@ describe('approval and artifact child ownership', () => {
     }
   });
 
-  it('never overwrites an approval or artifact ID already bound to another run', async () => {
+  it('never overwrites an artifact ID already bound to another run', async () => {
     const db = await openTestDb('jarvis-repositories-child-id-collision');
     const repositories = createJarvisRepositories(db);
     const firstRun = runFixture();
@@ -1710,29 +1729,12 @@ describe('approval and artifact child ownership', () => {
     await repositories.run.createIdempotent(firstRun);
     await repositories.run.createIdempotent(secondRun);
     await repositories.run.createIdempotent(foreignRun);
-    const approval = approvalFixture();
     const artifact = artifactFixture();
-    await repositories.approval.putForRun(firstRun.accountId, approval);
     await repositories.artifact.putForRun(firstRun.accountId, artifact);
-
-    await expectRepositoryError(
-      repositories.approval.putForRun(
-        secondRun.accountId,
-        approvalFixture({ runId: secondRun.id, status: 'approved' }),
-      ),
-      'parent_run_not_found',
-    );
     await expectRepositoryError(
       repositories.artifact.putForRun(
         secondRun.accountId,
         artifactFixture({ runId: secondRun.id, title: 'Collision overwrite' }),
-      ),
-      'parent_run_not_found',
-    );
-    await expectRepositoryError(
-      repositories.approval.putForRun(
-        foreignRun.accountId,
-        approvalFixture({ runId: foreignRun.id, status: 'approved' }),
       ),
       'parent_run_not_found',
     );
@@ -1743,8 +1745,47 @@ describe('approval and artifact child ownership', () => {
       ),
       'parent_run_not_found',
     );
-    expect(await repositories.approval.getById(firstRun.accountId, approval.id)).toEqual(approval);
     expect(await repositories.artifact.getById(firstRun.accountId, artifact.id)).toEqual(artifact);
+  });
+
+  it('filters and bounds detached approval evidence reads', async () => {
+    const db = await openTestDb('jarvis-repositories-approval-list');
+    const repositories = createJarvisRepositories(db);
+    const run = runFixture();
+    await repositories.run.createIdempotent(run);
+    const approvals = [
+      approvalFixture({
+        id: 'approval-1',
+        requestId: 'request-1',
+        attemptNumber: 1,
+        createdAt: NOW,
+      }),
+      approvalFixture({
+        id: 'approval-2',
+        requestId: 'request-2',
+        attemptNumber: 2,
+        createdAt: NOW + 1,
+      }),
+      approvalFixture({
+        id: 'approval-3',
+        requestId: 'request-2',
+        attemptNumber: 2,
+        createdAt: NOW + 2,
+      }),
+    ];
+    await db.jarvis_approvals.bulkPut(approvals.map(toJarvisApprovalRow));
+
+    const listed = await repositories.approval.listByRun(run.accountId, run.id, {
+      requestId: 'request-2',
+      attemptNumber: 2,
+      createdAtOrAfter: NOW + 1,
+      limit: 1,
+    });
+    expect(listed).toEqual([approvals[1]]);
+    (listed[0]!.params as { nested: { overwrite: boolean } }).nested.overwrite = true;
+    expect(
+      (await repositories.approval.getById(run.accountId, 'approval-2'))?.params,
+    ).toMatchObject({ nested: { overwrite: false } });
   });
 });
 
@@ -1763,6 +1804,10 @@ describe('bounded limits, detached projections, and local-only writes', () => {
       );
       await expectRepositoryError(
         repositories.event.listByRun(run.accountId, run.id, { limit }),
+        'invalid_limit',
+      );
+      await expectRepositoryError(
+        repositories.approval.listByRun(run.accountId, run.id, { limit }),
         'invalid_limit',
       );
       await expectRepositoryError(
@@ -1833,13 +1878,14 @@ describe('bounded limits, detached projections, and local-only writes', () => {
       run.id,
       nonTransitionEventFixture(),
     );
-    const createdApproval = await repositories.approval.putForRun(run.accountId, approval);
+    await db.jarvis_approvals.put(toJarvisApprovalRow(approval));
+    const createdApproval = await repositories.approval.getById(run.accountId, approval.id);
     const createdArtifact = await repositories.artifact.putForRun(run.accountId, artifact);
     await repositories.profile.updateCustomInstructions(profile.accountId, profile.id, 'changed');
 
     createdRun.model.capabilities.tools = false;
     createdEvent.sourceRefs[0]!.label = 'mutated';
-    (createdApproval.params as { nested: { overwrite: boolean } }).nested.overwrite = true;
+    (createdApproval!.params as { nested: { overwrite: boolean } }).nested.overwrite = true;
     createdArtifact.sourceRefs.push({
       id: 'mutated-source',
       kind: 'web',

@@ -1,7 +1,7 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import type { JarvisModelSnapshot } from '@/lib/jarvis/contracts/capability';
 import type {
-  JarvisApproval,
+  JarvisApprovalV1,
   JarvisArtifact,
   JarvisCanonicalResultEvidenceV1,
   JarvisDurableLiveEvidenceV1,
@@ -140,12 +140,19 @@ function event(): JarvisEvent {
   };
 }
 
-function approval(): JarvisApproval {
+function approval(): JarvisApprovalV1 {
   return {
+    schemaVersion: 1,
     id: 'approval-1',
     runId: 'run-1',
+    requestId: 'request-2',
+    attemptNumber: 2,
     actionId: 'action-1',
     actionVersion: 2,
+    capabilityId: 'deployment.write',
+    capabilitySnapshotHash: 'capability-snapshot-hash',
+    expectedEffect: 'Deploys the reviewed target.',
+    expiresAt: 7_000,
     params: { command: 'deploy', targets: [{ id: 'target-1', enabled: true }] },
     secretHandleRefs: [{ field: 'token', handleId: 'secret-handle-1' }],
     paramsHash: 'params-hash',
@@ -217,8 +224,12 @@ describe('jarvis mapper surface', () => {
     expectTypeOf(fromJarvisRunRow).toEqualTypeOf<(row: JarvisRunRow) => JarvisRun>();
     expectTypeOf(toJarvisEventRow).toEqualTypeOf<(value: JarvisEvent) => JarvisEventRow>();
     expectTypeOf(fromJarvisEventRow).toEqualTypeOf<(row: JarvisEventRow) => JarvisEvent>();
-    expectTypeOf(toJarvisApprovalRow).toEqualTypeOf<(value: JarvisApproval) => JarvisApprovalRow>();
-    expectTypeOf(fromJarvisApprovalRow).toEqualTypeOf<(row: JarvisApprovalRow) => JarvisApproval>();
+    expectTypeOf(toJarvisApprovalRow).toEqualTypeOf<
+      (value: JarvisApprovalV1) => JarvisApprovalRow
+    >();
+    expectTypeOf(fromJarvisApprovalRow).toEqualTypeOf<
+      (row: JarvisApprovalRow) => JarvisApprovalV1
+    >();
     expectTypeOf(toJarvisArtifactRow).toEqualTypeOf<(value: JarvisArtifact) => JarvisArtifactRow>();
     expectTypeOf(fromJarvisArtifactRow).toEqualTypeOf<(row: JarvisArtifactRow) => JarvisArtifact>();
     expectTypeOf(toJarvisModelSnapshotRow).toEqualTypeOf<
@@ -545,10 +556,17 @@ describe('approval and artifact mappers', () => {
     const row = toJarvisApprovalRow(value);
 
     expect(row).toEqual({
+      schema_version: 1,
       id: 'approval-1',
       run_id: 'run-1',
+      request_id: 'request-2',
+      attempt_number: 2,
       action_id: 'action-1',
       action_version: 2,
+      capability_id: 'deployment.write',
+      capability_snapshot_hash: 'capability-snapshot-hash',
+      expected_effect: 'Deploys the reviewed target.',
+      expires_at: 7_000,
       params: { command: 'deploy', targets: [{ id: 'target-1', enabled: true }] },
       secret_handle_refs: [{ field: 'token', handle_id: 'secret-handle-1' }],
       params_hash: 'params-hash',
@@ -617,11 +635,18 @@ describe('approval and artifact mappers', () => {
   });
 
   it('omits absent approval and artifact optional keys in both directions', () => {
-    const minimalApproval: JarvisApproval = {
+    const minimalApproval: JarvisApprovalV1 = {
+      schemaVersion: 1,
       id: 'approval-minimal',
       runId: 'run-1',
+      requestId: 'request-minimal',
+      attemptNumber: 1,
       actionId: 'action-minimal',
       actionVersion: 1,
+      capabilityId: 'app.read',
+      capabilitySnapshotHash: 'capability-minimal-hash',
+      expectedEffect: 'Reads application state.',
+      expiresAt: 12_000,
       params: null,
       paramsHash: 'params-minimal-hash',
       risk: 'safe',

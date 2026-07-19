@@ -259,6 +259,7 @@ const syncHarness = vi.hoisted(() => {
     queueRows.clear();
     settingsRows.clear();
     vi.clearAllMocks();
+    pluginApplyForAccount.mockReturnValue(true);
     getSession.mockResolvedValue({
       data: { session: { user: { id: 'user-a' } } },
     });
@@ -563,6 +564,30 @@ describe('cloud sync records', () => {
       deleted_at: '2026-06-04T12:05:00.000Z',
       updated_at: '2026-06-04T12:00:00.000Z',
     });
+  });
+
+  it('retains both account-scoped plugin ids in a delete tombstone payload', () => {
+    const payload = {
+      accountId: 'auth_user_1',
+      pluginId: 'github',
+      state: 'connected',
+      enabled: true,
+      enabledProjectIds: ['*'],
+      configuredFields: [],
+      updatedAt: 1,
+    };
+    expect(
+      buildCloudSyncRecord(
+        {
+          ...baseRow,
+          table: 'plugin_connections',
+          row_id: 'v2:auth_user_1:github',
+          op: 'delete',
+          payload,
+        },
+        cloudOwner,
+      ).payload,
+    ).toEqual(payload);
   });
 
   it.each(EXPECTED_LOCAL_ONLY_SYNC_TABLES)(
@@ -2043,9 +2068,10 @@ describe('cloud sync authority lifecycle', () => {
         {
           user_id: 'user-a',
           table_name: 'plugin_connections',
-          row_id: 'github',
+          row_id: 'v2:user-a:github',
           op: 'update',
           payload: {
+            accountId: 'user-a',
             pluginId: 'github',
             state: 'connected',
             enabled: true,
@@ -2072,11 +2098,61 @@ describe('cloud sync authority lifecycle', () => {
     );
     expect(syncHarness.pluginApplyForAccount).toHaveBeenCalledWith(
       'user-a',
-      'github',
-      expect.objectContaining({ pluginId: 'github', state: 'connected' }),
+      'v2:user-a:github',
+      expect.objectContaining({ accountId: 'user-a', pluginId: 'github', state: 'connected' }),
     );
     expect(syncHarness.toolSetState).not.toHaveBeenCalled();
     expect(syncHarness.pluginSetState).not.toHaveBeenCalled();
+  });
+
+  it('ignores legacy and cross-account plugin connection records', async () => {
+    syncHarness.toolImportGate.resolve(undefined);
+    syncHarness.queuePullResult({
+      data: [
+        {
+          user_id: 'user-a',
+          table_name: 'plugin_connections',
+          row_id: 'github',
+          op: 'update',
+          payload: { accountId: 'user-a', pluginId: 'github', state: 'connected' },
+          deleted_at: null,
+          updated_at: '2026-07-16T12:00:00.000Z',
+        },
+        {
+          user_id: 'user-a',
+          table_name: 'plugin_connections',
+          row_id: 'v2:user-b:github',
+          op: 'update',
+          payload: { accountId: 'user-b', pluginId: 'github', state: 'connected' },
+          deleted_at: null,
+          updated_at: '2026-07-16T12:00:01.000Z',
+        },
+        {
+          user_id: 'user-a',
+          table_name: 'plugin_connections',
+          row_id: 'v2:user-a:github',
+          op: 'update',
+          payload: { accountId: 'user-b', pluginId: 'github', state: 'connected' },
+          deleted_at: null,
+          updated_at: '2026-07-16T12:00:02.000Z',
+        },
+        {
+          user_id: 'user-a',
+          table_name: 'plugin_connections',
+          row_id: 'v2:user-a:github',
+          op: 'delete',
+          payload: null,
+          deleted_at: '2026-07-16T12:00:03.000Z',
+          updated_at: '2026-07-16T12:00:03.000Z',
+        },
+      ],
+      error: null,
+    });
+
+    await expect(
+      processCloudPull({ userId: 'user-a', signal: new AbortController().signal }),
+    ).resolves.toEqual({ applied: 0, skipped: 4, errored: 0 });
+    expect(syncHarness.pluginApplyForAccount).not.toHaveBeenCalled();
   });
 
   it('never adopts an aborted user A upload after its owner sidecar is mutated to user B', async () => {

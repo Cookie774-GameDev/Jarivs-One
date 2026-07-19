@@ -502,7 +502,10 @@ export function buildCloudSyncRecord(
     table_name: row.table,
     row_id: row.row_id,
     op: row.op,
-    payload: row.op === 'delete' ? null : payloadForCloudRecord(row.table, row.payload),
+    payload:
+      row.op === 'delete' && row.table !== PLUGIN_CONNECTIONS_SYNC_TABLE
+        ? null
+        : payloadForCloudRecord(row.table, row.payload),
     deleted_at: row.op === 'delete' ? nowIso : null,
     updated_at: isoFromMs(row.created_at, nowIso),
   };
@@ -1039,20 +1042,42 @@ async function applyCustomToolCloudRecord(
   return true;
 }
 
+function pluginConnectionSyncIdentity(
+  rowId: string,
+): Readonly<{ accountId: string; pluginId: string }> | undefined {
+  const parts = rowId.split(':');
+  if (parts.length !== 3 || parts[0] !== 'v2') return undefined;
+  try {
+    const accountId = decodeURIComponent(parts[1] ?? '');
+    const pluginId = decodeURIComponent(parts[2] ?? '');
+    if (!accountId || !pluginId) return undefined;
+    const canonical = `v2:${encodeURIComponent(accountId)}:${encodeURIComponent(pluginId)}`;
+    return canonical === rowId ? { accountId, pluginId } : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function pluginConnectionFromCloudRecord(row: CloudSyncRecord) {
-  if (row.table_name !== PLUGIN_CONNECTIONS_SYNC_TABLE || row.op === 'delete') return null;
+  if (row.table_name !== PLUGIN_CONNECTIONS_SYNC_TABLE) return null;
   const payload = recordValue(row.payload);
-  const pluginId = stringValue(row.row_id) ?? stringValue(payload?.pluginId);
+  const identity = pluginConnectionSyncIdentity(row.row_id);
+  const payloadAccountId = stringValue(payload?.accountId);
+  const payloadPluginId = stringValue(payload?.pluginId);
   const state = stringValue(payload?.state);
   if (
     !payload ||
-    !pluginId ||
+    !identity ||
+    row.user_id !== identity.accountId ||
+    payloadAccountId !== identity.accountId ||
+    payloadPluginId !== identity.pluginId ||
     !['connected', 'not_connected', 'needs_setup', 'error'].includes(state ?? '')
   ) {
     return null;
   }
   return {
-    pluginId,
+    accountId: identity.accountId,
+    pluginId: identity.pluginId,
     state: state as 'connected' | 'not_connected' | 'needs_setup' | 'error',
     enabled: payload.enabled === true,
     enabledProjectIds: Array.isArray(payload.enabledProjectIds)
@@ -1077,16 +1102,16 @@ async function applyPluginConnectionCloudRecord(
   signal: AbortSignal,
 ): Promise<boolean> {
   if (signal.aborted) return false;
+  const identity = pluginConnectionSyncIdentity(row.row_id);
+  if (!identity || identity.accountId !== row.user_id) return false;
   const { applyCloudPluginConnectionForAccount } = await import('@/features/plugins/store');
   if (signal.aborted) return false;
-  if (row.op === 'delete') {
-    applyCloudPluginConnectionForAccount(row.user_id, row.row_id, null);
-    return true;
-  }
   const connection = pluginConnectionFromCloudRecord(row);
   if (!connection) return false;
-  applyCloudPluginConnectionForAccount(row.user_id, row.row_id, connection);
-  return true;
+  if (row.op === 'delete') {
+    return applyCloudPluginConnectionForAccount(row.user_id, row.row_id, null);
+  }
+  return applyCloudPluginConnectionForAccount(row.user_id, row.row_id, connection);
 }
 
 async function applyCloudSyncRecord(row: CloudSyncRecord, signal: AbortSignal): Promise<boolean> {

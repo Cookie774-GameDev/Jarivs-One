@@ -47,7 +47,6 @@ import {
   PlusCircle,
   Clock,
   AlarmClock,
-  Plug,
   FileText,
 } from 'lucide-react';
 
@@ -80,7 +79,10 @@ import {
   scheduleActionSummary,
   type JarvisScheduleRecurrence,
 } from '@/features/schedule/jarvisSchedules';
-import { formatChatModelSelectionLabel, modelSelectionContextFromAuth } from '@/lib/ai/modelSelection';
+import {
+  formatChatModelSelectionLabel,
+  modelSelectionContextFromAuth,
+} from '@/lib/ai/modelSelection';
 import { markTerminalExecution } from '@/features/terminals/terminalExecutionStore';
 import { createJarvisCoreActions } from './registryJarvisCore';
 
@@ -169,7 +171,10 @@ export function parseOrchestrationRoles(
   raw: unknown,
 ): { ok: true; groups: OrchestrationRoleGroup[] } | { ok: false; error: string } {
   if (typeof raw !== 'string' || !raw.trim()) {
-    return { ok: false, error: 'rolesJson is required: a JSON array of {count, agentSlug, prompt?} groups.' };
+    return {
+      ok: false,
+      error: 'rolesJson is required: a JSON array of {count, agentSlug, prompt?} groups.',
+    };
   }
   let parsed: unknown;
   try {
@@ -190,20 +195,29 @@ export function parseOrchestrationRoles(
     if (!Number.isFinite(count) || count < 1) {
       return { ok: false, error: 'Every roles entry needs a count of at least 1.' };
     }
-    const agentSlug = typeof source.agentSlug === 'string'
-      ? source.agentSlug.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '')
-      : '';
+    const agentSlug =
+      typeof source.agentSlug === 'string'
+        ? source.agentSlug
+            .trim()
+            .toLowerCase()
+            .replace(/[^a-z0-9_-]+/g, '-')
+            .replace(/^-+|-+$/g, '')
+        : '';
     if (!agentSlug) {
       return { ok: false, error: 'Every roles entry needs a non-empty agentSlug.' };
     }
-    const prompt = typeof source.prompt === 'string' && source.prompt.trim()
-      ? source.prompt.trim().slice(0, ORCHESTRATE_MAX_PROMPT_CHARS)
-      : undefined;
+    const prompt =
+      typeof source.prompt === 'string' && source.prompt.trim()
+        ? source.prompt.trim().slice(0, ORCHESTRATE_MAX_PROMPT_CHARS)
+        : undefined;
     groups.push({ count, agentSlug, prompt });
   }
   const total = groups.reduce((sum, group) => sum + group.count, 0);
   if (total > ORCHESTRATE_MAX_PANES) {
-    return { ok: false, error: `Role counts add up to ${total} panes; the maximum is ${ORCHESTRATE_MAX_PANES}.` };
+    return {
+      ok: false,
+      error: `Role counts add up to ${total} panes; the maximum is ${ORCHESTRATE_MAX_PANES}.`,
+    };
   }
   return { ok: true, groups };
 }
@@ -638,7 +652,7 @@ const TERMINAL_ACTIONS: ActionDef[] = [
         type: 'string',
         required: false,
         placeholder: 'claude',
-        help: 'Command started in every new pane (e.g. claude, opencode). Leave empty for a plain shell. If the CLI is not installed, the pane shows the shell\'s error - nothing is faked.',
+        help: "Command started in every new pane (e.g. claude, opencode). Leave empty for a plain shell. If the CLI is not installed, the pane shows the shell's error - nothing is faked.",
       },
       {
         key: 'rolesJson',
@@ -659,7 +673,8 @@ const TERMINAL_ACTIONS: ActionDef[] = [
       const roles = parseOrchestrationRoles(params.rolesJson);
       if (!roles.ok) return fail(roles.error);
       const command = typeof params.command === 'string' ? params.command.trim() : '';
-      const cwd = typeof params.cwd === 'string' && params.cwd.trim() ? params.cwd.trim() : undefined;
+      const cwd =
+        typeof params.cwd === 'string' && params.cwd.trim() ? params.cwd.trim() : undefined;
       if (cwd) {
         const meta = rejectShellMetaChars(cwd);
         if (meta) return fail(meta);
@@ -822,16 +837,20 @@ const TERMINAL_ACTIONS: ActionDef[] = [
       const script = typeof params.command === 'string' ? params.command.trim() : '';
       if (!script) return fail('Missing required parameter: command.');
       if (script.length > 10_000) {
-        return fail('The PowerShell command is too long to start safely. Save it as a script file instead.');
+        return fail(
+          'The PowerShell command is too long to start safely. Save it as a script file instead.',
+        );
       }
-      const cwd = typeof params.cwd === 'string' && params.cwd.trim() ? params.cwd.trim() : undefined;
+      const cwd =
+        typeof params.cwd === 'string' && params.cwd.trim() ? params.cwd.trim() : undefined;
       if (cwd) {
         const meta = rejectShellMetaChars(cwd);
         if (meta) return fail(meta);
       }
-      const label = typeof params.label === 'string' && params.label.trim()
-        ? params.label.trim()
-        : 'PowerShell';
+      const label =
+        typeof params.label === 'string' && params.label.trim()
+          ? params.label.trim()
+          : 'PowerShell';
       const timeoutMs = typeof params.timeoutMs === 'number' ? params.timeoutMs : undefined;
       if (timeoutMs !== undefined && (timeoutMs < 1_000 || timeoutMs > 1_800_000)) {
         return fail('Timeout must be between 1,000 and 1,800,000 milliseconds.');
@@ -1116,73 +1135,6 @@ const HOST_ACTIONS: ActionDef[] = [
   },
 ];
 
-const PLUGIN_ACTIONS: ActionDef[] = [
-  {
-    id: 'plugin.call',
-    category: 'custom',
-    label: 'Call connected plugin tool',
-    description:
-      'Run a declared tool from a connected and terminal-enabled plugin. Credentials remain in the OS keychain.',
-    icon: Plug,
-    params: [
-      {
-        key: 'pluginId',
-        label: 'Plugin id',
-        type: 'string',
-        required: true,
-        help: 'Stable plugin id shown in the connected plugin capability context.',
-      },
-      {
-        key: 'toolName',
-        label: 'Tool name',
-        type: 'string',
-        required: true,
-        help: 'A declared tool name from the plugin capability context.',
-      },
-    ],
-    run: async (params) => {
-      const pluginId = typeof params.pluginId === 'string' ? params.pluginId.trim() : '';
-      const toolName = typeof params.toolName === 'string' ? params.toolName.trim() : '';
-      if (!pluginId || !toolName) return fail('Plugin id and tool name are required.');
-
-      const [{ getPluginManifest, callPluginTool }, { usePluginStore }] = await Promise.all([
-        import('@/features/plugins'),
-        import('@/features/plugins/store'),
-      ]);
-      const manifest = getPluginManifest(pluginId);
-      const connection = usePluginStore.getState().connections[pluginId];
-      if (
-        !manifest ||
-        (manifest.status !== 'implemented' && manifest.status !== 'configurable')
-      ) {
-        return fail(`Plugin ${pluginId} is not available for tool calls.`);
-      }
-      if (!connection || connection.state !== 'connected') {
-        return fail(`${manifest.name} is not connected.`);
-      }
-      if (!connection.enabled) {
-        return fail(`${manifest.name} terminal access is disabled.`);
-      }
-      const projectId = useAuthStore.getState().projectId;
-      const availableHere =
-        connection.enabledProjectIds.includes('*') ||
-        Boolean(projectId && connection.enabledProjectIds.includes(projectId));
-      if (!availableHere) {
-        return fail(`${manifest.name} is not enabled for the active project.`);
-      }
-      const tool = manifest.tools.find((candidate) => candidate.name === toolName);
-      if (!tool) return fail(`Unknown ${manifest.name} tool: ${toolName}.`);
-
-      try {
-        const data = await callPluginTool(pluginId, toolName);
-        return ok(`${manifest.name}.${toolName} completed.`, data);
-      } catch (error) {
-        return fail(error instanceof Error ? error.message : String(error));
-      }
-    },
-  },
-];
-
 const CLOCK_ACTIONS: ActionDef[] = [
   {
     id: 'clock.timer',
@@ -1299,9 +1251,27 @@ const SCHEDULE_ACTIONS: ActionDef[] = [
     icon: CalendarClock,
     destructive: true,
     params: [
-      { key: 'title', label: 'Title', type: 'string', required: true, help: 'Short schedule title.' },
-      { key: 'prompt', label: 'Prompt', type: 'string', required: true, help: 'The Jarvis prompt/instruction to run on schedule.' },
-      { key: 'startAtMs', label: 'Start time', type: 'number', required: true, help: 'Unix milliseconds for the first run.' },
+      {
+        key: 'title',
+        label: 'Title',
+        type: 'string',
+        required: true,
+        help: 'Short schedule title.',
+      },
+      {
+        key: 'prompt',
+        label: 'Prompt',
+        type: 'string',
+        required: true,
+        help: 'The Jarvis prompt/instruction to run on schedule.',
+      },
+      {
+        key: 'startAtMs',
+        label: 'Start time',
+        type: 'number',
+        required: true,
+        help: 'Unix milliseconds for the first run.',
+      },
       {
         key: 'recurrence',
         label: 'Recurrence',
@@ -1318,37 +1288,52 @@ const SCHEDULE_ACTIONS: ActionDef[] = [
           { value: 'weekdays', label: 'Weekdays' },
         ],
       },
-      { key: 'agentId', label: 'Agent id', type: 'string', required: false, help: 'Real agent id to use. Omit to use Jarvis/default chat agent.' },
+      {
+        key: 'agentId',
+        label: 'Agent id',
+        type: 'string',
+        required: false,
+        help: 'Real agent id to use. Omit to use Jarvis/default chat agent.',
+      },
     ],
     run: async (params) => {
       const auth = useAuthStore.getState();
       if (!auth.workspaceId) return fail('No workspace is active.');
       const title = typeof params.title === 'string' ? params.title.trim() : '';
       const prompt = typeof params.prompt === 'string' ? params.prompt.trim() : '';
-      const startAtMs = typeof params.startAtMs === 'number' ? params.startAtMs : Number(params.startAtMs);
+      const startAtMs =
+        typeof params.startAtMs === 'number' ? params.startAtMs : Number(params.startAtMs);
       if (!title) return fail('Schedule title is required.');
       if (!prompt) return fail('Schedule prompt is required.');
       if (!Number.isFinite(startAtMs)) return fail('A valid startAtMs time is required.');
       const recurrence = (
-        typeof params.recurrence === 'string' && params.recurrence
-          ? params.recurrence
-          : 'once'
+        typeof params.recurrence === 'string' && params.recurrence ? params.recurrence : 'once'
       ) as JarvisScheduleRecurrence;
-      const modelLabel = formatChatModelSelectionLabel(auth.chatModelSelection, modelSelectionContextFromAuth(auth));
-      const event = await eventRepo.create(buildJarvisScheduleEventInput({
-        workspaceId: auth.workspaceId,
-        projectId: auth.projectId ?? undefined,
-        createdBy: 'agent_jarvis',
-        title,
-        prompt,
-        startAt: startAtMs,
-        recurrence,
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-        modelSelection: auth.chatModelSelection,
-        agentId: typeof params.agentId === 'string' && params.agentId.trim() ? params.agentId.trim() : 'agent_jarvis',
-      }));
+      const modelLabel = formatChatModelSelectionLabel(
+        auth.chatModelSelection,
+        modelSelectionContextFromAuth(auth),
+      );
+      const event = await eventRepo.create(
+        buildJarvisScheduleEventInput({
+          workspaceId: auth.workspaceId,
+          projectId: auth.projectId ?? undefined,
+          createdBy: 'agent_jarvis',
+          title,
+          prompt,
+          startAt: startAtMs,
+          recurrence,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+          modelSelection: auth.chatModelSelection,
+          agentId:
+            typeof params.agentId === 'string' && params.agentId.trim()
+              ? params.agentId.trim()
+              : 'agent_jarvis',
+        }),
+      );
       useUIStore.getState().setRoute('schedule');
-      return ok(`${scheduleActionSummary('created', event)} Model: ${modelLabel}`, { eventId: event.id });
+      return ok(`${scheduleActionSummary('created', event)} Model: ${modelLabel}`, {
+        eventId: event.id,
+      });
     },
   },
   {
@@ -1362,13 +1347,16 @@ const SCHEDULE_ACTIONS: ActionDef[] = [
       const auth = useAuthStore.getState();
       if (!auth.workspaceId) return fail('No workspace is active.');
       const rows = await eventRepo.listUpcoming(auth.workspaceId, 20);
-      return ok(`Found ${rows.length} upcoming schedule item${rows.length === 1 ? '' : 's'}.`, rows.map((event) => ({
-        id: event.id,
-        title: event.title,
-        start_at: event.start_at,
-        recurrence_rule: event.recurrence_rule,
-        status: event.status,
-      })));
+      return ok(
+        `Found ${rows.length} upcoming schedule item${rows.length === 1 ? '' : 's'}.`,
+        rows.map((event) => ({
+          id: event.id,
+          title: event.title,
+          start_at: event.start_at,
+          recurrence_rule: event.recurrence_rule,
+          status: event.status,
+        })),
+      );
     },
   },
   {
@@ -1639,7 +1627,6 @@ export function getBuiltinActions(): ActionDef[] {
     ...SCHEDULE_ACTIONS,
     ...CHAT_ACTIONS,
     ...HOST_ACTIONS,
-    ...PLUGIN_ACTIONS,
     ...CREATOR_ACTIONS,
     ...PRODUCTIVITY_ACTIONS,
     ...APP_CONTROL_ACTIONS,

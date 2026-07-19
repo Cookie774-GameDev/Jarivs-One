@@ -1,4 +1,5 @@
 import type { PluginConnection, PluginManifest } from './types';
+import { selectPluginConnectionsForAccount, usePluginStore } from './store';
 
 export interface PluginRuntimeContract {
   id: string;
@@ -12,7 +13,7 @@ export interface PluginRuntimeContract {
   };
   capabilities: string[];
   permissions: Array<{ capability: string; access: 'read' | 'write' }>;
-  actions: Array<'connect' | 'test' | 'invoke' | 'disconnect'>;
+  actions: Array<'connect' | 'test' | 'disconnect'>;
   health: {
     state: 'not-connected' | 'setup-required' | 'healthy' | 'unhealthy' | 'disabled';
     lastCheckedAt?: number;
@@ -44,31 +45,35 @@ function healthState(
 }
 
 export function getPluginRuntimeContract(
+  accountId: string,
   manifest: PluginManifest,
-  connection?: PluginConnection,
 ): PluginRuntimeContract {
-  const configured = new Set(connection?.configuredFields ?? []);
+  const exactConnection = selectPluginConnectionsForAccount(usePluginStore.getState(), accountId)[
+    manifest.id
+  ];
+  const configured = new Set(exactConnection?.configuredFields ?? []);
   const missingFields = manifest.fields
     .filter((field) => field.required && !configured.has(field.id))
     .map((field) => field.id);
   const permissions = manifest.tools.map((tool) => ({
     capability: tool.name,
-    access: tool.readOnly ? 'read' as const : 'write' as const,
+    access: tool.readOnly ? ('read' as const) : ('write' as const),
   }));
-  const state = healthState(connection);
-  const error = connection?.state === 'error'
-    ? {
-        code: 'connection-error' as const,
-        message: connection.error || 'The plugin connection test failed.',
-        retryable: true,
-      }
-    : missingFields.length > 0
+  const state = healthState(exactConnection);
+  const error =
+    exactConnection?.state === 'error'
       ? {
-          code: 'setup-required' as const,
-          message: 'Required setup fields are missing.',
-          retryable: false,
+          code: 'connection-error' as const,
+          message: exactConnection.error || 'The plugin connection test failed.',
+          retryable: true,
         }
-      : undefined;
+      : missingFields.length > 0
+        ? {
+            code: 'setup-required' as const,
+            message: 'Required setup fields are missing.',
+            retryable: false,
+          }
+        : undefined;
 
   return {
     id: manifest.id,
@@ -80,15 +85,14 @@ export function getPluginRuntimeContract(
       secretStorage: manifest.authType === 'none' ? 'none' : 'os-keychain',
       requiredFields: manifest.fields.filter((field) => field.required).map((field) => field.id),
     },
-    capabilities: [...new Set([
-      ...manifest.supportedFeatures,
-      ...manifest.tools.map((tool) => tool.name),
-    ])].sort(),
+    capabilities: [
+      ...new Set([...manifest.supportedFeatures, ...manifest.tools.map((tool) => tool.name)]),
+    ].sort(),
     permissions,
-    actions: ['connect', 'test', 'invoke', 'disconnect'],
+    actions: ['connect', 'test', 'disconnect'],
     health: {
       state,
-      lastCheckedAt: connection?.lastTestedAt,
+      lastCheckedAt: exactConnection?.lastTestedAt,
     },
     setup: {
       steps: [...manifest.setupSteps],
@@ -98,8 +102,10 @@ export function getPluginRuntimeContract(
     },
     test: {
       automated: Boolean(manifest.httpTest) || manifest.id === 'mock-connector',
-      lastResult: connection?.lastTestedAt
-        ? connection.state === 'connected' ? 'passed' : 'failed'
+      lastResult: exactConnection?.lastTestedAt
+        ? exactConnection.state === 'connected'
+          ? 'passed'
+          : 'failed'
         : undefined,
     },
     error,
@@ -110,33 +116,20 @@ export function validatePluginRuntimeContract(contract: PluginRuntimeContract): 
   const errors: string[] = [];
   if (!/^[a-z0-9][a-z0-9-]*$/.test(contract.id)) errors.push('invalid stable id');
   if (contract.version !== 1) errors.push('unsupported contract version');
-  if (!contract.name.trim() || !contract.description.trim()) errors.push('missing user-facing metadata');
-  if (contract.actions.join(',') !== 'connect,test,invoke,disconnect') errors.push('incomplete lifecycle actions');
-  if (new Set(contract.capabilities).size !== contract.capabilities.length) errors.push('duplicate capabilities');
-  if (new Set(contract.permissions.map((permission) => permission.capability)).size !== contract.permissions.length) {
+  if (!contract.name.trim() || !contract.description.trim())
+    errors.push('missing user-facing metadata');
+  if (contract.actions.join(',') !== 'connect,test,disconnect')
+    errors.push('incomplete lifecycle actions');
+  if (new Set(contract.capabilities).size !== contract.capabilities.length)
+    errors.push('duplicate capabilities');
+  if (
+    new Set(contract.permissions.map((permission) => permission.capability)).size !==
+    contract.permissions.length
+  ) {
     errors.push('duplicate permissions');
   }
   if (contract.auth.secretStorage === 'none' && contract.auth.type !== 'none') {
     errors.push('authenticated plugin must use secure secret storage');
   }
   return errors;
-}
-
-interface DisconnectDependencies {
-  deleteCredential?: (pluginId: string, fieldId: string) => Promise<void>;
-  removeConnection?: (pluginId: string) => void;
-}
-
-export async function disconnectPlugin(
-  manifest: PluginManifest,
-  dependencies: DisconnectDependencies = {},
-): Promise<void> {
-  const deleteCredential = dependencies.deleteCredential
-    ?? (await import('./credentials')).deletePluginCredential;
-  for (const field of manifest.fields) {
-    await deleteCredential(manifest.id, field.id);
-  }
-  const removeConnection = dependencies.removeConnection
-    ?? (await import('./store')).usePluginStore.getState().removeConnection;
-  removeConnection(manifest.id);
 }

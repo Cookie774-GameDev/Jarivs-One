@@ -745,6 +745,85 @@ export interface JarvisApproval {
   consumedAt?: number;
 }
 
+export interface JarvisApprovalV1 extends JarvisApproval {
+  schemaVersion: 1;
+  requestId: string;
+  attemptNumber: number;
+  capabilityId: string;
+  capabilitySnapshotHash: string;
+  expectedEffect: string;
+  expiresAt: number;
+}
+
+export type JarvisAuthorityBoundResult<T> =
+  | { kind: 'committed'; value: T }
+  | { kind: 'account_authority_revoked' };
+
+const INVALID_CANONICAL_APPROVAL_JSON = 'Invalid canonical approval JSON.';
+
+export function canonicalizeJarvisApprovalJson(value: unknown): string {
+  const active = new WeakSet<object>();
+  const visit = (entry: unknown): string => {
+    if (entry === null) return 'null';
+    if (typeof entry === 'string' || typeof entry === 'boolean') return JSON.stringify(entry);
+    if (typeof entry === 'number') {
+      if (!Number.isFinite(entry)) throw new TypeError(INVALID_CANONICAL_APPROVAL_JSON);
+      return JSON.stringify(Object.is(entry, -0) ? 0 : entry);
+    }
+    if (typeof entry !== 'object') throw new TypeError(INVALID_CANONICAL_APPROVAL_JSON);
+    if (active.has(entry)) throw new TypeError(INVALID_CANONICAL_APPROVAL_JSON);
+    active.add(entry);
+    try {
+      if (Array.isArray(entry)) {
+        if (
+          Reflect.ownKeys(entry).some(
+            (key) => typeof key !== 'string' || (key !== 'length' && !/^(?:0|[1-9]\d*)$/.test(key)),
+          )
+        ) {
+          throw new TypeError(INVALID_CANONICAL_APPROVAL_JSON);
+        }
+        const items: string[] = [];
+        for (let index = 0; index < entry.length; index += 1) {
+          if (!Object.prototype.hasOwnProperty.call(entry, index)) {
+            throw new TypeError(INVALID_CANONICAL_APPROVAL_JSON);
+          }
+          const descriptor = Object.getOwnPropertyDescriptor(entry, String(index));
+          if (!descriptor || !('value' in descriptor)) {
+            throw new TypeError(INVALID_CANONICAL_APPROVAL_JSON);
+          }
+          items.push(visit(descriptor.value));
+        }
+        return `[${items.join(',')}]`;
+      }
+      const prototype = Object.getPrototypeOf(entry);
+      if (prototype !== Object.prototype && prototype !== null) {
+        throw new TypeError(INVALID_CANONICAL_APPROVAL_JSON);
+      }
+      const keys = Reflect.ownKeys(entry);
+      if (keys.some((key) => typeof key !== 'string')) {
+        throw new TypeError(INVALID_CANONICAL_APPROVAL_JSON);
+      }
+      const properties = (keys as string[]).sort().map((key) => {
+        const descriptor = Object.getOwnPropertyDescriptor(entry, key);
+        if (!descriptor || !descriptor.enumerable || !('value' in descriptor)) {
+          throw new TypeError(INVALID_CANONICAL_APPROVAL_JSON);
+        }
+        return `${JSON.stringify(key)}:${visit(descriptor.value)}`;
+      });
+      return `{${properties.join(',')}}`;
+    } finally {
+      active.delete(entry);
+    }
+  };
+  return visit(value);
+}
+
+export async function hashCanonicalJarvisApprovalJson(value: unknown): Promise<string> {
+  const bytes = new TextEncoder().encode(canonicalizeJarvisApprovalJson(value));
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
 export interface JarvisArtifact {
   id: string;
   runId: string;

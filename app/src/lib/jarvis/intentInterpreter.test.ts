@@ -6,6 +6,11 @@ import { interpretJarvisRequest } from './intentInterpreter';
 const registered = new Set(getBuiltinActions().map((action) => action.id));
 
 describe('Jarvis intent interpreter', () => {
+  it('does not register generic plugin invocation actions', () => {
+    expect(registered.has('plugin.call')).toBe(false);
+    expect(registered.has('plugin.invoke')).toBe(false);
+  });
+
   it.each([
     ['Hi', 'casual-conversation', []],
     ['Open Jarvis Actions.', 'app-navigation', ['settings.jarvisactions']],
@@ -16,7 +21,11 @@ describe('Jarvis intent interpreter', () => {
     ['Tell me a quick developer joke.', 'casual-conversation', []],
     ['Evaluate learned preferences after ten meaningful messages.', 'memory-update', []],
     ["Switch accounts and show the new account's learned preferences.", 'memory-update', []],
-    ['Retry the same chat rename after the response is duplicated.', 'app-configuration', ['chat.rename']],
+    [
+      'Retry the same chat rename after the response is duplicated.',
+      'app-configuration',
+      ['chat.rename'],
+    ],
   ])('classifies %s without inventing actions', (prompt, intent, actionIds) => {
     const result = interpretJarvisRequest(prompt);
     expect(result.intent).toBe(intent);
@@ -63,6 +72,14 @@ describe('Jarvis intent interpreter', () => {
     expect(result.execution).toBe('automatic');
     expect(result.steps.map((step) => step.action)).toEqual(['mcp.start', 'mcp.invoke']);
     expect(result.steps[1]?.input).toMatchObject({ toolName: 'list_tables', inputJson: '{}' });
+  });
+
+  it('never routes generic plugin tool requests to a model-selected plugin invocation', () => {
+    const result = interpretJarvisRequest('Run the plugin tool and report its timeout.');
+    expect(result.intent).toBe('plugin-use');
+    expect(result.execution).toBe('explicit-approval-required');
+    expect(result.steps).toEqual([]);
+    expect(JSON.stringify(result)).not.toMatch(/plugin\.(?:call|invoke)/);
   });
 
   it('never turns a destructive Supabase request into the automatic read-only path', () => {

@@ -1,11 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
-
-import {
-  disconnectPlugin,
-  getPluginRuntimeContract,
-  validatePluginRuntimeContract,
-} from './contract';
+import { describe, expect, it } from 'vitest';
+import { getPluginRuntimeContract, validatePluginRuntimeContract } from './contract';
 import type { PluginManifest } from './types';
+import { usePluginStore } from './store';
 
 const manifest: PluginManifest = {
   id: 'example',
@@ -24,34 +20,28 @@ const manifest: PluginManifest = {
 };
 
 describe('plugin runtime contract', () => {
-  it('normalizes manifest lifecycle, health, permissions, and actions', () => {
-    const contract = getPluginRuntimeContract(manifest, {
+  it('requires an exact account-owned connection and exposes only human management actions', () => {
+    const connection = {
+      accountId: 'account-a',
       pluginId: 'example',
-      state: 'connected',
+      state: 'connected' as const,
       enabled: true,
       enabledProjectIds: ['*'],
       configuredFields: ['token'],
       updatedAt: 1,
+    };
+    usePluginStore.setState({
+      connectionsByAccount: { 'account-a': { example: connection } },
     });
+    const contract = getPluginRuntimeContract('account-a', manifest);
 
     expect(validatePluginRuntimeContract(contract)).toEqual([]);
     expect(contract).toMatchObject({
-      id: 'example',
-      version: 1,
-      auth: { type: 'token', secretStorage: 'os-keychain' },
       health: { state: 'healthy' },
-      actions: ['connect', 'test', 'invoke', 'disconnect'],
+      actions: ['connect', 'test', 'disconnect'],
       permissions: [{ capability: 'repo.read', access: 'read' }],
     });
-  });
-
-  it('disconnects metadata and every credential field', async () => {
-    const deleteCredential = vi.fn(async () => undefined);
-    const removeConnection = vi.fn();
-
-    await disconnectPlugin(manifest, { deleteCredential, removeConnection });
-
-    expect(deleteCredential).toHaveBeenCalledWith('example', 'token');
-    expect(removeConnection).toHaveBeenCalledWith('example');
+    expect(getPluginRuntimeContract('account-b', manifest).health.state).toBe('not-connected');
+    expect(getPluginRuntimeContract('', manifest).health.state).toBe('not-connected');
   });
 });

@@ -9,7 +9,10 @@ import {
   waitForTerminalExecutions,
 } from './registryJarvisCore';
 
-function action(id: string, run = vi.fn(async () => ({ ok: true as const, summary: 'done' }))): ActionDef {
+function action(
+  id: string,
+  run = vi.fn(async () => ({ ok: true as const, summary: 'done' })),
+): ActionDef {
   return {
     id,
     category: 'custom',
@@ -25,11 +28,13 @@ describe('Jarvis canonical core actions', () => {
     const actions = createJarvisCoreActions(() => undefined);
     expect(actions.map((item) => item.id)).toEqual(CORE_ACTION_IDS);
     expect(new Set(actions.map((item) => item.id)).size).toBe(actions.length);
+    expect(actions.map((item) => item.id)).not.toContain('plugin.invoke');
   });
 
   it('never exposes a model-controlled filesystem root on automatic file search', () => {
-    const search = createJarvisCoreActions(() => undefined)
-      .find((item) => item.id === 'file.search')!;
+    const search = createJarvisCoreActions(() => undefined).find(
+      (item) => item.id === 'file.search',
+    )!;
 
     expect(search.autoApprove).toBe(true);
     expect(search.params.map((param) => param.key)).toEqual(['query', 'maxResults']);
@@ -40,10 +45,9 @@ describe('Jarvis canonical core actions', () => {
     const legacy = [action('terminal.bulkOpen', run)];
     const actions = createJarvisCoreActions((id) => legacy.find((item) => item.id === id));
 
-    const result = await actions.find((item) => item.id === 'terminal.create_many')!.run(
-      { count: 3, cwd: 'C:\\work' },
-      { source: 'ai', chatId: 'chat-1' },
-    );
+    const result = await actions
+      .find((item) => item.id === 'terminal.create_many')!
+      .run({ count: 3, cwd: 'C:\\work' }, { source: 'ai', chatId: 'chat-1' });
 
     expect(result.ok).toBe(true);
     expect(run).toHaveBeenCalledWith(
@@ -53,8 +57,9 @@ describe('Jarvis canonical core actions', () => {
   });
 
   it('fails truthfully when a required host action is unavailable', async () => {
-    const action = createJarvisCoreActions(() => undefined)
-      .find((item) => item.id === 'terminal.create')!;
+    const action = createJarvisCoreActions(() => undefined).find(
+      (item) => item.id === 'terminal.create',
+    )!;
 
     await expect(action.run({}, { source: 'ai' })).resolves.toEqual({
       ok: false,
@@ -70,57 +75,72 @@ describe('Jarvis canonical core actions', () => {
         reads += 1;
         return reads === 1
           ? { one: { status: 'queued' }, two: { status: 'starting' } }
-          : { one: { status: 'running', sessionId: 's1' }, two: { status: 'running', sessionId: 's2' } };
+          : {
+              one: { status: 'running', sessionId: 's1' },
+              two: { status: 'running', sessionId: 's2' },
+            };
       },
       sleep: async () => undefined,
-      now: (() => { let now = 0; return () => ++now; })(),
+      now: (() => {
+        let now = 0;
+        return () => ++now;
+      })(),
     });
     expect(result).toEqual({ ok: true, sessionIds: ['s1', 's2'] });
   });
 
   it('does not report failed or timed-out terminal launches as complete', async () => {
-    await expect(waitForTerminalExecutions(['one'], {
-      timeoutMs: 100,
-      read: () => ({ one: { status: 'failed' } }),
-      sleep: async () => undefined,
-      now: () => 0,
-    })).resolves.toMatchObject({ ok: false, error: expect.stringMatching(/failed/i) });
+    await expect(
+      waitForTerminalExecutions(['one'], {
+        timeoutMs: 100,
+        read: () => ({ one: { status: 'failed' } }),
+        sleep: async () => undefined,
+        now: () => 0,
+      }),
+    ).resolves.toMatchObject({ ok: false, error: expect.stringMatching(/failed/i) });
 
     let now = 0;
-    await expect(waitForTerminalExecutions(['one'], {
-      timeoutMs: 2,
-      read: () => ({ one: { status: 'queued' } }),
-      sleep: async () => undefined,
-      now: () => ++now,
-    })).resolves.toMatchObject({ ok: false, error: expect.stringMatching(/within/i) });
+    await expect(
+      waitForTerminalExecutions(['one'], {
+        timeoutMs: 2,
+        read: () => ({ one: { status: 'queued' } }),
+        sleep: async () => undefined,
+        now: () => ++now,
+      }),
+    ).resolves.toMatchObject({ ok: false, error: expect.stringMatching(/within/i) });
   });
 
   it('stops terminal and agent observers when their parent run is cancelled', async () => {
-    await expect(waitForTerminalExecutions(['one'], {
-      timeoutMs: 50,
-      read: () => ({ one: { status: 'queued' } }),
-      cancelled: () => true,
-      sleep: async () => undefined,
-      now: () => 0,
-    })).resolves.toMatchObject({ ok: false, error: expect.stringMatching(/cancelled/i) });
+    await expect(
+      waitForTerminalExecutions(['one'], {
+        timeoutMs: 50,
+        read: () => ({ one: { status: 'queued' } }),
+        cancelled: () => true,
+        sleep: async () => undefined,
+        now: () => 0,
+      }),
+    ).resolves.toMatchObject({ ok: false, error: expect.stringMatching(/cancelled/i) });
 
-    await expect(waitForAgentBatch(['a'], {
-      timeoutMs: 50,
-      read: () => ({ a: { status: 'running' } }),
-      cancelled: () => true,
-      sleep: async () => undefined,
-      now: () => 0,
-    })).resolves.toMatchObject({ ok: false, error: expect.stringMatching(/cancelled/i) });
+    await expect(
+      waitForAgentBatch(['a'], {
+        timeoutMs: 50,
+        read: () => ({ a: { status: 'running' } }),
+        cancelled: () => true,
+        sleep: async () => undefined,
+        now: () => 0,
+      }),
+    ).resolves.toMatchObject({ ok: false, error: expect.stringMatching(/cancelled/i) });
   });
 
   it('validates bounded multi-agent task batches and observes completion', async () => {
-    expect(parseAgentBatch(JSON.stringify([
-      { task: 'Inspect chat files only.' },
-      { task: 'Inspect terminal files only.' },
-    ]))).toEqual([
-      { task: 'Inspect chat files only.' },
-      { task: 'Inspect terminal files only.' },
-    ]);
+    expect(
+      parseAgentBatch(
+        JSON.stringify([
+          { task: 'Inspect chat files only.' },
+          { task: 'Inspect terminal files only.' },
+        ]),
+      ),
+    ).toEqual([{ task: 'Inspect chat files only.' }, { task: 'Inspect terminal files only.' }]);
     expect(parseAgentBatch(JSON.stringify([{ task: '' }]))).toBeNull();
 
     const result = await waitForAgentBatch(['a', 'b'], {
@@ -136,11 +156,13 @@ describe('Jarvis canonical core actions', () => {
   });
 
   it('surfaces blocked child agents instead of claiming batch completion', async () => {
-    await expect(waitForAgentBatch(['a'], {
-      timeoutMs: 50,
-      read: () => ({ a: { status: 'blocked', error: 'Needs a decision.' } }),
-      sleep: async () => undefined,
-      now: () => 0,
-    })).resolves.toEqual({ ok: false, error: 'Agent a is blocked: Needs a decision.' });
+    await expect(
+      waitForAgentBatch(['a'], {
+        timeoutMs: 50,
+        read: () => ({ a: { status: 'blocked', error: 'Needs a decision.' } }),
+        sleep: async () => undefined,
+        now: () => 0,
+      }),
+    ).resolves.toEqual({ ok: false, error: 'Agent a is blocked: Needs a decision.' });
   });
 });

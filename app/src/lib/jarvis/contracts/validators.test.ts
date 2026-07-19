@@ -2,7 +2,9 @@ import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import {
   type CompiledJarvisPrompt,
   type CompiledPromptLayer,
-  type JarvisApproval,
+  canonicalizeJarvisApprovalJson,
+  hashCanonicalJarvisApprovalJson,
+  type JarvisApprovalV1,
   type JarvisArtifact,
   type JarvisCapabilityRef,
   type JarvisCapabilitySnapshot,
@@ -322,12 +324,19 @@ function validEvent(): JarvisEvent {
   };
 }
 
-function validApproval(): JarvisApproval {
+function validApproval(): JarvisApprovalV1 {
   return {
+    schemaVersion: 1,
     id: 'approval-1',
     runId: 'run-1',
+    requestId: 'request-1',
+    attemptNumber: 2,
     actionId: 'action-1',
     actionVersion: 1,
+    capabilityId: 'files.read',
+    capabilitySnapshotHash: 'capability-snapshot-hash-1',
+    expectedEffect: 'Reads one file without modifying it.',
+    expiresAt: 1_000,
     params: {
       target: 'synthetic-target',
       options: {
@@ -535,7 +544,7 @@ describe('Task 3 public contract barrel', () => {
       (input: unknown) => JarvisContractValidationResult<JarvisEvent>
     >();
     expectTypeOf(validateJarvisApproval).toEqualTypeOf<
-      (input: unknown) => JarvisContractValidationResult<JarvisApproval>
+      (input: unknown) => JarvisContractValidationResult<JarvisApprovalV1>
     >();
     expectTypeOf(validateJarvisArtifact).toEqualTypeOf<
       (input: unknown) => JarvisContractValidationResult<JarvisArtifact>
@@ -959,10 +968,17 @@ describe('missing required fields', () => {
       validate: validateJarvisApproval as Validator,
       parentPath: [],
       fields: [
+        'schemaVersion',
         'id',
         'runId',
+        'requestId',
+        'attemptNumber',
         'actionId',
         'actionVersion',
+        'capabilityId',
+        'capabilitySnapshotHash',
+        'expectedEffect',
+        'expiresAt',
         'params',
         'paramsHash',
         'risk',
@@ -1495,6 +1511,55 @@ describe('enum membership', () => {
       0,
       'type',
     ]);
+  });
+
+  it('requires every durable approval v1 binding field and rejects unknown fields', () => {
+    for (const field of [
+      'schemaVersion',
+      'requestId',
+      'attemptNumber',
+      'capabilityId',
+      'capabilitySnapshotHash',
+      'expectedEffect',
+      'expiresAt',
+    ]) {
+      const input = { ...validApproval() } as Record<string, unknown>;
+      delete input[field];
+      expectFailure(validateJarvisApproval(input), 'missing_field', [field]);
+    }
+    expectFailure(
+      validateJarvisApproval({ ...validApproval(), credential: 'never' }),
+      'unknown_field',
+      ['credential'],
+    );
+  });
+
+  it('canonicalizes approval JSON deterministically and hashes canonical UTF-8 bytes', async () => {
+    expect(canonicalizeJarvisApprovalJson({ z: -0, a: [3, { y: true, x: 'ok' }] })).toBe(
+      '{"a":[3,{"x":"ok","y":true}],"z":0}',
+    );
+    await expect(hashCanonicalJarvisApprovalJson({ b: 2, a: 1 })).resolves.toBe(
+      await hashCanonicalJarvisApprovalJson({ a: 1, b: 2 }),
+    );
+  });
+
+  it.each([
+    undefined,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    BigInt(1),
+    () => undefined,
+    Symbol('approval'),
+    new Date(0),
+    [, 1],
+  ])('rejects unsupported canonical approval JSON without reflecting payloads', (value) => {
+    expect(() => canonicalizeJarvisApprovalJson(value)).toThrow('Invalid canonical approval JSON');
+  });
+
+  it('rejects canonical approval JSON cycles', () => {
+    const value: Record<string, unknown> = {};
+    value.self = value;
+    expect(() => canonicalizeJarvisApprovalJson(value)).toThrow('Invalid canonical approval JSON');
   });
 });
 
@@ -2382,7 +2447,7 @@ describe('deep JSON safety', () => {
     const input = validApproval();
     input.params = deepJsonRecord('value', 'synthetic');
 
-    let result: JarvisContractValidationResult<JarvisApproval> | undefined;
+    let result: JarvisContractValidationResult<JarvisApprovalV1> | undefined;
     expect(() => {
       result = validateJarvisApproval(input);
     }).not.toThrow();
@@ -2399,7 +2464,7 @@ describe('deep JSON safety', () => {
       'invalid',
     ];
 
-    let result: JarvisContractValidationResult<JarvisApproval> | undefined;
+    let result: JarvisContractValidationResult<JarvisApprovalV1> | undefined;
     expect(() => {
       result = validateJarvisApproval(input);
     }).not.toThrow();
@@ -2422,7 +2487,7 @@ describe('deep JSON safety', () => {
       'cycle',
     ];
 
-    let result: JarvisContractValidationResult<JarvisApproval> | undefined;
+    let result: JarvisContractValidationResult<JarvisApprovalV1> | undefined;
     expect(() => {
       result = validateJarvisApproval(input);
     }).not.toThrow();
@@ -2455,7 +2520,7 @@ describe('deep JSON safety', () => {
     });
     revoke = revocable.revoke;
 
-    let result: JarvisContractValidationResult<JarvisApproval> | undefined;
+    let result: JarvisContractValidationResult<JarvisApprovalV1> | undefined;
     expect(() => {
       result = validateJarvisApproval(revocable.proxy);
     }).not.toThrow();
