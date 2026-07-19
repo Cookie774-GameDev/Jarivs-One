@@ -275,6 +275,8 @@ describe('trusted JARVIS security runtime composition', () => {
     const ids = ['grant-1', 'handle-1', 'approval-1'];
     const lifecycleRevocation = new AbortController();
     let claimedApproval: JarvisApprovalV1 | undefined;
+    let rebindCredentialOnClaim = false;
+    let runtime!: ReturnType<typeof createJarvisSecurityRuntime>;
     const lifecycle: JarvisIssuedApprovalLifecycle = {
       accountId: 'account-a',
       runId: parent.id,
@@ -287,6 +289,14 @@ describe('trusted JARVIS security runtime composition', () => {
       claimApprovedExecution: vi.fn(),
       claimAutoApprovedExecution: vi.fn(async ({ approval }) => {
         sequence.push('claim');
+        if (rebindCredentialOnClaim) {
+          await runtime.pluginManagement.saveCredential({
+            accountId: 'account-a',
+            pluginId: 'github',
+            fieldId: 'token',
+            value: 'synthetic-rebound-value',
+          });
+        }
         claimedApproval = {
           id: approval.approvalId,
           schemaVersion: 1,
@@ -330,7 +340,7 @@ describe('trusted JARVIS security runtime composition', () => {
       }),
       dispose: vi.fn(() => lifecycleRevocation.abort()),
     };
-    const runtime = createJarvisSecurityRuntime({
+    runtime = createJarvisSecurityRuntime({
       repositories: {
         run: { getById: vi.fn(async () => structuredClone(parent)) },
         approval: { getById: vi.fn(), listByRun: vi.fn(async () => []) },
@@ -405,6 +415,25 @@ describe('trusted JARVIS security runtime composition', () => {
     expect(claimedApproval?.secretHandleRefs).toHaveLength(1);
     expect(nativeFetchMock).toHaveBeenCalledOnce();
     expect(sequence).toEqual(['claim', 'gate', 'provider', 'dispose']);
+
+    rebindCredentialOnClaim = true;
+    sequence.length = 0;
+    await expect(
+      runtime.bindKernelActions(lifecycle).executeAutoApprovedSafe({
+        parentRun: parent,
+        attempt: { kind: 'initial', requestId: 'request-1', runId: parent.id, attemptNumber: 1 },
+        actionId: 'github.fixed-list',
+        actionVersion: 1,
+        params: {},
+        expiresAt: 15_000,
+        context: { source: 'ai' },
+      }),
+    ).resolves.toEqual({
+      kind: 'settled',
+      result: { ok: false, error: 'registered_action_failed' },
+    });
+    expect(nativeFetchMock).toHaveBeenCalledOnce();
+    expect(sequence).toEqual(['claim', 'dispose']);
   });
 
   it('keeps executable constructors and private credential authority out of public barrels', () => {
