@@ -9,6 +9,11 @@ import {
   normalizeVerifiedArtifactInternal,
 } from './artifactNormalizer';
 
+const jarvisArtifactRuntimeInternalsBrand: unique symbol = Symbol(
+  'jarvis.artifact-runtime-internals',
+);
+const artifactCommitCapabilities = new WeakSet<object>();
+
 /** @internal Imported only by artifactRuntime.ts and focused tests. */
 export type JarvisArtifactRuntimeInternals = Readonly<{
   materializeVerified(input: {
@@ -22,6 +27,7 @@ export type JarvisArtifactRuntimeInternals = Readonly<{
     attemptNumber: number;
     artifacts: readonly JarvisArtifactV1[];
   }): void;
+  [jarvisArtifactRuntimeInternalsBrand]: true;
 }>;
 
 type PendingCommitScope = Readonly<{
@@ -33,6 +39,24 @@ type PendingCommitScope = Readonly<{
 
 function stableText(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
+}
+
+function unixMilliseconds(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= 0;
+}
+
+/** @internal Imported only by jarvisRepositories.ts and focused tests. */
+export function assertJarvisArtifactCommitCapabilityInternal(
+  value: unknown,
+): asserts value is JarvisArtifactRuntimeInternals {
+  if (
+    value === null ||
+    typeof value !== 'object' ||
+    !artifactCommitCapabilities.has(value) ||
+    (value as JarvisArtifactRuntimeInternals)[jarvisArtifactRuntimeInternalsBrand] !== true
+  ) {
+    throw new Error('artifact_commit_capability_invalid');
+  }
 }
 
 function assertCommitScope(input: PendingCommitScope): void {
@@ -72,7 +96,6 @@ export function createJarvisArtifactRuntimeInternals(input: {
   randomUUID: () => string;
   now: () => number;
 }): JarvisArtifactRuntimeInternals {
-  const receipts = createArtifactReceiptAuthority(input);
   const pending = new WeakMap<JarvisArtifactV1, PendingCommitScope>();
   const locks = new Map<string, Promise<void>>();
 
@@ -93,11 +116,21 @@ export function createJarvisArtifactRuntimeInternals(input: {
     }
   }
 
-  return Object.freeze({
+  const runtimeValue = {
     async materializeVerified({ binding, draft }) {
       return serialized(lockKey(binding), async () => {
         const uuid = input.randomUUID();
         if (!stableText(uuid)) throw new Error('artifact_id_invalid');
+        const receiptIssuedAt = input.now();
+        if (!unixMilliseconds(receiptIssuedAt)) {
+          throw new Error('artifact_receipt_timestamp_invalid');
+        }
+        const receiptUuid = input.randomUUID();
+        if (!stableText(receiptUuid)) throw new Error('artifact_receipt_id_invalid');
+        const receipts = createArtifactReceiptAuthority({
+          now: () => receiptIssuedAt,
+          randomUUID: () => receiptUuid,
+        });
         const preDigest: ArtifactPreDigestBinding = Object.freeze({
           accountId: binding.accountId,
           runId: binding.runId,
@@ -153,5 +186,14 @@ export function createJarvisArtifactRuntimeInternals(input: {
       }
       for (const artifact of commit.artifacts) pending.delete(artifact);
     },
+  } as JarvisArtifactRuntimeInternals;
+  Object.defineProperty(runtimeValue, jarvisArtifactRuntimeInternalsBrand, {
+    value: true,
+    enumerable: false,
+    configurable: false,
+    writable: false,
   });
+  const runtime = Object.freeze(runtimeValue);
+  artifactCommitCapabilities.add(runtime);
+  return runtime;
 }

@@ -100,6 +100,41 @@ describe('artifact runtime internals', () => {
     expect(counter).toBe(4);
   });
 
+  it('reserves and validates every injected timestamp and UUID before canonicalization starts', async () => {
+    const events: string[] = [];
+    let canonicalizationStarted = false;
+    const observedDraft = new Proxy(draft(), {
+      getPrototypeOf(target) {
+        canonicalizationStarted = true;
+        events.push('canonicalize');
+        return Reflect.getPrototypeOf(target);
+      },
+    });
+    let uuid = 0;
+    const runtime = createJarvisArtifactRuntimeInternals({
+      randomUUID: () => {
+        if (canonicalizationStarted)
+          throw new Error('external UUID callback reached authority tail');
+        events.push('randomUUID');
+        return `reserved-${++uuid}`;
+      },
+      now: () => {
+        if (canonicalizationStarted) {
+          throw new Error('external timestamp callback reached authority tail');
+        }
+        events.push('now');
+        return NOW;
+      },
+    });
+
+    await expect(
+      runtime.materializeVerified({ binding: binding(), draft: observedDraft }),
+    ).resolves.toMatchObject({ id: 'jart_reserved-1' });
+    expect(events.slice(0, 4)).toEqual(['randomUUID', 'now', 'randomUUID', 'canonicalize']);
+    expect(events.filter((event) => event === 'randomUUID')).toHaveLength(2);
+    expect(events.filter((event) => event === 'now')).toHaveLength(1);
+  });
+
   it('leaves no commit eligibility after canonicalization or receipt failures', async () => {
     let calls = 0;
     const runtime = createJarvisArtifactRuntimeInternals({
@@ -180,11 +215,114 @@ describe('artifact internal import ladder', () => {
     }
   });
 
+  it('exports only the closed draft and v1 artifact contracts from the public barrel', () => {
+    const fileName = resolve(jarvisDir, 'contracts/index.ts');
+    const source = ts.createSourceFile(
+      fileName,
+      readFileSync(fileName, 'utf8'),
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TS,
+    );
+    const artifactExports = source.statements
+      .filter(
+        (statement): statement is ts.ExportDeclaration =>
+          ts.isExportDeclaration(statement) &&
+          statement.moduleSpecifier !== undefined &&
+          ts.isStringLiteral(statement.moduleSpecifier) &&
+          statement.moduleSpecifier.text === './execution' &&
+          statement.exportClause !== undefined &&
+          ts.isNamedExports(statement.exportClause),
+      )
+      .flatMap((statement) =>
+        ts.isNamedExports(statement.exportClause!)
+          ? statement.exportClause.elements.map((element) => element.name.text)
+          : [],
+      );
+
+    expect(artifactExports).toEqual(
+      expect.arrayContaining([
+        'JarvisArtifactDraft',
+        'JarvisArtifactDraftBacking',
+        'JarvisArtifactState',
+        'JarvisArtifactV1',
+      ]),
+    );
+    expect(artifactExports).not.toContain('JarvisArtifact');
+
+    const executionFileName = resolve(jarvisDir, 'contracts/execution.ts');
+    const executionSource = ts.createSourceFile(
+      executionFileName,
+      readFileSync(executionFileName, 'utf8'),
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TS,
+    );
+    const legacyBase = executionSource.statements.find(
+      (statement): statement is ts.InterfaceDeclaration =>
+        ts.isInterfaceDeclaration(statement) && statement.name.text === 'JarvisArtifact',
+    );
+    expect(
+      legacyBase?.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword) ??
+        false,
+    ).toBe(false);
+  });
+
+  it('does not export a structural artifact commit verifier from the repository module', () => {
+    const fileName = resolve(jarvisDir, '../db/jarvisRepositories.ts');
+    const source = ts.createSourceFile(
+      fileName,
+      readFileSync(fileName, 'utf8'),
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TS,
+    );
+    const exportedDeclarations = source.statements
+      .filter(
+        (statement): statement is ts.InterfaceDeclaration | ts.TypeAliasDeclaration =>
+          (ts.isInterfaceDeclaration(statement) || ts.isTypeAliasDeclaration(statement)) &&
+          statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword) ===
+            true,
+      )
+      .map((statement) => statement.name.text);
+
+    expect(exportedDeclarations).not.toContain('JarvisArtifactCommitVerifier');
+  });
+
+  it('requires the runtime-issued capability to construct artifact commit authority', () => {
+    const fileName = resolve(jarvisDir, '../db/jarvisRepositories.ts');
+    const source = ts.createSourceFile(
+      fileName,
+      readFileSync(fileName, 'utf8'),
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TS,
+    );
+    const factory = source.statements.find(
+      (statement): statement is ts.FunctionDeclaration =>
+        ts.isFunctionDeclaration(statement) &&
+        statement.name?.text === 'createJarvisArtifactCommitAuthority',
+    );
+
+    expect(factory?.parameters[1]?.type?.getText(source)).toBe('JarvisArtifactRuntimeInternals');
+  });
+
+  it('allows artifact commit factory imports only from the closed artifact runtime', () => {
+    for (const fileName of productionTypeScriptFiles(resolve(process.cwd(), 'src'))) {
+      const owner = basename(fileName);
+      if (owner === 'jarvisRepositories.ts' || owner === 'artifactRuntime.ts') continue;
+      expect(readFileSync(fileName, 'utf8'), owner).not.toContain(
+        'createJarvisArtifactCommitAuthority',
+      );
+    }
+  });
+
   it('rejects every production import, re-export, or import query outside the strict ladder', () => {
     const allowed = new Map<string, ReadonlySet<string>>([
       ['artifactNormalizer.ts', new Set(['./artifactReceipts'])],
       ['artifactRuntimeInternals.ts', new Set(['./artifactReceipts', './artifactNormalizer'])],
       ['artifactRuntime.ts', new Set(['./artifactRuntimeInternals'])],
+      ['jarvisRepositories.ts', new Set(['@/lib/jarvis/artifactRuntimeInternals'])],
     ]);
     const internalModule =
       /(?:artifactReceipts|artifactNormalizer|artifactRuntimeInternals)(?:\.tsx?)?$/;
@@ -222,6 +360,22 @@ describe('artifact internal import ladder', () => {
               expect(
                 clause.namedBindings.elements.map((element) => element.name.text).sort(),
               ).toEqual(['JarvisArtifactRuntimeInternals', 'createJarvisArtifactRuntimeInternals']);
+            }
+          }
+          if (
+            owner === 'jarvisRepositories.ts' &&
+            ts.isImportDeclaration(node) &&
+            node.moduleSpecifier.text === '@/lib/jarvis/artifactRuntimeInternals'
+          ) {
+            const clause = node.importClause;
+            expect(clause?.namedBindings && ts.isNamedImports(clause.namedBindings)).toBe(true);
+            if (clause?.namedBindings && ts.isNamedImports(clause.namedBindings)) {
+              expect(
+                clause.namedBindings.elements.map((element) => element.name.text).sort(),
+              ).toEqual([
+                'JarvisArtifactRuntimeInternals',
+                'assertJarvisArtifactCommitCapabilityInternal',
+              ]);
             }
           }
         }

@@ -1719,11 +1719,13 @@ describe('approval and artifact child ownership', () => {
     await repositories.run.createIdempotent(foreignRun);
 
     for (const runId of ['missing-run', foreignRun.id]) {
-      const commit = createJarvisArtifactCommitAuthority(db, {
-        consumePendingForCommit: () => {
-          throw new Error('commit verifier must not be reached');
-        },
-      });
+      const commit = createJarvisArtifactCommitAuthority(
+        db,
+        createJarvisArtifactRuntimeInternals({
+          randomUUID: () => 'must-not-mint',
+          now: () => NOW,
+        }),
+      );
       await expectRepositoryError(
         repositories.approval.listByRun('account-alpha', runId),
         'parent_run_not_found',
@@ -1750,11 +1752,13 @@ describe('approval and artifact child ownership', () => {
     await repositories.run.createIdempotent(foreignRun);
     const artifact = artifactFixture();
     await db.jarvis_artifacts.put(toJarvisArtifactRow(artifact));
-    const commit = createJarvisArtifactCommitAuthority(db, {
-      consumePendingForCommit: () => {
-        throw new Error('commit verifier must not be reached');
-      },
-    });
+    const commit = createJarvisArtifactCommitAuthority(
+      db,
+      createJarvisArtifactRuntimeInternals({
+        randomUUID: () => 'must-not-mint',
+        now: () => NOW,
+      }),
+    );
     await expectRepositoryError(
       commit.putForRun(
         secondRun.accountId,
@@ -2016,6 +2020,45 @@ describe('Task 20A private artifact commit authority', () => {
       (await harness.repositories.artifact.getById(harness.parent.accountId, harness.artifact.id))
         ?.title,
     ).toBe('Verified generated file');
+  });
+
+  it.each(['forged no-op literal', 'cloned runtime'] as const)(
+    'rejects a %s capability before opening artifact write authority',
+    async (attempt) => {
+      const database = await openTestDb(
+        `jarvis-artifact-capability-${attempt.replaceAll(' ', '-')}`,
+      );
+      const repositories = createJarvisRepositories(database);
+      const parent = runFixture();
+      await repositories.run.createIdempotent(parent);
+      const runtime = createJarvisArtifactRuntimeInternals({
+        randomUUID: () => 'capability-test',
+        now: () => NOW,
+      });
+      const candidate =
+        attempt === 'forged no-op literal'
+          ? ({ consumePendingForCommit: vi.fn() } as never)
+          : ({ ...runtime } as never);
+
+      expect(() => createJarvisArtifactCommitAuthority(database, candidate)).toThrow(
+        'artifact_commit_capability_invalid',
+      );
+      expect(await database.jarvis_artifacts.count()).toBe(0);
+    },
+  );
+
+  it('rejects an artifact pending under a foreign runtime capability before database write', async () => {
+    const harness = await createArtifactCommitHarness('jarvis-artifact-foreign-capability');
+    const foreignRuntime = createJarvisArtifactRuntimeInternals({
+      randomUUID: () => 'foreign-runtime',
+      now: () => NOW,
+    });
+    const foreignAuthority = createJarvisArtifactCommitAuthority(harness.database, foreignRuntime);
+
+    await expect(
+      foreignAuthority.putForRun(harness.parent.accountId, harness.artifact),
+    ).rejects.toThrow('artifact_commit_not_pending');
+    expect(await harness.database.jarvis_artifacts.count()).toBe(0);
   });
 });
 

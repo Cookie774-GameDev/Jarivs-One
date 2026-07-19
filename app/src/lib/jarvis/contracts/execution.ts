@@ -824,7 +824,8 @@ export async function hashCanonicalJarvisApprovalJson(value: unknown): Promise<s
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-export interface JarvisArtifact {
+/** @internal Shared base for the closed v1 artifact contract. */
+interface JarvisArtifact {
   id: string;
   runId: string;
   kind:

@@ -16,6 +16,10 @@ import {
   validateJarvisDurableLiveEvidence,
   validateJarvisEvent,
 } from '@/lib/jarvis/contracts/validators';
+import {
+  assertJarvisArtifactCommitCapabilityInternal,
+  type JarvisArtifactRuntimeInternals,
+} from '@/lib/jarvis/artifactRuntimeInternals';
 import type { JarvisIdentityRevision } from '@/lib/jarvis/identity';
 import type { JarvisProfile } from '@/lib/jarvis/profiles/types';
 import { db, type JarvisDexie } from './index';
@@ -184,17 +188,6 @@ export interface JarvisArtifactRepository {
 export interface JarvisArtifactCommitAuthority {
   putForRun(accountId: string, artifact: JarvisArtifactV1): Promise<JarvisArtifactV1>;
 }
-
-/** @internal Structural capability supplied only by the artifact runtime composition. */
-export type JarvisArtifactCommitVerifier = Readonly<{
-  consumePendingForCommit(input: {
-    accountId: string;
-    runId: string;
-    requestId: string;
-    attemptNumber: number;
-    artifacts: readonly JarvisArtifactV1[];
-  }): void;
-}>;
 
 export type JarvisRepositoryErrorCode =
   | 'account_scope_mismatch'
@@ -1117,8 +1110,9 @@ export function createJarvisRepositories(
 /** @internal Constructed only by the trusted artifact composition and focused tests. */
 export function createJarvisArtifactCommitAuthority(
   database: JarvisDexie,
-  verifier: JarvisArtifactCommitVerifier,
+  capability: JarvisArtifactRuntimeInternals,
 ): JarvisArtifactCommitAuthority {
+  assertJarvisArtifactCommitCapabilityInternal(capability);
   return Object.freeze({
     async putForRun(accountId: string, value: JarvisArtifactV1): Promise<JarvisArtifactV1> {
       assertAccountId(accountId);
@@ -1136,7 +1130,7 @@ export function createJarvisArtifactCommitAuthority(
             if (!valuesEqual(existingValue, value)) repositoryError('artifact_integrity_error');
             return existingValue;
           }
-          verifier.consumePendingForCommit({
+          capability.consumePendingForCommit({
             accountId,
             runId: value.runId,
             requestId: value.requestId,

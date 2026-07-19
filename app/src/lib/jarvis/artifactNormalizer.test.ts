@@ -230,6 +230,68 @@ describe('verified artifact normalizer', () => {
     ).rejects.toThrow('artifact_secret_rejected');
   });
 
+  it.each([
+    ['Slack bot token', 'xoxb-111111111111-222222222222-syntheticTokenValue'],
+    ['Slack user token', 'xoxp-111111111111-222222222222-syntheticTokenValue'],
+    ['GitHub OAuth token', 'gho_SyntheticCredentialValue1234567890'],
+    [
+      'bearer JWT',
+      'Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJzeW50aGV0aWMifQ.syntheticSignatureValue',
+    ],
+    ['Google provider key', 'AIzaSyntheticProviderCredential1234567890'],
+    ['Groq provider key', 'gsk_syntheticProviderCredential1234567890'],
+    ['Supabase secret key', 'sb_secret_syntheticProviderCredential1234567890'],
+    [
+      'private key block',
+      '-----BEGIN PRIVATE KEY-----\nc3ludGhldGljLW5vdC1hLXJlYWwta2V5\n-----END PRIVATE KEY-----',
+    ],
+    ['authorization assignment', 'Authorization: Basic c3ludGhldGljOmNyZWRlbnRpYWw='],
+    ['client-secret assignment', 'client_secret=syntheticCredentialValue123456'],
+  ] as const)(
+    'rejects synthetic %s content before producing preview or canonical material',
+    async (_credentialClass, secretText) => {
+      let material: Awaited<ReturnType<typeof canonicalizeArtifactDraftInternal>> | undefined;
+      let failure: unknown;
+      try {
+        material = await canonicalizeArtifactDraftInternal({
+          binding: binding(),
+          draft: draft({ backing: { kind: 'producer_result', content: secretText } }),
+        });
+      } catch (error) {
+        failure = error;
+      }
+
+      expect(failure).toEqual(new Error('artifact_secret_rejected'));
+      expect(material).toBeUndefined();
+    },
+  );
+
+  it.each([
+    ['Slack token summary', 'Completed with xoxp-111111111111-222222222222-syntheticTokenValue'],
+    [
+      'bearer JWT summary',
+      'Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJzeW50aGV0aWMifQ.syntheticSignatureValue',
+    ],
+    ['provider-token summary', 'x-api-key: gsk_syntheticProviderCredential1234567890'],
+  ] as const)(
+    'rejects synthetic %s instead of redact-and-save',
+    async (_credentialClass, safeSummary) => {
+      let material: Awaited<ReturnType<typeof canonicalizeArtifactDraftInternal>> | undefined;
+      let failure: unknown;
+      try {
+        material = await canonicalizeArtifactDraftInternal({
+          binding: binding(),
+          draft: draft({ artifact: { ...draft().artifact, safeSummary } }),
+        });
+      } catch (error) {
+        failure = error;
+      }
+
+      expect(failure).toEqual(new Error('artifact_secret_rejected'));
+      expect(material).toBeUndefined();
+    },
+  );
+
   it('rejects cross-account provenance and non-result evidence references', async () => {
     const crossAccount = draft({
       artifact: {

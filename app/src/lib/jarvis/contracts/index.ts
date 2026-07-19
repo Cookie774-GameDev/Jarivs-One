@@ -31,7 +31,6 @@ export type {
   JarvisAccountLiveEvidenceReadPort,
   JarvisApproval,
   JarvisApprovalV1,
-  JarvisArtifact,
   JarvisArtifactDraft,
   JarvisArtifactDraftBacking,
   JarvisArtifactState,
