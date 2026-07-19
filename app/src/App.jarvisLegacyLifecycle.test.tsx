@@ -100,6 +100,41 @@ describe('App canonical lifecycle compatibility session', () => {
     stop();
   });
 
+  it('returns the observer disposer before account recovery settles', async () => {
+    const order: string[] = [];
+    const lifecycleServices = services(order);
+    let settleRecovery!: (value: number) => void;
+    lifecycleServices.resumeRecovery.mockImplementation(
+      () =>
+        new Promise<number>((resolve) => {
+          order.push('resume-recovery');
+          settleRecovery = resolve;
+        }),
+    );
+
+    let resolvedStop: (() => void) | undefined;
+    const started = startJarvisLegacyLifecycleAccountSession({
+      accountId: 'account-alpha',
+      readyReceipt: READY,
+      isCurrent: () => true,
+      services: lifecycleServices,
+    });
+    void started.then((stop) => {
+      resolvedStop = stop;
+    });
+
+    await vi.waitFor(() => expect(lifecycleServices.resumeRecovery).toHaveBeenCalledOnce());
+    await Promise.resolve();
+    try {
+      expect(resolvedStop).toBeTypeOf('function');
+      resolvedStop?.();
+      expect(order.slice(-3)).toEqual(['stop-canonical', 'stop-notifications', 'clear-scope']);
+    } finally {
+      settleRecovery(0);
+      await started;
+    }
+  });
+
   it('contains no legacy persistence startup or hydration-driven recovery path', () => {
     const source = readFileSync(join(__dirname, 'App.tsx'), 'utf8');
 

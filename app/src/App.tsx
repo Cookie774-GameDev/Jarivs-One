@@ -320,16 +320,23 @@ export async function startJarvisLegacyLifecycleAccountSession(input: {
       stop();
       return () => undefined;
     }
-    await services.resumeRecovery({
-      accountId: input.accountId,
-      readyReceipt: input.readyReceipt,
-      signal: input.signal,
-      isCurrent: input.isCurrent,
-    });
-    if (!input.isCurrent()) {
-      stop();
-      return () => undefined;
-    }
+    void Promise.resolve()
+      .then(() => {
+        if (disposed || !input.isCurrent()) return 0;
+        return services.resumeRecovery({
+          accountId: input.accountId,
+          readyReceipt: input.readyReceipt,
+          signal: input.signal,
+          isCurrent: input.isCurrent,
+        });
+      })
+      .then(() => {
+        if (!input.isCurrent()) stop();
+      })
+      .catch((error) => {
+        if (!disposed && input.isCurrent()) onError(error);
+        stop();
+      });
     return stop;
   } catch (error) {
     onError(error);

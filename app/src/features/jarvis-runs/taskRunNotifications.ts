@@ -32,22 +32,16 @@ async function defaultNotify(title: string, body: string, status: JarvisRunStatu
 
 export function startJarvisTaskRunNotifications(bindings: TaskRunNotificationBindings): () => void {
   const notify = bindings.notify ?? defaultNotify;
-  const seen = new Set<string>();
-  const seenOrder: string[] = [];
+  const highestSequenceByRun = new Map<string, number>();
   return bindings.subscribe((event) => {
     if (event.type !== 'run_state') return;
+    const highestSequence = highestSequenceByRun.get(event.runId);
+    if (highestSequence !== undefined && event.seq <= highestSequence) return;
+    highestSequenceByRun.set(event.runId, event.seq);
     const status = event.status as JarvisRunStatus | undefined;
     if (!status) return;
     const copy = COPY[status];
     if (!copy) return;
-    const key = `${event.runId}:${event.seq}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    seenOrder.push(key);
-    if (seenOrder.length > 5_000) {
-      const expired = seenOrder.shift();
-      if (expired) seen.delete(expired);
-    }
     void Promise.resolve(notify(copy[0], copy[1], status)).catch((error) => {
       if (bindings.onError) bindings.onError(error);
       else console.warn('[jarvis-task] notification unavailable', error);
