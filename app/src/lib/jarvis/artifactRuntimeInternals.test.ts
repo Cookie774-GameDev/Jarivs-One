@@ -184,6 +184,7 @@ describe('artifact internal import ladder', () => {
     const allowed = new Map<string, ReadonlySet<string>>([
       ['artifactNormalizer.ts', new Set(['./artifactReceipts'])],
       ['artifactRuntimeInternals.ts', new Set(['./artifactReceipts', './artifactNormalizer'])],
+      ['artifactRuntime.ts', new Set(['./artifactRuntimeInternals'])],
     ]);
     const internalModule =
       /(?:artifactReceipts|artifactNormalizer|artifactRuntimeInternals)(?:\.tsx?)?$/;
@@ -210,6 +211,19 @@ describe('artifact internal import ladder', () => {
           expect(allowedModules.has(node.moduleSpecifier.text), `${owner}: ${node.getText()}`).toBe(
             true,
           );
+          if (
+            owner === 'artifactRuntime.ts' &&
+            ts.isImportDeclaration(node) &&
+            node.moduleSpecifier.text === './artifactRuntimeInternals'
+          ) {
+            const clause = node.importClause;
+            expect(clause?.namedBindings && ts.isNamedImports(clause.namedBindings)).toBe(true);
+            if (clause?.namedBindings && ts.isNamedImports(clause.namedBindings)) {
+              expect(
+                clause.namedBindings.elements.map((element) => element.name.text).sort(),
+              ).toEqual(['JarvisArtifactRuntimeInternals', 'createJarvisArtifactRuntimeInternals']);
+            }
+          }
         }
         if (ts.isImportTypeNode(node)) {
           const argument = node.argument;
