@@ -5,7 +5,10 @@ import type {
   JarvisCanonicalActionExecutionResult,
   JarvisKernelActionPort,
 } from '@/lib/jarvis/approvalEngine';
-import type { JarvisRequestAttempt } from '@/lib/jarvis/requestEnvelope';
+import {
+  validateJarvisRequestAttempt,
+  type JarvisRequestAttempt,
+} from '@/lib/jarvis/requestEnvelope';
 import { canonicalizeBrowserJson, classifyRisk } from './browserActions';
 import type {
   BrowserActionRisk,
@@ -93,6 +96,50 @@ const REVIEWED_ACTION_KEYS = [
   'result',
 ] as const;
 
+const ALLOWED_BROWSER_OPERATIONS = new Set([
+  'browser.open',
+  'browser.newTab',
+  'browser.closeTab',
+  'browser.navigate',
+  'browser.back',
+  'browser.forward',
+  'browser.reload',
+  'browser.wait',
+  'browser.inspect',
+  'browser.readPage',
+  'browser.findText',
+  'browser.click',
+  'browser.type',
+  'browser.press',
+  'browser.select',
+  'browser.check',
+  'browser.uncheck',
+  'browser.upload',
+  'browser.download',
+  'browser.scroll',
+  'browser.screenshot',
+  'browser.getConsoleErrors',
+  'browser.getCurrentUrl',
+  'browser.listTabs',
+  'browser.switchTab',
+  'browser.submit',
+  'browser.delete',
+  'browser.purchase',
+  'browser.pay',
+  'browser.login',
+  'browser.signIn',
+  'browser.checkout',
+  'browser.stop',
+]);
+
+const REQUEST_ATTEMPT_KEYS = ['kind', 'requestId', 'runId', 'attemptNumber'] as const;
+const RETRY_ATTEMPT_KEYS = [
+  ...REQUEST_ATTEMPT_KEYS,
+  'previousRequestId',
+  'previousRunId',
+  'previousAttemptNumber',
+] as const;
+
 const PROTECTED_PARAMETER_KEYS = new Set([
   'password',
   'passphrase',
@@ -134,6 +181,33 @@ function assertExactDataKeys(
     const descriptor = Object.getOwnPropertyDescriptor(value, key);
     if (!descriptor?.enumerable || !('value' in descriptor)) reject(code);
   }
+}
+
+function isPlainDataObject(value: unknown): value is object {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function requiredOwnDataValue(
+  value: object,
+  key: string,
+  code: BrowserApprovalAdapterErrorCode,
+): unknown {
+  const descriptor = Object.getOwnPropertyDescriptor(value, key);
+  if (!descriptor?.enumerable || !('value' in descriptor)) reject(code);
+  return descriptor.value;
+}
+
+function optionalOwnDataValue(
+  value: object,
+  key: string,
+  code: BrowserApprovalAdapterErrorCode,
+): unknown {
+  const descriptor = Object.getOwnPropertyDescriptor(value, key);
+  if (!descriptor) return undefined;
+  if (!descriptor.enumerable || !('value' in descriptor)) reject(code);
+  return descriptor.value;
 }
 
 function stableText(value: unknown): value is string {
@@ -216,21 +290,51 @@ function deepFreeze<T>(value: T): T {
   return Object.freeze(value);
 }
 
-function validateDependencies(dependencies: Readonly<{ actions: BrowserActionPort }>): void {
-  if (!dependencies || typeof dependencies !== 'object') reject('invalid_dependencies');
+function validateDependencies(
+  dependencies: Readonly<{ actions: BrowserActionPort }>,
+): BrowserActionPort {
+  if (!isPlainDataObject(dependencies)) reject('invalid_dependencies');
   assertExactDataKeys(dependencies, ['actions'], 'invalid_dependencies');
-  const actions = dependencies.actions;
-  if (!actions || typeof actions !== 'object') reject('invalid_dependencies');
+  const actions = requiredOwnDataValue(dependencies, 'actions', 'invalid_dependencies');
+  if (!isPlainDataObject(actions)) reject('invalid_dependencies');
   assertExactDataKeys(actions, ['create', 'executeAutoApprovedSafe'], 'invalid_dependencies');
-  if (
-    typeof actions.create !== 'function' ||
-    typeof actions.executeAutoApprovedSafe !== 'function'
-  ) {
+  const create = requiredOwnDataValue(actions, 'create', 'invalid_dependencies');
+  const executeAutoApprovedSafe = requiredOwnDataValue(
+    actions,
+    'executeAutoApprovedSafe',
+    'invalid_dependencies',
+  );
+  if (typeof create !== 'function' || typeof executeAutoApprovedSafe !== 'function') {
     reject('invalid_dependencies');
   }
+  return Object.freeze({ create, executeAutoApprovedSafe }) as BrowserActionPort;
 }
 
-function validateRecord(action: Readonly<BrowserReviewedAction>): void {
+function validateRequester(action: Readonly<BrowserReviewedAction>): Readonly<{
+  agentId: string;
+  runId: string | undefined;
+}> {
+  const requester = requiredOwnDataValue(action, 'requester', 'invalid_record');
+  if (!requester || typeof requester !== 'object' || Array.isArray(requester)) {
+    reject('invalid_record');
+  }
+  const kind = requiredOwnDataValue(requester, 'kind', 'invalid_record');
+  const agent = requiredOwnDataValue(requester, 'agent', 'invalid_record');
+  if (kind !== 'agent' || !agent || typeof agent !== 'object' || Array.isArray(agent)) {
+    reject('invalid_record');
+  }
+  const agentId = requiredOwnDataValue(agent, 'id', 'invalid_record');
+  const runId = optionalOwnDataValue(requester, 'runId', 'invalid_record');
+  if (!stableText(agentId) || (runId !== undefined && !stableText(runId))) {
+    reject('invalid_record');
+  }
+  return Object.freeze({ agentId, runId });
+}
+
+function validateRecord(action: Readonly<BrowserReviewedAction>): Readonly<{
+  agentId: string;
+  runId: string | undefined;
+}> {
   if (!action || typeof action !== 'object') reject('invalid_record');
   assertExactDataKeys(action, REVIEWED_ACTION_KEYS, 'invalid_record');
   if (!isDeeplyFrozenData(action)) reject('mutable_input');
@@ -240,7 +344,7 @@ function validateRecord(action: Readonly<BrowserReviewedAction>): void {
     !stableText(action.id) ||
     !stableText(action.accountId) ||
     !stableText(action.kind) ||
-    !action.kind.startsWith('browser.') ||
+    !ALLOWED_BROWSER_OPERATIONS.has(action.kind) ||
     !stableText(action.origin) ||
     !stableText(action.tabId) ||
     !stableText(action.parametersHash) ||
@@ -263,48 +367,116 @@ function validateRecord(action: Readonly<BrowserReviewedAction>): void {
     reject('secret_shaped_input');
   }
   if (classifyRisk(action.kind, action.parameters) !== action.risk) reject('invalid_record');
+  return validateRequester(action);
+}
+
+function validateAttempt(
+  attempt: JarvisRequestAttempt,
+): Readonly<{ requestId: string; runId: string; attemptNumber: number }> {
+  if (!isPlainDataObject(attempt)) reject('context_mismatch');
+  const kind = requiredOwnDataValue(attempt, 'kind', 'context_mismatch');
+  const keys =
+    kind === 'transport_retry' || kind === 'logical_retry'
+      ? RETRY_ATTEMPT_KEYS
+      : REQUEST_ATTEMPT_KEYS;
+  assertExactDataKeys(attempt, keys, 'context_mismatch');
+  for (const key of keys) requiredOwnDataValue(attempt, key, 'context_mismatch');
+  try {
+    const identity = validateJarvisRequestAttempt(attempt);
+    if (!stableText(identity.runId) || !stableText(identity.requestId)) {
+      reject('context_mismatch');
+    }
+    return identity;
+  } catch (error) {
+    if (error instanceof BrowserApprovalAdapterError) throw error;
+    reject('context_mismatch');
+  }
 }
 
 function validateParent(
   action: Readonly<BrowserReviewedAction>,
   parent: BrowserApprovalParentReference,
-): void {
-  if (!parent || typeof parent !== 'object') reject('context_mismatch');
+  requester: Readonly<{ agentId: string; runId: string | undefined }>,
+): BrowserApprovalParentReference {
+  if (!isPlainDataObject(parent)) reject('context_mismatch');
   assertExactDataKeys(
     parent,
     ['parentRun', 'attempt', 'context', 'controlMode'],
     'context_mismatch',
   );
+  const parentRun = requiredOwnDataValue(parent, 'parentRun', 'context_mismatch');
+  const attempt = requiredOwnDataValue(parent, 'attempt', 'context_mismatch');
+  const context = requiredOwnDataValue(parent, 'context', 'context_mismatch');
+  const controlMode = requiredOwnDataValue(parent, 'controlMode', 'context_mismatch');
+  if (
+    !parentRun ||
+    typeof parentRun !== 'object' ||
+    Array.isArray(parentRun) ||
+    !attempt ||
+    typeof attempt !== 'object' ||
+    Array.isArray(attempt) ||
+    !context ||
+    typeof context !== 'object' ||
+    Array.isArray(context)
+  ) {
+    reject('context_mismatch');
+  }
   if (
     !Object.isFrozen(parent) ||
-    !Object.isFrozen(parent.parentRun) ||
-    !Object.isFrozen(parent.attempt) ||
-    !Object.isFrozen(parent.context)
+    !Object.isFrozen(parentRun) ||
+    !Object.isFrozen(attempt) ||
+    !Object.isFrozen(context)
   ) {
     reject('mutable_input');
   }
-  if (parent.controlMode === 'user_only') reject('user_only');
+  if (controlMode === 'user_only') reject('user_only');
   if (
-    !['ask_every_action', 'allow_safe_session', 'agent_controlled'].includes(parent.controlMode)
+    !['ask_every_action', 'allow_safe_session', 'agent_controlled'].includes(
+      controlMode as BrowserControlMode,
+    )
   ) {
     reject('context_mismatch');
   }
-  if (action.accountId !== parent.parentRun.accountId) reject('account_mismatch');
+  const parentRunId = requiredOwnDataValue(parentRun, 'id', 'run_mismatch');
+  const parentAccountId = requiredOwnDataValue(parentRun, 'accountId', 'account_mismatch');
+  const parentAgentId = requiredOwnDataValue(parentRun, 'agentId', 'run_mismatch');
+  if (!stableText(parentRunId) || !stableText(parentAgentId)) reject('run_mismatch');
+  if (!stableText(parentAccountId) || action.accountId !== parentAccountId) {
+    reject('account_mismatch');
+  }
+  const attemptIdentity = validateAttempt(attempt as JarvisRequestAttempt);
   if (
-    parent.attempt.runId !== parent.parentRun.id ||
-    (action.requester.runId !== undefined && action.requester.runId !== parent.parentRun.id)
+    attemptIdentity.runId !== parentRunId ||
+    (requester.runId !== undefined && requester.runId !== parentRunId) ||
+    requester.agentId !== parentAgentId
   ) {
     reject('run_mismatch');
   }
+  const contextSource = requiredOwnDataValue(context, 'source', 'context_mismatch');
+  const contextAccountId = requiredOwnDataValue(context, 'accountId', 'context_mismatch');
+  const contextRunId = requiredOwnDataValue(context, 'runId', 'context_mismatch');
+  const contextRequestId = requiredOwnDataValue(context, 'requestId', 'context_mismatch');
+  const contextAttemptNumber = requiredOwnDataValue(context, 'attemptNumber', 'context_mismatch');
   if (
-    parent.context.source !== 'ai' ||
-    parent.context.accountId !== parent.parentRun.accountId ||
-    parent.context.runId !== parent.parentRun.id ||
-    parent.context.requestId !== parent.attempt.requestId ||
-    parent.context.attemptNumber !== parent.attempt.attemptNumber
+    contextSource !== 'ai' ||
+    !stableText(contextAccountId) ||
+    !stableText(contextRunId) ||
+    !stableText(contextRequestId) ||
+    !Number.isSafeInteger(contextAttemptNumber) ||
+    (contextAttemptNumber as number) <= 0 ||
+    contextAccountId !== parentAccountId ||
+    contextRunId !== parentRunId ||
+    contextRequestId !== attemptIdentity.requestId ||
+    contextAttemptNumber !== attemptIdentity.attemptNumber
   ) {
     reject('context_mismatch');
   }
+  return Object.freeze({
+    parentRun: parentRun as JarvisRun,
+    attempt: attempt as JarvisRequestAttempt,
+    context: context as ActionRunContext,
+    controlMode: controlMode as BrowserControlMode,
+  });
 }
 
 function canonicalParameters(
@@ -338,15 +510,14 @@ export function createBrowserApprovalAdapter(
     parent: BrowserApprovalParentReference,
   ): Promise<BrowserApprovalAdapterResult>;
 }> {
-  validateDependencies(dependencies);
-  const actions = dependencies.actions;
+  const actions = validateDependencies(dependencies);
   return Object.freeze({
     async submit(action, parent): Promise<BrowserApprovalAdapterResult> {
-      validateRecord(action);
-      validateParent(action, parent);
+      const requester = validateRecord(action);
+      const validatedParent = validateParent(action, parent, requester);
       const input = Object.freeze({
-        parentRun: parent.parentRun,
-        attempt: parent.attempt,
+        parentRun: validatedParent.parentRun,
+        attempt: validatedParent.attempt,
         actionId: action.kind,
         actionVersion: action.actionVersion,
         params: canonicalParameters(action),
@@ -354,7 +525,7 @@ export function createBrowserApprovalAdapter(
       });
       if (action.risk === 'safe') {
         const result = await actions.executeAutoApprovedSafe(
-          Object.freeze({ ...input, context: parent.context }),
+          Object.freeze({ ...input, context: validatedParent.context }),
         );
         return Object.freeze({ kind: 'safe_execution', result });
       }

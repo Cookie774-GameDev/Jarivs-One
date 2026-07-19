@@ -4,7 +4,7 @@ import type { ActionRunContext } from '@/lib/actions/types';
 import type { JarvisRun } from '@/lib/jarvis/contracts/execution';
 import type { JarvisKernelActionPort } from '@/lib/jarvis/approvalEngine';
 import type { JarvisRequestAttempt } from '@/lib/jarvis/requestEnvelope';
-import type { BrowserControlMode, BrowserReviewedAction } from './browserTypes';
+import type { BrowserActionRisk, BrowserControlMode, BrowserReviewedAction } from './browserTypes';
 import {
   BROWSER_OPERATOR_CAPABILITY_ID,
   BrowserApprovalAdapterError,
@@ -111,6 +111,42 @@ const SECRET_SHAPED_PATCHES: readonly Partial<BrowserReviewedAction>[] = [
   { expectedEffect: 'Authorization: Bearer synthetic-value-12345678' },
 ];
 
+const TASK_6_ALLOWED_BROWSER_OPERATIONS = [
+  ['browser.open', 'confirm'],
+  ['browser.newTab', 'safe'],
+  ['browser.closeTab', 'safe'],
+  ['browser.navigate', 'confirm'],
+  ['browser.back', 'safe'],
+  ['browser.forward', 'safe'],
+  ['browser.reload', 'safe'],
+  ['browser.wait', 'safe'],
+  ['browser.inspect', 'safe'],
+  ['browser.readPage', 'safe'],
+  ['browser.findText', 'safe'],
+  ['browser.click', 'confirm'],
+  ['browser.type', 'confirm'],
+  ['browser.press', 'confirm'],
+  ['browser.select', 'confirm'],
+  ['browser.check', 'confirm'],
+  ['browser.uncheck', 'confirm'],
+  ['browser.upload', 'confirm'],
+  ['browser.download', 'confirm'],
+  ['browser.scroll', 'safe'],
+  ['browser.screenshot', 'safe'],
+  ['browser.getConsoleErrors', 'safe'],
+  ['browser.getCurrentUrl', 'safe'],
+  ['browser.listTabs', 'safe'],
+  ['browser.switchTab', 'safe'],
+  ['browser.submit', 'dangerous'],
+  ['browser.delete', 'dangerous'],
+  ['browser.purchase', 'dangerous'],
+  ['browser.pay', 'dangerous'],
+  ['browser.login', 'dangerous'],
+  ['browser.signIn', 'dangerous'],
+  ['browser.checkout', 'dangerous'],
+  ['browser.stop', 'safe'],
+] as const satisfies readonly (readonly [string, BrowserActionRisk])[];
+
 describe('createBrowserApprovalAdapter', () => {
   it('constructs without executing and rejects broader dependency surfaces', () => {
     const port = actionPort();
@@ -127,6 +163,58 @@ describe('createBrowserApprovalAdapter', () => {
         actions: { ...port.narrow, execute: vi.fn() },
       } as never),
     ).toThrow(BrowserApprovalAdapterError);
+  });
+
+  it('rejects inherited dependency getters without invoking them', () => {
+    const inheritedCreate = vi.fn<JarvisKernelActionPort['create']>(async () => ({
+      kind: 'account_authority_revoked',
+    }));
+    const inheritedExecute = vi.fn<JarvisKernelActionPort['executeAutoApprovedSafe']>(async () => ({
+      kind: 'account_authority_revoked',
+    }));
+    const createGetter = vi.fn(() => inheritedCreate);
+    const executeGetter = vi.fn(() => inheritedExecute);
+    const prototype = Object.create(null) as object;
+    Object.defineProperties(prototype, {
+      create: { enumerable: true, get: createGetter },
+      executeAutoApprovedSafe: { enumerable: true, get: executeGetter },
+    });
+    const inheritedActions = Object.freeze(Object.create(prototype)) as never;
+
+    expect(() => createBrowserApprovalAdapter({ actions: inheritedActions })).toThrow(
+      BrowserApprovalAdapterError,
+    );
+    expect(createGetter).not.toHaveBeenCalled();
+    expect(executeGetter).not.toHaveBeenCalled();
+    expect(inheritedCreate).not.toHaveBeenCalled();
+    expect(inheritedExecute).not.toHaveBeenCalled();
+  });
+
+  it.each(TASK_6_ALLOWED_BROWSER_OPERATIONS)(
+    'accepts the literal Task 6 operation %s',
+    async (kind, risk) => {
+      const port = actionPort();
+      const adapter = createBrowserApprovalAdapter({ actions: port.narrow });
+
+      await expect(
+        adapter.submit(reviewedAction({ kind, risk }), parentReference()),
+      ).resolves.toMatchObject({
+        kind: risk === 'safe' ? 'safe_execution' : 'approval_created',
+      });
+      expect(port.create).toHaveBeenCalledTimes(risk === 'safe' ? 0 : 1);
+      expect(port.executeAutoApprovedSafe).toHaveBeenCalledTimes(risk === 'safe' ? 1 : 0);
+    },
+  );
+
+  it('rejects a frozen browser-prefixed operation outside the Task 6 allowlist', async () => {
+    const port = actionPort();
+    const adapter = createBrowserApprovalAdapter({ actions: port.narrow });
+
+    await expect(
+      adapter.submit(reviewedAction({ kind: 'browser.unregistered' }), parentReference()),
+    ).rejects.toMatchObject({ code: 'invalid_record' });
+    expect(port.create).not.toHaveBeenCalled();
+    expect(port.executeAutoApprovedSafe).not.toHaveBeenCalled();
   });
 
   it('maps a safe reviewed record exactly to auto-approved v1 execution', async () => {
@@ -272,6 +360,98 @@ describe('createBrowserApprovalAdapter', () => {
     const adapter = createBrowserApprovalAdapter({ actions: port.narrow });
 
     await expect(adapter.submit(action, parent)).rejects.toMatchObject({ code });
+    expect(port.create).not.toHaveBeenCalled();
+    expect(port.executeAutoApprovedSafe).not.toHaveBeenCalled();
+  });
+
+  it('rejects missing request and attempt identity before any action-port call', async () => {
+    const port = actionPort();
+    const adapter = createBrowserApprovalAdapter({ actions: port.narrow });
+    const parent = parentReference({
+      attempt: deepFreeze({ kind: 'initial', runId: 'jrun_1' } as never),
+      context: deepFreeze({
+        source: 'ai',
+        accountId: 'acct_1',
+        runId: 'jrun_1',
+        callId: 'browser-action-1',
+      }),
+    });
+
+    await expect(adapter.submit(reviewedAction(), parent)).rejects.toMatchObject({
+      code: 'context_mismatch',
+    });
+    expect(port.create).not.toHaveBeenCalled();
+    expect(port.executeAutoApprovedSafe).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      'non-positive attempt number',
+      parentReference({
+        attempt: deepFreeze({
+          kind: 'initial',
+          requestId: 'jreq_1',
+          runId: 'jrun_1',
+          attemptNumber: 0,
+        } as never),
+        context: deepFreeze({
+          source: 'ai',
+          accountId: 'acct_1',
+          runId: 'jrun_1',
+          requestId: 'jreq_1',
+          attemptNumber: 0,
+          callId: 'browser-action-1',
+        }),
+      }),
+    ],
+    [
+      'unknown attempt kind',
+      parentReference({
+        attempt: deepFreeze({
+          kind: 'unknown',
+          requestId: 'jreq_1',
+          runId: 'jrun_1',
+          attemptNumber: 1,
+        } as never),
+      }),
+    ],
+    [
+      'unexpected attempt field',
+      parentReference({
+        attempt: deepFreeze({
+          kind: 'initial',
+          requestId: 'jreq_1',
+          runId: 'jrun_1',
+          attemptNumber: 1,
+          widened: true,
+        } as never),
+      }),
+    ],
+  ] as const)('rejects %s before any action-port call', async (_label, parent) => {
+    const port = actionPort();
+    const adapter = createBrowserApprovalAdapter({ actions: port.narrow });
+
+    await expect(adapter.submit(reviewedAction(), parent)).rejects.toMatchObject({
+      code: 'context_mismatch',
+    });
+    expect(port.create).not.toHaveBeenCalled();
+    expect(port.executeAutoApprovedSafe).not.toHaveBeenCalled();
+  });
+
+  it('rejects a requester agent that differs from the parent-run agent', async () => {
+    const port = actionPort();
+    const adapter = createBrowserApprovalAdapter({ actions: port.narrow });
+    const action = reviewedAction({
+      requester: deepFreeze({
+        kind: 'agent',
+        agent: { id: 'agent_other' as never, slug: 'other', builtin: false },
+        runId: 'jrun_1',
+      }),
+    });
+
+    await expect(adapter.submit(action, parentReference())).rejects.toMatchObject({
+      code: 'run_mismatch',
+    });
     expect(port.create).not.toHaveBeenCalled();
     expect(port.executeAutoApprovedSafe).not.toHaveBeenCalled();
   });
