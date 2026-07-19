@@ -1,11 +1,18 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { JarvisApprovalV1, JarvisEvent, JarvisRun } from '@/lib/jarvis/contracts/execution';
+import type {
+  JarvisApprovalV1,
+  JarvisEvent,
+  JarvisRun,
+  JarvisRunStatus,
+  JarvisTransportAttemptV1,
+} from '@/lib/jarvis/contracts/execution';
 import { TEST_INDEXED_DB, uniqueTestDbName } from '@/test/indexedDb';
 import { createJarvisDb, type JarvisDexie } from './index';
 import {
   fromJarvisApprovalRow,
   fromJarvisRunRow,
+  toJarvisApprovalRow,
   toJarvisEventRow,
   toJarvisRunRow,
 } from './jarvisMappers';
@@ -107,6 +114,60 @@ async function appendCancellation(
     createdAt,
   };
   await db.jarvis_events.add(toJarvisEventRow(event));
+}
+
+type TerminalRunStatus = Extract<
+  JarvisRunStatus,
+  'partial' | 'completed' | 'failed' | 'cancelled' | 'timed_out'
+>;
+
+function scheduledAttemptFixture(
+  overrides: Partial<JarvisTransportAttemptV1> = {},
+): JarvisTransportAttemptV1 {
+  return {
+    schemaVersion: 1,
+    attemptNumber: 1,
+    kind: 'initial',
+    requestId: 'request-approval-context',
+    state: 'provider_in_flight',
+    startedEventSeq: 1,
+    effectBarrier: { state: 'open', version: 0, updatedAt: NOW - 10 },
+    createdAt: NOW - 10,
+    updatedAt: NOW - 10,
+    ...overrides,
+  };
+}
+
+async function appendTerminalTransition(
+  db: JarvisDexie,
+  runId: string,
+  status: TerminalRunStatus,
+  createdAt: number,
+): Promise<void> {
+  await db.transaction('rw', db.jarvis_runs, db.jarvis_events, db.jarvis_approvals, async () => {
+    const row = await db.jarvis_runs.get(runId);
+    if (!row) throw new Error('missing_test_run');
+    const run = fromJarvisRunRow(row);
+    const events = await db.jarvis_events.where('run_id').equals(runId).toArray();
+    const seq = Math.max(0, ...events.map((event) => event.seq)) + 1;
+    await db.jarvis_runs.put(
+      toJarvisRunRow({ ...run, status, updatedAt: createdAt, completedAt: createdAt }),
+    );
+    await db.jarvis_events.add(
+      toJarvisEventRow({
+        runId,
+        seq,
+        idempotencyKey: `terminal-${runId}-${status}-${seq}`,
+        type: 'run_state',
+        status,
+        title: `Run ${status}`,
+        safeSummary: `The run became ${status}.`,
+        sourceRefs: [],
+        artifactIds: [],
+        createdAt,
+      }),
+    );
+  });
 }
 
 afterEach(async () => {
@@ -716,6 +777,633 @@ describe('signal-bound approval context cores', () => {
     }
   });
 
+  it('rejects incoherent lifecycle metadata without synthesizing or overwriting timestamps', async () => {
+    for (const operation of ['create', 'safe'] as const) {
+      for (const field of ['decidedAt', 'consumedAt'] as const) {
+        const db = await openDb(`approval-context-metadata-${operation}-${field}`);
+        const run = runFixture({ id: `jrun-metadata-${operation}-${field}` });
+        const approval = approvalFixture({
+          id: `jappr-metadata-${operation}-${field}`,
+          runId: run.id,
+          ...(operation === 'safe' ? { risk: 'safe' as const } : {}),
+          [field]: NOW,
+        });
+        await db.jarvis_runs.add(toJarvisRunRow(run));
+        const before = await rows(db);
+        const mutations = createJarvisApprovalMutationRepository(db);
+        const result =
+          operation === 'create'
+            ? mutations.createPending({
+                accountId: run.accountId,
+                approval,
+                expectedEventTailSeq: 0,
+              })
+            : mutations.claimSafeAutoExecution({
+                accountId: run.accountId,
+                approval,
+                producerKind: 'action',
+                ownerId: `jexec-metadata-${field}`,
+                evidenceRef: `evidence-metadata-${field}`,
+                startedAt: NOW + 1,
+                expectedEventTailSeq: 0,
+              });
+        await expect(result).rejects.toMatchObject({ code: 'approval_integrity_error' });
+        expect(await rows(db)).toEqual(before);
+      }
+    }
+
+    for (const column of ['decided_at', 'consumed_at'] as const) {
+      const db = await openDb(`approval-context-metadata-decision-${column}`);
+      const run = runFixture({ id: `jrun-metadata-decision-${column}` });
+      const approval = approvalFixture({
+        id: `jappr-metadata-decision-${column}`,
+        runId: run.id,
+      });
+      await db.jarvis_runs.add(toJarvisRunRow(run));
+      const mutations = createJarvisApprovalMutationRepository(db);
+      await mutations.createPending({
+        accountId: run.accountId,
+        approval,
+        expectedEventTailSeq: 0,
+      });
+      const row = (await db.jarvis_approvals.get(approval.id))!;
+      await db.jarvis_approvals.put({ ...row, [column]: NOW });
+      const before = await rows(db);
+      await expect(
+        mutations.decide({
+          accountId: run.accountId,
+          runId: run.id,
+          requestId: approval.requestId,
+          attemptNumber: 1,
+          approvalId: approval.id,
+          decision: 'approve',
+          decidedAt: NOW + 1,
+          expectedEventTailSeq: 2,
+        }),
+      ).rejects.toMatchObject({ code: 'approval_status_conflict' });
+      expect(await rows(db)).toEqual(before);
+    }
+
+    for (const corruption of [
+      'missing-decision',
+      'decision-before-created',
+      'decision-after-start',
+      'prior-consumption',
+      'nonfinite-decision',
+    ] as const) {
+      const db = await openDb(`approval-context-metadata-claim-${corruption}`);
+      const run = runFixture({ id: `jrun-metadata-claim-${corruption}` });
+      const approval = approvalFixture({ id: `jappr-metadata-claim-${corruption}`, runId: run.id });
+      await db.jarvis_runs.add(toJarvisRunRow(run));
+      const mutations = createJarvisApprovalMutationRepository(db);
+      await mutations.createPending({
+        accountId: run.accountId,
+        approval,
+        expectedEventTailSeq: 0,
+      });
+      await mutations.decide({
+        accountId: run.accountId,
+        runId: run.id,
+        requestId: approval.requestId,
+        attemptNumber: 1,
+        approvalId: approval.id,
+        decision: 'approve',
+        decidedAt: NOW + 1,
+        expectedEventTailSeq: 2,
+      });
+      const row = { ...(await db.jarvis_approvals.get(approval.id))! };
+      if (corruption === 'missing-decision') delete row.decided_at;
+      if (corruption === 'decision-before-created') row.decided_at = NOW - 1;
+      if (corruption === 'decision-after-start') row.decided_at = NOW + 3;
+      if (corruption === 'prior-consumption') row.consumed_at = NOW + 1;
+      if (corruption === 'nonfinite-decision') row.decided_at = Number.NaN;
+      await db.jarvis_approvals.put(row);
+      const before = await rows(db);
+      await expect(
+        mutations.claimApprovedExecution({
+          accountId: run.accountId,
+          runId: run.id,
+          requestId: approval.requestId,
+          attemptNumber: 1,
+          approvalId: approval.id,
+          producerKind: 'action',
+          ownerId: `jexec-metadata-claim-${corruption}`,
+          evidenceRef: `evidence-metadata-claim-${corruption}`,
+          startedAt: NOW + 2,
+          expectedEventTailSeq: 3,
+        }),
+      ).rejects.toThrow();
+      expect(await rows(db)).toEqual(before);
+    }
+  });
+
+  it('fails closed on duplicate open approvals regardless of requested row order', async () => {
+    for (const requestedFirst of [true, false]) {
+      const suffix = requestedFirst ? 'requested-first' : 'requested-second';
+
+      const createDb = await openDb(`approval-context-duplicate-create-${suffix}`);
+      const createRun = runFixture({ id: `jrun-duplicate-create-${suffix}` });
+      const createApproval = approvalFixture({
+        id: requestedFirst ? 'jappr-a-requested-create' : 'jappr-z-requested-create',
+        runId: createRun.id,
+      });
+      await createDb.jarvis_runs.add(toJarvisRunRow(createRun));
+      const createMutations = createJarvisApprovalMutationRepository(createDb);
+      const createInput = {
+        accountId: createRun.accountId,
+        approval: createApproval,
+        expectedEventTailSeq: 0,
+      };
+      await createMutations.createPending(createInput);
+      await createDb.jarvis_approvals.add(
+        toJarvisApprovalRow(
+          approvalFixture({
+            id: requestedFirst ? 'jappr-z-duplicate-create' : 'jappr-a-duplicate-create',
+            runId: createRun.id,
+            requestId: `request-duplicate-create-${suffix}`,
+          }),
+        ),
+      );
+      const beforeCreate = await rows(createDb);
+      await expect(createMutations.createPending(createInput)).rejects.toMatchObject({
+        code: 'approval_status_conflict',
+      });
+      expect(await rows(createDb)).toEqual(beforeCreate);
+
+      const decisionDb = await openDb(`approval-context-duplicate-decision-${suffix}`);
+      const decisionRun = runFixture({ id: `jrun-duplicate-decision-${suffix}` });
+      const decisionApproval = approvalFixture({
+        id: requestedFirst ? 'jappr-a-requested-decision' : 'jappr-z-requested-decision',
+        runId: decisionRun.id,
+      });
+      await decisionDb.jarvis_runs.add(toJarvisRunRow(decisionRun));
+      const decisionMutations = createJarvisApprovalMutationRepository(decisionDb);
+      await decisionMutations.createPending({
+        accountId: decisionRun.accountId,
+        approval: decisionApproval,
+        expectedEventTailSeq: 0,
+      });
+      await decisionDb.jarvis_approvals.add(
+        toJarvisApprovalRow(
+          approvalFixture({
+            id: requestedFirst ? 'jappr-z-duplicate-decision' : 'jappr-a-duplicate-decision',
+            runId: decisionRun.id,
+            requestId: `request-duplicate-decision-${suffix}`,
+          }),
+        ),
+      );
+      const beforeDecision = await rows(decisionDb);
+      await expect(
+        decisionMutations.decide({
+          accountId: decisionRun.accountId,
+          runId: decisionRun.id,
+          requestId: decisionApproval.requestId,
+          attemptNumber: 1,
+          approvalId: decisionApproval.id,
+          decision: 'approve',
+          decidedAt: NOW + 1,
+          expectedEventTailSeq: 2,
+        }),
+      ).rejects.toMatchObject({ code: 'approval_status_conflict' });
+      expect(await rows(decisionDb)).toEqual(beforeDecision);
+
+      const claimDb = await openDb(`approval-context-duplicate-claim-${suffix}`);
+      const claimRun = runFixture({ id: `jrun-duplicate-claim-${suffix}` });
+      const claimApproval = approvalFixture({
+        id: requestedFirst ? 'jappr-a-requested-claim' : 'jappr-z-requested-claim',
+        runId: claimRun.id,
+      });
+      await claimDb.jarvis_runs.add(toJarvisRunRow(claimRun));
+      const claimMutations = createJarvisApprovalMutationRepository(claimDb);
+      await claimMutations.createPending({
+        accountId: claimRun.accountId,
+        approval: claimApproval,
+        expectedEventTailSeq: 0,
+      });
+      await claimMutations.decide({
+        accountId: claimRun.accountId,
+        runId: claimRun.id,
+        requestId: claimApproval.requestId,
+        attemptNumber: 1,
+        approvalId: claimApproval.id,
+        decision: 'approve',
+        decidedAt: NOW + 1,
+        expectedEventTailSeq: 2,
+      });
+      await claimDb.jarvis_approvals.add(
+        toJarvisApprovalRow(
+          approvalFixture({
+            id: requestedFirst ? 'jappr-z-duplicate-claim' : 'jappr-a-duplicate-claim',
+            runId: claimRun.id,
+            requestId: `request-duplicate-claim-${suffix}`,
+          }),
+        ),
+      );
+      const beforeClaim = await rows(claimDb);
+      await expect(
+        claimMutations.claimApprovedExecution({
+          accountId: claimRun.accountId,
+          runId: claimRun.id,
+          requestId: claimApproval.requestId,
+          attemptNumber: 1,
+          approvalId: claimApproval.id,
+          producerKind: 'action',
+          ownerId: `jexec-duplicate-claim-${suffix}`,
+          evidenceRef: `evidence-duplicate-claim-${suffix}`,
+          startedAt: NOW + 2,
+          expectedEventTailSeq: 3,
+        }),
+      ).rejects.toMatchObject({ code: 'approval_status_conflict' });
+      expect(await rows(claimDb)).toEqual(beforeClaim);
+    }
+
+    const freshDb = await openDb('approval-context-duplicate-fresh-create');
+    const freshRun = runFixture({ id: 'jrun-duplicate-fresh-create' });
+    await freshDb.jarvis_runs.add(toJarvisRunRow(freshRun));
+    await freshDb.jarvis_approvals.add(
+      toJarvisApprovalRow(
+        approvalFixture({
+          id: 'jappr-existing-open',
+          runId: freshRun.id,
+          requestId: 'request-existing-open',
+        }),
+      ),
+    );
+    const beforeFresh = await rows(freshDb);
+    await expect(
+      createJarvisApprovalMutationRepository(freshDb).createPending({
+        accountId: freshRun.accountId,
+        approval: approvalFixture({ id: 'jappr-new-open', runId: freshRun.id }),
+        expectedEventTailSeq: 0,
+      }),
+    ).rejects.toMatchObject({ code: 'approval_status_conflict' });
+    expect(await rows(freshDb)).toEqual(beforeFresh);
+
+    const safeDb = await openDb('approval-context-duplicate-safe-auto');
+    const safeRun = runFixture({ id: 'jrun-duplicate-safe-auto' });
+    await safeDb.jarvis_runs.add(toJarvisRunRow(safeRun));
+    await safeDb.jarvis_approvals.add(
+      toJarvisApprovalRow(
+        approvalFixture({
+          id: 'jappr-safe-existing-open',
+          runId: safeRun.id,
+          requestId: 'request-safe-existing-open',
+        }),
+      ),
+    );
+    const beforeSafe = await rows(safeDb);
+    await expect(
+      createJarvisApprovalMutationRepository(safeDb).claimSafeAutoExecution({
+        accountId: safeRun.accountId,
+        approval: approvalFixture({
+          id: 'jappr-safe-new-claim',
+          runId: safeRun.id,
+          risk: 'safe',
+        }),
+        producerKind: 'action',
+        ownerId: 'jexec-duplicate-safe',
+        evidenceRef: 'evidence-duplicate-safe',
+        startedAt: NOW + 1,
+        expectedEventTailSeq: 0,
+      }),
+    ).rejects.toMatchObject({ code: 'approval_status_conflict' });
+    expect(await rows(safeDb)).toEqual(beforeSafe);
+  });
+
+  it('serializes every approval core against cancellation and every terminal transition in both commit orders', async () => {
+    const operations = ['create', 'decide', 'claim', 'safe'] as const;
+    const blockers = [
+      'cancellation',
+      'partial',
+      'completed',
+      'failed',
+      'cancelled',
+      'timed_out',
+    ] as const;
+
+    async function prepare(
+      db: JarvisDexie,
+      operation: (typeof operations)[number],
+      suffix: string,
+    ) {
+      const run = runFixture({ id: `jrun-race-${operation}-${suffix}` });
+      const approval = approvalFixture({
+        id: `jappr-race-${operation}-${suffix}`,
+        runId: run.id,
+        createdAt: operation === 'create' ? NOW + 20 : NOW,
+        expiresAt: NOW + 60_000,
+        ...(operation === 'safe' ? { risk: 'safe' as const } : {}),
+      });
+      await db.jarvis_runs.add(toJarvisRunRow(run));
+      const mutations = createJarvisApprovalMutationRepository(db);
+      if (operation === 'decide' || operation === 'claim') {
+        await mutations.createPending({
+          accountId: run.accountId,
+          approval,
+          expectedEventTailSeq: 0,
+        });
+      }
+      if (operation === 'claim') {
+        await mutations.decide({
+          accountId: run.accountId,
+          runId: run.id,
+          requestId: approval.requestId,
+          attemptNumber: 1,
+          approvalId: approval.id,
+          decision: 'approve',
+          decidedAt: NOW + 1,
+          expectedEventTailSeq: 2,
+        });
+      }
+      const baseTail = operation === 'claim' ? 3 : operation === 'decide' ? 2 : 0;
+      const execute = (expectedEventTailSeq: number): Promise<unknown> => {
+        if (operation === 'create') {
+          return mutations.createPending({
+            accountId: run.accountId,
+            approval,
+            expectedEventTailSeq,
+          });
+        }
+        if (operation === 'decide') {
+          return mutations.decide({
+            accountId: run.accountId,
+            runId: run.id,
+            requestId: approval.requestId,
+            attemptNumber: 1,
+            approvalId: approval.id,
+            decision: 'approve',
+            decidedAt: NOW + 20,
+            expectedEventTailSeq,
+          });
+        }
+        if (operation === 'claim') {
+          return mutations.claimApprovedExecution({
+            accountId: run.accountId,
+            runId: run.id,
+            requestId: approval.requestId,
+            attemptNumber: 1,
+            approvalId: approval.id,
+            producerKind: 'action',
+            ownerId: `jexec-race-${suffix}`,
+            evidenceRef: `evidence-race-${suffix}`,
+            startedAt: NOW + 20,
+            expectedEventTailSeq,
+          });
+        }
+        return mutations.claimSafeAutoExecution({
+          accountId: run.accountId,
+          approval,
+          producerKind: 'action',
+          ownerId: `jexec-race-${suffix}`,
+          evidenceRef: `evidence-race-${suffix}`,
+          startedAt: NOW + 20,
+          expectedEventTailSeq,
+        });
+      };
+      return { approval, baseTail, execute, run };
+    }
+
+    for (const operation of operations) {
+      for (const blocker of blockers) {
+        const operationFirstDb = await openDb(`approval-context-race-${operation}-${blocker}-op`);
+        const operationFirst = await prepare(operationFirstDb, operation, `${blocker}-op`);
+        await operationFirst.execute(operationFirst.baseTail);
+        const afterOperation = await rows(operationFirstDb);
+        expect(afterOperation.approvals).toHaveLength(1);
+        if (blocker === 'cancellation') {
+          await appendCancellation(
+            operationFirstDb,
+            operationFirst.run.id,
+            operationFirst.baseTail + (operation === 'create' ? 3 : 2),
+            NOW + 30,
+          );
+        } else {
+          await appendTerminalTransition(
+            operationFirstDb,
+            operationFirst.run.id,
+            blocker,
+            NOW + 30,
+          );
+        }
+        const afterBlocker = await rows(operationFirstDb);
+        expect(afterBlocker.approvals).toEqual(afterOperation.approvals);
+        expect(afterBlocker.events.slice(0, afterOperation.events.length)).toEqual(
+          afterOperation.events,
+        );
+        expect(afterBlocker.events).toHaveLength(afterOperation.events.length + 1);
+        if (blocker === 'cancellation') {
+          expect(afterBlocker.runs).toEqual(afterOperation.runs);
+        } else {
+          expect(fromJarvisRunRow(afterBlocker.runs[0]!).status).toBe(blocker);
+        }
+
+        const blockerFirstDb = await openDb(
+          `approval-context-race-${operation}-${blocker}-blocker`,
+        );
+        const blockerFirst = await prepare(blockerFirstDb, operation, `${blocker}-blocker`);
+        if (blocker === 'cancellation') {
+          await appendCancellation(
+            blockerFirstDb,
+            blockerFirst.run.id,
+            blockerFirst.baseTail + 1,
+            NOW + 10,
+          );
+        } else {
+          await appendTerminalTransition(blockerFirstDb, blockerFirst.run.id, blocker, NOW + 10);
+        }
+        const afterFirstBlocker = await rows(blockerFirstDb);
+        await expect(blockerFirst.execute(blockerFirst.baseTail + 1)).rejects.toMatchObject({
+          code: 'approval_status_conflict',
+        });
+        expect(await rows(blockerFirstDb)).toEqual(afterFirstBlocker);
+      }
+    }
+  });
+
+  it('binds scheduled approvals to the latest open attempt and advances only the required barrier versions', async () => {
+    async function seedScheduledRun(db: JarvisDexie, run: JarvisRun): Promise<void> {
+      await db.jarvis_runs.add(toJarvisRunRow(run));
+      await db.jarvis_events.add(
+        toJarvisEventRow({
+          runId: run.id,
+          seq: 1,
+          idempotencyKey: `scheduled-start-${run.id}`,
+          type: 'run_state',
+          status: 'running',
+          title: 'Scheduled attempt started',
+          safeSummary: 'The scheduled attempt started.',
+          sourceRefs: [],
+          artifactIds: [],
+          createdAt: NOW - 10,
+        }),
+      );
+    }
+
+    const claimDb = await openDb('approval-context-scheduled-claim');
+    const claimRun = runFixture({
+      id: 'jrun-scheduled-claim',
+      source: 'schedule',
+      updatedAt: NOW - 10,
+      transportAttempts: [scheduledAttemptFixture()],
+    });
+    const claimApproval = approvalFixture({ id: 'jappr-scheduled-claim', runId: claimRun.id });
+    await seedScheduledRun(claimDb, claimRun);
+    const claimMutations = createJarvisApprovalMutationRepository(claimDb);
+    const created = await claimMutations.createPending({
+      accountId: claimRun.accountId,
+      approval: claimApproval,
+      expectedEventTailSeq: 1,
+    });
+    expect(created.run.transportAttempts?.at(-1)?.effectBarrier).toMatchObject({
+      state: 'dirty',
+      version: 1,
+    });
+    const approved = await claimMutations.decide({
+      accountId: claimRun.accountId,
+      runId: claimRun.id,
+      requestId: claimApproval.requestId,
+      attemptNumber: 1,
+      approvalId: claimApproval.id,
+      decision: 'approve',
+      decidedAt: NOW + 1,
+      expectedEventTailSeq: 3,
+    });
+    expect(approved.run.transportAttempts?.at(-1)?.effectBarrier.version).toBe(1);
+    const claimed = await claimMutations.claimApprovedExecution({
+      accountId: claimRun.accountId,
+      runId: claimRun.id,
+      requestId: claimApproval.requestId,
+      attemptNumber: 1,
+      approvalId: claimApproval.id,
+      producerKind: 'action',
+      ownerId: 'jexec-scheduled-claim',
+      evidenceRef: 'evidence-scheduled-claim',
+      startedAt: NOW + 2,
+      expectedEventTailSeq: 4,
+    });
+    expect(claimed.run.transportAttempts?.at(-1)?.effectBarrier).toMatchObject({
+      state: 'dirty',
+      version: 2,
+    });
+
+    const safeDb = await openDb('approval-context-scheduled-safe');
+    const safeRun = runFixture({
+      id: 'jrun-scheduled-safe',
+      source: 'schedule',
+      updatedAt: NOW - 10,
+      transportAttempts: [scheduledAttemptFixture()],
+    });
+    const safeApproval = approvalFixture({
+      id: 'jappr-scheduled-safe',
+      runId: safeRun.id,
+      risk: 'safe',
+    });
+    await seedScheduledRun(safeDb, safeRun);
+    const safe = await createJarvisApprovalMutationRepository(safeDb).claimSafeAutoExecution({
+      accountId: safeRun.accountId,
+      approval: safeApproval,
+      producerKind: 'action',
+      ownerId: 'jexec-scheduled-safe',
+      evidenceRef: 'evidence-scheduled-safe',
+      startedAt: NOW + 1,
+      expectedEventTailSeq: 1,
+    });
+    expect(safe.run.transportAttempts?.at(-1)?.effectBarrier).toMatchObject({
+      state: 'dirty',
+      version: 1,
+    });
+
+    const staleDb = await openDb('approval-context-scheduled-stale');
+    const staleRun = runFixture({
+      id: 'jrun-scheduled-stale',
+      source: 'schedule',
+      updatedAt: NOW - 10,
+      transportAttempts: [
+        scheduledAttemptFixture({
+          requestId: 'request-newer-attempt',
+        }),
+      ],
+    });
+    await seedScheduledRun(staleDb, staleRun);
+    const beforeStale = await rows(staleDb);
+    await expect(
+      createJarvisApprovalMutationRepository(staleDb).createPending({
+        accountId: staleRun.accountId,
+        approval: approvalFixture({ id: 'jappr-scheduled-stale', runId: staleRun.id }),
+        expectedEventTailSeq: 1,
+      }),
+    ).rejects.toMatchObject({ code: 'approval_scope_mismatch' });
+    expect(await rows(staleDb)).toEqual(beforeStale);
+
+    const sealedDb = await openDb('approval-context-scheduled-sealed');
+    const sealedRun = runFixture({
+      id: 'jrun-scheduled-sealed',
+      source: 'schedule',
+      updatedAt: NOW - 10,
+      transportAttempts: [
+        scheduledAttemptFixture({
+          effectBarrier: { state: 'sealed_for_retry', version: 0, updatedAt: NOW - 9 },
+        }),
+      ],
+    });
+    await seedScheduledRun(sealedDb, sealedRun);
+    const beforeSealed = await rows(sealedDb);
+    await expect(
+      createJarvisApprovalMutationRepository(sealedDb).claimSafeAutoExecution({
+        accountId: sealedRun.accountId,
+        approval: approvalFixture({
+          id: 'jappr-scheduled-sealed',
+          runId: sealedRun.id,
+          risk: 'safe',
+        }),
+        producerKind: 'action',
+        ownerId: 'jexec-scheduled-sealed',
+        evidenceRef: 'evidence-scheduled-sealed',
+        startedAt: NOW + 1,
+        expectedEventTailSeq: 1,
+      }),
+    ).rejects.toMatchObject({ code: 'approval_status_conflict' });
+    expect(await rows(sealedDb)).toEqual(beforeSealed);
+
+    const sealedClaimDb = await openDb('approval-context-scheduled-sealed-claim');
+    const sealedClaimRun = runFixture({
+      id: 'jrun-scheduled-sealed-claim',
+      source: 'schedule',
+      status: 'awaiting_approval',
+      updatedAt: NOW + 1,
+      transportAttempts: [
+        scheduledAttemptFixture({
+          effectBarrier: { state: 'sealed_for_retry', version: 0, updatedAt: NOW + 1 },
+          updatedAt: NOW + 1,
+        }),
+      ],
+    });
+    const sealedClaimApproval = approvalFixture({
+      id: 'jappr-scheduled-sealed-claim',
+      runId: sealedClaimRun.id,
+      status: 'approved',
+      decidedAt: NOW + 1,
+    });
+    await seedScheduledRun(sealedClaimDb, sealedClaimRun);
+    await sealedClaimDb.jarvis_approvals.add(toJarvisApprovalRow(sealedClaimApproval));
+    const beforeSealedClaim = await rows(sealedClaimDb);
+    await expect(
+      createJarvisApprovalMutationRepository(sealedClaimDb).claimApprovedExecution({
+        accountId: sealedClaimRun.accountId,
+        runId: sealedClaimRun.id,
+        requestId: sealedClaimApproval.requestId,
+        attemptNumber: 1,
+        approvalId: sealedClaimApproval.id,
+        producerKind: 'action',
+        ownerId: 'jexec-scheduled-sealed-claim',
+        evidenceRef: 'evidence-scheduled-sealed-claim',
+        startedAt: NOW + 2,
+        expectedEventTailSeq: 1,
+      }),
+    ).rejects.toMatchObject({ code: 'approval_status_conflict' });
+    expect(await rows(sealedClaimDb)).toEqual(beforeSealedClaim);
+  });
+
   it('supports denial and expiry decisions by resuming the parent run atomically', async () => {
     for (const decision of ['deny', 'expire'] as const) {
       const db = await openDb(`approval-context-${decision}`);
@@ -806,7 +1494,12 @@ describe('signal-bound approval context cores', () => {
     const result = await mutations.claimSafeAutoExecution(safeInput);
 
     expect(result).toMatchObject({
-      approval: { id: approval.id, status: 'consumed', consumedAt: NOW + 1 },
+      approval: {
+        id: approval.id,
+        status: 'consumed',
+        decidedAt: NOW + 1,
+        consumedAt: NOW + 1,
+      },
       run: { id: run.id, status: 'running' },
       startEvent: {
         seq: 1,
