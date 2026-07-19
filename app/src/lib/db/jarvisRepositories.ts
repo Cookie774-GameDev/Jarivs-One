@@ -1,7 +1,7 @@
 import Dexie from 'dexie';
 import type {
   JarvisApprovalV1,
-  JarvisArtifact,
+  JarvisArtifactV1,
   JarvisAttemptEffectClaimInput,
   JarvisAttemptEffectClaimResult,
   JarvisDurableLiveEvidenceV1,
@@ -176,10 +176,25 @@ export interface JarvisApprovalRepository {
 }
 
 export interface JarvisArtifactRepository {
-  getById(accountId: string, artifactId: string): Promise<JarvisArtifact | undefined>;
-  listByRun(accountId: string, runId: string, limit?: number): Promise<JarvisArtifact[]>;
-  putForRun(accountId: string, artifact: JarvisArtifact): Promise<JarvisArtifact>;
+  getById(accountId: string, artifactId: string): Promise<JarvisArtifactV1 | undefined>;
+  listByRun(accountId: string, runId: string, limit?: number): Promise<JarvisArtifactV1[]>;
 }
+
+/** @internal Trusted artifact composition only; never expose to UI or model code. */
+export interface JarvisArtifactCommitAuthority {
+  putForRun(accountId: string, artifact: JarvisArtifactV1): Promise<JarvisArtifactV1>;
+}
+
+/** @internal Structural capability supplied only by the artifact runtime composition. */
+export type JarvisArtifactCommitVerifier = Readonly<{
+  consumePendingForCommit(input: {
+    accountId: string;
+    runId: string;
+    requestId: string;
+    attemptNumber: number;
+    artifacts: readonly JarvisArtifactV1[];
+  }): void;
+}>;
 
 export type JarvisRepositoryErrorCode =
   | 'account_scope_mismatch'
@@ -191,6 +206,7 @@ export type JarvisRepositoryErrorCode =
   | 'transport_attempt_integrity_error'
   | 'attempt_effect_integrity_error'
   | 'profile_integrity_error'
+  | 'artifact_integrity_error'
   | 'invalid_limit';
 
 export class JarvisRepositoryError extends Error {
@@ -1093,9 +1109,20 @@ export function createJarvisRepositories(
         .toArray();
       return rows.map(fromJarvisArtifactRow);
     },
+  };
 
-    async putForRun(accountId, value) {
+  return { identity, profile, run, event, approval, artifact };
+}
+
+/** @internal Constructed only by the trusted artifact composition and focused tests. */
+export function createJarvisArtifactCommitAuthority(
+  database: JarvisDexie,
+  verifier: JarvisArtifactCommitVerifier,
+): JarvisArtifactCommitAuthority {
+  return Object.freeze({
+    async putForRun(accountId: string, value: JarvisArtifactV1): Promise<JarvisArtifactV1> {
       assertAccountId(accountId);
+      const row = toJarvisArtifactRow(value);
       return database.transaction(
         'rw',
         database.jarvis_runs,
@@ -1103,18 +1130,25 @@ export function createJarvisRepositories(
         async () => {
           await requireOwnedRun(database, accountId, value.runId);
           const existing = await database.jarvis_artifacts.get(value.id);
-          if (existing && existing.run_id !== value.runId) {
-            repositoryError('parent_run_not_found');
+          if (existing) {
+            if (existing.run_id !== value.runId) repositoryError('parent_run_not_found');
+            const existingValue = fromJarvisArtifactRow(existing);
+            if (!valuesEqual(existingValue, value)) repositoryError('artifact_integrity_error');
+            return existingValue;
           }
-          const row = toJarvisArtifactRow(value);
-          await database.jarvis_artifacts.put(row);
+          verifier.consumePendingForCommit({
+            accountId,
+            runId: value.runId,
+            requestId: value.requestId,
+            attemptNumber: value.attemptNumber,
+            artifacts: [value],
+          });
+          await database.jarvis_artifacts.add(row);
           return fromJarvisArtifactRow(row);
         },
       );
     },
-  };
-
-  return { identity, profile, run, event, approval, artifact };
+  });
 }
 
 /** @internal Closed Task 18 test harness only; production modules must not import this factory. */

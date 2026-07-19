@@ -1,7 +1,7 @@
 import type { JarvisCapabilitySnapshot, JarvisModelSnapshot } from './capability';
 import type {
   JarvisApprovalV1,
-  JarvisArtifact,
+  JarvisArtifactV1,
   JarvisCanonicalResultEvidenceV1,
   JarvisDurableLiveEvidenceV1,
   JarvisEvent,
@@ -210,6 +210,9 @@ const ARTIFACT_KINDS = [
   'terminal_output',
   'provider_result',
 ] as const;
+const ARTIFACT_STATES = ['ready', 'partial', 'quarantined'] as const;
+const ARTIFACT_PREVIEW_KINDS = ['text', 'image', 'none'] as const;
+const ARTIFACT_LOCAL_REFERENCE_KINDS = ['path', 'blob_key', 'message_part'] as const;
 
 const PROFILE_MEMORY_SCOPES = ['none', 'profile', 'shared_selected'] as const;
 const LLM_ROLES = ['system', 'user', 'assistant'] as const;
@@ -2196,6 +2199,39 @@ function validateApprovalShape(
   validateOptionalField(record, 'consumedAt', path, errors, validateFiniteNumber);
 }
 
+function validateArtifactPreviewShape(
+  value: unknown,
+  path: ValidationPath,
+  errors: ValidationErrors,
+): void {
+  const record = validateClosedRecord(
+    value,
+    ['kind', 'text', 'truncated', 'sizeBytes'],
+    path,
+    errors,
+  );
+  if (!record) return;
+  validateRequiredField(record, 'kind', path, errors, (entry, entryPath, entryErrors) =>
+    validateEnum(entry, ARTIFACT_PREVIEW_KINDS, entryPath, entryErrors),
+  );
+  validateOptionalField(record, 'text', path, errors, validateString);
+  validateRequiredField(record, 'truncated', path, errors, validateBoolean);
+  validateRequiredField(record, 'sizeBytes', path, errors, validateNonNegativeInteger);
+}
+
+function validateArtifactLocalReferenceShape(
+  value: unknown,
+  path: ValidationPath,
+  errors: ValidationErrors,
+): void {
+  const record = validateClosedRecord(value, ['kind', 'value'], path, errors);
+  if (!record) return;
+  validateRequiredField(record, 'kind', path, errors, (entry, entryPath, entryErrors) =>
+    validateEnum(entry, ARTIFACT_LOCAL_REFERENCE_KINDS, entryPath, entryErrors),
+  );
+  validateRequiredField(record, 'value', path, errors, validateIdentifier);
+}
+
 function validateArtifactShape(
   value: unknown,
   path: ValidationPath,
@@ -2203,13 +2239,39 @@ function validateArtifactShape(
 ): void {
   const record = validateClosedRecord(
     value,
-    ['id', 'runId', 'kind', 'title', 'uri', 'mimeType', 'safeSummary', 'sourceRefs', 'createdAt'],
+    [
+      'schemaVersion',
+      'id',
+      'runId',
+      'requestId',
+      'attemptNumber',
+      'state',
+      'kind',
+      'title',
+      'uri',
+      'mimeType',
+      'safeSummary',
+      'sourceRefs',
+      'createdAt',
+      'contentHash',
+      'sizeBytes',
+      'preview',
+      'localReference',
+    ],
     path,
     errors,
   );
   if (!record) return;
+  validateRequiredField(record, 'schemaVersion', path, errors, (entry, entryPath, entryErrors) =>
+    validateLiteral(entry, 1, entryPath, entryErrors),
+  );
   validateRequiredField(record, 'id', path, errors, validateIdentifier);
   validateRequiredField(record, 'runId', path, errors, validateIdentifier);
+  validateRequiredField(record, 'requestId', path, errors, validateIdentifier);
+  validateRequiredField(record, 'attemptNumber', path, errors, validatePositiveInteger);
+  validateRequiredField(record, 'state', path, errors, (entry, entryPath, entryErrors) =>
+    validateEnum(entry, ARTIFACT_STATES, entryPath, entryErrors),
+  );
   validateRequiredField(record, 'kind', path, errors, (entry, entryPath, entryErrors) =>
     validateEnum(entry, ARTIFACT_KINDS, entryPath, entryErrors),
   );
@@ -2219,6 +2281,16 @@ function validateArtifactShape(
   validateOptionalField(record, 'safeSummary', path, errors, validateString);
   validateRequiredField(record, 'sourceRefs', path, errors, validateSourceRefArray);
   validateRequiredField(record, 'createdAt', path, errors, validateFiniteNumber);
+  validateOptionalField(record, 'contentHash', path, errors, validateIdentifier);
+  validateOptionalField(record, 'sizeBytes', path, errors, validateNonNegativeInteger);
+  validateOptionalField(record, 'preview', path, errors, validateArtifactPreviewShape);
+  validateOptionalField(
+    record,
+    'localReference',
+    path,
+    errors,
+    validateArtifactLocalReferenceShape,
+  );
 }
 
 function validateContract<T>(
@@ -2342,6 +2414,6 @@ export function validateJarvisApproval(
 
 export function validateJarvisArtifact(
   input: unknown,
-): JarvisContractValidationResult<JarvisArtifact> {
+): JarvisContractValidationResult<JarvisArtifactV1> {
   return validateContract(input, validateArtifactShape);
 }

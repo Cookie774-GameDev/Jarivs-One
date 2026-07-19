@@ -2,7 +2,7 @@ import { describe, expect, expectTypeOf, it } from 'vitest';
 import type { JarvisModelSnapshot } from '@/lib/jarvis/contracts/capability';
 import type {
   JarvisApprovalV1,
-  JarvisArtifact,
+  JarvisArtifactV1,
   JarvisCanonicalResultEvidenceV1,
   JarvisDurableLiveEvidenceV1,
   JarvisEvent,
@@ -165,15 +165,28 @@ function approval(): JarvisApprovalV1 {
   };
 }
 
-function artifact(): JarvisArtifact {
+function artifact(): JarvisArtifactV1 {
   return {
+    schemaVersion: 1,
     id: 'artifact-1',
     runId: 'run-1',
+    requestId: 'request-2',
+    attemptNumber: 2,
+    state: 'ready',
     kind: 'document',
     title: 'Implementation plan',
     uri: 'file:///implementation-plan.md',
     mimeType: 'text/markdown',
     safeSummary: 'A detached plan artifact.',
+    contentHash: 'a'.repeat(64),
+    sizeBytes: 24,
+    preview: {
+      kind: 'text',
+      text: 'A detached plan artifact.',
+      truncated: false,
+      sizeBytes: 24,
+    },
+    localReference: { kind: 'blob_key', value: 'artifact-blob-1' },
     sourceRefs: [sourceRef()],
     createdAt: 7_000,
   };
@@ -230,8 +243,12 @@ describe('jarvis mapper surface', () => {
     expectTypeOf(fromJarvisApprovalRow).toEqualTypeOf<
       (row: JarvisApprovalRow) => JarvisApprovalV1
     >();
-    expectTypeOf(toJarvisArtifactRow).toEqualTypeOf<(value: JarvisArtifact) => JarvisArtifactRow>();
-    expectTypeOf(fromJarvisArtifactRow).toEqualTypeOf<(row: JarvisArtifactRow) => JarvisArtifact>();
+    expectTypeOf(toJarvisArtifactRow).toEqualTypeOf<
+      (value: JarvisArtifactV1) => JarvisArtifactRow
+    >();
+    expectTypeOf(fromJarvisArtifactRow).toEqualTypeOf<
+      (row: JarvisArtifactRow) => JarvisArtifactV1
+    >();
     expectTypeOf(toJarvisModelSnapshotRow).toEqualTypeOf<
       (value: JarvisModelSnapshot) => JarvisModelSnapshotRow
     >();
@@ -610,18 +627,33 @@ describe('approval and artifact mappers', () => {
     const row = toJarvisArtifactRow(value);
 
     expect(row).toEqual({
+      schema_version: 1,
       id: 'artifact-1',
       run_id: 'run-1',
+      request_id: 'request-2',
+      attempt_number: 2,
+      state: 'ready',
       kind: 'document',
       title: 'Implementation plan',
       uri: 'file:///implementation-plan.md',
       mime_type: 'text/markdown',
       safe_summary: 'A detached plan artifact.',
+      content_hash: 'a'.repeat(64),
+      size_bytes: 24,
+      preview: {
+        kind: 'text',
+        text: 'A detached plan artifact.',
+        truncated: false,
+        size_bytes: 24,
+      },
+      local_reference: { kind: 'blob_key', value: 'artifact-blob-1' },
       source_refs: [toJarvisSourceRefRow(sourceRef())],
       created_at: 7_000,
     });
     expect(row.source_refs).not.toBe(value.sourceRefs);
     expect(row.source_refs[0]).not.toBe(value.sourceRefs[0]);
+    expect(row.preview).not.toBe(value.preview);
+    expect(row.local_reference).not.toBe(value.localReference);
     row.source_refs[0]!.label = 'Changed row label';
     expect(value.sourceRefs[0]!.label).toBe('Architecture');
 
@@ -630,6 +662,8 @@ describe('approval and artifact mappers', () => {
     expect(mapped).toEqual(artifact());
     expect(mapped.sourceRefs).not.toBe(sourceRow.source_refs);
     expect(mapped.sourceRefs[0]).not.toBe(sourceRow.source_refs[0]);
+    expect(mapped.preview).not.toBe(sourceRow.preview);
+    expect(mapped.localReference).not.toBe(sourceRow.local_reference);
     mapped.sourceRefs[0]!.label = 'Changed domain label';
     expect(sourceRow.source_refs[0]!.label).toBe('Architecture');
   });
@@ -662,20 +696,40 @@ describe('approval and artifact mappers', () => {
       expect(mappedApproval).not.toHaveProperty(key);
     }
 
-    const minimalArtifact: JarvisArtifact = {
+    const minimalArtifact: JarvisArtifactV1 = {
+      schemaVersion: 1,
       id: 'artifact-minimal',
       runId: 'run-1',
+      requestId: 'request-minimal',
+      attemptNumber: 1,
+      state: 'ready',
       kind: 'text',
       title: 'Minimal artifact',
       sourceRefs: [],
       createdAt: 11_100,
     };
     const artifactRow = toJarvisArtifactRow(minimalArtifact);
-    for (const key of ['uri', 'mime_type', 'safe_summary']) {
+    for (const key of [
+      'uri',
+      'mime_type',
+      'safe_summary',
+      'content_hash',
+      'size_bytes',
+      'preview',
+      'local_reference',
+    ]) {
       expect(artifactRow).not.toHaveProperty(key);
     }
     const mappedArtifact = fromJarvisArtifactRow(artifactRow);
-    for (const key of ['uri', 'mimeType', 'safeSummary']) {
+    for (const key of [
+      'uri',
+      'mimeType',
+      'safeSummary',
+      'contentHash',
+      'sizeBytes',
+      'preview',
+      'localReference',
+    ]) {
       expect(mappedArtifact).not.toHaveProperty(key);
     }
   });

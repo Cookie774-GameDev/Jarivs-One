@@ -5,7 +5,7 @@ import {
   canonicalizeJarvisApprovalJson,
   hashCanonicalJarvisApprovalJson,
   type JarvisApprovalV1,
-  type JarvisArtifact,
+  type JarvisArtifactV1,
   type JarvisCapabilityRef,
   type JarvisCapabilitySnapshot,
   type JarvisContextItem,
@@ -362,15 +362,28 @@ function validApproval(): JarvisApprovalV1 {
   };
 }
 
-function validArtifact(): JarvisArtifact {
+function validArtifact(): JarvisArtifactV1 {
   return {
+    schemaVersion: 1,
     id: 'artifact-1',
     runId: 'run-1',
+    requestId: 'request-1',
+    attemptNumber: 1,
+    state: 'ready',
     kind: 'document',
     title: 'Synthetic artifact',
     uri: 'vibespace://artifact/1',
     mimeType: 'text/markdown',
     safeSummary: 'Synthetic artifact summary',
+    contentHash: 'a'.repeat(64),
+    sizeBytes: 18,
+    preview: {
+      kind: 'text',
+      text: 'Synthetic artifact',
+      truncated: false,
+      sizeBytes: 18,
+    },
+    localReference: { kind: 'message_part', value: 'provider-result-1' },
     sourceRefs: [validSourceRef()],
     createdAt: 330,
   };
@@ -547,7 +560,7 @@ describe('Task 3 public contract barrel', () => {
       (input: unknown) => JarvisContractValidationResult<JarvisApprovalV1>
     >();
     expectTypeOf(validateJarvisArtifact).toEqualTypeOf<
-      (input: unknown) => JarvisContractValidationResult<JarvisArtifact>
+      (input: unknown) => JarvisContractValidationResult<JarvisArtifactV1>
     >();
   });
 
@@ -644,7 +657,15 @@ describe('valid construction and JSON round trips', () => {
       },
       {
         input: validArtifact(),
-        optionalPaths: [['uri'], ['mimeType'], ['safeSummary']],
+        optionalPaths: [
+          ['uri'],
+          ['mimeType'],
+          ['safeSummary'],
+          ['contentHash'],
+          ['sizeBytes'],
+          ['preview'],
+          ['localReference'],
+        ],
         validate: validateJarvisArtifact as Validator,
       },
     ];
@@ -998,7 +1019,18 @@ describe('missing required fields', () => {
       input: validArtifact,
       validate: validateJarvisArtifact as Validator,
       parentPath: [],
-      fields: ['id', 'runId', 'kind', 'title', 'sourceRefs', 'createdAt'],
+      fields: [
+        'schemaVersion',
+        'id',
+        'runId',
+        'requestId',
+        'attemptNumber',
+        'state',
+        'kind',
+        'title',
+        'sourceRefs',
+        'createdAt',
+      ],
     },
   ];
 
@@ -2663,6 +2695,65 @@ describe('semantic boundaries remain deferred', () => {
     const artifact = validArtifact();
     delete artifact.uri;
     expectSuccess(validateJarvisArtifact(artifact));
+  });
+});
+
+describe('Task 20A artifact v1 shape', () => {
+  it('accepts the closed v1 state, preview, and local-reference enums', () => {
+    for (const state of ['ready', 'partial', 'quarantined']) {
+      expectSuccess(validateJarvisArtifact(setAt(validArtifact(), ['state'], state)));
+    }
+    for (const kind of ['text', 'image', 'none']) {
+      expectSuccess(validateJarvisArtifact(setAt(validArtifact(), ['preview', 'kind'], kind)));
+    }
+    for (const kind of ['path', 'blob_key', 'message_part']) {
+      expectSuccess(
+        validateJarvisArtifact(setAt(validArtifact(), ['localReference', 'kind'], kind)),
+      );
+    }
+  });
+
+  it.each([
+    [['state'], 'unknown'],
+    [['preview', 'kind'], 'raw'],
+    [['localReference', 'kind'], 'url'],
+  ] as const)('rejects an unknown artifact enum at %j', (path, value) => {
+    expectFailure(
+      validateJarvisArtifact(setAt(validArtifact(), path, value)),
+      'unknown_enum',
+      path,
+    );
+  });
+
+  it('closes nested preview and local-reference records', () => {
+    expectFailure(
+      validateJarvisArtifact(addOwnField(validArtifact(), ['preview'], 'rawBytes', 'forbidden')),
+      'unknown_field',
+      ['preview', 'rawBytes'],
+    );
+    expectFailure(
+      validateJarvisArtifact(addOwnField(validArtifact(), ['localReference'], 'verified', true)),
+      'unknown_field',
+      ['localReference', 'verified'],
+    );
+  });
+
+  it('requires positive attempts and non-negative byte counts', () => {
+    expectFailure(
+      validateJarvisArtifact(setAt(validArtifact(), ['attemptNumber'], 0)),
+      'invalid_type',
+      ['attemptNumber'],
+    );
+    expectFailure(
+      validateJarvisArtifact(setAt(validArtifact(), ['sizeBytes'], -1)),
+      'invalid_type',
+      ['sizeBytes'],
+    );
+    expectFailure(
+      validateJarvisArtifact(setAt(validArtifact(), ['preview', 'sizeBytes'], -1)),
+      'invalid_type',
+      ['preview', 'sizeBytes'],
+    );
   });
 });
 

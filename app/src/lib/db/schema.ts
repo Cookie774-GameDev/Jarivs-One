@@ -264,8 +264,12 @@ export type JarvisApprovalRow = {
 };
 
 export type JarvisArtifactRow = {
+  schema_version: 1;
   id: string;
   run_id: string;
+  request_id: string;
+  attempt_number: number;
+  state: 'ready' | 'partial' | 'quarantined';
   kind:
     | 'file'
     | 'link'
@@ -279,6 +283,18 @@ export type JarvisArtifactRow = {
   uri?: string;
   mime_type?: string;
   safe_summary?: string;
+  content_hash?: string;
+  size_bytes?: number;
+  preview?: {
+    kind: 'text' | 'image' | 'none';
+    text?: string;
+    truncated: boolean;
+    size_bytes: number;
+  };
+  local_reference?: {
+    kind: 'path' | 'blob_key' | 'message_part';
+    value: string;
+  };
   source_refs: JarvisSourceRefRow[];
   created_at: number;
 };

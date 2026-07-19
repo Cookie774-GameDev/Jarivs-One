@@ -843,3 +843,56 @@ export interface JarvisArtifact {
   sourceRefs: JarvisSourceRef[];
   createdAt: number;
 }
+
+export type JarvisArtifactState = 'ready' | 'partial' | 'quarantined';
+
+export interface JarvisArtifactV1 extends JarvisArtifact {
+  schemaVersion: 1;
+  requestId: string;
+  attemptNumber: number;
+  state: JarvisArtifactState;
+  contentHash?: string;
+  sizeBytes?: number;
+  preview?: {
+    kind: 'text' | 'image' | 'none';
+    text?: string;
+    truncated: boolean;
+    sizeBytes: number;
+  };
+  localReference?: {
+    kind: 'path' | 'blob_key' | 'message_part';
+    value: string;
+  };
+}
+
+export type JarvisArtifactDraftBacking =
+  | { kind: 'uri'; uri: string }
+  | {
+      kind: 'local_reference';
+      localReference: NonNullable<JarvisArtifactV1['localReference']>;
+      content?: string | Uint8Array;
+    }
+  | {
+      kind: 'producer_result';
+      content?: string | Uint8Array;
+    };
+
+export type JarvisArtifactDraft = Readonly<{
+  artifact: Omit<
+    JarvisArtifactV1,
+    | 'id'
+    | 'schemaVersion'
+    | 'runId'
+    | 'requestId'
+    | 'attemptNumber'
+    | 'state'
+    | 'contentHash'
+    | 'sizeBytes'
+    | 'preview'
+    | 'localReference'
+    | 'uri'
+  > & {
+    state?: JarvisArtifactState;
+  };
+  backing: JarvisArtifactDraftBacking;
+}>;

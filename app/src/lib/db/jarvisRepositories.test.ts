@@ -1,7 +1,7 @@
 import { createJarvisDb, type JarvisDexie } from '@/lib/db';
 import type {
   JarvisApprovalV1,
-  JarvisArtifact,
+  JarvisArtifactV1,
   JarvisAttemptEffectClaimInput,
   JarvisDurableLiveEvidenceV1,
   JarvisEvent,
@@ -11,11 +11,13 @@ import type {
   JarvisTransportAttemptV1,
   JarvisZeroConsequentialEffectEvidenceV1,
 } from '@/lib/jarvis/contracts/execution';
+import { createJarvisArtifactRuntimeInternals } from '@/lib/jarvis/artifactRuntimeInternals';
 import type { JarvisIdentityRevision } from '@/lib/jarvis/identity';
 import type { JarvisProfile } from '@/lib/jarvis/profiles/types';
 import { TEST_INDEXED_DB, uniqueTestDbName } from '@/test/indexedDb';
 import {
   toJarvisApprovalRow,
+  toJarvisArtifactRow,
   toJarvisEventRow,
   toJarvisProfileRow,
   toJarvisRunRow,
@@ -23,6 +25,7 @@ import {
 } from './jarvisMappers';
 import {
   JarvisRepositoryError,
+  createJarvisArtifactCommitAuthority,
   createJarvisLiveEvidenceEventCommitAuthority,
   createJarvisRepositories,
   jarvisApprovalRepo,
@@ -128,9 +131,8 @@ type ExpectedJarvisRepositories = {
     ): Promise<JarvisApprovalV1[]>;
   };
   artifact: {
-    getById(accountId: string, artifactId: string): Promise<JarvisArtifact | undefined>;
-    listByRun(accountId: string, runId: string, limit?: number): Promise<JarvisArtifact[]>;
-    putForRun(accountId: string, artifact: JarvisArtifact): Promise<JarvisArtifact>;
+    getById(accountId: string, artifactId: string): Promise<JarvisArtifactV1 | undefined>;
+    listByRun(accountId: string, runId: string, limit?: number): Promise<JarvisArtifactV1[]>;
   };
 };
 
@@ -391,15 +393,28 @@ function approvalFixture(overrides: Partial<JarvisApprovalV1> = {}): JarvisAppro
   };
 }
 
-function artifactFixture(overrides: Partial<JarvisArtifact> = {}): JarvisArtifact {
+function artifactFixture(overrides: Partial<JarvisArtifactV1> = {}): JarvisArtifactV1 {
   return {
+    schemaVersion: 1,
     id: 'artifact-alpha',
     runId: 'run-alpha',
+    requestId: 'request-alpha',
+    attemptNumber: 1,
+    state: 'ready',
     kind: 'file',
     title: 'Generated file',
     uri: 'file:///C:/safe/file.txt',
     mimeType: 'text/plain',
     safeSummary: 'Generated text file.',
+    contentHash: 'a'.repeat(64),
+    sizeBytes: 20,
+    preview: {
+      kind: 'text',
+      text: 'Generated text file.',
+      truncated: false,
+      sizeBytes: 20,
+    },
+    localReference: { kind: 'path', value: 'C:/safe/file.txt' },
     sourceRefs: [],
     createdAt: NOW,
     ...overrides,
@@ -455,6 +470,7 @@ describe('Jarvis repository surface', () => {
       | 'transport_attempt_integrity_error'
       | 'attempt_effect_integrity_error'
       | 'profile_integrity_error'
+      | 'artifact_integrity_error'
       | 'invalid_limit'
     >();
     expect(newJarvisProfileRevisionId()).toMatch(
@@ -481,7 +497,7 @@ describe('Jarvis repository surface', () => {
       'listByRun',
     ]);
     expect(Object.keys(jarvisApprovalRepo).sort()).toEqual(['getById', 'listByRun']);
-    expect(Object.keys(jarvisArtifactRepo).sort()).toEqual(['getById', 'listByRun', 'putForRun']);
+    expect(Object.keys(jarvisArtifactRepo).sort()).toEqual(['getById', 'listByRun']);
   });
 });
 
@@ -1679,7 +1695,7 @@ describe('approval and artifact child ownership', () => {
     const artifact = artifactFixture();
 
     await db.jarvis_approvals.put(toJarvisApprovalRow(approval));
-    expect(await repositories.artifact.putForRun(run.accountId, artifact)).toEqual(artifact);
+    await db.jarvis_artifacts.put(toJarvisArtifactRow(artifact));
     expect(await repositories.approval.getById(run.accountId, approval.id)).toEqual(approval);
     expect(await repositories.approval.listByRun(run.accountId, run.id)).toEqual([approval]);
     expect(await repositories.artifact.getById(run.accountId, artifact.id)).toEqual(artifact);
@@ -1693,6 +1709,7 @@ describe('approval and artifact child ownership', () => {
     expect(await repositories.artifact.getById('account-beta', artifact.id)).toBeUndefined();
     expect(await repositories.artifact.getById('account-beta', 'missing-artifact')).toBeUndefined();
     expect(repositories.approval).not.toHaveProperty('putForRun');
+    expect(repositories.artifact).not.toHaveProperty('putForRun');
   });
 
   it('uses the same parent-not-found error for missing and foreign child list parents', async () => {
@@ -1702,15 +1719,17 @@ describe('approval and artifact child ownership', () => {
     await repositories.run.createIdempotent(foreignRun);
 
     for (const runId of ['missing-run', foreignRun.id]) {
+      const commit = createJarvisArtifactCommitAuthority(db, {
+        consumePendingForCommit: () => {
+          throw new Error('commit verifier must not be reached');
+        },
+      });
       await expectRepositoryError(
         repositories.approval.listByRun('account-alpha', runId),
         'parent_run_not_found',
       );
       await expectRepositoryError(
-        repositories.artifact.putForRun(
-          'account-alpha',
-          artifactFixture({ id: `artifact-${runId}`, runId }),
-        ),
+        commit.putForRun('account-alpha', artifactFixture({ id: `artifact-${runId}`, runId })),
         'parent_run_not_found',
       );
       await expectRepositoryError(
@@ -1730,16 +1749,21 @@ describe('approval and artifact child ownership', () => {
     await repositories.run.createIdempotent(secondRun);
     await repositories.run.createIdempotent(foreignRun);
     const artifact = artifactFixture();
-    await repositories.artifact.putForRun(firstRun.accountId, artifact);
+    await db.jarvis_artifacts.put(toJarvisArtifactRow(artifact));
+    const commit = createJarvisArtifactCommitAuthority(db, {
+      consumePendingForCommit: () => {
+        throw new Error('commit verifier must not be reached');
+      },
+    });
     await expectRepositoryError(
-      repositories.artifact.putForRun(
+      commit.putForRun(
         secondRun.accountId,
         artifactFixture({ runId: secondRun.id, title: 'Collision overwrite' }),
       ),
       'parent_run_not_found',
     );
     await expectRepositoryError(
-      repositories.artifact.putForRun(
+      commit.putForRun(
         foreignRun.accountId,
         artifactFixture({ runId: foreignRun.id, title: 'Foreign collision overwrite' }),
       ),
@@ -1880,7 +1904,9 @@ describe('bounded limits, detached projections, and local-only writes', () => {
     );
     await db.jarvis_approvals.put(toJarvisApprovalRow(approval));
     const createdApproval = await repositories.approval.getById(run.accountId, approval.id);
-    const createdArtifact = await repositories.artifact.putForRun(run.accountId, artifact);
+    await db.jarvis_artifacts.put(toJarvisArtifactRow(artifact));
+    const createdArtifact = await repositories.artifact.getById(run.accountId, artifact.id);
+    if (!createdArtifact) throw new Error('Expected persisted artifact');
     await repositories.profile.updateCustomInstructions(profile.accountId, profile.id, 'changed');
 
     createdRun.model.capabilities.tools = false;
@@ -1908,6 +1934,88 @@ describe('bounded limits, detached projections, and local-only writes', () => {
       [],
     );
     expect(await db.sync_queue.count()).toBe(0);
+  });
+});
+
+describe('Task 20A private artifact commit authority', () => {
+  async function createArtifactCommitHarness(prefix: string) {
+    const database = await openTestDb(prefix);
+    const repositories = createJarvisRepositories(database);
+    const parent = runFixture();
+    await repositories.run.createIdempotent(parent);
+    let uuidIndex = 0;
+    const uuids = ['artifact-verified', 'receipt-verified'];
+    const runtime = createJarvisArtifactRuntimeInternals({
+      randomUUID: () => uuids[uuidIndex++] ?? `extra-${uuidIndex}`,
+      now: () => NOW,
+    });
+    const artifact = await runtime.materializeVerified({
+      binding: {
+        accountId: parent.accountId,
+        runId: parent.id,
+        requestId: 'request-alpha',
+        attemptNumber: 1,
+        producerId: 'file_action_result',
+        resultRef: 'file-result-alpha',
+        verifiedAt: NOW,
+      },
+      draft: {
+        artifact: {
+          kind: 'file',
+          title: 'Verified generated file',
+          mimeType: 'text/plain',
+          safeSummary: 'A synthetic generated file.',
+          sourceRefs: [],
+          createdAt: NOW,
+        },
+        backing: {
+          kind: 'local_reference',
+          localReference: { kind: 'path', value: 'C:/sandbox/generated.txt' },
+          content: 'verified bytes',
+        },
+      },
+    });
+    const authority = createJarvisArtifactCommitAuthority(database, runtime);
+    return { database, repositories, parent, runtime, artifact, authority };
+  }
+
+  it('keeps the public repository read-only and commits exact pending identity once', async () => {
+    const harness = await createArtifactCommitHarness('jarvis-artifact-private-commit');
+    expect(harness.repositories.artifact).not.toHaveProperty('putForRun');
+
+    const committed = await harness.authority.putForRun(harness.parent.accountId, harness.artifact);
+    expect(committed).toEqual(harness.artifact);
+    expect(committed).not.toBe(harness.artifact);
+    expect(
+      await harness.repositories.artifact.getById(harness.parent.accountId, harness.artifact.id),
+    ).toEqual(harness.artifact);
+
+    expect(await harness.authority.putForRun(harness.parent.accountId, harness.artifact)).toEqual(
+      harness.artifact,
+    );
+    expect(await harness.database.jarvis_artifacts.count()).toBe(1);
+  });
+
+  it('rejects unverified identity and immutable-ID overwrite attempts', async () => {
+    const harness = await createArtifactCommitHarness('jarvis-artifact-immutable-commit');
+    const unverified = structuredClone(harness.artifact);
+    unverified.id = 'jart_unverified';
+    await expect(harness.authority.putForRun(harness.parent.accountId, unverified)).rejects.toThrow(
+      'artifact_commit_not_pending',
+    );
+    expect(await harness.database.jarvis_artifacts.get(unverified.id)).toBeUndefined();
+
+    await harness.authority.putForRun(harness.parent.accountId, harness.artifact);
+    const changed = structuredClone(harness.artifact);
+    changed.title = 'Attempted overwrite';
+    await expectRepositoryError(
+      harness.authority.putForRun(harness.parent.accountId, changed),
+      'artifact_integrity_error',
+    );
+    expect(
+      (await harness.repositories.artifact.getById(harness.parent.accountId, harness.artifact.id))
+        ?.title,
+    ).toBe('Verified generated file');
   });
 });
 

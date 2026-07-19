@@ -1,13 +1,14 @@
 import type { JarvisModelSnapshot } from '@/lib/jarvis/contracts/capability';
 import type {
   JarvisApprovalV1,
-  JarvisArtifact,
+  JarvisArtifactV1,
   JarvisEvent,
   JarvisRun,
 } from '@/lib/jarvis/contracts/execution';
 import type { JarvisSourceRef } from '@/lib/jarvis/contracts/source';
 import {
   validateJarvisApproval,
+  validateJarvisArtifact,
   validateJarvisEvent,
   validateJarvisRun,
 } from '@/lib/jarvis/contracts/validators';
@@ -45,6 +46,10 @@ function assertValidJarvisEvent(value: unknown): asserts value is JarvisEvent {
 
 function assertValidJarvisApproval(value: unknown): asserts value is JarvisApprovalV1 {
   if (!validateJarvisApproval(value).ok) throw new Error('Invalid Jarvis approval');
+}
+
+function assertValidJarvisArtifact(value: unknown): asserts value is JarvisArtifactV1 {
+  if (!validateJarvisArtifact(value).ok) throw new Error('Invalid Jarvis artifact');
 }
 
 export function toJarvisIdentityRevisionRow(
@@ -369,30 +374,82 @@ export function fromJarvisApprovalRow(row: JarvisApprovalRow): JarvisApprovalV1 
   return value;
 }
 
-export function toJarvisArtifactRow(value: JarvisArtifact): JarvisArtifactRow {
-  return {
+export function toJarvisArtifactRow(value: JarvisArtifactV1): JarvisArtifactRow {
+  assertValidJarvisArtifact(value);
+  const row: JarvisArtifactRow = {
+    schema_version: value.schemaVersion,
     id: value.id,
     run_id: value.runId,
+    request_id: value.requestId,
+    attempt_number: value.attemptNumber,
+    state: value.state,
     kind: value.kind,
     title: value.title,
     ...(value.uri === undefined ? {} : { uri: value.uri }),
     ...(value.mimeType === undefined ? {} : { mime_type: value.mimeType }),
     ...(value.safeSummary === undefined ? {} : { safe_summary: value.safeSummary }),
+    ...(value.contentHash === undefined ? {} : { content_hash: value.contentHash }),
+    ...(value.sizeBytes === undefined ? {} : { size_bytes: value.sizeBytes }),
+    ...(value.preview === undefined
+      ? {}
+      : {
+          preview: {
+            kind: value.preview.kind,
+            ...(value.preview.text === undefined ? {} : { text: value.preview.text }),
+            truncated: value.preview.truncated,
+            size_bytes: value.preview.sizeBytes,
+          },
+        }),
+    ...(value.localReference === undefined
+      ? {}
+      : {
+          local_reference: {
+            kind: value.localReference.kind,
+            value: value.localReference.value,
+          },
+        }),
     source_refs: value.sourceRefs.map(toJarvisSourceRefRow),
     created_at: value.createdAt,
   };
+  return cloneDetached(row);
 }
 
-export function fromJarvisArtifactRow(row: JarvisArtifactRow): JarvisArtifact {
-  return {
+export function fromJarvisArtifactRow(row: JarvisArtifactRow): JarvisArtifactV1 {
+  const value: JarvisArtifactV1 = {
+    schemaVersion: row.schema_version,
     id: row.id,
     runId: row.run_id,
+    requestId: row.request_id,
+    attemptNumber: row.attempt_number,
+    state: row.state,
     kind: row.kind,
     title: row.title,
     ...(row.uri === undefined ? {} : { uri: row.uri }),
     ...(row.mime_type === undefined ? {} : { mimeType: row.mime_type }),
     ...(row.safe_summary === undefined ? {} : { safeSummary: row.safe_summary }),
+    ...(row.content_hash === undefined ? {} : { contentHash: row.content_hash }),
+    ...(row.size_bytes === undefined ? {} : { sizeBytes: row.size_bytes }),
+    ...(row.preview === undefined
+      ? {}
+      : {
+          preview: {
+            kind: row.preview.kind,
+            ...(row.preview.text === undefined ? {} : { text: row.preview.text }),
+            truncated: row.preview.truncated,
+            sizeBytes: row.preview.size_bytes,
+          },
+        }),
+    ...(row.local_reference === undefined
+      ? {}
+      : {
+          localReference: {
+            kind: row.local_reference.kind,
+            value: row.local_reference.value,
+          },
+        }),
     sourceRefs: row.source_refs.map(fromJarvisSourceRefRow),
     createdAt: row.created_at,
   };
+  assertValidJarvisArtifact(value);
+  return cloneDetached(value);
 }
