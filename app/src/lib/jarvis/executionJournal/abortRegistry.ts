@@ -33,6 +33,8 @@ type PendingCancellation = {
   deliveryClosed: boolean;
   queueResolutionPending: boolean;
   invoked: Map<string, WeakSet<AbortFunction>>;
+  invocationVersions: Map<string, number>;
+  latestDeliveries: Map<string, DeliveryRecord>;
   deliveries: DeliveryRecord[];
   inFlight: Set<Promise<void>>;
 };
@@ -257,6 +259,7 @@ export type JarvisCancellationPlanErrorCode =
   | 'invalid_abort_registration'
   | 'invalid_prepared_cancellation'
   | 'cancellation_request_mismatch'
+  | 'cancellation_registration_closed'
   | 'queued_cancellation_fail_closed';
 
 export class JarvisCancellationPlanError extends Error {
@@ -436,20 +439,28 @@ export function createJarvisAbortRegistry(
     }
     if (invokedForKey.has(registration.abort)) return false;
     invokedForKey.add(registration.abort);
+    const invocationVersion = (state.invocationVersions.get(key) ?? 0) + 1;
+    state.invocationVersions.set(key, invocationVersion);
+    state.latestDeliveries.delete(key);
     const trustedQueueOwner = failClosedQueueAborters.has(registration.abort);
     const invocation = Promise.resolve()
       .then(() => registration.abort())
       .then(
         (outcome) => {
           if (!state.cleared && !state.abandoned) {
+            let record: DeliveryRecord;
             if (outcome.kind === 'queued_tombstoned' && !trustedQueueOwner) {
-              state.deliveries.push({ registrationId: registration.registrationId, error: true });
+              record = { registrationId: registration.registrationId, error: true };
             } else {
-              state.deliveries.push({
+              record = {
                 registrationId: registration.registrationId,
                 outcome,
                 trustedQueueOwner,
-              });
+              };
+            }
+            state.deliveries.push(record);
+            if (state.invocationVersions.get(key) === invocationVersion) {
+              state.latestDeliveries.set(key, record);
             }
             if (trustedQueueOwner && outcome.kind === 'queued_tombstoned') {
               state.deliveryClosed = true;
@@ -458,7 +469,14 @@ export function createJarvisAbortRegistry(
         },
         () => {
           if (!state.cleared && !state.abandoned) {
-            state.deliveries.push({ registrationId: registration.registrationId, error: true });
+            const record: DeliveryRecord = {
+              registrationId: registration.registrationId,
+              error: true,
+            };
+            state.deliveries.push(record);
+            if (state.invocationVersions.get(key) === invocationVersion) {
+              state.latestDeliveries.set(key, record);
+            }
             if (trustedQueueOwner) state.deliveryClosed = true;
           }
         },
@@ -503,6 +521,16 @@ export function createJarvisAbortRegistry(
       assertRegistration(registration);
       const storedRegistration = Object.freeze({ ...registration });
       const key = registrationKey(storedRegistration);
+      for (const state of pending.values()) {
+        if (
+          state.activated &&
+          state.deliveryClosed &&
+          state.accountId === storedRegistration.accountId &&
+          targetsRun(storedRegistration, state.runId)
+        ) {
+          throw new JarvisCancellationPlanError('cancellation_registration_closed');
+        }
+      }
       registrations.set(key, storedRegistration);
       for (const state of pending.values()) {
         if (
@@ -561,6 +589,8 @@ export function createJarvisAbortRegistry(
         deliveryClosed: false,
         queueResolutionPending: false,
         invoked: new Map(),
+        invocationVersions: new Map(),
+        latestDeliveries: new Map(),
         deliveries: [],
         inFlight: new Set(),
       };
@@ -627,6 +657,38 @@ export function createJarvisAbortRegistry(
       }
       await drain(state);
       return aggregateDelivery(state);
+    },
+
+    async sealWorkflowQuiescence(accountId, runId, cancellationRequestId) {
+      const state = pending.get(registryKey(accountId, runId));
+      if (!state || state.cancellationRequestId !== cancellationRequestId) {
+        throw new JarvisCancellationPlanError('cancellation_request_mismatch');
+      }
+      await drain(state);
+      const latest = [...state.latestDeliveries.values()];
+      if (
+        latest.length === 0 ||
+        latest.some(
+          (record) => !('outcome' in record) || record.outcome.kind !== 'signal_delivered',
+        )
+      ) {
+        return {
+          kind: 'not_quiescent',
+          cancellationRequestId,
+          currentDelivery: aggregateDelivery(state),
+        } as const;
+      }
+      state.deliveryClosed = true;
+      return Object.freeze({
+        kind: 'sealed' as const,
+        cancellationRequestId,
+        ownerIds: Object.freeze(
+          latest.map((record) => {
+            if (!('outcome' in record)) throw new Error('cancellation_delivery_state_invalid');
+            return record.outcome.ownerId;
+          }),
+        ),
+      });
     },
 
     abandonBeforeDelivery(plan) {

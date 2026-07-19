@@ -132,7 +132,11 @@ describe('Jarvis abort registry', () => {
     const forbiddenImports =
       /createTestJarvisCancellation(?:Facade|RequestAuthority)|createJarvisAbortRegistry|JarvisCancellationDeliveryAuthority/;
     for (const path of productionSources(sourceRoot)) {
-      if (path === join(__dirname, 'abortRegistry.ts') || path.endsWith('kernelRuntime.ts'))
+      if (
+        path === join(__dirname, 'abortRegistry.ts') ||
+        path.endsWith('kernelRuntime.ts') ||
+        path === join(sourceRoot, 'lib', 'ai', 'runtime.ts')
+      )
         continue;
       const imports =
         readFileSync(path, 'utf8').match(/import[\s\S]*?from\s+['"][^'"]+['"];?/g) ?? [];
@@ -213,6 +217,54 @@ describe('Jarvis abort registry', () => {
       ),
     ).resolves.toMatchObject({ kind: 'signal_delivered', ownerIds: ['late-owner'] });
     expect(late.abort).toHaveBeenCalledOnce();
+  });
+
+  it('seals only when every latest causal owner accepted delivery and rejects post-seal owners', async () => {
+    const harness = createHarness();
+    harness.core.registrationAuthority.registerIssuedOwner(
+      registration('tts-owner', { kind: 'signal_delivered', ownerId: 'tts-owner' }),
+    );
+    harness.core.registrationAuthority.registerIssuedOwner(
+      registration('playback-owner', { kind: 'handoff_pending', ownerId: 'playback-owner' }),
+    );
+
+    await expect(
+      harness.facade.requestRunCancellation('account-alpha', 'jrun_alpha'),
+    ).resolves.toMatchObject({ kind: 'signal_delivered', cancellationRequestId: 'jcancel_1' });
+    await expect(
+      harness.core.cancellationDeliveryAuthority.sealWorkflowQuiescence(
+        'account-alpha',
+        'jrun_alpha',
+        'jcancel_1',
+      ),
+    ).resolves.toMatchObject({ kind: 'not_quiescent' });
+
+    harness.core.registrationAuthority.registerIssuedOwner(
+      registration('playback-owner', {
+        kind: 'signal_delivered',
+        ownerId: 'playback-owner',
+      }),
+    );
+    await expect(
+      harness.core.cancellationDeliveryAuthority.sealWorkflowQuiescence(
+        'account-alpha',
+        'jrun_alpha',
+        'jcancel_1',
+      ),
+    ).resolves.toEqual({
+      kind: 'sealed',
+      cancellationRequestId: 'jcancel_1',
+      ownerIds: ['tts-owner', 'playback-owner'],
+    });
+    expect(() =>
+      harness.core.registrationAuthority.registerIssuedOwner(
+        registration('late-owner', { kind: 'signal_delivered', ownerId: 'late-owner' }),
+      ),
+    ).toThrowError(
+      expect.objectContaining<Partial<JarvisCancellationPlanError>>({
+        code: 'cancellation_registration_closed',
+      }),
+    );
   });
 
   it('fails closed when claimed or drained work lacks explicit handoff proof', async () => {

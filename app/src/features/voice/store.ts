@@ -50,8 +50,12 @@ interface VoiceStore {
   clearTranscripts: () => void;
   setPersona: (p: PersonaPreset) => void;
   beginSession: (binding: Readonly<VoiceSessionBinding>) => boolean;
-  setSessionRun: (runId: string | undefined) => void;
-  endSession: () => void;
+  setSessionRun: (
+    runId: string | undefined,
+    expectedSessionId?: string,
+    expectedActiveRunId?: string | null,
+  ) => boolean;
+  endSession: (expectedSessionId?: string) => boolean;
   reset: () => void;
 }
 
@@ -101,12 +105,25 @@ export const useVoiceStore = create<VoiceStore>((set) => ({
     return accepted;
   },
 
-  setSessionRun: (runId) =>
+  setSessionRun: (runId, expectedSessionId, expectedActiveRunId) => {
+    let applied = false;
     set((state) => {
       if (!state.session) return state;
+      if (expectedSessionId !== undefined && state.session.sessionId !== expectedSessionId) {
+        return state;
+      }
+      if (
+        expectedActiveRunId !== undefined &&
+        (expectedActiveRunId === null
+          ? state.session.activeRunId !== undefined
+          : state.session.activeRunId !== expectedActiveRunId)
+      ) {
+        return state;
+      }
       if (runId !== undefined && (!runId || runId.trim() !== runId)) {
         throw new Error('voice_session_run_invalid');
       }
+      applied = true;
       const { activeRunId: _activeRunId, ...binding } = state.session;
       return {
         session: Object.freeze({
@@ -114,9 +131,22 @@ export const useVoiceStore = create<VoiceStore>((set) => ({
           ...(runId === undefined ? {} : { activeRunId: runId }),
         }),
       };
-    }),
+    });
+    return applied;
+  },
 
-  endSession: () => set({ session: null }),
+  endSession: (expectedSessionId) => {
+    let applied = false;
+    set((state) => {
+      if (!state.session) return state;
+      if (expectedSessionId !== undefined && state.session.sessionId !== expectedSessionId) {
+        return state;
+      }
+      applied = true;
+      return { session: null };
+    });
+    return applied;
+  },
 
   reset: () => set(defaults),
 }));

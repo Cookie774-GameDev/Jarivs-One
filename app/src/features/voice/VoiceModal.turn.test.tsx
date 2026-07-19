@@ -170,6 +170,7 @@ describe('VoiceModal hands-free turn-taking', () => {
     expect((send.mock.calls[0]?.[0] as CustomEvent).detail).toMatchObject({
       accountId: 'account-a',
       chatId: 'chat_voice',
+      voiceSessionId: binding.sessionId,
     });
     expect(chatRoutingMocks.focusVoiceChat).toHaveBeenLastCalledWith('chat_voice');
     window.removeEventListener('jarvis:send', send as EventListener);
@@ -201,6 +202,12 @@ describe('VoiceModal hands-free turn-taking', () => {
   });
 
   it('ends the old binding before starting a replacement when account identity changes', async () => {
+    let releaseStop!: () => void;
+    routerMocks.stopCurrentVoiceResponse.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        releaseStop = resolve;
+      }),
+    );
     const observedAccounts: Array<string | null> = [];
     const unsubscribe = useVoiceStore.subscribe((voice) => {
       observedAccounts.push(voice.session?.accountId ?? null);
@@ -212,6 +219,12 @@ describe('VoiceModal hands-free turn-taking', () => {
     observedAccounts.length = 0;
 
     act(() => useAuthStore.setState({ localUserId: 'account-b' }));
+
+    await waitFor(() => expect(routerMocks.stopCurrentVoiceResponse).toHaveBeenCalledOnce());
+    act(() => {
+      useVoiceStore.getState().setSessionRun('jrun-late-old-account');
+      releaseStop();
+    });
 
     await waitFor(() => expect(useVoiceStore.getState().session?.accountId).toBe('account-b'));
     expect(useVoiceStore.getState().session?.sessionId).not.toBe(firstSessionId);

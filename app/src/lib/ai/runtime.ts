@@ -652,6 +652,8 @@ export interface SendDetail {
   chatId: string;
   /** Immutable bound account for a protected canonical voice turn only. */
   accountId?: string;
+  /** Immutable process-local voice session paired with accountId/chatId. */
+  voiceSessionId?: string;
   /** Raw user text. */
   text: string;
   /** Optional agent override (otherwise routed by @mention or chat default). */
@@ -1316,13 +1318,14 @@ function connectionModeForProvider(providerId: string): 'native-api' | 'external
   return 'native-api';
 }
 
-function isCurrentBoundVoiceScope(accountId: string, chatId: string): boolean {
+function isCurrentBoundVoiceScope(accountId: string, chatId: string, sessionId: string): boolean {
   const identity = resolveAccountIdentity(useAuthStore.getState());
   const session = useVoiceStore.getState().session;
   return (
     identity?.accountId === accountId &&
     session?.accountId === accountId &&
-    session.chatId === chatId
+    session.chatId === chatId &&
+    session.sessionId === sessionId
   );
 }
 
@@ -1430,6 +1433,7 @@ async function createRuntimeKernelTurn(input: {
   agent: Agent;
   chatId: ChatId | string;
   voiceAccountId?: string;
+  voiceSessionId?: string;
   workspaceId?: string;
   projectId?: string;
   text: string;
@@ -1445,7 +1449,9 @@ async function createRuntimeKernelTurn(input: {
   const accountId = input.speakReply ? input.voiceAccountId : account.accountId;
   if (
     !accountId ||
-    (input.speakReply && !isCurrentBoundVoiceScope(accountId, String(input.chatId)))
+    (input.speakReply &&
+      (!input.voiceSessionId ||
+        !isCurrentBoundVoiceScope(accountId, String(input.chatId), input.voiceSessionId)))
   ) {
     throw new Error('canonical_voice_session_scope_revoked');
   }
@@ -1484,7 +1490,11 @@ async function createRuntimeKernelTurn(input: {
         ]
       : [],
   });
-  if (input.speakReply && !isCurrentBoundVoiceScope(accountId, String(input.chatId))) {
+  if (
+    input.speakReply &&
+    (!input.voiceSessionId ||
+      !isCurrentBoundVoiceScope(accountId, String(input.chatId), input.voiceSessionId))
+  ) {
     throw new Error('canonical_voice_session_scope_revoked');
   }
   const run = await input.host.journal.allocateRun({
@@ -2193,6 +2203,9 @@ export function startRuntimeListener(
             ...(detail.speakReply === true && detail.accountId
               ? { voiceAccountId: detail.accountId }
               : {}),
+            ...(detail.speakReply === true && detail.voiceSessionId
+              ? { voiceSessionId: detail.voiceSessionId }
+              : {}),
             ...(chatRecord?.workspace_id ? { workspaceId: String(chatRecord.workspace_id) } : {}),
             ...(projectId ? { projectId: String(projectId) } : {}),
             text,
@@ -2209,34 +2222,44 @@ export function startRuntimeListener(
           let response: import('@/lib/jarvis/contracts').JarvisResponseEnvelope;
           let canonicalVoiceCancelled = false;
           if (turn.surface === 'voice') {
-            useVoiceStore.getState().setSessionRun(turn.run.id);
-            const started = await host.startVoiceTurn(
-              turn as Readonly<JarvisKernelTurnInput> & { surface: 'voice' },
-            );
-            if (started.kind === 'account_authority_revoked') {
-              throw new Error('kernel_account_authority_revoked');
+            const voiceSessionId = detail.voiceSessionId;
+            if (
+              !voiceSessionId ||
+              !isCurrentBoundVoiceScope(turn.accountId, turn.chatId, voiceSessionId) ||
+              !useVoiceStore.getState().setSessionRun(turn.run.id, voiceSessionId, null)
+            ) {
+              throw new Error('canonical_voice_session_scope_revoked');
             }
-            const { result, handle } = started.value;
             try {
-              const ready = await handle.commitResponseReady();
-              if (ready.kind === 'account_authority_revoked') {
+              const started = await host.startVoiceTurn(
+                turn as Readonly<JarvisKernelTurnInput> & { surface: 'voice' },
+              );
+              if (started.kind === 'account_authority_revoked') {
                 throw new Error('kernel_account_authority_revoked');
               }
-              if (!ready.value.committed) {
-                throw new Error(`voice_response_ready_${ready.value.reason}`);
+              const { result, handle } = started.value;
+              try {
+                const ready = await handle.commitResponseReady();
+                if (ready.kind === 'account_authority_revoked') {
+                  throw new Error('kernel_account_authority_revoked');
+                }
+                if (!ready.value.committed) {
+                  throw new Error(`voice_response_ready_${ready.value.reason}`);
+                }
+                const playback = await handle.runValidatedPlayback();
+                if (playback.kind === 'account_authority_revoked') {
+                  throw new Error('kernel_account_authority_revoked');
+                }
+                if (!playback.value.committed) {
+                  throw new Error(`voice_playback_${playback.value.reason}`);
+                }
+                canonicalVoiceCancelled = playback.value.run.status === 'cancelled';
+                response = result.response;
+              } finally {
+                handle.dispose();
               }
-              const playback = await handle.runValidatedPlayback();
-              if (playback.kind === 'account_authority_revoked') {
-                throw new Error('kernel_account_authority_revoked');
-              }
-              if (!playback.value.committed) {
-                throw new Error(`voice_playback_${playback.value.reason}`);
-              }
-              canonicalVoiceCancelled = playback.value.run.status === 'cancelled';
-              useVoiceStore.getState().setSessionRun(undefined);
-              response = result.response;
             } finally {
-              handle.dispose();
+              useVoiceStore.getState().setSessionRun(undefined, voiceSessionId, turn.run.id);
             }
           } else {
             const outcome = await host.runInitialTurn(turn);

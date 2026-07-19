@@ -485,6 +485,18 @@ export interface JarvisAbortRegistrationAuthority {
   registerIssuedOwner(registration: JarvisAbortRegistration): () => void;
 }
 
+export type JarvisCancellationWorkflowSeal =
+  | Readonly<{
+      kind: 'sealed';
+      cancellationRequestId: string;
+      ownerIds: readonly string[];
+    }>
+  | Readonly<{
+      kind: 'not_quiescent';
+      cancellationRequestId: string;
+      currentDelivery: Exclude<CancellationDelivery, { kind: 'already_terminal' }>;
+    }>;
+
 export interface JarvisCancellationDeliveryAuthority {
   prepare(accountId: string, runId: string): Promise<JarvisCancellationPreparation>;
   deliver(prepared: JarvisPreparedCancellation): Promise<CancellationDelivery>;
@@ -493,6 +505,11 @@ export interface JarvisCancellationDeliveryAuthority {
     runId: string,
     cancellationRequestId: string,
   ): Promise<Exclude<CancellationDelivery, { kind: 'already_terminal' }>>;
+  sealWorkflowQuiescence(
+    accountId: string,
+    runId: string,
+    cancellationRequestId: string,
+  ): Promise<JarvisCancellationWorkflowSeal>;
   abandonBeforeDelivery(prepared: JarvisPreparedCancellation): void;
 }
 

@@ -2197,8 +2197,10 @@ export function createJarvisKernelRuntime(
       return null;
     }
 
+    let sharedAbortAccepted = false;
     const ownerOutcome = (ownerId: string) => {
-      const kind = controller!.abort();
+      const kind = sharedAbortAccepted ? ('signal_delivered' as const) : controller!.abort();
+      if (kind === 'signal_delivered') sharedAbortAccepted = true;
       return kind === 'signal_delivered'
         ? ({ kind, ownerId } as const)
         : kind === 'handoff_pending'
@@ -2411,9 +2413,9 @@ export function createJarvisKernelRuntime(
     ) {
       return false;
     }
-    let currentDelivery: CancellationDelivery;
+    let seal: Awaited<ReturnType<JarvisCancellationDeliveryAuthority['sealWorkflowQuiescence']>>;
     try {
-      currentDelivery = await input.cancellationDeliveryAuthority.current(
+      seal = await input.cancellationDeliveryAuthority.sealWorkflowQuiescence(
         state.turnInput.accountId,
         state.turnInput.run.id,
         cancellation.cancellationRequestId,
@@ -2421,7 +2423,17 @@ export function createJarvisKernelRuntime(
     } catch {
       return false;
     }
-    if (cancellationAggregate(currentDelivery).kind !== 'signal_delivered') return false;
+    const requiredOwnerIds = [
+      `${state.turnInput.run.id}:tts`,
+      `${state.turnInput.run.id}:playback`,
+    ];
+    if (
+      seal.kind !== 'sealed' ||
+      seal.ownerIds.length !== requiredOwnerIds.length ||
+      requiredOwnerIds.some((ownerId) => !seal.ownerIds.includes(ownerId))
+    ) {
+      return false;
+    }
     const outcomes = [playback.tts, playback.playback];
     return (
       outcomes.some((outcome) => outcome.state === 'degraded' && outcome.reason === 'stopped') &&

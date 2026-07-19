@@ -634,8 +634,8 @@ describe('createJarvisKernelRuntime primary-host lifecycle', () => {
           .map((outcome) => outcome.ownerId),
       };
     });
-    const currentCancellation = vi.fn(async () => ({
-      kind: 'signal_delivered' as const,
+    const sealCancellation = vi.fn(async () => ({
+      kind: 'sealed' as const,
       cancellationRequestId: cancellationPlan.cancellationRequestId,
       ownerIds: [`${turn.run.id}:tts`, `${turn.run.id}:playback`],
     }));
@@ -671,7 +671,8 @@ describe('createJarvisKernelRuntime primary-host lifecycle', () => {
       cancellationDeliveryAuthority: {
         prepare: prepareCancellation,
         deliver: deliverCancellation,
-        current: currentCancellation,
+        current: vi.fn(),
+        sealWorkflowQuiescence: sealCancellation,
         abandonBeforeDelivery: vi.fn(),
       } as never,
       abortRegistrationAuthority: { registerIssuedOwner },
@@ -785,7 +786,7 @@ describe('createJarvisKernelRuntime primary-host lifecycle', () => {
     );
     const cancellation = started.value.handle.requestCancellation();
     await vi.waitFor(() => expect(deliverCancellation).toHaveBeenCalledOnce());
-    expect(voiceController.abort).toHaveBeenCalledTimes(2);
+    expect(voiceController.abort).toHaveBeenCalledOnce();
     expect(releaseVoiceHandle).not.toHaveBeenCalled();
     releaseCancellationDelivery();
     await expect(cancellation).resolves.toMatchObject({
@@ -797,7 +798,7 @@ describe('createJarvisKernelRuntime primary-host lifecycle', () => {
       kind: 'committed',
       value: { committed: true, run: { status: 'cancelled' } },
     });
-    expect(currentCancellation).toHaveBeenCalledWith(
+    expect(sealCancellation).toHaveBeenCalledWith(
       turn.accountId,
       turn.run.id,
       cancellationPlan.cancellationRequestId,
@@ -1471,6 +1472,7 @@ describe('createJarvisKernelRuntime primary-host lifecycle', () => {
           ownerIds: ['terminal-owner-runtime'],
         })),
         current: vi.fn() as never,
+        sealWorkflowQuiescence: vi.fn() as never,
         abandonBeforeDelivery: vi.fn(),
       },
       abortRegistrationAuthority: {} as never,
@@ -1577,6 +1579,7 @@ describe('createJarvisKernelRuntime primary-host lifecycle', () => {
         prepare,
         deliver,
         current: vi.fn(),
+        sealWorkflowQuiescence: vi.fn() as never,
         abandonBeforeDelivery: vi.fn(),
       },
       abortRegistrationAuthority: {

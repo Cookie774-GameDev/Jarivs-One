@@ -1810,6 +1810,7 @@ describe('startRuntimeListener agent routing', () => {
         new CustomEvent('jarvis:send', {
           detail: {
             accountId: 'account-voice-a',
+            voiceSessionId: 'vsession_runtime_account_switch',
             chatId: harness.chatId,
             text: 'Keep this voice turn in its original account.',
             speakReply: true,
@@ -1841,6 +1842,88 @@ describe('startRuntimeListener agent routing', () => {
       expect(mocks.streamingSession.onComplete).not.toHaveBeenCalled();
       expect(mocks.streamingSession.stop).not.toHaveBeenCalled();
       expect(mocks.streamingSession.haltPlayback).not.toHaveBeenCalled();
+      expect(useVoiceStore.getState().session?.activeRunId).toBeUndefined();
+    } finally {
+      disposeHost();
+      useVoiceStore.getState().reset();
+      database.close();
+      await database.delete();
+    }
+  });
+
+  it('releases the exact claimed voice run when canonical execution fails', async () => {
+    const protectedJarvis = agent('agent_jarvis', 'jarvis', 'LEGACY SYSTEM PROMPT', true);
+    const harness = kernelRuntimeBindings(protectedJarvis);
+    const database = createJarvisDb(
+      uniqueTestDbName('runtime-voice-failed-run-release'),
+      TEST_INDEXED_DB,
+    );
+    await database.open();
+    await database.chats.add({
+      id: harness.chatId,
+      workspace_id: 'workspace_runtime_voice_failed_run' as never,
+      title: 'Voice failed run release',
+      mode: 'chat',
+      active_agent_ids: [protectedJarvis.id],
+      created_at: 1,
+      updated_at: 1,
+    });
+    useVoiceStore.getState().beginSession(
+      createVoiceSessionBinding({
+        sessionId: 'vsession_runtime_failed_run',
+        accountId: 'runtime-test-account',
+        chatId: harness.chatId,
+        startedAt: 1,
+      }),
+    );
+    mocks.runAgent.mockRejectedValueOnce(new Error('provider_failed_after_voice_claim'));
+    const disposeHost = await installJarvisKernelRuntimeHost({
+      db: database,
+      bindKernelActions: () =>
+        ({
+          create: vi.fn() as never,
+          decide: vi.fn() as never,
+          execute: vi.fn() as never,
+          executeAutoApprovedSafe: vi.fn() as never,
+        }) as never,
+      capabilitySnapshots: {
+        getForAccount: vi.fn(async () => ({
+          capturedAt: 1,
+          tools: [],
+          plugins: [],
+          mcps: [],
+          terminals: [],
+          agents: [],
+          entitlements: { source: 'unavailable' as const, capabilities: [] },
+        })),
+      },
+      randomUUID: () => 'runtime-voice-failed-run-release',
+      now: () => 10,
+    });
+    trackListener(disposeHost);
+    trackListener(
+      startRuntimeListener(harness.bindings, { jarvisInterlocks: runtimeInterlocks() }),
+    );
+
+    try {
+      window.dispatchEvent(
+        new CustomEvent('jarvis:send', {
+          detail: {
+            accountId: 'runtime-test-account',
+            voiceSessionId: 'vsession_runtime_failed_run',
+            chatId: harness.chatId,
+            text: 'Fail safely after claiming this voice run.',
+            speakReply: true,
+          },
+        }),
+      );
+
+      await vi.waitFor(() =>
+        expect(mocks.devLog).toHaveBeenCalledWith(expect.objectContaining({ level: 'error' })),
+      );
+      expect(useVoiceStore.getState().session).toEqual(
+        expect.objectContaining({ sessionId: 'vsession_runtime_failed_run' }),
+      );
       expect(useVoiceStore.getState().session?.activeRunId).toBeUndefined();
     } finally {
       disposeHost();

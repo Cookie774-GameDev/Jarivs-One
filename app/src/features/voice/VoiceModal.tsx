@@ -394,9 +394,7 @@ export function VoiceModal() {
         const oldSession = useVoiceStore.getState().session;
         if (!oldSession) return;
         await stopCurrentVoiceResponse();
-        if (useVoiceStore.getState().session === oldSession) {
-          useVoiceStore.getState().endSession();
-        }
+        useVoiceStore.getState().endSession(oldSession.sessionId);
       })().catch((error) => {
         if (disposed) return;
         useVoiceStore
@@ -413,9 +411,7 @@ export function VoiceModal() {
       const oldSession = useVoiceStore.getState().session;
       if (oldSession && oldSession.accountId !== requestedIdentity.accountId) {
         await stopCurrentVoiceResponse();
-        if (useVoiceStore.getState().session === oldSession) {
-          useVoiceStore.getState().endSession();
-        }
+        useVoiceStore.getState().endSession(oldSession.sessionId);
       }
       if (disposed) return;
 
@@ -557,6 +553,7 @@ export function VoiceModal() {
         const boundSession = useVoiceStore.getState().session;
         const chatId = target.agentId ? target.chatId : boundSession?.chatId;
         const accountId = target.agentId ? undefined : boundSession?.accountId;
+        const voiceSessionId = target.agentId ? undefined : boundSession?.sessionId;
         if (!chatId) {
           useVoiceStore.getState().setState('error', 'Could not open a bound Jarvis chat.');
           releaseTurnAndRestart();
@@ -594,7 +591,7 @@ export function VoiceModal() {
             new CustomEvent('jarvis:send', {
               detail: {
                 chatId,
-                ...(accountId ? { accountId } : {}),
+                ...(accountId && voiceSessionId ? { accountId, voiceSessionId } : {}),
                 text: messageText,
                 agentId: target.agentId,
                 mentionedAgentIds: target.mentionedAgentIds,
