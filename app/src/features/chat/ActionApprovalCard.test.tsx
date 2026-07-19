@@ -2,7 +2,11 @@ import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { Part } from '@/types/chat';
-import { ActionApprovalCard, createCanonicalApprovalCardController } from './ActionApprovalCard';
+import {
+  ActionApprovalCard,
+  actionStatusForCanonicalExecution,
+  createCanonicalApprovalCardController,
+} from './ActionApprovalCard';
 
 vi.mock('@/lib/actions', () => ({
   resolveAction: vi.fn(() => ({ id: 'terminal.run', label: 'Run command' })),
@@ -91,6 +95,14 @@ describe('ActionApprovalCard canonical adapter', () => {
       value: expect.objectContaining({ kind: 'handoff_pending' }),
     });
     expect(execute).toHaveBeenCalledOnce();
+    expect(
+      actionStatusForCanonicalExecution({
+        kind: 'handoff_pending',
+        executorKind: 'terminal',
+        ownerId: 'approval:jappr_1',
+        result: { ok: true, summary: 'Execution handed off' },
+      }),
+    ).toBe('queued');
   });
 
   it('rejects mismatched deny readback and historical calls', async () => {

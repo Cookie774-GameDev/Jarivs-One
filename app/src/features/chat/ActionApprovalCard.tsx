@@ -15,7 +15,10 @@ import {
 import { resolveAction } from '@/lib/actions';
 import type { ActionRunContext } from '@/lib/actions/types';
 import type { JarvisRun } from '@/lib/jarvis/contracts';
-import type { JarvisKernelActionPort } from '@/lib/jarvis/approvalEngine';
+import type {
+  JarvisCanonicalActionExecutionResult,
+  JarvisKernelActionPort,
+} from '@/lib/jarvis/approvalEngine';
 import { cn } from '@/lib/utils';
 import type { ActionStatus, Part } from '@/types';
 import type { MessageId } from '@/types/common';
@@ -30,6 +33,14 @@ export interface ActionApprovalCardProps {
   chatId: string;
   /** Task 16B supplies this from canonical repository readback. */
   presentation?: CanonicalApprovalPresentation;
+}
+
+/** A native terminal handoff is running truth, never settled success. */
+export function actionStatusForCanonicalExecution(
+  outcome: JarvisCanonicalActionExecutionResult,
+): Extract<ActionStatus, 'queued' | 'success' | 'error'> {
+  if (outcome.kind === 'handoff_pending') return 'queued';
+  return outcome.result.ok ? 'success' : 'error';
 }
 
 /** @internal Pure controller; Task 16B owns production card injection. */

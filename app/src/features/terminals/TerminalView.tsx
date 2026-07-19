@@ -71,10 +71,7 @@ import {
 import { TERMINAL_CLEAR_SUPPRESS_MS } from './terminalClear';
 import { createWebglDisposeTracker } from './terminalDispose';
 import { shouldSendTerminalResize, type TerminalGridSize } from './terminalGeometry';
-import {
-  applyTerminalFollowScroll,
-  terminalUserHasScrolled,
-} from './terminalViewport';
+import { applyTerminalFollowScroll, terminalUserHasScrolled } from './terminalViewport';
 import { COMPOSER_STT_STOP_EVENT, COMPOSER_STT_TOGGLE_EVENT } from '@/features/composer-stt';
 import { startSttVolumeMeter, stopSttVolumeMeter } from '@/features/composer-stt/sttVolume';
 import { VoiceService } from '@/features/voice/VoiceService';
@@ -100,7 +97,16 @@ import {
 import { registerTerminalSnapshotFlush } from './terminalSnapshotRegistry';
 import { terminalRestartDecision } from './terminalRestartPolicy';
 import {
+  attachTerminalExecution,
+  ensureTerminalExecutionExitListener,
+  failTerminalExecutionBeforeNativeExit,
+  hasCanonicalTerminalExecution,
   markTerminalExecution,
+  observeTerminalExecutionNativeExit,
+  requestTerminalExecutionCancellation,
+  terminalCancellationDisposition,
+  terminalExecutionCancellationToken,
+  type NativeTerminalExitPayload,
   useTerminalExecutionStore,
 } from './terminalExecutionStore';
 
@@ -120,9 +126,105 @@ interface OutputPayload {
   sessionId: string;
   data: string;
 }
-interface ExitPayload {
-  sessionId: string;
-  code: number | null;
+export function createTerminalExitLatch(
+  onExactExit: (payload: NativeTerminalExitPayload) => void,
+): {
+  observe(payload: NativeTerminalExitPayload): void;
+  bind(sessionId: string): boolean;
+} {
+  const pending = new Map<string, NativeTerminalExitPayload>();
+  let boundSessionId: string | undefined;
+  let delivered = false;
+
+  const deliver = (payload: NativeTerminalExitPayload): boolean => {
+    if (delivered || payload.sessionId !== boundSessionId) return false;
+    delivered = true;
+    onExactExit(payload);
+    return true;
+  };
+
+  return {
+    observe(payload) {
+      if (boundSessionId === undefined) {
+        if (!pending.has(payload.sessionId)) pending.set(payload.sessionId, payload);
+        return;
+      }
+      deliver(payload);
+    },
+    bind(sessionId) {
+      if (boundSessionId !== undefined && boundSessionId !== sessionId) return false;
+      boundSessionId = sessionId;
+      const early = pending.get(sessionId);
+      pending.clear();
+      return early ? deliver(early) : false;
+    },
+  };
+}
+
+export async function attachTerminalViewExecution(
+  executionId: string | undefined,
+  sessionId: string,
+  dependencies: {
+    isCanonical?: typeof hasCanonicalTerminalExecution;
+    attach?: typeof attachTerminalExecution;
+  } = {},
+): Promise<boolean> {
+  if (!executionId) return true;
+  const isCanonical = dependencies.isCanonical ?? hasCanonicalTerminalExecution;
+  if (!isCanonical(executionId)) return true;
+  return (dependencies.attach ?? attachTerminalExecution)(executionId, sessionId);
+}
+
+export function canonicalTerminalSpawnToken(
+  executionId: string | undefined,
+  dependencies: {
+    isCanonical?: typeof hasCanonicalTerminalExecution;
+    readToken?: typeof terminalExecutionCancellationToken;
+  } = {},
+): string | undefined {
+  if (!executionId) return undefined;
+  const isCanonical = dependencies.isCanonical ?? hasCanonicalTerminalExecution;
+  if (!isCanonical(executionId)) return undefined;
+  const token = (dependencies.readToken ?? terminalExecutionCancellationToken)(executionId);
+  if (!token) {
+    throw new TypeError('canonical_terminal_handle_unavailable_after_restart');
+  }
+  return token;
+}
+
+export async function settleTerminalInitializationFailure(
+  input: Readonly<{
+    executionId?: string;
+    sessionId: string;
+    nativeSessionStarted: boolean;
+    executionAttached: boolean;
+  }>,
+  dependencies: {
+    isCanonical?: typeof hasCanonicalTerminalExecution;
+    failBeforeNativeExit?: typeof failTerminalExecutionBeforeNativeExit;
+    requestCancellation?: typeof requestTerminalExecutionCancellation;
+    killManual?: (sessionId: string) => Promise<unknown>;
+  } = {},
+): Promise<void> {
+  const isCanonical = dependencies.isCanonical ?? hasCanonicalTerminalExecution;
+  if (input.executionId && isCanonical(input.executionId)) {
+    if (input.executionAttached) {
+      await (dependencies.requestCancellation ?? requestTerminalExecutionCancellation)(
+        input.executionId,
+      );
+    } else {
+      await (dependencies.failBeforeNativeExit ?? failTerminalExecutionBeforeNativeExit)(
+        input.executionId,
+        input.nativeSessionStarted ? 'native_attach_failed' : 'native_spawn_failed',
+      );
+    }
+  }
+  if (input.nativeSessionStarted && input.sessionId && !input.executionAttached) {
+    await (
+      dependencies.killManual ??
+      ((sessionId) => invoke('terminal_kill', { sessionId }).catch(() => undefined))
+    )(input.sessionId).catch(() => undefined);
+  }
 }
 
 /* ---------- Cozy palette mapped to xterm ITheme ----------
@@ -245,8 +347,7 @@ export function TerminalView({
   projectId,
   projectName,
 }: TerminalViewProps): JSX.Element {
-  const resolvedAgentMode =
-    agentMode ?? (agentSlug ? 'default' : undefined);
+  const resolvedAgentMode = agentMode ?? (agentSlug ? 'default' : undefined);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -464,6 +565,16 @@ export function TerminalView({
     let startupRestoreMode = false;
     const webglDispose = createWebglDisposeTracker();
     const inputTracker = createPersistedInputTracker(currentInputRef.current);
+    const exitLatch = createTerminalExitLatch((payload) => {
+      if (exitFiredRef.current) return;
+      exitFiredRef.current = true;
+      const notifyParent = () => onExitRef.current?.(payload.code);
+      if (executionId && hasCanonicalTerminalExecution(executionId)) {
+        void observeTerminalExecutionNativeExit(payload).finally(notifyParent);
+      } else {
+        notifyParent();
+      }
+    });
 
     const isInteractiveAgentSession = (sid: string): boolean => {
       const currentSession = useTerminalTranscriptStore.getState().sessions[sid];
@@ -548,7 +659,9 @@ export function TerminalView({
         const altIdx = findAltScreenEnter(chunk);
         if (altIdx >= 0) {
           ignoreClearsUntilRef.current = 0;
-          return filterStartupTerminalOutput(chunk.slice(0, altIdx), filterOpts) + chunk.slice(altIdx);
+          return (
+            filterStartupTerminalOutput(chunk.slice(0, altIdx), filterOpts) + chunk.slice(altIdx)
+          );
         }
         return filterStartupTerminalOutput(chunk, filterOpts);
       }
@@ -848,6 +961,9 @@ export function TerminalView({
       // Each await is paired with a cancelled re-check so we never leak a
       // listener when the component unmounts mid-init (StrictMode dev).
       try {
+        if (executionId && hasCanonicalTerminalExecution(executionId)) {
+          await ensureTerminalExecutionExitListener();
+        }
         const u1 = await listen<OutputPayload>('terminal://output', (e) => {
           if (e.payload.sessionId !== sessionRef.current) return;
           if (Date.now() < suppressOutputUntilRef.current) return;
@@ -861,11 +977,8 @@ export function TerminalView({
         }
         unlistenOutput = u1;
 
-        const u2 = await listen<ExitPayload>('terminal://exit', (e) => {
-          if (e.payload.sessionId !== sessionRef.current) return;
-          if (exitFiredRef.current) return;
-          exitFiredRef.current = true;
-          onExitRef.current?.(e.payload.code);
+        const u2 = await listen<NativeTerminalExitPayload>('terminal://exit', (e) => {
+          exitLatch.observe(e.payload);
         });
         if (cancelled) {
           u2();
@@ -873,6 +986,12 @@ export function TerminalView({
         }
         unlistenExit = u2;
       } catch (err) {
+        if (executionId && hasCanonicalTerminalExecution(executionId)) {
+          await failTerminalExecutionBeforeNativeExit(
+            executionId,
+            'pre_session_initialization_failed',
+          );
+        }
         if (cancelled) return;
         setError(String(err));
         return;
@@ -889,8 +1008,11 @@ export function TerminalView({
       }
 
       // Spawn or attach.
-      let sid: string;
+      let sid = '';
       let spawnedFresh = false;
+      let nativeSessionStarted = false;
+      let executionAttached = false;
+      let viewSessionBound = false;
       let restoredInput = '';
       let sessionCwd: string | null = cwd ?? null;
       let briefingDelivered = false;
@@ -980,6 +1102,7 @@ export function TerminalView({
             cols: term.cols,
             projectId: projectId,
             projectName: projectName,
+            cancellationToken: canonicalTerminalSpawnToken(executionId),
             // Make the assignment discoverable by any process in the pane,
             // not just AGENTS.md readers (env is inherited by child CLIs).
             env: slugAtSpawn
@@ -993,6 +1116,15 @@ export function TerminalView({
               : undefined,
           });
           sid = result.sessionId;
+          nativeSessionStarted = true;
+          if (executionId && hasCanonicalTerminalExecution(executionId)) {
+            const attached = await attachTerminalExecution(executionId, sid);
+            if (!attached) throw new TypeError('canonical_terminal_native_attach_failed');
+            executionAttached = true;
+          }
+          sessionRef.current = sid;
+          viewSessionBound = true;
+          if (exitLatch.bind(sid)) return;
           sessionCwd = result.cwd || cwd || null;
           console.log(`[Jarvis] Spawned new PTY session: ${sid}`);
 
@@ -1064,9 +1196,26 @@ export function TerminalView({
           }
         }
       } catch (err) {
+        await settleTerminalInitializationFailure({
+          executionId,
+          sessionId: sid,
+          nativeSessionStarted,
+          executionAttached,
+        });
         if (cancelled) return;
         setError(String(err));
         return;
+      }
+
+      if (!cancelled && !viewSessionBound) {
+        const attached = await attachTerminalViewExecution(executionId, sid);
+        if (!attached) {
+          setError('Canonical terminal ownership handoff failed.');
+          return;
+        }
+        sessionRef.current = sid;
+        viewSessionBound = true;
+        if (exitLatch.bind(sid)) return;
       }
 
       // Race fix: if the effect was torn down between awaiting the
@@ -1077,13 +1226,15 @@ export function TerminalView({
       // during the spawn window). We kill the orphan and bail.
       if (cancelled) {
         if (existingSessionId == null) {
-          invoke('terminal_kill', { sessionId: sid }).catch(() => {
-            /* nothing to do — PTY may have already exited */
-          });
+          if (executionId && hasCanonicalTerminalExecution(executionId)) {
+            await requestTerminalExecutionCancellation(executionId);
+          } else
+            invoke('terminal_kill', { sessionId: sid }).catch(() => {
+              /* nothing to do — PTY may have already exited */
+            });
         }
         return;
       }
-      sessionRef.current = sid;
       if (paneId) {
         setTerminalPaneSessionId(paneId, sid);
       }
@@ -1115,10 +1266,7 @@ export function TerminalView({
         currentInputRef.current = inputTracker.currentDraft();
       }
       if (spawnedFresh) {
-        ignoreClearsUntilRef.current = Math.max(
-          ignoreClearsUntilRef.current,
-          Date.now() + 1500,
-        );
+        ignoreClearsUntilRef.current = Math.max(ignoreClearsUntilRef.current, Date.now() + 1500);
         // Fresh PTY: keep the first prompt top-aligned in the pane.
         requestAnimationFrame(() => {
           if (cancelled || !termRef.current) return;
@@ -1459,6 +1607,24 @@ export function TerminalView({
 
   const handleKill = async () => {
     const sid = sessionRef.current;
+    if (executionId && hasCanonicalTerminalExecution(executionId)) {
+      const result = await requestTerminalExecutionCancellation(executionId);
+      const disposition = terminalCancellationDisposition(result);
+      if (disposition === 'terminal') {
+        if (!exitFiredRef.current) {
+          exitFiredRef.current = true;
+          onExitRef.current?.(
+            useTerminalExecutionStore.getState().executions[executionId]?.exitCode ?? null,
+          );
+        }
+      } else if (disposition === 'rejected') {
+        toast.error(
+          'Cancellation unavailable',
+          'The canonical terminal could not commit cancellation intent and remains open.',
+        );
+      }
+      return;
+    }
     if (sid) {
       try {
         await invoke('terminal_kill', { sessionId: sid });
@@ -1592,10 +1758,7 @@ export function TerminalView({
         </div>
       )}
       {!hideChrome && (
-        <StandaloneCloseChrome
-          label={command || 'terminal'}
-          onClose={() => void handleKill()}
-        />
+        <StandaloneCloseChrome label={command || 'terminal'} onClose={() => void handleKill()} />
       )}
       <div
         ref={containerRef}
@@ -1607,17 +1770,9 @@ export function TerminalView({
 }
 
 /** Standalone chrome X: hold 1.5s then Confirm (matches PaneToolbar close). */
-function StandaloneCloseChrome({
-  label,
-  onClose,
-}: {
-  label: string;
-  onClose: () => void;
-}) {
+function StandaloneCloseChrome({ label, onClose }: { label: string; onClose: () => void }) {
   const [phase, setPhase] = useState<HoldConfirmPhase>('idle');
-  const ctrlRef = useRef(
-    createHoldToConfirmController({ onPhaseChange: setPhase }),
-  );
+  const ctrlRef = useRef(createHoldToConfirmController({ onPhaseChange: setPhase }));
 
   useEffect(() => {
     const ctrl = ctrlRef.current;

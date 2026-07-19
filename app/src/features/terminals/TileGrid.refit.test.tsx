@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { fireEvent, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { TileGrid } from './TileGrid';
+import { requestTerminalLeafClose, TileGrid } from './TileGrid';
 import { fromLeaves, newLeaf, type PaneNode } from './paneTree';
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -91,18 +91,60 @@ describe('TileGrid terminal refit scheduling', () => {
     fireEvent.mouseUp(document);
     flushAnimationFrames();
 
-    expect(dispatch.mock.calls.some(([event]) => event.type === 'jarvis:terminals:visible')).toBe(true);
+    expect(dispatch.mock.calls.some(([event]) => event.type === 'jarvis:terminals:visible')).toBe(
+      true,
+    );
   });
 
   it('broadcasts a terminal refit after fullscreen visibility changes', () => {
     const onChange = vi.fn();
     const dispatch = vi.spyOn(window, 'dispatchEvent');
     const tree = twoPaneTree();
-    const { rerender } = render(<TileGrid tree={tree} onChange={onChange} fullscreenPaneId={null} />);
+    const { rerender } = render(
+      <TileGrid tree={tree} onChange={onChange} fullscreenPaneId={null} />,
+    );
 
     rerender(<TileGrid tree={tree} onChange={onChange} fullscreenPaneId="pane-a" />);
     flushAnimationFrames();
 
-    expect(dispatch.mock.calls.some(([event]) => event.type === 'jarvis:terminals:visible')).toBe(true);
+    expect(dispatch.mock.calls.some(([event]) => event.type === 'jarvis:terminals:visible')).toBe(
+      true,
+    );
+  });
+
+  it('rejects unavailable canonical pane close truth without a raw kill', async () => {
+    const requestCanonical = vi.fn(async () => null);
+    const kill = vi.fn(async () => undefined);
+
+    await expect(
+      requestTerminalLeafClose(
+        { executionId: 'jterm_1', sessionId: 'pty_1' },
+        {
+          isCanonical: () => true,
+          requestCanonical,
+          kill,
+        },
+      ),
+    ).resolves.toBe('canonical_rejected');
+
+    expect(requestCanonical).toHaveBeenCalledWith('jterm_1');
+    expect(kill).not.toHaveBeenCalled();
+  });
+
+  it('reports canonical pane close pending only after intent is committed', async () => {
+    const requestCanonical = vi.fn(async () => ({
+      kind: 'intent_committed' as const,
+      requestState: 'new' as const,
+      authorityState: 'current' as const,
+      cancellationRequestId: 'jcancel_1',
+      aggregate: { kind: 'handoff_pending' as const, ownerIds: ['terminal:jterm_1'] },
+    }));
+
+    await expect(
+      requestTerminalLeafClose(
+        { executionId: 'jterm_1', sessionId: 'pty_1' },
+        { isCanonical: () => true, requestCanonical },
+      ),
+    ).resolves.toBe('canonical_pending');
   });
 });

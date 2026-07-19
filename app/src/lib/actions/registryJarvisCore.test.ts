@@ -3,11 +3,18 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ActionDef } from './types';
 import {
   CORE_ACTION_IDS,
+  cancelTerminalExecutionsAfterObserverCancellation,
   createJarvisCoreActions,
+  createJarvisTerminalRegisteredActionDispatcher,
   parseAgentBatch,
   waitForAgentBatch,
   waitForTerminalExecutions,
 } from './registryJarvisCore';
+import {
+  jarvisIssuedActionExecutionBrand,
+  jarvisTerminalHandoffReceiptBrand,
+  type JarvisTerminalOwnedExecution,
+} from '@/lib/jarvis/approvalEngine';
 
 function action(
   id: string,
@@ -84,6 +91,79 @@ describe('Jarvis canonical core actions', () => {
     });
   });
 
+  it('hands the exact canonical terminal controller to the private acceptor before success', async () => {
+    const owned: JarvisTerminalOwnedExecution = {
+      recordResult: vi.fn(),
+      recordCancellationVerified: vi.fn(),
+      requestCancellation: vi.fn(),
+      dispose: vi.fn(),
+    };
+    const acceptIssuedExecution = vi.fn(({ executionId, ownerId }) =>
+      Object.freeze({
+        executionId,
+        ownerId,
+        [jarvisTerminalHandoffReceiptBrand]: true as const,
+      }),
+    );
+    const createAcceptor = vi.fn(() => ({ acceptIssuedExecution }));
+    const transferTerminalOwnership = vi.fn(({ executionId, acceptor }) => ({
+      kind: 'committed' as const,
+      value: acceptor.acceptIssuedExecution({
+        executionId,
+        ownerId: 'approval:jappr_1',
+        execution: owned,
+      }),
+    }));
+    const dispatcher = createJarvisTerminalRegisteredActionDispatcher({
+      newExecutionId: () => 'jterm_1',
+      newCancellationToken: () => 'jcancel_native_1',
+      createAcceptor,
+    });
+
+    const outcome = await dispatcher({
+      registration: {
+        id: 'terminal.create',
+        version: 1,
+        executor: { kind: 'builtin', registryActionId: 'terminal.create' },
+      } as never,
+      params: {},
+      context: {
+        source: 'ai',
+        accountId: 'account-a',
+        runId: 'jrun_1',
+        approvalId: 'jappr_1',
+        requestId: 'request-1',
+        attemptNumber: 1,
+      },
+      execution: {
+        producerKind: 'terminal',
+        ownerId: 'approval:jappr_1',
+        [jarvisIssuedActionExecutionBrand]: true,
+        transferTerminalOwnership,
+      } as never,
+    });
+
+    expect(createAcceptor).toHaveBeenCalledWith({
+      accountId: 'account-a',
+      runId: 'jrun_1',
+      executionId: 'jterm_1',
+      cancellationToken: 'jcancel_native_1',
+      command: '',
+    });
+    expect(acceptIssuedExecution).toHaveBeenCalledWith({
+      executionId: 'jterm_1',
+      ownerId: 'approval:jappr_1',
+      execution: owned,
+    });
+    expect(outcome).toMatchObject({
+      kind: 'terminal_handoff_accepted',
+      executorKind: 'terminal',
+      ownerId: 'approval:jappr_1',
+      result: { ok: true, data: { state: 'queued', executionId: 'jterm_1' } },
+    });
+    expect(JSON.stringify(outcome)).not.toContain('jcancel_native_1');
+  });
+
   it('verifies every queued terminal actually reaches a started state', async () => {
     let reads = 0;
     const result = await waitForTerminalExecutions(['one', 'two'], {
@@ -147,6 +227,27 @@ describe('Jarvis canonical core actions', () => {
         now: () => 0,
       }),
     ).resolves.toMatchObject({ ok: false, error: expect.stringMatching(/cancelled/i) });
+  });
+
+  it('routes canonical observer cleanup through Task 18 and never tokenless native kill', async () => {
+    const requestCanonical = vi.fn(async () => null);
+    const cancelQueued = vi.fn(() => false);
+    const killManual = vi.fn(async () => undefined);
+    const markLegacyFailed = vi.fn();
+
+    await cancelTerminalExecutionsAfterObserverCancellation(['jterm_1'], {
+      isCanonical: () => true,
+      requestCanonical,
+      cancelQueued,
+      readSessionId: () => 'pty_1',
+      killManual,
+      markLegacyFailed,
+    });
+
+    expect(requestCanonical).toHaveBeenCalledWith('jterm_1');
+    expect(cancelQueued).not.toHaveBeenCalled();
+    expect(killManual).not.toHaveBeenCalled();
+    expect(markLegacyFailed).not.toHaveBeenCalled();
   });
 
   it('validates bounded multi-agent task batches and observes completion', async () => {

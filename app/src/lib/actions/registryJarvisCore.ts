@@ -1,11 +1,126 @@
 import type { ActionDef, ActionResult, ActionRunContext } from './types';
+import type { JarvisRegisteredActionDefinition } from '@/lib/jarvis/actions/catalog';
+import type {
+  JarvisIssuedActionExecution,
+  JarvisRegisteredActionDispatchOutcome,
+  JarvisTerminalExecutionAcceptor,
+} from '@/lib/jarvis/approvalEngine';
+import type { RegisteredActionExecutionContext } from './types';
 
 type LegacyResolver = (id: string) => ActionDef | undefined;
 
 const ok = (summary: string, data?: unknown): ActionResult => ({ ok: true, summary, data });
 const fail = (error: string): ActionResult => ({ ok: false, error });
 
+export type JarvisTerminalRegisteredActionDispatcherDependencies = Readonly<{
+  newExecutionId(): string;
+  newCancellationToken(): string;
+  createAcceptor(input: {
+    accountId: string;
+    runId: string;
+    executionId: string;
+    cancellationToken: string;
+    command: string;
+  }): JarvisTerminalExecutionAcceptor;
+}>;
+
+export function createJarvisTerminalRegisteredActionDispatcher(
+  dependencies: JarvisTerminalRegisteredActionDispatcherDependencies,
+): (input: {
+  registration: Readonly<JarvisRegisteredActionDefinition>;
+  params: Readonly<Record<string, unknown>>;
+  context: RegisteredActionExecutionContext;
+  execution: JarvisIssuedActionExecution;
+}) => Promise<JarvisRegisteredActionDispatchOutcome | null> {
+  return async (input) => {
+    if (
+      input.registration.id !== 'terminal.create' ||
+      input.registration.version !== 1 ||
+      input.registration.executor.kind !== 'builtin' ||
+      input.registration.executor.registryActionId !== 'terminal.create'
+    ) {
+      return null;
+    }
+    if (Reflect.ownKeys(input.params).length !== 0 || input.execution.producerKind !== 'terminal') {
+      return {
+        kind: 'executor_returned',
+        result: fail('Canonical terminal execution binding was rejected.'),
+      };
+    }
+    const executionId = dependencies.newExecutionId();
+    const cancellationToken = dependencies.newCancellationToken();
+    if (
+      !/^jterm_[A-Za-z0-9_-]+$/.test(executionId) ||
+      !/^jcancel_native_[A-Za-z0-9_-]+$/.test(cancellationToken)
+    ) {
+      return {
+        kind: 'executor_returned',
+        result: fail('Canonical terminal execution identity was unavailable.'),
+      };
+    }
+    try {
+      const transferred = input.execution.transferTerminalOwnership({
+        executionId,
+        acceptor: dependencies.createAcceptor({
+          accountId: input.context.accountId,
+          runId: input.context.runId,
+          executionId,
+          cancellationToken,
+          command: '',
+        }),
+      });
+      if (transferred.kind !== 'committed') {
+        return {
+          kind: 'executor_returned',
+          result: fail('Canonical terminal ownership was revoked before handoff.'),
+        };
+      }
+      return {
+        kind: 'terminal_handoff_accepted',
+        executorKind: 'terminal',
+        ownerId: input.execution.ownerId,
+        receipt: transferred.value,
+        result: {
+          ok: true,
+          summary: 'Terminal execution handed off.',
+          data: { state: 'queued', executionId },
+        },
+      };
+    } catch {
+      return {
+        kind: 'executor_returned',
+        result: fail('Canonical terminal handoff failed.'),
+      };
+    }
+  };
+}
+
 type TerminalExecutionSnapshot = Record<string, { status: string; sessionId?: string } | undefined>;
+
+export async function cancelTerminalExecutionsAfterObserverCancellation(
+  executionIds: readonly string[],
+  dependencies: {
+    isCanonical(executionId: string): boolean;
+    requestCanonical(executionId: string): Promise<unknown>;
+    cancelQueued(executionId: string): boolean;
+    readSessionId(executionId: string): string | undefined;
+    killManual(sessionId: string): Promise<unknown>;
+    markLegacyFailed(executionId: string): void;
+  },
+): Promise<void> {
+  for (const executionId of executionIds) {
+    if (dependencies.isCanonical(executionId)) {
+      await dependencies.requestCanonical(executionId);
+      continue;
+    }
+    const removed = dependencies.cancelQueued(executionId);
+    const sessionId = dependencies.readSessionId(executionId);
+    if (!removed && sessionId) {
+      await dependencies.killManual(sessionId).catch(() => undefined);
+    }
+    dependencies.markLegacyFailed(executionId);
+  }
+}
 
 export async function waitForTerminalExecutions(
   executionIds: string[],
@@ -328,17 +443,20 @@ export function createJarvisCoreActions(resolveLegacy: LegacyResolver): ActionDe
                 import('@tauri-apps/api/core'),
               ],
             );
-            for (const executionId of executionIds) {
-              const removed = cancelQueuedTerminalCommand(executionId);
-              const execution =
-                executionStore.useTerminalExecutionStore.getState().executions[executionId];
-              if (!removed && execution?.sessionId) {
-                await invoke('terminal_kill', { sessionId: execution.sessionId }).catch(
-                  () => undefined,
-                );
-              }
-              executionStore.markTerminalExecution(executionId, 'cancelled', { exitCode: null });
-            }
+            await cancelTerminalExecutionsAfterObserverCancellation(executionIds, {
+              isCanonical: executionStore.hasCanonicalTerminalExecution,
+              requestCanonical: executionStore.requestTerminalExecutionCancellation,
+              cancelQueued: cancelQueuedTerminalCommand,
+              readSessionId: (executionId) =>
+                executionStore.useTerminalExecutionStore.getState().executions[executionId]
+                  ?.sessionId,
+              killManual: (sessionId) => invoke('terminal_kill', { sessionId }),
+              markLegacyFailed: (executionId) =>
+                executionStore.markTerminalExecution(executionId, 'failed', {
+                  exitCode: null,
+                  settlementError: 'manual_termination_requested',
+                }),
+            });
           }
           return fail(verified.error);
         }

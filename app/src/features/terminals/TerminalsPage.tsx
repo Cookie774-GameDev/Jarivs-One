@@ -40,8 +40,18 @@ import {
   MAX_PANES,
   resolvePaneTreeChange,
 } from './paneTree';
-import { useTerminalCommandQueue } from './terminalCommandQueue';
-import { markTerminalExecution } from './terminalExecutionStore';
+import {
+  claimTerminalCommands,
+  useTerminalCommandQueue,
+  type TerminalCommand,
+} from './terminalCommandQueue';
+import {
+  claimTerminalExecution,
+  hasCanonicalTerminalExecution,
+  markTerminalExecution,
+  requestTerminalExecutionCancellation,
+  terminalCancellationDisposition,
+} from './terminalExecutionStore';
 import type { TerminalRef } from './terminalRefs';
 import {
   defaultShell,
@@ -53,11 +63,17 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { projectRepo } from '@/lib/db';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
-import {
-  captureLiveTree,
-  getLiveTree,
-} from './terminalLiveCache';
+import { captureLiveTree, getLiveTree } from './terminalLiveCache';
 import { useTerminalTranscriptStore } from './transcriptStore';
+import type { JarvisCancellationRequestResult } from '@/lib/jarvis/contracts/execution';
+
+export function summarizeTerminalResetCancellations(
+  results: readonly (JarvisCancellationRequestResult | null)[],
+): { pending: number; terminal: number; rejected: number } {
+  const summary = { pending: 0, terminal: 0, rejected: 0 };
+  for (const result of results) summary[terminalCancellationDisposition(result)] += 1;
+  return summary;
+}
 
 /**
  * Map an agent slug to a default CLI to spawn in a fresh pane.
@@ -92,16 +108,104 @@ export function forgetTerminalLeafSessions(
   }
 }
 
-type InvokeCommand = (
-  command: string,
-  args?: Record<string, unknown>,
-) => Promise<unknown>;
+type InvokeCommand = (command: string, args?: Record<string, unknown>) => Promise<unknown>;
 
 export async function deleteTerminalProjectSnapshots(
   projectId: string | null,
   invokeCommand: InvokeCommand = invoke,
 ): Promise<void> {
   await invokeCommand('terminal_snapshot_delete_project', { projectId });
+}
+
+export function applyTerminalCommandBatch(
+  current: PaneNode,
+  items: readonly TerminalCommand[],
+  markExecution: typeof markTerminalExecution = markTerminalExecution,
+): PaneNode {
+  let next = current;
+  let replaceRootNext = false;
+  for (const item of items) {
+    if (item.kind === 'shell') {
+      markExecution(item.id, 'starting');
+      if (item.target === 'all') {
+        const pendingCommandId = Date.now();
+        next = fromLeaves(
+          flattenLeaves(next).map((leaf, index) => ({
+            ...leaf,
+            pendingCommand: item.command,
+            pendingCommandId: pendingCommandId + index,
+          })),
+        );
+      } else if (item.target === 'refs' && item.refs && item.refs.length > 0) {
+        const refs = item.refs;
+        const pendingCommandId = Date.now();
+        let matched = false;
+        next = fromLeaves(
+          flattenLeaves(next).map((leaf, index) => {
+            const hit = refs.some(
+              (ref) =>
+                (ref.paneId && ref.paneId === leaf.id) ||
+                (ref.sessionId && ref.sessionId === leaf.sessionId),
+            );
+            if (!hit) return leaf;
+            matched = true;
+            return {
+              ...leaf,
+              pendingCommand: item.command,
+              pendingCommandId: pendingCommandId + index,
+            };
+          }),
+        );
+        if (!matched) {
+          const first = refs[0];
+          next = appendLeaf(next, {
+            command: defaultShell(),
+            startupCommand: item.command || undefined,
+            agentSlug: first?.agentSlug ?? item.label,
+          });
+        }
+      } else {
+        const seed = {
+          command: defaultShell(),
+          startupCommand: item.command || undefined,
+          agentSlug: item.agentSlug ?? item.label,
+          name: item.agentSlug ? item.label : undefined,
+          cwd: item.cwd,
+          executionId: item.id,
+        };
+        if (replaceRootNext && countLeaves(next) === 1) {
+          next = newLeaf(seed);
+          replaceRootNext = false;
+        } else {
+          next = appendLeaf(next, seed);
+        }
+      }
+    } else if (item.kind === 'swarm') {
+      next = appendLeaf(next, {
+        command: defaultShell(),
+        agentSlug: 'jarvis',
+      });
+    } else if (item.kind === 'close') {
+      const leaves = flattenLeaves(next);
+      const closeCount = Math.min(item.count, leaves.length);
+      for (const leaf of leaves.slice(-closeCount)) {
+        const closed = closePane(next, leaf.id);
+        if (closed) next = closed;
+      }
+      if (closeCount >= leaves.length) replaceRootNext = true;
+    }
+  }
+  return next;
+}
+
+export function canClaimCanonicalTerminalCommand(
+  current: PaneNode,
+  priorClaimedItems: readonly TerminalCommand[],
+  item: Extract<TerminalCommand, { kind: 'shell' }> & { canonical: object },
+): boolean {
+  if (item.target === 'all' || item.target === 'refs') return true;
+  const projected = applyTerminalCommandBatch(current, priorClaimedItems, () => undefined);
+  return countLeaves(projected) < MAX_PANES;
 }
 
 export function TerminalsPage() {
@@ -145,9 +249,7 @@ export function TerminalsPage() {
    * fullscreen pane is closed" stay in lock-step with the tree state.
    * Transient (not persisted) — reload always lands in normal view.
    */
-  const [fullscreenPaneId, setFullscreenPaneId] = React.useState<string | null>(
-    null,
-  );
+  const [fullscreenPaneId, setFullscreenPaneId] = React.useState<string | null>(null);
 
   // Swap the tree when the user switches projects. Pane ids are
   // project-scoped now, so a stale `fullscreenPaneId` would point at
@@ -212,114 +314,52 @@ export function TerminalsPage() {
   // any `swarm` items as plain "append a leaf for jarvis" — keeps
   // older queued items behaving sensibly.
   React.useEffect(() => {
-    const drainAndProcess = () => {
-      const items = useTerminalCommandQueue.getState().drain();
-      if (items.length === 0) return;
-      setTree((cur) => {
-        let next = cur;
-        // After a "close all" the tree still holds one root pane (a tree can
-        // never be empty). Orchestrations that close everything and then open
-        // a fresh batch expect exact pane counts, so the first new pane
-        // REPLACES that leftover root instead of appending next to it.
-        let replaceRootNext = false;
-        for (const item of items) {
-          if (item.kind === 'shell') {
-            markTerminalExecution(item.id, 'starting');
-            if (item.target === 'all') {
-              const pendingCommandId = Date.now();
-              const leaves = flattenLeaves(next);
-              next = fromLeaves(
-                leaves.map((leaf, index) => ({
-                  ...leaf,
-                  pendingCommand: item.command,
-                  pendingCommandId: pendingCommandId + index,
-                  })),
-              );
-            } else if (item.target === 'refs' && item.refs && item.refs.length > 0) {
-              const refs = item.refs;
-              const pendingCommandId = Date.now();
-              const leaves = flattenLeaves(next);
-              let matched = false;
-              next = fromLeaves(
-                leaves.map((leaf, index) => {
-                  const hit = refs.some((ref) =>
-                    (ref.paneId && ref.paneId === leaf.id) ||
-                    (ref.sessionId && ref.sessionId === leaf.sessionId),
-                  );
-                  if (!hit) return leaf;
-                  matched = true;
-                  return {
-                    ...leaf,
-                    pendingCommand: item.command,
-                    pendingCommandId: pendingCommandId + index,
-                  };
-                }),
-              );
-              if (!matched) {
-                const first = refs[0];
-                next = appendLeaf(next, {
-                  command: defaultShell(),
-                  startupCommand: item.command || undefined,
-                  agentSlug: first?.agentSlug ?? item.label,
-                });
-              }
-            } else {
-              const seed = {
-                command: defaultShell(),
-                startupCommand: item.command || undefined,
-                agentSlug: item.agentSlug ?? item.label,
-                name: item.agentSlug ? item.label : undefined,
-                cwd: item.cwd,
-                executionId: item.id,
-              };
-              if (replaceRootNext && countLeaves(next) === 1) {
-                next = newLeaf(seed);
-                replaceRootNext = false;
-              } else {
-                next = appendLeaf(next, seed);
-              }
+    let draining = false;
+    let rerun = false;
+    let projectedTree = tree;
+    const drainAndProcess = async () => {
+      if (draining) {
+        rerun = true;
+        return;
+      }
+      draining = true;
+      try {
+        do {
+          rerun = false;
+          const items = await claimTerminalCommands(async (item, priorClaimedItems) => {
+            if (!canClaimCanonicalTerminalCommand(projectedTree, priorClaimedItems, item)) {
+              return false;
             }
-          } else if (item.kind === 'swarm') {
-            // Old "swarm" tile preset — degrade to a single Jarvis pane
-            // since the swarm trio agents are no longer seeded.
-            next = appendLeaf(next, {
-              command: defaultShell(),
-              agentSlug: 'jarvis',
-            });
-          } else if (item.kind === 'close') {
-            // Close the N most-recently-added leaves.
-            const leaves = flattenLeaves(next);
-            const closeCount = Math.min(item.count, leaves.length);
-            const toClose = leaves.slice(-closeCount);
-            for (const leaf of toClose) {
-              const closed = closePane(next, leaf.id);
-              if (closed) next = closed;
-            }
-            // A full wipe leaves one un-closable root; let the next opened
-            // pane take its place so batch counts come out exact.
-            if (closeCount >= leaves.length) replaceRootNext = true;
+            return claimTerminalExecution(item.canonical.executionId);
+          });
+          if (items.length > 0) {
+            projectedTree = applyTerminalCommandBatch(projectedTree, items);
+            setTree(projectedTree);
           }
-        }
-        return next;
-      });
+        } while (rerun);
+      } finally {
+        draining = false;
+      }
     };
 
-    drainAndProcess();
+    void drainAndProcess();
     const unsub = useTerminalCommandQueue.subscribe((state) => {
-      if (state.queue.length > 0) drainAndProcess();
+      if (state.queue.length > 0) void drainAndProcess();
     });
     return unsub;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [tree]);
 
-  const handleChange = React.useCallback((next: PaneTreeChange) => {
-    setTree((currentTree) => {
-      return resolvePaneTreeChange(currentTree, next, {
-        command: defaultShell(),
-        projectId: currentProjectId,
+  const handleChange = React.useCallback(
+    (next: PaneTreeChange) => {
+      setTree((currentTree) => {
+        return resolvePaneTreeChange(currentTree, next, {
+          command: defaultShell(),
+          projectId: currentProjectId,
+        });
       });
-    });
-  }, [currentProjectId]);
+    },
+    [currentProjectId],
+  );
 
   React.useEffect(() => {
     if (!fullscreenPaneId) return;
@@ -338,7 +378,61 @@ export function TerminalsPage() {
 
   const handleResetAllTerminals = () => {
     const forgetSession = useTerminalTranscriptStore.getState().forgetSession;
-    for (const leaf of flattenLeaves(tree)) {
+    const leaves = flattenLeaves(tree);
+    const canonical = leaves.filter(
+      (leaf) => leaf.executionId && hasCanonicalTerminalExecution(leaf.executionId),
+    );
+    if (canonical.length > 0) {
+      void Promise.all(
+        canonical.map(async (leaf) => ({
+          leaf,
+          result: await requestTerminalExecutionCancellation(leaf.executionId!),
+        })),
+      )
+        .then((outcomes) => {
+          const summary = summarizeTerminalResetCancellations(outcomes.map(({ result }) => result));
+          const terminal = outcomes.filter(
+            ({ result }) => terminalCancellationDisposition(result) === 'terminal',
+          );
+          if (terminal.length > 0) {
+            const paneIds = new Set(terminal.map(({ leaf }) => leaf.id));
+            for (const { leaf } of terminal) {
+              if (leaf.sessionId) forgetSession(leaf.sessionId);
+            }
+            setTree((currentTree) => {
+              if (paneIds.size >= flattenLeaves(currentTree).length) {
+                return newLeaf({ command: defaultShell() });
+              }
+              let next = currentTree;
+              for (const paneId of paneIds) {
+                const closed = closePane(next, paneId);
+                if (closed) next = closed;
+              }
+              return next;
+            });
+          }
+          if (summary.pending > 0) {
+            toast.info(
+              'Cancellation requested',
+              'Canonical terminals remain visible until native exit truth is verified.',
+            );
+          }
+          if (summary.rejected > 0) {
+            toast.error(
+              'Cancellation unavailable',
+              `${summary.rejected} canonical terminal${summary.rejected === 1 ? '' : 's'} could not commit cancellation intent and remain open.`,
+            );
+          }
+        })
+        .catch(() => {
+          toast.error(
+            'Cancellation unavailable',
+            'Canonical cancellation results could not be verified; terminals remain open.',
+          );
+        });
+      return;
+    }
+    for (const leaf of leaves) {
       if (leaf.sessionId) {
         invoke('terminal_kill', { sessionId: leaf.sessionId }).catch(() => {
           /* PTY may have already exited */
@@ -358,20 +452,23 @@ export function TerminalsPage() {
   const holdTimerRef = React.useRef<any>(null);
   const hasTriggeredRef = React.useRef(false);
 
-  const startHold = React.useCallback((e: React.MouseEvent | React.TouchEvent) => {
-    if ('button' in e && e.button !== 0) return;
-    hasTriggeredRef.current = false;
-    setIsHolding(true);
-    holdTimerRef.current = setTimeout(() => {
-      hasTriggeredRef.current = true;
-      setIsHolding(false);
-      const confirmed = window.confirm("Confirm to reset all terminals?");
-      if (confirmed) {
-        handleResetAllTerminals();
-      }
-    }, 2000);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tree]);
+  const startHold = React.useCallback(
+    (e: React.MouseEvent | React.TouchEvent) => {
+      if ('button' in e && e.button !== 0) return;
+      hasTriggeredRef.current = false;
+      setIsHolding(true);
+      holdTimerRef.current = setTimeout(() => {
+        hasTriggeredRef.current = true;
+        setIsHolding(false);
+        const confirmed = window.confirm('Confirm to reset all terminals?');
+        if (confirmed) {
+          handleResetAllTerminals();
+        }
+      }, 2000);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    },
+    [tree],
+  );
 
   const endHold = React.useCallback(() => {
     if (holdTimerRef.current) {
@@ -449,7 +546,9 @@ export function TerminalsPage() {
           <span className="font-display text-foreground text-secondary tracking-tight">
             Terminals
           </span>
-          <span aria-hidden className="text-border-mid">·</span>
+          <span aria-hidden className="text-border-mid">
+            ·
+          </span>
           <span>
             {count} / {MAX_PANES} pane{count === 1 ? '' : 's'}
           </span>
@@ -478,8 +577,8 @@ export function TerminalsPage() {
           >
             <div
               className={cn(
-                "absolute left-0 top-0 bottom-0 bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-rose-500/20 transition-all pointer-events-none",
-                isHolding ? "duration-[2000ms] ease-out w-full" : "duration-75 w-0"
+                'absolute left-0 top-0 bottom-0 bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-rose-500/20 transition-all pointer-events-none',
+                isHolding ? 'duration-[2000ms] ease-out w-full' : 'duration-75 w-0',
               )}
             />
             <span className="relative z-10 flex items-center gap-1">
