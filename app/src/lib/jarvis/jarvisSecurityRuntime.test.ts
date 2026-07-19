@@ -147,9 +147,10 @@ describe('trusted JARVIS security runtime composition', () => {
       dispose: vi.fn(() => lifecycleRevocation.abort()),
     };
     Object.freeze(lifecycle);
+    const getRun = vi.fn(async () => structuredClone(parent));
     const runtime = createJarvisSecurityRuntime({
       repositories: {
-        run: { getById: vi.fn(async () => structuredClone(parent)) },
+        run: { getById: getRun },
         approval: { getById: vi.fn(), listByRun: vi.fn(async () => []) },
       } as never,
       catalog,
@@ -241,6 +242,29 @@ describe('trusted JARVIS security runtime composition', () => {
       }),
     ).rejects.toThrow('authority was revoked');
     expect(putPreparedApproval).toHaveBeenCalledOnce();
+
+    const readsAfterFirstCreate = getRun.mock.calls.length;
+    const freshLifecycleRevocation = new AbortController();
+    const freshLifecycle = Object.freeze({
+      ...lifecycle,
+      revocationSignal: freshLifecycleRevocation.signal,
+      dispose: vi.fn(() => freshLifecycleRevocation.abort()),
+    } satisfies JarvisIssuedApprovalLifecycle);
+    const freshActions = runtime.bindKernelActions(freshLifecycle);
+    lifecycle.dispose();
+    runtime.invalidateAccount('account-a');
+    await expect(
+      freshActions.create({
+        parentRun: parent,
+        attempt: { kind: 'initial', requestId: 'request-1', runId: parent.id, attemptNumber: 1 },
+        actionId: 'github.fixed-list',
+        actionVersion: 1,
+        params: {},
+        expiresAt: 15_000,
+      }),
+    ).rejects.toThrow('authority was revoked');
+    expect(getRun).toHaveBeenCalledTimes(readsAfterFirstCreate);
+
     activeAccountId = undefined;
     await expect(
       runtime.pluginManagement.testConnection({ accountId: 'account-a', pluginId: 'github' }),

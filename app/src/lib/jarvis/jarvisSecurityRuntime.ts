@@ -189,7 +189,12 @@ export function createJarvisSecurityRuntime(
     const revoke = () => {
       if (!revocation.signal.aborted) revocation.abort();
       accountRevocations.delete(revocation);
-      if (accountRevocations.size === 0) boundRevocations.delete(lifecycle.accountId);
+      if (
+        accountRevocations.size === 0 &&
+        boundRevocations.get(lifecycle.accountId) === accountRevocations
+      ) {
+        boundRevocations.delete(lifecycle.accountId);
+      }
     };
     if (lifecycle.revocationSignal.aborted) revoke();
     else {
