@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { JarvisArtifactDraft, JarvisArtifactV1 } from './contracts/execution';
+import * as producerModule from './artifactProducerAdapters';
 import {
   createJarvisBoundArtifactPipelineIssuerInternal,
   type CanonicalArtifactEvidence,
@@ -182,6 +183,15 @@ describe('named canonical artifact producer adapters', () => {
     return { pipeline: issue({ claim }), claim, materializeVerified, events };
   }
 
+  it('exports only the named internal issuer and no generic receipt or executor escape hatch', () => {
+    expect(Object.keys(producerModule).sort()).toEqual([
+      'createJarvisBoundArtifactPipelineIssuerInternal',
+    ]);
+    expect(producerModule).not.toHaveProperty('issueReceipt');
+    expect(producerModule).not.toHaveProperty('normalize');
+    expect(producerModule).not.toHaveProperty('materializeByExecutor');
+  });
+
   it.each([
     ['provider', provider],
     ['fileAction', fileAction],
@@ -248,6 +258,76 @@ describe('named canonical artifact producer adapters', () => {
     expect(test.materializeVerified).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['provider', provider],
+    ['fileAction', fileAction],
+    ['terminal', terminal],
+    ['plugin', plugin],
+    ['mcp', mcp],
+  ] as const)(
+    'rejects cross-scope, reused, non-result, and invalid numeric %s evidence before claiming',
+    async (key, evidence) => {
+      const exactSlot = Object.freeze({
+        state: 'ready' as const,
+        producerId: evidence.producerId,
+        authority: Object.freeze({ verify: vi.fn(async () => evidence) }),
+      });
+      const test = harness({ [key]: exactSlot } as never);
+      const adapter = test.pipeline[
+        key
+      ] as CanonicalArtifactEvidenceAdapter<CanonicalArtifactEvidence>;
+
+      for (const patch of [
+        { accountId: 'account-other' },
+        { runId: 'run-other' },
+        { requestId: 'request-other' },
+        { attemptNumber: 2 },
+        { resultRef: `${evidence.resultRef}-reused` },
+      ]) {
+        await expect(
+          adapter.materialize({
+            evidence: Object.freeze({ ...evidence, ...patch }) as CanonicalArtifactEvidence,
+            draft: draft(),
+          }),
+        ).rejects.toThrow('artifact_evidence_verification_failed');
+      }
+
+      for (const resultRef of [
+        'pending',
+        'queued-result',
+        'proposed-result',
+        'availability-only',
+      ]) {
+        await expect(
+          adapter.materialize({
+            evidence: Object.freeze({ ...evidence, resultRef }) as CanonicalArtifactEvidence,
+            draft: draft(),
+          }),
+        ).rejects.toThrow('artifact_evidence_invalid');
+      }
+      await expect(
+        adapter.materialize({
+          evidence: Object.freeze({
+            ...evidence,
+            producerId: 'schedule_result',
+          }) as unknown as CanonicalArtifactEvidence,
+          draft: draft(),
+        }),
+      ).rejects.toThrow('artifact_evidence_invalid');
+      await expect(
+        adapter.materialize({
+          evidence: Object.freeze({
+            ...evidence,
+            verifiedAt: Number.NaN,
+          }) as CanonicalArtifactEvidence,
+          draft: draft(),
+        }),
+      ).rejects.toThrow('artifact_evidence_invalid');
+      expect(test.claim).not.toHaveBeenCalled();
+      expect(test.materializeVerified).not.toHaveBeenCalled();
+    },
+  );
+
   it('rejects queued, planned, availability, accessor, and secret-shaped evidence before claiming', async () => {
     const test = harness();
     for (const resultRef of [
@@ -296,6 +376,29 @@ describe('named canonical artifact producer adapters', () => {
     await expect(
       pipeline.provider.materialize({ evidence: provider, draft: draft() }),
     ).rejects.toThrow('artifact_effect_claim_rejected');
+    expect(materializeVerified).not.toHaveBeenCalled();
+  });
+
+  it('lets a winning seal reject a pending artifact race before receipt materialization', async () => {
+    let settleClaim!: (value: unknown) => void;
+    const claim = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          settleClaim = resolve;
+        }) as never,
+    );
+    const materializeVerified = vi.fn();
+    const pipeline = createJarvisBoundArtifactPipelineIssuerInternal({
+      authorities: authorities(),
+      materializeVerified,
+      now: () => NOW,
+    })({ claim });
+
+    const pending = pipeline.provider.materialize({ evidence: provider, draft: draft() });
+    await vi.waitFor(() => expect(claim).toHaveBeenCalledOnce());
+    expect(materializeVerified).not.toHaveBeenCalled();
+    settleClaim({ applied: false, reason: 'attempt_sealed', current: {} });
+    await expect(pending).rejects.toThrow('artifact_effect_claim_rejected');
     expect(materializeVerified).not.toHaveBeenCalled();
   });
 });
