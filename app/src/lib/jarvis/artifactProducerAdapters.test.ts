@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import type { JarvisArtifactDraft, JarvisArtifactV1 } from './contracts/execution';
 import * as producerModule from './artifactProducerAdapters';
 import {
@@ -192,6 +192,23 @@ describe('named canonical artifact producer adapters', () => {
     expect(producerModule).not.toHaveProperty('materializeByExecutor');
   });
 
+  it('statically requires ready producer authorities and an exact unavailable schedule', () => {
+    type ProviderUnavailable = Extract<
+      CanonicalArtifactEvidenceAuthorities['provider'],
+      { state: 'unavailable' }
+    >;
+    type ScheduleReady = Extract<
+      CanonicalArtifactEvidenceAuthorities['schedule'],
+      { state: 'ready' }
+    >;
+    type ScheduleHasAuthority =
+      'authority' extends keyof CanonicalArtifactEvidenceAuthorities['schedule'] ? true : false;
+
+    expectTypeOf<ProviderUnavailable>().toEqualTypeOf<never>();
+    expectTypeOf<ScheduleReady>().toEqualTypeOf<never>();
+    expectTypeOf<ScheduleHasAuthority>().toEqualTypeOf<false>();
+  });
+
   it.each([
     ['provider', provider],
     ['fileAction', fileAction],
@@ -361,6 +378,109 @@ describe('named canonical artifact producer adapters', () => {
     ).rejects.toThrow('artifact_producer_unavailable');
     expect(test.claim).not.toHaveBeenCalled();
     expect(test.materializeVerified).not.toHaveBeenCalled();
+  });
+
+  it('rejects a runtime-injected ready schedule before authority, claim, or materialization', () => {
+    const verify = vi.fn(async (evidence: CanonicalScheduleEvidence) => evidence);
+    const claim = vi.fn();
+    const materializeVerified = vi.fn();
+
+    expect(() =>
+      createJarvisBoundArtifactPipelineIssuerInternal({
+        authorities: authorities({
+          schedule: Object.freeze({
+            state: 'ready',
+            producerId: 'schedule_result',
+            authority: Object.freeze({ verify }),
+          }) as never,
+        }),
+        materializeVerified,
+        now: () => NOW,
+      })({ claim }),
+    ).toThrow('artifact_authority_topology_invalid');
+    expect(verify).not.toHaveBeenCalled();
+    expect(claim).not.toHaveBeenCalled();
+    expect(materializeVerified).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['provider', 'provider_response'],
+    ['fileAction', 'file_action_result'],
+    ['terminal', 'terminal_exit'],
+    ['plugin', 'plugin_result'],
+    ['mcp', 'mcp_result'],
+  ] as const)(
+    'rejects a runtime-injected unavailable %s authority during composition',
+    (key, producerId) => {
+      const claim = vi.fn();
+      const materializeVerified = vi.fn();
+
+      expect(() =>
+        createJarvisBoundArtifactPipelineIssuerInternal({
+          authorities: authorities({
+            [key]: Object.freeze({
+              state: 'unavailable',
+              producerId,
+              reason: 'producer_task_not_landed',
+            }),
+          } as never),
+          materializeVerified,
+          now: () => NOW,
+        })({ claim }),
+      ).toThrow('artifact_authority_topology_invalid');
+      expect(claim).not.toHaveBeenCalled();
+      expect(materializeVerified).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects authority accessors without invoking them', () => {
+    const authorityGetter = vi.fn(() =>
+      Object.freeze({ verify: vi.fn(async (value: CanonicalProviderEvidence) => value) }),
+    );
+    const providerSlot = {
+      state: 'ready',
+      producerId: 'provider_response',
+    } as Record<string, unknown>;
+    Object.defineProperty(providerSlot, 'authority', {
+      enumerable: true,
+      get: authorityGetter,
+    });
+
+    expect(() =>
+      createJarvisBoundArtifactPipelineIssuerInternal({
+        authorities: authorities({ provider: providerSlot as never }),
+        materializeVerified: vi.fn(),
+        now: () => NOW,
+      }),
+    ).toThrow('artifact_authority_topology_invalid');
+    expect(authorityGetter).not.toHaveBeenCalled();
+  });
+
+  it('captures the verified authority capability against a post-composition swap', async () => {
+    const originalVerify = vi.fn(async (value: CanonicalProviderEvidence) => value);
+    const swappedVerify = vi.fn(async (value: CanonicalProviderEvidence) => value);
+    const providerSlot = {
+      state: 'ready' as const,
+      producerId: 'provider_response' as const,
+      authority: { verify: originalVerify },
+    };
+    const materializeVerified = vi.fn(async ({ binding }) => artifactFor(binding.resultRef));
+    const issue = createJarvisBoundArtifactPipelineIssuerInternal({
+      authorities: authorities({ provider: providerSlot }),
+      materializeVerified,
+      now: () => NOW,
+    });
+
+    providerSlot.authority = { verify: swappedVerify };
+    const pipeline = issue({
+      claim: vi.fn(async () => ({ applied: true, kind: 'not_applicable', run: {} }) as never),
+    });
+    await expect(
+      pipeline.provider.materialize({ evidence: provider, draft: draft() }),
+    ).resolves.toBeDefined();
+    expect(originalVerify).toHaveBeenCalledOnce();
+    expect(swappedVerify).not.toHaveBeenCalled();
+    expect(materializeVerified).toHaveBeenCalledOnce();
   });
 
   it('rejects a failed effect claim before materialization', async () => {

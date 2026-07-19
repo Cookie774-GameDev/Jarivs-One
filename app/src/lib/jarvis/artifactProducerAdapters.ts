@@ -120,13 +120,15 @@ export interface CanonicalScheduleEvidenceAuthority {
 export type CanonicalArtifactEvidenceAuthoritySlot<
   P extends CanonicalArtifactEvidence['producerId'],
   A,
-> =
-  | Readonly<{ state: 'ready'; producerId: P; authority: A }>
-  | Readonly<{
-      state: 'unavailable';
-      producerId: P;
-      reason: 'producer_task_not_landed';
-    }>;
+> = Readonly<{ state: 'ready'; producerId: P; authority: A }>;
+
+type CanonicalArtifactUnavailableEvidenceAuthoritySlot<
+  P extends CanonicalArtifactEvidence['producerId'],
+> = Readonly<{
+  state: 'unavailable';
+  producerId: P;
+  reason: 'producer_task_not_landed';
+}>;
 
 export type CanonicalArtifactEvidenceAuthorities = Readonly<{
   provider: CanonicalArtifactEvidenceAuthoritySlot<
@@ -143,10 +145,7 @@ export type CanonicalArtifactEvidenceAuthorities = Readonly<{
   >;
   plugin: CanonicalArtifactEvidenceAuthoritySlot<'plugin_result', CanonicalPluginEvidenceAuthority>;
   mcp: CanonicalArtifactEvidenceAuthoritySlot<'mcp_result', CanonicalMcpEvidenceAuthority>;
-  schedule: CanonicalArtifactEvidenceAuthoritySlot<
-    'schedule_result',
-    CanonicalScheduleEvidenceAuthority
-  >;
+  schedule: CanonicalArtifactUnavailableEvidenceAuthoritySlot<'schedule_result'>;
 }>;
 
 export interface CanonicalArtifactEvidenceAdapter<E extends CanonicalArtifactEvidence> {
@@ -301,6 +300,123 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return prototype === Object.prototype || prototype === null;
 }
 
+function authorityTopologyError(): never {
+  return producerError('artifact_authority_topology_invalid');
+}
+
+function exactOwnDataRecord(
+  value: unknown,
+  fields: readonly string[],
+): value is Record<string, unknown> {
+  if (!isPlainRecord(value)) return false;
+  const keys = Reflect.ownKeys(value);
+  return (
+    keys.length === fields.length &&
+    keys.every((key) => typeof key === 'string' && fields.includes(key)) &&
+    fields.every((field) => {
+      const descriptor = Object.getOwnPropertyDescriptor(value, field);
+      return descriptor?.enumerable === true && 'value' in descriptor;
+    })
+  );
+}
+
+function ownDataValue(value: Record<string, unknown>, field: string): unknown {
+  const descriptor = Object.getOwnPropertyDescriptor(value, field);
+  return descriptor && 'value' in descriptor ? descriptor.value : undefined;
+}
+
+function captureRequiredAuthoritySlot<
+  P extends CanonicalArtifactEvidence['producerId'],
+  E extends Extract<CanonicalArtifactEvidence, { producerId: P }>,
+>(
+  value: unknown,
+  producerId: P,
+): CanonicalArtifactEvidenceAuthoritySlot<P, EvidenceAuthority<E>> | null {
+  if (!exactOwnDataRecord(value, ['state', 'producerId', 'authority'])) return null;
+  const authority = ownDataValue(value, 'authority');
+  if (
+    ownDataValue(value, 'state') !== 'ready' ||
+    ownDataValue(value, 'producerId') !== producerId ||
+    !isPlainRecord(authority)
+  ) {
+    return null;
+  }
+  const verifyDescriptor = Object.getOwnPropertyDescriptor(authority, 'verify');
+  if (
+    !verifyDescriptor ||
+    !('value' in verifyDescriptor) ||
+    typeof verifyDescriptor.value !== 'function'
+  ) {
+    return null;
+  }
+  const verify = verifyDescriptor.value as EvidenceAuthority<E>['verify'];
+  return Object.freeze({
+    state: 'ready',
+    producerId,
+    authority: Object.freeze({
+      verify: (evidence: E) => Reflect.apply(verify, authority, [evidence]) as Promise<E | null>,
+    }),
+  });
+}
+
+function captureUnavailableScheduleSlot(
+  value: unknown,
+): CanonicalArtifactUnavailableEvidenceAuthoritySlot<'schedule_result'> | null {
+  if (!exactOwnDataRecord(value, ['state', 'producerId', 'reason'])) return null;
+  if (
+    ownDataValue(value, 'state') !== 'unavailable' ||
+    ownDataValue(value, 'producerId') !== 'schedule_result' ||
+    ownDataValue(value, 'reason') !== 'producer_task_not_landed'
+  ) {
+    return null;
+  }
+  return Object.freeze({
+    state: 'unavailable',
+    producerId: 'schedule_result',
+    reason: 'producer_task_not_landed',
+  });
+}
+
+function captureAuthorityTopology(authorities: unknown): CanonicalArtifactEvidenceAuthorities {
+  if (
+    !exactOwnDataRecord(authorities, [
+      'provider',
+      'fileAction',
+      'terminal',
+      'plugin',
+      'mcp',
+      'schedule',
+    ])
+  ) {
+    return authorityTopologyError();
+  }
+  const provider = captureRequiredAuthoritySlot<'provider_response', CanonicalProviderEvidence>(
+    ownDataValue(authorities, 'provider'),
+    'provider_response',
+  );
+  const fileAction = captureRequiredAuthoritySlot<
+    'file_action_result',
+    CanonicalFileActionEvidence
+  >(ownDataValue(authorities, 'fileAction'), 'file_action_result');
+  const terminal = captureRequiredAuthoritySlot<'terminal_exit', CanonicalTerminalEvidence>(
+    ownDataValue(authorities, 'terminal'),
+    'terminal_exit',
+  );
+  const plugin = captureRequiredAuthoritySlot<'plugin_result', CanonicalPluginEvidence>(
+    ownDataValue(authorities, 'plugin'),
+    'plugin_result',
+  );
+  const mcp = captureRequiredAuthoritySlot<'mcp_result', CanonicalMcpEvidence>(
+    ownDataValue(authorities, 'mcp'),
+    'mcp_result',
+  );
+  const schedule = captureUnavailableScheduleSlot(ownDataValue(authorities, 'schedule'));
+  if (!provider || !fileAction || !terminal || !plugin || !mcp || !schedule) {
+    return authorityTopologyError();
+  }
+  return Object.freeze({ provider, fileAction, terminal, plugin, mcp, schedule });
+}
+
 function validateEvidence<E extends CanonicalArtifactEvidence>(
   evidence: E,
   expectedProducer: E['producerId'],
@@ -400,7 +516,6 @@ function createNamedAdapter<E extends CanonicalArtifactEvidence>(input: {
 }): CanonicalArtifactEvidenceAdapter<E> {
   return Object.freeze({
     async materialize({ evidence, draft }: { evidence: E; draft: JarvisArtifactDraft }) {
-      if (input.slot.state !== 'ready') producerError('artifact_producer_unavailable');
       const candidate = validateEvidence(evidence, input.producerId);
       let verified: E | null;
       try {
@@ -431,12 +546,23 @@ function createNamedAdapter<E extends CanonicalArtifactEvidence>(input: {
   });
 }
 
+function createUnavailableAdapter<
+  E extends CanonicalArtifactEvidence,
+>(): CanonicalArtifactEvidenceAdapter<E> {
+  return Object.freeze({
+    async materialize() {
+      return producerError('artifact_producer_unavailable');
+    },
+  });
+}
+
 /** @internal Imported only by artifactRuntime.ts and focused tests. */
 export function createJarvisBoundArtifactPipelineIssuerInternal(input: {
   authorities: CanonicalArtifactEvidenceAuthorities;
   materializeVerified: ArtifactMaterializer['materializeVerified'];
   now: () => number;
 }): JarvisBoundArtifactPipelineIssuer {
+  const authorities = captureAuthorityTopology(input.authorities);
   const materializer: ArtifactMaterializer = Object.freeze({
     materializeVerified: input.materializeVerified,
   });
@@ -444,45 +570,39 @@ export function createJarvisBoundArtifactPipelineIssuerInternal(input: {
     Object.freeze({
       provider: createNamedAdapter({
         producerId: 'provider_response',
-        slot: input.authorities.provider,
+        slot: authorities.provider,
         claims: effectClaims,
         materializer,
         now: input.now,
       }),
       fileAction: createNamedAdapter({
         producerId: 'file_action_result',
-        slot: input.authorities.fileAction,
+        slot: authorities.fileAction,
         claims: effectClaims,
         materializer,
         now: input.now,
       }),
       terminal: createNamedAdapter({
         producerId: 'terminal_exit',
-        slot: input.authorities.terminal,
+        slot: authorities.terminal,
         claims: effectClaims,
         materializer,
         now: input.now,
       }),
       plugin: createNamedAdapter({
         producerId: 'plugin_result',
-        slot: input.authorities.plugin,
+        slot: authorities.plugin,
         claims: effectClaims,
         materializer,
         now: input.now,
       }),
       mcp: createNamedAdapter({
         producerId: 'mcp_result',
-        slot: input.authorities.mcp,
+        slot: authorities.mcp,
         claims: effectClaims,
         materializer,
         now: input.now,
       }),
-      schedule: createNamedAdapter({
-        producerId: 'schedule_result',
-        slot: input.authorities.schedule,
-        claims: effectClaims,
-        materializer,
-        now: input.now,
-      }),
+      schedule: createUnavailableAdapter<CanonicalScheduleEvidence>(),
     });
 }

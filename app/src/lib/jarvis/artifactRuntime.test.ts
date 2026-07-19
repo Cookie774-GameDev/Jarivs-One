@@ -60,6 +60,32 @@ function authorities(): CanonicalArtifactEvidenceAuthorities {
 }
 
 describe('Jarvis artifact kernel composition', () => {
+  it('fails closed on invalid authority topology before binding the commit kernel', () => {
+    const verify = vi.fn();
+    const randomUUID = vi.fn(() => 'must-not-mint');
+    const bindKernelCommit = vi.fn(() => Object.freeze({}));
+    const invalid = {
+      ...authorities(),
+      schedule: Object.freeze({
+        state: 'ready',
+        producerId: 'schedule_result',
+        authority: Object.freeze({ verify }),
+      }),
+    } as unknown as CanonicalArtifactEvidenceAuthorities;
+
+    expect(() =>
+      createJarvisArtifactKernelComposition({
+        randomUUID,
+        now: () => NOW,
+        authorities: invalid,
+        bindKernelCommit,
+      }),
+    ).toThrow('artifact_authority_topology_invalid');
+    expect(verify).not.toHaveBeenCalled();
+    expect(randomUUID).not.toHaveBeenCalled();
+    expect(bindKernelCommit).not.toHaveBeenCalled();
+  });
+
   it('returns exactly one bound issuer and already-bound commit capability', async () => {
     let consume!: (input: {
       accountId: string;
