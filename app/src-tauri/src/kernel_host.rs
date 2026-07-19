@@ -448,7 +448,6 @@ struct ClientDelivery {
 struct KernelHostBroker {
     epoch: u64,
     next_window_identity: u64,
-    next_request_sequence: u64,
     owner: Option<Owner>,
     pending: HashMap<String, PendingRequest>,
 }
@@ -515,11 +514,12 @@ impl KernelHostBroker {
         let owner = self.owner.as_ref().ok_or("kernel_host_unavailable")?;
         let host_label = owner.capture.label.clone();
         let epoch = owner.capture.epoch;
-        self.next_request_sequence = self
-            .next_request_sequence
-            .checked_add(1)
-            .ok_or("kernel_request_id_exhausted")?;
-        let request_id = format!("kreq-{epoch}-{}", self.next_request_sequence);
+        let request_id = loop {
+            let candidate = format!("kreq-{epoch}-{}", nanoid::nanoid!(32));
+            if !self.pending.contains_key(&candidate) {
+                break candidate;
+            }
+        };
         let deadline_ms = now_ms.saturating_add(timeout_ms.clamp(MIN_TIMEOUT_MS, MAX_TIMEOUT_MS));
         self.pending.insert(
             request_id.clone(),
@@ -921,6 +921,13 @@ mod tests {
             .request("workbench-main", cancel_request(), 100, 1_000)
             .unwrap();
         assert_eq!(dispatch.event.epoch, owner.registration.epoch);
+        let request_prefix = format!("kreq-{}-", owner.registration.epoch);
+        let request_nonce = dispatch
+            .event
+            .request_id
+            .strip_prefix(&request_prefix)
+            .expect("request ID is bound to the owner epoch");
+        assert!(request_nonce.len() >= 32);
         let wrong = KernelClientResponseV1::TurnAccepted {
             version: 1,
             run_id: "run-1".into(),
