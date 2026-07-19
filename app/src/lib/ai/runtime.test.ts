@@ -6,6 +6,8 @@ import type { AgentId, ChatId, MessageId } from '@/types/common';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import { useAllAboutMeStore } from '@/features/all-about-me/store';
+import { useVoiceStore } from '@/features/voice/store';
+import { createVoiceSessionBinding } from '@/features/voice/voiceSessionBinding';
 import type { JarvisShadowCompilationDeps } from '@/lib/jarvis/shadowCompilation';
 import type { CanonicalProviderEvidence } from '@/lib/jarvis/artifactProducerAdapters';
 
@@ -57,6 +59,7 @@ vi.mock('@/lib/notifications', () => ({
 }));
 
 vi.mock('@/features/voice/streamingVoice', () => ({
+  createCanonicalVoicePlaybackAdapter: () => Object.freeze({ prepare: () => null }),
   createStreamingVoiceSession: () => mocks.streamingSession,
 }));
 
@@ -98,18 +101,10 @@ function startRuntimeListener(
   ...args: Parameters<typeof startKernelAwareRuntimeListener>
 ): ReturnType<typeof startKernelAwareRuntimeListener> {
   const [bindings, options] = args;
-  return startKernelAwareRuntimeListener(
-    bindings,
-    options ?? { jarvisKernelMode: 'legacy' },
-  );
+  return startKernelAwareRuntimeListener(bindings, options ?? { jarvisKernelMode: 'legacy' });
 }
 
-function agent(
-  id: string,
-  slug: string,
-  systemPrompt: string,
-  builtin = slug === 'jarvis',
-): Agent {
+function agent(id: string, slug: string, systemPrompt: string, builtin = slug === 'jarvis'): Agent {
   return {
     id: id as AgentId,
     slug,
@@ -156,6 +151,7 @@ describe('startRuntimeListener agent routing', () => {
       chatModelSelection: selectionFromOption('groq', 'llama-3.3-70b-versatile'),
     });
     useUIStore.setState({ voiceModalOpen: true });
+    useVoiceStore.getState().reset();
     mocks.runAgent.mockResolvedValue({
       text: 'APPLE',
       usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
@@ -1712,11 +1708,143 @@ describe('startRuntimeListener agent routing', () => {
       expect(providerInput.compiledPrompt.systemText).not.toContain('LEGACY SYSTEM PROMPT');
       expect(providerInput.agent.system_prompt).toContain('LEGACY SYSTEM PROMPT');
       expect(harness.bindings.appendMessage).not.toHaveBeenCalled();
-      expect(await database.jarvis_runs.where('chat_id').equals(harness.chatId).first()).toMatchObject(
-        { status: 'completed' },
-      );
+      expect(
+        await database.jarvis_runs.where('chat_id').equals(harness.chatId).first(),
+      ).toMatchObject({ status: 'completed' });
     } finally {
       disposeHost();
+      database.close();
+      await database.delete();
+    }
+  });
+
+  it('allocates no run or fallback effects when account changes during awaited canonical voice setup', async () => {
+    useAuthStore.setState({
+      localUserId: 'account-voice-a',
+      cloudSession: null,
+      apiKeys: { groq: 'gsk_test', openai: 'sk_test' },
+      chatModelSelection: {
+        mode: 'single',
+        providerId: 'openai',
+        modelId: 'gpt-5.5',
+        connectionId: 'openai-api',
+        connectionMode: 'native-api',
+        authSource: 'api-key',
+        capabilities: {
+          text: true,
+          images: false,
+          files: false,
+          tools: false,
+          modelSelection: true,
+          structuredOutput: false,
+          streaming: true,
+          cancellation: true,
+          resumeSession: false,
+          systemPrompt: true,
+          workingDirectory: false,
+          usage: true,
+          subscriptionQuota: false,
+          localOnly: false,
+        },
+      },
+    });
+    const protectedJarvis = agent('agent_jarvis', 'jarvis', 'LEGACY SYSTEM PROMPT', true);
+    const harness = kernelRuntimeBindings(protectedJarvis);
+    const database = createJarvisDb(
+      uniqueTestDbName('runtime-voice-account-switch'),
+      TEST_INDEXED_DB,
+    );
+    await database.open();
+    await database.chats.add({
+      id: harness.chatId,
+      workspace_id: 'workspace_runtime_voice_switch' as never,
+      title: 'Voice account switch',
+      mode: 'chat',
+      active_agent_ids: [protectedJarvis.id],
+      created_at: 1,
+      updated_at: 1,
+    });
+    useVoiceStore.getState().beginSession(
+      createVoiceSessionBinding({
+        sessionId: 'vsession_runtime_account_switch',
+        accountId: 'account-voice-a',
+        chatId: harness.chatId,
+        startedAt: 1,
+      }),
+    );
+    let releaseCapabilities!: (value: {
+      capturedAt: number;
+      tools: never[];
+      plugins: never[];
+      mcps: never[];
+      terminals: never[];
+      agents: never[];
+      entitlements: { source: 'unavailable'; capabilities: never[] };
+    }) => void;
+    const getCapabilities = vi.fn(
+      () =>
+        new Promise<Parameters<typeof releaseCapabilities>[0]>((resolve) => {
+          releaseCapabilities = resolve;
+        }),
+    );
+    const disposeHost = await installJarvisKernelRuntimeHost({
+      db: database,
+      bindKernelActions: () =>
+        ({
+          create: vi.fn() as never,
+          decide: vi.fn() as never,
+          execute: vi.fn() as never,
+          executeAutoApprovedSafe: vi.fn() as never,
+        }) as never,
+      capabilitySnapshots: { getForAccount: getCapabilities },
+      randomUUID: () => 'runtime-voice-account-switch',
+      now: () => 10,
+    });
+    trackListener(disposeHost);
+    trackListener(
+      startRuntimeListener(harness.bindings, { jarvisInterlocks: runtimeInterlocks() }),
+    );
+
+    try {
+      window.dispatchEvent(
+        new CustomEvent('jarvis:send', {
+          detail: {
+            accountId: 'account-voice-a',
+            chatId: harness.chatId,
+            text: 'Keep this voice turn in its original account.',
+            speakReply: true,
+          },
+        }),
+      );
+      await vi.waitFor(() => expect(getCapabilities).toHaveBeenCalledWith('account-voice-a'));
+
+      useAuthStore.setState({ localUserId: 'account-voice-b' });
+      releaseCapabilities({
+        capturedAt: 1,
+        tools: [],
+        plugins: [],
+        mcps: [],
+        terminals: [],
+        agents: [],
+        entitlements: { source: 'unavailable', capabilities: [] },
+      });
+
+      await vi.waitFor(() =>
+        expect(mocks.devLog).toHaveBeenCalledWith(expect.objectContaining({ level: 'error' })),
+      );
+      expect(await database.jarvis_runs.count()).toBe(0);
+      expect(await database.messages.count()).toBe(0);
+      expect(harness.bindings.appendMessage).not.toHaveBeenCalled();
+      expect(harness.bindings.updateMessage).not.toHaveBeenCalled();
+      expect(mocks.runAgent).not.toHaveBeenCalled();
+      expect(mocks.streamingSession.onDelta).not.toHaveBeenCalled();
+      expect(mocks.streamingSession.onComplete).not.toHaveBeenCalled();
+      expect(mocks.streamingSession.stop).not.toHaveBeenCalled();
+      expect(mocks.streamingSession.haltPlayback).not.toHaveBeenCalled();
+      expect(useVoiceStore.getState().session?.activeRunId).toBeUndefined();
+    } finally {
+      disposeHost();
+      useVoiceStore.getState().reset();
       database.close();
       await database.delete();
     }

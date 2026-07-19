@@ -14,6 +14,8 @@ const h = vi.hoisted(() => {
     stopSpeech: vi.fn(),
     testVoice: vi.fn(async () => {}),
     ttsStop: vi.fn(),
+    endSession: vi.fn(),
+    requestCancellation: vi.fn(async () => ({ kind: 'authority_revoked_before_intent' as const })),
     resolveSpeak() {
       const resolve = speakResolve;
       speakResolve = null;
@@ -84,6 +86,7 @@ vi.mock('./store', () => ({
     getState: () => ({
       setState: vi.fn(),
       setPartialTranscript: vi.fn(),
+      endSession: h.endSession,
     }),
   },
 }));
@@ -93,8 +96,10 @@ import {
   handleVoiceModuleClosed,
   previewVoiceWithSettings,
   registerActiveStreamingVoiceSession,
+  registerActiveVoiceTurnCancellation,
   speakWithSettings,
   stopAllVoiceOutput,
+  stopCurrentVoiceResponse,
   syncVoiceModuleOpenState,
 } from './voiceRouter';
 
@@ -104,10 +109,12 @@ describe('voiceRouter preview cancellation', () => {
     voiceModalOpen = true;
     useAuthStore.setState({ voiceEngine: 'system', voicePreset: 'jarvis-prime' });
     registerActiveStreamingVoiceSession(null);
+    registerActiveVoiceTurnCancellation(null);
   });
 
   afterEach(() => {
     registerActiveStreamingVoiceSession(null);
+    registerActiveVoiceTurnCancellation(null);
     stopAllVoiceOutput();
   });
 
@@ -178,28 +185,58 @@ describe('voice module gate', () => {
 
 describe('voice module lifecycle', () => {
   beforeEach(() => {
+    registerActiveVoiceTurnCancellation(null);
     vi.clearAllMocks();
     voiceModalOpen = true;
-    syncVoiceModuleOpenState(false);
     syncVoiceModuleOpenState(true);
     registerActiveStreamingVoiceSession(null);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     registerActiveStreamingVoiceSession(null);
+    registerActiveVoiceTurnCancellation(null);
     syncVoiceModuleOpenState(false);
+    await Promise.resolve();
+    await Promise.resolve();
   });
 
-  it('handleVoiceModuleClosed stops playback and dispatches jarvis:cancel', () => {
+  it('handleVoiceModuleClosed requests canonical cancellation before ending the session', async () => {
     const cancel = vi.fn();
     window.addEventListener('jarvis:cancel', cancel);
     registerActiveStreamingVoiceSession({ haltPlayback: h.haltPlayback } as never);
+    registerActiveVoiceTurnCancellation({ requestCancellation: h.requestCancellation });
 
     handleVoiceModuleClosed();
+    await vi.waitFor(() => {
+      expect(h.requestCancellation).toHaveBeenCalledOnce();
+      expect(h.endSession).toHaveBeenCalledOnce();
+    });
 
     expect(h.haltPlayback).toHaveBeenCalled();
     expect(h.stopSpeech).toHaveBeenCalled();
-    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(h.requestCancellation.mock.invocationCallOrder[0]).toBeLessThan(
+      h.endSession.mock.invocationCallOrder[0]!,
+    );
+    expect(cancel).not.toHaveBeenCalled();
+    window.removeEventListener('jarvis:cancel', cancel);
+  });
+
+  it('stopCurrentVoiceResponse uses only the registered process-local handle', async () => {
+    const cancel = vi.fn();
+    window.addEventListener('jarvis:cancel', cancel);
+    const release = registerActiveVoiceTurnCancellation({
+      requestCancellation: h.requestCancellation,
+    });
+
+    await expect(stopCurrentVoiceResponse()).resolves.toEqual({
+      kind: 'authority_revoked_before_intent',
+    });
+    expect(h.requestCancellation).toHaveBeenCalledOnce();
+    expect(cancel).not.toHaveBeenCalled();
+
+    release();
+    await expect(stopCurrentVoiceResponse()).resolves.toBeUndefined();
+    expect(h.requestCancellation).toHaveBeenCalledOnce();
     window.removeEventListener('jarvis:cancel', cancel);
   });
 

@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useVoiceStore } from './store';
+import { createVoiceSessionBinding } from './voiceSessionBinding';
+import type { ChatId } from '@/types/common';
 
 describe('useVoiceStore transcripts', () => {
   beforeEach(() => {
@@ -22,5 +24,31 @@ describe('useVoiceStore transcripts', () => {
     expect(finals).toHaveLength(24);
     expect(finals[0]?.text).toBe('utterance 56');
     expect(finals.at(-1)?.text).toBe('utterance 79');
+  });
+
+  it('owns exactly one immutable voice-session binding and its current run', () => {
+    const first = createVoiceSessionBinding({
+      sessionId: 'vsession-first',
+      accountId: 'account-first',
+      chatId: 'chat-first' as ChatId,
+      startedAt: 10,
+    });
+    const replacement = createVoiceSessionBinding({
+      sessionId: 'vsession-replacement',
+      accountId: 'account-replacement',
+      chatId: 'chat-replacement' as ChatId,
+      startedAt: 11,
+    });
+
+    expect(useVoiceStore.getState().beginSession(first)).toBe(true);
+    expect(useVoiceStore.getState().beginSession(replacement)).toBe(false);
+    expect(useVoiceStore.getState().session).toBe(first);
+
+    useVoiceStore.getState().setSessionRun('jrun-voice');
+    expect(useVoiceStore.getState().session).toEqual({ ...first, activeRunId: 'jrun-voice' });
+    expect(Object.isFrozen(useVoiceStore.getState().session)).toBe(true);
+
+    useVoiceStore.getState().endSession();
+    expect(useVoiceStore.getState().session).toBeNull();
   });
 });

@@ -10,6 +10,7 @@ import {
 } from '@/lib/cloudSyncQueueOwner';
 import type { JarvisDexie } from '@/lib/db';
 import {
+  fromJarvisArtifactRow,
   fromJarvisEventRow,
   fromJarvisRunRow,
   toJarvisEventRow,
@@ -28,15 +29,18 @@ import {
   type KernelLifecycleTransactionContext,
 } from '@/lib/db/kernelTurnTransactionAuthority';
 import { useAuthStore } from '@/stores/auth';
+import type { Message } from '@/types';
 import type {
   CancellationDelivery,
   JarvisAbortRegistrationAuthority,
   JarvisApprovalV1,
+  JarvisArtifactV1,
   JarvisArtifactDraft,
   JarvisAuthorityBoundResult,
   JarvisCanonicalLiveProducerEvidence,
   JarvisCancellationAggregate,
   JarvisCancellationDeliveryAuthority,
+  JarvisCancellationOwnerOutcome,
   JarvisCancellationRequestResult,
   JarvisDurableLiveEvidenceV1,
   JarvisEvent,
@@ -47,6 +51,7 @@ import type {
   JarvisLiveEvidenceProof,
   JarvisLiveEvidenceRegistration,
   JarvisLiveEvidenceVerifierSlot,
+  JarvisProducerSourceEvidenceV1,
   JarvisRun,
   JarvisRunStatus,
   JarvisRunTransitionEventInput,
@@ -74,15 +79,19 @@ import { createJarvisAttemptEffectBarrierAuthority } from './executionJournal/tr
 import { createKernelTurnCommit } from './kernelTurnCommit';
 import {
   runJarvisKernelTurn,
+  runJarvisKernelVoiceTurn,
   type JarvisBoundKernelLifecycle,
+  type JarvisDeferredVoiceKernelTurnResult,
   type JarvisKernelPrepareProvider,
   type JarvisKernelProcessResponse,
   type JarvisKernelTurnInput,
   type JarvisKernelTurnResult,
   type JarvisProviderStartedReceipt,
 } from './kernel';
+import type { VoiceResponseReadyCommitResult } from './kernelTurnCommit';
 
 const jarvisKernelAccountBindingBrand: unique symbol = Symbol('jarvis.kernel.account-binding');
+const jarvisVoiceTurnHandleBrand: unique symbol = Symbol('jarvis.voice-turn-handle');
 
 /** @internal Issued only by the closed kernel runtime binding authority. */
 export interface JarvisKernelAccountBinding {
@@ -109,11 +118,86 @@ export type JarvisScheduledKernelAttemptHandle = Readonly<{
   [jarvisScheduledKernelHandleBrand]: true;
 }>;
 
+export type JarvisVoicePlaybackCommitResult =
+  | { committed: true; run: JarvisRun; event: JarvisEvent }
+  | { committed: false; reason: 'status_conflict'; actualStatus: JarvisRunStatus };
+
+export interface JarvisVoiceTurnHandle {
+  readonly [jarvisVoiceTurnHandleBrand]: true;
+  requestCancellation(): Promise<JarvisCancellationRequestResult>;
+  commitResponseReady(): Promise<JarvisAuthorityBoundResult<VoiceResponseReadyCommitResult>>;
+  runValidatedPlayback(): Promise<JarvisAuthorityBoundResult<JarvisVoicePlaybackCommitResult>>;
+  dispose(): void;
+}
+
+export type JarvisVoicePlaybackEngineResult = Readonly<
+  | { state: 'completed'; resultRef: string; observedAt: number }
+  | {
+      state: 'degraded';
+      reason: 'unavailable' | 'failed' | 'stopped';
+      resultRef: string;
+      observedAt: number;
+    }
+>;
+
+export type JarvisVoicePlaybackAdapterResult = Readonly<{
+  tts: JarvisVoicePlaybackEngineResult;
+  playback: JarvisVoicePlaybackEngineResult;
+  terminalStatus: 'completed' | 'partial';
+}>;
+
+export type JarvisVoicePlaybackController = Readonly<{
+  receipt: Readonly<{
+    sessionId: string;
+    engineId: string;
+    ttsExecutionId: string;
+    playbackExecutionId: string;
+    ttsStartedAt: number;
+    playbackStartedAt: number;
+  }>;
+  start(): Promise<JarvisVoicePlaybackAdapterResult>;
+  verify(result: JarvisVoicePlaybackAdapterResult): boolean;
+  abort():
+    | 'signal_delivered'
+    | 'handoff_pending'
+    | 'already_exited'
+    | 'unsupported'
+    | 'delivery_rejected';
+  dispose(): void;
+}>;
+
+export type JarvisVoicePlaybackAdapter = Readonly<{
+  prepare(
+    input: Readonly<{
+      accountId: string;
+      runId: string;
+      requestId: string;
+      attemptNumber: number;
+      spokenText: string;
+    }>,
+  ): JarvisVoicePlaybackController | null;
+}>;
+
+export interface JarvisVoiceRecoveryHandle {
+  commitRecoveredPartial(): Promise<JarvisAuthorityBoundResult<JarvisVoicePlaybackCommitResult>>;
+  dispose(): void;
+}
+
 export interface JarvisKernelRuntime {
   readonly actions: JarvisKernelActionPort;
   runInitialTurn(
     input: Readonly<JarvisKernelTurnInput>,
   ): Promise<JarvisAuthorityBoundResult<JarvisKernelTurnResult>>;
+  startVoiceTurn(input: Readonly<JarvisKernelTurnInput> & { surface: 'voice' }): Promise<
+    JarvisAuthorityBoundResult<{
+      result: JarvisKernelTurnResult;
+      handle: JarvisVoiceTurnHandle;
+    }>
+  >;
+  openVoiceRecovery(input: {
+    accountId: string;
+    runId: string;
+  }): Promise<JarvisAuthorityBoundResult<JarvisVoiceRecoveryHandle>>;
   requestCancellation(input: {
     accountId: string;
     runId: string;
@@ -158,6 +242,13 @@ type KernelRuntimeInput = Readonly<{
   abortRegistrationAuthority: JarvisAbortRegistrationAuthority;
   bindKernelActions: JarvisApprovalActionBinder;
   liveEvidenceVerifiers: VerifierSlots;
+  voiceLiveEvidenceStartAuthority?: Readonly<{
+    authorizeStart(
+      source: Readonly<Extract<JarvisProducerSourceEvidenceV1, { producerKind: 'voice' }>>,
+    ): () => void;
+  }>;
+  voicePlaybackAdapter?: JarvisVoicePlaybackAdapter;
+  onVoiceTurnHandleIssued?(input: { runId: string; handle: JarvisVoiceTurnHandle }): () => void;
   prepareProvider: JarvisKernelPrepareProvider;
   processResponse: JarvisKernelProcessResponse;
   takeProviderArtifactDrafts(
@@ -410,6 +501,56 @@ export function createJarvisKernelRuntime(
   const issuedBindings = new WeakSet<JarvisKernelAccountBinding>();
   const issuedApprovalLifecycles = new WeakSet<JarvisIssuedApprovalLifecycle>();
   const issuedActionExecutions = new WeakSet<JarvisIssuedActionExecution>();
+  const issuedVoiceHandles = new WeakSet<JarvisVoiceTurnHandle>();
+  const issuedVoiceRecoveryHandles = new WeakSet<JarvisVoiceRecoveryHandle>();
+  type VoiceHandlePhase =
+    | 'starting'
+    | 'response_pending'
+    | 'response_commit_in_flight'
+    | 'response_ready_committed'
+    | 'playback_in_flight'
+    | 'disposed';
+  type VoiceHandleState = {
+    readonly binding: JarvisKernelAccountBinding;
+    readonly turnInput: Readonly<JarvisKernelTurnInput> & { surface: 'voice' };
+    releaseBinding: (() => void) | undefined;
+    releaseExternal: (() => void) | undefined;
+    deferred: JarvisDeferredVoiceKernelTurnResult | undefined;
+    phase: VoiceHandlePhase;
+    disposeRequested: boolean;
+    responseCommit: JarvisAuthorityBoundResult<VoiceResponseReadyCommitResult> | undefined;
+    responseCommitOperation:
+      | Promise<JarvisAuthorityBoundResult<VoiceResponseReadyCommitResult>>
+      | undefined;
+    activeOperations: Set<Promise<unknown>>;
+    cancellationRequested: boolean;
+    cancellationOperation: Promise<JarvisCancellationRequestResult> | undefined;
+    cancellationResult: JarvisCancellationRequestResult | undefined;
+    playbackResultSource:
+      | Readonly<Extract<JarvisProducerSourceEvidenceV1, { producerKind: 'voice' }>>
+      | undefined;
+  };
+  const voiceHandleStates = new WeakMap<JarvisVoiceTurnHandle, VoiceHandleState>();
+  type VoiceRecoverySnapshot = Readonly<{
+    accountId: string;
+    runId: string;
+    requestId: string;
+    attemptNumber: number;
+    event: JarvisEvent;
+    message: Message;
+    artifacts: readonly JarvisArtifactV1[];
+  }>;
+  type VoiceRecoveryHandleState = {
+    readonly binding: JarvisKernelAccountBinding;
+    readonly snapshot: VoiceRecoverySnapshot;
+    releaseBinding: (() => void) | undefined;
+    disposed: boolean;
+    activeOperation: Promise<unknown> | undefined;
+  };
+  const voiceRecoveryHandleStates = new WeakMap<
+    JarvisVoiceRecoveryHandle,
+    VoiceRecoveryHandleState
+  >();
   const bindingLeaseStates = new WeakMap<
     JarvisKernelAccountBinding,
     { count: number; rootReleased: boolean; terminate(): void }
@@ -1667,6 +1808,857 @@ export function createJarvisKernelRuntime(
     return lifecycle;
   };
 
+  const voiceHandleState = (receiver: JarvisVoiceTurnHandle): VoiceHandleState => {
+    const state = voiceHandleStates.get(receiver);
+    if (!state) throw new Error('voice_handle_invalid');
+    if (state.phase === 'disposed' || !issuedVoiceHandles.has(receiver)) {
+      throw new Error('voice_handle_phase_conflict');
+    }
+    try {
+      state.binding.assertCurrent();
+    } catch {
+      throw new Error('kernel_account_authority_revoked');
+    }
+    return state;
+  };
+
+  const finishVoiceHandleDisposal = (
+    handle: JarvisVoiceTurnHandle,
+    state: VoiceHandleState,
+  ): void => {
+    if (state.phase === 'disposed') return;
+    if (state.activeOperations.size > 0) {
+      state.disposeRequested = true;
+      return;
+    }
+    state.phase = 'disposed';
+    issuedVoiceHandles.delete(handle);
+    state.deferred?.dispose();
+    state.releaseExternal?.();
+    state.releaseExternal = undefined;
+    state.releaseBinding?.();
+    state.releaseBinding = undefined;
+  };
+
+  const voiceResponseReadbackMatches = async (
+    state: VoiceHandleState,
+    committed = state.responseCommit,
+  ): Promise<boolean> => {
+    if (committed?.kind !== 'committed' || !committed.value.committed || !state.deferred) {
+      return false;
+    }
+    const expected = committed.value;
+    const [runRow, message, artifactRows, eventRows] = await Promise.all([
+      input.db.jarvis_runs.get(state.turnInput.run.id),
+      input.db.messages.get(expected.message.id),
+      input.db.jarvis_artifacts.bulkGet(expected.artifacts.map((artifact) => artifact.id)),
+      input.db.jarvis_events
+        .where('[run_id+seq]')
+        .between(
+          [state.turnInput.run.id, Dexie.minKey],
+          [state.turnInput.run.id, Dexie.maxKey],
+          true,
+          true,
+        )
+        .toArray(),
+    ]);
+    if (!runRow || !message || artifactRows.some((row) => row === undefined)) return false;
+    const run = fromJarvisRunRow(runRow);
+    const responseEvents = eventRows.filter(
+      (row) =>
+        row.idempotency_key ===
+        `voice-response-ready:${state.turnInput.run.id}:${expected.message.id}`,
+    );
+    if (
+      run.accountId !== state.turnInput.accountId ||
+      run.source !== 'voice' ||
+      run.status !== 'running' ||
+      responseEvents.length !== 1
+    ) {
+      return false;
+    }
+    try {
+      return (
+        canonicalizeJarvisApprovalJson(message) ===
+          canonicalizeJarvisApprovalJson(expected.message) &&
+        canonicalizeJarvisApprovalJson(artifactRows.map((row) => fromJarvisArtifactRow(row!))) ===
+          canonicalizeJarvisApprovalJson(expected.artifacts) &&
+        canonicalizeJarvisApprovalJson(fromJarvisEventRow(responseEvents[0]!)) ===
+          canonicalizeJarvisApprovalJson(expected.event)
+      );
+    } catch {
+      return false;
+    }
+  };
+
+  const voiceResponseRetryEvidenceMatches = async (state: VoiceHandleState): Promise<boolean> => {
+    const deferred = state.deferred;
+    if (!deferred) return false;
+    const [runRow, eventRows] = await Promise.all([
+      input.db.jarvis_runs.get(state.turnInput.run.id),
+      input.db.jarvis_events
+        .where('[run_id+seq]')
+        .between(
+          [state.turnInput.run.id, Dexie.minKey],
+          [state.turnInput.run.id, Dexie.maxKey],
+          true,
+          true,
+        )
+        .toArray(),
+    ]);
+    if (!runRow) return false;
+    const run = fromJarvisRunRow(runRow);
+    if (
+      run.accountId !== state.turnInput.accountId ||
+      run.source !== 'voice' ||
+      run.status !== 'running' ||
+      eventRows.some((row) => row.type === 'message' && row.status === 'response_ready')
+    ) {
+      return false;
+    }
+    const expected = deferred.providerResultSource;
+    const matchingStarts = eventRows.filter((row) => {
+      const source = row.producer_source_evidence;
+      return (
+        source?.producerKind === 'provider' &&
+        source.phase === 'start' &&
+        source.accountId === expected.accountId &&
+        source.runId === expected.runId &&
+        source.requestId === expected.requestId &&
+        source.attemptNumber === expected.attemptNumber &&
+        canonicalizeJarvisApprovalJson(source.producerIdentity) ===
+          canonicalizeJarvisApprovalJson(expected.producerIdentity)
+      );
+    });
+    return matchingStarts.length === 1;
+  };
+
+  const loadVoiceRecoverySnapshot = async (
+    accountId: string,
+    runId: string,
+  ): Promise<VoiceRecoverySnapshot | null> => {
+    const run = await repositories.run.getById(accountId, runId);
+    if (!run || run.accountId !== accountId || run.source !== 'voice' || run.status !== 'running') {
+      return null;
+    }
+    const events = await repositories.event.listByRun(accountId, runId, { limit: 500 });
+    const responseEvents = events.filter(
+      (event) => event.type === 'message' && event.status === 'response_ready',
+    );
+    if (responseEvents.length !== 1) return null;
+    const event = responseEvents[0]!;
+    const source = event.producerSourceEvidence;
+    const prefix = `voice-response-ready:${runId}:`;
+    if (
+      !event.idempotencyKey.startsWith(prefix) ||
+      !source ||
+      source.producerKind !== 'provider' ||
+      source.phase !== 'result' ||
+      source.accountId !== accountId ||
+      source.runId !== runId ||
+      source.requestId.length === 0 ||
+      source.attemptNumber < 1 ||
+      (source.state !== 'completed' && source.state !== 'degraded')
+    ) {
+      return null;
+    }
+    const providerStarts = events.filter((candidate) => {
+      const candidateSource = candidate.producerSourceEvidence;
+      return (
+        candidate.seq < event.seq &&
+        candidate.type === 'model' &&
+        candidate.status === 'started' &&
+        candidateSource?.producerKind === 'provider' &&
+        candidateSource.phase === 'start'
+      );
+    });
+    const latestProviderStart = providerStarts.at(-1)?.producerSourceEvidence;
+    if (
+      !latestProviderStart ||
+      latestProviderStart.producerKind !== 'provider' ||
+      latestProviderStart.accountId !== accountId ||
+      latestProviderStart.runId !== runId ||
+      latestProviderStart.requestId !== source.requestId ||
+      latestProviderStart.attemptNumber !== source.attemptNumber ||
+      canonicalizeJarvisApprovalJson(latestProviderStart.producerIdentity) !==
+        canonicalizeJarvisApprovalJson(source.producerIdentity)
+    ) {
+      return null;
+    }
+    const messageId = event.idempotencyKey.slice(prefix.length);
+    if (!messageId || messageId.trim() !== messageId || run.chatId === undefined) return null;
+    const [message, artifactRows] = await Promise.all([
+      input.db.messages.get(messageId as Message['id']),
+      input.db.jarvis_artifacts.bulkGet(event.artifactIds),
+    ]);
+    if (
+      !message ||
+      message.role !== 'assistant' ||
+      message.chat_id !== run.chatId ||
+      artifactRows.some((row) => row === undefined)
+    ) {
+      return null;
+    }
+    const artifacts = artifactRows.map((row) => fromJarvisArtifactRow(row!));
+    if (
+      artifacts.some(
+        (artifact) =>
+          artifact.runId !== runId ||
+          artifact.requestId !== source.requestId ||
+          artifact.attemptNumber !== source.attemptNumber,
+      )
+    ) {
+      return null;
+    }
+    return Object.freeze({
+      accountId,
+      runId,
+      requestId: source.requestId,
+      attemptNumber: source.attemptNumber,
+      event: Object.freeze(structuredClone(event)),
+      message: Object.freeze(structuredClone(message)),
+      artifacts: Object.freeze(artifacts.map((artifact) => Object.freeze(artifact))),
+    });
+  };
+
+  const sameVoiceRecoverySnapshot = (
+    left: VoiceRecoverySnapshot,
+    right: VoiceRecoverySnapshot | null,
+  ): boolean => {
+    if (!right) return false;
+    try {
+      return canonicalizeJarvisApprovalJson(left) === canonicalizeJarvisApprovalJson(right);
+    } catch {
+      return false;
+    }
+  };
+
+  const finishVoiceRecoveryDisposal = (
+    handle: JarvisVoiceRecoveryHandle,
+    state: VoiceRecoveryHandleState,
+  ): void => {
+    if (state.disposed) return;
+    state.disposed = true;
+    issuedVoiceRecoveryHandles.delete(handle);
+    state.releaseBinding?.();
+    state.releaseBinding = undefined;
+  };
+
+  const issueVoiceRecoveryHandle = (
+    binding: JarvisKernelAccountBinding,
+    snapshot: VoiceRecoverySnapshot,
+  ): JarvisVoiceRecoveryHandle => {
+    const releaseBinding = retainAccountBinding(binding);
+    let handle: JarvisVoiceRecoveryHandle;
+    handle = Object.freeze({
+      async commitRecoveredPartial(
+        this: JarvisVoiceRecoveryHandle,
+      ): Promise<JarvisAuthorityBoundResult<JarvisVoicePlaybackCommitResult>> {
+        const state = voiceRecoveryHandleStates.get(this);
+        if (!state || !issuedVoiceRecoveryHandles.has(this)) {
+          throw new Error('voice_recovery_handle_invalid');
+        }
+        if (state.disposed || state.activeOperation) {
+          throw new Error('voice_recovery_handle_phase_conflict');
+        }
+        const operation = (async (): Promise<
+          JarvisAuthorityBoundResult<JarvisVoicePlaybackCommitResult>
+        > => {
+          state.binding.assertCurrent();
+          const fresh = await loadVoiceRecoverySnapshot(
+            state.snapshot.accountId,
+            state.snapshot.runId,
+          );
+          state.binding.assertCurrent();
+          if (!sameVoiceRecoverySnapshot(state.snapshot, fresh)) {
+            throw new Error('voice_recovery_evidence_invalid');
+          }
+          const commit = await artifacts.commitKernelTurn.commitVoicePlayback({
+            accountId: state.snapshot.accountId,
+            runId: state.snapshot.runId,
+            requestId: state.snapshot.requestId,
+            attemptNumber: state.snapshot.attemptNumber,
+            accountBinding: state.binding,
+            terminalStatus: 'partial',
+            terminalKind: 'recovery',
+            createdAt: input.now(),
+          });
+          if (!commit.committed && commit.reason === 'account_authority_revoked') {
+            return { kind: 'account_authority_revoked' };
+          }
+          return { kind: 'committed', value: commit };
+        })();
+        state.activeOperation = operation;
+        try {
+          return await operation;
+        } catch (error) {
+          if (state.binding.revocationSignal.aborted) {
+            return { kind: 'account_authority_revoked' };
+          }
+          throw error;
+        } finally {
+          state.activeOperation = undefined;
+          finishVoiceRecoveryDisposal(this, state);
+        }
+      },
+      dispose(this: JarvisVoiceRecoveryHandle) {
+        const state = voiceRecoveryHandleStates.get(this);
+        if (!state) throw new Error('voice_recovery_handle_invalid');
+        if (state.disposed) return;
+        if (!issuedVoiceRecoveryHandles.has(this)) {
+          throw new Error('voice_recovery_handle_invalid');
+        }
+        if (state.activeOperation) return;
+        finishVoiceRecoveryDisposal(this, state);
+      },
+    });
+    issuedVoiceRecoveryHandles.add(handle);
+    voiceRecoveryHandleStates.set(handle, {
+      binding,
+      snapshot,
+      releaseBinding,
+      disposed: false,
+      activeOperation: undefined,
+    });
+    return handle;
+  };
+
+  const appendVoiceRuntimeEvent = async (
+    state: VoiceHandleState,
+    event: Omit<JarvisEvent, 'runId' | 'seq'>,
+  ): Promise<JarvisEvent> => {
+    state.binding.assertCurrent();
+    const transaction = await transactionAuthority.lifecycleTransaction(
+      ['jarvis_runs', 'jarvis_events'],
+      state.binding.revocationSignal,
+      async (context) => {
+        state.binding.assertCurrent();
+        const runRow = await context.jarvis_runs.get(state.turnInput.run.id);
+        if (!runRow || runRow.account_id !== state.turnInput.accountId) {
+          throw new Error('voice_playback_run_scope_mismatch');
+        }
+        const run = fromJarvisRunRow(runRow);
+        if (run.status !== 'running' || run.source !== 'voice') {
+          throw new Error('voice_handle_phase_conflict');
+        }
+        const tail = await lastEvent(context, state.turnInput.run.id);
+        state.binding.assertCurrent();
+        const candidate = {
+          ...event,
+          runId: state.turnInput.run.id,
+          seq: terminalEventSequence(tail),
+        };
+        const row = toJarvisEventRow(candidate);
+        await context.jarvis_events.add(row);
+        return fromJarvisEventRow(row);
+      },
+    );
+    if (transaction.kind === 'cancelled') {
+      throw new Error('kernel_account_authority_revoked');
+    }
+    return transaction.value;
+  };
+
+  const executeConfiguredVoicePlayback = async (
+    state: VoiceHandleState,
+    spokenText: string,
+  ): Promise<JarvisVoicePlaybackAdapterResult | null> => {
+    const adapter = input.voicePlaybackAdapter;
+    const startAuthority = input.voiceLiveEvidenceStartAuthority;
+    if (!adapter || !startAuthority) return null;
+    let controller: JarvisVoicePlaybackController | null;
+    try {
+      controller = adapter.prepare({
+        accountId: state.turnInput.accountId,
+        runId: state.turnInput.run.id,
+        requestId: state.turnInput.attempt.requestId,
+        attemptNumber: state.turnInput.attempt.attemptNumber,
+        spokenText,
+      });
+    } catch {
+      return null;
+    }
+    if (!controller) return null;
+    const receipt = controller.receipt;
+    const stable = (value: string): boolean =>
+      value.length > 0 && value.trim() === value && !value.includes('\u0000');
+    if (
+      !Object.isFrozen(controller) ||
+      !Object.isFrozen(receipt) ||
+      !stable(receipt.sessionId) ||
+      !stable(receipt.engineId) ||
+      !stable(receipt.ttsExecutionId) ||
+      !stable(receipt.playbackExecutionId) ||
+      !Number.isFinite(receipt.ttsStartedAt) ||
+      !Number.isFinite(receipt.playbackStartedAt) ||
+      receipt.playbackStartedAt < receipt.ttsStartedAt
+    ) {
+      controller.dispose();
+      return null;
+    }
+
+    const ownerOutcome = (ownerId: string) => {
+      const kind = controller!.abort();
+      return kind === 'signal_delivered'
+        ? ({ kind, ownerId } as const)
+        : kind === 'handoff_pending'
+          ? ({ kind, ownerId } as const)
+          : kind === 'unsupported'
+            ? ({ kind, ownerId } as const)
+            : kind === 'delivery_rejected'
+              ? ({ kind, ownerId } as const)
+              : ({ kind: 'already_exited' as const, ownerId } as const);
+    };
+    const ttsOwnerId = `${state.turnInput.run.id}:tts`;
+    const playbackOwnerId = `${state.turnInput.run.id}:playback`;
+    const unregisterTts = input.abortRegistrationAuthority.registerIssuedOwner({
+      accountId: state.turnInput.accountId,
+      runId: state.turnInput.run.id,
+      registrationId: ttsOwnerId,
+      kind: 'tts_generation',
+      abort: () => ownerOutcome(ttsOwnerId),
+    });
+    const unregisterPlayback = input.abortRegistrationAuthority.registerIssuedOwner({
+      accountId: state.turnInput.accountId,
+      runId: state.turnInput.run.id,
+      registrationId: playbackOwnerId,
+      kind: 'audio_playback',
+      abort: () => ownerOutcome(playbackOwnerId),
+    });
+    const registrations: JarvisLiveEvidenceRegistration<'voice'>[] = [];
+    const activeReceiptReleases: Array<() => void> = [];
+    try {
+      const scope = {
+        accountId: state.turnInput.accountId,
+        runId: state.turnInput.run.id,
+        requestId: state.turnInput.attempt.requestId,
+        attemptNumber: state.turnInput.attempt.attemptNumber,
+      };
+      const liveOwner = liveEvidence.bindLifecycle({
+        scope,
+        append: Object.freeze({
+          async append({ evidence }: { evidence: JarvisDurableLiveEvidenceV1 }) {
+            return appendVoiceRuntimeEvent(state, {
+              idempotencyKey: `kernel-live:${evidence.registrationId}:${evidence.transition}:${evidence.resultRef}`,
+              type: 'tool',
+              status: evidence.transition,
+              title: 'Voice evidence updated',
+              safeSummary: 'Verified voice execution evidence was updated.',
+              sourceRefs: [],
+              artifactIds: [],
+              createdAt: evidence.observedAt,
+              liveEvidence: evidence,
+            });
+          },
+        }),
+      });
+
+      const startEngine = async (engineKind: 'tts' | 'playback') => {
+        const executionId =
+          engineKind === 'tts' ? receipt.ttsExecutionId : receipt.playbackExecutionId;
+        const observedAt = engineKind === 'tts' ? receipt.ttsStartedAt : receipt.playbackStartedAt;
+        const resultRef = `voice-${engineKind}-start:${executionId}`;
+        const producerIdentity = {
+          producerKind: 'voice' as const,
+          sessionId: receipt.sessionId,
+          engineKind,
+          executionId,
+        };
+        const source: Extract<JarvisProducerSourceEvidenceV1, { producerKind: 'voice' }> = {
+          schemaVersion: 1,
+          ...scope,
+          producerKind: 'voice',
+          producerIdentity,
+          resultRef,
+          observedAt,
+          phase: 'start',
+          state: 'started',
+        };
+        const releaseActiveReceipt = startAuthority.authorizeStart(source);
+        activeReceiptReleases.push(releaseActiveReceipt);
+        const event = await appendVoiceRuntimeEvent(state, {
+          idempotencyKey: `voice-${engineKind}-start:${state.turnInput.run.id}:${executionId}`,
+          type: engineKind === 'tts' ? 'model' : 'terminal',
+          status: 'running',
+          title: engineKind === 'tts' ? 'Voice synthesis started' : 'Voice playback started',
+          safeSummary: 'A voice response phase started.',
+          sourceRefs: [],
+          artifactIds: [],
+          createdAt: observedAt,
+          producerSourceEvidence: source,
+        });
+        const evidence: JarvisCanonicalLiveProducerEvidence<'voice'> = Object.freeze({
+          schemaVersion: 1,
+          producerKind: 'voice',
+          producerIdentity,
+          ...scope,
+          resultRef,
+          resultEventSeq: event.seq,
+          state: 'busy',
+          verifiedAt: observedAt,
+        });
+        const registration = await liveOwner.voice.startCapability({
+          evidence,
+          registrationId: `${state.turnInput.run.id}:${engineKind}`,
+          category: 'tool',
+          capabilityId: `voice.${engineKind}`,
+          operations: ['execute', 'cancel', 'inspect'],
+          state: 'busy',
+        });
+        registrations.push(registration);
+        return { registration, producerIdentity };
+      };
+
+      const tts = await startEngine('tts');
+      const playback = await startEngine('playback');
+      const result = await controller.start();
+      const validEngineResult = (engineResult: JarvisVoicePlaybackEngineResult): boolean =>
+        engineResult.state === 'completed'
+          ? !('reason' in engineResult)
+          : engineResult.reason === 'unavailable' ||
+            engineResult.reason === 'failed' ||
+            engineResult.reason === 'stopped';
+      if (
+        !Object.isFrozen(result) ||
+        !Object.isFrozen(result.tts) ||
+        !Object.isFrozen(result.playback) ||
+        !controller.verify(result) ||
+        !stable(result.tts.resultRef) ||
+        !stable(result.playback.resultRef) ||
+        !Number.isFinite(result.tts.observedAt) ||
+        !Number.isFinite(result.playback.observedAt) ||
+        !validEngineResult(result.tts) ||
+        !validEngineResult(result.playback) ||
+        result.tts.observedAt < receipt.ttsStartedAt ||
+        result.playback.observedAt < receipt.playbackStartedAt ||
+        (result.terminalStatus === 'completed' &&
+          (result.tts.state !== 'completed' || result.playback.state !== 'completed')) ||
+        (result.terminalStatus === 'partial' &&
+          result.tts.state === 'completed' &&
+          result.playback.state === 'completed')
+      ) {
+        throw new Error('voice_playback_result_invalid');
+      }
+
+      const finishEngine = async (
+        engineKind: 'tts' | 'playback',
+        engine: typeof tts,
+        engineResult: JarvisVoicePlaybackAdapterResult['tts'],
+      ): Promise<Extract<JarvisProducerSourceEvidenceV1, { producerKind: 'voice' }>> => {
+        const source: Extract<JarvisProducerSourceEvidenceV1, { producerKind: 'voice' }> = {
+          schemaVersion: 1,
+          ...scope,
+          producerKind: 'voice',
+          producerIdentity: engine.producerIdentity,
+          resultRef: engineResult.resultRef,
+          observedAt: engineResult.observedAt,
+          phase: 'result',
+          state: engineResult.state,
+        };
+        const event = await appendVoiceRuntimeEvent(state, {
+          idempotencyKey: `voice-${engineKind}-result:${state.turnInput.run.id}:${engineResult.resultRef}`,
+          type: engineKind === 'tts' ? 'model' : 'terminal',
+          status: engineResult.state,
+          title:
+            engineKind === 'tts'
+              ? engineResult.state === 'completed'
+                ? 'Voice synthesis completed'
+                : 'Voice synthesis degraded'
+              : engineResult.state === 'completed'
+                ? 'Voice playback completed'
+                : 'Voice playback degraded',
+          safeSummary: 'A voice response phase reached a verified outcome.',
+          sourceRefs: [],
+          artifactIds: [],
+          createdAt: engineResult.observedAt,
+          producerSourceEvidence: source,
+        });
+        const evidence: JarvisCanonicalLiveProducerEvidence<'voice'> = Object.freeze({
+          schemaVersion: 1,
+          producerKind: 'voice',
+          producerIdentity: engine.producerIdentity,
+          ...scope,
+          resultRef: engineResult.resultRef,
+          resultEventSeq: event.seq,
+          state: engineResult.state,
+          verifiedAt: engineResult.observedAt,
+        });
+        await engine.registration.complete({ evidence, state: engineResult.state });
+        return Object.freeze(structuredClone(source));
+      };
+      await finishEngine('tts', tts, result.tts);
+      state.playbackResultSource = await finishEngine('playback', playback, result.playback);
+      return result;
+    } finally {
+      for (const registration of registrations) registration.dispose();
+      for (const release of activeReceiptReleases) release();
+      unregisterPlayback();
+      unregisterTts();
+      controller.dispose();
+    }
+  };
+
+  const voicePlaybackCancellationVerified = async (
+    state: VoiceHandleState,
+    playback: JarvisVoicePlaybackAdapterResult | null,
+  ): Promise<boolean> => {
+    const cancellation = state.cancellationResult;
+    if (
+      cancellation?.kind !== 'intent_committed' ||
+      cancellation.aggregate.kind !== 'signal_delivered' ||
+      !playback ||
+      playback.terminalStatus !== 'partial'
+    ) {
+      return false;
+    }
+    let currentDelivery: CancellationDelivery;
+    try {
+      currentDelivery = await input.cancellationDeliveryAuthority.current(
+        state.turnInput.accountId,
+        state.turnInput.run.id,
+        cancellation.cancellationRequestId,
+      );
+    } catch {
+      return false;
+    }
+    if (cancellationAggregate(currentDelivery).kind !== 'signal_delivered') return false;
+    const outcomes = [playback.tts, playback.playback];
+    return (
+      outcomes.some((outcome) => outcome.state === 'degraded' && outcome.reason === 'stopped') &&
+      outcomes.every((outcome) => outcome.state === 'completed' || outcome.reason === 'stopped')
+    );
+  };
+
+  const issueVoiceHandle = (
+    binding: JarvisKernelAccountBinding,
+    turnInput: Readonly<JarvisKernelTurnInput> & { surface: 'voice' },
+  ): JarvisVoiceTurnHandle => {
+    const releaseBinding = retainAccountBinding(binding);
+    let handle: JarvisVoiceTurnHandle;
+    handle = Object.freeze({
+      [jarvisVoiceTurnHandleBrand]: true as const,
+      async requestCancellation(
+        this: JarvisVoiceTurnHandle,
+      ): Promise<JarvisCancellationRequestResult> {
+        const state = voiceHandleState(this);
+        if (state.cancellationResult) return state.cancellationResult;
+        if (state.cancellationOperation) return state.cancellationOperation;
+        state.cancellationRequested = true;
+        const operation = requestCancellationWithBinding(state.binding, {
+          accountId: state.turnInput.accountId,
+          runId: state.turnInput.run.id,
+        }).then((result) => {
+          state.cancellationResult = Object.freeze(result);
+          return state.cancellationResult;
+        });
+        state.cancellationOperation = operation;
+        state.activeOperations.add(operation);
+        try {
+          return await operation;
+        } finally {
+          if (state.cancellationOperation === operation) state.cancellationOperation = undefined;
+          state.activeOperations.delete(operation);
+          if (state.disposeRequested && state.activeOperations.size === 0) {
+            finishVoiceHandleDisposal(this, state);
+          }
+        }
+      },
+      async commitResponseReady(
+        this: JarvisVoiceTurnHandle,
+      ): Promise<JarvisAuthorityBoundResult<VoiceResponseReadyCommitResult>> {
+        const state = voiceHandleState(this);
+        if (state.phase === 'response_ready_committed' && state.responseCommit) {
+          return state.responseCommit;
+        }
+        if (state.responseCommitOperation) return state.responseCommitOperation;
+        if (state.phase !== 'response_pending' || !state.deferred) {
+          throw new Error('voice_handle_phase_conflict');
+        }
+        state.phase = 'response_commit_in_flight';
+        const operation = (async (): Promise<
+          JarvisAuthorityBoundResult<VoiceResponseReadyCommitResult>
+        > => {
+          const commitDeferred = async (
+            deferred: JarvisDeferredVoiceKernelTurnResult,
+          ): Promise<JarvisAuthorityBoundResult<VoiceResponseReadyCommitResult>> => {
+            const commit = await artifacts.commitKernelTurn.commitVoiceResponseReady({
+              accountId: state.turnInput.accountId,
+              runId: state.turnInput.run.id,
+              requestId: state.turnInput.attempt.requestId,
+              attemptNumber: state.turnInput.attempt.attemptNumber,
+              accountBinding: state.binding,
+              assistantMessage: structuredClone(deferred.assistantMessage),
+              artifacts: deferred.artifacts,
+              providerResultSource: deferred.providerResultSource,
+              createdAt: deferred.response.completedAt,
+            });
+            return !commit.committed && commit.reason === 'account_authority_revoked'
+              ? { kind: 'account_authority_revoked' }
+              : { kind: 'committed', value: commit };
+          };
+          let commitOutcome: JarvisAuthorityBoundResult<VoiceResponseReadyCommitResult>;
+          try {
+            commitOutcome = await commitDeferred(state.deferred!);
+          } catch (error) {
+            state.binding.assertCurrent();
+            if (!(await voiceResponseRetryEvidenceMatches(state))) throw error;
+            state.deferred = await state.deferred!.rematerializeForRetry();
+            state.binding.assertCurrent();
+            commitOutcome = await commitDeferred(state.deferred);
+          }
+          if (commitOutcome.kind === 'account_authority_revoked') return commitOutcome;
+          const commit = commitOutcome.value;
+          if (!commit.committed) {
+            return { kind: 'committed', value: commit };
+          }
+          const providerEvidence = await state.deferred!.completeProviderEvidence();
+          if (providerEvidence.kind === 'account_authority_revoked') return providerEvidence;
+          const result = Object.freeze({ kind: 'committed' as const, value: commit });
+          if (!(await voiceResponseReadbackMatches(state, result))) {
+            throw new Error('voice_response_ready_readback_mismatch');
+          }
+          return result;
+        })();
+        state.responseCommitOperation = operation;
+        state.activeOperations.add(operation);
+        try {
+          const result = await operation;
+          if (result.kind === 'committed' && result.value.committed) {
+            state.phase = 'response_ready_committed';
+            state.responseCommit = Object.freeze(result);
+            return state.responseCommit;
+          }
+          state.disposeRequested = true;
+          finishVoiceHandleDisposal(this, state);
+          return result;
+        } catch (error) {
+          const authorityWasRevoked = state.binding.revocationSignal.aborted;
+          state.disposeRequested = true;
+          finishVoiceHandleDisposal(this, state);
+          if (authorityWasRevoked) {
+            return { kind: 'account_authority_revoked' };
+          }
+          throw error;
+        } finally {
+          if (state.responseCommitOperation === operation) {
+            state.responseCommitOperation = undefined;
+          }
+          state.activeOperations.delete(operation);
+          if (state.disposeRequested && state.activeOperations.size === 0) {
+            finishVoiceHandleDisposal(this, state);
+          }
+        }
+      },
+      async runValidatedPlayback(
+        this: JarvisVoiceTurnHandle,
+      ): Promise<JarvisAuthorityBoundResult<JarvisVoicePlaybackCommitResult>> {
+        const state = voiceHandleState(this);
+        if (state.phase !== 'response_ready_committed') {
+          throw new Error('voice_handle_phase_conflict');
+        }
+        state.phase = 'playback_in_flight';
+        const operation = (async (): Promise<
+          JarvisAuthorityBoundResult<JarvisVoicePlaybackCommitResult>
+        > => {
+          if (!(await voiceResponseReadbackMatches(state))) {
+            throw new Error('voice_handle_phase_conflict');
+          }
+          if (state.cancellationRequested) {
+            if (state.cancellationOperation) await state.cancellationOperation;
+            throw new Error('voice_cancellation_unverified');
+          }
+          state.binding.assertCurrent();
+          const spokenText = state.deferred?.response.spokenText;
+          const playback =
+            typeof spokenText === 'string' && spokenText.trim().length > 0
+              ? await executeConfiguredVoicePlayback(state, spokenText)
+              : null;
+          if (state.cancellationOperation) await state.cancellationOperation;
+          const cancellationVerified = await voicePlaybackCancellationVerified(state, playback);
+          if (
+            state.cancellationRequested &&
+            !cancellationVerified &&
+            playback?.terminalStatus !== 'completed'
+          ) {
+            throw new Error('voice_cancellation_unverified');
+          }
+          const terminalStatus = cancellationVerified
+            ? ('cancelled' as const)
+            : (playback?.terminalStatus ?? 'partial');
+          state.binding.assertCurrent();
+          const commit = await artifacts.commitKernelTurn.commitVoicePlayback({
+            accountId: state.turnInput.accountId,
+            runId: state.turnInput.run.id,
+            requestId: state.turnInput.attempt.requestId,
+            attemptNumber: state.turnInput.attempt.attemptNumber,
+            accountBinding: state.binding,
+            terminalStatus,
+            ...(state.playbackResultSource === undefined
+              ? {}
+              : { playbackResultSource: state.playbackResultSource }),
+            createdAt: input.now(),
+          });
+          if (!commit.committed && commit.reason === 'account_authority_revoked') {
+            return { kind: 'account_authority_revoked' };
+          }
+          return { kind: 'committed', value: commit };
+        })();
+        state.activeOperations.add(operation);
+        try {
+          return await operation;
+        } catch (error) {
+          if (state.binding.revocationSignal.aborted) {
+            return { kind: 'account_authority_revoked' };
+          }
+          throw error;
+        } finally {
+          state.disposeRequested = true;
+          state.activeOperations.delete(operation);
+          if (state.activeOperations.size === 0) finishVoiceHandleDisposal(this, state);
+        }
+      },
+      dispose(this: JarvisVoiceTurnHandle) {
+        const state = voiceHandleStates.get(this);
+        if (!state) throw new Error('voice_handle_invalid');
+        if (state.phase === 'disposed') return;
+        if (!issuedVoiceHandles.has(this)) throw new Error('voice_handle_invalid');
+        if (state.activeOperations.size > 0) {
+          state.disposeRequested = true;
+          return;
+        }
+        finishVoiceHandleDisposal(this, state);
+      },
+    });
+    issuedVoiceHandles.add(handle);
+    const state: VoiceHandleState = {
+      binding,
+      turnInput,
+      releaseBinding,
+      releaseExternal: undefined,
+      deferred: undefined,
+      phase: 'starting',
+      disposeRequested: false,
+      responseCommit: undefined,
+      responseCommitOperation: undefined,
+      activeOperations: new Set(),
+      cancellationRequested: false,
+      cancellationOperation: undefined,
+      cancellationResult: undefined,
+      playbackResultSource: undefined,
+    };
+    voiceHandleStates.set(handle, state);
+    try {
+      state.releaseExternal = input.onVoiceTurnHandleIssued?.({
+        runId: turnInput.run.id,
+        handle,
+      });
+    } catch (error) {
+      finishVoiceHandleDisposal(handle, state);
+      throw error;
+    }
+    return handle;
+  };
+
   const actions: JarvisKernelActionPort = Object.freeze({
     async create(actionInput: Parameters<JarvisKernelActionPort['create']>[0]) {
       const scope = await loadCanonicalActionScope(actionInput.parentRun, actionInput.attempt);
@@ -1697,6 +2689,136 @@ export function createJarvisKernelRuntime(
   });
   const kernel: JarvisKernelRuntime = Object.freeze({
     actions,
+    async openVoiceRecovery(recoveryInput: {
+      accountId: string;
+      runId: string;
+    }): Promise<JarvisAuthorityBoundResult<JarvisVoiceRecoveryHandle>> {
+      if (
+        !recoveryInput.accountId ||
+        recoveryInput.accountId.trim() !== recoveryInput.accountId ||
+        !recoveryInput.runId ||
+        recoveryInput.runId.trim() !== recoveryInput.runId
+      ) {
+        throw new TypeError('voice_recovery_scope_invalid');
+      }
+      let binding: JarvisKernelAccountBinding;
+      try {
+        binding = issueAccountBinding(recoveryInput.accountId);
+      } catch {
+        return { kind: 'account_authority_revoked' };
+      }
+      try {
+        const snapshot = await loadVoiceRecoverySnapshot(
+          recoveryInput.accountId,
+          recoveryInput.runId,
+        );
+        binding.assertCurrent();
+        if (!snapshot) throw new Error('voice_recovery_evidence_invalid');
+        return {
+          kind: 'committed',
+          value: issueVoiceRecoveryHandle(binding, snapshot),
+        };
+      } catch (error) {
+        if (binding.revocationSignal.aborted) {
+          return { kind: 'account_authority_revoked' };
+        }
+        throw error;
+      } finally {
+        binding.dispose();
+      }
+    },
+    async startVoiceTurn(
+      turnInput: Readonly<JarvisKernelTurnInput> & { surface: 'voice' },
+    ): Promise<
+      JarvisAuthorityBoundResult<{
+        result: JarvisKernelTurnResult;
+        handle: JarvisVoiceTurnHandle;
+      }>
+    > {
+      if (turnInput.surface !== 'voice' || turnInput.run.source !== 'voice') {
+        throw new Error('kernel_voice_turn_scope_mismatch');
+      }
+      let binding: JarvisKernelAccountBinding;
+      try {
+        binding = issueAccountBinding(turnInput.accountId);
+      } catch {
+        return { kind: 'account_authority_revoked' };
+      }
+      let handle: JarvisVoiceTurnHandle | undefined;
+      try {
+        handle = issueVoiceHandle(binding, turnInput);
+        const boundArtifactEffectClaims: JarvisArtifactEffectClaimCapability = Object.freeze({
+          async claim(claim: Parameters<JarvisArtifactEffectClaimCapability['claim']>[0]) {
+            binding.assertCurrent();
+            if (
+              claim.accountId !== turnInput.accountId ||
+              claim.runId !== turnInput.run.id ||
+              claim.requestId !== turnInput.attempt.requestId ||
+              claim.attemptNumber !== turnInput.attempt.attemptNumber
+            ) {
+              throw new Error('kernel_artifact_effect_scope_mismatch');
+            }
+            const result = await artifactEffectClaims.claim(claim);
+            binding.assertCurrent();
+            return result;
+          },
+        });
+        const result = await runJarvisKernelVoiceTurn(turnInput, {
+          journal: input.journal,
+          issueBoundLifecycle(scope) {
+            if (
+              scope.accountId !== turnInput.accountId ||
+              scope.runId !== turnInput.run.id ||
+              scope.requestId !== turnInput.attempt.requestId ||
+              scope.attemptNumber !== turnInput.attempt.attemptNumber
+            ) {
+              throw new Error('kernel_lifecycle_scope_mismatch');
+            }
+            return issueLifecycle(binding, scope);
+          },
+          issueBoundArtifactPipeline: artifacts.issueBoundArtifactPipeline,
+          artifactEffectClaims: boundArtifactEffectClaims,
+          takeProviderArtifactDrafts: input.takeProviderArtifactDrafts,
+          commitKernelTurn(commitInput) {
+            return artifacts.commitKernelTurn.commitKernelTurn({
+              ...commitInput,
+              accountBinding: binding,
+            });
+          },
+          prepareProvider: input.prepareProvider,
+          processResponse: input.processResponse,
+          now: input.now,
+        });
+        const state = voiceHandleStates.get(handle);
+        if (!state) throw new Error('voice_handle_invalid');
+        if (result.kind === 'account_authority_revoked') {
+          finishVoiceHandleDisposal(handle, state);
+          return result;
+        }
+        state.deferred = result.value;
+        state.phase = 'response_pending';
+        const { request, compiled, response, messageParts } = result.value;
+        return {
+          kind: 'committed',
+          value: Object.freeze({
+            result: Object.freeze({ request, compiled, response, messageParts }),
+            handle,
+          }),
+        };
+      } catch (error) {
+        const authorityWasRevoked = binding.revocationSignal.aborted;
+        if (handle) {
+          const state = voiceHandleStates.get(handle);
+          if (state) finishVoiceHandleDisposal(handle, state);
+        }
+        if (authorityWasRevoked) {
+          return { kind: 'account_authority_revoked' };
+        }
+        throw error;
+      } finally {
+        binding.dispose();
+      }
+    },
     async runInitialTurn(
       turnInput: Readonly<JarvisKernelTurnInput>,
     ): Promise<JarvisAuthorityBoundResult<JarvisKernelTurnResult>> {

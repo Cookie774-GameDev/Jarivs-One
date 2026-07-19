@@ -6,6 +6,12 @@ import { useAuthStore } from '@/stores/auth';
 import { SPEECH_SYNTHESIS_START_EVENT, STREAMING_VOICE_END_EVENT } from './speechSynthesis';
 
 type VoiceHandler = (payload?: unknown) => void;
+type MockVoiceChatTarget = {
+  chatId: string;
+  messageText: string;
+  agentId?: string;
+  mentionedAgentIds: string[];
+};
 
 const voiceListeners = vi.hoisted(() => ({
   handlers: new Map<string, Set<VoiceHandler>>(),
@@ -14,6 +20,23 @@ const voiceListeners = vi.hoisted(() => ({
 const routerMocks = vi.hoisted(() => ({
   handleVoiceModuleClosed: vi.fn(),
   stopCurrentVoiceResponse: vi.fn(),
+}));
+
+const chatHookMocks = vi.hoisted(() => ({
+  useChatMessages: vi.fn(() => []),
+}));
+
+const chatRoutingMocks = vi.hoisted(() => ({
+  ensureJarvisChatForVoice: vi.fn(async () => 'chat_voice'),
+  focusVoiceChat: vi.fn(),
+  resolveVoiceChatTarget: vi.fn(
+    async (text: string): Promise<MockVoiceChatTarget> => ({
+      chatId: 'chat_voice',
+      messageText: text,
+      agentId: undefined,
+      mentionedAgentIds: [],
+    }),
+  ),
 }));
 
 vi.mock('./VoiceService', () => ({
@@ -50,7 +73,7 @@ vi.mock('motion/react', () => ({
 }));
 
 vi.mock('@/features/chat/hooks', () => ({
-  useChatMessages: () => [],
+  useChatMessages: chatHookMocks.useChatMessages,
 }));
 
 vi.mock('@/lib/db', () => ({
@@ -59,16 +82,7 @@ vi.mock('@/lib/db', () => ({
   },
 }));
 
-vi.mock('./voiceChatRouting', () => ({
-  ensureJarvisChatForVoice: vi.fn(async () => 'chat_voice'),
-  focusVoiceChat: vi.fn(),
-  resolveVoiceChatTarget: vi.fn(async (text: string) => ({
-    chatId: 'chat_voice',
-    messageText: text,
-    agentId: 'agent_jarvis',
-    mentionedAgentIds: [],
-  })),
-}));
+vi.mock('./voiceChatRouting', () => chatRoutingMocks);
 
 vi.mock('./voiceRouter', () => routerMocks);
 
@@ -85,6 +99,16 @@ function emitVoice(event: string, payload?: unknown) {
 describe('VoiceModal hands-free turn-taking', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    chatRoutingMocks.ensureJarvisChatForVoice.mockReset().mockResolvedValue('chat_voice');
+    chatRoutingMocks.focusVoiceChat.mockReset();
+    chatRoutingMocks.resolveVoiceChatTarget.mockReset().mockImplementation(
+      async (text: string): Promise<MockVoiceChatTarget> => ({
+        chatId: 'chat_voice',
+        messageText: text,
+        agentId: undefined,
+        mentionedAgentIds: [],
+      }),
+    );
     voiceListeners.handlers.clear();
     useUIStore.setState({
       voiceModalOpen: true,
@@ -92,6 +116,8 @@ describe('VoiceModal hands-free turn-taking', () => {
       activeChatId: 'chat_voice',
     });
     useAuthStore.setState({
+      localUserId: 'account-a',
+      cloudSession: null,
       voiceAutoListenOnOpen: true,
       voiceEndTrigger: 'phrase',
       voiceCommitPhrase: 'send it',
@@ -107,6 +133,112 @@ describe('VoiceModal hands-free turn-taking', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('captures one immutable account/chat binding and keeps transcript and default sends pinned to it', async () => {
+    const send = vi.fn();
+    window.addEventListener('jarvis:send', send as EventListener);
+    chatRoutingMocks.resolveVoiceChatTarget.mockResolvedValueOnce({
+      chatId: 'chat_changed_after_open',
+      messageText: 'bound message',
+      agentId: undefined,
+      mentionedAgentIds: [],
+    });
+
+    render(<VoiceModal />);
+
+    await waitFor(() => expect(useVoiceStore.getState().session).not.toBeNull());
+    const binding = useVoiceStore.getState().session!;
+    expect(binding).toMatchObject({ accountId: 'account-a', chatId: 'chat_voice' });
+    expect(binding.sessionId).toMatch(/^vsession_/);
+    expect(Object.isFrozen(binding)).toBe(true);
+
+    act(() => useUIStore.setState({ activeChatId: 'chat_changed_after_open' }));
+    fireEvent.click(screen.getByRole('button', { name: /Transcript/i }));
+    await waitFor(() => expect(chatHookMocks.useChatMessages).toHaveBeenCalledWith('chat_voice'));
+    expect(useVoiceStore.getState().session).toBe(binding);
+
+    act(() => {
+      emitVoice('voice:final', { text: 'bound message' });
+      emitVoice('voice:final', { text: 'send it' });
+    });
+
+    await waitFor(() => expect(messageRepo.create).toHaveBeenCalledOnce());
+    expect(messageRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({ chat_id: 'chat_voice' }),
+    );
+    expect((send.mock.calls[0]?.[0] as CustomEvent).detail).toMatchObject({
+      accountId: 'account-a',
+      chatId: 'chat_voice',
+    });
+    expect(chatRoutingMocks.focusVoiceChat).toHaveBeenLastCalledWith('chat_voice');
+    window.removeEventListener('jarvis:send', send as EventListener);
+  });
+
+  it('does not attach protected account scope to an explicit non-Jarvis voice target', async () => {
+    const send = vi.fn();
+    window.addEventListener('jarvis:send', send as EventListener);
+    chatRoutingMocks.resolveVoiceChatTarget.mockResolvedValueOnce({
+      chatId: 'chat_explicit_agent',
+      messageText: 'ask the builder',
+      agentId: 'agent_builder',
+      mentionedAgentIds: [],
+    });
+
+    render(<VoiceModal />);
+    await waitFor(() => expect(useVoiceStore.getState().session).not.toBeNull());
+
+    act(() => {
+      emitVoice('voice:final', { text: 'ask the builder' });
+      emitVoice('voice:final', { text: 'send it' });
+    });
+
+    await waitFor(() => expect(send).toHaveBeenCalledOnce());
+    const detail = (send.mock.calls[0]?.[0] as CustomEvent).detail;
+    expect(detail).toMatchObject({ chatId: 'chat_explicit_agent', agentId: 'agent_builder' });
+    expect(detail).not.toHaveProperty('accountId');
+    window.removeEventListener('jarvis:send', send as EventListener);
+  });
+
+  it('ends the old binding before starting a replacement when account identity changes', async () => {
+    const observedAccounts: Array<string | null> = [];
+    const unsubscribe = useVoiceStore.subscribe((voice) => {
+      observedAccounts.push(voice.session?.accountId ?? null);
+    });
+
+    render(<VoiceModal />);
+    await waitFor(() => expect(useVoiceStore.getState().session?.accountId).toBe('account-a'));
+    const firstSessionId = useVoiceStore.getState().session!.sessionId;
+    observedAccounts.length = 0;
+
+    act(() => useAuthStore.setState({ localUserId: 'account-b' }));
+
+    await waitFor(() => expect(useVoiceStore.getState().session?.accountId).toBe('account-b'));
+    expect(useVoiceStore.getState().session?.sessionId).not.toBe(firstSessionId);
+    expect(routerMocks.stopCurrentVoiceResponse).toHaveBeenCalledOnce();
+    expect(observedAccounts.indexOf(null)).toBeGreaterThanOrEqual(0);
+    expect(observedAccounts.indexOf(null)).toBeLessThan(observedAccounts.indexOf('account-b'));
+    unsubscribe();
+  });
+
+  it('cancels and clears the old binding when account identity becomes unavailable', async () => {
+    render(<VoiceModal />);
+    await waitFor(() => expect(useVoiceStore.getState().session?.accountId).toBe('account-a'));
+
+    act(() => useAuthStore.setState({ localUserId: null, cloudSession: null }));
+
+    await waitFor(() => expect(useVoiceStore.getState().session).toBeNull());
+    expect(routerMocks.stopCurrentVoiceResponse).toHaveBeenCalledOnce();
+  });
+
+  it('starts no bound session or chat resolution without canonical account identity', async () => {
+    useAuthStore.setState({ localUserId: null, cloudSession: null });
+
+    render(<VoiceModal />);
+    await act(async () => Promise.resolve());
+
+    expect(useVoiceStore.getState().session).toBeNull();
+    expect(chatRoutingMocks.ensureJarvisChatForVoice).not.toHaveBeenCalled();
   });
 
   it('does not send on silence without the commit phrase', async () => {

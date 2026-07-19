@@ -44,7 +44,7 @@ vi.mock('./voiceRouter', () => ({
   getActiveVoiceSessionId: () => mocks.sessionId,
 }));
 
-import { StreamingVoiceSession } from './streamingVoice';
+import { createCanonicalVoicePlaybackAdapter, StreamingVoiceSession } from './streamingVoice';
 import { validateSpeechChunk } from './speechGate';
 
 function validated(text: string) {
@@ -257,5 +257,115 @@ describe('StreamingVoiceSession lifecycle', () => {
     expect(end).toHaveBeenCalledOnce();
     expect(mocks.speakWithSettings).toHaveBeenCalledOnce();
     window.removeEventListener(STREAMING_VOICE_END_EVENT, end);
+  });
+
+  it('issues opaque immutable playback receipts and verifies only its actual completion result', async () => {
+    const adapter = createCanonicalVoicePlaybackAdapter();
+    const controller = adapter.prepare({
+      accountId: 'account-voice',
+      runId: 'run-voice',
+      requestId: 'request-voice',
+      attemptNumber: 1,
+      spokenText: 'Validated voice response.',
+    });
+
+    expect(Object.isFrozen(adapter)).toBe(true);
+    expect(controller).not.toBeNull();
+    if (!controller) throw new Error('expected voice controller');
+    expect(Object.isFrozen(controller)).toBe(true);
+    expect(Object.isFrozen(controller.receipt)).toBe(true);
+    expect(controller.receipt).toMatchObject({
+      sessionId: expect.stringMatching(/^vsession_/),
+      engineId: 'system:jarvis-prime',
+      ttsExecutionId: expect.any(String),
+      playbackExecutionId: expect.any(String),
+    });
+
+    const result = await controller.start();
+    expect(result).toMatchObject({
+      tts: { state: 'completed' },
+      playback: { state: 'completed' },
+      terminalStatus: 'completed',
+    });
+    expect(Object.isFrozen(result)).toBe(true);
+    expect(controller.verify(result)).toBe(true);
+    expect(controller.verify(structuredClone(result))).toBe(false);
+    expect(mocks.speakWithSettings).toHaveBeenCalledWith(
+      'Validated voice response.',
+      expect.any(Object),
+    );
+    expect(JSON.stringify({ receipt: controller.receipt, result })).not.toContain(
+      'Validated voice response.',
+    );
+    expect(controller.abort()).toBe('already_exited');
+    controller.dispose();
+    controller.dispose();
+  });
+
+  it('truthfully degrades without starting speech when the voice module is not live', async () => {
+    mocks.canSpeak = false;
+    const controller = createCanonicalVoicePlaybackAdapter().prepare({
+      accountId: 'account-voice',
+      runId: 'run-voice',
+      requestId: 'request-voice',
+      attemptNumber: 1,
+      spokenText: 'Validated voice response.',
+    });
+    if (!controller) throw new Error('expected voice controller');
+
+    await expect(controller.start()).resolves.toMatchObject({
+      tts: { state: 'degraded', reason: 'unavailable' },
+      playback: { state: 'degraded', reason: 'unavailable' },
+      terminalStatus: 'partial',
+    });
+    expect(mocks.speakWithSettings).not.toHaveBeenCalled();
+  });
+
+  it('reports one real stop signal and never upgrades an aborted playback to completed', async () => {
+    let release: (() => void) | undefined;
+    mocks.speakWithSettings.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const controller = createCanonicalVoicePlaybackAdapter().prepare({
+      accountId: 'account-voice',
+      runId: 'run-voice',
+      requestId: 'request-voice',
+      attemptNumber: 1,
+      spokenText: 'Validated voice response.',
+    });
+    if (!controller) throw new Error('expected voice controller');
+    const completion = controller.start();
+    await vi.waitFor(() => expect(mocks.speakWithSettings).toHaveBeenCalledOnce());
+
+    expect(controller.abort()).toBe('signal_delivered');
+    expect(controller.abort()).toBe('already_exited');
+    release?.();
+    await expect(completion).resolves.toMatchObject({
+      tts: { state: 'degraded', reason: 'stopped' },
+      playback: { state: 'degraded', reason: 'stopped' },
+      terminalStatus: 'partial',
+    });
+  });
+
+  it('accepts a stop before start and never lets the prepared controller speak', async () => {
+    const controller = createCanonicalVoicePlaybackAdapter().prepare({
+      accountId: 'account-voice',
+      runId: 'run-voice',
+      requestId: 'request-voice',
+      attemptNumber: 1,
+      spokenText: 'Validated voice response.',
+    });
+    if (!controller) throw new Error('expected voice controller');
+
+    expect(controller.abort()).toBe('signal_delivered');
+    await expect(controller.start()).resolves.toMatchObject({
+      tts: { state: 'degraded', reason: 'stopped' },
+      playback: { state: 'degraded', reason: 'stopped' },
+      terminalStatus: 'partial',
+    });
+    expect(mocks.speakWithSettings).not.toHaveBeenCalled();
   });
 });

@@ -32,12 +32,18 @@ import { toast } from '@/components/ui/toast';
 import { chatRepo } from '@/lib/db';
 import { getAiCompletionInstruction, notifyDone } from '@/lib/notifications';
 import {
+  createCanonicalVoicePlaybackAdapter,
   createStreamingVoiceSession,
   type StreamingVoiceSession,
 } from '@/features/voice/streamingVoice';
-import { canVoiceModuleSpeak } from '@/features/voice/voiceRouter';
+import {
+  canVoiceModuleSpeak,
+  registerActiveVoiceTurnCancellation,
+} from '@/features/voice/voiceRouter';
 import { STREAMING_VOICE_END_EVENT } from '@/features/voice/speechSynthesis';
 import { registerActiveStreamingVoiceSession } from '@/features/voice/voiceRouter';
+import { useVoiceStore } from '@/features/voice/store';
+import { createJarvisVoiceLiveEvidenceVerifier } from '@/features/voice/voiceTurnCommit';
 import { deriveChatTitle, maybeRenameChat } from '@/features/chat/chatLifecycle';
 import { getStoredProjectRoot } from '@/features/files/projectFiles';
 import { resolveDefaultWriteDir } from '@/lib/actions/defaultWriteDir';
@@ -120,7 +126,10 @@ import type {
 import type { JarvisApprovalActionBinder } from '@/lib/jarvis/approvalEngine';
 import type { JarvisCapabilitySnapshotProvider } from '@/lib/jarvis/capabilitySnapshot';
 import type { JarvisDexie } from '@/lib/db';
-import type { JarvisExecutionJournal } from '@/lib/jarvis/contracts';
+import type {
+  JarvisExecutionJournal,
+  JarvisLiveEvidencePrimaryHostAccountSession,
+} from '@/lib/jarvis/contracts';
 import type {
   JarvisKernelRuntime,
   JarvisKernelRuntimeComposition,
@@ -215,6 +224,9 @@ type InstalledJarvisKernelRuntimeHost = Readonly<{
   runInitialTurn(
     input: Readonly<JarvisKernelTurnInput>,
   ): ReturnType<JarvisKernelRuntime['runInitialTurn']>;
+  startVoiceTurn: JarvisKernelRuntime['startVoiceTurn'];
+  openVoiceRecovery: JarvisKernelRuntime['openVoiceRecovery'];
+  openLiveEvidenceAccount(accountId: string): Promise<JarvisLiveEvidencePrimaryHostAccountSession>;
   requestCancellation: JarvisKernelRuntime['requestCancellation'];
   dispose(): void;
 }>;
@@ -238,18 +250,18 @@ function providerLiveEvidenceMatches(
   const source = event?.producerSourceEvidence;
   return Boolean(
     event &&
-      event.seq === evidence.resultEventSeq &&
-      source?.producerKind === 'provider' &&
-      source.accountId === evidence.accountId &&
-      source.runId === evidence.runId &&
-      source.requestId === evidence.requestId &&
-      source.attemptNumber === evidence.attemptNumber &&
-      source.resultRef === evidence.resultRef &&
-      source.observedAt === evidence.verifiedAt &&
-      source.state === evidence.state &&
-      source.producerIdentity.providerId === evidence.producerIdentity.providerId &&
-      source.producerIdentity.modelId === evidence.producerIdentity.modelId &&
-      source.producerIdentity.modelSnapshotRef === evidence.producerIdentity.modelSnapshotRef,
+    event.seq === evidence.resultEventSeq &&
+    source?.producerKind === 'provider' &&
+    source.accountId === evidence.accountId &&
+    source.runId === evidence.runId &&
+    source.requestId === evidence.requestId &&
+    source.attemptNumber === evidence.attemptNumber &&
+    source.resultRef === evidence.resultRef &&
+    source.observedAt === evidence.verifiedAt &&
+    source.state === evidence.state &&
+    source.producerIdentity.providerId === evidence.producerIdentity.providerId &&
+    source.producerIdentity.modelId === evidence.producerIdentity.modelId &&
+    source.producerIdentity.modelSnapshotRef === evidence.producerIdentity.modelSnapshotRef,
   );
 }
 
@@ -270,15 +282,14 @@ export async function installJarvisKernelRuntimeHost(
     kernelModule,
     responseModule,
     approvalModule,
-  ] =
-    await Promise.all([
-      import('@/lib/db/jarvisRepositories'),
-      import('@/lib/jarvis/executionJournal/journal'),
-      import('@/lib/jarvis/executionJournal/abortRegistry'),
-      import('@/lib/jarvis/kernelRuntime'),
-      import('@/lib/jarvis/response/pipeline'),
-      import('@/lib/jarvis/approvalEngine'),
-    ]);
+  ] = await Promise.all([
+    import('@/lib/db/jarvisRepositories'),
+    import('@/lib/jarvis/executionJournal/journal'),
+    import('@/lib/jarvis/executionJournal/abortRegistry'),
+    import('@/lib/jarvis/kernelRuntime'),
+    import('@/lib/jarvis/response/pipeline'),
+    import('@/lib/jarvis/approvalEngine'),
+  ]);
   if (installedJarvisKernelRuntimeHost) throw new Error('jarvis_kernel_host_already_installed');
 
   const repositories = repositoriesModule.createJarvisRepositories(input.db);
@@ -369,6 +380,10 @@ export async function installJarvisKernelRuntimeHost(
     runs: repositories.run,
     events: repositories.event,
   });
+  const voiceVerifier = createJarvisVoiceLiveEvidenceVerifier({
+    runs: repositories.run,
+    events: repositories.event,
+  });
   const liveEvidenceVerifiers = Object.freeze({
     provider: providerVerifier,
     action: Object.freeze({ state: 'ready' as const, verifier: actionVerifiers.action }),
@@ -376,7 +391,7 @@ export async function installJarvisKernelRuntimeHost(
     terminal: Object.freeze({ state: 'ready' as const, verifier: actionVerifiers.terminal }),
     plugin: Object.freeze({ state: 'ready' as const, verifier: actionVerifiers.plugin }),
     mcp: Object.freeze({ state: 'ready' as const, verifier: actionVerifiers.mcp }),
-    voice: unavailableLiveVerifier('voice'),
+    voice: Object.freeze({ state: 'ready' as const, verifier: voiceVerifier }),
     schedule: unavailableLiveVerifier('schedule'),
     hive: unavailableLiveVerifier('hive'),
   });
@@ -389,6 +404,12 @@ export async function installJarvisKernelRuntimeHost(
     abortRegistrationAuthority: abortRegistry.registrationAuthority,
     bindKernelActions: input.bindKernelActions,
     liveEvidenceVerifiers,
+    voiceLiveEvidenceStartAuthority: voiceVerifier,
+    voicePlaybackAdapter: createCanonicalVoicePlaybackAdapter(),
+    onVoiceTurnHandleIssued: ({ handle }) =>
+      registerActiveVoiceTurnCancellation({
+        requestCancellation: () => handle.requestCancellation(),
+      }),
     async prepareProvider(providerInput) {
       let preparedDisposed = false;
       if (
@@ -438,43 +459,42 @@ export async function installJarvisKernelRuntimeHost(
                     updatedAt: now(),
                   });
                 },
-              })
-                .then((result): Readonly<RawProviderResponse> => {
-                  const completedAt = now();
-                  if (
-                    String(result.provider) !== providerInput.model.providerId ||
-                    result.model !== providerInput.model.modelId
-                  ) {
-                    throw new Error('kernel_provider_result_binding_mismatch');
-                  }
-                  const raw = Object.freeze({
-                    text: result.text,
-                    provider: providerInput.model,
-                    verifiedFacts: Object.freeze({
-                      modelState: 'authenticated' as const,
-                      plugins: Object.freeze([]),
-                      mcps: Object.freeze([]),
-                    }),
-                    completedAt,
-                  });
-                  providerArtifactDrafts.set(raw, Object.freeze([]));
-                  rememberProviderEvidence(
-                    Object.freeze({
-                      producerId: 'provider_response',
-                      accountId: providerInput.accountId,
-                      runId: providerInput.runId,
-                      requestId: providerInput.requestId,
-                      attemptNumber: providerInput.attemptNumber,
-                      resultRef: `jresult_${providerInput.requestId}`,
-                      state: 'completed',
-                      verifiedAt: completedAt,
-                      providerId: providerInput.model.providerId,
-                      modelId: providerInput.model.modelId,
-                      modelSnapshotRef,
-                    }),
-                  );
-                  return raw;
+              }).then((result): Readonly<RawProviderResponse> => {
+                const completedAt = now();
+                if (
+                  String(result.provider) !== providerInput.model.providerId ||
+                  result.model !== providerInput.model.modelId
+                ) {
+                  throw new Error('kernel_provider_result_binding_mismatch');
+                }
+                const raw = Object.freeze({
+                  text: result.text,
+                  provider: providerInput.model,
+                  verifiedFacts: Object.freeze({
+                    modelState: 'authenticated' as const,
+                    plugins: Object.freeze([]),
+                    mcps: Object.freeze([]),
+                  }),
+                  completedAt,
                 });
+                providerArtifactDrafts.set(raw, Object.freeze([]));
+                rememberProviderEvidence(
+                  Object.freeze({
+                    producerId: 'provider_response',
+                    accountId: providerInput.accountId,
+                    runId: providerInput.runId,
+                    requestId: providerInput.requestId,
+                    attemptNumber: providerInput.attemptNumber,
+                    resultRef: `jresult_${providerInput.requestId}`,
+                    state: 'completed',
+                    verifiedAt: completedAt,
+                    providerId: providerInput.model.providerId,
+                    modelId: providerInput.model.modelId,
+                    modelSnapshotRef,
+                  }),
+                );
+                return raw;
+              });
               return Object.freeze({
                 receipt: Object.freeze({
                   providerId: providerInput.model.providerId,
@@ -538,6 +558,26 @@ export async function installJarvisKernelRuntimeHost(
         activeTurnScopes.delete(turnInput.run.id);
       }
     },
+    async startVoiceTurn(turnInput) {
+      if (disposed) throw new Error('jarvis_kernel_host_disposed');
+      activeTurnScopes.set(
+        turnInput.run.id,
+        Object.freeze({
+          accountId: turnInput.accountId,
+          runId: turnInput.run.id,
+          requestId: turnInput.attempt.requestId,
+          chatId: turnInput.chatId,
+        }),
+      );
+      try {
+        return await composition.kernel.startVoiceTurn(turnInput);
+      } finally {
+        clearPreview(turnInput.accountId, turnInput.run.id);
+        activeTurnScopes.delete(turnInput.run.id);
+      }
+    },
+    openVoiceRecovery: (recoveryInput) => composition.kernel.openVoiceRecovery(recoveryInput),
+    openLiveEvidenceAccount: (accountId) => composition.liveEvidenceHost.openAccount(accountId),
     requestCancellation: (cancelInput) => composition.kernel.requestCancellation(cancelInput),
     dispose() {
       if (disposed) return;
@@ -546,6 +586,7 @@ export async function installJarvisKernelRuntimeHost(
       activeTurnScopes.clear();
       providerEvidence.clear();
       composition.liveEvidenceHost.dispose();
+      voiceVerifier.dispose();
     },
   });
   installedJarvisKernelRuntimeHost = host;
@@ -554,6 +595,34 @@ export async function installJarvisKernelRuntimeHost(
     installedJarvisKernelRuntimeHost = null;
     host.dispose();
   };
+}
+
+/** @internal Protected voice routing only; returns a runtime-issued opaque handle. */
+export function startJarvisVoiceTurn(
+  input: Readonly<JarvisKernelTurnInput> & { surface: 'voice' },
+): ReturnType<JarvisKernelRuntime['startVoiceTurn']> {
+  const host = installedJarvisKernelRuntimeHost;
+  if (!host) throw new Error('jarvis_kernel_host_not_installed');
+  return host.startVoiceTurn(input);
+}
+
+/** @internal Account-scoped startup recovery only. */
+export function openJarvisVoiceRecovery(input: {
+  accountId: string;
+  runId: string;
+}): ReturnType<JarvisKernelRuntime['openVoiceRecovery']> {
+  const host = installedJarvisKernelRuntimeHost;
+  if (!host) throw new Error('jarvis_kernel_host_not_installed');
+  return host.openVoiceRecovery(input);
+}
+
+/** @internal Primary-main account lifecycle only; reconstruction stays host-owned. */
+export function openJarvisLiveEvidenceAccount(
+  accountId: string,
+): Promise<JarvisLiveEvidencePrimaryHostAccountSession> {
+  const host = installedJarvisKernelRuntimeHost;
+  if (!host) throw new Error('jarvis_kernel_host_not_installed');
+  return host.openLiveEvidenceAccount(accountId);
 }
 
 /**
@@ -581,6 +650,8 @@ export interface RuntimeBindings {
 export interface SendDetail {
   /** Chat the message belongs to. */
   chatId: string;
+  /** Immutable bound account for a protected canonical voice turn only. */
+  accountId?: string;
   /** Raw user text. */
   text: string;
   /** Optional agent override (otherwise routed by @mention or chat default). */
@@ -1245,6 +1316,16 @@ function connectionModeForProvider(providerId: string): 'native-api' | 'external
   return 'native-api';
 }
 
+function isCurrentBoundVoiceScope(accountId: string, chatId: string): boolean {
+  const identity = resolveAccountIdentity(useAuthStore.getState());
+  const session = useVoiceStore.getState().session;
+  return (
+    identity?.accountId === accountId &&
+    session?.accountId === accountId &&
+    session.chatId === chatId
+  );
+}
+
 async function createRuntimeShadowTurn(input: {
   agent: Agent;
   chatId: ChatId | string;
@@ -1348,6 +1429,7 @@ async function createRuntimeKernelTurn(input: {
   host: InstalledJarvisKernelRuntimeHost;
   agent: Agent;
   chatId: ChatId | string;
+  voiceAccountId?: string;
   workspaceId?: string;
   projectId?: string;
   text: string;
@@ -1360,6 +1442,13 @@ async function createRuntimeKernelTurn(input: {
 }): Promise<JarvisKernelTurnInput> {
   const account = resolveAccountIdentity(useAuthStore.getState());
   if (!account) throw new Error('canonical_account_identity_unavailable');
+  const accountId = input.speakReply ? input.voiceAccountId : account.accountId;
+  if (
+    !accountId ||
+    (input.speakReply && !isCurrentBoundVoiceScope(accountId, String(input.chatId)))
+  ) {
+    throw new Error('canonical_voice_session_scope_revoked');
+  }
   const createdAt = Date.now();
   const runId = createKernelRuntimeId('jrun');
   const requestId = createKernelRuntimeId('jreq');
@@ -1368,10 +1457,10 @@ async function createRuntimeKernelTurn(input: {
   const [coreHash, responseContractHash, capabilities] = await Promise.all([
     hashJarvisText(JARVIS_IDENTITY_POLICY.identityCore),
     hashJarvisText(JARVIS_IDENTITY_POLICY.responseContract),
-    input.host.capabilitySnapshots.getForAccount(account.accountId),
+    input.host.capabilitySnapshots.getForAccount(accountId),
   ]);
   const context = await buildJarvisContextPackForAi({
-    accountId: account.accountId,
+    accountId,
     maxChars: 16_384,
     candidates: input.contextText.trim()
       ? [
@@ -1380,7 +1469,7 @@ async function createRuntimeKernelTurn(input: {
               id: `jsource_${requestId}`,
               kind: 'context_node' as const,
               label: 'VibeSpace admitted runtime context',
-              accountId: account.accountId,
+              accountId,
               ...(input.projectId ? { projectId: input.projectId } : {}),
               trust: 'app_verified' as const,
               sensitivity: 'private' as const,
@@ -1395,9 +1484,12 @@ async function createRuntimeKernelTurn(input: {
         ]
       : [],
   });
+  if (input.speakReply && !isCurrentBoundVoiceScope(accountId, String(input.chatId))) {
+    throw new Error('canonical_voice_session_scope_revoked');
+  }
   const run = await input.host.journal.allocateRun({
     id: runId,
-    accountId: account.accountId,
+    accountId,
     ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
     ...(input.projectId ? { projectId: input.projectId } : {}),
     chatId: String(input.chatId),
@@ -1415,7 +1507,7 @@ async function createRuntimeKernelTurn(input: {
       runId,
       attemptNumber: 1,
     },
-    accountId: account.accountId,
+    accountId,
     ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
     ...(input.projectId ? { projectId: input.projectId } : {}),
     chatId: String(input.chatId),
@@ -1979,12 +2071,6 @@ export function startRuntimeListener(
       }
     };
     const shouldSpeakReply = detail.speakReply === true;
-    if (shouldSpeakReply) {
-      streamingVoice = createStreamingVoiceSession({
-        voiceEngine: voiceSettings.voiceEngine,
-        voicePreset: voiceSettings.voicePreset,
-      });
-    }
     const stackSteps = stepsForPreset(stackPreset, stackTaskType, authState.stackCustomSteps);
     let activeKernelMode: JarvisKernelMode | null = null;
     let shadowCompilation: Extract<JarvisShadowCompilationResult, { ok: true }> | null = null;
@@ -2048,10 +2134,22 @@ export function startRuntimeListener(
     };
 
     try {
+      if (shouldSpeakReply && !isProtectedJarvis) {
+        streamingVoice = createStreamingVoiceSession({
+          voiceEngine: voiceSettings.voiceEngine,
+          voicePreset: voiceSettings.voicePreset,
+        });
+      }
       if (isProtectedJarvis) {
         activeKernelMode = resolveJarvisKernelMode(options.jarvisKernelMode);
         if (options.jarvisInterlocks) {
           assertJarvisRuntimeInterlocks(options.jarvisInterlocks);
+        }
+        if (shouldSpeakReply && activeKernelMode !== 'kernel') {
+          streamingVoice = createStreamingVoiceSession({
+            voiceEngine: voiceSettings.voiceEngine,
+            voicePreset: voiceSettings.voicePreset,
+          });
         }
         if (activeKernelMode === 'kernel') {
           const host = installedJarvisKernelRuntimeHost;
@@ -2062,14 +2160,9 @@ export function startRuntimeListener(
             );
           }
           const history = await bindings.getMessages(chatId);
-          const userMessage = [...history]
-            .reverse()
-            .find((message) => message.role === 'user');
+          const userMessage = [...history].reverse().find((message) => message.role === 'user');
           if (!userMessage) throw new Error('kernel_user_message_missing');
-          const includeImages = modelSupportsVision(
-            runnable.model.provider,
-            runnable.model.model,
-          );
+          const includeImages = modelSupportsVision(runnable.model.provider, runnable.model.model);
           const llmMessages = toLLMMessages(history, undefined, includeImages);
           const selected = chatModelSelection.mode === 'single' ? chatModelSelection : null;
           if (!selected) throw new Error('kernel_single_model_selection_required');
@@ -2097,9 +2190,10 @@ export function startRuntimeListener(
             host,
             agent: runnable,
             chatId,
-            ...(chatRecord?.workspace_id
-              ? { workspaceId: String(chatRecord.workspace_id) }
+            ...(detail.speakReply === true && detail.accountId
+              ? { voiceAccountId: detail.accountId }
               : {}),
+            ...(chatRecord?.workspace_id ? { workspaceId: String(chatRecord.workspace_id) } : {}),
             ...(projectId ? { projectId: String(projectId) } : {}),
             text,
             userMessageId: userMessage.id,
@@ -2112,11 +2206,58 @@ export function startRuntimeListener(
           useAgentStore.getState().setRunState(agent.id, 'streaming');
           useAgentStore.getState().setVerb(agent.id, 'thinking');
           dispatchRunState(chatId, 'running');
-          const outcome = await host.runInitialTurn(turn);
-          if (outcome.kind === 'account_authority_revoked') {
-            throw new Error('kernel_account_authority_revoked');
+          let response: import('@/lib/jarvis/contracts').JarvisResponseEnvelope;
+          let canonicalVoiceCancelled = false;
+          if (turn.surface === 'voice') {
+            useVoiceStore.getState().setSessionRun(turn.run.id);
+            const started = await host.startVoiceTurn(
+              turn as Readonly<JarvisKernelTurnInput> & { surface: 'voice' },
+            );
+            if (started.kind === 'account_authority_revoked') {
+              throw new Error('kernel_account_authority_revoked');
+            }
+            const { result, handle } = started.value;
+            try {
+              const ready = await handle.commitResponseReady();
+              if (ready.kind === 'account_authority_revoked') {
+                throw new Error('kernel_account_authority_revoked');
+              }
+              if (!ready.value.committed) {
+                throw new Error(`voice_response_ready_${ready.value.reason}`);
+              }
+              const playback = await handle.runValidatedPlayback();
+              if (playback.kind === 'account_authority_revoked') {
+                throw new Error('kernel_account_authority_revoked');
+              }
+              if (!playback.value.committed) {
+                throw new Error(`voice_playback_${playback.value.reason}`);
+              }
+              canonicalVoiceCancelled = playback.value.run.status === 'cancelled';
+              useVoiceStore.getState().setSessionRun(undefined);
+              response = result.response;
+            } finally {
+              handle.dispose();
+            }
+          } else {
+            const outcome = await host.runInitialTurn(turn);
+            if (outcome.kind === 'account_authority_revoked') {
+              throw new Error('kernel_account_authority_revoked');
+            }
+            response = outcome.value.response;
           }
-          const response = outcome.value.response;
+          if (canonicalVoiceCancelled) {
+            useAgentStore.getState().setRunState(agent.id, 'idle');
+            useAgentStore.getState().setVerb(agent.id, undefined);
+            useChatActivityStore.getState().update(chatId, agentActivityId, {
+              status: 'cancelled',
+              title: `@${agent.slug} cancelled`,
+              subtitle: 'Voice playback stopped after the response was saved.',
+              ts: Date.now(),
+            });
+            dispatchRunState(chatId, 'cancelled');
+            updateStructuredAgentStatus(detail.structuredContext, 'cancelled', 'Cancelled');
+            return;
+          }
           useAgentStore.getState().setRunState(agent.id, 'done');
           useAgentStore.getState().setVerb(agent.id, undefined);
           useChatActivityStore.getState().update(chatId, agentActivityId, {

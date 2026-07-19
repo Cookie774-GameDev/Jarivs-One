@@ -2,12 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { parseSyncQueueOwner } from '@/lib/cloudSyncQueueOwner';
 import { createJarvisDb, type JarvisDexie } from '@/lib/db';
+import { fromJarvisRunRow, toJarvisEventRow, toJarvisRunRow } from '@/lib/db/jarvisMappers';
 import {
-  fromJarvisRunRow,
-  toJarvisEventRow,
-  toJarvisRunRow,
-} from '@/lib/db/jarvisMappers';
-import { createKernelTurnTransactionAuthority } from '@/lib/db/kernelTurnTransactionAuthority';
+  createKernelTurnTransactionAuthority,
+  type KernelLifecycleTransactionContext,
+  type KernelTurnTransactionAuthority,
+} from '@/lib/db/kernelTurnTransactionAuthority';
+import type { SignalBoundTransactionResult } from '@/lib/db/signalBoundTransaction';
 import { cloudSyncQueueOwnerKey } from '@/lib/cloudSyncQueueOwner';
 import { TEST_INDEXED_DB, uniqueTestDbName } from '@/test/indexedDb';
 import type { Chat, ChatId, Message, MessageId, WorkspaceId } from '@/types';
@@ -22,9 +23,7 @@ import { createKernelTurnCommit, type KernelTurnCommitInput } from './kernelTurn
 
 const NOW = 1_786_300_000_000;
 
-function attempt(
-  overrides: Partial<JarvisTransportAttemptV1> = {},
-): JarvisTransportAttemptV1 {
+function attempt(overrides: Partial<JarvisTransportAttemptV1> = {}): JarvisTransportAttemptV1 {
   return {
     schemaVersion: 1,
     attemptNumber: 1,
@@ -148,6 +147,48 @@ function terminalEvent(artifacts: readonly JarvisArtifactV1[]): KernelTurnCommit
   };
 }
 
+function providerResultSource() {
+  return {
+    schemaVersion: 1 as const,
+    accountId: 'account-kernel',
+    runId: 'run-kernel',
+    requestId: 'request-kernel',
+    attemptNumber: 1,
+    producerKind: 'provider' as const,
+    producerIdentity: {
+      producerKind: 'provider' as const,
+      providerId: 'provider-kernel',
+      modelId: 'model-kernel',
+      modelSnapshotRef: 'provider-kernel:model-kernel',
+    },
+    resultRef: 'jprovider_result_request-kernel_1',
+    observedAt: NOW + 10,
+    phase: 'result' as const,
+    state: 'completed' as const,
+  };
+}
+
+function playbackResultSource(state: 'completed' | 'degraded' = 'completed') {
+  return {
+    schemaVersion: 1 as const,
+    accountId: 'account-kernel',
+    runId: 'run-kernel',
+    requestId: 'request-kernel',
+    attemptNumber: 1,
+    producerKind: 'voice' as const,
+    producerIdentity: {
+      producerKind: 'voice' as const,
+      sessionId: 'test-voice-session',
+      engineKind: 'playback' as const,
+      executionId: 'test-playback-execution',
+    },
+    resultRef: 'voice-playback-result',
+    observedAt: NOW + 19,
+    phase: 'result' as const,
+    state,
+  };
+}
+
 function binding(controller = new AbortController()) {
   const assertCurrent = vi.fn(() => {
     if (controller.signal.aborted) throw new Error('account authority revoked');
@@ -199,8 +240,22 @@ describe('createKernelTurnCommit', () => {
       if (candidate !== authorityBinding.value) throw new Error('foreign binding');
     });
     const consumeArtifactsForCommit = vi.fn();
+    const baseTransactionAuthority = createKernelTurnTransactionAuthority(db);
+    const lifecycleCalls: (readonly string[])[] = [];
+    const transactionAuthority: KernelTurnTransactionAuthority = {
+      transaction: baseTransactionAuthority.transaction,
+      lifecycleTransaction<T>(
+        tables: readonly ['jarvis_runs', 'jarvis_events'],
+        signal: AbortSignal,
+        body: (context: KernelLifecycleTransactionContext) => T | Promise<T>,
+      ): Promise<SignalBoundTransactionResult<T>> {
+        lifecycleCalls.push([...tables]);
+        return baseTransactionAuthority.lifecycleTransaction<T>(tables, signal, body);
+      },
+      approvalTransaction: baseTransactionAuthority.approvalTransaction,
+    };
     const commit = createKernelTurnCommit({
-      transactionAuthority: createKernelTurnTransactionAuthority(db),
+      transactionAuthority,
       assertIssuedAccountBinding,
       consumeArtifactsForCommit,
     });
@@ -208,6 +263,8 @@ describe('createKernelTurnCommit', () => {
       ...authorityBinding,
       assertIssuedAccountBinding,
       consumeArtifactsForCommit,
+      lifecycleCalls,
+      transactionAuthority,
       commit,
     };
   }
@@ -276,6 +333,283 @@ describe('createKernelTurnCommit', () => {
     }
   });
 
+  it('atomically persists a voice response-ready checkpoint without terminalizing the run', async () => {
+    await seed({ source: 'voice', transportAttempts: [] });
+    const state = harness();
+    const responseInput = {
+      accountId: 'account-kernel',
+      runId: 'run-kernel',
+      requestId: 'request-kernel',
+      attemptNumber: 1,
+      accountBinding: state.value,
+      assistantMessage: assistantMessage(),
+      artifacts: [artifact()],
+      providerResultSource: providerResultSource(),
+      createdAt: NOW + 10,
+    };
+
+    const first = await state.commit.commitVoiceResponseReady(responseInput);
+    const second = await state.commit.commitVoiceResponseReady(responseInput);
+
+    expect(first).toMatchObject({
+      committed: true,
+      run: { status: 'running' },
+      event: {
+        type: 'message',
+        status: 'response_ready',
+        idempotencyKey: 'voice-response-ready:run-kernel:message-kernel',
+        title: 'Voice response ready',
+        safeSummary: 'The validated response is saved and awaiting playback outcome.',
+        artifactIds: ['artifact-kernel'],
+      },
+      message: { id: 'message-kernel' },
+      artifacts: [{ id: 'artifact-kernel' }],
+    });
+    expect(second).toEqual(first);
+    expect(state.consumeArtifactsForCommit).toHaveBeenCalledOnce();
+
+    const storedRun = fromJarvisRunRow((await db.jarvis_runs.get('run-kernel'))!);
+    expect(storedRun.status).toBe('running');
+    expect(storedRun.completedAt).toBeUndefined();
+    expect(await db.jarvis_events.count()).toBe(2);
+    expect(await db.messages.count()).toBe(1);
+    expect(await db.jarvis_artifacts.count()).toBe(1);
+    expect(await db.sync_queue.count()).toBe(2);
+  });
+
+  it('fails a voice response-ready attempt mismatch before artifact consumption or writes', async () => {
+    await seed({ source: 'voice', transportAttempts: [] });
+    const state = harness();
+
+    await expect(
+      state.commit.commitVoiceResponseReady({
+        accountId: 'account-kernel',
+        runId: 'run-kernel',
+        requestId: 'request-kernel',
+        attemptNumber: 1,
+        accountBinding: state.value,
+        assistantMessage: assistantMessage(),
+        artifacts: [artifact({ requestId: 'request-other' })],
+        providerResultSource: providerResultSource(),
+        createdAt: NOW + 10,
+      }),
+    ).resolves.toEqual({
+      committed: false,
+      reason: 'attempt_conflict',
+      actualStatus: 'running',
+    });
+
+    expect(state.consumeArtifactsForCommit).not.toHaveBeenCalled();
+    expect(await db.jarvis_events.count()).toBe(1);
+    expect(await db.messages.count()).toBe(0);
+    expect(await db.jarvis_artifacts.count()).toBe(0);
+    expect(await db.sync_queue.count()).toBe(0);
+  });
+
+  it('fails closed when only part of a response-ready checkpoint already exists', async () => {
+    await seed({ source: 'voice', transportAttempts: [] });
+    await db.messages.add(assistantMessage());
+    const state = harness();
+
+    await expect(
+      state.commit.commitVoiceResponseReady({
+        accountId: 'account-kernel',
+        runId: 'run-kernel',
+        requestId: 'request-kernel',
+        attemptNumber: 1,
+        accountBinding: state.value,
+        assistantMessage: assistantMessage(),
+        artifacts: [artifact()],
+        providerResultSource: providerResultSource(),
+        createdAt: NOW + 10,
+      }),
+    ).resolves.toEqual({
+      committed: false,
+      reason: 'response_ready_conflict',
+      actualStatus: 'running',
+    });
+
+    expect(state.consumeArtifactsForCommit).not.toHaveBeenCalled();
+    expect(await db.jarvis_events.count()).toBe(1);
+    expect(await db.jarvis_artifacts.count()).toBe(0);
+    expect(await db.sync_queue.count()).toBe(0);
+  });
+
+  it('terminalizes a response-ready voice run through the exact two-table lifecycle authority', async () => {
+    await seed({ source: 'voice', transportAttempts: [] });
+    const state = harness();
+    await expect(
+      state.commit.commitVoiceResponseReady({
+        accountId: 'account-kernel',
+        runId: 'run-kernel',
+        requestId: 'request-kernel',
+        attemptNumber: 1,
+        accountBinding: state.value,
+        assistantMessage: assistantMessage(),
+        artifacts: [artifact()],
+        providerResultSource: providerResultSource(),
+        createdAt: NOW + 10,
+      }),
+    ).resolves.toMatchObject({ committed: true });
+    const result = await state.commit.commitVoicePlayback({
+      accountId: 'account-kernel',
+      runId: 'run-kernel',
+      requestId: 'request-kernel',
+      attemptNumber: 1,
+      accountBinding: state.value,
+      terminalStatus: 'completed',
+      playbackResultSource: playbackResultSource(),
+      createdAt: NOW + 20,
+    });
+
+    expect(result).toMatchObject({
+      committed: true,
+      run: { status: 'completed', completedAt: NOW + 20 },
+      event: {
+        type: 'run_state',
+        status: 'completed',
+        idempotencyKey: 'voice-terminal:run-kernel:request-kernel:1:completed',
+        title: 'Voice playback completed',
+        safeSummary: 'The saved response finished verified playback.',
+        artifactIds: ['artifact-kernel'],
+        producerSourceEvidence: playbackResultSource(),
+      },
+    });
+    expect(state.lifecycleCalls).toEqual([['jarvis_runs', 'jarvis_events']]);
+    expect(await db.jarvis_events.count()).toBe(3);
+    expect(await db.messages.count()).toBe(1);
+    expect(await db.chats.count()).toBe(1);
+    expect(await db.sync_queue.count()).toBe(2);
+    expect(await db.settings.count()).toBe(2);
+    expect(await db.jarvis_artifacts.count()).toBe(1);
+  });
+
+  it('returns a phase-two status conflict without changing response-ready rows', async () => {
+    await seed({ source: 'voice', transportAttempts: [] });
+    const state = harness();
+    await state.commit.commitVoiceResponseReady({
+      accountId: 'account-kernel',
+      runId: 'run-kernel',
+      requestId: 'request-kernel',
+      attemptNumber: 1,
+      accountBinding: state.value,
+      assistantMessage: assistantMessage(),
+      artifacts: [artifact()],
+      providerResultSource: providerResultSource(),
+      createdAt: NOW + 10,
+    });
+    const current = fromJarvisRunRow((await db.jarvis_runs.get('run-kernel'))!);
+    await db.jarvis_runs.put(
+      toJarvisRunRow({
+        ...current,
+        status: 'cancelled',
+        updatedAt: NOW + 15,
+        completedAt: NOW + 15,
+      }),
+    );
+
+    await expect(
+      state.commit.commitVoicePlayback({
+        accountId: 'account-kernel',
+        runId: 'run-kernel',
+        requestId: 'request-kernel',
+        attemptNumber: 1,
+        accountBinding: state.value,
+        terminalStatus: 'completed',
+        createdAt: NOW + 20,
+      }),
+    ).resolves.toEqual({
+      committed: false,
+      reason: 'status_conflict',
+      actualStatus: 'cancelled',
+    });
+
+    expect(await db.jarvis_events.count()).toBe(2);
+    expect(await db.messages.count()).toBe(1);
+    expect(await db.jarvis_artifacts.count()).toBe(1);
+  });
+
+  it('rolls back the phase-two run update when the terminal event write fails', async () => {
+    await seed({ source: 'voice', transportAttempts: [] });
+    const state = harness();
+    await state.commit.commitVoiceResponseReady({
+      accountId: 'account-kernel',
+      runId: 'run-kernel',
+      requestId: 'request-kernel',
+      attemptNumber: 1,
+      accountBinding: state.value,
+      assistantMessage: assistantMessage(),
+      artifacts: [artifact()],
+      providerResultSource: providerResultSource(),
+      createdAt: NOW + 10,
+    });
+    vi.spyOn(db.jarvis_events, 'add').mockRejectedValueOnce(
+      new Error('injected terminal event failure'),
+    );
+
+    await expect(
+      state.commit.commitVoicePlayback({
+        accountId: 'account-kernel',
+        runId: 'run-kernel',
+        requestId: 'request-kernel',
+        attemptNumber: 1,
+        accountBinding: state.value,
+        terminalStatus: 'completed',
+        createdAt: NOW + 20,
+      }),
+    ).rejects.toThrow('injected terminal event failure');
+
+    const afterFailure = fromJarvisRunRow((await db.jarvis_runs.get('run-kernel'))!);
+    expect(afterFailure.status).toBe('running');
+    expect(afterFailure.completedAt).toBeUndefined();
+    expect(await db.jarvis_events.count()).toBe(2);
+    expect(await db.messages.count()).toBe(1);
+    expect(await db.jarvis_artifacts.count()).toBe(1);
+  });
+
+  it('rolls back phase two and reports authority revocation during settlement', async () => {
+    await seed({ source: 'voice', transportAttempts: [] });
+    const authorityBinding = binding();
+    const state = harness(authorityBinding);
+    await state.commit.commitVoiceResponseReady({
+      accountId: 'account-kernel',
+      runId: 'run-kernel',
+      requestId: 'request-kernel',
+      attemptNumber: 1,
+      accountBinding: state.value,
+      assistantMessage: assistantMessage(),
+      artifacts: [artifact()],
+      providerResultSource: providerResultSource(),
+      createdAt: NOW + 10,
+    });
+    const add = db.jarvis_events.add.bind(db.jarvis_events);
+    vi.spyOn(db.jarvis_events, 'add').mockImplementationOnce((row) =>
+      add(row).then((result) => {
+        authorityBinding.controller.abort('account changed during voice terminal commit');
+        return result;
+      }),
+    );
+
+    await expect(
+      state.commit.commitVoicePlayback({
+        accountId: 'account-kernel',
+        runId: 'run-kernel',
+        requestId: 'request-kernel',
+        attemptNumber: 1,
+        accountBinding: state.value,
+        terminalStatus: 'completed',
+        createdAt: NOW + 20,
+      }),
+    ).resolves.toEqual({ committed: false, reason: 'account_authority_revoked' });
+
+    const afterRevocation = fromJarvisRunRow((await db.jarvis_runs.get('run-kernel'))!);
+    expect(afterRevocation.status).toBe('running');
+    expect(afterRevocation.completedAt).toBeUndefined();
+    expect(await db.jarvis_events.count()).toBe(2);
+    expect(await db.messages.count()).toBe(1);
+    expect(await db.jarvis_artifacts.count()).toBe(1);
+  });
+
   it('commits an artifact-free terminal turn without invoking the pending-artifact consumer', async () => {
     await seed({ source: 'typed_chat', transportAttempts: [] });
     const state = harness();
@@ -300,9 +634,7 @@ describe('createKernelTurnCommit', () => {
     const state = harness();
 
     await expect(
-      state.commit.commitKernelTurn(
-        input(state.value, { transportAttemptCompletion: undefined }),
-      ),
+      state.commit.commitKernelTurn(input(state.value, { transportAttemptCompletion: undefined })),
     ).resolves.toEqual({
       committed: false,
       reason: 'attempt_conflict',

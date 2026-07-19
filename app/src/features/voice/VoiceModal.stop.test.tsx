@@ -18,6 +18,7 @@ const voiceMockState = vi.hoisted(() => ({
 
 const routerMocks = vi.hoisted(() => ({
   handleVoiceModuleClosed: vi.fn(),
+  syncVoiceModuleOpenState: vi.fn(),
   stopCurrentVoiceResponse: vi.fn(),
 }));
 
@@ -87,6 +88,8 @@ import { VoiceService } from './VoiceService';
 import { useVoiceStore } from './store';
 import { selectionFromOption } from '@/lib/ai/modelSelection';
 import { DEFAULT_CUSTOM_STEPS } from '@/lib/ai/stacks/presets';
+import { createVoiceSessionBinding } from './voiceSessionBinding';
+import type { ChatId } from '@/types/common';
 
 function emitVoice(event: string, payload?: unknown) {
   voiceMockState.handlers.get(event)?.forEach((fn) => fn(payload));
@@ -136,6 +139,29 @@ describe('VoiceModal stop control and mic recovery', () => {
 
     expect(routerMocks.stopCurrentVoiceResponse).toHaveBeenCalledTimes(1);
     expect(useVoiceStore.getState().state).toBe('listening');
+  });
+
+  it('delegates bound-run cancellation before closing the voice UI', () => {
+    setupAuth(false);
+    useVoiceStore.getState().beginSession(
+      createVoiceSessionBinding({
+        sessionId: 'vsession-test',
+        accountId: 'account-test',
+        chatId: 'chat_voice' as ChatId,
+        startedAt: 1,
+      }),
+    );
+    useVoiceStore.getState().setSessionRun('run-voice');
+    routerMocks.handleVoiceModuleClosed.mockImplementationOnce(() => {
+      expect(useUIStore.getState().voiceModalOpen).toBe(true);
+      expect(useVoiceStore.getState().session?.activeRunId).toBe('run-voice');
+    });
+    render(<VoiceModal />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Close Jarvis voice session/i }));
+
+    expect(routerMocks.handleVoiceModuleClosed).toHaveBeenCalled();
+    expect(useUIStore.getState().voiceModalOpen).toBe(false);
   });
 
   it('clicking the orb while Jarvis speaks stops the response and goes idle (push-to-talk)', async () => {

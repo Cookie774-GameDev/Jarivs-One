@@ -45,7 +45,11 @@ import { startWorkspaceAnalyticsClock } from '@/features/inspector/workspaceAnal
 import { GlobalSttHost } from '@/features/composer-stt';
 import { FileExplorerHost } from '@/features/files';
 import { Toaster, toast } from '@/components/ui/toast';
-import { startRuntimeListener } from '@/lib/ai/runtime';
+import {
+  openJarvisLiveEvidenceAccount,
+  openJarvisVoiceRecovery,
+  startRuntimeListener,
+} from '@/lib/ai/runtime';
 import { startJarvisLearningListener } from '@/features/jarvis-memory/learningListener';
 import { useJarvisLearningStore } from '@/features/jarvis-memory/learningStore';
 import { startJarvisOperatorListener } from '@/lib/jarvis/operatorListener';
@@ -74,13 +78,17 @@ import {
   type JarvisPersistenceReadyReceipt,
 } from '@/lib/jarvis/persistenceCoordinator';
 import { findProtectedJarvisAgent } from '@/lib/jarvis/identity';
-import type { JarvisEvent } from '@/lib/jarvis/contracts/execution';
+import type {
+  JarvisEvent,
+  JarvisLiveEvidencePrimaryHostAccountSession,
+} from '@/lib/jarvis/contracts/execution';
 import {
   projectJarvisRunForLegacyUi,
   type JarvisTaskRunProjection,
 } from '@/lib/jarvis/executionJournal/legacyTaskRunAdapter';
 import { projectJarvisEventsForLegacyActivity } from '@/lib/jarvis/executionJournal/legacyActivityProjection';
 import { createJarvisRecoveryScanner } from '@/lib/jarvis/executionJournal';
+import { recoverVoiceResponses as recoverBoundVoiceResponses } from '@/features/voice/voiceResponseRecovery';
 import {
   activateSyncQueueCloudAuthority,
   releaseSyncQueueCloudAuthority,
@@ -144,6 +152,16 @@ export interface JarvisLegacyLifecycleAccountServices {
     isCurrent: () => boolean;
   }): Promise<number>;
 }
+
+export interface JarvisVoiceResponseRecoveryAccountServices {
+  openLiveEvidenceAccount(accountId: string): Promise<JarvisLiveEvidencePrimaryHostAccountSession>;
+  recoverVoiceResponses(input: { accountId: string }): Promise<unknown>;
+}
+
+export type JarvisVoiceRecoveryAccountSession = Readonly<{
+  session: JarvisLiveEvidencePrimaryHostAccountSession;
+  recover(): Promise<unknown>;
+}>;
 
 function reportLifecycleError(error: unknown): void {
   console.warn(
@@ -240,6 +258,75 @@ async function resumeCanonicalJarvisRecovery(input: {
         window.dispatchEvent(
           new CustomEvent('jarvis:recovery-presentation', { detail: presentation }),
         );
+      }
+    },
+  });
+}
+
+const DEFAULT_JARVIS_VOICE_RESPONSE_RECOVERY_SERVICES: JarvisVoiceResponseRecoveryAccountServices =
+  Object.freeze({
+    openLiveEvidenceAccount: openJarvisLiveEvidenceAccount,
+    recoverVoiceResponses: ({ accountId }: { accountId: string }) =>
+      recoverBoundVoiceResponses({
+        accountId,
+        scanner: createJarvisRecoveryScanner({ runs: jarvisRunRepo, events: jarvisEventRepo }),
+        openVoiceRecovery: openJarvisVoiceRecovery,
+      }),
+  });
+
+export async function startJarvisVoiceRecoveryAccountSession(input: {
+  accountId: string;
+  readyReceipt: JarvisPersistenceReadyReceipt;
+  isCurrent: () => boolean;
+  services?: JarvisVoiceResponseRecoveryAccountServices;
+}): Promise<JarvisVoiceRecoveryAccountSession | undefined> {
+  if (
+    input.readyReceipt.state !== 'ready' ||
+    input.readyReceipt.accountId !== input.accountId ||
+    !input.isCurrent()
+  ) {
+    return undefined;
+  }
+
+  const services = input.services ?? DEFAULT_JARVIS_VOICE_RESPONSE_RECOVERY_SERVICES;
+  const session = await services.openLiveEvidenceAccount(input.accountId);
+  if (!input.isCurrent()) {
+    session.dispose();
+    return undefined;
+  }
+  if (session.accountId !== input.accountId) {
+    session.dispose();
+    throw new Error('jarvis_live_evidence_account_mismatch');
+  }
+  try {
+    session.assertCurrent();
+  } catch (error) {
+    session.dispose();
+    throw error;
+  }
+
+  let recoveryClaimed = false;
+  return Object.freeze({
+    session,
+    async recover(): Promise<unknown> {
+      if (recoveryClaimed) throw new Error('voice_response_recovery_already_started');
+      recoveryClaimed = true;
+      try {
+        if (!input.isCurrent()) {
+          session.dispose();
+          return undefined;
+        }
+        session.assertCurrent();
+        const summary = await services.recoverVoiceResponses({ accountId: input.accountId });
+        if (!input.isCurrent()) {
+          session.dispose();
+          return summary;
+        }
+        session.assertCurrent();
+        return summary;
+      } catch (error) {
+        session.dispose();
+        throw error;
       }
     },
   });
@@ -537,6 +624,7 @@ function useBoot() {
     let stopOperator: (() => void) | undefined;
     let stopAllAboutMePersistence: (() => void | Promise<void>) | undefined;
     let stopTaskRunLifecycle: (() => void) | undefined;
+    let liveEvidenceAccountSession: JarvisLiveEvidencePrimaryHostAccountSession | undefined;
     let stopNotifications: (() => void) | undefined;
     let stopTerminalScheduler: (() => void) | undefined;
     let stopJarvisScheduleRunner: (() => void) | undefined;
@@ -661,7 +749,8 @@ function useBoot() {
       accountRecoveryController?.abort();
       accountRecoveryController = undefined;
       const oldAccountId = activeAccountIdentity?.accountId;
-      if (oldAccountId) invalidateActiveKernelAccount(oldAccountId);
+      const oldLiveEvidenceSession = liveEvidenceAccountSession;
+      liveEvidenceAccountSession = undefined;
       const stops = [stopLearning, stopAllAboutMePersistence, stopTaskRunLifecycle].filter(
         (stop): stop is () => void | Promise<void> => Boolean(stop),
       );
@@ -677,6 +766,8 @@ function useBoot() {
           return Promise.reject(error);
         }
       });
+      oldLiveEvidenceSession?.dispose();
+      if (oldAccountId) invalidateActiveKernelAccount(oldAccountId);
       quarantineAccountScopedState();
       const results = await Promise.allSettled(pendingStops);
       for (const result of results) {
@@ -718,8 +809,6 @@ function useBoot() {
         subscribeAccount: (_listener: () => void) => () => {},
       };
       try {
-        stopLearning = startJarvisLearningListener(fixedAccountBindings);
-        stopAllAboutMePersistence = startAllAboutMePersistence(fixedAccountBindings);
         const isCurrent = () =>
           !cancelled &&
           accountListenersBootReady &&
@@ -727,6 +816,21 @@ function useBoot() {
           sameAccountIdentity(activeAccountIdentity, nextIdentity) &&
           activePersistenceGeneration === readyReceipt.generation &&
           sameReadyReceipt(persistenceReadyReceipt, readyReceipt);
+        const voiceRecovery = await startJarvisVoiceRecoveryAccountSession({
+          accountId,
+          readyReceipt,
+          isCurrent,
+        });
+        if (!voiceRecovery) return;
+        if (!isCurrent()) {
+          voiceRecovery.session.dispose();
+          return;
+        }
+        liveEvidenceAccountSession = voiceRecovery.session;
+        await voiceRecovery.recover();
+        if (!isCurrent()) return;
+        stopLearning = startJarvisLearningListener(fixedAccountBindings);
+        stopAllAboutMePersistence = startAllAboutMePersistence(fixedAccountBindings);
         stopTaskRunLifecycle = await startJarvisLegacyLifecycleAccountSession({
           accountId,
           readyReceipt,

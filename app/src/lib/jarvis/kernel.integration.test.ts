@@ -15,7 +15,7 @@ import type {
   JarvisKernelTurnInput,
   JarvisProviderStartedReceipt,
 } from './kernel';
-import { runJarvisKernelTurn } from './kernel';
+import { runJarvisKernelTurn, runJarvisKernelVoiceTurn } from './kernel';
 
 const NOW = 1_786_300_200_000;
 
@@ -490,6 +490,103 @@ describe('runJarvisKernelTurn explicit kernel integration', () => {
       'prepared-dispose',
     ]);
     expect(input.workspaceId as WorkspaceId).toBe('workspace-kernel');
+  });
+
+  it('returns a host-only deferred voice result while retaining provider evidence until response readiness', async () => {
+    const voiceRun = run({ source: 'voice' });
+    const input = {
+      ...turnInput({ run: voiceRun }),
+      surface: 'voice' as const,
+    };
+    const harness = createKernelHarness(input, { persisted: voiceRun });
+
+    const result = await runJarvisKernelVoiceTurn(input, harness.deps);
+
+    expect(result).toMatchObject({
+      kind: 'committed',
+      value: {
+        response: expect.objectContaining({ runId: voiceRun.id }),
+        assistantMessage: expect.objectContaining({ chat_id: voiceRun.chatId }),
+        artifacts: [],
+        terminalStatus: 'completed',
+      },
+    });
+    expect(harness.commitKernelTurn).not.toHaveBeenCalled();
+    expect(harness.lifecycle.recordProviderResult).not.toHaveBeenCalled();
+    expect(harness.providerRegistration.dispose).not.toHaveBeenCalled();
+    expect(harness.cleanupCalls).toEqual(['abort', 'resolved', 'prepared']);
+
+    if (result.kind !== 'committed') throw new Error('expected committed voice result');
+    await expect(result.value.completeProviderEvidence()).resolves.toMatchObject({
+      kind: 'committed',
+    });
+    result.value.dispose();
+    result.value.dispose();
+
+    expect(harness.lifecycle.recordProviderResult).toHaveBeenCalledOnce();
+    expect(harness.providerRegistration.dispose).toHaveBeenCalledOnce();
+  });
+
+  it('rematerializes deferred voice artifacts with fresh private identities for one bounded retry', async () => {
+    const voiceRun = run({ source: 'voice' });
+    const input = {
+      ...turnInput({ run: voiceRun }),
+      surface: 'voice' as const,
+    };
+    const harness = createKernelHarness(input, { persisted: voiceRun });
+    const draft: JarvisArtifactDraft = {
+      artifact: {
+        kind: 'provider_result',
+        title: 'Retry-safe voice artifact',
+        sourceRefs: [],
+        createdAt: NOW + 4,
+      },
+      backing: { kind: 'producer_result', content: 'verified voice bytes' },
+    };
+    let identity = 0;
+    const materialize = vi.fn(async (): Promise<JarvisArtifactV1> => {
+      identity += 1;
+      return Object.freeze({
+        schemaVersion: 1,
+        id: `jartifact_voice-retry-${identity}`,
+        runId: input.run.id,
+        requestId: input.attempt.requestId,
+        attemptNumber: input.attempt.attemptNumber,
+        state: 'ready',
+        kind: 'provider_result',
+        title: draft.artifact.title,
+        sourceRefs: [],
+        createdAt: NOW + 4,
+        localReference: {
+          kind: 'blob_key' as const,
+          value: `jarvis-artifacts/voice-retry-${identity}`,
+        },
+      });
+    });
+    const result = await runJarvisKernelVoiceTurn(input, {
+      ...harness.deps,
+      takeProviderArtifactDrafts: vi.fn(() => [draft]),
+      issueBoundArtifactPipeline: vi.fn(() => ({ provider: { materialize } }) as never),
+    });
+
+    if (result.kind !== 'committed') throw new Error('expected committed voice result');
+    const rematerialized = await result.value.rematerializeForRetry();
+
+    expect(result.value.artifacts.map((artifact) => artifact.id)).toEqual([
+      'jartifact_voice-retry-1',
+    ]);
+    expect(rematerialized.artifacts.map((artifact) => artifact.id)).toEqual([
+      'jartifact_voice-retry-2',
+    ]);
+    expect(rematerialized.response.artifactIds).toEqual(['jartifact_voice-retry-2']);
+    expect(rematerialized.assistantMessage.parts).toContainEqual(
+      expect.objectContaining({
+        kind: 'jarvis_artifact_ref',
+        artifact: expect.objectContaining({ id: 'jartifact_voice-retry-2' }),
+      }),
+    );
+    expect(materialize).toHaveBeenCalledTimes(2);
+    rematerialized.dispose();
   });
 
   it('rejects a user-created Jarvis slug collision before provider preparation', async () => {

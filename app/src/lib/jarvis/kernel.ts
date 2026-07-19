@@ -9,6 +9,7 @@ import type {
   JarvisEvent,
   JarvisExecutionJournal,
   JarvisLiveEvidenceProof,
+  JarvisProducerSourceEvidenceV1,
   JarvisRun,
   JarvisRunStatus,
   JarvisRunTransitionEventInput,
@@ -70,6 +71,17 @@ export interface JarvisKernelTurnResult {
   compiled: Readonly<CompiledJarvisPrompt>;
   response: Readonly<JarvisResponseEnvelope>;
   messageParts: readonly Part[];
+}
+
+/** @internal Returned only to the closed kernel runtime for voice persistence. */
+export interface JarvisDeferredVoiceKernelTurnResult extends JarvisKernelTurnResult {
+  assistantMessage: Readonly<Message>;
+  artifacts: readonly JarvisArtifactV1[];
+  terminalStatus: KernelTurnTerminalStatus;
+  providerResultSource: Readonly<JarvisProducerSourceEvidenceV1>;
+  completeProviderEvidence(): Promise<JarvisAuthorityBoundResult<JarvisLiveEvidenceProof>>;
+  rematerializeForRetry(): Promise<JarvisDeferredVoiceKernelTurnResult>;
+  dispose(): void;
 }
 
 export type JarvisProviderStartedReceipt = Readonly<{
@@ -316,10 +328,11 @@ function providerResultSource(input: {
   };
 }
 
-export async function runJarvisKernelTurn(
+async function runJarvisKernelExecution(
   input: Readonly<JarvisKernelTurnInput>,
   deps: JarvisKernelDeps,
-): Promise<JarvisAuthorityBoundResult<JarvisKernelTurnResult>> {
+  deferTerminalCommit: boolean,
+): Promise<JarvisAuthorityBoundResult<JarvisDeferredVoiceKernelTurnResult>> {
   if (!isProtectedJarvisAgent(input.agent)) {
     throw new JarvisPromptCompilationError(
       'not_protected_jarvis',
@@ -403,11 +416,19 @@ export async function runJarvisKernelTurn(
   let started: JarvisStartedProviderDispatch | undefined;
   let registration: JarvisBoundLiveEvidenceRegistration | undefined;
   let terminalCommitted = false;
+  let providerEvidenceRetained = false;
+  let providerEvidenceDisposed = false;
   let hasPrimaryFailure = false;
-  const retainRevokedOutcome = (): JarvisAuthorityBoundResult<JarvisKernelTurnResult> => {
-    hasPrimaryFailure = true;
-    return revoked();
+  const disposeProviderEvidence = (): void => {
+    if (providerEvidenceDisposed) return;
+    providerEvidenceDisposed = true;
+    registration?.dispose();
   };
+  const retainRevokedOutcome =
+    (): JarvisAuthorityBoundResult<JarvisDeferredVoiceKernelTurnResult> => {
+      hasPrimaryFailure = true;
+      return revoked();
+    };
 
   try {
     unregisterAbort = lifecycle.registerAbortOwner({
@@ -464,35 +485,41 @@ export async function runJarvisKernelTurn(
       throw new Error('kernel_provider_artifact_sidecar_missing');
     }
     const drafts = snapshotProviderArtifactDrafts(sidecarDrafts);
-    const artifacts: JarvisArtifactV1[] = [];
-    if (drafts.length > 0) {
+    const providerArtifactEvidence: CanonicalProviderEvidence = Object.freeze({
+      producerId: 'provider_response',
+      accountId: input.accountId,
+      runId: input.run.id,
+      requestId: input.attempt.requestId,
+      attemptNumber: input.attempt.attemptNumber,
+      resultRef,
+      state: status === 'completed' ? 'completed' : 'partial',
+      verifiedAt: observedAt,
+      providerId: started.receipt.providerId,
+      modelId: started.receipt.modelId,
+      modelSnapshotRef: started.receipt.modelSnapshotRef,
+    });
+    const materializeProviderArtifacts = async (): Promise<readonly JarvisArtifactV1[]> => {
+      const materialized: JarvisArtifactV1[] = [];
+      if (drafts.length === 0) return Object.freeze(materialized);
       const pipeline = deps.issueBoundArtifactPipeline(deps.artifactEffectClaims);
-      const evidence: CanonicalProviderEvidence = Object.freeze({
-        producerId: 'provider_response',
-        accountId: input.accountId,
-        runId: input.run.id,
-        requestId: input.attempt.requestId,
-        attemptNumber: input.attempt.attemptNumber,
-        resultRef,
-        state: status === 'completed' ? 'completed' : 'partial',
-        verifiedAt: observedAt,
-        providerId: started.receipt.providerId,
-        modelId: started.receipt.modelId,
-        modelSnapshotRef: started.receipt.modelSnapshotRef,
-      });
       for (const draft of drafts) {
-        const artifact = await pipeline.provider.materialize({ evidence, draft });
+        const artifact = await pipeline.provider.materialize({
+          evidence: providerArtifactEvidence,
+          draft,
+        });
         if (
           artifact.runId !== input.run.id ||
           artifact.requestId !== input.attempt.requestId ||
           artifact.attemptNumber !== input.attempt.attemptNumber ||
-          artifacts.some((candidate) => candidate.id === artifact.id)
+          materialized.some((candidate) => candidate.id === artifact.id)
         ) {
           throw new Error('kernel_provider_artifact_scope_mismatch');
         }
-        artifacts.push(artifact);
+        materialized.push(artifact);
       }
-    }
+      return Object.freeze(materialized);
+    };
+    const artifacts = await materializeProviderArtifacts();
     const response = deepFreezeJarvisCopy({
       ...processedResponse,
       artifactIds: artifacts.map((artifact) => artifact.id),
@@ -517,73 +544,126 @@ export async function runJarvisKernelTurn(
       created_at: response.completedAt,
       updated_at: response.completedAt,
     };
-    const commit = await deps.commitKernelTurn({
-      accountId: input.accountId,
-      runId: input.run.id,
-      requestId: input.attempt.requestId,
-      attemptNumber: input.attempt.attemptNumber,
-      expectedStatus: 'running',
-      terminal: {
-        status,
-        event: {
-          idempotencyKey: `kernel-terminal:${input.attempt.requestId}:${input.attempt.attemptNumber}`,
-          title: status === 'completed' ? 'Kernel turn completed' : 'Kernel turn ended',
-          safeSummary:
-            status === 'completed'
-              ? 'The protected turn completed.'
-              : 'The protected turn ended with verified degraded state.',
-          sourceRefs: [...response.sourceRefs],
-          artifactIds: [...response.artifactIds],
-          createdAt: response.completedAt,
-          producerSourceEvidence: expectedProviderResultSource,
-          canonicalResultEvidence: {
-            schemaVersion: 1,
-            kind: 'kernel_turn_committed',
-            accountId: input.accountId,
-            runId: input.run.id,
-            requestId: input.attempt.requestId,
-            attemptNumber: input.attempt.attemptNumber,
-            state: resultState,
-            resultRef: resultRef as `jresult_${string}`,
-            observedAt,
-          },
+    let providerEvidenceCompletion:
+      | Promise<JarvisAuthorityBoundResult<JarvisLiveEvidenceProof>>
+      | undefined;
+    const completeProviderEvidence = () => {
+      if (providerEvidenceDisposed) {
+        throw new Error('kernel_voice_provider_evidence_disposed');
+      }
+      providerEvidenceCompletion ??= lifecycle.recordProviderResult({
+        state: resultState,
+        resultRef,
+        observedAt,
+      });
+      return providerEvidenceCompletion;
+    };
+    const buildDeferredVoiceResult = (
+      materializedArtifacts: readonly JarvisArtifactV1[],
+    ): JarvisDeferredVoiceKernelTurnResult => {
+      const materializedResponse = deepFreezeJarvisCopy({
+        ...processedResponse,
+        artifactIds: materializedArtifacts.map((artifact) => artifact.id),
+      }) as Readonly<JarvisResponseEnvelope>;
+      const materializedMessageParts = projectJarvisEnvelopeToMessageParts({
+        response: materializedResponse,
+        artifacts: materializedArtifacts,
+      });
+      const materializedAssistantMessage: Message = {
+        id: `msg_${input.attempt.requestId}` as MessageId,
+        chat_id: input.chatId as ChatId,
+        role: 'assistant',
+        agent_id: input.agent.id,
+        parts: [...materializedMessageParts],
+        created_at: materializedResponse.completedAt,
+        updated_at: materializedResponse.completedAt,
+      };
+      return Object.freeze({
+        request,
+        compiled,
+        response: materializedResponse,
+        messageParts: materializedMessageParts,
+        assistantMessage: deepFreezeJarvisCopy(materializedAssistantMessage) as Readonly<Message>,
+        artifacts: Object.freeze([...materializedArtifacts]),
+        terminalStatus: status,
+        providerResultSource: deepFreezeJarvisCopy(
+          expectedProviderResultSource,
+        ) as Readonly<JarvisProducerSourceEvidenceV1>,
+        completeProviderEvidence,
+        async rematerializeForRetry() {
+          if (providerEvidenceDisposed || !deferTerminalCommit) {
+            throw new Error('kernel_voice_rematerialization_unavailable');
+          }
+          return buildDeferredVoiceResult(await materializeProviderArtifacts());
         },
-      },
-      assistantMessage,
-      artifacts,
-      ...(input.attempt.kind === 'transport_retry'
-        ? {
-            transportAttemptCompletion: {
+        dispose: disposeProviderEvidence,
+      });
+    };
+
+    if (!deferTerminalCommit) {
+      const commit = await deps.commitKernelTurn({
+        accountId: input.accountId,
+        runId: input.run.id,
+        requestId: input.attempt.requestId,
+        attemptNumber: input.attempt.attemptNumber,
+        expectedStatus: 'running',
+        terminal: {
+          status,
+          event: {
+            idempotencyKey: `kernel-terminal:${input.attempt.requestId}:${input.attempt.attemptNumber}`,
+            title: status === 'completed' ? 'Kernel turn completed' : 'Kernel turn ended',
+            safeSummary:
+              status === 'completed'
+                ? 'The protected turn completed.'
+                : 'The protected turn ended with verified degraded state.',
+            sourceRefs: [...response.sourceRefs],
+            artifactIds: [...response.artifactIds],
+            createdAt: response.completedAt,
+            producerSourceEvidence: expectedProviderResultSource,
+            canonicalResultEvidence: {
+              schemaVersion: 1,
+              kind: 'kernel_turn_committed',
+              accountId: input.accountId,
+              runId: input.run.id,
               requestId: input.attempt.requestId,
               attemptNumber: input.attempt.attemptNumber,
+              state: resultState,
+              resultRef: resultRef as `jresult_${string}`,
+              observedAt,
             },
-          }
-        : {}),
-    });
-    if (!commit.committed) {
-      if (commit.reason === 'account_authority_revoked') return retainRevokedOutcome();
-      throw new Error(`kernel_turn_commit_${commit.reason}`);
-    }
-    if (!canonicalValuesMatch(commit.event.producerSourceEvidence, expectedProviderResultSource)) {
-      throw new Error('kernel_turn_commit_source_mismatch');
-    }
-    terminalCommitted = true;
+          },
+        },
+        assistantMessage,
+        artifacts,
+        ...(input.attempt.kind === 'transport_retry'
+          ? {
+              transportAttemptCompletion: {
+                requestId: input.attempt.requestId,
+                attemptNumber: input.attempt.attemptNumber,
+              },
+            }
+          : {}),
+      });
+      if (!commit.committed) {
+        if (commit.reason === 'account_authority_revoked') return retainRevokedOutcome();
+        throw new Error(`kernel_turn_commit_${commit.reason}`);
+      }
+      if (
+        !canonicalValuesMatch(commit.event.producerSourceEvidence, expectedProviderResultSource)
+      ) {
+        throw new Error('kernel_turn_commit_source_mismatch');
+      }
+      terminalCommitted = true;
 
-    const providerResult = await lifecycle.recordProviderResult({
-      state: resultState,
-      resultRef,
-      observedAt,
-    });
-    if (providerResult.kind === 'account_authority_revoked') return retainRevokedOutcome();
+      const providerResult = await completeProviderEvidence();
+      if (providerResult.kind === 'account_authority_revoked') return retainRevokedOutcome();
+    } else {
+      providerEvidenceRetained = true;
+    }
 
     return {
       kind: 'committed',
-      value: {
-        request,
-        compiled,
-        response,
-        messageParts,
-      },
+      value: buildDeferredVoiceResult(artifacts),
     };
   } catch (error) {
     if (lifecycle.revocationSignal.aborted) {
@@ -609,7 +689,9 @@ export async function runJarvisKernelTurn(
     throw error;
   } finally {
     const cleanup = runAllCleanup([
-      () => registration?.dispose(),
+      () => {
+        if (!providerEvidenceRetained) disposeProviderEvidence();
+      },
       () => unregisterAbort?.(),
       () => resolved?.dispose(),
       () => prepared?.dispose(),
@@ -617,4 +699,28 @@ export async function runJarvisKernelTurn(
     ]);
     if (cleanup.failed && !hasPrimaryFailure) throw cleanup.error;
   }
+}
+
+export async function runJarvisKernelTurn(
+  input: Readonly<JarvisKernelTurnInput>,
+  deps: JarvisKernelDeps,
+): Promise<JarvisAuthorityBoundResult<JarvisKernelTurnResult>> {
+  const result = await runJarvisKernelExecution(input, deps, false);
+  if (result.kind === 'account_authority_revoked') return result;
+  const { request, compiled, response, messageParts } = result.value;
+  return {
+    kind: 'committed',
+    value: Object.freeze({ request, compiled, response, messageParts }),
+  };
+}
+
+/** @internal Imported in production only by the closed kernel runtime. */
+export async function runJarvisKernelVoiceTurn(
+  input: Readonly<JarvisKernelTurnInput> & { surface: 'voice' },
+  deps: JarvisKernelDeps,
+): Promise<JarvisAuthorityBoundResult<JarvisDeferredVoiceKernelTurnResult>> {
+  if (input.surface !== 'voice' || input.run.source !== 'voice') {
+    throw new Error('kernel_voice_turn_scope_mismatch');
+  }
+  return runJarvisKernelExecution(input, deps, true);
 }

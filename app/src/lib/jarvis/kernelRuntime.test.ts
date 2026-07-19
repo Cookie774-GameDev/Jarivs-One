@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createJarvisDb, type JarvisDexie } from '@/lib/db';
-import { fromJarvisApprovalRow, fromJarvisRunRow, toJarvisRunRow } from '@/lib/db/jarvisMappers';
+import {
+  fromJarvisApprovalRow,
+  fromJarvisRunRow,
+  toJarvisEventRow,
+  toJarvisRunRow,
+} from '@/lib/db/jarvisMappers';
 import { createJarvisRepositories } from '@/lib/db/jarvisRepositories';
 import { TEST_INDEXED_DB, uniqueTestDbName } from '@/test/indexedDb';
 import { useAuthStore } from '@/stores/auth';
@@ -269,6 +274,141 @@ describe('createJarvisKernelRuntime primary-host lifecycle', () => {
     );
   });
 
+  it('opens one process-local recovery handle and commits the fixed recovered partial terminal', async () => {
+    const current = {
+      ...kernelRun(),
+      source: 'voice' as const,
+      status: 'running' as const,
+    };
+    await db.jarvis_runs.add(toJarvisRunRow(current));
+    await db.chats.add({
+      id: current.chatId as ChatId,
+      workspace_id: current.workspaceId as WorkspaceId,
+      title: 'Runtime voice recovery',
+      mode: 'chat',
+      active_agent_ids: [current.agentId as Agent['id']],
+      created_at: NOW - 20,
+      updated_at: NOW - 20,
+    });
+    await db.messages.add({
+      id: 'message-runtime-recovery' as never,
+      chat_id: current.chatId as ChatId,
+      role: 'assistant',
+      parts: [{ kind: 'text', text: 'Saved before restart.' }],
+      created_at: NOW - 5,
+      updated_at: NOW - 5,
+    });
+    const providerStartEvent = {
+      runId: current.id,
+      seq: 1,
+      idempotencyKey: 'kernel-provider-start:request-runtime-current:1',
+      type: 'model' as const,
+      status: 'started',
+      title: 'Provider started',
+      safeSummary: 'The protected provider dispatch started.',
+      sourceRefs: [],
+      artifactIds: [],
+      createdAt: NOW - 6,
+      producerSourceEvidence: {
+        schemaVersion: 1 as const,
+        accountId: current.accountId,
+        runId: current.id,
+        requestId: 'request-runtime-current',
+        attemptNumber: 1,
+        producerKind: 'provider' as const,
+        producerIdentity: {
+          producerKind: 'provider' as const,
+          providerId: 'provider-kernel',
+          modelId: 'model-kernel',
+          modelSnapshotRef: 'provider-kernel:model-kernel',
+        },
+        resultRef: 'jprovider_start_runtime_recovery',
+        observedAt: NOW - 6,
+        phase: 'start' as const,
+        state: 'started' as const,
+      },
+    };
+    await db.jarvis_events.add(toJarvisEventRow(providerStartEvent));
+    await db.jarvis_events.add(
+      toJarvisEventRow({
+        runId: current.id,
+        seq: 2,
+        idempotencyKey: `voice-response-ready:${current.id}:message-runtime-recovery`,
+        type: 'message',
+        status: 'response_ready',
+        title: 'Voice response ready',
+        safeSummary: 'The validated response is saved and awaiting playback outcome.',
+        sourceRefs: [],
+        artifactIds: [],
+        createdAt: NOW - 5,
+        producerSourceEvidence: {
+          schemaVersion: 1,
+          accountId: current.accountId,
+          runId: current.id,
+          requestId: 'request-runtime-recovery',
+          attemptNumber: 1,
+          producerKind: 'provider',
+          producerIdentity: {
+            producerKind: 'provider',
+            providerId: 'provider-kernel',
+            modelId: 'model-kernel',
+            modelSnapshotRef: 'provider-kernel:model-kernel',
+          },
+          resultRef: 'jprovider_result_runtime_recovery',
+          observedAt: NOW - 5,
+          phase: 'result',
+          state: 'completed',
+        },
+      }),
+    );
+    const { kernel } = runtime();
+
+    await expect(
+      kernel.openVoiceRecovery({ accountId: current.accountId, runId: current.id }),
+    ).rejects.toThrow('voice_recovery_evidence_invalid');
+    await db.jarvis_events.put(
+      toJarvisEventRow({
+        ...providerStartEvent,
+        producerSourceEvidence: {
+          ...providerStartEvent.producerSourceEvidence,
+          requestId: 'request-runtime-recovery',
+        },
+      }),
+    );
+
+    const opened = await kernel.openVoiceRecovery({
+      accountId: current.accountId,
+      runId: current.id,
+    });
+    expect(opened).toMatchObject({ kind: 'committed', value: expect.any(Object) });
+    if (opened.kind !== 'committed') throw new Error('expected recovery handle');
+    expect(Object.isFrozen(opened.value)).toBe(true);
+    const clone = { ...opened.value } as typeof opened.value;
+    await expect(clone.commitRecoveredPartial()).rejects.toThrow('voice_recovery_handle_invalid');
+
+    await expect(opened.value.commitRecoveredPartial()).resolves.toMatchObject({
+      kind: 'committed',
+      value: {
+        committed: true,
+        run: { status: 'partial', completedAt: NOW },
+        event: {
+          idempotencyKey: `voice-recovery:${current.id}`,
+          title: 'Voice response recovered',
+          safeSummary:
+            'The response was saved, but playback completion could not be verified after restart.',
+        },
+      },
+    });
+    await expect(opened.value.commitRecoveredPartial()).rejects.toThrow(
+      'voice_recovery_handle_invalid',
+    );
+    expect(await db.messages.count()).toBe(1);
+    expect(await db.jarvis_events.count()).toBe(3);
+    await expect(
+      kernel.openVoiceRecovery({ accountId: current.accountId, runId: current.id }),
+    ).rejects.toThrow('voice_recovery_evidence_invalid');
+  });
+
   it('binds a protected turn through real lifecycle, live-evidence, and terminal transactions', async () => {
     const turn = kernelTurn();
     await db.jarvis_runs.add(toJarvisRunRow(turn.run));
@@ -373,6 +513,347 @@ describe('createJarvisKernelRuntime primary-host lifecycle', () => {
     expect(await db.messages.count()).toBe(1);
     expect(await db.sync_queue.count()).toBe(2);
     expect(await db.jarvis_events.count()).toBe(6);
+  });
+
+  it('issues one opaque voice handle and keeps the run nonterminal through response-ready commit', async () => {
+    const base = kernelTurn();
+    const turn: JarvisKernelTurnInput & { surface: 'voice' } = {
+      ...base,
+      run: { ...base.run, source: 'voice' },
+      surface: 'voice',
+    };
+    await db.jarvis_runs.add(toJarvisRunRow(turn.run));
+    await db.chats.add({
+      id: turn.chatId as ChatId,
+      workspace_id: turn.workspaceId as WorkspaceId,
+      title: 'Runtime voice kernel',
+      mode: 'chat',
+      active_agent_ids: [turn.agent.id],
+      created_at: NOW - 20,
+      updated_at: NOW - 20,
+    });
+    const providerVerifier = Object.freeze({
+      state: 'ready' as const,
+      producerKind: 'provider' as const,
+      verifier: Object.freeze({ verify: vi.fn(async (value: unknown) => value) }),
+    });
+    const releaseVoiceStarts = [vi.fn(), vi.fn()];
+    const authorizeVoiceStart = vi
+      .fn()
+      .mockImplementationOnce(() => releaseVoiceStarts[0])
+      .mockImplementationOnce(() => releaseVoiceStarts[1]);
+    const voiceVerifier = Object.freeze({
+      state: 'ready' as const,
+      producerKind: 'voice' as const,
+      verifier: Object.freeze({
+        verify: vi.fn(async (value: unknown) => value),
+        authorizeStart: authorizeVoiceStart,
+      }),
+    });
+    const playbackResult = Object.freeze({
+      tts: Object.freeze({
+        state: 'degraded' as const,
+        reason: 'stopped' as const,
+        resultRef: 'voice-tts-result-runtime',
+        observedAt: NOW + 13,
+      }),
+      playback: Object.freeze({
+        state: 'degraded' as const,
+        reason: 'stopped' as const,
+        resultRef: 'voice-playback-result-runtime',
+        observedAt: NOW + 14,
+      }),
+      terminalStatus: 'partial' as const,
+    });
+    let resolvePlayback!: (value: typeof playbackResult) => void;
+    const playbackSettlement = new Promise<typeof playbackResult>((resolve) => {
+      resolvePlayback = resolve;
+    });
+    let abortDelivered = false;
+    const voiceController = Object.freeze({
+      receipt: Object.freeze({
+        sessionId: 'vsession-runtime',
+        engineId: 'system:jarvis-prime',
+        ttsExecutionId: 'voice-tts-runtime',
+        playbackExecutionId: 'voice-playback-runtime',
+        ttsStartedAt: NOW + 11,
+        playbackStartedAt: NOW + 12,
+      }),
+      start: vi.fn(() => playbackSettlement),
+      verify: vi.fn((candidate: unknown) => candidate === playbackResult),
+      abort: vi.fn(() => {
+        if (abortDelivered) return 'already_exited' as const;
+        abortDelivered = true;
+        resolvePlayback(playbackResult);
+        return 'signal_delivered' as const;
+      }),
+      dispose: vi.fn(),
+    });
+    const voicePlaybackAdapter = Object.freeze({
+      prepare: vi.fn(() => voiceController),
+    });
+    const registeredOwners = new Map<string, { abort(): unknown | Promise<unknown> }>();
+    const registerIssuedOwner = vi.fn(
+      (registration: { registrationId: string; abort(): unknown | Promise<unknown> }) => {
+        registeredOwners.set(registration.registrationId, registration);
+        return () => registeredOwners.delete(registration.registrationId);
+      },
+    );
+    const cancellationPlan = Object.freeze({
+      accountId: turn.accountId,
+      runId: turn.run.id,
+      cancellationRequestId: 'voice-cancel-runtime',
+    });
+    const prepareCancellation = vi.fn(async () => ({
+      kind: 'prepared' as const,
+      plan: cancellationPlan,
+    }));
+    let releaseCancellationDelivery!: () => void;
+    const cancellationDeliveryGate = new Promise<void>((resolve) => {
+      releaseCancellationDelivery = resolve;
+    });
+    const deliverCancellation = vi.fn(async () => {
+      const outcomes = await Promise.all(
+        [...registeredOwners.entries()]
+          .filter(([ownerId]) => ownerId.endsWith(':tts') || ownerId.endsWith(':playback'))
+          .map(([, registration]) => registration.abort()),
+      );
+      await cancellationDeliveryGate;
+      return {
+        kind: 'signal_delivered' as const,
+        cancellationRequestId: cancellationPlan.cancellationRequestId,
+        ownerIds: outcomes
+          .filter(
+            (outcome): outcome is { kind: 'signal_delivered'; ownerId: string } =>
+              typeof outcome === 'object' &&
+              outcome !== null &&
+              'kind' in outcome &&
+              outcome.kind === 'signal_delivered' &&
+              'ownerId' in outcome,
+          )
+          .map((outcome) => outcome.ownerId),
+      };
+    });
+    const currentCancellation = vi.fn(async () => ({
+      kind: 'signal_delivered' as const,
+      cancellationRequestId: cancellationPlan.cancellationRequestId,
+      ownerIds: [`${turn.run.id}:tts`, `${turn.run.id}:playback`],
+    }));
+    const releaseVoiceHandle = vi.fn();
+    const processed: JarvisResponseEnvelope = {
+      schemaVersion: 1,
+      requestId: turn.attempt.requestId,
+      runId: turn.run.id,
+      mode: 'direct_answer',
+      displayText: 'Runtime voice answer.',
+      spokenText: 'Runtime voice answer.',
+      parts: [{ kind: 'text', text: 'Runtime voice answer.' }],
+      artifactIds: [],
+      sourceRefs: [],
+      executionState: { status: 'completed', verifiedBy: 'journal', lastEventSeq: 4 },
+      provider: turn.model,
+      enforcement: {
+        linted: true,
+        violations: [],
+        repairAttempted: false,
+        repairSucceeded: false,
+        fallbackUsed: false,
+      },
+      completedAt: NOW + 10,
+    };
+    const runtime = createJarvisKernelRuntime({
+      db,
+      artifactEvidenceAuthorities: artifactAuthorities() as never,
+      journal: {
+        allocateRun: vi.fn(),
+        getRun: vi.fn(async () => turn.run),
+      },
+      cancellationDeliveryAuthority: {
+        prepare: prepareCancellation,
+        deliver: deliverCancellation,
+        current: currentCancellation,
+        abandonBeforeDelivery: vi.fn(),
+      } as never,
+      abortRegistrationAuthority: { registerIssuedOwner },
+      bindKernelActions: vi.fn() as never,
+      liveEvidenceVerifiers: {
+        ...unavailableVerifiers(),
+        provider: providerVerifier,
+        voice: voiceVerifier,
+      } as never,
+      voiceLiveEvidenceStartAuthority: voiceVerifier.verifier,
+      voicePlaybackAdapter,
+      onVoiceTurnHandleIssued: () => releaseVoiceHandle,
+      prepareProvider: vi.fn(async () => ({
+        resolveConfiguration: vi.fn(async () => ({
+          start: vi.fn(() => ({
+            receipt: {
+              providerId: 'provider-kernel',
+              modelId: 'model-kernel',
+              modelSnapshotRef: 'provider-kernel:model-kernel',
+              operations: ['generate'] as const,
+              startedAt: NOW + 5,
+            },
+            response: Promise.resolve({
+              text: 'Runtime voice answer.',
+              provider: turn.model,
+              verifiedFacts: {
+                executionState: {
+                  status: 'completed' as const,
+                  verifiedBy: 'journal' as const,
+                  lastEventSeq: 4,
+                },
+                modelState: 'authenticated' as const,
+                plugins: [],
+                mcps: [],
+              },
+              completedAt: NOW + 10,
+            }),
+            abortAfterStart: vi.fn(),
+          })),
+          dispose: vi.fn(),
+        })),
+        dispose: vi.fn(),
+      })),
+      processResponse: vi.fn(async () => processed),
+      takeProviderArtifactDrafts: vi.fn(() => []),
+      randomUUID: () => 'runtime-voice-uuid',
+      now: () => NOW,
+    });
+
+    const started = await runtime.kernel.startVoiceTurn(turn);
+    expect(started).toMatchObject({
+      kind: 'committed',
+      value: { result: { response: processed }, handle: expect.any(Object) },
+    });
+    if (started.kind !== 'committed') throw new Error('expected voice turn');
+    const voiceHandle = started.value.handle;
+    expect(Object.isFrozen(started.value.handle)).toBe(true);
+    expect(await db.messages.count()).toBe(0);
+    expect(fromJarvisRunRow((await db.jarvis_runs.get(turn.run.id))!)).toMatchObject({
+      status: 'running',
+    });
+
+    const messageReads = vi.spyOn(db.messages, 'get');
+    const eventAdd = vi
+      .spyOn(db.jarvis_events, 'add')
+      .mockRejectedValueOnce(new Error('injected response-ready transaction failure'));
+    await expect(started.value.handle.runValidatedPlayback()).rejects.toThrow(
+      'voice_handle_phase_conflict',
+    );
+    const commitWithInjectedPayload = started.value.handle.commitResponseReady as (
+      injected: unknown,
+    ) => ReturnType<typeof voiceHandle.commitResponseReady>;
+    const commitPromise = commitWithInjectedPayload.call(started.value.handle, {
+      assistantMessage: { id: 'forged-message' },
+      spokenText: 'Forged speech.',
+    });
+    const concurrentCommit = started.value.handle.commitResponseReady();
+    await expect(started.value.handle.runValidatedPlayback()).rejects.toThrow(
+      'voice_handle_phase_conflict',
+    );
+    const committed = await commitPromise;
+    await expect(concurrentCommit).resolves.toBe(committed);
+    expect(committed).toMatchObject({
+      kind: 'committed',
+      value: {
+        committed: true,
+        run: { status: 'running' },
+        event: { status: 'response_ready' },
+        message: { chat_id: turn.chatId },
+      },
+    });
+    expect(await db.messages.count()).toBe(1);
+    expect(eventAdd).toHaveBeenCalledTimes(3);
+    expect(fromJarvisRunRow((await db.jarvis_runs.get(turn.run.id))!)).toMatchObject({
+      status: 'running',
+    });
+    const providerVerificationOrder = providerVerifier.verifier.verify.mock.invocationCallOrder[0];
+    expect(providerVerificationOrder).toBeTypeOf('number');
+    expect(
+      messageReads.mock.invocationCallOrder.some((order) => order > providerVerificationOrder!),
+    ).toBe(true);
+    await expect(started.value.handle.commitResponseReady()).resolves.toBe(committed);
+    expect(await db.messages.count()).toBe(1);
+
+    const clone = { ...started.value.handle } as typeof started.value.handle;
+    await expect(clone.commitResponseReady()).rejects.toThrow('voice_handle_invalid');
+    const playback = started.value.handle.runValidatedPlayback();
+    await vi.waitFor(() => expect(voiceController.start).toHaveBeenCalledOnce());
+    await expect(started.value.handle.runValidatedPlayback()).rejects.toThrow(
+      'voice_handle_phase_conflict',
+    );
+    const cancellation = started.value.handle.requestCancellation();
+    await vi.waitFor(() => expect(deliverCancellation).toHaveBeenCalledOnce());
+    expect(voiceController.abort).toHaveBeenCalledTimes(2);
+    expect(releaseVoiceHandle).not.toHaveBeenCalled();
+    releaseCancellationDelivery();
+    await expect(cancellation).resolves.toMatchObject({
+      kind: 'intent_committed',
+      cancellationRequestId: cancellationPlan.cancellationRequestId,
+      aggregate: { kind: 'signal_delivered' },
+    });
+    await expect(playback).resolves.toMatchObject({
+      kind: 'committed',
+      value: { committed: true, run: { status: 'cancelled' } },
+    });
+    expect(currentCancellation).toHaveBeenCalledWith(
+      turn.accountId,
+      turn.run.id,
+      cancellationPlan.cancellationRequestId,
+    );
+    expect(releaseVoiceHandle).toHaveBeenCalledOnce();
+    expect(voicePlaybackAdapter.prepare).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountId: turn.accountId,
+        runId: turn.run.id,
+        requestId: turn.attempt.requestId,
+        attemptNumber: turn.attempt.attemptNumber,
+        spokenText: processed.spokenText,
+      }),
+    );
+    expect(voiceController.start).toHaveBeenCalledOnce();
+    expect(voiceController.verify).toHaveBeenCalledWith(playbackResult);
+    expect(
+      authorizeVoiceStart.mock.calls.map(([source]) => source.producerIdentity.engineKind),
+    ).toEqual(['tts', 'playback']);
+    for (const release of releaseVoiceStarts) expect(release).toHaveBeenCalledOnce();
+    expect(
+      registerIssuedOwner.mock.calls.map(([registration]) => registration.registrationId),
+    ).toEqual(
+      expect.arrayContaining([
+        `${turn.run.id}:provider`,
+        `${turn.run.id}:tts`,
+        `${turn.run.id}:playback`,
+      ]),
+    );
+    const voiceSourceRows = (await db.jarvis_events.toArray()).filter(
+      (row) => row.producer_source_evidence?.producerKind === 'voice',
+    );
+    const voiceSourceLineage = voiceSourceRows.map((row) => {
+      const source = row.producer_source_evidence;
+      if (source?.producerKind !== 'voice') throw new Error('expected voice source');
+      return [source.producerIdentity.engineKind, source.phase];
+    });
+    expect(voiceSourceLineage).toEqual([
+      ['tts', 'start'],
+      ['playback', 'start'],
+      ['tts', 'result'],
+      ['playback', 'result'],
+      ['playback', 'result'],
+    ]);
+    expect(voiceSourceRows.at(-1)?.producer_source_evidence).toEqual(
+      voiceSourceRows.at(-2)?.producer_source_evidence,
+    );
+    expect(JSON.stringify(voiceSourceRows)).not.toMatch(/Runtime voice answer|spokenText|audio/i);
+    expect(fromJarvisRunRow((await db.jarvis_runs.get(turn.run.id))!)).toMatchObject({
+      status: 'cancelled',
+    });
+    started.value.handle.dispose();
+    started.value.handle.dispose();
+    await expect(started.value.handle.commitResponseReady()).rejects.toThrow(
+      'voice_handle_phase_conflict',
+    );
   });
 
   it('revokes on an account switch after configuration and never starts the provider', async () => {

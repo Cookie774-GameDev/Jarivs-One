@@ -5,6 +5,7 @@ import { toast } from '@/components/ui/toast';
 import { useUIStore } from '@/stores/ui';
 import { useAuthStore } from '@/stores/auth';
 import { cn } from '@/lib/utils';
+import { resolveAccountIdentity } from '@/lib/accountIdentity';
 import { messageRepo } from '@/lib/db';
 import { useChatMessages } from '@/features/chat/hooks';
 import {
@@ -26,6 +27,7 @@ import { PERSONAS } from './personas';
 import { VoiceActivityWaveform } from './VoiceActivityWaveform';
 import { handleVoiceModuleClosed, stopCurrentVoiceResponse } from './voiceRouter';
 import { resolveVoiceListenTimeoutMs } from './voiceConversation';
+import { createVoiceSessionBinding, newVoiceSessionId } from './voiceSessionBinding';
 import { modelSelectionContextFromAuth, validateSendModelAccess } from '@/lib/ai/modelSelection';
 import {
   processVoiceFinalEvent,
@@ -243,12 +245,14 @@ const SymbioteOrb = React.memo(function SymbioteOrb({
 export function VoiceModal() {
   const open = useUIStore((state) => state.voiceModalOpen);
   const setOpen = useUIStore((state) => state.setVoiceModalOpen);
-  const activeChatId = useUIStore((state) => state.activeChatId);
+  const localUserId = useAuthStore((state) => state.localUserId);
+  const cloudAccountId = useAuthStore((state) => state.cloudSession?.user_id ?? null);
   const voiceAutoListenOnOpen = useAuthStore((state) => state.voiceAutoListenOnOpen);
   const voiceEndTrigger = useAuthStore((state) => state.voiceEndTrigger);
   const voiceCommitPhrase = useAuthStore((state) => state.voiceCommitPhrase);
   const [showTranscript, setShowTranscript] = React.useState(false);
-  const messages = useChatMessages(open && showTranscript ? activeChatId : null);
+  const session = useVoiceStore((voice) => voice.session);
+  const messages = useChatMessages(open && showTranscript ? (session?.chatId ?? null) : null);
   const state = useVoiceStore((voice) => voice.state);
   const partial = useVoiceStore((voice) => voice.partialTranscript);
   const persona = useVoiceStore((voice) => voice.persona);
@@ -382,10 +386,70 @@ export function VoiceModal() {
 
   React.useEffect(() => {
     if (!open) return;
-    void ensureJarvisChatForVoice().then((chatId) => {
-      if (chatId) focusVoiceChat(chatId);
+    let disposed = false;
+
+    const requestedIdentity = resolveAccountIdentity(useAuthStore.getState());
+    if (!requestedIdentity) {
+      void (async () => {
+        const oldSession = useVoiceStore.getState().session;
+        if (!oldSession) return;
+        await stopCurrentVoiceResponse();
+        if (useVoiceStore.getState().session === oldSession) {
+          useVoiceStore.getState().endSession();
+        }
+      })().catch((error) => {
+        if (disposed) return;
+        useVoiceStore
+          .getState()
+          .setState(
+            'error',
+            error instanceof Error ? error.message : 'Could not close the old voice session.',
+          );
+      });
+      return () => void (disposed = true);
+    }
+
+    void (async () => {
+      const oldSession = useVoiceStore.getState().session;
+      if (oldSession && oldSession.accountId !== requestedIdentity.accountId) {
+        await stopCurrentVoiceResponse();
+        if (useVoiceStore.getState().session === oldSession) {
+          useVoiceStore.getState().endSession();
+        }
+      }
+      if (disposed) return;
+
+      const currentIdentity = resolveAccountIdentity(useAuthStore.getState());
+      if (currentIdentity?.accountId !== requestedIdentity.accountId) return;
+
+      const currentSession = useVoiceStore.getState().session;
+      if (currentSession) return;
+
+      const chatId = await ensureJarvisChatForVoice();
+      if (disposed || !chatId) return;
+
+      const confirmedIdentity = resolveAccountIdentity(useAuthStore.getState());
+      if (confirmedIdentity?.accountId !== requestedIdentity.accountId) return;
+
+      const binding = createVoiceSessionBinding({
+        sessionId: newVoiceSessionId(),
+        accountId: requestedIdentity.accountId,
+        chatId,
+        startedAt: Date.now(),
+      });
+      if (useVoiceStore.getState().beginSession(binding)) focusVoiceChat(binding.chatId);
+    })().catch((error) => {
+      if (disposed) return;
+      useVoiceStore
+        .getState()
+        .setState(
+          'error',
+          error instanceof Error ? error.message : 'Could not start the voice session.',
+        );
     });
-  }, [open]);
+
+    return () => void (disposed = true);
+  }, [cloudAccountId, localUserId, open]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -490,8 +554,15 @@ export function VoiceModal() {
           return;
         }
 
-        focusVoiceChat(target.chatId);
-        const chatId = target.chatId;
+        const boundSession = useVoiceStore.getState().session;
+        const chatId = target.agentId ? target.chatId : boundSession?.chatId;
+        const accountId = target.agentId ? undefined : boundSession?.accountId;
+        if (!chatId) {
+          useVoiceStore.getState().setState('error', 'Could not open a bound Jarvis chat.');
+          releaseTurnAndRestart();
+          return;
+        }
+        focusVoiceChat(chatId);
         const messageText = target.messageText.trim();
         if (!messageText) {
           useVoiceStore.getState().setState('error', 'Say something for Jarvis to send.');
@@ -523,6 +594,7 @@ export function VoiceModal() {
             new CustomEvent('jarvis:send', {
               detail: {
                 chatId,
+                ...(accountId ? { accountId } : {}),
                 text: messageText,
                 agentId: target.agentId,
                 mentionedAgentIds: target.mentionedAgentIds,
@@ -844,7 +916,7 @@ export function VoiceModal() {
               >
                 {transcript.length === 0 && !partial ? (
                   <div className="flex h-[20px] items-center justify-center text-center text-[8px] text-muted-foreground">
-                    {activeChatId ? 'Listening...' : 'Open a chat first.'}
+                    {session?.chatId ? 'Listening...' : 'Open a chat first.'}
                   </div>
                 ) : null}
                 {visibleTranscript.map((message) => {

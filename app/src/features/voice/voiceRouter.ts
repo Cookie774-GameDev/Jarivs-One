@@ -26,9 +26,14 @@ import { deepgramTtsProvider } from './providers/deepgramTts';
 import type { StreamingVoiceSession } from './streamingVoice';
 import { VoiceService } from './VoiceService';
 import { useVoiceStore } from './store';
+import type { JarvisCancellationRequestResult } from '@/lib/jarvis/contracts/execution';
 
 let activePlaybackAbort: AbortController | null = null;
 let activeStreamingSession: StreamingVoiceSession | null = null;
+type VoiceTurnCancellationHandle = Readonly<{
+  requestCancellation(): Promise<JarvisCancellationRequestResult>;
+}>;
+let activeVoiceTurnCancellation: VoiceTurnCancellationHandle | null = null;
 const KOKORO_STREAM_SYNTH_AHEAD = 2;
 
 /** Monotonic session id — bumped when the voice module opens; zeroed on close. */
@@ -41,11 +46,7 @@ export function getActiveVoiceSessionId(): number {
 
 /** True only while the voice panel is open and its session has not been cancelled. */
 export function canVoiceModuleSpeak(): boolean {
-  return (
-    voiceModuleMarkedOpen &&
-    activeVoiceSessionId > 0 &&
-    useUIStore.getState().voiceModalOpen
-  );
+  return voiceModuleMarkedOpen && activeVoiceSessionId > 0 && useUIStore.getState().voiceModalOpen;
 }
 
 /**
@@ -63,10 +64,31 @@ export function syncVoiceModuleOpenState(isOpen: boolean): void {
   handleVoiceModuleClosed();
 }
 
-export function registerActiveStreamingVoiceSession(
-  session: StreamingVoiceSession | null,
-): void {
+export function registerActiveStreamingVoiceSession(session: StreamingVoiceSession | null): void {
   activeStreamingSession = session;
+}
+
+/**
+ * Registers the one process-local protected voice-turn handle. The returned
+ * disposer can clear only the exact handle it registered.
+ */
+export function registerActiveVoiceTurnCancellation(
+  handle: VoiceTurnCancellationHandle | null,
+): () => void {
+  if (handle === null) {
+    activeVoiceTurnCancellation = null;
+    return () => undefined;
+  }
+  if (activeVoiceTurnCancellation && activeVoiceTurnCancellation !== handle) {
+    throw new Error('voice_turn_handle_already_registered');
+  }
+  activeVoiceTurnCancellation = handle;
+  let disposed = false;
+  return () => {
+    if (disposed) return;
+    disposed = true;
+    if (activeVoiceTurnCancellation === handle) activeVoiceTurnCancellation = null;
+  };
 }
 
 function beginPlaybackAbortScope(): AbortController {
@@ -186,10 +208,14 @@ export async function ensureKokoroReadyForSpeech(
 }
 
 /** Pre-synthesize Kokoro preview clips so Preview plays instantly. */
-export async function warmKokoroPreviewCache(presets: VoiceTtsPreset[] = ['jarvis', 'friday']): Promise<void> {
+export async function warmKokoroPreviewCache(
+  presets: VoiceTtsPreset[] = ['jarvis', 'friday'],
+): Promise<void> {
   if (!(await kokoroLocalProvider.isAvailable())) return;
   await Promise.all(
-    presets.map((preset) => getCachedKokoroAudio(VOICE_PREVIEW_TEXT, preset).catch(() => undefined)),
+    presets.map((preset) =>
+      getCachedKokoroAudio(VOICE_PREVIEW_TEXT, preset).catch(() => undefined),
+    ),
   );
 }
 
@@ -232,21 +258,17 @@ export function isVoiceModuleOpen(): boolean {
 
 /** Hard stop when the voice panel is dismissed — cuts playback, listening, and in-flight voice AI. */
 export function handleVoiceModuleClosed(): void {
-  const wasOpen = voiceModuleMarkedOpen;
   voiceModuleMarkedOpen = false;
   activeVoiceSessionId = 0;
-  if (wasOpen && typeof window !== 'undefined') {
-    try {
-      window.dispatchEvent(new CustomEvent('jarvis:cancel'));
-    } catch {
-      /* ignore */
-    }
-  }
-  stopAllVoiceOutput();
+  const cancellation = stopCurrentVoiceResponse();
   VoiceService.stopListening();
   useUIStore.getState().setVoiceListening(false);
   useVoiceStore.getState().setPartialTranscript('');
   useVoiceStore.getState().setState('idle');
+  void cancellation.then(
+    () => useVoiceStore.getState().endSession(),
+    () => useVoiceStore.getState().endSession(),
+  );
 }
 
 export function stopAllVoiceOutput(): void {
@@ -261,15 +283,12 @@ export function stopAllVoiceOutput(): void {
  * cancels the in-flight AI run and halts every playback engine so the user
  * can immediately ask something else. Used by the orb's stop control.
  */
-export function stopCurrentVoiceResponse(): void {
-  if (typeof window !== 'undefined') {
-    try {
-      window.dispatchEvent(new CustomEvent('jarvis:cancel'));
-    } catch {
-      /* ignore */
-    }
-  }
+export async function stopCurrentVoiceResponse(): Promise<
+  JarvisCancellationRequestResult | undefined
+> {
+  const cancellation = activeVoiceTurnCancellation?.requestCancellation();
   stopAllVoiceOutput();
+  return cancellation;
 }
 
 export interface SpeakWithSettingsOptions {
@@ -408,9 +427,7 @@ class KokoroStreamingPlayerImpl implements KokoroStreamingPlayer {
   }
 }
 
-export function createKokoroStreamingPlayer(
-  voicePreset: VoicePresetId,
-): KokoroStreamingPlayer {
+export function createKokoroStreamingPlayer(voicePreset: VoicePresetId): KokoroStreamingPlayer {
   return new KokoroStreamingPlayerImpl(voicePreset);
 }
 
@@ -485,7 +502,9 @@ export async function previewVoiceWithSettings(
     TtsService.setVoicePreset(ttsPreset);
     if (!(await deepgramTtsProvider.isAvailable())) {
       if (stale()) return;
-      throw new Error('Sign in to use launch Deepgram cloud voice, or add your own API key in Settings → Voice.');
+      throw new Error(
+        'Sign in to use launch Deepgram cloud voice, or add your own API key in Settings → Voice.',
+      );
     }
     if (stale()) return;
     await TtsService.testVoice(ttsPreset);
