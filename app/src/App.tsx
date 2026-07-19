@@ -46,11 +46,7 @@ import { GlobalSttHost } from '@/features/composer-stt';
 import { FileExplorerHost } from '@/features/files';
 import { Toaster, toast } from '@/components/ui/toast';
 import { startRuntimeListener } from '@/lib/ai/runtime';
-import { startJarvisResponsePolicyListener } from '@/lib/jarvis/responseListener';
-import {
-  emojisEnabledFromLearning,
-  startJarvisLearningListener,
-} from '@/features/jarvis-memory/learningListener';
+import { startJarvisLearningListener } from '@/features/jarvis-memory/learningListener';
 import { useJarvisLearningStore } from '@/features/jarvis-memory/learningStore';
 import { startJarvisOperatorListener } from '@/lib/jarvis/operatorListener';
 import { startAllAboutMePersistence } from '@/features/all-about-me/persistence';
@@ -537,7 +533,6 @@ function useBoot() {
 
   React.useEffect(() => {
     let stopRuntime: (() => void) | undefined;
-    let stopLocalResponse: (() => void) | undefined;
     let stopLearning: (() => void | Promise<void>) | undefined;
     let stopOperator: (() => void) | undefined;
     let stopAllAboutMePersistence: (() => void | Promise<void>) | undefined;
@@ -1032,10 +1027,6 @@ function useBoot() {
         return;
       }
       syncAccountScopedListeners();
-      stopLocalResponse = startJarvisResponsePolicyListener({
-        appendMessage: async (msg) => messageRepo.create(msg as never),
-        emojisEnabled: emojisEnabledFromLearning,
-      });
       stopOperator = startJarvisOperatorListener({
         appendMessage: async (msg) => messageRepo.create(msg as never),
       });
@@ -1118,7 +1109,6 @@ function useBoot() {
       cloudPlanSyncGeneration += 1;
       accountRecoveryController?.abort();
       stopRuntime?.();
-      stopLocalResponse?.();
       stopAccountSubscription?.();
       stopPersistenceState?.();
       persistenceReadyReceipt = null;
@@ -1150,14 +1140,19 @@ function KernelBridgeBootstrap() {
     let disposed = false;
     let disposeBoundary: (() => void | Promise<void>) | undefined;
     let accountInvalidator: ((accountId: string) => void) | undefined;
+    let disposeKernelRuntimeHost: (() => void) | undefined;
     let securityRuntime:
       | {
+          bindKernelActions: import('@/lib/jarvis/approvalEngine').JarvisApprovalActionBinder;
           pluginManagement: PluginManagementCapability;
           invalidateAccount(accountId: string): void;
           invalidateAll(): void;
         }
       | undefined;
-    const invalidateSecurityRuntime = () => securityRuntime?.invalidateAll();
+    const invalidateSecurityRuntime = () => {
+      disposeKernelRuntimeHost?.();
+      securityRuntime?.invalidateAll();
+    };
 
     void import('@/lib/jarvis/kernelHost')
       .then(async ({ createUnavailableKernelHostRuntime, startJarvisKernelHost }) => {
@@ -1284,6 +1279,19 @@ function KernelBridgeBootstrap() {
               randomUUID,
               now,
             });
+            const { installJarvisKernelRuntimeHost } = await import('@/lib/ai/runtime');
+            disposeKernelRuntimeHost = await installJarvisKernelRuntimeHost({
+              db,
+              bindKernelActions: securityRuntime.bindKernelActions,
+              capabilitySnapshots,
+              randomUUID,
+              now,
+            });
+            if (disposed) {
+              disposeKernelRuntimeHost();
+              securityRuntime.invalidateAll();
+              return createUnavailableKernelHostRuntime();
+            }
             window.addEventListener('pagehide', invalidateSecurityRuntime);
             if (!disposed) {
               React.startTransition(() => setPluginManagement(securityRuntime?.pluginManagement));
@@ -1295,6 +1303,7 @@ function KernelBridgeBootstrap() {
                 securityRuntime?.invalidateAccount(accountId),
               dispose() {
                 window.removeEventListener('pagehide', invalidateSecurityRuntime);
+                disposeKernelRuntimeHost?.();
                 securityRuntime?.invalidateAll();
               },
             });
@@ -1328,6 +1337,7 @@ function KernelBridgeBootstrap() {
     return () => {
       disposed = true;
       window.removeEventListener('pagehide', invalidateSecurityRuntime);
+      disposeKernelRuntimeHost?.();
       securityRuntime?.invalidateAll();
       if (accountInvalidator && invalidateActiveKernelAccount === accountInvalidator) {
         invalidateActiveKernelAccount = () => {};

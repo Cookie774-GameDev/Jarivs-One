@@ -82,6 +82,7 @@ import {
   newWorkspaceId,
 } from '@/lib/ids';
 import { db } from './index';
+import { enqueueLocalSyncInTransaction } from './kernelTurnTransactionAuthority';
 import type { Project, SettingsRow, StoreName, SyncOp, SyncQueueRow, Workspace } from './schema';
 
 // ---------------------------------------------------------------------------
@@ -263,6 +264,29 @@ async function enqueueLocalSync(
   if (!SYNCABLE_TABLES.has(table)) return;
   try {
     const ts = now();
+    if ((table === 'messages' && op === 'insert') || (table === 'chats' && op === 'update')) {
+      await db.transaction('rw', [db.sync_queue, db.settings], () =>
+        enqueueLocalSyncInTransaction(
+          { sync_queue: db.sync_queue, settings: db.settings },
+          table === 'messages'
+            ? {
+                op: 'insert',
+                table: 'messages',
+                row: payload as Message,
+                createdAt: ts,
+                ownerSnapshot: owner,
+              }
+            : {
+                op: 'update',
+                table: 'chats',
+                row: payload as Chat,
+                createdAt: ts,
+                ownerSnapshot: owner,
+              },
+        ),
+      );
+      return;
+    }
     await db.transaction('rw', [db.sync_queue, db.settings], async () => {
       const candidates = await db.sync_queue
         .where('status')

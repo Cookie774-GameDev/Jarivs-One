@@ -35,6 +35,7 @@ import {
   refreshUsage,
 } from '@/lib/usage/usageService';
 import { useAgentStore } from '@/stores/agents';
+import { findProtectedJarvisAgent } from '@/lib/jarvis/identity';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import { parseThemeCommandArgument, SELECTABLE_THEMES } from '@/features/appearance/themes';
@@ -794,7 +795,7 @@ export function Composer({
   // 30-second fix at aistudio.google.com/apikey (no card needed).
   const googleKey = useAuthStore((s) => s.apiKeys.google);
   const jarvisAgent = useMemo(
-    () => Object.values(agents).find((a) => a.slug === 'jarvis'),
+    () => findProtectedJarvisAgent(Object.values(agents)),
     [agents],
   );
   const showFreeKeyNudge =
@@ -1169,7 +1170,7 @@ export function Composer({
         return true;
       }
       const jarvisAgent =
-        Object.values(agents).find((agent) => agent.slug === 'jarvis') ?? Object.values(agents)[0];
+        findProtectedJarvisAgent(Object.values(agents)) ?? Object.values(agents)[0];
       await launchJarvisChatAgent({
         parentChatId: chatId,
         task: rest,

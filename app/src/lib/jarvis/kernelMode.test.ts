@@ -6,9 +6,9 @@ import {
 } from './kernelMode';
 
 describe('JARVIS kernel mode gate', () => {
-  it('defaults to observational shadow mode', () => {
-    expect(DEFAULT_JARVIS_KERNEL_MODE).toBe('shadow');
-    expect(resolveJarvisKernelMode()).toBe('shadow');
+  it('defaults protected JARVIS to the canonical kernel', () => {
+    expect(DEFAULT_JARVIS_KERNEL_MODE).toBe('kernel');
+    expect(resolveJarvisKernelMode()).toBe('kernel');
   });
 
   it.each(['legacy', 'shadow', 'kernel'] as const)('accepts the internal %s override', (mode) => {

@@ -1,6 +1,6 @@
 export type JarvisKernelMode = 'legacy' | 'shadow' | 'kernel';
 
-export const DEFAULT_JARVIS_KERNEL_MODE: JarvisKernelMode = 'shadow';
+export const DEFAULT_JARVIS_KERNEL_MODE: JarvisKernelMode = 'kernel';
 
 export class JarvisKernelModeError extends Error {
   readonly code: 'invalid_kernel_mode' | 'kernel_mode_not_ready';

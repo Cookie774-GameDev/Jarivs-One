@@ -40,6 +40,7 @@ import {
   type FsEntry,
 } from '@/lib/fs';
 import { useAgentStore } from '@/stores/agents';
+import { findProtectedJarvisAgent } from '@/lib/jarvis/identity';
 import { useAuthStore } from '@/stores/auth';
 import { buildModelPickerGroups } from '@/lib/ai/useAccessibleChatModels';
 import { basename, dirname } from './projectFiles';
@@ -191,7 +192,9 @@ function FileExplorerDialog({ session }: { session: FileExplorerSession }) {
   const searchProvider = searchState.provider;
   const searchModel = searchState.model;
 
-  const jarvisAgent = useAgentStore((s) => Object.values(s.agents).find((a) => a.slug === 'jarvis') ?? null);
+  const jarvisAgent = useAgentStore(
+    (s) => findProtectedJarvisAgent(Object.values(s.agents)) ?? null,
+  );
   const apiKeys = useAuthStore((s) => s.apiKeys);
   const chatModelSelection = useAuthStore((s) => s.chatModelSelection);
   const offlineMode = useAuthStore((s) => s.offlineMode);

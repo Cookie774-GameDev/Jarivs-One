@@ -1,4 +1,6 @@
 import { vi } from 'vitest';
+import { createJarvisDb } from '@/lib/db';
+import { TEST_INDEXED_DB, uniqueTestDbName } from '@/test/indexedDb';
 import type { Agent, Message, Part } from '@/types';
 import type { AgentId, ChatId, MessageId } from '@/types/common';
 import { useAuthStore } from '@/stores/auth';
@@ -37,9 +39,13 @@ vi.mock('./router', () => ({
   runAgent: mocks.runAgent,
 }));
 
-vi.mock('@/lib/db', () => ({
-  chatRepo: { getById: mocks.chatGetById, update: vi.fn() },
-}));
+vi.mock('@/lib/db', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/db')>();
+  return {
+    ...actual,
+    chatRepo: { getById: mocks.chatGetById, update: vi.fn() },
+  };
+});
 
 vi.mock('@/features/dev-console', () => ({
   devConsole: { log: mocks.devLog },
@@ -59,6 +65,11 @@ vi.mock('@/features/terminals/agentContext', () => ({
 }));
 
 vi.mock('./context', () => ({
+  buildJarvisContextPackForAi: async ({ maxChars }: { maxChars: number }) => ({
+    items: [],
+    budget: { maxChars, usedChars: 0 },
+    exclusions: [],
+  }),
   getProjectContextBlock: mocks.getProjectContextBlock,
   getProjectContextTreeBlock: mocks.getProjectContextTreeBlock,
   getConnectedFilesBlock: mocks.getConnectedFilesBlock,
@@ -75,11 +86,30 @@ vi.mock('./context', () => ({
   formatResolvedJarvisContext: () => '',
 }));
 
-import { createCanonicalProviderEvidenceAuthority, startRuntimeListener } from './runtime';
+import {
+  createCanonicalProviderEvidenceAuthority,
+  installJarvisKernelRuntimeHost,
+  startRuntimeListener as startKernelAwareRuntimeListener,
+} from './runtime';
 import { selectionFromOption } from './modelSelection';
 import { DEFAULT_CUSTOM_STEPS } from './stacks/presets';
 
-function agent(id: string, slug: string, systemPrompt: string, builtin = false): Agent {
+function startRuntimeListener(
+  ...args: Parameters<typeof startKernelAwareRuntimeListener>
+): ReturnType<typeof startKernelAwareRuntimeListener> {
+  const [bindings, options] = args;
+  return startKernelAwareRuntimeListener(
+    bindings,
+    options ?? { jarvisKernelMode: 'legacy' },
+  );
+}
+
+function agent(
+  id: string,
+  slug: string,
+  systemPrompt: string,
+  builtin = slug === 'jarvis',
+): Agent {
   return {
     id: id as AgentId,
     slug,
@@ -1496,13 +1526,14 @@ describe('startRuntimeListener agent routing', () => {
     };
   }
 
-  it('defaults protected built-in JARVIS to one shadow compile plus one unchanged legacy dispatch', async () => {
+  it('runs explicit shadow mode as one observational compile plus one unchanged legacy dispatch', async () => {
     const protectedJarvis = agent('agent_jarvis', 'jarvis', 'LEGACY SYSTEM PROMPT', true);
     const shadow = shadowHarness();
     const interlocks = runtimeInterlocks();
     const harness = kernelRuntimeBindings(protectedJarvis);
     trackListener(
       startRuntimeListener(harness.bindings, {
+        jarvisKernelMode: 'shadow',
         jarvisShadow: shadow,
         jarvisInterlocks: interlocks,
       }),
@@ -1581,6 +1612,114 @@ describe('startRuntimeListener agent routing', () => {
     );
     expect(mocks.runAgent).not.toHaveBeenCalled();
     expect(harness.bindings.appendMessage).not.toHaveBeenCalled();
+  });
+
+  it('runs default kernel mode through the installed boot-scoped host without a placeholder write', async () => {
+    useAuthStore.setState({
+      apiKeys: { groq: 'gsk_test', openai: 'sk_test' },
+      chatModelSelection: {
+        mode: 'single',
+        providerId: 'openai',
+        modelId: 'gpt-5.5',
+        connectionId: 'openai-api',
+        connectionMode: 'native-api',
+        authSource: 'api-key',
+        capabilities: {
+          text: true,
+          images: false,
+          files: false,
+          tools: false,
+          modelSelection: true,
+          structuredOutput: false,
+          streaming: true,
+          cancellation: true,
+          resumeSession: false,
+          systemPrompt: true,
+          workingDirectory: false,
+          usage: true,
+          subscriptionQuota: false,
+          localOnly: false,
+        },
+      },
+    });
+    const protectedJarvis = agent('agent_jarvis', 'jarvis', 'LEGACY SYSTEM PROMPT', true);
+    const harness = kernelRuntimeBindings(protectedJarvis);
+    const database = createJarvisDb(
+      uniqueTestDbName('runtime-installed-kernel-host'),
+      TEST_INDEXED_DB,
+    );
+    await database.open();
+    await database.chats.add({
+      id: harness.chatId,
+      workspace_id: 'workspace_runtime_kernel_host' as never,
+      title: 'Installed kernel host',
+      mode: 'chat',
+      active_agent_ids: [protectedJarvis.id],
+      created_at: 1,
+      updated_at: 1,
+    });
+    mocks.runAgent.mockImplementation(async (providerInput) => ({
+      text: 'The installed kernel host is ready, Sir.',
+      usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
+      provider: providerInput.agent.model.provider,
+      model: providerInput.agent.model.model,
+    }));
+    const getCapabilities = vi.fn(async () => ({
+      capturedAt: 1,
+      tools: [],
+      plugins: [],
+      mcps: [],
+      terminals: [],
+      agents: [],
+      entitlements: { source: 'unavailable' as const, capabilities: [] },
+    }));
+    const disposeHost = await installJarvisKernelRuntimeHost({
+      db: database,
+      bindKernelActions: () =>
+        ({
+          create: vi.fn() as never,
+          decide: vi.fn() as never,
+          execute: vi.fn() as never,
+          executeAutoApprovedSafe: vi.fn() as never,
+        }) as never,
+      capabilitySnapshots: {
+        getForAccount: getCapabilities,
+      },
+      randomUUID: () => 'runtime-installed-kernel-host',
+      now: () => 10,
+    });
+    trackListener(disposeHost);
+    trackListener(
+      startRuntimeListener(harness.bindings, {
+        jarvisInterlocks: runtimeInterlocks(),
+      }),
+    );
+
+    try {
+      window.dispatchEvent(
+        new CustomEvent('jarvis:send', {
+          detail: { chatId: harness.chatId, text: 'Run the installed kernel host.' },
+        }),
+      );
+
+      await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledOnce(), { timeout: 3_000 });
+      await vi.waitFor(async () => {
+        expect(await database.messages.where('chat_id').equals(harness.chatId).count()).toBe(1);
+      });
+      const providerInput = mocks.runAgent.mock.calls[0]![0];
+      expect(providerInput.signal).toBeInstanceOf(AbortSignal);
+      expect(providerInput.compiledPrompt.systemText).toContain('strict JARVIS identity');
+      expect(providerInput.compiledPrompt.systemText).not.toContain('LEGACY SYSTEM PROMPT');
+      expect(providerInput.agent.system_prompt).toContain('LEGACY SYSTEM PROMPT');
+      expect(harness.bindings.appendMessage).not.toHaveBeenCalled();
+      expect(await database.jarvis_runs.where('chat_id').equals(harness.chatId).first()).toMatchObject(
+        { status: 'completed' },
+      );
+    } finally {
+      disposeHost();
+      database.close();
+      await database.delete();
+    }
   });
 
   it('skips shadow and mode interlocks for a user-created jarvis slug collision', async () => {

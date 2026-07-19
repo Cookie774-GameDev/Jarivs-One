@@ -18,6 +18,7 @@ import { Button, Input, Textarea, toast } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth';
 import { useAgentStore } from '@/stores/agents';
+import { findProtectedJarvisAgent } from '@/lib/jarvis/identity';
 import type { ProjectId } from '@/types';
 import {
   createTextFile,
@@ -179,7 +180,9 @@ export function FilesPage() {
   } | null>(null);
   const editorRef = React.useRef<HTMLTextAreaElement>(null);
   const miniScrollRef = React.useRef<HTMLDivElement>(null);
-  const jarvisAgent = useAgentStore((s) => Object.values(s.agents).find((a) => a.slug === 'jarvis') ?? null);
+  const jarvisAgent = useAgentStore(
+    (s) => findProtectedJarvisAgent(Object.values(s.agents)) ?? null,
+  );
   const chatModelSelection = useAuthStore((s) => s.chatModelSelection);
 
   const dirty = content !== savedContent;

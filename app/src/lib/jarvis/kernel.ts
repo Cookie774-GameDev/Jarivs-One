@@ -1,0 +1,620 @@
+import type { LLMMessage } from '@/lib/ai';
+import type { Agent, ChatId, Message, MessageId, Part } from '@/types';
+import type {
+  JarvisAbortKind,
+  JarvisAbortRegistration,
+  JarvisArtifactDraft,
+  JarvisArtifactV1,
+  JarvisAuthorityBoundResult,
+  JarvisEvent,
+  JarvisExecutionJournal,
+  JarvisLiveEvidenceProof,
+  JarvisRun,
+  JarvisRunStatus,
+  JarvisRunTransitionEventInput,
+} from './contracts/execution';
+import { canonicalizeJarvisApprovalJson } from './contracts/execution';
+import type { JarvisCapabilitySnapshot, JarvisModelSnapshot } from './contracts/capability';
+import type { JarvisContextPack } from './contracts/source';
+import type { JarvisRequestEnvelope } from './contracts/request';
+import type { JarvisOutputContract, JarvisResponseEnvelope } from './contracts/response';
+import type { CompiledJarvisPrompt } from './contracts/prompt';
+import type { JarvisIdentitySnapshot } from './identity';
+import type { JarvisProfileSnapshot } from './profiles/types';
+import {
+  createJarvisRequestEnvelope,
+  deepFreezeJarvisCopy,
+  type JarvisRequestAttempt,
+  validateJarvisRequestAttempt,
+} from './requestEnvelope';
+import { compileJarvisPrompt, JarvisPromptCompilationError } from './promptCompiler';
+import type { RawProviderResponse } from './response/pipeline';
+import { isProtectedJarvisAgent } from './identity';
+import { projectJarvisEnvelopeToMessageParts } from './kernelMessageProjection';
+import type {
+  CanonicalProviderEvidence,
+  JarvisArtifactEffectClaimCapability,
+} from './artifactProducerAdapters';
+import type { JarvisArtifactKernelComposition } from './artifactRuntime';
+import type {
+  KernelTurnCommitInput,
+  KernelTurnCommitResult,
+  KernelTurnTerminalStatus,
+} from './kernelTurnCommit';
+
+export interface JarvisKernelTurnInput {
+  run: Readonly<JarvisRun>;
+  attempt: JarvisRequestAttempt;
+  accountId: string;
+  workspaceId?: string;
+  projectId?: string;
+  chatId: string;
+  parentRunId?: string;
+  userMessageId: string;
+  agent: Agent;
+  surface: JarvisRequestEnvelope['surface'];
+  interactionMode: JarvisRequestEnvelope['interactionMode'];
+  userText: string;
+  messageHistory: readonly LLMMessage[];
+  model: JarvisModelSnapshot;
+  identity: JarvisIdentitySnapshot;
+  profile: JarvisProfileSnapshot;
+  capabilities: JarvisCapabilitySnapshot;
+  context: JarvisContextPack;
+  outputContract: JarvisOutputContract;
+  workingDirectory?: string;
+}
+
+export interface JarvisKernelTurnResult {
+  request: Readonly<JarvisRequestEnvelope>;
+  compiled: Readonly<CompiledJarvisPrompt>;
+  response: Readonly<JarvisResponseEnvelope>;
+  messageParts: readonly Part[];
+}
+
+export type JarvisProviderStartedReceipt = Readonly<{
+  providerId: string;
+  modelId: string;
+  modelSnapshotRef: string;
+  operations: readonly ('generate' | 'stream' | 'embed')[];
+  startedAt: number;
+}>;
+
+export type JarvisStartedProviderDispatch = Readonly<{
+  receipt: JarvisProviderStartedReceipt;
+  response: Promise<Readonly<RawProviderResponse>>;
+  abortAfterStart(reason: 'authority_revoked' | 'evidence_commit_failed'): void;
+}>;
+
+export type JarvisResolvedProviderDispatch = Readonly<{
+  start(signal: AbortSignal): JarvisStartedProviderDispatch;
+  dispose(): void;
+}>;
+
+export type JarvisPreparedProviderDispatch = Readonly<{
+  resolveConfiguration(): Promise<JarvisResolvedProviderDispatch>;
+  dispose(): void;
+}>;
+
+export type JarvisKernelPrepareProvider = (input: {
+  accountId: string;
+  runId: string;
+  requestId: string;
+  attemptNumber: number;
+  compiledPrompt: Readonly<CompiledJarvisPrompt>;
+  agent: Agent;
+  model: Readonly<JarvisModelSnapshot>;
+  messages: readonly LLMMessage[];
+  workingDirectory?: string;
+}) => Promise<JarvisPreparedProviderDispatch>;
+
+export type JarvisKernelProcessResponse = (
+  raw: Readonly<RawProviderResponse>,
+  request: Readonly<JarvisRequestEnvelope>,
+) => Promise<Readonly<JarvisResponseEnvelope>>;
+
+type JarvisBoundLiveEvidenceRegistration = Readonly<{
+  readonly initialProof: unknown;
+  dispose(): void;
+}>;
+
+export interface JarvisBoundKernelLifecycle {
+  readonly revocationSignal: AbortSignal;
+  assertCurrent(): void;
+  transition(input: {
+    expectedStatus: JarvisRunStatus;
+    nextStatus: JarvisRunStatus;
+    event: JarvisRunTransitionEventInput;
+    completedAt?: number;
+  }): Promise<JarvisAuthorityBoundResult<Readonly<{ run: JarvisRun; event: JarvisEvent }>>>;
+  recordProviderStarted(
+    receipt: JarvisProviderStartedReceipt,
+  ): Promise<JarvisAuthorityBoundResult<JarvisBoundLiveEvidenceRegistration>>;
+  recordProviderResult(observation: {
+    state: 'completed' | 'degraded';
+    resultRef: string;
+    observedAt: number;
+  }): Promise<JarvisAuthorityBoundResult<JarvisLiveEvidenceProof>>;
+  registerAbortOwner(
+    input: Readonly<{
+      registrationId: string;
+      kind: JarvisAbortKind;
+      abort: JarvisAbortRegistration['abort'];
+    }>,
+  ): () => void;
+}
+
+type BoundKernelTurnCommitInput = Omit<KernelTurnCommitInput, 'accountBinding'>;
+
+export type JarvisKernelDeps = Readonly<{
+  journal: Pick<JarvisExecutionJournal, 'allocateRun' | 'getRun'>;
+  issueBoundLifecycle(
+    scope: Readonly<{
+      accountId: string;
+      runId: string;
+      requestId: string;
+      attemptNumber: number;
+    }>,
+  ): JarvisBoundKernelLifecycle;
+  issueBoundArtifactPipeline: JarvisArtifactKernelComposition<unknown>['issueBoundArtifactPipeline'];
+  artifactEffectClaims: JarvisArtifactEffectClaimCapability;
+  takeProviderArtifactDrafts(
+    raw: Readonly<RawProviderResponse>,
+  ): readonly JarvisArtifactDraft[] | undefined;
+  commitKernelTurn(input: BoundKernelTurnCommitInput): Promise<KernelTurnCommitResult>;
+  prepareProvider: JarvisKernelPrepareProvider;
+  processResponse: JarvisKernelProcessResponse;
+  now: () => number;
+}>;
+
+function terminalStatus(response: Readonly<JarvisResponseEnvelope>): KernelTurnTerminalStatus {
+  const status = response.executionState?.status;
+  if (
+    status === 'completed' ||
+    status === 'partial' ||
+    status === 'failed' ||
+    status === 'cancelled' ||
+    status === 'timed_out'
+  ) {
+    return status;
+  }
+  return 'completed';
+}
+
+function revoked<T>(): JarvisAuthorityBoundResult<T> {
+  return { kind: 'account_authority_revoked' };
+}
+
+function lifecycleIsCurrent(lifecycle: JarvisBoundKernelLifecycle): boolean {
+  try {
+    lifecycle.assertCurrent();
+    return true;
+  } catch (error) {
+    if (lifecycle.revocationSignal.aborted) return false;
+    throw error;
+  }
+}
+
+function canonicalValuesMatch(left: unknown, right: unknown): boolean {
+  try {
+    return canonicalizeJarvisApprovalJson(left) === canonicalizeJarvisApprovalJson(right);
+  } catch {
+    return false;
+  }
+}
+
+type CleanupResult = Readonly<{ failed: false } | { failed: true; error: unknown }>;
+
+function runAllCleanup(actions: readonly (() => void)[]): CleanupResult {
+  let failed = false;
+  let firstError: unknown;
+  for (const action of actions) {
+    try {
+      action();
+    } catch (error) {
+      if (!failed) {
+        failed = true;
+        firstError = error;
+      }
+    }
+  }
+  return failed ? { failed: true, error: firstError } : { failed: false };
+}
+
+function snapshotProviderArtifactDrafts(
+  drafts: readonly JarvisArtifactDraft[],
+): readonly JarvisArtifactDraft[] {
+  try {
+    const detached = structuredClone(drafts) as JarvisArtifactDraft[];
+    for (const draft of detached) {
+      for (const sourceRef of draft.artifact.sourceRefs) Object.freeze(sourceRef);
+      Object.freeze(draft.artifact.sourceRefs);
+      Object.freeze(draft.artifact);
+      if (draft.backing.kind === 'local_reference') {
+        Object.freeze(draft.backing.localReference);
+      }
+      Object.freeze(draft.backing);
+      Object.freeze(draft);
+    }
+    return Object.freeze(detached);
+  } catch {
+    throw new Error('kernel_provider_artifact_sidecar_invalid');
+  }
+}
+
+function assertPersistedRun(
+  expected: Readonly<JarvisKernelTurnInput>,
+  actual: Readonly<JarvisRun> | undefined,
+): asserts actual is Readonly<JarvisRun> {
+  if (
+    !actual ||
+    actual.id !== expected.run.id ||
+    actual.id !== expected.attempt.runId ||
+    actual.accountId !== expected.accountId ||
+    actual.workspaceId !== expected.workspaceId ||
+    actual.projectId !== expected.projectId ||
+    actual.chatId !== expected.chatId ||
+    actual.parentRunId !== expected.parentRunId ||
+    actual.source !== expected.surface ||
+    actual.status !== 'queued' ||
+    expected.run.status !== 'queued' ||
+    actual.agentId !== expected.agent.id ||
+    actual.identityVersion !== expected.identity.identityVersion ||
+    actual.profileRevisionId !== expected.profile.revisionId ||
+    !canonicalValuesMatch(actual.model, expected.model) ||
+    !canonicalValuesMatch(actual.model, expected.run.model)
+  ) {
+    throw new Error('kernel_turn_persisted_run_mismatch');
+  }
+}
+
+function transitionEvent(
+  requestId: string,
+  status: 'compiling' | 'running',
+  createdAt: number,
+): JarvisRunTransitionEventInput {
+  return {
+    idempotencyKey: `kernel:${requestId}:${status}`,
+    title: status === 'compiling' ? 'Compiling protected request' : 'Protected request running',
+    safeSummary:
+      status === 'compiling'
+        ? 'The protected request is being compiled.'
+        : 'The protected provider request is running.',
+    sourceRefs: [],
+    artifactIds: [],
+    createdAt,
+  };
+}
+
+function providerResultSource(input: {
+  accountId: string;
+  runId: string;
+  requestId: string;
+  attemptNumber: number;
+  receipt: JarvisProviderStartedReceipt;
+  resultRef: string;
+  observedAt: number;
+  state: 'completed' | 'degraded';
+}) {
+  return {
+    schemaVersion: 1 as const,
+    accountId: input.accountId,
+    runId: input.runId,
+    requestId: input.requestId,
+    attemptNumber: input.attemptNumber,
+    producerKind: 'provider' as const,
+    producerIdentity: {
+      producerKind: 'provider' as const,
+      providerId: input.receipt.providerId,
+      modelId: input.receipt.modelId,
+      modelSnapshotRef: input.receipt.modelSnapshotRef,
+    },
+    resultRef: input.resultRef,
+    observedAt: input.observedAt,
+    phase: 'result' as const,
+    state: input.state,
+  };
+}
+
+export async function runJarvisKernelTurn(
+  input: Readonly<JarvisKernelTurnInput>,
+  deps: JarvisKernelDeps,
+): Promise<JarvisAuthorityBoundResult<JarvisKernelTurnResult>> {
+  if (!isProtectedJarvisAgent(input.agent)) {
+    throw new JarvisPromptCompilationError(
+      'not_protected_jarvis',
+      'The protected JARVIS compiler is unavailable for this agent.',
+    );
+  }
+  if (
+    input.run.id !== input.attempt.runId ||
+    input.run.accountId !== input.accountId ||
+    input.run.chatId !== input.chatId
+  ) {
+    throw new Error('kernel_turn_scope_mismatch');
+  }
+
+  const validatedAttempt = validateJarvisRequestAttempt(input.attempt);
+  if (
+    validatedAttempt.runId !== input.run.id ||
+    validatedAttempt.requestId !== input.attempt.requestId ||
+    validatedAttempt.attemptNumber !== input.attempt.attemptNumber
+  ) {
+    throw new Error('kernel_turn_attempt_mismatch');
+  }
+
+  const persisted = await deps.journal.getRun(input.accountId, input.run.id);
+  assertPersistedRun(input, persisted);
+  const lifecycle = deps.issueBoundLifecycle({
+    accountId: input.accountId,
+    runId: input.run.id,
+    requestId: input.attempt.requestId,
+    attemptNumber: input.attempt.attemptNumber,
+  });
+  if (!lifecycleIsCurrent(lifecycle)) return revoked();
+
+  const compiling = await lifecycle.transition({
+    expectedStatus: 'queued',
+    nextStatus: 'compiling',
+    event: transitionEvent(input.attempt.requestId, 'compiling', deps.now()),
+  });
+  if (compiling.kind === 'account_authority_revoked') return revoked();
+
+  const request = await createJarvisRequestEnvelope({
+    attempt: input.attempt,
+    accountId: input.accountId,
+    ...(input.workspaceId === undefined ? {} : { workspaceId: input.workspaceId }),
+    ...(input.projectId === undefined ? {} : { projectId: input.projectId }),
+    chatId: input.chatId,
+    ...(input.parentRunId === undefined ? {} : { parentRunId: input.parentRunId }),
+    agent: {
+      id: input.agent.id,
+      slug: input.agent.slug,
+      builtin: input.agent.builtin === true,
+    },
+    surface: input.surface,
+    interactionMode: input.interactionMode,
+    identity: input.identity,
+    profile: input.profile,
+    model: input.model,
+    capabilities: input.capabilities,
+    context: input.context,
+    outputContract: input.outputContract,
+    userText: input.userText,
+    messageHistory: input.messageHistory,
+    createdAt: deps.now(),
+  });
+  const compiled = compileJarvisPrompt(request);
+
+  const running = await lifecycle.transition({
+    expectedStatus: 'compiling',
+    nextStatus: 'running',
+    event: transitionEvent(input.attempt.requestId, 'running', deps.now()),
+  });
+  if (running.kind === 'account_authority_revoked') return revoked();
+
+  const controller = new AbortController();
+  const onAuthorityRevoked = () => controller.abort(lifecycle.revocationSignal.reason);
+  lifecycle.revocationSignal.addEventListener('abort', onAuthorityRevoked, { once: true });
+  if (lifecycle.revocationSignal.aborted) onAuthorityRevoked();
+  let unregisterAbort: (() => void) | undefined;
+  let prepared: JarvisPreparedProviderDispatch | undefined;
+  let resolved: JarvisResolvedProviderDispatch | undefined;
+  let started: JarvisStartedProviderDispatch | undefined;
+  let registration: JarvisBoundLiveEvidenceRegistration | undefined;
+  let terminalCommitted = false;
+  let hasPrimaryFailure = false;
+  const retainRevokedOutcome = (): JarvisAuthorityBoundResult<JarvisKernelTurnResult> => {
+    hasPrimaryFailure = true;
+    return revoked();
+  };
+
+  try {
+    unregisterAbort = lifecycle.registerAbortOwner({
+      registrationId: `${input.run.id}:provider`,
+      kind: 'provider_stream',
+      abort: () => {
+        controller.abort();
+        return { kind: 'signal_delivered', ownerId: `${input.run.id}:provider` };
+      },
+    });
+    prepared = await deps.prepareProvider({
+      accountId: input.accountId,
+      runId: input.run.id,
+      requestId: input.attempt.requestId,
+      attemptNumber: input.attempt.attemptNumber,
+      compiledPrompt: compiled,
+      agent: input.agent,
+      model: input.model,
+      messages: input.messageHistory,
+      ...(input.workingDirectory === undefined ? {} : { workingDirectory: input.workingDirectory }),
+    });
+    resolved = await prepared.resolveConfiguration();
+    if (!lifecycleIsCurrent(lifecycle)) return retainRevokedOutcome();
+    if (controller.signal.aborted) return retainRevokedOutcome();
+    started = resolved.start(controller.signal);
+
+    const startedResult = await lifecycle.recordProviderStarted(started.receipt);
+    if (startedResult.kind === 'account_authority_revoked') {
+      started.abortAfterStart('authority_revoked');
+      return retainRevokedOutcome();
+    }
+    registration = startedResult.value;
+
+    const raw = await started.response;
+    const processedResponse = await deps.processResponse(raw, request);
+    const status = terminalStatus(processedResponse);
+    const resultState = status === 'completed' ? 'completed' : 'degraded';
+    const resultRef = `jresult_${input.attempt.requestId}`;
+    const observedAt = processedResponse.completedAt;
+    if (
+      processedResponse.requestId !== request.requestId ||
+      processedResponse.runId !== request.runId ||
+      processedResponse.artifactIds.length !== 0 ||
+      raw.completedAt !== processedResponse.completedAt ||
+      raw.provider.providerId !== started.receipt.providerId ||
+      raw.provider.modelId !== started.receipt.modelId ||
+      !canonicalValuesMatch(raw.provider, processedResponse.provider) ||
+      !canonicalValuesMatch(raw.provider, input.model)
+    ) {
+      throw new Error('kernel_provider_response_scope_mismatch');
+    }
+    const sidecarDrafts = deps.takeProviderArtifactDrafts(raw);
+    if (!sidecarDrafts || !Array.isArray(sidecarDrafts)) {
+      throw new Error('kernel_provider_artifact_sidecar_missing');
+    }
+    const drafts = snapshotProviderArtifactDrafts(sidecarDrafts);
+    const artifacts: JarvisArtifactV1[] = [];
+    if (drafts.length > 0) {
+      const pipeline = deps.issueBoundArtifactPipeline(deps.artifactEffectClaims);
+      const evidence: CanonicalProviderEvidence = Object.freeze({
+        producerId: 'provider_response',
+        accountId: input.accountId,
+        runId: input.run.id,
+        requestId: input.attempt.requestId,
+        attemptNumber: input.attempt.attemptNumber,
+        resultRef,
+        state: status === 'completed' ? 'completed' : 'partial',
+        verifiedAt: observedAt,
+        providerId: started.receipt.providerId,
+        modelId: started.receipt.modelId,
+        modelSnapshotRef: started.receipt.modelSnapshotRef,
+      });
+      for (const draft of drafts) {
+        const artifact = await pipeline.provider.materialize({ evidence, draft });
+        if (
+          artifact.runId !== input.run.id ||
+          artifact.requestId !== input.attempt.requestId ||
+          artifact.attemptNumber !== input.attempt.attemptNumber ||
+          artifacts.some((candidate) => candidate.id === artifact.id)
+        ) {
+          throw new Error('kernel_provider_artifact_scope_mismatch');
+        }
+        artifacts.push(artifact);
+      }
+    }
+    const response = deepFreezeJarvisCopy({
+      ...processedResponse,
+      artifactIds: artifacts.map((artifact) => artifact.id),
+    }) as Readonly<JarvisResponseEnvelope>;
+    const messageParts = projectJarvisEnvelopeToMessageParts({ response, artifacts });
+    const expectedProviderResultSource = providerResultSource({
+      accountId: input.accountId,
+      runId: input.run.id,
+      requestId: input.attempt.requestId,
+      attemptNumber: input.attempt.attemptNumber,
+      receipt: started.receipt,
+      resultRef,
+      observedAt,
+      state: resultState,
+    });
+    const assistantMessage: Message = {
+      id: `msg_${input.attempt.requestId}` as MessageId,
+      chat_id: input.chatId as ChatId,
+      role: 'assistant',
+      agent_id: input.agent.id,
+      parts: [...messageParts],
+      created_at: response.completedAt,
+      updated_at: response.completedAt,
+    };
+    const commit = await deps.commitKernelTurn({
+      accountId: input.accountId,
+      runId: input.run.id,
+      requestId: input.attempt.requestId,
+      attemptNumber: input.attempt.attemptNumber,
+      expectedStatus: 'running',
+      terminal: {
+        status,
+        event: {
+          idempotencyKey: `kernel-terminal:${input.attempt.requestId}:${input.attempt.attemptNumber}`,
+          title: status === 'completed' ? 'Kernel turn completed' : 'Kernel turn ended',
+          safeSummary:
+            status === 'completed'
+              ? 'The protected turn completed.'
+              : 'The protected turn ended with verified degraded state.',
+          sourceRefs: [...response.sourceRefs],
+          artifactIds: [...response.artifactIds],
+          createdAt: response.completedAt,
+          producerSourceEvidence: expectedProviderResultSource,
+          canonicalResultEvidence: {
+            schemaVersion: 1,
+            kind: 'kernel_turn_committed',
+            accountId: input.accountId,
+            runId: input.run.id,
+            requestId: input.attempt.requestId,
+            attemptNumber: input.attempt.attemptNumber,
+            state: resultState,
+            resultRef: resultRef as `jresult_${string}`,
+            observedAt,
+          },
+        },
+      },
+      assistantMessage,
+      artifacts,
+      ...(input.attempt.kind === 'transport_retry'
+        ? {
+            transportAttemptCompletion: {
+              requestId: input.attempt.requestId,
+              attemptNumber: input.attempt.attemptNumber,
+            },
+          }
+        : {}),
+    });
+    if (!commit.committed) {
+      if (commit.reason === 'account_authority_revoked') return retainRevokedOutcome();
+      throw new Error(`kernel_turn_commit_${commit.reason}`);
+    }
+    if (!canonicalValuesMatch(commit.event.producerSourceEvidence, expectedProviderResultSource)) {
+      throw new Error('kernel_turn_commit_source_mismatch');
+    }
+    terminalCommitted = true;
+
+    const providerResult = await lifecycle.recordProviderResult({
+      state: resultState,
+      resultRef,
+      observedAt,
+    });
+    if (providerResult.kind === 'account_authority_revoked') return retainRevokedOutcome();
+
+    return {
+      kind: 'committed',
+      value: {
+        request,
+        compiled,
+        response,
+        messageParts,
+      },
+    };
+  } catch (error) {
+    if (lifecycle.revocationSignal.aborted) {
+      hasPrimaryFailure = true;
+      if (started && !terminalCommitted) {
+        try {
+          started.abortAfterStart('authority_revoked');
+        } catch {
+          // The revoked authority result remains authoritative during cleanup.
+        }
+      }
+      return revoked();
+    }
+    hasPrimaryFailure = true;
+    if (started && !terminalCommitted) {
+      try {
+        controller.abort('kernel_provider_evidence_failed');
+        started.abortAfterStart('evidence_commit_failed');
+      } catch {
+        // Preserve the dispatcher failure that triggered provider cleanup.
+      }
+    }
+    throw error;
+  } finally {
+    const cleanup = runAllCleanup([
+      () => registration?.dispose(),
+      () => unregisterAbort?.(),
+      () => resolved?.dispose(),
+      () => prepared?.dispose(),
+      () => lifecycle.revocationSignal.removeEventListener('abort', onAuthorityRevoked),
+    ]);
+    if (cleanup.failed && !hasPrimaryFailure) throw cleanup.error;
+  }
+}

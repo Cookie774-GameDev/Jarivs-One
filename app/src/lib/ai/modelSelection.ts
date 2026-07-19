@@ -21,6 +21,7 @@ import type {
   ProviderConnection,
 } from './adapters/types';
 import { getProviderConnectionDescriptor } from './adapters/catalog';
+import { isProtectedJarvisAgent } from '@/lib/jarvis/identity';
 
 type ConnectedSingleSelection = {
   connectionId: string;
@@ -336,7 +337,10 @@ export function applyChatModelSelectionToAgent(
   selection: ChatModelSelection,
 ): Agent {
   if (selection.mode !== 'single') return agent;
-  if (agent.slug !== 'jarvis' && !agentUsesDefaultProvider(agent.model.provider, agent.model.model)) {
+  if (
+    !isProtectedJarvisAgent(agent) &&
+    !agentUsesDefaultProvider(agent.model.provider, agent.model.model)
+  ) {
     return agent;
   }
   return {

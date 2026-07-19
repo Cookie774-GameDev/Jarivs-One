@@ -8,6 +8,8 @@ import type {
 } from '@/features/jarvis-interaction/types';
 import type { ProviderConnection } from '@/lib/ai/adapters/types';
 import type { UsageSnapshot } from '@/lib/usage/usageTypes';
+import type { JarvisArtifactState, JarvisArtifactV1 } from '@/lib/jarvis/contracts/execution';
+import type { JarvisSourceKind, JarvisSourceRef } from '@/lib/jarvis/contracts/source';
 
 export type Role = 'user' | 'assistant' | 'agent' | 'system' | 'tool';
 
@@ -24,6 +26,25 @@ export type ActionStatus =
   | 'success'
   | 'error'
   | 'cancelled';
+
+export type JarvisSourceMessageRef = {
+  id: string;
+  kind: JarvisSourceKind;
+  label: string;
+  uri?: string;
+  trust: JarvisSourceRef['trust'];
+  sensitivity: JarvisSourceRef['sensitivity'];
+  observedAt?: number;
+};
+
+export type JarvisArtifactMessageRef = {
+  id: string;
+  kind: JarvisArtifactV1['kind'];
+  title: string;
+  state: JarvisArtifactState;
+  uri?: string;
+  safeSummary?: string;
+};
 
 /**
  * A part of a message - text, tool call, action proposal, image, etc.
@@ -82,6 +103,8 @@ export type Part =
   | { kind: 'agent_card'; agent: JarvisChatAgent }
   | { kind: 'image'; url: string; alt?: string }
   | { kind: 'file_ref'; ref: ContextRef }
+  | { kind: 'jarvis_source_ref'; source: JarvisSourceMessageRef }
+  | { kind: 'jarvis_artifact_ref'; artifact: JarvisArtifactMessageRef }
   | { kind: 'usage_card'; snapshots: UsageSnapshot[]; scope: 'connection' | 'all' };
 
 /**

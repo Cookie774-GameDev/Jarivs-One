@@ -31,6 +31,7 @@ import { Hint, Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import { useAgentStore } from '@/stores/agents';
+import { findProtectedJarvisAgent } from '@/lib/jarvis/identity';
 import { ChatThread, Composer } from '@/features/chat';
 import { EmptyChat } from '@/features/chat/EmptyChat';
 // `useTodayEvents` exists on the V2 schedule hooks (added by the parallel
@@ -149,7 +150,9 @@ export function Inspector() {
   /** Holds a freshly created creator chat id until Dexie live-query catches up. */
   const stickyCreatorChatIdRef = React.useRef<string | null>(null);
   const inspectorOpen = useUIStore((s) => s.inspectorOpen);
-  const jarvisAgentId = useAgentStore((s) => Object.values(s.agents).find((agent) => agent.slug === 'jarvis')?.id ?? null);
+  const jarvisAgentId = useAgentStore(
+    (s) => findProtectedJarvisAgent(Object.values(s.agents))?.id ?? null,
+  );
   const projectRoot = React.useMemo(() => getStoredProjectRoot(projectId), [projectId]);
   /** Jarvis creator needs a slightly wider column so question cards aren't squished. */
   const inspectorWidth = activeTab === 'jarvis' ? 380 : 320;

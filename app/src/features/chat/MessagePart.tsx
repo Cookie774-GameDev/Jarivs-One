@@ -37,6 +37,24 @@ function textForDisplay(text: string): string {
   return prose;
 }
 
+const RENDERABLE_REFERENCE_PROTOCOLS = new Set([
+  'https:',
+  'asset:',
+  'vibespace:',
+  'app:',
+  'jarvis:',
+  'tauri:',
+]);
+
+function renderableReferenceUri(uri: string | undefined): string | undefined {
+  if (!uri) return undefined;
+  try {
+    return RENDERABLE_REFERENCE_PROTOCOLS.has(new URL(uri).protocol) ? uri : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Distinct “command in use” card — not an attachment chip. */
 function ActiveChatCommandMessage({ text }: { text: string }) {
   const parsed = parseActiveChatCommandMessage(text);
@@ -361,6 +379,74 @@ export function MessagePart({
           {ref.excerpt && (
             <span className="text-muted-foreground truncate max-w-[24ch]">"{ref.excerpt}"</span>
           )}
+        </div>
+      );
+    }
+
+    case 'jarvis_source_ref': {
+      const source = part.source;
+      const uri =
+        source.sensitivity === 'restricted' || source.sensitivity === 'secret'
+          ? undefined
+          : renderableReferenceUri(source.uri);
+      const label = (
+        <>
+          <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          <span className="truncate">{source.label}</span>
+        </>
+      );
+      return (
+        <div className="inline-flex max-w-full items-center gap-2 rounded-md border border-border bg-elevated px-2 py-1 text-secondary text-foreground">
+          {uri ? (
+            <a
+              href={uri}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex min-w-0 items-center gap-1.5 underline-offset-2 hover:underline"
+              aria-label={source.label}
+            >
+              {label}
+            </a>
+          ) : (
+            <span className="inline-flex min-w-0 items-center gap-1.5">{label}</span>
+          )}
+          <span className="text-metadata uppercase text-muted-foreground">
+            {source.sensitivity}
+          </span>
+        </div>
+      );
+    }
+
+    case 'jarvis_artifact_ref': {
+      const artifact = part.artifact;
+      const uri = renderableReferenceUri(artifact.uri);
+      const title = (
+        <>
+          <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          <span className="truncate">{artifact.title}</span>
+        </>
+      );
+      return (
+        <div className="flex max-w-sm flex-col gap-1 rounded-md border border-border bg-elevated px-3 py-2 text-secondary text-foreground">
+          <div className="flex items-center justify-between gap-2">
+            {uri ? (
+              <a
+                href={uri}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex min-w-0 items-center gap-1.5 underline-offset-2 hover:underline"
+                aria-label={artifact.title}
+              >
+                {title}
+              </a>
+            ) : (
+              <span className="inline-flex min-w-0 items-center gap-1.5">{title}</span>
+            )}
+            <span className="text-metadata uppercase text-muted-foreground">{artifact.state}</span>
+          </div>
+          {artifact.safeSummary ? (
+            <p className="text-metadata text-muted-foreground">{artifact.safeSummary}</p>
+          ) : null}
         </div>
       );
     }

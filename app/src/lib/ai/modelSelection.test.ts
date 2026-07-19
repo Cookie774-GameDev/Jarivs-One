@@ -172,6 +172,22 @@ describe('modelSelection', () => {
     expect(next.model).toEqual({ provider: 'groq', model: 'llama-3.3-70b-versatile' });
   });
 
+  it('does not apply the protected Jarvis override to a user slug collision', () => {
+    const collision = {
+      ...jarvis,
+      id: 'agent_collision' as Agent['id'],
+      builtin: false,
+      model: { provider: 'openai' as const, model: 'gpt-5.2' },
+    };
+
+    expect(
+      applyChatModelSelectionToAgent(
+        collision,
+        selectionFromOption('groq', 'llama-3.3-70b-versatile'),
+      ),
+    ).toBe(collision);
+  });
+
   it('allows send when a connected model is selected', () => {
     const ctx = {
       apiKeys: { groq: 'gsk_test' },

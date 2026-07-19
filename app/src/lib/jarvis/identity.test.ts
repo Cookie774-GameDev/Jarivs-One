@@ -1,4 +1,6 @@
 import type { Agent } from '@/types';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
   JARVIS_IDENTITY_ID,
@@ -254,7 +256,23 @@ describe('protected JARVIS identity contracts', () => {
     const protectedJarvis = { builtin: true, slug: 'jarvis', marker: 'protected' } as const;
 
     expect(findProtectedJarvisAgent([collision, protectedJarvis])).toBe(protectedJarvis);
-    expect(findProtectedJarvisAgent([collision])).toBeNull();
+    expect(findProtectedJarvisAgent([collision])).toBeUndefined();
+    expect(findProtectedJarvisAgent(new Set([collision, protectedJarvis]))).toBe(protectedJarvis);
+  });
+
+  it('keeps every protected call site free of slug-only identity checks', () => {
+    const paths = [
+      'src/App.tsx',
+      'src/components/layout/Inspector.tsx',
+      'src/features/chat/Composer.tsx',
+      'src/features/files/FilesPage.tsx',
+      'src/features/files/FileExplorerDialog.tsx',
+      'src/lib/ai/modelSelection.ts',
+      'src/lib/ai/runtime.ts',
+    ];
+    for (const path of paths) {
+      expect(readFileSync(resolve(path), 'utf8'), path).not.toContain(".slug === 'jarvis'");
+    }
   });
 
   it('exposes one exact deeply frozen identity and delivery policy', () => {

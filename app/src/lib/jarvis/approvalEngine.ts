@@ -994,7 +994,7 @@ function createActionLiveVerifier<
           !Number.isSafeInteger(evidence.resultEventSeq) ||
           evidence.resultEventSeq < 1 ||
           !evidence.resultRef.trim() ||
-          (evidence.state !== 'completed' && evidence.state !== 'degraded') ||
+          !['started', 'ready', 'busy', 'completed', 'degraded'].includes(evidence.state) ||
           !Number.isFinite(evidence.verifiedAt)
         ) {
           return null;
@@ -1009,6 +1009,39 @@ function createActionLiveVerifier<
             candidate.attemptNumber === evidence.attemptNumber,
         );
         if (!attempt || attempt.startedEventSeq >= evidence.resultEventSeq) return null;
+
+        if (
+          evidence.state === 'started' ||
+          evidence.state === 'ready' ||
+          evidence.state === 'busy'
+        ) {
+          const startRow = await input.events.getBySeq(
+            evidence.accountId,
+            evidence.runId,
+            evidence.resultEventSeq,
+          );
+          const startExecution = startRow?.executionEvidence;
+          const startSource = startRow?.producerSourceEvidence;
+          if (
+            !startRow ||
+            startRow.type !== 'tool' ||
+            (startRow.status !== 'running' &&
+              startRow.status !== 'consequential_effect_claimed') ||
+            !sourceMatchesEvidence(startRow, evidence, 'start') ||
+            startExecution?.kind !== 'consequential_effect_claimed' ||
+            startExecution.requestId !== evidence.requestId ||
+            startExecution.attemptNumber !== evidence.attemptNumber ||
+            startExecution.ownerKind !== owner.ownerKind ||
+            startExecution.ownerId !== owner.ownerId ||
+            startExecution.evidenceRef !== evidence.resultRef ||
+            startExecution.observedAt !== evidence.verifiedAt ||
+            startSource?.resultRef !== startExecution.evidenceRef ||
+            startSource.observedAt !== startExecution.observedAt
+          ) {
+            return null;
+          }
+          return Object.freeze(structuredClone(evidence));
+        }
 
         const [resultRow, tail] = await Promise.all([
           input.events.getBySeq(evidence.accountId, evidence.runId, evidence.resultEventSeq),
@@ -1050,7 +1083,8 @@ function createActionLiveVerifier<
           startRow.seq >= completedRow.seq ||
           completedRow.seq !== evidence.resultEventSeq ||
           startRow.type !== 'tool' ||
-          startRow.status !== 'running' ||
+          (startRow.status !== 'running' &&
+            startRow.status !== 'consequential_effect_claimed') ||
           completedRow.type !== 'tool' ||
           completedRow.status !== evidence.state
         ) {

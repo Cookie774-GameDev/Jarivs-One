@@ -173,3 +173,69 @@ describe('MessagePart Jarvis creator draft actions', () => {
     expect(screen.queryByRole('button', { name: /Apply agent draft/i })).toBeNull();
   });
 });
+
+describe('MessagePart canonical Jarvis references', () => {
+  it('renders safe source and artifact labels with real links', () => {
+    render(
+      <>
+        <MessagePart
+          allParts={[]}
+          part={{
+            kind: 'jarvis_source_ref',
+            source: {
+              id: 'jsource_1',
+              kind: 'web',
+              label: 'Verified source',
+              uri: 'https://example.com/source',
+              trust: 'app_verified',
+              sensitivity: 'public',
+            },
+          }}
+        />
+        <MessagePart
+          allParts={[]}
+          part={{
+            kind: 'jarvis_artifact_ref',
+            artifact: {
+              id: 'jart_1',
+              kind: 'document',
+              title: 'Launch report',
+              state: 'ready',
+              uri: 'https://example.com/report',
+              safeSummary: 'Verified output.',
+            },
+          }}
+        />
+      </>,
+    );
+
+    expect(screen.getByRole('link', { name: 'Verified source' }).getAttribute('href')).toBe(
+      'https://example.com/source',
+    );
+    expect(screen.getByRole('link', { name: 'Launch report' }).getAttribute('href')).toBe(
+      'https://example.com/report',
+    );
+    expect(screen.getByText('Verified output.')).not.toBeNull();
+  });
+
+  it('renders restricted sources without creating a link', () => {
+    render(
+      <MessagePart
+        allParts={[]}
+        part={{
+          kind: 'jarvis_source_ref',
+          source: {
+            id: 'jsource_secret',
+            kind: 'project_file',
+            label: 'Restricted source',
+            trust: 'app_verified',
+            sensitivity: 'restricted',
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText('Restricted source')).not.toBeNull();
+    expect(screen.queryByRole('link', { name: 'Restricted source' })).toBeNull();
+  });
+});

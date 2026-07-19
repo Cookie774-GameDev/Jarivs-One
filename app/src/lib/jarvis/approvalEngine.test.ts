@@ -1388,7 +1388,15 @@ describe('createJarvisActionLiveEvidenceVerifiers', () => {
       state: 'completed',
       verifiedAt: 9_500,
     };
+    const initialEvidence: JarvisCanonicalLiveProducerEvidence<'action'> = {
+      ...evidence,
+      resultRef: 'effect-claim-1',
+      resultEventSeq: 2,
+      state: 'busy',
+      verifiedAt: 9_000,
+    };
 
+    await expect(verifiers.action.verify(initialEvidence)).resolves.toEqual(initialEvidence);
     await expect(verifiers.action.verify(evidence)).resolves.toEqual(evidence);
     expect(runRepository.getById).toHaveBeenCalledWith('account-a', run.id);
     expect(eventRepository.getBySeq).toHaveBeenCalledWith('account-a', run.id, 3);

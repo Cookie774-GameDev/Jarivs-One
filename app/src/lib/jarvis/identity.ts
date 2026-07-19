@@ -121,9 +121,12 @@ export function isProtectedJarvisAgent(agent: Pick<Agent, 'builtin' | 'slug'>): 
 }
 
 export function findProtectedJarvisAgent<T extends Pick<Agent, 'builtin' | 'slug'>>(
-  agents: readonly T[],
-): T | null {
-  return agents.find((agent) => isProtectedJarvisAgent(agent)) ?? null;
+  agents: Iterable<T>,
+): T | undefined {
+  for (const agent of agents) {
+    if (isProtectedJarvisAgent(agent)) return agent;
+  }
+  return undefined;
 }
 
 export function getJarvisDeliveryPolicy(

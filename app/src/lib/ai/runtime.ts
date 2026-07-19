@@ -58,6 +58,7 @@ import {
 } from './modelSelection';
 
 import {
+  buildJarvisContextPackForAi,
   getProjectContextBlock,
   getProjectContextTreeBlock,
   getConnectedFilesBlock,
@@ -112,9 +113,26 @@ import {
   isProtectedJarvisAgent,
 } from '@/lib/jarvis/identity';
 import type {
+  CanonicalArtifactEvidenceAuthorities,
   CanonicalProviderEvidence,
   CanonicalProviderEvidenceAuthority,
 } from '@/lib/jarvis/artifactProducerAdapters';
+import type { JarvisApprovalActionBinder } from '@/lib/jarvis/approvalEngine';
+import type { JarvisCapabilitySnapshotProvider } from '@/lib/jarvis/capabilitySnapshot';
+import type { JarvisDexie } from '@/lib/db';
+import type { JarvisExecutionJournal } from '@/lib/jarvis/contracts';
+import type {
+  JarvisKernelRuntime,
+  JarvisKernelRuntimeComposition,
+} from '@/lib/jarvis/kernelRuntime';
+import type { JarvisKernelTurnInput } from '@/lib/jarvis/kernel';
+import type { JarvisArtifactDraft } from '@/lib/jarvis/contracts';
+import type { RawProviderResponse } from '@/lib/jarvis/response/pipeline';
+import {
+  createStreamingPreviewState,
+  pushStreamingPreviewChunk,
+} from '@/lib/jarvis/response/streamingPreviewGate';
+import { clearPreview, setPreview } from '@/features/chat/streamingPreviewStore';
 
 /** @internal Re-reads canonical provider results without exposing the result store. */
 export interface CanonicalProviderArtifactEvidenceReadPort {
@@ -181,6 +199,361 @@ export function createCanonicalProviderEvidenceAuthority(
         : null;
     },
   });
+}
+
+export type JarvisKernelRuntimeHostInstallInput = Readonly<{
+  db: JarvisDexie;
+  bindKernelActions: JarvisApprovalActionBinder;
+  capabilitySnapshots: JarvisCapabilitySnapshotProvider;
+  randomUUID?: () => string;
+  now?: () => number;
+}>;
+
+type InstalledJarvisKernelRuntimeHost = Readonly<{
+  journal: Pick<JarvisExecutionJournal, 'allocateRun' | 'getRun'>;
+  capabilitySnapshots: JarvisCapabilitySnapshotProvider;
+  runInitialTurn(
+    input: Readonly<JarvisKernelTurnInput>,
+  ): ReturnType<JarvisKernelRuntime['runInitialTurn']>;
+  requestCancellation: JarvisKernelRuntime['requestCancellation'];
+  dispose(): void;
+}>;
+
+let installedJarvisKernelRuntimeHost: InstalledJarvisKernelRuntimeHost | null = null;
+
+function unavailableLiveVerifier<K extends string>(producerKind: K) {
+  return Object.freeze({
+    state: 'unavailable' as const,
+    producerKind,
+    reason: 'producer_task_not_landed' as const,
+  });
+}
+
+function providerLiveEvidenceMatches(
+  evidence: Readonly<
+    import('@/lib/jarvis/contracts').JarvisCanonicalLiveProducerEvidence<'provider'>
+  >,
+  event: Readonly<import('@/lib/jarvis/contracts').JarvisEvent> | undefined,
+): boolean {
+  const source = event?.producerSourceEvidence;
+  return Boolean(
+    event &&
+      event.seq === evidence.resultEventSeq &&
+      source?.producerKind === 'provider' &&
+      source.accountId === evidence.accountId &&
+      source.runId === evidence.runId &&
+      source.requestId === evidence.requestId &&
+      source.attemptNumber === evidence.attemptNumber &&
+      source.resultRef === evidence.resultRef &&
+      source.observedAt === evidence.verifiedAt &&
+      source.state === evidence.state &&
+      source.producerIdentity.providerId === evidence.producerIdentity.providerId &&
+      source.producerIdentity.modelId === evidence.producerIdentity.modelId &&
+      source.producerIdentity.modelSnapshotRef === evidence.producerIdentity.modelSnapshotRef,
+  );
+}
+
+/**
+ * Installs the one trusted, boot-scoped kernel composition. App calls this only
+ * from the attested primary-host callback after security authority exists.
+ */
+export async function installJarvisKernelRuntimeHost(
+  input: JarvisKernelRuntimeHostInstallInput,
+): Promise<() => void> {
+  if (installedJarvisKernelRuntimeHost) throw new Error('jarvis_kernel_host_already_installed');
+  const now = input.now ?? Date.now;
+  const randomUUID = input.randomUUID ?? (() => crypto.randomUUID());
+  const [
+    repositoriesModule,
+    journalModule,
+    abortModule,
+    kernelModule,
+    responseModule,
+    approvalModule,
+  ] =
+    await Promise.all([
+      import('@/lib/db/jarvisRepositories'),
+      import('@/lib/jarvis/executionJournal/journal'),
+      import('@/lib/jarvis/executionJournal/abortRegistry'),
+      import('@/lib/jarvis/kernelRuntime'),
+      import('@/lib/jarvis/response/pipeline'),
+      import('@/lib/jarvis/approvalEngine'),
+    ]);
+  if (installedJarvisKernelRuntimeHost) throw new Error('jarvis_kernel_host_already_installed');
+
+  const repositories = repositoriesModule.createJarvisRepositories(input.db);
+  const journal = journalModule.createJarvisExecutionJournal(repositories, { now });
+  const abortRegistry = abortModule.createJarvisAbortRegistry({
+    getRun: (accountId, runId) => journal.getRun(accountId, runId),
+    newCancellationRequestId: () => `jcancel_${randomUUID()}`,
+  });
+  const providerEvidence = new Map<string, CanonicalProviderEvidence>();
+  const providerArtifactDrafts = new WeakMap<
+    Readonly<RawProviderResponse>,
+    readonly JarvisArtifactDraft[]
+  >();
+  const activeTurnScopes = new Map<
+    string,
+    Readonly<{ accountId: string; runId: string; requestId: string; chatId: string }>
+  >();
+  const rememberProviderEvidence = (evidence: CanonicalProviderEvidence): void => {
+    providerEvidence.set(evidence.resultRef, evidence);
+    while (providerEvidence.size > 128) {
+      const oldest = providerEvidence.keys().next().value as string | undefined;
+      if (!oldest) break;
+      providerEvidence.delete(oldest);
+    }
+  };
+  const providerArtifactAuthority = createCanonicalProviderEvidenceAuthority({
+    async readCanonicalProviderEvidence(evidence) {
+      return providerEvidence.get(evidence.resultRef) ?? null;
+    },
+  });
+  const denyArtifactEvidence = Object.freeze({
+    async verify() {
+      return null;
+    },
+  });
+  const artifactEvidenceAuthorities = Object.freeze({
+    provider: Object.freeze({
+      state: 'ready' as const,
+      producerId: 'provider_response' as const,
+      authority: providerArtifactAuthority,
+    }),
+    fileAction: Object.freeze({
+      state: 'ready' as const,
+      producerId: 'file_action_result' as const,
+      authority: denyArtifactEvidence,
+    }),
+    terminal: Object.freeze({
+      state: 'ready' as const,
+      producerId: 'terminal_exit' as const,
+      authority: denyArtifactEvidence,
+    }),
+    plugin: Object.freeze({
+      state: 'ready' as const,
+      producerId: 'plugin_result' as const,
+      authority: denyArtifactEvidence,
+    }),
+    mcp: Object.freeze({
+      state: 'ready' as const,
+      producerId: 'mcp_result' as const,
+      authority: denyArtifactEvidence,
+    }),
+    schedule: Object.freeze({
+      state: 'unavailable' as const,
+      producerId: 'schedule_result' as const,
+      reason: 'producer_task_not_landed' as const,
+    }),
+  }) as CanonicalArtifactEvidenceAuthorities;
+  const providerVerifier = Object.freeze({
+    state: 'ready' as const,
+    verifier: Object.freeze({
+      async verify(
+        evidence: Readonly<
+          import('@/lib/jarvis/contracts').JarvisCanonicalLiveProducerEvidence<'provider'>
+        >,
+      ) {
+        const event = await repositories.event.getBySeq(
+          evidence.accountId,
+          evidence.runId,
+          evidence.resultEventSeq,
+        );
+        return providerLiveEvidenceMatches(evidence, event)
+          ? Object.freeze(structuredClone(evidence))
+          : null;
+      },
+    }),
+  });
+  const actionVerifiers = approvalModule.createJarvisActionLiveEvidenceVerifiers({
+    runs: repositories.run,
+    events: repositories.event,
+  });
+  const liveEvidenceVerifiers = Object.freeze({
+    provider: providerVerifier,
+    action: Object.freeze({ state: 'ready' as const, verifier: actionVerifiers.action }),
+    fileAction: Object.freeze({ state: 'ready' as const, verifier: actionVerifiers.fileAction }),
+    terminal: Object.freeze({ state: 'ready' as const, verifier: actionVerifiers.terminal }),
+    plugin: Object.freeze({ state: 'ready' as const, verifier: actionVerifiers.plugin }),
+    mcp: Object.freeze({ state: 'ready' as const, verifier: actionVerifiers.mcp }),
+    voice: unavailableLiveVerifier('voice'),
+    schedule: unavailableLiveVerifier('schedule'),
+    hive: unavailableLiveVerifier('hive'),
+  });
+
+  const composition: JarvisKernelRuntimeComposition = kernelModule.createJarvisKernelRuntime({
+    db: input.db,
+    artifactEvidenceAuthorities,
+    journal,
+    cancellationDeliveryAuthority: abortRegistry.cancellationDeliveryAuthority,
+    abortRegistrationAuthority: abortRegistry.registrationAuthority,
+    bindKernelActions: input.bindKernelActions,
+    liveEvidenceVerifiers,
+    async prepareProvider(providerInput) {
+      let preparedDisposed = false;
+      if (
+        providerInput.model.providerId !== String(providerInput.agent.model.provider) ||
+        providerInput.model.modelId !== providerInput.agent.model.model
+      ) {
+        throw new Error('kernel_provider_model_binding_mismatch');
+      }
+      return Object.freeze({
+        async resolveConfiguration() {
+          if (preparedDisposed) throw new Error('kernel_provider_preparation_disposed');
+          if (!providerInput.model.connectionId) {
+            throw new Error('kernel_provider_connection_unavailable');
+          }
+          let resolvedDisposed = false;
+          return Object.freeze({
+            start(signal: AbortSignal) {
+              if (resolvedDisposed || preparedDisposed) {
+                throw new Error('kernel_provider_configuration_disposed');
+              }
+              let previewState = createStreamingPreviewState();
+              const startedAt = now();
+              const modelSnapshotRef = `jmodel_${providerInput.model.providerId}_${providerInput.model.modelId}_${providerInput.model.capturedAt}`;
+              const response = runAgent({
+                agent: providerInput.agent,
+                messages: [...providerInput.messages],
+                connectionId: providerInput.model.connectionId,
+                workingDirectory: providerInput.workingDirectory,
+                compiledPrompt: providerInput.compiledPrompt,
+                requestId: providerInput.requestId,
+                protectedAttempt: {
+                  accountId: providerInput.accountId,
+                  runId: providerInput.runId,
+                  requestId: providerInput.requestId,
+                  attemptNumber: providerInput.attemptNumber,
+                },
+                signal,
+                onChunk: (chunk) => {
+                  if (!chunk.delta) return;
+                  const decision = pushStreamingPreviewChunk(previewState, chunk.delta);
+                  previewState = decision.state;
+                  const scope = activeTurnScopes.get(providerInput.runId);
+                  if (!decision.allowed || !scope) return;
+                  setPreview({
+                    ...scope,
+                    text: decision.visibleText,
+                    updatedAt: now(),
+                  });
+                },
+              })
+                .then((result): Readonly<RawProviderResponse> => {
+                  const completedAt = now();
+                  if (
+                    String(result.provider) !== providerInput.model.providerId ||
+                    result.model !== providerInput.model.modelId
+                  ) {
+                    throw new Error('kernel_provider_result_binding_mismatch');
+                  }
+                  const raw = Object.freeze({
+                    text: result.text,
+                    provider: providerInput.model,
+                    verifiedFacts: Object.freeze({
+                      modelState: 'authenticated' as const,
+                      plugins: Object.freeze([]),
+                      mcps: Object.freeze([]),
+                    }),
+                    completedAt,
+                  });
+                  providerArtifactDrafts.set(raw, Object.freeze([]));
+                  rememberProviderEvidence(
+                    Object.freeze({
+                      producerId: 'provider_response',
+                      accountId: providerInput.accountId,
+                      runId: providerInput.runId,
+                      requestId: providerInput.requestId,
+                      attemptNumber: providerInput.attemptNumber,
+                      resultRef: `jresult_${providerInput.requestId}`,
+                      state: 'completed',
+                      verifiedAt: completedAt,
+                      providerId: providerInput.model.providerId,
+                      modelId: providerInput.model.modelId,
+                      modelSnapshotRef,
+                    }),
+                  );
+                  return raw;
+                });
+              return Object.freeze({
+                receipt: Object.freeze({
+                  providerId: providerInput.model.providerId,
+                  modelId: providerInput.model.modelId,
+                  modelSnapshotRef,
+                  operations: Object.freeze(['generate'] as const),
+                  startedAt,
+                }),
+                response,
+                abortAfterStart() {
+                  if (!signal.aborted) throw new Error('kernel_provider_abort_signal_not_set');
+                },
+              });
+            },
+            dispose() {
+              if (resolvedDisposed) return;
+              resolvedDisposed = true;
+            },
+          });
+        },
+        dispose() {
+          preparedDisposed = true;
+        },
+      });
+    },
+    processResponse(raw, request) {
+      return responseModule.processJarvisResponse(raw, request, {
+        async repair() {
+          throw new Error('kernel_response_repair_provider_unavailable');
+        },
+      });
+    },
+    takeProviderArtifactDrafts(raw) {
+      const drafts = providerArtifactDrafts.get(raw);
+      if (drafts) providerArtifactDrafts.delete(raw);
+      return drafts;
+    },
+    randomUUID,
+    now,
+  });
+
+  let disposed = false;
+  const host: InstalledJarvisKernelRuntimeHost = Object.freeze({
+    journal,
+    capabilitySnapshots: input.capabilitySnapshots,
+    async runInitialTurn(turnInput) {
+      if (disposed) throw new Error('jarvis_kernel_host_disposed');
+      activeTurnScopes.set(
+        turnInput.run.id,
+        Object.freeze({
+          accountId: turnInput.accountId,
+          runId: turnInput.run.id,
+          requestId: turnInput.attempt.requestId,
+          chatId: turnInput.chatId,
+        }),
+      );
+      try {
+        return await composition.kernel.runInitialTurn(turnInput);
+      } finally {
+        clearPreview(turnInput.accountId, turnInput.run.id);
+        activeTurnScopes.delete(turnInput.run.id);
+      }
+    },
+    requestCancellation: (cancelInput) => composition.kernel.requestCancellation(cancelInput),
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      for (const scope of activeTurnScopes.values()) clearPreview(scope.accountId, scope.runId);
+      activeTurnScopes.clear();
+      providerEvidence.clear();
+      composition.liveEvidenceHost.dispose();
+    },
+  });
+  installedJarvisKernelRuntimeHost = host;
+  return () => {
+    if (installedJarvisKernelRuntimeHost !== host) return;
+    installedJarvisKernelRuntimeHost = null;
+    host.dispose();
+  };
 }
 
 /**
@@ -971,6 +1344,115 @@ async function createRuntimeShadowTurn(input: {
   };
 }
 
+async function createRuntimeKernelTurn(input: {
+  host: InstalledJarvisKernelRuntimeHost;
+  agent: Agent;
+  chatId: ChatId | string;
+  workspaceId?: string;
+  projectId?: string;
+  text: string;
+  userMessageId: string;
+  messages: readonly LLMMessage[];
+  interactionMode: JarvisInteractionMode;
+  speakReply: boolean;
+  contextText: string;
+  model: import('@/lib/jarvis/contracts').JarvisModelSnapshot;
+}): Promise<JarvisKernelTurnInput> {
+  const account = resolveAccountIdentity(useAuthStore.getState());
+  if (!account) throw new Error('canonical_account_identity_unavailable');
+  const createdAt = Date.now();
+  const runId = createKernelRuntimeId('jrun');
+  const requestId = createKernelRuntimeId('jreq');
+  const profileRevisionId = `jprofile_revision_${input.agent.id}_${input.agent.updated_at}`;
+  const surface = input.speakReply ? ('voice' as const) : ('typed_chat' as const);
+  const [coreHash, responseContractHash, capabilities] = await Promise.all([
+    hashJarvisText(JARVIS_IDENTITY_POLICY.identityCore),
+    hashJarvisText(JARVIS_IDENTITY_POLICY.responseContract),
+    input.host.capabilitySnapshots.getForAccount(account.accountId),
+  ]);
+  const context = await buildJarvisContextPackForAi({
+    accountId: account.accountId,
+    maxChars: 16_384,
+    candidates: input.contextText.trim()
+      ? [
+          {
+            source: {
+              id: `jsource_${requestId}`,
+              kind: 'context_node' as const,
+              label: 'VibeSpace admitted runtime context',
+              accountId: account.accountId,
+              ...(input.projectId ? { projectId: input.projectId } : {}),
+              trust: 'app_verified' as const,
+              sensitivity: 'private' as const,
+              observedAt: createdAt,
+            },
+            purpose: 'answer' as const,
+            excerpt: input.contextText,
+            score: 1,
+            explicitlyAttached: false,
+            authorizedBody: true,
+          },
+        ]
+      : [],
+  });
+  const run = await input.host.journal.allocateRun({
+    id: runId,
+    accountId: account.accountId,
+    ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
+    ...(input.projectId ? { projectId: input.projectId } : {}),
+    chatId: String(input.chatId),
+    source: surface,
+    agentId: input.agent.id,
+    identityVersion: JARVIS_IDENTITY_POLICY.identityVersion,
+    profileRevisionId,
+    model: input.model,
+  });
+  return {
+    run,
+    attempt: {
+      kind: 'initial',
+      requestId,
+      runId,
+      attemptNumber: 1,
+    },
+    accountId: account.accountId,
+    ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
+    ...(input.projectId ? { projectId: input.projectId } : {}),
+    chatId: String(input.chatId),
+    userMessageId: input.userMessageId,
+    agent: input.agent,
+    surface,
+    interactionMode: input.interactionMode,
+    userText: input.text,
+    messageHistory: [...input.messages],
+    model: input.model,
+    identity: {
+      identityVersion: JARVIS_IDENTITY_POLICY.identityVersion,
+      coreHash,
+      responseContractHash,
+    },
+    profile: {
+      profileId: `jprofile_${input.agent.id}`,
+      revisionId: profileRevisionId,
+      customInstructions: '',
+      memoryScope: input.agent.memory_scope === 'agent' ? 'profile' : 'shared_selected',
+    },
+    capabilities,
+    context,
+    outputContract: {
+      preserveStructuredBlocks: true,
+      allowActionBlocks: input.interactionMode === 'agent',
+      allowPlanBlocks: input.interactionMode === 'plan',
+      allowQuestionBlocks: true,
+      allowPermissionBlocks: input.interactionMode === 'agent',
+      voiceDelivery: input.speakReply ? 'validated_stream' : 'none',
+    },
+    ...(input.projectId && getStoredProjectRoot(input.projectId)
+      ? { workingDirectory: getStoredProjectRoot(input.projectId) ?? undefined }
+      : {}),
+  };
+}
+
 /**
  * Subscribe to the chat composer events. Returns an unsubscribe function that
  * removes listeners and aborts any in-flight runs.
@@ -1210,7 +1692,7 @@ export function startRuntimeListener(
     // inflate prompts for sub-agents (Builder/Scout/Reviewer) that don't
     // need to propose user-approved actions.
     let runnable = applyChatResponseStyleOverlay(agent);
-    if (agent.slug === 'jarvis') {
+    if (isProtectedJarvis) {
       const preset = useAuthStore.getState().personaPreset;
       runnable = applyPersona(runnable, preset);
       runnable = applyAvailableActions(runnable);
@@ -1348,7 +1830,7 @@ export function startRuntimeListener(
         detail: { error: err instanceof Error ? err.message : String(err) },
       });
     }
-    if (agent.slug === 'jarvis') {
+    if (isProtectedJarvis) {
       userIdentityContext = buildUserIdentityContextBlock(authState.displayName);
       try {
         const defaultWriteFolder = await resolveDefaultWriteDir();
@@ -1572,10 +2054,95 @@ export function startRuntimeListener(
           assertJarvisRuntimeInterlocks(options.jarvisInterlocks);
         }
         if (activeKernelMode === 'kernel') {
-          throw new JarvisKernelModeError(
-            'kernel_mode_not_ready',
-            'Canonical JARVIS kernel dispatch is not installed yet.',
+          const host = installedJarvisKernelRuntimeHost;
+          if (!host) {
+            throw new JarvisKernelModeError(
+              'kernel_mode_not_ready',
+              'Canonical JARVIS kernel authority is unavailable in this window.',
+            );
+          }
+          const history = await bindings.getMessages(chatId);
+          const userMessage = [...history]
+            .reverse()
+            .find((message) => message.role === 'user');
+          if (!userMessage) throw new Error('kernel_user_message_missing');
+          const includeImages = modelSupportsVision(
+            runnable.model.provider,
+            runnable.model.model,
           );
+          const llmMessages = toLLMMessages(history, undefined, includeImages);
+          const selected = chatModelSelection.mode === 'single' ? chatModelSelection : null;
+          if (!selected) throw new Error('kernel_single_model_selection_required');
+          const capturedAt = Date.now();
+          const model: import('@/lib/jarvis/contracts').JarvisModelSnapshot = {
+            ...('connectionId' in selected && selected.connectionId
+              ? { connectionId: selected.connectionId }
+              : {}),
+            providerId: String(runnable.model.provider),
+            modelId: runnable.model.model,
+            connectionMode:
+              'connectionMode' in selected && selected.connectionMode
+                ? selected.connectionMode
+                : connectionModeForProvider(String(runnable.model.provider)),
+            capabilities:
+              'capabilities' in selected && selected.capabilities
+                ? { ...selected.capabilities }
+                : {},
+            ...(runnable.temperature === undefined
+              ? {}
+              : { effectiveTemperature: runnable.temperature }),
+            capturedAt,
+          };
+          const turn = await createRuntimeKernelTurn({
+            host,
+            agent: runnable,
+            chatId,
+            ...(chatRecord?.workspace_id
+              ? { workspaceId: String(chatRecord.workspace_id) }
+              : {}),
+            ...(projectId ? { projectId: String(projectId) } : {}),
+            text,
+            userMessageId: userMessage.id,
+            messages: llmMessages,
+            interactionMode,
+            speakReply: detail.speakReply === true,
+            contextText: contextBlocks.join('\n\n'),
+            model,
+          });
+          useAgentStore.getState().setRunState(agent.id, 'streaming');
+          useAgentStore.getState().setVerb(agent.id, 'thinking');
+          dispatchRunState(chatId, 'running');
+          const outcome = await host.runInitialTurn(turn);
+          if (outcome.kind === 'account_authority_revoked') {
+            throw new Error('kernel_account_authority_revoked');
+          }
+          const response = outcome.value.response;
+          useAgentStore.getState().setRunState(agent.id, 'done');
+          useAgentStore.getState().setVerb(agent.id, undefined);
+          useChatActivityStore.getState().update(chatId, agentActivityId, {
+            status: 'done',
+            title: `@${agent.slug} finished`,
+            subtitle: `${response.provider.providerId}/${response.provider.modelId}`,
+            ts: Date.now(),
+          });
+          dispatchRunState(chatId, 'done');
+          updateStructuredAgentStatus(detail.structuredContext, 'done', 'Finished');
+          try {
+            await maybeRenameChat(chatId as ChatId, response.displayText);
+          } catch {
+            // Canonical persistence is complete; tab naming remains best-effort.
+          }
+          void notifyDone(
+            'jarvis',
+            `${agent.name} done`,
+            deriveChatTitle(response.displayText) || 'The AI response is complete.',
+          );
+          if (streamingVoice && response.spokenText && canVoiceModuleSpeak()) {
+            await streamingVoice.onComplete(response.spokenText);
+            registerActiveStreamingVoiceSession(null);
+            streamingVoice = null;
+          }
+          return;
         }
       }
 
@@ -1755,7 +2322,7 @@ export function startRuntimeListener(
         },
       });
 
-      if (detail.autoApproveActions && agent.slug === 'jarvis') {
+      if (detail.autoApproveActions && isProtectedJarvis) {
         try {
           await autoApprovePendingActions(placeholder.id, chatId);
         } catch (approveErr) {
@@ -1799,7 +2366,7 @@ export function startRuntimeListener(
       } catch {
         // Auto-naming is best-effort; never let it break the run.
       }
-      if (agent.slug === 'jarvis') {
+      if (isProtectedJarvis) {
         void maybeUpdateAllAboutMeFromChat(
           runnable,
           history,
