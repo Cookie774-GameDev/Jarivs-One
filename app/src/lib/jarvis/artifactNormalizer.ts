@@ -41,7 +41,7 @@ const ARTIFACT_SECRET_PATTERNS: readonly RegExp[] = [
   /\bgh[pousr]_[A-Za-z0-9_]{20,}\b/,
   /\bgithub_pat_[A-Za-z0-9_]{20,}\b/i,
   /\bAKIA[0-9A-Z]{16}\b/,
-  /(?:^|[^A-Za-z0-9+/=])(?=[A-Za-z0-9+/]{40}(?:$|[^A-Za-z0-9+/=]))(?=[A-Za-z0-9+/]{0,39}[A-Z])(?=[A-Za-z0-9+/]{0,39}[a-z])(?=[A-Za-z0-9+/]{0,39}[0-9])[A-Za-z0-9+/]{40}(?=$|[^A-Za-z0-9+/=])/,
+  /(?:^|[^A-Za-z0-9+/=])(?=[A-Za-z0-9+/]{40}(?:$|[^A-Za-z0-9+/=]))(?=[A-Za-z0-9+/]{0,39}[A-Z])(?=[A-Za-z0-9+/]{0,39}[a-z])[A-Za-z0-9+/]{40}(?=$|[^A-Za-z0-9+/=])/,
   /\bAIza[0-9A-Za-z_-]{20,}\b/,
   /\b(?:gsk_|sb_secret_)[A-Za-z0-9_-]{16,}\b/i,
   /\b(?:xai-|sk-ant-)[A-Za-z0-9_-]{16,}\b/i,

@@ -235,6 +235,7 @@ describe('verified artifact normalizer', () => {
     ['Slack user token', 'xoxp-111111111111-222222222222-syntheticTokenValue'],
     ['GitHub OAuth token', 'gho_SyntheticCredentialValue1234567890'],
     ['raw AWS secret access key', 'AbCdEfGhIjKlMnOpQrStUvWxYz0123456789+/AB'],
+    ['raw AWS secret access key without digits', 'AbCdEfGhIjKlMnOpQrStUvWxYzAbCdEfGhIjKl+/'],
     [
       'bearer JWT',
       'Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJzeW50aGV0aWMifQ.syntheticSignatureValue',
