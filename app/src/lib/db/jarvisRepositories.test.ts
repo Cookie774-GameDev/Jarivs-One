@@ -471,6 +471,9 @@ describe('Jarvis repository surface', () => {
       | 'attempt_effect_integrity_error'
       | 'profile_integrity_error'
       | 'artifact_integrity_error'
+      | 'approval_integrity_error'
+      | 'approval_scope_mismatch'
+      | 'approval_status_conflict'
       | 'invalid_limit'
     >();
     expect(newJarvisProfileRevisionId()).toMatch(

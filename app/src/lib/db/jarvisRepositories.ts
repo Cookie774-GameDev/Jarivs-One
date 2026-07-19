@@ -6,6 +6,7 @@ import type {
   JarvisAttemptEffectClaimResult,
   JarvisDurableLiveEvidenceV1,
   JarvisEvent,
+  JarvisLiveProducerIdentity,
   JarvisPreEffectTransportFailureEvidence,
   JarvisRun,
   JarvisRunStatus,
@@ -31,12 +32,14 @@ import {
   fromJarvisProfileRow,
   fromJarvisRunRow,
   toJarvisArtifactRow,
+  toJarvisApprovalRow,
   toJarvisEventRow,
   toJarvisIdentityRevisionRow,
   toJarvisProfileRow,
   toJarvisRunRow,
   type JarvisProfileMigrationMetadata,
 } from './jarvisMappers';
+import type { KernelApprovalTransactionContext } from './kernelTurnTransactionAuthority';
 
 const DEFAULT_LIMIT = 500;
 const MAX_LIMIT = 500;
@@ -200,6 +203,9 @@ export type JarvisRepositoryErrorCode =
   | 'attempt_effect_integrity_error'
   | 'profile_integrity_error'
   | 'artifact_integrity_error'
+  | 'approval_integrity_error'
+  | 'approval_scope_mismatch'
+  | 'approval_status_conflict'
   | 'invalid_limit';
 
 export class JarvisRepositoryError extends Error {
@@ -478,6 +484,532 @@ async function lastEventForRun(database: JarvisDexie, runId: string) {
     .where('[run_id+seq]')
     .between([runId, Dexie.minKey], [runId, Dexie.maxKey], true, true)
     .last();
+}
+
+export type CreatePendingApprovalInContextInput = Readonly<{
+  accountId: string;
+  approval: JarvisApprovalV1;
+}>;
+
+export type DecideApprovalInContextInput = Readonly<{
+  accountId: string;
+  runId: string;
+  requestId: string;
+  attemptNumber: number;
+  approvalId: string;
+  decision: 'approve' | 'deny' | 'expire';
+  decidedAt: number;
+}>;
+
+export type ClaimApprovedExecutionInContextInput = Readonly<{
+  accountId: string;
+  runId: string;
+  requestId: string;
+  attemptNumber: number;
+  approvalId: string;
+  producerKind: 'action' | 'file_action' | 'terminal' | 'plugin' | 'mcp';
+  ownerId: string;
+  evidenceRef: string;
+  startedAt: number;
+}>;
+
+export type ClaimSafeAutoExecutionInContextInput = Readonly<{
+  accountId: string;
+  approval: JarvisApprovalV1;
+  producerKind: 'action' | 'file_action' | 'terminal' | 'plugin' | 'mcp';
+  ownerId: string;
+  evidenceRef: string;
+  startedAt: number;
+}>;
+
+type ApprovalAttemptPhase = 'create' | 'pending' | 'claim' | 'safe_auto';
+
+function requireApprovalInputText(value: string): void {
+  if (!isStableText(value)) repositoryError('approval_integrity_error');
+}
+
+async function requireApprovalOwnedRun(
+  context: KernelApprovalTransactionContext,
+  accountId: string,
+  runId: string,
+): Promise<JarvisRun> {
+  requireApprovalInputText(accountId);
+  requireApprovalInputText(runId);
+  const row = await context.jarvis_runs.get(runId);
+  if (!row || row.account_id !== accountId) repositoryError('approval_scope_mismatch');
+  return fromJarvisRunRow(row);
+}
+
+function currentApprovalAttempts(
+  run: JarvisRun,
+  requestId: string,
+  attemptNumber: number,
+  phase: ApprovalAttemptPhase,
+): readonly JarvisTransportAttemptV1[] | undefined {
+  requireApprovalInputText(requestId);
+  if (!isPositiveSafeInteger(attemptNumber)) repositoryError('approval_integrity_error');
+  const attempts = run.transportAttempts;
+  if (!attempts || attempts.length === 0) {
+    if (run.source === 'schedule' || attemptNumber !== 1) {
+      repositoryError('approval_scope_mismatch');
+    }
+    return undefined;
+  }
+  if (run.source !== 'schedule') repositoryError('approval_scope_mismatch');
+  const latest = attempts.at(-1);
+  if (
+    !latest ||
+    latest.state !== 'provider_in_flight' ||
+    latest.requestId !== requestId ||
+    latest.attemptNumber !== attemptNumber
+  ) {
+    repositoryError('approval_scope_mismatch');
+  }
+  if (phase === 'create' || phase === 'safe_auto') {
+    if (latest.effectBarrier.state !== 'open' || latest.effectBarrier.version !== 0) {
+      repositoryError('approval_status_conflict');
+    }
+  } else if (
+    latest.effectBarrier.state !== 'dirty' ||
+    !Number.isSafeInteger(latest.effectBarrier.version) ||
+    latest.effectBarrier.version < 1
+  ) {
+    repositoryError('approval_status_conflict');
+  }
+  return attempts;
+}
+
+function dirtyApprovalAttempt(
+  attempts: readonly JarvisTransportAttemptV1[] | undefined,
+  updatedAt: number,
+): readonly JarvisTransportAttemptV1[] | undefined {
+  if (!attempts) return undefined;
+  const updated = structuredClone([...attempts]);
+  const latest = updated.at(-1)!;
+  updated[updated.length - 1] = {
+    ...latest,
+    effectBarrier: {
+      state: 'dirty',
+      version: latest.effectBarrier.version + 1,
+      updatedAt,
+    },
+    updatedAt,
+  };
+  return updated;
+}
+
+async function lastApprovalContextEvent(context: KernelApprovalTransactionContext, runId: string) {
+  return context.jarvis_events
+    .where('[run_id+seq]')
+    .between([runId, Dexie.minKey], [runId, Dexie.maxKey], true, true)
+    .last();
+}
+
+function approvalEvent(input: {
+  runId: string;
+  seq: number;
+  idempotencyKey: string;
+  status: string;
+  title: string;
+  safeSummary: string;
+  createdAt: number;
+}): JarvisEvent {
+  return {
+    ...input,
+    type: 'approval',
+    sourceRefs: [],
+    artifactIds: [],
+  };
+}
+
+function approvalRunEvent(input: {
+  runId: string;
+  seq: number;
+  idempotencyKey: string;
+  status: 'awaiting_approval' | 'running';
+  title: string;
+  safeSummary: string;
+  createdAt: number;
+}): JarvisEvent {
+  return {
+    ...input,
+    type: 'run_state',
+    sourceRefs: [],
+    artifactIds: [],
+  };
+}
+
+function approvalProducerIdentity(
+  producerKind: ClaimApprovedExecutionInContextInput['producerKind'],
+  approval: JarvisApprovalV1,
+  ownerId: string,
+): JarvisLiveProducerIdentity {
+  if (producerKind === 'action') {
+    return {
+      producerKind,
+      actionId: approval.actionId,
+      actionVersion: approval.actionVersion,
+      executionId: ownerId,
+    };
+  }
+  if (producerKind === 'file_action') {
+    return {
+      producerKind,
+      actionId: approval.actionId,
+      actionVersion: approval.actionVersion,
+      resultId: ownerId,
+    };
+  }
+  if (producerKind === 'terminal') {
+    return { producerKind, sessionId: `jterm_${approval.id}`, executionId: ownerId };
+  }
+  if (producerKind === 'plugin') {
+    return { producerKind, pluginId: approval.actionId, invocationId: ownerId };
+  }
+  return {
+    producerKind,
+    serverId: approval.capabilityId,
+    toolName: approval.actionId,
+    invocationId: ownerId,
+  };
+}
+
+function approvalClaimEvent(input: {
+  approval: JarvisApprovalV1;
+  producerKind: ClaimApprovedExecutionInContextInput['producerKind'];
+  ownerId: string;
+  evidenceRef: string;
+  startedAt: number;
+  seq: number;
+}): JarvisEvent {
+  const ownerKind = input.producerKind === 'file_action' ? 'file' : input.producerKind;
+  return {
+    runId: input.approval.runId,
+    seq: input.seq,
+    idempotencyKey: `${JARVIS_ATTEMPT_EFFECT_IDEMPOTENCY_PREFIX}${input.approval.runId}:${input.approval.requestId}:${input.approval.attemptNumber}:${encodeURIComponent(ownerKind)}:${encodeURIComponent(input.ownerId)}:${encodeURIComponent(input.evidenceRef)}`,
+    type: 'tool',
+    status: 'consequential_effect_claimed',
+    title: 'Approved action execution claimed',
+    safeSummary: 'The approved execution claimed the current attempt barrier.',
+    sourceRefs: [],
+    artifactIds: [],
+    createdAt: input.startedAt,
+    executionEvidence: {
+      schemaVersion: 1,
+      requestId: input.approval.requestId,
+      attemptNumber: input.approval.attemptNumber,
+      kind: 'consequential_effect_claimed',
+      ownerKind,
+      ownerId: input.ownerId,
+      evidenceRef: input.evidenceRef,
+      observedAt: input.startedAt,
+    },
+    producerSourceEvidence: {
+      schemaVersion: 1,
+      accountId: '',
+      runId: input.approval.runId,
+      requestId: input.approval.requestId,
+      attemptNumber: input.approval.attemptNumber,
+      producerKind: input.producerKind,
+      producerIdentity: approvalProducerIdentity(input.producerKind, input.approval, input.ownerId),
+      resultRef: input.evidenceRef,
+      observedAt: input.startedAt,
+      phase: 'start',
+      state: 'ready',
+    } as JarvisEvent['producerSourceEvidence'],
+  };
+}
+
+function withClaimAccount(event: JarvisEvent, accountId: string): JarvisEvent {
+  return {
+    ...event,
+    producerSourceEvidence: event.producerSourceEvidence
+      ? { ...event.producerSourceEvidence, accountId }
+      : undefined,
+  };
+}
+
+/** @internal Requires the caller's already-open exact three-table transaction. */
+export async function createPendingApprovalInContext(
+  context: KernelApprovalTransactionContext,
+  input: CreatePendingApprovalInContextInput,
+) {
+  const desiredRow = toJarvisApprovalRow(input.approval);
+  if (input.approval.status !== 'pending' || input.approval.expiresAt <= input.approval.createdAt) {
+    repositoryError('approval_integrity_error');
+  }
+  const run = await requireApprovalOwnedRun(context, input.accountId, input.approval.runId);
+  if (run.status !== 'running') repositoryError('approval_status_conflict');
+  const attempts = currentApprovalAttempts(
+    run,
+    input.approval.requestId,
+    input.approval.attemptNumber,
+    'create',
+  );
+  const [existing, open, cancellation, tail] = await Promise.all([
+    context.jarvis_approvals.get(input.approval.id),
+    context.jarvis_approvals
+      .where('run_id')
+      .equals(run.id)
+      .filter((row) => row.status === 'pending' || row.status === 'approved')
+      .first(),
+    context.jarvis_events
+      .where('run_id')
+      .equals(run.id)
+      .filter((row) => row.status === 'cancellation_requested')
+      .first(),
+    lastApprovalContextEvent(context, run.id),
+  ]);
+  if (existing || open || cancellation) repositoryError('approval_status_conflict');
+  const eventSeq = nextSequence(tail?.seq);
+  const events = [
+    approvalRunEvent({
+      runId: run.id,
+      seq: eventSeq,
+      idempotencyKey: `japproval:${input.approval.id}:awaiting`,
+      status: 'awaiting_approval',
+      title: 'Approval required',
+      safeSummary: 'The protected run is waiting for an approval decision.',
+      createdAt: input.approval.createdAt,
+    }),
+    approvalEvent({
+      runId: run.id,
+      seq: eventSeq + 1,
+      idempotencyKey: input.approval.id,
+      status: 'pending',
+      title: 'Approval pending',
+      safeSummary: 'A scoped action approval is pending.',
+      createdAt: input.approval.createdAt,
+    }),
+  ];
+  const updatedRun: JarvisRun = {
+    ...run,
+    status: 'awaiting_approval',
+    updatedAt: input.approval.createdAt,
+    ...(attempts
+      ? { transportAttempts: dirtyApprovalAttempt(attempts, input.approval.createdAt) }
+      : {}),
+  };
+  const runRow = toJarvisRunRow(updatedRun);
+  const eventRows = events.map(toJarvisEventRow);
+  await context.jarvis_runs.put(runRow);
+  await context.jarvis_approvals.add(desiredRow);
+  await context.jarvis_events.bulkAdd(eventRows);
+  return {
+    run: fromJarvisRunRow(runRow),
+    approval: fromJarvisApprovalRow(desiredRow),
+    events: eventRows.map(fromJarvisEventRow),
+  };
+}
+
+/** @internal Requires the caller's already-open exact three-table transaction. */
+export async function decideApprovalInContext(
+  context: KernelApprovalTransactionContext,
+  input: DecideApprovalInContextInput,
+) {
+  if (!isFiniteTimestamp(input.decidedAt)) repositoryError('approval_integrity_error');
+  requireApprovalInputText(input.approvalId);
+  const run = await requireApprovalOwnedRun(context, input.accountId, input.runId);
+  if (run.status !== 'awaiting_approval') repositoryError('approval_status_conflict');
+  currentApprovalAttempts(run, input.requestId, input.attemptNumber, 'pending');
+  const [row, tail] = await Promise.all([
+    context.jarvis_approvals.get(input.approvalId),
+    lastApprovalContextEvent(context, run.id),
+  ]);
+  if (!row || row.run_id !== run.id) repositoryError('approval_scope_mismatch');
+  const approval = fromJarvisApprovalRow(row);
+  if (approval.requestId !== input.requestId || approval.attemptNumber !== input.attemptNumber) {
+    repositoryError('approval_scope_mismatch');
+  }
+  if (approval.status !== 'pending') repositoryError('approval_status_conflict');
+  if (input.decision === 'approve' && approval.expiresAt <= input.decidedAt) {
+    repositoryError('approval_status_conflict');
+  }
+  const status =
+    input.decision === 'approve'
+      ? ('approved' as const)
+      : input.decision === 'deny'
+        ? ('denied' as const)
+        : ('expired' as const);
+  const updatedApproval: JarvisApprovalV1 = {
+    ...approval,
+    status,
+    decidedAt: input.decidedAt,
+  };
+  const approvalRow = toJarvisApprovalRow(updatedApproval);
+  const seq = nextSequence(tail?.seq);
+  const events: JarvisEvent[] = [
+    approvalEvent({
+      runId: run.id,
+      seq,
+      idempotencyKey: `japproval:${approval.id}:${status}`,
+      status,
+      title:
+        status === 'approved'
+          ? 'Approval granted'
+          : status === 'denied'
+            ? 'Approval denied'
+            : 'Approval expired',
+      safeSummary: `The scoped action approval was ${status}.`,
+      createdAt: input.decidedAt,
+    }),
+  ];
+  const updatedRun: JarvisRun = {
+    ...run,
+    status: status === 'approved' ? 'awaiting_approval' : 'running',
+    updatedAt: input.decidedAt,
+  };
+  if (status !== 'approved') {
+    events.push(
+      approvalRunEvent({
+        runId: run.id,
+        seq: seq + 1,
+        idempotencyKey: `japproval:${approval.id}:resume`,
+        status: 'running',
+        title: 'Approval wait ended',
+        safeSummary: 'The protected run resumed after the approval decision.',
+        createdAt: input.decidedAt,
+      }),
+    );
+  }
+  const runRow = toJarvisRunRow(updatedRun);
+  const eventRows = events.map(toJarvisEventRow);
+  await context.jarvis_runs.put(runRow);
+  await context.jarvis_approvals.put(approvalRow);
+  await context.jarvis_events.bulkAdd(eventRows);
+  return {
+    run: fromJarvisRunRow(runRow),
+    approval: fromJarvisApprovalRow(approvalRow),
+    events: eventRows.map(fromJarvisEventRow),
+  };
+}
+
+async function claimApprovalInContext(
+  context: KernelApprovalTransactionContext,
+  input: ClaimApprovedExecutionInContextInput,
+  approval: JarvisApprovalV1,
+  run: JarvisRun,
+  phase: 'claim' | 'safe_auto',
+) {
+  if (!isFiniteTimestamp(input.startedAt)) repositoryError('approval_integrity_error');
+  requireApprovalInputText(input.ownerId);
+  requireApprovalInputText(input.evidenceRef);
+  const attempts = currentApprovalAttempts(run, input.requestId, input.attemptNumber, phase);
+  const tail = await lastApprovalContextEvent(context, run.id);
+  const consumed: JarvisApprovalV1 = {
+    ...approval,
+    status: 'consumed',
+    consumedAt: input.startedAt,
+    ...(approval.decidedAt === undefined ? { decidedAt: input.startedAt } : {}),
+  };
+  const updatedRun: JarvisRun = {
+    ...run,
+    status: 'running',
+    updatedAt: input.startedAt,
+    ...(attempts ? { transportAttempts: dirtyApprovalAttempt(attempts, input.startedAt) } : {}),
+  };
+  const event = withClaimAccount(
+    approvalClaimEvent({ ...input, approval: consumed, seq: nextSequence(tail?.seq) }),
+    input.accountId,
+  );
+  const approvalRow = toJarvisApprovalRow(consumed);
+  const runRow = toJarvisRunRow(updatedRun);
+  const eventRow = toJarvisEventRow(event);
+  await context.jarvis_runs.put(runRow);
+  if (phase === 'safe_auto') await context.jarvis_approvals.add(approvalRow);
+  else await context.jarvis_approvals.put(approvalRow);
+  await context.jarvis_events.add(eventRow);
+  return {
+    run: fromJarvisRunRow(runRow),
+    approval: fromJarvisApprovalRow(approvalRow),
+    startEvent: fromJarvisEventRow(eventRow),
+  };
+}
+
+/** @internal Requires the caller's already-open exact three-table transaction. */
+export async function claimApprovedExecutionInContext(
+  context: KernelApprovalTransactionContext,
+  input: ClaimApprovedExecutionInContextInput,
+) {
+  const run = await requireApprovalOwnedRun(context, input.accountId, input.runId);
+  if (run.status !== 'awaiting_approval') repositoryError('approval_status_conflict');
+  const row = await context.jarvis_approvals.get(input.approvalId);
+  if (!row || row.run_id !== run.id) repositoryError('approval_scope_mismatch');
+  const approval = fromJarvisApprovalRow(row);
+  if (approval.requestId !== input.requestId || approval.attemptNumber !== input.attemptNumber) {
+    repositoryError('approval_scope_mismatch');
+  }
+  if (approval.status !== 'approved' || approval.expiresAt <= input.startedAt) {
+    repositoryError('approval_status_conflict');
+  }
+  return claimApprovalInContext(context, input, approval, run, 'claim');
+}
+
+/** @internal Requires the caller's already-open exact three-table transaction. */
+export async function claimSafeAutoExecutionInContext(
+  context: KernelApprovalTransactionContext,
+  input: ClaimSafeAutoExecutionInContextInput,
+) {
+  if (input.approval.status !== 'pending' || input.approval.risk !== 'safe') {
+    repositoryError('approval_integrity_error');
+  }
+  if (input.approval.expiresAt <= input.startedAt) {
+    repositoryError('approval_status_conflict');
+  }
+  toJarvisApprovalRow(input.approval);
+  const run = await requireApprovalOwnedRun(context, input.accountId, input.approval.runId);
+  if (run.status !== 'running') repositoryError('approval_status_conflict');
+  if (await context.jarvis_approvals.get(input.approval.id)) {
+    repositoryError('approval_status_conflict');
+  }
+  return claimApprovalInContext(
+    context,
+    {
+      accountId: input.accountId,
+      runId: input.approval.runId,
+      requestId: input.approval.requestId,
+      attemptNumber: input.approval.attemptNumber,
+      approvalId: input.approval.id,
+      producerKind: input.producerKind,
+      ownerId: input.ownerId,
+      evidenceRef: input.evidenceRef,
+      startedAt: input.startedAt,
+    },
+    input.approval,
+    run,
+    'safe_auto',
+  );
+}
+
+/** @internal Ordinary non-kernel transaction owner that delegates to the same cores. */
+export function createJarvisApprovalMutationRepository(database: JarvisDexie) {
+  const transaction = <T>(
+    body: (context: KernelApprovalTransactionContext) => Promise<T>,
+  ): Promise<T> =>
+    database.transaction(
+      'rw',
+      database.jarvis_runs,
+      database.jarvis_events,
+      database.jarvis_approvals,
+      () =>
+        body(
+          Object.freeze({
+            jarvis_runs: database.jarvis_runs,
+            jarvis_events: database.jarvis_events,
+            jarvis_approvals: database.jarvis_approvals,
+          }),
+        ),
+    );
+  return Object.freeze({
+    createPending: (input: CreatePendingApprovalInContextInput) =>
+      transaction((context) => createPendingApprovalInContext(context, input)),
+    decide: (input: DecideApprovalInContextInput) =>
+      transaction((context) => decideApprovalInContext(context, input)),
+    claimApprovedExecution: (input: ClaimApprovedExecutionInContextInput) =>
+      transaction((context) => claimApprovedExecutionInContext(context, input)),
+    claimSafeAutoExecution: (input: ClaimSafeAutoExecutionInContextInput) =>
+      transaction((context) => claimSafeAutoExecutionInContext(context, input)),
+  });
 }
 
 export function createJarvisRepositories(
