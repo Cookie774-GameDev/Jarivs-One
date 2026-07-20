@@ -1,0 +1,243 @@
+import {
+  isJarvisCommandCenterLiveSnapshotValid,
+  selectCurrentRun,
+  selectEvents,
+  selectLiveSystems,
+  selectOutputs,
+  selectRetryState,
+} from './selectors';
+import type {
+  JarvisCommandCenterDataPort,
+  JarvisCommandCenterExpansion,
+  JarvisCommandCenterSnapshot,
+  JarvisCommandCenterTab,
+  JarvisRun,
+} from './types';
+
+const LIVE_EVIDENCE_INVALID = 'Live evidence could not be verified.';
+const LIVE_EVIDENCE_UNAVAILABLE = 'Live evidence is unavailable.';
+const DATA_UNAVAILABLE = 'Command Center data is unavailable.';
+
+export type JarvisCommandCenterStore = Readonly<{
+  getSnapshot(): Readonly<JarvisCommandCenterSnapshot>;
+  subscribe(listener: () => void): () => void;
+  setExpansion(expansion: JarvisCommandCenterExpansion): void;
+  setActiveTab(tab: JarvisCommandCenterTab): void;
+  refresh(): Promise<void>;
+  dispose(): void;
+}>;
+
+export function createJarvisCommandCenterStore(input: {
+  accountId: string;
+  chatId: string;
+  dataPort: JarvisCommandCenterDataPort;
+  limits?: Readonly<{ runs?: number; events?: number; artifacts?: number }>;
+}): JarvisCommandCenterStore {
+  const limits = {
+    runs: input.limits?.runs ?? 100,
+    events: input.limits?.events ?? 500,
+    artifacts: input.limits?.artifacts ?? 500,
+  };
+  let snapshot: JarvisCommandCenterSnapshot = {
+    accountId: input.accountId,
+    chatId: input.chatId,
+    expansion: 'collapsed',
+    activeTab: 'outputs',
+    retryState: { kind: 'none' },
+    events: [],
+    outputs: [],
+    liveSystems: { state: 'not_loaded' },
+  };
+  let disposed = false;
+  let refreshGeneration = 0;
+  let liveGeneration = 0;
+  let loadedLiveRunId: string | undefined;
+  let liveRequestRunId: string | undefined;
+  const listeners = new Set<() => void>();
+
+  const publish = (next: JarvisCommandCenterSnapshot) => {
+    if (disposed) return;
+    snapshot = next;
+    for (const listener of listeners) listener();
+  };
+
+  const invalidateLiveRequest = () => {
+    liveGeneration += 1;
+    liveRequestRunId = undefined;
+  };
+
+  const mayReadLive = (run: JarvisRun | undefined) =>
+    !!run && snapshot.expansion === 'expanded' && snapshot.activeTab === 'live_systems';
+
+  const loadLiveSystems = async (run: JarvisRun, force = false): Promise<void> => {
+    if (!mayReadLive(run)) return;
+    if (!force && loadedLiveRunId === run.id && snapshot.liveSystems.state === 'ready') return;
+    if (liveRequestRunId === run.id) return;
+    const generation = ++liveGeneration;
+    liveRequestRunId = run.id;
+    publish({ ...snapshot, liveSystems: { state: 'loading' } });
+    try {
+      const result = await input.dataPort.getLiveEvidenceSnapshot({
+        accountId: input.accountId,
+        runId: run.id,
+      });
+      if (
+        disposed ||
+        generation !== liveGeneration ||
+        snapshot.accountId !== input.accountId ||
+        snapshot.currentRun?.id !== run.id ||
+        snapshot.expansion !== 'expanded' ||
+        snapshot.activeTab !== 'live_systems'
+      ) {
+        return;
+      }
+      liveRequestRunId = undefined;
+      if (!result) {
+        loadedLiveRunId = undefined;
+        publish({
+          ...snapshot,
+          liveSystems: { state: 'unavailable', reason: LIVE_EVIDENCE_UNAVAILABLE },
+        });
+        return;
+      }
+      if (!isJarvisCommandCenterLiveSnapshotValid(result, run)) {
+        loadedLiveRunId = undefined;
+        publish({
+          ...snapshot,
+          liveSystems: { state: 'unavailable', reason: LIVE_EVIDENCE_INVALID },
+        });
+        return;
+      }
+      loadedLiveRunId = run.id;
+      publish({
+        ...snapshot,
+        liveSystems: { state: 'ready', nodes: selectLiveSystems(result, run) },
+      });
+    } catch {
+      if (
+        !disposed &&
+        generation === liveGeneration &&
+        snapshot.currentRun?.id === run.id &&
+        snapshot.expansion === 'expanded' &&
+        snapshot.activeTab === 'live_systems'
+      ) {
+        liveRequestRunId = undefined;
+        loadedLiveRunId = undefined;
+        publish({
+          ...snapshot,
+          liveSystems: { state: 'unavailable', reason: LIVE_EVIDENCE_UNAVAILABLE },
+        });
+      }
+    }
+  };
+
+  const refresh = async (forceLive = false): Promise<void> => {
+    if (disposed) return;
+    const generation = ++refreshGeneration;
+    try {
+      const runs = await input.dataPort.getRunsForChat({
+        accountId: input.accountId,
+        chatId: input.chatId,
+        limit: limits.runs,
+      });
+      if (disposed || generation !== refreshGeneration) return;
+      const currentRun = selectCurrentRun(runs, input.accountId, input.chatId);
+      const previousRunId = snapshot.currentRun?.id;
+      if (currentRun?.id !== previousRunId) {
+        invalidateLiveRequest();
+        loadedLiveRunId = undefined;
+      }
+
+      if (!currentRun) {
+        publish({
+          ...snapshot,
+          currentRun: undefined,
+          retryState: { kind: 'none' },
+          events: [],
+          outputs: [],
+          liveSystems: { state: 'not_loaded' },
+          error: undefined,
+        });
+        return;
+      }
+
+      const [events, artifacts] = await Promise.all([
+        input.dataPort.getEventsForRun({
+          accountId: input.accountId,
+          runId: currentRun.id,
+          limit: limits.events,
+        }),
+        input.dataPort.getArtifactsForRun({
+          accountId: input.accountId,
+          runId: currentRun.id,
+          limit: limits.artifacts,
+        }),
+      ]);
+      if (disposed || generation !== refreshGeneration) return;
+      const runChanged = previousRunId !== currentRun.id;
+      publish({
+        ...snapshot,
+        currentRun,
+        retryState: selectRetryState(currentRun),
+        events: selectEvents(events, currentRun.id, limits.events),
+        outputs: selectOutputs(artifacts, currentRun.id, limits.artifacts),
+        liveSystems: runChanged ? { state: 'not_loaded' } : snapshot.liveSystems,
+        error: undefined,
+      });
+      if (mayReadLive(currentRun)) await loadLiveSystems(currentRun, forceLive);
+    } catch {
+      if (!disposed && generation === refreshGeneration) {
+        publish({ ...snapshot, error: DATA_UNAVAILABLE });
+      }
+    }
+  };
+
+  const disposePortSubscription = input.dataPort.subscribe(
+    input.accountId,
+    input.chatId,
+    () => void refresh(true),
+  );
+  void refresh();
+
+  return {
+    getSnapshot: () => snapshot,
+    subscribe(listener) {
+      if (disposed) return () => undefined;
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    setExpansion(expansion) {
+      if (disposed || expansion === snapshot.expansion) return;
+      if (expansion === 'collapsed') invalidateLiveRequest();
+      publish({ ...snapshot, expansion });
+      if (
+        expansion === 'expanded' &&
+        snapshot.currentRun &&
+        snapshot.activeTab === 'live_systems'
+      ) {
+        void loadLiveSystems(snapshot.currentRun);
+      }
+    },
+    setActiveTab(activeTab) {
+      if (disposed || activeTab === snapshot.activeTab) return;
+      if (activeTab !== 'live_systems') invalidateLiveRequest();
+      publish({ ...snapshot, activeTab });
+      if (
+        activeTab === 'live_systems' &&
+        snapshot.currentRun &&
+        snapshot.expansion === 'expanded'
+      ) {
+        void loadLiveSystems(snapshot.currentRun);
+      }
+    },
+    refresh: () => refresh(),
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      refreshGeneration += 1;
+      invalidateLiveRequest();
+      disposePortSubscription();
+      listeners.clear();
+    },
+  };
+}

@@ -94,6 +94,7 @@ vi.mock('./context', () => ({
 
 import {
   createCanonicalProviderEvidenceAuthority,
+  createJarvisCommandCenterHostPort,
   installJarvisKernelRuntimeHost,
   startRuntimeListener as startKernelAwareRuntimeListener,
 } from './runtime';
@@ -1520,6 +1521,116 @@ describe('startRuntimeListener agent routing', () => {
       },
     };
   }
+
+  it('binds Command Center effects to the exact current account session', async () => {
+    const order: string[] = [];
+    const read = {
+      accountId: 'account-command-center',
+      snapshot: vi.fn(async () => undefined),
+      subscribe: vi.fn(() => () => undefined),
+    };
+    const accountSession = {
+      accountId: 'account-command-center',
+      read,
+      assertCurrent: vi.fn(() => order.push('assert')),
+      dispose: vi.fn(),
+    };
+    const requestCancellation = vi.fn(() => {
+      order.push('cancel');
+      return Promise.resolve({ kind: 'authority_revoked_before_intent' as const });
+    });
+    const retryScheduledTransport = vi.fn(() => {
+      order.push('transport');
+      return Promise.resolve({ kind: 'account_authority_revoked' as const });
+    });
+    const retryLogicalRun = vi.fn(() => {
+      order.push('logical');
+      return Promise.resolve({ kind: 'account_authority_revoked' as const });
+    });
+
+    const port = createJarvisCommandCenterHostPort({
+      accountSession,
+      kernel: { requestCancellation },
+      scheduledTransportRetry: { retry: retryScheduledTransport },
+      scheduledLogicalRetry: { retry: retryLogicalRun },
+    });
+
+    expect(port.accountId).toBe('account-command-center');
+    expect(port.liveEvidence).toBe(read);
+    await port.requestCancellation('run-command-center');
+    await port.retryScheduledTransport('run-command-center');
+    await port.retryLogicalRun('run-command-center');
+    expect(requestCancellation).toHaveBeenCalledWith({
+      accountId: 'account-command-center',
+      runId: 'run-command-center',
+    });
+    expect(retryScheduledTransport).toHaveBeenCalledWith({
+      accountId: 'account-command-center',
+      runId: 'run-command-center',
+    });
+    expect(retryLogicalRun).toHaveBeenCalledWith({
+      accountId: 'account-command-center',
+      previousRunId: 'run-command-center',
+    });
+    expect(order).toEqual([
+      'assert',
+      'assert',
+      'cancel',
+      'assert',
+      'transport',
+      'assert',
+      'logical',
+    ]);
+  });
+
+  it('rejects mismatched and stale Command Center account sessions before effects', () => {
+    const requestCancellation = vi.fn(async () => ({
+      kind: 'authority_revoked_before_intent' as const,
+    }));
+    const retry = vi.fn(async () => ({ kind: 'account_authority_revoked' as const }));
+    const mismatchedSession = {
+      accountId: 'account-command-center',
+      read: {
+        accountId: 'account-other',
+        snapshot: vi.fn(async () => undefined),
+        subscribe: vi.fn(() => () => undefined),
+      },
+      assertCurrent: vi.fn(),
+      dispose: vi.fn(),
+    };
+    expect(() =>
+      createJarvisCommandCenterHostPort({
+        accountSession: mismatchedSession,
+        kernel: { requestCancellation },
+        scheduledTransportRetry: { retry },
+        scheduledLogicalRetry: { retry },
+      }),
+    ).toThrow('jarvis_command_center_account_mismatch');
+    expect(mismatchedSession.assertCurrent).not.toHaveBeenCalled();
+
+    let stale = false;
+    const staleSession = {
+      ...mismatchedSession,
+      read: { ...mismatchedSession.read, accountId: 'account-command-center' },
+      assertCurrent: vi.fn(() => {
+        if (stale) throw new Error('account_epoch_revoked');
+      }),
+    };
+    const port = createJarvisCommandCenterHostPort({
+      accountSession: staleSession,
+      kernel: { requestCancellation },
+      scheduledTransportRetry: { retry },
+      scheduledLogicalRetry: { retry },
+    });
+    stale = true;
+    expect(() => port.requestCancellation('run-command-center')).toThrow('account_epoch_revoked');
+    expect(() => port.retryScheduledTransport('run-command-center')).toThrow(
+      'account_epoch_revoked',
+    );
+    expect(() => port.retryLogicalRun('run-command-center')).toThrow('account_epoch_revoked');
+    expect(requestCancellation).not.toHaveBeenCalled();
+    expect(retry).not.toHaveBeenCalled();
+  });
 
   it('runs explicit shadow mode as one observational compile plus one unchanged legacy dispatch', async () => {
     const protectedJarvis = agent('agent_jarvis', 'jarvis', 'LEGACY SYSTEM PROMPT', true);

@@ -46,10 +46,18 @@ import { GlobalSttHost } from '@/features/composer-stt';
 import { FileExplorerHost } from '@/features/files';
 import { Toaster, toast } from '@/components/ui/toast';
 import {
+  createJarvisCommandCenterHostPort,
+  getInstalledJarvisCommandCenterHostDependencies,
   openJarvisLiveEvidenceAccount,
   openJarvisVoiceRecovery,
   startRuntimeListener,
 } from '@/lib/ai/runtime';
+import {
+  JarvisCommandCenterProvider,
+  type JarvisCommandCenterBinding,
+} from '@/features/jarvis-command-center/JarvisCommandCenter';
+import { createJarvisCommandCenterDataPort } from '@/features/jarvis-command-center/commandCenterDataPort';
+import { selectCurrentRun } from '@/features/jarvis-command-center/selectors';
 import { startJarvisLearningListener } from '@/features/jarvis-memory/learningListener';
 import { useJarvisLearningStore } from '@/features/jarvis-memory/learningStore';
 import { startJarvisOperatorListener } from '@/lib/jarvis/operatorListener';
@@ -617,6 +625,8 @@ function ActiveCanvas() {
  */
 function useBoot() {
   const registerMany = useAgentStore((s) => s.registerMany);
+  const [commandCenterBinding, setCommandCenterBinding] =
+    React.useState<JarvisCommandCenterBinding>();
 
   React.useEffect(() => {
     let stopRuntime: (() => void) | undefined;
@@ -750,7 +760,9 @@ function useBoot() {
       accountRecoveryController = undefined;
       const oldAccountId = activeAccountIdentity?.accountId;
       const oldLiveEvidenceSession = liveEvidenceAccountSession;
+      setCommandCenterBinding(undefined);
       liveEvidenceAccountSession = undefined;
+      if (oldAccountId) invalidateActiveKernelAccount(oldAccountId);
       const stops = [stopLearning, stopAllAboutMePersistence, stopTaskRunLifecycle].filter(
         (stop): stop is () => void | Promise<void> => Boolean(stop),
       );
@@ -767,7 +779,6 @@ function useBoot() {
         }
       });
       oldLiveEvidenceSession?.dispose();
-      if (oldAccountId) invalidateActiveKernelAccount(oldAccountId);
       quarantineAccountScopedState();
       const results = await Promise.allSettled(pendingStops);
       for (const result of results) {
@@ -827,6 +838,37 @@ function useBoot() {
           return;
         }
         liveEvidenceAccountSession = voiceRecovery.session;
+        const commandCenterHostPort = createJarvisCommandCenterHostPort({
+          accountSession: voiceRecovery.session,
+          ...getInstalledJarvisCommandCenterHostDependencies(),
+        });
+        const commandCenterDataPort = createJarvisCommandCenterDataPort({
+          repositories: {
+            runs: jarvisRunRepo,
+            events: jarvisEventRepo,
+            artifacts: jarvisArtifactRepo,
+          },
+          liveEvidence: commandCenterHostPort.liveEvidence,
+          subscribeJournal(subscriptionAccountId, chatId, listener) {
+            const subscription = liveQuery(async () => {
+              const runs = await jarvisRunRepo.listByAccount(subscriptionAccountId, { limit: 100 });
+              const currentRun = selectCurrentRun(runs, subscriptionAccountId, chatId);
+              if (!currentRun) return undefined;
+              await Promise.all([
+                jarvisEventRepo.listByRun(subscriptionAccountId, currentRun.id, { limit: 500 }),
+                jarvisArtifactRepo.listByRun(subscriptionAccountId, currentRun.id, 500),
+              ]);
+              return currentRun.updatedAt;
+            }).subscribe({
+              next: listener,
+              error: listener,
+            });
+            return () => subscription.unsubscribe();
+          },
+        });
+        setCommandCenterBinding(
+          Object.freeze({ hostPort: commandCenterHostPort, dataPort: commandCenterDataPort }),
+        );
         await voiceRecovery.recover();
         if (!isCurrent()) return;
         stopLearning = startJarvisLearningListener(fixedAccountBindings);
@@ -1232,6 +1274,8 @@ function useBoot() {
     // Run once - boot is one-shot.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  return commandCenterBinding;
 }
 
 function KernelBridgeBootstrap() {
@@ -1756,7 +1800,7 @@ function ThemeHost() {
  * Inner shell - rendered after AuthGate has confirmed local user + seeding.
  */
 function WorkspaceRoot() {
-  useBoot();
+  const commandCenterBinding = useBoot();
   useBridgeLifecycle();
   useDesktopReopenLifecycle();
 
@@ -1823,7 +1867,7 @@ function WorkspaceRoot() {
   }, []);
 
   return (
-    <>
+    <JarvisCommandCenterProvider value={commandCenterBinding}>
       <GlobalHotkeysHost />
       <AppShell>
         <ActiveCanvas />
@@ -1883,7 +1927,7 @@ function WorkspaceRoot() {
       {/* Toast outlet */}
       <JarvisContextMenu />
       <Toaster />
-    </>
+    </JarvisCommandCenterProvider>
   );
 }
 

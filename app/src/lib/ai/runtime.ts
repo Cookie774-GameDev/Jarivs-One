@@ -50,6 +50,13 @@ import {
   dispatchScheduledJarvisOccurrence,
   type ScheduledJarvisAttemptResult,
 } from '@/features/schedule/jarvisScheduleDispatch';
+import {
+  createJarvisScheduledLogicalRetryPort,
+  createJarvisScheduledTransportRetryPort,
+  type JarvisScheduledLogicalRetryPort,
+  type JarvisScheduledTransportRetryPort,
+} from '@/features/schedule/jarvisScheduledTransportRetry';
+import type { JarvisCommandCenterHostPort } from '@/features/jarvis-command-center/types';
 import { parseJarvisScheduleMetadata } from '@/features/schedule/jarvisSchedules';
 import { deriveChatTitle, maybeRenameChat } from '@/features/chat/chatLifecycle';
 import { getStoredProjectRoot } from '@/features/files/projectFiles';
@@ -241,6 +248,7 @@ type InstalledJarvisKernelRuntimeHost = Readonly<{
   startVoiceTurn: JarvisKernelRuntime['startVoiceTurn'];
   openVoiceRecovery: JarvisKernelRuntime['openVoiceRecovery'];
   openLiveEvidenceAccount(accountId: string): Promise<JarvisLiveEvidencePrimaryHostAccountSession>;
+  getCommandCenterDependencies(): JarvisCommandCenterHostDependencies;
   requestCancellation: JarvisKernelRuntime['requestCancellation'];
   dispatchScheduledOccurrence(input: {
     accountId: string;
@@ -254,6 +262,42 @@ type InstalledJarvisKernelRuntimeHost = Readonly<{
 }>;
 
 let installedJarvisKernelRuntimeHost: InstalledJarvisKernelRuntimeHost | null = null;
+
+export type JarvisCommandCenterHostDependencies = Readonly<{
+  kernel: Pick<JarvisKernelRuntime, 'requestCancellation'>;
+  scheduledTransportRetry: JarvisScheduledTransportRetryPort;
+  scheduledLogicalRetry: JarvisScheduledLogicalRetryPort;
+}>;
+
+/** Bind the lower Command Center to one exact primary-host account epoch. */
+export function createJarvisCommandCenterHostPort(input: {
+  accountSession: JarvisLiveEvidencePrimaryHostAccountSession;
+  kernel: Pick<JarvisKernelRuntime, 'requestCancellation'>;
+  scheduledTransportRetry: JarvisScheduledTransportRetryPort;
+  scheduledLogicalRetry: JarvisScheduledLogicalRetryPort;
+}): JarvisCommandCenterHostPort {
+  if (input.accountSession.accountId !== input.accountSession.read.accountId) {
+    throw new Error('jarvis_command_center_account_mismatch');
+  }
+  input.accountSession.assertCurrent();
+  const accountId = input.accountSession.accountId;
+  return Object.freeze({
+    accountId,
+    liveEvidence: input.accountSession.read,
+    requestCancellation(runId: string) {
+      input.accountSession.assertCurrent();
+      return input.kernel.requestCancellation({ accountId, runId });
+    },
+    retryScheduledTransport(runId: string) {
+      input.accountSession.assertCurrent();
+      return input.scheduledTransportRetry.retry({ accountId, runId });
+    },
+    retryLogicalRun(runId: string) {
+      input.accountSession.assertCurrent();
+      return input.scheduledLogicalRetry.retry({ accountId, previousRunId: runId });
+    },
+  });
+}
 
 function providerLiveEvidenceMatches(
   evidence: Readonly<
@@ -651,6 +695,12 @@ export async function installJarvisKernelRuntimeHost(
     now,
   });
 
+  const scheduledTransportRetry = createJarvisScheduledTransportRetryPort({
+    kernel: composition.kernel,
+  });
+  const scheduledLogicalRetry = createJarvisScheduledLogicalRetryPort({
+    kernel: composition.kernel,
+  });
   let disposed = false;
   const host: InstalledJarvisKernelRuntimeHost = Object.freeze({
     journal,
@@ -693,6 +743,14 @@ export async function installJarvisKernelRuntimeHost(
     },
     openVoiceRecovery: (recoveryInput) => composition.kernel.openVoiceRecovery(recoveryInput),
     openLiveEvidenceAccount: (accountId) => composition.liveEvidenceHost.openAccount(accountId),
+    getCommandCenterDependencies: () => {
+      if (disposed) throw new Error('jarvis_kernel_host_disposed');
+      return Object.freeze({
+        kernel: composition.kernel,
+        scheduledTransportRetry,
+        scheduledLogicalRetry,
+      });
+    },
     requestCancellation: (cancelInput) => composition.kernel.requestCancellation(cancelInput),
     dispatchScheduledOccurrence: (scheduleInput) =>
       dispatchScheduledJarvisOccurrence(scheduleInput, { kernel: composition.kernel }),
@@ -760,6 +818,13 @@ export function openJarvisLiveEvidenceAccount(
   const host = installedJarvisKernelRuntimeHost;
   if (!host) throw new Error('jarvis_kernel_host_not_installed');
   return host.openLiveEvidenceAccount(accountId);
+}
+
+/** @internal Primary App composition only; never pass these dependencies below App. */
+export function getInstalledJarvisCommandCenterHostDependencies(): JarvisCommandCenterHostDependencies {
+  const host = installedJarvisKernelRuntimeHost;
+  if (!host) throw new Error('jarvis_kernel_host_not_installed');
+  return host.getCommandCenterDependencies();
 }
 
 /** @internal Closed schedule-runner bridge; no repository or mutable UI state crosses it. */

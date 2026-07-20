@@ -2,6 +2,17 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const source = readFileSync('src/App.tsx', 'utf8');
+const runtimeSource = readFileSync('src/lib/ai/runtime.ts', 'utf8');
+const chatThreadSource = readFileSync('src/features/chat/ChatThread.tsx', 'utf8');
+const commandCenterUiSources = [
+  'src/features/jarvis-command-center/types.ts',
+  'src/features/jarvis-command-center/selectors.ts',
+  'src/features/jarvis-command-center/resultMappers.ts',
+  'src/features/jarvis-command-center/commandCenterStore.ts',
+  'src/features/jarvis-command-center/JarvisCommandCenter.tsx',
+  'src/features/jarvis-command-center/JarvisOutputsTab.tsx',
+  'src/features/jarvis-command-center/JarvisLiveSystemsTab.tsx',
+].map((path) => readFileSync(path, 'utf8'));
 
 describe('App trusted kernel host composition', () => {
   it('loads host/client boundaries dynamically and never imports runtime authority for pet views', () => {
@@ -37,5 +48,51 @@ describe('App trusted kernel host composition', () => {
     expect(invalidate).toBeGreaterThan(capture);
     expect(clear).toBeGreaterThan(invalidate);
     expect(invokeStops).toBeGreaterThan(clear);
+  });
+
+  it('creates the Command Center host only after the exact account session opens', () => {
+    const accountSession = source.indexOf('liveEvidenceAccountSession = voiceRecovery.session');
+    const factory = source.indexOf('createJarvisCommandCenterHostPort({');
+    const dependencies = source.indexOf(
+      'getInstalledJarvisCommandCenterHostDependencies()',
+      factory,
+    );
+    const publish = source.indexOf('setCommandCenterBinding(', factory);
+
+    expect(accountSession).toBeGreaterThan(-1);
+    expect(factory).toBeGreaterThan(accountSession);
+    expect(dependencies).toBeGreaterThan(factory);
+    expect(publish).toBeGreaterThan(dependencies);
+    expect(runtimeSource).not.toMatch(/createJarvisCommandCenterHostPort\(\{/);
+  });
+
+  it('drops the account-bound UI port before disposing its account epoch', () => {
+    const teardownStart = source.indexOf('async function stopAccountScopedListeners');
+    const teardownEnd = source.indexOf('async function transitionAccountScopedListeners');
+    const teardown = source.slice(teardownStart, teardownEnd);
+
+    expect(teardown.indexOf('setCommandCenterBinding(undefined)')).toBeGreaterThan(-1);
+    expect(teardown.indexOf('oldLiveEvidenceSession?.dispose()')).toBeGreaterThan(
+      teardown.indexOf('setCommandCenterBinding(undefined)'),
+    );
+  });
+
+  it('passes ChatThread only the minimal host port and read data port', () => {
+    expect(chatThreadSource).toMatch(/hostPort\.requestCancellation/);
+    expect(chatThreadSource).toMatch(/commandCenterBinding\.dataPort/);
+    expect(chatThreadSource).not.toMatch(
+      /JarvisKernelRuntime|AccountSession|scheduledTransportRetry|scheduledLogicalRetry|host lifecycle/i,
+    );
+  });
+
+  it('keeps projection UI imports outside raw execution and live-evidence authority', () => {
+    for (const uiSource of commandCenterUiSources) {
+      expect(uiSource).not.toMatch(
+        /jarvisRepositories|kernelRuntime|liveEvidenceAuthority|proofBrand|reconstructLive|ProducerVerifier|WriterPort/,
+      );
+    }
+    expect(chatThreadSource).not.toMatch(
+      /jarvisRepositories|kernelRuntime|liveEvidenceAuthority|JarvisLiveEvidencePrimaryHostAccountSession/,
+    );
   });
 });
