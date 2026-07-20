@@ -21,6 +21,7 @@ vi.mock('@/features/jarvis-runs/JarvisTaskProgressCard', () => ({
 vi.mock('@/features/jarvis-memory/JarvisMemoryStatus', () => ({
   JarvisMemoryStatus: () => <div data-testid="memory-status">Memory</div>,
 }));
+vi.mock('@/lib/jarvis/smoke/config', () => ({ isKernelSmokeEnabled: () => true }));
 
 function binding(): JarvisCommandCenterBinding {
   const liveEvidence = {
@@ -90,6 +91,7 @@ describe('ChatThread Command Center routing', () => {
     expect(screen.queryByTestId('legacy-progress')).toBeNull();
     expect(screen.getByTestId('agent-panel')).not.toBeNull();
     expect(screen.getByTestId('memory-status')).not.toBeNull();
+    expect(screen.getByRole('log').getAttribute('data-sik-evidence')).toBe('chat.run-shell');
   });
 
   it('keeps timeline and progress for legacy history and does not render the canonical shell', () => {
@@ -118,5 +120,6 @@ describe('ChatThread Command Center routing', () => {
     expect(screen.getByTestId('legacy-timeline')).not.toBeNull();
     expect(screen.getByTestId('legacy-progress')).not.toBeNull();
     expect(screen.queryByText('Command Center')).toBeNull();
+    expect(screen.getByRole('log').getAttribute('data-sik-evidence')).toBeNull();
   });
 });

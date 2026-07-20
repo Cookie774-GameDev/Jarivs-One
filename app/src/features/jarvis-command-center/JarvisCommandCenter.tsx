@@ -17,6 +17,13 @@ import type {
 } from './types';
 import { JarvisOutputsTab } from './JarvisOutputsTab';
 import './jarvis-command-center.css';
+import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
+import { SIK_CONTROL, SIK_EVIDENCE } from '@/lib/jarvis/smoke/evidenceIds';
+
+const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
+  devBuild: import.meta.env.DEV,
+  explicitFlag: import.meta.env.VITE_SIK_SMOKE,
+});
 
 const LazyJarvisLiveSystemsTab = React.lazy(() =>
   import('./JarvisLiveSystemsTab').then((module) => ({
@@ -57,6 +64,27 @@ function usePrefersReducedMotion(): boolean {
   return reduced;
 }
 
+type SmokeRunEvidence = Readonly<{
+  runDigest: string;
+  snapshotDigest?: string;
+  requestDigest?: string;
+  attemptNumber?: number;
+  effectBarrierState?: string;
+  effectBarrierVersion?: number;
+  attemptState?: string;
+  responseStarted?: boolean;
+  chunkCount?: number;
+  actionDispatchCount?: number;
+  approvalCount?: number;
+  artifactCount?: number;
+  executorClaimCount?: number;
+}>;
+
+async function smokeSha256(value: string): Promise<string> {
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
 export function JarvisCommandCenter({
   accountId,
   chatId,
@@ -81,6 +109,8 @@ export function JarvisCommandCenter({
   );
   const [feedback, setFeedback] = React.useState<string>();
   const [busyAction, setBusyAction] = React.useState(false);
+  const [smokeRunEvidence, setSmokeRunEvidence] = React.useState<SmokeRunEvidence>();
+  const [smokeFocusedControl, setSmokeFocusedControl] = React.useState<string>();
   const toggleRef = React.useRef<HTMLButtonElement>(null);
   const reducedMotion = usePrefersReducedMotion();
 
@@ -91,6 +121,54 @@ export function JarvisCommandCenter({
   const run = snapshot.currentRun;
   const retryAction = selectRetryAction(snapshot.retryState, handlers);
   const cancelVisible = canCancelRun(run, snapshot.retryState, handlers);
+
+  React.useEffect(() => {
+    let disposed = false;
+    if (!KERNEL_SMOKE_ENABLED || !run) {
+      setSmokeRunEvidence(undefined);
+      return () => undefined;
+    }
+    const latestAttempt = run.transportAttempts?.at(-1);
+    void Promise.all([
+      smokeSha256(run.id),
+      run.scheduledRetrySnapshot
+        ? smokeSha256(JSON.stringify(run.scheduledRetrySnapshot))
+        : Promise.resolve(undefined),
+      latestAttempt?.requestId ? smokeSha256(latestAttempt.requestId) : Promise.resolve(undefined),
+    ]).then(([runDigest, snapshotDigest, requestDigest]) => {
+      if (disposed) return;
+      setSmokeRunEvidence(
+        Object.freeze({
+          runDigest,
+          ...(snapshotDigest ? { snapshotDigest } : {}),
+          ...(requestDigest ? { requestDigest } : {}),
+          ...(latestAttempt
+            ? {
+                attemptNumber: latestAttempt.attemptNumber,
+                effectBarrierState: latestAttempt.effectBarrier.state,
+                effectBarrierVersion: latestAttempt.effectBarrier.version,
+                attemptState: latestAttempt.state,
+                ...(latestAttempt.zeroEffectEvidence
+                  ? {
+                      responseStarted:
+                        latestAttempt.zeroEffectEvidence.providerBoundary.responseStarted,
+                      chunkCount: latestAttempt.zeroEffectEvidence.providerBoundary.chunkCount,
+                      actionDispatchCount:
+                        latestAttempt.zeroEffectEvidence.providerBoundary.actionDispatchCount,
+                      approvalCount: latestAttempt.zeroEffectEvidence.approvals.count,
+                      artifactCount: latestAttempt.zeroEffectEvidence.artifacts.count,
+                      executorClaimCount: latestAttempt.zeroEffectEvidence.executorClaims.count,
+                    }
+                  : {}),
+              }
+            : {}),
+        }),
+      );
+    });
+    return () => {
+      disposed = true;
+    };
+  }, [run]);
 
   const execute = async (operation: () => Promise<string>) => {
     setBusyAction(true);
@@ -125,12 +203,67 @@ export function JarvisCommandCenter({
       )}
       aria-label="Jarvis Command Center"
       data-testid="jarvis-command-center"
+      data-sik-evidence={KERNEL_SMOKE_ENABLED ? SIK_CONTROL.commandCenterSurface : undefined}
+      data-motion-enabled={KERNEL_SMOKE_ENABLED ? String(!reducedMotion) : undefined}
       onKeyDown={onEscape}
     >
       <header className="jarvis-command-center__header">
         <div className="jarvis-command-center__identity">
           <div className="jarvis-command-center__eyebrow">Command Center</div>
-          <div className="jarvis-command-center__summary">
+          <div
+            className="jarvis-command-center__summary"
+            data-sik-evidence={KERNEL_SMOKE_ENABLED ? SIK_EVIDENCE.runStatus : undefined}
+            data-run-status={KERNEL_SMOKE_ENABLED ? (run?.status ?? 'empty') : undefined}
+            data-run-digest={KERNEL_SMOKE_ENABLED ? smokeRunEvidence?.runDigest : undefined}
+            data-snapshot-digest={
+              KERNEL_SMOKE_ENABLED ? smokeRunEvidence?.snapshotDigest : undefined
+            }
+            data-request-digest={KERNEL_SMOKE_ENABLED ? smokeRunEvidence?.requestDigest : undefined}
+            data-attempt-number={
+              KERNEL_SMOKE_ENABLED && smokeRunEvidence?.attemptNumber
+                ? String(smokeRunEvidence.attemptNumber)
+                : undefined
+            }
+            data-effect-barrier-state={
+              KERNEL_SMOKE_ENABLED ? smokeRunEvidence?.effectBarrierState : undefined
+            }
+            data-effect-barrier-version={
+              KERNEL_SMOKE_ENABLED && smokeRunEvidence?.effectBarrierVersion !== undefined
+                ? String(smokeRunEvidence.effectBarrierVersion)
+                : undefined
+            }
+            data-attempt-state={KERNEL_SMOKE_ENABLED ? smokeRunEvidence?.attemptState : undefined}
+            data-response-started={
+              KERNEL_SMOKE_ENABLED && smokeRunEvidence?.responseStarted !== undefined
+                ? String(smokeRunEvidence.responseStarted)
+                : undefined
+            }
+            data-chunk-count={
+              KERNEL_SMOKE_ENABLED && smokeRunEvidence?.chunkCount !== undefined
+                ? String(smokeRunEvidence.chunkCount)
+                : undefined
+            }
+            data-action-dispatch-count={
+              KERNEL_SMOKE_ENABLED && smokeRunEvidence?.actionDispatchCount !== undefined
+                ? String(smokeRunEvidence.actionDispatchCount)
+                : undefined
+            }
+            data-approval-count={
+              KERNEL_SMOKE_ENABLED && smokeRunEvidence?.approvalCount !== undefined
+                ? String(smokeRunEvidence.approvalCount)
+                : undefined
+            }
+            data-artifact-count={
+              KERNEL_SMOKE_ENABLED && smokeRunEvidence?.artifactCount !== undefined
+                ? String(smokeRunEvidence.artifactCount)
+                : undefined
+            }
+            data-executor-claim-count={
+              KERNEL_SMOKE_ENABLED && smokeRunEvidence?.executorClaimCount !== undefined
+                ? String(smokeRunEvidence.executorClaimCount)
+                : undefined
+            }
+          >
             {run ? `Run ${run.status.replaceAll('_', ' ')}` : 'Waiting for a canonical run'}
           </div>
         </div>
@@ -146,6 +279,9 @@ export function JarvisCommandCenter({
                 void execute(async () =>
                   mapJarvisCancellationRequestResult(await handlers.cancelRun!(accountId, run.id)),
                 )
+              }
+              data-sik-evidence={
+                KERNEL_SMOKE_ENABLED ? SIK_EVIDENCE.cancellationDelivery : undefined
               }
             >
               <Square aria-hidden="true" />
@@ -168,6 +304,11 @@ export function JarvisCommandCenter({
                   return mapScheduledJarvisAttemptResult(result);
                 })
               }
+              data-sik-evidence={
+                KERNEL_SMOKE_ENABLED && retryAction.kind === 'retry_transport'
+                  ? SIK_CONTROL.retryTransport
+                  : undefined
+              }
             >
               <RotateCcw aria-hidden="true" />
               {retryAction.kind === 'retry_transport' ? 'Retry transport' : 'Retry as new run'}
@@ -183,11 +324,35 @@ export function JarvisCommandCenter({
             aria-controls="jarvis-command-center-body"
             aria-label={`${expanded ? 'Collapse' : 'Expand'} Command Center`}
             onClick={toggle}
+            onFocus={() => setSmokeFocusedControl(SIK_CONTROL.commandCenterDisclosure)}
+            onBlur={() => setSmokeFocusedControl(undefined)}
+            data-sik-evidence={
+              KERNEL_SMOKE_ENABLED ? SIK_CONTROL.commandCenterDisclosure : undefined
+            }
+            data-focus-state={
+              KERNEL_SMOKE_ENABLED
+                ? smokeFocusedControl === SIK_CONTROL.commandCenterDisclosure
+                  ? 'focused'
+                  : 'blurred'
+                : undefined
+            }
           >
             {expanded ? <ChevronUp aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
           </Button>
         </div>
       </header>
+
+      {KERNEL_SMOKE_ENABLED && run?.status === 'partial' ? (
+        <output hidden data-sik-evidence={SIK_EVIDENCE.partialState} />
+      ) : null}
+      {KERNEL_SMOKE_ENABLED &&
+      (snapshot.error ||
+        feedback ||
+        run?.status === 'failed' ||
+        run?.status === 'timed_out' ||
+        (snapshot.retryState.kind !== 'none' && retryAction.kind === 'none')) ? (
+        <output hidden data-sik-evidence={SIK_EVIDENCE.errorState} />
+      ) : null}
 
       {snapshot.retryState.kind !== 'none' && retryAction.kind === 'none' ? (
         <p className="jarvis-command-center__feedback">
@@ -210,8 +375,36 @@ export function JarvisCommandCenter({
             onValueChange={(value) => store.setActiveTab(value as JarvisCommandCenterTab)}
           >
             <TabsList className="jarvis-command-center__tablist" aria-label="Command Center views">
-              <TabsTrigger value="outputs">Outputs</TabsTrigger>
-              <TabsTrigger value="live_systems">Live Systems</TabsTrigger>
+              <TabsTrigger
+                value="outputs"
+                data-sik-evidence={KERNEL_SMOKE_ENABLED ? SIK_EVIDENCE.outputsTab : undefined}
+                onFocus={() => setSmokeFocusedControl(SIK_EVIDENCE.outputsTab)}
+                onBlur={() => setSmokeFocusedControl(undefined)}
+                data-focus-state={
+                  KERNEL_SMOKE_ENABLED
+                    ? smokeFocusedControl === SIK_EVIDENCE.outputsTab
+                      ? 'focused'
+                      : 'blurred'
+                    : undefined
+                }
+              >
+                Outputs
+              </TabsTrigger>
+              <TabsTrigger
+                value="live_systems"
+                data-sik-evidence={KERNEL_SMOKE_ENABLED ? SIK_EVIDENCE.liveSystemsTab : undefined}
+                onFocus={() => setSmokeFocusedControl(SIK_EVIDENCE.liveSystemsTab)}
+                onBlur={() => setSmokeFocusedControl(undefined)}
+                data-focus-state={
+                  KERNEL_SMOKE_ENABLED
+                    ? smokeFocusedControl === SIK_EVIDENCE.liveSystemsTab
+                      ? 'focused'
+                      : 'blurred'
+                    : undefined
+                }
+              >
+                Live Systems
+              </TabsTrigger>
             </TabsList>
             <TabsContent className="jarvis-command-center__panel" value="outputs">
               {snapshot.error ? (

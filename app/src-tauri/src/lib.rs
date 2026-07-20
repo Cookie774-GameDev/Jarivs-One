@@ -45,22 +45,24 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut,
 
 mod agent_coordination;
 mod branding;
+mod browser_process;
 mod cli_bridge;
 mod credentials;
 mod dictation;
 mod faster_whisper;
 mod fsread;
-mod kokoro;
 mod kernel_host;
+mod kokoro;
 mod launcher;
 mod local_ai;
 mod ollama_http;
 mod pets;
+mod preview;
+#[cfg(debug_assertions)]
+mod sik_smoke;
+mod static_server;
 mod terminal;
 mod terminal_snapshot;
-mod browser_process;
-mod preview;
-mod static_server;
 mod wallpaper_master;
 
 /// Sanity-check command. The JS bridge can call this during startup to verify
@@ -261,7 +263,8 @@ pub fn run() {
                         show_main_window(app, "tray-show");
                     }
                     "exit" => {
-                        app.state::<terminal_snapshot::PersistenceFlushState>().begin();
+                        app.state::<terminal_snapshot::PersistenceFlushState>()
+                            .begin();
                         let _ = app.emit(
                             "jarvis:persist-now",
                             PersistPayload {
@@ -391,6 +394,10 @@ pub fn run() {
             faster_whisper::faster_whisper_status,
             faster_whisper::faster_whisper_download,
             faster_whisper::faster_whisper_transcribe,
+            #[cfg(debug_assertions)]
+            sik_smoke::sik_smoke_binding,
+            #[cfg(debug_assertions)]
+            sik_smoke::sik_smoke_voice_fixture,
             launcher::install_terminal_launcher,
             local_ai::ollama_installation_status,
             local_ai::ollama_start,
@@ -457,7 +464,9 @@ pub fn run() {
                 state.begin();
                 let _ = app_handle.emit(
                     "jarvis:persist-now",
-                    PersistPayload { reason: "exit-requested" },
+                    PersistPayload {
+                        reason: "exit-requested",
+                    },
                 );
                 let app_handle = app_handle.clone();
                 std::thread::spawn(move || {

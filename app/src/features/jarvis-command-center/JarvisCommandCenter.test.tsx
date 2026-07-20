@@ -9,6 +9,8 @@ import type {
 } from './types';
 import { JarvisCommandCenter } from './JarvisCommandCenter';
 
+vi.mock('@/lib/jarvis/smoke/config', () => ({ isKernelSmokeEnabled: () => true }));
+
 function run(overrides: Partial<JarvisRun> = {}): JarvisRun {
   return {
     id: 'run-1',
@@ -111,6 +113,9 @@ describe('JarvisCommandCenter', () => {
 
     const toggle = await screen.findByRole('button', { name: /expand command center/i });
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(
+      document.querySelector('[data-sik-evidence="run.status"]')?.getAttribute('data-run-status'),
+    ).toBe('running');
     expect(screen.queryByRole('tablist')).toBeNull();
     expect(screen.queryByTestId('command-center-graph')).toBeNull();
     expect(dataPort.getLiveEvidenceSnapshot).not.toHaveBeenCalled();
@@ -133,6 +138,12 @@ describe('JarvisCommandCenter', () => {
       'Outputs',
       'Live Systems',
     ]);
+    expect(screen.getByRole('tab', { name: 'Outputs' }).getAttribute('data-sik-evidence')).toBe(
+      'outputs.tab',
+    );
+    expect(
+      screen.getByRole('tab', { name: 'Live Systems' }).getAttribute('data-sik-evidence'),
+    ).toBe('live.systems-tab');
     expect(await screen.findByText('Command Center data is unavailable.')).not.toBeNull();
   });
 
@@ -217,7 +228,9 @@ describe('JarvisCommandCenter', () => {
       />,
     );
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
+    const cancel = await screen.findByRole('button', { name: 'Cancel' });
+    expect(cancel.getAttribute('data-sik-evidence')).toBe('cancellation.delivery');
+    fireEvent.click(cancel);
     await waitFor(() => expect(handlers.cancelRun).toHaveBeenCalledWith('account-1', 'run-1'));
     expect(screen.queryByRole('button', { name: /retry/i })).toBeNull();
     expect(
@@ -314,6 +327,23 @@ describe('JarvisCommandCenter', () => {
     ).not.toBeNull();
     expect(screen.queryByRole('button', { name: /retry|cancel/i })).toBeNull();
   });
+
+  it.each(['failed', 'timed_out'] as const)(
+    'exposes the truthful smoke error marker for a %s canonical run',
+    async (status) => {
+      render(
+        <JarvisCommandCenter
+          accountId="account-1"
+          chatId="chat-1"
+          dataPort={port(run({ status }))}
+          handlers={{}}
+        />,
+      );
+
+      expect(await screen.findByText(`Run ${status.replaceAll('_', ' ')}`)).not.toBeNull();
+      expect(document.querySelector('[data-sik-evidence="run.error"]')).not.toBeNull();
+    },
+  );
 
   it('preserves native Enter, Space, Tab, and Radix Arrow navigation semantics', async () => {
     render(

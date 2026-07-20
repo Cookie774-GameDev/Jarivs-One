@@ -148,6 +148,8 @@ describe('VoiceModal hands-free turn-taking', () => {
     render(<VoiceModal />);
 
     await waitFor(() => expect(useVoiceStore.getState().session).not.toBeNull());
+    expect(document.querySelector('[data-sik-evidence="voice.transcript"]')).toBeNull();
+    expect(document.querySelector('[data-sik-evidence="voice.stt-fixture"]')).toBeNull();
     const binding = useVoiceStore.getState().session!;
     expect(binding).toMatchObject({ accountId: 'account-a', chatId: 'chat_voice' });
     expect(binding.sessionId).toMatch(/^vsession_/);

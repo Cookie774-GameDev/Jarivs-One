@@ -1,7 +1,8 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { Part } from '@/types/chat';
+import { useAuthStore } from '@/stores/auth';
 import {
   ActionApprovalCard,
   actionStatusForCanonicalExecution,
@@ -10,6 +11,15 @@ import {
 
 vi.mock('@/lib/actions', () => ({
   resolveAction: vi.fn(() => ({ id: 'terminal.run', label: 'Run command' })),
+}));
+vi.mock('@/lib/jarvis/smoke/config', () => ({ isKernelSmokeEnabled: () => true }));
+const kernelClient = vi.hoisted(() => ({
+  decideApproval: vi.fn(),
+  executeApproval: vi.fn(),
+  dispose: vi.fn(),
+}));
+vi.mock('@/lib/jarvis/kernelClient', () => ({
+  createJarvisKernelClient: () => kernelClient,
 }));
 
 function part(callId: string): Extract<Part, { kind: 'action_proposal' }> {
@@ -65,8 +75,45 @@ describe('ActionApprovalCard canonical adapter', () => {
     expect(screen.getByText('Run the approved test command.')).toBeTruthy();
     expect(screen.getByText('[redacted]')).toBeTruthy();
     expect(screen.queryByText('raw-secret-command')).toBeNull();
-    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Approve fixed action' })).toBeTruthy();
     expect(container.firstElementChild?.getAttribute('data-approval-kind')).toBe('canonical');
+    expect(container.firstElementChild?.getAttribute('data-sik-evidence')).toBe('approval.card');
+    expect(container.querySelectorAll('[data-sik-evidence="approval.card"]')).toHaveLength(1);
+  });
+
+  it('routes the smoke confirmation through the canonical kernel client', async () => {
+    useAuthStore.setState({ localUserId: 'account-smoke', cloudSession: null });
+    kernelClient.decideApproval.mockResolvedValueOnce({
+      kind: 'approval_decided',
+      approvalId: 'jappr_1',
+      status: 'approved',
+    });
+    kernelClient.executeApproval.mockResolvedValueOnce({
+      kind: 'approval_execution',
+      approvalId: 'jappr_1',
+      runId: 'jrun_1',
+      status: 'running',
+    });
+    renderCard(part('jarvisapproval:jappr_1'), {
+      actionId: 'terminal.create',
+      expectedEffect: 'Create one fixed terminal.',
+      risk: 'confirm',
+      parameters: [],
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Approve fixed action' }));
+
+    await waitFor(() => expect(kernelClient.executeApproval).toHaveBeenCalledOnce());
+    expect(kernelClient.decideApproval).toHaveBeenCalledWith({
+      accountId: 'account-smoke',
+      approvalId: 'jappr_1',
+      decision: 'approve',
+    });
+    expect(kernelClient.executeApproval).toHaveBeenCalledWith({
+      accountId: 'account-smoke',
+      approvalId: 'jappr_1',
+    });
+    expect(kernelClient.dispose).toHaveBeenCalledOnce();
   });
 
   it('uses canonical decide readback before execution and preserves handoff truth', async () => {

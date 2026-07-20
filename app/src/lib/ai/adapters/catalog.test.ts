@@ -1,7 +1,12 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { PROVIDER_CATALOG, PROVIDER_CONNECTIONS, getProviderConnectionDescriptor } from './catalog';
+import {
+  buildProviderCatalog,
+  PROVIDER_CATALOG,
+  PROVIDER_CONNECTIONS,
+  getProviderConnectionDescriptor,
+} from './catalog';
 import {
   CLI_BRIDGE_EVENT,
   MAX_CLI_PROMPT_CHARS,
@@ -37,6 +42,32 @@ const EXPECTED_CONNECTIONS = [
 ] as const;
 
 describe('provider capability catalog', () => {
+  it('adds the dedicated credential-free smoke surface only behind the exact dev gate', () => {
+    const disabled = buildProviderCatalog({ devBuild: true, explicitFlag: undefined });
+    const production = buildProviderCatalog({ devBuild: false, explicitFlag: '1' });
+    const enabled = buildProviderCatalog({ devBuild: true, explicitFlag: '1' });
+
+    expect(disabled.catalog).not.toHaveProperty('vibespace-kernel-smoke');
+    expect(production.catalog).not.toHaveProperty('vibespace-kernel-smoke');
+    expect(disabled.connections.some(({ id }) => id === 'vibespace-kernel-smoke-cli')).toBe(false);
+    expect(enabled.catalog['vibespace-kernel-smoke']).toMatchObject({
+      id: 'vibespace-kernel-smoke',
+      externalCli: {
+        adapterId: 'vibespace-kernel-smoke-cli',
+        connectionId: 'vibespace-kernel-smoke-cli',
+        executableName: 'vibespace_kernel_smoke_cli',
+      },
+    });
+    expect(enabled.connections.filter(({ id }) => id === 'vibespace-kernel-smoke-cli')).toEqual([
+      expect.objectContaining({
+        adapterId: 'vibespace-kernel-smoke-cli',
+        providerId: 'vibespace-kernel-smoke',
+        mode: 'external-cli',
+        authSource: 'debug-native-attestation',
+      }),
+    ]);
+  });
+
   it('covers the ten approved families and fifteen distinct connections', () => {
     expect(Object.keys(PROVIDER_CATALOG)).toEqual([
       'openai',

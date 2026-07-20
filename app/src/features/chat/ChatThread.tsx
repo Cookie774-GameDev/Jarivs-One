@@ -15,6 +15,13 @@ import type { JarvisCommandCenterHandlers } from '@/features/jarvis-command-cent
 import { useJarvisTaskRunStore } from '@/features/jarvis-runs/taskRunStore';
 import type { ChatId, Message, Part } from '@/types';
 import type { JarvisCreatorKind } from '@/features/jarvis-creator/contracts';
+import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
+import { SIK_EVIDENCE } from '@/lib/jarvis/smoke/evidenceIds';
+
+const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
+  devBuild: import.meta.env.DEV,
+  explicitFlag: import.meta.env.VITE_SIK_SMOKE,
+});
 
 const MAX_STREAM_SIZE_PART = 8000;
 
@@ -115,6 +122,9 @@ export function ChatThread({ chatId, compact = false }: ChatThreadProps) {
       aria-live="polite"
       aria-relevant="additions text"
       data-tour="chat-thread"
+      data-sik-evidence={
+        KERNEL_SMOKE_ENABLED && hasCanonicalRun ? SIK_EVIDENCE.chatRunShell : undefined
+      }
     >
       <div
         className={

@@ -1,3 +1,4 @@
+import * as React from 'react';
 import {
   AlertTriangle,
   Check,
@@ -20,8 +21,17 @@ import type {
   JarvisKernelActionPort,
 } from '@/lib/jarvis/approvalEngine';
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { getActiveAccountIdentity } from '@/lib/accountIdentity';
 import type { ActionStatus, Part } from '@/types';
 import type { MessageId } from '@/types/common';
+import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
+import { SIK_CONTROL, SIK_EVIDENCE } from '@/lib/jarvis/smoke/evidenceIds';
+
+const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
+  devBuild: import.meta.env.DEV,
+  explicitFlag: import.meta.env.VITE_SIK_SMOKE,
+});
 
 type ActionPart = Extract<Part, { kind: 'action_proposal' }>;
 export type CanonicalApprovalPresentation = ReturnType<typeof presentJarvisApproval>;
@@ -174,6 +184,54 @@ export function ActionApprovalCard({ part, presentation }: ActionApprovalCardPro
   const Icon = definition?.icon ?? HelpCircle;
   const StatusIcon = visual.icon;
   const terminalCopy = resultLine(part);
+  const [smokeDecisionState, setSmokeDecisionState] = React.useState<
+    'idle' | 'busy' | 'submitted' | 'failed'
+  >('idle');
+  const smokeDangerous = part.action_id === 'task.cancel' || part.action_id === 'terminal.run';
+
+  const approveSmokeFixture = async () => {
+    if (!KERNEL_SMOKE_ENABLED || !canonical || smokeDecisionState === 'busy') return;
+    const identity = getActiveAccountIdentity();
+    if (!identity) {
+      setSmokeDecisionState('failed');
+      return;
+    }
+    setSmokeDecisionState('busy');
+    try {
+      const { createJarvisKernelClient } = await import('@/lib/jarvis/kernelClient');
+      const client = createJarvisKernelClient();
+      try {
+        const decision = await client.decideApproval({
+          accountId: identity.accountId,
+          approvalId: canonical.approvalId,
+          decision: 'approve',
+        });
+        if (
+          decision.kind !== 'approval_decided' ||
+          decision.approvalId !== canonical.approvalId ||
+          decision.status !== 'approved'
+        ) {
+          throw new Error('kernel_smoke_approval_decision_failed');
+        }
+        const execution = await client.executeApproval({
+          accountId: identity.accountId,
+          approvalId: canonical.approvalId,
+        });
+        if (
+          execution.kind !== 'approval_execution' ||
+          execution.approvalId !== canonical.approvalId ||
+          !['queued', 'running', 'completed'].includes(execution.status)
+        ) {
+          throw new Error('kernel_smoke_approval_execution_failed');
+        }
+        setSmokeDecisionState('submitted');
+      } finally {
+        client.dispose();
+      }
+    } catch {
+      setSmokeDecisionState('failed');
+    }
+  };
 
   return (
     <div
@@ -185,6 +243,7 @@ export function ActionApprovalCard({ part, presentation }: ActionApprovalCardPro
       data-action-id={part.action_id}
       data-status={part.status}
       data-approval-kind={canonical ? 'canonical' : 'legacy'}
+      data-sik-evidence={KERNEL_SMOKE_ENABLED ? SIK_EVIDENCE.approvalCard : undefined}
     >
       <div className="flex items-center gap-2 text-secondary">
         <Icon className="h-4 w-4 shrink-0 text-accent-copper" />
@@ -237,6 +296,22 @@ export function ActionApprovalCard({ part, presentation }: ActionApprovalCardPro
           {terminalCopy}
         </p>
       )}
+
+      {KERNEL_SMOKE_ENABLED && canonical && part.status === 'pending' ? (
+        <Button
+          type="button"
+          size="sm"
+          variant={smokeDangerous ? 'destructive' : 'secondary'}
+          disabled={smokeDecisionState === 'busy' || smokeDecisionState === 'submitted'}
+          onClick={() => void approveSmokeFixture()}
+          data-sik-evidence={
+            smokeDangerous ? SIK_CONTROL.approvalConfirmDangerous : SIK_CONTROL.approvalConfirm
+          }
+          data-approval-submit-state={smokeDecisionState}
+        >
+          {smokeDecisionState === 'busy' ? 'Approving…' : 'Approve fixed action'}
+        </Button>
+      ) : null}
     </div>
   );
 }

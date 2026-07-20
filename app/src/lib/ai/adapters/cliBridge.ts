@@ -7,6 +7,7 @@ import type {
   UsageSnapshot,
   UsageValue,
 } from './types';
+import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
 
 export const CLI_BRIDGE_EVENT = 'cli-bridge://event';
 export const MAX_CLI_PROMPT_CHARS = 128_000;
@@ -129,6 +130,65 @@ export interface CliProviderDefinition {
   modelListArgs?: readonly string[];
   buildInvocation: (request: CliInvocationRequest) => CliInvocation;
   normalizeRecord: ProviderRecordNormalizer;
+}
+
+export const KERNEL_SMOKE_CLI_DEFINITION: CliProviderDefinition = Object.freeze({
+  adapterId: 'vibespace-kernel-smoke-cli',
+  connectionId: 'vibespace-kernel-smoke-cli',
+  promptTransport: 'prefixed-preamble',
+  executableName: 'vibespace_kernel_smoke_cli',
+  versionArgs: Object.freeze(['--version']),
+  buildInvocation(request: CliInvocationRequest): CliInvocation {
+    assertCliPrompt(request.prompt);
+    return {
+      args: ['--model', requireModelId(request.modelId, 'VibeSpace kernel smoke')],
+      stdin: request.prompt,
+      ...(request.workingDirectory ? { cwd: request.workingDirectory } : {}),
+    };
+  },
+  normalizeRecord(record: Readonly<Record<string, unknown>>): ProviderRecordNormalization {
+    if (record.type === 'text' && typeof record.delta === 'string') {
+      return { recognized: true, events: [{ type: 'text', delta: record.delta }] };
+    }
+    if (record.type === 'done') {
+      return {
+        recognized: true,
+        events: [
+          {
+            type: 'done',
+            ...(typeof record.finish_reason === 'string'
+              ? { finishReason: record.finish_reason }
+              : {}),
+          },
+        ],
+      };
+    }
+    if (record.type === 'error') {
+      return {
+        recognized: true,
+        events: [
+          {
+            type: 'error',
+            message:
+              typeof record.message === 'string'
+                ? record.message
+                : 'Kernel smoke provider reported an error.',
+          },
+        ],
+      };
+    }
+    return { recognized: false, events: [] };
+  },
+});
+
+function effectiveCliProviderDefinition(definition: CliProviderDefinition): CliProviderDefinition {
+  return definition.adapterId === 'codex-cli' &&
+    isKernelSmokeEnabled({
+      devBuild: import.meta.env.DEV,
+      explicitFlag: import.meta.env.VITE_SIK_SMOKE,
+    })
+    ? KERNEL_SMOKE_CLI_DEFINITION
+    : definition;
 }
 
 export function assertCliPrompt(prompt: string): void {
@@ -656,11 +716,12 @@ async function* sendProviderRequest(
 }
 
 export function createCliProviderAdapter(definition: CliProviderDefinition): ProviderAdapter {
+  const effective = effectiveCliProviderDefinition(definition);
   return Object.freeze({
-    id: definition.adapterId,
-    detect: () => detectProvider(definition),
-    probeAuth: () => probeProviderAuth(definition),
-    send: (request: ProviderRequest) => sendProviderRequest(definition, request),
+    id: effective.adapterId,
+    detect: () => detectProvider(effective),
+    probeAuth: () => probeProviderAuth(effective),
+    send: (request: ProviderRequest) => sendProviderRequest(effective, request),
     cancel: async (requestId: string) => {
       await cancelCliBridge(requestId);
     },

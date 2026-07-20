@@ -156,7 +156,11 @@ fn venv_dir() -> PathBuf {
         let home = std::env::var_os("HOME")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("."));
-        home.join(".local").join("share").join("VibeSpace").join("venvs").join("faster-whisper")
+        home.join(".local")
+            .join("share")
+            .join("VibeSpace")
+            .join("venvs")
+            .join("faster-whisper")
     }
 }
 
@@ -399,7 +403,8 @@ fn ensure_python_venv() -> Result<PathBuf, String> {
         .map_err(|e| format!("Could not install faster-whisper: {e}"))?;
     if !pip_status.success() {
         return Err(
-            "pip install faster-whisper failed. Check your network connection and try again.".to_string(),
+            "pip install faster-whisper failed. Check your network connection and try again."
+                .to_string(),
         );
     }
     Ok(python)
@@ -415,6 +420,16 @@ segments, _ = model.transcribe(wav_path, beam_size=1, vad_filter=True)
 text = "".join(segment.text for segment in segments).strip()
 print(text, end="")
 "#;
+
+struct TranscriptionTempDir(PathBuf);
+
+impl Drop for TranscriptionTempDir {
+    fn drop(&mut self) {
+        // The directory contains the request audio. Best-effort cleanup must run on every
+        // post-creation error path, including Python/venv startup failures.
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
 
 #[tauri::command]
 pub fn faster_whisper_model_path(model: String) -> Result<String, String> {
@@ -487,13 +502,14 @@ pub fn faster_whisper_transcribe(model: String, audio_base64: String) -> Result<
         return Ok(String::new());
     }
 
-    let temp_dir = std::env::temp_dir().join(format!("vibespace-stt-{}", nanoid::nanoid!(8)));
-    fs::create_dir_all(&temp_dir).map_err(|e| e.to_string())?;
-    let wav_path = temp_dir.join("dictation.wav");
+    let temp_path = std::env::temp_dir().join(format!("vibespace-stt-{}", nanoid::nanoid!(8)));
+    fs::create_dir_all(&temp_path).map_err(|e| e.to_string())?;
+    let temp_dir = TranscriptionTempDir(temp_path);
+    let wav_path = temp_dir.0.join("dictation.wav");
     fs::write(&wav_path, &bytes).map_err(|e| e.to_string())?;
 
     let python = ensure_python_venv()?;
-    let script_path = temp_dir.join("transcribe.py");
+    let script_path = temp_dir.0.join("transcribe.py");
     fs::write(&script_path, TRANSCRIBE_SCRIPT).map_err(|e| e.to_string())?;
 
     let output = hidden_command(python.to_str().unwrap_or("python"))
@@ -504,8 +520,6 @@ pub fn faster_whisper_transcribe(model: String, audio_base64: String) -> Result<
         .stderr(Stdio::piped())
         .output()
         .map_err(|e| format!("faster-whisper process failed: {e}"))?;
-
-    let _ = fs::remove_dir_all(&temp_dir);
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);

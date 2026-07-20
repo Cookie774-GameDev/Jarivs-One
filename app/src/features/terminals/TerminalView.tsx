@@ -109,6 +109,13 @@ import {
   type NativeTerminalExitPayload,
   useTerminalExecutionStore,
 } from './terminalExecutionStore';
+import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
+import { SIK_EVIDENCE } from '@/lib/jarvis/smoke/evidenceIds';
+
+const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
+  devBuild: import.meta.env.DEV,
+  explicitFlag: import.meta.env.VITE_SIK_SMOKE,
+});
 
 /**
  * When the parent owns its own chrome (`<TileGrid>`'s pane-tile or the
@@ -1675,6 +1682,7 @@ export function TerminalView({
           className,
         )}
         role="status"
+        data-sik-evidence={KERNEL_SMOKE_ENABLED ? SIK_EVIDENCE.terminalExecution : undefined}
       >
         <p className="text-foreground text-ui-strong">{headline}</p>
         <p className="text-secondary text-muted-foreground whitespace-pre-wrap font-mono">{body}</p>
@@ -1696,6 +1704,7 @@ export function TerminalView({
   return (
     <div
       data-session-id={activeSessionId ?? undefined}
+      data-sik-evidence={KERNEL_SMOKE_ENABLED ? SIK_EVIDENCE.terminalExecution : undefined}
       onDragOver={(e) => {
         const nextKind =
           e.dataTransfer.types.includes('application/x-jarvis-file') ||

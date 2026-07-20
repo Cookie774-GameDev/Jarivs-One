@@ -35,6 +35,33 @@ import {
   voiceListeningHint,
   VOICE_REPLY_COOLDOWN_MS,
 } from './voiceTurnCommit';
+import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
+import { SIK_EVIDENCE } from '@/lib/jarvis/smoke/evidenceIds';
+import { KERNEL_SMOKE_SCENARIOS } from '@/lib/jarvis/smoke/scenarios';
+
+const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
+  devBuild: import.meta.env.DEV,
+  explicitFlag: import.meta.env.VITE_SIK_SMOKE,
+});
+const KERNEL_SMOKE_VOICE_FIXTURE_SHA256 =
+  'b3bab750a95495ae54c457b54cb9a066147e36acc6a711e1a09ea05265c272f7';
+
+type SmokeSttState = 'idle' | 'transcribing' | 'submitted' | 'blocked_external';
+type SmokeSttBlocker =
+  | 'fixture_contract'
+  | 'model_unavailable'
+  | 'python_unavailable'
+  | 'engine_failed'
+  | 'transcript_mismatch';
+
+function smokeSttBlocker(error: unknown): SmokeSttBlocker {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.includes('fixture_contract')) return 'fixture_contract';
+  if (message.includes('not downloaded')) return 'model_unavailable';
+  if (message.includes('Python 3 is required')) return 'python_unavailable';
+  if (message.includes('transcript_contract')) return 'transcript_mismatch';
+  return 'engine_failed';
+}
 
 const STATE_LABEL: Record<VoiceState, string> = {
   idle: 'Ready',
@@ -250,6 +277,7 @@ export function VoiceModal() {
   const voiceAutoListenOnOpen = useAuthStore((state) => state.voiceAutoListenOnOpen);
   const voiceEndTrigger = useAuthStore((state) => state.voiceEndTrigger);
   const voiceCommitPhrase = useAuthStore((state) => state.voiceCommitPhrase);
+  const fasterWhisperModel = useAuthStore((state) => state.fasterWhisperModel);
   const [showTranscript, setShowTranscript] = React.useState(false);
   const session = useVoiceStore((voice) => voice.session);
   const messages = useChatMessages(open && showTranscript ? (session?.chatId ?? null) : null);
@@ -266,8 +294,12 @@ export function VoiceModal() {
   const speakingRef = React.useRef(false);
   const streamingReplyRef = React.useRef(false);
   const manuallyStoppedReplyRef = React.useRef(false);
+  const flushUtteranceRef = React.useRef<(text: string) => void>(() => undefined);
   const listeningArmedRef = React.useRef(false);
   const turnBusyRef = React.useRef(false);
+  const [smokeSttState, setSmokeSttState] = React.useState<SmokeSttState>('idle');
+  const [smokeSttBlockerCode, setSmokeSttBlockerCode] = React.useState<SmokeSttBlocker>();
+  const [smokeSttRunBound, setSmokeSttRunBound] = React.useState(false);
   // True when the mic was actively listening as external speech (e.g. a
   // Settings voice preview) started - so we can hand the mic back afterwards
   // instead of leaving push-to-talk silently disarmed.
@@ -610,6 +642,7 @@ export function VoiceModal() {
         }
       })();
     };
+    flushUtteranceRef.current = (text: string) => flushUtterance(text);
 
     let partialTimer: number | null = null;
     let pendingPartial = '';
@@ -713,6 +746,7 @@ export function VoiceModal() {
 
     const onStreamingStart = () => {
       manuallyStoppedReplyRef.current = false;
+      flushUtteranceRef.current = () => undefined;
       streamingReplyRef.current = true;
       turnBusyRef.current = true;
       if (speakingRef.current) return;
@@ -771,6 +805,49 @@ export function VoiceModal() {
     };
   }, [open, startListening, voiceAutoListenOnOpen, stopListening]);
 
+  const runSmokeSttFixture = React.useCallback(async () => {
+    if (!KERNEL_SMOKE_ENABLED || smokeSttState === 'transcribing') return;
+    setSmokeSttState('transcribing');
+    setSmokeSttBlockerCode(undefined);
+    setSmokeSttRunBound(false);
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const transcript = await (async () => {
+        const fixture = await invoke<unknown>('sik_smoke_voice_fixture');
+        if (!fixture || typeof fixture !== 'object' || Array.isArray(fixture)) {
+          throw new Error('fixture_contract');
+        }
+        const record = fixture as Record<string, unknown>;
+        if (
+          Object.keys(record).sort().join('|') !== 'audioBase64|mimeType|sha256' ||
+          record.mimeType !== 'audio/wav' ||
+          record.sha256 !== KERNEL_SMOKE_VOICE_FIXTURE_SHA256 ||
+          typeof record.audioBase64 !== 'string' ||
+          record.audioBase64.length === 0
+        ) {
+          throw new Error('fixture_contract');
+        }
+        return invoke<string>('faster_whisper_transcribe', {
+          model: fasterWhisperModel ?? 'small',
+          audioBase64: record.audioBase64,
+        });
+      })();
+      const expectedTranscript = KERNEL_SMOKE_SCENARIOS.native_stt_voice_turn.safeTextFixture;
+      if (typeof transcript !== 'string' || transcript.trim() !== expectedTranscript) {
+        throw new Error('transcript_contract');
+      }
+      setSmokeSttState('submitted');
+      flushUtteranceRef.current(expectedTranscript);
+    } catch (error) {
+      setSmokeSttBlockerCode(smokeSttBlocker(error));
+      setSmokeSttState('blocked_external');
+    }
+  }, [fasterWhisperModel, smokeSttState]);
+
+  React.useEffect(() => {
+    if (smokeSttState === 'submitted' && session?.activeRunId) setSmokeSttRunBound(true);
+  }, [session?.activeRunId, smokeSttState]);
+
   const listeningHint =
     state === 'listening'
       ? voiceListeningHint(voiceCommitPhrase, voiceAutoListenOnOpen, voiceEndTrigger)
@@ -803,6 +880,8 @@ export function VoiceModal() {
         style={{ x: dragX, y: dragY }}
         className="jarvis-voice-panel fixed right-3 top-3 z-[90] w-[286px] overflow-hidden rounded-[9px] border border-white/10 bg-[#090909]/95 backdrop-blur-xl"
         aria-label="Jarvis voice session"
+        data-sik-evidence={KERNEL_SMOKE_ENABLED ? SIK_EVIDENCE.voiceState : undefined}
+        data-voice-state={KERNEL_SMOKE_ENABLED ? state : undefined}
       >
         {/* Primary-button drag handle — single compact row */}
         <div
@@ -844,6 +923,7 @@ export function VoiceModal() {
                         ? 'Listening active'
                         : 'Click to talk'
               }
+              data-sik-evidence={KERNEL_SMOKE_ENABLED ? SIK_EVIDENCE.voiceStop : undefined}
               title={
                 state === 'speaking'
                   ? 'Stop Jarvis mid-reply and ask something else'
@@ -887,6 +967,41 @@ export function VoiceModal() {
             </div>
           </div>
         </div>
+
+        {KERNEL_SMOKE_ENABLED ? (
+          <div className="relative z-[1] flex gap-1 border-t border-white/[0.06] px-2 py-1">
+            <button
+              type="button"
+              data-sik-evidence={SIK_EVIDENCE.voiceTranscript}
+              onClick={() =>
+                flushUtteranceRef.current(KERNEL_SMOKE_SCENARIOS.voice_turn_stop.safeTextFixture)
+              }
+              className="rounded border border-white/10 px-1.5 py-0.5 text-[8px] text-muted-foreground"
+            >
+              Submit fixed transcript
+            </button>
+            <button
+              type="button"
+              data-sik-evidence={SIK_EVIDENCE.voiceSttFixture}
+              onClick={() => void runSmokeSttFixture()}
+              disabled={smokeSttState === 'transcribing'}
+              className="rounded border border-white/10 px-1.5 py-0.5 text-[8px] text-muted-foreground disabled:opacity-50"
+            >
+              Transcribe fixed audio
+            </button>
+            <output
+              hidden
+              data-sik-evidence={SIK_EVIDENCE.voiceSttState}
+              data-stt-state={smokeSttState}
+              data-engine-id="faster-whisper"
+              data-model-id={fasterWhisperModel ?? 'small'}
+              data-fixture-sha256={KERNEL_SMOKE_VOICE_FIXTURE_SHA256}
+              data-session-bound={session ? 'true' : 'false'}
+              data-run-bound={smokeSttRunBound ? 'true' : 'false'}
+              data-blocker-code={smokeSttBlockerCode}
+            />
+          </div>
+        ) : null}
 
         {/* Transcript dropdown toggle */}
         <button

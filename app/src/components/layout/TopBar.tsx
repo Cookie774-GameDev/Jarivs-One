@@ -33,6 +33,8 @@ import { toast } from '@/components/ui/toast';
 import { useWhatsNew } from '@/features/whats-new';
 import { planAllowsJarvisCall } from '@/lib/entitlements';
 import { useAppAdmin } from '@/lib/admin';
+import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
+import { SIK_EVIDENCE } from '@/lib/jarvis/smoke/evidenceIds';
 
 /**
  * TopBar - 40px chrome at the very top of the app.
@@ -115,6 +117,10 @@ type RouteStoreShape = {
 };
 
 export function TopBar() {
+  const kernelSmokeEnabled = isKernelSmokeEnabled({
+    devBuild: import.meta.env.DEV,
+    explicitFlag: import.meta.env.VITE_SIK_SMOKE,
+  });
   const navOpen = useUIStore((s) => s.navOpen);
   const toggleNav = useUIStore((s) => s.toggleNav);
   const inspectorOpen = useUIStore((s) => s.inspectorOpen);
@@ -230,6 +236,7 @@ export function TopBar() {
           type="button"
           onClick={() => setVoiceModalOpen(true)}
           aria-label="Open Jarvis voice panel"
+          data-sik-evidence={kernelSmokeEnabled ? SIK_EVIDENCE.voiceOpen : undefined}
           className="jarvis-breadcrumb-trigger relative rounded-full focus:outline-none focus-visible:ring-1 focus-visible:ring-accent-copper/60"
         >
           {/* Always-on Jarvis halo — soft purple→cyan pulse so the activation

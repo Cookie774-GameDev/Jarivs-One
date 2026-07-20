@@ -38,6 +38,10 @@ describe('voiceSessionBinding', () => {
       startedAt: 1_786_301_000_000,
     });
     expect(Object.isFrozen(binding)).toBe(true);
+    expect(Object.keys(binding).sort()).toEqual(['accountId', 'chatId', 'sessionId', 'startedAt']);
+    expect(binding).not.toHaveProperty('audioBase64');
+    expect(binding).not.toHaveProperty('transcript');
+    expect(binding).not.toHaveProperty('engine');
   });
 
   it.each([

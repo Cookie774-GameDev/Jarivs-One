@@ -16,6 +16,7 @@ interface ImportMetaEnv {
   readonly VITE_GIT_BRANCH?: string;
   readonly VITE_BUILD_TIMESTAMP?: string;
   readonly VITE_FRONTEND_ASSET_VERSION?: string;
+  readonly VITE_SIK_SMOKE?: string;
 }
 
 interface ImportMeta {

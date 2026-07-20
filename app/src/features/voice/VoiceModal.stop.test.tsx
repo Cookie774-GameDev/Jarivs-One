@@ -135,7 +135,9 @@ describe('VoiceModal stop control and mic recovery', () => {
     });
     expect(useVoiceStore.getState().state).toBe('speaking');
 
-    fireEvent.click(screen.getByRole('button', { name: /Stop response/i }));
+    const stop = screen.getByRole('button', { name: /Stop response/i });
+    expect(stop.getAttribute('data-sik-evidence')).toBeNull();
+    fireEvent.click(stop);
 
     expect(routerMocks.stopCurrentVoiceResponse).toHaveBeenCalledTimes(1);
     expect(useVoiceStore.getState().state).toBe('listening');

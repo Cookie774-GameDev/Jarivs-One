@@ -15,10 +15,11 @@ import {
 } from './nativeCatalog';
 import { OPENCODE_CLI_DEFINITION } from './opencode';
 import { QWEN_CLI_DEFINITION } from './qwen';
-import type { CliProviderDefinition } from './cliBridge';
+import { KERNEL_SMOKE_CLI_DEFINITION, type CliProviderDefinition } from './cliBridge';
 import type { ProviderCapabilities, ProviderConnection } from './types';
+import { isKernelSmokeEnabled, type KernelSmokeConfigInput } from '@/lib/jarvis/smoke/config';
 
-export type ProviderFamilyId =
+type BaseProviderFamilyId =
   | 'openai'
   | 'anthropic'
   | 'google'
@@ -29,6 +30,8 @@ export type ProviderFamilyId =
   | 'qwen'
   | 'ollama'
   | 'opencode';
+
+export type ProviderFamilyId = BaseProviderFamilyId | 'vibespace-kernel-smoke';
 
 export interface ProviderFamilyDescriptor {
   id: ProviderFamilyId;
@@ -192,9 +195,25 @@ const GEMINI_CLI_SURFACE = externalCliDescriptor(GEMINI_CLI_DEFINITION);
 const COPILOT_CLI_SURFACE = externalCliDescriptor(COPILOT_CLI_DEFINITION);
 const QWEN_CLI_SURFACE = externalCliDescriptor(QWEN_CLI_DEFINITION);
 const OPENCODE_CLI_SURFACE = externalCliDescriptor(OPENCODE_CLI_DEFINITION);
+const KERNEL_SMOKE_CLI_SURFACE = externalCliDescriptor(KERNEL_SMOKE_CLI_DEFINITION);
 
-export const PROVIDER_CATALOG: Readonly<
-  Record<ProviderFamilyId, Readonly<ProviderFamilyDescriptor>>
+const KERNEL_SMOKE_CLI_CONNECTION = externalConnection({
+  id: KERNEL_SMOKE_CLI_DEFINITION.connectionId,
+  adapterId: KERNEL_SMOKE_CLI_DEFINITION.adapterId,
+  providerId: 'vibespace-kernel-smoke',
+  displayName: 'VibeSpace Kernel Smoke',
+  authSource: 'debug-native-attestation',
+  promptTransport: KERNEL_SMOKE_CLI_DEFINITION.promptTransport,
+  capabilities: { localOnly: true },
+});
+
+type ProviderCatalog = Readonly<
+  Record<BaseProviderFamilyId, Readonly<ProviderFamilyDescriptor>> &
+    Partial<Record<'vibespace-kernel-smoke', Readonly<ProviderFamilyDescriptor>>>
+>;
+
+const BASE_PROVIDER_CATALOG: Readonly<
+  Record<BaseProviderFamilyId, Readonly<ProviderFamilyDescriptor>>
 > = Object.freeze({
   openai: family(
     'openai',
@@ -223,7 +242,7 @@ export const PROVIDER_CATALOG: Readonly<
   opencode: family('opencode', 'OpenCode', [OPENCODE_CLI_CONNECTION], OPENCODE_CLI_SURFACE),
 });
 
-export const PROVIDER_CONNECTIONS: readonly Readonly<ProviderConnection>[] = Object.freeze([
+const BASE_PROVIDER_CONNECTIONS: readonly Readonly<ProviderConnection>[] = Object.freeze([
   CODEX_CLI_CONNECTION,
   OPENAI_API_CONNECTION,
   CLAUDE_CLI_CONNECTION,
@@ -240,6 +259,40 @@ export const PROVIDER_CONNECTIONS: readonly Readonly<ProviderConnection>[] = Obj
   OLLAMA_LOCAL_CONNECTION,
   OPENCODE_CLI_CONNECTION,
 ]);
+
+export function buildProviderCatalog(config: KernelSmokeConfigInput): Readonly<{
+  catalog: ProviderCatalog;
+  connections: readonly Readonly<ProviderConnection>[];
+}> {
+  const smokeEnabled = isKernelSmokeEnabled(config);
+  return Object.freeze({
+    catalog: Object.freeze({
+      ...BASE_PROVIDER_CATALOG,
+      ...(smokeEnabled
+        ? {
+            'vibespace-kernel-smoke': family(
+              'vibespace-kernel-smoke',
+              'VibeSpace Kernel Smoke',
+              [KERNEL_SMOKE_CLI_CONNECTION],
+              KERNEL_SMOKE_CLI_SURFACE,
+            ),
+          }
+        : {}),
+    }) as ProviderCatalog,
+    connections: Object.freeze([
+      ...BASE_PROVIDER_CONNECTIONS,
+      ...(smokeEnabled ? [KERNEL_SMOKE_CLI_CONNECTION] : []),
+    ]),
+  });
+}
+
+const BUILT_PROVIDER_CATALOG = buildProviderCatalog({
+  devBuild: import.meta.env.DEV,
+  explicitFlag: import.meta.env.VITE_SIK_SMOKE,
+});
+
+export const PROVIDER_CATALOG = BUILT_PROVIDER_CATALOG.catalog;
+export const PROVIDER_CONNECTIONS = BUILT_PROVIDER_CATALOG.connections;
 
 const CONNECTIONS_BY_ID = new Map(
   PROVIDER_CONNECTIONS.map((connection) => [connection.id, connection]),

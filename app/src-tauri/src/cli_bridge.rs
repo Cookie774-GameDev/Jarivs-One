@@ -16,6 +16,7 @@ const MIN_OUTPUT_LIMIT_BYTES: usize = 1_024;
 const MAX_OUTPUT_LIMIT_BYTES: usize = 1_048_576;
 const PROVIDER_EXECUTABLE_NAMES: [&str; 6] =
     ["codex", "claude", "gemini", "copilot", "qwen", "opencode"];
+const KERNEL_SMOKE_EXECUTABLE_NAME: &str = "vibespace_kernel_smoke_cli";
 static NEXT_EXECUTABLE_ID: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -306,6 +307,52 @@ struct PreparedProbeRequest {
     output_limit_bytes: usize,
 }
 
+fn expected_kernel_smoke_executable() -> PathBuf {
+    let executable = if cfg!(windows) {
+        format!("{KERNEL_SMOKE_EXECUTABLE_NAME}.exe")
+    } else {
+        KERNEL_SMOKE_EXECUTABLE_NAME.to_string()
+    };
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("target")
+        .join("debug")
+        .join("examples")
+        .join(executable)
+}
+
+fn kernel_smoke_cli_enabled() -> bool {
+    cfg!(debug_assertions)
+        && std::env::var("VIBESPACE_SIK_SMOKE")
+            .map(|value| value == "1")
+            .unwrap_or(false)
+}
+
+fn kernel_smoke_cli_gate(
+    debug_build: bool,
+    explicit_flag: Option<&str>,
+    canonical: &Path,
+    expected: &Path,
+) -> bool {
+    debug_build && explicit_flag == Some("1") && canonical == expected
+}
+
+fn validate_kernel_smoke_executable(canonical: &Path) -> Result<(), String> {
+    if !kernel_smoke_cli_enabled() {
+        return Err("kernel smoke CLI is disabled".to_string());
+    }
+    let expected = fs::canonicalize(expected_kernel_smoke_executable())
+        .map_err(|_| "kernel smoke CLI fixture is not built".to_string())?;
+    if !kernel_smoke_cli_gate(
+        cfg!(debug_assertions),
+        std::env::var("VIBESPACE_SIK_SMOKE").ok().as_deref(),
+        canonical,
+        &expected,
+    ) {
+        return Err("kernel smoke CLI path does not match the canonical fixture".to_string());
+    }
+    Ok(())
+}
+
 fn validate_executable_name(name: &str) -> Result<(), String> {
     if name.is_empty()
         || !name
@@ -314,7 +361,11 @@ fn validate_executable_name(name: &str) -> Result<(), String> {
     {
         return Err("executable name contains unsafe characters".to_string());
     }
-    if !PROVIDER_EXECUTABLE_NAMES.contains(&name) {
+    if name == KERNEL_SMOKE_EXECUTABLE_NAME {
+        if !kernel_smoke_cli_enabled() {
+            return Err("kernel smoke CLI is disabled".to_string());
+        }
+    } else if !PROVIDER_EXECUTABLE_NAMES.contains(&name) {
         return Err("executable name is not an allowlisted provider CLI".to_string());
     }
     Ok(())
@@ -903,6 +954,11 @@ fn scan_search_paths(
                 let Ok(canonical) = canonical_executable_path(candidate_string) else {
                     continue;
                 };
+                if name == KERNEL_SMOKE_EXECUTABLE_NAME
+                    && validate_kernel_smoke_executable(&canonical).is_err()
+                {
+                    continue;
+                }
                 if seen.insert(canonical.clone()) {
                     detections
                         .push(state.register_trusted_executable(canonical, Some(name.clone()))?);
@@ -1698,6 +1754,32 @@ mod tests {
     use std::fs;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn kernel_smoke_cli_gate_requires_debug_exact_flag_and_exact_canonical_path() {
+        let expected =
+            PathBuf::from("C:\\worktree\\target\\debug\\examples\\vibespace_kernel_smoke_cli.exe");
+        assert!(kernel_smoke_cli_gate(true, Some("1"), &expected, &expected));
+        assert!(!kernel_smoke_cli_gate(
+            false,
+            Some("1"),
+            &expected,
+            &expected
+        ));
+        assert!(!kernel_smoke_cli_gate(true, None, &expected, &expected));
+        assert!(!kernel_smoke_cli_gate(
+            true,
+            Some("true"),
+            &expected,
+            &expected
+        ));
+        assert!(!kernel_smoke_cli_gate(
+            true,
+            Some("1"),
+            &PathBuf::from("C:\\other\\vibespace_kernel_smoke_cli.exe"),
+            &expected,
+        ));
+    }
 
     fn fixture_path(name: &str) -> PathBuf {
         let nonce = SystemTime::now()

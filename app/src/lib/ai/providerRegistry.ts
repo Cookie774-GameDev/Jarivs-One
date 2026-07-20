@@ -2,6 +2,8 @@ import type { ProviderId } from '@/types';
 import type { PlanId } from '@/lib/entitlements';
 import { getAccessibleProviders, localModelsAvailable } from './models';
 import { planIncludesHostedChat } from './agentProviderOptions';
+import { isKernelSmokeEnabled, type KernelSmokeConfigInput } from '@/lib/jarvis/smoke/config';
+import { kernelSmokeProvider, KERNEL_SMOKE_PROVIDER_ID } from './providers/kernelSmoke';
 
 /** User-facing provider label. Internal IDs (e.g. `google`) stay in persisted config. */
 export const PROVIDER_DISPLAY_NAMES: Partial<Record<ProviderId, string>> = {
@@ -21,14 +23,15 @@ export const PROVIDER_DISPLAY_NAMES: Partial<Record<ProviderId, string>> = {
   perplexity: 'Perplexity',
   fireworks: 'Fireworks',
   cerebras: 'Cerebras',
+  ...(isKernelSmokeEnabled({
+    devBuild: import.meta.env.DEV,
+    explicitFlag: import.meta.env.VITE_SIK_SMOKE,
+  })
+    ? { [KERNEL_SMOKE_PROVIDER_ID]: 'VibeSpace Kernel Smoke' }
+    : {}),
 };
 
-export type ProviderConnectionStatus =
-  | 'connected'
-  | 'hosted'
-  | 'local'
-  | 'missing_key'
-  | 'offline';
+export type ProviderConnectionStatus = 'connected' | 'hosted' | 'local' | 'missing_key' | 'offline';
 
 export interface ProviderRegistryEntry {
   id: ProviderId;
@@ -41,30 +44,128 @@ export interface ProviderRegistryEntry {
 
 const HOSTED_WITHOUT_BYOK: readonly ProviderId[] = ['google', 'deepseek'];
 
-export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
-  { id: 'google', displayName: 'Gemini', requiresApiKey: true, supportsDynamicListing: true, hiveEligible: true },
-  { id: 'anthropic', displayName: 'Claude / Anthropic', requiresApiKey: true, supportsDynamicListing: true, hiveEligible: true },
-  { id: 'openai', displayName: 'OpenAI', requiresApiKey: true, supportsDynamicListing: true, hiveEligible: true },
-  { id: 'groq', displayName: 'Groq', requiresApiKey: true, supportsDynamicListing: true, hiveEligible: true },
-  { id: 'deepseek', displayName: 'DeepSeek', requiresApiKey: true, supportsDynamicListing: false, hiveEligible: true },
-  { id: 'xai', displayName: 'xAI', requiresApiKey: true, supportsDynamicListing: false, hiveEligible: true },
-  { id: 'openrouter', displayName: 'OpenRouter', requiresApiKey: true, supportsDynamicListing: true, hiveEligible: true },
-  { id: 'mistral', displayName: 'Mistral', requiresApiKey: true, supportsDynamicListing: false, hiveEligible: true },
-  { id: 'together', displayName: 'Together AI', requiresApiKey: true, supportsDynamicListing: false, hiveEligible: true },
-  { id: 'ollama', displayName: 'Local Models', requiresApiKey: false, supportsDynamicListing: true, hiveEligible: true },
-  { id: 'local', displayName: 'Local Models', requiresApiKey: false, supportsDynamicListing: true, hiveEligible: false },
-  { id: 'mock', displayName: 'Mock (demo)', requiresApiKey: true, supportsDynamicListing: false, hiveEligible: false },
+const BASE_PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
+  {
+    id: 'google',
+    displayName: 'Gemini',
+    requiresApiKey: true,
+    supportsDynamicListing: true,
+    hiveEligible: true,
+  },
+  {
+    id: 'anthropic',
+    displayName: 'Claude / Anthropic',
+    requiresApiKey: true,
+    supportsDynamicListing: true,
+    hiveEligible: true,
+  },
+  {
+    id: 'openai',
+    displayName: 'OpenAI',
+    requiresApiKey: true,
+    supportsDynamicListing: true,
+    hiveEligible: true,
+  },
+  {
+    id: 'groq',
+    displayName: 'Groq',
+    requiresApiKey: true,
+    supportsDynamicListing: true,
+    hiveEligible: true,
+  },
+  {
+    id: 'deepseek',
+    displayName: 'DeepSeek',
+    requiresApiKey: true,
+    supportsDynamicListing: false,
+    hiveEligible: true,
+  },
+  {
+    id: 'xai',
+    displayName: 'xAI',
+    requiresApiKey: true,
+    supportsDynamicListing: false,
+    hiveEligible: true,
+  },
+  {
+    id: 'openrouter',
+    displayName: 'OpenRouter',
+    requiresApiKey: true,
+    supportsDynamicListing: true,
+    hiveEligible: true,
+  },
+  {
+    id: 'mistral',
+    displayName: 'Mistral',
+    requiresApiKey: true,
+    supportsDynamicListing: false,
+    hiveEligible: true,
+  },
+  {
+    id: 'together',
+    displayName: 'Together AI',
+    requiresApiKey: true,
+    supportsDynamicListing: false,
+    hiveEligible: true,
+  },
+  {
+    id: 'ollama',
+    displayName: 'Local Models',
+    requiresApiKey: false,
+    supportsDynamicListing: true,
+    hiveEligible: true,
+  },
+  {
+    id: 'local',
+    displayName: 'Local Models',
+    requiresApiKey: false,
+    supportsDynamicListing: true,
+    hiveEligible: false,
+  },
+  {
+    id: 'mock',
+    displayName: 'Mock (demo)',
+    requiresApiKey: true,
+    supportsDynamicListing: false,
+    hiveEligible: false,
+  },
 ];
 
-export const HIVE_STACK_PROVIDERS: ProviderId[] = PROVIDER_REGISTRY.filter((entry) => entry.hiveEligible).map(
-  (entry) => entry.id,
-);
+export function buildProviderRegistry(
+  config: KernelSmokeConfigInput,
+): readonly ProviderRegistryEntry[] {
+  return Object.freeze([
+    ...BASE_PROVIDER_REGISTRY,
+    ...(isKernelSmokeEnabled(config)
+      ? [
+          Object.freeze({
+            id: KERNEL_SMOKE_PROVIDER_ID,
+            displayName: 'VibeSpace Kernel Smoke',
+            requiresApiKey: false,
+            supportsDynamicListing: false,
+            hiveEligible: false,
+          }),
+        ]
+      : []),
+  ]);
+}
+
+export const PROVIDER_REGISTRY = buildProviderRegistry({
+  devBuild: import.meta.env.DEV,
+  explicitFlag: import.meta.env.VITE_SIK_SMOKE,
+});
+
+export const HIVE_STACK_PROVIDERS: ProviderId[] = PROVIDER_REGISTRY.filter(
+  (entry) => entry.hiveEligible,
+).map((entry) => entry.id);
 
 export function getProviderDisplayName(providerId: ProviderId): string {
   return PROVIDER_DISPLAY_NAMES[providerId] ?? providerId;
 }
 
-export function getProviderRegistryEntry(providerId: ProviderId): ProviderRegistryEntry | undefined {
+export function getProviderRegistryEntry(
+  providerId: ProviderId,
+): ProviderRegistryEntry | undefined {
   return PROVIDER_REGISTRY.find((entry) => entry.id === providerId);
 }
 
@@ -87,6 +188,9 @@ export function getProviderConnectionStatus(
   providerId: ProviderId,
   ctx: ProviderConnectionContext,
 ): ProviderConnectionStatus {
+  if (providerId === KERNEL_SMOKE_PROVIDER_ID) {
+    return kernelSmokeProvider.isAvailable() ? 'local' : 'offline';
+  }
   if (ctx.offlineMode) {
     return isLocalProvider(providerId) && localModelsAvailable(ctx.defaultLocalModel ?? '')
       ? 'local'
@@ -105,7 +209,10 @@ export function getProviderConnectionStatus(
   return 'missing_key';
 }
 
-export function isProviderConnected(providerId: ProviderId, ctx: ProviderConnectionContext): boolean {
+export function isProviderConnected(
+  providerId: ProviderId,
+  ctx: ProviderConnectionContext,
+): boolean {
   const status = getProviderConnectionStatus(providerId, ctx);
   return status === 'connected' || status === 'hosted' || status === 'local';
 }

@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 import {
   attachTerminalViewExecution,
@@ -8,6 +10,16 @@ import {
 } from './TerminalView';
 
 describe('TerminalView canonical execution truth', () => {
+  it('gates the terminal execution evidence selector behind the smoke contract', () => {
+    const source = readFileSync(
+      resolve(process.cwd(), 'src/features/terminals/TerminalView.tsx'),
+      'utf8',
+    );
+
+    expect(source).toContain('KERNEL_SMOKE_ENABLED ? SIK_EVIDENCE.terminalExecution : undefined');
+    expect(source).not.toContain('data-sik-evidence="terminal.execution"');
+  });
+
   it('refuses to spawn a canonical terminal after restart without its private token owner', () => {
     const readToken = vi.fn(() => undefined);
 

@@ -118,6 +118,13 @@ import { GlobalDictationOverlay } from '@/features/global-dictation/GlobalDictat
 import { PluginManagementCapabilityProvider } from '@/features/plugins/managementContext';
 import type { PluginManagementCapability } from '@/features/plugins/runtime';
 import type { Agent, AgentId, Message } from '@/types';
+import { KernelSmokeBindingHost } from '@/lib/jarvis/smoke/KernelSmokeBindingHost';
+import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
+
+const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
+  devBuild: import.meta.env.DEV,
+  explicitFlag: import.meta.env.VITE_SIK_SMOKE,
+});
 
 type SupabaseSessionLike = {
   user?: {
@@ -2007,6 +2014,7 @@ export function App() {
   return (
     <ErrorBoundary>
       <ThemeHost />
+      {KERNEL_SMOKE_ENABLED ? <KernelSmokeBindingHost /> : null}
       <KernelBridgeBootstrap />
       <DevConsoleHost />
     </ErrorBoundary>
