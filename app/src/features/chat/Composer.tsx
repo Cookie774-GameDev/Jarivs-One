@@ -794,10 +794,7 @@ export function Composer({
   // fake. Surface a one-line CTA on the composer so they know it's a
   // 30-second fix at aistudio.google.com/apikey (no card needed).
   const googleKey = useAuthStore((s) => s.apiKeys.google);
-  const jarvisAgent = useMemo(
-    () => findProtectedJarvisAgent(Object.values(agents)),
-    [agents],
-  );
+  const jarvisAgent = useMemo(() => findProtectedJarvisAgent(Object.values(agents)), [agents]);
   const showFreeKeyNudge =
     !compact && !!jarvisAgent && jarvisAgent.model.provider === 'google' && !googleKey;
 
@@ -1713,7 +1710,7 @@ export function Composer({
       // AI-router audit.)
       // New real user turns invalidate redo history for this chat.
       clearRedoStack(String(chatId));
-      await messageRepo.create({
+      const userMessage = await messageRepo.create({
         chat_id: chatId as ChatId,
         role: 'user',
         parts: [
@@ -1763,6 +1760,7 @@ export function Composer({
         new CustomEvent('jarvis:send', {
           detail: {
             chatId,
+            cancellationKey: userMessage.id,
             text: sendText || 'Attached context.',
             mentionedAgentIds,
             filePaths: messageFilePaths,
