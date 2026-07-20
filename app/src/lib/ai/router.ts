@@ -116,6 +116,13 @@ const providerAttemptEvidenceAuthority = createJarvisProviderAttemptEvidenceAuth
   sha256: sha256Hex,
 });
 
+/** @internal Exact failure revalidation port for the closed Jarvis kernel runtime. */
+export const jarvisProviderAttemptEvidenceRevalidator = Object.freeze({
+  revalidateFailure: providerAttemptEvidenceAuthority.revalidateFailure.bind(
+    providerAttemptEvidenceAuthority,
+  ),
+});
+
 type ProtectedAttemptBinding = Readonly<{
   accountId: string;
   runId: string;

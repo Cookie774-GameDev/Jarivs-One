@@ -257,6 +257,7 @@ function snapshotProviderArtifactDrafts(
 function assertPersistedRun(
   expected: Readonly<JarvisKernelTurnInput>,
   actual: Readonly<JarvisRun> | undefined,
+  expectedStatus: 'queued' | 'running',
 ): asserts actual is Readonly<JarvisRun> {
   if (
     !actual ||
@@ -268,8 +269,8 @@ function assertPersistedRun(
     actual.chatId !== expected.chatId ||
     actual.parentRunId !== expected.parentRunId ||
     actual.source !== expected.surface ||
-    actual.status !== 'queued' ||
-    expected.run.status !== 'queued' ||
+    actual.status !== expectedStatus ||
+    expected.run.status !== expectedStatus ||
     actual.agentId !== expected.agent.id ||
     actual.identityVersion !== expected.identity.identityVersion ||
     actual.profileRevisionId !== expected.profile.revisionId ||
@@ -332,6 +333,7 @@ async function runJarvisKernelExecution(
   input: Readonly<JarvisKernelTurnInput>,
   deps: JarvisKernelDeps,
   deferTerminalCommit: boolean,
+  lifecycleMode: 'initial' | 'scheduled_running' = 'initial',
 ): Promise<JarvisAuthorityBoundResult<JarvisDeferredVoiceKernelTurnResult>> {
   if (!isProtectedJarvisAgent(input.agent)) {
     throw new JarvisPromptCompilationError(
@@ -357,7 +359,10 @@ async function runJarvisKernelExecution(
   }
 
   const persisted = await deps.journal.getRun(input.accountId, input.run.id);
-  assertPersistedRun(input, persisted);
+  assertPersistedRun(input, persisted, lifecycleMode === 'initial' ? 'queued' : 'running');
+  if (lifecycleMode === 'scheduled_running' && input.surface !== 'schedule') {
+    throw new Error('kernel_scheduled_turn_scope_mismatch');
+  }
   const lifecycle = deps.issueBoundLifecycle({
     accountId: input.accountId,
     runId: input.run.id,
@@ -366,12 +371,14 @@ async function runJarvisKernelExecution(
   });
   if (!lifecycleIsCurrent(lifecycle)) return revoked();
 
-  const compiling = await lifecycle.transition({
-    expectedStatus: 'queued',
-    nextStatus: 'compiling',
-    event: transitionEvent(input.attempt.requestId, 'compiling', deps.now()),
-  });
-  if (compiling.kind === 'account_authority_revoked') return revoked();
+  if (lifecycleMode === 'initial') {
+    const compiling = await lifecycle.transition({
+      expectedStatus: 'queued',
+      nextStatus: 'compiling',
+      event: transitionEvent(input.attempt.requestId, 'compiling', deps.now()),
+    });
+    if (compiling.kind === 'account_authority_revoked') return revoked();
+  }
 
   const request = await createJarvisRequestEnvelope({
     attempt: input.attempt,
@@ -399,12 +406,14 @@ async function runJarvisKernelExecution(
   });
   const compiled = compileJarvisPrompt(request);
 
-  const running = await lifecycle.transition({
-    expectedStatus: 'compiling',
-    nextStatus: 'running',
-    event: transitionEvent(input.attempt.requestId, 'running', deps.now()),
-  });
-  if (running.kind === 'account_authority_revoked') return revoked();
+  if (lifecycleMode === 'initial') {
+    const running = await lifecycle.transition({
+      expectedStatus: 'compiling',
+      nextStatus: 'running',
+      event: transitionEvent(input.attempt.requestId, 'running', deps.now()),
+    });
+    if (running.kind === 'account_authority_revoked') return revoked();
+  }
 
   const controller = new AbortController();
   const onAuthorityRevoked = () => controller.abort(lifecycle.revocationSignal.reason);
@@ -635,7 +644,7 @@ async function runJarvisKernelExecution(
         },
         assistantMessage,
         artifacts,
-        ...(input.attempt.kind === 'transport_retry'
+        ...(input.surface === 'schedule' || input.attempt.kind === 'transport_retry'
           ? {
               transportAttemptCompletion: {
                 requestId: input.attempt.requestId,
@@ -706,6 +715,23 @@ export async function runJarvisKernelTurn(
   deps: JarvisKernelDeps,
 ): Promise<JarvisAuthorityBoundResult<JarvisKernelTurnResult>> {
   const result = await runJarvisKernelExecution(input, deps, false);
+  if (result.kind === 'account_authority_revoked') return result;
+  const { request, compiled, response, messageParts } = result.value;
+  return {
+    kind: 'committed',
+    value: Object.freeze({ request, compiled, response, messageParts }),
+  };
+}
+
+/** @internal Imported only by the closed scheduled kernel runtime. */
+export async function runJarvisKernelScheduledTurn(
+  input: Readonly<JarvisKernelTurnInput> & { surface: 'schedule' },
+  deps: JarvisKernelDeps,
+): Promise<JarvisAuthorityBoundResult<JarvisKernelTurnResult>> {
+  if (input.run.source !== 'schedule' || input.run.status !== 'running') {
+    throw new Error('kernel_scheduled_turn_scope_mismatch');
+  }
+  const result = await runJarvisKernelExecution(input, deps, false, 'scheduled_running');
   if (result.kind === 'account_authority_revoked') return result;
   const { request, compiled, response, messageParts } = result.value;
   return {
