@@ -135,6 +135,47 @@ export type JarvisTransportAttemptV1 = Readonly<{
   zeroEffectEvidence?: JarvisZeroConsequentialEffectEvidenceV1;
 }>;
 
+export interface JarvisScheduledRetrySnapshotV1 {
+  schemaVersion: 1;
+  accountId: string;
+  eventId: string;
+  occurrenceId: `jocc_${string}`;
+  dueAt: number;
+  logicalAttempt: number;
+  request: Readonly<Omit<JarvisRequestEnvelope, 'requestId' | 'createdAt'>>;
+}
+
+export interface JarvisHiveStackStepV1 {
+  schemaVersion: 1;
+  stepId: string;
+  label: string;
+  workerId: string;
+  agent: Readonly<{
+    id: string;
+    slug: string;
+    builtin: boolean;
+    name: string;
+    description: string;
+    systemPrompt: string;
+    toolsAllowed: readonly string[];
+    memoryScope: 'agent' | 'project' | 'workspace';
+    capabilities: readonly string[];
+    createdAt: number;
+    updatedAt: number;
+  }>;
+  model: Readonly<JarvisModelSnapshot>;
+  messages: Readonly<JarvisRequestEnvelope['messageHistory']>;
+  workingDirectory?: string;
+}
+
+export interface JarvisHiveStackPlanV1 {
+  schemaVersion: 1;
+  accountId: string;
+  parentRunId: string;
+  stackId: string;
+  steps: readonly Readonly<JarvisHiveStackStepV1>[];
+}
+
 export type JarvisExecutionEvidenceV1 = Readonly<{
   schemaVersion: 1;
   requestId: string;
@@ -302,6 +343,8 @@ export interface JarvisRun {
   createdAt: number;
   updatedAt: number;
   completedAt?: number;
+  scheduledRetrySnapshot?: Readonly<JarvisScheduledRetrySnapshotV1>;
+  hiveStackPlan?: Readonly<JarvisHiveStackPlanV1>;
   transportAttempts?: readonly JarvisTransportAttemptV1[];
 }
 
@@ -341,6 +384,7 @@ export type AllocateJarvisRunInput = Omit<
   | 'updatedAt'
   | 'completedAt'
   | 'scheduledRetrySnapshot'
+  | 'hiveStackPlan'
   | 'transportAttempts'
 > & { id?: string };
 
@@ -419,6 +463,7 @@ export interface JarvisTransportAttemptCoordinator {
     accountId: string;
     runId: string;
     requestId: string;
+    snapshot: Readonly<JarvisScheduledRetrySnapshotV1>;
     createdAt: number;
   }): Promise<JarvisScheduledAttemptLease>;
   beginScheduledTransportRetry(input: {
@@ -426,12 +471,17 @@ export interface JarvisTransportAttemptCoordinator {
     runId: string;
     previousAttemptNumber: number;
     requestId: string;
+    expectedSnapshot: Readonly<JarvisScheduledRetrySnapshotV1>;
     createdAt: number;
     revalidatedEvidence: JarvisZeroConsequentialEffectEvidenceV1;
   }): Promise<JarvisScheduledAttemptLease>;
-  verifyLease(lease: JarvisScheduledAttemptLease): Promise<Readonly<JarvisRun>>;
+  verifyLease(
+    lease: JarvisScheduledAttemptLease,
+    expectedSnapshot: Readonly<JarvisScheduledRetrySnapshotV1>,
+  ): Promise<Readonly<JarvisRun>>;
   settleScheduledTransportFailure(input: {
     lease: JarvisScheduledAttemptLease;
+    expectedSnapshot: Readonly<JarvisScheduledRetrySnapshotV1>;
     providerFailure: JarvisPreEffectTransportFailureEvidence;
     zeroEffectEvidence: JarvisZeroConsequentialEffectEvidenceV1 | null;
     settledAt: number;

@@ -29,7 +29,12 @@ import {
   type KernelLifecycleTransactionContext,
 } from '@/lib/db/kernelTurnTransactionAuthority';
 import { useAuthStore } from '@/stores/auth';
-import type { Message } from '@/types';
+import type { Agent, Message } from '@/types';
+import {
+  JarvisProviderAttemptFailureError,
+  type JarvisProviderAttemptEvidenceAuthority,
+} from '@/lib/ai/providerAttemptEvidence';
+import type { JarvisHiveWorkerExecutor } from '@/lib/ai/stacks/hiveWorkerExecutor';
 import type {
   CancellationDelivery,
   JarvisAbortRegistrationAuthority,
@@ -45,6 +50,7 @@ import type {
   JarvisDurableLiveEvidenceV1,
   JarvisEvent,
   JarvisExecutionJournal,
+  JarvisHiveStackPlanV1,
   JarvisLiveEvidenceAppendCapability,
   JarvisLiveEvidencePrimaryHostAccountSession,
   JarvisLiveEvidencePrimaryHostLifecycle,
@@ -52,12 +58,18 @@ import type {
   JarvisLiveEvidenceRegistration,
   JarvisLiveEvidenceVerifierSlot,
   JarvisProducerSourceEvidenceV1,
+  JarvisPreEffectTransportFailureEvidence,
   JarvisRun,
   JarvisRunStatus,
   JarvisRunTransitionEventInput,
+  JarvisScheduledAttemptLease,
+  JarvisScheduledRetrySnapshotV1,
+  JarvisTransportAttemptCoordinator,
+  JarvisTransportAttemptV1,
 } from './contracts/execution';
 import { canonicalizeJarvisApprovalJson } from './contracts/execution';
 import {
+  createJarvisConsequentialEffectSafetyAuthority,
   jarvisIssuedActionExecutionBrand,
   jarvisIssuedApprovalLifecycleBrand,
   jarvisTerminalHandoffReceiptBrand,
@@ -75,10 +87,14 @@ import type {
 } from './artifactProducerAdapters';
 import { createJarvisArtifactKernelComposition } from './artifactRuntime';
 import { createJarvisLiveEvidenceKernelComposition } from './executionJournal/liveEvidenceAuthority';
-import { createJarvisAttemptEffectBarrierAuthority } from './executionJournal/transportAttempts';
+import {
+  createJarvisAttemptEffectBarrierAuthority,
+  createJarvisTransportAttemptCoordinator,
+} from './executionJournal/transportAttempts';
 import { createKernelTurnCommit } from './kernelTurnCommit';
 import {
   runJarvisKernelTurn,
+  runJarvisKernelScheduledTurn,
   runJarvisKernelVoiceTurn,
   type JarvisBoundKernelLifecycle,
   type JarvisDeferredVoiceKernelTurnResult,
@@ -89,6 +105,8 @@ import {
   type JarvisProviderStartedReceipt,
 } from './kernel';
 import type { VoiceResponseReadyCommitResult } from './kernelTurnCommit';
+import { createJarvisRequestEnvelope, deepFreezeJarvisCopy } from './requestEnvelope';
+import { compileJarvisPrompt } from './promptCompiler';
 
 const jarvisKernelAccountBindingBrand: unique symbol = Symbol('jarvis.kernel.account-binding');
 const jarvisVoiceTurnHandleBrand: unique symbol = Symbol('jarvis.voice-turn-handle');
@@ -106,17 +124,103 @@ export interface JarvisKernelAccountBinding {
 const preparedJarvisScheduledAttemptBrand: unique symbol = Symbol(
   'jarvis.prepared-scheduled-attempt',
 );
+const jarvisScheduledPreparationSeedBrand: unique symbol = Symbol(
+  'jarvis.kernel.schedule-preparation-seed',
+);
+const jarvisAllocatedScheduledOccurrenceBrand: unique symbol = Symbol(
+  'jarvis.allocated-scheduled-occurrence',
+);
 const jarvisScheduledKernelHandleBrand: unique symbol = Symbol('jarvis.kernel.schedule-handle');
+const jarvisHiveWorkerHandleBrand: unique symbol = Symbol('jarvis.hive-worker-handle');
+const jarvisHiveWorkerOutcomeBrand: unique symbol = Symbol('jarvis.hive-worker-outcome');
+
+export type JarvisScheduledPreparationSeed = Readonly<{
+  [jarvisScheduledPreparationSeedBrand]: true;
+}>;
+
+export type JarvisAllocatedScheduledOccurrence = JarvisScheduledPreparationSeed &
+  Readonly<{
+    [jarvisAllocatedScheduledOccurrenceBrand]: true;
+  }>;
 
 export type PreparedJarvisScheduledKernelAttempt = Readonly<{
   [preparedJarvisScheduledAttemptBrand]: true;
 }>;
+
+export type JarvisScheduledKernelAttemptOutcome =
+  | { kind: 'committed'; result: JarvisKernelTurnResult }
+  | { kind: 'pre_effect_transport_failure' };
 
 export type JarvisScheduledKernelAttemptHandle = Readonly<{
   requestCancellation(): Promise<JarvisCancellationRequestResult>;
   dispose(): void;
   [jarvisScheduledKernelHandleBrand]: true;
 }>;
+
+export type JarvisScheduledTurnBasis = Readonly<{
+  workspaceId?: string;
+  projectId?: string;
+  chatId: string;
+  userMessageId: string;
+  agent: Agent;
+  interactionMode: JarvisKernelTurnInput['interactionMode'];
+  userText: string;
+  messageHistory: JarvisKernelTurnInput['messageHistory'];
+  model: JarvisKernelTurnInput['model'];
+  identity: JarvisKernelTurnInput['identity'];
+  profile: JarvisKernelTurnInput['profile'];
+  capabilities: JarvisKernelTurnInput['capabilities'];
+  context: JarvisKernelTurnInput['context'];
+  outputContract: JarvisKernelTurnInput['outputContract'];
+  workingDirectory?: string;
+}>;
+
+export type JarvisHiveFinalTurnBasis = Readonly<
+  Pick<
+    JarvisKernelTurnInput,
+    | 'run'
+    | 'attempt'
+    | 'userMessageId'
+    | 'interactionMode'
+    | 'agent'
+    | 'userText'
+    | 'messageHistory'
+    | 'identity'
+    | 'profile'
+    | 'model'
+    | 'capabilities'
+    | 'context'
+    | 'outputContract'
+    | 'workingDirectory'
+  >
+>;
+
+export interface HiveWorkerResult {
+  workerId: string;
+  stepId: string;
+  label: string;
+  agentId: string;
+  providerId: string;
+  modelId: string;
+  text?: string;
+  status: 'completed' | 'failed' | 'cancelled';
+  inputTokens?: number;
+  outputTokens?: number;
+  costUsd?: number;
+  errorCategory?: string;
+}
+
+export type JarvisHiveWorkerOutcome = Readonly<{
+  result: Readonly<HiveWorkerResult>;
+  [jarvisHiveWorkerOutcomeBrand]: true;
+}>;
+
+export interface JarvisHiveWorkerHandle {
+  readonly [jarvisHiveWorkerHandleBrand]: true;
+  execute(): Promise<JarvisAuthorityBoundResult<JarvisHiveWorkerOutcome>>;
+  requestCancellation(): Promise<JarvisCancellationRequestResult>;
+  dispose(): void;
+}
 
 export type JarvisVoicePlaybackCommitResult =
   | { committed: true; run: JarvisRun; event: JarvisEvent }
@@ -202,18 +306,49 @@ export interface JarvisKernelRuntime {
     accountId: string;
     runId: string;
   }): Promise<JarvisCancellationRequestResult>;
-  prepareScheduledAttempt(input: unknown): Promise<PreparedJarvisScheduledKernelAttempt>;
+  allocateScheduledOccurrence(input: {
+    accountId: string;
+    eventId: string;
+    dueAt: number;
+  }): Promise<JarvisAuthorityBoundResult<JarvisAllocatedScheduledOccurrence>>;
+  loadScheduledRun(input: {
+    accountId: string;
+    runId: string;
+  }): Promise<JarvisAuthorityBoundResult<JarvisAllocatedScheduledOccurrence | undefined>>;
+  allocateScheduledLogicalRetry(input: {
+    accountId: string;
+    previousRunId: string;
+  }): Promise<JarvisAuthorityBoundResult<JarvisAllocatedScheduledOccurrence>>;
+  prepareScheduledAttempt(input: {
+    allocation: JarvisAllocatedScheduledOccurrence;
+  }): Promise<PreparedJarvisScheduledKernelAttempt>;
   beginPreparedScheduledAttempt(input: {
     prepared: PreparedJarvisScheduledKernelAttempt;
   }): Promise<JarvisAuthorityBoundResult<JarvisScheduledKernelAttemptHandle>>;
   dispatchPreparedScheduledAttempt(input: {
     prepared: PreparedJarvisScheduledKernelAttempt;
     handle: JarvisScheduledKernelAttemptHandle;
-  }): Promise<JarvisAuthorityBoundResult<unknown>>;
+  }): Promise<JarvisAuthorityBoundResult<JarvisScheduledKernelAttemptOutcome>>;
   settleScheduledTransportFailure(input: {
     handle: JarvisScheduledKernelAttemptHandle;
-  }): Promise<JarvisAuthorityBoundResult<unknown>>;
+  }): Promise<
+    JarvisAuthorityBoundResult<
+      { kind: 'retryable'; run: JarvisRun } | { kind: 'terminal_failed'; run: JarvisRun }
+    >
+  >;
   disposeScheduledAttempt(handle: JarvisScheduledKernelAttemptHandle): void;
+  bindHiveStackPlan(input: {
+    plan: Readonly<JarvisHiveStackPlanV1>;
+  }): Promise<JarvisAuthorityBoundResult<JarvisRun>>;
+  openHiveWorker(input: {
+    parentRunId: string;
+    stepId: string;
+  }): Promise<JarvisAuthorityBoundResult<JarvisHiveWorkerHandle>>;
+  runHiveFinalTurn(
+    input: Readonly<JarvisHiveFinalTurnBasis> & {
+      workers: readonly JarvisHiveWorkerOutcome[];
+    },
+  ): Promise<JarvisAuthorityBoundResult<JarvisKernelTurnResult>>;
 }
 
 /** @internal Full composition received only by app/src/lib/ai/runtime.ts. */
@@ -237,7 +372,8 @@ type VerifierSlots = Readonly<{
 type KernelRuntimeInput = Readonly<{
   db: JarvisDexie;
   artifactEvidenceAuthorities: CanonicalArtifactEvidenceAuthorities;
-  journal: Pick<JarvisExecutionJournal, 'allocateRun' | 'getRun'>;
+  journal: Pick<JarvisExecutionJournal, 'allocateRun' | 'getRun'> &
+    Partial<Pick<JarvisExecutionJournal, 'appendEvent' | 'transitionRun'>>;
   cancellationDeliveryAuthority: JarvisCancellationDeliveryAuthority;
   abortRegistrationAuthority: JarvisAbortRegistrationAuthority;
   bindKernelActions: JarvisApprovalActionBinder;
@@ -249,6 +385,15 @@ type KernelRuntimeInput = Readonly<{
   }>;
   voicePlaybackAdapter?: JarvisVoicePlaybackAdapter;
   onVoiceTurnHandleIssued?(input: { runId: string; handle: JarvisVoiceTurnHandle }): () => void;
+  resolveScheduledOccurrence?(input: {
+    accountId: string;
+    eventId: string;
+    dueAt: number;
+    logicalAttempt: number;
+    previousRunId?: string;
+  }): Promise<JarvisScheduledTurnBasis | undefined>;
+  providerAttemptEvidence?: Pick<JarvisProviderAttemptEvidenceAuthority, 'revalidateFailure'>;
+  hiveWorkerExecutor?: JarvisHiveWorkerExecutor;
   prepareProvider: JarvisKernelPrepareProvider;
   processResponse: JarvisKernelProcessResponse;
   takeProviderArtifactDrafts(
@@ -266,6 +411,33 @@ async function sha256Canonical(value: unknown): Promise<string> {
   const canonical = canonicalizeJarvisApprovalJson(value);
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function sha256Text(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function scheduledOccurrenceId(input: {
+  accountId: string;
+  eventId: string;
+  dueAt: number;
+}): Promise<`jocc_${string}`> {
+  const digest = await sha256Text(
+    `schedule-occurrence-v1\u0000${input.accountId}\u0000${input.eventId}\u0000${input.dueAt}`,
+  );
+  return `jocc_${digest.slice(0, 32)}`;
+}
+
+async function scheduledRunId(input: {
+  accountId: string;
+  occurrenceId: `jocc_${string}`;
+  logicalAttempt: number;
+}): Promise<string> {
+  const digest = await sha256Text(
+    `schedule-run-v1\u0000${input.accountId}\u0000${input.occurrenceId}\u0000${input.logicalAttempt}`,
+  );
+  return `jrun_${digest.slice(0, 32)}`;
 }
 
 function sameIdentity(
@@ -303,6 +475,14 @@ function sameImmutableRun(left: JarvisRun, right: JarvisRun): boolean {
       canonicalizeJarvisApprovalJson(immutableRunIdentity(left)) ===
       canonicalizeJarvisApprovalJson(immutableRunIdentity(right))
     );
+  } catch {
+    return false;
+  }
+}
+
+function canonicalValuesMatch(left: unknown, right: unknown): boolean {
+  try {
+    return canonicalizeJarvisApprovalJson(left) === canonicalizeJarvisApprovalJson(right);
   } catch {
     return false;
   }
@@ -503,6 +683,108 @@ export function createJarvisKernelRuntime(
   const issuedActionExecutions = new WeakSet<JarvisIssuedActionExecution>();
   const issuedVoiceHandles = new WeakSet<JarvisVoiceTurnHandle>();
   const issuedVoiceRecoveryHandles = new WeakSet<JarvisVoiceRecoveryHandle>();
+  const issuedScheduledAllocations = new WeakSet<JarvisAllocatedScheduledOccurrence>();
+  const issuedScheduledPreparations = new WeakSet<PreparedJarvisScheduledKernelAttempt>();
+  const issuedScheduledHandles = new WeakSet<JarvisScheduledKernelAttemptHandle>();
+  type ScheduledAllocationMode =
+    | Readonly<{ kind: 'initial' }>
+    | Readonly<{
+        kind: 'transport_retry';
+        previousAttempt: JarvisTransportAttemptV1;
+        revalidatedEvidence: NonNullable<JarvisTransportAttemptV1['zeroEffectEvidence']>;
+      }>
+    | Readonly<{
+        kind: 'logical_retry';
+        previousRun: JarvisRun;
+        previousAttempt: JarvisTransportAttemptV1;
+      }>;
+  type ScheduledAllocationState = {
+    readonly binding: JarvisKernelAccountBinding;
+    readonly run: JarvisRun;
+    readonly basis: JarvisScheduledTurnBasis;
+    readonly eventId: string;
+    readonly occurrenceId: `jocc_${string}`;
+    readonly dueAt: number;
+    readonly logicalAttempt: number;
+    readonly requestId: string;
+    readonly createdAt: number;
+    readonly mode: ScheduledAllocationMode;
+    allocation: JarvisAllocatedScheduledOccurrence | undefined;
+    consumed: boolean;
+    disposed: boolean;
+  };
+  type ScheduledPreparationState = {
+    readonly allocation: JarvisAllocatedScheduledOccurrence;
+    readonly allocationState: ScheduledAllocationState;
+    readonly turnInput: Readonly<JarvisKernelTurnInput> & { surface: 'schedule' };
+    readonly snapshot: Readonly<JarvisScheduledRetrySnapshotV1>;
+    begun: boolean;
+    handle: JarvisScheduledKernelAttemptHandle | undefined;
+  };
+  type ScheduledHandleState = {
+    readonly prepared: PreparedJarvisScheduledKernelAttempt;
+    readonly preparationState: ScheduledPreparationState;
+    readonly binding: JarvisKernelAccountBinding;
+    readonly lease: JarvisScheduledAttemptLease;
+    readonly snapshot: Readonly<JarvisScheduledRetrySnapshotV1>;
+    readonly turnInput: Readonly<JarvisKernelTurnInput> & { surface: 'schedule' };
+    readonly liveRegistration: JarvisLiveEvidenceRegistration<'schedule'>;
+    providerFailure: JarvisPreEffectTransportFailureEvidence | undefined;
+    dispatched: boolean;
+    settled: boolean;
+    disposed: boolean;
+  };
+  const scheduledAllocationStates = new WeakMap<
+    JarvisAllocatedScheduledOccurrence,
+    ScheduledAllocationState
+  >();
+  const scheduledPreparationStates = new WeakMap<
+    PreparedJarvisScheduledKernelAttempt,
+    ScheduledPreparationState
+  >();
+  const scheduledHandleStates = new WeakMap<
+    JarvisScheduledKernelAttemptHandle,
+    ScheduledHandleState
+  >();
+  const scheduledAllocationsByRun = new Map<string, JarvisAllocatedScheduledOccurrence>();
+  type HiveWorkerHandleState = {
+    readonly binding: JarvisKernelAccountBinding;
+    readonly parentRun: JarvisRun;
+    readonly plan: Readonly<JarvisHiveStackPlanV1>;
+    readonly step: Readonly<JarvisHiveStackPlanV1['steps'][number]>;
+    readonly childRun: JarvisRun;
+    readonly requestId: string;
+    readonly controller: AbortController;
+    releaseAbortOwner: (() => void) | undefined;
+    executed: boolean;
+    disposed: boolean;
+  };
+  type HiveWorkerOutcomeState = {
+    readonly binding: JarvisKernelAccountBinding;
+    readonly accountId: string;
+    readonly parentRunId: string;
+    readonly stepId: string;
+    readonly childRunId: string;
+    readonly childResultEventSeq: number;
+    readonly parentResultEventSeq: number;
+    readonly resultRef: `jresult_${string}`;
+    readonly plan: Readonly<JarvisHiveStackPlanV1>;
+    readonly step: Readonly<JarvisHiveStackPlanV1['steps'][number]>;
+    readonly childRun: Readonly<JarvisRun>;
+    readonly childResultEvent: Readonly<JarvisEvent>;
+    readonly parentResultEvent: Readonly<JarvisEvent>;
+    readonly result: Readonly<HiveWorkerResult>;
+    releaseBinding: (() => void) | undefined;
+    releaseRevocationListener: (() => void) | undefined;
+    revoked: boolean;
+    consumed: boolean;
+  };
+  const issuedHiveWorkerHandles = new WeakSet<JarvisHiveWorkerHandle>();
+  const issuedHiveWorkerOutcomes = new WeakSet<JarvisHiveWorkerOutcome>();
+  const hiveWorkerHandleStates = new WeakMap<JarvisHiveWorkerHandle, HiveWorkerHandleState>();
+  const hiveWorkerOutcomeStates = new WeakMap<JarvisHiveWorkerOutcome, HiveWorkerOutcomeState>();
+  const claimedHiveSteps = new Set<string>();
+  const hiveWorkerResults = new Map<string, Readonly<HiveWorkerResult>>();
   type VoiceHandlePhase =
     | 'starting'
     | 'response_pending'
@@ -571,6 +853,25 @@ export function createJarvisKernelRuntime(
         consumeArtifactsForCommit,
       }),
   });
+  const providerAttemptEvidence =
+    input.providerAttemptEvidence ??
+    Object.freeze({
+      async revalidateFailure() {
+        return null;
+      },
+    });
+  const consequentialEffectSafety = createJarvisConsequentialEffectSafetyAuthority({
+    approvals: repositories.approval,
+    artifacts: repositories.artifact,
+    events: repositories.event,
+    providerAttemptEvidence,
+    now: input.now,
+  });
+  const transportAttempts: JarvisTransportAttemptCoordinator =
+    createJarvisTransportAttemptCoordinator({
+      repository: repositories.run,
+      safetyAuthority: consequentialEffectSafety,
+    });
 
   const issueAccountBinding = (accountId: string): JarvisKernelAccountBinding => {
     if (!accountId || accountId.trim() !== accountId) {
@@ -686,6 +987,481 @@ export function createJarvisKernelRuntime(
       currentState.count -= 1;
       if (currentState.count === 0) currentState.terminate();
     };
+  };
+
+  const assertScheduledInput = (value: string, field: string): void => {
+    if (!value || value.trim() !== value) throw new Error(`kernel_schedule_${field}_invalid`);
+  };
+
+  const scheduledBasisFromSnapshot = (
+    snapshot: Readonly<JarvisScheduledRetrySnapshotV1>,
+  ): JarvisScheduledTurnBasis => {
+    const request = snapshot.request;
+    if (!request.chatId) throw new Error('kernel_schedule_snapshot_chat_missing');
+    const capturedAt = request.model.capturedAt;
+    const agent = Object.freeze({
+      id: request.agent.id as Agent['id'],
+      slug: request.agent.slug,
+      name: 'Jarvis',
+      description: 'Protected scheduled Jarvis runtime',
+      system_prompt: '',
+      model: {
+        provider: request.model.providerId as Agent['model']['provider'],
+        model: request.model.modelId,
+      },
+      tools_allowed: request.capabilities.tools.map((tool) => tool.id),
+      memory_scope: 'workspace' as const,
+      capabilities: [],
+      builtin: request.agent.builtin,
+      created_at: capturedAt,
+      updated_at: capturedAt,
+    }) satisfies Agent;
+    return deepFreezeJarvisCopy({
+      ...(request.workspaceId === undefined ? {} : { workspaceId: request.workspaceId }),
+      ...(request.projectId === undefined ? {} : { projectId: request.projectId }),
+      chatId: request.chatId,
+      userMessageId: `msg_schedule_${request.runId}`,
+      agent,
+      interactionMode: request.interactionMode,
+      userText: request.userText,
+      messageHistory: request.messageHistory,
+      model: request.model,
+      identity: request.identity,
+      profile: request.profile,
+      capabilities: request.capabilities,
+      context: request.context,
+      outputContract: request.outputContract,
+    });
+  };
+
+  const scheduledSnapshotFromRequest = (
+    eventId: string,
+    occurrenceId: `jocc_${string}`,
+    dueAt: number,
+    logicalAttempt: number,
+    request: Awaited<ReturnType<typeof createJarvisRequestEnvelope>>,
+  ): Readonly<JarvisScheduledRetrySnapshotV1> => {
+    const { requestId: _requestId, createdAt: _createdAt, ...retryRequest } = request;
+    return deepFreezeJarvisCopy({
+      schemaVersion: 1 as const,
+      accountId: request.accountId,
+      eventId,
+      occurrenceId,
+      dueAt,
+      logicalAttempt,
+      request: retryRequest,
+    });
+  };
+
+  const disposeScheduledAllocation = (state: ScheduledAllocationState): void => {
+    if (state.disposed) return;
+    state.disposed = true;
+    const key = JSON.stringify([state.run.accountId, state.run.id]);
+    if (state.allocation && scheduledAllocationsByRun.get(key) === state.allocation) {
+      scheduledAllocationsByRun.delete(key);
+    }
+    state.binding.dispose();
+  };
+
+  const disposeScheduledHandleState = (
+    handle: JarvisScheduledKernelAttemptHandle,
+    state: ScheduledHandleState,
+  ): void => {
+    if (state.disposed) return;
+    state.disposed = true;
+    issuedScheduledHandles.delete(handle);
+    state.liveRegistration.dispose();
+    disposeScheduledAllocation(state.preparationState.allocationState);
+  };
+
+  const issueScheduledAllocation = (state: ScheduledAllocationState) => {
+    const allocation = Object.freeze({
+      [jarvisScheduledPreparationSeedBrand]: true as const,
+      [jarvisAllocatedScheduledOccurrenceBrand]: true as const,
+    });
+    state.allocation = allocation;
+    issuedScheduledAllocations.add(allocation);
+    scheduledAllocationStates.set(allocation, state);
+    scheduledAllocationsByRun.set(JSON.stringify([state.run.accountId, state.run.id]), allocation);
+    return allocation;
+  };
+
+  const currentScheduledAllocation = (inputValue: {
+    accountId: string;
+    runId: string;
+    eventId: string;
+    dueAt: number;
+    logicalAttempt: number;
+  }): JarvisAllocatedScheduledOccurrence | undefined => {
+    const key = JSON.stringify([inputValue.accountId, inputValue.runId]);
+    const allocation = scheduledAllocationsByRun.get(key);
+    const state = allocation ? scheduledAllocationStates.get(allocation) : undefined;
+    if (!allocation || !state || state.disposed || state.consumed) {
+      if (allocation) scheduledAllocationsByRun.delete(key);
+      return undefined;
+    }
+    try {
+      state.binding.assertCurrent();
+    } catch {
+      scheduledAllocationsByRun.delete(key);
+      return undefined;
+    }
+    if (
+      state.run.accountId !== inputValue.accountId ||
+      state.run.id !== inputValue.runId ||
+      state.eventId !== inputValue.eventId ||
+      state.dueAt !== inputValue.dueAt ||
+      state.logicalAttempt !== inputValue.logicalAttempt ||
+      state.mode.kind !== 'initial'
+    ) {
+      throw new Error('kernel_schedule_allocation_conflict');
+    }
+    return allocation;
+  };
+
+  const allocateResolvedScheduledOccurrence = async (inputValue: {
+    binding: JarvisKernelAccountBinding;
+    eventId: string;
+    dueAt: number;
+    logicalAttempt: number;
+    basis: JarvisScheduledTurnBasis;
+    mode: ScheduledAllocationMode;
+    parentRunId?: string;
+  }): Promise<JarvisAllocatedScheduledOccurrence> => {
+    inputValue.binding.assertCurrent();
+    const accountId = inputValue.binding.identity.accountId;
+    const occurrenceId = await scheduledOccurrenceId({
+      accountId,
+      eventId: inputValue.eventId,
+      dueAt: inputValue.dueAt,
+    });
+    const runId = await scheduledRunId({
+      accountId,
+      occurrenceId,
+      logicalAttempt: inputValue.logicalAttempt,
+    });
+    const createdAt = input.now();
+    const requestId = `jreq_${input.randomUUID()}`;
+    const allocation = await transactionAuthority.lifecycleTransaction(
+      ['jarvis_runs', 'jarvis_events'],
+      inputValue.binding.revocationSignal,
+      async (context) => {
+        inputValue.binding.assertCurrent();
+        const existing = await context.jarvis_runs.get(runId);
+        if (existing) {
+          return { created: false as const, run: fromJarvisRunRow(existing) };
+        }
+        const run: JarvisRun = {
+          id: runId,
+          accountId,
+          ...(inputValue.basis.workspaceId === undefined
+            ? {}
+            : { workspaceId: inputValue.basis.workspaceId }),
+          ...(inputValue.basis.projectId === undefined
+            ? {}
+            : { projectId: inputValue.basis.projectId }),
+          chatId: inputValue.basis.chatId,
+          ...(inputValue.parentRunId === undefined ? {} : { parentRunId: inputValue.parentRunId }),
+          source: 'schedule',
+          status: 'queued',
+          agentId: inputValue.basis.agent.id,
+          identityVersion: inputValue.basis.identity.identityVersion,
+          profileRevisionId: inputValue.basis.profile.revisionId,
+          model: deepFreezeJarvisCopy(inputValue.basis.model),
+          createdAt,
+          updatedAt: createdAt,
+        };
+        const row = toJarvisRunRow(run);
+        await context.jarvis_runs.add(row);
+        const persisted = await context.jarvis_runs.get(runId);
+        if (!persisted || !canonicalValuesMatch(persisted, row)) {
+          throw new Error('kernel_schedule_allocation_readback_mismatch');
+        }
+        return { created: true as const, run: fromJarvisRunRow(persisted) };
+      },
+    );
+    if (allocation.kind === 'cancelled') {
+      throw new Error('kernel_account_authority_revoked');
+    }
+    if (!allocation.value.created) {
+      const current = currentScheduledAllocation({
+        accountId,
+        runId,
+        eventId: inputValue.eventId,
+        dueAt: inputValue.dueAt,
+        logicalAttempt: inputValue.logicalAttempt,
+      });
+      if (current) {
+        inputValue.binding.dispose();
+        return current;
+      }
+      if (
+        allocation.value.run.source === 'schedule' &&
+        allocation.value.run.status === 'queued' &&
+        allocation.value.run.scheduledRetrySnapshot === undefined &&
+        (allocation.value.run.transportAttempts?.length ?? 0) === 0
+      ) {
+        throw new Error('kernel_schedule_unbound_restart');
+      }
+      throw new Error('kernel_schedule_allocation_conflict');
+    }
+    const run = allocation.value.run;
+    inputValue.binding.assertCurrent();
+    const readback = await input.journal.getRun(accountId, runId);
+    if (
+      !readback ||
+      !sameImmutableRun(readback, run) ||
+      readback.source !== 'schedule' ||
+      readback.status !== 'queued' ||
+      readback.scheduledRetrySnapshot !== undefined ||
+      (readback.transportAttempts?.length ?? 0) !== 0
+    ) {
+      throw new Error('kernel_schedule_allocation_readback_mismatch');
+    }
+    inputValue.binding.assertCurrent();
+    return issueScheduledAllocation({
+      binding: inputValue.binding,
+      run: readback,
+      basis: deepFreezeJarvisCopy(inputValue.basis),
+      eventId: inputValue.eventId,
+      occurrenceId,
+      dueAt: inputValue.dueAt,
+      logicalAttempt: inputValue.logicalAttempt,
+      requestId,
+      createdAt,
+      mode: inputValue.mode,
+      allocation: undefined,
+      consumed: false,
+      disposed: false,
+    });
+  };
+
+  const appendCapabilityLiveEvidence = async (
+    binding: JarvisKernelAccountBinding,
+    scope: Readonly<{
+      accountId: string;
+      runId: string;
+      requestId: string;
+      attemptNumber: number;
+    }>,
+    evidence: JarvisDurableLiveEvidenceV1,
+    title: string,
+  ): Promise<JarvisEvent> => {
+    binding.assertCurrent();
+    const transaction = await transactionAuthority.lifecycleTransaction(
+      ['jarvis_runs', 'jarvis_events'],
+      binding.revocationSignal,
+      async (context) => {
+        binding.assertCurrent();
+        const runRow = await context.jarvis_runs.get(scope.runId);
+        if (!runRow || runRow.account_id !== scope.accountId) {
+          throw new Error('kernel_live_evidence_scope_mismatch');
+        }
+        const tail = await lastEvent(context, scope.runId);
+        binding.assertCurrent();
+        const event: JarvisEvent = {
+          runId: scope.runId,
+          seq: terminalEventSequence(tail),
+          idempotencyKey: `kernel-live:${evidence.registrationId}:${evidence.transition}:${evidence.resultRef}`,
+          type: 'tool',
+          status: evidence.transition,
+          title,
+          safeSummary: 'Verified capability execution evidence was updated.',
+          sourceRefs: [],
+          artifactIds: [],
+          createdAt: evidence.observedAt,
+          liveEvidence: evidence,
+        };
+        const row = toJarvisEventRow(event);
+        await context.jarvis_events.add(row);
+        return fromJarvisEventRow(row);
+      },
+    );
+    if (transaction.kind === 'cancelled') {
+      throw new Error('kernel_account_authority_revoked');
+    }
+    return transaction.value;
+  };
+
+  const appendScheduleResultSource = async (
+    state: ScheduledHandleState,
+    authorityEvent: Readonly<JarvisEvent>,
+  ): Promise<JarvisEvent> => {
+    const authority = authorityEvent.canonicalResultEvidence;
+    if (
+      !input.journal.appendEvent ||
+      !authority ||
+      authority.accountId !== state.turnInput.accountId ||
+      authority.runId !== state.turnInput.run.id ||
+      authority.requestId !== state.turnInput.attempt.requestId ||
+      authority.attemptNumber !== state.turnInput.attempt.attemptNumber ||
+      authority.resultRef.trim().length === 0 ||
+      authorityEvent.runId !== state.turnInput.run.id
+    ) {
+      throw new Error('kernel_schedule_result_authority_invalid');
+    }
+    state.binding.assertCurrent();
+    const event = await input.journal.appendEvent(
+      state.turnInput.accountId,
+      state.turnInput.run.id,
+      {
+        idempotencyKey: `schedule:${state.turnInput.run.id}:${authority.requestId}:${authority.attemptNumber}:result`,
+        type: 'tool',
+        status: authority.state,
+        title: 'Scheduled dispatch result linked',
+        safeSummary: 'A verified scheduled result was linked to its canonical authority.',
+        sourceRefs: [],
+        artifactIds: [],
+        createdAt: authority.observedAt,
+        producerSourceEvidence: {
+          schemaVersion: 1,
+          accountId: state.turnInput.accountId,
+          runId: state.turnInput.run.id,
+          requestId: authority.requestId,
+          attemptNumber: authority.attemptNumber,
+          producerKind: 'schedule',
+          producerIdentity: {
+            producerKind: 'schedule',
+            eventId: state.snapshot.eventId,
+            occurrenceId: state.snapshot.occurrenceId,
+          },
+          resultRef: authority.resultRef,
+          observedAt: authority.observedAt,
+          phase: 'result',
+          state: authority.state,
+          resultAuthority: {
+            runId: authorityEvent.runId,
+            eventSeq: authorityEvent.seq,
+            evidenceRef: authority.resultRef,
+          },
+        },
+      },
+    );
+    state.binding.assertCurrent();
+    const readback = await repositories.event.getBySeq(
+      state.turnInput.accountId,
+      state.turnInput.run.id,
+      event.seq,
+    );
+    if (!readback || !canonicalValuesMatch(readback, event)) {
+      throw new Error('kernel_schedule_result_readback_mismatch');
+    }
+    return readback;
+  };
+
+  const loadScheduleResultAuthority = async (
+    state: ScheduledHandleState,
+    kind: 'kernel_turn_committed' | 'scheduled_transport_settled',
+  ): Promise<JarvisEvent> => {
+    const events = await repositories.event.listByRun(
+      state.turnInput.accountId,
+      state.turnInput.run.id,
+      { limit: 500 },
+    );
+    state.binding.assertCurrent();
+    const authority = [...events].reverse().find((event) => {
+      const evidence = event.canonicalResultEvidence;
+      return (
+        evidence?.kind === kind &&
+        evidence.accountId === state.turnInput.accountId &&
+        evidence.runId === state.turnInput.run.id &&
+        evidence.requestId === state.turnInput.attempt.requestId &&
+        evidence.attemptNumber === state.turnInput.attempt.attemptNumber
+      );
+    });
+    if (!authority) throw new Error('kernel_schedule_result_authority_missing');
+    return authority;
+  };
+
+  const completeScheduleLiveEvidence = async (
+    state: ScheduledHandleState,
+    resultEvent: Readonly<JarvisEvent>,
+  ): Promise<void> => {
+    const source = resultEvent.producerSourceEvidence;
+    if (
+      source?.producerKind !== 'schedule' ||
+      source.phase !== 'result' ||
+      (source.state !== 'completed' && source.state !== 'degraded')
+    ) {
+      throw new Error('kernel_schedule_result_source_invalid');
+    }
+    const completed = await state.liveRegistration.complete({
+      evidence: Object.freeze({
+        schemaVersion: 1,
+        producerKind: 'schedule',
+        producerIdentity: source.producerIdentity,
+        accountId: source.accountId,
+        runId: source.runId,
+        requestId: source.requestId,
+        attemptNumber: source.attemptNumber,
+        resultRef: source.resultRef,
+        resultEventSeq: resultEvent.seq,
+        state: source.state,
+        verifiedAt: source.observedAt,
+      }),
+      state: source.state,
+    });
+    state.binding.assertCurrent();
+    if (
+      completed.accountId !== source.accountId ||
+      completed.runId !== source.runId ||
+      completed.resultEventSeq !== resultEvent.seq ||
+      completed.transition !== source.state
+    ) {
+      throw new Error('kernel_schedule_live_evidence_mismatch');
+    }
+  };
+
+  const hiveStepKey = (accountId: string, parentRunId: string, stepId: string): string =>
+    JSON.stringify([accountId, parentRunId, stepId]);
+
+  const hiveAgentFromStep = (step: Readonly<JarvisHiveStackPlanV1['steps'][number]>): Agent => ({
+    id: step.agent.id as Agent['id'],
+    slug: step.agent.slug,
+    name: step.agent.name,
+    description: step.agent.description,
+    system_prompt: step.agent.systemPrompt,
+    model: {
+      provider: step.model.providerId as Agent['model']['provider'],
+      model: step.model.modelId,
+    },
+    tools_allowed: [...step.agent.toolsAllowed],
+    memory_scope: step.agent.memoryScope,
+    capabilities: [...step.agent.capabilities] as Agent['capabilities'],
+    builtin: step.agent.builtin,
+    created_at: step.agent.createdAt,
+    updated_at: step.agent.updatedAt,
+  });
+
+  const disposeHiveWorkerHandleState = (
+    handle: JarvisHiveWorkerHandle,
+    state: HiveWorkerHandleState,
+  ): void => {
+    if (state.disposed) return;
+    state.disposed = true;
+    issuedHiveWorkerHandles.delete(handle);
+    state.releaseAbortOwner?.();
+    state.releaseAbortOwner = undefined;
+    if (!state.executed) {
+      claimedHiveSteps.delete(
+        hiveStepKey(state.parentRun.accountId, state.parentRun.id, state.step.stepId),
+      );
+    }
+    state.binding.dispose();
+  };
+
+  const consumeHiveWorkerOutcomeState = (
+    outcome: JarvisHiveWorkerOutcome,
+    state: HiveWorkerOutcomeState,
+  ): void => {
+    if (state.consumed) return;
+    state.consumed = true;
+    issuedHiveWorkerOutcomes.delete(outcome);
+    hiveWorkerOutcomeStates.delete(outcome);
+    state.releaseRevocationListener?.();
+    state.releaseRevocationListener = undefined;
+    state.releaseBinding?.();
+    state.releaseBinding = undefined;
   };
 
   const requestCancellationWithBinding = async (
@@ -2903,20 +3679,1349 @@ export function createJarvisKernelRuntime(
         binding.dispose();
       }
     },
-    async prepareScheduledAttempt() {
-      return failNotReady();
+    async allocateScheduledOccurrence(allocationInput: {
+      accountId: string;
+      eventId: string;
+      dueAt: number;
+    }) {
+      assertScheduledInput(allocationInput.accountId, 'account');
+      assertScheduledInput(allocationInput.eventId, 'event');
+      if (!Number.isFinite(allocationInput.dueAt) || allocationInput.dueAt < 0) {
+        throw new Error('kernel_schedule_due_at_invalid');
+      }
+      let binding: JarvisKernelAccountBinding;
+      try {
+        binding = issueAccountBinding(allocationInput.accountId);
+      } catch {
+        return { kind: 'account_authority_revoked' as const };
+      }
+      try {
+        const occurrenceId = await scheduledOccurrenceId(allocationInput);
+        const runId = await scheduledRunId({
+          accountId: allocationInput.accountId,
+          occurrenceId,
+          logicalAttempt: 0,
+        });
+        const existing = await repositories.run.getById(allocationInput.accountId, runId);
+        binding.assertCurrent();
+        if (existing) {
+          const current = currentScheduledAllocation({
+            accountId: allocationInput.accountId,
+            runId,
+            eventId: allocationInput.eventId,
+            dueAt: allocationInput.dueAt,
+            logicalAttempt: 0,
+          });
+          if (current) {
+            binding.dispose();
+            return { kind: 'committed' as const, value: current };
+          }
+          if (
+            existing.source === 'schedule' &&
+            existing.status === 'queued' &&
+            existing.scheduledRetrySnapshot === undefined &&
+            (existing.transportAttempts?.length ?? 0) === 0
+          ) {
+            throw new Error('kernel_schedule_unbound_restart');
+          }
+          throw new Error('kernel_schedule_allocation_conflict');
+        }
+        if (!input.resolveScheduledOccurrence)
+          throw new Error('kernel_schedule_source_unavailable');
+        const basis = await input.resolveScheduledOccurrence({
+          ...allocationInput,
+          logicalAttempt: 0,
+        });
+        binding.assertCurrent();
+        if (!basis) throw new Error('kernel_schedule_source_unavailable');
+        const allocation = await allocateResolvedScheduledOccurrence({
+          binding,
+          eventId: allocationInput.eventId,
+          dueAt: allocationInput.dueAt,
+          logicalAttempt: 0,
+          basis,
+          mode: { kind: 'initial' },
+        });
+        return { kind: 'committed' as const, value: allocation };
+      } catch (error) {
+        const revoked = binding.revocationSignal.aborted;
+        binding.dispose();
+        if (revoked) return { kind: 'account_authority_revoked' as const };
+        throw error;
+      }
     },
-    async beginPreparedScheduledAttempt() {
-      return failNotReady();
+    async loadScheduledRun(loadInput: { accountId: string; runId: string }) {
+      assertScheduledInput(loadInput.accountId, 'account');
+      assertScheduledInput(loadInput.runId, 'run');
+      let binding: JarvisKernelAccountBinding;
+      try {
+        binding = issueAccountBinding(loadInput.accountId);
+      } catch {
+        return { kind: 'account_authority_revoked' as const };
+      }
+      try {
+        const run = await repositories.run.getById(loadInput.accountId, loadInput.runId);
+        binding.assertCurrent();
+        if (!run) {
+          binding.dispose();
+          return { kind: 'committed' as const, value: undefined };
+        }
+        const snapshot = run.scheduledRetrySnapshot;
+        const previousAttempt = run.transportAttempts?.at(-1);
+        if (
+          run.source !== 'schedule' ||
+          run.status !== 'running' ||
+          !snapshot ||
+          snapshot.accountId !== run.accountId ||
+          snapshot.request.runId !== run.id ||
+          !previousAttempt ||
+          previousAttempt.state !== 'retryable_failed' ||
+          previousAttempt.effectBarrier.state !== 'open' ||
+          previousAttempt.effectBarrier.version !== 0 ||
+          !previousAttempt.zeroEffectEvidence
+        ) {
+          throw new Error('kernel_schedule_transport_retry_unavailable');
+        }
+        const revalidatedEvidence =
+          await consequentialEffectSafety.revalidateZeroConsequentialEffect({
+            run,
+            attempt: previousAttempt,
+            evidence: previousAttempt.zeroEffectEvidence,
+          });
+        binding.assertCurrent();
+        if (!revalidatedEvidence) {
+          throw new Error('kernel_schedule_transport_retry_safety_denied');
+        }
+        const allocation = issueScheduledAllocation({
+          binding,
+          run,
+          basis: scheduledBasisFromSnapshot(snapshot),
+          eventId: snapshot.eventId,
+          occurrenceId: snapshot.occurrenceId,
+          dueAt: snapshot.dueAt,
+          logicalAttempt: snapshot.logicalAttempt,
+          requestId: `jreq_${input.randomUUID()}`,
+          createdAt: input.now(),
+          mode: { kind: 'transport_retry', previousAttempt, revalidatedEvidence },
+          allocation: undefined,
+          consumed: false,
+          disposed: false,
+        });
+        return { kind: 'committed' as const, value: allocation };
+      } catch (error) {
+        const revoked = binding.revocationSignal.aborted;
+        binding.dispose();
+        if (revoked) return { kind: 'account_authority_revoked' as const };
+        throw error;
+      }
     },
-    async dispatchPreparedScheduledAttempt() {
-      return failNotReady();
+    async allocateScheduledLogicalRetry(logicalInput: {
+      accountId: string;
+      previousRunId: string;
+    }) {
+      assertScheduledInput(logicalInput.accountId, 'account');
+      assertScheduledInput(logicalInput.previousRunId, 'previous_run');
+      let binding: JarvisKernelAccountBinding;
+      try {
+        binding = issueAccountBinding(logicalInput.accountId);
+      } catch {
+        return { kind: 'account_authority_revoked' as const };
+      }
+      try {
+        const previousRun = await repositories.run.getById(
+          logicalInput.accountId,
+          logicalInput.previousRunId,
+        );
+        const snapshot = previousRun?.scheduledRetrySnapshot;
+        const previousAttempt = previousRun?.transportAttempts?.at(-1);
+        if (
+          !previousRun ||
+          previousRun.source !== 'schedule' ||
+          !['failed', 'timed_out', 'cancelled'].includes(previousRun.status) ||
+          !snapshot ||
+          !previousAttempt ||
+          snapshot.accountId !== previousRun.accountId ||
+          snapshot.request.runId !== previousRun.id
+        ) {
+          throw new Error('kernel_schedule_logical_retry_unavailable');
+        }
+        if (!input.resolveScheduledOccurrence)
+          throw new Error('kernel_schedule_source_unavailable');
+        const logicalAttempt = snapshot.logicalAttempt + 1;
+        const basis = await input.resolveScheduledOccurrence({
+          accountId: logicalInput.accountId,
+          eventId: snapshot.eventId,
+          dueAt: snapshot.dueAt,
+          logicalAttempt,
+          previousRunId: previousRun.id,
+        });
+        binding.assertCurrent();
+        if (!basis) throw new Error('kernel_schedule_source_unavailable');
+        const allocation = await allocateResolvedScheduledOccurrence({
+          binding,
+          eventId: snapshot.eventId,
+          dueAt: snapshot.dueAt,
+          logicalAttempt,
+          basis,
+          mode: { kind: 'logical_retry', previousRun, previousAttempt },
+          parentRunId: previousRun.id,
+        });
+        return { kind: 'committed' as const, value: allocation };
+      } catch (error) {
+        const revoked = binding.revocationSignal.aborted;
+        binding.dispose();
+        if (revoked) return { kind: 'account_authority_revoked' as const };
+        throw error;
+      }
     },
-    async settleScheduledTransportFailure() {
-      return failNotReady();
+    async prepareScheduledAttempt({
+      allocation,
+    }: {
+      allocation: JarvisAllocatedScheduledOccurrence;
+    }) {
+      if (!issuedScheduledAllocations.has(allocation)) {
+        throw new Error('kernel_schedule_allocation_invalid');
+      }
+      const state = scheduledAllocationStates.get(allocation);
+      if (!state || state.consumed || state.disposed) {
+        throw new Error('kernel_schedule_allocation_invalid');
+      }
+      try {
+        state.binding.assertCurrent();
+        const attempt: JarvisKernelTurnInput['attempt'] =
+          state.mode.kind === 'transport_retry'
+            ? {
+                kind: 'transport_retry',
+                requestId: state.requestId,
+                runId: state.run.id,
+                attemptNumber: state.mode.previousAttempt.attemptNumber + 1,
+                previousRequestId: state.mode.previousAttempt.requestId,
+                previousRunId: state.run.id,
+                previousAttemptNumber: state.mode.previousAttempt.attemptNumber,
+              }
+            : state.mode.kind === 'logical_retry'
+              ? {
+                  kind: 'logical_retry',
+                  requestId: state.requestId,
+                  runId: state.run.id,
+                  attemptNumber: 1,
+                  previousRequestId: state.mode.previousAttempt.requestId,
+                  previousRunId: state.mode.previousRun.id,
+                  previousAttemptNumber: state.mode.previousAttempt.attemptNumber,
+                }
+              : {
+                  kind: 'initial',
+                  requestId: state.requestId,
+                  runId: state.run.id,
+                  attemptNumber: 1,
+                };
+        const turnInput = deepFreezeJarvisCopy({
+          run: state.run,
+          attempt,
+          accountId: state.run.accountId,
+          ...(state.basis.workspaceId === undefined
+            ? {}
+            : { workspaceId: state.basis.workspaceId }),
+          ...(state.basis.projectId === undefined ? {} : { projectId: state.basis.projectId }),
+          chatId: state.basis.chatId,
+          ...(state.run.parentRunId === undefined ? {} : { parentRunId: state.run.parentRunId }),
+          userMessageId: state.basis.userMessageId,
+          agent: state.basis.agent,
+          surface: 'schedule' as const,
+          interactionMode: state.basis.interactionMode,
+          userText: state.basis.userText,
+          messageHistory: state.basis.messageHistory,
+          model: state.basis.model,
+          identity: state.basis.identity,
+          profile: state.basis.profile,
+          capabilities: state.basis.capabilities,
+          context: state.basis.context,
+          outputContract: state.basis.outputContract,
+          ...(state.basis.workingDirectory === undefined
+            ? {}
+            : { workingDirectory: state.basis.workingDirectory }),
+        }) as Readonly<JarvisKernelTurnInput> & { surface: 'schedule' };
+        const request = await createJarvisRequestEnvelope({
+          attempt: turnInput.attempt,
+          accountId: turnInput.accountId,
+          ...(turnInput.workspaceId === undefined ? {} : { workspaceId: turnInput.workspaceId }),
+          ...(turnInput.projectId === undefined ? {} : { projectId: turnInput.projectId }),
+          chatId: turnInput.chatId,
+          ...(turnInput.parentRunId === undefined ? {} : { parentRunId: turnInput.parentRunId }),
+          agent: {
+            id: turnInput.agent.id,
+            slug: turnInput.agent.slug,
+            builtin: turnInput.agent.builtin === true,
+          },
+          surface: 'schedule',
+          interactionMode: turnInput.interactionMode,
+          identity: turnInput.identity,
+          profile: turnInput.profile,
+          model: turnInput.model,
+          capabilities: turnInput.capabilities,
+          context: turnInput.context,
+          outputContract: turnInput.outputContract,
+          userText: turnInput.userText,
+          messageHistory: turnInput.messageHistory,
+          createdAt: state.createdAt,
+        });
+        compileJarvisPrompt(request);
+        const snapshot = scheduledSnapshotFromRequest(
+          state.eventId,
+          state.occurrenceId,
+          state.dueAt,
+          state.logicalAttempt,
+          request,
+        );
+        if (
+          state.mode.kind === 'transport_retry' &&
+          !canonicalValuesMatch(snapshot, state.run.scheduledRetrySnapshot)
+        ) {
+          throw new Error('kernel_schedule_retry_snapshot_mismatch');
+        }
+        const prepared = Object.freeze({
+          [preparedJarvisScheduledAttemptBrand]: true as const,
+        });
+        state.consumed = true;
+        issuedScheduledPreparations.add(prepared);
+        scheduledPreparationStates.set(prepared, {
+          allocation,
+          allocationState: state,
+          turnInput,
+          snapshot,
+          begun: false,
+          handle: undefined,
+        });
+        return prepared;
+      } catch (error) {
+        disposeScheduledAllocation(state);
+        throw error;
+      }
     },
-    disposeScheduledAttempt() {
-      failNotReady();
+    async beginPreparedScheduledAttempt({
+      prepared,
+    }: {
+      prepared: PreparedJarvisScheduledKernelAttempt;
+    }) {
+      if (!issuedScheduledPreparations.has(prepared)) {
+        throw new Error('kernel_schedule_preparation_invalid');
+      }
+      const preparation = scheduledPreparationStates.get(prepared);
+      if (
+        !preparation ||
+        preparation.begun ||
+        preparation.allocationState.disposed ||
+        preparation.handle
+      ) {
+        throw new Error('kernel_schedule_preparation_invalid');
+      }
+      const state = preparation.allocationState;
+      try {
+        state.binding.assertCurrent();
+        const lease =
+          state.mode.kind === 'transport_retry'
+            ? await transportAttempts.beginScheduledTransportRetry({
+                accountId: state.run.accountId,
+                runId: state.run.id,
+                previousAttemptNumber: state.mode.previousAttempt.attemptNumber,
+                requestId: state.requestId,
+                expectedSnapshot: preparation.snapshot,
+                createdAt: state.createdAt,
+                revalidatedEvidence: state.mode.revalidatedEvidence,
+              })
+            : await transportAttempts.beginInitialScheduledAttempt({
+                accountId: state.run.accountId,
+                runId: state.run.id,
+                requestId: state.requestId,
+                snapshot: preparation.snapshot,
+                createdAt: state.createdAt,
+              });
+        state.binding.assertCurrent();
+        const persisted = await transportAttempts.verifyLease(lease, preparation.snapshot);
+        state.binding.assertCurrent();
+        const turnInput = deepFreezeJarvisCopy({
+          ...preparation.turnInput,
+          run: persisted,
+        }) as Readonly<JarvisKernelTurnInput> & { surface: 'schedule' };
+        const attempt = persisted.transportAttempts?.at(-1);
+        if (
+          !attempt ||
+          attempt.requestId !== turnInput.attempt.requestId ||
+          attempt.attemptNumber !== turnInput.attempt.attemptNumber
+        ) {
+          throw new Error('kernel_schedule_start_attempt_mismatch');
+        }
+        const startEvent = await repositories.event.getBySeq(
+          persisted.accountId,
+          persisted.id,
+          attempt.startedEventSeq,
+        );
+        const startSource = startEvent?.producerSourceEvidence;
+        if (
+          !startEvent ||
+          startSource?.producerKind !== 'schedule' ||
+          startSource.phase !== 'start' ||
+          startSource.state !== 'started' ||
+          startSource.accountId !== persisted.accountId ||
+          startSource.runId !== persisted.id ||
+          startSource.requestId !== attempt.requestId ||
+          startSource.attemptNumber !== attempt.attemptNumber ||
+          startSource.producerIdentity.eventId !== preparation.snapshot.eventId ||
+          startSource.producerIdentity.occurrenceId !== preparation.snapshot.occurrenceId
+        ) {
+          throw new Error('kernel_schedule_start_source_mismatch');
+        }
+        const liveScope = {
+          accountId: persisted.accountId,
+          runId: persisted.id,
+          requestId: attempt.requestId,
+          attemptNumber: attempt.attemptNumber,
+        };
+        const liveOwner = liveEvidence.bindLifecycle({
+          scope: liveScope,
+          append: Object.freeze({
+            append: ({ evidence }: { evidence: JarvisDurableLiveEvidenceV1 }) =>
+              appendCapabilityLiveEvidence(
+                state.binding,
+                liveScope,
+                evidence,
+                'Schedule evidence updated',
+              ),
+          }),
+        });
+        const liveRegistration = await liveOwner.schedule.startCapability({
+          evidence: Object.freeze({
+            schemaVersion: 1,
+            producerKind: 'schedule',
+            producerIdentity: startSource.producerIdentity,
+            ...liveScope,
+            resultRef: startSource.resultRef,
+            resultEventSeq: startEvent.seq,
+            state: 'busy',
+            verifiedAt: startSource.observedAt,
+          }),
+          registrationId: `${persisted.id}:schedule:${attempt.attemptNumber}`,
+          category: 'agent',
+          capabilityId: 'schedule.dispatch',
+          operations: ['execute', 'cancel', 'inspect'],
+          state: 'busy',
+        });
+        let handle: JarvisScheduledKernelAttemptHandle;
+        handle = Object.freeze({
+          [jarvisScheduledKernelHandleBrand]: true as const,
+          requestCancellation: () =>
+            requestCancellationWithBinding(state.binding, {
+              accountId: persisted.accountId,
+              runId: persisted.id,
+            }),
+          dispose: () => {
+            const current = scheduledHandleStates.get(handle);
+            if (current) disposeScheduledHandleState(handle, current);
+          },
+        });
+        const handleState: ScheduledHandleState = {
+          prepared,
+          preparationState: preparation,
+          binding: state.binding,
+          lease,
+          snapshot: preparation.snapshot,
+          turnInput,
+          liveRegistration,
+          providerFailure: undefined,
+          dispatched: false,
+          settled: false,
+          disposed: false,
+        };
+        preparation.begun = true;
+        preparation.handle = handle;
+        issuedScheduledHandles.add(handle);
+        scheduledHandleStates.set(handle, handleState);
+        return { kind: 'committed' as const, value: handle };
+      } catch (error) {
+        const revoked = state.binding.revocationSignal.aborted;
+        disposeScheduledAllocation(state);
+        if (revoked) return { kind: 'account_authority_revoked' as const };
+        throw error;
+      }
+    },
+    async dispatchPreparedScheduledAttempt({
+      prepared,
+      handle,
+    }: {
+      prepared: PreparedJarvisScheduledKernelAttempt;
+      handle: JarvisScheduledKernelAttemptHandle;
+    }) {
+      const preparation = scheduledPreparationStates.get(prepared);
+      const state = scheduledHandleStates.get(handle);
+      if (
+        !issuedScheduledPreparations.has(prepared) ||
+        !issuedScheduledHandles.has(handle) ||
+        !preparation ||
+        !state ||
+        state.prepared !== prepared ||
+        preparation.handle !== handle ||
+        state.disposed ||
+        state.dispatched
+      ) {
+        throw new Error('kernel_schedule_handle_invalid');
+      }
+      state.dispatched = true;
+      const turnInput = state.turnInput;
+      const boundArtifactEffectClaims: JarvisArtifactEffectClaimCapability = Object.freeze({
+        async claim(claim: Parameters<JarvisArtifactEffectClaimCapability['claim']>[0]) {
+          state.binding.assertCurrent();
+          if (
+            claim.accountId !== turnInput.accountId ||
+            claim.runId !== turnInput.run.id ||
+            claim.requestId !== turnInput.attempt.requestId ||
+            claim.attemptNumber !== turnInput.attempt.attemptNumber
+          ) {
+            throw new Error('kernel_artifact_effect_scope_mismatch');
+          }
+          const result = await artifactEffectClaims.claim(claim);
+          state.binding.assertCurrent();
+          return result;
+        },
+      });
+      try {
+        state.binding.assertCurrent();
+        const result = await runJarvisKernelScheduledTurn(turnInput, {
+          journal: input.journal,
+          issueBoundLifecycle(scope) {
+            if (
+              scope.accountId !== turnInput.accountId ||
+              scope.runId !== turnInput.run.id ||
+              scope.requestId !== turnInput.attempt.requestId ||
+              scope.attemptNumber !== turnInput.attempt.attemptNumber
+            ) {
+              throw new Error('kernel_lifecycle_scope_mismatch');
+            }
+            return issueLifecycle(state.binding, scope);
+          },
+          issueBoundArtifactPipeline: artifacts.issueBoundArtifactPipeline,
+          artifactEffectClaims: boundArtifactEffectClaims,
+          takeProviderArtifactDrafts: input.takeProviderArtifactDrafts,
+          commitKernelTurn(commitInput) {
+            return artifacts.commitKernelTurn.commitKernelTurn({
+              ...commitInput,
+              accountBinding: state.binding,
+            });
+          },
+          prepareProvider: input.prepareProvider,
+          processResponse: input.processResponse,
+          now: input.now,
+        });
+        if (result.kind === 'account_authority_revoked') return result;
+        const scheduleResultEvent = await appendScheduleResultSource(
+          state,
+          await loadScheduleResultAuthority(state, 'kernel_turn_committed'),
+        );
+        await completeScheduleLiveEvidence(state, scheduleResultEvent);
+        state.settled = true;
+        disposeScheduledHandleState(handle, state);
+        return {
+          kind: 'committed' as const,
+          value: { kind: 'committed' as const, result: result.value },
+        };
+      } catch (error) {
+        if (state.binding.revocationSignal.aborted) {
+          disposeScheduledHandleState(handle, state);
+          return { kind: 'account_authority_revoked' as const };
+        }
+        if (
+          error instanceof JarvisProviderAttemptFailureError &&
+          error.classification.kind === 'pre_effect_transport_failure'
+        ) {
+          state.providerFailure = error.classification.evidence;
+          return {
+            kind: 'committed' as const,
+            value: { kind: 'pre_effect_transport_failure' as const },
+          };
+        }
+        disposeScheduledHandleState(handle, state);
+        throw error;
+      }
+    },
+    async settleScheduledTransportFailure({
+      handle,
+    }: {
+      handle: JarvisScheduledKernelAttemptHandle;
+    }) {
+      const state = scheduledHandleStates.get(handle);
+      if (
+        !issuedScheduledHandles.has(handle) ||
+        !state ||
+        state.disposed ||
+        !state.dispatched ||
+        state.settled ||
+        !state.providerFailure
+      ) {
+        throw new Error('kernel_schedule_settlement_invalid');
+      }
+      try {
+        state.binding.assertCurrent();
+        const run = await transportAttempts.verifyLease(state.lease, state.snapshot);
+        const attempt = run.transportAttempts?.at(-1);
+        if (
+          !attempt ||
+          attempt.requestId !== state.lease.requestId ||
+          attempt.attemptNumber !== state.lease.attemptNumber
+        ) {
+          throw new Error('kernel_schedule_settlement_attempt_mismatch');
+        }
+        const zeroEffectEvidence = await consequentialEffectSafety.proveZeroConsequentialEffect({
+          run,
+          attempt,
+          providerFailure: state.providerFailure,
+        });
+        state.binding.assertCurrent();
+        const settled = await transportAttempts.settleScheduledTransportFailure({
+          lease: state.lease,
+          expectedSnapshot: state.snapshot,
+          providerFailure: state.providerFailure,
+          zeroEffectEvidence,
+          settledAt: input.now(),
+        });
+        state.binding.assertCurrent();
+        const scheduleResultEvent = await appendScheduleResultSource(
+          state,
+          await loadScheduleResultAuthority(state, 'scheduled_transport_settled'),
+        );
+        await completeScheduleLiveEvidence(state, scheduleResultEvent);
+        state.settled = true;
+        disposeScheduledHandleState(handle, state);
+        return { kind: 'committed' as const, value: settled };
+      } catch (error) {
+        const revoked = state.binding.revocationSignal.aborted;
+        disposeScheduledHandleState(handle, state);
+        if (revoked) return { kind: 'account_authority_revoked' as const };
+        throw error;
+      }
+    },
+    disposeScheduledAttempt(handle: JarvisScheduledKernelAttemptHandle) {
+      const state = scheduledHandleStates.get(handle);
+      if (!state || !issuedScheduledHandles.has(handle)) return;
+      disposeScheduledHandleState(handle, state);
+    },
+    async bindHiveStackPlan({ plan }: { plan: Readonly<JarvisHiveStackPlanV1> }) {
+      let binding: JarvisKernelAccountBinding;
+      try {
+        binding = issueAccountBinding(plan.accountId);
+      } catch {
+        return { kind: 'account_authority_revoked' as const };
+      }
+      try {
+        const detachedPlan = deepFreezeJarvisCopy(plan);
+        const transaction = await transactionAuthority.lifecycleTransaction(
+          ['jarvis_runs', 'jarvis_events'],
+          binding.revocationSignal,
+          async (context) => {
+            binding.assertCurrent();
+            const row = await context.jarvis_runs.get(detachedPlan.parentRunId);
+            if (!row || row.account_id !== detachedPlan.accountId) {
+              throw new Error('kernel_hive_parent_missing');
+            }
+            const current = fromJarvisRunRow(row);
+            if (
+              current.source !== 'hive_final' ||
+              current.status !== 'queued' ||
+              detachedPlan.parentRunId !== current.id ||
+              detachedPlan.accountId !== current.accountId
+            ) {
+              throw new Error('kernel_hive_plan_scope_mismatch');
+            }
+            if (current.hiveStackPlan) {
+              if (!canonicalValuesMatch(current.hiveStackPlan, detachedPlan)) {
+                throw new Error('kernel_hive_plan_conflict');
+              }
+              return current;
+            }
+            const updated: JarvisRun = {
+              ...current,
+              hiveStackPlan: detachedPlan,
+              updatedAt: input.now(),
+            };
+            await context.jarvis_runs.put(toJarvisRunRow(updated));
+            binding.assertCurrent();
+            return updated;
+          },
+        );
+        if (transaction.kind === 'cancelled') {
+          return { kind: 'account_authority_revoked' as const };
+        }
+        const readback = await repositories.run.getById(plan.accountId, plan.parentRunId);
+        binding.assertCurrent();
+        if (!readback || !canonicalValuesMatch(readback.hiveStackPlan, detachedPlan)) {
+          throw new Error('kernel_hive_plan_readback_mismatch');
+        }
+        return { kind: 'committed' as const, value: readback };
+      } finally {
+        binding.dispose();
+      }
+    },
+    async openHiveWorker({ parentRunId, stepId }: { parentRunId: string; stepId: string }) {
+      assertScheduledInput(parentRunId, 'hive_parent_run');
+      assertScheduledInput(stepId, 'hive_step');
+      const identity = resolveAccountIdentity(useAuthStore.getState());
+      if (!identity) return { kind: 'account_authority_revoked' as const };
+      let binding: JarvisKernelAccountBinding;
+      try {
+        binding = issueAccountBinding(identity.accountId);
+      } catch {
+        return { kind: 'account_authority_revoked' as const };
+      }
+      let claimKey: string | undefined;
+      try {
+        const parentRun = await repositories.run.getById(identity.accountId, parentRunId);
+        const plan = parentRun?.hiveStackPlan;
+        if (
+          !parentRun ||
+          parentRun.source !== 'hive_final' ||
+          parentRun.status !== 'queued' ||
+          !plan ||
+          plan.accountId !== parentRun.accountId ||
+          plan.parentRunId !== parentRun.id
+        ) {
+          throw new Error('kernel_hive_parent_invalid');
+        }
+        const matching = plan.steps.filter((candidate) => candidate.stepId === stepId);
+        if (matching.length !== 1) throw new Error('kernel_hive_step_invalid');
+        const step = matching[0]!;
+        claimKey = hiveStepKey(parentRun.accountId, parentRun.id, step.stepId);
+        if (claimedHiveSteps.has(claimKey)) throw new Error('kernel_hive_step_consumed');
+        claimedHiveSteps.add(claimKey);
+        const digest = await sha256Text(
+          `hive-child-run-v1\u0000${parentRun.accountId}\u0000${parentRun.id}\u0000${plan.stackId}\u0000${step.stepId}`,
+        );
+        const childRunId = `jrun_${digest.slice(0, 32)}`;
+        const requestId = `jreq_${input.randomUUID()}`;
+        const childRun = await input.journal.allocateRun({
+          id: childRunId,
+          accountId: parentRun.accountId,
+          ...(parentRun.workspaceId === undefined ? {} : { workspaceId: parentRun.workspaceId }),
+          ...(parentRun.projectId === undefined ? {} : { projectId: parentRun.projectId }),
+          ...(parentRun.chatId === undefined ? {} : { chatId: parentRun.chatId }),
+          parentRunId: parentRun.id,
+          source: 'hive_final',
+          agentId: step.agent.id,
+          identityVersion: parentRun.identityVersion,
+          profileRevisionId: parentRun.profileRevisionId,
+          model: step.model,
+        });
+        binding.assertCurrent();
+        const readback = await input.journal.getRun(parentRun.accountId, childRunId);
+        if (
+          !readback ||
+          !sameImmutableRun(childRun, readback) ||
+          readback.status !== 'queued' ||
+          readback.parentRunId !== parentRun.id ||
+          readback.agentId !== step.agent.id ||
+          !canonicalValuesMatch(readback.model, step.model)
+        ) {
+          throw new Error('kernel_hive_child_readback_mismatch');
+        }
+        const controller = new AbortController();
+        let handle: JarvisHiveWorkerHandle;
+        handle = Object.freeze({
+          [jarvisHiveWorkerHandleBrand]: true as const,
+          execute: async () => {
+            const state = hiveWorkerHandleStates.get(handle);
+            if (
+              !state ||
+              state.disposed ||
+              state.executed ||
+              !issuedHiveWorkerHandles.has(handle)
+            ) {
+              throw new Error('kernel_hive_worker_handle_invalid');
+            }
+            if (
+              !input.hiveWorkerExecutor ||
+              !input.journal.transitionRun ||
+              !input.journal.appendEvent
+            ) {
+              throw new Error('kernel_hive_worker_executor_unavailable');
+            }
+            state.executed = true;
+            let liveRegistration: JarvisLiveEvidenceRegistration<'hive'> | undefined;
+            try {
+              state.binding.assertCurrent();
+              const startedAt = input.now();
+              const liveScope = {
+                accountId: state.parentRun.accountId,
+                runId: state.parentRun.id,
+                requestId: state.requestId,
+                attemptNumber: 1,
+              };
+              const producerIdentity = {
+                producerKind: 'hive' as const,
+                stackId: state.plan.stackId,
+                stepId: state.step.stepId,
+                workerId: state.step.workerId,
+              };
+              const startResultRef = `jstart_${state.childRun.id}`;
+              const parentStartEvent = await input.journal.appendEvent(
+                state.parentRun.accountId,
+                state.parentRun.id,
+                {
+                  idempotencyKey: `hive:${state.parentRun.id}:${state.step.stepId}:parent-start`,
+                  type: 'model',
+                  status: 'running',
+                  title: 'Hive worker execution started',
+                  safeSummary: 'A persisted Hive worker execution started.',
+                  sourceRefs: [],
+                  artifactIds: [],
+                  createdAt: startedAt,
+                  producerSourceEvidence: {
+                    schemaVersion: 1,
+                    ...liveScope,
+                    producerKind: 'hive',
+                    producerIdentity,
+                    resultRef: startResultRef,
+                    observedAt: startedAt,
+                    phase: 'start',
+                    state: 'started',
+                  },
+                },
+              );
+              state.binding.assertCurrent();
+              const parentStartReadback = await repositories.event.getBySeq(
+                state.parentRun.accountId,
+                state.parentRun.id,
+                parentStartEvent.seq,
+              );
+              if (
+                !parentStartReadback ||
+                !canonicalValuesMatch(parentStartReadback, parentStartEvent)
+              ) {
+                throw new Error('kernel_hive_parent_start_readback_mismatch');
+              }
+              const liveOwner = liveEvidence.bindLifecycle({
+                scope: liveScope,
+                append: Object.freeze({
+                  append: ({ evidence }: { evidence: JarvisDurableLiveEvidenceV1 }) =>
+                    appendCapabilityLiveEvidence(
+                      state.binding,
+                      liveScope,
+                      evidence,
+                      'Hive evidence updated',
+                    ),
+                }),
+              });
+              liveRegistration = await liveOwner.hive.startCapability({
+                evidence: Object.freeze({
+                  schemaVersion: 1,
+                  producerKind: 'hive',
+                  producerIdentity,
+                  ...liveScope,
+                  resultRef: startResultRef,
+                  resultEventSeq: parentStartEvent.seq,
+                  state: 'busy',
+                  verifiedAt: startedAt,
+                }),
+                registrationId: `${state.parentRun.id}:hive:${state.step.stepId}`,
+                category: 'agent',
+                capabilityId: `hive.worker.${state.step.stepId}`,
+                operations: ['execute', 'cancel', 'inspect'],
+                state: 'busy',
+              });
+              state.binding.assertCurrent();
+              await input.journal.transitionRun({
+                accountId: state.parentRun.accountId,
+                runId: state.childRun.id,
+                expectedStatus: 'queued',
+                nextStatus: 'running',
+                event: {
+                  idempotencyKey: `hive:${state.parentRun.id}:${state.step.stepId}:start`,
+                  title: 'Hive worker started',
+                  safeSummary: 'A persisted Hive worker started.',
+                  sourceRefs: [],
+                  artifactIds: [],
+                  createdAt: startedAt,
+                  producerSourceEvidence: {
+                    schemaVersion: 1,
+                    accountId: state.parentRun.accountId,
+                    runId: state.childRun.id,
+                    requestId: state.requestId,
+                    attemptNumber: 1,
+                    producerKind: 'hive',
+                    producerIdentity,
+                    resultRef: `jstart_${state.childRun.id}`,
+                    observedAt: startedAt,
+                    phase: 'start',
+                    state: 'started',
+                  },
+                },
+              });
+              state.binding.assertCurrent();
+              const stepIndex = state.plan.steps.findIndex(
+                (candidate) => candidate.stepId === state.step.stepId,
+              );
+              if (stepIndex < 0) throw new Error('kernel_hive_step_invalid');
+              const messages = state.step.messages.map((message) => structuredClone(message));
+              for (let index = 0; index < stepIndex; index += 1) {
+                const priorStep = state.plan.steps[index]!;
+                const priorResult = hiveWorkerResults.get(
+                  hiveStepKey(state.parentRun.accountId, state.parentRun.id, priorStep.stepId),
+                );
+                if (!priorResult) throw new Error('kernel_hive_prior_worker_missing');
+                if (priorResult.status === 'completed' && priorResult.text !== undefined) {
+                  messages.push({ role: 'assistant', content: priorResult.text });
+                }
+                const nextStep = state.plan.steps[index + 1]!;
+                messages.push({
+                  role: 'user',
+                  content: `Continue to the next Hive step (${nextStep.label}). Use the content above as input.`,
+                });
+              }
+              const native = await input.hiveWorkerExecutor.execute({
+                agent: hiveAgentFromStep(state.step),
+                messages,
+                signal: state.controller.signal,
+                ...(state.step.model.connectionId === undefined
+                  ? {}
+                  : { connectionId: state.step.model.connectionId }),
+                ...(state.step.workingDirectory === undefined
+                  ? {}
+                  : { workingDirectory: state.step.workingDirectory }),
+              });
+              state.binding.assertCurrent();
+              if (
+                native.providerId !== state.step.model.providerId ||
+                native.modelId !== state.step.model.modelId
+              ) {
+                throw new Error('kernel_hive_worker_provider_mismatch');
+              }
+              const resultRef = `jresult_${state.childRun.id}_${state.step.stepId}` as const;
+              const terminalStatus =
+                native.status === 'completed'
+                  ? ('completed' as const)
+                  : native.status === 'cancelled'
+                    ? ('cancelled' as const)
+                    : ('failed' as const);
+              const resultState = native.status === 'completed' ? 'completed' : 'degraded';
+              await input.journal.transitionRun({
+                accountId: state.parentRun.accountId,
+                runId: state.childRun.id,
+                expectedStatus: 'running',
+                nextStatus: terminalStatus,
+                completedAt: native.observedAt,
+                event: {
+                  idempotencyKey: `hive:${state.parentRun.id}:${state.step.stepId}:child-result`,
+                  title:
+                    native.status === 'completed' ? 'Hive worker completed' : 'Hive worker ended',
+                  safeSummary:
+                    native.status === 'completed'
+                      ? 'The Hive worker completed.'
+                      : 'The Hive worker ended without a verified successful output.',
+                  sourceRefs: [],
+                  artifactIds: [],
+                  createdAt: native.observedAt,
+                  canonicalResultEvidence: {
+                    schemaVersion: 1,
+                    kind: 'hive_child_provider_result',
+                    accountId: state.parentRun.accountId,
+                    runId: state.childRun.id,
+                    requestId: state.requestId,
+                    attemptNumber: 1,
+                    parentRunId: state.parentRun.id,
+                    stepId: state.step.stepId,
+                    state: resultState,
+                    resultRef,
+                    observedAt: native.observedAt,
+                  },
+                },
+              });
+              const childEvents = await repositories.event.listByRun(
+                state.parentRun.accountId,
+                state.childRun.id,
+                { limit: 500 },
+              );
+              const childResultEvent = childEvents.at(-1);
+              if (
+                !childResultEvent?.canonicalResultEvidence ||
+                childResultEvent.canonicalResultEvidence.resultRef !== resultRef
+              ) {
+                throw new Error('kernel_hive_child_result_readback_mismatch');
+              }
+              const terminalChildRun = await repositories.run.getById(
+                state.parentRun.accountId,
+                state.childRun.id,
+              );
+              if (
+                !terminalChildRun ||
+                !sameImmutableRun(terminalChildRun, state.childRun) ||
+                terminalChildRun.status !== terminalStatus ||
+                terminalChildRun.parentRunId !== state.parentRun.id ||
+                terminalChildRun.agentId !== state.step.agent.id ||
+                !canonicalValuesMatch(terminalChildRun.model, state.step.model)
+              ) {
+                throw new Error('kernel_hive_child_result_readback_mismatch');
+              }
+              const parentResultEvent = await input.journal.appendEvent(
+                state.parentRun.accountId,
+                state.parentRun.id,
+                {
+                  idempotencyKey: `hive:${state.parentRun.id}:${state.step.stepId}:parent-result`,
+                  type: 'model',
+                  status: native.status,
+                  title: 'Hive worker result linked',
+                  safeSummary: 'A verified Hive child result was linked to its parent.',
+                  sourceRefs: [],
+                  artifactIds: [],
+                  createdAt: native.observedAt,
+                  producerSourceEvidence: {
+                    schemaVersion: 1,
+                    accountId: state.parentRun.accountId,
+                    runId: state.parentRun.id,
+                    requestId: state.requestId,
+                    attemptNumber: 1,
+                    producerKind: 'hive',
+                    producerIdentity,
+                    resultRef,
+                    observedAt: native.observedAt,
+                    phase: 'result',
+                    state: resultState,
+                    resultAuthority: {
+                      runId: state.childRun.id,
+                      eventSeq: childResultEvent.seq,
+                      evidenceRef: resultRef,
+                    },
+                  },
+                },
+              );
+              const parentReadback = await repositories.event.getBySeq(
+                state.parentRun.accountId,
+                state.parentRun.id,
+                parentResultEvent.seq,
+              );
+              if (!parentReadback || !canonicalValuesMatch(parentReadback, parentResultEvent)) {
+                throw new Error('kernel_hive_parent_result_readback_mismatch');
+              }
+              const parentResultSource = parentReadback.producerSourceEvidence;
+              if (
+                parentResultSource?.producerKind !== 'hive' ||
+                parentResultSource.phase !== 'result' ||
+                (parentResultSource.state !== 'completed' &&
+                  parentResultSource.state !== 'degraded') ||
+                !liveRegistration
+              ) {
+                throw new Error('kernel_hive_parent_result_source_invalid');
+              }
+              const completedProof = await liveRegistration.complete({
+                evidence: Object.freeze({
+                  schemaVersion: 1,
+                  producerKind: 'hive',
+                  producerIdentity: parentResultSource.producerIdentity,
+                  accountId: parentResultSource.accountId,
+                  runId: parentResultSource.runId,
+                  requestId: parentResultSource.requestId,
+                  attemptNumber: parentResultSource.attemptNumber,
+                  resultRef: parentResultSource.resultRef,
+                  resultEventSeq: parentReadback.seq,
+                  state: parentResultSource.state,
+                  verifiedAt: parentResultSource.observedAt,
+                }),
+                state: parentResultSource.state,
+              });
+              state.binding.assertCurrent();
+              if (
+                completedProof.accountId !== state.parentRun.accountId ||
+                completedProof.runId !== state.parentRun.id ||
+                completedProof.resultEventSeq !== parentReadback.seq ||
+                completedProof.transition !== parentResultSource.state
+              ) {
+                throw new Error('kernel_hive_live_evidence_mismatch');
+              }
+              const result: HiveWorkerResult = Object.freeze({
+                workerId: state.step.workerId,
+                stepId: state.step.stepId,
+                label: state.step.label,
+                agentId: state.step.agent.id,
+                providerId: native.providerId,
+                modelId: native.modelId,
+                ...(native.status === 'completed' && native.text !== undefined
+                  ? { text: native.text }
+                  : {}),
+                status: native.status,
+                ...(native.inputTokens === undefined ? {} : { inputTokens: native.inputTokens }),
+                ...(native.outputTokens === undefined ? {} : { outputTokens: native.outputTokens }),
+                ...(native.costUsd === undefined ? {} : { costUsd: native.costUsd }),
+                ...(native.errorCategory === undefined
+                  ? {}
+                  : { errorCategory: native.errorCategory }),
+              });
+              const outcome = Object.freeze({
+                result,
+                [jarvisHiveWorkerOutcomeBrand]: true as const,
+              });
+              const releaseBinding = retainAccountBinding(state.binding);
+              const outcomeState: HiveWorkerOutcomeState = {
+                binding: state.binding,
+                accountId: state.parentRun.accountId,
+                parentRunId: state.parentRun.id,
+                stepId: state.step.stepId,
+                childRunId: state.childRun.id,
+                childResultEventSeq: childResultEvent.seq,
+                parentResultEventSeq: parentResultEvent.seq,
+                resultRef,
+                plan: deepFreezeJarvisCopy(state.plan),
+                step: deepFreezeJarvisCopy(state.step),
+                childRun: deepFreezeJarvisCopy(terminalChildRun),
+                childResultEvent: deepFreezeJarvisCopy(childResultEvent),
+                parentResultEvent: deepFreezeJarvisCopy(parentReadback),
+                result,
+                releaseBinding,
+                releaseRevocationListener: undefined,
+                revoked: false,
+                consumed: false,
+              };
+              hiveWorkerResults.set(
+                hiveStepKey(state.parentRun.accountId, state.parentRun.id, state.step.stepId),
+                result,
+              );
+              issuedHiveWorkerOutcomes.add(outcome);
+              hiveWorkerOutcomeStates.set(outcome, outcomeState);
+              const revokeOutcome = () => {
+                outcomeState.revoked = true;
+                outcomeState.releaseBinding?.();
+                outcomeState.releaseBinding = undefined;
+              };
+              state.binding.revocationSignal.addEventListener('abort', revokeOutcome, {
+                once: true,
+              });
+              outcomeState.releaseRevocationListener = () =>
+                state.binding.revocationSignal.removeEventListener('abort', revokeOutcome);
+              if (state.binding.revocationSignal.aborted) revokeOutcome();
+              return { kind: 'committed' as const, value: outcome };
+            } catch (error) {
+              if (state.binding.revocationSignal.aborted) {
+                return { kind: 'account_authority_revoked' as const };
+              }
+              throw error;
+            } finally {
+              liveRegistration?.dispose();
+              disposeHiveWorkerHandleState(handle, state);
+            }
+          },
+          requestCancellation: () => {
+            const state = hiveWorkerHandleStates.get(handle);
+            if (!state || state.disposed) {
+              return Promise.resolve({ kind: 'authority_revoked_before_intent' as const });
+            }
+            return requestCancellationWithBinding(state.binding, {
+              accountId: state.parentRun.accountId,
+              runId: state.childRun.id,
+            });
+          },
+          dispose: () => {
+            const state = hiveWorkerHandleStates.get(handle);
+            if (state) disposeHiveWorkerHandleState(handle, state);
+          },
+        });
+        const handleState: HiveWorkerHandleState = {
+          binding,
+          parentRun,
+          plan,
+          step,
+          childRun: readback,
+          requestId,
+          controller,
+          releaseAbortOwner: undefined,
+          executed: false,
+          disposed: false,
+        };
+        handleState.releaseAbortOwner = input.abortRegistrationAuthority.registerIssuedOwner({
+          accountId: parentRun.accountId,
+          runId: readback.id,
+          registrationId: `${readback.id}:hive-worker`,
+          kind: 'child_run',
+          parentRunId: parentRun.id,
+          abort: () => {
+            controller.abort('hive_worker_cancelled');
+            return { kind: 'signal_delivered', ownerId: `${readback.id}:hive-worker` };
+          },
+        });
+        issuedHiveWorkerHandles.add(handle);
+        hiveWorkerHandleStates.set(handle, handleState);
+        return { kind: 'committed' as const, value: handle };
+      } catch (error) {
+        if (claimKey) claimedHiveSteps.delete(claimKey);
+        const revoked = binding.revocationSignal.aborted;
+        binding.dispose();
+        if (revoked) return { kind: 'account_authority_revoked' as const };
+        throw error;
+      }
+    },
+    async runHiveFinalTurn(
+      finalInput: Readonly<JarvisHiveFinalTurnBasis> & {
+        workers: readonly JarvisHiveWorkerOutcome[];
+      },
+    ) {
+      const { workers, ...basis } = finalInput;
+      if (workers.length === 0) throw new Error('kernel_hive_workers_required');
+      const accountId = basis.run.accountId;
+      const issuedOutcomes: Array<{
+        outcome: JarvisHiveWorkerOutcome;
+        state: HiveWorkerOutcomeState;
+      }> = [];
+      let binding: JarvisKernelAccountBinding | undefined;
+      for (const outcome of workers) {
+        const state = hiveWorkerOutcomeStates.get(outcome);
+        if (state?.revoked) return { kind: 'account_authority_revoked' as const };
+        if (
+          !issuedHiveWorkerOutcomes.has(outcome) ||
+          !state ||
+          state.consumed ||
+          state.accountId !== accountId
+        ) {
+          throw new Error('kernel_hive_worker_outcome_invalid');
+        }
+        binding ??= state.binding;
+        issuedOutcomes.push({ outcome, state });
+      }
+      if (!binding) throw new Error('kernel_hive_workers_required');
+      let releaseFinalBinding: (() => void) | undefined;
+      try {
+        releaseFinalBinding = retainAccountBinding(binding);
+      } catch {
+        return { kind: 'account_authority_revoked' as const };
+      }
+      try {
+        binding.assertCurrent();
+        const parent = await repositories.run.getById(accountId, basis.run.id);
+        binding.assertCurrent();
+        if (
+          !parent ||
+          !sameImmutableRun(parent, basis.run) ||
+          parent.source !== 'hive_final' ||
+          parent.status !== 'queued' ||
+          !parent.hiveStackPlan
+        ) {
+          throw new Error('kernel_hive_final_parent_invalid');
+        }
+        const outcomeStates: Array<{
+          outcome: JarvisHiveWorkerOutcome;
+          state: HiveWorkerOutcomeState;
+        }> = [];
+        const contextItems = [...basis.context.items];
+        for (const issued of issuedOutcomes) {
+          const { outcome, state } = issued;
+          if (
+            state.revoked ||
+            state.consumed ||
+            state.accountId !== parent.accountId ||
+            state.parentRunId !== parent.id ||
+            !canonicalValuesMatch(parent.hiveStackPlan, state.plan) ||
+            !canonicalValuesMatch(
+              parent.hiveStackPlan.steps.find((step) => step.stepId === state.stepId),
+              state.step,
+            ) ||
+            !canonicalValuesMatch(outcome.result, state.result)
+          ) {
+            throw new Error('kernel_hive_worker_outcome_invalid');
+          }
+          state.binding.assertCurrent();
+          const childRun = await repositories.run.getById(state.accountId, state.childRunId);
+          const childEvent = await repositories.event.getBySeq(
+            state.accountId,
+            state.childRunId,
+            state.childResultEventSeq,
+          );
+          const parentEvent = await repositories.event.getBySeq(
+            state.accountId,
+            state.parentRunId,
+            state.parentResultEventSeq,
+          );
+          state.binding.assertCurrent();
+          binding.assertCurrent();
+          if (
+            !childRun ||
+            !childEvent ||
+            !parentEvent ||
+            !canonicalValuesMatch(childRun, state.childRun) ||
+            !canonicalValuesMatch(childEvent, state.childResultEvent) ||
+            !canonicalValuesMatch(parentEvent, state.parentResultEvent)
+          ) {
+            throw new Error('kernel_hive_worker_authority_changed');
+          }
+          const canonicalResult = childEvent.canonicalResultEvidence;
+          if (!canonicalResult || canonicalResult.kind !== 'hive_child_provider_result') {
+            throw new Error('kernel_hive_worker_authority_changed');
+          }
+          outcomeStates.push(issued);
+          if (outcome.result.status === 'completed' && outcome.result.text !== undefined) {
+            contextItems.push({
+              source: {
+                id: `jsource_${state.resultRef}`,
+                kind: 'agent_output',
+                label: `${outcome.result.label} / ${outcome.result.agentId}`,
+                accountId: state.accountId,
+                ...(parent.projectId === undefined ? {} : { projectId: parent.projectId }),
+                trust: 'external_untrusted',
+                sensitivity: 'private',
+                observedAt: canonicalResult.observedAt,
+              },
+              purpose: 'answer',
+              excerpt: outcome.result.text,
+              truncated: false,
+            });
+          }
+        }
+        for (const { outcome, state } of outcomeStates) {
+          consumeHiveWorkerOutcomeState(outcome, state);
+        }
+        for (const step of parent.hiveStackPlan.steps) {
+          hiveWorkerResults.delete(hiveStepKey(parent.accountId, parent.id, step.stepId));
+        }
+        if (!parent.chatId) throw new Error('kernel_hive_final_chat_missing');
+        const usedChars = contextItems.reduce((total, item) => total + item.excerpt.length, 0);
+        const turnInput = deepFreezeJarvisCopy({
+          ...basis,
+          run: parent,
+          accountId: parent.accountId,
+          ...(parent.workspaceId === undefined ? {} : { workspaceId: parent.workspaceId }),
+          ...(parent.projectId === undefined ? {} : { projectId: parent.projectId }),
+          chatId: parent.chatId,
+          ...(parent.parentRunId === undefined ? {} : { parentRunId: parent.parentRunId }),
+          surface: 'hive_final' as const,
+          context: {
+            items: contextItems,
+            budget: {
+              maxChars: Math.max(basis.context.budget.maxChars, usedChars),
+              usedChars,
+            },
+            exclusions: basis.context.exclusions,
+          },
+        }) as Readonly<JarvisKernelTurnInput> & { surface: 'hive_final' };
+        const boundArtifactEffectClaims: JarvisArtifactEffectClaimCapability = Object.freeze({
+          async claim(claim: Parameters<JarvisArtifactEffectClaimCapability['claim']>[0]) {
+            binding.assertCurrent();
+            const result = await artifactEffectClaims.claim(claim);
+            binding.assertCurrent();
+            return result;
+          },
+        });
+        return await runJarvisKernelTurn(turnInput, {
+          journal: input.journal,
+          issueBoundLifecycle(scope) {
+            return issueLifecycle(binding, scope);
+          },
+          issueBoundArtifactPipeline: artifacts.issueBoundArtifactPipeline,
+          artifactEffectClaims: boundArtifactEffectClaims,
+          takeProviderArtifactDrafts: input.takeProviderArtifactDrafts,
+          commitKernelTurn(commitInput) {
+            return artifacts.commitKernelTurn.commitKernelTurn({
+              ...commitInput,
+              accountBinding: binding,
+            });
+          },
+          prepareProvider: input.prepareProvider,
+          processResponse: input.processResponse,
+          now: input.now,
+        });
+      } finally {
+        releaseFinalBinding?.();
+      }
     },
   });
 

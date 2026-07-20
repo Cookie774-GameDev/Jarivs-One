@@ -33,6 +33,44 @@ describe('Hive Balance pipeline', () => {
     }
   });
 
+  it('preserves the persisted specialist ids, labels, providers, and models', () => {
+    const steps = stepsForPreset('balanced', 'general');
+    expect(steps.map(({ id, label, provider, model }) => ({ id, label, provider, model }))).toEqual(
+      [
+        {
+          id: 'balance-draft',
+          label: 'Gemini draft',
+          provider: 'google',
+          model: 'gemini-3.5-flash-high',
+        },
+        {
+          id: 'balance-crosscheck',
+          label: 'MiniMax cross-check',
+          provider: 'openrouter',
+          model: 'minimax/minimax-m3',
+        },
+        {
+          id: 'balance-diverse',
+          label: 'GLM diverse view',
+          provider: 'openrouter',
+          model: 'zhipuai/glm-5.2',
+        },
+        {
+          id: 'balance-harden',
+          label: 'DeepSeek harden',
+          provider: 'deepseek',
+          model: 'deepseek-v4-pro-max',
+        },
+        {
+          id: 'balance-polish',
+          label: 'GPT-5.4 mini polish',
+          provider: 'openai',
+          model: 'gpt-5.4-mini',
+        },
+      ],
+    );
+  });
+
   it('stepsForPreset(off) returns empty steps', () => {
     expect(stepsForPreset('off', 'general')).toHaveLength(0);
   });

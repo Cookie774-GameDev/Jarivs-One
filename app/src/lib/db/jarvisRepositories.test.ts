@@ -8,6 +8,7 @@ import type {
   JarvisPreEffectTransportFailureEvidence,
   JarvisProducerSourceEvidenceV1,
   JarvisRun,
+  JarvisScheduledRetrySnapshotV1,
   JarvisTransportAttemptV1,
   JarvisZeroConsequentialEffectEvidenceV1,
 } from '@/lib/jarvis/contracts/execution';
@@ -159,6 +160,71 @@ function runFixture(overrides: Partial<JarvisRun> = {}): JarvisRun {
     },
     createdAt: NOW - 10,
     updatedAt: NOW - 10,
+    ...overrides,
+  };
+}
+
+function scheduledRetrySnapshotFixture(
+  overrides: Partial<JarvisScheduledRetrySnapshotV1> = {},
+): JarvisScheduledRetrySnapshotV1 {
+  return {
+    schemaVersion: 1,
+    accountId: 'account-alpha',
+    eventId: 'schedule-event-alpha',
+    occurrenceId: 'jocc_schedule_alpha',
+    dueAt: NOW - 5,
+    logicalAttempt: 1,
+    request: {
+      schemaVersion: 1,
+      runId: 'run-alpha',
+      accountId: 'account-alpha',
+      workspaceId: 'workspace-alpha',
+      projectId: 'project-alpha',
+      chatId: 'chat-alpha',
+      agent: { id: 'jarvis', slug: 'jarvis', builtin: true },
+      surface: 'schedule',
+      interactionMode: 'agent',
+      userText: 'Run the scheduled request.',
+      messageHistory: [{ role: 'user', content: 'Run the scheduled request.' }],
+      identity: {
+        identityVersion: 1,
+        coreHash: 'identity-core-alpha',
+        responseContractHash: 'response-contract-alpha',
+      },
+      profile: {
+        profileId: 'profile-alpha',
+        revisionId: 'profile-revision-alpha',
+        customInstructions: '',
+        memoryScope: 'none',
+      },
+      capabilities: {
+        capturedAt: NOW - 20,
+        tools: [],
+        plugins: [],
+        mcps: [],
+        terminals: [],
+        agents: [],
+        entitlements: { source: 'unavailable', capabilities: [] },
+      },
+      model: {
+        connectionId: 'connection-alpha',
+        providerId: 'provider-alpha',
+        modelId: 'model-alpha',
+        connectionMode: 'native-api',
+        capabilities: { tools: true, vision: false },
+        effectiveTemperature: 0.4,
+        capturedAt: NOW - 20,
+      },
+      context: { items: [], budget: { maxChars: 0, usedChars: 0 }, exclusions: [] },
+      outputContract: {
+        preserveStructuredBlocks: true,
+        allowActionBlocks: true,
+        allowPlanBlocks: true,
+        allowQuestionBlocks: true,
+        allowPermissionBlocks: true,
+        voiceDelivery: 'none',
+      },
+    },
     ...overrides,
   };
 }
@@ -1006,6 +1072,7 @@ describe('transport-attempt and effect-barrier repository CAS', () => {
       accountId: run.accountId,
       runId: run.id,
       expectedStatus: 'queued',
+      snapshot: scheduledRetrySnapshotFixture(),
       attempt: transportAttemptFixture(),
       updatedAt: NOW,
     });
@@ -1066,6 +1133,7 @@ describe('transport-attempt and effect-barrier repository CAS', () => {
         accountId: run.accountId,
         runId: run.id,
         expectedStatus: input.expectedStatus,
+        snapshot: scheduledRetrySnapshotFixture(),
         attempt: input.attempt,
         updatedAt: NOW,
       });
@@ -1089,6 +1157,7 @@ describe('transport-attempt and effect-barrier repository CAS', () => {
       accountId: run.accountId,
       runId: run.id,
       expectedStatus: 'queued',
+      snapshot: scheduledRetrySnapshotFixture(),
       attempt: transportAttemptFixture(),
       updatedAt: NOW,
     });
@@ -1100,6 +1169,7 @@ describe('transport-attempt and effect-barrier repository CAS', () => {
       accountId: run.accountId,
       runId: run.id,
       expectedStatus: 'running',
+      expectedSnapshot: scheduledRetrySnapshotFixture(),
       expectedAttemptNumber: 1,
       expectedBarrierVersion: 0,
       expectedEventTailSeq: 1,
@@ -1139,6 +1209,7 @@ describe('transport-attempt and effect-barrier repository CAS', () => {
       accountId: run.accountId,
       runId: run.id,
       expectedStatus: 'queued',
+      snapshot: scheduledRetrySnapshotFixture(),
       attempt: transportAttemptFixture(),
       updatedAt: NOW,
     });
@@ -1149,6 +1220,7 @@ describe('transport-attempt and effect-barrier repository CAS', () => {
       accountId: run.accountId,
       runId: run.id,
       expectedStatus: 'running',
+      expectedSnapshot: scheduledRetrySnapshotFixture(),
       expectedAttemptNumber: 1,
       expectedBarrierVersion: 0,
       expectedEventTailSeq: 1,
@@ -1162,6 +1234,7 @@ describe('transport-attempt and effect-barrier repository CAS', () => {
       accountId: run.accountId,
       runId: run.id,
       expectedStatus: 'running',
+      expectedSnapshot: scheduledRetrySnapshotFixture(),
       expectedLatestAttemptNumber: 1,
       expectedBarrierVersion: 0,
       expectedEventTailSeq: 2,
@@ -1205,6 +1278,7 @@ describe('transport-attempt and effect-barrier repository CAS', () => {
       accountId: run.accountId,
       runId: run.id,
       expectedStatus: 'queued',
+      snapshot: scheduledRetrySnapshotFixture(),
       attempt: transportAttemptFixture(),
       updatedAt: NOW,
     });
@@ -1215,6 +1289,7 @@ describe('transport-attempt and effect-barrier repository CAS', () => {
       accountId: run.accountId,
       runId: run.id,
       expectedStatus: 'running',
+      expectedSnapshot: scheduledRetrySnapshotFixture(),
       expectedAttemptNumber: 1,
       expectedBarrierVersion: 0,
       expectedEventTailSeq: 1,
@@ -1234,6 +1309,7 @@ describe('transport-attempt and effect-barrier repository CAS', () => {
       accountId: run.accountId,
       runId: run.id,
       expectedStatus: 'running',
+      expectedSnapshot: scheduledRetrySnapshotFixture(),
       expectedLatestAttemptNumber: 1,
       expectedBarrierVersion: 0,
       expectedEventTailSeq: 3,
@@ -1264,6 +1340,7 @@ describe('transport-attempt and effect-barrier repository CAS', () => {
       accountId: run.accountId,
       runId: run.id,
       expectedStatus: 'queued',
+      snapshot: scheduledRetrySnapshotFixture(),
       attempt: transportAttemptFixture(),
       updatedAt: NOW,
     });
@@ -1273,6 +1350,7 @@ describe('transport-attempt and effect-barrier repository CAS', () => {
       accountId: run.accountId,
       runId: run.id,
       expectedStatus: 'running',
+      expectedSnapshot: scheduledRetrySnapshotFixture(),
       expectedAttemptNumber: 1,
       providerFailure: providerFailureFixture(),
       updatedAt: NOW + 2,
@@ -1300,6 +1378,7 @@ describe('transport-attempt and effect-barrier repository CAS', () => {
       accountId: run.accountId,
       runId: run.id,
       expectedStatus: 'queued',
+      snapshot: scheduledRetrySnapshotFixture(),
       attempt: transportAttemptFixture(),
       updatedAt: NOW,
     });
@@ -1367,6 +1446,7 @@ describe('transport-attempt and effect-barrier repository CAS', () => {
       accountId: run.accountId,
       runId: run.id,
       expectedStatus: 'queued',
+      snapshot: scheduledRetrySnapshotFixture(),
       attempt: transportAttemptFixture(),
       updatedAt: NOW,
     });
@@ -2204,6 +2284,7 @@ describe('Task 18 transport-attempt CAS', () => {
       accountId: queued.accountId,
       runId: queued.id,
       expectedStatus: 'queued',
+      snapshot: scheduledRetrySnapshotFixture(),
       attempt: transportAttemptFixture(),
       updatedAt: NOW,
     });
@@ -2224,8 +2305,193 @@ describe('Task 18 transport-attempt CAS', () => {
       seq: 1,
       type: 'run_state',
       status: 'running',
+      producerSourceEvidence: {
+        producerKind: 'schedule',
+        producerIdentity: {
+          eventId: 'schedule-event-alpha',
+          occurrenceId: 'jocc_schedule_alpha',
+        },
+        requestId: 'request-alpha',
+        attemptNumber: 1,
+        phase: 'start',
+        state: 'started',
+        resultRef: 'jstart_run-alpha_request-alpha_1',
+        observedAt: NOW,
+      },
     });
     expect(await database.jarvis_events.count()).toBe(1);
+  });
+
+  it('stores the immutable schedule snapshot with attempt one and rejects an existing snapshot without writes', async () => {
+    const expectedSnapshot = scheduledRetrySnapshotFixture();
+    const database = await openTestDb('jarvis-attempt-begin-initial-snapshot');
+    const repositories = createJarvisRepositories(database);
+    const queued = runFixture({ source: 'schedule' });
+    await repositories.run.createIdempotent(queued);
+
+    const result = await repositories.run.compareAndMutateTransportAttempt({
+      kind: 'begin_initial',
+      accountId: queued.accountId,
+      runId: queued.id,
+      expectedStatus: 'queued',
+      snapshot: expectedSnapshot,
+      attempt: transportAttemptFixture(),
+      updatedAt: NOW,
+    });
+
+    expect(result).toMatchObject({
+      applied: true,
+      run: { scheduledRetrySnapshot: expectedSnapshot },
+    });
+    if (!result.applied) return;
+    expect(result.run.scheduledRetrySnapshot).not.toBe(expectedSnapshot);
+
+    const occupiedDatabase = await openTestDb('jarvis-attempt-begin-initial-snapshot-occupied');
+    const occupiedRepositories = createJarvisRepositories(occupiedDatabase);
+    const occupied = runFixture({ source: 'schedule', scheduledRetrySnapshot: expectedSnapshot });
+    await occupiedRepositories.run.createIdempotent(occupied);
+    const occupiedResult = await occupiedRepositories.run.compareAndMutateTransportAttempt({
+      kind: 'begin_initial',
+      accountId: occupied.accountId,
+      runId: occupied.id,
+      expectedStatus: 'queued',
+      snapshot: expectedSnapshot,
+      attempt: transportAttemptFixture(),
+      updatedAt: NOW,
+    });
+    expect(occupiedResult).toEqual({
+      applied: false,
+      current: occupied,
+      reason: 'attempt_conflict',
+    });
+    expect(await occupiedDatabase.jarvis_events.count()).toBe(0);
+
+    const missingDatabase = await openTestDb('jarvis-attempt-begin-initial-snapshot-missing');
+    const missingRepositories = createJarvisRepositories(missingDatabase);
+    await missingRepositories.run.createIdempotent(queued);
+    const missingInput = {
+      kind: 'begin_initial',
+      accountId: queued.accountId,
+      runId: queued.id,
+      expectedStatus: 'queued',
+      attempt: transportAttemptFixture(),
+      updatedAt: NOW,
+    } as unknown as JarvisTransportAttemptMutationInput;
+    await expect(
+      missingRepositories.run.compareAndMutateTransportAttempt(missingInput),
+    ).resolves.toEqual({ applied: false, current: queued, reason: 'attempt_conflict' });
+    expect(await missingDatabase.jarvis_events.count()).toBe(0);
+  });
+
+  it('rejects a different expected snapshot before terminal settlement writes', async () => {
+    const expectedSnapshot = scheduledRetrySnapshotFixture();
+    const database = await openTestDb('jarvis-attempt-settlement-snapshot-conflict');
+    const repositories = createJarvisRepositories(database);
+    const queued = runFixture({ source: 'schedule' });
+    await repositories.run.createIdempotent(queued);
+    await repositories.run.compareAndMutateTransportAttempt({
+      kind: 'begin_initial',
+      accountId: queued.accountId,
+      runId: queued.id,
+      expectedStatus: 'queued',
+      snapshot: expectedSnapshot,
+      attempt: transportAttemptFixture(),
+      updatedAt: NOW,
+    });
+    const before = await repositories.run.getById(queued.accountId, queued.id);
+
+    const result = await repositories.run.compareAndMutateTransportAttempt({
+      kind: 'settle_uncertain_failed',
+      accountId: queued.accountId,
+      runId: queued.id,
+      expectedStatus: 'running',
+      expectedAttemptNumber: 1,
+      expectedSnapshot: {
+        ...expectedSnapshot,
+        request: { ...expectedSnapshot.request, userText: 'Different request.' },
+      },
+      providerFailure: providerFailureFixture(),
+      updatedAt: NOW + 2,
+      completedAt: NOW + 2,
+    });
+
+    expect(result).toEqual({ applied: false, current: before, reason: 'attempt_conflict' });
+    expect(await repositories.run.getById(queued.accountId, queued.id)).toEqual(before);
+    expect(await database.jarvis_events.count()).toBe(1);
+  });
+
+  it('rejects a different expected snapshot before retryable settlement or retry writes', async () => {
+    const expectedSnapshot = scheduledRetrySnapshotFixture();
+    const differentSnapshot = { ...expectedSnapshot, logicalAttempt: 2 };
+    const database = await openTestDb('jarvis-attempt-retry-snapshot-conflicts');
+    const repositories = createJarvisRepositories(database);
+    const queued = runFixture({ source: 'schedule' });
+    await repositories.run.createIdempotent(queued);
+    await repositories.run.compareAndMutateTransportAttempt({
+      kind: 'begin_initial',
+      accountId: queued.accountId,
+      runId: queued.id,
+      expectedStatus: 'queued',
+      snapshot: expectedSnapshot,
+      attempt: transportAttemptFixture(),
+      updatedAt: NOW,
+    });
+    const providerFailure = providerFailureFixture();
+    const evidence = zeroEffectEvidenceFixture({ providerBoundary: providerFailure });
+    const beforeSettlement = await repositories.run.getById(queued.accountId, queued.id);
+    const settlement = await repositories.run.compareAndMutateTransportAttempt({
+      kind: 'settle_retryable',
+      accountId: queued.accountId,
+      runId: queued.id,
+      expectedStatus: 'running',
+      expectedSnapshot: differentSnapshot,
+      expectedAttemptNumber: 1,
+      expectedBarrierVersion: 0,
+      expectedEventTailSeq: 1,
+      providerFailure,
+      zeroEffectEvidence: evidence,
+      updatedAt: NOW + 2,
+    });
+    expect(settlement).toEqual({
+      applied: false,
+      current: beforeSettlement,
+      reason: 'attempt_conflict',
+    });
+    expect(await database.jarvis_events.count()).toBe(1);
+
+    await repositories.run.compareAndMutateTransportAttempt({
+      kind: 'settle_retryable',
+      accountId: queued.accountId,
+      runId: queued.id,
+      expectedStatus: 'running',
+      expectedSnapshot,
+      expectedAttemptNumber: 1,
+      expectedBarrierVersion: 0,
+      expectedEventTailSeq: 1,
+      providerFailure,
+      zeroEffectEvidence: evidence,
+      updatedAt: NOW + 2,
+    });
+    const beforeRetry = await repositories.run.getById(queued.accountId, queued.id);
+    const retry = await repositories.run.compareAndMutateTransportAttempt({
+      kind: 'begin_retry',
+      accountId: queued.accountId,
+      runId: queued.id,
+      expectedStatus: 'running',
+      expectedSnapshot: differentSnapshot,
+      expectedLatestAttemptNumber: 1,
+      expectedBarrierVersion: 0,
+      expectedEventTailSeq: 2,
+      revalidatedEvidence: evidence,
+      attempt: transportAttemptFixture({
+        attemptNumber: 2,
+        kind: 'transport_retry',
+        requestId: 'request-beta',
+      }),
+      updatedAt: NOW + 3,
+    });
+    expect(retry).toEqual({ applied: false, current: beforeRetry, reason: 'attempt_conflict' });
+    expect(await database.jarvis_events.count()).toBe(2);
   });
 
   it('rejects status, source, history, request, and attempt-number mismatches without writes', async () => {
@@ -2268,6 +2534,7 @@ describe('Task 18 transport-attempt CAS', () => {
         accountId: value.run.accountId,
         runId: value.run.id,
         expectedStatus: 'queued',
+        snapshot: scheduledRetrySnapshotFixture(),
         attempt: value.attempt,
         updatedAt: NOW,
       });
@@ -2283,6 +2550,7 @@ describe('Task 18 transport-attempt CAS', () => {
       accountId: 'account-alpha',
       runId: 'run-alpha',
       expectedStatus: 'running',
+      expectedSnapshot: scheduledRetrySnapshotFixture(),
       expectedAttemptNumber: 1,
       expectedBarrierVersion: 0,
       expectedEventTailSeq: 1,
@@ -2302,6 +2570,16 @@ describe('Task 18 transport-attempt CAS', () => {
       seq: 2,
       type: 'warning',
       status: 'transport_retry_available',
+      canonicalResultEvidence: {
+        kind: 'scheduled_transport_settled',
+        accountId: 'account-alpha',
+        runId: 'run-alpha',
+        requestId: 'request-alpha',
+        attemptNumber: 1,
+        state: 'degraded',
+        resultRef: 'jresult_run-alpha_request-alpha_1_transport',
+        observedAt: NOW + 3,
+      },
     });
     expect(await database.jarvis_events.count()).toBe(2);
   });
@@ -2314,6 +2592,7 @@ describe('Task 18 transport-attempt CAS', () => {
       accountId: 'account-alpha',
       runId: 'run-alpha',
       expectedStatus: 'running',
+      expectedSnapshot: scheduledRetrySnapshotFixture(),
       expectedAttemptNumber: 1,
       expectedBarrierVersion: 0,
       expectedEventTailSeq: 1,
@@ -2326,6 +2605,7 @@ describe('Task 18 transport-attempt CAS', () => {
       accountId: 'account-alpha',
       runId: 'run-alpha',
       expectedStatus: 'running',
+      expectedSnapshot: scheduledRetrySnapshotFixture(),
       expectedLatestAttemptNumber: 1,
       expectedBarrierVersion: 0,
       expectedEventTailSeq: 2,
@@ -2360,6 +2640,7 @@ describe('Task 18 transport-attempt CAS', () => {
       accountId: 'account-alpha',
       runId: 'run-alpha',
       expectedStatus: 'running',
+      expectedSnapshot: scheduledRetrySnapshotFixture(),
       expectedAttemptNumber: 1,
       expectedBarrierVersion: 0,
       expectedEventTailSeq: 1,
@@ -2378,6 +2659,7 @@ describe('Task 18 transport-attempt CAS', () => {
       accountId: 'account-alpha',
       runId: 'run-alpha',
       expectedStatus: 'running',
+      expectedSnapshot: scheduledRetrySnapshotFixture(),
       expectedLatestAttemptNumber: 1,
       expectedBarrierVersion: 0,
       expectedEventTailSeq: 3,
@@ -2400,6 +2682,7 @@ describe('Task 18 transport-attempt CAS', () => {
       accountId: 'account-alpha',
       runId: 'run-alpha',
       expectedStatus: 'running',
+      expectedSnapshot: scheduledRetrySnapshotFixture(),
       expectedAttemptNumber: 1,
       providerFailure: providerFailureFixture(),
       updatedAt: NOW + 5,
@@ -2409,7 +2692,20 @@ describe('Task 18 transport-attempt CAS', () => {
     if (terminal.applied) {
       expect(terminal.run).toMatchObject({ status: 'failed', completedAt: NOW + 5 });
       expect(terminal.run.transportAttempts?.[0]?.state).toBe('effect_uncertain');
-      expect(terminal.event).toMatchObject({ type: 'run_state', status: 'failed' });
+      expect(terminal.event).toMatchObject({
+        type: 'run_state',
+        status: 'failed',
+        canonicalResultEvidence: {
+          kind: 'scheduled_transport_settled',
+          accountId: 'account-alpha',
+          runId: 'run-alpha',
+          requestId: 'request-alpha',
+          attemptNumber: 1,
+          state: 'degraded',
+          resultRef: 'jresult_run-alpha_request-alpha_1_transport',
+          observedAt: NOW + 5,
+        },
+      });
     }
 
     const rollback = await beginInitial('jarvis-attempt-uncertain-rollback');
@@ -2423,6 +2719,7 @@ describe('Task 18 transport-attempt CAS', () => {
         accountId: 'account-alpha',
         runId: 'run-alpha',
         expectedStatus: 'running',
+        expectedSnapshot: scheduledRetrySnapshotFixture(),
         expectedAttemptNumber: 1,
         providerFailure: providerFailureFixture(),
         updatedAt: NOW + 5,
@@ -2788,6 +3085,7 @@ describe('Task 18 attempt-effect claim authority', () => {
         accountId: 'account-alpha',
         runId: 'run-alpha',
         expectedStatus: 'running',
+        expectedSnapshot: scheduledRetrySnapshotFixture(),
         expectedAttemptNumber: 1,
         expectedBarrierVersion: 0,
         expectedEventTailSeq: 1,

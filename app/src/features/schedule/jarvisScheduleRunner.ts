@@ -1,40 +1,25 @@
 /**
- * Executor for scheduled Jarvis Actions.
- *
- * A Jarvis Action is an event row carrying `jarvis_schedule` metadata: a
- * prompt, a model selection, and a recurrence. Until this runner existed the
- * schedule could *store* those actions but nothing ever fired them. The
- * runner polls Dexie for due actions while the app is open, sends each due
- * prompt to Jarvis in a dedicated per-action output chat, advances
- * `nextRunAt` for recurring actions, and records bounded run/error history.
- *
- * Duplicate prevention: a run is claimed in-memory (`eventId:dueAt`) before
- * dispatch and the persisted metadata is advanced before the send, so
- * overlapping ticks or focus events cannot double-fire one occurrence.
- * Pre-dispatch failures restore the occurrence and release its claim so a
- * temporary message-store error cannot silently complete the task.
- *
- * Catch-up policy: if the app was closed at the scheduled time, a missed
- * occurrence still runs on next launch when it is less than
- * `JARVIS_SCHEDULE_CATCH_UP_MS` old. Older misses are recorded honestly in
- * `errorHistory` and the schedule advances to its next occurrence instead of
- * replaying a stale backlog.
+ * Polls persisted schedules and hands each concrete occurrence to the closed
+ * scheduled-kernel dispatcher. The runner owns polling and schedule metadata;
+ * the runtime owns canonical run/model/identity/profile selection and effects.
  */
-import {
-  chatRepo as realChatRepo,
-  eventRepo as realEventRepo,
-  messageRepo as realMessageRepo,
-} from '@/lib/db/repositories';
+import { chatRepo as realChatRepo, eventRepo as realEventRepo } from '@/lib/db/repositories';
+import { dispatchScheduledJarvisOccurrenceWithKernel } from '@/lib/ai/runtime';
+import { getActiveAccountIdentity } from '@/lib/accountIdentity';
+import type { JarvisRunStatus } from '@/lib/jarvis/contracts/execution';
 import { newChatId } from '@/lib/ids';
 import { useAuthStore } from '@/stores/auth';
 import type { EventRow } from '@/types/event';
 import type { ChatId, WorkspaceId } from '@/types/common';
+import type { ScheduledJarvisAttemptResult } from './jarvisScheduleDispatch';
 import { expandRecurrence } from './recurrence';
 import {
   isJarvisScheduleEvent,
   parseJarvisScheduleMetadata,
   withJarvisScheduleMetadata,
   type JarvisScheduleMetadata,
+  type JarvisScheduleRunHistoryEntryV1,
+  type JarvisScheduleRunHistoryStatus,
 } from './jarvisSchedules';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -56,12 +41,11 @@ export interface JarvisScheduleRunnerDeps {
     mode: 'chat';
     active_agent_ids: never[];
   }) => Promise<unknown>;
-  createMessage: (input: {
-    chat_id: ChatId;
-    role: 'user';
-    parts: Array<{ kind: 'text'; text: string }>;
-  }) => Promise<unknown>;
-  dispatchEvent: (event: CustomEvent) => void;
+  dispatchScheduledOccurrence: (input: {
+    accountId: string;
+    eventId: string;
+    dueAt: number;
+  }) => Promise<ScheduledJarvisAttemptResult>;
   now: () => number;
 }
 
@@ -70,16 +54,14 @@ function defaultDeps(): JarvisScheduleRunnerDeps {
     listEvents: (workspaceId) => realEventRepo.list({ workspace_id: workspaceId }),
     updateEvent: (id, patch) => realEventRepo.update(id, patch),
     createChat: (input) => realChatRepo.create(input),
-    createMessage: (input) => realMessageRepo.create(input),
-    dispatchEvent: (event) => window.dispatchEvent(event),
+    dispatchScheduledOccurrence: dispatchScheduledJarvisOccurrenceWithKernel,
     now: () => Date.now(),
   };
 }
 
 /**
  * Next occurrence strictly after `afterMs`, using the same expansion engine
- * as the timeline so the runner and the UI always agree. Returns null for
- * one-shot actions (and for legacy custom_* codes the engine cannot expand).
+ * as the timeline so the runner and UI agree.
  */
 export function computeNextJarvisRunAt(event: EventRow, afterMs: number): number | null {
   const horizon = afterMs + 62 * DAY_MS;
@@ -94,19 +76,32 @@ export interface JarvisScheduleRunResult {
   checked: number;
 }
 
-/** In-memory claim of dispatched occurrences: `${eventId}:${dueAt}`. */
+/** In-memory claim of account-scoped concrete occurrences. */
 const claimedRuns = new Set<string>();
-const CLAIMED_RUNS_CAP = 500;
 
 function claimRun(key: string): boolean {
   if (claimedRuns.has(key)) return false;
-  if (claimedRuns.size >= CLAIMED_RUNS_CAP) claimedRuns.clear();
   claimedRuns.add(key);
   return true;
 }
 
 function releaseRun(key: string): void {
   claimedRuns.delete(key);
+}
+
+function pruneSettledClaims(accountId: string, events: readonly EventRow[], now: number): void {
+  const stillDue = new Set<string>();
+  const accountPrefix = `${accountId}:`;
+  for (const event of events) {
+    if (event.status !== 'scheduled' || !isJarvisScheduleEvent(event)) continue;
+    const metadata = parseJarvisScheduleMetadata(event);
+    if (!metadata?.prompt.trim()) continue;
+    const dueAt = metadata.nextRunAt ?? event.start_at;
+    if (dueAt <= now) stillDue.add(`${accountId}:${event.id}:${dueAt}`);
+  }
+  for (const key of claimedRuns) {
+    if (key.startsWith(accountPrefix) && !stillDue.has(key)) claimedRuns.delete(key);
+  }
 }
 
 function outputChatTitle(event: EventRow): string {
@@ -118,8 +113,8 @@ async function ensureOutputChat(
   event: EventRow,
   metadata: JarvisScheduleMetadata,
   deps: JarvisScheduleRunnerDeps,
-): Promise<string> {
-  if (metadata.outputChatId) return metadata.outputChatId;
+): Promise<JarvisScheduleMetadata> {
+  if (metadata.outputChatId) return metadata;
   const chatId = newChatId();
   await deps.createChat({
     id: chatId,
@@ -129,14 +124,137 @@ async function ensureOutputChat(
     mode: 'chat',
     active_agent_ids: [],
   });
-  return String(chatId);
+  const withOutputChat: JarvisScheduleMetadata = {
+    ...metadata,
+    outputChatId: String(chatId),
+  };
+  // Persist only output routing. The concrete due occurrence remains unchanged
+  // until the canonical dispatcher has claimed the exact dueAt.
+  await deps.updateEvent(event.id, withJarvisScheduleMetadata(event, withOutputChat));
+  return withOutputChat;
+}
+
+function requiredCanonicalId(value: string, label: 'runId' | 'requestId'): string {
+  if (!value.trim()) throw new Error(`Scheduled dispatch returned an empty ${label}.`);
+  return value;
+}
+
+function historyStatusFromRunStatus(status: JarvisRunStatus): JarvisScheduleRunHistoryStatus {
+  switch (status) {
+    case 'queued':
+    case 'compiling':
+    case 'running':
+    case 'awaiting_approval':
+      return 'dispatched';
+    case 'partial':
+    case 'completed':
+    case 'failed':
+    case 'cancelled':
+    case 'timed_out':
+      return status;
+  }
+}
+
+function latestRequestId(
+  result: Extract<ScheduledJarvisAttemptResult, { kind: 'terminal_transport_failure' }>,
+): string {
+  const latest = result.run.transportAttempts?.reduce((current, attempt) =>
+    !current || attempt.attemptNumber > current.attemptNumber ? attempt : current,
+  );
+  if (!latest) throw new Error('Terminal scheduled transport failure has no canonical attempt.');
+  return requiredCanonicalId(latest.requestId, 'requestId');
+}
+
+function terminalHistoryStatus(status: JarvisRunStatus): JarvisScheduleRunHistoryStatus {
+  switch (status) {
+    case 'partial':
+    case 'completed':
+    case 'failed':
+    case 'cancelled':
+    case 'timed_out':
+      return status;
+    case 'queued':
+    case 'compiling':
+    case 'running':
+    case 'awaiting_approval':
+      throw new Error(
+        `Terminal scheduled transport failure returned nonterminal status ${status}.`,
+      );
+  }
+}
+
+function assertNever(value: never): never {
+  throw new Error(`Unexpected scheduled dispatch outcome: ${String(value)}`);
+}
+
+function historyEntryForOutcome(
+  outcome: Exclude<ScheduledJarvisAttemptResult, { kind: 'account_authority_revoked' }>,
+  at: number,
+): JarvisScheduleRunHistoryEntryV1 {
+  switch (outcome.kind) {
+    case 'committed': {
+      const response = outcome.result.response;
+      return {
+        schemaVersion: 1,
+        at,
+        runId: requiredCanonicalId(response.runId, 'runId'),
+        requestId: requiredCanonicalId(response.requestId, 'requestId'),
+        status: historyStatusFromRunStatus(response.executionState?.status ?? 'completed'),
+      };
+    }
+    case 'transport_retry_available':
+      return {
+        schemaVersion: 1,
+        at,
+        runId: requiredCanonicalId(outcome.run.id, 'runId'),
+        requestId: requiredCanonicalId(outcome.attempt.requestId, 'requestId'),
+        status: 'dispatched',
+        summary: 'Transport retry available.',
+      };
+    case 'terminal_transport_failure':
+      return {
+        schemaVersion: 1,
+        at,
+        runId: requiredCanonicalId(outcome.run.id, 'runId'),
+        requestId: latestRequestId(outcome),
+        status: terminalHistoryStatus(outcome.run.status),
+        summary: 'Terminal transport failure.',
+      };
+    default:
+      return assertNever(outcome);
+  }
+}
+
+async function recordRetryableRunnerFailure(
+  event: EventRow,
+  metadata: JarvisScheduleMetadata,
+  dueAt: number,
+  now: number,
+  error: string,
+  deps: JarvisScheduleRunnerDeps,
+): Promise<void> {
+  const failedMetadata: JarvisScheduleMetadata = {
+    ...metadata,
+    nextRunAt: dueAt,
+    errorHistory: [...metadata.errorHistory, { at: now, error }],
+  };
+  try {
+    await deps.updateEvent(event.id, {
+      ...withJarvisScheduleMetadata(event, failedMetadata),
+      status: 'scheduled',
+    });
+  } catch {
+    // A failed event store cannot safely persist more runner state.
+  }
 }
 
 /**
- * Check every Jarvis schedule in the workspace and fire the due ones.
- * Safe to call repeatedly; occurrences are claimed before dispatch.
+ * Check every schedule in the workspace and dispatch due concrete occurrences.
+ * The account identity is start-bound by the caller; no active UI route,
+ * selected model, or mutable message event participates in dispatch.
  */
 export async function runDueJarvisSchedules(
+  accountId: string,
   workspaceId: WorkspaceId,
   deps: JarvisScheduleRunnerDeps = defaultDeps(),
 ): Promise<JarvisScheduleRunResult> {
@@ -148,28 +266,30 @@ export async function runDueJarvisSchedules(
   } catch {
     return result;
   }
+  pruneSettledClaims(accountId, events, now);
 
   for (const event of events) {
     if (event.status !== 'scheduled' || !isJarvisScheduleEvent(event)) continue;
-    const metadata = parseJarvisScheduleMetadata(event);
-    if (!metadata || !metadata.prompt.trim()) continue;
+    const parsedMetadata = parseJarvisScheduleMetadata(event);
+    if (!parsedMetadata?.prompt.trim()) continue;
     result.checked += 1;
 
-    const dueAt = metadata.nextRunAt ?? event.start_at;
+    const dueAt = parsedMetadata.nextRunAt ?? event.start_at;
     if (dueAt > now) continue;
-    const claimKey = `${event.id}:${dueAt}`;
+    const claimKey = `${accountId}:${event.id}:${dueAt}`;
     if (!claimRun(claimKey)) continue;
 
     const nextRunAt = computeNextJarvisRunAt(event, Math.max(dueAt, now));
-
     if (now - dueAt > JARVIS_SCHEDULE_CATCH_UP_MS) {
-      // Too old to replay honestly - record the miss and move on.
       const missedMetadata: JarvisScheduleMetadata = {
-        ...metadata,
+        ...parsedMetadata,
         nextRunAt: nextRunAt ?? undefined,
         errorHistory: [
-          ...metadata.errorHistory,
-          { at: now, error: `Missed scheduled run at ${new Date(dueAt).toLocaleString()} (app was closed).` },
+          ...parsedMetadata.errorHistory,
+          {
+            at: now,
+            error: `Missed scheduled run at ${new Date(dueAt).toLocaleString()} (app was closed).`,
+          },
         ],
       };
       try {
@@ -178,66 +298,57 @@ export async function runDueJarvisSchedules(
           ...(nextRunAt === null ? { status: 'done' as const } : {}),
         });
       } catch {
-        // Persist failures leave the row untouched; the claim prevents retry storms this session.
+        // Keep the claim: a failed persistence must not create a retry storm.
       }
       result.missed.push(String(event.id));
       continue;
     }
 
-    let outputChatId = metadata.outputChatId;
+    let dispatchMetadata = parsedMetadata;
     try {
-      outputChatId = await ensureOutputChat(event, metadata, deps);
+      dispatchMetadata = await ensureOutputChat(event, parsedMetadata, deps);
+      const outcome = await deps.dispatchScheduledOccurrence({
+        accountId,
+        eventId: String(event.id),
+        dueAt,
+      });
+      if (outcome.kind === 'account_authority_revoked') {
+        await recordRetryableRunnerFailure(
+          event,
+          dispatchMetadata,
+          dueAt,
+          now,
+          'Scheduled dispatch account authority was revoked.',
+          deps,
+        );
+        releaseRun(claimKey);
+        continue;
+      }
+
+      const runHistoryEntry = historyEntryForOutcome(outcome, now);
       const ranMetadata: JarvisScheduleMetadata = {
-        ...metadata,
-        outputChatId,
+        ...dispatchMetadata,
         lastRunAt: now,
         nextRunAt: nextRunAt ?? undefined,
-        runHistory: [
-          ...metadata.runHistory,
-          { at: now, status: 'success', summary: 'Run dispatched to Jarvis.' },
-        ],
+        runHistory: [...dispatchMetadata.runHistory, runHistoryEntry],
       };
-      // Advance the schedule BEFORE dispatching so a crash mid-run cannot
-      // double-fire this occurrence on the next tick.
+      // The dispatcher has now claimed the exact dueAt, so this occurrence can
+      // advance. Retryable transport failures require the explicit retry port;
+      // an ordinary poll must never redispatch them.
       await deps.updateEvent(event.id, {
         ...withJarvisScheduleMetadata(event, ranMetadata),
         ...(nextRunAt === null ? { status: 'done' as const } : {}),
       });
-      await deps.createMessage({
-        chat_id: outputChatId as ChatId,
-        role: 'user',
-        parts: [{ kind: 'text', text: metadata.prompt }],
-      });
-      deps.dispatchEvent(new CustomEvent('jarvis:send', {
-        detail: {
-          chatId: outputChatId,
-          text: metadata.prompt,
-          modelSelectionOverride: metadata.modelSelection,
-        },
-      }));
       result.ran.push(String(event.id));
-    } catch (err) {
-      const failedMetadata: JarvisScheduleMetadata = {
-        ...metadata,
-        outputChatId,
-        // Restore the same occurrence instead of advancing it. Otherwise a
-        // one-shot remains `done`, and a recurring action silently skips the
-        // failed run after a temporary message-store error.
-        nextRunAt: dueAt,
-        errorHistory: [
-          ...metadata.errorHistory,
-          { at: now, error: err instanceof Error ? err.message : 'Jarvis Action failed to start.' },
-        ],
-      };
-      try {
-        await deps.updateEvent(event.id, {
-          ...withJarvisScheduleMetadata(event, failedMetadata),
-          status: 'scheduled',
-        });
-      } catch {
-        // Nothing else to do without a working event store.
-      }
-      // No dispatch occurred, so allow the next poll/focus tick to retry.
+    } catch (error) {
+      await recordRetryableRunnerFailure(
+        event,
+        dispatchMetadata,
+        dueAt,
+        now,
+        error instanceof Error ? error.message : 'Jarvis Action failed to start.',
+        deps,
+      );
       releaseRun(claimKey);
     }
   }
@@ -246,8 +357,8 @@ export async function runDueJarvisSchedules(
 }
 
 /**
- * Start the polling loop. Returns a stop function. Also re-checks when the
- * window regains focus so actions due while the machine slept fire promptly.
+ * Start the polling loop. Also re-checks on focus so sleep-time occurrences
+ * are handled promptly. Account and workspace must both be boot-ready.
  */
 export function startJarvisScheduleRunner(): () => void {
   let running = false;
@@ -256,9 +367,12 @@ export function startJarvisScheduleRunner(): () => void {
     running = true;
     try {
       const workspaceId = useAuthStore.getState().workspaceId;
-      if (workspaceId) await runDueJarvisSchedules(workspaceId as WorkspaceId);
-    } catch (err) {
-      console.warn('[jarvis schedule] due-check failed', err);
+      const account = getActiveAccountIdentity();
+      if (workspaceId && account) {
+        await runDueJarvisSchedules(account.accountId, workspaceId as WorkspaceId);
+      }
+    } catch (error) {
+      console.warn('[jarvis schedule] due-check failed', error);
     } finally {
       running = false;
     }

@@ -39,6 +39,9 @@ vi.mock('@/features/voice/voiceRouter', async (importOriginal) => {
 
 vi.mock('./router', () => ({
   runAgent: mocks.runAgent,
+  jarvisProviderAttemptEvidenceRevalidator: Object.freeze({
+    revalidateFailure: vi.fn(async () => null),
+  }),
 }));
 
 vi.mock('@/lib/db', async (importOriginal) => {
@@ -1234,7 +1237,7 @@ describe('startRuntimeListener agent routing', () => {
     stop();
   });
 
-  it('coerces legacy /Hive quality slash prefix to the Balanced pipeline', async () => {
+  it('fails legacy /Hive quality closed instead of reopening a provider-side stack path', async () => {
     useAuthStore.setState({
       apiKeys: {
         openrouter: 'openrouter-test',
@@ -1310,19 +1313,15 @@ describe('startRuntimeListener agent routing', () => {
       }),
     );
 
-    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(5));
-    const updateCalls = updateMessage.mock.calls as unknown as Array<
-      [MessageId, { parts: Part[] }]
-    >;
-    const finalWrite = updateCalls[updateCalls.length - 1]?.[1];
-    if (!finalWrite) throw new Error('expected final Hive write');
-    expect(finalWrite.parts.filter((part) => part.kind === 'stack_step')).toHaveLength(5);
-    expect(finalWrite.parts.at(-1)).toEqual({ kind: 'text', text: 'final' });
-    expect(mocks.runAgent.mock.calls[0][0].messages).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ role: 'user', content: 'explain the release' }),
-      ]),
+    await vi.waitFor(() =>
+      expect(mocks.devLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          level: 'error',
+          message: expect.stringContaining('Hive requires the canonical JARVIS kernel runtime'),
+        }),
+      ),
     );
+    expect(mocks.runAgent).not.toHaveBeenCalled();
 
     stop();
   });
@@ -1716,6 +1715,348 @@ describe('startRuntimeListener agent routing', () => {
       database.close();
       await database.delete();
     }
+  });
+
+  it('runs Hive only through persisted kernel workers and one protected hive-final turn', async () => {
+    useAuthStore.setState({
+      apiKeys: {
+        google: 'google-test',
+        openrouter: 'openrouter-test',
+        deepseek: 'deepseek-test',
+        openai: 'openai-test',
+      },
+      chatModelSelection: { mode: 'hive', hiveId: 'balanced' },
+    });
+    const protectedJarvis = agent('agent_jarvis', 'jarvis', 'LEGACY SYSTEM PROMPT', true);
+    const harness = kernelRuntimeBindings(protectedJarvis);
+    const database = createJarvisDb(
+      uniqueTestDbName('runtime-installed-hive-host'),
+      TEST_INDEXED_DB,
+    );
+    await database.open();
+    await database.chats.add({
+      id: harness.chatId,
+      workspace_id: 'workspace_runtime_hive_host' as never,
+      title: 'Installed Hive host',
+      mode: 'chat',
+      active_agent_ids: [protectedJarvis.id],
+      created_at: 1,
+      updated_at: 1,
+    });
+    mocks.runAgent.mockImplementation(async (providerInput) => ({
+      text: providerInput.compiledPrompt ? 'Protected Hive synthesis.' : 'Verified worker output.',
+      usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
+      provider: providerInput.agent.model.provider,
+      model: providerInput.agent.model.model,
+    }));
+    const disposeHost = await installJarvisKernelRuntimeHost({
+      db: database,
+      bindKernelActions: () =>
+        ({
+          create: vi.fn() as never,
+          decide: vi.fn() as never,
+          execute: vi.fn() as never,
+          executeAutoApprovedSafe: vi.fn() as never,
+        }) as never,
+      capabilitySnapshots: {
+        getForAccount: vi.fn(async () => ({
+          capturedAt: 1,
+          tools: [],
+          plugins: [],
+          mcps: [],
+          terminals: [],
+          agents: [],
+          entitlements: { source: 'unavailable' as const, capabilities: [] },
+        })),
+      },
+      randomUUID: () => 'runtime-installed-hive-host',
+      now: () => 10,
+    });
+    trackListener(disposeHost);
+    trackListener(
+      startRuntimeListener(harness.bindings, { jarvisInterlocks: runtimeInterlocks() }),
+    );
+
+    try {
+      window.dispatchEvent(
+        new CustomEvent('jarvis:send', {
+          detail: { chatId: harness.chatId, text: 'Run the protected Hive.' },
+        }),
+      );
+
+      await vi.waitFor(
+        () => {
+          const runtimeError = mocks.devLog.mock.calls
+            .map(([entry]) => entry)
+            .find((entry) => entry?.level === 'error');
+          if (runtimeError) {
+            throw new Error(
+              `${JSON.stringify(runtimeError)}; providerCalls=${mocks.runAgent.mock.calls.length}`,
+            );
+          }
+          expect(mocks.runAgent).toHaveBeenCalledTimes(6);
+        },
+        { timeout: 5_000 },
+      );
+      await vi.waitFor(async () => {
+        const parent = await database.jarvis_runs
+          .where('chat_id')
+          .equals(harness.chatId)
+          .filter((row) => row.source === 'hive_final' && row.parent_run_id === undefined)
+          .first();
+        expect(parent).toMatchObject({ status: 'completed' });
+        expect(parent?.hive_stack_plan?.steps).toHaveLength(5);
+      });
+      const providerCalls = mocks.runAgent.mock.calls.map(([providerInput]) => providerInput);
+      expect(providerCalls.slice(0, 5).every((input) => input.compiledPrompt === undefined)).toBe(
+        true,
+      );
+      expect(providerCalls[5]?.compiledPrompt.systemText).toContain('strict JARVIS identity');
+      expect(harness.bindings.appendMessage).not.toHaveBeenCalled();
+    } finally {
+      disposeHost();
+      database.close();
+      await database.delete();
+    }
+  }, 15_000);
+
+  it('bridges message cancellation to the canonical Hive parent and active child owner', async () => {
+    useAuthStore.setState({
+      apiKeys: {
+        google: 'google-test',
+        openrouter: 'openrouter-test',
+        deepseek: 'deepseek-test',
+        openai: 'openai-test',
+      },
+      chatModelSelection: { mode: 'hive', hiveId: 'balanced' },
+    });
+    const protectedJarvis = agent('agent_jarvis', 'jarvis', 'LEGACY SYSTEM PROMPT', true);
+    const harness = kernelRuntimeBindings(protectedJarvis);
+    const database = createJarvisDb(uniqueTestDbName('runtime-hive-cancellation'), TEST_INDEXED_DB);
+    await database.open();
+    await database.chats.add({
+      id: harness.chatId,
+      workspace_id: 'workspace_runtime_hive_cancel' as never,
+      title: 'Hive cancellation',
+      mode: 'chat',
+      active_agent_ids: [protectedJarvis.id],
+      created_at: 1,
+      updated_at: 1,
+    });
+    const workerSignals: AbortSignal[] = [];
+    mocks.runAgent.mockImplementation(
+      (providerInput) =>
+        new Promise((_, reject) => {
+          workerSignals.push(providerInput.signal);
+          const rejectCancelled = () =>
+            reject(new DOMException('Hive worker cancelled', 'AbortError'));
+          if (providerInput.signal.aborted) {
+            rejectCancelled();
+          } else {
+            providerInput.signal.addEventListener('abort', rejectCancelled, { once: true });
+          }
+        }),
+    );
+    const disposeHost = await installJarvisKernelRuntimeHost({
+      db: database,
+      bindKernelActions: () =>
+        ({
+          create: vi.fn() as never,
+          decide: vi.fn() as never,
+          execute: vi.fn() as never,
+          executeAutoApprovedSafe: vi.fn() as never,
+        }) as never,
+      capabilitySnapshots: {
+        getForAccount: vi.fn(async () => ({
+          capturedAt: 1,
+          tools: [],
+          plugins: [],
+          mcps: [],
+          terminals: [],
+          agents: [],
+          entitlements: { source: 'unavailable' as const, capabilities: [] },
+        })),
+      },
+      randomUUID: () => 'runtime-hive-cancel',
+      now: () => 10,
+    });
+    trackListener(disposeHost);
+    trackListener(
+      startRuntimeListener(harness.bindings, { jarvisInterlocks: runtimeInterlocks() }),
+    );
+
+    try {
+      window.dispatchEvent(
+        new CustomEvent('jarvis:send', {
+          detail: {
+            chatId: harness.chatId,
+            text: 'Cancel this protected Hive.',
+            cancellationKey: 'msg_kernel_user' as MessageId,
+          },
+        }),
+      );
+      await vi.waitFor(() => expect(workerSignals).toHaveLength(1));
+      expect(workerSignals[0]!.aborted).toBe(false);
+
+      window.dispatchEvent(
+        new CustomEvent('jarvis:cancel', {
+          detail: { messageId: 'msg_stale_unrelated' as MessageId },
+        }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(workerSignals[0]!.aborted).toBe(false);
+
+      window.dispatchEvent(
+        new CustomEvent('jarvis:cancel', {
+          detail: { messageId: 'msg_kernel_user' as MessageId },
+        }),
+      );
+
+      await vi.waitFor(() => expect(workerSignals[0]!.aborted).toBe(true));
+      await vi.waitFor(async () => {
+        const parent = await database.jarvis_runs
+          .where('chat_id')
+          .equals(harness.chatId)
+          .filter((row) => row.source === 'hive_final' && row.parent_run_id === undefined)
+          .first();
+        expect(parent).toBeDefined();
+        const cancellation = await database.jarvis_events
+          .where('run_id')
+          .equals(parent!.id)
+          .filter((row) => row.status === 'cancellation_requested')
+          .first();
+        expect(cancellation).toBeDefined();
+      });
+    } finally {
+      disposeHost();
+      database.close();
+      await database.delete();
+    }
+  }, 15_000);
+
+  it('owns cancellation before awaited setup and never dispatches after listener teardown', async () => {
+    useAuthStore.setState({
+      apiKeys: { groq: 'gsk_test', openai: 'sk_test' },
+      chatModelSelection: {
+        mode: 'single',
+        providerId: 'openai',
+        modelId: 'gpt-5.5',
+        connectionId: 'openai-api',
+        connectionMode: 'native-api',
+        authSource: 'api-key',
+        capabilities: {
+          text: true,
+          images: false,
+          files: false,
+          tools: false,
+          modelSelection: true,
+          structuredOutput: false,
+          streaming: true,
+          cancellation: true,
+          resumeSession: false,
+          systemPrompt: true,
+          workingDirectory: false,
+          usage: true,
+          subscriptionQuota: false,
+          localOnly: false,
+        },
+      },
+    });
+    const protectedJarvis = agent('agent_jarvis', 'jarvis', 'LEGACY SYSTEM PROMPT', true);
+    const harness = kernelRuntimeBindings(protectedJarvis);
+    const database = createJarvisDb(uniqueTestDbName('runtime-early-cancel'), TEST_INDEXED_DB);
+    await database.open();
+    let resolveChat: ((value: undefined) => void) | undefined;
+    mocks.chatGetById.mockReturnValueOnce(
+      new Promise<undefined>((resolve) => {
+        resolveChat = resolve;
+      }),
+    );
+    const disposeHost = await installJarvisKernelRuntimeHost({
+      db: database,
+      bindKernelActions: () =>
+        ({
+          create: vi.fn() as never,
+          decide: vi.fn() as never,
+          execute: vi.fn() as never,
+          executeAutoApprovedSafe: vi.fn() as never,
+        }) as never,
+      capabilitySnapshots: {
+        getForAccount: vi.fn(async () => ({
+          capturedAt: 1,
+          tools: [],
+          plugins: [],
+          mcps: [],
+          terminals: [],
+          agents: [],
+          entitlements: { source: 'unavailable' as const, capabilities: [] },
+        })),
+      },
+      randomUUID: () => 'runtime-early-cancel',
+      now: () => 10,
+    });
+    trackListener(disposeHost);
+    const stop = trackListener(
+      startRuntimeListener(harness.bindings, { jarvisInterlocks: runtimeInterlocks() }),
+    );
+
+    try {
+      window.dispatchEvent(
+        new CustomEvent('jarvis:send', {
+          detail: {
+            chatId: harness.chatId,
+            text: 'Never dispatch this protected turn.',
+            cancellationKey: 'msg_kernel_user' as MessageId,
+          },
+        }),
+      );
+      await vi.waitFor(() => expect(mocks.chatGetById).toHaveBeenCalledOnce());
+      stop();
+      resolveChat?.(undefined);
+
+      await vi.waitFor(() =>
+        expect(mocks.devLog).toHaveBeenCalledWith(
+          expect.objectContaining({ message: expect.stringContaining('AI cancelled') }),
+        ),
+      );
+      expect(mocks.runAgent).not.toHaveBeenCalled();
+      expect(await database.jarvis_runs.count()).toBe(0);
+    } finally {
+      disposeHost();
+      database.close();
+      await database.delete();
+    }
+  }, 15_000);
+
+  it('releases early cancellation ownership when agent resolution rejects', async () => {
+    const selectedAgent = agent('agent_apple', 'apple', 'Always answer with APPLE.');
+    const harness = kernelRuntimeBindings(selectedAgent);
+    const getAgentForChat = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('agent lookup unavailable'))
+      .mockResolvedValueOnce(selectedAgent);
+    trackListener(startRuntimeListener({ ...harness.bindings, getAgentForChat }));
+    const detail = {
+      chatId: harness.chatId,
+      text: 'Reuse this exact turn key.',
+      cancellationKey: 'msg_kernel_user' as MessageId,
+    };
+
+    window.dispatchEvent(new CustomEvent('jarvis:send', { detail }));
+    await vi.waitFor(() =>
+      expect(mocks.devLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          level: 'error',
+          message: 'AI setup failed before dispatch',
+        }),
+      ),
+    );
+
+    window.dispatchEvent(new CustomEvent('jarvis:send', { detail }));
+    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledOnce());
+    expect(mocks.devLog).not.toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'Duplicate AI cancellation key rejected' }),
+    );
   });
 
   it('allocates no run or fallback effects when account changes during awaited canonical voice setup', async () => {

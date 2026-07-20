@@ -7,6 +7,7 @@ import type {
   JarvisPreEffectTransportFailureEvidence,
   JarvisRun,
   JarvisScheduledAttemptLease,
+  JarvisScheduledRetrySnapshotV1,
   JarvisTransportAttemptCoordinator,
   JarvisTransportAttemptV1,
   JarvisZeroConsequentialEffectEvidenceV1,
@@ -18,6 +19,7 @@ export type JarvisTransportAttemptMutationInput =
       accountId: string;
       runId: string;
       expectedStatus: 'queued';
+      snapshot: Readonly<JarvisScheduledRetrySnapshotV1>;
       attempt: Omit<JarvisTransportAttemptV1, 'startedEventSeq'>;
       updatedAt: number;
     }
@@ -26,6 +28,7 @@ export type JarvisTransportAttemptMutationInput =
       accountId: string;
       runId: string;
       expectedStatus: 'running';
+      expectedSnapshot: Readonly<JarvisScheduledRetrySnapshotV1>;
       expectedLatestAttemptNumber: number;
       expectedBarrierVersion: 0;
       expectedEventTailSeq: number;
@@ -38,6 +41,7 @@ export type JarvisTransportAttemptMutationInput =
       accountId: string;
       runId: string;
       expectedStatus: 'running';
+      expectedSnapshot: Readonly<JarvisScheduledRetrySnapshotV1>;
       expectedAttemptNumber: number;
       expectedBarrierVersion: 0;
       expectedEventTailSeq: number;
@@ -50,6 +54,7 @@ export type JarvisTransportAttemptMutationInput =
       accountId: string;
       runId: string;
       expectedStatus: 'running';
+      expectedSnapshot: Readonly<JarvisScheduledRetrySnapshotV1>;
       expectedAttemptNumber: number;
       providerFailure: JarvisPreEffectTransportFailureEvidence;
       updatedAt: number;
@@ -115,6 +120,30 @@ function exactEqual(left: unknown, right: unknown): boolean {
   );
 }
 
+function snapshotMatchesRun(
+  snapshot: unknown,
+  run: Readonly<JarvisRun>,
+): snapshot is Readonly<JarvisScheduledRetrySnapshotV1> {
+  if (!snapshot || typeof snapshot !== 'object') return false;
+  const value = snapshot as Partial<JarvisScheduledRetrySnapshotV1>;
+  const request = value.request;
+  return (
+    !!request &&
+    value.accountId === run.accountId &&
+    request.accountId === run.accountId &&
+    request.runId === run.id &&
+    request.surface === 'schedule' &&
+    request.workspaceId === run.workspaceId &&
+    request.projectId === run.projectId &&
+    request.chatId === run.chatId &&
+    request.parentRunId === run.parentRunId &&
+    request.agent?.id === run.agentId &&
+    request.identity?.identityVersion === run.identityVersion &&
+    request.profile?.revisionId === run.profileRevisionId &&
+    exactEqual(request.model, run.model)
+  );
+}
+
 function assertIdentifier(value: string): void {
   if (typeof value !== 'string' || value.length === 0 || value !== value.trim()) {
     fail('transport_attempt_invalid_input');
@@ -142,6 +171,16 @@ function requireCurrentAttempt(
     fail('transport_attempt_invalid_lease');
   }
   return attempt;
+}
+
+function requireExactSnapshot(
+  run: Readonly<JarvisRun>,
+  expectedSnapshot: Readonly<JarvisScheduledRetrySnapshotV1>,
+): void {
+  const persisted = run.scheduledRetrySnapshot;
+  if (!snapshotMatchesRun(persisted, run) || !exactEqual(persisted, expectedSnapshot)) {
+    fail('transport_attempt_conflict');
+  }
 }
 
 function failureMatches(
@@ -256,10 +295,16 @@ export function createJarvisTransportAttemptCoordinator(input: {
       assertIdentifier(begin.runId);
       assertIdentifier(begin.requestId);
       assertTime(begin.createdAt);
+      const expectedSnapshot = structuredClone(begin.snapshot);
+      if (!expectedSnapshot || typeof expectedSnapshot !== 'object') {
+        fail('transport_attempt_conflict');
+      }
       const current = await currentRun(begin.accountId, begin.runId);
       if (
         current.status !== 'queued' ||
         current.source !== 'schedule' ||
+        current.scheduledRetrySnapshot !== undefined ||
+        !snapshotMatchesRun(expectedSnapshot, current) ||
         (current.transportAttempts?.length ?? 0) !== 0
       ) {
         fail('transport_attempt_conflict');
@@ -279,10 +324,12 @@ export function createJarvisTransportAttemptCoordinator(input: {
         accountId: begin.accountId,
         runId: begin.runId,
         expectedStatus: 'queued',
+        snapshot: expectedSnapshot,
         attempt: attemptValue,
         updatedAt: begin.createdAt,
       });
       const persisted = requireCurrentAttempt(updated, 1, begin.requestId);
+      requireExactSnapshot(updated, expectedSnapshot);
       return issueLease(begin.accountId, begin.runId, persisted);
     },
 
@@ -291,7 +338,9 @@ export function createJarvisTransportAttemptCoordinator(input: {
       assertIdentifier(begin.runId);
       assertIdentifier(begin.requestId);
       assertTime(begin.createdAt);
+      const expectedSnapshot = structuredClone(begin.expectedSnapshot);
       const current = await currentRun(begin.accountId, begin.runId);
+      requireExactSnapshot(current, expectedSnapshot);
       const attempts = current.transportAttempts;
       if (!attempts || attempts.length === 0) fail('transport_attempt_conflict');
       if (attempts.length >= 32) fail('transport_attempt_limit');
@@ -333,6 +382,7 @@ export function createJarvisTransportAttemptCoordinator(input: {
         accountId: begin.accountId,
         runId: begin.runId,
         expectedStatus: 'running',
+        expectedSnapshot,
         expectedLatestAttemptNumber: previous.attemptNumber,
         expectedBarrierVersion: 0,
         expectedEventTailSeq: begin.revalidatedEvidence.executorClaims.throughSeq + 1,
@@ -341,12 +391,15 @@ export function createJarvisTransportAttemptCoordinator(input: {
         updatedAt: begin.createdAt,
       });
       const persisted = requireCurrentAttempt(updated, attemptValue.attemptNumber, begin.requestId);
+      requireExactSnapshot(updated, expectedSnapshot);
       return issueLease(begin.accountId, begin.runId, persisted);
     },
 
-    async verifyLease(lease) {
+    async verifyLease(lease, expectedSnapshot) {
       if (!issuedLeases.has(lease as object)) fail('transport_attempt_invalid_lease');
+      const detachedExpectedSnapshot = structuredClone(expectedSnapshot);
       const run = await currentRun(lease.accountId, lease.runId);
+      requireExactSnapshot(run, detachedExpectedSnapshot);
       const attemptValue = requireCurrentAttempt(run, lease.attemptNumber, lease.requestId);
       if (attemptValue.kind !== lease.kind) fail('transport_attempt_invalid_lease');
       return structuredClone(run);
@@ -354,7 +407,8 @@ export function createJarvisTransportAttemptCoordinator(input: {
 
     async settleScheduledTransportFailure(settle) {
       assertTime(settle.settledAt);
-      const current = await coordinator.verifyLease(settle.lease);
+      const expectedSnapshot = structuredClone(settle.expectedSnapshot);
+      const current = await coordinator.verifyLease(settle.lease, expectedSnapshot);
       const attemptValue = requireCurrentAttempt(
         current,
         settle.lease.attemptNumber,
@@ -385,6 +439,7 @@ export function createJarvisTransportAttemptCoordinator(input: {
           accountId: settle.lease.accountId,
           runId: settle.lease.runId,
           expectedStatus: 'running',
+          expectedSnapshot,
           expectedAttemptNumber: settle.lease.attemptNumber,
           expectedBarrierVersion: 0,
           expectedEventTailSeq: settle.zeroEffectEvidence.executorClaims.throughSeq,
@@ -396,6 +451,8 @@ export function createJarvisTransportAttemptCoordinator(input: {
         const concurrentAttempt = retryable.current.transportAttempts?.at(-1);
         if (
           retryable.current.status === 'running' &&
+          retryable.current.scheduledRetrySnapshot !== undefined &&
+          exactEqual(retryable.current.scheduledRetrySnapshot, expectedSnapshot) &&
           concurrentAttempt?.attemptNumber === settle.lease.attemptNumber &&
           concurrentAttempt.requestId === settle.lease.requestId &&
           concurrentAttempt.state === 'retryable_failed' &&
@@ -420,6 +477,7 @@ export function createJarvisTransportAttemptCoordinator(input: {
         accountId: settle.lease.accountId,
         runId: settle.lease.runId,
         expectedStatus: 'running',
+        expectedSnapshot,
         expectedAttemptNumber: settle.lease.attemptNumber,
         providerFailure: structuredClone(settle.providerFailure),
         updatedAt: settle.settledAt,

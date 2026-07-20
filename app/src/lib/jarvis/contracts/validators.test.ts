@@ -19,6 +19,7 @@ import {
   type JarvisDurableLiveEvidenceV1,
   type JarvisExecutionEvidenceV1,
   type JarvisExecutionState,
+  type JarvisHiveStackPlanV1,
   type JarvisLiveProducerIdentity,
   type JarvisModelSnapshot,
   type JarvisOutputContract,
@@ -28,6 +29,7 @@ import {
   type JarvisResponseMode,
   type JarvisRun,
   type JarvisRunStatus,
+  type JarvisScheduledRetrySnapshotV1,
   type JarvisSourceRef,
   type JarvisSourceKind,
   type JarvisTransportAttemptV1,
@@ -309,6 +311,54 @@ function validRun(): JarvisRun {
   };
 }
 
+function validScheduledRetrySnapshot(): JarvisScheduledRetrySnapshotV1 {
+  const { requestId: _requestId, createdAt: _createdAt, ...request } = validRequestEnvelope();
+  return {
+    schemaVersion: 1,
+    accountId: 'account-1',
+    eventId: 'event-schedule-1',
+    occurrenceId: 'jocc_0123456789abcdef',
+    dueAt: 300,
+    logicalAttempt: 0,
+    request: {
+      ...request,
+      surface: 'schedule',
+    },
+  };
+}
+
+function validHiveStackPlan(): JarvisHiveStackPlanV1 {
+  return {
+    schemaVersion: 1,
+    accountId: 'account-1',
+    parentRunId: 'run-1',
+    stackId: 'stack-1',
+    steps: [
+      {
+        schemaVersion: 1,
+        stepId: 'step-1',
+        label: 'Research',
+        workerId: 'worker-1',
+        agent: {
+          id: 'agent-1',
+          slug: 'researcher',
+          builtin: true,
+          name: 'Researcher',
+          description: 'Research specialist',
+          systemPrompt: 'Preserve this specialist prompt.',
+          toolsAllowed: [],
+          memoryScope: 'workspace',
+          capabilities: ['research'],
+          createdAt: 200,
+          updatedAt: 210,
+        },
+        model: validModelSnapshot(),
+        messages: [{ role: 'user', content: 'Research this topic.' }],
+      },
+    ],
+  };
+}
+
 function validEvent(): JarvisEvent {
   return {
     runId: 'run-1',
@@ -569,6 +619,118 @@ describe('Task 3 public contract barrel', () => {
     expectTypeOf<JarvisSourceKind>().toEqualTypeOf<JarvisSourceRef['kind']>();
     expectTypeOf<JarvisResponseMode>().toEqualTypeOf<JarvisResponseEnvelope['mode']>();
     expectTypeOf<JarvisRunStatus>().toEqualTypeOf<JarvisRun['status']>();
+  });
+});
+
+describe('Task 17 scheduled retry snapshot validation', () => {
+  it('accepts the complete account-bound schedule request snapshot on a schedule run', () => {
+    const run: JarvisRun = {
+      ...validRun(),
+      source: 'schedule',
+      scheduledRetrySnapshot: validScheduledRetrySnapshot(),
+    };
+    expectSuccess(validateJarvisRun(run));
+  });
+
+  it('rejects transport fields, nested request corruption, and crossed run lineage', () => {
+    const snapshot = validScheduledRetrySnapshot();
+    const requestWithTransport = {
+      ...snapshot.request,
+      requestId: 'forbidden-request-id',
+    };
+    expect(
+      validateJarvisRun({
+        ...validRun(),
+        source: 'schedule',
+        scheduledRetrySnapshot: { ...snapshot, request: requestWithTransport },
+      }).ok,
+    ).toBe(false);
+
+    const brokenModel = {
+      ...snapshot.request,
+      model: { ...snapshot.request.model, providerId: '' },
+    };
+    expect(
+      validateJarvisRun({
+        ...validRun(),
+        source: 'schedule',
+        scheduledRetrySnapshot: { ...snapshot, request: brokenModel },
+      }).ok,
+    ).toBe(false);
+
+    expect(
+      validateJarvisRun({
+        ...validRun(),
+        accountId: 'account-other',
+        source: 'schedule',
+        scheduledRetrySnapshot: snapshot,
+      }).ok,
+    ).toBe(false);
+  });
+
+  it('rejects raw credentials and secret-handle identifiers inside the persisted request', () => {
+    for (const userText of [
+      'Authorization: Bearer synthetic-private-value',
+      'api_key=synthetic-private-value',
+      'reuse jsecret_synthetic_handle',
+    ]) {
+      const snapshot = validScheduledRetrySnapshot();
+      expect(
+        validateJarvisRun({
+          ...validRun(),
+          source: 'schedule',
+          scheduledRetrySnapshot: {
+            ...snapshot,
+            request: { ...snapshot.request, userText },
+          },
+        }).ok,
+      ).toBe(false);
+    }
+  });
+});
+
+describe('Task 17 persisted Hive stack plan validation', () => {
+  it('accepts an exact account-bound Hive final plan and rejects crossed lineage', () => {
+    expectSuccess(
+      validateJarvisRun({
+        ...validRun(),
+        source: 'hive_final',
+        hiveStackPlan: validHiveStackPlan(),
+      }),
+    );
+    expect(
+      validateJarvisRun({
+        ...validRun(),
+        source: 'hive_final',
+        hiveStackPlan: { ...validHiveStackPlan(), parentRunId: 'run-other' },
+      }).ok,
+    ).toBe(false);
+  });
+
+  it('rejects duplicate steps, unknown fields, and nested credential material', () => {
+    const plan = validHiveStackPlan();
+    expect(
+      validateJarvisRun({
+        ...validRun(),
+        source: 'hive_final',
+        hiveStackPlan: { ...plan, steps: [plan.steps[0]!, plan.steps[0]!] },
+      }).ok,
+    ).toBe(false);
+    expect(
+      validateJarvisRun({
+        ...validRun(),
+        source: 'hive_final',
+        hiveStackPlan: {
+          ...plan,
+          steps: [
+            {
+              ...plan.steps[0]!,
+              messages: [{ role: 'user', content: 'Authorization: Bearer synthetic-value' }],
+            },
+          ],
+        },
+      }).ok,
+    ).toBe(false);
   });
 });
 

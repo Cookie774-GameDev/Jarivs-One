@@ -5,7 +5,10 @@ import {
   buildJarvisScheduleEventInput,
   findScheduleConflicts,
   isJarvisScheduleEvent,
+  parseJarvisScheduleMetadata,
   scheduleActionSummary,
+  serializeJarvisScheduleMetadata,
+  type JarvisScheduleMetadata,
 } from './jarvisSchedules';
 
 describe('Jarvis schedules', () => {
@@ -81,4 +84,46 @@ describe('Jarvis schedules', () => {
     expect(eventRepo.update).toHaveBeenNthCalledWith(2, 'evt_1', { status: 'scheduled' });
     expect(eventRepo.delete).toHaveBeenCalledWith('evt_1');
   });
+
+  it.each([
+    ['success', 'Legacy success'],
+    ['error', undefined],
+  ] as const)(
+    'normalizes and deterministically round-trips schema-0 %s history',
+    (status, summary) => {
+      const legacyEntry = {
+        at: 1_786_300_000_123,
+        status,
+        ...(summary === undefined ? {} : { summary }),
+      };
+      const raw: JarvisScheduleMetadata = {
+        kind: 'jarvis_schedule',
+        prompt: 'Synthetic legacy prompt',
+        recurrence: 'once',
+        modelSelection: { mode: 'single', providerId: 'openai', modelId: 'gpt-test' },
+        agentId: 'agent_jarvis',
+        createdBy: 'jarvis',
+        runHistory: [legacyEntry as never],
+        errorHistory: [],
+      };
+      const encoded = `jarvis_schedule:${JSON.stringify(raw)}`;
+      const event = { source_ref: { context: { id: encoded } } } as EventRow;
+
+      const parsed = parseJarvisScheduleMetadata(event);
+      expect(parsed?.runHistory).toEqual([{ schemaVersion: 0, ...legacyEntry }]);
+      expect(parsed?.runHistory[0]).not.toHaveProperty('runId');
+      expect(parsed?.runHistory[0]).not.toHaveProperty('requestId');
+      expect(parsed?.runHistory[0]).not.toHaveProperty('eventId');
+      expect(parsed?.runHistory[0]).not.toHaveProperty('artifactId');
+      expect(parsed?.runHistory[0]).not.toHaveProperty('approvalId');
+      expect(parsed?.runHistory[0]).not.toHaveProperty('executorResultRef');
+
+      const serialized = serializeJarvisScheduleMetadata(parsed!);
+      const serializedJson = JSON.parse(serialized.slice('jarvis_schedule:'.length));
+      expect(serializedJson.runHistory).toEqual([legacyEntry]);
+      expect(
+        parseJarvisScheduleMetadata({ source_ref: { context: { id: serialized } } } as EventRow),
+      ).toEqual(parsed);
+    },
+  );
 });

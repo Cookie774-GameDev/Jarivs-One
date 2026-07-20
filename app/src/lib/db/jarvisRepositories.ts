@@ -10,6 +10,7 @@ import type {
   JarvisPreEffectTransportFailureEvidence,
   JarvisRun,
   JarvisRunStatus,
+  JarvisScheduledRetrySnapshotV1,
   JarvisTransportAttemptV1,
   JarvisZeroConsequentialEffectEvidenceV1,
 } from '@/lib/jarvis/contracts/execution';
@@ -103,6 +104,7 @@ export type JarvisTransportAttemptMutationInput =
       accountId: string;
       runId: string;
       expectedStatus: 'queued';
+      snapshot: Readonly<JarvisScheduledRetrySnapshotV1>;
       attempt: Omit<JarvisTransportAttemptV1, 'startedEventSeq'>;
       updatedAt: number;
     }
@@ -111,6 +113,7 @@ export type JarvisTransportAttemptMutationInput =
       accountId: string;
       runId: string;
       expectedStatus: 'running';
+      expectedSnapshot: Readonly<JarvisScheduledRetrySnapshotV1>;
       expectedLatestAttemptNumber: number;
       expectedBarrierVersion: 0;
       expectedEventTailSeq: number;
@@ -123,6 +126,7 @@ export type JarvisTransportAttemptMutationInput =
       accountId: string;
       runId: string;
       expectedStatus: 'running';
+      expectedSnapshot: Readonly<JarvisScheduledRetrySnapshotV1>;
       expectedAttemptNumber: number;
       expectedBarrierVersion: 0;
       expectedEventTailSeq: number;
@@ -135,6 +139,7 @@ export type JarvisTransportAttemptMutationInput =
       accountId: string;
       runId: string;
       expectedStatus: 'running';
+      expectedSnapshot: Readonly<JarvisScheduledRetrySnapshotV1>;
       expectedAttemptNumber: number;
       providerFailure: JarvisPreEffectTransportFailureEvidence;
       updatedAt: number;
@@ -292,6 +297,30 @@ function valuesEqual(left: unknown, right: unknown): boolean {
   );
 }
 
+function scheduledRetrySnapshotMatchesRun(
+  snapshot: unknown,
+  run: Readonly<JarvisRun>,
+): snapshot is Readonly<JarvisScheduledRetrySnapshotV1> {
+  if (!snapshot || typeof snapshot !== 'object') return false;
+  const value = snapshot as Partial<JarvisScheduledRetrySnapshotV1>;
+  const request = value.request;
+  return (
+    !!request &&
+    value.accountId === run.accountId &&
+    request.accountId === run.accountId &&
+    request.runId === run.id &&
+    request.surface === 'schedule' &&
+    request.workspaceId === run.workspaceId &&
+    request.projectId === run.projectId &&
+    request.chatId === run.chatId &&
+    request.parentRunId === run.parentRunId &&
+    request.agent?.id === run.agentId &&
+    request.identity?.identityVersion === run.identityVersion &&
+    request.profile?.revisionId === run.profileRevisionId &&
+    valuesEqual(request.model, run.model)
+  );
+}
+
 function normalizeCustomInstructions(value: string): string {
   return value.replace(/\r\n?/g, '\n');
 }
@@ -442,11 +471,56 @@ function transportEventInput(input: {
   title: string;
   safeSummary: string;
   createdAt: number;
+  producerSourceEvidence?: NonNullable<JarvisEvent['producerSourceEvidence']>;
+  canonicalResultEvidence?: NonNullable<JarvisEvent['canonicalResultEvidence']>;
 }): JarvisEvent {
   return {
     ...input,
     sourceRefs: [],
     artifactIds: [],
+  };
+}
+
+function scheduledTransportSettlementEvidence(
+  run: Readonly<JarvisRun>,
+  attempt: Readonly<JarvisTransportAttemptV1>,
+  observedAt: number,
+): NonNullable<JarvisEvent['canonicalResultEvidence']> {
+  return {
+    schemaVersion: 1,
+    kind: 'scheduled_transport_settled',
+    accountId: run.accountId,
+    runId: run.id,
+    requestId: attempt.requestId,
+    attemptNumber: attempt.attemptNumber,
+    state: 'degraded',
+    resultRef: `jresult_${run.id}_${attempt.requestId}_${attempt.attemptNumber}_transport`,
+    observedAt,
+  };
+}
+
+function scheduleAttemptStartSource(
+  run: Readonly<JarvisRun>,
+  snapshot: Readonly<JarvisScheduledRetrySnapshotV1>,
+  attempt: Readonly<Omit<JarvisTransportAttemptV1, 'startedEventSeq'>>,
+  observedAt: number,
+): NonNullable<JarvisEvent['producerSourceEvidence']> {
+  return {
+    schemaVersion: 1,
+    accountId: run.accountId,
+    runId: run.id,
+    requestId: attempt.requestId,
+    attemptNumber: attempt.attemptNumber,
+    producerKind: 'schedule',
+    producerIdentity: {
+      producerKind: 'schedule',
+      eventId: snapshot.eventId,
+      occurrenceId: snapshot.occurrenceId,
+    },
+    resultRef: `jstart_${run.id}_${attempt.requestId}_${attempt.attemptNumber}`,
+    observedAt,
+    phase: 'start',
+    state: 'started',
   };
 }
 
@@ -1538,6 +1612,9 @@ export function createJarvisRepositories(
 
     async compareAndMutateTransportAttempt(input) {
       assertAccountId(input.accountId);
+      const snapshot = structuredClone(
+        input.kind === 'begin_initial' ? input.snapshot : input.expectedSnapshot,
+      );
       return database.transaction('rw', database.jarvis_runs, database.jarvis_events, async () => {
         const row = await requireOwnedRun(database, input.accountId, input.runId);
         const current = fromJarvisRunRow(row);
@@ -1556,6 +1633,8 @@ export function createJarvisRepositories(
         if (input.kind === 'begin_initial') {
           if (
             current.source !== 'schedule' ||
+            current.scheduledRetrySnapshot !== undefined ||
+            !scheduledRetrySnapshotMatchesRun(snapshot, current) ||
             attempts.length !== 0 ||
             !transportAttemptInputIsValid(input.attempt, { number: 1, kind: 'initial' })
           ) {
@@ -1571,6 +1650,7 @@ export function createJarvisRepositories(
             ...withoutCompletedAt,
             status: 'running',
             updatedAt: input.updatedAt,
+            scheduledRetrySnapshot: snapshot,
             transportAttempts: [attempt],
           };
           eventValue = transportEventInput({
@@ -1582,6 +1662,12 @@ export function createJarvisRepositories(
             title: 'Scheduled transport started',
             safeSummary: 'The scheduled provider attempt is in flight.',
             createdAt: input.updatedAt,
+            producerSourceEvidence: scheduleAttemptStartSource(
+              current,
+              snapshot,
+              attempt,
+              input.updatedAt,
+            ),
           });
         } else if (input.kind === 'begin_retry') {
           const latest = attempts.at(-1);
@@ -1591,6 +1677,8 @@ export function createJarvisRepositories(
             : '';
           if (
             current.source !== 'schedule' ||
+            current.scheduledRetrySnapshot === undefined ||
+            !valuesEqual(current.scheduledRetrySnapshot, snapshot) ||
             attempts.length >= MAX_TRANSPORT_ATTEMPTS ||
             !latest ||
             latest.state !== 'retryable_failed' ||
@@ -1637,11 +1725,19 @@ export function createJarvisRepositories(
             title: 'Scheduled transport retry started',
             safeSummary: 'A verified transport retry is in flight.',
             createdAt: input.updatedAt,
+            producerSourceEvidence: scheduleAttemptStartSource(
+              current,
+              snapshot,
+              attempt,
+              input.updatedAt,
+            ),
           });
         } else if (input.kind === 'settle_retryable') {
           const latest = attempts.at(-1);
           if (
             current.source !== 'schedule' ||
+            current.scheduledRetrySnapshot === undefined ||
+            !valuesEqual(current.scheduledRetrySnapshot, snapshot) ||
             !latest ||
             latest.state !== 'provider_in_flight' ||
             latest.attemptNumber !== input.expectedAttemptNumber ||
@@ -1677,12 +1773,19 @@ export function createJarvisRepositories(
             title: 'Scheduled transport retry available',
             safeSummary: 'The failed attempt has verified zero consequential effect.',
             createdAt: input.updatedAt,
+            canonicalResultEvidence: scheduledTransportSettlementEvidence(
+              current,
+              latest,
+              input.updatedAt,
+            ),
           });
         } else {
           const latest = attempts.at(-1);
           if (
             !isFiniteTimestamp(input.completedAt) ||
             current.source !== 'schedule' ||
+            current.scheduledRetrySnapshot === undefined ||
+            !valuesEqual(current.scheduledRetrySnapshot, snapshot) ||
             !latest ||
             latest.state !== 'provider_in_flight' ||
             latest.attemptNumber !== input.expectedAttemptNumber ||
@@ -1713,6 +1816,11 @@ export function createJarvisRepositories(
             title: 'Scheduled transport failed',
             safeSummary: 'The provider attempt ended with uncertain effect state.',
             createdAt: input.updatedAt,
+            canonicalResultEvidence: scheduledTransportSettlementEvidence(
+              current,
+              latest,
+              input.updatedAt,
+            ),
           });
         }
 
@@ -1837,9 +1945,6 @@ export function createJarvisRepositories(
       ) {
         repositoryError('attempt_effect_integrity_error');
       }
-      if (!validateJarvisEvent({ ...eventInput, runId, seq: 1 }).ok) {
-        repositoryError('event_idempotency_conflict');
-      }
       return database.transaction('rw', database.jarvis_runs, database.jarvis_events, async () => {
         await requireOwnedRun(database, accountId, runId);
         const existing = await database.jarvis_events
@@ -1847,7 +1952,11 @@ export function createJarvisRepositories(
           .equals([runId, eventInput.idempotencyKey])
           .first();
         if (existing) {
-          const desiredRetry = toJarvisEventRow({ ...eventInput, runId, seq: existing.seq });
+          const desired = { ...eventInput, runId, seq: existing.seq };
+          if (!validateJarvisEvent(desired).ok) {
+            repositoryError('event_idempotency_conflict');
+          }
+          const desiredRetry = toJarvisEventRow(desired);
           if (!valuesEqual(existing, desiredRetry)) {
             repositoryError('event_idempotency_conflict');
           }
@@ -1863,6 +1972,9 @@ export function createJarvisRepositories(
           runId,
           seq: nextSequence(lastEvent?.seq),
         };
+        if (!validateJarvisEvent(value).ok) {
+          repositoryError('event_idempotency_conflict');
+        }
         const row = toJarvisEventRow(value);
         await database.jarvis_events.add(row);
         return fromJarvisEventRow(row);

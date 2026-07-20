@@ -1128,6 +1128,207 @@ function validateRequestEnvelopeShape(
   validateRequiredField(record, 'createdAt', path, errors, validateFiniteNumber);
 }
 
+const SCHEDULE_SNAPSHOT_SECRET =
+  /(?:authorization\s*:\s*bearer\s+\S+|(?:api[_ -]?key|access[_ -]?token|refresh[_ -]?token|password|cookie|client[_ -]?secret)\s*[:=]\s*\S+|\bjsecret_[A-Za-z0-9_-]+\b|BEGIN [A-Z ]*PRIVATE KEY)/i;
+
+function containsScheduleSnapshotSecret(value: unknown, seen = new WeakSet<object>()): boolean {
+  if (typeof value === 'string') return SCHEDULE_SNAPSHOT_SECRET.test(value);
+  if (value === null || typeof value !== 'object' || seen.has(value)) return false;
+  seen.add(value);
+  if (Array.isArray(value)) {
+    return value.some((entry) => containsScheduleSnapshotSecret(entry, seen));
+  }
+  return Object.values(value).some((entry) => containsScheduleSnapshotSecret(entry, seen));
+}
+
+function validateScheduledRetrySnapshotShape(
+  value: unknown,
+  path: ValidationPath,
+  errors: ValidationErrors,
+): void {
+  const record = validateClosedRecord(
+    value,
+    ['schemaVersion', 'accountId', 'eventId', 'occurrenceId', 'dueAt', 'logicalAttempt', 'request'],
+    path,
+    errors,
+  );
+  if (!record) return;
+  validateRequiredField(record, 'schemaVersion', path, errors, (entry, entryPath, entryErrors) =>
+    validateLiteral(entry, 1, entryPath, entryErrors),
+  );
+  validateRequiredField(record, 'accountId', path, errors, validateIdentifier);
+  validateRequiredField(record, 'eventId', path, errors, validateIdentifier);
+  validateRequiredField(record, 'occurrenceId', path, errors, (entry, entryPath, entryErrors) => {
+    validateIdentifier(entry, entryPath, entryErrors);
+    if (typeof entry === 'string' && !entry.startsWith('jocc_')) {
+      addError(entryErrors, 'invalid_identifier', entryPath);
+    }
+  });
+  validateRequiredField(record, 'dueAt', path, errors, validateFiniteNumber);
+  validateRequiredField(record, 'logicalAttempt', path, errors, validateNonNegativeInteger);
+  const requestPath = childPath(path, 'request');
+  const request = dataField(record, 'request');
+  const requestRecord = validateClosedRecord(
+    request,
+    [
+      'schemaVersion',
+      'runId',
+      'accountId',
+      'workspaceId',
+      'projectId',
+      'chatId',
+      'parentRunId',
+      'agent',
+      'surface',
+      'interactionMode',
+      'responseModeHint',
+      'userText',
+      'messageHistory',
+      'identity',
+      'profile',
+      'capabilities',
+      'model',
+      'context',
+      'outputContract',
+    ],
+    requestPath,
+    errors,
+  );
+  if (!requestRecord) return;
+  validateRequestEnvelopeShape(
+    { ...requestRecord, requestId: 'snapshot-request', createdAt: 0 },
+    requestPath,
+    errors,
+  );
+  if (containsScheduleSnapshotSecret(requestRecord)) {
+    addError(errors, 'invalid_type', requestPath);
+  }
+  if (dataField(requestRecord, 'surface') !== 'schedule') {
+    addError(errors, 'invalid_type', childPath(requestPath, 'surface'));
+  }
+  requireEqualBinding(
+    requestRecord,
+    'accountId',
+    dataField(record, 'accountId'),
+    requestPath,
+    errors,
+  );
+}
+
+function validateHiveStackStepShape(
+  value: unknown,
+  path: ValidationPath,
+  errors: ValidationErrors,
+): void {
+  const record = validateClosedRecord(
+    value,
+    [
+      'schemaVersion',
+      'stepId',
+      'label',
+      'workerId',
+      'agent',
+      'model',
+      'messages',
+      'workingDirectory',
+    ],
+    path,
+    errors,
+  );
+  if (!record) return;
+  validateRequiredField(record, 'schemaVersion', path, errors, (entry, entryPath, entryErrors) =>
+    validateLiteral(entry, 1, entryPath, entryErrors),
+  );
+  for (const key of ['stepId', 'label', 'workerId']) {
+    validateRequiredField(record, key, path, errors, validateIdentifier);
+  }
+  validateRequiredField(record, 'agent', path, errors, (entry, entryPath, entryErrors) => {
+    const agent = validateClosedRecord(
+      entry,
+      [
+        'id',
+        'slug',
+        'builtin',
+        'name',
+        'description',
+        'systemPrompt',
+        'toolsAllowed',
+        'memoryScope',
+        'capabilities',
+        'createdAt',
+        'updatedAt',
+      ],
+      entryPath,
+      entryErrors,
+    );
+    if (!agent) return;
+    for (const key of ['id', 'slug', 'name', 'description']) {
+      validateRequiredField(agent, key, entryPath, entryErrors, validateIdentifier);
+    }
+    validateRequiredField(agent, 'systemPrompt', entryPath, entryErrors, validateString);
+    validateRequiredField(agent, 'builtin', entryPath, entryErrors, validateBoolean);
+    validateRequiredField(agent, 'toolsAllowed', entryPath, entryErrors, validateStringArray);
+    validateRequiredField(agent, 'capabilities', entryPath, entryErrors, validateStringArray);
+    validateRequiredField(
+      agent,
+      'memoryScope',
+      entryPath,
+      entryErrors,
+      (scope, scopePath, scopeErrors) =>
+        validateEnum(scope, ['agent', 'project', 'workspace'] as const, scopePath, scopeErrors),
+    );
+    validateRequiredField(agent, 'createdAt', entryPath, entryErrors, validateFiniteNumber);
+    validateRequiredField(agent, 'updatedAt', entryPath, entryErrors, validateFiniteNumber);
+  });
+  validateRequiredField(record, 'model', path, errors, validateModelSnapshotShape);
+  validateRequiredField(record, 'messages', path, errors, (entry, entryPath, entryErrors) =>
+    validateArray(entry, entryPath, entryErrors, validateLlmMessage),
+  );
+  validateOptionalField(record, 'workingDirectory', path, errors, validateString);
+  if (containsScheduleSnapshotSecret(record)) addError(errors, 'invalid_type', path);
+}
+
+function validateHiveStackPlanShape(
+  value: unknown,
+  path: ValidationPath,
+  errors: ValidationErrors,
+): void {
+  const record = validateClosedRecord(
+    value,
+    ['schemaVersion', 'accountId', 'parentRunId', 'stackId', 'steps'],
+    path,
+    errors,
+  );
+  if (!record) return;
+  validateRequiredField(record, 'schemaVersion', path, errors, (entry, entryPath, entryErrors) =>
+    validateLiteral(entry, 1, entryPath, entryErrors),
+  );
+  for (const key of ['accountId', 'parentRunId', 'stackId']) {
+    validateRequiredField(record, key, path, errors, validateIdentifier);
+  }
+  validateRequiredField(record, 'steps', path, errors, (entry, entryPath, entryErrors) => {
+    validateArray(entry, entryPath, entryErrors, validateHiveStackStepShape);
+    if (!Array.isArray(entry)) return;
+    if (entry.length === 0 || entry.length > 16) addError(entryErrors, 'invalid_type', entryPath);
+    const ids = new Set<string>();
+    for (let index = 0; index < entry.length; index += 1) {
+      const step = entry[index];
+      if (!isRecordValue(step)) continue;
+      const stepId = dataField(step, 'stepId');
+      if (typeof stepId === 'string') {
+        if (ids.has(stepId))
+          addError(
+            entryErrors,
+            'invalid_identifier',
+            childPath(childPath(entryPath, index), 'stepId'),
+          );
+        ids.add(stepId);
+      }
+    }
+  });
+  if (containsScheduleSnapshotSecret(record)) addError(errors, 'invalid_type', path);
+}
+
 function validateCompiledPromptLayerShape(
   value: unknown,
   path: ValidationPath,
@@ -1958,6 +2159,8 @@ function validateRunShape(value: unknown, path: ValidationPath, errors: Validati
       'createdAt',
       'updatedAt',
       'completedAt',
+      'scheduledRetrySnapshot',
+      'hiveStackPlan',
       'transportAttempts',
     ],
     path,
@@ -1983,6 +2186,57 @@ function validateRunShape(value: unknown, path: ValidationPath, errors: Validati
   validateRequiredField(record, 'updatedAt', path, errors, validateFiniteNumber);
   if (dataField(record, 'completedAt') !== undefined) {
     validateRequiredField(record, 'completedAt', path, errors, validateFiniteNumber);
+  }
+  validateOptionalField(
+    record,
+    'scheduledRetrySnapshot',
+    path,
+    errors,
+    validateScheduledRetrySnapshotShape,
+  );
+  const snapshot = dataField(record, 'scheduledRetrySnapshot');
+  if (isRecordValue(snapshot)) {
+    if (dataField(record, 'source') !== 'schedule') {
+      addError(errors, 'invalid_type', childPath(path, 'source'));
+    }
+    requireEqualBinding(
+      snapshot,
+      'accountId',
+      dataField(record, 'accountId'),
+      childPath(path, 'scheduledRetrySnapshot'),
+      errors,
+    );
+    const request = dataField(snapshot, 'request');
+    if (isRecordValue(request)) {
+      requireEqualBinding(
+        request,
+        'runId',
+        dataField(record, 'id'),
+        childPath(childPath(path, 'scheduledRetrySnapshot'), 'request'),
+        errors,
+      );
+    }
+  }
+  validateOptionalField(record, 'hiveStackPlan', path, errors, validateHiveStackPlanShape);
+  const hivePlan = dataField(record, 'hiveStackPlan');
+  if (isRecordValue(hivePlan)) {
+    if (dataField(record, 'source') !== 'hive_final') {
+      addError(errors, 'invalid_type', childPath(path, 'source'));
+    }
+    requireEqualBinding(
+      hivePlan,
+      'accountId',
+      dataField(record, 'accountId'),
+      childPath(path, 'hiveStackPlan'),
+      errors,
+    );
+    requireEqualBinding(
+      hivePlan,
+      'parentRunId',
+      dataField(record, 'id'),
+      childPath(path, 'hiveStackPlan'),
+      errors,
+    );
   }
   validateOptionalField(record, 'transportAttempts', path, errors, validateTransportAttemptArray);
   const attempts = dataField(record, 'transportAttempts');

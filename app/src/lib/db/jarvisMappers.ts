@@ -217,6 +217,12 @@ export function toJarvisRunRow(value: JarvisRun): JarvisRunRow {
     created_at: value.createdAt,
     updated_at: value.updatedAt,
     ...(value.completedAt === undefined ? {} : { completed_at: value.completedAt }),
+    ...(value.scheduledRetrySnapshot === undefined
+      ? {}
+      : { scheduled_retry_snapshot: cloneDetached(value.scheduledRetrySnapshot) }),
+    ...(value.hiveStackPlan === undefined
+      ? {}
+      : { hive_stack_plan: cloneDetached(value.hiveStackPlan) }),
     ...(value.transportAttempts === undefined
       ? {}
       : { transport_attempts: cloneDetached([...value.transportAttempts]) }),
@@ -240,6 +246,12 @@ export function fromJarvisRunRow(row: JarvisRunRow): JarvisRun {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     ...(row.completed_at === undefined ? {} : { completedAt: row.completed_at }),
+    ...(row.scheduled_retry_snapshot === undefined
+      ? {}
+      : { scheduledRetrySnapshot: cloneDetached(row.scheduled_retry_snapshot) }),
+    ...(row.hive_stack_plan === undefined
+      ? {}
+      : { hiveStackPlan: cloneDetached(row.hive_stack_plan) }),
     ...(row.transport_attempts === undefined
       ? {}
       : { transportAttempts: cloneDetached(row.transport_attempts) }),

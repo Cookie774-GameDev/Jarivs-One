@@ -20,6 +20,7 @@ import type {
   JarvisDurableLiveEvidenceV1,
   JarvisExecutionEvidenceV1,
   JarvisProducerSourceEvidenceV1,
+  JarvisScheduledRetrySnapshotV1,
   JarvisTransportAttemptV1,
 } from '@/lib/jarvis/contracts/execution';
 
@@ -209,6 +210,8 @@ export type JarvisRunRow = {
   created_at: number;
   updated_at: number;
   completed_at?: number;
+  scheduled_retry_snapshot?: JarvisScheduledRetrySnapshotV1;
+  hive_stack_plan?: import('@/lib/jarvis/contracts/execution').JarvisHiveStackPlanV1;
   transport_attempts?: JarvisTransportAttemptV1[];
 };
 

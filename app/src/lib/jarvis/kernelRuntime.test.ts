@@ -11,7 +11,9 @@ import { createJarvisRepositories } from '@/lib/db/jarvisRepositories';
 import { TEST_INDEXED_DB, uniqueTestDbName } from '@/test/indexedDb';
 import { useAuthStore } from '@/stores/auth';
 import type { Agent, ChatId, WorkspaceId } from '@/types';
-import type { JarvisResponseEnvelope, JarvisRun } from './contracts';
+import { createJarvisHiveLiveEvidenceVerifier } from '@/lib/ai/stacks/hiveWorkerExecutor';
+import { createJarvisScheduleLiveEvidenceVerifier } from '@/features/schedule/jarvisScheduleDispatch';
+import type { JarvisHiveStackPlanV1, JarvisResponseEnvelope, JarvisRun } from './contracts';
 import {
   createJarvisActionLiveEvidenceVerifiers,
   jarvisTerminalHandoffReceiptBrand,
@@ -24,7 +26,11 @@ import type {
   JarvisTerminalOwnedExecution,
 } from './approvalEngine';
 import type { JarvisKernelTurnInput } from './kernel';
-import { createJarvisKernelRuntime } from './kernelRuntime';
+import { createJarvisExecutionJournal } from './executionJournal/journal';
+import {
+  createJarvisKernelRuntime,
+  type JarvisAllocatedScheduledOccurrence,
+} from './kernelRuntime';
 
 const NOW = 1_786_300_100_000;
 
@@ -1611,5 +1617,575 @@ describe('createJarvisKernelRuntime primary-host lifecycle', () => {
     });
     expect(prepare).toHaveBeenCalledWith(turn.accountId, turn.run.id);
     expect(deliver).toHaveBeenCalledWith(plan);
+  });
+});
+
+describe('createJarvisKernelRuntime scheduled attempt authority', () => {
+  let db: JarvisDexie;
+
+  beforeEach(async () => {
+    db = createJarvisDb(uniqueTestDbName('kernel-runtime-schedule'), TEST_INDEXED_DB);
+    await db.open();
+    useAuthStore.setState({ cloudSession: null, localUserId: 'account-kernel' });
+  });
+
+  afterEach(async () => {
+    await db.delete();
+  });
+
+  it('allocates, prepares, and atomically begins one snapshot-bound opaque occurrence', async () => {
+    const repositories = createJarvisRepositories(db);
+    const journal = createJarvisExecutionJournal(repositories, { now: () => NOW });
+    const basis = kernelTurn();
+    await db.chats.add({
+      id: basis.chatId as ChatId,
+      workspace_id: basis.workspaceId as WorkspaceId,
+      title: 'Scheduled runtime kernel',
+      mode: 'chat',
+      active_agent_ids: [basis.agent.id],
+      created_at: NOW - 20,
+      updated_at: NOW - 20,
+    });
+    const scheduleVerifier = createJarvisScheduleLiveEvidenceVerifier({
+      runs: repositories.run,
+      events: repositories.event,
+    });
+    const providerVerifier = Object.freeze({
+      state: 'ready' as const,
+      producerKind: 'provider' as const,
+      verifier: Object.freeze({ verify: vi.fn(async (value: unknown) => value) }),
+    });
+    const providerStart = vi.fn(() => ({
+      receipt: {
+        providerId: basis.model.providerId,
+        modelId: basis.model.modelId,
+        modelSnapshotRef: `${basis.model.providerId}:${basis.model.modelId}`,
+        operations: ['generate'] as const,
+        startedAt: NOW + 5,
+      },
+      response: Promise.resolve({
+        text: 'Scheduled verified answer.',
+        provider: basis.model,
+        verifiedFacts: {
+          executionState: {
+            status: 'completed' as const,
+            verifiedBy: 'journal' as const,
+            lastEventSeq: 4,
+          },
+          modelState: 'authenticated' as const,
+          plugins: [],
+          mcps: [],
+        },
+        completedAt: NOW + 10,
+      }),
+      abortAfterStart: vi.fn(),
+    }));
+    const runtime = createJarvisKernelRuntime({
+      db,
+      artifactEvidenceAuthorities: artifactAuthorities() as never,
+      journal,
+      cancellationDeliveryAuthority: {} as never,
+      abortRegistrationAuthority: { registerIssuedOwner: vi.fn(() => vi.fn()) },
+      bindKernelActions: vi.fn() as never,
+      liveEvidenceVerifiers: {
+        ...unavailableVerifiers(),
+        provider: providerVerifier,
+        schedule: { state: 'ready', verifier: scheduleVerifier },
+      } as never,
+      resolveScheduledOccurrence: vi.fn(async () => ({
+        workspaceId: basis.workspaceId,
+        chatId: basis.chatId,
+        userMessageId: basis.userMessageId,
+        agent: basis.agent,
+        interactionMode: 'agent' as const,
+        userText: 'Run the saved schedule prompt.',
+        messageHistory: [],
+        model: basis.model,
+        identity: basis.identity,
+        profile: basis.profile,
+        capabilities: basis.capabilities,
+        context: basis.context,
+        outputContract: { ...basis.outputContract, voiceDelivery: 'none' as const },
+      })),
+      prepareProvider: vi.fn(async () => ({
+        resolveConfiguration: vi.fn(async () => ({ start: providerStart, dispose: vi.fn() })),
+        dispose: vi.fn(),
+      })),
+      processResponse: vi.fn(async (raw, request) => ({
+        schemaVersion: 1 as const,
+        requestId: request.requestId,
+        runId: request.runId,
+        mode: 'direct_answer' as const,
+        displayText: raw.text,
+        spokenText: raw.text,
+        parts: [{ kind: 'text' as const, text: raw.text }],
+        artifactIds: [],
+        sourceRefs: [],
+        executionState: {
+          status: 'completed' as const,
+          verifiedBy: 'journal' as const,
+          lastEventSeq: 4,
+        },
+        provider: raw.provider,
+        enforcement: {
+          linted: true,
+          violations: [],
+          repairAttempted: false,
+          repairSucceeded: false,
+          fallbackUsed: false,
+        },
+        completedAt: raw.completedAt,
+      })),
+      takeProviderArtifactDrafts: vi.fn(() => []),
+      randomUUID: () => 'scheduled-runtime-uuid',
+      now: () => NOW,
+    });
+
+    const allocated = await runtime.kernel.allocateScheduledOccurrence({
+      accountId: basis.accountId,
+      eventId: 'event-scheduled-runtime',
+      dueAt: NOW - 100,
+    });
+    expect(allocated.kind).toBe('committed');
+    if (allocated.kind !== 'committed') throw new Error('expected allocation');
+    expect(Object.keys(allocated.value)).toEqual([]);
+
+    await expect(
+      runtime.kernel.prepareScheduledAttempt({
+        allocation: Object.freeze({}) as JarvisAllocatedScheduledOccurrence,
+      }),
+    ).rejects.toThrow('kernel_schedule_allocation_invalid');
+
+    const prepared = await runtime.kernel.prepareScheduledAttempt({ allocation: allocated.value });
+    expect(Object.keys(prepared)).toEqual([]);
+    const begun = await runtime.kernel.beginPreparedScheduledAttempt({ prepared });
+    expect(begun.kind).toBe('committed');
+    if (begun.kind !== 'committed') throw new Error('expected scheduled begin');
+    expect(Object.keys(begun.value).sort()).toEqual(['dispose', 'requestCancellation']);
+
+    const rows = await db.jarvis_runs.toArray();
+    expect(rows).toHaveLength(1);
+    const persisted = fromJarvisRunRow(rows[0]!);
+    expect(persisted).toMatchObject({
+      source: 'schedule',
+      status: 'running',
+      scheduledRetrySnapshot: {
+        schemaVersion: 1,
+        accountId: basis.accountId,
+        eventId: 'event-scheduled-runtime',
+        dueAt: NOW - 100,
+        logicalAttempt: 0,
+        request: {
+          runId: persisted.id,
+          surface: 'schedule',
+          userText: 'Run the saved schedule prompt.',
+        },
+      },
+      transportAttempts: [
+        {
+          schemaVersion: 1,
+          attemptNumber: 1,
+          kind: 'initial',
+          requestId: 'jreq_scheduled-runtime-uuid',
+          state: 'provider_in_flight',
+        },
+      ],
+    });
+    await expect(
+      runtime.kernel.dispatchPreparedScheduledAttempt({ prepared, handle: begun.value }),
+    ).resolves.toMatchObject({
+      kind: 'committed',
+      value: {
+        kind: 'committed',
+        result: { response: { displayText: 'Scheduled verified answer.' } },
+      },
+    });
+    expect(providerStart).toHaveBeenCalledOnce();
+    const events = await repositories.event.listByRun(basis.accountId, persisted.id, { limit: 50 });
+    const canonical = events.find(
+      (event) => event.canonicalResultEvidence?.kind === 'kernel_turn_committed',
+    );
+    const scheduleResult = events.find(
+      (event) =>
+        event.producerSourceEvidence?.producerKind === 'schedule' &&
+        event.producerSourceEvidence.phase === 'result',
+    );
+    const scheduleCompleted = events.find(
+      (event) =>
+        event.liveEvidence?.producerKind === 'schedule' &&
+        event.liveEvidence.transition === 'completed',
+    );
+    expect(canonical).toBeDefined();
+    expect(scheduleResult?.producerSourceEvidence).toMatchObject({
+      resultAuthority: {
+        runId: persisted.id,
+        eventSeq: canonical!.seq,
+        evidenceRef: canonical!.canonicalResultEvidence!.resultRef,
+      },
+    });
+    expect(scheduleCompleted?.liveEvidence).toMatchObject({
+      registrationId: `${persisted.id}:schedule:1`,
+      resultEventSeq: scheduleResult!.seq,
+      previousProofRef: expect.stringMatching(/^jlive_/),
+    });
+    expect(canonical!.seq).toBeLessThan(scheduleResult!.seq);
+    expect(scheduleResult!.seq).toBeLessThan(scheduleCompleted!.seq);
+    expect(fromJarvisRunRow((await db.jarvis_runs.get(persisted.id))!)).toMatchObject({
+      status: 'completed',
+      completedAt: NOW + 10,
+    });
+    await expect(runtime.kernel.beginPreparedScheduledAttempt({ prepared })).rejects.toThrow(
+      'kernel_schedule_preparation_invalid',
+    );
+    begun.value.dispose();
+  });
+
+  it('fails closed before resolving changed settings for a snapshotless run from an earlier runtime', async () => {
+    const repositories = createJarvisRepositories(db);
+    const journal = createJarvisExecutionJournal(repositories, { now: () => NOW });
+    const basis = kernelTurn();
+    const originalResolver = vi.fn(async () => ({
+      workspaceId: basis.workspaceId,
+      chatId: basis.chatId,
+      userMessageId: basis.userMessageId,
+      agent: basis.agent,
+      interactionMode: 'agent' as const,
+      userText: 'Original immutable schedule prompt.',
+      messageHistory: [],
+      model: basis.model,
+      identity: basis.identity,
+      profile: basis.profile,
+      capabilities: basis.capabilities,
+      context: basis.context,
+      outputContract: { ...basis.outputContract, voiceDelivery: 'none' as const },
+    }));
+    const runtimeA = createJarvisKernelRuntime({
+      db,
+      artifactEvidenceAuthorities: artifactAuthorities() as never,
+      journal,
+      cancellationDeliveryAuthority: {} as never,
+      abortRegistrationAuthority: { registerIssuedOwner: vi.fn(() => vi.fn()) },
+      bindKernelActions: vi.fn() as never,
+      liveEvidenceVerifiers: unavailableVerifiers() as never,
+      resolveScheduledOccurrence: originalResolver,
+      prepareProvider: vi.fn() as never,
+      processResponse: vi.fn() as never,
+      takeProviderArtifactDrafts: vi.fn(() => []),
+      randomUUID: () => 'snapshotless-runtime-a',
+      now: () => NOW,
+    });
+    await expect(
+      runtimeA.kernel.allocateScheduledOccurrence({
+        accountId: basis.accountId,
+        eventId: 'event-snapshotless-restart',
+        dueAt: NOW - 200,
+      }),
+    ).resolves.toMatchObject({ kind: 'committed' });
+    const snapshotless = fromJarvisRunRow((await db.jarvis_runs.toArray())[0]!);
+    expect(snapshotless).toMatchObject({
+      source: 'schedule',
+      status: 'queued',
+    });
+    expect(snapshotless).not.toHaveProperty('scheduledRetrySnapshot');
+    expect(snapshotless).not.toHaveProperty('transportAttempts');
+
+    useAuthStore.setState({ localUserId: 'account-other' });
+    useAuthStore.setState({ localUserId: basis.accountId });
+    const changedResolver = vi.fn(async () => ({
+      ...(await originalResolver()),
+      userText: 'Changed settings must never bind to the old run.',
+    }));
+    const runtimeB = createJarvisKernelRuntime({
+      db,
+      artifactEvidenceAuthorities: artifactAuthorities() as never,
+      journal,
+      cancellationDeliveryAuthority: {} as never,
+      abortRegistrationAuthority: { registerIssuedOwner: vi.fn(() => vi.fn()) },
+      bindKernelActions: vi.fn() as never,
+      liveEvidenceVerifiers: unavailableVerifiers() as never,
+      resolveScheduledOccurrence: changedResolver,
+      prepareProvider: vi.fn() as never,
+      processResponse: vi.fn() as never,
+      takeProviderArtifactDrafts: vi.fn(() => []),
+      randomUUID: () => 'snapshotless-runtime-b',
+      now: () => NOW + 1,
+    });
+
+    await expect(
+      runtimeB.kernel.allocateScheduledOccurrence({
+        accountId: basis.accountId,
+        eventId: 'event-snapshotless-restart',
+        dueAt: NOW - 200,
+      }),
+    ).rejects.toThrow('kernel_schedule_unbound_restart');
+    expect(changedResolver).not.toHaveBeenCalled();
+    expect(fromJarvisRunRow((await db.jarvis_runs.toArray())[0]!)).toEqual(snapshotless);
+    expect(await db.jarvis_events.count()).toBe(0);
+  });
+});
+
+describe('createJarvisKernelRuntime Hive worker authority', () => {
+  let db: JarvisDexie;
+
+  beforeEach(async () => {
+    db = createJarvisDb(uniqueTestDbName('kernel-runtime-hive'), TEST_INDEXED_DB);
+    await db.open();
+    useAuthStore.setState({ cloudSession: null, localUserId: 'account-kernel' });
+  });
+
+  afterEach(async () => {
+    await db.delete();
+  });
+
+  it('binds one immutable plan and derives one opaque worker from parent plus step only', async () => {
+    const repositories = createJarvisRepositories(db);
+    const journal = createJarvisExecutionJournal(repositories, { now: () => NOW });
+    const basis = kernelTurn();
+    const parent = await journal.allocateRun({
+      id: 'jrun_hive_parent',
+      accountId: basis.accountId,
+      workspaceId: basis.workspaceId,
+      chatId: basis.chatId,
+      source: 'hive_final',
+      agentId: basis.agent.id,
+      identityVersion: basis.identity.identityVersion,
+      profileRevisionId: basis.profile.revisionId,
+      model: basis.model,
+    });
+    const plan: JarvisHiveStackPlanV1 = {
+      schemaVersion: 1,
+      accountId: parent.accountId,
+      parentRunId: parent.id,
+      stackId: 'stack-runtime-hive',
+      steps: [
+        {
+          schemaVersion: 1,
+          stepId: 'step-research',
+          label: 'Research',
+          workerId: 'worker-research',
+          agent: {
+            id: basis.agent.id,
+            slug: 'researcher',
+            builtin: true,
+            name: 'Researcher',
+            description: 'Research specialist',
+            systemPrompt: 'Keep this exact specialist prompt.',
+            toolsAllowed: [],
+            memoryScope: 'workspace',
+            capabilities: ['research'],
+            createdAt: NOW - 20,
+            updatedAt: NOW - 10,
+          },
+          model: basis.model,
+          messages: [{ role: 'user', content: 'Research this exact topic.' }],
+        },
+        {
+          schemaVersion: 1,
+          stepId: 'step-polish',
+          label: 'Polish',
+          workerId: 'worker-polish',
+          agent: {
+            id: basis.agent.id,
+            slug: 'polisher',
+            builtin: true,
+            name: 'Polisher',
+            description: 'Polish specialist',
+            systemPrompt: 'Keep this exact polish prompt.',
+            toolsAllowed: [],
+            memoryScope: 'workspace',
+            capabilities: ['writing'],
+            createdAt: NOW - 20,
+            updatedAt: NOW - 10,
+          },
+          model: basis.model,
+          messages: [{ role: 'user', content: 'Research this exact topic.' }],
+        },
+      ],
+    };
+    const execute = vi.fn(async () => ({
+      status: 'completed' as const,
+      providerId: basis.model.providerId,
+      modelId: basis.model.modelId,
+      text: 'Verified worker output.',
+      inputTokens: 10,
+      outputTokens: 20,
+      costUsd: 0.01,
+      observedAt: NOW + 10,
+    }));
+    const hiveVerifier = createJarvisHiveLiveEvidenceVerifier({
+      runs: repositories.run,
+      events: repositories.event,
+    });
+    const runtime = createJarvisKernelRuntime({
+      db,
+      artifactEvidenceAuthorities: artifactAuthorities() as never,
+      journal,
+      cancellationDeliveryAuthority: {} as never,
+      abortRegistrationAuthority: { registerIssuedOwner: vi.fn(() => vi.fn()) },
+      bindKernelActions: vi.fn() as never,
+      liveEvidenceVerifiers: {
+        ...unavailableVerifiers(),
+        hive: { state: 'ready', verifier: hiveVerifier },
+      } as never,
+      hiveWorkerExecutor: { execute },
+      prepareProvider: vi.fn() as never,
+      processResponse: vi.fn() as never,
+      takeProviderArtifactDrafts: vi.fn(() => []),
+      randomUUID: () => 'hive-runtime-uuid',
+      now: () => NOW,
+    });
+
+    const boundPlan = await runtime.kernel.bindHiveStackPlan({ plan });
+    expect(boundPlan).toMatchObject({
+      kind: 'committed',
+      value: { hiveStackPlan: plan },
+    });
+    if (boundPlan.kind !== 'committed') throw new Error('expected bound Hive plan');
+    const opened = await runtime.kernel.openHiveWorker({
+      parentRunId: parent.id,
+      stepId: 'step-research',
+    });
+    expect(opened.kind).toBe('committed');
+    if (opened.kind !== 'committed') throw new Error('expected Hive worker handle');
+    expect(Object.keys(opened.value).sort()).toEqual(['dispose', 'execute', 'requestCancellation']);
+    const completed = await opened.value.execute();
+    expect(completed).toMatchObject({
+      kind: 'committed',
+      value: {
+        result: {
+          workerId: 'worker-research',
+          stepId: 'step-research',
+          status: 'completed',
+          text: 'Verified worker output.',
+        },
+      },
+    });
+    if (completed.kind !== 'committed') throw new Error('expected first Hive outcome');
+    expect(execute).toHaveBeenCalledWith({
+      agent: expect.objectContaining({
+        slug: 'researcher',
+        system_prompt: 'Keep this exact specialist prompt.',
+      }),
+      messages: [{ role: 'user', content: 'Research this exact topic.' }],
+      signal: expect.any(AbortSignal),
+      connectionId: basis.model.connectionId,
+    });
+    await expect(
+      runtime.kernel.openHiveWorker({
+        parentRunId: parent.id,
+        stepId: 'step-research',
+      }),
+    ).rejects.toThrow('kernel_hive_step_consumed');
+    const child = (await db.jarvis_runs.toArray())
+      .map(fromJarvisRunRow)
+      .find((candidate) => candidate.parentRunId === parent.id);
+    expect(child).toMatchObject({ status: 'completed', parentRunId: parent.id });
+    const childEvents = await repositories.event.listByRun(parent.accountId, child!.id, {
+      limit: 10,
+    });
+    expect(childEvents.at(-1)?.canonicalResultEvidence).toMatchObject({
+      kind: 'hive_child_provider_result',
+      parentRunId: parent.id,
+      stepId: 'step-research',
+    });
+    const parentEvents = await repositories.event.listByRun(parent.accountId, parent.id, {
+      limit: 10,
+    });
+    expect(
+      parentEvents.find(
+        (event) =>
+          event.producerSourceEvidence?.producerKind === 'hive' &&
+          event.producerSourceEvidence.phase === 'result' &&
+          event.producerSourceEvidence.producerIdentity.stepId === 'step-research',
+      )?.producerSourceEvidence,
+    ).toMatchObject({
+      producerKind: 'hive',
+      phase: 'result',
+      producerIdentity: { stepId: 'step-research', workerId: 'worker-research' },
+      resultAuthority: { runId: child!.id, eventSeq: childEvents.at(-1)!.seq },
+    });
+    expect(
+      parentEvents
+        .filter(
+          (event) =>
+            event.liveEvidence?.producerKind === 'hive' &&
+            event.liveEvidence.registrationId === `${parent.id}:hive:step-research`,
+        )
+        .map((event) => ({
+          transition: event.liveEvidence!.transition,
+          previousProofRef: event.liveEvidence!.previousProofRef,
+        })),
+    ).toEqual([
+      { transition: 'busy', previousProofRef: undefined },
+      { transition: 'completed', previousProofRef: expect.stringMatching(/^jlive_/) },
+    ]);
+
+    const polished = await runtime.kernel.openHiveWorker({
+      parentRunId: parent.id,
+      stepId: 'step-polish',
+    });
+    expect(polished.kind).toBe('committed');
+    if (polished.kind !== 'committed') throw new Error('expected second Hive worker handle');
+    const polishedCompleted = await polished.value.execute();
+    expect(polishedCompleted).toMatchObject({ kind: 'committed' });
+    if (polishedCompleted.kind !== 'committed') throw new Error('expected second Hive outcome');
+    expect(execute).toHaveBeenLastCalledWith({
+      agent: expect.objectContaining({
+        slug: 'polisher',
+        system_prompt: 'Keep this exact polish prompt.',
+      }),
+      messages: [
+        { role: 'user', content: 'Research this exact topic.' },
+        { role: 'assistant', content: 'Verified worker output.' },
+        {
+          role: 'user',
+          content: 'Continue to the next Hive step (Polish). Use the content above as input.',
+        },
+      ],
+      signal: expect.any(AbortSignal),
+      connectionId: basis.model.connectionId,
+    });
+
+    const finalInput = {
+      run: boundPlan.value,
+      attempt: {
+        kind: 'initial' as const,
+        requestId: 'jreq_hive_final_authority',
+        runId: parent.id,
+        attemptNumber: 1 as const,
+      },
+      userMessageId: basis.userMessageId,
+      interactionMode: basis.interactionMode,
+      agent: basis.agent,
+      userText: basis.userText,
+      messageHistory: basis.messageHistory,
+      identity: basis.identity,
+      profile: basis.profile,
+      model: basis.model,
+      capabilities: basis.capabilities,
+      context: basis.context,
+      outputContract: basis.outputContract,
+      workers: [completed.value, polishedCompleted.value],
+    };
+    const originalParentResultRow = toJarvisEventRow(
+      parentEvents.find(
+        (event) =>
+          event.producerSourceEvidence?.producerKind === 'hive' &&
+          event.producerSourceEvidence.phase === 'result',
+      )!,
+    );
+    await db.jarvis_events.put({ ...originalParentResultRow, status: 'tampered' });
+    await expect(runtime.kernel.runHiveFinalTurn(finalInput)).rejects.toThrow(
+      'kernel_hive_worker_authority_changed',
+    );
+    await db.jarvis_events.put(originalParentResultRow);
+
+    useAuthStore.setState({
+      cloudSession: { user_id: parent.accountId } as never,
+      localUserId: parent.accountId,
+    });
+    await expect(runtime.kernel.runHiveFinalTurn(finalInput)).resolves.toEqual({
+      kind: 'account_authority_revoked',
+    });
   });
 });

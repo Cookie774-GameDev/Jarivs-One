@@ -7,8 +7,10 @@ import type {
   JarvisDurableLiveEvidenceV1,
   JarvisEvent,
   JarvisExecutionEvidenceV1,
+  JarvisHiveStackPlanV1,
   JarvisProducerSourceEvidenceV1,
   JarvisRun,
+  JarvisScheduledRetrySnapshotV1,
   JarvisTransportAttemptV1,
 } from '@/lib/jarvis/contracts/execution';
 import type { JarvisSourceRef } from '@/lib/jarvis/contracts/source';
@@ -122,6 +124,93 @@ function run(): JarvisRun {
     createdAt: 4_000,
     updatedAt: 4_100,
     completedAt: 4_200,
+  };
+}
+
+function scheduledRetrySnapshot(): JarvisScheduledRetrySnapshotV1 {
+  return {
+    schemaVersion: 1,
+    accountId: 'account-1',
+    eventId: 'event-schedule-1',
+    occurrenceId: 'jocc_0123456789abcdef',
+    dueAt: 3_900,
+    logicalAttempt: 0,
+    request: {
+      schemaVersion: 1,
+      runId: 'run-1',
+      accountId: 'account-1',
+      workspaceId: 'workspace-1',
+      projectId: 'project-1',
+      chatId: 'chat-1',
+      parentRunId: 'run-parent',
+      agent: { id: 'agent-1', slug: 'jarvis', builtin: true },
+      surface: 'schedule',
+      interactionMode: 'ask',
+      userText: 'Synthetic scheduled request',
+      messageHistory: [],
+      identity: {
+        identityVersion: 1,
+        coreHash: 'core-hash',
+        responseContractHash: 'response-contract-hash',
+      },
+      profile: {
+        profileId: 'profile-1',
+        revisionId: 'profile-revision-1',
+        customInstructions: '',
+        memoryScope: 'profile',
+      },
+      capabilities: {
+        capturedAt: 3_000,
+        tools: [],
+        plugins: [],
+        mcps: [],
+        terminals: [],
+        agents: [],
+        entitlements: { source: 'unavailable', capabilities: [] },
+      },
+      model: modelSnapshot(),
+      context: { items: [], budget: { maxChars: 0, usedChars: 0 }, exclusions: [] },
+      outputContract: {
+        preserveStructuredBlocks: true,
+        allowActionBlocks: false,
+        allowPlanBlocks: false,
+        allowQuestionBlocks: true,
+        allowPermissionBlocks: false,
+        voiceDelivery: 'none',
+      },
+    },
+  };
+}
+
+function hiveStackPlan(): JarvisHiveStackPlanV1 {
+  return {
+    schemaVersion: 1,
+    accountId: 'account-1',
+    parentRunId: 'run-1',
+    stackId: 'stack-1',
+    steps: [
+      {
+        schemaVersion: 1,
+        stepId: 'step-1',
+        label: 'Research',
+        workerId: 'worker-1',
+        agent: {
+          id: 'agent-1',
+          slug: 'researcher',
+          builtin: true,
+          name: 'Researcher',
+          description: 'Research specialist',
+          systemPrompt: 'Research the supplied topic.',
+          toolsAllowed: [],
+          memoryScope: 'workspace',
+          capabilities: ['research'],
+          createdAt: 2_900,
+          updatedAt: 2_950,
+        },
+        model: modelSnapshot(),
+        messages: [{ role: 'user', content: 'Research this.' }],
+      },
+    ],
   };
 }
 
@@ -540,11 +629,27 @@ describe('run and event mappers', () => {
       updatedAt: 10_000,
     };
     const runRow = toJarvisRunRow(minimalRun);
-    for (const key of ['workspace_id', 'project_id', 'chat_id', 'parent_run_id', 'completed_at']) {
+    for (const key of [
+      'workspace_id',
+      'project_id',
+      'chat_id',
+      'parent_run_id',
+      'completed_at',
+      'scheduled_retry_snapshot',
+      'hive_stack_plan',
+    ]) {
       expect(runRow).not.toHaveProperty(key);
     }
     const mappedRun = fromJarvisRunRow(runRow);
-    for (const key of ['workspaceId', 'projectId', 'chatId', 'parentRunId', 'completedAt']) {
+    for (const key of [
+      'workspaceId',
+      'projectId',
+      'chatId',
+      'parentRunId',
+      'completedAt',
+      'scheduledRetrySnapshot',
+      'hiveStackPlan',
+    ]) {
       expect(mappedRun).not.toHaveProperty(key);
     }
 
@@ -1003,6 +1108,41 @@ function task18LiveEvidenceEvent(): JarvisEvent {
 }
 
 describe('Task 18 execution evidence mappers', () => {
+  it('round-trips and deeply detaches the immutable Hive stack plan', () => {
+    const plan = hiveStackPlan();
+    const value: JarvisRun = { ...run(), source: 'hive_final', hiveStackPlan: plan };
+    const row = toJarvisRunRow(value);
+
+    expect(row.hive_stack_plan).toEqual(plan);
+    expect(row.hive_stack_plan).not.toBe(plan);
+    expect(row.hive_stack_plan!.steps).not.toBe(plan.steps);
+    const mapped = fromJarvisRunRow(row);
+    expect(mapped.hiveStackPlan).toEqual(plan);
+    expect(mapped.hiveStackPlan).not.toBe(row.hive_stack_plan);
+    expect(mapped.hiveStackPlan!.steps[0]).not.toBe(row.hive_stack_plan!.steps[0]);
+  });
+
+  it('round-trips and deeply detaches the scheduled retry snapshot under its sole row key', () => {
+    const snapshot = scheduledRetrySnapshot();
+    const value: JarvisRun = {
+      ...run(),
+      source: 'schedule',
+      scheduledRetrySnapshot: snapshot,
+    };
+    const row = toJarvisRunRow(value);
+
+    expect(row.scheduled_retry_snapshot).toEqual(snapshot);
+    expect(row).not.toHaveProperty('scheduledRetrySnapshot');
+    expect(row.scheduled_retry_snapshot).not.toBe(snapshot);
+    expect(row.scheduled_retry_snapshot!.request).not.toBe(snapshot.request);
+    expect(row.scheduled_retry_snapshot!.request.model).not.toBe(snapshot.request.model);
+
+    const mapped = fromJarvisRunRow(row);
+    expect(mapped.scheduledRetrySnapshot).toEqual(snapshot);
+    expect(mapped.scheduledRetrySnapshot).not.toBe(row.scheduled_retry_snapshot);
+    expect(mapped.scheduledRetrySnapshot!.request).not.toBe(row.scheduled_retry_snapshot!.request);
+  });
+
   it('persists transport attempts under the sole snake-case run key and detaches both ways', () => {
     const value: JarvisRun = {
       ...run(),
@@ -1091,7 +1231,11 @@ describe('Task 18 execution evidence mappers', () => {
   it('omits every absent Task 18 optional persistence key in both directions', () => {
     const runRow = toJarvisRunRow(run());
     expect(runRow).not.toHaveProperty('transport_attempts');
+    expect(runRow).not.toHaveProperty('scheduled_retry_snapshot');
+    expect(runRow).not.toHaveProperty('hive_stack_plan');
     expect(fromJarvisRunRow(runRow)).not.toHaveProperty('transportAttempts');
+    expect(fromJarvisRunRow(runRow)).not.toHaveProperty('scheduledRetrySnapshot');
+    expect(fromJarvisRunRow(runRow)).not.toHaveProperty('hiveStackPlan');
 
     const eventRow = toJarvisEventRow(event());
     for (const key of [

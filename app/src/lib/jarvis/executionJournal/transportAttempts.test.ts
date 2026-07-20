@@ -6,6 +6,7 @@ import type {
   JarvisPreEffectTransportFailureEvidence,
   JarvisRun,
   JarvisScheduledAttemptLease,
+  JarvisScheduledRetrySnapshotV1,
   JarvisTransportAttemptV1,
   JarvisZeroConsequentialEffectEvidenceV1,
 } from '@/lib/jarvis/contracts/execution';
@@ -50,6 +51,68 @@ function run(input: Partial<JarvisRun> = {}): JarvisRun {
     updatedAt: 1,
     ...input,
   } as JarvisRun;
+}
+
+function snapshot(
+  input: Partial<JarvisScheduledRetrySnapshotV1> = {},
+): JarvisScheduledRetrySnapshotV1 {
+  return {
+    schemaVersion: 1,
+    accountId: 'account-a',
+    eventId: 'schedule-event-a',
+    occurrenceId: 'jocc_schedule_a',
+    dueAt: 5,
+    logicalAttempt: 1,
+    request: {
+      schemaVersion: 1,
+      runId: 'jrun-a',
+      accountId: 'account-a',
+      agent: { id: 'agent-a', slug: 'jarvis', builtin: true },
+      surface: 'schedule',
+      interactionMode: 'agent',
+      userText: 'Run the scheduled request.',
+      messageHistory: [{ role: 'user', content: 'Run the scheduled request.' }],
+      identity: {
+        identityVersion: 1,
+        coreHash: 'identity-core-a',
+        responseContractHash: 'response-contract-a',
+      },
+      profile: {
+        profileId: 'profile-a',
+        revisionId: 'profile-r1',
+        customInstructions: '',
+        memoryScope: 'none',
+      },
+      capabilities: {
+        capturedAt: 1,
+        tools: [],
+        plugins: [],
+        mcps: [],
+        terminals: [],
+        agents: [],
+        entitlements: { source: 'unavailable', capabilities: [] },
+      },
+      model: {
+        connectionId: 'connection-a',
+        providerId: 'provider-a',
+        modelId: 'model-a',
+        connectionMode: 'native-api',
+        capabilities: { tools: true, vision: false },
+        effectiveTemperature: 0.4,
+        capturedAt: 1,
+      },
+      context: { items: [], budget: { maxChars: 0, usedChars: 0 }, exclusions: [] },
+      outputContract: {
+        preserveStructuredBlocks: true,
+        allowActionBlocks: true,
+        allowPlanBlocks: true,
+        allowQuestionBlocks: true,
+        allowPermissionBlocks: true,
+        voiceDelivery: 'none',
+      },
+    },
+    ...input,
+  };
 }
 
 function attempt(input: Partial<JarvisTransportAttemptV1> = {}): JarvisTransportAttemptV1 {
@@ -117,6 +180,7 @@ function repository(initial: JarvisRun) {
           ...current,
           status: 'running',
           updatedAt: input.updatedAt,
+          scheduledRetrySnapshot: structuredClone(input.snapshot),
           transportAttempts: [{ ...input.attempt, startedEventSeq: 2 }],
         } as JarvisRun;
       } else if (input.kind === 'begin_retry') {
@@ -190,23 +254,73 @@ describe('Jarvis transport attempt coordinator', () => {
   it('atomically begins an initial attempt before issuing a current uncloneable lease', async () => {
     const repo = repository(run());
     const coordinator = createJarvisTransportAttemptCoordinator({ repository: repo.adapter });
+    const expectedSnapshot = snapshot();
     const lease = await coordinator.beginInitialScheduledAttempt({
       accountId: 'account-a',
       runId: 'jrun-a',
       requestId: 'request-a',
+      snapshot: expectedSnapshot,
       createdAt: 10,
     });
     expect(repo.compareAndMutateTransportAttempt).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: 'begin_initial',
         expectedStatus: 'queued',
+        snapshot: expectedSnapshot,
         attempt: expect.objectContaining({ attemptNumber: 1, state: 'provider_in_flight' }),
       }),
     );
-    await expect(coordinator.verifyLease(lease)).resolves.toMatchObject({ status: 'running' });
+    await expect(coordinator.verifyLease(lease, expectedSnapshot)).resolves.toMatchObject({
+      status: 'running',
+      scheduledRetrySnapshot: expectedSnapshot,
+    });
     await expect(
-      coordinator.verifyLease(structuredClone(lease) as JarvisScheduledAttemptLease),
+      coordinator.verifyLease(
+        structuredClone(lease) as JarvisScheduledAttemptLease,
+        expectedSnapshot,
+      ),
     ).rejects.toThrow('transport_attempt_invalid_lease');
+  });
+
+  it('rejects a different lease snapshot before repository mutation', async () => {
+    const repo = repository(run());
+    const coordinator = createJarvisTransportAttemptCoordinator({ repository: repo.adapter });
+    const expectedSnapshot = snapshot();
+    const lease = await coordinator.beginInitialScheduledAttempt({
+      accountId: 'account-a',
+      runId: 'jrun-a',
+      requestId: 'request-a',
+      snapshot: expectedSnapshot,
+      createdAt: 10,
+    });
+    repo.compareAndMutateTransportAttempt.mockClear();
+
+    await expect(
+      coordinator.settleScheduledTransportFailure({
+        lease,
+        expectedSnapshot: { ...expectedSnapshot, dueAt: expectedSnapshot.dueAt + 1 },
+        providerFailure: failure(),
+        zeroEffectEvidence: proof(),
+        settledAt: 12,
+      }),
+    ).rejects.toThrow('transport_attempt_conflict');
+    expect(repo.compareAndMutateTransportAttempt).not.toHaveBeenCalled();
+  });
+
+  it('rejects a missing initial snapshot before repository mutation', async () => {
+    const repo = repository(run());
+    const coordinator = createJarvisTransportAttemptCoordinator({ repository: repo.adapter });
+    type BeginInitialInput = Parameters<typeof coordinator.beginInitialScheduledAttempt>[0];
+
+    await expect(
+      coordinator.beginInitialScheduledAttempt({
+        accountId: 'account-a',
+        runId: 'jrun-a',
+        requestId: 'request-a',
+        createdAt: 10,
+      } as unknown as BeginInitialInput),
+    ).rejects.toThrow('transport_attempt_conflict');
+    expect(repo.compareAndMutateTransportAttempt).not.toHaveBeenCalled();
   });
 
   it('revalidates exact zero-effect evidence and starts a same-running-run retry', async () => {
@@ -214,7 +328,14 @@ describe('Jarvis transport attempt coordinator', () => {
       ...attempt({ state: 'retryable_failed', failureCategory: 'network' }),
       zeroEffectEvidence: proof(),
     };
-    const repo = repository(run({ status: 'running', transportAttempts: [prior] }));
+    const expectedSnapshot = snapshot();
+    const repo = repository(
+      run({
+        status: 'running',
+        scheduledRetrySnapshot: expectedSnapshot,
+        transportAttempts: [prior],
+      }),
+    );
     const safety: JarvisConsequentialEffectSafetyAuthority = {
       proveZeroConsequentialEffect: vi.fn(async () => null),
       revalidateZeroConsequentialEffect: vi.fn(async () => structuredClone(proof())),
@@ -228,6 +349,7 @@ describe('Jarvis transport attempt coordinator', () => {
       runId: 'jrun-a',
       previousAttemptNumber: 1,
       requestId: 'request-b',
+      expectedSnapshot,
       createdAt: 20,
       revalidatedEvidence: proof(),
     });
@@ -238,7 +360,7 @@ describe('Jarvis transport attempt coordinator', () => {
         expectedEventTailSeq: 4,
       }),
     );
-    await expect(coordinator.verifyLease(lease)).resolves.toMatchObject({
+    await expect(coordinator.verifyLease(lease, expectedSnapshot)).resolves.toMatchObject({
       status: 'running',
       transportAttempts: [
         { effectBarrier: { state: 'sealed_for_retry' } },
@@ -271,11 +393,13 @@ describe('Jarvis transport attempt coordinator', () => {
       accountId: 'account-a',
       runId: 'jrun-a',
       requestId: 'request-a',
+      snapshot: snapshot(),
       createdAt: 10,
     });
     await expect(
       coordinator.settleScheduledTransportFailure({
         lease: initialLease,
+        expectedSnapshot: snapshot(),
         providerFailure: failure(),
         zeroEffectEvidence: bridgeProof,
         settledAt: 12,
@@ -288,6 +412,7 @@ describe('Jarvis transport attempt coordinator', () => {
         runId: 'jrun-a',
         previousAttemptNumber: 1,
         requestId: 'request-b',
+        expectedSnapshot: snapshot(),
         createdAt: 20,
         revalidatedEvidence: bridgeProof,
       }),
@@ -308,11 +433,13 @@ describe('Jarvis transport attempt coordinator', () => {
       accountId: 'account-a',
       runId: 'jrun-a',
       requestId: 'request-a',
+      snapshot: snapshot(),
       createdAt: 10,
     });
     await expect(
       coordinator.settleScheduledTransportFailure({
         lease,
+        expectedSnapshot: snapshot(),
         providerFailure: failure(),
         zeroEffectEvidence: proof(),
         settledAt: 12,
@@ -325,11 +452,13 @@ describe('Jarvis transport attempt coordinator', () => {
       accountId: 'account-a',
       runId: 'jrun-a',
       requestId: 'request-a',
+      snapshot: snapshot(),
       createdAt: 10,
     });
     await expect(
       denied.settleScheduledTransportFailure({
         lease: deniedLease,
+        expectedSnapshot: snapshot(),
         providerFailure: failure(),
         zeroEffectEvidence: proof(),
         settledAt: 12,
@@ -351,6 +480,7 @@ describe('Jarvis transport attempt coordinator', () => {
       accountId: 'account-a',
       runId: 'jrun-a',
       requestId: 'request-a',
+      snapshot: snapshot(),
       createdAt: 10,
     });
     repo.compareAndMutateTransportAttempt.mockResolvedValueOnce({
@@ -367,6 +497,7 @@ describe('Jarvis transport attempt coordinator', () => {
     await expect(
       coordinator.settleScheduledTransportFailure({
         lease,
+        expectedSnapshot: snapshot(),
         providerFailure: failure(),
         zeroEffectEvidence: proof(),
         settledAt: 12,
@@ -393,12 +524,14 @@ describe('Jarvis transport attempt coordinator', () => {
       accountId: 'account-a',
       runId: 'jrun-a',
       requestId: 'request-a',
+      snapshot: snapshot(),
       createdAt: 10,
     });
 
     await expect(
       coordinator.settleScheduledTransportFailure({
         lease,
+        expectedSnapshot: snapshot(),
         providerFailure: failure(),
         zeroEffectEvidence: proof(),
         settledAt: 12,
@@ -417,7 +550,9 @@ describe('Jarvis transport attempt coordinator', () => {
         state: index === 31 ? 'retryable_failed' : 'completed',
       }),
     );
-    const repo = repository(run({ status: 'running', transportAttempts: capped }));
+    const repo = repository(
+      run({ status: 'running', scheduledRetrySnapshot: snapshot(), transportAttempts: capped }),
+    );
     const coordinator = createJarvisTransportAttemptCoordinator({ repository: repo.adapter });
     await expect(
       coordinator.beginScheduledTransportRetry({
@@ -425,6 +560,7 @@ describe('Jarvis transport attempt coordinator', () => {
         runId: 'jrun-a',
         previousAttemptNumber: 32,
         requestId: 'request-33',
+        expectedSnapshot: snapshot(),
         createdAt: 30,
         revalidatedEvidence: proof({ attemptNumber: 32, requestId: 'request-32' }),
       }),
