@@ -402,7 +402,7 @@ export function VoiceModal() {
   }, [startListening]);
 
   const toggleListening = React.useCallback(() => {
-    if (state === 'speaking' || speakingRef.current) {
+    if (state === 'thinking' || state === 'speaking' || speakingRef.current) {
       stopSpeaking();
       return;
     }
@@ -910,10 +910,11 @@ export function VoiceModal() {
               onClick={toggleListening}
               className={cn(
                 'jarvis-voice-orb-button flex shrink-0 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-copper/70',
-                (state === 'listening' || state === 'speaking') && 'is-active',
+                (state === 'listening' || state === 'thinking' || state === 'speaking') &&
+                  'is-active',
               )}
               aria-label={
-                state === 'speaking'
+                state === 'thinking' || state === 'speaking'
                   ? 'Stop response'
                   : state === 'listening'
                     ? 'Stop listening'
@@ -925,7 +926,7 @@ export function VoiceModal() {
               }
               data-sik-evidence={KERNEL_SMOKE_ENABLED ? SIK_EVIDENCE.voiceStop : undefined}
               title={
-                state === 'speaking'
+                state === 'thinking' || state === 'speaking'
                   ? 'Stop Jarvis mid-reply and ask something else'
                   : state === 'listening'
                     ? 'Stop listening'

@@ -189,6 +189,11 @@ export function ChatThread({ chatId, compact = false }: ChatThreadProps) {
       data-sik-evidence={
         KERNEL_SMOKE_ENABLED && hasCanonicalRun ? SIK_EVIDENCE.chatRunShell : undefined
       }
+      data-sik-assistant-count={
+        KERNEL_SMOKE_ENABLED && hasCanonicalRun
+          ? messages.filter((message) => message.role === 'assistant').length
+          : undefined
+      }
     >
       <div
         data-sik-evidence={

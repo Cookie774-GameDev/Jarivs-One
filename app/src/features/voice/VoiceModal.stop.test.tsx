@@ -143,6 +143,21 @@ describe('VoiceModal stop control and mic recovery', () => {
     expect(useVoiceStore.getState().state).toBe('listening');
   });
 
+  it('clicking the orb while Jarvis is thinking cancels before the first response token', () => {
+    setupAuth(false);
+    render(<VoiceModal />);
+
+    act(() => useVoiceStore.getState().setState('thinking'));
+
+    const stop = screen.getByRole('button', { name: /Stop response/i });
+    expect(VoiceService.startListening).not.toHaveBeenCalled();
+    fireEvent.click(stop);
+
+    expect(routerMocks.stopCurrentVoiceResponse).toHaveBeenCalledTimes(1);
+    expect(VoiceService.startListening).not.toHaveBeenCalled();
+    expect(useVoiceStore.getState().state).toBe('idle');
+  });
+
   it('delegates bound-run cancellation before closing the voice UI', () => {
     setupAuth(false);
     useVoiceStore.getState().beginSession(

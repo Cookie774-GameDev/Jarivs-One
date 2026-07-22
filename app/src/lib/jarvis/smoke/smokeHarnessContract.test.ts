@@ -191,6 +191,46 @@ describe('shared intelligence kernel smoke harness contract', () => {
     expect(submit).toBeGreaterThan(readiness);
   });
 
+  it('waits for the protected voice turn to become cancellable before clicking stop', () => {
+    const voiceScenario = driver.slice(
+      driver.indexOf("case 'voice_turn_stop':"),
+      driver.indexOf("case 'native_stt_voice_turn':"),
+    );
+    const running = voiceScenario.indexOf("waitForRunStatus(page, ['running'])");
+    const voiceState = voiceScenario.indexOf(
+      "requireUniqueEvidence(page, 'voice.state')",
+      running,
+    );
+    const cancellable = voiceScenario.indexOf(
+      "waitForAttribute(voiceState, 'data-voice-state', ['thinking', 'speaking'])",
+    );
+    const stop = voiceScenario.indexOf("clickEvidence(page, 'voice.stop')");
+    const cancelled = voiceScenario.indexOf("waitForRunStatus(page, ['cancelled'])");
+    const terminalBefore = voiceScenario.indexOf('const beforeRuntimeSettled = await readAttributes');
+    const runtime = voiceScenario.indexOf("requireUniqueEvidence(page, 'smoke.runtime-state')");
+    const runtimeCancelled = voiceScenario.indexOf(
+      "waitForAttribute(runtime, 'data-runtime-state', ['cancelled'])",
+    );
+    const terminalAfter = voiceScenario.indexOf('const afterRuntimeSettled = await readAttributes');
+    const noSuccess = voiceScenario.indexOf('assertNoVoiceSuccessEvidence(afterRuntimeSettled)');
+    const stableTerminal = voiceScenario.indexOf(
+      "beforeRuntimeSettled['data-run-digest'] !== afterRuntimeSettled['data-run-digest']",
+    );
+
+    expect(running).toBeGreaterThan(0);
+    expect(voiceState).toBeGreaterThan(running);
+    expect(cancellable).toBeGreaterThan(voiceState);
+    expect(stop).toBeGreaterThan(cancellable);
+    expect(cancelled).toBeGreaterThan(stop);
+    expect(terminalBefore).toBeGreaterThan(cancelled);
+    expect(runtime).toBeGreaterThan(terminalBefore);
+    expect(runtimeCancelled).toBeGreaterThan(runtime);
+    expect(terminalAfter).toBeGreaterThan(runtimeCancelled);
+    expect(noSuccess).toBeGreaterThan(terminalAfter);
+    expect(stableTerminal).toBeGreaterThan(noSuccess);
+    expect(voiceScenario).not.toContain('setTimeout');
+  });
+
   it('fails closed when the driver is invoked directly without its attested arguments', () => {
     const result = spawnSync(process.execPath, [driverPath], {
       cwd: root,

@@ -521,6 +521,157 @@ describe('createJarvisKernelRuntime primary-host lifecycle', () => {
     expect(await db.jarvis_events.count()).toBe(6);
   });
 
+  it('terminalizes a protected voice run cancelled before the first provider response', async () => {
+    const base = kernelTurn();
+    const turn: JarvisKernelTurnInput & { surface: 'voice' } = {
+      ...base,
+      run: { ...base.run, source: 'voice' },
+      surface: 'voice',
+    };
+    await db.jarvis_runs.add(toJarvisRunRow(turn.run));
+    await db.chats.add({
+      id: turn.chatId as ChatId,
+      workspace_id: turn.workspaceId as WorkspaceId,
+      title: 'Runtime voice cancellation',
+      mode: 'chat',
+      active_agent_ids: [turn.agent.id],
+      created_at: NOW - 20,
+      updated_at: NOW - 20,
+    });
+
+    const providerVerifier = Object.freeze({
+      state: 'ready' as const,
+      producerKind: 'provider' as const,
+      verifier: Object.freeze({ verify: vi.fn(async (value: unknown) => value) }),
+    });
+    const registeredOwners = new Map<
+      string,
+      Readonly<{ abort(): unknown | Promise<unknown> }>
+    >();
+    const registerIssuedOwner = vi.fn(
+      (registration: Readonly<{ registrationId: string; abort(): unknown | Promise<unknown> }>) => {
+        registeredOwners.set(registration.registrationId, registration);
+        return () => registeredOwners.delete(registration.registrationId);
+      },
+    );
+    const cancellationPlan = Object.freeze({
+      accountId: turn.accountId,
+      runId: turn.run.id,
+      cancellationRequestId: 'voice-provider-cancel-runtime',
+    });
+    const deliverCancellation = vi.fn(async () => {
+      const owner = registeredOwners.get(`${turn.run.id}:provider`);
+      if (!owner) throw new Error('expected provider abort owner');
+      const outcome = await owner.abort();
+      return {
+        kind: 'signal_delivered' as const,
+        cancellationRequestId: cancellationPlan.cancellationRequestId,
+        ownerIds:
+          typeof outcome === 'object' &&
+          outcome !== null &&
+          'kind' in outcome &&
+          outcome.kind === 'signal_delivered' &&
+          'ownerId' in outcome
+            ? [String(outcome.ownerId)]
+            : [],
+      };
+    });
+    let providerSignal: AbortSignal | undefined;
+    const abortAfterStart = vi.fn();
+    const start = vi.fn((signal: AbortSignal) => {
+      providerSignal = signal;
+      const response = new Promise<never>(() => undefined);
+      return {
+        receipt: {
+          providerId: 'provider-kernel',
+          modelId: 'model-kernel',
+          modelSnapshotRef: 'provider-kernel:model-kernel',
+          operations: ['generate'] as const,
+          startedAt: NOW + 5,
+        },
+        response,
+        abortAfterStart,
+      };
+    });
+    const processResponse = vi.fn();
+    const runtime = createJarvisKernelRuntime({
+      db,
+      artifactEvidenceAuthorities: artifactAuthorities() as never,
+      journal: {
+        allocateRun: vi.fn(),
+        getRun: vi.fn(async () => turn.run),
+      },
+      cancellationDeliveryAuthority: {
+        prepare: vi.fn(async () => ({ kind: 'prepared' as const, plan: cancellationPlan })),
+        deliver: deliverCancellation,
+        current: vi.fn(),
+        sealWorkflowQuiescence: vi.fn(),
+        abandonBeforeDelivery: vi.fn(),
+      } as never,
+      abortRegistrationAuthority: { registerIssuedOwner },
+      bindKernelActions: vi.fn() as never,
+      liveEvidenceVerifiers: {
+        ...unavailableVerifiers(),
+        provider: providerVerifier,
+      } as never,
+      prepareProvider: vi.fn(async () => ({
+        resolveConfiguration: vi.fn(async () => ({ start, dispose: vi.fn() })),
+        dispose: vi.fn(),
+      })),
+      processResponse,
+      takeProviderArtifactDrafts: vi.fn(() => []),
+      randomUUID: () => 'runtime-voice-provider-cancel-uuid',
+      now: () => NOW,
+    });
+
+    const pendingTurn = runtime.kernel.startVoiceTurn(turn).then(
+      (value) => ({ kind: 'resolved' as const, value }),
+      (error: unknown) => ({ kind: 'rejected' as const, error }),
+    );
+    await vi.waitFor(() => expect(start).toHaveBeenCalledOnce());
+
+    const cancellation = await runtime.kernel.requestCancellation({
+      accountId: turn.accountId,
+      runId: turn.run.id,
+    });
+    expect(cancellation).toMatchObject({
+      kind: 'intent_committed',
+      cancellationRequestId: cancellationPlan.cancellationRequestId,
+      aggregate: {
+        kind: 'signal_delivered',
+        ownerIds: [`${turn.run.id}:provider`],
+      },
+    });
+    expect(providerSignal?.aborted).toBe(true);
+
+    const outcome = await Promise.race([
+      pendingTurn,
+      new Promise<{ kind: 'timeout' }>((resolve) =>
+        setTimeout(() => resolve({ kind: 'timeout' }), 1_000),
+      ),
+    ]);
+    expect(outcome).toMatchObject({ kind: 'rejected', error: { name: 'AbortError' } });
+    expect(fromJarvisRunRow((await db.jarvis_runs.get(turn.run.id))!)).toMatchObject({
+      status: 'cancelled',
+      completedAt: NOW,
+    });
+    const events = await db.jarvis_events.orderBy('[run_id+seq]').toArray();
+    expect(events.map((event) => event.status)).toEqual([
+      'compiling',
+      'running',
+      'started',
+      'started',
+      'cancellation_requested',
+      'cancelled',
+    ]);
+    expect(
+      events.filter((event) => event.producer_source_evidence?.phase === 'result'),
+    ).toHaveLength(0);
+    expect(processResponse).not.toHaveBeenCalled();
+    expect(abortAfterStart).not.toHaveBeenCalled();
+    expect(await db.messages.count()).toBe(0);
+  });
+
   it('issues one opaque voice handle and keeps the run nonterminal through response-ready commit', async () => {
     const base = kernelTurn();
     const turn: JarvisKernelTurnInput & { surface: 'voice' } = {

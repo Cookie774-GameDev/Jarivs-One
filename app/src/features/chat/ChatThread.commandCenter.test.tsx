@@ -6,9 +6,12 @@ import {
 } from '@/features/jarvis-command-center/JarvisCommandCenter';
 import type { JarvisRun } from '@/features/jarvis-command-center/types';
 import { useJarvisTaskRunStore } from '@/features/jarvis-runs/taskRunStore';
+import type { Message } from '@/types';
 import { ChatThread } from './ChatThread';
 
-vi.mock('./hooks', () => ({ useChatMessages: () => [] }));
+const hookState = vi.hoisted(() => ({ messages: [] as Message[] }));
+
+vi.mock('./hooks', () => ({ useChatMessages: () => hookState.messages }));
 vi.mock('./MessageBubble', () => ({ MessageBubble: () => <div>message</div> }));
 vi.mock('./activity', () => ({
   ChatActivityTimeline: () => <div data-testid="legacy-timeline">Legacy timeline</div>,
@@ -82,6 +85,7 @@ function binding(
 
 describe('ChatThread Command Center routing', () => {
   beforeEach(() => {
+    hookState.messages = [];
     useJarvisTaskRunStore.getState().clearForTests();
     useJarvisTaskRunStore.getState().setAccountScope('scope-1');
   });
@@ -121,7 +125,41 @@ describe('ChatThread Command Center routing', () => {
     expect(screen.getByTestId('agent-panel')).not.toBeNull();
     expect(screen.getByTestId('memory-status')).not.toBeNull();
     expect(screen.getByRole('log').getAttribute('data-sik-evidence')).toBe('chat.run-shell');
+    expect(screen.getByRole('log').getAttribute('data-sik-assistant-count')).toBe('0');
     expect(document.querySelectorAll('[data-sik-evidence="chat.runtime-ready"]')).toHaveLength(1);
+  });
+
+  it('exposes only the assistant message count on the isolated canonical chat shell', async () => {
+    hookState.messages = [
+      {
+        id: 'message-user' as Message['id'],
+        chat_id: 'chat-1' as Message['chat_id'],
+        role: 'user',
+        parts: [],
+        created_at: 90,
+        updated_at: 90,
+      },
+      {
+        id: 'message-assistant' as Message['id'],
+        chat_id: 'chat-1' as Message['chat_id'],
+        role: 'assistant',
+        parts: [],
+        created_at: 100,
+        updated_at: 100,
+      },
+    ];
+
+    render(
+      <JarvisCommandCenterProvider value={binding([canonicalRun()])}>
+        <ChatThread chatId="chat-1" />
+      </JarvisCommandCenterProvider>,
+    );
+
+    expect(await screen.findByText('Command Center')).not.toBeNull();
+    const shell = screen.getByRole('log');
+    expect(shell.getAttribute('data-sik-assistant-count')).toBe('1');
+    expect(shell.outerHTML).not.toContain('message-user');
+    expect(shell.outerHTML).not.toContain('message-assistant');
   });
 
   it('keeps timeline and progress for legacy history and does not render the canonical shell', () => {
@@ -151,6 +189,7 @@ describe('ChatThread Command Center routing', () => {
     expect(screen.getByTestId('legacy-progress')).not.toBeNull();
     expect(screen.queryByText('Command Center')).toBeNull();
     expect(screen.getByRole('log').getAttribute('data-sik-evidence')).toBeNull();
+    expect(screen.getByRole('log').getAttribute('data-sik-assistant-count')).toBeNull();
     expect(document.querySelector('[data-sik-evidence="chat.runtime-ready"]')).toBeNull();
   });
 

@@ -299,6 +299,20 @@ function transitionEvent(
   };
 }
 
+function deliveredCancellationEvent(
+  requestId: string,
+  createdAt: number,
+): JarvisRunTransitionEventInput {
+  return {
+    idempotencyKey: `kernel:${requestId}:cancelled`,
+    title: 'Protected request cancelled',
+    safeSummary: 'The protected provider request stopped after cancellation was delivered.',
+    sourceRefs: [],
+    artifactIds: [],
+    createdAt,
+  };
+}
+
 function providerResultSource(input: {
   accountId: string;
   runId: string;
@@ -416,6 +430,10 @@ async function runJarvisKernelExecution(
   }
 
   const controller = new AbortController();
+  let resolveCancellationDelivery!: () => void;
+  const cancellationDelivery = new Promise<void>((resolve) => {
+    resolveCancellationDelivery = resolve;
+  });
   const onAuthorityRevoked = () => controller.abort(lifecycle.revocationSignal.reason);
   lifecycle.revocationSignal.addEventListener('abort', onAuthorityRevoked, { once: true });
   if (lifecycle.revocationSignal.aborted) onAuthorityRevoked();
@@ -425,6 +443,7 @@ async function runJarvisKernelExecution(
   let started: JarvisStartedProviderDispatch | undefined;
   let registration: JarvisBoundLiveEvidenceRegistration | undefined;
   let terminalCommitted = false;
+  let cancellationDelivered = false;
   let providerEvidenceRetained = false;
   let providerEvidenceDisposed = false;
   let hasPrimaryFailure = false;
@@ -438,41 +457,105 @@ async function runJarvisKernelExecution(
       hasPrimaryFailure = true;
       return revoked();
     };
+  const throwIfCancellationDelivered = (): void => {
+    if (!cancellationDelivered) return;
+    if (!controller.signal.aborted) {
+      throw new Error('kernel_cancellation_delivery_signal_missing');
+    }
+    throw controller.signal.reason;
+  };
+  const waitForProviderStage = async <T>(
+    start: () => Promise<T>,
+    disposeLate?: (value: T) => void,
+  ): Promise<T> => {
+    throwIfCancellationDelivered();
+    let cancellationWon = false;
+    const observed = start().then(
+      (value) => {
+        if (cancellationWon) {
+          try {
+            disposeLate?.(value);
+          } catch {
+            // Preserve cancellation after best-effort cleanup of a late stage result.
+          }
+        }
+        return { kind: 'value' as const, value };
+      },
+      (error: unknown) => ({ kind: 'error' as const, error }),
+    );
+    const outcome = await Promise.race([
+      observed,
+      cancellationDelivery.then(() => ({ kind: 'cancelled' as const })),
+    ]);
+    if (outcome.kind === 'cancelled') {
+      cancellationWon = true;
+      throwIfCancellationDelivered();
+      throw new Error('kernel_cancellation_delivery_missing');
+    }
+    if (outcome.kind === 'error') throw outcome.error;
+    if (cancellationDelivered) {
+      try {
+        disposeLate?.(outcome.value);
+      } catch {
+        // Preserve cancellation after best-effort cleanup of the completed stage.
+      }
+      throwIfCancellationDelivered();
+    }
+    return outcome.value;
+  };
 
   try {
     unregisterAbort = lifecycle.registerAbortOwner({
       registrationId: `${input.run.id}:provider`,
       kind: 'provider_stream',
       abort: () => {
+        cancellationDelivered = true;
         controller.abort();
+        resolveCancellationDelivery();
         return { kind: 'signal_delivered', ownerId: `${input.run.id}:provider` };
       },
     });
-    prepared = await deps.prepareProvider({
-      accountId: input.accountId,
-      runId: input.run.id,
-      requestId: input.attempt.requestId,
-      attemptNumber: input.attempt.attemptNumber,
-      compiledPrompt: compiled,
-      agent: input.agent,
-      model: input.model,
-      messages: input.messageHistory,
-      ...(input.workingDirectory === undefined ? {} : { workingDirectory: input.workingDirectory }),
-    });
-    resolved = await prepared.resolveConfiguration();
+    prepared = await waitForProviderStage(
+      () =>
+        deps.prepareProvider({
+          accountId: input.accountId,
+          runId: input.run.id,
+          requestId: input.attempt.requestId,
+          attemptNumber: input.attempt.attemptNumber,
+          compiledPrompt: compiled,
+          agent: input.agent,
+          model: input.model,
+          messages: input.messageHistory,
+          ...(input.workingDirectory === undefined
+            ? {}
+            : { workingDirectory: input.workingDirectory }),
+        }),
+      (latePrepared) => latePrepared.dispose(),
+    );
+    resolved = await waitForProviderStage(
+      () => prepared!.resolveConfiguration(),
+      (lateResolved) => lateResolved.dispose(),
+    );
     if (!lifecycleIsCurrent(lifecycle)) return retainRevokedOutcome();
+    throwIfCancellationDelivered();
     if (controller.signal.aborted) return retainRevokedOutcome();
     started = resolved.start(controller.signal);
 
-    const startedResult = await lifecycle.recordProviderStarted(started.receipt);
+    const startedResult = await waitForProviderStage(
+      () => lifecycle.recordProviderStarted(started!.receipt),
+      (lateResult) => {
+        if (lateResult.kind === 'committed') lateResult.value.dispose();
+      },
+    );
     if (startedResult.kind === 'account_authority_revoked') {
       started.abortAfterStart('authority_revoked');
       return retainRevokedOutcome();
     }
     registration = startedResult.value;
+    throwIfCancellationDelivered();
 
-    const raw = await started.response;
-    const processedResponse = await deps.processResponse(raw, request);
+    const raw = await waitForProviderStage(() => started!.response);
+    const processedResponse = await waitForProviderStage(() => deps.processResponse(raw, request));
     const status = terminalStatus(processedResponse);
     const resultState = status === 'completed' ? 'completed' : 'degraded';
     const resultRef = `jresult_${input.attempt.requestId}`;
@@ -528,7 +611,7 @@ async function runJarvisKernelExecution(
       }
       return Object.freeze(materialized);
     };
-    const artifacts = await materializeProviderArtifacts();
+    const artifacts = await waitForProviderStage(materializeProviderArtifacts);
     const response = deepFreezeJarvisCopy({
       ...processedResponse,
       artifactIds: artifacts.map((artifact) => artifact.id),
@@ -610,6 +693,7 @@ async function runJarvisKernelExecution(
     };
 
     if (!deferTerminalCommit) {
+      throwIfCancellationDelivered();
       const commit = await deps.commitKernelTurn({
         accountId: input.accountId,
         runId: input.run.id,
@@ -687,6 +771,18 @@ async function runJarvisKernelExecution(
       return revoked();
     }
     hasPrimaryFailure = true;
+    if (cancellationDelivered && controller.signal.aborted && !terminalCommitted) {
+      const completedAt = deps.now();
+      const cancelled = await lifecycle.transition({
+        expectedStatus: 'running',
+        nextStatus: 'cancelled',
+        event: deliveredCancellationEvent(input.attempt.requestId, completedAt),
+        completedAt,
+      });
+      if (cancelled.kind === 'account_authority_revoked') return revoked();
+      terminalCommitted = true;
+      throw error;
+    }
     if (started && !terminalCommitted) {
       try {
         controller.abort('kernel_provider_evidence_failed');
