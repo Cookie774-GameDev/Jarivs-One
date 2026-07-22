@@ -188,24 +188,36 @@ describe('shared intelligence kernel smoke harness contract', () => {
     const priorRunDigest = submitFixture.indexOf('readOptionalRunDigest(page)');
     const submit = submitFixture.indexOf("clickEvidence(page, 'chat.submit')");
     const protectedDispatch = submitFixture.indexOf("path !== 'protected'");
-    const runStatus = submitFixture.indexOf("requireUniqueEvidence(page, 'run.status')");
-    const differentRunDigest = submitFixture.indexOf('waitForDifferentAttribute(');
-    const firstRunDigest = submitFixture.indexOf('waitForMatchingAttribute(');
+    const newRunDigest = submitFixture.indexOf('waitForNewRunDigest(page, previousRunDigest)');
 
     expect(readiness).toBeGreaterThan(0);
     expect(priorRunDigest).toBeGreaterThan(readiness);
     expect(submit).toBeGreaterThan(priorRunDigest);
     expect(protectedDispatch).toBeGreaterThan(submit);
-    expect(runStatus).toBeGreaterThan(protectedDispatch);
-    expect(differentRunDigest).toBeGreaterThan(runStatus);
-    expect(firstRunDigest).toBeGreaterThan(runStatus);
+    expect(newRunDigest).toBeGreaterThan(protectedDispatch);
     expect(submitFixture).not.toContain('setTimeout');
+
+    const identityHelper = driver.slice(
+      driver.indexOf('async function waitForNewRunDigest'),
+      driver.indexOf('async function submitChatFixture'),
+    );
+    expect(identityHelper).toContain("requireUniqueEvidence(page, 'run.status')");
+    expect(identityHelper).toContain('waitForDifferentAttribute(');
+    expect(identityHelper).toContain('waitForMatchingAttribute(');
+    expect(identityHelper).toContain('kernel_smoke_run_digest_invalid');
   });
 
   it('waits for the protected voice turn to become cancellable before clicking stop', () => {
     const voiceScenario = driver.slice(
       driver.indexOf("case 'voice_turn_stop':"),
       driver.indexOf("case 'native_stt_voice_turn':"),
+    );
+    const priorRunDigest = voiceScenario.indexOf(
+      'const previousVoiceRunDigest = await readOptionalRunDigest(page)',
+    );
+    const transcript = voiceScenario.indexOf("clickEvidence(page, 'voice.transcript')");
+    const newRunDigest = voiceScenario.indexOf(
+      'waitForNewRunDigest(page, previousVoiceRunDigest)',
     );
     const running = voiceScenario.indexOf("waitForRunStatus(page, ['running'])");
     const voiceState = voiceScenario.indexOf(
@@ -234,7 +246,10 @@ describe('shared intelligence kernel smoke harness contract', () => {
       "beforeRuntimeSettled['data-run-digest'] !== afterRuntimeSettled['data-run-digest']",
     );
 
-    expect(running).toBeGreaterThan(0);
+    expect(priorRunDigest).toBeGreaterThan(0);
+    expect(transcript).toBeGreaterThan(priorRunDigest);
+    expect(newRunDigest).toBeGreaterThan(transcript);
+    expect(running).toBeGreaterThan(newRunDigest);
     expect(voiceState).toBeGreaterThan(running);
     expect(cancellable).toBeGreaterThan(voiceState);
     expect(chatShell).toBeGreaterThan(cancellable);

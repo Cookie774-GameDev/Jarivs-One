@@ -351,6 +351,14 @@ async function readOptionalRunDigest(page) {
   return digest;
 }
 
+async function waitForNewRunDigest(page, previousRunDigest) {
+  const runStatus = await requireUniqueEvidence(page, 'run.status');
+  const currentRunDigest = previousRunDigest
+    ? await waitForDifferentAttribute(runStatus, 'data-run-digest', previousRunDigest)
+    : await waitForMatchingAttribute(runStatus, 'data-run-digest', /^[a-f0-9]{64}$/);
+  if (!/^[a-f0-9]{64}$/.test(currentRunDigest)) fail('kernel_smoke_run_digest_invalid');
+}
+
 async function submitChatFixture(page, fixture) {
   await requireUniqueEvidence(page, 'chat.runtime-ready');
   const previousRunDigest = await readOptionalRunDigest(page);
@@ -374,12 +382,7 @@ async function submitChatFixture(page, fixture) {
     'unprotected',
   ], 'kernel_smoke_dispatch_state_timeout');
   if (path !== 'protected') fail('kernel_smoke_unprotected_provider_dispatch');
-
-  const runStatus = await requireUniqueEvidence(page, 'run.status');
-  const currentRunDigest = previousRunDigest
-    ? await waitForDifferentAttribute(runStatus, 'data-run-digest', previousRunDigest)
-    : await waitForMatchingAttribute(runStatus, 'data-run-digest', /^[a-f0-9]{64}$/);
-  if (!/^[a-f0-9]{64}$/.test(currentRunDigest)) fail('kernel_smoke_run_digest_invalid');
+  await waitForNewRunDigest(page, previousRunDigest);
 }
 
 async function selectSmokeTransport(page, transport) {
@@ -545,7 +548,9 @@ async function runScenario(page, scenario, restartCheckpoint) {
     case 'voice_turn_stop':
       await clickEvidence(page, 'voice.open');
       await requireUniqueEvidence(page, 'voice.state');
+      const previousVoiceRunDigest = await readOptionalRunDigest(page);
       await clickEvidence(page, 'voice.transcript');
+      await waitForNewRunDigest(page, previousVoiceRunDigest);
       await waitForRunStatus(page, ['running']);
       const voiceState = await requireUniqueEvidence(page, 'voice.state');
       await waitForAttribute(voiceState, 'data-voice-state', ['thinking', 'speaking']);
