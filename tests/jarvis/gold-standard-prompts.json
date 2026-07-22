@@ -259,8 +259,8 @@
       "prompt": "Run the connected plugin tool when its request times out.",
       "expectedIntent": "plugin-use",
       "expectedResponseStyle": "brief failure with retry option",
-      "expectedAction": "plugin.invoke",
-      "expectedPermission": "approval-required",
+      "expectedAction": null,
+      "expectedPermission": "explicit-approval-required",
       "completionCriteria": ["timeout surfaced", "no success claim"],
       "forbiddenBehavior": ["infinite retry", "fake output"],
       "supportedEnvironment": "test-harness"

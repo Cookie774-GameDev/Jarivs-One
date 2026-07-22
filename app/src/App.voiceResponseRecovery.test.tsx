@@ -136,11 +136,9 @@ describe('App voice response recovery account session', () => {
     const invalidateAccount = teardown.indexOf('invalidateActiveKernelAccount');
 
     expect(detachConsumers).toBeGreaterThan(-1);
+    expect(invalidateAccount).toBeGreaterThan(-1);
+    expect(invalidateAccount).toBeLessThan(detachConsumers);
     expect(disposeSession).toBeGreaterThan(detachConsumers);
-    expect(disposeSession).toBeLessThan(invalidateAccount);
-    expect(teardown.indexOf('oldLiveEvidenceSession?.dispose()')).toBeLessThan(
-      teardown.indexOf('invalidateActiveKernelAccount'),
-    );
     expect(source).not.toContain('ownerMaintenance');
     expect(source).not.toContain('reconstructAccount');
   });

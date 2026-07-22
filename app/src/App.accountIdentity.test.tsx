@@ -209,6 +209,40 @@ const bootListeners = vi.hoisted(() => ({
   runtime: vi.fn(() => () => undefined),
 }));
 
+const kernelHost = vi.hoisted(() => ({
+  openLiveEvidenceAccount: vi.fn(async (accountId: string) =>
+    Object.freeze({
+      accountId,
+      read: Object.freeze({
+        accountId,
+        snapshot: vi.fn(async () => undefined),
+        subscribe: vi.fn(() => () => undefined),
+      }),
+      assertCurrent: vi.fn(),
+      dispose: vi.fn(),
+    }),
+  ),
+  getCommandCenterDependencies: vi.fn(() =>
+    Object.freeze({
+      kernel: {
+        requestCancellation: vi.fn(async () => {
+          throw new Error('not exercised by account identity tests');
+        }),
+      },
+      scheduledTransportRetry: {
+        retry: vi.fn(async () => {
+          throw new Error('not exercised by account identity tests');
+        }),
+      },
+      scheduledLogicalRetry: {
+        retry: vi.fn(async () => {
+          throw new Error('not exercised by account identity tests');
+        }),
+      },
+    }),
+  ),
+}));
+
 const queueAuthority = vi.hoisted(() => {
   type Lease = Readonly<{ userId: string; generation: number }>;
   let generation = 0;
@@ -372,6 +406,8 @@ vi.mock('@/lib/ai/runtime', async (importOriginal) => {
   return {
     ...actual,
     startRuntimeListener: bootListeners.runtime,
+    openJarvisLiveEvidenceAccount: kernelHost.openLiveEvidenceAccount,
+    getInstalledJarvisCommandCenterHostDependencies: kernelHost.getCommandCenterDependencies,
   };
 });
 

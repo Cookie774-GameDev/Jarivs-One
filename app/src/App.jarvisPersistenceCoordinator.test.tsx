@@ -42,7 +42,7 @@ const bootStorage = vi.hoisted(() => {
         if (property === 'toArray') return async () => [];
         if (property === 'count') return async () => 0;
         if (property === 'first' || property === 'get') return async () => undefined;
-        return async () => undefined;
+        return () => emptyCollection;
       },
     },
   );
@@ -71,6 +71,40 @@ const bootStorage = vi.hoisted(() => {
 
 const runtime = vi.hoisted(() => ({
   start: vi.fn((_bindings: { getAgentForChat: (chatId: string) => Promise<unknown> }) => vi.fn()),
+}));
+
+const kernelHost = vi.hoisted(() => ({
+  openLiveEvidenceAccount: vi.fn(async (accountId: string) =>
+    Object.freeze({
+      accountId,
+      read: Object.freeze({
+        accountId,
+        snapshot: vi.fn(async () => undefined),
+        subscribe: vi.fn(() => () => undefined),
+      }),
+      assertCurrent: vi.fn(),
+      dispose: vi.fn(),
+    }),
+  ),
+  getCommandCenterDependencies: vi.fn(() =>
+    Object.freeze({
+      kernel: {
+        requestCancellation: vi.fn(async () => {
+          throw new Error('not exercised by persistence coordinator tests');
+        }),
+      },
+      scheduledTransportRetry: {
+        retry: vi.fn(async () => {
+          throw new Error('not exercised by persistence coordinator tests');
+        }),
+      },
+      scheduledLogicalRetry: {
+        retry: vi.fn(async () => {
+          throw new Error('not exercised by persistence coordinator tests');
+        }),
+      },
+    }),
+  ),
 }));
 
 const persistence = vi.hoisted(() => {
@@ -152,7 +186,12 @@ vi.mock('@/lib/supabase/env', () => ({ isSupabaseConfigured: () => false }));
 
 vi.mock('@/lib/ai/runtime', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/ai/runtime')>();
-  return { ...actual, startRuntimeListener: runtime.start };
+  return {
+    ...actual,
+    startRuntimeListener: runtime.start,
+    openJarvisLiveEvidenceAccount: kernelHost.openLiveEvidenceAccount,
+    getInstalledJarvisCommandCenterHostDependencies: kernelHost.getCommandCenterDependencies,
+  };
 });
 
 vi.mock('@/lib/jarvis/persistenceCoordinator', () => ({
