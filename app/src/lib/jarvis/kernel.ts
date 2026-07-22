@@ -313,6 +313,20 @@ function deliveredCancellationEvent(
   };
 }
 
+function providerFailureEvent(
+  requestId: string,
+  createdAt: number,
+): JarvisRunTransitionEventInput {
+  return {
+    idempotencyKey: `kernel:${requestId}:failed`,
+    title: 'Protected request failed',
+    safeSummary: 'The protected provider request failed before canonical completion.',
+    sourceRefs: [],
+    artifactIds: [],
+    createdAt,
+  };
+}
+
 function providerResultSource(input: {
   accountId: string;
   runId: string;
@@ -443,6 +457,7 @@ async function runJarvisKernelExecution(
   let started: JarvisStartedProviderDispatch | undefined;
   let registration: JarvisBoundLiveEvidenceRegistration | undefined;
   let terminalCommitted = false;
+  let providerFailureTerminalized = false;
   let cancellationDelivered = false;
   let providerEvidenceRetained = false;
   let providerEvidenceDisposed = false;
@@ -783,7 +798,30 @@ async function runJarvisKernelExecution(
       terminalCommitted = true;
       throw error;
     }
-    if (started && !terminalCommitted) {
+    if (lifecycleMode === 'initial' && !terminalCommitted) {
+      const completedAt = deps.now();
+      const failed = await lifecycle.transition({
+        expectedStatus: 'running',
+        nextStatus: 'failed',
+        event: providerFailureEvent(input.attempt.requestId, completedAt),
+        completedAt,
+      });
+      if (failed.kind === 'account_authority_revoked') {
+        if (started) {
+          void started.response.catch(() => undefined);
+          try {
+            started.abortAfterStart('authority_revoked');
+          } catch {
+            // The revoked authority result remains authoritative during cleanup.
+          }
+        }
+        return revoked();
+      }
+      terminalCommitted = true;
+      providerFailureTerminalized = true;
+    }
+    if (started && (!terminalCommitted || providerFailureTerminalized)) {
+      void started.response.catch(() => undefined);
       try {
         controller.abort('kernel_provider_evidence_failed');
         started.abortAfterStart('evidence_commit_failed');

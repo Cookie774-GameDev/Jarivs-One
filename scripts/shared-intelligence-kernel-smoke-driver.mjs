@@ -338,8 +338,22 @@ async function fillEvidence(page, id, value) {
   await locator.fill(value);
 }
 
+async function readOptionalRunDigest(page) {
+  const locator = evidenceLocator(page, 'run.status');
+  const count = await locator.count();
+  if (count === 0) return undefined;
+  if (count !== 1) fail('kernel_smoke_evidence_ambiguous');
+
+  const status = await locator.first().getAttribute('data-run-status');
+  const digest = await locator.first().getAttribute('data-run-digest');
+  if (status === 'empty' && digest === null) return undefined;
+  if (!/^[a-f0-9]{64}$/.test(digest ?? '')) fail('kernel_smoke_run_digest_invalid');
+  return digest;
+}
+
 async function submitChatFixture(page, fixture) {
   await requireUniqueEvidence(page, 'chat.runtime-ready');
+  const previousRunDigest = await readOptionalRunDigest(page);
   await fillEvidence(page, 'chat.composer', fixture);
   await clickEvidence(page, 'chat.submit');
   await requireUniqueEvidence(page, 'smoke.runtime-state');
@@ -360,6 +374,12 @@ async function submitChatFixture(page, fixture) {
     'unprotected',
   ], 'kernel_smoke_dispatch_state_timeout');
   if (path !== 'protected') fail('kernel_smoke_unprotected_provider_dispatch');
+
+  const runStatus = await requireUniqueEvidence(page, 'run.status');
+  const currentRunDigest = previousRunDigest
+    ? await waitForDifferentAttribute(runStatus, 'data-run-digest', previousRunDigest)
+    : await waitForMatchingAttribute(runStatus, 'data-run-digest', /^[a-f0-9]{64}$/);
+  if (!/^[a-f0-9]{64}$/.test(currentRunDigest)) fail('kernel_smoke_run_digest_invalid');
 }
 
 async function selectSmokeTransport(page, transport) {

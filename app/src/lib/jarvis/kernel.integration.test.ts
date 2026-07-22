@@ -15,7 +15,11 @@ import type {
   JarvisKernelTurnInput,
   JarvisProviderStartedReceipt,
 } from './kernel';
-import { runJarvisKernelTurn, runJarvisKernelVoiceTurn } from './kernel';
+import {
+  runJarvisKernelScheduledTurn,
+  runJarvisKernelTurn,
+  runJarvisKernelVoiceTurn,
+} from './kernel';
 
 const NOW = 1_786_300_200_000;
 
@@ -959,7 +963,66 @@ describe('runJarvisKernelTurn explicit kernel integration', () => {
     await expect(runJarvisKernelTurn(input, harness.deps)).rejects.toThrow(
       'primary_provider_failure',
     );
+    expect(harness.lifecycle.transition).toHaveBeenNthCalledWith(3, {
+      expectedStatus: 'running',
+      nextStatus: 'failed',
+      event: {
+        idempotencyKey: `kernel:${input.attempt.requestId}:failed`,
+        title: 'Protected request failed',
+        safeSummary: 'The protected provider request failed before canonical completion.',
+        sourceRefs: [],
+        artifactIds: [],
+        createdAt: NOW + 4,
+      },
+      completedAt: NOW + 4,
+    });
     expect(harness.cleanupCalls).toEqual(['registration', 'abort', 'resolved', 'prepared']);
+  });
+
+  it('terminalizes and tears down a started provider when start evidence registration fails', async () => {
+    const input = turnInput();
+    let rejectResponse!: (reason: unknown) => void;
+    const response = new Promise<Readonly<RawProviderResponse>>((_resolve, reject) => {
+      rejectResponse = reject;
+    });
+    const responseCatch = vi.spyOn(response, 'catch');
+    const harness = createKernelHarness(input, { response });
+    vi.mocked(harness.lifecycle.recordProviderStarted).mockRejectedValueOnce(
+      new Error('provider_registration_failure'),
+    );
+
+    await expect(runJarvisKernelTurn(input, harness.deps)).rejects.toThrow(
+      'provider_registration_failure',
+    );
+    expect(harness.lifecycle.transition).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({ expectedStatus: 'running', nextStatus: 'failed' }),
+    );
+    expect(harness.started.abortAfterStart).toHaveBeenCalledWith('evidence_commit_failed');
+    expect(responseCatch).toHaveBeenCalledOnce();
+    expect(harness.cleanupCalls).toEqual(['abort', 'resolved', 'prepared']);
+
+    rejectResponse(new Error('late_provider_rejection'));
+    await Promise.resolve();
+  });
+
+  it('leaves scheduled provider failure terminalization to the retry settlement authority', async () => {
+    const scheduledRun = run({ source: 'schedule', status: 'running' });
+    const input = {
+      ...turnInput({ run: scheduledRun, surface: 'schedule' }),
+      run: scheduledRun,
+      surface: 'schedule' as const,
+    };
+    const harness = createKernelHarness(input, {
+      persisted: scheduledRun,
+      response: Promise.reject(new Error('scheduled_provider_failure')),
+    });
+
+    await expect(runJarvisKernelScheduledTurn(input, harness.deps)).rejects.toThrow(
+      'scheduled_provider_failure',
+    );
+    expect(harness.lifecycle.transition).not.toHaveBeenCalled();
+    expect(harness.started.abortAfterStart).toHaveBeenCalledWith('evidence_commit_failed');
   });
 
   it('preserves a revoked authority result while every throwing cleanup still runs', async () => {

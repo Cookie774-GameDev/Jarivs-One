@@ -185,10 +185,21 @@ describe('shared intelligence kernel smoke harness contract', () => {
       driver.indexOf('async function selectSmokeTransport'),
     );
     const readiness = submitFixture.indexOf("requireUniqueEvidence(page, 'chat.runtime-ready')");
+    const priorRunDigest = submitFixture.indexOf('readOptionalRunDigest(page)');
     const submit = submitFixture.indexOf("clickEvidence(page, 'chat.submit')");
+    const protectedDispatch = submitFixture.indexOf("path !== 'protected'");
+    const runStatus = submitFixture.indexOf("requireUniqueEvidence(page, 'run.status')");
+    const differentRunDigest = submitFixture.indexOf('waitForDifferentAttribute(');
+    const firstRunDigest = submitFixture.indexOf('waitForMatchingAttribute(');
 
     expect(readiness).toBeGreaterThan(0);
-    expect(submit).toBeGreaterThan(readiness);
+    expect(priorRunDigest).toBeGreaterThan(readiness);
+    expect(submit).toBeGreaterThan(priorRunDigest);
+    expect(protectedDispatch).toBeGreaterThan(submit);
+    expect(runStatus).toBeGreaterThan(protectedDispatch);
+    expect(differentRunDigest).toBeGreaterThan(runStatus);
+    expect(firstRunDigest).toBeGreaterThan(runStatus);
+    expect(submitFixture).not.toContain('setTimeout');
   });
 
   it('waits for the protected voice turn to become cancellable before clicking stop', () => {

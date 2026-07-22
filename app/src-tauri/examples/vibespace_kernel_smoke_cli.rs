@@ -100,12 +100,27 @@ fn write_record(value: serde_json::Value) {
 }
 
 fn selected_scenario(prompt: &str) -> Option<&'static str> {
-    let matches: Vec<_> = FIXTURES
+    const OPEN: &str = "<VIBESPACE_MESSAGES>\n";
+    const CLOSE: &str = "\n</VIBESPACE_MESSAGES>";
+    if prompt.matches(OPEN).count() != 1 || prompt.matches(CLOSE).count() != 1 {
+        return None;
+    }
+    let (_, after_open) = prompt.split_once(OPEN)?;
+    let (serialized_messages, after_close) = after_open.split_once(CLOSE)?;
+    if !after_close.is_empty() {
+        return None;
+    }
+    let messages: Vec<serde_json::Value> = serde_json::from_str(serialized_messages).ok()?;
+    let current_user = messages
         .iter()
-        .filter(|(_, fixture)| prompt.matches(fixture).count() == 1)
-        .map(|(id, _)| *id)
-        .collect();
-    (matches.len() == 1).then_some(matches[0])
+        .rev()
+        .find(|message| message.get("role").and_then(serde_json::Value::as_str) == Some("user"))?;
+    let current_text = current_user
+        .get("content")
+        .and_then(serde_json::Value::as_str)?;
+    FIXTURES
+        .iter()
+        .find_map(|(id, fixture)| (*fixture == current_text).then_some(*id))
 }
 
 fn action_block(id: &str, params: serde_json::Value) -> String {
@@ -199,4 +214,62 @@ fn main() {
         "type": "done",
         "finish_reason": if scenario == "partial_response" { "length" } else { "stop" }
     }));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn protected_prompt(messages: serde_json::Value) -> String {
+        format!(
+            "<VIBESPACE_SYSTEM_CONTRACT schema=\"1\" sha256=\"{}\">\ncontract\n</VIBESPACE_SYSTEM_CONTRACT>\n<VIBESPACE_MESSAGES>\n{}\n</VIBESPACE_MESSAGES>",
+            "a".repeat(64),
+            messages
+        )
+    }
+
+    #[test]
+    fn selects_the_exact_last_user_fixture_from_shared_history() {
+        let prompt = protected_prompt(json!([
+            { "role": "user", "content": "Verify the provider transport smoke fixture." },
+            { "role": "assistant", "content": "Deterministic smoke response." },
+            { "role": "user", "content": "Verify the CLI transport smoke fixture." }
+        ]));
+
+        assert_eq!(selected_scenario(&prompt), Some("transport_cli_success"));
+    }
+
+    #[test]
+    fn rejects_missing_or_duplicate_message_envelopes() {
+        assert_eq!(
+            selected_scenario("Verify the CLI transport smoke fixture."),
+            None
+        );
+        let duplicated = format!(
+            "{}\n<VIBESPACE_MESSAGES>\n[]\n</VIBESPACE_MESSAGES>",
+            protected_prompt(json!([{
+                "role": "user",
+                "content": "Verify the CLI transport smoke fixture."
+            }]))
+        );
+        assert_eq!(selected_scenario(&duplicated), None);
+    }
+
+    #[test]
+    fn rejects_inexact_or_non_string_current_user_content() {
+        assert_eq!(
+            selected_scenario(&protected_prompt(json!([{
+                "role": "user",
+                "content": "Verify the CLI transport smoke fixture. "
+            }]))),
+            None
+        );
+        assert_eq!(
+            selected_scenario(&protected_prompt(json!([{
+                "role": "user",
+                "content": [{ "type": "text", "text": "Verify the CLI transport smoke fixture." }]
+            }]))),
+            None
+        );
+    }
 }
