@@ -3,7 +3,10 @@ import { ChevronDown, ChevronUp, RotateCcw, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
-import { createJarvisCommandCenterStore } from './commandCenterStore';
+import {
+  createJarvisCommandCenterStore,
+  type JarvisCommandCenterStore,
+} from './commandCenterStore';
 import {
   mapJarvisCancellationRequestResult,
   mapScheduledJarvisAttemptResult,
@@ -13,6 +16,7 @@ import type {
   JarvisCommandCenterDataPort,
   JarvisCommandCenterHandlers,
   JarvisCommandCenterHostPort,
+  JarvisCommandCenterSnapshot,
   JarvisCommandCenterTab,
 } from './types';
 import { JarvisOutputsTab } from './JarvisOutputsTab';
@@ -44,6 +48,33 @@ export const JarvisCommandCenterProvider = JarvisCommandCenterContext.Provider;
 
 export function useJarvisCommandCenterBinding(): JarvisCommandCenterBinding | undefined {
   return React.useContext(JarvisCommandCenterContext);
+}
+
+const EMPTY_COMMAND_CENTER_SUBSCRIBE = () => () => undefined;
+
+function useCommandCenterStore(input: {
+  accountId: string;
+  chatId: string;
+  dataPort: JarvisCommandCenterDataPort;
+}): JarvisCommandCenterStore | undefined {
+  const [state, setState] = React.useState<{
+    accountId: string;
+    chatId: string;
+    dataPort: JarvisCommandCenterDataPort;
+    store: JarvisCommandCenterStore;
+  }>();
+
+  React.useEffect(() => {
+    const store = createJarvisCommandCenterStore(input);
+    setState({ ...input, store });
+    return () => store.dispose();
+  }, [input.accountId, input.chatId, input.dataPort]);
+
+  return state?.accountId === input.accountId &&
+    state.chatId === input.chatId &&
+    state.dataPort === input.dataPort
+    ? state.store
+    : undefined;
 }
 
 function usePrefersReducedMotion(): boolean {
@@ -98,14 +129,28 @@ export function JarvisCommandCenter({
   handlers: JarvisCommandCenterHandlers;
   compact?: boolean;
 }) {
-  const store = React.useMemo(
-    () => createJarvisCommandCenterStore({ accountId, chatId, dataPort }),
-    [accountId, chatId, dataPort],
+  const store = useCommandCenterStore({ accountId, chatId, dataPort });
+  const emptySnapshot = React.useMemo<JarvisCommandCenterSnapshot>(
+    () => ({
+      accountId,
+      chatId,
+      expansion: 'collapsed',
+      activeTab: 'outputs',
+      retryState: { kind: 'none' },
+      events: [],
+      outputs: [],
+      liveSystems: { state: 'not_loaded' },
+    }),
+    [accountId, chatId],
+  );
+  const getSnapshot = React.useCallback(
+    () => store?.getSnapshot() ?? emptySnapshot,
+    [emptySnapshot, store],
   );
   const snapshot = React.useSyncExternalStore(
-    store.subscribe,
-    store.getSnapshot,
-    store.getSnapshot,
+    store?.subscribe ?? EMPTY_COMMAND_CENTER_SUBSCRIBE,
+    getSnapshot,
+    getSnapshot,
   );
   const [feedback, setFeedback] = React.useState<string>();
   const [busyAction, setBusyAction] = React.useState(false);
@@ -114,7 +159,6 @@ export function JarvisCommandCenter({
   const toggleRef = React.useRef<HTMLButtonElement>(null);
   const reducedMotion = usePrefersReducedMotion();
 
-  React.useEffect(() => () => store.dispose(), [store]);
   React.useEffect(() => setFeedback(undefined), [snapshot.currentRun?.id]);
 
   const expanded = snapshot.expansion === 'expanded';
@@ -175,7 +219,7 @@ export function JarvisCommandCenter({
     setFeedback(undefined);
     try {
       setFeedback(await operation());
-      await store.refresh();
+      await store?.refresh();
     } catch {
       setFeedback('The requested action is unavailable for this account session.');
     } finally {
@@ -184,13 +228,13 @@ export function JarvisCommandCenter({
   };
 
   const toggle = () => {
-    store.setExpansion(expanded ? 'collapsed' : 'expanded');
+    store?.setExpansion(expanded ? 'collapsed' : 'expanded');
   };
 
   const onEscape = (event: React.KeyboardEvent<HTMLElement>) => {
     if (event.key !== 'Escape' || !expanded) return;
     event.preventDefault();
-    store.setExpansion('collapsed');
+    store?.setExpansion('collapsed');
     toggleRef.current?.focus();
   };
 
@@ -372,7 +416,7 @@ export function JarvisCommandCenter({
           <Tabs
             className="jarvis-command-center__tabs"
             value={snapshot.activeTab}
-            onValueChange={(value) => store.setActiveTab(value as JarvisCommandCenterTab)}
+            onValueChange={(value) => store?.setActiveTab(value as JarvisCommandCenterTab)}
           >
             <TabsList className="jarvis-command-center__tablist" aria-label="Command Center views">
               <TabsTrigger

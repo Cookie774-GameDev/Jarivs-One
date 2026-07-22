@@ -21,6 +21,7 @@ import type {
   ProviderConnection,
 } from './adapters/types';
 import { getProviderConnectionDescriptor } from './adapters/catalog';
+import { KERNEL_SMOKE_PROVIDER_ID } from './providers/kernelSmoke';
 import { isProtectedJarvisAgent } from '@/lib/jarvis/identity';
 
 type ConnectedSingleSelection = {
@@ -179,6 +180,22 @@ function findAccessibleModel(
   return options.find((option) => option.id === modelId) ?? null;
 }
 
+function isAttestedKernelSmokeNativeSelection(
+  selection: Extract<ChatModelSelection, { mode: 'single' }>,
+  connection: Readonly<ProviderConnection> | undefined,
+  ctx: ModelSelectionContext,
+): boolean {
+  return (
+    selection.providerId === KERNEL_SMOKE_PROVIDER_ID &&
+    selection.modelId === 'kernel-smoke-v1' &&
+    connection?.id === 'vibespace-kernel-smoke-native' &&
+    connection.mode === 'native-api' &&
+    connection.authSource === 'debug-native-attestation' &&
+    connection.capabilities.localOnly === true &&
+    isProviderConnected(selection.providerId, ctx)
+  );
+}
+
 export function isSingleModelAvailable(
   selection: Extract<ChatModelSelection, { mode: 'single' }>,
   ctx: ModelSelectionContext,
@@ -236,7 +253,11 @@ export function validateChatModelSelection(
         return { ok: false, message: 'The selected connection does not match this model provider.' };
       }
     }
-    if (exactConnection?.mode !== 'external-cli' && !isSingleModelAvailable(selection, ctx)) {
+    if (
+      exactConnection?.mode !== 'external-cli' &&
+      !isAttestedKernelSmokeNativeSelection(selection, exactConnection, ctx) &&
+      !isSingleModelAvailable(selection, ctx)
+    ) {
       const needsKey = !isProviderConnected(selection.providerId, ctx);
       if (needsKey) {
         return {

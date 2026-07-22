@@ -188,6 +188,13 @@ import {
   takeNextQueuedMessage,
   type QueuedChatMessage,
 } from './QueuedMessagesBar';
+import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
+import { SIK_CONTROL } from '@/lib/jarvis/smoke/evidenceIds';
+
+const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
+  devBuild: import.meta.env.DEV,
+  explicitFlag: import.meta.env.VITE_SIK_SMOKE,
+});
 
 export interface ComposerProps {
   chatId: ChatId | string;
@@ -2654,6 +2661,9 @@ export function Composer({
                 }}
                 placeholder={placeholder ?? 'Message Jarvis...   (use @ to mention an agent)'}
                 aria-label="Message"
+                data-sik-evidence={
+                  KERNEL_SMOKE_ENABLED ? SIK_CONTROL.chatComposer : undefined
+                }
                 style={{ minHeight: MIN_HEIGHT, maxHeight: MAX_HEIGHT }}
                 className={cn(
                   'block w-full resize-none bg-transparent px-3 py-2 text-body text-foreground',
@@ -2883,6 +2893,9 @@ export function Composer({
                     onClick={() => void handleSend()}
                     disabled={!canSend}
                     aria-label="Send message"
+                    data-sik-evidence={
+                      KERNEL_SMOKE_ENABLED ? SIK_CONTROL.chatSubmit : undefined
+                    }
                   >
                     <Send />
                   </Button>
@@ -3064,6 +3077,18 @@ function ModelPicker({
             compact && 'max-w-[11rem] shrink-0',
           )}
           aria-label="Choose model"
+          data-sik-evidence={
+            KERNEL_SMOKE_ENABLED ? SIK_CONTROL.modelPicker : undefined
+          }
+          data-sik-transport={
+            KERNEL_SMOKE_ENABLED && selection.mode === 'single'
+              ? selection.connectionId === 'vibespace-kernel-smoke-cli'
+                ? 'cli'
+                : selection.connectionId === 'vibespace-kernel-smoke-native'
+                  ? 'native'
+                  : undefined
+              : undefined
+          }
         >
           {selection.mode === 'hive' ? <HiveModelIcon size={21} /> : null}
           <span className={cn('text-metadata', compact && 'truncate')}>{displayLabel}</span>

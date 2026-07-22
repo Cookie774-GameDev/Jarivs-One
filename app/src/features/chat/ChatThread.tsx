@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence } from 'motion/react';
 import { Sparkles } from 'lucide-react';
 import { useChatMessages } from './hooks';
@@ -28,6 +28,68 @@ const MAX_STREAM_SIZE_PART = 8000;
 export interface ChatThreadProps {
   chatId: ChatId | string;
   compact?: boolean;
+}
+
+function useCanonicalRunPresence(
+  binding: ReturnType<typeof useJarvisCommandCenterBinding>,
+  chatId: string,
+): boolean {
+  type BoundDataPort = NonNullable<typeof binding>['dataPort'];
+  type Presence = Readonly<{
+    accountId: string;
+    chatId: string;
+    dataPort: BoundDataPort;
+    present: boolean;
+  }>;
+  const [presence, setPresence] = useState<Presence>();
+  const accountId = binding?.hostPort.accountId;
+  const dataPort = binding?.dataPort;
+
+  useEffect(() => {
+    if (!accountId || !dataPort) {
+      setPresence(undefined);
+      return;
+    }
+    const scope = { accountId, chatId, dataPort } as const;
+    setPresence({ ...scope, present: false });
+    let disposed = false;
+    let generation = 0;
+    const refresh = async () => {
+      const requestGeneration = ++generation;
+      try {
+        const runs = await dataPort.getRunsForChat({
+          accountId,
+          chatId,
+          limit: 1,
+        });
+        if (!disposed && requestGeneration === generation) {
+          setPresence({
+            ...scope,
+            present: runs.some((run) => run.accountId === accountId && run.chatId === chatId),
+          });
+        }
+      } catch {
+        if (!disposed && requestGeneration === generation) {
+          setPresence({ ...scope, present: false });
+        }
+      }
+    };
+    const unsubscribe = dataPort.subscribe(accountId, chatId, () => void refresh());
+    void refresh();
+    return () => {
+      disposed = true;
+      generation += 1;
+      unsubscribe();
+    };
+  }, [accountId, chatId, dataPort]);
+
+  return Boolean(
+    presence &&
+      presence.accountId === accountId &&
+      presence.chatId === chatId &&
+      presence.dataPort === dataPort &&
+      presence.present,
+  );
 }
 
 /**
@@ -65,9 +127,11 @@ function roughPayloadSize(value: unknown): number {
 export function ChatThread({ chatId, compact = false }: ChatThreadProps) {
   const messages = useChatMessages(chatId);
   const commandCenterBinding = useJarvisCommandCenterBinding();
-  const hasCanonicalRun = useJarvisTaskRunStore((state) =>
+  const hasProjectedCanonicalRun = useJarvisTaskRunStore((state) =>
     Object.values(state.runs).some((run) => run.canonical && run.chatId === String(chatId)),
   );
+  const hasDirectCanonicalRun = useCanonicalRunPresence(commandCenterBinding, String(chatId));
+  const hasCanonicalRun = hasProjectedCanonicalRun || hasDirectCanonicalRun;
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickyRef = useRef(true);
   const fallbackAgents = useMemo(() => extractAgentCards(messages), [messages]);
@@ -127,6 +191,11 @@ export function ChatThread({ chatId, compact = false }: ChatThreadProps) {
       }
     >
       <div
+        data-sik-evidence={
+          KERNEL_SMOKE_ENABLED && commandCenterBinding
+            ? SIK_EVIDENCE.chatRuntimeReady
+            : undefined
+        }
         className={
           compact
             ? 'flex w-full flex-col gap-3 px-2 py-3'

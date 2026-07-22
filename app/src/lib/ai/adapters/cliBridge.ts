@@ -7,7 +7,6 @@ import type {
   UsageSnapshot,
   UsageValue,
 } from './types';
-import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
 
 export const CLI_BRIDGE_EVENT = 'cli-bridge://event';
 export const MAX_CLI_PROMPT_CHARS = 128_000;
@@ -180,16 +179,6 @@ export const KERNEL_SMOKE_CLI_DEFINITION: CliProviderDefinition = Object.freeze(
     return { recognized: false, events: [] };
   },
 });
-
-function effectiveCliProviderDefinition(definition: CliProviderDefinition): CliProviderDefinition {
-  return definition.adapterId === 'codex-cli' &&
-    isKernelSmokeEnabled({
-      devBuild: import.meta.env.DEV,
-      explicitFlag: import.meta.env.VITE_SIK_SMOKE,
-    })
-    ? KERNEL_SMOKE_CLI_DEFINITION
-    : definition;
-}
 
 export function assertCliPrompt(prompt: string): void {
   if (prompt.length > MAX_CLI_PROMPT_CHARS) {
@@ -716,14 +705,15 @@ async function* sendProviderRequest(
 }
 
 export function createCliProviderAdapter(definition: CliProviderDefinition): ProviderAdapter {
-  const effective = effectiveCliProviderDefinition(definition);
   return Object.freeze({
-    id: effective.adapterId,
-    detect: () => detectProvider(effective),
-    probeAuth: () => probeProviderAuth(effective),
-    send: (request: ProviderRequest) => sendProviderRequest(effective, request),
+    id: definition.adapterId,
+    detect: () => detectProvider(definition),
+    probeAuth: () => probeProviderAuth(definition),
+    send: (request: ProviderRequest) => sendProviderRequest(definition, request),
     cancel: async (requestId: string) => {
       await cancelCliBridge(requestId);
     },
   });
 }
+
+export const kernelSmokeCliAdapter = createCliProviderAdapter(KERNEL_SMOKE_CLI_DEFINITION);

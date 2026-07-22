@@ -3,7 +3,9 @@ import * as React from 'react';
 import {
   activateKernelSmokeBinding,
   clearKernelSmokeBinding,
+  getKernelSmokeDispatchPath,
   KERNEL_SMOKE_PROVIDER_ID,
+  subscribeKernelSmokeDispatchPath,
   type KernelSmokeBindingEvidence,
 } from '@/lib/ai/providers/kernelSmoke';
 import { buildProviderCatalog } from '@/lib/ai/adapters/catalog';
@@ -22,6 +24,26 @@ export type KernelSmokeBindingHostProps = Readonly<{
   devBuild?: boolean;
   explicitFlag?: string;
 }>;
+
+const NATIVE_SMOKE_FAILURE_CODES: ReadonlySet<string> = new Set([
+  'sik_smoke_release_build',
+  'sik_smoke_flag_disabled',
+  'sik_smoke_non_loopback_host',
+  'sik_smoke_invalid_port',
+  'sik_smoke_port_not_bound',
+  'sik_smoke_invalid_profile',
+  'sik_smoke_appdata_outside_profile',
+  'sik_smoke_localappdata_outside_profile',
+  'sik_smoke_invalid_nonce',
+  'sik_smoke_invalid_window',
+]);
+
+function safeNativeSmokeFailureCode(error: unknown): string {
+  const candidate = error instanceof Error ? error.message : String(error);
+  return NATIVE_SMOKE_FAILURE_CODES.has(candidate)
+    ? candidate
+    : 'sik_smoke_binding_invalid';
+}
 
 function isCanonicalAbsolutePath(value: string): boolean {
   return (
@@ -79,19 +101,56 @@ export function KernelSmokeBindingHost({
 }: KernelSmokeBindingHostProps) {
   const enabled = isKernelSmokeEnabled({ devBuild, explicitFlag });
   const [evidence, setEvidence] = React.useState<KernelSmokeBindingEvidence>();
+  const [failureCode, setFailureCode] = React.useState<string>();
+  const [runtimeState, setRuntimeState] = React.useState<
+    'sent' | 'running' | 'done' | 'error' | 'cancelled'
+  >();
+  const dispatchPath = React.useSyncExternalStore(
+    subscribeKernelSmokeDispatchPath,
+    getKernelSmokeDispatchPath,
+    () => undefined,
+  );
   const previousSelectionRef = React.useRef(useAuthStore.getState().chatModelSelection);
+
+  React.useEffect(() => {
+    setRuntimeState(undefined);
+    if (!enabled) return;
+    const onSend = () => setRuntimeState('sent');
+    const onRunState = (event: Event) => {
+      const status = (event as CustomEvent<{ status?: unknown }>).detail?.status;
+      if (
+        status === 'running' ||
+        status === 'done' ||
+        status === 'error' ||
+        status === 'cancelled'
+      ) {
+        setRuntimeState(status);
+      }
+    };
+    window.addEventListener('jarvis:send', onSend);
+    window.addEventListener('jarvis:run-state', onRunState);
+    return () => {
+      window.removeEventListener('jarvis:send', onSend);
+      window.removeEventListener('jarvis:run-state', onRunState);
+    };
+  }, [enabled]);
 
   React.useEffect(() => {
     let disposed = false;
     clearKernelSmokeBinding();
     setEvidence(undefined);
+    setFailureCode(undefined);
     if (!enabled) return () => undefined;
 
     void (async () => {
       try {
         const { invoke } = await import('@tauri-apps/api/core');
         const native = nativeSmokeBinding(await invoke('sik_smoke_binding'));
-        if (!native || disposed) return;
+        if (disposed) return;
+        if (!native) {
+          setFailureCode('sik_smoke_binding_invalid');
+          return;
+        }
         const sanitized = Object.freeze({
           nativePid: native.nativePid,
           cdpPort: native.cdpPort,
@@ -101,10 +160,11 @@ export function KernelSmokeBindingHost({
         if (disposed) return;
         activateKernelSmokeBinding(sanitized);
         const smokeConnection = buildProviderCatalog({ devBuild, explicitFlag }).connections.find(
-          (connection) => connection.id === 'vibespace-kernel-smoke-cli',
+          (connection) => connection.id === 'vibespace-kernel-smoke-native',
         );
         if (!smokeConnection) {
           clearKernelSmokeBinding();
+          setFailureCode('sik_smoke_binding_invalid');
           return;
         }
         useAuthStore.getState().setChatModelSelection({
@@ -117,8 +177,8 @@ export function KernelSmokeBindingHost({
           capabilities: smokeConnection.capabilities,
         });
         setEvidence(sanitized);
-      } catch {
-        // A missing or rejected native binding is an expected fail-closed state.
+      } catch (error) {
+        if (!disposed) setFailureCode(safeNativeSmokeFailureCode(error));
       }
     })();
 
@@ -132,15 +192,39 @@ export function KernelSmokeBindingHost({
     };
   }, [devBuild, enabled, explicitFlag]);
 
-  if (!evidence) return null;
+  if (!evidence) {
+    return failureCode ? (
+      <output
+        hidden
+        data-sik-evidence={SIK_EVIDENCE.smokeBindingError}
+        data-error-code={failureCode}
+      />
+    ) : null;
+  }
   return (
-    <output
-      hidden
-      data-sik-evidence={SIK_EVIDENCE.smokeBinding}
-      data-native-pid={String(evidence.nativePid)}
-      data-cdp-port={String(evidence.cdpPort)}
-      data-profile-sha256={evidence.profileSha256}
-      data-nonce={evidence.nonce}
-    />
+    <>
+      <output
+        hidden
+        data-sik-evidence={SIK_EVIDENCE.smokeBinding}
+        data-native-pid={String(evidence.nativePid)}
+        data-cdp-port={String(evidence.cdpPort)}
+        data-profile-sha256={evidence.profileSha256}
+        data-nonce={evidence.nonce}
+      />
+      {dispatchPath ? (
+        <output
+          hidden
+          data-sik-evidence={SIK_EVIDENCE.smokeDispatchKind}
+          data-dispatch-kind={dispatchPath}
+        />
+      ) : null}
+      {runtimeState ? (
+        <output
+          hidden
+          data-sik-evidence={SIK_EVIDENCE.smokeRuntimeState}
+          data-runtime-state={runtimeState}
+        />
+      ) : null}
+    </>
   );
 }

@@ -61,6 +61,7 @@ $ChildEnvironmentNames = @(
     'LOCALAPPDATA',
     'WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS',
     'WEBVIEW2_USER_DATA_FOLDER',
+    'TAURI_CONFIG',
     'PATH'
 )
 
@@ -122,6 +123,159 @@ function New-LowercaseHexNonce {
     return ([BitConverter]::ToString($bytes) -replace '-', '').ToLowerInvariant()
 }
 
+function Start-HiddenRedirectedProcess {
+    param(
+        [Parameter(Mandatory = $true)][string]$FilePath,
+        [Parameter(Mandatory = $true)][string[]]$ArgumentList,
+        [Parameter(Mandatory = $true)][string]$WorkingDirectory,
+        [Parameter(Mandatory = $true)][string]$StandardOutputPath,
+        [Parameter(Mandatory = $true)][string]$StandardErrorPath
+    )
+
+    $startInfo = [Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = $FilePath
+    $startInfo.Arguments = $ArgumentList -join ' '
+    $startInfo.WorkingDirectory = $WorkingDirectory
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.WindowStyle = [Diagnostics.ProcessWindowStyle]::Hidden
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+
+    $standardOutputStream = [IO.File]::Open(
+        $StandardOutputPath,
+        [IO.FileMode]::Create,
+        [IO.FileAccess]::Write,
+        [IO.FileShare]::Read
+    )
+    $standardErrorStream = [IO.File]::Open(
+        $StandardErrorPath,
+        [IO.FileMode]::Create,
+        [IO.FileAccess]::Write,
+        [IO.FileShare]::Read
+    )
+    try {
+        $process = [Diagnostics.Process]::new()
+        $process.StartInfo = $startInfo
+        if (-not $process.Start()) {
+            $process.Dispose()
+            throw 'kernel_smoke_driver_start_failed'
+        }
+        return [pscustomobject]@{
+            Process              = $process
+            StandardOutputTask   = $process.StandardOutput.BaseStream.CopyToAsync($standardOutputStream)
+            StandardErrorTask    = $process.StandardError.BaseStream.CopyToAsync($standardErrorStream)
+            StandardOutputReader = $process.StandardOutput
+            StandardErrorReader  = $process.StandardError
+            StandardOutputStream = $standardOutputStream
+            StandardErrorStream  = $standardErrorStream
+            Completed            = $false
+        }
+    }
+    catch {
+        $standardOutputStream.Dispose()
+        $standardErrorStream.Dispose()
+        throw
+    }
+}
+
+function Complete-RedirectCopy {
+    param(
+        [Parameter(Mandatory = $true)][Threading.Tasks.Task]$Task,
+        [Parameter(Mandatory = $true)][IO.TextReader]$Reader,
+        [Parameter(Mandatory = $true)][IO.Stream]$Destination,
+        [Parameter(Mandatory = $true)][int]$StreamWaitMilliseconds
+    )
+
+    $completed = $false
+    try {
+        $completed = $Task.Wait($StreamWaitMilliseconds)
+    }
+    catch {
+        $completed = $Task.IsCompleted
+    }
+    if (-not $completed) {
+        try {
+            $Reader.Dispose()
+        }
+        catch {
+            # The bounded caller reports capture failure below; cleanup continues.
+        }
+        try {
+            $completed = $Task.Wait($StreamWaitMilliseconds)
+        }
+        catch {
+            $completed = $Task.IsCompleted
+        }
+    }
+    $destinationCompleted = $true
+    try {
+        $Destination.Flush()
+    }
+    catch {
+        $destinationCompleted = $false
+    }
+    try {
+        $Destination.Dispose()
+    }
+    catch {
+        $destinationCompleted = $false
+    }
+    return (
+        $completed -and
+        $destinationCompleted -and
+        -not $Task.IsFaulted -and
+        -not $Task.IsCanceled
+    )
+}
+
+function Complete-HiddenRedirectedProcess {
+    param(
+        [Parameter(Mandatory = $true)][object]$Capture,
+        [ValidateRange(100, 30000)][int]$ProcessWaitMilliseconds = 5000,
+        [ValidateRange(100, 30000)][int]$StreamWaitMilliseconds = 2000
+    )
+
+    if (-not $Capture.Completed) {
+        $processExited = $Capture.Process.HasExited
+        if (-not $processExited) {
+            $processExited = $Capture.Process.WaitForExit($ProcessWaitMilliseconds)
+        }
+        if (-not $processExited) {
+            try {
+                $Capture.Process.Kill($true)
+            }
+            catch {
+                try {
+                    $Capture.Process.Kill()
+                }
+                catch {
+                    # Bounded failure is reported after both log streams are flushed.
+                }
+            }
+            $processExited = $Capture.Process.WaitForExit($ProcessWaitMilliseconds)
+        }
+        $standardOutputCompleted = Complete-RedirectCopy `
+            -Task $Capture.StandardOutputTask `
+            -Reader $Capture.StandardOutputReader `
+            -Destination $Capture.StandardOutputStream `
+            -StreamWaitMilliseconds $StreamWaitMilliseconds
+        $standardErrorCompleted = Complete-RedirectCopy `
+            -Task $Capture.StandardErrorTask `
+            -Reader $Capture.StandardErrorReader `
+            -Destination $Capture.StandardErrorStream `
+            -StreamWaitMilliseconds $StreamWaitMilliseconds
+        $Capture.Completed = $true
+        if (-not $processExited) {
+            throw 'kernel_smoke_driver_exit_timeout'
+        }
+        if (-not $standardOutputCompleted -or -not $standardErrorCompleted) {
+            throw 'kernel_smoke_driver_log_capture_failed'
+        }
+    }
+    return [int]$Capture.Process.ExitCode
+}
+
 function Get-CimProcessSnapshot {
     return @(Get-CimInstance -ClassName Win32_Process -ErrorAction Stop | ForEach-Object {
             $creationUtc = $null
@@ -175,7 +329,7 @@ function Get-Descendants {
             $frontier += [pscustomobject]@{ ProcessId = $child.ProcessId; Depth = $record.Depth }
         }
     }
-    return @($result)
+    return $result.ToArray()
 }
 
 function Add-RecordedProcessTree {
@@ -422,6 +576,7 @@ $DevRecords = @{}
 $DriverRecords = @{}
 $DriverStandardOutput = $null
 $DriverStandardError = $null
+$DriverCapture = $null
 
 try {
     Assert-StaticContract
@@ -508,15 +663,21 @@ try {
     }
     $tauriIdentifier = "ai.jarvis.desktop.smoke.s$runId"
     $tauriConfigPath = Join-Path $Profile 'tauri-smoke-config.json'
-    $tauriConfigJson = @{ identifier = $tauriIdentifier } | ConvertTo-Json -Compress
+    $tauriConfigJson = @{
+        identifier = $tauriIdentifier
+        app        = @{ macOSPrivateApi = $true }
+    } | ConvertTo-Json -Compress
     [IO.File]::WriteAllText(
         $tauriConfigPath,
         $tauriConfigJson,
         (New-Object Text.UTF8Encoding($false))
     )
 
+    Set-ChildEnvironment -Values @{ TAURI_CONFIG = $tauriConfigJson }
     & cargo build --manifest-path $CargoManifest --example vibespace_kernel_smoke_cli
     $cargoExitCode = $LASTEXITCODE
+    Restore-Environment -Saved $SavedEnvironment
+    $EnvironmentRestored = $true
     if ($cargoExitCode -ne 0) {
         throw 'kernel_smoke_cli_build_failed'
     }
@@ -541,8 +702,10 @@ try {
         LOCALAPPDATA                         = $localAppData
         WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-address=127.0.0.1 --remote-debugging-port=$CdpPort --user-data-dir=`"$webViewProfile`""
         WEBVIEW2_USER_DATA_FOLDER            = $webViewProfile
+        TAURI_CONFIG                         = $tauriConfigJson
         PATH                                 = "$SmokeCliDirectory$([IO.Path]::PathSeparator)$($SavedEnvironment['PATH'])"
     }
+    $EnvironmentRestored = $false
     Set-ChildEnvironment -Values $childEnvironment
     $Dev = Start-Process `
         -FilePath $TauriCommand `
@@ -589,14 +752,13 @@ try {
                 '--expected-profile', $Profile,
                 '--expected-nonce', $Nonce
             ) | ForEach-Object { ConvertTo-ProcessArgument -Value ([string]$_) }
-            $Driver = Start-Process `
+            $DriverCapture = Start-HiddenRedirectedProcess `
                 -FilePath (Get-Command node -ErrorAction Stop).Source `
                 -ArgumentList $driverArguments `
                 -WorkingDirectory $RepositoryRoot `
-                -WindowStyle Hidden `
-                -RedirectStandardOutput $DriverStandardOutput `
-                -RedirectStandardError $DriverStandardError `
-                -PassThru
+                -StandardOutputPath $DriverStandardOutput `
+                -StandardErrorPath $DriverStandardError
+            $Driver = $DriverCapture.Process
             while (-not $Driver.HasExited) {
                 Add-RecordedProcessTree -RootPid $Driver.Id -Records $DriverRecords
                 Add-RecordedProcessTree -RootPid $Dev.Id -Records $DevRecords
@@ -604,9 +766,10 @@ try {
                 $Driver.Refresh()
             }
             Add-RecordedProcessTree -RootPid $Driver.Id -Records $DriverRecords
-            $driverExitCode = $Driver.ExitCode
+            $driverExitCode = Complete-HiddenRedirectedProcess -Capture $DriverCapture
             if ($driverExitCode -eq 0) {
                 $Driver = $null
+                $DriverCapture = $null
                 break
             }
             if ($driverExitCode -ne 10) {
@@ -617,6 +780,7 @@ try {
             }
 
             $Driver = $null
+            $DriverCapture = $null
             $previousCdpPort = $CdpPort
             $previousNonce = $Nonce
             $previousNativePid = $NativePid
@@ -683,23 +847,61 @@ try {
     }
 }
 finally {
+    $cleanupFailures = [Collections.Generic.List[string]]::new()
     if (-not $EnvironmentRestored) {
-        Restore-Environment -Saved $SavedEnvironment
-        $EnvironmentRestored = $true
+        try {
+            Restore-Environment -Saved $SavedEnvironment
+            $EnvironmentRestored = $true
+        }
+        catch {
+            [void]$cleanupFailures.Add('environment')
+        }
     }
     if ($null -ne $Driver) {
-        Add-RecordedProcessTree -RootPid $Driver.Id -Records $DriverRecords
-        Stop-RecordedProcessTree -RootPid $Driver.Id -Records $DriverRecords
+        try {
+            Add-RecordedProcessTree -RootPid $Driver.Id -Records $DriverRecords
+            Stop-RecordedProcessTree -RootPid $Driver.Id -Records $DriverRecords
+            Wait-ForRecordedProcessTreeExit `
+                -Records $DriverRecords `
+                -Deadline ([DateTime]::UtcNow.AddSeconds(30))
+        }
+        catch {
+            [void]$cleanupFailures.Add('driver_tree')
+        }
+        if ($null -ne $DriverCapture) {
+            try {
+                [void](Complete-HiddenRedirectedProcess -Capture $DriverCapture)
+            }
+            catch {
+                [void]$cleanupFailures.Add('driver_logs')
+            }
+        }
     }
     if ($null -ne $Dev) {
-        Add-RecordedProcessTree -RootPid $Dev.Id -Records $DevRecords
-        Stop-RecordedProcessTree -RootPid $Dev.Id -Records $DevRecords
+        try {
+            Add-RecordedProcessTree -RootPid $Dev.Id -Records $DevRecords
+            Stop-RecordedProcessTree -RootPid $Dev.Id -Records $DevRecords
+            Wait-ForRecordedProcessTreeExit `
+                -Records $DevRecords `
+                -Deadline ([DateTime]::UtcNow.AddSeconds(30))
+        }
+        catch {
+            [void]$cleanupFailures.Add('native_tree')
+        }
     }
     if ($null -ne $Profile -and $null -ne $CanonicalProfileBase -and (Test-Path -LiteralPath $Profile)) {
-        $canonicalRemovalTarget = Get-CanonicalExistingPath -LiteralPath $Profile
-        if (-not (Test-StrictDescendantPath -Child $canonicalRemovalTarget -Parent $CanonicalProfileBase)) {
-            throw 'kernel_smoke_cleanup_containment_invalid'
+        try {
+            $canonicalRemovalTarget = Get-CanonicalExistingPath -LiteralPath $Profile
+            if (-not (Test-StrictDescendantPath -Child $canonicalRemovalTarget -Parent $CanonicalProfileBase)) {
+                throw 'kernel_smoke_cleanup_containment_invalid'
+            }
+            Remove-Item -LiteralPath $canonicalRemovalTarget -Recurse -Force
         }
-        Remove-Item -LiteralPath $canonicalRemovalTarget -Recurse -Force
+        catch {
+            [void]$cleanupFailures.Add('profile')
+        }
+    }
+    if ($cleanupFailures.Count -ne 0) {
+        throw "kernel_smoke_cleanup_failed:$($cleanupFailures -join ',')"
     }
 }

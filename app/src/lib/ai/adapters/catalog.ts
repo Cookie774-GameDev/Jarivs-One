@@ -207,6 +207,22 @@ const KERNEL_SMOKE_CLI_CONNECTION = externalConnection({
   capabilities: { localOnly: true },
 });
 
+const KERNEL_SMOKE_NATIVE_CONNECTION: Readonly<ProviderConnection> = Object.freeze({
+  id: 'vibespace-kernel-smoke-native',
+  adapterId: 'vibespace-kernel-smoke-native',
+  providerId: 'vibespace-kernel-smoke',
+  displayName: 'VibeSpace Kernel Smoke Provider',
+  mode: 'native-api',
+  authSource: 'debug-native-attestation',
+  capabilities: externalCapabilities({
+    systemPrompt: true,
+    workingDirectory: false,
+    localOnly: true,
+  }),
+  promptTransport: 'native-system',
+  enabled: true,
+});
+
 type ProviderCatalog = Readonly<
   Record<BaseProviderFamilyId, Readonly<ProviderFamilyDescriptor>> &
     Partial<Record<'vibespace-kernel-smoke', Readonly<ProviderFamilyDescriptor>>>
@@ -273,7 +289,7 @@ export function buildProviderCatalog(config: KernelSmokeConfigInput): Readonly<{
             'vibespace-kernel-smoke': family(
               'vibespace-kernel-smoke',
               'VibeSpace Kernel Smoke',
-              [KERNEL_SMOKE_CLI_CONNECTION],
+              [KERNEL_SMOKE_NATIVE_CONNECTION, KERNEL_SMOKE_CLI_CONNECTION],
               KERNEL_SMOKE_CLI_SURFACE,
             ),
           }
@@ -281,7 +297,9 @@ export function buildProviderCatalog(config: KernelSmokeConfigInput): Readonly<{
     }) as ProviderCatalog,
     connections: Object.freeze([
       ...BASE_PROVIDER_CONNECTIONS,
-      ...(smokeEnabled ? [KERNEL_SMOKE_CLI_CONNECTION] : []),
+      ...(smokeEnabled
+        ? [KERNEL_SMOKE_NATIVE_CONNECTION, KERNEL_SMOKE_CLI_CONNECTION]
+        : []),
     ]),
   });
 }

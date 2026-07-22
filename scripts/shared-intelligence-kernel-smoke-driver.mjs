@@ -39,12 +39,16 @@ const SCENARIO_IDS = Object.freeze([
 
 const EVIDENCE_IDS = Object.freeze([
   'smoke.binding',
+  'smoke.binding-error',
+  'smoke.dispatch-kind',
+  'smoke.runtime-state',
   'voice.open',
   'voice.transcript',
   'voice.stt-fixture',
   'voice.stt-state',
   'voice.state',
   'voice.stop',
+  'chat.runtime-ready',
   'chat.run-shell',
   'approval.card',
   'run.status',
@@ -59,6 +63,9 @@ const EVIDENCE_IDS = Object.freeze([
 const CONTROL_IDS = Object.freeze([
   'chat.composer',
   'chat.submit',
+  'model.picker',
+  'model.transport-native',
+  'model.transport-cli',
   'approval.confirm',
   'approval.confirm-dangerous',
   'schedule.fixture',
@@ -74,7 +81,24 @@ const CONTROL_IDS = Object.freeze([
 
 const SELECTOR_IDS = Object.freeze([...EVIDENCE_IDS, ...CONTROL_IDS]);
 
+const NATIVE_BINDING_ERROR_CODES = Object.freeze([
+  'sik_smoke_release_build',
+  'sik_smoke_flag_disabled',
+  'sik_smoke_non_loopback_host',
+  'sik_smoke_invalid_port',
+  'sik_smoke_port_not_bound',
+  'sik_smoke_invalid_profile',
+  'sik_smoke_appdata_outside_profile',
+  'sik_smoke_localappdata_outside_profile',
+  'sik_smoke_invalid_nonce',
+  'sik_smoke_invalid_window',
+  'sik_smoke_binding_invalid',
+]);
+
 const SAFE_STATE_ATTRIBUTES = Object.freeze([
+  'data-error-code',
+  'data-dispatch-kind',
+  'data-runtime-state',
   'data-run-status',
   'data-voice-state',
   'data-stt-state',
@@ -104,6 +128,7 @@ const SAFE_STATE_ATTRIBUTES = Object.freeze([
   'data-motion-enabled',
   'data-focus-state',
   'data-sik-output-count',
+  'data-sik-transport',
 ]);
 
 const DRIVER_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
@@ -223,19 +248,30 @@ function evidenceLocator(page, id) {
 
 async function requireUniqueEvidence(page, id) {
   const locator = evidenceLocator(page, id);
-  await locator.first().waitFor({ state: 'attached', timeout: TIMEOUT_MS });
-  if ((await locator.count()) !== 1) fail('kernel_smoke_evidence_ambiguous');
-  return locator.first();
+  try {
+    await locator.first().waitFor({ state: 'attached', timeout: TIMEOUT_MS });
+    if ((await locator.count()) !== 1) fail('kernel_smoke_evidence_ambiguous');
+    return locator.first();
+  } catch (error) {
+    if (typeof error?.code === 'string' && error.code.startsWith('kernel_smoke_')) throw error;
+    if (page.isClosed()) fail('kernel_smoke_page_closed');
+    fail(`kernel_smoke_evidence_missing:${id}`);
+  }
 }
 
-async function waitForAttribute(locator, attribute, accepted) {
+async function waitForAttribute(
+  locator,
+  attribute,
+  accepted,
+  timeoutCode = 'kernel_smoke_state_timeout',
+) {
   const deadline = Date.now() + TIMEOUT_MS;
   while (Date.now() < deadline) {
     const value = await locator.getAttribute(attribute);
     if (accepted.includes(value)) return value;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  fail('kernel_smoke_state_timeout');
+  fail(timeoutCode);
 }
 
 async function findBoundPage(browser) {
@@ -244,6 +280,16 @@ async function findBoundPage(browser) {
     const matches = [];
     for (const context of browser.contexts()) {
       for (const page of context.pages()) {
+        const rejected = evidenceLocator(page, 'smoke.binding-error');
+        const rejectedCount = await rejected.count();
+        if (rejectedCount > 1) fail('kernel_smoke_binding_error_ambiguous');
+        if (rejectedCount === 1) {
+          const code = await rejected.getAttribute('data-error-code');
+          if (!NATIVE_BINDING_ERROR_CODES.includes(code)) {
+            fail('kernel_smoke_binding_error_invalid');
+          }
+          fail(`kernel_smoke_native_binding_rejected:${code}`);
+        }
         if ((await evidenceLocator(page, 'smoke.binding').count()) > 0) matches.push(page);
       }
     }
@@ -292,13 +338,66 @@ async function fillEvidence(page, id, value) {
 }
 
 async function submitChatFixture(page, fixture) {
+  await requireUniqueEvidence(page, 'chat.runtime-ready');
   await fillEvidence(page, 'chat.composer', fixture);
   await clickEvidence(page, 'chat.submit');
+  await requireUniqueEvidence(page, 'smoke.runtime-state');
+  let dispatch;
+  try {
+    dispatch = await requireUniqueEvidence(page, 'smoke.dispatch-kind');
+  } catch (error) {
+    if (error?.code !== 'kernel_smoke_evidence_missing:smoke.dispatch-kind') throw error;
+    const runtime = await requireUniqueEvidence(page, 'smoke.runtime-state');
+    const state = await runtime.getAttribute('data-runtime-state');
+    if (!['sent', 'running', 'done', 'error', 'cancelled'].includes(state)) {
+      fail('kernel_smoke_runtime_state_invalid');
+    }
+    fail(`kernel_smoke_provider_not_reached:${state}`);
+  }
+  const path = await waitForAttribute(dispatch, 'data-dispatch-kind', [
+    'protected',
+    'unprotected',
+  ], 'kernel_smoke_dispatch_state_timeout');
+  if (path !== 'protected') fail('kernel_smoke_unprotected_provider_dispatch');
+}
+
+async function selectSmokeTransport(page, transport) {
+  if (!['native', 'cli'].includes(transport)) fail('kernel_smoke_transport_invalid');
+  const picker = await requireUniqueEvidence(page, 'model.picker');
+  await picker.click();
+  await clickEvidence(
+    page,
+    transport === 'cli' ? 'model.transport-cli' : 'model.transport-native',
+  );
+  await waitForAttribute(
+    picker,
+    'data-sik-transport',
+    [transport],
+    'kernel_smoke_transport_state_timeout',
+  );
 }
 
 async function waitForRunStatus(page, accepted) {
   const locator = await requireUniqueEvidence(page, 'run.status');
-  return waitForAttribute(locator, 'data-run-status', accepted);
+  const terminalStatuses = ['partial', 'completed', 'failed', 'cancelled', 'timed_out'];
+  const nonterminalStatuses = ['empty', 'queued', 'compiling', 'running', 'awaiting_approval'];
+  const deadline = Date.now() + TIMEOUT_MS;
+  let lastStatus;
+  while (Date.now() < deadline) {
+    const status = await locator.getAttribute('data-run-status');
+    if (nonterminalStatuses.includes(status)) lastStatus = status;
+    if (accepted.includes(status)) return status;
+    if (terminalStatuses.includes(status)) {
+      fail(`kernel_smoke_unexpected_run_status:${status}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  const runtime = await requireUniqueEvidence(page, 'smoke.runtime-state');
+  const runtimeState = await runtime.getAttribute('data-runtime-state');
+  const safeRuntimeState = ['sent', 'running', 'done', 'error', 'cancelled'].includes(runtimeState)
+    ? runtimeState
+    : 'invalid';
+  fail(`kernel_smoke_run_state_timeout:${lastStatus ?? 'invalid'}:${safeRuntimeState}`);
 }
 
 function allZeroDurations(value) {
@@ -388,6 +487,13 @@ async function liveNodeEvidence(page) {
 }
 
 async function runScenario(page, scenario, restartCheckpoint) {
+  if (!restartCheckpoint) {
+    if (scenario === 'transport_cli_success') {
+      await selectSmokeTransport(page, 'cli');
+    } else {
+      await selectSmokeTransport(page, 'native');
+    }
+  }
   switch (scenario) {
     case 'voice_turn_stop':
       await clickEvidence(page, 'voice.open');

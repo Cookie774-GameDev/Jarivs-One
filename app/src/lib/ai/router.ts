@@ -52,7 +52,14 @@ import { geminiCliAdapter } from './adapters/gemini';
 import { copilotCliAdapter } from './adapters/copilot';
 import { qwenCliAdapter } from './adapters/qwen';
 import { openCodeCliAdapter } from './adapters/opencode';
+import { kernelSmokeCliAdapter } from './adapters/cliBridge';
 import { llmContentToText } from './types';
+import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
+import {
+  kernelSmokeProvider,
+  KERNEL_SMOKE_PROVIDER_ID,
+  recordKernelSmokeRouterDispatch,
+} from './providers/kernelSmoke';
 import {
   UnsupportedPromptTransportError,
   buildProviderPromptTransport,
@@ -68,6 +75,11 @@ export class NoModelSelectedError extends Error {
     this.name = 'NoModelSelectedError';
   }
 }
+
+const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
+  devBuild: import.meta.env.DEV,
+  explicitFlag: import.meta.env.VITE_SIK_SMOKE,
+});
 
 const providers: Record<ProviderId, LLMProvider> = {
   anthropic: anthropicProvider,
@@ -93,6 +105,7 @@ const providers: Record<ProviderId, LLMProvider> = {
   cerebras: mockProvider,
   huggingface: mockProvider,
   bedrock: mockProvider,
+  ...(KERNEL_SMOKE_ENABLED ? { [KERNEL_SMOKE_PROVIDER_ID]: kernelSmokeProvider } : {}),
 };
 
 const externalAdapters: Readonly<Record<string, ProviderAdapter>> = Object.freeze({
@@ -102,6 +115,7 @@ const externalAdapters: Readonly<Record<string, ProviderAdapter>> = Object.freez
   [copilotCliAdapter.id]: copilotCliAdapter,
   [qwenCliAdapter.id]: qwenCliAdapter,
   [openCodeCliAdapter.id]: openCodeCliAdapter,
+  ...(KERNEL_SMOKE_ENABLED ? { [kernelSmokeCliAdapter.id]: kernelSmokeCliAdapter } : {}),
 });
 
 async function sha256Hex(canonical: string): Promise<string> {
@@ -414,6 +428,9 @@ export async function runAgent(req: {
         messages: req.messages,
       });
     }
+    if (connection.providerId === KERNEL_SMOKE_PROVIDER_ID) {
+      recordKernelSmokeRouterDispatch(protectedDispatch ? 'protected' : 'unprotected');
+    }
     if (connection.mode === 'external-cli') {
       const adapter = externalAdapters[connection.adapterId];
       if (!adapter) throw new Error(`Provider adapter is unavailable: ${connection.adapterId}`);
@@ -503,6 +520,7 @@ export async function runAgent(req: {
     temperature: req.temperature,
     max_output_tokens: req.max_output_tokens,
     provider_options: req.provider_options,
+    ...(protectedDispatch ? { protectedAttempt: req.protectedAttempt } : {}),
   };
 
   let response: LLMResponse;

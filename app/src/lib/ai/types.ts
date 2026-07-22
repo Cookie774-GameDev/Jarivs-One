@@ -64,6 +64,13 @@ export interface LLMRequest {
   messages: LLMMessage[];
   /** Canonical protected system text. Non-kernel callers omit this field. */
   systemPrompt?: string;
+  /** Router-owned durable attempt identity. Providers must not derive this from prompt input. */
+  protectedAttempt?: Readonly<{
+    accountId: string;
+    runId: string;
+    requestId: string;
+    attemptNumber: number;
+  }>;
   /** Per-call override of the agent's max output tokens. */
   max_output_tokens?: number;
   /** Per-call override of the agent's temperature. */

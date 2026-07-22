@@ -99,18 +99,20 @@ fn validate_smoke_gate(input: SmokeGateInput) -> Result<ValidatedSmokeGate, Smok
     let canonical_profile = input
         .canonical_profile
         .ok_or(SmokeGateError::InvalidProfile)?;
-    if !profile.is_absolute() || profile != canonical_profile {
+    if !profile.is_absolute()
+        || !paths_refer_to_same_canonical_location(&profile, &canonical_profile)
+    {
         return Err(SmokeGateError::InvalidProfile);
     }
 
     let appdata = input.appdata.ok_or(SmokeGateError::AppDataOutsideProfile)?;
-    if !path_is_contained_or_equal(&appdata, &profile) {
+    if !path_is_contained_or_equal(&appdata, &canonical_profile) {
         return Err(SmokeGateError::AppDataOutsideProfile);
     }
     let local_appdata = input
         .local_appdata
         .ok_or(SmokeGateError::LocalAppDataOutsideProfile)?;
-    if !path_is_contained_or_equal(&local_appdata, &profile) {
+    if !path_is_contained_or_equal(&local_appdata, &canonical_profile) {
         return Err(SmokeGateError::LocalAppDataOutsideProfile);
     }
 
@@ -128,6 +130,35 @@ fn validate_smoke_gate(input: SmokeGateInput) -> Result<ValidatedSmokeGate, Smok
         profile,
         nonce,
     })
+}
+
+#[cfg(windows)]
+fn windows_canonical_path_key(path: &std::path::Path) -> Option<String> {
+    let text = path.to_str()?.replace('/', "\\");
+    let without_verbatim_prefix = if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{rest}")
+    } else if let Some(rest) = text.strip_prefix(r"\\?\") {
+        rest.to_string()
+    } else {
+        text
+    };
+    Some(without_verbatim_prefix.to_lowercase())
+}
+
+#[cfg(windows)]
+fn paths_refer_to_same_canonical_location(
+    path: &std::path::Path,
+    canonical_path: &std::path::Path,
+) -> bool {
+    windows_canonical_path_key(path) == windows_canonical_path_key(canonical_path)
+}
+
+#[cfg(not(windows))]
+fn paths_refer_to_same_canonical_location(
+    path: &std::path::Path,
+    canonical_path: &std::path::Path,
+) -> bool {
+    path == canonical_path
 }
 
 fn path_is_contained_or_equal(path: &std::path::Path, profile: &std::path::Path) -> bool {
@@ -271,6 +302,21 @@ mod tests {
             validated.profile,
             std::env::temp_dir().join("vibespace-sik-smoke-profile")
         );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn gate_accepts_windows_verbatim_canonical_paths_for_the_same_isolated_profile() {
+        let profile = PathBuf::from(r"C:\Temp\vibespace-sik-smoke-profile");
+        let canonical_profile = PathBuf::from(r"\\?\C:\Temp\vibespace-sik-smoke-profile");
+        let mut input = valid_gate_input();
+        input.profile = Some(profile.clone());
+        input.canonical_profile = Some(canonical_profile.clone());
+        input.appdata = Some(canonical_profile.join("appdata"));
+        input.local_appdata = Some(canonical_profile.join("localappdata"));
+
+        let validated = validate_smoke_gate(input).expect("equivalent Windows canonical path");
+        assert_eq!(validated.profile, profile);
     }
 
     #[test]

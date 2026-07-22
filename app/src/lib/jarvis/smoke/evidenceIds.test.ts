@@ -4,12 +4,16 @@ import { SIK_CONTROL, SIK_EVIDENCE } from './evidenceIds';
 
 const EXPECTED_EVIDENCE = {
   smokeBinding: 'smoke.binding',
+  smokeBindingError: 'smoke.binding-error',
+  smokeDispatchKind: 'smoke.dispatch-kind',
+  smokeRuntimeState: 'smoke.runtime-state',
   voiceOpen: 'voice.open',
   voiceTranscript: 'voice.transcript',
   voiceSttFixture: 'voice.stt-fixture',
   voiceSttState: 'voice.stt-state',
   voiceState: 'voice.state',
   voiceStop: 'voice.stop',
+  chatRuntimeReady: 'chat.runtime-ready',
   chatRunShell: 'chat.run-shell',
   approvalCard: 'approval.card',
   runStatus: 'run.status',
@@ -21,9 +25,25 @@ const EXPECTED_EVIDENCE = {
   partialState: 'run.partial',
 } as const;
 
+const EXPECTED_CONTROLS = {
+  chatComposer: 'chat.composer',
+  chatSubmit: 'chat.submit',
+  modelPicker: 'model.picker',
+  modelTransportNative: 'model.transport-native',
+  modelTransportCli: 'model.transport-cli',
+  approvalConfirm: 'approval.confirm',
+  approvalConfirmDangerous: 'approval.confirm-dangerous',
+  commandCenterDisclosure: 'command-center.disclosure',
+  commandCenterSurface: 'command-center.surface',
+  retryTransport: 'Retry transport',
+  liveSystemNode: 'live.system.node',
+  outputsState: 'outputs.state',
+} as const;
+
 describe('shared intelligence kernel evidence IDs', () => {
   it('defines the complete fixed selector contract', () => {
     expect(SIK_EVIDENCE).toEqual(EXPECTED_EVIDENCE);
+    expect(SIK_CONTROL).toEqual(EXPECTED_CONTROLS);
   });
 
   it('is immutable and globally unique', () => {

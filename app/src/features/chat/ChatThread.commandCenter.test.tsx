@@ -1,9 +1,10 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   JarvisCommandCenterProvider,
   type JarvisCommandCenterBinding,
 } from '@/features/jarvis-command-center/JarvisCommandCenter';
+import type { JarvisRun } from '@/features/jarvis-command-center/types';
 import { useJarvisTaskRunStore } from '@/features/jarvis-runs/taskRunStore';
 import { ChatThread } from './ChatThread';
 
@@ -23,15 +24,43 @@ vi.mock('@/features/jarvis-memory/JarvisMemoryStatus', () => ({
 }));
 vi.mock('@/lib/jarvis/smoke/config', () => ({ isKernelSmokeEnabled: () => true }));
 
-function binding(): JarvisCommandCenterBinding {
+function canonicalRun({
+  accountId = 'account-1',
+  chatId = 'chat-1',
+}: { accountId?: string; chatId?: string } = {}): JarvisRun {
+  return {
+    id: 'jrun-direct-1',
+    accountId,
+    chatId,
+    source: 'typed_chat',
+    status: 'running',
+    agentId: 'jarvis',
+    identityVersion: 1,
+    profileRevisionId: 'profile-1',
+    model: {
+      providerId: 'provider-1',
+      modelId: 'model-1',
+      connectionMode: 'native-api',
+      capabilities: {},
+      capturedAt: 90,
+    },
+    createdAt: 100,
+    updatedAt: 100,
+  };
+}
+
+function binding(
+  runs: readonly JarvisRun[] = [],
+  accountId = 'account-1',
+): JarvisCommandCenterBinding {
   const liveEvidence = {
-    accountId: 'account-1',
+    accountId,
     snapshot: vi.fn(async () => undefined),
     subscribe: vi.fn(() => () => undefined),
   } as JarvisCommandCenterBinding['hostPort']['liveEvidence'];
   return {
     hostPort: {
-      accountId: 'account-1',
+      accountId,
       liveEvidence,
       requestCancellation: vi.fn(async () => ({
         kind: 'authority_revoked_before_intent' as const,
@@ -42,7 +71,7 @@ function binding(): JarvisCommandCenterBinding {
       retryLogicalRun: vi.fn(async () => ({ kind: 'account_authority_revoked' as const })),
     },
     dataPort: {
-      getRunsForChat: vi.fn(async () => []),
+      getRunsForChat: vi.fn(async () => runs),
       getEventsForRun: vi.fn(async () => []),
       getArtifactsForRun: vi.fn(async () => []),
       getLiveEvidenceSnapshot: vi.fn(async () => undefined),
@@ -92,6 +121,7 @@ describe('ChatThread Command Center routing', () => {
     expect(screen.getByTestId('agent-panel')).not.toBeNull();
     expect(screen.getByTestId('memory-status')).not.toBeNull();
     expect(screen.getByRole('log').getAttribute('data-sik-evidence')).toBe('chat.run-shell');
+    expect(document.querySelectorAll('[data-sik-evidence="chat.runtime-ready"]')).toHaveLength(1);
   });
 
   it('keeps timeline and progress for legacy history and does not render the canonical shell', () => {
@@ -112,7 +142,7 @@ describe('ChatThread Command Center routing', () => {
     ]);
 
     render(
-      <JarvisCommandCenterProvider value={binding()}>
+      <JarvisCommandCenterProvider value={undefined}>
         <ChatThread chatId="chat-1" />
       </JarvisCommandCenterProvider>,
     );
@@ -120,6 +150,60 @@ describe('ChatThread Command Center routing', () => {
     expect(screen.getByTestId('legacy-timeline')).not.toBeNull();
     expect(screen.getByTestId('legacy-progress')).not.toBeNull();
     expect(screen.queryByText('Command Center')).toBeNull();
+    expect(screen.getByRole('log').getAttribute('data-sik-evidence')).toBeNull();
+    expect(document.querySelector('[data-sik-evidence="chat.runtime-ready"]')).toBeNull();
+  });
+
+  it('discovers a canonical run from the account-bound data port without a legacy projection', async () => {
+    render(
+      <JarvisCommandCenterProvider value={binding([canonicalRun()])}>
+        <ChatThread chatId="chat-1" />
+      </JarvisCommandCenterProvider>,
+    );
+
+    expect(await screen.findByText('Command Center')).not.toBeNull();
+    expect(screen.queryByTestId('legacy-timeline')).toBeNull();
+    expect(screen.queryByTestId('legacy-progress')).toBeNull();
+    expect(screen.getByRole('log').getAttribute('data-sik-evidence')).toBe('chat.run-shell');
+  });
+
+  it('rejects data-port rows that do not match the bound account and chat scope', async () => {
+    const crossScopeBinding = binding([
+      canonicalRun({ accountId: 'account-other', chatId: 'chat-other' }),
+    ]);
+    render(
+      <JarvisCommandCenterProvider value={crossScopeBinding}>
+        <ChatThread chatId="chat-1" />
+      </JarvisCommandCenterProvider>,
+    );
+
+    await vi.waitFor(() => {
+      expect(crossScopeBinding.dataPort.getRunsForChat).toHaveBeenCalledOnce();
+    });
+    await act(async () => undefined);
+    expect(screen.queryByText('Command Center')).toBeNull();
+    expect(screen.getByTestId('legacy-progress')).not.toBeNull();
+    expect(screen.getByRole('log').getAttribute('data-sik-evidence')).toBeNull();
+  });
+
+  it('quarantines direct-run presence when the account-bound data port is replaced', async () => {
+    const firstBinding = binding([canonicalRun()]);
+    const replacementBinding = binding([], 'account-2');
+    const view = render(
+      <JarvisCommandCenterProvider value={firstBinding}>
+        <ChatThread chatId="chat-1" />
+      </JarvisCommandCenterProvider>,
+    );
+    expect(await screen.findByText('Command Center')).not.toBeNull();
+
+    view.rerender(
+      <JarvisCommandCenterProvider value={replacementBinding}>
+        <ChatThread chatId="chat-1" />
+      </JarvisCommandCenterProvider>,
+    );
+
+    expect(screen.queryByText('Command Center')).toBeNull();
+    expect(screen.getByTestId('legacy-progress')).not.toBeNull();
     expect(screen.getByRole('log').getAttribute('data-sik-evidence')).toBeNull();
   });
 });

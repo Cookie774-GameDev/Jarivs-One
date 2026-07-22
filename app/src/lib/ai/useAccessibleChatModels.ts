@@ -5,6 +5,11 @@ import { getProviderDisplayName } from './providerRegistry';
 import { CHAT_MODEL_OPTIONS, getAccessibleModelOptions, getAccessibleProviders, useOllamaModelOptions } from './models';
 import type { ProviderConnection } from './adapters/types';
 import { PROVIDER_CATALOG, PROVIDER_CONNECTIONS } from './adapters/catalog';
+import {
+  kernelSmokeProvider,
+  KERNEL_SMOKE_BINDING_EVENT,
+  KERNEL_SMOKE_PROVIDER_ID,
+} from './providers/kernelSmoke';
 
 /** @deprecated Use getProviderDisplayName from providerRegistry */
 export const MODEL_PROVIDER_LABELS: Partial<Record<ProviderId, string>> = new Proxy(
@@ -146,7 +151,11 @@ export function useAccessibleChatModels() {
   useEffect(() => {
     const update = () => setConnectionRevision((value) => value + 1);
     window.addEventListener(AI_CONNECTION_STATE_EVENT, update);
-    return () => window.removeEventListener(AI_CONNECTION_STATE_EVENT, update);
+    window.addEventListener(KERNEL_SMOKE_BINDING_EVENT, update);
+    return () => {
+      window.removeEventListener(AI_CONNECTION_STATE_EVENT, update);
+      window.removeEventListener(KERNEL_SMOKE_BINDING_EVENT, update);
+    };
   }, []);
   const ollamaSignature = ollamaOptions.map((option) => option.id).join('\0');
 
@@ -156,6 +165,17 @@ export function useAccessibleChatModels() {
       group.provider,
       group.options.map((option) => ({ id: option.modelId, label: option.label })),
     ]));
+    const smokeBindingActive = kernelSmokeProvider.isAvailable();
+    if (
+      smokeBindingActive &&
+      PROVIDER_CONNECTIONS.some(
+        (connection) => connection.providerId === KERNEL_SMOKE_PROVIDER_ID,
+      )
+    ) {
+      modelsByProvider[KERNEL_SMOKE_PROVIDER_ID] = [
+        { id: 'kernel-smoke-v1', label: 'Kernel Smoke v1' },
+      ];
+    }
     for (const connection of PROVIDER_CONNECTIONS) {
       if (connection.mode !== 'external-cli' || modelsByProvider[connection.providerId]?.length) continue;
       modelsByProvider[connection.providerId] = CHAT_MODEL_OPTIONS
@@ -166,11 +186,17 @@ export function useAccessibleChatModels() {
     const scanned = readConnectionPickerStates();
     const stateByConnection = Object.fromEntries(PROVIDER_CONNECTIONS.map((connection) => [
       connection.id,
-      scanned[connection.id] ?? {
-        available: connection.mode !== 'external-cli' && accessible.has(connection.providerId as ProviderId),
-        auth: accessible.has(connection.providerId as ProviderId) || connection.mode === 'local'
-          ? 'authenticated' : 'unauthenticated',
-      } satisfies ConnectionPickerState,
+      connection.providerId === KERNEL_SMOKE_PROVIDER_ID && smokeBindingActive
+        ? ({ available: true, auth: 'authenticated' } satisfies ConnectionPickerState)
+        : scanned[connection.id] ?? {
+            available:
+              connection.mode !== 'external-cli' &&
+              accessible.has(connection.providerId as ProviderId),
+            auth:
+              accessible.has(connection.providerId as ProviderId) || connection.mode === 'local'
+                ? 'authenticated'
+                : 'unauthenticated',
+          } satisfies ConnectionPickerState,
     ]));
     return buildConnectionPickerGroups({ connections: PROVIDER_CONNECTIONS, modelsByProvider, stateByConnection })
       .sort((a, b) => Number(b.options.some((option) => option.available)) - Number(a.options.some((option) => option.available)));

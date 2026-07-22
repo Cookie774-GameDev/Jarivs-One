@@ -58,8 +58,19 @@ describe('provider capability catalog', () => {
         executableName: 'vibespace_kernel_smoke_cli',
       },
     });
-    expect(enabled.connections.filter(({ id }) => id === 'vibespace-kernel-smoke-cli')).toEqual([
+    expect(
+      enabled.connections.filter(({ providerId }) => providerId === 'vibespace-kernel-smoke'),
+    ).toEqual([
       expect.objectContaining({
+        id: 'vibespace-kernel-smoke-native',
+        adapterId: 'vibespace-kernel-smoke-native',
+        providerId: 'vibespace-kernel-smoke',
+        mode: 'native-api',
+        authSource: 'debug-native-attestation',
+        promptTransport: 'native-system',
+      }),
+      expect.objectContaining({
+        id: 'vibespace-kernel-smoke-cli',
         adapterId: 'vibespace-kernel-smoke-cli',
         providerId: 'vibespace-kernel-smoke',
         mode: 'external-cli',

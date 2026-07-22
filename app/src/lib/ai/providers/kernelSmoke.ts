@@ -13,6 +13,7 @@ import {
 } from '@/lib/jarvis/smoke/scenarios';
 
 export const KERNEL_SMOKE_PROVIDER_ID = 'vibespace-kernel-smoke' as ProviderId;
+export const KERNEL_SMOKE_BINDING_EVENT = 'vibespace:kernel-smoke-binding-changed';
 
 export type KernelSmokeBindingEvidence = Readonly<{
   nativePid: number;
@@ -23,6 +24,34 @@ export type KernelSmokeBindingEvidence = Readonly<{
 
 let trustedBinding: KernelSmokeBindingEvidence | undefined;
 let liveEvidenceInvocation = 0;
+let dispatchPath: 'protected' | 'unprotected' | undefined;
+
+function notifyBindingChanged(): void {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(KERNEL_SMOKE_BINDING_EVENT));
+}
+
+export function subscribeKernelSmokeBinding(listener: () => void): () => void {
+  if (typeof window === 'undefined') return () => undefined;
+  window.addEventListener(KERNEL_SMOKE_BINDING_EVENT, listener);
+  return () => window.removeEventListener(KERNEL_SMOKE_BINDING_EVENT, listener);
+}
+
+export function subscribeKernelSmokeDispatchPath(listener: () => void): () => void {
+  return subscribeKernelSmokeBinding(listener);
+}
+
+export function getKernelSmokeDispatchPath(): 'protected' | 'unprotected' | undefined {
+  return dispatchPath;
+}
+
+/** @internal Records only the trusted router boundary classification for smoke dispatches. */
+export function recordKernelSmokeRouterDispatch(
+  path: 'protected' | 'unprotected',
+): void {
+  if (!trustedBinding) throw new Error('kernel_smoke_binding_unavailable');
+  dispatchPath = path;
+  notifyBindingChanged();
+}
 
 function isBindingEvidence(value: KernelSmokeBindingEvidence): boolean {
   return (
@@ -44,12 +73,15 @@ export function activateKernelSmokeBinding(evidence: KernelSmokeBindingEvidence)
     throw new Error('kernel_smoke_binding_invalid');
   }
   trustedBinding = Object.freeze({ ...evidence });
+  notifyBindingChanged();
 }
 
 /** @internal Drops in-memory smoke authority on host cleanup or account teardown. */
 export function clearKernelSmokeBinding(): void {
   trustedBinding = undefined;
   liveEvidenceInvocation = 0;
+  dispatchPath = undefined;
+  notifyBindingChanged();
 }
 
 function exactScenario(req: LLMRequest): KernelSmokeScenario | undefined {
@@ -98,7 +130,13 @@ async function runScenario(req: LLMRequest, scenario: KernelSmokeScenario): Prom
   if (scenario.id === 'live_evidence_restart' && ++liveEvidenceInvocation > 1) {
     await waitForAbort(req.signal);
   }
-  const events = scenario.streams.provider.semanticEvents;
+  let events = scenario.streams.provider.semanticEvents;
+  if (scenario.id === 'schedule_transport_retry') {
+    const attemptNumber = req.protectedAttempt?.attemptNumber;
+    if (attemptNumber === 1) throw new Error('kernel_smoke_scheduled_transport_failure');
+    if (attemptNumber !== 2) throw new Error('kernel_smoke_attempt_binding_invalid');
+    events = events.slice(2);
+  }
   let text = '';
   let first = true;
   let finishReason = 'stop';

@@ -7,6 +7,7 @@ import { HiveModelIcon } from '@/components/brand';
 import type { ModelPickerGroup } from '@/lib/ai/useAccessibleChatModels';
 import type { ProviderConnection } from '@/lib/ai/adapters/types';
 import { scrollPickerItemIntoView } from './pickerScroll';
+import { SIK_CONTROL } from '@/lib/jarvis/smoke/evidenceIds';
 
 /** Sentinel id for the pinned Hive entry (keyboard nav + selection state). */
 export const HIVE_OPTION_ID = 'hive:balanced';
@@ -191,6 +192,13 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
                       <div
                         key={option.id}
                         data-value={option.id}
+                        data-sik-evidence={
+                          option.connection?.id === 'vibespace-kernel-smoke-native'
+                            ? SIK_CONTROL.modelTransportNative
+                            : option.connection?.id === 'vibespace-kernel-smoke-cli'
+                              ? SIK_CONTROL.modelTransportCli
+                              : undefined
+                        }
                         onClick={() => option.available !== false && onSelect(option.provider, option.modelId, option.connection)}
                         onMouseEnter={() => option.available !== false && onHoverId?.(option.id)}
                         aria-disabled={option.available === false}

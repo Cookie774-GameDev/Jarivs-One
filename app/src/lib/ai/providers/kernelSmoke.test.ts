@@ -6,8 +6,11 @@ import { KERNEL_SMOKE_SCENARIOS } from '@/lib/jarvis/smoke/scenarios';
 import {
   activateKernelSmokeBinding,
   clearKernelSmokeBinding,
+  getKernelSmokeDispatchPath,
   kernelSmokeProvider,
   KERNEL_SMOKE_PROVIDER_ID,
+  recordKernelSmokeRouterDispatch,
+  subscribeKernelSmokeDispatchPath,
 } from './kernelSmoke';
 
 const agent = {
@@ -86,6 +89,34 @@ describe('kernelSmokeProvider', () => {
     );
   });
 
+  it('publishes only the router-owned protected/unprotected dispatch classification', async () => {
+    trustBinding();
+    const listener = vi.fn();
+    const unsubscribe = subscribeKernelSmokeDispatchPath(listener);
+
+    recordKernelSmokeRouterDispatch('unprotected');
+    expect(getKernelSmokeDispatchPath()).toBe('unprotected');
+    expect(listener).toHaveBeenCalledOnce();
+
+    await kernelSmokeProvider.run(
+      request(KERNEL_SMOKE_SCENARIOS.transport_provider_success.safeTextFixture, {
+        protectedAttempt: {
+          accountId: 'account-1',
+          runId: 'run-1',
+          requestId: 'request-1',
+          attemptNumber: 1,
+        },
+      }),
+    );
+    expect(getKernelSmokeDispatchPath()).toBe('unprotected');
+    expect(listener).toHaveBeenCalledOnce();
+
+    recordKernelSmokeRouterDispatch('protected');
+    expect(getKernelSmokeDispatchPath()).toBe('protected');
+    expect(listener).toHaveBeenCalledTimes(2);
+    unsubscribe();
+  });
+
   it('reports the intended provider failure without emitting false completion', async () => {
     trustBinding();
     const chunks = vi.fn();
@@ -95,6 +126,46 @@ describe('kernelSmokeProvider', () => {
       kernelSmokeProvider.run(request(scenario.safeTextFixture, { onChunk: chunks })),
     ).rejects.toThrow('kernel_smoke_provider_failure');
     expect(chunks).not.toHaveBeenCalledWith({ delta: '', done: true });
+  });
+
+  it('fails scheduled attempt one before observation and succeeds only from trusted attempt two', async () => {
+    trustBinding();
+    const scenario = KERNEL_SMOKE_SCENARIOS.schedule_transport_retry;
+    const firstChunks = vi.fn();
+    const firstObservations = vi.fn();
+
+    await expect(
+      kernelSmokeProvider.run(
+        request(scenario.safeTextFixture, {
+          protectedAttempt: {
+            accountId: 'account-1',
+            runId: 'run-1',
+            requestId: 'request-1',
+            attemptNumber: 1,
+          },
+          onChunk: firstChunks,
+          onResponseObservation: firstObservations,
+        }),
+      ),
+    ).rejects.toThrow('kernel_smoke_scheduled_transport_failure');
+    expect(firstChunks).not.toHaveBeenCalled();
+    expect(firstObservations).not.toHaveBeenCalled();
+
+    const second = await kernelSmokeProvider.run(
+      request(scenario.safeTextFixture, {
+        protectedAttempt: {
+          accountId: 'account-1',
+          runId: 'run-1',
+          requestId: 'request-2',
+          attemptNumber: 2,
+        },
+      }),
+    );
+    expect(second.text).toBe('Scheduled retry succeeded.');
+
+    await expect(kernelSmokeProvider.run(request(scenario.safeTextFixture))).rejects.toThrow(
+      'kernel_smoke_attempt_binding_invalid',
+    );
   });
 
   it('emits registered actions only through the real protected response block', async () => {

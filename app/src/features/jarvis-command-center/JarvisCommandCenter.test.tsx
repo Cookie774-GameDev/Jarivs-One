@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { StrictMode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   JarvisArtifactV1,
@@ -99,6 +100,66 @@ function setReducedMotion(matches: boolean) {
 
 describe('JarvisCommandCenter', () => {
   beforeEach(() => setReducedMotion(false));
+
+  it('keeps its canonical store live through StrictMode replay and disposes on real unmount', async () => {
+    const dataPort = port(run({ status: 'completed' }));
+    const disposeSubscription = vi.fn();
+    vi.mocked(dataPort.subscribe).mockReturnValue(disposeSubscription);
+    const view = render(
+      <StrictMode>
+        <JarvisCommandCenter
+          accountId="account-1"
+          chatId="chat-1"
+          dataPort={dataPort}
+          handlers={{}}
+        />
+      </StrictMode>,
+    );
+
+    expect(await screen.findByText('Run completed')).not.toBeNull();
+    expect(dataPort.subscribe).toHaveBeenCalledTimes(2);
+    expect(disposeSubscription).toHaveBeenCalledTimes(1);
+
+    view.unmount();
+    await waitFor(() => expect(disposeSubscription).toHaveBeenCalledTimes(2));
+  });
+
+  it('quarantines the previous scope while replacing and disposing its store', async () => {
+    const firstPort = port(run({ status: 'running' }));
+    const secondPort = port(
+      run({ id: 'run-2', accountId: 'account-2', chatId: 'chat-2', status: 'completed' }),
+    );
+    const disposeFirst = vi.fn();
+    const disposeSecond = vi.fn();
+    vi.mocked(firstPort.subscribe).mockReturnValue(disposeFirst);
+    vi.mocked(secondPort.subscribe).mockReturnValue(disposeSecond);
+    const view = render(
+      <JarvisCommandCenter
+        accountId="account-1"
+        chatId="chat-1"
+        dataPort={firstPort}
+        handlers={{}}
+      />,
+    );
+    expect(await screen.findByText('Run running')).not.toBeNull();
+
+    view.rerender(
+      <JarvisCommandCenter
+        accountId="account-2"
+        chatId="chat-2"
+        dataPort={secondPort}
+        handlers={{}}
+      />,
+    );
+
+    expect(screen.queryByText('Run running')).toBeNull();
+    expect(await screen.findByText('Run completed')).not.toBeNull();
+    expect(disposeFirst).toHaveBeenCalledTimes(1);
+    expect(disposeSecond).not.toHaveBeenCalled();
+
+    view.unmount();
+    expect(disposeSecond).toHaveBeenCalledTimes(1);
+  });
 
   it('starts collapsed, renders no tab or graph subtree, and never reads live evidence', async () => {
     const dataPort = port();
