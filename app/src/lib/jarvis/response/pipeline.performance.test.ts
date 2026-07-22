@@ -60,17 +60,29 @@ describe('response pipeline performance', () => {
       durations.push(performance.now() - started);
     }
     durations.sort((left, right) => left - right);
+    const p50 = durations[Math.floor(durations.length * 0.5)] ?? Number.POSITIVE_INFINITY;
     const p95 = durations[Math.floor(durations.length * 0.95)] ?? Number.POSITIVE_INFINITY;
-    expect({
+    const maximum = durations.at(-1) ?? Number.POSITIVE_INFINITY;
+    const metrics = Object.freeze({
       iterations: durations.length,
-      sanitizedLength: raw.text.length,
+      sanitizedChars: raw.text.length,
       violationCount: 0,
-      p95,
-    }).toEqual(
+      repairCalls: repair.repair.mock.calls.length,
+      p50Ms: Number(p50.toFixed(3)),
+      p95Ms: Number(p95.toFixed(3)),
+      maxMs: Number(maximum.toFixed(3)),
+    });
+
+    console.info(JSON.stringify(metrics));
+    expect(metrics).toEqual(
       expect.objectContaining({
         iterations: 500,
-        sanitizedLength: raw.text.length,
+        sanitizedChars: raw.text.length,
         violationCount: 0,
+        repairCalls: 0,
+        p50Ms: expect.any(Number),
+        p95Ms: expect.any(Number),
+        maxMs: expect.any(Number),
       }),
     );
     expect(p95).toBeLessThan(15);

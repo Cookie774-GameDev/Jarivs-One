@@ -119,15 +119,28 @@ describe('protected prompt compilation performance', () => {
       systemChars = compiled.systemText.length;
     }
     durations.sort((left, right) => left - right);
+    const p50 = durations[Math.ceil(iterations * 0.5) - 1]!;
     const p95 = durations[Math.ceil(iterations * 0.95) - 1]!;
+    const maximum = durations.at(-1)!;
     const contextChars = input.context.budget.usedChars;
+    const metrics = Object.freeze({
+      iterations,
+      contextChars,
+      systemChars,
+      p50Ms: Number(p50.toFixed(3)),
+      p95Ms: Number(p95.toFixed(3)),
+      maxMs: Number(maximum.toFixed(3)),
+    });
 
-    console.info(
-      JSON.stringify({
-        iterations,
+    console.info(JSON.stringify(metrics));
+    expect(metrics).toEqual(
+      expect.objectContaining({
+        iterations: 200,
         contextChars,
         systemChars,
-        p95Ms: Number(p95.toFixed(3)),
+        p50Ms: expect.any(Number),
+        p95Ms: expect.any(Number),
+        maxMs: expect.any(Number),
       }),
     );
     expect(p95).toBeLessThan(25);
