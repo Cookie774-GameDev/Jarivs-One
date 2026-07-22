@@ -461,10 +461,18 @@ const VOICE_TERMINAL_ATTRIBUTES = Object.freeze([
   'data-run-digest',
 ]);
 
-function assertNoVoiceSuccessEvidence(attributes) {
+async function readAssistantCount(chatShell) {
+  const value = await chatShell.getAttribute('data-sik-assistant-count');
+  if (!/^(0|[1-9][0-9]*)$/.test(value ?? '') || !Number.isSafeInteger(Number(value))) {
+    fail('kernel_smoke_voice_assistant_count_invalid');
+  }
+  return value;
+}
+
+function assertNoVoiceSuccessEvidence(attributes, expectedAssistantCount) {
   const expected = {
     'data-run-status': 'cancelled',
-    'data-sik-assistant-count': '0',
+    'data-sik-assistant-count': expectedAssistantCount,
   };
   for (const [name, value] of Object.entries(expected)) {
     if (attributes[name] !== value) fail('kernel_smoke_voice_post_stop_success_detected');
@@ -521,22 +529,19 @@ async function runScenario(page, scenario, restartCheckpoint) {
       await waitForRunStatus(page, ['running']);
       const voiceState = await requireUniqueEvidence(page, 'voice.state');
       await waitForAttribute(voiceState, 'data-voice-state', ['thinking', 'speaking']);
+      const chatShell = await requireUniqueEvidence(page, 'chat.run-shell');
+      const assistantCountBeforeStop = await readAssistantCount(chatShell);
       await clickEvidence(page, 'voice.stop');
       await waitForRunStatus(page, ['cancelled']);
       const terminal = await requireUniqueEvidence(page, 'run.status');
-      const chatShell = await requireUniqueEvidence(page, 'chat.run-shell');
       const beforeRuntimeSettled = await readAttributes(terminal, VOICE_TERMINAL_ATTRIBUTES);
-      beforeRuntimeSettled['data-sik-assistant-count'] = await chatShell.getAttribute(
-        'data-sik-assistant-count',
-      );
-      assertNoVoiceSuccessEvidence(beforeRuntimeSettled);
+      beforeRuntimeSettled['data-sik-assistant-count'] = await readAssistantCount(chatShell);
+      assertNoVoiceSuccessEvidence(beforeRuntimeSettled, assistantCountBeforeStop);
       const runtime = await requireUniqueEvidence(page, 'smoke.runtime-state');
       await waitForAttribute(runtime, 'data-runtime-state', ['cancelled']);
       const afterRuntimeSettled = await readAttributes(terminal, VOICE_TERMINAL_ATTRIBUTES);
-      afterRuntimeSettled['data-sik-assistant-count'] = await chatShell.getAttribute(
-        'data-sik-assistant-count',
-      );
-      assertNoVoiceSuccessEvidence(afterRuntimeSettled);
+      afterRuntimeSettled['data-sik-assistant-count'] = await readAssistantCount(chatShell);
+      assertNoVoiceSuccessEvidence(afterRuntimeSettled, assistantCountBeforeStop);
       if (
         beforeRuntimeSettled['data-run-digest'] !== afterRuntimeSettled['data-run-digest']
       ) {
@@ -544,7 +549,11 @@ async function runScenario(page, scenario, restartCheckpoint) {
       }
       return {
         outcome: 'PASS',
-        voiceCancellation: { beforeRuntimeSettled, afterRuntimeSettled },
+        voiceCancellation: {
+          assistantCountBeforeStop,
+          beforeRuntimeSettled,
+          afterRuntimeSettled,
+        },
       };
     case 'native_stt_voice_turn': {
       await clickEvidence(page, 'voice.open');

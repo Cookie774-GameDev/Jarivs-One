@@ -204,6 +204,10 @@ describe('shared intelligence kernel smoke harness contract', () => {
     const cancellable = voiceScenario.indexOf(
       "waitForAttribute(voiceState, 'data-voice-state', ['thinking', 'speaking'])",
     );
+    const chatShell = voiceScenario.indexOf("requireUniqueEvidence(page, 'chat.run-shell')");
+    const assistantBeforeStop = voiceScenario.indexOf(
+      'const assistantCountBeforeStop = await readAssistantCount(chatShell)',
+    );
     const stop = voiceScenario.indexOf("clickEvidence(page, 'voice.stop')");
     const cancelled = voiceScenario.indexOf("waitForRunStatus(page, ['cancelled'])");
     const terminalBefore = voiceScenario.indexOf('const beforeRuntimeSettled = await readAttributes');
@@ -212,7 +216,9 @@ describe('shared intelligence kernel smoke harness contract', () => {
       "waitForAttribute(runtime, 'data-runtime-state', ['cancelled'])",
     );
     const terminalAfter = voiceScenario.indexOf('const afterRuntimeSettled = await readAttributes');
-    const noSuccess = voiceScenario.indexOf('assertNoVoiceSuccessEvidence(afterRuntimeSettled)');
+    const noSuccess = voiceScenario.indexOf(
+      'assertNoVoiceSuccessEvidence(afterRuntimeSettled, assistantCountBeforeStop)',
+    );
     const stableTerminal = voiceScenario.indexOf(
       "beforeRuntimeSettled['data-run-digest'] !== afterRuntimeSettled['data-run-digest']",
     );
@@ -220,7 +226,9 @@ describe('shared intelligence kernel smoke harness contract', () => {
     expect(running).toBeGreaterThan(0);
     expect(voiceState).toBeGreaterThan(running);
     expect(cancellable).toBeGreaterThan(voiceState);
-    expect(stop).toBeGreaterThan(cancellable);
+    expect(chatShell).toBeGreaterThan(cancellable);
+    expect(assistantBeforeStop).toBeGreaterThan(chatShell);
+    expect(stop).toBeGreaterThan(assistantBeforeStop);
     expect(cancelled).toBeGreaterThan(stop);
     expect(terminalBefore).toBeGreaterThan(cancelled);
     expect(runtime).toBeGreaterThan(terminalBefore);
