@@ -35,7 +35,7 @@ const chatRoutingMocks = vi.hoisted(() => ({
   ensureJarvisChatForVoice: vi.fn(async (): Promise<string | null> => 'chat_voice'),
   focusVoiceChat: vi.fn(),
   resolveVoiceChatTarget: vi.fn(
-    async (text: string): Promise<MockVoiceChatTarget> => ({
+    async (text: string): Promise<MockVoiceChatTarget | null> => ({
       chatId: 'chat_voice',
       messageText: text,
       agentId: undefined,
@@ -113,7 +113,7 @@ describe('VoiceModal hands-free turn-taking', () => {
     chatRoutingMocks.ensureJarvisChatForVoice.mockReset().mockResolvedValue('chat_voice');
     chatRoutingMocks.focusVoiceChat.mockReset();
     chatRoutingMocks.resolveVoiceChatTarget.mockReset().mockImplementation(
-      async (text: string): Promise<MockVoiceChatTarget> => ({
+      async (text: string): Promise<MockVoiceChatTarget | null> => ({
         chatId: 'chat_voice',
         messageText: text,
         agentId: undefined,
@@ -273,6 +273,68 @@ describe('VoiceModal hands-free turn-taking', () => {
     expect(routerMocks.stopCurrentVoiceResponse).toHaveBeenCalledOnce();
   });
 
+  it('reports a safe templated failure when the old voice session cannot close', async () => {
+    render(<VoiceModal />);
+    await waitFor(() => expect(useVoiceStore.getState().session?.accountId).toBe('account-a'));
+    routerMocks.stopCurrentVoiceResponse.mockRejectedValueOnce(
+      new Error('synthetic close implementation detail'),
+    );
+
+    act(() => useAuthStore.setState({ localUserId: null, cloudSession: null }));
+
+    await waitFor(() =>
+      expect(useVoiceStore.getState()).toMatchObject({
+        state: 'error',
+        errorMessage:
+          'The action failed, sir. Action: Voice session closure. Cause: The previous voice session could not be closed cleanly.',
+      }),
+    );
+    expect(useVoiceStore.getState().errorMessage).not.toContain(
+      'synthetic close implementation detail',
+    );
+  });
+
+  it('classifies an account-replacement shutdown failure as session closure', async () => {
+    render(<VoiceModal />);
+    await waitFor(() => expect(useVoiceStore.getState().session?.accountId).toBe('account-a'));
+    routerMocks.stopCurrentVoiceResponse.mockRejectedValueOnce(
+      new Error('synthetic replacement shutdown detail'),
+    );
+
+    act(() => useAuthStore.setState({ localUserId: 'account-b' }));
+
+    await waitFor(() =>
+      expect(useVoiceStore.getState()).toMatchObject({
+        state: 'error',
+        errorMessage:
+          'The action failed, sir. Action: Voice session closure. Cause: The previous voice session could not be closed cleanly.',
+      }),
+    );
+    expect(useVoiceStore.getState().errorMessage).not.toContain(
+      'synthetic replacement shutdown detail',
+    );
+    expect(chatRoutingMocks.ensureJarvisChatForVoice).toHaveBeenCalledOnce();
+  });
+
+  it('reports a safe templated failure when voice session startup throws', async () => {
+    chatRoutingMocks.ensureJarvisChatForVoice.mockRejectedValueOnce(
+      new Error('synthetic startup implementation detail'),
+    );
+
+    render(<VoiceModal />);
+
+    await waitFor(() =>
+      expect(useVoiceStore.getState()).toMatchObject({
+        state: 'error',
+        errorMessage:
+          'The action failed, sir. Action: Voice session startup. Cause: A Jarvis chat could not be prepared for the new voice session.',
+      }),
+    );
+    expect(useVoiceStore.getState().errorMessage).not.toContain(
+      'synthetic startup implementation detail',
+    );
+  });
+
   it('starts no bound session or chat resolution without canonical account identity', async () => {
     useAuthStore.setState({ localUserId: null, cloudSession: null });
 
@@ -281,6 +343,60 @@ describe('VoiceModal hands-free turn-taking', () => {
 
     expect(useVoiceStore.getState().session).toBeNull();
     expect(chatRoutingMocks.ensureJarvisChatForVoice).not.toHaveBeenCalled();
+  });
+
+  it('reports a precise routing failure without persisting or sending when no target exists', async () => {
+    render(<VoiceModal />);
+    await waitFor(() => expect(useVoiceStore.getState().session).not.toBeNull());
+    vi.useFakeTimers();
+    const send = vi.fn();
+    window.addEventListener('jarvis:send', send as EventListener);
+    chatRoutingMocks.resolveVoiceChatTarget.mockResolvedValueOnce(null);
+
+    try {
+      act(() => emitVoice('voice:final', { text: 'unroutable request send it' }));
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(useVoiceStore.getState()).toMatchObject({
+        state: 'error',
+        errorMessage:
+          'The action failed, sir. Action: Voice message routing. Cause: No Jarvis chat target was available.',
+      });
+      expect(messageRepo.create).not.toHaveBeenCalled();
+      expect(send).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener('jarvis:send', send as EventListener);
+    }
+  });
+
+  it('reports a precise routing failure when the active voice session has no bound chat', async () => {
+    chatRoutingMocks.ensureJarvisChatForVoice.mockResolvedValueOnce(null);
+    render(<VoiceModal />);
+    await waitFor(() => expect(chatRoutingMocks.ensureJarvisChatForVoice).toHaveBeenCalledOnce());
+    vi.useFakeTimers();
+    const send = vi.fn();
+    window.addEventListener('jarvis:send', send as EventListener);
+
+    try {
+      act(() => emitVoice('voice:final', { text: 'unbound request send it' }));
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(useVoiceStore.getState()).toMatchObject({
+        state: 'error',
+        errorMessage:
+          'The action failed, sir. Action: Voice message routing. Cause: The active voice session has no bound Jarvis chat.',
+      });
+      expect(messageRepo.create).not.toHaveBeenCalled();
+      expect(send).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener('jarvis:send', send as EventListener);
+    }
   });
 
   it('does not send on silence without the commit phrase', async () => {

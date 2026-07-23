@@ -45,11 +45,34 @@ const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
   devBuild: import.meta.env.DEV,
   explicitFlag: import.meta.env.VITE_SIK_SMOKE,
 });
-const VOICE_MESSAGE_SAVE_FAILURE = formatJarvisVerifiedNarration({
-  kind: 'failure',
-  actionLabel: 'Voice message',
-  reason: 'The local message could not be saved, so nothing was sent',
-}).text;
+function formatVoiceFailure(actionLabel: string, reason: string): string {
+  return formatJarvisVerifiedNarration({
+    kind: 'failure',
+    actionLabel,
+    reason,
+  }).text;
+}
+
+const VOICE_SESSION_CLOSE_FAILURE = formatVoiceFailure(
+  'Voice session closure',
+  'The previous voice session could not be closed cleanly',
+);
+const VOICE_SESSION_START_FAILURE = formatVoiceFailure(
+  'Voice session startup',
+  'A Jarvis chat could not be prepared for the new voice session',
+);
+const VOICE_CHAT_TARGET_FAILURE = formatVoiceFailure(
+  'Voice message routing',
+  'No Jarvis chat target was available',
+);
+const VOICE_BOUND_CHAT_FAILURE = formatVoiceFailure(
+  'Voice message routing',
+  'The active voice session has no bound Jarvis chat',
+);
+const VOICE_MESSAGE_SAVE_FAILURE = formatVoiceFailure(
+  'Voice message',
+  'The local message could not be saved, so nothing was sent',
+);
 const KERNEL_SMOKE_VOICE_FIXTURE_SHA256 =
   'b3bab750a95495ae54c457b54cb9a066147e36acc6a711e1a09ea05265c272f7';
 
@@ -436,14 +459,9 @@ export function VoiceModal() {
         if (!oldSession) return;
         await stopCurrentVoiceResponse();
         useVoiceStore.getState().endSession(oldSession.sessionId);
-      })().catch((error) => {
+      })().catch(() => {
         if (disposed) return;
-        useVoiceStore
-          .getState()
-          .setState(
-            'error',
-            error instanceof Error ? error.message : 'Could not close the old voice session.',
-          );
+        useVoiceStore.getState().setState('error', VOICE_SESSION_CLOSE_FAILURE);
       });
       return () => void (disposed = true);
     }
@@ -451,8 +469,15 @@ export function VoiceModal() {
     void (async () => {
       const oldSession = useVoiceStore.getState().session;
       if (oldSession && oldSession.accountId !== requestedIdentity.accountId) {
-        await stopCurrentVoiceResponse();
-        useVoiceStore.getState().endSession(oldSession.sessionId);
+        try {
+          await stopCurrentVoiceResponse();
+          useVoiceStore.getState().endSession(oldSession.sessionId);
+        } catch {
+          if (!disposed) {
+            useVoiceStore.getState().setState('error', VOICE_SESSION_CLOSE_FAILURE);
+          }
+          return;
+        }
       }
       if (disposed) return;
 
@@ -475,14 +500,9 @@ export function VoiceModal() {
         startedAt: Date.now(),
       });
       if (useVoiceStore.getState().beginSession(binding)) focusVoiceChat(binding.chatId);
-    })().catch((error) => {
+    })().catch(() => {
       if (disposed) return;
-      useVoiceStore
-        .getState()
-        .setState(
-          'error',
-          error instanceof Error ? error.message : 'Could not start the voice session.',
-        );
+      useVoiceStore.getState().setState('error', VOICE_SESSION_START_FAILURE);
     });
 
     return () => void (disposed = true);
@@ -586,7 +606,7 @@ export function VoiceModal() {
       void (async () => {
         const target = await resolveVoiceChatTarget(text);
         if (!target) {
-          useVoiceStore.getState().setState('error', 'Could not open a Jarvis chat.');
+          useVoiceStore.getState().setState('error', VOICE_CHAT_TARGET_FAILURE);
           releaseTurnAndRestart();
           return;
         }
@@ -596,7 +616,7 @@ export function VoiceModal() {
         const accountId = target.agentId ? undefined : boundSession?.accountId;
         const voiceSessionId = target.agentId ? undefined : boundSession?.sessionId;
         if (!chatId) {
-          useVoiceStore.getState().setState('error', 'Could not open a bound Jarvis chat.');
+          useVoiceStore.getState().setState('error', VOICE_BOUND_CHAT_FAILURE);
           releaseTurnAndRestart();
           return;
         }
