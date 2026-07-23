@@ -9,11 +9,53 @@ import {
   canonicalTerminalSpawnToken,
   createTerminalExitLatch,
   createTerminalOutputLatch,
+  formatTerminalVoiceFailure,
   settleTerminalInitializationFailure,
   terminalSmokeFailureCode,
 } from './TerminalView';
 
 describe('TerminalView canonical execution truth', () => {
+  it('formats terminal dictation startup failure without exposing thrown details', () => {
+    const message = formatTerminalVoiceFailure('startup');
+
+    expect(message).toBe(
+      'The action failed, sir. Action: Terminal dictation startup. ' +
+        'Cause: Speech-to-text could not start in the terminal. ' +
+        'Check microphone access, then try again.',
+    );
+    expect(message).not.toContain('synthetic terminal microphone detail');
+  });
+
+  it('formats terminal speech-recognition unavailability through the same shared boundary', () => {
+    expect(formatTerminalVoiceFailure('unsupported')).toBe(
+      'The action failed, sir. Action: Terminal speech recognition availability. ' +
+        'Cause: Speech-to-text is not available in this runtime.',
+    );
+  });
+
+  it('routes the terminal dictation startup catch through the closed formatter', () => {
+    const source = readFileSync(
+      resolve(process.cwd(), 'src/features/terminals/TerminalView.tsx'),
+      'utf8',
+    );
+    const start = source.indexOf('const onGlobalSttToggle = (event: Event) => {');
+    const end = source.indexOf('window.addEventListener(COMPOSER_STT_TOGGLE_EVENT', start);
+    const startupBlock = source.slice(start, end);
+
+    expect(start).toBeGreaterThan(0);
+    expect(end).toBeGreaterThan(start);
+    expect(startupBlock).toContain(
+      "toast.warning('Voice unsupported', formatTerminalVoiceFailure('unsupported'));",
+    );
+    expect(startupBlock).toContain(
+      "toast.error('Voice error', formatTerminalVoiceFailure('startup'));",
+    );
+    expect(startupBlock).toContain('setDictating(false);');
+    expect(startupBlock).toContain('} catch {');
+    expect(startupBlock).not.toMatch(/catch\s*\(\s*(?:err|error)\b/i);
+    expect(startupBlock).not.toContain('.message');
+  });
+
   it('latches early output for the exact spawned session and exposes shell readiness', async () => {
     const delivered = vi.fn();
     const latch = createTerminalOutputLatch(delivered);

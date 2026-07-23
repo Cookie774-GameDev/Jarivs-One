@@ -112,6 +112,7 @@ import {
 } from './terminalExecutionStore';
 import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
 import { SIK_EVIDENCE } from '@/lib/jarvis/smoke/evidenceIds';
+import { formatJarvisVerifiedNarration } from '@/lib/jarvis/response/templates';
 
 const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
   devBuild: import.meta.env.DEV,
@@ -120,6 +121,27 @@ const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
 
 const TERMINAL_FONT_READINESS_TIMEOUT_MS = 2_000;
 const TERMINAL_OUTPUT_READINESS_TIMEOUT_MS = 2_000;
+
+type TerminalVoiceFailureKind = 'unsupported' | 'startup';
+
+export function formatTerminalVoiceFailure(kind: TerminalVoiceFailureKind): string {
+  const details =
+    kind === 'unsupported'
+      ? {
+          actionLabel: 'Terminal speech recognition availability',
+          reason: 'Speech-to-text is not available in this runtime',
+        }
+      : {
+          actionLabel: 'Terminal dictation startup',
+          reason:
+            'Speech-to-text could not start in the terminal. Check microphone access, then try again',
+        };
+  return formatJarvisVerifiedNarration({
+    kind: 'failure',
+    actionLabel: details.actionLabel,
+    reason: details.reason,
+  }).text;
+}
 
 export function awaitTerminalFontReadiness(
   readiness: Promise<unknown> | undefined,
@@ -1715,7 +1737,7 @@ export function TerminalView({
         return;
       }
       if (!VoiceService.isSupported()) {
-        toast.warning('Voice unsupported', 'Speech-to-text is not available in this runtime.');
+        toast.warning('Voice unsupported', formatTerminalVoiceFailure('unsupported'));
         return;
       }
       try {
@@ -1724,8 +1746,8 @@ export function TerminalView({
         }
         VoiceService.startListening();
         setDictating(true);
-      } catch (err) {
-        toast.error('Voice error', err instanceof Error ? err.message : 'Voice could not start.');
+      } catch {
+        toast.error('Voice error', formatTerminalVoiceFailure('startup'));
         setDictating(false);
       }
     };
