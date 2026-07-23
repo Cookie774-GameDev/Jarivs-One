@@ -39,11 +39,17 @@ import {
 import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
 import { SIK_EVIDENCE } from '@/lib/jarvis/smoke/evidenceIds';
 import { KERNEL_SMOKE_SCENARIOS } from '@/lib/jarvis/smoke/scenarios';
+import { formatJarvisVerifiedNarration } from '@/lib/jarvis/response/templates';
 
 const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
   devBuild: import.meta.env.DEV,
   explicitFlag: import.meta.env.VITE_SIK_SMOKE,
 });
+const VOICE_MESSAGE_SAVE_FAILURE = formatJarvisVerifiedNarration({
+  kind: 'failure',
+  actionLabel: 'Voice message',
+  reason: 'The local message could not be saved, so nothing was sent',
+}).text;
 const KERNEL_SMOKE_VOICE_FIXTURE_SHA256 =
   'b3bab750a95495ae54c457b54cb9a066147e36acc6a711e1a09ea05265c272f7';
 
@@ -635,12 +641,9 @@ export function VoiceModal() {
               },
             }),
           );
-        } catch (error) {
-          toast.error(
-            'Voice message failed',
-            error instanceof Error ? error.message : 'Could not send.',
-          );
-          useVoiceStore.getState().setState('error', 'Could not send the voice message.');
+        } catch {
+          toast.error('Voice message failed', VOICE_MESSAGE_SAVE_FAILURE);
+          useVoiceStore.getState().setState('error', VOICE_MESSAGE_SAVE_FAILURE);
           releaseTurnAndRestart();
         }
       })();

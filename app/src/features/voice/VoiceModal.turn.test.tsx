@@ -27,6 +27,10 @@ const chatHookMocks = vi.hoisted(() => ({
   useChatMessages: vi.fn(() => []),
 }));
 
+const toastMocks = vi.hoisted(() => ({
+  error: vi.fn(),
+}));
+
 const chatRoutingMocks = vi.hoisted(() => ({
   ensureJarvisChatForVoice: vi.fn(async (): Promise<string | null> => 'chat_voice'),
   focusVoiceChat: vi.fn(),
@@ -75,6 +79,12 @@ vi.mock('motion/react', () => ({
 
 vi.mock('@/features/chat/hooks', () => ({
   useChatMessages: chatHookMocks.useChatMessages,
+}));
+
+vi.mock('@/components/ui/toast', () => ({
+  toast: {
+    error: toastMocks.error,
+  },
 }));
 
 vi.mock('@/lib/db', () => ({
@@ -307,6 +317,44 @@ describe('VoiceModal hands-free turn-taking', () => {
     const event = send.mock.calls[0]?.[0] as CustomEvent<{ text: string; speakReply: boolean }>;
     expect(event.detail.text).toBe('help me plan');
     expect(event.detail.speakReply).toBe(true);
+
+    window.removeEventListener('jarvis:send', send as EventListener);
+  });
+
+  it('reports a precise templated save failure without sending or exposing the thrown detail', async () => {
+    vi.useFakeTimers();
+    const send = vi.fn();
+    window.addEventListener('jarvis:send', send as EventListener);
+    vi.mocked(messageRepo.create).mockRejectedValueOnce(
+      new Error('synthetic storage implementation detail'),
+    );
+
+    render(<VoiceModal />);
+
+    act(() => {
+      emitVoice('voice:final', { text: 'failed message send it' });
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const expectedFailure =
+      'The action failed, sir. Action: Voice message. Cause: The local message could not be saved, so nothing was sent.';
+    expect(messageRepo.create).toHaveBeenCalledOnce();
+    expect(toastMocks.error).toHaveBeenCalledWith('Voice message failed', expectedFailure);
+    expect(useVoiceStore.getState()).toMatchObject({
+      state: 'error',
+      errorMessage: expectedFailure,
+    });
+    expect(useVoiceStore.getState().errorMessage).not.toContain(
+      'synthetic storage implementation detail',
+    );
+    expect(send).not.toHaveBeenCalled();
+    expect(JSON.stringify(toastMocks.error.mock.calls)).not.toContain(
+      'synthetic storage implementation detail',
+    );
 
     window.removeEventListener('jarvis:send', send as EventListener);
   });
