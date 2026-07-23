@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { JarvisCadenceState } from './cadence';
-import { verifiedResponseTemplate } from './templates';
+import {
+  formatJarvisVerifiedNarration,
+  verifiedResponseTemplate,
+  type JarvisVerifiedNarrationInput,
+} from './templates';
 import type { JarvisVerifiedFacts } from './modeClassifier';
 
 function facts(status?: string): JarvisVerifiedFacts {
@@ -83,10 +87,175 @@ describe('verifiedResponseTemplate', () => {
     };
 
     expect(verifiedResponseTemplate(facts('awaiting_approval'), cadenceState)).toBe(
-      'Approval is required before this action can run.',
+      'Approval is required before this action can run. Action: Current action.',
     );
     expect(verifiedResponseTemplate(facts('completed'), cadenceState)).toBe(
-      'The action completed successfully, sir.',
+      'Completed, sir. The action completed successfully.',
+    );
+  });
+});
+
+describe('formatJarvisVerifiedNarration', () => {
+  it.each([
+    [
+      { kind: 'approval_required', actionLabel: 'Publish release' },
+      'approval_required',
+      ['Approval is required', 'Publish release'],
+    ],
+    [{ kind: 'queued', actionLabel: 'Run tests' }, 'action_running', ['queued', 'Run tests']],
+    [
+      { kind: 'running', actionLabel: 'Build desktop app' },
+      'action_running',
+      ['running', 'Build desktop app'],
+    ],
+    [
+      { kind: 'verifying', actionLabel: 'Create design' },
+      'action_running',
+      ['being verified', 'Create design'],
+    ],
+    [
+      { kind: 'success', summary: '214 tests passed' },
+      'action_success',
+      ['Completed', '214 tests passed'],
+    ],
+    [
+      {
+        kind: 'partial',
+        completedSummary: 'The page was created',
+        remainingSummary: 'Publishing remains outstanding',
+      },
+      'action_partial',
+      ['Partially completed', 'The page was created', 'Publishing remains outstanding'],
+    ],
+    [
+      {
+        kind: 'failure',
+        actionLabel: 'Compile VoiceModal.tsx',
+        reason: 'Type mismatch at line 418',
+      },
+      'action_failure',
+      ['failed', 'Compile VoiceModal.tsx', 'Type mismatch at line 418'],
+    ],
+    [
+      { kind: 'cancelled', actionLabel: 'Deploy preview' },
+      'status',
+      ['cancelled', 'Deploy preview'],
+    ],
+    [
+      {
+        kind: 'unavailable_connector',
+        connectorName: 'Canva',
+        nextAction: 'Connect Canva in Settings',
+      },
+      'warning',
+      ['unavailable', 'Canva', 'Connect Canva in Settings'],
+    ],
+    [
+      {
+        kind: 'missing_permission',
+        actionLabel: 'Send message',
+        permissionLabel: 'Messaging write approval',
+      },
+      'approval_required',
+      ['permission is required', 'Send message', 'Messaging write approval'],
+    ],
+    [
+      {
+        kind: 'stale_terminal',
+        terminalLabel: 'Build pane',
+        lastObservedAt: '2026-07-23T14:00:00Z',
+      },
+      'warning',
+      ['stale', 'Build pane', '2026-07-23T14:00:00Z'],
+    ],
+    [
+      { kind: 'model_switched', modelName: 'Gemini Pro' },
+      'status',
+      ['Model switched', 'Gemini Pro'],
+    ],
+    [
+      {
+        kind: 'model_switch_proposed',
+        modelName: 'Gemini Pro',
+        reason: 'Better suited to visual analysis',
+      },
+      'recommendation',
+      ['Model switch proposed', 'Gemini Pro', 'Better suited to visual analysis'],
+    ],
+    [
+      {
+        kind: 'agent_delegated',
+        agentName: 'Design reviewer',
+        objective: 'Audit the landing page',
+      },
+      'status',
+      ['Delegated', 'Design reviewer', 'Audit the landing page'],
+    ],
+    [
+      {
+        kind: 'agent_blocked',
+        agentName: 'Release reviewer',
+        reason: 'Signing credential unavailable',
+      },
+      'warning',
+      ['blocked', 'Release reviewer', 'Signing credential unavailable'],
+    ],
+    [
+      { kind: 'artifact_created', artifactLabel: 'Implementation plan' },
+      'action_success',
+      ['Artifact created', 'Implementation plan'],
+    ],
+    [
+      {
+        kind: 'artifact_link_returned',
+        artifactLabel: 'Canva landing page',
+        url: 'https://example.test/design?id=verified',
+      },
+      'action_success',
+      ['Artifact link ready', 'Canva landing page', 'https://example.test/design?id=verified'],
+    ],
+    [
+      {
+        kind: 'no_result_returned',
+        operationLabel: 'Search Drive',
+        nextAction: 'Refine the file query',
+      },
+      'action_partial',
+      ['No result was returned', 'Search Drive', 'Refine the file query'],
+    ],
+  ] as const satisfies readonly [JarvisVerifiedNarrationInput, string, readonly string[]][])(
+    'formats verified $kind data without model-authored narration',
+    (input, mode, values) => {
+      const result = formatJarvisVerifiedNarration(input);
+
+      expect(result.mode).toBe(mode);
+      for (const value of values) expect(result.text).toContain(value);
+      expect(Object.isFrozen(result)).toBe(true);
+      expect(Object.isFrozen(result.cadenceState)).toBe(true);
+    },
+  );
+
+  it('uses the cadence helper without modifying verified result data', () => {
+    const running = formatJarvisVerifiedNarration({
+      kind: 'running',
+      actionLabel: 'Run deterministic suite',
+    });
+    const success = formatJarvisVerifiedNarration({
+      kind: 'success',
+      summary: '214/214 tests passed at C:\\VibeSpace\\app',
+    });
+
+    expect(running.text).not.toMatch(/\bsir\b/i);
+    expect(success.text.match(/\bsir\b/gi)).toHaveLength(1);
+    expect(success.text).toContain('214/214 tests passed at C:\\VibeSpace\\app');
+  });
+
+  it('is the execution-state source used by the existing facts template', () => {
+    expect(verifiedResponseTemplate(facts('completed'))).toBe(
+      formatJarvisVerifiedNarration({
+        kind: 'success',
+        summary: 'The action completed successfully.',
+      }).text,
     );
   });
 });
