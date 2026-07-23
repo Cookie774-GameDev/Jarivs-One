@@ -20,7 +20,7 @@ function facts(status?: string): JarvisVerifiedFacts {
 
 describe('verifiedResponseTemplate', () => {
   it.each([
-    ['awaiting_approval', /approval is required/i, /completed|running/i],
+    ['awaiting_approval', /awaiting your authorisation/i, /completed|running/i],
     ['running', /running/i, /completed successfully/i],
     ['completed', /completed successfully/i, /still running/i],
     ['partial', /partially complete|unfinished/i, /completed successfully/i],
@@ -128,7 +128,7 @@ describe('verifiedResponseTemplate', () => {
     };
 
     expect(verifiedResponseTemplate(facts('awaiting_approval'), cadenceState)).toBe(
-      'Approval is required before this action can run. Action: Current action.',
+      'Certainly. The action is prepared and awaiting your authorisation. Action: Current action.',
     );
     expect(verifiedResponseTemplate(facts('completed'), cadenceState)).toBe(
       'Completed, sir. The action completed successfully.',
@@ -157,7 +157,7 @@ describe('formatJarvisVerifiedNarration', () => {
     [
       { kind: 'approval_required', actionLabel: 'Publish release' },
       'approval_required',
-      ['Approval is required', 'Publish release'],
+      ['Certainly, sir', 'prepared and awaiting your authorisation', 'Publish release'],
     ],
     [{ kind: 'queued', actionLabel: 'Run tests' }, 'action_running', ['queued', 'Run tests']],
     [

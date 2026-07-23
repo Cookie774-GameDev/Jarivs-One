@@ -59,6 +59,7 @@ import {
 } from '@/features/schedule/jarvisScheduledTransportRetry';
 import type { JarvisCommandCenterHostPort } from '@/features/jarvis-command-center/types';
 import type { JarvisActionCatalog } from '@/lib/jarvis/actions/catalog';
+import { formatJarvisVerifiedNarration } from '@/lib/jarvis/response/templates';
 import { parseJarvisScheduleMetadata } from '@/features/schedule/jarvisSchedules';
 import { deriveChatTitle, maybeRenameChat } from '@/features/chat/chatLifecycle';
 import { getStoredProjectRoot } from '@/features/files/projectFiles';
@@ -1735,10 +1736,16 @@ function textToParts(
     const fallbackProposals =
       userText && interactionMode === 'agent' ? inferFallbackActionProposals(userText, text) : [];
     if (fallbackProposals.length === 0) return [{ kind: 'text', text }];
+    const actionLabel = fallbackProposals
+      .map(({ action_id, rationale }) => rationale?.trim() || action_id)
+      .join(' ');
     return [
       {
         kind: 'text',
-        text: 'I can do that in VibeSpace. Approve the action card below and I will run it.',
+        text: formatJarvisVerifiedNarration({
+          kind: 'approval_required',
+          actionLabel,
+        }).text,
       },
       ...fallbackProposals.map<Part>((proposal) => ({
         kind: 'action_proposal',

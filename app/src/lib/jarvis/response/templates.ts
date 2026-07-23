@@ -104,7 +104,7 @@ function narrationDefinition(
       return {
         mode: 'approval_required',
         moment: 'new_task_acknowledgement',
-        lead: 'Approval is required before this action can run.',
+        lead: 'Certainly. The action is prepared and awaiting your authorisation.',
         details: [verifiedDetail('Action', input.actionLabel)],
       };
     case 'queued':

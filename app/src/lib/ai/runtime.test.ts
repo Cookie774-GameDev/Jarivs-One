@@ -1237,9 +1237,14 @@ describe('startRuntimeListener agent routing', () => {
     >;
     const finalWrite = updateCalls[updateCalls.length - 1]?.[1];
     if (!finalWrite) throw new Error('expected a final assistant message write');
-    expect(finalWrite.parts[0]).toMatchObject({
+    expect(finalWrite.parts[0]).toEqual({
       kind: 'text',
-      text: expect.stringMatching(/approve/i),
+      text:
+        'Certainly, sir. The action is prepared and awaiting your authorisation. ' +
+        'Action: Open Settings because the user asked to see it.',
+    });
+    expect(finalWrite.parts[0]).not.toMatchObject({
+      text: expect.stringContaining('Approve the action card below'),
     });
     expect(finalWrite.parts).toEqual(
       expect.arrayContaining([
