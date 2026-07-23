@@ -159,6 +159,27 @@ function withoutUndefined(value: unknown): unknown {
   );
 }
 
+function capabilityEnforcementFacts(
+  providerFacts: Readonly<JarvisVerifiedFacts>,
+  capabilities: Readonly<Pick<JarvisRequestEnvelope['capabilities'], 'plugins' | 'mcps'>>,
+): Readonly<JarvisVerifiedFacts> {
+  return deepFreezeJarvisCopy({
+    ...providerFacts,
+    plugins: capabilities.plugins,
+    mcps: capabilities.mcps,
+  });
+}
+
+function operationalVerifiedFacts(
+  facts: Readonly<JarvisVerifiedFacts>,
+): Readonly<JarvisVerifiedFacts> {
+  return deepFreezeJarvisCopy({
+    ...facts,
+    plugins: [],
+    mcps: [],
+  });
+}
+
 function convertTextParts(
   parts: readonly Part[],
   convert: (text: string) => { converted: boolean; parts: Part[] },
@@ -280,9 +301,17 @@ export async function processJarvisResponse(
       responseModeHint: request.responseModeHint,
       outputContract: request.outputContract,
       sourceRefs: request.context.items.map((item) => item.source),
+      capabilities: {
+        plugins: request.capabilities.plugins,
+        mcps: request.capabilities.mcps,
+      },
     },
   });
-  const facts = snapshot.raw.verifiedFacts;
+  const facts = capabilityEnforcementFacts(
+    snapshot.raw.verifiedFacts,
+    snapshot.request.capabilities,
+  );
+  const operationalFacts = operationalVerifiedFacts(facts);
   const tokenized = tokenizeJarvisResponse(snapshot.raw.text);
   const mode = classifyJarvisResponseMode(snapshot.request, facts);
   let prose = tokenized.proseWithPlaceholders;
@@ -328,22 +357,29 @@ export async function processJarvisResponse(
 
   let repairSucceeded = repaired.succeeded;
   let finalProse = repaired.prose;
+  let repairedViolations: readonly JarvisLintViolation[] = [];
   if (repairSucceeded) {
-    const repairedViolations = lintJarvisProse(finalProse, mode, facts);
+    repairedViolations = lintJarvisProse(finalProse, mode, facts);
     if (repairedViolations.length > 0) {
       repairSucceeded = false;
       finalProse = prose;
     }
   }
 
+  const hasCapabilityContradiction = [...initialViolations, ...repairedViolations].some(
+    (item) => item.code === 'verified_capability_contradiction',
+  );
   const needsDeterministicFallback =
     initialViolations.some((item) => item.disposition === 'deterministic') ||
     (repaired.attempted && !repairSucceeded) ||
-    Boolean(verifiedResponseTemplate(facts));
+    Boolean(verifiedResponseTemplate(operationalFacts));
   if (hasQuarantine) {
     finalProse = withMissingPlaceholders(QUARANTINED_RESPONSE_TEMPLATE, validPlaceholders);
   } else if (needsDeterministicFallback) {
-    const deterministic = deterministicFallback(finalProse, facts);
+    const deterministic = deterministicFallback(
+      finalProse,
+      hasCapabilityContradiction ? facts : operationalFacts,
+    );
     finalProse = withMissingPlaceholders(deterministic, validPlaceholders);
   }
   if (

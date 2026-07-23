@@ -295,6 +295,114 @@ describe('processJarvisResponse', () => {
     expect(result.spokenText).toMatch(/queued/i);
   });
 
+  it('rejects plugin promotion using the immutable request capability snapshot', async () => {
+    const result = await processJarvisResponse(
+      raw('Canva is connected and authenticated, sir.'),
+      request({
+        capabilities: {
+          capturedAt: 7,
+          tools: [],
+          plugins: [{ id: 'Canva', state: 'available', operations: ['create_design'] }],
+          mcps: [],
+          terminals: [],
+          agents: [],
+          entitlements: { source: 'unavailable', capabilities: [] },
+        },
+      }),
+      { repair: vi.fn() },
+    );
+
+    expect(result.displayText).toContain('Canva is available.');
+    expect(result.displayText).not.toMatch(/\bCanva is (?:connected|authenticated)\b/i);
+    expect(result.enforcement.violations).toContain('verified_capability_contradiction');
+  });
+
+  it('does not let provider-supplied MCP facts override the request snapshot', async () => {
+    const provider = raw('Zapier is authenticated, sir.');
+    provider.verifiedFacts.mcps = [
+      {
+        id: 'Zapier',
+        state: 'authenticated',
+        operations: ['invoke'],
+        evidenceRef: 'provider-claimed-evidence',
+        lastVerifiedAt: 9,
+      },
+    ];
+
+    const result = await processJarvisResponse(
+      provider,
+      request({
+        capabilities: {
+          capturedAt: 8,
+          tools: [],
+          plugins: [],
+          mcps: [{ id: 'Zapier', state: 'unavailable', operations: [] }],
+          terminals: [],
+          agents: [],
+          entitlements: { source: 'unavailable', capabilities: [] },
+        },
+      }),
+      { repair: vi.fn() },
+    );
+
+    expect(result.displayText).toContain('Zapier is unavailable.');
+    expect(result.displayText).not.toMatch(/\bZapier is authenticated\b/i);
+    expect(result.enforcement.violations).toContain('verified_capability_contradiction');
+  });
+
+  it('keeps request capability truth start-bound across the repair await', async () => {
+    const mutableRequest = request({
+      capabilities: {
+        capturedAt: 9,
+        tools: [],
+        plugins: [{ id: 'GitHub', state: 'available', operations: ['search'] }],
+        mcps: [],
+        terminals: [],
+        agents: [],
+        entitlements: { source: 'unavailable', capabilities: [] },
+      },
+    }) as JarvisRequestEnvelope;
+    const repair = {
+      repair: vi.fn(async () => {
+        mutableRequest.capabilities.plugins[0]!.state = 'authenticated';
+        return 'GitHub is authenticated, sir.';
+      }),
+    };
+
+    const result = await processJarvisResponse(
+      raw('Sure, GitHub is available.'),
+      mutableRequest,
+      repair,
+    );
+
+    expect(repair.repair).toHaveBeenCalledOnce();
+    expect(result.displayText).toContain('GitHub is available.');
+    expect(result.displayText).not.toMatch(/\bGitHub is authenticated\b/i);
+    expect(result.enforcement.repairSucceeded).toBe(false);
+  });
+
+  it('does not replace an unrelated compliant answer with passive capability metadata', async () => {
+    const result = await processJarvisResponse(
+      raw('The architecture review is ready, sir.'),
+      request({
+        capabilities: {
+          capturedAt: 10,
+          tools: [],
+          plugins: [{ id: 'Canva', state: 'available', operations: ['create_design'] }],
+          mcps: [{ id: 'Drive', state: 'connected', operations: ['search'] }],
+          terminals: [],
+          agents: [],
+          entitlements: { source: 'unavailable', capabilities: [] },
+        },
+      }),
+      { repair: vi.fn() },
+    );
+
+    expect(result.displayText).toBe('The architecture review is ready, sir.');
+    expect(result.displayText).not.toMatch(/\b(?:Canva|Drive) is\b/);
+    expect(result.enforcement.fallbackUsed).toBe(false);
+  });
+
   it('keeps sensitive replies restrained without forcing cadence or humor', async () => {
     const repair = { repair: vi.fn() };
     const result = await processJarvisResponse(
