@@ -28,7 +28,12 @@ import { useAuthStore } from '@/stores/auth';
 import { flushUiStatePersistence, useUIStore } from '@/stores/ui';
 import { useAgentStore } from '@/stores/agents';
 import { findProtectedJarvisAgent } from '@/lib/jarvis/identity';
-import { formatChatModelSelectionLabel, modelSelectionContextFromAuth, selectionFromOption, selectionOptionId } from '@/lib/ai/modelSelection';
+import {
+  formatChatModelSelectionLabel,
+  modelSelectionContextFromAuth,
+  selectionFromOption,
+  selectionOptionId,
+} from '@/lib/ai/modelSelection';
 import { useAccessibleChatModels } from '@/lib/ai/useAccessibleChatModels';
 import { getProviderDisplayName } from '@/lib/ai/providerRegistry';
 import { cn } from '@/lib/utils';
@@ -60,6 +65,7 @@ import { ChatThread } from '@/features/chat/ChatThread';
 import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
 import { SIK_CONTROL } from '@/lib/jarvis/smoke/evidenceIds';
 import { KERNEL_SMOKE_SCENARIOS } from '@/lib/jarvis/smoke/scenarios';
+import { formatJarvisVerifiedNarration } from '@/lib/jarvis/response/templates';
 import {
   isKernelSmokeBindingActive,
   KERNEL_SMOKE_PROVIDER_ID,
@@ -73,6 +79,10 @@ const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
   devBuild: import.meta.env.DEV,
   explicitFlag: import.meta.env.VITE_SIK_SMOKE,
 });
+
+function formatScheduleSuccess(summary: string): string {
+  return formatJarvisVerifiedNarration({ kind: 'success', summary }).text;
+}
 
 const REMINDER_PRESETS: { label: string; offset_min: number }[] = [
   { label: 'At time', offset_min: 0 },
@@ -143,8 +153,18 @@ function groupTimelineByDay(items: TimelineItem[]) {
 
 const WEEKDAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const MONTH_LABELS = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
 ];
 
 function MiniCalendar({
@@ -159,7 +179,10 @@ function MiniCalendar({
   onSelectDay: (dayMs: number) => void;
 }) {
   const now = React.useMemo(() => new Date(), []);
-  const [view, setView] = React.useState(() => ({ year: now.getFullYear(), month: now.getMonth() }));
+  const [view, setView] = React.useState(() => ({
+    year: now.getFullYear(),
+    month: now.getMonth(),
+  }));
 
   const cells = React.useMemo(() => {
     const first = new Date(view.year, view.month, 1);
@@ -273,7 +296,9 @@ export function SchedulePage() {
   const protectedJarvisAgent = useAgentStore((state) =>
     findProtectedJarvisAgent(Object.values(state.agents)),
   );
-  const modelLabel = useAuthStore((s) => formatChatModelSelectionLabel(s.chatModelSelection, modelSelectionContextFromAuth(s)));
+  const modelLabel = useAuthStore((s) =>
+    formatChatModelSelectionLabel(s.chatModelSelection, modelSelectionContextFromAuth(s)),
+  );
   const { flatOptions: jarvisModelOptions } = useAccessibleChatModels();
   const events = useUpcomingEvents(workspaceId, 14 * DAY_MS, 100);
   const tasks = useUpcomingTasks();
@@ -291,7 +316,9 @@ export function SchedulePage() {
 
   const [quick, setQuick] = React.useState('');
   const [title, setTitle] = React.useState('');
-  const [startInput, setStartInput] = React.useState(() => toLocalDateTimeInput(defaultEventStartMs()));
+  const [startInput, setStartInput] = React.useState(() =>
+    toLocalDateTimeInput(defaultEventStartMs()),
+  );
   const [endInput, setEndInput] = React.useState(() =>
     toLocalDateTimeInput(defaultEventEndMs(defaultEventStartMs())),
   );
@@ -348,7 +375,9 @@ export function SchedulePage() {
     () => jarvisEvents.find((event) => String(event.id) === openJarvisEventId) ?? null,
     [jarvisEvents, openJarvisEventId],
   );
-  const [jarvisModelOptionId, setJarvisModelOptionId] = React.useState(() => selectionOptionId(chatModelSelection) ?? '');
+  const [jarvisModelOptionId, setJarvisModelOptionId] = React.useState(
+    () => selectionOptionId(chatModelSelection) ?? '',
+  );
   const selectedJarvisModel = React.useMemo(() => {
     const exact = jarvisModelOptions.find((option) => option.id === jarvisModelOptionId);
     if (exact) return exact;
@@ -359,9 +388,12 @@ export function SchedulePage() {
     if (separator < 1) return null;
     const provider = jarvisModelOptionId.slice(0, separator);
     const modelId = jarvisModelOptionId.slice(separator + 1);
-    return jarvisModelOptions.find((option) => (
-      option.provider === provider && option.modelId === modelId && option.available !== false
-    )) ?? null;
+    return (
+      jarvisModelOptions.find(
+        (option) =>
+          option.provider === provider && option.modelId === modelId && option.available !== false,
+      ) ?? null
+    );
   }, [jarvisModelOptions, jarvisModelOptionId]);
 
   React.useEffect(() => {
@@ -374,14 +406,19 @@ export function SchedulePage() {
       if (current && jarvisModelOptions.some((option) => option.id === current)) return current;
       if (activeId && jarvisModelOptions.some((option) => option.id === activeId)) return activeId;
       if (chatModelSelection.mode === 'single') {
-        const compatible = jarvisModelOptions.find((option) => (
-          option.provider === chatModelSelection.providerId &&
-          option.modelId === chatModelSelection.modelId &&
-          option.available !== false
-        ));
+        const compatible = jarvisModelOptions.find(
+          (option) =>
+            option.provider === chatModelSelection.providerId &&
+            option.modelId === chatModelSelection.modelId &&
+            option.available !== false,
+        );
         if (compatible) return compatible.id;
       }
-      return jarvisModelOptions.find((option) => option.available !== false)?.id ?? jarvisModelOptions[0]?.id ?? '';
+      return (
+        jarvisModelOptions.find((option) => option.available !== false)?.id ??
+        jarvisModelOptions[0]?.id ??
+        ''
+      );
     });
   }, [chatModelSelection, jarvisModelOptions]);
 
@@ -427,7 +464,10 @@ export function SchedulePage() {
       return;
     }
     if (scheduleMode === 'jarvis' && !selectedJarvisModel) {
-      toast.warning('Connect a model', 'Connect a provider or download a local model before saving a Jarvis Action.');
+      toast.warning(
+        'Connect a model',
+        'Connect a provider or download a local model before saving a Jarvis Action.',
+      );
       return;
     }
 
@@ -438,7 +478,8 @@ export function SchedulePage() {
     }
     const rawEnd = fromLocalDateTimeInput(endInput);
     const jarvisAction = scheduleMode === 'jarvis';
-    const end = !jarvisAction && allDay ? start + DAY_MS - 1 : Math.max(rawEnd, start + 5 * 60 * 1000);
+    const end =
+      !jarvisAction && allDay ? start + DAY_MS - 1 : Math.max(rawEnd, start + 5 * 60 * 1000);
     const reminders: EventReminder[] = jarvisAction
       ? []
       : reminderOffsets.map((offset_min) => ({
@@ -450,13 +491,20 @@ export function SchedulePage() {
       // Duplicate guard: repeated saves (or repeated natural-language parses)
       // of the same action at the same time must not stack duplicate runs.
       const normalizedTitle = title.trim().toLowerCase();
-      const duplicate = jarvisEvents.some((event) =>
-        event.status === 'scheduled' &&
-        event.start_at === start &&
-        event.title.replace(/^Jarvis Scheduled\s+—\s+/, '').trim().toLowerCase() === normalizedTitle,
+      const duplicate = jarvisEvents.some(
+        (event) =>
+          event.status === 'scheduled' &&
+          event.start_at === start &&
+          event.title
+            .replace(/^Jarvis Scheduled\s+—\s+/, '')
+            .trim()
+            .toLowerCase() === normalizedTitle,
       );
       if (duplicate) {
-        toast.warning('Already scheduled', 'A Jarvis Action with this title and start time already exists.');
+        toast.warning(
+          'Already scheduled',
+          'A Jarvis Action with this title and start time already exists.',
+        );
         return;
       }
     }
@@ -466,41 +514,45 @@ export function SchedulePage() {
         Object.values(useAgentStore.getState().agents),
       );
       const protectedJarvisId = protectedJarvis?.id ?? 'agent_jarvis';
-      await eventRepo.create(jarvisAction
-        ? buildJarvisScheduleEventInput({
-            workspaceId,
-            createdBy: protectedJarvisId,
-            title: title.trim(),
-            prompt: description.trim() || title.trim(),
-            startAt: start,
-            durationMs: end - start,
-            recurrence: jarvisRecurrence,
-            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-            modelSelection: selectedJarvisModel
-              ? selectionFromOption(
-                  selectedJarvisModel.provider,
-                  selectedJarvisModel.modelId,
-                  selectedJarvisModel.connection,
-                )
-              : chatModelSelection,
-            agentId: protectedJarvisId,
-          })
-        : {
-            workspace_id: workspaceId,
-            title: title.trim(),
-            description: description.trim() || undefined,
-            start_at: start,
-            end_at: end,
-            all_day: allDay,
-            reminders,
-            source: 'manual',
-            created_by: localUserId ?? 'usr_local',
-          });
+      await eventRepo.create(
+        jarvisAction
+          ? buildJarvisScheduleEventInput({
+              workspaceId,
+              createdBy: protectedJarvisId,
+              title: title.trim(),
+              prompt: description.trim() || title.trim(),
+              startAt: start,
+              durationMs: end - start,
+              recurrence: jarvisRecurrence,
+              timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+              modelSelection: selectedJarvisModel
+                ? selectionFromOption(
+                    selectedJarvisModel.provider,
+                    selectedJarvisModel.modelId,
+                    selectedJarvisModel.connection,
+                  )
+                : chatModelSelection,
+              agentId: protectedJarvisId,
+            })
+          : {
+              workspace_id: workspaceId,
+              title: title.trim(),
+              description: description.trim() || undefined,
+              start_at: start,
+              end_at: end,
+              all_day: allDay,
+              reminders,
+              source: 'manual',
+              created_by: localUserId ?? 'usr_local',
+            },
+      );
       toast.success(
         jarvisAction ? 'Jarvis Action saved' : 'Event saved',
-        jarvisAction
-          ? `“${title.trim()}” will run ${jarvisRecurrence === 'once' ? 'once' : jarvisRecurrenceLabel(jarvisRecurrence).toLowerCase()} while VibeSpace is open.`
-          : `“${title.trim()}” is on your schedule.`,
+        formatScheduleSuccess(
+          jarvisAction
+            ? `“${title.trim()}” will run ${jarvisRecurrence === 'once' ? 'once' : jarvisRecurrenceLabel(jarvisRecurrence).toLowerCase()} while VibeSpace is open.`
+            : `“${title.trim()}” is on your schedule.`,
+        ),
       );
       setQuick('');
       setTitle('');
@@ -621,7 +673,7 @@ export function SchedulePage() {
   const handleDeleteEvent = async (event: EventRow) => {
     try {
       await eventRepo.delete(event.id);
-      toast.success('Event removed', `“${event.title}” is gone.`);
+      toast.success('Event removed', formatScheduleSuccess(`“${event.title}” is gone.`));
     } catch (err) {
       toast.error('Could not delete', err instanceof Error ? err.message : 'Try again.');
     }
@@ -630,7 +682,7 @@ export function SchedulePage() {
   const handleCompleteTask = async (task: Task) => {
     try {
       await completeTask(task.id);
-      toast.success('Task completed', `“${task.title}” is done.`);
+      toast.success('Task completed', formatScheduleSuccess(`“${task.title}” is done.`));
     } catch (err) {
       toast.error('Could not complete task', err instanceof Error ? err.message : 'Try again.');
     }
@@ -650,7 +702,9 @@ export function SchedulePage() {
             <div className="flex items-center gap-2 text-metadata uppercase tracking-wider text-accent-copper">
               <CalendarDays className="h-4 w-4" /> Schedule
             </div>
-            <h1 className="font-display text-hero text-foreground">Events, timed tasks, and AI plans</h1>
+            <h1 className="font-display text-hero text-foreground">
+              Events, timed tasks, and AI plans
+            </h1>
             <p className="mt-1 text-secondary text-muted-foreground">
               Tell Jarvis what should happen and when. Times use your device clock.
             </p>
@@ -782,7 +836,10 @@ export function SchedulePage() {
                       <p className="text-metadata text-muted-foreground">{group.subheading}</p>
                     </div>
                     {group.dayKey === todayKey && (
-                      <Badge variant="outline" className="ml-auto border-accent-copper/40 text-accent-copper">
+                      <Badge
+                        variant="outline"
+                        className="ml-auto border-accent-copper/40 text-accent-copper"
+                      >
                         Now
                       </Badge>
                     )}
@@ -794,7 +851,12 @@ export function SchedulePage() {
                         key={`${item.kind}-${item.id}`}
                         initial={{ opacity: 0, y: 8 }}
                         animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: Math.min(idx * 0.03, 0.3), type: 'spring', stiffness: 240, damping: 28 }}
+                        transition={{
+                          delay: Math.min(idx * 0.03, 0.3),
+                          type: 'spring',
+                          stiffness: 240,
+                          damping: 28,
+                        }}
                         className="group border-b border-border/60 px-4 py-3.5 transition-colors last:border-b-0 hover:bg-muted/40"
                       >
                         {item.kind === 'event' ? (
@@ -825,7 +887,9 @@ export function SchedulePage() {
                 <Sparkles className="h-4 w-4 text-accent-cyan" />
               </div>
               <div>
-                <h2 className="font-display text-page-title text-foreground">Ask Jarvis to schedule</h2>
+                <h2 className="font-display text-page-title text-foreground">
+                  Ask Jarvis to schedule
+                </h2>
                 <p className="text-secondary text-muted-foreground">
                   Natural-language planning stays local and editable before save.
                 </p>
@@ -835,19 +899,34 @@ export function SchedulePage() {
 
           <div className="flex flex-col gap-3">
             <div className="grid grid-cols-2 gap-2 rounded-lg border border-border/80 bg-background/40 p-1">
-              <Button type="button" size="sm" variant={scheduleMode === 'event' ? 'secondary' : 'ghost'} onClick={() => setScheduleMode('event')}>
+              <Button
+                type="button"
+                size="sm"
+                variant={scheduleMode === 'event' ? 'secondary' : 'ghost'}
+                onClick={() => setScheduleMode('event')}
+              >
                 Event
               </Button>
-              <Button type="button" size="sm" variant={scheduleMode === 'jarvis' ? 'secondary' : 'ghost'} onClick={() => setScheduleMode('jarvis')}>
+              <Button
+                type="button"
+                size="sm"
+                variant={scheduleMode === 'jarvis' ? 'secondary' : 'ghost'}
+                onClick={() => setScheduleMode('jarvis')}
+              >
                 Jarvis Action
               </Button>
             </div>
             {scheduleMode === 'jarvis' && (
               <div className="rounded-lg border border-accent-violet/30 bg-accent-violet/10 p-3 text-secondary">
                 <div className="font-display text-ui-strong text-foreground">Jarvis action</div>
-                <p className="mt-1 text-muted-foreground">Title, system prompt, model, and run time are saved as a real Jarvis schedule.</p>
+                <p className="mt-1 text-muted-foreground">
+                  Title, system prompt, model, and run time are saved as a real Jarvis schedule.
+                </p>
                 <div className="mt-3 space-y-1.5">
-                  <Label htmlFor="jarvis-action-model" className="text-metadata text-muted-foreground">
+                  <Label
+                    htmlFor="jarvis-action-model"
+                    className="text-metadata text-muted-foreground"
+                  >
                     Jarvis action model
                   </Label>
                   {jarvisModelOptions.length > 0 ? (
@@ -864,16 +943,23 @@ export function SchedulePage() {
                         const separator = value.indexOf(':');
                         const provider = value.slice(0, separator);
                         const modelId = value.slice(separator + 1);
-                        const compatible = jarvisModelOptions.find((option) => (
-                          option.provider === provider &&
-                          option.modelId === modelId &&
-                          option.available !== false
-                        ));
+                        const compatible = jarvisModelOptions.find(
+                          (option) =>
+                            option.provider === provider &&
+                            option.modelId === modelId &&
+                            option.available !== false,
+                        );
                         setJarvisModelOptionId(compatible?.id ?? value);
                       }}
                       className="flex h-9 w-full rounded-md border border-input bg-background px-2.5 text-body text-foreground"
                     >
-                      {[...new Set(jarvisModelOptions.map((option) => `${option.provider}:${option.modelId}`))].map((id) => (
+                      {[
+                        ...new Set(
+                          jarvisModelOptions.map(
+                            (option) => `${option.provider}:${option.modelId}`,
+                          ),
+                        ),
+                      ].map((id) => (
                         <option key={`legacy-${id}`} value={id} hidden>
                           {id}
                         </option>
@@ -886,7 +972,8 @@ export function SchedulePage() {
                     </select>
                   ) : (
                     <div className="rounded-md border border-dashed border-border bg-background/50 px-2.5 py-2 text-metadata text-muted-foreground">
-                      Connect a provider in Settings → Providers or download a local model before saving a Jarvis Action.
+                      Connect a provider in Settings → Providers or download a local model before
+                      saving a Jarvis Action.
                     </div>
                   )}
                 </div>
@@ -914,10 +1001,14 @@ export function SchedulePage() {
                   </div>
                 </div>
                 <p className="mt-2 text-metadata text-accent-violet">
-                  Model: {selectedJarvisModel ? `${getProviderDisplayName(selectedJarvisModel.provider)} · ${selectedJarvisModel.label}` : modelLabel}
+                  Model:{' '}
+                  {selectedJarvisModel
+                    ? `${getProviderDisplayName(selectedJarvisModel.provider)} · ${selectedJarvisModel.label}`
+                    : modelLabel}
                 </p>
                 <p className="mt-1 text-metadata text-muted-foreground">
-                  Runs while VibeSpace is open. Runs missed by more than 6 hours are logged, not replayed.
+                  Runs while VibeSpace is open. Runs missed by more than 6 hours are logged, not
+                  replayed.
                 </p>
               </div>
             )}
@@ -937,8 +1028,15 @@ export function SchedulePage() {
             </div>
 
             <div>
-              <Label htmlFor="event-title">{scheduleMode === 'jarvis' ? 'Jarvis action title' : 'Title'}</Label>
-              <Input id="event-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="What's the event?" />
+              <Label htmlFor="event-title">
+                {scheduleMode === 'jarvis' ? 'Jarvis action title' : 'Title'}
+              </Label>
+              <Input
+                id="event-title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="What's the event?"
+              />
             </div>
 
             <div className="rounded-lg border border-border/80 bg-background/40 p-3">
@@ -947,7 +1045,12 @@ export function SchedulePage() {
                   <Clock className="h-3.5 w-3.5 text-accent-copper" /> When
                 </Label>
               </div>
-              <div className={cn('grid gap-3', scheduleMode === 'jarvis' ? 'grid-cols-1' : 'grid-cols-2')}>
+              <div
+                className={cn(
+                  'grid gap-3',
+                  scheduleMode === 'jarvis' ? 'grid-cols-1' : 'grid-cols-2',
+                )}
+              >
                 <div>
                   <Label htmlFor="event-start" className="text-metadata text-muted-foreground">
                     {scheduleMode === 'jarvis' ? 'Run at' : 'Start'}
@@ -978,7 +1081,11 @@ export function SchedulePage() {
 
             {scheduleMode === 'event' ? (
               <div className="flex items-center gap-3">
-                <Switch id="event-allday" checked={allDay} onCheckedChange={(v) => setAllDay(Boolean(v))} />
+                <Switch
+                  id="event-allday"
+                  checked={allDay}
+                  onCheckedChange={(v) => setAllDay(Boolean(v))}
+                />
                 <Label htmlFor="event-allday" className="cursor-pointer">
                   All day
                 </Label>
@@ -986,12 +1093,18 @@ export function SchedulePage() {
             ) : null}
 
             <div>
-              <Label htmlFor="event-desc">{scheduleMode === 'jarvis' ? 'System prompt' : 'Notes'}</Label>
+              <Label htmlFor="event-desc">
+                {scheduleMode === 'jarvis' ? 'System prompt' : 'Notes'}
+              </Label>
               <Textarea
                 id="event-desc"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder={scheduleMode === 'jarvis' ? 'What should Jarvis do when this runs?' : 'Optional context...'}
+                placeholder={
+                  scheduleMode === 'jarvis'
+                    ? 'What should Jarvis do when this runs?'
+                    : 'Optional context...'
+                }
                 rows={4}
               />
             </div>
@@ -1031,7 +1144,8 @@ export function SchedulePage() {
             ) : null}
 
             <Button variant="accent" onClick={() => void handleSave()} className="mt-1 w-full">
-              <Plus className="mr-1 h-3.5 w-3.5" /> {scheduleMode === 'jarvis' ? 'Save Jarvis Action' : 'Save event'}
+              <Plus className="mr-1 h-3.5 w-3.5" />{' '}
+              {scheduleMode === 'jarvis' ? 'Save Jarvis Action' : 'Save event'}
             </Button>
             {KERNEL_SMOKE_ENABLED && kernelSmokeBindingActive ? (
               <div className="grid grid-cols-2 gap-2" aria-label="Kernel schedule smoke fixtures">
@@ -1081,15 +1195,16 @@ function EventTimelineRow({
   const jarvisMetadata = parseJarvisScheduleMetadata(event);
   const Icon = visual.icon;
   const reminderCount = event.reminders?.length ?? 0;
-  const accentColor =
-    event.color_hue !== undefined ? `hsl(${event.color_hue} 70% 55%)` : undefined;
+  const accentColor = event.color_hue !== undefined ? `hsl(${event.color_hue} 70% 55%)` : undefined;
 
   return (
     <div className={cn('flex gap-3 rounded-xl', jarvisSchedule && 'bg-accent-violet/5 py-2 pr-2')}>
       <div
         className={cn(
           'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border bg-panel shadow-soft',
-          jarvisSchedule ? 'border-accent-violet/40 bg-accent-violet/10 text-accent-violet' : visual.accentClass,
+          jarvisSchedule
+            ? 'border-accent-violet/40 bg-accent-violet/10 text-accent-violet'
+            : visual.accentClass,
         )}
       >
         <Icon className="h-4 w-4" aria-hidden />
@@ -1107,7 +1222,9 @@ function EventTimelineRow({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-              <span className="truncate font-display text-ui-strong text-foreground">{event.title}</span>
+              <span className="truncate font-display text-ui-strong text-foreground">
+                {event.title}
+              </span>
               <Badge variant="outline" className="shrink-0 text-metadata">
                 {jarvisSchedule ? 'Jarvis Scheduled' : visual.label}
               </Badge>
@@ -1121,7 +1238,10 @@ function EventTimelineRow({
                 <Repeat className="h-3 w-3 shrink-0 text-muted-foreground" aria-label="Recurring" />
               )}
               {reminderCount > 0 && (
-                <span className="inline-flex items-center gap-0.5 text-metadata text-muted-foreground" title="Reminders">
+                <span
+                  className="inline-flex items-center gap-0.5 text-metadata text-muted-foreground"
+                  title="Reminders"
+                >
                   <Bell className="h-3 w-3" />
                   {reminderCount}
                 </span>
@@ -1143,13 +1263,23 @@ function EventTimelineRow({
             )}
             {jarvisSchedule && jarvisMetadata ? (
               <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-metadata text-muted-foreground">
-                <span>Model: {jarvisMetadata.modelSelection.mode === 'single' ? jarvisMetadata.modelSelection.modelId : jarvisMetadata.modelSelection.mode}</span>
+                <span>
+                  Model:{' '}
+                  {jarvisMetadata.modelSelection.mode === 'single'
+                    ? jarvisMetadata.modelSelection.modelId
+                    : jarvisMetadata.modelSelection.mode}
+                </span>
                 <span>Repeats: {jarvisRecurrenceLabel(jarvisMetadata.recurrence)}</span>
-                <span>Next: {formatLocalDateTime(jarvisMetadata.nextRunAt ?? item.instance.instanceStartMs)}</span>
+                <span>
+                  Next:{' '}
+                  {formatLocalDateTime(jarvisMetadata.nextRunAt ?? item.instance.instanceStartMs)}
+                </span>
               </p>
             ) : null}
             {event.description && (
-              <p className="mt-1.5 line-clamp-2 text-secondary text-muted-foreground">{event.description}</p>
+              <p className="mt-1.5 line-clamp-2 text-secondary text-muted-foreground">
+                {event.description}
+              </p>
             )}
             {jarvisSchedule && onOpenJarvis && (
               <Button
@@ -1235,10 +1365,14 @@ function JarvisActionsList({
                     {jarvisRecurrenceLabel(metadata?.recurrence ?? 'once')}
                   </Badge>
                   {event.status === 'done' && (
-                    <Badge variant="secondary" className="shrink-0 text-metadata">Completed</Badge>
+                    <Badge variant="secondary" className="shrink-0 text-metadata">
+                      Completed
+                    </Badge>
                   )}
                   {event.status === 'cancelled' && (
-                    <Badge variant="secondary" className="shrink-0 text-metadata">Paused</Badge>
+                    <Badge variant="secondary" className="shrink-0 text-metadata">
+                      Paused
+                    </Badge>
                   )}
                 </div>
                 <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-metadata text-muted-foreground">
@@ -1250,16 +1384,25 @@ function JarvisActionsList({
                         ? `Last ran ${formatLocalDateTime(metadata.lastRunAt)}`
                         : `Starts ${formatLocalDateTime(event.start_at)}`}
                   </span>
-                  <span>{runCount} run{runCount === 1 ? '' : 's'}</span>
+                  <span>
+                    {runCount} run{runCount === 1 ? '' : 's'}
+                  </span>
                   {errorCount > 0 && (
-                    <span className="text-destructive">{errorCount} issue{errorCount === 1 ? '' : 's'}</span>
+                    <span className="text-destructive">
+                      {errorCount} issue{errorCount === 1 ? '' : 's'}
+                    </span>
                   )}
                 </p>
                 {metadata?.prompt && (
-                  <p className="mt-1 line-clamp-1 text-secondary text-muted-foreground">{metadata.prompt}</p>
+                  <p className="mt-1 line-clamp-1 text-secondary text-muted-foreground">
+                    {metadata.prompt}
+                  </p>
                 )}
               </div>
-              <ChevronRight className="mt-2 h-4 w-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />
+              <ChevronRight
+                className="mt-2 h-4 w-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
+                aria-hidden
+              />
             </button>
           </li>
         );
@@ -1283,7 +1426,13 @@ function JarvisActionOutputView({
     <div className="flex h-[560px] min-h-0 flex-col">
       <div className="flex items-center justify-between gap-2 border-b border-border/70 bg-accent-violet/5 px-4 py-2.5">
         <div className="flex min-w-0 items-center gap-2">
-          <Button type="button" size="icon-sm" variant="ghost" onClick={onBack} aria-label="Back to Jarvis Actions">
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="ghost"
+            onClick={onBack}
+            aria-label="Back to Jarvis Actions"
+          >
             <ChevronLeft className="h-4 w-4" />
           </Button>
           <div className="min-w-0">
@@ -1292,7 +1441,9 @@ function JarvisActionOutputView({
             </div>
             <p className="text-metadata text-muted-foreground">
               {jarvisRecurrenceLabel(metadata?.recurrence ?? 'once')}
-              {metadata?.modelSelection.mode === 'single' ? ` · ${metadata.modelSelection.modelId}` : ''}
+              {metadata?.modelSelection.mode === 'single'
+                ? ` · ${metadata.modelSelection.modelId}`
+                : ''}
               {metadata?.nextRunAt && event.status === 'scheduled'
                 ? ` · next ${formatLocalDateTime(metadata.nextRunAt)}`
                 : ''}
@@ -1362,11 +1513,17 @@ function TaskTimelineRow({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <span className="truncate font-display text-ui-strong text-foreground">{task.title}</span>
+              <span className="truncate font-display text-ui-strong text-foreground">
+                {task.title}
+              </span>
               <Badge variant="outline" className="shrink-0 text-metadata">
                 Task
               </Badge>
-              <Badge variant={task.priority === 'urgent' || task.priority === 'high' ? 'warning' : 'outline'}>
+              <Badge
+                variant={
+                  task.priority === 'urgent' || task.priority === 'high' ? 'warning' : 'outline'
+                }
+              >
                 {task.priority}
               </Badge>
             </div>
@@ -1375,7 +1532,9 @@ function TaskTimelineRow({
               {item.timeKind} · {formatLocalDateTime(item.at)}
             </p>
             {task.notes && (
-              <p className="mt-1.5 line-clamp-2 text-secondary text-muted-foreground">{task.notes}</p>
+              <p className="mt-1.5 line-clamp-2 text-secondary text-muted-foreground">
+                {task.notes}
+              </p>
             )}
           </div>
           <Button
