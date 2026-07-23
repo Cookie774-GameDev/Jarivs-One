@@ -7,12 +7,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   isTauri: { value: true },
+  voiceHandlers: new Map<string, (payload: never) => void>(),
   voiceService: {
     isSupported: vi.fn(() => false),
     startListening: vi.fn(() => true),
     stopListening: vi.fn(),
     setInactivityTimeoutMs: vi.fn(),
-    on: vi.fn(() => () => undefined),
+    on: vi.fn<(event: string, handler: (payload: never) => void) => () => void>(
+      () => () => undefined,
+    ),
   },
   composer: {
     provider: 'system' as 'system' | 'faster-whisper',
@@ -41,7 +44,8 @@ vi.mock('@/lib/utils', async (importOriginal) => ({
   },
 }));
 
-vi.mock('@/features/voice/VoiceService', () => ({
+vi.mock('@/features/voice/VoiceService', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/features/voice/VoiceService')>()),
   VoiceService: mocks.voiceService,
 }));
 
@@ -70,6 +74,7 @@ vi.mock('./deepgramDictation', () => ({
 }));
 
 import { createGlobalDictationSession, NO_ENGINE_MESSAGE } from './dictationSession';
+import { formatVoiceFailure } from '@/features/voice/VoiceService';
 import { useAuthStore } from '@/stores/auth';
 
 function stubMic(available: boolean) {
@@ -86,6 +91,13 @@ describe('createGlobalDictationSession engine resolution', () => {
     mocks.composer.provider = 'system';
     mocks.voiceService.isSupported.mockReturnValue(false);
     mocks.voiceService.startListening.mockReturnValue(true);
+    mocks.voiceHandlers.clear();
+    mocks.voiceService.on.mockImplementation((event, handler) => {
+      mocks.voiceHandlers.set(event, handler);
+      return () => {
+        mocks.voiceHandlers.delete(event);
+      };
+    });
     mocks.fasterWhisper.checkInstalled.mockResolvedValue(false);
     mocks.deepgramKey.value = '';
     useAuthStore.setState({ apiKeys: {} });
@@ -105,6 +117,25 @@ describe('createGlobalDictationSession engine resolution', () => {
     expect(session.getFinalText()).toBe('local text');
   });
 
+  it('reports a safe shared batch-transcription failure without provider details', async () => {
+    mocks.composer.provider = 'faster-whisper';
+    mocks.fasterWhisper.checkInstalled.mockResolvedValue(true);
+    mocks.composer.transcribeFasterWhisper.mockRejectedValueOnce(
+      new Error('synthetic local model path and provider detail'),
+    );
+    const onError = vi.fn();
+
+    const session = await createGlobalDictationSession({ onError });
+    await session.stop();
+
+    expect(onError).toHaveBeenCalledWith(
+      'The action failed, sir. Action: Local faster-whisper transcription. ' +
+        'Cause: Captured audio could not be transcribed. ' +
+        'Check the selected engine and connection, then retry.',
+    );
+    expect(onError.mock.calls[0]?.[0]).not.toContain('synthetic local model path');
+  });
+
   it('uses the built-in Web Speech engine when available (default chat STT engine)', async () => {
     mocks.voiceService.isSupported.mockReturnValue(true);
 
@@ -115,6 +146,21 @@ describe('createGlobalDictationSession engine resolution', () => {
     expect(mocks.voiceService.startListening).toHaveBeenCalled();
     session.cancel();
     expect(mocks.voiceService.stopListening).toHaveBeenCalled();
+  });
+
+  it('preserves the closed browser-recognition startup diagnostic', async () => {
+    mocks.voiceService.isSupported.mockReturnValue(true);
+    const onError = vi.fn();
+    const session = await createGlobalDictationSession({ onError });
+    const startupMessage = formatVoiceFailure('unknown', 'startup');
+
+    mocks.voiceHandlers.get('voice:error')?.({
+      kind: 'unknown',
+      message: startupMessage,
+    } as never);
+
+    expect(onError).toHaveBeenCalledWith(startupMessage);
+    session.cancel();
   });
 
   it('uses Deepgram streaming when a voice key is configured', async () => {

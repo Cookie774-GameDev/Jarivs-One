@@ -33,6 +33,11 @@ import {
 import { FasterWhisperManager } from '@/features/composer-stt/fasterWhisperManager';
 import { getAudioContextCtor } from '@/features/composer-stt/audio';
 import { createDeepgramDictationSession, type DictationEvents } from './deepgramDictation';
+import {
+  formatGlobalDictationSessionFailure,
+  formatGlobalDictationTranscriptionFailure,
+  NO_DICTATION_ENGINE_REASON,
+} from './dictationFailures';
 
 export type DictationEngineId = 'faster-whisper' | 'web-speech' | 'deepgram' | 'groq';
 
@@ -48,8 +53,7 @@ export interface GlobalDictationSession {
   getFinalText: () => string;
 }
 
-export const NO_ENGINE_MESSAGE =
-  'No speech-to-text engine is available. Download a local faster-whisper model or add a Deepgram/Groq key in Settings → Speech to Text. VibeSpace dictation never uses Windows Win+H.';
+export const NO_ENGINE_MESSAGE = NO_DICTATION_ENGINE_REASON;
 
 function micAvailable(): boolean {
   return typeof navigator !== 'undefined' && typeof navigator.mediaDevices?.getUserMedia === 'function';
@@ -99,8 +103,8 @@ function createBatchSession(
         try {
           finalText = (await transcribe(wav)).trim();
           if (finalText) events.onFinal?.(finalText);
-        } catch (err) {
-          events.onError?.(err instanceof Error ? err.message : `${engineLabel} transcription failed.`);
+        } catch {
+          events.onError?.(formatGlobalDictationTranscriptionFailure(engine));
         }
         events.onClose?.();
       },
@@ -131,9 +135,8 @@ function createWebSpeechSession(events: DictationEvents): GlobalDictationSession
       finalText = `${finalText} ${text}`.trim();
       events.onFinal?.(finalText);
     }),
-    VoiceService.on('voice:error', (payload) => {
-      const message = (payload as { message?: string })?.message ?? 'Speech recognition error.';
-      events.onError?.(message);
+    VoiceService.on('voice:error', ({ message }) => {
+      events.onError?.(formatGlobalDictationSessionFailure(message));
     }),
   ];
 

@@ -10,6 +10,12 @@ import {
   createGlobalDictationSession,
   type GlobalDictationSession,
 } from './dictationSession';
+import {
+  formatGlobalDictationEmptyFailure,
+  formatGlobalDictationPasteFailure,
+  formatGlobalDictationSessionFailure,
+  formatGlobalDictationStartupFailure,
+} from './dictationFailures';
 
 /**
  * VibeSpace global dictation overlay (Ctrl+Space).
@@ -63,6 +69,7 @@ export function GlobalDictationOverlay() {
 
   const failVisible = React.useCallback((message: string) => {
     teardownSession();
+    stateRef.current = 'error';
     setState('error');
     setErrorMessage(message);
   }, [teardownSession]);
@@ -87,7 +94,7 @@ export function GlobalDictationOverlay() {
         onLevel: (level) => {
           levelRef.current = level;
         },
-        onError: (message) => failVisible(message),
+        onError: (message) => failVisible(formatGlobalDictationSessionFailure(message)),
         onClose: () => {
           if (stateRef.current === 'listening') setState('ready');
         },
@@ -95,7 +102,7 @@ export function GlobalDictationOverlay() {
       sessionRef.current = session;
       setEngineLabel(session.engineLabel);
     } catch (err) {
-      failVisible(err instanceof Error ? err.message : 'Dictation could not start.');
+      failVisible(formatGlobalDictationStartupFailure(err));
     }
   }, [failVisible, resetTranscript]);
 
@@ -116,7 +123,7 @@ export function GlobalDictationOverlay() {
     resetTranscript();
     if (!text) {
       if (stateRef.current !== 'error') {
-        failVisible('Nothing was transcribed. Press Retry and speak again.');
+        failVisible(formatGlobalDictationEmptyFailure());
       }
       return;
     }
@@ -130,13 +137,11 @@ export function GlobalDictationOverlay() {
             // The overlay is hidden at this point - bring it back so the
             // failure is visible instead of vanishing into a hidden toast.
             await getCurrentWindow().show().catch(() => undefined);
-            failVisible(
-              `Paste failed: ${err instanceof Error ? err.message : String(err)}`,
-            );
+            failVisible(formatGlobalDictationPasteFailure(err));
           });
       }, 120);
     } catch (err) {
-      failVisible(`Paste failed: ${err instanceof Error ? err.message : String(err)}`);
+      failVisible(formatGlobalDictationPasteFailure(err));
     }
   }, [failVisible, finalText, resetTranscript]);
 

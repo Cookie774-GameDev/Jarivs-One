@@ -159,7 +159,7 @@ function mapErrorKind(raw: string): VoiceErrorKind {
 
 type VoiceFailurePhase = 'recognition' | 'startup';
 
-function formatVoiceFailure(
+export function formatVoiceFailure(
   kind: VoiceErrorKind,
   phase: VoiceFailurePhase = 'recognition',
 ): string {

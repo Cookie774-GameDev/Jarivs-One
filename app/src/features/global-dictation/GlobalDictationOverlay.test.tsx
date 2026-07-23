@@ -99,13 +99,18 @@ describe('GlobalDictationOverlay (VibeSpace shared STT pipeline)', () => {
 
   it('shows a visible error state with Retry and a settings fix path when no engine exists', async () => {
     sessionMocks.createSession.mockRejectedValue(
-      new Error('No speech-to-text engine is available. Download a local faster-whisper model or add a Deepgram/Groq key in Settings → Speech to Text.'),
+      new Error(
+        'No speech-to-text engine is available. Download a local faster-whisper model or add a ' +
+          'Deepgram/Groq key in Settings → Speech to Text. synthetic provider detail',
+      ),
     );
 
     render(<GlobalDictationOverlay />);
     await openOverlay();
 
     expect(screen.getByText(/No speech-to-text engine is available/)).toBeTruthy();
+    expect(screen.getByText(/Global dictation availability/)).toBeTruthy();
+    expect(screen.queryByText(/synthetic provider detail/)).toBeNull();
     expect(screen.getByRole('button', { name: /Retry dictation/i })).toBeTruthy();
     // Fix path appears both in the error message and the footer hint.
     expect(screen.getAllByText(/Settings → Speech to Text/).length).toBeGreaterThanOrEqual(1);
@@ -121,7 +126,10 @@ describe('GlobalDictationOverlay (VibeSpace shared STT pipeline)', () => {
 
     render(<GlobalDictationOverlay />);
     await openOverlay();
-    expect(screen.getByText(/Microphone permission denied/)).toBeTruthy();
+    expect(
+      screen.getByText(/Microphone capture is unavailable or permission was denied/),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Microphone permission denied/)).toBeNull();
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: /Retry dictation/i }));
@@ -166,9 +174,40 @@ describe('GlobalDictationOverlay (VibeSpace shared STT pipeline)', () => {
     vi.useRealTimers();
   });
 
+  it('preserves a batch-transcription diagnostic instead of overwriting it as empty speech', async () => {
+    let callbacks: SessionCallbacks | null = null;
+    const session = fakeSession('', 'Local faster-whisper');
+    session.stop = vi.fn(async () => {
+      callbacks?.onError?.(
+        'The action failed, sir. Action: Local faster-whisper transcription. ' +
+          'Cause: Captured audio could not be transcribed. ' +
+          'Check the selected engine and connection, then retry.',
+      );
+    });
+    sessionMocks.createSession.mockImplementation(async (cb: SessionCallbacks) => {
+      callbacks = cb;
+      return session;
+    });
+
+    render(<GlobalDictationOverlay />);
+    await openOverlay();
+    act(() => callbacks!.onOpen?.());
+
+    await act(async () => {
+      fireEvent.keyDown(window, { key: 'Enter' });
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText(/Local faster-whisper transcription/)).toBeTruthy();
+    expect(screen.queryByText(/No speech was transcribed/)).toBeNull();
+    expect(tauriMocks.invoke).not.toHaveBeenCalledWith('dictation_paste_text', expect.anything());
+  });
+
   it('paste failure re-shows the overlay with a visible error and fix path', async () => {
     vi.useFakeTimers();
-    tauriMocks.invoke.mockRejectedValue(new Error('xdotool is required for dictation paste on Linux'));
+    tauriMocks.invoke.mockRejectedValue(
+      new Error('xdotool is required for dictation paste on Linux: synthetic path'),
+    );
     let callbacks: SessionCallbacks | null = null;
     sessionMocks.createSession.mockImplementation(async (cb: SessionCallbacks) => {
       callbacks = cb;
@@ -192,9 +231,23 @@ describe('GlobalDictationOverlay (VibeSpace shared STT pipeline)', () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByText(/Paste failed: xdotool/)).toBeTruthy();
+    expect(screen.getByText(/Linux dictation paste requires xdotool/)).toBeTruthy();
+    expect(screen.queryByText(/synthetic path/)).toBeNull();
     expect(tauriMocks.windowApi.show).toHaveBeenCalled();
     vi.useRealTimers();
+  });
+
+  it('suppresses an unknown startup exception behind a precise retry path', async () => {
+    sessionMocks.createSession.mockRejectedValue(
+      new Error('synthetic dictation startup implementation detail'),
+    );
+
+    render(<GlobalDictationOverlay />);
+    await openOverlay();
+
+    expect(screen.getByText(/The dictation session could not start/)).toBeTruthy();
+    expect(screen.getByText(/selected speech-to-text engine/)).toBeTruthy();
+    expect(screen.queryByText(/synthetic dictation startup implementation detail/)).toBeNull();
   });
 
   it('Escape cancels without pasting', async () => {
