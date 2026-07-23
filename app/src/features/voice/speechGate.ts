@@ -1,5 +1,9 @@
 import type { JarvisExecutionState, JarvisResponseMode } from '@/lib/jarvis/contracts';
 import { lintJarvisProse, type JarvisLintViolation } from '@/lib/jarvis/response/linter';
+import {
+  containsUnsafeSpeechJsonStructure,
+  containsUnsafeSpeechReference,
+} from '@/lib/jarvis/response/spokenDelivery';
 
 const validatedSpeechChunkBrand: unique symbol = Symbol('jarvis.validated-speech-chunk');
 
@@ -101,6 +105,8 @@ export function validateSpeechChunk(input: Readonly<SpeechGateInput>): SpeechGat
   });
   if (
     !text ||
+    containsUnsafeSpeechReference(text) ||
+    containsUnsafeSpeechJsonStructure(text) ||
     UNSPOKEN_STRUCTURE.test(text) ||
     input.lintViolations.length > 0 ||
     violations.length > 0

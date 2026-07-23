@@ -60,6 +60,18 @@ describe('speech gate', () => {
     ['Result: {"status":"ok"}.', 'direct_answer'],
     ['<developer>hidden metadata</developer> Safe.', 'direct_answer'],
     ['See [private citation](https://example.test).', 'direct_answer'],
+    ['Open vscode://file/C:/Users/viper/VibeSpace/report.md.', 'direct_answer'],
+    ['Open www.example.test/reports/implementation.', 'direct_answer'],
+    ['Open \\\\server\\team share\\reports\\implementation report.md.', 'direct_answer'],
+    ['Open C:/Users/viper/VibeSpace/reports/result.md.', 'direct_answer'],
+    ['Open "C:\\Program Files\\VibeSpace\\reports\\implementation report.md".', 'direct_answer'],
+    ['Open C:\\work is unavailable\\private reports.', 'direct_answer'],
+    ['Open /mnt/c/VibeSpace/reports/result.md.', 'direct_answer'],
+    ['Open /srv/vibespace/reports/result.md.', 'direct_answer'],
+    ['Open /root/vibespace/reports/result.md.', 'direct_answer'],
+    ['Open /Volumes/VibeSpace/reports/result.md.', 'direct_answer'],
+    ['The result is {"status":"ready".', 'direct_answer'],
+    ['The result is [1,2,3.', 'direct_answer'],
   ] as const)('never brands unspoken raw structure: %s', (text, mode) => {
     expect(validateSpeechChunk(input({ text, mode }))).toEqual({
       allowed: false,

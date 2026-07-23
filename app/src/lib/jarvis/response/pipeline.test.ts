@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { JarvisRequestEnvelope } from '@/lib/jarvis/contracts';
+import type { JarvisRequestEnvelope, JarvisResponseEnvelope } from '@/lib/jarvis/contracts';
+import { validateSpeechChunk } from '@/features/voice/speechGate';
 import { processJarvisResponse, type RawProviderResponse } from './pipeline';
 
 function request(overrides: Partial<JarvisRequestEnvelope> = {}): Readonly<JarvisRequestEnvelope> {
@@ -76,6 +77,22 @@ function raw(text: string, status?: 'running' | 'completed' | 'failed'): RawProv
   };
 }
 
+function expectSpeechGateAccepted(
+  response: Readonly<Pick<JarvisResponseEnvelope, 'spokenText' | 'mode' | 'executionState'>>,
+): void {
+  expect(response.spokenText).toBeDefined();
+  expect(
+    validateSpeechChunk({
+      text: response.spokenText ?? '',
+      completeSentence: true,
+      insideFence: false,
+      mode: response.mode,
+      ...(response.executionState ? { executionState: response.executionState } : {}),
+      lintViolations: [],
+    }),
+  ).toMatchObject({ allowed: true });
+}
+
 describe('processJarvisResponse', () => {
   it.each([
     'Which model are you using?',
@@ -99,6 +116,10 @@ describe('processJarvisResponse', () => {
     );
 
     expect(result.displayText).toBe('Current model: openai / gpt-5 (native-api, authenticated).');
+    expect(result.spokenText).toBe(
+      'Current model: Open A I, G P T 5 (native A P I, authenticated).',
+    );
+    expectSpeechGateAccepted(result);
     expect(result.provider).toMatchObject({ providerId: 'openai', modelId: 'gpt-5' });
     expect(result.parts).toEqual([{ kind: 'text', text: result.displayText }]);
     expect(repair.repair).not.toHaveBeenCalled();
@@ -184,6 +205,92 @@ describe('processJarvisResponse', () => {
       repairSucceeded: false,
       fallbackUsed: false,
     });
+  });
+
+  it('keeps a complete long-form artifact on screen while speaking its executive summary', async () => {
+    const code = '```ts\nconst verified = true;\n```';
+    const json = '{"status":"ready","checks":42}';
+    const path =
+      'C:\\Users\\viper\\VibeSpace\\docs\\reports\\implementation-verification-report.md';
+    const url = 'https://example.test/reports/implementation?download=1';
+    const detailedReport = [
+      'Completed, sir.',
+      'The implementation specification is ready.',
+      'The architecture section documents every boundary and dependency.',
+      `The evidence was saved at \`${path}\`.`,
+      `The structured verification result is ${json}.`,
+      `The reference is ${url}.`,
+      code,
+    ].join('\n\n');
+
+    const result = await processJarvisResponse(
+      raw(detailedReport),
+      request({ userText: 'Write a detailed report with sections and citations.' }),
+      { repair: vi.fn() },
+    );
+
+    expect(result.mode).toBe('long_form_delivery');
+    expect(result.displayText).toBe(detailedReport);
+    expect(result.displayText).toContain(code);
+    expect(result.displayText).toContain(json);
+    expect(result.displayText).toContain(path);
+    expect(result.displayText).toContain(url);
+    expect(result.spokenText).toBe('Completed, sir. The implementation specification is ready.');
+    expect(result.spokenText).not.toMatch(/```|verified|https?:\/\/|[A-Za-z]:\\|JARVIS_REGION/);
+    expect(result.spokenText).not.toContain(json);
+    expectSpeechGateAccepted(result);
+  });
+
+  it('replaces tokenized links while suppressing structured detail in a short spoken reply', async () => {
+    const path =
+      'C:\\Users\\viper\\VibeSpace\\docs\\reports\\implementation-verification-report.md';
+    const json = '{"status":"ready","checks":42}';
+    const url = 'https://example.test/reports/implementation?download=1';
+    const code = '```ts\nconst verified = true;\n```';
+    const providerText = [
+      `The report at \`${path}\` includes ${json}.`,
+      `The reference is ${url}.`,
+      code,
+    ].join('\n\n');
+
+    const result = await processJarvisResponse(raw(providerText), request(), {
+      repair: vi.fn(),
+    });
+
+    expect(result.displayText).toBe(providerText);
+    expect(result.spokenText).toBe(
+      'The report at the referenced location includes the structured data shown on screen. ' +
+        'The reference is the referenced link.',
+    );
+    expect(result.spokenText).not.toMatch(/```|verified|https?:\/\/|[A-Za-z]:\\/);
+    expect(result.spokenText).not.toContain(json);
+    expectSpeechGateAccepted(result);
+  });
+
+  it('foregrounds warning severity when a detailed warning needs spoken summarization', async () => {
+    const result = await processJarvisResponse(
+      raw(
+        [
+          'The report covers three systems.',
+          'The evidence is available on screen.',
+          'Warning: provider verification is incomplete.',
+          'The remaining sections describe each provider in detail.',
+          'The appendix contains additional observations.',
+        ].join(' '),
+      ),
+      request({
+        userText: 'Summarize the current status.',
+        responseModeHint: 'warning',
+      }),
+      { repair: vi.fn(async (input) => input.prose) },
+    );
+
+    expect(result.mode).toBe('warning');
+    expect(result.displayText).toContain('Warning: provider verification is incomplete.');
+    expect(result.spokenText).toBe(
+      'Warning: provider verification is incomplete. The report covers three systems.',
+    );
+    expectSpeechGateAccepted(result);
   });
 
   it('makes at most one repair call and never lets repair mutate structured bytes', async () => {

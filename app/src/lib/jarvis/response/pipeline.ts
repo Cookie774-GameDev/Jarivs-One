@@ -17,6 +17,7 @@ import {
   type JarvisVerifiedFacts,
 } from './modeClassifier';
 import { repairJarvisProseOnce, type JarvisRepairPort } from './repair';
+import { deriveJarvisSpokenText } from './spokenDelivery';
 import {
   formatJarvisVerifiedNarration,
   INVALID_STRUCTURED_REGION_TEMPLATE,
@@ -147,13 +148,6 @@ function deterministicFallback(prose: string, facts: Readonly<JarvisVerifiedFact
     .replace(/\s{2,}/g, ' ')
     .trim();
   return formatted || 'The response is ready, Sir.';
-}
-
-function spokenFromProse(prose: string): string {
-  return prose
-    .replace(/\uE000JARVIS_REGION_\d+\uE001/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
 }
 
 function textParts(displayText: string): Part[] {
@@ -338,6 +332,11 @@ export async function processJarvisResponse(
       state: facts.modelState,
     });
     const displayText = narration.text;
+    const spokenText = deriveJarvisSpokenText({
+      proseWithPlaceholders: displayText,
+      mode: narration.mode,
+      verifiedFacts: facts,
+    });
     const deterministicViolations = lintJarvisProse(displayText, narration.mode, facts);
     const envelope: JarvisResponseEnvelope = {
       schemaVersion: 1,
@@ -345,9 +344,9 @@ export async function processJarvisResponse(
       runId: snapshot.request.runId,
       mode: narration.mode,
       displayText,
-      ...(snapshot.request.outputContract.voiceDelivery === 'none'
+      ...(snapshot.request.outputContract.voiceDelivery === 'none' || !spokenText
         ? {}
-        : { spokenText: displayText }),
+        : { spokenText }),
       parts: validatedParts(displayText, snapshot.request),
       artifactIds: [],
       sourceRefs: snapshot.request.sourceRefs,
@@ -444,7 +443,12 @@ export async function processJarvisResponse(
 
   const validRegions = tokenized.regions.filter((region) => region.valid);
   const displayText = restoreJarvisStructuredRegions(finalProse, validRegions).trim();
-  const spokenText = spokenFromProse(finalProse);
+  const spokenText = deriveJarvisSpokenText({
+    proseWithPlaceholders: finalProse,
+    mode,
+    structuredRegions: validRegions,
+    verifiedFacts: facts,
+  });
   const violations = Array.from(new Set(initialViolations.map((item) => item.code)));
   const envelope: JarvisResponseEnvelope = {
     schemaVersion: 1,
