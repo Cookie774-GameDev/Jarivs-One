@@ -54,10 +54,113 @@ import {
   VOICE_COMMIT_PHRASE_MAX_LEN,
   VOICE_COMMIT_PHRASE_MIN_LEN,
 } from '@/features/voice/voiceTurnCommit';
+import { formatJarvisVerifiedNarration } from '@/lib/jarvis/response/templates';
 
 type MicStatus = 'idle' | 'testing' | 'ok' | 'denied' | 'unavailable';
 type LocalVoiceStatus = 'idle' | 'checking' | 'ready' | 'missing' | 'unsupported';
 type KokoroStatus = 'idle' | 'downloading' | 'ready' | 'testing' | 'error';
+type VoiceSettingsFailureKind =
+  | 'installed_voice_inspection'
+  | 'kokoro_test'
+  | 'local_voice_unavailable'
+  | 'microphone_access'
+  | 'microphone_capture'
+  | 'microphone_device'
+  | 'microphone_unknown'
+  | 'microphone_unavailable'
+  | 'windows_speech_settings';
+
+const VOICE_ENGINE_LABELS: Readonly<Record<VoiceEngine, string>> = {
+  deepgram: 'Deepgram',
+  kokoro: 'Kokoro',
+  local: 'Local',
+  system: 'System',
+};
+
+const VOICE_SETTINGS_FAILURE_DETAILS: Readonly<
+  Record<VoiceSettingsFailureKind, Readonly<{ actionLabel: string; reason: string }>>
+> = {
+  installed_voice_inspection: {
+    actionLabel: 'Installed voice inspection',
+    reason:
+      'Installed voices could not be inspected. Check Windows speech voice packages, then try the check again',
+  },
+  kokoro_test: {
+    actionLabel: 'Kokoro voice test',
+    reason:
+      'The local neural voice could not synthesize the test phrase. Jarvis will use the Windows Natural voice; check the local model in Settings → Voice, then try again',
+  },
+  local_voice_unavailable: {
+    actionLabel: 'Local voice availability',
+    reason:
+      'This runtime does not provide system speech synthesis. Select Kokoro or another available voice engine in Settings → Voice',
+  },
+  microphone_access: {
+    actionLabel: 'Microphone permission test',
+    reason:
+      'Microphone access was not granted. Check the operating-system and VibeSpace microphone permissions, confirm an input device is available, then try again',
+  },
+  microphone_capture: {
+    actionLabel: 'Microphone capture',
+    reason:
+      'The selected microphone could not be opened. Close other apps using the device, check the input settings, then try again',
+  },
+  microphone_device: {
+    actionLabel: 'Microphone device check',
+    reason:
+      'No usable microphone input was found. Connect or enable an input device, confirm it is selected in the operating-system settings, then try again',
+  },
+  microphone_unknown: {
+    actionLabel: 'Microphone test',
+    reason:
+      'Microphone access could not be verified. Check permissions and the selected input device, then try again',
+  },
+  microphone_unavailable: {
+    actionLabel: 'Microphone availability',
+    reason:
+      'This runtime does not provide microphone access. Open VibeSpace in the desktop app or a browser with microphone support, then try again',
+  },
+  windows_speech_settings: {
+    actionLabel: 'Windows speech settings',
+    reason:
+      'Windows Speech settings could not be opened automatically. Open Settings → Time & language → Speech manually, install a voice package, then check local voices again',
+  },
+};
+
+function formatVoiceSettingsFailure(kind: VoiceSettingsFailureKind): string {
+  const details = VOICE_SETTINGS_FAILURE_DETAILS[kind];
+  return formatJarvisVerifiedNarration({
+    kind: 'failure',
+    actionLabel: details.actionLabel,
+    reason: details.reason,
+  }).text;
+}
+
+function formatVoicePreviewFailure(engine: VoiceEngine): string {
+  const engineLabel = VOICE_ENGINE_LABELS[engine];
+  return formatJarvisVerifiedNarration({
+    kind: 'failure',
+    actionLabel: `${engineLabel} voice preview`,
+    reason: `The selected voice could not play. Check the ${engineLabel} engine in Settings → Voice, then try the preview again`,
+  }).text;
+}
+
+function microphoneFailureKind(error: unknown): VoiceSettingsFailureKind {
+  const name =
+    error && typeof error === 'object' && 'name' in error && typeof error.name === 'string'
+      ? error.name
+      : '';
+  if (['NotAllowedError', 'PermissionDeniedError', 'SecurityError'].includes(name)) {
+    return 'microphone_access';
+  }
+  if (['DevicesNotFoundError', 'NotFoundError'].includes(name)) {
+    return 'microphone_device';
+  }
+  if (['AbortError', 'NotReadableError', 'TrackStartError'].includes(name)) {
+    return 'microphone_capture';
+  }
+  return 'microphone_unknown';
+}
 
 /**
  * The two free local voice presets surfaced in Settings — Jarvis and Friday.
@@ -145,7 +248,7 @@ export function Voice({ active = true }: { active?: boolean } = {}) {
   async function testMic() {
     if (!navigator.mediaDevices?.getUserMedia) {
       setMicStatus('unavailable');
-      toast.error('Microphone unavailable', 'No mediaDevices API in this runtime.');
+      toast.error('Microphone unavailable', formatVoiceSettingsFailure('microphone_unavailable'));
       return;
     }
     setMicStatus('testing');
@@ -155,10 +258,9 @@ export function Voice({ active = true }: { active?: boolean } = {}) {
       stream.getTracks().forEach((t) => t.stop());
       setMicStatus('ok');
       toast.success('Microphone ready', 'Permission granted and a track was opened.');
-    } catch (err) {
+    } catch (error) {
       setMicStatus('denied');
-      const reason = err instanceof Error ? err.message : 'Permission denied';
-      toast.warning('Mic test failed', reason);
+      toast.warning('Mic test failed', formatVoiceSettingsFailure(microphoneFailureKind(error)));
     }
   }
 
@@ -230,12 +332,9 @@ export function Voice({ active = true }: { active?: boolean } = {}) {
     setPreviewingVoice(nextVoice);
     try {
       await previewVoiceWithSettings(nextVoice, engine);
-    } catch (err) {
+    } catch {
       if (previewSeqRef.current !== seq) return;
-      toast.error(
-        'Voice preview failed',
-        err instanceof Error ? err.message : 'Could not play this voice.',
-      );
+      toast.error('Voice preview failed', formatVoicePreviewFailure(engine));
     } finally {
       if (previewSeqRef.current === seq) {
         setPreviewingVoice(null);
@@ -250,7 +349,7 @@ export function Voice({ active = true }: { active?: boolean } = {}) {
       if (showToast) {
         toast.warning(
           'Local voice unavailable',
-          'Speech synthesis is not available in this runtime.',
+          formatVoiceSettingsFailure('local_voice_unavailable'),
         );
       }
       return;
@@ -273,13 +372,13 @@ export function Voice({ active = true }: { active?: boolean } = {}) {
           'Install a Windows speech voice pack, then check again.',
         );
       }
-    } catch (err) {
+    } catch {
       setLocalVoiceStatus('missing');
       setLocalVoiceNames([]);
       if (showToast) {
         toast.error(
           'Local voice check failed',
-          err instanceof Error ? err.message : 'Could not inspect installed voices.',
+          formatVoiceSettingsFailure('installed_voice_inspection'),
         );
       }
     }
@@ -342,11 +441,11 @@ export function Voice({ active = true }: { active?: boolean } = {}) {
       await previewVoiceWithSettings(voicePreset, 'kokoro');
       setKokoroStatus('ready');
       toast.success('Kokoro voice', 'Played the test phrase with the local neural voice.');
-    } catch (err) {
+    } catch {
       setKokoroStatus('error');
-      const msg = err instanceof Error ? err.message : 'Kokoro synthesis failed.';
-      setKokoroError(`${msg} The Windows Natural voice will be used instead.`);
-      toast.error('Kokoro test failed', msg);
+      const message = formatVoiceSettingsFailure('kokoro_test');
+      setKokoroError(message);
+      toast.error('Kokoro test failed', message);
     }
   }
 
@@ -358,10 +457,10 @@ export function Voice({ active = true }: { active?: boolean } = {}) {
         'Windows Speech settings opened',
         'Add a voice package, then return to Jarvis and check local voices.',
       );
-    } catch (err) {
+    } catch {
       toast.warning(
         'Open speech settings manually',
-        err instanceof Error ? err.message : 'Install a local system voice and check again.',
+        formatVoiceSettingsFailure('windows_speech_settings'),
       );
     }
   }
