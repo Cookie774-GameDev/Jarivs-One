@@ -452,10 +452,18 @@ export function readJarvisTerminalOperatingSnapshot(
       .map(({ paneId }) => paneId)
       .filter((paneId): paneId is string => typeof paneId === 'string' && paneId.length > 0),
   );
+  const transcriptExecutionIds = new Set(
+    Object.values(liveExecutions)
+      .filter(
+        (execution) => execution.sessionId !== undefined && sessionIds.has(execution.sessionId),
+      )
+      .map(({ id }) => id),
+  );
   const queue = liveQueue.filter(
     (command): command is ShellCommand =>
       command.kind === 'shell' &&
       Boolean(
+        transcriptExecutionIds.has(commandExecutionId(command)) ||
         command.refs?.some(
           (ref) =>
             ref.projectId === projectId ||

@@ -320,15 +320,7 @@ describe('terminal operating-intelligence live adapter and summary', () => {
     });
     useTerminalCommandQueue.setState({
       queue: [
-        shellCommand('active', 'npm test', {
-          refs: [
-            {
-              projectId: 'project-active',
-              paneId: 'pane-active',
-              sessionId: 'pty-active',
-            },
-          ],
-        }),
+        shellCommand('active', 'npm test'),
         shellCommand('other', 'npm run build', {
           refs: [
             {
@@ -349,6 +341,7 @@ describe('terminal operating-intelligence live adapter and summary', () => {
     });
 
     expect(snapshot.panes.map(({ paneId }) => paneId)).toEqual(['pane-active']);
+    expect(snapshot.panes[0]?.queuedCommand).toBe('npm test');
     expect(JSON.stringify(snapshot)).not.toContain('pane-other');
     expect(JSON.stringify(snapshot)).not.toContain('npm publish');
   });
