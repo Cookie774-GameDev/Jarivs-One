@@ -8,11 +8,26 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const startListening = vi.fn(() => true);
 const stopListening = vi.fn();
 const stopAllVoiceOutput = vi.fn();
+let voiceErrorHandler: ((payload: { kind: 'permission_denied'; message: string }) => void) | null =
+  null;
+const onVoiceEvent = vi.fn(
+  (event: string, handler: (payload: { kind: 'permission_denied'; message: string }) => void) => {
+    if (event === 'voice:error') voiceErrorHandler = handler;
+    return () => {
+      if (voiceErrorHandler === handler) voiceErrorHandler = null;
+    };
+  },
+);
 
-vi.mock('@/features/voice/VoiceService', () => ({
+vi.mock('@/features/voice/VoiceService', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/features/voice/VoiceService')>()),
   VoiceService: {
     startListening: () => startListening(),
     stopListening: () => stopListening(),
+    on: (
+      event: string,
+      handler: (payload: { kind: 'permission_denied'; message: string }) => void,
+    ) => onVoiceEvent(event, handler),
   },
 }));
 
@@ -29,6 +44,8 @@ describe('PetVoiceSurface real voice wiring', () => {
     startListening.mockReset().mockReturnValue(true);
     stopListening.mockReset();
     stopAllVoiceOutput.mockReset();
+    onVoiceEvent.mockClear();
+    voiceErrorHandler = null;
     useVoiceStore.getState().reset();
   });
 
@@ -36,6 +53,53 @@ describe('PetVoiceSurface real voice wiring', () => {
     render(<PetVoiceSurface />);
     fireEvent.click(screen.getByRole('button', { name: /^listen$/i }));
     expect(startListening).toHaveBeenCalledTimes(1);
+    expect(onVoiceEvent).toHaveBeenCalledWith('voice:error', expect.any(Function));
+    expect(voiceErrorHandler).toBeNull();
+  });
+
+  it('preserves an exact safe VoiceService diagnostic when startup returns false', () => {
+    const safeMessage =
+      'The action failed, sir. Action: Microphone permission. ' +
+      'Cause: Microphone permission was denied. Allow access in the browser or ' +
+      'operating-system settings, then try again.';
+    startListening.mockImplementationOnce(() => {
+      voiceErrorHandler?.({ kind: 'permission_denied', message: safeMessage });
+      return false;
+    });
+
+    render(<PetVoiceSurface />);
+    fireEvent.click(screen.getByRole('button', { name: /^listen$/i }));
+
+    expect(screen.getByText(safeMessage)).toBeTruthy();
+    expect(onVoiceEvent).toHaveBeenCalledWith('voice:error', expect.any(Function));
+    expect(voiceErrorHandler).toBeNull();
+  });
+
+  it('uses the closed startup fallback when false returns without an event', () => {
+    startListening.mockReturnValueOnce(false);
+
+    render(<PetVoiceSurface />);
+    fireEvent.click(screen.getByRole('button', { name: /^listen$/i }));
+
+    expect(
+      screen.getByText(
+        /Speech recognition startup.*Stop other microphone sessions, then try again/,
+      ),
+    ).toBeTruthy();
+    expect(voiceErrorHandler).toBeNull();
+  });
+
+  it('suppresses a thrown startup detail behind the closed startup fallback', () => {
+    startListening.mockImplementationOnce(() => {
+      throw new Error('synthetic pet microphone implementation detail');
+    });
+
+    render(<PetVoiceSurface />);
+    fireEvent.click(screen.getByRole('button', { name: /^listen$/i }));
+
+    expect(screen.getByText(/Speech recognition startup/)).toBeTruthy();
+    expect(screen.queryByText(/synthetic pet microphone implementation detail/)).toBeNull();
+    expect(voiceErrorHandler).toBeNull();
   });
 
   it('stops listening via VoiceService when Stop is pressed', () => {
@@ -104,11 +168,15 @@ describe('PetVoiceSurface real voice wiring', () => {
     useVoiceStore.getState().setState('listening');
     await waitFor(() => {
       expect(
-        usePetPresentationStore.getState().activity.some((a) => a.summary === 'Jarvis is listening'),
+        usePetPresentationStore
+          .getState()
+          .activity.some((a) => a.summary === 'Jarvis is listening'),
       ).toBe(true);
     });
     expect(
-      usePetPresentationStore.getState().activity.every((a) => !/secret|sk-|password/i.test(a.summary)),
+      usePetPresentationStore
+        .getState()
+        .activity.every((a) => !/secret|sk-|password/i.test(a.summary)),
     ).toBe(true);
   });
 });
