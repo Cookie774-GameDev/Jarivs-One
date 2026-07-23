@@ -1,5 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
-import { repairJarvisProseOnce } from './repair';
+import { JARVIS_REPAIR_INSTRUCTION, repairJarvisProseOnce } from './repair';
+
+const EXPECTED_REPAIR_INSTRUCTION = [
+  'Rewrite only the conversational prose to satisfy the JARVIS response contract.',
+  'Preserve every fact, number, status, name, path, link, citation, warning, technical conclusion, placeholder, and action state.',
+  'Do not modify or add code, JSON, tool calls, structured blocks, citations, URLs, quoted material, or humor.',
+  'Do not rerun tools.',
+  'Return only the repaired prose.',
+].join('\n');
 
 const request = {
   prose: 'Sure, I can help with that.',
@@ -75,6 +83,7 @@ describe('repairJarvisProseOnce', () => {
         expect(Object.isFrozen(input.verifiedFacts)).toBe(true);
         expect(Object.isFrozen(input.verifiedFacts.plugins)).toBe(true);
         expect(Object.isFrozen(input.violations)).toBe(true);
+        expect(input.instruction).toBe(EXPECTED_REPAIR_INSTRUCTION);
         return 'I can help, Sir. \uE000JARVIS_REGION_0\uE001';
       }),
     };
@@ -83,6 +92,23 @@ describe('repairJarvisProseOnce', () => {
       attempted: true,
       succeeded: true,
     });
+  });
+
+  it('owns one tiny strict prose-only instruction that callers cannot weaken', async () => {
+    const repair = {
+      repair: vi.fn(async (input) => {
+        expect(JARVIS_REPAIR_INSTRUCTION).toBe(EXPECTED_REPAIR_INSTRUCTION);
+        expect(input.instruction).toBe(JARVIS_REPAIR_INSTRUCTION);
+        expect(input.instruction.length).toBeLessThanOrEqual(600);
+        return 'I can help, Sir. \uE000JARVIS_REGION_0\uE001';
+      }),
+    };
+
+    await expect(repairJarvisProseOnce(request, repair)).resolves.toMatchObject({
+      attempted: true,
+      succeeded: true,
+    });
+    expect(repair.repair).toHaveBeenCalledOnce();
   });
 
   it('makes zero calls without repairable violations', async () => {

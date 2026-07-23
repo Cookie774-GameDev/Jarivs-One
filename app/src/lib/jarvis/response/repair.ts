@@ -4,12 +4,24 @@ import type { JarvisLintViolation } from './linter';
 import type { JarvisVerifiedFacts } from './modeClassifier';
 import { tokenizeJarvisResponse } from './tokenizer';
 
-export interface JarvisRepairRequest {
+export const JARVIS_REPAIR_INSTRUCTION = [
+  'Rewrite only the conversational prose to satisfy the JARVIS response contract.',
+  'Preserve every fact, number, status, name, path, link, citation, warning, technical conclusion, placeholder, and action state.',
+  'Do not modify or add code, JSON, tool calls, structured blocks, citations, URLs, quoted material, or humor.',
+  'Do not rerun tools.',
+  'Return only the repaired prose.',
+].join('\n');
+
+export interface JarvisRepairInput {
   prose: string;
   immutablePlaceholders: readonly string[];
   mode: JarvisResponseMode;
   verifiedFacts: JarvisVerifiedFacts;
   violations: readonly JarvisLintViolation[];
+}
+
+export interface JarvisRepairRequest extends JarvisRepairInput {
+  instruction: typeof JARVIS_REPAIR_INSTRUCTION;
 }
 
 export interface JarvisRepairPort {
@@ -36,10 +48,13 @@ function immutableFactTokens(prose: string): readonly string[] {
 }
 
 export async function repairJarvisProseOnce(
-  request: Readonly<JarvisRepairRequest>,
+  request: Readonly<JarvisRepairInput>,
   port: JarvisRepairPort,
 ): Promise<Readonly<{ prose: string; attempted: boolean; succeeded: boolean }>> {
-  const detachedRequest = deepFreezeJarvisCopy(request) as Readonly<JarvisRepairRequest>;
+  const detachedRequest = deepFreezeJarvisCopy({
+    ...request,
+    instruction: JARVIS_REPAIR_INSTRUCTION,
+  }) as Readonly<JarvisRepairRequest>;
   if (
     !detachedRequest.violations.some((item) => item.disposition === 'repairable') ||
     detachedRequest.violations.some((item) => item.disposition === 'quarantine')
