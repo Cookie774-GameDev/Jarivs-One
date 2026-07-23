@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { JarvisCadenceState } from './cadence';
 import { verifiedResponseTemplate } from './templates';
 import type { JarvisVerifiedFacts } from './modeClassifier';
 
@@ -57,7 +58,7 @@ describe('verifiedResponseTemplate', () => {
 
   it('reports an unavailable model without inventing a switch', () => {
     expect(verifiedResponseTemplate({ ...facts(), modelState: 'unavailable' })).toBe(
-      'The selected model is unavailable. No model switch was made.',
+      'The selected model is unavailable, sir. No model switch was made.',
     );
   });
 
@@ -68,5 +69,24 @@ describe('verifiedResponseTemplate', () => {
     });
     expect(text).toMatch(/provider reported completion|verification is still required/i);
     expect(text).not.toMatch(/completed successfully/i);
+  });
+
+  it('uses the cadence helper for significant completion but not routine running updates', () => {
+    expect(verifiedResponseTemplate(facts('completed')).match(/\bsir\b/gi)).toHaveLength(1);
+    expect(verifiedResponseTemplate(facts('running'))).not.toMatch(/\bsir\b/i);
+  });
+
+  it('suppresses a consecutive short acknowledgement while retaining the JARVIS wording', () => {
+    const cadenceState: JarvisCadenceState = {
+      previousReplyUsedSir: true,
+      previousReplyWasShort: true,
+    };
+
+    expect(verifiedResponseTemplate(facts('awaiting_approval'), cadenceState)).toBe(
+      'Approval is required before this action can run.',
+    );
+    expect(verifiedResponseTemplate(facts('completed'), cadenceState)).toBe(
+      'The action completed successfully, sir.',
+    );
   });
 });
