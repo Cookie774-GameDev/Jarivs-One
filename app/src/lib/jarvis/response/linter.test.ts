@@ -182,4 +182,66 @@ describe('lintJarvisProse', () => {
     expect(violations.map(({ code }) => code)).not.toContain('response_mode_word_budget');
     expect(violations.map(({ code }) => code)).not.toContain('excessive_prose');
   });
+
+  it('allows one subtle observation after a verified successful completion', () => {
+    expect(
+      lintJarvisProse(
+        'The build completed successfully. Even the compiler appears satisfied.',
+        'action_success',
+        {
+          ...facts,
+          executionState: { status: 'completed', verifiedBy: 'journal', lastEventSeq: 3 },
+          humorHistory: { recentReplyCount: 4, recentHumorReplyCount: 0 },
+        },
+      ).map(({ code }) => code),
+    ).not.toContain('inappropriate_humor');
+  });
+
+  it('rejects humor around credential exposure even in a direct answer', () => {
+    expect(
+      lintJarvisProse('The credential exposure is a hilarious little surprise.', 'direct_answer', {
+        ...facts,
+        executionState: undefined,
+        humorHistory: { recentReplyCount: 4, recentHumorReplyCount: 0 },
+      }),
+    ).toContainEqual(
+      expect.objectContaining({
+        code: 'inappropriate_humor',
+        disposition: 'repairable',
+      }),
+    );
+  });
+
+  it('rejects humor during repeated failures and above the minority-history limit', () => {
+    const violations = lintJarvisProse(
+      'The fifth failure is becoming a funny little tradition.',
+      'action_failure',
+      {
+        ...facts,
+        executionState: { status: 'failed', verifiedBy: 'journal', lastEventSeq: 7 },
+        humorHistory: { recentReplyCount: 3, recentHumorReplyCount: 1 },
+      },
+    );
+    expect(violations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'inappropriate_humor', disposition: 'repairable' }),
+        expect.objectContaining({ code: 'excessive_humor', disposition: 'repairable' }),
+      ]),
+    );
+  });
+
+  it('rejects a humor-only reply that obscures the decision-relevant fact', () => {
+    expect(
+      lintJarvisProse('Apparently the compiler has chosen drama.', 'direct_answer', {
+        ...facts,
+        executionState: undefined,
+        humorHistory: { recentReplyCount: 4, recentHumorReplyCount: 0 },
+      }),
+    ).toContainEqual(
+      expect.objectContaining({
+        code: 'humor_obscures_clarity',
+        disposition: 'repairable',
+      }),
+    );
+  });
 });

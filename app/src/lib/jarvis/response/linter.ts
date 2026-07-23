@@ -1,4 +1,5 @@
 import type { JarvisResponseMode } from '@/lib/jarvis/contracts';
+import { assessJarvisDryHumor, JARVIS_DRY_HUMOR_POLICY, type JarvisHumorSituation } from './humor';
 import { hasProviderOnlyTerminalState, type JarvisVerifiedFacts } from './modeClassifier';
 import { getJarvisResponsePolicy } from './modes';
 
@@ -16,6 +17,68 @@ function violation(
   safeSummary: string,
 ): JarvisLintViolation {
   return Object.freeze({ code, disposition, safeSummary });
+}
+
+const HUMOR_SIGNAL =
+  /\b(?:joke|funny|hilarious|amusing|silver lining|rare victory|chosen drama|appears satisfied|apparently|rollback plan may wish|optimism)\b/i;
+
+function humorSituation(
+  prose: string,
+  mode: JarvisResponseMode,
+  facts: Readonly<JarvisVerifiedFacts>,
+): JarvisHumorSituation {
+  if (/\b(?:credential|password|api key|access token|secret)\b/i.test(prose)) {
+    return 'credential_exposure';
+  }
+  if (/\b(?:security breach|compromised|intrusion|exploit)\b/i.test(prose)) {
+    return 'security_breach';
+  }
+  if (/\b(?:safety incident|danger|injury|unsafe)\b/i.test(prose)) return 'safety_incident';
+  if (/\b(?:delete|destroy|wipe|erase|irreversible)\b/i.test(prose)) {
+    return 'destructive_operation';
+  }
+  if (/\b(?:medical|health|hospital|diagnosis|symptom)\b/i.test(prose)) return 'health';
+  if (/\b(?:grief|grieving|bereavement|died|death)\b/i.test(prose)) return 'grief';
+  if (/\b(?:financial loss|lost money|bankrupt|debt)\b/i.test(prose)) return 'financial_harm';
+  if (/\b(?:legal risk|lawsuit|criminal|liability)\b/i.test(prose)) return 'legal_risk';
+  if (mode === 'sensitive' || /\b(?:distress|desperate|crisis|self[- ]?harm)\b/i.test(prose)) {
+    return 'serious_user_distress';
+  }
+  if (
+    /\b(?:second|third|fourth|fifth|again|repeated)\b[^.!?\n]{0,60}\bfail/i.test(prose) ||
+    /\bfail[^.!?\n]{0,60}\b(?:again|repeated)\b/i.test(prose)
+  ) {
+    return 'repeated_failures';
+  }
+  if (
+    hasProviderOnlyTerminalState(facts) ||
+    facts.modelState === 'degraded' ||
+    facts.modelState === 'unavailable' ||
+    /\b(?:uncertain|unverified|unknown|maybe|might)\b/i.test(prose)
+  ) {
+    return 'uncertain_facts';
+  }
+  if (mode === 'action_success') return 'successful_completion';
+  if (mode === 'action_failure') {
+    return /\b(?:minor|recoverable|retryable)\b/i.test(prose)
+      ? 'minor_recoverable_failure'
+      : 'repeated_failures';
+  }
+  if (/\b(?:ambitious|deadline|timeline|deployment window)\b/i.test(prose)) {
+    return 'ambitious_timeline';
+  }
+  if (/\b(?:complex|overengineered|many moving parts)\b/i.test(prose)) {
+    return 'overly_complex_plan';
+  }
+  if (/\b(?:plan|planning|approach)\b/i.test(prose)) return 'low_risk_planning';
+  return 'routine_technical_inconvenience';
+}
+
+function humorClauseCount(prose: string): number {
+  return prose
+    .split(/[.!?;]+(?:\s+|$)|\n+/u)
+    .map((clause) => clause.trim())
+    .filter((clause) => clause && HUMOR_SIGNAL.test(clause)).length;
 }
 
 export function lintJarvisProse(
@@ -194,13 +257,54 @@ export function lintJarvisProse(
       ),
     );
   }
-  if (
-    (mode === 'sensitive' || mode === 'action_failure') &&
-    /\b(?:joke|funny|hilarious|amusing|silver lining)\b/i.test(prose)
-  ) {
-    violations.push(
-      violation('inappropriate_humor', 'repairable', 'Humor is not appropriate for this mode.'),
-    );
+  const detectedHumorClauses = humorClauseCount(prose);
+  if (detectedHumorClauses > 0) {
+    const situation = humorSituation(prose, mode, facts);
+    const totalClauseCount = prose
+      .split(/[.!?;]+(?:\s+|$)|\n+/u)
+      .map((clause) => clause.trim())
+      .filter(Boolean).length;
+    const clarityPreserved = totalClauseCount > detectedHumorClauses;
+    const history = facts.humorHistory ?? {
+      recentReplyCount: 4,
+      recentHumorReplyCount: 0,
+    };
+    const assessment = assessJarvisDryHumor({
+      situation,
+      humorClauseCount: detectedHumorClauses,
+      clarityPreserved,
+      ...history,
+    });
+    if (
+      JARVIS_DRY_HUMOR_POLICY.prohibitedSituations.includes(
+        situation as (typeof JARVIS_DRY_HUMOR_POLICY.prohibitedSituations)[number],
+      ) ||
+      !getJarvisResponsePolicy(mode).allowHumor
+    ) {
+      violations.push(
+        violation('inappropriate_humor', 'repairable', 'Humor is not appropriate here.'),
+      );
+    }
+    if (
+      assessment.reason === 'too_many_clauses' ||
+      assessment.reason === 'not_a_minority' ||
+      detectedHumorClauses > JARVIS_DRY_HUMOR_POLICY.maxClauses ||
+      (history.recentHumorReplyCount + 1) / (history.recentReplyCount + 1) >=
+        JARVIS_DRY_HUMOR_POLICY.maximumReplyShareExclusive
+    ) {
+      violations.push(
+        violation('excessive_humor', 'repairable', 'Humor exceeds the conservative cadence.'),
+      );
+    }
+    if (!clarityPreserved || assessment.reason === 'clarity_not_preserved') {
+      violations.push(
+        violation(
+          'humor_obscures_clarity',
+          'repairable',
+          'Humor obscures the decision-relevant fact.',
+        ),
+      );
+    }
   }
   return Object.freeze(violations);
 }

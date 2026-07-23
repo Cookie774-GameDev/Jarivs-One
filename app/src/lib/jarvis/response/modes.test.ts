@@ -69,4 +69,11 @@ describe('JARVIS response-mode policies', () => {
       encourageSir: false,
     });
   });
+
+  it('allows only the approved completion mode to carry a subtle success observation', () => {
+    expect(getJarvisResponsePolicy('action_success').allowHumor).toBe(true);
+    expect(getJarvisResponsePolicy('action_running').allowHumor).toBe(false);
+    expect(getJarvisResponsePolicy('approval_required').allowHumor).toBe(false);
+    expect(getJarvisResponsePolicy('sensitive').allowHumor).toBe(false);
+  });
 });

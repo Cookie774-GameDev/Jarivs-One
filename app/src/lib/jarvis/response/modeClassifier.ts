@@ -4,6 +4,7 @@ import type {
   JarvisRequestEnvelope,
   JarvisResponseMode,
 } from '@/lib/jarvis/contracts';
+import type { JarvisHumorHistory } from './humor';
 
 export interface JarvisVerifiedFacts {
   executionState?: JarvisExecutionState;
@@ -11,6 +12,7 @@ export interface JarvisVerifiedFacts {
   plugins: readonly JarvisCapabilityRef[];
   mcps: readonly JarvisCapabilityRef[];
   terminalState?: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'timed_out';
+  humorHistory?: Readonly<JarvisHumorHistory>;
 }
 
 export function hasProviderOnlyTerminalState(facts: Readonly<JarvisVerifiedFacts>): boolean {

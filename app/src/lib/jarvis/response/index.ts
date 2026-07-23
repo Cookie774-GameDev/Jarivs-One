@@ -2,6 +2,7 @@ export * from './tokenizer';
 export * from './modeClassifier';
 export * from './modes';
 export * from './cadence';
+export * from './humor';
 export * from './linter';
 export * from './repair';
 export * from './templates';
