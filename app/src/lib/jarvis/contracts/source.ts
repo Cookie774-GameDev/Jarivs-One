@@ -22,6 +22,7 @@ export interface JarvisSourceRef {
   accountId: string;
   projectId?: string;
   trust: 'user_direct' | 'app_verified' | 'external_untrusted';
+  origin?: 'user_authored' | 'app_observed' | 'model_inference' | 'mixed' | 'external_retrieved';
   sensitivity: 'public' | 'private' | 'restricted' | 'secret';
   observedAt?: number;
   contentHash?: string;

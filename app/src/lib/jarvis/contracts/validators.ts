@@ -96,6 +96,13 @@ const SOURCE_KINDS = [
 ] as const;
 
 const SOURCE_TRUST_VALUES = ['user_direct', 'app_verified', 'external_untrusted'] as const;
+const SOURCE_ORIGIN_VALUES = [
+  'user_authored',
+  'app_observed',
+  'model_inference',
+  'mixed',
+  'external_retrieved',
+] as const;
 const SOURCE_SENSITIVITIES = ['public', 'private', 'restricted', 'secret'] as const;
 const CONTEXT_PURPOSES = [
   'answer',
@@ -715,6 +722,7 @@ function validateSourceRefShape(
       'accountId',
       'projectId',
       'trust',
+      'origin',
       'sensitivity',
       'observedAt',
       'contentHash',
@@ -734,6 +742,9 @@ function validateSourceRefShape(
   validateOptionalField(record, 'projectId', path, errors, validateIdentifier);
   validateRequiredField(record, 'trust', path, errors, (entry, entryPath, entryErrors) =>
     validateEnum(entry, SOURCE_TRUST_VALUES, entryPath, entryErrors),
+  );
+  validateOptionalField(record, 'origin', path, errors, (entry, entryPath, entryErrors) =>
+    validateEnum(entry, SOURCE_ORIGIN_VALUES, entryPath, entryErrors),
   );
   validateRequiredField(record, 'sensitivity', path, errors, (entry, entryPath, entryErrors) =>
     validateEnum(entry, SOURCE_SENSITIVITIES, entryPath, entryErrors),

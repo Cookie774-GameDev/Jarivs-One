@@ -149,6 +149,7 @@ function copySource(source: JarvisSourceRef): JarvisSourceRef {
     accountId: source.accountId,
     ...(source.projectId === undefined ? {} : { projectId: source.projectId }),
     trust: source.trust,
+    ...(source.origin === undefined ? {} : { origin: source.origin }),
     sensitivity: source.sensitivity,
     ...(source.observedAt === undefined ? {} : { observedAt: source.observedAt }),
     ...(source.contentHash === undefined ? {} : { contentHash: source.contentHash }),
@@ -165,6 +166,7 @@ function diagnosticSource(
     label: `${source.kind} source`,
     accountId: 'redacted',
     trust: source.trust,
+    ...(source.origin === undefined ? {} : { origin: source.origin }),
     sensitivity: source.sensitivity,
     ...(contentHash === undefined ? {} : { contentHash }),
   };
@@ -325,7 +327,7 @@ function renderCapabilities(envelope: Readonly<JarvisRequestEnvelope>): string {
 
 function renderContextItem(item: JarvisContextItem, excerpt = item.excerpt): string {
   return [
-    `[source-data id=${JSON.stringify(item.source.id)} kind=${item.source.kind} trust=${item.source.trust}]`,
+    `[source-data id=${JSON.stringify(item.source.id)} kind=${item.source.kind} trust=${item.source.trust} origin=${item.source.origin ?? 'unspecified'}]`,
     `purpose=${item.purpose}; source_truncated=${item.truncated ? 'yes' : 'no'}`,
     dataLines(excerpt),
     '[/source-data]',

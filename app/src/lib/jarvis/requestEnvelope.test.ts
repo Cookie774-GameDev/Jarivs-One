@@ -52,6 +52,7 @@ function context(): JarvisContextPack {
           accountId: 'account-1',
           projectId: 'project-1',
           trust: 'app_verified',
+          origin: 'model_inference',
           sensitivity: 'private',
           observedAt: 80,
           contentHash: 'hash-1',
@@ -411,6 +412,7 @@ describe('createJarvisRequestEnvelope', () => {
     expect(frozenValues.every(Object.isFrozen)).toBe(true);
     expect(envelope.agent).not.toBe(caller.agent);
     expect(envelope.context.items[0]!.source).not.toBe(caller.context.items[0]!.source);
+    expect(envelope.context.items[0]!.source.origin).toBe('model_inference');
   });
 
   it('prevents mutations to profile, model, message parts, capabilities, and sources', async () => {

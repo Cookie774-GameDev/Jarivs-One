@@ -488,6 +488,27 @@ describe('compileJarvisPrompt', () => {
     expect(compiled.layers[5]?.authority).toBe('untrusted_context');
   });
 
+  it.each([
+    'user_authored',
+    'app_observed',
+    'model_inference',
+    'mixed',
+    'external_retrieved',
+  ] as const)('renders %s origin only as fenced source metadata', async (origin) => {
+    const item = contextItem(`origin-${origin}`, 'Bounded context body.', {
+      source: {
+        ...contextItem(`origin-${origin}`, '').source,
+        origin,
+      },
+    });
+    const compiled = compileJarvisPrompt(await envelope({ context: context([item]) }));
+
+    expect(compiled.layers[5]?.content).toContain(`origin=${origin}`);
+    expect(compiled.layers[5]?.sourceRefs[0]?.origin).toBe(origin);
+    expect(compiled.layers[5]?.content).toContain('| Bounded context body.');
+    expect(compiled.layers[5]?.authority).toBe('untrusted_context');
+  });
+
   it('escapes metadata newlines so capabilities and model IDs cannot add headers', async () => {
     const compiled = compileJarvisPrompt(
       await envelope({

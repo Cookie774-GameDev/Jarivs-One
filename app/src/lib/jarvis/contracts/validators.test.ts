@@ -70,6 +70,7 @@ function validSourceRef(): JarvisSourceRef {
     accountId: 'account-1',
     projectId: 'project-1',
     trust: 'app_verified',
+    origin: 'app_observed',
     sensitivity: 'private',
     observedAt: 100,
     contentHash: 'source-hash-1',
@@ -755,7 +756,7 @@ describe('valid construction and JSON round trips', () => {
     }[] = [
       {
         input: validSourceRef(),
-        optionalPaths: [['uri'], ['projectId'], ['observedAt'], ['contentHash']],
+        optionalPaths: [['uri'], ['projectId'], ['origin'], ['observedAt'], ['contentHash']],
         validate: validateJarvisSourceRef as Validator,
       },
       {
@@ -1497,6 +1498,14 @@ describe('enum membership', () => {
       input: validSourceRef,
       validate: validateJarvisSourceRef as Validator,
       path: ['trust'],
+    },
+    {
+      label: 'source origin',
+      values: ['user_authored', 'app_observed', 'model_inference', 'mixed', 'external_retrieved'],
+      invalid: 'system_instruction',
+      input: validSourceRef,
+      validate: validateJarvisSourceRef as Validator,
+      path: ['origin'],
     },
     {
       label: 'source sensitivity',

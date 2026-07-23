@@ -188,6 +188,7 @@ function copySource(source: JarvisSourceRef): JarvisSourceRef {
     accountId: source.accountId,
     ...(source.projectId === undefined ? {} : { projectId: source.projectId }),
     trust: source.trust,
+    ...(source.origin === undefined ? {} : { origin: source.origin }),
     sensitivity: source.sensitivity,
     ...(source.observedAt === undefined ? {} : { observedAt: source.observedAt }),
     ...(source.contentHash === undefined ? {} : { contentHash: source.contentHash }),
