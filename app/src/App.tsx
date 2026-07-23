@@ -1328,7 +1328,9 @@ function KernelBridgeBootstrap() {
                 createPluginCredentialAccountGrantRepository,
                 createStrictPluginCredentialGrantStorage,
               },
-              { usePluginStore },
+              { selectPluginConnectionsForAccount, usePluginStore },
+              { PLUGIN_CATALOG },
+              { createJarvisPluginCapabilityProjection },
               { createJarvisRepositories },
               { createJarvisCapabilitySnapshotProvider },
               { createJarvisEntitlementSnapshotProvider, fetchCloudAdminEntitlementSnapshot },
@@ -1339,6 +1341,8 @@ function KernelBridgeBootstrap() {
               import('@/lib/jarvis/jarvisSecurityRuntime'),
               import('@/features/plugins/credentialAuthorization'),
               import('@/features/plugins/store'),
+              import('@/features/plugins/catalog'),
+              import('@/lib/jarvis/pluginCapabilityProducer'),
               import('@/lib/db/jarvisRepositories'),
               import('@/lib/jarvis/capabilitySnapshot'),
               import('@/lib/admin'),
@@ -1393,15 +1397,12 @@ function KernelBridgeBootstrap() {
                 ) {
                   return localDevelopmentEntitlementCache.snapshot;
                 }
-                const snapshot = resolveLocalDevelopmentEntitlementSnapshot(
-                  localIdentity,
-                  {
-                    context: {
-                      now: localEntitlementObservedAt,
-                      production: import.meta.env.PROD,
-                    },
+                const snapshot = resolveLocalDevelopmentEntitlementSnapshot(localIdentity, {
+                  context: {
+                    now: localEntitlementObservedAt,
+                    production: import.meta.env.PROD,
                   },
-                );
+                });
                 localDevelopmentEntitlementCache =
                   snapshot.source !== 'unavailable' &&
                   typeof snapshot.expiresAt === 'number' &&
@@ -1416,6 +1417,15 @@ function KernelBridgeBootstrap() {
               getActiveAccountId: activeAccountId,
               async resolveInputForActiveAccount(accountId) {
                 const capturedAt = now();
+                const pluginCapabilities = createJarvisPluginCapabilityProjection({
+                  accountId,
+                  capturedAt,
+                  manifests: PLUGIN_CATALOG,
+                  connections: selectPluginConnectionsForAccount(
+                    usePluginStore.getState(),
+                    accountId,
+                  ),
+                });
                 const tools = catalog
                   .listExposed()
                   .filter(
@@ -1433,7 +1443,7 @@ function KernelBridgeBootstrap() {
                 return {
                   capturedAt,
                   tools,
-                  plugins: [],
+                  plugins: pluginCapabilities.refs,
                   mcps: [],
                   terminals: [],
                   agents: [],
@@ -1464,19 +1474,15 @@ function KernelBridgeBootstrap() {
               },
               activeAccountId,
               executeRegisteredAction: async (dispatchInput) => {
-                const { executeInstalledJarvisRegisteredAction } = await import(
-                  '@/lib/ai/runtime'
-                );
+                const { executeInstalledJarvisRegisteredAction } = await import('@/lib/ai/runtime');
                 return executeInstalledJarvisRegisteredAction(dispatchInput);
               },
               bootId,
               randomUUID,
               now,
             });
-            const {
-              handleInstalledJarvisKernelClientRequest,
-              installJarvisKernelRuntimeHost,
-            } = await import('@/lib/ai/runtime');
+            const { handleInstalledJarvisKernelClientRequest, installJarvisKernelRuntimeHost } =
+              await import('@/lib/ai/runtime');
             disposeKernelRuntimeHost = await installJarvisKernelRuntimeHost({
               db,
               bindKernelActions: securityRuntime.bindKernelActions,
@@ -1871,9 +1877,7 @@ function KernelSmokeReconstructedLiveEvidenceHost({
       try {
         const runs = await jarvisRunRepo.listByAccount(accountId, { limit: 500 });
         const snapshots = await Promise.all(
-          runs.map((run) =>
-            binding.dataPort.getLiveEvidenceSnapshot({ accountId, runId: run.id }),
-          ),
+          runs.map((run) => binding.dataPort.getLiveEvidenceSnapshot({ accountId, runId: run.id })),
         );
         if (disposed) return;
         setNodes(

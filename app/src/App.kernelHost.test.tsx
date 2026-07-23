@@ -49,9 +49,7 @@ describe('App trusted kernel host composition', () => {
     expect(source).toMatch(/const securityBootObservedAt = now\(\);/);
     expect(source).toMatch(/let localDevelopmentEntitlementCache:/);
     expect(source).toMatch(/const localEntitlementObservedAt = now\(\);/);
-    expect(source).toMatch(
-      /const LOCAL_DEVELOPMENT_ENTITLEMENT_DECISION_FLOOR_MS = 2 \* 60_000;/,
-    );
+    expect(source).toMatch(/const LOCAL_DEVELOPMENT_ENTITLEMENT_DECISION_FLOOR_MS = 2 \* 60_000;/);
     expect(source).toMatch(
       /localDevelopmentEntitlementCache\.snapshot\.expiresAt\s*-\s*localEntitlementObservedAt\s*>\s*LOCAL_DEVELOPMENT_ENTITLEMENT_DECISION_FLOOR_MS/,
     );
@@ -64,6 +62,15 @@ describe('App trusted kernel host composition', () => {
     expect(source).toMatch(
       /localDevelopmentEntitlementCache\?\.accountId === accountId[\s\S]*localDevelopmentEntitlementCache = undefined/,
     );
+  });
+
+  it('projects exact active-account plugin truth into every immutable capability snapshot', () => {
+    expect(source).toMatch(/createJarvisPluginCapabilityProjection/);
+    expect(source).toMatch(/selectPluginConnectionsForAccount/);
+    expect(source).toMatch(/usePluginStore\.getState\(\)/);
+    expect(source).toMatch(/accountId,\s*capturedAt,\s*manifests:\s*PLUGIN_CATALOG/);
+    expect(source).toMatch(/plugins:\s*pluginCapabilities\.refs/);
+    expect(source).not.toMatch(/plugins:\s*\[\]/);
   });
 
   it('invalidates the old account synchronously before account listener teardown', () => {
