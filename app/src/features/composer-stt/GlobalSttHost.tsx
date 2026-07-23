@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { toast } from '@/components/ui/toast';
 import { VoiceService } from '@/features/voice/VoiceService';
+import { formatJarvisVerifiedNarration } from '@/lib/jarvis/response/templates';
 import { useUIStore } from '@/stores/ui';
 import {
   COMPOSER_STT_STOP_EVENT,
@@ -26,10 +27,29 @@ import { startSttVolumeMeter, stopSttVolumeMeter } from './sttVolume';
 
 const FINALIZE_GRACE_MS = 2_500;
 const DEFAULT_INACTIVITY_MS = 15_000;
+const GLOBAL_STT_UNSUPPORTED_FAILURE = formatJarvisVerifiedNarration({
+  kind: 'failure',
+  actionLabel: 'Global speech recognition availability',
+  reason: 'Speech-to-text is not available in this runtime',
+}).text;
+const GLOBAL_STT_START_FAILURE = formatJarvisVerifiedNarration({
+  kind: 'failure',
+  actionLabel: 'Global speech recognition startup',
+  reason:
+    'Voice-to-text could not start for the focused field. Check microphone access, then try again',
+}).text;
+const GLOBAL_STT_TARGET_UNAVAILABLE_FAILURE = formatJarvisVerifiedNarration({
+  kind: 'failure',
+  actionLabel: 'Dictation insertion',
+  reason: 'The spoken text could not be inserted because the target field is no longer available',
+}).text;
+const GLOBAL_STT_INSERTION_REJECTED_FAILURE = formatJarvisVerifiedNarration({
+  kind: 'failure',
+  actionLabel: 'Dictation insertion',
+  reason: 'The spoken text could not be inserted because the focused field did not accept input',
+}).text;
 
-function isTextInputField(
-  el: HTMLElement,
-): el is HTMLInputElement | HTMLTextAreaElement {
+function isTextInputField(el: HTMLElement): el is HTMLInputElement | HTMLTextAreaElement {
   return el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement;
 }
 
@@ -111,18 +131,16 @@ export function GlobalSttHost() {
       if (!focused || !isGlobalSttEditable(focused)) return;
 
       if (!VoiceService.isSupported()) {
-        toast.warning('Voice unsupported', 'Speech-to-text is not available in this runtime.');
+        toast.warning('Voice unsupported', GLOBAL_STT_UNSUPPORTED_FAILURE);
         return;
       }
       try {
-        snapshotRef.current = isTextInputField(focused)
-          ? captureSttFieldSnapshot(focused)
-          : null;
+        snapshotRef.current = isTextInputField(focused) ? captureSttFieldSnapshot(focused) : null;
         VoiceService.setInactivityTimeoutMs(null);
         const started = VoiceService.startListening();
         if (!started) {
           snapshotRef.current = null;
-          toast.warning('Voice unsupported', 'Could not start built-in speech recognition.');
+          toast.warning('Voice unsupported', GLOBAL_STT_START_FAILURE);
           return;
         }
         focused.focus();
@@ -130,12 +148,12 @@ export function GlobalSttHost() {
         setListening(true);
         setComposerSttListening(true);
         void startSttVolumeMeter();
-      } catch (err) {
+      } catch {
         snapshotRef.current = null;
         targetRef.current = null;
         setListening(false);
         setComposerSttListening(false);
-        toast.error('Voice error', err instanceof Error ? err.message : 'Voice could not start.');
+        toast.error('Voice error', GLOBAL_STT_START_FAILURE);
       }
     },
     [setComposerSttListening],
@@ -159,13 +177,13 @@ export function GlobalSttHost() {
       if (!trimmed) return;
       const target = targetRef.current;
       if (!target || !document.contains(target) || !isGlobalSttEditable(target)) {
-        toast.warning('Dictation', 'Could not insert text into the focused field.');
+        toast.warning('Dictation', GLOBAL_STT_TARGET_UNAVAILABLE_FAILURE);
         return;
       }
       if (isTextInputField(target) && snapshotRef.current) {
         if (!commitSttInField(target, snapshotRef.current, trimmed)) return;
       } else if (!insertTextIntoEditable(target, trimmed)) {
-        toast.warning('Dictation', 'Could not insert text into the focused field.');
+        toast.warning('Dictation', GLOBAL_STT_INSERTION_REJECTED_FAILURE);
         return;
       }
       snapshotRef.current = null;

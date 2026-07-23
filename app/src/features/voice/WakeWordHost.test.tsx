@@ -8,10 +8,19 @@ import { setWakeWordEnabled } from './wakeWord';
 
 const mocks = vi.hoisted(() => ({
   speakWithSettings: vi.fn(async () => undefined),
+  toastWarning: vi.fn(),
 }));
 
 vi.mock('./voiceRouter', () => ({
   speakWithSettings: mocks.speakWithSettings,
+  syncVoiceModuleOpenState: vi.fn(),
+}));
+
+vi.mock('@/components/ui/toast', () => ({
+  toast: {
+    success: vi.fn(),
+    warning: mocks.toastWarning,
+  },
 }));
 
 import { WakeWordHost } from './WakeWordHost';
@@ -84,5 +93,64 @@ describe('WakeWordHost', () => {
     });
 
     expect(recognitionInstances).toHaveLength(2);
+  });
+
+  it('uses precise shared narration when wake recognition cannot access the microphone', async () => {
+    render(<WakeWordHost />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const recognition = recognitionInstances[0]!;
+
+    act(() => {
+      recognition.onerror?.({ error: 'not-allowed' });
+    });
+
+    expect(mocks.toastWarning).toHaveBeenCalledWith(
+      'Wake word unavailable',
+      'The action failed, sir. Action: Wake-word microphone. Cause: Jarvis could not access the microphone. Check microphone permissions and device availability.',
+    );
+    expect(recognition.abort).toHaveBeenCalledOnce();
+    expect(useUIStore.getState().voiceModalOpen).toBe(false);
+  });
+
+  it('does not expose acknowledgement playback exception details after opening voice', async () => {
+    mocks.speakWithSettings.mockRejectedValueOnce(
+      new Error('synthetic acknowledgement implementation detail'),
+    );
+    render(<WakeWordHost />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const recognition = recognitionInstances[0]!;
+
+    act(() => {
+      recognition.onresult?.({
+        resultIndex: 0,
+        results: {
+          length: 1,
+          0: {
+            length: 1,
+            isFinal: true,
+            0: { transcript: 'hey jarvis' },
+          },
+        },
+      });
+    });
+    expect(useUIStore.getState().voiceModalOpen).toBe(true);
+
+    await act(async () => {
+      vi.advanceTimersByTime(140);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mocks.toastWarning).toHaveBeenCalledWith(
+      'Voice acknowledgement unavailable',
+      'The action failed, sir. Action: Voice acknowledgement. Cause: Jarvis could not play the wake-word acknowledgement. Voice mode is still open.',
+    );
+    expect(mocks.toastWarning.mock.calls[0]?.[1]).not.toContain(
+      'synthetic acknowledgement implementation detail',
+    );
   });
 });
