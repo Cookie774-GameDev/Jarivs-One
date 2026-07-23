@@ -98,6 +98,7 @@ import {
   getExplicitFilesBlock,
   getExplicitTerminalBlock,
   getJarvisCoordinationContextBlock,
+  getJarvisTerminalOperatingContextBlock,
   formatResolvedJarvisContext,
   rememberConversationDestination,
   resolveJarvisContext,
@@ -2527,6 +2528,7 @@ export function startRuntimeListener(
     let explicitFilesContext = '';
     let explicitTerminalContext = '';
     let jarvisCoordinationContext = '';
+    let jarvisTerminalOperatingContext = '';
     let userIdentityContext = '';
     let defaultWriteFolderContext = '';
     let allAboutMeContext = '';
@@ -2648,6 +2650,19 @@ export function startRuntimeListener(
           detail: { error: err instanceof Error ? err.message : String(err) },
         });
       }
+      try {
+        jarvisTerminalOperatingContext = getJarvisTerminalOperatingContextBlock(
+          Date.now(),
+          projectId ? String(projectId) : undefined,
+        );
+      } catch (err) {
+        devConsole.log({
+          channel: 'ai',
+          level: 'warn',
+          message: 'Jarvis terminal operating context build failed',
+          detail: { error: err instanceof Error ? err.message : String(err) },
+        });
+      }
     }
     try {
       pluginContext = getPluginContextBlock(projectId, detail.pluginIds);
@@ -2698,6 +2713,7 @@ export function startRuntimeListener(
       explicitFilesContext,
       explicitTerminalContext,
       jarvisCoordinationContext,
+      jarvisTerminalOperatingContext,
       connectedFilesContext,
       terminalContext,
       getAiCompletionInstruction(),

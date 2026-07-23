@@ -26,6 +26,7 @@ const mocks = vi.hoisted(() => ({
   getProjectContextTreeBlock: vi.fn(),
   getConnectedFilesBlock: vi.fn(),
   getJarvisCoordinationContextBlock: vi.fn(),
+  getJarvisTerminalOperatingContextBlock: vi.fn(),
   notifyDone: vi.fn(),
   devLog: vi.fn(),
   streamingSession: {
@@ -91,6 +92,7 @@ vi.mock('./context', () => ({
   getExplicitFilesBlock: async () => '',
   getExplicitTerminalBlock: () => '',
   getJarvisCoordinationContextBlock: mocks.getJarvisCoordinationContextBlock,
+  getJarvisTerminalOperatingContextBlock: mocks.getJarvisTerminalOperatingContextBlock,
   rememberConversationDestination: () => undefined,
   resolveJarvisContext: async () => ({
     relevantFiles: [],
@@ -177,6 +179,7 @@ describe('startRuntimeListener agent routing', () => {
     mocks.getProjectContextTreeBlock.mockReturnValue('');
     mocks.getConnectedFilesBlock.mockResolvedValue('');
     mocks.getJarvisCoordinationContextBlock.mockResolvedValue('');
+    mocks.getJarvisTerminalOperatingContextBlock.mockReturnValue('');
     mocks.chatGetById.mockResolvedValue(undefined);
     useAllAboutMeStore.setState(useAllAboutMeStore.getInitialState(), true);
   });
@@ -359,6 +362,61 @@ describe('startRuntimeListener agent routing', () => {
     expect(mocks.runAgent.mock.calls[0][0].agent.id).toBe(apple.id);
     expect(mocks.runAgent.mock.calls[0][0].agent.system_prompt).toContain(
       'Always answer with APPLE.',
+    );
+    expect(mocks.getJarvisTerminalOperatingContextBlock).not.toHaveBeenCalled();
+
+    stop();
+  });
+
+  it('injects bounded terminal operating intelligence only into protected Jarvis turns', async () => {
+    useAuthStore.setState({ projectId: 'project-terminal-context' as never });
+    mocks.getJarvisTerminalOperatingContextBlock.mockReturnValueOnce(
+      '## Terminal operating intelligence\n1 terminal pane observed: 1 active.\npane=pane-live state=running',
+    );
+    const jarvis = agent('agent_jarvis_terminal_context', 'jarvis', 'You are Jarvis.');
+    const chatId = 'chat_jarvis_terminal_context' as ChatId;
+    const placeholderId = 'msg_jarvis_terminal_context_assistant' as MessageId;
+    const userMessage: Message = {
+      id: 'msg_jarvis_terminal_context_user' as MessageId,
+      chat_id: chatId,
+      role: 'user',
+      parts: [{ kind: 'text', text: 'what are the terminals doing?' }],
+      created_at: 1,
+      updated_at: 1,
+    };
+
+    const stop = trackListener(
+      startRuntimeListener({
+        getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+        getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => [userMessage]),
+        appendMessage: vi.fn(async (message) => ({
+          ...message,
+          id: placeholderId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage: vi.fn(async () => undefined),
+      }),
+    );
+
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: { chatId, text: 'what are the terminals doing?' },
+      }),
+    );
+
+    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(1));
+    expect(mocks.getJarvisTerminalOperatingContextBlock).toHaveBeenCalledWith(
+      expect.any(Number),
+      'project-terminal-context',
+    );
+    expect(mocks.runAgent.mock.calls[0][0].agent.system_prompt).toContain(
+      '## Terminal operating intelligence',
+    );
+    expect(mocks.runAgent.mock.calls[0][0].agent.system_prompt).toContain(
+      'pane=pane-live state=running',
     );
 
     stop();

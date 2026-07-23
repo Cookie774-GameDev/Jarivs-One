@@ -90,6 +90,7 @@ export interface JarvisTerminalOperatingSnapshotInput {
 export interface ReadJarvisTerminalOperatingSnapshotOptions {
   readonly observedAt: number;
   readonly staleAfterMs?: number;
+  readonly projectId?: string;
   readonly lifecycleByExecutionId?: Readonly<
     Record<string, JarvisTerminalLifecycleObservation | undefined>
   >;
@@ -429,11 +430,53 @@ export function createJarvisTerminalOperatingSnapshot(
 export function readJarvisTerminalOperatingSnapshot(
   options: ReadJarvisTerminalOperatingSnapshotOptions,
 ): JarvisTerminalOperatingSnapshot {
+  const liveTranscripts = useTerminalTranscriptStore.getState().sessions;
+  const liveExecutions = useTerminalExecutionStore.getState().executions;
+  const liveQueue = useTerminalCommandQueue.getState().queue;
+  const projectId = options.projectId?.trim();
+  if (!projectId) {
+    return createJarvisTerminalOperatingSnapshot({
+      ...options,
+      transcripts: liveTranscripts,
+      executions: liveExecutions,
+      queue: liveQueue,
+    });
+  }
+
+  const transcripts = Object.fromEntries(
+    Object.entries(liveTranscripts).filter(([, transcript]) => transcript.projectId === projectId),
+  );
+  const sessionIds = new Set(Object.values(transcripts).map(({ sessionId }) => sessionId));
+  const paneIds = new Set(
+    Object.values(transcripts)
+      .map(({ paneId }) => paneId)
+      .filter((paneId): paneId is string => typeof paneId === 'string' && paneId.length > 0),
+  );
+  const queue = liveQueue.filter(
+    (command): command is ShellCommand =>
+      command.kind === 'shell' &&
+      Boolean(
+        command.refs?.some(
+          (ref) =>
+            ref.projectId === projectId ||
+            (ref.sessionId !== undefined && sessionIds.has(ref.sessionId)) ||
+            (ref.paneId !== undefined && paneIds.has(ref.paneId)),
+        ),
+      ),
+  );
+  const executionIds = new Set(queue.map(commandExecutionId));
+  const executions = Object.fromEntries(
+    Object.entries(liveExecutions).filter(
+      ([, execution]) =>
+        executionIds.has(execution.id) ||
+        (execution.sessionId !== undefined && sessionIds.has(execution.sessionId)),
+    ),
+  );
   return createJarvisTerminalOperatingSnapshot({
     ...options,
-    transcripts: useTerminalTranscriptStore.getState().sessions,
-    executions: useTerminalExecutionStore.getState().executions,
-    queue: useTerminalCommandQueue.getState().queue,
+    transcripts,
+    executions,
+    queue,
   });
 }
 

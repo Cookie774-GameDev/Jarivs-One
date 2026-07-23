@@ -301,6 +301,58 @@ describe('terminal operating-intelligence live adapter and summary', () => {
     expect(useTerminalCommandQueue.getState().queue[0]).toBe(command);
   });
 
+  it('scopes live reads to the active project without admitting unrelated queue work', () => {
+    useTerminalTranscriptStore.setState({
+      sessions: {
+        'pty-active': transcript('pty-active', 'pane-active', {
+          projectId: 'project-active',
+        }),
+        'pty-other': transcript('pty-other', 'pane-other', {
+          projectId: 'project-other',
+        }),
+      },
+    });
+    useTerminalExecutionStore.setState({
+      executions: {
+        active: execution('active', 'pty-active', 'running'),
+        other: execution('other', 'pty-other', 'running'),
+      },
+    });
+    useTerminalCommandQueue.setState({
+      queue: [
+        shellCommand('active', 'npm test', {
+          refs: [
+            {
+              projectId: 'project-active',
+              paneId: 'pane-active',
+              sessionId: 'pty-active',
+            },
+          ],
+        }),
+        shellCommand('other', 'npm run build', {
+          refs: [
+            {
+              projectId: 'project-other',
+              paneId: 'pane-other',
+              sessionId: 'pty-other',
+            },
+          ],
+        }),
+        shellCommand('unscoped', 'npm publish'),
+      ],
+    });
+
+    const snapshot = readJarvisTerminalOperatingSnapshot({
+      observedAt: 1_000,
+      staleAfterMs: 300,
+      projectId: 'project-active',
+    });
+
+    expect(snapshot.panes.map(({ paneId }) => paneId)).toEqual(['pane-active']);
+    expect(JSON.stringify(snapshot)).not.toContain('pane-other');
+    expect(JSON.stringify(snapshot)).not.toContain('npm publish');
+  });
+
   it('aggregates multiple panes into one concise status instead of pane-by-pane narration', () => {
     const snapshot = createJarvisTerminalOperatingSnapshot({
       observedAt: 10_000,
