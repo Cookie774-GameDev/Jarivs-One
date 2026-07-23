@@ -138,6 +138,22 @@ describe('verifiedResponseTemplate', () => {
 
 describe('formatJarvisVerifiedNarration', () => {
   it.each([
+    ['authenticated', 'Current model: openai / gpt-5 (native-api, authenticated).'],
+    ['degraded', 'Current model: openai / gpt-5 (native-api, degraded).'],
+    ['unavailable', 'Current model: openai / gpt-5 (native-api, unavailable).'],
+  ] as const)('formats immutable current-model state %s', (state, expected) => {
+    expect(
+      formatJarvisVerifiedNarration({
+        kind: 'current_model',
+        providerId: 'openai',
+        modelId: 'gpt-5',
+        connectionMode: 'native-api',
+        state,
+      }).text,
+    ).toBe(expected);
+  });
+
+  it.each([
     [
       { kind: 'approval_required', actionLabel: 'Publish release' },
       'approval_required',

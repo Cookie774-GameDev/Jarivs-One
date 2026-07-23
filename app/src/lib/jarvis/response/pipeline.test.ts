@@ -77,6 +77,95 @@ function raw(text: string, status?: 'running' | 'completed' | 'failed'): RawProv
 }
 
 describe('processJarvisResponse', () => {
+  it.each([
+    'Which model are you using?',
+    'what model is currently active',
+    "What's the selected model?",
+  ])('answers current-model query %j from the immutable request snapshot', async (userText) => {
+    const repair = { repair: vi.fn() };
+    const result = await processJarvisResponse(
+      raw('I am Gemini Ultra.'),
+      request({
+        userText,
+        model: {
+          providerId: 'openai',
+          modelId: 'gpt-5',
+          connectionMode: 'native-api',
+          capabilities: { tools: true },
+          capturedAt: 7,
+        },
+      }),
+      repair,
+    );
+
+    expect(result.displayText).toBe('Current model: openai / gpt-5 (native-api, authenticated).');
+    expect(result.provider).toMatchObject({ providerId: 'openai', modelId: 'gpt-5' });
+    expect(result.parts).toEqual([{ kind: 'text', text: result.displayText }]);
+    expect(repair.repair).not.toHaveBeenCalled();
+    expect(result.enforcement).toMatchObject({
+      linted: true,
+      repairAttempted: false,
+      repairSucceeded: false,
+      fallbackUsed: true,
+    });
+  });
+
+  it('keeps current-model identity start-bound against caller mutation', async () => {
+    const mutableRequest = request({
+      userText: 'Which model are you using?',
+      model: {
+        providerId: 'openai',
+        modelId: 'gpt-5',
+        connectionMode: 'native-api',
+        capabilities: {},
+        capturedAt: 7,
+      },
+    }) as JarvisRequestEnvelope;
+
+    const pending = processJarvisResponse(raw('I am another model.'), mutableRequest, {
+      repair: vi.fn(),
+    });
+    mutableRequest.model.providerId = 'google';
+    mutableRequest.model.modelId = 'gemini-forged';
+    const result = await pending;
+
+    expect(result.displayText).toContain('openai / gpt-5');
+    expect(result.displayText).not.toMatch(/google|gemini-forged/i);
+  });
+
+  it('does not replace a model recommendation question with current-model status', async () => {
+    const result = await processJarvisResponse(
+      raw('Gemini is better suited to that image analysis.'),
+      request({ userText: 'Which model should I use for image analysis?' }),
+      { repair: vi.fn() },
+    );
+
+    expect(result.displayText).toBe('Gemini is better suited to that image analysis.');
+    expect(result.enforcement.fallbackUsed).toBe(false);
+  });
+
+  it('reports unavailable current-model state without inventing a switch', async () => {
+    const provider = raw('I switched to Gemini.');
+    provider.verifiedFacts.modelState = 'unavailable';
+    const result = await processJarvisResponse(
+      provider,
+      request({
+        userText: 'What model is active?',
+        model: {
+          providerId: 'ollama',
+          modelId: 'llama3.2',
+          connectionMode: 'local',
+          capabilities: {},
+          capturedAt: 7,
+        },
+      }),
+      { repair: vi.fn() },
+    );
+
+    expect(result.displayText).toBe('Current model: ollama / llama3.2 (local, unavailable).');
+    expect(result.displayText).not.toMatch(/switched|gemini/i);
+  });
+
   it('adds zero latency calls when prose passes and restores structured bytes exactly', async () => {
     const block = '```ts\nconst answer = 42;\n```';
     const repair = { repair: vi.fn(() => Promise.reject(new Error('must not run'))) };

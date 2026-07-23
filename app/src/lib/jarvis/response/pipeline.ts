@@ -18,6 +18,7 @@ import {
 } from './modeClassifier';
 import { repairJarvisProseOnce, type JarvisRepairPort } from './repair';
 import {
+  formatJarvisVerifiedNarration,
   INVALID_STRUCTURED_REGION_TEMPLATE,
   QUARANTINED_RESPONSE_TEMPLATE,
   verifiedResponseTemplate,
@@ -42,6 +43,21 @@ export class JarvisResponsePipelineError extends Error {
     super('The processed JARVIS response is invalid.');
     this.name = 'JarvisResponsePipelineError';
   }
+}
+
+const CURRENT_MODEL_QUERY_PATTERNS = Object.freeze([
+  /^(?:which|what)\s+model\s+are\s+you\s+using$/i,
+  /^(?:which|what)\s+model\s+is\s+(?:(?:currently|now)\s+)?(?:active|selected|in use)$/i,
+  /^what(?:'s|\s+is)\s+(?:the\s+)?(?:current|active|selected)\s+model$/i,
+  /^what\s+model\s+am\s+i\s+using$/i,
+]);
+
+function isCurrentModelStatusQuestion(userText: string): boolean {
+  const normalized = userText
+    .trim()
+    .replace(/[?.!]+\s*$/u, '')
+    .trim();
+  return CURRENT_MODEL_QUERY_PATTERNS.some((pattern) => pattern.test(normalized));
 }
 
 function safeViolation(
@@ -301,6 +317,7 @@ export async function processJarvisResponse(
       responseModeHint: request.responseModeHint,
       outputContract: request.outputContract,
       sourceRefs: request.context.items.map((item) => item.source),
+      model: request.model,
       capabilities: {
         plugins: request.capabilities.plugins,
         mcps: request.capabilities.mcps,
@@ -312,6 +329,42 @@ export async function processJarvisResponse(
     snapshot.request.capabilities,
   );
   const operationalFacts = operationalVerifiedFacts(facts);
+  if (isCurrentModelStatusQuestion(snapshot.request.userText)) {
+    const narration = formatJarvisVerifiedNarration({
+      kind: 'current_model',
+      providerId: snapshot.request.model.providerId,
+      modelId: snapshot.request.model.modelId,
+      connectionMode: snapshot.request.model.connectionMode,
+      state: facts.modelState,
+    });
+    const displayText = narration.text;
+    const deterministicViolations = lintJarvisProse(displayText, narration.mode, facts);
+    const envelope: JarvisResponseEnvelope = {
+      schemaVersion: 1,
+      requestId: snapshot.request.requestId,
+      runId: snapshot.request.runId,
+      mode: narration.mode,
+      displayText,
+      ...(snapshot.request.outputContract.voiceDelivery === 'none'
+        ? {}
+        : { spokenText: displayText }),
+      parts: validatedParts(displayText, snapshot.request),
+      artifactIds: [],
+      sourceRefs: snapshot.request.sourceRefs,
+      provider: snapshot.request.model,
+      enforcement: {
+        linted: true,
+        violations: deterministicViolations.map((item) => item.code),
+        repairAttempted: false,
+        repairSucceeded: false,
+        fallbackUsed: true,
+      },
+      completedAt: snapshot.raw.completedAt,
+    };
+    const validation = validateJarvisResponseEnvelope(envelope);
+    if (!validation.ok) throw new JarvisResponsePipelineError(validation.errors);
+    return deepFreezeJarvisCopy(envelope);
+  }
   const tokenized = tokenizeJarvisResponse(snapshot.raw.text);
   const mode = classifyJarvisResponseMode(snapshot.request, facts);
   let prose = tokenized.proseWithPlaceholders;
@@ -407,8 +460,7 @@ export async function processJarvisResponse(
     sourceRefs: snapshot.request.sourceRefs,
     ...(facts.executionState &&
     (!hasProviderOnlyTerminalState(facts) ||
-      (facts.executionState.verifiedBy === 'provider' &&
-        facts.executionState.status === 'partial'))
+      (facts.executionState.verifiedBy === 'provider' && facts.executionState.status === 'partial'))
       ? { executionState: facts.executionState }
       : {}),
     provider: snapshot.raw.provider,

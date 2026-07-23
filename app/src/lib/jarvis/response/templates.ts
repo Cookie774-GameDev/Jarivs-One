@@ -1,4 +1,8 @@
-import type { JarvisCapabilityRef, JarvisResponseMode } from '@/lib/jarvis/contracts';
+import type {
+  JarvisCapabilityRef,
+  JarvisModelSnapshot,
+  JarvisResponseMode,
+} from '@/lib/jarvis/contracts';
 import {
   applyJarvisAddressCadence,
   EMPTY_JARVIS_CADENCE_STATE,
@@ -45,6 +49,13 @@ export type JarvisVerifiedNarrationInput =
   | Readonly<{ kind: 'unavailable_connector'; connectorName: string; nextAction: string }>
   | Readonly<{ kind: 'missing_permission'; actionLabel: string; permissionLabel: string }>
   | Readonly<{ kind: 'stale_terminal'; terminalLabel: string; lastObservedAt: string }>
+  | Readonly<{
+      kind: 'current_model';
+      providerId: string;
+      modelId: string;
+      connectionMode: JarvisModelSnapshot['connectionMode'];
+      state: JarvisVerifiedFacts['modelState'];
+    }>
   | Readonly<{ kind: 'model_switched'; modelName: string }>
   | Readonly<{ kind: 'model_switch_proposed'; modelName: string; reason: string }>
   | Readonly<{ kind: 'agent_delegated'; agentName: string; objective: string }>
@@ -162,6 +173,13 @@ function narrationDefinition(
           verifiedDetail('Terminal', input.terminalLabel),
           verifiedDetail('Last observed', input.lastObservedAt),
         ],
+      };
+    case 'current_model':
+      return {
+        mode: 'direct_answer',
+        moment: 'routine_status',
+        lead: `Current model: ${input.providerId} / ${input.modelId} (${input.connectionMode}, ${input.state}).`,
+        details: [],
       };
     case 'model_switched':
       return {
