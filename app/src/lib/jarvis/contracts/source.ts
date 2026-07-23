@@ -28,11 +28,34 @@ export interface JarvisSourceRef {
   contentHash?: string;
 }
 
+export type JarvisContextFreshness = 'current' | 'stale' | 'unknown';
+
+export type JarvisContextConflictResolutionBasis =
+  | 'user_selected'
+  | 'higher_authority'
+  | 'newer_verified_observation';
+
+export type JarvisContextConflict =
+  | {
+      groupId: string;
+      status: 'unresolved';
+      sourceIds: readonly string[];
+    }
+  | {
+      groupId: string;
+      status: 'resolved';
+      sourceIds: readonly string[];
+      winnerSourceId: string;
+      basis: JarvisContextConflictResolutionBasis;
+    };
+
 export interface JarvisContextItem {
   source: JarvisSourceRef;
   purpose: 'answer' | 'execution' | 'preference' | 'history' | 'capability' | 'citation';
   excerpt: string;
   score?: number;
+  freshness?: JarvisContextFreshness;
+  conflict?: JarvisContextConflict;
   truncated: boolean;
 }
 

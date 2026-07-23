@@ -509,6 +509,68 @@ describe('compileJarvisPrompt', () => {
     expect(compiled.layers[5]?.authority).toBe('untrusted_context');
   });
 
+  it('labels stale sources and unresolved conflicts inside the data fence', async () => {
+    const conflict = {
+      groupId: 'release-version',
+      status: 'unresolved' as const,
+      sourceIds: ['manifest-version', 'plan-version'],
+    };
+    const compiled = compileJarvisPrompt(
+      await envelope({
+        context: context([
+          contextItem('manifest-version', 'version=0.1.49', {
+            freshness: 'current',
+            conflict,
+          }),
+          contextItem('plan-version', 'version=0.1.48', {
+            freshness: 'stale',
+            conflict,
+          }),
+        ]),
+      }),
+    );
+
+    expect(compiled.layers[5]?.content).toContain('freshness=stale');
+    expect(compiled.layers[5]?.content).toContain('conflict=unresolved');
+    expect(compiled.layers[5]?.content).toContain('conflict_group="release-version"');
+    expect(compiled.layers[5]?.content).toContain('Never present stale source data as current.');
+    expect(compiled.layers[5]?.content).toContain(
+      'State unresolved conflicts instead of choosing silently.',
+    );
+    expect(compiled.diagnostics.warnings).toContain('stale_context_source');
+    expect(compiled.diagnostics.warnings).toContain('unresolved_context_conflict');
+  });
+
+  it('renders a consistent named conflict winner and its closed resolution basis', async () => {
+    const conflict = {
+      groupId: 'release-version',
+      status: 'resolved' as const,
+      sourceIds: ['manifest-version', 'plan-version'],
+      winnerSourceId: 'manifest-version',
+      basis: 'newer_verified_observation' as const,
+    };
+    const compiled = compileJarvisPrompt(
+      await envelope({
+        context: context([
+          contextItem('manifest-version', 'version=0.1.49', {
+            freshness: 'current',
+            conflict,
+          }),
+          contextItem('plan-version', 'version=0.1.48', {
+            freshness: 'stale',
+            conflict,
+          }),
+        ]),
+      }),
+    );
+
+    expect(compiled.layers[5]?.content).toContain('conflict=resolved');
+    expect(compiled.layers[5]?.content).toContain('conflict_winner="manifest-version"');
+    expect(compiled.layers[5]?.content).toContain('conflict_basis=newer_verified_observation');
+    expect(compiled.diagnostics.warnings).toContain('resolved_context_conflict');
+    expect(compiled.diagnostics.warnings).not.toContain('unresolved_context_conflict');
+  });
+
   it('escapes metadata newlines so capabilities and model IDs cannot add headers', async () => {
     const compiled = compileJarvisPrompt(
       await envelope({

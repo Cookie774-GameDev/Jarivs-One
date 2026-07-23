@@ -60,10 +60,45 @@ function context(): JarvisContextPack {
         purpose: 'answer',
         excerpt: 'context body',
         score: 0.9,
+        freshness: 'stale',
+        conflict: {
+          groupId: 'release-version',
+          status: 'resolved',
+          sourceIds: ['source-1', 'source-2'],
+          winnerSourceId: 'source-1',
+          basis: 'user_selected',
+        },
+        truncated: false,
+      },
+      {
+        source: {
+          id: 'source-2',
+          kind: 'project_file',
+          label: 'older-notes.txt',
+          uri: 'C:\\workspace\\older-notes.txt',
+          accountId: 'account-1',
+          projectId: 'project-1',
+          trust: 'app_verified',
+          origin: 'user_authored',
+          sensitivity: 'private',
+          observedAt: 70,
+          contentHash: 'hash-2',
+        },
+        purpose: 'answer',
+        excerpt: 'older context body',
+        score: 0.8,
+        freshness: 'current',
+        conflict: {
+          groupId: 'release-version',
+          status: 'resolved',
+          sourceIds: ['source-1', 'source-2'],
+          winnerSourceId: 'source-1',
+          basis: 'user_selected',
+        },
         truncated: false,
       },
     ],
-    budget: { maxChars: 1_000, usedChars: 12 },
+    budget: { maxChars: 1_000, usedChars: 30 },
     exclusions: [],
   };
 }
@@ -400,6 +435,8 @@ describe('createJarvisRequestEnvelope', () => {
       envelope.context.items,
       envelope.context.items[0],
       envelope.context.items[0]!.source,
+      envelope.context.items[0]!.conflict,
+      envelope.context.items[0]!.conflict?.sourceIds,
       envelope.context.exclusions,
       envelope.context.budget,
       envelope.outputContract,
@@ -413,6 +450,15 @@ describe('createJarvisRequestEnvelope', () => {
     expect(envelope.agent).not.toBe(caller.agent);
     expect(envelope.context.items[0]!.source).not.toBe(caller.context.items[0]!.source);
     expect(envelope.context.items[0]!.source.origin).toBe('model_inference');
+    expect(envelope.context.items[0]!.freshness).toBe('stale');
+    expect(envelope.context.items[0]!.conflict).toEqual({
+      groupId: 'release-version',
+      status: 'resolved',
+      sourceIds: ['source-1', 'source-2'],
+      winnerSourceId: 'source-1',
+      basis: 'user_selected',
+    });
+    expect(envelope.context.items[0]!.conflict).not.toBe(caller.context.items[0]!.conflict);
   });
 
   it('prevents mutations to profile, model, message parts, capabilities, and sources', async () => {

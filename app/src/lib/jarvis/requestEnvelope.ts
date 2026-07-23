@@ -3,6 +3,7 @@ import type { LLMContentPart } from '@/lib/ai/types';
 import type {
   JarvisCapabilityRef,
   JarvisCapabilitySnapshot,
+  JarvisContextConflict,
   JarvisContextPack,
   JarvisEntitlementSnapshot,
   JarvisModelSnapshot,
@@ -195,6 +196,22 @@ function copySource(source: JarvisSourceRef): JarvisSourceRef {
   };
 }
 
+function copyContextConflict(conflict: JarvisContextConflict): JarvisContextConflict {
+  return conflict.status === 'resolved'
+    ? {
+        groupId: conflict.groupId,
+        status: conflict.status,
+        sourceIds: [...conflict.sourceIds],
+        winnerSourceId: conflict.winnerSourceId,
+        basis: conflict.basis,
+      }
+    : {
+        groupId: conflict.groupId,
+        status: conflict.status,
+        sourceIds: [...conflict.sourceIds],
+      };
+}
+
 function copyContext(context: JarvisContextPack): JarvisContextPack {
   return {
     items: context.items.map((item) => ({
@@ -202,6 +219,8 @@ function copyContext(context: JarvisContextPack): JarvisContextPack {
       purpose: item.purpose,
       excerpt: item.excerpt,
       ...(item.score === undefined ? {} : { score: item.score }),
+      ...(item.freshness === undefined ? {} : { freshness: item.freshness }),
+      ...(item.conflict === undefined ? {} : { conflict: copyContextConflict(item.conflict) }),
       truncated: item.truncated,
     })),
     budget: {

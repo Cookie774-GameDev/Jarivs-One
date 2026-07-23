@@ -112,6 +112,13 @@ const CONTEXT_PURPOSES = [
   'capability',
   'citation',
 ] as const;
+const CONTEXT_FRESHNESS_VALUES = ['current', 'stale', 'unknown'] as const;
+const CONTEXT_CONFLICT_STATUSES = ['unresolved', 'resolved'] as const;
+const CONTEXT_CONFLICT_RESOLUTION_BASES = [
+  'user_selected',
+  'higher_authority',
+  'newer_verified_observation',
+] as const;
 
 const CAPABILITY_STATES = [
   'available',
@@ -707,6 +714,18 @@ function validateIdentifierArray(
   validateArray(value, path, errors, validateIdentifier);
 }
 
+function validateConflictSourceIds(
+  value: unknown,
+  path: ValidationPath,
+  errors: ValidationErrors,
+): void {
+  validateIdentifierArray(value, path, errors);
+  if (!Array.isArray(value)) return;
+  if (value.length < 2 || new Set(value).size !== value.length) {
+    addError(errors, 'invalid_type', path);
+  }
+}
+
 function validateSourceRefShape(
   value: unknown,
   path: ValidationPath,
@@ -768,7 +787,7 @@ function validateContextItemShape(
 ): void {
   const record = validateClosedRecord(
     value,
-    ['source', 'purpose', 'excerpt', 'score', 'truncated'],
+    ['source', 'purpose', 'excerpt', 'score', 'freshness', 'conflict', 'truncated'],
     path,
     errors,
   );
@@ -780,7 +799,114 @@ function validateContextItemShape(
   );
   validateRequiredField(record, 'excerpt', path, errors, validateString);
   validateOptionalField(record, 'score', path, errors, validateFiniteNumber);
+  validateOptionalField(record, 'freshness', path, errors, (entry, entryPath, entryErrors) =>
+    validateEnum(entry, CONTEXT_FRESHNESS_VALUES, entryPath, entryErrors),
+  );
+  validateOptionalField(record, 'conflict', path, errors, validateContextConflictShape);
   validateRequiredField(record, 'truncated', path, errors, validateBoolean);
+}
+
+function validateContextConflictShape(
+  value: unknown,
+  path: ValidationPath,
+  errors: ValidationErrors,
+): void {
+  const record = validateRecord(value, path, errors);
+  if (!record) return;
+  const status = dataField(record, 'status');
+  validateUnknownKeys(
+    record,
+    [
+      'groupId',
+      'status',
+      'sourceIds',
+      ...(status === 'resolved' ? ['winnerSourceId', 'basis'] : []),
+    ],
+    path,
+    errors,
+  );
+  validateRequiredField(record, 'groupId', path, errors, validateIdentifier);
+  validateRequiredField(record, 'status', path, errors, (entry, entryPath, entryErrors) =>
+    validateEnum(entry, CONTEXT_CONFLICT_STATUSES, entryPath, entryErrors),
+  );
+  validateRequiredField(record, 'sourceIds', path, errors, validateConflictSourceIds);
+  if (status === 'resolved') {
+    validateRequiredField(record, 'winnerSourceId', path, errors, validateIdentifier);
+    validateRequiredField(record, 'basis', path, errors, (entry, entryPath, entryErrors) =>
+      validateEnum(entry, CONTEXT_CONFLICT_RESOLUTION_BASES, entryPath, entryErrors),
+    );
+  }
+}
+
+function validateContextConflictBindings(
+  items: unknown,
+  path: ValidationPath,
+  errors: ValidationErrors,
+): void {
+  if (!Array.isArray(items)) return;
+  const itemBySourceId = new Map<string, RecordValue>();
+  for (const item of items) {
+    if (!isRecordValue(item)) continue;
+    const source = dataField(item, 'source');
+    if (!isRecordValue(source)) continue;
+    const sourceId = dataField(source, 'id');
+    if (typeof sourceId === 'string') itemBySourceId.set(sourceId, item);
+  }
+
+  const canonicalByGroup = new Map<string, string>();
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index];
+    if (!isRecordValue(item)) continue;
+    const conflict = dataField(item, 'conflict');
+    if (!isRecordValue(conflict)) continue;
+    const conflictPath = childPath(childPath(path, index), 'conflict');
+    const groupId = dataField(conflict, 'groupId');
+    const sourceIds = dataField(conflict, 'sourceIds');
+    const status = dataField(conflict, 'status');
+    const source = dataField(item, 'source');
+    const itemSourceId = isRecordValue(source) ? dataField(source, 'id') : undefined;
+    if (!Array.isArray(sourceIds)) continue;
+
+    if (typeof itemSourceId === 'string' && !sourceIds.includes(itemSourceId)) {
+      addError(errors, 'invalid_type', childPath(conflictPath, 'sourceIds'));
+    }
+    for (const sourceId of sourceIds) {
+      if (typeof sourceId !== 'string') continue;
+      const member = itemBySourceId.get(sourceId);
+      const memberConflict = member ? dataField(member, 'conflict') : undefined;
+      if (
+        !member ||
+        !isRecordValue(memberConflict) ||
+        dataField(memberConflict, 'groupId') !== groupId
+      ) {
+        addError(errors, 'invalid_type', childPath(conflictPath, 'sourceIds'));
+        break;
+      }
+    }
+    if (
+      status === 'resolved' &&
+      typeof dataField(conflict, 'winnerSourceId') === 'string' &&
+      !sourceIds.includes(dataField(conflict, 'winnerSourceId'))
+    ) {
+      addError(errors, 'invalid_type', childPath(conflictPath, 'winnerSourceId'));
+    }
+
+    if (typeof groupId === 'string') {
+      const canonical = JSON.stringify([
+        groupId,
+        status,
+        sourceIds,
+        status === 'resolved' ? dataField(conflict, 'winnerSourceId') : null,
+        status === 'resolved' ? dataField(conflict, 'basis') : null,
+      ]);
+      const previous = canonicalByGroup.get(groupId);
+      if (previous !== undefined && previous !== canonical) {
+        addError(errors, 'invalid_type', conflictPath);
+      } else {
+        canonicalByGroup.set(groupId, canonical);
+      }
+    }
+  }
 }
 
 function validateContextBudgetShape(
@@ -819,6 +945,7 @@ function validateContextPackShape(
   validateRequiredField(record, 'exclusions', path, errors, (entry, entryPath, entryErrors) =>
     validateArray(entry, entryPath, entryErrors, validateContextExclusionShape),
   );
+  validateContextConflictBindings(dataField(record, 'items'), childPath(path, 'items'), errors);
 }
 
 function validateCapabilityRefShape(

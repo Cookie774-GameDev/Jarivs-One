@@ -222,6 +222,116 @@ describe('buildJarvisContextPack', () => {
     expect(Object.isFrozen(pack.items[0]?.source)).toBe(true);
   });
 
+  it('preserves explicit freshness and classifies unlabelled candidates as unknown', async () => {
+    const pack = await buildJarvisContextPack({
+      accountId: ACCOUNT_ID,
+      maxChars: 1_000,
+      candidates: [
+        candidate('current', { freshness: 'current' }),
+        candidate('stale', { freshness: 'stale' }),
+        candidate('legacy-unknown'),
+      ],
+    });
+
+    expect(Object.fromEntries(pack.items.map((item) => [item.source.id, item.freshness]))).toEqual({
+      current: 'current',
+      'legacy-unknown': 'unknown',
+      stale: 'stale',
+    });
+  });
+
+  it('marks contradictory members of an unresolved conflict group without dropping evidence', async () => {
+    const pack = await buildJarvisContextPack({
+      accountId: ACCOUNT_ID,
+      maxChars: 1_000,
+      candidates: [
+        candidate('manifest-version', {
+          excerpt: 'version=0.1.49',
+          conflict: { groupId: 'release-version' },
+        }),
+        candidate('plan-version', {
+          excerpt: 'version=0.1.48',
+          conflict: { groupId: 'release-version' },
+        }),
+      ],
+    });
+
+    expect(pack.items).toHaveLength(2);
+    expect(pack.items.map((item) => item.conflict)).toEqual([
+      {
+        groupId: 'release-version',
+        status: 'unresolved',
+        sourceIds: ['manifest-version', 'plan-version'],
+      },
+      {
+        groupId: 'release-version',
+        status: 'unresolved',
+        sourceIds: ['manifest-version', 'plan-version'],
+      },
+    ]);
+  });
+
+  it('preserves only a consistent explicit conflict winner and closed resolution basis', async () => {
+    const resolution = {
+      winnerSourceId: 'manifest-version',
+      basis: 'newer_verified_observation' as const,
+    };
+    const pack = await buildJarvisContextPack({
+      accountId: ACCOUNT_ID,
+      maxChars: 1_000,
+      candidates: [
+        candidate('manifest-version', {
+          excerpt: 'version=0.1.49',
+          conflict: { groupId: 'release-version', resolution },
+        }),
+        candidate('plan-version', {
+          excerpt: 'version=0.1.48',
+          conflict: { groupId: 'release-version', resolution },
+        }),
+      ],
+    });
+
+    expect(pack.items.every((item) => item.conflict?.status === 'resolved')).toBe(true);
+    expect(pack.items[0]?.conflict).toEqual({
+      groupId: 'release-version',
+      status: 'resolved',
+      sourceIds: ['manifest-version', 'plan-version'],
+      winnerSourceId: 'manifest-version',
+      basis: 'newer_verified_observation',
+    });
+  });
+
+  it('fails contradictory or absent conflict winners safely as unresolved', async () => {
+    const pack = await buildJarvisContextPack({
+      accountId: ACCOUNT_ID,
+      maxChars: 1_000,
+      candidates: [
+        candidate('manifest-version', {
+          excerpt: 'version=0.1.49',
+          conflict: {
+            groupId: 'release-version',
+            resolution: {
+              winnerSourceId: 'missing-source',
+              basis: 'higher_authority',
+            },
+          },
+        }),
+        candidate('plan-version', {
+          excerpt: 'version=0.1.48',
+          conflict: {
+            groupId: 'release-version',
+            resolution: {
+              winnerSourceId: 'plan-version',
+              basis: 'user_selected',
+            },
+          },
+        }),
+      ],
+    });
+
+    expect(pack.items.every((item) => item.conflict?.status === 'unresolved')).toBe(true);
+  });
+
   it('returns detached, deeply frozen data without freezing caller input', async () => {
     const input = {
       accountId: ACCOUNT_ID,

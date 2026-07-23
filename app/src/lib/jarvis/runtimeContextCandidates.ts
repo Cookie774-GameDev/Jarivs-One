@@ -247,6 +247,7 @@ export function buildJarvisRuntimeContextCandidates(input: {
       purpose: definition.purpose,
       excerpt: block.text,
       score: admittedBlocks.length - index,
+      freshness: 'current',
       explicitlyAttached: definition.explicitlyAttached,
       authorizedBody: true,
     } satisfies JarvisContextCandidate;

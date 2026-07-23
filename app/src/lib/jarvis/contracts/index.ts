@@ -3,6 +3,9 @@ export type { JarvisRequestEnvelope } from './request';
 export type { CompiledJarvisPrompt, CompiledPromptLayer, PromptAuthority } from './prompt';
 
 export type {
+  JarvisContextConflict,
+  JarvisContextConflictResolutionBasis,
+  JarvisContextFreshness,
   JarvisContextItem,
   JarvisContextPack,
   JarvisSourceKind,

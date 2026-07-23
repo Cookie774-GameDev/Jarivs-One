@@ -3295,3 +3295,137 @@ describe('Task 18 closed execution evidence contracts', () => {
     expect(result.ok).toBe(false);
   });
 });
+
+describe('JARVIS context freshness and conflict metadata', () => {
+  it.each(['current', 'stale', 'unknown'] as const)(
+    'accepts the closed %s freshness classification',
+    (freshness) => {
+      const input = cloneJson(validContextPack()) as unknown as {
+        items: Array<Record<string, unknown>>;
+      };
+      input.items[0]!.freshness = freshness;
+
+      expectSuccess(validateJarvisContextPack(input));
+    },
+  );
+
+  it('rejects freshness values outside the closed vocabulary', () => {
+    const input = cloneJson(validContextPack()) as unknown as {
+      items: Array<Record<string, unknown>>;
+    };
+    input.items[0]!.freshness = 'probably_current';
+
+    expectFailure(validateJarvisContextPack(input), 'unknown_enum', ['items', 0, 'freshness']);
+  });
+
+  it.each([
+    {
+      groupId: 'release-version',
+      status: 'unresolved',
+      sourceIds: ['source-1', 'source-2'],
+    },
+    {
+      groupId: 'release-version',
+      status: 'resolved',
+      sourceIds: ['source-1', 'source-2'],
+      winnerSourceId: 'source-1',
+      basis: 'user_selected',
+    },
+    {
+      groupId: 'release-version',
+      status: 'resolved',
+      sourceIds: ['source-1', 'source-2'],
+      winnerSourceId: 'source-1',
+      basis: 'higher_authority',
+    },
+    {
+      groupId: 'release-version',
+      status: 'resolved',
+      sourceIds: ['source-1', 'source-2'],
+      winnerSourceId: 'source-1',
+      basis: 'newer_verified_observation',
+    },
+  ])('accepts closed conflict metadata %#', (conflict) => {
+    const input = cloneJson(validContextPack()) as unknown as {
+      items: Array<Record<string, unknown> & { source: Record<string, unknown> }>;
+    };
+    const second = cloneJson(input.items[0]!);
+    second.source.id = 'source-2';
+    second.excerpt = 'Contradictory excerpt';
+    input.items.push(second);
+    input.items[0]!.conflict = conflict;
+    second.conflict = conflict;
+
+    expectSuccess(validateJarvisContextPack(input));
+  });
+
+  it('rejects an unknown conflict resolution basis', () => {
+    const input = cloneJson(validContextPack()) as unknown as {
+      items: Array<Record<string, unknown> & { source: Record<string, unknown> }>;
+    };
+    const second = cloneJson(input.items[0]!);
+    second.source.id = 'source-2';
+    input.items.push(second);
+    const conflict = {
+      groupId: 'release-version',
+      status: 'resolved',
+      sourceIds: ['source-1', 'source-2'],
+      winnerSourceId: 'source-1',
+      basis: 'model_preference',
+    };
+    input.items[0]!.conflict = conflict;
+    second.conflict = conflict;
+
+    expectFailure(validateJarvisContextPack(input), 'unknown_enum', [
+      'items',
+      0,
+      'conflict',
+      'basis',
+    ]);
+  });
+
+  it('accepts identical group metadata regardless of object key insertion order', () => {
+    const input = cloneJson(validContextPack()) as unknown as {
+      items: Array<Record<string, unknown> & { source: Record<string, unknown> }>;
+    };
+    const second = cloneJson(input.items[0]!);
+    second.source.id = 'source-2';
+    input.items.push(second);
+    input.items[0]!.conflict = {
+      groupId: 'release-version',
+      status: 'resolved',
+      sourceIds: ['source-1', 'source-2'],
+      winnerSourceId: 'source-1',
+      basis: 'higher_authority',
+    };
+    second.conflict = {
+      basis: 'higher_authority',
+      winnerSourceId: 'source-1',
+      sourceIds: ['source-1', 'source-2'],
+      status: 'resolved',
+      groupId: 'release-version',
+    };
+
+    expectSuccess(validateJarvisContextPack(input));
+  });
+
+  it('rejects a resolved winner that is absent from its declared source set', () => {
+    const input = cloneJson(validContextPack()) as unknown as {
+      items: Array<Record<string, unknown> & { source: Record<string, unknown> }>;
+    };
+    const second = cloneJson(input.items[0]!);
+    second.source.id = 'source-2';
+    input.items.push(second);
+    const conflict = {
+      groupId: 'release-version',
+      status: 'resolved',
+      sourceIds: ['source-1', 'source-2'],
+      winnerSourceId: 'missing-source',
+      basis: 'user_selected',
+    };
+    input.items[0]!.conflict = conflict;
+    second.conflict = conflict;
+
+    expect(validateJarvisContextPack(input).ok).toBe(false);
+  });
+});

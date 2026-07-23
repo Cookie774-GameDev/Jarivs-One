@@ -57,6 +57,7 @@ describe('buildJarvisRuntimeContextCandidates', () => {
       expect(candidate.source.accountId).toBe('account-1');
       expect(candidate.source.projectId).toBe('project-1');
       expect(candidate.source.observedAt).toBe(100);
+      expect(candidate.freshness).toBe('current');
       expect(candidate.authorizedBody).toBe(true);
       expect(candidate.excerpt).toBe(`body:${key}`);
     });

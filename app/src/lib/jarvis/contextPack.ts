@@ -1,4 +1,11 @@
-import type { JarvisContextItem, JarvisContextPack, JarvisSourceRef } from '@/lib/jarvis/contracts';
+import type {
+  JarvisContextConflict,
+  JarvisContextConflictResolutionBasis,
+  JarvisContextFreshness,
+  JarvisContextItem,
+  JarvisContextPack,
+  JarvisSourceRef,
+} from '@/lib/jarvis/contracts';
 import { validateJarvisContextPack } from '@/lib/jarvis/contracts';
 import { deepFreezeJarvisCopy } from '@/lib/jarvis/requestEnvelope';
 import { classifyJarvisSource } from '@/lib/jarvis/sourcePolicy';
@@ -8,6 +15,14 @@ export interface JarvisContextCandidate {
   purpose: JarvisContextItem['purpose'];
   excerpt?: string;
   score?: number;
+  freshness?: JarvisContextFreshness;
+  conflict?: {
+    groupId: string;
+    resolution?: {
+      winnerSourceId: string;
+      basis: JarvisContextConflictResolutionBasis;
+    };
+  };
   explicitlyAttached: boolean;
   authorizedBody: boolean;
 }
@@ -87,6 +102,65 @@ function exclusion(
   return { source: copySource(source), reason };
 }
 
+function stableCompare(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function conflictEvidence(candidate: JarvisContextCandidate): string {
+  return JSON.stringify([
+    candidate.source.contentHash ?? '',
+    candidate.authorizedBody ? (candidate.excerpt ?? '') : '',
+  ]);
+}
+
+function applyContextConflicts(
+  admitted: Array<{ candidate: JarvisContextCandidate; item: JarvisContextItem }>,
+): void {
+  const groups = new Map<
+    string,
+    Array<{ candidate: JarvisContextCandidate; item: JarvisContextItem }>
+  >();
+  for (const entry of admitted) {
+    const groupId = entry.candidate.conflict?.groupId;
+    if (!groupId) continue;
+    const group = groups.get(groupId) ?? [];
+    group.push(entry);
+    groups.set(groupId, group);
+  }
+
+  for (const [groupId, group] of groups) {
+    const sourceIds = Array.from(new Set(group.map((entry) => entry.item.source.id))).sort(
+      stableCompare,
+    );
+    if (sourceIds.length < 2) continue;
+    if (new Set(group.map((entry) => conflictEvidence(entry.candidate))).size < 2) continue;
+
+    const resolutions = group.map((entry) => entry.candidate.conflict?.resolution);
+    const resolutionKeys = resolutions
+      .filter((resolution) => resolution !== undefined)
+      .map((resolution) => `${resolution.winnerSourceId}\0${resolution.basis}`);
+    const consistentResolution =
+      resolutionKeys.length === group.length && new Set(resolutionKeys).size === 1
+        ? resolutions[0]
+        : undefined;
+    const conflict: JarvisContextConflict =
+      consistentResolution && sourceIds.includes(consistentResolution.winnerSourceId)
+        ? {
+            groupId,
+            status: 'resolved',
+            sourceIds,
+            winnerSourceId: consistentResolution.winnerSourceId,
+            basis: consistentResolution.basis,
+          }
+        : {
+            groupId,
+            status: 'unresolved',
+            sourceIds,
+          };
+    for (const entry of group) entry.item.conflict = conflict;
+  }
+}
+
 export async function buildJarvisContextPack(
   input: JarvisContextPackInput,
 ): Promise<Readonly<JarvisContextPack>> {
@@ -98,6 +172,7 @@ export async function buildJarvisContextPack(
   }
 
   const items: JarvisContextItem[] = [];
+  const admitted: Array<{ candidate: JarvisContextCandidate; item: JarvisContextItem }> = [];
   const exclusions: JarvisContextPack['exclusions'] = [];
   let usedChars = 0;
   const candidates = [...input.candidates].sort(compareCandidates);
@@ -153,16 +228,20 @@ export async function buildJarvisContextPack(
     }
 
     const finiteScore = finiteRank(candidate.score);
-    items.push({
+    const item: JarvisContextItem = {
       source: copySource(source),
       purpose: admittedPurpose(candidate),
       excerpt: admittedBody,
       ...(Number.isFinite(finiteScore) ? { score: finiteScore } : {}),
+      freshness: candidate.freshness ?? 'unknown',
       truncated: admittedBody.length < body.length,
-    });
+    };
+    items.push(item);
+    admitted.push({ candidate, item });
     usedChars += admittedBody.length;
   }
 
+  applyContextConflicts(admitted);
   const pack: JarvisContextPack = {
     items,
     budget: { maxChars: input.maxChars, usedChars },
