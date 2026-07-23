@@ -1,5 +1,6 @@
 import type { JarvisResponseMode } from '@/lib/jarvis/contracts';
 import { hasProviderOnlyTerminalState, type JarvisVerifiedFacts } from './modeClassifier';
+import { getJarvisResponsePolicy } from './modes';
 
 export type JarvisLintViolationDisposition = 'repairable' | 'deterministic' | 'quarantine';
 
@@ -80,30 +81,26 @@ export function lintJarvisProse(
   if (mode !== 'long_form_delivery' && /^\s*#{1,6}\s+/m.test(prose)) {
     violations.push(violation('excessive_headings', 'repairable', 'Unnecessary heading.'));
   }
-  const sentenceBudget: Partial<Record<JarvisResponseMode, number>> = {
-    acknowledgement: 2,
-    direct_answer: 3,
-    status: 3,
-    warning: 3,
-    approval_required: 3,
-    action_running: 3,
-    action_success: 3,
-    action_partial: 3,
-    action_failure: 3,
-  };
-  const maxSentences = sentenceBudget[mode];
+  const responsePolicy = getJarvisResponsePolicy(mode);
+  const maxSentences = responsePolicy.maxSentences;
   const sentenceCount = prose
     .split(/[.!?]+(?:\s+|$)/)
     .map((item) => item.trim())
     .filter(Boolean).length;
-  if (maxSentences !== undefined && sentenceCount > maxSentences) {
+  if (maxSentences !== null && sentenceCount > maxSentences) {
     violations.push(
       violation('response_mode_budget', 'repairable', 'Too many sentences for the response mode.'),
     );
   }
-  if (prose.length > 4_000) {
+  const wordCount = prose.trim().match(/\S+/gu)?.length ?? 0;
+  const maximumTargetWords = responsePolicy.targetWords?.[1];
+  if (maximumTargetWords !== undefined && wordCount > maximumTargetWords) {
     violations.push(
-      violation('excessive_prose', 'repairable', 'Prose exceeds the response budget.'),
+      violation(
+        'response_mode_word_budget',
+        'repairable',
+        'Prose exceeds the response mode word target.',
+      ),
     );
   }
   if (/^\s*\{action\}/im.test(prose)) {

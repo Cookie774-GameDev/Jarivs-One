@@ -141,4 +141,45 @@ describe('lintJarvisProse', () => {
       }),
     );
   });
+
+  it('enforces the acknowledgement sentence target from the response-mode policy', () => {
+    expect(
+      lintJarvisProse('Ready, sir. What requires attention?', 'acknowledgement', {
+        ...facts,
+        executionState: undefined,
+      }),
+    ).toContainEqual(
+      expect.objectContaining({
+        code: 'response_mode_budget',
+        disposition: 'repairable',
+      }),
+    );
+  });
+
+  it('reports prose above a finite mode word target without truncating it', () => {
+    const prose = Array.from({ length: 81 }, (_, index) => `word${index}`).join(' ');
+    expect(
+      lintJarvisProse(prose, 'direct_answer', {
+        ...facts,
+        executionState: undefined,
+      }),
+    ).toContainEqual(
+      expect.objectContaining({
+        code: 'response_mode_word_budget',
+        disposition: 'repairable',
+      }),
+    );
+    expect(prose.split(' ')).toHaveLength(81);
+  });
+
+  it('does not impose prose or sentence limits on long-form delivery', () => {
+    const prose = Array.from({ length: 1_200 }, (_, index) => `Sentence ${index}.`).join(' ');
+    const violations = lintJarvisProse(prose, 'long_form_delivery', {
+      ...facts,
+      executionState: undefined,
+    });
+    expect(violations.map(({ code }) => code)).not.toContain('response_mode_budget');
+    expect(violations.map(({ code }) => code)).not.toContain('response_mode_word_budget');
+    expect(violations.map(({ code }) => code)).not.toContain('excessive_prose');
+  });
 });
