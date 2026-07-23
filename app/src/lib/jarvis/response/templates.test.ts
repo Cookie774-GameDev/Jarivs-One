@@ -307,6 +307,48 @@ describe('formatJarvisVerifiedNarration', () => {
     expect(success.text).toContain('214/214 tests passed at C:\\VibeSpace\\app');
   });
 
+  it.each([
+    [
+      {
+        kind: 'agent_batch_started',
+        agents: [
+          { name: 'Scout', objective: 'Map the repository' },
+          { name: 'Reviewer', objective: 'Check security risks' },
+        ],
+      },
+      /assigned.*Scout.*Reviewer/i,
+      /chain.of.thought|reasoning step/i,
+    ],
+    [
+      {
+        kind: 'agent_batch_blocked',
+        blockedAgentName: 'Reviewer',
+        reason: 'Test artifact unavailable',
+        completedAgentNames: ['Scout'],
+      },
+      /Reviewer.*blocked.*Scout.*complete/i,
+      /internal step|thought process/i,
+    ],
+    [
+      {
+        kind: 'agent_batch_completed',
+        agentNames: ['Scout', 'Reviewer'],
+        summary: 'Two security issues require attention; neither exposes credentials.',
+      },
+      /complete.*Two security issues require attention/i,
+      /transcript|chain.of.thought/i,
+    ],
+  ] as const)(
+    'reports verified agent lifecycle data concisely without internal reasoning',
+    (input, required, forbidden) => {
+      const result = formatJarvisVerifiedNarration(input);
+
+      expect(result.text).toMatch(required);
+      expect(result.text).not.toMatch(forbidden);
+      expect(result.text.split(/[.!?](?:\s|$)/u).filter(Boolean).length).toBeLessThanOrEqual(4);
+    },
+  );
+
   it('is the execution-state source used by the existing facts template', () => {
     expect(verifiedResponseTemplate(facts('completed'))).toBe(
       formatJarvisVerifiedNarration({

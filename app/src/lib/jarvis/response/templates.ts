@@ -60,6 +60,21 @@ export type JarvisVerifiedNarrationInput =
   | Readonly<{ kind: 'model_switch_proposed'; modelName: string; reason: string }>
   | Readonly<{ kind: 'agent_delegated'; agentName: string; objective: string }>
   | Readonly<{ kind: 'agent_blocked'; agentName: string; reason: string }>
+  | Readonly<{
+      kind: 'agent_batch_started';
+      agents: readonly Readonly<{ name: string; objective: string }>[];
+    }>
+  | Readonly<{
+      kind: 'agent_batch_blocked';
+      blockedAgentName: string;
+      reason: string;
+      completedAgentNames: readonly string[];
+    }>
+  | Readonly<{
+      kind: 'agent_batch_completed';
+      agentNames: readonly string[];
+      summary: string;
+    }>
   | Readonly<{ kind: 'artifact_created'; artifactLabel: string }>
   | Readonly<{ kind: 'artifact_link_returned'; artifactLabel: string; url: string }>
   | Readonly<{ kind: 'no_result_returned'; operationLabel: string; nextAction: string }>;
@@ -211,6 +226,46 @@ function narrationDefinition(
         moment: 'important_warning',
         lead: 'The specialist agent is blocked.',
         details: [verifiedDetail('Agent', input.agentName), verifiedDetail('Cause', input.reason)],
+      };
+    case 'agent_batch_started': {
+      const agents = input.agents.slice(0, 3);
+      if (agents.length === 0) {
+        return {
+          mode: 'warning',
+          moment: 'important_warning',
+          lead: 'No specialist was assigned because no verified agent was provided.',
+          details: [],
+        };
+      }
+      return {
+        mode: 'status',
+        moment: 'new_task_acknowledgement',
+        lead: `I've assigned the work to ${agents.map((agent) => agent.name).join(' and ')}.`,
+        details: agents.map((agent) => verifiedDetail(agent.name, agent.objective)),
+      };
+    }
+    case 'agent_batch_blocked':
+      return {
+        mode: 'warning',
+        moment: 'important_warning',
+        lead: `${input.blockedAgentName} is blocked.`,
+        details: [
+          verifiedDetail('Cause', input.reason),
+          ...(input.completedAgentNames.length > 0
+            ? [
+                `${input.completedAgentNames.slice(0, 3).join(' and ')} ${
+                  input.completedAgentNames.length === 1 ? 'is' : 'are'
+                } complete.`,
+              ]
+            : []),
+        ],
+      };
+    case 'agent_batch_completed':
+      return {
+        mode: 'status',
+        moment: 'significant_completion',
+        lead: 'The specialist work is complete.',
+        details: [input.summary],
       };
     case 'artifact_created':
       return {

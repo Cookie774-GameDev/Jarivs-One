@@ -83,6 +83,45 @@ describe('Jarvis intent interpreter', () => {
     expect(result.steps[0]?.deferred).not.toBe(true);
   });
 
+  it.each([
+    'Audit the entire repository deeply and map the authentication flow.',
+    'Research this using at least five independent sources.',
+    'Write a polished specialist implementation specification.',
+    'Create the Canva landing-page design from this brand brief.',
+  ])('routes valuable delegation through one reviewed bounded batch: %s', (request) => {
+    const result = interpretJarvisRequest(request);
+
+    expect(result.intent).toBe('multi-agent-orchestration');
+    expect(result.execution).toBe('approval-required');
+    expect(result.steps).toHaveLength(1);
+    expect(result.steps[0]?.action).toBe('agent.run_many');
+    const tasks = JSON.parse(String(result.steps[0]?.input.tasksJson)) as unknown[];
+    expect(tasks.length).toBeGreaterThan(0);
+    expect(tasks.length).toBeLessThanOrEqual(3);
+    expect(result.response).not.toMatch(/chain.of.thought|reasoning step/i);
+  });
+
+  it.each([
+    'Hello.',
+    'Quick status question: what percent is complete?',
+    'Open Settings.',
+    'Switch to Gemini.',
+    'Toggle the sidebar.',
+  ])('does not delegate trivial work: %s', (request) => {
+    const result = interpretJarvisRequest(request);
+
+    expect(result.steps.some((step) => step.action === 'agent.run_many')).toBe(false);
+  });
+
+  it('does not override a more specific memory request with delegation', () => {
+    const result = interpretJarvisRequest(
+      'Remember that research reports should use several independent sources.',
+    );
+
+    expect(result.intent).toBe('memory-update');
+    expect(result.steps).toEqual([]);
+  });
+
   it('runs the declared Supabase read-only inspection without a write approval', () => {
     const result = interpretJarvisRequest(
       'Use the Supabase plugin to list my tables without changing anything.',

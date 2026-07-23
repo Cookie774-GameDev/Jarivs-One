@@ -1,5 +1,6 @@
 import { localConversationReply } from './responsePolicy';
 import { parseJarvisModelSwitchIntent } from './modelSwitchDecision';
+import { planJarvisDelegation } from './delegationDecision';
 
 export type JarvisIntent =
   | 'casual-conversation'
@@ -367,6 +368,23 @@ export function interpretJarvisRequest(raw: string): InterpretedJarvisRequest {
       'approval-required',
       [{ action: 'terminal.ensure_total', input: { count, ...(cli ? { cli } : {}) } }],
       `Opening ${count} safe terminal${count === 1 ? '' : 's'}${cli ? ` and starting ${cli}` : ''}; I’ll verify startup before claiming completion.`,
+    );
+  }
+  const delegation = planJarvisDelegation(text);
+  if (delegation.status === 'delegate') {
+    const tasks = delegation.tasks.map((task) => ({
+      task: `${task.role}: ${task.objective}`,
+    }));
+    return result(
+      'multi-agent-orchestration',
+      'approval-required',
+      [
+        {
+          action: 'agent.run_many',
+          input: { tasksJson: JSON.stringify(tasks) },
+        },
+      ],
+      `I’ve prepared ${delegation.tasks.map((task) => task.role).join(' and ')} for the bounded specialist work. The batch is awaiting approval.`,
     );
   }
   if (/\b(?:selected\s+provider|summari[sz]e|explain|what|how|why)\b/i.test(text)) {
