@@ -85,6 +85,7 @@ import {
 } from '@/lib/ai/modelSelection';
 import { markTerminalExecution } from '@/features/terminals/terminalExecutionStore';
 import { createJarvisCoreActions } from './registryJarvisCore';
+import { createModelSelectionActions } from './registryModelSelection';
 
 /* --------------------------------------------------------------------------
  * Helpers
@@ -1626,6 +1627,7 @@ export function getBuiltinActions(): ActionDef[] {
     ...TERMINAL_ACTIONS,
     ...SCHEDULE_ACTIONS,
     ...CHAT_ACTIONS,
+    ...createModelSelectionActions(),
     ...HOST_ACTIONS,
     ...CREATOR_ACTIONS,
     ...PRODUCTIVITY_ACTIONS,

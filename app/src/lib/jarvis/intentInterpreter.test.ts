@@ -26,11 +26,29 @@ describe('Jarvis intent interpreter', () => {
       'app-configuration',
       ['chat.rename'],
     ],
+    ['Switch to Gemini.', 'app-configuration', ['chat.model.switch']],
+    ['Use Grok for this.', 'app-configuration', ['chat.model.switch']],
+    ['Use a local model.', 'app-configuration', ['chat.model.switch']],
+    ['Use the strongest coding model.', 'app-configuration', ['chat.model.switch']],
+    ['Use the cheapest model that can handle this.', 'app-configuration', ['chat.model.switch']],
+    ['Switch back.', 'app-configuration', ['chat.model.switch']],
   ])('classifies %s without inventing actions', (prompt, intent, actionIds) => {
     const result = interpretJarvisRequest(prompt);
     expect(result.intent).toBe(intent);
     expect(result.steps.map((step) => step.action)).toEqual(actionIds);
     expect(result.steps.every((step) => registered.has(step.action))).toBe(true);
+  });
+
+  it('keeps every model switch mutation behind the reviewed action approval', () => {
+    const result = interpretJarvisRequest('Switch to Gemini.');
+
+    expect(result.execution).toBe('approval-required');
+    expect(result.steps).toEqual([
+      {
+        action: 'chat.model.switch',
+        input: { request: 'Switch to Gemini.' },
+      },
+    ]);
   });
 
   it('extracts terminal count and official CLI without producing fake code', () => {

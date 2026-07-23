@@ -241,6 +241,32 @@ describe('planJarvisModelSwitch', () => {
     });
   });
 
+  it('uses the preferred current connection as cost authority', () => {
+    const result = planJarvisModelSwitch({
+      intent: { kind: 'provider', providerId: 'google' },
+      current: selection('openai', 'shared-model'),
+      candidates: [
+        candidate('openai', 'shared-model', {
+          preferred: false,
+          costClass: 'premium',
+        }),
+        candidate('openai', 'shared-model', {
+          preferred: true,
+          costClass: 'free',
+        }),
+        candidate('google', 'target', { costClass: 'standard' }),
+      ],
+      offlineMode: false,
+      requirements: {},
+      policyRequiresApproval: false,
+    });
+
+    expect(result).toMatchObject({
+      status: 'approval_required',
+      reasons: ['cost_increase'],
+    });
+  });
+
   it('reports an already-selected target without mutation', () => {
     expect(
       planJarvisModelSwitch({

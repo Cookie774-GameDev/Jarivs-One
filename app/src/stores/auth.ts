@@ -10,18 +10,13 @@ import type {
   FasterWhisperModelId,
 } from '@/types/common';
 import type { PlanId } from '@/lib/entitlements';
-import {
-  DEFAULT_CUSTOM_STEPS,
-} from '@/lib/ai/stacks/presets';
+import { DEFAULT_CUSTOM_STEPS } from '@/lib/ai/stacks/presets';
 import {
   sanitizeModelIdForInput,
   validateProviderModelSelection,
 } from '@/lib/ai/providerModelCatalog';
 import { defaultModelForProvider } from '@/lib/ai/models';
-import type {
-  StackPresetId,
-  StackStepSpec,
-} from '@/lib/ai/stacks/types';
+import type { StackPresetId, StackStepSpec } from '@/lib/ai/stacks/types';
 import { safeLocalStorage } from '@/lib/persistence/safeLocalStorage';
 import {
   SECRET_API_KEY_PROVIDERS,
@@ -146,6 +141,8 @@ interface AuthState {
   stackCustomSteps: StackStepSpec[];
   /** Explicit chat model / Hive workflow selection (single source of truth). */
   chatModelSelection: ChatModelSelection;
+  /** Exact selection immediately preceding the current chat model selection. */
+  previousChatModelSelection: ChatModelSelection;
 
   /** Telemetry opt-in */
   telemetryOptIn: boolean;
@@ -217,6 +214,27 @@ function migrateLegacySecretsToVault(keys: Partial<Record<ProviderId, string>>):
   }
 }
 
+function sameChatModelSelection(left: ChatModelSelection, right: ChatModelSelection): boolean {
+  if (left.mode !== right.mode) return false;
+  if (left.mode === 'none' || right.mode === 'none') return true;
+  if (left.mode === 'hive' && right.mode === 'hive') return left.hiveId === right.hiveId;
+  return (
+    left.mode === 'single' &&
+    right.mode === 'single' &&
+    left.providerId === right.providerId &&
+    left.modelId === right.modelId &&
+    left.connectionId === right.connectionId
+  );
+}
+
+function previousSelectionForTransition(
+  current: ChatModelSelection,
+  previous: ChatModelSelection,
+  next: ChatModelSelection,
+): ChatModelSelection {
+  return sameChatModelSelection(current, next) ? previous : current;
+}
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
@@ -249,6 +267,7 @@ export const useAuthStore = create<AuthState>()(
       stackPreset: 'off',
       stackCustomSteps: DEFAULT_CUSTOM_STEPS,
       chatModelSelection: EMPTY_CHAT_MODEL_SELECTION,
+      previousChatModelSelection: EMPTY_CHAT_MODEL_SELECTION,
       telemetryOptIn: false,
 
       setDisplayName: (n) => set({ displayName: n }),
@@ -286,16 +305,12 @@ export const useAuthStore = create<AuthState>()(
       setVoiceEngine: (engine) => set({ voiceEngine: engine }),
       setSpeakReplies: (enabled) => set({ speakReplies: enabled }),
       setVoiceAutoListenOnOpen: (enabled) => set({ voiceAutoListenOnOpen: enabled }),
-      setVoiceSilenceDelayMs: (ms) =>
-        set({ voiceSilenceDelayMs: clampVoiceSilenceDelayMs(ms) }),
-      setVoiceListenTimeoutMs: (ms) =>
-        set({ voiceListenTimeoutMs: clampVoiceListenTimeoutMs(ms) }),
+      setVoiceSilenceDelayMs: (ms) => set({ voiceSilenceDelayMs: clampVoiceSilenceDelayMs(ms) }),
+      setVoiceListenTimeoutMs: (ms) => set({ voiceListenTimeoutMs: clampVoiceListenTimeoutMs(ms) }),
       setVoiceEndTrigger: (trigger) =>
         set({ voiceEndTrigger: trigger === 'silence' ? 'silence' : 'phrase' }),
-      setVoiceCommitPhrase: (phrase) =>
-        set({ voiceCommitPhrase: clampVoiceCommitPhrase(phrase) }),
-      setVoiceCancelPhrase: (phrase) =>
-        set({ voiceCancelPhrase: clampVoiceCancelPhrase(phrase) }),
+      setVoiceCommitPhrase: (phrase) => set({ voiceCommitPhrase: clampVoiceCommitPhrase(phrase) }),
+      setVoiceCancelPhrase: (phrase) => set({ voiceCancelPhrase: clampVoiceCancelPhrase(phrase) }),
       setJarvisAutoApprove: (enabled) => set({ jarvisAutoApprove: enabled }),
       setVoiceAutoApproveActions: (enabled) => set({ voiceAutoApproveActions: enabled }),
       setComposerSttProvider: (provider) => set({ composerSttProvider: provider }),
@@ -309,21 +324,35 @@ export const useAuthStore = create<AuthState>()(
       setDefaultLocalModel: (m) => set({ defaultLocalModel: m.trim() || 'llama3.2' }),
       setPlan: (p) => set({ plan: p }),
       setStackPreset: (preset) =>
-        set((s) => ({
-          stackPreset: preset,
-          chatModelSelection:
+        set((s) => {
+          const next =
             preset === 'off'
               ? s.chatModelSelection.mode === 'hive'
                 ? EMPTY_CHAT_MODEL_SELECTION
                 : s.chatModelSelection
-              : selectionFromHive(preset),
-        })),
+              : selectionFromHive(preset);
+          return {
+            stackPreset: preset,
+            chatModelSelection: next,
+            previousChatModelSelection: previousSelectionForTransition(
+              s.chatModelSelection,
+              s.previousChatModelSelection,
+              next,
+            ),
+          };
+        }),
       setChatModelSelection: (selection) =>
         set((s) => {
           const normalized = normalizeChatModelSelection(selection);
+          const previousChatModelSelection = previousSelectionForTransition(
+            s.chatModelSelection,
+            s.previousChatModelSelection,
+            normalized,
+          );
           if (normalized.mode === 'single') {
             return {
               chatModelSelection: normalized,
+              previousChatModelSelection,
               defaultProvider: normalized.providerId,
               selectedModels: {
                 ...s.selectedModels,
@@ -335,11 +364,13 @@ export const useAuthStore = create<AuthState>()(
           if (normalized.mode === 'hive') {
             return {
               chatModelSelection: normalized,
+              previousChatModelSelection,
               stackPreset: normalized.hiveId,
             };
           }
           return {
             chatModelSelection: EMPTY_CHAT_MODEL_SELECTION,
+            previousChatModelSelection,
             stackPreset: 'off' as StackPresetId,
           };
         }),
@@ -403,9 +434,10 @@ export const useAuthStore = create<AuthState>()(
         stackPreset: s.stackPreset,
         stackCustomSteps: s.stackCustomSteps,
         chatModelSelection: s.chatModelSelection,
+        previousChatModelSelection: s.previousChatModelSelection,
         telemetryOptIn: s.telemetryOptIn,
       }),
-      version: 11,
+      version: 12,
       migrate: (persisted, fromVersion) => {
         if (!persisted || typeof persisted !== 'object') return persisted;
         const state = persisted as Partial<AuthState>;
@@ -427,7 +459,8 @@ export const useAuthStore = create<AuthState>()(
         }
         if (fromVersion < 5) {
           if (typeof state.jarvisAutoApprove !== 'boolean') state.jarvisAutoApprove = false;
-          if (typeof state.voiceAutoApproveActions !== 'boolean') state.voiceAutoApproveActions = true;
+          if (typeof state.voiceAutoApproveActions !== 'boolean')
+            state.voiceAutoApproveActions = true;
         }
         if (fromVersion < 7) {
           if (typeof state.voiceListenTimeoutMs !== 'number') {
@@ -438,7 +471,10 @@ export const useAuthStore = create<AuthState>()(
           state.voiceEngine = 'kokoro';
         }
         if (fromVersion < 9) {
-          if (state.composerSttProvider !== 'system' && state.composerSttProvider !== 'faster-whisper') {
+          if (
+            state.composerSttProvider !== 'system' &&
+            state.composerSttProvider !== 'faster-whisper'
+          ) {
             state.composerSttProvider = 'system';
           }
           if (!state.fasterWhisperModel) state.fasterWhisperModel = 'small';
@@ -479,6 +515,11 @@ export const useAuthStore = create<AuthState>()(
           } else {
             state.stackPreset = 'off';
           }
+        }
+        if (fromVersion < 12) {
+          state.previousChatModelSelection = normalizeChatModelSelection(
+            state.previousChatModelSelection,
+          );
         }
         return state;
       },

@@ -211,11 +211,13 @@ function candidateForSelection(
   selection: ChatModelSelection,
 ): JarvisModelSwitchCandidate | undefined {
   if (selection.mode !== 'single') return undefined;
-  return candidates.find(
-    (candidate) =>
-      candidate.selection.providerId === selection.providerId &&
-      candidate.selection.modelId === selection.modelId,
-  );
+  return candidates
+    .filter(
+      (candidate) =>
+        candidate.selection.providerId === selection.providerId &&
+        candidate.selection.modelId === selection.modelId,
+    )
+    .sort((left, right) => Number(right.preferred === true) - Number(left.preferred === true))[0];
 }
 
 function approvalReasons(

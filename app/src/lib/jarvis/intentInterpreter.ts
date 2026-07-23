@@ -1,4 +1,5 @@
 import { localConversationReply } from './responsePolicy';
+import { parseJarvisModelSwitchIntent } from './modelSwitchDecision';
 
 export type JarvisIntent =
   | 'casual-conversation'
@@ -80,6 +81,14 @@ export function interpretJarvisRequest(raw: string): InterpretedJarvisRequest {
       'none',
       [],
       'Showing usage for the selected provider and model.',
+    );
+  }
+  if (parseJarvisModelSwitchIntent(text)) {
+    return result(
+      'app-configuration',
+      'approval-required',
+      [{ action: 'chat.model.switch', input: { request: text } }],
+      'The model switch is prepared for review.',
     );
   }
   if (/^(?:please\s+)?remember(?:\s+that|:)?\s+/i.test(text)) {
