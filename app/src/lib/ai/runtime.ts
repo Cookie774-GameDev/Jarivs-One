@@ -134,6 +134,10 @@ import {
   type JarvisKernelMode,
 } from '@/lib/jarvis/kernelMode';
 import {
+  buildJarvisRuntimeContextCandidates,
+  type JarvisRuntimeContextBlock,
+} from '@/lib/jarvis/runtimeContextCandidates';
+import {
   compileJarvisShadowTurn,
   mirrorJarvisShadowLegacyOutcome,
   type JarvisShadowCompilationDeps,
@@ -362,7 +366,10 @@ const TRUNCATED_PROVIDER_FINISH_REASONS = new Set([
 
 function providerResponseWasTruncated(finishReason: string | undefined): boolean {
   return TRUNCATED_PROVIDER_FINISH_REASONS.has(
-    finishReason?.trim().toLowerCase().replace(/[\s-]+/g, '_') ?? '',
+    finishReason
+      ?.trim()
+      .toLowerCase()
+      .replace(/[\s-]+/g, '_') ?? '',
   );
 }
 
@@ -1351,9 +1358,7 @@ function dispatchRunState(
 
 function dispatchKernelSmokeRuntimeStage(stage: KernelSmokeRuntimeStage): void {
   if (!isKernelSmokeBindingActive()) return;
-  window.dispatchEvent(
-    new CustomEvent(KERNEL_SMOKE_RUNTIME_STAGE_EVENT, { detail: { stage } }),
-  );
+  window.dispatchEvent(new CustomEvent(KERNEL_SMOKE_RUNTIME_STAGE_EVENT, { detail: { stage } }));
 }
 
 const KERNEL_RUNTIME_ERROR_CODE_RE = /^kernel_[a-z0-9_]{1,120}$/;
@@ -2024,7 +2029,7 @@ async function createRuntimeKernelTurn(input: {
   interactionMode: JarvisInteractionMode;
   speakReply: boolean;
   surface?: 'hive_final';
-  contextText: string;
+  contextBlocks: readonly Readonly<JarvisRuntimeContextBlock>[];
   model: import('@/lib/jarvis/contracts').JarvisModelSnapshot;
 }): Promise<JarvisKernelTurnInput> {
   const account = resolveAccountIdentity(useAuthStore.getState());
@@ -2052,30 +2057,17 @@ async function createRuntimeKernelTurn(input: {
     hashJarvisText(JARVIS_IDENTITY_POLICY.responseContract),
     input.host.capabilitySnapshots.getForAccount(accountId),
   ]);
+  const contextCandidates = buildJarvisRuntimeContextCandidates({
+    accountId,
+    requestId,
+    ...(input.projectId === undefined ? {} : { projectId: input.projectId }),
+    observedAt: createdAt,
+    blocks: input.contextBlocks,
+  });
   const context = await buildJarvisContextPackForAi({
     accountId,
     maxChars: 16_384,
-    candidates: input.contextText.trim()
-      ? [
-          {
-            source: {
-              id: `jsource_${requestId}`,
-              kind: 'context_node' as const,
-              label: 'VibeSpace admitted runtime context',
-              accountId,
-              ...(input.projectId ? { projectId: input.projectId } : {}),
-              trust: 'app_verified' as const,
-              sensitivity: 'private' as const,
-              observedAt: createdAt,
-            },
-            purpose: 'answer' as const,
-            excerpt: input.contextText,
-            score: 1,
-            explicitlyAttached: false,
-            authorizedBody: true,
-          },
-        ]
-      : [],
+    candidates: contextCandidates,
   });
   if (
     input.speakReply &&
@@ -2695,29 +2687,35 @@ export function startRuntimeListener(
       });
     }
 
-    const contextBlocks = [
-      projectContext,
-      projectContextTree,
-      userIdentityContext,
-      defaultWriteFolderContext,
-      allAboutMeContext,
-      pluginContext,
-      pluginStatusContext,
-      selectedSkillsContext,
-      resolvedContextBlock,
-      requestIntentBlock,
-      getInteractionModeOverlay(interactionMode, requestIntent.needsVisiblePlan),
-      structuredContextBlock(detail.structuredContext),
-      mentionedAgentContext,
-      explicitContext,
-      explicitFilesContext,
-      explicitTerminalContext,
-      jarvisCoordinationContext,
-      jarvisTerminalOperatingContext,
-      connectedFilesContext,
-      terminalContext,
-      getAiCompletionInstruction(),
-    ].filter((s) => s && s.length > 0);
+    const runtimeContextBlocks = (
+      [
+        { key: 'project', text: projectContext },
+        { key: 'project_tree', text: projectContextTree },
+        { key: 'user_identity', text: userIdentityContext },
+        { key: 'default_write_folder', text: defaultWriteFolderContext },
+        { key: 'all_about_me', text: allAboutMeContext },
+        { key: 'plugin_context', text: pluginContext },
+        { key: 'plugin_status', text: pluginStatusContext },
+        { key: 'selected_skills', text: selectedSkillsContext },
+        { key: 'resolved_context', text: resolvedContextBlock },
+        { key: 'intent_policy', text: requestIntentBlock },
+        {
+          key: 'interaction_mode',
+          text: getInteractionModeOverlay(interactionMode, requestIntent.needsVisiblePlan),
+        },
+        { key: 'structured_context', text: structuredContextBlock(detail.structuredContext) },
+        { key: 'mentioned_agents', text: mentionedAgentContext },
+        { key: 'explicit_context', text: explicitContext },
+        { key: 'explicit_files', text: explicitFilesContext },
+        { key: 'explicit_terminal', text: explicitTerminalContext },
+        { key: 'coordination', text: jarvisCoordinationContext },
+        { key: 'terminal_operating', text: jarvisTerminalOperatingContext },
+        { key: 'connected_files', text: connectedFilesContext },
+        { key: 'terminal_transcript', text: terminalContext },
+        { key: 'completion_instruction', text: getAiCompletionInstruction() },
+      ] satisfies JarvisRuntimeContextBlock[]
+    ).filter((block) => block.text.length > 0);
+    const contextBlocks = runtimeContextBlocks.map((block) => block.text);
     if (contextBlocks.length > 0) {
       runnable = {
         ...runnable,
@@ -2930,7 +2928,7 @@ export function startRuntimeListener(
               interactionMode,
               speakReply: false,
               surface: 'hive_final',
-              contextText: contextBlocks.join('\n\n'),
+              contextBlocks: runtimeContextBlocks,
               model,
             });
             dispatchKernelSmokeRuntimeStage('hive_plan');
@@ -3036,7 +3034,7 @@ export function startRuntimeListener(
               messages: llmMessages,
               interactionMode,
               speakReply: detail.speakReply === true,
-              contextText: contextBlocks.join('\n\n'),
+              contextBlocks: runtimeContextBlocks,
               model,
             });
             await bindCanonicalCancellation(host, turn);

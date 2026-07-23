@@ -27,6 +27,13 @@ const mocks = vi.hoisted(() => ({
   getConnectedFilesBlock: vi.fn(),
   getJarvisCoordinationContextBlock: vi.fn(),
   getJarvisTerminalOperatingContextBlock: vi.fn(),
+  buildJarvisContextPackForAi: vi.fn(
+    async (input: { maxChars: number; candidates?: readonly unknown[] }) => ({
+      items: [],
+      budget: { maxChars: input.maxChars, usedChars: 0 },
+      exclusions: [],
+    }),
+  ),
   notifyDone: vi.fn(),
   devLog: vi.fn(),
   streamingSession: {
@@ -80,11 +87,7 @@ vi.mock('@/features/terminals/agentContext', () => ({
 }));
 
 vi.mock('./context', () => ({
-  buildJarvisContextPackForAi: async ({ maxChars }: { maxChars: number }) => ({
-    items: [],
-    budget: { maxChars, usedChars: 0 },
-    exclusions: [],
-  }),
+  buildJarvisContextPackForAi: mocks.buildJarvisContextPackForAi,
   getProjectContextBlock: mocks.getProjectContextBlock,
   getProjectContextTreeBlock: mocks.getProjectContextTreeBlock,
   getConnectedFilesBlock: mocks.getConnectedFilesBlock,
@@ -1956,6 +1959,12 @@ describe('startRuntimeListener agent routing', () => {
       },
     });
     const protectedJarvis = agent('agent_jarvis', 'jarvis', 'LEGACY SYSTEM PROMPT', true);
+    mocks.getProjectContextBlock.mockResolvedValue(
+      '## Project context\nPROJECT_CONTEXT_PROVENANCE_SENTINEL',
+    );
+    useAllAboutMeStore.setState({
+      markdown: '# AllAboutMe.md\n\nAAM_PROVENANCE_SENTINEL',
+    });
     const harness = kernelRuntimeBindings(protectedJarvis);
     const database = createJarvisDb(
       uniqueTestDbName('runtime-installed-kernel-host'),
@@ -2025,6 +2034,32 @@ describe('startRuntimeListener agent routing', () => {
       expect(providerInput.compiledPrompt.systemText).toContain('strict JARVIS identity');
       expect(providerInput.compiledPrompt.systemText).not.toContain('LEGACY SYSTEM PROMPT');
       expect(providerInput.agent.system_prompt).toContain('LEGACY SYSTEM PROMPT');
+      const contextInput = mocks.buildJarvisContextPackForAi.mock.calls.at(-1)?.[0] as
+        | {
+            candidates?: Array<{
+              source: { label: string; origin?: string };
+              excerpt?: string;
+            }>;
+          }
+        | undefined;
+      expect(contextInput?.candidates).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            source: expect.objectContaining({
+              label: 'Project context',
+              origin: 'user_authored',
+            }),
+            excerpt: expect.stringContaining('PROJECT_CONTEXT_PROVENANCE_SENTINEL'),
+          }),
+          expect.objectContaining({
+            source: expect.objectContaining({
+              label: 'AllAboutMe profile',
+              origin: 'mixed',
+            }),
+            excerpt: expect.stringContaining('AAM_PROVENANCE_SENTINEL'),
+          }),
+        ]),
+      );
       expect(harness.bindings.appendMessage).not.toHaveBeenCalled();
       expect(
         await database.jarvis_runs.where('chat_id').equals(harness.chatId).first(),
