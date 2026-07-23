@@ -5,6 +5,7 @@ import type {
   JarvisResponseMode,
 } from '@/lib/jarvis/contracts';
 import type { JarvisHumorHistory } from './humor';
+import { classifyJarvisSensitiveTopic } from './sensitive';
 
 export interface JarvisVerifiedFacts {
   executionState?: JarvisExecutionState;
@@ -49,9 +50,7 @@ export function classifyJarvisResponseMode(
   if (facts.terminalState === 'completed') return 'action_success';
   if (facts.terminalState === 'cancelled') return 'status';
   const text = request.userText.trim();
-  if (/\b(self[- ]?harm|suicide|abuse|assault|medical emergency|crisis)\b/i.test(text)) {
-    return 'sensitive';
-  }
+  if (classifyJarvisSensitiveTopic(text)) return 'sensitive';
   if (/^(?:hi|hey|hello|howdy|yo)\b[!.?\s]*$/i.test(text)) return 'acknowledgement';
   if (/\b(recommend|which (?:option|approach)|what should i choose)\b/i.test(text)) {
     return 'recommendation';

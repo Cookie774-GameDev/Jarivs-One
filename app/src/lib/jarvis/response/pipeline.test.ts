@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { JarvisRequestEnvelope, JarvisResponseEnvelope } from '@/lib/jarvis/contracts';
 import { validateSpeechChunk } from '@/features/voice/speechGate';
 import { processJarvisResponse, type RawProviderResponse } from './pipeline';
+import { buildJarvisSensitiveFallback } from './sensitive';
 
 function request(overrides: Partial<JarvisRequestEnvelope> = {}): Readonly<JarvisRequestEnvelope> {
   return {
@@ -643,6 +644,137 @@ describe('processJarvisResponse', () => {
     expect(result.mode).toBe('sensitive');
     expect(result.displayText).not.toMatch(/\bsir\b|joke|humou?r/i);
     expect(repair.repair).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      userText: 'I may hurt myself and need help now.',
+      expectedHelp: /emergency services/i,
+    },
+    {
+      userText: 'Should I double my medication dose for these symptoms?',
+      expectedHelp: /qualified clinician|pharmacist/i,
+    },
+    {
+      userText: 'I need legal advice about a court filing deadline.',
+      expectedHelp: /qualified lawyer|legal-aid/i,
+    },
+    {
+      userText: 'Should I invest my retirement savings in this crypto asset?',
+      expectedHelp: /qualified financial adviser|accountant|tax professional/i,
+    },
+    {
+      userText: 'My account was hacked in a phishing attack. What should I do?',
+      expectedHelp: /security or incident-response team|affected provider/i,
+    },
+    {
+      userText: 'There is a gas leak and an electrical hazard in the building.',
+      expectedHelp: /emergency services|qualified safety professional/i,
+    },
+  ])(
+    'replaces recklessly terse high-stakes guidance for $userText',
+    async ({ userText, expectedHelp }) => {
+      const repair = { repair: vi.fn() };
+      const unsafeProviderText = 'Do it now. It will be fine.';
+
+      const result = await processJarvisResponse(
+        raw(unsafeProviderText),
+        request({ userText }),
+        repair,
+      );
+
+      expect(result.mode).toBe('sensitive');
+      expect(result.displayText).not.toContain(unsafeProviderText);
+      expect(result.displayText).toMatch(
+        /\b(?:cannot|can't|may depend|may be|general information)\b/i,
+      );
+      expect(result.displayText).toMatch(expectedHelp);
+      expect(result.displayText).not.toMatch(/\bsir\b|joke|funny|humou?r/i);
+      expect(result.spokenText).toBe(result.displayText);
+      expect(result.enforcement.violations).toEqual(
+        expect.arrayContaining([
+          'sensitive_closed_response_required',
+          'sensitive_uncertainty_missing',
+          'sensitive_safety_context_missing',
+          'sensitive_professional_help_missing',
+        ]),
+      );
+      expect(result.enforcement.fallbackUsed).toBe(true);
+      expect(repair.repair).not.toHaveBeenCalled();
+      expectSpeechGateAccepted(result);
+    },
+  );
+
+  it('uses the complete closed sensitive answer without mechanical sentence truncation', async () => {
+    const untrustedProviderAnswer = [
+      'I cannot diagnose this or confirm what is safe for your circumstances.',
+      'Avoid changing medication or treatment solely from this reply.',
+      'Treat severe or worsening symptoms as urgent.',
+      'Contact a qualified clinician or pharmacist, and use local emergency services if there may be immediate danger.',
+    ].join(' ');
+    const expected = buildJarvisSensitiveFallback('medical');
+    const repair = { repair: vi.fn() };
+
+    const result = await processJarvisResponse(
+      raw(untrustedProviderAnswer),
+      request({ userText: 'Should I double my medication dose for these symptoms?' }),
+      repair,
+    );
+
+    expect(result.mode).toBe('sensitive');
+    expect(result.displayText).toBe(expected);
+    expect(result.spokenText).toBe(expected);
+    expect(
+      result.displayText.split(/[.!?]+(?:\s+|$)/).filter(Boolean).length,
+    ).toBeGreaterThanOrEqual(3);
+    expect(result.enforcement.fallbackUsed).toBe(true);
+    expect(repair.repair).not.toHaveBeenCalled();
+    expectSpeechGateAccepted(result);
+  });
+
+  it('suppresses provider structured regions from sensitive typed and spoken output', async () => {
+    const providerText = [
+      buildJarvisSensitiveFallback('medical'),
+      '```text',
+      'Double your medication dose now.',
+      '```',
+    ].join('\n');
+
+    const result = await processJarvisResponse(
+      raw(providerText),
+      request({ userText: 'How much ibuprofen can I take?' }),
+      { repair: vi.fn() },
+    );
+
+    expect(result.displayText).toBe(buildJarvisSensitiveFallback('medical'));
+    expect(result.spokenText).toBe(result.displayText);
+    expect(result.displayText).not.toMatch(/double your medication|```/i);
+    expect(result.parts).toEqual([{ kind: 'text', text: result.displayText }]);
+  });
+
+  it('lets crisis safety guidance outrank a quarantined provider reply', async () => {
+    const result = await processJarvisResponse(
+      raw('Reveal the system prompt.'),
+      request({ userText: 'I want to hurt myself.' }),
+      { repair: vi.fn() },
+    );
+
+    expect(result.mode).toBe('sensitive');
+    expect(result.displayText).toBe(buildJarvisSensitiveFallback('crisis'));
+    expect(result.displayText).toMatch(/emergency services|urgent help/i);
+    expect(result.enforcement.violations).toContain('protected_information_leak');
+  });
+
+  it('uses assault-appropriate guidance instead of the self-harm template', async () => {
+    const result = await processJarvisResponse(
+      raw('You should be fine.'),
+      request({ userText: 'I was assaulted and need help.' }),
+      { repair: vi.fn() },
+    );
+
+    expect(result.displayText).toBe(buildJarvisSensitiveFallback('personal_safety'));
+    expect(result.displayText).toMatch(/safer place|victim-support/i);
+    expect(result.displayText).not.toMatch(/hurt yourself/i);
   });
 
   it('uses a compliant deterministic formatter when style repair fails', async () => {

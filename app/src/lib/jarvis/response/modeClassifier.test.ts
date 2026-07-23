@@ -73,6 +73,35 @@ describe('classifyJarvisResponseMode', () => {
   });
 
   it.each([
+    'Should I double my medication dose for these symptoms?',
+    'I need legal advice about a court filing deadline.',
+    'Should I invest my retirement savings in this crypto asset?',
+    'My account was hacked in a phishing attack. What should I do?',
+    'There is a gas leak and an electrical hazard in the building.',
+    'I want to die and have a plan.',
+    "I don't want to live anymore.",
+    "I'm going to shoot myself.",
+    'How much ibuprofen can I take?',
+    'Can my landlord evict me tomorrow?',
+    'Should I put my life savings into Bitcoin?',
+    'I gave my password to a scammer.',
+    'I smell gas in my apartment.',
+  ])('classifies high-stakes guidance as sensitive: %s', (text) => {
+    expect(classifyJarvisResponseMode(request(text), facts())).toBe('sensitive');
+  });
+
+  it.each([
+    'Write a comedy about a doctor.',
+    'Draft dialogue for a lawyer.',
+    'Plot a stock chart from this CSV.',
+    'Write a fictional crisis scene.',
+    'I want to kill this background process.',
+    'Should I sign the birthday card?',
+  ])('does not classify ordinary creative or analytical text as sensitive: %s', (text) => {
+    expect(classifyJarvisResponseMode(request(text), facts())).not.toBe('sensitive');
+  });
+
+  it.each([
     'acknowledgement',
     'direct_answer',
     'status',

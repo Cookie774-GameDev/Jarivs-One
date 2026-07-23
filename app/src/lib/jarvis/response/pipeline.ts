@@ -17,6 +17,12 @@ import {
   type JarvisVerifiedFacts,
 } from './modeClassifier';
 import { repairJarvisProseOnce, type JarvisRepairPort } from './repair';
+import {
+  buildJarvisSensitiveFallback,
+  classifyJarvisSensitiveTopic,
+  lintJarvisSensitiveProse,
+  type JarvisSensitiveTopic,
+} from './sensitive';
 import { deriveJarvisSpokenText } from './spokenDelivery';
 import {
   formatJarvisVerifiedNarration,
@@ -148,6 +154,18 @@ function deterministicFallback(prose: string, facts: Readonly<JarvisVerifiedFact
     .replace(/\s{2,}/g, ' ')
     .trim();
   return formatted || 'The response is ready, Sir.';
+}
+
+function lintResponseProse(
+  prose: string,
+  mode: JarvisResponseEnvelope['mode'],
+  facts: Readonly<JarvisVerifiedFacts>,
+  sensitiveTopic?: JarvisSensitiveTopic,
+): readonly JarvisLintViolation[] {
+  return [
+    ...lintJarvisProse(prose, mode, facts),
+    ...(sensitiveTopic ? lintJarvisSensitiveProse(prose, sensitiveTopic) : []),
+  ];
 }
 
 function textParts(displayText: string): Part[] {
@@ -366,6 +384,10 @@ export async function processJarvisResponse(
   }
   const tokenized = tokenizeJarvisResponse(snapshot.raw.text);
   const mode = classifyJarvisResponseMode(snapshot.request, facts);
+  const sensitiveTopic =
+    mode === 'sensitive'
+      ? (classifyJarvisSensitiveTopic(snapshot.request.userText) ?? 'general')
+      : undefined;
   let prose = tokenized.proseWithPlaceholders;
   const invalidRegionViolations: JarvisLintViolation[] = [];
   for (const region of tokenized.regions) {
@@ -388,30 +410,33 @@ export async function processJarvisResponse(
   const initialViolations = [
     ...sanitized.violations,
     ...invalidRegionViolations,
-    ...lintJarvisProse(prose, mode, facts),
+    ...lintResponseProse(prose, mode, facts, sensitiveTopic),
   ];
   const hasQuarantine = initialViolations.some((item) => item.disposition === 'quarantine');
-  const validPlaceholders = tokenized.regions
-    .filter((region) => region.valid)
-    .map((region) => jarvisRegionPlaceholder(region.index));
-  const repaired = hasQuarantine
-    ? { prose, attempted: false, succeeded: false }
-    : await repairJarvisProseOnce(
-        {
-          prose,
-          immutablePlaceholders: validPlaceholders,
-          mode,
-          verifiedFacts: facts,
-          violations: initialViolations,
-        },
-        repair,
-      );
+  const validPlaceholders = sensitiveTopic
+    ? []
+    : tokenized.regions
+        .filter((region) => region.valid)
+        .map((region) => jarvisRegionPlaceholder(region.index));
+  const repaired =
+    hasQuarantine || sensitiveTopic
+      ? { prose, attempted: false, succeeded: false }
+      : await repairJarvisProseOnce(
+          {
+            prose,
+            immutablePlaceholders: validPlaceholders,
+            mode,
+            verifiedFacts: facts,
+            violations: initialViolations,
+          },
+          repair,
+        );
 
   let repairSucceeded = repaired.succeeded;
   let finalProse = repaired.prose;
   let repairedViolations: readonly JarvisLintViolation[] = [];
   if (repairSucceeded) {
-    repairedViolations = lintJarvisProse(finalProse, mode, facts);
+    repairedViolations = lintResponseProse(finalProse, mode, facts, sensitiveTopic);
     if (repairedViolations.length > 0) {
       repairSucceeded = false;
       finalProse = prose;
@@ -425,7 +450,9 @@ export async function processJarvisResponse(
     initialViolations.some((item) => item.disposition === 'deterministic') ||
     (repaired.attempted && !repairSucceeded) ||
     Boolean(verifiedResponseTemplate(operationalFacts));
-  if (hasQuarantine) {
+  if (sensitiveTopic) {
+    finalProse = buildJarvisSensitiveFallback(sensitiveTopic);
+  } else if (hasQuarantine) {
     finalProse = withMissingPlaceholders(QUARANTINED_RESPONSE_TEMPLATE, validPlaceholders);
   } else if (needsDeterministicFallback) {
     const deterministic = deterministicFallback(
@@ -435,13 +462,14 @@ export async function processJarvisResponse(
     finalProse = withMissingPlaceholders(deterministic, validPlaceholders);
   }
   if (
+    !sensitiveTopic &&
     invalidRegionViolations.length > 0 &&
     !finalProse.includes(INVALID_STRUCTURED_REGION_TEMPLATE)
   ) {
     finalProse = [finalProse, INVALID_STRUCTURED_REGION_TEMPLATE].filter(Boolean).join('\n\n');
   }
 
-  const validRegions = tokenized.regions.filter((region) => region.valid);
+  const validRegions = sensitiveTopic ? [] : tokenized.regions.filter((region) => region.valid);
   const displayText = restoreJarvisStructuredRegions(finalProse, validRegions).trim();
   const spokenText = deriveJarvisSpokenText({
     proseWithPlaceholders: finalProse,
@@ -473,7 +501,7 @@ export async function processJarvisResponse(
       violations,
       repairAttempted: repaired.attempted,
       repairSucceeded,
-      fallbackUsed: hasQuarantine || needsDeterministicFallback,
+      fallbackUsed: Boolean(sensitiveTopic) || hasQuarantine || needsDeterministicFallback,
     },
     completedAt: snapshot.raw.completedAt,
   };
