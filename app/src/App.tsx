@@ -1331,6 +1331,8 @@ function KernelBridgeBootstrap() {
               { selectPluginConnectionsForAccount, usePluginStore },
               { PLUGIN_CATALOG },
               { createJarvisPluginCapabilityProjection },
+              { createJarvisMcpCapabilityProjection },
+              { jarvisMcpServerManager },
               { createJarvisRepositories },
               { createJarvisCapabilitySnapshotProvider },
               { createJarvisEntitlementSnapshotProvider, fetchCloudAdminEntitlementSnapshot },
@@ -1343,6 +1345,8 @@ function KernelBridgeBootstrap() {
               import('@/features/plugins/store'),
               import('@/features/plugins/catalog'),
               import('@/lib/jarvis/pluginCapabilityProducer'),
+              import('@/lib/jarvis/mcpCapabilityProducer'),
+              import('@/lib/mcp/serverManager'),
               import('@/lib/db/jarvisRepositories'),
               import('@/lib/jarvis/capabilitySnapshot'),
               import('@/lib/admin'),
@@ -1426,6 +1430,11 @@ function KernelBridgeBootstrap() {
                     accountId,
                   ),
                 });
+                const mcpCapabilities = createJarvisMcpCapabilityProjection({
+                  accountId,
+                  capturedAt,
+                  statuses: jarvisMcpServerManager.discover(),
+                });
                 const tools = catalog
                   .listExposed()
                   .filter(
@@ -1444,7 +1453,7 @@ function KernelBridgeBootstrap() {
                   capturedAt,
                   tools,
                   plugins: pluginCapabilities.refs,
-                  mcps: [],
+                  mcps: mcpCapabilities.refs,
                   terminals: [],
                   agents: [],
                   entitlements: await entitlementSnapshots.getForAccount(accountId),

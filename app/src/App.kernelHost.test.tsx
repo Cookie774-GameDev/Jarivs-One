@@ -73,6 +73,16 @@ describe('App trusted kernel host composition', () => {
     expect(source).not.toMatch(/plugins:\s*\[\]/);
   });
 
+  it('projects observed external MCP manager state without starting or probing servers', () => {
+    expect(source).toMatch(/createJarvisMcpCapabilityProjection/);
+    expect(source).toMatch(/jarvisMcpServerManager\.discover\(\)/);
+    expect(source).toMatch(/mcps:\s*mcpCapabilities\.refs/);
+    expect(source).not.toMatch(/mcps:\s*\[\]/);
+    expect(source).not.toMatch(
+      /resolveInputForActiveAccount[\s\S]{0,2400}jarvisMcpServerManager\.(?:start|health|listTools|invoke)\(/,
+    );
+  });
+
   it('invalidates the old account synchronously before account listener teardown', () => {
     const teardownStart = source.indexOf('async function stopAccountScopedListeners');
     const teardownEnd = source.indexOf('async function transitionAccountScopedListeners');
