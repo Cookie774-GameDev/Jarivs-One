@@ -214,6 +214,18 @@ describe('compileJarvisPrompt', () => {
     expect(compiled.systemText).toContain('Selected model: model-1');
     expect(occurrences(compiled.systemText, JARVIS_IDENTITY_POLICY.identityCore)).toBe(1);
     expect(occurrences(compiled.systemText, JARVIS_IDENTITY_POLICY.responseContract)).toBe(1);
+    expect(
+      occurrences(
+        compiled.systemText,
+        'You are JARVIS, the executive intelligence and command assistant built into VibeSpace.',
+      ),
+    ).toBe(1);
+    expect(
+      occurrences(
+        compiled.systemText,
+        'Never sacrifice tool syntax, action blocks, code, citations, file contents, URLs, or structured data for brevity.',
+      ),
+    ).toBe(1);
     expect(Object.isFrozen(compiled)).toBe(true);
     expect(Object.isFrozen(compiled.layers)).toBe(true);
     expect(compiled.layers.every(Object.isFrozen)).toBe(true);

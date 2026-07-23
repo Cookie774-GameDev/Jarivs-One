@@ -102,6 +102,33 @@ const EXPECTED_IDENTITY_CORE_RULES = [
   'The JARVIS identity does not own SOUL memory content, tool policy, or model selection.',
 ] as const;
 
+const CANONICAL_SYSTEM_CONTRACT_START =
+  'You are JARVIS, the executive intelligence and command assistant built into VibeSpace.';
+const CANONICAL_SYSTEM_CONTRACT_END =
+  'Never sacrifice tool syntax, action blocks, code, citations, file contents, URLs, or structured data for brevity.';
+const CANONICAL_SYSTEM_CONTRACT_SHA256 =
+  '2e24cd667b3fbdab7619cec0853b08a8ab618577f2f60d62877a81cecc8edf8b';
+const CANONICAL_SYSTEM_CONTRACT_SECTIONS = [
+  'IDENTITY',
+  'ADDRESS',
+  'DEFAULT LENGTH',
+  'TONE',
+  'DRY HUMOR',
+  'PROACTIVITY',
+  'TRUTHFULNESS',
+  'ACTION BEHAVIOR',
+  'TECHNICAL REPORTING',
+  'MODEL AWARENESS',
+  'WORKSPACE AWARENESS',
+  'TERMINALS',
+  'PLUGINS AND MCP',
+  'DELEGATION',
+  'EMOTIONAL RESTRAINT',
+  'FORBIDDEN OPENINGS',
+  'PREFERRED OPENINGS',
+  'RESPONSE PRIORITY',
+] as const;
+
 const LOCAL_ONLY_PRIVACY_RULE =
   'Private identity, memory, run, and artifact records are local-only in v1.';
 
@@ -275,12 +302,29 @@ describe('protected JARVIS identity contracts', () => {
     }
   });
 
-  it('exposes one exact deeply frozen identity and delivery policy', () => {
-    const expectedIdentityCore = EXPECTED_IDENTITY_CORE_RULES.join('\n');
+  it('exposes one exact deeply frozen identity and delivery policy', async () => {
+    const kernelIdentityCore = EXPECTED_IDENTITY_CORE_RULES.join('\n');
+    const canonicalStart = JARVIS_IDENTITY_POLICY.identityCore.indexOf(
+      CANONICAL_SYSTEM_CONTRACT_START,
+    );
+    const canonicalSystemContract =
+      canonicalStart < 0 ? '' : JARVIS_IDENTITY_POLICY.identityCore.slice(canonicalStart);
+    const expectedIdentityCore = `${kernelIdentityCore}\n${canonicalSystemContract}`;
     const expectedResponseContract = EXPECTED_RESPONSE_CONTRACT_RULES.join('\n');
     const written = getJarvisDeliveryPolicy('written');
     const voice = getJarvisDeliveryPolicy('voice');
 
+    expect(canonicalStart).toBe(kernelIdentityCore.length + 1);
+    expect(canonicalSystemContract).toHaveLength(8_968);
+    expect(canonicalSystemContract.endsWith(CANONICAL_SYSTEM_CONTRACT_END)).toBe(true);
+    await expect(hashJarvisText(canonicalSystemContract)).resolves.toBe(
+      CANONICAL_SYSTEM_CONTRACT_SHA256,
+    );
+    for (const section of CANONICAL_SYSTEM_CONTRACT_SECTIONS) {
+      expect(canonicalSystemContract.split('\n').filter((line) => line === section)).toHaveLength(
+        1,
+      );
+    }
     expect(JARVIS_IDENTITY_POLICY).toEqual({
       identityVersion: 1,
       identityCore: expectedIdentityCore,
