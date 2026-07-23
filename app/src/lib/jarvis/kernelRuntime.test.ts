@@ -2358,7 +2358,7 @@ describe('createJarvisKernelRuntime scheduled attempt authority', () => {
                 receipt: {
                   providerId: providerInput.model.providerId,
                   modelId: providerInput.model.modelId,
-                  modelSnapshotRef: `${providerInput.model.providerId}:${providerInput.model.modelId}`,
+                  modelSnapshotRef: `jmodel_${providerInput.model.providerId}_${providerInput.model.modelId}_${providerInput.model.capturedAt}`,
                   operations: ['generate'] as const,
                   startedAt: now(),
                 },
