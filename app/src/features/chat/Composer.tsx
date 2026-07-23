@@ -41,6 +41,7 @@ import { useUIStore } from '@/stores/ui';
 import { parseThemeCommandArgument, SELECTABLE_THEMES } from '@/features/appearance/themes';
 import { VoiceService } from '@/features/voice/VoiceService';
 import { MicWaveform } from './MicWaveform';
+import { formatComposerVoiceFailure } from './composerVoiceFailures';
 import {
   cleanupAudioRecorder,
   encodeWav,
@@ -1994,7 +1995,7 @@ export function Composer({
       attachedContexts.length > 0 ||
       confirmedCommands.length > 0 ||
       confirmedAgentMentions.length > 0) &&
-      !sending;
+    !sending;
   const kernelSmokeHiveBound = KERNEL_SMOKE_ENABLED && isKernelSmokeBindingActive();
   const kernelSmokeHivePrepared =
     kernelSmokeHiveBound &&
@@ -2188,7 +2189,7 @@ export function Composer({
       if (kind === 'unsupported') {
         toast.warning('Voice unsupported', message);
       } else if (kind === 'service_not_allowed' || kind === 'permission_denied') {
-        toast.error('Microphone blocked', 'Allow mic access in your browser/OS settings.');
+        toast.error('Microphone blocked', message);
       } else if (kind !== 'no_speech' && kind !== 'aborted') {
         toast.error('Voice error', message);
       }
@@ -2256,9 +2257,8 @@ export function Composer({
         setSttListening(true);
         setSttAwaitingFinal(false);
         void startSttVolumeMeter();
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : 'Voice could not start.';
-        toast.error('Voice error', msg);
+      } catch {
+        toast.error('Voice error', formatComposerVoiceFailure('system_startup'));
         setSttListening(false);
         setSttAwaitingFinal(false);
         setSttInterim('');
@@ -2311,10 +2311,7 @@ export function Composer({
       return;
     }
     if (typeof navigator.mediaDevices?.getUserMedia !== 'function' || !getAudioContextCtor()) {
-      toast.warning(
-        'Microphone unavailable',
-        'Could not access the microphone for local dictation.',
-      );
+      toast.warning('Microphone unavailable', formatComposerVoiceFailure('local_capture'));
       void startSystemStt();
       return;
     }
@@ -2329,13 +2326,10 @@ export function Composer({
         },
       );
       setSttListening(true);
-    } catch (err) {
+    } catch {
       setSttListening(false);
       setSttInterim('');
-      toast.error(
-        'Voice error',
-        err instanceof Error ? err.message : 'Could not start microphone.',
-      );
+      toast.error('Voice error', formatComposerVoiceFailure('local_capture'));
       void startSystemStt();
     }
   };
@@ -2376,12 +2370,9 @@ export function Composer({
       const transcript = await transcribeFasterWhisper(wav, getFasterWhisperModel());
       if (gen !== transcribeGenRef.current) return;
       appendTranscript(transcript);
-    } catch (err) {
+    } catch {
       if (gen !== transcribeGenRef.current) return;
-      toast.error(
-        'Local transcription failed',
-        err instanceof Error ? err.message : 'Falling back to system dictation.',
-      );
+      toast.error('Local transcription failed', formatComposerVoiceFailure('local_transcription'));
       void startSystemStt();
     } finally {
       if (gen === transcribeGenRef.current) {
@@ -2432,7 +2423,7 @@ export function Composer({
         }
       }, 1000);
       setSttListening(true);
-    } catch (err) {
+    } catch {
       clearAudioSilenceTimer();
       cleanupAudioRecorder(
         audioProcessorRef.current,
@@ -2446,10 +2437,7 @@ export function Composer({
       mediaStreamRef.current = null;
       setSttListening(false);
       setSttInterim('');
-      toast.error(
-        'Voice error',
-        err instanceof Error ? err.message : 'Could not start microphone.',
-      );
+      toast.error('Voice error', formatComposerVoiceFailure('groq_capture'));
     }
   };
 
@@ -2462,12 +2450,9 @@ export function Composer({
       const finalText = await transcribeGroqApi(blob, apiKey);
       if (gen !== transcribeGenRef.current) return;
       appendTranscript(finalText);
-    } catch (err) {
+    } catch {
       if (gen !== transcribeGenRef.current) return;
-      toast.error(
-        'Groq transcription failed',
-        err instanceof Error ? err.message : 'Unknown error',
-      );
+      toast.error('Groq transcription failed', formatComposerVoiceFailure('groq_transcription'));
     } finally {
       if (gen === transcribeGenRef.current) {
         setSttTranscribing(false);
@@ -2706,9 +2691,7 @@ export function Composer({
                 }}
                 placeholder={placeholder ?? 'Message Jarvis...   (use @ to mention an agent)'}
                 aria-label="Message"
-                data-sik-evidence={
-                  KERNEL_SMOKE_ENABLED ? SIK_CONTROL.chatComposer : undefined
-                }
+                data-sik-evidence={KERNEL_SMOKE_ENABLED ? SIK_CONTROL.chatComposer : undefined}
                 style={{ minHeight: MIN_HEIGHT, maxHeight: MAX_HEIGHT }}
                 className={cn(
                   'block w-full resize-none bg-transparent px-3 py-2 text-body text-foreground',
@@ -2960,9 +2943,7 @@ export function Composer({
                     onClick={() => void handleSend()}
                     disabled={!canSend}
                     aria-label="Send message"
-                    data-sik-evidence={
-                      KERNEL_SMOKE_ENABLED ? SIK_CONTROL.chatSubmit : undefined
-                    }
+                    data-sik-evidence={KERNEL_SMOKE_ENABLED ? SIK_CONTROL.chatSubmit : undefined}
                   >
                     <Send />
                   </Button>
@@ -3144,9 +3125,7 @@ function ModelPicker({
             compact && 'max-w-[11rem] shrink-0',
           )}
           aria-label="Choose model"
-          data-sik-evidence={
-            KERNEL_SMOKE_ENABLED ? SIK_CONTROL.modelPicker : undefined
-          }
+          data-sik-evidence={KERNEL_SMOKE_ENABLED ? SIK_CONTROL.modelPicker : undefined}
           data-sik-transport={
             KERNEL_SMOKE_ENABLED && selection.mode === 'single'
               ? selection.connectionId === 'vibespace-kernel-smoke-cli'
