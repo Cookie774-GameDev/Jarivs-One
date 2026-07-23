@@ -429,7 +429,9 @@ const NO_OUTPUT_SCHEMA: JsonSchema = {
   additionalProperties: true,
 };
 
-export const DEFAULT_JARVIS_ACTION_REGISTRATIONS = deepFreeze([
+export const DEFAULT_JARVIS_ACTION_REGISTRATIONS = deepFreeze<
+  readonly JarvisRegisteredActionDefinition[]
+>([
   {
     id: 'file.search',
     version: 1,
@@ -462,7 +464,7 @@ export const DEFAULT_JARVIS_ACTION_REGISTRATIONS = deepFreeze([
     outputSchema: NO_OUTPUT_SCHEMA,
     requiredCapabilities: ['terminal.execute'],
     requiredEntitlements: [],
-    risk: 'external-side-effect',
+    risk: 'safe-write',
     approval: 'always',
     expectedEffect: 'Creates one terminal process owned by the active account.',
     exposeToAI: true,
@@ -470,6 +472,38 @@ export const DEFAULT_JARVIS_ACTION_REGISTRATIONS = deepFreeze([
     credentialBindings: [],
     validateParameters: (input: Readonly<Record<string, unknown>>) => ({ ...input }),
     deriveTarget: () => ({ kind: 'external_resource', service: 'terminal', resourceId: 'new' }),
+  },
+  {
+    id: 'terminal.run',
+    version: 1,
+    title: 'Run terminal command',
+    description: 'Run one approved shell command in a new terminal pane.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        command: { type: 'string' },
+        label: { type: 'string' },
+        cwd: { type: 'string' },
+        timeoutMs: { type: 'number' },
+      },
+      required: ['command'],
+      additionalProperties: false,
+    },
+    outputSchema: NO_OUTPUT_SCHEMA,
+    requiredCapabilities: ['terminal.execute'],
+    requiredEntitlements: [],
+    risk: 'external-side-effect',
+    approval: 'always',
+    expectedEffect: 'Runs one approved shell command in a new terminal pane.',
+    exposeToAI: true,
+    executor: { kind: 'builtin', registryActionId: 'terminal.run' },
+    credentialBindings: [],
+    validateParameters: (input: Readonly<Record<string, unknown>>) => ({ ...input }),
+    deriveTarget: () => ({
+      kind: 'external_resource',
+      service: 'terminal',
+      resourceId: 'new-command',
+    }),
   },
   {
     id: 'task.cancel',
@@ -489,7 +523,7 @@ export const DEFAULT_JARVIS_ACTION_REGISTRATIONS = deepFreeze([
     validateParameters: (input: Readonly<Record<string, unknown>>) => ({ ...input }),
     deriveTarget: () => ({ kind: 'app_resource', namespace: 'tasks', resourceId: 'selected' }),
   },
-] satisfies readonly JarvisRegisteredActionDefinition[]);
+]);
 
 function schemaForParam(param: ActionParam): JsonSchema & { enum?: string[]; default?: unknown } {
   const type = param.type === 'number' ? 'number' : param.type === 'boolean' ? 'boolean' : 'string';

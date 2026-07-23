@@ -36,6 +36,36 @@ describe('App trusted kernel host composition', () => {
     expect(source).not.toMatch(/kernelRole\s*=|[?&]kernel-host=|isHost\s*:/);
   });
 
+  it('binds approval presentation, decision, and execution to the installed primary host', () => {
+    expect(source).toMatch(/handleInstalledJarvisKernelClientRequest/);
+    expect(source).toMatch(/handleRequest:\s*handleInstalledJarvisKernelClientRequest/);
+    expect(runtimeSource).toMatch(/request\.kind === ['"]approval_present['"]/);
+    expect(runtimeSource).toMatch(/request\.kind === ['"]approval_decide['"]/);
+    expect(runtimeSource).toMatch(/request\.kind === ['"]approval_execute['"]/);
+    expect(runtimeSource).toMatch(/presentJarvisApproval\(approval\)/);
+  });
+
+  it('keeps capability evidence boot-stable and caches local entitlement evidence until expiry', () => {
+    expect(source).toMatch(/const securityBootObservedAt = now\(\);/);
+    expect(source).toMatch(/let localDevelopmentEntitlementCache:/);
+    expect(source).toMatch(/const localEntitlementObservedAt = now\(\);/);
+    expect(source).toMatch(
+      /const LOCAL_DEVELOPMENT_ENTITLEMENT_DECISION_FLOOR_MS = 2 \* 60_000;/,
+    );
+    expect(source).toMatch(
+      /localDevelopmentEntitlementCache\.snapshot\.expiresAt\s*-\s*localEntitlementObservedAt\s*>\s*LOCAL_DEVELOPMENT_ENTITLEMENT_DECISION_FLOOR_MS/,
+    );
+    expect(source).toMatch(
+      /context:\s*\{\s*now:\s*localEntitlementObservedAt,\s*production:\s*import\.meta\.env\.PROD,?\s*\}/,
+    );
+    expect(source).toMatch(/const capturedAt = now\(\);/);
+    expect(source).toMatch(/lastVerifiedAt:\s*securityBootObservedAt/);
+    expect(source).not.toMatch(/lastVerifiedAt:\s*capturedAt/);
+    expect(source).toMatch(
+      /localDevelopmentEntitlementCache\?\.accountId === accountId[\s\S]*localDevelopmentEntitlementCache = undefined/,
+    );
+  });
+
   it('invalidates the old account synchronously before account listener teardown', () => {
     const teardownStart = source.indexOf('async function stopAccountScopedListeners');
     const teardownEnd = source.indexOf('async function transitionAccountScopedListeners');

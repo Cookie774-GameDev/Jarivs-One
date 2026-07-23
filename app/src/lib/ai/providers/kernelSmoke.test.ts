@@ -7,6 +7,7 @@ import {
   activateKernelSmokeBinding,
   clearKernelSmokeBinding,
   getKernelSmokeDispatchPath,
+  isKernelSmokeBindingActive,
   kernelSmokeProvider,
   KERNEL_SMOKE_PROVIDER_ID,
   recordKernelSmokeRouterDispatch,
@@ -54,9 +55,42 @@ describe('kernelSmokeProvider', () => {
     expect(KERNEL_SMOKE_PROVIDER_ID).toBe('vibespace-kernel-smoke');
     expect(kernelSmokeProvider.id).toBe(KERNEL_SMOKE_PROVIDER_ID);
     expect(kernelSmokeProvider.isAvailable()).toBe(false);
+    expect(isKernelSmokeBindingActive()).toBe(false);
 
     trustBinding();
     expect(kernelSmokeProvider.isAvailable()).toBe(true);
+    expect(isKernelSmokeBindingActive()).toBe(true);
+  });
+
+  it('uses the most recent exact scenario while preserving downstream Hive worker prompts', async () => {
+    trustBinding();
+    const scenario = KERNEL_SMOKE_SCENARIOS.hive_dispatch;
+
+    await expect(
+      kernelSmokeProvider.run(
+        request('', {
+          messages: [
+            { role: 'user', content: scenario.safeTextFixture },
+            { role: 'assistant', content: 'Hive smoke response.' },
+            { role: 'user', content: 'Continue to the next Hive step (verify).' },
+          ],
+        }),
+      ),
+    ).resolves.toMatchObject({ text: 'Hive smoke response.' });
+
+    await expect(
+      kernelSmokeProvider.run(
+        request('', {
+          messages: [
+            { role: 'user', content: scenario.safeTextFixture },
+            {
+              role: 'user',
+              content: KERNEL_SMOKE_SCENARIOS.provider_failure.safeTextFixture,
+            },
+          ],
+        }),
+      ),
+    ).rejects.toThrow('kernel_smoke_provider_failure');
   });
 
   it('accepts only the exact fixed catalog text and streams deterministic deltas', async () => {

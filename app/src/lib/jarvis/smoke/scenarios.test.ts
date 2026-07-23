@@ -88,6 +88,25 @@ describe('kernel smoke scenario catalog', () => {
     }
   });
 
+  it('opens the collapsed Command Center before selecting Outputs for every artifact fixture', () => {
+    for (const id of ['artifact_provider', 'artifact_file_action', 'artifact_terminal'] as const) {
+      const controls = KERNEL_SMOKE_SCENARIOS[id].uiInputSequence.map((input) => input.control);
+      const disclosure = controls.indexOf('command-center.disclosure');
+      const outputs = controls.indexOf('outputs.tab');
+      expect(disclosure).toBeGreaterThan(-1);
+      expect(outputs).toBeGreaterThan(disclosure);
+    }
+
+    const terminalControls = KERNEL_SMOKE_SCENARIOS.artifact_terminal.uiInputSequence.map(
+      (input) => input.control,
+    );
+    const approval = terminalControls.indexOf('approval.confirm-dangerous');
+    const chatReturn = terminalControls.indexOf('chat.return');
+    const disclosure = terminalControls.indexOf('command-center.disclosure');
+    expect(chatReturn).toBeGreaterThan(approval);
+    expect(disclosure).toBeGreaterThan(chatReturn);
+  });
+
   it('preserves provider and CLI transport identity with canonical semantic parity', () => {
     for (const scenario of Object.values(KERNEL_SMOKE_SCENARIOS)) {
       expect(scenario.streams.provider.transportIdentity).toBe('provider');
@@ -192,6 +211,11 @@ describe('kernel smoke scenario catalog', () => {
     expect(KERNEL_SMOKE_SCENARIOS.schedule_transport_retry.executionPath).toBe(
       'task17_schedule_dispatcher',
     );
+    expect(KERNEL_SMOKE_SCENARIOS.schedule_transport_retry.uiInputSequence).toEqual([
+      { control: 'schedule.fixture', action: 'click' },
+      { control: 'schedule.retry-fixture', action: 'click' },
+      { control: 'Retry transport', action: 'click' },
+    ]);
     expect(KERNEL_SMOKE_SCENARIOS.hive_dispatch.executionPath).toBe('task17_hive_dispatcher');
 
     for (const id of ['artifact_provider', 'artifact_file_action', 'artifact_terminal'] as const) {

@@ -5,6 +5,7 @@ import type {
   JarvisAbortRegistration,
   JarvisArtifactDraft,
   JarvisArtifactV1,
+  JarvisApprovalV1,
   JarvisAuthorityBoundResult,
   JarvisEvent,
   JarvisExecutionJournal,
@@ -38,6 +39,17 @@ import type {
 } from './artifactProducerAdapters';
 import type { JarvisArtifactKernelComposition } from './artifactRuntime';
 import type {
+  CreateJarvisApprovalInput,
+  JarvisCanonicalActionExecutionResult,
+  JarvisKernelActionPort,
+} from './approvalEngine';
+import { JarvisApprovalError } from './approvalEngine';
+import type { JarvisRegisteredActionDefinition } from './actions/catalog';
+import { isJarvisAutoApprovableRegistration } from './actions/catalog';
+import { createTaskApprovalCallId } from '@/features/jarvis-runs/approvalBridge';
+import type {
+  ActionResponseReadyCommitInput,
+  ActionResponseReadyCommitResult,
   KernelTurnCommitInput,
   KernelTurnCommitResult,
   KernelTurnTerminalStatus,
@@ -157,6 +169,27 @@ export interface JarvisBoundKernelLifecycle {
 }
 
 type BoundKernelTurnCommitInput = Omit<KernelTurnCommitInput, 'accountBinding'>;
+type BoundActionResponseReadyCommitInput = Omit<ActionResponseReadyCommitInput, 'accountBinding'>;
+
+/** @internal Closed response-action adapter assembled only by kernelRuntime.ts. */
+export type JarvisKernelResponseActionPort = Readonly<{
+  resolveRegistration(
+    actionId: string,
+  ): Pick<JarvisRegisteredActionDefinition, 'id' | 'version' | 'risk' | 'approval'> | undefined;
+  create: JarvisKernelActionPort['create'];
+  executeAutoApprovedSafe(
+    input: Readonly<
+      CreateJarvisApprovalInput & { context: import('@/lib/actions/types').ActionRunContext }
+    >,
+  ): Promise<
+    JarvisAuthorityBoundResult<
+      Readonly<{
+        approval: JarvisApprovalV1;
+        execution: JarvisCanonicalActionExecutionResult;
+      }>
+    >
+  >;
+}>;
 
 export type JarvisKernelDeps = Readonly<{
   journal: Pick<JarvisExecutionJournal, 'allocateRun' | 'getRun'>;
@@ -174,10 +207,54 @@ export type JarvisKernelDeps = Readonly<{
     raw: Readonly<RawProviderResponse>,
   ): readonly JarvisArtifactDraft[] | undefined;
   commitKernelTurn(input: BoundKernelTurnCommitInput): Promise<KernelTurnCommitResult>;
+  commitActionResponseReady?(
+    input: BoundActionResponseReadyCommitInput,
+  ): Promise<ActionResponseReadyCommitResult>;
+  responseActions?: JarvisKernelResponseActionPort;
   prepareProvider: JarvisKernelPrepareProvider;
   processResponse: JarvisKernelProcessResponse;
   now: () => number;
 }>;
+
+type ActionProposalPart = Extract<Part, { kind: 'action_proposal' }>;
+
+function soleResponseAction(parts: readonly Part[]): ActionProposalPart | undefined {
+  const actions = parts.filter(
+    (part): part is ActionProposalPart => part.kind === 'action_proposal',
+  );
+  if (actions.length > 1) throw new Error('kernel_multiple_response_actions_unsupported');
+  return actions[0];
+}
+
+function projectCanonicalResponseAction(input: {
+  response: Readonly<JarvisResponseEnvelope>;
+  source: ActionProposalPart;
+  approvalId: string;
+  status: Extract<ActionProposalPart['status'], 'pending' | 'success' | 'error'>;
+  error?: string;
+}): Readonly<JarvisResponseEnvelope> {
+  const parts = input.response.parts.map((part): Part => {
+    if (part !== input.source) return structuredClone(part);
+    return {
+      ...structuredClone(part),
+      call_id: createTaskApprovalCallId(input.approvalId),
+      status: input.status,
+      ...(input.status === 'error'
+        ? { error: input.error ?? 'The protected action did not complete.' }
+        : {}),
+    };
+  });
+  return deepFreezeJarvisCopy({
+    ...input.response,
+    mode:
+      input.status === 'pending'
+        ? 'approval_required'
+        : input.status === 'success'
+          ? 'action_success'
+          : 'action_partial',
+    parts,
+  }) as Readonly<JarvisResponseEnvelope>;
+}
 
 function terminalStatus(response: Readonly<JarvisResponseEnvelope>): KernelTurnTerminalStatus {
   const status = response.executionState?.status;
@@ -313,10 +390,7 @@ function deliveredCancellationEvent(
   };
 }
 
-function providerFailureEvent(
-  requestId: string,
-  createdAt: number,
-): JarvisRunTransitionEventInput {
+function providerFailureEvent(requestId: string, createdAt: number): JarvisRunTransitionEventInput {
   return {
     idempotencyKey: `kernel:${requestId}:failed`,
     title: 'Protected request failed',
@@ -355,6 +429,22 @@ function providerResultSource(input: {
     phase: 'result' as const,
     state: input.state,
   };
+}
+
+const KERNEL_STAGE_ERROR_CODE_RE = /^kernel_[a-z0-9_]{1,120}$/;
+
+function throwBoundedKernelStageError(error: unknown, stageCode: string): never {
+  const record =
+    typeof error === 'object' && error !== null
+      ? (error as Readonly<{ code?: unknown; message?: unknown; name?: unknown }>)
+      : undefined;
+  if (record?.name === 'AbortError') throw error;
+  for (const candidate of [record?.code, record?.message]) {
+    if (typeof candidate === 'string' && KERNEL_STAGE_ERROR_CODE_RE.test(candidate)) {
+      throw error;
+    }
+  }
+  throw new Error(stageCode);
 }
 
 async function runJarvisKernelExecution(
@@ -571,8 +661,9 @@ async function runJarvisKernelExecution(
 
     const raw = await waitForProviderStage(() => started!.response);
     const processedResponse = await waitForProviderStage(() => deps.processResponse(raw, request));
-    const status = terminalStatus(processedResponse);
-    const resultState = status === 'completed' ? 'completed' : 'degraded';
+    let status = terminalStatus(processedResponse);
+    const providerResultState = status === 'completed' ? 'completed' : 'degraded';
+    let resultState: 'completed' | 'degraded' = providerResultState;
     const resultRef = `jresult_${input.attempt.requestId}`;
     const observedAt = processedResponse.completedAt;
     if (
@@ -599,7 +690,7 @@ async function runJarvisKernelExecution(
       requestId: input.attempt.requestId,
       attemptNumber: input.attempt.attemptNumber,
       resultRef,
-      state: status === 'completed' ? 'completed' : 'partial',
+      state: providerResultState === 'completed' ? 'completed' : 'partial',
       verifiedAt: observedAt,
       providerId: started.receipt.providerId,
       modelId: started.receipt.modelId,
@@ -627,8 +718,101 @@ async function runJarvisKernelExecution(
       return Object.freeze(materialized);
     };
     const artifacts = await waitForProviderStage(materializeProviderArtifacts);
+    let projectedResponse = processedResponse;
+    let pendingApprovalId: string | undefined;
+    const responseAction = soleResponseAction(processedResponse.parts);
+    if (responseAction) {
+      const responseActions = deps.responseActions;
+      if (!responseActions) throw new Error('kernel_response_action_port_unavailable');
+      const registration = responseActions.resolveRegistration(responseAction.action_id);
+      if (!registration || registration.id !== responseAction.action_id) {
+        throw new Error('kernel_response_action_unavailable');
+      }
+      const actionInput: CreateJarvisApprovalInput = {
+        parentRun: input.run,
+        attempt: input.attempt,
+        actionId: registration.id,
+        actionVersion: registration.version,
+        params: structuredClone(responseAction.params),
+        expiresAt: Math.max(deps.now(), processedResponse.completedAt) + 10 * 60_000,
+      };
+      const actionContext = {
+        source: 'ai' as const,
+        chatId: input.chatId,
+        messageId: `msg_${input.attempt.requestId}`,
+        callId: responseAction.call_id,
+        accountId: input.accountId,
+        runId: input.run.id,
+        requestId: input.attempt.requestId,
+        attemptNumber: input.attempt.attemptNumber,
+      };
+
+      if (isJarvisAutoApprovableRegistration(registration)) {
+        let executed: Awaited<ReturnType<JarvisKernelResponseActionPort['executeAutoApprovedSafe']>>;
+        try {
+          executed = await responseActions.executeAutoApprovedSafe({
+            ...actionInput,
+            context: actionContext,
+          });
+        } catch (error) {
+          if (error instanceof JarvisApprovalError) {
+            throw new Error(`kernel_safe_action_approval_${error.code}`);
+          }
+          throwBoundedKernelStageError(error, 'kernel_safe_action_execution_failed');
+        }
+        if (executed.kind === 'account_authority_revoked') return retainRevokedOutcome();
+        const { approval, execution } = executed.value;
+        if (
+          approval.runId !== input.run.id ||
+          approval.requestId !== input.attempt.requestId ||
+          approval.attemptNumber !== input.attempt.attemptNumber ||
+          approval.actionId !== registration.id ||
+          approval.actionVersion !== registration.version ||
+          approval.status !== 'consumed' ||
+          execution.kind !== 'settled'
+        ) {
+          throw new Error('kernel_safe_action_result_scope_mismatch');
+        }
+        const succeeded = execution.result.ok;
+        if (!succeeded) {
+          status = 'partial';
+          resultState = 'degraded';
+        }
+        projectedResponse = projectCanonicalResponseAction({
+          response: processedResponse,
+          source: responseAction,
+          approvalId: approval.id,
+          status: succeeded ? 'success' : 'error',
+          ...(succeeded ? {} : { error: 'The protected action did not complete.' }),
+        });
+      } else {
+        if (deferTerminalCommit) {
+          throw new Error('kernel_deferred_action_approval_unsupported');
+        }
+        const created = await responseActions.create(actionInput);
+        if (created.kind === 'account_authority_revoked') return retainRevokedOutcome();
+        const approval = created.value;
+        if (
+          approval.runId !== input.run.id ||
+          approval.requestId !== input.attempt.requestId ||
+          approval.attemptNumber !== input.attempt.attemptNumber ||
+          approval.actionId !== registration.id ||
+          approval.actionVersion !== registration.version ||
+          approval.status !== 'pending'
+        ) {
+          throw new Error('kernel_pending_action_scope_mismatch');
+        }
+        pendingApprovalId = approval.id;
+        projectedResponse = projectCanonicalResponseAction({
+          response: processedResponse,
+          source: responseAction,
+          approvalId: approval.id,
+          status: 'pending',
+        });
+      }
+    }
     const response = deepFreezeJarvisCopy({
-      ...processedResponse,
+      ...projectedResponse,
       artifactIds: artifacts.map((artifact) => artifact.id),
     }) as Readonly<JarvisResponseEnvelope>;
     const messageParts = projectJarvisEnvelopeToMessageParts({ response, artifacts });
@@ -640,7 +824,7 @@ async function runJarvisKernelExecution(
       receipt: started.receipt,
       resultRef,
       observedAt,
-      state: resultState,
+      state: providerResultState,
     });
     const assistantMessage: Message = {
       id: `msg_${input.attempt.requestId}` as MessageId,
@@ -659,7 +843,7 @@ async function runJarvisKernelExecution(
         throw new Error('kernel_voice_provider_evidence_disposed');
       }
       providerEvidenceCompletion ??= lifecycle.recordProviderResult({
-        state: resultState,
+        state: providerResultState,
         resultRef,
         observedAt,
       });
@@ -669,7 +853,7 @@ async function runJarvisKernelExecution(
       materializedArtifacts: readonly JarvisArtifactV1[],
     ): JarvisDeferredVoiceKernelTurnResult => {
       const materializedResponse = deepFreezeJarvisCopy({
-        ...processedResponse,
+        ...projectedResponse,
         artifactIds: materializedArtifacts.map((artifact) => artifact.id),
       }) as Readonly<JarvisResponseEnvelope>;
       const materializedMessageParts = projectJarvisEnvelopeToMessageParts({
@@ -706,6 +890,42 @@ async function runJarvisKernelExecution(
         dispose: disposeProviderEvidence,
       });
     };
+
+    if (pendingApprovalId) {
+      const commitActionResponseReady = deps.commitActionResponseReady;
+      if (!commitActionResponseReady) {
+        throw new Error('kernel_action_response_commit_unavailable');
+      }
+      throwIfCancellationDelivered();
+      const commit = await commitActionResponseReady({
+        accountId: input.accountId,
+        runId: input.run.id,
+        requestId: input.attempt.requestId,
+        attemptNumber: input.attempt.attemptNumber,
+        approvalId: pendingApprovalId,
+        assistantMessage,
+        artifacts,
+        providerResultSource: expectedProviderResultSource,
+        createdAt: response.completedAt,
+      });
+      if (!commit.committed) {
+        if (commit.reason === 'account_authority_revoked') return retainRevokedOutcome();
+        throw new Error(`kernel_action_response_commit_${commit.reason}`);
+      }
+      if (
+        commit.run.status !== 'awaiting_approval' ||
+        !canonicalValuesMatch(commit.event.producerSourceEvidence, expectedProviderResultSource)
+      ) {
+        throw new Error('kernel_action_response_commit_source_mismatch');
+      }
+      terminalCommitted = true;
+      const providerResult = await completeProviderEvidence();
+      if (providerResult.kind === 'account_authority_revoked') return retainRevokedOutcome();
+      return {
+        kind: 'committed',
+        value: buildDeferredVoiceResult(artifacts),
+      };
+    }
 
     if (!deferTerminalCommit) {
       throwIfCancellationDelivered();

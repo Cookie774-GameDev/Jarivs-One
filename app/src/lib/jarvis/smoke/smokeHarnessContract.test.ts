@@ -14,6 +14,8 @@ const launcherPath = path.join(root, 'scripts', 'shared-intelligence-kernel-smok
 const driverPath = path.join(root, 'scripts', 'shared-intelligence-kernel-smoke-driver.mjs');
 const launcher = readFileSync(launcherPath, 'utf8');
 const driver = readFileSync(driverPath, 'utf8');
+const tabStrip = readFileSync(path.join(root, 'app', 'src', 'components', 'layout', 'TabStrip.tsx'), 'utf8');
+const app = readFileSync(path.join(root, 'app', 'src', 'App.tsx'), 'utf8');
 
 describe('shared intelligence kernel smoke harness contract', () => {
   it('keeps one outer cleanup boundary and tolerates partial startup', () => {
@@ -22,6 +24,29 @@ describe('shared intelligence kernel smoke harness contract', () => {
     expect(launcher).toContain('if ($null -ne $Driver)');
     expect(launcher).toContain('if ($null -ne $Dev)');
     expect(launcher).toContain('if (-not $EnvironmentRestored)');
+  });
+
+  it('uses one bounded cold-link allowance for initial and restarted native descendants', () => {
+    expect(launcher).toContain('$NativeStartupTimeoutMinutes = 12');
+    expect(
+      (launcher.match(/AddMinutes\(\$NativeStartupTimeoutMinutes\)/g) ?? []).length,
+    ).toBe(2);
+    expect(launcher).not.toContain('AddMinutes(5)');
+  });
+
+  it('uses a stable isolated Tauri identifier so smoke retries reuse the native link cache', () => {
+    expect(launcher).toContain("$tauriIdentifier = 'ai.jarvis.desktop.smoke'");
+    expect(launcher).not.toContain('$tauriIdentifier = "ai.jarvis.desktop.smoke.s$runId"');
+  });
+
+  it('builds the signed CLI fixture only for the CLI transport scenario', () => {
+    const build = launcher.slice(
+      launcher.indexOf('Set-ChildEnvironment -Values @{ TAURI_CONFIG = $tauriConfigJson }'),
+      launcher.indexOf('$ExpectedNativeExecutable = [IO.Path]::GetFullPath'),
+    );
+
+    expect(build).toContain("if ($Scenarios -contains 'transport_cli_success')");
+    expect(build).toContain('cargo build --manifest-path $CargoManifest --example');
   });
 
   it('waits for recorded process trees to exit before deleting the disposable profile', () => {
@@ -70,6 +95,17 @@ describe('shared intelligence kernel smoke harness contract', () => {
     expect(startup).not.toContain('ReadToEndAsync');
   });
 
+  it('bounds retries when Windows process snapshots are temporarily resource constrained', () => {
+    const snapshot = launcher.slice(
+      launcher.indexOf('function Get-CimProcessSnapshot'),
+      launcher.indexOf('function Get-Descendants'),
+    );
+
+    expect(snapshot).toContain('$CimSnapshotMaxAttempts');
+    expect(snapshot).toContain('Start-Sleep -Milliseconds 250');
+    expect(snapshot).toContain("throw 'kernel_smoke_process_snapshot_unavailable'");
+  });
+
   it('flushes driver logs and attempts every cleanup phase before reporting failures', () => {
     const cleanup = launcher.slice(launcher.lastIndexOf('\nfinally {'));
     const driverGuard = cleanup.indexOf('if ($null -ne $Driver)');
@@ -110,11 +146,17 @@ describe('shared intelligence kernel smoke harness contract', () => {
     expect(driverLoop).toBeGreaterThan(restored);
   });
 
+  it('confines the development entitlement to the isolated smoke child environment', () => {
+    expect(launcher).toContain("'VITE_JARVIS_LOCAL_ADMIN'");
+    expect(launcher).toMatch(/VITE_JARVIS_LOCAL_ADMIN\s*=\s*'1'/);
+    expect(launcher).toContain('Restore-Environment -Saved $SavedEnvironment');
+  });
+
   it('attests the exact descendant executable and PID creation identity', () => {
     expect(launcher).toContain('target\\debug\\jarvis.exe');
     expect(launcher).toContain('Wait-ForNativeDescendant `');
     expect(launcher).toContain('-Launcher $Dev `');
-    expect(launcher).toContain('Get-Descendants -RootPid $Launcher.Id -Snapshot $snapshot');
+    expect(launcher).toContain('Get-Descendants -RootProcess $root[0] -Snapshot $Snapshot');
     expect(launcher).toContain('return $result.ToArray()');
     expect(launcher).toContain('kernel_smoke_native_wrong_path_descendant');
     expect(launcher).toContain('kernel_smoke_native_non_descendant');
@@ -125,10 +167,147 @@ describe('shared intelligence kernel smoke harness contract', () => {
     expect(launcher).not.toMatch(/taskkill[^\r\n]*\/im/i);
   });
 
+  it('anchors every process tree to launch identity and rejects stale PID ancestry', () => {
+    const processSafety = launcher.slice(
+      launcher.indexOf('function Register-RecordedProcessRoot'),
+      launcher.indexOf('function Wait-ForRecordedProcessTreeExit'),
+    );
+    expect(processSafety).toContain('$Process.StartTime.ToUniversalTime()');
+    expect(processSafety).toContain('kernel_smoke_process_root_identity_changed');
+    expect(processSafety).toContain('Get-VerifiedRecordedProcessTree');
+    expect(processSafety).toContain('$childCreationUtc -lt $current.CreationTimeUtc');
+    expect(processSafety).toContain('$childCreationUtc -lt $current.CreationTimeUtc');
+
+    const firstDevStart = launcher.indexOf('$Dev = Start-Process');
+    const firstDevRegistered = launcher.indexOf(
+      'Register-RecordedProcessRoot -Process $Dev -Records $DevRecords',
+      firstDevStart,
+    );
+    const firstEnvironmentRestore = launcher.indexOf(
+      'Restore-Environment -Saved $SavedEnvironment',
+      firstDevStart,
+    );
+    expect(firstDevRegistered).toBeGreaterThan(firstDevStart);
+    expect(firstDevRegistered).toBeLessThan(firstEnvironmentRestore);
+
+    const secondDevStart = launcher.indexOf('$Dev = Start-Process', firstDevStart + 1);
+    const secondDevRegistered = launcher.indexOf(
+      'Register-RecordedProcessRoot -Process $Dev -Records $DevRecords',
+      secondDevStart,
+    );
+    const secondEnvironmentRestore = launcher.indexOf(
+      'Restore-Environment -Saved $SavedEnvironment',
+      secondDevStart,
+    );
+    expect(secondDevStart).toBeGreaterThan(firstDevStart);
+    expect(secondDevRegistered).toBeGreaterThan(secondDevStart);
+    expect(secondDevRegistered).toBeLessThan(secondEnvironmentRestore);
+
+    const driverRoot = launcher.indexOf('$Driver = $DriverCapture.Process');
+    const driverRegistered = launcher.indexOf(
+      'Register-RecordedProcessRoot -Process $Driver -Records $DriverRecords',
+      driverRoot,
+    );
+    const driverPoll = launcher.indexOf('while (-not $Driver.HasExited)', driverRoot);
+    expect(driverRegistered).toBeGreaterThan(driverRoot);
+    expect(driverRegistered).toBeLessThan(driverPoll);
+  });
+
+  it('rejects a reused root identity and a child older than its verified parent', () => {
+    const script = `
+$scriptPath = Join-Path (Get-Location) 'scripts\\shared-intelligence-kernel-smoke.ps1'
+. $scriptPath -ValidateOnly | Out-Null
+$process = [Diagnostics.Process]::GetCurrentProcess()
+$startedUtc = $process.StartTime.ToUniversalTime()
+$executable = $process.MainModule.FileName
+$root = [pscustomobject]@{ ProcessId = $process.Id; ParentProcessId = 0; ExecutablePath = $executable; CreationUtc = $startedUtc.ToString('O') }
+$records = @{}
+Register-RecordedProcessRoot -Process $process -Records $records -Snapshot @($root)
+$reused = [pscustomobject]@{ ProcessId = $process.Id; ParentProcessId = 0; ExecutablePath = $executable; CreationUtc = $startedUtc.AddSeconds(1).ToString('O') }
+$recordCount = $records.Count
+[void](Add-RecordedProcessTree -RootPid $process.Id -Records $records -Snapshot @($reused))
+$rootCode = if ($records.Count -eq $recordCount) { 'kernel_smoke_process_root_identity_rejected' } else { 'unsafe_root_identity_accepted' }
+$staleChild = [pscustomobject]@{ ProcessId = 2147483000; ParentProcessId = $process.Id; ExecutablePath = $executable; CreationUtc = $startedUtc.AddSeconds(-1).ToString('O') }
+[void](Add-RecordedProcessTree -RootPid $process.Id -Records $records -Snapshot @($root, $staleChild))
+$childCode = if ($records.ContainsKey('2147483000')) { 'unsafe_ancestry_accepted' } else { 'kernel_smoke_process_ancestry_rejected' }
+Write-Output "$rootCode|$childCode"
+`;
+    const result = spawnSync(
+      'powershell.exe',
+      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script],
+      { cwd: root, encoding: 'utf8' },
+    );
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout.trim()).toBe(
+      'kernel_smoke_process_root_identity_rejected|kernel_smoke_process_ancestry_rejected',
+    );
+  }, 15_000);
+
+  it('retries stopping only exact recorded identities during the bounded exit wait', () => {
+    const waiter = launcher.slice(
+      launcher.indexOf('function Wait-ForRecordedProcessTreeExit'),
+      launcher.indexOf('function Wait-ForNativeDescendant'),
+    );
+    const remaining = waiter.indexOf('$remaining = @(Get-CimProcessSnapshot');
+    const identityCreation = waiter.indexOf(
+      '$_.CreationUtc -eq $recorded.CreationUtc',
+      remaining,
+    );
+    const identityPath = waiter.indexOf(
+      '(Test-PathEqual -Left $_.ExecutablePath -Right $recorded.ExecutablePath)',
+      identityCreation,
+    );
+    const deepestFirst = waiter.indexOf(
+      '$Records[[string]$_.ProcessId].Depth',
+      identityPath,
+    );
+    const retry = waiter.indexOf(
+      'Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue',
+      deepestFirst,
+    );
+    expect(remaining).toBeGreaterThan(0);
+    expect(identityCreation).toBeGreaterThan(remaining);
+    expect(identityPath).toBeGreaterThan(identityCreation);
+    expect(deepestFirst).toBeGreaterThan(identityPath);
+    expect(retry).toBeGreaterThan(deepestFirst);
+    expect(launcher).toContain('$ProcessTreeCleanupTimeoutSeconds = 60');
+    expect(
+      (launcher.match(/AddSeconds\(\$ProcessTreeCleanupTimeoutSeconds\)/g) ?? []).length,
+    ).toBe(3);
+  });
+
+  it('bounds every driver phase before fail-closed process cleanup', () => {
+    const driverLoop = launcher.slice(
+      launcher.indexOf('foreach ($scenario in $Scenarios)'),
+      launcher.indexOf('\nfinally {'),
+    );
+    expect(launcher).toContain('$DriverPhaseTimeoutMinutes');
+    expect(driverLoop).toContain(
+      '$driverDeadline = [DateTime]::UtcNow.AddMinutes($DriverPhaseTimeoutMinutes)',
+    );
+    expect(driverLoop).toContain('if ([DateTime]::UtcNow -ge $driverDeadline)');
+    expect(driverLoop).toContain(
+      'throw "kernel_smoke_driver_phase_timeout:${scenario}:phase${phase}"',
+    );
+  });
+
+  it('reports only a closed approval-presentation failure code before control timeout', () => {
+    expect(driver).toContain('APPROVAL_PRESENTATION_FAILURE_CODES');
+    expect(driver).toContain('data-presentation-state');
+    expect(driver).toContain('data-presentation-code');
+    expect(driver).toContain('kernel_smoke_approval_presentation_failed:');
+    expect(driver).toContain("await clickApprovalEvidence(page, 'approval.confirm')");
+    expect(driver).toContain("await clickApprovalEvidence(page, 'approval.confirm-dangerous')");
+  });
+
   it('uses hidden startup, strict disposable-profile containment, and all six driver arguments', () => {
     expect(launcher).toContain('-WindowStyle Hidden');
     expect(launcher).toContain('Test-StrictDescendantPath');
     expect(launcher).toContain('kernel_smoke_cleanup_containment_invalid');
+    expect(launcher).toContain("$smokeProject = Join-Path $Profile 'SmokeProject'");
+    expect(launcher).toContain('kernel_smoke_project_containment_invalid');
+    expect(launcher).toContain('New-Item -ItemType Directory -Path $smokeProject');
     for (const argument of [
       '--cdp-port',
       '--scenario',
@@ -140,6 +319,32 @@ describe('shared intelligence kernel smoke harness contract', () => {
       expect(launcher).toContain(`'${argument}'`);
       expect(driver).toContain(`'${argument}'`);
     }
+  });
+
+  it('allows only the plan-mandated Task 22 evidence subtree inside the repository', () => {
+    expect(launcher).toContain(
+      "$Task22EvidenceBase = Join-Path $RepositoryRoot '.superpowers\\sdd\\evidence\\task-22'",
+    );
+    expect(launcher).toContain(
+      '$task22EvidenceAllowed = Test-StrictDescendantPath -Child $expandedEvidence -Parent $Task22EvidenceBase',
+    );
+    expect(launcher).toContain(
+      '$canonicalTask22EvidenceAllowed = Test-StrictDescendantPath -Child $CanonicalEvidence -Parent $Task22EvidenceBase',
+    );
+    expect(launcher).toContain(
+      '(Test-StrictDescendantPath -Child $expandedEvidence -Parent $RepositoryRoot) -and',
+    );
+    expect(launcher).toContain('-not $task22EvidenceAllowed');
+    expect(launcher).toContain('-not $canonicalTask22EvidenceAllowed');
+    expect(driver).toContain(
+      "const TASK22_EVIDENCE_ROOT = path.join(REPOSITORY_ROOT, '.superpowers', 'sdd', 'evidence', 'task-22');",
+    );
+    expect(driver).toContain(
+      'const task22EvidenceAllowed = isStrictDescendant(evidenceDirectory, TASK22_EVIDENCE_ROOT);',
+    );
+    expect(driver).toContain(
+      'isStrictDescendant(evidenceDirectory, REPOSITORY_ROOT) && !task22EvidenceAllowed',
+    );
   });
 
   it('uses only the root Playwright dependency and closed evidence selectors', () => {
@@ -154,6 +359,16 @@ describe('shared intelligence kernel smoke harness contract', () => {
     expect(driver).toContain("await selectSmokeTransport(page, 'native')");
     expect(driver).toContain("'model.transport-native'");
     expect(driver).toContain("'model.transport-cli'");
+  });
+
+  it('preserves only allowlisted sanitized evidence when a native scenario fails', () => {
+    const main = driver.slice(driver.indexOf('async function main()'), driver.indexOf('main().catch'));
+    expect(main).toContain("`${options.scenario}.failure.json`");
+    expect(main).toContain("outcome: 'FAIL'");
+    expect(main).toContain('observed: await collectSanitizedEvidence(page)');
+    expect(main).toContain('await assertNoRawAudio(page, failureEvidence)');
+    expect(main).toContain("'kernel_smoke_driver_failed'");
+    expect(main).not.toMatch(/innerText|textContent/);
   });
 
   it('reports closed page and allowlisted selector timeouts without leaking Playwright errors', () => {
@@ -171,8 +386,23 @@ describe('shared intelligence kernel smoke harness contract', () => {
     expect(driver).toContain('kernel_smoke_transport_state_timeout');
     expect(driver).toContain('kernel_smoke_run_state_timeout');
     expect(driver).toContain('kernel_smoke_unexpected_run_status:');
+    expect(driver).toContain('async function readOptionalRuntimeFailureCode');
+    const runStatusHelper = driver.slice(
+      driver.indexOf('async function waitForRunStatus'),
+      driver.indexOf('function allZeroDurations'),
+    );
+    expect(runStatusHelper).toContain('readOptionalRuntimeFailureCode(page)');
+    expect(runStatusHelper).not.toContain("requireUniqueEvidence(page, 'smoke.runtime-state')");
+    expect(driver).toContain("getAttribute('data-error-code')");
+    expect(driver).toContain("getAttribute('data-initialization-phase')");
+    expect(driver).toContain("getAttribute('data-terminal-status')");
+    expect(driver).toContain('kernel_smoke_terminal_session_timeout:${lastPhase}');
+    expect(driver).toContain('async function waitForTerminalSettlement');
+    expect(driver).toContain('await waitForTerminalSettlement(terminalExecution)');
+    expect(driver).toContain('/^kernel_[a-z0-9_]{1,120}$/');
+    expect(driver).toContain('kernel_runtime_failure');
     expect(driver).toContain("lastStatus ?? 'invalid'");
-    expect(driver).toContain("safeRuntimeState");
+    expect(driver).toContain('safeRuntimeState');
     expect(driver).toContain('kernel_smoke_native_binding_rejected:');
     expect(driver).toContain("'sik_smoke_port_not_bound'");
     expect(driver).not.toMatch(/innerText|textContent/);
@@ -207,6 +437,99 @@ describe('shared intelligence kernel smoke harness contract', () => {
     expect(identityHelper).toContain('kernel_smoke_run_digest_invalid');
   });
 
+  it('attests that the Hive fixture reaches the protected provider before waiting on its run', () => {
+    const hiveScenario = driver.slice(
+      driver.indexOf("case 'hive_dispatch':"),
+      driver.indexOf('default:', driver.indexOf("case 'hive_dispatch':")),
+    );
+    const readiness = hiveScenario.indexOf("requireUniqueEvidence(page, 'chat.runtime-ready')");
+    const dispatchClick = hiveScenario.indexOf("clickEvidence(page, 'hive.dispatch')");
+    const protectedDispatch = hiveScenario.indexOf(
+      "waitForMatchingAttribute(hiveDispatch, 'data-dispatch-kind', /^protected$/)",
+    );
+    const runtimeDone = hiveScenario.indexOf("'data-runtime-state', ['done']");
+    const chatShell = hiveScenario.indexOf("requireUniqueEvidence(page, 'chat.run-shell')");
+    const visibleAssistant = hiveScenario.indexOf(
+      "waitForMatchingAttribute(hiveChatShell, 'data-sik-assistant-count', /^[1-9][0-9]*$/)",
+    );
+    const completed = hiveScenario.indexOf("waitForRunStatus(page, ['completed'])");
+    expect(readiness).toBeGreaterThan(0);
+    expect(dispatchClick).toBeGreaterThan(readiness);
+    expect(hiveScenario).toContain("requireUniqueEvidence(page, 'smoke.runtime-state')");
+    expect(hiveScenario).toContain("requireUniqueEvidence(page, 'smoke.dispatch-kind')");
+    expect(hiveScenario).toContain("getAttribute('data-initialization-phase')");
+    expect(hiveScenario).toContain(
+      "waitForMatchingAttribute(hiveDispatch, 'data-dispatch-kind', /^protected$/)",
+    );
+    expect(hiveScenario).not.toContain('kernel_smoke_hive_unprotected_provider_dispatch');
+    expect(protectedDispatch).toBeGreaterThan(dispatchClick);
+    expect(runtimeDone).toBeGreaterThan(protectedDispatch);
+    expect(chatShell).toBeGreaterThan(runtimeDone);
+    expect(visibleAssistant).toBeGreaterThan(chatShell);
+    expect(completed).toBeGreaterThan(visibleAssistant);
+  });
+
+  it('accepts only canonical cancellation or completion truth in the completion race', () => {
+    const helper = driver.slice(
+      driver.indexOf('async function requestCancellationOrObserveCompletion'),
+      driver.indexOf(
+        '\nasync function ',
+        driver.indexOf('async function requestCancellationOrObserveCompletion') + 1,
+      ),
+    );
+    expect(helper).toContain("requireUniqueEvidence(page, 'run.status')");
+    expect(helper).toContain("evidenceLocator(page, 'cancellation.delivery')");
+    expect(helper).toContain("['cancelled', 'completed'].includes(status)");
+    expect(helper).toContain("fail('kernel_smoke_evidence_ambiguous')");
+
+    const scenario = driver.slice(
+      driver.indexOf("case 'cancel_completion_race':"),
+      driver.indexOf("case 'transport_provider_success':"),
+    );
+    const submit = scenario.indexOf('submitChatFixture(page,');
+    const request = scenario.indexOf('requestCancellationOrObserveCompletion(page)');
+    const terminal = scenario.indexOf("waitForRunStatus(page, ['cancelled', 'completed'])");
+    expect(request).toBeGreaterThan(submit);
+    expect(terminal).toBeGreaterThan(request);
+    expect(scenario).not.toContain("clickEvidence(page, 'cancellation.delivery')");
+  });
+
+  it('waits for the complete scheduled zero-effect projection before snapshotting it', () => {
+    const scenario = driver.slice(
+      driver.indexOf("case 'schedule_transport_retry':"),
+      driver.indexOf("case 'provider_failure':"),
+    );
+    const expected = [
+      ['data-attempt-number', '1'],
+      ['data-attempt-state', 'retryable_failed'],
+      ['data-effect-barrier-state', 'open'],
+      ['data-effect-barrier-version', '0'],
+      ['data-response-started', 'false'],
+      ['data-chunk-count', '0'],
+      ['data-action-dispatch-count', '0'],
+      ['data-approval-count', '0'],
+      ['data-artifact-count', '0'],
+      ['data-executor-claim-count', '0'],
+    ] as const;
+    const snapshot = scenario.indexOf('const before = await readAttributes(status, [');
+    expect(snapshot).toBeGreaterThan(0);
+    expect(scenario).not.toContain("requireUniqueEvidence(page, 'run.error')");
+    expect(scenario).not.toContain("'data-run-status', ['failed']");
+    expect(scenario).toContain("waitForScheduleRunState(status, 'running', 'settled')");
+    expect(scenario).toContain("waitForScheduleRunState(status, 'running', 'restart')");
+    const waitLoop = scenario.indexOf('for (const [name, value] of Object.entries(expected))');
+    const attributeWait = scenario.indexOf(
+      '`kernel_smoke_schedule_zero_effect_timeout:${name}`',
+      waitLoop,
+    );
+    expect(waitLoop).toBeGreaterThan(0);
+    expect(attributeWait).toBeGreaterThan(waitLoop);
+    expect(attributeWait).toBeLessThan(snapshot);
+    for (const [attribute, value] of expected) {
+      expect(scenario).toContain(`'${attribute}': '${value}'`);
+    }
+  });
+
   it('waits for the protected voice turn to become cancellable before clicking stop', () => {
     const voiceScenario = driver.slice(
       driver.indexOf("case 'voice_turn_stop':"),
@@ -215,17 +538,18 @@ describe('shared intelligence kernel smoke harness contract', () => {
     const priorRunDigest = voiceScenario.indexOf(
       'const previousVoiceRunDigest = await readOptionalRunDigest(page)',
     );
+    const sessionEvidence = voiceScenario.indexOf(
+      "requireUniqueEvidence(page, 'voice.stt-state')",
+    );
+    const sessionBound = voiceScenario.indexOf(
+      "'kernel_smoke_voice_session_timeout'",
+    );
     const transcript = voiceScenario.indexOf("clickEvidence(page, 'voice.transcript')");
-    const newRunDigest = voiceScenario.indexOf(
-      'waitForNewRunDigest(page, previousVoiceRunDigest)',
-    );
+    const newRunDigest = voiceScenario.indexOf('waitForNewRunDigest(page, previousVoiceRunDigest)');
     const running = voiceScenario.indexOf("waitForRunStatus(page, ['running'])");
-    const voiceState = voiceScenario.indexOf(
-      "requireUniqueEvidence(page, 'voice.state')",
-      running,
-    );
+    const voiceState = voiceScenario.indexOf("requireUniqueEvidence(page, 'voice.state')", running);
     const cancellable = voiceScenario.indexOf(
-      "waitForAttribute(voiceState, 'data-voice-state', ['thinking', 'speaking'])",
+      "'kernel_smoke_voice_cancellable_timeout'",
     );
     const chatShell = voiceScenario.indexOf("requireUniqueEvidence(page, 'chat.run-shell')");
     const assistantBeforeStop = voiceScenario.indexOf(
@@ -233,10 +557,12 @@ describe('shared intelligence kernel smoke harness contract', () => {
     );
     const stop = voiceScenario.indexOf("clickEvidence(page, 'voice.stop')");
     const cancelled = voiceScenario.indexOf("waitForRunStatus(page, ['cancelled'])");
-    const terminalBefore = voiceScenario.indexOf('const beforeRuntimeSettled = await readAttributes');
+    const terminalBefore = voiceScenario.indexOf(
+      'const beforeRuntimeSettled = await readAttributes',
+    );
     const runtime = voiceScenario.indexOf("requireUniqueEvidence(page, 'smoke.runtime-state')");
     const runtimeCancelled = voiceScenario.indexOf(
-      "waitForAttribute(runtime, 'data-runtime-state', ['cancelled'])",
+      "'kernel_smoke_voice_runtime_cancel_timeout'",
     );
     const terminalAfter = voiceScenario.indexOf('const afterRuntimeSettled = await readAttributes');
     const noSuccess = voiceScenario.indexOf(
@@ -247,7 +573,9 @@ describe('shared intelligence kernel smoke harness contract', () => {
     );
 
     expect(priorRunDigest).toBeGreaterThan(0);
-    expect(transcript).toBeGreaterThan(priorRunDigest);
+    expect(sessionEvidence).toBeGreaterThan(priorRunDigest);
+    expect(sessionBound).toBeGreaterThan(sessionEvidence);
+    expect(transcript).toBeGreaterThan(sessionBound);
     expect(newRunDigest).toBeGreaterThan(transcript);
     expect(running).toBeGreaterThan(newRunDigest);
     expect(voiceState).toBeGreaterThan(running);
@@ -263,6 +591,214 @@ describe('shared intelligence kernel smoke harness contract', () => {
     expect(noSuccess).toBeGreaterThan(terminalAfter);
     expect(stableTerminal).toBeGreaterThan(noSuccess);
     expect(voiceScenario).not.toContain('setTimeout');
+  });
+
+  it('preserves terminal confirmation handoff truth and terminalizes the dangerous fixture', () => {
+    const confirm = driver.slice(
+      driver.indexOf("case 'approval_confirm':"),
+      driver.indexOf("case 'approval_dangerous':"),
+    );
+    const confirmSubmit = confirm.indexOf('submitChatFixture(page,');
+    const confirmAwaiting = confirm.indexOf("waitForRunStatus(page, ['awaiting_approval'])");
+    const confirmClick = confirm.indexOf("clickApprovalEvidence(page, 'approval.confirm')");
+    const queuedCard = confirm.indexOf('requireUniqueEvidenceState(');
+    const queuedCardCall = confirm.slice(queuedCard, confirm.indexOf(');', queuedCard) + 2);
+    const canonical = confirm.indexOf("'data-approval-kind', ['canonical']");
+    const running = confirm.indexOf("waitForRunStatus(page, ['running'])");
+
+    expect(confirmSubmit).toBeGreaterThan(0);
+    expect(confirmAwaiting).toBeGreaterThan(confirmSubmit);
+    expect(confirmClick).toBeGreaterThan(confirmAwaiting);
+    expect(queuedCard).toBeGreaterThan(confirmClick);
+    expect(queuedCardCall).toContain("'approval.card'");
+    expect(queuedCardCall).toContain("'data-status'");
+    expect(queuedCardCall).toContain("'queued'");
+    expect(canonical).toBeGreaterThan(queuedCard);
+    expect(running).toBeGreaterThan(canonical);
+    expect(confirm).not.toContain("waitForRunStatus(page, ['completed'])");
+
+    const dangerous = driver.slice(
+      driver.indexOf("case 'approval_dangerous':"),
+      driver.indexOf("case 'artifact_provider':"),
+    );
+    const dangerSubmit = dangerous.indexOf('submitChatFixture(page,');
+    const dangerAwaiting = dangerous.indexOf("waitForRunStatus(page, ['awaiting_approval'])");
+    const dangerClick = dangerous.indexOf(
+      "clickApprovalEvidence(page, 'approval.confirm-dangerous')",
+    );
+    const completed = dangerous.indexOf("waitForRunStatus(page, ['completed'])");
+    expect(dangerSubmit).toBeGreaterThan(0);
+    expect(dangerAwaiting).toBeGreaterThan(dangerSubmit);
+    expect(dangerClick).toBeGreaterThan(dangerAwaiting);
+    expect(completed).toBeGreaterThan(dangerClick);
+  });
+
+  it('opens the collapsed Command Center before selecting Outputs in every artifact row', () => {
+    const normalizer = driver.slice(
+      driver.indexOf('async function prepareCollapsedCommandCenter(page)'),
+      driver.indexOf('\nasync function ', driver.indexOf('async function prepareCollapsedCommandCenter(page)') + 1),
+    );
+    expect(normalizer).toContain("requireUniqueEvidence(page, 'command-center.disclosure')");
+    expect(normalizer).toContain("getAttribute('aria-expanded')");
+    expect(normalizer).toContain("fail('kernel_smoke_command_center_expansion_invalid')");
+    expect(normalizer).toContain("waitForAttribute(disclosure, 'aria-expanded', ['false'])");
+
+    const artifactCases = [
+      ['artifact_provider', 'artifact_file_action'],
+      ['artifact_file_action', 'artifact_terminal'],
+      ['artifact_terminal', 'schedule_transport_retry'],
+    ] as const;
+
+    for (const [current, next] of artifactCases) {
+      const scenario = driver.slice(
+        driver.indexOf(`case '${current}':`),
+        driver.indexOf(`case '${next}':`),
+      );
+      const normalize = scenario.indexOf('prepareCollapsedCommandCenter(page)');
+      const submit = scenario.indexOf('submitChatFixture(page,');
+      const disclosure = scenario.indexOf(
+        "clickEvidence(page, 'command-center.disclosure')",
+      );
+      const outputs = scenario.indexOf("clickEvidence(page, 'outputs.tab')");
+      expect(submit).toBeGreaterThan(-1);
+      expect(normalize).toBeGreaterThan(submit);
+      expect(disclosure).toBeGreaterThan(normalize);
+      expect(outputs).toBeGreaterThan(disclosure);
+    }
+
+    const terminal = driver.slice(
+      driver.indexOf("case 'artifact_terminal':"),
+      driver.indexOf("case 'schedule_transport_retry':"),
+    );
+    const awaitingApproval = terminal.indexOf("waitForRunStatus(page, ['awaiting_approval'])");
+    const dangerousApproval = terminal.indexOf(
+      "clickApprovalEvidence(page, 'approval.confirm-dangerous')",
+    );
+    const terminalAttach = terminal.indexOf("requireUniqueEvidence(page, 'terminal.execution')");
+    const chatReturn = terminal.indexOf("clickEvidence(page, 'chat.return')");
+    const terminalDisclosure = terminal.indexOf(
+      "clickEvidence(page, 'command-center.disclosure')",
+    );
+    expect(awaitingApproval).toBeGreaterThan(terminal.indexOf('submitChatFixture(page,'));
+    expect(dangerousApproval).toBeGreaterThan(awaitingApproval);
+    expect(terminalAttach).toBeGreaterThan(dangerousApproval);
+    expect(chatReturn).toBeGreaterThan(terminalAttach);
+    expect(terminalDisclosure).toBeGreaterThan(chatReturn);
+    expect(tabStrip).toContain(
+      'data-sik-evidence={KERNEL_SMOKE_ENABLED && active ? SIK_CONTROL.chatReturn : undefined}',
+    );
+
+    for (const [current, next, status] of [
+      ['live_evidence_restart', 'command_center_reduced_motion', 'completed'],
+      ['command_center_reduced_motion', 'cancel_before_claim', 'completed'],
+    ] as const) {
+      const scenario = driver.slice(
+        driver.indexOf(`case '${current}':`),
+        driver.indexOf(`case '${next}':`),
+      );
+      const submit = scenario.indexOf('submitChatFixture(page,');
+      const completed = scenario.indexOf(`waitForRunStatus(page, ['${status}'])`);
+      const normalize = scenario.indexOf('prepareCollapsedCommandCenter(page)');
+      expect(completed).toBeGreaterThan(submit);
+      expect(normalize).toBeGreaterThan(completed);
+    }
+  });
+
+  it('reads reconstructed live evidence through the account-bound host without widening Command Center run scope', () => {
+    expect(app).toContain('function KernelSmokeReconstructedLiveEvidenceHost');
+    expect(app).toContain('binding.dataPort.getLiveEvidenceSnapshot({ accountId, runId: run.id })');
+    expect(app).toContain('data-sik-evidence="live.reconstructed-node"');
+    expect(driver).toContain("liveNodeEvidence(page, 'live.reconstructed-node')");
+    expect(driver).toContain('waitForReconstructedLiveNodeEvidence(');
+    expect(driver).toContain('completedProofs,\n          orphanProofs,');
+  });
+
+  it('requires exact terminal live-proof restoration without blanks, duplicates, or orphan activity', () => {
+    const helper = driver.slice(
+      driver.indexOf('const LIVE_PROOF_REF_PATTERN'),
+      driver.indexOf('async function runScenario'),
+    );
+    expect(helper).toContain('/^jlive_[a-f0-9]{64}$/');
+    expect(helper).toContain("['completed', 'degraded'].includes(state)");
+    expect(helper).toContain('kernel_smoke_live_proof_ref_invalid');
+    expect(helper).toContain('kernel_smoke_live_proof_duplicate');
+    expect(helper).toContain('kernel_smoke_live_completed_proof_not_restored');
+    expect(helper).toContain('kernel_smoke_live_orphan_active_restored');
+    expect(helper).toContain('for (const proofRef of completedProofs)');
+    expect(helper).toContain('observedProofs.size !== completedProofs.size');
+    expect(helper).toContain('kernel_smoke_live_unexpected_terminal_proof_restored');
+
+    const restart = driver.slice(
+      driver.indexOf("case 'live_evidence_restart':"),
+      driver.indexOf("case 'command_center_reduced_motion':"),
+    );
+    expect((restart.match(/validateExpectedLiveNodes\(/g) ?? []).length).toBe(4);
+    expect(restart).toContain('completedNodes,');
+    expect(restart).toContain('activeNodes,');
+    expect(restart).toContain('assertExactReconstructedLiveNodeEvidence(');
+  });
+
+  it('attests zero motion across the full Command Center subtree and pseudo-elements', () => {
+    const helper = driver.slice(
+      driver.indexOf('async function reducedMotionEvidence'),
+      driver.indexOf('async function readAttributes'),
+    );
+    expect(helper).toContain("selector: '*'");
+    expect(helper).toContain("session.send('DOM.querySelectorAll'");
+    expect(helper).toContain("session.send('DOM.describeNode'");
+    expect(helper).toContain('pseudoElements');
+    expect(helper).toContain('for (const nodeId of checkedNodeIds)');
+    expect(helper).toContain('checkedNodeCount');
+    expect(helper).toContain('pseudoElementCount');
+    expect(helper).toContain('zeroMotion: true');
+  });
+
+  it('reports closed terminal-artifact stage codes without exposing Playwright errors', () => {
+    const helper = driver.slice(
+      driver.indexOf('async function runClosedStage(code, operation)'),
+      driver.indexOf('\nasync function ', driver.indexOf('async function runClosedStage(code, operation)') + 1),
+    );
+    expect(helper).toContain("fail('kernel_smoke_driver_stage_invalid')");
+    expect(helper).toContain('if (typeof error?.code === \'string\') throw error');
+    expect(helper).toContain('fail(code)');
+
+    const terminal = driver.slice(
+      driver.indexOf("case 'artifact_terminal':"),
+      driver.indexOf("case 'schedule_transport_retry':"),
+    );
+    for (const code of [
+      'kernel_smoke_artifact_terminal_submit_failed',
+      'kernel_smoke_artifact_terminal_approval_wait_failed',
+      'kernel_smoke_artifact_terminal_approval_click_failed',
+      'kernel_smoke_artifact_terminal_attach_wait_failed',
+      'kernel_smoke_artifact_terminal_chat_return_failed',
+      'kernel_smoke_artifact_terminal_disclosure_prepare_failed',
+      'kernel_smoke_artifact_terminal_disclosure_click_failed',
+      'kernel_smoke_artifact_terminal_outputs_click_failed',
+      'kernel_smoke_artifact_terminal_completion_wait_failed',
+    ]) {
+      expect(terminal).toContain(`runClosedStage('${code}'`);
+    }
+  });
+
+  it('requires safe-auto canonical completion before accepting its settled card', () => {
+    const scenario = driver.slice(
+      driver.indexOf("case 'approval_safe_auto':"),
+      driver.indexOf("case 'approval_confirm':"),
+    );
+    const submit = scenario.indexOf('submitChatFixture');
+    const card = scenario.indexOf("requireUniqueEvidence(page, 'approval.card')");
+    const canonical = scenario.indexOf("'data-approval-kind', ['canonical']");
+    const settled = scenario.indexOf("'data-status', ['success']");
+    const completed = scenario.indexOf("waitForRunStatus(page, ['completed'])");
+
+    expect(submit).toBeGreaterThan(-1);
+    expect(completed).toBeGreaterThan(submit);
+    expect(card).toBeGreaterThan(completed);
+    expect(canonical).toBeGreaterThan(card);
+    expect(settled).toBeGreaterThan(canonical);
+    expect(scenario).not.toContain("'data-approval-kind', ['legacy']");
+    expect(scenario).not.toContain("'data-status', ['pending']");
   });
 
   it('fails closed when the driver is invoked directly without its attested arguments', () => {

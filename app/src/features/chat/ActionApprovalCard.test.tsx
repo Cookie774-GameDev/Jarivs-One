@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Part } from '@/types/chat';
 import { useAuthStore } from '@/stores/auth';
@@ -14,6 +14,7 @@ vi.mock('@/lib/actions', () => ({
 }));
 vi.mock('@/lib/jarvis/smoke/config', () => ({ isKernelSmokeEnabled: () => true }));
 const kernelClient = vi.hoisted(() => ({
+  getApprovalPresentation: vi.fn(),
   decideApproval: vi.fn(),
   executeApproval: vi.fn(),
   dispose: vi.fn(),
@@ -54,6 +55,11 @@ function renderCard(
 }
 
 describe('ActionApprovalCard canonical adapter', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useAuthStore.setState({ localUserId: 'account-smoke', cloudSession: null });
+  });
+
   it('renders historical cards as view-only without raw params or execution controls', () => {
     const { container } = renderCard(part('jarvisrun:legacy:step'));
 
@@ -81,8 +87,7 @@ describe('ActionApprovalCard canonical adapter', () => {
     expect(container.querySelectorAll('[data-sik-evidence="approval.card"]')).toHaveLength(1);
   });
 
-  it('routes the smoke confirmation through the canonical kernel client', async () => {
-    useAuthStore.setState({ localUserId: 'account-smoke', cloudSession: null });
+  it('routes production confirmation through the canonical kernel client and projects readback', async () => {
     kernelClient.decideApproval.mockResolvedValueOnce({
       kind: 'approval_decided',
       approvalId: 'jappr_1',
@@ -94,7 +99,7 @@ describe('ActionApprovalCard canonical adapter', () => {
       runId: 'jrun_1',
       status: 'running',
     });
-    renderCard(part('jarvisapproval:jappr_1'), {
+    const { container } = renderCard(part('jarvisapproval:jappr_1'), {
       actionId: 'terminal.create',
       expectedEffect: 'Create one fixed terminal.',
       risk: 'confirm',
@@ -113,7 +118,82 @@ describe('ActionApprovalCard canonical adapter', () => {
       accountId: 'account-smoke',
       approvalId: 'jappr_1',
     });
+    await waitFor(() =>
+      expect(container.firstElementChild?.getAttribute('data-status')).toBe('running'),
+    );
     expect(kernelClient.dispose).toHaveBeenCalledOnce();
+  });
+
+  it('loads the bounded canonical presentation before exposing production controls', async () => {
+    kernelClient.getApprovalPresentation.mockResolvedValueOnce({
+      version: 1,
+      kind: 'approval_presentation',
+      approvalId: 'jappr_1',
+      actionId: 'terminal.create',
+      expectedEffect: 'Create one protected terminal.',
+      risk: 'confirm',
+      parameters: [{ field: 'token', safeValue: '[redacted]' }],
+    });
+
+    renderCard(part('jarvisapproval:jappr_1'));
+
+    expect(screen.queryByRole('button', { name: 'Approve fixed action' })).toBeNull();
+    await waitFor(() => expect(screen.getByText('Create one protected terminal.')).toBeTruthy());
+    expect(screen.getByText('[redacted]')).toBeTruthy();
+    expect(screen.queryByText('raw-secret-command')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Approve fixed action' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Deny action' })).toBeTruthy();
+    expect(kernelClient.getApprovalPresentation).toHaveBeenCalledWith({
+      accountId: 'account-smoke',
+      approvalId: 'jappr_1',
+    });
+  });
+
+  it('exposes only the bounded smoke failure reason when presentation readback fails', async () => {
+    kernelClient.getApprovalPresentation.mockResolvedValueOnce({
+      version: 1,
+      kind: 'unavailable',
+      requestKind: 'approval_present',
+      reason: 'request_timed_out',
+    });
+
+    const { container } = renderCard(part('jarvisapproval:jappr_1'));
+
+    await waitFor(() =>
+      expect(container.firstElementChild?.getAttribute('data-presentation-state')).toBe('failed'),
+    );
+    expect(container.firstElementChild?.getAttribute('data-presentation-code')).toBe(
+      'request_timed_out',
+    );
+    expect(container.innerHTML).not.toContain('raw-secret-command');
+    expect(container.innerHTML).not.toContain('Error:');
+  });
+
+  it('denies through canonical readback without executing and projects cancellation', async () => {
+    kernelClient.decideApproval.mockResolvedValueOnce({
+      version: 1,
+      kind: 'approval_decided',
+      approvalId: 'jappr_1',
+      status: 'denied',
+    });
+    const { container } = renderCard(part('jarvisapproval:jappr_1'), {
+      actionId: 'terminal.create',
+      expectedEffect: 'Create one protected terminal.',
+      risk: 'confirm',
+      parameters: [],
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Deny action' }));
+
+    await waitFor(() =>
+      expect(container.firstElementChild?.getAttribute('data-status')).toBe('cancelled'),
+    );
+    expect(kernelClient.decideApproval).toHaveBeenCalledWith({
+      accountId: 'account-smoke',
+      approvalId: 'jappr_1',
+      decision: 'deny',
+    });
+    expect(kernelClient.executeApproval).not.toHaveBeenCalled();
   });
 
   it('uses canonical decide readback before execution and preserves handoff truth', async () => {

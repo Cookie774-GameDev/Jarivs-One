@@ -4,6 +4,7 @@ import { Bot, ChevronDown, ChevronUp, Mic, UserRound, X } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 import { useUIStore } from '@/stores/ui';
 import { useAuthStore } from '@/stores/auth';
+import { useAgentStore } from '@/stores/agents';
 import { cn } from '@/lib/utils';
 import { resolveAccountIdentity } from '@/lib/accountIdentity';
 import { messageRepo } from '@/lib/db';
@@ -274,6 +275,8 @@ export function VoiceModal() {
   const setOpen = useUIStore((state) => state.setVoiceModalOpen);
   const localUserId = useAuthStore((state) => state.localUserId);
   const cloudAccountId = useAuthStore((state) => state.cloudSession?.user_id ?? null);
+  const workspaceId = useAuthStore((state) => state.workspaceId);
+  const agentRoster = useAgentStore((state) => state.agents);
   const voiceAutoListenOnOpen = useAuthStore((state) => state.voiceAutoListenOnOpen);
   const voiceEndTrigger = useAuthStore((state) => state.voiceEndTrigger);
   const voiceCommitPhrase = useAuthStore((state) => state.voiceCommitPhrase);
@@ -477,7 +480,7 @@ export function VoiceModal() {
     });
 
     return () => void (disposed = true);
-  }, [cloudAccountId, localUserId, open]);
+  }, [agentRoster, cloudAccountId, localUserId, open, workspaceId]);
 
   React.useEffect(() => {
     if (!open) return;

@@ -76,6 +76,18 @@ export interface JarvisScheduleRunResult {
   checked: number;
 }
 
+export type JarvisScheduleRunnerStage =
+  | 'claimed'
+  | 'output_chat'
+  | 'kernel_dispatch'
+  | 'settling'
+  | 'completed'
+  | 'failed';
+
+export interface JarvisScheduleRunnerOptions {
+  onStage?: (stage: JarvisScheduleRunnerStage) => void;
+}
+
 /** In-memory claim of account-scoped concrete occurrences. */
 const claimedRuns = new Set<string>();
 
@@ -257,6 +269,7 @@ export async function runDueJarvisSchedules(
   accountId: string,
   workspaceId: WorkspaceId,
   deps: JarvisScheduleRunnerDeps = defaultDeps(),
+  options: JarvisScheduleRunnerOptions = {},
 ): Promise<JarvisScheduleRunResult> {
   const result: JarvisScheduleRunResult = { ran: [], missed: [], checked: 0 };
   const now = deps.now();
@@ -278,6 +291,7 @@ export async function runDueJarvisSchedules(
     if (dueAt > now) continue;
     const claimKey = `${accountId}:${event.id}:${dueAt}`;
     if (!claimRun(claimKey)) continue;
+    options.onStage?.('claimed');
 
     const nextRunAt = computeNextJarvisRunAt(event, Math.max(dueAt, now));
     if (now - dueAt > JARVIS_SCHEDULE_CATCH_UP_MS) {
@@ -306,7 +320,9 @@ export async function runDueJarvisSchedules(
 
     let dispatchMetadata = parsedMetadata;
     try {
+      options.onStage?.('output_chat');
       dispatchMetadata = await ensureOutputChat(event, parsedMetadata, deps);
+      options.onStage?.('kernel_dispatch');
       const outcome = await deps.dispatchScheduledOccurrence({
         accountId,
         eventId: String(event.id),
@@ -326,6 +342,7 @@ export async function runDueJarvisSchedules(
       }
 
       const runHistoryEntry = historyEntryForOutcome(outcome, now);
+      options.onStage?.('settling');
       const ranMetadata: JarvisScheduleMetadata = {
         ...dispatchMetadata,
         lastRunAt: now,
@@ -340,7 +357,9 @@ export async function runDueJarvisSchedules(
         ...(nextRunAt === null ? { status: 'done' as const } : {}),
       });
       result.ran.push(String(event.id));
+      options.onStage?.('completed');
     } catch (error) {
+      options.onStage?.('failed');
       await recordRetryableRunnerFailure(
         event,
         dispatchMetadata,

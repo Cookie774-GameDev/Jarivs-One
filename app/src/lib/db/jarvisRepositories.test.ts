@@ -1228,6 +1228,11 @@ describe('transport-attempt and effect-barrier repository CAS', () => {
       zeroEffectEvidence: proof,
       updatedAt: NOW + 3,
     });
+    const revalidatedProof = {
+      ...proof,
+      assessedAt: NOW + 4,
+      executorClaims: { count: 0 as const, throughSeq: 2, evidenceRef: 'claims-refreshed' },
+    };
 
     const result = await repositories.run.compareAndMutateTransportAttempt({
       kind: 'begin_retry',
@@ -1238,7 +1243,7 @@ describe('transport-attempt and effect-barrier repository CAS', () => {
       expectedLatestAttemptNumber: 1,
       expectedBarrierVersion: 0,
       expectedEventTailSeq: 2,
-      revalidatedEvidence: proof,
+      revalidatedEvidence: revalidatedProof,
       attempt: transportAttemptFixture({
         attemptNumber: 2,
         kind: 'transport_retry',
@@ -2600,6 +2605,11 @@ describe('Task 18 transport-attempt CAS', () => {
       zeroEffectEvidence: evidence,
       updatedAt: NOW + 3,
     });
+    const revalidatedEvidence = {
+      ...evidence,
+      assessedAt: NOW + 4,
+      executorClaims: { count: 0 as const, throughSeq: 2, evidenceRef: 'claims-refreshed' },
+    };
     const retry = await repositories.run.compareAndMutateTransportAttempt({
       kind: 'begin_retry',
       accountId: 'account-alpha',
@@ -2609,7 +2619,7 @@ describe('Task 18 transport-attempt CAS', () => {
       expectedLatestAttemptNumber: 1,
       expectedBarrierVersion: 0,
       expectedEventTailSeq: 2,
-      revalidatedEvidence: evidence,
+      revalidatedEvidence,
       attempt: transportAttemptFixture({
         attemptNumber: 2,
         kind: 'transport_retry',

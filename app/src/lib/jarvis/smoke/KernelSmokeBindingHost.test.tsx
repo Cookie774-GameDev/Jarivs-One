@@ -18,6 +18,19 @@ vi.mock('@/lib/ai/providers/kernelSmoke', () => ({
   getKernelSmokeDispatchPath: () => providerBinding.dispatchPath,
   subscribeKernelSmokeDispatchPath: providerBinding.subscribeDispatchPath,
   KERNEL_SMOKE_PROVIDER_ID: 'vibespace-kernel-smoke',
+  KERNEL_SMOKE_RUNTIME_STAGE_EVENT: 'vibespace:kernel-smoke-runtime-stage',
+  KERNEL_SMOKE_RUNTIME_STAGES: Object.freeze([
+    'accepted',
+    'chat',
+    'validated',
+    'agent',
+    'context',
+    'execution',
+    'hive_turn',
+    'hive_plan',
+    'hive_workers',
+    'hive_final',
+  ]),
 }));
 
 import { KernelSmokeBindingHost } from './KernelSmokeBindingHost';
@@ -36,7 +49,7 @@ describe('KernelSmokeBindingHost', () => {
     providerBinding.clear.mockReset();
     providerBinding.dispatchPath = undefined;
     providerBinding.subscribeDispatchPath.mockClear();
-    useAuthStore.setState({ chatModelSelection: { mode: 'none' } });
+    useAuthStore.setState({ projectId: null, chatModelSelection: { mode: 'none' } });
   });
 
   afterEach(() => cleanup());
@@ -69,6 +82,9 @@ describe('KernelSmokeBindingHost', () => {
     expect(node?.getAttribute('data-nonce')).toBe(validBinding.nonce);
     expect(node?.outerHTML).not.toContain(validBinding.canonicalProfile);
     expect(node?.textContent).not.toContain(validBinding.canonicalProfile);
+    expect(localStorage.getItem('jarvis-files-root-v2:__default__')).toBe(
+      `${validBinding.canonicalProfile}\\SmokeProject`,
+    );
     expect(providerBinding.activate).toHaveBeenCalledWith({
       nativePid: 4242,
       cdpPort: 39817,
@@ -127,6 +143,78 @@ describe('KernelSmokeBindingHost', () => {
     expect(document.body.innerHTML).not.toContain('PRIVATE');
   });
 
+  it('projects only an allowlisted protected-runtime stage', async () => {
+    render(<KernelSmokeBindingHost devBuild explicitFlag="1" />);
+    await waitFor(() => expect(providerBinding.activate).toHaveBeenCalledOnce());
+
+    window.dispatchEvent(
+      new CustomEvent('vibespace:kernel-smoke-runtime-stage', {
+        detail: { stage: 'hive_workers', privateDetail: 'PRIVATE' },
+      }),
+    );
+    // Runtime listeners may be registered before this host's send observer.
+    // A later send observation must not erase a stage emitted by the same dispatch.
+    window.dispatchEvent(new CustomEvent('jarvis:send'));
+    await waitFor(() =>
+      expect(
+        document
+          .querySelector('[data-sik-evidence="smoke.runtime-state"]')
+          ?.getAttribute('data-initialization-phase'),
+      ).toBe('hive_workers'),
+    );
+
+    window.dispatchEvent(
+      new CustomEvent('vibespace:kernel-smoke-runtime-stage', {
+        detail: { stage: 'PRIVATE C:\\secret' },
+      }),
+    );
+    await act(async () => undefined);
+    expect(
+      document
+        .querySelector('[data-sik-evidence="smoke.runtime-state"]')
+        ?.getAttribute('data-initialization-phase'),
+    ).toBe('hive_workers');
+    expect(document.body.innerHTML).not.toContain('PRIVATE');
+  });
+
+  it('projects only a bounded kernel error code on the gated runtime evidence', async () => {
+    render(<KernelSmokeBindingHost devBuild explicitFlag="1" />);
+    await waitFor(() => expect(providerBinding.activate).toHaveBeenCalledOnce());
+
+    window.dispatchEvent(
+      new CustomEvent('jarvis:run-state', {
+        detail: {
+          status: 'error',
+          errorCode: 'kernel_safe_action_result_scope_mismatch',
+          privateDetail: 'PRIVATE provider output',
+        },
+      }),
+    );
+
+    await waitFor(() =>
+      expect(
+        document
+          .querySelector('[data-sik-evidence="smoke.runtime-state"]')
+          ?.getAttribute('data-error-code'),
+      ).toBe('kernel_safe_action_result_scope_mismatch'),
+    );
+    expect(document.body.innerHTML).not.toContain('PRIVATE');
+
+    window.dispatchEvent(
+      new CustomEvent('jarvis:run-state', {
+        detail: { status: 'error', errorCode: 'PRIVATE C:\\secret\\token.txt' },
+      }),
+    );
+    await waitFor(() =>
+      expect(
+        document
+          .querySelector('[data-sik-evidence="smoke.runtime-state"]')
+          ?.getAttribute('data-error-code'),
+      ).toBe('kernel_runtime_failure'),
+    );
+    expect(document.body.innerHTML).not.toContain('secret');
+  });
+
   it('exposes only an allowlisted native rejection code in the isolated smoke DOM', async () => {
     invoke.mockRejectedValue(new Error('sik_smoke_port_not_bound'));
 
@@ -176,11 +264,37 @@ describe('KernelSmokeBindingHost', () => {
   });
 
   it('clears trusted availability when the host unmounts', async () => {
+    localStorage.setItem('jarvis-files-root-v2:__default__', 'C:\\prior-project');
     const view = render(<KernelSmokeBindingHost devBuild explicitFlag="1" />);
     await waitFor(() => expect(providerBinding.activate).toHaveBeenCalledOnce());
+    expect(localStorage.getItem('jarvis-files-root-v2:__default__')).toBe(
+      `${validBinding.canonicalProfile}\\SmokeProject`,
+    );
     providerBinding.clear.mockClear();
 
     view.unmount();
     expect(providerBinding.clear).toHaveBeenCalledOnce();
+    expect(localStorage.getItem('jarvis-files-root-v2:__default__')).toBe('C:\\prior-project');
+  });
+
+  it('moves the isolated root when project hydration changes the active project', async () => {
+    localStorage.setItem('jarvis-files-root-v2:__default__', 'C:\\prior-default');
+    localStorage.setItem('jarvis-files-root-v2:project-hydrated', 'C:\\prior-hydrated');
+    const view = render(<KernelSmokeBindingHost devBuild explicitFlag="1" />);
+    await waitFor(() => expect(providerBinding.activate).toHaveBeenCalledOnce());
+
+    act(() => useAuthStore.setState({ projectId: 'project-hydrated' as never }));
+
+    await waitFor(() =>
+      expect(localStorage.getItem('jarvis-files-root-v2:project-hydrated')).toBe(
+        `${validBinding.canonicalProfile}\\SmokeProject`,
+      ),
+    );
+    expect(localStorage.getItem('jarvis-files-root-v2:__default__')).toBe('C:\\prior-default');
+
+    view.unmount();
+    expect(localStorage.getItem('jarvis-files-root-v2:project-hydrated')).toBe(
+      'C:\\prior-hydrated',
+    );
   });
 });

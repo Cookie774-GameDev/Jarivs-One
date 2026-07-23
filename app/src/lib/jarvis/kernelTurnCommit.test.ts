@@ -114,6 +114,22 @@ function assistantMessage(): Message {
   };
 }
 
+function actionMessage(status: 'pending' | 'success' | 'error' = 'pending'): Message {
+  return {
+    ...assistantMessage(),
+    parts: [
+      { kind: 'text', text: 'Canonical action response.' },
+      {
+        kind: 'action_proposal',
+        call_id: 'jarvisapproval:jappr_action-ready',
+        action_id: 'terminal.create',
+        params: {},
+        status,
+      },
+    ],
+  };
+}
+
 function artifact(overrides: Partial<JarvisArtifactV1> = {}): JarvisArtifactV1 {
   const value: JarvisArtifactV1 = {
     schemaVersion: 1,
@@ -375,6 +391,95 @@ describe('createKernelTurnCommit', () => {
     expect(await db.messages.count()).toBe(1);
     expect(await db.jarvis_artifacts.count()).toBe(1);
     expect(await db.sync_queue.count()).toBe(2);
+  });
+
+  it('persists an approval checkpoint and terminalizes only after canonical action evidence', async () => {
+    await seed({
+      source: 'typed_chat',
+      status: 'awaiting_approval',
+      transportAttempts: [],
+      updatedAt: NOW + 5,
+    });
+    const state = harness();
+    const ready = await state.commit.commitActionResponseReady({
+      accountId: 'account-kernel',
+      runId: 'run-kernel',
+      requestId: 'request-kernel',
+      attemptNumber: 1,
+      approvalId: 'jappr_action-ready',
+      accountBinding: state.value,
+      assistantMessage: actionMessage(),
+      artifacts: [],
+      providerResultSource: providerResultSource(),
+      createdAt: NOW + 10,
+    });
+
+    expect(ready).toMatchObject({
+      committed: true,
+      run: { status: 'awaiting_approval' },
+      event: { type: 'message', status: 'approval_required' },
+      message: { parts: [expect.anything(), expect.objectContaining({ status: 'pending' })] },
+    });
+    const awaiting = fromJarvisRunRow((await db.jarvis_runs.get('run-kernel'))!);
+    await db.jarvis_runs.put(
+      toJarvisRunRow({ ...awaiting, status: 'running', updatedAt: NOW + 11 }),
+    );
+
+    const handedOff = await (
+      state.commit as typeof state.commit & {
+        finalizeActionResponse(input: Record<string, unknown>): Promise<unknown>;
+      }
+    ).finalizeActionResponse({
+      accountId: 'account-kernel',
+      runId: 'run-kernel',
+      requestId: 'request-kernel',
+      attemptNumber: 1,
+      approvalId: 'jappr_action-ready',
+      messageId: 'message-kernel',
+      accountBinding: state.value,
+      outcome: 'handoff',
+      resultRef: 'jhandoff_action-ready',
+      completedAt: NOW + 12,
+    });
+
+    expect(handedOff).toMatchObject({
+      committed: true,
+      run: { status: 'running' },
+      event: { type: 'tool', status: 'handoff_pending' },
+      message: { parts: [expect.anything(), expect.objectContaining({ status: 'queued' })] },
+    });
+    expect(handedOff).not.toHaveProperty('run.completedAt');
+
+    const finalized = await state.commit.finalizeActionResponse({
+      accountId: 'account-kernel',
+      runId: 'run-kernel',
+      requestId: 'request-kernel',
+      attemptNumber: 1,
+      approvalId: 'jappr_action-ready',
+      messageId: 'message-kernel',
+      accountBinding: state.value,
+      outcome: 'completed',
+      resultRef: 'jresult_action-ready',
+      completedAt: NOW + 13,
+    });
+
+    expect(finalized).toMatchObject({
+      committed: true,
+      run: { status: 'completed', completedAt: NOW + 13 },
+      message: { parts: [expect.anything(), expect.objectContaining({ status: 'success' })] },
+    });
+    expect(fromJarvisRunRow((await db.jarvis_runs.get('run-kernel'))!).status).toBe('completed');
+    expect((await db.messages.get('message-kernel' as MessageId))?.parts).toEqual(
+      expect.arrayContaining([expect.objectContaining({ status: 'success' })]),
+    );
+    const queued = await db.sync_queue.toArray();
+    expect(queued).toHaveLength(2);
+    expect(queued).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ table: 'messages', op: 'insert' }),
+        expect.objectContaining({ table: 'chats', op: 'update' }),
+      ]),
+    );
   });
 
   it('fails a voice response-ready attempt mismatch before artifact consumption or writes', async () => {

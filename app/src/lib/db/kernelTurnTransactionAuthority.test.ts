@@ -6,6 +6,7 @@ import { createJarvisDb, type JarvisDexie } from './index';
 import {
   KernelTurnTransactionConfigurationError,
   createKernelTurnTransactionAuthority,
+  enqueueLocalSyncInTransaction,
 } from './kernelTurnTransactionAuthority';
 
 describe('createKernelTurnTransactionAuthority', () => {
@@ -53,6 +54,49 @@ describe('createKernelTurnTransactionAuthority', () => {
     expect(result).toEqual({ kind: 'committed', value: 'committed-value' });
   });
 
+  it('enqueues a canonical message update without widening the sync payload union', async () => {
+    const authority = createKernelTurnTransactionAuthority(db);
+    const message = {
+      id: 'msg_kernel_update',
+      chat_id: 'chat_kernel_update',
+      role: 'assistant',
+      parts: [{ kind: 'text', text: 'approval settled' }],
+      created_at: 1,
+      updated_at: 2,
+    } as Message;
+    const ownerSnapshot = Object.freeze({ state: 'unbound' as const, capturedAt: 2 });
+
+    await authority.transaction(
+      [
+        'messages',
+        'chats',
+        'sync_queue',
+        'settings',
+        'jarvis_runs',
+        'jarvis_events',
+        'jarvis_artifacts',
+      ],
+      new AbortController().signal,
+      (context) =>
+        enqueueLocalSyncInTransaction(context, {
+          op: 'update',
+          table: 'messages',
+          row: message,
+          createdAt: 2,
+          ownerSnapshot,
+        }),
+    );
+
+    await expect(db.sync_queue.toArray()).resolves.toEqual([
+      expect.objectContaining({
+        op: 'update',
+        table: 'messages',
+        row_id: message.id,
+        payload: message,
+      }),
+    ]);
+  });
+
   it.each([
     {
       method: 'transaction' as const,
@@ -74,11 +118,7 @@ describe('createKernelTurnTransactionAuthority', () => {
     const body = vi.fn();
 
     await expect(
-      authority[example.method](
-        example.tables,
-        new AbortController().signal,
-        body as never,
-      ),
+      authority[example.method](example.tables, new AbortController().signal, body as never),
     ).rejects.toEqual(
       expect.objectContaining<Partial<KernelTurnTransactionConfigurationError>>({
         name: 'KernelTurnTransactionConfigurationError',

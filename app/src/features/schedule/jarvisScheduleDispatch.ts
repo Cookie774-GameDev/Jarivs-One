@@ -106,7 +106,9 @@ function validScheduleCanonicalResult(result: JarvisCanonicalResultEvidenceV1): 
     stableIdentifier(result.requestId) &&
     Number.isSafeInteger(result.attemptNumber) &&
     result.attemptNumber > 0 &&
-    (result.state === 'completed' || result.state === 'degraded') &&
+    (result.kind === 'scheduled_transport_settled'
+      ? result.state === 'degraded'
+      : result.state === 'completed' || result.state === 'degraded') &&
     stableIdentifier(result.resultRef) &&
     result.resultRef.startsWith('jresult_') &&
     Number.isFinite(result.observedAt)
@@ -210,10 +212,15 @@ export function createJarvisScheduleLiveEvidenceVerifier(input: {
         }
 
         if (evidence.state === 'busy') {
+          const startEventValid =
+            attempt.kind === 'initial'
+              ? target.type === 'run_state' && target.status === 'running'
+              : attempt.kind === 'transport_retry' &&
+                target.type === 'warning' &&
+                target.status === 'transport_retry_started';
           if (
             attempt.startedEventSeq !== evidence.resultEventSeq ||
-            target.type !== 'run_state' ||
-            target.status !== 'running' ||
+            !startEventValid ||
             source.phase !== 'start' ||
             source.state !== 'started' ||
             source.resultRef !== evidence.resultRef ||
@@ -250,11 +257,24 @@ export function createJarvisScheduleLiveEvidenceVerifier(input: {
           authority.eventSeq,
         );
         const canonical = authorityRow?.canonicalResultEvidence;
+        const authorityEventValid =
+          canonical?.kind === 'kernel_turn_committed'
+            ? authorityRow?.type === 'run_state' && authorityRow.status === canonical.state
+            : canonical?.kind === 'scheduled_transport_settled' &&
+              canonical.state === 'degraded' &&
+              ((authorityRow?.type === 'warning' &&
+                authorityRow.status === 'transport_retry_available' &&
+                authorityRow.idempotencyKey ===
+                  `jtransport:${canonical.runId}:${canonical.requestId}:${canonical.attemptNumber}:retry_available`) ||
+                (authorityRow?.type === 'run_state' &&
+                  authorityRow.status === 'failed' &&
+                  authorityRow.idempotencyKey ===
+                    `jtransport:${canonical.runId}:${canonical.requestId}:${canonical.attemptNumber}:uncertain_failed`));
         if (
           !authorityRow ||
           authorityRow.runId !== authority.runId ||
           authorityRow.seq !== authority.eventSeq ||
-          authorityRow.type !== 'run_state' ||
+          !authorityEventValid ||
           !canonical ||
           !validScheduleCanonicalResult(canonical) ||
           canonical.accountId !== evidence.accountId ||

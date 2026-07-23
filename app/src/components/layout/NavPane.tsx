@@ -39,8 +39,18 @@ import { SidebarFilesTree } from '@/features/files/SidebarFilesTree';
 import { openOrFocusWorkbenchWindow } from '@/features/workbench/window';
 import { useWorkbenchStore } from '@/features/workbench/store';
 import { chatPinPatch, isChatPinned, sortChatsForDisplay } from '@/features/chat/chatPin';
+import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
+import { SIK_CONTROL, type SikControlId } from '@/lib/jarvis/smoke/evidenceIds';
+import {
+  isKernelSmokeBindingActive,
+  subscribeKernelSmokeBinding,
+} from '@/lib/ai/providers/kernelSmoke';
 
 const TERMINAL_MIME = 'application/x-jarvis-terminal';
+const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
+  devBuild: import.meta.env.DEV,
+  explicitFlag: import.meta.env.VITE_SIK_SMOKE,
+});
 
 /**
  * NavPane - 240px expanded, 56px collapsed.
@@ -61,6 +71,11 @@ const TERMINAL_MIME = 'application/x-jarvis-terminal';
  * of silently no-oping.
  */
 export function NavPane() {
+  const kernelSmokeBindingActive = React.useSyncExternalStore(
+    subscribeKernelSmokeBinding,
+    isKernelSmokeBindingActive,
+    () => false,
+  );
   const navOpen = useUIStore((s) => s.navOpen);
   const setActiveChat = useUIStore((s) => s.setActiveChat);
   const setActiveAgent = useUIStore((s) => s.setActiveAgent);
@@ -315,6 +330,11 @@ export function NavPane() {
             target="schedule"
             route={route}
             setRoute={setRoute}
+            evidenceId={
+              KERNEL_SMOKE_ENABLED && kernelSmokeBindingActive
+                ? SIK_CONTROL.scheduleFixture
+                : undefined
+            }
           />
           <RouteItem
             navOpen={navOpen}
@@ -838,9 +858,10 @@ interface NavItemProps {
   onClick?: () => void;
   /** Product-tutorial spotlight target id (rendered as data-tour). */
   dataTour?: string;
+  evidenceId?: SikControlId;
 }
 
-function NavItem({ icon, label, navOpen, active, onClick, dataTour }: NavItemProps) {
+function NavItem({ icon, label, navOpen, active, onClick, dataTour, evidenceId }: NavItemProps) {
   if (!navOpen) {
     return (
       <button
@@ -849,6 +870,7 @@ function NavItem({ icon, label, navOpen, active, onClick, dataTour }: NavItemPro
         title={label}
         aria-label={label}
         data-tour={dataTour}
+        data-sik-evidence={evidenceId}
         className={cn(
           'flex h-7 w-full items-center justify-center rounded-md text-foreground transition-colors',
           'hover:bg-muted focus-visible:outline-none focus-visible:ring-inset focus-visible:ring-1 focus-visible:ring-ring',
@@ -864,6 +886,7 @@ function NavItem({ icon, label, navOpen, active, onClick, dataTour }: NavItemPro
       type="button"
       onClick={onClick}
       data-tour={dataTour}
+      data-sik-evidence={evidenceId}
       className={cn(
         'group flex h-7 w-full items-center gap-2 rounded-md px-2 text-body text-foreground transition-colors',
         'hover:bg-muted focus-visible:outline-none focus-visible:ring-inset focus-visible:ring-1 focus-visible:ring-ring',
@@ -962,13 +985,14 @@ interface RouteItemProps {
   target: Route;
   route: Route;
   setRoute: (r: Route) => void;
+  evidenceId?: SikControlId;
 }
 
 /**
  * Workspace-section row: behaves like a NavItem but binds the click to
  * `setRoute(target)` and reflects the active state from `route === target`.
  */
-function RouteItem({ icon, label, navOpen, target, route, setRoute }: RouteItemProps) {
+function RouteItem({ icon, label, navOpen, target, route, setRoute, evidenceId }: RouteItemProps) {
   const active = route === target;
   return (
     <NavItem
@@ -978,6 +1002,7 @@ function RouteItem({ icon, label, navOpen, target, route, setRoute }: RouteItemP
       active={active}
       onClick={() => setRoute(target)}
       dataTour={target}
+      evidenceId={evidenceId}
     />
   );
 }

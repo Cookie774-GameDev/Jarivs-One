@@ -22,6 +22,7 @@ vi.mock('@/components/ui/toast', () => ({
 import {
   createCanonicalFileActionEvidenceAuthority,
   createJarvisApprovedActionRunner,
+  createJarvisRegisteredBuiltinDispatcher,
   runAction,
   resolveAction,
   getAllActions,
@@ -31,6 +32,10 @@ import { toast } from '@/components/ui/toast';
 import { useToolStore } from '@/features/tools/toolStore';
 import { useTerminalCommandQueue } from '@/features/terminals/terminalCommandQueue';
 import { useDevConsoleStore } from '@/features/dev-console';
+import {
+  createJarvisActionCatalog,
+  DEFAULT_JARVIS_ACTION_REGISTRATIONS,
+} from '@/lib/jarvis/actions/catalog';
 
 describe('resolveAction', () => {
   it('finds built-in actions by id', () => {
@@ -238,6 +243,46 @@ describe('runAction', () => {
       },
     });
     expect(execute).toHaveBeenCalledWith(input);
+  });
+
+  it('executes a registered builtin only through an issued external-effect capability', async () => {
+    const registration = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS).resolve(
+      'file.search',
+    )!;
+    const definition = resolveAction('file.search')!;
+    const run = vi
+      .spyOn(definition, 'run')
+      .mockResolvedValue({ ok: true, summary: 'Canonical search completed.' });
+    const signal = new AbortController().signal;
+    const beginExternalEffect = vi.fn((begin) => ({
+      kind: 'committed' as const,
+      value: begin(signal),
+    }));
+    const dispatcher = createJarvisRegisteredBuiltinDispatcher();
+
+    await expect(
+      dispatcher({
+        registration,
+        params: { query: 'smoke fixture', maxResults: 1 },
+        context: {
+          source: 'ai',
+          accountId: 'account-kernel',
+          runId: 'run-kernel',
+          approvalId: 'jappr-kernel',
+          requestId: 'request-kernel',
+          attemptNumber: 1,
+        },
+        execution: { beginExternalEffect } as never,
+      }),
+    ).resolves.toEqual({
+      kind: 'executor_returned',
+      result: { ok: true, summary: 'Canonical search completed.' },
+    });
+    expect(beginExternalEffect).toHaveBeenCalledOnce();
+    expect(run).toHaveBeenCalledWith(
+      { query: 'smoke fixture', maxResults: 1 },
+      expect.objectContaining({ source: 'ai', signal }),
+    );
   });
 
   it('omits command payloads from action diagnostics', async () => {

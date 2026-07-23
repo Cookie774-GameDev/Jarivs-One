@@ -888,7 +888,7 @@ describe('createJarvisApprovalEngine', () => {
 });
 
 describe('createJarvisConsequentialEffectSafetyAuthority', () => {
-  function scheduledFixture() {
+  function scheduledFixture(now: () => number = () => 10_000) {
     const attempt: JarvisTransportAttemptV1 = {
       schemaVersion: 1,
       attemptNumber: 1,
@@ -903,6 +903,15 @@ describe('createJarvisConsequentialEffectSafetyAuthority', () => {
     const run = parentRun({
       source: 'schedule',
       transportAttempts: [attempt],
+      scheduledRetrySnapshot: {
+        schemaVersion: 1,
+        accountId: 'account-a',
+        eventId: 'schedule-event-1',
+        occurrenceId: 'jocc_schedule-occurrence-1',
+        dueAt: 8_500,
+        logicalAttempt: 0,
+        request: {} as NonNullable<JarvisRun['scheduledRetrySnapshot']>['request'],
+      },
       model: {
         providerId: 'provider-a',
         modelId: 'model-a',
@@ -959,7 +968,7 @@ describe('createJarvisConsequentialEffectSafetyAuthority', () => {
       artifacts: artifacts as JarvisArtifactRepository,
       events: events as JarvisEventRepository,
       providerAttemptEvidence,
-      now: () => 10_000,
+      now,
     });
     return {
       run,
@@ -971,6 +980,215 @@ describe('createJarvisConsequentialEffectSafetyAuthority', () => {
       providerAttemptEvidence,
       authority,
     };
+  }
+
+  function exactProviderStartRows(
+    setup: ReturnType<typeof scheduledFixture>,
+    firstSeq = 4,
+  ): JarvisEvent[] {
+    const providerStartRef = `jprovider_start_${setup.attempt.requestId}`;
+    const modelSnapshotRef = `jmodel_${setup.run.model.providerId}_${setup.run.model.modelId}_${setup.run.model.capturedAt}`;
+    return [
+      {
+        runId: setup.run.id,
+        seq: firstSeq,
+        idempotencyKey: `kernel-provider-start:${setup.attempt.requestId}:${setup.attempt.attemptNumber}`,
+        type: 'model',
+        status: 'started',
+        title: 'Provider started',
+        sourceRefs: [],
+        artifactIds: [],
+        createdAt: 9_200,
+        producerSourceEvidence: {
+          schemaVersion: 1,
+          accountId: setup.run.accountId,
+          runId: setup.run.id,
+          requestId: setup.attempt.requestId,
+          attemptNumber: setup.attempt.attemptNumber,
+          producerKind: 'provider',
+          producerIdentity: {
+            producerKind: 'provider',
+            providerId: setup.run.model.providerId,
+            modelId: setup.run.model.modelId,
+            modelSnapshotRef,
+          },
+          phase: 'start',
+          state: 'started',
+          resultRef: providerStartRef,
+          observedAt: 9_200,
+        },
+      },
+      {
+        runId: setup.run.id,
+        seq: firstSeq + 1,
+        idempotencyKey: `kernel-live:${setup.run.id}:provider:started:${providerStartRef}`,
+        type: 'model',
+        status: 'started',
+        title: 'Provider evidence updated',
+        sourceRefs: [],
+        artifactIds: [],
+        createdAt: 9_200,
+        liveEvidence: {
+          schemaVersion: 1,
+          kind: 'model',
+          accountId: setup.run.accountId,
+          runId: setup.run.id,
+          requestId: setup.attempt.requestId,
+          attemptNumber: setup.attempt.attemptNumber,
+          registrationId: `${setup.run.id}:provider`,
+          producerKind: 'provider',
+          producerIdentity: {
+            producerKind: 'provider',
+            providerId: setup.run.model.providerId,
+            modelId: setup.run.model.modelId,
+            modelSnapshotRef,
+          },
+          transition: 'started',
+          operations: ['generate'],
+          resultRef: providerStartRef,
+          resultEventSeq: firstSeq,
+          observedAt: 9_200,
+          providerId: setup.run.model.providerId,
+          modelId: setup.run.model.modelId,
+          modelSnapshotRef,
+        },
+      },
+    ];
+  }
+
+  function scheduleBusyRow(setup: ReturnType<typeof scheduledFixture>, seq = 4): JarvisEvent {
+    return {
+      runId: setup.run.id,
+      seq,
+      idempotencyKey: `kernel-live:${setup.run.id}:schedule:${setup.attempt.attemptNumber}:busy`,
+      type: 'tool',
+      status: 'busy',
+      title: 'Schedule evidence updated',
+      sourceRefs: [],
+      artifactIds: [],
+      createdAt: 9_100,
+      liveEvidence: {
+        schemaVersion: 1,
+        kind: 'capability',
+        category: 'agent',
+        capabilityId: 'schedule.dispatch',
+        accountId: setup.run.accountId,
+        runId: setup.run.id,
+        requestId: setup.attempt.requestId,
+        attemptNumber: setup.attempt.attemptNumber,
+        registrationId: `${setup.run.id}:schedule:${setup.attempt.attemptNumber}`,
+        producerKind: 'schedule',
+        producerIdentity: {
+          producerKind: 'schedule',
+          eventId: setup.run.scheduledRetrySnapshot!.eventId,
+          occurrenceId: setup.run.scheduledRetrySnapshot!.occurrenceId,
+        },
+        transition: 'busy',
+        operations: ['execute', 'cancel', 'inspect'],
+        resultRef: `jstart_${setup.run.id}_${setup.attempt.requestId}_${setup.attempt.attemptNumber}`,
+        resultEventSeq: setup.attempt.startedEventSeq,
+        observedAt: 9_100,
+      },
+    };
+  }
+
+  function settledScheduleRows(
+    setup: ReturnType<typeof scheduledFixture>,
+    firstSeq: number,
+  ): JarvisEvent[] {
+    const resultRef =
+      `jresult_${setup.run.id}_${setup.attempt.requestId}_${setup.attempt.attemptNumber}_transport` as const;
+    return [
+      {
+        runId: setup.run.id,
+        seq: firstSeq,
+        idempotencyKey: `jtransport:${setup.run.id}:${setup.attempt.requestId}:${setup.attempt.attemptNumber}:retry_available`,
+        type: 'warning',
+        status: 'transport_retry_available',
+        title: 'Scheduled transport retry available',
+        sourceRefs: [],
+        artifactIds: [],
+        createdAt: 9_500,
+        canonicalResultEvidence: {
+          schemaVersion: 1,
+          kind: 'scheduled_transport_settled',
+          accountId: setup.run.accountId,
+          runId: setup.run.id,
+          requestId: setup.attempt.requestId,
+          attemptNumber: setup.attempt.attemptNumber,
+          state: 'degraded',
+          resultRef,
+          observedAt: 9_500,
+        },
+      },
+      {
+        runId: setup.run.id,
+        seq: firstSeq + 1,
+        idempotencyKey: `schedule:${setup.run.id}:${setup.attempt.requestId}:${setup.attempt.attemptNumber}:result`,
+        type: 'tool',
+        status: 'degraded',
+        title: 'Scheduled dispatch result linked',
+        sourceRefs: [],
+        artifactIds: [],
+        createdAt: 9_500,
+        producerSourceEvidence: {
+          schemaVersion: 1,
+          accountId: setup.run.accountId,
+          runId: setup.run.id,
+          requestId: setup.attempt.requestId,
+          attemptNumber: setup.attempt.attemptNumber,
+          producerKind: 'schedule',
+          producerIdentity: {
+            producerKind: 'schedule',
+            eventId: setup.run.scheduledRetrySnapshot!.eventId,
+            occurrenceId: setup.run.scheduledRetrySnapshot!.occurrenceId,
+          },
+          resultRef,
+          observedAt: 9_500,
+          phase: 'result',
+          state: 'degraded',
+          resultAuthority: {
+            runId: setup.run.id,
+            eventSeq: firstSeq,
+            evidenceRef: resultRef,
+          },
+        },
+      },
+      {
+        runId: setup.run.id,
+        seq: firstSeq + 2,
+        idempotencyKey: `kernel-live:${setup.run.id}:schedule:${setup.attempt.attemptNumber}:degraded`,
+        type: 'tool',
+        status: 'degraded',
+        title: 'Schedule evidence updated',
+        sourceRefs: [],
+        artifactIds: [],
+        createdAt: 9_500,
+        liveEvidence: {
+          schemaVersion: 1,
+          kind: 'capability',
+          category: 'agent',
+          capabilityId: 'schedule.dispatch',
+          accountId: setup.run.accountId,
+          runId: setup.run.id,
+          requestId: setup.attempt.requestId,
+          attemptNumber: setup.attempt.attemptNumber,
+          registrationId: `${setup.run.id}:schedule:${setup.attempt.attemptNumber}`,
+          producerKind: 'schedule',
+          producerIdentity: {
+            producerKind: 'schedule',
+            eventId: setup.run.scheduledRetrySnapshot!.eventId,
+            occurrenceId: setup.run.scheduledRetrySnapshot!.occurrenceId,
+          },
+          transition: 'degraded',
+          operations: ['execute', 'cancel', 'inspect'],
+          resultRef,
+          resultEventSeq: firstSeq + 1,
+          observedAt: 9_500,
+          previousProofRef: 'jlive_schedule_started',
+        },
+      },
+    ];
   }
 
   it('proves only exact pre-byte failure plus a complete zero-effect journal tail', async () => {
@@ -1210,6 +1428,360 @@ describe('createJarvisConsequentialEffectSafetyAuthority', () => {
     ).resolves.toBeNull();
   });
 
+  it('accepts only the exact pre-byte provider start source and linked live evidence', async () => {
+    const setup = scheduledFixture();
+    const providerRows = [scheduleBusyRow(setup), ...exactProviderStartRows(setup, 5)];
+    vi.mocked(setup.events.listByRun).mockResolvedValueOnce(providerRows);
+
+    await expect(
+      setup.authority.proveZeroConsequentialEffect({
+        run: setup.run,
+        attempt: setup.attempt,
+        providerFailure: setup.providerFailure,
+      }),
+    ).resolves.toMatchObject({
+      executorClaims: { count: 0, throughSeq: 6, evidenceRef: 'claims-zero:jrun_1:6' },
+    });
+
+    const mutations: Array<[string, (rows: JarvisEvent[]) => void]> = [
+      [
+        'provider',
+        (rows) => {
+          const source = rows[1]!.producerSourceEvidence!;
+          rows[1]!.producerSourceEvidence = {
+            ...source,
+            producerIdentity: { ...source.producerIdentity, providerId: 'provider-forged' },
+          } as never;
+        },
+      ],
+      [
+        'model',
+        (rows) => {
+          const live = rows[2]!.liveEvidence!;
+          rows[2]!.liveEvidence = {
+            ...live,
+            producerIdentity: { ...live.producerIdentity, modelId: 'model-forged' },
+          } as never;
+        },
+      ],
+      [
+        'snapshot',
+        (rows) => {
+          rows[2]!.liveEvidence = {
+            ...rows[2]!.liveEvidence!,
+            modelSnapshotRef: 'jmodel_forged',
+          } as never;
+        },
+      ],
+      [
+        'reference',
+        (rows) => {
+          rows[1]!.producerSourceEvidence = {
+            ...rows[1]!.producerSourceEvidence!,
+            resultRef: 'jprovider_start_forged',
+          };
+        },
+      ],
+      [
+        'observed time',
+        (rows) => {
+          rows[2]!.liveEvidence = { ...rows[2]!.liveEvidence!, observedAt: 9_201 };
+        },
+      ],
+      [
+        'schema',
+        (rows) => {
+          rows[1]!.producerSourceEvidence = {
+            ...rows[1]!.producerSourceEvidence!,
+            schemaVersion: 2,
+          } as never;
+        },
+      ],
+      [
+        'conflicting evidence',
+        (rows) => {
+          rows[1]!.executionEvidence = {
+            schemaVersion: 1,
+            requestId: setup.attempt.requestId,
+            attemptNumber: setup.attempt.attemptNumber,
+            kind: 'consequential_effect_claimed',
+            ownerKind: 'action',
+            ownerId: 'forged-owner',
+            evidenceRef: 'forged-claim',
+            observedAt: 9_200,
+          };
+        },
+      ],
+    ];
+    for (const [label, mutate] of mutations) {
+      const forgedRows = structuredClone(providerRows);
+      mutate(forgedRows);
+      vi.mocked(setup.events.listByRun).mockResolvedValueOnce(forgedRows);
+      await expect(
+        setup.authority.proveZeroConsequentialEffect({
+          run: setup.run,
+          attempt: setup.attempt,
+          providerFailure: setup.providerFailure,
+        }),
+        label,
+      ).resolves.toBeNull();
+    }
+  });
+
+  it('revalidates the exact non-consequential schedule lifecycle through the latest journal tail', async () => {
+    let now = 10_000;
+    const setup = scheduledFixture(() => now++);
+    vi.mocked(setup.events.listByRun).mockResolvedValueOnce([
+      {
+        runId: setup.run.id,
+        seq: 4,
+        idempotencyKey: 'schedule-live-busy',
+        type: 'tool',
+        status: 'busy',
+        title: 'Schedule evidence updated',
+        sourceRefs: [],
+        artifactIds: [],
+        createdAt: 9_100,
+        liveEvidence: {
+          schemaVersion: 1,
+          kind: 'capability',
+          category: 'agent',
+          capabilityId: 'schedule.dispatch',
+          accountId: setup.run.accountId,
+          runId: setup.run.id,
+          requestId: setup.attempt.requestId,
+          attemptNumber: setup.attempt.attemptNumber,
+          registrationId: `${setup.run.id}:schedule:1`,
+          producerKind: 'schedule',
+          producerIdentity: {
+            producerKind: 'schedule',
+            eventId: 'schedule-event-1',
+            occurrenceId: 'jocc_schedule-occurrence-1',
+          },
+          transition: 'busy',
+          operations: ['execute', 'cancel', 'inspect'],
+          resultRef: `jstart_${setup.run.id}_${setup.attempt.requestId}_1`,
+          resultEventSeq: setup.attempt.startedEventSeq,
+          observedAt: 9_100,
+        },
+      },
+    ]);
+    const proof = await setup.authority.proveZeroConsequentialEffect({
+      run: setup.run,
+      attempt: setup.attempt,
+      providerFailure: setup.providerFailure,
+    });
+    expect(proof).not.toBeNull();
+
+    const retryableAttempt: JarvisTransportAttemptV1 = {
+      ...setup.attempt,
+      state: 'retryable_failed',
+      failureCategory: setup.providerFailure.failureCategory,
+      zeroEffectEvidence: proof!,
+      updatedAt: 9_500,
+    };
+    const retryableRun: JarvisRun = {
+      ...setup.run,
+      transportAttempts: [retryableAttempt],
+      updatedAt: 9_500,
+    };
+    vi.mocked(setup.events.listByRun).mockResolvedValueOnce([
+      {
+        runId: retryableRun.id,
+        seq: 4,
+        idempotencyKey: 'schedule-live-busy',
+        type: 'tool',
+        status: 'busy',
+        title: 'Schedule evidence updated',
+        sourceRefs: [],
+        artifactIds: [],
+        createdAt: 9_100,
+        liveEvidence: {
+          schemaVersion: 1,
+          kind: 'capability',
+          category: 'agent',
+          capabilityId: 'schedule.dispatch',
+          accountId: retryableRun.accountId,
+          runId: retryableRun.id,
+          requestId: retryableAttempt.requestId,
+          attemptNumber: retryableAttempt.attemptNumber,
+          registrationId: `${retryableRun.id}:schedule:1`,
+          producerKind: 'schedule',
+          producerIdentity: {
+            producerKind: 'schedule',
+            eventId: 'schedule-event-1',
+            occurrenceId: 'jocc_schedule-occurrence-1',
+          },
+          transition: 'busy',
+          operations: ['execute', 'cancel', 'inspect'],
+          resultRef: `jstart_${retryableRun.id}_${retryableAttempt.requestId}_1`,
+          resultEventSeq: retryableAttempt.startedEventSeq,
+          observedAt: 9_100,
+        },
+      },
+      {
+        runId: retryableRun.id,
+        seq: 5,
+        idempotencyKey: `jtransport:${retryableRun.id}:${retryableAttempt.requestId}:1:retry_available`,
+        type: 'warning',
+        status: 'transport_retry_available',
+        title: 'Scheduled transport retry available',
+        sourceRefs: [],
+        artifactIds: [],
+        createdAt: 9_500,
+        canonicalResultEvidence: {
+          schemaVersion: 1,
+          kind: 'scheduled_transport_settled',
+          accountId: retryableRun.accountId,
+          runId: retryableRun.id,
+          requestId: retryableAttempt.requestId,
+          attemptNumber: retryableAttempt.attemptNumber,
+          state: 'degraded',
+          resultRef: `jresult_${retryableRun.id}_${retryableAttempt.requestId}_1_transport`,
+          observedAt: 9_500,
+        },
+      },
+      {
+        runId: retryableRun.id,
+        seq: 6,
+        idempotencyKey: `schedule:${retryableRun.id}:${retryableAttempt.requestId}:1:result`,
+        type: 'tool',
+        status: 'degraded',
+        title: 'Scheduled dispatch result linked',
+        sourceRefs: [],
+        artifactIds: [],
+        createdAt: 9_500,
+        producerSourceEvidence: {
+          schemaVersion: 1,
+          accountId: retryableRun.accountId,
+          runId: retryableRun.id,
+          requestId: retryableAttempt.requestId,
+          attemptNumber: retryableAttempt.attemptNumber,
+          producerKind: 'schedule',
+          producerIdentity: {
+            producerKind: 'schedule',
+            eventId: 'schedule-event-1',
+            occurrenceId: 'jocc_schedule-occurrence-1',
+          },
+          resultRef: `jresult_${retryableRun.id}_${retryableAttempt.requestId}_1_transport`,
+          observedAt: 9_500,
+          phase: 'result',
+          state: 'degraded',
+          resultAuthority: {
+            runId: retryableRun.id,
+            eventSeq: 5,
+            evidenceRef: `jresult_${retryableRun.id}_${retryableAttempt.requestId}_1_transport`,
+          },
+        },
+      },
+      {
+        runId: retryableRun.id,
+        seq: 7,
+        idempotencyKey: 'schedule-live-degraded',
+        type: 'tool',
+        status: 'degraded',
+        title: 'Schedule evidence updated',
+        sourceRefs: [],
+        artifactIds: [],
+        createdAt: 9_500,
+        liveEvidence: {
+          schemaVersion: 1,
+          kind: 'capability',
+          category: 'agent',
+          capabilityId: 'schedule.dispatch',
+          accountId: retryableRun.accountId,
+          runId: retryableRun.id,
+          requestId: retryableAttempt.requestId,
+          attemptNumber: retryableAttempt.attemptNumber,
+          registrationId: `${retryableRun.id}:schedule:1`,
+          producerKind: 'schedule',
+          producerIdentity: {
+            producerKind: 'schedule',
+            eventId: 'schedule-event-1',
+            occurrenceId: 'jocc_schedule-occurrence-1',
+          },
+          transition: 'degraded',
+          operations: ['execute', 'cancel', 'inspect'],
+          resultRef: `jresult_${retryableRun.id}_${retryableAttempt.requestId}_1_transport`,
+          resultEventSeq: 6,
+          observedAt: 9_500,
+          previousProofRef: 'jlive_schedule_started',
+        },
+      },
+    ]);
+
+    const revalidated = await setup.authority.revalidateZeroConsequentialEffect({
+      run: retryableRun,
+      attempt: retryableAttempt,
+      evidence: proof!,
+    });
+
+    expect(revalidated).toMatchObject({
+      assessedAt: 10_001,
+      executorClaims: {
+        count: 0,
+        throughSeq: 7,
+        evidenceRef: `claims-zero:${retryableRun.id}:7`,
+      },
+    });
+  });
+
+  it.each(['duplicate schedule transition', 'provider activity after settlement'] as const)(
+    'rejects %s',
+    async (scenario) => {
+      const setup = scheduledFixture();
+      vi.mocked(setup.events.listByRun).mockResolvedValueOnce([scheduleBusyRow(setup)]);
+      const proof = await setup.authority.proveZeroConsequentialEffect({
+        run: setup.run,
+        attempt: setup.attempt,
+        providerFailure: setup.providerFailure,
+      });
+      expect(proof).not.toBeNull();
+      const retryableAttempt: JarvisTransportAttemptV1 = {
+        ...setup.attempt,
+        state: 'retryable_failed',
+        failureCategory: setup.providerFailure.failureCategory,
+        zeroEffectEvidence: proof!,
+        updatedAt: 9_500,
+      };
+      const retryableRun: JarvisRun = {
+        ...setup.run,
+        transportAttempts: [retryableAttempt],
+        updatedAt: 9_500,
+      };
+      const duplicateBusy = scheduleBusyRow(setup, 5);
+      duplicateBusy.idempotencyKey += ':duplicate';
+      const rows =
+        scenario === 'duplicate schedule transition'
+          ? [scheduleBusyRow(setup), duplicateBusy, ...settledScheduleRows(setup, 6)]
+          : [
+              scheduleBusyRow(setup),
+              settledScheduleRows(setup, 5)[0]!,
+              ...exactProviderStartRows(setup, 6),
+              {
+                ...settledScheduleRows(setup, 5)[1]!,
+                seq: 8,
+              },
+              {
+                ...settledScheduleRows(setup, 5)[2]!,
+                seq: 9,
+                liveEvidence: {
+                  ...settledScheduleRows(setup, 5)[2]!.liveEvidence!,
+                  resultEventSeq: 8,
+                },
+              },
+            ];
+      vi.mocked(setup.events.listByRun).mockResolvedValueOnce(rows);
+      await expect(
+        setup.authority.revalidateZeroConsequentialEffect({
+          run: retryableRun,
+          attempt: retryableAttempt,
+          evidence: proof!,
+        }),
+      ).resolves.toBeNull();
+    },
+  );
+
   it('rejects forged future checkpoints and re-scans the complete proof prefix', async () => {
     const setup = scheduledFixture();
     const proof = await setup.authority.proveZeroConsequentialEffect({
@@ -1438,6 +2010,248 @@ describe('createJarvisActionLiveEvidenceVerifiers', () => {
     await expect(
       verifiers.plugin.verify({ ...evidence, producerKind: 'plugin' } as never),
     ).resolves.toBeNull();
+  });
+
+  it('binds non-schedule action evidence to one exact durable provider-start event', async () => {
+    const run = parentRun({ source: 'typed_chat', transportAttempts: undefined });
+    const producerIdentity = {
+      producerKind: 'file_action' as const,
+      actionId: 'file.search',
+      actionVersion: 1,
+      resultId: 'file-result-typed-1',
+    };
+    const events: JarvisEvent[] = [
+      {
+        runId: run.id,
+        seq: 1,
+        idempotencyKey: 'kernel-provider-start:request-typed-1:1',
+        type: 'model',
+        status: 'started',
+        title: 'Provider started',
+        sourceRefs: [],
+        artifactIds: [],
+        createdAt: 8_500,
+        producerSourceEvidence: {
+          schemaVersion: 1,
+          accountId: run.accountId,
+          runId: run.id,
+          requestId: 'request-typed-1',
+          attemptNumber: 1,
+          producerKind: 'provider',
+          producerIdentity: {
+            producerKind: 'provider',
+            providerId: run.model.providerId,
+            modelId: run.model.modelId,
+            modelSnapshotRef: `jmodel_${run.model.providerId}_${run.model.modelId}_${run.model.capturedAt}`,
+          },
+          phase: 'start',
+          state: 'started',
+          resultRef: 'jprovider_start_request-typed-1',
+          observedAt: 8_500,
+        },
+      },
+      {
+        runId: run.id,
+        seq: 2,
+        idempotencyKey: 'file-claim-typed-1',
+        type: 'tool',
+        status: 'running',
+        title: 'File search started',
+        sourceRefs: [],
+        artifactIds: [],
+        createdAt: 9_000,
+        executionEvidence: {
+          schemaVersion: 1,
+          requestId: 'request-typed-1',
+          attemptNumber: 1,
+          kind: 'consequential_effect_claimed',
+          ownerKind: 'file',
+          ownerId: producerIdentity.resultId,
+          evidenceRef: 'file-claim-ref-typed-1',
+          observedAt: 9_000,
+        },
+        producerSourceEvidence: {
+          schemaVersion: 1,
+          accountId: run.accountId,
+          runId: run.id,
+          requestId: 'request-typed-1',
+          attemptNumber: 1,
+          producerKind: 'file_action',
+          producerIdentity,
+          phase: 'start',
+          state: 'busy',
+          resultRef: 'file-claim-ref-typed-1',
+          observedAt: 9_000,
+        },
+      },
+      {
+        runId: run.id,
+        seq: 3,
+        idempotencyKey: 'file-result-typed-1',
+        type: 'tool',
+        status: 'completed',
+        title: 'File search completed',
+        sourceRefs: [],
+        artifactIds: [],
+        createdAt: 9_500,
+        executionEvidence: {
+          schemaVersion: 1,
+          requestId: 'request-typed-1',
+          attemptNumber: 1,
+          kind: 'consequential_effect_completed',
+          ownerKind: 'file',
+          ownerId: producerIdentity.resultId,
+          evidenceRef: 'jresult_file_typed_1',
+          observedAt: 9_500,
+        },
+        producerSourceEvidence: {
+          schemaVersion: 1,
+          accountId: run.accountId,
+          runId: run.id,
+          requestId: 'request-typed-1',
+          attemptNumber: 1,
+          producerKind: 'file_action',
+          producerIdentity,
+          phase: 'result',
+          state: 'completed',
+          resultRef: 'jresult_file_typed_1',
+          observedAt: 9_500,
+        },
+      },
+    ];
+    const eventRepository: Pick<JarvisEventRepository, 'listByRun' | 'getBySeq'> = {
+      listByRun: vi.fn(async (_accountId, _runId, options = {}) =>
+        structuredClone(events.filter((event) => event.seq > (options.afterSeq ?? 0))),
+      ),
+      getBySeq: vi.fn(async (_accountId, _runId, seq) =>
+        structuredClone(events.find((event) => event.seq === seq)),
+      ),
+    };
+    const verifiers = createJarvisActionLiveEvidenceVerifiers({
+      runs: { getById: vi.fn(async () => structuredClone(run)) } as never,
+      events: eventRepository as JarvisEventRepository,
+    });
+    const initialEvidence: JarvisCanonicalLiveProducerEvidence<'file_action'> = {
+      schemaVersion: 1,
+      producerKind: 'file_action',
+      producerIdentity,
+      accountId: run.accountId,
+      runId: run.id,
+      requestId: 'request-typed-1',
+      attemptNumber: 1,
+      resultRef: 'file-claim-ref-typed-1',
+      resultEventSeq: 2,
+      state: 'busy',
+      verifiedAt: 9_000,
+    };
+    const resultEvidence: JarvisCanonicalLiveProducerEvidence<'file_action'> = {
+      ...initialEvidence,
+      resultRef: 'jresult_file_typed_1',
+      resultEventSeq: 3,
+      state: 'completed',
+      verifiedAt: 9_500,
+    };
+
+    await expect(verifiers.fileAction.verify(initialEvidence)).resolves.toEqual(initialEvidence);
+    await expect(verifiers.fileAction.verify(resultEvidence)).resolves.toEqual(resultEvidence);
+
+    const providerStart = structuredClone(events[0]!);
+    const mutations: Array<[string, (event: JarvisEvent) => JarvisEvent]> = [
+      ['idempotency', (event) => ({ ...event, idempotencyKey: 'forged-provider-start' })],
+      [
+        'provider',
+        (event) =>
+          ({
+            ...event,
+            producerSourceEvidence: {
+              ...event.producerSourceEvidence!,
+              producerIdentity: {
+                ...event.producerSourceEvidence!.producerIdentity,
+                providerId: 'provider-forged',
+              },
+            },
+          }) as JarvisEvent,
+      ],
+      [
+        'model',
+        (event) =>
+          ({
+            ...event,
+            producerSourceEvidence: {
+              ...event.producerSourceEvidence!,
+              producerIdentity: {
+                ...event.producerSourceEvidence!.producerIdentity,
+                modelId: 'model-forged',
+              },
+            },
+          }) as JarvisEvent,
+      ],
+      [
+        'snapshot',
+        (event) =>
+          ({
+            ...event,
+            producerSourceEvidence: {
+              ...event.producerSourceEvidence!,
+              producerIdentity: {
+                ...event.producerSourceEvidence!.producerIdentity,
+                modelSnapshotRef: 'jmodel_forged',
+              },
+            },
+          }) as JarvisEvent,
+      ],
+      [
+        'reference',
+        (event) => ({
+          ...event,
+          producerSourceEvidence: {
+            ...event.producerSourceEvidence!,
+            resultRef: 'jprovider_start_forged',
+          },
+        }),
+      ],
+      [
+        'observed time',
+        (event) => ({
+          ...event,
+          producerSourceEvidence: {
+            ...event.producerSourceEvidence!,
+            observedAt: event.createdAt + 1,
+          },
+        }),
+      ],
+      [
+        'schema',
+        (event) => ({
+          ...event,
+          producerSourceEvidence: {
+            ...event.producerSourceEvidence!,
+            schemaVersion: 2,
+          } as never,
+        }),
+      ],
+      [
+        'conflicting evidence',
+        (event) => ({
+          ...event,
+          canonicalResultEvidence: {
+            schemaVersion: 1,
+            kind: 'kernel_turn_committed',
+            accountId: run.accountId,
+            runId: run.id,
+            requestId: 'request-typed-1',
+            attemptNumber: 1,
+            state: 'completed',
+            resultRef: 'jresult_conflict',
+            observedAt: event.createdAt,
+          },
+        }),
+      ],
+    ];
+    for (const [label, mutate] of mutations) {
+      events[0] = mutate(structuredClone(providerStart));
+      await expect(verifiers.fileAction.verify(initialEvidence), label).resolves.toBeNull();
+    }
   });
 
   it.each([

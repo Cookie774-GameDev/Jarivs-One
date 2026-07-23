@@ -355,6 +355,7 @@ export const KERNEL_SMOKE_SCENARIOS = deepFreeze({
     uiInputSequence: sequence(
       { control: 'chat.composer', action: 'fill', value: 'Produce the fixed provider artifact.' },
       { control: 'chat.submit', action: 'click' },
+      { control: 'command-center.disclosure', action: 'click' },
       { control: 'outputs.tab', action: 'click' },
     ),
     semanticEvents: [
@@ -374,6 +375,7 @@ export const KERNEL_SMOKE_SCENARIOS = deepFreeze({
         value: 'Produce the fixed file action artifact.',
       },
       { control: 'chat.submit', action: 'click' },
+      { control: 'command-center.disclosure', action: 'click' },
       { control: 'outputs.tab', action: 'click' },
     ),
     semanticEvents: [
@@ -401,6 +403,8 @@ export const KERNEL_SMOKE_SCENARIOS = deepFreeze({
       { control: 'chat.composer', action: 'fill', value: 'Produce the fixed terminal artifact.' },
       { control: 'chat.submit', action: 'click' },
       { control: 'approval.confirm-dangerous', action: 'click' },
+      { control: 'chat.return', action: 'click' },
+      { control: 'command-center.disclosure', action: 'click' },
       { control: 'outputs.tab', action: 'click' },
     ),
     semanticEvents: [
@@ -448,7 +452,7 @@ export const KERNEL_SMOKE_SCENARIOS = deepFreeze({
     safeTextFixture: 'Retry the fixed scheduled transport.',
     uiInputSequence: sequence(
       { control: 'schedule.fixture', action: 'click' },
-      { control: 'schedule.dispatch', action: 'click' },
+      { control: 'schedule.retry-fixture', action: 'click' },
       { control: 'Retry transport', action: 'click' },
     ),
     semanticEvents: [

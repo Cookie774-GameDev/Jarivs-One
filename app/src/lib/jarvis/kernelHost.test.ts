@@ -16,7 +16,7 @@ vi.mock('@tauri-apps/api/event', () => ({
   }),
 }));
 
-import { startJarvisKernelHost } from './kernelHost';
+import { requestLocalJarvisKernelHost, startJarvisKernelHost } from './kernelHost';
 
 const request: KernelHostRequestEvent = {
   epoch: 7,
@@ -99,6 +99,48 @@ describe('trusted kernel host', () => {
     expect(tauri.unlisten).toHaveBeenCalledOnce();
     expect(order.indexOf('runtime:dispose')).toBeLessThan(order.indexOf('release_kernel_host'));
     expect(invalidateAccount).toHaveBeenCalledWith('account-1');
+  });
+
+  it('installs one validated host-local DTO path only for the attested runtime lifetime', async () => {
+    const handleRequest = vi.fn(async () => ({
+      version: 1 as const,
+      kind: 'turn_accepted' as const,
+      runId: 'wrong-kind',
+    }));
+    tauri.invoke.mockImplementation(async (command: string) =>
+      command === 'register_kernel_host'
+        ? { epoch: 7, ownerToken: 'native-owner-token' }
+        : undefined,
+    );
+
+    expect(requestLocalJarvisKernelHost(request.request)).toBeNull();
+    const session = await startJarvisKernelHost({
+      createRuntime: () => ({
+        handleRequest,
+        invalidateAccount: vi.fn(),
+        dispose: vi.fn(),
+      }),
+    });
+    expect(session.role).toBe('host');
+    expect(Object.keys(session).sort()).toEqual(['dispose', 'invalidateAccount', 'role']);
+
+    await expect(requestLocalJarvisKernelHost(request.request)).resolves.toEqual({
+      version: 1,
+      kind: 'unavailable',
+      requestKind: 'cancel',
+      reason: 'invalid_response',
+    });
+    expect(handleRequest).toHaveBeenCalledWith(request.request);
+    expect(
+      requestLocalJarvisKernelHost({
+        ...request.request,
+        arbitraryTarget: 'main',
+      } as never),
+    ).toBeNull();
+
+    if (session.role !== 'host') throw new Error(session.reason);
+    await session.dispose();
+    expect(requestLocalJarvisKernelHost(request.request)).toBeNull();
   });
 
   it('serializes StrictMode-style host lifecycles until native release completes', async () => {

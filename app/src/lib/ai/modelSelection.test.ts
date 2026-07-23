@@ -14,6 +14,12 @@ import {
 } from './modelSelection';
 import type { Agent } from '@/types';
 import type { ProviderCapabilities } from './adapters/types';
+import {
+  activateKernelSmokeBinding,
+  clearKernelSmokeBinding,
+  KERNEL_SMOKE_PROVIDER_ID,
+} from './providers/kernelSmoke';
+import type { StackStepSpec } from './stacks/types';
 
 const nativeCapabilities: ProviderCapabilities = {
   text: true,
@@ -164,6 +170,42 @@ describe('modelSelection', () => {
     expect(
       resolveActiveStackPreset({ mode: 'hive', hiveId: 'balanced' }, { matched: false, text: 'hi', preset: undefined, taskType: undefined }),
     ).toBe('balanced');
+  });
+
+  it('accepts the attested custom smoke Hive only while the native binding is active', () => {
+    const selection = { mode: 'hive' as const, hiveId: 'custom' as const };
+    const steps: StackStepSpec[] = [
+      {
+        id: 'smoke-draft',
+        label: 'Smoke draft',
+        provider: KERNEL_SMOKE_PROVIDER_ID,
+        model: 'kernel-smoke-v1',
+        systemAppend: 'Run the fixed smoke draft.',
+      },
+    ];
+    const command = { matched: false, text: 'hi', preset: undefined, taskType: undefined };
+    const ctx = {
+      apiKeys: {},
+      offlineMode: false,
+      plan: 'free' as const,
+      defaultLocalModel: '',
+    };
+
+    expect(resolveActiveStackPreset(selection, command)).toBe('balanced');
+    expect(validateSendModelAccess('hi', selection, ctx, steps).ok).toBe(false);
+
+    activateKernelSmokeBinding({
+      nativePid: 42,
+      cdpPort: 39177,
+      profileSha256: 'a'.repeat(64),
+      nonce: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+    });
+    try {
+      expect(resolveActiveStackPreset(selection, command)).toBe('custom');
+      expect(validateSendModelAccess('hi', selection, ctx, steps).ok).toBe(true);
+    } finally {
+      clearKernelSmokeBinding();
+    }
   });
 
   it('applies user single-model selection to Jarvis at runtime', () => {

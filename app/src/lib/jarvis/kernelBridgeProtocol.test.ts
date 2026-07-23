@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   KERNEL_BRIDGE_VERSION,
   isKernelClientRequestV1,
+  isKernelClientResponseV1,
   isKernelClientResponseEvent,
   isKernelHostRequestEvent,
   responseMatchesKernelRequest,
@@ -45,6 +46,12 @@ describe('kernel bridge protocol', () => {
       accountId: 'account-1',
       runId: 'run-1',
       actionRequestId: 'action-request-1',
+    },
+    {
+      version: 1,
+      kind: 'approval_present',
+      accountId: 'account-1',
+      approvalId: 'approval-1',
     },
     {
       version: 1,
@@ -97,6 +104,39 @@ describe('kernel bridge protocol', () => {
         unavailableKernelResponse(turnRequest, 'host_unavailable'),
       ),
     ).toBe(true);
+  });
+
+  it('accepts only bounded canonical approval presentations with no raw payload', () => {
+    const request = {
+      version: 1 as const,
+      kind: 'approval_present' as const,
+      accountId: 'account-1',
+      approvalId: 'approval-1',
+    };
+    const response = {
+      version: 1 as const,
+      kind: 'approval_presentation' as const,
+      approvalId: 'approval-1',
+      actionId: 'terminal.create',
+      expectedEffect: 'Create one terminal owned by the active account.',
+      risk: 'confirm' as const,
+      parameters: [{ field: 'cwd', safeValue: '[redacted]' }],
+    };
+
+    expect(isKernelClientRequestV1(request)).toBe(true);
+    expect(isKernelClientResponseV1(response)).toBe(true);
+    expect(responseMatchesKernelRequest(request, response)).toBe(true);
+    expect(isKernelClientResponseV1({ ...response, params: { cwd: 'raw-secret' } })).toBe(false);
+    expect(
+      isKernelClientResponseV1({
+        ...response,
+        parameters: Array.from({ length: 33 }, (_, index) => ({
+          field: `field-${index}`,
+          safeValue: 'bounded',
+        })),
+      }),
+    ).toBe(false);
+    expect(responseMatchesKernelRequest({ ...request, approvalId: 'other' }, response)).toBe(false);
   });
 
   it('binds correlated response identifiers to the exact request', () => {

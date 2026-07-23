@@ -30,6 +30,9 @@ import type {
 import type { JarvisCanonicalLiveProducerVerifier } from '@/lib/jarvis/contracts/execution';
 import {
   canonicalizeJarvisApprovalJson,
+  validateJarvisCanonicalResultEvidence,
+  validateJarvisDurableLiveEvidence,
+  validateJarvisProducerSourceEvidence,
   validateJarvisZeroConsequentialEffectEvidence,
 } from '@/lib/jarvis/contracts';
 import type { JarvisLiveEvidenceProof } from '@/lib/jarvis/contracts/execution';
@@ -746,10 +749,52 @@ function sameProviderFailure(
   }
 }
 
+function exactProviderStartEvent(input: {
+  event: Readonly<JarvisEvent>;
+  run: Readonly<JarvisRun>;
+  requestId: string;
+  attemptNumber: number;
+}): Extract<
+  NonNullable<JarvisEvent['producerSourceEvidence']>,
+  { producerKind: 'provider' }
+> | null {
+  const source = input.event.producerSourceEvidence;
+  const expectedSnapshotRef = `jmodel_${input.run.model.providerId}_${input.run.model.modelId}_${input.run.model.capturedAt}`;
+  if (
+    !source ||
+    source.producerKind !== 'provider' ||
+    !validateJarvisProducerSourceEvidence(source).ok ||
+    input.event.executionEvidence !== undefined ||
+    input.event.canonicalResultEvidence !== undefined ||
+    input.event.liveEvidence !== undefined ||
+    input.event.runId !== input.run.id ||
+    input.event.type !== 'model' ||
+    input.event.status !== 'started' ||
+    input.event.idempotencyKey !==
+      `kernel-provider-start:${input.requestId}:${input.attemptNumber}` ||
+    source.accountId !== input.run.accountId ||
+    source.runId !== input.run.id ||
+    source.requestId !== input.requestId ||
+    source.attemptNumber !== input.attemptNumber ||
+    source.producerIdentity.providerId !== input.run.model.providerId ||
+    source.producerIdentity.modelId !== input.run.model.modelId ||
+    source.producerIdentity.modelSnapshotRef !== expectedSnapshotRef ||
+    source.phase !== 'start' ||
+    source.state !== 'started' ||
+    source.resultRef !== `jprovider_start_${input.requestId}` ||
+    source.observedAt !== input.event.createdAt
+  ) {
+    return null;
+  }
+  return source;
+}
+
 async function inspectZeroEffectTail(input: {
   events: JarvisEventRepository;
   accountId: string;
   runId: string;
+  run: Readonly<JarvisRun>;
+  attempt: Readonly<JarvisTransportAttemptV1>;
   afterSeq: number;
 }): Promise<number | null> {
   const rows = await input.events.listByRun(input.accountId, input.runId, {
@@ -758,17 +803,209 @@ async function inspectZeroEffectTail(input: {
   });
   if (rows.length >= ZERO_EFFECT_EVENT_LIMIT) return null;
   let throughSeq = input.afterSeq;
+  let settlementEventSeq: number | undefined;
+  let settlementObservedAt: number | undefined;
+  let resultSourceEventSeq: number | undefined;
+  let scheduleBusyEventSeq: number | undefined;
+  let scheduleDegradedEventSeq: number | undefined;
+  let providerSourceEventSeq: number | undefined;
+  let providerLiveEventSeq: number | undefined;
+  let providerStartedAt: number | undefined;
+  let providerIdentity:
+    | Extract<JarvisLiveProducerIdentity, { producerKind: 'provider' }>
+    | undefined;
+  const snapshot = input.run.scheduledRetrySnapshot;
+  const startRef = `jstart_${input.run.id}_${input.attempt.requestId}_${input.attempt.attemptNumber}`;
+  const resultRef = `jresult_${input.run.id}_${input.attempt.requestId}_${input.attempt.attemptNumber}_transport`;
+  const providerStartRef = `jprovider_start_${input.attempt.requestId}`;
+  const exactScheduleBinding = (evidence: {
+    accountId: string;
+    runId: string;
+    requestId: string;
+    attemptNumber: number;
+    producerKind?: string;
+    producerIdentity?: JarvisLiveProducerIdentity;
+  }): boolean =>
+    !!snapshot &&
+    evidence.accountId === input.run.accountId &&
+    evidence.runId === input.run.id &&
+    evidence.requestId === input.attempt.requestId &&
+    evidence.attemptNumber === input.attempt.attemptNumber &&
+    evidence.producerKind === 'schedule' &&
+    evidence.producerIdentity?.producerKind === 'schedule' &&
+    evidence.producerIdentity.eventId === snapshot.eventId &&
+    evidence.producerIdentity.occurrenceId === snapshot.occurrenceId;
   for (const row of rows) {
     if (row.runId !== input.runId || row.seq !== throughSeq + 1) return null;
-    if (
-      row.executionEvidence !== undefined ||
-      row.canonicalResultEvidence !== undefined ||
-      row.producerSourceEvidence !== undefined ||
-      row.liveEvidence !== undefined
-    ) {
-      return null;
+    if (row.executionEvidence !== undefined) return null;
+    const evidenceLaneCount =
+      Number(row.canonicalResultEvidence !== undefined) +
+      Number(row.producerSourceEvidence !== undefined) +
+      Number(row.liveEvidence !== undefined);
+    if (evidenceLaneCount > 1) return null;
+
+    const canonical = row.canonicalResultEvidence;
+    if (canonical !== undefined) {
+      if (
+        !validateJarvisCanonicalResultEvidence(canonical).ok ||
+        settlementEventSeq !== undefined ||
+        scheduleBusyEventSeq === undefined ||
+        canonical.kind !== 'scheduled_transport_settled' ||
+        canonical.parentRunId !== undefined ||
+        canonical.stepId !== undefined ||
+        canonical.accountId !== input.run.accountId ||
+        canonical.runId !== input.run.id ||
+        canonical.requestId !== input.attempt.requestId ||
+        canonical.attemptNumber !== input.attempt.attemptNumber ||
+        canonical.state !== 'degraded' ||
+        canonical.resultRef !== resultRef ||
+        canonical.observedAt !== row.createdAt ||
+        row.type !== 'warning' ||
+        row.status !== 'transport_retry_available' ||
+        row.idempotencyKey !==
+          `jtransport:${input.run.id}:${input.attempt.requestId}:${input.attempt.attemptNumber}:retry_available`
+      ) {
+        return null;
+      }
+      settlementEventSeq = row.seq;
+      settlementObservedAt = canonical.observedAt;
+    }
+
+    const source = row.producerSourceEvidence;
+    if (source !== undefined) {
+      if (!validateJarvisProducerSourceEvidence(source).ok) return null;
+      if (source.producerKind === 'provider') {
+        const exactProvider = exactProviderStartEvent({
+          event: row,
+          run: input.run,
+          requestId: input.attempt.requestId,
+          attemptNumber: input.attempt.attemptNumber,
+        });
+        if (
+          !exactProvider ||
+          providerSourceEventSeq !== undefined ||
+          scheduleBusyEventSeq === undefined ||
+          settlementEventSeq !== undefined
+        ) {
+          return null;
+        }
+        providerSourceEventSeq = row.seq;
+        providerIdentity = exactProvider.producerIdentity;
+        providerStartedAt = exactProvider.observedAt;
+      } else {
+        if (
+          resultSourceEventSeq !== undefined ||
+          scheduleBusyEventSeq === undefined ||
+          settlementEventSeq === undefined ||
+          scheduleDegradedEventSeq !== undefined ||
+          !exactScheduleBinding(source) ||
+          source.phase !== 'result' ||
+          source.state !== 'degraded' ||
+          source.resultRef !== resultRef ||
+          source.observedAt !== row.createdAt ||
+          source.observedAt !== settlementObservedAt ||
+          source.resultAuthority?.runId !== input.run.id ||
+          source.resultAuthority?.eventSeq !== settlementEventSeq ||
+          source.resultAuthority?.evidenceRef !== resultRef ||
+          row.type !== 'tool' ||
+          row.status !== 'degraded' ||
+          row.idempotencyKey !==
+            `schedule:${input.run.id}:${input.attempt.requestId}:${input.attempt.attemptNumber}:result`
+        ) {
+          return null;
+        }
+        resultSourceEventSeq = row.seq;
+      }
+    }
+
+    const live = row.liveEvidence;
+    if (live !== undefined) {
+      if (!validateJarvisDurableLiveEvidence(live).ok) return null;
+      if (live.producerKind === 'provider') {
+        if (
+          providerIdentity === undefined ||
+          providerLiveEventSeq !== undefined ||
+          settlementEventSeq !== undefined ||
+          live.kind !== 'model' ||
+          live.producerIdentity.producerKind !== 'provider' ||
+          live.accountId !== input.run.accountId ||
+          live.runId !== input.run.id ||
+          live.requestId !== input.attempt.requestId ||
+          live.attemptNumber !== input.attempt.attemptNumber ||
+          live.producerIdentity.providerId !== providerIdentity.providerId ||
+          live.producerIdentity.modelId !== providerIdentity.modelId ||
+          live.producerIdentity.modelSnapshotRef !== providerIdentity.modelSnapshotRef ||
+          live.providerId !== providerIdentity.providerId ||
+          live.modelId !== providerIdentity.modelId ||
+          live.modelSnapshotRef !== providerIdentity.modelSnapshotRef ||
+          live.registrationId !== `${input.run.id}:provider` ||
+          live.operations.length !== 1 ||
+          live.operations[0] !== 'generate' ||
+          live.transition !== 'started' ||
+          live.resultRef !== providerStartRef ||
+          live.resultEventSeq !== providerSourceEventSeq ||
+          live.observedAt !== row.createdAt ||
+          live.observedAt !== providerStartedAt ||
+          live.previousProofRef !== undefined ||
+          row.type !== 'model' ||
+          row.status !== 'started' ||
+          row.idempotencyKey !== `kernel-live:${input.run.id}:provider:started:${providerStartRef}`
+        ) {
+          return null;
+        }
+        providerLiveEventSeq = row.seq;
+      } else {
+        const commonValid =
+          exactScheduleBinding(live) &&
+          live.kind === 'capability' &&
+          live.category === 'agent' &&
+          live.capabilityId === 'schedule.dispatch' &&
+          live.registrationId === `${input.run.id}:schedule:${input.attempt.attemptNumber}` &&
+          live.operations.length === 3 &&
+          live.operations[0] === 'execute' &&
+          live.operations[1] === 'cancel' &&
+          live.operations[2] === 'inspect' &&
+          live.observedAt === row.createdAt &&
+          row.type === 'tool' &&
+          row.status === live.transition;
+        const busyValid =
+          live.transition === 'busy' &&
+          scheduleBusyEventSeq === undefined &&
+          settlementEventSeq === undefined &&
+          resultSourceEventSeq === undefined &&
+          scheduleDegradedEventSeq === undefined &&
+          live.resultRef === startRef &&
+          live.resultEventSeq === input.attempt.startedEventSeq &&
+          live.previousProofRef === undefined;
+        const degradedValid =
+          live.transition === 'degraded' &&
+          scheduleBusyEventSeq !== undefined &&
+          settlementEventSeq !== undefined &&
+          resultSourceEventSeq !== undefined &&
+          scheduleDegradedEventSeq === undefined &&
+          live.resultRef === resultRef &&
+          live.resultEventSeq === resultSourceEventSeq &&
+          live.observedAt === settlementObservedAt &&
+          typeof live.previousProofRef === 'string' &&
+          live.previousProofRef.startsWith('jlive_');
+        if (!commonValid || (!busyValid && !degradedValid)) return null;
+        if (busyValid) scheduleBusyEventSeq = row.seq;
+        if (degradedValid) scheduleDegradedEventSeq = row.seq;
+      }
     }
     throughSeq = row.seq;
+  }
+  if ((providerSourceEventSeq === undefined) !== (providerLiveEventSeq === undefined)) {
+    return null;
+  }
+  if (
+    input.attempt.state === 'retryable_failed' &&
+    (scheduleBusyEventSeq === undefined ||
+      settlementEventSeq === undefined ||
+      resultSourceEventSeq === undefined ||
+      scheduleDegradedEventSeq === undefined)
+  ) {
+    return null;
   }
   return throughSeq;
 }
@@ -817,6 +1054,8 @@ export function createJarvisConsequentialEffectSafetyAuthority(input: {
         events: input.events,
         accountId: run.accountId,
         runId: run.id,
+        run,
+        attempt,
         afterSeq,
       }),
     ]);
@@ -972,6 +1211,39 @@ function sourceMatchesEvidence<K extends 'action' | 'file_action' | 'terminal' |
   return source.state === 'started' || source.state === 'ready' || source.state === 'busy';
 }
 
+async function resolveActionAttemptStartSeq(input: {
+  run: Readonly<JarvisRun>;
+  events: JarvisEventRepository;
+  evidence: Readonly<
+    JarvisCanonicalLiveProducerEvidence<'action' | 'file_action' | 'terminal' | 'plugin' | 'mcp'>
+  >;
+}): Promise<number | null> {
+  const ledgerMatches = (input.run.transportAttempts ?? []).filter(
+    (candidate) =>
+      candidate.requestId === input.evidence.requestId &&
+      candidate.attemptNumber === input.evidence.attemptNumber,
+  );
+  if (ledgerMatches.length === 1) return ledgerMatches[0]!.startedEventSeq;
+  if (ledgerMatches.length > 1 || input.run.source === 'schedule') return null;
+
+  const rows = await input.events.listByRun(input.evidence.accountId, input.evidence.runId, {
+    limit: ZERO_EFFECT_EVENT_LIMIT,
+  });
+  if (rows.length >= ZERO_EFFECT_EVENT_LIMIT) return null;
+  const starts = rows.filter((event) => {
+    return (
+      event.seq < input.evidence.resultEventSeq &&
+      exactProviderStartEvent({
+        event,
+        run: input.run,
+        requestId: input.evidence.requestId,
+        attemptNumber: input.evidence.attemptNumber,
+      }) !== null
+    );
+  });
+  return starts.length === 1 ? starts[0]!.seq : null;
+}
+
 function createActionLiveVerifier<
   K extends 'action' | 'file_action' | 'terminal' | 'plugin' | 'mcp',
 >(
@@ -1003,12 +1275,12 @@ function createActionLiveVerifier<
         if (!owner) return null;
         const run = await input.runs.getById(evidence.accountId, evidence.runId);
         if (!run || run.id !== evidence.runId || run.accountId !== evidence.accountId) return null;
-        const attempt = run?.transportAttempts?.find(
-          (candidate) =>
-            candidate.requestId === evidence.requestId &&
-            candidate.attemptNumber === evidence.attemptNumber,
-        );
-        if (!attempt || attempt.startedEventSeq >= evidence.resultEventSeq) return null;
+        const attemptStartSeq = await resolveActionAttemptStartSeq({
+          run,
+          events: input.events,
+          evidence,
+        });
+        if (attemptStartSeq === null || attemptStartSeq >= evidence.resultEventSeq) return null;
 
         if (
           evidence.state === 'started' ||
@@ -1025,8 +1297,7 @@ function createActionLiveVerifier<
           if (
             !startRow ||
             startRow.type !== 'tool' ||
-            (startRow.status !== 'running' &&
-              startRow.status !== 'consequential_effect_claimed') ||
+            (startRow.status !== 'running' && startRow.status !== 'consequential_effect_claimed') ||
             !sourceMatchesEvidence(startRow, evidence, 'start') ||
             startExecution?.kind !== 'consequential_effect_claimed' ||
             startExecution.requestId !== evidence.requestId ||
@@ -1046,12 +1317,12 @@ function createActionLiveVerifier<
         const [resultRow, tail] = await Promise.all([
           input.events.getBySeq(evidence.accountId, evidence.runId, evidence.resultEventSeq),
           input.events.listByRun(evidence.accountId, evidence.runId, {
-            afterSeq: attempt.startedEventSeq,
+            afterSeq: attemptStartSeq,
             limit: ZERO_EFFECT_EVENT_LIMIT,
           }),
         ]);
         if (!resultRow || tail.length >= ZERO_EFFECT_EVENT_LIMIT) return null;
-        let expectedSeq = attempt.startedEventSeq + 1;
+        let expectedSeq = attemptStartSeq + 1;
         for (const row of tail) {
           if (row.runId !== evidence.runId || row.seq !== expectedSeq) return null;
           expectedSeq += 1;
@@ -1083,8 +1354,7 @@ function createActionLiveVerifier<
           startRow.seq >= completedRow.seq ||
           completedRow.seq !== evidence.resultEventSeq ||
           startRow.type !== 'tool' ||
-          (startRow.status !== 'running' &&
-            startRow.status !== 'consequential_effect_claimed') ||
+          (startRow.status !== 'running' && startRow.status !== 'consequential_effect_claimed') ||
           completedRow.type !== 'tool' ||
           completedRow.status !== evidence.state
         ) {

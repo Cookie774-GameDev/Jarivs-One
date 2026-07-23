@@ -29,6 +29,12 @@ export const SIK_CONTROL = Object.freeze({
   modelTransportCli: 'model.transport-cli',
   approvalConfirm: 'approval.confirm',
   approvalConfirmDangerous: 'approval.confirm-dangerous',
+  chatReturn: 'chat.return',
+  scheduleFixture: 'schedule.fixture',
+  scheduleRetryFixture: 'schedule.retry-fixture',
+  scheduleDispatch: 'schedule.dispatch',
+  hiveFixture: 'hive.fixture',
+  hiveDispatch: 'hive.dispatch',
   commandCenterDisclosure: 'command-center.disclosure',
   commandCenterSurface: 'command-center.surface',
   retryTransport: 'Retry transport',
@@ -37,3 +43,4 @@ export const SIK_CONTROL = Object.freeze({
 } as const);
 
 export type SikEvidenceId = (typeof SIK_EVIDENCE)[keyof typeof SIK_EVIDENCE];
+export type SikControlId = (typeof SIK_CONTROL)[keyof typeof SIK_CONTROL];

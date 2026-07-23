@@ -20,10 +20,7 @@ import type {
   SettingsRow,
   SyncQueueRow,
 } from './schema';
-import {
-  runSignalBoundWrite,
-  type SignalBoundTransactionResult,
-} from './signalBoundTransaction';
+import { runSignalBoundWrite, type SignalBoundTransactionResult } from './signalBoundTransaction';
 
 const KERNEL_TURN_TABLES = Object.freeze([
   'messages',
@@ -71,6 +68,13 @@ type KernelSyncTransactionContext = Readonly<{
 type KernelLocalSyncInput =
   | Readonly<{
       op: 'insert';
+      table: 'messages';
+      row: Message;
+      createdAt: number;
+      ownerSnapshot: SyncQueueOwnerSnapshot;
+    }>
+  | Readonly<{
+      op: 'update';
       table: 'messages';
       row: Message;
       createdAt: number;
@@ -131,10 +135,12 @@ function assertExactTables(
 function exactOwnerSnapshot(owner: SyncQueueOwnerSnapshot): void {
   const keys = Object.keys(owner).sort();
   const expected =
-    owner.state === 'cloud'
-      ? ['capturedAt', 'state', 'userId']
-      : ['capturedAt', 'state'];
-  if (!Object.isFrozen(owner) || keys.length !== expected.length || keys.some((key, i) => key !== expected[i])) {
+    owner.state === 'cloud' ? ['capturedAt', 'state', 'userId'] : ['capturedAt', 'state'];
+  if (
+    !Object.isFrozen(owner) ||
+    keys.length !== expected.length ||
+    keys.some((key, i) => key !== expected[i])
+  ) {
     throw new TypeError('Kernel sync owner snapshot must be exact and frozen.');
   }
   materializeSyncQueueOwner('__kernel_owner_probe__', owner);
@@ -151,7 +157,8 @@ function selectFresherPayload(
   rows: readonly SyncQueueRow[],
   incoming: Readonly<{ payload: unknown; createdAt: number }>,
 ): unknown {
-  return [...rows.map((row) => ({ payload: row.payload, createdAt: row.created_at, id: row.id })),
+  return [
+    ...rows.map((row) => ({ payload: row.payload, createdAt: row.created_at, id: row.id })),
     { payload: incoming.payload, createdAt: incoming.createdAt, id: '\uffff' },
   ].reduce((left, right) => {
     const leftFreshness = rowFreshness(left.payload);
@@ -300,11 +307,7 @@ export function createKernelTurnTransactionAuthority(
       authoritySignal: AbortSignal,
       body: (context: KernelLifecycleTransactionContext) => T | Promise<T>,
     ) {
-      assertExactTables(
-        tables,
-        KERNEL_LIFECYCLE_TABLES,
-        'kernel_lifecycle_table_set_mismatch',
-      );
+      assertExactTables(tables, KERNEL_LIFECYCLE_TABLES, 'kernel_lifecycle_table_set_mismatch');
       return runSignalBoundWrite(
         db,
         authoritySignal,
@@ -324,11 +327,7 @@ export function createKernelTurnTransactionAuthority(
       authoritySignal: AbortSignal,
       body: (context: KernelApprovalTransactionContext) => T | Promise<T>,
     ) {
-      assertExactTables(
-        tables,
-        KERNEL_APPROVAL_TABLES,
-        'kernel_approval_table_set_mismatch',
-      );
+      assertExactTables(tables, KERNEL_APPROVAL_TABLES, 'kernel_approval_table_set_mismatch');
       return runSignalBoundWrite(
         db,
         authoritySignal,

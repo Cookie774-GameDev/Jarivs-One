@@ -45,6 +45,16 @@ export interface ActionApprovalCardProps {
   presentation?: CanonicalApprovalPresentation;
 }
 
+type ApprovalPresentationFailureCode =
+  | 'identity_missing'
+  | 'host_unavailable'
+  | 'host_released'
+  | 'request_timed_out'
+  | 'client_disposed'
+  | 'invalid_response'
+  | 'kernel_not_activated'
+  | 'request_failed';
+
 /** A native terminal handoff is running truth, never settled success. */
 export function actionStatusForCanonicalExecution(
   outcome: JarvisCanonicalActionExecutionResult,
@@ -164,72 +174,161 @@ const STATUS_VISUALS: Record<ActionStatus, StatusVisual> = {
   },
 };
 
-function resultLine(part: ActionPart): string | undefined {
-  if (part.status === 'queued') return 'Execution handed off.';
-  if (part.status === 'running') return 'Execution is still in progress.';
-  if (part.status === 'success') return 'Action completed.';
-  if (part.status === 'error') return part.error ?? 'The action failed.';
-  if (part.status === 'cancelled') return 'This action was denied or cancelled.';
+function resultLine(status: ActionStatus, error?: string): string | undefined {
+  if (status === 'queued') return 'Execution handed off.';
+  if (status === 'running') return 'Execution is still in progress.';
+  if (status === 'success') return 'Action completed.';
+  if (status === 'error') return error ?? 'The action failed.';
+  if (status === 'cancelled') return 'This action was denied or cancelled.';
   return undefined;
 }
 
-/**
- * Read-only projection until Task 16B injects the canonical controller. Legacy
- * cards remain truthful and cannot call an action or mutate lifecycle state.
- */
+/** Canonical cards load bounded presentation and mutate only through the host bridge. */
 export function ActionApprovalCard({ part, presentation }: ActionApprovalCardProps) {
   const definition = resolveAction(part.action_id);
-  const canonical = parseTaskApprovalCallId(part.call_id);
-  const visual = STATUS_VISUALS[part.status] ?? STATUS_VISUALS.pending;
+  const approvalId = React.useMemo(
+    () => parseTaskApprovalCallId(part.call_id)?.approvalId,
+    [part.call_id],
+  );
+  const [displayStatus, setDisplayStatus] = React.useState<ActionStatus>(part.status);
+  const [resolvedPresentation, setResolvedPresentation] = React.useState<
+    CanonicalApprovalPresentation | undefined
+  >(presentation);
+  const [presentationState, setPresentationState] = React.useState<
+    'idle' | 'loading' | 'ready' | 'failed'
+  >(presentation ? 'ready' : 'idle');
+  const [presentationFailureCode, setPresentationFailureCode] =
+    React.useState<ApprovalPresentationFailureCode>();
+  const visual = STATUS_VISUALS[displayStatus] ?? STATUS_VISUALS.pending;
   const Icon = definition?.icon ?? HelpCircle;
   const StatusIcon = visual.icon;
-  const terminalCopy = resultLine(part);
-  const [smokeDecisionState, setSmokeDecisionState] = React.useState<
+  const terminalCopy = resultLine(displayStatus, part.error);
+  const [decisionState, setDecisionState] = React.useState<
     'idle' | 'busy' | 'submitted' | 'failed'
   >('idle');
-  const smokeDangerous = part.action_id === 'task.cancel' || part.action_id === 'terminal.run';
+  const dangerous =
+    resolvedPresentation?.risk === 'dangerous' ||
+    part.action_id === 'task.cancel' ||
+    part.action_id === 'terminal.run';
 
-  const approveSmokeFixture = async () => {
-    if (!KERNEL_SMOKE_ENABLED || !canonical || smokeDecisionState === 'busy') return;
+  React.useEffect(() => setDisplayStatus(part.status), [part.status]);
+
+  React.useEffect(() => {
+    if (!presentation) return;
+    setResolvedPresentation(presentation);
+    setPresentationState('ready');
+    setPresentationFailureCode(undefined);
+  }, [presentation]);
+
+  React.useEffect(() => {
+    if (!approvalId || resolvedPresentation || displayStatus !== 'pending') return;
     const identity = getActiveAccountIdentity();
     if (!identity) {
-      setSmokeDecisionState('failed');
+      setPresentationState('failed');
+      setPresentationFailureCode('identity_missing');
       return;
     }
-    setSmokeDecisionState('busy');
+    let cancelled = false;
+    setPresentationState('loading');
+    setPresentationFailureCode(undefined);
+    void import('@/lib/jarvis/kernelClient')
+      .then(({ createJarvisKernelClient }) => {
+        const client = createJarvisKernelClient();
+        return client
+          .getApprovalPresentation({ accountId: identity.accountId, approvalId })
+          .then((response) => {
+            if (cancelled) return;
+            if (response.kind === 'unavailable') {
+              setPresentationState('failed');
+              setPresentationFailureCode(response.reason);
+              return;
+            }
+            if (response.approvalId !== approvalId) {
+              setPresentationState('failed');
+              setPresentationFailureCode('invalid_response');
+              return;
+            }
+            setResolvedPresentation(
+              Object.freeze({
+                actionId: response.actionId,
+                expectedEffect: response.expectedEffect,
+                risk: response.risk,
+                parameters: Object.freeze(
+                  response.parameters.map((value) => Object.freeze({ ...value })),
+                ),
+              }),
+            );
+            setPresentationState('ready');
+            setPresentationFailureCode(undefined);
+          })
+          .finally(() => client.dispose());
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPresentationState('failed');
+          setPresentationFailureCode('request_failed');
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [approvalId, displayStatus, resolvedPresentation]);
+
+  const decideCanonical = async (choice: 'approve' | 'deny') => {
+    if (!approvalId || !resolvedPresentation || decisionState === 'busy') return;
+    const identity = getActiveAccountIdentity();
+    if (!identity) {
+      setDecisionState('failed');
+      return;
+    }
+    setDecisionState('busy');
     try {
       const { createJarvisKernelClient } = await import('@/lib/jarvis/kernelClient');
       const client = createJarvisKernelClient();
       try {
         const decision = await client.decideApproval({
           accountId: identity.accountId,
-          approvalId: canonical.approvalId,
-          decision: 'approve',
+          approvalId,
+          decision: choice,
         });
         if (
           decision.kind !== 'approval_decided' ||
-          decision.approvalId !== canonical.approvalId ||
-          decision.status !== 'approved'
+          decision.approvalId !== approvalId ||
+          decision.status !== (choice === 'approve' ? 'approved' : 'denied')
         ) {
-          throw new Error('kernel_smoke_approval_decision_failed');
+          throw new Error('kernel_approval_decision_failed');
+        }
+        if (choice === 'deny') {
+          setDisplayStatus('cancelled');
+          setDecisionState('submitted');
+          return;
         }
         const execution = await client.executeApproval({
           accountId: identity.accountId,
-          approvalId: canonical.approvalId,
+          approvalId,
         });
         if (
           execution.kind !== 'approval_execution' ||
-          execution.approvalId !== canonical.approvalId ||
-          !['queued', 'running', 'completed'].includes(execution.status)
+          execution.approvalId !== approvalId ||
+          !['queued', 'running', 'completed', 'failed'].includes(execution.status)
         ) {
-          throw new Error('kernel_smoke_approval_execution_failed');
+          throw new Error('kernel_approval_execution_failed');
         }
-        setSmokeDecisionState('submitted');
+        setDisplayStatus(
+          execution.status === 'queued'
+            ? 'queued'
+            : execution.status === 'running'
+              ? 'running'
+              : execution.status === 'completed'
+                ? 'success'
+                : 'error',
+        );
+        setDecisionState('submitted');
       } finally {
         client.dispose();
       }
     } catch {
-      setSmokeDecisionState('failed');
+      setDecisionState('failed');
     }
   };
 
@@ -241,14 +340,22 @@ export function ActionApprovalCard({ part, presentation }: ActionApprovalCardPro
         visual.borderClass,
       )}
       data-action-id={part.action_id}
-      data-status={part.status}
-      data-approval-kind={canonical ? 'canonical' : 'legacy'}
+      data-status={displayStatus}
+      data-approval-kind={approvalId ? 'canonical' : 'legacy'}
       data-sik-evidence={KERNEL_SMOKE_ENABLED ? SIK_EVIDENCE.approvalCard : undefined}
+      data-presentation-state={
+        KERNEL_SMOKE_ENABLED && approvalId ? presentationState : undefined
+      }
+      data-presentation-code={
+        KERNEL_SMOKE_ENABLED && presentationState === 'failed'
+          ? presentationFailureCode
+          : undefined
+      }
     >
       <div className="flex items-center gap-2 text-secondary">
         <Icon className="h-4 w-4 shrink-0 text-accent-copper" />
         <span className="font-medium text-foreground">
-          {presentation?.actionId ?? definition?.label ?? part.action_id}
+          {resolvedPresentation?.actionId ?? definition?.label ?? part.action_id}
         </span>
         <span
           className={cn(
@@ -261,14 +368,14 @@ export function ActionApprovalCard({ part, presentation }: ActionApprovalCardPro
         </span>
       </div>
 
-      {canonical && presentation ? (
+      {approvalId && resolvedPresentation ? (
         <>
           <p className="text-secondary italic leading-relaxed text-muted-foreground">
-            {presentation.expectedEffect}
+            {resolvedPresentation.expectedEffect}
           </p>
-          {presentation.parameters.length > 0 && (
+          {resolvedPresentation.parameters.length > 0 && (
             <ul className="flex flex-col gap-0.5 font-mono text-metadata text-muted-foreground">
-              {presentation.parameters.map(({ field, safeValue }) => (
+              {resolvedPresentation.parameters.map(({ field, safeValue }) => (
                 <li key={field} className="truncate">
                   <span className="text-foreground/80">{field}</span>
                   <span className="opacity-60"> = </span>
@@ -278,10 +385,12 @@ export function ActionApprovalCard({ part, presentation }: ActionApprovalCardPro
             </ul>
           )}
         </>
-      ) : part.status === 'pending' ? (
+      ) : displayStatus === 'pending' ? (
         <p className="text-secondary leading-relaxed text-muted-foreground">
-          {canonical
-            ? 'Canonical approval controls are not connected yet. Review and retry manually.'
+          {approvalId
+            ? presentationState === 'failed'
+              ? 'Canonical approval details are unavailable. Retry after the protected host reconnects.'
+              : 'Loading protected approval details…'
             : 'This historical action card is view-only. Review current state and retry manually.'}
         </p>
       ) : null}
@@ -290,27 +399,42 @@ export function ActionApprovalCard({ part, presentation }: ActionApprovalCardPro
         <p
           className={cn(
             'text-secondary leading-relaxed',
-            part.status === 'error' ? 'text-destructive' : 'text-muted-foreground',
+            displayStatus === 'error' ? 'text-destructive' : 'text-muted-foreground',
           )}
         >
           {terminalCopy}
         </p>
       )}
 
-      {KERNEL_SMOKE_ENABLED && canonical && part.status === 'pending' ? (
-        <Button
-          type="button"
-          size="sm"
-          variant={smokeDangerous ? 'destructive' : 'secondary'}
-          disabled={smokeDecisionState === 'busy' || smokeDecisionState === 'submitted'}
-          onClick={() => void approveSmokeFixture()}
-          data-sik-evidence={
-            smokeDangerous ? SIK_CONTROL.approvalConfirmDangerous : SIK_CONTROL.approvalConfirm
-          }
-          data-approval-submit-state={smokeDecisionState}
-        >
-          {smokeDecisionState === 'busy' ? 'Approving…' : 'Approve fixed action'}
-        </Button>
+      {approvalId && resolvedPresentation && displayStatus === 'pending' ? (
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant={dangerous ? 'destructive' : 'secondary'}
+            disabled={decisionState === 'busy' || decisionState === 'submitted'}
+            onClick={() => void decideCanonical('approve')}
+            data-sik-evidence={
+              KERNEL_SMOKE_ENABLED
+                ? dangerous
+                  ? SIK_CONTROL.approvalConfirmDangerous
+                  : SIK_CONTROL.approvalConfirm
+                : undefined
+            }
+            data-approval-submit-state={decisionState}
+          >
+            {decisionState === 'busy' ? 'Approving…' : 'Approve fixed action'}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            disabled={decisionState === 'busy' || decisionState === 'submitted'}
+            onClick={() => void decideCanonical('deny')}
+          >
+            Deny action
+          </Button>
+        </div>
       ) : null}
     </div>
   );

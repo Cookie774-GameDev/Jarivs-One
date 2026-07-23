@@ -537,6 +537,61 @@ describe('createJarvisScheduleLiveEvidenceVerifier', () => {
     expect(harness.getBySeq).toHaveBeenCalledWith(INPUT.accountId, SCHEDULE_RUN_ID, 2);
   });
 
+  it('accepts the non-transition start row for a persisted same-run transport retry', async () => {
+    const retryRequestId = 'jreq_schedule_retry_fixture';
+    const retryRun = {
+      ...scheduleRun(),
+      status: 'running' as const,
+      transportAttempts: [
+        {
+          ...scheduleRun().transportAttempts![0]!,
+          state: 'retryable_failed' as const,
+          effectBarrier: { state: 'sealed_for_retry' as const, version: 0, updatedAt: 250 },
+          failureCategory: 'network_unavailable',
+          zeroEffectEvidence: {} as never,
+        },
+        {
+          schemaVersion: 1 as const,
+          attemptNumber: 2,
+          kind: 'transport_retry' as const,
+          requestId: retryRequestId,
+          state: 'provider_in_flight' as const,
+          startedEventSeq: 5,
+          effectBarrier: { state: 'open' as const, version: 0, updatedAt: 300 },
+          createdAt: 300,
+          updatedAt: 300,
+        },
+      ],
+    } satisfies JarvisRun;
+    const retrySource = scheduleSource('start', {
+      requestId: retryRequestId,
+      attemptNumber: 2,
+      resultRef: `jstart_${SCHEDULE_RUN_ID}_${retryRequestId}_2`,
+      observedAt: 300,
+    });
+    const harness = createScheduleVerifierHarness({
+      run: retryRun,
+      events: [
+        scheduleEvent(5, {
+          type: 'warning',
+          status: 'transport_retry_started',
+          createdAt: 300,
+          producerSourceEvidence: retrySource,
+        }),
+      ],
+    });
+    const evidence = scheduleEvidence({
+      requestId: retryRequestId,
+      attemptNumber: 2,
+      resultRef: `jstart_${SCHEDULE_RUN_ID}_${retryRequestId}_2`,
+      resultEventSeq: 5,
+      state: 'busy',
+      verifiedAt: 300,
+    });
+
+    await expect(harness.verifier.verify(evidence)).resolves.toEqual(evidence);
+  });
+
   it.each([
     { kind: 'kernel_turn_committed' as const, state: 'completed' as const },
     { kind: 'scheduled_transport_settled' as const, state: 'degraded' as const },
@@ -553,8 +608,12 @@ describe('createJarvisScheduleLiveEvidenceVerifier', () => {
             producerSourceEvidence: scheduleSource('start'),
           }),
           scheduleEvent(3, {
-            type: 'run_state',
-            status: state,
+            idempotencyKey:
+              kind === 'scheduled_transport_settled'
+                ? `jtransport:${SCHEDULE_RUN_ID}:${SCHEDULE_REQUEST_ID}:1:retry_available`
+                : 'schedule-fixture:3',
+            type: kind === 'scheduled_transport_settled' ? 'warning' : 'run_state',
+            status: kind === 'scheduled_transport_settled' ? 'transport_retry_available' : state,
             canonicalResultEvidence: {
               schemaVersion: 1,
               kind,
@@ -577,6 +636,95 @@ describe('createJarvisScheduleLiveEvidenceVerifier', () => {
       expect(harness.getBySeq).toHaveBeenNthCalledWith(2, INPUT.accountId, SCHEDULE_RUN_ID, 3);
     },
   );
+
+  it('accepts degraded transport settlement through the exact uncertain-failed authority', async () => {
+    const resultSource = scheduleSource('result', { state: 'degraded' });
+    const harness = createScheduleVerifierHarness({
+      events: [
+        scheduleEvent(3, {
+          idempotencyKey: `jtransport:${SCHEDULE_RUN_ID}:${SCHEDULE_REQUEST_ID}:1:uncertain_failed`,
+          type: 'run_state',
+          status: 'failed',
+          canonicalResultEvidence: {
+            schemaVersion: 1,
+            kind: 'scheduled_transport_settled',
+            accountId: INPUT.accountId,
+            runId: SCHEDULE_RUN_ID,
+            requestId: SCHEDULE_REQUEST_ID,
+            attemptNumber: 1,
+            state: 'degraded',
+            resultRef: SCHEDULE_RESULT_REF,
+            observedAt: 200,
+          },
+        }),
+        scheduleEvent(4, { status: 'degraded', producerSourceEvidence: resultSource }),
+      ],
+    });
+
+    await expect(harness.verifier.verify(scheduleEvidence({ state: 'degraded' }))).resolves.toEqual(
+      scheduleEvidence({ state: 'degraded' }),
+    );
+  });
+
+  it('rejects completed transport settlement and mismatched settlement authority', async () => {
+    const verifySettlement = (
+      state: 'completed' | 'degraded',
+      type: 'warning' | 'run_state',
+      status: string,
+      idempotencyKey: string,
+    ) => {
+      const harness = createScheduleVerifierHarness({
+        events: [
+          scheduleEvent(3, {
+            idempotencyKey,
+            type,
+            status,
+            canonicalResultEvidence: {
+              schemaVersion: 1,
+              kind: 'scheduled_transport_settled',
+              accountId: INPUT.accountId,
+              runId: SCHEDULE_RUN_ID,
+              requestId: SCHEDULE_REQUEST_ID,
+              attemptNumber: 1,
+              state,
+              resultRef: SCHEDULE_RESULT_REF,
+              observedAt: 200,
+            },
+          }),
+          scheduleEvent(4, {
+            status: state,
+            producerSourceEvidence: scheduleSource('result', { state }),
+          }),
+        ],
+      });
+      return harness.verifier.verify(scheduleEvidence({ state }));
+    };
+
+    await expect(
+      verifySettlement(
+        'completed',
+        'warning',
+        'transport_retry_available',
+        `jtransport:${SCHEDULE_RUN_ID}:${SCHEDULE_REQUEST_ID}:1:retry_available`,
+      ),
+    ).resolves.toBeNull();
+    await expect(
+      verifySettlement(
+        'degraded',
+        'warning',
+        'transport_retry_available',
+        `jtransport:${SCHEDULE_RUN_ID}:${SCHEDULE_REQUEST_ID}:1:uncertain_failed`,
+      ),
+    ).resolves.toBeNull();
+    await expect(
+      verifySettlement(
+        'degraded',
+        'run_state',
+        'failed',
+        `jtransport:${SCHEDULE_RUN_ID}:${SCHEDULE_REQUEST_ID}:1:retry_available`,
+      ),
+    ).resolves.toBeNull();
+  });
 
   it.each([
     ['ordinary status alone', scheduleEvent(4)],

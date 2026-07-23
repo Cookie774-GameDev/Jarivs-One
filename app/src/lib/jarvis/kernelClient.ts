@@ -11,6 +11,7 @@ import {
   type KernelClientResponseEvent,
   type KernelClientResponseV1,
 } from './kernelBridgeProtocol';
+import { requestLocalJarvisKernelHost } from './kernelHost';
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 const MAX_TIMEOUT_MS = 30_000;
@@ -28,21 +29,26 @@ type ResponseFor<K extends KernelClientRequestV1['kind']> = Extract<
         ? 'turn_accepted'
         : K extends 'approval_create'
           ? 'approval_created'
-          : K extends 'approval_decide'
-            ? 'approval_decided'
-            : K extends 'approval_execute'
-              ? 'approval_execution'
-              : K extends 'cancel'
-                ? 'cancellation_state'
-                : K extends 'scheduled_retry'
-                  ? 'retry_state'
-                  : 'command_center_snapshot';
+          : K extends 'approval_present'
+            ? 'approval_presentation'
+            : K extends 'approval_decide'
+              ? 'approval_decided'
+              : K extends 'approval_execute'
+                ? 'approval_execution'
+                : K extends 'cancel'
+                  ? 'cancellation_state'
+                  : K extends 'scheduled_retry'
+                    ? 'retry_state'
+                    : 'command_center_snapshot';
     }
 >;
 
 export interface JarvisKernelClient {
   dispatchTurn(input: RequestInput<'turn_dispatch'>): Promise<ResponseFor<'turn_dispatch'>>;
   createApproval(input: RequestInput<'approval_create'>): Promise<ResponseFor<'approval_create'>>;
+  getApprovalPresentation(
+    input: RequestInput<'approval_present'>,
+  ): Promise<ResponseFor<'approval_present'>>;
   decideApproval(input: RequestInput<'approval_decide'>): Promise<ResponseFor<'approval_decide'>>;
   executeApproval(
     input: RequestInput<'approval_execute'>,
@@ -107,6 +113,18 @@ export function createJarvisKernelClient(options?: { timeoutMs?: number }): Jarv
     }
     if (disposed) {
       return unavailableKernelResponse(request, 'client_disposed') as ResponseFor<K>;
+    }
+    const localResponse = requestLocalJarvisKernelHost(request);
+    if (localResponse) {
+      return localResponse
+        .then((response) =>
+          responseMatchesKernelRequest(request, response)
+            ? (response as ResponseFor<K>)
+            : (unavailableKernelResponse(request, 'invalid_response') as ResponseFor<K>),
+        )
+        .catch(
+          () => unavailableKernelResponse(request, 'invalid_response') as ResponseFor<K>,
+        );
     }
     if (!isTauriRuntime()) {
       return unavailableKernelResponse(request, 'host_unavailable') as ResponseFor<K>;
@@ -208,6 +226,8 @@ export function createJarvisKernelClient(options?: { timeoutMs?: number }): Jarv
       send(buildRequest('turn_dispatch', input)),
     createApproval: (input: RequestInput<'approval_create'>) =>
       send(buildRequest('approval_create', input)),
+    getApprovalPresentation: (input: RequestInput<'approval_present'>) =>
+      send(buildRequest('approval_present', input)),
     decideApproval: (input: RequestInput<'approval_decide'>) =>
       send(buildRequest('approval_decide', input)),
     executeApproval: (input: RequestInput<'approval_execute'>) =>

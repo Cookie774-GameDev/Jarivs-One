@@ -18,10 +18,19 @@ import { useToolStore } from '@/features/tools/toolStore';
 import { devConsole } from '@/features/dev-console';
 import type {
   ExecuteJarvisApprovalInput,
+  JarvisIssuedActionExecution,
   JarvisKernelActionPort,
+  JarvisRegisteredActionDispatchOutcome,
 } from '@/lib/jarvis/approvalEngine';
+import type { JarvisRegisteredActionDefinition } from '@/lib/jarvis/actions/catalog';
 import { getBuiltinAction, getBuiltinActions } from './registry';
-import type { ActionDef, ActionParam, ActionResult, ActionRunContext } from './types';
+import type {
+  ActionDef,
+  ActionParam,
+  ActionResult,
+  ActionRunContext,
+  RegisteredActionExecutionContext,
+} from './types';
 import { hasJarvisApprovalCorrelation } from './types';
 import type {
   CanonicalFileActionEvidence,
@@ -308,10 +317,11 @@ async function runActionOnce(
   params: Record<string, unknown> = {},
   ctx: ActionRunContext,
   options: { emitToast?: boolean } = {},
+  canonicalIssued = false,
 ): Promise<ActionResult> {
   const emitToast = options.emitToast ?? true;
   const startedAt = Date.now();
-  if (ctx.source === 'ai' && hasJarvisApprovalCorrelation(ctx)) {
+  if (ctx.source === 'ai' && hasJarvisApprovalCorrelation(ctx) && !canonicalIssued) {
     return {
       ok: false,
       error: 'Canonical JARVIS actions require the approval authority.',
@@ -409,6 +419,60 @@ export function createJarvisApprovedActionRunner(port: Pick<JarvisKernelActionPo
       return port.execute(input);
     },
   });
+}
+
+/** @internal Host-owned dispatcher for catalog-registered builtin actions. */
+export function createJarvisRegisteredBuiltinDispatcher() {
+  return async (input: {
+    registration: Readonly<JarvisRegisteredActionDefinition>;
+    params: Readonly<Record<string, unknown>>;
+    context: RegisteredActionExecutionContext;
+    execution: JarvisIssuedActionExecution;
+  }): Promise<JarvisRegisteredActionDispatchOutcome | null> => {
+    const executor = input.registration.executor;
+    if (executor.kind !== 'builtin') return null;
+    if (input.registration.id === 'terminal.create') return null;
+    if (input.registration.id === 'task.cancel' && Reflect.ownKeys(input.params).length === 0) {
+      return {
+        kind: 'executor_returned',
+        result: {
+          ok: true,
+          summary: 'No cancellable task was selected; no task state changed.',
+          data: { state: 'unchanged' },
+        },
+      };
+    }
+    const definition = resolveAction(executor.registryActionId);
+    if (!definition || definition.id !== executor.registryActionId) {
+      return {
+        kind: 'executor_returned',
+        result: { ok: false, error: 'Registered builtin action is unavailable.' },
+      };
+    }
+    try {
+      const started = input.execution.beginExternalEffect((signal) => ({
+        completion: runActionOnce(
+          definition.id,
+          structuredClone(input.params),
+          Object.freeze({ ...input.context, signal }),
+          { emitToast: false },
+          true,
+        ),
+      }));
+      if (started.kind !== 'committed') {
+        return {
+          kind: 'executor_returned',
+          result: { ok: false, error: 'Registered action authority was revoked.' },
+        };
+      }
+      return { kind: 'executor_returned', result: await started.value.completion };
+    } catch {
+      return {
+        kind: 'executor_returned',
+        result: { ok: false, error: 'Registered builtin action failed.' },
+      };
+    }
+  };
 }
 
 /** Execute one approved proposal at most once while it is in flight. */

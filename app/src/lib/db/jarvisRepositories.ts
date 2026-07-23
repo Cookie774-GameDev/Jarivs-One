@@ -462,6 +462,23 @@ function zeroEffectEvidenceMatches(
   );
 }
 
+function zeroEffectEvidenceExtends(
+  run: JarvisRun,
+  attempt: JarvisTransportAttemptV1,
+  previous: JarvisZeroConsequentialEffectEvidenceV1,
+  candidate: JarvisZeroConsequentialEffectEvidenceV1,
+): boolean {
+  return (
+    zeroEffectEvidenceMatches(run, attempt, previous.providerBoundary, previous) &&
+    zeroEffectEvidenceMatches(run, attempt, candidate.providerBoundary, candidate) &&
+    valuesEqual(candidate.providerBoundary, previous.providerBoundary) &&
+    valuesEqual(candidate.effectBarrier, previous.effectBarrier) &&
+    valuesEqual(candidate.approvals, previous.approvals) &&
+    valuesEqual(candidate.artifacts, previous.artifacts) &&
+    candidate.executorClaims.throughSeq >= previous.executorClaims.throughSeq
+  );
+}
+
 function transportEventInput(input: {
   runId: string;
   seq: number;
@@ -1675,6 +1692,32 @@ export function createJarvisRepositories(
           const availabilityKey = latest
             ? `jtransport:${input.runId}:${latest.requestId}:${latest.attemptNumber}:retry_available`
             : '';
+          const availabilityRow = availabilityKey
+            ? await database.jarvis_events
+                .where('[run_id+idempotency_key]')
+                .equals([input.runId, availabilityKey])
+                .first()
+            : undefined;
+          const expectedAvailabilityRow =
+            latest && proof
+              ? toJarvisEventRow(
+                  transportEventInput({
+                    runId: input.runId,
+                    seq: proof.executorClaims.throughSeq + 1,
+                    idempotencyKey: availabilityKey,
+                    type: 'warning',
+                    status: 'transport_retry_available',
+                    title: 'Scheduled transport retry available',
+                    safeSummary: 'The failed attempt has verified zero consequential effect.',
+                    createdAt: latest.updatedAt,
+                    canonicalResultEvidence: scheduledTransportSettlementEvidence(
+                      current,
+                      latest,
+                      latest.updatedAt,
+                    ),
+                  }),
+                )
+              : undefined;
           if (
             current.source !== 'schedule' ||
             current.scheduledRetrySnapshot === undefined ||
@@ -1686,12 +1729,12 @@ export function createJarvisRepositories(
             latest.effectBarrier.state !== 'open' ||
             latest.effectBarrier.version !== input.expectedBarrierVersion ||
             !proof ||
-            !valuesEqual(proof, input.revalidatedEvidence) ||
+            !zeroEffectEvidenceExtends(current, latest, proof, input.revalidatedEvidence) ||
+            !availabilityRow ||
+            !expectedAvailabilityRow ||
+            !valuesEqual(availabilityRow, expectedAvailabilityRow) ||
             tail?.seq !== input.expectedEventTailSeq ||
-            input.expectedEventTailSeq !== proof.executorClaims.throughSeq + 1 ||
-            tail.idempotency_key !== availabilityKey ||
-            tail.type !== 'warning' ||
-            tail.status !== 'transport_retry_available' ||
+            input.expectedEventTailSeq !== input.revalidatedEvidence.executorClaims.throughSeq ||
             attempts.some((attempt) => attempt.requestId === input.attempt.requestId) ||
             !transportAttemptInputIsValid(input.attempt, {
               number: latest.attemptNumber + 1,
@@ -1707,6 +1750,7 @@ export function createJarvisRepositories(
               version: latest.effectBarrier.version,
               updatedAt: input.updatedAt,
             },
+            zeroEffectEvidence: structuredClone(input.revalidatedEvidence),
             updatedAt: input.updatedAt,
           };
           const seq = nextSequence(tail.seq);

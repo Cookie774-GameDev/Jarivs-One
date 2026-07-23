@@ -19,6 +19,12 @@ export type KernelClientRequestV1 =
     }>
   | Readonly<{
       version: 1;
+      kind: 'approval_present';
+      accountId: string;
+      approvalId: string;
+    }>
+  | Readonly<{
+      version: 1;
       kind: 'approval_decide';
       accountId: string;
       approvalId: string;
@@ -62,6 +68,15 @@ export type KernelUnavailableReason =
 export type KernelClientResponseV1 =
   | Readonly<{ version: 1; kind: 'turn_accepted'; runId: string }>
   | Readonly<{ version: 1; kind: 'approval_created'; approvalId: string }>
+  | Readonly<{
+      version: 1;
+      kind: 'approval_presentation';
+      approvalId: string;
+      actionId: string;
+      expectedEffect: string;
+      risk: 'safe' | 'confirm' | 'dangerous';
+      parameters: readonly Readonly<{ field: string; safeValue: string }>[];
+    }>
   | Readonly<{
       version: 1;
       kind: 'approval_decided';
@@ -172,6 +187,12 @@ export function isKernelClientRequestV1(value: unknown): value is KernelClientRe
         id(record.runId) &&
         id(record.actionRequestId)
       );
+    case 'approval_present':
+      return (
+        exactKeys(record, ['version', 'kind', 'accountId', 'approvalId']) &&
+        id(record.accountId) &&
+        id(record.approvalId)
+      );
     case 'approval_decide':
       return (
         exactKeys(record, ['version', 'kind', 'accountId', 'approvalId', 'decision']) &&
@@ -208,6 +229,7 @@ export function isKernelClientRequestV1(value: unknown): value is KernelClientRe
 const REQUEST_KINDS = new Set<KernelClientRequestKind>([
   'turn_dispatch',
   'approval_create',
+  'approval_present',
   'approval_decide',
   'approval_execute',
   'cancel',
@@ -236,6 +258,19 @@ function isRunSummary(value: unknown): boolean {
   );
 }
 
+function isApprovalPresentationParameter(value: unknown): boolean {
+  const record = dataRecord(value);
+  return Boolean(
+    record &&
+    exactKeys(record, ['field', 'safeValue']) &&
+    typeof record.field === 'string' &&
+    record.field.length > 0 &&
+    record.field.length <= 128 &&
+    typeof record.safeValue === 'string' &&
+    record.safeValue.length <= 160,
+  );
+}
+
 export function isKernelClientResponseV1(value: unknown): value is KernelClientResponseV1 {
   const record = dataRecord(value);
   if (!record || record.version !== KERNEL_BRIDGE_VERSION || typeof record.kind !== 'string') {
@@ -246,6 +281,29 @@ export function isKernelClientResponseV1(value: unknown): value is KernelClientR
       return exactKeys(record, ['version', 'kind', 'runId']) && id(record.runId);
     case 'approval_created':
       return exactKeys(record, ['version', 'kind', 'approvalId']) && id(record.approvalId);
+    case 'approval_presentation':
+      return (
+        exactKeys(record, [
+          'version',
+          'kind',
+          'approvalId',
+          'actionId',
+          'expectedEffect',
+          'risk',
+          'parameters',
+        ]) &&
+        id(record.approvalId) &&
+        typeof record.actionId === 'string' &&
+        record.actionId.length > 0 &&
+        record.actionId.length <= 128 &&
+        typeof record.expectedEffect === 'string' &&
+        record.expectedEffect.length > 0 &&
+        record.expectedEffect.length <= 512 &&
+        (record.risk === 'safe' || record.risk === 'confirm' || record.risk === 'dangerous') &&
+        Array.isArray(record.parameters) &&
+        record.parameters.length <= 32 &&
+        record.parameters.every(isApprovalPresentationParameter)
+      );
     case 'approval_decided':
       return (
         exactKeys(record, ['version', 'kind', 'approvalId', 'status']) &&
@@ -309,6 +367,7 @@ const RESPONSE_FOR_REQUEST: Readonly<
 > = Object.freeze({
   turn_dispatch: 'turn_accepted',
   approval_create: 'approval_created',
+  approval_present: 'approval_presentation',
   approval_decide: 'approval_decided',
   approval_execute: 'approval_execution',
   cancel: 'cancellation_state',
@@ -323,6 +382,10 @@ export function responseMatchesKernelRequest(
   if (response.kind === 'unavailable') return response.requestKind === request.kind;
   if (RESPONSE_FOR_REQUEST[request.kind] !== response.kind) return false;
   switch (request.kind) {
+    case 'approval_present':
+      return (
+        response.kind === 'approval_presentation' && response.approvalId === request.approvalId
+      );
     case 'approval_decide':
       return response.kind === 'approval_decided' && response.approvalId === request.approvalId;
     case 'approval_execute':

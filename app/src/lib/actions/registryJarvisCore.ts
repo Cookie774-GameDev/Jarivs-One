@@ -21,6 +21,9 @@ export type JarvisTerminalRegisteredActionDispatcherDependencies = Readonly<{
     executionId: string;
     cancellationToken: string;
     command: string;
+    label?: string;
+    cwd?: string;
+    timeoutMs?: number;
   }): JarvisTerminalExecutionAcceptor;
 }>;
 
@@ -33,19 +36,63 @@ export function createJarvisTerminalRegisteredActionDispatcher(
   execution: JarvisIssuedActionExecution;
 }) => Promise<JarvisRegisteredActionDispatchOutcome | null> {
   return async (input) => {
+    const actionId = input.registration.id;
     if (
-      input.registration.id !== 'terminal.create' ||
+      !['terminal.create', 'terminal.run'].includes(actionId) ||
       input.registration.version !== 1 ||
       input.registration.executor.kind !== 'builtin' ||
-      input.registration.executor.registryActionId !== 'terminal.create'
+      input.registration.executor.registryActionId !== actionId
     ) {
       return null;
     }
-    if (Reflect.ownKeys(input.params).length !== 0 || input.execution.producerKind !== 'terminal') {
+    if (input.execution.producerKind !== 'terminal') {
       return {
         kind: 'executor_returned',
         result: fail('Canonical terminal execution binding was rejected.'),
       };
+    }
+    let command = '';
+    let label: string | undefined;
+    let cwd: string | undefined;
+    let timeoutMs: number | undefined;
+    if (actionId === 'terminal.create') {
+      if (Reflect.ownKeys(input.params).length !== 0) {
+        return {
+          kind: 'executor_returned',
+          result: fail('Canonical terminal execution binding was rejected.'),
+        };
+      }
+    } else {
+      const keys = Reflect.ownKeys(input.params);
+      if (
+        keys.some(
+          (key) =>
+            typeof key !== 'string' || !['command', 'label', 'cwd', 'timeoutMs'].includes(key),
+        )
+      ) {
+        return {
+          kind: 'executor_returned',
+          result: fail('Canonical terminal execution binding was rejected.'),
+        };
+      }
+      command = typeof input.params.command === 'string' ? input.params.command.trim() : '';
+      label = typeof input.params.label === 'string' ? input.params.label.trim() || undefined : undefined;
+      cwd = typeof input.params.cwd === 'string' ? input.params.cwd : undefined;
+      timeoutMs = typeof input.params.timeoutMs === 'number' ? input.params.timeoutMs : undefined;
+      if (
+        !command ||
+        command.length > 10_000 ||
+        (input.params.label !== undefined && typeof input.params.label !== 'string') ||
+        (input.params.cwd !== undefined && typeof input.params.cwd !== 'string') ||
+        (cwd !== undefined && /["`;|&$\u0000-\u001F]/.test(cwd)) ||
+        (timeoutMs !== undefined &&
+          (!Number.isFinite(timeoutMs) || timeoutMs < 1_000 || timeoutMs > 1_800_000))
+      ) {
+        return {
+          kind: 'executor_returned',
+          result: fail('Canonical terminal execution binding was rejected.'),
+        };
+      }
     }
     const executionId = dependencies.newExecutionId();
     const cancellationToken = dependencies.newCancellationToken();
@@ -66,7 +113,10 @@ export function createJarvisTerminalRegisteredActionDispatcher(
           runId: input.context.runId,
           executionId,
           cancellationToken,
-          command: '',
+          command,
+          ...(label === undefined ? {} : { label }),
+          ...(cwd === undefined ? {} : { cwd }),
+          ...(timeoutMs === undefined ? {} : { timeoutMs }),
         }),
       });
       if (transferred.kind !== 'committed') {

@@ -54,6 +54,8 @@ const EVIDENCE_IDS = Object.freeze([
   'run.status',
   'outputs.tab',
   'live.systems-tab',
+  'live.system.node',
+  'live.reconstructed-node',
   'terminal.execution',
   'cancellation.delivery',
   'run.error',
@@ -68,7 +70,9 @@ const CONTROL_IDS = Object.freeze([
   'model.transport-cli',
   'approval.confirm',
   'approval.confirm-dangerous',
+  'chat.return',
   'schedule.fixture',
+  'schedule.retry-fixture',
   'schedule.dispatch',
   'hive.fixture',
   'hive.dispatch',
@@ -95,8 +99,34 @@ const NATIVE_BINDING_ERROR_CODES = Object.freeze([
   'sik_smoke_binding_invalid',
 ]);
 
+const APPROVAL_PRESENTATION_FAILURE_CODES = Object.freeze([
+  'identity_missing',
+  'host_unavailable',
+  'host_released',
+  'request_timed_out',
+  'client_disposed',
+  'invalid_response',
+  'kernel_not_activated',
+  'request_failed',
+]);
+
+const KERNEL_RUNTIME_STAGES = Object.freeze([
+  'accepted',
+  'chat',
+  'validated',
+  'agent',
+  'context',
+  'execution',
+  'hive_turn',
+  'hive_plan',
+  'hive_workers',
+  'hive_final',
+]);
+
 const SAFE_STATE_ATTRIBUTES = Object.freeze([
   'data-error-code',
+  'data-initialization-phase',
+  'data-terminal-status',
   'data-dispatch-kind',
   'data-runtime-state',
   'data-run-status',
@@ -134,6 +164,7 @@ const SAFE_STATE_ATTRIBUTES = Object.freeze([
 
 const DRIVER_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 const REPOSITORY_ROOT = await realpath(path.resolve(DRIVER_DIRECTORY, '..'));
+const TASK22_EVIDENCE_ROOT = path.join(REPOSITORY_ROOT, '.superpowers', 'sdd', 'evidence', 'task-22');
 const TIMEOUT_MS = 60_000;
 const VOICE_FIXTURE_SHA256 = 'b3bab750a95495ae54c457b54cb9a066147e36acc6a711e1a09ea05265c272f7';
 
@@ -215,9 +246,10 @@ async function validateArguments(argv) {
     parsed['--expected-profile'],
     'kernel_smoke_profile_invalid',
   );
+  const task22EvidenceAllowed = isStrictDescendant(evidenceDirectory, TASK22_EVIDENCE_ROOT);
   if (
     !isStrictDescendant(evidenceDirectory, path.dirname(evidenceDirectory)) ||
-    isStrictDescendant(evidenceDirectory, REPOSITORY_ROOT) ||
+    (isStrictDescendant(evidenceDirectory, REPOSITORY_ROOT) && !task22EvidenceAllowed) ||
     normalizeForComparison(evidenceDirectory) === normalizeForComparison(REPOSITORY_ROOT) ||
     isStrictDescendant(expectedProfile, REPOSITORY_ROOT) ||
     normalizeForComparison(expectedProfile) === normalizeForComparison(REPOSITORY_ROOT) ||
@@ -260,6 +292,22 @@ async function requireUniqueEvidence(page, id) {
   }
 }
 
+async function requireUniqueEvidenceState(page, id, attribute, value) {
+  if (!SAFE_STATE_ATTRIBUTES.includes(attribute) || !/^[a-z0-9_-]+$/.test(value)) {
+    fail('kernel_smoke_evidence_state_selector_invalid');
+  }
+  const locator = page.locator(`${evidenceSelector(id)}[${attribute}="${value}"]`);
+  try {
+    await locator.first().waitFor({ state: 'attached', timeout: TIMEOUT_MS });
+    if ((await locator.count()) !== 1) fail('kernel_smoke_evidence_ambiguous');
+    return locator.first();
+  } catch (error) {
+    if (typeof error?.code === 'string' && error.code.startsWith('kernel_smoke_')) throw error;
+    if (page.isClosed()) fail('kernel_smoke_page_closed');
+    fail(`kernel_smoke_evidence_state_missing:${id}:${attribute}:${value}`);
+  }
+}
+
 async function waitForAttribute(
   locator,
   attribute,
@@ -273,6 +321,30 @@ async function waitForAttribute(
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   fail(timeoutCode);
+}
+
+async function waitForScheduleRunState(locator, expected, phase) {
+  const known = [
+    'queued',
+    'compiling',
+    'running',
+    'awaiting_approval',
+    'partial',
+    'completed',
+    'failed',
+    'cancelled',
+    'timed_out',
+  ];
+  const deadline = Date.now() + TIMEOUT_MS;
+  let lastState = 'invalid';
+  while (Date.now() < deadline) {
+    const value = await locator.getAttribute('data-run-status');
+    if (known.includes(value)) lastState = value;
+    if (value === expected) return value;
+    if (expected === 'running' && ['failed', 'cancelled', 'timed_out'].includes(value)) break;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  fail(`kernel_smoke_schedule_run_state_timeout:${phase}:${lastState}`);
 }
 
 async function findBoundPage(browser) {
@@ -333,6 +405,138 @@ async function clickEvidence(page, id) {
   await locator.click();
 }
 
+async function requestCancellationOrObserveCompletion(page) {
+  const run = await requireUniqueEvidence(page, 'run.status');
+  const cancellation = evidenceLocator(page, 'cancellation.delivery');
+  const deadline = Date.now() + TIMEOUT_MS;
+  let lastStatus = 'invalid';
+  while (Date.now() < deadline) {
+    const status = await run.getAttribute('data-run-status');
+    if (typeof status === 'string') lastStatus = status;
+    if (['cancelled', 'completed'].includes(status)) return `terminal:${status}`;
+    const count = await cancellation.count();
+    if (count > 1) fail('kernel_smoke_evidence_ambiguous');
+    if (count === 1) {
+      try {
+        await cancellation.first().click();
+        return 'cancellation_requested';
+      } catch {
+        if (page.isClosed()) fail('kernel_smoke_page_closed');
+        const settled = await run.getAttribute('data-run-status');
+        if (['cancelled', 'completed'].includes(settled)) return `terminal:${settled}`;
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  fail(`kernel_smoke_cancellation_race_timeout:${lastStatus}`);
+}
+
+async function clickReadyScheduleEvidence(page, id) {
+  const control = await requireUniqueEvidence(page, id);
+  const deadline = Date.now() + TIMEOUT_MS;
+  let lastState = 'invalid';
+  while (Date.now() < deadline) {
+    const state = await control.getAttribute('data-sik-schedule-state');
+    if (typeof state === 'string') lastState = state;
+    if (state === 'idle') {
+      await control.click();
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  fail(`kernel_smoke_schedule_fixture_readiness_timeout:${lastState}`);
+}
+
+async function waitForScheduleFixtureDispatch(page, id) {
+  const control = await requireUniqueEvidence(page, id);
+  const known = [
+    'idle',
+    'creating',
+    'dispatching',
+    'dispatch-claim',
+    'dispatch-output',
+    'dispatch-kernel',
+    'dispatch-settle',
+    'dispatch-failed',
+    'opening',
+    'completed',
+    'error-create',
+    'error-dispatch',
+    'error-open',
+    'unavailable-binding',
+    'unavailable-identity',
+    'unavailable-workspace',
+    'unavailable-agent',
+    'unavailable-model',
+  ];
+  const deadline = Date.now() + TIMEOUT_MS;
+  let lastState = 'invalid';
+  while (Date.now() < deadline) {
+    const state = await control.getAttribute('data-sik-schedule-state');
+    if (known.includes(state)) lastState = state;
+    if (state === 'completed') return;
+    if (state?.startsWith('error-')) fail(`kernel_smoke_schedule_fixture_${state}`);
+    if (state?.startsWith('unavailable-')) fail(`kernel_smoke_schedule_fixture_${state}`);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  fail(`kernel_smoke_schedule_fixture_timeout:${lastState}`);
+}
+
+async function prepareCollapsedCommandCenter(page) {
+  const disclosure = await requireUniqueEvidence(page, 'command-center.disclosure');
+  const expansion = await disclosure.getAttribute('aria-expanded');
+  if (!['true', 'false'].includes(expansion)) {
+    fail('kernel_smoke_command_center_expansion_invalid');
+  }
+  if (expansion === 'true') {
+    await disclosure.click();
+    await waitForAttribute(disclosure, 'aria-expanded', ['false']);
+  }
+}
+
+async function runClosedStage(code, operation) {
+  if (!/^kernel_smoke_artifact_terminal_[a-z_]+_failed$/.test(code)) {
+    fail('kernel_smoke_driver_stage_invalid');
+  }
+  try {
+    return await operation();
+  } catch (error) {
+    if (typeof error?.code === 'string') throw error;
+    fail(code);
+  }
+}
+
+async function clickApprovalEvidence(page, id) {
+  const control = evidenceLocator(page, id);
+  const pendingCanonicalCard = page.locator(
+    `${evidenceSelector('approval.card')}[data-status="pending"][data-approval-kind="canonical"]`,
+  );
+  const deadline = Date.now() + TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    const controlCount = await control.count();
+    if (controlCount > 1) fail('kernel_smoke_evidence_ambiguous');
+    if (controlCount === 1) {
+      await control.first().click();
+      return;
+    }
+    const cardCount = await pendingCanonicalCard.count();
+    if (cardCount > 1) fail('kernel_smoke_evidence_ambiguous');
+    if (cardCount === 1) {
+      const card = pendingCanonicalCard.first();
+      if ((await card.getAttribute('data-presentation-state')) === 'failed') {
+        const code = await card.getAttribute('data-presentation-code');
+        if (!APPROVAL_PRESENTATION_FAILURE_CODES.includes(code)) {
+          fail('kernel_smoke_approval_presentation_code_invalid');
+        }
+        fail(`kernel_smoke_approval_presentation_failed:${code}`);
+      }
+    }
+    if (page.isClosed()) fail('kernel_smoke_page_closed');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  fail(`kernel_smoke_evidence_missing:${id}`);
+}
+
 async function fillEvidence(page, id, value) {
   const locator = await requireUniqueEvidence(page, id);
   await locator.fill(value);
@@ -377,10 +581,12 @@ async function submitChatFixture(page, fixture) {
     }
     fail(`kernel_smoke_provider_not_reached:${state}`);
   }
-  const path = await waitForAttribute(dispatch, 'data-dispatch-kind', [
-    'protected',
-    'unprotected',
-  ], 'kernel_smoke_dispatch_state_timeout');
+  const path = await waitForAttribute(
+    dispatch,
+    'data-dispatch-kind',
+    ['protected', 'unprotected'],
+    'kernel_smoke_dispatch_state_timeout',
+  );
   if (path !== 'protected') fail('kernel_smoke_unprotected_provider_dispatch');
   await waitForNewRunDigest(page, previousRunDigest);
 }
@@ -389,16 +595,25 @@ async function selectSmokeTransport(page, transport) {
   if (!['native', 'cli'].includes(transport)) fail('kernel_smoke_transport_invalid');
   const picker = await requireUniqueEvidence(page, 'model.picker');
   await picker.click();
-  await clickEvidence(
-    page,
-    transport === 'cli' ? 'model.transport-cli' : 'model.transport-native',
-  );
+  await clickEvidence(page, transport === 'cli' ? 'model.transport-cli' : 'model.transport-native');
   await waitForAttribute(
     picker,
     'data-sik-transport',
     [transport],
     'kernel_smoke_transport_state_timeout',
   );
+}
+
+async function readOptionalRuntimeFailureCode(page) {
+  const runtime = evidenceLocator(page, 'smoke.runtime-state');
+  const runtimeCount = await runtime.count();
+  if (runtimeCount > 1) fail('kernel_smoke_evidence_ambiguous');
+  if (runtimeCount === 0) return 'kernel_runtime_failure';
+  await waitForAttribute(runtime.first(), 'data-runtime-state', ['error']);
+  const candidate = await runtime.first().getAttribute('data-error-code');
+  return /^kernel_[a-z0-9_]{1,120}$/.test(candidate ?? '')
+    ? candidate
+    : 'kernel_runtime_failure';
 }
 
 async function waitForRunStatus(page, accepted) {
@@ -412,15 +627,25 @@ async function waitForRunStatus(page, accepted) {
     if (nonterminalStatuses.includes(status)) lastStatus = status;
     if (accepted.includes(status)) return status;
     if (terminalStatuses.includes(status)) {
+      if (status === 'failed' || status === 'timed_out') {
+        const errorCode = await readOptionalRuntimeFailureCode(page);
+        fail(`kernel_smoke_unexpected_run_status:${status}:${errorCode}`);
+      }
       fail(`kernel_smoke_unexpected_run_status:${status}`);
     }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  const runtime = await requireUniqueEvidence(page, 'smoke.runtime-state');
-  const runtimeState = await runtime.getAttribute('data-runtime-state');
-  const safeRuntimeState = ['sent', 'running', 'done', 'error', 'cancelled'].includes(runtimeState)
-    ? runtimeState
-    : 'invalid';
+  const runtime = evidenceLocator(page, 'smoke.runtime-state');
+  const runtimeCount = await runtime.count();
+  if (runtimeCount > 1) fail('kernel_smoke_evidence_ambiguous');
+  const runtimeState = runtimeCount === 1
+    ? await runtime.first().getAttribute('data-runtime-state')
+    : undefined;
+  const safeRuntimeState = runtimeCount === 0
+    ? 'missing'
+    : ['sent', 'running', 'done', 'error', 'cancelled'].includes(runtimeState)
+      ? runtimeState
+      : 'invalid';
   fail(`kernel_smoke_run_state_timeout:${lastStatus ?? 'invalid'}:${safeRuntimeState}`);
 }
 
@@ -442,32 +667,52 @@ async function reducedMotionEvidence(page) {
       selector: evidenceSelector('command-center.surface'),
     });
     if (!selected.nodeId) fail('kernel_smoke_command_center_surface_missing');
-    const computed = await session.send('CSS.getComputedStyleForNode', {
+    const descendants = await session.send('DOM.querySelectorAll', {
       nodeId: selected.nodeId,
+      selector: '*',
     });
-    const values = Object.fromEntries(
-      computed.computedStyle
-        .filter(({ name }) =>
-          [
-            'animation-name',
-            'animation-duration',
-            'animation-delay',
-            'transition-duration',
-            'transition-delay',
-          ].includes(name),
-        )
-        .map(({ name, value }) => [name, value]),
-    );
-    if (
-      values['animation-name'] !== 'none' ||
-      !allZeroDurations(values['animation-duration'] ?? '') ||
-      !allZeroDurations(values['animation-delay'] ?? '') ||
-      !allZeroDurations(values['transition-duration'] ?? '') ||
-      !allZeroDurations(values['transition-delay'] ?? '')
-    ) {
-      fail('kernel_smoke_reduced_motion_computed_style_invalid');
+    const elementNodeIds = [selected.nodeId, ...descendants.nodeIds];
+    const checkedNodeIds = new Set(elementNodeIds);
+    let pseudoElementCount = 0;
+    for (const nodeId of elementNodeIds) {
+      const described = await session.send('DOM.describeNode', { nodeId, depth: 0 });
+      for (const pseudoElement of described.node.pseudoElements ?? []) {
+        if (pseudoElement.nodeId && !checkedNodeIds.has(pseudoElement.nodeId)) {
+          checkedNodeIds.add(pseudoElement.nodeId);
+          pseudoElementCount += 1;
+        }
+      }
     }
-    return values;
+    for (const nodeId of checkedNodeIds) {
+      const computed = await session.send('CSS.getComputedStyleForNode', { nodeId });
+      const values = Object.fromEntries(
+        computed.computedStyle
+          .filter(({ name }) =>
+            [
+              'animation-name',
+              'animation-duration',
+              'animation-delay',
+              'transition-duration',
+              'transition-delay',
+            ].includes(name),
+          )
+          .map(({ name, value }) => [name, value]),
+      );
+      if (
+        values['animation-name'] !== 'none' ||
+        !allZeroDurations(values['animation-duration'] ?? '') ||
+        !allZeroDurations(values['animation-delay'] ?? '') ||
+        !allZeroDurations(values['transition-duration'] ?? '') ||
+        !allZeroDurations(values['transition-delay'] ?? '')
+      ) {
+        fail('kernel_smoke_reduced_motion_computed_style_invalid');
+      }
+    }
+    return {
+      checkedNodeCount: checkedNodeIds.size,
+      pseudoElementCount,
+      zeroMotion: true,
+    };
   } finally {
     await session.detach().catch(() => undefined);
   }
@@ -479,10 +724,7 @@ async function readAttributes(locator, names) {
   return result;
 }
 
-const VOICE_TERMINAL_ATTRIBUTES = Object.freeze([
-  'data-run-status',
-  'data-run-digest',
-]);
+const VOICE_TERMINAL_ATTRIBUTES = Object.freeze(['data-run-status', 'data-run-digest']);
 
 async function readAssistantCount(chatShell) {
   const value = await chatShell.getAttribute('data-sik-assistant-count');
@@ -525,8 +767,59 @@ async function waitForMatchingAttribute(locator, attribute, pattern) {
   fail('kernel_smoke_state_timeout');
 }
 
-async function liveNodeEvidence(page) {
-  const locator = evidenceLocator(page, 'live.system.node');
+async function waitForTerminalSession(locator) {
+  const deadline = Date.now() + TIMEOUT_MS;
+  let lastPhase = 'kernel_terminal_phase_unknown';
+  while (Date.now() < deadline) {
+    const sessionId = await locator.getAttribute('data-session-id');
+    if (/^[A-Za-z0-9_-]{1,160}$/.test(sessionId ?? '')) return sessionId;
+    const phase = await locator.getAttribute('data-initialization-phase');
+    if (/^kernel_terminal_phase_[a-z_]{1,80}$/.test(phase ?? '')) lastPhase = phase;
+    const failure = await locator.getAttribute('data-error-code');
+    if (/^kernel_terminal_[a-z0-9_]{1,100}$/.test(failure ?? '')) {
+      fail(`kernel_smoke_terminal_initialization_failed:${failure}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  fail(`kernel_smoke_terminal_session_timeout:${lastPhase}`);
+}
+
+async function waitForTerminalSettlement(locator) {
+  const deadline = Date.now() + TIMEOUT_MS;
+  const pending = ['queued', 'starting', 'running', 'cancellation_requested'];
+  let lastStatus = 'missing';
+  let lastPhase = 'kernel_terminal_phase_unknown';
+  while (Date.now() < deadline) {
+    const status = await locator.getAttribute('data-terminal-status');
+    if (status === 'complete') return status;
+    if (status === 'failed' || status === 'cancelled') {
+      fail(`kernel_smoke_terminal_execution_terminal:${status}`);
+    }
+    if (pending.includes(status)) lastStatus = status;
+    const phase = await locator.getAttribute('data-initialization-phase');
+    if (/^kernel_terminal_phase_[a-z_]{1,80}$/.test(phase ?? '')) lastPhase = phase;
+    const failure = await locator.getAttribute('data-error-code');
+    if (/^kernel_terminal_[a-z0-9_]{1,100}$/.test(failure ?? '')) {
+      fail(`kernel_smoke_terminal_initialization_failed:${failure}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  let fixtureObservation = 'fixture_missing';
+  try {
+    const renderedRows = await locator.locator('.xterm-rows').allTextContents();
+    if (renderedRows.join('\n').includes('VibeSpace kernel terminal fixture')) {
+      fixtureObservation = 'fixture_seen';
+    }
+  } catch {
+    fixtureObservation = 'fixture_unreadable';
+  }
+  fail(
+    `kernel_smoke_terminal_execution_timeout:${lastStatus}:${lastPhase}:${fixtureObservation}`,
+  );
+}
+
+async function liveNodeEvidence(page, evidenceId = 'live.system.node') {
+  const locator = evidenceLocator(page, evidenceId);
   const records = [];
   for (let index = 0; index < (await locator.count()); index += 1) {
     records.push(
@@ -534,6 +827,81 @@ async function liveNodeEvidence(page) {
     );
   }
   return records;
+}
+
+const LIVE_PROOF_REF_PATTERN = /^jlive_[a-f0-9]{64}$/;
+const TERMINAL_LIVE_STATES = Object.freeze(['completed', 'degraded']);
+const ACTIVE_LIVE_STATES = Object.freeze(['active', 'busy', 'ready']);
+
+function validateExpectedLiveNodes(nodes, acceptedStates, missingCode) {
+  if (nodes.length === 0) fail(missingCode);
+  const proofRefs = new Set();
+  for (const node of nodes) {
+    const state = node['data-live-node-state'];
+    const proofRef = node['data-live-proof-ref'];
+    if (!acceptedStates.includes(state)) fail('kernel_smoke_live_state_invalid');
+    if (!LIVE_PROOF_REF_PATTERN.test(proofRef ?? '')) {
+      fail('kernel_smoke_live_proof_ref_invalid');
+    }
+    if (proofRefs.has(proofRef)) fail('kernel_smoke_live_proof_duplicate');
+    proofRefs.add(proofRef);
+  }
+  return proofRefs;
+}
+
+function assertExactReconstructedLiveNodeEvidence(
+  nodes,
+  completedProofs,
+  orphanProofs,
+  allowMissing = false,
+) {
+  const observedProofs = new Set();
+  for (const node of nodes) {
+    const state = node['data-live-node-state'];
+    const proofRef = node['data-live-proof-ref'];
+    if (!LIVE_PROOF_REF_PATTERN.test(proofRef ?? '')) {
+      fail('kernel_smoke_live_proof_ref_invalid');
+    }
+    if (!['completed', 'degraded'].includes(state)) {
+      fail('kernel_smoke_live_state_invalid');
+    }
+    if (observedProofs.has(proofRef)) fail('kernel_smoke_live_proof_duplicate');
+    if (orphanProofs.has(proofRef)) fail('kernel_smoke_live_orphan_active_restored');
+    observedProofs.add(proofRef);
+  }
+  for (const proofRef of observedProofs) {
+    if (!completedProofs.has(proofRef)) {
+      fail('kernel_smoke_live_unexpected_terminal_proof_restored');
+    }
+  }
+  if (observedProofs.size !== completedProofs.size) {
+    if (allowMissing) return false;
+    fail('kernel_smoke_live_completed_proof_not_restored');
+  }
+  for (const proofRef of completedProofs) {
+    if (!observedProofs.has(proofRef)) {
+      if (allowMissing) return false;
+      fail('kernel_smoke_live_completed_proof_not_restored');
+    }
+  }
+  return true;
+}
+
+async function waitForReconstructedLiveNodeEvidence(
+  page,
+  completedProofs,
+  orphanProofs,
+  timeoutMs = 20_000,
+) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const nodes = await liveNodeEvidence(page, 'live.reconstructed-node');
+    if (assertExactReconstructedLiveNodeEvidence(nodes, completedProofs, orphanProofs, true)) {
+      return nodes;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  fail('kernel_smoke_live_completed_proof_not_restored');
 }
 
 async function runScenario(page, scenario, restartCheckpoint) {
@@ -549,11 +917,23 @@ async function runScenario(page, scenario, restartCheckpoint) {
       await clickEvidence(page, 'voice.open');
       await requireUniqueEvidence(page, 'voice.state');
       const previousVoiceRunDigest = await readOptionalRunDigest(page);
+      const sessionEvidence = await requireUniqueEvidence(page, 'voice.stt-state');
+      await waitForAttribute(
+        sessionEvidence,
+        'data-session-bound',
+        ['true'],
+        'kernel_smoke_voice_session_timeout',
+      );
       await clickEvidence(page, 'voice.transcript');
       await waitForNewRunDigest(page, previousVoiceRunDigest);
       await waitForRunStatus(page, ['running']);
       const voiceState = await requireUniqueEvidence(page, 'voice.state');
-      await waitForAttribute(voiceState, 'data-voice-state', ['thinking', 'speaking']);
+      await waitForAttribute(
+        voiceState,
+        'data-voice-state',
+        ['thinking', 'speaking'],
+        'kernel_smoke_voice_cancellable_timeout',
+      );
       const chatShell = await requireUniqueEvidence(page, 'chat.run-shell');
       const assistantCountBeforeStop = await readAssistantCount(chatShell);
       await clickEvidence(page, 'voice.stop');
@@ -563,13 +943,16 @@ async function runScenario(page, scenario, restartCheckpoint) {
       beforeRuntimeSettled['data-sik-assistant-count'] = await readAssistantCount(chatShell);
       assertNoVoiceSuccessEvidence(beforeRuntimeSettled, assistantCountBeforeStop);
       const runtime = await requireUniqueEvidence(page, 'smoke.runtime-state');
-      await waitForAttribute(runtime, 'data-runtime-state', ['cancelled']);
+      await waitForAttribute(
+        runtime,
+        'data-runtime-state',
+        ['cancelled'],
+        'kernel_smoke_voice_runtime_cancel_timeout',
+      );
       const afterRuntimeSettled = await readAttributes(terminal, VOICE_TERMINAL_ATTRIBUTES);
       afterRuntimeSettled['data-sik-assistant-count'] = await readAssistantCount(chatShell);
       assertNoVoiceSuccessEvidence(afterRuntimeSettled, assistantCountBeforeStop);
-      if (
-        beforeRuntimeSettled['data-run-digest'] !== afterRuntimeSettled['data-run-digest']
-      ) {
+      if (beforeRuntimeSettled['data-run-digest'] !== afterRuntimeSettled['data-run-digest']) {
         fail('kernel_smoke_voice_terminal_state_changed');
       }
       return {
@@ -617,59 +1000,87 @@ async function runScenario(page, scenario, restartCheckpoint) {
     }
     case 'approval_safe_auto':
       await submitChatFixture(page, 'Search for the fixed smoke fixture.');
-      await requireUniqueEvidence(page, 'approval.card');
       await waitForRunStatus(page, ['completed']);
+      {
+        const approval = await requireUniqueEvidence(page, 'approval.card');
+        await waitForAttribute(approval, 'data-approval-kind', ['canonical']);
+        await waitForAttribute(approval, 'data-status', ['success']);
+      }
       return 'PASS';
     case 'approval_confirm':
       await submitChatFixture(page, 'Create one fixed smoke terminal.');
-      await requireUniqueEvidence(page, 'approval.card');
-      await clickEvidence(page, 'approval.confirm');
-      await waitForRunStatus(page, ['completed']);
+      await waitForRunStatus(page, ['awaiting_approval']);
+      await clickApprovalEvidence(page, 'approval.confirm');
+      {
+        const approval = await requireUniqueEvidenceState(
+          page,
+          'approval.card',
+          'data-status',
+          'queued',
+        );
+        await waitForAttribute(approval, 'data-approval-kind', ['canonical']);
+      }
+      await waitForRunStatus(page, ['running']);
       return 'PASS';
     case 'approval_dangerous':
       await submitChatFixture(page, 'Cancel the selected fixed smoke task.');
-      await requireUniqueEvidence(page, 'approval.card');
-      await clickEvidence(page, 'approval.confirm-dangerous');
+      await waitForRunStatus(page, ['awaiting_approval']);
+      await clickApprovalEvidence(page, 'approval.confirm-dangerous');
       await waitForRunStatus(page, ['completed']);
       return 'PASS';
     case 'artifact_provider':
       await submitChatFixture(page, 'Produce the fixed provider artifact.');
+      await prepareCollapsedCommandCenter(page);
+      await clickEvidence(page, 'command-center.disclosure');
       await clickEvidence(page, 'outputs.tab');
       await waitForRunStatus(page, ['completed']);
       return 'PASS';
     case 'artifact_file_action':
       await submitChatFixture(page, 'Produce the fixed file action artifact.');
+      await prepareCollapsedCommandCenter(page);
+      await clickEvidence(page, 'command-center.disclosure');
       await clickEvidence(page, 'outputs.tab');
       await waitForRunStatus(page, ['completed']);
       return 'PASS';
     case 'artifact_terminal':
-      await submitChatFixture(page, 'Produce the fixed terminal artifact.');
-      await clickEvidence(page, 'outputs.tab');
-      await waitForRunStatus(page, ['completed']);
+      await runClosedStage('kernel_smoke_artifact_terminal_submit_failed', () =>
+        submitChatFixture(page, 'Produce the fixed terminal artifact.'),
+      );
+      await runClosedStage('kernel_smoke_artifact_terminal_approval_wait_failed', () =>
+        waitForRunStatus(page, ['awaiting_approval']),
+      );
+      await runClosedStage('kernel_smoke_artifact_terminal_approval_click_failed', () =>
+        clickApprovalEvidence(page, 'approval.confirm-dangerous'),
+      );
+      await runClosedStage('kernel_smoke_artifact_terminal_attach_wait_failed', async () => {
+        const terminalExecution = await requireUniqueEvidence(page, 'terminal.execution');
+        await waitForTerminalSession(terminalExecution);
+        await waitForTerminalSettlement(terminalExecution);
+      });
+      await runClosedStage('kernel_smoke_artifact_terminal_chat_return_failed', () =>
+        clickEvidence(page, 'chat.return'),
+      );
+      await runClosedStage('kernel_smoke_artifact_terminal_disclosure_prepare_failed', () =>
+        prepareCollapsedCommandCenter(page),
+      );
+      await runClosedStage('kernel_smoke_artifact_terminal_disclosure_click_failed', () =>
+        clickEvidence(page, 'command-center.disclosure'),
+      );
+      await runClosedStage('kernel_smoke_artifact_terminal_outputs_click_failed', () =>
+        clickEvidence(page, 'outputs.tab'),
+      );
+      await runClosedStage('kernel_smoke_artifact_terminal_completion_wait_failed', () =>
+        waitForRunStatus(page, ['completed']),
+      );
       return 'PASS';
     case 'schedule_transport_retry':
       if (!restartCheckpoint) {
         await clickEvidence(page, 'schedule.fixture');
-        await clickEvidence(page, 'schedule.dispatch');
-        await requireUniqueEvidence(page, 'run.error');
+        await clickReadyScheduleEvidence(page, 'schedule.retry-fixture');
+        await waitForScheduleFixtureDispatch(page, 'schedule.retry-fixture');
         const status = await requireUniqueEvidence(page, 'run.status');
-        await waitForAttribute(status, 'data-run-status', ['failed']);
+        await waitForScheduleRunState(status, 'running', 'settled');
         await waitForMatchingAttribute(status, 'data-run-digest', /^[a-f0-9]{64}$/);
-        const before = await readAttributes(status, [
-          'data-run-digest',
-          'data-snapshot-digest',
-          'data-request-digest',
-          'data-attempt-number',
-          'data-attempt-state',
-          'data-effect-barrier-state',
-          'data-effect-barrier-version',
-          'data-response-started',
-          'data-chunk-count',
-          'data-action-dispatch-count',
-          'data-approval-count',
-          'data-artifact-count',
-          'data-executor-claim-count',
-        ]);
         const expected = {
           'data-attempt-number': '1',
           'data-attempt-state': 'retryable_failed',
@@ -683,6 +1094,22 @@ async function runScenario(page, scenario, restartCheckpoint) {
           'data-executor-claim-count': '0',
         };
         for (const [name, value] of Object.entries(expected)) {
+          await waitForAttribute(
+            status,
+            name,
+            [value],
+            `kernel_smoke_schedule_zero_effect_timeout:${name}`,
+          );
+        }
+        await waitForMatchingAttribute(status, 'data-snapshot-digest', /^[a-f0-9]{64}$/);
+        await waitForMatchingAttribute(status, 'data-request-digest', /^[a-f0-9]{64}$/);
+        const before = await readAttributes(status, [
+          'data-run-digest',
+          'data-snapshot-digest',
+          'data-request-digest',
+          ...Object.keys(expected),
+        ]);
+        for (const [name, value] of Object.entries(expected)) {
           if (before[name] !== value) fail('kernel_smoke_schedule_zero_effect_evidence_invalid');
         }
         for (const name of ['data-run-digest', 'data-snapshot-digest', 'data-request-digest']) {
@@ -694,7 +1121,7 @@ async function runScenario(page, scenario, restartCheckpoint) {
       }
       {
         const status = await requireUniqueEvidence(page, 'run.status');
-        await waitForAttribute(status, 'data-run-status', ['failed']);
+        await waitForScheduleRunState(status, 'running', 'restart');
         const before = restartCheckpoint.before;
         for (const name of [
           'data-run-digest',
@@ -748,48 +1175,58 @@ async function runScenario(page, scenario, restartCheckpoint) {
       if (!restartCheckpoint) {
         await submitChatFixture(page, 'Verify fixed live evidence across restart.');
         await waitForRunStatus(page, ['completed']);
+        await prepareCollapsedCommandCenter(page);
         await clickEvidence(page, 'command-center.disclosure');
         await clickEvidence(page, 'live.systems-tab');
         await requireUniqueEvidence(page, 'live.system.node');
         const completedNodes = (await liveNodeEvidence(page)).filter(
           ({ ['data-live-node-state']: state }) => ['completed', 'degraded'].includes(state),
         );
-        if (completedNodes.length === 0) fail('kernel_smoke_live_completed_proof_missing');
+        validateExpectedLiveNodes(
+          completedNodes,
+          TERMINAL_LIVE_STATES,
+          'kernel_smoke_live_completed_proof_missing',
+        );
         await submitChatFixture(page, 'Verify fixed live evidence across restart.');
         await waitForRunStatus(page, ['running']);
         await clickEvidence(page, 'live.systems-tab');
         const activeNodes = (await liveNodeEvidence(page)).filter(
           ({ ['data-live-node-state']: state }) => ['active', 'busy', 'ready'].includes(state),
         );
-        if (activeNodes.length === 0) fail('kernel_smoke_live_active_proof_missing');
+        validateExpectedLiveNodes(
+          activeNodes,
+          ACTIVE_LIVE_STATES,
+          'kernel_smoke_live_active_proof_missing',
+        );
         return {
           outcome: 'RESTART_REQUIRED',
           restartBefore: { completedNodes, activeNodes },
         };
       }
       {
-        const disclosure = await requireUniqueEvidence(page, 'command-center.disclosure');
-        if ((await disclosure.getAttribute('aria-expanded')) !== 'true') await disclosure.click();
-        await clickEvidence(page, 'live.systems-tab');
-        const nodes = await liveNodeEvidence(page);
-        const completedProofs = new Set(
-          restartCheckpoint.before.completedNodes.map((node) => node['data-live-proof-ref']),
+        const completedProofs = validateExpectedLiveNodes(
+          restartCheckpoint.before.completedNodes,
+          TERMINAL_LIVE_STATES,
+          'kernel_smoke_live_completed_proof_missing',
         );
-        const orphanProofs = new Set(
-          restartCheckpoint.before.activeNodes.map((node) => node['data-live-proof-ref']),
+        const orphanProofs = validateExpectedLiveNodes(
+          restartCheckpoint.before.activeNodes,
+          ACTIVE_LIVE_STATES,
+          'kernel_smoke_live_active_proof_missing',
         );
-        if (!nodes.some((node) => completedProofs.has(node['data-live-proof-ref']))) {
-          fail('kernel_smoke_live_completed_proof_not_restored');
-        }
-        if (nodes.some((node) => orphanProofs.has(node['data-live-proof-ref']))) {
-          fail('kernel_smoke_live_orphan_active_restored');
-        }
+        const nodes = await waitForReconstructedLiveNodeEvidence(
+          page,
+          completedProofs,
+          orphanProofs,
+        );
+        assertExactReconstructedLiveNodeEvidence(nodes, completedProofs, orphanProofs);
         return { outcome: 'PASS', liveRestart: { before: restartCheckpoint.before, after: nodes } };
       }
     case 'command_center_reduced_motion':
       await page.emulateMedia({ reducedMotion: 'reduce' });
       await submitChatFixture(page, 'Verify the fixed reduced motion controls.');
       await waitForRunStatus(page, ['completed']);
+      await prepareCollapsedCommandCenter(page);
       {
         const surface = await requireUniqueEvidence(page, 'command-center.surface');
         await waitForAttribute(surface, 'data-motion-enabled', ['false']);
@@ -816,9 +1253,11 @@ async function runScenario(page, scenario, restartCheckpoint) {
       return 'PASS';
     case 'cancel_completion_race':
       await submitChatFixture(page, 'Resolve the fixed cancellation completion race.');
-      await clickEvidence(page, 'cancellation.delivery');
-      await waitForRunStatus(page, ['cancelled', 'completed']);
-      return 'PASS';
+      {
+        const decision = await requestCancellationOrObserveCompletion(page);
+        const terminalStatus = await waitForRunStatus(page, ['cancelled', 'completed']);
+        return { outcome: 'PASS', cancellationRace: { decision, terminalStatus } };
+      }
     case 'transport_provider_success':
       await submitChatFixture(page, 'Verify the provider transport smoke fixture.');
       await requireUniqueEvidence(page, 'chat.run-shell');
@@ -831,12 +1270,45 @@ async function runScenario(page, scenario, restartCheckpoint) {
       return 'PASS';
     case 'schedule_dispatch':
       await clickEvidence(page, 'schedule.fixture');
-      await clickEvidence(page, 'schedule.dispatch');
+      await clickReadyScheduleEvidence(page, 'schedule.dispatch');
+      await waitForScheduleFixtureDispatch(page, 'schedule.dispatch');
       await waitForRunStatus(page, ['completed']);
       return 'PASS';
     case 'hive_dispatch':
+      await requireUniqueEvidence(page, 'chat.runtime-ready');
       await clickEvidence(page, 'hive.fixture');
       await clickEvidence(page, 'hive.dispatch');
+      {
+        const hiveRuntime = await requireUniqueEvidence(page, 'smoke.runtime-state');
+        let hiveDispatch;
+        try {
+          hiveDispatch = await requireUniqueEvidence(page, 'smoke.dispatch-kind');
+        } catch (error) {
+          if (error?.code !== 'kernel_smoke_evidence_missing:smoke.dispatch-kind') throw error;
+          const state = await hiveRuntime.getAttribute('data-runtime-state');
+          const candidate = await hiveRuntime.getAttribute('data-error-code');
+          const stage = await hiveRuntime.getAttribute('data-initialization-phase');
+          const safeState = ['sent', 'running', 'done', 'error', 'cancelled'].includes(state)
+            ? state
+            : 'invalid';
+          const safeError = /^kernel_[a-z0-9_]{1,120}$/.test(candidate ?? '')
+            ? candidate
+            : 'kernel_runtime_failure';
+          const safeStage = KERNEL_RUNTIME_STAGES.includes(stage) ? stage : 'invalid';
+          fail(`kernel_smoke_hive_provider_not_reached:${safeState}:${safeError}:${safeStage}`);
+        }
+        // Specialist Hive workers intentionally retain their own prompts and may
+        // dispatch before the protected JARVIS finalizer. Attest the finalizer's
+        // protected route instead of rejecting that earlier worker observation.
+        await waitForMatchingAttribute(hiveDispatch, 'data-dispatch-kind', /^protected$/);
+        await waitForAttribute(
+          hiveRuntime,
+          'data-runtime-state', ['done'],
+          'kernel_smoke_hive_runtime_timeout',
+        );
+        const hiveChatShell = await requireUniqueEvidence(page, 'chat.run-shell');
+        await waitForMatchingAttribute(hiveChatShell, 'data-sik-assistant-count', /^[1-9][0-9]*$/);
+      }
       await waitForRunStatus(page, ['completed']);
       return 'PASS';
     default:
@@ -957,9 +1429,10 @@ async function requireAbsentOutput(output) {
 async function main() {
   const options = await validateArguments(process.argv.slice(2));
   let browser;
+  let page;
   try {
     browser = await chromium.connectOverCDP(`http://127.0.0.1:${options.cdpPort}`);
-    const page = await findBoundPage(browser);
+    page = await findBoundPage(browser);
     const binding = await attestBinding(page, options);
     const restartCheckpoint = await readRestartCheckpoint(options);
     if (
@@ -1039,6 +1512,35 @@ async function main() {
       flag: 'wx',
     });
     process.stdout.write(`${JSON.stringify({ scenario: options.scenario, outcome })}\n`);
+  } catch (error) {
+    if (page && !page.isClosed()) {
+      try {
+        const candidate = typeof error?.code === 'string' ? error.code : '';
+        const failureCode = /^kernel_smoke_[a-z0-9_:.-]{1,180}$/.test(candidate)
+          ? candidate
+          : 'kernel_smoke_driver_failed';
+        const failureEvidence = Object.freeze({
+          schemaVersion: 1,
+          scenario: options.scenario,
+          outcome: 'FAIL',
+          failureCode,
+          observed: await collectSanitizedEvidence(page),
+        });
+        await assertNoRawAudio(page, failureEvidence);
+        const failurePath = containedOutputPath(
+          options.evidenceDirectory,
+          `${options.scenario}.failure.json`,
+        );
+        await requireAbsentOutput(failurePath);
+        await writeFile(failurePath, `${JSON.stringify(failureEvidence, null, 2)}\n`, {
+          encoding: 'utf8',
+          flag: 'wx',
+        });
+      } catch {
+        // Preserve the original closed failure code even if diagnostics cannot be written.
+      }
+    }
+    throw error;
   } finally {
     await browser?.close().catch(() => undefined);
   }

@@ -21,7 +21,10 @@ import type {
   ProviderConnection,
 } from './adapters/types';
 import { getProviderConnectionDescriptor } from './adapters/catalog';
-import { KERNEL_SMOKE_PROVIDER_ID } from './providers/kernelSmoke';
+import {
+  isKernelSmokeBindingActive,
+  KERNEL_SMOKE_PROVIDER_ID,
+} from './providers/kernelSmoke';
 import { isProtectedJarvisAgent } from '@/lib/jarvis/identity';
 
 type ConnectedSingleSelection = {
@@ -161,6 +164,13 @@ export function resolveActiveStackPreset(
   stackSlash: ParsedStackSlashCommand,
 ): StackPresetId {
   if (stackSlash.preset) return coerceToExposedPreset(stackSlash.preset);
+  if (
+    selection.mode === 'hive' &&
+    selection.hiveId === 'custom' &&
+    isKernelSmokeBindingActive()
+  ) {
+    return 'custom';
+  }
   if (selection.mode === 'hive') return coerceToExposedPreset(selection.hiveId);
   return 'off';
 }
@@ -213,6 +223,16 @@ export function isHiveWorkflowReady(
 ): boolean {
   const steps = stepsForPreset(hiveId, 'general', customSteps);
   if (steps.length === 0) return false;
+  if (
+    hiveId === 'custom' &&
+    isKernelSmokeBindingActive() &&
+    steps.every(
+      (step) =>
+        step.provider === KERNEL_SMOKE_PROVIDER_ID && step.model === 'kernel-smoke-v1',
+    )
+  ) {
+    return true;
+  }
   return steps.every((step) => {
     if (!getAccessibleProviders(ctx.apiKeys, ctx.offlineMode, ctx.plan, ctx.defaultLocalModel).includes(step.provider)) {
       return false;

@@ -25,6 +25,10 @@ $ExpectedNativeExecutable = Join-Path $AppRoot 'src-tauri\target\debug\jarvis.ex
 $SmokeCliDirectory = Join-Path $AppRoot 'src-tauri\target\debug\examples'
 $TauriCommand = Join-Path $RepositoryRoot 'node_modules\.bin\tauri.cmd'
 $ProfileBase = Join-Path ([IO.Path]::GetTempPath()) 'vibespace-sik-smoke-profiles'
+$Task22EvidenceBase = Join-Path $RepositoryRoot '.superpowers\sdd\evidence\task-22'
+$NativeStartupTimeoutMinutes = 12
+$DriverPhaseTimeoutMinutes = 10
+$ProcessTreeCleanupTimeoutSeconds = 60
 $AllowedScenarios = @(
     'transport_provider_success',
     'transport_cli_success',
@@ -53,6 +57,7 @@ $RestartScenarios = @(
 )
 $ChildEnvironmentNames = @(
     'VITE_SIK_SMOKE',
+    'VITE_JARVIS_LOCAL_ADMIN',
     'VIBESPACE_SIK_SMOKE',
     'VIBESPACE_SIK_CDP_PORT',
     'VIBESPACE_SIK_PROFILE',
@@ -277,33 +282,122 @@ function Complete-HiddenRedirectedProcess {
 }
 
 function Get-CimProcessSnapshot {
-    return @(Get-CimInstance -ClassName Win32_Process -ErrorAction Stop | ForEach-Object {
-            $creationUtc = $null
-            if ($null -ne $_.CreationDate) {
-                $creationUtc = ([DateTime]$_.CreationDate).ToUniversalTime().ToString('O')
+    $CimSnapshotMaxAttempts = 5
+    for ($attempt = 1; $attempt -le $CimSnapshotMaxAttempts; $attempt++) {
+        try {
+            return @(Get-CimInstance -ClassName Win32_Process -ErrorAction Stop | ForEach-Object {
+                    $creationUtc = $null
+                    if ($null -ne $_.CreationDate) {
+                        $creationUtc = ([DateTime]$_.CreationDate).ToUniversalTime().ToString('O')
+                    }
+                    [pscustomobject]@{
+                        ProcessId       = [int]$_.ProcessId
+                        ParentProcessId = [int]$_.ParentProcessId
+                        ExecutablePath  = if ([string]::IsNullOrWhiteSpace($_.ExecutablePath)) {
+                            $null
+                        }
+                        else {
+                            [IO.Path]::GetFullPath([string]$_.ExecutablePath)
+                        }
+                        CreationUtc     = $creationUtc
+                    }
+                })
+        }
+        catch {
+            if ($attempt -ge $CimSnapshotMaxAttempts) {
+                throw 'kernel_smoke_process_snapshot_unavailable'
             }
-            [pscustomobject]@{
-                ProcessId       = [int]$_.ProcessId
-                ParentProcessId = [int]$_.ParentProcessId
-                ExecutablePath  = if ([string]::IsNullOrWhiteSpace($_.ExecutablePath)) {
-                    $null
-                }
-                else {
-                    [IO.Path]::GetFullPath([string]$_.ExecutablePath)
-                }
-                CreationUtc     = $creationUtc
-            }
-        })
+            Start-Sleep -Milliseconds 250
+        }
+    }
+}
+
+function Convert-ProcessCreationUtc {
+    param([Parameter(Mandatory = $true)][string]$CreationUtc)
+
+    return [DateTime]::Parse(
+        $CreationUtc,
+        [Globalization.CultureInfo]::InvariantCulture,
+        [Globalization.DateTimeStyles]::RoundtripKind
+    ).ToUniversalTime()
+}
+
+function Test-RecordedProcessIdentity {
+    param(
+        [Parameter(Mandatory = $true)][object]$Current,
+        [Parameter(Mandatory = $true)][object]$Recorded
+    )
+
+    return (
+        [int]$Current.ProcessId -eq [int]$Recorded.ProcessId -and
+        $null -ne $Current.CreationUtc -and
+        $null -ne $Current.ExecutablePath -and
+        $Current.CreationUtc -eq $Recorded.CreationUtc -and
+        (Test-PathEqual -Left $Current.ExecutablePath -Right $Recorded.ExecutablePath)
+    )
+}
+
+function Register-RecordedProcessRoot {
+    param(
+        [Parameter(Mandatory = $true)][Diagnostics.Process]$Process,
+        [Parameter(Mandatory = $true)][hashtable]$Records,
+        [object[]]$Snapshot = $(Get-CimProcessSnapshot)
+    )
+
+    if ($Process.HasExited) {
+        throw 'kernel_smoke_process_root_exited_before_registration'
+    }
+    try {
+        $launchCreationUtc = $Process.StartTime.ToUniversalTime()
+    }
+    catch {
+        throw 'kernel_smoke_process_root_identity_unavailable'
+    }
+    $matches = @($Snapshot | Where-Object { $_.ProcessId -eq $Process.Id })
+    if (
+        $matches.Count -ne 1 -or
+        $null -eq $matches[0].CreationUtc -or
+        $null -eq $matches[0].ExecutablePath
+    ) {
+        throw 'kernel_smoke_process_root_identity_unavailable'
+    }
+    $snapshotCreationUtc = Convert-ProcessCreationUtc -CreationUtc $matches[0].CreationUtc
+    if (
+        [Math]::Abs(($snapshotCreationUtc - $launchCreationUtc).Ticks) -gt
+        [TimeSpan]::TicksPerMillisecond
+    ) {
+        throw 'kernel_smoke_process_root_identity_changed'
+    }
+    $key = [string]$Process.Id
+    if ($Records.ContainsKey($key)) {
+        throw 'kernel_smoke_process_root_already_registered'
+    }
+    $Records[$key] = [pscustomobject]@{
+        ProcessId       = [int]$matches[0].ProcessId
+        ParentProcessId = [int]$matches[0].ParentProcessId
+        ExecutablePath  = $matches[0].ExecutablePath
+        CreationUtc     = $matches[0].CreationUtc
+        CreationTimeUtc = $snapshotCreationUtc
+        Depth           = 0
+    }
 }
 
 function Get-Descendants {
     param(
-        [Parameter(Mandatory = $true)][int]$RootPid,
+        [Parameter(Mandatory = $true)][object]$RootProcess,
         [Parameter(Mandatory = $true)][object[]]$Snapshot
     )
 
+    $rootCreationUtc = Convert-ProcessCreationUtc -CreationUtc $RootProcess.CreationUtc
     $result = New-Object System.Collections.Generic.List[object]
-    $frontier = @([pscustomobject]@{ ProcessId = $RootPid; Depth = 0 })
+    $frontier = @([pscustomobject]@{
+            ProcessId       = [int]$RootProcess.ProcessId
+            ParentProcessId = [int]$RootProcess.ParentProcessId
+            ExecutablePath  = $RootProcess.ExecutablePath
+            CreationUtc     = $RootProcess.CreationUtc
+            CreationTimeUtc = $rootCreationUtc
+            Depth           = 0
+        })
     $visited = @{}
     while ($frontier.Count -gt 0) {
         $current = $frontier[0]
@@ -314,22 +408,51 @@ function Get-Descendants {
             $frontier = @($frontier[1..($frontier.Count - 1)])
         }
         if ($visited.ContainsKey([string]$current.ProcessId)) {
-            continue
+            throw 'kernel_smoke_process_ancestry_invalid'
         }
         $visited[[string]$current.ProcessId] = $true
         foreach ($child in @($Snapshot | Where-Object { $_.ParentProcessId -eq $current.ProcessId })) {
+            if ($null -eq $child.CreationUtc -or $null -eq $child.ExecutablePath) {
+                continue
+            }
+            $childCreationUtc = Convert-ProcessCreationUtc -CreationUtc $child.CreationUtc
+            if ($childCreationUtc -lt $current.CreationTimeUtc) {
+                continue
+            }
             $record = [pscustomobject]@{
-                ProcessId       = $child.ProcessId
-                ParentProcessId = $child.ParentProcessId
+                ProcessId       = [int]$child.ProcessId
+                ParentProcessId = [int]$child.ParentProcessId
                 ExecutablePath  = $child.ExecutablePath
                 CreationUtc     = $child.CreationUtc
+                CreationTimeUtc = $childCreationUtc
                 Depth           = $current.Depth + 1
             }
             $result.Add($record)
-            $frontier += [pscustomobject]@{ ProcessId = $child.ProcessId; Depth = $record.Depth }
+            $frontier += $record
         }
     }
     return $result.ToArray()
+}
+
+function Get-VerifiedRecordedProcessTree {
+    param(
+        [Parameter(Mandatory = $true)][int]$RootPid,
+        [Parameter(Mandatory = $true)][hashtable]$Records,
+        [Parameter(Mandatory = $true)][object[]]$Snapshot
+    )
+
+    $key = [string]$RootPid
+    if (-not $Records.ContainsKey($key)) {
+        throw 'kernel_smoke_process_root_unregistered'
+    }
+    $root = @($Snapshot | Where-Object { $_.ProcessId -eq $RootPid })
+    if ($root.Count -eq 0) {
+        return @()
+    }
+    if ($root.Count -ne 1 -or -not (Test-RecordedProcessIdentity -Current $root[0] -Recorded $Records[$key])) {
+        return @()
+    }
+    return @($Records[$key]) + @(Get-Descendants -RootProcess $root[0] -Snapshot $Snapshot)
 }
 
 function Add-RecordedProcessTree {
@@ -339,30 +462,28 @@ function Add-RecordedProcessTree {
         [object[]]$Snapshot = $(Get-CimProcessSnapshot)
     )
 
-    $root = @($Snapshot | Where-Object { $_.ProcessId -eq $RootPid })
-    $tree = @($root | ForEach-Object {
-            [pscustomobject]@{
-                ProcessId       = $_.ProcessId
-                ParentProcessId = $_.ParentProcessId
-                ExecutablePath  = $_.ExecutablePath
-                CreationUtc     = $_.CreationUtc
-                Depth           = 0
-            }
-        }) + @(Get-Descendants -RootPid $RootPid -Snapshot $Snapshot)
+    $tree = @(Get-VerifiedRecordedProcessTree `
+            -RootPid $RootPid `
+            -Records $Records `
+            -Snapshot $Snapshot)
     foreach ($process in $tree) {
-        if ($null -ne $process.CreationUtc -and $null -ne $process.ExecutablePath) {
-            $key = [string]$process.ProcessId
-            if (-not $Records.ContainsKey($key)) {
-                $Records[$key] = [pscustomobject]@{
-                    ProcessId      = $process.ProcessId
-                    ParentProcessId = $process.ParentProcessId
-                    ExecutablePath = $process.ExecutablePath
-                    CreationUtc    = $process.CreationUtc
-                    Depth          = $process.Depth
-                }
+        $key = [string]$process.ProcessId
+        if ($Records.ContainsKey($key)) {
+            if (-not (Test-RecordedProcessIdentity -Current $process -Recorded $Records[$key])) {
+                throw 'kernel_smoke_recorded_process_identity_changed'
             }
+            continue
+        }
+        $Records[$key] = [pscustomobject]@{
+            ProcessId       = [int]$process.ProcessId
+            ParentProcessId = [int]$process.ParentProcessId
+            ExecutablePath  = $process.ExecutablePath
+            CreationUtc     = $process.CreationUtc
+            CreationTimeUtc = $process.CreationTimeUtc
+            Depth           = $process.Depth
         }
     }
+    return $tree
 }
 
 function Stop-RecordedProcessTree {
@@ -428,6 +549,11 @@ function Wait-ForRecordedProcessTreeExit {
         if ($remaining.Count -eq 0) {
             return
         }
+        foreach ($process in @($remaining | Sort-Object {
+                    $Records[[string]$_.ProcessId].Depth
+                } -Descending)) {
+            Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
+        }
         Start-Sleep -Milliseconds 100
     }
     throw 'kernel_smoke_process_tree_stop_timeout'
@@ -446,8 +572,11 @@ function Wait-ForNativeDescendant {
             throw "kernel_smoke_launcher_exited:$($Launcher.ExitCode)"
         }
         $snapshot = Get-CimProcessSnapshot
-        Add-RecordedProcessTree -RootPid $Launcher.Id -Records $Records -Snapshot $snapshot
-        $descendants = @(Get-Descendants -RootPid $Launcher.Id -Snapshot $snapshot)
+        $tree = @(Add-RecordedProcessTree `
+                -RootPid $Launcher.Id `
+                -Records $Records `
+                -Snapshot $snapshot)
+        $descendants = @($tree | Where-Object { $_.Depth -gt 0 })
         $wrongPathJarvis = @($descendants | Where-Object {
                 $null -ne $_.ExecutablePath -and
                 [IO.Path]::GetFileName($_.ExecutablePath) -ieq 'jarvis.exe' -and
@@ -557,6 +686,7 @@ function Assert-StaticContract {
             'phase$phase.driver.stdout.log',
             'kernel_smoke_restart_unexpected',
             'Wait-ForRecordedProcessTreeExit',
+            'Register-RecordedProcessRoot',
             'ExcludedPorts'
         )) {
         if (-not $source.Contains($required)) {
@@ -632,11 +762,21 @@ try {
     $appData = Get-CanonicalExistingPath -LiteralPath $appData
     $localAppData = Get-CanonicalExistingPath -LiteralPath $localAppData
     $webViewProfile = Get-CanonicalExistingPath -LiteralPath $webViewProfile
+    $smokeProject = Join-Path $Profile 'SmokeProject'
+    New-Item -ItemType Directory -Path $smokeProject -Force | Out-Null
+    $smokeProject = Get-CanonicalExistingPath -LiteralPath $smokeProject
+    if (-not (Test-StrictDescendantPath -Child $smokeProject -Parent $Profile)) {
+        throw 'kernel_smoke_project_containment_invalid'
+    }
 
     $expandedEvidence = [IO.Path]::GetFullPath($EvidenceDirectory)
+    $task22EvidenceAllowed = Test-StrictDescendantPath -Child $expandedEvidence -Parent $Task22EvidenceBase
     if (
         (Test-PathEqual -Left $expandedEvidence -Right $RepositoryRoot) -or
-        (Test-StrictDescendantPath -Child $expandedEvidence -Parent $RepositoryRoot) -or
+        (
+            (Test-StrictDescendantPath -Child $expandedEvidence -Parent $RepositoryRoot) -and
+            -not $task22EvidenceAllowed
+        ) -or
         (Test-PathEqual -Left $expandedEvidence -Right $Profile) -or
         (Test-StrictDescendantPath -Child $expandedEvidence -Parent $Profile) -or
         (Test-StrictDescendantPath -Child $Profile -Parent $expandedEvidence)
@@ -645,10 +785,14 @@ try {
     }
     New-Item -ItemType Directory -Path $expandedEvidence -Force | Out-Null
     $CanonicalEvidence = Get-CanonicalExistingPath -LiteralPath $EvidenceDirectory
+    $canonicalTask22EvidenceAllowed = Test-StrictDescendantPath -Child $CanonicalEvidence -Parent $Task22EvidenceBase
     if (
         -not (Test-PathEqual -Left $expandedEvidence -Right $CanonicalEvidence) -or
         (Test-PathEqual -Left $CanonicalEvidence -Right $RepositoryRoot) -or
-        (Test-StrictDescendantPath -Child $CanonicalEvidence -Parent $RepositoryRoot) -or
+        (
+            (Test-StrictDescendantPath -Child $CanonicalEvidence -Parent $RepositoryRoot) -and
+            -not $canonicalTask22EvidenceAllowed
+        ) -or
         (Test-PathEqual -Left $CanonicalEvidence -Right $Profile) -or
         (Test-StrictDescendantPath -Child $CanonicalEvidence -Parent $Profile) -or
         (Test-StrictDescendantPath -Child $Profile -Parent $CanonicalEvidence)
@@ -661,7 +805,10 @@ try {
     if ($Nonce -notmatch '^[a-f0-9]{64}$') {
         throw 'kernel_smoke_nonce_generation_failed'
     }
-    $tauriIdentifier = "ai.jarvis.desktop.smoke.s$runId"
+    # The profile, nonce, and CDP port are unique per run. Keep the dedicated
+    # non-production app identifier stable so retries do not force a complete
+    # Rust relink solely because the identifier string changed.
+    $tauriIdentifier = 'ai.jarvis.desktop.smoke'
     $tauriConfigPath = Join-Path $Profile 'tauri-smoke-config.json'
     $tauriConfigJson = @{
         identifier = $tauriIdentifier
@@ -674,8 +821,11 @@ try {
     )
 
     Set-ChildEnvironment -Values @{ TAURI_CONFIG = $tauriConfigJson }
-    & cargo build --manifest-path $CargoManifest --example vibespace_kernel_smoke_cli
-    $cargoExitCode = $LASTEXITCODE
+    $cargoExitCode = 0
+    if ($Scenarios -contains 'transport_cli_success') {
+        & cargo build --manifest-path $CargoManifest --example vibespace_kernel_smoke_cli
+        $cargoExitCode = $LASTEXITCODE
+    }
     Restore-Environment -Saved $SavedEnvironment
     $EnvironmentRestored = $true
     if ($cargoExitCode -ne 0) {
@@ -694,6 +844,7 @@ try {
 
     $childEnvironment = @{
         VITE_SIK_SMOKE                       = '1'
+        VITE_JARVIS_LOCAL_ADMIN              = '1'
         VIBESPACE_SIK_SMOKE                  = '1'
         VIBESPACE_SIK_CDP_PORT               = [string]$CdpPort
         VIBESPACE_SIK_PROFILE                = $Profile
@@ -718,10 +869,11 @@ try {
         -WorkingDirectory $AppRoot `
         -WindowStyle Hidden `
         -PassThru
+    Register-RecordedProcessRoot -Process $Dev -Records $DevRecords
     Restore-Environment -Saved $SavedEnvironment
     $EnvironmentRestored = $true
 
-    $deadline = [DateTime]::UtcNow.AddMinutes(5)
+    $deadline = [DateTime]::UtcNow.AddMinutes($NativeStartupTimeoutMinutes)
     $nativeMatch = Wait-ForNativeDescendant `
         -Launcher $Dev `
         -Records $DevRecords `
@@ -759,13 +911,18 @@ try {
                 -StandardOutputPath $DriverStandardOutput `
                 -StandardErrorPath $DriverStandardError
             $Driver = $DriverCapture.Process
+            Register-RecordedProcessRoot -Process $Driver -Records $DriverRecords
+            $driverDeadline = [DateTime]::UtcNow.AddMinutes($DriverPhaseTimeoutMinutes)
             while (-not $Driver.HasExited) {
-                Add-RecordedProcessTree -RootPid $Driver.Id -Records $DriverRecords
-                Add-RecordedProcessTree -RootPid $Dev.Id -Records $DevRecords
+                if ([DateTime]::UtcNow -ge $driverDeadline) {
+                    throw "kernel_smoke_driver_phase_timeout:${scenario}:phase${phase}"
+                }
+                [void](Add-RecordedProcessTree -RootPid $Driver.Id -Records $DriverRecords)
+                [void](Add-RecordedProcessTree -RootPid $Dev.Id -Records $DevRecords)
                 Start-Sleep -Milliseconds 100
                 $Driver.Refresh()
             }
-            Add-RecordedProcessTree -RootPid $Driver.Id -Records $DriverRecords
+            [void](Add-RecordedProcessTree -RootPid $Driver.Id -Records $DriverRecords)
             $driverExitCode = Complete-HiddenRedirectedProcess -Capture $DriverCapture
             if ($driverExitCode -eq 0) {
                 $Driver = $null
@@ -784,11 +941,11 @@ try {
             $previousCdpPort = $CdpPort
             $previousNonce = $Nonce
             $previousNativePid = $NativePid
-            Add-RecordedProcessTree -RootPid $Dev.Id -Records $DevRecords
+            [void](Add-RecordedProcessTree -RootPid $Dev.Id -Records $DevRecords)
             Stop-RecordedProcessTree -RootPid $Dev.Id -Records $DevRecords
             Wait-ForRecordedProcessTreeExit `
                 -Records $DevRecords `
-                -Deadline ([DateTime]::UtcNow.AddSeconds(30))
+                -Deadline ([DateTime]::UtcNow.AddSeconds($ProcessTreeCleanupTimeoutSeconds))
             $Dev = $null
 
             $remainingNative = @(Get-CimProcessSnapshot | Where-Object {
@@ -822,10 +979,11 @@ try {
                 -WorkingDirectory $AppRoot `
                 -WindowStyle Hidden `
                 -PassThru
+            Register-RecordedProcessRoot -Process $Dev -Records $DevRecords
             Restore-Environment -Saved $SavedEnvironment
             $EnvironmentRestored = $true
 
-            $deadline = [DateTime]::UtcNow.AddMinutes(5)
+            $deadline = [DateTime]::UtcNow.AddMinutes($NativeStartupTimeoutMinutes)
             $nativeMatch = Wait-ForNativeDescendant `
                 -Launcher $Dev `
                 -Records $DevRecords `
@@ -859,11 +1017,11 @@ finally {
     }
     if ($null -ne $Driver) {
         try {
-            Add-RecordedProcessTree -RootPid $Driver.Id -Records $DriverRecords
+            [void](Add-RecordedProcessTree -RootPid $Driver.Id -Records $DriverRecords)
             Stop-RecordedProcessTree -RootPid $Driver.Id -Records $DriverRecords
             Wait-ForRecordedProcessTreeExit `
                 -Records $DriverRecords `
-                -Deadline ([DateTime]::UtcNow.AddSeconds(30))
+                -Deadline ([DateTime]::UtcNow.AddSeconds($ProcessTreeCleanupTimeoutSeconds))
         }
         catch {
             [void]$cleanupFailures.Add('driver_tree')
@@ -879,11 +1037,11 @@ finally {
     }
     if ($null -ne $Dev) {
         try {
-            Add-RecordedProcessTree -RootPid $Dev.Id -Records $DevRecords
+            [void](Add-RecordedProcessTree -RootPid $Dev.Id -Records $DevRecords)
             Stop-RecordedProcessTree -RootPid $Dev.Id -Records $DevRecords
             Wait-ForRecordedProcessTreeExit `
                 -Records $DevRecords `
-                -Deadline ([DateTime]::UtcNow.AddSeconds(30))
+                -Deadline ([DateTime]::UtcNow.AddSeconds($ProcessTreeCleanupTimeoutSeconds))
         }
         catch {
             [void]$cleanupFailures.Add('native_tree')

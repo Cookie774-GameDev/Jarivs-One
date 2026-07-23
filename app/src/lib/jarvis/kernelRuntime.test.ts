@@ -12,8 +12,17 @@ import { TEST_INDEXED_DB, uniqueTestDbName } from '@/test/indexedDb';
 import { useAuthStore } from '@/stores/auth';
 import type { Agent, ChatId, WorkspaceId } from '@/types';
 import { createJarvisHiveLiveEvidenceVerifier } from '@/lib/ai/stacks/hiveWorkerExecutor';
+import {
+  JarvisProviderAttemptFailureError,
+  createJarvisProviderAttemptEvidenceAuthority,
+} from '@/lib/ai/providerAttemptEvidence';
 import { createJarvisScheduleLiveEvidenceVerifier } from '@/features/schedule/jarvisScheduleDispatch';
-import type { JarvisHiveStackPlanV1, JarvisResponseEnvelope, JarvisRun } from './contracts';
+import type {
+  JarvisCanonicalLiveProducerEvidence,
+  JarvisHiveStackPlanV1,
+  JarvisResponseEnvelope,
+  JarvisRun,
+} from './contracts';
 import {
   createJarvisActionLiveEvidenceVerifiers,
   jarvisTerminalHandoffReceiptBrand,
@@ -212,6 +221,56 @@ describe('createJarvisKernelRuntime primary-host lifecycle', () => {
       randomUUID: () => 'runtime-uuid',
       now: () => NOW,
     });
+  }
+
+  async function seedActionResponseCheckpoint(input: {
+    parentRun: JarvisRun;
+    requestId: string;
+    approvalId: string;
+    actionId: string;
+  }): Promise<void> {
+    await db.chats.add({
+      id: input.parentRun.chatId as ChatId,
+      workspace_id: input.parentRun.workspaceId as WorkspaceId,
+      title: 'Runtime action response',
+      mode: 'chat',
+      active_agent_ids: [input.parentRun.agentId as Agent['id']],
+      created_at: NOW - 20,
+      updated_at: NOW,
+    });
+    await db.messages.add({
+      id: `msg_${input.requestId}` as never,
+      chat_id: input.parentRun.chatId as ChatId,
+      role: 'assistant',
+      parts: [
+        { kind: 'text', text: 'Canonical action response.' },
+        {
+          kind: 'action_proposal',
+          call_id: `jarvisapproval:${encodeURIComponent(input.approvalId)}`,
+          action_id: input.actionId,
+          params: {},
+          status: 'pending',
+        },
+      ],
+      created_at: NOW,
+      updated_at: NOW,
+    });
+    const events = await db.jarvis_events.where('run_id').equals(input.parentRun.id).sortBy('seq');
+    const tail = events.at(-1);
+    await db.jarvis_events.add(
+      toJarvisEventRow({
+        runId: input.parentRun.id,
+        seq: (tail?.seq ?? 0) + 1,
+        idempotencyKey: `action-response-ready:${input.approvalId}`,
+        type: 'message',
+        status: 'approval_required',
+        title: 'Action approval required',
+        safeSummary: 'The validated response is saved and awaiting an approval decision.',
+        sourceRefs: [],
+        artifactIds: [],
+        createdAt: NOW,
+      }),
+    );
   }
 
   it('returns exactly feature-facing kernel and primary-host lifecycle members', () => {
@@ -544,10 +603,7 @@ describe('createJarvisKernelRuntime primary-host lifecycle', () => {
       producerKind: 'provider' as const,
       verifier: Object.freeze({ verify: vi.fn(async (value: unknown) => value) }),
     });
-    const registeredOwners = new Map<
-      string,
-      Readonly<{ abort(): unknown | Promise<unknown> }>
-    >();
+    const registeredOwners = new Map<string, Readonly<{ abort(): unknown | Promise<unknown> }>>();
     const registerIssuedOwner = vi.fn(
       (registration: Readonly<{ registrationId: string; abort(): unknown | Promise<unknown> }>) => {
         registeredOwners.set(registration.registrationId, registration);
@@ -1524,6 +1580,152 @@ describe('createJarvisKernelRuntime primary-host lifecycle', () => {
     ]);
   });
 
+  it('projects a response-backed terminal handoff before native result settlement', async () => {
+    const requestId = 'request-runtime-terminal-response';
+    const approvalId = 'jappr_runtime_terminal_response';
+    const actionId = 'terminal.execute';
+    const parentRun: JarvisRun = {
+      ...kernelRun(),
+      source: 'schedule',
+      status: 'running',
+      updatedAt: NOW - 5,
+      transportAttempts: [
+        {
+          schemaVersion: 1,
+          attemptNumber: 1,
+          kind: 'initial',
+          requestId,
+          state: 'provider_in_flight',
+          startedEventSeq: 1,
+          effectBarrier: { state: 'open', version: 0, updatedAt: NOW - 5 },
+          createdAt: NOW - 5,
+          updatedAt: NOW - 5,
+        },
+      ],
+    };
+    await db.jarvis_runs.add(toJarvisRunRow(parentRun));
+    let ownedExecution: JarvisTerminalOwnedExecution | undefined;
+    const bindKernelActions: JarvisApprovalActionBinder = (lifecycle) => ({
+      async create(createInput) {
+        const result = await lifecycle.putPreparedApproval({
+          ...createInput,
+          secretHandleRefs: [],
+          approvalId,
+          paramsHash: 'params-hash-runtime-terminal-response',
+          targetSnapshot: {
+            kind: 'app_resource',
+            namespace: 'terminal',
+            resourceId: 'runtime-terminal-response',
+          },
+          risk: 'confirm',
+          capabilityId: 'capability.terminal.execute',
+          capabilitySnapshotHash: 'capability-hash-runtime-terminal-response',
+          expectedEffect: 'Run the approved terminal action.',
+          createdAt: NOW,
+        } as never);
+        if (result.kind !== 'committed') throw new Error('unexpected_authority_revocation');
+        return result.value;
+      },
+      async decide(decideInput) {
+        const result = await lifecycle.decidePreparedApproval({
+          approvalId: decideInput.approvalId,
+          decision: decideInput.decision,
+        });
+        if (result.kind !== 'committed') throw new Error('unexpected_authority_revocation');
+        return result.value;
+      },
+      async execute(executeInput) {
+        const claim = await lifecycle.claimApprovedExecution({
+          approvalId: executeInput.approvalId,
+          producerKind: 'terminal',
+          ownerId: `approval:${executeInput.approvalId}`,
+          evidenceRef: `approval:${executeInput.approvalId}:terminal-claim`,
+          startedAt: NOW + 2,
+        });
+        if (claim.kind !== 'committed') throw new Error('unexpected_authority_revocation');
+        const executionId = 'jterminal_execution_runtime_response';
+        const handoff = claim.value.transferTerminalOwnership({
+          executionId,
+          acceptor: {
+            acceptIssuedExecution(input) {
+              ownedExecution = input.execution;
+              return Object.freeze({
+                executionId,
+                ownerId: input.ownerId,
+                [jarvisTerminalHandoffReceiptBrand]: true as const,
+              });
+            },
+          },
+        });
+        if (handoff.kind !== 'committed') throw new Error('unexpected_authority_revocation');
+        return {
+          kind: 'handoff_pending' as const,
+          executorKind: 'terminal' as const,
+          ownerId: claim.value.ownerId,
+          result: { ok: true as const, summary: 'terminal handed off' },
+        };
+      },
+      executeAutoApprovedSafe: vi.fn() as never,
+    });
+    const runtime = createJarvisKernelRuntime({
+      db,
+      artifactEvidenceAuthorities: artifactAuthorities() as never,
+      journal: { allocateRun: vi.fn(), getRun: vi.fn() } as never,
+      cancellationDeliveryAuthority: {} as never,
+      abortRegistrationAuthority: {} as never,
+      bindKernelActions,
+      liveEvidenceVerifiers: actionReadyVerifiers(db) as never,
+      prepareProvider: vi.fn() as never,
+      processResponse: vi.fn() as never,
+      takeProviderArtifactDrafts: vi.fn(() => []),
+      randomUUID: () => 'runtime-terminal-response-uuid',
+      now: () => NOW + 2,
+    });
+    const attempt = {
+      kind: 'initial' as const,
+      requestId,
+      runId: parentRun.id,
+      attemptNumber: 1 as const,
+    };
+    await runtime.kernel.actions.create({
+      parentRun,
+      attempt,
+      actionId,
+      actionVersion: 1,
+      params: {},
+      expiresAt: NOW + 60_000,
+    });
+    await seedActionResponseCheckpoint({ parentRun, requestId, approvalId, actionId });
+    await runtime.kernel.actions.decide({ parentRun, approvalId, decision: 'approve' });
+
+    await expect(
+      runtime.kernel.actions.execute({ parentRun, approvalId, context: { source: 'ai' } }),
+    ).resolves.toMatchObject({
+      kind: 'committed',
+      value: { kind: 'handoff_pending', executorKind: 'terminal' },
+    });
+    expect((await db.messages.get(`msg_${requestId}` as never))?.parts).toEqual(
+      expect.arrayContaining([expect.objectContaining({ status: 'queued' })]),
+    );
+    expect(fromJarvisRunRow((await db.jarvis_runs.get(parentRun.id))!).status).toBe('running');
+
+    await expect(
+      ownedExecution!.recordResult({
+        state: 'completed',
+        resultRef: 'jresult_runtime_terminal_response',
+        completedAt: NOW + 4,
+      }),
+    ).resolves.toMatchObject({ kind: 'committed' });
+    ownedExecution!.dispose();
+    expect((await db.messages.get(`msg_${requestId}` as never))?.parts).toEqual(
+      expect.arrayContaining([expect.objectContaining({ status: 'success' })]),
+    );
+    expect(fromJarvisRunRow((await db.jarvis_runs.get(parentRun.id))!)).toMatchObject({
+      status: 'completed',
+      completedAt: NOW + 4,
+    });
+  });
+
   it('retains terminal ownership through cancellation intent and native verification', async () => {
     const parentRun: JarvisRun = {
       ...kernelRun(),
@@ -2072,6 +2274,207 @@ describe('createJarvisKernelRuntime scheduled attempt authority', () => {
     expect(changedResolver).not.toHaveBeenCalled();
     expect(fromJarvisRunRow((await db.jarvis_runs.toArray())[0]!)).toEqual(snapshotless);
     expect(await db.jarvis_events.count()).toBe(0);
+  });
+
+  it('settles a pre-byte schedule failure as retryable and revalidates its durable lifecycle tail', async () => {
+    const repositories = createJarvisRepositories(db);
+    let clock = NOW;
+    const now = () => clock++;
+    const journal = createJarvisExecutionJournal(repositories, { now });
+    const basis = kernelTurn();
+    await db.chats.add({
+      id: basis.chatId as ChatId,
+      workspace_id: basis.workspaceId as WorkspaceId,
+      title: 'Scheduled transport retry runtime',
+      mode: 'chat',
+      active_agent_ids: [basis.agent.id],
+      created_at: NOW - 20,
+      updated_at: NOW - 20,
+    });
+    const scheduleVerifier = createJarvisScheduleLiveEvidenceVerifier({
+      runs: repositories.run,
+      events: repositories.event,
+    });
+    const providerVerifier = Object.freeze({
+      async verify(evidence: JarvisCanonicalLiveProducerEvidence<'provider'>) {
+        const event = await repositories.event.getBySeq(
+          evidence.accountId,
+          evidence.runId,
+          evidence.resultEventSeq,
+        );
+        const source = event?.producerSourceEvidence;
+        return event &&
+          source?.producerKind === 'provider' &&
+          event.seq === evidence.resultEventSeq &&
+          source.accountId === evidence.accountId &&
+          source.runId === evidence.runId &&
+          source.requestId === evidence.requestId &&
+          source.attemptNumber === evidence.attemptNumber &&
+          source.resultRef === evidence.resultRef &&
+          source.observedAt === evidence.verifiedAt &&
+          source.state === evidence.state &&
+          source.producerIdentity.providerId === evidence.producerIdentity.providerId &&
+          source.producerIdentity.modelId === evidence.producerIdentity.modelId &&
+          source.producerIdentity.modelSnapshotRef ===
+            evidence.producerIdentity.modelSnapshotRef
+          ? Object.freeze(structuredClone(evidence))
+          : null;
+      },
+    });
+    const providerEvidenceAuthority = createJarvisProviderAttemptEvidenceAuthority({
+      async sha256(canonical) {
+        const digest = await globalThis.crypto.subtle.digest(
+          'SHA-256',
+          new TextEncoder().encode(canonical),
+        );
+        return Array.from(new Uint8Array(digest), (byte) =>
+          byte.toString(16).padStart(2, '0'),
+        ).join('');
+      },
+    });
+    let requestOrdinal = 0;
+    const prepareProvider = vi.fn(async (providerInput) => {
+      const tracker = providerEvidenceAuthority.begin({
+        accountId: providerInput.accountId,
+        runId: providerInput.runId,
+        requestId: providerInput.requestId,
+        attemptNumber: providerInput.attemptNumber,
+        providerId: providerInput.model.providerId,
+        modelId: providerInput.model.modelId,
+      });
+      return {
+        resolveConfiguration: vi.fn(async () => {
+          const classification = await providerEvidenceAuthority.classifyFailure(tracker, {
+            failureCategory: 'network_unavailable',
+            failedAt: now(),
+          });
+          return {
+            start: vi.fn(() => {
+              const response = Promise.reject(
+                new JarvisProviderAttemptFailureError(classification),
+              );
+              void response.catch(() => undefined);
+              return {
+                receipt: {
+                  providerId: providerInput.model.providerId,
+                  modelId: providerInput.model.modelId,
+                  modelSnapshotRef: `${providerInput.model.providerId}:${providerInput.model.modelId}`,
+                  operations: ['generate'] as const,
+                  startedAt: now(),
+                },
+                response,
+                abortAfterStart: vi.fn(),
+              };
+            }),
+            dispose: vi.fn(),
+          };
+        }),
+        dispose: vi.fn(),
+      };
+    });
+    const runtime = createJarvisKernelRuntime({
+      db,
+      artifactEvidenceAuthorities: artifactAuthorities() as never,
+      journal,
+      cancellationDeliveryAuthority: {} as never,
+      abortRegistrationAuthority: { registerIssuedOwner: vi.fn(() => vi.fn()) },
+      bindKernelActions: vi.fn() as never,
+      liveEvidenceVerifiers: {
+        ...unavailableVerifiers(),
+        provider: { state: 'ready', verifier: providerVerifier },
+        schedule: { state: 'ready', verifier: scheduleVerifier },
+      } as never,
+      resolveScheduledOccurrence: vi.fn(async () => ({
+        workspaceId: basis.workspaceId,
+        chatId: basis.chatId,
+        userMessageId: basis.userMessageId,
+        agent: basis.agent,
+        interactionMode: 'agent' as const,
+        userText: 'Run the immutable retry fixture.',
+        messageHistory: [],
+        model: basis.model,
+        identity: basis.identity,
+        profile: basis.profile,
+        capabilities: basis.capabilities,
+        context: basis.context,
+        outputContract: { ...basis.outputContract, voiceDelivery: 'none' as const },
+      })),
+      providerAttemptEvidence: {
+        revalidateFailure: providerEvidenceAuthority.revalidateFailure.bind(
+          providerEvidenceAuthority,
+        ),
+      },
+      prepareProvider,
+      processResponse: vi.fn() as never,
+      takeProviderArtifactDrafts: vi.fn(() => []),
+      randomUUID: () => `schedule-retry-${++requestOrdinal}`,
+      now,
+    });
+
+    const allocated = await runtime.kernel.allocateScheduledOccurrence({
+      accountId: basis.accountId,
+      eventId: 'event-schedule-retry-runtime',
+      dueAt: NOW - 100,
+    });
+    expect(allocated.kind).toBe('committed');
+    if (allocated.kind !== 'committed') throw new Error('expected schedule allocation');
+    const prepared = await runtime.kernel.prepareScheduledAttempt({ allocation: allocated.value });
+    const begun = await runtime.kernel.beginPreparedScheduledAttempt({ prepared });
+    expect(begun.kind).toBe('committed');
+    if (begun.kind !== 'committed') throw new Error('expected scheduled begin');
+    await expect(
+      runtime.kernel.dispatchPreparedScheduledAttempt({ prepared, handle: begun.value }),
+    ).resolves.toEqual({
+      kind: 'committed',
+      value: { kind: 'pre_effect_transport_failure' },
+    });
+
+    const settled = await runtime.kernel.settleScheduledTransportFailure({ handle: begun.value });
+    expect(settled).toMatchObject({
+      kind: 'committed',
+      value: {
+        kind: 'retryable',
+        run: {
+          status: 'running',
+          transportAttempts: [{ state: 'retryable_failed' }],
+        },
+      },
+    });
+    const runId = (await db.jarvis_runs.toArray())[0]!.id;
+    const persisted = fromJarvisRunRow((await db.jarvis_runs.get(runId))!);
+    expect(persisted).toMatchObject({
+      status: 'running',
+      transportAttempts: [
+        {
+          state: 'retryable_failed',
+          effectBarrier: { state: 'open', version: 0 },
+          zeroEffectEvidence: { executorClaims: { count: 0 } },
+        },
+      ],
+    });
+
+    const loaded = await runtime.kernel.loadScheduledRun({
+      accountId: basis.accountId,
+      runId,
+    });
+    expect(loaded.kind).toBe('committed');
+    if (loaded.kind !== 'committed' || !loaded.value) {
+      throw new Error('expected retry allocation');
+    }
+    const retryPrepared = await runtime.kernel.prepareScheduledAttempt({
+      allocation: loaded.value,
+    });
+    const retryBegun = await runtime.kernel.beginPreparedScheduledAttempt({
+      prepared: retryPrepared,
+    });
+    expect(retryBegun.kind).toBe('committed');
+    expect(fromJarvisRunRow((await db.jarvis_runs.get(runId))!)).toMatchObject({
+      status: 'running',
+      transportAttempts: [
+        { state: 'retryable_failed', effectBarrier: { state: 'sealed_for_retry' } },
+        { state: 'provider_in_flight', kind: 'transport_retry', attemptNumber: 2 },
+      ],
+    });
   });
 });
 

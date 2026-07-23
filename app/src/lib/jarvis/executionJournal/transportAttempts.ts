@@ -232,6 +232,23 @@ function zeroEffectMatches(
   );
 }
 
+function zeroEffectExtends(
+  run: Readonly<JarvisRun>,
+  attempt: Readonly<JarvisTransportAttemptV1>,
+  previous: Readonly<JarvisZeroConsequentialEffectEvidenceV1>,
+  candidate: Readonly<JarvisZeroConsequentialEffectEvidenceV1>,
+): boolean {
+  return (
+    zeroEffectMatches(run, attempt, previous) &&
+    zeroEffectMatches(run, attempt, candidate) &&
+    exactEqual(candidate.providerBoundary, previous.providerBoundary) &&
+    exactEqual(candidate.effectBarrier, previous.effectBarrier) &&
+    exactEqual(candidate.approvals, previous.approvals) &&
+    exactEqual(candidate.artifacts, previous.artifacts) &&
+    candidate.executorClaims.throughSeq >= previous.executorClaims.throughSeq
+  );
+}
+
 export function createDenyAllJarvisConsequentialEffectSafetyAuthority(): JarvisConsequentialEffectSafetyAuthority {
   return {
     async proveZeroConsequentialEffect() {
@@ -355,7 +372,12 @@ export function createJarvisTransportAttemptCoordinator(input: {
         !previous.zeroEffectEvidence ||
         attempts.some((attempt) => attempt.requestId === begin.requestId) ||
         !zeroEffectMatches(current, previous, begin.revalidatedEvidence) ||
-        !exactEqual(previous.zeroEffectEvidence, begin.revalidatedEvidence)
+        !zeroEffectExtends(
+          current,
+          previous,
+          previous.zeroEffectEvidence,
+          begin.revalidatedEvidence,
+        )
       ) {
         fail('transport_attempt_conflict');
       }
@@ -364,7 +386,11 @@ export function createJarvisTransportAttemptCoordinator(input: {
         attempt: previous,
         evidence: begin.revalidatedEvidence,
       });
-      if (!revalidated || !exactEqual(revalidated, begin.revalidatedEvidence)) {
+      if (
+        !revalidated ||
+        !zeroEffectExtends(current, previous, previous.zeroEffectEvidence, revalidated) ||
+        !zeroEffectExtends(current, previous, begin.revalidatedEvidence, revalidated)
+      ) {
         fail('transport_attempt_safety_denied');
       }
       const attemptValue: Omit<JarvisTransportAttemptV1, 'startedEventSeq'> = {
@@ -385,8 +411,8 @@ export function createJarvisTransportAttemptCoordinator(input: {
         expectedSnapshot,
         expectedLatestAttemptNumber: previous.attemptNumber,
         expectedBarrierVersion: 0,
-        expectedEventTailSeq: begin.revalidatedEvidence.executorClaims.throughSeq + 1,
-        revalidatedEvidence: structuredClone(begin.revalidatedEvidence),
+        expectedEventTailSeq: revalidated.executorClaims.throughSeq,
+        revalidatedEvidence: structuredClone(revalidated),
         attempt: attemptValue,
         updatedAt: begin.createdAt,
       });
@@ -415,25 +441,31 @@ export function createJarvisTransportAttemptCoordinator(input: {
         settle.lease.requestId,
       );
       const failureValid = failureMatches(current, attemptValue, settle.providerFailure);
-      let proofValid = false;
+      let revalidatedProof: JarvisZeroConsequentialEffectEvidenceV1 | null = null;
       if (failureValid && settle.zeroEffectEvidence) {
-        let proven: JarvisZeroConsequentialEffectEvidenceV1 | null = null;
         try {
-          proven = await safetyAuthority.proveZeroConsequentialEffect({
+          revalidatedProof = await safetyAuthority.revalidateZeroConsequentialEffect({
             run: current,
             attempt: attemptValue,
-            providerFailure: settle.providerFailure,
+            evidence: settle.zeroEffectEvidence,
           });
         } catch {
-          proven = null;
+          revalidatedProof = null;
         }
-        proofValid =
-          !!proven &&
-          zeroEffectMatches(current, attemptValue, settle.zeroEffectEvidence) &&
-          exactEqual(proven, settle.zeroEffectEvidence);
+        if (
+          revalidatedProof &&
+          !zeroEffectExtends(
+            current,
+            attemptValue,
+            settle.zeroEffectEvidence,
+            revalidatedProof,
+          )
+        ) {
+          revalidatedProof = null;
+        }
       }
 
-      if (proofValid && settle.zeroEffectEvidence) {
+      if (revalidatedProof) {
         const retryable = await input.repository.compareAndMutateTransportAttempt({
           kind: 'settle_retryable',
           accountId: settle.lease.accountId,
@@ -442,9 +474,9 @@ export function createJarvisTransportAttemptCoordinator(input: {
           expectedSnapshot,
           expectedAttemptNumber: settle.lease.attemptNumber,
           expectedBarrierVersion: 0,
-          expectedEventTailSeq: settle.zeroEffectEvidence.executorClaims.throughSeq,
+          expectedEventTailSeq: revalidatedProof.executorClaims.throughSeq,
           providerFailure: structuredClone(settle.providerFailure),
-          zeroEffectEvidence: structuredClone(settle.zeroEffectEvidence),
+          zeroEffectEvidence: structuredClone(revalidatedProof),
           updatedAt: settle.settledAt,
         });
         if (retryable.applied) return { kind: 'retryable', run: retryable.run };
@@ -457,7 +489,7 @@ export function createJarvisTransportAttemptCoordinator(input: {
           concurrentAttempt.requestId === settle.lease.requestId &&
           concurrentAttempt.state === 'retryable_failed' &&
           concurrentAttempt.zeroEffectEvidence &&
-          exactEqual(concurrentAttempt.zeroEffectEvidence, settle.zeroEffectEvidence)
+          exactEqual(concurrentAttempt.zeroEffectEvidence, revalidatedProof)
         ) {
           return { kind: 'retryable', run: retryable.current };
         }

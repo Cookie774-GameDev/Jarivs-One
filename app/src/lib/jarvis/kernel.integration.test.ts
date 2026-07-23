@@ -4,6 +4,7 @@ import type { Agent, ChatId, MessageId, WorkspaceId } from '@/types';
 import type {
   JarvisArtifactDraft,
   JarvisArtifactV1,
+  JarvisApprovalV1,
   JarvisEvent,
   JarvisResponseEnvelope,
   JarvisRun,
@@ -20,6 +21,7 @@ import {
   runJarvisKernelTurn,
   runJarvisKernelVoiceTurn,
 } from './kernel';
+import { JarvisApprovalError } from './approvalEngine';
 
 const NOW = 1_786_300_200_000;
 
@@ -202,6 +204,7 @@ type KernelHarnessOptions = Readonly<{
   committedEvent?: JarvisEvent;
   onAssertCurrent?: (call: number, authority: AbortController) => void;
   cleanupThrows?: ReadonlySet<'registration' | 'abort' | 'resolved' | 'prepared'>;
+  processed?: JarvisResponseEnvelope;
 }>;
 
 function createKernelHarness(
@@ -289,7 +292,7 @@ function createKernelHarness(
     takeProviderArtifactDrafts: vi.fn(() => []),
     commitKernelTurn,
     prepareProvider: vi.fn(async () => prepared),
-    processResponse: vi.fn(async () => processedResponse(input)),
+    processResponse: vi.fn(async () => options.processed ?? processedResponse(input)),
     now: () => NOW + 4,
   };
   return {
@@ -308,6 +311,243 @@ function createKernelHarness(
 }
 
 describe('runJarvisKernelTurn explicit kernel integration', () => {
+  it('executes a registered safe response action canonically before terminal projection', async () => {
+    const input = turnInput();
+    const processed: JarvisResponseEnvelope = {
+      ...processedResponse(input),
+      mode: 'action_success',
+      parts: [
+        { kind: 'text', text: 'Searching the fixed project.' },
+        {
+          kind: 'action_proposal',
+          call_id: 'jarvis_action_request-kernel_0',
+          action_id: 'file.search',
+          params: { query: 'smoke fixture', maxResults: 1 },
+          status: 'pending',
+        },
+      ],
+    };
+    const approval: JarvisApprovalV1 = {
+      id: 'jappr_safe-response',
+      runId: input.run.id,
+      actionId: 'file.search',
+      actionVersion: 1,
+      params: { query: 'smoke fixture', maxResults: 1 },
+      secretHandleRefs: [],
+      paramsHash: 'params-safe',
+      targetSnapshot: { kind: 'app_resource', namespace: 'files', resourceId: 'search-index' },
+      risk: 'safe',
+      status: 'consumed',
+      createdAt: NOW + 4,
+      decidedAt: NOW + 4,
+      consumedAt: NOW + 4,
+      schemaVersion: 1,
+      requestId: input.attempt.requestId,
+      attemptNumber: input.attempt.attemptNumber,
+      capabilityId: 'files.read',
+      capabilitySnapshotHash: 'capability-safe',
+      expectedEffect: 'Reads matching file metadata without modifying files.',
+      expiresAt: NOW + 60_000,
+    };
+    const executeAutoApprovedSafe = vi.fn(async () => ({
+      kind: 'committed' as const,
+      value: {
+        approval,
+        execution: {
+          kind: 'settled' as const,
+          result: { ok: true as const, summary: 'Found one matching file.' },
+        },
+      },
+    }));
+    const harness = createKernelHarness(input, { processed });
+    Object.assign(harness.deps, {
+      responseActions: {
+        resolveRegistration: vi.fn(() => ({
+          id: 'file.search',
+          version: 1,
+          risk: 'read-only',
+          approval: 'never',
+        })),
+        executeAutoApprovedSafe,
+        create: vi.fn(),
+      },
+      commitActionResponseReady: vi.fn(),
+    });
+
+    await expect(runJarvisKernelTurn(input, harness.deps)).resolves.toMatchObject({
+      kind: 'committed',
+    });
+
+    expect(executeAutoApprovedSafe).toHaveBeenCalledOnce();
+    expect(executeAutoApprovedSafe).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actionId: 'file.search',
+        actionVersion: 1,
+        params: { query: 'smoke fixture', maxResults: 1 },
+        attempt: input.attempt,
+      }),
+    );
+    expect(harness.commitKernelTurn).toHaveBeenCalledOnce();
+    expect(harness.commitKernelTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        assistantMessage: expect.objectContaining({
+          parts: expect.arrayContaining([
+            expect.objectContaining({
+              kind: 'action_proposal',
+              call_id: 'jarvisapproval:jappr_safe-response',
+              action_id: 'file.search',
+              status: 'success',
+            }),
+          ]),
+        }),
+      }),
+    );
+  });
+
+  it.each([
+    {
+      label: 'untrusted exception',
+      makeFailure: () => new Error('C:\\private\\operator\\secret.txt'),
+      expected: 'kernel_safe_action_execution_failed',
+    },
+    {
+      label: 'approval rejection',
+      makeFailure: () => new JarvisApprovalError('capability_changed'),
+      expected: 'kernel_safe_action_approval_capability_changed',
+    },
+  ])('reduces a $label to one bounded kernel stage code', async ({ makeFailure, expected }) => {
+    const input = turnInput();
+    const processed: JarvisResponseEnvelope = {
+      ...processedResponse(input),
+      mode: 'action_success',
+      parts: [
+        {
+          kind: 'action_proposal',
+          call_id: 'jarvis_action_request-kernel_0',
+          action_id: 'file.search',
+          params: { query: 'smoke fixture', maxResults: 1 },
+          status: 'pending',
+        },
+      ],
+    };
+    const harness = createKernelHarness(input, { processed });
+    Object.assign(harness.deps, {
+      responseActions: {
+        resolveRegistration: vi.fn(() => ({
+          id: 'file.search',
+          version: 1,
+          risk: 'read-only',
+          approval: 'never',
+        })),
+        executeAutoApprovedSafe: vi.fn(async () => {
+          throw makeFailure();
+        }),
+        create: vi.fn(),
+      },
+      commitActionResponseReady: vi.fn(),
+    });
+
+    const turnFailure = runJarvisKernelTurn(input, harness.deps);
+    await expect(turnFailure).rejects.toThrow(expected);
+    await expect(turnFailure).rejects.not.toThrow('secret.txt');
+  });
+
+  it('persists a canonical pending response action while the run awaits approval', async () => {
+    const input = turnInput();
+    const processed: JarvisResponseEnvelope = {
+      ...processedResponse(input),
+      mode: 'approval_required',
+      parts: [
+        { kind: 'text', text: 'Approval is required.' },
+        {
+          kind: 'action_proposal',
+          call_id: 'jarvis_action_request-kernel_0',
+          action_id: 'terminal.create',
+          params: {},
+          status: 'pending',
+        },
+      ],
+    };
+    const approval: JarvisApprovalV1 = {
+      id: 'jappr_terminal-response',
+      runId: input.run.id,
+      actionId: 'terminal.create',
+      actionVersion: 1,
+      params: {},
+      secretHandleRefs: [],
+      paramsHash: 'params-terminal',
+      targetSnapshot: { kind: 'external_resource', service: 'terminal', resourceId: 'new' },
+      risk: 'confirm',
+      status: 'pending',
+      createdAt: NOW + 4,
+      schemaVersion: 1,
+      requestId: input.attempt.requestId,
+      attemptNumber: input.attempt.attemptNumber,
+      capabilityId: 'terminal.execute',
+      capabilitySnapshotHash: 'capability-terminal',
+      expectedEffect: 'Creates one terminal process owned by the active account.',
+      expiresAt: NOW + 60_000,
+    };
+    const create = vi.fn(async () => ({ kind: 'committed' as const, value: approval }));
+    const commitActionResponseReady = vi.fn(async (commitInput) => ({
+      committed: true as const,
+      run: run({ status: 'awaiting_approval', updatedAt: NOW + 4 }),
+      event: {
+        runId: input.run.id,
+        seq: 5,
+        idempotencyKey: `action-response-ready:${input.attempt.requestId}`,
+        type: 'message' as const,
+        status: 'approval_required',
+        title: 'Action approval required',
+        safeSummary: 'The validated response is saved and awaiting an approval decision.',
+        sourceRefs: [],
+        artifactIds: [],
+        createdAt: NOW + 4,
+        producerSourceEvidence: harness.source,
+      },
+      message: commitInput.assistantMessage,
+      artifacts: commitInput.artifacts,
+    }));
+    const harness = createKernelHarness(input, { processed });
+    Object.assign(harness.deps, {
+      responseActions: {
+        resolveRegistration: vi.fn(() => ({
+          id: 'terminal.create',
+          version: 1,
+          risk: 'external-side-effect',
+          approval: 'always',
+        })),
+        executeAutoApprovedSafe: vi.fn(),
+        create,
+      },
+      commitActionResponseReady,
+    });
+
+    await expect(runJarvisKernelTurn(input, harness.deps)).resolves.toMatchObject({
+      kind: 'committed',
+    });
+
+    expect(create).toHaveBeenCalledOnce();
+    expect(harness.commitKernelTurn).not.toHaveBeenCalled();
+    expect(commitActionResponseReady).toHaveBeenCalledOnce();
+    expect(commitActionResponseReady).toHaveBeenCalledWith(
+      expect.objectContaining({
+        approvalId: approval.id,
+        assistantMessage: expect.objectContaining({
+          parts: expect.arrayContaining([
+            expect.objectContaining({
+              kind: 'action_proposal',
+              call_id: 'jarvisapproval:jappr_terminal-response',
+              action_id: 'terminal.create',
+              status: 'pending',
+            }),
+          ]),
+        }),
+      }),
+    );
+    expect(harness.lifecycle.recordProviderResult).toHaveBeenCalledOnce();
+  });
+
   it('runs one envelope/compiler/provider/pipeline/projection and commits once in order', async () => {
     const order: string[] = [];
     const input = turnInput();

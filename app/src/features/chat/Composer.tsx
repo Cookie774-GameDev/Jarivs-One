@@ -190,11 +190,35 @@ import {
 } from './QueuedMessagesBar';
 import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
 import { SIK_CONTROL } from '@/lib/jarvis/smoke/evidenceIds';
+import { KERNEL_SMOKE_SCENARIOS } from '@/lib/jarvis/smoke/scenarios';
+import {
+  isKernelSmokeBindingActive,
+  KERNEL_SMOKE_PROVIDER_ID,
+} from '@/lib/ai/providers/kernelSmoke';
+import type { StackStepSpec } from '@/lib/ai/stacks/types';
 
 const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
   devBuild: import.meta.env.DEV,
   explicitFlag: import.meta.env.VITE_SIK_SMOKE,
 });
+
+const KERNEL_SMOKE_HIVE_TEXT = KERNEL_SMOKE_SCENARIOS.hive_dispatch.safeTextFixture;
+const KERNEL_SMOKE_HIVE_STEPS: readonly StackStepSpec[] = Object.freeze([
+  Object.freeze({
+    id: 'kernel-smoke-hive-draft',
+    label: 'Smoke draft',
+    provider: KERNEL_SMOKE_PROVIDER_ID,
+    model: 'kernel-smoke-v1',
+    systemAppend: 'Run the fixed deterministic Hive smoke draft.',
+  }),
+  Object.freeze({
+    id: 'kernel-smoke-hive-verify',
+    label: 'Smoke verify',
+    provider: KERNEL_SMOKE_PROVIDER_ID,
+    model: 'kernel-smoke-v1',
+    systemAppend: 'Verify the fixed deterministic Hive smoke draft.',
+  }),
+]);
 
 export interface ComposerProps {
   chatId: ChatId | string;
@@ -1970,7 +1994,28 @@ export function Composer({
       attachedContexts.length > 0 ||
       confirmedCommands.length > 0 ||
       confirmedAgentMentions.length > 0) &&
-    !sending;
+      !sending;
+  const kernelSmokeHiveBound = KERNEL_SMOKE_ENABLED && isKernelSmokeBindingActive();
+  const kernelSmokeHivePrepared =
+    kernelSmokeHiveBound &&
+    chatModelSelection.mode === 'hive' &&
+    chatModelSelection.hiveId === 'custom' &&
+    stackCustomSteps.length === KERNEL_SMOKE_HIVE_STEPS.length &&
+    stackCustomSteps.every(
+      (step, index) =>
+        step.id === KERNEL_SMOKE_HIVE_STEPS[index]?.id &&
+        step.provider === KERNEL_SMOKE_PROVIDER_ID &&
+        step.model === 'kernel-smoke-v1',
+    );
+
+  const prepareKernelSmokeHive = () => {
+    if (!kernelSmokeHiveBound) return;
+    useAuthStore.setState({
+      stackPreset: 'custom',
+      stackCustomSteps: KERNEL_SMOKE_HIVE_STEPS.map((step) => ({ ...step })),
+      chatModelSelection: { mode: 'hive', hiveId: 'custom' },
+    });
+  };
 
   const addDroppedPath = useCallback(async (path: string) => {
     const clean = path.trim();
@@ -2885,6 +2930,28 @@ export function Composer({
                     </>
                   )}
                 </span>
+                {kernelSmokeHiveBound ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={prepareKernelSmokeHive}
+                    data-sik-evidence={SIK_CONTROL.hiveFixture}
+                  >
+                    Prepare Hive smoke
+                  </Button>
+                ) : null}
+                {kernelSmokeHivePrepared ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => void handleSend(KERNEL_SMOKE_HIVE_TEXT)}
+                    data-sik-evidence={SIK_CONTROL.hiveDispatch}
+                  >
+                    Dispatch Hive smoke
+                  </Button>
+                ) : null}
                 <Hint label="Send" hotkey={HOTKEYS.SEND}>
                   <Button
                     type="button"

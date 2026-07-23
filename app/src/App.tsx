@@ -89,6 +89,7 @@ import { findProtectedJarvisAgent } from '@/lib/jarvis/identity';
 import type {
   JarvisEvent,
   JarvisLiveEvidencePrimaryHostAccountSession,
+  JarvisLiveSystemNode,
 } from '@/lib/jarvis/contracts/execution';
 import {
   projectJarvisRunForLegacyUi,
@@ -1350,7 +1351,18 @@ function KernelBridgeBootstrap() {
 
             const randomUUID = () => crypto.randomUUID();
             const now = () => Date.now();
+            const LOCAL_DEVELOPMENT_ENTITLEMENT_DECISION_FLOOR_MS = 2 * 60_000;
+            const securityBootObservedAt = now();
             const bootId = `kernel-security-${randomUUID()}`;
+            let localDevelopmentEntitlementCache:
+              | Readonly<{
+                  accountId: string;
+                  email: string | null | undefined;
+                  cloudEmail: string | null | undefined;
+                  localUserId: string | null | undefined;
+                  snapshot: ReturnType<typeof resolveLocalDevelopmentEntitlementSnapshot>;
+                }>
+              | undefined;
             const activeAccountId = () =>
               resolveAccountIdentity(useAuthStore.getState())?.accountId;
             const catalog = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS);
@@ -1364,14 +1376,39 @@ function KernelBridgeBootstrap() {
                 if (resolveAccountIdentity(auth)?.accountId !== accountId) {
                   return { source: 'unavailable' as const, capabilities: [] };
                 }
-                return resolveLocalDevelopmentEntitlementSnapshot(
+                const localIdentity = {
+                  email: auth.email,
+                  cloudEmail: auth.cloudSession?.email,
+                  localUserId: auth.localUserId,
+                };
+                const localEntitlementObservedAt = now();
+                if (
+                  localDevelopmentEntitlementCache?.accountId === accountId &&
+                  localDevelopmentEntitlementCache.email === localIdentity.email &&
+                  localDevelopmentEntitlementCache.cloudEmail === localIdentity.cloudEmail &&
+                  localDevelopmentEntitlementCache.localUserId === localIdentity.localUserId &&
+                  typeof localDevelopmentEntitlementCache.snapshot.expiresAt === 'number' &&
+                  localDevelopmentEntitlementCache.snapshot.expiresAt - localEntitlementObservedAt >
+                    LOCAL_DEVELOPMENT_ENTITLEMENT_DECISION_FLOOR_MS
+                ) {
+                  return localDevelopmentEntitlementCache.snapshot;
+                }
+                const snapshot = resolveLocalDevelopmentEntitlementSnapshot(
+                  localIdentity,
                   {
-                    email: auth.email,
-                    cloudEmail: auth.cloudSession?.email,
-                    localUserId: auth.localUserId,
+                    context: {
+                      now: localEntitlementObservedAt,
+                      production: import.meta.env.PROD,
+                    },
                   },
-                  { context: { now: now(), production: import.meta.env.PROD } },
                 );
+                localDevelopmentEntitlementCache =
+                  snapshot.source !== 'unavailable' &&
+                  typeof snapshot.expiresAt === 'number' &&
+                  snapshot.expiresAt > localEntitlementObservedAt
+                    ? Object.freeze({ accountId, ...localIdentity, snapshot })
+                    : undefined;
+                return snapshot;
               },
               now,
             });
@@ -1391,7 +1428,7 @@ function KernelBridgeBootstrap() {
                     state: 'available' as const,
                     operations: ['execute'],
                     evidenceRef: `registered:${registration.id}:${registration.version}:${bootId}`,
-                    lastVerifiedAt: capturedAt,
+                    lastVerifiedAt: securityBootObservedAt,
                   }));
                 return {
                   capturedAt,
@@ -1426,18 +1463,24 @@ function KernelBridgeBootstrap() {
                   usePluginStore.getState().removeConnection(accountId, pluginId),
               },
               activeAccountId,
-              executeRegisteredAction: async () => ({
-                kind: 'executor_returned' as const,
-                result: { ok: false as const, error: 'registered_action_dispatch_unavailable' },
-              }),
+              executeRegisteredAction: async (dispatchInput) => {
+                const { executeInstalledJarvisRegisteredAction } = await import(
+                  '@/lib/ai/runtime'
+                );
+                return executeInstalledJarvisRegisteredAction(dispatchInput);
+              },
               bootId,
               randomUUID,
               now,
             });
-            const { installJarvisKernelRuntimeHost } = await import('@/lib/ai/runtime');
+            const {
+              handleInstalledJarvisKernelClientRequest,
+              installJarvisKernelRuntimeHost,
+            } = await import('@/lib/ai/runtime');
             disposeKernelRuntimeHost = await installJarvisKernelRuntimeHost({
               db,
               bindKernelActions: securityRuntime.bindKernelActions,
+              actionCatalog: catalog,
               capabilitySnapshots,
               randomUUID,
               now,
@@ -1451,13 +1494,17 @@ function KernelBridgeBootstrap() {
             if (!disposed) {
               React.startTransition(() => setPluginManagement(securityRuntime?.pluginManagement));
             }
-            const unavailable = createUnavailableKernelHostRuntime();
             return Object.freeze({
-              handleRequest: unavailable.handleRequest,
-              invalidateAccount: (accountId: string) =>
-                securityRuntime?.invalidateAccount(accountId),
+              handleRequest: handleInstalledJarvisKernelClientRequest,
+              invalidateAccount(accountId: string) {
+                if (localDevelopmentEntitlementCache?.accountId === accountId) {
+                  localDevelopmentEntitlementCache = undefined;
+                }
+                securityRuntime?.invalidateAccount(accountId);
+              },
               dispose() {
                 window.removeEventListener('pagehide', invalidateSecurityRuntime);
+                localDevelopmentEntitlementCache = undefined;
                 disposeKernelRuntimeHost?.();
                 securityRuntime?.invalidateAll();
               },
@@ -1803,6 +1850,66 @@ function ThemeHost() {
   return null;
 }
 
+function KernelSmokeReconstructedLiveEvidenceHost({
+  binding,
+}: {
+  binding: JarvisCommandCenterBinding | undefined;
+}) {
+  const [nodes, setNodes] = React.useState<readonly JarvisLiveSystemNode[]>([]);
+
+  React.useEffect(() => {
+    if (!KERNEL_SMOKE_ENABLED || !binding) {
+      setNodes([]);
+      return;
+    }
+    let disposed = false;
+    let refreshing = false;
+    const accountId = binding.hostPort.accountId;
+    const refresh = async () => {
+      if (disposed || refreshing) return;
+      refreshing = true;
+      try {
+        const runs = await jarvisRunRepo.listByAccount(accountId, { limit: 500 });
+        const snapshots = await Promise.all(
+          runs.map((run) =>
+            binding.dataPort.getLiveEvidenceSnapshot({ accountId, runId: run.id }),
+          ),
+        );
+        if (disposed) return;
+        setNodes(
+          snapshots.flatMap((snapshot) =>
+            snapshot?.accountId === accountId ? snapshot.nodes : [],
+          ),
+        );
+      } catch {
+        if (!disposed) setNodes([]);
+      } finally {
+        refreshing = false;
+      }
+    };
+    void refresh();
+    const interval = window.setInterval(() => void refresh(), 250);
+    return () => {
+      disposed = true;
+      window.clearInterval(interval);
+    };
+  }, [binding]);
+
+  return (
+    <>
+      {nodes.map((node) => (
+        <output
+          hidden
+          key={`${node.runId}:${node.id}:${node.evidenceRef}`}
+          data-sik-evidence="live.reconstructed-node"
+          data-live-node-state={node.state}
+          data-live-proof-ref={node.evidenceRef}
+        />
+      ))}
+    </>
+  );
+}
+
 /**
  * Inner shell - rendered after AuthGate has confirmed local user + seeding.
  */
@@ -1875,6 +1982,9 @@ function WorkspaceRoot() {
 
   return (
     <JarvisCommandCenterProvider value={commandCenterBinding}>
+      {KERNEL_SMOKE_ENABLED ? (
+        <KernelSmokeReconstructedLiveEvidenceHost binding={commandCenterBinding} />
+      ) : null}
       <GlobalHotkeysHost />
       <AppShell>
         <ActiveCanvas />

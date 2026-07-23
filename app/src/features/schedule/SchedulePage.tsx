@@ -23,7 +23,11 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/toast';
 import { eventRepo } from '@/lib/db';
+import { getActiveAccountIdentity } from '@/lib/accountIdentity';
 import { useAuthStore } from '@/stores/auth';
+import { flushUiStatePersistence, useUIStore } from '@/stores/ui';
+import { useAgentStore } from '@/stores/agents';
+import { findProtectedJarvisAgent } from '@/lib/jarvis/identity';
 import { formatChatModelSelectionLabel, modelSelectionContextFromAuth, selectionFromOption, selectionOptionId } from '@/lib/ai/modelSelection';
 import { useAccessibleChatModels } from '@/lib/ai/useAccessibleChatModels';
 import { getProviderDisplayName } from '@/lib/ai/providerRegistry';
@@ -53,9 +57,22 @@ import {
   type JarvisScheduleRecurrence,
 } from './jarvisSchedules';
 import { ChatThread } from '@/features/chat/ChatThread';
+import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
+import { SIK_CONTROL } from '@/lib/jarvis/smoke/evidenceIds';
+import { KERNEL_SMOKE_SCENARIOS } from '@/lib/jarvis/smoke/scenarios';
+import {
+  isKernelSmokeBindingActive,
+  KERNEL_SMOKE_PROVIDER_ID,
+  subscribeKernelSmokeBinding,
+} from '@/lib/ai/providers/kernelSmoke';
+import { runDueJarvisSchedules } from './jarvisScheduleRunner';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
+const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
+  devBuild: import.meta.env.DEV,
+  explicitFlag: import.meta.env.VITE_SIK_SMOKE,
+});
 
 const REMINDER_PRESETS: { label: string; offset_min: number }[] = [
   { label: 'At time', offset_min: 0 },
@@ -245,9 +262,17 @@ function MiniCalendar({
 }
 
 export function SchedulePage() {
+  const kernelSmokeBindingActive = React.useSyncExternalStore(
+    subscribeKernelSmokeBinding,
+    isKernelSmokeBindingActive,
+    () => false,
+  );
   const workspaceId = useAuthStore((s) => s.workspaceId) as WorkspaceId | null;
   const localUserId = useAuthStore((s) => s.localUserId);
   const chatModelSelection = useAuthStore((s) => s.chatModelSelection);
+  const protectedJarvisAgent = useAgentStore((state) =>
+    findProtectedJarvisAgent(Object.values(state.agents)),
+  );
   const modelLabel = useAuthStore((s) => formatChatModelSelectionLabel(s.chatModelSelection, modelSelectionContextFromAuth(s)));
   const { flatOptions: jarvisModelOptions } = useAccessibleChatModels();
   const events = useUpcomingEvents(workspaceId, 14 * DAY_MS, 100);
@@ -279,6 +304,45 @@ export function SchedulePage() {
   const [jarvisRecurrence, setJarvisRecurrence] = React.useState<JarvisScheduleRecurrence>('once');
   const [timelineView, setTimelineView] = React.useState<'timeline' | 'jarvis'>('timeline');
   const [openJarvisEventId, setOpenJarvisEventId] = React.useState<string | null>(null);
+  const [kernelSmokeDispatching, setKernelSmokeDispatching] = React.useState(false);
+  const [kernelSmokeScheduleState, setKernelSmokeScheduleState] = React.useState<
+    | 'idle'
+    | 'creating'
+    | 'dispatching'
+    | 'dispatch-claim'
+    | 'dispatch-output'
+    | 'dispatch-kernel'
+    | 'dispatch-settle'
+    | 'dispatch-failed'
+    | 'opening'
+    | 'completed'
+    | 'error-create'
+    | 'error-dispatch'
+    | 'error-open'
+    | 'unavailable-binding'
+    | 'unavailable-identity'
+    | 'unavailable-workspace'
+    | 'unavailable-agent'
+    | 'unavailable-model'
+  >('idle');
+  const kernelSmokeUnavailableState = !kernelSmokeBindingActive
+    ? 'unavailable-binding'
+    : !getActiveAccountIdentity()
+      ? 'unavailable-identity'
+      : !workspaceId
+        ? 'unavailable-workspace'
+        : !protectedJarvisAgent
+          ? 'unavailable-agent'
+          : chatModelSelection.mode !== 'single' ||
+              chatModelSelection.providerId !== KERNEL_SMOKE_PROVIDER_ID ||
+              chatModelSelection.modelId !== 'kernel-smoke-v1' ||
+              chatModelSelection.connectionId !== 'vibespace-kernel-smoke-native'
+            ? 'unavailable-model'
+            : null;
+  const kernelSmokeVisibleScheduleState =
+    kernelSmokeScheduleState === 'idle' && kernelSmokeUnavailableState
+      ? kernelSmokeUnavailableState
+      : kernelSmokeScheduleState;
   const jarvisEvents = useJarvisScheduleEvents(workspaceId);
   const openJarvisEvent = React.useMemo(
     () => jarvisEvents.find((event) => String(event.id) === openJarvisEventId) ?? null,
@@ -398,10 +462,14 @@ export function SchedulePage() {
     }
 
     try {
+      const protectedJarvis = findProtectedJarvisAgent(
+        Object.values(useAgentStore.getState().agents),
+      );
+      const protectedJarvisId = protectedJarvis?.id ?? 'agent_jarvis';
       await eventRepo.create(jarvisAction
         ? buildJarvisScheduleEventInput({
             workspaceId,
-            createdBy: 'agent_jarvis',
+            createdBy: protectedJarvisId,
             title: title.trim(),
             prompt: description.trim() || title.trim(),
             startAt: start,
@@ -415,7 +483,7 @@ export function SchedulePage() {
                   selectedJarvisModel.connection,
                 )
               : chatModelSelection,
-            agentId: 'agent_jarvis',
+            agentId: protectedJarvisId,
           })
         : {
             workspace_id: workspaceId,
@@ -444,6 +512,109 @@ export function SchedulePage() {
       setJarvisRecurrence('once');
     } catch (err) {
       toast.error('Could not save', err instanceof Error ? err.message : 'Try again.');
+    }
+  };
+
+  const dispatchKernelSmokeSchedule = async (kind: 'success' | 'retry') => {
+    if (!KERNEL_SMOKE_ENABLED || kernelSmokeDispatching) return;
+    const auth = useAuthStore.getState();
+    const identity = getActiveAccountIdentity();
+    const selection = auth.chatModelSelection;
+    const protectedJarvis = protectedJarvisAgent;
+    const rejectUnavailable = (
+      state:
+        | 'unavailable-binding'
+        | 'unavailable-identity'
+        | 'unavailable-workspace'
+        | 'unavailable-agent'
+        | 'unavailable-model',
+    ) => {
+      setKernelSmokeScheduleState(state);
+      toast.error('Smoke fixture unavailable', 'The native smoke binding is not ready.');
+    };
+    if (!kernelSmokeBindingActive) {
+      rejectUnavailable('unavailable-binding');
+      return;
+    }
+    if (!identity) {
+      rejectUnavailable('unavailable-identity');
+      return;
+    }
+    if (!workspaceId) {
+      rejectUnavailable('unavailable-workspace');
+      return;
+    }
+    if (!protectedJarvis) {
+      rejectUnavailable('unavailable-agent');
+      return;
+    }
+    if (
+      selection.mode !== 'single' ||
+      selection.providerId !== KERNEL_SMOKE_PROVIDER_ID ||
+      selection.modelId !== 'kernel-smoke-v1' ||
+      selection.connectionId !== 'vibespace-kernel-smoke-native'
+    ) {
+      rejectUnavailable('unavailable-model');
+      return;
+    }
+
+    setKernelSmokeDispatching(true);
+    let stage: 'create' | 'dispatch' | 'open' = 'create';
+    try {
+      const scenario =
+        kind === 'retry'
+          ? KERNEL_SMOKE_SCENARIOS.schedule_transport_retry
+          : KERNEL_SMOKE_SCENARIOS.schedule_dispatch;
+      const startAt = Date.now();
+      setKernelSmokeScheduleState('creating');
+      const created = await eventRepo.create(
+        buildJarvisScheduleEventInput({
+          workspaceId,
+          createdBy: auth.localUserId ?? 'usr_local',
+          title: kind === 'retry' ? 'Kernel smoke schedule retry' : 'Kernel smoke schedule',
+          prompt: scenario.safeTextFixture,
+          startAt,
+          durationMs: 5 * 60 * 1000,
+          recurrence: 'once',
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+          modelSelection: selection,
+          agentId: protectedJarvis.id,
+        }),
+      );
+      stage = 'dispatch';
+      setKernelSmokeScheduleState('dispatching');
+      const result = await runDueJarvisSchedules(identity.accountId, workspaceId, undefined, {
+        onStage: (runnerStage) => {
+          const states = {
+            claimed: 'dispatch-claim',
+            output_chat: 'dispatch-output',
+            kernel_dispatch: 'dispatch-kernel',
+            settling: 'dispatch-settle',
+            completed: 'dispatching',
+            failed: 'dispatch-failed',
+          } as const;
+          setKernelSmokeScheduleState(states[runnerStage]);
+        },
+      });
+      if (!result.ran.includes(String(created.id))) {
+        throw new Error('kernel_smoke_schedule_not_dispatched');
+      }
+      stage = 'open';
+      setKernelSmokeScheduleState('opening');
+      const updated = await eventRepo.getById(created.id);
+      const metadata = updated ? parseJarvisScheduleMetadata(updated) : null;
+      if (!metadata?.outputChatId) throw new Error('kernel_smoke_schedule_output_missing');
+      useUIStore.getState().setActiveChat(metadata.outputChatId);
+      useUIStore.getState().setChatMode('chat');
+      flushUiStatePersistence();
+      setTimelineView('jarvis');
+      setOpenJarvisEventId(String(created.id));
+      setKernelSmokeScheduleState('completed');
+    } catch {
+      setKernelSmokeScheduleState(`error-${stage}`);
+      toast.error('Smoke dispatch failed', 'The fixed schedule did not reach the kernel.');
+    } finally {
+      setKernelSmokeDispatching(false);
     }
   };
 
@@ -862,6 +1033,32 @@ export function SchedulePage() {
             <Button variant="accent" onClick={() => void handleSave()} className="mt-1 w-full">
               <Plus className="mr-1 h-3.5 w-3.5" /> {scheduleMode === 'jarvis' ? 'Save Jarvis Action' : 'Save event'}
             </Button>
+            {KERNEL_SMOKE_ENABLED && kernelSmokeBindingActive ? (
+              <div className="grid grid-cols-2 gap-2" aria-label="Kernel schedule smoke fixtures">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  disabled={kernelSmokeDispatching || !!kernelSmokeUnavailableState}
+                  onClick={() => void dispatchKernelSmokeSchedule('success')}
+                  data-sik-evidence={SIK_CONTROL.scheduleDispatch}
+                  data-sik-schedule-state={kernelSmokeVisibleScheduleState}
+                >
+                  Dispatch smoke
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  disabled={kernelSmokeDispatching || !!kernelSmokeUnavailableState}
+                  onClick={() => void dispatchKernelSmokeSchedule('retry')}
+                  data-sik-evidence={SIK_CONTROL.scheduleRetryFixture}
+                  data-sik-schedule-state={kernelSmokeVisibleScheduleState}
+                >
+                  Dispatch retry smoke
+                </Button>
+              </div>
+            ) : null}
           </div>
         </aside>
       </div>

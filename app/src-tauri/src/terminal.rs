@@ -4,9 +4,9 @@
 //! Tauri commands (`spawn` / `write` / `resize` / `kill` / `list`) and emits 2
 //! events (`terminal://output`, `terminal://exit`).
 //!
-//! Each session gets a `tokio::task::spawn_blocking` reader that loops on a
-//! 4 KiB buffer, lossy UTF-8 decodes the bytes, and forwards them to the
-//! WebView. When the PTY closes, the same task waits the child and emits
+//! Each session gets separate blocking reader and child-waiter tasks. The
+//! waiter closes the pseudo-console master when the child exits so ConPTY
+//! releases output EOF; the reader then drains final bytes and emits one
 //! `terminal://exit` on its way out.
 //!
 //! No PII or terminal contents are ever written to logs; every failure mode
@@ -41,7 +41,7 @@ pub struct TerminalState(pub Arc<AsyncMutex<HashMap<String, PtyHandle>>>);
 pub struct PtyHandle {
     info: TerminalInfo,
     writer: Arc<AsyncMutex<Box<dyn Write + Send>>>,
-    master: Arc<AsyncMutex<Box<dyn MasterPty + Send>>>,
+    master: Arc<AsyncMutex<Option<Box<dyn MasterPty + Send>>>>,
     killer: Arc<AsyncMutex<Box<dyn ChildKiller + Send + Sync>>>,
     lifecycle: Arc<LifecycleArbiter>,
     _reader_task: JoinHandle<()>,
@@ -73,6 +73,9 @@ pub struct SpawnResponse {
     /// frontend can place per-directory artefacts (AGENTS.md, coordination
     /// doc) even when the caller did not pass an explicit `cwd`.
     pub cwd: String,
+    /// True only when the backend placed the startup command in the child
+    /// process arguments. The frontend must not replay it through PTY input.
+    pub startup_command_consumed: bool,
 }
 
 #[derive(Clone, Serialize)]
@@ -416,6 +419,7 @@ async fn deliver_kill(
 
 const MAX_TERMINAL_SESSIONS: usize = 10;
 const MAX_CANCELLATION_TOKEN_BYTES: usize = 512;
+const MAX_STARTUP_COMMAND_BYTES: usize = 32_768;
 
 fn valid_cancellation_token(token: &str) -> bool {
     !token.is_empty()
@@ -483,6 +487,48 @@ fn is_powershell(cmd: &str) -> bool {
     lower == "powershell.exe" || lower == "powershell" || lower == "pwsh.exe" || lower == "pwsh"
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct TerminalLaunchSpec {
+    executable: String,
+    arguments: Vec<String>,
+    startup_command_consumed: bool,
+}
+
+fn terminal_launch_spec(
+    command: Option<String>,
+    startup_command: Option<String>,
+) -> Result<TerminalLaunchSpec, String> {
+    if let Some(startup) = startup_command.as_ref() {
+        if startup.is_empty() || startup.len() > MAX_STARTUP_COMMAND_BYTES || startup.contains('\0')
+        {
+            return Err("terminal: invalid startup command".to_string());
+        }
+    }
+
+    let executable = pick_default_shell(command);
+    let mut arguments = Vec::new();
+    let mut startup_command_consumed = false;
+
+    #[cfg(target_os = "windows")]
+    if is_powershell(&executable) {
+        arguments.push("-NoLogo".to_string());
+        arguments.push("-NoProfile".to_string());
+        if let Some(startup) = startup_command {
+            arguments.push("-Command".to_string());
+            arguments.push(startup);
+            startup_command_consumed = true;
+        } else {
+            arguments.push("-NoExit".to_string());
+        }
+    }
+
+    Ok(TerminalLaunchSpec {
+        executable,
+        arguments,
+        startup_command_consumed,
+    })
+}
+
 fn now_unix_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -538,6 +584,7 @@ pub async fn terminal_spawn(
     state: State<'_, TerminalState>,
     app: AppHandle,
     command: Option<String>,
+    startup_command: Option<String>,
     cwd: Option<String>,
     rows: u16,
     cols: u16,
@@ -551,7 +598,8 @@ pub async fn terminal_spawn(
         Some(_) => return Err("terminal: invalid cancellation token".to_string()),
         None => None,
     };
-    let cmd_str = pick_default_shell(command);
+    let launch = terminal_launch_spec(command, startup_command)?;
+    let cmd_str = launch.executable.clone();
     let mut evicted_targets = Vec::new();
     {
         let map = state.0.lock().await;
@@ -600,14 +648,12 @@ pub async fn terminal_spawn(
         .map_err(|e| format!("terminal: open pty failed: {e}"))?;
 
     let mut builder = CommandBuilder::new(&cmd_str);
+    for argument in &launch.arguments {
+        builder.arg(argument);
+    }
     #[cfg(target_os = "windows")]
-    {
-        if is_powershell(&cmd_str) {
-            builder.arg("-NoLogo");
-            builder.arg("-NoProfile");
-            builder.arg("-NoExit");
-            builder.env("JARVIS_EMBEDDED_TERMINAL", "1");
-        }
+    if is_powershell(&cmd_str) {
+        builder.env("JARVIS_EMBEDDED_TERMINAL", "1");
     }
     let resolved_cwd = cwd.unwrap_or_else(default_terminal_cwd);
     if !resolved_cwd.is_empty() {
@@ -666,12 +712,14 @@ pub async fn terminal_spawn(
         cancellation_token,
     ));
     let lifecycle_for_task = lifecycle.clone();
+    let master = Arc::new(AsyncMutex::new(Some(pair.master)));
+    let master_for_waiter = master.clone();
+    let (exit_tx, exit_rx) = std::sync::mpsc::sync_channel(1);
     let (reader_start_tx, reader_start_rx) = std::sync::mpsc::sync_channel(1);
     let reader_task = spawn_blocking(move || {
         if reader_start_rx.recv().is_err() {
             return;
         }
-        let mut child = child;
         let mut reader = reader;
         let mut buf = [0u8; 4096];
         let mut pending_utf8 = Vec::new();
@@ -701,18 +749,31 @@ pub async fn terminal_spawn(
                 },
             );
         }
-        let code = child.wait().ok().map(|s| s.exit_code() as i32);
-        active_flag_for_task.store(false, Ordering::SeqCst);
+        let code = exit_rx.recv().unwrap_or(None);
         if let Some(exit) = lifecycle_for_task.observe_exit(code) {
             finalize_terminal_session(&app_emit, &state_for_task, &exit);
         }
+    });
+    let (waiter_start_tx, waiter_start_rx) = std::sync::mpsc::sync_channel(1);
+    let _waiter_task = spawn_blocking(move || {
+        if waiter_start_rx.recv().is_err() {
+            return;
+        }
+        let mut child = child;
+        let code = child.wait().ok().map(|status| status.exit_code() as i32);
+        active_flag_for_task.store(false, Ordering::SeqCst);
+        let _ = exit_tx.send(code);
+        // ConPTY can keep its output pipe open after the child exits while the
+        // pseudo-console master remains alive. Close that owner here so the
+        // reader drains the final bytes, observes EOF, and emits one exit.
+        master_for_waiter.blocking_lock().take();
     });
 
     let deleted_flag_for_task = Arc::new(AtomicBool::new(false));
     let handle = PtyHandle {
         info,
         writer: Arc::new(AsyncMutex::new(writer)),
-        master: Arc::new(AsyncMutex::new(pair.master)),
+        master,
         killer: Arc::new(AsyncMutex::new(killer)),
         lifecycle,
         _reader_task: reader_task,
@@ -722,9 +783,11 @@ pub async fn terminal_spawn(
 
     state.0.lock().await.insert(session_id.clone(), handle);
     let _ = reader_start_tx.send(());
+    let _ = waiter_start_tx.send(());
     Ok(SpawnResponse {
         session_id,
         cwd: response_cwd,
+        startup_command_consumed: launch.startup_command_consumed,
     })
 }
 
@@ -779,6 +842,8 @@ pub async fn terminal_resize(
     spawn_blocking(move || {
         let master = master_arc.blocking_lock();
         master
+            .as_ref()
+            .ok_or_else(|| "terminal: session already exited".to_string())?
             .resize(PtySize {
                 rows,
                 cols,
@@ -882,10 +947,38 @@ mod tests {
     use std::collections::HashMap;
 
     use super::{
-        decode_terminal_bytes, default_terminal_cwd, emit_before_remove, valid_cancellation_token,
-        validated_kill_request, ExitReason, KillRequest, KillRequestKind, KillResultKind,
-        KillStart, LifecycleArbiter, TerminalKillResult, MAX_CANCELLATION_TOKEN_BYTES,
+        decode_terminal_bytes, default_terminal_cwd, emit_before_remove, terminal_launch_spec,
+        valid_cancellation_token, validated_kill_request, ExitReason, KillRequest, KillRequestKind,
+        KillResultKind, KillStart, LifecycleArbiter, TerminalKillResult,
+        MAX_CANCELLATION_TOKEN_BYTES,
     };
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn powershell_startup_commands_launch_as_one_native_process() {
+        let spec = terminal_launch_spec(
+            Some("powershell.exe".to_string()),
+            Some("Write-Output 'fixture'; exit".to_string()),
+        )
+        .expect("valid startup command");
+
+        assert_eq!(spec.executable, "powershell.exe");
+        assert_eq!(
+            spec.arguments,
+            [
+                "-NoLogo",
+                "-NoProfile",
+                "-Command",
+                "Write-Output 'fixture'; exit"
+            ]
+        );
+        assert!(spec.startup_command_consumed);
+    }
+
+    #[test]
+    fn terminal_startup_commands_reject_nul_before_process_creation() {
+        assert!(terminal_launch_spec(None, Some("bad\0command".to_string())).is_err());
+    }
 
     #[test]
     fn missing_kill_result_preserves_canonical_request_truth() {

@@ -164,6 +164,81 @@ describe('Jarvis canonical core actions', () => {
     expect(JSON.stringify(outcome)).not.toContain('jcancel_native_1');
   });
 
+  it('hands an approved terminal.run command and bounded metadata to the canonical acceptor', async () => {
+    const owned: JarvisTerminalOwnedExecution = {
+      recordResult: vi.fn(),
+      recordCancellationVerified: vi.fn(),
+      requestCancellation: vi.fn(),
+      dispose: vi.fn(),
+    };
+    const acceptIssuedExecution = vi.fn(({ executionId, ownerId }) =>
+      Object.freeze({
+        executionId,
+        ownerId,
+        [jarvisTerminalHandoffReceiptBrand]: true as const,
+      }),
+    );
+    const createAcceptor = vi.fn(() => ({ acceptIssuedExecution }));
+    const transferTerminalOwnership = vi.fn(({ executionId, acceptor }) => ({
+      kind: 'committed' as const,
+      value: acceptor.acceptIssuedExecution({
+        executionId,
+        ownerId: 'approval:jappr_run',
+        execution: owned,
+      }),
+    }));
+    const dispatcher = createJarvisTerminalRegisteredActionDispatcher({
+      newExecutionId: () => 'jterm_run',
+      newCancellationToken: () => 'jcancel_native_run',
+      createAcceptor,
+    });
+
+    const outcome = await dispatcher({
+      registration: {
+        id: 'terminal.run',
+        version: 1,
+        executor: { kind: 'builtin', registryActionId: 'terminal.run' },
+      } as never,
+      params: {
+        command: "Write-Output 'VibeSpace kernel terminal fixture'; exit",
+        label: 'Kernel smoke fixture',
+        cwd: 'C:\\work',
+        timeoutMs: 15_000,
+      },
+      context: {
+        source: 'ai',
+        accountId: 'account-a',
+        runId: 'jrun_run',
+        approvalId: 'jappr_run',
+        requestId: 'request-run',
+        attemptNumber: 1,
+      },
+      execution: {
+        producerKind: 'terminal',
+        ownerId: 'approval:jappr_run',
+        [jarvisIssuedActionExecutionBrand]: true,
+        transferTerminalOwnership,
+      } as never,
+    });
+
+    expect(createAcceptor).toHaveBeenCalledWith({
+      accountId: 'account-a',
+      runId: 'jrun_run',
+      executionId: 'jterm_run',
+      cancellationToken: 'jcancel_native_run',
+      command: "Write-Output 'VibeSpace kernel terminal fixture'; exit",
+      label: 'Kernel smoke fixture',
+      cwd: 'C:\\work',
+      timeoutMs: 15_000,
+    });
+    expect(outcome).toMatchObject({
+      kind: 'terminal_handoff_accepted',
+      executorKind: 'terminal',
+      ownerId: 'approval:jappr_run',
+      result: { ok: true, data: { state: 'queued', executionId: 'jterm_run' } },
+    });
+  });
+
   it('verifies every queued terminal actually reaches a started state', async () => {
     let reads = 0;
     const result = await waitForTerminalExecutions(['one', 'two'], {

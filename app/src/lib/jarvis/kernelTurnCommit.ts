@@ -124,6 +124,64 @@ type VoiceResponseReadyPortResult =
   | VoiceResponseReadyCommitResult
   | { committed: false; reason: 'account_authority_revoked' };
 
+/** @internal Persists one canonical provider response after approval creation. */
+export type ActionResponseReadyCommitInput = Readonly<{
+  accountId: string;
+  runId: string;
+  requestId: string;
+  attemptNumber: number;
+  approvalId: string;
+  accountBinding: JarvisKernelAccountBinding;
+  assistantMessage: Message;
+  artifacts: readonly JarvisArtifactV1[];
+  providerResultSource: JarvisProducerSourceEvidenceV1;
+  createdAt: number;
+}>;
+
+export type ActionResponseReadyCommitResult =
+  | {
+      committed: true;
+      run: JarvisRun;
+      event: JarvisEvent;
+      message: Message;
+      artifacts: readonly JarvisArtifactV1[];
+    }
+  | {
+      committed: false;
+      reason:
+        | 'status_conflict'
+        | 'attempt_conflict'
+        | 'response_ready_conflict'
+        | 'account_authority_revoked';
+      actualStatus?: JarvisRunStatus;
+    };
+
+/** @internal Finalizes only a previously persisted canonical approval response. */
+export type FinalizeActionResponseInput = Readonly<{
+  accountId: string;
+  runId: string;
+  requestId: string;
+  attemptNumber: number;
+  approvalId: string;
+  messageId: string;
+  accountBinding: JarvisKernelAccountBinding;
+  outcome: 'completed' | 'degraded' | 'denied' | 'handoff';
+  resultRef: string;
+  completedAt: number;
+}>;
+
+export type FinalizeActionResponseResult =
+  | { committed: true; run: JarvisRun; event: JarvisEvent; message: Message }
+  | {
+      committed: false;
+      reason:
+        | 'status_conflict'
+        | 'attempt_conflict'
+        | 'response_ready_conflict'
+        | 'account_authority_revoked';
+      actualStatus?: JarvisRunStatus;
+    };
+
 /** @internal Captured and invoked only by a runtime-issued voice handle. */
 export type VoicePlaybackCommitInput = Readonly<{
   accountId: string;
@@ -148,6 +206,10 @@ type VoicePlaybackPortResult =
 /** @internal Imported only by kernelRuntime.ts and focused tests. */
 export type JarvisKernelCommitPort = Readonly<{
   commitKernelTurn(input: KernelTurnCommitInput): Promise<KernelTurnCommitResult>;
+  commitActionResponseReady(
+    input: ActionResponseReadyCommitInput,
+  ): Promise<ActionResponseReadyCommitResult>;
+  finalizeActionResponse(input: FinalizeActionResponseInput): Promise<FinalizeActionResponseResult>;
   commitVoiceResponseReady(
     input: VoiceResponseReadyCommitInput,
   ): Promise<VoiceResponseReadyPortResult>;
@@ -215,6 +277,46 @@ function assertVoiceResponseReadyInput(input: VoiceResponseReadyCommitInput): vo
     (providerSource.state !== 'completed' && providerSource.state !== 'degraded')
   ) {
     throw new TypeError('voice_response_ready_input_invalid');
+  }
+}
+
+function assertActionResponseReadyInput(input: ActionResponseReadyCommitInput): void {
+  const providerSource = input.providerResultSource;
+  if (
+    !isStableIdentifier(input.accountId) ||
+    !isStableIdentifier(input.runId) ||
+    !isStableIdentifier(input.requestId) ||
+    !isStableIdentifier(input.approvalId) ||
+    !Number.isSafeInteger(input.attemptNumber) ||
+    input.attemptNumber < 1 ||
+    !Number.isFinite(input.createdAt) ||
+    input.assistantMessage.role !== 'assistant' ||
+    providerSource.producerKind !== 'provider' ||
+    providerSource.phase !== 'result' ||
+    providerSource.accountId !== input.accountId ||
+    providerSource.runId !== input.runId ||
+    providerSource.requestId !== input.requestId ||
+    providerSource.attemptNumber !== input.attemptNumber ||
+    (providerSource.state !== 'completed' && providerSource.state !== 'degraded')
+  ) {
+    throw new TypeError('action_response_ready_input_invalid');
+  }
+}
+
+function assertFinalizeActionResponseInput(input: FinalizeActionResponseInput): void {
+  if (
+    !isStableIdentifier(input.accountId) ||
+    !isStableIdentifier(input.runId) ||
+    !isStableIdentifier(input.requestId) ||
+    !isStableIdentifier(input.approvalId) ||
+    !isStableIdentifier(input.messageId) ||
+    !isStableIdentifier(input.resultRef) ||
+    !Number.isSafeInteger(input.attemptNumber) ||
+    input.attemptNumber < 1 ||
+    !Number.isFinite(input.completedAt) ||
+    !['completed', 'degraded', 'denied', 'handoff'].includes(input.outcome)
+  ) {
+    throw new TypeError('action_response_finalize_input_invalid');
   }
 }
 
@@ -318,6 +420,355 @@ function attemptConflict(actualStatus: JarvisRunStatus): KernelTurnCommitResult 
 /** @internal Bound only inside the closed artifact/kernel runtime composition. */
 export function createKernelTurnCommit(dependencies: CommitDependencies): JarvisKernelCommitPort {
   return Object.freeze({
+    async commitActionResponseReady(
+      input: ActionResponseReadyCommitInput,
+    ): Promise<ActionResponseReadyCommitResult> {
+      assertActionResponseReadyInput(input);
+      if (!bindingIsCurrent(dependencies, input.accountBinding)) {
+        return { committed: false, reason: 'account_authority_revoked' };
+      }
+      if (input.accountBinding.identity.accountId !== input.accountId) {
+        return { committed: false, reason: 'account_authority_revoked' };
+      }
+      const expectedCallId = `jarvisapproval:${encodeURIComponent(input.approvalId)}`;
+      const proposals = input.assistantMessage.parts.filter(
+        (part) => part.kind === 'action_proposal',
+      );
+      if (
+        proposals.length !== 1 ||
+        proposals[0]!.call_id !== expectedCallId ||
+        proposals[0]!.status !== 'pending'
+      ) {
+        throw new TypeError('action_response_ready_approval_projection_invalid');
+      }
+      const artifactIds = new Set<string>();
+      for (const artifact of input.artifacts) {
+        if (
+          artifact.runId !== input.runId ||
+          artifact.requestId !== input.requestId ||
+          artifact.attemptNumber !== input.attemptNumber ||
+          artifactIds.has(artifact.id)
+        ) {
+          return {
+            committed: false,
+            reason: 'attempt_conflict',
+            actualStatus: 'awaiting_approval',
+          };
+        }
+        artifactIds.add(artifact.id);
+      }
+
+      const artifactRows = input.artifacts.map(toJarvisArtifactRow);
+      const transaction = await dependencies.transactionAuthority.transaction(
+        KERNEL_TURN_TABLES,
+        input.accountBinding.revocationSignal,
+        async (context): Promise<ActionResponseReadyCommitResult> => {
+          if (!bindingIsCurrent(dependencies, input.accountBinding)) {
+            return { committed: false, reason: 'account_authority_revoked' };
+          }
+          const runRow = await context.jarvis_runs.get(input.runId);
+          if (!runRow || runRow.account_id !== input.accountId) {
+            throw new TypeError('action_response_ready_run_scope_mismatch');
+          }
+          const current = fromJarvisRunRow(runRow);
+          if (current.status !== 'awaiting_approval') {
+            return {
+              committed: false,
+              reason: 'status_conflict',
+              actualStatus: current.status,
+            };
+          }
+          if (current.chatId === undefined || input.assistantMessage.chat_id !== current.chatId) {
+            throw new TypeError('action_response_ready_message_scope_mismatch');
+          }
+          const responseKey = `action-response-ready:${input.approvalId}`;
+          const [chatRow, existingMessage, existingArtifacts, matchingEvent] = await Promise.all([
+            context.chats.get(input.assistantMessage.chat_id),
+            context.messages.get(input.assistantMessage.id),
+            context.jarvis_artifacts.bulkGet(artifactRows.map((row) => row.id)),
+            context.jarvis_events
+              .where('run_id')
+              .equals(input.runId)
+              .filter((row) => row.idempotency_key === responseKey)
+              .first(),
+          ]);
+          if (!chatRow) throw new TypeError('action_response_ready_chat_missing');
+          if (existingMessage || existingArtifacts.some(Boolean) || matchingEvent) {
+            return {
+              committed: false,
+              reason: 'response_ready_conflict',
+              actualStatus: current.status,
+            };
+          }
+          const lastEvent = await context.jarvis_events
+            .where('[run_id+seq]')
+            .between([input.runId, Dexie.minKey], [input.runId, Dexie.maxKey], true, true)
+            .last();
+          const eventRow = toJarvisEventRow({
+            runId: input.runId,
+            seq: (lastEvent?.seq ?? 0) + 1,
+            idempotencyKey: responseKey,
+            type: 'message',
+            status: 'approval_required',
+            title: 'Action approval required',
+            safeSummary: 'The validated response is saved and awaiting an approval decision.',
+            sourceRefs: [],
+            artifactIds: input.artifacts.map((artifact) => artifact.id),
+            createdAt: input.createdAt,
+            producerSourceEvidence: structuredClone(input.providerResultSource),
+          });
+          const message = structuredClone(input.assistantMessage);
+          const updatedChat: Chat = {
+            ...structuredClone(chatRow),
+            updated_at: Math.max(chatRow.updated_at, input.createdAt, message.updated_at),
+          };
+          if (!bindingIsCurrent(dependencies, input.accountBinding)) {
+            return { committed: false, reason: 'account_authority_revoked' };
+          }
+          if (input.artifacts.length > 0) {
+            dependencies.consumeArtifactsForCommit({
+              accountId: input.accountId,
+              runId: input.runId,
+              requestId: input.requestId,
+              attemptNumber: input.attemptNumber,
+              artifacts: input.artifacts,
+            });
+          }
+          await context.jarvis_events.add(eventRow);
+          await context.messages.add(message);
+          await context.chats.put(updatedChat);
+          await enqueueLocalSyncInTransaction(context, {
+            op: 'insert',
+            table: 'messages',
+            row: message,
+            createdAt: input.createdAt,
+            ownerSnapshot: input.accountBinding.syncOwnerSnapshot,
+          });
+          await enqueueLocalSyncInTransaction(context, {
+            op: 'update',
+            table: 'chats',
+            row: updatedChat,
+            createdAt: input.createdAt,
+            ownerSnapshot: input.accountBinding.syncOwnerSnapshot,
+          });
+          if (artifactRows.length > 0) await context.jarvis_artifacts.bulkAdd(artifactRows);
+          return {
+            committed: true,
+            run: current,
+            event: fromJarvisEventRow(eventRow),
+            message,
+            artifacts: Object.freeze(input.artifacts.map((value) => Object.freeze(value))),
+          };
+        },
+      );
+      if (transaction.kind === 'cancelled') {
+        return { committed: false, reason: 'account_authority_revoked' };
+      }
+      return transaction.value;
+    },
+    async finalizeActionResponse(
+      input: FinalizeActionResponseInput,
+    ): Promise<FinalizeActionResponseResult> {
+      assertFinalizeActionResponseInput(input);
+      if (!bindingIsCurrent(dependencies, input.accountBinding)) {
+        return { committed: false, reason: 'account_authority_revoked' };
+      }
+      if (input.accountBinding.identity.accountId !== input.accountId) {
+        return { committed: false, reason: 'account_authority_revoked' };
+      }
+      const transaction = await dependencies.transactionAuthority.transaction(
+        KERNEL_TURN_TABLES,
+        input.accountBinding.revocationSignal,
+        async (context): Promise<FinalizeActionResponseResult> => {
+          if (!bindingIsCurrent(dependencies, input.accountBinding)) {
+            return { committed: false, reason: 'account_authority_revoked' };
+          }
+          const [runRow, storedMessage, runEvents] = await Promise.all([
+            context.jarvis_runs.get(input.runId),
+            context.messages.get(input.messageId as Message['id']),
+            context.jarvis_events
+              .where('[run_id+seq]')
+              .between([input.runId, Dexie.minKey], [input.runId, Dexie.maxKey], true, true)
+              .toArray(),
+          ]);
+          if (!runRow || runRow.account_id !== input.accountId) {
+            throw new TypeError('action_response_finalize_run_scope_mismatch');
+          }
+          const current = fromJarvisRunRow(runRow);
+          if (current.status !== 'running') {
+            return {
+              committed: false,
+              reason: 'status_conflict',
+              actualStatus: current.status,
+            };
+          }
+          if (!storedMessage || storedMessage.chat_id !== current.chatId) {
+            return {
+              committed: false,
+              reason: 'response_ready_conflict',
+              actualStatus: current.status,
+            };
+          }
+          const responseReady = runEvents.filter(
+            (row) => row.idempotency_key === `action-response-ready:${input.approvalId}`,
+          );
+          if (responseReady.length !== 1 || input.completedAt < current.updatedAt) {
+            return {
+              committed: false,
+              reason: 'response_ready_conflict',
+              actualStatus: current.status,
+            };
+          }
+          const expectedCallId = `jarvisapproval:${encodeURIComponent(input.approvalId)}`;
+          let matched = 0;
+          const partStatus =
+            input.outcome === 'completed'
+              ? ('success' as const)
+              : input.outcome === 'denied'
+                ? ('cancelled' as const)
+                : input.outcome === 'handoff'
+                  ? ('queued' as const)
+                  : ('error' as const);
+          const parts = storedMessage.parts.map((part) => {
+            if (part.kind !== 'action_proposal' || part.call_id !== expectedCallId) {
+              return structuredClone(part);
+            }
+            matched += 1;
+            if (
+              (input.outcome === 'handoff' && part.status !== 'pending') ||
+              (input.outcome !== 'handoff' && part.status !== 'pending' && part.status !== 'queued')
+            ) {
+              throw new TypeError('action_response_finalize_projection_conflict');
+            }
+            return {
+              ...structuredClone(part),
+              status: partStatus,
+              ...(partStatus === 'error'
+                ? { error: 'The protected action did not complete.' }
+                : {}),
+            };
+          });
+          if (matched !== 1) {
+            return {
+              committed: false,
+              reason: 'response_ready_conflict',
+              actualStatus: current.status,
+            };
+          }
+          let transportAttempts = current.transportAttempts;
+          if (current.source === 'schedule' && input.outcome !== 'handoff') {
+            const attempts = structuredClone([...(current.transportAttempts ?? [])]);
+            const latest = attempts.at(-1);
+            if (
+              !latest ||
+              latest.requestId !== input.requestId ||
+              latest.attemptNumber !== input.attemptNumber ||
+              latest.state !== 'provider_in_flight'
+            ) {
+              return {
+                committed: false,
+                reason: 'attempt_conflict',
+                actualStatus: current.status,
+              };
+            }
+            attempts[attempts.length - 1] = {
+              ...latest,
+              state: 'completed',
+              updatedAt: input.completedAt,
+            };
+            transportAttempts = attempts;
+          }
+          const terminalStatus =
+            input.outcome === 'completed'
+              ? ('completed' as const)
+              : input.outcome === 'denied'
+                ? ('cancelled' as const)
+                : input.outcome === 'handoff'
+                  ? ('running' as const)
+                  : ('partial' as const);
+          const updatedRun: JarvisRun = {
+            ...current,
+            status: terminalStatus,
+            updatedAt: input.completedAt,
+            ...(terminalStatus === 'running' ? {} : { completedAt: input.completedAt }),
+            ...(transportAttempts === undefined ? {} : { transportAttempts }),
+          };
+          const message: Message = {
+            ...structuredClone(storedMessage),
+            parts,
+            updated_at: input.completedAt,
+          };
+          const chatRow = await context.chats.get(message.chat_id);
+          if (!chatRow) throw new TypeError('action_response_finalize_chat_missing');
+          const updatedChat: Chat = {
+            ...structuredClone(chatRow),
+            updated_at: Math.max(chatRow.updated_at, input.completedAt),
+          };
+          const responseReadyEvent = fromJarvisEventRow(responseReady[0]!);
+          const eventRow = toJarvisEventRow({
+            runId: input.runId,
+            seq: (runEvents.at(-1)?.seq ?? 0) + 1,
+            idempotencyKey:
+              input.outcome === 'handoff'
+                ? `action-handoff:${input.approvalId}:${input.resultRef}`
+                : `action-terminal:${input.approvalId}:${input.resultRef}`,
+            type: input.outcome === 'handoff' ? 'tool' : 'run_state',
+            status: input.outcome === 'handoff' ? 'handoff_pending' : terminalStatus,
+            title:
+              input.outcome === 'handoff'
+                ? 'Action execution handed off'
+                : terminalStatus === 'completed'
+                  ? 'Action completed'
+                  : terminalStatus === 'cancelled'
+                    ? 'Action denied'
+                    : 'Action ended with degraded state',
+            safeSummary:
+              input.outcome === 'handoff'
+                ? 'The approved action is running under its native execution owner.'
+                : terminalStatus === 'completed'
+                  ? 'The approved protected action completed.'
+                  : terminalStatus === 'cancelled'
+                    ? 'The protected action was denied and did not execute.'
+                    : 'The approved protected action did not fully complete.',
+            sourceRefs: responseReadyEvent.sourceRefs,
+            artifactIds: responseReadyEvent.artifactIds,
+            createdAt: input.completedAt,
+          });
+          if (!bindingIsCurrent(dependencies, input.accountBinding)) {
+            return { committed: false, reason: 'account_authority_revoked' };
+          }
+          const updatedRunRow = toJarvisRunRow(updatedRun);
+          await context.jarvis_runs.put(updatedRunRow);
+          await context.jarvis_events.add(eventRow);
+          await context.messages.put(message);
+          await context.chats.put(updatedChat);
+          await enqueueLocalSyncInTransaction(context, {
+            op: 'update',
+            table: 'messages',
+            row: message,
+            createdAt: input.completedAt,
+            ownerSnapshot: input.accountBinding.syncOwnerSnapshot,
+          });
+          await enqueueLocalSyncInTransaction(context, {
+            op: 'update',
+            table: 'chats',
+            row: updatedChat,
+            createdAt: input.completedAt,
+            ownerSnapshot: input.accountBinding.syncOwnerSnapshot,
+          });
+          return {
+            committed: true,
+            run: fromJarvisRunRow(updatedRunRow),
+            event: fromJarvisEventRow(eventRow),
+            message,
+          };
+        },
+      );
+      if (transaction.kind === 'cancelled') {
+        return { committed: false, reason: 'account_authority_revoked' };
+      }
+      return transaction.value;
+    },
     async commitVoicePlayback(input: VoicePlaybackCommitInput): Promise<VoicePlaybackPortResult> {
       assertVoicePlaybackInput(input);
       if (!bindingIsCurrent(dependencies, input.accountBinding)) {

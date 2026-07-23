@@ -10,6 +10,14 @@ import { useVoiceStore } from '@/features/voice/store';
 import { createVoiceSessionBinding } from '@/features/voice/voiceSessionBinding';
 import type { JarvisShadowCompilationDeps } from '@/lib/jarvis/shadowCompilation';
 import type { CanonicalProviderEvidence } from '@/lib/jarvis/artifactProducerAdapters';
+import { toJarvisApprovalRow, toJarvisRunRow } from '@/lib/db/jarvisMappers';
+import type { JarvisApprovalV1, JarvisRun } from '@/lib/jarvis/contracts';
+import { createJarvisRepositories } from '@/lib/db/jarvisRepositories';
+import {
+  createJarvisActionCatalog,
+  DEFAULT_JARVIS_ACTION_REGISTRATIONS,
+} from '@/lib/jarvis/actions/catalog';
+import { createJarvisSecurityRuntime } from '@/lib/jarvis/jarvisSecurityRuntime';
 
 const mocks = vi.hoisted(() => ({
   runAgent: vi.fn(),
@@ -95,6 +103,9 @@ vi.mock('./context', () => ({
 import {
   createCanonicalProviderEvidenceAuthority,
   createJarvisCommandCenterHostPort,
+  executeApprovalThenActivateTerminalHandoff,
+  executeInstalledJarvisRegisteredAction,
+  handleInstalledJarvisKernelClientRequest,
   installJarvisKernelRuntimeHost,
   startRuntimeListener as startKernelAwareRuntimeListener,
 } from './runtime';
@@ -180,6 +191,133 @@ describe('startRuntimeListener agent routing', () => {
     activeStoppers.push(stop);
     return stop;
   }
+
+  it('activates the terminal surface only after the durable handoff resolves', async () => {
+    const order: string[] = [];
+    let resolveExecution!: (value: {
+      kind: 'committed';
+      value: { kind: 'handoff_pending' };
+    }) => void;
+    const pending = executeApprovalThenActivateTerminalHandoff(
+      () =>
+        new Promise<{
+          kind: 'committed';
+          value: { kind: 'handoff_pending' };
+        }>((resolve) => {
+          resolveExecution = resolve;
+        }),
+      () => order.push('activate'),
+    );
+
+    expect(order).toEqual([]);
+    resolveExecution({ kind: 'committed', value: { kind: 'handoff_pending' } });
+
+    await expect(pending).resolves.toEqual({
+      kind: 'committed',
+      value: { kind: 'handoff_pending' },
+    });
+    expect(order).toEqual(['activate']);
+  });
+
+  it('returns only the bounded redacted presentation for an account-owned approval', async () => {
+    const database = createJarvisDb(
+      uniqueTestDbName('runtime-installed-approval-presentation'),
+      TEST_INDEXED_DB,
+    );
+    await database.open();
+    const run: JarvisRun = {
+      id: 'jrun_runtime_approval_presentation',
+      accountId: 'runtime-test-account',
+      workspaceId: 'workspace-runtime-presentation',
+      chatId: 'chat-runtime-presentation',
+      source: 'typed_chat',
+      status: 'awaiting_approval',
+      agentId: 'agent-runtime-presentation',
+      identityVersion: 1,
+      profileRevisionId: 'profile-runtime-presentation',
+      model: {
+        connectionId: 'connection-runtime-presentation',
+        providerId: 'provider-runtime-presentation',
+        modelId: 'model-runtime-presentation',
+        connectionMode: 'native-api',
+        capabilities: { tools: true, vision: false },
+        capturedAt: 1,
+      },
+      createdAt: 1,
+      updatedAt: 2,
+    };
+    const approval: JarvisApprovalV1 = {
+      id: 'jappr_runtime_presentation',
+      runId: run.id,
+      actionId: 'terminal.create',
+      actionVersion: 1,
+      params: { count: 1, token: 'jsecret_runtime_hidden' },
+      secretHandleRefs: [{ field: 'token', handleId: 'jsecret_runtime_hidden' }],
+      paramsHash: 'params-runtime-presentation',
+      targetSnapshot: { kind: 'external_resource', service: 'terminal', resourceId: 'new' },
+      risk: 'confirm',
+      status: 'pending',
+      createdAt: 2,
+      schemaVersion: 1,
+      requestId: 'request-runtime-presentation',
+      attemptNumber: 1,
+      capabilityId: 'terminal.execute',
+      capabilitySnapshotHash: 'capability-runtime-presentation',
+      expectedEffect: 'Create one terminal owned by the active account.',
+      expiresAt: 10_000,
+    };
+    await database.jarvis_runs.add(toJarvisRunRow(run));
+    await database.jarvis_approvals.add(toJarvisApprovalRow(approval));
+    const disposeHost = await installJarvisKernelRuntimeHost({
+      db: database,
+      bindKernelActions: () =>
+        ({
+          create: vi.fn() as never,
+          decide: vi.fn() as never,
+          execute: vi.fn() as never,
+          executeAutoApprovedSafe: vi.fn() as never,
+        }) as never,
+      capabilitySnapshots: {
+        getForAccount: vi.fn(async () => ({
+          capturedAt: 1,
+          tools: [],
+          plugins: [],
+          mcps: [],
+          terminals: [],
+          agents: [],
+          entitlements: { source: 'unavailable' as const, capabilities: [] },
+        })),
+      },
+      randomUUID: () => 'runtime-approval-presentation',
+      now: () => 10,
+    });
+    trackListener(disposeHost);
+
+    try {
+      await expect(
+        handleInstalledJarvisKernelClientRequest({
+          version: 1,
+          kind: 'approval_present',
+          accountId: run.accountId,
+          approvalId: approval.id,
+        }),
+      ).resolves.toEqual({
+        version: 1,
+        kind: 'approval_presentation',
+        approvalId: approval.id,
+        actionId: 'terminal.create',
+        expectedEffect: 'Create one terminal owned by the active account.',
+        risk: 'confirm',
+        parameters: [
+          { field: 'count', safeValue: '1' },
+          { field: 'token', safeValue: '[redacted]' },
+        ],
+      });
+    } finally {
+      disposeHost();
+      await database.delete();
+    }
+  });
 
   it('uses the chat-bound active agent and its system prompt', async () => {
     const apple = agent('agent_apple', 'apple', 'Always answer with APPLE.');
@@ -274,8 +412,13 @@ describe('startRuntimeListener agent routing', () => {
   it('releases the voice turn when no agent can reply', async () => {
     const chatId = 'chat_voice_missing_agent' as ChatId;
     const streamEnds: Event[] = [];
+    const runStates: Array<{ status?: string; errorCode?: string }> = [];
     const onStreamEnd = (event: Event) => streamEnds.push(event);
+    const onRunState = (event: Event) => {
+      runStates.push((event as CustomEvent<{ status?: string; errorCode?: string }>).detail);
+    };
     window.addEventListener('jarvis:streaming-voice:end', onStreamEnd);
+    window.addEventListener('jarvis:run-state', onRunState);
 
     const stop = trackListener(
       startRuntimeListener({
@@ -301,8 +444,14 @@ describe('startRuntimeListener agent routing', () => {
 
     await vi.waitFor(() => expect(streamEnds).toHaveLength(1));
     expect(mocks.runAgent).not.toHaveBeenCalled();
+    expect(runStates.at(-1)).toEqual({
+      chatId: String(chatId),
+      status: 'error',
+      errorCode: 'kernel_runtime_agent_unavailable',
+    });
 
     window.removeEventListener('jarvis:streaming-voice:end', onStreamEnd);
+    window.removeEventListener('jarvis:run-state', onRunState);
     stop();
   });
 
@@ -1720,7 +1869,7 @@ describe('startRuntimeListener agent routing', () => {
     expect(harness.bindings.appendMessage).not.toHaveBeenCalled();
   });
 
-  it('runs default kernel mode through the installed boot-scoped host without a placeholder write', async () => {
+  it('persists a length-limited provider response as partial through the installed host', async () => {
     useAuthStore.setState({
       apiKeys: { groq: 'gsk_test', openai: 'sk_test' },
       chatModelSelection: {
@@ -1765,10 +1914,11 @@ describe('startRuntimeListener agent routing', () => {
       updated_at: 1,
     });
     mocks.runAgent.mockImplementation(async (providerInput) => ({
-      text: 'The installed kernel host is ready, Sir.',
+      text: 'The installed kernel host returned a partial response, Sir.',
       usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
       provider: providerInput.agent.model.provider,
       model: providerInput.agent.model.model,
+      finish_reason: 'length',
     }));
     const getCapabilities = vi.fn(async () => ({
       capturedAt: 1,
@@ -1820,13 +1970,183 @@ describe('startRuntimeListener agent routing', () => {
       expect(harness.bindings.appendMessage).not.toHaveBeenCalled();
       expect(
         await database.jarvis_runs.where('chat_id').equals(harness.chatId).first(),
-      ).toMatchObject({ status: 'completed' });
+      ).toMatchObject({ status: 'partial' });
     } finally {
       disposeHost();
       database.close();
       await database.delete();
     }
   });
+
+  it('executes a response safe action through the installed security binder without losing scope', async () => {
+    useAuthStore.setState({
+      apiKeys: { openai: 'sk_test' },
+      chatModelSelection: {
+        mode: 'single',
+        providerId: 'openai',
+        modelId: 'gpt-5.5',
+        connectionId: 'openai-api',
+        connectionMode: 'native-api',
+        authSource: 'api-key',
+        capabilities: {
+          text: true,
+          images: false,
+          files: false,
+          tools: false,
+          modelSelection: true,
+          structuredOutput: false,
+          streaming: true,
+          cancellation: true,
+          resumeSession: false,
+          systemPrompt: true,
+          workingDirectory: false,
+          usage: true,
+          subscriptionQuota: false,
+          localOnly: false,
+        },
+      },
+    });
+    const protectedJarvis = agent('agent_jarvis', 'jarvis', 'LEGACY SYSTEM PROMPT', true);
+    const harness = kernelRuntimeBindings(protectedJarvis);
+    const database = createJarvisDb(
+      uniqueTestDbName('runtime-installed-safe-action-host'),
+      TEST_INDEXED_DB,
+    );
+    await database.open();
+    await database.chats.add({
+      id: harness.chatId,
+      workspace_id: 'workspace_runtime_safe_action' as never,
+      title: 'Installed safe action host',
+      mode: 'chat',
+      active_agent_ids: [protectedJarvis.id],
+      created_at: 1,
+      updated_at: 1,
+    });
+    const { setStoredProjectRoot } = await import('@/features/files/projectFiles');
+    setStoredProjectRoot(
+      useAuthStore.getState().projectId ?? null,
+      'C:\\vibespace-runtime-safe-action',
+    );
+    mocks.runAgent.mockResolvedValueOnce({
+      text: [
+        '```action',
+        JSON.stringify({
+          id: 'file.search',
+          params: { query: 'smoke fixture', maxResults: 1 },
+          rationale: 'Execute the fixed development smoke fixture.',
+        }),
+        '```',
+      ].join('\n'),
+      usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
+      provider: 'openai',
+      model: 'gpt-5.5',
+    });
+    let clock = 100;
+    let uuid = 0;
+    const now = () => ++clock;
+    const randomUUID = () => `runtime-safe-action-${++uuid}`;
+    const catalog = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS);
+    const capabilitySnapshots = {
+      getForAccount: vi.fn(async () => ({
+        capturedAt: now(),
+        tools: [
+          {
+            id: 'files.read',
+            state: 'available' as const,
+            operations: ['execute'],
+            evidenceRef: 'registered:file.search:1:test',
+            lastVerifiedAt: now(),
+          },
+        ],
+        plugins: [],
+        mcps: [],
+        terminals: [],
+        agents: [],
+        entitlements: {
+          source: 'local_development' as const,
+          capabilities: [],
+          verifiedAt: clock,
+          expiresAt: clock + 60_000,
+        },
+      })),
+    };
+    const securityRuntime = createJarvisSecurityRuntime({
+      repositories: createJarvisRepositories(database),
+      catalog,
+      capabilitySnapshots,
+      entitlementSnapshots: {
+        getForAccount: vi.fn(async () => ({
+          source: 'local_development' as const,
+          capabilities: [],
+          verifiedAt: clock,
+          expiresAt: clock + 60_000,
+        })),
+      },
+      credentialGrants: {} as never,
+      credentialAuthorization: {} as never,
+      pluginConnections: {
+        upsertConnection: vi.fn(),
+        removeConnection: vi.fn(),
+      },
+      activeAccountId: () => 'runtime-test-account',
+      executeRegisteredAction: (dispatchInput) =>
+        executeInstalledJarvisRegisteredAction(dispatchInput),
+      bootId: 'runtime-safe-action-boot',
+      randomUUID,
+      now,
+    });
+    const disposeHost = await installJarvisKernelRuntimeHost({
+      db: database,
+      bindKernelActions: securityRuntime.bindKernelActions,
+      actionCatalog: catalog,
+      capabilitySnapshots,
+      randomUUID,
+      now,
+    });
+    trackListener(disposeHost);
+    trackListener(
+      startRuntimeListener(harness.bindings, {
+        jarvisInterlocks: runtimeInterlocks(),
+      }),
+    );
+
+    try {
+      window.dispatchEvent(
+        new CustomEvent('jarvis:send', {
+          detail: { chatId: harness.chatId, text: 'Search for the fixed smoke fixture.' },
+        }),
+      );
+
+      await vi.waitFor(
+        async () => {
+          const run = await database.jarvis_runs.where('chat_id').equals(harness.chatId).first();
+          const runtimeError = mocks.devLog.mock.calls
+            .map(([entry]) => entry)
+            .find((entry) => entry?.channel === 'ai' && entry?.level === 'error');
+          if (runtimeError) throw new Error(JSON.stringify({ runtimeError, run }));
+          expect(run?.status).toBe('completed');
+        },
+        { timeout: 5_000 },
+      );
+      const message = await database.messages.where('chat_id').equals(harness.chatId).first();
+      expect(message?.parts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            kind: 'action_proposal',
+            action_id: 'file.search',
+            status: 'success',
+            call_id: expect.stringMatching(/^jarvisapproval:/),
+          }),
+        ]),
+      );
+      expect(await database.jarvis_approvals.count()).toBe(1);
+    } finally {
+      disposeHost();
+      securityRuntime.invalidateAll();
+      database.close();
+      await database.delete();
+    }
+  }, 15_000);
 
   it('runs Hive only through persisted kernel workers and one protected hive-final turn', async () => {
     useAuthStore.setState({
@@ -1923,6 +2243,9 @@ describe('startRuntimeListener agent routing', () => {
         true,
       );
       expect(providerCalls[5]?.compiledPrompt.systemText).toContain('strict JARVIS identity');
+      expect(providerCalls[5]?.messages).toEqual(
+        expect.arrayContaining([{ role: 'user', content: 'Run the protected Hive.' }]),
+      );
       expect(harness.bindings.appendMessage).not.toHaveBeenCalled();
     } finally {
       disposeHost();
@@ -2152,22 +2475,36 @@ describe('startRuntimeListener agent routing', () => {
       text: 'Reuse this exact turn key.',
       cancellationKey: 'msg_kernel_user' as MessageId,
     };
+    const runStates: Array<{ status?: string; errorCode?: string }> = [];
+    const onRunState = (event: Event) => {
+      runStates.push((event as CustomEvent<{ status?: string; errorCode?: string }>).detail);
+    };
+    window.addEventListener('jarvis:run-state', onRunState);
 
-    window.dispatchEvent(new CustomEvent('jarvis:send', { detail }));
-    await vi.waitFor(() =>
-      expect(mocks.devLog).toHaveBeenCalledWith(
-        expect.objectContaining({
-          level: 'error',
-          message: 'AI setup failed before dispatch',
-        }),
-      ),
-    );
+    try {
+      window.dispatchEvent(new CustomEvent('jarvis:send', { detail }));
+      await vi.waitFor(() =>
+        expect(mocks.devLog).toHaveBeenCalledWith(
+          expect.objectContaining({
+            level: 'error',
+            message: 'AI setup failed before dispatch',
+          }),
+        ),
+      );
+      expect(runStates).toContainEqual({
+        chatId: String(harness.chatId),
+        status: 'error',
+        errorCode: 'kernel_runtime_setup_agent',
+      });
 
-    window.dispatchEvent(new CustomEvent('jarvis:send', { detail }));
-    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledOnce());
-    expect(mocks.devLog).not.toHaveBeenCalledWith(
-      expect.objectContaining({ message: 'Duplicate AI cancellation key rejected' }),
-    );
+      window.dispatchEvent(new CustomEvent('jarvis:send', { detail }));
+      await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledOnce());
+      expect(mocks.devLog).not.toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'Duplicate AI cancellation key rejected' }),
+      );
+    } finally {
+      window.removeEventListener('jarvis:run-state', onRunState);
+    }
   });
 
   it('allocates no run or fallback effects when account changes during awaited canonical voice setup', async () => {

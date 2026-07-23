@@ -18,6 +18,7 @@ const DEFAULT_TIMEOUT_MS: u64 = 15_000;
 pub(crate) enum KernelRequestKind {
     TurnDispatch,
     ApprovalCreate,
+    ApprovalPresent,
     ApprovalDecide,
     ApprovalExecute,
     Cancel,
@@ -52,6 +53,11 @@ pub(crate) enum KernelClientRequestV1 {
         run_id: String,
         action_request_id: String,
     },
+    ApprovalPresent {
+        version: u8,
+        account_id: String,
+        approval_id: String,
+    },
     ApprovalDecide {
         version: u8,
         account_id: String,
@@ -85,6 +91,7 @@ impl KernelClientRequestV1 {
         match self {
             Self::TurnDispatch { .. } => KernelRequestKind::TurnDispatch,
             Self::ApprovalCreate { .. } => KernelRequestKind::ApprovalCreate,
+            Self::ApprovalPresent { .. } => KernelRequestKind::ApprovalPresent,
             Self::ApprovalDecide { .. } => KernelRequestKind::ApprovalDecide,
             Self::ApprovalExecute { .. } => KernelRequestKind::ApprovalExecute,
             Self::Cancel { .. } => KernelRequestKind::Cancel,
@@ -117,7 +124,12 @@ impl KernelClientRequestV1 {
                     && bounded_id(run_id)
                     && bounded_id(action_request_id)
             }
-            Self::ApprovalDecide {
+            Self::ApprovalPresent {
+                version,
+                account_id,
+                approval_id,
+            }
+            | Self::ApprovalDecide {
                 version,
                 account_id,
                 approval_id,
@@ -167,6 +179,21 @@ pub(crate) enum ApprovalExecutionStatus {
     Running,
     Completed,
     Failed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum ApprovalRisk {
+    Safe,
+    Confirm,
+    Dangerous,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct ApprovalPresentationParameter {
+    field: String,
+    safe_value: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -230,6 +257,14 @@ pub(crate) enum KernelClientResponseV1 {
         version: u8,
         approval_id: String,
     },
+    ApprovalPresentation {
+        version: u8,
+        approval_id: String,
+        action_id: String,
+        expected_effect: String,
+        risk: ApprovalRisk,
+        parameters: Vec<ApprovalPresentationParameter>,
+    },
     ApprovalDecided {
         version: u8,
         approval_id: String,
@@ -268,6 +303,7 @@ impl KernelClientResponseV1 {
         match self {
             Self::TurnAccepted { .. } => Some(KernelRequestKind::TurnDispatch),
             Self::ApprovalCreated { .. } => Some(KernelRequestKind::ApprovalCreate),
+            Self::ApprovalPresentation { .. } => Some(KernelRequestKind::ApprovalPresent),
             Self::ApprovalDecided { .. } => Some(KernelRequestKind::ApprovalDecide),
             Self::ApprovalExecution { .. } => Some(KernelRequestKind::ApprovalExecute),
             Self::CancellationState { .. } => Some(KernelRequestKind::Cancel),
@@ -295,6 +331,27 @@ impl KernelClientResponseV1 {
                 approval_id,
                 ..
             } => *version == 1 && bounded_id(approval_id),
+            Self::ApprovalPresentation {
+                version,
+                approval_id,
+                action_id,
+                expected_effect,
+                parameters,
+                ..
+            } => {
+                *version == 1
+                    && bounded_id(approval_id)
+                    && nonblank(action_id)
+                    && action_id.len() <= 128
+                    && nonblank(expected_effect)
+                    && expected_effect.len() <= 512
+                    && parameters.len() <= 32
+                    && parameters.iter().all(|parameter| {
+                        nonblank(&parameter.field)
+                            && parameter.field.len() <= 128
+                            && parameter.safe_value.len() <= 160
+                    })
+            }
             Self::ApprovalExecution {
                 version,
                 approval_id,
@@ -322,6 +379,13 @@ impl KernelClientResponseV1 {
         }
         match (request, self) {
             (
+                KernelClientRequestV1::ApprovalPresent { approval_id, .. },
+                Self::ApprovalPresentation {
+                    approval_id: response_approval_id,
+                    ..
+                },
+            )
+            | (
                 KernelClientRequestV1::ApprovalDecide { approval_id, .. },
                 Self::ApprovalDecided {
                     approval_id: response_approval_id,
@@ -1090,5 +1154,94 @@ mod tests {
                 .collect(),
         };
         assert_eq!(response.validate(), Err("kernel_response_invalid"));
+    }
+
+    #[test]
+    fn native_approval_presentation_request_is_closed_and_bounded() {
+        let request = serde_json::from_value::<KernelClientRequestV1>(serde_json::json!({
+            "version": 1,
+            "kind": "approval_present",
+            "accountId": "account-1",
+            "approvalId": "approval-1"
+        }))
+        .expect("bounded approval presentation request");
+        assert_eq!(request.kind(), KernelRequestKind::ApprovalPresent);
+        assert_eq!(request.validate(), Ok(()));
+
+        assert!(
+            serde_json::from_value::<KernelClientRequestV1>(serde_json::json!({
+                "version": 1,
+                "kind": "approval_present",
+                "accountId": "account-1",
+                "approvalId": "approval-1",
+                "rawParameters": { "path": "C:\\private\\secret.txt" }
+            }))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn native_approval_presentation_response_matches_only_the_exact_approval() {
+        let request = KernelClientRequestV1::ApprovalPresent {
+            version: 1,
+            account_id: "account-1".into(),
+            approval_id: "approval-1".into(),
+        };
+        let response = KernelClientResponseV1::ApprovalPresentation {
+            version: 1,
+            approval_id: "approval-1".into(),
+            action_id: "file.search".into(),
+            expected_effect: "Search the active project without changing files.".into(),
+            risk: ApprovalRisk::Confirm,
+            parameters: vec![ApprovalPresentationParameter {
+                field: "query".into(),
+                safe_value: "*.md".into(),
+            }],
+        };
+        assert_eq!(response.kind(), Some(KernelRequestKind::ApprovalPresent));
+        assert_eq!(response.validate(), Ok(()));
+        assert!(response.matches_request(&request));
+
+        let mismatched = KernelClientResponseV1::ApprovalPresentation {
+            version: 1,
+            approval_id: "approval-2".into(),
+            action_id: "file.search".into(),
+            expected_effect: "Search the active project without changing files.".into(),
+            risk: ApprovalRisk::Confirm,
+            parameters: vec![ApprovalPresentationParameter {
+                field: "query".into(),
+                safe_value: "*.md".into(),
+            }],
+        };
+        assert!(!mismatched.matches_request(&request));
+    }
+
+    #[test]
+    fn native_approval_presentation_response_rejects_oversized_redacted_fields() {
+        let oversized_effect = KernelClientResponseV1::ApprovalPresentation {
+            version: 1,
+            approval_id: "approval-1".into(),
+            action_id: "file.search".into(),
+            expected_effect: "x".repeat(513),
+            risk: ApprovalRisk::Safe,
+            parameters: Vec::new(),
+        };
+        assert_eq!(oversized_effect.validate(), Err("kernel_response_invalid"));
+
+        let oversized_safe_value = KernelClientResponseV1::ApprovalPresentation {
+            version: 1,
+            approval_id: "approval-1".into(),
+            action_id: "file.search".into(),
+            expected_effect: "Search the active project.".into(),
+            risk: ApprovalRisk::Dangerous,
+            parameters: vec![ApprovalPresentationParameter {
+                field: "query".into(),
+                safe_value: "x".repeat(161),
+            }],
+        };
+        assert_eq!(
+            oversized_safe_value.validate(),
+            Err("kernel_response_invalid")
+        );
     }
 }

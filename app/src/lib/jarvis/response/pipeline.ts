@@ -369,7 +369,10 @@ export async function processJarvisResponse(
     parts: validatedParts(displayText, snapshot.request),
     artifactIds: [],
     sourceRefs: snapshot.request.sourceRefs,
-    ...(facts.executionState && !hasProviderOnlyTerminalState(facts)
+    ...(facts.executionState &&
+    (!hasProviderOnlyTerminalState(facts) ||
+      (facts.executionState.verifiedBy === 'provider' &&
+        facts.executionState.status === 'partial'))
       ? { executionState: facts.executionState }
       : {}),
     provider: snapshot.raw.provider,

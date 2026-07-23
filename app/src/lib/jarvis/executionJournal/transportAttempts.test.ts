@@ -323,11 +323,19 @@ describe('Jarvis transport attempt coordinator', () => {
     expect(repo.compareAndMutateTransportAttempt).not.toHaveBeenCalled();
   });
 
-  it('revalidates exact zero-effect evidence and starts a same-running-run retry', async () => {
+  it('revalidates a refreshed zero-effect checkpoint and starts a same-running-run retry', async () => {
     const prior = {
       ...attempt({ state: 'retryable_failed', failureCategory: 'network' }),
       zeroEffectEvidence: proof(),
     };
+    const loadedProof = proof({
+      assessedAt: 20,
+      executorClaims: { count: 0, throughSeq: 5, evidenceRef: 'claims-refreshed' },
+    });
+    const coordinatorProof = proof({
+      assessedAt: 21,
+      executorClaims: { count: 0, throughSeq: 5, evidenceRef: 'claims-refreshed' },
+    });
     const expectedSnapshot = snapshot();
     const repo = repository(
       run({
@@ -338,7 +346,7 @@ describe('Jarvis transport attempt coordinator', () => {
     );
     const safety: JarvisConsequentialEffectSafetyAuthority = {
       proveZeroConsequentialEffect: vi.fn(async () => null),
-      revalidateZeroConsequentialEffect: vi.fn(async () => structuredClone(proof())),
+      revalidateZeroConsequentialEffect: vi.fn(async () => structuredClone(coordinatorProof)),
     };
     const coordinator = createJarvisTransportAttemptCoordinator({
       repository: repo.adapter,
@@ -351,13 +359,14 @@ describe('Jarvis transport attempt coordinator', () => {
       requestId: 'request-b',
       expectedSnapshot,
       createdAt: 20,
-      revalidatedEvidence: proof(),
+      revalidatedEvidence: loadedProof,
     });
     expect(repo.compareAndMutateTransportAttempt).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: 'begin_retry',
         expectedStatus: 'running',
-        expectedEventTailSeq: 4,
+        expectedEventTailSeq: 5,
+        revalidatedEvidence: coordinatorProof,
       }),
     );
     await expect(coordinator.verifyLease(lease, expectedSnapshot)).resolves.toMatchObject({
@@ -381,9 +390,17 @@ describe('Jarvis transport attempt coordinator', () => {
     const bridgeProof = proof({
       executorClaims: { count: 0, throughSeq: 1, evidenceRef: 'claims-none' },
     });
+    const refreshedBridgeProof = proof({
+      assessedAt: 20,
+      executorClaims: { count: 0, throughSeq: 2, evidenceRef: 'claims-refreshed' },
+    });
     const safety: JarvisConsequentialEffectSafetyAuthority = {
       proveZeroConsequentialEffect: vi.fn(async () => structuredClone(bridgeProof)),
-      revalidateZeroConsequentialEffect: vi.fn(async () => structuredClone(bridgeProof)),
+      revalidateZeroConsequentialEffect: vi.fn(async ({ attempt }) =>
+        structuredClone(
+          attempt.state === 'provider_in_flight' ? bridgeProof : refreshedBridgeProof,
+        ),
+      ),
     };
     const coordinator = createJarvisTransportAttemptCoordinator({
       repository: repositories.run,
@@ -414,16 +431,17 @@ describe('Jarvis transport attempt coordinator', () => {
         requestId: 'request-b',
         expectedSnapshot: snapshot(),
         createdAt: 20,
-        revalidatedEvidence: bridgeProof,
+        revalidatedEvidence: refreshedBridgeProof,
       }),
     ).resolves.toMatchObject({ attemptNumber: 2, requestId: 'request-b' });
   });
 
   it('settles exact authority proof as retryable and deny-all proof as terminal failed', async () => {
     const repo = repository(run());
+    const refreshedProof = proof({ assessedAt: 13 });
     const safety: JarvisConsequentialEffectSafetyAuthority = {
       proveZeroConsequentialEffect: vi.fn(async () => structuredClone(proof())),
-      revalidateZeroConsequentialEffect: vi.fn(async () => structuredClone(proof())),
+      revalidateZeroConsequentialEffect: vi.fn(async () => structuredClone(refreshedProof)),
     };
     const coordinator = createJarvisTransportAttemptCoordinator({
       repository: repo.adapter,
@@ -445,6 +463,13 @@ describe('Jarvis transport attempt coordinator', () => {
         settledAt: 12,
       }),
     ).resolves.toMatchObject({ kind: 'retryable', run: { status: 'running' } });
+    expect(safety.proveZeroConsequentialEffect).not.toHaveBeenCalled();
+    expect(repo.compareAndMutateTransportAttempt).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        kind: 'settle_retryable',
+        zeroEffectEvidence: refreshedProof,
+      }),
+    );
 
     const deniedRepo = repository(run());
     const denied = createJarvisTransportAttemptCoordinator({ repository: deniedRepo.adapter });

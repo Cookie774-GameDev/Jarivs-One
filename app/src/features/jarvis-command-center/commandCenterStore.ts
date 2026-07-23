@@ -161,6 +161,17 @@ export function createJarvisCommandCenterStore(input: {
         return;
       }
 
+      const runChanged = previousRunId !== currentRun.id;
+      publish({
+        ...snapshot,
+        currentRun,
+        retryState: selectRetryState(currentRun),
+        events: runChanged ? [] : snapshot.events,
+        outputs: runChanged ? [] : snapshot.outputs,
+        liveSystems: runChanged ? { state: 'not_loaded' } : snapshot.liveSystems,
+        error: undefined,
+      });
+
       const [events, artifacts] = await Promise.all([
         input.dataPort.getEventsForRun({
           accountId: input.accountId,
@@ -174,7 +185,6 @@ export function createJarvisCommandCenterStore(input: {
         }),
       ]);
       if (disposed || generation !== refreshGeneration) return;
-      const runChanged = previousRunId !== currentRun.id;
       publish({
         ...snapshot,
         currentRun,

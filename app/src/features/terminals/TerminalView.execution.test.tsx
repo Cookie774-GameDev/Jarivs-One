@@ -4,20 +4,115 @@ import { resolve } from 'node:path';
 
 import {
   attachTerminalViewExecution,
+  awaitTerminalFontReadiness,
+  awaitTerminalOutputReadiness,
   canonicalTerminalSpawnToken,
   createTerminalExitLatch,
+  createTerminalOutputLatch,
   settleTerminalInitializationFailure,
+  terminalSmokeFailureCode,
 } from './TerminalView';
 
 describe('TerminalView canonical execution truth', () => {
+  it('latches early output for the exact spawned session and exposes shell readiness', async () => {
+    const delivered = vi.fn();
+    const latch = createTerminalOutputLatch(delivered);
+
+    for (let index = 0; index < 40; index += 1) {
+      latch.observe({ sessionId: 'tty_other', data: `unrelated output ${index}` });
+    }
+    latch.observe({ sessionId: 'tty_exact', data: 'PS> ' });
+
+    expect(delivered).not.toHaveBeenCalled();
+    expect(latch.bind('tty_exact')).toBe(true);
+    expect(delivered).toHaveBeenCalledTimes(1);
+    expect(delivered).toHaveBeenCalledWith({ sessionId: 'tty_exact', data: 'PS> ' });
+    await expect(latch.readiness).resolves.toBe(true);
+
+    latch.observe({ sessionId: 'tty_other', data: 'still unrelated' });
+    latch.observe({ sessionId: 'tty_exact', data: 'ready' });
+    expect(delivered).toHaveBeenCalledTimes(2);
+  });
+
+  it('bounds shell-output readiness when a native shell has not emitted a prompt', async () => {
+    vi.useFakeTimers();
+    try {
+      const latch = createTerminalOutputLatch(vi.fn());
+      expect(latch.bind('tty_quiet')).toBe(false);
+      const readiness = awaitTerminalOutputReadiness(latch.readiness, 25);
+
+      await vi.advanceTimersByTimeAsync(25);
+
+      await expect(readiness).resolves.toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('bounds font readiness so terminal initialization cannot hang', async () => {
+    vi.useFakeTimers();
+    try {
+      const neverReady = new Promise<unknown>(() => undefined);
+      const readiness = awaitTerminalFontReadiness(neverReady, 25);
+
+      await vi.advanceTimersByTimeAsync(25);
+
+      await expect(readiness).resolves.toBe(false);
+      await expect(awaitTerminalFontReadiness(Promise.resolve(), 25)).resolves.toBe(true);
+      await expect(awaitTerminalFontReadiness(undefined, 25)).resolves.toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('gates the terminal execution evidence selector behind the smoke contract', () => {
     const source = readFileSync(
       resolve(process.cwd(), 'src/features/terminals/TerminalView.tsx'),
       'utf8',
     );
 
-    expect(source).toContain('KERNEL_SMOKE_ENABLED ? SIK_EVIDENCE.terminalExecution : undefined');
+    expect(source).toContain(
+      'KERNEL_SMOKE_ENABLED && executionId ? SIK_EVIDENCE.terminalExecution : undefined',
+    );
+    expect(source).not.toContain(
+      'KERNEL_SMOKE_ENABLED ? SIK_EVIDENCE.terminalExecution : undefined',
+    );
     expect(source).not.toContain('data-sik-evidence="terminal.execution"');
+    expect(source).toContain('data-initialization-phase={');
+    expect(source).toContain('data-terminal-status={');
+    expect(source).toContain("setInitializationPhase('kernel_terminal_phase_native_spawn')");
+  });
+
+  it('publishes a spawned session before releasing a latched early exit', () => {
+    const source = readFileSync(
+      resolve(process.cwd(), 'src/features/terminals/TerminalView.tsx'),
+      'utf8',
+    );
+    const binding = source.slice(
+      source.indexOf('sid = result.sessionId;'),
+      source.indexOf('sessionCwd = result.cwd || cwd || null;'),
+    );
+
+    expect(binding.indexOf('setActiveSessionId(sid);')).toBeGreaterThan(0);
+    expect(binding.indexOf('setActiveSessionId(sid);')).toBeLessThan(
+      binding.indexOf("setInitializationPhase('kernel_terminal_phase_session_bound')"),
+    );
+    expect(binding.indexOf('setActiveSessionId(sid);')).toBeLessThan(
+      binding.indexOf('exitLatch.bind(sid)'),
+    );
+  });
+
+  it('maps terminal initialization failures to bounded smoke-safe codes', () => {
+    expect(terminalSmokeFailureCode(null)).toBeUndefined();
+    expect(
+      terminalSmokeFailureCode('TypeError: canonical_terminal_handle_unavailable_after_restart'),
+    ).toBe('kernel_terminal_authority_unavailable');
+    expect(terminalSmokeFailureCode('terminal: spawn failed: private native detail')).toBe(
+      'kernel_terminal_native_spawn_failed',
+    );
+    expect(terminalSmokeFailureCode('unclassified detail that must not escape')).toBe(
+      'kernel_terminal_initialization_failed',
+    );
   });
 
   it('refuses to spawn a canonical terminal after restart without its private token owner', () => {

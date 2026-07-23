@@ -7,6 +7,7 @@ const tauri = vi.hoisted(() => ({
   listeners: [] as Array<(event: { payload: KernelClientResponseEvent }) => void>,
   unlisteners: [] as Array<ReturnType<typeof vi.fn>>,
 }));
+const localHost = vi.hoisted(() => ({ request: vi.fn(() => null as Promise<unknown> | null) }));
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: tauri.invoke }));
 vi.mock('@tauri-apps/api/event', () => ({
@@ -17,6 +18,7 @@ vi.mock('@tauri-apps/api/event', () => ({
     return unlisten;
   }),
 }));
+vi.mock('./kernelHost', () => ({ requestLocalJarvisKernelHost: localHost.request }));
 
 import { createJarvisKernelClient } from './kernelClient';
 
@@ -30,6 +32,8 @@ describe('typed kernel client', () => {
     tauri.listen.mockClear();
     tauri.listeners.length = 0;
     tauri.unlisteners.length = 0;
+    localHost.request.mockReset();
+    localHost.request.mockReturnValue(null);
     Object.defineProperty(window, '__TAURI_INTERNALS__', {
       configurable: true,
       value: {},
@@ -56,6 +60,7 @@ describe('typed kernel client', () => {
       'dispatchTurn',
       'dispose',
       'executeApproval',
+      'getApprovalPresentation',
       'getCommandCenterSnapshot',
       'retryScheduled',
     ]);
@@ -127,6 +132,31 @@ describe('typed kernel client', () => {
       reason: 'host_unavailable',
     });
     expect(tauri.unlisteners[0]).toHaveBeenCalledOnce();
+  });
+
+  it('uses the attested host-local closed DTO path without invoking native client admission', async () => {
+    localHost.request.mockResolvedValueOnce({
+      version: 1,
+      kind: 'approval_presentation',
+      approvalId: 'approval-1',
+      actionId: 'terminal.create',
+      expectedEffect: 'Create one protected terminal.',
+      risk: 'confirm',
+      parameters: [],
+    });
+    const client = createJarvisKernelClient();
+
+    await expect(
+      client.getApprovalPresentation({ accountId: 'account-1', approvalId: 'approval-1' }),
+    ).resolves.toMatchObject({ kind: 'approval_presentation', approvalId: 'approval-1' });
+    expect(localHost.request).toHaveBeenCalledWith({
+      version: 1,
+      kind: 'approval_present',
+      accountId: 'account-1',
+      approvalId: 'approval-1',
+    });
+    expect(tauri.listen).not.toHaveBeenCalled();
+    expect(tauri.invoke).not.toHaveBeenCalled();
   });
 
   it('settles every pending request and cleans listeners on disposal', async () => {

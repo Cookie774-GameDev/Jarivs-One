@@ -74,6 +74,7 @@ import {
   jarvisIssuedApprovalLifecycleBrand,
   jarvisTerminalHandoffReceiptBrand,
 } from './approvalEngine';
+import type { JarvisActionCatalog } from './actions/catalog';
 import type {
   JarvisApprovalActionBinder,
   JarvisApprovalActionCapability,
@@ -102,6 +103,7 @@ import {
   type JarvisKernelProcessResponse,
   type JarvisKernelTurnInput,
   type JarvisKernelTurnResult,
+  type JarvisKernelResponseActionPort,
   type JarvisProviderStartedReceipt,
 } from './kernel';
 import type { VoiceResponseReadyCommitResult } from './kernelTurnCommit';
@@ -377,6 +379,7 @@ type KernelRuntimeInput = Readonly<{
   cancellationDeliveryAuthority: JarvisCancellationDeliveryAuthority;
   abortRegistrationAuthority: JarvisAbortRegistrationAuthority;
   bindKernelActions: JarvisApprovalActionBinder;
+  actionCatalog?: JarvisActionCatalog;
   liveEvidenceVerifiers: VerifierSlots;
   voiceLiveEvidenceStartAuthority?: Readonly<{
     authorizeStart(
@@ -1587,24 +1590,75 @@ export function createJarvisKernelRuntime(
       throw new Error('kernel_action_scope_mismatch');
     }
     const currentAttempt = canonicalParent.transportAttempts?.at(-1);
+    if (currentAttempt) {
+      if (
+        currentAttempt.state !== 'provider_in_flight' ||
+        !currentAttempt.requestId ||
+        !Number.isSafeInteger(currentAttempt.attemptNumber) ||
+        currentAttempt.attemptNumber < 1 ||
+        (suppliedAttempt !== undefined &&
+          (suppliedAttempt.runId !== canonicalParent.id ||
+            suppliedAttempt.requestId !== currentAttempt.requestId ||
+            suppliedAttempt.attemptNumber !== currentAttempt.attemptNumber))
+      ) {
+        throw new Error('kernel_action_scope_mismatch');
+      }
+      return Object.freeze({
+        parentRun: canonicalParent,
+        requestId: currentAttempt.requestId,
+        attemptNumber: currentAttempt.attemptNumber,
+      });
+    }
+
+    if (canonicalParent.source === 'schedule') throw new Error('kernel_action_scope_mismatch');
+    const providerStarts = (
+      await input.db.jarvis_events.where('run_id').equals(canonicalParent.id).toArray()
+    )
+      .map(fromJarvisEventRow)
+      .filter((event) => {
+        const source = event.producerSourceEvidence;
+        return (
+          event.type === 'model' &&
+          event.status === 'started' &&
+          source?.producerKind === 'provider' &&
+          source.phase === 'start' &&
+          source.state === 'started' &&
+          source.accountId === canonicalParent.accountId &&
+          source.runId === canonicalParent.id
+        );
+      });
+    if (providerStarts.length !== 1) throw new Error('kernel_action_scope_mismatch');
+    const providerScope = providerStarts[0]!.producerSourceEvidence!;
     if (
-      !currentAttempt ||
-      currentAttempt.state !== 'provider_in_flight' ||
-      !currentAttempt.requestId ||
-      !Number.isSafeInteger(currentAttempt.attemptNumber) ||
-      currentAttempt.attemptNumber < 1 ||
+      !providerScope.requestId ||
+      !Number.isSafeInteger(providerScope.attemptNumber) ||
+      providerScope.attemptNumber < 1 ||
       (suppliedAttempt !== undefined &&
         (suppliedAttempt.runId !== canonicalParent.id ||
-          suppliedAttempt.requestId !== currentAttempt.requestId ||
-          suppliedAttempt.attemptNumber !== currentAttempt.attemptNumber))
+          suppliedAttempt.requestId !== providerScope.requestId ||
+          suppliedAttempt.attemptNumber !== providerScope.attemptNumber))
     ) {
       throw new Error('kernel_action_scope_mismatch');
     }
     return Object.freeze({
       parentRun: canonicalParent,
-      requestId: currentAttempt.requestId,
-      attemptNumber: currentAttempt.attemptNumber,
+      requestId: providerScope.requestId,
+      attemptNumber: providerScope.attemptNumber,
     });
+  };
+
+  const hasActionResponseCheckpoint = async (
+    scope: CanonicalActionScope,
+    approvalId: string,
+  ): Promise<boolean> => {
+    const responseKey = `action-response-ready:${approvalId}`;
+    const matches = await input.db.jarvis_events
+      .where('run_id')
+      .equals(scope.parentRun.id)
+      .filter((row) => row.idempotency_key === responseKey)
+      .toArray();
+    if (matches.length > 1) throw new Error('kernel_action_response_checkpoint_conflict');
+    return matches.length === 1;
   };
 
   const issueApprovalLifecycle = (
@@ -1722,6 +1776,7 @@ export function createJarvisKernelRuntime(
 
     const issueActionExecution = async (
       claimed: ClaimedApprovalMutation,
+      finalizeResponseOnResult: boolean,
     ): Promise<JarvisAuthorityBoundResult<JarvisIssuedActionExecution>> => {
       const startSource = claimed.startEvent.producerSourceEvidence;
       const startExecution = claimed.startEvent.executionEvidence;
@@ -1953,6 +2008,26 @@ export function createJarvisKernelRuntime(
           state: result.state,
         });
         if (!childCurrent()) return { kind: 'account_authority_revoked' };
+        if (finalizeResponseOnResult) {
+          const finalized = await artifacts.commitKernelTurn.finalizeActionResponse({
+            accountId: scope.parentRun.accountId,
+            runId: scope.parentRun.id,
+            requestId: scope.requestId,
+            attemptNumber: scope.attemptNumber,
+            approvalId: claimed.approval.id,
+            messageId: `msg_${scope.requestId}`,
+            accountBinding: binding,
+            outcome: result.state,
+            resultRef: result.resultRef,
+            completedAt: result.completedAt,
+          });
+          if (!finalized.committed) {
+            if (finalized.reason === 'account_authority_revoked') {
+              return { kind: 'account_authority_revoked' };
+            }
+            throw new Error(`kernel_action_response_finalize_${finalized.reason}`);
+          }
+        }
         return { kind: 'committed', value: proof };
       };
 
@@ -2202,7 +2277,9 @@ export function createJarvisKernelRuntime(
               }),
             );
       if (mutation.kind !== 'committed') return mutation;
-      return issueActionExecution(mutation.value);
+      const finalizeResponseOnResult =
+        'approvalId' in claim && (await hasActionResponseCheckpoint(scope, claim.approvalId));
+      return issueActionExecution(mutation.value, finalizeResponseOnResult);
     };
 
     lifecycle = Object.freeze({
@@ -2274,7 +2351,11 @@ export function createJarvisKernelRuntime(
 
   const invokeActionCapability = async <T>(
     scope: CanonicalActionScope,
-    invoke: (capability: JarvisApprovalActionCapability, parentRun: JarvisRun) => Promise<T>,
+    invoke: (
+      capability: JarvisApprovalActionCapability,
+      parentRun: JarvisRun,
+      binding: JarvisKernelAccountBinding,
+    ) => Promise<T>,
   ): Promise<JarvisAuthorityBoundResult<T>> => {
     let binding: JarvisKernelAccountBinding;
     try {
@@ -2286,7 +2367,7 @@ export function createJarvisKernelRuntime(
     try {
       lifecycle = issueApprovalLifecycle(binding, scope);
       const capability = input.bindKernelActions(lifecycle);
-      const value = await invoke(capability, scope.parentRun);
+      const value = await invoke(capability, scope.parentRun, binding);
       binding.assertCurrent();
       if (lifecycle.revocationSignal.aborted) {
         return { kind: 'account_authority_revoked' };
@@ -3456,15 +3537,63 @@ export function createJarvisKernelRuntime(
     },
     async decide(actionInput: Parameters<JarvisKernelActionPort['decide']>[0]) {
       const scope = await loadCanonicalActionScope(actionInput.parentRun);
-      return invokeActionCapability(scope, (capability, parentRun) =>
-        capability.decide({ ...actionInput, parentRun }),
-      );
+      return invokeActionCapability(scope, async (capability, parentRun, binding) => {
+        const responseBacked = await hasActionResponseCheckpoint(scope, actionInput.approvalId);
+        const value = await capability.decide({ ...actionInput, parentRun });
+        if (responseBacked && actionInput.decision === 'deny' && value.status === 'denied') {
+          const current = await repositories.run.getById(parentRun.accountId, parentRun.id);
+          if (!current) throw new Error('kernel_action_scope_mismatch');
+          const finalized = await artifacts.commitKernelTurn.finalizeActionResponse({
+            accountId: parentRun.accountId,
+            runId: parentRun.id,
+            requestId: scope.requestId,
+            attemptNumber: scope.attemptNumber,
+            approvalId: actionInput.approvalId,
+            messageId: `msg_${scope.requestId}`,
+            accountBinding: binding,
+            outcome: 'denied',
+            resultRef: `japproval_denied:${actionInput.approvalId}`,
+            completedAt: Math.max(input.now(), current.updatedAt),
+          });
+          if (!finalized.committed) {
+            if (finalized.reason === 'account_authority_revoked') {
+              throw new Error('kernel_account_authority_revoked');
+            }
+            throw new Error(`kernel_action_response_finalize_${finalized.reason}`);
+          }
+        }
+        return value;
+      });
     },
     async execute(actionInput: Parameters<JarvisKernelActionPort['execute']>[0]) {
       const scope = await loadCanonicalActionScope(actionInput.parentRun);
-      return invokeActionCapability(scope, (capability, parentRun) =>
-        capability.execute({ ...actionInput, parentRun }),
-      );
+      return invokeActionCapability(scope, async (capability, parentRun, binding) => {
+        const responseBacked = await hasActionResponseCheckpoint(scope, actionInput.approvalId);
+        const value = await capability.execute({ ...actionInput, parentRun });
+        if (responseBacked && value.kind === 'handoff_pending') {
+          const current = await repositories.run.getById(parentRun.accountId, parentRun.id);
+          if (!current) throw new Error('kernel_action_scope_mismatch');
+          const finalized = await artifacts.commitKernelTurn.finalizeActionResponse({
+            accountId: parentRun.accountId,
+            runId: parentRun.id,
+            requestId: scope.requestId,
+            attemptNumber: scope.attemptNumber,
+            approvalId: actionInput.approvalId,
+            messageId: `msg_${scope.requestId}`,
+            accountBinding: binding,
+            outcome: 'handoff',
+            resultRef: `jhandoff:${actionInput.approvalId}:${value.ownerId}`,
+            completedAt: Math.max(input.now(), current.updatedAt),
+          });
+          if (!finalized.committed) {
+            if (finalized.reason === 'account_authority_revoked') {
+              throw new Error('kernel_account_authority_revoked');
+            }
+            throw new Error(`kernel_action_response_finalize_${finalized.reason}`);
+          }
+        }
+        return value;
+      });
     },
     async executeAutoApprovedSafe(
       actionInput: Parameters<JarvisKernelActionPort['executeAutoApprovedSafe']>[0],
@@ -3473,6 +3602,37 @@ export function createJarvisKernelRuntime(
       return invokeActionCapability(scope, (capability, parentRun) =>
         capability.executeAutoApprovedSafe({ ...actionInput, parentRun }),
       );
+    },
+  });
+  const responseActions: JarvisKernelResponseActionPort = Object.freeze({
+    resolveRegistration: (actionId) => input.actionCatalog?.resolve(actionId),
+    create: (actionInput) => actions.create(actionInput),
+    async executeAutoApprovedSafe(actionInput) {
+      const execution = await actions.executeAutoApprovedSafe(actionInput);
+      if (execution.kind !== 'committed') return execution;
+      const approvals = await repositories.approval.listByRun(
+        actionInput.parentRun.accountId,
+        actionInput.parentRun.id,
+        {
+          requestId: actionInput.attempt.requestId,
+          attemptNumber: actionInput.attempt.attemptNumber,
+          limit: 2,
+        },
+      );
+      const matching = approvals.filter(
+        (approval) =>
+          approval.actionId === actionInput.actionId &&
+          approval.actionVersion === actionInput.actionVersion &&
+          approval.status === 'consumed',
+      );
+      if (matching.length !== 1) throw new Error('kernel_safe_action_approval_readback_mismatch');
+      return {
+        kind: 'committed',
+        value: Object.freeze({
+          approval: Object.freeze(structuredClone(matching[0]!)),
+          execution: execution.value,
+        }),
+      };
     },
   });
   const kernel: JarvisKernelRuntime = Object.freeze({
@@ -3567,6 +3727,13 @@ export function createJarvisKernelRuntime(
           issueBoundArtifactPipeline: artifacts.issueBoundArtifactPipeline,
           artifactEffectClaims: boundArtifactEffectClaims,
           takeProviderArtifactDrafts: input.takeProviderArtifactDrafts,
+          responseActions,
+          commitActionResponseReady(commitInput) {
+            return artifacts.commitKernelTurn.commitActionResponseReady({
+              ...commitInput,
+              accountBinding: binding,
+            });
+          },
           commitKernelTurn(commitInput) {
             return artifacts.commitKernelTurn.commitKernelTurn({
               ...commitInput,
@@ -3649,6 +3816,13 @@ export function createJarvisKernelRuntime(
           issueBoundArtifactPipeline: artifacts.issueBoundArtifactPipeline,
           artifactEffectClaims: boundArtifactEffectClaims,
           takeProviderArtifactDrafts: input.takeProviderArtifactDrafts,
+          responseActions,
+          commitActionResponseReady(commitInput) {
+            return artifacts.commitKernelTurn.commitActionResponseReady({
+              ...commitInput,
+              accountBinding: binding,
+            });
+          },
           commitKernelTurn(commitInput) {
             return artifacts.commitKernelTurn.commitKernelTurn({
               ...commitInput,
@@ -4201,6 +4375,13 @@ export function createJarvisKernelRuntime(
           issueBoundArtifactPipeline: artifacts.issueBoundArtifactPipeline,
           artifactEffectClaims: boundArtifactEffectClaims,
           takeProviderArtifactDrafts: input.takeProviderArtifactDrafts,
+          responseActions,
+          commitActionResponseReady(commitInput) {
+            return artifacts.commitKernelTurn.commitActionResponseReady({
+              ...commitInput,
+              accountBinding: state.binding,
+            });
+          },
           commitKernelTurn(commitInput) {
             return artifacts.commitKernelTurn.commitKernelTurn({
               ...commitInput,
@@ -5009,6 +5190,13 @@ export function createJarvisKernelRuntime(
           issueBoundArtifactPipeline: artifacts.issueBoundArtifactPipeline,
           artifactEffectClaims: boundArtifactEffectClaims,
           takeProviderArtifactDrafts: input.takeProviderArtifactDrafts,
+          responseActions,
+          commitActionResponseReady(commitInput) {
+            return artifacts.commitKernelTurn.commitActionResponseReady({
+              ...commitInput,
+              accountBinding: binding,
+            });
+          },
           commitKernelTurn(commitInput) {
             return artifacts.commitKernelTurn.commitKernelTurn({
               ...commitInput,

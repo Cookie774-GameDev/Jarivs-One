@@ -22,7 +22,8 @@
  *   metrics; once the real font swaps in, glyphs render at a different
  *   advance and the canvas grid no longer matches -> overlapping text at
  *   smaller tile sizes. Fix:
- *     a) await `document.fonts.ready` before `term.open()`,
+ *     a) briefly await `document.fonts.ready` before `term.open()`, without
+ *        allowing an unavailable font to block terminal startup forever,
  *     b) re-assign `fontFamily` after open() to bust xterm's metric cache,
  *     c) one belt-and-braces re-fit when fonts settle later.
  *
@@ -117,6 +118,60 @@ const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
   explicitFlag: import.meta.env.VITE_SIK_SMOKE,
 });
 
+const TERMINAL_FONT_READINESS_TIMEOUT_MS = 2_000;
+const TERMINAL_OUTPUT_READINESS_TIMEOUT_MS = 2_000;
+
+export function awaitTerminalFontReadiness(
+  readiness: Promise<unknown> | undefined,
+  timeoutMs = TERMINAL_FONT_READINESS_TIMEOUT_MS,
+): Promise<boolean> {
+  if (!readiness) return Promise.resolve(false);
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const settle = (ready: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(ready);
+    };
+    const timer = setTimeout(() => settle(false), Math.max(0, timeoutMs));
+
+    void readiness.then(
+      () => settle(true),
+      () => settle(false),
+    );
+  });
+}
+
+export function awaitTerminalOutputReadiness(
+  readiness: Promise<boolean>,
+  timeoutMs = TERMINAL_OUTPUT_READINESS_TIMEOUT_MS,
+): Promise<boolean> {
+  return awaitTerminalFontReadiness(readiness, timeoutMs);
+}
+
+export function terminalSmokeFailureCode(error: string | null): string | undefined {
+  if (!error) return undefined;
+  if (error.includes('canonical_terminal_handle_unavailable_after_restart')) {
+    return 'kernel_terminal_authority_unavailable';
+  }
+  if (error.includes('canonical_terminal_native_attach_failed')) {
+    return 'kernel_terminal_native_attach_failed';
+  }
+  if (error.includes('Canonical terminal ownership handoff failed')) {
+    return 'kernel_terminal_authority_handoff_failed';
+  }
+  if (error.includes('terminal: invalid cancellation token')) {
+    return 'kernel_terminal_cancellation_token_rejected';
+  }
+  if (error.includes('terminal: open pty failed')) return 'kernel_terminal_native_open_failed';
+  if (error.includes('terminal: spawn failed')) return 'kernel_terminal_native_spawn_failed';
+  if (error.includes('terminal: reader clone failed')) return 'kernel_terminal_native_reader_failed';
+  if (error.includes('terminal: writer take failed')) return 'kernel_terminal_native_writer_failed';
+  return 'kernel_terminal_initialization_failed';
+}
+
 /**
  * When the parent owns its own chrome (`<TileGrid>`'s pane-tile or the
  * splits renderer's leaf header) we suppress this component's internal
@@ -128,11 +183,77 @@ interface SpawnResult {
   sessionId: string;
   /** Resolved working directory reported by the backend. */
   cwd?: string;
+  /** True when the backend launched the shell with the startup command. */
+  startupCommandConsumed: boolean;
 }
-interface OutputPayload {
+export interface OutputPayload {
   sessionId: string;
   data: string;
 }
+
+const MAX_EARLY_TERMINAL_OUTPUT_CHUNKS = 32;
+const MAX_EARLY_TERMINAL_OUTPUT_CHARACTERS = 65_536;
+
+export function createTerminalOutputLatch(
+  onExactOutput: (payload: OutputPayload) => void,
+): {
+  observe(payload: OutputPayload): void;
+  bind(sessionId: string): boolean;
+  readiness: Promise<boolean>;
+} {
+  let boundSessionId: string | undefined;
+  let pending: OutputPayload[] = [];
+  let pendingCharacters = 0;
+  let readinessResolved = false;
+  let resolveReadiness!: (ready: boolean) => void;
+  const readiness = new Promise<boolean>((resolve) => {
+    resolveReadiness = resolve;
+  });
+
+  const deliver = (payload: OutputPayload): boolean => {
+    if (payload.sessionId !== boundSessionId) return false;
+    if (!readinessResolved) {
+      readinessResolved = true;
+      resolveReadiness(true);
+    }
+    onExactOutput(payload);
+    return true;
+  };
+
+  return {
+    observe(payload) {
+      if (boundSessionId !== undefined) {
+        deliver(payload);
+        return;
+      }
+      if (
+        payload.data.length > MAX_EARLY_TERMINAL_OUTPUT_CHARACTERS
+      ) {
+        return;
+      }
+      while (
+        pending.length > 0 &&
+        (pending.length >= MAX_EARLY_TERMINAL_OUTPUT_CHUNKS ||
+          pendingCharacters + payload.data.length > MAX_EARLY_TERMINAL_OUTPUT_CHARACTERS)
+      ) {
+        pendingCharacters -= pending.shift()!.data.length;
+      }
+      pending.push(payload);
+      pendingCharacters += payload.data.length;
+    },
+    bind(sessionId) {
+      if (boundSessionId !== undefined && boundSessionId !== sessionId) return false;
+      boundSessionId = sessionId;
+      const exact = pending.filter((payload) => payload.sessionId === sessionId);
+      pending = [];
+      pendingCharacters = 0;
+      for (const payload of exact) deliver(payload);
+      return exact.length > 0;
+    },
+    readiness,
+  };
+}
+
 export function createTerminalExitLatch(
   onExactExit: (payload: NativeTerminalExitPayload) => void,
 ): {
@@ -382,6 +503,12 @@ export function TerminalView({
   const [dropKind, setDropKind] = useState<'file' | 'context' | null>(null);
   const [powerUpTitle, setPowerUpTitle] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [initializationPhase, setInitializationPhase] = useState(
+    'kernel_terminal_phase_mounted',
+  );
+  const terminalExecutionStatus = useTerminalExecutionStore((state) =>
+    executionId ? state.executions[executionId]?.status : undefined,
+  );
   const powerUpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const coordinationSummaryFor = async (
@@ -572,6 +699,10 @@ export function TerminalView({
     let startupRestoreMode = false;
     const webglDispose = createWebglDisposeTracker();
     const inputTracker = createPersistedInputTracker(currentInputRef.current);
+    const outputLatch = createTerminalOutputLatch((payload) => {
+      if (Date.now() < suppressOutputUntilRef.current) return;
+      enqueueTerminalChunks(payload.data);
+    });
     const exitLatch = createTerminalExitLatch((payload) => {
       if (exitFiredRef.current) return;
       exitFiredRef.current = true;
@@ -846,19 +977,18 @@ export function TerminalView({
 
       if (cancelled) return;
 
-      // Critical: wait for JetBrains Mono (loaded via async @import in
-      // globals.css) before xterm measures cell width inside `open()`.
+      // Prefer waiting for JetBrains Mono before xterm measures cell width
+      // inside `open()`, but fail open after a short bound: browser font
+      // readiness may remain pending indefinitely in an offline WebView.
       // Without this gate, xterm bakes in fallback monospace metrics and
       // the canvas grid stops matching rendered glyphs once the real font
       // swaps in -> visible text overlap at smaller tile sizes (the
       // "mushed words" bug at 2x2+).
-      try {
-        await document.fonts?.ready;
-      } catch {
-        /* not all environments expose document.fonts.ready -- degrade */
-      }
+      setInitializationPhase('kernel_terminal_phase_font_wait');
+      await awaitTerminalFontReadiness(document.fonts?.ready);
       if (cancelled) return;
 
+      setInitializationPhase('kernel_terminal_phase_xterm_open');
       term.open(containerEl);
 
       // GPU renderer. xterm's default DOM renderer re-lays-out HTML rows on
@@ -969,14 +1099,12 @@ export function TerminalView({
       // listener when the component unmounts mid-init (StrictMode dev).
       try {
         if (executionId && hasCanonicalTerminalExecution(executionId)) {
+          setInitializationPhase('kernel_terminal_phase_execution_exit_listener');
           await ensureTerminalExecutionExitListener();
         }
+        setInitializationPhase('kernel_terminal_phase_output_listener');
         const u1 = await listen<OutputPayload>('terminal://output', (e) => {
-          if (e.payload.sessionId !== sessionRef.current) return;
-          if (Date.now() < suppressOutputUntilRef.current) return;
-          // Reassemble split ESC sequences before rendering or persisting so
-          // orphan `]4;rgb:` / `[0[` fragments never land in xterm.
-          enqueueTerminalChunks(e.payload.data);
+          outputLatch.observe(e.payload);
         });
         if (cancelled) {
           u1();
@@ -984,6 +1112,7 @@ export function TerminalView({
         }
         unlistenOutput = u1;
 
+        setInitializationPhase('kernel_terminal_phase_native_exit_listener');
         const u2 = await listen<NativeTerminalExitPayload>('terminal://exit', (e) => {
           exitLatch.observe(e.payload);
         });
@@ -1020,12 +1149,14 @@ export function TerminalView({
       let nativeSessionStarted = false;
       let executionAttached = false;
       let viewSessionBound = false;
+      let nativeStartupCommandConsumed = false;
       let restoredInput = '';
       let sessionCwd: string | null = cwd ?? null;
       let briefingDelivered = false;
       const slugAtSpawn = agentSlugRef.current;
       const modeAtSpawn = agentModeRef.current;
       try {
+        setInitializationPhase('kernel_terminal_phase_restore_state');
         let activeSessions: BackendTerminalInfo[] = [];
         if (existingSessionId != null || paneId) {
           try {
@@ -1062,6 +1193,7 @@ export function TerminalView({
           restoredInput = restoreDecision.restoredInput;
           let spawnCommand = command;
           const isRecoveredSession = restoreDecision.source !== 'new-pane';
+          const nativeStartupCommand = isRecoveredSession ? undefined : startupCommand;
           if (isRecoveredSession) {
             const restart = terminalRestartDecision(command, startupCommand);
             spawnCommand = restart.spawnCommand;
@@ -1087,6 +1219,7 @@ export function TerminalView({
           // working directory is known, so a CLI spawned directly (e.g.
           // `opencode` as the pane command) reads it on session start.
           if (cwd) {
+            setInitializationPhase('kernel_terminal_phase_agent_briefing');
             const delivery = await deliverAgentTerminalContext({
               cwd,
               agentSlug: slugAtSpawn,
@@ -1102,8 +1235,10 @@ export function TerminalView({
             }
           }
 
+          setInitializationPhase('kernel_terminal_phase_native_spawn');
           const result = await invoke<SpawnResult>('terminal_spawn', {
             command: spawnCommand,
+            startupCommand: nativeStartupCommand,
             cwd,
             rows: term.rows,
             cols: term.cols,
@@ -1123,14 +1258,22 @@ export function TerminalView({
               : undefined,
           });
           sid = result.sessionId;
+          nativeStartupCommandConsumed = result.startupCommandConsumed;
           nativeSessionStarted = true;
           if (executionId && hasCanonicalTerminalExecution(executionId)) {
+            setInitializationPhase('kernel_terminal_phase_execution_attach');
             const attached = await attachTerminalExecution(executionId, sid);
             if (!attached) throw new TypeError('canonical_terminal_native_attach_failed');
             executionAttached = true;
           }
           sessionRef.current = sid;
           viewSessionBound = true;
+          if (!cancelled) setActiveSessionId(sid);
+          setInitializationPhase('kernel_terminal_phase_session_bound');
+          if (nativeStartupCommandConsumed && executionId) {
+            markTerminalExecution(executionId, 'running', { sessionId: sid });
+          }
+          outputLatch.bind(sid);
           if (exitLatch.bind(sid)) return;
           sessionCwd = result.cwd || cwd || null;
           console.log(`[Jarvis] Spawned new PTY session: ${sid}`);
@@ -1215,6 +1358,7 @@ export function TerminalView({
       }
 
       if (!cancelled && !viewSessionBound) {
+        setInitializationPhase('kernel_terminal_phase_view_attach');
         const attached = await attachTerminalViewExecution(executionId, sid);
         if (!attached) {
           setError('Canonical terminal ownership handoff failed.');
@@ -1222,6 +1366,9 @@ export function TerminalView({
         }
         sessionRef.current = sid;
         viewSessionBound = true;
+        if (!cancelled) setActiveSessionId(sid);
+        setInitializationPhase('kernel_terminal_phase_session_bound');
+        outputLatch.bind(sid);
         if (exitLatch.bind(sid)) return;
       }
 
@@ -1252,7 +1399,6 @@ export function TerminalView({
         deliveredSlugRef.current = slugAtSpawn;
         deliveredModeRef.current = modeAtSpawn;
       }
-      setActiveSessionId(sid);
       // Register the session in the transcript store so the by-agent
       // index has somewhere to land subsequent appendOutput calls.
       // Doing this *after* sessionRef.current is set ensures the
@@ -1283,20 +1429,36 @@ export function TerminalView({
       const executionWasCancelled = executionId
         ? useTerminalExecutionStore.getState().executions[executionId]?.status === 'cancelled'
         : false;
-      if (spawnedFresh && startupCommand && !deferredRestartCommand && !executionWasCancelled) {
+      if (
+        spawnedFresh &&
+        startupCommand &&
+        !nativeStartupCommandConsumed &&
+        !deferredRestartCommand &&
+        !executionWasCancelled
+      ) {
+        setInitializationPhase('kernel_terminal_phase_startup_command_readiness');
+        await awaitTerminalOutputReadiness(outputLatch.readiness);
+        if (cancelled) return;
+        const cancelledBeforeStartupWrite = executionId
+          ? useTerminalExecutionStore.getState().executions[executionId]?.status === 'cancelled'
+          : false;
+        if (cancelledBeforeStartupWrite) return;
         try {
+          setInitializationPhase('kernel_terminal_phase_startup_command_write');
           await invoke('terminal_write', {
             sessionId: sid,
             data: commandToInput(startupCommand),
           });
           markTerminalExecution(executionId, 'running', { sessionId: sid });
+          setInitializationPhase('kernel_terminal_phase_startup_command_sent');
         } catch {
           markTerminalExecution(executionId, 'failed', {
             sessionId: sid,
             exitCode: null,
           });
+          setInitializationPhase('kernel_terminal_phase_startup_command_failed');
         }
-      } else if (executionId && !executionWasCancelled) {
+      } else if (executionId && !nativeStartupCommandConsumed && !executionWasCancelled) {
         markTerminalExecution(executionId, 'running', { sessionId: sid });
       }
       if (spawnedFresh && restoredInput && !deferredRestartCommand) {
@@ -1682,7 +1844,18 @@ export function TerminalView({
           className,
         )}
         role="status"
-        data-sik-evidence={KERNEL_SMOKE_ENABLED ? SIK_EVIDENCE.terminalExecution : undefined}
+        data-sik-evidence={
+          KERNEL_SMOKE_ENABLED && executionId ? SIK_EVIDENCE.terminalExecution : undefined
+        }
+        data-error-code={
+          KERNEL_SMOKE_ENABLED && executionId ? terminalSmokeFailureCode(error) : undefined
+        }
+        data-initialization-phase={
+          KERNEL_SMOKE_ENABLED && executionId ? initializationPhase : undefined
+        }
+        data-terminal-status={
+          KERNEL_SMOKE_ENABLED && executionId ? terminalExecutionStatus : undefined
+        }
       >
         <p className="text-foreground text-ui-strong">{headline}</p>
         <p className="text-secondary text-muted-foreground whitespace-pre-wrap font-mono">{body}</p>
@@ -1704,7 +1877,15 @@ export function TerminalView({
   return (
     <div
       data-session-id={activeSessionId ?? undefined}
-      data-sik-evidence={KERNEL_SMOKE_ENABLED ? SIK_EVIDENCE.terminalExecution : undefined}
+      data-sik-evidence={
+        KERNEL_SMOKE_ENABLED && executionId ? SIK_EVIDENCE.terminalExecution : undefined
+      }
+      data-initialization-phase={
+        KERNEL_SMOKE_ENABLED && executionId ? initializationPhase : undefined
+      }
+      data-terminal-status={
+        KERNEL_SMOKE_ENABLED && executionId ? terminalExecutionStatus : undefined
+      }
       onDragOver={(e) => {
         const nextKind =
           e.dataTransfer.types.includes('application/x-jarvis-file') ||

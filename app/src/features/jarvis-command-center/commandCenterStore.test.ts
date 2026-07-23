@@ -119,6 +119,16 @@ describe('createJarvisCommandCenterStore', () => {
     expect(dataPort.getLiveEvidenceSnapshot).not.toHaveBeenCalled();
   });
 
+  it('retains the canonical run when dependent event or artifact projection reads fail', async () => {
+    const { store, dataPort } = setup();
+    vi.mocked(dataPort.getArtifactsForRun).mockRejectedValueOnce(new Error('projection failed'));
+
+    await store.refresh();
+
+    expect(store.getSnapshot().currentRun).toMatchObject({ id: 'run-1', status: 'running' });
+    expect(store.getSnapshot().error).toBe('Command Center data is unavailable.');
+  });
+
   it('performs one lazy exact-account/run read on expanded Live Systems and reuses it for the same run', async () => {
     const { store, dataPort } = setup();
     await store.refresh();

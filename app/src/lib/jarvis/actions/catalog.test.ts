@@ -51,6 +51,21 @@ describe('Jarvis action catalog', () => {
     expect(isJarvisAutoApprovableRegistration(registration({ approval: 'always' }))).toBe(false);
   });
 
+  it('keeps the literal native smoke actions on distinct safe, confirm, and dangerous risks', () => {
+    expect(
+      DEFAULT_JARVIS_ACTION_REGISTRATIONS.map(({ id, risk, approval }) => ({
+        id,
+        risk,
+        approval,
+      })),
+    ).toEqual([
+      { id: 'file.search', risk: 'read-only', approval: 'never' },
+      { id: 'terminal.create', risk: 'safe-write', approval: 'always' },
+      { id: 'terminal.run', risk: 'external-side-effect', approval: 'always' },
+      { id: 'task.cancel', risk: 'destructive', approval: 'always' },
+    ]);
+  });
+
   it('normalizes every executable action into a versioned typed definition', () => {
     const catalog = buildJarvisActionCatalog(getAllActions());
 

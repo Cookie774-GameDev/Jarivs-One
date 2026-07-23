@@ -1,5 +1,6 @@
 import {
   KERNEL_HOST_REQUEST_EVENT,
+  isKernelClientRequestV1,
   isKernelClientResponseV1,
   isKernelHostRequestEvent,
   responseMatchesKernelRequest,
@@ -40,6 +41,8 @@ let nativeHostTransportPromise:
     }>
   | undefined;
 let hostLifecycleTail: Promise<void> = Promise.resolve();
+type LocalHostRequest = (request: KernelClientRequestV1) => Promise<KernelClientResponseV1>;
+let localHostRequest: LocalHostRequest | null = null;
 
 function loadNativeHostTransport() {
   nativeHostTransportPromise ??= Promise.all([
@@ -97,6 +100,52 @@ export function createUnavailableKernelHostRuntime(): JarvisKernelHostRuntime {
   });
 }
 
+async function handleValidatedHostRequest(
+  runtime: JarvisKernelHostRuntime,
+  request: KernelClientRequestV1,
+): Promise<KernelClientResponseV1> {
+  try {
+    const candidate = await runtime.handleRequest(request);
+    return isKernelClientResponseV1(candidate) && responseMatchesKernelRequest(request, candidate)
+      ? candidate
+      : unavailableKernelResponse(request, 'invalid_response');
+  } catch {
+    return unavailableKernelResponse(request, 'invalid_response');
+  }
+}
+
+function installLocalHostRequest(runtime: JarvisKernelHostRuntime): () => Promise<void> {
+  if (localHostRequest) throw new Error('kernel_local_host_already_installed');
+  let live = true;
+  let requestTail: Promise<void> = Promise.resolve();
+  const request: LocalHostRequest = (input) => {
+    const response = requestTail.then(() =>
+      live
+        ? handleValidatedHostRequest(runtime, input)
+        : unavailableKernelResponse(input, 'host_released'),
+    );
+    requestTail = response.then(
+      () => undefined,
+      () => undefined,
+    );
+    return response;
+  };
+  localHostRequest = request;
+  return async () => {
+    live = false;
+    if (localHostRequest === request) localHostRequest = null;
+    await requestTail;
+  };
+}
+
+/** @internal Closed DTO path available only inside the already-attested host realm. */
+export function requestLocalJarvisKernelHost(
+  request: KernelClientRequestV1,
+): Promise<KernelClientResponseV1> | null {
+  if (!isKernelClientRequestV1(request)) return null;
+  return localHostRequest?.(request) ?? null;
+}
+
 async function startNativeHost(
   options: StartJarvisKernelHostOptions,
 ): Promise<JarvisKernelHostSession> {
@@ -105,6 +154,7 @@ async function startNativeHost(
   let registration: NativeHostRegistration | null = null;
   let disposed = false;
   let disposePromise: Promise<void> | null = null;
+  let releaseLocalHostRequest: (() => Promise<void>) | null = null;
   let requestQueue: Promise<void> = Promise.resolve();
   let resolveRuntimeReady: (runtime: JarvisKernelHostRuntime | null) => void = () => {};
   const runtimeReady = new Promise<JarvisKernelHostRuntime | null>((resolve) => {
@@ -125,17 +175,7 @@ async function startNativeHost(
       ) {
         return;
       }
-      let response: KernelClientResponseV1;
-      try {
-        const candidate = await activeRuntime.handleRequest(payload.request);
-        response =
-          isKernelClientResponseV1(candidate) &&
-          responseMatchesKernelRequest(payload.request, candidate)
-            ? candidate
-            : unavailableKernelResponse(payload.request, 'invalid_response');
-      } catch {
-        response = unavailableKernelResponse(payload.request, 'invalid_response');
-      }
+      const response = await handleValidatedHostRequest(activeRuntime, payload.request);
       if (disposed) return;
       await invoke('kernel_host_respond', {
         epoch: activeRegistration.epoch,
@@ -150,6 +190,7 @@ async function startNativeHost(
     registration = nativeRegistration(await invoke('register_kernel_host'));
     if (!registration) throw new Error('kernel_host_registration_invalid');
     runtime = await options.createRuntime();
+    releaseLocalHostRequest = installLocalHostRequest(runtime);
     resolveRuntimeReady(runtime);
   } catch {
     disposed = true;
@@ -161,6 +202,8 @@ async function startNativeHost(
         ownerToken: registration.ownerToken,
       }).catch(() => undefined);
     }
+    await Promise.resolve(runtime?.dispose()).catch(() => undefined);
+    runtime = null;
     return Object.freeze({ role: 'unavailable', reason: 'host_unavailable' });
   }
 
@@ -170,7 +213,11 @@ async function startNativeHost(
     window.removeEventListener('pagehide', onPageHide);
     disposePromise = (async () => {
       runCleanup(unlisten);
+      const releaseLocal = releaseLocalHostRequest;
+      releaseLocalHostRequest = null;
+      const localRelease = releaseLocal?.();
       await requestQueue.catch(() => undefined);
+      await localRelease?.catch(() => undefined);
       const runtimeToDispose = runtime;
       let teardownError: unknown;
       try {
@@ -217,6 +264,7 @@ async function startBrowserHost(
     resolveStart = resolve;
   });
   let runtime: JarvisKernelHostRuntime | null = null;
+  let releaseLocalHostRequest: (() => Promise<void>) | null = null;
   let disposed = false;
   let releaseLock: () => void = () => {};
   const released = new Promise<void>((resolve) => {
@@ -234,7 +282,10 @@ async function startBrowserHost(
         }
         try {
           runtime = await options.createRuntime();
+          releaseLocalHostRequest = installLocalHostRequest(runtime);
         } catch {
+          await Promise.resolve(runtime?.dispose()).catch(() => undefined);
+          runtime = null;
           resolveStart(Object.freeze({ role: 'unavailable', reason: 'host_unavailable' }));
           return;
         }
@@ -242,6 +293,9 @@ async function startBrowserHost(
           if (disposed) return lockRequest;
           disposed = true;
           window.removeEventListener('pagehide', onPageHide);
+          const releaseLocal = releaseLocalHostRequest;
+          releaseLocalHostRequest = null;
+          await releaseLocal?.().catch(() => undefined);
           const runtimeToDispose = runtime;
           let teardownError: unknown;
           try {

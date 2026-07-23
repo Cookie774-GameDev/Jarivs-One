@@ -19,6 +19,7 @@ import type { Agent, AgentId, Chat, EventId, Message, MessageId, Part } from '@/
 import type { ChatId } from '@/types/common';
 import { useAuthStore } from '@/stores/auth';
 import { useAgentStore } from '@/stores/agents';
+import { useUIStore } from '@/stores/ui';
 import { resolveAccountIdentity } from '@/lib/accountIdentity';
 import { jarvisProviderAttemptEvidenceRevalidator, runAgent } from './router';
 import type { LLMContentPart, LLMMessage } from './types';
@@ -57,6 +58,7 @@ import {
   type JarvisScheduledTransportRetryPort,
 } from '@/features/schedule/jarvisScheduledTransportRetry';
 import type { JarvisCommandCenterHostPort } from '@/features/jarvis-command-center/types';
+import type { JarvisActionCatalog } from '@/lib/jarvis/actions/catalog';
 import { parseJarvisScheduleMetadata } from '@/features/schedule/jarvisSchedules';
 import { deriveChatTitle, maybeRenameChat } from '@/features/chat/chatLifecycle';
 import { getStoredProjectRoot } from '@/features/files/projectFiles';
@@ -81,6 +83,11 @@ import {
   validateSendModelAccess,
   type ChatModelSelection,
 } from './modelSelection';
+import {
+  isKernelSmokeBindingActive,
+  KERNEL_SMOKE_RUNTIME_STAGE_EVENT,
+  type KernelSmokeRuntimeStage,
+} from './providers/kernelSmoke';
 
 import {
   buildJarvisContextPackForAi,
@@ -142,7 +149,17 @@ import type {
   CanonicalProviderEvidence,
   CanonicalProviderEvidenceAuthority,
 } from '@/lib/jarvis/artifactProducerAdapters';
-import type { JarvisApprovalActionBinder } from '@/lib/jarvis/approvalEngine';
+import type {
+  JarvisApprovalActionBinder,
+  JarvisIssuedActionExecution,
+  JarvisRegisteredActionDispatchOutcome,
+} from '@/lib/jarvis/approvalEngine';
+import type { RegisteredActionExecutionContext } from '@/lib/actions/types';
+import type { JarvisRegisteredActionDefinition } from '@/lib/jarvis/actions/catalog';
+import type {
+  KernelClientRequestV1,
+  KernelClientResponseV1,
+} from '@/lib/jarvis/kernelBridgeProtocol';
 import type { JarvisCapabilitySnapshotProvider } from '@/lib/jarvis/capabilitySnapshot';
 import type { JarvisDexie } from '@/lib/db';
 import type {
@@ -234,6 +251,7 @@ export function createCanonicalProviderEvidenceAuthority(
 export type JarvisKernelRuntimeHostInstallInput = Readonly<{
   db: JarvisDexie;
   bindKernelActions: JarvisApprovalActionBinder;
+  actionCatalog?: JarvisActionCatalog;
   capabilitySnapshots: JarvisCapabilitySnapshotProvider;
   randomUUID?: () => string;
   now?: () => number;
@@ -242,6 +260,10 @@ export type JarvisKernelRuntimeHostInstallInput = Readonly<{
 type InstalledJarvisKernelRuntimeHost = Readonly<{
   journal: Pick<JarvisExecutionJournal, 'allocateRun' | 'getRun'>;
   capabilitySnapshots: JarvisCapabilitySnapshotProvider;
+  executeRegisteredAction(
+    input: JarvisRegisteredActionDispatchInput,
+  ): Promise<JarvisRegisteredActionDispatchOutcome>;
+  handleClientRequest(request: KernelClientRequestV1): Promise<KernelClientResponseV1>;
   runInitialTurn(
     input: Readonly<JarvisKernelTurnInput>,
   ): ReturnType<JarvisKernelRuntime['runInitialTurn']>;
@@ -259,6 +281,13 @@ type InstalledJarvisKernelRuntimeHost = Readonly<{
   openHiveWorker: JarvisKernelRuntime['openHiveWorker'];
   runHiveFinalTurn: JarvisKernelRuntime['runHiveFinalTurn'];
   dispose(): void;
+}>;
+
+export type JarvisRegisteredActionDispatchInput = Readonly<{
+  registration: Readonly<JarvisRegisteredActionDefinition>;
+  params: Readonly<Record<string, unknown>>;
+  context: RegisteredActionExecutionContext;
+  execution: JarvisIssuedActionExecution;
 }>;
 
 let installedJarvisKernelRuntimeHost: InstalledJarvisKernelRuntimeHost | null = null;
@@ -323,6 +352,39 @@ function providerLiveEvidenceMatches(
   );
 }
 
+const TRUNCATED_PROVIDER_FINISH_REASONS = new Set([
+  'length',
+  'max_tokens',
+  'max_output_tokens',
+  'model_context_window_exceeded',
+]);
+
+function providerResponseWasTruncated(finishReason: string | undefined): boolean {
+  return TRUNCATED_PROVIDER_FINISH_REASONS.has(
+    finishReason?.trim().toLowerCase().replace(/[\s-]+/g, '_') ?? '',
+  );
+}
+
+type TerminalHandoffActivationResult = Readonly<{
+  kind: string;
+  value?: Readonly<{ kind?: string }>;
+}>;
+
+/** @internal Keeps terminal consumers behind the durable handoff projection. */
+export async function executeApprovalThenActivateTerminalHandoff<
+  T extends TerminalHandoffActivationResult,
+>(execute: () => Promise<T>, activate: () => void): Promise<T> {
+  const result = await execute();
+  if (result.kind === 'committed' && result.value?.kind === 'handoff_pending') {
+    try {
+      activate();
+    } catch {
+      // Durable ownership already committed. A route failure cannot revoke it.
+    }
+  }
+  return result;
+}
+
 /**
  * Installs the one trusted, boot-scoped kernel composition. App calls this only
  * from the attested primary-host callback after security authority exists.
@@ -340,6 +402,9 @@ export async function installJarvisKernelRuntimeHost(
     kernelModule,
     responseModule,
     approvalModule,
+    actionRunnerModule,
+    actionRegistryModule,
+    terminalExecutionModule,
   ] = await Promise.all([
     import('@/lib/db/jarvisRepositories'),
     import('@/lib/jarvis/executionJournal/journal'),
@@ -347,6 +412,9 @@ export async function installJarvisKernelRuntimeHost(
     import('@/lib/jarvis/kernelRuntime'),
     import('@/lib/jarvis/response/pipeline'),
     import('@/lib/jarvis/approvalEngine'),
+    import('@/lib/actions/runner'),
+    import('@/lib/actions/registryJarvisCore'),
+    import('@/features/terminals/terminalExecutionStore'),
   ]);
   if (installedJarvisKernelRuntimeHost) throw new Error('jarvis_kernel_host_already_installed');
 
@@ -356,6 +424,49 @@ export async function installJarvisKernelRuntimeHost(
     getRun: (accountId, runId) => journal.getRun(accountId, runId),
     newCancellationRequestId: () => `jcancel_${randomUUID()}`,
   });
+  const builtinActionDispatcher = actionRunnerModule.createJarvisRegisteredBuiltinDispatcher();
+  const terminalActionDispatcher =
+    actionRegistryModule.createJarvisTerminalRegisteredActionDispatcher({
+      newExecutionId: () => `jterm_${randomUUID()}`,
+      newCancellationToken: () => `jcancel_native_${randomUUID()}`,
+      createAcceptor(request) {
+        return terminalExecutionModule.createJarvisTerminalExecutionAcceptor({
+          request,
+          registrationAuthority: abortRegistry.registrationAuthority,
+          queuedTransitionAuthority: {
+            async transitionQueuedRunToCancelled(transitionInput) {
+              const current = await journal.getRun(
+                transitionInput.accountId,
+                transitionInput.runId,
+              );
+              if (!current || current.status !== transitionInput.expectedStatus) {
+                return { applied: false as const, reason: 'status_conflict' as const };
+              }
+              try {
+                await journal.transitionRun({
+                  accountId: transitionInput.accountId,
+                  runId: transitionInput.runId,
+                  expectedStatus: transitionInput.expectedStatus,
+                  nextStatus: 'cancelled',
+                  completedAt: now(),
+                  event: {
+                    idempotencyKey: `terminal-queued-cancelled:${request.executionId}`,
+                    title: 'Queued terminal action cancelled',
+                    safeSummary: 'The queued terminal action was cancelled before native startup.',
+                    sourceRefs: [],
+                    artifactIds: [],
+                    createdAt: now(),
+                  },
+                });
+                return { applied: true as const };
+              } catch {
+                return { applied: false as const, reason: 'status_conflict' as const };
+              }
+            },
+          },
+        });
+      },
+    });
   const providerEvidence = new Map<string, CanonicalProviderEvidence>();
   const providerArtifactDrafts = new WeakMap<
     Readonly<RawProviderResponse>,
@@ -464,6 +575,7 @@ export async function installJarvisKernelRuntimeHost(
 
   const composition: JarvisKernelRuntimeComposition = kernelModule.createJarvisKernelRuntime({
     db: input.db,
+    ...(input.actionCatalog === undefined ? {} : { actionCatalog: input.actionCatalog }),
     artifactEvidenceAuthorities,
     journal,
     cancellationDeliveryAuthority: abortRegistry.cancellationDeliveryAuthority,
@@ -533,7 +645,7 @@ export async function installJarvisKernelRuntimeHost(
         agent,
         interactionMode: 'agent' as const,
         userText: metadata.prompt,
-        messageHistory: [],
+        messageHistory: [{ role: 'user', content: metadata.prompt }],
         model: {
           providerId: selected.providerId,
           modelId: selected.modelId,
@@ -626,10 +738,20 @@ export async function installJarvisKernelRuntimeHost(
                 ) {
                   throw new Error('kernel_provider_result_binding_mismatch');
                 }
+                const partial = providerResponseWasTruncated(result.finish_reason);
                 const raw = Object.freeze({
                   text: result.text,
                   provider: providerInput.model,
                   verifiedFacts: Object.freeze({
+                    ...(partial
+                      ? {
+                          executionState: Object.freeze({
+                            status: 'partial' as const,
+                            verifiedBy: 'provider' as const,
+                            lastEventSeq: 0,
+                          }),
+                        }
+                      : {}),
                     modelState: 'authenticated' as const,
                     plugins: Object.freeze([]),
                     mcps: Object.freeze([]),
@@ -645,7 +767,7 @@ export async function installJarvisKernelRuntimeHost(
                     requestId: providerInput.requestId,
                     attemptNumber: providerInput.attemptNumber,
                     resultRef: `jresult_${providerInput.requestId}`,
-                    state: 'completed',
+                    state: partial ? 'partial' : 'completed',
                     verifiedAt: completedAt,
                     providerId: providerInput.model.providerId,
                     modelId: providerInput.model.modelId,
@@ -705,6 +827,117 @@ export async function installJarvisKernelRuntimeHost(
   const host: InstalledJarvisKernelRuntimeHost = Object.freeze({
     journal,
     capabilitySnapshots: input.capabilitySnapshots,
+    async executeRegisteredAction(dispatchInput) {
+      if (disposed) throw new Error('jarvis_kernel_host_disposed');
+      const terminal = await terminalActionDispatcher(dispatchInput);
+      if (terminal) return terminal;
+      const builtin = await builtinActionDispatcher(dispatchInput);
+      if (builtin) return builtin;
+      return {
+        kind: 'executor_returned',
+        result: { ok: false, error: 'Registered action dispatch is unavailable.' },
+      };
+    },
+    async handleClientRequest(request) {
+      if (disposed) throw new Error('jarvis_kernel_host_disposed');
+      const unavailable = (): KernelClientResponseV1 => ({
+        version: 1,
+        kind: 'unavailable',
+        requestKind: request.kind,
+        reason: 'kernel_not_activated',
+      });
+      if (request.kind === 'approval_present') {
+        const approval = await repositories.approval.getById(request.accountId, request.approvalId);
+        if (!approval || approval.id !== request.approvalId) return unavailable();
+        const { presentJarvisApproval } = await import('@/features/jarvis-runs/approvalBridge');
+        const presentation = presentJarvisApproval(approval);
+        return {
+          version: 1,
+          kind: 'approval_presentation',
+          approvalId: approval.id,
+          ...presentation,
+        };
+      }
+      if (request.kind === 'approval_decide') {
+        const approval = await repositories.approval.getById(request.accountId, request.approvalId);
+        if (!approval) return unavailable();
+        const parentRun = await repositories.run.getById(request.accountId, approval.runId);
+        if (!parentRun) return unavailable();
+        const decided = await composition.kernel.actions.decide({
+          parentRun,
+          approvalId: approval.id,
+          decision: request.decision,
+        });
+        if (decided.kind !== 'committed' || decided.value.id !== approval.id) {
+          return unavailable();
+        }
+        return {
+          version: 1,
+          kind: 'approval_decided',
+          approvalId: approval.id,
+          status: decided.value.status === 'approved' ? 'approved' : 'denied',
+        };
+      }
+      if (request.kind === 'approval_execute') {
+        const approval = await repositories.approval.getById(request.accountId, request.approvalId);
+        if (!approval) return unavailable();
+        const parentRun = await repositories.run.getById(request.accountId, approval.runId);
+        if (!parentRun) return unavailable();
+        const executed = await executeApprovalThenActivateTerminalHandoff(
+          () =>
+            composition.kernel.actions.execute({
+              parentRun,
+              approvalId: approval.id,
+              context: {
+                source: 'ai',
+                ...(parentRun.chatId === undefined ? {} : { chatId: parentRun.chatId }),
+                messageId: `msg_${approval.requestId}`,
+                callId: `jarvisapproval:${encodeURIComponent(approval.id)}`,
+                accountId: request.accountId,
+                runId: parentRun.id,
+                approvalId: approval.id,
+                requestId: approval.requestId,
+                attemptNumber: approval.attemptNumber,
+              },
+            }),
+          () => useUIStore.getState().setRoute('terminal'),
+        );
+        if (executed.kind !== 'committed') return unavailable();
+        if (executed.value.kind === 'handoff_pending') {
+          return {
+            version: 1,
+            kind: 'approval_execution',
+            approvalId: approval.id,
+            runId: parentRun.id,
+            status: 'queued',
+          };
+        }
+        const finalized = await repositories.run.getById(request.accountId, parentRun.id);
+        return {
+          version: 1,
+          kind: 'approval_execution',
+          approvalId: approval.id,
+          runId: parentRun.id,
+          status:
+            executed.value.result.ok && finalized?.status === 'completed' ? 'completed' : 'failed',
+        };
+      }
+      if (request.kind === 'cancel') {
+        const cancellation = await composition.kernel.requestCancellation({
+          accountId: request.accountId,
+          runId: request.runId,
+        });
+        const state =
+          cancellation.kind === 'intent_committed'
+            ? cancellation.aggregate.kind === 'handoff_pending' ||
+              cancellation.aggregate.kind === 'delivery_pending'
+              ? ('handoff_pending' as const)
+              : ('delivered' as const)
+            : ('not_found' as const);
+        return { version: 1, kind: 'cancellation_state', runId: request.runId, state };
+      }
+      return unavailable();
+    },
     async runInitialTurn(turnInput) {
       if (disposed) throw new Error('jarvis_kernel_host_disposed');
       activeTurnScopes.set(
@@ -790,6 +1023,36 @@ export async function installJarvisKernelRuntimeHost(
     installedJarvisKernelRuntimeHost = null;
     host.dispose();
   };
+}
+
+/** @internal Closed App security-runtime callback; no executable authority is returned. */
+export async function executeInstalledJarvisRegisteredAction(
+  input: JarvisRegisteredActionDispatchInput,
+): Promise<JarvisRegisteredActionDispatchOutcome> {
+  const host = installedJarvisKernelRuntimeHost;
+  if (!host) {
+    return {
+      kind: 'executor_returned',
+      result: { ok: false, error: 'Registered action dispatch is unavailable.' },
+    };
+  }
+  return host.executeRegisteredAction(input);
+}
+
+/** @internal Primary-host responder for the validated closed bridge union. */
+export async function handleInstalledJarvisKernelClientRequest(
+  request: KernelClientRequestV1,
+): Promise<KernelClientResponseV1> {
+  const host = installedJarvisKernelRuntimeHost;
+  if (!host) {
+    return {
+      version: 1,
+      kind: 'unavailable',
+      requestKind: request.kind,
+      reason: 'kernel_not_activated',
+    };
+  }
+  return host.handleClientRequest(request);
 }
 
 /** @internal Protected voice routing only; returns a runtime-issued opaque handle. */
@@ -1072,12 +1335,39 @@ function applyJarvisChatActionOverlay(agent: Agent): Agent {
 function dispatchRunState(
   chatId: ChatId | string,
   status: 'running' | 'done' | 'error' | 'cancelled',
+  errorCode?: string,
 ): void {
   window.dispatchEvent(
     new CustomEvent('jarvis:run-state', {
-      detail: { chatId: String(chatId), status },
+      detail: {
+        chatId: String(chatId),
+        status,
+        ...(status === 'error' && errorCode ? { errorCode } : {}),
+      },
     }),
   );
+}
+
+function dispatchKernelSmokeRuntimeStage(stage: KernelSmokeRuntimeStage): void {
+  if (!isKernelSmokeBindingActive()) return;
+  window.dispatchEvent(
+    new CustomEvent(KERNEL_SMOKE_RUNTIME_STAGE_EVENT, { detail: { stage } }),
+  );
+}
+
+const KERNEL_RUNTIME_ERROR_CODE_RE = /^kernel_[a-z0-9_]{1,120}$/;
+
+function safeKernelRuntimeErrorCode(error: unknown): string {
+  const record =
+    typeof error === 'object' && error !== null
+      ? (error as Readonly<{ code?: unknown; message?: unknown }>)
+      : undefined;
+  for (const candidate of [record?.code, record?.message]) {
+    if (typeof candidate === 'string' && KERNEL_RUNTIME_ERROR_CODE_RE.test(candidate)) {
+      return candidate;
+    }
+  }
+  return 'kernel_runtime_failure';
 }
 
 export function sanitizeCredentialRequests(text: string): string {
@@ -1974,6 +2264,7 @@ export function startRuntimeListener(
         detail: { messageId: cancellationKey },
       });
       releaseVoiceTurnWithoutReply(detail, chatId);
+      dispatchRunState(chatId, 'error', 'kernel_runtime_duplicate_request');
       return;
     }
     const controller = new AbortController();
@@ -1987,6 +2278,7 @@ export function startRuntimeListener(
       canonicalCancellationOwners.delete(controller);
       activeControllers.delete(controller);
     };
+    dispatchKernelSmokeRuntimeStage('accepted');
     const failEarlySetup = (stage: 'agent' | 'context', error: unknown): void => {
       devConsole.log({
         channel: 'ai',
@@ -1999,6 +2291,7 @@ export function startRuntimeListener(
       });
       toast.error('Cannot send', 'The requested AI turn could not be prepared safely.');
       releaseVoiceTurnWithoutReply(detail, chatId);
+      dispatchRunState(chatId, 'error', `kernel_runtime_setup_${stage}`);
       releaseOperationTracking();
     };
 
@@ -2009,9 +2302,11 @@ export function startRuntimeListener(
     } catch {
       toast.error('Cannot send', 'The selected chat connection could not be verified.');
       releaseVoiceTurnWithoutReply(detail, chatId);
+      dispatchRunState(chatId, 'error', 'kernel_runtime_chat_unavailable');
       releaseOperationTracking();
       return;
     }
+    dispatchKernelSmokeRuntimeStage('chat');
     const interactionMode =
       detail.interactionMode ?? useJarvisInteractionStore.getState().modeForChat(chatId);
     const modelCtx = modelSelectionContextFromAuth(authState);
@@ -2048,9 +2343,11 @@ export function startRuntimeListener(
     if (!sendValidation.ok) {
       toast.error('Cannot send', sendValidation.message);
       releaseVoiceTurnWithoutReply(detail, chatId);
+      dispatchRunState(chatId, 'error', 'kernel_runtime_model_access');
       releaseOperationTracking();
       return;
     }
+    dispatchKernelSmokeRuntimeStage('validated');
     useAllAboutMeStore.getState().recordUserMessage();
 
     const stackSlash = parseStackSlashCommand(text);
@@ -2085,9 +2382,11 @@ export function startRuntimeListener(
       console.warn('[jarvis runtime] no agent resolvable for chat', chatId);
       toast.error('Jarvis unavailable', 'No Jarvis agent is available for this chat.');
       releaseVoiceTurnWithoutReply(detail, chatId);
+      dispatchRunState(chatId, 'error', 'kernel_runtime_agent_unavailable');
       releaseOperationTracking();
       return;
     }
+    dispatchKernelSmokeRuntimeStage('agent');
     const isProtectedJarvis = isProtectedJarvisAgent(agent);
 
     const projectId = chatRecord?.project_id ?? authState.projectId;
@@ -2108,6 +2407,7 @@ export function startRuntimeListener(
       failEarlySetup('context', error);
       return;
     }
+    dispatchKernelSmokeRuntimeStage('context');
     const requestIntent = classifyJarvisIntent({
       text,
       destination: resolvedRequestContext.preferredDestination,
@@ -2541,6 +2841,7 @@ export function startRuntimeListener(
     };
 
     try {
+      dispatchKernelSmokeRuntimeStage('execution');
       controller.signal.throwIfAborted();
       if (shouldSpeakReply && !isProtectedJarvis) {
         streamingVoice = createStreamingVoiceSession({
@@ -2581,6 +2882,7 @@ export function startRuntimeListener(
           let canonicalModelId: string;
           let canonicalVoiceCancelled = false;
           if (stackSteps.length > 0) {
+            dispatchKernelSmokeRuntimeStage('hive_turn');
             if (detail.speakReply === true) throw new Error('kernel_hive_voice_surface_forbidden');
             const finalStep = stackSteps.at(-1)!;
             const finalConnection = hiveConnectionForProvider(String(finalStep.provider));
@@ -2608,13 +2910,14 @@ export function startRuntimeListener(
               ...(projectId ? { projectId: String(projectId) } : {}),
               text: stackText,
               userMessageId: userMessage.id,
-              messages: hiveHistory,
+              messages: [...hiveHistory, { role: 'user', content: stackText }],
               interactionMode,
               speakReply: false,
               surface: 'hive_final',
               contextText: contextBlocks.join('\n\n'),
               model,
             });
+            dispatchKernelSmokeRuntimeStage('hive_plan');
             await bindCanonicalCancellation(host, turn);
             const plan = createHiveStackPlan({
               parentRunId: turn.run.id,
@@ -2632,6 +2935,7 @@ export function startRuntimeListener(
             if (boundPlan.kind === 'account_authority_revoked') {
               throw new Error('kernel_account_authority_revoked');
             }
+            dispatchKernelSmokeRuntimeStage('hive_workers');
             const stackOutcome = await runStack(
               {
                 parentRunId: turn.run.id,
@@ -2671,6 +2975,7 @@ export function startRuntimeListener(
             if (stackOutcome.kind === 'account_authority_revoked') {
               throw new Error('kernel_account_authority_revoked');
             }
+            dispatchKernelSmokeRuntimeStage('hive_final');
             canonicalDisplayText = stackOutcome.value.finalText;
             canonicalSpokenText = undefined;
             canonicalProviderId = model.providerId;
@@ -3089,7 +3394,11 @@ export function startRuntimeListener(
         subtitle: aborted ? 'Cancelled by user' : ((err as Error)?.message ?? 'Unknown error'),
         ts: Date.now(),
       });
-      dispatchRunState(chatId, aborted ? 'cancelled' : 'error');
+      dispatchRunState(
+        chatId,
+        aborted ? 'cancelled' : 'error',
+        aborted ? undefined : safeKernelRuntimeErrorCode(err),
+      );
       updateStructuredAgentStatus(
         detail.structuredContext,
         aborted ? 'cancelled' : 'failed',

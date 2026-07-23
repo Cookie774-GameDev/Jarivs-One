@@ -52,6 +52,13 @@ import { ensureActiveChat } from '@/features/chat/chatLifecycle';
 import { sortChatsForDisplay } from '@/features/chat/chatPin';
 import { usePetPresentationStore } from '@/features/pets/petPresentationStore';
 import { usePetSettingsStore } from '@/features/pets/petSettingsStore';
+import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
+import { SIK_CONTROL } from '@/lib/jarvis/smoke/evidenceIds';
+
+const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
+  devBuild: import.meta.env.DEV,
+  explicitFlag: import.meta.env.VITE_SIK_SMOKE,
+});
 
 interface TabModel {
   id: ChatId;
@@ -412,6 +419,7 @@ function TabItem({ tab, active, onActivate, onClose, onRename, onSendToPetPanel 
     <motion.div
       role="tab"
       aria-selected={active}
+      data-sik-evidence={KERNEL_SMOKE_ENABLED && active ? SIK_CONTROL.chatReturn : undefined}
       layout
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}

@@ -11,6 +11,10 @@ import { publishThemePreference } from '@/features/appearance/themeSync';
 
 const debouncedUiStorage = createDebouncedStateStorage(safeLocalStorage);
 
+export function flushUiStatePersistence(): void {
+  void debouncedUiStorage.flush();
+}
+
 export type ResolvedTheme = 'dark' | 'light' | 'jarvis' | 'vibespace';
 
 export function resolveTheme(theme: Theme, prefersDark?: boolean): ResolvedTheme {

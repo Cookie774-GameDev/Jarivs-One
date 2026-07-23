@@ -5,10 +5,14 @@ import {
   clearKernelSmokeBinding,
   getKernelSmokeDispatchPath,
   KERNEL_SMOKE_PROVIDER_ID,
+  KERNEL_SMOKE_RUNTIME_STAGE_EVENT,
+  KERNEL_SMOKE_RUNTIME_STAGES,
   subscribeKernelSmokeDispatchPath,
   type KernelSmokeBindingEvidence,
+  type KernelSmokeRuntimeStage,
 } from '@/lib/ai/providers/kernelSmoke';
 import { buildProviderCatalog } from '@/lib/ai/adapters/catalog';
+import { getStoredProjectRoot, setStoredProjectRoot } from '@/features/files/projectFiles';
 import { useAuthStore } from '@/stores/auth';
 import { isKernelSmokeEnabled } from './config';
 import { SIK_EVIDENCE } from './evidenceIds';
@@ -40,9 +44,7 @@ const NATIVE_SMOKE_FAILURE_CODES: ReadonlySet<string> = new Set([
 
 function safeNativeSmokeFailureCode(error: unknown): string {
   const candidate = error instanceof Error ? error.message : String(error);
-  return NATIVE_SMOKE_FAILURE_CODES.has(candidate)
-    ? candidate
-    : 'sik_smoke_binding_invalid';
+  return NATIVE_SMOKE_FAILURE_CODES.has(candidate) ? candidate : 'sik_smoke_binding_invalid';
 }
 
 function isCanonicalAbsolutePath(value: string): boolean {
@@ -105,6 +107,8 @@ export function KernelSmokeBindingHost({
   const [runtimeState, setRuntimeState] = React.useState<
     'sent' | 'running' | 'done' | 'error' | 'cancelled'
   >();
+  const [runtimeErrorCode, setRuntimeErrorCode] = React.useState<string>();
+  const [runtimeStage, setRuntimeStage] = React.useState<KernelSmokeRuntimeStage>();
   const dispatchPath = React.useSyncExternalStore(
     subscribeKernelSmokeDispatchPath,
     getKernelSmokeDispatchPath,
@@ -114,10 +118,25 @@ export function KernelSmokeBindingHost({
 
   React.useEffect(() => {
     setRuntimeState(undefined);
+    setRuntimeErrorCode(undefined);
+    setRuntimeStage(undefined);
     if (!enabled) return;
-    const onSend = () => setRuntimeState('sent');
+    const onSend = () => {
+      setRuntimeState('sent');
+      setRuntimeErrorCode(undefined);
+    };
+    const onRuntimeStage = (event: Event) => {
+      const stage = (event as CustomEvent<{ stage?: unknown }>).detail?.stage;
+      if (
+        typeof stage === 'string' &&
+        (KERNEL_SMOKE_RUNTIME_STAGES as readonly string[]).includes(stage)
+      ) {
+        setRuntimeStage(stage as KernelSmokeRuntimeStage);
+      }
+    };
     const onRunState = (event: Event) => {
-      const status = (event as CustomEvent<{ status?: unknown }>).detail?.status;
+      const detail = (event as CustomEvent<{ status?: unknown; errorCode?: unknown }>).detail;
+      const status = detail?.status;
       if (
         status === 'running' ||
         status === 'done' ||
@@ -125,18 +144,52 @@ export function KernelSmokeBindingHost({
         status === 'cancelled'
       ) {
         setRuntimeState(status);
+        setRuntimeErrorCode(
+          status === 'error' &&
+            typeof detail?.errorCode === 'string' &&
+            /^kernel_[a-z0-9_]{1,120}$/.test(detail.errorCode)
+            ? detail.errorCode
+            : status === 'error'
+              ? 'kernel_runtime_failure'
+              : undefined,
+        );
       }
     };
     window.addEventListener('jarvis:send', onSend);
     window.addEventListener('jarvis:run-state', onRunState);
+    window.addEventListener(KERNEL_SMOKE_RUNTIME_STAGE_EVENT, onRuntimeStage);
     return () => {
       window.removeEventListener('jarvis:send', onSend);
       window.removeEventListener('jarvis:run-state', onRunState);
+      window.removeEventListener(KERNEL_SMOKE_RUNTIME_STAGE_EVENT, onRuntimeStage);
     };
   }, [enabled]);
 
   React.useEffect(() => {
     let disposed = false;
+    let unsubscribeProjectRoot: (() => void) | undefined;
+    let installedProjectRoot:
+      | Readonly<{ projectId: string | null; previous: string; smoke: string }>
+      | undefined;
+    const restoreInstalledProjectRoot = (): void => {
+      if (
+        installedProjectRoot &&
+        getStoredProjectRoot(installedProjectRoot.projectId) === installedProjectRoot.smoke
+      ) {
+        setStoredProjectRoot(installedProjectRoot.projectId, installedProjectRoot.previous);
+      }
+      installedProjectRoot = undefined;
+    };
+    const installProjectRoot = (projectId: string | null, smoke: string): void => {
+      if (installedProjectRoot?.projectId === projectId) return;
+      restoreInstalledProjectRoot();
+      installedProjectRoot = Object.freeze({
+        projectId,
+        previous: getStoredProjectRoot(projectId),
+        smoke,
+      });
+      setStoredProjectRoot(projectId, smoke);
+    };
     clearKernelSmokeBinding();
     setEvidence(undefined);
     setFailureCode(undefined);
@@ -151,6 +204,16 @@ export function KernelSmokeBindingHost({
           setFailureCode('sik_smoke_binding_invalid');
           return;
         }
+        const smokeProjectRoot = `${native.canonicalProfile.replace(/[\\/]$/, '')}${
+          native.canonicalProfile.includes('\\') ? '\\' : '/'
+        }SmokeProject`;
+        installProjectRoot(useAuthStore.getState().projectId ?? null, smokeProjectRoot);
+        unsubscribeProjectRoot = useAuthStore.subscribe((state, previous) => {
+          const projectId = state.projectId ?? null;
+          if (projectId !== (previous.projectId ?? null)) {
+            installProjectRoot(projectId, smokeProjectRoot);
+          }
+        });
         const sanitized = Object.freeze({
           nativePid: native.nativePid,
           cdpPort: native.cdpPort,
@@ -185,6 +248,8 @@ export function KernelSmokeBindingHost({
     return () => {
       disposed = true;
       clearKernelSmokeBinding();
+      unsubscribeProjectRoot?.();
+      restoreInstalledProjectRoot();
       const current = useAuthStore.getState().chatModelSelection;
       if (current.mode === 'single' && current.providerId === KERNEL_SMOKE_PROVIDER_ID) {
         useAuthStore.getState().setChatModelSelection(previousSelectionRef.current);
@@ -223,6 +288,8 @@ export function KernelSmokeBindingHost({
           hidden
           data-sik-evidence={SIK_EVIDENCE.smokeRuntimeState}
           data-runtime-state={runtimeState}
+          data-error-code={runtimeState === 'error' ? runtimeErrorCode : undefined}
+          data-initialization-phase={runtimeStage}
         />
       ) : null}
     </>

@@ -14,6 +14,20 @@ import {
 
 export const KERNEL_SMOKE_PROVIDER_ID = 'vibespace-kernel-smoke' as ProviderId;
 export const KERNEL_SMOKE_BINDING_EVENT = 'vibespace:kernel-smoke-binding-changed';
+export const KERNEL_SMOKE_RUNTIME_STAGE_EVENT = 'vibespace:kernel-smoke-runtime-stage';
+export const KERNEL_SMOKE_RUNTIME_STAGES = Object.freeze([
+  'accepted',
+  'chat',
+  'validated',
+  'agent',
+  'context',
+  'execution',
+  'hive_turn',
+  'hive_plan',
+  'hive_workers',
+  'hive_final',
+] as const);
+export type KernelSmokeRuntimeStage = (typeof KERNEL_SMOKE_RUNTIME_STAGES)[number];
 
 export type KernelSmokeBindingEvidence = Readonly<{
   nativePid: number;
@@ -42,6 +56,11 @@ export function subscribeKernelSmokeDispatchPath(listener: () => void): () => vo
 
 export function getKernelSmokeDispatchPath(): 'protected' | 'unprotected' | undefined {
   return dispatchPath;
+}
+
+/** True only after the debug browser host has accepted native PID/profile/nonce attestation. */
+export function isKernelSmokeBindingActive(): boolean {
+  return trustedBinding !== undefined;
 }
 
 /** @internal Records only the trusted router boundary classification for smoke dispatches. */
@@ -85,12 +104,16 @@ export function clearKernelSmokeBinding(): void {
 }
 
 function exactScenario(req: LLMRequest): KernelSmokeScenario | undefined {
-  const lastUser = [...req.messages].reverse().find((message) => message.role === 'user');
-  if (!lastUser) return undefined;
-  const text = llmContentToText(lastUser.content);
-  return Object.values(KERNEL_SMOKE_SCENARIOS).find(
-    (scenario) => scenario.safeTextFixture === text,
+  const fixtures = new Map(
+    Object.values(KERNEL_SMOKE_SCENARIOS).map((scenario) => [scenario.safeTextFixture, scenario]),
   );
+  let match: KernelSmokeScenario | undefined;
+  for (const message of req.messages) {
+    if (message.role !== 'user') continue;
+    const scenario = fixtures.get(llmContentToText(message.content));
+    if (scenario) match = scenario;
+  }
+  return match;
 }
 
 function abortError(): DOMException {

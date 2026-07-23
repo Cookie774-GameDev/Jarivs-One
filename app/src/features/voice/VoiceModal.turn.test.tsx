@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useUIStore } from '@/stores/ui';
 import { useAuthStore } from '@/stores/auth';
+import { useAgentStore } from '@/stores/agents';
 import { SPEECH_SYNTHESIS_START_EVENT, STREAMING_VOICE_END_EVENT } from './speechSynthesis';
 
 type VoiceHandler = (payload?: unknown) => void;
@@ -27,7 +28,7 @@ const chatHookMocks = vi.hoisted(() => ({
 }));
 
 const chatRoutingMocks = vi.hoisted(() => ({
-  ensureJarvisChatForVoice: vi.fn(async () => 'chat_voice'),
+  ensureJarvisChatForVoice: vi.fn(async (): Promise<string | null> => 'chat_voice'),
   focusVoiceChat: vi.fn(),
   resolveVoiceChatTarget: vi.fn(
     async (text: string): Promise<MockVoiceChatTarget> => ({
@@ -128,6 +129,7 @@ describe('VoiceModal hands-free turn-taking', () => {
       stackCustomSteps: DEFAULT_CUSTOM_STEPS,
       chatModelSelection: selectionFromOption('groq', 'llama-3.3-70b-versatile'),
     });
+    useAgentStore.setState({ agents: {} });
     useVoiceStore.getState().reset();
   });
 
@@ -176,6 +178,21 @@ describe('VoiceModal hands-free turn-taking', () => {
     });
     expect(chatRoutingMocks.focusVoiceChat).toHaveBeenLastCalledWith('chat_voice');
     window.removeEventListener('jarvis:send', send as EventListener);
+  });
+
+  it('retries voice-session binding when the agent roster hydrates after the modal opens', async () => {
+    chatRoutingMocks.ensureJarvisChatForVoice
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce('chat_voice');
+
+    render(<VoiceModal />);
+    await waitFor(() => expect(chatRoutingMocks.ensureJarvisChatForVoice).toHaveBeenCalledOnce());
+    expect(useVoiceStore.getState().session).toBeNull();
+
+    act(() => useAgentStore.setState({ agents: {} }));
+
+    await waitFor(() => expect(useVoiceStore.getState().session?.chatId).toBe('chat_voice'));
+    expect(chatRoutingMocks.ensureJarvisChatForVoice).toHaveBeenCalledTimes(2);
   });
 
   it('does not attach protected account scope to an explicit non-Jarvis voice target', async () => {
