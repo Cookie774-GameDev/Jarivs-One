@@ -42,6 +42,7 @@ import { parseThemeCommandArgument, SELECTABLE_THEMES } from '@/features/appeara
 import { VoiceService } from '@/features/voice/VoiceService';
 import { MicWaveform } from './MicWaveform';
 import { formatComposerVoiceFailure } from './composerVoiceFailures';
+import { formatComposerSendFailure } from './composerSendFailures';
 import {
   cleanupAudioRecorder,
   encodeWav,
@@ -1828,7 +1829,7 @@ export function Composer({
       // the draft text is preserved so the user can retry.
       // eslint-disable-next-line no-console
       console.error('[Composer] send failed:', err);
-      toast.error("Couldn't send message", err instanceof Error ? err.message : 'Unknown error');
+      toast.error('Message not sent', formatComposerSendFailure());
     } finally {
       setSending(false);
     }
