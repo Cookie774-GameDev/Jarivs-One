@@ -36,6 +36,7 @@ import type {
   CanonicalFileActionEvidence,
   CanonicalFileActionEvidenceAuthority,
 } from '@/lib/jarvis/artifactProducerAdapters';
+import { formatJarvisVerifiedNarration } from '@/lib/jarvis/response/templates';
 import { isCanonicalFileArtifactResult } from './registryFiles';
 
 /** @internal Re-reads a committed action result and its exact producer evidence. */
@@ -372,7 +373,13 @@ async function runActionOnce(
     const result = await def.run(validation.params, ctx);
     if (emitToast) {
       if (result.ok) {
-        toast.success(def.label, result.summary ?? 'Done.');
+        toast.success(
+          def.label,
+          formatJarvisVerifiedNarration({
+            kind: 'success',
+            summary: result.summary?.trim() || `${def.label} completed successfully.`,
+          }).text,
+        );
       } else {
         toast.error(def.label, result.error);
       }

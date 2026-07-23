@@ -125,6 +125,45 @@ describe('runAction', () => {
     expect(toast.error).not.toHaveBeenCalled();
   });
 
+  it('uses shared precise success narration with and without an executor summary', async () => {
+    const definition = resolveAction('settings.open');
+    expect(definition).toBeTruthy();
+    const run = vi
+      .spyOn(definition!, 'run')
+      .mockResolvedValueOnce({ ok: true, summary: 'Opened the requested settings panel.' })
+      .mockResolvedValueOnce({ ok: true })
+      .mockResolvedValueOnce({ ok: true, summary: '   ' });
+
+    await expect(runAction('settings.open', {}, { source: 'user' })).resolves.toEqual({
+      ok: true,
+      summary: 'Opened the requested settings panel.',
+    });
+    expect(toast.success).toHaveBeenNthCalledWith(
+      1,
+      definition!.label,
+      'Completed, sir. Opened the requested settings panel.',
+    );
+
+    await expect(runAction('settings.open', {}, { source: 'user' })).resolves.toEqual({ ok: true });
+    expect(toast.success).toHaveBeenNthCalledWith(
+      2,
+      definition!.label,
+      `Completed, sir. ${definition!.label} completed successfully.`,
+    );
+
+    await expect(runAction('settings.open', {}, { source: 'user' })).resolves.toEqual({
+      ok: true,
+      summary: '   ',
+    });
+    expect(toast.success).toHaveBeenNthCalledWith(
+      3,
+      definition!.label,
+      `Completed, sir. ${definition!.label} completed successfully.`,
+    );
+
+    run.mockRestore();
+  });
+
   it('catches runner exceptions and turns them into structured errors', async () => {
     // theme.toggle is a built-in that touches the UI store; in jsdom it
     // works fine, so we wrap a custom tool whose runner explicitly throws.
