@@ -350,6 +350,39 @@ describe('processJarvisResponse', () => {
     expect(result.enforcement.violations).toContain('verified_capability_contradiction');
   });
 
+  it('replaces a broad Zapier access claim with exact snapshot operations', async () => {
+    const result = await processJarvisResponse(
+      raw('Zapier is connected, so I have access to 9,000 applications.'),
+      request({
+        capabilities: {
+          capturedAt: 8,
+          tools: [],
+          plugins: [],
+          mcps: [
+            {
+              id: 'Zapier',
+              state: 'connected',
+              operations: ['canva.create'],
+              evidenceRef: 'mcp-status:zapier:connected',
+              lastVerifiedAt: 8,
+            },
+          ],
+          terminals: [],
+          agents: [],
+          entitlements: { source: 'unavailable', capabilities: [] },
+        },
+      }),
+      { repair: vi.fn() },
+    );
+
+    expect(result.displayText).toContain(
+      'Zapier is connected. Available operations: canva.create.',
+    );
+    expect(result.displayText).not.toMatch(/9,?000|thousands? of|all applications/i);
+    expect(result.enforcement.violations).toContain('verified_capability_contradiction');
+    expect(result.enforcement.fallbackUsed).toBe(true);
+  });
+
   it('keeps request capability truth start-bound across the repair await', async () => {
     const mutableRequest = request({
       capabilities: {

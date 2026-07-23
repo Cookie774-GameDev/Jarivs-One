@@ -21,6 +21,19 @@ function violation(
 
 const HUMOR_SIGNAL =
   /\b(?:joke|funny|hilarious|amusing|silver lining|rare victory|chosen drama|appears satisfied|apparently|rollback plan may wish|optimism)\b/i;
+const BROAD_INTEGRATION_COUNT =
+  /\b(?:(?:all(?:\s+of)?|every)(?:\s+(?:listed|supported|catalogued))?|thousands?\s+of|(?:\d{1,3}(?:,\d{3})+|\d{4,})\+?)\s+(?:apps?|applications?|integrations?)\b/i;
+
+function hasZapierGatewayOverclaim(prose: string): boolean {
+  return prose
+    .split(/[.!?\n]+/u)
+    .some(
+      (sentence) =>
+        /\bzapier\b/i.test(sentence) &&
+        /\b(?:access|available|connected|use|usable)\b/i.test(sentence) &&
+        BROAD_INTEGRATION_COUNT.test(sentence),
+    );
+}
 
 function humorSituation(
   prose: string,
@@ -236,7 +249,7 @@ export function lintJarvisProse(
     } as const;
     return rank[claim as 'available' | 'connected' | 'authenticated'] > rank[capability.state];
   });
-  if (capabilityContradiction) {
+  if (capabilityContradiction || hasZapierGatewayOverclaim(prose)) {
     violations.push(
       violation(
         'verified_capability_contradiction',

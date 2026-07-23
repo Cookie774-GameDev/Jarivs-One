@@ -100,6 +100,46 @@ describe('lintJarvisProse', () => {
     );
   });
 
+  it('rejects a broad Zapier app-access claim even when the gateway is connected', () => {
+    expect(
+      lintJarvisProse('Zapier is connected, so I have access to 9,000 applications.', 'status', {
+        ...facts,
+        executionState: undefined,
+        mcps: [{ id: 'Zapier', state: 'connected', operations: ['canva.create'] }],
+      }),
+    ).toContainEqual(
+      expect.objectContaining({
+        code: 'verified_capability_contradiction',
+        disposition: 'deterministic',
+      }),
+    );
+  });
+
+  it('rejects treating every listed Zapier app as usable', () => {
+    expect(
+      lintJarvisProse('Zapier is connected, so every listed app is usable.', 'status', {
+        ...facts,
+        executionState: undefined,
+        mcps: [{ id: 'Zapier', state: 'connected', operations: ['canva.create'] }],
+      }),
+    ).toContainEqual(
+      expect.objectContaining({
+        code: 'verified_capability_contradiction',
+        disposition: 'deterministic',
+      }),
+    );
+  });
+
+  it('accepts a Zapier claim limited to an exact snapshot operation', () => {
+    expect(
+      lintJarvisProse('Zapier is connected. The canva.create operation is available.', 'status', {
+        ...facts,
+        executionState: undefined,
+        mcps: [{ id: 'Zapier', state: 'connected', operations: ['canva.create'] }],
+      }).filter((item) => item.code === 'verified_capability_contradiction'),
+    ).toEqual([]);
+  });
+
   it('rejects emoji and humor in a sensitive response', () => {
     const violations = lintJarvisProse('A funny silver lining. \u{1F604}', 'sensitive', {
       ...facts,

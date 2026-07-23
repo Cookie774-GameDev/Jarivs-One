@@ -47,6 +47,47 @@ describe('verifiedResponseTemplate', () => {
     expect(text).toContain('authenticated-mcp is authenticated');
   });
 
+  it('names operations only when the integration snapshot says it is usable', () => {
+    const text = verifiedResponseTemplate({
+      ...facts(),
+      plugins: [
+        { id: 'catalog-only', state: 'available', operations: ['must.not.appear'] },
+        { id: 'connected-plugin', state: 'connected', operations: ['drive.search'] },
+      ],
+      mcps: [
+        {
+          id: 'Zapier',
+          state: 'authenticated',
+          operations: ['canva.create', 'slack.send'],
+        },
+      ],
+    });
+
+    expect(text).toContain('connected-plugin is connected. Available operations: drive.search.');
+    expect(text).toContain(
+      'Zapier is authenticated. Available operations: canva.create, slack.send.',
+    );
+    expect(text).not.toContain('must.not.appear');
+  });
+
+  it('bounds deterministic operation narration for a large connected catalog', () => {
+    const text = verifiedResponseTemplate({
+      ...facts(),
+      plugins: [],
+      mcps: [
+        {
+          id: 'gateway',
+          state: 'connected',
+          operations: Array.from({ length: 9 }, (_, index) => `operation-${index + 1}`),
+        },
+      ],
+    });
+
+    expect(text).toContain('Available operations include:');
+    expect(text).toContain('operation-8');
+    expect(text).not.toContain('operation-9');
+  });
+
   it.each([
     ['queued', /queued and not running/i, /completed/i],
     ['running', /running and not completed/i, /completed with/i],

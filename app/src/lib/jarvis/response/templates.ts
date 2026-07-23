@@ -7,13 +7,30 @@ import {
 } from './cadence';
 import { hasProviderOnlyTerminalState, type JarvisVerifiedFacts } from './modeClassifier';
 
+const MAX_NARRATED_INTEGRATION_OPERATIONS = 8;
+
 function integrationLine(ref: JarvisCapabilityRef): string {
-  if (ref.state === 'authenticated') return `${ref.id} is authenticated.`;
-  if (ref.state === 'connected') return `${ref.id} is connected.`;
-  if (ref.state === 'available') return `${ref.id} is available.`;
-  if (ref.state === 'degraded') return `${ref.id} is degraded.`;
-  if (ref.state === 'unavailable') return `${ref.id} is unavailable.`;
-  return `${ref.id} is planned.`;
+  const stateLine =
+    ref.state === 'authenticated'
+      ? `${ref.id} is authenticated.`
+      : ref.state === 'connected'
+        ? `${ref.id} is connected.`
+        : ref.state === 'available'
+          ? `${ref.id} is available.`
+          : ref.state === 'degraded'
+            ? `${ref.id} is degraded.`
+            : ref.state === 'unavailable'
+              ? `${ref.id} is unavailable.`
+              : `${ref.id} is planned.`;
+  if ((ref.state !== 'connected' && ref.state !== 'authenticated') || ref.operations.length === 0) {
+    return stateLine;
+  }
+  const operations = ref.operations.slice(0, MAX_NARRATED_INTEGRATION_OPERATIONS);
+  const label =
+    ref.operations.length > operations.length
+      ? 'Available operations include'
+      : 'Available operations';
+  return `${stateLine} ${label}: ${operations.join(', ')}.`;
 }
 
 export type JarvisVerifiedNarrationInput =
