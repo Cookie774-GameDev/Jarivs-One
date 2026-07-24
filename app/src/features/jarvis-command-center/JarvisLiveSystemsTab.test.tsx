@@ -241,7 +241,7 @@ describe('JarvisLiveSystemsTab', () => {
     );
 
     const list = screen.getByRole('list', { name: 'Run activity' });
-    expect(list.children).toHaveLength(8);
+    expect(list.querySelectorAll('[data-activity-kind="tool"]')).toHaveLength(8);
     expect(screen.queryByText('Bounded activity 1')).toBeNull();
     expect(screen.queryByText('Bounded activity 2')).toBeNull();
     expect(screen.getByText('Bounded activity 3')).not.toBeNull();
@@ -340,18 +340,12 @@ describe('JarvisLiveSystemsTab', () => {
     );
 
     fireEvent.focus(screen.getByRole('button', { name: 'Tool knowledge-search' }));
-    expect(screen.getByRole('status', { name: 'Live system details' }).textContent).toContain(
-      'execute · cancel',
-    );
-    expect(screen.getByRole('status', { name: 'Live system details' }).textContent).toContain(
-      'Tool',
-    );
-    expect(screen.getByRole('status', { name: 'Live system details' }).textContent).toContain(
-      'busy',
-    );
-    expect(screen.getByRole('status', { name: 'Live system details' }).textContent).toContain(
-      'Run duration · <1s',
-    );
+    const details = screen.getByRole('region', { name: 'Live system details' });
+    expect(details.getAttribute('aria-live')).toBeNull();
+    expect(details.textContent).toContain('execute · cancel');
+    expect(details.textContent).toContain('Tool');
+    expect(details.textContent).toContain('busy');
+    expect(details.textContent).toContain('Run duration · <1s');
     expect(screen.queryByText('jlive_tool-proof')).toBeNull();
   });
 
@@ -478,7 +472,7 @@ describe('JarvisLiveSystemsTab', () => {
       />,
     );
 
-    const details = screen.getByRole('status', { name: 'Live system details' });
+    const details = screen.getByRole('region', { name: 'Live system details' });
     fireEvent.focus(screen.getByRole('button', { name: 'Source Launch Brief.md' }));
     expect(details.textContent).toContain('Location · https://example.test/brief');
     expect(details.textContent).not.toContain('token=do-not-render');
@@ -532,7 +526,7 @@ describe('JarvisLiveSystemsTab', () => {
     expect(screen.getByText('waiting permission')).not.toBeNull();
     expect(screen.getByText('Connector request failed')).not.toBeNull();
     expect(screen.getByText('failed')).not.toBeNull();
-    expect(screen.getByRole('status', { name: 'Live system details' }).textContent).toContain(
+    expect(screen.getByRole('region', { name: 'Live system details' }).textContent).toContain(
       'Run error · The connector rejected the request.',
     );
     expect(document.querySelectorAll('time[datetime]')).toHaveLength(2);
@@ -552,7 +546,10 @@ describe('JarvisLiveSystemsTab', () => {
     expect(screen.getByText('Model provider-1 / model-1')).not.toBeNull();
     expect(screen.getByRole('button', { name: 'Model provider-1 / model-1' })).not.toBeNull();
     expect(screen.getByRole('img', { name: 'Current run execution map' })).not.toBeNull();
-    expect(screen.queryByRole('list', { name: 'Run activity' })).toBeNull();
+    const activity = screen.getByRole('list', { name: 'Run activity' });
+    expect(activity.textContent).toContain('Execution node: Jarvis');
+    expect(activity.textContent).toContain('Execution node: Model provider-1 / model-1');
+    expect(activity.textContent).toContain('completed');
   });
 
   it('keeps the immutable run model visible when live evidence reports another model node', () => {

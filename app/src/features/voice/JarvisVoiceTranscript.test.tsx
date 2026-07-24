@@ -16,9 +16,14 @@ function message(id: string, role: 'user' | 'assistant', text: string): Message 
 
 describe('JarvisVoiceTranscript accessibility', () => {
   it('keeps committed and interim text readable without live-announcing every mutation', () => {
+    const longUserMessage =
+      'A deliberately long voice request that must remain readable when text is scaled and must expose an accessible expansion control without relying on accent color.';
     render(
       <JarvisVoiceTranscript
-        messages={[message('message-1', 'assistant', 'Stable committed reply')]}
+        messages={[
+          message('message-1', 'assistant', 'Stable committed reply'),
+          message('message-2', 'user', longUserMessage),
+        ]}
         partial="rapidly changing interim words"
         hasBoundChat
         expandedIds={new Set()}
@@ -32,5 +37,16 @@ describe('JarvisVoiceTranscript accessibility', () => {
     const interim = screen.getByText('rapidly changing interim words');
     expect(interim).toBeTruthy();
     expect(interim.getAttribute('data-live-announcement')).toBe('off');
+
+    expect(screen.getByText('Jarvis').classList.contains('text-foreground')).toBe(true);
+    expect(
+      screen.getAllByText('You').every((label) => label.classList.contains('text-foreground')),
+    ).toBe(true);
+    expect(
+      screen.getByText('Stable committed reply').closest('.grid')?.classList.contains('text-xs'),
+    ).toBe(true);
+    expect(
+      screen.getByRole('button', { name: 'Show more' }).classList.contains('text-foreground'),
+    ).toBe(true);
   });
 });

@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { Profiler, type ProfilerOnRenderCallback } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useUIStore } from '@/stores/ui';
 import { useAuthStore } from '@/stores/auth';
@@ -110,6 +111,7 @@ import {
   resetJarvisApprovalNavigationForTests,
 } from '@/features/jarvis-command-center/approvalNavigation';
 import type {
+  JarvisArtifactV1,
   JarvisCommandCenterDataPort,
   JarvisCommandCenterHostPort,
   JarvisEvent,
@@ -512,6 +514,155 @@ describe('VoiceModal hands-free turn-taking', () => {
       screen.getByRole('button', { name: /Command Center/i }).getAttribute('aria-controls')!,
     );
     expect(region?.getAttribute('data-motion-kind')).toBe('spring');
+  });
+
+  it('uses theme-owned colors and preserves disclosure text at browser text zoom', async () => {
+    render(<VoiceModal />);
+    await waitFor(() => expect(useVoiceStore.getState().session?.chatId).toBe('chat_voice'));
+
+    const panel = screen.getByLabelText('Jarvis voice session');
+    const disclosure = screen.getByRole('button', { name: /Command Center/i });
+    expect(panel.classList.contains('bg-elevated/95')).toBe(true);
+    expect(panel.className).not.toContain('bg-[#0c0907]');
+    expect(disclosure.classList.contains('text-xs')).toBe(true);
+
+    fireEvent.click(disclosure);
+    const modelLabel = disclosure.querySelector('span[title]');
+    expect(modelLabel).not.toBeNull();
+    expect(modelLabel?.classList.contains('truncate')).toBe(false);
+    expect(modelLabel?.classList.contains('break-words')).toBe(true);
+  });
+
+  it('collapses the embedded Command Center on Escape and restores disclosure focus', async () => {
+    const bindingPort = commandCenterBinding();
+    render(
+      <JarvisCommandCenterProvider value={bindingPort}>
+        <VoiceModal />
+      </JarvisCommandCenterProvider>,
+    );
+    await waitFor(() => expect(useVoiceStore.getState().session?.chatId).toBe('chat_voice'));
+
+    const disclosure = screen.getByRole('button', { name: /Command Center/i });
+    fireEvent.click(disclosure);
+    const outputTab = await screen.findByRole('tab', { name: 'Outputs' });
+    outputTab.focus();
+    fireEvent.keyDown(outputTab, { key: 'Escape' });
+
+    expect(disclosure.getAttribute('aria-expanded')).toBe('false');
+    expect(document.activeElement).toBe(disclosure);
+    expect(document.getElementById(disclosure.getAttribute('aria-controls')!)).toBeNull();
+
+    fireEvent.click(disclosure);
+    disclosure.focus();
+    fireEvent.keyDown(disclosure, { key: 'Escape' });
+    expect(disclosure.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('profiles bounded commits while listening, speaking, running tools, showing artifacts, dragging, and switching routes', async () => {
+    const profiledRun = { ...approvalRun(), status: 'running' as const };
+    const bindingPort = commandCenterBinding('account-a', [profiledRun]);
+    const taskEvents: readonly JarvisEvent[] = Array.from({ length: 6 }, (_, index) => ({
+      runId: profiledRun.id,
+      seq: index + 1,
+      idempotencyKey: `profile-tool-${index + 1}`,
+      type: 'tool',
+      status: index === 5 ? 'running' : 'completed',
+      title: `Tool step ${index + 1}`,
+      sourceRefs: [],
+      artifactIds: [],
+      createdAt: 120 + index,
+    }));
+    const artifacts: readonly JarvisArtifactV1[] = Array.from({ length: 6 }, (_, index) => ({
+      schemaVersion: 1,
+      id: `jartifact_profile_${index + 1}`,
+      runId: profiledRun.id,
+      requestId: 'request-profile',
+      attemptNumber: 1,
+      state: 'ready',
+      kind: 'text',
+      title: `Profile artifact ${index + 1}`,
+      safeSummary: `Verified artifact ${index + 1}.`,
+      sourceRefs: [],
+      createdAt: 140 + index,
+    }));
+    vi.mocked(bindingPort.dataPort.getEventsForRun).mockResolvedValue(taskEvents);
+    vi.mocked(bindingPort.dataPort.getArtifactsForRun).mockResolvedValue(artifacts);
+    vi.mocked(bindingPort.dataPort.getLiveEvidenceSnapshot).mockResolvedValue({
+      schemaVersion: 1,
+      accountId: 'account-a',
+      runId: profiledRun.id,
+      capturedAt: 160,
+      nodes: [],
+    });
+
+    type Scenario =
+      | 'mount'
+      | 'artifacts'
+      | 'tool-task'
+      | 'listening'
+      | 'speaking'
+      | 'drag'
+      | 'route';
+    let scenario: Scenario = 'mount';
+    const commits: Array<{ scenario: Scenario; actualDuration: number }> = [];
+    const onRender: ProfilerOnRenderCallback = (_id, _phase, actualDuration) => {
+      commits.push({ scenario, actualDuration });
+    };
+
+    render(
+      <Profiler id="voice-command-center-profile" onRender={onRender}>
+        <JarvisCommandCenterProvider value={bindingPort}>
+          <VoiceModal />
+        </JarvisCommandCenterProvider>
+      </Profiler>,
+    );
+    await waitFor(() => expect(useVoiceStore.getState().session?.chatId).toBe('chat_voice'));
+
+    scenario = 'artifacts';
+    fireEvent.click(screen.getByRole('button', { name: /Command Center/i }));
+    await screen.findByText('Profile artifact 6');
+
+    scenario = 'tool-task';
+    const liveSystemsTab = screen.getByRole('tab', { name: 'Live Systems' });
+    liveSystemsTab.focus();
+    fireEvent.keyDown(liveSystemsTab, { key: 'Enter' });
+    await screen.findByText('Tool step 6');
+
+    act(() => useVoiceStore.setState({ state: 'paused' }));
+    scenario = 'listening';
+    act(() => useVoiceStore.setState({ state: 'listening' }));
+    expect(screen.getByRole('button', { name: 'Stop listening' })).not.toBeNull();
+
+    scenario = 'speaking';
+    act(() => useVoiceStore.setState({ state: 'speaking' }));
+    expect(screen.getByRole('button', { name: 'Stop response' })).not.toBeNull();
+
+    scenario = 'drag';
+    const dragRow = document.querySelector<HTMLElement>('.jarvis-voice-drag-row');
+    if (!dragRow) throw new Error('Expected voice panel drag row.');
+    Object.defineProperty(dragRow, 'setPointerCapture', { configurable: true, value: vi.fn() });
+    fireEvent.pointerDown(dragRow, { button: 0, clientX: 10, clientY: 10, pointerId: 1 });
+    fireEvent.pointerMove(dragRow, { clientX: 35, clientY: 40, pointerId: 1 });
+    fireEvent.pointerUp(dragRow, { clientX: 35, clientY: 40, pointerId: 1 });
+
+    scenario = 'route';
+    act(() => useUIStore.setState({ activeChatId: 'chat_profile_route_switch' }));
+    expect(useUIStore.getState().activeChatId).toBe('chat_profile_route_switch');
+
+    const profile = (name: Scenario) => commits.filter((entry) => entry.scenario === name);
+    for (const entry of commits) {
+      expect(Number.isFinite(entry.actualDuration)).toBe(true);
+      expect(entry.actualDuration).toBeGreaterThanOrEqual(0);
+    }
+    expect(profile('artifacts').length).toBeGreaterThan(0);
+    expect(profile('artifacts').length).toBeLessThanOrEqual(10);
+    expect(profile('tool-task').length).toBeLessThanOrEqual(10);
+    expect(profile('listening').length).toBeLessThanOrEqual(2);
+    expect(profile('speaking').length).toBeLessThanOrEqual(2);
+    expect(profile('drag').length).toBeLessThanOrEqual(1);
+    expect(profile('route').length).toBeLessThanOrEqual(1);
+    expect(bindingPort.dataPort.getEventsForRun).toHaveBeenCalledTimes(1);
+    expect(bindingPort.dataPort.getArtifactsForRun).toHaveBeenCalledTimes(1);
   });
 
   it('removes outer panel and disclosure motion when the user prefers reduced motion', async () => {

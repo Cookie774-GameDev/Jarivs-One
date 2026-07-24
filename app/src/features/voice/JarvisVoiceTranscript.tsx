@@ -57,7 +57,7 @@ export function JarvisVoiceTranscript({
       className="max-h-[28vh] space-y-1 overflow-y-auto px-2 pb-2 pt-1"
     >
       {transcript.length === 0 && !partial ? (
-        <div className="flex min-h-7 items-center justify-center text-center text-[11px] leading-4 text-muted-foreground">
+        <div className="flex min-h-7 items-center justify-center text-center text-xs leading-4 text-muted-foreground">
           {hasBoundChat ? 'Listening...' : 'Open a chat first.'}
         </div>
       ) : null}
@@ -69,7 +69,7 @@ export function JarvisVoiceTranscript({
         return (
           <div
             key={message.id}
-            className="grid grid-cols-[16px_44px_1fr] items-start gap-1 text-[11px] leading-4"
+            className="grid grid-cols-[16px_44px_1fr] items-start gap-1 text-xs leading-4"
           >
             <span
               className={cn(
@@ -80,9 +80,7 @@ export function JarvisVoiceTranscript({
             >
               {user ? <UserRound className="h-2 w-2" /> : <Bot className="h-2 w-2" />}
             </span>
-            <span className={cn('font-medium', user ? 'text-info' : 'text-accent-copper')}>
-              {user ? 'You' : 'Jarvis'}
-            </span>
+            <span className="font-medium text-foreground">{user ? 'You' : 'Jarvis'}</span>
             <span className="min-w-0 text-foreground/85">
               <span
                 className={cn(
@@ -95,7 +93,7 @@ export function JarvisVoiceTranscript({
               {expandable ? (
                 <button
                   type="button"
-                  className="mt-0.5 inline-flex min-h-7 items-center rounded px-1 text-[10px] font-semibold text-accent-copper hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="mt-0.5 inline-flex min-h-7 items-center rounded px-1 text-xs font-semibold text-foreground underline decoration-border underline-offset-2 hover:decoration-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   aria-expanded={expanded}
                   onClick={() => onToggleExpanded(message.id)}
                 >
@@ -107,14 +105,14 @@ export function JarvisVoiceTranscript({
         );
       })}
       {partial ? (
-        <div className="grid grid-cols-[16px_44px_1fr] items-center gap-1 text-[11px] leading-4">
+        <div className="grid grid-cols-[16px_44px_1fr] items-center gap-1 text-xs leading-4">
           <span
             className="flex h-4 w-4 items-center justify-center rounded-full border border-info/80 text-info"
             aria-hidden="true"
           >
             <UserRound className="h-2 w-2" />
           </span>
-          <span className="font-medium text-info">You</span>
+          <span className="font-medium text-foreground">You</span>
           <span
             className="min-w-0 whitespace-pre-wrap break-words text-foreground/75"
             data-live-announcement="off"

@@ -150,6 +150,7 @@ export function VoiceModal() {
   const chatModelSelection = useAuthStore((state) => state.chatModelSelection);
   const commandCenterBinding = useJarvisCommandCenterBinding();
   const [showCommandCenter, setShowCommandCenter] = React.useState(false);
+  const commandCenterDisclosureRef = React.useRef<HTMLButtonElement>(null);
   const [expandedTranscriptIds, setExpandedTranscriptIds] = React.useState<ReadonlySet<string>>(
     () => new Set(),
   );
@@ -215,6 +216,16 @@ export function VoiceModal() {
       ? commandCenterBinding
       : undefined;
   const commandCenterRegionId = React.useId();
+  const handleCommandCenterEscape = React.useCallback(
+    (event: React.KeyboardEvent<HTMLElement>) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || !showCommandCenter) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setShowCommandCenter(false);
+      commandCenterDisclosureRef.current?.focus();
+    },
+    [showCommandCenter],
+  );
 
   React.useEffect(() => {
     let disposed = false;
@@ -824,8 +835,8 @@ export function VoiceModal() {
         transition={reducedMotion ? undefined : { type: 'spring', stiffness: 360, damping: 30 }}
         style={{ x: dragX, y: dragY }}
         className={cn(
-          'jarvis-voice-panel fixed right-3 top-3 z-[90] max-h-[calc(100vh-24px)] max-w-[calc(100vw-24px)] overflow-hidden rounded-[9px] border border-border bg-[#0c0907]/96 backdrop-blur-sm',
-          showCommandCenter ? 'w-[420px]' : 'w-[286px]',
+          'jarvis-voice-panel fixed right-3 top-3 z-[90] max-h-[calc(100vh-1.5rem)] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-[0.5625rem] border border-border bg-elevated/95 text-foreground backdrop-blur-sm',
+          showCommandCenter ? 'w-[26.25rem]' : 'w-[17.875rem]',
         )}
         aria-label="Jarvis voice session"
         data-reduced-motion={reducedMotion ? 'true' : 'false'}
@@ -861,7 +872,7 @@ export function VoiceModal() {
               onClick={() =>
                 flushUtteranceRef.current(KERNEL_SMOKE_SCENARIOS.voice_turn_stop.safeTextFixture)
               }
-              className="min-h-7 rounded border border-border px-2 py-1 text-[10px] text-muted-foreground"
+              className="min-h-7 rounded border border-border px-2 py-1 text-xs text-muted-foreground"
             >
               Submit fixed transcript
             </button>
@@ -870,7 +881,7 @@ export function VoiceModal() {
               data-sik-evidence={SIK_EVIDENCE.voiceSttFixture}
               onClick={() => void runSmokeSttFixture()}
               disabled={smokeSttState === 'transcribing'}
-              className="min-h-7 rounded border border-border px-2 py-1 text-[10px] text-muted-foreground disabled:opacity-50"
+              className="min-h-7 rounded border border-border px-2 py-1 text-xs text-muted-foreground disabled:opacity-50"
             >
               Transcribe fixed audio
             </button>
@@ -890,15 +901,19 @@ export function VoiceModal() {
 
         {/* Command Center disclosure */}
         <button
+          ref={commandCenterDisclosureRef}
           type="button"
           onClick={() => setShowCommandCenter((visible) => !visible)}
           aria-expanded={showCommandCenter}
           aria-controls={commandCenterRegionId}
-          className="relative z-[1] flex min-h-8 w-full items-center gap-1 border-t border-border/70 px-2 py-1 text-[10px] text-muted-foreground transition-colors hover:bg-accent-copper/[0.06] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          className="relative z-[1] flex min-h-8 w-full items-center gap-1 border-t border-border/70 px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent-copper/[0.06] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         >
-          <span className="font-medium text-foreground/85">Command Center</span>
+          <span className="shrink-0 font-medium text-foreground">Command Center</span>
           {showCommandCenter ? (
-            <span className="ml-auto max-w-[250px] truncate text-[10px]" title={modelLabel}>
+            <span
+              className="ml-auto min-w-0 break-words text-right text-xs leading-tight"
+              title={modelLabel}
+            >
               {modelLabel}
             </span>
           ) : null}
@@ -922,6 +937,7 @@ export function VoiceModal() {
                   : { type: 'spring', stiffness: 340, damping: 32, mass: 0.8 }
               }
               className="overflow-hidden"
+              onKeyDown={handleCommandCenterEscape}
               data-motion-kind={reducedMotion ? 'none' : 'spring'}
             >
               <JarvisVoiceTranscript
@@ -948,7 +964,7 @@ export function VoiceModal() {
                   embedded
                 />
               ) : (
-                <p className="border-t border-border/70 px-2 py-3 text-center text-[11px] text-muted-foreground">
+                <p className="border-t border-border/70 px-2 py-3 text-center text-xs text-muted-foreground">
                   Command Center is unavailable for this voice session.
                 </p>
               )}

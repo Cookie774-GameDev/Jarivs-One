@@ -456,9 +456,8 @@ function LiveExecutionMap({
       <div
         className="jarvis-live-systems__details"
         id={detailsId}
-        role="status"
+        role="region"
         aria-label="Live system details"
-        aria-live="polite"
       >
         <span className="jarvis-live-systems__details-title">{selected?.label ?? 'Jarvis'}</span>
         <span>
@@ -479,13 +478,58 @@ function LiveExecutionMap({
   );
 }
 
-function LiveActivity({ events }: { events: readonly JarvisEvent[] }) {
+function LiveActivity({
+  events,
+  graphNodes,
+  includeRun,
+  run,
+}: {
+  events: readonly JarvisEvent[];
+  graphNodes: readonly LiveGraphNode[];
+  includeRun: boolean;
+  run: Readonly<JarvisRun>;
+}) {
   const titleId = React.useId();
-  if (events.length === 0) return null;
+  if (events.length === 0 && !includeRun) return null;
   return (
     <section className="jarvis-live-systems__activity" aria-labelledby={titleId}>
       <h3 id={titleId}>Activity</h3>
       <ol aria-label="Run activity">
+        {includeRun ? (
+          <li
+            data-activity-state={run.status}
+            data-activity-kind="execution-node"
+            data-node-kind="run"
+          >
+            <span aria-hidden="true" />
+            <span className="jarvis-live-systems__activity-copy">
+              <span>Execution node: Jarvis</span>
+              <small>Run · {displayState(run.status)}</small>
+            </span>
+            <span className="jarvis-live-systems__activity-state">{displayState(run.status)}</span>
+          </li>
+        ) : null}
+        {includeRun
+          ? graphNodes.map((node) => (
+              <li
+                key={`execution-node:${node.id}`}
+                data-activity-state={node.state}
+                data-activity-kind="execution-node"
+                data-node-kind={node.kind}
+              >
+                <span aria-hidden="true" />
+                <span className="jarvis-live-systems__activity-copy">
+                  <span>Execution node: {node.accessibleLabel}</span>
+                  <small>
+                    {node.type} · {node.detail}
+                  </small>
+                </span>
+                <span className="jarvis-live-systems__activity-state">
+                  {displayState(node.state)}
+                </span>
+              </li>
+            ))
+          : null}
         {events.map((event) => {
           const timestamp = formatTime(event.createdAt);
           const summary = conciseSafeText(event.safeSummary);
@@ -560,6 +604,7 @@ const ReadyJarvisLiveSystemsTab = React.memo(function ReadyJarvisLiveSystemsTab(
       : run.status === 'failed' || run.status === 'timed_out'
         ? `Run ${displayState(run.status)}`
         : undefined;
+  const showExecutionMap = graphNodes.length > 0 || run.status === 'awaiting_approval';
 
   if (graphNodes.length === 0 && scopedEvents.length === 0 && !visibleState) {
     return (
@@ -588,7 +633,7 @@ const ReadyJarvisLiveSystemsTab = React.memo(function ReadyJarvisLiveSystemsTab(
           {visibleState}
         </p>
       ) : null}
-      {graphNodes.length > 0 || run.status === 'awaiting_approval' ? (
+      {showExecutionMap ? (
         <LiveExecutionMap
           nodes={graphNodes}
           run={run}
@@ -596,7 +641,12 @@ const ReadyJarvisLiveSystemsTab = React.memo(function ReadyJarvisLiveSystemsTab(
           errorSummary={errorSummary}
         />
       ) : null}
-      <LiveActivity events={recentEvents} />
+      <LiveActivity
+        events={recentEvents}
+        graphNodes={graphNodes}
+        includeRun={showExecutionMap}
+        run={run}
+      />
       {scopedNodes.map((node) => (
         <output
           hidden

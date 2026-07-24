@@ -90,7 +90,7 @@ export function JarvisVoiceHeader({
           <Orb state={state} size={30} ariaLabel="Jarvis voice activity" />
         </button>
         <div className="flex min-w-0 flex-col">
-          <span className="truncate text-[12px] font-semibold leading-4 text-foreground">
+          <span className="truncate text-xs font-semibold leading-4 text-foreground">
             {personaName}
           </span>
           <span
@@ -98,8 +98,8 @@ export function JarvisVoiceHeader({
             aria-live="polite"
             aria-atomic="true"
             className={cn(
-              'flex items-center gap-1 text-[10px] leading-4',
-              state === 'error' ? 'text-destructive' : 'text-muted-foreground',
+              'flex items-center gap-1 text-xs leading-4',
+              state === 'error' ? 'text-foreground' : 'text-muted-foreground',
             )}
           >
             <span
