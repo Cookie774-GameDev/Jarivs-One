@@ -68,10 +68,68 @@ describe('Jarvis action catalog', () => {
       { id: 'github.release.latest', risk: 'read-only', approval: 'never' },
       { id: 'github.workflows.list', risk: 'read-only', approval: 'never' },
       { id: 'chat.model.switch', risk: 'external-side-effect', approval: 'always' },
+      { id: 'mcp.invoke', risk: 'external-side-effect', approval: 'always' },
       { id: 'terminal.create', risk: 'safe-write', approval: 'always' },
       { id: 'terminal.run', risk: 'external-side-effect', approval: 'always' },
       { id: 'task.cancel', risk: 'destructive', approval: 'always' },
     ]);
+  });
+
+  it('publishes one closed always-confirmed MCP invocation registration', () => {
+    const invoke = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS).resolve(
+      'mcp.invoke',
+    );
+
+    expect(invoke).toMatchObject({
+      id: 'mcp.invoke',
+      inputSchema: {
+        type: 'object',
+        required: ['serverId', 'toolName'],
+        additionalProperties: false,
+      },
+      requiredCapabilities: ['mcp.external.invoke'],
+      risk: 'external-side-effect',
+      approval: 'always',
+      executor: { kind: 'builtin', registryActionId: 'mcp.invoke' },
+      credentialBindings: [],
+    });
+    expect(
+      invoke?.validateParameters({
+        serverId: 'github',
+        toolName: 'repo.read',
+        inputJson: '{"owner":"openai"}',
+        timeoutMs: 2_000,
+      }),
+    ).toEqual({
+      serverId: 'github',
+      toolName: 'repo.read',
+      inputJson: '{"owner":"openai"}',
+      timeoutMs: 2_000,
+    });
+    expect(
+      invoke?.deriveTarget({
+        accountId: 'account-1',
+        params: { serverId: 'github', toolName: 'repo.read' },
+      }),
+    ).toEqual({
+      kind: 'external_resource',
+      service: 'mcp',
+      resourceId: 'github.repo.read',
+    });
+    expect(() =>
+      invoke?.validateParameters({
+        serverId: 'github',
+        toolName: 'repo.read',
+        credential: 'forbidden',
+      }),
+    ).toThrow(/unknown fields/i);
+    expect(() =>
+      invoke?.validateParameters({
+        serverId: 'github',
+        toolName: 'repo.read',
+        inputJson: '[]',
+      }),
+    ).toThrow(/JSON object/i);
   });
 
   it('publishes a closed model-safe model-switch registration', () => {
@@ -236,6 +294,30 @@ describe('Jarvis action catalog', () => {
         }),
       ]),
     ).toThrow(/model-visible|pluginId/i);
+    expect(() =>
+      createJarvisActionCatalog([
+        registration({
+          id: 'builtin.unsafe',
+          inputSchema: {
+            type: 'object',
+            properties: { pluginId: { type: 'string' } },
+            additionalProperties: false,
+          },
+        }),
+      ]),
+    ).toThrow(/model-visible|pluginId/i);
+    expect(() =>
+      createJarvisActionCatalog([
+        registration({
+          id: 'builtin.tool-unsafe',
+          inputSchema: {
+            type: 'object',
+            properties: { toolName: { type: 'string' } },
+            additionalProperties: false,
+          },
+        }),
+      ]),
+    ).toThrow(/model-visible|toolName/i);
   });
 
   it('publishes only fixed model-safe GitHub plugin registrations with account-bound credentials', () => {

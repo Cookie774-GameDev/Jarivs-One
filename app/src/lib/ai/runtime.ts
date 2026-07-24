@@ -144,6 +144,7 @@ import {
   buildJarvisRuntimeContextCandidates,
   type JarvisRuntimeContextBlock,
 } from '@/lib/jarvis/runtimeContextCandidates';
+import { buildRoutedMcpTaskContext } from '@/lib/mcp/taskContext';
 import { getJarvisConnectivityInventoryBlock } from '@/lib/jarvis/connectivityInventory';
 import {
   compileJarvisShadowTurn,
@@ -2120,7 +2121,10 @@ async function createRuntimeKernelTurn(input: {
     requestId,
     ...(input.projectId === undefined ? {} : { projectId: input.projectId }),
     observedAt: createdAt,
-    blocks: input.contextBlocks,
+    blocks: (() => {
+      const routedMcpContext = buildRoutedMcpTaskContext(input.text);
+      return routedMcpContext ? [...input.contextBlocks, routedMcpContext] : input.contextBlocks;
+    })(),
   });
   const context = await buildJarvisContextPackForAi({
     accountId,

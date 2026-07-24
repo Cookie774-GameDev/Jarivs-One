@@ -147,6 +147,10 @@ const MAX_SCHEMA_PROPERTIES = 32;
 const MAX_SCHEMA_ENUM_VALUES = 32;
 const MAX_SCHEMA_STRING_CHARS = 240;
 const MAX_DISCOVERY_SCHEMA_TEXT_CHARS = 64 * 1_024;
+const MAX_ARGUMENT_NODES = 512;
+const MAX_ARGUMENT_KEYS = 128;
+const MAX_ARGUMENT_ARRAY_ITEMS = 256;
+const MAX_ARGUMENT_TEXT_CHARS = 256 * 1_024;
 const MAX_TOOL_CACHE_AGE_MS = 5 * 60_000;
 const MAX_PROGRESS_UPDATES = 32;
 const MAX_PROGRESS_MESSAGE_CHARS = 300;
@@ -421,6 +425,152 @@ function canonicalInputSchema(
 ): Readonly<Record<string, unknown>> {
   const source = value ?? { type: 'object', properties: {}, additionalProperties: false };
   return canonicalSchemaNode(source, 0, budget, true);
+}
+
+interface ArgumentValidationBudget {
+  nodes: number;
+  keys: number;
+  textChars: number;
+  active: WeakSet<object>;
+}
+
+function invalidToolArguments(): Error {
+  return new Error('MCP tool arguments do not match the current input schema.');
+}
+
+function consumeArgumentNode(budget: ArgumentValidationBudget): void {
+  budget.nodes += 1;
+  if (budget.nodes > MAX_ARGUMENT_NODES) throw invalidToolArguments();
+}
+
+function validateArgumentValue(
+  schema: Readonly<Record<string, unknown>>,
+  value: unknown,
+  depth: number,
+  budget: ArgumentValidationBudget,
+): unknown {
+  if (depth > MAX_SCHEMA_DEPTH) throw invalidToolArguments();
+  consumeArgumentNode(budget);
+  const type = ownDataValue(schema as Record<string, unknown>, 'type');
+  const enumValues = ownDataValue(schema as Record<string, unknown>, 'enum');
+
+  if (Array.isArray(enumValues) && !enumValues.some((entry) => Object.is(entry, value))) {
+    throw invalidToolArguments();
+  }
+  if (type === 'null') {
+    if (value !== null) throw invalidToolArguments();
+    return null;
+  }
+  if (type === 'boolean') {
+    if (typeof value !== 'boolean') throw invalidToolArguments();
+    return value;
+  }
+  if (type === 'integer') {
+    if (!Number.isSafeInteger(value)) throw invalidToolArguments();
+    return value;
+  }
+  if (type === 'number') {
+    if (typeof value !== 'number' || !Number.isFinite(value)) throw invalidToolArguments();
+    return value;
+  }
+  if (type === 'string') {
+    if (typeof value !== 'string') throw invalidToolArguments();
+    budget.textChars += value.length;
+    if (budget.textChars > MAX_ARGUMENT_TEXT_CHARS) throw invalidToolArguments();
+    return value;
+  }
+  if (!value || typeof value !== 'object' || budget.active.has(value)) {
+    throw invalidToolArguments();
+  }
+  budget.active.add(value);
+  try {
+    if (type === 'array') {
+      if (
+        !Array.isArray(value) ||
+        Object.getPrototypeOf(value) !== Array.prototype ||
+        value.length > MAX_ARGUMENT_ARRAY_ITEMS
+      ) {
+        throw invalidToolArguments();
+      }
+      const elementKeys = Reflect.ownKeys(value).filter((key) => key !== 'length');
+      if (
+        elementKeys.length !== value.length ||
+        elementKeys.some((key) => typeof key !== 'string' || !/^(?:0|[1-9]\d*)$/.test(key))
+      ) {
+        throw invalidToolArguments();
+      }
+      const itemSchema = ownDataValue(schema as Record<string, unknown>, 'items');
+      const canonicalItemSchema = record(itemSchema);
+      if (!canonicalItemSchema) throw invalidToolArguments();
+      const output: unknown[] = [];
+      for (let index = 0; index < value.length; index += 1) {
+        const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+        if (!descriptor || !descriptor.enumerable || !('value' in descriptor)) {
+          throw invalidToolArguments();
+        }
+        output.push(
+          validateArgumentValue(canonicalItemSchema, descriptor.value, depth + 1, budget),
+        );
+      }
+      return Object.freeze(output);
+    }
+    if (type !== 'object' || Array.isArray(value)) throw invalidToolArguments();
+    const input = record(value);
+    const properties = record(ownDataValue(schema as Record<string, unknown>, 'properties'));
+    if (!input || !properties) throw invalidToolArguments();
+    const ownKeys = Reflect.ownKeys(input);
+    if (ownKeys.some((key) => typeof key !== 'string')) throw invalidToolArguments();
+    const keys = ownKeys as string[];
+    budget.keys += keys.length;
+    if (keys.length > MAX_ARGUMENT_KEYS || budget.keys > MAX_ARGUMENT_KEYS) {
+      throw invalidToolArguments();
+    }
+    const required = ownDataValue(schema as Record<string, unknown>, 'required');
+    if (
+      Array.isArray(required) &&
+      required.some((key) => typeof key !== 'string' || !Object.hasOwn(input, key))
+    ) {
+      throw invalidToolArguments();
+    }
+    const output: Record<string, unknown> = {};
+    for (const key of keys) {
+      if (!Object.hasOwn(properties, key)) throw invalidToolArguments();
+      const inputDescriptor = Object.getOwnPropertyDescriptor(input, key);
+      const schemaDescriptor = Object.getOwnPropertyDescriptor(properties, key);
+      if (
+        !inputDescriptor ||
+        !inputDescriptor.enumerable ||
+        !('value' in inputDescriptor) ||
+        !schemaDescriptor ||
+        !('value' in schemaDescriptor)
+      ) {
+        throw invalidToolArguments();
+      }
+      const propertySchema = record(schemaDescriptor.value);
+      if (!propertySchema) throw invalidToolArguments();
+      budget.textChars += key.length;
+      if (budget.textChars > MAX_ARGUMENT_TEXT_CHARS) throw invalidToolArguments();
+      output[key] = validateArgumentValue(propertySchema, inputDescriptor.value, depth + 1, budget);
+    }
+    return Object.freeze(output);
+  } finally {
+    budget.active.delete(value);
+  }
+}
+
+function validateExternalToolArguments(
+  schema: Readonly<Record<string, unknown>>,
+  input: unknown,
+): Readonly<Record<string, unknown>> {
+  const validated = validateArgumentValue(schema, input, 0, {
+    nodes: 0,
+    keys: 0,
+    textChars: 0,
+    active: new WeakSet(),
+  });
+  const canonical = record(validated);
+  if (!canonical) throw invalidToolArguments();
+  return canonical;
 }
 
 function canonicalTools(value: unknown): readonly Readonly<CanonicalMcpToolDescriptor>[] {
@@ -784,14 +934,18 @@ export class McpServerManager {
       });
       server = this.requireServer(id);
     }
-    const discovered = server.tools?.some(({ name }) => name === canonicalToolName) === true;
+    const discoveredTool = server.tools?.find(({ name }) => name === canonicalToolName);
     const permitted =
       server.kind === 'local_mcp_lite' ||
       (server.exposure.mode === 'allowlist' &&
         server.exposure.toolNames.includes(canonicalToolName));
-    if (!discovered || !permitted) {
+    if (!discoveredTool || !permitted) {
       throw new Error(`MCP tool '${id}.${canonicalToolName}' is not permitted for JARVIS.`);
     }
+    const invocationInput =
+      server.kind === 'external_mcp'
+        ? validateExternalToolArguments(discoveredTool.inputSchema, input)
+        : input;
     const client = server.client;
     if (!client || server.state !== 'running') {
       throw new Error(`MCP server '${id}' was stopped before invocation.`);
@@ -799,7 +953,7 @@ export class McpServerManager {
     if (options.signal?.aborted) throw callerCancellationError(options.signal);
     const generation = server.generation;
     const argumentAudit =
-      server.kind === 'external_mcp' ? redactMcpArgumentsForAudit(input) : undefined;
+      server.kind === 'external_mcp' ? redactMcpArgumentsForAudit(invocationInput) : undefined;
     if (argumentAudit && options.onInvocationAudit) {
       const audit = Object.freeze({
         serverId: id,
@@ -859,7 +1013,7 @@ export class McpServerManager {
         }, timeoutMs);
       });
       const result = await Promise.race([
-        client.invoke(canonicalToolName, input, {
+        client.invoke(canonicalToolName, invocationInput, {
           signal: controller.signal,
           ...(onProgress === undefined ? {} : { onProgress }),
         }),
@@ -879,7 +1033,10 @@ export class McpServerManager {
       if (options.restartOnFailure !== true || options.signal?.aborted) throw error;
       await this.stop(id);
       await this.start(id);
-      return this.invoke(id, canonicalToolName, input, { ...options, restartOnFailure: false });
+      return this.invoke(id, canonicalToolName, invocationInput, {
+        ...options,
+        restartOnFailure: false,
+      });
     } finally {
       invocationActive = false;
       if (timer) clearTimeout(timer);

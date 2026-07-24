@@ -14,6 +14,7 @@ const EXPECTED = {
   all_about_me: ['memory', 'app_verified', 'mixed', 'preference', false],
   plugin_context: ['plugin', 'external_untrusted', 'external_retrieved', 'answer', false],
   plugin_status: ['plugin', 'app_verified', 'app_observed', 'capability', false],
+  mcp_tool_schemas: ['mcp', 'external_untrusted', 'external_retrieved', 'capability', false],
   model_skill_inventory: ['tool_result', 'app_verified', 'mixed', 'capability', false],
   selected_skills: ['tool_result', 'user_direct', 'user_authored', 'execution', false],
   resolved_context: ['context_node', 'app_verified', 'app_observed', 'answer', false],
@@ -68,6 +69,14 @@ describe('buildJarvisRuntimeContextCandidates', () => {
     expect(
       candidates.find((candidate) => candidate.source.label === 'AllAboutMe profile')?.source.id,
     ).toBe(JARVIS_ALL_ABOUT_ME_SOURCE_ID);
+    expect(
+      candidates.find(
+        (candidate) => candidate.source.label === 'Task-relevant external MCP tool schemas',
+      )?.atomicBody,
+    ).toBe(true);
+    expect(
+      candidates.find((candidate) => candidate.source.label === 'Project context')?.atomicBody,
+    ).toBeUndefined();
   });
 
   it('omits blank blocks and returns detached deeply frozen candidates', () => {

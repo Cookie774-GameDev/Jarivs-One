@@ -25,6 +25,7 @@ export interface JarvisContextCandidate {
   };
   explicitlyAttached: boolean;
   authorizedBody: boolean;
+  atomicBody?: boolean;
 }
 
 export interface JarvisContextPackInput {
@@ -221,6 +222,10 @@ export async function buildJarvisContextPack(
 
     const body = candidate.authorizedBody ? (excerpt ?? '') : '';
     const remaining = input.maxChars - usedChars;
+    if (candidate.atomicBody === true && body.length > remaining) {
+      exclusions.push(exclusion(source, 'context_budget_exhausted'));
+      continue;
+    }
     const admittedBody = safeSliceByCodeUnitBudget(body, remaining);
     if (body.length > 0 && admittedBody.length === 0) {
       exclusions.push(exclusion(source, 'context_budget_exhausted'));

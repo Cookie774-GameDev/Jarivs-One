@@ -76,7 +76,8 @@ export function createJarvisTerminalRegisteredActionDispatcher(
         };
       }
       command = typeof input.params.command === 'string' ? input.params.command.trim() : '';
-      label = typeof input.params.label === 'string' ? input.params.label.trim() || undefined : undefined;
+      label =
+        typeof input.params.label === 'string' ? input.params.label.trim() || undefined : undefined;
       cwd = typeof input.params.cwd === 'string' ? input.params.cwd : undefined;
       timeoutMs = typeof input.params.timeoutMs === 'number' ? input.params.timeoutMs : undefined;
       if (
@@ -1106,8 +1107,8 @@ export function createJarvisCoreActions(resolveLegacy: LegacyResolver): ActionDe
             timeoutMs: numberInRange(params, 'timeoutMs', 30_000, 250, 120_000),
           });
           return ok(`MCP tool ${serverId}.${toolName} completed.`, result);
-        } catch (error) {
-          return fail(error instanceof Error ? error.message : String(error));
+        } catch {
+          return fail('MCP tool invocation failed.');
         }
       },
     },

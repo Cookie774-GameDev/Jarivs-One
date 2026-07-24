@@ -177,6 +177,31 @@ describe('buildJarvisContextPack', () => {
     expect(noRoom.exclusions[0]?.reason).toBe('context_budget_exhausted');
   });
 
+  it('admits atomic bodies completely or excludes them without partial JSON', async () => {
+    const pack = await buildJarvisContextPack({
+      accountId: ACCOUNT_ID,
+      maxChars: 10,
+      candidates: [
+        candidate('higher-priority', { excerpt: '123456', score: 2 }),
+        candidate('atomic-json', {
+          excerpt: '{"ok":true}',
+          score: 1,
+          atomicBody: true,
+        }),
+      ],
+    });
+
+    expect(pack.items.map((item) => item.source.id)).toEqual(['higher-priority']);
+    expect(pack.exclusions).toEqual([
+      expect.objectContaining({
+        source: expect.objectContaining({ id: 'atomic-json' }),
+        reason: 'context_budget_exhausted',
+      }),
+    ]);
+    expect(pack.budget).toEqual({ maxChars: 10, usedChars: 6 });
+    expect(JSON.stringify(pack)).not.toContain('{"ok"');
+  });
+
   it('keeps external context untrusted and out of the preference layer', async () => {
     const pack = await buildJarvisContextPack({
       accountId: ACCOUNT_ID,

@@ -12,6 +12,7 @@ export type JarvisRuntimeContextBlockKey =
   | 'all_about_me'
   | 'plugin_context'
   | 'plugin_status'
+  | 'mcp_tool_schemas'
   | 'model_skill_inventory'
   | 'selected_skills'
   | 'resolved_context'
@@ -44,6 +45,7 @@ interface RuntimeContextDefinition {
   origin: SourceOrigin;
   purpose: JarvisContextCandidate['purpose'];
   explicitlyAttached: boolean;
+  atomicBody?: boolean;
 }
 
 const DEFINITIONS = Object.freeze({
@@ -110,6 +112,15 @@ const DEFINITIONS = Object.freeze({
     origin: 'app_observed',
     purpose: 'capability',
     explicitlyAttached: false,
+  },
+  mcp_tool_schemas: {
+    kind: 'mcp',
+    label: 'Task-relevant external MCP tool schemas',
+    trust: 'external_untrusted',
+    origin: 'external_retrieved',
+    purpose: 'capability',
+    explicitlyAttached: false,
+    atomicBody: true,
   },
   model_skill_inventory: {
     kind: 'tool_result',
@@ -318,6 +329,7 @@ export function buildJarvisRuntimeContextCandidates(input: {
       freshness: 'current',
       explicitlyAttached: definition.explicitlyAttached,
       authorizedBody: true,
+      ...('atomicBody' in definition && definition.atomicBody === true ? { atomicBody: true } : {}),
     } satisfies JarvisContextCandidate;
   });
   return deepFreezeJarvisCopy(candidates) as readonly Readonly<JarvisContextCandidate>[];

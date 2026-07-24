@@ -374,7 +374,14 @@ export function createJarvisActionCatalog(
         return deepFreeze({ field, locator: deepFreeze(locator) });
       },
     );
-    const forbidden = new Set(['pluginId', 'toolName', ...fields]);
+    const forbidden = new Set(['pluginId', ...fields]);
+    const permitsFixedMcpToolName =
+      id === 'mcp.invoke' &&
+      executor.kind === 'builtin' &&
+      executor.registryActionId === 'mcp.invoke';
+    if (!permitsFixedMcpToolName) {
+      forbidden.add('toolName');
+    }
     const forbiddenField = schemaHasForbiddenField(inputSchema, forbidden);
     if (forbiddenField) catalogError(`model-visible field ${forbiddenField} is forbidden`);
     if (executor.kind === 'builtin' && credentialBindings.length) {
@@ -441,6 +448,9 @@ const NO_OUTPUT_SCHEMA: JsonSchema = {
 
 const GITHUB_OWNER = /^(?=.{1,39}$)[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/;
 const GITHUB_REPOSITORY = /^[A-Za-z0-9._-]{1,100}$/;
+const MCP_SERVER_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$/;
+const MCP_TOOL_NAME = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
+const MAX_MCP_INPUT_JSON_CHARS = 256 * 1024;
 
 function validateNoParameters(
   input: Readonly<Record<string, unknown>>,
@@ -506,6 +516,54 @@ function validateModelSwitchParameters(
     if (value === undefined) continue;
     if (typeof value !== 'boolean') catalogError(`chat.model.switch ${key} must be boolean`);
     validated[key] = value;
+  }
+  return validated;
+}
+
+function mcpIdentifier(value: unknown, pattern: RegExp, label: string): string {
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  if (!pattern.test(normalized)) catalogError(`${label} is invalid`);
+  return normalized;
+}
+
+function validateMcpInvokeParameters(
+  input: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, unknown>> {
+  const record = plainRecord(input, 'mcp.invoke parameters');
+  assertExactKeys(
+    record,
+    ['serverId', 'toolName', 'inputJson', 'timeoutMs'],
+    'mcp.invoke parameters',
+  );
+  const validated: Record<string, unknown> = {
+    serverId: mcpIdentifier(record.serverId, MCP_SERVER_ID, 'MCP server id'),
+    toolName: mcpIdentifier(record.toolName, MCP_TOOL_NAME, 'MCP tool name'),
+  };
+  if (record.inputJson !== undefined) {
+    if (
+      typeof record.inputJson !== 'string' ||
+      record.inputJson.length > MAX_MCP_INPUT_JSON_CHARS
+    ) {
+      catalogError('MCP inputJson must be a bounded JSON object');
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(record.inputJson);
+    } catch {
+      catalogError('MCP inputJson must be a JSON object');
+    }
+    plainRecord(parsed, 'MCP inputJson JSON object');
+    validated.inputJson = JSON.stringify(parsed);
+  }
+  if (record.timeoutMs !== undefined) {
+    if (
+      !Number.isSafeInteger(record.timeoutMs) ||
+      (record.timeoutMs as number) < 250 ||
+      (record.timeoutMs as number) > 120_000
+    ) {
+      catalogError('MCP timeoutMs is invalid');
+    }
+    validated.timeoutMs = record.timeoutMs;
   }
   return validated;
 }
@@ -1052,6 +1110,56 @@ export const DEFAULT_JARVIS_ACTION_REGISTRATIONS = deepFreeze<
       namespace: 'chat-model',
       resourceId: 'active',
     }),
+  },
+  {
+    id: 'mcp.invoke',
+    version: 1,
+    title: 'Invoke external MCP tool',
+    description:
+      'Invoke one exact task-routed external MCP tool through its current explicit server permission.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        serverId: {
+          type: 'string',
+          description: 'Exact serverId from the task-relevant MCP schema context.',
+        },
+        toolName: {
+          type: 'string',
+          description: 'Exact toolName from the task-relevant MCP schema context.',
+        },
+        inputJson: {
+          type: 'string',
+          description:
+            'A JSON object matching that routed tool inputSchema; omit for an empty object.',
+        },
+        timeoutMs: {
+          type: 'number',
+          description: 'Optional timeout from 250 through 120000 milliseconds.',
+        },
+      },
+      required: ['serverId', 'toolName'],
+      additionalProperties: false,
+    },
+    outputSchema: NO_OUTPUT_SCHEMA,
+    requiredCapabilities: ['mcp.external.invoke'],
+    requiredEntitlements: [],
+    risk: 'external-side-effect',
+    approval: 'always',
+    expectedEffect:
+      'Invokes exactly one explicitly exposed external MCP tool and records its normalized result.',
+    exposeToAI: true,
+    executor: { kind: 'builtin', registryActionId: 'mcp.invoke' },
+    credentialBindings: [],
+    validateParameters: validateMcpInvokeParameters,
+    deriveTarget: ({ params }) => {
+      const validated = validateMcpInvokeParameters(params);
+      return {
+        kind: 'external_resource',
+        service: 'mcp',
+        resourceId: `${validated.serverId}.${validated.toolName}`,
+      };
+    },
   },
   {
     id: 'terminal.create',

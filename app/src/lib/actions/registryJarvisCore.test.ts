@@ -16,6 +16,16 @@ import {
   type JarvisTerminalOwnedExecution,
 } from '@/lib/jarvis/approvalEngine';
 
+const mcpMocks = vi.hoisted(() => ({
+  invoke: vi.fn(),
+}));
+
+vi.mock('@/lib/mcp/serverManager', () => ({
+  jarvisMcpServerManager: {
+    invoke: mcpMocks.invoke,
+  },
+}));
+
 function action(
   id: string,
   run = vi.fn(async () => ({ ok: true as const, summary: 'done' })),
@@ -89,6 +99,45 @@ describe('Jarvis canonical core actions', () => {
       ok: false,
       error: 'Canonical task cancellation is unavailable until the kernel port is connected.',
     });
+  });
+
+  it('invokes only the exact approved MCP target and sanitizes provider failures', async () => {
+    const invoke = createJarvisCoreActions(() => undefined).find(
+      (item) => item.id === 'mcp.invoke',
+    )!;
+    mcpMocks.invoke.mockResolvedValueOnce({
+      contentTrust: 'external_untrusted',
+      summary: 'Repository read.',
+    });
+
+    await expect(
+      invoke.run(
+        {
+          serverId: 'github',
+          toolName: 'repo.read',
+          inputJson: '{"owner":"openai"}',
+          timeoutMs: 2_000,
+        },
+        { source: 'ai' },
+      ),
+    ).resolves.toMatchObject({
+      ok: true,
+      summary: 'MCP tool github.repo.read completed.',
+    });
+    expect(mcpMocks.invoke).toHaveBeenLastCalledWith(
+      'github',
+      'repo.read',
+      { owner: 'openai' },
+      { timeoutMs: 2_000 },
+    );
+
+    mcpMocks.invoke.mockRejectedValueOnce(new Error('Bearer live-secret-provider-detail'));
+    const failed = await invoke.run(
+      { serverId: 'github', toolName: 'repo.read', inputJson: '{}' },
+      { source: 'ai' },
+    );
+    expect(failed).toEqual({ ok: false, error: 'MCP tool invocation failed.' });
+    expect(JSON.stringify(failed)).not.toContain('live-secret');
   });
 
   it('hands the exact canonical terminal controller to the private acceptor before success', async () => {

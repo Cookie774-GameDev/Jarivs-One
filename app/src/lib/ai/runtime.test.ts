@@ -57,9 +57,14 @@ const mocks = vi.hoisted(() => ({
   },
   voiceCanSpeak: true,
   nativeFetch: vi.fn(),
+  buildRoutedMcpTaskContext: vi.fn(),
 }));
 
 vi.mock('@/lib/nativeFetch', () => ({ nativeFetch: mocks.nativeFetch }));
+
+vi.mock('@/lib/mcp/taskContext', () => ({
+  buildRoutedMcpTaskContext: mocks.buildRoutedMcpTaskContext,
+}));
 
 vi.mock('@/features/voice/voiceRouter', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/features/voice/voiceRouter')>();
@@ -176,6 +181,7 @@ describe('startRuntimeListener agent routing', () => {
     vi.clearAllMocks();
     mocks.runAgent.mockReset();
     mocks.nativeFetch.mockReset();
+    mocks.buildRoutedMcpTaskContext.mockReset();
     mocks.voiceCanSpeak = true;
     try {
       localStorage.clear();
@@ -2030,6 +2036,12 @@ describe('startRuntimeListener agent routing', () => {
   });
 
   it('persists a length-limited provider response as partial through the installed host', async () => {
+    mocks.buildRoutedMcpTaskContext.mockReturnValueOnce(
+      Object.freeze({
+        key: 'mcp_tool_schemas',
+        text: '{"schemaVersion":1,"tools":[{"serverId":"github","toolName":"repo.read"}]}',
+      }),
+    );
     useAuthStore.setState({
       apiKeys: { groq: 'gsk_test', openai: 'sk_test' },
       chatModelSelection: {
@@ -2208,6 +2220,16 @@ describe('startRuntimeListener agent routing', () => {
             excerpt: expect.stringContaining('AAM_PROVENANCE_SENTINEL'),
           }),
           expect.objectContaining({
+            source: expect.objectContaining({
+              kind: 'mcp',
+              label: 'Task-relevant external MCP tool schemas',
+              trust: 'external_untrusted',
+              origin: 'external_retrieved',
+            }),
+            purpose: 'capability',
+            excerpt: expect.stringContaining('"toolName":"repo.read"'),
+          }),
+          expect.objectContaining({
             source: {
               id: 'jlocal_1111111111111111',
               kind: 'project_file',
@@ -2231,6 +2253,9 @@ describe('startRuntimeListener agent routing', () => {
         projectId: 'project-local-knowledge',
         query: 'Run the installed kernel host.',
       });
+      expect(mocks.buildRoutedMcpTaskContext).toHaveBeenCalledWith(
+        'Run the installed kernel host.',
+      );
       expect(harness.bindings.appendMessage).not.toHaveBeenCalled();
       const canonicalRun = await database.jarvis_runs
         .where('chat_id')

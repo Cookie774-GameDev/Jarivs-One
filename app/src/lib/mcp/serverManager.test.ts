@@ -380,6 +380,65 @@ describe('MCP server lifecycle manager', () => {
     expect(invoke).toHaveBeenCalledTimes(1);
   });
 
+  it('validates external arguments against the current discovered input schema before dispatch', async () => {
+    const invoke = vi.fn(async (_name: string, _input: unknown) => ({ ok: true }));
+    const manager = new McpServerManager();
+    managers.push(manager);
+    manager.register(
+      {
+        id: 'schema-guard',
+        start: async () => ({
+          listTools: async () => [
+            tool('issue.create', 'Create an issue', {
+              type: 'object',
+              properties: {
+                title: { type: 'string' },
+                labels: { type: 'array', items: { type: 'string', enum: ['bug', 'docs'] } },
+              },
+              required: ['title'],
+              additionalProperties: false,
+            }),
+          ],
+          invoke,
+          health: async () => true,
+          stop: async () => undefined,
+        }),
+      },
+      {
+        kind: 'external_mcp',
+        exposure: { mode: 'allowlist', toolNames: ['issue.create'] },
+      },
+    );
+    await manager.listTools('schema-guard');
+
+    await expect(manager.invoke('schema-guard', 'issue.create', {})).rejects.toThrow(
+      /arguments do not match/i,
+    );
+    await expect(
+      manager.invoke('schema-guard', 'issue.create', {
+        title: 'Fix routing',
+        credential: 'forbidden',
+      }),
+    ).rejects.toThrow(/arguments do not match/i);
+    await expect(
+      manager.invoke('schema-guard', 'issue.create', {
+        title: 'Fix routing',
+        labels: ['unknown'],
+      }),
+    ).rejects.toThrow(/arguments do not match/i);
+    expect(invoke).not.toHaveBeenCalled();
+
+    const validInput = { title: 'Fix routing', labels: ['bug'] };
+    await expect(manager.invoke('schema-guard', 'issue.create', validInput)).resolves.toMatchObject(
+      { ok: true, contentTrust: 'external_untrusted' },
+    );
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(invoke.mock.calls[0]?.[1]).toEqual(validInput);
+    expect(invoke.mock.calls[0]?.[1]).not.toBe(validInput);
+    expect(Object.isFrozen(invoke.mock.calls[0]?.[1])).toBe(true);
+    expect(Object.isFrozen((invoke.mock.calls[0]?.[1] as { labels: string[] }).labels)).toBe(true);
+  });
+
   it('never dispatches a fresh-cache invocation for an already-cancelled caller', async () => {
     const invoke = vi.fn(async () => ({ unsafe: true }));
     const controller = new AbortController();
@@ -497,7 +556,21 @@ describe('MCP server lifecycle manager', () => {
       {
         id: 'progressive',
         start: async () => ({
-          listTools: async () => [tool('report.build')],
+          listTools: async () => [
+            tool('report.build', 'Build report', {
+              type: 'object',
+              properties: {
+                query: { type: 'string' },
+                nested: {
+                  type: 'object',
+                  properties: { note: { type: 'string' } },
+                  additionalProperties: false,
+                },
+              },
+              required: ['query', 'nested'],
+              additionalProperties: false,
+            }),
+          ],
           invoke,
           health: async () => true,
           stop: async () => undefined,
@@ -511,8 +584,9 @@ describe('MCP server lifecycle manager', () => {
       'report.build',
       {
         query: 'quarterly',
-        authorization: 'Bearer synthetic-argument-token',
-        nested: { api_key: 'synthetic-api-key' },
+        nested: {
+          note: 'Use sk-proj-synthetic-argument-token-1234567890 only in the provider.',
+        },
       },
       {
         onProgress: async (update) => {
@@ -544,15 +618,14 @@ describe('MCP server lifecycle manager', () => {
         serverId: 'progressive',
         toolName: 'report.build',
         arguments: {
-          authorization: '[REDACTED]',
-          nested: { api_key: '[REDACTED]' },
+          nested: { note: 'Use [REDACTED] only in the provider.' },
           query: 'quarterly',
         },
       },
     ]);
     expect(Object.isFrozen(audits[0])).toBe(true);
     expect(JSON.stringify(audits)).not.toContain('synthetic-argument-token');
-    expect(JSON.stringify(audits)).not.toContain('synthetic-api-key');
+    expect(JSON.stringify(audits)).not.toContain('sk-proj-');
 
     emitLateProgress?.();
     expect(progress).toHaveLength(32);

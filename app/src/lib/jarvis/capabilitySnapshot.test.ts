@@ -73,6 +73,7 @@ describe('createJarvisCapabilitySnapshot', () => {
       'github.release.latest',
       'github.repository.read',
       'github.workflows.list',
+      'mcp.invoke',
       'task.cancel',
       'terminal.create',
       'terminal.run',
@@ -158,6 +159,15 @@ describe('createJarvisCapabilitySnapshot', () => {
       approval: 'never',
     });
     expect(JSON.stringify(schemas.slice(2, 9))).not.toMatch(/token|credential|secret/i);
+    expect(schemas[9]).toMatchObject({
+      id: 'mcp.invoke',
+      inputSchema: {
+        required: ['serverId', 'toolName'],
+        additionalProperties: false,
+      },
+      risk: 'external-side-effect',
+      approval: 'always',
+    });
     for (const schema of schemas) {
       expect(schema).not.toHaveProperty('executor');
       expect(schema).not.toHaveProperty('credentialBindings');
