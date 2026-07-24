@@ -44,6 +44,7 @@ use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 mod agent_coordination;
+mod artifact_access;
 mod branding;
 mod browser_process;
 mod cli_bridge;
@@ -336,6 +337,7 @@ pub fn run() {
             greet,
             app_version,
             refresh_app_branding,
+            artifact_access::open_jarvis_artifact_path,
             kernel_host::register_kernel_host,
             kernel_host::kernel_client_request,
             kernel_host::kernel_host_respond,

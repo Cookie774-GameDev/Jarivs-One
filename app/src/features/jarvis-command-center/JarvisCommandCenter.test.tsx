@@ -235,6 +235,43 @@ describe('JarvisCommandCenter', () => {
     expect(dataPort.getLiveEvidenceSnapshot).toHaveBeenCalledTimes(1);
   });
 
+  it('projects a persisted URI artifact into a real concise output link', async () => {
+    const dataPort = port(run({ status: 'completed' }));
+    vi.mocked(dataPort.getArtifactsForRun).mockResolvedValue([
+      {
+        schemaVersion: 1,
+        id: 'artifact-linked-1',
+        runId: 'run-1',
+        requestId: 'request-linked-1',
+        attemptNumber: 1,
+        state: 'ready',
+        kind: 'document',
+        title: 'Launch report',
+        uri: 'https://example.test/reports/launch',
+        safeSummary: 'Verified persisted report.',
+        sourceRefs: [],
+        createdAt: 110,
+      },
+    ]);
+    render(
+      <JarvisCommandCenter
+        accountId="account-1"
+        chatId="chat-1"
+        dataPort={dataPort}
+        handlers={{}}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: /expand command center/i }));
+
+    expect(
+      (await screen.findByRole('link', { name: 'Open output: Launch report' })).getAttribute(
+        'href',
+      ),
+    ).toBe('https://example.test/reports/launch');
+    expect(screen.getByText('Verified persisted report.')).not.toBeNull();
+  });
+
   it('routes the one eligible action without cross-calling cancellation or logical retry', async () => {
     const scheduled = run({
       source: 'schedule',
