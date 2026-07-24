@@ -3,7 +3,7 @@ import { ArrowUpRight } from 'lucide-react';
 import type { JarvisArtifactV1 } from './types';
 import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
 import { SIK_CONTROL } from '@/lib/jarvis/smoke/evidenceIds';
-import { isTauri, openLocalArtifactPath } from '@/lib/tauri';
+import { isTauri, openExternal, openLocalArtifactPath } from '@/lib/tauri';
 import {
   conciseJarvisArtifactSummary,
   isRenderableJarvisArtifact,
@@ -42,7 +42,10 @@ export function JarvisOutputsTab({ outputs }: { outputs: readonly JarvisArtifact
         {renderableOutputs.map((output) => {
           const access = resolveJarvisArtifactAccess(output, { desktop: isTauri });
           const summary = conciseJarvisArtifactSummary(output.safeSummary);
-          const accessLabel = `Open output: ${output.title}`;
+          const accessLabel =
+            access?.kind === 'external_uri'
+              ? `Open output: ${output.title} on ${access.hostname}`
+              : `Open output: ${output.title}`;
           return (
             <li className="jarvis-command-center__row" key={output.id}>
               <span className="jarvis-command-center__rail" data-state={output.state} />
@@ -54,7 +57,23 @@ export function JarvisOutputsTab({ outputs }: { outputs: readonly JarvisArtifact
               </span>
               <span className="jarvis-command-center__row-meta">
                 <span className="jarvis-command-center__state">{output.state}</span>
-                {access?.kind === 'uri' ? (
+                {access?.kind === 'external_uri' ? (
+                  <button
+                    className="jarvis-command-center__output-action"
+                    type="button"
+                    aria-label={accessLabel}
+                    onClick={() => {
+                      setAccessStatus('');
+                      void openExternal(access.target).then(
+                        () => setAccessStatus(`Opened output: ${output.title}`),
+                        () => setAccessStatus(`Could not open output: ${output.title}`),
+                      );
+                    }}
+                  >
+                    Open {access.hostname}
+                    <ArrowUpRight aria-hidden="true" />
+                  </button>
+                ) : access?.kind === 'internal_uri' ? (
                   <a
                     className="jarvis-command-center__output-action"
                     href={access.target}

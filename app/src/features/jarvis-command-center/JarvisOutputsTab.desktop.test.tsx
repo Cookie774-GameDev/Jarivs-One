@@ -3,12 +3,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { JarvisArtifactV1 } from './types';
 import { JarvisOutputsTab } from './JarvisOutputsTab';
 
-const { openLocalArtifactPath } = vi.hoisted(() => ({
+const { openExternal, openLocalArtifactPath } = vi.hoisted(() => ({
+  openExternal: vi.fn<(url: string) => Promise<void>>(),
   openLocalArtifactPath: vi.fn<(path: string) => Promise<void>>(),
 }));
 
 vi.mock('@/lib/tauri', () => ({
   isTauri: true,
+  openExternal,
   openLocalArtifactPath,
 }));
 
@@ -33,8 +35,24 @@ function localArtifact(): JarvisArtifactV1 {
 
 describe('JarvisOutputsTab desktop local access', () => {
   beforeEach(() => {
+    openExternal.mockReset();
+    openExternal.mockResolvedValue(undefined);
     openLocalArtifactPath.mockReset();
     openLocalArtifactPath.mockResolvedValue(undefined);
+  });
+
+  it('routes HTTPS artifacts through the desktop external-open bridge after showing the host', async () => {
+    const url = 'https://downloads.example.test/reports/launch';
+    render(<JarvisOutputsTab outputs={[{ ...localArtifact(), uri: url }]} />);
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Open output: Local report on downloads.example.test',
+      }),
+    );
+
+    await waitFor(() => expect(openExternal).toHaveBeenCalledWith(url));
+    expect(openLocalArtifactPath).not.toHaveBeenCalled();
   });
 
   it('routes an absolute local artifact through the fail-closed desktop bridge', async () => {

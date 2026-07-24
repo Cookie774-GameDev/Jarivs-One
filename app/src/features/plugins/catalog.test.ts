@@ -51,6 +51,10 @@ describe('plugin catalog', () => {
         'drafts',
         'approved send',
       ],
+      requiredScopes: [
+        'https://www.googleapis.com/auth/gmail.readonly',
+        'https://www.googleapis.com/auth/gmail.compose',
+      ],
       tools: [
         { name: 'message_search', readOnly: true },
         { name: 'message_read', readOnly: true },
@@ -82,6 +86,10 @@ describe('plugin catalog', () => {
         'source links',
         'approved Google document creation',
       ],
+      requiredScopes: [
+        'https://www.googleapis.com/auth/drive.readonly',
+        'https://www.googleapis.com/auth/drive.file',
+      ],
       tools: [
         { name: 'files_search', readOnly: true },
         { name: 'document_read', readOnly: true },
@@ -112,6 +120,13 @@ describe('plugin catalog', () => {
         'approved preset design creation',
         'structured text autofill from eligible brand templates',
         'validated edit and view links',
+      ],
+      requiredScopes: [
+        'profile:read',
+        'design:meta:read',
+        'design:content:write',
+        'brandtemplate:meta:read',
+        'brandtemplate:content:read',
       ],
       tools: [
         { name: 'designs_search', readOnly: true },
@@ -152,6 +167,39 @@ describe('plugin catalog', () => {
 
   it('excludes needs_credentials placeholders from the curated catalog', () => {
     expect(PLUGIN_CATALOG.every((plugin) => plugin.status !== 'needs_credentials')).toBe(true);
+  });
+
+  it('declares exact least-privilege scopes for every implemented OAuth connector', () => {
+    const implementedOauth = PLUGIN_CATALOG.filter(
+      (plugin) => plugin.status === 'implemented' && plugin.authType === 'oauth',
+    );
+
+    expect(implementedOauth.map((plugin) => plugin.id).sort()).toEqual([
+      'canva',
+      'gmail',
+      'google-drive',
+    ]);
+    expect(implementedOauth.every((plugin) => (plugin.requiredScopes?.length ?? 0) > 0)).toBe(true);
+  });
+
+  it('rejects implemented OAuth metadata with missing or duplicate scope disclosure', () => {
+    const gmail = PLUGIN_CATALOG.find((plugin) => plugin.id === 'gmail');
+    expect(gmail).toBeTruthy();
+
+    expect(validatePluginCatalog([{ ...gmail!, requiredScopes: [] }])).toContain(
+      'gmail: implemented OAuth plugin missing required scopes',
+    );
+    expect(
+      validatePluginCatalog([
+        {
+          ...gmail!,
+          requiredScopes: [
+            'https://www.googleapis.com/auth/gmail.readonly',
+            'https://www.googleapis.com/auth/gmail.readonly',
+          ],
+        },
+      ]),
+    ).toContain('gmail: invalid required scopes');
   });
 
   it('reports catalog coverage stats', () => {

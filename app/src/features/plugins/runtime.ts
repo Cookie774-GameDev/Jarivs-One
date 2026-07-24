@@ -610,6 +610,9 @@ function mailchimpDatacenter(apiKey: string): string {
 
 function substitute(template: string, values: CredentialMap, manifest: PluginManifest): string {
   return template.replace(/\{\{(\w+)\}\}/g, (_, key: string) => {
+    if (manifest.id === 'supabase' && key === 'url') {
+      return normalizeSupabaseProjectOrigin(required(values, 'url', 'Project URL'));
+    }
     if (key === 'store') return normalizeStoreDomain(required(values, 'store', 'Store domain'));
     if (key === 'basic_email_key') {
       return btoa(
@@ -693,7 +696,11 @@ async function runHttpTest(
   for (const [header, value] of Object.entries(test.headers ?? {})) {
     headers[header] = substitute(value, values, manifest);
   }
-  const init: RequestInit = { method: test.method ?? 'GET', headers };
+  const init: RequestInit = {
+    method: test.method ?? 'GET',
+    headers,
+    ...(manifest.id === 'supabase' ? { redirect: 'error' as const } : {}),
+  };
   if (test.body) init.body = substitute(test.body, values, manifest);
   const { data, hostname } = await requestProbe(url, init, signal, test.acceptEmpty);
   if (Object.prototype.hasOwnProperty.call(data, 'ok') && data.ok !== true) {
@@ -718,6 +725,49 @@ function manualSetupResult(manifest: PluginManifest): PluginTestResult {
   };
 }
 
+function isPrivilegedSupabaseKey(value: string): boolean {
+  const key = value.trim();
+  if (/^(?:sb_secret_|service_role(?:$|[._-]))/iu.test(key)) return true;
+  const parts = key.split('.');
+  if (parts.length !== 3 || !parts[1]) return false;
+  try {
+    const encoded = parts[1].replace(/-/gu, '+').replace(/_/gu, '/');
+    const padded = encoded.padEnd(Math.ceil(encoded.length / 4) * 4, '=');
+    const payload = JSON.parse(atob(padded)) as unknown;
+    return (
+      Boolean(payload) &&
+      typeof payload === 'object' &&
+      !Array.isArray(payload) &&
+      (payload as Record<string, unknown>).role === 'service_role'
+    );
+  } catch {
+    return false;
+  }
+}
+
+function normalizeSupabaseProjectOrigin(value: string): string {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw safeFailure('supabase_project_url_invalid');
+  }
+  const hostname = url.hostname.toLowerCase();
+  if (
+    url.protocol !== 'https:' ||
+    url.username ||
+    url.password ||
+    url.port ||
+    (url.pathname !== '' && url.pathname !== '/') ||
+    url.search ||
+    url.hash ||
+    !/^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])?\.supabase\.co$/u.test(hostname)
+  ) {
+    throw safeFailure('supabase_project_url_invalid');
+  }
+  return `https://${hostname}`;
+}
+
 async function testManifestConnection(
   manifest: PluginManifest,
   values: CredentialMap,
@@ -734,6 +784,9 @@ async function testManifestConnection(
   if (manifest.id === 'gmail') return await testGmailConnection({ values, signal });
   if (manifest.id === 'google-drive') {
     return await testGoogleDriveConnection({ values, signal });
+  }
+  if (manifest.id === 'supabase' && isPrivilegedSupabaseKey(values.key ?? '')) {
+    throw safeFailure('supabase_privileged_key_rejected');
   }
   if (manifest.id === 'zapier') {
     return await testZapierConnection({ values, signal, gatewayFactory: zapierGatewayFactory });
@@ -1326,7 +1379,8 @@ export function createAccountScopedPluginRuntime(input: {
     values: CredentialMap;
   }): CanvaCredentialRotation => {
     if (record.manifest.id !== 'canva') throw safeFailure('plugin_unavailable');
-    return async ({ fieldId, expectedValue, nextValue }) => {
+    return async (mutation) => {
+      const { fieldId, expectedValue } = mutation;
       assertActiveAccount(record.accountId, input.activeAccountId);
       const authorization = record.authorizations.find(
         (candidate) =>
@@ -1348,12 +1402,35 @@ export function createAccountScopedPluginRuntime(input: {
         throw safeFailure('credential_grant_unavailable');
       }
       if (current !== expectedValue) throw safeFailure('prepared_credential_value_mismatch');
+      if (mutation.operation === 'invalidate') {
+        await input.grants.removeExact({
+          locks: record.locks,
+          locator: authorization.locator,
+          expected: {
+            accountId: authorization.accountId,
+            pluginId: authorization.locator.pluginId,
+            fieldId: authorization.locator.fieldId,
+            grantId: authorization.grantId,
+            revision: authorization.revision,
+          },
+        });
+        try {
+          await input.credentialAdapter.deleteExistingCredential(authorization.locator);
+        } catch {
+          throw safeFailure('credential_delete_failed');
+        }
+        delete record.values[fieldId];
+        return;
+      }
       try {
-        await input.credentialAdapter.writeExistingCredential(authorization.locator, nextValue);
+        await input.credentialAdapter.writeExistingCredential(
+          authorization.locator,
+          mutation.nextValue,
+        );
       } catch {
         throw safeFailure('credential_rotation_failed');
       }
-      record.values[fieldId] = nextValue;
+      record.values[fieldId] = mutation.nextValue;
       const after = await input.credentialAuthorization.revalidateLocked({
         authorization,
         locks: record.locks,
@@ -1377,8 +1454,18 @@ export function createAccountScopedPluginRuntime(input: {
       assertActiveAccount(accountId, input.activeAccountId);
       const manifest = manifestFor(pluginId);
       const locator = locatorFor(manifest, fieldId);
-      const normalizedValue = value.trim();
+      let normalizedValue = value.trim();
       if (!normalizedValue) throw safeFailure('credential_value_invalid');
+      if (manifest.id === 'supabase' && fieldId === 'url') {
+        normalizedValue = normalizeSupabaseProjectOrigin(normalizedValue);
+      }
+      if (
+        manifest.id === 'supabase' &&
+        fieldId === 'key' &&
+        isPrivilegedSupabaseKey(normalizedValue)
+      ) {
+        throw safeFailure('supabase_privileged_key_rejected');
+      }
       await withPluginCredentialLocatorLocks([locator], async (locks) => {
         assertActiveAccount(accountId, input.activeAccountId);
         input.connections.removeConnection(accountId, manifest.id);

@@ -14,7 +14,7 @@ import {
   getJarvisRootDir,
   getStoredProjectRoot,
 } from '@/features/files/projectFiles';
-import { isPathInsideRoot } from './filePolicy';
+import { isPathInsideRoot, normalizePortableAbsolutePath } from './filePolicy';
 import type { ActionDef, ActionResult } from './types';
 import type { CanonicalFileActionEvidence } from '@/lib/jarvis/artifactProducerAdapters';
 
@@ -54,13 +54,18 @@ export function isCanonicalFileArtifactResult(
   return false;
 }
 
-function isAbsolutePath(path: string): boolean {
-  return /^[A-Za-z]:[\\/]/.test(path) || path.startsWith('/');
-}
-
 function samePath(left: string, right: string): boolean {
-  const normalize = (value: string) => value.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
-  return normalize(left) === normalize(right);
+  const leftNormalized = normalizePortableAbsolutePath(left);
+  const rightNormalized = normalizePortableAbsolutePath(right);
+  if (!leftNormalized || !rightNormalized) return false;
+  const windows =
+    /^[A-Za-z]:\\/u.test(leftNormalized) ||
+    leftNormalized.startsWith('\\\\') ||
+    /^[A-Za-z]:\\/u.test(rightNormalized) ||
+    rightNormalized.startsWith('\\\\');
+  return windows
+    ? leftNormalized.toLowerCase() === rightNormalized.toLowerCase()
+    : leftNormalized === rightNormalized;
 }
 
 async function allowedRoot(
@@ -69,13 +74,16 @@ async function allowedRoot(
   { ok: true; root: string; jarvisRoot: string; isDefault: boolean } | { ok: false; error: string }
 > {
   const projectId = useAuthStore.getState().projectId;
-  const activeRoot = getStoredProjectRoot(projectId ? String(projectId) : null).trim();
-  const jarvisRoot = await getJarvisRootDir();
-  const defaultRoot = await getJarvisProjectsDir();
-  const requestedRoot = requested?.trim();
+  const activeRoot =
+    normalizePortableAbsolutePath(getStoredProjectRoot(projectId ? String(projectId) : null)) ?? '';
+  const jarvisRoot = normalizePortableAbsolutePath(await getJarvisRootDir());
+  const defaultRoot = normalizePortableAbsolutePath(await getJarvisProjectsDir()) ?? '';
+  const requestedRoot = requested ? normalizePortableAbsolutePath(requested) : null;
+  if (requested?.trim() && !requestedRoot) {
+    return { ok: false, error: 'The requested project folder path is invalid.' };
+  }
   const root = requestedRoot || activeRoot || defaultRoot;
-  if (!root || !isAbsolutePath(root))
-    return { ok: false, error: 'No allowed project folder is available.' };
+  if (!root || !jarvisRoot) return { ok: false, error: 'No allowed project folder is available.' };
   const allowed = [activeRoot, defaultRoot].filter(Boolean);
   if (!allowed.some((candidate) => samePath(candidate, root))) {
     return {
@@ -92,9 +100,8 @@ async function allowedRoot(
 }
 
 async function validatePath(path: unknown, rootParam: unknown) {
-  const value = typeof path === 'string' ? path.trim() : '';
-  if (!value || !isAbsolutePath(value))
-    return { ok: false as const, error: 'An absolute file path is required.' };
+  const value = typeof path === 'string' ? normalizePortableAbsolutePath(path) : null;
+  if (!value) return { ok: false as const, error: 'An absolute file path is required.' };
   const root = await allowedRoot(typeof rootParam === 'string' ? rootParam : undefined);
   if (!root.ok) return root;
   if (!isPathInsideRoot(value, root.root)) {

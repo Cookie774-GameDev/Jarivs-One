@@ -161,6 +161,83 @@ describe('account-scoped plugin runtime', () => {
     });
   });
 
+  it('rejects a recognizable Supabase privileged key before credential or grant storage', async () => {
+    const test = fixture();
+    const request = vi.spyOn(globalThis, 'fetch');
+
+    await expect(
+      test.runtime.management.saveCredential({
+        accountId: 'account-a',
+        pluginId: 'supabase',
+        fieldId: 'key',
+        value: 'sb_secret_synthetic_test_value',
+      }),
+    ).rejects.toThrow(/supabase_privileged_key_rejected/i);
+    expect(request).not.toHaveBeenCalled();
+    expect(test.credentialAdapter.writeExistingCredential).not.toHaveBeenCalled();
+    await expect(
+      test.grants.get({ pluginId: 'supabase', fieldId: 'key' }),
+    ).resolves.toBeUndefined();
+    expect(test.connectionRows.has('account-a\u0000supabase')).toBe(false);
+  });
+
+  it('normalizes only hosted HTTPS Supabase project origins and disables redirects', async () => {
+    const test = fixture({
+      randomIds: ['grant-supabase-url', 'grant-supabase-key'],
+      times: [100, 200, 300],
+    });
+    for (const value of [
+      'http://project.supabase.co',
+      'https://user@project.supabase.co',
+      'https://project.supabase.co:8443',
+      'https://project.supabase.co/rest/v1',
+      'https://project.supabase.co?redirect=1',
+      'https://127.0.0.1',
+      'https://attacker.invalid',
+    ]) {
+      await expect(
+        test.runtime.management.saveCredential({
+          accountId: 'account-a',
+          pluginId: 'supabase',
+          fieldId: 'url',
+          value,
+        }),
+      ).rejects.toThrow(/supabase_project_url_invalid/i);
+    }
+    expect(test.credentialAdapter.writeExistingCredential).not.toHaveBeenCalled();
+
+    await test.runtime.management.saveCredential({
+      accountId: 'account-a',
+      pluginId: 'supabase',
+      fieldId: 'url',
+      value: 'https://Project-Ref.supabase.co/',
+    });
+    await test.runtime.management.saveCredential({
+      accountId: 'account-a',
+      pluginId: 'supabase',
+      fieldId: 'key',
+      value: 'sb_publishable_synthetic_test_value',
+    });
+    const request = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response('', { status: 200 }));
+
+    await expect(
+      test.runtime.management.testConnection({
+        accountId: 'account-a',
+        pluginId: 'supabase',
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      accountLabel: 'project-ref.supabase.co',
+    });
+    expect(test.values.get('supabase\u0000url')).toBe('https://project-ref.supabase.co');
+    expect(request).toHaveBeenCalledWith(
+      'https://project-ref.supabase.co/rest/v1/',
+      expect.objectContaining({ redirect: 'error' }),
+    );
+  });
+
   it('increments same-account revisions but starts a foreign overwrite at one with a fresh id', async () => {
     const test = fixture({ randomIds: ['a-1', 'a-2', 'b-1'], times: [10, 20, 30] });
     const input = { pluginId: 'github', fieldId: 'token', value: 'value' };
@@ -1153,7 +1230,8 @@ describe('account-scoped plugin runtime', () => {
             refresh_token: 'canva-refresh-after',
             token_type: 'Bearer',
             expires_in: 14_400,
-            scope: 'profile:read design:meta:read design:content:write brandtemplate:meta:read',
+            scope:
+              'profile:read design:meta:read design:content:write brandtemplate:meta:read brandtemplate:content:read',
           }),
           { status: 200 },
         ),
@@ -1187,6 +1265,64 @@ describe('account-scoped plugin runtime', () => {
       enabled: true,
       configuredFields: ['client_id', 'client_secret', 'refresh_token'],
     });
+  });
+
+  it('removes a rotated Canva credential and grant when introspection denies its scopes', async () => {
+    const test = fixture({
+      randomIds: ['grant-canva-client', 'grant-canva-secret', 'grant-canva-refresh'],
+      times: [100, 200, 300],
+    });
+    for (const [fieldId, value] of [
+      ['client_id', 'OC-vibespace-client-id'],
+      ['client_secret', 'cnvca-vibespace-client-secret'],
+      ['refresh_token', 'canva-refresh-before'],
+    ] as const) {
+      await test.runtime.management.saveCredential({
+        accountId: 'account-a',
+        pluginId: 'canva',
+        fieldId,
+        value,
+      });
+    }
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            access_token: 'canva-access-must-not-leak',
+            refresh_token: 'canva-refresh-overprivileged',
+            token_type: 'Bearer',
+            expires_in: 14_400,
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            active: true,
+            client: 'OC-vibespace-client-id',
+            scope:
+              'profile:read design:meta:read design:content:write brandtemplate:meta:read brandtemplate:content:read user:email:write',
+          }),
+          { status: 200 },
+        ),
+      );
+
+    await expect(
+      test.runtime.management.testConnection({
+        accountId: 'account-a',
+        pluginId: 'canva',
+      }),
+    ).resolves.toMatchObject({ ok: false });
+    expect(test.values.has('canva\u0000refresh_token')).toBe(false);
+    await expect(
+      test.grants.get({ pluginId: 'canva', fieldId: 'refresh_token' }),
+    ).resolves.toBeUndefined();
+    expect(test.credentialAdapter.deleteExistingCredential).toHaveBeenCalledWith({
+      pluginId: 'canva',
+      fieldId: 'refresh_token',
+    });
+    expect(test.connectionRows.has('account-a\u0000canva')).toBe(false);
   });
 
   it('runs approved Canva creation with locked rotation and emits only canonical Canva artifacts', async () => {
@@ -1231,7 +1367,8 @@ describe('account-scoped plugin runtime', () => {
             refresh_token: 'canva-refresh-after-create',
             token_type: 'Bearer',
             expires_in: 14_400,
-            scope: 'design:content:write',
+            scope:
+              'profile:read design:meta:read design:content:write brandtemplate:meta:read brandtemplate:content:read',
           }),
           { status: 200 },
         ),
@@ -1341,7 +1478,8 @@ describe('account-scoped plugin runtime', () => {
           refresh_token: 'canva-refresh-not-persisted',
           token_type: 'Bearer',
           expires_in: 14_400,
-          scope: 'profile:read',
+          scope:
+            'profile:read design:meta:read design:content:write brandtemplate:meta:read brandtemplate:content:read',
         }),
         { status: 200 },
       ),
@@ -1377,7 +1515,8 @@ describe('account-scoped plugin runtime', () => {
             refresh_token: 'canva-refresh-survives-resource-failure',
             token_type: 'Bearer',
             expires_in: 14_400,
-            scope: 'design:meta:read design:content:write',
+            scope:
+              'profile:read design:meta:read design:content:write brandtemplate:meta:read brandtemplate:content:read',
           }),
           { status: 200 },
         ),

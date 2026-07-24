@@ -6,9 +6,15 @@ import { PluginManagementCapabilityProvider } from './managementContext';
 import type { PluginManagementCapability } from './runtime';
 import { useAuthStore } from '@/stores/auth';
 
+const { openExternal } = vi.hoisted(() => ({
+  openExternal: vi.fn<(url: string) => Promise<void>>(),
+}));
+
 vi.mock('@/lib/sync', () => ({
   enqueueMutation: vi.fn(async () => 'syq_plugin_test'),
 }));
+
+vi.mock('@/lib/tauri', () => ({ openExternal }));
 
 describe('Plugins settings page', () => {
   const originalOpen = window.open;
@@ -46,6 +52,8 @@ describe('Plugins settings page', () => {
     vi.mocked(management.saveCredential).mockClear();
     vi.mocked(management.testConnection).mockClear();
     vi.mocked(management.disconnect).mockClear();
+    openExternal.mockReset();
+    openExternal.mockResolvedValue(undefined);
     window.open = vi.fn();
   });
 
@@ -92,18 +100,31 @@ describe('Plugins settings page', () => {
     });
   }, 15_000);
 
-  it('opens the official provider connect page before credential entry', () => {
+  it('opens the official provider connect page through the safe external bridge', async () => {
     renderPlugins();
     fireEvent.change(screen.getByLabelText('Search plugins'), { target: { value: 'GitHub' } });
     fireEvent.click(
       within(screen.getByTestId('plugin-card-github')).getByRole('button', { name: /^connect$/i }),
     );
     fireEvent.click(screen.getByRole('button', { name: /open github connect page/i }));
-    expect(window.open).toHaveBeenCalledWith(
-      'https://github.com/settings/personal-access-tokens',
-      '_blank',
-      'noopener,noreferrer',
+    await waitFor(() =>
+      expect(openExternal).toHaveBeenCalledWith(
+        'https://github.com/settings/personal-access-tokens',
+      ),
     );
+    expect(window.open).not.toHaveBeenCalled();
+  }, 15_000);
+
+  it('shows exact required OAuth scopes before provider authorization', () => {
+    renderPlugins();
+    fireEvent.change(screen.getByLabelText('Search plugins'), { target: { value: 'Gmail' } });
+    fireEvent.click(
+      within(screen.getByTestId('plugin-card-gmail')).getByRole('button', { name: /^connect$/i }),
+    );
+
+    expect(screen.getByText('Required provider scopes')).toBeTruthy();
+    expect(screen.getByText('https://www.googleapis.com/auth/gmail.readonly')).toBeTruthy();
+    expect(screen.getByText('https://www.googleapis.com/auth/gmail.compose')).toBeTruthy();
   }, 15_000);
 
   it('shows and mutates only the canonical account connection map', () => {

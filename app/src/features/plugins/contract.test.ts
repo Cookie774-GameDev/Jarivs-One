@@ -11,6 +11,7 @@ const manifest: PluginManifest = {
   provider: 'Example Inc.',
   authType: 'token',
   fields: [{ id: 'token', label: 'Token', secret: true, required: true }],
+  requiredScopes: ['repository:read'],
   status: 'implemented',
   help: 'Create a scoped token.',
   tools: [{ name: 'repo.read', description: 'Read repo', readOnly: true }],
@@ -39,6 +40,7 @@ describe('plugin runtime contract', () => {
     expect(contract).toMatchObject({
       health: { state: 'healthy' },
       actions: ['connect', 'test', 'disconnect'],
+      auth: { requiredScopes: ['repository:read'] },
       permissions: [{ capability: 'repo.read', access: 'read' }],
     });
     expect(getPluginRuntimeContract('account-b', manifest).health.state).toBe('not-connected');

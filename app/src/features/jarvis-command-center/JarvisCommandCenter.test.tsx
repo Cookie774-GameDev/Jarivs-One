@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { StrictMode } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   JarvisArtifactV1,
   JarvisCommandCenterDataPort,
@@ -121,6 +121,10 @@ function setReducedMotion(matches: boolean) {
 }
 
 describe('JarvisCommandCenter', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   beforeEach(() => {
     setReducedMotion(false);
     resetJarvisApprovalNavigationForTests();
@@ -322,11 +326,19 @@ describe('JarvisCommandCenter', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /expand command center/i }));
 
-    expect(
-      (await screen.findByRole('link', { name: 'Open output: Launch report' })).getAttribute(
-        'href',
+    const openWindow = vi.spyOn(window, 'open').mockReturnValue(null);
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'Open output: Launch report on example.test',
+      }),
+    );
+    await waitFor(() =>
+      expect(openWindow).toHaveBeenCalledWith(
+        'https://example.test/reports/launch',
+        '_blank',
+        'noopener,noreferrer',
       ),
-    ).toBe('https://example.test/reports/launch');
+    );
     expect(screen.getByText('Verified persisted report.')).not.toBeNull();
   });
 

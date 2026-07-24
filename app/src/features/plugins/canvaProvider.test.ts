@@ -12,7 +12,7 @@ const credentials = {
 };
 
 function tokenResponse(
-  scope = 'profile:read design:meta:read design:content:write brandtemplate:meta:read',
+  scope = 'profile:read design:meta:read design:content:write brandtemplate:meta:read brandtemplate:content:read',
 ) {
   return new Response(
     JSON.stringify({
@@ -27,6 +27,39 @@ function tokenResponse(
 }
 
 describe('Canva Connect provider', () => {
+  it('rejects provider grants outside the exact connector scope allowlist', async () => {
+    const rotateCredential = vi.fn().mockResolvedValue(undefined);
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(tokenResponse('profile:read user:email:write'));
+
+    await expect(
+      testCanvaConnection({
+        values: credentials,
+        signal: new AbortController().signal,
+        rotateCredential,
+      }),
+    ).rejects.toThrow(/scope_not_allowed/i);
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    expect(rotateCredential).not.toHaveBeenCalled();
+  });
+
+  it('rejects an incomplete declared scope grant before persisting its rotated credential', async () => {
+    const rotateCredential = vi.fn().mockResolvedValue(undefined);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      tokenResponse('profile:read design:meta:read design:content:write brandtemplate:meta:read'),
+    );
+
+    await expect(
+      testCanvaConnection({
+        values: credentials,
+        signal: new AbortController().signal,
+        rotateCredential,
+      }),
+    ).rejects.toThrow(/required_scope_unavailable/i);
+    expect(rotateCredential).not.toHaveBeenCalled();
+  });
+
   it('rotates the one-use refresh token under caller authority before testing the fixed profile endpoint', async () => {
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')
@@ -63,6 +96,7 @@ describe('Canva Connect provider', () => {
       'grant_type=refresh_token&refresh_token=canva-refresh-token-before-rotation',
     );
     expect(rotateCredential).toHaveBeenCalledWith({
+      operation: 'rotate',
       fieldId: 'refresh_token',
       expectedValue: 'canva-refresh-token-before-rotation',
       nextValue: 'canva-refresh-token-after-rotation',
@@ -92,7 +126,8 @@ describe('Canva Connect provider', () => {
           JSON.stringify({
             active: true,
             client: 'OC-vibespace-client-id',
-            scope: 'profile:read design:meta:read design:content:write brandtemplate:meta:read',
+            scope:
+              'profile:read design:meta:read design:content:write brandtemplate:meta:read brandtemplate:content:read',
           }),
           { status: 200 },
         ),
@@ -169,7 +204,12 @@ describe('Canva Connect provider', () => {
       }),
     ).rejects.toThrow(/token_introspection_invalid/i);
 
-    expect(rotateCredential).toHaveBeenCalledOnce();
+    expect(rotateCredential).toHaveBeenCalledTimes(2);
+    expect(rotateCredential).toHaveBeenLastCalledWith({
+      operation: 'invalidate',
+      fieldId: 'refresh_token',
+      expectedValue: 'canva-refresh-token-after-rotation',
+    });
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
@@ -852,7 +892,7 @@ describe('Canva Connect provider', () => {
         rotateCredential,
       }),
     ).rejects.toThrow(/required_scope_unavailable/i);
-    expect(rotateCredential).toHaveBeenCalledOnce();
+    expect(rotateCredential).not.toHaveBeenCalled();
     expect(scopeFetch).toHaveBeenCalledOnce();
 
     scopeFetch.mockRestore();

@@ -10,6 +10,7 @@ export interface PluginRuntimeContract {
     type: PluginManifest['authType'];
     secretStorage: 'os-keychain' | 'none';
     requiredFields: string[];
+    requiredScopes: string[];
   };
   capabilities: string[];
   permissions: Array<{ capability: string; access: 'read' | 'write' }>;
@@ -84,6 +85,7 @@ export function getPluginRuntimeContract(
       type: manifest.authType,
       secretStorage: manifest.authType === 'none' ? 'none' : 'os-keychain',
       requiredFields: manifest.fields.filter((field) => field.required).map((field) => field.id),
+      requiredScopes: [...(manifest.requiredScopes ?? [])],
     },
     capabilities: [
       ...new Set([...manifest.supportedFeatures, ...manifest.tools.map((tool) => tool.name)]),
@@ -130,6 +132,9 @@ export function validatePluginRuntimeContract(contract: PluginRuntimeContract): 
   }
   if (contract.auth.secretStorage === 'none' && contract.auth.type !== 'none') {
     errors.push('authenticated plugin must use secure secret storage');
+  }
+  if (new Set(contract.auth.requiredScopes).size !== contract.auth.requiredScopes.length) {
+    errors.push('duplicate required scopes');
   }
   return errors;
 }

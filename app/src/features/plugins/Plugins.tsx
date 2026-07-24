@@ -25,6 +25,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { toast } from '@/components/ui/toast';
 import { resolveAccountIdentity } from '@/lib/accountIdentity';
+import { openExternal } from '@/lib/tauri';
 import { useAuthStore } from '@/stores/auth';
 import { PLUGIN_CATALOG } from './catalog';
 import { usePluginManagementCapability } from './managementContext';
@@ -280,12 +281,16 @@ function PluginSetupDialog({
 
   function openProviderConnect() {
     if (!activePlugin.credentialUrl) return;
-    window.open(activePlugin.credentialUrl, '_blank', 'noopener,noreferrer');
-    toast.info(
-      `${activePlugin.provider} opened`,
-      requiresLocalCredential
-        ? 'Finish the provider setup in your browser, then paste the returned credential here.'
-        : 'Finish the provider authorization in your browser, then return to VibeSpace.',
+    setError('');
+    void openExternal(activePlugin.credentialUrl).then(
+      () =>
+        toast.info(
+          `${activePlugin.provider} opened`,
+          requiresLocalCredential
+            ? 'Finish the provider setup in your browser, then paste the returned credential here.'
+            : 'Finish the provider authorization in your browser, then return to VibeSpace.',
+        ),
+      () => setError(`Could not open the ${activePlugin.provider} setup page.`),
     );
   }
 
@@ -381,6 +386,25 @@ function PluginSetupDialog({
               Provider: {plugin.provider} · Auth: {plugin.authType.replace(/_/g, ' ')}
             </p>
           </div>
+
+          {(plugin.requiredScopes?.length ?? 0) > 0 && (
+            <div className="rounded-md border border-accent-cyan/25 bg-accent-cyan/5 p-3">
+              <p className="text-secondary font-medium text-foreground">Required provider scopes</p>
+              <p className="mt-1 text-metadata text-muted-foreground">
+                VibeSpace uses only these declared permissions for this connector.
+              </p>
+              <ul className="mt-2 flex flex-col gap-1" aria-label="Required provider scopes">
+                {plugin.requiredScopes?.map((scope) => (
+                  <li
+                    key={scope}
+                    className="break-all rounded border border-border/70 bg-background/60 px-2 py-1 font-mono text-metadata text-foreground"
+                  >
+                    {scope}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {plugin.credentialUrl && (
             <div className="relative overflow-hidden rounded-2xl border border-accent-cyan/20 bg-gradient-to-br from-accent-cyan/10 via-elevated to-purple-500/10 p-4">

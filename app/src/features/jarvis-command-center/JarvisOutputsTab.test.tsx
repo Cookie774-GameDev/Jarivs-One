@@ -1,7 +1,17 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { JarvisArtifactV1 } from './types';
 import { JarvisOutputsTab } from './JarvisOutputsTab';
+
+const { openExternal } = vi.hoisted(() => ({
+  openExternal: vi.fn<(url: string) => Promise<void>>(),
+}));
+
+vi.mock('@/lib/tauri', () => ({
+  isTauri: false,
+  openExternal,
+  openLocalArtifactPath: vi.fn(),
+}));
 
 function artifact(
   id: string,
@@ -24,12 +34,18 @@ function artifact(
 }
 
 describe('JarvisOutputsTab', () => {
-  it('gives concise real URI access without exposing unsafe, invalid, or quarantined backing', () => {
+  beforeEach(() => {
+    openExternal.mockReset();
+    openExternal.mockResolvedValue(undefined);
+  });
+
+  it('discloses an external hostname and opens through the safe bridge without exposing its URL', async () => {
     const localPath = 'C:\\workspace\\private\\local-report.md';
     const longSummary = 'Verified launch evidence '.repeat(20);
+    const externalUrl = 'https://example.test/reports/launch?token=opaque';
     const outputs = [
       artifact('artifact-web', 'Web report', {
-        uri: 'https://example.test/reports/launch',
+        uri: externalUrl,
         safeSummary: longSummary,
       }),
       artifact('artifact-local', 'Local report', {
@@ -53,9 +69,14 @@ describe('JarvisOutputsTab', () => {
 
     const view = render(<JarvisOutputsTab outputs={outputs} />);
 
-    expect(screen.getByRole('link', { name: 'Open output: Web report' }).getAttribute('href')).toBe(
-      'https://example.test/reports/launch',
-    );
+    const externalAction = screen.getByRole('button', {
+      name: 'Open output: Web report on example.test',
+    });
+    expect(externalAction.textContent).toContain('example.test');
+    expect(view.container.innerHTML).not.toContain(externalUrl);
+    fireEvent.click(externalAction);
+    await waitFor(() => expect(openExternal).toHaveBeenCalledWith(externalUrl));
+    expect(screen.getByRole('status').textContent).toBe('Opened output: Web report');
     expect(screen.queryByRole('button', { name: 'Open output: Local report' })).toBeNull();
     expect(view.container.textContent).not.toContain(localPath);
     expect(view.container.innerHTML).not.toContain(localPath);
@@ -68,6 +89,27 @@ describe('JarvisOutputsTab', () => {
 
     const summary = screen.getByText((content) => content.endsWith('…'));
     expect(Array.from(summary.textContent ?? '').length).toBeLessThanOrEqual(160);
+  });
+
+  it('announces an external-open failure without disclosing the URL', async () => {
+    const externalUrl = 'https://unknown.example/private/report';
+    openExternal.mockRejectedValueOnce(new Error('native open failed'));
+    const view = render(
+      <JarvisOutputsTab
+        outputs={[artifact('artifact-web-failure', 'External report', { uri: externalUrl })]}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Open output: External report on unknown.example',
+      }),
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toBe('Could not open output: External report'),
+    );
+    expect(view.container.innerHTML).not.toContain(externalUrl);
   });
 
   it('does not expose a local-path action in the browser runtime', () => {

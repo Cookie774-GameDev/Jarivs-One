@@ -322,7 +322,17 @@ async function runActionOnce(
 ): Promise<ActionResult> {
   const emitToast = options.emitToast ?? true;
   const startedAt = Date.now();
-  if (ctx.source === 'ai' && hasJarvisApprovalCorrelation(ctx) && !canonicalIssued) {
+  if (ctx.source === 'ai' && !canonicalIssued) {
+    if (!hasJarvisApprovalCorrelation(ctx)) {
+      const definition = resolveAction(id);
+      return {
+        ok: false,
+        error:
+          definition?.category === 'terminal'
+            ? 'AI terminal actions require canonical approval authority.'
+            : 'AI actions require canonical approval authority.',
+      };
+    }
     return {
       ok: false,
       error: 'Canonical JARVIS actions require the approval authority.',

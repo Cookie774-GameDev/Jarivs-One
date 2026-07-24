@@ -8,11 +8,20 @@ import type { PluginTestResult } from './types';
 type CredentialMap = Readonly<Record<string, string>>;
 type CanvaRegistration = Extract<JarvisRegisteredActionExecutor, { kind: 'plugin_tool' }>;
 
-export type CanvaCredentialRotation = (input: {
-  fieldId: 'refresh_token';
-  expectedValue: string;
-  nextValue: string;
-}) => Promise<void>;
+export type CanvaCredentialRotation = (
+  input:
+    | {
+        operation: 'rotate';
+        fieldId: 'refresh_token';
+        expectedValue: string;
+        nextValue: string;
+      }
+    | {
+        operation: 'invalidate';
+        fieldId: 'refresh_token';
+        expectedValue: string;
+      },
+) => Promise<void>;
 
 const TOKEN_ENDPOINT = 'https://api.canva.com/rest/v1/oauth/token';
 const TOKEN_INTROSPECTION_ENDPOINT = 'https://api.canva.com/rest/v1/oauth/introspect';
@@ -25,6 +34,14 @@ const TITLE_LIMIT = 255;
 const AUTOFILL_JSON_LIMIT = 50_000;
 const AUTOFILL_FIELD_LIMIT = 50;
 const AUTOFILL_TEXT_LIMIT = 10_000;
+export const CANVA_REQUIRED_SCOPES = Object.freeze([
+  'profile:read',
+  'design:meta:read',
+  'design:content:write',
+  'brandtemplate:meta:read',
+  'brandtemplate:content:read',
+]);
+const ALLOWED_SCOPES = new Set(CANVA_REQUIRED_SCOPES);
 const OPAQUE_ID = /^[A-Za-z0-9._~-]{3,512}$/;
 const PRESET_NAMES = new Set(['doc', 'email', 'presentation', 'whiteboard']);
 const DESIGN_TYPE = /^[a-z][a-z0-9_]{0,63}$/;
@@ -207,6 +224,19 @@ function basicAuthorization(clientId: string, clientSecret: string): string {
 
 type CanvaSession = Readonly<{ token: string; scopes: ReadonlySet<string> }>;
 
+function validatedScopes(rawScope: unknown): ReadonlySet<string> {
+  if (typeof rawScope !== 'string') throw canvaFailure('scope_invalid');
+  const scopes = new Set(rawScope.split(/\s+/).filter(Boolean));
+  if (scopes.size === 0) throw canvaFailure('scope_invalid');
+  if ([...scopes].some((scope) => !ALLOWED_SCOPES.has(scope))) {
+    throw canvaFailure('scope_not_allowed');
+  }
+  if (CANVA_REQUIRED_SCOPES.some((scope) => !scopes.has(scope))) {
+    throw canvaFailure('required_scope_unavailable');
+  }
+  return scopes;
+}
+
 async function accessToken(input: {
   values: CredentialMap;
   signal: AbortSignal;
@@ -262,8 +292,24 @@ async function accessToken(input: {
   ) {
     throw canvaFailure('token_response_invalid');
   }
+  if (response.scope !== undefined) {
+    const scopes = validatedScopes(response.scope);
+    try {
+      await input.rotateCredential({
+        operation: 'rotate',
+        fieldId: 'refresh_token',
+        expectedValue: currentRefreshToken,
+        nextValue: nextRefreshToken,
+      });
+    } catch {
+      throw canvaFailure('credential_rotation_failed');
+    }
+    return { token, scopes };
+  }
+
   try {
     await input.rotateCredential({
+      operation: 'rotate',
       fieldId: 'refresh_token',
       expectedValue: currentRefreshToken,
       nextValue: nextRefreshToken,
@@ -271,8 +317,7 @@ async function accessToken(input: {
   } catch {
     throw canvaFailure('credential_rotation_failed');
   }
-  let rawScope = response.scope;
-  if (rawScope === undefined) {
+  try {
     const introspection = providerRecord(
       await requestJson(
         TOKEN_INTROSPECTION_ENDPOINT,
@@ -295,12 +340,19 @@ async function accessToken(input: {
     ) {
       throw canvaFailure('token_introspection_invalid');
     }
-    rawScope = introspection.scope;
+    return { token, scopes: validatedScopes(introspection.scope) };
+  } catch (error) {
+    try {
+      await input.rotateCredential({
+        operation: 'invalidate',
+        fieldId: 'refresh_token',
+        expectedValue: nextRefreshToken,
+      });
+    } catch {
+      throw canvaFailure('credential_invalidation_failed');
+    }
+    throw error;
   }
-  if (typeof rawScope !== 'string') throw canvaFailure('scope_invalid');
-  const scopes = new Set(rawScope.split(/\s+/).filter(Boolean));
-  if (scopes.size === 0) throw canvaFailure('scope_invalid');
-  return { token, scopes };
 }
 
 function requireScope(session: CanvaSession, scope: string): void {

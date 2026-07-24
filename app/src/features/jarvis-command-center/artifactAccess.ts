@@ -1,10 +1,9 @@
 import { validateJarvisArtifact } from '@/lib/jarvis/contracts/validators';
 import type { JarvisArtifactV1 } from './types';
 
-const SAFE_ARTIFACT_URI_PROTOCOLS = new Set([
+const SAFE_INTERNAL_ARTIFACT_URI_PROTOCOLS = new Set([
   'app:',
   'asset:',
-  'https:',
   'jarvis:',
   'tauri:',
   'vibespace:',
@@ -12,18 +11,32 @@ const SAFE_ARTIFACT_URI_PROTOCOLS = new Set([
 const SUMMARY_LIMIT = 160;
 
 export type JarvisArtifactAccess =
-  | Readonly<{ kind: 'uri'; target: string }>
+  | Readonly<{ kind: 'external_uri'; target: string; hostname: string }>
+  | Readonly<{ kind: 'internal_uri'; target: string }>
   | Readonly<{ kind: 'local_path'; target: string }>;
 
 export function isRenderableJarvisArtifact(artifact: Readonly<JarvisArtifactV1>): boolean {
   return artifact.state !== 'quarantined' && validateJarvisArtifact(artifact).ok;
 }
 
-function safeArtifactUri(value: string | undefined): string | undefined {
+function safeArtifactUri(
+  value: string | undefined,
+): Extract<JarvisArtifactAccess, { kind: 'external_uri' | 'internal_uri' }> | undefined {
   if (!value) return undefined;
   try {
-    return SAFE_ARTIFACT_URI_PROTOCOLS.has(new URL(value).protocol.toLowerCase())
-      ? value
+    const parsed = new URL(value);
+    const protocol = parsed.protocol.toLowerCase();
+    if (!parsed.hostname) return undefined;
+    if (protocol === 'https:') {
+      if (parsed.username || parsed.password) return undefined;
+      return Object.freeze({
+        kind: 'external_uri',
+        target: parsed.href,
+        hostname: parsed.hostname,
+      });
+    }
+    return SAFE_INTERNAL_ARTIFACT_URI_PROTOCOLS.has(protocol)
+      ? Object.freeze({ kind: 'internal_uri', target: parsed.href })
       : undefined;
   } catch {
     return undefined;
@@ -46,7 +59,7 @@ export function resolveJarvisArtifactAccess(
   if (!isRenderableJarvisArtifact(artifact)) return undefined;
 
   const uri = safeArtifactUri(artifact.uri);
-  if (uri) return Object.freeze({ kind: 'uri', target: uri });
+  if (uri) return uri;
 
   if (!runtime.desktop || artifact.localReference?.kind !== 'path') return undefined;
   const path = absoluteLocalPath(artifact.localReference.value);

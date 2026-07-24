@@ -90,6 +90,52 @@ describe('project file actions', () => {
     expect(fsMocks.createTextFileWithContent).not.toHaveBeenCalled();
   });
 
+  it('normalizes safe dot segments but rejects traversal before any filesystem call', async () => {
+    const action = FILE_ACTIONS.find((item) => item.id === 'files.create')!;
+    const safe = await action.run(
+      {
+        path: 'C:/Projects/FarmLife/docs/../dogs.md',
+        root: 'c:\\projects\\FarmLife\\.',
+        content: 'safe',
+      },
+      { source: 'ai' },
+    );
+    expect(safe.ok).toBe(true);
+    expect(fsMocks.createTextFileWithContent).toHaveBeenCalledWith(
+      'C:\\Projects\\FarmLife\\dogs.md',
+      'safe',
+      { root: 'C:\\projects\\FarmLife' },
+    );
+
+    vi.clearAllMocks();
+    const escaped = await action.run(
+      {
+        path: 'C:\\Projects\\FarmLife\\..\\private\\dogs.md',
+        root: 'C:\\Projects\\FarmLife',
+        content: 'blocked',
+      },
+      { source: 'ai' },
+    );
+    expect(escaped).toEqual({ ok: false, error: expect.stringMatching(/outside|invalid/i) });
+    expect(fsMocks.createDirectory).not.toHaveBeenCalled();
+    expect(fsMocks.createTextFileWithContent).not.toHaveBeenCalled();
+
+    const rootedRelative = await action.run(
+      {
+        path: '\\Projects\\FarmLife\\dogs.md',
+        root: 'C:\\Projects\\FarmLife',
+        content: 'blocked',
+      },
+      { source: 'ai' },
+    );
+    expect(rootedRelative).toEqual({
+      ok: false,
+      error: expect.stringMatching(/absolute|invalid/i),
+    });
+    expect(fsMocks.createDirectory).not.toHaveBeenCalled();
+    expect(fsMocks.createTextFileWithContent).not.toHaveBeenCalled();
+  });
+
   it('requires an existing file before edit writes', async () => {
     fsMocks.readTextFile.mockResolvedValue({
       ok: false,

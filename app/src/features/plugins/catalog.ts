@@ -152,14 +152,14 @@ const IMPLEMENTED_BASE: PluginManifest[] = [
       token(
         'key',
         'Project API key',
-        'sb_publishable_... or service role key',
-        'Prefer a publishable/anon key for read-only context. Service-role keys are highly privileged.',
+        'sb_publishable_... or anon JWT',
+        'Use a publishable/anon key for read-only context. Service-role and secret keys are rejected.',
       ),
     ],
     status: 'implemented',
     docsUrl: 'https://supabase.com/docs/guides/api/api-keys',
     credentialUrl: 'https://supabase.com/dashboard/project/_/settings/api-keys',
-    help: 'Enter the project URL and an API key. VibeSpace calls the REST root to validate the pair.',
+    help: 'Enter the project URL and a publishable/anon API key. VibeSpace rejects privileged service-role or secret keys before calling the REST root.',
     tags: ['database', 'auth', 'storage', 'api_key'],
     setupSteps: [
       'Open your Supabase project → Settings → API.',
@@ -472,6 +472,22 @@ export function validatePluginCatalog(catalog = PLUGIN_CATALOG): string[] {
       if (!field.id || !field.label) errors.push(`${plugin.id}: invalid field`);
       if (fieldIds.has(field.id)) errors.push(`${plugin.id}: duplicate field ${field.id}`);
       fieldIds.add(field.id);
+    }
+    const requiredScopes = plugin.requiredScopes ?? [];
+    if (
+      requiredScopes.some(
+        (scope) => typeof scope !== 'string' || !scope.trim() || scope.trim() !== scope,
+      ) ||
+      new Set(requiredScopes).size !== requiredScopes.length
+    ) {
+      errors.push(`${plugin.id}: invalid required scopes`);
+    }
+    if (
+      plugin.status === 'implemented' &&
+      plugin.authType === 'oauth' &&
+      requiredScopes.length === 0
+    ) {
+      errors.push(`${plugin.id}: implemented OAuth plugin missing required scopes`);
     }
     if (plugin.status === 'implemented' && plugin.tools.length === 0) {
       errors.push(`${plugin.id}: implemented plugin has no tools`);

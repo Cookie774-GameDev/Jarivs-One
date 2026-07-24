@@ -29,16 +29,27 @@ describe('resolveJarvisArtifactAccess', () => {
     expect(isRenderableJarvisArtifact(artifact({ attemptNumber: 0 }))).toBe(false);
   });
 
+  it('classifies an approved HTTPS target with the hostname disclosed separately', () => {
+    expect(
+      resolveJarvisArtifactAccess(artifact({ uri: 'https://example.test/report?view=full' }), {
+        desktop: false,
+      }),
+    ).toEqual({
+      kind: 'external_uri',
+      target: 'https://example.test/report?view=full',
+      hostname: 'example.test',
+    });
+  });
+
   it.each([
-    'https://example.test/report',
     'asset://artifact/report',
     'vibespace://artifact/report',
     'app://artifact/report',
     'jarvis://artifact/report',
     'tauri://artifact/report',
-  ])('returns a real safe URI target for %s', (uri) => {
+  ])('returns an approved internal URI target for %s', (uri) => {
     expect(resolveJarvisArtifactAccess(artifact({ uri }), { desktop: false })).toEqual({
-      kind: 'uri',
+      kind: 'internal_uri',
       target: uri,
     });
   });
@@ -56,6 +67,8 @@ describe('resolveJarvisArtifactAccess', () => {
 
   it.each([
     artifact({ uri: 'javascript:alert(document.domain)' }),
+    artifact({ uri: 'http://example.test/insecure' }),
+    artifact({ uri: 'https://user:password@example.test/private' }),
     artifact({ state: 'quarantined', uri: 'https://example.test/quarantined' }),
     artifact({ localReference: { kind: 'path', value: 'relative/report.md' } }),
     artifact({ localReference: { kind: 'blob_key', value: 'artifact-blob-1' } }),

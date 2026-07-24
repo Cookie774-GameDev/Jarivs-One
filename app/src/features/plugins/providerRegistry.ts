@@ -6,12 +6,14 @@ import type {
   PluginStatus,
   PluginTool,
 } from './types';
+import { CANVA_REQUIRED_SCOPES } from './canvaProvider';
 
 type RegistryPartial = {
   provider?: string;
   description?: string;
   authType?: PluginAuthType;
   fields?: PluginField[];
+  requiredScopes?: string[];
   status?: PluginStatus;
   docsUrl?: string;
   credentialUrl?: string;
@@ -72,6 +74,10 @@ export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
     description:
       'Search and read bounded Gmail context, create drafts, prepare replies, and send an existing draft only after explicit approval.',
     authType: 'oauth',
+    requiredScopes: [
+      'https://www.googleapis.com/auth/gmail.readonly',
+      'https://www.googleapis.com/auth/gmail.compose',
+    ],
     fields: [
       text(
         'client_id',
@@ -126,6 +132,10 @@ export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
     description:
       'Search bounded Google Drive metadata, read exact selected supported documents, return source links, and create a Google document only after explicit approval.',
     authType: 'oauth',
+    requiredScopes: [
+      'https://www.googleapis.com/auth/drive.readonly',
+      'https://www.googleapis.com/auth/drive.file',
+    ],
     fields: [
       text(
         'client_id',
@@ -176,6 +186,7 @@ export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
     description:
       'Search bounded Canva design and brand-template metadata, read exact designs, return validated edit/view links, and create a stable preset design only after explicit approval.',
     authType: 'oauth',
+    requiredScopes: [...CANVA_REQUIRED_SCOPES],
     fields: [
       text(
         'client_id',
@@ -199,11 +210,11 @@ export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
     status: 'implemented',
     docsUrl: 'https://www.canva.dev/docs/connect/',
     credentialUrl: 'https://www.canva.com/developers/integrations',
-    help: 'Create a Canva Connect integration, authorize the minimum profile, design metadata/content, and optional brand-template scopes, then save the client credentials and rotating refresh grant.',
+    help: 'Create a Canva Connect integration, authorize the exact profile, design metadata/content, and brand-template scopes listed here, then save the client credentials and rotating refresh grant.',
     tags: ['canva', 'design', 'oauth', 'templates', 'connect api'],
     setupSteps: [
       'Create or select a Canva Connect integration and configure its redirect URL.',
-      'Authorize profile:read, design:meta:read, design:content:write, and brandtemplate:meta:read only when template search is needed.',
+      'Authorize exactly profile:read, design:meta:read, design:content:write, brandtemplate:meta:read, and brandtemplate:content:read.',
       'Save the client ID, client secret, and current refresh grant, then run Test Connection.',
     ],
     supportedFeatures: [
@@ -1726,6 +1737,7 @@ function mergeManifest(
     provider,
     authType,
     fields,
+    requiredScopes: base.requiredScopes,
     status,
     docsUrl,
     credentialUrl,

@@ -119,6 +119,26 @@ describe('runAction', () => {
     if (!result.ok) expect(result.error).toMatch(/required/i);
   });
 
+  it('rejects direct AI terminal dispatch without issued canonical approval authority', async () => {
+    const definition = resolveAction('terminal.run');
+    expect(definition).toBeTruthy();
+    const direct = vi.spyOn(definition!, 'run');
+
+    await expect(
+      runAction(
+        'terminal.run',
+        { command: 'npm test' },
+        { source: 'ai', messageId: 'model-message', callId: 'model-call' },
+        { emitToast: false },
+      ),
+    ).resolves.toEqual({
+      ok: false,
+      error: 'AI terminal actions require canonical approval authority.',
+    });
+    expect(direct).not.toHaveBeenCalled();
+    expect(useTerminalCommandQueue.getState().queue).toHaveLength(0);
+  });
+
   it('suppresses the toast when emitToast is false', async () => {
     const result = await runAction('does.not.exist', {}, { source: 'user' }, { emitToast: false });
     expect(result.ok).toBe(false);
@@ -227,7 +247,7 @@ describe('runAction', () => {
       return { ok: true, summary: 'opened' };
     });
     const context = {
-      source: 'ai' as const,
+      source: 'user' as const,
       messageId: 'message_once',
       callId: 'call_once',
     };
@@ -324,6 +344,50 @@ describe('runAction', () => {
     );
   });
 
+  it('queues exactly one terminal command through issued authority and propagates cancellation', async () => {
+    const registration = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS).resolve(
+      'terminal.run',
+    )!;
+    const definition = resolveAction('terminal.run')!;
+    const run = vi.spyOn(definition, 'run');
+    const signal = new AbortController().signal;
+    const beginExternalEffect = vi.fn((begin) => ({
+      kind: 'committed' as const,
+      value: begin(signal),
+    }));
+    const dispatcher = createJarvisRegisteredBuiltinDispatcher();
+
+    const outcome = await dispatcher({
+      registration,
+      params: { command: 'npm test', label: 'Approved tests' },
+      context: {
+        source: 'ai',
+        accountId: 'account-kernel',
+        runId: 'run-terminal',
+        approvalId: 'approval-terminal',
+        requestId: 'request-terminal',
+        attemptNumber: 1,
+      },
+      execution: { beginExternalEffect } as never,
+    });
+    expect(outcome).toEqual({
+      kind: 'executor_returned',
+      result: {
+        ok: true,
+        summary: 'Command queued in Terminal.',
+        data: { state: 'queued', executionId: expect.any(String) },
+      },
+    });
+    expect(beginExternalEffect).toHaveBeenCalledOnce();
+    expect(run).toHaveBeenCalledWith(
+      { command: 'npm test', label: 'Approved tests' },
+      expect.objectContaining({ source: 'ai', signal }),
+    );
+    expect(useTerminalCommandQueue.getState().queue).toMatchObject([
+      { kind: 'shell', command: 'npm test', label: 'Approved tests' },
+    ]);
+  });
+
   it('dispatches the protected model switch with canonical approval correlation', async () => {
     const registration = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS).resolve(
       'chat.model.switch',
@@ -373,7 +437,7 @@ describe('runAction', () => {
     const result = await runAction(
       'terminal.run',
       { command: secretCommand, cwd: 'C:\\Projects\\Safe' },
-      { source: 'ai', messageId: 'message_secret', callId: 'call_secret' },
+      { source: 'user', messageId: 'message_secret', callId: 'call_secret' },
       { emitToast: false },
     );
     expect(result.ok).toBe(true);

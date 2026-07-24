@@ -43,6 +43,8 @@ export type PluginManifest = {
   provider: string;
   authType: PluginAuthType;
   fields: PluginField[];
+  /** Exact provider permissions required by this connector's implemented operations. */
+  requiredScopes?: string[];
   status: PluginStatus;
   docsUrl?: string;
   /** Official page to create API keys, OAuth apps, or tokens. */
