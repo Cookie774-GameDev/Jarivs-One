@@ -103,6 +103,12 @@ describe('Jarvis action catalog', () => {
         risk: 'external-side-effect',
         approval: 'always',
       },
+      { id: 'zapier.actions.discover', risk: 'read-only', approval: 'never' },
+      {
+        id: 'zapier.action.invoke',
+        risk: 'external-side-effect',
+        approval: 'always',
+      },
       { id: 'chat.model.switch', risk: 'external-side-effect', approval: 'always' },
       { id: 'mcp.invoke', risk: 'external-side-effect', approval: 'always' },
       { id: 'terminal.create', risk: 'safe-write', approval: 'always' },
@@ -396,6 +402,8 @@ describe('Jarvis action catalog', () => {
       'canva.autofill_job.read',
       'canva.design.create',
       'canva.design.autofill',
+      'zapier.actions.discover',
+      'zapier.action.invoke',
     ]);
     expect(identity).toMatchObject({
       requiredCapabilities: ['plugin.github.identity'],
@@ -986,6 +994,107 @@ describe('Jarvis action catalog', () => {
       pluginId: 'canva',
       toolName: 'design_autofill',
       resourceId: 'DAFBrandTemplate123',
+    });
+  });
+
+  it('publishes Zapier discovery and exact always-approved action execution without credentials', () => {
+    const catalog = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS);
+    const discover = catalog.resolve('zapier.actions.discover');
+    const invoke = catalog.resolve('zapier.action.invoke');
+    const credentials = [
+      {
+        field: 'zapierConnectionGrant',
+        locator: { pluginId: 'zapier', fieldId: 'connection_token' },
+      },
+    ];
+    const fingerprint = `sha256:${'a'.repeat(64)}`;
+
+    expect(discover).toMatchObject({
+      id: 'zapier.actions.discover',
+      risk: 'read-only',
+      approval: 'never',
+      requiredCapabilities: ['plugin.zapier.actions_discover'],
+      executor: { kind: 'plugin_tool', pluginId: 'zapier', toolName: 'actions_discover' },
+      credentialBindings: credentials,
+      inputSchema: { type: 'object', additionalProperties: false },
+    });
+    expect(invoke).toMatchObject({
+      id: 'zapier.action.invoke',
+      risk: 'external-side-effect',
+      approval: 'always',
+      requiredCapabilities: ['plugin.zapier.action_invoke'],
+      executor: { kind: 'plugin_tool', pluginId: 'zapier', toolName: 'action_invoke' },
+      credentialBindings: credentials,
+      inputSchema: {
+        type: 'object',
+        required: ['actionId', 'actionTitle', 'downstreamApp', 'schemaFingerprint', 'inputJson'],
+        additionalProperties: false,
+      },
+    });
+    expect(JSON.stringify([discover?.inputSchema, invoke?.inputSchema])).not.toMatch(
+      /connection_token|connectionGrant|credential|secret/i,
+    );
+    expect(discover?.validateParameters({ query: '  slack  ', maxResults: 5 })).toEqual({
+      query: 'slack',
+      maxResults: 5,
+    });
+    expect(
+      invoke?.validateParameters({
+        actionId: 'slack_send_channel_message',
+        actionTitle: 'Slack: Send Channel Message',
+        downstreamApp: 'Slack',
+        schemaFingerprint: fingerprint,
+        inputJson: '{ "channel": "C123", "message": "Approved" }',
+      }),
+    ).toEqual({
+      actionId: 'slack_send_channel_message',
+      actionTitle: 'Slack: Send Channel Message',
+      downstreamApp: 'Slack',
+      schemaFingerprint: fingerprint,
+      inputJson: '{"channel":"C123","message":"Approved"}',
+    });
+    expect(() => discover?.validateParameters({ query: 'slack', maxResults: 51 })).toThrow(
+      /maxResults/i,
+    );
+    expect(() =>
+      invoke?.validateParameters({
+        actionId: 'slack_send_channel_message',
+        actionTitle: 'Slack: Send Channel Message',
+        downstreamApp: 'Slack',
+        schemaFingerprint: fingerprint,
+        inputJson: '{}',
+        token: 'model-controlled',
+      }),
+    ).toThrow(/unknown fields/i);
+    expect(
+      discover?.deriveTarget({
+        accountId: 'account-zapier',
+        params: { query: 'slack' },
+      }),
+    ).toEqual({
+      kind: 'plugin_tool',
+      accountId: 'account-zapier',
+      pluginId: 'zapier',
+      toolName: 'actions_discover',
+      resourceId: 'currently-exposed-actions',
+    });
+    expect(
+      invoke?.deriveTarget({
+        accountId: 'account-zapier',
+        params: {
+          actionId: 'slack_send_channel_message',
+          actionTitle: 'Slack: Send Channel Message',
+          downstreamApp: 'Slack',
+          schemaFingerprint: fingerprint,
+          inputJson: '{"channel":"C123","message":"Approved"}',
+        },
+      }),
+    ).toEqual({
+      kind: 'plugin_tool',
+      accountId: 'account-zapier',
+      pluginId: 'zapier',
+      toolName: 'action_invoke',
+      resourceId: 'slack_send_channel_message',
     });
   });
 });

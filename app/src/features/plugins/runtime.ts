@@ -30,6 +30,7 @@ import {
   testCanvaConnection,
   type CanvaCredentialRotation,
 } from './canvaProvider';
+import { runZapierTool, testZapierConnection, type ZapierGatewayFactory } from './zapierProvider';
 import type {
   CanonicalPluginEvidence,
   CanonicalPluginEvidenceAuthority,
@@ -721,6 +722,7 @@ async function testManifestConnection(
   manifest: PluginManifest,
   values: CredentialMap,
   signal: AbortSignal = AbortSignal.timeout(12_000),
+  zapierGatewayFactory?: ZapierGatewayFactory,
 ): Promise<PluginTestResult> {
   if (manifest.id === 'mock-connector' || manifest.authType === 'none') {
     return { ok: true, accountLabel: 'Local test connector' };
@@ -732,6 +734,9 @@ async function testManifestConnection(
   if (manifest.id === 'gmail') return await testGmailConnection({ values, signal });
   if (manifest.id === 'google-drive') {
     return await testGoogleDriveConnection({ values, signal });
+  }
+  if (manifest.id === 'zapier') {
+    return await testZapierConnection({ values, signal, gatewayFactory: zapierGatewayFactory });
   }
   if (manifest.httpTest) return await runHttpTest(manifest, values, manifest.httpTest, signal);
   if (
@@ -1176,6 +1181,7 @@ export function createAccountScopedPluginRuntime(input: {
   connections: Pick<PluginStore, 'upsertConnection' | 'removeConnection'>;
   randomUUID: () => string;
   now: () => number;
+  zapierGatewayFactory?: ZapierGatewayFactory;
 }): Readonly<{
   management: PluginManagementCapability;
   registeredTools: PreparedRegisteredPluginToolExecutor;
@@ -1515,7 +1521,12 @@ export function createAccountScopedPluginRuntime(input: {
           authority: input.credentialAuthorization,
           adapter: input.credentialAdapter,
         });
-        result = await testManifestConnection(manifest, credentialRead.values);
+        result = await testManifestConnection(
+          manifest,
+          credentialRead.values,
+          AbortSignal.timeout(12_000),
+          input.zapierGatewayFactory,
+        );
       } catch (error) {
         result = {
           ok: false,
@@ -1696,14 +1707,25 @@ export function createAccountScopedPluginRuntime(input: {
         rotateCredential,
       });
     }
-    return testManifestConnection(manifest, values, signal).then((result): ActionResult => {
-      if (!result.ok) return { ok: false, error: result.error ?? 'Plugin connection failed.' };
-      return {
-        ok: true,
-        summary: 'Fixed plugin tool completed.',
-        data: { accountLabel: result.accountLabel, capabilityOnly: true },
-      };
-    });
+    if (manifest.id === 'zapier') {
+      return runZapierTool({
+        toolName: tool.name,
+        params,
+        values,
+        signal,
+        gatewayFactory: input.zapierGatewayFactory,
+      });
+    }
+    return testManifestConnection(manifest, values, signal, input.zapierGatewayFactory).then(
+      (result): ActionResult => {
+        if (!result.ok) return { ok: false, error: result.error ?? 'Plugin connection failed.' };
+        return {
+          ok: true,
+          summary: 'Fixed plugin tool completed.',
+          data: { accountLabel: result.accountLabel, capabilityOnly: true },
+        };
+      },
+    );
   }
 
   const registeredTools: PreparedRegisteredPluginToolExecutor = Object.freeze({

@@ -23,6 +23,8 @@ import {
 } from '@/lib/jarvis/actions/catalog';
 import type { CanonicalPluginEvidence } from '@/lib/jarvis/artifactProducerAdapters';
 import { createJarvisPluginCapabilityProjection } from '@/lib/jarvis/pluginCapabilityProducer';
+import type { ZapierGatewayFactory } from './zapierProvider';
+import type { CanonicalMcpToolDescriptor } from '@/lib/mcp/serverManager';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -51,6 +53,7 @@ function fixture(
     credentialAdapter?: ExistingPluginCredentialAdapter;
     randomIds?: string[];
     times?: number[];
+    zapierGatewayFactory?: ZapierGatewayFactory;
   } = {},
 ) {
   let activeAccountId: string | undefined = 'account-a';
@@ -104,6 +107,7 @@ function fixture(
     },
     randomUUID: () => randomIds.shift() ?? 'fallback-grant',
     now: () => times.shift() ?? 999,
+    zapierGatewayFactory: options.zapierGatewayFactory,
   });
   return {
     runtime,
@@ -1430,6 +1434,225 @@ describe('account-scoped plugin runtime', () => {
       }),
     ).rejects.toThrow(/prepared_credential_value_mismatch/i);
     expect(resourceFailureFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('tests and discovers only the exact actions exposed by the configured Zapier MCP gateway', async () => {
+    const action: CanonicalMcpToolDescriptor = Object.freeze({
+      name: 'slack_send_channel_message',
+      title: 'Slack: Send Channel Message',
+      description: 'Sends one Slack channel message.',
+      inputSchema: Object.freeze({
+        type: 'object',
+        additionalProperties: false,
+        properties: Object.freeze({ message: Object.freeze({ type: 'string' }) }),
+      }),
+    });
+    const listTools = vi.fn(async () => [action]);
+    const invoke = vi.fn();
+    const close = vi.fn(async () => undefined);
+    const gatewayFactory = vi.fn(
+      (): ReturnType<ZapierGatewayFactory> => Object.freeze({ listTools, invoke, close }),
+    );
+    const test = fixture({
+      randomIds: ['grant-zapier'],
+      times: [100, 200, 300],
+      zapierGatewayFactory: gatewayFactory,
+    });
+    await test.runtime.management.saveCredential({
+      accountId: 'account-a',
+      pluginId: 'zapier',
+      fieldId: 'connection_token',
+      value: 'zapier-runtime-connection-token',
+    });
+
+    await expect(
+      test.runtime.management.testConnection({
+        accountId: 'account-a',
+        pluginId: 'zapier',
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      accountLabel: 'Zapier MCP · 1 exposed action',
+    });
+    expect(test.connectionRows.get('account-a\u0000zapier')).toMatchObject({
+      state: 'connected',
+      enabled: true,
+      configuredFields: ['connection_token'],
+    });
+
+    const catalog = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS);
+    const discover = catalog.resolve('zapier.actions.discover');
+    if (!discover || discover.executor.kind !== 'plugin_tool') {
+      throw new Error('expected fixed Zapier discovery registration');
+    }
+    const result = await test.runtime.registeredTools.execute({
+      accountId: 'account-a',
+      registration: discover.executor,
+      params: { query: 'slack', maxResults: 5 },
+      context: {
+        source: 'ai',
+        accountId: 'account-a',
+        runId: 'run-zapier-discover',
+        approvalId: 'approval-zapier-discover',
+        requestId: 'request-zapier-discover',
+        attemptNumber: 1,
+        signal: new AbortController().signal,
+      },
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      data: {
+        source: 'currently_configured_zapier_actions',
+        actions: [
+          {
+            actionId: 'slack_send_channel_message',
+            actionTitle: 'Slack: Send Channel Message',
+            downstreamApp: 'Slack',
+            invocationSupported: true,
+          },
+        ],
+      },
+    });
+    expect(JSON.stringify(result)).not.toContain('zapier-runtime-connection-token');
+    expect(invoke).not.toHaveBeenCalled();
+    expect(gatewayFactory).toHaveBeenCalledTimes(2);
+    expect(close).toHaveBeenCalledTimes(2);
+  });
+
+  it('executes an exact selected Zapier action only through the approval-prepared path', async () => {
+    const action: CanonicalMcpToolDescriptor = Object.freeze({
+      name: 'slack_send_channel_message',
+      title: 'Slack: Send Channel Message',
+      description: 'Sends one Slack channel message.',
+      inputSchema: Object.freeze({
+        type: 'object',
+        additionalProperties: false,
+        properties: Object.freeze({ message: Object.freeze({ type: 'string' }) }),
+      }),
+    });
+    const normalized = Object.freeze({
+      ok: true,
+      contentTrust: 'external_untrusted' as const,
+      safeSummary: 'One external result returned.',
+      textExcerpts: Object.freeze(['Message sent.']),
+      sourceRefs: Object.freeze([]),
+      artifacts: Object.freeze([]),
+      suggestedNextActions: Object.freeze([]),
+      omitted: Object.freeze({ inlineMedia: 0, unsafeReferences: 0, truncatedValues: 0 }),
+    });
+    const listTools = vi.fn(async () => [action]);
+    const invoke = vi.fn(async () => normalized);
+    const gatewayFactory: ZapierGatewayFactory = () =>
+      Object.freeze({
+        listTools,
+        invoke,
+        close: vi.fn(async () => undefined),
+      });
+    const test = fixture({
+      randomIds: ['grant-zapier'],
+      zapierGatewayFactory: gatewayFactory,
+    });
+    const credentialValue = 'zapier-runtime-connection-token';
+    await test.runtime.management.saveCredential({
+      accountId: 'account-a',
+      pluginId: 'zapier',
+      fieldId: 'connection_token',
+      value: credentialValue,
+    });
+    const decision = await test.credentialAuthorization.authorize({
+      accountId: 'account-a',
+      locator: { pluginId: 'zapier', fieldId: 'connection_token' },
+    });
+    if (!decision.authorized) throw new Error('expected Zapier credential authorization');
+    const catalog = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS);
+    const discover = catalog.resolve('zapier.actions.discover');
+    const actionInvoke = catalog.resolve('zapier.action.invoke');
+    if (
+      !discover ||
+      discover.executor.kind !== 'plugin_tool' ||
+      !actionInvoke ||
+      actionInvoke.executor.kind !== 'plugin_tool'
+    ) {
+      throw new Error('expected fixed Zapier registrations');
+    }
+    const discovered = await test.runtime.registeredTools.execute({
+      accountId: 'account-a',
+      registration: discover.executor,
+      params: { maxResults: 5 },
+      context: {
+        source: 'ai',
+        accountId: 'account-a',
+        runId: 'run-zapier-discover',
+        approvalId: 'approval-zapier-discover',
+        requestId: 'request-zapier-discover',
+        attemptNumber: 1,
+      },
+    });
+    if (!discovered.ok) throw new Error(discovered.error);
+    const identity = (
+      discovered.data as {
+        actions: Array<{
+          actionId: string;
+          actionTitle: string;
+          downstreamApp: string;
+          schemaFingerprint: string;
+        }>;
+      }
+    ).actions[0]!;
+    const params = {
+      actionId: identity.actionId,
+      actionTitle: identity.actionTitle,
+      downstreamApp: identity.downstreamApp,
+      schemaFingerprint: identity.schemaFingerprint,
+      inputJson: '{"message":"Approved message"}',
+    };
+    const context = Object.freeze({
+      source: 'ai' as const,
+      accountId: 'account-a',
+      runId: 'run-zapier-invoke',
+      approvalId: 'approval-zapier-invoke',
+      requestId: 'request-zapier-invoke',
+      attemptNumber: 1,
+      signal: new AbortController().signal,
+    });
+
+    await expect(
+      test.runtime.registeredTools.execute({
+        accountId: 'account-a',
+        registration: actionInvoke.executor,
+        params,
+        context,
+      }),
+    ).rejects.toThrow(/approval_bound_execution_required/i);
+    const result = await test.runtime.registeredTools.startPrepared({
+      accountId: 'account-a',
+      registration: actionInvoke.executor,
+      params,
+      context,
+      credentialValues: { connection_token: credentialValue },
+      credentialAuthorizations: [decision.authorization],
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      summary: 'Zapier action “Slack: Send Channel Message” completed through Slack.',
+      data: {
+        actionId: 'slack_send_channel_message',
+        actionTitle: 'Slack: Send Channel Message',
+        downstreamApp: 'Slack',
+        schemaFingerprint: identity.schemaFingerprint,
+        contentTrust: 'external_untrusted',
+        result: normalized,
+      },
+    });
+    expect(invoke).toHaveBeenCalledOnce();
+    expect(invoke).toHaveBeenCalledWith(
+      'slack_send_channel_message',
+      { message: 'Approved message' },
+      context.signal,
+    );
+    expect(JSON.stringify(result)).not.toContain(credentialValue);
   });
 
   it('executes fixed GitHub reads against exact endpoints and returns only bounded normalized data', async () => {

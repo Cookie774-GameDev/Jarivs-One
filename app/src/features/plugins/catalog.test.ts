@@ -27,6 +27,7 @@ describe('plugin catalog', () => {
         'gmail',
         'google-drive',
         'canva',
+        'zapier',
       ]),
     );
     expect(implemented.every((plugin) => plugin.tools.length > 0)).toBe(true);
@@ -126,6 +127,29 @@ describe('plugin catalog', () => {
     expect(JSON.stringify(canva)).not.toMatch(/cnvca-|refresh-token/i);
   });
 
+  it('publishes Zapier as a configured-action MCP gateway without broad app guarantees', () => {
+    const zapier = PLUGIN_CATALOG.find((plugin) => plugin.id === 'zapier');
+
+    expect(zapier).toMatchObject({
+      id: 'zapier',
+      provider: 'Zapier',
+      authType: 'token',
+      status: 'implemented',
+      fields: [{ id: 'connection_token', secret: true, required: true }],
+      supportedFeatures: [
+        'configured action discovery',
+        'exact selected action identity',
+        'approved downstream action execution',
+      ],
+      tools: [
+        { name: 'actions_discover', readOnly: true },
+        { name: 'action_invoke', readOnly: false },
+      ],
+    });
+    expect(zapier?.limitations).toMatch(/currently exposed|configured actions|task usage/i);
+    expect(JSON.stringify(zapier)).not.toMatch(/9,?000|thousands of apps|connection-token/i);
+  });
+
   it('excludes needs_credentials placeholders from the curated catalog', () => {
     expect(PLUGIN_CATALOG.every((plugin) => plugin.status !== 'needs_credentials')).toBe(true);
   });
@@ -134,11 +158,11 @@ describe('plugin catalog', () => {
     const stats = catalogStats();
     expect(stats).toEqual({
       total: 112,
-      implemented: 9,
-      configurable: 103,
+      implemented: 10,
+      configurable: 102,
       needsCredentials: 0,
       blocked: 0,
-      withHttpTest: 86,
+      withHttpTest: 85,
     });
   });
 });

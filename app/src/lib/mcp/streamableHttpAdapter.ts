@@ -1,5 +1,6 @@
 import { nativeFetch, type NativeFetchInit } from '@/lib/nativeFetch';
 import {
+  canonicalRemoteMcpEndpoint,
   claimRemoteMcpAuthorization,
   type RemoteMcpAuthorizationReceipt,
 } from './remoteAuthorization';
@@ -37,6 +38,13 @@ const ADAPTER_OPTION_KEYS = new Set([
   'fetch',
   'requestTimeoutMs',
 ]);
+const BEARER_ADAPTER_OPTION_KEYS = new Set([
+  'id',
+  'endpoint',
+  'bearerToken',
+  'fetch',
+  'requestTimeoutMs',
+]);
 
 type McpHttpFetch = (input: RequestInfo | URL, init?: NativeFetchInit) => Promise<Response>;
 
@@ -44,6 +52,14 @@ export interface StreamableHttpMcpAdapterOptions {
   readonly id: string;
   readonly endpoint: string;
   readonly authorization: RemoteMcpAuthorizationReceipt;
+  readonly fetch?: McpHttpFetch;
+  readonly requestTimeoutMs?: number;
+}
+
+export interface BearerStreamableHttpMcpAdapterOptions {
+  readonly id: string;
+  readonly endpoint: string;
+  readonly bearerToken: string;
   readonly fetch?: McpHttpFetch;
   readonly requestTimeoutMs?: number;
 }
@@ -417,6 +433,7 @@ class StreamableHttpMcpClient implements McpServerClient {
     private readonly endpoint: string,
     private readonly fetch: McpHttpFetch,
     private readonly requestTimeoutMs: number,
+    private readonly bearerAuthorization?: string,
   ) {}
 
   async initialize(): Promise<void> {
@@ -503,20 +520,26 @@ class StreamableHttpMcpClient implements McpServerClient {
     options: McpClientInvokeOptions = {},
   ): Promise<unknown> => {
     if (!SAFE_TOOL_NAME.test(toolName)) throw new Error('Invalid MCP tool name.');
+    while (this.restartPromise) {
+      await this.waitForRestart(this.restartPromise, options.signal);
+    }
+    if (options.signal?.aborted) throw callerAbortError(options.signal);
     const progressToken = `vibespace-${this.nextId}`;
-    return this.sendRequestWithReconnect(
-      'tools/call',
-      {
-        name: toolName,
-        arguments: canonicalToolArguments(input),
-        _meta: { progressToken },
-      },
-      {
-        signal: options.signal,
-        progressToken,
-        onProgress: options.onProgress,
-      },
-    );
+    return (
+      await this.sendRequestRaw(
+        'tools/call',
+        {
+          name: toolName,
+          arguments: canonicalToolArguments(input),
+          _meta: { progressToken },
+        },
+        {
+          signal: options.signal,
+          progressToken,
+          onProgress: options.onProgress,
+        },
+      )
+    ).result;
   };
 
   health = async (): Promise<boolean> => {
@@ -537,6 +560,9 @@ class StreamableHttpMcpClient implements McpServerClient {
         redirect: 'error',
         headers: {
           accept: 'application/json, text/event-stream',
+          ...(this.bearerAuthorization === undefined
+            ? {}
+            : { authorization: this.bearerAuthorization }),
           'mcp-protocol-version': this.protocolVersion ?? PROTOCOL_VERSION,
           'mcp-session-id': sessionId,
         },
@@ -671,6 +697,7 @@ class StreamableHttpMcpClient implements McpServerClient {
           accept: 'application/json, text/event-stream',
           'content-type': 'application/json',
         };
+        if (this.bearerAuthorization) headers.authorization = this.bearerAuthorization;
         if (!options.initialize && this.protocolVersion) {
           headers['mcp-protocol-version'] = this.protocolVersion;
         }
@@ -748,6 +775,7 @@ class StreamableHttpMcpClient implements McpServerClient {
       accept: 'application/json, text/event-stream',
       'content-type': 'application/json',
     };
+    if (this.bearerAuthorization) headers.authorization = this.bearerAuthorization;
     if (this.protocolVersion) headers['mcp-protocol-version'] = this.protocolVersion;
     if (this.sessionId) headers['mcp-session-id'] = this.sessionId;
     const response = await this.fetch(this.endpoint, {
@@ -814,6 +842,77 @@ export function createStreamableHttpMcpAdapter(
     id,
     start: async (): Promise<McpServerClient> => {
       const client = new StreamableHttpMcpClient(authorization.endpoint, fetch, requestTimeoutMs);
+      try {
+        await client.initialize();
+        return client;
+      } catch (error) {
+        await client.stop().catch(() => undefined);
+        throw error;
+      }
+    },
+  });
+}
+
+export function createBearerStreamableHttpMcpAdapter(
+  options: BearerStreamableHttpMcpAdapterOptions,
+): Readonly<McpServerAdapter> {
+  const source = plainRecord(options);
+  if (!source) throw new Error('Invalid bearer Streamable HTTP MCP adapter options.');
+  for (const key of Reflect.ownKeys(source)) {
+    const descriptor =
+      typeof key === 'string' ? Object.getOwnPropertyDescriptor(source, key) : undefined;
+    if (
+      typeof key !== 'string' ||
+      !BEARER_ADAPTER_OPTION_KEYS.has(key) ||
+      !descriptor ||
+      !('value' in descriptor)
+    ) {
+      throw new Error('Invalid bearer Streamable HTTP MCP adapter options.');
+    }
+  }
+  const id = ownDataValue(source, 'id');
+  const endpoint = ownDataValue(source, 'endpoint');
+  const bearerToken = ownDataValue(source, 'bearerToken');
+  const configuredFetch = ownDataValue(source, 'fetch');
+  const configuredTimeout = ownDataValue(source, 'requestTimeoutMs');
+  if (typeof id !== 'string' || !SAFE_SERVER_ID.test(id)) {
+    throw new Error('Invalid MCP server id.');
+  }
+  const canonicalEndpoint = canonicalRemoteMcpEndpoint(endpoint);
+  if (
+    typeof bearerToken !== 'string' ||
+    bearerToken.length < 16 ||
+    bearerToken.length > 4_096 ||
+    /[\s\u0000-\u001f\u007f]/u.test(bearerToken)
+  ) {
+    throw new Error('Invalid MCP bearer credential.');
+  }
+  if (configuredTimeout !== undefined && typeof configuredTimeout !== 'number') {
+    throw new Error('Invalid MCP request timeout.');
+  }
+  const requestTimeoutMs = configuredTimeout ?? 30_000;
+  if (
+    !Number.isSafeInteger(requestTimeoutMs) ||
+    requestTimeoutMs < 250 ||
+    requestTimeoutMs > 120_000
+  ) {
+    throw new Error('Invalid MCP request timeout.');
+  }
+  if (configuredFetch !== undefined && typeof configuredFetch !== 'function') {
+    throw new Error('Invalid MCP HTTP transport.');
+  }
+  const fetch: McpHttpFetch =
+    configuredFetch === undefined ? nativeFetch : (configuredFetch as McpHttpFetch);
+  const bearerAuthorization = `Bearer ${bearerToken}`;
+  return Object.freeze({
+    id,
+    start: async (): Promise<McpServerClient> => {
+      const client = new StreamableHttpMcpClient(
+        canonicalEndpoint,
+        fetch,
+        requestTimeoutMs,
+        bearerAuthorization,
+      );
       try {
         await client.initialize();
         return client;

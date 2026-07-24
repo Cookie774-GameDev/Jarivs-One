@@ -331,6 +331,7 @@ const PRIORITY_CANDIDATES: CatalogCandidate[] = [
   { name: 'Coda', category: 'Productivity' },
   { name: 'Miro', category: 'Productivity' },
   { name: 'Canva', category: 'Design' },
+  { name: 'Zapier', category: 'Productivity' },
   // Project Management (6)
   { name: 'Linear', category: 'Project Management' },
   { name: 'Jira', category: 'Project Management' },
@@ -433,6 +434,7 @@ function isVerifiedCatalogEntry(plugin: PluginManifest): boolean {
 
 const implementedIds = new Set(IMPLEMENTED_BASE.map((plugin) => plugin.id));
 const GENERATED_TARGET = PLUGIN_CATALOG_TARGET - IMPLEMENTED_BASE.length;
+const CUSTOM_RUNTIME_TESTERS = new Set(['zapier']);
 
 const GENERATED: PluginManifest[] = PRIORITY_CANDIDATES.map(({ name, category }) =>
   buildCatalogEntry(name, category),
@@ -481,7 +483,8 @@ export function validatePluginCatalog(catalog = PLUGIN_CATALOG): string[] {
       (plugin.status === 'implemented' || plugin.status === 'configurable') &&
       !plugin.httpTest &&
       plugin.authType !== 'none' &&
-      plugin.authType !== 'oauth'
+      plugin.authType !== 'oauth' &&
+      !CUSTOM_RUNTIME_TESTERS.has(plugin.id)
     ) {
       errors.push(`${plugin.id}: connectable plugin missing httpTest`);
     }

@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { NativeFetchInit } from '@/lib/nativeFetch';
 import { authorizeRemoteMcpConnection } from './remoteAuthorization';
-import { createStreamableHttpMcpAdapter } from './streamableHttpAdapter';
+import {
+  createBearerStreamableHttpMcpAdapter,
+  createStreamableHttpMcpAdapter,
+} from './streamableHttpAdapter';
 
 type FetchCall = {
   url: string;
@@ -84,6 +87,126 @@ function initializedHarness(
 }
 
 describe('Streamable HTTP MCP adapter', () => {
+  it('keeps a keychain bearer token in transport headers across the complete session', async () => {
+    const calls: FetchCall[] = [];
+    const fetch = vi.fn(async (url: RequestInfo | URL, init: NativeFetchInit = {}) => {
+      const message =
+        typeof init.body === 'string' && init.body
+          ? (JSON.parse(init.body) as Record<string, unknown>)
+          : undefined;
+      const call = { url: String(url), init, message };
+      calls.push(call);
+      expect(call.url).toBe('https://mcp.zapier.com/api/v1/connect');
+      expect(init.redirect).toBe('error');
+      expect(new Headers(init.headers).get('authorization')).toBe(
+        'Bearer zapier-connection-token-kept-private',
+      );
+      if (init.method === 'DELETE') return new Response(null, { status: 200 });
+      if (message?.method === 'initialize') {
+        return jsonResponse(
+          {
+            jsonrpc: '2.0',
+            id: message.id,
+            result: {
+              protocolVersion: '2025-11-25',
+              capabilities: { tools: {} },
+              serverInfo: { name: 'zapier', version: '1.0.0' },
+            },
+          },
+          { headers: { 'mcp-session-id': 'zapier-session' } },
+        );
+      }
+      if (message?.method === 'notifications/initialized') {
+        return new Response(null, { status: 202 });
+      }
+      if (message?.method === 'tools/list') {
+        return success(message.id, {
+          tools: [{ name: 'slack_send_message', inputSchema: { type: 'object' } }],
+        });
+      }
+      if (message?.method === 'tools/call') {
+        return success(message.id, { content: [{ type: 'text', text: 'sent' }] });
+      }
+      throw new Error('unexpected request');
+    });
+    const adapter = createBearerStreamableHttpMcpAdapter({
+      id: 'zapier',
+      endpoint: 'https://mcp.zapier.com/api/v1/connect',
+      bearerToken: 'zapier-connection-token-kept-private',
+      fetch,
+      requestTimeoutMs: 5_000,
+    });
+
+    const client = await adapter.start();
+    await expect(client.listTools()).resolves.toHaveLength(1);
+    await expect(client.invoke('slack_send_message', {})).resolves.toEqual({
+      content: [{ type: 'text', text: 'sent' }],
+    });
+    await client.stop();
+
+    expect(calls.map(({ message, init }) => message?.method ?? init.method)).toEqual([
+      'initialize',
+      'notifications/initialized',
+      'tools/list',
+      'tools/call',
+      'DELETE',
+    ]);
+  });
+
+  it('never resends an ambiguous tool call after an expired-session response', async () => {
+    let initializeCount = 0;
+    let invocationCount = 0;
+    const { adapter } = createHarness((call) => {
+      if (call.message?.method === 'initialize') {
+        initializeCount += 1;
+        return jsonResponse(
+          {
+            jsonrpc: '2.0',
+            id: call.message.id,
+            result: {
+              protocolVersion: '2025-11-25',
+              capabilities: { tools: {} },
+              serverInfo: { name: 'remote', version: '1' },
+            },
+          },
+          { headers: { 'mcp-session-id': `session-${initializeCount}` } },
+        );
+      }
+      if (call.message?.method === 'notifications/initialized') {
+        return new Response(null, { status: 202 });
+      }
+      if (call.message?.method === 'tools/call') {
+        invocationCount += 1;
+        return new Response(null, { status: 404 });
+      }
+      throw new Error('unexpected method');
+    });
+    const client = await adapter.start();
+
+    await expect(client.invoke('external.write', { value: 'approved' })).rejects.toThrow(
+      /session expired/i,
+    );
+    expect(invocationCount).toBe(1);
+    expect(initializeCount).toBe(1);
+  });
+
+  it('rejects unsafe bearer credentials and token-bearing endpoint URLs', () => {
+    expect(() =>
+      createBearerStreamableHttpMcpAdapter({
+        id: 'zapier',
+        endpoint: 'https://mcp.zapier.com/api/v1/connect',
+        bearerToken: 'unsafe token',
+      }),
+    ).toThrow(/bearer/i);
+    expect(() =>
+      createBearerStreamableHttpMcpAdapter({
+        id: 'zapier',
+        endpoint: 'https://mcp.zapier.com/api/v1/connect?token=secret',
+        bearerToken: 'otherwise-safe-token',
+      }),
+    ).toThrow(/endpoint|unsafe/i);
+  });
+
   it('initializes first, negotiates 2025-11-25, and sends required headers', async () => {
     const { adapter, calls } = createHarness((call) => {
       if (call.init.method === 'DELETE') {

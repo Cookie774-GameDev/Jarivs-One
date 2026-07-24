@@ -238,6 +238,50 @@ export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
       },
     ],
   },
+  zapier: {
+    provider: 'Zapier',
+    description:
+      'Discover the exact actions currently exposed by your Zapier MCP connection and run one unchanged selected action only after explicit approval.',
+    authType: 'token',
+    fields: [
+      token(
+        'connection_token',
+        'MCP connection token',
+        'Stored in the OS keychain',
+        'Generate a connection token for an “Other” MCP client. VibeSpace sends it only as an Authorization bearer header to Zapier’s fixed MCP endpoint.',
+      ),
+    ],
+    status: 'implemented',
+    docsUrl:
+      'https://help.zapier.com/hc/en-us/articles/37541658534029-Use-Zapier-MCP-with-your-client',
+    credentialUrl: 'https://mcp.zapier.com/',
+    help: 'Configure only the Zapier actions you want exposed, generate a connection token for an “Other” client, and save that token here. VibeSpace discovers the currently exposed actions and always asks for confirmation before an external write.',
+    tags: ['zapier', 'mcp', 'automation', 'configured actions', 'approval'],
+    setupSteps: [
+      'Open Zapier MCP and configure the exact actions you want available.',
+      'Choose an Other MCP client and generate a connection token.',
+      'Save the token here and run Test Connection to discover the currently exposed actions.',
+    ],
+    supportedFeatures: [
+      'configured action discovery',
+      'exact selected action identity',
+      'approved downstream action execution',
+    ],
+    limitations:
+      'Only actions currently exposed by the configured Zapier MCP connection are available. Every action invocation may consume Zapier task usage and requires explicit confirmation; VibeSpace makes no broad app-count guarantee.',
+    tools: [
+      readTool(
+        'actions_discover',
+        'Discover bounded metadata and schemas for actions currently exposed by the configured Zapier MCP connection.',
+      ),
+      {
+        name: 'action_invoke',
+        description:
+          'Re-discover and run one exact unchanged selected Zapier action after explicit approval.',
+        readOnly: false,
+      },
+    ],
+  },
   openai: {
     provider: 'OpenAI',
     authType: 'api_key',

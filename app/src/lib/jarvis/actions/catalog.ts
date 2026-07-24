@@ -467,6 +467,11 @@ const CANVA_PRESETS = new Set(['doc', 'email', 'presentation', 'whiteboard']);
 const CANVA_AUTOFILL_JSON_MAX = 50_000;
 const CANVA_AUTOFILL_FIELD_MAX = 50;
 const CANVA_AUTOFILL_TEXT_MAX = 10_000;
+const ZAPIER_ACTION_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
+const ZAPIER_SCHEMA_FINGERPRINT = /^sha256:[a-f0-9]{64}$/;
+const ZAPIER_QUERY_MAX = 240;
+const ZAPIER_DISCOVERY_MAX = 50;
+const ZAPIER_INPUT_JSON_MAX = 64 * 1_024;
 const MCP_SERVER_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$/;
 const MCP_TOOL_NAME = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
 const MAX_MCP_INPUT_JSON_CHARS = 256 * 1024;
@@ -1343,6 +1348,183 @@ const CANVA_ACTION_REGISTRATIONS: readonly JarvisRegisteredActionDefinition[] = 
   }),
 ];
 
+function zapierIdentityText(value: unknown, maximum: number, label: string): string {
+  if (
+    typeof value !== 'string' ||
+    !value ||
+    value.length > maximum ||
+    value.trim() !== value ||
+    /[\u0000-\u001f\u007f]/.test(value)
+  ) {
+    catalogError(`${label} is invalid`);
+  }
+  return value;
+}
+
+function zapierDiscoverParameters(
+  input: Readonly<Record<string, unknown>>,
+): Readonly<{ query?: string; maxResults?: number }> {
+  const record = plainRecord(input, 'zapier.actions.discover parameters');
+  assertExactKeys(record, ['query', 'maxResults'], 'zapier.actions.discover parameters');
+  const validated: { query?: string; maxResults?: number } = {};
+  if (record.query !== undefined) {
+    if (
+      typeof record.query !== 'string' ||
+      record.query.length > ZAPIER_QUERY_MAX ||
+      /[\u0000-\u001f\u007f]/.test(record.query)
+    ) {
+      catalogError('Zapier discovery query is invalid');
+    }
+    const query = record.query.normalize('NFC').trim();
+    if (query) validated.query = query;
+  }
+  if (record.maxResults !== undefined) {
+    if (
+      !Number.isSafeInteger(record.maxResults) ||
+      (record.maxResults as number) < 1 ||
+      (record.maxResults as number) > ZAPIER_DISCOVERY_MAX
+    ) {
+      catalogError('Zapier discovery maxResults is invalid');
+    }
+    validated.maxResults = record.maxResults as number;
+  }
+  return validated;
+}
+
+function zapierInvokeParameters(input: Readonly<Record<string, unknown>>): Readonly<{
+  actionId: string;
+  actionTitle: string;
+  downstreamApp: string;
+  schemaFingerprint: string;
+  inputJson: string;
+}> {
+  const record = plainRecord(input, 'zapier.action.invoke parameters');
+  assertExactKeys(
+    record,
+    ['actionId', 'actionTitle', 'downstreamApp', 'schemaFingerprint', 'inputJson'],
+    'zapier.action.invoke parameters',
+  );
+  const actionId = zapierIdentityText(record.actionId, 128, 'Zapier actionId');
+  if (!ZAPIER_ACTION_ID.test(actionId)) catalogError('Zapier actionId is invalid');
+  const actionTitle = zapierIdentityText(record.actionTitle, 160, 'Zapier actionTitle');
+  const downstreamApp = zapierIdentityText(record.downstreamApp, 80, 'Zapier downstreamApp');
+  const schemaFingerprint = zapierIdentityText(
+    record.schemaFingerprint,
+    71,
+    'Zapier schemaFingerprint',
+  );
+  if (!ZAPIER_SCHEMA_FINGERPRINT.test(schemaFingerprint)) {
+    catalogError('Zapier schemaFingerprint is invalid');
+  }
+  if (
+    typeof record.inputJson !== 'string' ||
+    !record.inputJson.trim() ||
+    record.inputJson.length > ZAPIER_INPUT_JSON_MAX
+  ) {
+    catalogError('Zapier inputJson is invalid');
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(record.inputJson);
+  } catch {
+    catalogError('Zapier inputJson is invalid');
+  }
+  plainRecord(parsed, 'Zapier inputJson');
+  return {
+    actionId,
+    actionTitle,
+    downstreamApp,
+    schemaFingerprint,
+    inputJson: JSON.stringify(parsed),
+  };
+}
+
+const ZAPIER_CREDENTIAL_BINDINGS: readonly JarvisActionCredentialBinding[] = [
+  {
+    field: 'zapierConnectionGrant',
+    locator: { pluginId: 'zapier', fieldId: 'connection_token' },
+  },
+];
+
+const ZAPIER_ACTION_REGISTRATIONS: readonly JarvisRegisteredActionDefinition[] = [
+  {
+    id: 'zapier.actions.discover',
+    version: 1,
+    title: 'Discover configured Zapier actions',
+    description:
+      'Discover bounded schemas and exact identities for actions currently exposed by the configured Zapier MCP connection.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string' },
+        maxResults: { type: 'number', default: 20 },
+      },
+      additionalProperties: false,
+    },
+    outputSchema: NO_OUTPUT_SCHEMA,
+    requiredCapabilities: ['plugin.zapier.actions_discover'],
+    requiredEntitlements: [],
+    risk: 'read-only',
+    approval: 'never',
+    expectedEffect:
+      'Reads bounded metadata for only the actions currently exposed by the configured Zapier MCP connection.',
+    exposeToAI: true,
+    executor: { kind: 'plugin_tool', pluginId: 'zapier', toolName: 'actions_discover' },
+    credentialBindings: ZAPIER_CREDENTIAL_BINDINGS,
+    validateParameters: zapierDiscoverParameters,
+    deriveTarget: ({ accountId }) => ({
+      kind: 'plugin_tool',
+      accountId,
+      pluginId: 'zapier',
+      toolName: 'actions_discover',
+      resourceId: 'currently-exposed-actions',
+    }),
+  },
+  {
+    id: 'zapier.action.invoke',
+    version: 1,
+    title: 'Run selected Zapier action',
+    description:
+      'Run one exact configured Zapier action only after its title, downstream app, and schema fingerprint are approved.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        actionId: { type: 'string' },
+        actionTitle: { type: 'string' },
+        downstreamApp: { type: 'string' },
+        schemaFingerprint: { type: 'string' },
+        inputJson: {
+          type: 'string',
+          description: 'A bounded JSON object containing only the selected action arguments.',
+        },
+      },
+      required: ['actionId', 'actionTitle', 'downstreamApp', 'schemaFingerprint', 'inputJson'],
+      additionalProperties: false,
+    },
+    outputSchema: NO_OUTPUT_SCHEMA,
+    requiredCapabilities: ['plugin.zapier.action_invoke'],
+    requiredEntitlements: [],
+    risk: 'external-side-effect',
+    approval: 'always',
+    expectedEffect:
+      'Re-discovers and runs one exact unchanged approved Zapier action through the displayed downstream application.',
+    exposeToAI: true,
+    executor: { kind: 'plugin_tool', pluginId: 'zapier', toolName: 'action_invoke' },
+    credentialBindings: ZAPIER_CREDENTIAL_BINDINGS,
+    validateParameters: zapierInvokeParameters,
+    deriveTarget: ({ accountId, params }) => {
+      const validated = zapierInvokeParameters(params);
+      return {
+        kind: 'plugin_tool',
+        accountId,
+        pluginId: 'zapier',
+        toolName: 'action_invoke',
+        resourceId: validated.actionId,
+      };
+    },
+  },
+];
+
 function validateModelSwitchParameters(
   input: Readonly<Record<string, unknown>>,
 ): Readonly<Record<string, unknown>> {
@@ -1912,6 +2094,7 @@ export const DEFAULT_JARVIS_ACTION_REGISTRATIONS = deepFreeze<
   ...GMAIL_ACTION_REGISTRATIONS,
   ...GOOGLE_DRIVE_ACTION_REGISTRATIONS,
   ...CANVA_ACTION_REGISTRATIONS,
+  ...ZAPIER_ACTION_REGISTRATIONS,
   {
     id: 'chat.model.switch',
     version: 1,
