@@ -1,6 +1,13 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChatModelSelection } from '@/lib/ai/modelSelection';
 import { GEMINI_API_CONNECTION } from '@/lib/ai/adapters/nativeCatalog';
+import { CODEX_CLI_CONNECTION } from '@/lib/ai/adapters/catalog';
+import {
+  markConnectionSessionChecked,
+  resetConnectionSessionChecksForTests,
+  writeConnectionMetadata,
+  writeConnectionPickerStates,
+} from '@/lib/ai/connectionState';
 import {
   buildJarvisModelSwitchCandidates,
   createModelSelectionActions,
@@ -48,6 +55,11 @@ function candidate(
 }
 
 describe('buildJarvisModelSwitchCandidates', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    resetConnectionSessionChecksForTests();
+  });
+
   it('derives connection, capability, preference, and cost truth without copying keys', () => {
     const auth = state({
       chatModelSelection: selection('google', 'gemini-2.5-flash'),
@@ -101,6 +113,39 @@ describe('buildJarvisModelSwitchCandidates', () => {
     });
 
     expect(candidates[0]).toMatchObject({ connected: false, available: false });
+  });
+
+  it('uses only current-session authority and exact Codex subscription models by default', () => {
+    writeConnectionPickerStates({
+      'openai-codex': { available: true, auth: 'authenticated' },
+    });
+
+    const stale = buildJarvisModelSwitchCandidates(state(), {
+      connections: [CODEX_CLI_CONNECTION],
+    }).filter((candidate) => candidate.selection.connectionId === 'openai-codex');
+    expect(stale.map((candidate) => candidate.selection.modelId)).toEqual([
+      'gpt-5.6-sol',
+      'gpt-5.6-terra',
+      'gpt-5.6-luna',
+    ]);
+    expect(stale.every((candidate) => !candidate.connected && !candidate.available)).toBe(true);
+
+    writeConnectionMetadata({
+      'openai-codex': {
+        installation: 'installed',
+        auth: 'authenticated',
+      },
+    });
+    markConnectionSessionChecked(['openai-codex']);
+    const current = buildJarvisModelSwitchCandidates(state(), {
+      connections: [CODEX_CLI_CONNECTION],
+    }).filter((candidate) => candidate.selection.connectionId === 'openai-codex');
+    expect(current.map((candidate) => candidate.selection.modelId)).toEqual([
+      'gpt-5.6-sol',
+      'gpt-5.6-terra',
+      'gpt-5.6-luna',
+    ]);
+    expect(current.every((candidate) => candidate.connected && candidate.available)).toBe(true);
   });
 });
 

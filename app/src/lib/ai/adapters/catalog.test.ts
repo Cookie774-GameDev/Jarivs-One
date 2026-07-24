@@ -3,6 +3,7 @@ import { listen } from '@tauri-apps/api/event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   buildProviderCatalog,
+  CONNECTION_MODEL_OPTIONS,
   PROVIDER_CATALOG,
   PROVIDER_CONNECTIONS,
   getProviderConnectionDescriptor,
@@ -17,7 +18,7 @@ import {
   type CliStartRequest,
 } from './cliBridge';
 import { buildClaudeInvocation } from './claude';
-import { buildCodexInvocation } from './codex';
+import { buildCodexInvocation, classifyCodexAuthProbe, CODEX_CLI_DEFINITION } from './codex';
 import { buildCopilotInvocation } from './copilot';
 import { buildGeminiInvocation } from './gemini';
 import { buildOpenCodeInvocation } from './opencode';
@@ -232,6 +233,55 @@ describe('provider capability catalog', () => {
       authProbeArgs: ['auth', 'list'],
       modelListArgs: ['models'],
     });
+  });
+
+  it('publishes a frozen current model catalog only for the Codex subscription connection', () => {
+    expect(CONNECTION_MODEL_OPTIONS['openai-codex']).toEqual([
+      { id: 'gpt-5.6-sol', label: 'GPT-5.6 Sol' },
+      { id: 'gpt-5.6-terra', label: 'GPT-5.6 Terra' },
+      { id: 'gpt-5.6-luna', label: 'GPT-5.6 Luna' },
+    ]);
+    expect(Object.isFrozen(CONNECTION_MODEL_OPTIONS)).toBe(true);
+    expect(Object.isFrozen(CONNECTION_MODEL_OPTIONS['openai-codex'])).toBe(true);
+    expect(
+      CONNECTION_MODEL_OPTIONS['openai-codex']?.every((option) => Object.isFrozen(option)),
+    ).toBe(true);
+    expect(CONNECTION_MODEL_OPTIONS['openai-api']).toBeUndefined();
+  });
+
+  it('enables the Codex subscription bridge only for an exact ChatGPT login method', () => {
+    const probe = (
+      stdout: string,
+      overrides: Partial<{
+        exitCode: number | null;
+        stderr: string;
+        timedOut: boolean;
+        truncated: boolean;
+      }> = {},
+    ) => ({
+      exitCode: overrides.exitCode ?? 0,
+      stdout: { data: stdout, truncated: overrides.truncated ?? false },
+      stderr: { data: overrides.stderr ?? '', truncated: false },
+      timedOut: overrides.timedOut ?? false,
+    });
+
+    expect(classifyCodexAuthProbe(probe('Logged in using ChatGPT'))).toEqual({
+      status: 'authenticated',
+      detail: 'Authenticated through ChatGPT.',
+    });
+    for (const result of [
+      probe('Logged in using an API key'),
+      probe('Logged in using ChatGPT', { truncated: true }),
+      probe('Unexpected future output'),
+      probe('', { exitCode: 1 }),
+      probe('', { timedOut: true }),
+    ]) {
+      expect(classifyCodexAuthProbe(result)).toEqual({
+        status: 'unauthenticated',
+        detail: 'ChatGPT subscription sign-in is not active.',
+      });
+    }
+    expect(CODEX_CLI_DEFINITION.classifyAuthProbe).toBe(classifyCodexAuthProbe);
   });
 });
 

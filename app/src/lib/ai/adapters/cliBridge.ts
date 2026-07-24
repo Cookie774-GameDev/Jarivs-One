@@ -126,6 +126,7 @@ export interface CliProviderDefinition {
   executableName: string;
   versionArgs: readonly string[];
   authProbeArgs?: readonly string[];
+  classifyAuthProbe?: (probe: Readonly<CliProbeResult>) => AuthProbeResult;
   modelListArgs?: readonly string[];
   buildInvocation: (request: CliInvocationRequest) => CliInvocation;
   normalizeRecord: ProviderRecordNormalizer;
@@ -606,21 +607,32 @@ async function probeProviderAuth(definition: CliProviderDefinition): Promise<Aut
       detail: 'No approved read-only authentication status command is available.',
     };
   }
+  const classifyUnavailable = (): AuthProbeResult =>
+    definition.classifyAuthProbe?.({
+      exitCode: null,
+      stdout: { data: '', truncated: false },
+      stderr: { data: '', truncated: false },
+      timedOut: false,
+    }) ?? {
+      status: 'unknown',
+      detail: 'Authentication status could not be verified.',
+    };
   try {
     const executable = await findExecutable(definition.executableName);
-    if (!executable) return { status: 'unknown', detail: 'Provider CLI is not installed.' };
+    if (!executable) return classifyUnavailable();
     const probe = await probeCliBridge({
       executableId: executable.executableId,
       args: [...definition.authProbeArgs],
       timeoutMs: DEFAULT_PROBE_TIMEOUT_MS,
       outputLimitBytes: DEFAULT_PROBE_OUTPUT_LIMIT_BYTES,
     });
+    if (definition.classifyAuthProbe) return definition.classifyAuthProbe(probe);
     if (probe.timedOut) return { status: 'unknown', detail: 'Authentication probe timed out.' };
     return probe.exitCode === 0
       ? { status: 'authenticated', detail: 'Authenticated via the provider CLI.' }
       : { status: 'unauthenticated', detail: 'The provider CLI reported no active session.' };
   } catch {
-    return { status: 'unknown', detail: 'Authentication status could not be verified.' };
+    return classifyUnavailable();
   }
 }
 

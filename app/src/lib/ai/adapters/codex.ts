@@ -6,13 +6,14 @@ import {
   normalizeProviderJsonl,
   requireModelId,
   responseUsageSnapshot,
+  type CliProbeResult,
   type CliInvocation,
   type CliInvocationRequest,
   type CliProviderDefinition,
   type JsonlParserLimits,
   type ProviderRecordNormalization,
 } from './cliBridge';
-import type { ProviderEvent } from './types';
+import type { AuthProbeResult, ProviderEvent } from './types';
 
 function recordOf(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -118,6 +119,28 @@ export function normalizeCodexJsonl(input: string, limits?: JsonlParserLimits): 
   return normalizeProviderJsonl(input, normalizeCodexRecord, limits);
 }
 
+const CODEX_CHATGPT_LOGIN_STATUS = 'Logged in using ChatGPT';
+
+export function classifyCodexAuthProbe(probe: Readonly<CliProbeResult>): AuthProbeResult {
+  const reportsChatGpt =
+    !probe.timedOut &&
+    probe.exitCode === 0 &&
+    !probe.stdout.truncated &&
+    !probe.stderr.truncated &&
+    [probe.stdout.data, probe.stderr.data]
+      .flatMap((output) => output.split(/\r?\n/u))
+      .some((line) => line.trim() === CODEX_CHATGPT_LOGIN_STATUS);
+  return reportsChatGpt
+    ? {
+        status: 'authenticated',
+        detail: 'Authenticated through ChatGPT.',
+      }
+    : {
+        status: 'unauthenticated',
+        detail: 'ChatGPT subscription sign-in is not active.',
+      };
+}
+
 export const CODEX_CLI_DEFINITION: CliProviderDefinition = Object.freeze({
   adapterId: 'codex-cli',
   connectionId: 'openai-codex',
@@ -125,6 +148,7 @@ export const CODEX_CLI_DEFINITION: CliProviderDefinition = Object.freeze({
   executableName: 'codex',
   versionArgs: Object.freeze(['--version']),
   authProbeArgs: Object.freeze(['login', 'status']),
+  classifyAuthProbe: classifyCodexAuthProbe,
   buildInvocation: buildCodexInvocation,
   normalizeRecord: normalizeCodexRecord,
 });

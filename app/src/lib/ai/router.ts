@@ -45,7 +45,7 @@ import type {
   ProviderConnection,
   ProviderEvent,
 } from './adapters/types';
-import { getProviderConnectionDescriptor } from './adapters/catalog';
+import { CONNECTION_MODEL_OPTIONS, getProviderConnectionDescriptor } from './adapters/catalog';
 import { codexCliAdapter } from './adapters/codex';
 import { claudeCliAdapter } from './adapters/claude';
 import { geminiCliAdapter } from './adapters/gemini';
@@ -241,6 +241,10 @@ export async function runExternalConnection(args: {
   if (adapter.id !== connection.adapterId) {
     throw new Error(`Provider adapter mismatch for connection: ${connection.id}`);
   }
+  const exactModels = CONNECTION_MODEL_OPTIONS[connection.id];
+  if (exactModels && args.modelId && !exactModels.some((model) => model.id === args.modelId)) {
+    throw new Error(`${args.modelId} is unavailable for ${connection.displayName}`);
+  }
   assertConnectionCapabilities(connection, args.requirements);
   if (!adapter.send) throw new Error(`${connection.displayName} cannot send requests`);
 
@@ -252,6 +256,9 @@ export async function runExternalConnection(args: {
     ? await adapter.probeAuth(connection)
     : { status: 'unknown' as const };
   if (auth.status === 'unauthenticated') throw new Error(`${connection.displayName} is signed out`);
+  if (auth.status !== 'authenticated') {
+    throw new Error(`${connection.displayName} authentication could not be verified`);
+  }
   if (args.signal?.aborted) throw new DOMException('The request was aborted.', 'AbortError');
 
   let text = '';

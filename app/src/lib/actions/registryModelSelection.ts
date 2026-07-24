@@ -3,13 +3,15 @@ import type { ProviderId } from '@/types';
 import { useAuthStore } from '@/stores/auth';
 import { type ChatModelSelection, selectionFromOption } from '@/lib/ai/modelSelection';
 import { CHAT_MODEL_OPTIONS, getAccessibleModelOptions, type ModelOption } from '@/lib/ai/models';
-import { PROVIDER_CONNECTIONS } from '@/lib/ai/adapters/catalog';
+import { CONNECTION_MODEL_OPTIONS, PROVIDER_CONNECTIONS } from '@/lib/ai/adapters/catalog';
 import type { ProviderConnection } from '@/lib/ai/adapters/types';
 import { isProviderConnected } from '@/lib/ai/providerRegistry';
 import {
+  isConnectionSessionChecked,
   readConnectionPickerStates,
+  readConnectionSessionPickerStates,
   type ConnectionPickerState,
-} from '@/lib/ai/useAccessibleChatModels';
+} from '@/lib/ai/connectionState';
 import { ratesFor } from '@/lib/ai/types';
 import { modelSupportsVision } from '@/lib/ai/vision';
 import {
@@ -89,9 +91,20 @@ function codingRank(modelId: string): number {
 function uniqueModelOptions(
   state: JarvisModelSelectionActionState,
   supplied?: readonly ModelOption[],
+  connections: readonly Readonly<ProviderConnection>[] = PROVIDER_CONNECTIONS,
 ): readonly ModelOption[] {
   if (supplied) return supplied;
   const options: ModelOption[] = [...CHAT_MODEL_OPTIONS];
+  for (const connection of connections) {
+    const exactModels = CONNECTION_MODEL_OPTIONS[connection.id] ?? [];
+    options.push(
+      ...exactModels.map((model) => ({
+        provider: connection.providerId as ProviderId,
+        id: model.id,
+        label: model.label,
+      })),
+    );
+  }
   for (const provider of ['ollama', 'local'] as const) {
     options.push(
       ...getAccessibleModelOptions(
@@ -176,10 +189,27 @@ export function buildJarvisModelSwitchCandidates(
   const connections = (options.connections ?? PROVIDER_CONNECTIONS).filter(
     (connection) => connection.enabled,
   );
-  const connectionStates = options.connectionStates ?? readConnectionPickerStates();
+  const connectionStates =
+    options.connectionStates ??
+    (() => {
+      const persisted = readConnectionPickerStates();
+      const session = readConnectionSessionPickerStates();
+      return Object.fromEntries(
+        connections.flatMap((connection) => {
+          if (connection.mode === 'external-cli') {
+            const state = isConnectionSessionChecked(connection.id)
+              ? session[connection.id]
+              : undefined;
+            return state ? [[connection.id, state]] : [];
+          }
+          const state = persisted[connection.id];
+          return state ? [[connection.id, state]] : [];
+        }),
+      );
+    })();
   const candidates: JarvisModelSwitchCandidate[] = [];
 
-  for (const option of uniqueModelOptions(state, options.modelOptions)) {
+  for (const option of uniqueModelOptions(state, options.modelOptions, connections)) {
     const providerConnections = connections.filter(
       (connection) => connection.providerId === option.provider,
     );
@@ -213,6 +243,8 @@ export function buildJarvisModelSwitchCandidates(
     }
 
     for (const connection of providerConnections) {
+      const exactModels = CONNECTION_MODEL_OPTIONS[connection.id];
+      if (exactModels && !exactModels.some((model) => model.id === option.id)) continue;
       const connectionTruth = observedConnectionState(connection, connectionStates, state);
       candidates.push({
         selection: selectionFromOption(

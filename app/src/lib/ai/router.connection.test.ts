@@ -58,7 +58,7 @@ describe('connection routing', () => {
       connection,
       adapter,
       prompt: 'hi',
-      modelId: 'gpt-5',
+      modelId: 'gpt-5.6-sol',
       requestId: 'req-1',
     });
     expect(adapter.send).toHaveBeenCalledOnce();
@@ -71,7 +71,7 @@ describe('connection routing', () => {
         connection,
         adapter,
         prompt: 'look',
-        modelId: 'gpt-5',
+        modelId: 'gpt-5.6-sol',
         requestId: 'req-2',
         requirements: { images: true },
       }),
@@ -80,11 +80,34 @@ describe('connection routing', () => {
     expect(adapter.send).not.toHaveBeenCalled();
   });
 
+  it('rejects models outside the exact connection catalog before any provider work', async () => {
+    await expect(
+      runExternalConnection({
+        connection,
+        adapter,
+        prompt: 'hi',
+        modelId: 'gpt-4o',
+        requestId: 'req-legacy-model',
+      }),
+    ).rejects.toThrow('is unavailable for Codex CLI');
+    expect(adapter.detect).not.toHaveBeenCalled();
+    expect(adapter.probeAuth).not.toHaveBeenCalled();
+    expect(adapter.send).not.toHaveBeenCalled();
+  });
+
   it('rejects signed-out and unavailable connections before send', async () => {
     vi.mocked(adapter.probeAuth!).mockResolvedValue({ status: 'unauthenticated' });
     await expect(
       runExternalConnection({ connection, adapter, prompt: 'hi', requestId: 'req-3' }),
     ).rejects.toThrow('is signed out');
+    expect(adapter.send).not.toHaveBeenCalled();
+  });
+
+  it('requires positively authenticated status before send', async () => {
+    vi.mocked(adapter.probeAuth!).mockResolvedValue({ status: 'unknown' });
+    await expect(
+      runExternalConnection({ connection, adapter, prompt: 'hi', requestId: 'req-unknown-auth' }),
+    ).rejects.toThrow('authentication could not be verified');
     expect(adapter.send).not.toHaveBeenCalled();
   });
 

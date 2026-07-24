@@ -227,13 +227,17 @@ describe('AI provider routing', () => {
 
   it('sends one exact protected preamble through the selected CLI connection', async () => {
     const controller = new AbortController();
+    const codexAgent: Agent = {
+      ...openaiAgent,
+      model: { provider: 'openai', model: 'gpt-5.6-sol' },
+    };
     const messages = [
       { role: 'user' as const, content: '--option $(whoami); Unicode æ¡œ' },
       { role: 'assistant' as const, content: 'line one\nline two' },
     ];
 
     const response = await runAgent({
-      agent: openaiAgent,
+      agent: codexAgent,
       messages,
       connectionId: 'openai-codex',
       compiledPrompt,
@@ -257,7 +261,7 @@ describe('AI provider routing', () => {
         requestId: protectedAttempt.requestId,
         connection: expect.objectContaining({ id: 'openai-codex', providerId: 'openai' }),
         prompt: expectedPrompt,
-        modelId: openaiAgent.model.model,
+        modelId: codexAgent.model.model,
         systemPrompt: undefined,
         workingDirectory: 'C:\\workspace with spaces',
         signal: controller.signal,

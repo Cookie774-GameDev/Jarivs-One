@@ -103,6 +103,25 @@ export const CODEX_CLI_CONNECTION = externalConnection({
   promptTransport: CODEX_CLI_DEFINITION.promptTransport,
 });
 
+export interface ConnectionModelOption {
+  id: string;
+  label: string;
+}
+
+function frozenModelOption(id: string, label: string): Readonly<ConnectionModelOption> {
+  return Object.freeze({ id, label });
+}
+
+export const CONNECTION_MODEL_OPTIONS: Readonly<
+  Partial<Record<string, readonly Readonly<ConnectionModelOption>[]>>
+> = Object.freeze({
+  'openai-codex': Object.freeze([
+    frozenModelOption('gpt-5.6-sol', 'GPT-5.6 Sol'),
+    frozenModelOption('gpt-5.6-terra', 'GPT-5.6 Terra'),
+    frozenModelOption('gpt-5.6-luna', 'GPT-5.6 Luna'),
+  ]),
+});
+
 export const CLAUDE_CLI_CONNECTION = externalConnection({
   id: 'anthropic-claude-code',
   adapterId: CLAUDE_CLI_DEFINITION.adapterId,
@@ -297,9 +316,7 @@ export function buildProviderCatalog(config: KernelSmokeConfigInput): Readonly<{
     }) as ProviderCatalog,
     connections: Object.freeze([
       ...BASE_PROVIDER_CONNECTIONS,
-      ...(smokeEnabled
-        ? [KERNEL_SMOKE_NATIVE_CONNECTION, KERNEL_SMOKE_CLI_CONNECTION]
-        : []),
+      ...(smokeEnabled ? [KERNEL_SMOKE_NATIVE_CONNECTION, KERNEL_SMOKE_CLI_CONNECTION] : []),
     ]),
   });
 }
