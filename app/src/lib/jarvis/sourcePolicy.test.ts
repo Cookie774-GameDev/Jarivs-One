@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { classifyJarvisReadError, classifyJarvisSource } from './sourcePolicy';
+import {
+  classifyJarvisReadError,
+  classifyJarvisSource,
+  isJarvisModelVisibleSchemaSafe,
+} from './sourcePolicy';
 
 const privateText = (path: string, overrides: Record<string, unknown> = {}) => ({
   path,
@@ -231,5 +235,68 @@ describe('classifyJarvisReadError', () => {
     expect(decision).toMatchObject({ allowed: false, reason });
     expect(decision.safeSummary).not.toContain('synthetic-secret');
     expect(decision.safeSummary).not.toContain('C:\\private');
+  });
+});
+
+describe('isJarvisModelVisibleSchemaSafe', () => {
+  it('accepts detached JSON schema metadata without credential material', () => {
+    expect(
+      isJarvisModelVisibleSchemaSafe({
+        id: 'terminal.run',
+        description: 'Run a command after the required approval.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            command: { type: 'string' },
+            mode: { type: 'string', enum: ['foreground', 'background'] },
+          },
+          required: ['command'],
+          additionalProperties: false,
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it('rejects secret-bearing string leaves after JSON detachment', () => {
+    const secretAssignment = ['CLIENT', 'SECRET=synthetic-secret'].join('_');
+    expect(
+      isJarvisModelVisibleSchemaSafe({
+        inputSchema: {
+          type: 'object',
+          description: secretAssignment,
+        },
+      }),
+    ).toBe(false);
+  });
+
+  it.each([
+    ['client', 'Secret'],
+    ['aws', 'SecretAccessKey'],
+    ['authorization'],
+    ['cookie'],
+    ['recovery', 'Code'],
+  ])('rejects credential-shaped model-visible field names: %s', (...segments) => {
+    const credentialField = segments.join('');
+    expect(
+      isJarvisModelVisibleSchemaSafe({
+        type: 'object',
+        properties: {
+          [credentialField]: { type: 'string' },
+        },
+      }),
+    ).toBe(false);
+  });
+
+  it('rejects non-JSON object behavior and cycles', () => {
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    const accessor = Object.defineProperty({}, 'description', {
+      enumerable: true,
+      get: () => 'hidden behavior',
+    });
+
+    expect(isJarvisModelVisibleSchemaSafe(cyclic)).toBe(false);
+    expect(isJarvisModelVisibleSchemaSafe(accessor)).toBe(false);
+    expect(isJarvisModelVisibleSchemaSafe(new Date(0))).toBe(false);
   });
 });

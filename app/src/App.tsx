@@ -1457,6 +1457,7 @@ function KernelBridgeBootstrap() {
                   terminals: [],
                   agents: [],
                   entitlements: await entitlementSnapshots.getForAccount(accountId),
+                  actionSchemas: catalog.listExposed(),
                 };
               },
             });

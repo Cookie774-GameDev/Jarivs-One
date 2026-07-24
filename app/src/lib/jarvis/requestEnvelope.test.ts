@@ -461,6 +461,51 @@ describe('createJarvisRequestEnvelope', () => {
     expect(envelope.context.items[0]!.conflict).not.toBe(caller.context.items[0]!.conflict);
   });
 
+  it('detaches and freezes captured action schemas without executable authority', async () => {
+    const actionSchemas = [
+      {
+        id: 'file.search',
+        version: 1,
+        title: 'Search files',
+        description: 'Search the file index.',
+        inputSchema: {
+          type: 'object',
+          properties: { query: { type: 'string' } },
+          required: ['query'],
+          additionalProperties: false,
+        },
+        outputSchema: { type: 'object', additionalProperties: true },
+        requiredCapabilities: ['files.read'],
+        requiredEntitlements: [],
+        risk: 'read-only',
+        approval: 'never',
+        expectedEffect: 'Reads file metadata.',
+      },
+    ];
+    const envelope = await createJarvisRequestEnvelope(
+      requestInput({
+        capabilities: {
+          ...capabilities(),
+          actionSchemas,
+        } as JarvisCapabilitySnapshot,
+      }),
+    );
+    const captured = (
+      envelope.capabilities as JarvisCapabilitySnapshot & {
+        actionSchemas: typeof actionSchemas;
+      }
+    ).actionSchemas;
+
+    expect(captured).toEqual(actionSchemas);
+    expect(captured).not.toBe(actionSchemas);
+    expect(captured[0]).not.toBe(actionSchemas[0]);
+    expect(captured[0]).not.toHaveProperty('executor');
+    expect(Object.isFrozen(captured)).toBe(true);
+    expect(Object.isFrozen(captured[0])).toBe(true);
+    expect(Object.isFrozen(captured[0]!.inputSchema)).toBe(true);
+    expect(Object.isFrozen(captured[0]!.inputSchema.properties)).toBe(true);
+  });
+
   it('prevents mutations to profile, model, message parts, capabilities, and sources', async () => {
     const envelope = await createJarvisRequestEnvelope(requestInput());
 

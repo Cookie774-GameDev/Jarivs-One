@@ -242,6 +242,52 @@ function containsSecretContent(content: string): boolean {
   );
 }
 
+const MODEL_VISIBLE_SECRET_FIELD =
+  /^(?:api[-_ ]?key|password|access[-_ ]?token|refresh[-_ ]?token|session[-_ ]?token|id[-_ ]?token|bearer[-_ ]?token|token|secret|client[-_ ]?secret|(?:aws[-_ ]?)?secret[-_ ]?access[-_ ]?key|credentials?|private[-_ ]?key|signing[-_ ]?key|authorization|cookies?|recovery[-_ ]?codes?)$/i;
+
+/**
+ * Closed defense-in-depth check for schema/catalog data that will be shown to
+ * a model. The caller still owns structural contract validation.
+ */
+export function isJarvisModelVisibleSchemaSafe(value: unknown): boolean {
+  const active = new WeakSet<object>();
+  const stack: Array<{ value: unknown; leaving?: boolean }> = [{ value }];
+  while (stack.length > 0) {
+    const frame = stack.pop()!;
+    const current = frame.value;
+    if (frame.leaving) {
+      active.delete(current as object);
+      continue;
+    }
+    if (typeof current === 'string') {
+      if (containsSecretContent(current)) return false;
+      continue;
+    }
+    if (current === null || typeof current === 'number' || typeof current === 'boolean') continue;
+    if (typeof current !== 'object' || active.has(current)) return false;
+    const prototype = Object.getPrototypeOf(current);
+    if (
+      (Array.isArray(current) && prototype !== Array.prototype) ||
+      (!Array.isArray(current) && prototype !== Object.prototype && prototype !== null)
+    ) {
+      return false;
+    }
+    active.add(current);
+    stack.push({ value: current, leaving: true });
+    if (Array.isArray(current)) {
+      for (const entry of current) stack.push({ value: entry });
+      continue;
+    }
+    for (const key of Reflect.ownKeys(current)) {
+      if (typeof key !== 'string' || MODEL_VISIBLE_SECRET_FIELD.test(key)) return false;
+      const descriptor = Object.getOwnPropertyDescriptor(current, key);
+      if (!descriptor || !descriptor.enumerable || !('value' in descriptor)) return false;
+      stack.push({ value: descriptor.value });
+    }
+  }
+  return true;
+}
+
 export function classifyJarvisSource(input: JarvisSourcePolicyInput): JarvisSourceDecision {
   if (isOutsideRoot(input.path, input.root)) return denied(input, 'outside_allowed_root');
   if (isSecretFilename(input.path)) return denied(input, 'secret_filename');

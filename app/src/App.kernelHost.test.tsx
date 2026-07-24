@@ -73,6 +73,11 @@ describe('App trusted kernel host composition', () => {
     expect(source).not.toMatch(/plugins:\s*\[\]/);
   });
 
+  it('projects the validated security catalog into model-visible action schemas', () => {
+    expect(source).toMatch(/const catalog = createJarvisActionCatalog/);
+    expect(source).toMatch(/actionSchemas:\s*catalog\.listExposed\(\)/);
+  });
+
   it('projects observed external MCP manager state without starting or probing servers', () => {
     expect(source).toMatch(/createJarvisMcpCapabilityProjection/);
     expect(source).toMatch(/jarvisMcpServerManager\.discover\(\)/);

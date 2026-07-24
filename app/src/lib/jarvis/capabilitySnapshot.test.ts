@@ -1,11 +1,20 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { JarvisCapabilityRef, JarvisEntitlementSnapshot } from '@/lib/jarvis/contracts';
+import type {
+  JarvisCapabilityRef,
+  JarvisCapabilitySnapshot,
+  JarvisEntitlementSnapshot,
+} from '@/lib/jarvis/contracts';
 import {
   CapabilityAccountUnavailableError,
   createJarvisCapabilitySnapshot,
   createJarvisCapabilitySnapshotProvider,
+  JarvisCapabilitySnapshotError,
   type CapabilitySnapshotInput,
 } from '@/lib/jarvis/capabilitySnapshot';
+import {
+  createJarvisActionCatalog,
+  DEFAULT_JARVIS_ACTION_REGISTRATIONS,
+} from '@/lib/jarvis/actions/catalog';
 
 const entitlement: JarvisEntitlementSnapshot = {
   source: 'server',
@@ -42,6 +51,57 @@ function input(overrides: Partial<CapabilitySnapshotInput> = {}): CapabilitySnap
 }
 
 describe('createJarvisCapabilitySnapshot', () => {
+  it('projects exposed action registrations into detached model-safe schemas', () => {
+    const catalog = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS);
+    const snapshot = createJarvisCapabilitySnapshot({
+      ...input(),
+      actionSchemas: catalog.listExposed(),
+    } as CapabilitySnapshotInput);
+    const schemas = (
+      snapshot as JarvisCapabilitySnapshot & {
+        actionSchemas: readonly Record<string, unknown>[];
+      }
+    ).actionSchemas;
+
+    expect(schemas.map(({ id }) => id)).toEqual([
+      'file.search',
+      'task.cancel',
+      'terminal.create',
+      'terminal.run',
+    ]);
+    expect(schemas[0]).toMatchObject({
+      id: 'file.search',
+      version: 1,
+      inputSchema: {
+        type: 'object',
+        required: ['query'],
+        additionalProperties: false,
+      },
+      risk: 'read-only',
+      approval: 'never',
+    });
+    expect(schemas[0]).not.toHaveProperty('executor');
+    expect(schemas[0]).not.toHaveProperty('credentialBindings');
+    expect(schemas[0]).not.toHaveProperty('validateParameters');
+    expect(schemas[0]).not.toHaveProperty('deriveTarget');
+    expect(Object.isFrozen(schemas)).toBe(true);
+    expect(schemas.every(Object.isFrozen)).toBe(true);
+  });
+
+  it('rejects secret-bearing catalog text before it can enter the model snapshot', () => {
+    const source = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS).listExposed()[0]!;
+    const secretText = `${['CLIENT', 'SECRET'].join('_')}="${['synthetic', 'private', 'value'].join(
+      '-',
+    )}"`;
+
+    expect(() =>
+      createJarvisCapabilitySnapshot({
+        ...input(),
+        actionSchemas: [{ ...source, description: secretText }],
+      }),
+    ).toThrow(JarvisCapabilitySnapshotError);
+  });
+
   it('preserves every valid state, exact evidence, and stable id ordering', () => {
     const allStates: JarvisCapabilityRef['state'][] = [
       'available',

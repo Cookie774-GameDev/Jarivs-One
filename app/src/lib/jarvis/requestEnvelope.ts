@@ -263,6 +263,13 @@ function copyCapabilities(capabilities: JarvisCapabilitySnapshot): JarvisCapabil
     terminals: capabilities.terminals.map(copyCapabilityRef),
     agents: capabilities.agents.map(copyCapabilityRef),
     entitlements: copyEntitlements(capabilities.entitlements),
+    ...(capabilities.actionSchemas === undefined
+      ? {}
+      : {
+          actionSchemas: capabilities.actionSchemas.map((schema) =>
+            deepFreezeJarvisCopy(schema),
+          ),
+        }),
   };
 }
 

@@ -128,6 +128,15 @@ const CAPABILITY_STATES = [
   'unavailable',
   'planned',
 ] as const;
+const ACTION_SCHEMA_TYPES = ['object', 'string', 'number', 'boolean', 'array'] as const;
+const ACTION_RISKS = [
+  'read-only',
+  'safe-write',
+  'external-side-effect',
+  'destructive',
+  'credential-sensitive',
+] as const;
+const ACTION_APPROVALS = ['never', 'first-time', 'always', 'depends-on-input'] as const;
 
 const ENTITLEMENT_SOURCES = ['server', 'local_development', 'unavailable'] as const;
 const CONNECTION_MODES = ['native-api', 'external-cli', 'local'] as const;
@@ -969,6 +978,92 @@ function validateCapabilityRefShape(
   validateOptionalField(record, 'lastVerifiedAt', path, errors, validateFiniteNumber);
 }
 
+function validateActionJsonSchemaShape(
+  value: unknown,
+  path: ValidationPath,
+  errors: ValidationErrors,
+  depth = 0,
+): void {
+  if (depth > 16) {
+    addError(errors, 'invalid_type', path);
+    return;
+  }
+  const record = validateClosedRecord(
+    value,
+    ['type', 'description', 'properties', 'required', 'additionalProperties', 'enum'],
+    path,
+    errors,
+  );
+  if (!record) return;
+  validateRequiredField(record, 'type', path, errors, (entry, entryPath, entryErrors) =>
+    validateEnum(entry, ACTION_SCHEMA_TYPES, entryPath, entryErrors),
+  );
+  validateOptionalField(record, 'description', path, errors, validateString);
+  validateOptionalField(record, 'required', path, errors, validateIdentifierArray);
+  validateOptionalField(record, 'additionalProperties', path, errors, validateBoolean);
+  validateOptionalField(record, 'enum', path, errors, validateIdentifierArray);
+  validateOptionalField(record, 'properties', path, errors, (entry, entryPath, entryErrors) => {
+    const properties = validateRecord(entry, entryPath, entryErrors);
+    if (!properties) return;
+    for (const key of Reflect.ownKeys(properties)) {
+      if (typeof key !== 'string' || key.trim().length === 0) {
+        addError(entryErrors, 'invalid_identifier', childPath(entryPath, String(key)));
+        continue;
+      }
+      const property = inspectOwnField(properties, key);
+      if (property.kind === 'data') {
+        validateActionJsonSchemaShape(
+          property.value,
+          childPath(entryPath, key),
+          entryErrors,
+          depth + 1,
+        );
+      }
+    }
+  });
+}
+
+function validateActionSchemaSnapshotShape(
+  value: unknown,
+  path: ValidationPath,
+  errors: ValidationErrors,
+): void {
+  const record = validateClosedRecord(
+    value,
+    [
+      'id',
+      'version',
+      'title',
+      'description',
+      'inputSchema',
+      'outputSchema',
+      'requiredCapabilities',
+      'requiredEntitlements',
+      'risk',
+      'approval',
+      'expectedEffect',
+    ],
+    path,
+    errors,
+  );
+  if (!record) return;
+  validateRequiredField(record, 'id', path, errors, validateIdentifier);
+  validateRequiredField(record, 'version', path, errors, validatePositiveInteger);
+  validateRequiredField(record, 'title', path, errors, validateIdentifier);
+  validateRequiredField(record, 'description', path, errors, validateIdentifier);
+  validateRequiredField(record, 'inputSchema', path, errors, validateActionJsonSchemaShape);
+  validateRequiredField(record, 'outputSchema', path, errors, validateActionJsonSchemaShape);
+  validateRequiredField(record, 'requiredCapabilities', path, errors, validateIdentifierArray);
+  validateRequiredField(record, 'requiredEntitlements', path, errors, validateIdentifierArray);
+  validateRequiredField(record, 'risk', path, errors, (entry, entryPath, entryErrors) =>
+    validateEnum(entry, ACTION_RISKS, entryPath, entryErrors),
+  );
+  validateRequiredField(record, 'approval', path, errors, (entry, entryPath, entryErrors) =>
+    validateEnum(entry, ACTION_APPROVALS, entryPath, entryErrors),
+  );
+  validateRequiredField(record, 'expectedEffect', path, errors, validateIdentifier);
+}
+
 function validateEntitlementShape(
   value: unknown,
   path: ValidationPath,
@@ -997,7 +1092,16 @@ function validateCapabilitySnapshotShape(
 ): void {
   const record = validateClosedRecord(
     value,
-    ['capturedAt', 'tools', 'plugins', 'mcps', 'terminals', 'agents', 'entitlements'],
+    [
+      'capturedAt',
+      'tools',
+      'plugins',
+      'mcps',
+      'terminals',
+      'agents',
+      'entitlements',
+      'actionSchemas',
+    ],
     path,
     errors,
   );
@@ -1009,6 +1113,18 @@ function validateCapabilitySnapshotShape(
     );
   }
   validateRequiredField(record, 'entitlements', path, errors, validateEntitlementShape);
+  validateOptionalField(record, 'actionSchemas', path, errors, (entry, entryPath, entryErrors) =>
+    validateArray(entry, entryPath, entryErrors, validateActionSchemaSnapshotShape),
+  );
+  const actionSchemas = dataField(record, 'actionSchemas');
+  if (Array.isArray(actionSchemas)) {
+    const ids = actionSchemas
+      .map((entry) => (isRecordValue(entry) ? dataField(entry, 'id') : undefined))
+      .filter((id): id is string => typeof id === 'string');
+    if (new Set(ids).size !== ids.length) {
+      addError(errors, 'invalid_type', childPath(path, 'actionSchemas'));
+    }
+  }
 }
 
 function validateModelCapabilities(

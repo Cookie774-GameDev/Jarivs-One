@@ -137,6 +137,34 @@ function validCapabilitySnapshot(): JarvisCapabilitySnapshot {
   };
 }
 
+function validActionSchemaSnapshot() {
+  return {
+    id: 'terminal.run',
+    version: 1,
+    title: 'Run command',
+    description: 'Run one approved command.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        command: { type: 'string', description: 'Exact command.' },
+      },
+      required: ['command'],
+      additionalProperties: false,
+    },
+    outputSchema: {
+      type: 'object',
+      properties: { ok: { type: 'boolean' } },
+      required: ['ok'],
+      additionalProperties: true,
+    },
+    requiredCapabilities: ['terminal.execute'],
+    requiredEntitlements: [],
+    risk: 'destructive',
+    approval: 'always',
+    expectedEffect: 'Starts one terminal process.',
+  };
+}
+
 function validModelSnapshot(): JarvisModelSnapshot {
   return {
     connectionId: 'connection-1',
@@ -747,6 +775,26 @@ describe('valid construction and JSON round trips', () => {
       expectSuccess(validate(roundTrip));
     });
   }
+
+  it('accepts a closed model-visible action schema snapshot', () => {
+    const input = {
+      ...validCapabilitySnapshot(),
+      actionSchemas: [validActionSchemaSnapshot()],
+    };
+
+    expectSuccess(validateJarvisCapabilitySnapshot(input));
+    expectSuccess(validateJarvisCapabilitySnapshot(JSON.parse(JSON.stringify(input))));
+  });
+
+  it('rejects conflicting model-visible action schema IDs', () => {
+    const schema = validActionSchemaSnapshot();
+    const result = validateJarvisCapabilitySnapshot({
+      ...validCapabilitySnapshot(),
+      actionSchemas: [schema, { ...schema, title: 'Conflicting title' }],
+    });
+
+    expectFailure(result, 'invalid_type', ['actionSchemas']);
+  });
 
   it('accepts every optional field both present and absent', () => {
     const cases: {

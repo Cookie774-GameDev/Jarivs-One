@@ -13,6 +13,9 @@ export type {
 } from './source';
 
 export type {
+  JarvisActionJsonSchema,
+  JarvisActionSchemaSnapshot,
+  JarvisActionSchemaType,
   JarvisCapabilityRef,
   JarvisCapabilitySnapshot,
   JarvisEntitlementSnapshot,

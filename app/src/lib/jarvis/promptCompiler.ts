@@ -12,7 +12,7 @@ import {
 } from '@/lib/jarvis/contracts';
 import { isProtectedJarvisAgent, JARVIS_IDENTITY_POLICY } from '@/lib/jarvis/identity';
 import { deepFreezeJarvisCopy } from '@/lib/jarvis/requestEnvelope';
-import { classifyJarvisSource } from '@/lib/jarvis/sourcePolicy';
+import { classifyJarvisSource, isJarvisModelVisibleSchemaSafe } from '@/lib/jarvis/sourcePolicy';
 
 export const JARVIS_ALL_ABOUT_ME_SOURCE_ID = 'jarvis:all-about-me';
 
@@ -210,6 +210,16 @@ function inlineText(value: string): string {
   });
 }
 
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record)
+    .sort(stableCompare)
+    .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
+    .join(',')}}`;
+}
+
 function dataLines(value: string): string {
   return value
     .replace(/\0/g, '')
@@ -285,6 +295,17 @@ function rejectUnsafeProfileText(value: string): void {
   }
 }
 
+function rejectUnsafeActionSchemas(envelope: Readonly<JarvisRequestEnvelope>): void {
+  for (const schema of envelope.capabilities.actionSchemas ?? []) {
+    if (!isJarvisModelVisibleSchemaSafe(schema)) {
+      throw new JarvisPromptCompilationError(
+        'secret_source',
+        'A protected action schema was rejected by the JARVIS compiler.',
+      );
+    }
+  }
+}
+
 function renderCapabilities(envelope: Readonly<JarvisRequestEnvelope>): string {
   const modelCapabilities = Object.entries(envelope.model.capabilities)
     .sort(([left], [right]) => stableCompare(left, right))
@@ -309,6 +330,18 @@ function renderCapabilities(envelope: Readonly<JarvisRequestEnvelope>): string {
               }`,
           )),
   ]);
+  const actionSchemas = [...(envelope.capabilities.actionSchemas ?? [])].sort((left, right) =>
+    stableCompare(left.id, right.id),
+  );
+  const actionSchemaLines = envelope.outputContract.allowActionBlocks
+    ? actionSchemas.length === 0
+      ? ['Model-visible action schemas:', '- none supplied']
+      : [
+          'Model-visible action schemas:',
+          'Schema presence describes proposal syntax only. Capability state, entitlement, approval, and verified executor results remain authoritative.',
+          ...actionSchemas.map((schema) => `- ${canonicalJson(schema)}`),
+        ]
+    : ['Model-visible action schemas: disabled by output contract.'];
   return [
     'Use only capabilities represented by this verified snapshot. Never infer completion from availability.',
     `Selected provider: ${inlineText(envelope.model.providerId)}`,
@@ -329,6 +362,7 @@ function renderCapabilities(envelope: Readonly<JarvisRequestEnvelope>): string {
         .join(', ') || 'none'
     }`,
     ...capabilityLines,
+    ...actionSchemaLines,
   ].join('\n');
 }
 
@@ -450,6 +484,7 @@ export function compileJarvisPrompt(
     }
   }
   rejectUnsafeProfileText(envelope.profile.customInstructions);
+  rejectUnsafeActionSchemas(envelope);
 
   const warnings: string[] = [];
   const omittedSourceRefs: JarvisSourceRef[] = [];
