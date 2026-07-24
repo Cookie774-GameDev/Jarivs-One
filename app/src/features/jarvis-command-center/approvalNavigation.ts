@@ -128,7 +128,6 @@ function notifyListeners(): void {
 export function requestJarvisApprovalNavigation(input: JarvisApprovalNavigationIntent): boolean {
   const normalized = normalizeIntent(input);
   if (!normalized) return false;
-  if (pendingIntent && !isSameIntent(normalized, pendingIntent)) return false;
   pendingIntent = normalized;
   notifyListeners();
   return true;

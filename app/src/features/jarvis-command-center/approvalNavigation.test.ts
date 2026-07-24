@@ -66,7 +66,7 @@ describe('approval navigation intent', () => {
     expect(readPendingJarvisApprovalNavigation()).toEqual(intent);
   });
 
-  it('does not replace an unacknowledged target with a different valid target', () => {
+  it('replaces an unacknowledged target so stale navigation cannot strand a newer approval', () => {
     const listener = vi.fn();
     subscribeJarvisApprovalNavigation(listener);
 
@@ -77,10 +77,14 @@ describe('approval navigation intent', () => {
         runId: 'run-2',
         approvalId: 'approval-2',
       }),
-    ).toBe(false);
-    expect(readPendingJarvisApprovalNavigation()).toEqual(intent);
+    ).toBe(true);
+    expect(readPendingJarvisApprovalNavigation()).toEqual({
+      ...intent,
+      runId: 'run-2',
+      approvalId: 'approval-2',
+    });
     expect(requestJarvisApprovalNavigation({ ...intent })).toBe(true);
-    expect(listener).toHaveBeenCalledTimes(2);
+    expect(listener).toHaveBeenCalledTimes(3);
   });
 
   it('delivers the requested target to every subscriber before an acknowledgement clears it', () => {
