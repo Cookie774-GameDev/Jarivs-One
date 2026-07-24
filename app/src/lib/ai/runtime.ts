@@ -108,6 +108,11 @@ import {
 import { classifyJarvisIntent, formatJarvisIntentPolicy } from './intent';
 import type { TerminalRef } from '@/features/terminals/terminalRefs';
 import type { ContextAttachment } from '@/features/context/tree';
+import {
+  formatLocalKnowledgeChunkForPrompt,
+  localKnowledgeChunkSourceMetadata,
+  retrieveApprovedLocalKnowledge,
+} from '@/features/context/retrieval';
 import { modelSupportsVision, type ChatImageAttachment } from './vision';
 import {
   ALL_ABOUT_ME_FILE_LOCATION,
@@ -2574,6 +2579,7 @@ export function startRuntimeListener(
     // path, and a missing file shouldn't kill a chat turn.
     let projectContext = '';
     let projectContextTree = '';
+    let localKnowledgeContext: JarvisRuntimeContextBlock[] = [];
     let connectedFilesContext = '';
     let mentionedAgentContext = '';
     let explicitContext = '';
@@ -2673,6 +2679,34 @@ export function startRuntimeListener(
       });
     }
     if (isProtectedJarvis) {
+      try {
+        const localKnowledge = await retrieveApprovedLocalKnowledge({
+          projectId: projectId ? String(projectId) : null,
+          query: text,
+        });
+        localKnowledgeContext = localKnowledge.map((chunk) => {
+          const source = localKnowledgeChunkSourceMetadata(chunk);
+          return {
+            key: 'local_knowledge',
+            text: formatLocalKnowledgeChunkForPrompt(chunk),
+            source: {
+              id: chunk.sourceId,
+              label: source.label,
+              uri: source.uri,
+              observedAt: chunk.modifiedAt ?? Date.now(),
+              contentHash: chunk.contentHash,
+            },
+            score: chunk.score,
+          };
+        });
+      } catch (err) {
+        devConsole.log({
+          channel: 'ai',
+          level: 'warn',
+          message: 'Approved local knowledge retrieval failed safely',
+          detail: { error: err instanceof Error ? err.message : String(err) },
+        });
+      }
       userIdentityContext = buildUserIdentityContextBlock(authState.displayName);
       try {
         const defaultWriteFolder = await resolveDefaultWriteDir();
@@ -2765,6 +2799,7 @@ export function startRuntimeListener(
       [
         { key: 'project', text: projectContext },
         { key: 'project_tree', text: projectContextTree },
+        ...localKnowledgeContext,
         { key: 'user_identity', text: userIdentityContext },
         { key: 'default_write_folder', text: defaultWriteFolderContext },
         { key: 'all_about_me', text: allAboutMeContext },

@@ -1,4 +1,4 @@
-import type { JarvisSourceKind } from './contracts';
+import type { JarvisSourceKind, JarvisSourceRef } from './contracts';
 import type { JarvisContextCandidate } from './contextPack';
 import { JARVIS_ALL_ABOUT_ME_SOURCE_ID } from './promptCompiler';
 import { deepFreezeJarvisCopy } from './requestEnvelope';
@@ -6,6 +6,7 @@ import { deepFreezeJarvisCopy } from './requestEnvelope';
 export type JarvisRuntimeContextBlockKey =
   | 'project'
   | 'project_tree'
+  | 'local_knowledge'
   | 'user_identity'
   | 'default_write_folder'
   | 'all_about_me'
@@ -30,6 +31,8 @@ export type JarvisRuntimeContextBlockKey =
 export interface JarvisRuntimeContextBlock {
   key: JarvisRuntimeContextBlockKey;
   text: string;
+  source?: Readonly<Pick<JarvisSourceRef, 'id' | 'label' | 'uri' | 'observedAt' | 'contentHash'>>;
+  score?: number;
 }
 
 type SourceOrigin = NonNullable<JarvisContextCandidate['source']['origin']>;
@@ -58,6 +61,14 @@ const DEFINITIONS = Object.freeze({
     trust: 'app_verified',
     origin: 'app_observed',
     purpose: 'answer',
+    explicitlyAttached: false,
+  },
+  local_knowledge: {
+    kind: 'project_file',
+    label: 'Approved local knowledge',
+    trust: 'app_verified',
+    origin: 'user_authored',
+    purpose: 'citation',
     explicitlyAttached: false,
   },
   user_identity: {
@@ -226,6 +237,41 @@ function sourceId(requestId: string, key: JarvisRuntimeContextBlockKey): string 
   return key === 'all_about_me' ? JARVIS_ALL_ABOUT_ME_SOURCE_ID : `jsource_${requestId}_${key}`;
 }
 
+type LocalKnowledgeSource = NonNullable<JarvisRuntimeContextBlock['source']>;
+
+interface ValidLocalKnowledgeSource extends LocalKnowledgeSource {
+  id: string;
+  label: string;
+  uri: string;
+  observedAt: number;
+  contentHash: string;
+}
+
+function validLocalKnowledgeSource(
+  source: LocalKnowledgeSource | undefined,
+): source is ValidLocalKnowledgeSource {
+  if (!source) return false;
+  const stableText = (value: string | undefined, max: number) =>
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= max &&
+    value.trim() === value &&
+    !/[\u0000-\u001f\u007f]/.test(value);
+  return (
+    /^jlocal_[a-f0-9]{16}$/.test(source.id) &&
+    stableText(source.label, 240) &&
+    typeof source.uri === 'string' &&
+    stableText(source.uri, 480) &&
+    !/^(?:[a-zA-Z]:[\\/]|[\\/])/.test(source.uri) &&
+    !source.uri.replace(/\\/g, '/').split('/').includes('..') &&
+    typeof source.observedAt === 'number' &&
+    Number.isSafeInteger(source.observedAt) &&
+    source.observedAt >= 0 &&
+    typeof source.contentHash === 'string' &&
+    /^[a-f0-9]{64}$/.test(source.contentHash)
+  );
+}
+
 /**
  * Convert already-built runtime prompt blocks into separate immutable context
  * candidates. This function reads no files and performs no retrieval; source
@@ -238,24 +284,37 @@ export function buildJarvisRuntimeContextCandidates(input: {
   observedAt: number;
   blocks: readonly Readonly<JarvisRuntimeContextBlock>[];
 }): readonly Readonly<JarvisContextCandidate>[] {
-  const admittedBlocks = input.blocks.filter((block) => block.text.trim().length > 0);
+  const admittedBlocks = input.blocks.filter(
+    (block) =>
+      block.text.trim().length > 0 &&
+      (block.key !== 'local_knowledge' || validLocalKnowledgeSource(block.source)),
+  );
   const candidates = admittedBlocks.map((block, index) => {
     const definition = DEFINITIONS[block.key];
+    const localSource =
+      block.key === 'local_knowledge' && validLocalKnowledgeSource(block.source)
+        ? block.source
+        : null;
     return {
       source: {
-        id: sourceId(input.requestId, block.key),
+        id: localSource?.id ?? sourceId(input.requestId, block.key),
         kind: definition.kind,
-        label: definition.label,
+        label: localSource?.label ?? definition.label,
+        ...(localSource ? { uri: localSource.uri } : {}),
         accountId: input.accountId,
         ...(input.projectId === undefined ? {} : { projectId: input.projectId }),
         trust: definition.trust,
         origin: definition.origin,
         sensitivity: 'private' as const,
-        observedAt: input.observedAt,
+        observedAt: localSource?.observedAt ?? input.observedAt,
+        ...(localSource ? { contentHash: localSource.contentHash } : {}),
       },
       purpose: definition.purpose,
       excerpt: block.text,
-      score: admittedBlocks.length - index,
+      score:
+        typeof block.score === 'number' && Number.isFinite(block.score)
+          ? block.score
+          : admittedBlocks.length - index,
       freshness: 'current',
       explicitlyAttached: definition.explicitlyAttached,
       authorizedBody: true,

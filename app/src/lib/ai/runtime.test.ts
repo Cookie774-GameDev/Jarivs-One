@@ -38,6 +38,8 @@ const mocks = vi.hoisted(() => ({
   getJarvisCoordinationContextBlock: vi.fn(),
   getJarvisTerminalOperatingContextBlock: vi.fn(),
   getJarvisConnectivityInventoryBlock: vi.fn(),
+  retrieveApprovedLocalKnowledge:
+    vi.fn<typeof import('@/features/context/retrieval').retrieveApprovedLocalKnowledge>(),
   buildJarvisContextPackForAi: vi.fn(
     async (input: { maxChars: number; candidates?: readonly unknown[] }) => ({
       items: [] as JarvisContextItem[],
@@ -103,6 +105,14 @@ vi.mock('@/features/terminals/agentContext', () => ({
 vi.mock('@/lib/jarvis/connectivityInventory', () => ({
   getJarvisConnectivityInventoryBlock: mocks.getJarvisConnectivityInventoryBlock,
 }));
+
+vi.mock('@/features/context/retrieval', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/context/retrieval')>();
+  return {
+    ...actual,
+    retrieveApprovedLocalKnowledge: mocks.retrieveApprovedLocalKnowledge,
+  };
+});
 
 vi.mock('./context', () => ({
   buildJarvisContextPackForAi: mocks.buildJarvisContextPackForAi,
@@ -203,6 +213,8 @@ describe('startRuntimeListener agent routing', () => {
     mocks.getJarvisCoordinationContextBlock.mockResolvedValue('');
     mocks.getJarvisTerminalOperatingContextBlock.mockReturnValue('');
     mocks.getJarvisConnectivityInventoryBlock.mockReturnValue('');
+    mocks.retrieveApprovedLocalKnowledge.mockReset();
+    mocks.retrieveApprovedLocalKnowledge.mockResolvedValue([]);
     mocks.chatGetById.mockResolvedValue(undefined);
     useAllAboutMeStore.setState(useAllAboutMeStore.getInitialState(), true);
   });
@@ -2052,6 +2064,25 @@ describe('startRuntimeListener agent routing', () => {
     useAllAboutMeStore.setState({
       markdown: '# AllAboutMe.md\n\nAAM_PROVENANCE_SENTINEL',
     });
+    mocks.retrieveApprovedLocalKnowledge.mockResolvedValueOnce([
+      {
+        sourceId: 'jlocal_1111111111111111',
+        mapId: 'context-map-local',
+        title: 'Clients',
+        relativePath: 'notes/Clients.md',
+        heading: 'Renewal plan',
+        lineStart: 9,
+        lineEnd: 14,
+        excerpt: 'Acme renewal is in October.',
+        tags: ['acme', 'client'],
+        wikiLinks: ['Finance'],
+        markdownLinks: [],
+        backlinks: [],
+        modifiedAt: 90,
+        score: 42,
+        contentHash: 'a'.repeat(64),
+      },
+    ]);
     mocks.buildJarvisContextPackForAi.mockImplementationOnce(async (input) => {
       const candidates = (input.candidates ?? []) as readonly {
         source: JarvisContextItem['source'];
@@ -2074,6 +2105,16 @@ describe('startRuntimeListener agent routing', () => {
       };
     });
     const harness = kernelRuntimeBindings(protectedJarvis);
+    mocks.chatGetById.mockResolvedValueOnce({
+      id: harness.chatId,
+      workspace_id: 'workspace_runtime_kernel_host' as never,
+      project_id: 'project-local-knowledge' as never,
+      title: 'Installed kernel host',
+      mode: 'chat',
+      active_agent_ids: [protectedJarvis.id],
+      created_at: 1,
+      updated_at: 1,
+    });
     const database = createJarvisDb(
       uniqueTestDbName('runtime-installed-kernel-host'),
       TEST_INDEXED_DB,
@@ -2166,8 +2207,30 @@ describe('startRuntimeListener agent routing', () => {
             }),
             excerpt: expect.stringContaining('AAM_PROVENANCE_SENTINEL'),
           }),
+          expect.objectContaining({
+            source: {
+              id: 'jlocal_1111111111111111',
+              kind: 'project_file',
+              label: 'Clients — Renewal plan',
+              uri: 'notes/Clients.md#Renewal%20plan',
+              accountId: 'runtime-test-account',
+              projectId: 'project-local-knowledge',
+              trust: 'app_verified',
+              origin: 'user_authored',
+              sensitivity: 'private',
+              observedAt: 90,
+              contentHash: 'a'.repeat(64),
+            },
+            purpose: 'citation',
+            excerpt: expect.stringContaining('Acme renewal is in October.'),
+            score: 42,
+          }),
         ]),
       );
+      expect(mocks.retrieveApprovedLocalKnowledge).toHaveBeenCalledWith({
+        projectId: 'project-local-knowledge',
+        query: 'Run the installed kernel host.',
+      });
       expect(harness.bindings.appendMessage).not.toHaveBeenCalled();
       const canonicalRun = await database.jarvis_runs
         .where('chat_id')
@@ -2197,13 +2260,36 @@ describe('startRuntimeListener agent routing', () => {
             accountId: 'runtime-test-account',
             origin: 'mixed',
           }),
+          {
+            id: 'jlocal_1111111111111111',
+            kind: 'project_file',
+            label: 'Clients — Renewal plan',
+            uri: 'notes/Clients.md#Renewal%20plan',
+            accountId: 'runtime-test-account',
+            projectId: 'project-local-knowledge',
+            trust: 'app_verified',
+            origin: 'user_authored',
+            sensitivity: 'private',
+            observedAt: 90,
+            contentHash: 'a'.repeat(64),
+          },
         ]),
       );
       expect(
-        contextEvent?.sourceRefs.every((source) => source.observedAt === contextEvent.createdAt),
+        contextEvent?.sourceRefs
+          .filter((source) => source.id !== 'jlocal_1111111111111111')
+          .every((source) => source.observedAt === contextEvent.createdAt),
       ).toBe(true);
       expect(JSON.stringify(contextEvent)).not.toContain('PROJECT_CONTEXT_PROVENANCE_SENTINEL');
       expect(JSON.stringify(contextEvent)).not.toContain('AAM_PROVENANCE_SENTINEL');
+      expect(JSON.stringify(contextEvent)).not.toContain('Acme renewal is in October.');
+      await expect(
+        createJarvisRepositories(database).artifact.listByRun(
+          'runtime-test-account',
+          canonicalRun!.id,
+        ),
+      ).resolves.toEqual([]);
+      await vi.waitFor(() => expect(mocks.notifyDone).toHaveBeenCalledOnce());
     } finally {
       disposeHost();
       database.close();
@@ -2373,6 +2459,7 @@ describe('startRuntimeListener agent routing', () => {
         ]),
       );
       expect(await database.jarvis_approvals.count()).toBe(1);
+      await vi.waitFor(() => expect(mocks.notifyDone).toHaveBeenCalledOnce());
     } finally {
       disposeHost();
       securityRuntime.invalidateAll();

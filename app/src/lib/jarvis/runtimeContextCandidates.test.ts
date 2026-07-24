@@ -8,6 +8,7 @@ import {
 const EXPECTED = {
   project: ['project', 'app_verified', 'user_authored', 'answer', false],
   project_tree: ['context_node', 'app_verified', 'app_observed', 'answer', false],
+  local_knowledge: ['project_file', 'app_verified', 'user_authored', 'citation', false],
   user_identity: ['memory', 'user_direct', 'user_authored', 'preference', false],
   default_write_folder: ['project', 'app_verified', 'app_observed', 'execution', false],
   all_about_me: ['memory', 'app_verified', 'mixed', 'preference', false],
@@ -35,7 +36,9 @@ const EXPECTED = {
 
 describe('buildJarvisRuntimeContextCandidates', () => {
   it('projects every runtime block into distinct honest source metadata', () => {
-    const keys = Object.keys(EXPECTED) as JarvisRuntimeContextBlockKey[];
+    const keys = (Object.keys(EXPECTED) as JarvisRuntimeContextBlockKey[]).filter(
+      (key) => key !== 'local_knowledge',
+    );
     const candidates = buildJarvisRuntimeContextCandidates({
       accountId: 'account-1',
       requestId: 'request-1',
@@ -103,5 +106,109 @@ describe('buildJarvisRuntimeContextCandidates', () => {
     expect(JSON.stringify(candidates.map((candidate) => candidate.source))).not.toMatch(
       /private project body|private attached body/,
     );
+  });
+
+  it('preserves exact bounded local-knowledge provenance without collapsing separate chunks', () => {
+    const candidates = buildJarvisRuntimeContextCandidates({
+      accountId: 'account-1',
+      requestId: 'request-1',
+      projectId: 'project-1',
+      observedAt: 100,
+      blocks: [
+        {
+          key: 'local_knowledge',
+          text: 'Acme renewal is in October.',
+          source: {
+            id: 'jlocal_1111111111111111',
+            label: 'Clients — Renewal',
+            uri: 'notes/Clients.md#Renewal',
+            observedAt: 90,
+            contentHash: 'a'.repeat(64),
+          },
+          score: 42,
+        },
+        {
+          key: 'local_knowledge',
+          text: 'Billing owner is Jamie.',
+          source: {
+            id: 'jlocal_2222222222222222',
+            label: 'Finance — Billing',
+            uri: 'notes/Finance.md#Billing',
+            observedAt: 91,
+            contentHash: 'b'.repeat(64),
+          },
+          score: 40,
+        },
+      ],
+    });
+
+    expect(candidates).toHaveLength(2);
+    expect(candidates.map((candidate) => candidate.source)).toEqual([
+      {
+        id: 'jlocal_1111111111111111',
+        kind: 'project_file',
+        label: 'Clients — Renewal',
+        uri: 'notes/Clients.md#Renewal',
+        accountId: 'account-1',
+        projectId: 'project-1',
+        trust: 'app_verified',
+        origin: 'user_authored',
+        sensitivity: 'private',
+        observedAt: 90,
+        contentHash: 'a'.repeat(64),
+      },
+      {
+        id: 'jlocal_2222222222222222',
+        kind: 'project_file',
+        label: 'Finance — Billing',
+        uri: 'notes/Finance.md#Billing',
+        accountId: 'account-1',
+        projectId: 'project-1',
+        trust: 'app_verified',
+        origin: 'user_authored',
+        sensitivity: 'private',
+        observedAt: 91,
+        contentHash: 'b'.repeat(64),
+      },
+    ]);
+    expect(candidates.map((candidate) => candidate.score)).toEqual([42, 40]);
+    expect(candidates.every((candidate) => candidate.purpose === 'citation')).toBe(true);
+    expect(candidates.every((candidate) => candidate.explicitlyAttached === false)).toBe(true);
+  });
+
+  it('drops retrieved local knowledge unless its exact bounded provenance is valid', () => {
+    const candidates = buildJarvisRuntimeContextCandidates({
+      accountId: 'account-1',
+      requestId: 'request-1',
+      projectId: 'project-1',
+      observedAt: 100,
+      blocks: [
+        { key: 'local_knowledge', text: 'missing provenance' },
+        {
+          key: 'local_knowledge',
+          text: 'traversal provenance',
+          source: {
+            id: 'jlocal_3333333333333333',
+            label: 'Outside',
+            uri: '../outside.md',
+            observedAt: 90,
+            contentHash: 'c'.repeat(64),
+          },
+        },
+        {
+          key: 'local_knowledge',
+          text: 'absolute provenance',
+          source: {
+            id: 'jlocal_4444444444444444',
+            label: 'Absolute',
+            uri: 'C:\\Users\\person\\secret.md',
+            observedAt: 90,
+            contentHash: 'd'.repeat(64),
+          },
+        },
+      ],
+    });
+
+    expect(candidates).toEqual([]);
   });
 });
