@@ -164,7 +164,13 @@ const SAFE_STATE_ATTRIBUTES = Object.freeze([
 
 const DRIVER_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 const REPOSITORY_ROOT = await realpath(path.resolve(DRIVER_DIRECTORY, '..'));
-const TASK22_EVIDENCE_ROOT = path.join(REPOSITORY_ROOT, '.superpowers', 'sdd', 'evidence', 'task-22');
+const TASK22_EVIDENCE_ROOT = path.join(
+  REPOSITORY_ROOT,
+  '.superpowers',
+  'sdd',
+  'evidence',
+  'task-22',
+);
 const TIMEOUT_MS = 60_000;
 const VOICE_FIXTURE_SHA256 = 'b3bab750a95495ae54c457b54cb9a066147e36acc6a711e1a09ea05265c272f7';
 
@@ -611,9 +617,7 @@ async function readOptionalRuntimeFailureCode(page) {
   if (runtimeCount === 0) return 'kernel_runtime_failure';
   await waitForAttribute(runtime.first(), 'data-runtime-state', ['error']);
   const candidate = await runtime.first().getAttribute('data-error-code');
-  return /^kernel_[a-z0-9_]{1,120}$/.test(candidate ?? '')
-    ? candidate
-    : 'kernel_runtime_failure';
+  return /^kernel_[a-z0-9_]{1,120}$/.test(candidate ?? '') ? candidate : 'kernel_runtime_failure';
 }
 
 async function waitForRunStatus(page, accepted) {
@@ -638,14 +642,14 @@ async function waitForRunStatus(page, accepted) {
   const runtime = evidenceLocator(page, 'smoke.runtime-state');
   const runtimeCount = await runtime.count();
   if (runtimeCount > 1) fail('kernel_smoke_evidence_ambiguous');
-  const runtimeState = runtimeCount === 1
-    ? await runtime.first().getAttribute('data-runtime-state')
-    : undefined;
-  const safeRuntimeState = runtimeCount === 0
-    ? 'missing'
-    : ['sent', 'running', 'done', 'error', 'cancelled'].includes(runtimeState)
-      ? runtimeState
-      : 'invalid';
+  const runtimeState =
+    runtimeCount === 1 ? await runtime.first().getAttribute('data-runtime-state') : undefined;
+  const safeRuntimeState =
+    runtimeCount === 0
+      ? 'missing'
+      : ['sent', 'running', 'done', 'error', 'cancelled'].includes(runtimeState)
+        ? runtimeState
+        : 'invalid';
   fail(`kernel_smoke_run_state_timeout:${lastStatus ?? 'invalid'}:${safeRuntimeState}`);
 }
 
@@ -813,9 +817,7 @@ async function waitForTerminalSettlement(locator) {
   } catch {
     fixtureObservation = 'fixture_unreadable';
   }
-  fail(
-    `kernel_smoke_terminal_execution_timeout:${lastStatus}:${lastPhase}:${fixtureObservation}`,
-  );
+  fail(`kernel_smoke_terminal_execution_timeout:${lastStatus}:${lastPhase}:${fixtureObservation}`);
 }
 
 async function liveNodeEvidence(page, evidenceId = 'live.system.node') {
@@ -904,7 +906,7 @@ async function waitForReconstructedLiveNodeEvidence(
   fail('kernel_smoke_live_completed_proof_not_restored');
 }
 
-async function runScenario(page, scenario, restartCheckpoint) {
+async function runScenario(page, scenario, restartCheckpoint, evidenceDirectory) {
   if (!restartCheckpoint) {
     if (scenario === 'transport_cli_success') {
       await selectSmokeTransport(page, 'cli');
@@ -915,7 +917,11 @@ async function runScenario(page, scenario, restartCheckpoint) {
   switch (scenario) {
     case 'voice_turn_stop':
       await clickEvidence(page, 'voice.open');
-      await requireUniqueEvidence(page, 'voice.state');
+      {
+        const openedVoiceState = await requireUniqueEvidence(page, 'voice.state');
+        await waitForAttribute(openedVoiceState, 'data-voice-state', ['listening']);
+        await captureVisualEvidence(page, evidenceDirectory, scenario, 'listening');
+      }
       const previousVoiceRunDigest = await readOptionalRunDigest(page);
       const sessionEvidence = await requireUniqueEvidence(page, 'voice.stt-state');
       await waitForAttribute(
@@ -1010,6 +1016,7 @@ async function runScenario(page, scenario, restartCheckpoint) {
     case 'approval_confirm':
       await submitChatFixture(page, 'Create one fixed smoke terminal.');
       await waitForRunStatus(page, ['awaiting_approval']);
+      await captureVisualEvidence(page, evidenceDirectory, scenario, 'waiting-approval');
       await clickApprovalEvidence(page, 'approval.confirm');
       {
         const approval = await requireUniqueEvidenceState(
@@ -1031,6 +1038,7 @@ async function runScenario(page, scenario, restartCheckpoint) {
     case 'artifact_provider':
       await submitChatFixture(page, 'Produce the fixed provider artifact.');
       await prepareCollapsedCommandCenter(page);
+      await captureVisualEvidence(page, evidenceDirectory, scenario, 'collapsed');
       await clickEvidence(page, 'command-center.disclosure');
       await clickEvidence(page, 'outputs.tab');
       await waitForRunStatus(page, ['completed']);
@@ -1303,7 +1311,8 @@ async function runScenario(page, scenario, restartCheckpoint) {
         await waitForMatchingAttribute(hiveDispatch, 'data-dispatch-kind', /^protected$/);
         await waitForAttribute(
           hiveRuntime,
-          'data-runtime-state', ['done'],
+          'data-runtime-state',
+          ['done'],
           'kernel_smoke_hive_runtime_timeout',
         );
         const hiveChatShell = await requireUniqueEvidence(page, 'chat.run-shell');
@@ -1426,6 +1435,13 @@ async function requireAbsentOutput(output) {
   fail('kernel_smoke_evidence_output_exists');
 }
 
+async function captureVisualEvidence(page, evidenceDirectory, scenario, stage) {
+  if (!/^[a-z0-9-]+$/.test(stage)) fail('kernel_smoke_visual_stage_invalid');
+  const screenshotPath = containedOutputPath(evidenceDirectory, `${scenario}.${stage}.png`);
+  await requireAbsentOutput(screenshotPath);
+  await page.screenshot({ path: screenshotPath, fullPage: true });
+}
+
 async function main() {
   const options = await validateArguments(process.argv.slice(2));
   let browser;
@@ -1443,7 +1459,12 @@ async function main() {
     ) {
       fail('kernel_smoke_restart_binding_mismatch');
     }
-    const scenarioResult = await runScenario(page, options.scenario, restartCheckpoint);
+    const scenarioResult = await runScenario(
+      page,
+      options.scenario,
+      restartCheckpoint,
+      options.evidenceDirectory,
+    );
     const outcome = typeof scenarioResult === 'string' ? scenarioResult : scenarioResult.outcome;
     if (outcome === 'RESTART_REQUIRED') {
       if (restartCheckpoint) fail('kernel_smoke_restart_repeated');
