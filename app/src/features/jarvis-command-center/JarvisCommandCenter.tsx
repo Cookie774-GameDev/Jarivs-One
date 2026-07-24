@@ -339,6 +339,15 @@ export function JarvisCommandCenter({
                 : `Run ${run.status.replaceAll('_', ' ')}`
               : 'Waiting for a canonical run'}
           </div>
+          {run ? (
+            <p className="jarvis-command-center__eyebrow">
+              <span className="sr-only">Active model</span>
+              <span aria-hidden="true">: </span>
+              <span>
+                {run.model.providerId} / {run.model.modelId}
+              </span>
+            </p>
+          ) : null}
         </div>
 
         <div className="jarvis-command-center__actions">

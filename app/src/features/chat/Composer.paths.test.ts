@@ -5,6 +5,7 @@ import {
   buildConfirmedAgentMention,
   buildSlashReferenceCommand,
   extractAbsoluteFilePaths,
+  getQueuedMessageNotice,
   resolveMentionedAgentIdsForSend,
 } from './Composer';
 import { findSlashCommandDef } from './SlashCommandTypeahead';
@@ -31,14 +32,28 @@ describe('composer file path detection', () => {
       extractAbsoluteFilePaths(
         'C:\\Users\\dev\\Documents\\project\\Scripts\\Editor\\context_map.json please summarize this',
       ),
-    ).toEqual([
-      'C:\\Users\\dev\\Documents\\project\\Scripts\\Editor\\context_map.json',
-    ]);
+    ).toEqual(['C:\\Users\\dev\\Documents\\project\\Scripts\\Editor\\context_map.json']);
   });
 
   it('deduplicates repeated file paths', () => {
     const path = 'C:\\project\\AnimalOutputGenerator.cs';
     expect(extractAbsoluteFilePaths(`${path} summarize ${path}`)).toEqual([path]);
+  });
+});
+
+describe('composer queued-run notice', () => {
+  it('offers explicit stop/restart or next-turn behavior for an in-flight model switch', () => {
+    expect(getQueuedMessageNotice('Use the fastest connected model.')).toEqual({
+      title: 'Model switch queued',
+      body: 'The current reply keeps its captured model. Leave this queued to review and apply on the next turn, or stop the current reply and resend to restart sooner.',
+    });
+  });
+
+  it('keeps the standard queue notice for ordinary follow-up messages', () => {
+    expect(getQueuedMessageNotice('Summarize the result next.')).toEqual({
+      title: 'Message queued',
+      body: 'It will send automatically when Jarvis finishes the current reply (or use Send / Multitask).',
+    });
   });
 });
 

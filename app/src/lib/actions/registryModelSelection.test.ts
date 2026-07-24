@@ -14,6 +14,7 @@ import {
   type JarvisModelSelectionActionState,
 } from './registryModelSelection';
 import type { JarvisModelSwitchCandidate } from '@/lib/jarvis/modelSwitchDecision';
+import { DEFAULT_CUSTOM_STEPS } from '@/lib/ai/stacks/presets';
 
 function selection(
   providerId: Extract<ChatModelSelection, { mode: 'single' }>['providerId'],
@@ -33,6 +34,7 @@ function state(
     offlineMode: false,
     plan: 'free',
     defaultLocalModel: 'llama3.2',
+    stackCustomSteps: DEFAULT_CUSTOM_STEPS,
     ...overrides,
   };
 }
@@ -49,9 +51,19 @@ function candidate(
     supportsImages: true,
     supportsTools: true,
     codingRank: 50,
+    speedRank: 50,
     costClass: 'standard',
     ...overrides,
   };
+}
+
+function hiveCandidates(): readonly JarvisModelSwitchCandidate[] {
+  return [
+    candidate('google', 'gemini-ready', { costClass: 'premium' }),
+    candidate('openrouter', 'openrouter-ready', { costClass: 'premium' }),
+    candidate('deepseek', 'deepseek-ready', { costClass: 'premium' }),
+    candidate('openai', 'openai-ready', { costClass: 'premium' }),
+  ];
 }
 
 describe('buildJarvisModelSwitchCandidates', () => {
@@ -154,6 +166,11 @@ describe('chat.model.switch action', () => {
     initial?: JarvisModelSelectionActionState;
     candidates: readonly JarvisModelSwitchCandidate[];
     apply?: (selection: ChatModelSelection) => void;
+    validate?: (
+      selection: ChatModelSelection,
+      state: JarvisModelSelectionActionState,
+      requirements: Readonly<{ images?: boolean; tools?: boolean }>,
+    ) => { ok: true; selection: ChatModelSelection } | { ok: false; message: string };
   }) {
     let current = input.initial ?? state();
     const apply =
@@ -169,6 +186,7 @@ describe('chat.model.switch action', () => {
       getState: () => current,
       buildCandidates: () => input.candidates,
       applySelection: apply,
+      validateSelection: input.validate ?? ((selection) => ({ ok: true, selection })),
     })[0]!;
     return { action, apply, getState: () => current };
   }
@@ -182,10 +200,87 @@ describe('chat.model.switch action', () => {
 
     expect(result).toMatchObject({
       ok: true,
-      summary: expect.stringMatching(/Model switched.*google\/gemini-2.5-flash/i),
+      summary: expect.stringMatching(
+        /Model switched.*google\/gemini-2.5-flash.*next turn.*current response keeps its captured model/i,
+      ),
     });
     expect(test.apply).toHaveBeenCalledOnce();
     expect(test.getState().chatModelSelection).toEqual(selection('google', 'gemini-2.5-flash'));
+  });
+
+  it('applies a verified Hive Balanced request and refuses it when readiness validation fails', async () => {
+    const ready = setup({
+      initial: state({
+        chatModelSelection: selection('openai', 'current-premium'),
+        selectedModels: { openai: 'current-premium' },
+      }),
+      candidates: [
+        candidate('openai', 'current-premium', { costClass: 'premium' }),
+        ...hiveCandidates(),
+      ],
+    });
+    await expect(
+      ready.action.run({ request: 'Use Hive Balanced.' }, { source: 'user' }),
+    ).resolves.toMatchObject({
+      ok: true,
+      data: { hiveId: 'balanced' },
+    });
+    expect(ready.getState().chatModelSelection).toEqual({
+      mode: 'hive',
+      hiveId: 'balanced',
+    });
+
+    const blocked = setup({
+      candidates: hiveCandidates(),
+      validate: () => ({ ok: false, message: 'Hive providers are not connected.' }),
+      apply: vi.fn(),
+    });
+    await expect(
+      blocked.action.run({ request: 'Use Hive Balanced.' }, { source: 'user' }),
+    ).resolves.toEqual({
+      ok: false,
+      error: 'Hive providers are not connected.',
+    });
+    expect(blocked.apply).not.toHaveBeenCalled();
+  });
+
+  it('passes requested capabilities through the final Hive readiness gate', async () => {
+    const apply = vi.fn();
+    const validate = vi.fn(
+      (
+        selection: ChatModelSelection,
+        _state: JarvisModelSelectionActionState,
+        requirements: Readonly<{ images?: boolean; tools?: boolean }>,
+      ) =>
+        requirements.tools
+          ? ({ ok: false, message: 'Hive Balanced cannot use these tools.' } as const)
+          : ({ ok: true, selection } as const),
+    );
+    const test = setup({
+      initial: state({
+        chatModelSelection: selection('openai', 'current-premium'),
+        selectedModels: { openai: 'current-premium' },
+      }),
+      candidates: [
+        candidate('openai', 'current-premium', { costClass: 'premium' }),
+        ...hiveCandidates(),
+      ],
+      validate,
+      apply,
+    });
+
+    await expect(
+      test.action.run({ request: 'Use Hive Balanced.', needsTools: true }, { source: 'user' }),
+    ).resolves.toEqual({
+      ok: false,
+      error: 'Hive Balanced cannot use these tools.',
+    });
+    expect(validate).toHaveBeenCalledWith(
+      { mode: 'hive', hiveId: 'balanced' },
+      expect.any(Object),
+      { images: false, tools: true },
+    );
+    expect(apply).not.toHaveBeenCalled();
   });
 
   it.each([

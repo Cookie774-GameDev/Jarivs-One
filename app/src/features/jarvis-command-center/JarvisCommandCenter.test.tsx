@@ -205,6 +205,8 @@ describe('JarvisCommandCenter', () => {
     expect(screen.queryByRole('tablist')).toBeNull();
     expect(screen.queryByTestId('command-center-graph')).toBeNull();
     expect(dataPort.getLiveEvidenceSnapshot).not.toHaveBeenCalled();
+    expect(screen.getByText('provider-1 / model-1')).not.toBeNull();
+    expect(screen.getByText('Active model')).not.toBeNull();
   });
 
   it('embeds the canonical body without a duplicate disclosure and keeps exactly two tabs', async () => {

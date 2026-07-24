@@ -1,7 +1,13 @@
 import type { PlanId } from '@/lib/entitlements';
 import type { ProviderId } from '@/types';
 import { useAuthStore } from '@/stores/auth';
-import { type ChatModelSelection, selectionFromOption } from '@/lib/ai/modelSelection';
+import {
+  modelSelectionContextFromAuth,
+  type ChatModelSelection,
+  selectionFromOption,
+  validateChatModelSelection,
+  type ModelSelectionValidation,
+} from '@/lib/ai/modelSelection';
 import { CHAT_MODEL_OPTIONS, getAccessibleModelOptions, type ModelOption } from '@/lib/ai/models';
 import { CONNECTION_MODEL_OPTIONS, PROVIDER_CONNECTIONS } from '@/lib/ai/adapters/catalog';
 import type { ProviderConnection } from '@/lib/ai/adapters/types';
@@ -14,9 +20,12 @@ import {
 } from '@/lib/ai/connectionState';
 import { ratesFor } from '@/lib/ai/types';
 import { modelSupportsVision } from '@/lib/ai/vision';
+import type { StackStepSpec } from '@/lib/ai/stacks/types';
+import { HIVE_BALANCE_PRICING, stepsForPreset } from '@/lib/ai/stacks/presets';
 import {
   parseJarvisModelSwitchIntent,
   planJarvisModelSwitch,
+  type JarvisHiveBalancedAssessment,
   type JarvisModelCostClass,
   type JarvisModelSwitchCandidate,
 } from '@/lib/jarvis/modelSwitchDecision';
@@ -33,6 +42,7 @@ export interface JarvisModelSelectionActionState {
   offlineMode: boolean;
   plan: PlanId;
   defaultLocalModel: string;
+  stackCustomSteps: readonly StackStepSpec[];
 }
 
 export interface JarvisModelSwitchCandidateBuildOptions {
@@ -41,17 +51,31 @@ export interface JarvisModelSwitchCandidateBuildOptions {
   modelOptions?: readonly ModelOption[];
 }
 
+export type JarvisModelSwitchRequirements = Readonly<{
+  images?: boolean;
+  tools?: boolean;
+}>;
+
 export interface ModelSelectionActionDependencies {
   getState: () => JarvisModelSelectionActionState;
   buildCandidates: (
     state: JarvisModelSelectionActionState,
   ) => readonly JarvisModelSwitchCandidate[];
   applySelection: (selection: ChatModelSelection) => void;
+  validateSelection?: (
+    selection: ChatModelSelection,
+    state: JarvisModelSelectionActionState,
+    requirements: JarvisModelSwitchRequirements,
+  ) => ModelSelectionValidation;
 }
 
 function sameSelection(left: ChatModelSelection, right: ChatModelSelection): boolean {
-  if (left.mode !== 'single' || right.mode !== 'single') return false;
+  if (left.mode !== right.mode) return false;
+  if (left.mode === 'none' || right.mode === 'none') return true;
+  if (left.mode === 'hive' && right.mode === 'hive') return left.hiveId === right.hiveId;
   return (
+    left.mode === 'single' &&
+    right.mode === 'single' &&
     left.providerId === right.providerId &&
     left.modelId === right.modelId &&
     left.connectionId === right.connectionId
@@ -66,7 +90,10 @@ function modelCostClass(
   if (mode === 'external-cli') return 'unknown';
   if (mode === 'local' || providerId === 'ollama' || providerId === 'local') return 'free';
   const rates = ratesFor(providerId, modelId);
-  const maximumRate = Math.max(rates.input_per_m, rates.output_per_m);
+  return costClassForRate(Math.max(rates.input_per_m, rates.output_per_m));
+}
+
+function costClassForRate(maximumRate: number): JarvisModelCostClass {
   if (!Number.isFinite(maximumRate) || maximumRate < 0) return 'unknown';
   if (maximumRate === 0) return 'free';
   if (maximumRate <= 1) return 'low';
@@ -86,6 +113,16 @@ function codingRank(modelId: string): number {
   if (model.includes('sonnet')) return 85;
   if (model.includes('gpt-4o')) return 80;
   return 50;
+}
+
+function speedRank(modelId: string): number {
+  const model = modelId.toLowerCase();
+  let rank = 50;
+  if (/(?:instant|flash|mini|haiku)\b/u.test(model)) rank += 30;
+  const parameterCount = model.match(/(?:^|[-_:])(\d{1,3})b(?:$|[-_:])/u);
+  if (parameterCount) rank += Math.max(-20, 20 - Number(parameterCount[1]));
+  if (/(?:reasoner|thinking|pro|opus)\b/u.test(model)) rank -= 15;
+  return rank;
 }
 
 function uniqueModelOptions(
@@ -236,6 +273,7 @@ export function buildJarvisModelSwitchCandidates(
         available: connected && accessible.has(option.id),
         supportsImages: modelSupportsVision(option.provider, option.id),
         supportsTools: false,
+        speedRank: speedRank(option.id),
         codingRank: codingRank(option.id),
         costClass: modelCostClass(option.provider, option.id),
       });
@@ -260,6 +298,7 @@ export function buildJarvisModelSwitchCandidates(
         supportsImages:
           connection.capabilities.images && modelSupportsVision(option.provider, option.id),
         supportsTools: connection.capabilities.tools,
+        speedRank: speedRank(option.id),
         codingRank: codingRank(option.id),
         costClass: modelCostClass(option.provider, option.id, connection.mode),
       });
@@ -269,11 +308,61 @@ export function buildJarvisModelSwitchCandidates(
   return deepFreezeJarvisCopy(candidates) as readonly JarvisModelSwitchCandidate[];
 }
 
+function assessHiveBalanced(
+  state: JarvisModelSelectionActionState,
+  candidates: readonly JarvisModelSwitchCandidate[],
+): Readonly<JarvisHiveBalancedAssessment> {
+  const steps = stepsForPreset('balanced', 'general', state.stackCustomSteps);
+  const candidatesFor = (providerId: ProviderId) =>
+    candidates.filter((candidate) => candidate.selection.providerId === providerId);
+  const configured =
+    steps.length > 0 && steps.every((step) => candidatesFor(step.provider).length > 0);
+  const connected =
+    configured &&
+    steps.every((step) => candidatesFor(step.provider).some((candidate) => candidate.connected));
+  const available =
+    connected &&
+    steps.every((step) =>
+      candidatesFor(step.provider).some((candidate) => candidate.connected && candidate.available),
+    );
+  const supportsImages =
+    available &&
+    steps.every(
+      (step) =>
+        modelSupportsVision(step.provider, step.model) &&
+        candidatesFor(step.provider).some(
+          (candidate) => candidate.connected && candidate.available && candidate.supportsImages,
+        ),
+    );
+  const supportsTools =
+    available &&
+    steps.every((step) =>
+      candidatesFor(step.provider).some(
+        (candidate) => candidate.connected && candidate.available && candidate.supportsTools,
+      ),
+    );
+  return deepFreezeJarvisCopy({
+    configured,
+    connected,
+    available,
+    supportsImages,
+    supportsTools,
+    allLocal:
+      steps.length > 0 &&
+      steps.every((step) => step.provider === 'ollama' || step.provider === 'local'),
+    costClass: costClassForRate(
+      Math.max(HIVE_BALANCE_PRICING.inputPer1M, HIVE_BALANCE_PRICING.outputPer1M),
+    ),
+  });
+}
+
 function fail(error: string): ActionResult {
   return { ok: false, error };
 }
 
-function selectionLabel(selection: SingleModelSelection): string {
+function selectionLabel(selection: ChatModelSelection): string {
+  if (selection.mode === 'hive') return 'Hive Balanced';
+  if (selection.mode === 'none') return 'the default model';
   return `${selection.providerId}/${selection.modelId}`;
 }
 
@@ -324,6 +413,16 @@ const DEFAULT_DEPENDENCIES: ModelSelectionActionDependencies = {
   getState: () => useAuthStore.getState(),
   buildCandidates: (state) => buildJarvisModelSwitchCandidates(state),
   applySelection: (selection) => useAuthStore.getState().setChatModelSelection(selection),
+  validateSelection: (selection, state, requirements) =>
+    validateChatModelSelection(
+      selection,
+      modelSelectionContextFromAuth(state),
+      state.stackCustomSteps,
+      {
+        attachments: { hasImages: requirements.images === true },
+        tools: requirements.tools === true,
+      },
+    ),
 };
 
 /** Approval-gated, post-verified JARVIS chat-model selection action. */
@@ -367,16 +466,19 @@ export function createModelSelectionActions(
         if (!intent) return fail('The model switch request is not recognized.');
 
         const before = dependencies.getState();
+        const candidates = dependencies.buildCandidates(before);
+        const requirements: JarvisModelSwitchRequirements = {
+          images: params.needsImages === true,
+          tools: params.needsTools === true,
+        };
         const decision = planJarvisModelSwitch({
           intent,
           current: before.chatModelSelection,
           previous: before.previousChatModelSelection,
-          candidates: dependencies.buildCandidates(before),
+          candidates,
+          hiveBalanced: assessHiveBalanced(before, candidates),
           offlineMode: before.offlineMode,
-          requirements: {
-            images: params.needsImages === true,
-            tools: params.needsTools === true,
-          },
+          requirements,
           policyRequiresApproval: false,
         });
 
@@ -405,6 +507,12 @@ export function createModelSelectionActions(
         }
 
         const target = decision.target;
+        const validation =
+          dependencies.validateSelection?.(target, before, requirements) ??
+          DEFAULT_DEPENDENCIES.validateSelection!(target, before, requirements);
+        if (!validation.ok) {
+          return fail(validation.message);
+        }
         dependencies.applySelection(target);
         const after = dependencies.getState();
         if (!sameSelection(after.chatModelSelection, target)) {
@@ -412,11 +520,17 @@ export function createModelSelectionActions(
         }
         return {
           ok: true,
-          summary: `Model switched to ${selectionLabel(target)}. JARVIS identity and workspace context remain unchanged.`,
+          summary: `Model switched to ${selectionLabel(target)} for the next turn. The current response keeps its captured model; JARVIS identity and workspace context remain unchanged.`,
           data: {
-            providerId: target.providerId,
-            modelId: target.modelId,
-            connectionId: target.connectionId,
+            ...(target.mode === 'single'
+              ? {
+                  providerId: target.providerId,
+                  modelId: target.modelId,
+                  connectionId: target.connectionId,
+                }
+              : target.mode === 'hive'
+                ? { hiveId: target.hiveId }
+                : {}),
           },
         };
       },

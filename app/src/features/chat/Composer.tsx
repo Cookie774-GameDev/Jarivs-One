@@ -36,6 +36,7 @@ import {
 } from '@/lib/usage/usageService';
 import { useAgentStore } from '@/stores/agents';
 import { findProtectedJarvisAgent } from '@/lib/jarvis/identity';
+import { parseJarvisModelSwitchIntent } from '@/lib/jarvis/modelSwitchDecision';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import { parseThemeCommandArgument, SELECTABLE_THEMES } from '@/features/appearance/themes';
@@ -354,6 +355,19 @@ export function extractAbsoluteFilePaths(text: string): string[] {
   return Array.from(new Set(text.match(WINDOWS_FILE_PATH_RE) ?? [])).slice(0, 8);
 }
 
+export function getQueuedMessageNotice(draft: string): Readonly<{ title: string; body: string }> {
+  if (parseJarvisModelSwitchIntent(draft)) {
+    return {
+      title: 'Model switch queued',
+      body: 'The current reply keeps its captured model. Leave this queued to review and apply on the next turn, or stop the current reply and resend to restart sooner.',
+    };
+  }
+  return {
+    title: 'Message queued',
+    body: 'It will send automatically when Jarvis finishes the current reply (or use Send / Multitask).',
+  };
+}
+
 /**
  * Find an active "@xxx" mention being typed at the caret.
  * Triggers when '@' is at position 0 or directly after whitespace.
@@ -560,10 +574,8 @@ export function Composer({
       },
     ]);
     setText('');
-    toast.info(
-      'Message queued',
-      'It will send automatically when Jarvis finishes the current reply (or use Send / Multitask).',
-    );
+    const notice = getQueuedMessageNotice(trimmedDraft);
+    toast.info(notice.title, notice.body);
   };
 
   const editQueuedMessage = (id: string) => {

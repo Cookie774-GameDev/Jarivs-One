@@ -217,6 +217,28 @@ function buildGraphNodes(input: {
         flowing: runFlowing && FLOWING_STATES.has(node.state),
       };
     });
+  const hasCanonicalModelNode = input.nodes.some(
+    (node) =>
+      node.kind === 'model' &&
+      node.runId === input.run.id &&
+      node.accountId === input.run.accountId &&
+      node.providerId === input.run.model.providerId &&
+      node.modelId === input.run.model.modelId,
+  );
+  if (!hasCanonicalModelNode) {
+    verifiedNodes.unshift({
+      id: `model:snapshot:${input.run.id}`,
+      kind: 'model',
+      type: 'Model',
+      group: 'model',
+      label: `${input.run.model.providerId} / ${input.run.model.modelId}`,
+      accessibleLabel: `Model ${input.run.model.providerId} / ${input.run.model.modelId}`,
+      state: input.run.status,
+      detail: 'Canonical run model snapshot',
+      observedAt: input.run.model.capturedAt,
+      flowing: runFlowing,
+    });
+  }
 
   const sourceNodes = selectScopedSources(input.events, input.run).map<LiveGraphNode>(
     ({ source, event }) => {
@@ -256,14 +278,15 @@ function buildGraphNodes(input: {
 
 function LiveSummary({
   nodes,
+  run,
   sources,
   outputs,
 }: {
   nodes: readonly JarvisLiveSystemNode[];
+  run: Readonly<JarvisRun>;
   sources: number;
   outputs: number;
 }) {
-  const model = nodes.find((node) => node.kind === 'model');
   const connectors = nodes.filter(
     (node) =>
       node.kind === 'capability' &&
@@ -277,7 +300,7 @@ function LiveSummary({
       (node.category === 'tool' || node.category === 'terminal'),
   ).length;
   const counters = [
-    ...(model ? [`Model ${nodeLabel(model)}`] : []),
+    `Model ${run.model.providerId} / ${run.model.modelId}`,
     ...(connectors > 0 ? [`Connectors ${connectors}`] : []),
     ...(tools > 0 ? [`Tools ${tools}`] : []),
     ...(sources > 0 ? [`Sources ${sources}`] : []),
@@ -478,7 +501,11 @@ export function JarvisLiveSystemsTab({
   const scopedEvents = selectScopedEvents(events, run);
   const scopedOutputs = selectScopedOutputs(outputs, run);
   const scopedNodes = liveSystems.nodes.filter(
-    (node) => node.runId === run.id && node.accountId === run.accountId,
+    (node) =>
+      node.runId === run.id &&
+      node.accountId === run.accountId &&
+      (node.kind !== 'model' ||
+        (node.providerId === run.model.providerId && node.modelId === run.model.modelId)),
   );
   const sources = selectScopedSources(scopedEvents, run);
   const errorSummary = selectLatestErrorSummary(scopedEvents);
@@ -511,7 +538,12 @@ export function JarvisLiveSystemsTab({
       className="jarvis-live-systems"
       data-sik-live-state={KERNEL_SMOKE_ENABLED ? liveSystems.state : undefined}
     >
-      <LiveSummary nodes={scopedNodes} sources={sources.length} outputs={scopedOutputs.length} />
+      <LiveSummary
+        nodes={scopedNodes}
+        run={run}
+        sources={sources.length}
+        outputs={scopedOutputs.length}
+      />
       {visibleState ? (
         <p className="jarvis-live-systems__run-state" data-state={run.status} role="status">
           {visibleState}

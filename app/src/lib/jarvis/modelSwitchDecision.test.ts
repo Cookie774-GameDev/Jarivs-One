@@ -13,6 +13,37 @@ function selection(
   return { mode: 'single', providerId, modelId };
 }
 
+function connectedSelection(
+  providerId: Extract<ChatModelSelection, { mode: 'single' }>['providerId'],
+  modelId: string,
+  connectionId: string,
+): Extract<ChatModelSelection, { mode: 'single' }> {
+  return {
+    mode: 'single',
+    providerId,
+    modelId,
+    connectionId,
+    connectionMode: 'native-api',
+    authSource: 'api-key',
+    capabilities: {
+      text: true,
+      images: true,
+      files: true,
+      tools: true,
+      modelSelection: true,
+      structuredOutput: true,
+      streaming: true,
+      cancellation: true,
+      resumeSession: false,
+      systemPrompt: true,
+      workingDirectory: false,
+      usage: true,
+      subscriptionQuota: false,
+      localOnly: false,
+    },
+  };
+}
+
 function candidate(
   providerId: Extract<ChatModelSelection, { mode: 'single' }>['providerId'],
   modelId: string,
@@ -34,10 +65,16 @@ describe('parseJarvisModelSwitchIntent', () => {
   it.each([
     ['Switch to Gemini.', { kind: 'provider', providerId: 'google' }],
     ['Use Grok for this.', { kind: 'provider', providerId: 'xai' }],
+    ['Switch to Claude for this task.', { kind: 'provider', providerId: 'anthropic' }],
+    ['Use Grok for the next answer.', { kind: 'provider', providerId: 'xai' }],
     ['Use a local model.', { kind: 'local' }],
+    ['Use my local model.', { kind: 'local' }],
+    ['Use the fastest connected model.', { kind: 'fastest_connected' }],
+    ['Use Hive Balanced.', { kind: 'hive_balanced' }],
     ['Use the strongest coding model.', { kind: 'strongest_coding' }],
     ['Use the cheapest model that can handle this.', { kind: 'cheapest_capable' }],
     ['Switch back.', { kind: 'switch_back' }],
+    ['Go back to the default model.', { kind: 'switch_back' }],
   ] as const)('parses %s without inventing a target', (text, expected) => {
     const intent = parseJarvisModelSwitchIntent(text);
     expect(intent).toEqual(expected);
@@ -156,6 +193,25 @@ describe('planJarvisModelSwitch', () => {
     });
   });
 
+  it('filters cloud candidates out of broad routing intents while offline', () => {
+    expect(
+      planJarvisModelSwitch({
+        intent: { kind: 'fastest_connected' },
+        current: selection('ollama', 'current-local'),
+        candidates: [
+          candidate('google', 'cloud-fast', { speedRank: 100 }),
+          candidate('ollama', 'local-safe', { speedRank: 30, costClass: 'free' }),
+        ],
+        offlineMode: true,
+        requirements: {},
+        policyRequiresApproval: false,
+      }),
+    ).toMatchObject({
+      status: 'ready',
+      target: { providerId: 'ollama', modelId: 'local-safe' },
+    });
+  });
+
   it('chooses the strongest coding model only from capable usable candidates', () => {
     const result = planJarvisModelSwitch({
       intent: { kind: 'strongest_coding' },
@@ -199,6 +255,117 @@ describe('planJarvisModelSwitch', () => {
     expect(result).toMatchObject({
       status: 'ready',
       target: { providerId: 'groq', modelId: 'free-strong' },
+    });
+  });
+
+  it('chooses the fastest connected model only after capability and availability filtering', () => {
+    const result = planJarvisModelSwitch({
+      intent: { kind: 'fastest_connected' },
+      current: selection('openai', 'current'),
+      candidates: [
+        candidate('groq', 'fast-without-tools', {
+          speedRank: 100,
+          supportsTools: false,
+        }),
+        candidate('google', 'fast-capable', { speedRank: 90 }),
+        candidate('anthropic', 'slower-capable', { speedRank: 60 }),
+        candidate('xai', 'unavailable-fastest', { speedRank: 110, available: false }),
+      ],
+      offlineMode: false,
+      requirements: { tools: true },
+      policyRequiresApproval: false,
+    });
+
+    expect(result).toMatchObject({
+      status: 'ready',
+      target: { providerId: 'google', modelId: 'fast-capable' },
+    });
+  });
+
+  it('prepares Hive Balanced only from verified online readiness', () => {
+    const input = {
+      intent: { kind: 'hive_balanced' } as const,
+      current: selection('openai', 'current'),
+      candidates: [candidate('openai', 'current')],
+      hiveBalanced: {
+        configured: true,
+        connected: true,
+        available: true,
+        supportsImages: true,
+        supportsTools: true,
+        allLocal: false,
+        costClass: 'standard' as const,
+      },
+      requirements: {},
+      policyRequiresApproval: false,
+    };
+
+    expect(planJarvisModelSwitch({ ...input, offlineMode: false })).toMatchObject({
+      status: 'ready',
+      target: { mode: 'hive', hiveId: 'balanced' },
+    });
+    expect(planJarvisModelSwitch({ ...input, offlineMode: true })).toMatchObject({
+      status: 'unavailable',
+      reason: 'offline_mode',
+    });
+  });
+
+  it('fails Hive Balanced closed on missing readiness or required capabilities', () => {
+    const base = {
+      intent: { kind: 'hive_balanced' } as const,
+      current: selection('openai', 'current'),
+      candidates: [candidate('openai', 'current')],
+      offlineMode: false,
+      policyRequiresApproval: false,
+    };
+
+    expect(planJarvisModelSwitch({ ...base, requirements: {} })).toMatchObject({
+      status: 'not_configured',
+      reason: 'target_not_configured',
+    });
+    expect(
+      planJarvisModelSwitch({
+        ...base,
+        hiveBalanced: {
+          configured: true,
+          connected: true,
+          available: true,
+          supportsImages: false,
+          supportsTools: true,
+          allLocal: false,
+          costClass: 'premium',
+        },
+        requirements: { images: true },
+      }),
+    ).toMatchObject({
+      status: 'unavailable',
+      reason: 'required_capability_unavailable',
+    });
+  });
+
+  it('derives Hive privacy, cost, and policy approval from verified readiness', () => {
+    const result = planJarvisModelSwitch({
+      intent: { kind: 'hive_balanced' },
+      current: selection('ollama', 'llama3.2'),
+      candidates: [candidate('ollama', 'llama3.2', { costClass: 'free' })],
+      hiveBalanced: {
+        configured: true,
+        connected: true,
+        available: true,
+        supportsImages: true,
+        supportsTools: true,
+        allLocal: false,
+        costClass: 'premium',
+      },
+      offlineMode: false,
+      requirements: { tools: true },
+      policyRequiresApproval: true,
+    });
+
+    expect(result).toMatchObject({
+      status: 'approval_required',
+      target: { mode: 'hive', hiveId: 'balanced' },
+      reasons: ['local_to_cloud', 'cost_increase', 'policy'],
     });
   });
 
@@ -305,6 +472,32 @@ describe('planJarvisModelSwitch', () => {
     expect(planJarvisModelSwitch(base)).toMatchObject({
       status: 'not_configured',
       reason: 'no_previous_selection',
+    });
+  });
+
+  it('restores the exact previous connection instead of another connection for the same model', () => {
+    const previous = connectedSelection('google', 'shared-model', 'google-account-b');
+    const result = planJarvisModelSwitch({
+      intent: { kind: 'switch_back' },
+      current: selection('openai', 'current'),
+      previous,
+      candidates: [
+        candidate('google', 'shared-model', {
+          preferred: true,
+          selection: connectedSelection('google', 'shared-model', 'google-account-a'),
+        }),
+        candidate('google', 'shared-model', {
+          selection: previous,
+        }),
+      ],
+      offlineMode: false,
+      requirements: {},
+      policyRequiresApproval: false,
+    });
+
+    expect(result).toMatchObject({
+      status: 'ready',
+      target: { connectionId: 'google-account-b' },
     });
   });
 

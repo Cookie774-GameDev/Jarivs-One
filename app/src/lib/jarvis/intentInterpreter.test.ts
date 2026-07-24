@@ -28,10 +28,16 @@ describe('Jarvis intent interpreter', () => {
     ],
     ['Switch to Gemini.', 'app-configuration', ['chat.model.switch']],
     ['Use Grok for this.', 'app-configuration', ['chat.model.switch']],
+    ['Switch to Claude for this task.', 'app-configuration', ['chat.model.switch']],
+    ['Use Grok for the next answer.', 'app-configuration', ['chat.model.switch']],
     ['Use a local model.', 'app-configuration', ['chat.model.switch']],
+    ['Use my local model.', 'app-configuration', ['chat.model.switch']],
+    ['Use the fastest connected model.', 'app-configuration', ['chat.model.switch']],
+    ['Use Hive Balanced.', 'app-configuration', ['chat.model.switch']],
     ['Use the strongest coding model.', 'app-configuration', ['chat.model.switch']],
     ['Use the cheapest model that can handle this.', 'app-configuration', ['chat.model.switch']],
     ['Switch back.', 'app-configuration', ['chat.model.switch']],
+    ['Go back to the default model.', 'app-configuration', ['chat.model.switch']],
   ])('classifies %s without inventing actions', (prompt, intent, actionIds) => {
     const result = interpretJarvisRequest(prompt);
     expect(result.intent).toBe(intent);

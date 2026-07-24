@@ -439,7 +439,7 @@ describe('JarvisLiveSystemsTab', () => {
     expect(document.querySelectorAll('time[datetime]')).toHaveLength(2);
   });
 
-  it('keeps a quiet empty state with no graph, counters, or fabricated activity', () => {
+  it('shows only the immutable model snapshot when no live activity has arrived', () => {
     render(
       <JarvisLiveSystemsTab
         liveSystems={{ state: 'ready', nodes: [] }}
@@ -450,9 +450,34 @@ describe('JarvisLiveSystemsTab', () => {
       />,
     );
 
-    expect(screen.getByText('No verified live activity for this run.')).not.toBeNull();
-    expect(screen.queryByRole('img', { name: 'Current run execution map' })).toBeNull();
+    expect(screen.getByText('Model provider-1 / model-1')).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Model provider-1 / model-1' })).not.toBeNull();
+    expect(screen.getByRole('img', { name: 'Current run execution map' })).not.toBeNull();
     expect(screen.queryByRole('list', { name: 'Run activity' })).toBeNull();
+  });
+
+  it('keeps the immutable run model visible when live evidence reports another model node', () => {
+    const liveSystems = readyLiveSystems();
+    const mismatchedModel: JarvisLiveSystemNode = {
+      ...liveSystems.nodes[0]!,
+      id: 'model:other',
+      providerId: 'provider-other',
+      modelId: 'model-other',
+    } as JarvisLiveSystemNode;
+
+    render(
+      <JarvisLiveSystemsTab
+        liveSystems={{ state: 'ready', nodes: [mismatchedModel] }}
+        run={run()}
+        events={[]}
+        outputs={[]}
+      />,
+    );
+
+    expect(screen.getByText('Model provider-1 / model-1')).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Model provider-1 / model-1' })).not.toBeNull();
+    expect(screen.queryByRole('button', { name: 'Model provider-other / model-other' })).toBeNull();
+    expect(screen.queryByText(/provider-other|model-other/)).toBeNull();
   });
 
   it('keeps the blocked approval root visible before branch evidence arrives', () => {
