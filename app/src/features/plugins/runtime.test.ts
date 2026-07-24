@@ -1526,4 +1526,466 @@ describe('canonical plugin artifact evidence authority', () => {
     ).resolves.toBeNull();
     expect(runtimeModule).not.toHaveProperty('callPluginTool');
   });
+
+  it('consumes one exact approval-bound GitHub result into canonical links and rejects stale grants', async () => {
+    const test = fixture({ randomIds: ['grant-artifact', 'grant-replacement'], times: [100, 200] });
+    await test.runtime.management.saveCredential({
+      accountId: 'account-a',
+      pluginId: 'github',
+      fieldId: 'token',
+      value: 'test-credential-value',
+    });
+    const authorization = await test.credentialAuthorization.authorize({
+      accountId: 'account-a',
+      locator: { pluginId: 'github', fieldId: 'token' },
+    });
+    if (!authorization.authorized) throw new Error('expected authorization');
+    const action = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS).resolve(
+      'github.repository.read',
+    );
+    if (!action || action.executor.kind !== 'plugin_tool') {
+      throw new Error('expected GitHub repository registration');
+    }
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          full_name: 'octocat/hello-world',
+          visibility: 'public',
+          archived: false,
+          default_branch: 'main',
+          stargazers_count: 80,
+          forks_count: 9,
+          open_issues_count: 3,
+          updated_at: '2026-07-23T10:00:00Z',
+        }),
+        { status: 200 },
+      ),
+    );
+    const context = Object.freeze({
+      source: 'ai' as const,
+      accountId: 'account-a',
+      runId: 'jrun_plugin',
+      approvalId: 'jappr_plugin',
+      requestId: 'jrequest_plugin',
+      attemptNumber: 1,
+      signal: new AbortController().signal,
+    });
+    const result = await test.runtime.registeredTools.startPrepared({
+      accountId: 'account-a',
+      registration: action.executor,
+      params: { owner: 'octocat', repository: 'hello-world' },
+      context,
+      credentialValues: { token: 'test-credential-value' },
+      credentialAuthorizations: [authorization.authorization],
+    });
+    if (!result.ok) throw new Error('expected successful result');
+    const canonicalEvidence = Object.freeze({
+      producerId: 'plugin_result' as const,
+      accountId: context.accountId,
+      runId: context.runId,
+      requestId: context.requestId,
+      attemptNumber: context.attemptNumber,
+      resultRef: 'jresult_plugin_repository',
+      state: 'succeeded' as const,
+      verifiedAt: 1_786_300_400_000,
+      pluginId: 'github',
+      invocationId: `approval:${context.approvalId}`,
+    });
+
+    const drafts = await test.runtime.canonicalArtifacts.consumeCanonicalResult({
+      evidence: canonicalEvidence,
+      registration: action.executor,
+      result,
+    });
+
+    expect(drafts).toHaveLength(1);
+    expect(drafts?.[0]).toMatchObject({
+      artifact: {
+        kind: 'link',
+        title: 'GitHub repository octocat/hello-world',
+        state: 'ready',
+      },
+      backing: { kind: 'uri', uri: 'https://github.com/octocat/hello-world' },
+    });
+    await expect(test.runtime.canonicalArtifacts.authority.verify(canonicalEvidence)).resolves.toBe(
+      canonicalEvidence,
+    );
+    await expect(
+      test.runtime.canonicalArtifacts.consumeCanonicalResult({
+        evidence: canonicalEvidence,
+        registration: action.executor,
+        result,
+      }),
+    ).resolves.toBeNull();
+
+    await test.runtime.management.saveCredential({
+      accountId: 'account-a',
+      pluginId: 'github',
+      fieldId: 'token',
+      value: 'replacement-credential-value',
+    });
+    await expect(
+      test.runtime.canonicalArtifacts.authority.verify(canonicalEvidence),
+    ).resolves.toBeNull();
+  });
+
+  it('materializes safe canonical links for every repository activity result shape', async () => {
+    const test = fixture({ randomIds: ['grant-empty-collections'], times: [100] });
+    await test.runtime.management.saveCredential({
+      accountId: 'account-a',
+      pluginId: 'github',
+      fieldId: 'token',
+      value: 'test-credential-value',
+    });
+    const authorization = await test.credentialAuthorization.authorize({
+      accountId: 'account-a',
+      locator: { pluginId: 'github', fieldId: 'token' },
+    });
+    if (!authorization.authorized) throw new Error('expected authorization');
+    const catalog = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS);
+    const cases = [
+      {
+        actionId: 'github.commits.recent',
+        params: { owner: 'octocat', repository: 'hello-world' },
+        response: [],
+        expectedTitle: 'GitHub commits for octocat/hello-world',
+        expectedUri: 'https://github.com/octocat/hello-world/commits',
+      },
+      {
+        actionId: 'github.workflows.list',
+        params: { owner: 'octocat', repository: 'hello-world' },
+        response: { total_count: 0, workflows: [] },
+        expectedTitle: 'GitHub Actions for octocat/hello-world',
+        expectedUri: 'https://github.com/octocat/hello-world/actions',
+      },
+      {
+        actionId: 'github.release.latest',
+        params: { owner: 'octocat', repository: 'hello-world' },
+        response: {
+          tag_name: 'v1.2.3',
+          name: 'Stable',
+          body: '',
+          draft: false,
+          prerelease: false,
+          author: { login: 'octocat' },
+          created_at: '2026-07-20T10:00:00Z',
+          published_at: '2026-07-21T11:00:00Z',
+        },
+        expectedTitle: 'Latest GitHub release for octocat/hello-world',
+        expectedUri: 'https://github.com/octocat/hello-world/releases/tag/v1.2.3',
+      },
+      {
+        actionId: 'github.issue.read',
+        params: { owner: 'octocat', repository: 'hello-world', number: 7 },
+        response: {
+          number: 7,
+          state: 'open',
+          title: 'Issue seven',
+          body_text: '',
+          user: { login: 'octocat' },
+          labels: [],
+          comments: 0,
+          locked: false,
+          created_at: '2026-07-20T10:00:00Z',
+          updated_at: '2026-07-21T11:00:00Z',
+          closed_at: null,
+        },
+        expectedTitle: 'GitHub issue octocat/hello-world#7',
+        expectedUri: 'https://github.com/octocat/hello-world/issues/7',
+      },
+      {
+        actionId: 'github.pull_request.read',
+        params: { owner: 'octocat', repository: 'hello-world', number: 8 },
+        response: {
+          number: 8,
+          state: 'open',
+          title: 'Pull request eight',
+          body_text: '',
+          user: { login: 'octocat' },
+          draft: false,
+          merged: false,
+          base: { ref: 'main' },
+          head: { ref: 'feature' },
+          changed_files: 1,
+          additions: 2,
+          deletions: 1,
+          comments: 0,
+          review_comments: 0,
+          created_at: '2026-07-20T10:00:00Z',
+          updated_at: '2026-07-21T11:00:00Z',
+          closed_at: null,
+          merged_at: null,
+        },
+        expectedTitle: 'GitHub pull request octocat/hello-world#8',
+        expectedUri: 'https://github.com/octocat/hello-world/pull/8',
+      },
+    ] as const;
+
+    for (const [index, testCase] of cases.entries()) {
+      const action = catalog.resolve(testCase.actionId);
+      if (!action || action.executor.kind !== 'plugin_tool') {
+        throw new Error(`expected ${testCase.actionId} registration`);
+      }
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        new Response(JSON.stringify(testCase.response), { status: 200 }),
+      );
+      const context = Object.freeze({
+        source: 'ai' as const,
+        accountId: 'account-a',
+        runId: `jrun_empty_${index}`,
+        approvalId: `jappr_empty_${index}`,
+        requestId: `jrequest_empty_${index}`,
+        attemptNumber: 1,
+        signal: new AbortController().signal,
+      });
+      const result = await test.runtime.registeredTools.startPrepared({
+        accountId: 'account-a',
+        registration: action.executor,
+        params: testCase.params,
+        context,
+        credentialValues: { token: 'test-credential-value' },
+        credentialAuthorizations: [authorization.authorization],
+      });
+      if (!result.ok) throw new Error('expected successful result');
+      const canonicalEvidence = Object.freeze({
+        producerId: 'plugin_result' as const,
+        accountId: context.accountId,
+        runId: context.runId,
+        requestId: context.requestId,
+        attemptNumber: context.attemptNumber,
+        resultRef: `jresult_empty_${index}`,
+        state: 'succeeded' as const,
+        verifiedAt: 1_786_300_500_000 + index,
+        pluginId: 'github',
+        invocationId: `approval:${context.approvalId}`,
+      });
+
+      await expect(
+        test.runtime.canonicalArtifacts.consumeCanonicalResult({
+          evidence: canonicalEvidence,
+          registration: action.executor,
+          result,
+        }),
+      ).resolves.toMatchObject([
+        {
+          artifact: { kind: 'link', title: testCase.expectedTitle, state: 'ready' },
+          backing: { kind: 'uri', uri: testCase.expectedUri },
+        },
+      ]);
+      await expect(
+        test.runtime.canonicalArtifacts.authority.verify(canonicalEvidence),
+      ).resolves.toBe(canonicalEvidence);
+    }
+  });
+
+  it('never resurrects canonical results across account or runtime invalidation races', async () => {
+    const test = fixture({ randomIds: ['grant-revocation-race'], times: [100] });
+    await test.runtime.management.saveCredential({
+      accountId: 'account-a',
+      pluginId: 'github',
+      fieldId: 'token',
+      value: 'test-credential-value',
+    });
+    const authorization = await test.credentialAuthorization.authorize({
+      accountId: 'account-a',
+      locator: { pluginId: 'github', fieldId: 'token' },
+    });
+    if (!authorization.authorized) throw new Error('expected authorization');
+    const action = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS).resolve(
+      'github.repository.read',
+    );
+    if (!action || action.executor.kind !== 'plugin_tool') {
+      throw new Error('expected GitHub repository registration');
+    }
+    const githubRegistration = action.executor;
+    const response = () =>
+      new Response(
+        JSON.stringify({
+          full_name: 'octocat/hello-world',
+          visibility: 'public',
+          archived: false,
+          default_branch: 'main',
+          stargazers_count: 80,
+          forks_count: 9,
+          open_issues_count: 3,
+          updated_at: '2026-07-23T10:00:00Z',
+        }),
+        { status: 200 },
+      );
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => response());
+    const context = (suffix: string) =>
+      Object.freeze({
+        source: 'ai' as const,
+        accountId: 'account-a',
+        runId: `jrun_${suffix}`,
+        approvalId: `jappr_${suffix}`,
+        requestId: `jrequest_${suffix}`,
+        attemptNumber: 1,
+        signal: new AbortController().signal,
+      });
+    const start = (suffix: string) =>
+      test.runtime.registeredTools.startPrepared({
+        accountId: 'account-a',
+        registration: githubRegistration,
+        params: { owner: 'octocat', repository: 'hello-world' },
+        context: context(suffix),
+        credentialValues: { token: 'test-credential-value' },
+        credentialAuthorizations: [authorization.authorization],
+      });
+    const evidenceFor = (suffix: string) =>
+      Object.freeze({
+        producerId: 'plugin_result' as const,
+        accountId: 'account-a',
+        runId: `jrun_${suffix}`,
+        requestId: `jrequest_${suffix}`,
+        attemptNumber: 1,
+        resultRef: `jresult_${suffix}`,
+        state: 'succeeded' as const,
+        verifiedAt: 1_786_300_600_000,
+        pluginId: 'github',
+        invocationId: `approval:jappr_${suffix}`,
+      });
+    const revalidateLocked = vi.mocked(test.credentialAuthorization.revalidateLocked);
+    const deferNextRevalidation = () => {
+      let enter!: () => void;
+      let release!: () => void;
+      const entered = new Promise<void>((resolve) => {
+        enter = resolve;
+      });
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      revalidateLocked.mockImplementationOnce(async ({ authorization: current }) => {
+        enter();
+        await gate;
+        return { authorized: true, authorization: current };
+      });
+      return { entered, release };
+    };
+
+    const startRace = deferNextRevalidation();
+    const racedStart = start('start-race');
+    await startRace.entered;
+    test.runtime.canonicalArtifacts.invalidateAccount('account-a');
+    startRace.release();
+    await expect(racedStart).rejects.toThrow(/credential_grant_stale/i);
+
+    const pending = await start('consume-race');
+    if (!pending.ok) throw new Error('expected successful pending result');
+    const consumeRace = deferNextRevalidation();
+    const racedConsume = test.runtime.canonicalArtifacts.consumeCanonicalResult({
+      evidence: evidenceFor('consume-race'),
+      registration: githubRegistration,
+      result: pending,
+    });
+    await consumeRace.entered;
+    test.runtime.canonicalArtifacts.invalidateAccount('account-a');
+    consumeRace.release();
+    await expect(racedConsume).resolves.toBeNull();
+    await expect(
+      test.runtime.canonicalArtifacts.authority.verify(evidenceFor('consume-race')),
+    ).resolves.toBeNull();
+
+    const verifiedResult = await start('authority-race');
+    if (!verifiedResult.ok) throw new Error('expected successful authority result');
+    const authorityEvidence = evidenceFor('authority-race');
+    await expect(
+      test.runtime.canonicalArtifacts.consumeCanonicalResult({
+        evidence: authorityEvidence,
+        registration: githubRegistration,
+        result: verifiedResult,
+      }),
+    ).resolves.toHaveLength(1);
+    const authorityRace = deferNextRevalidation();
+    const racedVerification = test.runtime.canonicalArtifacts.authority.verify(authorityEvidence);
+    await authorityRace.entered;
+    test.runtime.canonicalArtifacts.invalidateAccount('account-a');
+    authorityRace.release();
+    await expect(racedVerification).resolves.toBeNull();
+
+    test.runtime.canonicalArtifacts.invalidateAll();
+    await expect(start('after-shutdown')).rejects.toThrow(
+      /canonical_plugin_artifact_runtime_revoked/i,
+    );
+  });
+
+  it('bounds concurrent pending-result retention without cross-result substitution', async () => {
+    const test = fixture({ randomIds: ['grant-bounded-retention'], times: [100] });
+    await test.runtime.management.saveCredential({
+      accountId: 'account-a',
+      pluginId: 'github',
+      fieldId: 'token',
+      value: 'test-credential-value',
+    });
+    const authorization = await test.credentialAuthorization.authorize({
+      accountId: 'account-a',
+      locator: { pluginId: 'github', fieldId: 'token' },
+    });
+    if (!authorization.authorized) throw new Error('expected authorization');
+    const action = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS).resolve(
+      'github.identity',
+    );
+    if (!action || action.executor.kind !== 'plugin_tool') {
+      throw new Error('expected GitHub identity registration');
+    }
+    const registration = action.executor;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ login: 'octocat', public_repos: 8 }), { status: 200 }),
+    );
+    const prepared = await Promise.all(
+      Array.from({ length: 129 }, async (_, index) => {
+        const context = Object.freeze({
+          source: 'ai' as const,
+          accountId: 'account-a',
+          runId: `jrun_bounded_${index}`,
+          approvalId: `jappr_bounded_${index}`,
+          requestId: `jrequest_bounded_${index}`,
+          attemptNumber: 1,
+          signal: new AbortController().signal,
+        });
+        const result = await test.runtime.registeredTools.startPrepared({
+          accountId: 'account-a',
+          registration,
+          params: {},
+          context,
+          credentialValues: { token: 'test-credential-value' },
+          credentialAuthorizations: [authorization.authorization],
+        });
+        if (!result.ok) throw new Error('expected successful prepared result');
+        return {
+          result,
+          evidence: Object.freeze({
+            producerId: 'plugin_result' as const,
+            accountId: context.accountId,
+            runId: context.runId,
+            requestId: context.requestId,
+            attemptNumber: context.attemptNumber,
+            resultRef: `jresult_bounded_${index}`,
+            state: 'succeeded' as const,
+            verifiedAt: 1_786_300_700_000 + index,
+            pluginId: 'github',
+            invocationId: `approval:${context.approvalId}`,
+          }),
+        };
+      }),
+    );
+    const consumed = await Promise.all(
+      prepared.map(({ evidence: currentEvidence, result }) =>
+        test.runtime.canonicalArtifacts.consumeCanonicalResult({
+          evidence: currentEvidence,
+          registration,
+          result,
+        }),
+      ),
+    );
+
+    expect(consumed.filter((drafts) => drafts !== null)).toHaveLength(128);
+    const verified = await Promise.all(
+      prepared.map(({ evidence: currentEvidence }) =>
+        test.runtime.canonicalArtifacts.authority.verify(currentEvidence),
+      ),
+    );
+    expect(verified.filter((currentEvidence) => currentEvidence !== null)).toHaveLength(128);
+  }, 15_000);
 });

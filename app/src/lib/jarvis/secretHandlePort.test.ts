@@ -155,6 +155,19 @@ describe('Jarvis process-local secret handles', () => {
     expect(fixture.readExistingCredential).not.toHaveBeenCalled();
   });
 
+  it('retains the exact issued authorization only on the private one-shot resolution path', async () => {
+    const fixture = await authorizedFixture();
+
+    const resolved = await fixture.authority.resolveOnceWithAuthorization(fixture.scope);
+
+    expect(resolved.value).toBe('super-secret-value');
+    expect(resolved.authorization).toBe(fixture.binding.authorization);
+    expect(Object.isFrozen(resolved)).toBe(true);
+    await expect(fixture.authority.port.resolveOnce(fixture.scope)).rejects.toMatchObject({
+      code: 'consumed',
+    });
+  });
+
   it.each([
     ['accountId', 'account-b', 'account_mismatch'],
     ['actionId', 'github.issue.delete', 'action_mismatch'],

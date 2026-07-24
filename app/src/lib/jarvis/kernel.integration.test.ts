@@ -404,6 +404,155 @@ describe('runJarvisKernelTurn explicit kernel integration', () => {
     );
   });
 
+  it('materializes exact canonical plugin link outputs before committing the successful action', async () => {
+    const input = turnInput();
+    const processed: JarvisResponseEnvelope = {
+      ...processedResponse(input),
+      mode: 'action_success',
+      parts: [
+        {
+          kind: 'action_proposal',
+          call_id: 'jarvis_action_request-kernel_0',
+          action_id: 'github.repository.read',
+          params: { owner: 'octocat', repository: 'hello-world' },
+          status: 'pending',
+        },
+      ],
+    };
+    const approval: JarvisApprovalV1 = {
+      id: 'jappr_plugin-output',
+      runId: input.run.id,
+      actionId: 'github.repository.read',
+      actionVersion: 1,
+      params: { owner: 'octocat', repository: 'hello-world' },
+      secretHandleRefs: [],
+      paramsHash: 'params-plugin',
+      targetSnapshot: {
+        kind: 'plugin_tool',
+        accountId: input.accountId,
+        pluginId: 'github',
+        toolName: 'repository_context',
+        resourceId: 'octocat/hello-world',
+      },
+      risk: 'safe',
+      status: 'consumed',
+      createdAt: NOW + 4,
+      consumedAt: NOW + 4,
+      schemaVersion: 1,
+      requestId: input.attempt.requestId,
+      attemptNumber: input.attempt.attemptNumber,
+      capabilityId: 'plugin.github.repository.read',
+      capabilitySnapshotHash: 'capability-plugin',
+      expectedEffect: 'Reads repository metadata.',
+      expiresAt: NOW + 60_000,
+    };
+    const evidence = Object.freeze({
+      producerId: 'plugin_result' as const,
+      accountId: input.accountId,
+      runId: input.run.id,
+      requestId: input.attempt.requestId,
+      attemptNumber: input.attempt.attemptNumber,
+      resultRef: 'jresult_plugin-output',
+      state: 'succeeded' as const,
+      verifiedAt: NOW + 5,
+      pluginId: 'github',
+      invocationId: `approval:${approval.id}`,
+    });
+    const draft: JarvisArtifactDraft = Object.freeze({
+      artifact: Object.freeze({
+        kind: 'link' as const,
+        title: 'GitHub repository octocat/hello-world',
+        state: 'ready' as const,
+        safeSummary: 'GitHub repository octocat/hello-world retrieved.',
+        sourceRefs: [],
+        createdAt: evidence.verifiedAt,
+      }),
+      backing: Object.freeze({
+        kind: 'uri' as const,
+        uri: 'https://github.com/octocat/hello-world',
+      }),
+    });
+    const artifact: JarvisArtifactV1 = Object.freeze({
+      schemaVersion: 1,
+      id: 'jart_plugin-output',
+      runId: input.run.id,
+      requestId: input.attempt.requestId,
+      attemptNumber: input.attempt.attemptNumber,
+      state: 'ready',
+      kind: 'link',
+      title: 'GitHub repository octocat/hello-world',
+      uri: 'https://github.com/octocat/hello-world',
+      safeSummary: 'GitHub repository octocat/hello-world retrieved.',
+      sourceRefs: [],
+      createdAt: evidence.verifiedAt,
+    });
+    const materialize = vi.fn(async () => artifact);
+    const harness = createKernelHarness(input, { processed });
+    Object.assign(harness.deps, {
+      responseActions: {
+        resolveRegistration: vi.fn(() => ({
+          id: approval.actionId,
+          version: approval.actionVersion,
+          risk: 'read-only',
+          approval: 'never',
+          executor: {
+            kind: 'plugin_tool',
+            pluginId: 'github',
+            toolName: 'repository_context',
+          },
+        })),
+        executeAutoApprovedSafe: vi.fn(async () => ({
+          kind: 'committed' as const,
+          value: {
+            approval,
+            execution: {
+              kind: 'settled' as const,
+              result: {
+                ok: true as const,
+                summary: 'GitHub repository octocat/hello-world retrieved.',
+              },
+            },
+            pluginArtifacts: Object.freeze([
+              Object.freeze({ evidence, drafts: Object.freeze([draft]) }),
+            ]),
+          },
+        })),
+        create: vi.fn(),
+      },
+      issueBoundArtifactPipeline: vi.fn(() => ({
+        plugin: { materialize },
+      })),
+    });
+
+    await expect(runJarvisKernelTurn(input, harness.deps)).resolves.toMatchObject({
+      kind: 'committed',
+      value: {
+        response: { artifactIds: [artifact.id] },
+        messageParts: [
+          expect.objectContaining({ kind: 'action_proposal' }),
+          expect.objectContaining({
+            kind: 'jarvis_artifact_ref',
+            artifact: expect.objectContaining({ id: artifact.id, uri: artifact.uri }),
+          }),
+        ],
+      },
+    });
+    expect(materialize).toHaveBeenCalledWith({ evidence, draft });
+    expect(harness.commitKernelTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        artifacts: [artifact],
+        assistantMessage: expect.objectContaining({
+          parts: expect.arrayContaining([
+            expect.objectContaining({
+              kind: 'jarvis_artifact_ref',
+              artifact: expect.objectContaining({ id: artifact.id }),
+            }),
+          ]),
+        }),
+      }),
+    );
+  });
+
   it.each([
     {
       label: 'untrusted exception',

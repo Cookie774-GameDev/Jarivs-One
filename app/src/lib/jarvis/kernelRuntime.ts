@@ -75,6 +75,8 @@ import {
   jarvisTerminalHandoffReceiptBrand,
 } from './approvalEngine';
 import type { JarvisActionCatalog } from './actions/catalog';
+import type { JarvisRegisteredActionExecutor } from './actions/catalog';
+import type { ActionResult } from '@/lib/actions/types';
 import type {
   JarvisApprovalActionBinder,
   JarvisApprovalActionCapability,
@@ -84,6 +86,7 @@ import type {
 } from './approvalEngine';
 import type {
   CanonicalArtifactEvidenceAuthorities,
+  CanonicalPluginEvidence,
   JarvisArtifactEffectClaimCapability,
 } from './artifactProducerAdapters';
 import { createJarvisArtifactKernelComposition } from './artifactRuntime';
@@ -380,6 +383,13 @@ type KernelRuntimeInput = Readonly<{
   abortRegistrationAuthority: JarvisAbortRegistrationAuthority;
   bindKernelActions: JarvisApprovalActionBinder;
   actionCatalog?: JarvisActionCatalog;
+  pluginArtifactResults?: Readonly<{
+    consumeCanonicalResult(input: {
+      evidence: CanonicalPluginEvidence;
+      registration: Extract<JarvisRegisteredActionExecutor, { kind: 'plugin_tool' }>;
+      result: Extract<ActionResult, { ok: true }>;
+    }): Promise<readonly JarvisArtifactDraft[] | null>;
+  }>;
   liveEvidenceVerifiers: VerifierSlots;
   voiceLiveEvidenceStartAuthority?: Readonly<{
     authorizeStart(
@@ -3626,11 +3636,85 @@ export function createJarvisKernelRuntime(
           approval.status === 'consumed',
       );
       if (matching.length !== 1) throw new Error('kernel_safe_action_approval_readback_mismatch');
+      const approval = matching[0]!;
+      let pluginArtifacts:
+        | readonly Readonly<{
+            evidence: CanonicalPluginEvidence;
+            drafts: readonly JarvisArtifactDraft[];
+          }>[]
+        | undefined;
+      const registration = input.actionCatalog?.resolve(actionInput.actionId);
+      if (
+        input.pluginArtifactResults &&
+        registration?.executor.kind === 'plugin_tool' &&
+        execution.value.kind === 'settled' &&
+        execution.value.result.ok
+      ) {
+        const events = await repositories.event.listByRun(
+          actionInput.parentRun.accountId,
+          actionInput.parentRun.id,
+          { limit: 500 },
+        );
+        const resultEvents = events.filter((event) => {
+          const source = event.producerSourceEvidence;
+          return (
+            source?.phase === 'result' &&
+            source.producerKind === 'plugin' &&
+            source.producerIdentity.producerKind === 'plugin' &&
+            source.accountId === actionInput.parentRun.accountId &&
+            source.runId === actionInput.parentRun.id &&
+            source.requestId === actionInput.attempt.requestId &&
+            source.attemptNumber === actionInput.attempt.attemptNumber &&
+            source.state === 'completed' &&
+            source.producerIdentity.pluginId === approval.actionId &&
+            source.producerIdentity.invocationId === `approval:${approval.id}`
+          );
+        });
+        if (resultEvents.length !== 1) {
+          throw new Error('kernel_plugin_result_evidence_mismatch');
+        }
+        const source = resultEvents[0]!.producerSourceEvidence;
+        if (
+          !source ||
+          source.phase !== 'result' ||
+          source.producerKind !== 'plugin' ||
+          source.producerIdentity.producerKind !== 'plugin'
+        ) {
+          throw new Error('kernel_plugin_result_evidence_mismatch');
+        }
+        const evidence: CanonicalPluginEvidence = Object.freeze({
+          producerId: 'plugin_result',
+          accountId: source.accountId,
+          runId: source.runId,
+          requestId: source.requestId,
+          attemptNumber: source.attemptNumber,
+          resultRef: source.resultRef,
+          state: 'succeeded',
+          verifiedAt: source.observedAt,
+          pluginId: registration.executor.pluginId,
+          invocationId: source.producerIdentity.invocationId,
+        });
+        const drafts = await input.pluginArtifactResults.consumeCanonicalResult({
+          evidence,
+          registration: registration.executor,
+          result: execution.value.result,
+        });
+        if (!drafts || drafts.length === 0) {
+          throw new Error('kernel_plugin_result_artifact_unavailable');
+        }
+        pluginArtifacts = Object.freeze([
+          Object.freeze({
+            evidence,
+            drafts,
+          }),
+        ]);
+      }
       return {
         kind: 'committed',
         value: Object.freeze({
-          approval: Object.freeze(structuredClone(matching[0]!)),
+          approval: Object.freeze(structuredClone(approval)),
           execution: execution.value,
+          ...(pluginArtifacts === undefined ? {} : { pluginArtifacts }),
         }),
       };
     },

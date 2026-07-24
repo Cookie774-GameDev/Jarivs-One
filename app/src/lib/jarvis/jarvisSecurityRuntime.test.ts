@@ -24,6 +24,7 @@ import {
   type StrictPluginCredentialGrantStorage,
 } from '@/features/plugins/credentialAuthorization';
 import type { JarvisApprovalV1, JarvisRun } from './contracts';
+import type { CanonicalPluginArtifactCapability } from '@/features/plugins/runtime';
 
 function memoryStorage(): StrictPluginCredentialGrantStorage {
   let raw: string | null = null;
@@ -308,6 +309,7 @@ describe('trusted JARVIS security runtime composition', () => {
     let claimedApproval: JarvisApprovalV1 | undefined;
     let rebindCredentialOnClaim = false;
     let runtime!: ReturnType<typeof createJarvisSecurityRuntime>;
+    let pluginArtifacts: CanonicalPluginArtifactCapability | undefined;
     const lifecycle: JarvisIssuedApprovalLifecycle = {
       accountId: 'account-a',
       runId: parent.id,
@@ -410,6 +412,9 @@ describe('trusted JARVIS security runtime composition', () => {
       credentialGrants: grants,
       credentialAuthorization: authorization,
       pluginConnections: { upsertConnection: vi.fn(), removeConnection: vi.fn() },
+      bindKernelPluginArtifacts(capability) {
+        pluginArtifacts = capability;
+      },
       activeAccountId: () => 'account-a',
       executeRegisteredAction: vi.fn(),
       bootId: 'boot-1',
@@ -448,6 +453,42 @@ describe('trusted JARVIS security runtime composition', () => {
         },
       },
     });
+    const pluginRegistration = catalog.resolve('github.fixed-list')?.executor;
+    if (
+      result.kind !== 'settled' ||
+      !result.result.ok ||
+      pluginRegistration?.kind !== 'plugin_tool'
+    ) {
+      throw new Error('expected successful canonical plugin result');
+    }
+    const artifactEvidence = Object.freeze({
+      producerId: 'plugin_result' as const,
+      accountId: 'account-a',
+      runId: parent.id,
+      requestId: 'request-1',
+      attemptNumber: 1,
+      resultRef: 'jresult_security-runtime-plugin',
+      state: 'succeeded' as const,
+      verifiedAt: 10_000,
+      pluginId: 'github',
+      invocationId: `approval:${claimedApproval?.id}`,
+    });
+    if (!pluginArtifacts) throw new Error('expected private plugin artifact binding');
+    await expect(
+      pluginArtifacts.consumeCanonicalResult({
+        evidence: artifactEvidence,
+        registration: pluginRegistration,
+        result: result.result,
+      }),
+    ).resolves.toMatchObject([
+      {
+        artifact: { kind: 'link', title: 'GitHub profile octocat' },
+        backing: { kind: 'uri', uri: 'https://github.com/octocat' },
+      },
+    ]);
+    await expect(pluginArtifacts.authority.verify(artifactEvidence)).resolves.toBe(
+      artifactEvidence,
+    );
     expect(claimedApproval?.secretHandleRefs).toHaveLength(1);
     expect(nativeFetchMock).toHaveBeenCalledOnce();
     expect(sequence).toEqual(['claim', 'gate', 'provider', 'dispose']);

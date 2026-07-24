@@ -11,13 +11,23 @@ import { createVoiceSessionBinding } from '@/features/voice/voiceSessionBinding'
 import type { JarvisShadowCompilationDeps } from '@/lib/jarvis/shadowCompilation';
 import type { CanonicalProviderEvidence } from '@/lib/jarvis/artifactProducerAdapters';
 import { toJarvisApprovalRow, toJarvisRunRow } from '@/lib/db/jarvisMappers';
-import type { JarvisApprovalV1, JarvisContextItem, JarvisRun } from '@/lib/jarvis/contracts';
+import type {
+  JarvisApprovalV1,
+  JarvisCapabilitySnapshot,
+  JarvisContextItem,
+  JarvisRun,
+} from '@/lib/jarvis/contracts';
 import { createJarvisRepositories } from '@/lib/db/jarvisRepositories';
 import {
   createJarvisActionCatalog,
   DEFAULT_JARVIS_ACTION_REGISTRATIONS,
 } from '@/lib/jarvis/actions/catalog';
 import { createJarvisSecurityRuntime } from '@/lib/jarvis/jarvisSecurityRuntime';
+import {
+  createJarvisExistingCredentialAuthorization,
+  createPluginCredentialAccountGrantRepository,
+} from '@/features/plugins/credentialAuthorization';
+import type { CanonicalPluginArtifactCapability } from '@/features/plugins/runtime';
 
 const mocks = vi.hoisted(() => ({
   runAgent: vi.fn(),
@@ -44,7 +54,10 @@ const mocks = vi.hoisted(() => ({
     haltPlayback: vi.fn(),
   },
   voiceCanSpeak: true,
+  nativeFetch: vi.fn(),
 }));
+
+vi.mock('@/lib/nativeFetch', () => ({ nativeFetch: mocks.nativeFetch }));
 
 vi.mock('@/features/voice/voiceRouter', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/features/voice/voiceRouter')>();
@@ -152,6 +165,7 @@ describe('startRuntimeListener agent routing', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.runAgent.mockReset();
+    mocks.nativeFetch.mockReset();
     mocks.voiceCanSpeak = true;
     try {
       localStorage.clear();
@@ -2359,6 +2373,219 @@ describe('startRuntimeListener agent routing', () => {
         ]),
       );
       expect(await database.jarvis_approvals.count()).toBe(1);
+    } finally {
+      disposeHost();
+      securityRuntime.invalidateAll();
+      database.close();
+      await database.delete();
+    }
+  }, 15_000);
+
+  it('persists a real canonical GitHub link from the exact approval-bound plugin result', async () => {
+    useAuthStore.setState({
+      apiKeys: { openai: 'sk_test' },
+      chatModelSelection: {
+        mode: 'single',
+        providerId: 'openai',
+        modelId: 'gpt-5.5',
+        connectionId: 'openai-api',
+        connectionMode: 'native-api',
+        authSource: 'api-key',
+        capabilities: {
+          text: true,
+          images: false,
+          files: false,
+          tools: false,
+          modelSelection: true,
+          structuredOutput: false,
+          streaming: true,
+          cancellation: true,
+          resumeSession: false,
+          systemPrompt: true,
+          workingDirectory: false,
+          usage: true,
+          subscriptionQuota: false,
+          localOnly: false,
+        },
+      },
+    });
+    const protectedJarvis = agent('agent_jarvis', 'jarvis', 'LEGACY SYSTEM PROMPT', true);
+    const harness = kernelRuntimeBindings(protectedJarvis);
+    const database = createJarvisDb(
+      uniqueTestDbName('runtime-installed-github-output'),
+      TEST_INDEXED_DB,
+    );
+    await database.open();
+    await database.chats.add({
+      id: harness.chatId,
+      workspace_id: 'workspace_runtime_github_output' as never,
+      title: 'Installed GitHub output',
+      mode: 'chat',
+      active_agent_ids: [protectedJarvis.id],
+      created_at: 1,
+      updated_at: 1,
+    });
+    mocks.runAgent.mockResolvedValueOnce({
+      text: [
+        '```action',
+        JSON.stringify({
+          id: 'github.repository.read',
+          params: { owner: 'octocat', repository: 'hello-world' },
+          rationale: 'Read the fixed repository metadata.',
+        }),
+        '```',
+      ].join('\n'),
+      usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
+      provider: 'openai',
+      model: 'gpt-5.5',
+    });
+    mocks.nativeFetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          full_name: 'octocat/hello-world',
+          visibility: 'public',
+          archived: false,
+          default_branch: 'main',
+          stargazers_count: 80,
+          forks_count: 9,
+          open_issues_count: 3,
+          updated_at: '2026-07-23T10:00:00Z',
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+    let rawGrants: string | null = null;
+    const credentialGrants = createPluginCredentialAccountGrantRepository({
+      storage: {
+        readRaw: () => rawGrants,
+        compareAndSetRaw: ({ expectedRaw, nextRaw }) => {
+          if (rawGrants !== expectedRaw) throw new Error('grant CAS conflict');
+          rawGrants = nextRaw;
+        },
+      },
+    });
+    const credentialAuthorization = createJarvisExistingCredentialAuthorization({
+      grants: credentialGrants,
+      getActiveAccountId: () => 'runtime-test-account',
+    });
+    let clock = 500;
+    let uuid = 0;
+    const now = () => ++clock;
+    const randomUUID = () => `runtime-github-output-${++uuid}`;
+    const catalog = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS);
+    const capabilitySnapshot: Readonly<JarvisCapabilitySnapshot> = Object.freeze({
+      capturedAt: 500,
+      tools: [],
+      plugins: [
+        {
+          id: 'plugin.github.repository_context',
+          state: 'available' as const,
+          operations: ['execute'],
+          evidenceRef: 'plugin:github:repository:runtime-test',
+          lastVerifiedAt: 500,
+        },
+      ],
+      mcps: [],
+      terminals: [],
+      agents: [],
+      entitlements: {
+        source: 'local_development' as const,
+        capabilities: [],
+        verifiedAt: 500,
+        expiresAt: 60_500,
+      },
+    });
+    const capabilitySnapshots = {
+      getForAccount: vi.fn(async () => capabilitySnapshot),
+    };
+    let kernelPluginArtifacts: CanonicalPluginArtifactCapability | undefined;
+    const securityRuntime = createJarvisSecurityRuntime({
+      repositories: createJarvisRepositories(database),
+      catalog,
+      capabilitySnapshots,
+      entitlementSnapshots: {
+        getForAccount: vi.fn(async () => ({
+          source: 'local_development' as const,
+          capabilities: [],
+          verifiedAt: clock,
+          expiresAt: clock + 60_000,
+        })),
+      },
+      credentialGrants,
+      credentialAuthorization,
+      pluginConnections: {
+        upsertConnection: vi.fn(),
+        removeConnection: vi.fn(),
+      },
+      bindKernelPluginArtifacts(capability) {
+        kernelPluginArtifacts = capability;
+      },
+      activeAccountId: () => 'runtime-test-account',
+      executeRegisteredAction: (dispatchInput) =>
+        executeInstalledJarvisRegisteredAction(dispatchInput),
+      bootId: 'runtime-github-output-boot',
+      randomUUID,
+      now,
+    });
+    if (!kernelPluginArtifacts) throw new Error('plugin artifact capability was not bound');
+    await securityRuntime.pluginManagement.saveCredential({
+      accountId: 'runtime-test-account',
+      pluginId: 'github',
+      fieldId: 'token',
+      value: 'synthetic-github-test-token',
+    });
+    const disposeHost = await installJarvisKernelRuntimeHost({
+      db: database,
+      bindKernelActions: securityRuntime.bindKernelActions,
+      pluginArtifacts: kernelPluginArtifacts,
+      actionCatalog: catalog,
+      capabilitySnapshots,
+      randomUUID,
+      now,
+    });
+    trackListener(disposeHost);
+    trackListener(
+      startRuntimeListener(harness.bindings, {
+        jarvisInterlocks: runtimeInterlocks(),
+      }),
+    );
+
+    try {
+      window.dispatchEvent(
+        new CustomEvent('jarvis:send', {
+          detail: { chatId: harness.chatId, text: 'Read octocat/hello-world.' },
+        }),
+      );
+
+      let runId = '';
+      await vi.waitFor(
+        async () => {
+          const run = await database.jarvis_runs.where('chat_id').equals(harness.chatId).first();
+          const runtimeError = mocks.devLog.mock.calls
+            .map(([entry]) => entry)
+            .find((entry) => entry?.channel === 'ai' && entry?.level === 'error');
+          if (runtimeError) throw new Error(JSON.stringify({ runtimeError, run }));
+          expect(run?.status).toBe('completed');
+          runId = run?.id ?? '';
+        },
+        { timeout: 5_000 },
+      );
+      const artifacts = await createJarvisRepositories(database).artifact.listByRun(
+        'runtime-test-account',
+        runId,
+      );
+      expect(artifacts).toMatchObject([
+        {
+          kind: 'link',
+          state: 'ready',
+          title: 'GitHub repository octocat/hello-world',
+          uri: 'https://github.com/octocat/hello-world',
+        },
+      ]);
+      expect(mocks.nativeFetch).toHaveBeenCalledOnce();
+      expect(String(mocks.nativeFetch.mock.calls[0]?.[0])).toBe(
+        'https://api.github.com/repos/octocat/hello-world',
+      );
     } finally {
       disposeHost();
       securityRuntime.invalidateAll();

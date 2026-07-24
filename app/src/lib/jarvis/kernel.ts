@@ -34,6 +34,7 @@ import type { RawProviderResponse } from './response/pipeline';
 import { isProtectedJarvisAgent } from './identity';
 import { projectJarvisEnvelopeToMessageParts } from './kernelMessageProjection';
 import type {
+  CanonicalPluginEvidence,
   CanonicalProviderEvidence,
   JarvisArtifactEffectClaimCapability,
 } from './artifactProducerAdapters';
@@ -175,7 +176,10 @@ type BoundActionResponseReadyCommitInput = Omit<ActionResponseReadyCommitInput, 
 export type JarvisKernelResponseActionPort = Readonly<{
   resolveRegistration(
     actionId: string,
-  ): Pick<JarvisRegisteredActionDefinition, 'id' | 'version' | 'risk' | 'approval'> | undefined;
+  ):
+    | (Pick<JarvisRegisteredActionDefinition, 'id' | 'version' | 'risk' | 'approval'> &
+        Partial<Pick<JarvisRegisteredActionDefinition, 'executor'>>)
+    | undefined;
   create: JarvisKernelActionPort['create'];
   executeAutoApprovedSafe(
     input: Readonly<
@@ -186,6 +190,10 @@ export type JarvisKernelResponseActionPort = Readonly<{
       Readonly<{
         approval: JarvisApprovalV1;
         execution: JarvisCanonicalActionExecutionResult;
+        pluginArtifacts?: readonly Readonly<{
+          evidence: CanonicalPluginEvidence;
+          drafts: readonly JarvisArtifactDraft[];
+        }>[];
       }>
     >
   >;
@@ -717,7 +725,7 @@ async function runJarvisKernelExecution(
       }
       return Object.freeze(materialized);
     };
-    const artifacts = await waitForProviderStage(materializeProviderArtifacts);
+    let artifacts = await waitForProviderStage(materializeProviderArtifacts);
     let projectedResponse = processedResponse;
     let pendingApprovalId: string | undefined;
     const responseAction = soleResponseAction(processedResponse.parts);
@@ -748,7 +756,9 @@ async function runJarvisKernelExecution(
       };
 
       if (isJarvisAutoApprovableRegistration(registration)) {
-        let executed: Awaited<ReturnType<JarvisKernelResponseActionPort['executeAutoApprovedSafe']>>;
+        let executed: Awaited<
+          ReturnType<JarvisKernelResponseActionPort['executeAutoApprovedSafe']>
+        >;
         try {
           executed = await responseActions.executeAutoApprovedSafe({
             ...actionInput,
@@ -761,7 +771,7 @@ async function runJarvisKernelExecution(
           throwBoundedKernelStageError(error, 'kernel_safe_action_execution_failed');
         }
         if (executed.kind === 'account_authority_revoked') return retainRevokedOutcome();
-        const { approval, execution } = executed.value;
+        const { approval, execution, pluginArtifacts } = executed.value;
         if (
           approval.runId !== input.run.id ||
           approval.requestId !== input.attempt.requestId ||
@@ -774,6 +784,45 @@ async function runJarvisKernelExecution(
           throw new Error('kernel_safe_action_result_scope_mismatch');
         }
         const succeeded = execution.result.ok;
+        if (succeeded && registration.executor?.kind === 'plugin_tool') {
+          if (!pluginArtifacts || pluginArtifacts.length === 0) {
+            throw new Error('kernel_plugin_result_artifact_missing');
+          }
+          const pipeline = deps.issueBoundArtifactPipeline(deps.artifactEffectClaims);
+          const materialized = [...artifacts];
+          for (const bundle of pluginArtifacts) {
+            if (
+              bundle.evidence.accountId !== input.accountId ||
+              bundle.evidence.runId !== input.run.id ||
+              bundle.evidence.requestId !== input.attempt.requestId ||
+              bundle.evidence.attemptNumber !== input.attempt.attemptNumber ||
+              bundle.evidence.pluginId !== registration.executor.pluginId ||
+              bundle.evidence.invocationId !== `approval:${approval.id}` ||
+              bundle.evidence.state !== 'succeeded' ||
+              bundle.drafts.length === 0
+            ) {
+              throw new Error('kernel_plugin_artifact_scope_mismatch');
+            }
+            for (const draft of bundle.drafts) {
+              const artifact = await pipeline.plugin.materialize({
+                evidence: bundle.evidence,
+                draft,
+              });
+              if (
+                artifact.runId !== input.run.id ||
+                artifact.requestId !== input.attempt.requestId ||
+                artifact.attemptNumber !== input.attempt.attemptNumber ||
+                materialized.some((candidate) => candidate.id === artifact.id)
+              ) {
+                throw new Error('kernel_plugin_artifact_scope_mismatch');
+              }
+              materialized.push(artifact);
+            }
+          }
+          artifacts = Object.freeze(materialized);
+        } else if (pluginArtifacts !== undefined) {
+          throw new Error('kernel_plugin_artifact_scope_mismatch');
+        }
         if (!succeeded) {
           status = 'partial';
           resultState = 'degraded';

@@ -106,6 +106,9 @@ export function createJarvisSecretHandleAuthority(input: {
   randomUUID: () => string;
 }): {
   port: JarvisSecretHandlePort;
+  resolveOnceWithAuthorization(
+    scope: JarvisSecretHandleScope,
+  ): Promise<Readonly<{ value: string; authorization: JarvisExistingCredentialAuthorization }>>;
   bindExistingCredential(binding: {
     accountId: string;
     actionId: string;
@@ -137,6 +140,49 @@ export function createJarvisSecretHandleAuthority(input: {
     return binding;
   };
 
+  const resolveOnceWithAuthorization = async (
+    scope: JarvisSecretHandleScope,
+  ): Promise<Readonly<{ value: string; authorization: JarvisExistingCredentialAuthorization }>> => {
+    const inspected = inspect(scope);
+    if ('valid' in inspected) return throwFailure(inspected);
+    return await withPluginCredentialLocatorLocks(
+      [inspected.authorization.locator],
+      async (locks) => {
+        const lockedBinding = inspect(scope);
+        if ('valid' in lockedBinding) return throwFailure(lockedBinding);
+        const before = await input.credentialAuthorization.revalidateLocked({
+          authorization: lockedBinding.authorization,
+          locks,
+        });
+        if (!before.authorized) throw new JarvisSecretHandleError(before.reason);
+
+        bindings.delete(scope.handleId);
+        terminal.set(scope.handleId, 'consumed');
+
+        let value: string | undefined;
+        try {
+          value = await input.credentials.readExistingCredential(
+            lockedBinding.authorization.locator,
+          );
+        } catch {
+          throw new JarvisSecretHandleError('credential_grant_unavailable');
+        }
+        if (value === undefined) {
+          throw new JarvisSecretHandleError('credential_grant_unavailable');
+        }
+        const after = await input.credentialAuthorization.revalidateLocked({
+          authorization: lockedBinding.authorization,
+          locks,
+        });
+        if (!after.authorized) throw new JarvisSecretHandleError(after.reason);
+        return Object.freeze({
+          value,
+          authorization: lockedBinding.authorization,
+        });
+      },
+    );
+  };
+
   const port: JarvisSecretHandlePort = Object.freeze({
     async validate(scope: JarvisSecretHandleScope): Promise<JarvisSecretHandleValidation> {
       const inspected = inspect(scope);
@@ -145,46 +191,13 @@ export function createJarvisSecretHandleAuthority(input: {
       return decision.authorized ? { valid: true as const } : failure(decision.reason);
     },
     async resolveOnce(scope: JarvisSecretHandleScope): Promise<string> {
-      const inspected = inspect(scope);
-      if ('valid' in inspected) return throwFailure(inspected);
-      return await withPluginCredentialLocatorLocks(
-        [inspected.authorization.locator],
-        async (locks) => {
-          const lockedBinding = inspect(scope);
-          if ('valid' in lockedBinding) return throwFailure(lockedBinding);
-          const before = await input.credentialAuthorization.revalidateLocked({
-            authorization: lockedBinding.authorization,
-            locks,
-          });
-          if (!before.authorized) throw new JarvisSecretHandleError(before.reason);
-
-          bindings.delete(scope.handleId);
-          terminal.set(scope.handleId, 'consumed');
-
-          let value: string | undefined;
-          try {
-            value = await input.credentials.readExistingCredential(
-              lockedBinding.authorization.locator,
-            );
-          } catch {
-            throw new JarvisSecretHandleError('credential_grant_unavailable');
-          }
-          if (value === undefined) {
-            throw new JarvisSecretHandleError('credential_grant_unavailable');
-          }
-          const after = await input.credentialAuthorization.revalidateLocked({
-            authorization: lockedBinding.authorization,
-            locks,
-          });
-          if (!after.authorized) throw new JarvisSecretHandleError(after.reason);
-          return value;
-        },
-      );
+      return (await resolveOnceWithAuthorization(scope)).value;
     },
   });
 
   return Object.freeze({
     port,
+    resolveOnceWithAuthorization,
     async bindExistingCredential(binding: {
       accountId: string;
       actionId: string;

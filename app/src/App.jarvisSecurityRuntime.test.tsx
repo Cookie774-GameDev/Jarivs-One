@@ -26,6 +26,8 @@ describe('App trusted JARVIS security runtime boundary', () => {
 
   it('provides only plugin management to React and revokes process authority on every teardown', () => {
     expect(source).toContain('<PluginManagementCapabilityProvider value={pluginManagement}>');
+    expect(source).toContain('bindKernelPluginArtifacts(capability)');
+    expect(source).toContain('pluginArtifacts: kernelPluginArtifacts');
     expect(source).not.toMatch(/useState<\s*JarvisSecurityRuntime/);
     expect(source).toMatch(/securityRuntime\?\.invalidateAll\(\)/);
     expect(source).toMatch(/addEventListener\(['"]pagehide['"],\s*invalidateSecurityRuntime/);

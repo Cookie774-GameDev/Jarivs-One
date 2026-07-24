@@ -3,11 +3,13 @@ import type { JarvisRepositories } from '@/lib/db/jarvisRepositories';
 import type { JarvisEntitlementSnapshotProvider } from '@/lib/admin';
 import { createExistingPluginCredentialAdapter } from '@/features/plugins/credentials';
 import type {
+  JarvisExistingCredentialAuthorization,
   JarvisExistingCredentialAuthorizationAuthority,
   PluginCredentialAccountGrantRepository,
 } from '@/features/plugins/credentialAuthorization';
 import {
   createAccountScopedPluginRuntime,
+  type CanonicalPluginArtifactCapability,
   type PluginManagementCapability,
 } from '@/features/plugins/runtime';
 import type { PluginStore } from '@/features/plugins/store';
@@ -47,6 +49,8 @@ export type CreateJarvisSecurityRuntimeInput = {
   credentialGrants: PluginCredentialAccountGrantRepository;
   credentialAuthorization: JarvisExistingCredentialAuthorizationAuthority;
   pluginConnections: Pick<PluginStore, 'upsertConnection' | 'removeConnection'>;
+  /** @internal Synchronous deep-composition handoff; never retained on the public runtime. */
+  bindKernelPluginArtifacts?(capability: CanonicalPluginArtifactCapability): void;
   activeAccountId(): string | undefined;
   executeRegisteredAction(input: {
     registration: Readonly<JarvisRegisteredActionDefinition>;
@@ -89,6 +93,7 @@ export function createJarvisSecurityRuntime(
     randomUUID: input.randomUUID,
     now: input.now,
   });
+  input.bindKernelPluginArtifacts?.(pluginRuntime.canonicalArtifacts);
   const bindingSelectors = createJarvisApprovalBindingSelectors({
     catalog: input.catalog,
     capabilitySnapshots: input.capabilitySnapshots,
@@ -111,18 +116,21 @@ export function createJarvisSecurityRuntime(
       }
 
       const credentialValues: Record<string, string> = {};
+      const credentialAuthorizations: JarvisExistingCredentialAuthorization[] = [];
       for (const binding of dispatchInput.registration.credentialBindings) {
         const reference = (dispatchInput.execution.approval.secretHandleRefs ?? []).find(
           (candidate) => candidate.field === binding.field,
         );
         if (!reference) throw new Error('Registered credential handle is unavailable.');
-        credentialValues[binding.locator.fieldId] = await secretAuthority.port.resolveOnce({
+        const resolved = await secretAuthority.resolveOnceWithAuthorization({
           accountId: dispatchInput.context.accountId,
           actionId: dispatchInput.registration.id,
           actionVersion: dispatchInput.registration.version,
           field: binding.field,
           handleId: reference.handleId,
         });
+        credentialValues[binding.locator.fieldId] = resolved.value;
+        credentialAuthorizations.push(resolved.authorization);
       }
 
       // The issued handle remains private. Beginning the registered plugin
@@ -135,6 +143,7 @@ export function createJarvisSecurityRuntime(
           params: dispatchInput.params,
           context: Object.freeze({ ...dispatchInput.context, signal }),
           credentialValues,
+          credentialAuthorizations: Object.freeze(credentialAuthorizations),
         }),
       }));
       if (started.kind !== 'committed') authorityRevoked();
@@ -290,6 +299,7 @@ export function createJarvisSecurityRuntime(
       for (const revocation of boundRevocations.get(accountId) ?? []) revocation.abort();
       boundRevocations.delete(accountId);
       secretAuthority.invalidateAccount(accountId);
+      pluginRuntime.canonicalArtifacts.invalidateAccount(accountId);
     },
     invalidateAll() {
       if (invalidatedAll) return;
@@ -299,6 +309,7 @@ export function createJarvisSecurityRuntime(
       }
       boundRevocations.clear();
       secretAuthority.invalidateAll();
+      pluginRuntime.canonicalArtifacts.invalidateAll();
     },
   });
   return runtime;

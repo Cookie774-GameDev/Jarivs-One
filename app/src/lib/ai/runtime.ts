@@ -29,6 +29,7 @@ import { applyAvailableActions, parseActionBlocks, autoApprovePendingActions } f
 import { inferFallbackActionProposals } from '@/lib/actions/fallbackActions';
 import { buildAgentTerminalContext } from '@/features/terminals/agentContext';
 import { getPluginContextBlock, getPluginStatusContextBlock } from '@/features/plugins';
+import type { CanonicalPluginArtifactCapability } from '@/features/plugins/runtime';
 import { devConsole } from '@/features/dev-console';
 import { toast } from '@/components/ui/toast';
 import { agentRepo, chatRepo, eventRepo } from '@/lib/db';
@@ -259,6 +260,7 @@ export function createCanonicalProviderEvidenceAuthority(
 export type JarvisKernelRuntimeHostInstallInput = Readonly<{
   db: JarvisDexie;
   bindKernelActions: JarvisApprovalActionBinder;
+  pluginArtifacts?: CanonicalPluginArtifactCapability;
   actionCatalog?: JarvisActionCatalog;
   capabilitySnapshots: JarvisCapabilitySnapshotProvider;
   randomUUID?: () => string;
@@ -531,7 +533,7 @@ export async function installJarvisKernelRuntimeHost(
     plugin: Object.freeze({
       state: 'ready' as const,
       producerId: 'plugin_result' as const,
-      authority: denyArtifactEvidence,
+      authority: input.pluginArtifacts?.authority ?? denyArtifactEvidence,
     }),
     mcp: Object.freeze({
       state: 'ready' as const,
@@ -599,6 +601,9 @@ export async function installJarvisKernelRuntimeHost(
     cancellationDeliveryAuthority: abortRegistry.cancellationDeliveryAuthority,
     abortRegistrationAuthority: abortRegistry.registrationAuthority,
     bindKernelActions: input.bindKernelActions,
+    ...(input.pluginArtifacts === undefined
+      ? {}
+      : { pluginArtifactResults: input.pluginArtifacts }),
     liveEvidenceVerifiers,
     voiceLiveEvidenceStartAuthority: voiceVerifier,
     voicePlaybackAdapter: createCanonicalVoicePlaybackAdapter(),

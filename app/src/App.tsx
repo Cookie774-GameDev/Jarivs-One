@@ -1469,6 +1469,9 @@ function KernelBridgeBootstrap() {
               getActiveAccountId: activeAccountId,
             });
 
+            let kernelPluginArtifacts:
+              | import('@/features/plugins/runtime').CanonicalPluginArtifactCapability
+              | undefined;
             securityRuntime = createJarvisSecurityRuntime({
               repositories: createJarvisRepositories(db),
               catalog,
@@ -1482,6 +1485,12 @@ function KernelBridgeBootstrap() {
                 removeConnection: (accountId, pluginId) =>
                   usePluginStore.getState().removeConnection(accountId, pluginId),
               },
+              bindKernelPluginArtifacts(capability) {
+                if (kernelPluginArtifacts) {
+                  throw new Error('jarvis_plugin_artifact_authority_already_bound');
+                }
+                kernelPluginArtifacts = capability;
+              },
               activeAccountId,
               executeRegisteredAction: async (dispatchInput) => {
                 const { executeInstalledJarvisRegisteredAction } = await import('@/lib/ai/runtime');
@@ -1491,11 +1500,15 @@ function KernelBridgeBootstrap() {
               randomUUID,
               now,
             });
+            if (!kernelPluginArtifacts) {
+              throw new Error('jarvis_plugin_artifact_authority_unavailable');
+            }
             const { handleInstalledJarvisKernelClientRequest, installJarvisKernelRuntimeHost } =
               await import('@/lib/ai/runtime');
             disposeKernelRuntimeHost = await installJarvisKernelRuntimeHost({
               db,
               bindKernelActions: securityRuntime.bindKernelActions,
+              pluginArtifacts: kernelPluginArtifacts,
               actionCatalog: catalog,
               capabilitySnapshots,
               randomUUID,

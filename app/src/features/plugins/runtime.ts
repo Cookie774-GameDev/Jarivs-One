@@ -21,6 +21,7 @@ import type {
   CanonicalPluginEvidence,
   CanonicalPluginEvidenceAuthority,
 } from '@/lib/jarvis/artifactProducerAdapters';
+import type { JarvisArtifactDraft } from '@/lib/jarvis/contracts';
 
 type CredentialMap = Record<string, string>;
 
@@ -53,10 +54,22 @@ export interface PreparedRegisteredPluginToolExecutor extends RegisteredPluginTo
     params: Readonly<Record<string, unknown>>;
     context: RegisteredActionExecutionContext;
     credentialValues: Readonly<Record<string, string>>;
+    credentialAuthorizations: readonly JarvisExistingCredentialAuthorization[];
   }): Promise<ActionResult>;
 }
 
 type CanonicalPluginRegistration = Extract<JarvisRegisteredActionExecutor, { kind: 'plugin_tool' }>;
+
+export interface CanonicalPluginArtifactCapability {
+  readonly authority: CanonicalPluginEvidenceAuthority;
+  consumeCanonicalResult(input: {
+    evidence: CanonicalPluginEvidence;
+    registration: CanonicalPluginRegistration;
+    result: Extract<ActionResult, { ok: true }>;
+  }): Promise<readonly JarvisArtifactDraft[] | null>;
+  invalidateAccount(accountId: string): void;
+  invalidateAll(): void;
+}
 
 export interface CanonicalPluginArtifactResultReadPort {
   readCanonicalPluginResult(evidence: CanonicalPluginEvidence): Promise<Readonly<{
@@ -1021,6 +1034,123 @@ async function runGithubTool(input: {
   };
 }
 
+function deepFreezePluginResult<T>(value: T, seen = new WeakSet<object>()): T {
+  if (typeof value !== 'object' || value === null) return value;
+  if (seen.has(value)) throw safeFailure('plugin_result_invalid');
+  seen.add(value);
+  for (const key of Reflect.ownKeys(value)) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor || !('value' in descriptor)) throw safeFailure('plugin_result_invalid');
+    deepFreezePluginResult(descriptor.value, seen);
+  }
+  seen.delete(value);
+  return Object.freeze(value);
+}
+
+function canonicalPluginResult(result: ActionResult): ActionResult {
+  return deepFreezePluginResult(structuredClone(result));
+}
+
+function githubFullName(value: unknown): string {
+  if (typeof value !== 'string') throw safeFailure('plugin_result_invalid');
+  const parts = value.split('/');
+  if (parts.length !== 2) throw safeFailure('plugin_result_invalid');
+  return `${githubOwner(parts[0], 'plugin_result_invalid')}/${githubRepository(
+    parts[1],
+    'plugin_result_invalid',
+  )}`;
+}
+
+function githubLinkDraft(input: {
+  evidence: CanonicalPluginEvidence;
+  title: string;
+  uri: string;
+}): JarvisArtifactDraft {
+  const sourceRefs: JarvisArtifactDraft['artifact']['sourceRefs'] = [];
+  Object.freeze(sourceRefs);
+  return Object.freeze({
+    artifact: Object.freeze({
+      kind: 'link' as const,
+      title: input.title,
+      state: 'ready' as const,
+      safeSummary: `${input.title} retrieved.`,
+      sourceRefs,
+      createdAt: input.evidence.verifiedAt,
+    }),
+    backing: Object.freeze({
+      kind: 'uri' as const,
+      uri: input.uri,
+    }),
+  });
+}
+
+function githubArtifactDrafts(input: {
+  evidence: CanonicalPluginEvidence;
+  registration: CanonicalPluginRegistration;
+  result: Extract<ActionResult, { ok: true }>;
+}): readonly JarvisArtifactDraft[] {
+  if (input.registration.pluginId !== 'github') return Object.freeze([]);
+  const data = providerRecord(input.result.data);
+  const drafts: JarvisArtifactDraft[] = [];
+  const add = (title: string, uri: string) => {
+    if (drafts.some((draft) => draft.backing.kind === 'uri' && draft.backing.uri === uri)) {
+      return;
+    }
+    drafts.push(githubLinkDraft({ evidence: input.evidence, title, uri }));
+  };
+
+  if (input.registration.toolName === 'identity') {
+    const login = githubActor({ login: data.login });
+    add(`GitHub profile ${login}`, `https://github.com/${login}`);
+  } else if (input.registration.toolName === 'repository_context') {
+    const fullName = githubFullName(data.fullName);
+    add(`GitHub repository ${fullName}`, `https://github.com/${fullName}`);
+  } else if (input.registration.toolName === 'recent_commits') {
+    const fullName = githubFullName(data.fullName);
+    for (const candidate of githubProviderArray(data.commits, GITHUB_COMMIT_LIMIT)) {
+      const commit = providerRecord(candidate);
+      const sha = githubCommitSha(commit.sha);
+      add(`GitHub commit ${sha.slice(0, 7)}`, `https://github.com/${fullName}/commit/${sha}`);
+    }
+    if (drafts.length === 0) {
+      add(`GitHub commits for ${fullName}`, `https://github.com/${fullName}/commits`);
+    }
+  } else if (input.registration.toolName === 'latest_release') {
+    const fullName = githubFullName(data.fullName);
+    const tagName = githubReleaseTag(data.tagName);
+    add(
+      `Latest GitHub release for ${fullName}`,
+      `https://github.com/${fullName}/releases/tag/${encodeURIComponent(tagName)}`,
+    );
+  } else if (input.registration.toolName === 'workflows') {
+    const fullName = githubFullName(data.fullName);
+    for (const candidate of githubProviderArray(data.workflows, GITHUB_WORKFLOW_LIMIT)) {
+      const workflow = providerRecord(candidate);
+      const id = githubWorkflowId(workflow.id);
+      add(`GitHub workflow ${id}`, `https://github.com/${fullName}/actions/workflows/${id}`);
+    }
+    if (drafts.length === 0) {
+      add(`GitHub Actions for ${fullName}`, `https://github.com/${fullName}/actions`);
+    }
+  } else if (input.registration.toolName === 'issue_context') {
+    const fullName = githubFullName(data.fullName);
+    const number = githubCount(data.number);
+    if (number <= 0) throw safeFailure('plugin_result_invalid');
+    add(`GitHub issue ${fullName}#${number}`, `https://github.com/${fullName}/issues/${number}`);
+  } else if (input.registration.toolName === 'pull_request_context') {
+    const fullName = githubFullName(data.fullName);
+    const number = githubCount(data.number);
+    if (number <= 0) throw safeFailure('plugin_result_invalid');
+    add(
+      `GitHub pull request ${fullName}#${number}`,
+      `https://github.com/${fullName}/pull/${number}`,
+    );
+  }
+
+  if (drafts.length === 0) throw safeFailure('plugin_result_artifact_unavailable');
+  return Object.freeze(drafts);
+}
+
 export function createAccountScopedPluginRuntime(input: {
   activeAccountId(): string | undefined;
   grants: PluginCredentialAccountGrantRepository;
@@ -1032,7 +1162,102 @@ export function createAccountScopedPluginRuntime(input: {
 }): Readonly<{
   management: PluginManagementCapability;
   registeredTools: PreparedRegisteredPluginToolExecutor;
+  canonicalArtifacts: CanonicalPluginArtifactCapability;
 }> {
+  type PendingCanonicalPluginResult = Readonly<{
+    accountId: string;
+    registration: CanonicalPluginRegistration;
+    runId: string;
+    requestId: string;
+    attemptNumber: number;
+    approvalId: string;
+    authorizations: readonly JarvisExistingCredentialAuthorization[];
+    generation: ArtifactGeneration;
+  }>;
+  type CanonicalPluginResultRecord = Readonly<{
+    evidence: CanonicalPluginEvidence;
+    registration: CanonicalPluginRegistration;
+    executor: RegisteredPluginToolExecutor;
+    authorizations: readonly JarvisExistingCredentialAuthorization[];
+    generation: ArtifactGeneration;
+  }>;
+  type ArtifactGeneration = Readonly<{ runtime: object; account: object }>;
+  const pendingCanonicalResults = new Map<object, PendingCanonicalPluginResult>();
+  const canonicalResults = new Map<string, CanonicalPluginResultRecord>();
+  const accountGenerations = new Map<string, object>();
+  let runtimeGeneration: object = Object.freeze({});
+  let permanentlyRevoked = false;
+  const currentAccountGeneration = (accountId: string): object => {
+    const current = accountGenerations.get(accountId);
+    if (current) return current;
+    const created = Object.freeze({});
+    accountGenerations.set(accountId, created);
+    return created;
+  };
+  const captureArtifactGeneration = (accountId: string): ArtifactGeneration | null =>
+    !permanentlyRevoked && input.activeAccountId() === accountId
+      ? Object.freeze({
+          runtime: runtimeGeneration,
+          account: currentAccountGeneration(accountId),
+        })
+      : null;
+  const artifactGenerationIsCurrent = (
+    accountId: string,
+    generation: ArtifactGeneration,
+  ): boolean =>
+    !permanentlyRevoked &&
+    input.activeAccountId() === accountId &&
+    runtimeGeneration === generation.runtime &&
+    currentAccountGeneration(accountId) === generation.account;
+  const retainBounded = <K, V>(map: Map<K, V>, key: K, value: V) => {
+    map.set(key, value);
+    while (map.size > 128) {
+      const oldest = map.keys().next().value as K | undefined;
+      if (oldest === undefined) break;
+      map.delete(oldest);
+    }
+  };
+  const revalidateAuthorizations = async (record: {
+    accountId: string;
+    manifest: PluginManifest;
+    authorizations: readonly JarvisExistingCredentialAuthorization[];
+  }): Promise<boolean> => {
+    if (input.activeAccountId() !== record.accountId) return false;
+    const locators = locatorsFor(record.manifest);
+    if (locators.length === 0) return record.authorizations.length === 0;
+    if (record.authorizations.length !== locators.length) return false;
+    try {
+      return await withPluginCredentialLocatorLocks(locators, async (locks) => {
+        if (input.activeAccountId() !== record.accountId) return false;
+        const seen = new Set<string>();
+        for (const authorization of record.authorizations) {
+          const key = `${authorization.locator.pluginId}\u0000${authorization.locator.fieldId}`;
+          if (
+            authorization.accountId !== record.accountId ||
+            authorization.locator.pluginId !== record.manifest.id ||
+            seen.has(key) ||
+            !locators.some(
+              (locator) =>
+                locator.pluginId === authorization.locator.pluginId &&
+                locator.fieldId === authorization.locator.fieldId,
+            )
+          ) {
+            return false;
+          }
+          seen.add(key);
+          const decision = await input.credentialAuthorization.revalidateLocked({
+            authorization,
+            locks,
+          });
+          if (!decision.authorized) return false;
+        }
+        return seen.size === locators.length && input.activeAccountId() === record.accountId;
+      });
+    } catch {
+      return false;
+    }
+  };
+
   const management: PluginManagementCapability = Object.freeze({
     async saveCredential({
       accountId,
@@ -1315,20 +1540,23 @@ export function createAccountScopedPluginRuntime(input: {
         authority: input.credentialAuthorization,
         adapter: input.credentialAdapter,
       });
-      return await runPreparedTool({
-        manifest,
-        tool,
-        params,
-        values,
-        signal: context.signal ?? AbortSignal.timeout(12_000),
-      });
+      return canonicalPluginResult(
+        await runPreparedTool({
+          manifest,
+          tool,
+          params,
+          values,
+          signal: context.signal ?? AbortSignal.timeout(12_000),
+        }),
+      );
     },
-    startPrepared({
+    async startPrepared({
       accountId,
       registration,
       params,
       context,
       credentialValues,
+      credentialAuthorizations,
     }: Parameters<
       PreparedRegisteredPluginToolExecutor['startPrepared']
     >[0]): Promise<ActionResult> {
@@ -1347,11 +1575,169 @@ export function createAccountScopedPluginRuntime(input: {
         }
         values[fieldId] = value;
       }
-      return runPreparedTool({ manifest, tool, params, values, signal: context.signal });
+      if (!Array.isArray(credentialAuthorizations)) {
+        throw safeFailure('prepared_credentials_invalid');
+      }
+      const authorizationKeys = new Set(
+        credentialAuthorizations.map(
+          (authorization) =>
+            `${authorization.locator.pluginId}\u0000${authorization.locator.fieldId}`,
+        ),
+      );
+      if (
+        Object.keys(values).length !== declaredFields.size ||
+        credentialAuthorizations.length !== manifest.fields.length ||
+        authorizationKeys.size !== manifest.fields.length ||
+        credentialAuthorizations.some(
+          (authorization) =>
+            authorization.accountId !== accountId ||
+            authorization.locator.pluginId !== manifest.id ||
+            !declaredFields.has(authorization.locator.fieldId),
+        )
+      ) {
+        throw safeFailure('prepared_credentials_invalid');
+      }
+      const generation = captureArtifactGeneration(accountId);
+      if (!generation) throw safeFailure('canonical_plugin_artifact_runtime_revoked');
+      const result = canonicalPluginResult(
+        await runPreparedTool({ manifest, tool, params, values, signal: context.signal }),
+      );
+      if (!result.ok) return result;
+      if (
+        !artifactGenerationIsCurrent(accountId, generation) ||
+        !(await revalidateAuthorizations({
+          accountId,
+          manifest,
+          authorizations: credentialAuthorizations,
+        })) ||
+        !artifactGenerationIsCurrent(accountId, generation)
+      ) {
+        throw safeFailure('credential_grant_stale');
+      }
+      retainBounded(
+        pendingCanonicalResults,
+        result,
+        Object.freeze({
+          accountId,
+          registration,
+          runId: context.runId,
+          requestId: context.requestId,
+          attemptNumber: context.attemptNumber,
+          approvalId: context.approvalId,
+          authorizations: Object.freeze([...credentialAuthorizations]),
+          generation,
+        }),
+      );
+      return result;
     },
   });
 
   canonicalRegisteredPluginExecutors.add(registeredTools);
 
-  return Object.freeze({ management, registeredTools });
+  const authority = createCanonicalPluginEvidenceAuthority({
+    executor: registeredTools,
+    activeAccountId: input.activeAccountId,
+    results: {
+      async readCanonicalPluginResult(evidence) {
+        const record = canonicalResults.get(evidence.resultRef);
+        return record && artifactGenerationIsCurrent(evidence.accountId, record.generation)
+          ? record
+          : null;
+      },
+    },
+    grants: {
+      async revalidateCanonicalPluginGrant({ evidence, registration }) {
+        const record = canonicalResults.get(evidence.resultRef);
+        const manifest = getPluginManifest(registration.pluginId);
+        if (
+          !record ||
+          !manifest ||
+          record.evidence !== evidence ||
+          record.registration !== registration ||
+          !artifactGenerationIsCurrent(evidence.accountId, record.generation)
+        ) {
+          return false;
+        }
+        const current = await revalidateAuthorizations({
+          accountId: evidence.accountId,
+          manifest,
+          authorizations: record.authorizations,
+        });
+        return current && artifactGenerationIsCurrent(evidence.accountId, record.generation);
+      },
+    },
+  });
+  const canonicalArtifacts: CanonicalPluginArtifactCapability = Object.freeze({
+    authority,
+    async consumeCanonicalResult({
+      evidence,
+      registration,
+      result,
+    }: Parameters<CanonicalPluginArtifactCapability['consumeCanonicalResult']>[0]) {
+      const pending = pendingCanonicalResults.get(result);
+      if (pending) pendingCanonicalResults.delete(result);
+      if (
+        !pending ||
+        !validPluginEvidence(evidence) ||
+        evidence.state !== 'succeeded' ||
+        input.activeAccountId() !== evidence.accountId ||
+        pending.accountId !== evidence.accountId ||
+        pending.runId !== evidence.runId ||
+        pending.requestId !== evidence.requestId ||
+        pending.attemptNumber !== evidence.attemptNumber ||
+        evidence.invocationId !== `approval:${pending.approvalId}` ||
+        pending.registration !== registration ||
+        registration.pluginId !== evidence.pluginId ||
+        !artifactGenerationIsCurrent(evidence.accountId, pending.generation) ||
+        canonicalResults.has(evidence.resultRef)
+      ) {
+        return null;
+      }
+      const manifest = getPluginManifest(registration.pluginId);
+      if (
+        !manifest ||
+        !(await revalidateAuthorizations({
+          accountId: evidence.accountId,
+          manifest,
+          authorizations: pending.authorizations,
+        })) ||
+        !artifactGenerationIsCurrent(evidence.accountId, pending.generation)
+      ) {
+        return null;
+      }
+      let drafts: readonly JarvisArtifactDraft[];
+      try {
+        drafts = githubArtifactDrafts({ evidence, registration, result });
+      } catch {
+        return null;
+      }
+      const record = Object.freeze({
+        evidence,
+        registration,
+        executor: registeredTools,
+        authorizations: pending.authorizations,
+        generation: pending.generation,
+      });
+      retainBounded(canonicalResults, evidence.resultRef, record);
+      return drafts;
+    },
+    invalidateAccount(accountId: string) {
+      accountGenerations.set(accountId, Object.freeze({}));
+      for (const [result, pending] of pendingCanonicalResults) {
+        if (pending.accountId === accountId) pendingCanonicalResults.delete(result);
+      }
+      for (const [resultRef, record] of canonicalResults) {
+        if (record.evidence.accountId === accountId) canonicalResults.delete(resultRef);
+      }
+    },
+    invalidateAll() {
+      permanentlyRevoked = true;
+      runtimeGeneration = Object.freeze({});
+      accountGenerations.clear();
+      pendingCanonicalResults.clear();
+      canonicalResults.clear();
+    },
+  });
+
+  return Object.freeze({ management, registeredTools, canonicalArtifacts });
 }
