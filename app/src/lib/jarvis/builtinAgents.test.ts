@@ -37,7 +37,7 @@ If the user asks for something you cannot deliver safely (malicious code, creden
 
 describe('canonical built-in agent roster', () => {
   it('exposes the approved version and exact public API signatures', () => {
-    expect(BUILTIN_AGENT_ROSTER_VERSION).toBe(1);
+    expect(BUILTIN_AGENT_ROSTER_VERSION).toBe(2);
     expectTypeOf(createBuiltinAgentRoster).toEqualTypeOf<
       (input?: { now?: number; newId?: () => AgentId }) => Agent[]
     >();
@@ -55,7 +55,7 @@ describe('canonical built-in agent roster', () => {
       model: { provider: 'google', model: 'gemini-2.5-flash-lite' },
       tools_allowed: ['*'],
       memory_scope: 'project',
-      temperature: 0.6,
+      temperature: 0.3,
       max_output_tokens: 4096,
       color_hue: 195,
       capabilities: ['voice_supervision', 'planning'],

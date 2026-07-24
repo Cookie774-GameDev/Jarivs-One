@@ -127,7 +127,7 @@ function rosterFixture(): Agent[] {
       model: { provider: 'google', model: 'gemini-2.5-flash-lite' },
       tools_allowed: ['*'],
       memory_scope: 'project',
-      temperature: 0.6,
+      temperature: 0.3,
       max_output_tokens: 4096,
       color_hue: 195,
       capabilities: ['voice_supervision', 'planning'],
@@ -255,6 +255,7 @@ describe('seedIfEmpty canonical built-ins', () => {
       ...rosterFixture()[0]!,
       id: 'agt_historical',
       system_prompt: 'historical prompt must remain byte-for-byte',
+      temperature: 0.6,
       capabilities: ['voice_supervision', 'reasoning'],
     });
     seedHarness.agents.set('agt_custom', {

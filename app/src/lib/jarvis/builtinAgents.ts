@@ -1,7 +1,7 @@
 import { newAgentId } from '@/lib/ids';
 import type { Agent, AgentId } from '@/types';
 
-export const BUILTIN_AGENT_ROSTER_VERSION = 1;
+export const BUILTIN_AGENT_ROSTER_VERSION = 2;
 
 export const LEGACY_JARVIS_AGENT_COMPATIBILITY_PROMPT = `You are Jarvis, the user's personal AI workspace assistant. You are the first responder to every voice and chat interaction, and you decide whether to answer directly or route to a specialist.
 
@@ -68,7 +68,7 @@ const BUILTIN_AGENT_DEFINITIONS = {
     model: { provider: 'google', model: 'gemini-2.5-flash-lite' },
     tools_allowed: ['*'],
     memory_scope: 'project',
-    temperature: 0.6,
+    temperature: 0.3,
     max_output_tokens: 4096,
     color_hue: 195,
     capabilities: ['voice_supervision', 'planning'],

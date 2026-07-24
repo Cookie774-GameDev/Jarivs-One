@@ -4,6 +4,7 @@ import { buildGoogleRequestBody } from '@/lib/ai/providers/google';
 import { buildOllamaRequestBody } from '@/lib/ai/providers/ollama';
 import { buildOpenAIRequestBody } from '@/lib/ai/providers/openai';
 import type { LLMRequest } from '@/lib/ai/types';
+import { getBuiltinAgentDefinition } from '@/lib/jarvis/builtinAgents';
 import type {
   JarvisExecutionState,
   JarvisRequestEnvelope,
@@ -86,15 +87,12 @@ function llmRequestFor(
 ): LLMRequest {
   const provider = PROVIDERS[providerFamily];
   const agent: Agent = {
+    ...getBuiltinAgentDefinition('jarvis'),
     id: 'agent-evaluation' as Agent['id'],
-    slug: 'jarvis',
     name: 'JARVIS',
     description: 'Evaluation fixture agent.',
     system_prompt: MUTABLE_AGENT_PROMPT,
     model: { provider: provider.providerId, model: provider.modelId },
-    tools_allowed: [],
-    memory_scope: 'workspace',
-    capabilities: [],
     created_at: 1,
     updated_at: 1,
   };
@@ -108,29 +106,42 @@ function llmRequestFor(
 function constructProviderRequest(
   fixture: JarvisResponseEvaluationFixture,
   providerFamily: JarvisEvaluationProviderFamily,
-): Readonly<{ systemContract: string; serialized: string }> {
+): Readonly<{ systemContract: string; serialized: string; temperature: number }> {
   const request = llmRequestFor(fixture, providerFamily);
   switch (providerFamily) {
     case 'openai-compatible': {
       const body = buildOpenAIRequestBody(request);
       const system = body.messages.find((message) => message.role === 'system');
-      return { systemContract: String(system?.content ?? ''), serialized: JSON.stringify(body) };
+      return {
+        systemContract: String(system?.content ?? ''),
+        serialized: JSON.stringify(body),
+        temperature: body.temperature,
+      };
     }
     case 'anthropic-style': {
       const body = buildAnthropicRequestBody(request);
-      return { systemContract: body.system, serialized: JSON.stringify(body) };
+      return {
+        systemContract: body.system,
+        serialized: JSON.stringify(body),
+        temperature: body.temperature,
+      };
     }
     case 'gemini-style': {
       const body = buildGoogleRequestBody(request);
       return {
         systemContract: body.systemInstruction.parts[0]?.text ?? '',
         serialized: JSON.stringify(body),
+        temperature: body.generationConfig.temperature,
       };
     }
     case 'ollama-local': {
       const body = buildOllamaRequestBody(request);
       const system = body.messages.find((message) => message.role === 'system');
-      return { systemContract: String(system?.content ?? ''), serialized: JSON.stringify(body) };
+      return {
+        systemContract: String(system?.content ?? ''),
+        serialized: JSON.stringify(body),
+        temperature: body.options.temperature,
+      };
     }
   }
 }
@@ -296,6 +307,14 @@ describe('JARVIS response evaluation fixtures', () => {
     }
     expectDeeplyFrozen(JARVIS_EVALUATION_FIXTURE_IDS);
     expectDeeplyFrozen(JARVIS_RESPONSE_EVALUATION_FIXTURES);
+  });
+
+  it('uses the tuned protected JARVIS temperature in every provider request builder', () => {
+    const fixture = JARVIS_RESPONSE_EVALUATION_FIXTURES.direct_answer;
+
+    for (const providerFamily of JARVIS_EVALUATION_PROVIDER_FAMILIES) {
+      expect(constructProviderRequest(fixture, providerFamily).temperature).toBe(0.3);
+    }
   });
 
   it('runs the identical fixture set through all four required mock provider families', async () => {
