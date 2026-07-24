@@ -149,7 +149,7 @@ function outputs(): readonly JarvisArtifactV1[] {
 }
 
 describe('JarvisLiveSystemsTab', () => {
-  it('reuses the graph projection until one of its canonical inputs changes', () => {
+  it('reuses the graph projection until graph-affecting canonical evidence changes', () => {
     const selectProjection = createLiveGraphProjectionSelector();
     const canonicalRun = run();
     const canonicalNodes = readyLiveSystems().nodes;
@@ -164,7 +164,55 @@ describe('JarvisLiveSystemsTab', () => {
 
     const first = selectProjection(input);
     expect(selectProjection(input)).toBe(first);
-    expect(selectProjection({ ...input, events: [...canonicalEvents] })).not.toBe(first);
+    expect(selectProjection({ ...input, events: [...canonicalEvents] })).toBe(first);
+    expect(
+      selectProjection({
+        ...input,
+        events: [
+          ...canonicalEvents,
+          {
+            runId: 'run-live-1',
+            seq: 3,
+            idempotencyKey: 'source-free-event',
+            type: 'tool',
+            status: 'completed',
+            title: 'Source-free tool activity',
+            sourceRefs: [],
+            artifactIds: [],
+            createdAt: 120,
+          },
+        ],
+      }),
+    ).toBe(first);
+    expect(
+      selectProjection({
+        ...input,
+        events: [
+          ...canonicalEvents,
+          {
+            runId: 'run-live-1',
+            seq: 3,
+            idempotencyKey: 'new-source-event',
+            type: 'retrieval',
+            status: 'completed',
+            title: 'Read another source',
+            sourceRefs: [
+              {
+                id: 'source-2',
+                kind: 'project_file',
+                label: 'Architecture.md',
+                accountId: 'account-1',
+                trust: 'user_direct',
+                sensitivity: 'private',
+                observedAt: 120,
+              },
+            ],
+            artifactIds: [],
+            createdAt: 120,
+          },
+        ],
+      }),
+    ).not.toBe(first);
   });
 
   it('renders only the newest eight canonical run events', () => {

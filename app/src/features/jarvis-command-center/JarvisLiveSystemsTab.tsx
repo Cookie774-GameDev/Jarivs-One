@@ -277,6 +277,32 @@ function buildGraphNodes(input: LiveGraphProjectionInput): readonly LiveGraphNod
   return fairlyBoundGraphNodes([...verifiedNodes, ...sourceNodes, ...outputNodes]);
 }
 
+function sameGraphProjection(
+  left: readonly LiveGraphNode[],
+  right: readonly LiveGraphNode[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((node, index) => {
+      const candidate = right[index];
+      return (
+        candidate?.id === node.id &&
+        candidate.kind === node.kind &&
+        candidate.type === node.type &&
+        candidate.group === node.group &&
+        candidate.label === node.label &&
+        candidate.accessibleLabel === node.accessibleLabel &&
+        candidate.state === node.state &&
+        candidate.detail === node.detail &&
+        candidate.location === node.location &&
+        candidate.summary === node.summary &&
+        candidate.observedAt === node.observedAt &&
+        candidate.flowing === node.flowing
+      );
+    })
+  );
+}
+
 export function createLiveGraphProjectionSelector(): (
   input: LiveGraphProjectionInput,
 ) => readonly LiveGraphNode[] {
@@ -293,8 +319,12 @@ export function createLiveGraphProjectionSelector(): (
     ) {
       return previousProjection;
     }
+    const nextProjection = buildGraphNodes(input);
     previousInput = input;
-    previousProjection = buildGraphNodes(input);
+    if (previousProjection && sameGraphProjection(previousProjection, nextProjection)) {
+      return previousProjection;
+    }
+    previousProjection = nextProjection;
     return previousProjection;
   };
 }

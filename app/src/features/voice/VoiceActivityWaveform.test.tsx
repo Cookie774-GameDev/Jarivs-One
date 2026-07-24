@@ -49,16 +49,24 @@ describe('VoiceActivityWaveform', () => {
     render(<Owner />);
     expect(ownerRenders).toBe(1);
 
+    const firstFrameStart = roundRect.mock.calls.length;
     act(() => scheduledFrame?.(48));
+    const firstFrameEnd = roundRect.mock.calls.length;
     const firstFrameMax = Math.max(
-      ...roundRect.mock.calls.slice(0, 36).map((call) => Number(call[3])),
+      ...roundRect.mock.calls.slice(firstFrameStart, firstFrameEnd).map((call) => Number(call[3])),
     );
     levelRef.current = 0.9;
+    const secondFrameStart = roundRect.mock.calls.length;
     act(() => scheduledFrame?.(96));
+    const secondFrameEnd = roundRect.mock.calls.length;
     const secondFrameMax = Math.max(
-      ...roundRect.mock.calls.slice(36, 72).map((call) => Number(call[3])),
+      ...roundRect.mock.calls
+        .slice(secondFrameStart, secondFrameEnd)
+        .map((call) => Number(call[3])),
     );
 
+    expect(firstFrameEnd).toBeGreaterThan(firstFrameStart);
+    expect(secondFrameEnd).toBeGreaterThan(secondFrameStart);
     expect(secondFrameMax).toBeGreaterThan(firstFrameMax);
     expect(ownerRenders).toBe(1);
   });
