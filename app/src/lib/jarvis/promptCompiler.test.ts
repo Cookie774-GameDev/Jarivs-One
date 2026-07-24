@@ -292,6 +292,29 @@ describe('compileJarvisPrompt', () => {
     expect(first.layers[2]?.content).not.toBe(second.layers[2]?.content);
   });
 
+  it('uses the same immutable identity source for typed and voice chat', async () => {
+    const typed = compileJarvisPrompt(await envelope({ surface: 'typed_chat' }));
+    const voice = compileJarvisPrompt(
+      await envelope({
+        surface: 'voice',
+        outputContract: {
+          ...outputContract(),
+          voiceDelivery: 'final_summary',
+        },
+      }),
+    );
+
+    expect(typed.identityVersion).toBe(voice.identityVersion);
+    expect(typed.layers.slice(0, 2)).toEqual(voice.layers.slice(0, 2));
+    expect(typed.layers[0]?.content).toBe(JARVIS_IDENTITY_POLICY.responseContract);
+    expect(typed.layers[1]?.content).toContain(JARVIS_IDENTITY_POLICY.identityCore);
+    expect(typed.layers[6]?.content).toContain(JARVIS_IDENTITY_POLICY.delivery.written[0]);
+    expect(voice.layers[6]?.content).toContain(JARVIS_IDENTITY_POLICY.delivery.voice[0]);
+    expect(typed.layers[4]?.content).toContain('Surface: typed_chat');
+    expect(voice.layers[4]?.content).toContain('Surface: voice');
+    expect(typed.promptHash).not.toBe(voice.promptHash);
+  });
+
   it.each([
     ['secret', 'secret_source'],
     ['restricted', 'secret_source'],

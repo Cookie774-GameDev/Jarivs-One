@@ -5,10 +5,14 @@ import { LEGACY_JARVIS_AGENT_COMPATIBILITY_PROMPT } from '@/lib/jarvis/builtinAg
 import { TEST_INDEXED_DB, uniqueTestDbName } from '@/test/indexedDb';
 import type { Agent } from '@/types/agent';
 import {
+  createJarvisIdentitySnapshot,
   JARVIS_IDENTITY_POLICY,
   JARVIS_IDENTITY_VERSION,
   hashJarvisText,
 } from '@/lib/jarvis/identity';
+import { compileJarvisPrompt } from '@/lib/jarvis/promptCompiler';
+import { createJarvisProfileSnapshot } from '@/lib/jarvis/profiles/types';
+import { createJarvisRequestEnvelope } from '@/lib/jarvis/requestEnvelope';
 import {
   JarvisV3MigrationError,
   activateJarvisV3ForAccount,
@@ -192,6 +196,111 @@ describe('migrateLegacyJarvisIdentityForAccount', () => {
       db.jarvis_identity_revisions,
       db.jarvis_profiles,
     ]);
+  });
+
+  it('compiles the protected JARVIS prompt from a truly fresh install profile', async () => {
+    const db = await openTestDb('jarvis-v3-fresh-compile');
+    const accountId = 'fresh-install-account';
+
+    const migration = await migrateLegacyJarvisIdentityForAccount(db, {
+      accountId,
+      source: 'local',
+    });
+    const repositories = createJarvisRepositories(db);
+    const [identityRevision, profile] = await Promise.all([
+      repositories.identity.getVersion('jarvis', JARVIS_IDENTITY_VERSION),
+      repositories.profile.getActive(accountId),
+    ]);
+    if (!identityRevision || !profile) {
+      throw new Error('Expected fresh migration to persist the protected identity and profile.');
+    }
+
+    const envelope = await createJarvisRequestEnvelope({
+      attempt: {
+        kind: 'initial',
+        requestId: 'fresh-request',
+        runId: 'fresh-run',
+        attemptNumber: 1,
+      },
+      accountId,
+      agent: { id: 'builtin-jarvis', slug: 'jarvis', builtin: true },
+      surface: 'typed_chat',
+      interactionMode: 'ask',
+      identity: createJarvisIdentitySnapshot(identityRevision),
+      profile: createJarvisProfileSnapshot(profile),
+      model: {
+        connectionId: 'fresh-local-connection',
+        providerId: 'ollama',
+        modelId: 'fixture-free-model',
+        connectionMode: 'local',
+        capabilities: { tools: true, vision: false },
+        effectiveTemperature: 0.2,
+        capturedAt: NOW,
+      },
+      capabilities: {
+        capturedAt: NOW,
+        tools: [],
+        plugins: [],
+        mcps: [],
+        terminals: [],
+        agents: [],
+        entitlements: {
+          source: 'local_development',
+          capabilities: [],
+        },
+      },
+      context: {
+        items: [],
+        budget: { maxChars: 32_000, usedChars: 0 },
+        exclusions: [],
+      },
+      outputContract: {
+        preserveStructuredBlocks: true,
+        allowActionBlocks: true,
+        allowPlanBlocks: true,
+        allowQuestionBlocks: true,
+        allowPermissionBlocks: true,
+        voiceDelivery: 'validated_stream',
+      },
+      userText: 'Report readiness.',
+      messageHistory: [],
+      createdAt: NOW,
+    });
+    const compiled = compileJarvisPrompt(envelope);
+
+    expect(migration).toMatchObject({
+      accountId,
+      source: 'clean_default',
+      migrated: true,
+      profileId: profile.id,
+      identityRevisionId: identityRevision.id,
+    });
+    expect(identityRevision).toMatchObject({
+      identityId: 'jarvis',
+      version: JARVIS_IDENTITY_VERSION,
+      coreHash: await hashJarvisText(JARVIS_IDENTITY_POLICY.identityCore),
+      responseContractHash: await hashJarvisText(JARVIS_IDENTITY_POLICY.responseContract),
+    });
+    expect(profile).toMatchObject({
+      accountId,
+      identityVersion: JARVIS_IDENTITY_VERSION,
+      revisionId: `${migration.profileId}_r1`,
+      customInstructions: '',
+      instructionSource: 'none',
+      active: true,
+    });
+    expect(compiled.identityVersion).toBe(identityRevision.version);
+    expect(compiled.profileRevisionId).toBe(profile.revisionId);
+    expect(compiled.layers[0]?.content).toBe(JARVIS_IDENTITY_POLICY.responseContract);
+    expect(compiled.layers[1]?.content).toBe(
+      [
+        `Protected identity version: ${identityRevision.version}`,
+        `Identity core hash: ${identityRevision.coreHash}`,
+        `Response contract hash: ${identityRevision.responseContractHash}`,
+        JARVIS_IDENTITY_POLICY.identityCore,
+      ].join('\n'),
+    );
+    expect(compiled.promptHash).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it('preserves the complete normalized edited prompt and leaves every agent unchanged', async () => {
