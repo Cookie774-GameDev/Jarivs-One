@@ -17,7 +17,6 @@ import {
   readConnectionSessionPickerStates,
   type ConnectionPickerState,
 } from '@/lib/ai/connectionState';
-import { ratesFor } from '@/lib/ai/types';
 import { modelSupportsVision } from '@/lib/ai/vision';
 import type { StackStepSpec } from '@/lib/ai/stacks/types';
 import { HIVE_BALANCE_PRICING, stepsForPreset } from '@/lib/ai/stacks/presets';
@@ -36,6 +35,7 @@ type SingleModelSelection = Extract<ChatModelSelection, { mode: 'single' }>;
 export interface JarvisModelSelectionActionState {
   chatModelSelection: ChatModelSelection;
   previousChatModelSelection: ChatModelSelection;
+  jarvisAutoApprove: boolean;
   selectedModels: Partial<Record<ProviderId, string>>;
   apiKeys: Partial<Record<ProviderId, string>>;
   offlineMode: boolean;
@@ -81,15 +81,68 @@ function sameSelection(left: ChatModelSelection, right: ChatModelSelection): boo
   );
 }
 
-function modelCostClass(
+type VerifiedModelMetadata = Readonly<{
+  contextWindowTokens?: number;
+  maximumCostPerMillionUsd?: number;
+  costMetadataSource?: 'exact_rate_table' | 'embedded_snapshot' | 'local';
+}>;
+
+function exactCatalogMetadata(
   providerId: ProviderId,
   modelId: string,
-  mode?: ProviderConnection['mode'],
-): JarvisModelCostClass {
-  if (mode === 'external-cli') return 'unknown';
-  if (mode === 'local' || providerId === 'ollama' || providerId === 'local') return 'free';
-  const rates = ratesFor(providerId, modelId);
-  return costClassForRate(Math.max(rates.input_per_m, rates.output_per_m));
+  connection?: Readonly<ProviderConnection>,
+): VerifiedModelMetadata {
+  const chatOption = CHAT_MODEL_OPTIONS.find(
+    (option) => option.provider === providerId && option.id === modelId,
+  );
+  const connectionOption = connection
+    ? CONNECTION_MODEL_OPTIONS[connection.id]?.find((option) => option.id === modelId)
+    : undefined;
+  return {
+    ...((connectionOption?.contextWindowTokens ?? chatOption?.contextWindowTokens)
+      ? {
+          contextWindowTokens:
+            connectionOption?.contextWindowTokens ?? chatOption?.contextWindowTokens,
+        }
+      : {}),
+    ...(chatOption?.maximumCostPerMillionUsd !== undefined &&
+    chatOption.costMetadataSource === 'embedded_snapshot'
+      ? {
+          maximumCostPerMillionUsd: chatOption.maximumCostPerMillionUsd,
+          costMetadataSource: chatOption.costMetadataSource,
+        }
+      : {}),
+  };
+}
+
+function modelCostMetadata(
+  providerId: ProviderId,
+  modelId: string,
+  mode: ProviderConnection['mode'] | undefined,
+  catalogMetadata: VerifiedModelMetadata,
+): Pick<
+  JarvisModelSwitchCandidate,
+  'costClass' | 'maximumCostPerMillionUsd' | 'costMetadataSource'
+> {
+  if (mode === 'external-cli') return { costClass: 'unknown' };
+  if (mode === 'local' || providerId === 'ollama' || providerId === 'local') {
+    return {
+      costClass: 'free',
+      maximumCostPerMillionUsd: 0,
+      costMetadataSource: 'local',
+    };
+  }
+  if (
+    catalogMetadata.maximumCostPerMillionUsd !== undefined &&
+    catalogMetadata.costMetadataSource === 'embedded_snapshot'
+  ) {
+    return {
+      costClass: costClassForRate(catalogMetadata.maximumCostPerMillionUsd),
+      maximumCostPerMillionUsd: catalogMetadata.maximumCostPerMillionUsd,
+      costMetadataSource: catalogMetadata.costMetadataSource,
+    };
+  }
+  return { costClass: 'unknown' };
 }
 
 function costClassForRate(maximumRate: number): JarvisModelCostClass {
@@ -142,6 +195,7 @@ function uniqueModelOptions(
         provider: connection.providerId as ProviderId,
         id: model.id,
         label: model.label,
+        contextWindowTokens: model.contextWindowTokens,
       })),
     );
   }
@@ -155,13 +209,6 @@ function uniqueModelOptions(
         state.plan,
       ),
     );
-  }
-  for (const step of stepsForPreset('balanced', 'general', state.stackCustomSteps)) {
-    options.push({
-      provider: step.provider,
-      id: step.model,
-      label: step.model,
-    });
   }
   const seen = new Set<string>();
   return options.filter((option) => {
@@ -274,6 +321,7 @@ export function buildJarvisModelSwitchCandidates(
     );
 
     if (providerConnections.length === 0) {
+      const catalogMetadata = exactCatalogMetadata(option.provider, option.id);
       candidates.push({
         selection: selectionFromOption(option.provider, option.id) as SingleModelSelection,
         preferred:
@@ -287,8 +335,9 @@ export function buildJarvisModelSwitchCandidates(
         supportsTools: false,
         toolReliabilityRank: 0,
         speedRank: undefined,
+        contextWindowTokens: catalogMetadata.contextWindowTokens,
         codingRank: codingRank(option.id),
-        costClass: modelCostClass(option.provider, option.id),
+        ...modelCostMetadata(option.provider, option.id, undefined, catalogMetadata),
       });
       continue;
     }
@@ -299,6 +348,7 @@ export function buildJarvisModelSwitchCandidates(
       if (!connection.capabilities.modelSelection && !exactModels && !connection.modelId) continue;
       const connectionTruth = observedConnectionState(connection, connectionStates);
       const isHiveModel = hiveModelKeys.has(`${option.provider}\u0000${option.id}`);
+      const catalogMetadata = exactCatalogMetadata(option.provider, option.id, connection);
       candidates.push({
         selection: selectionFromOption(
           option.provider,
@@ -315,8 +365,9 @@ export function buildJarvisModelSwitchCandidates(
         supportsTools: connection.capabilities.tools,
         toolReliabilityRank: toolReliabilityRank(connection),
         speedRank: connectionSpeedRank(connection),
+        contextWindowTokens: catalogMetadata.contextWindowTokens,
         codingRank: codingRank(option.id),
-        costClass: modelCostClass(option.provider, option.id, connection.mode),
+        ...modelCostMetadata(option.provider, option.id, connection.mode, catalogMetadata),
       });
     }
   }
@@ -502,7 +553,7 @@ export function createModelSelectionActions(
           hiveBalanced: assessHiveBalanced(before, candidates),
           offlineMode: before.offlineMode,
           requirements,
-          policyRequiresApproval: false,
+          policyRequiresApproval: context.source === 'ai' && !before.jarvisAutoApprove,
         });
 
         if (

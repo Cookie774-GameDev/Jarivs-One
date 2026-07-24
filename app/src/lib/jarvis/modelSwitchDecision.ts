@@ -27,6 +27,8 @@ export interface JarvisModelSwitchCandidate {
   toolReliabilityRank?: number;
   codingRank: number;
   costClass: JarvisModelCostClass;
+  maximumCostPerMillionUsd?: number;
+  costMetadataSource?: 'exact_rate_table' | 'embedded_snapshot' | 'local';
 }
 
 export interface JarvisHiveBalancedAssessment {

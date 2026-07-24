@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { ChatModelSelection } from '@/lib/ai/modelSelection';
+import type { LLMMessage } from '@/lib/ai/types';
 import type { JarvisModelSwitchCandidate } from './modelSwitchDecision';
-import { routeJarvisModelAutomatically } from './modelAutoRouting';
+import {
+  estimateAutomaticRoutingContextTokens,
+  routeJarvisModelAutomatically,
+} from './modelAutoRouting';
 
 type SingleSelection = Extract<ChatModelSelection, { mode: 'single' }>;
 
@@ -25,6 +29,8 @@ function candidate(
     contextWindowTokens: 128_000,
     toolReliabilityRank: 50,
     costClass: 'standard',
+    maximumCostPerMillionUsd: 10,
+    costMetadataSource: 'exact_rate_table',
     ...overrides,
   };
 }
@@ -137,6 +143,8 @@ describe('routeJarvisModelAutomatically', () => {
         candidate('ollama', 'installed-local', {
           speedRank: 20,
           costClass: 'free',
+          maximumCostPerMillionUsd: 0,
+          costMetadataSource: 'local',
         }),
       ],
       offlineMode: true,
@@ -155,8 +163,17 @@ describe('routeJarvisModelAutomatically', () => {
       enabled: true,
       current: selection('ollama', 'private-local'),
       candidates: [
-        candidate('ollama', 'private-local', { costClass: 'free', speedRank: 20 }),
-        candidate('google', 'cloud-faster', { costClass: 'free', speedRank: 100 }),
+        candidate('ollama', 'private-local', {
+          costClass: 'free',
+          maximumCostPerMillionUsd: 0,
+          costMetadataSource: 'local',
+          speedRank: 20,
+        }),
+        candidate('google', 'cloud-faster', {
+          costClass: 'free',
+          maximumCostPerMillionUsd: 0,
+          speedRank: 100,
+        }),
       ],
       offlineMode: false,
       requirements: {},
@@ -167,9 +184,21 @@ describe('routeJarvisModelAutomatically', () => {
       enabled: true,
       current: selection('openai', 'standard-current'),
       candidates: [
-        candidate('openai', 'standard-current', { costClass: 'standard', speedRank: 30 }),
-        candidate('groq', 'low-cost', { costClass: 'low', speedRank: 40 }),
-        candidate('anthropic', 'premium-fast', { costClass: 'premium', speedRank: 100 }),
+        candidate('openai', 'standard-current', {
+          costClass: 'standard',
+          maximumCostPerMillionUsd: 10,
+          speedRank: 30,
+        }),
+        candidate('groq', 'low-cost', {
+          costClass: 'low',
+          maximumCostPerMillionUsd: 1,
+          speedRank: 40,
+        }),
+        candidate('anthropic', 'premium-fast', {
+          costClass: 'premium',
+          maximumCostPerMillionUsd: 25,
+          speedRank: 100,
+        }),
       ],
       offlineMode: false,
       requirements: {},
@@ -200,5 +229,119 @@ describe('routeJarvisModelAutomatically', () => {
       target: { modelId: 'catalog-fast' },
     });
     expect(JSON.stringify(result)).not.toContain('not-connected');
+  });
+
+  it('never raises the exact known maximum price even inside the same cost class', () => {
+    const result = routeJarvisModelAutomatically({
+      enabled: true,
+      current: selection('deepseek', 'current-low'),
+      candidates: [
+        candidate('deepseek', 'current-low', {
+          costClass: 'low',
+          maximumCostPerMillionUsd: 0.28,
+          speedRank: 20,
+        }),
+        candidate('openai', 'higher-low', {
+          costClass: 'low',
+          maximumCostPerMillionUsd: 0.6,
+          speedRank: 100,
+        }),
+        candidate('google', 'cheaper-low', {
+          costClass: 'low',
+          maximumCostPerMillionUsd: 0.15,
+          speedRank: 60,
+        }),
+      ],
+      offlineMode: false,
+      requirements: {},
+    });
+
+    expect(result).toMatchObject({
+      status: 'selected',
+      reason: 'cost',
+      target: { modelId: 'cheaper-low' },
+    });
+  });
+
+  it('rejects an unknown-cost automatic target when the current price is known', () => {
+    const result = routeJarvisModelAutomatically({
+      enabled: true,
+      current: selection('deepseek', 'known-current'),
+      candidates: [
+        candidate('deepseek', 'known-current', {
+          costClass: 'low',
+          maximumCostPerMillionUsd: 0.28,
+          speedRank: 20,
+        }),
+        candidate('openai', 'unknown-fast', {
+          costClass: 'unknown',
+          maximumCostPerMillionUsd: undefined,
+          costMetadataSource: undefined,
+          speedRank: 100,
+        }),
+      ],
+      offlineMode: false,
+      requirements: {},
+    });
+
+    expect(result).toEqual({ status: 'unchanged', reason: 'already_optimal' });
+  });
+
+  it('rejects control-bearing and unbounded catalog identifiers before ranking', () => {
+    const result = routeJarvisModelAutomatically({
+      enabled: true,
+      current: selection('openai', 'current-safe'),
+      candidates: [
+        candidate('openai', 'current-safe', { speedRank: 20 }),
+        candidate('google', 'unsafe\nmodel', { speedRank: 100 }),
+        candidate('google', `g${'x'.repeat(256)}`, { speedRank: 99 }),
+        candidate('google', 'safe-target', { speedRank: 80 }),
+      ],
+      offlineMode: false,
+      requirements: {},
+    });
+
+    expect(result).toMatchObject({
+      status: 'selected',
+      target: { providerId: 'google', modelId: 'safe-target' },
+    });
+  });
+
+  it('bounds candidate ranking work and ignores entries beyond the active-catalog cap', () => {
+    const candidates = [
+      candidate('openai', 'current-bounded', { speedRank: 20 }),
+      ...Array.from({ length: 511 }, (_, index) =>
+        candidate('google', `bounded-${String(index).padStart(3, '0')}`, { speedRank: 40 }),
+      ),
+      candidate('google', 'overflow-winner', { speedRank: 100 }),
+    ];
+
+    const result = routeJarvisModelAutomatically({
+      enabled: true,
+      current: selection('openai', 'current-bounded'),
+      candidates,
+      offlineMode: false,
+      requirements: {},
+    });
+
+    expect(result).toMatchObject({ status: 'selected' });
+    expect(result).not.toMatchObject({ target: { modelId: 'overflow-winner' } });
+  });
+});
+
+describe('estimateAutomaticRoutingContextTokens', () => {
+  it('includes the resolved system prompt and every provider-bound message', () => {
+    const messages: LLMMessage[] = [
+      { role: 'user', content: '1234' },
+      {
+        role: 'assistant',
+        content: [
+          { type: 'text', text: 'abcd' },
+          { type: 'image', data: 'ignored-base64', mimeType: 'image/png', name: 'shot.png' },
+        ],
+      },
+    ];
+
+    expect(estimateAutomaticRoutingContextTokens('system!!', messages)).toBe(18);
   });
 });

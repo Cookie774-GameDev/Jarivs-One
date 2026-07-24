@@ -2,15 +2,14 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import {
   buildQueuedMultitaskCommand,
+  dispatchQueuedMessageAfterAcceptance,
   QueuedMessagesBar,
   shouldAutoSendQueuedOnRunStatus,
   takeNextQueuedMessage,
   type QueuedChatMessage,
 } from './QueuedMessagesBar';
 
-const queued: QueuedChatMessage[] = [
-  { id: 'q_1', text: 'First queued request', createdAt: 1 },
-];
+const queued: QueuedChatMessage[] = [{ id: 'q_1', text: 'First queued request', createdAt: 1 }];
 
 const longQueued: QueuedChatMessage[] = [
   {
@@ -81,6 +80,28 @@ describe('QueuedMessagesBar', () => {
     fireEvent.click(multitask);
     expect(onStartMultitask).toHaveBeenCalledWith('q_long');
   });
+
+  it('offers a scoped stop/restart action instead of concurrent send for a model switch', () => {
+    const onStopAndRestart = vi.fn();
+    render(
+      <QueuedMessagesBar
+        messages={[{ id: 'switch-1', text: 'Use my local model.', createdAt: 3 }]}
+        onEdit={vi.fn()}
+        onSendNow={vi.fn()}
+        onStartMultitask={vi.fn()}
+        onDelete={vi.fn()}
+        isModelSwitch={(message) => message.text === 'Use my local model.'}
+        onStopAndRestart={onStopAndRestart}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: /send queued message now/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /start multitask/i })).toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', { name: /stop current reply and restart with model switch/i }),
+    );
+    expect(onStopAndRestart).toHaveBeenCalledWith('switch-1');
+  });
 });
 
 describe('buildQueuedMultitaskCommand', () => {
@@ -91,9 +112,7 @@ describe('buildQueuedMultitaskCommand', () => {
     expect(buildQueuedMultitaskCommand('/multitask already there')).toBe(
       '/multitask already there',
     );
-    expect(buildQueuedMultitaskCommand('/subagents review PRs')).toBe(
-      '/multitask review PRs',
-    );
+    expect(buildQueuedMultitaskCommand('/subagents review PRs')).toBe('/multitask review PRs');
   });
 });
 
@@ -117,5 +136,23 @@ describe('queued auto-send helpers', () => {
     const empty = takeNextQueuedMessage([]);
     expect(empty.next).toBeNull();
     expect(empty.remaining).toEqual([]);
+  });
+
+  it('keeps a cancelled-run restart queued until the resend is accepted', async () => {
+    let queue: QueuedChatMessage[] = [{ id: 'switch', text: 'Use my local model.', createdAt: 1 }];
+    const remove = (id: string) => {
+      queue = queue.filter((message) => message.id !== id);
+    };
+
+    expect(shouldAutoSendQueuedOnRunStatus('cancelled')).toBe(true);
+    await expect(
+      dispatchQueuedMessageAfterAcceptance(queue[0]!, queue[0]!.text, async () => false, remove),
+    ).resolves.toBe(false);
+    expect(queue.map((message) => message.id)).toEqual(['switch']);
+
+    await expect(
+      dispatchQueuedMessageAfterAcceptance(queue[0]!, queue[0]!.text, async () => true, remove),
+    ).resolves.toBe(true);
+    expect(queue).toEqual([]);
   });
 });

@@ -86,7 +86,10 @@ import {
   type ChatModelSelection,
 } from './modelSelection';
 import { buildJarvisModelSwitchCandidates } from '@/lib/actions/registryModelSelection';
-import { routeJarvisModelAutomatically } from '@/lib/jarvis/modelAutoRouting';
+import {
+  estimateAutomaticRoutingContextTokens,
+  routeJarvisModelAutomatically,
+} from '@/lib/jarvis/modelAutoRouting';
 import {
   isKernelSmokeBindingActive,
   KERNEL_SMOKE_RUNTIME_STAGE_EVENT,
@@ -2436,81 +2439,41 @@ export function startRuntimeListener(
             persistedConnection,
           )
         : authState.chatModelSelection);
-    let automaticRouteNotice:
-      | Readonly<{
-          message: string;
-          providerId: string;
-          modelId: string;
-          reason: string;
-        }>
-      | undefined;
-    if (
+    const stackSlash = parseStackSlashCommand(text);
+    const automaticRoutingAllowed =
       isProtectedJarvis &&
       authState.automaticModelRoutingEnabled &&
       (detail.modelSelectionOverride === undefined ||
         detail.automaticModelRoutingEligible === true) &&
-      chatModelSelection.mode !== 'hive'
-    ) {
-      const estimatedContextTokens = text.length >= 32_000 ? Math.ceil(text.length / 4) : undefined;
-      const route = routeJarvisModelAutomatically({
-        enabled: true,
-        current: chatModelSelection,
-        candidates: buildJarvisModelSwitchCandidates(authState),
-        offlineMode: authState.offlineMode,
-        requirements: {
-          images: (detail.imageAttachments?.length ?? 0) > 0,
-          tools: (detail.pluginIds?.length ?? 0) > 0,
-          ...(estimatedContextTokens === undefined ? {} : { estimatedContextTokens }),
-        },
-      });
-      if (route.status === 'selected') {
-        chatModelSelection = route.target;
-        automaticRouteNotice = Object.freeze({
-          message: route.message,
-          providerId: route.target.providerId,
-          modelId: route.target.modelId,
-          reason: route.reason,
-        });
-      }
-    }
-    const sendValidation = validateSendModelAccess(
-      text,
-      chatModelSelection,
-      modelCtx,
-      authState.stackCustomSteps,
-      {
-        voice: detail.speakReply === true,
-        attachments: {
-          hasImages: (detail.imageAttachments?.length ?? 0) > 0,
-          hasFiles: (detail.filePaths?.length ?? 0) > 0,
-        },
-        tools: (detail.pluginIds?.length ?? 0) > 0,
+      chatModelSelection.mode !== 'hive' &&
+      !stackSlash.matched;
+    const modelSendRequirements = {
+      voice: detail.speakReply === true,
+      attachments: {
+        hasImages: (detail.imageAttachments?.length ?? 0) > 0,
+        hasFiles: (detail.filePaths?.length ?? 0) > 0,
       },
-    );
-    if (!sendValidation.ok) {
-      toast.error('Cannot send', sendValidation.message);
-      releaseVoiceTurnWithoutReply(detail, chatId);
-      dispatchRunState(chatId, 'error', 'kernel_runtime_model_access');
-      releaseOperationTracking();
-      return;
+      tools: (detail.pluginIds?.length ?? 0) > 0,
+    };
+    if (!automaticRoutingAllowed) {
+      const sendValidation = validateSendModelAccess(
+        text,
+        chatModelSelection,
+        modelCtx,
+        authState.stackCustomSteps,
+        modelSendRequirements,
+      );
+      if (!sendValidation.ok) {
+        toast.error('Cannot send', sendValidation.message);
+        releaseVoiceTurnWithoutReply(detail, chatId);
+        dispatchRunState(chatId, 'error', 'kernel_runtime_model_access');
+        releaseOperationTracking();
+        return;
+      }
+      dispatchKernelSmokeRuntimeStage('validated');
+      useAllAboutMeStore.getState().recordUserMessage();
     }
-    if (automaticRouteNotice) {
-      toast.info('Automatic model routing', automaticRouteNotice.message);
-      devConsole.log({
-        channel: 'ai',
-        level: 'info',
-        message: automaticRouteNotice.message,
-        detail: {
-          provider: automaticRouteNotice.providerId,
-          model: automaticRouteNotice.modelId,
-          reason: automaticRouteNotice.reason,
-        },
-      });
-    }
-    dispatchKernelSmokeRuntimeStage('validated');
-    useAllAboutMeStore.getState().recordUserMessage();
 
-    const stackSlash = parseStackSlashCommand(text);
     // Hive multi-model stacks are chat-only by design (Settings → Hive says
     // "Chat only"): voice turns always take the single-model path so spoken
     // replies stay fast and are never billed through a multi-step pipeline.
@@ -2616,9 +2579,6 @@ export function startRuntimeListener(
       runnable = applyJarvisChatActionOverlay(runnable);
     }
     const stackStepsEarly = stepsForPreset(stackPreset, stackTaskType, authState.stackCustomSteps);
-    if (stackStepsEarly.length === 0) {
-      runnable = applyChatModelSelectionToAgent(runnable, chatModelSelection);
-    }
 
     // V3 — Splice in any terminal-pane transcript bound to this
     // agent's slug. The Builder pane running `claude` produces the
@@ -2897,6 +2857,93 @@ export function startRuntimeListener(
         { key: 'completion_instruction', text: getAiCompletionInstruction() },
       ] satisfies JarvisRuntimeContextBlock[]
     ).filter((block) => block.text.length > 0);
+    if (automaticRoutingAllowed) {
+      let routingHistory: Message[];
+      try {
+        routingHistory = await bindings.getMessages(chatId);
+      } catch (error) {
+        activity.update(chatId, agentActivityId, {
+          status: 'error',
+          title: `@${agent.slug} could not start`,
+          detail: 'The current chat history could not be read safely.',
+          ts: Date.now(),
+        });
+        failEarlySetup('context', error);
+        return;
+      }
+      const providerBoundHistory = toLLMMessages(routingHistory, undefined, false);
+      const lastHistoryMessage = providerBoundHistory.at(-1);
+      if (
+        lastHistoryMessage?.role === 'user' &&
+        llmContentToText(lastHistoryMessage.content).trim() === text.trim()
+      ) {
+        providerBoundHistory.pop();
+      }
+      const resolvedSystemPrompt = [
+        ...runtimeContextBlocks.map((block) => block.text),
+        runnable.system_prompt ?? '',
+      ]
+        .filter(Boolean)
+        .join('\n\n');
+      const resolvedPromptTokens = estimateAutomaticRoutingContextTokens(resolvedSystemPrompt, [
+        ...providerBoundHistory,
+        { role: 'user', content: text },
+      ]);
+      const estimatedContextTokens =
+        resolvedPromptTokens >= 32_000 ? resolvedPromptTokens : undefined;
+      const route = routeJarvisModelAutomatically({
+        enabled: true,
+        current: chatModelSelection,
+        candidates: buildJarvisModelSwitchCandidates(authState),
+        offlineMode: authState.offlineMode,
+        requirements: {
+          images: (detail.imageAttachments?.length ?? 0) > 0,
+          tools: (detail.pluginIds?.length ?? 0) > 0,
+          ...(estimatedContextTokens === undefined ? {} : { estimatedContextTokens }),
+        },
+      });
+      if (route.status === 'selected') {
+        chatModelSelection = route.target;
+      }
+      const sendValidation = validateSendModelAccess(
+        text,
+        chatModelSelection,
+        modelCtx,
+        authState.stackCustomSteps,
+        modelSendRequirements,
+      );
+      if (!sendValidation.ok) {
+        activity.update(chatId, agentActivityId, {
+          status: 'error',
+          title: `@${agent.slug} could not start`,
+          detail: sendValidation.message,
+          ts: Date.now(),
+        });
+        toast.error('Cannot send', sendValidation.message);
+        releaseVoiceTurnWithoutReply(detail, chatId);
+        dispatchRunState(chatId, 'error', 'kernel_runtime_model_access');
+        releaseOperationTracking();
+        return;
+      }
+      if (route.status === 'selected') {
+        toast.info('Automatic model routing', route.message);
+        devConsole.log({
+          channel: 'ai',
+          level: 'info',
+          message: route.message,
+          detail: {
+            provider: route.target.providerId,
+            model: route.target.modelId,
+            reason: route.reason,
+          },
+        });
+      }
+      dispatchKernelSmokeRuntimeStage('validated');
+      useAllAboutMeStore.getState().recordUserMessage();
+    }
+    if (stackStepsEarly.length === 0) {
+      runnable = applyChatModelSelectionToAgent(runnable, chatModelSelection);
+    }
     const contextBlocks = runtimeContextBlocks.map((block) => block.text);
     if (contextBlocks.length > 0) {
       runnable = {

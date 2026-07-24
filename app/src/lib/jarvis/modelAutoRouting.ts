@@ -1,4 +1,5 @@
 import type { ChatModelSelection } from '@/lib/ai/modelSelection';
+import type { LLMMessage } from '@/lib/ai/types';
 import { type JarvisModelCostClass, type JarvisModelSwitchCandidate } from './modelSwitchDecision';
 import { deepFreezeJarvisCopy } from './requestEnvelope';
 
@@ -46,6 +47,34 @@ const COST_RANK: Readonly<Record<JarvisModelCostClass, number>> = Object.freeze(
   premium: 3,
   unknown: 4,
 });
+const MAX_ROUTING_CANDIDATES = 512;
+const SAFE_PROVIDER_ID = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+const SAFE_MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._:/+-]{0,255}$/;
+const SAFE_CONNECTION_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$/;
+const COST_METADATA_SOURCES = Object.freeze(
+  new Set(['exact_rate_table', 'embedded_snapshot', 'local']),
+);
+
+function providerBoundTextLength(content: LLMMessage['content']): number {
+  if (typeof content === 'string') return content.length;
+  return content.reduce((total, part) => total + (part.type === 'text' ? part.text.length : 0), 0);
+}
+
+/**
+ * A deliberately conservative context estimate: one token per text character,
+ * plus one token of message framing. Image payload bytes are excluded because
+ * vision eligibility is routed separately and providers tokenize images
+ * differently.
+ */
+export function estimateAutomaticRoutingContextTokens(
+  systemPrompt: string,
+  messages: readonly LLMMessage[],
+): number {
+  return (
+    systemPrompt.length +
+    messages.reduce((total, message) => total + 1 + providerBoundTextLength(message.content), 0)
+  );
+}
 
 function isLocal(selection: SingleSelection): boolean {
   return selection.providerId === 'ollama' || selection.providerId === 'local';
@@ -81,22 +110,34 @@ function safeFinite(value: number | undefined, fallback = 0): number {
 function safeCandidates(
   candidates: readonly JarvisModelSwitchCandidate[],
 ): JarvisModelSwitchCandidate[] {
-  return candidates.filter(
-    (candidate) =>
-      candidate?.selection?.mode === 'single' &&
-      candidate.selection.modelId.trim().length > 0 &&
-      candidate.connected &&
-      candidate.available &&
-      Number.isFinite(candidate.codingRank) &&
-      (candidate.speedRank === undefined || Number.isFinite(candidate.speedRank)) &&
-      (candidate.contextWindowTokens === undefined ||
-        (Number.isFinite(candidate.contextWindowTokens) && candidate.contextWindowTokens > 0)) &&
-      (candidate.toolReliabilityRank === undefined ||
-        (Number.isFinite(candidate.toolReliabilityRank) &&
-          candidate.toolReliabilityRank >= 0 &&
-          candidate.toolReliabilityRank <= 100)) &&
-      Object.hasOwn(COST_RANK, candidate.costClass),
-  );
+  return candidates
+    .slice(0, MAX_ROUTING_CANDIDATES)
+    .filter(
+      (candidate) =>
+        candidate?.selection?.mode === 'single' &&
+        SAFE_PROVIDER_ID.test(candidate.selection.providerId) &&
+        SAFE_MODEL_ID.test(candidate.selection.modelId) &&
+        (candidate.selection.connectionId === undefined ||
+          SAFE_CONNECTION_ID.test(candidate.selection.connectionId)) &&
+        candidate.connected &&
+        candidate.available &&
+        Number.isFinite(candidate.codingRank) &&
+        (candidate.speedRank === undefined || Number.isFinite(candidate.speedRank)) &&
+        (candidate.contextWindowTokens === undefined ||
+          (Number.isFinite(candidate.contextWindowTokens) && candidate.contextWindowTokens > 0)) &&
+        (candidate.toolReliabilityRank === undefined ||
+          (Number.isFinite(candidate.toolReliabilityRank) &&
+            candidate.toolReliabilityRank >= 0 &&
+            candidate.toolReliabilityRank <= 100)) &&
+        ((candidate.maximumCostPerMillionUsd === undefined &&
+          candidate.costMetadataSource === undefined) ||
+          (typeof candidate.maximumCostPerMillionUsd === 'number' &&
+            Number.isFinite(candidate.maximumCostPerMillionUsd) &&
+            candidate.maximumCostPerMillionUsd >= 0 &&
+            typeof candidate.costMetadataSource === 'string' &&
+            COST_METADATA_SOURCES.has(candidate.costMetadataSource))) &&
+        Object.hasOwn(COST_RANK, candidate.costClass),
+    );
 }
 
 function stableCandidateKey(candidate: JarvisModelSwitchCandidate): string {
@@ -171,6 +212,13 @@ function selectionReason(
   if (input.offlineMode && input.current.mode === 'single' && !isLocal(input.current)) {
     return 'offline';
   }
+  if (
+    currentCandidate?.maximumCostPerMillionUsd !== undefined &&
+    target.maximumCostPerMillionUsd !== undefined &&
+    target.maximumCostPerMillionUsd < currentCandidate.maximumCostPerMillionUsd
+  ) {
+    return 'cost';
+  }
   if (currentCandidate && COST_RANK[target.costClass] < COST_RANK[currentCandidate.costClass]) {
     return 'cost';
   }
@@ -200,12 +248,13 @@ export function routeJarvisModelAutomatically(
     input.requirements.estimatedContextTokens > 0
       ? input.requirements.estimatedContextTokens
       : undefined;
-  const maximumCost =
+  const maximumCostClass =
     currentCandidate && currentCandidate.costClass !== 'unknown'
       ? COST_RANK[currentCandidate.costClass]
       : input.current.mode === 'none'
         ? COST_RANK.free
         : undefined;
+  const maximumExactCost = currentCandidate?.maximumCostPerMillionUsd;
 
   const eligible = candidates.filter((candidate) => {
     if ((input.offlineMode || currentIsLocal) && !isLocal(candidate.selection)) {
@@ -219,10 +268,21 @@ export function routeJarvisModelAutomatically(
     ) {
       return false;
     }
-    if (maximumCost !== undefined && COST_RANK[candidate.costClass] > maximumCost) {
+    if (
+      maximumExactCost !== undefined &&
+      (candidate.maximumCostPerMillionUsd === undefined ||
+        candidate.maximumCostPerMillionUsd > maximumExactCost)
+    ) {
       return false;
     }
-    if (maximumCost === undefined) {
+    if (
+      maximumExactCost === undefined &&
+      maximumCostClass !== undefined &&
+      COST_RANK[candidate.costClass] > maximumCostClass
+    ) {
+      return false;
+    }
+    if (maximumExactCost === undefined && maximumCostClass === undefined) {
       const isCurrent =
         input.current.mode === 'single' && sameSelection(candidate.selection, input.current);
       if (!isCurrent && candidate.costClass !== 'free') return false;

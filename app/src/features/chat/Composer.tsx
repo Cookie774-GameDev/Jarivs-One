@@ -186,6 +186,7 @@ import { useJarvisInteractionStore } from '@/features/jarvis-interaction/session
 import { launchJarvisChatAgent } from '@/features/jarvis-interaction/agentRunner';
 import {
   buildQueuedMultitaskCommand,
+  dispatchQueuedMessageAfterAcceptance,
   QueuedMessagesBar,
   shouldAutoSendQueuedOnRunStatus,
   takeNextQueuedMessage,
@@ -532,6 +533,8 @@ export function Composer({
   queuedMessagesRef.current = queuedMessages;
   const sendingRef = useRef(sending);
   sendingRef.current = sending;
+  const activeCancellationKeyRef = useRef<string | null>(null);
+  const queuedDispatchInFlightRef = useRef<string | null>(null);
   /** Latest auto-flush implementation (set after handleSend exists). */
   const flushNextQueuedRef = useRef<() => void>(() => {});
 
@@ -546,6 +549,7 @@ export function Composer({
         return;
       }
       setJarvisRunning(false);
+      activeCancellationKeyRef.current = null;
       // When the previous full reply finishes (or fails/cancels), send the next
       // queued message automatically — FIFO order.
       if (!shouldAutoSendQueuedOnRunStatus(status)) return;
@@ -1543,7 +1547,10 @@ export function Composer({
     return true;
   };
 
-  const handleSend = async (overrideText?: string, options: { bypassQueue?: boolean } = {}) => {
+  const handleSend = async (
+    overrideText?: string,
+    options: { bypassQueue?: boolean } = {},
+  ): Promise<boolean> => {
     const draftText = overrideText ?? text;
     const trimmed = draftText.trim();
     const hasConfirmedCommands = confirmedCommands.length > 0;
@@ -1559,10 +1566,10 @@ export function Composer({
         !hasConfirmedAgentMentions) ||
       sending
     )
-      return;
+      return false;
     if (jarvisRunning && !options.bypassQueue && !overrideText) {
       enqueueCurrentMessage(trimmed);
-      return;
+      return true;
     }
 
     // Pull utility slash tokens from anywhere in the message (start/middle/end)
@@ -1581,7 +1588,7 @@ export function Composer({
 
     // Leading full-message slash (multitask, ask, plan, etc.)
     const slashResult = afterInline.startsWith('/') ? await handleSlashCommand(afterInline) : false;
-    if (slashResult === true) return;
+    if (slashResult === true) return true;
     // When a route slash command has a remainder (e.g. "/terminals close 5 terminals"),
     // handleSlashCommand returns the remainder text so we send it as the message.
     const rawSendText = typeof slashResult === 'string' ? slashResult.trim() : afterInline;
@@ -1598,7 +1605,7 @@ export function Composer({
       attachedPlugins.length === 0 &&
       attachedContexts.length === 0
     ) {
-      return;
+      return true;
     }
     const interactionModeForSend = useJarvisInteractionStore.getState().modeForChat(chatId);
     const mentionPrefix = confirmedAgentMentions.map((mention) => mention.label).join(' ');
@@ -1620,7 +1627,7 @@ export function Composer({
             parts: [{ kind: 'text', text: status.message }],
           });
           setConfirmedCommands((cur) => cur.filter((command) => command.cmd !== 'allaboutme'));
-          return;
+          return true;
         }
         forceAllAboutMeUpdate = true;
       }
@@ -1648,7 +1655,7 @@ export function Composer({
     );
     if (!sendCheck.ok) {
       toast.error('Cannot send', sendCheck.message);
-      return;
+      return false;
     }
 
     // Process confirmed commands before sending
@@ -1743,7 +1750,7 @@ export function Composer({
           setAttachedTerminals([]);
           setMentionCtx(null);
           toast.success('Terminal message scheduled', new Date(scheduled.runAt).toLocaleString());
-          return;
+          return true;
         }
       }
       // Repo stamps id + timestamps + bumps parent chat.updated_at.
@@ -1801,6 +1808,7 @@ export function Composer({
       const messageFilePaths = Array.from(
         new Set([...nextAttachedFiles, ...extractAbsoluteFilePaths(sendText)]),
       ).slice(0, 8);
+      activeCancellationKeyRef.current = String(userMessage.id);
       window.dispatchEvent(
         new CustomEvent('jarvis:send', {
           detail: {
@@ -1831,6 +1839,7 @@ export function Composer({
       setAttachedPlugins([]);
       setAttachedContexts([]);
       setMentionCtx(null);
+      return true;
     } catch (err) {
       // Anything thrown here (DB error, mention extraction edge case,
       // even an exception from the dispatch listener) used to bubble
@@ -1843,33 +1852,87 @@ export function Composer({
       // eslint-disable-next-line no-console
       console.error('[Composer] send failed:', err);
       toast.error('Message not sent', formatComposerSendFailure());
+      return false;
     } finally {
       setSending(false);
     }
   };
 
+  const dispatchQueuedMessage = (queued: QueuedChatMessage, payload = queued.text) => {
+    if (queuedDispatchInFlightRef.current) return;
+    queuedDispatchInFlightRef.current = queued.id;
+    void dispatchQueuedMessageAfterAcceptance(
+      queued,
+      payload,
+      (nextPayload) => handleSend(nextPayload, { bypassQueue: true }),
+      (acceptedId) => {
+        setQueuedMessages((current) => {
+          const remaining = current.filter((message) => message.id !== acceptedId);
+          queuedMessagesRef.current = remaining;
+          return remaining;
+        });
+      },
+    )
+      .catch((error) => {
+        // Fail closed: retain the queued item for retry.
+        // eslint-disable-next-line no-console
+        console.error('[Composer] queued send failed:', error);
+        toast.error('Queued message not sent', formatComposerSendFailure());
+      })
+      .finally(() => {
+        queuedDispatchInFlightRef.current = null;
+      });
+  };
+
+  const stopAndRestartQueuedModelSwitch = (id: string) => {
+    const queued = queuedMessagesRef.current.find((message) => message.id === id);
+    if (!queued || !parseJarvisModelSwitchIntent(queued.text)) return;
+    const cancellationKey = activeCancellationKeyRef.current;
+    if (!jarvisRunning || !cancellationKey) {
+      toast.info(
+        'Model switch stays queued',
+        'The current reply cannot be scoped for cancellation yet. The switch will be reviewed and applied on the next turn.',
+      );
+      return;
+    }
+    const reordered = [
+      queued,
+      ...queuedMessagesRef.current.filter((message) => message.id !== queued.id),
+    ];
+    queuedMessagesRef.current = reordered;
+    setQueuedMessages(reordered);
+    window.dispatchEvent(
+      new CustomEvent('jarvis:cancel', { detail: { messageId: cancellationKey } }),
+    );
+    toast.info(
+      'Stopping current reply',
+      'The queued model switch will be reviewed and resent after cancellation completes.',
+    );
+  };
+
   const sendQueuedMessageNow = (id: string) => {
     const queued = queuedMessages.find((message) => message.id === id);
     if (!queued) return;
-    setQueuedMessages((current) => current.filter((message) => message.id !== id));
-    void handleSend(queued.text, { bypassQueue: true });
+    if (jarvisRunning && parseJarvisModelSwitchIntent(queued.text)) {
+      stopAndRestartQueuedModelSwitch(id);
+      return;
+    }
+    dispatchQueuedMessage(queued);
   };
 
   /** Same as typing `/multitask <message>` for a queued row (parallel agent work). */
   const startQueuedMultitask = (id: string) => {
     const queued = queuedMessages.find((message) => message.id === id);
     if (!queued) return;
-    setQueuedMessages((current) => current.filter((message) => message.id !== id));
-    void handleSend(buildQueuedMultitaskCommand(queued.text), { bypassQueue: true });
+    dispatchQueuedMessage(queued, buildQueuedMultitaskCommand(queued.text));
   };
 
   // Keep auto-flush bound to latest handleSend + queue (after handleSend is defined).
   flushNextQueuedRef.current = () => {
     if (sendingRef.current) return;
-    const { next, remaining } = takeNextQueuedMessage(queuedMessagesRef.current);
+    const { next } = takeNextQueuedMessage(queuedMessagesRef.current);
     if (!next) return;
-    setQueuedMessages(remaining);
-    void handleSend(next.text, { bypassQueue: true });
+    dispatchQueuedMessage(next);
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -2836,6 +2899,8 @@ export function Composer({
                 onEdit={editQueuedMessage}
                 onSendNow={sendQueuedMessageNow}
                 onStartMultitask={startQueuedMultitask}
+                isModelSwitch={(message) => Boolean(parseJarvisModelSwitchIntent(message.text))}
+                onStopAndRestart={stopAndRestartQueuedModelSwitch}
                 onDelete={deleteQueuedMessage}
               />
               <div

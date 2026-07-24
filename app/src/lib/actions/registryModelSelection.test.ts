@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChatModelSelection } from '@/lib/ai/modelSelection';
-import { GEMINI_API_CONNECTION } from '@/lib/ai/adapters/nativeCatalog';
+import { GEMINI_API_CONNECTION, OPENAI_API_CONNECTION } from '@/lib/ai/adapters/nativeCatalog';
 import { CODEX_CLI_CONNECTION } from '@/lib/ai/adapters/catalog';
 import {
   markConnectionSessionChecked,
@@ -29,6 +29,7 @@ function state(
   return {
     chatModelSelection: selection('openai', 'gpt-4o-mini'),
     previousChatModelSelection: { mode: 'none' },
+    jarvisAutoApprove: true,
     selectedModels: { openai: 'gpt-4o-mini' },
     apiKeys: {},
     offlineMode: false,
@@ -175,6 +176,98 @@ describe('buildJarvisModelSwitchCandidates', () => {
       'gpt-5.6-luna',
     ]);
     expect(current.every((candidate) => candidate.connected && candidate.available)).toBe(true);
+  });
+
+  it('projects exact embedded metadata only onto an active catalog model', () => {
+    const [candidate] = buildJarvisModelSwitchCandidates(
+      state({
+        apiKeys: { google: 'present-for-accessibility-only' },
+        chatModelSelection: selection('google', 'gemini-3.5-flash'),
+      }),
+      {
+        connections: [GEMINI_API_CONNECTION],
+        connectionStates: {
+          'google-gemini-api': { available: true, auth: 'authenticated' },
+        },
+        modelOptions: [
+          {
+            provider: 'google',
+            id: 'gemini-3.5-flash',
+            label: 'Gemini 3.5 Flash',
+          },
+        ],
+      },
+    );
+
+    expect(candidate).toMatchObject({
+      contextWindowTokens: 1_048_576,
+      maximumCostPerMillionUsd: 9,
+      costMetadataSource: 'embedded_snapshot',
+    });
+  });
+
+  it('does not inherit provider-default pricing for an unknown exact model', () => {
+    const [candidate] = buildJarvisModelSwitchCandidates(
+      state({
+        apiKeys: { openai: 'present-for-accessibility-only' },
+        chatModelSelection: selection('openai', 'gpt-5.5-pro'),
+      }),
+      {
+        connections: [OPENAI_API_CONNECTION],
+        connectionStates: {
+          'openai-api': { available: true, auth: 'authenticated' },
+        },
+        modelOptions: [{ provider: 'openai', id: 'gpt-5.5-pro', label: 'GPT-5.5 Pro' }],
+      },
+    );
+
+    expect(candidate).toMatchObject({
+      connected: true,
+      available: true,
+      costClass: 'unknown',
+    });
+    expect(candidate).not.toHaveProperty('maximumCostPerMillionUsd');
+    expect(candidate).not.toHaveProperty('costMetadataSource');
+  });
+
+  it('does not promote rough awareness-meter rates into routing cost authority', () => {
+    const [candidate] = buildJarvisModelSwitchCandidates(
+      state({
+        apiKeys: { openai: 'present-for-accessibility-only' },
+        chatModelSelection: selection('openai', 'gpt-4o-mini'),
+      }),
+      {
+        connections: [OPENAI_API_CONNECTION],
+        connectionStates: {
+          'openai-api': { available: true, auth: 'authenticated' },
+        },
+        modelOptions: [{ provider: 'openai', id: 'gpt-4o-mini', label: 'GPT-4o Mini' }],
+      },
+    );
+
+    expect(candidate).toMatchObject({ costClass: 'unknown' });
+    expect(candidate).not.toHaveProperty('maximumCostPerMillionUsd');
+    expect(candidate).not.toHaveProperty('costMetadataSource');
+  });
+
+  it('never injects a Hive workflow model absent from the active picker catalog', () => {
+    const candidates = buildJarvisModelSwitchCandidates(
+      state({ apiKeys: { google: 'present-for-accessibility-only' } }),
+      {
+        connections: [GEMINI_API_CONNECTION],
+        connectionStates: {
+          'google-gemini-api': { available: true, auth: 'authenticated' },
+        },
+      },
+    );
+
+    expect(
+      candidates.some(
+        (candidate) =>
+          candidate.selection.providerId === 'google' &&
+          candidate.selection.modelId === 'gemini-3.5-flash-high',
+      ),
+    ).toBe(false);
   });
 });
 
@@ -411,6 +504,26 @@ describe('chat.model.switch action', () => {
     });
     expect(canonical.apply).toHaveBeenCalledOnce();
     expect(canonical.getState().chatModelSelection).toEqual(selection('google', 'gemini'));
+  });
+
+  it('requires canonical approval for an AI switch when automatic approvals are disabled', async () => {
+    const apply = vi.fn();
+    const test = setup({
+      initial: state({ jarvisAutoApprove: false }),
+      candidates: [
+        candidate('openai', 'gpt-4o-mini'),
+        candidate('google', 'gemini', { costClass: 'low' }),
+      ],
+      apply,
+    });
+
+    await expect(
+      test.action.run({ request: 'Switch to Gemini.' }, { source: 'ai' }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/additional approval required/i),
+    });
+    expect(apply).not.toHaveBeenCalled();
   });
 
   it('returns a verified no-op when the requested model is already selected', async () => {

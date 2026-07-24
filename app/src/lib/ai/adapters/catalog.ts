@@ -106,19 +106,28 @@ export const CODEX_CLI_CONNECTION = externalConnection({
 export interface ConnectionModelOption {
   id: string;
   label: string;
+  contextWindowTokens?: number;
 }
 
-function frozenModelOption(id: string, label: string): Readonly<ConnectionModelOption> {
-  return Object.freeze({ id, label });
+function frozenModelOption(
+  id: string,
+  label: string,
+  contextWindowTokens?: number,
+): Readonly<ConnectionModelOption> {
+  return Object.freeze({
+    id,
+    label,
+    ...(contextWindowTokens === undefined ? {} : { contextWindowTokens }),
+  });
 }
 
 export const CONNECTION_MODEL_OPTIONS: Readonly<
   Partial<Record<string, readonly Readonly<ConnectionModelOption>[]>>
 > = Object.freeze({
   'openai-codex': Object.freeze([
-    frozenModelOption('gpt-5.6-sol', 'GPT-5.6 Sol'),
-    frozenModelOption('gpt-5.6-terra', 'GPT-5.6 Terra'),
-    frozenModelOption('gpt-5.6-luna', 'GPT-5.6 Luna'),
+    frozenModelOption('gpt-5.6-sol', 'GPT-5.6 Sol', 1_000_000),
+    frozenModelOption('gpt-5.6-terra', 'GPT-5.6 Terra', 1_000_000),
+    frozenModelOption('gpt-5.6-luna', 'GPT-5.6 Luna', 1_000_000),
   ]),
 });
 

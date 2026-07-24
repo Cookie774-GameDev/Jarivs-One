@@ -425,14 +425,15 @@ describe('startRuntimeListener agent routing', () => {
       created_at: 1,
       updated_at: 1,
     };
-    const originalSelection = selectionFromOption('groq', 'llama-3.3-70b-versatile');
+    const originalSelection = selectionFromOption('xai', 'grok-2-1212');
     useAuthStore.setState({
       automaticModelRoutingEnabled: true,
-      apiKeys: { google: 'test-google-key', groq: 'gsk_test' },
+      apiKeys: { google: 'test-google-key', xai: 'test-xai-key' },
       chatModelSelection: originalSelection,
     });
     writeConnectionPickerStates({
       'google-gemini-api': { available: true, auth: 'authenticated' },
+      'xai-api': { available: true, auth: 'authenticated' },
     });
     const info = vi.spyOn(toast, 'info').mockImplementation(() => 'toast-auto-route');
 
@@ -475,14 +476,14 @@ describe('startRuntimeListener agent routing', () => {
     expect(mocks.runAgent.mock.calls[0]![0]).toEqual(
       expect.objectContaining({
         agent: expect.objectContaining({
-          model: { provider: 'google', model: 'gemini-2.0-flash' },
+          model: { provider: 'google', model: 'gemini-2.5-flash' },
         }),
         connectionId: 'google-gemini-api',
       }),
     );
     expect(info).toHaveBeenCalledWith(
       'Automatic model routing',
-      'Auto-selected gemini-2.0-flash because this request includes images.',
+      'Auto-selected gemini-2.5-flash because this request includes images.',
     );
     expect(useAuthStore.getState().chatModelSelection).toEqual(originalSelection);
   });
@@ -531,6 +532,120 @@ describe('startRuntimeListener agent routing', () => {
       provider: 'google',
       model: 'gemini-3.1-pro',
     });
+    expect(info).not.toHaveBeenCalledWith('Automatic model routing', expect.any(String));
+    expect(useAuthStore.getState().chatModelSelection).toEqual(originalSelection);
+  });
+
+  it('routes from the resolved prompt size and active catalog context metadata', async () => {
+    const jarvis = agent('agent_jarvis_context_route', 'jarvis', 'You are Jarvis.');
+    const chatId = 'chat_context_route' as ChatId;
+    const longHistory: Message = {
+      id: 'msg_context_history' as MessageId,
+      chat_id: chatId,
+      role: 'assistant',
+      parts: [{ kind: 'text', text: 'x'.repeat(540_000) }],
+      created_at: 1,
+      updated_at: 1,
+    };
+    const originalSelection = selectionFromOption('xai', 'grok-2-1212');
+    useAuthStore.setState({
+      automaticModelRoutingEnabled: true,
+      apiKeys: { google: 'test-google-key', xai: 'test-xai-key' },
+      chatModelSelection: originalSelection,
+    });
+    writeConnectionPickerStates({
+      'google-gemini-api': { available: true, auth: 'authenticated' },
+      'xai-api': { available: true, auth: 'authenticated' },
+    });
+    const info = vi.spyOn(toast, 'info').mockImplementation(() => 'toast-context-route');
+
+    trackListener(
+      startRuntimeListener({
+        getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+        getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => [longHistory]),
+        appendMessage: vi.fn(async (message) => ({
+          ...message,
+          id: 'msg_context_route_assistant' as MessageId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage: vi.fn(async () => undefined),
+      }),
+    );
+
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: { chatId, text: 'Continue the analysis.' },
+      }),
+    );
+
+    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(1));
+    expect(mocks.runAgent.mock.calls[0]![0].agent.model).toEqual({
+      provider: 'google',
+      model: 'gemini-2.5-flash',
+    });
+    expect(info).toHaveBeenCalledWith(
+      'Automatic model routing',
+      'Auto-selected gemini-2.5-flash because this request needs a larger context window.',
+    );
+    expect(useAuthStore.getState().chatModelSelection).toEqual(originalSelection);
+  });
+
+  it('does not auto-route an explicit Hive slash turn', async () => {
+    const jarvis = agent('agent_jarvis_hive_route', 'jarvis', 'You are Jarvis.');
+    const chatId = 'chat_hive_route' as ChatId;
+    const originalSelection = selectionFromOption('xai', 'grok-2-1212');
+    useAuthStore.setState({
+      automaticModelRoutingEnabled: true,
+      apiKeys: { google: 'test-google-key', xai: 'test-xai-key' },
+      chatModelSelection: originalSelection,
+    });
+    writeConnectionPickerStates({
+      'google-gemini-api': { available: true, auth: 'authenticated' },
+      'xai-api': { available: true, auth: 'authenticated' },
+    });
+    const info = vi.spyOn(toast, 'info').mockImplementation(() => 'toast-hive-route');
+    const error = vi.spyOn(toast, 'error').mockImplementation(() => 'toast-hive-error');
+
+    trackListener(
+      startRuntimeListener({
+        getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+        getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => []),
+        appendMessage: vi.fn(async (message) => ({
+          ...message,
+          id: 'msg_hive_route_assistant' as MessageId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage: vi.fn(async () => undefined),
+      }),
+    );
+
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: {
+          chatId,
+          text: '/hive off describe this image',
+          modelSelectionOverride: originalSelection,
+          automaticModelRoutingEligible: true,
+          imageAttachments: [
+            {
+              id: 'image-hive-route',
+              name: 'example.png',
+              mimeType: 'image/png',
+              data: 'data:image/png;base64,AA==',
+            },
+          ],
+        },
+      }),
+    );
+
+    await vi.waitFor(() => expect(error).toHaveBeenCalled());
+    expect(mocks.runAgent).not.toHaveBeenCalled();
     expect(info).not.toHaveBeenCalledWith('Automatic model routing', expect.any(String));
     expect(useAuthStore.getState().chatModelSelection).toEqual(originalSelection);
   });
