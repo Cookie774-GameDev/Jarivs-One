@@ -246,7 +246,7 @@ export function JarvisCommandCenter({
   };
 
   const onEscape = (event: React.KeyboardEvent<HTMLElement>) => {
-    if (event.key !== 'Escape' || !expanded || embedded) return;
+    if (event.defaultPrevented || event.key !== 'Escape' || !expanded || embedded) return;
     event.preventDefault();
     store?.setExpansion('collapsed');
     toggleRef.current?.focus();
@@ -274,7 +274,6 @@ export function JarvisCommandCenter({
       data-testid="jarvis-command-center"
       data-sik-evidence={KERNEL_SMOKE_ENABLED ? SIK_CONTROL.commandCenterSurface : undefined}
       data-motion-enabled={KERNEL_SMOKE_ENABLED ? String(!reducedMotion) : undefined}
-      onKeyDown={onEscape}
     >
       <header className="jarvis-command-center__header">
         <div className="jarvis-command-center__identity">
@@ -459,7 +458,7 @@ export function JarvisCommandCenter({
       ) : null}
 
       {expanded ? (
-        <div className="jarvis-command-center__body" id={bodyId}>
+        <div className="jarvis-command-center__body" id={bodyId} onKeyDown={onEscape}>
           <Tabs
             className="jarvis-command-center__tabs"
             value={snapshot.activeTab}

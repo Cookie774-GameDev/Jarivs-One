@@ -653,8 +653,18 @@ describe('JarvisCommandCenter', () => {
         .getByTestId('jarvis-command-center')
         .classList.contains('jarvis-command-center--motion'),
     ).toBe(false);
-    fireEvent.keyDown(screen.getByTestId('jarvis-command-center'), { key: 'Escape' });
+
+    const outputs = screen.getByRole('tab', { name: 'Outputs' });
+    outputs.focus();
+    fireEvent.keyDown(outputs, { key: 'Escape' });
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(document.activeElement).toBe(toggle);
+
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    toggle.focus();
+    fireEvent.keyDown(toggle, { key: 'Escape' });
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
     expect(document.activeElement).toBe(toggle);
   });
 });
