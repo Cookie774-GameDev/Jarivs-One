@@ -2015,7 +2015,9 @@ function WorkspaceRoot() {
       </React.Suspense>
       <LauncherDialogHost />
       <AssistantBarHost />
-      <WhatsNewHost />
+      <React.Suspense fallback={null}>
+        <WhatsNewHost />
+      </React.Suspense>
       <React.Suspense fallback={null}>
         <NewsHost />
       </React.Suspense>
@@ -2027,13 +2029,17 @@ function WorkspaceRoot() {
       {/* Visual ambient effects removed — clean UI */}
 
       {/* V3 — confetti + serif gradient toast on success milestones. */}
-      <CelebrationHost />
+      <React.Suspense fallback={null}>
+        <CelebrationHost />
+      </React.Suspense>
 
       {/* Provider key save success burst. */}
       <ApiKeySaveBurst />
 
       {/* V2 — idle takeover. Self-renders only when ambientActive=true. */}
-      <AmbientHome />
+      <React.Suspense fallback={null}>
+        <AmbientHome />
+      </React.Suspense>
       <AmbientAudioHost />
 
       {/* Pixel Pet — video-driven atlas animations + mini-panel on click. */}

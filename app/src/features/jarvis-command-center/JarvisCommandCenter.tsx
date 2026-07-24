@@ -122,14 +122,17 @@ export function JarvisCommandCenter({
   dataPort,
   handlers,
   compact = false,
+  embedded = false,
 }: {
   accountId: string;
   chatId: string;
   dataPort: JarvisCommandCenterDataPort;
   handlers: JarvisCommandCenterHandlers;
   compact?: boolean;
+  embedded?: boolean;
 }) {
   const store = useCommandCenterStore({ accountId, chatId, dataPort });
+  const bodyId = React.useId();
   const emptySnapshot = React.useMemo<JarvisCommandCenterSnapshot>(
     () => ({
       accountId,
@@ -160,8 +163,11 @@ export function JarvisCommandCenter({
   const reducedMotion = usePrefersReducedMotion();
 
   React.useEffect(() => setFeedback(undefined), [snapshot.currentRun?.id]);
+  React.useEffect(() => {
+    if (embedded) store?.setExpansion('expanded');
+  }, [embedded, store]);
 
-  const expanded = snapshot.expansion === 'expanded';
+  const expanded = embedded || snapshot.expansion === 'expanded';
   const run = snapshot.currentRun;
   const retryAction = selectRetryAction(snapshot.retryState, handlers);
   const cancelVisible = canCancelRun(run, snapshot.retryState, handlers);
@@ -232,7 +238,7 @@ export function JarvisCommandCenter({
   };
 
   const onEscape = (event: React.KeyboardEvent<HTMLElement>) => {
-    if (event.key !== 'Escape' || !expanded) return;
+    if (event.key !== 'Escape' || !expanded || embedded) return;
     event.preventDefault();
     store?.setExpansion('collapsed');
     toggleRef.current?.focus();
@@ -244,8 +250,9 @@ export function JarvisCommandCenter({
         'jarvis-command-center',
         !reducedMotion && 'jarvis-command-center--motion',
         compact && 'jarvis-command-center--compact',
+        embedded && 'jarvis-command-center--embedded',
       )}
-      aria-label="Jarvis Command Center"
+      aria-label={embedded ? 'Jarvis Command Center details' : 'Jarvis Command Center'}
       data-testid="jarvis-command-center"
       data-sik-evidence={KERNEL_SMOKE_ENABLED ? SIK_CONTROL.commandCenterSurface : undefined}
       data-motion-enabled={KERNEL_SMOKE_ENABLED ? String(!reducedMotion) : undefined}
@@ -253,7 +260,7 @@ export function JarvisCommandCenter({
     >
       <header className="jarvis-command-center__header">
         <div className="jarvis-command-center__identity">
-          <div className="jarvis-command-center__eyebrow">Command Center</div>
+          {!embedded ? <div className="jarvis-command-center__eyebrow">Command Center</div> : null}
           <div
             className="jarvis-command-center__summary"
             data-sik-evidence={KERNEL_SMOKE_ENABLED ? SIK_EVIDENCE.runStatus : undefined}
@@ -359,30 +366,32 @@ export function JarvisCommandCenter({
             </Button>
           ) : null}
 
-          <Button
-            ref={toggleRef}
-            type="button"
-            size="icon-sm"
-            variant="ghost"
-            aria-expanded={expanded}
-            aria-controls="jarvis-command-center-body"
-            aria-label={`${expanded ? 'Collapse' : 'Expand'} Command Center`}
-            onClick={toggle}
-            onFocus={() => setSmokeFocusedControl(SIK_CONTROL.commandCenterDisclosure)}
-            onBlur={() => setSmokeFocusedControl(undefined)}
-            data-sik-evidence={
-              KERNEL_SMOKE_ENABLED ? SIK_CONTROL.commandCenterDisclosure : undefined
-            }
-            data-focus-state={
-              KERNEL_SMOKE_ENABLED
-                ? smokeFocusedControl === SIK_CONTROL.commandCenterDisclosure
-                  ? 'focused'
-                  : 'blurred'
-                : undefined
-            }
-          >
-            {expanded ? <ChevronUp aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
-          </Button>
+          {!embedded ? (
+            <Button
+              ref={toggleRef}
+              type="button"
+              size="icon-sm"
+              variant="ghost"
+              aria-expanded={expanded}
+              aria-controls={bodyId}
+              aria-label={`${expanded ? 'Collapse' : 'Expand'} Command Center`}
+              onClick={toggle}
+              onFocus={() => setSmokeFocusedControl(SIK_CONTROL.commandCenterDisclosure)}
+              onBlur={() => setSmokeFocusedControl(undefined)}
+              data-sik-evidence={
+                KERNEL_SMOKE_ENABLED ? SIK_CONTROL.commandCenterDisclosure : undefined
+              }
+              data-focus-state={
+                KERNEL_SMOKE_ENABLED
+                  ? smokeFocusedControl === SIK_CONTROL.commandCenterDisclosure
+                    ? 'focused'
+                    : 'blurred'
+                  : undefined
+              }
+            >
+              {expanded ? <ChevronUp aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
+            </Button>
+          ) : null}
         </div>
       </header>
 
@@ -412,7 +421,7 @@ export function JarvisCommandCenter({
       ) : null}
 
       {expanded ? (
-        <div className="jarvis-command-center__body" id="jarvis-command-center-body">
+        <div className="jarvis-command-center__body" id={bodyId}>
           <Tabs
             className="jarvis-command-center__tabs"
             value={snapshot.activeTab}

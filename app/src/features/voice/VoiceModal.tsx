@@ -29,7 +29,16 @@ import { VoiceActivityWaveform } from './VoiceActivityWaveform';
 import { handleVoiceModuleClosed, stopCurrentVoiceResponse } from './voiceRouter';
 import { resolveVoiceListenTimeoutMs } from './voiceConversation';
 import { createVoiceSessionBinding, newVoiceSessionId } from './voiceSessionBinding';
-import { modelSelectionContextFromAuth, validateSendModelAccess } from '@/lib/ai/modelSelection';
+import {
+  formatChatModelSelectionLabel,
+  modelSelectionContextFromAuth,
+  validateSendModelAccess,
+} from '@/lib/ai/modelSelection';
+import {
+  JarvisCommandCenter,
+  useJarvisCommandCenterBinding,
+} from '@/features/jarvis-command-center/JarvisCommandCenter';
+import type { JarvisCommandCenterHandlers } from '@/features/jarvis-command-center/types';
 import {
   processVoiceFinalEvent,
   shouldAutoSendOnSilence,
@@ -110,6 +119,24 @@ function messageText(message: Message): string {
     .map((part) => part.text)
     .join('\n')
     .trim();
+}
+
+function usePrefersReducedMotion(): boolean {
+  const [reduced, setReduced] = React.useState(() =>
+    typeof window === 'undefined'
+      ? false
+      : window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true,
+  );
+
+  React.useEffect(() => {
+    const query = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+    if (!query) return;
+    const update = () => setReduced(query.matches);
+    update();
+    query.addEventListener?.('change', update);
+    return () => query.removeEventListener?.('change', update);
+  }, []);
+  return reduced;
 }
 
 const TENDRIL_SEEDS = [
@@ -310,15 +337,22 @@ export function VoiceModal() {
   const voiceEndTrigger = useAuthStore((state) => state.voiceEndTrigger);
   const voiceCommitPhrase = useAuthStore((state) => state.voiceCommitPhrase);
   const fasterWhisperModel = useAuthStore((state) => state.fasterWhisperModel);
-  const [showTranscript, setShowTranscript] = React.useState(false);
+  const chatModelSelection = useAuthStore((state) => state.chatModelSelection);
+  const commandCenterBinding = useJarvisCommandCenterBinding();
+  const [showCommandCenter, setShowCommandCenter] = React.useState(false);
+  const [expandedTranscriptIds, setExpandedTranscriptIds] = React.useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const session = useVoiceStore((voice) => voice.session);
-  const messages = useChatMessages(open && showTranscript ? (session?.chatId ?? null) : null);
+  const messages = useChatMessages(open && showCommandCenter ? (session?.chatId ?? null) : null);
   const state = useVoiceStore((voice) => voice.state);
   const partial = useVoiceStore((voice) => voice.partialTranscript);
   const persona = useVoiceStore((voice) => voice.persona);
   const errorMessage = useVoiceStore((voice) => voice.errorMessage);
+  const reducedMotion = usePrefersReducedMotion();
   const levelRef = React.useRef(0);
   const transcriptRef = React.useRef<HTMLDivElement>(null);
+  const transcriptStickyRef = React.useRef(true);
   const pendingUtteranceRef = React.useRef('');
   const utteranceTimerRef = React.useRef<number | null>(null);
   const restartTimerRef = React.useRef<number | null>(null);
@@ -337,6 +371,42 @@ export function VoiceModal() {
   // instead of leaving push-to-talk silently disarmed.
   const resumeListeningAfterSpeechRef = React.useRef(false);
   const personaCfg = PERSONAS[persona];
+  const modelLabel = React.useMemo(
+    () =>
+      formatChatModelSelectionLabel(
+        chatModelSelection,
+        modelSelectionContextFromAuth(useAuthStore.getState()),
+      ),
+    [chatModelSelection],
+  );
+  const commandCenterHandlers = React.useMemo<JarvisCommandCenterHandlers>(() => {
+    const hostPort = commandCenterBinding?.hostPort;
+    if (!hostPort) return {};
+    const requireBoundAccount = (accountId: string) => {
+      if (accountId !== hostPort.accountId) {
+        throw new Error('jarvis_command_center_account_mismatch');
+      }
+    };
+    return {
+      cancelRun(accountId, runId) {
+        requireBoundAccount(accountId);
+        return hostPort.requestCancellation(runId);
+      },
+      retryScheduledTransport(accountId, runId) {
+        requireBoundAccount(accountId);
+        return hostPort.retryScheduledTransport(runId);
+      },
+      retryLogicalRun(accountId, runId) {
+        requireBoundAccount(accountId);
+        return hostPort.retryLogicalRun(runId);
+      },
+    };
+  }, [commandCenterBinding]);
+  const eligibleCommandCenterBinding =
+    session && commandCenterBinding?.hostPort.accountId === session.accountId
+      ? commandCenterBinding
+      : undefined;
+  const commandCenterRegionId = React.useId();
 
   // Drag state — primary-button drag on the panel chrome, clamped to viewport
   const dragX = useMotionValue(0);
@@ -881,8 +951,8 @@ export function VoiceModal() {
 
   React.useEffect(() => {
     const node = transcriptRef.current;
-    if (node) node.scrollTop = node.scrollHeight;
-  }, [messages, partial]);
+    if (node && transcriptStickyRef.current) node.scrollTop = node.scrollHeight;
+  }, [messages, partial, showCommandCenter]);
 
   if (!open) return null;
 
@@ -893,19 +963,24 @@ export function VoiceModal() {
     )
     .map((message) => ({ ...message, displayText: messageText(message) }))
     .filter((message) => message.displayText);
-  const visibleTranscript = transcript.slice(-3);
+  const visibleTranscript = transcript.slice(-8);
 
   return (
     <AnimatePresence>
       <motion.aside
         ref={panelRef}
-        initial={{ opacity: 0, x: 16, y: -6, scale: 0.96 }}
-        animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
-        exit={{ opacity: 0, x: 12, scale: 0.97 }}
-        transition={{ type: 'spring', stiffness: 360, damping: 30 }}
+        initial={reducedMotion ? false : { opacity: 0, x: 16, y: -6, scale: 0.96 }}
+        animate={reducedMotion ? undefined : { opacity: 1, x: 0, y: 0, scale: 1 }}
+        exit={reducedMotion ? undefined : { opacity: 0, x: 12, scale: 0.97 }}
+        transition={reducedMotion ? undefined : { type: 'spring', stiffness: 360, damping: 30 }}
         style={{ x: dragX, y: dragY }}
-        className="jarvis-voice-panel fixed right-3 top-3 z-[90] w-[286px] overflow-hidden rounded-[9px] border border-white/10 bg-[#090909]/95 backdrop-blur-xl"
+        className={cn(
+          'jarvis-voice-panel fixed right-3 top-3 z-[90] max-h-[calc(100vh-24px)] max-w-[calc(100vw-24px)] overflow-hidden rounded-[9px] border border-white/10 bg-[#090909]/95 backdrop-blur-xl',
+          !reducedMotion && 'transition-[width] duration-200',
+          showCommandCenter ? 'w-[420px]' : 'w-[286px]',
+        )}
         aria-label="Jarvis voice session"
+        data-reduced-motion={reducedMotion ? 'true' : 'false'}
         data-sik-evidence={KERNEL_SMOKE_ENABLED ? SIK_EVIDENCE.voiceState : undefined}
         data-voice-state={KERNEL_SMOKE_ENABLED ? state : undefined}
       >
@@ -1030,28 +1105,52 @@ export function VoiceModal() {
           </div>
         ) : null}
 
-        {/* Transcript dropdown toggle */}
+        {/* Command Center disclosure */}
         <button
           type="button"
-          onClick={() => setShowTranscript((v) => !v)}
-          className="relative z-[1] flex w-full items-center justify-center gap-1 border-t border-white/[0.06] px-2 py-px text-[8px] text-muted-foreground/55 transition-colors hover:bg-white/[0.035] hover:text-muted-foreground"
+          onClick={() =>
+            setShowCommandCenter((visible) => {
+              if (!visible) transcriptStickyRef.current = true;
+              return !visible;
+            })
+          }
+          aria-expanded={showCommandCenter}
+          aria-controls={commandCenterRegionId}
+          className="relative z-[1] flex w-full items-center gap-1 border-t border-white/[0.06] px-2 py-1 text-[9px] text-muted-foreground/70 transition-colors hover:bg-white/[0.035] hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
         >
-          <span>Transcript</span>
-          {showTranscript ? <ChevronUp className="h-2 w-2" /> : <ChevronDown className="h-2 w-2" />}
+          <span className="font-medium text-foreground/85">Command Center</span>
+          {showCommandCenter ? (
+            <span className="ml-auto max-w-[250px] truncate text-[8px]" title={modelLabel}>
+              {modelLabel}
+            </span>
+          ) : null}
+          {showCommandCenter ? (
+            <ChevronUp className="h-2.5 w-2.5 shrink-0" />
+          ) : (
+            <ChevronDown className="ml-auto h-2.5 w-2.5 shrink-0" />
+          )}
         </button>
 
         <AnimatePresence>
-          {showTranscript && (
+          {showCommandCenter && (
             <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.2, ease: 'easeInOut' }}
+              id={commandCenterRegionId}
+              initial={reducedMotion ? false : { height: 0, opacity: 0 }}
+              animate={reducedMotion ? undefined : { height: 'auto', opacity: 1 }}
+              exit={reducedMotion ? undefined : { height: 0, opacity: 0 }}
+              transition={reducedMotion ? undefined : { duration: 0.2, ease: 'easeInOut' }}
               className="overflow-hidden"
             >
               <div
                 ref={transcriptRef}
-                className="max-h-[60px] space-y-0.5 overflow-y-auto px-2 pb-1.5 pt-0.5"
+                onScroll={() => {
+                  const node = transcriptRef.current;
+                  if (!node) return;
+                  transcriptStickyRef.current =
+                    node.scrollHeight - node.scrollTop - node.clientHeight < 24;
+                }}
+                className="max-h-[28vh] space-y-1 overflow-y-auto px-2 pb-2 pt-1"
+                aria-label="Voice session transcript"
               >
                 {transcript.length === 0 && !partial ? (
                   <div className="flex h-[20px] items-center justify-center text-center text-[8px] text-muted-foreground">
@@ -1060,10 +1159,13 @@ export function VoiceModal() {
                 ) : null}
                 {visibleTranscript.map((message) => {
                   const user = message.role === 'user';
+                  const expandable =
+                    message.displayText.length > 96 ||
+                    message.displayText.split(/\r?\n/u).length > 2;
                   return (
                     <div
                       key={message.id}
-                      className="grid grid-cols-[12px_32px_1fr] items-center gap-0.5 text-[8px] leading-3"
+                      className="grid grid-cols-[12px_32px_1fr] items-start gap-0.5 text-[8px] leading-3"
                     >
                       <span
                         className={cn(
@@ -1087,8 +1189,32 @@ export function VoiceModal() {
                       >
                         {user ? 'You' : 'Jarvis:'}
                       </span>
-                      <span className="min-w-0 truncate text-foreground/80">
-                        {message.displayText}
+                      <span className="min-w-0 text-foreground/80">
+                        <span
+                          className={cn(
+                            'block whitespace-pre-wrap break-words',
+                            expandable && !expandedTranscriptIds.has(message.id) && 'line-clamp-2',
+                          )}
+                        >
+                          {message.displayText}
+                        </span>
+                        {expandable ? (
+                          <button
+                            type="button"
+                            className="mt-0.5 text-[8px] font-medium text-accent-copper hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                            aria-expanded={expandedTranscriptIds.has(message.id)}
+                            onClick={() =>
+                              setExpandedTranscriptIds((current) => {
+                                const next = new Set(current);
+                                if (next.has(message.id)) next.delete(message.id);
+                                else next.add(message.id);
+                                return next;
+                              })
+                            }
+                          >
+                            {expandedTranscriptIds.has(message.id) ? 'Show less' : 'Show more'}
+                          </button>
+                        ) : null}
                       </span>
                     </div>
                   );
@@ -1099,10 +1225,26 @@ export function VoiceModal() {
                       <UserRound className="h-1.5 w-1.5" />
                     </span>
                     <span className="text-[8px] font-medium text-info">You</span>
-                    <span className="min-w-0 truncate text-foreground/70">{partial}</span>
+                    <span className="min-w-0 whitespace-pre-wrap break-words text-foreground/70">
+                      {partial}
+                    </span>
                   </div>
                 ) : null}
               </div>
+              {eligibleCommandCenterBinding && session ? (
+                <JarvisCommandCenter
+                  accountId={session.accountId}
+                  chatId={session.chatId}
+                  dataPort={eligibleCommandCenterBinding.dataPort}
+                  handlers={commandCenterHandlers}
+                  compact
+                  embedded
+                />
+              ) : (
+                <p className="border-t border-white/[0.06] px-2 py-3 text-center text-[9px] text-muted-foreground">
+                  Command Center is unavailable for this voice session.
+                </p>
+              )}
             </motion.div>
           )}
         </AnimatePresence>

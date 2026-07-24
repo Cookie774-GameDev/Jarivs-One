@@ -182,6 +182,33 @@ describe('JarvisCommandCenter', () => {
     expect(dataPort.getLiveEvidenceSnapshot).not.toHaveBeenCalled();
   });
 
+  it('embeds the canonical body without a duplicate disclosure and keeps exactly two tabs', async () => {
+    const dataPort = port();
+    render(
+      <JarvisCommandCenter
+        accountId="account-1"
+        chatId="chat-voice"
+        dataPort={dataPort}
+        handlers={{}}
+        embedded
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: /command center/i })).toBeNull();
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+      'Outputs',
+      'Live Systems',
+    ]);
+    expect(screen.getByTestId('jarvis-command-center').getAttribute('aria-label')).toBe(
+      'Jarvis Command Center details',
+    );
+    await waitFor(() =>
+      expect(dataPort.getRunsForChat).toHaveBeenCalledWith(
+        expect.objectContaining({ accountId: 'account-1', chatId: 'chat-voice' }),
+      ),
+    );
+  });
+
   it('keeps exactly the two required tabs visible in the calm data-error state', async () => {
     const dataPort = port();
     vi.mocked(dataPort.getRunsForChat).mockRejectedValue(new Error('repository unavailable'));

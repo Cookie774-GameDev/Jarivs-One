@@ -102,14 +102,54 @@ import { messageRepo } from '@/lib/db';
 import { useVoiceStore } from './store';
 import { selectionFromOption } from '@/lib/ai/modelSelection';
 import { DEFAULT_CUSTOM_STEPS } from '@/lib/ai/stacks/presets';
+import { JarvisCommandCenterProvider } from '@/features/jarvis-command-center/JarvisCommandCenter';
+import type {
+  JarvisCommandCenterDataPort,
+  JarvisCommandCenterHostPort,
+} from '@/features/jarvis-command-center/types';
 
 function emitVoice(event: string, payload?: unknown) {
   voiceListeners.handlers.get(event)?.forEach((fn) => fn(payload));
 }
 
+function commandCenterBinding(accountId = 'account-a') {
+  const dataPort: JarvisCommandCenterDataPort = {
+    getRunsForChat: vi.fn(async () => []),
+    getEventsForRun: vi.fn(async () => []),
+    getArtifactsForRun: vi.fn(async () => []),
+    getLiveEvidenceSnapshot: vi.fn(async () => undefined),
+    subscribe: vi.fn(() => () => undefined),
+  };
+  const hostPort = {
+    accountId,
+    requestCancellation: vi.fn(),
+    retryScheduledTransport: vi.fn(),
+    retryLogicalRun: vi.fn(),
+  } as unknown as JarvisCommandCenterHostPort;
+  return { dataPort, hostPort };
+}
+
+function setReducedMotion(matches: boolean) {
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn(() => ({
+      matches,
+      media: '(prefers-reduced-motion: reduce)',
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  );
+}
+
 describe('VoiceModal hands-free turn-taking', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    setReducedMotion(false);
+    chatHookMocks.useChatMessages.mockReset().mockReturnValue([]);
     chatRoutingMocks.ensureJarvisChatForVoice.mockReset().mockResolvedValue('chat_voice');
     chatRoutingMocks.focusVoiceChat.mockReset();
     chatRoutingMocks.resolveVoiceChatTarget.mockReset().mockImplementation(
@@ -145,6 +185,7 @@ describe('VoiceModal hands-free turn-taking', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
   it('captures one immutable account/chat binding and keeps transcript and default sends pinned to it', async () => {
@@ -157,7 +198,12 @@ describe('VoiceModal hands-free turn-taking', () => {
       mentionedAgentIds: [],
     });
 
-    render(<VoiceModal />);
+    const bindingPort = commandCenterBinding();
+    render(
+      <JarvisCommandCenterProvider value={bindingPort}>
+        <VoiceModal />
+      </JarvisCommandCenterProvider>,
+    );
 
     await waitFor(() => expect(useVoiceStore.getState().session).not.toBeNull());
     expect(document.querySelector('[data-sik-evidence="voice.transcript"]')).toBeNull();
@@ -168,8 +214,18 @@ describe('VoiceModal hands-free turn-taking', () => {
     expect(Object.isFrozen(binding)).toBe(true);
 
     act(() => useUIStore.setState({ activeChatId: 'chat_changed_after_open' }));
-    fireEvent.click(screen.getByRole('button', { name: /Transcript/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Command Center/i }));
     await waitFor(() => expect(chatHookMocks.useChatMessages).toHaveBeenCalledWith('chat_voice'));
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+      'Outputs',
+      'Live Systems',
+    ]);
+    expect(screen.getByTitle(/Llama.3\.3/i)).not.toBeNull();
+    await waitFor(() =>
+      expect(bindingPort.dataPort.getRunsForChat).toHaveBeenCalledWith(
+        expect.objectContaining({ accountId: 'account-a', chatId: 'chat_voice' }),
+      ),
+    );
     expect(useVoiceStore.getState().session).toBe(binding);
 
     act(() => {
@@ -188,6 +244,94 @@ describe('VoiceModal hands-free turn-taking', () => {
     });
     expect(chatRoutingMocks.focusVoiceChat).toHaveBeenLastCalledWith('chat_voice');
     window.removeEventListener('jarvis:send', send as EventListener);
+  });
+
+  it('never mounts Command Center data from a different account session', async () => {
+    const bindingPort = commandCenterBinding('account-b');
+    render(
+      <JarvisCommandCenterProvider value={bindingPort}>
+        <VoiceModal />
+      </JarvisCommandCenterProvider>,
+    );
+
+    await waitFor(() => expect(useVoiceStore.getState().session?.accountId).toBe('account-a'));
+    fireEvent.click(screen.getByRole('button', { name: /Command Center/i }));
+
+    expect(screen.queryByRole('tab')).toBeNull();
+    expect(bindingPort.dataPort.getRunsForChat).not.toHaveBeenCalled();
+    expect(
+      screen.getByText('Command Center is unavailable for this voice session.'),
+    ).not.toBeNull();
+  });
+
+  it('keeps eight meaningful turns, expands long text, and does not yank a reader from history', async () => {
+    const longTail = `latest ${'voice session detail '.repeat(8)}`.trim();
+    const shortMultiline = 'first line\nsecond line\nthird line';
+    chatHookMocks.useChatMessages.mockReturnValue(
+      Array.from({ length: 10 }, (_, index) => ({
+        id: `message-${index + 1}`,
+        chat_id: 'chat_voice',
+        role: index % 2 === 0 ? 'user' : 'assistant',
+        parts: [
+          {
+            kind: 'text',
+            text: index === 9 ? longTail : index === 8 ? shortMultiline : `turn ${index + 1}`,
+          },
+        ],
+        created_at: index + 1,
+        updated_at: index + 1,
+      })) as never[],
+    );
+
+    render(<VoiceModal />);
+    await waitFor(() => expect(useVoiceStore.getState().session?.chatId).toBe('chat_voice'));
+    fireEvent.click(screen.getByRole('button', { name: /Command Center/i }));
+
+    expect(screen.queryByText('turn 1')).toBeNull();
+    expect(screen.queryByText('turn 2')).toBeNull();
+    expect(screen.getByText('turn 3')).not.toBeNull();
+    expect(screen.getByText(/first line\s+second line\s+third line/u)).not.toBeNull();
+    expect(screen.getByText(longTail)).not.toBeNull();
+
+    const showMore = screen.getAllByRole('button', { name: 'Show more' });
+    expect(showMore).toHaveLength(2);
+    expect(showMore[0]?.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(showMore[0]!);
+    expect(screen.getByRole('button', { name: 'Show less' }).getAttribute('aria-expanded')).toBe(
+      'true',
+    );
+
+    const transcript = screen.getByLabelText('Voice session transcript');
+    Object.defineProperties(transcript, {
+      scrollHeight: { configurable: true, value: 500 },
+      clientHeight: { configurable: true, value: 100 },
+    });
+    transcript.scrollTop = 100;
+    fireEvent.scroll(transcript);
+    act(() => useVoiceStore.getState().setPartialTranscript('new partial'));
+    expect(transcript.scrollTop).toBe(100);
+  });
+
+  it('removes outer panel and disclosure motion when the user prefers reduced motion', async () => {
+    setReducedMotion(true);
+    render(<VoiceModal />);
+    await waitFor(() => expect(useVoiceStore.getState().session?.chatId).toBe('chat_voice'));
+
+    const panel = screen.getByLabelText('Jarvis voice session');
+    expect(panel.getAttribute('data-reduced-motion')).toBe('true');
+    expect(panel.classList.contains('transition-[width]')).toBe(false);
+    expect(panel.getAttribute('initial')).toBeNull();
+    expect(panel.getAttribute('animate')).toBeNull();
+    expect(panel.getAttribute('exit')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /Command Center/i }));
+    const region = document.getElementById(
+      screen.getByRole('button', { name: /Command Center/i }).getAttribute('aria-controls')!,
+    );
+    expect(region).not.toBeNull();
+    expect(region?.getAttribute('initial')).toBeNull();
+    expect(region?.getAttribute('animate')).toBeNull();
+    expect(region?.getAttribute('exit')).toBeNull();
   });
 
   it('retries voice-session binding when the agent roster hydrates after the modal opens', async () => {
