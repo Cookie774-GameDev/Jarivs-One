@@ -429,6 +429,23 @@ const NO_OUTPUT_SCHEMA: JsonSchema = {
   additionalProperties: true,
 };
 
+function validateModelSwitchParameters(
+  input: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, unknown>> {
+  const record = plainRecord(input, 'chat.model.switch parameters');
+  assertExactKeys(record, ['request', 'needsImages', 'needsTools'], 'chat.model.switch parameters');
+  const request = nonblank(record.request, 'chat.model.switch request').trim();
+  if (request.length > 300) catalogError('chat.model.switch request is too long');
+  const validated: Record<string, unknown> = { request };
+  for (const key of ['needsImages', 'needsTools'] as const) {
+    const value = record[key];
+    if (value === undefined) continue;
+    if (typeof value !== 'boolean') catalogError(`chat.model.switch ${key} must be boolean`);
+    validated[key] = value;
+  }
+  return validated;
+}
+
 export const DEFAULT_JARVIS_ACTION_REGISTRATIONS = deepFreeze<
   readonly JarvisRegisteredActionDefinition[]
 >([
@@ -454,6 +471,48 @@ export const DEFAULT_JARVIS_ACTION_REGISTRATIONS = deepFreeze<
     credentialBindings: [],
     validateParameters: (input: Readonly<Record<string, unknown>>) => ({ ...input }),
     deriveTarget: () => ({ kind: 'app_resource', namespace: 'files', resourceId: 'search-index' }),
+  },
+  {
+    id: 'chat.model.switch',
+    version: 1,
+    title: 'Switch chat model',
+    description:
+      'Switch the active chat model after connection, capability, privacy, cost, and approval checks.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        request: {
+          type: 'string',
+          description: 'An exact supported model-switch request.',
+        },
+        needsImages: {
+          type: 'boolean',
+          description: 'Whether the next request requires image input.',
+        },
+        needsTools: {
+          type: 'boolean',
+          description: 'Whether the next request requires tool use.',
+        },
+      },
+      required: ['request'],
+      additionalProperties: false,
+    },
+    outputSchema: NO_OUTPUT_SCHEMA,
+    requiredCapabilities: ['chat.actions'],
+    requiredEntitlements: [],
+    risk: 'external-side-effect',
+    approval: 'always',
+    expectedEffect:
+      'Changes the active chat model while preserving JARVIS identity and workspace context.',
+    exposeToAI: true,
+    executor: { kind: 'builtin', registryActionId: 'chat.model.switch' },
+    credentialBindings: [],
+    validateParameters: validateModelSwitchParameters,
+    deriveTarget: () => ({
+      kind: 'app_resource',
+      namespace: 'chat-model',
+      resourceId: 'active',
+    }),
   },
   {
     id: 'terminal.create',

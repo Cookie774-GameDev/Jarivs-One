@@ -324,6 +324,50 @@ describe('runAction', () => {
     );
   });
 
+  it('dispatches the protected model switch with canonical approval correlation', async () => {
+    const registration = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS).resolve(
+      'chat.model.switch',
+    )!;
+    const definition = resolveAction('chat.model.switch')!;
+    const run = vi
+      .spyOn(definition, 'run')
+      .mockResolvedValue({ ok: true, summary: 'Canonical model switch completed.' });
+    const signal = new AbortController().signal;
+    const beginExternalEffect = vi.fn((begin) => ({
+      kind: 'committed' as const,
+      value: begin(signal),
+    }));
+    const dispatcher = createJarvisRegisteredBuiltinDispatcher();
+
+    await expect(
+      dispatcher({
+        registration,
+        params: { request: 'Switch to Gemini.', needsTools: true },
+        context: {
+          source: 'ai',
+          accountId: 'account-kernel',
+          runId: 'run-model-switch',
+          approvalId: 'approval-model-switch',
+          requestId: 'request-model-switch',
+          attemptNumber: 1,
+        },
+        execution: { beginExternalEffect } as never,
+      }),
+    ).resolves.toEqual({
+      kind: 'executor_returned',
+      result: { ok: true, summary: 'Canonical model switch completed.' },
+    });
+    expect(beginExternalEffect).toHaveBeenCalledOnce();
+    expect(run).toHaveBeenCalledWith(
+      { request: 'Switch to Gemini.', needsImages: false, needsTools: true },
+      expect.objectContaining({
+        source: 'ai',
+        approvalId: 'approval-model-switch',
+        signal,
+      }),
+    );
+  });
+
   it('omits command payloads from action diagnostics', async () => {
     const secretCommand = 'Write-Output PRIVATE_VALUE_DO_NOT_LOG';
     const result = await runAction(

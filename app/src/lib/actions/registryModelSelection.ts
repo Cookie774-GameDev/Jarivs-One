@@ -19,7 +19,7 @@ import {
   type JarvisModelSwitchCandidate,
 } from '@/lib/jarvis/modelSwitchDecision';
 import { deepFreezeJarvisCopy } from '@/lib/jarvis/requestEnvelope';
-import type { ActionDef, ActionResult } from './types';
+import type { ActionDef, ActionResult, ActionRunContext } from './types';
 
 type SingleModelSelection = Extract<ChatModelSelection, { mode: 'single' }>;
 
@@ -245,6 +245,24 @@ function selectionLabel(selection: SingleModelSelection): string {
   return `${selection.providerId}/${selection.modelId}`;
 }
 
+function hasCanonicalModelSwitchApproval(context: ActionRunContext): boolean {
+  return (
+    context.source === 'ai' &&
+    typeof context.accountId === 'string' &&
+    context.accountId.trim().length > 0 &&
+    typeof context.runId === 'string' &&
+    context.runId.trim().length > 0 &&
+    typeof context.approvalId === 'string' &&
+    context.approvalId.trim().length > 0 &&
+    typeof context.requestId === 'string' &&
+    context.requestId.trim().length > 0 &&
+    Number.isSafeInteger(context.attemptNumber) &&
+    Number(context.attemptNumber) > 0 &&
+    context.signal instanceof AbortSignal &&
+    !context.signal.aborted
+  );
+}
+
 function decisionFailureMessage(
   reason:
     | 'target_not_configured'
@@ -309,7 +327,7 @@ export function createModelSelectionActions(
           default: false,
         },
       ],
-      run: async (params) => {
+      run: async (params, context) => {
         const request = typeof params.request === 'string' ? params.request.trim() : '';
         if (!request) return fail('A model switch request is required.');
         if (request.length > 300) return fail('The model switch request is too long.');
@@ -338,9 +356,11 @@ export function createModelSelectionActions(
           return fail(decisionFailureMessage(decision.reason));
         }
         if (decision.status === 'approval_required') {
-          return fail(
-            `Additional approval required before this switch: ${decision.reasons.join(', ')}. No model change was made.`,
-          );
+          if (!hasCanonicalModelSwitchApproval(context)) {
+            return fail(
+              `Additional approval required before this switch: ${decision.reasons.join(', ')}. No model change was made.`,
+            );
+          }
         }
         if (decision.status === 'already_selected') {
           return {
@@ -348,7 +368,7 @@ export function createModelSelectionActions(
             summary: `${selectionLabel(decision.target)} is already selected. No model change was needed.`,
           };
         }
-        if (decision.status !== 'ready') {
+        if (decision.status !== 'ready' && decision.status !== 'approval_required') {
           return fail('The model switch decision could not be applied safely.');
         }
 

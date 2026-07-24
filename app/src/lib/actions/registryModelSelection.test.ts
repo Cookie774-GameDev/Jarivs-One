@@ -172,6 +172,69 @@ describe('chat.model.switch action', () => {
     expect(apply).not.toHaveBeenCalled();
   });
 
+  it('consumes privacy and cost approval only from a complete canonical execution context', async () => {
+    const initial = state({
+      chatModelSelection: selection('ollama', 'llama3.2'),
+      selectedModels: { ollama: 'llama3.2' },
+    });
+    const candidates = [
+      candidate('ollama', 'llama3.2', { costClass: 'free' }),
+      candidate('google', 'gemini', { costClass: 'premium' }),
+    ];
+    const legacy = setup({ initial, candidates });
+
+    await expect(
+      legacy.action.run(
+        { request: 'Switch to Gemini.' },
+        { source: 'ai', approvalId: 'approval-shaped-but-incomplete' },
+      ),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/additional approval required/i),
+    });
+    expect(legacy.apply).not.toHaveBeenCalled();
+
+    const correlationOnly = setup({ initial, candidates });
+    await expect(
+      correlationOnly.action.run(
+        { request: 'Switch to Gemini.' },
+        {
+          source: 'ai',
+          accountId: 'account-kernel',
+          runId: 'run-kernel',
+          approvalId: 'approval-kernel',
+          requestId: 'request-kernel',
+          attemptNumber: 1,
+        },
+      ),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/additional approval required/i),
+    });
+    expect(correlationOnly.apply).not.toHaveBeenCalled();
+
+    const canonical = setup({ initial, candidates });
+    await expect(
+      canonical.action.run(
+        { request: 'Switch to Gemini.' },
+        {
+          source: 'ai',
+          accountId: 'account-kernel',
+          runId: 'run-kernel',
+          approvalId: 'approval-kernel',
+          requestId: 'request-kernel',
+          attemptNumber: 1,
+          signal: new AbortController().signal,
+        },
+      ),
+    ).resolves.toMatchObject({
+      ok: true,
+      summary: expect.stringMatching(/Model switched.*google\/gemini/i),
+    });
+    expect(canonical.apply).toHaveBeenCalledOnce();
+    expect(canonical.getState().chatModelSelection).toEqual(selection('google', 'gemini'));
+  });
+
   it('returns a verified no-op when the requested model is already selected', async () => {
     const apply = vi.fn();
     const test = setup({

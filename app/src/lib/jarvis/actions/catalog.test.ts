@@ -60,10 +60,67 @@ describe('Jarvis action catalog', () => {
       })),
     ).toEqual([
       { id: 'file.search', risk: 'read-only', approval: 'never' },
+      { id: 'chat.model.switch', risk: 'external-side-effect', approval: 'always' },
       { id: 'terminal.create', risk: 'safe-write', approval: 'always' },
       { id: 'terminal.run', risk: 'external-side-effect', approval: 'always' },
       { id: 'task.cancel', risk: 'destructive', approval: 'always' },
     ]);
+  });
+
+  it('publishes a closed model-safe model-switch registration', () => {
+    const modelSwitch = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS).resolve(
+      'chat.model.switch',
+    );
+
+    expect(modelSwitch).toMatchObject({
+      id: 'chat.model.switch',
+      inputSchema: {
+        type: 'object',
+        required: ['request'],
+        additionalProperties: false,
+        properties: {
+          request: { type: 'string' },
+          needsImages: { type: 'boolean' },
+          needsTools: { type: 'boolean' },
+        },
+      },
+      requiredCapabilities: ['chat.actions'],
+      risk: 'external-side-effect',
+      approval: 'always',
+      executor: { kind: 'builtin', registryActionId: 'chat.model.switch' },
+      credentialBindings: [],
+    });
+    expect(
+      modelSwitch?.validateParameters({
+        request: '  Switch to Gemini.  ',
+        needsImages: true,
+        needsTools: false,
+      }),
+    ).toEqual({
+      request: 'Switch to Gemini.',
+      needsImages: true,
+      needsTools: false,
+    });
+    expect(
+      modelSwitch?.deriveTarget({
+        accountId: 'account-model-switch',
+        params: { request: 'Switch to Gemini.' },
+      }),
+    ).toEqual({
+      kind: 'app_resource',
+      namespace: 'chat-model',
+      resourceId: 'active',
+    });
+    expect(() =>
+      modelSwitch?.validateParameters({
+        request: 'Switch to Gemini.',
+        approvalId: 'must-not-be-model-controlled',
+      }),
+    ).toThrow(/unknown fields/i);
+    expect(() =>
+      modelSwitch?.validateParameters({ request: 'Switch to Gemini.', needsTools: 'yes' }),
+    ).toThrow(/needsTools/i);
+    expect(() => modelSwitch?.validateParameters({ request: ' '.repeat(2) })).toThrow(/request/i);
   });
 
   it('normalizes every executable action into a versioned typed definition', () => {

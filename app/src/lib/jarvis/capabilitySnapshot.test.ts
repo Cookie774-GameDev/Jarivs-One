@@ -64,12 +64,13 @@ describe('createJarvisCapabilitySnapshot', () => {
     ).actionSchemas;
 
     expect(schemas.map(({ id }) => id)).toEqual([
+      'chat.model.switch',
       'file.search',
       'task.cancel',
       'terminal.create',
       'terminal.run',
     ]);
-    expect(schemas[0]).toMatchObject({
+    expect(schemas[1]).toMatchObject({
       id: 'file.search',
       version: 1,
       inputSchema: {
@@ -80,10 +81,21 @@ describe('createJarvisCapabilitySnapshot', () => {
       risk: 'read-only',
       approval: 'never',
     });
-    expect(schemas[0]).not.toHaveProperty('executor');
-    expect(schemas[0]).not.toHaveProperty('credentialBindings');
-    expect(schemas[0]).not.toHaveProperty('validateParameters');
-    expect(schemas[0]).not.toHaveProperty('deriveTarget');
+    expect(schemas[0]).toMatchObject({
+      id: 'chat.model.switch',
+      inputSchema: {
+        required: ['request'],
+        additionalProperties: false,
+      },
+      risk: 'external-side-effect',
+      approval: 'always',
+    });
+    for (const schema of schemas) {
+      expect(schema).not.toHaveProperty('executor');
+      expect(schema).not.toHaveProperty('credentialBindings');
+      expect(schema).not.toHaveProperty('validateParameters');
+      expect(schema).not.toHaveProperty('deriveTarget');
+    }
     expect(Object.isFrozen(schemas)).toBe(true);
     expect(schemas.every(Object.isFrozen)).toBe(true);
   });
