@@ -25,6 +25,7 @@ describe('plugin catalog', () => {
         'slack',
         'mock-connector',
         'gmail',
+        'google-drive',
       ]),
     );
     expect(implemented.every((plugin) => plugin.tools.length > 0)).toBe(true);
@@ -61,6 +62,34 @@ describe('plugin catalog', () => {
     expect(JSON.stringify(gmail)).not.toMatch(/client_secret/i);
   });
 
+  it('publishes Google Drive as a fixed implemented provider with narrow desktop OAuth credentials', () => {
+    const drive = PLUGIN_CATALOG.find((plugin) => plugin.id === 'google-drive');
+
+    expect(drive).toMatchObject({
+      id: 'google-drive',
+      provider: 'Google',
+      authType: 'oauth',
+      status: 'implemented',
+      fields: [
+        { id: 'client_id', secret: false, required: true },
+        { id: 'refresh_token', secret: true, required: true },
+      ],
+      supportedFeatures: [
+        'file search',
+        'selected document reading',
+        'source links',
+        'approved Google document creation',
+      ],
+      tools: [
+        { name: 'files_search', readOnly: true },
+        { name: 'document_read', readOnly: true },
+        { name: 'document_create', readOnly: false },
+      ],
+    });
+    expect(drive?.limitations).toMatch(/restricted scope|provider verification/i);
+    expect(JSON.stringify(drive)).not.toMatch(/client_secret/i);
+  });
+
   it('excludes needs_credentials placeholders from the curated catalog', () => {
     expect(PLUGIN_CATALOG.every((plugin) => plugin.status !== 'needs_credentials')).toBe(true);
   });
@@ -69,8 +98,8 @@ describe('plugin catalog', () => {
     const stats = catalogStats();
     expect(stats).toEqual({
       total: 112,
-      implemented: 7,
-      configurable: 105,
+      implemented: 8,
+      configurable: 104,
       needsCredentials: 0,
       blocked: 0,
       withHttpTest: 87,

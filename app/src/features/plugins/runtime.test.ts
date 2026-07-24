@@ -893,6 +893,236 @@ describe('account-scoped plugin runtime', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(7);
   });
 
+  it('runs Drive through account grants, keeps creation approval-bound, and emits only canonical document artifacts', async () => {
+    const test = fixture({
+      randomIds: ['grant-drive-client', 'grant-drive-refresh'],
+      times: [100, 200, 300],
+    });
+    await test.runtime.management.saveCredential({
+      accountId: 'account-a',
+      pluginId: 'google-drive',
+      fieldId: 'client_id',
+      value: 'desktop-client.apps.googleusercontent.com',
+    });
+    await test.runtime.management.saveCredential({
+      accountId: 'account-a',
+      pluginId: 'google-drive',
+      fieldId: 'refresh_token',
+      value: 'drive-refresh-value-that-must-never-leak',
+    });
+    const token = () =>
+      new Response(
+        JSON.stringify({
+          access_token: 'drive-access-value-that-must-never-leak',
+          token_type: 'Bearer',
+          scope:
+            'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file',
+        }),
+        { status: 200 },
+      );
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(token())
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            user: { displayName: 'Drive Person', emailAddress: 'person@example.com' },
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(token())
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ files: [], incompleteSearch: false }), {
+          status: 200,
+        }),
+      )
+      .mockResolvedValueOnce(token())
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ files: [], incompleteSearch: false }), {
+          status: 200,
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: 'created-drive-doc-123',
+            name: 'Approved project brief',
+            mimeType: 'application/vnd.google-apps.document',
+            modifiedTime: '2026-07-24T14:30:00.000Z',
+            capabilities: { canDownload: true },
+            webViewLink: 'https://attacker.invalid/untrusted-provider-url',
+          }),
+          { status: 200 },
+        ),
+      );
+
+    await expect(
+      test.runtime.management.testConnection({
+        accountId: 'account-a',
+        pluginId: 'google-drive',
+      }),
+    ).resolves.toEqual({ ok: true, accountLabel: 'person@example.com' });
+    expect(test.connectionRows.get('account-a\u0000google-drive')).toMatchObject({
+      state: 'connected',
+      enabled: true,
+      accountLabel: 'person@example.com',
+      configuredFields: ['client_id', 'refresh_token'],
+    });
+
+    const catalog = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS);
+    const searchAction = catalog.resolve('google-drive.files.search');
+    const createAction = catalog.resolve('google-drive.document.create');
+    if (
+      !searchAction ||
+      searchAction.executor.kind !== 'plugin_tool' ||
+      !createAction ||
+      createAction.executor.kind !== 'plugin_tool'
+    ) {
+      throw new Error('expected fixed Google Drive registrations');
+    }
+    const context = Object.freeze({
+      source: 'ai' as const,
+      accountId: 'account-a',
+      runId: 'run-drive',
+      approvalId: 'approval-drive',
+      requestId: 'request-drive',
+      attemptNumber: 1,
+      signal: new AbortController().signal,
+    });
+
+    await expect(
+      test.runtime.registeredTools.execute({
+        accountId: 'account-a',
+        registration: searchAction.executor,
+        params: { term: 'project plan', maxResults: 5 },
+        context,
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      summary: '0 Google Drive files examined; 0 selected results returned.',
+      data: {
+        contentTrust: 'external_untrusted',
+        filesExamined: 0,
+        filesSelected: 0,
+        incompleteSearch: false,
+        files: [],
+      },
+    });
+
+    await expect(
+      test.runtime.registeredTools.execute({
+        accountId: 'account-a',
+        registration: createAction.executor,
+        params: {
+          title: 'Approval bypass attempt',
+          content: 'Must not be created.',
+        },
+        context,
+      }),
+    ).rejects.toThrow(/approval_bound_execution_required/i);
+    expect(fetchSpy).toHaveBeenCalledTimes(4);
+
+    const clientAuthorization = await test.credentialAuthorization.authorize({
+      accountId: 'account-a',
+      locator: { pluginId: 'google-drive', fieldId: 'client_id' },
+    });
+    const refreshAuthorization = await test.credentialAuthorization.authorize({
+      accountId: 'account-a',
+      locator: { pluginId: 'google-drive', fieldId: 'refresh_token' },
+    });
+    if (!clientAuthorization.authorized || !refreshAuthorization.authorized) {
+      throw new Error('expected Google Drive credential authorizations');
+    }
+    await expect(
+      test.runtime.registeredTools.startPrepared({
+        accountId: 'account-a',
+        registration: createAction.executor,
+        params: {
+          title: 'Mismatched credential attempt',
+          content: 'Must not be created.',
+        },
+        context,
+        credentialValues: {
+          client_id: 'desktop-client.apps.googleusercontent.com',
+          refresh_token: 'different-refresh-value',
+        },
+        credentialAuthorizations: [
+          clientAuthorization.authorization,
+          refreshAuthorization.authorization,
+        ],
+      }),
+    ).rejects.toThrow(/prepared_credential_value_mismatch/i);
+    expect(fetchSpy).toHaveBeenCalledTimes(4);
+
+    const result = await test.runtime.registeredTools.startPrepared({
+      accountId: 'account-a',
+      registration: createAction.executor,
+      params: {
+        title: 'Approved project brief',
+        content: 'The approved document body.',
+      },
+      context,
+      credentialValues: {
+        client_id: 'desktop-client.apps.googleusercontent.com',
+        refresh_token: 'drive-refresh-value-that-must-never-leak',
+      },
+      credentialAuthorizations: [
+        clientAuthorization.authorization,
+        refreshAuthorization.authorization,
+      ],
+    });
+    if (!result.ok) throw new Error('expected successful Google Drive document result');
+    expect(JSON.stringify(result)).not.toMatch(
+      /refresh-value|access-value|attacker\.invalid|approved document body/i,
+    );
+
+    const evidence = Object.freeze({
+      producerId: 'plugin_result' as const,
+      accountId: context.accountId,
+      runId: context.runId,
+      requestId: context.requestId,
+      attemptNumber: context.attemptNumber,
+      resultRef: 'jresult_drive_document',
+      state: 'succeeded' as const,
+      verifiedAt: 1_786_300_400_000,
+      pluginId: 'google-drive',
+      invocationId: `approval:${context.approvalId}`,
+    });
+    const artifacts = await test.runtime.canonicalArtifacts.consumeCanonicalResult({
+      evidence,
+      registration: createAction.executor,
+      result,
+    });
+    expect(artifacts).toEqual([
+      expect.objectContaining({
+        artifact: expect.objectContaining({
+          kind: 'provider_result',
+          title: 'Google Drive document: Approved project brief',
+          safeSummary: 'Created Google Drive document; open Drive for current state.',
+        }),
+        backing: expect.objectContaining({
+          kind: 'producer_result',
+          content: expect.stringContaining('"id":"created-drive-doc-123"'),
+        }),
+      }),
+      expect.objectContaining({
+        artifact: expect.objectContaining({
+          kind: 'link',
+          title: 'Open Google Drive document',
+        }),
+        backing: {
+          kind: 'uri',
+          uri: 'https://docs.google.com/document/d/created-drive-doc-123/edit',
+        },
+      }),
+    ]);
+    await expect(test.runtime.canonicalArtifacts.authority.verify(evidence)).resolves.toBe(
+      evidence,
+    );
+    expect(fetchSpy).toHaveBeenCalledTimes(7);
+  });
+
   it('executes fixed GitHub reads against exact endpoints and returns only bounded normalized data', async () => {
     const test = fixture();
     await test.runtime.management.saveCredential({

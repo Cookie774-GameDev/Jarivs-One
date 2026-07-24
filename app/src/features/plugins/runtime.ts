@@ -18,6 +18,11 @@ import type { PluginStore } from './store';
 import type { PluginHttpTest, PluginManifest, PluginTestResult } from './types';
 import { isConnectableStatus } from './types';
 import { gmailArtifactDrafts, runGmailTool, testGmailConnection } from './gmailProvider';
+import {
+  googleDriveArtifactDrafts,
+  runGoogleDriveTool,
+  testGoogleDriveConnection,
+} from './googleDriveProvider';
 import type {
   CanonicalPluginEvidence,
   CanonicalPluginEvidenceAuthority,
@@ -718,6 +723,9 @@ async function testManifestConnection(
       throw safeFailure('required_field_unavailable');
   }
   if (manifest.id === 'gmail') return await testGmailConnection({ values, signal });
+  if (manifest.id === 'google-drive') {
+    return await testGoogleDriveConnection({ values, signal });
+  }
   if (manifest.httpTest) return await runHttpTest(manifest, values, manifest.httpTest, signal);
   if (
     manifest.authType === 'oauth' ||
@@ -1487,8 +1495,9 @@ export function createAccountScopedPluginRuntime(input: {
     params: Readonly<Record<string, unknown>>;
     values: CredentialMap;
     signal: AbortSignal;
+    idempotencyKey?: string;
   }): Promise<ActionResult> {
-    const { manifest, tool, params, values, signal } = inputValue;
+    const { manifest, tool, params, values, signal, idempotencyKey } = inputValue;
     if (manifest.id === 'mock-connector' && tool.name === 'ping') {
       return Promise.resolve({
         ok: true,
@@ -1514,6 +1523,15 @@ export function createAccountScopedPluginRuntime(input: {
     }
     if (manifest.id === 'gmail') {
       return runGmailTool({ toolName: tool.name, params, values, signal });
+    }
+    if (manifest.id === 'google-drive') {
+      return runGoogleDriveTool({
+        toolName: tool.name,
+        params,
+        values,
+        signal,
+        idempotencyKey,
+      });
     }
     return testManifestConnection(manifest, values, signal).then((result): ActionResult => {
       if (!result.ok) return { ok: false, error: result.error ?? 'Plugin connection failed.' };
@@ -1638,6 +1656,11 @@ export function createAccountScopedPluginRuntime(input: {
               params,
               values,
               signal: effectSignal,
+              idempotencyKey: JSON.stringify([
+                context.runId,
+                context.requestId,
+                context.approvalId,
+              ]),
             }),
           ),
         );
@@ -1672,6 +1695,7 @@ export function createAccountScopedPluginRuntime(input: {
             params,
             values,
             signal: effectSignal,
+            idempotencyKey: JSON.stringify([context.runId, context.requestId, context.approvalId]),
           }),
         );
         assertActiveAccount(accountId, input.activeAccountId);
@@ -1765,7 +1789,9 @@ export function createAccountScopedPluginRuntime(input: {
         drafts =
           registration.pluginId === 'gmail'
             ? gmailArtifactDrafts({ evidence, registration, result })
-            : githubArtifactDrafts({ evidence, registration, result });
+            : registration.pluginId === 'google-drive'
+              ? googleDriveArtifactDrafts({ evidence, registration, result })
+              : githubArtifactDrafts({ evidence, registration, result });
       } catch {
         return null;
       }

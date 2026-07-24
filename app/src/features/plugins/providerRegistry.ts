@@ -121,6 +121,56 @@ export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
       },
     ],
   },
+  'google-drive': {
+    provider: 'Google',
+    description:
+      'Search bounded Google Drive metadata, read exact selected supported documents, return source links, and create a Google document only after explicit approval.',
+    authType: 'oauth',
+    fields: [
+      text(
+        'client_id',
+        'Desktop OAuth client ID',
+        '...apps.googleusercontent.com',
+        'Use a Google OAuth client registered as a Desktop app. Installed apps are public clients and must not rely on a client secret.',
+      ),
+      token(
+        'refresh_token',
+        'OAuth refresh grant',
+        'Stored in the OS keychain',
+        'Complete Google consent for the drive.readonly and drive.file scopes. The refresh grant stays in the OS keychain; access tokens remain in memory.',
+      ),
+    ],
+    status: 'implemented',
+    docsUrl: 'https://developers.google.com/workspace/drive/api/reference/rest/v3',
+    credentialUrl: 'https://console.cloud.google.com/apis/credentials',
+    help: 'Use a Desktop OAuth client and a refresh grant authorized for the narrow drive.readonly and drive.file scopes. VibeSpace constructs fixed Drive requests locally and requires approval before document creation.',
+    tags: ['google', 'drive', 'oauth', 'documents', 'restricted scope'],
+    setupSteps: [
+      'Enable the Google Drive API and create a Desktop OAuth client in Google Cloud.',
+      'Authorize drive.readonly and drive.file in the system browser using PKCE and a loopback callback.',
+      'Save the client ID and resulting refresh grant, then run Test Connection.',
+    ],
+    supportedFeatures: [
+      'file search',
+      'selected document reading',
+      'source links',
+      'approved Google document creation',
+    ],
+    limitations:
+      'Drive read permission is a restricted scope. Public production use requires Google provider verification and may require an annual security assessment. This connector reads Google Docs and bounded text formats; it does not parse PDF or binary files.',
+    tools: [
+      readTool('files_search', 'Search bounded Google Drive file metadata.'),
+      readTool(
+        'document_read',
+        'Read one exact supported Drive document as external untrusted context.',
+      ),
+      {
+        name: 'document_create',
+        description: 'Create one Google document after explicit approval.',
+        readOnly: false,
+      },
+    ],
+  },
   openai: {
     provider: 'OpenAI',
     authType: 'api_key',

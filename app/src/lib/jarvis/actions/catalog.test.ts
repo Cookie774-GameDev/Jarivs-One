@@ -81,6 +81,13 @@ describe('Jarvis action catalog', () => {
         approval: 'always',
       },
       { id: 'gmail.draft.send', risk: 'external-side-effect', approval: 'always' },
+      { id: 'google-drive.files.search', risk: 'read-only', approval: 'never' },
+      { id: 'google-drive.document.read', risk: 'read-only', approval: 'never' },
+      {
+        id: 'google-drive.document.create',
+        risk: 'external-side-effect',
+        approval: 'always',
+      },
       { id: 'chat.model.switch', risk: 'external-side-effect', approval: 'always' },
       { id: 'mcp.invoke', risk: 'external-side-effect', approval: 'always' },
       { id: 'terminal.create', risk: 'safe-write', approval: 'always' },
@@ -334,7 +341,7 @@ describe('Jarvis action catalog', () => {
     ).toThrow(/model-visible|toolName/i);
   });
 
-  it('publishes only fixed model-safe GitHub and Gmail plugin registrations with account-bound credentials', () => {
+  it('publishes only fixed model-safe GitHub, Gmail, and Drive registrations with account-bound credentials', () => {
     const catalog = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS);
     const identity = catalog.resolve('github.identity');
     const repository = catalog.resolve('github.repository.read');
@@ -364,6 +371,9 @@ describe('Jarvis action catalog', () => {
       'gmail.draft.create',
       'gmail.reply_draft.create',
       'gmail.draft.send',
+      'google-drive.files.search',
+      'google-drive.document.read',
+      'google-drive.document.create',
     ]);
     expect(identity).toMatchObject({
       requiredCapabilities: ['plugin.github.identity'],
@@ -673,6 +683,119 @@ describe('Jarvis action catalog', () => {
       pluginId: 'gmail',
       toolName: 'draft_send',
       resourceId: `draft_123-abc@${draftFingerprint}`,
+    });
+  });
+
+  it('publishes bounded Drive reads and always-approved document creation without raw queries or credentials', () => {
+    const catalog = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS);
+    const search = catalog.resolve('google-drive.files.search');
+    const read = catalog.resolve('google-drive.document.read');
+    const create = catalog.resolve('google-drive.document.create');
+    const credentials = [
+      {
+        field: 'googleDriveClientIdGrant',
+        locator: { pluginId: 'google-drive', fieldId: 'client_id' },
+      },
+      {
+        field: 'googleDriveRefreshGrant',
+        locator: { pluginId: 'google-drive', fieldId: 'refresh_token' },
+      },
+    ];
+
+    for (const [registration, id, toolName, capability] of [
+      [search, 'google-drive.files.search', 'files_search', 'plugin.google-drive.files_search'],
+      [read, 'google-drive.document.read', 'document_read', 'plugin.google-drive.document_read'],
+    ] as const) {
+      expect(registration).toMatchObject({
+        id,
+        risk: 'read-only',
+        approval: 'never',
+        requiredCapabilities: [capability],
+        executor: { kind: 'plugin_tool', pluginId: 'google-drive', toolName },
+        credentialBindings: credentials,
+        inputSchema: { type: 'object', additionalProperties: false },
+      });
+      expect(JSON.stringify(registration?.inputSchema)).not.toMatch(
+        /token|credential|secret|clientId|rawQuery/i,
+      );
+    }
+    expect(create).toMatchObject({
+      id: 'google-drive.document.create',
+      risk: 'external-side-effect',
+      approval: 'always',
+      requiredCapabilities: ['plugin.google-drive.document_create'],
+      executor: {
+        kind: 'plugin_tool',
+        pluginId: 'google-drive',
+        toolName: 'document_create',
+      },
+      credentialBindings: credentials,
+      inputSchema: { type: 'object', additionalProperties: false },
+    });
+    expect(JSON.stringify(create?.inputSchema)).not.toMatch(
+      /token|credential|secret|clientId|rawQuery/i,
+    );
+
+    expect(search?.validateParameters({ term: '  project plan  ', maxResults: 10 })).toEqual({
+      term: 'project plan',
+      maxResults: 10,
+    });
+    expect(read?.validateParameters({ fileId: 'drive-file_123' })).toEqual({
+      fileId: 'drive-file_123',
+    });
+    expect(
+      create?.validateParameters({
+        title: '  Approved project brief  ',
+        content: 'Line one.\r\n\r\nLine two.',
+      }),
+    ).toEqual({
+      title: 'Approved project brief',
+      content: 'Line one.\n\nLine two.',
+    });
+    expect(() =>
+      search?.validateParameters({
+        term: 'project',
+        maxResults: 10,
+        rawQuery: "trashed = true or name != ''",
+      }),
+    ).toThrow(/unknown fields/i);
+    expect(() =>
+      read?.validateParameters({
+        fileId: '../private',
+      }),
+    ).toThrow(/fileId/i);
+    expect(() =>
+      create?.validateParameters({
+        title: 'Injected\r\nHeader: value',
+        content: 'Safe body.',
+      }),
+    ).toThrow(/title/i);
+    expect(
+      read?.deriveTarget({
+        accountId: 'account-drive',
+        params: { fileId: 'drive-file_123' },
+      }),
+    ).toEqual({
+      kind: 'plugin_tool',
+      accountId: 'account-drive',
+      pluginId: 'google-drive',
+      toolName: 'document_read',
+      resourceId: 'drive-file_123',
+    });
+    expect(
+      create?.deriveTarget({
+        accountId: 'account-drive',
+        params: {
+          title: 'Approved project brief',
+          content: 'Safe body.',
+        },
+      }),
+    ).toEqual({
+      kind: 'plugin_tool',
+      accountId: 'account-drive',
+      pluginId: 'google-drive',
+      toolName: 'document_create',
+      resourceId: 'new-document',
     });
   });
 });

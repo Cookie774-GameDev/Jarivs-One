@@ -456,6 +456,10 @@ const GMAIL_QUERY_MAX = 500;
 const GMAIL_SUBJECT_MAX = 200;
 const GMAIL_BODY_MAX = 50_000;
 const GMAIL_RECIPIENT_MAX = 20;
+const GOOGLE_DRIVE_FILE_ID = /^[A-Za-z0-9_-]{3,256}$/;
+const GOOGLE_DRIVE_SEARCH_TERM_MAX = 256;
+const GOOGLE_DRIVE_TITLE_MAX = 150;
+const GOOGLE_DRIVE_CONTENT_MAX = 50_000;
 const MCP_SERVER_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$/;
 const MCP_TOOL_NAME = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
 const MAX_MCP_INPUT_JSON_CHARS = 256 * 1024;
@@ -825,6 +829,185 @@ const GMAIL_ACTION_REGISTRATIONS: readonly JarvisRegisteredActionDefinition[] = 
       'Revalidates and sends one unchanged approved Gmail draft; Gmail atomically removes the sent draft.',
     validateParameters: validateGmailDraftSendParameters,
     resourceId: (params) => `${params.draftId}@${params.draftFingerprint}`,
+  }),
+];
+
+function googleDriveFileId(value: unknown): string {
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  if (!GOOGLE_DRIVE_FILE_ID.test(normalized)) catalogError('Google Drive fileId is invalid');
+  return normalized;
+}
+
+function googleDriveSearchParameters(
+  input: Readonly<Record<string, unknown>>,
+): Readonly<{ term: string; maxResults: number }> {
+  const record = plainRecord(input, 'google-drive.files.search parameters');
+  assertExactKeys(record, ['term', 'maxResults'], 'google-drive.files.search parameters');
+  const term = typeof record.term === 'string' ? record.term.trim().normalize('NFC') : '';
+  if (
+    !term ||
+    Array.from(term).length > GOOGLE_DRIVE_SEARCH_TERM_MAX ||
+    /[\u0000-\u001f\u007f]/.test(term)
+  ) {
+    catalogError('Google Drive search term is invalid');
+  }
+  const maxResults = record.maxResults === undefined ? 10 : record.maxResults;
+  if (
+    !Number.isSafeInteger(maxResults) ||
+    (maxResults as number) < 1 ||
+    (maxResults as number) > 20
+  ) {
+    catalogError('Google Drive maxResults is invalid');
+  }
+  return { term, maxResults: maxResults as number };
+}
+
+function googleDriveReadParameters(
+  input: Readonly<Record<string, unknown>>,
+): Readonly<{ fileId: string }> {
+  const record = plainRecord(input, 'google-drive.document.read parameters');
+  assertExactKeys(record, ['fileId'], 'google-drive.document.read parameters');
+  return { fileId: googleDriveFileId(record.fileId) };
+}
+
+function googleDriveCreateParameters(
+  input: Readonly<Record<string, unknown>>,
+): Readonly<{ title: string; content: string }> {
+  const record = plainRecord(input, 'google-drive.document.create parameters');
+  assertExactKeys(record, ['title', 'content'], 'google-drive.document.create parameters');
+  const title = typeof record.title === 'string' ? record.title.trim().normalize('NFC') : '';
+  if (
+    !title ||
+    Array.from(title).length > GOOGLE_DRIVE_TITLE_MAX ||
+    /[\u0000-\u001f\u007f]/.test(title)
+  ) {
+    catalogError('Google Drive title is invalid');
+  }
+  if (typeof record.content !== 'string') catalogError('Google Drive content is invalid');
+  const content = record.content.normalize('NFC').replace(/\r\n?/g, '\n');
+  if (
+    !content.trim() ||
+    Array.from(content).length > GOOGLE_DRIVE_CONTENT_MAX ||
+    /[\u0000\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(content)
+  ) {
+    catalogError('Google Drive content is invalid');
+  }
+  return { title, content };
+}
+
+const GOOGLE_DRIVE_CREDENTIAL_BINDINGS: readonly JarvisActionCredentialBinding[] = [
+  {
+    field: 'googleDriveClientIdGrant',
+    locator: { pluginId: 'google-drive', fieldId: 'client_id' },
+  },
+  {
+    field: 'googleDriveRefreshGrant',
+    locator: { pluginId: 'google-drive', fieldId: 'refresh_token' },
+  },
+];
+
+function googleDriveAction(input: {
+  id: string;
+  title: string;
+  description: string;
+  toolName: string;
+  capability: string;
+  inputSchema: JsonSchema;
+  write: boolean;
+  expectedEffect: string;
+  validateParameters(value: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>>;
+  resourceId(params: Readonly<Record<string, unknown>>): string;
+}): JarvisRegisteredActionDefinition {
+  return {
+    id: input.id,
+    version: 1,
+    title: input.title,
+    description: input.description,
+    inputSchema: input.inputSchema,
+    outputSchema: NO_OUTPUT_SCHEMA,
+    requiredCapabilities: [input.capability],
+    requiredEntitlements: [],
+    risk: input.write ? 'external-side-effect' : 'read-only',
+    approval: input.write ? 'always' : 'never',
+    expectedEffect: input.expectedEffect,
+    exposeToAI: true,
+    executor: {
+      kind: 'plugin_tool',
+      pluginId: 'google-drive',
+      toolName: input.toolName,
+    },
+    credentialBindings: GOOGLE_DRIVE_CREDENTIAL_BINDINGS,
+    validateParameters: input.validateParameters,
+    deriveTarget: ({ accountId, params }) => ({
+      kind: 'plugin_tool',
+      accountId,
+      pluginId: 'google-drive',
+      toolName: input.toolName,
+      resourceId: input.resourceId(input.validateParameters(params)),
+    }),
+  };
+}
+
+const GOOGLE_DRIVE_ACTION_REGISTRATIONS: readonly JarvisRegisteredActionDefinition[] = [
+  googleDriveAction({
+    id: 'google-drive.files.search',
+    title: 'Search Google Drive files',
+    description:
+      'Search bounded Google Drive metadata using one locally escaped name/content term.',
+    toolName: 'files_search',
+    capability: 'plugin.google-drive.files_search',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        term: { type: 'string' },
+        maxResults: { type: 'number', default: 10 },
+      },
+      required: ['term'],
+      additionalProperties: false,
+    },
+    write: false,
+    expectedEffect: 'Reads bounded Google Drive file metadata without retrieving file contents.',
+    validateParameters: googleDriveSearchParameters,
+    resourceId: () => 'search',
+  }),
+  googleDriveAction({
+    id: 'google-drive.document.read',
+    title: 'Read Google Drive document',
+    description:
+      'Read one exact selected supported Google Drive document as bounded external untrusted context.',
+    toolName: 'document_read',
+    capability: 'plugin.google-drive.document_read',
+    inputSchema: {
+      type: 'object',
+      properties: { fileId: { type: 'string' } },
+      required: ['fileId'],
+      additionalProperties: false,
+    },
+    write: false,
+    expectedEffect:
+      'Reads one exact selected Google Doc or supported text file after verifying download permission.',
+    validateParameters: googleDriveReadParameters,
+    resourceId: (params) => String(params.fileId),
+  }),
+  googleDriveAction({
+    id: 'google-drive.document.create',
+    title: 'Create Google Drive document',
+    description: 'Create one bounded Google document after explicit approval.',
+    toolName: 'document_create',
+    capability: 'plugin.google-drive.document_create',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string' },
+        content: { type: 'string' },
+      },
+      required: ['title', 'content'],
+      additionalProperties: false,
+    },
+    write: true,
+    expectedEffect: 'Creates one Google document from the exact approved title and text content.',
+    validateParameters: googleDriveCreateParameters,
+    resourceId: () => 'new-document',
   }),
 ];
 
@@ -1395,6 +1578,7 @@ export const DEFAULT_JARVIS_ACTION_REGISTRATIONS = deepFreeze<
     },
   },
   ...GMAIL_ACTION_REGISTRATIONS,
+  ...GOOGLE_DRIVE_ACTION_REGISTRATIONS,
   {
     id: 'chat.model.switch',
     version: 1,
