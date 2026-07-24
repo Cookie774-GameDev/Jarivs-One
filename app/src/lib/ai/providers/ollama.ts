@@ -89,6 +89,26 @@ export function buildOllamaSystemPrompt(agentPrompt: string | undefined): string
   return base ? `${OLLAMA_JARVIS_STYLE_PROMPT}\n\n${base}` : OLLAMA_JARVIS_STYLE_PROMPT;
 }
 
+export function buildOllamaRequestBody(
+  req: LLMRequest,
+  model = req.agent.model.model || OLLAMA_DEFAULT_MODEL,
+) {
+  const systemPrompt = req.systemPrompt ?? buildOllamaSystemPrompt(req.agent.system_prompt);
+  return {
+    model,
+    messages: [
+      { role: 'system' as const, content: systemPrompt },
+      ...compactOllamaMessages(req.messages).map((message) => ({
+        role: message.role,
+        content: llmContentToText(message.content),
+      })),
+    ],
+    stream: true,
+    keep_alive: OLLAMA_CHAT_KEEP_ALIVE,
+    options: ollamaChatOptions(req),
+  };
+}
+
 /** Maximum response size for a single chat completion (10 MB). */
 const MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
 
@@ -976,14 +996,8 @@ export const ollamaProvider: LLMProvider = {
       );
     }
 
-    const systemPrompt = req.systemPrompt ?? buildOllamaSystemPrompt(req.agent.system_prompt);
-    const messages = [
-      { role: 'system' as const, content: systemPrompt },
-      ...compactOllamaMessages(req.messages).map((m) => ({
-        role: m.role,
-        content: llmContentToText(m.content),
-      })),
-    ];
+    const body = buildOllamaRequestBody(req, model);
+    const { messages } = body;
 
     // Packaged Tauri build: stream chat through the Rust reqwest command (no
     // Origin header → Ollama never 403s). Deltas arrive on a per-request event.
@@ -1058,14 +1072,6 @@ export const ollamaProvider: LLMProvider = {
         finish_reason: undefined,
       };
     }
-
-    const body = {
-      model,
-      messages,
-      stream: true,
-      keep_alive: OLLAMA_CHAT_KEEP_ALIVE,
-      options: ollamaChatOptions(req),
-    };
 
     let res: Response;
     try {

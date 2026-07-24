@@ -40,6 +40,28 @@ function toOpenAiContent(content: string | LLMContentPart[]) {
   });
 }
 
+export function buildOpenAIRequestBody(req: LLMRequest) {
+  const model = req.agent.model.model || OPENAI_DEFAULT_MODEL;
+  const systemPrompt = systemPromptForRequest(req);
+  const messages = [
+    { role: 'system' as const, content: systemPrompt },
+    ...req.messages
+      .filter((message) => message.role !== 'system')
+      .map((message) => ({
+        role: message.role,
+        content: toOpenAiContent(message.content),
+      })),
+  ];
+  return {
+    model,
+    messages,
+    stream: true,
+    stream_options: { include_usage: true },
+    temperature: req.temperature ?? req.agent.temperature ?? 0.7,
+    max_tokens: req.max_output_tokens ?? req.agent.max_output_tokens ?? 4096,
+  };
+}
+
 export const openaiProvider: LLMProvider = {
   id: 'openai',
   name: 'OpenAI',
@@ -54,29 +76,7 @@ export const openaiProvider: LLMProvider = {
     if (!apiKey) throw new Error('OpenAI API key not set');
 
     const model = req.agent.model.model || OPENAI_DEFAULT_MODEL;
-    const systemPrompt = systemPromptForRequest(req);
-
-    // OpenAI puts the system prompt in the messages array (role: 'system').
-    // Strip any existing system messages from the user list to avoid duplicates.
-    const messages = [
-      { role: 'system' as const, content: systemPrompt },
-      ...req.messages
-        .filter((m) => m.role !== 'system')
-        .map((m) => ({
-          role: m.role,
-          content: toOpenAiContent(m.content),
-        })),
-    ];
-
-    const body = {
-      model,
-      messages,
-      stream: true,
-      // Asks the API to include a final usage block in the stream.
-      stream_options: { include_usage: true },
-      temperature: req.temperature ?? req.agent.temperature ?? 0.7,
-      max_tokens: req.max_output_tokens ?? req.agent.max_output_tokens ?? 4096,
-    };
+    const body = buildOpenAIRequestBody(req);
 
     const res = await fetch(API_URL, {
       method: 'POST',
@@ -147,7 +147,7 @@ export const openaiProvider: LLMProvider = {
 
     if (inputTokens === 0) {
       const inputText = [
-        systemPrompt,
+        systemPromptForRequest(req),
         ...req.messages.map((m) => llmContentToText(m.content)),
       ].join('\n');
       inputTokens = estimateInputTokens(inputText);

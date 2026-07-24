@@ -51,6 +51,28 @@ function geminiParts(content: string | LLMContentPart[]) {
   });
 }
 
+export function buildGoogleRequestBody(req: LLMRequest) {
+  const contents = req.messages
+    .filter((message) => message.role !== 'system')
+    .map((message) => ({
+      role: geminiRole(message.role),
+      parts: geminiParts(message.content),
+    }));
+  if (contents.length === 0 || contents[0]?.role !== 'user') {
+    contents.unshift({ role: 'user', parts: [{ text: '' }] });
+  }
+  return {
+    contents,
+    systemInstruction: {
+      parts: [{ text: systemPromptForRequest(req) }],
+    },
+    generationConfig: {
+      temperature: req.temperature ?? req.agent.temperature ?? 0.7,
+      maxOutputTokens: req.max_output_tokens ?? req.agent.max_output_tokens ?? 4096,
+    },
+  };
+}
+
 export const googleProvider: LLMProvider = {
   id: 'google',
   name: 'Google',
@@ -65,31 +87,7 @@ export const googleProvider: LLMProvider = {
     if (!apiKey) throw new Error('Google API key not set');
 
     const model = req.agent.model.model || GOOGLE_DEFAULT_MODEL;
-    const systemPrompt = systemPromptForRequest(req);
-
-    const contents = req.messages
-      .filter((m) => m.role !== 'system')
-      .map((m) => ({
-        role: geminiRole(m.role),
-        parts: geminiParts(m.content),
-      }));
-
-    // Gemini requires the first turn to be `user`. If for any reason it's not,
-    // prepend an empty user turn (parallels what Anthropic needs).
-    if (contents.length === 0 || contents[0]?.role !== 'user') {
-      contents.unshift({ role: 'user', parts: [{ text: '' }] });
-    }
-
-    const body = {
-      contents,
-      systemInstruction: {
-        parts: [{ text: systemPrompt }],
-      },
-      generationConfig: {
-        temperature: req.temperature ?? req.agent.temperature ?? 0.7,
-        maxOutputTokens: req.max_output_tokens ?? req.agent.max_output_tokens ?? 4096,
-      },
-    };
+    const body = buildGoogleRequestBody(req);
 
     // Send the key via header instead of `?key=` so it never appears in
     // URLs (DevConsole fetch log, proxies, browser devtools network tab).
@@ -162,7 +160,9 @@ export const googleProvider: LLMProvider = {
 
     if (inputTokens === 0) {
       const inputText =
-        systemPrompt + '\n' + req.messages.map((m) => llmContentToText(m.content)).join('\n');
+        (body.systemInstruction.parts[0]?.text ?? '') +
+        '\n' +
+        req.messages.map((m) => llmContentToText(m.content)).join('\n');
       inputTokens = estimateInputTokens(inputText);
     }
     if (outputTokens === 0) outputTokens = estimateInputTokens(acc);

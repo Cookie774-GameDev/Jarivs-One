@@ -185,21 +185,29 @@ export function lintJarvisProse(
     );
   }
   const status = facts.executionState?.status;
-  const completionClaims = prose.replace(
-    /\b(?:not|never|has not|hasn't|had not|hadn't)\s+(?:completed|finished|succeeded)\b/gi,
-    '',
-  );
+  const completionClaims = prose
+    .replace(
+      /\b(?:not|never|has not|hasn't|had not|hadn't)\s+(?:completed|finished|succeeded)\b/gi,
+      '',
+    )
+    .replace(/\bpartially\s+(?:done|completed|finished|succeeded|successful)\b/gi, '')
+    .replace(/\bsome\b[^.!?\n]{0,80}\b(?:done|completed|finished|succeeded|successful)\b/gi, '');
   const runningClaims = prose.replace(/\b(?:not|never|is not|isn't)\s+running\b/gi, '');
   const claimsComplete = /\b(done|completed|finished|succeeded|successful)\b/i.test(
     completionClaims,
   );
+  const claimsPartial =
+    /\b(?:partially\s+(?:done|complete|completed|finished|succeeded|successful)|partial\s+(?:action|operation|task|command|execution|run|job|build|work|completion|result)|some\b[^.!?\n]{0,80}\b(?:done|completed|finished|succeeded|successful|incomplete|unfinished)|(?:action|operation|task|command|execution|run|job|build|work)\b[^.!?\n]{0,50}\b(?:incomplete|unfinished)|(?:incomplete|unfinished)\s+(?:action|operation|task|command|execution|run|job|build|work))\b/i.test(
+      prose,
+    );
   const claimsRunning = /\b(running|in progress|still working)\b/i.test(runningClaims);
   const terminalState = facts.terminalState;
   if (
     hasProviderOnlyTerminalState(facts) &&
-    /\b(?:done|completed|finished|succeeded|successful|partial|failed|cancelled|timed out)\b/i.test(
-      prose,
-    )
+    (claimsPartial ||
+      /\b(?:done|completed|finished|succeeded|successful|partial|failed|cancelled|timed out)\b/i.test(
+        prose,
+      ))
   ) {
     violations.push(
       violation(
@@ -216,6 +224,7 @@ export function lintJarvisProse(
       status !== 'running' &&
       status !== 'compiling' &&
       status !== 'queued') ||
+    (claimsPartial && status !== 'partial') ||
     (claimsComplete && terminalState !== undefined && terminalState !== 'completed') ||
     (claimsRunning &&
       terminalState !== undefined &&

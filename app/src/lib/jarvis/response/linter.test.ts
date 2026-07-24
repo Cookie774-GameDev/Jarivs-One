@@ -30,6 +30,64 @@ describe('lintJarvisProse', () => {
     );
   });
 
+  it('accepts explicit partial-completion language only for verified partial state', () => {
+    const partialProse = 'Partially completed. Some work completed. Some work remains unfinished.';
+    const partialFacts: JarvisVerifiedFacts = {
+      ...facts,
+      executionState: { status: 'partial', verifiedBy: 'journal', lastEventSeq: 3 },
+    };
+
+    expect(lintJarvisProse(partialProse, 'action_partial', partialFacts)).not.toContainEqual(
+      expect.objectContaining({ code: 'verified_state_contradiction' }),
+    );
+    expect(lintJarvisProse(partialProse, 'action_running', facts)).toContainEqual(
+      expect.objectContaining({
+        code: 'verified_state_contradiction',
+        disposition: 'deterministic',
+      }),
+    );
+    expect(
+      lintJarvisProse('The operation is incomplete.', 'action_partial', {
+        modelState: 'authenticated',
+        plugins: [],
+        mcps: [],
+      }),
+    ).toContainEqual(
+      expect.objectContaining({
+        code: 'verified_state_contradiction',
+        disposition: 'deterministic',
+      }),
+    );
+    expect(
+      lintJarvisProse('Warning: provider verification is incomplete.', 'warning', {
+        modelState: 'authenticated',
+        plugins: [],
+        mcps: [],
+      }),
+    ).not.toContainEqual(expect.objectContaining({ code: 'verified_state_contradiction' }));
+    expect(
+      lintJarvisProse('The operation is incomplete.', 'action_partial', {
+        executionState: { status: 'partial', verifiedBy: 'provider', lastEventSeq: 0 },
+        modelState: 'authenticated',
+        plugins: [],
+        mcps: [],
+      }),
+    ).toContainEqual(
+      expect.objectContaining({
+        code: 'provider_only_terminal_claim',
+        disposition: 'deterministic',
+      }),
+    );
+    expect(
+      lintJarvisProse('The action completed successfully.', 'action_partial', partialFacts),
+    ).toContainEqual(
+      expect.objectContaining({
+        code: 'verified_state_contradiction',
+        disposition: 'deterministic',
+      }),
+    );
+  });
+
   it('marks generic filler and missing Jarvis cadence repairable', () => {
     expect(
       lintJarvisProse('Sure! I would be happy to help you with that request.', 'direct_answer', {

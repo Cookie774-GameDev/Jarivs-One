@@ -111,6 +111,18 @@ function toAnthropicPayload(req: LLMRequest): {
   return { system, messages: out };
 }
 
+export function buildAnthropicRequestBody(req: LLMRequest) {
+  const { system, messages } = toAnthropicPayload(req);
+  return {
+    model: req.agent.model.model || ANTHROPIC_DEFAULT_MODEL,
+    max_tokens: req.max_output_tokens ?? req.agent.max_output_tokens ?? 4096,
+    temperature: req.temperature ?? req.agent.temperature ?? 0.7,
+    system,
+    messages,
+    stream: true,
+  };
+}
+
 export const anthropicProvider: LLMProvider = {
   id: 'anthropic',
   name: 'Anthropic',
@@ -125,16 +137,7 @@ export const anthropicProvider: LLMProvider = {
     if (!apiKey) throw new Error('Anthropic API key not set');
 
     const model = req.agent.model.model || ANTHROPIC_DEFAULT_MODEL;
-    const { system, messages } = toAnthropicPayload(req);
-
-    const body = {
-      model,
-      max_tokens: req.max_output_tokens ?? req.agent.max_output_tokens ?? 4096,
-      temperature: req.temperature ?? req.agent.temperature ?? 0.7,
-      system,
-      messages,
-      stream: true,
-    };
+    const body = buildAnthropicRequestBody(req);
 
     const res = await fetch(API_URL, {
       method: 'POST',
@@ -226,7 +229,7 @@ export const anthropicProvider: LLMProvider = {
     // on some abrupt stops).
     if (inputTokens === 0) {
       const inputText =
-        system + '\n' + req.messages.map((m) => llmContentToText(m.content)).join('\n');
+        body.system + '\n' + req.messages.map((m) => llmContentToText(m.content)).join('\n');
       inputTokens = estimateInputTokens(inputText);
     }
     if (outputTokens === 0) outputTokens = estimateInputTokens(acc);
