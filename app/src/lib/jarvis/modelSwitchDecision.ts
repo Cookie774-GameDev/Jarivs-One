@@ -23,6 +23,8 @@ export interface JarvisModelSwitchCandidate {
   supportsImages: boolean;
   supportsTools: boolean;
   speedRank?: number;
+  contextWindowTokens?: number;
+  toolReliabilityRank?: number;
   codingRank: number;
   costClass: JarvisModelCostClass;
 }

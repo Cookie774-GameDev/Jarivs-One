@@ -8,6 +8,8 @@ import { useUIStore } from '@/stores/ui';
 import { useAllAboutMeStore } from '@/features/all-about-me/store';
 import { useVoiceStore } from '@/features/voice/store';
 import { createVoiceSessionBinding } from '@/features/voice/voiceSessionBinding';
+import { toast } from '@/components/ui/toast';
+import { writeConnectionPickerStates } from './connectionState';
 import type { JarvisShadowCompilationDeps } from '@/lib/jarvis/shadowCompilation';
 import type { CanonicalProviderEvidence } from '@/lib/jarvis/artifactProducerAdapters';
 import { toJarvisApprovalRow, toJarvisRunRow } from '@/lib/db/jarvisMappers';
@@ -203,6 +205,7 @@ describe('startRuntimeListener agent routing', () => {
       apiKeys: { groq: 'gsk_test' },
       defaultProvider: 'mock',
       offlineMode: false,
+      automaticModelRoutingEnabled: false,
       chatModelSelection: selectionFromOption('groq', 'llama-3.3-70b-versatile'),
     });
     useUIStore.setState({ voiceModalOpen: true });
@@ -408,6 +411,128 @@ describe('startRuntimeListener agent routing', () => {
     expect(mocks.getJarvisConnectivityInventoryBlock).not.toHaveBeenCalled();
 
     stop();
+  });
+
+  it('auto-routes a protected Jarvis image turn through an active catalog connection without changing the picker', async () => {
+    const jarvis = agent('agent_jarvis_auto_route', 'jarvis', 'You are Jarvis.');
+    const chatId = 'chat_auto_route' as ChatId;
+    const placeholderId = 'msg_auto_route_assistant' as MessageId;
+    const userMessage: Message = {
+      id: 'msg_auto_route_user' as MessageId,
+      chat_id: chatId,
+      role: 'user',
+      parts: [{ kind: 'text', text: 'Describe this image.' }],
+      created_at: 1,
+      updated_at: 1,
+    };
+    const originalSelection = selectionFromOption('groq', 'llama-3.3-70b-versatile');
+    useAuthStore.setState({
+      automaticModelRoutingEnabled: true,
+      apiKeys: { google: 'test-google-key', groq: 'gsk_test' },
+      chatModelSelection: originalSelection,
+    });
+    writeConnectionPickerStates({
+      'google-gemini-api': { available: true, auth: 'authenticated' },
+    });
+    const info = vi.spyOn(toast, 'info').mockImplementation(() => 'toast-auto-route');
+
+    trackListener(
+      startRuntimeListener({
+        getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+        getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => [userMessage]),
+        appendMessage: vi.fn(async (message) => ({
+          ...message,
+          id: placeholderId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage: vi.fn(async () => undefined),
+      }),
+    );
+
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: {
+          chatId,
+          text: 'Describe this image.',
+          modelSelectionOverride: originalSelection,
+          automaticModelRoutingEligible: true,
+          imageAttachments: [
+            {
+              id: 'image-auto-route',
+              name: 'example.png',
+              mimeType: 'image/png',
+              data: 'data:image/png;base64,AA==',
+            },
+          ],
+        },
+      }),
+    );
+
+    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(1));
+    expect(mocks.runAgent.mock.calls[0]![0]).toEqual(
+      expect.objectContaining({
+        agent: expect.objectContaining({
+          model: { provider: 'google', model: 'gemini-2.0-flash' },
+        }),
+        connectionId: 'google-gemini-api',
+      }),
+    );
+    expect(info).toHaveBeenCalledWith(
+      'Automatic model routing',
+      'Auto-selected gemini-2.0-flash because this request includes images.',
+    );
+    expect(useAuthStore.getState().chatModelSelection).toEqual(originalSelection);
+  });
+
+  it('preserves an explicit per-send model override when automatic routing is enabled', async () => {
+    const jarvis = agent('agent_jarvis_model_override', 'jarvis', 'You are Jarvis.');
+    const chatId = 'chat_model_override' as ChatId;
+    const originalSelection = selectionFromOption('google', 'gemini-2.0-flash');
+    useAuthStore.setState({
+      automaticModelRoutingEnabled: true,
+      apiKeys: { google: 'test-google-key' },
+      chatModelSelection: originalSelection,
+    });
+    writeConnectionPickerStates({
+      'google-gemini-api': { available: true, auth: 'authenticated' },
+    });
+    const info = vi.spyOn(toast, 'info').mockImplementation(() => 'toast-model-override');
+    trackListener(
+      startRuntimeListener({
+        getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+        getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => []),
+        appendMessage: vi.fn(async (message) => ({
+          ...message,
+          id: 'msg_model_override_assistant' as MessageId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage: vi.fn(async () => undefined),
+      }),
+    );
+
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: {
+          chatId,
+          text: 'Use this model for this turn.',
+          modelSelectionOverride: selectionFromOption('google', 'gemini-3.1-pro'),
+        },
+      }),
+    );
+
+    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(1));
+    expect(mocks.runAgent.mock.calls[0]![0].agent.model).toEqual({
+      provider: 'google',
+      model: 'gemini-3.1-pro',
+    });
+    expect(info).not.toHaveBeenCalledWith('Automatic model routing', expect.any(String));
+    expect(useAuthStore.getState().chatModelSelection).toEqual(originalSelection);
   });
 
   it('injects bounded terminal operating intelligence only into protected Jarvis turns', async () => {

@@ -14,7 +14,7 @@ import {
   type JarvisModelSelectionActionState,
 } from './registryModelSelection';
 import type { JarvisModelSwitchCandidate } from '@/lib/jarvis/modelSwitchDecision';
-import { DEFAULT_CUSTOM_STEPS } from '@/lib/ai/stacks/presets';
+import { DEFAULT_CUSTOM_STEPS, stepsForPreset } from '@/lib/ai/stacks/presets';
 
 function selection(
   providerId: Extract<ChatModelSelection, { mode: 'single' }>['providerId'],
@@ -58,12 +58,9 @@ function candidate(
 }
 
 function hiveCandidates(): readonly JarvisModelSwitchCandidate[] {
-  return [
-    candidate('google', 'gemini-ready', { costClass: 'premium' }),
-    candidate('openrouter', 'openrouter-ready', { costClass: 'premium' }),
-    candidate('deepseek', 'deepseek-ready', { costClass: 'premium' }),
-    candidate('openai', 'openai-ready', { costClass: 'premium' }),
-  ];
+  return stepsForPreset('balanced', 'general', DEFAULT_CUSTOM_STEPS).map((step) =>
+    candidate(step.provider, step.model, { costClass: 'premium' }),
+  );
 }
 
 describe('buildJarvisModelSwitchCandidates', () => {
@@ -103,6 +100,7 @@ describe('buildJarvisModelSwitchCandidates', () => {
         connected: true,
         available: true,
         supportsImages: true,
+        toolReliabilityRank: 0,
       }),
     ]);
     expect(JSON.stringify(candidates)).not.toMatch(/must-not-escape|apiKeys|accountLabel|error/);
@@ -123,6 +121,25 @@ describe('buildJarvisModelSwitchCandidates', () => {
         },
       ],
     });
+
+    expect(candidates[0]).toMatchObject({ connected: false, available: false });
+  });
+
+  it('fails a native cloud connection closed when no observed auth state exists', () => {
+    const candidates = buildJarvisModelSwitchCandidates(
+      state({ apiKeys: { google: 'present-but-unverified' } }),
+      {
+        connections: [GEMINI_API_CONNECTION],
+        connectionStates: {},
+        modelOptions: [
+          {
+            provider: 'google',
+            id: 'gemini-2.5-flash',
+            label: 'Gemini 2.5 Flash',
+          },
+        ],
+      },
+    );
 
     expect(candidates[0]).toMatchObject({ connected: false, available: false });
   });
@@ -280,6 +297,27 @@ describe('chat.model.switch action', () => {
       expect.any(Object),
       { images: false, tools: true },
     );
+    expect(apply).not.toHaveBeenCalled();
+  });
+
+  it('refuses Hive when candidates do not prove every exact workflow model', async () => {
+    const apply = vi.fn();
+    const test = setup({
+      candidates: [
+        candidate('google', 'wrong-google-model', { costClass: 'premium' }),
+        candidate('openrouter', 'wrong-openrouter-model', { costClass: 'premium' }),
+        candidate('deepseek', 'wrong-deepseek-model', { costClass: 'premium' }),
+        candidate('openai', 'wrong-openai-model', { costClass: 'premium' }),
+      ],
+      apply,
+    });
+
+    await expect(
+      test.action.run({ request: 'Use Hive Balanced.' }, { source: 'user' }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/no configured model/i),
+    });
     expect(apply).not.toHaveBeenCalled();
   });
 

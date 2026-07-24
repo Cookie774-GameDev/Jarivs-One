@@ -9,6 +9,43 @@ describe('composer STT defaults', () => {
   });
 });
 
+describe('automatic model routing preference', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    useAuthStore.setState({ automaticModelRoutingEnabled: false });
+  });
+
+  it('defaults disabled and persists an explicit user toggle', async () => {
+    expect(useAuthStore.getInitialState().automaticModelRoutingEnabled).toBe(false);
+
+    useAuthStore.getState().setAutomaticModelRoutingEnabled(true);
+    const persisted = window.localStorage.getItem('jarvis-auth') ?? '';
+    expect(persisted).toContain('"automaticModelRoutingEnabled":true');
+
+    useAuthStore.setState({ automaticModelRoutingEnabled: false });
+    window.localStorage.setItem('jarvis-auth', persisted);
+    await useAuthStore.persist.rehydrate();
+    expect(useAuthStore.getState().automaticModelRoutingEnabled).toBe(true);
+  });
+
+  it('migrates v12 state to the safe disabled policy', async () => {
+    window.localStorage.setItem(
+      'jarvis-auth',
+      JSON.stringify({
+        state: {
+          chatModelSelection: { mode: 'none' },
+          previousChatModelSelection: { mode: 'none' },
+          apiKeys: {},
+        },
+        version: 12,
+      }),
+    );
+
+    await useAuthStore.persist.rehydrate();
+    expect(useAuthStore.getState().automaticModelRoutingEnabled).toBe(false);
+  });
+});
+
 describe('voice defaults', () => {
   it('defaults new installs to Kokoro neural voice', () => {
     expect(useAuthStore.getInitialState().voiceEngine).toBe('kokoro');

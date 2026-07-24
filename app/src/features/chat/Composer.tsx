@@ -1819,6 +1819,7 @@ export function Composer({
             speakReply: voiceReplyRequestedRef.current || useAuthStore.getState().speakReplies,
             autoApproveActions: useAuthStore.getState().jarvisAutoApprove,
             modelSelectionOverride: useAuthStore.getState().chatModelSelection,
+            automaticModelRoutingEligible: true,
           },
         }),
       );
@@ -3044,6 +3045,8 @@ function ModelPicker({
   compact = false,
 }: ModelPickerProps) {
   const { groups, flatOptions } = useAccessibleChatModels();
+  const automaticRoutingEnabled = useAuthStore((s) => s.automaticModelRoutingEnabled);
+  const setAutomaticModelRoutingEnabled = useAuthStore((s) => s.setAutomaticModelRoutingEnabled);
   const [selectedId, setSelectedId] = useState('');
   const displayLabel = formatChatModelSelectionLabel(selection, modelCtx);
   const activeProvider = selection.mode === 'single' ? selection.providerId : undefined;
@@ -3171,6 +3174,8 @@ function ModelPicker({
           onHoverId={setSelectedId}
           onSelect={handleSelect}
           onSelectHive={handleSelectHive}
+          automaticRoutingEnabled={automaticRoutingEnabled}
+          onAutomaticRoutingChange={setAutomaticModelRoutingEnabled}
         />
       </PopoverContent>
     </Popover>

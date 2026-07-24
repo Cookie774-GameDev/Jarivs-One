@@ -143,6 +143,8 @@ interface AuthState {
   chatModelSelection: ChatModelSelection;
   /** Exact selection immediately preceding the current chat model selection. */
   previousChatModelSelection: ChatModelSelection;
+  /** Explicit opt-in for turn-local automatic model routing. */
+  automaticModelRoutingEnabled: boolean;
 
   /** Telemetry opt-in */
   telemetryOptIn: boolean;
@@ -181,6 +183,7 @@ interface AuthState {
   setPlan: (p: PlanId) => void;
   setStackPreset: (preset: StackPresetId) => void;
   setChatModelSelection: (selection: ChatModelSelection) => void;
+  setAutomaticModelRoutingEnabled: (enabled: boolean) => void;
   setStackCustomSteps: (steps: StackStepSpec[]) => void;
 }
 
@@ -268,6 +271,7 @@ export const useAuthStore = create<AuthState>()(
       stackCustomSteps: DEFAULT_CUSTOM_STEPS,
       chatModelSelection: EMPTY_CHAT_MODEL_SELECTION,
       previousChatModelSelection: EMPTY_CHAT_MODEL_SELECTION,
+      automaticModelRoutingEnabled: false,
       telemetryOptIn: false,
 
       setDisplayName: (n) => set({ displayName: n }),
@@ -374,6 +378,7 @@ export const useAuthStore = create<AuthState>()(
             stackPreset: 'off' as StackPresetId,
           };
         }),
+      setAutomaticModelRoutingEnabled: (enabled) => set({ automaticModelRoutingEnabled: enabled }),
       setStackCustomSteps: (steps) =>
         set((s) => ({
           stackCustomSteps: steps.slice(0, 5).map((step) => {
@@ -435,9 +440,10 @@ export const useAuthStore = create<AuthState>()(
         stackCustomSteps: s.stackCustomSteps,
         chatModelSelection: s.chatModelSelection,
         previousChatModelSelection: s.previousChatModelSelection,
+        automaticModelRoutingEnabled: s.automaticModelRoutingEnabled,
         telemetryOptIn: s.telemetryOptIn,
       }),
-      version: 12,
+      version: 13,
       migrate: (persisted, fromVersion) => {
         if (!persisted || typeof persisted !== 'object') return persisted;
         const state = persisted as Partial<AuthState>;
@@ -520,6 +526,9 @@ export const useAuthStore = create<AuthState>()(
           state.previousChatModelSelection = normalizeChatModelSelection(
             state.previousChatModelSelection,
           );
+        }
+        if (fromVersion < 13) {
+          state.automaticModelRoutingEnabled = false;
         }
         return state;
       },

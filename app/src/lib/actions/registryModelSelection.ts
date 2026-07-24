@@ -11,7 +11,6 @@ import {
 import { CHAT_MODEL_OPTIONS, getAccessibleModelOptions, type ModelOption } from '@/lib/ai/models';
 import { CONNECTION_MODEL_OPTIONS, PROVIDER_CONNECTIONS } from '@/lib/ai/adapters/catalog';
 import type { ProviderConnection } from '@/lib/ai/adapters/types';
-import { isProviderConnected } from '@/lib/ai/providerRegistry';
 import {
   isConnectionSessionChecked,
   readConnectionPickerStates,
@@ -115,14 +114,18 @@ function codingRank(modelId: string): number {
   return 50;
 }
 
-function speedRank(modelId: string): number {
-  const model = modelId.toLowerCase();
-  let rank = 50;
-  if (/(?:instant|flash|mini|haiku)\b/u.test(model)) rank += 30;
-  const parameterCount = model.match(/(?:^|[-_:])(\d{1,3})b(?:$|[-_:])/u);
-  if (parameterCount) rank += Math.max(-20, 20 - Number(parameterCount[1]));
-  if (/(?:reasoner|thinking|pro|opus)\b/u.test(model)) rank -= 15;
-  return rank;
+function connectionSpeedRank(connection?: Readonly<ProviderConnection>): number | undefined {
+  if (!connection) return undefined;
+  const transportRank =
+    connection.mode === 'native-api' ? 70 : connection.mode === 'local' ? 60 : 50;
+  return connection.capabilities.streaming ? transportRank : transportRank - 10;
+}
+
+function toolReliabilityRank(connection?: Readonly<ProviderConnection>): number {
+  if (!connection?.capabilities.tools) return 0;
+  if (connection.mode === 'native-api') return 90;
+  if (connection.mode === 'local') return 80;
+  return 70;
 }
 
 function uniqueModelOptions(
@@ -152,6 +155,13 @@ function uniqueModelOptions(
         state.plan,
       ),
     );
+  }
+  for (const step of stepsForPreset('balanced', 'general', state.stackCustomSteps)) {
+    options.push({
+      provider: step.provider,
+      id: step.model,
+      label: step.model,
+    });
   }
   const seen = new Set<string>();
   return options.filter((option) => {
@@ -200,7 +210,6 @@ function isPreferredCandidate(
 function observedConnectionState(
   connection: Readonly<ProviderConnection>,
   states: Partial<Record<string, ConnectionPickerState>>,
-  state: JarvisModelSelectionActionState,
 ): Readonly<{ connected: boolean; available: boolean }> {
   const observed = states[connection.id];
   if (observed) {
@@ -210,8 +219,7 @@ function observedConnectionState(
   if (connection.mode === 'external-cli') {
     return { connected: false, available: false };
   }
-  const connected = isProviderConnected(connection.providerId as ProviderId, state);
-  return { connected, available: connected };
+  return { connected: false, available: false };
 }
 
 /**
@@ -245,6 +253,11 @@ export function buildJarvisModelSwitchCandidates(
       );
     })();
   const candidates: JarvisModelSwitchCandidate[] = [];
+  const hiveModelKeys = new Set(
+    stepsForPreset('balanced', 'general', state.stackCustomSteps).map(
+      (step) => `${step.provider}\u0000${step.model}`,
+    ),
+  );
 
   for (const option of uniqueModelOptions(state, options.modelOptions, connections)) {
     const providerConnections = connections.filter(
@@ -261,7 +274,6 @@ export function buildJarvisModelSwitchCandidates(
     );
 
     if (providerConnections.length === 0) {
-      const connected = isProviderConnected(option.provider, state);
       candidates.push({
         selection: selectionFromOption(option.provider, option.id) as SingleModelSelection,
         preferred:
@@ -269,11 +281,12 @@ export function buildJarvisModelSwitchCandidates(
             state.chatModelSelection.providerId === option.provider &&
             state.chatModelSelection.modelId === option.id) ||
           state.selectedModels[option.provider] === option.id,
-        connected,
-        available: connected && accessible.has(option.id),
+        connected: false,
+        available: false,
         supportsImages: modelSupportsVision(option.provider, option.id),
         supportsTools: false,
-        speedRank: speedRank(option.id),
+        toolReliabilityRank: 0,
+        speedRank: undefined,
         codingRank: codingRank(option.id),
         costClass: modelCostClass(option.provider, option.id),
       });
@@ -283,7 +296,9 @@ export function buildJarvisModelSwitchCandidates(
     for (const connection of providerConnections) {
       const exactModels = CONNECTION_MODEL_OPTIONS[connection.id];
       if (exactModels && !exactModels.some((model) => model.id === option.id)) continue;
-      const connectionTruth = observedConnectionState(connection, connectionStates, state);
+      if (!connection.capabilities.modelSelection && !exactModels && !connection.modelId) continue;
+      const connectionTruth = observedConnectionState(connection, connectionStates);
+      const isHiveModel = hiveModelKeys.has(`${option.provider}\u0000${option.id}`);
       candidates.push({
         selection: selectionFromOption(
           option.provider,
@@ -294,11 +309,12 @@ export function buildJarvisModelSwitchCandidates(
         connected: connectionTruth.connected,
         available:
           connectionTruth.available &&
-          (connection.mode === 'external-cli' || accessible.has(option.id)),
+          (connection.mode === 'external-cli' || accessible.has(option.id) || isHiveModel),
         supportsImages:
           connection.capabilities.images && modelSupportsVision(option.provider, option.id),
         supportsTools: connection.capabilities.tools,
-        speedRank: speedRank(option.id),
+        toolReliabilityRank: toolReliabilityRank(connection),
+        speedRank: connectionSpeedRank(connection),
         codingRank: codingRank(option.id),
         costClass: modelCostClass(option.provider, option.id, connection.mode),
       });
@@ -313,31 +329,38 @@ function assessHiveBalanced(
   candidates: readonly JarvisModelSwitchCandidate[],
 ): Readonly<JarvisHiveBalancedAssessment> {
   const steps = stepsForPreset('balanced', 'general', state.stackCustomSteps);
-  const candidatesFor = (providerId: ProviderId) =>
-    candidates.filter((candidate) => candidate.selection.providerId === providerId);
+  const candidatesFor = (providerId: ProviderId, modelId: string) =>
+    candidates.filter(
+      (candidate) =>
+        candidate.selection.providerId === providerId && candidate.selection.modelId === modelId,
+    );
   const configured =
-    steps.length > 0 && steps.every((step) => candidatesFor(step.provider).length > 0);
+    steps.length > 0 && steps.every((step) => candidatesFor(step.provider, step.model).length > 0);
   const connected =
     configured &&
-    steps.every((step) => candidatesFor(step.provider).some((candidate) => candidate.connected));
+    steps.every((step) =>
+      candidatesFor(step.provider, step.model).some((candidate) => candidate.connected),
+    );
   const available =
     connected &&
     steps.every((step) =>
-      candidatesFor(step.provider).some((candidate) => candidate.connected && candidate.available),
+      candidatesFor(step.provider, step.model).some(
+        (candidate) => candidate.connected && candidate.available,
+      ),
     );
   const supportsImages =
     available &&
     steps.every(
       (step) =>
         modelSupportsVision(step.provider, step.model) &&
-        candidatesFor(step.provider).some(
+        candidatesFor(step.provider, step.model).some(
           (candidate) => candidate.connected && candidate.available && candidate.supportsImages,
         ),
     );
   const supportsTools =
     available &&
     steps.every((step) =>
-      candidatesFor(step.provider).some(
+      candidatesFor(step.provider, step.model).some(
         (candidate) => candidate.connected && candidate.available && candidate.supportsTools,
       ),
     );

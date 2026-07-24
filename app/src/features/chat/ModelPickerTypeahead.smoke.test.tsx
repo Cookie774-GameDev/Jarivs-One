@@ -1,4 +1,4 @@
-import { fireEvent, render } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { ProviderConnection } from '@/lib/ai/adapters/types';
@@ -69,17 +69,29 @@ describe('ModelPickerTypeahead smoke transports', () => {
       />,
     );
 
-    const nativeControl = container.querySelector(
-      '[data-sik-evidence="model.transport-native"]',
-    );
+    const nativeControl = container.querySelector('[data-sik-evidence="model.transport-native"]');
     const cliControl = container.querySelector('[data-sik-evidence="model.transport-cli"]');
     expect(nativeControl).not.toBeNull();
     expect(cliControl).not.toBeNull();
     fireEvent.click(cliControl!);
-    expect(onSelect).toHaveBeenCalledWith(
-      'vibespace-kernel-smoke',
-      'kernel-smoke-v1',
-      cli,
+    expect(onSelect).toHaveBeenCalledWith('vibespace-kernel-smoke', 'kernel-smoke-v1', cli);
+  });
+
+  it('exposes an accessible user control for disabling automatic routing', () => {
+    const onAutomaticRoutingChange = vi.fn();
+    render(
+      <ModelPickerTypeahead
+        groups={[]}
+        selectedId=""
+        onSelect={vi.fn()}
+        automaticRoutingEnabled
+        onAutomaticRoutingChange={onAutomaticRoutingChange}
+      />,
     );
+
+    const toggle = screen.getByRole('switch', { name: 'Automatic routing' });
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(toggle);
+    expect(onAutomaticRoutingChange).toHaveBeenCalledWith(false);
   });
 });

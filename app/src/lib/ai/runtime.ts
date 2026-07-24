@@ -85,6 +85,8 @@ import {
   validateSendModelAccess,
   type ChatModelSelection,
 } from './modelSelection';
+import { buildJarvisModelSwitchCandidates } from '@/lib/actions/registryModelSelection';
+import { routeJarvisModelAutomatically } from '@/lib/jarvis/modelAutoRouting';
 import {
   isKernelSmokeBindingActive,
   KERNEL_SMOKE_RUNTIME_STAGE_EVENT,
@@ -1225,10 +1227,15 @@ export interface SendDetail {
   structuredContext?: JarvisStructuredContext;
   /**
    * Per-send model selection override. Used by scheduled Jarvis Actions so a
-   * saved schedule runs on its stored model instead of whatever the composer
-   * currently has selected. Omit for normal composer sends.
+   * saved schedule runs on its stored model, and by the interactive composer
+   * to capture the exact picker selection at dispatch.
    */
   modelSelectionOverride?: ChatModelSelection;
+  /**
+   * True only for an interactive composer send whose captured picker selection
+   * remains eligible for the user's enabled automatic-routing policy.
+   */
+  automaticModelRoutingEligible?: boolean;
 }
 
 /** The shape of the `jarvis:cancel` event detail. */
@@ -2368,9 +2375,50 @@ export function startRuntimeListener(
       releaseOperationTracking();
       return;
     }
+    if (controller.signal.aborted) {
+      devConsole.log({
+        channel: 'ai',
+        level: 'warn',
+        message: 'AI cancelled before provider dispatch',
+        detail: { chatId, stage: 'chat' },
+      });
+      releaseVoiceTurnWithoutReply(detail, chatId);
+      dispatchRunState(chatId, 'cancelled');
+      releaseOperationTracking();
+      return;
+    }
     dispatchKernelSmokeRuntimeStage('chat');
     const interactionMode =
       detail.interactionMode ?? useJarvisInteractionStore.getState().modeForChat(chatId);
+
+    const mentionedAgents = resolveMentionedAgents(detail, text, bindings);
+
+    // Resolve the exact turn agent before optional model routing. Automatic
+    // routing is intentionally available only for protected Jarvis turns.
+    let agent: Agent | null | undefined;
+    try {
+      if (detail.agentId) agent = bindings.getAgentById(detail.agentId);
+      if (!agent) agent = mentionedAgents[0];
+      if (!agent) {
+        const slug = detectMention(text);
+        if (slug) agent = bindings.getAgentBySlug(slug);
+      }
+      if (!agent) agent = await bindings.getAgentForChat(chatId);
+    } catch (error) {
+      failEarlySetup('agent', error);
+      return;
+    }
+    if (!agent) {
+      console.warn('[jarvis runtime] no agent resolvable for chat', chatId);
+      toast.error('Jarvis unavailable', 'No Jarvis agent is available for this chat.');
+      releaseVoiceTurnWithoutReply(detail, chatId);
+      dispatchRunState(chatId, 'error', 'kernel_runtime_agent_unavailable');
+      releaseOperationTracking();
+      return;
+    }
+    dispatchKernelSmokeRuntimeStage('agent');
+    const isProtectedJarvis = isProtectedJarvisAgent(agent);
+
     const modelCtx = modelSelectionContextFromAuth(authState);
     const persistedConnection = chatRecord?.connection;
     const storedModelId =
@@ -2379,7 +2427,7 @@ export function startRuntimeListener(
       authState.chatModelSelection.providerId === persistedConnection?.providerId
         ? authState.chatModelSelection.modelId
         : undefined);
-    const chatModelSelection =
+    let chatModelSelection =
       detail.modelSelectionOverride ??
       (persistedConnection && storedModelId
         ? selectionFromOption(
@@ -2388,6 +2436,43 @@ export function startRuntimeListener(
             persistedConnection,
           )
         : authState.chatModelSelection);
+    let automaticRouteNotice:
+      | Readonly<{
+          message: string;
+          providerId: string;
+          modelId: string;
+          reason: string;
+        }>
+      | undefined;
+    if (
+      isProtectedJarvis &&
+      authState.automaticModelRoutingEnabled &&
+      (detail.modelSelectionOverride === undefined ||
+        detail.automaticModelRoutingEligible === true) &&
+      chatModelSelection.mode !== 'hive'
+    ) {
+      const estimatedContextTokens = text.length >= 32_000 ? Math.ceil(text.length / 4) : undefined;
+      const route = routeJarvisModelAutomatically({
+        enabled: true,
+        current: chatModelSelection,
+        candidates: buildJarvisModelSwitchCandidates(authState),
+        offlineMode: authState.offlineMode,
+        requirements: {
+          images: (detail.imageAttachments?.length ?? 0) > 0,
+          tools: (detail.pluginIds?.length ?? 0) > 0,
+          ...(estimatedContextTokens === undefined ? {} : { estimatedContextTokens }),
+        },
+      });
+      if (route.status === 'selected') {
+        chatModelSelection = route.target;
+        automaticRouteNotice = Object.freeze({
+          message: route.message,
+          providerId: route.target.providerId,
+          modelId: route.target.modelId,
+          reason: route.reason,
+        });
+      }
+    }
     const sendValidation = validateSendModelAccess(
       text,
       chatModelSelection,
@@ -2409,6 +2494,19 @@ export function startRuntimeListener(
       releaseOperationTracking();
       return;
     }
+    if (automaticRouteNotice) {
+      toast.info('Automatic model routing', automaticRouteNotice.message);
+      devConsole.log({
+        channel: 'ai',
+        level: 'info',
+        message: automaticRouteNotice.message,
+        detail: {
+          provider: automaticRouteNotice.providerId,
+          model: automaticRouteNotice.modelId,
+          reason: automaticRouteNotice.reason,
+        },
+      });
+    }
     dispatchKernelSmokeRuntimeStage('validated');
     useAllAboutMeStore.getState().recordUserMessage();
 
@@ -2420,36 +2518,6 @@ export function startRuntimeListener(
       detail.speakReply === true ? 'off' : resolveActiveStackPreset(chatModelSelection, stackSlash);
     const stackText = stackSlash.matched ? stackSlash.text : text;
     const stackTaskType = stackSlash.taskType ?? classifyStackTask(stackText);
-
-    const mentionedAgents = resolveMentionedAgents(detail, text, bindings);
-
-    // Resolve agent: explicit agentId > composer-resolved mention >
-    // textual @mention fallback > chat's active agent.
-    let agent: Agent | null | undefined;
-    try {
-      if (detail.agentId) agent = bindings.getAgentById(detail.agentId);
-      if (!agent) agent = mentionedAgents[0];
-      if (!agent) {
-        const slug = detectMention(text);
-        if (slug) agent = bindings.getAgentBySlug(slug);
-      }
-      if (!agent) agent = await bindings.getAgentForChat(chatId);
-    } catch (error) {
-      failEarlySetup('agent', error);
-      return;
-    }
-    if (!agent) {
-      // Loud-but-not-crashy: surface the misconfiguration so it's visible in
-      // dev console; the UI will likely show no response.
-      console.warn('[jarvis runtime] no agent resolvable for chat', chatId);
-      toast.error('Jarvis unavailable', 'No Jarvis agent is available for this chat.');
-      releaseVoiceTurnWithoutReply(detail, chatId);
-      dispatchRunState(chatId, 'error', 'kernel_runtime_agent_unavailable');
-      releaseOperationTracking();
-      return;
-    }
-    dispatchKernelSmokeRuntimeStage('agent');
-    const isProtectedJarvis = isProtectedJarvisAgent(agent);
 
     const projectId = chatRecord?.project_id ?? authState.projectId;
     let resolvedRequestContext: Awaited<ReturnType<typeof resolveJarvisContext>>;
@@ -3335,8 +3403,14 @@ export function startRuntimeListener(
         agent: runnable,
         messages: llmMessages,
         connectionId:
-          persistedConnection?.id ??
-          (chatModelSelection.mode === 'single' ? chatModelSelection.connectionId : undefined),
+          chatModelSelection.mode === 'single'
+            ? (chatModelSelection.connectionId ??
+              (persistedConnection?.providerId === chatModelSelection.providerId &&
+              (!persistedConnection.modelId ||
+                persistedConnection.modelId === chatModelSelection.modelId)
+                ? persistedConnection.id
+                : undefined))
+            : undefined,
         connectionRequirements: {
           images: (detail.imageAttachments?.length ?? 0) > 0,
           files: (detail.filePaths?.length ?? 0) > 0,
