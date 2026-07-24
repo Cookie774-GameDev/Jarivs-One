@@ -147,6 +147,9 @@ describe('ActionApprovalCard canonical adapter', () => {
       accountId: 'account-smoke',
       approvalId: 'jappr_1',
     });
+    const card = screen.getByRole('group', { name: 'terminal.create' });
+    expect(card.getAttribute('data-approval-id')).toBe('jappr_1');
+    expect(card.getAttribute('tabindex')).toBe('-1');
   });
 
   it('exposes only the bounded smoke failure reason when presentation readback fails', async () => {

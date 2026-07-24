@@ -20,6 +20,7 @@ const voiceListeners = vi.hoisted(() => ({
 
 const routerMocks = vi.hoisted(() => ({
   handleVoiceModuleClosed: vi.fn(),
+  syncVoiceModuleOpenState: vi.fn(),
   stopCurrentVoiceResponse: vi.fn(),
 }));
 
@@ -103,19 +104,43 @@ import { useVoiceStore } from './store';
 import { selectionFromOption } from '@/lib/ai/modelSelection';
 import { DEFAULT_CUSTOM_STEPS } from '@/lib/ai/stacks/presets';
 import { JarvisCommandCenterProvider } from '@/features/jarvis-command-center/JarvisCommandCenter';
+import {
+  acknowledgeJarvisApprovalNavigation,
+  requestJarvisApprovalNavigation,
+  resetJarvisApprovalNavigationForTests,
+} from '@/features/jarvis-command-center/approvalNavigation';
 import type {
   JarvisCommandCenterDataPort,
   JarvisCommandCenterHostPort,
+  JarvisEvent,
+  JarvisRun,
 } from '@/features/jarvis-command-center/types';
 
 function emitVoice(event: string, payload?: unknown) {
   voiceListeners.handlers.get(event)?.forEach((fn) => fn(payload));
 }
 
-function commandCenterBinding(accountId = 'account-a') {
+function commandCenterBinding(accountId = 'account-a', runs: readonly JarvisRun[] = []) {
   const dataPort: JarvisCommandCenterDataPort = {
-    getRunsForChat: vi.fn(async () => []),
-    getEventsForRun: vi.fn(async () => []),
+    getRunsForChat: vi.fn(async () => runs),
+    getEventsForRun: vi.fn(
+      async ({ runId }): Promise<readonly JarvisEvent[]> =>
+        runs.some((run) => run.id === runId && run.status === 'awaiting_approval')
+          ? [
+              {
+                runId,
+                seq: 1,
+                idempotencyKey: 'approval-1',
+                type: 'approval',
+                status: 'pending',
+                title: 'Approval pending',
+                sourceRefs: [],
+                artifactIds: [],
+                createdAt: 105,
+              },
+            ]
+          : [],
+    ),
     getArtifactsForRun: vi.fn(async () => []),
     getLiveEvidenceSnapshot: vi.fn(async () => undefined),
     subscribe: vi.fn(() => () => undefined),
@@ -127,6 +152,28 @@ function commandCenterBinding(accountId = 'account-a') {
     retryLogicalRun: vi.fn(),
   } as unknown as JarvisCommandCenterHostPort;
   return { dataPort, hostPort };
+}
+
+function approvalRun(): JarvisRun {
+  return {
+    id: 'run-approval',
+    accountId: 'account-a',
+    chatId: 'chat_voice',
+    source: 'voice',
+    status: 'awaiting_approval',
+    agentId: 'jarvis',
+    identityVersion: 1,
+    profileRevisionId: 'profile-1',
+    model: {
+      providerId: 'groq',
+      modelId: 'llama-3.3-70b-versatile',
+      connectionMode: 'native-api',
+      capabilities: {},
+      capturedAt: 90,
+    },
+    createdAt: 100,
+    updatedAt: 110,
+  };
 }
 
 function setReducedMotion(matches: boolean) {
@@ -181,6 +228,7 @@ describe('VoiceModal hands-free turn-taking', () => {
     });
     useAgentStore.setState({ agents: {} });
     useVoiceStore.getState().reset();
+    resetJarvisApprovalNavigationForTests();
   });
 
   afterEach(() => {
@@ -262,6 +310,133 @@ describe('VoiceModal hands-free turn-taking', () => {
     expect(
       screen.getByText('Command Center is unavailable for this voice session.'),
     ).not.toBeNull();
+  });
+
+  it('closes only the matching voice overlay when approval navigation returns to chat', async () => {
+    const bindingPort = commandCenterBinding('account-a', [approvalRun()]);
+    render(
+      <JarvisCommandCenterProvider value={bindingPort}>
+        <VoiceModal />
+      </JarvisCommandCenterProvider>,
+    );
+
+    await waitFor(() => expect(useVoiceStore.getState().session?.chatId).toBe('chat_voice'));
+    requestJarvisApprovalNavigation({
+      accountId: 'account-other',
+      chatId: 'chat_voice',
+      runId: 'run-approval',
+      approvalId: 'approval-1',
+    });
+    expect(useUIStore.getState().voiceModalOpen).toBe(true);
+    expect(
+      acknowledgeJarvisApprovalNavigation({
+        accountId: 'account-other',
+        chatId: 'chat_voice',
+        runId: 'run-approval',
+        approvalId: 'approval-1',
+      }),
+    ).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: /Command Center/i }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Open approval in chat' }));
+    await waitFor(() => expect(useUIStore.getState().voiceModalOpen).toBe(false));
+  });
+
+  it('keeps the voice overlay open when the approval target names another run', async () => {
+    const bindingPort = commandCenterBinding('account-a', [approvalRun()]);
+    render(
+      <JarvisCommandCenterProvider value={bindingPort}>
+        <VoiceModal />
+      </JarvisCommandCenterProvider>,
+    );
+
+    await waitFor(() => expect(useVoiceStore.getState().session?.chatId).toBe('chat_voice'));
+    const focusCount = chatRoutingMocks.focusVoiceChat.mock.calls.length;
+    requestJarvisApprovalNavigation({
+      accountId: 'account-a',
+      chatId: 'chat_voice',
+      runId: 'run-other',
+      approvalId: 'approval-1',
+    });
+
+    await waitFor(() => expect(bindingPort.dataPort.getRunsForChat).toHaveBeenCalled());
+    expect(useUIStore.getState().voiceModalOpen).toBe(true);
+    expect(chatRoutingMocks.focusVoiceChat).toHaveBeenCalledTimes(focusCount);
+  });
+
+  it('keeps the voice overlay open when the current run has a newer pending approval', async () => {
+    const bindingPort = commandCenterBinding('account-a', [approvalRun()]);
+    vi.mocked(bindingPort.dataPort.getEventsForRun).mockResolvedValue([
+      {
+        runId: 'run-approval',
+        seq: 2,
+        idempotencyKey: 'approval-newer',
+        type: 'approval',
+        status: 'pending',
+        title: 'Current approval',
+        sourceRefs: [],
+        artifactIds: [],
+        createdAt: 110,
+      },
+    ]);
+    render(
+      <JarvisCommandCenterProvider value={bindingPort}>
+        <VoiceModal />
+      </JarvisCommandCenterProvider>,
+    );
+
+    await waitFor(() => expect(useVoiceStore.getState().session?.chatId).toBe('chat_voice'));
+    const focusCount = chatRoutingMocks.focusVoiceChat.mock.calls.length;
+    requestJarvisApprovalNavigation({
+      accountId: 'account-a',
+      chatId: 'chat_voice',
+      runId: 'run-approval',
+      approvalId: 'approval-1',
+    });
+
+    await waitFor(() => expect(bindingPort.dataPort.getEventsForRun).toHaveBeenCalled());
+    expect(useUIStore.getState().voiceModalOpen).toBe(true);
+    expect(chatRoutingMocks.focusVoiceChat).toHaveBeenCalledTimes(focusCount);
+  });
+
+  it('does not let another target supersede an in-flight approval lookup', async () => {
+    const bindingPort = commandCenterBinding('account-a', [approvalRun()]);
+    let resolveRuns!: (runs: readonly JarvisRun[]) => void;
+    const pendingRuns = new Promise<readonly JarvisRun[]>((resolve) => {
+      resolveRuns = resolve;
+    });
+    vi.mocked(bindingPort.dataPort.getRunsForChat).mockReturnValueOnce(pendingRuns);
+    render(
+      <JarvisCommandCenterProvider value={bindingPort}>
+        <VoiceModal />
+      </JarvisCommandCenterProvider>,
+    );
+
+    await waitFor(() => expect(useVoiceStore.getState().session?.chatId).toBe('chat_voice'));
+    const focusCount = chatRoutingMocks.focusVoiceChat.mock.calls.length;
+    requestJarvisApprovalNavigation({
+      accountId: 'account-a',
+      chatId: 'chat_voice',
+      runId: 'run-approval',
+      approvalId: 'approval-1',
+    });
+    await waitFor(() => expect(bindingPort.dataPort.getRunsForChat).toHaveBeenCalledTimes(1));
+
+    expect(
+      requestJarvisApprovalNavigation({
+        accountId: 'account-other',
+        chatId: 'chat-other',
+        runId: 'run-other',
+        approvalId: 'approval-other',
+      }),
+    ).toBe(false);
+    await act(async () => {
+      resolveRuns([approvalRun()]);
+      await pendingRuns;
+    });
+
+    await waitFor(() => expect(useUIStore.getState().voiceModalOpen).toBe(false));
+    expect(chatRoutingMocks.focusVoiceChat).toHaveBeenCalledTimes(focusCount + 1);
   });
 
   it('keeps eight meaningful turns, expands long text, and does not yank a reader from history', async () => {

@@ -38,6 +38,11 @@ import {
   JarvisCommandCenter,
   useJarvisCommandCenterBinding,
 } from '@/features/jarvis-command-center/JarvisCommandCenter';
+import {
+  isCurrentJarvisApprovalNavigationTarget,
+  subscribeJarvisApprovalNavigation,
+  type JarvisApprovalNavigationIntent,
+} from '@/features/jarvis-command-center/approvalNavigation';
 import type { JarvisCommandCenterHandlers } from '@/features/jarvis-command-center/types';
 import {
   processVoiceFinalEvent,
@@ -407,6 +412,39 @@ export function VoiceModal() {
       ? commandCenterBinding
       : undefined;
   const commandCenterRegionId = React.useId();
+
+  React.useEffect(() => {
+    let disposed = false;
+    let generation = 0;
+    const returnToChatApproval = (requested: JarvisApprovalNavigationIntent | undefined) => {
+      // The undefined notification emitted after the chat acknowledges this
+      // exact target must not cancel the matching voice-to-chat handoff.
+      if (!requested) return;
+      const requestGeneration = ++generation;
+      if (
+        !session ||
+        !eligibleCommandCenterBinding ||
+        requested.accountId !== session.accountId ||
+        requested.chatId !== session.chatId
+      ) {
+        return;
+      }
+      void isCurrentJarvisApprovalNavigationTarget(eligibleCommandCenterBinding.dataPort, requested)
+        .then((isCurrent) => {
+          if (disposed || requestGeneration !== generation) return;
+          if (!isCurrent) return;
+          setOpen(false);
+          focusVoiceChat(session.chatId);
+        })
+        .catch(() => undefined);
+    };
+    const unsubscribe = subscribeJarvisApprovalNavigation(returnToChatApproval);
+    return () => {
+      disposed = true;
+      generation += 1;
+      unsubscribe();
+    };
+  }, [eligibleCommandCenterBinding, session, setOpen]);
 
   // Drag state — primary-button drag on the panel chrome, clamped to viewport
   const dragX = useMotionValue(0);

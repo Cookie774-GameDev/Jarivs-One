@@ -78,9 +78,23 @@ describe('createJarvisCommandCenterDataPort', () => {
     await port.getEventsForRun({ accountId: 'account-1', runId: 'run-1', limit: requested });
     await port.getArtifactsForRun({ accountId: 'account-1', runId: 'run-1', limit: requested });
 
-    expect(runs.listByAccount).toHaveBeenLastCalledWith('account-1', { limit: expected });
+    expect(runs.listByAccount).toHaveBeenLastCalledWith('account-1', { limit: 500 });
     expect(events.listByRun).toHaveBeenLastCalledWith('account-1', 'run-1', { limit: expected });
     expect(artifacts.listByRun).toHaveBeenLastCalledWith('account-1', 'run-1', expected);
+  });
+
+  it('applies the requested run limit after filtering to the exact chat', async () => {
+    const { port, runs } = setup();
+    runs.listByAccount.mockResolvedValue([
+      run('newer-other-chat', 'chat-2'),
+      run('current-chat-run', 'chat-1'),
+      run('older-chat-run', 'chat-1'),
+    ]);
+
+    await expect(
+      port.getRunsForChat({ accountId: 'account-1', chatId: 'chat-1', limit: 1 }),
+    ).resolves.toEqual([expect.objectContaining({ id: 'current-chat-run' })]);
+    expect(runs.listByAccount).toHaveBeenLastCalledWith('account-1', { limit: 500 });
   });
 
   it('filters repository responses to the exact requested chat and run', async () => {

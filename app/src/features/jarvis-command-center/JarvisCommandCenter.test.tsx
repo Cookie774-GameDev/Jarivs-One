@@ -5,10 +5,15 @@ import type {
   JarvisArtifactV1,
   JarvisCommandCenterDataPort,
   JarvisCommandCenterHandlers,
+  JarvisEvent,
   JarvisLiveEvidenceSnapshot,
   JarvisRun,
 } from './types';
 import { JarvisCommandCenter } from './JarvisCommandCenter';
+import {
+  readPendingJarvisApprovalNavigation,
+  resetJarvisApprovalNavigationForTests,
+} from './approvalNavigation';
 
 vi.mock('@/lib/jarvis/smoke/config', () => ({ isKernelSmokeEnabled: () => true }));
 
@@ -35,10 +40,27 @@ function run(overrides: Partial<JarvisRun> = {}): JarvisRun {
   };
 }
 
-function port(currentRun = run()): JarvisCommandCenterDataPort {
+function port(currentRun = run(), events?: readonly JarvisEvent[]): JarvisCommandCenterDataPort {
+  const approvalEvents: readonly JarvisEvent[] =
+    events ??
+    (currentRun.status === 'awaiting_approval'
+      ? [
+          {
+            runId: currentRun.id,
+            seq: 1,
+            idempotencyKey: 'approval-1',
+            type: 'approval',
+            status: 'pending',
+            title: 'Approval pending',
+            sourceRefs: [],
+            artifactIds: [],
+            createdAt: 105,
+          },
+        ]
+      : []);
   return {
     getRunsForChat: vi.fn(async () => [currentRun]),
-    getEventsForRun: vi.fn(async () => []),
+    getEventsForRun: vi.fn(async () => approvalEvents),
     getArtifactsForRun: vi.fn(
       async (): Promise<readonly JarvisArtifactV1[]> => [
         {
@@ -99,7 +121,10 @@ function setReducedMotion(matches: boolean) {
 }
 
 describe('JarvisCommandCenter', () => {
-  beforeEach(() => setReducedMotion(false));
+  beforeEach(() => {
+    setReducedMotion(false);
+    resetJarvisApprovalNavigationForTests();
+  });
 
   it('keeps its canonical store live through StrictMode replay and disposes on real unmount', async () => {
     const dataPort = port(run({ status: 'completed' }));
@@ -361,6 +386,114 @@ describe('JarvisCommandCenter', () => {
     expect(
       await screen.findByText('Account changed; cancellation was not requested.'),
     ).not.toBeNull();
+  });
+
+  it('mirrors approval state without duplicating the canonical approval form', async () => {
+    render(
+      <JarvisCommandCenter
+        accountId="account-1"
+        chatId="chat-1"
+        dataPort={port(run({ status: 'awaiting_approval' }))}
+        handlers={{}}
+      />,
+    );
+
+    expect(await screen.findByText('Waiting for approval')).not.toBeNull();
+    expect(screen.queryByRole('button', { name: /approve|deny/i })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Open approval in chat' }));
+
+    expect(readPendingJarvisApprovalNavigation()).toEqual({
+      accountId: 'account-1',
+      chatId: 'chat-1',
+      runId: 'run-1',
+      approvalId: 'approval-1',
+    });
+  });
+
+  it('does not navigate to a stale pending approval after its canonical state advances', async () => {
+    const awaitingRun = run({ status: 'awaiting_approval' });
+    render(
+      <JarvisCommandCenter
+        accountId="account-1"
+        chatId="chat-1"
+        dataPort={port(awaitingRun, [
+          {
+            runId: awaitingRun.id,
+            seq: 1,
+            idempotencyKey: 'approval-1',
+            type: 'approval',
+            status: 'pending',
+            title: 'Approval pending',
+            sourceRefs: [],
+            artifactIds: [],
+            createdAt: 105,
+          },
+          {
+            runId: awaitingRun.id,
+            seq: 2,
+            idempotencyKey: 'japproval:approval-1:approved',
+            type: 'approval',
+            status: 'approved',
+            title: 'Approval granted',
+            sourceRefs: [],
+            artifactIds: [],
+            createdAt: 110,
+          },
+        ])}
+        handlers={{}}
+      />,
+    );
+
+    expect(await screen.findByText('Waiting for approval')).not.toBeNull();
+    expect(screen.queryByRole('button', { name: 'Open approval in chat' })).toBeNull();
+  });
+
+  it('does not expose navigation for a whitespace-padded canonical approval key', async () => {
+    const awaitingRun = run({ status: 'awaiting_approval' });
+    render(
+      <JarvisCommandCenter
+        accountId="account-1"
+        chatId="chat-1"
+        dataPort={port(awaitingRun, [
+          {
+            runId: awaitingRun.id,
+            seq: 1,
+            idempotencyKey: ' approval-1 ',
+            type: 'approval',
+            status: 'pending',
+            title: 'Approval pending',
+            sourceRefs: [],
+            artifactIds: [],
+            createdAt: 105,
+          },
+        ])}
+        handlers={{}}
+      />,
+    );
+
+    expect(await screen.findByText('Waiting for approval')).not.toBeNull();
+    expect(screen.queryByRole('button', { name: 'Open approval in chat' })).toBeNull();
+  });
+
+  it('marks the awaiting-approval run as the blocked step in Live Systems', async () => {
+    render(
+      <JarvisCommandCenter
+        accountId="account-1"
+        chatId="chat-1"
+        dataPort={port(run({ status: 'awaiting_approval' }))}
+        handlers={{}}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: /expand command center/i }));
+    const liveTab = screen.getByRole('tab', { name: 'Live Systems' });
+    liveTab.focus();
+    fireEvent.keyDown(liveTab, { key: 'Enter' });
+
+    const root = await screen.findByRole('button', { name: 'Jarvis run' });
+    expect(root.getAttribute('data-state')).toBe('awaiting_approval');
+    expect(root.getAttribute('data-blocked')).toBe('approval');
+    expect(screen.getAllByText('Waiting for approval')).toHaveLength(2);
   });
 
   it('offers a new logical run only for an eligible terminal schedule snapshot', async () => {

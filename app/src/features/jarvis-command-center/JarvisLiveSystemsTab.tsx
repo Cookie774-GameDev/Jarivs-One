@@ -333,6 +333,7 @@ function LiveExecutionMap({
           aria-controls={detailsId}
           aria-pressed={!selected}
           data-state={run.status}
+          data-blocked={run.status === 'awaiting_approval' ? 'approval' : undefined}
           onClick={() => setSelectedId(`run:${run.id}`)}
           onFocus={() => setSelectedId(`run:${run.id}`)}
         >
@@ -489,7 +490,7 @@ export function JarvisLiveSystemsTab({
   });
   const visibleState =
     run.status === 'awaiting_approval'
-      ? 'Waiting for permission'
+      ? 'Waiting for approval'
       : run.status === 'failed' || run.status === 'timed_out'
         ? `Run ${displayState(run.status)}`
         : undefined;
@@ -516,7 +517,7 @@ export function JarvisLiveSystemsTab({
           {visibleState}
         </p>
       ) : null}
-      {graphNodes.length > 0 ? (
+      {graphNodes.length > 0 || run.status === 'awaiting_approval' ? (
         <LiveExecutionMap
           nodes={graphNodes}
           run={run}

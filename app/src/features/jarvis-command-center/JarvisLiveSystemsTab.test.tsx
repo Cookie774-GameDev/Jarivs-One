@@ -425,7 +425,10 @@ describe('JarvisLiveSystemsTab', () => {
       />,
     );
 
-    expect(screen.getByText('Waiting for permission')).not.toBeNull();
+    expect(screen.getByText('Waiting for approval')).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Jarvis run' }).getAttribute('data-blocked')).toBe(
+      'approval',
+    );
     expect(screen.getByText('Approve draft creation')).not.toBeNull();
     expect(screen.getByText('waiting permission')).not.toBeNull();
     expect(screen.getByText('Connector request failed')).not.toBeNull();
@@ -450,5 +453,22 @@ describe('JarvisLiveSystemsTab', () => {
     expect(screen.getByText('No verified live activity for this run.')).not.toBeNull();
     expect(screen.queryByRole('img', { name: 'Current run execution map' })).toBeNull();
     expect(screen.queryByRole('list', { name: 'Run activity' })).toBeNull();
+  });
+
+  it('keeps the blocked approval root visible before branch evidence arrives', () => {
+    render(
+      <JarvisLiveSystemsTab
+        liveSystems={{ state: 'ready', nodes: [] }}
+        run={run({ status: 'awaiting_approval' })}
+        events={[]}
+        outputs={[]}
+        motionEnabled
+      />,
+    );
+
+    const root = screen.getByRole('button', { name: 'Jarvis run' });
+    expect(root.getAttribute('data-state')).toBe('awaiting_approval');
+    expect(root.getAttribute('data-blocked')).toBe('approval');
+    expect(screen.getByText('Waiting for approval')).not.toBeNull();
   });
 });

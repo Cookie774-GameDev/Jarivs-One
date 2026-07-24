@@ -13,6 +13,7 @@ import { selectCurrentRun } from './selectors';
 import type { JarvisCommandCenterDataPort } from './types';
 
 const SUBSCRIPTION_RUN_LIMIT = 100;
+const RUN_REPOSITORY_READ_LIMIT = 500;
 
 function boundedLimit(requestedLimit: number): number {
   return Math.min(500, Math.max(1, requestedLimit));
@@ -36,11 +37,11 @@ export function createJarvisCommandCenterDataPort(input: {
   const port: JarvisCommandCenterDataPort = {
     async getRunsForChat(request): Promise<readonly JarvisRun[]> {
       const rows = await input.repositories.runs.listByAccount(request.accountId, {
-        limit: boundedLimit(request.limit),
+        limit: RUN_REPOSITORY_READ_LIMIT,
       });
-      return rows.filter(
-        (run) => run.accountId === request.accountId && run.chatId === request.chatId,
-      );
+      return rows
+        .filter((run) => run.accountId === request.accountId && run.chatId === request.chatId)
+        .slice(0, boundedLimit(request.limit));
     },
     async getEventsForRun(request): Promise<readonly JarvisEvent[]> {
       const rows = await input.repositories.events.listByRun(request.accountId, request.runId, {

@@ -20,6 +20,10 @@ import type {
   JarvisCommandCenterTab,
 } from './types';
 import { JarvisOutputsTab } from './JarvisOutputsTab';
+import {
+  requestJarvisApprovalNavigation,
+  selectPendingJarvisApprovalId,
+} from './approvalNavigation';
 import './jarvis-command-center.css';
 import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
 import { SIK_CONTROL, SIK_EVIDENCE } from '@/lib/jarvis/smoke/evidenceIds';
@@ -169,6 +173,10 @@ export function JarvisCommandCenter({
 
   const expanded = embedded || snapshot.expansion === 'expanded';
   const run = snapshot.currentRun;
+  const pendingApprovalId =
+    run?.status === 'awaiting_approval'
+      ? selectPendingJarvisApprovalId(run.id, snapshot.events)
+      : undefined;
   const retryAction = selectRetryAction(snapshot.retryState, handlers);
   const cancelVisible = canCancelRun(run, snapshot.retryState, handlers);
 
@@ -244,6 +252,16 @@ export function JarvisCommandCenter({
     toggleRef.current?.focus();
   };
 
+  const openApprovalInChat = () => {
+    if (!run || run.status !== 'awaiting_approval' || !pendingApprovalId) return;
+    requestJarvisApprovalNavigation({
+      accountId,
+      chatId,
+      runId: run.id,
+      approvalId: pendingApprovalId,
+    });
+  };
+
   return (
     <section
       className={cn(
@@ -315,11 +333,21 @@ export function JarvisCommandCenter({
                 : undefined
             }
           >
-            {run ? `Run ${run.status.replaceAll('_', ' ')}` : 'Waiting for a canonical run'}
+            {run
+              ? run.status === 'awaiting_approval'
+                ? 'Waiting for approval'
+                : `Run ${run.status.replaceAll('_', ' ')}`
+              : 'Waiting for a canonical run'}
           </div>
         </div>
 
         <div className="jarvis-command-center__actions">
+          {run?.status === 'awaiting_approval' && pendingApprovalId ? (
+            <Button type="button" size="sm" variant="ghost" onClick={openApprovalInChat}>
+              Open approval in chat
+            </Button>
+          ) : null}
+
           {cancelVisible && run && handlers.cancelRun ? (
             <Button
               type="button"

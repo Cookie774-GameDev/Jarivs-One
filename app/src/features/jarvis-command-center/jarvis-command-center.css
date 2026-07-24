@@ -354,6 +354,16 @@
   box-shadow: 0 0 1.25rem hsl(var(--accent-copper) / 0.12);
 }
 
+.jarvis-live-systems__node--root[data-blocked='approval'] {
+  border-color: hsl(var(--accent-amber) / 0.85);
+  background:
+    radial-gradient(circle at 40% 30%, hsl(var(--accent-amber) / 0.32), transparent 68%),
+    hsl(var(--card) / 0.92);
+  box-shadow:
+    0 0 0 1px hsl(var(--accent-amber) / 0.2),
+    0 0 1.5rem hsl(var(--accent-amber) / 0.2);
+}
+
 .jarvis-live-systems__node[data-kind='model'] {
   border-color: hsl(var(--accent-violet) / 0.4);
 }

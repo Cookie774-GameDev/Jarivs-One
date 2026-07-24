@@ -186,6 +186,7 @@ function resultLine(status: ActionStatus, error?: string): string | undefined {
 /** Canonical cards load bounded presentation and mutate only through the host bridge. */
 export function ActionApprovalCard({ part, presentation }: ActionApprovalCardProps) {
   const definition = resolveAction(part.action_id);
+  const approvalTitleId = React.useId();
   const approvalId = React.useMemo(
     () => parseTaskApprovalCallId(part.call_id)?.approvalId,
     [part.call_id],
@@ -340,21 +341,21 @@ export function ActionApprovalCard({ part, presentation }: ActionApprovalCardPro
         visual.borderClass,
       )}
       data-action-id={part.action_id}
+      data-approval-id={approvalId}
       data-status={displayStatus}
       data-approval-kind={approvalId ? 'canonical' : 'legacy'}
+      role={approvalId ? 'group' : undefined}
+      aria-labelledby={approvalId ? approvalTitleId : undefined}
+      tabIndex={approvalId ? -1 : undefined}
       data-sik-evidence={KERNEL_SMOKE_ENABLED ? SIK_EVIDENCE.approvalCard : undefined}
-      data-presentation-state={
-        KERNEL_SMOKE_ENABLED && approvalId ? presentationState : undefined
-      }
+      data-presentation-state={KERNEL_SMOKE_ENABLED && approvalId ? presentationState : undefined}
       data-presentation-code={
-        KERNEL_SMOKE_ENABLED && presentationState === 'failed'
-          ? presentationFailureCode
-          : undefined
+        KERNEL_SMOKE_ENABLED && presentationState === 'failed' ? presentationFailureCode : undefined
       }
     >
       <div className="flex items-center gap-2 text-secondary">
         <Icon className="h-4 w-4 shrink-0 text-accent-copper" />
-        <span className="font-medium text-foreground">
+        <span id={approvalId ? approvalTitleId : undefined} className="font-medium text-foreground">
           {resolvedPresentation?.actionId ?? definition?.label ?? part.action_id}
         </span>
         <span

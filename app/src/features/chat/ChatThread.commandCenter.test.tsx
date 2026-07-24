@@ -4,6 +4,12 @@ import {
   JarvisCommandCenterProvider,
   type JarvisCommandCenterBinding,
 } from '@/features/jarvis-command-center/JarvisCommandCenter';
+import {
+  acknowledgeJarvisApprovalNavigation,
+  readPendingJarvisApprovalNavigation,
+  requestJarvisApprovalNavigation,
+  resetJarvisApprovalNavigationForTests,
+} from '@/features/jarvis-command-center/approvalNavigation';
 import type { JarvisRun } from '@/features/jarvis-command-center/types';
 import { useJarvisTaskRunStore } from '@/features/jarvis-runs/taskRunStore';
 import type { Message } from '@/types';
@@ -28,15 +34,22 @@ vi.mock('@/features/jarvis-memory/JarvisMemoryStatus', () => ({
 vi.mock('@/lib/jarvis/smoke/config', () => ({ isKernelSmokeEnabled: () => true }));
 
 function canonicalRun({
+  id = 'jrun-direct-1',
   accountId = 'account-1',
   chatId = 'chat-1',
-}: { accountId?: string; chatId?: string } = {}): JarvisRun {
+  status = 'running',
+}: {
+  id?: string;
+  accountId?: string;
+  chatId?: string;
+  status?: JarvisRun['status'];
+} = {}): JarvisRun {
   return {
-    id: 'jrun-direct-1',
+    id,
     accountId,
     chatId,
     source: 'typed_chat',
-    status: 'running',
+    status,
     agentId: 'jarvis',
     identityVersion: 1,
     profileRevisionId: 'profile-1',
@@ -75,7 +88,24 @@ function binding(
     },
     dataPort: {
       getRunsForChat: vi.fn(async () => runs),
-      getEventsForRun: vi.fn(async () => []),
+      getEventsForRun: vi.fn(async ({ runId }) => {
+        const selected = runs.find((run) => run.id === runId);
+        return selected?.status === 'awaiting_approval'
+          ? [
+              {
+                runId,
+                seq: 1,
+                idempotencyKey: 'approval-1',
+                type: 'approval' as const,
+                status: 'pending',
+                title: 'Approval pending',
+                sourceRefs: [],
+                artifactIds: [],
+                createdAt: 105,
+              },
+            ]
+          : [];
+      }),
       getArtifactsForRun: vi.fn(async () => []),
       getLiveEvidenceSnapshot: vi.fn(async () => undefined),
       subscribe: vi.fn(() => () => undefined),
@@ -83,11 +113,24 @@ function binding(
   };
 }
 
+function setReducedMotion(matches: boolean) {
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn(() => ({
+      matches,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })),
+  );
+}
+
 describe('ChatThread Command Center routing', () => {
   beforeEach(() => {
+    setReducedMotion(false);
     hookState.messages = [];
     useJarvisTaskRunStore.getState().clearForTests();
     useJarvisTaskRunStore.getState().setAccountScope('scope-1');
+    resetJarvisApprovalNavigationForTests();
   });
   afterEach(() => useJarvisTaskRunStore.getState().clearForTests());
 
@@ -244,5 +287,258 @@ describe('ChatThread Command Center routing', () => {
     expect(screen.queryByText('Command Center')).toBeNull();
     expect(screen.getByTestId('legacy-progress')).not.toBeNull();
     expect(screen.getByRole('log').getAttribute('data-sik-evidence')).toBeNull();
+  });
+
+  it('reveals and focuses only the pending canonical approval in its bound account and chat', async () => {
+    render(
+      <JarvisCommandCenterProvider
+        value={binding([canonicalRun({ id: 'run-1', status: 'awaiting_approval' })])}
+      >
+        <ChatThread chatId="chat-1" />
+      </JarvisCommandCenterProvider>,
+    );
+    const log = screen.getByRole('log');
+    const oldCard = document.createElement('div');
+    oldCard.dataset.approvalKind = 'canonical';
+    oldCard.dataset.approvalId = 'approval-old';
+    oldCard.dataset.status = 'pending';
+    oldCard.tabIndex = -1;
+    oldCard.scrollIntoView = vi.fn();
+    log.append(oldCard);
+
+    act(() => {
+      expect(
+        requestJarvisApprovalNavigation({
+          accountId: 'account-other',
+          chatId: 'chat-1',
+          runId: 'run-1',
+          approvalId: 'approval-1',
+        }),
+      ).toBe(true);
+    });
+    expect(oldCard.scrollIntoView).not.toHaveBeenCalled();
+    expect(document.activeElement).not.toBe(oldCard);
+    act(() => {
+      expect(
+        acknowledgeJarvisApprovalNavigation({
+          accountId: 'account-other',
+          chatId: 'chat-1',
+          runId: 'run-1',
+          approvalId: 'approval-1',
+        }),
+      ).toBe(true);
+    });
+
+    act(() => {
+      requestJarvisApprovalNavigation({
+        accountId: 'account-1',
+        chatId: 'chat-1',
+        runId: 'run-1',
+        approvalId: 'approval-1',
+      });
+    });
+    const exactCard = document.createElement('div');
+    exactCard.dataset.approvalKind = 'canonical';
+    exactCard.dataset.approvalId = 'approval-1';
+    exactCard.dataset.status = 'pending';
+    exactCard.tabIndex = -1;
+    exactCard.scrollIntoView = vi.fn();
+    act(() => log.append(exactCard));
+
+    await vi.waitFor(() => expect(document.activeElement).toBe(exactCard), { timeout: 5_000 });
+    expect(exactCard.scrollIntoView).toHaveBeenCalledWith({
+      behavior: 'smooth',
+      block: 'center',
+    });
+    expect(oldCard.scrollIntoView).not.toHaveBeenCalled();
+    expect(readPendingJarvisApprovalNavigation()).toBeUndefined();
+  });
+
+  it('uses non-animated approval navigation when reduced motion is preferred', async () => {
+    setReducedMotion(true);
+    render(
+      <JarvisCommandCenterProvider
+        value={binding([canonicalRun({ id: 'run-1', status: 'awaiting_approval' })])}
+      >
+        <ChatThread chatId="chat-1" />
+      </JarvisCommandCenterProvider>,
+    );
+    const card = document.createElement('div');
+    card.dataset.approvalKind = 'canonical';
+    card.dataset.approvalId = 'approval-1';
+    card.dataset.status = 'pending';
+    card.tabIndex = -1;
+    card.scrollIntoView = vi.fn();
+    act(() => screen.getByRole('log').append(card));
+
+    act(() => {
+      requestJarvisApprovalNavigation({
+        accountId: 'account-1',
+        chatId: 'chat-1',
+        runId: 'run-1',
+        approvalId: 'approval-1',
+      });
+    });
+
+    await vi.waitFor(() => expect(document.activeElement).toBe(card), { timeout: 5_000 });
+    expect(card.scrollIntoView).toHaveBeenCalledWith({
+      behavior: 'auto',
+      block: 'center',
+    });
+  });
+
+  it('rejects a same-account and same-chat target when its run does not own the approval', async () => {
+    render(
+      <JarvisCommandCenterProvider
+        value={binding([canonicalRun({ id: 'run-1', status: 'awaiting_approval' })])}
+      >
+        <ChatThread chatId="chat-1" />
+      </JarvisCommandCenterProvider>,
+    );
+    const card = document.createElement('div');
+    card.dataset.approvalKind = 'canonical';
+    card.dataset.approvalId = 'approval-1';
+    card.dataset.status = 'pending';
+    card.tabIndex = -1;
+    card.scrollIntoView = vi.fn();
+    act(() => screen.getByRole('log').append(card));
+
+    act(() => {
+      requestJarvisApprovalNavigation({
+        accountId: 'account-1',
+        chatId: 'chat-1',
+        runId: 'run-other',
+        approvalId: 'approval-1',
+      });
+    });
+
+    await vi.waitFor(
+      () =>
+        expect(readPendingJarvisApprovalNavigation()).toEqual({
+          accountId: 'account-1',
+          chatId: 'chat-1',
+          runId: 'run-other',
+          approvalId: 'approval-1',
+        }),
+      { timeout: 5_000 },
+    );
+    expect(card.scrollIntoView).not.toHaveBeenCalled();
+    expect(document.activeElement).not.toBe(card);
+  });
+
+  it('rejects a stale approval card from the current run when a newer approval is pending', async () => {
+    const commandCenterBinding = binding([
+      canonicalRun({ id: 'run-1', status: 'awaiting_approval' }),
+    ]);
+    vi.mocked(commandCenterBinding.dataPort.getEventsForRun).mockResolvedValue([
+      {
+        runId: 'run-1',
+        seq: 1,
+        idempotencyKey: 'approval-1',
+        type: 'approval',
+        status: 'pending',
+        title: 'Earlier approval',
+        sourceRefs: [],
+        artifactIds: [],
+        createdAt: 105,
+      },
+      {
+        runId: 'run-1',
+        seq: 2,
+        idempotencyKey: 'approval-2',
+        type: 'approval',
+        status: 'pending',
+        title: 'Current approval',
+        sourceRefs: [],
+        artifactIds: [],
+        createdAt: 110,
+      },
+    ]);
+    render(
+      <JarvisCommandCenterProvider value={commandCenterBinding}>
+        <ChatThread chatId="chat-1" />
+      </JarvisCommandCenterProvider>,
+    );
+    const card = document.createElement('div');
+    card.dataset.approvalKind = 'canonical';
+    card.dataset.approvalId = 'approval-1';
+    card.dataset.status = 'pending';
+    card.tabIndex = -1;
+    card.scrollIntoView = vi.fn();
+    act(() => screen.getByRole('log').append(card));
+
+    act(() => {
+      requestJarvisApprovalNavigation({
+        accountId: 'account-1',
+        chatId: 'chat-1',
+        runId: 'run-1',
+        approvalId: 'approval-1',
+      });
+    });
+
+    await vi.waitFor(() =>
+      expect(commandCenterBinding.dataPort.getEventsForRun).toHaveBeenCalledWith({
+        accountId: 'account-1',
+        runId: 'run-1',
+        limit: 500,
+      }),
+    );
+    expect(card.scrollIntoView).not.toHaveBeenCalled();
+    expect(document.activeElement).not.toBe(card);
+    expect(readPendingJarvisApprovalNavigation()).toEqual({
+      accountId: 'account-1',
+      chatId: 'chat-1',
+      runId: 'run-1',
+      approvalId: 'approval-1',
+    });
+  });
+
+  it('allows only one matching mounted thread to claim a navigation target', async () => {
+    const commandCenterBinding = binding([
+      canonicalRun({ id: 'run-1', status: 'awaiting_approval' }),
+    ]);
+    render(
+      <>
+        <JarvisCommandCenterProvider value={commandCenterBinding}>
+          <ChatThread chatId="chat-1" />
+        </JarvisCommandCenterProvider>
+        <JarvisCommandCenterProvider value={commandCenterBinding}>
+          <ChatThread chatId="chat-1" />
+        </JarvisCommandCenterProvider>
+      </>,
+    );
+    const cards = screen.getAllByRole('log').map((log) => {
+      const card = document.createElement('div');
+      card.dataset.approvalKind = 'canonical';
+      card.dataset.approvalId = 'approval-1';
+      card.dataset.status = 'pending';
+      card.tabIndex = -1;
+      card.scrollIntoView = vi.fn();
+      act(() => log.append(card));
+      return card;
+    });
+
+    act(() => {
+      requestJarvisApprovalNavigation({
+        accountId: 'account-1',
+        chatId: 'chat-1',
+        runId: 'run-1',
+        approvalId: 'approval-1',
+      });
+    });
+
+    await vi.waitFor(
+      () =>
+        expect(
+          cards.reduce(
+            (count, card) =>
+              count + (card.scrollIntoView as ReturnType<typeof vi.fn>).mock.calls.length,
+            0,
+          ),
+        ).toBe(1),
+      { timeout: 5_000 },
+    );
+    expect(cards.filter((card) => document.activeElement === card)).toHaveLength(1);
+    expect(readPendingJarvisApprovalNavigation()).toBeUndefined();
   });
 });

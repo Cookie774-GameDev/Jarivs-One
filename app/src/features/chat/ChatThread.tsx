@@ -11,7 +11,18 @@ import {
   JarvisCommandCenter,
   useJarvisCommandCenterBinding,
 } from '@/features/jarvis-command-center/JarvisCommandCenter';
-import type { JarvisCommandCenterHandlers } from '@/features/jarvis-command-center/types';
+import {
+  acknowledgeJarvisApprovalNavigation,
+  isCurrentJarvisApprovalNavigationTarget,
+  isPendingJarvisApprovalNavigation,
+  readPendingJarvisApprovalNavigation,
+  subscribeJarvisApprovalNavigation,
+  type JarvisApprovalNavigationIntent,
+} from '@/features/jarvis-command-center/approvalNavigation';
+import type {
+  JarvisCommandCenterHandlers,
+  JarvisRun,
+} from '@/features/jarvis-command-center/types';
 import { useJarvisTaskRunStore } from '@/features/jarvis-runs/taskRunStore';
 import type { ChatId, Message, Part } from '@/types';
 import type { JarvisCreatorKind } from '@/features/jarvis-creator/contracts';
@@ -30,16 +41,16 @@ export interface ChatThreadProps {
   compact?: boolean;
 }
 
-function useCanonicalRunPresence(
+function useCurrentCanonicalRun(
   binding: ReturnType<typeof useJarvisCommandCenterBinding>,
   chatId: string,
-): boolean {
+): JarvisRun | undefined {
   type BoundDataPort = NonNullable<typeof binding>['dataPort'];
   type Presence = Readonly<{
     accountId: string;
     chatId: string;
     dataPort: BoundDataPort;
-    present: boolean;
+    run?: JarvisRun;
   }>;
   const [presence, setPresence] = useState<Presence>();
   const accountId = binding?.hostPort.accountId;
@@ -51,7 +62,7 @@ function useCanonicalRunPresence(
       return;
     }
     const scope = { accountId, chatId, dataPort } as const;
-    setPresence({ ...scope, present: false });
+    setPresence(scope);
     let disposed = false;
     let generation = 0;
     const refresh = async () => {
@@ -65,12 +76,12 @@ function useCanonicalRunPresence(
         if (!disposed && requestGeneration === generation) {
           setPresence({
             ...scope,
-            present: runs.some((run) => run.accountId === accountId && run.chatId === chatId),
+            run: runs.find((run) => run.accountId === accountId && run.chatId === chatId),
           });
         }
       } catch {
         if (!disposed && requestGeneration === generation) {
-          setPresence({ ...scope, present: false });
+          setPresence(scope);
         }
       }
     };
@@ -83,13 +94,12 @@ function useCanonicalRunPresence(
     };
   }, [accountId, chatId, dataPort]);
 
-  return Boolean(
-    presence &&
-      presence.accountId === accountId &&
-      presence.chatId === chatId &&
-      presence.dataPort === dataPort &&
-      presence.present,
-  );
+  return presence &&
+    presence.accountId === accountId &&
+    presence.chatId === chatId &&
+    presence.dataPort === dataPort
+    ? presence.run
+    : undefined;
 }
 
 /**
@@ -130,8 +140,8 @@ export function ChatThread({ chatId, compact = false }: ChatThreadProps) {
   const hasProjectedCanonicalRun = useJarvisTaskRunStore((state) =>
     Object.values(state.runs).some((run) => run.canonical && run.chatId === String(chatId)),
   );
-  const hasDirectCanonicalRun = useCanonicalRunPresence(commandCenterBinding, String(chatId));
-  const hasCanonicalRun = hasProjectedCanonicalRun || hasDirectCanonicalRun;
+  const currentCanonicalRun = useCurrentCanonicalRun(commandCenterBinding, String(chatId));
+  const hasCanonicalRun = hasProjectedCanonicalRun || Boolean(currentCanonicalRun);
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickyRef = useRef(true);
   const fallbackAgents = useMemo(() => extractAgentCards(messages), [messages]);
@@ -159,6 +169,82 @@ export function ChatThread({ chatId, compact = false }: ChatThreadProps) {
       },
     };
   }, [commandCenterBinding]);
+
+  useEffect(() => {
+    let disposed = false;
+    const openPendingApproval = (
+      requested: JarvisApprovalNavigationIntent | undefined = readPendingJarvisApprovalNavigation(),
+    ) => {
+      const accountId = commandCenterBinding?.hostPort.accountId;
+      const dataPort = commandCenterBinding?.dataPort;
+      if (
+        !requested ||
+        !accountId ||
+        !dataPort ||
+        requested.accountId !== accountId ||
+        requested.chatId !== String(chatId) ||
+        !currentCanonicalRun ||
+        requested.runId !== currentCanonicalRun.id ||
+        currentCanonicalRun.status !== 'awaiting_approval' ||
+        !isPendingJarvisApprovalNavigation(requested)
+      ) {
+        return;
+      }
+      const cards = scrollRef.current?.querySelectorAll<HTMLElement>(
+        '[data-approval-kind="canonical"][data-status="pending"]',
+      );
+      const matches = cards
+        ? Array.from(cards).filter((card) => card.dataset.approvalId === requested.approvalId)
+        : [];
+      const card = matches.length === 1 ? matches[0] : undefined;
+      if (!card) return;
+      void isCurrentJarvisApprovalNavigationTarget(dataPort, requested)
+        .then((isCurrent) => {
+          if (disposed || !isCurrent || !isPendingJarvisApprovalNavigation(requested)) {
+            return;
+          }
+          const currentCards = scrollRef.current?.querySelectorAll<HTMLElement>(
+            '[data-approval-kind="canonical"][data-status="pending"]',
+          );
+          const currentMatches = currentCards
+            ? Array.from(currentCards).filter(
+                (candidate) => candidate.dataset.approvalId === requested.approvalId,
+              )
+            : [];
+          const currentCard = currentMatches.length === 1 ? currentMatches[0] : undefined;
+          if (!currentCard || !acknowledgeJarvisApprovalNavigation(requested)) return;
+          stickyRef.current = false;
+          currentCard.scrollIntoView({
+            behavior:
+              window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
+                ? 'auto'
+                : 'smooth',
+            block: 'center',
+          });
+          currentCard.focus({ preventScroll: true });
+        })
+        .catch(() => undefined);
+    };
+    const unsubscribe = subscribeJarvisApprovalNavigation(openPendingApproval);
+    const observer =
+      typeof MutationObserver === 'undefined'
+        ? undefined
+        : new MutationObserver(() => openPendingApproval());
+    if (scrollRef.current && observer) {
+      observer.observe(scrollRef.current, {
+        attributes: true,
+        attributeFilter: ['data-approval-id', 'data-approval-kind', 'data-status'],
+        childList: true,
+        subtree: true,
+      });
+    }
+    openPendingApproval();
+    return () => {
+      disposed = true;
+      observer?.disconnect();
+      unsubscribe();
+    };
+  }, [chatId, commandCenterBinding, currentCanonicalRun]);
 
   const tailSize = streamingSize(messages[messages.length - 1]);
 
@@ -197,9 +283,7 @@ export function ChatThread({ chatId, compact = false }: ChatThreadProps) {
     >
       <div
         data-sik-evidence={
-          KERNEL_SMOKE_ENABLED && commandCenterBinding
-            ? SIK_EVIDENCE.chatRuntimeReady
-            : undefined
+          KERNEL_SMOKE_ENABLED && commandCenterBinding ? SIK_EVIDENCE.chatRuntimeReady : undefined
         }
         className={
           compact
