@@ -92,6 +92,7 @@ interface ManagedServer {
   kind: McpServerKind;
   domains: readonly string[];
   exposure: McpToolExposurePolicy;
+  retiring: boolean;
   state: McpServerState;
   generation: number;
   client?: McpServerClient;
@@ -485,7 +486,10 @@ export class McpServerManager {
     this.idleTimeoutMs = options.idleTimeoutMs ?? 5 * 60_000;
   }
 
-  register(adapter: McpServerAdapter, registration: McpServerRegistration = {}): () => void {
+  register(
+    adapter: McpServerAdapter,
+    registration: McpServerRegistration = {},
+  ): () => Promise<void> {
     if (!adapter || typeof adapter.id !== 'string' || !SAFE_SERVER_ID.test(adapter.id)) {
       throw new Error('Invalid MCP server id.');
     }
@@ -493,16 +497,29 @@ export class McpServerManager {
       throw new Error(`MCP server '${adapter.id}' is already registered.`);
     const domains = [...new Set((registration.domains ?? []).map(canonicalDomain))].sort();
     if (domains.length > MAX_DOMAINS) throw new Error('Too many MCP server domains.');
-    this.servers.set(adapter.id, {
+    const server: ManagedServer = {
       adapter,
       kind: registration.kind ?? 'external_mcp',
       domains: Object.freeze(domains),
       exposure: canonicalExposure(registration.exposure),
+      retiring: false,
       state: 'stopped',
       generation: 0,
-    });
+    };
+    this.servers.set(adapter.id, server);
+    let unregisterPromise: Promise<void> | undefined;
     return () => {
-      void this.stop(adapter.id).finally(() => this.servers.delete(adapter.id));
+      if (!unregisterPromise) {
+        server.retiring = true;
+        unregisterPromise = (async () => {
+          if (this.servers.get(adapter.id) !== server) return;
+          await this.stop(adapter.id);
+          if (this.servers.get(adapter.id) === server) {
+            this.servers.delete(adapter.id);
+          }
+        })();
+      }
+      return unregisterPromise;
     };
   }
 
@@ -530,6 +547,9 @@ export class McpServerManager {
 
   async start(id: string): Promise<McpServerStatus> {
     const server = this.requireServer(id);
+    if (server.retiring) {
+      throw new Error(`MCP server '${id}' is being unregistered.`);
+    }
     if (server.state === 'running' && server.client) {
       this.touch(id, server);
       return this.status(id);

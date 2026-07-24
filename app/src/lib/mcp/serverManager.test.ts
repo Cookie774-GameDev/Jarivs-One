@@ -1140,4 +1140,100 @@ describe('MCP server lifecycle manager', () => {
       toolsDiscoveredAt: undefined,
     });
   });
+
+  it('awaits shutdown before unregistering and making an identifier reusable', async () => {
+    let releaseStop: (() => void) | undefined;
+    const stop = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseStop = resolve;
+        }),
+    );
+    const manager = new McpServerManager();
+    managers.push(manager);
+    const adapter: McpServerAdapter = {
+      id: 'removable',
+      start: async () => ({
+        listTools: async () => [],
+        invoke: async () => ({}),
+        health: async () => true,
+        stop,
+      }),
+    };
+    const unregister = manager.register(adapter);
+    await manager.start('removable');
+
+    const pending = unregister();
+    expect(pending).toBeInstanceOf(Promise);
+    expect(() => manager.register(adapter)).toThrow(/already registered/i);
+    await vi.waitFor(() => expect(releaseStop).toBeTypeOf('function'));
+    releaseStop?.();
+    await pending;
+
+    expect(() => manager.register(adapter)).not.toThrow();
+  });
+
+  it('makes unregister idempotent without deleting a replacement registration', async () => {
+    const manager = new McpServerManager();
+    managers.push(manager);
+    const original: McpServerAdapter = {
+      id: 'replaceable',
+      start: async () => ({
+        listTools: async () => [],
+        invoke: async () => ({}),
+        health: async () => true,
+        stop: async () => undefined,
+      }),
+    };
+    const unregisterOriginal = manager.register(original);
+
+    const firstRelease = unregisterOriginal();
+    expect(unregisterOriginal()).toBe(firstRelease);
+    await firstRelease;
+
+    const replacement: McpServerAdapter = {
+      ...original,
+      start: vi.fn(original.start),
+    };
+    const unregisterReplacement = manager.register(replacement);
+    await unregisterOriginal();
+
+    expect(manager.discover()).toEqual([
+      expect.objectContaining({ id: 'replaceable', state: 'stopped' }),
+    ]);
+    await unregisterReplacement();
+  });
+
+  it('rejects a new generation while unregister is waiting for startup', async () => {
+    let releaseFirstStart: (() => void) | undefined;
+    const stop = vi.fn(async () => undefined);
+    const start = vi.fn(async () => {
+      if (start.mock.calls.length === 1) {
+        await new Promise<void>((resolve) => {
+          releaseFirstStart = resolve;
+        });
+      }
+      return {
+        listTools: async () => [],
+        invoke: async () => ({}),
+        health: async () => true,
+        stop,
+      };
+    });
+    const manager = new McpServerManager();
+    managers.push(manager);
+    const unregister = manager.register({ id: 'retiring', start });
+
+    const starting = manager.start('retiring');
+    await vi.waitFor(() => expect(releaseFirstStart).toBeTypeOf('function'));
+    const postStartDiscovery = starting.then(() => manager.listTools('retiring'));
+    const unregistering = unregister();
+    releaseFirstStart?.();
+
+    await expect(postStartDiscovery).rejects.toThrow(/unregister|unknown MCP server/i);
+    await unregistering;
+    expect(start).toHaveBeenCalledOnce();
+    expect(stop).toHaveBeenCalledOnce();
+    expect(manager.discover()).toEqual([]);
+  });
 });

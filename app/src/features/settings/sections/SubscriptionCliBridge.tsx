@@ -10,6 +10,7 @@ import { copilotCliAdapter } from '@/lib/ai/adapters/copilot';
 import { qwenCliAdapter } from '@/lib/ai/adapters/qwen';
 import { openCodeCliAdapter } from '@/lib/ai/adapters/opencode';
 import { writeConnectionPickerStates } from '@/lib/ai/useAccessibleChatModels';
+import { McpConnections } from './McpConnections';
 
 export interface ConnectionMetadataRecord {
   installation: 'installed' | 'not-installed' | 'unknown';
@@ -179,6 +180,7 @@ export function SubscriptionCliBridge({
           );
         })}
       </div>
+      <McpConnections />
     </section>
   );
 }
