@@ -85,26 +85,32 @@
   else initialise();
 })();
 
-
-/* Load the isolated interactive VibeSpace system model. */
+/* Load the isolated VibeSpace website Phase 2 experience. */
 (function () {
   'use strict';
 
-  var scriptId = 'vs-system-model-script';
-  var cssId = 'vs-system-model-css';
-  var loaded = false;
+  var VERSION = 'phase2-20260724';
+  var scriptId = 'vs-phase2-system-script';
+  var cssId = 'vs-phase2-system-css';
+  var scriptRequested = false;
+
+  function versioned(path) {
+    return path + (path.indexOf('?') === -1 ? '?' : '&') + 'v=' + VERSION;
+  }
 
   function loadScript() {
-    if (loaded || document.getElementById(scriptId)) return;
-    loaded = true;
+    if (scriptRequested || document.getElementById(scriptId)) return;
+    scriptRequested = true;
     var script = document.createElement('script');
     script.id = scriptId;
-    script.src = 'js/system-model.js';
-    script.defer = true;
+    script.src = versioned('js/system-model.js');
+    script.async = true;
+    script.dataset.vibespacePhase = '2';
     document.head.appendChild(script);
   }
 
-  if (document.getElementById(cssId)) {
+  var existingStylesheet = document.getElementById(cssId);
+  if (existingStylesheet) {
     loadScript();
     return;
   }
@@ -112,10 +118,12 @@
   var stylesheet = document.createElement('link');
   stylesheet.id = cssId;
   stylesheet.rel = 'stylesheet';
-  stylesheet.href = 'css/system-model.css';
+  stylesheet.href = versioned('css/system-model.css');
+  stylesheet.dataset.vibespacePhase = '2';
   stylesheet.addEventListener('load', loadScript, { once: true });
   stylesheet.addEventListener('error', loadScript, { once: true });
   document.head.appendChild(stylesheet);
 
+  /* A bounded fallback prevents a blocked stylesheet from suppressing behavior. */
   window.setTimeout(loadScript, 2500);
 })();
