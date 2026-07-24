@@ -1,7 +1,14 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { JarvisArtifactV1 } from './types';
 import { JarvisOutputsTab } from './JarvisOutputsTab';
+
+const commandCenterStyles = readFileSync(
+  resolve(process.cwd(), 'src/features/jarvis-command-center/jarvis-command-center.css'),
+  'utf8',
+);
 
 const { openExternal } = vi.hoisted(() => ({
   openExternal: vi.fn<(url: string) => Promise<void>>(),
@@ -125,5 +132,36 @@ describe('JarvisOutputsTab', () => {
 
     expect(screen.queryByRole('button', { name: /Open output/ })).toBeNull();
     expect(screen.queryByRole('link', { name: /Open output/ })).toBeNull();
+  });
+
+  it('keeps long output titles and disclosed hostnames in a shrinkable wrapping row', () => {
+    const hostname =
+      'very-long-verified-output-host.research-archive.integration-evidence.example.test';
+    const title =
+      'A deliberately long persisted artifact title that must reflow at two-hundred-percent text scaling';
+    render(
+      <JarvisOutputsTab
+        outputs={[
+          artifact('artifact-long-layout', title, {
+            uri: `https://${hostname}/verified-report`,
+          }),
+        ]}
+      />,
+    );
+
+    const action = screen.getByRole('button', {
+      name: `Open output: ${title} on ${hostname}`,
+    });
+    expect(action.textContent).toContain(hostname);
+    expect(screen.getByText(title).textContent).toBe(title);
+    expect(commandCenterStyles).toMatch(
+      /\.jarvis-command-center__row\s*\{[^}]*grid-template-columns:\s*0\.1875rem minmax\(0,\s*1fr\);/s,
+    );
+    expect(commandCenterStyles).toMatch(
+      /\.jarvis-command-center__row-meta\s*\{[^}]*min-width:\s*0;[^}]*flex-wrap:\s*wrap;/s,
+    );
+    expect(commandCenterStyles).toMatch(
+      /\.jarvis-command-center__output-action\s*\{[^}]*max-width:\s*100%;[^}]*overflow-wrap:\s*anywhere;[^}]*white-space:\s*normal;/s,
+    );
   });
 });

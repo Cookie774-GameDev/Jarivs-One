@@ -70,7 +70,7 @@ export function JarvisOutputsTab({ outputs }: { outputs: readonly JarvisArtifact
                       );
                     }}
                   >
-                    Open {access.hostname}
+                    <span>Open {access.hostname}</span>
                     <ArrowUpRight aria-hidden="true" />
                   </button>
                 ) : access?.kind === 'internal_uri' ? (
@@ -81,7 +81,7 @@ export function JarvisOutputsTab({ outputs }: { outputs: readonly JarvisArtifact
                     rel="noopener noreferrer"
                     aria-label={accessLabel}
                   >
-                    Open
+                    <span>Open</span>
                     <ArrowUpRight aria-hidden="true" />
                   </a>
                 ) : access?.kind === 'local_path' ? (
@@ -97,7 +97,7 @@ export function JarvisOutputsTab({ outputs }: { outputs: readonly JarvisArtifact
                       );
                     }}
                   >
-                    Open
+                    <span>Open</span>
                     <ArrowUpRight aria-hidden="true" />
                   </button>
                 ) : null}

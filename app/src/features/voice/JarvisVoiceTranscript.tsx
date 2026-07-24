@@ -69,7 +69,7 @@ export function JarvisVoiceTranscript({
         return (
           <div
             key={message.id}
-            className="grid grid-cols-[16px_44px_1fr] items-start gap-1 text-xs leading-4"
+            className="grid grid-cols-[1rem_2.75rem_minmax(0,1fr)] items-start gap-1 text-xs leading-4"
           >
             <span
               className={cn(
@@ -105,7 +105,7 @@ export function JarvisVoiceTranscript({
         );
       })}
       {partial ? (
-        <div className="grid grid-cols-[16px_44px_1fr] items-center gap-1 text-xs leading-4">
+        <div className="grid grid-cols-[1rem_2.75rem_minmax(0,1fr)] items-center gap-1 text-xs leading-4">
           <span
             className="flex h-4 w-4 items-center justify-center rounded-full border border-info/80 text-info"
             aria-hidden="true"

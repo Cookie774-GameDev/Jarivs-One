@@ -1,6 +1,5 @@
 import * as React from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { Profiler, type ProfilerOnRenderCallback } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useUIStore } from '@/stores/ui';
 import { useAuthStore } from '@/stores/auth';
@@ -214,6 +213,7 @@ describe('VoiceModal hands-free turn-taking', () => {
       voiceModalOpen: true,
       voiceListening: false,
       activeChatId: 'chat_voice',
+      route: 'chat',
     });
     useAuthStore.setState({
       localUserId: 'account-a',
@@ -595,72 +595,81 @@ describe('VoiceModal hands-free turn-taking', () => {
       nodes: [],
     });
 
-    type Scenario =
-      | 'mount'
-      | 'artifacts'
-      | 'tool-task'
-      | 'listening'
-      | 'speaking'
-      | 'drag'
-      | 'route';
-    let scenario: Scenario = 'mount';
-    const commits: Array<{ scenario: Scenario; actualDuration: number }> = [];
-    const onRender: ProfilerOnRenderCallback = (_id, _phase, actualDuration) => {
-      commits.push({ scenario, actualDuration });
+    const commits: number[] = [];
+    const onRender: React.ProfilerOnRenderCallback = (_id, _phase, actualDuration) => {
+      commits.push(actualDuration);
+    };
+    const settle = async () => {
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+    };
+    const measure = async (action: () => void | Promise<void>) => {
+      await settle();
+      const start = commits.length;
+      await action();
+      await settle();
+      return commits.slice(start);
     };
 
     render(
-      <Profiler id="voice-command-center-profile" onRender={onRender}>
+      <React.Profiler id="voice-command-center-profile" onRender={onRender}>
         <JarvisCommandCenterProvider value={bindingPort}>
           <VoiceModal />
         </JarvisCommandCenterProvider>
-      </Profiler>,
+      </React.Profiler>,
     );
     await waitFor(() => expect(useVoiceStore.getState().session?.chatId).toBe('chat_voice'));
 
-    scenario = 'artifacts';
-    fireEvent.click(screen.getByRole('button', { name: /Command Center/i }));
-    await screen.findByText('Profile artifact 6');
+    const artifactsProfile = await measure(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Command Center/i }));
+      await screen.findByText('Profile artifact 6');
+    });
 
-    scenario = 'tool-task';
-    const liveSystemsTab = screen.getByRole('tab', { name: 'Live Systems' });
-    liveSystemsTab.focus();
-    fireEvent.keyDown(liveSystemsTab, { key: 'Enter' });
-    await screen.findByText('Tool step 6');
+    const toolTaskProfile = await measure(async () => {
+      const liveSystemsTab = screen.getByRole('tab', { name: 'Live Systems' });
+      liveSystemsTab.focus();
+      fireEvent.keyDown(liveSystemsTab, { key: 'Enter' });
+      await screen.findByText('Tool step 6');
+    });
 
     act(() => useVoiceStore.setState({ state: 'paused' }));
-    scenario = 'listening';
-    act(() => useVoiceStore.setState({ state: 'listening' }));
-    expect(screen.getByRole('button', { name: 'Stop listening' })).not.toBeNull();
+    const listeningProfile = await measure(() => {
+      act(() => useVoiceStore.setState({ state: 'listening' }));
+      expect(screen.getByRole('button', { name: 'Stop listening' })).not.toBeNull();
+    });
 
-    scenario = 'speaking';
-    act(() => useVoiceStore.setState({ state: 'speaking' }));
-    expect(screen.getByRole('button', { name: 'Stop response' })).not.toBeNull();
+    const speakingProfile = await measure(() => {
+      act(() => useVoiceStore.setState({ state: 'speaking' }));
+      expect(screen.getByRole('button', { name: 'Stop response' })).not.toBeNull();
+    });
 
-    scenario = 'drag';
-    const dragRow = document.querySelector<HTMLElement>('.jarvis-voice-drag-row');
-    if (!dragRow) throw new Error('Expected voice panel drag row.');
-    Object.defineProperty(dragRow, 'setPointerCapture', { configurable: true, value: vi.fn() });
-    fireEvent.pointerDown(dragRow, { button: 0, clientX: 10, clientY: 10, pointerId: 1 });
-    fireEvent.pointerMove(dragRow, { clientX: 35, clientY: 40, pointerId: 1 });
-    fireEvent.pointerUp(dragRow, { clientX: 35, clientY: 40, pointerId: 1 });
+    const dragProfile = await measure(() => {
+      const dragRow = document.querySelector<HTMLElement>('.jarvis-voice-drag-row');
+      if (!dragRow) throw new Error('Expected voice panel drag row.');
+      Object.defineProperty(dragRow, 'setPointerCapture', { configurable: true, value: vi.fn() });
+      fireEvent.pointerDown(dragRow, { button: 0, clientX: 10, clientY: 10, pointerId: 1 });
+      fireEvent.pointerMove(dragRow, { clientX: 35, clientY: 40, pointerId: 1 });
+      fireEvent.pointerUp(dragRow, { clientX: 35, clientY: 40, pointerId: 1 });
+    });
 
-    scenario = 'route';
-    act(() => useUIStore.setState({ activeChatId: 'chat_profile_route_switch' }));
-    expect(useUIStore.getState().activeChatId).toBe('chat_profile_route_switch');
+    const routeProfile = await measure(() => {
+      act(() => useUIStore.getState().setRoute('schedule'));
+      expect(useUIStore.getState().route).toBe('schedule');
+    });
 
-    const profile = (name: Scenario) => commits.filter((entry) => entry.scenario === name);
     for (const entry of commits) {
-      expect(Number.isFinite(entry.actualDuration)).toBe(true);
-      expect(entry.actualDuration).toBeGreaterThanOrEqual(0);
+      expect(Number.isFinite(entry)).toBe(true);
+      expect(entry).toBeGreaterThanOrEqual(0);
     }
-    expect(profile('artifacts').length).toBeGreaterThan(0);
-    expect(profile('artifacts').length).toBeLessThanOrEqual(10);
-    expect(profile('tool-task').length).toBeLessThanOrEqual(10);
-    expect(profile('listening').length).toBeLessThanOrEqual(2);
-    expect(profile('speaking').length).toBeLessThanOrEqual(2);
-    expect(profile('drag').length).toBeLessThanOrEqual(1);
-    expect(profile('route').length).toBeLessThanOrEqual(1);
+    expect(artifactsProfile.length).toBeGreaterThan(0);
+    expect(artifactsProfile.length).toBeLessThanOrEqual(10);
+    expect(toolTaskProfile.length).toBeLessThanOrEqual(10);
+    expect(listeningProfile.length).toBeLessThanOrEqual(2);
+    expect(speakingProfile.length).toBeLessThanOrEqual(2);
+    expect(dragProfile.length).toBeLessThanOrEqual(1);
+    expect(routeProfile.length).toBeLessThanOrEqual(1);
     expect(bindingPort.dataPort.getEventsForRun).toHaveBeenCalledTimes(1);
     expect(bindingPort.dataPort.getArtifactsForRun).toHaveBeenCalledTimes(1);
   });

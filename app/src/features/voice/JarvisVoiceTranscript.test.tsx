@@ -46,6 +46,12 @@ describe('JarvisVoiceTranscript accessibility', () => {
       screen.getByText('Stable committed reply').closest('.grid')?.classList.contains('text-xs'),
     ).toBe(true);
     expect(
+      screen
+        .getByText('Stable committed reply')
+        .closest('.grid')
+        ?.classList.contains('grid-cols-[1rem_2.75rem_minmax(0,1fr)]'),
+    ).toBe(true);
+    expect(
       screen.getByRole('button', { name: 'Show more' }).classList.contains('text-foreground'),
     ).toBe(true);
   });

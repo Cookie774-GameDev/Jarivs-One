@@ -413,6 +413,7 @@ function LiveExecutionMap({
               className="jarvis-live-systems__node"
               aria-label={node.accessibleLabel}
               aria-controls={detailsId}
+              aria-describedby={detailsId}
               aria-pressed={selected?.id === node.id}
               data-kind={node.kind}
               data-state={node.state}
@@ -442,6 +443,7 @@ function LiveExecutionMap({
           className="jarvis-live-systems__node jarvis-live-systems__node--root"
           aria-label="Jarvis run"
           aria-controls={detailsId}
+          aria-describedby={detailsId}
           aria-pressed={!selected}
           data-state={run.status}
           data-blocked={run.status === 'awaiting_approval' ? 'approval' : undefined}

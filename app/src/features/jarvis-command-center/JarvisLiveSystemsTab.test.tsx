@@ -339,8 +339,10 @@ describe('JarvisLiveSystemsTab', () => {
       />,
     );
 
-    fireEvent.focus(screen.getByRole('button', { name: 'Tool knowledge-search' }));
+    const toolNode = screen.getByRole('button', { name: 'Tool knowledge-search' });
+    fireEvent.focus(toolNode);
     const details = screen.getByRole('region', { name: 'Live system details' });
+    expect(toolNode.getAttribute('aria-describedby')).toBe(details.id);
     expect(details.getAttribute('aria-live')).toBeNull();
     expect(details.textContent).toContain('execute · cancel');
     expect(details.textContent).toContain('Tool');
