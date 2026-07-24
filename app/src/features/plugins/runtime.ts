@@ -244,10 +244,15 @@ async function readAuthorizedCredentials(input: {
   activeAccountId: () => string | undefined;
   authority: JarvisExistingCredentialAuthorizationAuthority;
   adapter: ExistingPluginCredentialAdapter;
-}): Promise<CredentialMap> {
+}): Promise<
+  Readonly<{
+    values: CredentialMap;
+    authorizations: readonly JarvisExistingCredentialAuthorization[];
+  }>
+> {
   if (input.locators.length === 0) {
     assertActiveAccount(input.accountId, input.activeAccountId);
-    return {};
+    return { values: {}, authorizations: [] };
   }
   const authorizations = await authorizeLocators({
     accountId: input.accountId,
@@ -271,7 +276,7 @@ async function readAuthorizedCredentials(input: {
       if (value === undefined) throw safeFailure('credential_grant_unavailable');
       values[authorization.locator.fieldId] = value;
     }
-    return values;
+    return { values, authorizations };
   });
 }
 
@@ -279,6 +284,118 @@ function required(values: CredentialMap, key: string, label: string): string {
   const value = values[key]?.trim();
   if (!value) throw safeFailure(`${label.toLowerCase().replace(/\s+/g, '_')}_required`);
   return value;
+}
+
+const GITHUB_OWNER = /^(?=.{1,39}$)[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/;
+const GITHUB_REPOSITORY = /^[A-Za-z0-9._-]{1,100}$/;
+const GITHUB_DEFAULT_BRANCH = /^[A-Za-z0-9._/-]{1,255}$/;
+const GITHUB_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$/;
+
+function exactParameterRecord(
+  value: Readonly<Record<string, unknown>>,
+  allowedKeys: readonly string[],
+  reason: string,
+): Record<string, unknown> {
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    Array.isArray(value) ||
+    (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null)
+  ) {
+    throw safeFailure(reason);
+  }
+  const allowed = new Set(allowedKeys);
+  const result: Record<string, unknown> = {};
+  for (const key of Reflect.ownKeys(value)) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (typeof key !== 'string' || !allowed.has(key) || !descriptor || !('value' in descriptor)) {
+      throw safeFailure(reason);
+    }
+    result[key] = descriptor.value;
+  }
+  return result;
+}
+
+function providerRecord(value: unknown): Record<string, unknown> {
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Object.prototype
+  ) {
+    throw safeFailure('provider_response_invalid');
+  }
+  return value as Record<string, unknown>;
+}
+
+function githubOwner(value: unknown, reason: string): string {
+  if (typeof value !== 'string' || !GITHUB_OWNER.test(value)) throw safeFailure(reason);
+  return value;
+}
+
+function githubRepository(value: unknown, reason: string): string {
+  if (
+    typeof value !== 'string' ||
+    !GITHUB_REPOSITORY.test(value) ||
+    value === '.' ||
+    value === '..'
+  ) {
+    throw safeFailure(reason);
+  }
+  return value;
+}
+
+function githubRepositoryTarget(
+  params: Readonly<Record<string, unknown>>,
+): Readonly<{ owner: string; repository: string }> {
+  const record = exactParameterRecord(params, ['owner', 'repository'], 'repository_target_invalid');
+  return {
+    owner: githubOwner(record.owner, 'repository_target_invalid'),
+    repository: githubRepository(record.repository, 'repository_target_invalid'),
+  };
+}
+
+function githubCount(value: unknown): number {
+  if (!Number.isSafeInteger(value) || (value as number) < 0) {
+    throw safeFailure('provider_response_invalid');
+  }
+  return value as number;
+}
+
+function githubDefaultBranch(value: unknown): string {
+  if (
+    typeof value !== 'string' ||
+    !GITHUB_DEFAULT_BRANCH.test(value) ||
+    value.startsWith('/') ||
+    value.endsWith('/') ||
+    value.endsWith('.') ||
+    value.endsWith('.lock') ||
+    value.includes('..') ||
+    value.includes('//') ||
+    value.includes('@{')
+  ) {
+    throw safeFailure('provider_response_invalid');
+  }
+  return value;
+}
+
+function githubTimestamp(value: unknown): string {
+  if (
+    typeof value !== 'string' ||
+    !GITHUB_TIMESTAMP.test(value) ||
+    !Number.isFinite(Date.parse(value))
+  ) {
+    throw safeFailure('provider_response_invalid');
+  }
+  return value;
+}
+
+function githubHeaders(token: string): Readonly<Record<string, string>> {
+  return {
+    Accept: 'application/vnd.github+json',
+    Authorization: `Bearer ${token}`,
+    'X-GitHub-Api-Version': '2022-11-28',
+  };
 }
 
 function normalizeStoreDomain(raw: string): string {
@@ -429,6 +546,99 @@ async function testManifestConnection(
   return { ok: false, error: 'This catalog entry does not have a live connector yet.' };
 }
 
+async function runGithubTool(input: {
+  toolName: string;
+  params: Readonly<Record<string, unknown>>;
+  values: CredentialMap;
+  signal: AbortSignal;
+}): Promise<ActionResult> {
+  const token = required(input.values, 'token', 'GitHub token');
+  if (input.toolName === 'identity') {
+    exactParameterRecord(input.params, [], 'identity_parameters_invalid');
+    const response = providerRecord(
+      (
+        await requestProbe(
+          'https://api.github.com/user',
+          { method: 'GET', headers: githubHeaders(token) },
+          input.signal,
+        )
+      ).data,
+    );
+    const login = githubOwner(response.login, 'provider_response_invalid');
+    const publicRepositories = githubCount(response.public_repos);
+    const privateRepositories =
+      response.total_private_repos === undefined
+        ? undefined
+        : githubCount(response.total_private_repos);
+    return {
+      ok: true,
+      summary: `GitHub account ${login} verified.`,
+      data: {
+        login,
+        profileUrl: `https://github.com/${login}`,
+        publicRepositories,
+        ...(privateRepositories === undefined ? {} : { privateRepositories }),
+      },
+    };
+  }
+
+  if (input.toolName !== 'repository_context') {
+    throw safeFailure('plugin_tool_unavailable');
+  }
+  const target = githubRepositoryTarget(input.params);
+  const response = providerRecord(
+    (
+      await requestProbe(
+        `https://api.github.com/repos/${encodeURIComponent(target.owner)}/${encodeURIComponent(
+          target.repository,
+        )}`,
+        { method: 'GET', headers: githubHeaders(token) },
+        input.signal,
+      )
+    ).data,
+  );
+  if (typeof response.full_name !== 'string') throw safeFailure('provider_response_invalid');
+  const fullNameParts = response.full_name.split('/');
+  if (fullNameParts.length !== 2) throw safeFailure('provider_response_invalid');
+  const canonicalOwner = githubOwner(fullNameParts[0], 'provider_response_invalid');
+  const canonicalRepository = githubRepository(fullNameParts[1], 'provider_response_invalid');
+  const fullName = `${canonicalOwner}/${canonicalRepository}`;
+  if (
+    canonicalOwner.toLowerCase() !== target.owner.toLowerCase() ||
+    canonicalRepository.toLowerCase() !== target.repository.toLowerCase()
+  ) {
+    throw safeFailure('provider_response_invalid');
+  }
+  const visibility =
+    response.visibility === 'public' ||
+    response.visibility === 'private' ||
+    response.visibility === 'internal'
+      ? response.visibility
+      : typeof response.private === 'boolean'
+        ? response.private
+          ? 'private'
+          : 'public'
+        : undefined;
+  if (!visibility || typeof response.archived !== 'boolean') {
+    throw safeFailure('provider_response_invalid');
+  }
+  return {
+    ok: true,
+    summary: `GitHub repository ${fullName} retrieved.`,
+    data: {
+      fullName,
+      repositoryUrl: `https://github.com/${fullName}`,
+      visibility,
+      defaultBranch: githubDefaultBranch(response.default_branch),
+      stars: githubCount(response.stargazers_count),
+      forks: githubCount(response.forks_count),
+      openIssuesAndPullRequests: githubCount(response.open_issues_count),
+      archived: response.archived,
+      updatedAt: githubTimestamp(response.updated_at),
+    },
+  };
+}
+
 export function createAccountScopedPluginRuntime(input: {
   activeAccountId(): string | undefined;
   grants: PluginCredentialAccountGrantRepository;
@@ -460,7 +670,11 @@ export function createAccountScopedPluginRuntime(input: {
       if (!normalizedValue) throw safeFailure('credential_value_invalid');
       await withPluginCredentialLocatorLocks([locator], async (locks) => {
         assertActiveAccount(accountId, input.activeAccountId);
+        input.connections.removeConnection(accountId, manifest.id);
         const current = await input.grants.getLocked({ locks, locator });
+        if (current && current.accountId !== accountId) {
+          input.connections.removeConnection(current.accountId, manifest.id);
+        }
         const nextRevision = current && current.accountId === accountId ? current.revision + 1 : 1;
         if (!Number.isSafeInteger(nextRevision) || nextRevision <= 0) {
           throw safeFailure('credential_revision_invalid');
@@ -521,35 +735,62 @@ export function createAccountScopedPluginRuntime(input: {
     async testConnection({ accountId, pluginId }: { accountId: string; pluginId: string }) {
       assertActiveAccount(accountId, input.activeAccountId);
       const manifest = manifestFor(pluginId);
+      const locators = locatorsFor(manifest);
+      let credentialRead: Awaited<ReturnType<typeof readAuthorizedCredentials>> | undefined;
       let result: PluginTestResult;
       try {
-        const values = await readAuthorizedCredentials({
+        credentialRead = await readAuthorizedCredentials({
           accountId,
-          locators: locatorsFor(manifest),
+          locators,
           activeAccountId: input.activeAccountId,
           authority: input.credentialAuthorization,
           adapter: input.credentialAdapter,
         });
-        result = await testManifestConnection(manifest, values);
+        result = await testManifestConnection(manifest, credentialRead.values);
       } catch (error) {
         result = {
           ok: false,
           error: error instanceof Error ? error.message : 'Plugin unavailable.',
         };
       }
-      assertActiveAccount(accountId, input.activeAccountId);
-      input.connections.upsertConnection({
-        accountId,
-        pluginId: manifest.id,
-        state: result.ok ? 'connected' : 'error',
-        enabled: result.ok,
-        enabledProjectIds: [],
-        accountLabel: result.accountLabel,
-        lastTestedAt: input.now(),
-        error: result.error,
-        configuredFields: manifest.fields.map((field) => field.id),
-        updatedAt: input.now(),
-      });
+      const storeResult = () => {
+        assertActiveAccount(accountId, input.activeAccountId);
+        input.connections.upsertConnection({
+          accountId,
+          pluginId: manifest.id,
+          state: result.ok ? 'connected' : 'error',
+          enabled: result.ok,
+          enabledProjectIds: [],
+          accountLabel: result.accountLabel,
+          lastTestedAt: input.now(),
+          error: result.error,
+          configuredFields: manifest.fields.map((field) => field.id),
+          updatedAt: input.now(),
+        });
+      };
+      if (credentialRead?.authorizations.length) {
+        try {
+          await withPluginCredentialLocatorLocks(locators, async (locks) => {
+            assertActiveAccount(accountId, input.activeAccountId);
+            for (const authorization of credentialRead!.authorizations) {
+              const decision = await input.credentialAuthorization.revalidateLocked({
+                authorization,
+                locks,
+              });
+              if (!decision.authorized) throw safeFailure(decision.reason);
+            }
+            storeResult();
+          });
+        } catch (error) {
+          input.connections.removeConnection(accountId, manifest.id);
+          return {
+            ok: false,
+            error: error instanceof Error ? error.message : 'Plugin unavailable.',
+          };
+        }
+      } else {
+        storeResult();
+      }
       return result;
     },
     async disconnect({ accountId, pluginId }: { accountId: string; pluginId: string }) {
@@ -634,10 +875,11 @@ export function createAccountScopedPluginRuntime(input: {
   function runPreparedTool(inputValue: {
     manifest: PluginManifest;
     tool: PluginManifest['tools'][number];
+    params: Readonly<Record<string, unknown>>;
     values: CredentialMap;
     signal: AbortSignal;
   }): Promise<ActionResult> {
-    const { manifest, tool, values, signal } = inputValue;
+    const { manifest, tool, params, values, signal } = inputValue;
     if (manifest.id === 'mock-connector' && tool.name === 'ping') {
       return Promise.resolve({
         ok: true,
@@ -657,6 +899,9 @@ export function createAccountScopedPluginRuntime(input: {
           })),
         },
       });
+    }
+    if (manifest.id === 'github') {
+      return runGithubTool({ toolName: tool.name, params, values, signal });
     }
     return testManifestConnection(manifest, values, signal).then((result): ActionResult => {
       if (!result.ok) return { ok: false, error: result.error ?? 'Plugin connection failed.' };
@@ -681,7 +926,7 @@ export function createAccountScopedPluginRuntime(input: {
         params,
         context,
       });
-      const values = await readAuthorizedCredentials({
+      const { values } = await readAuthorizedCredentials({
         accountId,
         locators: locatorsFor(manifest),
         activeAccountId: input.activeAccountId,
@@ -691,6 +936,7 @@ export function createAccountScopedPluginRuntime(input: {
       return await runPreparedTool({
         manifest,
         tool,
+        params,
         values,
         signal: context.signal ?? AbortSignal.timeout(12_000),
       });
@@ -719,7 +965,7 @@ export function createAccountScopedPluginRuntime(input: {
         }
         values[fieldId] = value;
       }
-      return runPreparedTool({ manifest, tool, values, signal: context.signal });
+      return runPreparedTool({ manifest, tool, params, values, signal: context.signal });
     },
   });
 

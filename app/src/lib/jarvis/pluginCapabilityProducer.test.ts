@@ -102,10 +102,24 @@ describe('createJarvisPluginCapabilityProjection', () => {
         lastVerifiedAt: 90,
       },
       {
+        id: 'plugin.api-plugin.search',
+        state: 'authenticated',
+        operations: ['execute'],
+        evidenceRef: 'plugin-verification:account-1:api-plugin:90:tool:search',
+        lastVerifiedAt: 90,
+      },
+      {
         id: 'oauth-plugin',
         state: 'authenticated',
         operations: ['search'],
         evidenceRef: 'plugin-verification:account-1:oauth-plugin:90',
+        lastVerifiedAt: 90,
+      },
+      {
+        id: 'plugin.oauth-plugin.search',
+        state: 'authenticated',
+        operations: ['execute'],
+        evidenceRef: 'plugin-verification:account-1:oauth-plugin:90:tool:search',
         lastVerifiedAt: 90,
       },
     ]);
@@ -142,6 +156,13 @@ describe('createJarvisPluginCapabilityProjection', () => {
         state: 'available',
         operations: ['search'],
         evidenceRef: 'plugin-verification:account-1:local-tool:90',
+        lastVerifiedAt: 90,
+      },
+      {
+        id: 'plugin.local-tool.search',
+        state: 'available',
+        operations: ['execute'],
+        evidenceRef: 'plugin-verification:account-1:local-tool:90:tool:search',
         lastVerifiedAt: 90,
       },
     ]);
@@ -302,9 +323,9 @@ describe('createJarvisPluginCapabilityProjection', () => {
     });
 
     expect(snapshot.plugins).toHaveLength(PLUGIN_CATALOG.length);
-    expect(snapshot.plugins.every(({ state }) => state === 'available' || state === 'planned')).toBe(
-      true,
-    );
+    expect(
+      snapshot.plugins.every(({ state }) => state === 'available' || state === 'planned'),
+    ).toBe(true);
     expect(snapshot.plugins.every(({ operations }) => operations.length === 0)).toBe(true);
     expect(Object.isFrozen(snapshot.plugins)).toBe(true);
   });

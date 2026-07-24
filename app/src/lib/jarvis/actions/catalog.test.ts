@@ -60,6 +60,8 @@ describe('Jarvis action catalog', () => {
       })),
     ).toEqual([
       { id: 'file.search', risk: 'read-only', approval: 'never' },
+      { id: 'github.identity', risk: 'read-only', approval: 'never' },
+      { id: 'github.repository.read', risk: 'read-only', approval: 'never' },
       { id: 'chat.model.switch', risk: 'external-side-effect', approval: 'always' },
       { id: 'terminal.create', risk: 'safe-write', approval: 'always' },
       { id: 'terminal.run', risk: 'external-side-effect', approval: 'always' },
@@ -231,13 +233,75 @@ describe('Jarvis action catalog', () => {
     ).toThrow(/model-visible|pluginId/i);
   });
 
-  it('publishes a literal immutable default catalog with zero plugin-tool registrations', () => {
+  it('publishes only fixed model-safe GitHub plugin registrations with account-bound credentials', () => {
+    const catalog = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS);
+    const identity = catalog.resolve('github.identity');
+    const repository = catalog.resolve('github.repository.read');
+
     expect(Object.isFrozen(DEFAULT_JARVIS_ACTION_REGISTRATIONS)).toBe(true);
-    expect(DEFAULT_JARVIS_ACTION_REGISTRATIONS.length).toBeGreaterThan(0);
     expect(
-      (DEFAULT_JARVIS_ACTION_REGISTRATIONS as readonly JarvisRegisteredActionDefinition[]).filter(
-        (entry) => entry.executor.kind === 'plugin_tool',
-      ),
-    ).toEqual([]);
+      catalog
+        .listExposed()
+        .filter((entry) => entry.executor.kind === 'plugin_tool')
+        .map(({ id }) => id),
+    ).toEqual(['github.identity', 'github.repository.read']);
+    expect(identity).toMatchObject({
+      requiredCapabilities: ['plugin.github.identity'],
+      risk: 'read-only',
+      approval: 'never',
+      executor: { kind: 'plugin_tool', pluginId: 'github', toolName: 'identity' },
+      credentialBindings: [
+        { field: 'githubCredential', locator: { pluginId: 'github', fieldId: 'token' } },
+      ],
+      inputSchema: { type: 'object', additionalProperties: false },
+    });
+    expect(identity?.validateParameters({})).toEqual({});
+    expect(() => identity?.validateParameters({ token: 'model-controlled' })).toThrow(
+      /unknown fields/i,
+    );
+    expect(repository).toMatchObject({
+      requiredCapabilities: ['plugin.github.repository_context'],
+      risk: 'read-only',
+      approval: 'never',
+      executor: {
+        kind: 'plugin_tool',
+        pluginId: 'github',
+        toolName: 'repository_context',
+      },
+      credentialBindings: [
+        { field: 'githubCredential', locator: { pluginId: 'github', fieldId: 'token' } },
+      ],
+      inputSchema: {
+        type: 'object',
+        required: ['owner', 'repository'],
+        additionalProperties: false,
+      },
+    });
+    expect(
+      repository?.validateParameters({ owner: ' octocat ', repository: ' Hello-World ' }),
+    ).toEqual({ owner: 'octocat', repository: 'Hello-World' });
+    expect(
+      repository?.deriveTarget({
+        accountId: 'account-github',
+        params: { owner: 'octocat', repository: 'Hello-World' },
+      }),
+    ).toEqual({
+      kind: 'plugin_tool',
+      accountId: 'account-github',
+      pluginId: 'github',
+      toolName: 'repository_context',
+      resourceId: 'octocat/Hello-World',
+    });
+    expect(() =>
+      repository?.validateParameters({ owner: 'octocat/escape', repository: 'Hello-World' }),
+    ).toThrow(/owner/i);
+    expect(() =>
+      repository?.validateParameters({
+        owner: 'octocat',
+        repository: 'Hello-World',
+        pluginId: 'github',
+      }),
+    ).toThrow(/unknown fields/i);
+    expect(JSON.stringify(repository?.inputSchema)).not.toMatch(/token|credential|secret/i);
   });
 });

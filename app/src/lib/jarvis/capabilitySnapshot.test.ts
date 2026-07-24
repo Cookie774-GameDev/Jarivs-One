@@ -66,6 +66,8 @@ describe('createJarvisCapabilitySnapshot', () => {
     expect(schemas.map(({ id }) => id)).toEqual([
       'chat.model.switch',
       'file.search',
+      'github.identity',
+      'github.repository.read',
       'task.cancel',
       'terminal.create',
       'terminal.run',
@@ -90,6 +92,22 @@ describe('createJarvisCapabilitySnapshot', () => {
       risk: 'external-side-effect',
       approval: 'always',
     });
+    expect(schemas[2]).toMatchObject({
+      id: 'github.identity',
+      inputSchema: { required: [], additionalProperties: false },
+      risk: 'read-only',
+      approval: 'never',
+    });
+    expect(schemas[3]).toMatchObject({
+      id: 'github.repository.read',
+      inputSchema: {
+        required: ['owner', 'repository'],
+        additionalProperties: false,
+      },
+      risk: 'read-only',
+      approval: 'never',
+    });
+    expect(JSON.stringify([schemas[2], schemas[3]])).not.toMatch(/token|credential|secret/i);
     for (const schema of schemas) {
       expect(schema).not.toHaveProperty('executor');
       expect(schema).not.toHaveProperty('credentialBindings');

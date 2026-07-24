@@ -36,7 +36,8 @@ const IMPLEMENTED_BASE: PluginManifest[] = [
       ),
     ],
     status: 'implemented',
-    docsUrl: 'https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens',
+    docsUrl:
+      'https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens',
     credentialUrl: 'https://github.com/settings/personal-access-tokens',
     help: 'Create a fine-grained personal access token. VibeSpace tests it against the authenticated-user endpoint and never exposes it to terminals.',
     tags: ['developer tools', 'git', 'token', 'repositories'],
@@ -49,12 +50,13 @@ const IMPLEMENTED_BASE: PluginManifest[] = [
     tools: [
       {
         name: 'identity',
-        description: 'Read the connected GitHub account identity.',
+        description: 'Read normalized connected GitHub account metadata.',
         readOnly: true,
       },
       {
         name: 'repository_context',
-        description: 'Describe repository capabilities available through this connection.',
+        description:
+          'Read normalized repository metadata and available counts for one exact owner/repository.',
         readOnly: true,
       },
     ],

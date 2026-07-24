@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as runtimeModule from './runtime';
 import {
   createAccountScopedPluginRuntime,
@@ -15,11 +15,18 @@ import {
 } from './credentialAuthorization';
 import type { ExistingPluginCredentialAdapter } from './credentials';
 import type { PluginConnection } from './types';
+import { getPluginManifest } from './catalog';
 import {
+  DEFAULT_JARVIS_ACTION_REGISTRATIONS,
   createJarvisActionCatalog,
   type JarvisRegisteredActionDefinition,
 } from '@/lib/jarvis/actions/catalog';
 import type { CanonicalPluginEvidence } from '@/lib/jarvis/artifactProducerAdapters';
+import { createJarvisPluginCapabilityProjection } from '@/lib/jarvis/pluginCapabilityProducer';
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 function memoryStorage(): StrictPluginCredentialGrantStorage {
   let raw: string | null = null;
@@ -76,6 +83,7 @@ function fixture(
       }),
     } satisfies ExistingPluginCredentialAdapter);
   const connections: PluginConnection[] = [];
+  const connectionRows = new Map<string, PluginConnection>();
   const removals: Array<[string, string]> = [];
   const randomIds = [...(options.randomIds ?? ['grant-1', 'grant-2', 'grant-3'])];
   const times = [...(options.times ?? [100, 200, 300])];
@@ -85,8 +93,14 @@ function fixture(
     credentialAuthorization,
     credentialAdapter,
     connections: {
-      upsertConnection: (connection) => connections.push(connection),
-      removeConnection: (accountId, pluginId) => removals.push([accountId, pluginId]),
+      upsertConnection: (connection) => {
+        connections.push(connection);
+        connectionRows.set(`${connection.accountId}\u0000${connection.pluginId}`, connection);
+      },
+      removeConnection: (accountId, pluginId) => {
+        removals.push([accountId, pluginId]);
+        connectionRows.delete(`${accountId}\u0000${pluginId}`);
+      },
     },
     randomUUID: () => randomIds.shift() ?? 'fallback-grant',
     now: () => times.shift() ?? 999,
@@ -97,6 +111,7 @@ function fixture(
     credentialAuthorization,
     credentialAdapter,
     connections,
+    connectionRows,
     removals,
     values,
     activeAccountId: () => activeAccountId,
@@ -159,6 +174,100 @@ describe('account-scoped plugin runtime', () => {
       accountId: 'account-b',
       grantId: 'b-1',
       revision: 1,
+    });
+  });
+
+  it('removes verified executable capabilities before replacing a credential', async () => {
+    const test = fixture({ randomIds: ['grant-1', 'grant-2'], times: [10, 20, 30, 40] });
+    const credential = {
+      accountId: 'account-a',
+      pluginId: 'github',
+      fieldId: 'token',
+    };
+    await test.runtime.management.saveCredential({ ...credential, value: 'first-value' });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ login: 'octocat' }), { status: 200 }),
+    );
+    await test.runtime.management.testConnection({
+      accountId: credential.accountId,
+      pluginId: credential.pluginId,
+    });
+    const manifest = getPluginManifest('github');
+    if (!manifest) throw new Error('expected GitHub manifest');
+    const verified = createJarvisPluginCapabilityProjection({
+      accountId: credential.accountId,
+      capturedAt: 35,
+      manifests: [manifest],
+      connections: {
+        github: test.connectionRows.get('account-a\u0000github')!,
+      },
+    });
+    expect(verified.refs.map(({ id }) => id)).toEqual([
+      'github',
+      'plugin.github.identity',
+      'plugin.github.repository_context',
+    ]);
+
+    test.removals.length = 0;
+    await test.runtime.management.saveCredential({ ...credential, value: 'replacement-value' });
+
+    expect(test.removals).toEqual([['account-a', 'github']]);
+    expect(test.connectionRows.has('account-a\u0000github')).toBe(false);
+    const unverified = createJarvisPluginCapabilityProjection({
+      accountId: credential.accountId,
+      capturedAt: 40,
+      manifests: [manifest],
+      connections: {},
+    });
+    expect(unverified.refs.map(({ id }) => id)).toEqual(['github']);
+    expect(unverified.refs[0]).toMatchObject({ state: 'available', operations: [] });
+  });
+
+  it('removes the previous account verification when another account overwrites its grant', async () => {
+    const test = fixture({ randomIds: ['grant-a', 'grant-b'], times: [10, 20, 30, 40] });
+    const locator = { pluginId: 'github', fieldId: 'token' };
+    await test.runtime.management.saveCredential({
+      accountId: 'account-a',
+      ...locator,
+      value: 'account-a-value',
+    });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ login: 'octocat' }), { status: 200 }),
+    );
+    await test.runtime.management.testConnection({
+      accountId: 'account-a',
+      pluginId: 'github',
+    });
+    expect(test.connectionRows.get('account-a\u0000github')).toMatchObject({
+      state: 'connected',
+      enabled: true,
+    });
+
+    test.removals.length = 0;
+    test.setActiveAccountId('account-b');
+    await test.runtime.management.saveCredential({
+      accountId: 'account-b',
+      ...locator,
+      value: 'account-b-value',
+    });
+
+    expect(test.removals).toEqual([
+      ['account-b', 'github'],
+      ['account-a', 'github'],
+    ]);
+    expect(test.connectionRows.has('account-a\u0000github')).toBe(false);
+    const manifest = getPluginManifest('github');
+    if (!manifest) throw new Error('expected GitHub manifest');
+    const oldAccountProjection = createJarvisPluginCapabilityProjection({
+      accountId: 'account-a',
+      capturedAt: 40,
+      manifests: [manifest],
+      connections: {},
+    });
+    expect(oldAccountProjection.refs.map(({ id }) => id)).toEqual(['github']);
+    expect(oldAccountProjection.refs[0]).toMatchObject({
+      state: 'available',
+      operations: [],
     });
   });
 
@@ -249,7 +358,7 @@ describe('account-scoped plugin runtime', () => {
       test.runtime.management.testConnection({ accountId: 'account-a', pluginId: 'github' }),
     ).resolves.toEqual({ ok: true, accountLabel: 'octocat' });
     expect(test.credentialAuthorization.authorize).toHaveBeenCalledTimes(1);
-    expect(test.credentialAuthorization.revalidateLocked).toHaveBeenCalledTimes(2);
+    expect(test.credentialAuthorization.revalidateLocked).toHaveBeenCalledTimes(3);
     expect(test.credentialAdapter.readExistingCredential).toHaveBeenCalledTimes(1);
     expect(test.connections.at(-1)).toMatchObject({
       accountId: 'account-a',
@@ -257,6 +366,50 @@ describe('account-scoped plugin runtime', () => {
       state: 'connected',
       configuredFields: ['token'],
     });
+  });
+
+  it('cannot certify a replacement credential with an in-flight old-credential probe', async () => {
+    const test = fixture({ randomIds: ['grant-1', 'grant-2'], times: [10, 20, 30, 40] });
+    const credential = {
+      accountId: 'account-a',
+      pluginId: 'github',
+      fieldId: 'token',
+    };
+    await test.runtime.management.saveCredential({ ...credential, value: 'first-value' });
+    let providerStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      providerStarted = resolve;
+    });
+    let releaseProvider!: () => void;
+    const providerHeld = new Promise<void>((resolve) => {
+      releaseProvider = resolve;
+    });
+    vi.spyOn(globalThis, 'fetch').mockImplementationOnce(async () => {
+      providerStarted();
+      await providerHeld;
+      return new Response(JSON.stringify({ login: 'octocat' }), { status: 200 });
+    });
+
+    const oldCredentialTest = test.runtime.management.testConnection({
+      accountId: credential.accountId,
+      pluginId: credential.pluginId,
+    });
+    await started;
+    await test.runtime.management.saveCredential({ ...credential, value: 'replacement-value' });
+    releaseProvider();
+
+    await expect(oldCredentialTest).resolves.toMatchObject({ ok: false });
+    expect(test.connectionRows.has('account-a\u0000github')).toBe(false);
+    const manifest = getPluginManifest('github');
+    if (!manifest) throw new Error('expected GitHub manifest');
+    const projection = createJarvisPluginCapabilityProjection({
+      accountId: credential.accountId,
+      capturedAt: 40,
+      manifests: [manifest],
+      connections: {},
+    });
+    expect(projection.refs.map(({ id }) => id)).toEqual(['github']);
+    expect(projection.refs[0]).toMatchObject({ state: 'available', operations: [] });
   });
 
   it('preflights every exact grant before disconnecting and removes grant before keychain data', async () => {
@@ -300,7 +453,11 @@ describe('account-scoped plugin runtime', () => {
       'grant:auth_token',
       'keychain:auth_token',
     ]);
-    expect(test.removals).toEqual([['account-a', 'twilio']]);
+    expect(test.removals).toEqual([
+      ['account-a', 'twilio'],
+      ['account-a', 'twilio'],
+      ['account-a', 'twilio'],
+    ]);
   });
 
   it('does no grant or keychain work for a credentialless disconnect', async () => {
@@ -339,7 +496,7 @@ describe('account-scoped plugin runtime', () => {
       test.runtime.management.disconnect({ accountId: 'account-a', pluginId: 'twilio' }),
     ).rejects.toThrow();
     expect(test.credentialAdapter.deleteExistingCredential).not.toHaveBeenCalled();
-    expect(test.removals).toEqual([]);
+    expect(test.removals).toEqual([['account-a', 'twilio']]);
   });
 
   it('rechecks an account switch after locked proof validation and before the first delete', async () => {
@@ -368,7 +525,10 @@ describe('account-scoped plugin runtime', () => {
       test.runtime.management.disconnect({ accountId: 'account-a', pluginId: 'twilio' }),
     ).rejects.toThrow();
     expect(test.credentialAdapter.deleteExistingCredential).not.toHaveBeenCalled();
-    expect(test.removals).toEqual([]);
+    expect(test.removals).toEqual([
+      ['account-a', 'twilio'],
+      ['account-a', 'twilio'],
+    ]);
   });
 
   it('serializes an account-B save behind an in-flight account-A disconnect', async () => {
@@ -413,7 +573,10 @@ describe('account-scoped plugin runtime', () => {
     await saveB;
 
     expect(test.values.get('github\u0000token')).toBe('account-b-value');
-    expect(test.removals).toEqual([]);
+    expect(test.removals).toEqual([
+      ['account-a', 'github'],
+      ['account-b', 'github'],
+    ]);
     await expect(test.grants.get(locator)).resolves.toMatchObject({
       accountId: 'account-b',
       grantId: 'b-grant',
@@ -482,6 +645,155 @@ describe('account-scoped plugin runtime', () => {
         context,
       }),
     ).rejects.toThrow();
+  });
+
+  it('executes fixed GitHub reads against exact endpoints and returns only bounded normalized data', async () => {
+    const test = fixture();
+    await test.runtime.management.saveCredential({
+      accountId: 'account-a',
+      pluginId: 'github',
+      fieldId: 'token',
+      value: 'test-credential-value',
+    });
+    const catalog = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS);
+    const identity = catalog.resolve('github.identity')?.executor;
+    const repository = catalog.resolve('github.repository.read')?.executor;
+    if (identity?.kind !== 'plugin_tool' || repository?.kind !== 'plugin_tool') {
+      throw new Error('expected fixed GitHub plugin registrations');
+    }
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            login: 'octocat',
+            name: 'UNTRUSTED_IDENTITY_BODY_SENTINEL',
+            html_url: 'https://attacker.invalid/profile',
+            public_repos: 8,
+            total_private_repos: 3,
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            full_name: 'octocat/Hello-World',
+            description: 'UNTRUSTED_REPOSITORY_BODY_SENTINEL',
+            html_url: 'https://attacker.invalid/repository',
+            visibility: 'public',
+            private: false,
+            default_branch: 'main',
+            stargazers_count: 80,
+            forks_count: 9,
+            open_issues_count: 3,
+            archived: false,
+            updated_at: '2026-07-20T12:34:56Z',
+          }),
+          { status: 200 },
+        ),
+      );
+    const context = {
+      source: 'ai' as const,
+      accountId: 'account-a',
+      runId: 'run-github',
+      approvalId: 'approval-github',
+      requestId: 'request-github',
+      attemptNumber: 1,
+      signal: new AbortController().signal,
+    };
+
+    await expect(
+      test.runtime.registeredTools.execute({
+        accountId: 'account-a',
+        registration: identity,
+        params: {},
+        context,
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      summary: 'GitHub account octocat verified.',
+      data: {
+        login: 'octocat',
+        profileUrl: 'https://github.com/octocat',
+        publicRepositories: 8,
+        privateRepositories: 3,
+      },
+    });
+    const repositoryResult = await test.runtime.registeredTools.execute({
+      accountId: 'account-a',
+      registration: repository,
+      params: { owner: 'octocat', repository: 'Hello-World' },
+      context,
+    });
+    expect(repositoryResult).toEqual({
+      ok: true,
+      summary: 'GitHub repository octocat/Hello-World retrieved.',
+      data: {
+        fullName: 'octocat/Hello-World',
+        repositoryUrl: 'https://github.com/octocat/Hello-World',
+        visibility: 'public',
+        defaultBranch: 'main',
+        stars: 80,
+        forks: 9,
+        openIssuesAndPullRequests: 3,
+        archived: false,
+        updatedAt: '2026-07-20T12:34:56Z',
+      },
+    });
+    expect(fetchSpy).toHaveBeenNthCalledWith(
+      1,
+      'https://api.github.com/user',
+      expect.objectContaining({
+        method: 'GET',
+        headers: {
+          Accept: 'application/vnd.github+json',
+          Authorization: 'Bearer test-credential-value',
+          'X-GitHub-Api-Version': '2022-11-28',
+        },
+        signal: expect.any(AbortSignal),
+      }),
+    );
+    expect(fetchSpy).toHaveBeenNthCalledWith(
+      2,
+      'https://api.github.com/repos/octocat/Hello-World',
+      expect.objectContaining({
+        method: 'GET',
+        headers: {
+          Accept: 'application/vnd.github+json',
+          Authorization: 'Bearer test-credential-value',
+          'X-GitHub-Api-Version': '2022-11-28',
+        },
+        signal: expect.any(AbortSignal),
+      }),
+    );
+    expect(JSON.stringify(repositoryResult)).not.toMatch(
+      /test-credential|UNTRUSTED_|attacker\.invalid/i,
+    );
+    await expect(
+      test.runtime.registeredTools.execute({
+        accountId: 'account-a',
+        registration: repository,
+        params: { owner: 'octocat/escape', repository: 'Hello-World' },
+        context,
+      }),
+    ).rejects.toThrow(/repository_target_invalid/i);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+
+    fetchSpy.mockResolvedValueOnce(
+      new Response('test-credential-value provider body must stay private', { status: 401 }),
+    );
+    const rejected = await test.runtime.registeredTools
+      .execute({
+        accountId: 'account-a',
+        registration: identity,
+        params: {},
+        context,
+      })
+      .catch((error) => error);
+    expect(String(rejected)).toMatch(/connection_rejected_401/i);
+    expect(String(rejected)).not.toMatch(/test-credential|provider body/i);
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
   });
 });
 

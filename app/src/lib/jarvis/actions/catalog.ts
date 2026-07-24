@@ -395,7 +395,17 @@ export function createJarvisActionCatalog(
         accountId,
       );
     };
-    deriveTarget({ accountId: 'catalog-validation-account', params: {} });
+    for (const key of inputSchema.required ?? []) {
+      if (!inputSchema.properties?.[key]) {
+        catalogError(`required input ${key} has no schema`);
+      }
+    }
+    if ((inputSchema.required?.length ?? 0) === 0) {
+      deriveTarget({
+        accountId: 'catalog-validation-account',
+        params: validateParameters({}),
+      });
+    }
     const canonical = deepFreeze({
       id,
       version: source.version,
@@ -428,6 +438,43 @@ const NO_OUTPUT_SCHEMA: JsonSchema = {
   type: 'object',
   additionalProperties: true,
 };
+
+const GITHUB_OWNER = /^(?=.{1,39}$)[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/;
+const GITHUB_REPOSITORY = /^[A-Za-z0-9._-]{1,100}$/;
+
+function validateNoParameters(
+  input: Readonly<Record<string, unknown>>,
+  label: string,
+): Readonly<Record<string, unknown>> {
+  const record = plainRecord(input, label);
+  assertExactKeys(record, [], label);
+  return {};
+}
+
+function githubOwner(value: unknown): string {
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  if (!GITHUB_OWNER.test(normalized)) catalogError('GitHub owner is invalid');
+  return normalized;
+}
+
+function githubRepository(value: unknown): string {
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  if (!GITHUB_REPOSITORY.test(normalized) || normalized === '.' || normalized === '..') {
+    catalogError('GitHub repository is invalid');
+  }
+  return normalized;
+}
+
+function validateGithubRepositoryParameters(
+  input: Readonly<Record<string, unknown>>,
+): Readonly<{ owner: string; repository: string }> {
+  const record = plainRecord(input, 'github.repository.read parameters');
+  assertExactKeys(record, ['owner', 'repository'], 'github.repository.read parameters');
+  return {
+    owner: githubOwner(record.owner),
+    repository: githubRepository(record.repository),
+  };
+}
 
 function validateModelSwitchParameters(
   input: Readonly<Record<string, unknown>>,
@@ -471,6 +518,120 @@ export const DEFAULT_JARVIS_ACTION_REGISTRATIONS = deepFreeze<
     credentialBindings: [],
     validateParameters: (input: Readonly<Record<string, unknown>>) => ({ ...input }),
     deriveTarget: () => ({ kind: 'app_resource', namespace: 'files', resourceId: 'search-index' }),
+  },
+  {
+    id: 'github.identity',
+    version: 1,
+    title: 'Read GitHub identity',
+    description: 'Read normalized metadata for the connected GitHub account.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+      required: [],
+      additionalProperties: false,
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        login: { type: 'string' },
+        profileUrl: { type: 'string' },
+        publicRepositories: { type: 'number' },
+        privateRepositories: { type: 'number' },
+      },
+      required: ['login', 'profileUrl', 'publicRepositories'],
+      additionalProperties: false,
+    },
+    requiredCapabilities: ['plugin.github.identity'],
+    requiredEntitlements: [],
+    risk: 'read-only',
+    approval: 'never',
+    expectedEffect: 'Reads bounded authenticated-account metadata from GitHub.',
+    exposeToAI: true,
+    executor: { kind: 'plugin_tool', pluginId: 'github', toolName: 'identity' },
+    credentialBindings: [
+      {
+        field: 'githubCredential',
+        locator: { pluginId: 'github', fieldId: 'token' },
+      },
+    ],
+    validateParameters: (input: Readonly<Record<string, unknown>>) =>
+      validateNoParameters(input, 'github.identity parameters'),
+    deriveTarget: ({ accountId }) => ({
+      kind: 'plugin_tool',
+      accountId,
+      pluginId: 'github',
+      toolName: 'identity',
+      resourceId: 'authenticated-account',
+    }),
+  },
+  {
+    id: 'github.repository.read',
+    version: 1,
+    title: 'Read GitHub repository',
+    description: 'Read normalized metadata for one exact GitHub repository.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        owner: { type: 'string' },
+        repository: { type: 'string' },
+      },
+      required: ['owner', 'repository'],
+      additionalProperties: false,
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        fullName: { type: 'string' },
+        repositoryUrl: { type: 'string' },
+        visibility: { type: 'string' },
+        defaultBranch: { type: 'string' },
+        stars: { type: 'number' },
+        forks: { type: 'number' },
+        openIssuesAndPullRequests: { type: 'number' },
+        archived: { type: 'boolean' },
+        updatedAt: { type: 'string' },
+      },
+      required: [
+        'fullName',
+        'repositoryUrl',
+        'visibility',
+        'defaultBranch',
+        'stars',
+        'forks',
+        'openIssuesAndPullRequests',
+        'archived',
+        'updatedAt',
+      ],
+      additionalProperties: false,
+    },
+    requiredCapabilities: ['plugin.github.repository_context'],
+    requiredEntitlements: [],
+    risk: 'read-only',
+    approval: 'never',
+    expectedEffect: 'Reads bounded repository metadata from GitHub without changing it.',
+    exposeToAI: true,
+    executor: {
+      kind: 'plugin_tool',
+      pluginId: 'github',
+      toolName: 'repository_context',
+    },
+    credentialBindings: [
+      {
+        field: 'githubCredential',
+        locator: { pluginId: 'github', fieldId: 'token' },
+      },
+    ],
+    validateParameters: validateGithubRepositoryParameters,
+    deriveTarget: ({ accountId, params }) => {
+      const { owner, repository } = validateGithubRepositoryParameters(params);
+      return {
+        kind: 'plugin_tool',
+        accountId,
+        pluginId: 'github',
+        toolName: 'repository_context',
+        resourceId: `${owner}/${repository}`,
+      };
+    },
   },
   {
     id: 'chat.model.switch',

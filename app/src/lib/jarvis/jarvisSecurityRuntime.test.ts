@@ -280,10 +280,17 @@ describe('trusted JARVIS security runtime composition', () => {
       expect(init.signal).toBe(issuedSignal);
       expect(new Headers(init.headers).get('Authorization')).toBe('Bearer synthetic-test-value');
       return Promise.resolve(
-        new Response(JSON.stringify({ login: 'octocat' }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        }),
+        new Response(
+          JSON.stringify({
+            login: 'octocat',
+            public_repos: 8,
+            total_private_repos: 3,
+          }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        ),
       );
     });
 
@@ -432,8 +439,13 @@ describe('trusted JARVIS security runtime composition', () => {
       kind: 'settled',
       result: {
         ok: true,
-        summary: 'Fixed plugin tool completed.',
-        data: { accountLabel: 'octocat', capabilityOnly: true },
+        summary: 'GitHub account octocat verified.',
+        data: {
+          login: 'octocat',
+          profileUrl: 'https://github.com/octocat',
+          publicRepositories: 8,
+          privateRepositories: 3,
+        },
       },
     });
     expect(claimedApproval?.secretHandleRefs).toHaveLength(1);

@@ -161,6 +161,17 @@ export function createJarvisPluginCapabilityProjection(
           evidenceRef,
           lastVerifiedAt: connectionVerifiedAt,
         });
+        if (connection?.enabled) {
+          for (const operation of operations) {
+            refs.push({
+              id: `plugin.${manifest.id}.${operation}`,
+              state: 'available',
+              operations: ['execute'],
+              evidenceRef: `${evidenceRef}:tool:${operation}`,
+              lastVerifiedAt: connectionVerifiedAt,
+            });
+          }
+        }
         continue;
       }
       integrations.push(
@@ -205,6 +216,17 @@ export function createJarvisPluginCapabilityProjection(
         evidenceRef,
         lastVerifiedAt: connectionVerifiedAt,
       });
+      if (connection?.enabled) {
+        for (const operation of operations) {
+          refs.push({
+            id: `plugin.${manifest.id}.${operation}`,
+            state: manifest.authType === 'none' ? 'available' : 'authenticated',
+            operations: ['execute'],
+            evidenceRef: `${evidenceRef}:tool:${operation}`,
+            lastVerifiedAt: connectionVerifiedAt,
+          });
+        }
+      }
       continue;
     }
 
