@@ -84,3 +84,38 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initialise);
   else initialise();
 })();
+
+
+/* Load the isolated interactive VibeSpace system model. */
+(function () {
+  'use strict';
+
+  var scriptId = 'vs-system-model-script';
+  var cssId = 'vs-system-model-css';
+  var loaded = false;
+
+  function loadScript() {
+    if (loaded || document.getElementById(scriptId)) return;
+    loaded = true;
+    var script = document.createElement('script');
+    script.id = scriptId;
+    script.src = 'js/system-model.js';
+    script.defer = true;
+    document.head.appendChild(script);
+  }
+
+  if (document.getElementById(cssId)) {
+    loadScript();
+    return;
+  }
+
+  var stylesheet = document.createElement('link');
+  stylesheet.id = cssId;
+  stylesheet.rel = 'stylesheet';
+  stylesheet.href = 'css/system-model.css';
+  stylesheet.addEventListener('load', loadScript, { once: true });
+  stylesheet.addEventListener('error', loadScript, { once: true });
+  document.head.appendChild(stylesheet);
+
+  window.setTimeout(loadScript, 2500);
+})();
