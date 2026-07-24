@@ -7,7 +7,7 @@ import type {
   JarvisLiveSystemNode,
   JarvisRun,
 } from './types';
-import { JarvisLiveSystemsTab } from './JarvisLiveSystemsTab';
+import { createLiveGraphProjectionSelector, JarvisLiveSystemsTab } from './JarvisLiveSystemsTab';
 
 function run(overrides: Partial<JarvisRun> = {}): JarvisRun {
   return {
@@ -149,6 +149,57 @@ function outputs(): readonly JarvisArtifactV1[] {
 }
 
 describe('JarvisLiveSystemsTab', () => {
+  it('reuses the graph projection until one of its canonical inputs changes', () => {
+    const selectProjection = createLiveGraphProjectionSelector();
+    const canonicalRun = run();
+    const canonicalNodes = readyLiveSystems().nodes;
+    const canonicalEvents = events();
+    const canonicalOutputs = outputs();
+    const input = {
+      nodes: canonicalNodes,
+      events: canonicalEvents,
+      outputs: canonicalOutputs,
+      run: canonicalRun,
+    };
+
+    const first = selectProjection(input);
+    expect(selectProjection(input)).toBe(first);
+    expect(selectProjection({ ...input, events: [...canonicalEvents] })).not.toBe(first);
+  });
+
+  it('renders only the newest eight canonical run events', () => {
+    const activity = Array.from(
+      { length: 10 },
+      (_, index): JarvisEvent => ({
+        runId: 'run-live-1',
+        seq: index + 1,
+        idempotencyKey: `bounded-event-${index + 1}`,
+        type: 'tool',
+        status: 'completed',
+        title: `Bounded activity ${index + 1}`,
+        sourceRefs: [],
+        artifactIds: [],
+        createdAt: 100 + index,
+      }),
+    );
+
+    render(
+      <JarvisLiveSystemsTab
+        liveSystems={readyLiveSystems()}
+        run={run()}
+        events={activity}
+        outputs={[]}
+      />,
+    );
+
+    const list = screen.getByRole('list', { name: 'Run activity' });
+    expect(list.children).toHaveLength(8);
+    expect(screen.queryByText('Bounded activity 1')).toBeNull();
+    expect(screen.queryByText('Bounded activity 2')).toBeNull();
+    expect(screen.getByText('Bounded activity 3')).not.toBeNull();
+    expect(screen.getByText('Bounded activity 10')).not.toBeNull();
+  });
+
   it('projects only canonical current-run systems, sources, and outputs into a truthful summary and graph', () => {
     render(
       <JarvisLiveSystemsTab

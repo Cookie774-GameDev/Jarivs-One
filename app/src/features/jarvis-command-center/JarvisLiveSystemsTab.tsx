@@ -48,6 +48,12 @@ type ScopedSource = Readonly<{
   source: JarvisEvent['sourceRefs'][number];
   event: JarvisEvent;
 }>;
+type LiveGraphProjectionInput = Readonly<{
+  nodes: readonly JarvisLiveSystemNode[];
+  events: readonly JarvisEvent[];
+  outputs: readonly JarvisArtifactV1[];
+  run: Readonly<JarvisRun>;
+}>;
 
 function nodeLabel(node: JarvisLiveSystemNode): string {
   return node.kind === 'model'
@@ -189,12 +195,7 @@ function selectLatestErrorSummary(events: readonly JarvisEvent[]): string | unde
   return undefined;
 }
 
-function buildGraphNodes(input: {
-  nodes: readonly JarvisLiveSystemNode[];
-  events: readonly JarvisEvent[];
-  outputs: readonly JarvisArtifactV1[];
-  run: Readonly<JarvisRun>;
-}): readonly LiveGraphNode[] {
+function buildGraphNodes(input: LiveGraphProjectionInput): readonly LiveGraphNode[] {
   const runFlowing = FLOWING_RUN_STATES.has(input.run.status);
   const verifiedNodes = input.nodes
     .filter((node) => node.runId === input.run.id && node.accountId === input.run.accountId)
@@ -276,6 +277,28 @@ function buildGraphNodes(input: {
   return fairlyBoundGraphNodes([...verifiedNodes, ...sourceNodes, ...outputNodes]);
 }
 
+export function createLiveGraphProjectionSelector(): (
+  input: LiveGraphProjectionInput,
+) => readonly LiveGraphNode[] {
+  let previousInput: LiveGraphProjectionInput | undefined;
+  let previousProjection: readonly LiveGraphNode[] | undefined;
+
+  return (input) => {
+    if (
+      previousProjection &&
+      previousInput?.nodes === input.nodes &&
+      previousInput.events === input.events &&
+      previousInput.outputs === input.outputs &&
+      previousInput.run === input.run
+    ) {
+      return previousProjection;
+    }
+    previousInput = input;
+    previousProjection = buildGraphNodes(input);
+    return previousProjection;
+  };
+}
+
 function LiveSummary({
   nodes,
   run,
@@ -340,6 +363,41 @@ function LiveExecutionMap({
     }
   }, [nodes, run.id, selectedId]);
 
+  const branches = React.useMemo(
+    () =>
+      nodes.map((node) => {
+        const animated = motionEnabled && node.flowing;
+        return (
+          <div className="jarvis-live-systems__branch" key={node.id}>
+            <span
+              className={`jarvis-live-systems__edge${
+                animated ? ' jarvis-live-systems__edge--flowing' : ''
+              }`}
+              aria-hidden="true"
+              data-graph-edge={node.id}
+              data-edge-state={node.flowing ? 'active' : 'settled'}
+              data-animated={String(animated)}
+            />
+            <button
+              type="button"
+              className="jarvis-live-systems__node"
+              aria-label={node.accessibleLabel}
+              aria-controls={detailsId}
+              aria-pressed={selected?.id === node.id}
+              data-kind={node.kind}
+              data-state={node.state}
+              onClick={() => setSelectedId(node.id)}
+              onFocus={() => setSelectedId(node.id)}
+            >
+              <span>{node.label}</span>
+              <small>{displayState(node.state)}</small>
+            </button>
+          </div>
+        );
+      }),
+    [detailsId, motionEnabled, nodes, selected?.id],
+  );
+
   return (
     <div className="jarvis-live-systems__map-wrap">
       <div className="jarvis-live-systems__map" data-testid="command-center-graph">
@@ -363,38 +421,7 @@ function LiveExecutionMap({
           <span>Jarvis</span>
           <small>{displayState(run.status)}</small>
         </button>
-        <div className="jarvis-live-systems__branches">
-          {nodes.map((node) => {
-            const animated = motionEnabled && node.flowing;
-            return (
-              <div className="jarvis-live-systems__branch" key={node.id}>
-                <span
-                  className={`jarvis-live-systems__edge${
-                    animated ? ' jarvis-live-systems__edge--flowing' : ''
-                  }`}
-                  aria-hidden="true"
-                  data-graph-edge={node.id}
-                  data-edge-state={node.flowing ? 'active' : 'settled'}
-                  data-animated={String(animated)}
-                />
-                <button
-                  type="button"
-                  className="jarvis-live-systems__node"
-                  aria-label={node.accessibleLabel}
-                  aria-controls={detailsId}
-                  aria-pressed={selected?.id === node.id}
-                  data-kind={node.kind}
-                  data-state={node.state}
-                  onClick={() => setSelectedId(node.id)}
-                  onFocus={() => setSelectedId(node.id)}
-                >
-                  <span>{node.label}</span>
-                  <small>{displayState(node.state)}</small>
-                </button>
-              </div>
-            );
-          })}
-        </div>
+        <div className="jarvis-live-systems__branches">{branches}</div>
       </div>
       <div
         className="jarvis-live-systems__details"
@@ -458,63 +485,45 @@ function LiveActivity({ events }: { events: readonly JarvisEvent[] }) {
   );
 }
 
-export function JarvisLiveSystemsTab({
+const ReadyJarvisLiveSystemsTab = React.memo(function ReadyJarvisLiveSystemsTab({
   liveSystems,
   run,
-  events = [],
-  outputs = [],
-  motionEnabled = true,
+  events,
+  outputs,
+  motionEnabled,
 }: {
-  liveSystems: JarvisCommandCenterSnapshot['liveSystems'];
-  run?: Readonly<JarvisRun>;
-  events?: readonly JarvisEvent[];
-  outputs?: readonly JarvisArtifactV1[];
-  motionEnabled?: boolean;
+  liveSystems: Extract<JarvisCommandCenterSnapshot['liveSystems'], { state: 'ready' }>;
+  run: Readonly<JarvisRun>;
+  events: readonly JarvisEvent[];
+  outputs: readonly JarvisArtifactV1[];
+  motionEnabled: boolean;
 }) {
-  if (liveSystems.state === 'not_loaded' || liveSystems.state === 'loading') {
-    return (
-      <p
-        className="jarvis-command-center__empty"
-        aria-live="polite"
-        data-sik-live-state={KERNEL_SMOKE_ENABLED ? liveSystems.state : undefined}
-      >
-        {liveSystems.state === 'loading'
-          ? 'Reading verified live evidence…'
-          : 'Live evidence not loaded.'}
-      </p>
-    );
-  }
-  if (liveSystems.state === 'unavailable') {
-    return (
-      <p
-        className="jarvis-command-center__empty"
-        data-sik-live-state={KERNEL_SMOKE_ENABLED ? liveSystems.state : undefined}
-      >
-        {liveSystems.reason}
-      </p>
-    );
-  }
-  if (!run) {
-    return <p className="jarvis-command-center__empty">No canonical run is available.</p>;
-  }
-
-  const scopedEvents = selectScopedEvents(events, run);
-  const scopedOutputs = selectScopedOutputs(outputs, run);
-  const scopedNodes = liveSystems.nodes.filter(
-    (node) =>
-      node.runId === run.id &&
-      node.accountId === run.accountId &&
-      (node.kind !== 'model' ||
-        (node.providerId === run.model.providerId && node.modelId === run.model.modelId)),
+  const scopedEvents = React.useMemo(() => selectScopedEvents(events, run), [events, run]);
+  const scopedOutputs = React.useMemo(() => selectScopedOutputs(outputs, run), [outputs, run]);
+  const scopedNodes = React.useMemo(
+    () =>
+      liveSystems.nodes.filter(
+        (node) =>
+          node.runId === run.id &&
+          node.accountId === run.accountId &&
+          (node.kind !== 'model' ||
+            (node.providerId === run.model.providerId && node.modelId === run.model.modelId)),
+      ),
+    [liveSystems.nodes, run],
   );
-  const sources = selectScopedSources(scopedEvents, run);
-  const errorSummary = selectLatestErrorSummary(scopedEvents);
-  const graphNodes = buildGraphNodes({
+  const sources = React.useMemo(() => selectScopedSources(scopedEvents, run), [run, scopedEvents]);
+  const errorSummary = React.useMemo(() => selectLatestErrorSummary(scopedEvents), [scopedEvents]);
+  const selectGraphProjection = React.useMemo(createLiveGraphProjectionSelector, []);
+  const graphNodes = selectGraphProjection({
     nodes: scopedNodes,
     events: scopedEvents,
     outputs: scopedOutputs,
     run,
   });
+  const recentEvents = React.useMemo(
+    () => scopedEvents.slice(-MAX_ACTIVITY_EVENTS),
+    [scopedEvents],
+  );
   const visibleState =
     run.status === 'awaiting_approval'
       ? 'Waiting for approval'
@@ -557,7 +566,7 @@ export function JarvisLiveSystemsTab({
           errorSummary={errorSummary}
         />
       ) : null}
-      <LiveActivity events={scopedEvents.slice(-MAX_ACTIVITY_EVENTS)} />
+      <LiveActivity events={recentEvents} />
       {scopedNodes.map((node) => (
         <output
           hidden
@@ -568,5 +577,56 @@ export function JarvisLiveSystemsTab({
         />
       ))}
     </div>
+  );
+});
+
+export function JarvisLiveSystemsTab({
+  liveSystems,
+  run,
+  events = [],
+  outputs = [],
+  motionEnabled = true,
+}: {
+  liveSystems: JarvisCommandCenterSnapshot['liveSystems'];
+  run?: Readonly<JarvisRun>;
+  events?: readonly JarvisEvent[];
+  outputs?: readonly JarvisArtifactV1[];
+  motionEnabled?: boolean;
+}) {
+  if (liveSystems.state === 'not_loaded' || liveSystems.state === 'loading') {
+    return (
+      <p
+        className="jarvis-command-center__empty"
+        aria-live="polite"
+        data-sik-live-state={KERNEL_SMOKE_ENABLED ? liveSystems.state : undefined}
+      >
+        {liveSystems.state === 'loading'
+          ? 'Reading verified live evidence…'
+          : 'Live evidence not loaded.'}
+      </p>
+    );
+  }
+  if (liveSystems.state === 'unavailable') {
+    return (
+      <p
+        className="jarvis-command-center__empty"
+        data-sik-live-state={KERNEL_SMOKE_ENABLED ? liveSystems.state : undefined}
+      >
+        {liveSystems.reason}
+      </p>
+    );
+  }
+  if (!run) {
+    return <p className="jarvis-command-center__empty">No canonical run is available.</p>;
+  }
+
+  return (
+    <ReadyJarvisLiveSystemsTab
+      liveSystems={liveSystems}
+      run={run}
+      events={events}
+      outputs={outputs}
+      motionEnabled={motionEnabled}
+    />
   );
 }
