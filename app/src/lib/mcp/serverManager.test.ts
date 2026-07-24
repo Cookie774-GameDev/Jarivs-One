@@ -369,7 +369,11 @@ describe('MCP server lifecycle manager', () => {
       }),
     ]);
     expect(manager.routeTools('create an issue')).toEqual([]);
-    await expect(manager.invoke('github', 'repo.read', {})).resolves.toEqual({ ok: true });
+    await expect(manager.invoke('github', 'repo.read', {})).resolves.toMatchObject({
+      ok: true,
+      contentTrust: 'external_untrusted',
+      structuredData: { ok: true },
+    });
     await expect(manager.invoke('github', 'issue.create', {})).rejects.toThrow(
       /not permitted for JARVIS/i,
     );
@@ -455,6 +459,253 @@ describe('MCP server lifecycle manager', () => {
       exposedTools: ['repo.read'],
     });
     releaseInvocation?.();
+  });
+
+  it('mediates bounded monotonic progress and emits only a redacted argument audit', async () => {
+    let emitLateProgress: (() => void) | undefined;
+    const progress: unknown[] = [];
+    const audits: unknown[] = [];
+    const invoke = vi.fn(
+      async (
+        _name: string,
+        _input: unknown,
+        invocation?: {
+          signal?: AbortSignal;
+          onProgress?: (update: { progress: number; total?: number; message?: string }) => void;
+        },
+      ) => {
+        invocation?.onProgress?.({
+          progress: 0,
+          total: 40,
+          message: 'Starting with Bearer synthetic-progress-token',
+        });
+        invocation?.onProgress?.({ progress: 0, total: 40, message: 'duplicate' });
+        invocation?.onProgress?.({ progress: Number.NaN, total: 40, message: 'invalid' });
+        for (let index = 1; index <= 40; index += 1) {
+          invocation?.onProgress?.({ progress: index, total: 40, message: `step ${index}` });
+        }
+        emitLateProgress = () =>
+          invocation?.onProgress?.({ progress: 41, total: 41, message: 'too late' });
+        return {
+          content: [{ type: 'text', text: 'done' }],
+        };
+      },
+    );
+    const manager = new McpServerManager();
+    managers.push(manager);
+    manager.register(
+      {
+        id: 'progressive',
+        start: async () => ({
+          listTools: async () => [tool('report.build')],
+          invoke,
+          health: async () => true,
+          stop: async () => undefined,
+        }),
+      },
+      { exposure: { mode: 'allowlist', toolNames: ['report.build'] } },
+    );
+
+    const result = await manager.invoke(
+      'progressive',
+      'report.build',
+      {
+        query: 'quarterly',
+        authorization: 'Bearer synthetic-argument-token',
+        nested: { api_key: 'synthetic-api-key' },
+      },
+      {
+        onProgress: async (update) => {
+          progress.push(update);
+          if (update.progress === 1) throw new Error('observer failure');
+        },
+        onInvocationAudit: (audit) => {
+          audits.push(audit);
+        },
+      },
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      contentTrust: 'external_untrusted',
+      textExcerpts: ['done'],
+    });
+    expect(progress).toHaveLength(32);
+    expect(progress[0]).toEqual({
+      progress: 0,
+      total: 40,
+      message: 'Starting with Bearer [REDACTED]',
+      contentTrust: 'external_untrusted',
+    });
+    expect(progress.at(-1)).toMatchObject({ progress: 31, total: 40 });
+    expect(Object.isFrozen(progress[0])).toBe(true);
+    expect(audits).toEqual([
+      {
+        serverId: 'progressive',
+        toolName: 'report.build',
+        arguments: {
+          authorization: '[REDACTED]',
+          nested: { api_key: '[REDACTED]' },
+          query: 'quarterly',
+        },
+      },
+    ]);
+    expect(Object.isFrozen(audits[0])).toBe(true);
+    expect(JSON.stringify(audits)).not.toContain('synthetic-argument-token');
+    expect(JSON.stringify(audits)).not.toContain('synthetic-api-key');
+
+    emitLateProgress?.();
+    expect(progress).toHaveLength(32);
+  });
+
+  it('drops progress emitted by an invocation from a retired client generation', async () => {
+    let starts = 0;
+    let oldProgress: ((update: { progress: number; message?: string }) => void) | undefined;
+    let finishOld: ((result: unknown) => void) | undefined;
+    const progress: unknown[] = [];
+    const manager = new McpServerManager();
+    managers.push(manager);
+    manager.register(
+      {
+        id: 'progress-generation',
+        start: async () => {
+          starts += 1;
+          const first = starts === 1;
+          return {
+            listTools: async () => [tool('report.read')],
+            invoke: first
+              ? async (
+                  _name: string,
+                  _input: unknown,
+                  invocation?: {
+                    onProgress?: (update: { progress: number; message?: string }) => void;
+                  },
+                ) =>
+                  new Promise((resolve) => {
+                    oldProgress = invocation?.onProgress;
+                    finishOld = resolve;
+                  })
+              : async () => ({ content: [{ type: 'text', text: 'replacement' }] }),
+            health: async () => true,
+            stop: async () => undefined,
+          };
+        },
+      },
+      {
+        exposure: { mode: 'allowlist', toolNames: ['report.read'] },
+      },
+    );
+
+    const staleInvocation = manager.invoke(
+      'progress-generation',
+      'report.read',
+      {},
+      { onProgress: (update) => progress.push(update) },
+    );
+    await vi.waitFor(() => expect(oldProgress).toBeTypeOf('function'));
+    await manager.stop('progress-generation');
+    await manager.start('progress-generation');
+
+    oldProgress?.({ progress: 1, message: 'stale update' });
+    expect(progress).toEqual([]);
+    finishOld?.({ content: [{ type: 'text', text: 'old result' }] });
+    await expect(staleInvocation).resolves.toMatchObject({
+      ok: true,
+      textExcerpts: ['old result'],
+    });
+  });
+
+  it('normalizes external results while preserving local MCP-lite return values', async () => {
+    const manager = new McpServerManager();
+    managers.push(manager);
+    manager.register(
+      {
+        id: 'external-result',
+        start: async () => ({
+          listTools: async () => [tool('repo.read')],
+          invoke: async () => ({
+            content: [{ type: 'text', text: 'external result' }],
+          }),
+          health: async () => true,
+          stop: async () => undefined,
+        }),
+      },
+      {
+        kind: 'external_mcp',
+        exposure: { mode: 'allowlist', toolNames: ['repo.read'] },
+      },
+    );
+    manager.register(
+      {
+        id: 'local-result',
+        start: async () => ({
+          listTools: async () => [tool('fs.read')],
+          invoke: async () => ({ local: true }),
+          health: async () => true,
+          stop: async () => undefined,
+        }),
+      },
+      { kind: 'local_mcp_lite' },
+    );
+
+    await expect(manager.invoke('external-result', 'repo.read', {})).resolves.toMatchObject({
+      ok: true,
+      contentTrust: 'external_untrusted',
+      textExcerpts: ['external result'],
+    });
+    await expect(manager.invoke('local-result', 'fs.read', {})).resolves.toEqual({
+      local: true,
+    });
+  });
+
+  it('keeps protocol-level tool execution errors healthy but rejects malformed results', async () => {
+    let malformed = false;
+    const manager = new McpServerManager();
+    managers.push(manager);
+    manager.register(
+      {
+        id: 'result-validation',
+        start: async () => ({
+          listTools: async () => [tool('report.read')],
+          invoke: async () =>
+            malformed
+              ? {
+                  content: Object.defineProperty([], '0', {
+                    enumerable: true,
+                    get: () => ({ type: 'text', text: 'must not execute' }),
+                  }),
+                }
+              : {
+                  content: [{ type: 'text', text: 'Invalid report date.' }],
+                  isError: true,
+                },
+          health: async () => true,
+          stop: async () => undefined,
+        }),
+      },
+      {
+        exposure: { mode: 'allowlist', toolNames: ['report.read'] },
+      },
+    );
+
+    await expect(manager.invoke('result-validation', 'report.read', {})).resolves.toMatchObject({
+      ok: false,
+      textExcerpts: ['Invalid report date.'],
+    });
+    expect(manager.status('result-validation')).toMatchObject({
+      state: 'running',
+      healthy: true,
+    });
+
+    malformed = true;
+    await expect(manager.invoke('result-validation', 'report.read', {})).rejects.toThrow(
+      /invalid MCP tool result/i,
+    );
+    expect(manager.status('result-validation')).toMatchObject({
+      state: 'unhealthy',
+      healthy: false,
+      exposedTools: [],
+    });
   });
 
   it('discards schemas from an unhealthy client before a replacement can route or invoke', async () => {
@@ -560,7 +811,11 @@ describe('MCP server lifecycle manager', () => {
 
     await expect(
       manager.invoke('recovering', 'repo.read', {}, { restartOnFailure: true }),
-    ).resolves.toEqual({ recovered: true });
+    ).resolves.toMatchObject({
+      ok: true,
+      contentTrust: 'external_untrusted',
+      structuredData: { recovered: true },
+    });
     expect(adapter.start).toHaveBeenCalledTimes(2);
   });
 

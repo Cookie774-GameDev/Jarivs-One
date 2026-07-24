@@ -5,6 +5,12 @@ import {
   type McpRoutedTool,
   type McpToolRouteCandidate,
 } from './toolRouting';
+import {
+  normalizeExternalMcpToolResult,
+  redactMcpArgumentsForAudit,
+  redactMcpText,
+  type NormalizedExternalMcpToolResult,
+} from './toolResult';
 
 export interface McpToolDescriptor {
   name: string;
@@ -34,9 +40,33 @@ export interface McpServerRegistration {
 
 export interface McpServerClient {
   listTools: (signal?: AbortSignal) => Promise<McpToolDescriptor[]>;
-  invoke: (toolName: string, input: unknown, signal?: AbortSignal) => Promise<unknown>;
+  invoke: (toolName: string, input: unknown, options?: McpClientInvokeOptions) => Promise<unknown>;
   health: () => Promise<boolean>;
   stop: () => Promise<void>;
+}
+
+export interface McpProgressUpdate {
+  readonly progress: number;
+  readonly total?: number;
+  readonly message?: string;
+  readonly contentTrust: 'app_trusted' | 'external_untrusted';
+}
+
+export interface McpClientProgressUpdate {
+  readonly progress: number;
+  readonly total?: number;
+  readonly message?: string;
+}
+
+export interface McpClientInvokeOptions {
+  readonly signal?: AbortSignal;
+  readonly onProgress?: (update: McpClientProgressUpdate) => void;
+}
+
+export interface McpInvocationAudit {
+  readonly serverId: string;
+  readonly toolName: string;
+  readonly arguments: Readonly<Record<string, unknown>>;
 }
 
 export interface McpServerAdapter {
@@ -95,6 +125,8 @@ export interface McpInvokeOptions {
   timeoutMs?: number;
   signal?: AbortSignal;
   restartOnFailure?: boolean;
+  onProgress?: (update: McpProgressUpdate) => void;
+  onInvocationAudit?: (audit: McpInvocationAudit) => void;
 }
 
 export interface McpRouteOptions {
@@ -115,6 +147,9 @@ const MAX_SCHEMA_ENUM_VALUES = 32;
 const MAX_SCHEMA_STRING_CHARS = 240;
 const MAX_DISCOVERY_SCHEMA_TEXT_CHARS = 64 * 1_024;
 const MAX_TOOL_CACHE_AGE_MS = 5 * 60_000;
+const MAX_PROGRESS_UPDATES = 32;
+const MAX_PROGRESS_MESSAGE_CHARS = 300;
+const PROGRESS_REDACTION_GUARD_CHARS = 256;
 const UNSAFE_TEXT_CHARACTERS = /[\p{C}\p{Zl}\p{Zp}]/u;
 const SAFE_SERVER_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$/u;
 const SAFE_TOOL_NAME = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/u;
@@ -147,6 +182,76 @@ function callerCancellationError(signal: AbortSignal): Error {
   return reason instanceof Error
     ? reason
     : new DOMException('MCP request cancelled.', 'AbortError');
+}
+
+function ownDataValue(source: Record<string, unknown>, key: string): unknown {
+  const descriptor = Object.getOwnPropertyDescriptor(source, key);
+  return descriptor && 'value' in descriptor ? descriptor.value : undefined;
+}
+
+function canonicalProgressUpdate(
+  value: unknown,
+  lastProgress: number,
+  contentTrust: McpProgressUpdate['contentTrust'],
+): Readonly<McpProgressUpdate> | undefined {
+  const source = record(value);
+  if (!source) return undefined;
+  const progress = ownDataValue(source, 'progress');
+  if (typeof progress !== 'number' || !Number.isFinite(progress) || progress < 0) {
+    return undefined;
+  }
+  if (progress <= lastProgress) return undefined;
+  const total = ownDataValue(source, 'total');
+  if (
+    total !== undefined &&
+    (typeof total !== 'number' || !Number.isFinite(total) || total <= 0 || progress > total)
+  ) {
+    return undefined;
+  }
+  const rawMessage = ownDataValue(source, 'message');
+  if (rawMessage !== undefined && typeof rawMessage !== 'string') return undefined;
+  const messageWasTruncated =
+    typeof rawMessage === 'string' && rawMessage.length > MAX_PROGRESS_MESSAGE_CHARS;
+  const redactedMessage =
+    rawMessage === undefined
+      ? undefined
+      : redactMcpText(
+          rawMessage.slice(0, MAX_PROGRESS_MESSAGE_CHARS + PROGRESS_REDACTION_GUARD_CHARS),
+        ).trim();
+  if (
+    redactedMessage !== undefined &&
+    (!redactedMessage || UNSAFE_TEXT_CHARACTERS.test(redactedMessage))
+  ) {
+    return undefined;
+  }
+  const message =
+    redactedMessage === undefined
+      ? undefined
+      : !messageWasTruncated && redactedMessage.length <= MAX_PROGRESS_MESSAGE_CHARS
+        ? redactedMessage
+        : `${redactedMessage.slice(0, MAX_PROGRESS_MESSAGE_CHARS - 1)}…`;
+  return Object.freeze({
+    progress,
+    ...(total === undefined ? {} : { total }),
+    ...(message === undefined ? {} : { message }),
+    contentTrust,
+  });
+}
+
+function notifyObserver<T>(observer: ((value: T) => void) | undefined, value: T): void {
+  if (!observer) return;
+  try {
+    const pending = (observer as (candidate: T) => unknown)(value);
+    if (
+      pending &&
+      (typeof pending === 'object' || typeof pending === 'function') &&
+      typeof (pending as PromiseLike<unknown>).then === 'function'
+    ) {
+      void Promise.resolve(pending).catch(() => undefined);
+    }
+  } catch {
+    // Diagnostic/activity observers cannot affect execution.
+  }
 }
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -643,7 +748,7 @@ export class McpServerManager {
     toolName: string,
     input: unknown,
     options: McpInvokeOptions = {},
-  ): Promise<unknown> {
+  ): Promise<unknown | NormalizedExternalMcpToolResult> {
     if (options.signal?.aborted) throw callerCancellationError(options.signal);
     const canonicalToolName = toolName.trim();
     if (!canonicalToolName) throw new Error('MCP tool name is required.');
@@ -673,8 +778,44 @@ export class McpServerManager {
     }
     if (options.signal?.aborted) throw callerCancellationError(options.signal);
     const generation = server.generation;
+    const argumentAudit =
+      server.kind === 'external_mcp' ? redactMcpArgumentsForAudit(input) : undefined;
+    if (argumentAudit && options.onInvocationAudit) {
+      const audit = Object.freeze({
+        serverId: id,
+        toolName: canonicalToolName,
+        arguments: argumentAudit,
+      });
+      notifyObserver(options.onInvocationAudit, audit);
+    }
     const timeoutMs = options.timeoutMs ?? this.invocationTimeoutMs;
     const controller = new AbortController();
+    let invocationActive = true;
+    let progressCount = 0;
+    let lastProgress = Number.NEGATIVE_INFINITY;
+    const onProgress =
+      options.onProgress === undefined
+        ? undefined
+        : (candidate: McpClientProgressUpdate) => {
+            if (!invocationActive || controller.signal.aborted) return;
+            if (
+              server.generation !== generation ||
+              server.client !== client ||
+              server.state !== 'running'
+            ) {
+              return;
+            }
+            if (progressCount >= MAX_PROGRESS_UPDATES) return;
+            const canonical = canonicalProgressUpdate(
+              candidate,
+              lastProgress,
+              server.kind === 'external_mcp' ? 'external_untrusted' : 'app_trusted',
+            );
+            if (!canonical) return;
+            progressCount += 1;
+            lastProgress = canonical.progress;
+            notifyObserver(options.onProgress, canonical);
+          };
     let rejectCallerCancellation: ((error: Error) => void) | undefined;
     const callerCancelled = new Promise<never>((_, reject) => {
       rejectCallerCancellation = reject;
@@ -697,11 +838,15 @@ export class McpServerManager {
           reject(new Error(`MCP ${id}.${canonicalToolName} timed out after ${timeoutMs}ms.`));
         }, timeoutMs);
       });
-      return await Promise.race([
-        client.invoke(canonicalToolName, input, controller.signal),
+      const result = await Promise.race([
+        client.invoke(canonicalToolName, input, {
+          signal: controller.signal,
+          ...(onProgress === undefined ? {} : { onProgress }),
+        }),
         timeout,
         callerCancelled,
       ]);
+      return server.kind === 'external_mcp' ? normalizeExternalMcpToolResult(result) : result;
     } catch (error) {
       const current = server.generation === generation && server.client === client;
       if (!current || options.signal?.aborted) throw error;
@@ -716,6 +861,7 @@ export class McpServerManager {
       await this.start(id);
       return this.invoke(id, canonicalToolName, input, { ...options, restartOnFailure: false });
     } finally {
+      invocationActive = false;
       if (timer) clearTimeout(timer);
       options.signal?.removeEventListener('abort', abort);
     }

@@ -12,16 +12,15 @@ function jsonResponse(value: unknown, status = 200): Response {
 
 describe('Supabase read-only MCP adapter', () => {
   it('lists visible tables through a GET-only OpenAPI request', async () => {
-    const fetchImpl = vi.fn(async (
-      _url: RequestInfo | URL,
-      _init?: RequestInit,
-    ) => jsonResponse({
-      swagger: '2.0',
-      definitions: {
-        profiles: { type: 'object' },
-        chats: { type: 'object' },
-      },
-    }));
+    const fetchImpl = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) =>
+      jsonResponse({
+        swagger: '2.0',
+        definitions: {
+          profiles: { type: 'object' },
+          chats: { type: 'object' },
+        },
+      }),
+    );
     const adapter = createSupabaseMcpAdapter({
       readEnv: () => ({
         url: 'https://project.supabase.co/',
@@ -33,14 +32,20 @@ describe('Supabase read-only MCP adapter', () => {
 
     const client = await adapter.start();
     expect(await client.health()).toBe(true);
-    expect(await client.listTools()).toEqual([
-      expect.objectContaining({ name: 'list_tables' }),
-    ]);
+    expect(await client.listTools()).toEqual([expect.objectContaining({ name: 'list_tables' })]);
     await expect(client.invoke('list_tables', {})).resolves.toEqual({
-      tables: ['chats', 'profiles'],
-      count: 2,
-      readOnly: true,
-      source: 'supabase-rest-openapi',
+      content: [
+        {
+          type: 'text',
+          text: '2 Supabase tables are visible to the configured read-only role.',
+        },
+      ],
+      structuredContent: {
+        tables: ['chats', 'profiles'],
+        count: 2,
+        readOnly: true,
+        source: 'supabase-rest-openapi',
+      },
     });
 
     expect(fetchImpl).toHaveBeenCalledTimes(1);
@@ -66,10 +71,9 @@ describe('Supabase read-only MCP adapter', () => {
   });
 
   it('does not expose configured credentials in HTTP errors', async () => {
-    const fetchImpl = vi.fn(async (
-      _url: RequestInfo | URL,
-      _init?: RequestInit,
-    ) => jsonResponse({}, 403));
+    const fetchImpl = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) =>
+      jsonResponse({}, 403),
+    );
     const adapter = createSupabaseMcpAdapter({
       readEnv: () => ({
         url: 'https://project.supabase.co',

@@ -38,7 +38,7 @@ function discoveryUrl(rawUrl: string): string {
 
 function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
+    ? (value as Record<string, unknown>)
     : null;
 }
 
@@ -118,16 +118,26 @@ export function createSupabaseMcpAdapter(
 
       return {
         listTools: async () => [LIST_TABLES_TOOL],
-        invoke: async (toolName, _input, signal) => {
+        invoke: async (toolName, _input, options) => {
           if (toolName !== LIST_TABLES_TOOL.name) {
             throw new Error(`Unknown Supabase MCP tool '${toolName}'.`);
           }
-          const tables = await loadTables(signal);
+          const tables = await loadTables(options?.signal);
           return {
-            tables,
-            count: tables.length,
-            readOnly: true,
-            source: 'supabase-rest-openapi',
+            content: [
+              {
+                type: 'text',
+                text: `${tables.length} Supabase table${
+                  tables.length === 1 ? ' is' : 's are'
+                } visible to the configured read-only role.`,
+              },
+            ],
+            structuredContent: {
+              tables,
+              count: tables.length,
+              readOnly: true,
+              source: 'supabase-rest-openapi',
+            },
           };
         },
         health: async () => {
