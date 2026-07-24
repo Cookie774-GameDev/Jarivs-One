@@ -35,6 +35,7 @@ import {
   restoreJarvisStructuredRegions,
   tokenizeJarvisResponse,
 } from './tokenizer';
+import { enforceJarvisOutputReferencePolicy } from './outputReferencePolicy';
 
 export interface RawProviderResponse {
   text: string;
@@ -517,7 +518,12 @@ export async function processJarvisResponse(
     finalProse = [finalProse, INVALID_STRUCTURED_REGION_TEMPLATE].filter(Boolean).join('\n\n');
   }
 
-  const validRegions = sensitiveTopic ? [] : tokenized.regions.filter((region) => region.valid);
+  const outputReferencePolicy = enforceJarvisOutputReferencePolicy(
+    { proseWithPlaceholders: finalProse, regions: tokenized.regions },
+    snapshot.request.sourceRefs,
+  );
+  finalProse = outputReferencePolicy.proseWithPlaceholders;
+  const validRegions = sensitiveTopic ? [] : outputReferencePolicy.structuredRegions;
   const restoredDisplayText = restoreJarvisStructuredRegions(finalProse, validRegions);
   const preserveLongFormArtifactSuffix =
     Boolean(longFormParts) && !hasQuarantine && !needsDeterministicFallback;
@@ -530,7 +536,12 @@ export async function processJarvisResponse(
     structuredRegions: validRegions,
     verifiedFacts: facts,
   });
-  const violations = Array.from(new Set(initialViolations.map((item) => item.code)));
+  const violations = Array.from(
+    new Set([
+      ...initialViolations.map((item) => item.code),
+      ...outputReferencePolicy.violationCodes,
+    ]),
+  );
   const envelope: JarvisResponseEnvelope = {
     schemaVersion: 1,
     requestId: snapshot.request.requestId,
@@ -554,7 +565,11 @@ export async function processJarvisResponse(
       violations,
       repairAttempted: repaired.attempted,
       repairSucceeded,
-      fallbackUsed: Boolean(sensitiveTopic) || hasQuarantine || needsDeterministicFallback,
+      fallbackUsed:
+        Boolean(sensitiveTopic) ||
+        hasQuarantine ||
+        needsDeterministicFallback ||
+        outputReferencePolicy.violationCodes.length > 0,
     },
     completedAt: snapshot.raw.completedAt,
   };

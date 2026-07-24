@@ -58,6 +58,37 @@ describe('repairJarvisProseOnce', () => {
     expect(repair.repair).toHaveBeenCalledOnce();
   });
 
+  it('rejects a non-HTTP Markdown link introduced by the repair model', async () => {
+    const repair = {
+      repair: vi.fn(
+        async () => 'I can help, Sir. [open output](file:report) \uE000JARVIS_REGION_0\uE001',
+      ),
+    };
+
+    await expect(repairJarvisProseOnce(request, repair)).resolves.toEqual({
+      prose: request.prose,
+      attempted: true,
+      succeeded: false,
+    });
+    expect(repair.repair).toHaveBeenCalledOnce();
+  });
+
+  it('rejects a reference-style Markdown link introduced by the repair model', async () => {
+    const repair = {
+      repair: vi.fn(
+        async () =>
+          'I can help, Sir. [open output][result]\n\n[result]: file:report\n\uE000JARVIS_REGION_0\uE001',
+      ),
+    };
+
+    await expect(repairJarvisProseOnce(request, repair)).resolves.toEqual({
+      prose: request.prose,
+      attempted: true,
+      succeeded: false,
+    });
+    expect(repair.repair).toHaveBeenCalledOnce();
+  });
+
   it('rejects repair output that drops an immutable technical fact', async () => {
     const factRequest = {
       ...request,

@@ -2,6 +2,7 @@ import type { JarvisResponseMode } from '@/lib/jarvis/contracts';
 import { deepFreezeJarvisCopy } from '@/lib/jarvis/requestEnvelope';
 import type { JarvisLintViolation } from './linter';
 import type { JarvisVerifiedFacts } from './modeClassifier';
+import { jarvisDisplayLinkTargets } from './referenceParser';
 import { tokenizeJarvisResponse } from './tokenizer';
 
 export const JARVIS_REPAIR_INSTRUCTION = [
@@ -76,11 +77,15 @@ export async function repairJarvisProseOnce(
       immutableFactTokens(detachedRequest.prose),
       immutableFactTokens(repaired),
     );
-    const introducedStructuredRegion = tokenizeJarvisResponse(repaired).regions.length > 0;
+    const introducedDisplayLink = jarvisDisplayLinkTargets(repaired).length > 0;
+    const introducedStructuredRegion = tokenizeJarvisResponse(repaired).regions.some(
+      (region) => region.kind !== 'citation' && region.kind !== 'url',
+    );
     if (
       !repaired.trim() ||
       !placeholdersPreserved ||
       !factsPreserved ||
+      introducedDisplayLink ||
       introducedStructuredRegion
     ) {
       return Object.freeze({ prose: detachedRequest.prose, attempted: true, succeeded: false });

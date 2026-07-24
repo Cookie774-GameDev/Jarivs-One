@@ -1,3 +1,5 @@
+import { findJarvisDisplayLinks } from './referenceParser';
+
 export type JarvisStructuredRegionKind =
   | 'code_fence'
   | 'action'
@@ -15,6 +17,7 @@ export interface JarvisStructuredRegion {
   kind: JarvisStructuredRegionKind;
   bytes: string;
   valid: boolean;
+  referenceTarget?: string;
   errorCode?: 'unclosed_fence' | 'invalid_json' | 'invalid_shape';
 }
 
@@ -169,20 +172,17 @@ export function tokenizeJarvisResponse(text: string): Readonly<TokenizedJarvisRe
 
   addLineBlocks(text, spans);
 
-  const citation = /(?<!!)\[[^\]\r\n]+\]\(https?:\/\/[^\s)]+\)/g;
-  for (const match of text.matchAll(citation)) {
-    const start = match.index ?? 0;
-    const end = start + match[0].length;
+  for (const link of findJarvisDisplayLinks(text)) {
+    const { start, end } = link;
     if (!overlaps(spans, start, end)) {
-      spans.push({ start, end, kind: 'citation', bytes: match[0], valid: true });
-    }
-  }
-  const url = /https?:\/\/[^\s<>()\]"']+/g;
-  for (const match of text.matchAll(url)) {
-    const start = match.index ?? 0;
-    const end = start + match[0].length;
-    if (!overlaps(spans, start, end)) {
-      spans.push({ start, end, kind: 'url', bytes: match[0], valid: true });
+      spans.push({
+        start,
+        end,
+        kind: link.syntax === 'markdown' ? 'citation' : 'url',
+        bytes: text.slice(start, end),
+        valid: true,
+        referenceTarget: link.target,
+      });
     }
   }
 
@@ -194,6 +194,7 @@ export function tokenizeJarvisResponse(text: string): Readonly<TokenizedJarvisRe
         kind: span.kind,
         bytes: span.bytes,
         valid: span.valid,
+        ...(span.referenceTarget ? { referenceTarget: span.referenceTarget } : {}),
         ...(span.errorCode ? { errorCode: span.errorCode } : {}),
       }),
   );

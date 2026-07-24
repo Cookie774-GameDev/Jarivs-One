@@ -66,4 +66,56 @@ describe('tokenizeJarvisResponse', () => {
       }),
     ]);
   });
+
+  it.each([
+    '[root](/docs/output)',
+    '[protocol](//example.test/output)',
+    '[dot](./output)',
+    '[parent](../output)',
+    '[fragment](#output)',
+    '[internal](jarvis:output)',
+    '[custom](custom:payload)',
+  ])('round-trips non-HTTP Markdown link %s as a citation region', (link) => {
+    const text = `Before ${link} after.`;
+    const tokenized = tokenizeJarvisResponse(text);
+
+    expect(tokenized.regions).toEqual([
+      expect.objectContaining({ kind: 'citation', bytes: link, valid: true }),
+    ]);
+    expect(restoreJarvisStructuredRegions(tokenized.proseWithPlaceholders, tokenized.regions)).toBe(
+      text,
+    );
+  });
+
+  it('round-trips verified URL parentheses and a Markdown title byte-for-byte', () => {
+    const url = 'https://example.test/report_(final).pdf';
+    const markdown = `[report](${url} "Final report")`;
+    const text = `${markdown}\n${url}`;
+    const tokenized = tokenizeJarvisResponse(text);
+
+    expect(tokenized.regions.map(({ kind, bytes }) => ({ kind, bytes }))).toEqual([
+      { kind: 'citation', bytes: markdown },
+      { kind: 'url', bytes: url },
+    ]);
+    expect(restoreJarvisStructuredRegions(tokenized.proseWithPlaceholders, tokenized.regions)).toBe(
+      text,
+    );
+  });
+
+  it.each(['[download][result]', '[result][]', '[result]'])(
+    'round-trips reference-style Markdown usage %s and its definition',
+    (usage) => {
+      const definition = '[result]: //example.test/output "Result"';
+      const text = `${usage}\n\n${definition}`;
+      const tokenized = tokenizeJarvisResponse(text);
+
+      expect(tokenized.regions.map(({ kind, bytes }) => ({ kind, bytes }))).toEqual([
+        { kind: 'citation', bytes: usage },
+        { kind: 'citation', bytes: definition },
+      ]);
+      expect(
+        restoreJarvisStructuredRegions(tokenized.proseWithPlaceholders, tokenized.regions),
+      ).toBe(text);
+    },
+  );
 });

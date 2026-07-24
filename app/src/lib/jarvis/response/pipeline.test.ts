@@ -56,6 +56,28 @@ function request(overrides: Partial<JarvisRequestEnvelope> = {}): Readonly<Jarvi
   };
 }
 
+function contextForUris(...uris: readonly string[]): JarvisRequestEnvelope['context'] {
+  return {
+    items: uris.map((uri, index) => ({
+      source: {
+        id: `source-output-${index}`,
+        kind: uri.startsWith('http') ? ('web' as const) : ('project_file' as const),
+        label: `Verified output source ${index + 1}`,
+        uri,
+        accountId: 'account-response',
+        trust: 'app_verified' as const,
+        origin: 'app_observed' as const,
+        sensitivity: uri.startsWith('http') ? ('public' as const) : ('private' as const),
+      },
+      purpose: 'citation' as const,
+      excerpt: 'Verified source reference.',
+      truncated: false,
+    })),
+    budget: { maxChars: 1_000, usedChars: uris.length * 26 },
+    exclusions: [],
+  };
+}
+
 function raw(
   text: string,
   status?: 'awaiting_approval' | 'running' | 'completed' | 'failed',
@@ -229,7 +251,10 @@ describe('processJarvisResponse', () => {
 
     const result = await processJarvisResponse(
       raw(detailedReport),
-      request({ userText: 'Write a detailed report with sections and citations.' }),
+      request({
+        userText: 'Write a detailed report with sections and citations.',
+        context: contextForUris(path, url),
+      }),
       { repair: vi.fn() },
     );
 
@@ -257,9 +282,11 @@ describe('processJarvisResponse', () => {
       code,
     ].join('\n\n');
 
-    const result = await processJarvisResponse(raw(providerText), request(), {
-      repair: vi.fn(),
-    });
+    const result = await processJarvisResponse(
+      raw(providerText),
+      request({ context: contextForUris(path, url) }),
+      { repair: vi.fn() },
+    );
 
     expect(result.displayText).toBe(providerText);
     expect(result.spokenText).toBe(
@@ -269,6 +296,204 @@ describe('processJarvisResponse', () => {
     expect(result.spokenText).not.toMatch(/```|verified|https?:\/\/|[A-Za-z]:\\/);
     expect(result.spokenText).not.toContain(json);
     expectSpeechGateAccepted(result);
+  });
+
+  it('omits unverified provider-authored output links and locations without model repair', async () => {
+    const fabricatedPath = 'C:\\fabricated\\reports\\launch-report.md';
+    const fabricatedUrl = 'https://fabricated.example.test/downloads/launch-report';
+    const providerText = [
+      `The report was saved at \`${fabricatedPath}\`.`,
+      `Download the completed output from [this link](${fabricatedUrl}).`,
+    ].join('\n\n');
+    const repair = { repair: vi.fn() };
+
+    const result = await processJarvisResponse(raw(providerText), request(), repair);
+
+    expect(result.displayText).not.toContain(fabricatedPath);
+    expect(result.displayText).not.toContain(fabricatedUrl);
+    expect(result.displayText).toContain('[unverified output location omitted]');
+    expect(result.displayText).toContain('[unverified link omitted]');
+    expect(result.spokenText).not.toMatch(/fabricated|https?:\/\/|[A-Za-z]:\\/i);
+    expect(result.enforcement.violations).toEqual(
+      expect.arrayContaining(['unverified_output_location:0', 'unverified_output_reference:0']),
+    );
+    expect(result.enforcement.fallbackUsed).toBe(true);
+    expect(repair.repair).not.toHaveBeenCalled();
+  });
+
+  it('preserves source-backed output references and structured examples byte-for-byte', async () => {
+    const verifiedPath = 'C:\\workspace\\reports\\verified report.md';
+    const verifiedUrl = 'https://docs.example.test/reports/verified?download=1';
+    const structuredExample = [
+      '```txt',
+      'Untrusted example only: https://generated.example.test/not-a-real-output',
+      'C:\\generated\\example-only.txt',
+      '```',
+    ].join('\n');
+    const providerText = [
+      `The verified report was saved at "${verifiedPath}".`,
+      `Open [the verified report](${verifiedUrl}).`,
+      structuredExample,
+    ].join('\n\n');
+
+    const result = await processJarvisResponse(
+      raw(providerText),
+      request({ context: contextForUris(verifiedPath, verifiedUrl) }),
+      { repair: vi.fn() },
+    );
+
+    expect(result.displayText).toBe(providerText);
+    expect(result.displayText).toContain(structuredExample);
+    expect(result.enforcement.violations).not.toEqual(
+      expect.arrayContaining([expect.stringMatching(/^unverified_output_(?:location|reference):/)]),
+    );
+    expect(result.enforcement.fallbackUsed).toBe(false);
+  });
+
+  it('rejects a one-shot prose repair that introduces a new link', async () => {
+    const repairedUrl = 'https://repair-generated.example.test/not-verified';
+    const repair = {
+      repair: vi.fn(async () => `Reference: ${repairedUrl}.`),
+    };
+
+    const result = await processJarvisResponse(
+      raw('Sure, the reference follows.'),
+      request(),
+      repair,
+    );
+
+    expect(repair.repair).toHaveBeenCalledOnce();
+    expect(result.displayText).not.toContain(repairedUrl);
+    expect(result.displayText).toBe('the reference follows.');
+    expect(result.enforcement.repairSucceeded).toBe(false);
+    expect(result.enforcement.fallbackUsed).toBe(true);
+  });
+
+  it('does not treat a restricted request source as authority to display its link', async () => {
+    const restrictedUrl = 'https://internal.example.test/private-output';
+    const context = contextForUris(restrictedUrl);
+    context.items[0]!.source.sensitivity = 'restricted';
+
+    const result = await processJarvisResponse(
+      raw(`The output is available at ${restrictedUrl}.`),
+      request({ context }),
+      { repair: vi.fn() },
+    );
+
+    expect(result.displayText).not.toContain(restrictedUrl);
+    expect(result.displayText).toContain('[unverified link omitted]');
+    expect(result.enforcement.violations).toContain('unverified_output_reference:0');
+  });
+
+  it('does not display an unsafe URI scheme even when a request source repeats it', async () => {
+    const unsafeUri = 'javascript:alert(document.domain)';
+
+    const result = await processJarvisResponse(
+      raw(`Open the output at ${unsafeUri}.`),
+      request({ context: contextForUris(unsafeUri) }),
+      { repair: vi.fn() },
+    );
+
+    expect(result.displayText).not.toContain(unsafeUri);
+    expect(result.displayText).toContain('[unverified link omitted]');
+    expect(result.enforcement.violations).toContain('unverified_output_reference:0');
+  });
+
+  it('preserves a source-backed safe internal Markdown link byte-for-byte', async () => {
+    const internalUri = 'jarvis:artifact/jartifact-verified';
+    const providerText = `[output](${internalUri})`;
+
+    const result = await processJarvisResponse(
+      raw(providerText),
+      request({ context: contextForUris(internalUri) }),
+      { repair: vi.fn() },
+    );
+
+    expect(result.displayText).toBe(providerText);
+    expect(result.enforcement.violations).not.toContain('unverified_output_reference:0');
+  });
+
+  it.each([
+    ['root-relative', '[reference](/docs/output)', '/docs/output'],
+    ['protocol-relative', '[reference](//evil.example.test/output)', '//evil.example.test/output'],
+    ['dot-relative', '[reference](./output)', './output'],
+    ['fragment', '[reference](#output)', '#output'],
+    ['internal', '[reference](jarvis:output)', 'jarvis:output'],
+    ['custom scheme', '[reference](custom:payload)', 'custom:payload'],
+  ])('omits an unverified %s Markdown link', async (_kind, link, target) => {
+    const result = await processJarvisResponse(raw(`Reference: ${link}.`), request(), {
+      repair: vi.fn(),
+    });
+
+    expect(result.displayText).not.toContain(target);
+    expect(result.displayText).toContain('[unverified link omitted]');
+    expect(result.enforcement.violations).toContain('unverified_output_reference:0');
+  });
+
+  it('omits an unverified reference-style Markdown usage and definition', async () => {
+    const target = '//evil.example.test/output';
+    const providerText = `[download][result]\n\n[result]: ${target} "Result"`;
+
+    const result = await processJarvisResponse(raw(providerText), request(), {
+      repair: vi.fn(),
+    });
+
+    expect(result.displayText).not.toContain(target);
+    expect(result.displayText.match(/\[unverified link omitted\]/g)).toHaveLength(2);
+    expect(result.enforcement.violations).toEqual(
+      expect.arrayContaining(['unverified_output_reference:0', 'unverified_output_reference:1']),
+    );
+  });
+
+  it('preserves a source-backed reference-style Markdown link byte-for-byte', async () => {
+    const target = 'jarvis:artifact/jartifact-reference-style';
+    const providerText = `[download][result]\n\n[result]: ${target} "Result"`;
+
+    const result = await processJarvisResponse(
+      raw(providerText),
+      request({ context: contextForUris(target) }),
+      { repair: vi.fn() },
+    );
+
+    expect(result.displayText).toBe(providerText);
+    expect(result.enforcement.violations).not.toEqual(
+      expect.arrayContaining([expect.stringMatching(/^unverified_output_reference:/)]),
+    );
+  });
+
+  it.each([
+    ['relative', './reports/out.md', 'Saved to'],
+    ['parent-relative', '../reports/out.md', 'Written to'],
+    ['extensionless relative', 'reports/output', 'Saved to'],
+    ['quoted relative with spaces', './reports/final output', 'Saved to'],
+    ['Windows deictic', 'C:\\fake\\out.md', 'Find it at'],
+    ['UNC deictic', '\\\\server\\share\\out.md', 'Here it is at'],
+    ['Unix deictic', '/tmp/reports/out.md', 'The location is'],
+  ])('omits an asserted unverified %s output location', async (_kind, path, claim) => {
+    const result = await processJarvisResponse(raw(`${claim} \`${path}\`.`), request(), {
+      repair: vi.fn(),
+    });
+
+    expect(result.displayText).not.toContain(path);
+    expect(result.displayText).toContain('[unverified output location omitted]');
+    expect(result.enforcement.violations).toContain('unverified_output_location:0');
+  });
+
+  it('preserves verified balanced-parenthesis links byte-for-byte', async () => {
+    const url = 'https://example.test/report_(final).pdf';
+    const markdown = `[report](${url} "Final report")`;
+    const providerText = `${markdown}\n${url}`;
+
+    const result = await processJarvisResponse(
+      raw(providerText),
+      request({ context: contextForUris(url) }),
+      { repair: vi.fn() },
+    );
+
+    expect(result.displayText).toBe(providerText);
+    expect(result.enforcement.violations).not.toEqual(
+      expect.arrayContaining([expect.stringMatching(/^unverified_output_reference:/)]),
+    );
   });
 
   it('foregrounds warning severity when a detailed warning needs spoken summarization', async () => {
@@ -385,7 +610,9 @@ describe('processJarvisResponse', () => {
     };
     const result = await processJarvisResponse(
       raw(`Sure, here it is.\n\n${regions.join('\n\n')}`),
-      request(),
+      request({
+        context: contextForUris('https://example.test/source', 'https://example.test/raw'),
+      }),
       repair,
     );
 
