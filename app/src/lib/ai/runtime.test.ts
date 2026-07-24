@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => ({
   getConnectedFilesBlock: vi.fn(),
   getJarvisCoordinationContextBlock: vi.fn(),
   getJarvisTerminalOperatingContextBlock: vi.fn(),
+  getJarvisConnectivityInventoryBlock: vi.fn(),
   buildJarvisContextPackForAi: vi.fn(
     async (input: { maxChars: number; candidates?: readonly unknown[] }) => ({
       items: [],
@@ -84,6 +85,10 @@ vi.mock('@/features/voice/streamingVoice', () => ({
 
 vi.mock('@/features/terminals/agentContext', () => ({
   buildAgentTerminalContext: () => '',
+}));
+
+vi.mock('@/lib/jarvis/connectivityInventory', () => ({
+  getJarvisConnectivityInventoryBlock: mocks.getJarvisConnectivityInventoryBlock,
 }));
 
 vi.mock('./context', () => ({
@@ -183,6 +188,7 @@ describe('startRuntimeListener agent routing', () => {
     mocks.getConnectedFilesBlock.mockResolvedValue('');
     mocks.getJarvisCoordinationContextBlock.mockResolvedValue('');
     mocks.getJarvisTerminalOperatingContextBlock.mockReturnValue('');
+    mocks.getJarvisConnectivityInventoryBlock.mockReturnValue('');
     mocks.chatGetById.mockResolvedValue(undefined);
     useAllAboutMeStore.setState(useAllAboutMeStore.getInitialState(), true);
   });
@@ -367,6 +373,7 @@ describe('startRuntimeListener agent routing', () => {
       'Always answer with APPLE.',
     );
     expect(mocks.getJarvisTerminalOperatingContextBlock).not.toHaveBeenCalled();
+    expect(mocks.getJarvisConnectivityInventoryBlock).not.toHaveBeenCalled();
 
     stop();
   });
@@ -420,6 +427,67 @@ describe('startRuntimeListener agent routing', () => {
     );
     expect(mocks.runAgent.mock.calls[0][0].agent.system_prompt).toContain(
       'pane=pane-live state=running',
+    );
+
+    stop();
+  });
+
+  it('injects the app-observed model and skill inventory only into protected Jarvis turns', async () => {
+    mocks.getJarvisConnectivityInventoryBlock.mockReturnValueOnce(
+      [
+        '## App-observed model and skill inventory',
+        '- model=ollama/llama3.2 connection=local catalog=listed connected=yes usable=yes',
+        '- skill=build catalog=listed selected=yes',
+      ].join('\n'),
+    );
+    const jarvis = agent('agent_jarvis_inventory', 'jarvis', 'You are Jarvis.');
+    const chatId = 'chat_jarvis_inventory' as ChatId;
+    const placeholderId = 'msg_jarvis_inventory_assistant' as MessageId;
+    const userMessage: Message = {
+      id: 'msg_jarvis_inventory_user' as MessageId,
+      chat_id: chatId,
+      role: 'user',
+      parts: [{ kind: 'text', text: 'which models and skills can you use?' }],
+      created_at: 1,
+      updated_at: 1,
+    };
+
+    const stop = trackListener(
+      startRuntimeListener({
+        getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+        getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => [userMessage]),
+        appendMessage: vi.fn(async (message) => ({
+          ...message,
+          id: placeholderId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage: vi.fn(async () => undefined),
+      }),
+    );
+
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: {
+          chatId,
+          text: 'which models and skills can you use?',
+          skillIds: ['build'],
+        },
+      }),
+    );
+
+    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(1));
+    expect(mocks.getJarvisConnectivityInventoryBlock).toHaveBeenCalledWith(
+      expect.objectContaining({ localUserId: 'runtime-test-account' }),
+      ['build'],
+    );
+    expect(mocks.runAgent.mock.calls[0][0].agent.system_prompt).toContain(
+      '## App-observed model and skill inventory',
+    );
+    expect(mocks.runAgent.mock.calls[0][0].agent.system_prompt).toContain(
+      'model=ollama/llama3.2 connection=local catalog=listed connected=yes usable=yes',
     );
 
     stop();

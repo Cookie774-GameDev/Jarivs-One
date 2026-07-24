@@ -138,6 +138,7 @@ import {
   buildJarvisRuntimeContextCandidates,
   type JarvisRuntimeContextBlock,
 } from '@/lib/jarvis/runtimeContextCandidates';
+import { getJarvisConnectivityInventoryBlock } from '@/lib/jarvis/connectivityInventory';
 import {
   compileJarvisShadowTurn,
   mirrorJarvisShadowLegacyOutcome,
@@ -2533,6 +2534,7 @@ export function startRuntimeListener(
     let allAboutMeContext = '';
     let pluginContext = '';
     let pluginStatusContext = '';
+    let modelSkillInventoryContext = '';
     let selectedSkillsContext = '';
     const resolvedContextBlock = formatResolvedJarvisContext(resolvedRequestContext);
     const requestIntentBlock = formatJarvisIntentPolicy(requestIntent);
@@ -2662,6 +2664,19 @@ export function startRuntimeListener(
           detail: { error: err instanceof Error ? err.message : String(err) },
         });
       }
+      try {
+        modelSkillInventoryContext = getJarvisConnectivityInventoryBlock(
+          authState,
+          detail.skillIds,
+        );
+      } catch (err) {
+        devConsole.log({
+          channel: 'ai',
+          level: 'warn',
+          message: 'Jarvis model/skill inventory build failed',
+          detail: { error: err instanceof Error ? err.message : String(err) },
+        });
+      }
     }
     try {
       pluginContext = getPluginContextBlock(projectId, detail.pluginIds);
@@ -2703,6 +2718,7 @@ export function startRuntimeListener(
         { key: 'all_about_me', text: allAboutMeContext },
         { key: 'plugin_context', text: pluginContext },
         { key: 'plugin_status', text: pluginStatusContext },
+        { key: 'model_skill_inventory', text: modelSkillInventoryContext },
         { key: 'selected_skills', text: selectedSkillsContext },
         { key: 'resolved_context', text: resolvedContextBlock },
         { key: 'intent_policy', text: requestIntentBlock },

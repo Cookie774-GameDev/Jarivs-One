@@ -13,6 +13,7 @@ const EXPECTED = {
   all_about_me: ['memory', 'app_verified', 'mixed', 'preference', false],
   plugin_context: ['plugin', 'external_untrusted', 'external_retrieved', 'answer', false],
   plugin_status: ['plugin', 'app_verified', 'app_observed', 'capability', false],
+  model_skill_inventory: ['tool_result', 'app_verified', 'mixed', 'capability', false],
   selected_skills: ['tool_result', 'user_direct', 'user_authored', 'execution', false],
   resolved_context: ['context_node', 'app_verified', 'app_observed', 'answer', false],
   intent_policy: ['tool_result', 'app_verified', 'app_observed', 'execution', false],

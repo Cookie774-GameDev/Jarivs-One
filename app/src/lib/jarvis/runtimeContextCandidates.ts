@@ -11,6 +11,7 @@ export type JarvisRuntimeContextBlockKey =
   | 'all_about_me'
   | 'plugin_context'
   | 'plugin_status'
+  | 'model_skill_inventory'
   | 'selected_skills'
   | 'resolved_context'
   | 'intent_policy'
@@ -96,6 +97,14 @@ const DEFINITIONS = Object.freeze({
     label: 'Plugin connection status',
     trust: 'app_verified',
     origin: 'app_observed',
+    purpose: 'capability',
+    explicitlyAttached: false,
+  },
+  model_skill_inventory: {
+    kind: 'tool_result',
+    label: 'Model and skill availability inventory',
+    trust: 'app_verified',
+    origin: 'mixed',
     purpose: 'capability',
     explicitlyAttached: false,
   },
