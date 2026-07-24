@@ -114,6 +114,9 @@ function sanitizeProse(prose: string): {
 }
 
 function deterministicFallback(prose: string, facts: Readonly<JarvisVerifiedFacts>): string {
+  if (facts.executionState?.status === 'awaiting_approval' && /\bcommand\b/i.test(prose)) {
+    return 'The command is prepared and awaiting your authorisation, sir.';
+  }
   const verified = verifiedResponseTemplate(facts);
   if (verified) return verified;
   let formatted = prose.replace(
@@ -175,6 +178,25 @@ function textParts(displayText: string): Part[] {
 function withMissingPlaceholders(prose: string, placeholders: readonly string[]): string {
   const missing = placeholders.filter((placeholder) => !prose.includes(placeholder));
   return [prose, ...missing].filter(Boolean).join('\n\n');
+}
+
+function splitLongFormWrapper(prose: string):
+  | Readonly<{
+      wrapper: string;
+      separator: string;
+      artifact: string;
+    }>
+  | undefined {
+  const separator = /\r?\n[ \t]*\r?\n/u.exec(prose);
+  if (!separator || separator.index === 0) return undefined;
+  const artifactStart = separator.index + separator[0].length;
+  const artifact = prose.slice(artifactStart);
+  if (!artifact.trim()) return undefined;
+  return Object.freeze({
+    wrapper: prose.slice(0, separator.index),
+    separator: separator[0],
+    artifact,
+  });
 }
 
 function withoutUndefined(value: unknown): unknown {
@@ -418,25 +440,51 @@ export async function processJarvisResponse(
     : tokenized.regions
         .filter((region) => region.valid)
         .map((region) => jarvisRegionPlaceholder(region.index));
-  const repaired =
+  const longFormParts = mode === 'long_form_delivery' ? splitLongFormWrapper(prose) : undefined;
+  const mutableRepairProse = longFormParts?.wrapper ?? prose;
+  const mutableRepairPlaceholders = validPlaceholders.filter((placeholder) =>
+    mutableRepairProse.includes(placeholder),
+  );
+  const repairedScope =
     hasQuarantine || sensitiveTopic
       ? { prose, attempted: false, succeeded: false }
       : await repairJarvisProseOnce(
           {
-            prose,
-            immutablePlaceholders: validPlaceholders,
+            prose: mutableRepairProse,
+            immutablePlaceholders: mutableRepairPlaceholders,
             mode,
             verifiedFacts: facts,
             violations: initialViolations,
           },
           repair,
         );
+  const repaired =
+    longFormParts && repairedScope.succeeded
+      ? {
+          ...repairedScope,
+          prose: `${repairedScope.prose.trim()}${longFormParts.separator}${longFormParts.artifact}`,
+        }
+      : {
+          ...repairedScope,
+          prose: repairedScope.succeeded ? repairedScope.prose : prose,
+        };
 
   let repairSucceeded = repaired.succeeded;
   let finalProse = repaired.prose;
   let repairedViolations: readonly JarvisLintViolation[] = [];
   if (repairSucceeded) {
-    repairedViolations = lintResponseProse(finalProse, mode, facts, sensitiveTopic);
+    const repairedScopeViolations = lintResponseProse(
+      longFormParts ? repairedScope.prose : finalProse,
+      mode,
+      facts,
+      sensitiveTopic,
+    );
+    repairedViolations = longFormParts
+      ? [
+          ...initialViolations.filter((item) => item.disposition !== 'repairable'),
+          ...repairedScopeViolations,
+        ]
+      : repairedScopeViolations;
     if (repairedViolations.length > 0) {
       repairSucceeded = false;
       finalProse = prose;
@@ -470,7 +518,12 @@ export async function processJarvisResponse(
   }
 
   const validRegions = sensitiveTopic ? [] : tokenized.regions.filter((region) => region.valid);
-  const displayText = restoreJarvisStructuredRegions(finalProse, validRegions).trim();
+  const restoredDisplayText = restoreJarvisStructuredRegions(finalProse, validRegions);
+  const preserveLongFormArtifactSuffix =
+    Boolean(longFormParts) && !hasQuarantine && !needsDeterministicFallback;
+  const displayText = preserveLongFormArtifactSuffix
+    ? restoredDisplayText.trimStart()
+    : restoredDisplayText.trim();
   const spokenText = deriveJarvisSpokenText({
     proseWithPlaceholders: finalProse,
     mode,

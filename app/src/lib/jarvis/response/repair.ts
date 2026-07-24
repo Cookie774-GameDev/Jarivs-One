@@ -38,7 +38,12 @@ function exactMultiset(left: readonly string[], right: readonly string[]): boole
 }
 
 function immutableFactTokens(prose: string): readonly string[] {
-  const withoutPlaceholders = prose.replace(PLACEHOLDER_RE, '');
+  const withoutPlaceholders = prose
+    .replace(PLACEHOLDER_RE, '')
+    .replace(
+      /\b(?:as an ai(?: language model)?|i am just a computer program|i(?: do not| don't) have feelings)\b/gi,
+      '',
+    );
   return [
     ...(withoutPlaceholders.match(/`[^`\r\n]+`/g) ?? []),
     ...(withoutPlaceholders.match(/\b\d+(?:\.\d+)*(?:%|ms|s|kb|mb|gb|tb)?\b/gi) ?? []),

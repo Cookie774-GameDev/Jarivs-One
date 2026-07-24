@@ -101,6 +101,25 @@ describe('lintJarvisProse', () => {
     );
   });
 
+  it('flags the complete supplied generic AI filler example for prose repair', () => {
+    const violations = lintJarvisProse(
+      "Sure! I'd be happy to help! As an AI language model, I don't have feelings, but I can definitely assist you with that!",
+      'direct_answer',
+      { ...facts, executionState: undefined },
+    );
+
+    expect(violations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'generic_opener', disposition: 'repairable' }),
+        expect.objectContaining({ code: 'forbidden_opening', disposition: 'repairable' }),
+        expect.objectContaining({
+          code: 'generic_identity_disclaimer',
+          disposition: 'repairable',
+        }),
+      ]),
+    );
+  });
+
   it('passes concise Jarvis prose without repair', () => {
     expect(
       lintJarvisProse(

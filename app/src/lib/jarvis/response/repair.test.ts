@@ -75,6 +75,37 @@ describe('repairJarvisProseOnce', () => {
     expect(repair.repair).toHaveBeenCalledOnce();
   });
 
+  it('allows removal of a generic AI identity disclaimer without treating AI as a fact', async () => {
+    const prose =
+      "Sure! I'd be happy to help! As an AI language model, I don't have feelings, but I can definitely assist you with that!";
+    const repair = {
+      repair: vi.fn(async () => 'Certainly, sir. What is the objective?'),
+    };
+
+    await expect(
+      repairJarvisProseOnce(
+        {
+          ...request,
+          prose,
+          immutablePlaceholders: [],
+          violations: [
+            {
+              code: 'generic_identity_disclaimer',
+              disposition: 'repairable',
+              safeSummary: 'Generic identity disclaimer.',
+            },
+          ],
+        },
+        repair,
+      ),
+    ).resolves.toEqual({
+      prose: 'Certainly, sir. What is the objective?',
+      attempted: true,
+      succeeded: true,
+    });
+    expect(repair.repair).toHaveBeenCalledOnce();
+  });
+
   it('passes a detached deeply frozen request to the repair port', async () => {
     const repair = {
       repair: vi.fn(async (input) => {

@@ -56,7 +56,10 @@ function request(overrides: Partial<JarvisRequestEnvelope> = {}): Readonly<Jarvi
   };
 }
 
-function raw(text: string, status?: 'running' | 'completed' | 'failed'): RawProviderResponse {
+function raw(
+  text: string,
+  status?: 'awaiting_approval' | 'running' | 'completed' | 'failed',
+): RawProviderResponse {
   return {
     text,
     provider: {
@@ -414,6 +417,107 @@ describe('processJarvisResponse', () => {
       repairSucceeded: false,
       fallbackUsed: true,
     });
+  });
+
+  it('repairs the complete supplied generic AI filler to the required style', async () => {
+    const providerText =
+      "Sure! I'd be happy to help! As an AI language model, I don't have feelings, but I can definitely assist you with that!";
+    const repair = {
+      repair: vi.fn(async () => 'Certainly, sir. What is the objective?'),
+    };
+
+    const result = await processJarvisResponse(raw(providerText), request(), repair);
+
+    expect(repair.repair).toHaveBeenCalledOnce();
+    expect(repair.repair).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prose: providerText,
+        violations: expect.arrayContaining([
+          expect.objectContaining({ code: 'generic_identity_disclaimer' }),
+        ]),
+      }),
+    );
+    expect(result.displayText).toBe('Certainly, sir. What is the objective?');
+    expect(result.enforcement).toMatchObject({
+      repairAttempted: true,
+      repairSucceeded: true,
+      fallbackUsed: false,
+    });
+  });
+
+  it('replaces false command completion with the exact awaiting-authorisation narration', async () => {
+    const repair = { repair: vi.fn() };
+
+    const result = await processJarvisResponse(
+      raw('Done! I ran the command and fixed everything.', 'awaiting_approval'),
+      request(),
+      repair,
+    );
+
+    expect(result.displayText).toBe(
+      'The command is prepared and awaiting your authorisation, sir.',
+    );
+    expect(result.displayText).not.toMatch(/\b(?:done|ran|fixed)\b/i);
+    expect(result.executionState?.status).toBe('awaiting_approval');
+    expect(repair.repair).not.toHaveBeenCalled();
+  });
+
+  it('repairs only long-form wrapper prose and preserves the ordinary artifact byte-for-byte', async () => {
+    const wrapper = "Sure! I'd be happy to help!";
+    const artifact = [
+      '# architecture',
+      '',
+      'the first section records the complete boundary and its dependencies.',
+      '',
+      '## evidence',
+      '',
+      'the second section preserves every ordinary prose sentence in order.',
+    ].join('\n');
+    const repair = {
+      repair: vi.fn(async () => 'The complete report follows, sir.'),
+    };
+
+    const result = await processJarvisResponse(
+      raw(`${wrapper}\n\n${artifact}`),
+      request({ userText: 'Write a detailed long-form report with sections.' }),
+      repair,
+    );
+
+    expect(repair.repair).toHaveBeenCalledOnce();
+    expect(repair.repair).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prose: wrapper,
+        immutablePlaceholders: [],
+      }),
+    );
+    expect(result.displayText).toBe(`The complete report follows, sir.\n\n${artifact}`);
+    expect(result.displayText.endsWith(artifact)).toBe(true);
+  });
+
+  it('preserves style-like artifact text and terminal whitespace after wrapper-only repair', async () => {
+    const wrapper = "Sure! I'd be happy to help!";
+    const artifact = [
+      '# analysis',
+      '',
+      'the report records the phrase As an AI language model for analysis.',
+      '',
+      'the terminal artifact line keeps its whitespace.  ',
+      '',
+    ].join('\n');
+    const repair = {
+      repair: vi.fn(async () => 'The report follows, sir.'),
+    };
+
+    const result = await processJarvisResponse(
+      raw(`${wrapper}\n\n${artifact}`),
+      request({ userText: 'Write a detailed long-form report with sections.' }),
+      repair,
+    );
+
+    expect(repair.repair).toHaveBeenCalledOnce();
+    expect(result.displayText).toBe(`The report follows, sir.\n\n${artifact}`);
+    expect(result.displayText).toContain('As an AI language model');
+    expect(result.displayText.endsWith('whitespace.  \n')).toBe(true);
   });
 
   it('does not make a second repair call when repaired prose still fails lint', async () => {
