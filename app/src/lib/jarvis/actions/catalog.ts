@@ -448,6 +448,14 @@ const NO_OUTPUT_SCHEMA: JsonSchema = {
 
 const GITHUB_OWNER = /^(?=.{1,39}$)[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/;
 const GITHUB_REPOSITORY = /^[A-Za-z0-9._-]{1,100}$/;
+const GMAIL_RESOURCE_ID = /^[A-Za-z0-9_-]{1,256}$/;
+const GMAIL_DRAFT_FINGERPRINT = /^[0-9a-f]{64}$/;
+const GMAIL_EMAIL =
+  /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
+const GMAIL_QUERY_MAX = 500;
+const GMAIL_SUBJECT_MAX = 200;
+const GMAIL_BODY_MAX = 50_000;
+const GMAIL_RECIPIENT_MAX = 20;
 const MCP_SERVER_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$/;
 const MCP_TOOL_NAME = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
 const MAX_MCP_INPUT_JSON_CHARS = 256 * 1024;
@@ -502,6 +510,323 @@ function validateGithubNumberedParameters(
     number: record.number as number,
   };
 }
+
+function gmailResourceId(value: unknown, label: string): string {
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  if (!GMAIL_RESOURCE_ID.test(normalized)) catalogError(`${label} is invalid`);
+  return normalized;
+}
+
+function gmailQuery(value: unknown): string {
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  if (
+    !normalized ||
+    Array.from(normalized).length > GMAIL_QUERY_MAX ||
+    /[\u0000-\u001f\u007f]/.test(normalized)
+  ) {
+    catalogError('Gmail query is invalid');
+  }
+  return normalized;
+}
+
+function gmailMaxResults(value: unknown): number {
+  if (value === undefined) return 10;
+  if (!Number.isSafeInteger(value) || (value as number) < 1 || (value as number) > 20) {
+    catalogError('Gmail maxResults is invalid');
+  }
+  return value as number;
+}
+
+function gmailRecipients(value: unknown): string {
+  if (typeof value !== 'string' || /[\r\n\u0000]/.test(value)) {
+    catalogError('Gmail recipient list is invalid');
+  }
+  const recipients = value
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  if (
+    recipients.length === 0 ||
+    recipients.length > GMAIL_RECIPIENT_MAX ||
+    recipients.some(
+      (recipient) =>
+        Array.from(recipient).length > 254 ||
+        !GMAIL_EMAIL.test(recipient) ||
+        recipient !== recipient.normalize('NFC'),
+    )
+  ) {
+    catalogError('Gmail recipient list is invalid');
+  }
+  return recipients.join(', ');
+}
+
+function gmailSubject(value: unknown): string {
+  const normalized = typeof value === 'string' ? value.trim().normalize('NFC') : '';
+  if (
+    !normalized ||
+    Array.from(normalized).length > GMAIL_SUBJECT_MAX ||
+    /[\r\n\u0000-\u001f\u007f]/.test(normalized)
+  ) {
+    catalogError('Gmail subject is invalid');
+  }
+  return normalized;
+}
+
+function gmailBody(value: unknown): string {
+  if (typeof value !== 'string') catalogError('Gmail body is invalid');
+  const normalized = value.normalize('NFC').replace(/\r\n?/g, '\n');
+  if (
+    !normalized.trim() ||
+    Array.from(normalized).length > GMAIL_BODY_MAX ||
+    /[\u0000\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(normalized)
+  ) {
+    catalogError('Gmail body is invalid');
+  }
+  return normalized;
+}
+
+function validateGmailSearchParameters(
+  input: Readonly<Record<string, unknown>>,
+): Readonly<{ query: string; maxResults: number }> {
+  const record = plainRecord(input, 'gmail.messages.search parameters');
+  assertExactKeys(record, ['query', 'maxResults'], 'gmail.messages.search parameters');
+  return {
+    query: gmailQuery(record.query),
+    maxResults: gmailMaxResults(record.maxResults),
+  };
+}
+
+function validateGmailResourceParameters(
+  input: Readonly<Record<string, unknown>>,
+  field: 'messageId' | 'threadId' | 'draftId',
+  label: string,
+): Readonly<Record<string, string>> {
+  const record = plainRecord(input, label);
+  assertExactKeys(record, [field], label);
+  return { [field]: gmailResourceId(record[field], `Gmail ${field}`) };
+}
+
+function validateGmailDraftParameters(
+  input: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, string>> {
+  const record = plainRecord(input, 'gmail.draft.create parameters');
+  assertExactKeys(record, ['to', 'cc', 'bcc', 'subject', 'body'], 'gmail.draft.create parameters');
+  const result: Record<string, string> = {
+    to: gmailRecipients(record.to),
+    subject: gmailSubject(record.subject),
+    body: gmailBody(record.body),
+  };
+  if (record.cc !== undefined) result.cc = gmailRecipients(record.cc);
+  if (record.bcc !== undefined) result.bcc = gmailRecipients(record.bcc);
+  return result;
+}
+
+function validateGmailReplyDraftParameters(
+  input: Readonly<Record<string, unknown>>,
+): Readonly<{ messageId: string; body: string }> {
+  const record = plainRecord(input, 'gmail.reply_draft.create parameters');
+  assertExactKeys(record, ['messageId', 'body'], 'gmail.reply_draft.create parameters');
+  return {
+    messageId: gmailResourceId(record.messageId, 'Gmail messageId'),
+    body: gmailBody(record.body),
+  };
+}
+
+function validateGmailDraftSendParameters(
+  input: Readonly<Record<string, unknown>>,
+): Readonly<{ draftId: string; draftFingerprint: string }> {
+  const record = plainRecord(input, 'gmail.draft.send parameters');
+  assertExactKeys(record, ['draftId', 'draftFingerprint'], 'gmail.draft.send parameters');
+  if (
+    typeof record.draftFingerprint !== 'string' ||
+    !GMAIL_DRAFT_FINGERPRINT.test(record.draftFingerprint)
+  ) {
+    catalogError('Gmail draft fingerprint is invalid');
+  }
+  return {
+    draftId: gmailResourceId(record.draftId, 'Gmail draftId'),
+    draftFingerprint: record.draftFingerprint,
+  };
+}
+
+const GMAIL_CREDENTIAL_BINDINGS: readonly JarvisActionCredentialBinding[] = [
+  {
+    field: 'gmailClientIdGrant',
+    locator: { pluginId: 'gmail', fieldId: 'client_id' },
+  },
+  {
+    field: 'gmailRefreshGrant',
+    locator: { pluginId: 'gmail', fieldId: 'refresh_token' },
+  },
+];
+
+function gmailAction(input: {
+  id: string;
+  title: string;
+  description: string;
+  toolName: string;
+  capability: string;
+  inputSchema: JsonSchema;
+  write: boolean;
+  expectedEffect: string;
+  validateParameters(value: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>>;
+  resourceId(params: Readonly<Record<string, unknown>>): string;
+}): JarvisRegisteredActionDefinition {
+  return {
+    id: input.id,
+    version: 1,
+    title: input.title,
+    description: input.description,
+    inputSchema: input.inputSchema,
+    outputSchema: NO_OUTPUT_SCHEMA,
+    requiredCapabilities: [input.capability],
+    requiredEntitlements: [],
+    risk: input.write ? 'external-side-effect' : 'read-only',
+    approval: input.write ? 'always' : 'never',
+    expectedEffect: input.expectedEffect,
+    exposeToAI: true,
+    executor: { kind: 'plugin_tool', pluginId: 'gmail', toolName: input.toolName },
+    credentialBindings: GMAIL_CREDENTIAL_BINDINGS,
+    validateParameters: input.validateParameters,
+    deriveTarget: ({ accountId, params }) => ({
+      kind: 'plugin_tool',
+      accountId,
+      pluginId: 'gmail',
+      toolName: input.toolName,
+      resourceId: input.resourceId(input.validateParameters(params)),
+    }),
+  };
+}
+
+const GMAIL_ACTION_REGISTRATIONS: readonly JarvisRegisteredActionDefinition[] = [
+  gmailAction({
+    id: 'gmail.messages.search',
+    title: 'Search Gmail messages',
+    description: 'Search bounded Gmail metadata using one exact Gmail query.',
+    toolName: 'message_search',
+    capability: 'plugin.gmail.message_search',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string' },
+        maxResults: { type: 'number', default: 10 },
+      },
+      required: ['query'],
+      additionalProperties: false,
+    },
+    write: false,
+    expectedEffect:
+      'Reads bounded message metadata and thread counts from Gmail without retrieving bodies.',
+    validateParameters: validateGmailSearchParameters,
+    resourceId: () => 'search',
+  }),
+  gmailAction({
+    id: 'gmail.message.read',
+    title: 'Read Gmail message',
+    description: 'Read one exact Gmail message as bounded external untrusted context.',
+    toolName: 'message_read',
+    capability: 'plugin.gmail.message_read',
+    inputSchema: {
+      type: 'object',
+      properties: { messageId: { type: 'string' } },
+      required: ['messageId'],
+      additionalProperties: false,
+    },
+    write: false,
+    expectedEffect:
+      'Reads one selected Gmail message without downloading attachments or loading remote content.',
+    validateParameters: (value) =>
+      validateGmailResourceParameters(value, 'messageId', 'gmail.message.read parameters'),
+    resourceId: (params) => String(params.messageId),
+  }),
+  gmailAction({
+    id: 'gmail.thread.read',
+    title: 'Read Gmail thread',
+    description: 'Read one exact Gmail thread as bounded external untrusted context.',
+    toolName: 'thread_read',
+    capability: 'plugin.gmail.thread_read',
+    inputSchema: {
+      type: 'object',
+      properties: { threadId: { type: 'string' } },
+      required: ['threadId'],
+      additionalProperties: false,
+    },
+    write: false,
+    expectedEffect:
+      'Reads one bounded Gmail thread without downloading attachments or loading remote content.',
+    validateParameters: (value) =>
+      validateGmailResourceParameters(value, 'threadId', 'gmail.thread.read parameters'),
+    resourceId: (params) => String(params.threadId),
+  }),
+  gmailAction({
+    id: 'gmail.draft.create',
+    title: 'Create Gmail draft',
+    description: 'Create one plain-text Gmail draft after explicit approval.',
+    toolName: 'draft_create',
+    capability: 'plugin.gmail.draft_create',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        to: { type: 'string' },
+        cc: { type: 'string' },
+        bcc: { type: 'string' },
+        subject: { type: 'string' },
+        body: { type: 'string' },
+      },
+      required: ['to', 'subject', 'body'],
+      additionalProperties: false,
+    },
+    write: true,
+    expectedEffect: 'Creates one reviewable Gmail draft without sending it.',
+    validateParameters: validateGmailDraftParameters,
+    resourceId: () => 'new-draft',
+  }),
+  gmailAction({
+    id: 'gmail.reply_draft.create',
+    title: 'Create Gmail reply draft',
+    description: 'Create one plain-text reply draft for an exact Gmail message after approval.',
+    toolName: 'reply_draft_create',
+    capability: 'plugin.gmail.reply_draft_create',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        messageId: { type: 'string' },
+        body: { type: 'string' },
+      },
+      required: ['messageId', 'body'],
+      additionalProperties: false,
+    },
+    write: true,
+    expectedEffect:
+      'Reads reply headers from one selected message and creates a reviewable draft in its thread.',
+    validateParameters: validateGmailReplyDraftParameters,
+    resourceId: (params) => String(params.messageId),
+  }),
+  gmailAction({
+    id: 'gmail.draft.send',
+    title: 'Send Gmail draft',
+    description: 'Send one exact existing Gmail draft after explicit approval.',
+    toolName: 'draft_send',
+    capability: 'plugin.gmail.draft_send',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        draftId: { type: 'string' },
+        draftFingerprint: {
+          type: 'string',
+          description: 'Exact SHA-256 fingerprint returned by the approved draft creation result.',
+        },
+      },
+      required: ['draftId', 'draftFingerprint'],
+      additionalProperties: false,
+    },
+    write: true,
+    expectedEffect:
+      'Revalidates and sends one unchanged approved Gmail draft; Gmail atomically removes the sent draft.',
+    validateParameters: validateGmailDraftSendParameters,
+    resourceId: (params) => `${params.draftId}@${params.draftFingerprint}`,
+  }),
+];
 
 function validateModelSwitchParameters(
   input: Readonly<Record<string, unknown>>,
@@ -1069,6 +1394,7 @@ export const DEFAULT_JARVIS_ACTION_REGISTRATIONS = deepFreeze<
       };
     },
   },
+  ...GMAIL_ACTION_REGISTRATIONS,
   {
     id: 'chat.model.switch',
     version: 1,

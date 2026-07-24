@@ -17,6 +17,7 @@ import {
 import type { PluginStore } from './store';
 import type { PluginHttpTest, PluginManifest, PluginTestResult } from './types';
 import { isConnectableStatus } from './types';
+import { gmailArtifactDrafts, runGmailTool, testGmailConnection } from './gmailProvider';
 import type {
   CanonicalPluginEvidence,
   CanonicalPluginEvidenceAuthority,
@@ -716,6 +717,7 @@ async function testManifestConnection(
     if (field.required && !values[field.id]?.trim())
       throw safeFailure('required_field_unavailable');
   }
+  if (manifest.id === 'gmail') return await testGmailConnection({ values, signal });
   if (manifest.httpTest) return await runHttpTest(manifest, values, manifest.httpTest, signal);
   if (
     manifest.authType === 'oauth' ||
@@ -1510,6 +1512,9 @@ export function createAccountScopedPluginRuntime(input: {
     if (manifest.id === 'github') {
       return runGithubTool({ toolName: tool.name, params, values, signal });
     }
+    if (manifest.id === 'gmail') {
+      return runGmailTool({ toolName: tool.name, params, values, signal });
+    }
     return testManifestConnection(manifest, values, signal).then((result): ActionResult => {
       if (!result.ok) return { ok: false, error: result.error ?? 'Plugin connection failed.' };
       return {
@@ -1533,6 +1538,7 @@ export function createAccountScopedPluginRuntime(input: {
         params,
         context,
       });
+      if (!tool.readOnly) throw safeFailure('approval_bound_execution_required');
       const { values } = await readAuthorizedCredentials({
         accountId,
         locators: locatorsFor(manifest),
@@ -1567,6 +1573,7 @@ export function createAccountScopedPluginRuntime(input: {
         context,
       });
       if (!context.signal) throw safeFailure('effect_signal_unavailable');
+      const effectSignal = context.signal;
       const declaredFields = new Set(manifest.fields.map((field) => field.id));
       const values: CredentialMap = {};
       for (const [fieldId, value] of Object.entries(credentialValues)) {
@@ -1599,36 +1606,84 @@ export function createAccountScopedPluginRuntime(input: {
       }
       const generation = captureArtifactGeneration(accountId);
       if (!generation) throw safeFailure('canonical_plugin_artifact_runtime_revoked');
-      const result = canonicalPluginResult(
-        await runPreparedTool({ manifest, tool, params, values, signal: context.signal }),
-      );
-      if (!result.ok) return result;
-      if (
-        !artifactGenerationIsCurrent(accountId, generation) ||
-        !(await revalidateAuthorizations({
-          accountId,
-          manifest,
-          authorizations: credentialAuthorizations,
-        })) ||
-        !artifactGenerationIsCurrent(accountId, generation)
-      ) {
-        throw safeFailure('credential_grant_stale');
+      const finalize = (result: ActionResult): ActionResult => {
+        if (!result.ok) return result;
+        if (!artifactGenerationIsCurrent(accountId, generation)) {
+          throw safeFailure('credential_grant_stale');
+        }
+        retainBounded(
+          pendingCanonicalResults,
+          result,
+          Object.freeze({
+            accountId,
+            registration,
+            runId: context.runId,
+            requestId: context.requestId,
+            attemptNumber: context.attemptNumber,
+            approvalId: context.approvalId,
+            authorizations: Object.freeze([...credentialAuthorizations]),
+            generation,
+          }),
+        );
+        return result;
+      };
+      const locators = locatorsFor(manifest);
+      if (locators.length === 0) {
+        assertActiveAccount(accountId, input.activeAccountId);
+        return finalize(
+          canonicalPluginResult(
+            await runPreparedTool({
+              manifest,
+              tool,
+              params,
+              values,
+              signal: effectSignal,
+            }),
+          ),
+        );
       }
-      retainBounded(
-        pendingCanonicalResults,
-        result,
-        Object.freeze({
-          accountId,
-          registration,
-          runId: context.runId,
-          requestId: context.requestId,
-          attemptNumber: context.attemptNumber,
-          approvalId: context.approvalId,
-          authorizations: Object.freeze([...credentialAuthorizations]),
-          generation,
-        }),
-      );
-      return result;
+      return await withPluginCredentialLocatorLocks(locators, async (locks) => {
+        assertActiveAccount(accountId, input.activeAccountId);
+        for (const authorization of credentialAuthorizations) {
+          const decision = await input.credentialAuthorization.revalidateLocked({
+            authorization,
+            locks,
+          });
+          if (!decision.authorized) throw safeFailure(decision.reason);
+          let currentValue: string | undefined;
+          try {
+            currentValue = await input.credentialAdapter.readExistingCredential(
+              authorization.locator,
+            );
+          } catch {
+            throw safeFailure('credential_grant_unavailable');
+          }
+          if (
+            currentValue === undefined ||
+            currentValue !== values[authorization.locator.fieldId]
+          ) {
+            throw safeFailure('prepared_credential_value_mismatch');
+          }
+        }
+        const result = canonicalPluginResult(
+          await runPreparedTool({
+            manifest,
+            tool,
+            params,
+            values,
+            signal: effectSignal,
+          }),
+        );
+        assertActiveAccount(accountId, input.activeAccountId);
+        for (const authorization of credentialAuthorizations) {
+          const decision = await input.credentialAuthorization.revalidateLocked({
+            authorization,
+            locks,
+          });
+          if (!decision.authorized) throw safeFailure(decision.reason);
+        }
+        return finalize(result);
+      });
     },
   });
 
@@ -1707,7 +1762,10 @@ export function createAccountScopedPluginRuntime(input: {
       }
       let drafts: readonly JarvisArtifactDraft[];
       try {
-        drafts = githubArtifactDrafts({ evidence, registration, result });
+        drafts =
+          registration.pluginId === 'gmail'
+            ? gmailArtifactDrafts({ evidence, registration, result })
+            : githubArtifactDrafts({ evidence, registration, result });
       } catch {
         return null;
       }

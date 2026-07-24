@@ -67,6 +67,20 @@ describe('Jarvis action catalog', () => {
       { id: 'github.commits.recent', risk: 'read-only', approval: 'never' },
       { id: 'github.release.latest', risk: 'read-only', approval: 'never' },
       { id: 'github.workflows.list', risk: 'read-only', approval: 'never' },
+      { id: 'gmail.messages.search', risk: 'read-only', approval: 'never' },
+      { id: 'gmail.message.read', risk: 'read-only', approval: 'never' },
+      { id: 'gmail.thread.read', risk: 'read-only', approval: 'never' },
+      {
+        id: 'gmail.draft.create',
+        risk: 'external-side-effect',
+        approval: 'always',
+      },
+      {
+        id: 'gmail.reply_draft.create',
+        risk: 'external-side-effect',
+        approval: 'always',
+      },
+      { id: 'gmail.draft.send', risk: 'external-side-effect', approval: 'always' },
       { id: 'chat.model.switch', risk: 'external-side-effect', approval: 'always' },
       { id: 'mcp.invoke', risk: 'external-side-effect', approval: 'always' },
       { id: 'terminal.create', risk: 'safe-write', approval: 'always' },
@@ -320,7 +334,7 @@ describe('Jarvis action catalog', () => {
     ).toThrow(/model-visible|toolName/i);
   });
 
-  it('publishes only fixed model-safe GitHub plugin registrations with account-bound credentials', () => {
+  it('publishes only fixed model-safe GitHub and Gmail plugin registrations with account-bound credentials', () => {
     const catalog = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS);
     const identity = catalog.resolve('github.identity');
     const repository = catalog.resolve('github.repository.read');
@@ -344,6 +358,12 @@ describe('Jarvis action catalog', () => {
       'github.commits.recent',
       'github.release.latest',
       'github.workflows.list',
+      'gmail.messages.search',
+      'gmail.message.read',
+      'gmail.thread.read',
+      'gmail.draft.create',
+      'gmail.reply_draft.create',
+      'gmail.draft.send',
     ]);
     expect(identity).toMatchObject({
       requiredCapabilities: ['plugin.github.identity'],
@@ -502,5 +522,157 @@ describe('Jarvis action catalog', () => {
       ).toThrow(/unknown fields/i);
       expect(JSON.stringify(registration?.inputSchema)).not.toMatch(/token|credential|secret/i);
     }
+  });
+
+  it('publishes bounded Gmail reads and always-approved Gmail writes without model-visible credentials', () => {
+    const catalog = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS);
+    const search = catalog.resolve('gmail.messages.search');
+    const read = catalog.resolve('gmail.message.read');
+    const thread = catalog.resolve('gmail.thread.read');
+    const createDraft = catalog.resolve('gmail.draft.create');
+    const replyDraft = catalog.resolve('gmail.reply_draft.create');
+    const sendDraft = catalog.resolve('gmail.draft.send');
+    const credentials = [
+      { field: 'gmailClientIdGrant', locator: { pluginId: 'gmail', fieldId: 'client_id' } },
+      { field: 'gmailRefreshGrant', locator: { pluginId: 'gmail', fieldId: 'refresh_token' } },
+    ];
+    const draftFingerprint = 'a'.repeat(64);
+
+    for (const [registration, id, toolName, capability] of [
+      [search, 'gmail.messages.search', 'message_search', 'plugin.gmail.message_search'],
+      [read, 'gmail.message.read', 'message_read', 'plugin.gmail.message_read'],
+      [thread, 'gmail.thread.read', 'thread_read', 'plugin.gmail.thread_read'],
+    ] as const) {
+      expect(registration).toMatchObject({
+        id,
+        risk: 'read-only',
+        approval: 'never',
+        requiredCapabilities: [capability],
+        executor: { kind: 'plugin_tool', pluginId: 'gmail', toolName },
+        credentialBindings: credentials,
+        inputSchema: { type: 'object', additionalProperties: false },
+      });
+      expect(JSON.stringify(registration?.inputSchema)).not.toMatch(
+        /token|credential|secret|clientId/i,
+      );
+    }
+    for (const [registration, id, toolName, capability] of [
+      [createDraft, 'gmail.draft.create', 'draft_create', 'plugin.gmail.draft_create'],
+      [
+        replyDraft,
+        'gmail.reply_draft.create',
+        'reply_draft_create',
+        'plugin.gmail.reply_draft_create',
+      ],
+      [sendDraft, 'gmail.draft.send', 'draft_send', 'plugin.gmail.draft_send'],
+    ] as const) {
+      expect(registration).toMatchObject({
+        id,
+        risk: 'external-side-effect',
+        approval: 'always',
+        requiredCapabilities: [capability],
+        executor: { kind: 'plugin_tool', pluginId: 'gmail', toolName },
+        credentialBindings: credentials,
+        inputSchema: { type: 'object', additionalProperties: false },
+      });
+      expect(JSON.stringify(registration?.inputSchema)).not.toMatch(
+        /token|credential|secret|clientId/i,
+      );
+    }
+
+    expect(search?.validateParameters({ query: ' in:inbox is:unread ', maxResults: 10 })).toEqual({
+      query: 'in:inbox is:unread',
+      maxResults: 10,
+    });
+    expect(read?.validateParameters({ messageId: 'message_123-abc' })).toEqual({
+      messageId: 'message_123-abc',
+    });
+    expect(thread?.validateParameters({ threadId: 'thread_123-abc' })).toEqual({
+      threadId: 'thread_123-abc',
+    });
+    expect(
+      createDraft?.validateParameters({
+        to: 'person@example.com, second@example.com',
+        subject: '  Project update  ',
+        body: 'Hello.\r\n\r\nThe work is ready.',
+      }),
+    ).toEqual({
+      to: 'person@example.com, second@example.com',
+      subject: 'Project update',
+      body: 'Hello.\n\nThe work is ready.',
+    });
+    expect(
+      replyDraft?.validateParameters({
+        messageId: 'message_123-abc',
+        body: ' Thanks. ',
+      }),
+    ).toEqual({
+      messageId: 'message_123-abc',
+      body: ' Thanks. ',
+    });
+    expect(
+      sendDraft?.validateParameters({
+        draftId: 'draft_123-abc',
+        draftFingerprint,
+      }),
+    ).toEqual({
+      draftId: 'draft_123-abc',
+      draftFingerprint,
+    });
+    expect(() =>
+      createDraft?.validateParameters({
+        to: 'person@example.com\r\nBcc: attacker@example.com',
+        subject: 'Hello',
+        body: 'Safe body',
+      }),
+    ).toThrow(/recipient/i);
+    expect(() =>
+      createDraft?.validateParameters({
+        to: 'person@example.com',
+        subject: 'Hello\r\nBcc: attacker@example.com',
+        body: 'Safe body',
+      }),
+    ).toThrow(/subject/i);
+    expect(() =>
+      sendDraft?.validateParameters({
+        draftId: 'draft_123-abc',
+        draftFingerprint,
+        approvalId: 'model-controlled',
+      }),
+    ).toThrow(/unknown fields/i);
+    expect(() =>
+      sendDraft?.validateParameters({
+        draftId: 'draft_123-abc',
+        draftFingerprint: 'a'.repeat(63),
+      }),
+    ).toThrow(/fingerprint/i);
+    expect(
+      createDraft?.deriveTarget({
+        accountId: 'account-gmail',
+        params: {
+          to: 'person@example.com',
+          subject: 'Project update',
+          body: 'Safe body',
+        },
+      }),
+    ).toEqual({
+      kind: 'plugin_tool',
+      accountId: 'account-gmail',
+      pluginId: 'gmail',
+      toolName: 'draft_create',
+      resourceId: 'new-draft',
+    });
+    expect(
+      sendDraft?.deriveTarget({
+        accountId: 'account-gmail',
+        params: { draftId: 'draft_123-abc', draftFingerprint },
+      }),
+    ).toEqual({
+      kind: 'plugin_tool',
+      accountId: 'account-gmail',
+      pluginId: 'gmail',
+      toolName: 'draft_send',
+      resourceId: `draft_123-abc@${draftFingerprint}`,
+    });
   });
 });

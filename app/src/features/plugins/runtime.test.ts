@@ -652,6 +652,247 @@ describe('account-scoped plugin runtime', () => {
     ).rejects.toThrow();
   });
 
+  it('runs Gmail through account grants, verifies the profile, and emits only a safe approved-draft artifact', async () => {
+    const test = fixture({
+      randomIds: ['grant-gmail-client', 'grant-gmail-refresh'],
+      times: [100, 200, 300],
+    });
+    await test.runtime.management.saveCredential({
+      accountId: 'account-a',
+      pluginId: 'gmail',
+      fieldId: 'client_id',
+      value: 'desktop-client.apps.googleusercontent.com',
+    });
+    await test.runtime.management.saveCredential({
+      accountId: 'account-a',
+      pluginId: 'gmail',
+      fieldId: 'refresh_token',
+      value: 'refresh-value-that-must-never-leak',
+    });
+    const token = () =>
+      new Response(
+        JSON.stringify({
+          access_token: 'access-value-that-must-never-leak',
+          token_type: 'Bearer',
+          scope:
+            'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose',
+        }),
+        { status: 200 },
+      );
+    let createdRaw = '';
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(token())
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            emailAddress: 'person@example.com',
+            messagesTotal: 20,
+            threadsTotal: 10,
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(token())
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ messages: [], resultSizeEstimate: 0 }), {
+          status: 200,
+        }),
+      )
+      .mockResolvedValueOnce(token())
+      .mockImplementationOnce(async (_url, init) => {
+        const request = JSON.parse(String(init?.body)) as { message: { raw: string } };
+        createdRaw = request.message.raw;
+        return new Response(
+          JSON.stringify({
+            id: 'draft-created',
+            message: { id: 'draft-message', threadId: 'draft-thread' },
+            webViewLink: 'https://attacker.invalid/untrusted-provider-url',
+          }),
+          { status: 200 },
+        );
+      })
+      .mockImplementationOnce(
+        async () =>
+          new Response(
+            JSON.stringify({
+              id: 'draft-created',
+              message: {
+                id: 'draft-message',
+                threadId: 'draft-thread',
+                raw: createdRaw,
+              },
+            }),
+            { status: 200 },
+          ),
+      );
+
+    await expect(
+      test.runtime.management.testConnection({
+        accountId: 'account-a',
+        pluginId: 'gmail',
+      }),
+    ).resolves.toEqual({ ok: true, accountLabel: 'person@example.com' });
+    expect(test.connectionRows.get('account-a\u0000gmail')).toMatchObject({
+      state: 'connected',
+      enabled: true,
+      accountLabel: 'person@example.com',
+      configuredFields: ['client_id', 'refresh_token'],
+    });
+
+    const catalog = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS);
+    const searchAction = catalog.resolve('gmail.messages.search');
+    const draftAction = catalog.resolve('gmail.draft.create');
+    if (
+      !searchAction ||
+      searchAction.executor.kind !== 'plugin_tool' ||
+      !draftAction ||
+      draftAction.executor.kind !== 'plugin_tool'
+    ) {
+      throw new Error('expected fixed Gmail registrations');
+    }
+    const context = Object.freeze({
+      source: 'ai' as const,
+      accountId: 'account-a',
+      runId: 'run-gmail',
+      approvalId: 'approval-gmail',
+      requestId: 'request-gmail',
+      attemptNumber: 1,
+      signal: new AbortController().signal,
+    });
+
+    await expect(
+      test.runtime.registeredTools.execute({
+        accountId: 'account-a',
+        registration: searchAction.executor,
+        params: { query: 'in:inbox is:unread', maxResults: 5 },
+        context,
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      summary: '0 Gmail messages examined across 0 selected threads.',
+      data: {
+        contentTrust: 'external_untrusted',
+        queryApplied: true,
+        messagesExamined: 0,
+        threadsSelected: 0,
+        resultSizeEstimate: 0,
+        messages: [],
+      },
+    });
+
+    const clientAuthorization = await test.credentialAuthorization.authorize({
+      accountId: 'account-a',
+      locator: { pluginId: 'gmail', fieldId: 'client_id' },
+    });
+    const refreshAuthorization = await test.credentialAuthorization.authorize({
+      accountId: 'account-a',
+      locator: { pluginId: 'gmail', fieldId: 'refresh_token' },
+    });
+    if (!clientAuthorization.authorized || !refreshAuthorization.authorized) {
+      throw new Error('expected Gmail credential authorizations');
+    }
+    await expect(
+      test.runtime.registeredTools.execute({
+        accountId: 'account-a',
+        registration: draftAction.executor,
+        params: {
+          to: 'recipient@example.com',
+          subject: 'Approval bypass attempt',
+          body: 'Must not be created.',
+        },
+        context,
+      }),
+    ).rejects.toThrow(/approval_bound_execution_required/i);
+    expect(fetchSpy).toHaveBeenCalledTimes(4);
+    await expect(
+      test.runtime.registeredTools.startPrepared({
+        accountId: 'account-a',
+        registration: draftAction.executor,
+        params: {
+          to: 'recipient@example.com',
+          subject: 'Mismatched credential attempt',
+          body: 'Must not be created.',
+        },
+        context,
+        credentialValues: {
+          client_id: 'desktop-client.apps.googleusercontent.com',
+          refresh_token: 'different-refresh-value',
+        },
+        credentialAuthorizations: [
+          clientAuthorization.authorization,
+          refreshAuthorization.authorization,
+        ],
+      }),
+    ).rejects.toThrow(/prepared_credential_value_mismatch/i);
+    expect(fetchSpy).toHaveBeenCalledTimes(4);
+    const result = await test.runtime.registeredTools.startPrepared({
+      accountId: 'account-a',
+      registration: draftAction.executor,
+      params: {
+        to: 'recipient@example.com',
+        subject: 'Approved project update',
+        body: 'The work is ready.',
+      },
+      context,
+      credentialValues: {
+        client_id: 'desktop-client.apps.googleusercontent.com',
+        refresh_token: 'refresh-value-that-must-never-leak',
+      },
+      credentialAuthorizations: [
+        clientAuthorization.authorization,
+        refreshAuthorization.authorization,
+      ],
+    });
+    if (!result.ok) throw new Error('expected successful Gmail draft result');
+    expect(JSON.stringify(result)).not.toMatch(
+      /refresh-value|access-value|attacker\.invalid|The work is ready/i,
+    );
+
+    const evidence = Object.freeze({
+      producerId: 'plugin_result' as const,
+      accountId: context.accountId,
+      runId: context.runId,
+      requestId: context.requestId,
+      attemptNumber: context.attemptNumber,
+      resultRef: 'jresult_gmail_draft',
+      state: 'succeeded' as const,
+      verifiedAt: 1_786_300_400_000,
+      pluginId: 'gmail',
+      invocationId: `approval:${context.approvalId}`,
+    });
+    const artifacts = await test.runtime.canonicalArtifacts.consumeCanonicalResult({
+      evidence,
+      registration: draftAction.executor,
+      result,
+    });
+    expect(artifacts).toEqual([
+      expect.objectContaining({
+        artifact: expect.objectContaining({
+          kind: 'provider_result',
+          title: 'Gmail draft: Approved project update',
+          safeSummary: 'Draft snapshot for recipient@example.com; open Gmail for current state.',
+        }),
+        backing: expect.objectContaining({
+          kind: 'producer_result',
+          content: expect.stringContaining('"draftId":"draft-created"'),
+        }),
+      }),
+      expect.objectContaining({
+        artifact: expect.objectContaining({
+          kind: 'link',
+          title: 'Open Gmail',
+          safeSummary: 'Open Gmail to review the draft’s current state.',
+        }),
+        backing: { kind: 'uri', uri: 'https://mail.google.com/' },
+      }),
+    ]);
+    await expect(test.runtime.canonicalArtifacts.authority.verify(evidence)).resolves.toBe(
+      evidence,
+    );
+    expect(fetchSpy).toHaveBeenCalledTimes(7);
+  });
+
   it('executes fixed GitHub reads against exact endpoints and returns only bounded normalized data', async () => {
     const test = fixture();
     await test.runtime.management.saveCredential({

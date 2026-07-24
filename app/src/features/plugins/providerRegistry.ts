@@ -67,6 +67,60 @@ const apiKeyHeaderTest = (
 
 /** Official provider definitions with real connection probes where possible. */
 export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
+  gmail: {
+    provider: 'Google',
+    description:
+      'Search and read bounded Gmail context, create drafts, prepare replies, and send an existing draft only after explicit approval.',
+    authType: 'oauth',
+    fields: [
+      text(
+        'client_id',
+        'Desktop OAuth client ID',
+        '...apps.googleusercontent.com',
+        'Use a Google OAuth client registered as a Desktop app. Installed apps are public clients and must not rely on a client secret.',
+      ),
+      token(
+        'refresh_token',
+        'OAuth refresh grant',
+        'Stored in the OS keychain',
+        'Complete Google consent for the gmail.readonly and gmail.compose scopes. The refresh grant stays in the OS keychain; access tokens remain in memory.',
+      ),
+    ],
+    status: 'implemented',
+    docsUrl: 'https://developers.google.com/workspace/gmail/api/reference/rest',
+    credentialUrl: 'https://console.cloud.google.com/apis/credentials',
+    help: 'Use a Desktop OAuth client and a refresh grant authorized for the narrow gmail.readonly and gmail.compose scopes. VibeSpace exchanges it only in memory and requires approval before every draft or send action.',
+    tags: ['google', 'gmail', 'oauth', 'email', 'restricted scopes'],
+    setupSteps: [
+      'Enable the Gmail API and create a Desktop OAuth client in Google Cloud.',
+      'Authorize gmail.readonly and gmail.compose in the system browser using PKCE and a loopback callback.',
+      'Save the client ID and resulting refresh grant, then run Test Connection.',
+    ],
+    supportedFeatures: ['message search', 'message and thread reading', 'drafts', 'approved send'],
+    limitations:
+      'Gmail read and compose permissions are restricted scopes. Public production use requires Google provider verification and may require an annual security assessment.',
+    tools: [
+      readTool('message_search', 'Search bounded Gmail message metadata.'),
+      readTool('message_read', 'Read one bounded Gmail message as external untrusted context.'),
+      readTool('thread_read', 'Read one bounded Gmail thread as external untrusted context.'),
+      {
+        name: 'draft_create',
+        description: 'Create one Gmail draft after explicit approval.',
+        readOnly: false,
+      },
+      {
+        name: 'reply_draft_create',
+        description: 'Create one reply draft for an exact Gmail message after explicit approval.',
+        readOnly: false,
+      },
+      {
+        name: 'draft_send',
+        description:
+          'Revalidate and send one unchanged approved Gmail draft after explicit approval.',
+        readOnly: false,
+      },
+    ],
+  },
   openai: {
     provider: 'OpenAI',
     authType: 'api_key',
