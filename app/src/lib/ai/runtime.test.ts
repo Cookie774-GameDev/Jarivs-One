@@ -11,7 +11,7 @@ import { createVoiceSessionBinding } from '@/features/voice/voiceSessionBinding'
 import type { JarvisShadowCompilationDeps } from '@/lib/jarvis/shadowCompilation';
 import type { CanonicalProviderEvidence } from '@/lib/jarvis/artifactProducerAdapters';
 import { toJarvisApprovalRow, toJarvisRunRow } from '@/lib/db/jarvisMappers';
-import type { JarvisApprovalV1, JarvisRun } from '@/lib/jarvis/contracts';
+import type { JarvisApprovalV1, JarvisContextItem, JarvisRun } from '@/lib/jarvis/contracts';
 import { createJarvisRepositories } from '@/lib/db/jarvisRepositories';
 import {
   createJarvisActionCatalog,
@@ -30,7 +30,7 @@ const mocks = vi.hoisted(() => ({
   getJarvisConnectivityInventoryBlock: vi.fn(),
   buildJarvisContextPackForAi: vi.fn(
     async (input: { maxChars: number; candidates?: readonly unknown[] }) => ({
-      items: [],
+      items: [] as JarvisContextItem[],
       budget: { maxChars: input.maxChars, usedChars: 0 },
       exclusions: [],
     }),
@@ -2038,6 +2038,27 @@ describe('startRuntimeListener agent routing', () => {
     useAllAboutMeStore.setState({
       markdown: '# AllAboutMe.md\n\nAAM_PROVENANCE_SENTINEL',
     });
+    mocks.buildJarvisContextPackForAi.mockImplementationOnce(async (input) => {
+      const candidates = (input.candidates ?? []) as readonly {
+        source: JarvisContextItem['source'];
+        purpose: JarvisContextItem['purpose'];
+        excerpt: string;
+      }[];
+      const items: JarvisContextItem[] = candidates.map((candidate) => ({
+        source: candidate.source,
+        purpose: candidate.purpose,
+        excerpt: candidate.excerpt,
+        truncated: false,
+      }));
+      return {
+        items,
+        budget: {
+          maxChars: input.maxChars,
+          usedChars: items.reduce((total, item) => total + item.excerpt.length, 0),
+        },
+        exclusions: [],
+      };
+    });
     const harness = kernelRuntimeBindings(protectedJarvis);
     const database = createJarvisDb(
       uniqueTestDbName('runtime-installed-kernel-host'),
@@ -2134,9 +2155,41 @@ describe('startRuntimeListener agent routing', () => {
         ]),
       );
       expect(harness.bindings.appendMessage).not.toHaveBeenCalled();
+      const canonicalRun = await database.jarvis_runs
+        .where('chat_id')
+        .equals(harness.chatId)
+        .first();
+      expect(canonicalRun).toMatchObject({ status: 'partial' });
+      const contextEvent = (
+        await createJarvisRepositories(database).event.listByRun(
+          'runtime-test-account',
+          canonicalRun!.id,
+        )
+      ).find((event) => event.type === 'context');
+      expect(contextEvent).toMatchObject({
+        status: 'completed',
+        title: 'Protected context selected',
+        safeSummary: expect.stringMatching(/approved context sources? selected/i),
+      });
+      expect(contextEvent?.sourceRefs).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            label: 'Project context',
+            accountId: 'runtime-test-account',
+            origin: 'user_authored',
+          }),
+          expect.objectContaining({
+            label: 'AllAboutMe profile',
+            accountId: 'runtime-test-account',
+            origin: 'mixed',
+          }),
+        ]),
+      );
       expect(
-        await database.jarvis_runs.where('chat_id').equals(harness.chatId).first(),
-      ).toMatchObject({ status: 'partial' });
+        contextEvent?.sourceRefs.every((source) => source.observedAt === contextEvent.createdAt),
+      ).toBe(true);
+      expect(JSON.stringify(contextEvent)).not.toContain('PROJECT_CONTEXT_PROVENANCE_SENTINEL');
+      expect(JSON.stringify(contextEvent)).not.toContain('AAM_PROVENANCE_SENTINEL');
     } finally {
       disposeHost();
       database.close();

@@ -150,6 +150,7 @@ export type JarvisSourceRefRow = {
   account_id: string;
   project_id?: string;
   trust: 'user_direct' | 'app_verified' | 'external_untrusted';
+  origin?: 'user_authored' | 'app_observed' | 'model_inference' | 'mixed' | 'external_retrieved';
   sensitivity: 'public' | 'private' | 'restricted' | 'secret';
   observed_at?: number;
   content_hash?: string;

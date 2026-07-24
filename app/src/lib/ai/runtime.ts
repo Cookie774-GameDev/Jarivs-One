@@ -174,6 +174,7 @@ import type {
   JarvisHiveStackPlanV1,
   JarvisLiveEvidencePrimaryHostAccountSession,
   JarvisModelSnapshot,
+  JarvisSourceRef,
 } from '@/lib/jarvis/contracts';
 import type {
   JarvisKernelRuntime,
@@ -267,6 +268,13 @@ export type JarvisKernelRuntimeHostInstallInput = Readonly<{
 type InstalledJarvisKernelRuntimeHost = Readonly<{
   journal: Pick<JarvisExecutionJournal, 'allocateRun' | 'getRun'>;
   capabilitySnapshots: JarvisCapabilitySnapshotProvider;
+  recordSelectedContext(input: {
+    accountId: string;
+    runId: string;
+    requestId: string;
+    createdAt: number;
+    sourceRefs: readonly JarvisSourceRef[];
+  }): Promise<void>;
   executeRegisteredAction(
     input: JarvisRegisteredActionDispatchInput,
   ): Promise<JarvisRegisteredActionDispatchOutcome>;
@@ -837,6 +845,38 @@ export async function installJarvisKernelRuntimeHost(
   const host: InstalledJarvisKernelRuntimeHost = Object.freeze({
     journal,
     capabilitySnapshots: input.capabilitySnapshots,
+    async recordSelectedContext(recordInput) {
+      if (disposed) throw new Error('jarvis_kernel_host_disposed');
+      const sourceRefs: JarvisSourceRef[] = [];
+      const sourceIds = new Set<string>();
+      for (const source of recordInput.sourceRefs) {
+        if (
+          source.accountId !== recordInput.accountId ||
+          source.sensitivity === 'restricted' ||
+          source.sensitivity === 'secret'
+        ) {
+          throw new Error('jarvis_context_source_scope_mismatch');
+        }
+        if (sourceIds.has(source.id)) continue;
+        sourceIds.add(source.id);
+        sourceRefs.push(structuredClone(source));
+      }
+      await repositories.event.appendIdempotent(recordInput.accountId, recordInput.runId, {
+        idempotencyKey: `kernel-context:${recordInput.requestId}:selected`,
+        type: 'context',
+        status: 'completed',
+        title: 'Protected context selected',
+        safeSummary:
+          sourceRefs.length === 0
+            ? 'No approved context sources were selected for this protected turn.'
+            : `${sourceRefs.length} approved context source${
+                sourceRefs.length === 1 ? '' : 's'
+              } selected for this protected turn.`,
+        sourceRefs,
+        artifactIds: [],
+        createdAt: recordInput.createdAt,
+      });
+    },
     async executeRegisteredAction(dispatchInput) {
       if (disposed) throw new Error('jarvis_kernel_host_disposed');
       const terminal = await terminalActionDispatcher(dispatchInput);
@@ -2095,6 +2135,13 @@ async function createRuntimeKernelTurn(input: {
     identityVersion: JARVIS_IDENTITY_POLICY.identityVersion,
     profileRevisionId,
     model: input.model,
+  });
+  await input.host.recordSelectedContext({
+    accountId,
+    runId: run.id,
+    requestId,
+    createdAt,
+    sourceRefs: context.items.map((item) => item.source),
   });
   return {
     run,

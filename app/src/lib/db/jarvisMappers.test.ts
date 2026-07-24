@@ -101,6 +101,7 @@ function sourceRef(): JarvisSourceRef {
     accountId: 'account-1',
     projectId: 'project-1',
     trust: 'app_verified',
+    origin: 'app_observed',
     sensitivity: 'private',
     observedAt: 3_100,
     contentHash: 'content-hash',
@@ -481,6 +482,7 @@ describe('model snapshot and source reference mappers', () => {
       account_id: 'account-1',
       project_id: 'project-1',
       trust: 'app_verified',
+      origin: 'app_observed',
       sensitivity: 'private',
       observed_at: 3_100,
       content_hash: 'content-hash',
@@ -512,11 +514,11 @@ describe('model snapshot and source reference mappers', () => {
       sensitivity: 'private',
     };
     const sourceRow = toJarvisSourceRefRow(source);
-    for (const key of ['uri', 'project_id', 'observed_at', 'content_hash']) {
+    for (const key of ['uri', 'project_id', 'origin', 'observed_at', 'content_hash']) {
       expect(sourceRow).not.toHaveProperty(key);
     }
     const mappedSource = fromJarvisSourceRefRow(sourceRow);
-    for (const key of ['uri', 'projectId', 'observedAt', 'contentHash']) {
+    for (const key of ['uri', 'projectId', 'origin', 'observedAt', 'contentHash']) {
       expect(mappedSource).not.toHaveProperty(key);
     }
   });
@@ -587,6 +589,7 @@ describe('run and event mappers', () => {
           account_id: 'account-1',
           project_id: 'project-1',
           trust: 'app_verified',
+          origin: 'app_observed',
           sensitivity: 'private',
           observed_at: 3_100,
           content_hash: 'content-hash',
