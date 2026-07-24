@@ -290,11 +290,19 @@ const GITHUB_OWNER = /^(?=.{1,39}$)[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/;
 const GITHUB_REPOSITORY = /^[A-Za-z0-9._-]{1,100}$/;
 const GITHUB_DEFAULT_BRANCH = /^[A-Za-z0-9._/-]{1,255}$/;
 const GITHUB_ACTOR = /^(?=.{1,100}$)[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\[bot\])?$/;
-const GITHUB_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$/;
+const GITHUB_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/;
+const GITHUB_COMMIT_SHA = /^[0-9a-f]{40}$/i;
+const GITHUB_WORKFLOW_STATE = /^[a-z][a-z_]{0,39}$/;
+const GITHUB_COMMIT_LIMIT = 5;
+const GITHUB_WORKFLOW_LIMIT = 10;
 const GITHUB_TITLE_LIMIT = 240;
 const GITHUB_BODY_LIMIT = 4_000;
 const GITHUB_LABEL_LIMIT = 80;
 const GITHUB_LABEL_COUNT_LIMIT = 12;
+const GITHUB_COMMIT_MESSAGE_LIMIT = 500;
+const GITHUB_RELEASE_NAME_LIMIT = 240;
+const GITHUB_WORKFLOW_NAME_LIMIT = 240;
+const GITHUB_RELEASE_TAG_LIMIT = 255;
 const EXTERNAL_SECRET_PATTERNS: readonly RegExp[] = [
   /-----BEGIN((?: [A-Z0-9]+)*) PRIVATE KEY-----[\s\S]*?(?:-----END\1 PRIVATE KEY-----|$)/gi,
   /-----BEGIN PGP PRIVATE KEY BLOCK-----[\s\S]*?(?:-----END PGP PRIVATE KEY BLOCK-----|$)/gi,
@@ -487,6 +495,65 @@ function githubLabels(value: unknown): readonly string[] {
     if (!normalized) throw safeFailure('provider_response_invalid');
     return normalized;
   });
+}
+
+function githubProviderArray(value: unknown, limit: number): readonly unknown[] {
+  if (!Array.isArray(value) || value.length > limit) {
+    throw safeFailure('provider_response_invalid');
+  }
+  return value;
+}
+
+function githubCommitSha(value: unknown): string {
+  if (typeof value !== 'string' || !GITHUB_COMMIT_SHA.test(value)) {
+    throw safeFailure('provider_response_invalid');
+  }
+  return value.toLowerCase();
+}
+
+function githubOptionalActor(value: unknown): string | undefined {
+  return value === null || value === undefined ? undefined : githubActor(value);
+}
+
+function githubWorkflowId(value: unknown): number {
+  if (!Number.isSafeInteger(value) || (value as number) <= 0) {
+    throw safeFailure('provider_response_invalid');
+  }
+  return value as number;
+}
+
+function githubWorkflowState(value: unknown): string {
+  if (typeof value !== 'string' || !GITHUB_WORKFLOW_STATE.test(value)) {
+    throw safeFailure('provider_response_invalid');
+  }
+  return value;
+}
+
+function githubReleaseTag(value: unknown): string {
+  if (typeof value !== 'string') throw safeFailure('provider_response_invalid');
+  const normalized = value.normalize('NFC');
+  const components = normalized.split('/');
+  if (
+    !normalized ||
+    normalized !== value ||
+    Array.from(normalized).length > GITHUB_RELEASE_TAG_LIMIT ||
+    /[\p{Cc}\p{Cf}\p{Z}~^:?*]/u.test(normalized) ||
+    normalized.includes('[') ||
+    normalized.includes('\\') ||
+    normalized.includes('..') ||
+    normalized.includes('@{') ||
+    components.some(
+      (component) =>
+        !component ||
+        component.startsWith('.') ||
+        component.endsWith('.') ||
+        component.toLowerCase().endsWith('.lock'),
+    ) ||
+    redactExternalSecrets(normalized) !== normalized
+  ) {
+    throw safeFailure('provider_response_invalid');
+  }
+  return normalized;
 }
 
 function githubHeaders(
@@ -735,6 +802,134 @@ async function runGithubTool(input: {
         openIssuesAndPullRequests: githubCount(response.open_issues_count),
         archived: response.archived,
         updatedAt: githubTimestamp(response.updated_at),
+      },
+    };
+  }
+
+  if (input.toolName === 'recent_commits') {
+    const target = githubRepositoryTarget(input.params);
+    const fullName = `${target.owner}/${target.repository}`;
+    const response = (
+      await requestProbe(
+        `https://api.github.com/repos/${encodeURIComponent(target.owner)}/${encodeURIComponent(
+          target.repository,
+        )}/commits?per_page=${GITHUB_COMMIT_LIMIT}&page=1`,
+        { method: 'GET', redirect: 'error', headers: githubHeaders(token) },
+        input.signal,
+      )
+    ).data;
+    const commits = githubProviderArray(response, GITHUB_COMMIT_LIMIT).map((candidate) => {
+      const record = providerRecord(candidate);
+      const sha = githubCommitSha(record.sha);
+      const commit = providerRecord(record.commit);
+      const committer = providerRecord(commit.committer);
+      const verification = providerRecord(commit.verification);
+      if (typeof verification.verified !== 'boolean') {
+        throw safeFailure('provider_response_invalid');
+      }
+      const message = boundedExternalText(commit.message, GITHUB_COMMIT_MESSAGE_LIMIT, true).text;
+      if (!message) throw safeFailure('provider_response_invalid');
+      const author = githubOptionalActor(record.author);
+      return {
+        sha,
+        commitUrl: `https://github.com/${fullName}/commit/${sha}`,
+        untrustedMessageExcerpt: message,
+        ...(author === undefined ? {} : { author }),
+        committedAt: githubTimestamp(committer.date),
+        verified: verification.verified,
+      };
+    });
+    return {
+      ok: true,
+      summary: `${commits.length} recent GitHub commits retrieved for ${fullName}.`,
+      data: {
+        contentTrust: 'external_untrusted',
+        fullName,
+        commits,
+      },
+    };
+  }
+
+  if (input.toolName === 'latest_release') {
+    const target = githubRepositoryTarget(input.params);
+    const fullName = `${target.owner}/${target.repository}`;
+    const response = providerRecord(
+      (
+        await requestProbe(
+          `https://api.github.com/repos/${encodeURIComponent(target.owner)}/${encodeURIComponent(
+            target.repository,
+          )}/releases/latest`,
+          { method: 'GET', redirect: 'error', headers: githubHeaders(token) },
+          input.signal,
+        )
+      ).data,
+    );
+    if (response.draft !== false || response.prerelease !== false) {
+      throw safeFailure('provider_response_invalid');
+    }
+    const tagName = githubReleaseTag(response.tag_name);
+    const name = boundedExternalText(response.name, GITHUB_RELEASE_NAME_LIMIT, false);
+    const body = boundedExternalText(response.body, GITHUB_BODY_LIMIT, false);
+    return {
+      ok: true,
+      summary: `Latest GitHub release retrieved for ${fullName}.`,
+      data: {
+        contentTrust: 'external_untrusted',
+        fullName,
+        releaseUrl: `https://github.com/${fullName}/releases/tag/${encodeURIComponent(tagName)}`,
+        tagName,
+        ...(name.text === undefined ? {} : { untrustedName: name.text }),
+        ...(body.text === undefined ? {} : { untrustedBodyExcerpt: body.text }),
+        bodyTruncated: body.truncated,
+        author: githubActor(response.author),
+        prerelease: response.prerelease,
+        createdAt: githubTimestamp(response.created_at),
+        publishedAt: githubTimestamp(response.published_at),
+      },
+    };
+  }
+
+  if (input.toolName === 'workflows') {
+    const target = githubRepositoryTarget(input.params);
+    const fullName = `${target.owner}/${target.repository}`;
+    const response = providerRecord(
+      (
+        await requestProbe(
+          `https://api.github.com/repos/${encodeURIComponent(target.owner)}/${encodeURIComponent(
+            target.repository,
+          )}/actions/workflows?per_page=${GITHUB_WORKFLOW_LIMIT}&page=1`,
+          { method: 'GET', redirect: 'error', headers: githubHeaders(token) },
+          input.signal,
+        )
+      ).data,
+    );
+    const totalCount = githubCount(response.total_count);
+    const workflows = githubProviderArray(response.workflows, GITHUB_WORKFLOW_LIMIT).map(
+      (candidate) => {
+        const workflow = providerRecord(candidate);
+        const id = githubWorkflowId(workflow.id);
+        const name = boundedExternalText(workflow.name, GITHUB_WORKFLOW_NAME_LIMIT, true).text;
+        if (!name) throw safeFailure('provider_response_invalid');
+        return {
+          id,
+          workflowUrl: `https://github.com/${fullName}/actions/workflows/${id}`,
+          untrustedName: name,
+          state: githubWorkflowState(workflow.state),
+          createdAt: githubTimestamp(workflow.created_at),
+          updatedAt: githubTimestamp(workflow.updated_at),
+        };
+      },
+    );
+    if (totalCount < workflows.length) throw safeFailure('provider_response_invalid');
+    return {
+      ok: true,
+      summary: `${workflows.length} GitHub workflows retrieved for ${fullName}; Actions logs not retrieved.`,
+      data: {
+        contentTrust: 'external_untrusted',
+        fullName,
+        totalCount,
+        actionsLogsRetrieved: false,
+        workflows,
       },
     };
   }

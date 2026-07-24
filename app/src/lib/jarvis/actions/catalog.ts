@@ -467,9 +467,10 @@ function githubRepository(value: unknown): string {
 
 function validateGithubRepositoryParameters(
   input: Readonly<Record<string, unknown>>,
+  label = 'github.repository.read parameters',
 ): Readonly<{ owner: string; repository: string }> {
-  const record = plainRecord(input, 'github.repository.read parameters');
-  assertExactKeys(record, ['owner', 'repository'], 'github.repository.read parameters');
+  const record = plainRecord(input, label);
+  assertExactKeys(record, ['owner', 'repository'], label);
   return {
     owner: githubOwner(record.owner),
     repository: githubRepository(record.repository),
@@ -824,6 +825,189 @@ export const DEFAULT_JARVIS_ACTION_REGISTRATIONS = deepFreeze<
         pluginId: 'github',
         toolName: 'pull_request_context',
         resourceId: `${owner}/${repository}#${number}`,
+      };
+    },
+  },
+  {
+    id: 'github.commits.recent',
+    version: 1,
+    title: 'Read recent GitHub commits',
+    description: 'Read up to five bounded untrusted recent commits for one exact repository.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        owner: { type: 'string' },
+        repository: { type: 'string' },
+      },
+      required: ['owner', 'repository'],
+      additionalProperties: false,
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        contentTrust: { type: 'string' },
+        fullName: { type: 'string' },
+        commits: { type: 'array' },
+      },
+      required: ['contentTrust', 'fullName', 'commits'],
+      additionalProperties: false,
+    },
+    requiredCapabilities: ['plugin.github.recent_commits'],
+    requiredEntitlements: [],
+    risk: 'read-only',
+    approval: 'never',
+    expectedEffect:
+      'Reads at most five recent commit summaries as external untrusted data without changing the repository.',
+    exposeToAI: true,
+    executor: { kind: 'plugin_tool', pluginId: 'github', toolName: 'recent_commits' },
+    credentialBindings: [
+      {
+        field: 'githubCredential',
+        locator: { pluginId: 'github', fieldId: 'token' },
+      },
+    ],
+    validateParameters: (input) =>
+      validateGithubRepositoryParameters(input, 'github.commits.recent parameters'),
+    deriveTarget: ({ accountId, params }) => {
+      const { owner, repository } = validateGithubRepositoryParameters(
+        params,
+        'github.commits.recent parameters',
+      );
+      return {
+        kind: 'plugin_tool',
+        accountId,
+        pluginId: 'github',
+        toolName: 'recent_commits',
+        resourceId: `${owner}/${repository}`,
+      };
+    },
+  },
+  {
+    id: 'github.release.latest',
+    version: 1,
+    title: 'Read latest GitHub release',
+    description: 'Read bounded untrusted metadata for the latest published repository release.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        owner: { type: 'string' },
+        repository: { type: 'string' },
+      },
+      required: ['owner', 'repository'],
+      additionalProperties: false,
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        contentTrust: { type: 'string' },
+        fullName: { type: 'string' },
+        releaseUrl: { type: 'string' },
+        tagName: { type: 'string' },
+        untrustedName: { type: 'string' },
+        untrustedBodyExcerpt: { type: 'string' },
+        bodyTruncated: { type: 'boolean' },
+        author: { type: 'string' },
+        prerelease: { type: 'boolean' },
+        createdAt: { type: 'string' },
+        publishedAt: { type: 'string' },
+      },
+      required: [
+        'contentTrust',
+        'fullName',
+        'releaseUrl',
+        'tagName',
+        'bodyTruncated',
+        'author',
+        'prerelease',
+        'createdAt',
+        'publishedAt',
+      ],
+      additionalProperties: false,
+    },
+    requiredCapabilities: ['plugin.github.latest_release'],
+    requiredEntitlements: [],
+    risk: 'read-only',
+    approval: 'never',
+    expectedEffect:
+      'Reads the latest published release as bounded external untrusted data without changing it.',
+    exposeToAI: true,
+    executor: { kind: 'plugin_tool', pluginId: 'github', toolName: 'latest_release' },
+    credentialBindings: [
+      {
+        field: 'githubCredential',
+        locator: { pluginId: 'github', fieldId: 'token' },
+      },
+    ],
+    validateParameters: (input) =>
+      validateGithubRepositoryParameters(input, 'github.release.latest parameters'),
+    deriveTarget: ({ accountId, params }) => {
+      const { owner, repository } = validateGithubRepositoryParameters(
+        params,
+        'github.release.latest parameters',
+      );
+      return {
+        kind: 'plugin_tool',
+        accountId,
+        pluginId: 'github',
+        toolName: 'latest_release',
+        resourceId: `${owner}/${repository}`,
+      };
+    },
+  },
+  {
+    id: 'github.workflows.list',
+    version: 1,
+    title: 'List GitHub workflows',
+    description:
+      'Read up to ten bounded workflow metadata records without retrieving runs, jobs, or logs.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        owner: { type: 'string' },
+        repository: { type: 'string' },
+      },
+      required: ['owner', 'repository'],
+      additionalProperties: false,
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        contentTrust: { type: 'string' },
+        fullName: { type: 'string' },
+        totalCount: { type: 'number' },
+        actionsLogsRetrieved: { type: 'boolean' },
+        workflows: { type: 'array' },
+      },
+      required: ['contentTrust', 'fullName', 'totalCount', 'actionsLogsRetrieved', 'workflows'],
+      additionalProperties: false,
+    },
+    requiredCapabilities: ['plugin.github.workflows'],
+    requiredEntitlements: [],
+    risk: 'read-only',
+    approval: 'never',
+    expectedEffect:
+      'Reads at most ten workflow metadata records without retrieving workflow runs, jobs, or Actions logs.',
+    exposeToAI: true,
+    executor: { kind: 'plugin_tool', pluginId: 'github', toolName: 'workflows' },
+    credentialBindings: [
+      {
+        field: 'githubCredential',
+        locator: { pluginId: 'github', fieldId: 'token' },
+      },
+    ],
+    validateParameters: (input) =>
+      validateGithubRepositoryParameters(input, 'github.workflows.list parameters'),
+    deriveTarget: ({ accountId, params }) => {
+      const { owner, repository } = validateGithubRepositoryParameters(
+        params,
+        'github.workflows.list parameters',
+      );
+      return {
+        kind: 'plugin_tool',
+        accountId,
+        pluginId: 'github',
+        toolName: 'workflows',
+        resourceId: `${owner}/${repository}`,
       };
     },
   },

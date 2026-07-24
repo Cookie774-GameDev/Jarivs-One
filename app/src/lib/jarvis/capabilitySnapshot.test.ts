@@ -66,10 +66,13 @@ describe('createJarvisCapabilitySnapshot', () => {
     expect(schemas.map(({ id }) => id)).toEqual([
       'chat.model.switch',
       'file.search',
+      'github.commits.recent',
       'github.identity',
       'github.issue.read',
       'github.pull_request.read',
+      'github.release.latest',
       'github.repository.read',
+      'github.workflows.list',
       'task.cancel',
       'terminal.create',
       'terminal.run',
@@ -95,12 +98,21 @@ describe('createJarvisCapabilitySnapshot', () => {
       approval: 'always',
     });
     expect(schemas[2]).toMatchObject({
+      id: 'github.commits.recent',
+      inputSchema: {
+        required: ['owner', 'repository'],
+        additionalProperties: false,
+      },
+      risk: 'read-only',
+      approval: 'never',
+    });
+    expect(schemas[3]).toMatchObject({
       id: 'github.identity',
       inputSchema: { required: [], additionalProperties: false },
       risk: 'read-only',
       approval: 'never',
     });
-    expect(schemas[3]).toMatchObject({
+    expect(schemas[4]).toMatchObject({
       id: 'github.issue.read',
       inputSchema: {
         required: ['owner', 'repository', 'number'],
@@ -109,7 +121,7 @@ describe('createJarvisCapabilitySnapshot', () => {
       risk: 'read-only',
       approval: 'never',
     });
-    expect(schemas[4]).toMatchObject({
+    expect(schemas[5]).toMatchObject({
       id: 'github.pull_request.read',
       inputSchema: {
         required: ['owner', 'repository', 'number'],
@@ -118,7 +130,16 @@ describe('createJarvisCapabilitySnapshot', () => {
       risk: 'read-only',
       approval: 'never',
     });
-    expect(schemas[5]).toMatchObject({
+    expect(schemas[6]).toMatchObject({
+      id: 'github.release.latest',
+      inputSchema: {
+        required: ['owner', 'repository'],
+        additionalProperties: false,
+      },
+      risk: 'read-only',
+      approval: 'never',
+    });
+    expect(schemas[7]).toMatchObject({
       id: 'github.repository.read',
       inputSchema: {
         required: ['owner', 'repository'],
@@ -127,7 +148,16 @@ describe('createJarvisCapabilitySnapshot', () => {
       risk: 'read-only',
       approval: 'never',
     });
-    expect(JSON.stringify(schemas.slice(2, 6))).not.toMatch(/token|credential|secret/i);
+    expect(schemas[8]).toMatchObject({
+      id: 'github.workflows.list',
+      inputSchema: {
+        required: ['owner', 'repository'],
+        additionalProperties: false,
+      },
+      risk: 'read-only',
+      approval: 'never',
+    });
+    expect(JSON.stringify(schemas.slice(2, 9))).not.toMatch(/token|credential|secret/i);
     for (const schema of schemas) {
       expect(schema).not.toHaveProperty('executor');
       expect(schema).not.toHaveProperty('credentialBindings');

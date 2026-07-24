@@ -69,6 +69,22 @@ const IMPLEMENTED_BASE: PluginManifest[] = [
         description: 'Read bounded untrusted context for one exact repository pull request.',
         readOnly: true,
       },
+      {
+        name: 'recent_commits',
+        description: 'Read up to five recent commits for one exact repository.',
+        readOnly: true,
+      },
+      {
+        name: 'latest_release',
+        description: 'Read bounded metadata for the latest published repository release.',
+        readOnly: true,
+      },
+      {
+        name: 'workflows',
+        description:
+          'Read bounded repository workflow metadata without retrieving runs, jobs, or logs.',
+        readOnly: true,
+      },
     ],
     httpTest: {
       url: 'https://api.github.com/user',
