@@ -289,7 +289,29 @@ function required(values: CredentialMap, key: string, label: string): string {
 const GITHUB_OWNER = /^(?=.{1,39}$)[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/;
 const GITHUB_REPOSITORY = /^[A-Za-z0-9._-]{1,100}$/;
 const GITHUB_DEFAULT_BRANCH = /^[A-Za-z0-9._/-]{1,255}$/;
+const GITHUB_ACTOR = /^(?=.{1,100}$)[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\[bot\])?$/;
 const GITHUB_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$/;
+const GITHUB_TITLE_LIMIT = 240;
+const GITHUB_BODY_LIMIT = 4_000;
+const GITHUB_LABEL_LIMIT = 80;
+const GITHUB_LABEL_COUNT_LIMIT = 12;
+const EXTERNAL_SECRET_PATTERNS: readonly RegExp[] = [
+  /-----BEGIN((?: [A-Z0-9]+)*) PRIVATE KEY-----[\s\S]*?(?:-----END\1 PRIVATE KEY-----|$)/gi,
+  /-----BEGIN PGP PRIVATE KEY BLOCK-----[\s\S]*?(?:-----END PGP PRIVATE KEY BLOCK-----|$)/gi,
+  /\bgithub_pat_[A-Za-z0-9_]{20,}\b/gi,
+  /\bgh[pousr]_[A-Za-z0-9_]{20,}\b/gi,
+  /\bxox[bp]-[A-Za-z0-9-]{20,}\b/gi,
+  /\bAKIA[0-9A-Z]{16}\b/g,
+  /\bAIza[0-9A-Za-z_-]{20,}\b/g,
+  /\b(?:gsk_|sb_secret_)[A-Za-z0-9_-]{16,}\b/gi,
+  /\b(?:xai-|sk-ant-)[A-Za-z0-9_-]{16,}\b/gi,
+  /\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9_]{8,}\b/gi,
+  /\bwhsec_[A-Za-z0-9_]{8,}\b/gi,
+  /\bsk-[A-Za-z0-9_-]{12,}\b/gi,
+  /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g,
+  /\bBearer\s+[A-Za-z0-9._~+/-]{8,}={0,2}\b/gi,
+  /\b(?:authorization|proxy[-_ ]?authorization|cookie|set[-_ ]?cookie|x[-_ ]?api[-_ ]?key|api[-_ ]?key|apikey|access[-_ ]?token|refresh[-_ ]?token|id[-_ ]?token|client[-_ ]?secret|private[-_ ]?key|signing[-_ ]?key|service[-_ ]?role|password|passwd|credential|secret)\b\s*(?:[:=]|\bis\b)\s*(?:"[^"\r\n]+"|'[^'\r\n]+'|[^\s,;}]+)/gi,
+];
 
 function exactParameterRecord(
   value: Readonly<Record<string, unknown>>,
@@ -355,6 +377,24 @@ function githubRepositoryTarget(
   };
 }
 
+function githubNumberedTarget(
+  params: Readonly<Record<string, unknown>>,
+): Readonly<{ owner: string; repository: string; number: number }> {
+  const record = exactParameterRecord(
+    params,
+    ['owner', 'repository', 'number'],
+    'numbered_target_invalid',
+  );
+  if (!Number.isSafeInteger(record.number) || (record.number as number) <= 0) {
+    throw safeFailure('numbered_target_invalid');
+  }
+  return {
+    owner: githubOwner(record.owner, 'numbered_target_invalid'),
+    repository: githubRepository(record.repository, 'numbered_target_invalid'),
+    number: record.number as number,
+  };
+}
+
 function githubCount(value: unknown): number {
   if (!Number.isSafeInteger(value) || (value as number) < 0) {
     throw safeFailure('provider_response_invalid');
@@ -390,9 +430,71 @@ function githubTimestamp(value: unknown): string {
   return value;
 }
 
-function githubHeaders(token: string): Readonly<Record<string, string>> {
+function githubOptionalTimestamp(value: unknown): string | undefined {
+  return value === null || value === undefined ? undefined : githubTimestamp(value);
+}
+
+function githubActor(value: unknown): string {
+  const record = providerRecord(value);
+  if (typeof record.login !== 'string' || !GITHUB_ACTOR.test(record.login)) {
+    throw safeFailure('provider_response_invalid');
+  }
+  return record.login;
+}
+
+function redactExternalSecrets(value: string): string {
+  let result = value;
+  for (const pattern of EXTERNAL_SECRET_PATTERNS) {
+    result = result.replace(pattern, '[redacted secret]');
+  }
+  return result;
+}
+
+function boundedExternalText(
+  value: unknown,
+  limit: number,
+  required: boolean,
+): Readonly<{ text?: string; truncated: boolean }> {
+  if (value === null || value === undefined) {
+    if (required) throw safeFailure('provider_response_invalid');
+    return { truncated: false };
+  }
+  if (typeof value !== 'string') throw safeFailure('provider_response_invalid');
+  const normalized = value
+    .normalize('NFC')
+    .replace(/\r\n?/g, '\n')
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  if (!normalized) {
+    if (required) throw safeFailure('provider_response_invalid');
+    return { truncated: false };
+  }
+  const redacted = redactExternalSecrets(normalized);
+  const characters = Array.from(redacted);
   return {
-    Accept: 'application/vnd.github+json',
+    text: characters.slice(0, limit).join(''),
+    truncated: characters.length > limit,
+  };
+}
+
+function githubLabels(value: unknown): readonly string[] {
+  if (!Array.isArray(value)) throw safeFailure('provider_response_invalid');
+  return value.slice(0, GITHUB_LABEL_COUNT_LIMIT).map((candidate) => {
+    const label = providerRecord(candidate);
+    const normalized = boundedExternalText(label.name, GITHUB_LABEL_LIMIT, true).text;
+    if (!normalized) throw safeFailure('provider_response_invalid');
+    return normalized;
+  });
+}
+
+function githubHeaders(
+  token: string,
+  accept = 'application/vnd.github+json',
+): Readonly<Record<string, string>> {
+  return {
+    Accept: accept,
     Authorization: `Bearer ${token}`,
     'X-GitHub-Api-Version': '2022-11-28',
   };
@@ -559,7 +661,7 @@ async function runGithubTool(input: {
       (
         await requestProbe(
           'https://api.github.com/user',
-          { method: 'GET', headers: githubHeaders(token) },
+          { method: 'GET', redirect: 'error', headers: githubHeaders(token) },
           input.signal,
         )
       ).data,
@@ -582,59 +684,144 @@ async function runGithubTool(input: {
     };
   }
 
-  if (input.toolName !== 'repository_context') {
+  if (input.toolName === 'repository_context') {
+    const target = githubRepositoryTarget(input.params);
+    const response = providerRecord(
+      (
+        await requestProbe(
+          `https://api.github.com/repos/${encodeURIComponent(target.owner)}/${encodeURIComponent(
+            target.repository,
+          )}`,
+          { method: 'GET', redirect: 'error', headers: githubHeaders(token) },
+          input.signal,
+        )
+      ).data,
+    );
+    if (typeof response.full_name !== 'string') throw safeFailure('provider_response_invalid');
+    const fullNameParts = response.full_name.split('/');
+    if (fullNameParts.length !== 2) throw safeFailure('provider_response_invalid');
+    const canonicalOwner = githubOwner(fullNameParts[0], 'provider_response_invalid');
+    const canonicalRepository = githubRepository(fullNameParts[1], 'provider_response_invalid');
+    const fullName = `${canonicalOwner}/${canonicalRepository}`;
+    if (
+      canonicalOwner.toLowerCase() !== target.owner.toLowerCase() ||
+      canonicalRepository.toLowerCase() !== target.repository.toLowerCase()
+    ) {
+      throw safeFailure('provider_response_invalid');
+    }
+    const visibility =
+      response.visibility === 'public' ||
+      response.visibility === 'private' ||
+      response.visibility === 'internal'
+        ? response.visibility
+        : typeof response.private === 'boolean'
+          ? response.private
+            ? 'private'
+            : 'public'
+          : undefined;
+    if (!visibility || typeof response.archived !== 'boolean') {
+      throw safeFailure('provider_response_invalid');
+    }
+    return {
+      ok: true,
+      summary: `GitHub repository ${fullName} retrieved.`,
+      data: {
+        fullName,
+        repositoryUrl: `https://github.com/${fullName}`,
+        visibility,
+        defaultBranch: githubDefaultBranch(response.default_branch),
+        stars: githubCount(response.stargazers_count),
+        forks: githubCount(response.forks_count),
+        openIssuesAndPullRequests: githubCount(response.open_issues_count),
+        archived: response.archived,
+        updatedAt: githubTimestamp(response.updated_at),
+      },
+    };
+  }
+
+  if (input.toolName !== 'issue_context' && input.toolName !== 'pull_request_context') {
     throw safeFailure('plugin_tool_unavailable');
   }
-  const target = githubRepositoryTarget(input.params);
+  const target = githubNumberedTarget(input.params);
+  const isIssue = input.toolName === 'issue_context';
+  const resource = isIssue ? 'issues' : 'pulls';
   const response = providerRecord(
     (
       await requestProbe(
         `https://api.github.com/repos/${encodeURIComponent(target.owner)}/${encodeURIComponent(
           target.repository,
-        )}`,
-        { method: 'GET', headers: githubHeaders(token) },
+        )}/${resource}/${target.number}`,
+        {
+          method: 'GET',
+          redirect: 'error',
+          headers: githubHeaders(token, 'application/vnd.github.text+json'),
+        },
         input.signal,
       )
     ).data,
   );
-  if (typeof response.full_name !== 'string') throw safeFailure('provider_response_invalid');
-  const fullNameParts = response.full_name.split('/');
-  if (fullNameParts.length !== 2) throw safeFailure('provider_response_invalid');
-  const canonicalOwner = githubOwner(fullNameParts[0], 'provider_response_invalid');
-  const canonicalRepository = githubRepository(fullNameParts[1], 'provider_response_invalid');
-  const fullName = `${canonicalOwner}/${canonicalRepository}`;
-  if (
-    canonicalOwner.toLowerCase() !== target.owner.toLowerCase() ||
-    canonicalRepository.toLowerCase() !== target.repository.toLowerCase()
-  ) {
+  if (response.number !== target.number) throw safeFailure('provider_response_invalid');
+  if (isIssue && Object.prototype.hasOwnProperty.call(response, 'pull_request')) {
+    throw safeFailure('github_target_type_mismatch');
+  }
+  if (response.state !== 'open' && response.state !== 'closed') {
     throw safeFailure('provider_response_invalid');
   }
-  const visibility =
-    response.visibility === 'public' ||
-    response.visibility === 'private' ||
-    response.visibility === 'internal'
-      ? response.visibility
-      : typeof response.private === 'boolean'
-        ? response.private
-          ? 'private'
-          : 'public'
-        : undefined;
-  if (!visibility || typeof response.archived !== 'boolean') {
+  const title = boundedExternalText(response.title, GITHUB_TITLE_LIMIT, true);
+  const body = boundedExternalText(response.body_text, GITHUB_BODY_LIMIT, false);
+  const fullName = `${target.owner}/${target.repository}`;
+  const closedAt = githubOptionalTimestamp(response.closed_at);
+  const common = {
+    contentTrust: 'external_untrusted',
+    fullName,
+    number: target.number,
+    state: response.state,
+    untrustedTitle: title.text!,
+    ...(body.text === undefined ? {} : { untrustedBodyExcerpt: body.text }),
+    bodyTruncated: body.truncated,
+    author: githubActor(response.user),
+    createdAt: githubTimestamp(response.created_at),
+    updatedAt: githubTimestamp(response.updated_at),
+    ...(closedAt === undefined ? {} : { closedAt }),
+  };
+
+  if (isIssue) {
+    if (typeof response.locked !== 'boolean') throw safeFailure('provider_response_invalid');
+    return {
+      ok: true,
+      summary: `GitHub issue ${fullName}#${target.number} retrieved.`,
+      data: {
+        ...common,
+        issueUrl: `https://github.com/${fullName}/issues/${target.number}`,
+        untrustedLabels: githubLabels(response.labels),
+        comments: githubCount(response.comments),
+        locked: response.locked,
+      },
+    };
+  }
+
+  if (typeof response.draft !== 'boolean' || typeof response.merged !== 'boolean') {
     throw safeFailure('provider_response_invalid');
   }
+  const base = providerRecord(response.base);
+  const head = providerRecord(response.head);
+  const mergedAt = githubOptionalTimestamp(response.merged_at);
   return {
     ok: true,
-    summary: `GitHub repository ${fullName} retrieved.`,
+    summary: `GitHub pull request ${fullName}#${target.number} retrieved.`,
     data: {
-      fullName,
-      repositoryUrl: `https://github.com/${fullName}`,
-      visibility,
-      defaultBranch: githubDefaultBranch(response.default_branch),
-      stars: githubCount(response.stargazers_count),
-      forks: githubCount(response.forks_count),
-      openIssuesAndPullRequests: githubCount(response.open_issues_count),
-      archived: response.archived,
-      updatedAt: githubTimestamp(response.updated_at),
+      ...common,
+      pullRequestUrl: `https://github.com/${fullName}/pull/${target.number}`,
+      draft: response.draft,
+      merged: response.merged,
+      baseBranch: githubDefaultBranch(base.ref),
+      headBranch: githubDefaultBranch(head.ref),
+      changedFiles: githubCount(response.changed_files),
+      additions: githubCount(response.additions),
+      deletions: githubCount(response.deletions),
+      comments: githubCount(response.comments),
+      reviewComments: githubCount(response.review_comments),
+      ...(mergedAt === undefined ? {} : { mergedAt }),
     },
   };
 }

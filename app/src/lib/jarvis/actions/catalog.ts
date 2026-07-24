@@ -476,6 +476,22 @@ function validateGithubRepositoryParameters(
   };
 }
 
+function validateGithubNumberedParameters(
+  input: Readonly<Record<string, unknown>>,
+  label: string,
+): Readonly<{ owner: string; repository: string; number: number }> {
+  const record = plainRecord(input, label);
+  assertExactKeys(record, ['owner', 'repository', 'number'], label);
+  if (!Number.isSafeInteger(record.number) || (record.number as number) <= 0) {
+    catalogError(`${label} number is invalid`);
+  }
+  return {
+    owner: githubOwner(record.owner),
+    repository: githubRepository(record.repository),
+    number: record.number as number,
+  };
+}
+
 function validateModelSwitchParameters(
   input: Readonly<Record<string, unknown>>,
 ): Readonly<Record<string, unknown>> {
@@ -630,6 +646,184 @@ export const DEFAULT_JARVIS_ACTION_REGISTRATIONS = deepFreeze<
         pluginId: 'github',
         toolName: 'repository_context',
         resourceId: `${owner}/${repository}`,
+      };
+    },
+  },
+  {
+    id: 'github.issue.read',
+    version: 1,
+    title: 'Read GitHub issue',
+    description: 'Read bounded untrusted context for one exact GitHub issue.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        owner: { type: 'string' },
+        repository: { type: 'string' },
+        number: { type: 'number' },
+      },
+      required: ['owner', 'repository', 'number'],
+      additionalProperties: false,
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        contentTrust: { type: 'string' },
+        fullName: { type: 'string' },
+        number: { type: 'number' },
+        issueUrl: { type: 'string' },
+        state: { type: 'string' },
+        untrustedTitle: { type: 'string' },
+        untrustedBodyExcerpt: { type: 'string' },
+        bodyTruncated: { type: 'boolean' },
+        author: { type: 'string' },
+        untrustedLabels: { type: 'array' },
+        comments: { type: 'number' },
+        locked: { type: 'boolean' },
+        createdAt: { type: 'string' },
+        updatedAt: { type: 'string' },
+        closedAt: { type: 'string' },
+      },
+      required: [
+        'contentTrust',
+        'fullName',
+        'number',
+        'issueUrl',
+        'state',
+        'untrustedTitle',
+        'bodyTruncated',
+        'author',
+        'untrustedLabels',
+        'comments',
+        'locked',
+        'createdAt',
+        'updatedAt',
+      ],
+      additionalProperties: false,
+    },
+    requiredCapabilities: ['plugin.github.issue_context'],
+    requiredEntitlements: [],
+    risk: 'read-only',
+    approval: 'never',
+    expectedEffect: 'Reads one issue as bounded external untrusted data without changing it.',
+    exposeToAI: true,
+    executor: { kind: 'plugin_tool', pluginId: 'github', toolName: 'issue_context' },
+    credentialBindings: [
+      {
+        field: 'githubCredential',
+        locator: { pluginId: 'github', fieldId: 'token' },
+      },
+    ],
+    validateParameters: (input) =>
+      validateGithubNumberedParameters(input, 'github.issue.read parameters'),
+    deriveTarget: ({ accountId, params }) => {
+      const { owner, repository, number } = validateGithubNumberedParameters(
+        params,
+        'github.issue.read parameters',
+      );
+      return {
+        kind: 'plugin_tool',
+        accountId,
+        pluginId: 'github',
+        toolName: 'issue_context',
+        resourceId: `${owner}/${repository}#${number}`,
+      };
+    },
+  },
+  {
+    id: 'github.pull_request.read',
+    version: 1,
+    title: 'Read GitHub pull request',
+    description: 'Read bounded untrusted context for one exact GitHub pull request.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        owner: { type: 'string' },
+        repository: { type: 'string' },
+        number: { type: 'number' },
+      },
+      required: ['owner', 'repository', 'number'],
+      additionalProperties: false,
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        contentTrust: { type: 'string' },
+        fullName: { type: 'string' },
+        number: { type: 'number' },
+        pullRequestUrl: { type: 'string' },
+        state: { type: 'string' },
+        draft: { type: 'boolean' },
+        merged: { type: 'boolean' },
+        untrustedTitle: { type: 'string' },
+        untrustedBodyExcerpt: { type: 'string' },
+        bodyTruncated: { type: 'boolean' },
+        author: { type: 'string' },
+        baseBranch: { type: 'string' },
+        headBranch: { type: 'string' },
+        changedFiles: { type: 'number' },
+        additions: { type: 'number' },
+        deletions: { type: 'number' },
+        comments: { type: 'number' },
+        reviewComments: { type: 'number' },
+        createdAt: { type: 'string' },
+        updatedAt: { type: 'string' },
+        closedAt: { type: 'string' },
+        mergedAt: { type: 'string' },
+      },
+      required: [
+        'contentTrust',
+        'fullName',
+        'number',
+        'pullRequestUrl',
+        'state',
+        'draft',
+        'merged',
+        'untrustedTitle',
+        'bodyTruncated',
+        'author',
+        'baseBranch',
+        'headBranch',
+        'changedFiles',
+        'additions',
+        'deletions',
+        'comments',
+        'reviewComments',
+        'createdAt',
+        'updatedAt',
+      ],
+      additionalProperties: false,
+    },
+    requiredCapabilities: ['plugin.github.pull_request_context'],
+    requiredEntitlements: [],
+    risk: 'read-only',
+    approval: 'never',
+    expectedEffect:
+      'Reads one pull request as bounded external untrusted data without changing it.',
+    exposeToAI: true,
+    executor: {
+      kind: 'plugin_tool',
+      pluginId: 'github',
+      toolName: 'pull_request_context',
+    },
+    credentialBindings: [
+      {
+        field: 'githubCredential',
+        locator: { pluginId: 'github', fieldId: 'token' },
+      },
+    ],
+    validateParameters: (input) =>
+      validateGithubNumberedParameters(input, 'github.pull_request.read parameters'),
+    deriveTarget: ({ accountId, params }) => {
+      const { owner, repository, number } = validateGithubNumberedParameters(
+        params,
+        'github.pull_request.read parameters',
+      );
+      return {
+        kind: 'plugin_tool',
+        accountId,
+        pluginId: 'github',
+        toolName: 'pull_request_context',
+        resourceId: `${owner}/${repository}#${number}`,
       };
     },
   },

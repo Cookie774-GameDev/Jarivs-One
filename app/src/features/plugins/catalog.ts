@@ -59,6 +59,16 @@ const IMPLEMENTED_BASE: PluginManifest[] = [
           'Read normalized repository metadata and available counts for one exact owner/repository.',
         readOnly: true,
       },
+      {
+        name: 'issue_context',
+        description: 'Read bounded untrusted context for one exact repository issue.',
+        readOnly: true,
+      },
+      {
+        name: 'pull_request_context',
+        description: 'Read bounded untrusted context for one exact repository pull request.',
+        readOnly: true,
+      },
     ],
     httpTest: {
       url: 'https://api.github.com/user',

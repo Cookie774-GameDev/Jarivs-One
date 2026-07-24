@@ -62,6 +62,8 @@ describe('Jarvis action catalog', () => {
       { id: 'file.search', risk: 'read-only', approval: 'never' },
       { id: 'github.identity', risk: 'read-only', approval: 'never' },
       { id: 'github.repository.read', risk: 'read-only', approval: 'never' },
+      { id: 'github.issue.read', risk: 'read-only', approval: 'never' },
+      { id: 'github.pull_request.read', risk: 'read-only', approval: 'never' },
       { id: 'chat.model.switch', risk: 'external-side-effect', approval: 'always' },
       { id: 'terminal.create', risk: 'safe-write', approval: 'always' },
       { id: 'terminal.run', risk: 'external-side-effect', approval: 'always' },
@@ -237,6 +239,8 @@ describe('Jarvis action catalog', () => {
     const catalog = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS);
     const identity = catalog.resolve('github.identity');
     const repository = catalog.resolve('github.repository.read');
+    const issue = catalog.resolve('github.issue.read');
+    const pullRequest = catalog.resolve('github.pull_request.read');
 
     expect(Object.isFrozen(DEFAULT_JARVIS_ACTION_REGISTRATIONS)).toBe(true);
     expect(
@@ -244,7 +248,12 @@ describe('Jarvis action catalog', () => {
         .listExposed()
         .filter((entry) => entry.executor.kind === 'plugin_tool')
         .map(({ id }) => id),
-    ).toEqual(['github.identity', 'github.repository.read']);
+    ).toEqual([
+      'github.identity',
+      'github.repository.read',
+      'github.issue.read',
+      'github.pull_request.read',
+    ]);
     expect(identity).toMatchObject({
       requiredCapabilities: ['plugin.github.identity'],
       risk: 'read-only',
@@ -303,5 +312,57 @@ describe('Jarvis action catalog', () => {
       }),
     ).toThrow(/unknown fields/i);
     expect(JSON.stringify(repository?.inputSchema)).not.toMatch(/token|credential|secret/i);
+    for (const [registration, actionId, toolName, capability] of [
+      [issue, 'github.issue.read', 'issue_context', 'plugin.github.issue_context'],
+      [
+        pullRequest,
+        'github.pull_request.read',
+        'pull_request_context',
+        'plugin.github.pull_request_context',
+      ],
+    ] as const) {
+      expect(registration).toMatchObject({
+        id: actionId,
+        requiredCapabilities: [capability],
+        risk: 'read-only',
+        approval: 'never',
+        executor: { kind: 'plugin_tool', pluginId: 'github', toolName },
+        credentialBindings: [
+          { field: 'githubCredential', locator: { pluginId: 'github', fieldId: 'token' } },
+        ],
+        inputSchema: {
+          type: 'object',
+          required: ['owner', 'repository', 'number'],
+          additionalProperties: false,
+        },
+      });
+      expect(
+        registration?.validateParameters({
+          owner: ' octocat ',
+          repository: ' Hello-World ',
+          number: 42,
+        }),
+      ).toEqual({ owner: 'octocat', repository: 'Hello-World', number: 42 });
+      expect(
+        registration?.deriveTarget({
+          accountId: 'account-github',
+          params: { owner: 'octocat', repository: 'Hello-World', number: 42 },
+        }),
+      ).toEqual({
+        kind: 'plugin_tool',
+        accountId: 'account-github',
+        pluginId: 'github',
+        toolName,
+        resourceId: 'octocat/Hello-World#42',
+      });
+      expect(() =>
+        registration?.validateParameters({
+          owner: 'octocat',
+          repository: 'Hello-World',
+          number: 0,
+        }),
+      ).toThrow(/number/i);
+      expect(JSON.stringify(registration?.inputSchema)).not.toMatch(/token|credential|secret/i);
+    }
   });
 });

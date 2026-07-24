@@ -67,6 +67,8 @@ describe('createJarvisCapabilitySnapshot', () => {
       'chat.model.switch',
       'file.search',
       'github.identity',
+      'github.issue.read',
+      'github.pull_request.read',
       'github.repository.read',
       'task.cancel',
       'terminal.create',
@@ -99,6 +101,24 @@ describe('createJarvisCapabilitySnapshot', () => {
       approval: 'never',
     });
     expect(schemas[3]).toMatchObject({
+      id: 'github.issue.read',
+      inputSchema: {
+        required: ['owner', 'repository', 'number'],
+        additionalProperties: false,
+      },
+      risk: 'read-only',
+      approval: 'never',
+    });
+    expect(schemas[4]).toMatchObject({
+      id: 'github.pull_request.read',
+      inputSchema: {
+        required: ['owner', 'repository', 'number'],
+        additionalProperties: false,
+      },
+      risk: 'read-only',
+      approval: 'never',
+    });
+    expect(schemas[5]).toMatchObject({
       id: 'github.repository.read',
       inputSchema: {
         required: ['owner', 'repository'],
@@ -107,7 +127,7 @@ describe('createJarvisCapabilitySnapshot', () => {
       risk: 'read-only',
       approval: 'never',
     });
-    expect(JSON.stringify([schemas[2], schemas[3]])).not.toMatch(/token|credential|secret/i);
+    expect(JSON.stringify(schemas.slice(2, 6))).not.toMatch(/token|credential|secret/i);
     for (const schema of schemas) {
       expect(schema).not.toHaveProperty('executor');
       expect(schema).not.toHaveProperty('credentialBindings');
