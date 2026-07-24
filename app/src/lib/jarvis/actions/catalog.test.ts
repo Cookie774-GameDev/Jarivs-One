@@ -88,6 +88,21 @@ describe('Jarvis action catalog', () => {
         risk: 'external-side-effect',
         approval: 'always',
       },
+      { id: 'canva.designs.search', risk: 'read-only', approval: 'never' },
+      { id: 'canva.design.read', risk: 'read-only', approval: 'never' },
+      { id: 'canva.brand_templates.search', risk: 'read-only', approval: 'never' },
+      { id: 'canva.brand_template.dataset.read', risk: 'read-only', approval: 'never' },
+      { id: 'canva.autofill_job.read', risk: 'read-only', approval: 'never' },
+      {
+        id: 'canva.design.create',
+        risk: 'external-side-effect',
+        approval: 'always',
+      },
+      {
+        id: 'canva.design.autofill',
+        risk: 'external-side-effect',
+        approval: 'always',
+      },
       { id: 'chat.model.switch', risk: 'external-side-effect', approval: 'always' },
       { id: 'mcp.invoke', risk: 'external-side-effect', approval: 'always' },
       { id: 'terminal.create', risk: 'safe-write', approval: 'always' },
@@ -341,7 +356,7 @@ describe('Jarvis action catalog', () => {
     ).toThrow(/model-visible|toolName/i);
   });
 
-  it('publishes only fixed model-safe GitHub, Gmail, and Drive registrations with account-bound credentials', () => {
+  it('publishes only fixed model-safe provider registrations with account-bound credentials', () => {
     const catalog = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS);
     const identity = catalog.resolve('github.identity');
     const repository = catalog.resolve('github.repository.read');
@@ -374,6 +389,13 @@ describe('Jarvis action catalog', () => {
       'google-drive.files.search',
       'google-drive.document.read',
       'google-drive.document.create',
+      'canva.designs.search',
+      'canva.design.read',
+      'canva.brand_templates.search',
+      'canva.brand_template.dataset.read',
+      'canva.autofill_job.read',
+      'canva.design.create',
+      'canva.design.autofill',
     ]);
     expect(identity).toMatchObject({
       requiredCapabilities: ['plugin.github.identity'],
@@ -796,6 +818,174 @@ describe('Jarvis action catalog', () => {
       pluginId: 'google-drive',
       toolName: 'document_create',
       resourceId: 'new-document',
+    });
+  });
+
+  it('publishes bounded Canva reads and always-approved stable design creation without credentials', () => {
+    const catalog = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS);
+    const search = catalog.resolve('canva.designs.search');
+    const read = catalog.resolve('canva.design.read');
+    const templates = catalog.resolve('canva.brand_templates.search');
+    const dataset = catalog.resolve('canva.brand_template.dataset.read');
+    const job = catalog.resolve('canva.autofill_job.read');
+    const create = catalog.resolve('canva.design.create');
+    const autofill = catalog.resolve('canva.design.autofill');
+    const credentials = [
+      {
+        field: 'canvaClientIdGrant',
+        locator: { pluginId: 'canva', fieldId: 'client_id' },
+      },
+      {
+        field: 'canvaClientSecretGrant',
+        locator: { pluginId: 'canva', fieldId: 'client_secret' },
+      },
+      {
+        field: 'canvaRefreshGrant',
+        locator: { pluginId: 'canva', fieldId: 'refresh_token' },
+      },
+    ];
+
+    for (const [registration, id, toolName, capability] of [
+      [search, 'canva.designs.search', 'designs_search', 'plugin.canva.designs_search'],
+      [read, 'canva.design.read', 'design_read', 'plugin.canva.design_read'],
+      [
+        templates,
+        'canva.brand_templates.search',
+        'brand_templates_search',
+        'plugin.canva.brand_templates_search',
+      ],
+      [
+        dataset,
+        'canva.brand_template.dataset.read',
+        'brand_template_dataset_read',
+        'plugin.canva.brand_template_dataset_read',
+      ],
+      [job, 'canva.autofill_job.read', 'autofill_job_read', 'plugin.canva.autofill_job_read'],
+    ] as const) {
+      expect(registration).toMatchObject({
+        id,
+        risk: 'read-only',
+        approval: 'never',
+        requiredCapabilities: [capability],
+        executor: { kind: 'plugin_tool', pluginId: 'canva', toolName },
+        credentialBindings: credentials,
+        inputSchema: { type: 'object', additionalProperties: false },
+      });
+      expect(JSON.stringify(registration?.inputSchema)).not.toMatch(
+        /token|credential|secret|clientId|rawQuery/i,
+      );
+    }
+    expect(create).toMatchObject({
+      id: 'canva.design.create',
+      risk: 'external-side-effect',
+      approval: 'always',
+      requiredCapabilities: ['plugin.canva.design_create'],
+      executor: { kind: 'plugin_tool', pluginId: 'canva', toolName: 'design_create' },
+      credentialBindings: credentials,
+      inputSchema: { type: 'object', additionalProperties: false },
+    });
+    expect(autofill).toMatchObject({
+      id: 'canva.design.autofill',
+      risk: 'external-side-effect',
+      approval: 'always',
+      requiredCapabilities: ['plugin.canva.design_autofill'],
+      executor: { kind: 'plugin_tool', pluginId: 'canva', toolName: 'design_autofill' },
+      credentialBindings: credentials,
+      inputSchema: { type: 'object', additionalProperties: false },
+    });
+    expect(JSON.stringify(autofill?.inputSchema)).not.toMatch(
+      /token|credential|secret|clientId|rawQuery/i,
+    );
+
+    expect(search?.validateParameters({ query: '  launch plan  ', maxResults: 10 })).toEqual({
+      query: 'launch plan',
+      maxResults: 10,
+    });
+    expect(read?.validateParameters({ designId: 'DAFVztcvd9z' })).toEqual({
+      designId: 'DAFVztcvd9z',
+    });
+    expect(dataset?.validateParameters({ brandTemplateId: 'DAFBrandTemplate123' })).toEqual({
+      brandTemplateId: 'DAFBrandTemplate123',
+    });
+    expect(job?.validateParameters({ jobId: '450a76e7-f96f-43ae-9c37-0e1ce492ac72' })).toEqual({
+      jobId: '450a76e7-f96f-43ae-9c37-0e1ce492ac72',
+    });
+    expect(
+      create?.validateParameters({
+        title: '  Approved  launch deck  ',
+        preset: 'presentation',
+      }),
+    ).toEqual({
+      title: 'Approved  launch deck',
+      preset: 'presentation',
+    });
+    expect(
+      autofill?.validateParameters({
+        brandTemplateId: 'DAFBrandTemplate123',
+        title: '  Approved launch campaign  ',
+        textDataJson: '{"launch_subtitle":"Built with care","launch_headline":"Ship today"}',
+      }),
+    ).toEqual({
+      brandTemplateId: 'DAFBrandTemplate123',
+      title: 'Approved launch campaign',
+      textDataJson: '{"launch_headline":"Ship today","launch_subtitle":"Built with care"}',
+    });
+    expect(() =>
+      search?.validateParameters({ query: 'launch', maxResults: 2, continuation: 'hidden' }),
+    ).toThrow(/unknown fields/i);
+    expect(() => read?.validateParameters({ designId: '../private' })).toThrow(/designId/i);
+    expect(() =>
+      create?.validateParameters({ title: 'Injected\r\nHeader', preset: 'presentation' }),
+    ).toThrow(/title/i);
+    expect(() => create?.validateParameters({ title: 'Approved', preset: 'social' })).toThrow(
+      /preset/i,
+    );
+    expect(() =>
+      autofill?.validateParameters({
+        brandTemplateId: 'DAFBrandTemplate123',
+        title: 'Approved',
+        textDataJson: '{"launch_image":{"url":"https://attacker.invalid"}}',
+      }),
+    ).toThrow(/autofill/i);
+    expect(
+      read?.deriveTarget({
+        accountId: 'account-canva',
+        params: { designId: 'DAFVztcvd9z' },
+      }),
+    ).toEqual({
+      kind: 'plugin_tool',
+      accountId: 'account-canva',
+      pluginId: 'canva',
+      toolName: 'design_read',
+      resourceId: 'DAFVztcvd9z',
+    });
+    expect(
+      create?.deriveTarget({
+        accountId: 'account-canva',
+        params: { title: 'Approved launch deck', preset: 'presentation' },
+      }),
+    ).toEqual({
+      kind: 'plugin_tool',
+      accountId: 'account-canva',
+      pluginId: 'canva',
+      toolName: 'design_create',
+      resourceId: 'new-design',
+    });
+    expect(
+      autofill?.deriveTarget({
+        accountId: 'account-canva',
+        params: {
+          brandTemplateId: 'DAFBrandTemplate123',
+          title: 'Approved launch campaign',
+          textDataJson: '{"launch_headline":"Ship today"}',
+        },
+      }),
+    ).toEqual({
+      kind: 'plugin_tool',
+      accountId: 'account-canva',
+      pluginId: 'canva',
+      toolName: 'design_autofill',
+      resourceId: 'DAFBrandTemplate123',
     });
   });
 });

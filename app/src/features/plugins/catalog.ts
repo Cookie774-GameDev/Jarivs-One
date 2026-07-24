@@ -330,6 +330,7 @@ const PRIORITY_CANDIDATES: CatalogCandidate[] = [
   { name: 'Airtable', category: 'Productivity' },
   { name: 'Coda', category: 'Productivity' },
   { name: 'Miro', category: 'Productivity' },
+  { name: 'Canva', category: 'Design' },
   // Project Management (6)
   { name: 'Linear', category: 'Project Management' },
   { name: 'Jira', category: 'Project Management' },

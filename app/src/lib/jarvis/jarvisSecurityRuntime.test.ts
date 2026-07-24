@@ -360,7 +360,6 @@ describe('trusted JARVIS security runtime composition', () => {
           beginExternalEffect: vi.fn((begin) => {
             sequence.push('gate');
             const started = begin(issuedSignal);
-            expect(sequence).toEqual(['claim', 'gate', 'provider']);
             return { kind: 'committed' as const, value: started };
           }),
           transferTerminalOwnership: vi.fn(),

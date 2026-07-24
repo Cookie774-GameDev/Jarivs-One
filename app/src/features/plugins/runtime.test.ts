@@ -1123,6 +1123,315 @@ describe('account-scoped plugin runtime', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(7);
   });
 
+  it('rotates Canva one-use refresh grants under credential authority before testing the account', async () => {
+    const test = fixture({
+      randomIds: ['grant-canva-client', 'grant-canva-secret', 'grant-canva-refresh'],
+      times: [100, 200, 300, 400, 500],
+    });
+    for (const [fieldId, value] of [
+      ['client_id', 'OC-vibespace-client-id'],
+      ['client_secret', 'cnvca-vibespace-client-secret'],
+      ['refresh_token', 'canva-refresh-before'],
+    ] as const) {
+      await test.runtime.management.saveCredential({
+        accountId: 'account-a',
+        pluginId: 'canva',
+        fieldId,
+        value,
+      });
+    }
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            access_token: 'canva-access-must-not-leak',
+            refresh_token: 'canva-refresh-after',
+            token_type: 'Bearer',
+            expires_in: 14_400,
+            scope: 'profile:read design:meta:read design:content:write brandtemplate:meta:read',
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ profile: { display_name: 'Canva Person' } }), {
+          status: 200,
+        }),
+      );
+
+    await expect(
+      test.runtime.management.testConnection({
+        accountId: 'account-a',
+        pluginId: 'canva',
+      }),
+    ).resolves.toEqual({ ok: true, accountLabel: 'Canva Person' });
+
+    expect(test.values.get('canva\u0000refresh_token')).toBe('canva-refresh-after');
+    expect(test.credentialAdapter.writeExistingCredential).toHaveBeenLastCalledWith(
+      { pluginId: 'canva', fieldId: 'refresh_token' },
+      'canva-refresh-after',
+    );
+    const writeOrder = vi
+      .mocked(test.credentialAdapter.writeExistingCredential)
+      .mock.invocationCallOrder.at(-1);
+    expect(writeOrder).toBeLessThan(
+      fetchSpy.mock.invocationCallOrder[1] ?? Number.POSITIVE_INFINITY,
+    );
+    expect(test.connectionRows.get('account-a\u0000canva')).toMatchObject({
+      state: 'connected',
+      enabled: true,
+      configuredFields: ['client_id', 'client_secret', 'refresh_token'],
+    });
+  });
+
+  it('runs approved Canva creation with locked rotation and emits only canonical Canva artifacts', async () => {
+    const test = fixture({
+      randomIds: ['grant-canva-client', 'grant-canva-secret', 'grant-canva-refresh'],
+      times: [100, 200, 300],
+    });
+    const preparedValues = {
+      client_id: 'OC-vibespace-client-id',
+      client_secret: 'cnvca-vibespace-client-secret',
+      refresh_token: 'canva-refresh-before-create',
+    };
+    for (const [fieldId, value] of Object.entries(preparedValues)) {
+      await test.runtime.management.saveCredential({
+        accountId: 'account-a',
+        pluginId: 'canva',
+        fieldId,
+        value,
+      });
+    }
+    const decisions = await Promise.all(
+      Object.keys(preparedValues).map((fieldId) =>
+        test.credentialAuthorization.authorize({
+          accountId: 'account-a',
+          locator: { pluginId: 'canva', fieldId },
+        }),
+      ),
+    );
+    if (decisions.some((decision) => !decision.authorized)) {
+      throw new Error('expected Canva credential authorizations');
+    }
+    const catalog = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS);
+    const create = catalog.resolve('canva.design.create');
+    if (!create || create.executor.kind !== 'plugin_tool') {
+      throw new Error('expected fixed Canva create registration');
+    }
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            access_token: 'canva-access-must-not-leak',
+            refresh_token: 'canva-refresh-after-create',
+            token_type: 'Bearer',
+            expires_in: 14_400,
+            scope: 'design:content:write',
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            design: {
+              id: 'DAFVcreated123',
+              title: 'Approved launch deck',
+              urls: {
+                edit_url: 'https://www.canva.com/api/design/created-token/edit',
+                view_url: 'https://www.canva.com/api/design/created-token/view',
+              },
+              design_types: ['presentation'],
+              page_count: 1,
+            },
+          }),
+          { status: 200 },
+        ),
+      );
+    const context = Object.freeze({
+      source: 'ai' as const,
+      accountId: 'account-a',
+      runId: 'run-canva-create',
+      approvalId: 'approval-canva-create',
+      requestId: 'request-canva-create',
+      attemptNumber: 1,
+      signal: new AbortController().signal,
+    });
+
+    const result = await test.runtime.registeredTools.startPrepared({
+      accountId: 'account-a',
+      registration: create.executor,
+      params: { title: 'Approved launch deck', preset: 'presentation' },
+      context,
+      credentialValues: preparedValues,
+      credentialAuthorizations: decisions.map((decision) => {
+        if (!decision.authorized) throw new Error('unreachable');
+        return decision.authorization;
+      }),
+    });
+    if (!result.ok) throw new Error('expected successful Canva create result');
+    expect(test.values.get('canva\u0000refresh_token')).toBe('canva-refresh-after-create');
+    expect(JSON.stringify(result)).not.toMatch(/access-must-not-leak|refresh-after-create/i);
+
+    const evidence = Object.freeze({
+      producerId: 'plugin_result' as const,
+      accountId: context.accountId,
+      runId: context.runId,
+      requestId: context.requestId,
+      attemptNumber: context.attemptNumber,
+      resultRef: 'jresult_canva_design',
+      state: 'succeeded' as const,
+      verifiedAt: 1_786_300_400_000,
+      pluginId: 'canva',
+      invocationId: `approval:${context.approvalId}`,
+    });
+    await expect(
+      test.runtime.canonicalArtifacts.consumeCanonicalResult({
+        evidence,
+        registration: create.executor,
+        result,
+      }),
+    ).resolves.toMatchObject([
+      {
+        artifact: { kind: 'provider_result', title: 'Canva design: Approved launch deck' },
+      },
+      {
+        artifact: { kind: 'link', title: 'Edit Canva design' },
+        backing: { uri: 'https://www.canva.com/api/design/created-token/edit' },
+      },
+      {
+        artifact: { kind: 'link', title: 'View Canva design' },
+        backing: { uri: 'https://www.canva.com/api/design/created-token/view' },
+      },
+    ]);
+    await expect(test.runtime.canonicalArtifacts.authority.verify(evidence)).resolves.toBe(
+      evidence,
+    );
+  });
+
+  it('fails Canva closed when rotation cannot persist and retains a consumed replacement after a resource failure', async () => {
+    const test = fixture({
+      randomIds: ['grant-canva-client', 'grant-canva-secret', 'grant-canva-refresh'],
+      times: [100, 200, 300, 400],
+    });
+    for (const [fieldId, value] of [
+      ['client_id', 'OC-vibespace-client-id'],
+      ['client_secret', 'cnvca-vibespace-client-secret'],
+      ['refresh_token', 'canva-refresh-before'],
+    ] as const) {
+      await test.runtime.management.saveCredential({
+        accountId: 'account-a',
+        pluginId: 'canva',
+        fieldId,
+        value,
+      });
+    }
+    vi.mocked(test.credentialAdapter.writeExistingCredential).mockRejectedValueOnce(
+      new Error('private keychain failure'),
+    );
+    const failedRotationFetch = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          access_token: 'canva-access-must-not-leak',
+          refresh_token: 'canva-refresh-not-persisted',
+          token_type: 'Bearer',
+          expires_in: 14_400,
+          scope: 'profile:read',
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(
+      test.runtime.management.testConnection({
+        accountId: 'account-a',
+        pluginId: 'canva',
+      }),
+    ).resolves.toMatchObject({ ok: false, error: expect.stringMatching(/rotation_failed/i) });
+    expect(failedRotationFetch).toHaveBeenCalledTimes(1);
+    expect(test.values.get('canva\u0000refresh_token')).toBe('canva-refresh-before');
+
+    failedRotationFetch.mockRestore();
+    const catalog = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS);
+    const search = catalog.resolve('canva.designs.search');
+    const create = catalog.resolve('canva.design.create');
+    if (
+      !search ||
+      search.executor.kind !== 'plugin_tool' ||
+      !create ||
+      create.executor.kind !== 'plugin_tool'
+    ) {
+      throw new Error('expected fixed Canva registrations');
+    }
+    const resourceFailureFetch = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            access_token: 'canva-access-must-not-leak',
+            refresh_token: 'canva-refresh-survives-resource-failure',
+            token_type: 'Bearer',
+            expires_in: 14_400,
+            scope: 'design:meta:read design:content:write',
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(new Response('private provider body', { status: 503 }));
+    const context = Object.freeze({
+      source: 'ai' as const,
+      accountId: 'account-a',
+      runId: 'run-canva',
+      approvalId: 'approval-canva',
+      requestId: 'request-canva',
+      attemptNumber: 1,
+      signal: new AbortController().signal,
+    });
+
+    await expect(
+      test.runtime.registeredTools.execute({
+        accountId: 'account-a',
+        registration: search.executor,
+        params: { query: 'launch', maxResults: 2 },
+        context,
+      }),
+    ).rejects.toThrow(/provider_rejected_503/i);
+    expect(test.values.get('canva\u0000refresh_token')).toBe(
+      'canva-refresh-survives-resource-failure',
+    );
+
+    const authorizations = await Promise.all(
+      ['client_id', 'client_secret', 'refresh_token'].map((fieldId) =>
+        test.credentialAuthorization.authorize({
+          accountId: 'account-a',
+          locator: { pluginId: 'canva', fieldId },
+        }),
+      ),
+    );
+    if (authorizations.some((decision) => !decision.authorized)) {
+      throw new Error('expected Canva credential authorizations');
+    }
+    await expect(
+      test.runtime.registeredTools.startPrepared({
+        accountId: 'account-a',
+        registration: create.executor,
+        params: { title: 'Approved launch deck', preset: 'presentation' },
+        context,
+        credentialValues: {
+          client_id: 'OC-vibespace-client-id',
+          client_secret: 'cnvca-vibespace-client-secret',
+          refresh_token: 'canva-refresh-before',
+        },
+        credentialAuthorizations: authorizations.map((decision) => {
+          if (!decision.authorized) throw new Error('unreachable');
+          return decision.authorization;
+        }),
+      }),
+    ).rejects.toThrow(/prepared_credential_value_mismatch/i);
+    expect(resourceFailureFetch).toHaveBeenCalledTimes(2);
+  });
+
   it('executes fixed GitHub reads against exact endpoints and returns only bounded normalized data', async () => {
     const test = fixture();
     await test.runtime.management.saveCredential({

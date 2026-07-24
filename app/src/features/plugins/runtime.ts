@@ -13,6 +13,7 @@ import {
   type JarvisExistingCredentialAuthorizationAuthority,
   type PluginCredentialAccountGrantRepository,
   type PluginCredentialAccountGrantV1,
+  type PluginCredentialLocatorLockSet,
 } from './credentialAuthorization';
 import type { PluginStore } from './store';
 import type { PluginHttpTest, PluginManifest, PluginTestResult } from './types';
@@ -23,6 +24,12 @@ import {
   runGoogleDriveTool,
   testGoogleDriveConnection,
 } from './googleDriveProvider';
+import {
+  canvaArtifactDrafts,
+  runCanvaTool,
+  testCanvaConnection,
+  type CanvaCredentialRotation,
+} from './canvaProvider';
 import type {
   CanonicalPluginEvidence,
   CanonicalPluginEvidenceAuthority,
@@ -1268,6 +1275,87 @@ export function createAccountScopedPluginRuntime(input: {
     }
   };
 
+  const readCredentialsLocked = async (record: {
+    accountId: string;
+    manifest: PluginManifest;
+    authorizations: readonly JarvisExistingCredentialAuthorization[];
+    locks: PluginCredentialLocatorLockSet;
+  }): Promise<CredentialMap> => {
+    assertActiveAccount(record.accountId, input.activeAccountId);
+    const values: CredentialMap = {};
+    for (const authorization of record.authorizations) {
+      const before = await input.credentialAuthorization.revalidateLocked({
+        authorization,
+        locks: record.locks,
+      });
+      if (!before.authorized) throw safeFailure(before.reason);
+      let value: string | undefined;
+      try {
+        value = await input.credentialAdapter.readExistingCredential(authorization.locator);
+      } catch {
+        throw safeFailure('credential_grant_unavailable');
+      }
+      const after = await input.credentialAuthorization.revalidateLocked({
+        authorization,
+        locks: record.locks,
+      });
+      if (!after.authorized) throw safeFailure(after.reason);
+      if (value === undefined) throw safeFailure('credential_grant_unavailable');
+      values[authorization.locator.fieldId] = value;
+    }
+    if (
+      record.authorizations.length !== record.manifest.fields.length ||
+      Object.keys(values).length !== record.manifest.fields.length
+    ) {
+      throw safeFailure('credential_grant_unavailable');
+    }
+    return values;
+  };
+
+  const canvaCredentialRotation = (record: {
+    accountId: string;
+    manifest: PluginManifest;
+    authorizations: readonly JarvisExistingCredentialAuthorization[];
+    locks: PluginCredentialLocatorLockSet;
+    values: CredentialMap;
+  }): CanvaCredentialRotation => {
+    if (record.manifest.id !== 'canva') throw safeFailure('plugin_unavailable');
+    return async ({ fieldId, expectedValue, nextValue }) => {
+      assertActiveAccount(record.accountId, input.activeAccountId);
+      const authorization = record.authorizations.find(
+        (candidate) =>
+          candidate.locator.pluginId === record.manifest.id &&
+          candidate.locator.fieldId === fieldId,
+      );
+      if (!authorization || record.values[fieldId] !== expectedValue) {
+        throw safeFailure('prepared_credential_value_mismatch');
+      }
+      const before = await input.credentialAuthorization.revalidateLocked({
+        authorization,
+        locks: record.locks,
+      });
+      if (!before.authorized) throw safeFailure(before.reason);
+      let current: string | undefined;
+      try {
+        current = await input.credentialAdapter.readExistingCredential(authorization.locator);
+      } catch {
+        throw safeFailure('credential_grant_unavailable');
+      }
+      if (current !== expectedValue) throw safeFailure('prepared_credential_value_mismatch');
+      try {
+        await input.credentialAdapter.writeExistingCredential(authorization.locator, nextValue);
+      } catch {
+        throw safeFailure('credential_rotation_failed');
+      }
+      record.values[fieldId] = nextValue;
+      const after = await input.credentialAuthorization.revalidateLocked({
+        authorization,
+        locks: record.locks,
+      });
+      if (!after.authorized) throw safeFailure(after.reason);
+    };
+  };
+
   const management: PluginManagementCapability = Object.freeze({
     async saveCredential({
       accountId,
@@ -1353,6 +1441,70 @@ export function createAccountScopedPluginRuntime(input: {
       assertActiveAccount(accountId, input.activeAccountId);
       const manifest = manifestFor(pluginId);
       const locators = locatorsFor(manifest);
+      if (manifest.id === 'canva') {
+        let authorizations: readonly JarvisExistingCredentialAuthorization[];
+        try {
+          authorizations = await authorizeLocators({
+            accountId,
+            locators,
+            authority: input.credentialAuthorization,
+          });
+          return await withPluginCredentialLocatorLocks(locators, async (locks) => {
+            let result: PluginTestResult;
+            try {
+              const values = await readCredentialsLocked({
+                accountId,
+                manifest,
+                authorizations,
+                locks,
+              });
+              result = await testCanvaConnection({
+                values,
+                signal: AbortSignal.timeout(12_000),
+                rotateCredential: canvaCredentialRotation({
+                  accountId,
+                  manifest,
+                  authorizations,
+                  locks,
+                  values,
+                }),
+              });
+            } catch (error) {
+              result = {
+                ok: false,
+                error: error instanceof Error ? error.message : 'Plugin unavailable.',
+              };
+            }
+            assertActiveAccount(accountId, input.activeAccountId);
+            for (const authorization of authorizations) {
+              const decision = await input.credentialAuthorization.revalidateLocked({
+                authorization,
+                locks,
+              });
+              if (!decision.authorized) throw safeFailure(decision.reason);
+            }
+            input.connections.upsertConnection({
+              accountId,
+              pluginId: manifest.id,
+              state: result.ok ? 'connected' : 'error',
+              enabled: result.ok,
+              enabledProjectIds: [],
+              accountLabel: result.accountLabel,
+              lastTestedAt: input.now(),
+              error: result.error,
+              configuredFields: manifest.fields.map((field) => field.id),
+              updatedAt: input.now(),
+            });
+            return result;
+          });
+        } catch (error) {
+          input.connections.removeConnection(accountId, manifest.id);
+          return {
+            ok: false,
+            error: error instanceof Error ? error.message : 'Plugin unavailable.',
+          };
+        }
+      }
       let credentialRead: Awaited<ReturnType<typeof readAuthorizedCredentials>> | undefined;
       let result: PluginTestResult;
       try {
@@ -1496,8 +1648,9 @@ export function createAccountScopedPluginRuntime(input: {
     values: CredentialMap;
     signal: AbortSignal;
     idempotencyKey?: string;
+    rotateCredential?: CanvaCredentialRotation;
   }): Promise<ActionResult> {
-    const { manifest, tool, params, values, signal, idempotencyKey } = inputValue;
+    const { manifest, tool, params, values, signal, idempotencyKey, rotateCredential } = inputValue;
     if (manifest.id === 'mock-connector' && tool.name === 'ping') {
       return Promise.resolve({
         ok: true,
@@ -1533,6 +1686,16 @@ export function createAccountScopedPluginRuntime(input: {
         idempotencyKey,
       });
     }
+    if (manifest.id === 'canva') {
+      if (!rotateCredential) throw safeFailure('credential_rotation_unavailable');
+      return runCanvaTool({
+        toolName: tool.name,
+        params,
+        values,
+        signal,
+        rotateCredential,
+      });
+    }
     return testManifestConnection(manifest, values, signal).then((result): ActionResult => {
       if (!result.ok) return { ok: false, error: result.error ?? 'Plugin connection failed.' };
       return {
@@ -1557,6 +1720,47 @@ export function createAccountScopedPluginRuntime(input: {
         context,
       });
       if (!tool.readOnly) throw safeFailure('approval_bound_execution_required');
+      if (manifest.id === 'canva') {
+        const locators = locatorsFor(manifest);
+        const authorizations = await authorizeLocators({
+          accountId,
+          locators,
+          authority: input.credentialAuthorization,
+        });
+        return await withPluginCredentialLocatorLocks(locators, async (locks) => {
+          const values = await readCredentialsLocked({
+            accountId,
+            manifest,
+            authorizations,
+            locks,
+          });
+          const result = canonicalPluginResult(
+            await runPreparedTool({
+              manifest,
+              tool,
+              params,
+              values,
+              signal: context.signal ?? AbortSignal.timeout(12_000),
+              rotateCredential: canvaCredentialRotation({
+                accountId,
+                manifest,
+                authorizations,
+                locks,
+                values,
+              }),
+            }),
+          );
+          assertActiveAccount(accountId, input.activeAccountId);
+          for (const authorization of authorizations) {
+            const decision = await input.credentialAuthorization.revalidateLocked({
+              authorization,
+              locks,
+            });
+            if (!decision.authorized) throw safeFailure(decision.reason);
+          }
+          return result;
+        });
+      }
       const { values } = await readAuthorizedCredentials({
         accountId,
         locators: locatorsFor(manifest),
@@ -1696,6 +1900,17 @@ export function createAccountScopedPluginRuntime(input: {
             values,
             signal: effectSignal,
             idempotencyKey: JSON.stringify([context.runId, context.requestId, context.approvalId]),
+            ...(manifest.id === 'canva'
+              ? {
+                  rotateCredential: canvaCredentialRotation({
+                    accountId,
+                    manifest,
+                    authorizations: credentialAuthorizations,
+                    locks,
+                    values,
+                  }),
+                }
+              : {}),
           }),
         );
         assertActiveAccount(accountId, input.activeAccountId);
@@ -1791,7 +2006,9 @@ export function createAccountScopedPluginRuntime(input: {
             ? gmailArtifactDrafts({ evidence, registration, result })
             : registration.pluginId === 'google-drive'
               ? googleDriveArtifactDrafts({ evidence, registration, result })
-              : githubArtifactDrafts({ evidence, registration, result });
+              : registration.pluginId === 'canva'
+                ? canvaArtifactDrafts({ evidence, registration, result })
+                : githubArtifactDrafts({ evidence, registration, result });
       } catch {
         return null;
       }

@@ -460,6 +460,13 @@ const GOOGLE_DRIVE_FILE_ID = /^[A-Za-z0-9_-]{3,256}$/;
 const GOOGLE_DRIVE_SEARCH_TERM_MAX = 256;
 const GOOGLE_DRIVE_TITLE_MAX = 150;
 const GOOGLE_DRIVE_CONTENT_MAX = 50_000;
+const CANVA_DESIGN_ID = /^[A-Za-z0-9._~-]{3,512}$/;
+const CANVA_QUERY_MAX = 255;
+const CANVA_TITLE_MAX = 255;
+const CANVA_PRESETS = new Set(['doc', 'email', 'presentation', 'whiteboard']);
+const CANVA_AUTOFILL_JSON_MAX = 50_000;
+const CANVA_AUTOFILL_FIELD_MAX = 50;
+const CANVA_AUTOFILL_TEXT_MAX = 10_000;
 const MCP_SERVER_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$/;
 const MCP_TOOL_NAME = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
 const MAX_MCP_INPUT_JSON_CHARS = 256 * 1024;
@@ -1008,6 +1015,331 @@ const GOOGLE_DRIVE_ACTION_REGISTRATIONS: readonly JarvisRegisteredActionDefiniti
     expectedEffect: 'Creates one Google document from the exact approved title and text content.',
     validateParameters: googleDriveCreateParameters,
     resourceId: () => 'new-document',
+  }),
+];
+
+function canvaSearchParameters(
+  input: Readonly<Record<string, unknown>>,
+): Readonly<{ query: string; maxResults: number }> {
+  const record = plainRecord(input, 'Canva search parameters');
+  assertExactKeys(record, ['query', 'maxResults'], 'Canva search parameters');
+  const query = typeof record.query === 'string' ? record.query.normalize('NFC').trim() : '';
+  if (!query || Array.from(query).length > CANVA_QUERY_MAX || /[\u0000-\u001f\u007f]/.test(query)) {
+    catalogError('Canva query is invalid');
+  }
+  const maxResults = record.maxResults ?? 10;
+  if (
+    !Number.isSafeInteger(maxResults) ||
+    (maxResults as number) < 1 ||
+    (maxResults as number) > 20
+  ) {
+    catalogError('Canva maxResults is invalid');
+  }
+  return { query, maxResults: maxResults as number };
+}
+
+function canvaReadParameters(
+  input: Readonly<Record<string, unknown>>,
+): Readonly<{ designId: string }> {
+  const record = plainRecord(input, 'canva.design.read parameters');
+  assertExactKeys(record, ['designId'], 'canva.design.read parameters');
+  const designId = typeof record.designId === 'string' ? record.designId.trim() : '';
+  if (!CANVA_DESIGN_ID.test(designId)) catalogError('Canva designId is invalid');
+  return { designId };
+}
+
+function canvaCreateParameters(
+  input: Readonly<Record<string, unknown>>,
+): Readonly<{ title: string; preset: string }> {
+  const record = plainRecord(input, 'canva.design.create parameters');
+  assertExactKeys(record, ['title', 'preset'], 'canva.design.create parameters');
+  const title = typeof record.title === 'string' ? record.title.normalize('NFC').trim() : '';
+  if (!title || Array.from(title).length > CANVA_TITLE_MAX || /[\u0000-\u001f\u007f]/.test(title)) {
+    catalogError('Canva title is invalid');
+  }
+  if (typeof record.preset !== 'string' || !CANVA_PRESETS.has(record.preset)) {
+    catalogError('Canva preset is invalid');
+  }
+  return { title, preset: record.preset };
+}
+
+function canvaBrandTemplateParameters(
+  input: Readonly<Record<string, unknown>>,
+): Readonly<{ brandTemplateId: string }> {
+  const record = plainRecord(input, 'canva.brand_template.dataset.read parameters');
+  assertExactKeys(record, ['brandTemplateId'], 'canva.brand_template.dataset.read parameters');
+  const brandTemplateId =
+    typeof record.brandTemplateId === 'string' ? record.brandTemplateId.trim() : '';
+  if (!CANVA_DESIGN_ID.test(brandTemplateId)) {
+    catalogError('Canva brandTemplateId is invalid');
+  }
+  return { brandTemplateId };
+}
+
+function canvaAutofillJobParameters(
+  input: Readonly<Record<string, unknown>>,
+): Readonly<{ jobId: string }> {
+  const record = plainRecord(input, 'canva.autofill_job.read parameters');
+  assertExactKeys(record, ['jobId'], 'canva.autofill_job.read parameters');
+  const jobId = typeof record.jobId === 'string' ? record.jobId.trim() : '';
+  if (!CANVA_DESIGN_ID.test(jobId)) catalogError('Canva jobId is invalid');
+  return { jobId };
+}
+
+function canvaAutofillParameters(
+  input: Readonly<Record<string, unknown>>,
+): Readonly<{ brandTemplateId: string; title: string; textDataJson: string }> {
+  const record = plainRecord(input, 'canva.design.autofill parameters');
+  assertExactKeys(
+    record,
+    ['brandTemplateId', 'title', 'textDataJson'],
+    'canva.design.autofill parameters',
+  );
+  const brandTemplateId =
+    typeof record.brandTemplateId === 'string' ? record.brandTemplateId.trim() : '';
+  if (!CANVA_DESIGN_ID.test(brandTemplateId)) {
+    catalogError('Canva autofill brandTemplateId is invalid');
+  }
+  const title = typeof record.title === 'string' ? record.title.normalize('NFC').trim() : '';
+  if (!title || Array.from(title).length > CANVA_TITLE_MAX || /[\u0000-\u001f\u007f]/.test(title)) {
+    catalogError('Canva autofill title is invalid');
+  }
+  if (
+    typeof record.textDataJson !== 'string' ||
+    !record.textDataJson ||
+    record.textDataJson.length > CANVA_AUTOFILL_JSON_MAX
+  ) {
+    catalogError('Canva autofill data is invalid');
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(record.textDataJson);
+  } catch {
+    catalogError('Canva autofill data is invalid');
+  }
+  const data = plainRecord(parsed, 'Canva autofill data');
+  const entries = Object.entries(data);
+  if (entries.length < 1 || entries.length > CANVA_AUTOFILL_FIELD_MAX) {
+    catalogError('Canva autofill data is invalid');
+  }
+  const canonicalEntries = entries.map(([rawName, rawText]) => {
+    const name = rawName.normalize('NFC');
+    if (
+      !name ||
+      name !== rawName ||
+      Array.from(name).length > 255 ||
+      /[\u0000-\u001f\u007f]/.test(name) ||
+      SECRET_FIELD_RE.test(name)
+    ) {
+      catalogError('Canva autofill field is invalid');
+    }
+    if (typeof rawText !== 'string') catalogError('Canva autofill text is invalid');
+    const text = rawText.normalize('NFC').replace(/\r\n?/g, '\n');
+    if (
+      Array.from(text).length > CANVA_AUTOFILL_TEXT_MAX ||
+      /[\u0000\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(text)
+    ) {
+      catalogError('Canva autofill text is invalid');
+    }
+    return [name, text] as const;
+  });
+  canonicalEntries.sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
+  return {
+    brandTemplateId,
+    title,
+    textDataJson: JSON.stringify(Object.fromEntries(canonicalEntries)),
+  };
+}
+
+const CANVA_CREDENTIAL_BINDINGS: readonly JarvisActionCredentialBinding[] = [
+  {
+    field: 'canvaClientIdGrant',
+    locator: { pluginId: 'canva', fieldId: 'client_id' },
+  },
+  {
+    field: 'canvaClientSecretGrant',
+    locator: { pluginId: 'canva', fieldId: 'client_secret' },
+  },
+  {
+    field: 'canvaRefreshGrant',
+    locator: { pluginId: 'canva', fieldId: 'refresh_token' },
+  },
+];
+
+function canvaAction(input: {
+  id: string;
+  title: string;
+  description: string;
+  toolName: string;
+  capability: string;
+  inputSchema: JsonSchema;
+  write: boolean;
+  expectedEffect: string;
+  validateParameters(value: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>>;
+  resourceId(params: Readonly<Record<string, unknown>>): string;
+}): JarvisRegisteredActionDefinition {
+  return {
+    id: input.id,
+    version: 1,
+    title: input.title,
+    description: input.description,
+    inputSchema: input.inputSchema,
+    outputSchema: NO_OUTPUT_SCHEMA,
+    requiredCapabilities: [input.capability],
+    requiredEntitlements: [],
+    risk: input.write ? 'external-side-effect' : 'read-only',
+    approval: input.write ? 'always' : 'never',
+    expectedEffect: input.expectedEffect,
+    exposeToAI: true,
+    executor: { kind: 'plugin_tool', pluginId: 'canva', toolName: input.toolName },
+    credentialBindings: CANVA_CREDENTIAL_BINDINGS,
+    validateParameters: input.validateParameters,
+    deriveTarget: ({ accountId, params }) => ({
+      kind: 'plugin_tool',
+      accountId,
+      pluginId: 'canva',
+      toolName: input.toolName,
+      resourceId: input.resourceId(input.validateParameters(params)),
+    }),
+  };
+}
+
+const CANVA_SEARCH_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: {
+    query: { type: 'string' },
+    maxResults: { type: 'number', default: 10 },
+  },
+  required: ['query'],
+  additionalProperties: false,
+};
+
+const CANVA_ACTION_REGISTRATIONS: readonly JarvisRegisteredActionDefinition[] = [
+  canvaAction({
+    id: 'canva.designs.search',
+    title: 'Search Canva designs',
+    description: 'Search bounded metadata for Canva designs using one fixed text query.',
+    toolName: 'designs_search',
+    capability: 'plugin.canva.designs_search',
+    inputSchema: CANVA_SEARCH_SCHEMA,
+    write: false,
+    expectedEffect: 'Reads bounded Canva design metadata and validated temporary links.',
+    validateParameters: canvaSearchParameters,
+    resourceId: () => 'search',
+  }),
+  canvaAction({
+    id: 'canva.design.read',
+    title: 'Read Canva design',
+    description: 'Read one exact Canva design and its validated temporary edit and view links.',
+    toolName: 'design_read',
+    capability: 'plugin.canva.design_read',
+    inputSchema: {
+      type: 'object',
+      properties: { designId: { type: 'string' } },
+      required: ['designId'],
+      additionalProperties: false,
+    },
+    write: false,
+    expectedEffect: 'Reads one exact Canva design without modifying it.',
+    validateParameters: canvaReadParameters,
+    resourceId: (params) => String(params.designId),
+  }),
+  canvaAction({
+    id: 'canva.brand_templates.search',
+    title: 'Search Canva brand templates',
+    description: 'Search bounded metadata for Canva brand templates when the account permits it.',
+    toolName: 'brand_templates_search',
+    capability: 'plugin.canva.brand_templates_search',
+    inputSchema: CANVA_SEARCH_SCHEMA,
+    write: false,
+    expectedEffect: 'Reads bounded Canva brand-template metadata without creating a design.',
+    validateParameters: canvaSearchParameters,
+    resourceId: () => 'search',
+  }),
+  canvaAction({
+    id: 'canva.brand_template.dataset.read',
+    title: 'Read Canva brand template dataset',
+    description:
+      'Read one exact Canva brand-template dataset and identify stable text fields available for Autofill.',
+    toolName: 'brand_template_dataset_read',
+    capability: 'plugin.canva.brand_template_dataset_read',
+    inputSchema: {
+      type: 'object',
+      properties: { brandTemplateId: { type: 'string' } },
+      required: ['brandTemplateId'],
+      additionalProperties: false,
+    },
+    write: false,
+    expectedEffect: 'Reads bounded field names and types for one exact Canva brand template.',
+    validateParameters: canvaBrandTemplateParameters,
+    resourceId: (params) => String(params.brandTemplateId),
+  }),
+  canvaAction({
+    id: 'canva.autofill_job.read',
+    title: 'Read Canva Autofill job',
+    description: 'Read one exact Canva structured-design job and its result when complete.',
+    toolName: 'autofill_job_read',
+    capability: 'plugin.canva.autofill_job_read',
+    inputSchema: {
+      type: 'object',
+      properties: { jobId: { type: 'string' } },
+      required: ['jobId'],
+      additionalProperties: false,
+    },
+    write: false,
+    expectedEffect: 'Reads one exact Canva Autofill job without creating another design.',
+    validateParameters: canvaAutofillJobParameters,
+    resourceId: (params) => String(params.jobId),
+  }),
+  canvaAction({
+    id: 'canva.design.create',
+    title: 'Create Canva design',
+    description: 'Create one stable preset Canva design after explicit approval.',
+    toolName: 'design_create',
+    capability: 'plugin.canva.design_create',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string' },
+        preset: {
+          type: 'string',
+          enum: ['doc', 'email', 'presentation', 'whiteboard'],
+        },
+      },
+      required: ['title', 'preset'],
+      additionalProperties: false,
+    },
+    write: true,
+    expectedEffect: 'Creates one Canva design with the exact approved title and stable preset.',
+    validateParameters: canvaCreateParameters,
+    resourceId: () => 'new-design',
+  }),
+  canvaAction({
+    id: 'canva.design.autofill',
+    title: 'Create structured Canva design',
+    description:
+      'Create one structured text design from an eligible Canva brand template after explicit approval.',
+    toolName: 'design_autofill',
+    capability: 'plugin.canva.design_autofill',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        brandTemplateId: { type: 'string' },
+        title: { type: 'string' },
+        textDataJson: {
+          type: 'string',
+          description:
+            'A bounded JSON object mapping exact dataset text-field names to text values.',
+        },
+      },
+      required: ['brandTemplateId', 'title', 'textDataJson'],
+      additionalProperties: false,
+    },
+    write: true,
+    expectedEffect:
+      'Starts one Canva design Autofill job using the exact approved brand template, title, and text field values.',
+    validateParameters: canvaAutofillParameters,
+    resourceId: (params) => String(params.brandTemplateId),
   }),
 ];
 
@@ -1579,6 +1911,7 @@ export const DEFAULT_JARVIS_ACTION_REGISTRATIONS = deepFreeze<
   },
   ...GMAIL_ACTION_REGISTRATIONS,
   ...GOOGLE_DRIVE_ACTION_REGISTRATIONS,
+  ...CANVA_ACTION_REGISTRATIONS,
   {
     id: 'chat.model.switch',
     version: 1,

@@ -171,10 +171,84 @@ export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
       },
     ],
   },
+  canva: {
+    provider: 'Canva',
+    description:
+      'Search bounded Canva design and brand-template metadata, read exact designs, return validated edit/view links, and create a stable preset design only after explicit approval.',
+    authType: 'oauth',
+    fields: [
+      text(
+        'client_id',
+        'OAuth client ID',
+        'OC-...',
+        'Use the client ID from a Canva Connect integration.',
+      ),
+      token(
+        'client_secret',
+        'OAuth client secret',
+        'Stored in the OS keychain',
+        'The secret stays in the OS keychain and is used only for the fixed token refresh endpoint.',
+      ),
+      token(
+        'refresh_token',
+        'Rotating OAuth refresh grant',
+        'Stored in the OS keychain',
+        'Canva refresh grants are single-use. VibeSpace replaces the grant atomically before making the requested resource call.',
+      ),
+    ],
+    status: 'implemented',
+    docsUrl: 'https://www.canva.dev/docs/connect/',
+    credentialUrl: 'https://www.canva.com/developers/integrations',
+    help: 'Create a Canva Connect integration, authorize the minimum profile, design metadata/content, and optional brand-template scopes, then save the client credentials and rotating refresh grant.',
+    tags: ['canva', 'design', 'oauth', 'templates', 'connect api'],
+    setupSteps: [
+      'Create or select a Canva Connect integration and configure its redirect URL.',
+      'Authorize profile:read, design:meta:read, design:content:write, and brandtemplate:meta:read only when template search is needed.',
+      'Save the client ID, client secret, and current refresh grant, then run Test Connection.',
+    ],
+    supportedFeatures: [
+      'design search and exact reads',
+      'brand template search',
+      'brand template dataset inspection',
+      'approved preset design creation',
+      'structured text autofill from eligible brand templates',
+      'validated edit and view links',
+    ],
+    limitations:
+      'This implementation uses the stable Canva Connect API only. Public distribution still requires Canva provider review. Structured text Autofill requires an eligible Canva plan or development trial and the granted dataset/design scopes. Preview image, video, chart, sheet, design-copy, and direct element-editing flows are excluded and are never simulated with browser automation.',
+    tools: [
+      readTool('designs_search', 'Search bounded Canva design metadata.'),
+      readTool('design_read', 'Read one exact Canva design and validated temporary links.'),
+      readTool('brand_templates_search', 'Search bounded Canva brand-template metadata.'),
+      readTool(
+        'brand_template_dataset_read',
+        'Read one bounded brand-template dataset and identify stable text fields.',
+      ),
+      readTool('autofill_job_read', 'Read one exact Canva structured-design job.'),
+      {
+        name: 'design_create',
+        description: 'Create one stable preset Canva design after explicit approval.',
+        readOnly: false,
+      },
+      {
+        name: 'design_autofill',
+        description:
+          'Create one structured text design from an eligible brand template after explicit approval.',
+        readOnly: false,
+      },
+    ],
+  },
   openai: {
     provider: 'OpenAI',
     authType: 'api_key',
-    fields: [token('api_key', 'API key', 'sk-...', 'Create a secret key with the minimum scopes you need.')],
+    fields: [
+      token(
+        'api_key',
+        'API key',
+        'sk-...',
+        'Create a secret key with the minimum scopes you need.',
+      ),
+    ],
     credentialUrl: 'https://platform.openai.com/api-keys',
     docsUrl: 'https://platform.openai.com/docs/api-reference',
     status: 'configurable',
@@ -345,7 +419,12 @@ export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
     tags: ['voice', 'tts', 'api_key'],
     setupSteps: ['Create an ElevenLabs API key.', 'Paste and test.'],
     supportedFeatures: ['text-to-speech'],
-    httpTest: apiKeyHeaderTest('https://api.elevenlabs.io/v1/user', 'xi-api-key', 'api_key', 'subscription.tier'),
+    httpTest: apiKeyHeaderTest(
+      'https://api.elevenlabs.io/v1/user',
+      'xi-api-key',
+      'api_key',
+      'subscription.tier',
+    ),
     tools: [readTool('voice_context', 'Read ElevenLabs account tier.')],
   },
   deepgram: {
@@ -368,7 +447,12 @@ export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
     provider: 'Stripe',
     authType: 'api_key',
     fields: [
-      token('secret_key', 'Secret key', '<stripe-restricted-key>', 'Use a restricted key when possible.'),
+      token(
+        'secret_key',
+        'Secret key',
+        '<stripe-restricted-key>',
+        'Use a restricted key when possible.',
+      ),
     ],
     credentialUrl: 'https://dashboard.stripe.com/apikeys',
     docsUrl: 'https://docs.stripe.com/keys',
@@ -406,10 +490,7 @@ export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
   twilio: {
     provider: 'Twilio',
     authType: 'api_key',
-    fields: [
-      text('account_sid', 'Account SID', 'AC...'),
-      token('auth_token', 'Auth token', '...'),
-    ],
+    fields: [text('account_sid', 'Account SID', 'AC...'), token('auth_token', 'Auth token', '...')],
     credentialUrl: 'https://console.twilio.com/',
     docsUrl: 'https://www.twilio.com/docs/usage/api',
     status: 'configurable',
@@ -435,7 +516,11 @@ export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
     docsUrl: 'https://developers.notion.com/docs/create-a-notion-integration',
     status: 'configurable',
     tags: ['productivity', 'notes', 'token'],
-    setupSteps: ['Create an internal integration.', 'Copy the internal integration secret.', 'Share pages with the integration.'],
+    setupSteps: [
+      'Create an internal integration.',
+      'Copy the internal integration secret.',
+      'Share pages with the integration.',
+    ],
     supportedFeatures: ['notes', 'databases'],
     httpTest: {
       url: 'https://api.notion.com/v1/users/me',
@@ -600,18 +685,12 @@ export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
   datadog: {
     provider: 'Datadog',
     authType: 'api_key',
-    fields: [
-      token('api_key', 'API key', '...'),
-      token('app_key', 'Application key', '...'),
-    ],
+    fields: [token('api_key', 'API key', '...'), token('app_key', 'Application key', '...')],
     credentialUrl: 'https://app.datadoghq.com/organization-settings/api-keys',
     docsUrl: 'https://docs.datadoghq.com/api/latest/authentication/',
     status: 'configurable',
     tags: ['analytics', 'observability', 'api_key'],
-    setupSteps: [
-      'Create Datadog API and application keys.',
-      'Paste both and test.',
-    ],
+    setupSteps: ['Create Datadog API and application keys.', 'Paste both and test.'],
     supportedFeatures: ['monitoring', 'logs'],
     httpTest: {
       url: 'https://api.datadoghq.com/api/v1/validate',
@@ -639,10 +718,7 @@ export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
   trello: {
     provider: 'Atlassian',
     authType: 'token',
-    fields: [
-      text('api_key', 'API key', '...'),
-      token('token', 'Token', '...'),
-    ],
+    fields: [text('api_key', 'API key', '...'), token('token', 'Token', '...')],
     credentialUrl: 'https://trello.com/power-ups/admin',
     docsUrl: 'https://developer.atlassian.com/cloud/trello/guides/rest-api/api-introduction/',
     status: 'configurable',
@@ -705,10 +781,7 @@ export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
   plaid: {
     provider: 'Plaid',
     authType: 'api_key',
-    fields: [
-      text('client_id', 'Client ID', '...'),
-      token('secret', 'Secret', '...'),
-    ],
+    fields: [text('client_id', 'Client ID', '...'), token('secret', 'Secret', '...')],
     credentialUrl: 'https://dashboard.plaid.com/developers/keys',
     docsUrl: 'https://plaid.com/docs/api/',
     status: 'needs_credentials',
@@ -795,7 +868,11 @@ export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
     tags: ['hosting', 'cdn', 'token'],
     setupSteps: ['Create a Cloudflare API token.', 'Paste and test.'],
     supportedFeatures: ['dns', 'workers', 'cdn'],
-    httpTest: bearerTest('https://api.cloudflare.com/client/v4/user/tokens/verify', 'token', 'result.id'),
+    httpTest: bearerTest(
+      'https://api.cloudflare.com/client/v4/user/tokens/verify',
+      'token',
+      'result.id',
+    ),
     tools: [readTool('cloud_context', 'Verify Cloudflare API access.')],
   },
   heroku: {
@@ -880,16 +957,17 @@ export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
     tags: ['project management', 'stories', 'token'],
     setupSteps: ['Create a Shortcut API token.', 'Paste and test.'],
     supportedFeatures: ['stories', 'epics'],
-    httpTest: bearerTest('https://api.app.shortcut.com/api/v3/member', 'token', 'profile.email_address'),
+    httpTest: bearerTest(
+      'https://api.app.shortcut.com/api/v3/member',
+      'token',
+      'profile.email_address',
+    ),
     tools: [readTool('issues_context', 'Read Shortcut member identity.')],
   },
   'mongodb-atlas': {
     provider: 'MongoDB',
     authType: 'api_key',
-    fields: [
-      text('public_key', 'Public key', '...'),
-      token('private_key', 'Private key', '...'),
-    ],
+    fields: [text('public_key', 'Public key', '...'), token('private_key', 'Private key', '...')],
     credentialUrl: 'https://cloud.mongodb.com/v2#/account/publicApi',
     docsUrl: 'https://www.mongodb.com/docs/atlas/api/',
     status: 'configurable',
@@ -987,7 +1065,10 @@ export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
     tags: ['messaging', 'bots', 'token'],
     setupSteps: ['Create a bot via BotFather.', 'Paste the bot token and test.'],
     supportedFeatures: ['messaging', 'bots'],
-    httpTest: { url: 'https://api.telegram.org/bot{{token}}/getMe', accountLabelPath: 'result.username' },
+    httpTest: {
+      url: 'https://api.telegram.org/bot{{token}}/getMe',
+      accountLabelPath: 'result.username',
+    },
     tools: [readTool('identity', 'Read Telegram bot identity.')],
   },
   zendesk: {
@@ -1092,16 +1173,17 @@ export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
     tags: ['analytics', 'apm', 'api_key'],
     setupSteps: ['Create a New Relic user API key.', 'Paste and test.'],
     supportedFeatures: ['apm', 'monitoring'],
-    httpTest: apiKeyHeaderTest('https://api.newrelic.com/v2/applications.json', 'X-Api-Key', 'api_key'),
+    httpTest: apiKeyHeaderTest(
+      'https://api.newrelic.com/v2/applications.json',
+      'X-Api-Key',
+      'api_key',
+    ),
     tools: [readTool('observability_context', 'List New Relic applications.')],
   },
   mixpanel: {
     provider: 'Mixpanel',
     authType: 'api_key',
-    fields: [
-      text('project_id', 'Project ID', '123456'),
-      token('api_secret', 'API secret', '...'),
-    ],
+    fields: [text('project_id', 'Project ID', '123456'), token('api_secret', 'API secret', '...')],
     credentialUrl: 'https://mixpanel.com/settings/project',
     docsUrl: 'https://developer.mixpanel.com/reference/overview',
     status: 'configurable',
@@ -1134,10 +1216,7 @@ export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
   bigcommerce: {
     provider: 'BigCommerce',
     authType: 'token',
-    fields: [
-      text('store_hash', 'Store hash', 'abc123'),
-      token('token', 'Access token', '...'),
-    ],
+    fields: [text('store_hash', 'Store hash', 'abc123'), token('token', 'Access token', '...')],
     credentialUrl: 'https://developer.bigcommerce.com/docs/start/authentication',
     docsUrl: 'https://developer.bigcommerce.com/docs/rest-management',
     status: 'configurable',
@@ -1206,10 +1285,7 @@ export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
   chargebee: {
     provider: 'Chargebee',
     authType: 'api_key',
-    fields: [
-      text('site', 'Site name', 'your-site'),
-      token('api_key', 'API key', '...'),
-    ],
+    fields: [text('site', 'Site name', 'your-site'), token('api_key', 'API key', '...')],
     credentialUrl: 'https://www.chargebee.com/docs/2.0/api_keys.html',
     docsUrl: 'https://apidocs.chargebee.com/docs/api/',
     status: 'configurable',
@@ -1289,7 +1365,10 @@ export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
     docsUrl: 'https://developer.wordpress.org/rest-api/',
     status: 'configurable',
     tags: ['cms', 'wordpress', 'api_key'],
-    setupSteps: ['Create a WordPress application password.', 'Paste site URL, username, and password.'],
+    setupSteps: [
+      'Create a WordPress application password.',
+      'Paste site URL, username, and password.',
+    ],
     supportedFeatures: ['posts', 'pages'],
     httpTest: {
       url: '{{site_url}}/wp-json/wp/v2/users/me',
@@ -1363,7 +1442,12 @@ export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
     tags: ['email', 'token'],
     setupSteps: ['Copy a Postmark server API token.', 'Paste and test.'],
     supportedFeatures: ['transactional email'],
-    httpTest: apiKeyHeaderTest('https://api.postmarkapp.com/server', 'X-Postmark-Server-Token', 'token', 'Name'),
+    httpTest: apiKeyHeaderTest(
+      'https://api.postmarkapp.com/server',
+      'X-Postmark-Server-Token',
+      'token',
+      'Name',
+    ),
     tools: [readTool('email_context', 'Read Postmark server metadata.')],
   },
   dropbox: {
@@ -1423,16 +1507,18 @@ export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
     tags: ['developer tools', 'api', 'api_key'],
     setupSteps: ['Create a Postman API key.', 'Paste and test.'],
     supportedFeatures: ['collections', 'apis'],
-    httpTest: apiKeyHeaderTest('https://api.getpostman.com/me', 'X-Api-Key', 'api_key', 'user.email'),
+    httpTest: apiKeyHeaderTest(
+      'https://api.getpostman.com/me',
+      'X-Api-Key',
+      'api_key',
+      'user.email',
+    ),
     tools: [readTool('api_context', 'Read Postman user identity.')],
   },
   algolia: {
     provider: 'Algolia',
     authType: 'api_key',
-    fields: [
-      text('app_id', 'Application ID', '...'),
-      token('api_key', 'Admin API key', '...'),
-    ],
+    fields: [text('app_id', 'Application ID', '...'), token('api_key', 'Admin API key', '...')],
     credentialUrl: 'https://dashboard.algolia.com/account/api-keys/all',
     docsUrl: 'https://www.algolia.com/doc/rest-api/search/',
     status: 'configurable',
@@ -1445,7 +1531,7 @@ export const PROVIDER_OVERRIDES: Record<string, RegistryPartial> = {
     },
     tools: [readTool('search_context', 'List Algolia indexes.')],
   },
-  'launchdarkly': {
+  launchdarkly: {
     provider: 'LaunchDarkly',
     authType: 'token',
     fields: [token('token', 'Access token', 'api-...')],
@@ -1487,7 +1573,8 @@ const CATEGORY_DEFAULTS: Record<string, Partial<RegistryPartial>> = {
   },
   'Microsoft 365': {
     ...OAUTH_CATEGORY_DEFAULTS,
-    credentialUrl: 'https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade',
+    credentialUrl:
+      'https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade',
     docsUrl: 'https://learn.microsoft.com/graph/auth/',
     tags: ['microsoft', 'oauth', 'productivity'],
   },

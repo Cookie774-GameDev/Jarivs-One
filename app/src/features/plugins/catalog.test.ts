@@ -26,6 +26,7 @@ describe('plugin catalog', () => {
         'mock-connector',
         'gmail',
         'google-drive',
+        'canva',
       ]),
     );
     expect(implemented.every((plugin) => plugin.tools.length > 0)).toBe(true);
@@ -90,6 +91,41 @@ describe('plugin catalog', () => {
     expect(JSON.stringify(drive)).not.toMatch(/client_secret/i);
   });
 
+  it('publishes Canva as a fixed implemented Connect API provider with rotating OAuth credentials', () => {
+    const canva = PLUGIN_CATALOG.find((plugin) => plugin.id === 'canva');
+
+    expect(canva).toMatchObject({
+      id: 'canva',
+      provider: 'Canva',
+      authType: 'oauth',
+      status: 'implemented',
+      fields: [
+        { id: 'client_id', secret: false, required: true },
+        { id: 'client_secret', secret: true, required: true },
+        { id: 'refresh_token', secret: true, required: true },
+      ],
+      supportedFeatures: [
+        'design search and exact reads',
+        'brand template search',
+        'brand template dataset inspection',
+        'approved preset design creation',
+        'structured text autofill from eligible brand templates',
+        'validated edit and view links',
+      ],
+      tools: [
+        { name: 'designs_search', readOnly: true },
+        { name: 'design_read', readOnly: true },
+        { name: 'brand_templates_search', readOnly: true },
+        { name: 'brand_template_dataset_read', readOnly: true },
+        { name: 'autofill_job_read', readOnly: true },
+        { name: 'design_create', readOnly: false },
+        { name: 'design_autofill', readOnly: false },
+      ],
+    });
+    expect(canva?.limitations).toMatch(/stable Connect API|provider review|autofill/i);
+    expect(JSON.stringify(canva)).not.toMatch(/cnvca-|refresh-token/i);
+  });
+
   it('excludes needs_credentials placeholders from the curated catalog', () => {
     expect(PLUGIN_CATALOG.every((plugin) => plugin.status !== 'needs_credentials')).toBe(true);
   });
@@ -98,11 +134,11 @@ describe('plugin catalog', () => {
     const stats = catalogStats();
     expect(stats).toEqual({
       total: 112,
-      implemented: 8,
-      configurable: 104,
+      implemented: 9,
+      configurable: 103,
       needsCredentials: 0,
       blocked: 0,
-      withHttpTest: 87,
+      withHttpTest: 86,
     });
   });
 });
