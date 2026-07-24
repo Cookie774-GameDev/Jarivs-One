@@ -47,7 +47,7 @@ export function JarvisVoiceTranscript({
       ref={transcriptRef}
       role="log"
       aria-label="Voice session transcript"
-      aria-live="polite"
+      aria-live="off"
       data-no-panel-drag="true"
       onScroll={() => {
         const node = transcriptRef.current;
@@ -115,7 +115,10 @@ export function JarvisVoiceTranscript({
             <UserRound className="h-2 w-2" />
           </span>
           <span className="font-medium text-info">You</span>
-          <span className="min-w-0 whitespace-pre-wrap break-words text-foreground/75">
+          <span
+            className="min-w-0 whitespace-pre-wrap break-words text-foreground/75"
+            data-live-announcement="off"
+          >
             {partial}
           </span>
         </div>

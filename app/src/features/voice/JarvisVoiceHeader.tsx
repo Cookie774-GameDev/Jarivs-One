@@ -94,6 +94,9 @@ export function JarvisVoiceHeader({
             {personaName}
           </span>
           <span
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
             className={cn(
               'flex items-center gap-1 text-[10px] leading-4',
               state === 'error' ? 'text-destructive' : 'text-muted-foreground',

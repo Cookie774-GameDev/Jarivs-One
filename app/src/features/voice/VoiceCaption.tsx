@@ -27,8 +27,8 @@ export function VoiceCaption() {
   return (
     <div
       className="pointer-events-none fixed inset-x-0 bottom-6 z-[55] flex justify-center px-6"
-      aria-live="polite"
-      aria-atomic="true"
+      aria-label="Live voice caption"
+      aria-live="off"
     >
       <AnimatePresence>
         {visible && (
