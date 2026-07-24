@@ -53,6 +53,9 @@ export function createJarvisCommandCenterStore(input: {
   let liveGeneration = 0;
   let loadedLiveRunId: string | undefined;
   let liveRequestRunId: string | undefined;
+  let liveRefreshPending = false;
+  let liveSubscriptionRunId: string | undefined;
+  let disposeLiveSubscription: () => void = () => undefined;
   const listeners = new Set<() => void>();
 
   const publish = (next: JarvisCommandCenterSnapshot) => {
@@ -64,17 +67,33 @@ export function createJarvisCommandCenterStore(input: {
   const invalidateLiveRequest = () => {
     liveGeneration += 1;
     liveRequestRunId = undefined;
+    liveRefreshPending = false;
   };
 
   const mayReadLive = (run: JarvisRun | undefined) =>
     !!run && snapshot.expansion === 'expanded' && snapshot.activeTab === 'live_systems';
 
+  const clearLiveSubscription = () => {
+    disposeLiveSubscription();
+    disposeLiveSubscription = () => undefined;
+    liveSubscriptionRunId = undefined;
+  };
+
   const loadLiveSystems = async (run: JarvisRun, force = false): Promise<void> => {
-    if (!mayReadLive(run)) return;
+    if (disposed || !mayReadLive(run)) return;
     if (!force && loadedLiveRunId === run.id && snapshot.liveSystems.state === 'ready') return;
-    if (liveRequestRunId === run.id) return;
+    if (liveRequestRunId === run.id) {
+      if (force) liveRefreshPending = true;
+      return;
+    }
     const generation = ++liveGeneration;
     liveRequestRunId = run.id;
+    liveRefreshPending = false;
+    const flushPendingRefresh = () => {
+      const shouldRefresh = liveRefreshPending;
+      liveRefreshPending = false;
+      if (shouldRefresh) void loadLiveSystems(run, true);
+    };
     publish({ ...snapshot, liveSystems: { state: 'loading' } });
     try {
       const result = await input.dataPort.getLiveEvidenceSnapshot({
@@ -98,6 +117,7 @@ export function createJarvisCommandCenterStore(input: {
           ...snapshot,
           liveSystems: { state: 'unavailable', reason: LIVE_EVIDENCE_UNAVAILABLE },
         });
+        flushPendingRefresh();
         return;
       }
       if (!isJarvisCommandCenterLiveSnapshotValid(result, run)) {
@@ -106,6 +126,7 @@ export function createJarvisCommandCenterStore(input: {
           ...snapshot,
           liveSystems: { state: 'unavailable', reason: LIVE_EVIDENCE_INVALID },
         });
+        flushPendingRefresh();
         return;
       }
       loadedLiveRunId = run.id;
@@ -113,6 +134,7 @@ export function createJarvisCommandCenterStore(input: {
         ...snapshot,
         liveSystems: { state: 'ready', nodes: selectLiveSystems(result, run) },
       });
+      flushPendingRefresh();
     } catch {
       if (
         !disposed &&
@@ -127,8 +149,27 @@ export function createJarvisCommandCenterStore(input: {
           ...snapshot,
           liveSystems: { state: 'unavailable', reason: LIVE_EVIDENCE_UNAVAILABLE },
         });
+        flushPendingRefresh();
       }
     }
+  };
+
+  const syncLiveSubscription = () => {
+    const run = snapshot.currentRun;
+    const nextRunId =
+      mayReadLive(run) && input.dataPort.subscribeLiveEvidence ? run?.id : undefined;
+    if (nextRunId === liveSubscriptionRunId) return;
+    clearLiveSubscription();
+    if (!nextRunId || !input.dataPort.subscribeLiveEvidence) return;
+    liveSubscriptionRunId = nextRunId;
+    disposeLiveSubscription = input.dataPort.subscribeLiveEvidence(
+      { accountId: input.accountId, runId: nextRunId },
+      () => {
+        const currentRun = snapshot.currentRun;
+        if (!currentRun || currentRun.id !== nextRunId || !mayReadLive(currentRun)) return;
+        void loadLiveSystems(currentRun, true);
+      },
+    );
   };
 
   const refresh = async (forceLive = false): Promise<void> => {
@@ -158,6 +199,7 @@ export function createJarvisCommandCenterStore(input: {
           liveSystems: { state: 'not_loaded' },
           error: undefined,
         });
+        syncLiveSubscription();
         return;
       }
 
@@ -171,6 +213,9 @@ export function createJarvisCommandCenterStore(input: {
         liveSystems: runChanged ? { state: 'not_loaded' } : snapshot.liveSystems,
         error: undefined,
       });
+      syncLiveSubscription();
+
+      if (snapshot.expansion !== 'expanded') return;
 
       const [events, artifacts] = await Promise.all([
         input.dataPort.getEventsForRun({
@@ -194,6 +239,7 @@ export function createJarvisCommandCenterStore(input: {
         liveSystems: runChanged ? { state: 'not_loaded' } : snapshot.liveSystems,
         error: undefined,
       });
+      syncLiveSubscription();
       if (mayReadLive(currentRun)) await loadLiveSystems(currentRun, forceLive);
     } catch {
       if (!disposed && generation === refreshGeneration) {
@@ -205,7 +251,7 @@ export function createJarvisCommandCenterStore(input: {
   const disposePortSubscription = input.dataPort.subscribe(
     input.accountId,
     input.chatId,
-    () => void refresh(true),
+    () => void refresh(),
   );
   void refresh();
 
@@ -220,18 +266,14 @@ export function createJarvisCommandCenterStore(input: {
       if (disposed || expansion === snapshot.expansion) return;
       if (expansion === 'collapsed') invalidateLiveRequest();
       publish({ ...snapshot, expansion });
-      if (
-        expansion === 'expanded' &&
-        snapshot.currentRun &&
-        snapshot.activeTab === 'live_systems'
-      ) {
-        void loadLiveSystems(snapshot.currentRun);
-      }
+      syncLiveSubscription();
+      if (expansion === 'expanded') void refresh();
     },
     setActiveTab(activeTab) {
       if (disposed || activeTab === snapshot.activeTab) return;
       if (activeTab !== 'live_systems') invalidateLiveRequest();
       publish({ ...snapshot, activeTab });
+      syncLiveSubscription();
       if (
         activeTab === 'live_systems' &&
         snapshot.currentRun &&
@@ -246,6 +288,7 @@ export function createJarvisCommandCenterStore(input: {
       disposed = true;
       refreshGeneration += 1;
       invalidateLiveRequest();
+      clearLiveSubscription();
       disposePortSubscription();
       listeners.clear();
     },

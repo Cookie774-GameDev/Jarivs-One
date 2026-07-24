@@ -64,6 +64,10 @@ export type JarvisCommandCenterDataPort = {
     runId: string;
   }): Promise<JarvisLiveEvidenceSnapshot | undefined>;
   subscribe(accountId: string, chatId: string, listener: () => void): () => void;
+  subscribeLiveEvidence?(
+    input: { accountId: string; runId: string },
+    listener: () => void,
+  ): () => void;
 };
 
 export type JarvisCommandCenterSnapshot = {

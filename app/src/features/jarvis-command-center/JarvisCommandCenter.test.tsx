@@ -406,7 +406,8 @@ describe('JarvisCommandCenter', () => {
 
     expect(await screen.findByText('Waiting for approval')).not.toBeNull();
     expect(screen.queryByRole('button', { name: /approve|deny/i })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Open approval in chat' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Expand Command Center' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Open approval in chat' }));
 
     expect(readPendingJarvisApprovalNavigation()).toEqual({
       accountId: 'account-1',

@@ -51,6 +51,14 @@ function liveSnapshot(
   };
 }
 
+function liveSnapshotForRun(runId: string): JarvisLiveEvidenceSnapshot {
+  const snapshot = liveSnapshot({ runId });
+  return {
+    ...snapshot,
+    nodes: snapshot.nodes.map((node) => ({ ...node, runId })),
+  };
+}
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => {
@@ -60,16 +68,22 @@ function deferred<T>() {
 }
 
 function setup(snapshot: JarvisLiveEvidenceSnapshot | undefined = liveSnapshot()) {
-  let subscriptionListener: (() => void) | undefined;
-  const subscriptionDispose = vi.fn();
+  let journalListener: (() => void) | undefined;
+  let liveListener: (() => void) | undefined;
+  const journalDispose = vi.fn();
+  const liveDispose = vi.fn();
   const dataPort: JarvisCommandCenterDataPort = {
     getRunsForChat: vi.fn(async () => [run()]),
     getEventsForRun: vi.fn(async () => []),
     getArtifactsForRun: vi.fn(async () => []),
     getLiveEvidenceSnapshot: vi.fn(async () => snapshot),
     subscribe: vi.fn((_accountId, _chatId, listener) => {
-      subscriptionListener = listener;
-      return subscriptionDispose;
+      journalListener = listener;
+      return journalDispose;
+    }),
+    subscribeLiveEvidence: vi.fn((_scope, listener) => {
+      liveListener = listener;
+      return liveDispose;
     }),
   };
   const store = createJarvisCommandCenterStore({
@@ -77,14 +91,31 @@ function setup(snapshot: JarvisLiveEvidenceSnapshot | undefined = liveSnapshot()
     chatId: 'chat-1',
     dataPort,
   });
-  return { store, dataPort, subscriptionDispose, emit: () => subscriptionListener?.() };
+  return {
+    store,
+    dataPort,
+    journalDispose,
+    liveDispose,
+    emitJournal: () => journalListener?.(),
+    emitLive: () => liveListener?.(),
+  };
 }
 
 describe('createJarvisCommandCenterStore', () => {
-  it('subscribes instead of polling and exposes no lifecycle mutation API', async () => {
+  it('keeps collapsed journal updates lightweight, subscribes instead of polling, and exposes no mutation API', async () => {
     vi.useFakeTimers();
-    const { store, dataPort } = setup();
-    await store.refresh();
+    const { store, dataPort, emitJournal } = setup();
+    await vi.waitFor(() => expect(store.getSnapshot().currentRun?.id).toBe('run-1'));
+    expect(dataPort.getRunsForChat).toHaveBeenCalledTimes(1);
+    expect(dataPort.getEventsForRun).not.toHaveBeenCalled();
+    expect(dataPort.getArtifactsForRun).not.toHaveBeenCalled();
+    expect(dataPort.subscribeLiveEvidence).not.toHaveBeenCalled();
+
+    emitJournal();
+    await vi.waitFor(() => expect(dataPort.getRunsForChat).toHaveBeenCalledTimes(2));
+    expect(dataPort.getEventsForRun).not.toHaveBeenCalled();
+    expect(dataPort.getArtifactsForRun).not.toHaveBeenCalled();
+    expect(dataPort.subscribeLiveEvidence).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(60_000);
 
     expect(dataPort.subscribe).toHaveBeenCalledTimes(1);
@@ -97,9 +128,12 @@ describe('createJarvisCommandCenterStore', () => {
 
   it('uses exact default read limits and does not read live evidence while collapsed or Outputs is active', async () => {
     const { store, dataPort } = setup();
-    await store.refresh();
+    await vi.waitFor(() => expect(store.getSnapshot().currentRun?.id).toBe('run-1'));
+    expect(dataPort.getEventsForRun).not.toHaveBeenCalled();
+    expect(dataPort.getArtifactsForRun).not.toHaveBeenCalled();
+
     store.setExpansion('expanded');
-    await store.refresh();
+    await vi.waitFor(() => expect(dataPort.getArtifactsForRun).toHaveBeenCalledTimes(1));
 
     expect(dataPort.getRunsForChat).toHaveBeenLastCalledWith({
       accountId: 'account-1',
@@ -121,17 +155,21 @@ describe('createJarvisCommandCenterStore', () => {
 
   it('retains the canonical run when dependent event or artifact projection reads fail', async () => {
     const { store, dataPort } = setup();
+    await vi.waitFor(() => expect(store.getSnapshot().currentRun?.id).toBe('run-1'));
     vi.mocked(dataPort.getArtifactsForRun).mockRejectedValueOnce(new Error('projection failed'));
 
-    await store.refresh();
+    store.setExpansion('expanded');
+    await vi.waitFor(() =>
+      expect(store.getSnapshot().error).toBe('Command Center data is unavailable.'),
+    );
 
     expect(store.getSnapshot().currentRun).toMatchObject({ id: 'run-1', status: 'running' });
     expect(store.getSnapshot().error).toBe('Command Center data is unavailable.');
   });
 
   it('performs one lazy exact-account/run read on expanded Live Systems and reuses it for the same run', async () => {
-    const { store, dataPort } = setup();
-    await store.refresh();
+    const { store, dataPort, liveDispose } = setup();
+    await vi.waitFor(() => expect(store.getSnapshot().currentRun?.id).toBe('run-1'));
     store.setExpansion('expanded');
     store.setActiveTab('live_systems');
     await vi.waitFor(() => expect(store.getSnapshot().liveSystems.state).toBe('ready'));
@@ -141,10 +179,74 @@ describe('createJarvisCommandCenterStore', () => {
       accountId: 'account-1',
       runId: 'run-1',
     });
+    expect(dataPort.subscribeLiveEvidence).toHaveBeenCalledWith(
+      { accountId: 'account-1', runId: 'run-1' },
+      expect.any(Function),
+    );
     store.setExpansion('collapsed');
+    expect(liveDispose).toHaveBeenCalledTimes(1);
     store.setExpansion('expanded');
     await Promise.resolve();
     expect(dataPort.getLiveEvidenceSnapshot).toHaveBeenCalledTimes(1);
+    expect(dataPort.subscribeLiveEvidence).toHaveBeenCalledTimes(2);
+    store.setActiveTab('outputs');
+    expect(liveDispose).toHaveBeenCalledTimes(2);
+  });
+
+  it('refreshes only the live snapshot for an exact-run live notification', async () => {
+    const { store, dataPort, emitLive } = setup();
+    await vi.waitFor(() => expect(store.getSnapshot().currentRun?.id).toBe('run-1'));
+    store.setExpansion('expanded');
+    store.setActiveTab('live_systems');
+    await vi.waitFor(() => expect(store.getSnapshot().liveSystems.state).toBe('ready'));
+
+    vi.mocked(dataPort.getRunsForChat).mockClear();
+    vi.mocked(dataPort.getEventsForRun).mockClear();
+    vi.mocked(dataPort.getArtifactsForRun).mockClear();
+    vi.mocked(dataPort.getLiveEvidenceSnapshot).mockClear();
+    emitLive();
+    await vi.waitFor(() => expect(dataPort.getLiveEvidenceSnapshot).toHaveBeenCalledTimes(1));
+
+    expect(dataPort.getRunsForChat).not.toHaveBeenCalled();
+    expect(dataPort.getEventsForRun).not.toHaveBeenCalled();
+    expect(dataPort.getArtifactsForRun).not.toHaveBeenCalled();
+  });
+
+  it('coalesces a live notification received during an in-flight snapshot into one follow-up read', async () => {
+    const pending = deferred<JarvisLiveEvidenceSnapshot | undefined>();
+    const { store, dataPort, emitLive } = setup();
+    vi.mocked(dataPort.getLiveEvidenceSnapshot)
+      .mockReturnValueOnce(pending.promise)
+      .mockResolvedValueOnce(liveSnapshot());
+    await vi.waitFor(() => expect(store.getSnapshot().currentRun?.id).toBe('run-1'));
+    store.setExpansion('expanded');
+    store.setActiveTab('live_systems');
+    await vi.waitFor(() => expect(dataPort.getLiveEvidenceSnapshot).toHaveBeenCalledTimes(1));
+
+    emitLive();
+    expect(dataPort.getLiveEvidenceSnapshot).toHaveBeenCalledTimes(1);
+    pending.resolve(liveSnapshot());
+
+    await vi.waitFor(() => expect(dataPort.getLiveEvidenceSnapshot).toHaveBeenCalledTimes(2));
+    expect(dataPort.getRunsForChat).toHaveBeenCalledTimes(2);
+    expect(dataPort.getEventsForRun).toHaveBeenCalledTimes(1);
+    expect(dataPort.getArtifactsForRun).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores a retained live callback after the store is disposed', async () => {
+    const { store, dataPort, emitLive, liveDispose } = setup();
+    await vi.waitFor(() => expect(store.getSnapshot().currentRun?.id).toBe('run-1'));
+    store.setExpansion('expanded');
+    store.setActiveTab('live_systems');
+    await vi.waitFor(() => expect(store.getSnapshot().liveSystems.state).toBe('ready'));
+    vi.mocked(dataPort.getLiveEvidenceSnapshot).mockClear();
+
+    store.dispose();
+    emitLive();
+    await Promise.resolve();
+
+    expect(liveDispose).toHaveBeenCalledTimes(1);
+    expect(dataPort.getLiveEvidenceSnapshot).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -170,7 +272,7 @@ describe('createJarvisCommandCenterStore', () => {
     ],
   ])('rejects the entire invalid live result for %s', async (_label, invalid) => {
     const { store } = setup(invalid);
-    await store.refresh();
+    await vi.waitFor(() => expect(store.getSnapshot().currentRun?.id).toBe('run-1'));
     store.setExpansion('expanded');
     store.setActiveTab('live_systems');
 
@@ -183,9 +285,9 @@ describe('createJarvisCommandCenterStore', () => {
 
   it('suppresses stale live responses after collapse, tab, and run changes', async () => {
     const pending = deferred<JarvisLiveEvidenceSnapshot | undefined>();
-    const { store, dataPort, emit } = setup();
+    const { store, dataPort, emitJournal, liveDispose } = setup();
     vi.mocked(dataPort.getLiveEvidenceSnapshot).mockReturnValueOnce(pending.promise);
-    await store.refresh();
+    await vi.waitFor(() => expect(store.getSnapshot().currentRun?.id).toBe('run-1'));
     store.setExpansion('expanded');
     store.setActiveTab('live_systems');
     await vi.waitFor(() => expect(store.getSnapshot().liveSystems.state).toBe('loading'));
@@ -196,17 +298,25 @@ describe('createJarvisCommandCenterStore', () => {
     await Promise.resolve();
     expect(store.getSnapshot().liveSystems.state).not.toBe('ready');
 
+    store.setActiveTab('live_systems');
+    await vi.waitFor(() => expect(store.getSnapshot().liveSystems.state).toBe('ready'));
+    vi.mocked(dataPort.getLiveEvidenceSnapshot).mockResolvedValueOnce(liveSnapshotForRun('run-2'));
     vi.mocked(dataPort.getRunsForChat).mockResolvedValue([run({ id: 'run-2' })]);
-    emit();
+    emitJournal();
     await vi.waitFor(() => expect(store.getSnapshot().currentRun?.id).toBe('run-2'));
-    expect(store.getSnapshot().liveSystems).toEqual({ state: 'not_loaded' });
+    await vi.waitFor(() => expect(store.getSnapshot().liveSystems.state).toBe('ready'));
+    expect(liveDispose).toHaveBeenCalledTimes(2);
+    expect(dataPort.subscribeLiveEvidence).toHaveBeenLastCalledWith(
+      { accountId: 'account-1', runId: 'run-2' },
+      expect.any(Function),
+    );
   });
 
   it('isolates a stale cross-account same-run response and cleans up', async () => {
     const pending = deferred<JarvisLiveEvidenceSnapshot | undefined>();
-    const { store, dataPort, subscriptionDispose } = setup();
+    const { store, dataPort, journalDispose, liveDispose } = setup();
     vi.mocked(dataPort.getLiveEvidenceSnapshot).mockReturnValueOnce(pending.promise);
-    await store.refresh();
+    await vi.waitFor(() => expect(store.getSnapshot().currentRun?.id).toBe('run-1'));
     store.setExpansion('expanded');
     store.setActiveTab('live_systems');
     store.dispose();
@@ -214,7 +324,8 @@ describe('createJarvisCommandCenterStore', () => {
     await pending.promise;
     await Promise.resolve();
 
-    expect(subscriptionDispose).toHaveBeenCalledTimes(1);
+    expect(journalDispose).toHaveBeenCalledTimes(1);
+    expect(liveDispose).toHaveBeenCalledTimes(1);
     expect(store.getSnapshot().liveSystems.state).not.toBe('ready');
   });
 });

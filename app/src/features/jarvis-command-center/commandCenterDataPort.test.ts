@@ -26,14 +26,6 @@ function run(id = 'run-1', chatId = 'chat-1'): JarvisRun {
   };
 }
 
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
-}
-
 function setup() {
   const runs = { listByAccount: vi.fn(async () => [run(), run('run-2', 'chat-2')]) };
   const events = { listByRun: vi.fn(async () => []) };
@@ -132,45 +124,41 @@ describe('createJarvisCommandCenterDataPort', () => {
     expect(snapshot).toHaveBeenCalledTimes(1);
   });
 
-  it('combines journal and current-run live subscriptions, replaces the live subscription, and disposes both', async () => {
-    const { port, runs, liveSubscribe, journalDispose, emitJournal } = setup();
-    const firstLiveDispose = vi.fn();
-    const secondLiveDispose = vi.fn();
-    liveSubscribe.mockReturnValueOnce(firstLiveDispose).mockReturnValueOnce(secondLiveDispose);
-    const listener = vi.fn();
+  it('keeps journal and exact-run live subscriptions separate with no subscription-time run scan', () => {
+    const { port, runs, liveSubscribe, journalDispose, subscribeJournal, emitJournal } = setup();
+    const liveDispose = vi.fn();
+    liveSubscribe.mockReturnValue(liveDispose);
+    const journalListener = vi.fn();
+    const liveListener = vi.fn();
 
-    const dispose = port.subscribe('account-1', 'chat-1', listener);
-    await vi.waitFor(() => expect(liveSubscribe).toHaveBeenCalledWith('run-1', listener));
+    const disposeJournal = port.subscribe('account-1', 'chat-1', journalListener);
+    expect(subscribeJournal).toHaveBeenCalledWith('account-1', 'chat-1', expect.any(Function));
+    expect(runs.listByAccount).not.toHaveBeenCalled();
+    expect(liveSubscribe).not.toHaveBeenCalled();
 
-    runs.listByAccount.mockResolvedValue([run('run-3')]);
     emitJournal();
-    await vi.waitFor(() => expect(liveSubscribe).toHaveBeenCalledWith('run-3', listener));
-    expect(firstLiveDispose).toHaveBeenCalledTimes(1);
+    expect(journalListener).toHaveBeenCalledTimes(1);
+    expect(runs.listByAccount).not.toHaveBeenCalled();
 
-    dispose();
+    const disposeLive = port.subscribeLiveEvidence?.(
+      { accountId: 'account-1', runId: 'run-1' },
+      liveListener,
+    );
+    expect(liveSubscribe).toHaveBeenCalledWith('run-1', liveListener);
+
+    disposeJournal();
+    disposeLive?.();
     expect(journalDispose).toHaveBeenCalledTimes(1);
-    expect(secondLiveDispose).toHaveBeenCalledTimes(1);
+    expect(liveDispose).toHaveBeenCalledTimes(1);
   });
 
-  it('does not let an older subscription lookup replace the newest exact-run subscription', async () => {
-    const { port, runs, liveSubscribe, emitJournal } = setup();
-    const older = deferred<JarvisRun[]>();
-    runs.listByAccount
-      .mockImplementationOnce(() => older.promise)
-      .mockResolvedValueOnce([run('run-new')]);
+  it('rejects a cross-account live subscription before reaching the read port', () => {
+    const { port, liveSubscribe } = setup();
 
-    const dispose = port.subscribe('account-1', 'chat-1', vi.fn());
-    emitJournal();
-    await vi.waitFor(() =>
-      expect(liveSubscribe).toHaveBeenCalledWith('run-new', expect.any(Function)),
-    );
-
-    older.resolve([run('run-old')]);
-    await older.promise;
-    await Promise.resolve();
-
-    expect(liveSubscribe).not.toHaveBeenCalledWith('run-old', expect.any(Function));
-    dispose();
+    expect(() =>
+      port.subscribeLiveEvidence?.({ accountId: 'account-2', runId: 'run-1' }, vi.fn()),
+    ).toThrow('jarvis_command_center_account_mismatch');
+    expect(liveSubscribe).not.toHaveBeenCalled();
   });
 
   it('imports only repositories and exact immutable Task 18 contract types', () => {

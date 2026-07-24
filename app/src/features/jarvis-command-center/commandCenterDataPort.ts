@@ -9,10 +9,8 @@ import type {
   JarvisEventRepository,
   JarvisRunRepository,
 } from '@/lib/db/jarvisRepositories';
-import { selectCurrentRun } from './selectors';
 import type { JarvisCommandCenterDataPort } from './types';
 
-const SUBSCRIPTION_RUN_LIMIT = 100;
 const RUN_REPOSITORY_READ_LIMIT = 500;
 
 function boundedLimit(requestedLimit: number): number {
@@ -65,45 +63,11 @@ export function createJarvisCommandCenterDataPort(input: {
     },
     subscribe(accountId, chatId, listener) {
       assertLiveAccount(accountId);
-      let disposed = false;
-      let runId: string | undefined;
-      let synchronizationGeneration = 0;
-      let disposeLive: () => void = () => undefined;
-
-      const syncLiveSubscription = async () => {
-        const generation = ++synchronizationGeneration;
-        try {
-          const runs = await port.getRunsForChat({
-            accountId,
-            chatId,
-            limit: SUBSCRIPTION_RUN_LIMIT,
-          });
-          if (disposed || generation !== synchronizationGeneration) return;
-          const nextRunId = selectCurrentRun(runs, accountId, chatId)?.id;
-          if (nextRunId === runId) return;
-          disposeLive();
-          disposeLive = () => undefined;
-          runId = nextRunId;
-          if (nextRunId) disposeLive = input.liveEvidence.subscribe(nextRunId, listener);
-        } catch {
-          // Repository/read-port failures are reported by the store's bounded refresh.
-        }
-      };
-
-      const disposeJournal = input.subscribeJournal(accountId, chatId, () => {
-        if (disposed) return;
-        listener();
-        void syncLiveSubscription();
-      });
-      void syncLiveSubscription();
-
-      return () => {
-        if (disposed) return;
-        disposed = true;
-        synchronizationGeneration += 1;
-        disposeJournal();
-        disposeLive();
-      };
+      return input.subscribeJournal(accountId, chatId, listener);
+    },
+    subscribeLiveEvidence(request, listener) {
+      assertLiveAccount(request.accountId);
+      return input.liveEvidence.subscribe(request.runId, listener);
     },
   };
 
