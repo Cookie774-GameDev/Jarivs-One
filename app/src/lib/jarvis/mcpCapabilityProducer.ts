@@ -6,8 +6,10 @@ import {
   type JarvisIntegrationCapability,
 } from './integrationCapability';
 
-const SAFE_SERVER_ID = /^[^\s\u0000-\u001f\u007f]{1,160}$/u;
-const DEFAULT_LOCAL_SERVER_IDS = Object.freeze(['vibespace-local']);
+const SAFE_SERVER_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$/u;
+const SAFE_TOOL_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/u;
+const MAX_EXPOSED_TOOLS = 64;
+const MAX_TOOL_DISCOVERY_AGE_MS = 5 * 60_000;
 
 const STATE_PRECEDENCE: Readonly<Record<McpServerState, number>> = Object.freeze({
   failed: 0,
@@ -21,7 +23,6 @@ export interface JarvisMcpCapabilityProducerInput {
   accountId: string;
   capturedAt: number;
   statuses: readonly McpServerStatus[];
-  localServerIds?: readonly string[];
 }
 
 export interface JarvisMcpCapabilityProjection {
@@ -29,15 +30,12 @@ export interface JarvisMcpCapabilityProjection {
   readonly refs: readonly Readonly<JarvisCapabilityRef>[];
 }
 
-function canonicalExternalStatuses(
-  statuses: readonly McpServerStatus[],
-  localServerIds: ReadonlySet<string>,
-): McpServerStatus[] {
+function canonicalExternalStatuses(statuses: readonly McpServerStatus[]): McpServerStatus[] {
   const canonical = [...statuses]
     .filter(
       (status) =>
         SAFE_SERVER_ID.test(status.id) &&
-        !localServerIds.has(status.id) &&
+        status.kind === 'external_mcp' &&
         Object.hasOwn(STATE_PRECEDENCE, status.state),
     )
     .sort((left, right) => {
@@ -56,13 +54,44 @@ function statusEvidenceRef(accountId: string, status: McpServerStatus, capturedA
   return `mcp-manager-status:${accountId}:${status.id}:${status.state}:${capturedAt}`;
 }
 
+function discoveredOperations(status: McpServerStatus, capturedAt: number): string[] {
+  if (
+    status.state !== 'running' ||
+    status.healthy !== true ||
+    !Number.isFinite(status.toolsDiscoveredAt) ||
+    (status.toolsDiscoveredAt as number) < 0 ||
+    (status.toolsDiscoveredAt as number) > capturedAt ||
+    capturedAt - (status.toolsDiscoveredAt as number) > MAX_TOOL_DISCOVERY_AGE_MS ||
+    !Array.isArray(status.exposedTools) ||
+    status.exposedTools.length > MAX_EXPOSED_TOOLS
+  ) {
+    return [];
+  }
+  if (
+    status.exposedTools.some(
+      (operation) => typeof operation !== 'string' || !SAFE_TOOL_ID.test(operation),
+    )
+  ) {
+    return [];
+  }
+  return [...new Set(status.exposedTools)].sort((left, right) =>
+    left.localeCompare(right, 'en', { numeric: true, sensitivity: 'variant' }),
+  );
+}
+
+function discoveryEvidenceRef(accountId: string, status: McpServerStatus): string {
+  return `mcp-manager-discovery:${accountId}:${status.id}:${status.toolsDiscoveredAt}`;
+}
+
 export function createJarvisMcpCapabilityProjection(
   input: JarvisMcpCapabilityProducerInput,
 ): Readonly<JarvisMcpCapabilityProjection> {
+  if (!Number.isSafeInteger(input.capturedAt) || input.capturedAt < 0) {
+    return deepFreezeJarvisCopy({ integrations: [], refs: [] });
+  }
   const integrations: JarvisIntegrationCapability[] = [];
   const refs: JarvisCapabilityRef[] = [];
-  const localServerIds = new Set(input.localServerIds ?? DEFAULT_LOCAL_SERVER_IDS);
-  const statuses = canonicalExternalStatuses(input.statuses, localServerIds);
+  const statuses = canonicalExternalStatuses(input.statuses);
 
   for (const status of statuses) {
     const connected = status.state === 'running' && status.healthy === true;
@@ -70,7 +99,14 @@ export function createJarvisMcpCapabilityProjection(
       status.state === 'failed' ||
       status.state === 'unhealthy' ||
       (status.state === 'running' && !status.healthy);
-    const evidenceRef = statusEvidenceRef(input.accountId, status, input.capturedAt);
+    const operations = discoveredOperations(status, input.capturedAt);
+    const hasDiscoveryEvidence = operations.length > 0;
+    const evidenceRef = hasDiscoveryEvidence
+      ? discoveryEvidenceRef(input.accountId, status)
+      : statusEvidenceRef(input.accountId, status, input.capturedAt);
+    const observedAt = hasDiscoveryEvidence
+      ? (status.toolsDiscoveredAt as number)
+      : input.capturedAt;
 
     integrations.push(
       createJarvisIntegrationCapability({
@@ -79,12 +115,12 @@ export function createJarvisMcpCapabilityProjection(
         accountId: input.accountId,
         kind: 'external_mcp_server',
         state: connected ? 'Connected' : 'Configuration available',
-        operations: [],
+        operations,
         evidence: connected
           ? {
               kind: 'connection_observation',
               ref: evidenceRef,
-              observedAt: input.capturedAt,
+              observedAt,
             }
           : {
               kind: 'configuration_metadata',
@@ -97,11 +133,11 @@ export function createJarvisMcpCapabilityProjection(
     refs.push({
       id: status.id,
       state: connected ? 'connected' : degraded ? 'degraded' : 'available',
-      operations: [],
+      operations,
       ...(connected || degraded
         ? {
             evidenceRef,
-            lastVerifiedAt: input.capturedAt,
+            lastVerifiedAt: observedAt,
           }
         : {}),
     });
