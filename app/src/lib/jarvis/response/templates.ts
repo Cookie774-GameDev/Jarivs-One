@@ -156,18 +156,15 @@ function narrationDefinition(
       return {
         mode: 'status',
         moment: 'routine_status',
-        lead: 'The action was cancelled before completion.',
+        lead: 'Jarvis was stopped.',
         details: [verifiedDetail('Action', input.actionLabel)],
       };
     case 'unavailable_connector':
       return {
         mode: 'warning',
         moment: 'important_warning',
-        lead: 'The connector is unavailable.',
-        details: [
-          verifiedDetail('Connector', input.connectorName),
-          verifiedDetail('Next action', input.nextAction),
-        ],
+        lead: `${input.connectorName} needs to be connected.`,
+        details: [verifiedDetail('Next action', input.nextAction)],
       };
     case 'missing_permission':
       return {
@@ -387,7 +384,8 @@ function narrationForFacts(
       {
         kind: 'partial',
         completedSummary: 'Some work completed.',
-        remainingSummary: 'Some work remains unfinished.',
+        remainingSummary:
+          'Some work remains unfinished. Review the failed or unfinished step and retry only the unfinished step if it is safe.',
       },
       cadenceState,
     );
@@ -413,7 +411,7 @@ function narrationForFacts(
       {
         kind: 'failure',
         actionLabel: 'Current action',
-        reason: 'The execution timed out',
+        reason: 'The execution timed out. Verify whether it completed before retrying',
       },
       cadenceState,
     );
@@ -457,7 +455,7 @@ function narrationForFacts(
       {
         kind: 'failure',
         actionLabel: 'Terminal operation',
-        reason: 'The terminal execution timed out',
+        reason: 'The terminal execution timed out. Verify whether it completed before retrying',
       },
       cadenceState,
     );

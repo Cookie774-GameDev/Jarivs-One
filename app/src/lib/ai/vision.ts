@@ -53,7 +53,12 @@ export function modelSupportsVision(provider: ProviderId, modelId: string): bool
         model.includes('vision')
       );
     case 'anthropic':
-      return model.includes('claude-3') || model.includes('claude-sonnet') || model.includes('claude-opus') || model.includes('claude-fable');
+      return (
+        model.includes('claude-3') ||
+        model.includes('claude-sonnet') ||
+        model.includes('claude-opus') ||
+        model.includes('claude-fable')
+      );
     case 'openrouter':
       return (
         model.includes('gemini') ||
@@ -75,8 +80,14 @@ export function selectionSupportsVision(
     return modelSupportsVision(selection.providerId, selection.modelId);
   }
   if (selection.mode === 'hive') {
-    const steps = stepsForPreset(selection.hiveId as Exclude<StackPresetId, 'off'>, 'general', customSteps);
-    return steps.length > 0 && steps.every((step) => modelSupportsVision(step.provider, step.model));
+    const steps = stepsForPreset(
+      selection.hiveId as Exclude<StackPresetId, 'off'>,
+      'general',
+      customSteps,
+    );
+    return (
+      steps.length > 0 && steps.every((step) => modelSupportsVision(step.provider, step.model))
+    );
   }
   return false;
 }
@@ -86,8 +97,7 @@ export function describeVisionRequirement(selection: VisionSelection): string {
     return 'Hive Balanced cannot use image attachments yet because every pipeline step must support vision.';
   }
   if (selection.mode === 'single') {
-    return 'The selected model cannot see images. Choose Gemini, GPT-4o/4.1/5, Claude 3+, or a vision-capable OpenRouter model.';
+    return 'This model cannot process the attached image. Choose Gemini, GPT-4o/4.1/5, Claude 3+, or another vision-capable model.';
   }
   return 'Choose a vision-capable model before attaching images.';
 }
-

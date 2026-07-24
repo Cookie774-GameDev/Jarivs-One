@@ -83,7 +83,12 @@ describe('modelSelection', () => {
   });
 
   it('blocks typed send when no model is selected', () => {
-    const ctx = { apiKeys: {}, offlineMode: false, plan: 'free' as const, defaultLocalModel: 'llama3.2' };
+    const ctx = {
+      apiKeys: {},
+      offlineMode: false,
+      plan: 'free' as const,
+      defaultLocalModel: 'llama3.2',
+    };
     const result = validateSendModelAccess('hello', EMPTY_CHAT_MODEL_SELECTION, ctx, []);
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -92,8 +97,15 @@ describe('modelSelection', () => {
   });
 
   it('blocks voice send when no model is selected', () => {
-    const ctx = { apiKeys: {}, offlineMode: false, plan: 'free' as const, defaultLocalModel: 'llama3.2' };
-    const result = validateSendModelAccess('hello', EMPTY_CHAT_MODEL_SELECTION, ctx, [], { voice: true });
+    const ctx = {
+      apiKeys: {},
+      offlineMode: false,
+      plan: 'free' as const,
+      defaultLocalModel: 'llama3.2',
+    };
+    const result = validateSendModelAccess('hello', EMPTY_CHAT_MODEL_SELECTION, ctx, [], {
+      voice: true,
+    });
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.message).toContain('JARVIS voice');
@@ -101,19 +113,23 @@ describe('modelSelection', () => {
   });
 
   it('does not treat Hive as default on fresh install', () => {
-    expect(migrateLegacyModelSelection({
-      stackPreset: 'off',
-      defaultProvider: 'google',
-      selectedModels: {},
-    })).toEqual(EMPTY_CHAT_MODEL_SELECTION);
+    expect(
+      migrateLegacyModelSelection({
+        stackPreset: 'off',
+        defaultProvider: 'google',
+        selectedModels: {},
+      }),
+    ).toEqual(EMPTY_CHAT_MODEL_SELECTION);
   });
 
   it('migrates legacy single-model selection', () => {
-    expect(migrateLegacyModelSelection({
-      stackPreset: 'off',
-      defaultProvider: 'groq',
-      selectedModels: { groq: 'llama-3.3-70b-versatile' },
-    })).toEqual({
+    expect(
+      migrateLegacyModelSelection({
+        stackPreset: 'off',
+        defaultProvider: 'groq',
+        selectedModels: { groq: 'llama-3.3-70b-versatile' },
+      }),
+    ).toEqual({
       mode: 'single',
       providerId: 'groq',
       modelId: 'llama-3.3-70b-versatile',
@@ -135,11 +151,13 @@ describe('modelSelection', () => {
   });
 
   it('keeps legacy persisted selections without inventing a connection', () => {
-    expect(normalizeChatModelSelection({
-      mode: 'single',
-      providerId: 'groq',
-      modelId: 'llama-3.3-70b-versatile',
-    })).toEqual({
+    expect(
+      normalizeChatModelSelection({
+        mode: 'single',
+        providerId: 'groq',
+        modelId: 'llama-3.3-70b-versatile',
+      }),
+    ).toEqual({
       mode: 'single',
       providerId: 'groq',
       modelId: 'llama-3.3-70b-versatile',
@@ -147,28 +165,40 @@ describe('modelSelection', () => {
   });
 
   it('fails closed when persisted connection metadata is incomplete', () => {
-    expect(normalizeChatModelSelection({
-      mode: 'single',
-      providerId: 'openai',
-      modelId: 'gpt-5.2',
-      connectionId: 'openai-codex',
-    })).toEqual(EMPTY_CHAT_MODEL_SELECTION);
+    expect(
+      normalizeChatModelSelection({
+        mode: 'single',
+        providerId: 'openai',
+        modelId: 'gpt-5.2',
+        connectionId: 'openai-codex',
+      }),
+    ).toEqual(EMPTY_CHAT_MODEL_SELECTION);
   });
 
   it('migrates legacy Hive selection to Balanced', () => {
-    expect(migrateLegacyModelSelection({
-      stackPreset: 'quality',
-      defaultProvider: 'google',
-      selectedModels: {},
-    })).toEqual({ mode: 'hive', hiveId: 'balanced' });
+    expect(
+      migrateLegacyModelSelection({
+        stackPreset: 'quality',
+        defaultProvider: 'google',
+        selectedModels: {},
+      }),
+    ).toEqual({ mode: 'hive', hiveId: 'balanced' });
   });
 
   it('only activates Hive when explicitly selected', () => {
     expect(
-      resolveActiveStackPreset(EMPTY_CHAT_MODEL_SELECTION, { matched: false, text: 'hi', preset: undefined, taskType: undefined }),
+      resolveActiveStackPreset(EMPTY_CHAT_MODEL_SELECTION, {
+        matched: false,
+        text: 'hi',
+        preset: undefined,
+        taskType: undefined,
+      }),
     ).toBe('off');
     expect(
-      resolveActiveStackPreset({ mode: 'hive', hiveId: 'balanced' }, { matched: false, text: 'hi', preset: undefined, taskType: undefined }),
+      resolveActiveStackPreset(
+        { mode: 'hive', hiveId: 'balanced' },
+        { matched: false, text: 'hi', preset: undefined, taskType: undefined },
+      ),
     ).toBe('balanced');
   });
 
@@ -270,7 +300,10 @@ describe('modelSelection', () => {
       attachments: { hasImages: true },
     });
     expect(send.ok).toBe(false);
-    if (!send.ok) expect(send.message).toContain('selected model cannot see images');
+    if (!send.ok) {
+      expect(send.message).toContain('This model cannot process the attached image.');
+      expect(send.message).toMatch(/Choose .*vision-capable/i);
+    }
   });
 
   it('blocks local image attachments until local multimodal payloads are implemented', () => {

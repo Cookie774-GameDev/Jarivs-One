@@ -25,12 +25,30 @@ describe('verifiedResponseTemplate', () => {
     ['completed', /completed successfully/i, /still running/i],
     ['partial', /partially complete|unfinished/i, /completed successfully/i],
     ['failed', /failed/i, /completed successfully/i],
-    ['cancelled', /cancelled before completion/i, /completed successfully/i],
+    ['cancelled', /Jarvis was stopped/i, /completed successfully/i],
     ['timed_out', /timed out/i, /completed successfully/i],
   ] as const)('narrates %s without contradicting it', (status, required, forbidden) => {
     const text = verifiedResponseTemplate(facts(status));
     expect(text).toMatch(required);
     expect(text).not.toMatch(forbidden);
+  });
+
+  it('gives concise, safe next actions for connector, timeout, partial, and stopped states', () => {
+    expect(
+      formatJarvisVerifiedNarration({
+        kind: 'unavailable_connector',
+        connectorName: 'Google Drive',
+        nextAction: 'Connect Google Drive in Settings',
+      }).text.replace(', sir', ''),
+    ).toBe('Google Drive needs to be connected. Next action: Connect Google Drive in Settings.');
+
+    expect(verifiedResponseTemplate(facts('partial'))).toMatch(
+      /Some work completed.*Some work remains unfinished.*retry only the unfinished step if it is safe/i,
+    );
+    expect(verifiedResponseTemplate(facts('timed_out'))).toMatch(
+      /timed out.*verify whether it completed before retrying/i,
+    );
+    expect(verifiedResponseTemplate(facts('cancelled'))).toMatch(/^Jarvis was stopped\./i);
   });
 
   it('distinguishes available, connected, and authenticated integrations', () => {
@@ -196,7 +214,7 @@ describe('formatJarvisVerifiedNarration', () => {
     [
       { kind: 'cancelled', actionLabel: 'Deploy preview' },
       'status',
-      ['cancelled', 'Deploy preview'],
+      ['Jarvis was stopped', 'Deploy preview'],
     ],
     [
       {
@@ -205,7 +223,7 @@ describe('formatJarvisVerifiedNarration', () => {
         nextAction: 'Connect Canva in Settings',
       },
       'warning',
-      ['unavailable', 'Canva', 'Connect Canva in Settings'],
+      ['Canva needs to be connected', 'Connect Canva in Settings'],
     ],
     [
       {
