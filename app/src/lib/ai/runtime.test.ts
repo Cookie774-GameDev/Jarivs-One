@@ -1882,7 +1882,7 @@ describe('startRuntimeListener agent routing', () => {
     stop();
   });
 
-  it('opens a deterministic three-question card when the user explicitly asks first', async () => {
+  it('opens one deterministic clarification question when the user explicitly asks first', async () => {
     const jarvis = agent('agent_jarvis', 'jarvis', 'You are Jarvis.');
     const chatId = 'chat_explicit_questions' as ChatId;
     const updateMessage = vi.fn(async () => undefined);
@@ -1928,7 +1928,7 @@ describe('startRuntimeListener agent routing', () => {
     const questionPart = final?.find((part) => part.kind === 'question_block');
     expect(questionPart?.kind).toBe('question_block');
     if (questionPart?.kind !== 'question_block') return;
-    expect(questionPart.block.questions).toHaveLength(3);
+    expect(questionPart.block.questions).toHaveLength(1);
     expect(questionPart.block.questions.every((question) => question.options?.length === 3)).toBe(
       true,
     );

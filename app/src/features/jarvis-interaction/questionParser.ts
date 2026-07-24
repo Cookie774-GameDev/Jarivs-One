@@ -4,7 +4,9 @@ import type { JarvisQuestion, JarvisQuestionBlock, JarvisQuestionOption } from '
 const QUESTION_FENCE_RE = /```jarvis_question\s*([\s\S]*?)```/gi;
 
 function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
 }
 
 function asString(value: unknown, fallback = ''): string {
@@ -76,7 +78,7 @@ function asQuestionBlock(value: unknown, index: number): JarvisQuestionBlock | n
   const questions = record.questions
     .map(asQuestion)
     .filter((question): question is JarvisQuestion => Boolean(question))
-    .slice(0, 3);
+    .slice(0, 1);
   if (questions.length === 0) return null;
   return {
     id: asString(record.id, `qb_${Date.now()}_${index}`),
@@ -113,24 +115,15 @@ export function createClarificationQuestionBlock(userText: string): JarvisQuesti
   });
   return {
     id: `qb_clarify_${stableId(userText)}`,
-    title: 'A few details before I continue',
-    description: 'Answer up to three focused questions. Your answers stay attached to this task.',
+    title: 'One detail before I continue',
+    description:
+      'Choose one option or enter a custom answer. Your answer stays attached to this task.',
     originalRequest: userText,
     questions: [
       buildQuestion('scope', 'What scope should I use?', [
         { id: 'focused', label: 'Focused minimum' },
         { id: 'complete', label: 'Complete polished version' },
         { id: 'phased', label: 'Build it in phases' },
-      ]),
-      buildQuestion('direction', 'Which direction should guide the result?', [
-        { id: 'match_project', label: 'Match the current project' },
-        { id: 'recommended', label: 'Use Jarvis’s recommendation' },
-        { id: 'practical', label: 'Prioritize practical defaults' },
-      ]),
-      buildQuestion('destination', 'Where should the result go?', [
-        { id: 'active_project', label: 'Current active project' },
-        { id: 'jarvis_projects', label: 'New folder under Jarvis Projects' },
-        { id: 'saved_project', label: 'Another saved project' },
       ]),
     ],
     status: 'pending',
@@ -152,6 +145,7 @@ export function parseJarvisQuestionBlocks(text: string): {
   for (const match of text.matchAll(QUESTION_FENCE_RE)) {
     parts.push(...textPart(text.slice(lastIndex, match.index)));
     lastIndex = (match.index ?? 0) + match[0].length;
+    if (count >= 1) continue;
     try {
       const parsed = JSON.parse(match[1] ?? '');
       const block = asQuestionBlock(parsed, count);
