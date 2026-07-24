@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   acknowledgeJarvisApprovalNavigation,
+  isCurrentJarvisApprovalNavigationTarget,
   readPendingJarvisApprovalNavigation,
   requestJarvisApprovalNavigation,
   resetJarvisApprovalNavigationForTests,
   subscribeJarvisApprovalNavigation,
 } from './approvalNavigation';
+import type { JarvisCommandCenterDataPort, JarvisRun } from './types';
 
 const intent = {
   accountId: 'account-1',
@@ -93,5 +95,50 @@ describe('approval navigation intent', () => {
     expect(requestJarvisApprovalNavigation(intent)).toBe(true);
     expect(delivered).toHaveBeenCalledWith(intent);
     expect(readPendingJarvisApprovalNavigation()).toBeUndefined();
+  });
+
+  it('rejects an approval when a newer run becomes current during event validation', async () => {
+    const run = (id: string): JarvisRun =>
+      ({
+        id,
+        accountId: intent.accountId,
+        chatId: intent.chatId,
+        source: 'typed_chat',
+        status: 'awaiting_approval',
+        agentId: 'jarvis',
+        identityVersion: 1,
+        profileRevisionId: 'profile-1',
+        model: {
+          providerId: 'ollama',
+          modelId: 'local-model',
+          connectionMode: 'native-api',
+          capabilities: {},
+          capturedAt: 1,
+        },
+        createdAt: 1,
+        updatedAt: id === intent.runId ? 2 : 3,
+      }) as JarvisRun;
+    const dataPort = {
+      getRunsForChat: vi
+        .fn()
+        .mockResolvedValueOnce([run(intent.runId)])
+        .mockResolvedValueOnce([run('run-newer')]),
+      getEventsForRun: vi.fn().mockResolvedValue([
+        {
+          runId: intent.runId,
+          seq: 1,
+          idempotencyKey: intent.approvalId,
+          type: 'approval',
+          status: 'pending',
+          title: 'Approval pending',
+          sourceRefs: [],
+          artifactIds: [],
+          createdAt: 2,
+        },
+      ]),
+    } as unknown as JarvisCommandCenterDataPort;
+
+    await expect(isCurrentJarvisApprovalNavigationTarget(dataPort, intent)).resolves.toBe(false);
+    expect(dataPort.getRunsForChat).toHaveBeenCalledTimes(2);
   });
 });

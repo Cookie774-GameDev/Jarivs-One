@@ -64,7 +64,16 @@ export async function isCurrentJarvisApprovalNavigationTarget(
     runId: normalized.runId,
     limit: CURRENT_APPROVAL_EVENT_LIMIT,
   });
-  return selectPendingJarvisApprovalId(normalized.runId, events) === normalized.approvalId;
+  if (selectPendingJarvisApprovalId(normalized.runId, events) !== normalized.approvalId) {
+    return false;
+  }
+  const revalidatedRuns = await dataPort.getRunsForChat({
+    accountId: normalized.accountId,
+    chatId: normalized.chatId,
+    limit: 1,
+  });
+  const revalidatedRun = selectCurrentRun(revalidatedRuns, normalized.accountId, normalized.chatId);
+  return revalidatedRun?.id === normalized.runId && revalidatedRun.status === 'awaiting_approval';
 }
 
 function normalizeIntent(

@@ -399,7 +399,7 @@ describe('VoiceModal hands-free turn-taking', () => {
     expect(chatRoutingMocks.focusVoiceChat).toHaveBeenCalledTimes(focusCount);
   });
 
-  it('does not let another target supersede an in-flight approval lookup', async () => {
+  it('cancels an in-flight approval lookup when another valid target supersedes it', async () => {
     const bindingPort = commandCenterBinding('account-a', [approvalRun()]);
     let resolveRuns!: (runs: readonly JarvisRun[]) => void;
     const pendingRuns = new Promise<readonly JarvisRun[]>((resolve) => {
@@ -429,14 +429,14 @@ describe('VoiceModal hands-free turn-taking', () => {
         runId: 'run-other',
         approvalId: 'approval-other',
       }),
-    ).toBe(false);
+    ).toBe(true);
     await act(async () => {
       resolveRuns([approvalRun()]);
       await pendingRuns;
     });
 
-    await waitFor(() => expect(useUIStore.getState().voiceModalOpen).toBe(false));
-    expect(chatRoutingMocks.focusVoiceChat).toHaveBeenCalledTimes(focusCount + 1);
+    expect(useUIStore.getState().voiceModalOpen).toBe(true);
+    expect(chatRoutingMocks.focusVoiceChat).toHaveBeenCalledTimes(focusCount);
   });
 
   it('keeps eight meaningful turns, expands long text, and does not yank a reader from history', async () => {
