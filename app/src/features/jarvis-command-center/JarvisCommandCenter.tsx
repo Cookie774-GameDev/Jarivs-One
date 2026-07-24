@@ -412,6 +412,7 @@ export function JarvisCommandCenter({
               aria-expanded={expanded}
               aria-controls={bodyId}
               aria-label={`${expanded ? 'Collapse' : 'Expand'} Command Center`}
+              title={`${expanded ? 'Collapse' : 'Expand'} Command Center`}
               onClick={toggle}
               onFocus={() => setSmokeFocusedControl(SIK_CONTROL.commandCenterDisclosure)}
               onBlur={() => setSmokeFocusedControl(undefined)}

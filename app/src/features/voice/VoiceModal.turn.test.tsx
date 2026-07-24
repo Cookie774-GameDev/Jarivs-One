@@ -471,6 +471,10 @@ describe('VoiceModal hands-free turn-taking', () => {
     const showMore = screen.getAllByRole('button', { name: 'Show more' });
     expect(showMore).toHaveLength(2);
     expect(showMore[0]?.getAttribute('aria-expanded')).toBe('false');
+    expect(showMore[0]?.classList.contains('min-h-7')).toBe(true);
+    expect(
+      screen.getByLabelText('Jarvis voice session').querySelector('[class*="text-[8px]"]'),
+    ).toBe(null);
     fireEvent.click(showMore[0]!);
     expect(screen.getByRole('button', { name: 'Show less' }).getAttribute('aria-expanded')).toBe(
       'true',
@@ -487,6 +491,29 @@ describe('VoiceModal hands-free turn-taking', () => {
     expect(transcript.scrollTop).toBe(100);
   });
 
+  it('provides practical pointer targets and tooltips for compact icon controls', async () => {
+    render(<VoiceModal />);
+    await waitFor(() => expect(useVoiceStore.getState().session?.chatId).toBe('chat_voice'));
+
+    const close = screen.getByRole('button', { name: 'Close Jarvis voice session' });
+    expect(close.getAttribute('title')).toBe('Close');
+    expect(close.classList.contains('h-7')).toBe(true);
+    expect(close.classList.contains('w-7')).toBe(true);
+
+    const voiceControl = screen.getByRole('button', {
+      name: /Listening active|Stop listening/i,
+    });
+    expect(voiceControl.getAttribute('title')).toBeTruthy();
+    expect(voiceControl.classList.contains('min-h-8')).toBe(true);
+    expect(voiceControl.classList.contains('min-w-8')).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: /Command Center/i }));
+    const region = document.getElementById(
+      screen.getByRole('button', { name: /Command Center/i }).getAttribute('aria-controls')!,
+    );
+    expect(region?.getAttribute('data-motion-kind')).toBe('spring');
+  });
+
   it('removes outer panel and disclosure motion when the user prefers reduced motion', async () => {
     setReducedMotion(true);
     render(<VoiceModal />);
@@ -495,6 +522,7 @@ describe('VoiceModal hands-free turn-taking', () => {
     const panel = screen.getByLabelText('Jarvis voice session');
     expect(panel.getAttribute('data-reduced-motion')).toBe('true');
     expect(panel.classList.contains('transition-[width]')).toBe(false);
+    expect(panel.querySelector('[data-orb-motion="reduced"]')).not.toBeNull();
     expect(panel.getAttribute('initial')).toBeNull();
     expect(panel.getAttribute('animate')).toBeNull();
     expect(panel.getAttribute('exit')).toBeNull();
@@ -507,6 +535,7 @@ describe('VoiceModal hands-free turn-taking', () => {
     expect(region?.getAttribute('initial')).toBeNull();
     expect(region?.getAttribute('animate')).toBeNull();
     expect(region?.getAttribute('exit')).toBeNull();
+    expect(region?.getAttribute('data-motion-kind')).toBe('none');
   });
 
   it('retries voice-session binding when the agent roster hydrates after the modal opens', async () => {
