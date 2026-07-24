@@ -473,7 +473,13 @@ export function JarvisCommandCenter({
                 <React.Suspense
                   fallback={<p className="jarvis-command-center__empty">Loading Live Systems…</p>}
                 >
-                  <LazyJarvisLiveSystemsTab liveSystems={snapshot.liveSystems} />
+                  <LazyJarvisLiveSystemsTab
+                    liveSystems={snapshot.liveSystems}
+                    run={run}
+                    events={snapshot.events}
+                    outputs={snapshot.outputs}
+                    motionEnabled={!reducedMotion}
+                  />
                 </React.Suspense>
               ) : null}
             </TabsContent>
