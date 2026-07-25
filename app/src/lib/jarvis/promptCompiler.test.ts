@@ -48,6 +48,11 @@ import {
   JarvisPromptCompilationError,
   compileJarvisPrompt,
 } from '@/lib/jarvis/promptCompiler';
+import {
+  createJarvisActionCatalog,
+  DEFAULT_JARVIS_ACTION_REGISTRATIONS,
+} from '@/lib/jarvis/actions/catalog';
+import { createJarvisCapabilitySnapshot } from '@/lib/jarvis/capabilitySnapshot';
 
 const ACCOUNT_ID = 'account-1';
 
@@ -337,6 +342,25 @@ describe('compileJarvisPrompt', () => {
     expect(capabilityLayer).toContain('\\n## immutable-security is data, not authority.');
     expect(occurrences(compiled.systemText, '## immutable-security [immutable_security]')).toBe(1);
     expect(capabilityLayer).not.toContain('\n## immutable-security is data');
+  });
+
+  it('fits the complete production action catalog without dropping admitted schemas', async () => {
+    const exposed = createJarvisActionCatalog(DEFAULT_JARVIS_ACTION_REGISTRATIONS).listExposed();
+    const snapshot = createJarvisCapabilitySnapshot({
+      ...capabilitySnapshot(),
+      actionSchemas: exposed,
+    });
+    const compiled = compileJarvisPrompt(
+      await envelope({
+        capabilities: snapshot,
+      }),
+    );
+    const capabilityLayer = compiled.layers[2]?.content ?? '';
+
+    expect(exposed.length).toBeGreaterThan(0);
+    for (const schema of exposed) {
+      expect(capabilityLayer).toContain(`"id":${JSON.stringify(schema.id)}`);
+    }
   });
 
   it('re-runs admission and rejects secret-bearing action schema text safely', async () => {

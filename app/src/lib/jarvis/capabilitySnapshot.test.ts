@@ -62,8 +62,16 @@ describe('createJarvisCapabilitySnapshot', () => {
         actionSchemas: readonly Record<string, unknown>[];
       }
     ).actionSchemas;
+    const byId = new Map(schemas.map((schema) => [String(schema.id), schema] as const));
 
     expect(schemas.map(({ id }) => id)).toEqual([
+      'canva.autofill_job.read',
+      'canva.brand_template.dataset.read',
+      'canva.brand_templates.search',
+      'canva.design.autofill',
+      'canva.design.create',
+      'canva.design.read',
+      'canva.designs.search',
       'chat.model.switch',
       'file.search',
       'github.commits.recent',
@@ -73,12 +81,23 @@ describe('createJarvisCapabilitySnapshot', () => {
       'github.release.latest',
       'github.repository.read',
       'github.workflows.list',
+      'gmail.draft.create',
+      'gmail.draft.send',
+      'gmail.message.read',
+      'gmail.messages.search',
+      'gmail.reply_draft.create',
+      'gmail.thread.read',
+      'google-drive.document.create',
+      'google-drive.document.read',
+      'google-drive.files.search',
       'mcp.invoke',
       'task.cancel',
       'terminal.create',
       'terminal.run',
+      'zapier.action.invoke',
+      'zapier.actions.discover',
     ]);
-    expect(schemas[1]).toMatchObject({
+    expect(byId.get('file.search')).toMatchObject({
       id: 'file.search',
       version: 1,
       inputSchema: {
@@ -89,7 +108,7 @@ describe('createJarvisCapabilitySnapshot', () => {
       risk: 'read-only',
       approval: 'never',
     });
-    expect(schemas[0]).toMatchObject({
+    expect(byId.get('chat.model.switch')).toMatchObject({
       id: 'chat.model.switch',
       inputSchema: {
         required: ['request'],
@@ -98,7 +117,7 @@ describe('createJarvisCapabilitySnapshot', () => {
       risk: 'external-side-effect',
       approval: 'always',
     });
-    expect(schemas[2]).toMatchObject({
+    expect(byId.get('github.commits.recent')).toMatchObject({
       id: 'github.commits.recent',
       inputSchema: {
         required: ['owner', 'repository'],
@@ -107,13 +126,13 @@ describe('createJarvisCapabilitySnapshot', () => {
       risk: 'read-only',
       approval: 'never',
     });
-    expect(schemas[3]).toMatchObject({
+    expect(byId.get('github.identity')).toMatchObject({
       id: 'github.identity',
       inputSchema: { required: [], additionalProperties: false },
       risk: 'read-only',
       approval: 'never',
     });
-    expect(schemas[4]).toMatchObject({
+    expect(byId.get('github.issue.read')).toMatchObject({
       id: 'github.issue.read',
       inputSchema: {
         required: ['owner', 'repository', 'number'],
@@ -122,7 +141,7 @@ describe('createJarvisCapabilitySnapshot', () => {
       risk: 'read-only',
       approval: 'never',
     });
-    expect(schemas[5]).toMatchObject({
+    expect(byId.get('github.pull_request.read')).toMatchObject({
       id: 'github.pull_request.read',
       inputSchema: {
         required: ['owner', 'repository', 'number'],
@@ -131,7 +150,7 @@ describe('createJarvisCapabilitySnapshot', () => {
       risk: 'read-only',
       approval: 'never',
     });
-    expect(schemas[6]).toMatchObject({
+    expect(byId.get('github.release.latest')).toMatchObject({
       id: 'github.release.latest',
       inputSchema: {
         required: ['owner', 'repository'],
@@ -140,7 +159,7 @@ describe('createJarvisCapabilitySnapshot', () => {
       risk: 'read-only',
       approval: 'never',
     });
-    expect(schemas[7]).toMatchObject({
+    expect(byId.get('github.repository.read')).toMatchObject({
       id: 'github.repository.read',
       inputSchema: {
         required: ['owner', 'repository'],
@@ -149,7 +168,7 @@ describe('createJarvisCapabilitySnapshot', () => {
       risk: 'read-only',
       approval: 'never',
     });
-    expect(schemas[8]).toMatchObject({
+    expect(byId.get('github.workflows.list')).toMatchObject({
       id: 'github.workflows.list',
       inputSchema: {
         required: ['owner', 'repository'],
@@ -158,8 +177,12 @@ describe('createJarvisCapabilitySnapshot', () => {
       risk: 'read-only',
       approval: 'never',
     });
-    expect(JSON.stringify(schemas.slice(2, 9))).not.toMatch(/token|credential|secret/i);
-    expect(schemas[9]).toMatchObject({
+    expect(
+      JSON.stringify(
+        [...byId.entries()].filter(([id]) => id.startsWith('github.')).map(([, schema]) => schema),
+      ),
+    ).not.toMatch(/token|credential|secret/i);
+    expect(byId.get('mcp.invoke')).toMatchObject({
       id: 'mcp.invoke',
       inputSchema: {
         required: ['serverId', 'toolName'],
