@@ -832,7 +832,28 @@ try {
         throw 'kernel_smoke_cli_build_failed'
     }
 
-    $ExpectedNativeExecutable = [IO.Path]::GetFullPath($ExpectedNativeExecutable)
+    $cargoTargetRoot = Join-Path $AppRoot 'src-tauri\target'
+    if (Test-Path -LiteralPath $cargoTargetRoot -PathType Container) {
+        $cargoTargetItem = Get-Item -LiteralPath $cargoTargetRoot -Force
+        $physicalCargoTargetRoot = $cargoTargetRoot
+        if ($null -ne $cargoTargetItem.LinkType) {
+            $linkTargets = @($cargoTargetItem.Target)
+            if ($linkTargets.Count -ne 1 -or [string]::IsNullOrWhiteSpace($linkTargets[0])) {
+                throw 'kernel_smoke_target_link_invalid'
+            }
+            $physicalCargoTargetRoot = [string]$linkTargets[0]
+            if (-not [IO.Path]::IsPathRooted($physicalCargoTargetRoot)) {
+                $physicalCargoTargetRoot = Join-Path `
+                    (Split-Path -Parent $cargoTargetRoot) `
+                    $physicalCargoTargetRoot
+            }
+        }
+        $physicalCargoTargetRoot = Get-CanonicalExistingPath -LiteralPath $physicalCargoTargetRoot
+        $ExpectedNativeExecutable = Join-Path $physicalCargoTargetRoot 'debug\jarvis.exe'
+    }
+    else {
+        $ExpectedNativeExecutable = [IO.Path]::GetFullPath($ExpectedNativeExecutable)
+    }
     $baseline = Get-CimProcessSnapshot
     $preexisting = @($baseline | Where-Object {
             $null -ne $_.ExecutablePath -and
