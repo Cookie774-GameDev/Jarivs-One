@@ -9,9 +9,9 @@
  * The db is opened lazily; calling `openDb()` is idempotent and safe to call
  * from multiple call sites (initial bootstrap, seed, sync loop).
  *
- * V1 → V3 migrations are purely additive. Dexie replays each version's store
+ * V1 → V4 migrations are purely additive. Dexie replays each version's store
  * list, creates the newer tables, and leaves every existing row untouched.
- * New installs open directly on V3.
+ * New installs open directly on V4.
  */
 
 import Dexie, { type EntityTable, type Table } from 'dexie';
@@ -33,6 +33,14 @@ import {
   STORES_V1,
   STORES_V2,
   STORES_V3,
+  STORES_V4,
+  type ContextEdgeRow,
+  type ContextEntityRow,
+  type ContextMapRow,
+  type ContextMigrationBackupRow,
+  type ContextProvenanceRow,
+  type ContextQuarantineRow,
+  type ContextSourceRow,
   type JarvisApprovalRow,
   type JarvisArtifactRow,
   type JarvisEventRow,
@@ -90,12 +98,22 @@ export class JarvisDexie extends Dexie {
   jarvis_approvals!: EntityTable<JarvisApprovalRow, 'id'>;
   jarvis_artifacts!: EntityTable<JarvisArtifactRow, 'id'>;
 
+  // V4 Context Map 2.0 tables (additive)
+  context_maps!: EntityTable<ContextMapRow, 'id'>;
+  context_sources!: EntityTable<ContextSourceRow, 'id'>;
+  context_entities!: EntityTable<ContextEntityRow, 'id'>;
+  context_edges!: EntityTable<ContextEdgeRow, 'id'>;
+  context_provenance!: EntityTable<ContextProvenanceRow, 'id'>;
+  context_migration_backups!: EntityTable<ContextMigrationBackupRow, 'id'>;
+  context_quarantine!: EntityTable<ContextQuarantineRow, 'id'>;
+
   constructor(name = DB_NAME, dependencies?: JarvisDexieDependencies) {
     super(name, dependencies);
     // Replay every additive schema version for existing installations.
     this.version(1).stores(STORES_V1);
     this.version(2).stores(STORES_V2);
     this.version(3).stores(STORES_V3);
+    this.version(4).stores(STORES_V4);
   }
 }
 
@@ -144,6 +162,13 @@ export type {
   SyncOp,
   SyncStatus,
   StoreName,
+  ContextMapRow,
+  ContextSourceRow,
+  ContextEntityRow,
+  ContextEdgeRow,
+  ContextProvenanceRow,
+  ContextMigrationBackupRow,
+  ContextQuarantineRow,
 } from './schema';
 export * from './repositories';
 export { seedIfEmpty } from './seed';

@@ -5,9 +5,8 @@
  * is NOT the schema version. Schema versioning is handled by Dexie's
  * `version().stores()` chain in `lib/db/index.ts`.
  *
- * V1 → V2 migration is purely additive: new tables for events, quick links,
- * terminal subsystem and integrations. No existing tables are altered or
- * dropped.
+ * Every browser database migration is additive. No prior store declaration is
+ * altered or dropped.
  *
  * All record types come from `@/types/*` where they exist. Workspace, Project,
  * SettingsRow, and SyncQueueRow are db-internal shapes that don't have
@@ -15,6 +14,13 @@
  */
 
 import type { ProjectId, WorkspaceId } from '@/types/common';
+import type {
+  ContextEdgeV2,
+  ContextEntityV2,
+  ContextMapRecordV2,
+  ContextProvenanceV2,
+  ContextSourceV2,
+} from '@/features/context/contracts';
 import type {
   JarvisCanonicalResultEvidenceV1,
   JarvisDurableLiveEvidenceV1,
@@ -303,9 +309,54 @@ export type JarvisArtifactRow = {
   created_at: number;
 };
 
+export type ContextMapRow = ContextMapRecordV2;
+export type ContextSourceRow = ContextSourceV2;
+export type ContextEntityRow = ContextEntityV2;
+export type ContextEdgeRow = ContextEdgeV2;
+export type ContextProvenanceRow = ContextProvenanceV2;
+
+export type ContextMigrationBackupRow = {
+  version: 1;
+  id: string;
+  accountId: string;
+  projectId: string | null;
+  status: 'prepared' | 'verified' | 'rolled_back';
+  legacyKeys: string[];
+  legacyValues: Record<string, string | null>;
+  expectedMapCount: number;
+  migratedMapCount: number;
+  rollbackAvailable: true;
+  createdAt: number;
+  verifiedAt?: number;
+  rolledBackAt?: number;
+};
+
+export type ContextQuarantineRecordKind =
+  | 'map'
+  | 'source'
+  | 'entity'
+  | 'edge'
+  | 'provenance'
+  | 'legacy_collection'
+  | 'legacy_selected_tree'
+  | 'legacy_selected_file'
+  | 'legacy_map_metadata';
+
+export type ContextQuarantineRow = {
+  version: 1;
+  id: string;
+  accountId: string;
+  mapId?: string;
+  recordKind: ContextQuarantineRecordKind;
+  reason: string;
+  raw: unknown;
+  recoveryOptions: Array<'retry' | 'restore_backup' | 'export_then_discard'>;
+  quarantinedAt: number;
+};
+
 export const DB_NAME = 'jarvis-v1';
-/** Current schema version — bumped to 3 for the additive kernel stores. */
-export const DB_VERSION = 3;
+/** Current schema version — bumped to 4 for additive Context Map 2.0 stores. */
+export const DB_VERSION = 4;
 
 /**
  * Dexie store schema strings.
@@ -373,7 +424,7 @@ export const STORES_V2 = {
   integrations: 'id, &kind',
 } as const;
 
-/** Active store list — points to the latest version. */
+/** V3 schema = V2 + immutable Shared Intelligence Kernel stores. */
 export const STORES_V3 = {
   ...STORES_V2,
   jarvis_identity_revisions: 'id, identity_id, version, &[identity_id+version], created_at',
@@ -386,6 +437,26 @@ export const STORES_V3 = {
   jarvis_artifacts: 'id, run_id, kind, created_at',
 } as const;
 
-export const STORES = STORES_V3;
+/** V4 schema = V3 + implemented Context Map 2.0 records and recovery infrastructure. */
+// prettier-ignore
+export const STORES_V4 = {
+  ...STORES_V3,
+  context_maps:
+    'id, accountId, projectId, status, [accountId+updatedAt], [accountId+projectId], [accountId+status]',
+  context_sources:
+    'id, accountId, mapId, kind, status, [accountId+mapId], [mapId+status], updatedAt',
+  context_entities:
+    'id, accountId, mapId, sourceId, kind, [accountId+mapId], [mapId+kind], [sourceId+kind], updatedAt',
+  context_edges:
+    'id, accountId, mapId, sourceEntityId, targetEntityId, kind, [accountId+mapId], [sourceEntityId+kind], [targetEntityId+kind], updatedAt',
+  context_provenance:
+    'id, accountId, mapId, targetKind, targetId, sourceId, [accountId+mapId], [targetKind+targetId], [sourceId+targetKind], extractedAt',
+  context_migration_backups:
+    'id, accountId, projectId, status, [accountId+projectId], createdAt',
+  context_quarantine:
+    'id, accountId, mapId, recordKind, [accountId+mapId], quarantinedAt',
+} as const;
+
+export const STORES = STORES_V4;
 
 export type StoreName = keyof typeof STORES;

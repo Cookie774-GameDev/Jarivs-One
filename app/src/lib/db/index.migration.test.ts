@@ -15,6 +15,13 @@ import type {
   TerminalScrollbackChunk,
   TerminalSession,
 } from '@/types/terminal';
+import type {
+  ContextEdgeV2,
+  ContextEntityV2,
+  ContextMapRecordV2,
+  ContextProvenanceV2,
+  ContextSourceV2,
+} from '@/features/context/contracts';
 import { TEST_INDEXED_DB, uniqueTestDbName } from '@/test/indexedDb';
 import { createJarvisDb, type JarvisDexie, type JarvisDexieDependencies } from './index';
 import {
@@ -22,6 +29,9 @@ import {
   STORES_V1,
   STORES_V2,
   STORES_V3,
+  STORES_V4,
+  type ContextMigrationBackupRow,
+  type ContextQuarantineRow,
   type JarvisApprovalRow,
   type JarvisArtifactRow,
   type JarvisEventRow,
@@ -70,6 +80,22 @@ const EXPECTED_STORES_V3 = {
     '[run_id+seq], run_id, idempotency_key, &[run_id+idempotency_key], type, status, created_at',
   jarvis_approvals: 'id, run_id, status, params_hash, created_at',
   jarvis_artifacts: 'id, run_id, kind, created_at',
+} as const;
+
+const EXPECTED_STORES_V4 = {
+  ...EXPECTED_STORES_V3,
+  context_maps:
+    'id, accountId, projectId, status, [accountId+updatedAt], [accountId+projectId], [accountId+status]',
+  context_sources:
+    'id, accountId, mapId, kind, status, [accountId+mapId], [mapId+status], updatedAt',
+  context_entities:
+    'id, accountId, mapId, sourceId, kind, [accountId+mapId], [mapId+kind], [sourceId+kind], updatedAt',
+  context_edges:
+    'id, accountId, mapId, sourceEntityId, targetEntityId, kind, [accountId+mapId], [sourceEntityId+kind], [targetEntityId+kind], updatedAt',
+  context_provenance:
+    'id, accountId, mapId, targetKind, targetId, sourceId, [accountId+mapId], [targetKind+targetId], [sourceId+targetKind], extractedAt',
+  context_migration_backups: 'id, accountId, projectId, status, [accountId+projectId], createdAt',
+  context_quarantine: 'id, accountId, mapId, recordKind, [accountId+mapId], quarantinedAt',
 } as const;
 
 const EXPECTED_STORES_V1_SOURCE = `export const STORES_V1 = {
@@ -217,6 +243,56 @@ const V2_ROWS = {
   integrations: { id: 'integration-v2', kind: 'github', marker: 'integration-marker' },
 } as const;
 
+const V3_ROWS = {
+  ...V2_ROWS,
+  jarvis_identity_revisions: {
+    id: 'identity-v3',
+    identity_id: 'jarvis',
+    version: 1,
+    created_at: 18,
+    marker: 'identity-marker',
+  },
+  jarvis_profiles: {
+    id: 'profile-v3',
+    account_id: 'account-v3',
+    active: 1,
+    updated_at: 19,
+    marker: 'profile-marker',
+  },
+  jarvis_runs: {
+    id: 'run-v3',
+    account_id: 'account-v3',
+    chat_id: 'chat-v1',
+    status: 'completed',
+    created_at: 20,
+    updated_at: 21,
+    marker: 'run-marker',
+  },
+  jarvis_events: {
+    run_id: 'run-v3',
+    seq: 1,
+    idempotency_key: 'event-v3',
+    type: 'message',
+    created_at: 22,
+    marker: 'jarvis-event-marker',
+  },
+  jarvis_approvals: {
+    id: 'approval-v3',
+    run_id: 'run-v3',
+    status: 'consumed',
+    params_hash: 'params-hash',
+    created_at: 23,
+    marker: 'approval-marker',
+  },
+  jarvis_artifacts: {
+    id: 'artifact-v3',
+    run_id: 'run-v3',
+    kind: 'text',
+    created_at: 24,
+    marker: 'artifact-marker',
+  },
+} as const;
+
 const createdNames = new Set<string>();
 const openedDatabases = new Set<Dexie>();
 
@@ -231,11 +307,15 @@ async function deleteTestDb(name: string): Promise<void> {
   await cleanup.delete();
 }
 
-async function createLegacyDb(name: string, version: 1 | 2): Promise<Dexie> {
+async function createLegacyDb(name: string, version: 1 | 2 | 3): Promise<Dexie> {
   const database = new Dexie(name, TEST_INDEXED_DB);
   openedDatabases.add(database);
   database.version(1).stores(STORES_V1);
   if (version === 2) database.version(2).stores(STORES_V2);
+  if (version === 3) {
+    database.version(2).stores(STORES_V2);
+    database.version(3).stores(STORES_V3);
+  }
   await database.open();
   return database;
 }
@@ -273,27 +353,30 @@ afterEach(async () => {
   createdNames.clear();
 });
 
-describe('Jarvis Dexie V3 additive migration', () => {
-  it('keeps the exact V1 and V2 declarations and advances only the active version', () => {
+describe('Jarvis Dexie V4 additive migration', () => {
+  it('keeps the exact V1 through V3 declarations and advances only the active version', () => {
     const schemaSource = readFileSync(join(__dirname, 'schema.ts'), 'utf8');
     expect(STORES_V1).toEqual(EXPECTED_STORES_V1);
     expect(STORES_V2).toEqual(EXPECTED_STORES_V2);
     expect(STORES_V3).toEqual(EXPECTED_STORES_V3);
+    expect(STORES_V4).toEqual(EXPECTED_STORES_V4);
     expect(frozenStoreBlock(schemaSource, 'STORES_V1')).toBe(EXPECTED_STORES_V1_SOURCE);
     expect(frozenStoreBlock(schemaSource, 'STORES_V2')).toBe(EXPECTED_STORES_V2_SOURCE);
-    expect(DB_VERSION).toBe(3);
+    expect(DB_VERSION).toBe(4);
   });
 
-  it('opens every legacy and kernel store on a fresh V3 database', async () => {
-    const database = createTestJarvisDb(testDbName('jarvis-v3-fresh'));
+  it('opens every legacy, kernel, and Context store on a fresh V4 database', async () => {
+    const database = createTestJarvisDb(testDbName('jarvis-v4-fresh'));
     await database.open();
 
     expect(database.tables.map((table) => table.name).sort()).toEqual(
-      Object.keys(STORES_V3).sort(),
+      Object.keys(STORES_V4).sort(),
     );
     expect(database.agents.name).toBe('agents');
     expect(database.settings.name).toBe('settings');
     expect(database.jarvis_events.name).toBe('jarvis_events');
+    expect(database.context_maps.name).toBe('context_maps');
+    expect(database.context_quarantine.name).toBe('context_quarantine');
 
     expectTypeOf<JarvisDexie['workspaces']>().toEqualTypeOf<EntityTable<Workspace, 'id'>>();
     expectTypeOf<JarvisDexie['projects']>().toEqualTypeOf<EntityTable<Project, 'id'>>();
@@ -338,14 +421,33 @@ describe('Jarvis Dexie V3 additive migration', () => {
     expectTypeOf<JarvisDexie['jarvis_artifacts']>().toEqualTypeOf<
       EntityTable<JarvisArtifactRow, 'id'>
     >();
+    expectTypeOf<JarvisDexie['context_maps']>().toEqualTypeOf<
+      EntityTable<ContextMapRecordV2, 'id'>
+    >();
+    expectTypeOf<JarvisDexie['context_sources']>().toEqualTypeOf<
+      EntityTable<ContextSourceV2, 'id'>
+    >();
+    expectTypeOf<JarvisDexie['context_entities']>().toEqualTypeOf<
+      EntityTable<ContextEntityV2, 'id'>
+    >();
+    expectTypeOf<JarvisDexie['context_edges']>().toEqualTypeOf<EntityTable<ContextEdgeV2, 'id'>>();
+    expectTypeOf<JarvisDexie['context_provenance']>().toEqualTypeOf<
+      EntityTable<ContextProvenanceV2, 'id'>
+    >();
+    expectTypeOf<JarvisDexie['context_migration_backups']>().toEqualTypeOf<
+      EntityTable<ContextMigrationBackupRow, 'id'>
+    >();
+    expectTypeOf<JarvisDexie['context_quarantine']>().toEqualTypeOf<
+      EntityTable<ContextQuarantineRow, 'id'>
+    >();
     expectTypeOf(createJarvisDb).toEqualTypeOf<
       (name?: string, dependencies?: JarvisDexieDependencies) => JarvisDexie
     >();
     database.close();
   });
 
-  it('preserves every inserted V1 row byte-for-byte when opening V3', async () => {
-    const name = testDbName('jarvis-v1-to-v3');
+  it('preserves every inserted V1 row byte-for-byte when opening V4', async () => {
+    const name = testDbName('jarvis-v1-to-v4');
     const legacy = await createLegacyDb(name, 1);
     await insertRows(legacy, V1_ROWS);
     legacy.close();
@@ -356,8 +458,8 @@ describe('Jarvis Dexie V3 additive migration', () => {
     upgraded.close();
   });
 
-  it('preserves every inserted V1 and V2 row byte-for-byte when opening V3', async () => {
-    const name = testDbName('jarvis-v2-to-v3');
+  it('preserves every inserted V1 and V2 row byte-for-byte when opening V4', async () => {
+    const name = testDbName('jarvis-v2-to-v4');
     const legacy = await createLegacyDb(name, 2);
     await insertRows(legacy, V2_ROWS);
     legacy.close();
@@ -368,8 +470,20 @@ describe('Jarvis Dexie V3 additive migration', () => {
     upgraded.close();
   });
 
-  it('reopens V3 idempotently without replacing existing rows', async () => {
-    const name = testDbName('jarvis-v3-reopen');
+  it('preserves every inserted V1 through V3 row byte-for-byte when opening V4', async () => {
+    const name = testDbName('jarvis-v3-to-v4');
+    const legacy = await createLegacyDb(name, 3);
+    await insertRows(legacy, V3_ROWS);
+    legacy.close();
+
+    const upgraded = createTestJarvisDb(name);
+    await upgraded.open();
+    await expectRows(upgraded, V3_ROWS);
+    upgraded.close();
+  });
+
+  it('reopens V4 idempotently without replacing existing rows', async () => {
+    const name = testDbName('jarvis-v4-reopen');
     const first = createTestJarvisDb(name);
     await first.open();
     await first.workspaces.put(structuredClone(V1_ROWS.workspaces) as never);
@@ -417,11 +531,12 @@ describe('Jarvis Dexie V3 additive migration', () => {
     database.close();
   });
 
-  it('declares V3 additively without a destructive upgrade callback', () => {
+  it('declares V4 additively without a destructive upgrade callback', () => {
     const source = readFileSync(join(__dirname, 'index.ts'), 'utf8');
     expect(source).not.toContain('.upgrade(');
     expect(source).toContain('this.version(1).stores(STORES_V1)');
     expect(source).toContain('this.version(2).stores(STORES_V2)');
     expect(source).toContain('this.version(3).stores(STORES_V3)');
+    expect(source).toContain('this.version(4).stores(STORES_V4)');
   });
 });
