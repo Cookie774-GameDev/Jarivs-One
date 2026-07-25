@@ -217,12 +217,46 @@ artifact, capability, graph, or live-evidence reads. Expansion is lazy,
 account/run scoped, bounded to the repository selector limit, keyboard
 operable, and compatible with reduced motion.
 
-Outputs contains only normalized verified artifacts. Live Systems contains
-only bounded producer nodes whose canonical result row and durable live-
-evidence row both revalidate. Completed or degraded chains can be reconstructed
-after restart with their same opaque proof; prior-process active-only or
-missing, foreign, stale, forged, gapped, or over-budget chains are omitted.
-The UI does not fold events or mutate authority state.
+The voice surface binds the projection to the immutable account and chat of
+the active voice session. A host bridge is eligible only when its account
+matches that session; cancellation, retry, and approval navigation revalidate
+the same account and exact run. The header reports the canonical run status
+and immutable provider/model snapshot. Switching the UI model therefore cannot
+rewrite an existing run.
+
+Outputs contains only normalized, producer-verified artifacts. It renders a
+bounded safe summary and state label, then offers an access action only after
+the artifact reference passes its scheme and environment policy. External
+HTTPS outputs disclose the validated hostname and use the external-browser
+bridge; allowlisted application URIs and desktop-local paths use their
+separate access paths. An invalid or unavailable reference remains visible as
+an output without an unsafe open action.
+
+Live Systems contains bounded model, capability/tool, connector, source, and
+output nodes whose canonical result row and durable live-evidence row both
+revalidate. Completed or degraded chains can be reconstructed after restart
+with their same opaque proof; prior-process active-only or missing, foreign,
+stale, forged, gapped, or over-budget chains are omitted. The execution map is
+paired with the same nodes and recent canonical events in a textual activity
+list. Nodes are keyboard controls with stable descriptive details, while live
+announcements are reserved for actionable run state and explicit action
+feedback rather than focus traversal, waveform frames, or interim speech.
+
+The collapsed header subscribes only to the bounded run projection. Artifact
+and event reads begin on expansion, and durable live-evidence reads begin only
+when `Live Systems` is active. Every subscription is released on tab change,
+collapse, run/account change, or disposal. Render work is bounded and memoized;
+layouts use shrinkable relative tracks, complete text wrapping, theme-owned
+contrast, reduced-motion gates, and background-aware waveform/caption motion.
+The UI never folds events, creates artifacts, or mutates execution authority.
+
+The canonical connector action catalog currently executes exact registered
+operations for GitHub, Gmail, Google Drive, Canva, and Zapier. Writes remain
+approval bound and reuse the same journal, capability, credential, and
+artifact contracts. Figma, Supabase, Shopify, Slack, and other catalog entries
+may provide verified setup, connection testing, and capability context, but
+they do not gain an unregistered kernel action merely because they appear in
+the plugin catalog.
 
 ## Gates, rollout, and rollback
 

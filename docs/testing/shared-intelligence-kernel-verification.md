@@ -25,6 +25,75 @@ Task 22 did not alter, stage, discard, or commit them. The older
 `.superpowers/sdd/evidence/task-22/20260722T040654Z/` is superseded by the
 current full-suite result below.
 
+## Post-Task 22 Command Center acceptance addendum
+
+This addendum records the later Command Center implementation and review
+checkpoint without changing the historical Task 22 results below. Its current
+product/test head is `55c02e38f06cab34832c44dc917f6fbd088c23ea`.
+The implementation slices are:
+
+- `4f598ce` — portable path and symlink containment, issued action authority,
+  connector credential/scope hardening, and safe output disclosure;
+- `b00a2c8` — background/reduced-motion waveform suspension and restrained
+  voice announcements;
+- `5e7399f` and `7c9d641` — keyboard, graph textual equivalent, theme
+  contrast, reflow, caption, and Escape behavior;
+- `9932db0` — long-output/transcript reflow and settled React Profiler
+  evidence; and
+- `f569b14` — visual-state capture support for listening, collapsed, and
+  waiting-approval checkpoints in the isolated native smoke harness; and
+- `55c02e3` — canonical linked-target attestation for the clean native smoke
+  worktree.
+
+### Focused evidence
+
+| Gate                                         | Result                                                                                                                                          |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Consolidated Command Center acceptance scope | **PASS** — `11` files / `90` tests.                                                                                                             |
+| Final eight-file review-correction scope     | **PASS** — `4` files / `46` tests.                                                                                                              |
+| `npm --prefix app run typecheck`             | **PASS** — no TypeScript diagnostics after the final product corrections.                                                                       |
+| `npm run build`                              | **PASS** — TypeScript build plus Vite `5.4.21`; `3,906` modules transformed and built in `1m 17s`.                                              |
+| Independent bounded re-review                | **PASS** — no Critical, Important, or Minor findings; `READY: YES`.                                                                             |
+| Real browser 200% text check                 | **PASS** — `32px` root text, no horizontal overflow in the long output row/action or transcript, and all tested text remained inside its panel. |
+
+The browser assertion used the current compiled styles in an isolated profile
+on an unused loopback port. Computed output tracks were `6px 360px`; transcript
+tracks were `32px 88px 204px`. The owned server was stopped and its port was
+verified released. The temporary browser profile remained isolated because
+the execution environment denied its recursive cleanup.
+
+Token contrast was calculated against the elevated Command Center surface:
+
+| Theme     | Foreground | Muted foreground |
+| --------- | ---------: | ---------------: |
+| Dark      |  `10.91:1` |         `7.47:1` |
+| Light     |  `11.61:1` |         `5.64:1` |
+| Jarvis    |  `15.29:1` |         `8.03:1` |
+| VibeSpace |  `11.26:1` |         `5.08:1` |
+
+Readable error copy now uses foreground; the lower-contrast destructive token
+is retained only as a redundant non-text dot/border cue.
+
+### Visual and final-verification status
+
+The Task 22 matrix below remains the authoritative native screenshot inventory
+for completed Outputs, Live Systems, running, approval, completed, error,
+restart, and reduced-motion states. The current smoke harness additionally
+captures named listening, waiting-approval, and collapsed checkpoints on its
+next isolated scenario runs. Those refreshed images are not claimed as present
+at this checkpoint. The 200% browser check was assertion-based and did not
+write a new repository screenshot.
+
+The fresh web build used a bounded `3,072` MB Node heap and returned exit code
+`0`. A preceding attempt reached final Vite bundling but exhausted the
+deliberate `1,536` MB heap ceiling; it is not counted as PASS. The full app
+suite, Rust/native matrix, security scan, and refreshed cross-state visual
+matrix have not been rerun at `55c02e3`; they remain one deferred whole-program
+final-verification checklist. The two external-only Task 22 limitations remain
+unchanged: the native STT row still needs the local `faster-whisper` `small`
+model, and the credential-free CLI example still needs a binary accepted by
+Windows App Control.
+
 ## Repository verification gates
 
 All PASS results below returned exit code `0` at the recorded product/test
