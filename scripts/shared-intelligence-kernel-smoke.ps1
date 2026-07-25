@@ -21,7 +21,8 @@ $RepositoryRoot = [IO.Path]::GetFullPath((Join-Path $ScriptRoot '..'))
 $AppRoot = Join-Path $RepositoryRoot 'app'
 $CargoManifest = Join-Path $AppRoot 'src-tauri\Cargo.toml'
 $DriverPath = Join-Path $ScriptRoot 'shared-intelligence-kernel-smoke-driver.mjs'
-$ExpectedNativeExecutable = Join-Path $AppRoot 'src-tauri\target\debug\jarvis.exe'
+$LogicalNativeExecutable = Join-Path $AppRoot 'src-tauri\target\debug\jarvis.exe'
+$ExpectedNativeExecutables = @([IO.Path]::GetFullPath($LogicalNativeExecutable))
 $SmokeCliDirectory = Join-Path $AppRoot 'src-tauri\target\debug\examples'
 $TauriCommand = Join-Path $RepositoryRoot 'node_modules\.bin\tauri.cmd'
 $ProfileBase = Join-Path ([IO.Path]::GetTempPath()) 'vibespace-sik-smoke-profiles'
@@ -87,6 +88,204 @@ function Test-PathEqual {
         [IO.Path]::GetFullPath($Right).TrimEnd('\', '/'),
         [StringComparison]::OrdinalIgnoreCase
     )
+}
+
+function Test-PathInSet {
+    param(
+        [Parameter(Mandatory = $true)][string]$Candidate,
+        [Parameter(Mandatory = $true)][string[]]$Allowed
+    )
+
+    foreach ($allowedPath in $Allowed) {
+        if (Test-PathEqual -Left $Candidate -Right $allowedPath) {
+            return $true
+        }
+    }
+    return $false
+}
+
+function New-SmokeTauriConfigJson {
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$Identifier
+    )
+
+    return @{
+        identifier = $Identifier
+        app        = @{
+            macOSPrivateApi = $true
+            windows         = @(
+                @{
+                    label                     = 'main'
+                    title                     = 'VibeSpace Smoke'
+                    width                     = 1280
+                    height                    = 820
+                    minWidth                  = 800
+                    minHeight                 = 600
+                    decorations               = $true
+                    resizable                 = $true
+                    transparent               = $false
+                    visible                   = $false
+                    focus                     = $false
+                    skipTaskbar               = $true
+                    additionalBrowserArgs     = '--js-flags=--max-old-space-size=4096 --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding'
+                }
+            )
+        }
+    } | ConvertTo-Json -Compress -Depth 5
+}
+
+function Show-SmokeNativeWindowOffscreen {
+    param(
+        [Parameter(Mandatory = $true)][int]$NativePid,
+        [Parameter(Mandatory = $true)][DateTime]$Deadline
+    )
+
+    if (-not ('VibeSpaceSmokeWindow' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using System.Text;
+
+public static class VibeSpaceSmokeWindow
+{
+    public delegate bool EnumWindowsProc(IntPtr window, IntPtr parameter);
+
+    private static readonly IntPtr HWND_BOTTOM = new IntPtr(1);
+    private const uint SWP_NOACTIVATE = 0x0010;
+    private const uint SWP_SHOWWINDOW = 0x0040;
+    private const uint SWP_NOOWNERZORDER = 0x0200;
+    private const uint SWP_ASYNCWINDOWPOS = 0x4000;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Rect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [DllImport("user32.dll")]
+    private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr parameter);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetClassName(IntPtr window, StringBuilder className, int maximumCount);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetWindowPos(
+        IntPtr window,
+        IntPtr insertAfter,
+        int x,
+        int y,
+        int width,
+        int height,
+        uint flags
+    );
+
+    [DllImport("user32.dll")]
+    private static extern bool GetWindowRect(IntPtr window, out Rect rect);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr window);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    public static long[] GetTauriWindows(uint targetProcessId)
+    {
+        var windows = new List<long>();
+        EnumWindows((window, _) =>
+        {
+            uint processId;
+            GetWindowThreadProcessId(window, out processId);
+            if (processId == targetProcessId)
+            {
+                var className = new StringBuilder(128);
+                GetClassName(window, className, className.Capacity);
+                if (string.Equals(className.ToString(), "Tauri Window", StringComparison.Ordinal))
+                {
+                    windows.Add(window.ToInt64());
+                }
+            }
+            return true;
+        }, IntPtr.Zero);
+        return windows.ToArray();
+    }
+
+    public static bool MoveOffscreenWithoutActivation(long rawWindow)
+    {
+        var window = new IntPtr(rawWindow);
+        return SetWindowPos(
+            window,
+            HWND_BOTTOM,
+            -32000,
+            -32000,
+            1280,
+            820,
+            SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOOWNERZORDER | SWP_ASYNCWINDOWPOS
+        );
+    }
+
+    public static int[] ReadRect(long rawWindow)
+    {
+        Rect rect;
+        if (!GetWindowRect(new IntPtr(rawWindow), out rect))
+        {
+            return Array.Empty<int>();
+        }
+        return new[] { rect.Left, rect.Top, rect.Right, rect.Bottom };
+    }
+
+    public static bool IsVisible(long rawWindow)
+    {
+        return IsWindowVisible(new IntPtr(rawWindow));
+    }
+
+    public static uint ForegroundProcessId()
+    {
+        var foreground = GetForegroundWindow();
+        if (foreground == IntPtr.Zero)
+        {
+            return 0;
+        }
+        uint processId;
+        GetWindowThreadProcessId(foreground, out processId);
+        return processId;
+    }
+}
+'@
+    }
+
+    while ([DateTime]::UtcNow -lt $Deadline) {
+        $windows = @([VibeSpaceSmokeWindow]::GetTauriWindows([uint32]$NativePid))
+        if ($windows.Count -gt 1) {
+            throw 'kernel_smoke_native_window_ambiguous'
+        }
+        if ($windows.Count -eq 1) {
+            $window = [int64]$windows[0]
+            if ([VibeSpaceSmokeWindow]::MoveOffscreenWithoutActivation($window)) {
+                Start-Sleep -Milliseconds 100
+                $rect = @([VibeSpaceSmokeWindow]::ReadRect($window))
+                if (
+                    $rect.Count -eq 4 -and
+                    $rect[0] -le -30000 -and
+                    $rect[1] -le -30000 -and
+                    [VibeSpaceSmokeWindow]::IsVisible($window) -and
+                    [VibeSpaceSmokeWindow]::ForegroundProcessId() -ne [uint32]$NativePid
+                ) {
+                    return
+                }
+            }
+        }
+        Start-Sleep -Milliseconds 100
+    }
+    throw 'kernel_smoke_native_window_position_timeout'
 }
 
 function Test-StrictDescendantPath {
@@ -578,7 +777,7 @@ function Wait-ForNativeDescendant {
     param(
         [Parameter(Mandatory = $true)][Diagnostics.Process]$Launcher,
         [Parameter(Mandatory = $true)][hashtable]$Records,
-        [Parameter(Mandatory = $true)][string]$ExpectedExecutable,
+        [Parameter(Mandatory = $true)][string[]]$ExpectedExecutables,
         [Parameter(Mandatory = $true)][DateTime]$Deadline
     )
 
@@ -595,18 +794,18 @@ function Wait-ForNativeDescendant {
         $wrongPathJarvis = @($descendants | Where-Object {
                 $null -ne $_.ExecutablePath -and
                 [IO.Path]::GetFileName($_.ExecutablePath) -ieq 'jarvis.exe' -and
-                -not (Test-PathEqual -Left $_.ExecutablePath -Right $ExpectedExecutable)
+                -not (Test-PathInSet -Candidate $_.ExecutablePath -Allowed $ExpectedExecutables)
             })
         if ($wrongPathJarvis.Count -ne 0) {
             throw 'kernel_smoke_native_wrong_path_descendant'
         }
         $matches = @($descendants | Where-Object {
                 $null -ne $_.ExecutablePath -and
-                (Test-PathEqual -Left $_.ExecutablePath -Right $ExpectedExecutable)
+                (Test-PathInSet -Candidate $_.ExecutablePath -Allowed $ExpectedExecutables)
             })
         $allExactMatches = @($snapshot | Where-Object {
                 $null -ne $_.ExecutablePath -and
-                (Test-PathEqual -Left $_.ExecutablePath -Right $ExpectedExecutable)
+                (Test-PathInSet -Candidate $_.ExecutablePath -Allowed $ExpectedExecutables)
             })
         $nonDescendantMatches = @($allExactMatches | Where-Object {
                 $candidateId = $_.ProcessId
@@ -825,10 +1024,7 @@ try {
     # Rust relink solely because the identifier string changed.
     $tauriIdentifier = 'ai.jarvis.desktop.smoke'
     $tauriConfigPath = Join-Path $Profile 'tauri-smoke-config.json'
-    $tauriConfigJson = @{
-        identifier = $tauriIdentifier
-        app        = @{ macOSPrivateApi = $true }
-    } | ConvertTo-Json -Compress
+    $tauriConfigJson = New-SmokeTauriConfigJson -Identifier $tauriIdentifier
     [IO.File]::WriteAllText(
         $tauriConfigPath,
         $tauriConfigJson,
@@ -864,15 +1060,16 @@ try {
             }
         }
         $physicalCargoTargetRoot = Get-CanonicalExistingPath -LiteralPath $physicalCargoTargetRoot
-        $ExpectedNativeExecutable = Join-Path $physicalCargoTargetRoot 'debug\jarvis.exe'
-    }
-    else {
-        $ExpectedNativeExecutable = [IO.Path]::GetFullPath($ExpectedNativeExecutable)
+        $physicalNativeExecutable = Join-Path $physicalCargoTargetRoot 'debug\jarvis.exe'
+        $ExpectedNativeExecutables = @(
+            $ExpectedNativeExecutables
+            $physicalNativeExecutable
+        ) | Sort-Object -Unique
     }
     $baseline = Get-CimProcessSnapshot
     $preexisting = @($baseline | Where-Object {
             $null -ne $_.ExecutablePath -and
-            (Test-PathEqual -Left $_.ExecutablePath -Right $ExpectedNativeExecutable)
+            (Test-PathInSet -Candidate $_.ExecutablePath -Allowed $ExpectedNativeExecutables)
         })
     if ($preexisting.Count -ne 0) {
         throw 'kernel_smoke_native_preexisting'
@@ -913,7 +1110,7 @@ try {
     $nativeMatch = Wait-ForNativeDescendant `
         -Launcher $Dev `
         -Records $DevRecords `
-        -ExpectedExecutable $ExpectedNativeExecutable `
+        -ExpectedExecutables $ExpectedNativeExecutables `
         -Deadline $deadline
     $NativePid = [int]$nativeMatch.ProcessId
     $NativeCreationUtc = $nativeMatch.CreationUtc
@@ -924,6 +1121,7 @@ try {
         throw 'kernel_smoke_native_creation_time_mismatch'
     }
 
+    Show-SmokeNativeWindowOffscreen -NativePid $NativePid -Deadline $deadline
     Wait-ForCdpEndpoint -Port $CdpPort -Deadline $deadline
 
     foreach ($scenario in $Scenarios) {
@@ -986,7 +1184,7 @@ try {
 
             $remainingNative = @(Get-CimProcessSnapshot | Where-Object {
                     $null -ne $_.ExecutablePath -and
-                    (Test-PathEqual -Left $_.ExecutablePath -Right $ExpectedNativeExecutable)
+                    (Test-PathInSet -Candidate $_.ExecutablePath -Allowed $ExpectedNativeExecutables)
                 })
             if ($remainingNative.Count -ne 0) {
                 throw 'kernel_smoke_native_remained_after_restart_stop'
@@ -1023,7 +1221,7 @@ try {
             $nativeMatch = Wait-ForNativeDescendant `
                 -Launcher $Dev `
                 -Records $DevRecords `
-                -ExpectedExecutable $ExpectedNativeExecutable `
+                -ExpectedExecutables $ExpectedNativeExecutables `
                 -Deadline $deadline
             $NativePid = [int]$nativeMatch.ProcessId
             $NativeCreationUtc = $nativeMatch.CreationUtc
@@ -1036,6 +1234,7 @@ try {
             if ($DevRecords[[string]$NativePid].CreationUtc -ne $NativeCreationUtc) {
                 throw 'kernel_smoke_native_creation_time_mismatch'
             }
+            Show-SmokeNativeWindowOffscreen -NativePid $NativePid -Deadline $deadline
             Wait-ForCdpEndpoint -Port $CdpPort -Deadline $deadline
         }
     }
