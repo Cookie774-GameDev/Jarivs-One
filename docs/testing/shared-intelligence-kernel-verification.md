@@ -29,7 +29,7 @@ current full-suite result below.
 
 This addendum records the later Command Center implementation and review
 checkpoint without changing the historical Task 22 results below. Its current
-product/test head is `55c02e38f06cab34832c44dc917f6fbd088c23ea`.
+product/test head is `bf177834cf0e11eef4a3542e97062878296e86e2`.
 The implementation slices are:
 
 - `4f598ce` — portable path and symlink containment, issued action authority,
@@ -39,11 +39,15 @@ The implementation slices are:
 - `5e7399f` and `7c9d641` — keyboard, graph textual equivalent, theme
   contrast, reflow, caption, and Escape behavior;
 - `9932db0` — long-output/transcript reflow and settled React Profiler
-  evidence; and
+  evidence;
 - `f569b14` — visual-state capture support for listening, collapsed, and
-  waiting-approval checkpoints in the isolated native smoke harness; and
+  waiting-approval checkpoints in the isolated native smoke harness;
 - `55c02e3` — canonical linked-target attestation for the clean native smoke
-  worktree.
+  worktree;
+- `c4a09a7` — complete production capability-catalog prompt-budget coverage;
+  and
+- `bf17783` — exact logical/physical native-path attestation, canonical
+  approval-handoff evidence, and offscreen non-activating native validation.
 
 ### Focused evidence
 
@@ -55,6 +59,8 @@ The implementation slices are:
 | `npm run build`                              | **PASS** — TypeScript build plus Vite `5.4.21`; `3,906` modules transformed and built in `1m 17s`.                                              |
 | Independent bounded re-review                | **PASS** — no Critical, Important, or Minor findings; `READY: YES`.                                                                             |
 | Real browser 200% text check                 | **PASS** — `32px` root text, no horizontal overflow in the long output row/action or transcript, and all tested text remained inside its panel. |
+| Refreshed native visual scenarios            | **PASS** — voice listening/Stop, waiting approval/confirmation, collapsed/completed provider artifact, and protected provider transport.        |
+| Native smoke harness contract                | **PASS** — `1` file / `39` tests plus launcher validation, driver syntax, and an isolated offscreen native provider run.                        |
 
 The browser assertion used the current compiled styles in an isolated profile
 on an unused loopback port. Computed output tracks were `6px 360px`; transcript
@@ -76,23 +82,28 @@ is retained only as a redundant non-text dot/border cue.
 
 ### Visual and final-verification status
 
-The Task 22 matrix below remains the authoritative native screenshot inventory
-for completed Outputs, Live Systems, running, approval, completed, error,
-restart, and reduced-motion states. The current smoke harness additionally
-captures named listening, waiting-approval, and collapsed checkpoints on its
-next isolated scenario runs. Those refreshed images are not claimed as present
-at this checkpoint. The 200% browser check was assertion-based and did not
-write a new repository screenshot.
+The Task 22 matrix below remains the authoritative historical native screenshot
+inventory for completed Outputs, Live Systems, running, approval, completed,
+error, restart, and reduced-motion states. Refreshed listening,
+waiting-approval, collapsed, and final-state evidence is present at
+`.superpowers/sdd/evidence/task-22/20260724T222500Z-refreshed/`. Its scenario
+JSON records voice cancellation without stale assistant success, canonical
+approval handoff, producer-proof-bound artifact completion, and protected
+provider dispatch. The final provider run used one hidden-at-start,
+non-activating Tauri window moved to an attested offscreen rectangle before CDP;
+the owned process tree and isolated profile were cleaned afterward. The 200%
+browser check was assertion-based and did not write a new repository screenshot.
 
 The fresh web build used a bounded `3,072` MB Node heap and returned exit code
 `0`. A preceding attempt reached final Vite bundling but exhausted the
 deliberate `1,536` MB heap ceiling; it is not counted as PASS. The full app
 suite, Rust/native matrix, security scan, and refreshed cross-state visual
-matrix have not been rerun at `55c02e3`; they remain one deferred whole-program
-final-verification checklist. The two external-only Task 22 limitations remain
-unchanged: the native STT row still needs the local `faster-whisper` `small`
-model, and the credential-free CLI example still needs a binary accepted by
-Windows App Control.
+matrix have not been rerun in full at `bf17783`; they remain one deferred
+whole-program final-verification checklist. The four refreshed native rows
+above are independently current at that head. The two external-only Task 22
+limitations remain unchanged: the native STT row still needs the local
+`faster-whisper` `small` model, and the credential-free CLI example still needs
+a binary accepted by Windows App Control.
 
 ## Repository verification gates
 
