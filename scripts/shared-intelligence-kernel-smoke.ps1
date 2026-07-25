@@ -470,7 +470,22 @@ function Add-RecordedProcessTree {
         $key = [string]$process.ProcessId
         if ($Records.ContainsKey($key)) {
             if (-not (Test-RecordedProcessIdentity -Current $process -Recorded $Records[$key])) {
-                throw 'kernel_smoke_recorded_process_identity_changed'
+                $recorded = $Records[$key]
+                if (
+                    $null -eq $process.CreationTimeUtc -or
+                    $null -eq $recorded.CreationTimeUtc -or
+                    $process.CreationTimeUtc -le $recorded.CreationTimeUtc
+                ) {
+                    throw 'kernel_smoke_recorded_process_identity_changed'
+                }
+                $Records[$key] = [pscustomobject]@{
+                    ProcessId       = [int]$process.ProcessId
+                    ParentProcessId = [int]$process.ParentProcessId
+                    ExecutablePath  = $process.ExecutablePath
+                    CreationUtc     = $process.CreationUtc
+                    CreationTimeUtc = $process.CreationTimeUtc
+                    Depth           = $process.Depth
+                }
             }
             continue
         }
