@@ -9,9 +9,9 @@
  * The db is opened lazily; calling `openDb()` is idempotent and safe to call
  * from multiple call sites (initial bootstrap, seed, sync loop).
  *
- * V1 → V4 migrations are purely additive. Dexie replays each version's store
+ * V1 → V5 migrations are purely additive. Dexie replays each version's store
  * list, creates the newer tables, and leaves every existing row untouched.
- * New installs open directly on V4.
+ * New installs open directly on V5.
  */
 
 import Dexie, { type EntityTable, type Table } from 'dexie';
@@ -34,10 +34,14 @@ import {
   STORES_V2,
   STORES_V3,
   STORES_V4,
+  STORES_V5,
+  type ContextAssetRow,
   type ContextEdgeRow,
   type ContextEntityRow,
   type ContextMapRow,
   type ContextMigrationBackupRow,
+  type ContextNoteRevisionRow,
+  type ContextNoteRow,
   type ContextProvenanceRow,
   type ContextQuarantineRow,
   type ContextSourceRow,
@@ -107,6 +111,11 @@ export class JarvisDexie extends Dexie {
   context_migration_backups!: EntityTable<ContextMigrationBackupRow, 'id'>;
   context_quarantine!: EntityTable<ContextQuarantineRow, 'id'>;
 
+  // V5 Context content metadata tables (additive)
+  context_notes!: EntityTable<ContextNoteRow, 'id'>;
+  context_note_revisions!: EntityTable<ContextNoteRevisionRow, 'id'>;
+  context_assets!: EntityTable<ContextAssetRow, 'id'>;
+
   constructor(name = DB_NAME, dependencies?: JarvisDexieDependencies) {
     super(name, dependencies);
     // Replay every additive schema version for existing installations.
@@ -114,6 +123,7 @@ export class JarvisDexie extends Dexie {
     this.version(2).stores(STORES_V2);
     this.version(3).stores(STORES_V3);
     this.version(4).stores(STORES_V4);
+    this.version(5).stores(STORES_V5);
   }
 }
 
@@ -169,6 +179,9 @@ export type {
   ContextProvenanceRow,
   ContextMigrationBackupRow,
   ContextQuarantineRow,
+  ContextNoteRow,
+  ContextNoteRevisionRow,
+  ContextAssetRow,
 } from './schema';
 export * from './repositories';
 export { seedIfEmpty } from './seed';

@@ -22,6 +22,11 @@ import type {
   ContextSourceV2,
 } from '@/features/context/contracts';
 import type {
+  ContextAssetV2,
+  ContextNoteRevisionV2,
+  ContextNoteV2,
+} from '@/features/context/contentContracts';
+import type {
   JarvisCanonicalResultEvidenceV1,
   JarvisDurableLiveEvidenceV1,
   JarvisExecutionEvidenceV1,
@@ -314,6 +319,9 @@ export type ContextSourceRow = ContextSourceV2;
 export type ContextEntityRow = ContextEntityV2;
 export type ContextEdgeRow = ContextEdgeV2;
 export type ContextProvenanceRow = ContextProvenanceV2;
+export type ContextNoteRow = ContextNoteV2;
+export type ContextNoteRevisionRow = ContextNoteRevisionV2;
+export type ContextAssetRow = ContextAssetV2;
 
 export type ContextMigrationBackupRow = {
   version: 1;
@@ -356,8 +364,8 @@ export type ContextQuarantineRow = {
 };
 
 export const DB_NAME = 'jarvis-v1';
-/** Current schema version — bumped to 4 for additive Context Map 2.0 stores. */
-export const DB_VERSION = 4;
+/** Current schema version — bumped to 5 for additive Context content metadata stores. */
+export const DB_VERSION = 5;
 
 /**
  * Dexie store schema strings.
@@ -458,6 +466,18 @@ export const STORES_V4 = {
     'id, accountId, mapId, recordKind, [accountId+mapId], quarantinedAt',
 } as const;
 
-export const STORES = STORES_V4;
+/** V5 schema = V4 + Context note, revision, and asset metadata records. */
+// prettier-ignore
+export const STORES_V5 = {
+  ...STORES_V4,
+  context_notes:
+    'id, accountId, mapId, entityId, sourceId, currentRevisionId, [accountId+mapId], [mapId+status], [accountId+updatedAt]',
+  context_note_revisions:
+    'id, accountId, mapId, noteId, &[noteId+sequence], [accountId+mapId], [accountId+noteId], createdAt',
+  context_assets:
+    'id, accountId, mapId, entityId, sourceId, kind, status, [accountId+mapId], [entityId+kind], [sourceId+kind], [mapId+status], [accountId+updatedAt]',
+} as const;
+
+export const STORES = STORES_V5;
 
 export type StoreName = keyof typeof STORES;
