@@ -339,6 +339,134 @@ describe('retrieveApprovedLocalKnowledge', () => {
     expect(results[0]?.excerpt).toContain('Acme kickoff owner');
   });
 
+  it('uses safe frontmatter aliases for retrieval and backlink resolution', async () => {
+    const map = selectedMap([
+      fileNode('notes\\Authentication.md', { title: 'Authentication Flow' }),
+      fileNode('notes\\Security.md', { title: 'Security Review' }),
+    ]);
+    const readTextFileSample = vi.fn(async (path: string) =>
+      successfulRead(
+        path,
+        path.endsWith('Authentication.md')
+          ? ['---', 'aliases:', '  - Access Gate', '---', '# Tokens', 'Server checks.'].join('\n')
+          : ['# Security', 'Review [[Access Gate]] before release.'].join('\n'),
+      ),
+    );
+
+    const results = await retrieveApprovedLocalKnowledge(
+      { projectId: 'project-a', query: 'Access Gate', maxResults: 6 },
+      {
+        loadSelectedMap: () => map,
+        readTextFileSample,
+        now: () => 1_786_300_000_000,
+      },
+    );
+
+    expect(
+      results.find((result) => result.relativePath === 'notes/Authentication.md'),
+    ).toMatchObject({
+      title: 'Authentication Flow',
+      backlinks: ['notes/Security.md'],
+    });
+    expect(results.find((result) => result.relativePath === 'notes/Security.md')).toMatchObject({
+      wikiLinks: ['Access Gate'],
+    });
+  });
+
+  it('discovers an alias-only target beyond the metadata preselection window', async () => {
+    const nodes = Array.from({ length: 9 }, (_, index) =>
+      fileNode(`notes\\Neutral-${index + 1}.md`, {
+        title: `Neutral ${index + 1}`,
+        modifiedAt: 1_786_300_000_000 - index,
+      }),
+    );
+    const map = selectedMap(nodes);
+    const readTextFileSample = vi.fn(async (path: string) =>
+      successfulRead(
+        path,
+        path.endsWith('Neutral-9.md')
+          ? ['---', 'aliases: [Hidden Discovery]', '---', '# Ninth', 'Found.'].join('\n')
+          : '# Neutral\nNo query match.',
+      ),
+    );
+
+    const results = await retrieveApprovedLocalKnowledge(
+      { projectId: 'project-a', query: 'Hidden Discovery', maxResults: 6 },
+      {
+        loadSelectedMap: () => map,
+        readTextFileSample,
+        now: () => 1_786_300_000_000,
+      },
+    );
+
+    expect(results).toContainEqual(
+      expect.objectContaining({
+        relativePath: 'notes/Neutral-9.md',
+        title: 'Neutral 9',
+      }),
+    );
+  });
+
+  it('keeps alias discovery bounded when misleading metadata ranks ahead of the target', async () => {
+    const nodes = Array.from({ length: 100 }, (_, index) =>
+      fileNode(`notes\\Bounded-${index + 1}.md`, {
+        title: `Bounded ${index + 1}`,
+        summary: index === 0 ? 'hidden metadata decoy' : '',
+        modifiedAt: 1_786_300_000_000 - index,
+      }),
+    );
+    const map = selectedMap(nodes);
+    const readTextFileSample = vi.fn(async (path: string) =>
+      successfulRead(
+        path,
+        path.endsWith('Bounded-9.md')
+          ? ['---', 'aliases: [Hidden Discovery]', '---', '# Ninth', 'Found.'].join('\n')
+          : '# Bounded\nNo exact query match.',
+      ),
+    );
+
+    const results = await retrieveApprovedLocalKnowledge(
+      { projectId: 'project-a', query: 'Hidden Discovery', maxResults: 6 },
+      {
+        loadSelectedMap: () => map,
+        readTextFileSample,
+        now: () => 1_786_300_000_000,
+      },
+    );
+
+    expect(results).toContainEqual(expect.objectContaining({ relativePath: 'notes/Bounded-9.md' }));
+    expect(readTextFileSample).toHaveBeenCalledTimes(64);
+  });
+
+  it('does not index links from fenced code when a Markdown section spans excerpt windows', async () => {
+    const map = selectedMap([fileNode('notes\\Security.md', { title: 'Security Review' })]);
+    const readTextFileSample = vi.fn(async (path: string) =>
+      successfulRead(
+        path,
+        [
+          '# Security',
+          '```md',
+          'x'.repeat(1_590),
+          '[[Hidden Example]]',
+          '```',
+          'Review [[Visible Note]] before release.',
+        ].join('\n'),
+      ),
+    );
+
+    const results = await retrieveApprovedLocalKnowledge(
+      { projectId: 'project-a', query: 'Security', maxResults: 6 },
+      {
+        loadSelectedMap: () => map,
+        readTextFileSample,
+        now: () => 1_786_300_000_000,
+      },
+    );
+
+    expect(results.flatMap((result) => result.wikiLinks)).not.toContain('Hidden Example');
+    expect(results.flatMap((result) => result.wikiLinks)).toContain('Visible Note');
+  });
+
   it('finds query hits after the first excerpt window without overstating line ranges', async () => {
     const map = selectedMap([fileNode('notes\\Long.txt', { title: 'Long note' })]);
     const content = [
@@ -491,7 +619,7 @@ describe('retrieveApprovedLocalKnowledge', () => {
     expect(results[0]?.relativePath).toBe('notes/topic-7.md');
     expect(results.every((result) => result.excerpt.length <= 1_600)).toBe(true);
     expect(new Set(results.map((result) => result.sourceId)).size).toBe(3);
-    expect(readTextFileSample).toHaveBeenCalledTimes(8);
+    expect(readTextFileSample).toHaveBeenCalledTimes(12);
   });
 
   it('does not retrieve from an absent, deleted, or queryless selected map', async () => {

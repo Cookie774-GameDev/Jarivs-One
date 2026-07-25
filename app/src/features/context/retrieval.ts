@@ -9,8 +9,11 @@ import {
   type ContextMapRecord,
   type ContextTreeNode,
 } from './tree';
+import { parseContextNoteSyntax } from './noteSyntax';
 
-const MAX_CANDIDATE_FILES = 8;
+const MAX_PRIMARY_CANDIDATE_FILES = 8;
+const MAX_ALIAS_DISCOVERY_FILES = 64;
+const MAX_CONCURRENT_READS = 8;
 const DEFAULT_MAX_RESULTS = 4;
 const MAX_RESULTS = 6;
 const MAX_FILE_SAMPLE_BYTES = 64 * 1024;
@@ -127,6 +130,7 @@ interface ReadDocument {
   node: ContextTreeNode;
   relativePath: string;
   title: string;
+  aliases: string[];
   tags: string[];
   chunks: ParsedChunk[];
 }
@@ -308,71 +312,30 @@ function metadataScore(
   );
 }
 
-function parseFrontmatter(lines: readonly string[]): { tags: string[]; bodyStart: number } {
-  if (lines[0]?.trim() !== '---') return { tags: [], bodyStart: 0 };
-  const close = lines.slice(1, 80).findIndex((line) => line.trim() === '---');
-  if (close < 0) return { tags: [], bodyStart: 0 };
-  const end = close + 1;
-  const tags: string[] = [];
-  let collectingTags = false;
-
-  for (const rawLine of lines.slice(1, end)) {
-    const line = rawLine.trim();
-    const inline = /^tags?\s*:\s*\[(.*)\]\s*$/i.exec(line);
-    if (inline) {
-      tags.push(...inline[1].split(',').map((tag) => tag.replace(/^['"]|['"]$/g, '').trim()));
-      collectingTags = false;
-      continue;
-    }
-    if (/^tags?\s*:\s*$/i.test(line)) {
-      collectingTags = true;
-      continue;
-    }
-    const scalar = /^tags?\s*:\s*(.+)$/i.exec(line);
-    if (scalar) {
-      tags.push(...scalar[1].split(/[,\s]+/).map((tag) => tag.replace(/^['"#]|['"]$/g, '').trim()));
-      collectingTags = true;
-      continue;
-    }
-    const item = collectingTags ? /^-\s*(.+)$/.exec(line) : null;
-    if (item) {
-      tags.push(item[1].replace(/^['"#]|['"]$/g, '').trim());
-      continue;
-    }
-    collectingTags = false;
-  }
-  return { tags: boundedDistinct(tags, 32).sort(stableCompare), bodyStart: end + 1 };
-}
-
-function safeMarkdownTarget(target: string): string | null {
-  const value = target.trim().replace(/^<|>$/g, '');
-  if (
-    !value ||
-    value.length > 400 ||
-    /[\u0000-\u001f\u007f]/.test(value) ||
-    /^(?:javascript|data|vbscript):/i.test(value)
-  ) {
-    return null;
-  }
-  return value;
-}
-
 function extractLinks(text: string): {
   wikiLinks: string[];
   markdownLinks: LocalKnowledgeMarkdownLink[];
 } {
-  const wiki: string[] = [];
-  for (const match of text.matchAll(/\[\[([^|\]\r\n]{1,240})(?:\|[^\]\r\n]{0,240})?\]\]/g)) {
-    if (match[1]) wiki.push(match[1].trim());
-  }
+  const parsed = parseContextNoteSyntax(text);
+  if (!parsed.ok) return { wikiLinks: [], markdownLinks: [] };
+  return normalizeExtractedLinks(
+    parsed.value.wikiLinks.map(({ targetTitle, heading, blockId }) => {
+      const fragment = heading ? `#${heading}` : blockId ? `#^${blockId}` : '';
+      return `${targetTitle}${fragment}`;
+    }),
+    parsed.value.markdownLinks
+      .filter(({ image }) => !image)
+      .map(({ label, target }) => ({ label, target })),
+  );
+}
 
-  const markdown: LocalKnowledgeMarkdownLink[] = [];
-  for (const match of text.matchAll(/(?<!!)\[([^\]\r\n]{1,240})\]\(([^)\r\n]{1,400})\)/g)) {
-    const label = match[1]?.trim();
-    const target = match[2] ? safeMarkdownTarget(match[2]) : null;
-    if (label && target) markdown.push({ label, target });
-  }
-
+function normalizeExtractedLinks(
+  wiki: readonly string[],
+  markdown: readonly LocalKnowledgeMarkdownLink[],
+): {
+  wikiLinks: string[];
+  markdownLinks: LocalKnowledgeMarkdownLink[];
+} {
   const markdownSeen = new Set<string>();
   return {
     wikiLinks: boundedDistinct(wiki),
@@ -389,6 +352,31 @@ function extractLinks(text: string): {
   };
 }
 
+type ParsedContextNoteSyntax = Extract<
+  ReturnType<typeof parseContextNoteSyntax>,
+  { ok: true }
+>['value'];
+
+function extractSyntaxLinks(
+  syntax: ParsedContextNoteSyntax,
+  lineStart: number,
+  lineEnd: number,
+): {
+  wikiLinks: string[];
+  markdownLinks: LocalKnowledgeMarkdownLink[];
+} {
+  const wiki = syntax.wikiLinks
+    .filter(({ line }) => line >= lineStart && line <= lineEnd)
+    .map(({ targetTitle, heading, blockId }) => {
+      const fragment = heading ? `#${heading}` : blockId ? `#^${blockId}` : '';
+      return `${targetTitle}${fragment}`;
+    });
+  const markdown = syntax.markdownLinks
+    .filter(({ image, line }) => !image && line >= lineStart && line <= lineEnd)
+    .map(({ label, target }) => ({ label, target }));
+  return normalizeExtractedLinks(wiki, markdown);
+}
+
 function safeTextSlice(value: string, maxChars: number): string {
   if (value.length <= maxChars) return value;
   let end = maxChars;
@@ -402,6 +390,7 @@ function sectionWindows(
   startIndex: number,
   endExclusive: number,
   heading?: string,
+  syntax?: ParsedContextNoteSyntax,
 ): ParsedChunk[] {
   const chunks: ParsedChunk[] = [];
   let pending: Array<{ line: string; lineNumber: number }> = [];
@@ -415,11 +404,13 @@ function sectionWindows(
       return;
     }
     const excerpt = pending.map(({ line }) => line).join('\n');
-    const links = extractLinks(excerpt);
+    const lineStart = pending[0]!.lineNumber;
+    const lineEnd = pending.at(-1)!.lineNumber;
+    const links = syntax ? extractSyntaxLinks(syntax, lineStart, lineEnd) : extractLinks(excerpt);
     chunks.push({
       ...(heading ? { heading } : {}),
-      lineStart: pending[0]!.lineNumber,
-      lineEnd: pending.at(-1)!.lineNumber,
+      lineStart,
+      lineEnd,
       excerpt,
       wikiLinks: links.wikiLinks,
       markdownLinks: links.markdownLinks,
@@ -443,7 +434,9 @@ function sectionWindows(
       while (offset < line.length && chunks.length < MAX_PARSED_WINDOWS_PER_FILE) {
         const excerpt = safeTextSlice(line.slice(offset), MAX_EXCERPT_CHARS);
         if (!excerpt) break;
-        const links = extractLinks(excerpt);
+        const links = syntax
+          ? extractSyntaxLinks(syntax, lineNumber, lineNumber)
+          : extractLinks(excerpt);
         chunks.push({
           ...(heading ? { heading } : {}),
           lineStart: lineNumber,
@@ -470,34 +463,34 @@ function sectionWindows(
 function parseDocument(
   content: string,
   extension: string,
-): { tags: string[]; chunks: ParsedChunk[] } {
+): { aliases: string[]; tags: string[]; chunks: ParsedChunk[] } {
   const lines = content.replace(/\r\n?/g, '\n').split('\n');
   const markdown = extension === 'md' || extension === 'mdx';
-  const frontmatter = markdown ? parseFrontmatter(lines) : { tags: [], bodyStart: 0 };
+  const syntax = markdown ? parseContextNoteSyntax(content) : null;
+  if (syntax && !syntax.ok) return { aliases: [], tags: [], chunks: [] };
+  const aliases = syntax?.ok ? [...syntax.value.aliases] : [];
+  const tags = syntax?.ok ? [...syntax.value.tags] : [];
+  const bodyStart = syntax?.ok ? syntax.value.bodyStartLine - 1 : 0;
+  const parsedSyntax = syntax?.ok ? syntax.value : undefined;
   const starts: Array<{ index: number; heading?: string }> = [];
 
-  if (markdown) {
-    for (let index = frontmatter.bodyStart; index < lines.length; index += 1) {
-      const heading = /^(#{1,6})[ \t]+(.+?)\s*$/.exec(lines[index] ?? '');
-      if (heading?.[2]) {
-        const title = heading[2]
-          .replace(/\s+#+\s*$/, '')
-          .replace(/[\u0000-\u001f\u007f]/g, '')
-          .trim()
-          .slice(0, 240);
-        if (title) starts.push({ index, heading: title });
-      }
-    }
+  if (syntax?.ok) {
+    starts.push(
+      ...syntax.value.headings.map((heading) => ({
+        index: heading.line - 1,
+        heading: heading.text,
+      })),
+    );
   }
 
   if (starts.length > 0) {
-    let preambleStart = frontmatter.bodyStart;
+    let preambleStart = bodyStart;
     while (preambleStart < starts[0]!.index && !lines[preambleStart]?.trim()) {
       preambleStart += 1;
     }
     if (preambleStart < starts[0]!.index) starts.unshift({ index: preambleStart });
   }
-  if (starts.length === 0) starts.push({ index: frontmatter.bodyStart });
+  if (starts.length === 0) starts.push({ index: bodyStart });
   const chunks: ParsedChunk[] = [];
   for (let index = 0; index < starts.length; index += 1) {
     const start = starts[index]!;
@@ -505,10 +498,13 @@ function parseDocument(
     const available = MAX_PARSED_WINDOWS_PER_FILE - chunks.length;
     if (available <= 0) break;
     chunks.push(
-      ...sectionWindows(lines, start.index, endExclusive, start.heading).slice(0, available),
+      ...sectionWindows(lines, start.index, endExclusive, start.heading, parsedSyntax).slice(
+        0,
+        available,
+      ),
     );
   }
-  return { tags: frontmatter.tags, chunks };
+  return { aliases, tags, chunks };
 }
 
 function noteAliases(document: ReadDocument): Set<string> {
@@ -518,7 +514,7 @@ function noteAliases(document: ReadDocument): Set<string> {
       .at(-1)
       ?.replace(/\.[^.]+$/, '') ?? '';
   return new Set(
-    [document.title, basename, document.relativePath.replace(/\.[^.]+$/, '')]
+    [document.title, basename, document.relativePath.replace(/\.[^.]+$/, ''), ...document.aliases]
       .map((value) => value.trim().toLocaleLowerCase('en-US'))
       .filter(Boolean),
   );
@@ -600,6 +596,7 @@ function chunkScore(
   return (
     metadataScore(document.node, document.relativePath, tokens) +
     countTokenMatches(chunk.heading ?? '', tokens) * 10 +
+    countTokenMatches(document.aliases.join(' '), tokens) * 8 +
     countTokenMatches(chunk.wikiLinks.join(' '), tokens) * 5 +
     countTokenMatches(
       chunk.markdownLinks.map((link) => `${link.label} ${link.target}`).join(' '),
@@ -670,6 +667,7 @@ async function readApprovedDocument(
     node,
     relativePath,
     title,
+    aliases: parsed.aliases,
     tags: boundedDistinct([...(node.tags ?? []), ...parsed.tags], 32).sort(stableCompare),
     chunks: parsed.chunks,
   };
@@ -679,6 +677,23 @@ function resultLimit(value: number | undefined): number {
   return Number.isSafeInteger(value)
     ? Math.max(1, Math.min(MAX_RESULTS, value as number))
     : DEFAULT_MAX_RESULTS;
+}
+
+async function readCandidateDocuments(
+  map: ContextMapRecord,
+  nodes: readonly ContextTreeNode[],
+  dependencies: LocalKnowledgeRetrievalDependencies,
+): Promise<ReadDocument[]> {
+  const documents: ReadDocument[] = [];
+  for (let offset = 0; offset < nodes.length; offset += MAX_CONCURRENT_READS) {
+    const batch = await Promise.all(
+      nodes
+        .slice(offset, offset + MAX_CONCURRENT_READS)
+        .map((node) => readApprovedDocument(map, node, dependencies)),
+    );
+    documents.push(...batch.filter((document): document is ReadDocument => document !== null));
+  }
+  return documents;
 }
 
 export async function retrieveApprovedLocalKnowledge(
@@ -700,7 +715,7 @@ export async function retrieveApprovedLocalKnowledge(
     return Object.freeze([]);
   }
 
-  const candidates = flattenContextNodes(map.tree.nodes)
+  const rankedCandidates = flattenContextNodes(map.tree.nodes)
     .filter(
       (node) =>
         node.kind === 'file' &&
@@ -717,12 +732,23 @@ export async function retrieveApprovedLocalKnowledge(
         right.score - left.score ||
         (right.node.modifiedAt ?? 0) - (left.node.modifiedAt ?? 0) ||
         stableCompare(left.relativePath, right.relativePath),
+    );
+  const primaryCandidates = rankedCandidates.slice(0, MAX_PRIMARY_CANDIDATE_FILES);
+  const selectedPaths = new Set(primaryCandidates.map(({ relativePath }) => relativePath));
+  // Alias metadata is not yet present on legacy v1 tree nodes. Search a strictly
+  // bounded secondary Markdown window so aliases can participate without an
+  // unbounded file-read fanout.
+  const aliasCandidates = rankedCandidates
+    .filter(
+      ({ relativePath }) =>
+        !selectedPaths.has(relativePath) && ['md', 'mdx'].includes(extensionOf(relativePath)),
     )
-    .slice(0, MAX_CANDIDATE_FILES);
-
-  const documents = (
-    await Promise.all(candidates.map(({ node }) => readApprovedDocument(map, node, dependencies)))
-  ).filter((document): document is ReadDocument => document !== null);
+    .slice(0, Math.max(0, MAX_ALIAS_DISCOVERY_FILES - primaryCandidates.length));
+  const documents = await readCandidateDocuments(
+    map,
+    [...primaryCandidates, ...aliasCandidates].map(({ node }) => node),
+    dependencies,
+  );
   const backlinks = backlinkMap(documents);
   const now = dependencies.now();
   const ranked: RankedChunk[] = [];
@@ -733,6 +759,7 @@ export async function retrieveApprovedLocalKnowledge(
       const score = chunkScore(document, chunk, tokens, now, documentBacklinks.length);
       const hasQueryMatch =
         metadataScore(document.node, document.relativePath, tokens) > 0 ||
+        countTokenMatches(document.aliases.join(' '), tokens) > 0 ||
         countTokenMatches(
           [
             chunk.heading ?? '',
