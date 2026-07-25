@@ -325,6 +325,7 @@ export type ContextMigrationBackupRow = {
   legacyValues: Record<string, string | null>;
   expectedMapCount: number;
   migratedMapCount: number;
+  migratedMapIds: string[];
   rollbackAvailable: true;
   createdAt: number;
   verifiedAt?: number;
