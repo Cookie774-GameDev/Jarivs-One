@@ -308,6 +308,91 @@ aliases: [Shared Alias]
     ]);
   });
 
+  it('reuses the immutable title and alias lookup across batched resolutions', () => {
+    const built = buildContextNoteReferenceIndex([
+      document('note-source', 'Source', '[[Access Gate]]'),
+      document('note-auth', 'Authentication', '---\naliases: [Access Gate]\n---\n# Authentication'),
+    ]);
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+    let aliasIterations = 0;
+    const documents = built.value.documents.map((entry) => {
+      if (entry.noteId !== 'note-auth') return entry;
+      const aliases = new Proxy([...entry.syntax.aliases], {
+        get(target, property, receiver) {
+          if (property === Symbol.iterator) aliasIterations += 1;
+          return Reflect.get(target, property, receiver);
+        },
+      });
+      return Object.freeze({
+        ...entry,
+        syntax: Object.freeze({ ...entry.syntax, aliases: Object.freeze(aliases) }),
+      });
+    });
+    const index = Object.freeze({ version: 1 as const, documents: Object.freeze(documents) });
+
+    expect(resolveContextNoteReferences(index, 'note-source')[0]).toMatchObject({
+      state: 'resolved',
+      targetNoteId: 'note-auth',
+    });
+    expect(resolveContextNoteReferences(index, 'note-source')[0]).toMatchObject({
+      state: 'resolved',
+      targetNoteId: 'note-auth',
+    });
+    expect(aliasIterations).toBe(1);
+  });
+
+  it('reuses immutable document and fragment lookups across repeated resolutions', () => {
+    const built = buildContextNoteReferenceIndex([
+      document('note-source', 'Source', '[[Target#^missing-one]]\n[[Target#^missing-two]]'),
+      document(
+        'note-target',
+        'Target',
+        Array.from({ length: 32 }, (_, index) => `Block ${index}. ^block-${index}`).join('\n'),
+      ),
+    ]);
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+
+    let documentReads = 0;
+    let blockReads = 0;
+    const documents = built.value.documents.map((entry) => {
+      if (entry.noteId !== 'note-target') return entry;
+      const blocks = new Proxy(entry.syntax.blocks, {
+        get(target, property, receiver) {
+          if (typeof property === 'string' && /^\d+$/u.test(property)) blockReads += 1;
+          return Reflect.get(target, property, receiver);
+        },
+      });
+      return Object.freeze({
+        ...entry,
+        syntax: Object.freeze({ ...entry.syntax, blocks }),
+      });
+    });
+    const frozenDocuments = Object.freeze(documents);
+    const instrumentedDocuments = new Proxy(frozenDocuments, {
+      get(target, property, receiver) {
+        if (typeof property === 'string' && /^\d+$/u.test(property)) documentReads += 1;
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    const index = Object.freeze({
+      version: 1 as const,
+      documents: instrumentedDocuments,
+    });
+
+    expect(resolveContextNoteReferences(index, 'note-source')).toMatchObject([
+      { state: 'missing_block', targetNoteId: 'note-target' },
+      { state: 'missing_block', targetNoteId: 'note-target' },
+    ]);
+    const readsAfterPreparation = { documentReads, blockReads };
+    expect(resolveContextNoteReferences(index, 'note-source')).toMatchObject([
+      { state: 'missing_block', targetNoteId: 'note-target' },
+      { state: 'missing_block', targetNoteId: 'note-target' },
+    ]);
+    expect({ documentReads, blockReads }).toEqual(readsAfterPreparation);
+  });
+
   it('returns deterministic bounded autocomplete records for titles, aliases, headings, and blocks', () => {
     const index = buildContextNoteReferenceIndex([
       document(

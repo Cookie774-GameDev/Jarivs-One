@@ -740,12 +740,18 @@ function labelMapForDocuments(
   documents: readonly ContextNoteReferenceDocumentV1[],
 ): Map<string, ContextNoteReferenceDocumentV1[]> {
   const result = new Map<string, ContextNoteReferenceDocumentV1[]>();
+  const noteIdsByLabel = new Map<string, Set<string>>();
   for (const document of documents) {
     for (const label of [document.title, ...document.syntax.aliases]) {
       const key = folded(label);
       const entries = result.get(key) ?? [];
-      if (!entries.some(({ noteId }) => noteId === document.noteId)) entries.push(document);
+      const noteIds = noteIdsByLabel.get(key) ?? new Set<string>();
+      if (!noteIds.has(document.noteId)) {
+        noteIds.add(document.noteId);
+        entries.push(document);
+      }
       result.set(key, entries);
+      noteIdsByLabel.set(key, noteIds);
     }
   }
   return result;
@@ -843,50 +849,153 @@ export function buildContextNoteReferenceIndex(
   });
 }
 
-function documentsByLabel(
+type ContextNoteLabelMap = ReadonlyMap<
+  string,
+  readonly DeepReadonly<ContextNoteReferenceDocumentV1>[]
+>;
+
+type ContextNoteResolutionLookup = Readonly<{
+  documentsById: ReadonlyMap<string, DeepReadonly<ContextNoteReferenceDocumentV1>>;
+  documentsByLabel: ContextNoteLabelMap;
+  candidateNoteIdsByLabel: ReadonlyMap<string, readonly string[]>;
+  headingsByNoteId: ReadonlyMap<string, ReadonlyMap<string, DeepReadonly<ContextNoteHeadingV1>>>;
+  blocksByNoteId: ReadonlyMap<string, ReadonlyMap<string, DeepReadonly<ContextNoteBlockV1>>>;
+}>;
+
+const frozenIndexResolutionCache = new WeakMap<object, ContextNoteResolutionLookup>();
+
+function frozenObjectArray(value: unknown): boolean {
+  return (
+    Array.isArray(value) &&
+    Object.isFrozen(value) &&
+    value.every((entry) => Boolean(entry) && typeof entry === 'object' && Object.isFrozen(entry))
+  );
+}
+
+function deeplyFrozenReferenceCollections(
   index: DeepReadonly<ContextNoteReferenceIndexV1>,
-): ReadonlyMap<string, readonly DeepReadonly<ContextNoteReferenceDocumentV1>[]> {
-  const result = new Map<string, DeepReadonly<ContextNoteReferenceDocumentV1>[]>();
+): boolean {
+  return (
+    Object.isFrozen(index) &&
+    Object.isFrozen(index.documents) &&
+    index.documents.every(
+      (document) =>
+        Object.isFrozen(document) &&
+        Object.isFrozen(document.syntax) &&
+        Array.isArray(document.syntax.aliases) &&
+        Object.isFrozen(document.syntax.aliases) &&
+        Array.isArray(document.syntax.tags) &&
+        Object.isFrozen(document.syntax.tags) &&
+        frozenObjectArray(document.syntax.headings) &&
+        frozenObjectArray(document.syntax.blocks) &&
+        frozenObjectArray(document.syntax.wikiLinks) &&
+        frozenObjectArray(document.syntax.markdownLinks) &&
+        frozenObjectArray(document.syntax.diagnostics),
+    )
+  );
+}
+
+export function isDeepFrozenContextNoteReferenceIndex(
+  value: unknown,
+): value is DeepReadonly<ContextNoteReferenceIndexV1> {
+  return validReferenceIndex(value) && deeplyFrozenReferenceCollections(value);
+}
+
+function resolutionLookup(
+  index: DeepReadonly<ContextNoteReferenceIndexV1>,
+): ContextNoteResolutionLookup {
+  const cached = frozenIndexResolutionCache.get(index as object);
+  if (cached) return cached;
+
+  const documentsById = new Map<string, DeepReadonly<ContextNoteReferenceDocumentV1>>();
+  const documentsByLabel = new Map<string, DeepReadonly<ContextNoteReferenceDocumentV1>[]>();
+  const noteIdsByLabel = new Map<string, Set<string>>();
+  const headingsByNoteId = new Map<
+    string,
+    ReadonlyMap<string, DeepReadonly<ContextNoteHeadingV1>>
+  >();
+  const blocksByNoteId = new Map<string, ReadonlyMap<string, DeepReadonly<ContextNoteBlockV1>>>();
+  const candidateNoteIdsByLabel = new Map<string, readonly string[]>();
+
   for (const document of index.documents) {
-    for (const label of [document.title, ...document.syntax.aliases]) {
-      const key = folded(label);
-      const entries = result.get(key) ?? [];
-      if (!entries.some(({ noteId }) => noteId === document.noteId)) {
-        entries.push(document);
-        result.set(key, entries);
+    documentsById.set(document.noteId, document);
+    const headings = new Map<string, DeepReadonly<ContextNoteHeadingV1>>();
+    for (const heading of document.syntax.headings) {
+      for (const label of [heading.text, heading.slug]) {
+        const key = folded(label);
+        if (!headings.has(key)) headings.set(key, heading);
       }
     }
+    headingsByNoteId.set(document.noteId, headings);
+    const blocks = new Map<string, DeepReadonly<ContextNoteBlockV1>>();
+    for (const block of document.syntax.blocks) {
+      const key = folded(block.id);
+      if (!blocks.has(key)) blocks.set(key, block);
+    }
+    blocksByNoteId.set(document.noteId, blocks);
+
+    for (const label of [document.title, ...document.syntax.aliases]) {
+      const key = folded(label);
+      const entries = documentsByLabel.get(key) ?? [];
+      const noteIds = noteIdsByLabel.get(key) ?? new Set<string>();
+      if (!noteIds.has(document.noteId)) {
+        noteIds.add(document.noteId);
+        entries.push(document);
+      }
+      documentsByLabel.set(key, entries);
+      noteIdsByLabel.set(key, noteIds);
+    }
+  }
+  for (const entries of documentsByLabel.values()) {
+    entries.sort((left, right) => left.noteId.localeCompare(right.noteId, 'en-US'));
+  }
+  for (const [label, entries] of documentsByLabel) {
+    if (entries.length > 1) {
+      candidateNoteIdsByLabel.set(label, Object.freeze(entries.map(({ noteId }) => noteId)));
+    }
+  }
+  const result: ContextNoteResolutionLookup = {
+    documentsById,
+    documentsByLabel,
+    candidateNoteIdsByLabel,
+    headingsByNoteId,
+    blocksByNoteId,
+  };
+  if (deeplyFrozenReferenceCollections(index)) {
+    frozenIndexResolutionCache.set(index as object, result);
   }
   return result;
 }
 
 function resolveOne(
-  index: DeepReadonly<ContextNoteReferenceIndexV1>,
+  lookup: ContextNoteResolutionLookup,
   sourceNoteId: string,
   link: DeepReadonly<ContextNoteWikiLinkV1>,
 ): ContextNoteReferenceResolutionV1 {
-  const labels = documentsByLabel(index);
-  const candidates = link.targetNoteId
-    ? index.documents.filter(({ noteId }) => noteId === link.targetNoteId)
-    : link.targetTitle
-      ? [...(labels.get(folded(link.targetTitle)) ?? [])]
-      : index.documents.filter(({ noteId }) => noteId === sourceNoteId);
-  candidates.sort((left, right) => left.noteId.localeCompare(right.noteId, 'en-US'));
+  let candidates: readonly DeepReadonly<ContextNoteReferenceDocumentV1>[];
+  if (link.targetNoteId) {
+    const target = lookup.documentsById.get(link.targetNoteId);
+    candidates = target ? [target] : [];
+  } else if (link.targetTitle) {
+    candidates = lookup.documentsByLabel.get(folded(link.targetTitle)) ?? [];
+  } else {
+    const source = lookup.documentsById.get(sourceNoteId);
+    candidates = source ? [source] : [];
+  }
   if (candidates.length === 0) return deepFreeze({ state: 'missing_note' as const, link });
   if (candidates.length > 1) {
-    return deepFreeze({
+    const label = folded(link.targetTitle);
+    return Object.freeze({
       state: 'ambiguous_note' as const,
-      link,
-      candidateNoteIds: candidates.map(({ noteId }) => noteId),
+      link: deepFreeze(link),
+      candidateNoteIds:
+        lookup.candidateNoteIdsByLabel.get(label) ??
+        Object.freeze(candidates.map(({ noteId }) => noteId)),
     });
   }
   const target = candidates[0]!;
   if (link.heading) {
-    const heading = target.syntax.headings.find(
-      (candidate) =>
-        folded(candidate.text) === folded(link.heading!) ||
-        folded(candidate.slug) === folded(link.heading!),
-    );
+    const heading = lookup.headingsByNoteId.get(target.noteId)?.get(folded(link.heading));
     if (!heading) {
       return deepFreeze({
         state: 'missing_heading' as const,
@@ -902,9 +1011,7 @@ function resolveOne(
     });
   }
   if (link.blockId) {
-    const block = target.syntax.blocks.find(
-      (candidate) => folded(candidate.id) === folded(link.blockId!),
-    );
+    const block = lookup.blocksByNoteId.get(target.noteId)?.get(folded(link.blockId));
     if (!block) {
       return deepFreeze({
         state: 'missing_block' as const,
@@ -930,10 +1037,11 @@ export function resolveContextNoteReferences(
   index: DeepReadonly<ContextNoteReferenceIndexV1>,
   sourceNoteId: string,
 ): readonly ContextNoteReferenceResolutionV1[] {
-  const source = index.documents.find(({ noteId }) => noteId === sourceNoteId);
+  const lookup = resolutionLookup(index);
+  const source = lookup.documentsById.get(sourceNoteId);
   if (!source) return Object.freeze([]);
   return Object.freeze(
-    source.syntax.wikiLinks.map((link) => resolveOne(index, sourceNoteId, link)),
+    source.syntax.wikiLinks.map((link) => resolveOne(lookup, sourceNoteId, link)),
   );
 }
 
@@ -1147,7 +1255,8 @@ export function buildContextEmbedPlan(
   startNoteId: string,
   options: Readonly<{ maxDepth?: number; maxEntries?: number }> = {},
 ): readonly DeepReadonly<ContextEmbedPlanEntryV1>[] {
-  if (!index.documents.some(({ noteId }) => noteId === startNoteId)) return Object.freeze([]);
+  const lookup = resolutionLookup(index);
+  if (!lookup.documentsById.has(startNoteId)) return Object.freeze([]);
   const maxDepth = Number.isSafeInteger(options.maxDepth)
     ? Math.max(1, Math.min(32, options.maxDepth!))
     : 8;
@@ -1162,7 +1271,7 @@ export function buildContextEmbedPlan(
     scope: Readonly<{ headingSlug?: string; blockId?: string }> = {},
   ) => {
     if (entries.length >= maxEntries) return;
-    const source = index.documents.find(({ noteId }) => noteId === sourceNoteId);
+    const source = lookup.documentsById.get(sourceNoteId);
     if (!source) return;
     let embeds = source.syntax.wikiLinks.filter(({ embed }) => embed);
     if (scope.headingSlug) {
@@ -1179,7 +1288,7 @@ export function buildContextEmbedPlan(
     }
     for (const link of embeds) {
       if (entries.length >= maxEntries) return;
-      const resolution = resolveOne(index, sourceNoteId, link);
+      const resolution = resolveOne(lookup, sourceNoteId, link);
       const depth = path.length;
       if (resolution.state !== 'resolved') {
         entries.push({
