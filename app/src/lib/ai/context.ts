@@ -33,8 +33,13 @@ import {
   classifyJarvisSource,
   type JarvisSourceChannel,
 } from '@/lib/jarvis/sourcePolicy';
-import { buildJarvisContextPack, type JarvisContextPackInput } from '@/lib/jarvis/contextPack';
+import {
+  buildJarvisContextPack,
+  type JarvisContextCandidate,
+  type JarvisContextPackInput,
+} from '@/lib/jarvis/contextPack';
 import type { JarvisContextPack } from '@/lib/jarvis/contracts';
+import { retrieveApprovedLocalKnowledge } from '@/features/context/retrieval';
 import { useTerminalTranscriptStore } from '@/features/terminals/transcriptStore';
 import {
   readJarvisTerminalOperatingSnapshot,
@@ -110,6 +115,93 @@ export function buildJarvisContextPackForAi(
   input: JarvisContextPackInput,
 ): Promise<Readonly<JarvisContextPack>> {
   return buildJarvisContextPack(input);
+}
+
+function isSafeLocalKnowledgeProvenance(input: {
+  relativePath: string;
+  lineStart: number;
+  lineEnd: number;
+}): boolean {
+  const path = input.relativePath;
+  if (
+    path.length === 0 ||
+    path.length > 400 ||
+    path.trim() !== path ||
+    /[\u0000-\u001f\u007f\\]/.test(path) ||
+    path.startsWith('/') ||
+    /^[A-Za-z][A-Za-z0-9+.-]*:/.test(path)
+  ) {
+    return false;
+  }
+  const segments = path.split('/');
+  if (segments.some((segment) => segment.length === 0 || segment === '.' || segment === '..')) {
+    return false;
+  }
+  if (
+    !Number.isSafeInteger(input.lineStart) ||
+    !Number.isSafeInteger(input.lineEnd) ||
+    input.lineStart < 1 ||
+    input.lineEnd < input.lineStart
+  ) {
+    return false;
+  }
+  return `${path}#L${input.lineStart}-L${input.lineEnd}`.length <= 480;
+}
+
+function localKnowledgeSourceLabel(path: string, lineStart: number, lineEnd: number): string {
+  const suffix = `:${lineStart}-${lineEnd}`;
+  const basename = path.split('/').at(-1) ?? 'Local knowledge';
+  let end = Math.min(basename.length, 240 - suffix.length);
+  if (end < basename.length) {
+    const finalCodeUnit = basename.charCodeAt(end - 1);
+    if (finalCodeUnit >= 0xd800 && finalCodeUnit <= 0xdbff) end -= 1;
+  }
+  return `${basename.slice(0, end)}${suffix}`;
+}
+
+/**
+ * Admit query-ranked content from the exact selected local map through the
+ * protected context boundary. Indexed text remains untrusted answer evidence:
+ * selection proves only that VibeSpace may read the source, not that its body
+ * may set policy or accurately describes the current project state.
+ */
+export async function buildApprovedLocalKnowledgeContextPackForAi(input: {
+  accountId: string;
+  projectId: string | null;
+  query: string;
+  maxChars: number;
+}): Promise<Readonly<JarvisContextPack>> {
+  const chunks = await retrieveApprovedLocalKnowledge({
+    projectId: input.projectId,
+    query: input.query,
+  });
+  const candidates: JarvisContextCandidate[] = chunks
+    .filter(isSafeLocalKnowledgeProvenance)
+    .map((chunk) => ({
+      source: {
+        id: chunk.sourceId,
+        kind: 'project_file',
+        label: localKnowledgeSourceLabel(chunk.relativePath, chunk.lineStart, chunk.lineEnd),
+        uri: `${chunk.relativePath}#L${chunk.lineStart}-L${chunk.lineEnd}`,
+        accountId: input.accountId,
+        ...(input.projectId === null ? {} : { projectId: input.projectId }),
+        trust: 'external_untrusted',
+        origin: 'user_authored',
+        sensitivity: 'private',
+        contentHash: chunk.contentHash,
+      },
+      purpose: 'answer',
+      excerpt: chunk.excerpt,
+      score: chunk.score,
+      freshness: 'unknown',
+      explicitlyAttached: false,
+      authorizedBody: true,
+    }));
+  return buildJarvisContextPack({
+    accountId: input.accountId,
+    candidates,
+    maxChars: input.maxChars,
+  });
 }
 
 export interface ResolvedJarvisContext {

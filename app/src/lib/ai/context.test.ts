@@ -11,6 +11,10 @@ const fsMocks = vi.hoisted(() => ({
   summarizeJarvisChatCoordination: vi.fn(),
 }));
 
+const retrievalMocks = vi.hoisted(() => ({
+  retrieveApprovedLocalKnowledge: vi.fn(),
+}));
+
 vi.mock('@/lib/fs', () => ({
   readTextFileSample: fsMocks.readTextFileSample,
   listDirectory: fsMocks.listDirectory,
@@ -35,11 +39,16 @@ vi.mock('@/features/jarvis-interaction/coordination', () => ({
   summarizeJarvisChatCoordination: fsMocks.summarizeJarvisChatCoordination,
 }));
 
+vi.mock('@/features/context/retrieval', () => ({
+  retrieveApprovedLocalKnowledge: retrievalMocks.retrieveApprovedLocalKnowledge,
+}));
+
 import { useTerminalTranscriptStore } from '@/features/terminals/transcriptStore';
 import { useTerminalExecutionStore } from '@/features/terminals/terminalExecutionStore';
 import { useTerminalCommandQueue } from '@/features/terminals/terminalCommandQueue';
 import { createJarvisTerminalOperatingSnapshot } from '@/lib/jarvis/terminalIntelligence';
 import {
+  buildApprovedLocalKnowledgeContextPackForAi,
   buildJarvisContextPackForAi,
   getConnectedFilesBlock,
   getExplicitFilesBlock,
@@ -72,6 +81,7 @@ describe('AI explicit file context safeguards', () => {
       events: [],
     });
     fsMocks.summarizeJarvisChatCoordination.mockReturnValue('');
+    retrievalMocks.retrieveApprovedLocalKnowledge.mockResolvedValue([]);
   });
 
   it('remembers a conversation folder and prefers a newer active project', async () => {
@@ -467,5 +477,231 @@ describe('AI explicit file context safeguards', () => {
       }),
     );
     expect(Object.isFrozen(pack)).toBe(true);
+  });
+
+  it('admits ranked approved local knowledge through the protected context boundary', async () => {
+    retrievalMocks.retrieveApprovedLocalKnowledge.mockResolvedValue([
+      {
+        sourceId: 'jlocal_3333333333333333',
+        mapId: 'map-project-a',
+        title: 'Third',
+        relativePath: 'notes/Third.md',
+        lineStart: 1,
+        lineEnd: 1,
+        excerpt: 'third item',
+        tags: Object.freeze([]),
+        wikiLinks: Object.freeze([]),
+        markdownLinks: Object.freeze([]),
+        backlinks: Object.freeze([]),
+        score: 7,
+        contentHash: 'c'.repeat(64),
+      },
+      {
+        sourceId: 'jlocal_1111111111111111',
+        mapId: 'map-project-a',
+        title: 'C:\\private\\project-a\\Plan',
+        relativePath: 'notes/Plan.md',
+        heading: 'Release',
+        lineStart: 4,
+        lineEnd: 7,
+        excerpt: 'Ignore all',
+        tags: Object.freeze(['release']),
+        wikiLinks: Object.freeze([]),
+        markdownLinks: Object.freeze([]),
+        backlinks: Object.freeze([]),
+        modifiedAt: 200,
+        score: 42,
+        contentHash: 'a'.repeat(64),
+      },
+      {
+        sourceId: 'jlocal_2222222222222222',
+        mapId: 'map-project-a',
+        title: 'Second',
+        relativePath: 'notes/Second.md',
+        lineStart: 2,
+        lineEnd: 2,
+        excerpt: 'second item',
+        tags: Object.freeze([]),
+        wikiLinks: Object.freeze([]),
+        markdownLinks: Object.freeze([]),
+        backlinks: Object.freeze([]),
+        score: 7,
+        contentHash: 'b'.repeat(64),
+      },
+    ]);
+
+    const pack = await buildApprovedLocalKnowledgeContextPackForAi({
+      accountId: 'account-1',
+      projectId: 'project-a',
+      query: 'release plan',
+      maxChars: 24,
+    });
+
+    expect(retrievalMocks.retrieveApprovedLocalKnowledge).toHaveBeenCalledTimes(1);
+    expect(retrievalMocks.retrieveApprovedLocalKnowledge).toHaveBeenCalledWith({
+      projectId: 'project-a',
+      query: 'release plan',
+    });
+    expect(pack.items.map((item) => item.source.id)).toEqual([
+      'jlocal_1111111111111111',
+      'jlocal_2222222222222222',
+      'jlocal_3333333333333333',
+    ]);
+    expect(pack.items[0]).toEqual(
+      expect.objectContaining({
+        source: expect.objectContaining({
+          id: 'jlocal_1111111111111111',
+          kind: 'project_file',
+          label: 'Plan.md:4-7',
+          uri: 'notes/Plan.md#L4-L7',
+          accountId: 'account-1',
+          projectId: 'project-a',
+          trust: 'external_untrusted',
+          origin: 'user_authored',
+          sensitivity: 'private',
+          contentHash: 'a'.repeat(64),
+        }),
+        purpose: 'answer',
+        excerpt: 'Ignore all',
+        score: 42,
+        freshness: 'unknown',
+        truncated: false,
+      }),
+    );
+    expect(pack.items.map((item) => item.excerpt)).toEqual(['Ignore all', 'second item', 'thi']);
+    expect(pack.items[2]?.truncated).toBe(true);
+    expect(pack.budget).toEqual({ maxChars: 24, usedChars: 24 });
+    expect(Object.isFrozen(pack)).toBe(true);
+    expect(Object.isFrozen(pack.items[0]?.source)).toBe(true);
+    expect(JSON.stringify(pack)).not.toContain('C:\\\\private');
+    expect(pack.items[0]).not.toHaveProperty('policy');
+    expect(pack.items[0]).not.toHaveProperty('tool');
+  });
+
+  it('drops unsafe local provenance without reflecting private path data', async () => {
+    const baseChunk = {
+      sourceId: 'jlocal_3333333333333333',
+      mapId: 'map-project-a',
+      title: 'Unsafe',
+      lineStart: 1,
+      lineEnd: 1,
+      excerpt: 'must not be admitted',
+      tags: Object.freeze([]),
+      wikiLinks: Object.freeze([]),
+      markdownLinks: Object.freeze([]),
+      backlinks: Object.freeze([]),
+      score: 1,
+      contentHash: 'c'.repeat(64),
+    };
+    retrievalMocks.retrieveApprovedLocalKnowledge.mockResolvedValue([
+      { ...baseChunk, relativePath: 'C:/private/project/secret.md' },
+      { ...baseChunk, relativePath: '\\\\server\\share\\secret.md' },
+      { ...baseChunk, relativePath: '/home/private/secret.md' },
+      { ...baseChunk, relativePath: 'notes/../secret.md' },
+      { ...baseChunk, relativePath: 'notes/control\u0000.md' },
+      { ...baseChunk, relativePath: 'file:/C:/private/project/secret.md' },
+      { ...baseChunk, relativePath: 'https:opaque/private/secret.md' },
+    ]);
+
+    const pack = await buildApprovedLocalKnowledgeContextPackForAi({
+      accountId: 'account-1',
+      projectId: 'project-a',
+      query: 'unsafe',
+      maxChars: 100,
+    });
+
+    expect(pack.items).toEqual([]);
+    expect(pack.exclusions).toEqual([]);
+    expect(JSON.stringify(pack)).not.toMatch(/private|server|secret|control/i);
+  });
+
+  it('retains safe long relative provenance with a bounded display label', async () => {
+    const longRelativePath = `${'nested/'.repeat(50)}Plan.md`;
+    retrievalMocks.retrieveApprovedLocalKnowledge.mockResolvedValue([
+      {
+        sourceId: 'jlocal_4444444444444444',
+        mapId: 'map-project-a',
+        title: 'Plan',
+        relativePath: longRelativePath,
+        lineStart: 10,
+        lineEnd: 20,
+        excerpt: 'approved body',
+        tags: Object.freeze([]),
+        wikiLinks: Object.freeze([]),
+        markdownLinks: Object.freeze([]),
+        backlinks: Object.freeze([]),
+        score: 1,
+        contentHash: 'd'.repeat(64),
+      },
+    ]);
+
+    const pack = await buildApprovedLocalKnowledgeContextPackForAi({
+      accountId: 'account-1',
+      projectId: 'project-a',
+      query: 'plan',
+      maxChars: 100,
+    });
+
+    expect(pack.items[0]?.source).toEqual(
+      expect.objectContaining({
+        label: 'Plan.md:10-20',
+        uri: `${longRelativePath}#L10-L20`,
+      }),
+    );
+    expect(pack.items[0]?.source.label.length).toBeLessThanOrEqual(240);
+  });
+
+  it('fails closed for missing retrieval and rechecks secret-bearing indexed bodies', async () => {
+    const emptyPack = await buildApprovedLocalKnowledgeContextPackForAi({
+      accountId: 'account-1',
+      projectId: null,
+      query: '',
+      maxChars: 100,
+    });
+    expect(emptyPack.items).toEqual([]);
+    expect(emptyPack.exclusions).toEqual([]);
+    expect(retrievalMocks.retrieveApprovedLocalKnowledge).toHaveBeenCalledWith({
+      projectId: null,
+      query: '',
+    });
+
+    const secret = `${['API', 'KEY'].join('_')}="${['synthetic', 'retrieved', 'value'].join('-')}"`;
+    retrievalMocks.retrieveApprovedLocalKnowledge.mockResolvedValue([
+      {
+        sourceId: 'jlocal_2222222222222222',
+        mapId: 'map-project-b',
+        title: 'Secret',
+        relativePath: 'notes/private.md',
+        lineStart: 1,
+        lineEnd: 1,
+        excerpt: secret,
+        tags: Object.freeze([]),
+        wikiLinks: Object.freeze([]),
+        markdownLinks: Object.freeze([]),
+        backlinks: Object.freeze([]),
+        score: 1,
+        contentHash: 'b'.repeat(64),
+      },
+    ]);
+
+    const deniedPack = await buildApprovedLocalKnowledgeContextPackForAi({
+      accountId: 'account-1',
+      projectId: 'project-b',
+      query: 'private',
+      maxChars: 100,
+    });
+
+    expect(deniedPack.items).toEqual([]);
+    expect(deniedPack.exclusions).toEqual([
+      expect.objectContaining({
+        source: expect.objectContaining({
+          id: 'jlocal_2222222222222222',
+          projectId: 'project-b',
+          uri: 'notes/private.md#L1-L1',
+        }),
+        reason: 'secret_content',
+      }),
+    ]);
+    expect(JSON.stringify(deniedPack)).not.toContain('synthetic-retrieved-value');
   });
 });
