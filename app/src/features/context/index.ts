@@ -400,6 +400,23 @@ export {
   type ContextRevisionCacheScope,
 } from './contextRevisionCache';
 export {
+  CONTEXT_ACTIVITY_KINDS,
+  CONTEXT_ACTIVITY_REASON_CODES,
+  ContextActivityError,
+  createContextActivityEvent,
+  createContextActivityRecorder,
+  isContextCloudTelemetryExportable,
+  projectContextLocalActivity,
+  type ContextActivityEventInput,
+  type ContextActivityInput,
+  type ContextActivityKind,
+  type ContextActivityPreferences,
+  type ContextActivityRecorderDependencies,
+  type ContextActivityReasonCode,
+  type ContextCloudTelemetryEvent,
+  type ContextLocalActivityEvent,
+} from './contextActivity';
+export {
   authorizeContextProcessorCapability,
   parsePassiveContextPackage,
   reviewContextProcessorInstall,
