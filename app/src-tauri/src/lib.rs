@@ -48,6 +48,7 @@ mod artifact_access;
 mod branding;
 mod browser_process;
 mod cli_bridge;
+mod context_search;
 mod credentials;
 mod dictation;
 mod faster_whisper;
@@ -346,6 +347,11 @@ pub fn run() {
             cli_bridge::cli_bridge_probe,
             cli_bridge::cli_bridge_start,
             cli_bridge::cli_bridge_cancel,
+            context_search::context_search_replace_documents,
+            context_search::context_search_delete_documents,
+            context_search::context_search_query,
+            context_search::context_search_status,
+            context_search::context_search_acknowledge_rebuild,
             fsread::fs_create_dir_all,
             pets::pet_show_overlay,
             pets::pet_hide_overlay,
