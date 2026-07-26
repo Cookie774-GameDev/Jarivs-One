@@ -1,5 +1,26 @@
 export { ContextPage } from './ContextPage';
 export {
+  CONTEXT_RETRIEVAL_RANKING_SIGNALS,
+  ContextRetrievalError,
+  createContextRetrievalService,
+  type ContextCandidateRetrievalInput,
+  type ContextRetrievalCandidate,
+  type ContextRetrievalDependencies,
+  type ContextRetrievalErrorCode,
+  type ContextRetrievalFreshness,
+  type ContextRetrievalMap,
+  type ContextRetrievalProvenance,
+  type ContextRetrievalRelatedEntity,
+  type ContextRetrievalRequest,
+  type ContextRetrievalResult,
+  type ContextRetrievalSourceTrust,
+  type ContextRetrievalTask,
+  type ContextRetrievalTaskKind,
+  type RetrievedContextCitation,
+  type RetrievedContextItem,
+  type RetrievedContextReference,
+} from './contextRetrievalService';
+export {
   CODE_ENTRY_POINT_SIGNAL_KINDS,
   buildCodeIntelligenceSummary,
   planAffectedCodeSummaryRegeneration,
