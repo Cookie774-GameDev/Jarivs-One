@@ -372,6 +372,15 @@ export {
   type ContextNoteRenderPlan,
 } from './noteRendering';
 export {
+  validateContextPackageImport,
+  type ContextPackageArchiveEntry,
+  type ContextPackageArchiveLink,
+  type ContextPackageArchiveManifest,
+  type ContextPackageEntryKind,
+  type ContextPackageEntryReader,
+  type ValidatedContextPackageImport,
+} from './contextPackageImport';
+export {
   authorizeContextProcessorCapability,
   parsePassiveContextPackage,
   reviewContextProcessorInstall,
