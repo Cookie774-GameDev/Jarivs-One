@@ -11,6 +11,8 @@ const MAX_GRAPH_EDGES = 50_000;
 const MAX_PATH_EVIDENCE = 2_000;
 const MAX_PACK_ITEMS = 500;
 const MAX_PACK_EXCLUSIONS = 1_000;
+const MAX_PACK_BUDGET_CHARS = 1_000_000;
+const MAX_PACK_TEXT_CHARS = 2_000_000;
 const MAX_TIMESTAMP = 8_640_000_000_000_000;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,199}$/;
 const UNSAFE_TEXT_CONTROLS =
@@ -333,6 +335,55 @@ function detachedFreeze<T>(value: T): DeepReadonly<T> {
   return value as DeepReadonly<T>;
 }
 
+function packTextWithinLimit(pack: JarvisContextPack): boolean {
+  let total = 0;
+  const add = (value: string | undefined): boolean => {
+    if (value !== undefined) total += value.length;
+    return total <= MAX_PACK_TEXT_CHARS;
+  };
+  const addSource = (source: JarvisSourceRef): boolean =>
+    add(source.id) &&
+    add(source.kind) &&
+    add(source.label) &&
+    add(source.uri) &&
+    add(source.accountId) &&
+    add(source.projectId) &&
+    add(source.trust) &&
+    add(source.origin) &&
+    add(source.sensitivity) &&
+    add(source.contentHash);
+
+  for (const item of pack.items) {
+    if (
+      !addSource(item.source) ||
+      !add(item.purpose) ||
+      !add(item.excerpt) ||
+      !add(item.freshness)
+    ) {
+      return false;
+    }
+    if (item.conflict) {
+      if (
+        !add(item.conflict.groupId) ||
+        !add(item.conflict.status) ||
+        item.conflict.sourceIds.some((sourceId) => !add(sourceId))
+      ) {
+        return false;
+      }
+      if (
+        item.conflict.status === 'resolved' &&
+        (!add(item.conflict.winnerSourceId) || !add(item.conflict.basis))
+      ) {
+        return false;
+      }
+    }
+  }
+  for (const exclusion of pack.exclusions) {
+    if (!addSource(exclusion.source) || !add(exclusion.reason)) return false;
+  }
+  return true;
+}
+
 function validPack(value: unknown, accountId: string): JarvisContextPack {
   const validation = validateJarvisContextPack(value);
   if (!validation.ok) {
@@ -344,10 +395,13 @@ function validPack(value: unknown, accountId: string): JarvisContextPack {
     pack.exclusions.length > MAX_PACK_EXCLUSIONS ||
     !Number.isSafeInteger(pack.budget.maxChars) ||
     pack.budget.maxChars < 0 ||
+    pack.budget.maxChars > MAX_PACK_BUDGET_CHARS ||
     !Number.isSafeInteger(pack.budget.usedChars) ||
     pack.budget.usedChars < 0 ||
     pack.budget.usedChars > pack.budget.maxChars ||
     pack.items.some(({ source }) => source.accountId !== accountId) ||
+    pack.exclusions.some(({ source }) => source.accountId !== accountId) ||
+    !packTextWithinLimit(pack) ||
     pack.items.reduce((total, item) => total + item.excerpt.length, 0) !== pack.budget.usedChars
   ) {
     throw new ContextJarvisGraphActivityError('invalid_context_pack', 'semantic');

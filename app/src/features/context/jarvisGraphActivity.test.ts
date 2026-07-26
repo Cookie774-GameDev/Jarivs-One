@@ -216,6 +216,55 @@ describe('truthful Context JARVIS graph activity', () => {
     ).toThrowError(ContextJarvisGraphActivityError);
   });
 
+  it('rejects cross-account exclusion metadata before exposing exact pack inspection', () => {
+    const crossAccountPack = pack();
+    crossAccountPack.exclusions[0]!.source.accountId = 'account-2';
+
+    expect(() =>
+      buildContextJarvisGraphActivity(
+        input({
+          contextPackEvidence: {
+            ...input().contextPackEvidence,
+            contextPack: crossAccountPack,
+          },
+        }),
+      ),
+    ).toThrowError(expect.objectContaining({ code: 'invalid_context_pack' }));
+  });
+
+  it.each([
+    {
+      label: 'declared character budget',
+      contextPack: {
+        ...pack(),
+        budget: { maxChars: 1_000_001, usedChars: 36 },
+      },
+    },
+    {
+      label: 'pack metadata',
+      contextPack: {
+        ...pack(),
+        exclusions: [
+          {
+            ...pack().exclusions[0]!,
+            reason: 'x'.repeat(2_000_001),
+          },
+        ],
+      },
+    },
+  ])('rejects an oversized $label before cloning inspection data', ({ contextPack }) => {
+    expect(() =>
+      buildContextJarvisGraphActivity(
+        input({
+          contextPackEvidence: {
+            ...input().contextPackEvidence,
+            contextPack,
+          },
+        }),
+      ),
+    ).toThrowError(expect.objectContaining({ code: 'invalid_context_pack' }));
+  });
+
   it('rejects replayed packs, unscoped bindings, and nodes absent from the scoped graph', () => {
     expect(() =>
       buildContextJarvisGraphActivity(
