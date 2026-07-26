@@ -318,6 +318,26 @@ export {
   type DailyContextUserOperation,
 } from './dailyNotes';
 export {
+  createCanvasObjectContextReference,
+  createCanvasRetrievalAttachments,
+  createContextClusterCanvasTransfer,
+  createContextEntityCanvasOpenRequest,
+  exportOpenJsonCanvas,
+  importOpenJsonCanvas,
+  linkCanvasFrameToContext,
+  type CanvasFrameContextLink,
+  type ContextCanvasEntityReference,
+  type ContextClusterCanvasTransfer,
+  type ContextEntityCanvasOpenRequest,
+  type OpenJsonCanvasDocument,
+  type OpenJsonCanvasEdge,
+  type OpenJsonCanvasNode,
+  type VibeSpaceCanvasConnection,
+  type VibeSpaceCanvasDocument,
+  type VibeSpaceCanvasObject,
+  type VibeSpaceCanvasObjectType,
+} from './contextCanvasIntegration';
+export {
   CONTEXT_RETRIEVAL_CONSUMERS,
   PROMPT_FORGE_CONTEXT_REQUEST_EVENT,
   PROMPT_FORGE_CONTEXT_RESULT_EVENT,
