@@ -19,6 +19,7 @@ import {
   contextMapCollectionKey,
   contextMapSlashOptions,
   contextStorageKey,
+  loadStoredContextMaps,
   resolveContextMapRecord,
   type ContextMapRecord,
 } from './tree';
@@ -136,6 +137,61 @@ describe('generateProjectContextTree file safeguards', () => {
       root: 'C:\\proj',
       strictProjectBoundary: true,
     });
+  });
+
+  it('reloads validated GitHub badge metadata without retaining installation authority', () => {
+    localStorage.setItem(
+      contextMapCollectionKey('p1'),
+      JSON.stringify({
+        version: 1,
+        projectId: 'p1',
+        selectedMapId: 'map-github',
+        maps: [
+          {
+            id: 'map-github',
+            projectId: 'p1',
+            rootDir: 'C:\\proj',
+            name: 'GitHub map',
+            status: 'active',
+            createdAt: 1,
+            updatedAt: 2,
+            sourceType: 'github_repository',
+            sourceLabel: 'octo/vibespace',
+            sourceStatus: 'stale',
+            branchRef: 'main',
+            github: {
+              installationId: 'must-not-survive',
+              owner: 'octo',
+              repository: 'vibespace',
+              resolvedCommitSha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+              visibility: 'private',
+            },
+            tree: {
+              version: 1,
+              projectId: 'p1',
+              rootDir: 'C:\\proj',
+              generatedAt: 2,
+              model: 'github-context',
+              fileCount: 0,
+              totalBytes: 0,
+              summary: '',
+              nodes: [],
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(loadStoredContextMaps('p1')[0]).toMatchObject({
+      sourceStatus: 'stale',
+      github: {
+        owner: 'octo',
+        repository: 'vibespace',
+        resolvedCommitSha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        visibility: 'private',
+      },
+    });
+    expect(loadStoredContextMaps('p1')[0]?.github).not.toHaveProperty('installationId');
   });
 
   it('never reads denied secret paths, traverses credential directories, or includes secret content', async () => {

@@ -1,19 +1,29 @@
 import * as React from 'react';
 import {
   BrainCircuit,
+  Boxes,
   ChevronRight,
-  CircleDot,
+  Clock3,
   Database,
+  FileSearch,
   FileText,
   FolderOpen,
   GitBranch,
+  Github,
+  History,
+  LayoutTemplate,
+  Link2,
   LocateFixed,
   Layers3,
   MousePointer2,
   Move,
   Network,
+  NotebookPen,
   RefreshCw,
+  Search,
+  ShieldCheck,
   Sparkles,
+  TableProperties,
   Trash2,
   Zap,
 } from 'lucide-react';
@@ -67,6 +77,23 @@ import {
   selectPersistedContextFile,
   selectPersistedContextMap,
 } from './contextPersistence';
+import {
+  CONTEXT_CENTER_MODES,
+  CONTEXT_INSPECTOR_TABS,
+  CONTEXT_WORKSPACE_SECTIONS,
+  buildContextSourceCards,
+  buildGitHubMapBadge,
+  buildJarvisContextUi,
+  contextTabKeyTarget,
+  contextWorkspaceNoteStorageKey,
+  getLatestContextJarvisUi,
+  type ContextCenterModeId,
+  type ContextGitHubMapBadge,
+  type ContextInspectorTabId,
+  type ContextJarvisUi,
+  type ContextSourceCard,
+  type ContextWorkspaceSectionId,
+} from './contextWorkspaceUi';
 
 const PROJECT_ROOT_NODE_ID = '__jarvis-context-root__';
 const CLOUD_CONTEXT_PROVIDERS: Array<Exclude<ContextGenerationProvider, 'local'>> = [
@@ -100,6 +127,11 @@ export function ContextPage() {
   const [structuralPreview, setStructuralPreview] = React.useState<ProjectContextTree | null>(null);
   const [mapFlash, setMapFlash] = React.useState(false);
   const [status, setStatus] = React.useState('Ready.');
+  const [workspaceSection, setWorkspaceSection] = React.useState<ContextWorkspaceSectionId>('maps');
+  const [centerMode, setCenterMode] = React.useState<ContextCenterModeId>('graph');
+  const [inspectorTab, setInspectorTab] = React.useState<ContextInspectorTabId>('details');
+  const [searchQuery, setSearchQuery] = React.useState('');
+  const [jarvisUi, setJarvisUi] = React.useState<ContextJarvisUi>(() => buildJarvisContextUi(null));
   const lastAppliedFileRef = React.useRef('');
   const generationAbortRef = React.useRef<AbortController | null>(null);
 
@@ -139,6 +171,7 @@ export function ContextPage() {
     setSelectedId(null);
     setGenerating(false);
     setStructuralPreview(null);
+    setJarvisUi(buildJarvisContextUi(null));
     lastAppliedFileRef.current = '';
     if (!accountId) return;
     let active = true;
@@ -192,6 +225,43 @@ export function ContextPage() {
     () => maps.filter((map) => map.status === 'active').length,
     [maps],
   );
+  const sourceCards = React.useMemo(
+    () =>
+      buildContextSourceCards({
+        localFolderSelected: Boolean(rootDraft.trim()),
+        localFileSelected: maps.some(
+          (map) => map.status === 'active' && map.sourceType === 'local_file',
+        ),
+        githubConnected: maps.some(
+          (map) =>
+            map.status === 'active' &&
+            map.sourceType === 'github_repository' &&
+            Boolean(map.github) &&
+            !['permission_required', 'error', 'removed'].includes(map.sourceStatus ?? 'ready'),
+        ),
+      }),
+    [maps, rootDraft],
+  );
+  const githubBadge = React.useMemo<ContextGitHubMapBadge | null>(() => {
+    if (
+      selectedMap?.sourceType !== 'github_repository' ||
+      !selectedMap.github ||
+      !selectedMap.branchRef ||
+      selectedMap.lastIndexedAt === undefined
+    ) {
+      return null;
+    }
+    try {
+      return buildGitHubMapBadge({
+        ...selectedMap.github,
+        branch: selectedMap.branchRef,
+        lastSyncAt: selectedMap.lastIndexedAt,
+        status: selectedMap.sourceStatus === 'stale' ? 'stale' : 'ready',
+      });
+    } catch {
+      return null;
+    }
+  }, [selectedMap]);
   const selectFilePath = React.useCallback(
     async (path: string, notify = true, persist = true): Promise<boolean> => {
       const clean = path.trim();
@@ -296,6 +366,21 @@ export function ContextPage() {
     return () =>
       window.removeEventListener('jarvis:context:open-citation', onOpenCitation as EventListener);
   }, [applyPersistenceState, maps, projectId]);
+
+  React.useEffect(() => {
+    const refreshActivity = () => {
+      const next = getLatestContextJarvisUi({
+        projectId: projectId ?? null,
+        mapId: selectedMap?.id ?? null,
+      });
+      setJarvisUi(next);
+      if (next.visible) setInspectorTab('jarvis_activity');
+    };
+    const onActivity = () => refreshActivity();
+    window.addEventListener('jarvis:context:activity', onActivity as EventListener);
+    refreshActivity();
+    return () => window.removeEventListener('jarvis:context:activity', onActivity as EventListener);
+  }, [projectId, selectedMap?.id]);
 
   const rootNode = React.useMemo(() => (tree ? makeProjectRootNode(tree) : null), [tree]);
   const flatNodes = React.useMemo(() => flattenContextNodes(tree?.nodes ?? []), [tree]);
@@ -505,6 +590,33 @@ export function ContextPage() {
     return () => window.removeEventListener('jarvis:context:create-map', onCreateMap);
   }, [makeSkillTree]);
 
+  const selectWorkspaceSection = React.useCallback((next: ContextWorkspaceSectionId) => {
+    setWorkspaceSection(next);
+    if (next === 'maps' || next === 'workspaces') setCenterMode('graph');
+    if (next === 'sources' || next === 'views' || next === 'templates') {
+      setCenterMode('structured');
+    }
+    if (next === 'notes') setCenterMode('note');
+  }, []);
+
+  const openSourceCard = React.useCallback(
+    (kind: ContextSourceCard['kind']) => {
+      setWorkspaceSection('sources');
+      if (kind === 'local_folder') {
+        void openFolderPicker();
+        return;
+      }
+      if (kind === 'local_file') {
+        setStatus('Open Files to select and inspect an individual local file.');
+        setRoute('files');
+        return;
+      }
+      setStatus('Open Tools to connect or manage the read-only VibeSpace GitHub App.');
+      setRoute('tools');
+    },
+    [openFolderPicker, setRoute],
+  );
+
   return (
     <div className="relative flex h-full min-h-0 w-full overflow-hidden bg-background">
       <div className="pointer-events-none absolute inset-0 opacity-70">
@@ -536,66 +648,82 @@ export function ContextPage() {
             </Button>
           </div>
 
-          <div className="space-y-2 rounded-xl border border-border bg-paper-soft p-2.5 shadow-soft">
-            <div className="flex items-center gap-1.5 text-metadata uppercase tracking-wide text-muted-foreground">
-              <FolderOpen className="h-3.5 w-3.5 text-accent-honey" /> Project folder
+          <ContextWorkspaceNavigation active={workspaceSection} onSelect={selectWorkspaceSection} />
+
+          {workspaceSection === 'sources' ? (
+            <ContextSourceCards
+              cards={sourceCards}
+              selectedMap={selectedMap}
+              githubBadge={githubBadge}
+              onOpen={openSourceCard}
+            />
+          ) : (
+            <div className="space-y-2 rounded-xl border border-border bg-paper-soft p-2.5 shadow-soft">
+              <div className="flex items-center gap-1.5 text-metadata uppercase tracking-wide text-muted-foreground">
+                <FolderOpen className="h-3.5 w-3.5 text-accent-honey" /> Project folder
+              </div>
+              <div className="flex gap-1.5">
+                <Input
+                  value={rootDraft}
+                  onChange={(e) => setRootDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') rememberRoot();
+                  }}
+                  placeholder="C:\\Users\\you\\project or /home/you/project"
+                  className="font-mono text-metadata"
+                />
+                <Button size="sm" variant="secondary" onClick={() => void openFolderPicker()}>
+                  Choose
+                </Button>
+              </div>
+              <label className="block space-y-1">
+                <span className="text-metadata uppercase tracking-wide text-muted-foreground">
+                  Map model provider
+                </span>
+                <select
+                  value={selectedProvider}
+                  onChange={(e) => setProvider(e.target.value as ContextGenerationProvider)}
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 font-mono text-metadata text-foreground shadow-soft outline-none transition-colors focus:border-accent-copper focus:ring-1 focus:ring-ring"
+                >
+                  {providerChoices.map((choice) => (
+                    <option key={choice} value={choice}>
+                      {CONTEXT_PROVIDER_OPTIONS[choice].label} -{' '}
+                      {CONTEXT_PROVIDER_OPTIONS[choice].model}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="flex gap-1.5">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={rememberRoot}
+                  disabled={!rootDraft.trim()}
+                >
+                  Save Root
+                </Button>
+                <Button
+                  size="sm"
+                  variant="accent"
+                  onClick={() => void makeSkillTree()}
+                  disabled={generating || !rootDraft.trim()}
+                  className="ml-auto gap-1"
+                >
+                  {generating ? (
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-3.5 w-3.5" />
+                  )}
+                  Create Map
+                </Button>
+              </div>
+              <p className="text-metadata text-muted-foreground">
+                {selectedProvider === 'local'
+                  ? 'Local fallback is available. Saved cloud keys appear here automatically.'
+                  : `${selectedProviderMeta.label} key detected. Jarvis will send sampled project files to ${selectedProviderMeta.shortLabel}.`}
+              </p>
             </div>
-            <div className="flex gap-1.5">
-              <Input
-                value={rootDraft}
-                onChange={(e) => setRootDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') rememberRoot();
-                }}
-                placeholder="C:\\Users\\you\\project or /home/you/project"
-                className="font-mono text-metadata"
-              />
-              <Button size="sm" variant="secondary" onClick={() => void openFolderPicker()}>
-                Choose
-              </Button>
-            </div>
-            <label className="block space-y-1">
-              <span className="text-metadata uppercase tracking-wide text-muted-foreground">
-                Map model provider
-              </span>
-              <select
-                value={selectedProvider}
-                onChange={(e) => setProvider(e.target.value as ContextGenerationProvider)}
-                className="h-9 w-full rounded-md border border-input bg-background px-3 font-mono text-metadata text-foreground shadow-soft outline-none transition-colors focus:border-accent-copper focus:ring-1 focus:ring-ring"
-              >
-                {providerChoices.map((choice) => (
-                  <option key={choice} value={choice}>
-                    {CONTEXT_PROVIDER_OPTIONS[choice].label} -{' '}
-                    {CONTEXT_PROVIDER_OPTIONS[choice].model}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="flex gap-1.5">
-              <Button size="sm" variant="ghost" onClick={rememberRoot} disabled={!rootDraft.trim()}>
-                Save Root
-              </Button>
-              <Button
-                size="sm"
-                variant="accent"
-                onClick={() => void makeSkillTree()}
-                disabled={generating || !rootDraft.trim()}
-                className="ml-auto gap-1"
-              >
-                {generating ? (
-                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Sparkles className="h-3.5 w-3.5" />
-                )}
-                Create Map
-              </Button>
-            </div>
-            <p className="text-metadata text-muted-foreground">
-              {selectedProvider === 'local'
-                ? 'Local fallback is available. Saved cloud keys appear here automatically.'
-                : `${selectedProviderMeta.label} key detected. Jarvis will send sampled project files to ${selectedProviderMeta.shortLabel}.`}
-            </p>
-          </div>
+          )}
 
           <div className="grid grid-cols-3 gap-2">
             <Stat label="Files" value={tree ? String(tree.fileCount) : '-'} />
@@ -645,15 +773,27 @@ export function ContextPage() {
           <NoContextHero
             onGenerate={() => void makeSkillTree()}
             disabled={generating || !rootDraft.trim()}
+            sourceCards={sourceCards}
+            onOpenSource={openSourceCard}
           />
         ) : (
           <ContextMapWorkspace
+            accountId={accountId}
             tree={tree}
             rootNode={rootNode}
             selected={selected}
             selectedId={selected.id}
             onSelect={setSelectedId}
             flash={mapFlash}
+            mode={centerMode}
+            onModeChange={setCenterMode}
+            inspectorTab={inspectorTab}
+            onInspectorTabChange={setInspectorTab}
+            searchQuery={searchQuery}
+            onSearchQueryChange={setSearchQuery}
+            map={selectedMap}
+            githubBadge={githubBadge}
+            jarvisUi={jarvisUi}
           />
         )}
       </main>
@@ -667,6 +807,175 @@ function Stat({ label, value }: { label: string; value: string }) {
       <div className="text-metadata uppercase tracking-wide text-muted-foreground">{label}</div>
       <div className="truncate font-mono text-sm text-foreground">{value}</div>
     </div>
+  );
+}
+
+function handleContextTabKeyDown<T extends string>(
+  event: React.KeyboardEvent<HTMLButtonElement>,
+  tabs: readonly Readonly<{ id: T }>[],
+  activeId: T,
+  onChange: (id: T) => void,
+) {
+  const currentIndex = tabs.findIndex((item) => item.id === activeId);
+  if (currentIndex < 0) return;
+  const nextIndex = contextTabKeyTarget(currentIndex, event.key, tabs.length);
+  if (nextIndex === null) return;
+  const nextId = tabs[nextIndex]?.id;
+  if (!nextId) return;
+  event.preventDefault();
+  onChange(nextId);
+  event.currentTarget
+    .closest('[role="tablist"]')
+    ?.querySelector<HTMLButtonElement>(`[data-context-tab-id="${nextId}"]`)
+    ?.focus();
+}
+
+function ContextWorkspaceNavigation({
+  active,
+  onSelect,
+}: {
+  active: ContextWorkspaceSectionId;
+  onSelect: (section: ContextWorkspaceSectionId) => void;
+}) {
+  const icons: Record<ContextWorkspaceSectionId, React.ComponentType<{ className?: string }>> = {
+    maps: Layers3,
+    sources: Database,
+    notes: NotebookPen,
+    views: TableProperties,
+    templates: LayoutTemplate,
+    workspaces: Boxes,
+  };
+  return (
+    <nav aria-label="Context workspace" className="grid grid-cols-3 gap-1.5">
+      {CONTEXT_WORKSPACE_SECTIONS.map((section) => {
+        const Icon = icons[section.id];
+        return (
+          <button
+            key={section.id}
+            type="button"
+            onClick={() => onSelect(section.id)}
+            aria-current={active === section.id ? 'page' : undefined}
+            className={cn(
+              'flex min-w-0 flex-col items-center gap-1 rounded-xl border px-2 py-2 text-metadata transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              active === section.id
+                ? 'border-accent-copper/45 bg-accent-copper/10 text-accent-copper shadow-soft'
+                : 'border-border bg-paper text-muted-foreground hover:border-accent-copper/30 hover:text-foreground',
+            )}
+          >
+            <Icon className="h-3.5 w-3.5" />
+            <span className="truncate">{section.label}</span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
+function ContextSourceCards({
+  cards,
+  selectedMap,
+  githubBadge,
+  onOpen,
+}: {
+  cards: readonly ContextSourceCard[];
+  selectedMap: ContextMapRecord | null;
+  githubBadge: ContextGitHubMapBadge | null;
+  onOpen: (kind: ContextSourceCard['kind']) => void;
+}) {
+  const icons: Record<ContextSourceCard['kind'], React.ComponentType<{ className?: string }>> = {
+    local_folder: FolderOpen,
+    local_file: FileText,
+    github_repository: Github,
+  };
+  return (
+    <section className="space-y-2" aria-label="Context sources">
+      {cards.map((card) => {
+        const Icon = icons[card.kind];
+        return (
+          <article
+            key={card.kind}
+            className="rounded-xl border border-border bg-paper-soft p-2.5 shadow-soft"
+          >
+            <div className="flex items-center gap-2">
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-accent-copper/10 text-accent-copper">
+                <Icon className="h-4 w-4" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-secondary font-semibold text-foreground">{card.label}</h3>
+                <span className="text-metadata uppercase tracking-wide text-accent-copper">
+                  {card.state}
+                </span>
+              </div>
+              <Button size="sm" variant="ghost" onClick={() => onOpen(card.kind)}>
+                {card.state === 'connect' ? 'Connect' : card.state === 'choose' ? 'Choose' : 'Open'}
+              </Button>
+            </div>
+            <div className="mt-2 space-y-1 text-metadata text-muted-foreground">
+              <p className="flex gap-1.5">
+                <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent-sage" />
+                {card.permission}
+              </p>
+              <p className="pl-5">{card.privacy}</p>
+            </div>
+          </article>
+        );
+      })}
+      {selectedMap?.sourceType === 'github_repository' ? (
+        <GitHubMapIdentity map={selectedMap} badge={githubBadge} />
+      ) : (
+        <div className="rounded-xl border border-dashed border-border bg-paper p-3 text-metadata text-muted-foreground">
+          Select an indexed GitHub map to see its exact owner/repository, branch, commit,
+          visibility, sync time, and stale state.
+        </div>
+      )}
+    </section>
+  );
+}
+
+function GitHubMapIdentity({
+  map,
+  badge,
+}: {
+  map: ContextMapRecord;
+  badge: ContextGitHubMapBadge | null;
+}) {
+  if (!badge) {
+    return (
+      <div className="rounded-xl border border-accent-honey/35 bg-accent-honey/10 p-3 text-metadata text-muted-foreground">
+        This legacy GitHub map does not contain a complete verified identity. Refresh it before
+        VibeSpace displays repository, commit, or visibility details.
+      </div>
+    );
+  }
+  return (
+    <section className="rounded-xl border border-accent-copper/30 bg-paper p-3 shadow-soft">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <div className="truncate font-mono text-secondary font-semibold text-foreground">
+            {badge.repository}
+          </div>
+          <div className="truncate font-mono text-metadata text-muted-foreground">
+            {badge.branch} @ {badge.shortSha}
+          </div>
+        </div>
+        <span
+          className={cn(
+            'rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+            badge.stale
+              ? 'border-accent-honey/45 bg-accent-honey/10 text-accent-honey'
+              : map.sourceStatus && map.sourceStatus !== 'ready'
+                ? 'border-destructive/35 bg-destructive/10 text-destructive'
+                : 'border-accent-sage/45 bg-accent-sage/10 text-accent-sage',
+          )}
+        >
+          {badge.stale ? 'Stale' : (map.sourceStatus ?? 'Ready')}
+        </span>
+      </div>
+      <dl className="mt-2 space-y-1 text-metadata">
+        <MetaRow label="Visibility" value={badge.visibility} />
+        <MetaRow label="Last sync" value={formatDate(badge.lastSyncAt)} />
+      </dl>
+    </section>
   );
 }
 
@@ -774,7 +1083,17 @@ function ContextMapList({
   );
 }
 
-function NoContextHero({ onGenerate, disabled }: { onGenerate: () => void; disabled: boolean }) {
+function NoContextHero({
+  onGenerate,
+  disabled,
+  sourceCards,
+  onOpenSource,
+}: {
+  onGenerate: () => void;
+  disabled: boolean;
+  sourceCards: readonly ContextSourceCard[];
+  onOpenSource: (kind: ContextSourceCard['kind']) => void;
+}) {
   return (
     <div className="flex h-full items-center justify-center">
       <div className="relative max-w-2xl rounded-3xl border border-accent-copper/25 bg-panel/90 p-8 shadow-[0_24px_80px_hsl(var(--accent-copper)/0.16)] backdrop-blur">
@@ -798,6 +1117,27 @@ function NoContextHero({ onGenerate, disabled }: { onGenerate: () => void; disab
             <FeaturePill icon={<GitBranch className="h-4 w-4" />} text="String map" />
             <FeaturePill icon={<MousePointer2 className="h-4 w-4" />} text="Left-click inspect" />
             <FeaturePill icon={<Move className="h-4 w-4" />} text="Right-click pan" />
+          </div>
+          <div className="grid gap-2 sm:grid-cols-3" aria-label="Start from a Context source">
+            {sourceCards.map((card) => (
+              <button
+                key={card.kind}
+                type="button"
+                onClick={() => onOpenSource(card.kind)}
+                className="rounded-xl border border-border bg-paper-soft p-3 text-left transition-colors hover:border-accent-copper/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <span className="block text-secondary font-semibold text-foreground">
+                  {card.label}
+                </span>
+                <span className="mt-1 block text-metadata text-muted-foreground">
+                  {card.kind === 'local_folder'
+                    ? 'Choose a folder, select the local model, then create a map.'
+                    : card.kind === 'local_file'
+                      ? 'Open Files to inspect or attach one local file.'
+                      : 'Open Tools to connect the read-only GitHub App.'}
+                </span>
+              </button>
+            ))}
           </div>
           <Button
             variant="accent"
@@ -950,43 +1290,413 @@ function ContextTreeBranch({
 }
 
 function ContextMapWorkspace({
+  accountId,
   tree,
   rootNode,
   selected,
   selectedId,
   onSelect,
   flash,
+  mode,
+  onModeChange,
+  inspectorTab,
+  onInspectorTabChange,
+  searchQuery,
+  onSearchQueryChange,
+  map,
+  githubBadge,
+  jarvisUi,
 }: {
+  accountId: string | null;
   tree: ProjectContextTree;
   rootNode: ContextTreeNode;
   selected: ContextTreeNode;
   selectedId: string;
   onSelect: (id: string) => void;
   flash: boolean;
+  mode: ContextCenterModeId;
+  onModeChange: (mode: ContextCenterModeId) => void;
+  inspectorTab: ContextInspectorTabId;
+  onInspectorTabChange: (tab: ContextInspectorTabId) => void;
+  searchQuery: string;
+  onSearchQueryChange: (query: string) => void;
+  map: ContextMapRecord | null;
+  githubBadge: ContextGitHubMapBadge | null;
+  jarvisUi: ContextJarvisUi;
+}) {
+  const flatNodes = React.useMemo(() => flattenContextNodes(tree.nodes), [tree]);
+  return (
+    <div className="flex h-full min-h-0 flex-col gap-3">
+      <header className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-border bg-panel/90 p-2 shadow-soft backdrop-blur">
+        <div className="flex flex-wrap gap-1" role="tablist" aria-label="Context center mode">
+          {CONTEXT_CENTER_MODES.map((item) => (
+            <button
+              key={item.id}
+              id={`context-center-tab-${item.id}`}
+              type="button"
+              role="tab"
+              aria-selected={mode === item.id}
+              aria-controls="context-center-panel"
+              data-context-tab-id={item.id}
+              tabIndex={mode === item.id ? 0 : -1}
+              onClick={() => onModeChange(item.id)}
+              onKeyDown={(event) =>
+                handleContextTabKeyDown(event, CONTEXT_CENTER_MODES, mode, onModeChange)
+              }
+              className={cn(
+                'rounded-xl px-3 py-2 text-secondary font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                mode === item.id
+                  ? 'bg-accent-copper/12 text-accent-copper shadow-soft'
+                  : 'text-muted-foreground hover:bg-paper-soft hover:text-foreground',
+              )}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        {jarvisUi.visible ? (
+          <button
+            type="button"
+            onClick={() => onInspectorTabChange('jarvis_activity')}
+            className="inline-flex items-center gap-2 rounded-full border border-accent-honey/40 bg-accent-honey/10 px-3 py-1.5 text-metadata font-semibold text-accent-honey focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            {jarvisUi.chip}
+          </button>
+        ) : null}
+      </header>
+      <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1fr)_400px]">
+        <section
+          id="context-center-panel"
+          role="tabpanel"
+          aria-labelledby={`context-center-tab-${mode}`}
+          className="relative min-h-0 overflow-hidden rounded-3xl border border-border bg-panel/80 shadow-soft backdrop-blur"
+          data-jarvis-suppress-context-menu={mode === 'graph' ? true : undefined}
+        >
+          {mode === 'graph' ? (
+            <>
+              <div className="absolute left-4 top-4 z-20 flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-paper/90 p-2 shadow-soft backdrop-blur">
+                <div className="flex items-center gap-2 px-2 text-metadata text-muted-foreground">
+                  <Move className="h-3.5 w-3.5 text-accent-copper" /> Right-click drag
+                </div>
+                <div className="flex items-center gap-2 px-2 text-metadata text-muted-foreground">
+                  <MousePointer2 className="h-3.5 w-3.5 text-accent-honey" /> Left-click nodes or
+                  strings
+                </div>
+              </div>
+              <ContextMapCanvas
+                tree={tree}
+                rootNode={rootNode}
+                selectedId={selectedId}
+                highlightedNodeIds={jarvisUi.highlightedNodeIds}
+                onSelect={onSelect}
+                flash={flash}
+              />
+            </>
+          ) : mode === 'note' ? (
+            map && accountId ? (
+              <ContextWorkspaceNote accountId={accountId} map={map} selected={selected} />
+            ) : (
+              <ContextModeEmpty
+                icon={<NotebookPen className="h-6 w-6" />}
+                title={map ? 'Sign in before writing a note' : 'Save the map before writing a note'}
+                body={
+                  map
+                    ? 'Workspace notes are isolated to the signed-in app profile.'
+                    : 'The structural preview is still being generated. The local note editor becomes available after this map is persisted.'
+                }
+              />
+            )
+          ) : mode === 'structured' ? (
+            <ContextStructuredView
+              tree={tree}
+              rootNode={rootNode}
+              nodes={flatNodes}
+              selectedId={selectedId}
+              onSelect={onSelect}
+            />
+          ) : (
+            <ContextSearchView
+              nodes={flatNodes}
+              query={searchQuery}
+              onQueryChange={onSearchQueryChange}
+              onSelect={onSelect}
+            />
+          )}
+        </section>
+        <ContextInspector
+          tree={tree}
+          map={map}
+          node={selected}
+          onSelect={onSelect}
+          tab={inspectorTab}
+          onTabChange={onInspectorTabChange}
+          githubBadge={githubBadge}
+          jarvisUi={jarvisUi}
+        />
+      </div>
+    </div>
+  );
+}
+
+const MAX_CONTEXT_NOTE_CHARS = 20_000;
+
+function ContextWorkspaceNote({
+  accountId,
+  map,
+  selected,
+}: {
+  accountId: string;
+  map: ContextMapRecord;
+  selected: ContextTreeNode;
+}) {
+  const storageKey = React.useMemo(
+    () => contextWorkspaceNoteStorageKey(accountId, map.projectId, map.id),
+    [accountId, map.id, map.projectId],
+  );
+  const [draft, setDraft] = React.useState('');
+  const [savedDraft, setSavedDraft] = React.useState('');
+
+  React.useEffect(() => {
+    let stored = '';
+    try {
+      const candidate = window.localStorage.getItem(storageKey) ?? '';
+      if (candidate.length <= MAX_CONTEXT_NOTE_CHARS) stored = candidate;
+    } catch {
+      // The editor remains usable when this profile blocks local storage.
+    }
+    setDraft(stored);
+    setSavedDraft(stored);
+  }, [storageKey]);
+
+  const save = () => {
+    try {
+      window.localStorage.setItem(storageKey, draft);
+      setSavedDraft(draft);
+      toast.success('Workspace note saved locally', map.name);
+    } catch (error) {
+      toast.error(
+        'Could not save workspace note',
+        error instanceof Error ? error.message : 'This app profile denied local storage.',
+      );
+    }
+  };
+
+  const appendSelection = () => {
+    const excerpt = `## ${selected.title}\n\n${selected.summary}`.slice(0, MAX_CONTEXT_NOTE_CHARS);
+    setDraft((current) =>
+      `${current}${current ? '\n\n' : ''}${excerpt}`.slice(0, MAX_CONTEXT_NOTE_CHARS),
+    );
+  };
+
+  return (
+    <div className="flex h-full min-h-0 flex-col p-5">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="eyebrow">Local workspace note</div>
+          <h2 className="mt-1 font-display text-3xl font-semibold text-foreground">{map.name}</h2>
+          <p className="text-secondary text-muted-foreground">
+            Saved only in this app-data profile. It does not modify source files or sync to a
+            provider.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button size="sm" variant="ghost" onClick={appendSelection}>
+            Add selected summary
+          </Button>
+          <Button size="sm" variant="accent" onClick={save} disabled={draft === savedDraft}>
+            Save note
+          </Button>
+        </div>
+      </div>
+      <textarea
+        value={draft}
+        maxLength={MAX_CONTEXT_NOTE_CHARS}
+        onChange={(event) => setDraft(event.target.value)}
+        aria-label="Context workspace note"
+        placeholder="Capture decisions, questions, and links for this Context map…"
+        className="min-h-0 flex-1 resize-none rounded-2xl border border-border bg-paper p-5 font-mono text-secondary leading-relaxed text-foreground shadow-inner outline-none transition-colors placeholder:text-muted-foreground focus:border-accent-copper focus:ring-2 focus:ring-ring"
+      />
+      <div className="mt-2 flex justify-between text-metadata text-muted-foreground">
+        <span>{draft === savedDraft ? 'Saved locally' : 'Unsaved changes'}</span>
+        <span>
+          {draft.length.toLocaleString()} / {MAX_CONTEXT_NOTE_CHARS.toLocaleString()}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function ContextStructuredView({
+  tree,
+  rootNode,
+  nodes,
+  selectedId,
+  onSelect,
+}: {
+  tree: ProjectContextTree;
+  rootNode: ContextTreeNode;
+  nodes: readonly ContextTreeNode[];
+  selectedId: string;
+  onSelect: (id: string) => void;
+}) {
+  const visible = [rootNode, ...nodes].slice(0, 500);
+  return (
+    <div className="flex h-full min-h-0 flex-col p-5">
+      <div className="mb-4 flex items-end justify-between gap-3">
+        <div>
+          <div className="eyebrow">Structured view</div>
+          <h2 className="mt-1 font-display text-3xl font-semibold text-foreground">
+            {tree.summary}
+          </h2>
+        </div>
+        <span className="rounded-full border border-border bg-paper px-3 py-1 text-metadata text-muted-foreground">
+          {(nodes.length + 1).toLocaleString()} nodes
+        </span>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto rounded-2xl border border-border bg-paper p-2 scrollbar-hidden">
+        {visible.map((node) => (
+          <button
+            key={node.id}
+            type="button"
+            onClick={() => onSelect(node.id)}
+            className={cn(
+              'grid w-full grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-xl px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              selectedId === node.id
+                ? 'bg-accent-copper/10 text-foreground'
+                : 'hover:bg-paper-soft',
+            )}
+          >
+            <span className="min-w-0">
+              <span className="flex items-center gap-2 text-secondary font-medium text-foreground">
+                {node.kind === 'file' ? (
+                  <FileText className="h-3.5 w-3.5 shrink-0 text-accent-honey" />
+                ) : (
+                  <Network className="h-3.5 w-3.5 shrink-0 text-accent-copper" />
+                )}
+                <span className="truncate">{node.title}</span>
+              </span>
+              <span className="mt-0.5 block truncate text-metadata text-muted-foreground">
+                {node.path ?? node.summary}
+              </span>
+            </span>
+            <span className="self-center font-mono text-metadata text-muted-foreground">
+              {node.kind}
+            </span>
+          </button>
+        ))}
+      </div>
+      {visible.length < nodes.length + 1 ? (
+        <p className="mt-2 text-metadata text-muted-foreground">
+          Showing the first 500 nodes for a responsive overview. Use Search for the complete map.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function ContextSearchView({
+  nodes,
+  query,
+  onQueryChange,
+  onSelect,
+}: {
+  nodes: readonly ContextTreeNode[];
+  query: string;
+  onQueryChange: (query: string) => void;
+  onSelect: (id: string) => void;
+}) {
+  const normalized = query.trim().toLocaleLowerCase();
+  const results = React.useMemo(
+    () =>
+      normalized
+        ? nodes
+            .filter((node) =>
+              [node.title, node.summary, node.path ?? '', ...(node.tags ?? [])]
+                .join('\n')
+                .toLocaleLowerCase()
+                .includes(normalized),
+            )
+            .slice(0, 200)
+        : [],
+    [nodes, normalized],
+  );
+  return (
+    <div className="flex h-full min-h-0 flex-col p-5">
+      <div>
+        <div className="eyebrow">Search this Context map</div>
+        <div className="relative mt-2">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(event) => onQueryChange(event.target.value.slice(0, 500))}
+            placeholder="Search titles, summaries, paths, and tags"
+            className="pl-9"
+            autoFocus
+          />
+        </div>
+      </div>
+      <div className="mt-4 min-h-0 flex-1 overflow-y-auto rounded-2xl border border-border bg-paper p-2 scrollbar-hidden">
+        {!normalized ? (
+          <ContextModeEmpty
+            icon={<FileSearch className="h-6 w-6" />}
+            title="Search the complete map"
+            body="Enter a title, path, tag, or phrase. Results stay local and selecting one opens it in the inspector."
+          />
+        ) : results.length === 0 ? (
+          <ContextModeEmpty
+            icon={<Search className="h-6 w-6" />}
+            title="No matching Context"
+            body="Try a shorter phrase, filename, directory, or tag. Source content is not sent anywhere by this search."
+          />
+        ) : (
+          <div className="space-y-1">
+            {results.map((node) => (
+              <button
+                key={node.id}
+                type="button"
+                onClick={() => onSelect(node.id)}
+                className="w-full rounded-xl px-3 py-2 text-left transition-colors hover:bg-paper-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <span className="block text-secondary font-semibold text-foreground">
+                  {node.title}
+                </span>
+                <span className="mt-0.5 block line-clamp-2 text-metadata text-muted-foreground">
+                  {node.path ?? node.summary}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      {normalized ? (
+        <p className="mt-2 text-metadata text-muted-foreground">
+          {results.length.toLocaleString()} result{results.length === 1 ? '' : 's'}
+          {results.length === 200 ? ' shown (200-result safety limit)' : ''}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function ContextModeEmpty({
+  icon,
+  title,
+  body,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  body: string;
 }) {
   return (
-    <div className="grid h-full min-h-0 gap-4 xl:grid-cols-[minmax(0,1fr)_400px]">
-      <section
-        className="relative min-h-0 overflow-hidden rounded-3xl border border-border bg-panel/80 shadow-soft backdrop-blur"
-        data-jarvis-suppress-context-menu
-      >
-        <div className="absolute left-4 top-4 z-20 flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-paper/90 p-2 shadow-soft backdrop-blur">
-          <div className="flex items-center gap-2 px-2 text-metadata text-muted-foreground">
-            <Move className="h-3.5 w-3.5 text-accent-copper" /> Right-click drag
-          </div>
-          <div className="flex items-center gap-2 px-2 text-metadata text-muted-foreground">
-            <MousePointer2 className="h-3.5 w-3.5 text-accent-honey" /> Left-click nodes or strings
-          </div>
-        </div>
-        <ContextMapCanvas
-          tree={tree}
-          rootNode={rootNode}
-          selectedId={selectedId}
-          onSelect={onSelect}
-          flash={flash}
-        />
-      </section>
-      <ContextInspector tree={tree} node={selected} onSelect={onSelect} />
+    <div className="flex h-full min-h-56 items-center justify-center p-6 text-center">
+      <div className="max-w-sm">
+        <span className="mx-auto inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-accent-copper/10 text-accent-copper">
+          {icon}
+        </span>
+        <h3 className="mt-3 font-display text-2xl font-semibold text-foreground">{title}</h3>
+        <p className="mt-1 text-secondary text-muted-foreground">{body}</p>
+      </div>
     </div>
   );
 }
@@ -995,15 +1705,18 @@ function ContextMapCanvas({
   tree,
   rootNode,
   selectedId,
+  highlightedNodeIds,
   onSelect,
   flash,
 }: {
   tree: ProjectContextTree;
   rootNode: ContextTreeNode;
   selectedId: string;
+  highlightedNodeIds: readonly string[];
   onSelect: (id: string) => void;
   flash: boolean;
 }) {
+  const highlightedIds = React.useMemo(() => new Set(highlightedNodeIds), [highlightedNodeIds]);
   const largeMap = React.useMemo(() => hasMoreThanContextGraphNodes(rootNode, 1_000), [rootNode]);
   const immediateMap = React.useMemo(
     () => (largeMap ? buildContextMapRoot(rootNode) : buildContextMap(rootNode)),
@@ -1428,6 +2141,7 @@ function ContextMapCanvas({
               tree={tree}
               node={node}
               active={selectedId === node.id}
+              highlighted={highlightedIds.has(node.id)}
               onSelect={onSelect}
             />
           ))}
@@ -1442,6 +2156,7 @@ function ContextMapCanvas({
           edges={visibleEdges}
           view={view}
           selectedId={selectedId}
+          highlightedIds={highlightedIds}
           onSelect={onSelect}
           onWebGlFailure={handleWebGlFailure}
         />
@@ -1480,6 +2195,7 @@ function ContextMapRasterCanvas({
   edges,
   view,
   selectedId,
+  highlightedIds,
   onSelect,
   onWebGlFailure,
 }: {
@@ -1490,6 +2206,7 @@ function ContextMapRasterCanvas({
   edges: ContextMapEdge[];
   view: MapView;
   selectedId: string;
+  highlightedIds: ReadonlySet<string>;
   onSelect: (id: string) => void;
   onWebGlFailure: () => void;
 }) {
@@ -1559,13 +2276,23 @@ function ContextMapRasterCanvas({
     if (canvas.width !== width) canvas.width = width;
     if (canvas.height !== height) canvas.height = height;
     if (mode === 'webgl') {
-      if (!drawContextMapWebGl(canvas, map, nodes, edges, view, selectedId)) {
+      if (!drawContextMapWebGl(canvas, map, nodes, edges, view, selectedId, highlightedIds)) {
         onWebGlFailure();
       }
     } else {
-      drawContextMapCanvas2d(canvas, map, nodes, edges, view, selectedId);
+      drawContextMapCanvas2d(canvas, map, nodes, edges, view, selectedId, highlightedIds);
     }
-  }, [canvasSizeVersion, edges, map, mode, nodes, onWebGlFailure, selectedId, view]);
+  }, [
+    canvasSizeVersion,
+    edges,
+    highlightedIds,
+    map,
+    mode,
+    nodes,
+    onWebGlFailure,
+    selectedId,
+    view,
+  ]);
 
   return (
     <>
@@ -1645,6 +2372,7 @@ function drawContextMapCanvas2d(
   edges: ContextMapEdge[],
   view: MapView,
   selectedId: string,
+  highlightedIds: ReadonlySet<string>,
 ) {
   const context = canvas.getContext('2d');
   if (!context) return;
@@ -1681,6 +2409,14 @@ function drawContextMapCanvas2d(
   }
   for (const node of nodes) {
     const active = selectedId === node.id;
+    const highlighted = highlightedIds.has(node.id);
+    if (highlighted && !active) {
+      context.beginPath();
+      context.arc(node.x, node.y, node.r + 10, 0, Math.PI * 2);
+      context.strokeStyle = themeHsl('--accent-honey', 0.9);
+      context.lineWidth = 7;
+      context.stroke();
+    }
     context.beginPath();
     context.arc(node.x, node.y, node.r, 0, Math.PI * 2);
     context.fillStyle =
@@ -1692,8 +2428,10 @@ function drawContextMapCanvas2d(
     context.fill();
     context.strokeStyle = active
       ? themeHsl('--accent-amber', 1)
-      : themeHsl('--accent-copper', 0.68);
-    context.lineWidth = active ? 5 : 2.5;
+      : highlighted
+        ? themeHsl('--accent-honey', 1)
+        : themeHsl('--accent-copper', 0.68);
+    context.lineWidth = active ? 5 : highlighted ? 4 : 2.5;
     context.stroke();
     if (nodes.length <= 250) {
       context.fillStyle = themeHsl('--foreground', 0.92);
@@ -1834,6 +2572,7 @@ function drawContextMapWebGl(
   edges: ContextMapEdge[],
   view: MapView,
   selectedId: string,
+  highlightedIds: ReadonlySet<string>,
 ): boolean {
   const resources = acquireContextMapWebGl(canvas);
   if (!resources) return false;
@@ -1888,6 +2627,25 @@ function drawContextMapWebGl(
   gl.uniform4f(colorLocation, 0.72, 0.42, 0.2, 0.88);
   gl.uniform1i(pointsLocation, 1);
   gl.drawArrays(gl.POINTS, 0, nodeOffset / 3);
+  let highlightedOffset = 0;
+  for (const node of nodes) {
+    if (!highlightedIds.has(node.id) || node.id === selectedId) continue;
+    resources.nodeVertices[highlightedOffset++] = ((node.x - view.x) / view.width) * 2 - 1;
+    resources.nodeVertices[highlightedOffset++] = 1 - ((node.y - view.y) / view.height) * 2;
+    resources.nodeVertices[highlightedOffset++] = Math.max(
+      5,
+      (node.r * 2.2 * canvas.width) / view.width,
+    );
+  }
+  if (highlightedOffset > 0) {
+    gl.bufferData(
+      gl.ARRAY_BUFFER,
+      resources.nodeVertices.subarray(0, highlightedOffset),
+      gl.DYNAMIC_DRAW,
+    );
+    gl.uniform4f(colorLocation, 0.93, 0.62, 0.24, 1);
+    gl.drawArrays(gl.POINTS, 0, highlightedOffset / 3);
+  }
   const selected = nodes.find((node) => node.id === selectedId);
   if (selected) {
     resources.selectedVertex[0] = ((selected.x - view.x) / view.width) * 2 - 1;
@@ -1904,11 +2662,13 @@ function MapNodeView({
   tree,
   node,
   active,
+  highlighted,
   onSelect,
 }: {
   tree: ProjectContextTree;
   node: PositionedContextNode;
   active: boolean;
+  highlighted: boolean;
   onSelect: (id: string) => void;
 }) {
   const lines = splitLabel(node.title, node.kind === 'file' ? 15 : 18);
@@ -1920,9 +2680,11 @@ function MapNodeView({
         : 'hsl(var(--paper-soft))';
   const stroke = active
     ? 'hsl(var(--accent-amber))'
-    : node.kind === 'file'
-      ? 'hsl(var(--accent-amber) / 0.68)'
-      : 'hsl(var(--accent-copper) / 0.62)';
+    : highlighted
+      ? 'hsl(var(--accent-honey))'
+      : node.kind === 'file'
+        ? 'hsl(var(--accent-amber) / 0.68)'
+        : 'hsl(var(--accent-copper) / 0.62)';
   return (
     <g
       transform={`translate(${node.x} ${node.y})`}
@@ -1939,15 +2701,20 @@ function MapNodeView({
         }
       }}
     >
-      {active ? (
+      {active || highlighted ? (
         <circle
           r={node.r + 12}
           fill="none"
-          stroke="hsl(var(--accent-amber) / 0.42)"
-          strokeWidth="8"
+          stroke={active ? 'hsl(var(--accent-amber) / 0.42)' : 'hsl(var(--accent-honey) / 0.58)'}
+          strokeWidth={active ? 8 : 6}
         />
       ) : null}
-      <circle r={node.r} fill={fill} stroke={stroke} strokeWidth={active ? 5 : 3} />
+      <circle
+        r={node.r}
+        fill={fill}
+        stroke={stroke}
+        strokeWidth={active ? 5 : highlighted ? 4 : 3}
+      />
       <circle
         cx={-node.r * 0.32}
         cy={-node.r * 0.32}
@@ -1981,14 +2748,202 @@ function MapNodeView({
 
 function ContextInspector({
   tree,
+  map,
   node,
   onSelect,
+  tab,
+  onTabChange,
+  githubBadge,
+  jarvisUi,
 }: {
   tree: ProjectContextTree;
+  map: ContextMapRecord | null;
   node: ContextTreeNode;
   onSelect: (id: string) => void;
+  tab: ContextInspectorTabId;
+  onTabChange: (tab: ContextInspectorTabId) => void;
+  githubBadge: ContextGitHubMapBadge | null;
+  jarvisUi: ContextJarvisUi;
 }) {
   const onDragStart = useContextDrag(tree, node);
+  const [packOpen, setPackOpen] = React.useState(false);
+  const backlinks = React.useMemo(() => contextNodeBacklinks(tree, node.id), [node.id, tree]);
+  const jarvisNodes = React.useMemo(
+    () =>
+      jarvisUi.highlightedNodeIds.flatMap((id) => {
+        const match =
+          id === PROJECT_ROOT_NODE_ID ? makeProjectRootNode(tree) : findContextNode(tree, id);
+        return match ? [match] : [];
+      }),
+    [jarvisUi.highlightedNodeIds, tree],
+  );
+  React.useEffect(() => setPackOpen(false), [jarvisUi.retrievalPackId]);
+  const tabIcons: Record<ContextInspectorTabId, React.ComponentType<{ className?: string }>> = {
+    details: Sparkles,
+    links: Link2,
+    backlinks: GitBranch,
+    properties: TableProperties,
+    sources: Database,
+    jarvis_activity: BrainCircuit,
+    history: History,
+  };
+
+  let content: React.ReactNode;
+  if (tab === 'details') {
+    content = (
+      <section className="rounded-2xl border border-border bg-paper p-4 shadow-soft">
+        <div className="mb-2 flex items-center gap-2 text-ui-strong text-foreground">
+          <Sparkles className="h-4 w-4 text-accent-copper" /> Summary
+        </div>
+        <p className="whitespace-pre-wrap text-body leading-relaxed text-muted-foreground">
+          {node.summary || 'This node has no generated summary yet. Refresh the map to enrich it.'}
+        </p>
+      </section>
+    );
+  } else if (tab === 'links') {
+    content = (
+      <ContextInspectorNodeList
+        title="Outgoing links"
+        empty="This node has no child links. Select another node or inspect Backlinks."
+        nodes={node.children ?? []}
+        onSelect={onSelect}
+      />
+    );
+  } else if (tab === 'backlinks') {
+    content = (
+      <ContextInspectorNodeList
+        title="Backlinks"
+        empty="No parent or referencing node is recorded for this map root."
+        nodes={backlinks}
+        onSelect={onSelect}
+      />
+    );
+  } else if (tab === 'properties') {
+    content = (
+      <section className="rounded-2xl border border-border bg-paper-soft p-4 shadow-soft">
+        <div className="mb-3 flex items-center gap-2 text-ui-strong text-foreground">
+          <TableProperties className="h-4 w-4 text-accent-honey" /> Properties
+        </div>
+        <dl className="space-y-2 text-secondary">
+          <MetaRow label="Kind" value={node.kind} />
+          <MetaRow label="Size" value={formatBytes(node.sizeBytes)} />
+          <MetaRow label="Created" value={formatDate(node.createdAt)} />
+          <MetaRow label="Modified" value={formatDate(node.modifiedAt)} />
+          <MetaRow label="Children" value={String(node.children?.length ?? 0)} />
+          <MetaRow label="Importance" value={String(node.importance ?? 'Not scored')} />
+        </dl>
+        {node.tags?.length ? (
+          <div className="mt-4 flex flex-wrap gap-1.5">
+            {node.tags.map((tag) => (
+              <span
+                key={tag}
+                className="rounded-full border border-border bg-paper px-2 py-0.5 text-metadata text-muted-foreground"
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-3 text-metadata text-muted-foreground">No tags recorded.</p>
+        )}
+      </section>
+    );
+  } else if (tab === 'sources') {
+    content = (
+      <div className="space-y-3">
+        <section className="rounded-2xl border border-border bg-paper p-4 shadow-soft">
+          <div className="mb-3 flex items-center gap-2 text-ui-strong text-foreground">
+            <Database className="h-4 w-4 text-accent-copper" /> Source provenance
+          </div>
+          <dl className="space-y-2 text-secondary">
+            <MetaRow label="Type" value={map?.sourceType ?? 'local_folder'} />
+            <MetaRow label="Source" value={map?.sourceLabel ?? tree.rootDir} />
+            <MetaRow label="Root" value={map?.rootDir || tree.rootDir || 'Remote repository'} />
+            <MetaRow label="Node path" value={node.path ?? 'Map root'} />
+            <MetaRow label="Status" value={map?.sourceStatus ?? 'preview'} />
+          </dl>
+        </section>
+        {map?.sourceType === 'github_repository' ? (
+          <GitHubMapIdentity map={map} badge={githubBadge} />
+        ) : (
+          <p className="rounded-xl border border-border bg-paper-soft p-3 text-metadata text-muted-foreground">
+            This is a local source. VibeSpace indexes it locally unless you explicitly choose a
+            cloud model for map generation.
+          </p>
+        )}
+      </div>
+    );
+  } else if (tab === 'jarvis_activity') {
+    content = jarvisUi.visible ? (
+      <section className="rounded-2xl border border-accent-honey/35 bg-paper p-4 shadow-soft">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="inline-flex items-center gap-2 text-ui-strong text-accent-honey">
+              <Sparkles className="h-4 w-4" /> {jarvisUi.chip}
+            </div>
+            <p className="mt-1 text-secondary text-muted-foreground">
+              {jarvisUi.sourceCount.toLocaleString()} source
+              {jarvisUi.sourceCount === 1 ? '' : 's'} in this retrieval pack.
+            </p>
+          </div>
+          <Button size="sm" variant="accent" onClick={() => setPackOpen((open) => !open)}>
+            {packOpen ? 'Close pack' : 'Open retrieval pack'}
+          </Button>
+        </div>
+        {packOpen ? (
+          <div className="mt-4 space-y-2">
+            <div className="font-mono text-metadata text-muted-foreground">
+              Pack {jarvisUi.retrievalPackId}
+            </div>
+            {jarvisNodes.length ? (
+              jarvisNodes.map((source) => (
+                <button
+                  key={source.id}
+                  type="button"
+                  onClick={() => onSelect(source.id)}
+                  className="w-full rounded-xl border border-accent-honey/25 bg-accent-honey/5 p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <span className="block text-secondary font-semibold text-foreground">
+                    {source.title}
+                  </span>
+                  <span className="mt-0.5 block line-clamp-2 text-metadata text-muted-foreground">
+                    {source.path ?? source.summary}
+                  </span>
+                </button>
+              ))
+            ) : (
+              <p className="text-metadata text-muted-foreground">
+                The retrieval pack is real, but none of its highlighted node IDs belong to the
+                currently selected map.
+              </p>
+            )}
+          </div>
+        ) : null}
+      </section>
+    ) : (
+      <ContextModeEmpty
+        icon={<BrainCircuit className="h-6 w-6" />}
+        title="JARVIS is not using Context"
+        body="When a retrieval run supplies a validated pack, this tab shows its source count and highlights only the real nodes it used."
+      />
+    );
+  } else {
+    content = (
+      <section className="rounded-2xl border border-border bg-paper p-4 shadow-soft">
+        <div className="mb-3 flex items-center gap-2 text-ui-strong text-foreground">
+          <Clock3 className="h-4 w-4 text-accent-copper" /> History
+        </div>
+        <dl className="space-y-2 text-secondary">
+          <MetaRow label="Map created" value={formatDate(map?.createdAt)} />
+          <MetaRow label="Map updated" value={formatDate(map?.updatedAt)} />
+          <MetaRow label="Last indexed" value={formatDate(map?.lastIndexedAt)} />
+          <MetaRow label="Generated" value={formatDate(tree.generatedAt)} />
+          <MetaRow label="Model" value={tree.model} />
+        </dl>
+      </section>
+    );
+  }
+
   return (
     <aside className="min-h-0 overflow-hidden rounded-3xl border border-border bg-panel/90 shadow-soft backdrop-blur">
       <div className="flex h-full min-h-0 flex-col">
@@ -2022,80 +2977,107 @@ function ContextInspector({
           </div>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto p-4 scrollbar-hidden">
-          <section className="rounded-2xl border border-border bg-paper p-4 shadow-soft">
-            <div className="mb-2 flex items-center gap-2 text-ui-strong text-foreground">
-              <Sparkles className="h-4 w-4 text-accent-copper" /> Summary
-            </div>
-            <p className="whitespace-pre-wrap text-body leading-relaxed text-muted-foreground">
-              {node.summary}
-            </p>
-          </section>
+        <div
+          className="grid grid-cols-2 gap-1 border-b border-border bg-paper-soft/70 p-2"
+          role="tablist"
+          aria-label="Context inspector"
+        >
+          {CONTEXT_INSPECTOR_TABS.map((item) => {
+            const Icon = tabIcons[item.id];
+            return (
+              <button
+                key={item.id}
+                id={`context-inspector-tab-${item.id}`}
+                type="button"
+                role="tab"
+                aria-selected={tab === item.id}
+                aria-controls="context-inspector-panel"
+                data-context-tab-id={item.id}
+                tabIndex={tab === item.id ? 0 : -1}
+                onClick={() => onTabChange(item.id)}
+                onKeyDown={(event) =>
+                  handleContextTabKeyDown(event, CONTEXT_INSPECTOR_TABS, tab, onTabChange)
+                }
+                className={cn(
+                  'flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-metadata transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  tab === item.id
+                    ? 'bg-accent-copper/10 font-semibold text-accent-copper'
+                    : 'text-muted-foreground hover:bg-paper hover:text-foreground',
+                )}
+              >
+                <Icon className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">{item.label}</span>
+              </button>
+            );
+          })}
+        </div>
 
-          <section className="mt-3 rounded-2xl border border-border bg-paper-soft p-4 shadow-soft">
-            <div className="mb-3 flex items-center gap-2 text-ui-strong text-foreground">
-              <Database className="h-4 w-4 text-accent-honey" /> Context Metadata
-            </div>
-            <dl className="space-y-2 text-secondary">
-              <MetaRow label="Size" value={formatBytes(node.sizeBytes)} />
-              <MetaRow label="Created" value={formatDate(node.createdAt)} />
-              <MetaRow label="Modified" value={formatDate(node.modifiedAt)} />
-              <MetaRow label="Generated" value={new Date(tree.generatedAt).toLocaleString()} />
-              <MetaRow label="Model" value={tree.model} />
-              <MetaRow label="Children" value={String(node.children?.length ?? 0)} />
-            </dl>
-            {node.tags?.length ? (
-              <div className="mt-4 flex flex-wrap gap-1.5">
-                {node.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="rounded-full border border-border bg-paper px-2 py-0.5 text-metadata text-muted-foreground"
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            ) : null}
-          </section>
-
-          {node.children?.length ? (
-            <section className="mt-3 rounded-2xl border border-border bg-paper p-4 shadow-soft">
-              <div className="mb-3 flex items-center gap-2 text-ui-strong text-foreground">
-                <GitBranch className="h-4 w-4 text-accent-copper" /> Linked branches
-              </div>
-              <div className="space-y-2">
-                {node.children.slice(0, 18).map((child) => (
-                  <button
-                    key={child.id}
-                    type="button"
-                    onClick={() => onSelect(child.id)}
-                    className="w-full rounded-xl border border-border bg-paper-soft p-3 text-left transition-all hover:-translate-y-0.5 hover:border-accent-copper/40 hover:shadow-soft"
-                  >
-                    <div className="flex items-center gap-2">
-                      {child.kind === 'file' ? (
-                        <FileText className="h-3.5 w-3.5 text-accent-honey" />
-                      ) : (
-                        <CircleDot className="h-3.5 w-3.5 text-accent-copper" />
-                      )}
-                      <div className="min-w-0 flex-1 truncate text-secondary font-medium text-foreground">
-                        {child.title}
-                      </div>
-                      <div className="text-metadata text-muted-foreground">
-                        {formatBytes(child.sizeBytes)}
-                      </div>
-                    </div>
-                    <p className="mt-1 line-clamp-2 text-metadata text-muted-foreground">
-                      {child.summary}
-                    </p>
-                  </button>
-                ))}
-              </div>
-            </section>
-          ) : null}
+        <div
+          id="context-inspector-panel"
+          role="tabpanel"
+          aria-labelledby={`context-inspector-tab-${tab}`}
+          className="min-h-0 flex-1 overflow-y-auto p-4 scrollbar-hidden"
+        >
+          {content}
         </div>
       </div>
     </aside>
   );
+}
+
+function ContextInspectorNodeList({
+  title,
+  empty,
+  nodes,
+  onSelect,
+}: {
+  title: string;
+  empty: string;
+  nodes: readonly ContextTreeNode[];
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <section className="rounded-2xl border border-border bg-paper p-4 shadow-soft">
+      <div className="mb-3 flex items-center gap-2 text-ui-strong text-foreground">
+        <Link2 className="h-4 w-4 text-accent-copper" /> {title}
+      </div>
+      {nodes.length ? (
+        <div className="space-y-2">
+          {nodes.slice(0, 100).map((linked) => (
+            <button
+              key={linked.id}
+              type="button"
+              onClick={() => onSelect(linked.id)}
+              className="w-full rounded-xl border border-border bg-paper-soft p-3 text-left transition-colors hover:border-accent-copper/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <span className="block truncate text-secondary font-medium text-foreground">
+                {linked.title}
+              </span>
+              <span className="mt-1 block line-clamp-2 text-metadata text-muted-foreground">
+                {linked.path ?? linked.summary}
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p className="text-secondary text-muted-foreground">{empty}</p>
+      )}
+    </section>
+  );
+}
+
+function contextNodeBacklinks(
+  tree: ProjectContextTree,
+  nodeId: string,
+): readonly ContextTreeNode[] {
+  const root = makeProjectRootNode(tree);
+  const matches: ContextTreeNode[] = [];
+  const visit = (candidate: ContextTreeNode) => {
+    if (candidate.children?.some((child) => child.id === nodeId)) matches.push(candidate);
+    candidate.children?.forEach(visit);
+  };
+  visit(root);
+  return matches;
 }
 
 function MetaRow({ label, value }: { label: string; value: string }) {

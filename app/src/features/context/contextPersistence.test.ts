@@ -11,6 +11,8 @@ import {
   type ProjectContextTree,
 } from './tree';
 import { contextSelectionSettingKey } from './migration';
+import { createContextGraphRepository } from './repository';
+import type { ContextGraphSnapshotV2 } from './contracts';
 
 function treeFixture(rootDir = 'C:\\Projects\\Example', generatedAt = 1_000): ProjectContextTree {
   return {
@@ -156,6 +158,60 @@ describe('production Context persistence service', () => {
     ).resolves.toMatchObject({
       value: { selectedMapId: mapId },
     });
+  });
+
+  it('projects validated GitHub identity and source status for honest workspace badges', async () => {
+    const service = createContextPersistenceService(database, localStorage);
+    await service.initialize('account-1', 'project-1');
+    const saved = await service.saveTree('account-1', treeFixture());
+    const mapId = saved.selectedMapId!;
+    const repository = createContextGraphRepository(database);
+    const snapshot = await repository.getSnapshot('account-1', mapId);
+    expect(snapshot).not.toBeNull();
+    const next = structuredClone(snapshot!) as ContextGraphSnapshotV2;
+    next.map.knowledgeRevision += 1;
+    next.map.updatedAt += 1;
+    next.map.statistics.staleSourceCount = 1;
+    next.sources[0] = {
+      ...next.sources[0]!,
+      kind: 'github_repository',
+      label: 'octo/vibespace',
+      status: 'stale',
+      localRoot: undefined,
+      github: {
+        installationId: 'installation-1',
+        owner: 'octo',
+        repository: 'vibespace',
+        selectedRef: 'main',
+        resolvedCommitSha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        visibility: 'private',
+      },
+      lastIndexedAt: 1_000,
+      updatedAt: next.sources[0]!.updatedAt + 1,
+    };
+    next.provenance = next.provenance.map((entry) => ({
+      ...entry,
+      sourceKind: 'github_repository',
+    }));
+    await repository.putSnapshot('account-1', next, {
+      expectedKnowledgeRevision: snapshot!.map.knowledgeRevision,
+    });
+
+    const loaded = await service.load('account-1', 'project-1');
+    expect(loaded.maps[0]).toMatchObject({
+      sourceType: 'github_repository',
+      sourceLabel: 'octo/vibespace',
+      sourceStatus: 'stale',
+      branchRef: 'main',
+      github: {
+        owner: 'octo',
+        repository: 'vibespace',
+        resolvedCommitSha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        visibility: 'private',
+      },
+      lastIndexedAt: 1_000,
+    });
+    expect(loaded.maps[0]?.github).not.toHaveProperty('installationId');
   });
 
   it('persists file selection and soft deletion while keeping source graph evidence', async () => {

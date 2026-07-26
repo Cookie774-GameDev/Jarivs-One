@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   PROMPT_FORGE_CONTEXT_REQUEST_EVENT,
   PROMPT_FORGE_CONTEXT_RESULT_EVENT,
@@ -9,6 +9,7 @@ import {
   retrievePromptForgeContext,
 } from './contextResponseIntegration';
 import { buildContextChatAttachment } from './contextChatIntegration';
+import { getLatestContextJarvisUi, publishContextJarvisActivity } from './contextWorkspaceUi';
 
 const now = Date.UTC(2026, 6, 26, 12);
 const base = buildContextChatAttachment({
@@ -31,6 +32,10 @@ const base = buildContextChatAttachment({
   lastIndexedAt: now - 1_000,
 });
 
+afterEach(() => {
+  publishContextJarvisActivity(null);
+});
+
 describe('shared Context response integration', () => {
   it('routes chat attachments through the existing shared retrieval service', async () => {
     const result = await retrieveContextForConsumer({
@@ -51,6 +56,92 @@ describe('shared Context response integration', () => {
     });
     expect(result.sourceLabels).toEqual({ 'source-1': 'Release notes' });
     expect(result.evidenceKinds).toEqual({ 'attachment-1': 'exact_excerpt' });
+    expect(
+      getLatestContextJarvisUi({
+        projectId: 'project-1',
+        mapId: 'map-1',
+      }),
+    ).toEqual({
+      visible: true,
+      chip: 'JARVIS using Context',
+      highlightedNodeIds: ['node-1'],
+      sourceCount: 1,
+      retrievalPackId: 'query-chat-1',
+    });
+    expect(
+      getLatestContextJarvisUi({
+        projectId: 'project-2',
+        mapId: 'map-1',
+      }).visible,
+    ).toBe(false);
+  });
+
+  it('keeps retrieval and scoped activity working for valid identifiers containing @', async () => {
+    const atIdentifier = buildContextChatAttachment({
+      ...base,
+      projectId: 'project@1',
+      nodeId: 'node@1',
+      mapId: 'map@1',
+    });
+
+    const result = await retrieveContextForConsumer({
+      consumer: 'chat',
+      projectId: 'project@1',
+      userText: 'What is the release plan?',
+      attachments: [atIdentifier],
+      now,
+      createQueryId: () => 'query@chat-1',
+    });
+
+    expect(result.items).toHaveLength(1);
+    expect(
+      getLatestContextJarvisUi({
+        projectId: 'project@1',
+        mapId: 'map@1',
+      }),
+    ).toMatchObject({
+      visible: true,
+      highlightedNodeIds: ['node@1'],
+      retrievalPackId: 'query@chat-1',
+    });
+  });
+
+  it('keeps retrieval and scoped activity working across more than five maps', async () => {
+    const attachments = Array.from({ length: 6 }, (_, index) =>
+      buildContextChatAttachment({
+        ...base,
+        nodeId: `node-${index + 1}`,
+        mapId: `map-${index + 1}`,
+        title: `Release plan ${index + 1}`,
+      }),
+    );
+
+    const result = await retrieveContextForConsumer({
+      consumer: 'chat',
+      projectId: 'project-1',
+      userText: 'Compare every release plan',
+      attachments,
+      now,
+      createQueryId: () => 'query-six-maps',
+    });
+
+    expect(Object.keys(result.mapRevisions)).toEqual([
+      'map-1',
+      'map-2',
+      'map-3',
+      'map-4',
+      'map-5',
+      'map-6',
+    ]);
+    expect(
+      getLatestContextJarvisUi({
+        projectId: 'project-1',
+        mapId: 'map-6',
+      }),
+    ).toMatchObject({
+      visible: true,
+      retrievalPackId: 'query-six-maps',
+    });
   });
 
   it('gives Prompt Forge the same retrieval result without a second index', async () => {

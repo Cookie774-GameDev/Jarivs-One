@@ -83,7 +83,22 @@ export interface ContextMapRecord {
     | 'linked_vibespace_content'
     | 'portable_markdown_folder';
   sourceLabel?: string;
+  sourceStatus?:
+    | 'pending'
+    | 'indexing'
+    | 'ready'
+    | 'stale'
+    | 'offline'
+    | 'permission_required'
+    | 'error'
+    | 'removed';
   branchRef?: string;
+  github?: {
+    owner: string;
+    repository: string;
+    resolvedCommitSha: string;
+    visibility: 'public' | 'private' | 'internal';
+  };
   lastIndexedAt?: number;
   tree: ProjectContextTree;
 }
@@ -367,7 +382,9 @@ export function saveContextTree(
     updatedAt: now,
     sourceType: existing?.sourceType ?? 'local_folder',
     sourceLabel: existing?.sourceLabel ?? 'Local folder',
+    sourceStatus: existing?.sourceStatus ?? 'ready',
     branchRef: existing?.branchRef ?? 'workspace',
+    github: existing?.github,
     lastIndexedAt: tree.generatedAt,
     tree,
   };
@@ -510,9 +527,25 @@ function normalizeContextMapRecord(
       typeof record.sourceLabel === 'string' && record.sourceLabel.trim()
         ? record.sourceLabel.trim()
         : undefined,
+    sourceStatus: [
+      'pending',
+      'indexing',
+      'ready',
+      'stale',
+      'offline',
+      'permission_required',
+      'error',
+      'removed',
+    ].includes(record.sourceStatus ?? '')
+      ? record.sourceStatus
+      : undefined,
     branchRef:
       typeof record.branchRef === 'string' && record.branchRef.trim()
         ? record.branchRef.trim()
+        : undefined,
+    github:
+      record.sourceType === 'github_repository'
+        ? normalizeContextGitHubProjection(record.github)
         : undefined,
     lastIndexedAt:
       typeof record.lastIndexedAt === 'number' &&
@@ -522,6 +555,29 @@ function normalizeContextMapRecord(
         ? record.lastIndexedAt
         : undefined,
     tree,
+  };
+}
+
+function normalizeContextGitHubProjection(raw: unknown): ContextMapRecord['github'] {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const github = raw as Partial<NonNullable<ContextMapRecord['github']>>;
+  const namePattern = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,98}[A-Za-z0-9])?$/;
+  if (
+    typeof github.owner !== 'string' ||
+    !namePattern.test(github.owner) ||
+    typeof github.repository !== 'string' ||
+    !namePattern.test(github.repository) ||
+    typeof github.resolvedCommitSha !== 'string' ||
+    !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(github.resolvedCommitSha) ||
+    !['public', 'private', 'internal'].includes(github.visibility ?? '')
+  ) {
+    return undefined;
+  }
+  return {
+    owner: github.owner,
+    repository: github.repository,
+    resolvedCommitSha: github.resolvedCommitSha.toLowerCase(),
+    visibility: github.visibility as 'public' | 'private' | 'internal',
   };
 }
 

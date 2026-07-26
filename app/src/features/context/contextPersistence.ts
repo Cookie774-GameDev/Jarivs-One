@@ -151,7 +151,16 @@ function mapFromSnapshot(snapshot: ContextGraphSnapshotV2): ContextMapRecord {
     updatedAt: snapshot.map.updatedAt,
     sourceType: source.kind,
     sourceLabel: source.label,
+    sourceStatus: source.status,
     branchRef: source.github?.selectedRef,
+    github: source.github
+      ? {
+          owner: source.github.owner,
+          repository: source.github.repository,
+          resolvedCommitSha: source.github.resolvedCommitSha,
+          visibility: source.github.visibility,
+        }
+      : undefined,
     lastIndexedAt: snapshot.map.lastIndexedAt,
     tree: treeFromSnapshot(snapshot),
   };

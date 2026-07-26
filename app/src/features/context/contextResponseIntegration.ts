@@ -13,6 +13,7 @@ import {
 } from './contextChatIntegration';
 import type { ContextAttachment } from './tree';
 import type { ContextEntityKind, ContextSourceKind, DeepReadonly } from './contracts';
+import { publishContextJarvisActivity } from './contextWorkspaceUi';
 
 export const CONTEXT_RETRIEVAL_CONSUMERS = Object.freeze(['chat', 'prompt_forge'] as const);
 export type ContextRetrievalConsumer = (typeof CONTEXT_RETRIEVAL_CONSUMERS)[number];
@@ -262,7 +263,28 @@ export async function retrieveContextForConsumer(
     explicitEntityIds: unique.map((attachment) => attachment.nodeId),
     maxTokens: 2_400,
   });
-  return Object.freeze({ ...result, sourceLabels, evidenceKinds });
+  const sharedResult = Object.freeze({ ...result, sourceLabels, evidenceKinds });
+  if (result.items.length > 0) {
+    try {
+      publishContextJarvisActivity(
+        {
+          runId: result.queryId,
+          lifecycle: 'complete',
+          highlightedNodeIds: [...new Set(result.items.map((item) => item.entity.entityId))],
+          sourceCount: new Set(result.items.map((item) => item.sourceId)).size,
+          retrievalPackId: result.queryId,
+        },
+        undefined,
+        {
+          projectId: input.projectId,
+          mapIds: Object.keys(result.mapRevisions),
+        },
+      );
+    } catch {
+      // The scoped UI signal is additive and must never invalidate a successful retrieval.
+    }
+  }
+  return sharedResult;
 }
 
 export function retrievePromptForgeContext(
