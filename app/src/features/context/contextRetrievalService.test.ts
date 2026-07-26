@@ -6,6 +6,7 @@ import {
   type ContextRetrievalDependencies,
   type ContextRetrievalRequest,
 } from './contextRetrievalService';
+import { ContextRevisionCache } from './contextRevisionCache';
 
 const request: ContextRetrievalRequest = {
   projectId: 'project-1',
@@ -79,6 +80,76 @@ function dependencies(
 }
 
 describe('createContextRetrievalService', () => {
+  it('reuses candidate queries until a selected map revision changes', async () => {
+    let knowledgeRevision = 7;
+    const deps = dependencies([candidate('cached')]);
+    deps.listActiveMaps = vi.fn(async () => [{ id: 'map-1', knowledgeRevision }]);
+    deps.cache = new ContextRevisionCache();
+    deps.cachePartitionId = 'account-1';
+    const service = createContextRetrievalService(deps);
+
+    await service.retrieve(request);
+    await service.retrieve(request);
+    expect(deps.retrieveCandidates).toHaveBeenCalledTimes(1);
+
+    knowledgeRevision = 8;
+    deps.retrieveCandidates = vi.fn(async () => [candidate('fresh', { mapRevision: 8 })]);
+    const result = await service.retrieve(request);
+    expect(deps.retrieveCandidates).toHaveBeenCalledTimes(1);
+    expect(result.items[0]?.id).toBe('fresh');
+  });
+
+  it('requires an account/profile partition for shared query caches', async () => {
+    const deps = dependencies([candidate('cached')]);
+    deps.cache = new ContextRevisionCache();
+    await expect(createContextRetrievalService(deps).retrieve(request)).rejects.toMatchObject({
+      code: 'invalid_dependency_result',
+      detail: 'cache_partition',
+    });
+    expect(deps.retrieveCandidates).not.toHaveBeenCalled();
+  });
+
+  it('digests the largest valid request into a bounded cache key', async () => {
+    const deps = dependencies([]);
+    deps.cache = new ContextRevisionCache();
+    deps.cachePartitionId = 'account-1';
+    const ids = Array.from({ length: 200 }, (_, index) => {
+      const prefix = `id-${index}-`;
+      return `${prefix}${'x'.repeat(200 - prefix.length)}`;
+    });
+    await expect(
+      createContextRetrievalService(deps).retrieve({
+        projectId: 'project-1',
+        userText: 'x'.repeat(32_768),
+        explicitMapIds: ['map-1', ...ids.slice(0, 199)],
+        explicitEntityIds: ids,
+        selectedSkillIds: ids,
+        maxTokens: 2_400,
+      }),
+    ).resolves.toMatchObject({ items: [] });
+    expect(deps.retrieveCandidates).toHaveBeenCalledTimes(1);
+  });
+
+  it('never caches an invalid dependency result before a valid retry', async () => {
+    const deps = dependencies([]);
+    deps.cache = new ContextRevisionCache();
+    deps.cachePartitionId = 'account-1';
+    deps.retrieveCandidates = vi
+      .fn()
+      .mockResolvedValueOnce([candidate('poisoned', { mapRevision: 6 })])
+      .mockResolvedValueOnce([candidate('recovered')]);
+    const service = createContextRetrievalService(deps);
+
+    await expect(service.retrieve(request)).rejects.toMatchObject({
+      code: 'invalid_candidate',
+      detail: 'poisoned',
+    });
+    await expect(service.retrieve(request)).resolves.toMatchObject({
+      items: [expect.objectContaining({ id: 'recovered' })],
+    });
+    expect(deps.retrieveCandidates).toHaveBeenCalledTimes(2);
+  });
+
   it('orchestrates project, maps, task, candidates, provenance, and app-native citations', async () => {
     const explicit = candidate('explicit', {
       entity: {

@@ -5,6 +5,7 @@ import {
   type ContextSourceKind,
   type DeepReadonly,
 } from './contracts';
+import type { ContextRevisionCache } from './contextRevisionCache';
 
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,199}$/u;
 const MAX_TEXT_CHARS = 32_768;
@@ -186,6 +187,8 @@ export interface ContextRetrievalDependencies {
   ): Promise<readonly ContextRetrievalCandidate[]>;
   now(): number;
   createQueryId(): string;
+  cache?: ContextRevisionCache;
+  cachePartitionId?: string;
 }
 
 export type ContextRetrievalErrorCode =
@@ -205,6 +208,15 @@ export class ContextRetrievalError extends Error {
 
 function safeId(value: unknown): value is string {
   return typeof value === 'string' && SAFE_ID.test(value);
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle) {
+    throw new ContextRetrievalError('invalid_dependency_result', 'cache_digest_unavailable');
+  }
+  const digest = await subtle.digest('SHA-256', new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
 function safeTimestamp(value: unknown): value is number {
@@ -719,38 +731,72 @@ export function createContextRetrievalService(dependencies: ContextRetrievalDepe
       if (!safeId(queryId) || !safeTimestamp(builtAt)) {
         throw new ContextRetrievalError('invalid_dependency_result', 'identity_or_time');
       }
-      const candidates = [
-        ...(await dependencies.retrieveCandidates({
-          projectId,
-          mapIds: selectedMaps.map(({ id }) => id),
-          task,
-          request,
-          limit: MAX_CANDIDATES,
-        })),
-      ];
-      if (candidates.length > MAX_CANDIDATES) {
-        throw new ContextRetrievalError('invalid_dependency_result', 'too_many_candidates');
-      }
+      const candidateInput = {
+        projectId,
+        mapIds: selectedMaps.map(({ id }) => id),
+        task,
+        request,
+        limit: MAX_CANDIDATES,
+      } satisfies ContextCandidateRetrievalInput;
       const mapRevisions = new Map(
         selectedMaps.map(({ id, knowledgeRevision }) => [id, knowledgeRevision] as const),
       );
-      candidates.forEach((candidate) => validateCandidate(candidate, mapRevisions));
-      if (new Set(candidates.map(({ id }) => id)).size !== candidates.length) {
-        throw new ContextRetrievalError('invalid_dependency_result', 'duplicate_candidate');
-      }
-      const relatedEvidenceByKey = new Map<string, string>();
-      for (const candidate of candidates) {
-        for (const related of candidate.relatedEntities) {
-          const reference = retrievedRelated(candidate, related);
-          const key = relatedKey(reference);
-          const evidence = relatedEvidence(reference);
-          const existing = relatedEvidenceByKey.get(key);
-          if (existing !== undefined && existing !== evidence) {
-            throw new ContextRetrievalError('invalid_candidate', 'related_reference_conflict');
-          }
-          relatedEvidenceByKey.set(key, evidence);
+      const validateCandidateSet = (
+        rawCandidates: readonly ContextRetrievalCandidate[],
+      ): readonly ContextRetrievalCandidate[] => {
+        const candidateSet = [...rawCandidates];
+        if (candidateSet.length > MAX_CANDIDATES) {
+          throw new ContextRetrievalError('invalid_dependency_result', 'too_many_candidates');
         }
+        candidateSet.forEach((candidate) => validateCandidate(candidate, mapRevisions));
+        if (new Set(candidateSet.map(({ id }) => id)).size !== candidateSet.length) {
+          throw new ContextRetrievalError('invalid_dependency_result', 'duplicate_candidate');
+        }
+        const relatedEvidenceByKey = new Map<string, string>();
+        for (const candidate of candidateSet) {
+          for (const related of candidate.relatedEntities) {
+            const reference = retrievedRelated(candidate, related);
+            const key = relatedKey(reference);
+            const evidence = relatedEvidence(reference);
+            const existing = relatedEvidenceByKey.get(key);
+            if (existing !== undefined && existing !== evidence) {
+              throw new ContextRetrievalError('invalid_candidate', 'related_reference_conflict');
+            }
+            relatedEvidenceByKey.set(key, evidence);
+          }
+        }
+        return candidateSet;
+      };
+      const loadCandidates = async () =>
+        validateCandidateSet(await dependencies.retrieveCandidates(candidateInput));
+      if (dependencies.cache && !safeId(dependencies.cachePartitionId)) {
+        throw new ContextRetrievalError('invalid_dependency_result', 'cache_partition');
       }
+      const candidateCacheKey = dependencies.cache
+        ? `sha256:${await sha256Hex(
+            JSON.stringify({
+              cachePartitionId: dependencies.cachePartitionId,
+              projectId,
+              request,
+              task,
+            }),
+          )}`
+        : '';
+      const candidates = [
+        ...(dependencies.cache
+          ? await dependencies.cache.getOrLoad(
+              'query_result',
+              selectedMaps.map(({ id, knowledgeRevision }) => ({
+                partitionId: dependencies.cachePartitionId!,
+                mapId: id,
+                knowledgeRevision,
+              })),
+              candidateCacheKey,
+              loadCandidates,
+            )
+          : await loadCandidates()),
+      ];
+      validateCandidateSet(candidates);
 
       const preferredKinds = request.preferredSourceKinds
         ? new Set(request.preferredSourceKinds)

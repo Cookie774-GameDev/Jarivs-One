@@ -392,6 +392,14 @@ export {
   type ContextSemanticSearchExecutor,
 } from './contextSearchPipeline';
 export {
+  CONTEXT_REVISION_CACHE_CHANNELS,
+  ContextRevisionCache,
+  ContextRevisionCacheError,
+  type ContextRevisionCacheChannel,
+  type ContextRevisionCacheOptions,
+  type ContextRevisionCacheScope,
+} from './contextRevisionCache';
+export {
   authorizeContextProcessorCapability,
   parsePassiveContextPackage,
   reviewContextProcessorInstall,
