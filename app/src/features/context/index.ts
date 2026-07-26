@@ -1,5 +1,24 @@
 export { ContextPage } from './ContextPage';
 export {
+  createGitHubRepositorySelection,
+  refreshGitHubRepositorySelection,
+  searchGitHubRepositoryCatalog,
+  type GitHubRepositoryAuthority,
+  type GitHubRepositoryAuthorityRecord,
+  type GitHubRepositoryCatalogClaim,
+  type GitHubRepositoryCatalogItem,
+  type GitHubRepositoryCatalogSnapshot,
+  type GitHubRepositoryPermissionState,
+  type GitHubRepositoryRef,
+  type GitHubRepositoryRefreshPolicy,
+  type GitHubRepositoryRefreshTrigger,
+  type GitHubRepositorySelection,
+  type GitHubRepositorySelectionClaim,
+  type GitHubRepositoryVisibility,
+  type GitHubResolvedRepositoryRef,
+  type GitHubSelectedRepositoryRef,
+} from './githubRepositoryCatalog';
+export {
   GITHUB_CONTEXT_FLOW_STEPS,
   GITHUB_CONTEXT_OPTIONAL_PERMISSIONS,
   GITHUB_CONTEXT_REQUIRED_PERMISSIONS,
