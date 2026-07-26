@@ -9,6 +9,7 @@ import {
 } from './migration';
 import { createContextGraphRepository } from './repository';
 import type { ContextEntityKind, ContextEntityV2, ContextGraphSnapshotV2 } from './contracts';
+import { queueContextCloudDocument, type ContextCloudDocumentV1 } from './contextCloudSync';
 import {
   contextNodeFilePath,
   findContextFileNodeByPath,
@@ -87,10 +88,7 @@ function treeFromSnapshot(snapshot: ContextGraphSnapshotV2): ProjectContextTree 
     if (!byId.has(edge.sourceEntityId) || !byId.has(edge.targetEntityId)) {
       fail('contains_edge_invalid');
     }
-    if (
-      edge.sourceEntityId === edge.targetEntityId ||
-      parentByChild.has(edge.targetEntityId)
-    ) {
+    if (edge.sourceEntityId === edge.targetEntityId || parentByChild.has(edge.targetEntityId)) {
       fail('contains_hierarchy_invalid');
     }
     parentByChild.set(edge.targetEntityId, edge.sourceEntityId);
@@ -258,20 +256,14 @@ export function createContextPersistenceService(
         ? [mapFromSnapshot(structuredClone(result.snapshot) as ContextGraphSnapshotV2)]
         : [],
     );
-    const mapIds = new Set(
-      maps.filter((map) => map.status === 'active').map((map) => map.id),
-    );
+    const mapIds = new Set(maps.filter((map) => map.status === 'active').map((map) => map.id));
     const rawSelection = await database.settings.get(
       contextSelectionSettingKey(accountId, projectId),
     );
     const selection = selectionFromRow(rawSelection?.value, accountId, projectId, mapIds);
     const selectedMapId =
-      selection.selectedMapId ??
-      maps.find((map) => map.status === 'active')?.id ??
-      null;
-    const selectedMap = maps.find(
-      (map) => map.id === selectedMapId && map.status === 'active',
-    );
+      selection.selectedMapId ?? maps.find((map) => map.status === 'active')?.id ?? null;
+    const selectedMap = maps.find((map) => map.id === selectedMapId && map.status === 'active');
     const selectedFile =
       selection.selectedFile?.mapId === selectedMapId &&
       selectedMap &&
@@ -362,8 +354,7 @@ export function createContextPersistenceService(
       const globalExisting = await database.context_maps.get(mapId);
       if (
         globalExisting &&
-        (globalExisting.accountId !== accountId ||
-          globalExisting.projectId !== tree.projectId)
+        (globalExisting.accountId !== accountId || globalExisting.projectId !== tree.projectId)
       ) {
         fail('map_scope_conflict');
       }
@@ -390,16 +381,11 @@ export function createContextPersistenceService(
         updatedAt: Math.max(Date.now(), tree.generatedAt),
         tree,
       };
-      const snapshot = convertContextMapRecordV1ToSnapshotV2(
-        record,
-        accountId,
-        mapId,
-        {
-          knowledgeRevision: (existing?.map.knowledgeRevision ?? 0) + 1,
-          sourceStatus: 'ready',
-          parser: 'context-tree-v2-persistence',
-        },
-      );
+      const snapshot = convertContextMapRecordV1ToSnapshotV2(record, accountId, mapId, {
+        knowledgeRevision: (existing?.map.knowledgeRevision ?? 0) + 1,
+        sourceStatus: 'ready',
+        parser: 'context-tree-v2-persistence',
+      });
       await repository.putSnapshot(accountId, snapshot, {
         expectedKnowledgeRevision: existing?.map.knowledgeRevision ?? 0,
       });
@@ -468,9 +454,59 @@ function publishProductionState(state: ContextPersistenceState): void {
   }
 }
 
+async function queuePersistedMapMetadata(accountId: string, mapId: string): Promise<void> {
+  const map = await db.context_maps.get(mapId);
+  if (!map || map.accountId !== accountId) return;
+  const deleted = map.status === 'deleted';
+  const document: ContextCloudDocumentV1 = {
+    version: 1,
+    accountId,
+    projectId: map.projectId,
+    kind: 'map_metadata',
+    id: map.id,
+    revisionId: `map-revision-${map.knowledgeRevision}`,
+    baseRevisionId: map.knowledgeRevision > 1 ? `map-revision-${map.knowledgeRevision - 1}` : null,
+    provenance: {
+      origin: 'app_metadata',
+      producer: 'context_map_persistence',
+    },
+    updatedAt: map.updatedAt,
+    ...(deleted ? { deletedAt: map.updatedAt } : {}),
+    fields: deleted
+      ? {}
+      : {
+          name: map.name,
+          status: map.status,
+          statistics: {
+            sourceCount: map.statistics.sourceCount,
+            entityCount: map.statistics.entityCount,
+            edgeCount: map.statistics.edgeCount,
+            noteCount: map.statistics.noteCount,
+            attachmentCount: map.statistics.attachmentCount,
+            staleSourceCount: map.statistics.staleSourceCount,
+          },
+          knowledgeRevision: map.knowledgeRevision,
+          ...(map.lastIndexedAt === undefined ? {} : { lastIndexedAt: map.lastIndexedAt }),
+        },
+  };
+  await queueContextCloudDocument(accountId, document, new AbortController().signal);
+}
+
+async function queuePersistedMapMetadataSafely(accountId: string, mapId: string): Promise<void> {
+  try {
+    await queuePersistedMapMetadata(accountId, mapId);
+  } catch (error) {
+    console.warn('[context] optional map metadata sync enqueue failed:', error);
+  }
+}
+
 function getProductionService(): ContextPersistenceService {
   if (typeof window === 'undefined') fail('browser_unavailable');
-  productionService ??= createContextPersistenceService(db, window.localStorage, publishProductionState);
+  productionService ??= createContextPersistenceService(
+    db,
+    window.localStorage,
+    publishProductionState,
+  );
   return productionService;
 }
 
@@ -494,9 +530,7 @@ export function contextTreeFromPersistenceState(
   );
 }
 
-export function contextSelectedFileFromPersistenceState(
-  state: ContextPersistenceState,
-): string {
+export function contextSelectedFileFromPersistenceState(state: ContextPersistenceState): string {
   if (!state.selectedFile) return '';
   const map =
     state.maps.find(
@@ -509,7 +543,7 @@ export function contextSelectedFileFromPersistenceState(
     );
   if (!map) return '';
   const node = findContextFileNodeByPath(map.tree, state.selectedFile);
-  return node ? contextNodeFilePath(map.tree, node) ?? '' : '';
+  return node ? (contextNodeFilePath(map.tree, node) ?? '') : '';
 }
 
 export function getActiveContextPersistenceState(
@@ -520,9 +554,7 @@ export function getActiveContextPersistenceState(
   return productionStates.get(scopeKey(identity.accountId, projectId)) ?? null;
 }
 
-export function getActivePersistedContextTree(
-  projectId: string | null,
-): ProjectContextTree | null {
+export function getActivePersistedContextTree(projectId: string | null): ProjectContextTree | null {
   const state = getActiveContextPersistenceState(projectId);
   return state ? contextTreeFromPersistenceState(state) : null;
 }
@@ -572,6 +604,10 @@ export async function savePersistedContextTree(
   assertActiveIdentity(initialized.accountId);
   const saved = await getProductionService().saveTree(initialized.accountId, tree, options);
   assertActiveIdentity(initialized.accountId);
+  if (saved.selectedMapId) {
+    await queuePersistedMapMetadataSafely(initialized.accountId, saved.selectedMapId);
+    assertActiveIdentity(initialized.accountId);
+  }
   return saved;
 }
 
@@ -581,11 +617,7 @@ export async function selectPersistedContextMap(
 ): Promise<ContextPersistenceState> {
   const initialized = await ensureContextPersistence(projectId);
   assertActiveIdentity(initialized.accountId);
-  const selected = await getProductionService().selectMap(
-    initialized.accountId,
-    projectId,
-    mapId,
-  );
+  const selected = await getProductionService().selectMap(initialized.accountId, projectId, mapId);
   assertActiveIdentity(initialized.accountId);
   return selected;
 }
@@ -596,11 +628,9 @@ export async function deletePersistedContextMap(
 ): Promise<ContextPersistenceState> {
   const initialized = await ensureContextPersistence(projectId);
   assertActiveIdentity(initialized.accountId);
-  const deleted = await getProductionService().deleteMap(
-    initialized.accountId,
-    projectId,
-    mapId,
-  );
+  const deleted = await getProductionService().deleteMap(initialized.accountId, projectId, mapId);
+  assertActiveIdentity(initialized.accountId);
+  await queuePersistedMapMetadataSafely(initialized.accountId, mapId);
   assertActiveIdentity(initialized.accountId);
   return deleted;
 }
@@ -611,11 +641,7 @@ export async function selectPersistedContextFile(
 ): Promise<ContextPersistenceState> {
   const initialized = await ensureContextPersistence(projectId);
   assertActiveIdentity(initialized.accountId);
-  const selected = await getProductionService().selectFile(
-    initialized.accountId,
-    projectId,
-    path,
-  );
+  const selected = await getProductionService().selectFile(initialized.accountId, projectId, path);
   assertActiveIdentity(initialized.accountId);
   return selected;
 }

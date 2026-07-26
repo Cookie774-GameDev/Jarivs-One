@@ -14,6 +14,7 @@
  */
 
 import { nanoid } from 'nanoid';
+import type { Transaction } from 'dexie';
 import { isProtectedJarvisAgent } from './jarvis/identity';
 import { db, openDb } from './db';
 import type { SettingsRow, StoreName, SyncOp, SyncQueueRow, SyncStatus } from './db';
@@ -46,6 +47,7 @@ const CLOUD_SYNC_RECORDS_TABLE = 'app_sync_records';
 const CLOUD_SYNC_CONFLICT_TARGET = 'user_id,table_name,row_id';
 const CUSTOM_TOOLS_SYNC_TABLE = 'custom_tools';
 const PLUGIN_CONNECTIONS_SYNC_TABLE = 'plugin_connections';
+const CONTEXT_DOCUMENTS_SYNC_TABLE = 'context_documents';
 const PULL_CURSOR_KEY_PREFIX = 'cloud_sync:last_pull_at';
 const LOCAL_ONLY_SYNC_ERROR = 'local_only_table';
 let syncFlushInFlight = false;
@@ -59,6 +61,17 @@ export const LOCAL_ONLY_SYNC_TABLES: ReadonlySet<string> = new Set([
   'jarvis_events',
   'jarvis_approvals',
   'jarvis_artifacts',
+  'context_maps',
+  'context_sources',
+  'context_entities',
+  'context_edges',
+  'context_provenance',
+  'context_embeddings',
+  'context_notes',
+  'context_note_revisions',
+  'context_assets',
+  'context_quarantine',
+  'context_migration_backups',
 ] as const);
 
 class LocalOnlySyncTableError extends Error {
@@ -78,6 +91,18 @@ export type CloudSyncAuthority = Readonly<{
 }>;
 
 export type StopCloudSyncLoop = () => Promise<void>;
+
+export type SyncMutationCommitBoundary = Readonly<{
+  signal: AbortSignal;
+  validate(settings: Pick<typeof db.settings, 'get'>): boolean | PromiseLike<boolean>;
+}>;
+
+export class SyncMutationCommitRejectedError extends Error {
+  constructor(readonly reason: 'cancelled' | 'authority_changed') {
+    super(`sync_mutation_commit_${reason}`);
+    this.name = 'SyncMutationCommitRejectedError';
+  }
+}
 
 function normalizedAuthorityUserId(userId: unknown): string {
   return typeof userId === 'string' ? userId.trim() : '';
@@ -503,7 +528,9 @@ export function buildCloudSyncRecord(
     row_id: row.row_id,
     op: row.op,
     payload:
-      row.op === 'delete' && row.table !== PLUGIN_CONNECTIONS_SYNC_TABLE
+      row.op === 'delete' &&
+      row.table !== PLUGIN_CONNECTIONS_SYNC_TABLE &&
+      row.table !== CONTEXT_DOCUMENTS_SYNC_TABLE
         ? null
         : payloadForCloudRecord(row.table, row.payload),
     deleted_at: row.op === 'delete' ? nowIso : null,
@@ -664,9 +691,13 @@ export async function enqueueMutation(
   row_id: string,
   payload: unknown,
   ownerSnapshot: SyncQueueOwnerSnapshot = captureSyncQueueOwner(),
+  commitBoundary?: SyncMutationCommitBoundary,
 ): Promise<string> {
   assertCloudSyncTableAllowed(table);
-  const sanitizedPayload = sanitizeProtectedAgentSyncPayload(table, payload);
+  const sanitizedPayload =
+    table === CONTEXT_DOCUMENTS_SYNC_TABLE
+      ? (await import('@/features/context/contextCloudSync')).parseContextCloudDocument(payload)
+      : sanitizeProtectedAgentSyncPayload(table, payload);
   const id = newSyncId();
   const createdAt = Date.now();
   const owner = materializeSyncQueueOwner(id, ownerSnapshot);
@@ -680,16 +711,32 @@ export async function enqueueMutation(
     created_at: createdAt,
   };
   await openDb();
-  await db.transaction('rw', QUEUE_AND_OWNER_TABLES, async (transaction) => {
+  const write = async (transaction: Transaction) => {
     const queue = transaction.table<SyncQueueRow, string>('sync_queue');
     const settings = transaction.table<SettingsRow, string>('settings');
+    if (commitBoundary && !(await commitBoundary.validate(settings))) {
+      throw new SyncMutationCommitRejectedError('authority_changed');
+    }
     await queue.add(row);
     await settings.put({
       key: cloudSyncQueueOwnerKey(id),
       value: owner,
       updated_at: createdAt,
     });
-  });
+  };
+  if (commitBoundary) {
+    const result = await runSignalBoundWrite(
+      db,
+      commitBoundary.signal,
+      QUEUE_AND_OWNER_TABLES,
+      write,
+    );
+    if (result.kind === 'cancelled') {
+      throw new SyncMutationCommitRejectedError('cancelled');
+    }
+  } else {
+    await db.transaction('rw', QUEUE_AND_OWNER_TABLES, write);
+  }
   return id;
 }
 
@@ -800,6 +847,15 @@ export async function processSyncQueue(
       let remoteFailed = false;
       let remoteFailure: unknown;
       try {
+        if (claimed.row.table === CONTEXT_DOCUMENTS_SYNC_TABLE) {
+          await (
+            await import('@/features/context/contextCloudSync')
+          ).assertContextCloudUploadAuthorized(
+            claimed.row.payload,
+            authority.userId,
+            authority.signal,
+          );
+        }
         const cloudRecord = buildCloudSyncRecord(claimed.row, claimed.owner);
         const remote = await awaitUnlessAborted(
           client
@@ -1122,13 +1178,20 @@ async function applyCloudSyncRecord(row: CloudSyncRecord, signal: AbortSignal): 
   if (row.table_name === PLUGIN_CONNECTIONS_SYNC_TABLE) {
     return applyPluginConnectionCloudRecord(row, signal);
   }
+  if (row.table_name === CONTEXT_DOCUMENTS_SYNC_TABLE) {
+    const { stageContextCloudRecord } = await import('@/features/context/contextCloudSync');
+    if (signal.aborted) return false;
+    return stageContextCloudRecord(row, signal);
+  }
   return false;
 }
 
 /**
  * Pull remote app sync records and apply the small subset this client can
- * safely restore today. Unsupported table names still advance the cursor so
- * they do not replay forever while broader Dexie restore work is unfinished.
+ * safely restore today. Context documents are staged for explicit review and
+ * conflict resolution; they never overwrite the local Context authority here.
+ * Unsupported table names still advance the cursor so they do not replay
+ * forever while broader Dexie restore work is unfinished.
  */
 export async function processCloudPull(
   authority: CloudSyncAuthority,

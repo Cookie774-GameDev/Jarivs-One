@@ -250,6 +250,9 @@ const syncHarness = vi.hoisted(() => {
   const pluginSetState = vi.fn();
   const toolApplyForAccount = vi.fn();
   const pluginApplyForAccount = vi.fn();
+  const contextStageRecord = vi.fn();
+  const contextParseDocument = vi.fn((value: unknown) => value);
+  const contextAssertUpload = vi.fn(async (value: unknown) => value);
   let activeIdentity: { accountId: string; source: 'supabase' | 'local' } | null = {
     accountId: 'user-a',
     source: 'supabase',
@@ -260,6 +263,9 @@ const syncHarness = vi.hoisted(() => {
     settingsRows.clear();
     vi.clearAllMocks();
     pluginApplyForAccount.mockReturnValue(true);
+    contextStageRecord.mockResolvedValue(true);
+    contextParseDocument.mockImplementation((value: unknown) => value);
+    contextAssertUpload.mockImplementation(async (value: unknown) => value);
     getSession.mockResolvedValue({
       data: { session: { user: { id: 'user-a' } } },
     });
@@ -309,6 +315,9 @@ const syncHarness = vi.hoisted(() => {
     openDb,
     pluginSetState,
     pluginApplyForAccount,
+    contextStageRecord,
+    contextParseDocument,
+    contextAssertUpload,
     pullBuilder,
     queueRows,
     reset,
@@ -440,6 +449,12 @@ vi.mock('@/features/plugins/store', () => ({
   usePluginStore: { setState: syncHarness.pluginSetState },
 }));
 
+vi.mock('@/features/context/contextCloudSync', () => ({
+  stageContextCloudRecord: syncHarness.contextStageRecord,
+  parseContextCloudDocument: syncHarness.contextParseDocument,
+  assertContextCloudUploadAuthorized: syncHarness.contextAssertUpload,
+}));
+
 import {
   LOCAL_ONLY_SYNC_TABLES,
   assertCloudSyncTableAllowed,
@@ -469,6 +484,17 @@ const EXPECTED_LOCAL_ONLY_SYNC_TABLES = [
   'jarvis_events',
   'jarvis_approvals',
   'jarvis_artifacts',
+  'context_maps',
+  'context_sources',
+  'context_entities',
+  'context_edges',
+  'context_provenance',
+  'context_embeddings',
+  'context_notes',
+  'context_note_revisions',
+  'context_assets',
+  'context_quarantine',
+  'context_migration_backups',
 ] as const;
 
 beforeEach(() => {
@@ -545,6 +571,39 @@ describe('cloud sync records', () => {
       payload: baseRow.payload,
       deleted_at: null,
       updated_at: '2026-06-04T12:00:00.000Z',
+    });
+  });
+
+  it('preserves Context tombstone metadata in delete records', () => {
+    const contextDelete: SyncQueueRow = {
+      ...baseRow,
+      op: 'delete',
+      table: 'context_documents',
+      row_id: 'v1:auth_user_1:project-1:note:note-1',
+      payload: {
+        version: 1,
+        accountId: 'auth_user_1',
+        projectId: 'project-1',
+        kind: 'note',
+        id: 'note-1',
+        revisionId: 'revision-2',
+        baseRevisionId: 'revision-1',
+        updatedAt: 2,
+        deletedAt: 2,
+        fields: {},
+      },
+    };
+
+    expect(
+      buildCloudSyncRecord(
+        contextDelete,
+        { ...cloudOwner, rowId: contextDelete.id },
+        '2026-06-04T12:00:01.000Z',
+      ),
+    ).toMatchObject({
+      op: 'delete',
+      payload: contextDelete.payload,
+      deleted_at: '2026-06-04T12:00:01.000Z',
     });
   });
 
@@ -734,6 +793,65 @@ describe('cloud sync records', () => {
 });
 
 describe('cloud sync authority lifecycle', () => {
+  it('validates direct Context document enqueue before creating queue state', async () => {
+    syncHarness.contextParseDocument.mockImplementationOnce(() => {
+      throw new Error('protected_content');
+    });
+
+    await expect(
+      enqueueMutation('update', 'context_documents', 'context-row', {
+        apiKey: 'must-not-sync',
+      }),
+    ).rejects.toThrowError('protected_content');
+
+    expect(syncHarness.openDb).not.toHaveBeenCalled();
+    expect(syncHarness.queueRows.size).toBe(0);
+    expect(syncHarness.settingsRows.size).toBe(0);
+  });
+
+  it('rolls back a commit-bound enqueue when its authority signal aborts in the transaction', async () => {
+    const controller = new AbortController();
+    syncHarness.runBeforeTransactionScope(() => controller.abort());
+
+    await expect(
+      enqueueMutation(
+        'update',
+        'context_documents',
+        'context-row',
+        { version: 1 },
+        { state: 'cloud', userId: 'user-a', capturedAt: 1 },
+        {
+          signal: controller.signal,
+          validate: async () => true,
+        },
+      ),
+    ).rejects.toThrowError('sync_mutation_commit_cancelled');
+
+    expect(syncHarness.queueRows.size).toBe(0);
+    expect(syncHarness.settingsRows.size).toBe(0);
+  });
+
+  it('revalidates Context opt-in authority at the final upload boundary', async () => {
+    const payload = { version: 1, accountId: 'user-a', kind: 'note' };
+    await enqueueMutation('update', 'context_documents', 'context-row', payload, {
+      state: 'cloud',
+      userId: 'user-a',
+      capturedAt: 1,
+    });
+    syncHarness.resolveUpsert({ error: null });
+    const controller = new AbortController();
+
+    await expect(
+      processSyncQueue({ userId: 'user-a', signal: controller.signal }),
+    ).resolves.toEqual({ processed: 1, errored: 0, skipped: 0 });
+
+    expect(syncHarness.contextAssertUpload).toHaveBeenCalledWith(
+      payload,
+      'user-a',
+      controller.signal,
+    );
+  });
+
   const pendingRow = (): SyncQueueRow => ({
     id: 'syq_pending',
     op: 'update',
@@ -1011,7 +1129,11 @@ describe('cloud sync authority lifecycle', () => {
     try {
       await expect(
         processSyncQueue({ userId: 'user-a', signal: new AbortController().signal }),
-      ).resolves.toEqual({ processed: 0, errored: 6, skipped: 0 });
+      ).resolves.toEqual({
+        processed: 0,
+        errored: EXPECTED_LOCAL_ONLY_SYNC_TABLES.length,
+        skipped: 0,
+      });
 
       expect(syncHarness.from).not.toHaveBeenCalled();
       expect(syncHarness.upsert).not.toHaveBeenCalled();
@@ -2103,6 +2225,38 @@ describe('cloud sync authority lifecycle', () => {
     );
     expect(syncHarness.toolSetState).not.toHaveBeenCalled();
     expect(syncHarness.pluginSetState).not.toHaveBeenCalled();
+  });
+
+  it('routes Context pulls into the review inbox instead of a local authority overwrite', async () => {
+    const row = {
+      user_id: 'user-a',
+      table_name: 'context_documents',
+      row_id: 'v1:user-a:project-1:note:note-1',
+      op: 'update' as const,
+      payload: {
+        version: 1,
+        accountId: 'user-a',
+        projectId: 'project-1',
+        kind: 'note',
+        id: 'note-1',
+        revisionId: 'revision-2',
+        baseRevisionId: 'revision-1',
+        updatedAt: 2,
+        fields: { markdown: '# Remote' },
+      },
+      deleted_at: null,
+      updated_at: '2026-07-16T12:00:00.000Z',
+    };
+    syncHarness.queuePullResult({ data: [row], error: null });
+    const controller = new AbortController();
+
+    await expect(
+      processCloudPull({ userId: 'user-a', signal: controller.signal }),
+    ).resolves.toEqual({ applied: 1, skipped: 0, errored: 0 });
+
+    expect(syncHarness.contextStageRecord).toHaveBeenCalledWith(row, controller.signal);
+    expect(syncHarness.toolApplyForAccount).not.toHaveBeenCalled();
+    expect(syncHarness.pluginApplyForAccount).not.toHaveBeenCalled();
   });
 
   it('ignores legacy and cross-account plugin connection records', async () => {
