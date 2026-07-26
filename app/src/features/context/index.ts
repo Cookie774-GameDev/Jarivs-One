@@ -1,5 +1,13 @@
 export { ContextPage } from './ContextPage';
 export {
+  CODE_INTELLIGENCE_LANGUAGES,
+  CODE_INTELLIGENCE_PARSER_REGISTRY,
+  buildCodeIntelligenceParserPlan,
+  resolveCodeIntelligenceLanguage,
+  type CodeIntelligenceLanguage,
+  type CodeIntelligenceParserDefinition,
+} from './codeIntelligenceLanguages';
+export {
   planGitHubLocalReconciliation,
   type GitHubLocalChange,
   type GitHubLocalChangeStatus,
