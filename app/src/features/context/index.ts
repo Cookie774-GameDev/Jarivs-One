@@ -1,5 +1,24 @@
 export { ContextPage } from './ContextPage';
 export {
+  CONTEXT_WORKSPACE_EXAMPLES,
+  CONTEXT_WORKSPACE_GRAPH_MODES,
+  CONTEXT_WORKSPACE_INSPECTOR_TABS,
+  CONTEXT_WORKSPACE_VIEWS,
+  applyContextWorkspaceOperation,
+  buildContextWorkspaceSwitcher,
+  createContextWorkspaceLibrary,
+  loadContextWorkspace,
+  type ContextWorkspace,
+  type ContextWorkspaceArrangement,
+  type ContextWorkspaceGraphMode,
+  type ContextWorkspaceInspectorTab,
+  type ContextWorkspaceLibrary,
+  type ContextWorkspaceLoadPlan,
+  type ContextWorkspaceOperation,
+  type ContextWorkspaceSwitcherItem,
+  type ContextWorkspaceView,
+} from './contextWorkspaces';
+export {
   BUILTIN_CONTEXT_TEMPLATES,
   CONTEXT_TEMPLATE_DEFAULT_SLOTS,
   CONTEXT_TEMPLATE_VARIABLES,
