@@ -115,41 +115,23 @@ describe('GitHub Context authentication policy', () => {
   });
 
   it('enforces server-only short-lived narrowed rotating installation tokens', () => {
-    expect(
-      buildGitHubAppTokenPolicy(
-        installation,
-        'repo-1',
-        {
-          issuedAt: 1_000,
-          expiresAt: 1_000 + 3_600_000,
-        },
-        authority,
-      ),
-    ).toEqual({
-      installationId: 'installation-1',
-      repositoryId: 'repo-1',
+    expect(buildGitHubAppTokenPolicy()).toEqual({
+      executionBoundary: 'authenticated_edge_function',
+      functionName: 'github-context',
+      githubAppPrivateKeyLocation: 'server_only',
       generatedServerSide: true,
       installationScoped: true,
       repositoryNarrowed: true,
+      maximumLifetimeMs: 3_600_000,
       sentToBrowser: false,
+      writtenToContext: false,
       writtenToTerminal: false,
       writtenToLogs: false,
+      writtenToCrashReports: false,
       rotatesAutomatically: true,
-      issuedAt: 1_000,
-      expiresAt: 3_601_000,
-      executable: false,
+      clientSuppliedAuthorityAccepted: false,
+      executable: true,
     });
-    expect(() =>
-      buildGitHubAppTokenPolicy(
-        installation,
-        'repo-1',
-        {
-          issuedAt: 1_000,
-          expiresAt: 1_000 + 3_600_001,
-        },
-        authority,
-      ),
-    ).toThrow(/lifetime/i);
   });
 
   it('keeps a narrow warned and revocable fine-grained PAT fallback without exposing a token', () => {
@@ -158,16 +140,21 @@ describe('GitHub Context authentication policy', () => {
       repositoryId: 'repo-1',
       contentsPermission: 'read',
       repositorySelectionRequired: true,
-      secureLocalStorageRequired: true,
+      credentialStorage: 'os_keyring_or_session_only',
+      persistentBrowserStorageAllowed: false,
       warningRequired: true,
       revokeInstructionsRequired: true,
       revokeUrl: 'https://github.com/settings/tokens?type=beta',
+      tokenInContext: false,
       tokenInLogs: false,
       tokenInTerminal: false,
+      tokenInCrashReports: false,
       classicRepoScopeAllowed: false,
-      tokenValue: null,
       executable: false,
     });
+    expect(JSON.stringify(buildGitHubPatFallbackPolicy('repo-1'))).not.toMatch(
+      /github_pat_|gh[pousr]_|tokenValue/i,
+    );
   });
 
   it('rejects write permissions, foreign scope, duplicates, accessors, and oversized inputs', () => {

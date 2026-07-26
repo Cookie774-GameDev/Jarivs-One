@@ -1,3 +1,6 @@
+import { detectSecrets } from '@/lib/security/secretDetector';
+import { getSupabaseClient } from '@/lib/supabase';
+
 export const GITHUB_CONTEXT_FLOW_STEPS = Object.freeze([
   'connect',
   'authenticate',
@@ -294,38 +297,23 @@ export function buildGitHubContextMapAuthorization(
   });
 }
 
-export function buildGitHubAppTokenPolicy(
-  rawInstallation: GitHubContextInstallation,
-  rawRepositoryId: string,
-  rawWindow: { issuedAt: number; expiresAt: number },
-  authority: GitHubContextInstallationAuthority,
-) {
-  const installation = resolveInstallation(rawInstallation, authority);
-  const repositoryId = assertAccessible(installation, rawRepositoryId);
-  const window = record(clone(rawWindow, 'token lifetime'), 'token lifetime');
-  exact(window, ['issuedAt', 'expiresAt'], ['issuedAt', 'expiresAt'], 'token lifetime');
-  if (
-    !Number.isSafeInteger(window.issuedAt) ||
-    !Number.isSafeInteger(window.expiresAt) ||
-    (window.issuedAt as number) < 0 ||
-    (window.expiresAt as number) <= (window.issuedAt as number) ||
-    (window.expiresAt as number) - (window.issuedAt as number) > 3_600_000
-  ) {
-    fail('token lifetime');
-  }
+export function buildGitHubAppTokenPolicy() {
   return Object.freeze({
-    installationId: installation.installationId,
-    repositoryId,
+    executionBoundary: 'authenticated_edge_function' as const,
+    functionName: 'github-context' as const,
+    githubAppPrivateKeyLocation: 'server_only' as const,
     generatedServerSide: true,
     installationScoped: true,
     repositoryNarrowed: true,
+    maximumLifetimeMs: 3_600_000,
     sentToBrowser: false,
+    writtenToContext: false,
     writtenToTerminal: false,
     writtenToLogs: false,
+    writtenToCrashReports: false,
     rotatesAutomatically: true,
-    issuedAt: window.issuedAt as number,
-    expiresAt: window.expiresAt as number,
-    executable: false,
+    clientSuppliedAuthorityAccepted: false,
+    executable: true,
   });
 }
 
@@ -336,14 +324,388 @@ export function buildGitHubPatFallbackPolicy(rawRepositoryId: string) {
     repositoryId,
     contentsPermission: 'read' as const,
     repositorySelectionRequired: true,
-    secureLocalStorageRequired: true,
+    credentialStorage: 'os_keyring_or_session_only' as const,
+    persistentBrowserStorageAllowed: false,
     warningRequired: true,
     revokeInstructionsRequired: true,
     revokeUrl: 'https://github.com/settings/tokens?type=beta',
+    tokenInContext: false,
     tokenInLogs: false,
     tokenInTerminal: false,
+    tokenInCrashReports: false,
     classicRepoScopeAllowed: false,
-    tokenValue: null,
     executable: false,
+  });
+}
+
+export type GitHubContextServerRequest =
+  | {
+      operation: 'list_repositories';
+      installationId: string;
+      page?: number;
+    }
+  | {
+      operation: 'read_tree';
+      installationId: string;
+      repositoryId: string;
+      ref: string;
+    }
+  | {
+      operation: 'read_blob';
+      installationId: string;
+      repositoryId: string;
+      sha: string;
+    };
+
+export interface GitHubContextServerRepository {
+  id: string;
+  owner: string;
+  name: string;
+  fullName: string;
+  private: boolean;
+  defaultBranch: string;
+}
+
+export type GitHubContextServerResult =
+  | {
+      operation: 'list_repositories';
+      page: number;
+      hasMore: boolean;
+      repositories: readonly GitHubContextServerRepository[];
+    }
+  | {
+      operation: 'read_tree';
+      repositoryId: string;
+      sha: string;
+      truncated: boolean;
+      entries: ReadonlyArray<{
+        path: string;
+        mode: string;
+        type: 'blob' | 'tree' | 'commit';
+        sha: string;
+        size?: number;
+      }>;
+    }
+  | {
+      operation: 'read_blob';
+      repositoryId: string;
+      sha: string;
+      encoding: 'base64';
+      content: string;
+      size: number;
+    };
+
+export interface GitHubContextFunctionInvoker {
+  invoke(
+    functionName: 'github-context',
+    options: { body: GitHubContextServerRequest },
+  ): Promise<{ data: unknown; error: unknown }>;
+}
+
+export interface GitHubContextServerExecutor {
+  execute(
+    accountId: string,
+    request: GitHubContextServerRequest,
+  ): Promise<GitHubContextServerResult>;
+}
+
+const GITHUB_NUMERIC_ID = /^[1-9]\d{0,15}$/u;
+const GITHUB_SHA = /^[a-f0-9]{40,64}$/u;
+const GITHUB_SAFE_REF =
+  /^[^\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028-\u202e\u2066-\u2069\ufeff]{1,255}$/u;
+const GITHUB_REPOSITORY_SEGMENT = /^[A-Za-z0-9_.-]{1,100}$/u;
+
+function githubNumericId(value: unknown): string {
+  if (typeof value !== 'string' || !GITHUB_NUMERIC_ID.test(value)) {
+    throw new Error('github_context_request_invalid');
+  }
+  return value;
+}
+
+function normalizeServerRequest(raw: GitHubContextServerRequest): GitHubContextServerRequest {
+  const request = record(clone(raw, 'server request'), 'server request');
+  if (request.operation === 'list_repositories') {
+    exact(
+      request,
+      ['operation', 'installationId', 'page'],
+      ['operation', 'installationId'],
+      'server request',
+    );
+    if (
+      request.page !== undefined &&
+      (!Number.isSafeInteger(request.page) ||
+        (request.page as number) < 1 ||
+        (request.page as number) > 10_000)
+    ) {
+      throw new Error('github_context_request_invalid');
+    }
+    return {
+      operation: request.operation,
+      installationId: githubNumericId(request.installationId),
+      ...(request.page === undefined ? {} : { page: request.page as number }),
+    };
+  }
+  if (request.operation === 'read_tree') {
+    exact(
+      request,
+      ['operation', 'installationId', 'repositoryId', 'ref'],
+      ['operation', 'installationId', 'repositoryId', 'ref'],
+      'server request',
+    );
+    if (
+      typeof request.ref !== 'string' ||
+      request.ref.trim() !== request.ref ||
+      !GITHUB_SAFE_REF.test(request.ref)
+    ) {
+      throw new Error('github_context_request_invalid');
+    }
+    return {
+      operation: request.operation,
+      installationId: githubNumericId(request.installationId),
+      repositoryId: githubNumericId(request.repositoryId),
+      ref: request.ref,
+    };
+  }
+  if (request.operation === 'read_blob') {
+    exact(
+      request,
+      ['operation', 'installationId', 'repositoryId', 'sha'],
+      ['operation', 'installationId', 'repositoryId', 'sha'],
+      'server request',
+    );
+    if (typeof request.sha !== 'string' || !GITHUB_SHA.test(request.sha)) {
+      throw new Error('github_context_request_invalid');
+    }
+    return {
+      operation: request.operation,
+      installationId: githubNumericId(request.installationId),
+      repositoryId: githubNumericId(request.repositoryId),
+      sha: request.sha,
+    };
+  }
+  throw new Error('github_context_request_invalid');
+}
+
+function responseText(value: unknown, maximum: number): string {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.length > maximum ||
+    value.trim() !== value ||
+    FORBIDDEN.test(value) ||
+    detectSecrets(value).length > 0
+  ) {
+    throw new Error('github_context_response_invalid');
+  }
+  return value;
+}
+
+function responseSha(value: unknown): string {
+  if (typeof value !== 'string' || !GITHUB_SHA.test(value)) {
+    throw new Error('github_context_response_invalid');
+  }
+  return value;
+}
+
+function responseInteger(value: unknown, maximum: number): number {
+  if (!Number.isSafeInteger(value) || (value as number) < 0 || (value as number) > maximum) {
+    throw new Error('github_context_response_invalid');
+  }
+  return value as number;
+}
+
+function normalizeServerResult(raw: unknown): GitHubContextServerResult {
+  const response = record(clone(raw, 'server response'), 'server response');
+  if (response.operation === 'list_repositories') {
+    exact(
+      response,
+      ['operation', 'page', 'hasMore', 'repositories'],
+      ['operation', 'page', 'hasMore', 'repositories'],
+      'server response',
+    );
+    if (
+      !Number.isSafeInteger(response.page) ||
+      (response.page as number) < 1 ||
+      (response.page as number) > 10_000 ||
+      typeof response.hasMore !== 'boolean' ||
+      !Array.isArray(response.repositories) ||
+      response.repositories.length > 100
+    ) {
+      throw new Error('github_context_response_invalid');
+    }
+    const repositories = response.repositories.map((rawRepository) => {
+      const repository = record(rawRepository, 'server repository');
+      exact(
+        repository,
+        ['id', 'owner', 'name', 'fullName', 'private', 'defaultBranch'],
+        ['id', 'owner', 'name', 'fullName', 'private', 'defaultBranch'],
+        'server repository',
+      );
+      const owner = responseText(repository.owner, 100);
+      const name = responseText(repository.name, 100);
+      const fullName = responseText(repository.fullName, 201);
+      if (
+        !GITHUB_REPOSITORY_SEGMENT.test(owner) ||
+        !GITHUB_REPOSITORY_SEGMENT.test(name) ||
+        fullName !== `${owner}/${name}` ||
+        typeof repository.private !== 'boolean'
+      ) {
+        throw new Error('github_context_response_invalid');
+      }
+      return Object.freeze({
+        id: githubNumericId(repository.id),
+        owner,
+        name,
+        fullName,
+        private: repository.private,
+        defaultBranch: responseText(repository.defaultBranch, 255),
+      });
+    });
+    if (new Set(repositories.map(({ id }) => id)).size !== repositories.length) {
+      throw new Error('github_context_response_invalid');
+    }
+    return Object.freeze({
+      operation: response.operation,
+      page: response.page as number,
+      hasMore: response.hasMore,
+      repositories: Object.freeze(repositories),
+    });
+  }
+  if (response.operation === 'read_tree') {
+    exact(
+      response,
+      ['operation', 'repositoryId', 'sha', 'truncated', 'entries'],
+      ['operation', 'repositoryId', 'sha', 'truncated', 'entries'],
+      'server response',
+    );
+    if (
+      typeof response.truncated !== 'boolean' ||
+      !Array.isArray(response.entries) ||
+      response.entries.length > 50_000
+    ) {
+      throw new Error('github_context_response_invalid');
+    }
+    const entries = response.entries.map((rawEntry) => {
+      const entry = record(rawEntry, 'server tree entry');
+      exact(
+        entry,
+        ['path', 'mode', 'type', 'sha', 'size'],
+        ['path', 'mode', 'type', 'sha'],
+        'server tree entry',
+      );
+      if (
+        typeof entry.mode !== 'string' ||
+        !/^[0-7]{6}$/u.test(entry.mode) ||
+        (entry.type !== 'blob' && entry.type !== 'tree' && entry.type !== 'commit')
+      ) {
+        throw new Error('github_context_response_invalid');
+      }
+      return Object.freeze({
+        path: responseText(entry.path, 4_096),
+        mode: entry.mode,
+        type: entry.type,
+        sha: responseSha(entry.sha),
+        ...(entry.size === undefined ? {} : { size: responseInteger(entry.size, 100_000_000) }),
+      });
+    });
+    return Object.freeze({
+      operation: response.operation,
+      repositoryId: githubNumericId(response.repositoryId),
+      sha: responseSha(response.sha),
+      truncated: response.truncated,
+      entries: Object.freeze(entries),
+    });
+  }
+  if (response.operation === 'read_blob') {
+    exact(
+      response,
+      ['operation', 'repositoryId', 'sha', 'encoding', 'content', 'size'],
+      ['operation', 'repositoryId', 'sha', 'encoding', 'content', 'size'],
+      'server response',
+    );
+    if (
+      response.encoding !== 'base64' ||
+      typeof response.content !== 'string' ||
+      response.content.length > 24 * 1024 * 1024 ||
+      !/^[A-Za-z0-9+/\r\n]*={0,2}$/u.test(response.content)
+    ) {
+      throw new Error('github_context_response_invalid');
+    }
+    let decoded: string;
+    try {
+      const binary = atob(response.content.replace(/\s/gu, ''));
+      const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+      decoded = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    } catch {
+      throw new Error('github_context_response_invalid');
+    }
+    if (detectSecrets(decoded).length > 0) {
+      throw new Error('github_context_response_invalid');
+    }
+    const size = responseInteger(response.size, 16 * 1024 * 1024);
+    if (new TextEncoder().encode(decoded).length !== size) {
+      throw new Error('github_context_response_invalid');
+    }
+    return Object.freeze({
+      operation: response.operation,
+      repositoryId: githubNumericId(response.repositoryId),
+      sha: responseSha(response.sha),
+      encoding: response.encoding,
+      content: response.content,
+      size,
+    });
+  }
+  throw new Error('github_context_response_invalid');
+}
+
+export function createGitHubContextServerExecutor(input: {
+  invoke: GitHubContextFunctionInvoker['invoke'];
+  getActiveAccountId(): string | null;
+}): GitHubContextServerExecutor {
+  if (
+    !input ||
+    typeof input.invoke !== 'function' ||
+    typeof input.getActiveAccountId !== 'function'
+  ) {
+    throw new Error('github_context_executor_invalid');
+  }
+  return Object.freeze({
+    async execute(accountId: string, rawRequest: GitHubContextServerRequest) {
+      const expectedAccountId = stableId(accountId, 'account ID');
+      if (input.getActiveAccountId() !== expectedAccountId) {
+        throw new Error('github_context_account_changed');
+      }
+      const request = normalizeServerRequest(rawRequest);
+      let response: { data: unknown; error: unknown };
+      try {
+        response = await input.invoke('github-context', { body: request });
+      } catch {
+        throw new Error('github_context_request_failed');
+      }
+      if (input.getActiveAccountId() !== expectedAccountId) {
+        throw new Error('github_context_account_changed');
+      }
+      if (!response || response.error || response.data === undefined || response.data === null) {
+        throw new Error('github_context_request_failed');
+      }
+      try {
+        return normalizeServerResult(response.data);
+      } catch {
+        throw new Error('github_context_response_invalid');
+      }
+    },
+  });
+}
+
+export function createSupabaseGitHubContextServerExecutor(
+  getActiveAccountId: () => string | null,
+): GitHubContextServerExecutor {
+  return createGitHubContextServerExecutor({
+    getActiveAccountId,
+    invoke: async (functionName, options) => {
+      const client = getSupabaseClient();
+      if (!client) return { data: null, error: new Error('cloud_unavailable') };
+      return client.functions.invoke(functionName, options);
+    },
   });
 }

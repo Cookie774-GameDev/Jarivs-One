@@ -250,7 +250,10 @@ export {
   buildGitHubAppTokenPolicy,
   buildGitHubContextMapAuthorization,
   buildGitHubPatFallbackPolicy,
+  createGitHubContextServerExecutor,
+  createSupabaseGitHubContextServerExecutor,
   filterAccessibleGitHubRepositories,
+  type GitHubContextFunctionInvoker,
   type GitHubContextInstallation,
   type GitHubContextInstallationAuthority,
   type GitHubContextMapAuthorizationRequest,
@@ -258,6 +261,10 @@ export {
   type GitHubContextPermissionName,
   type GitHubContextPermissions,
   type GitHubContextRepositorySummary,
+  type GitHubContextServerExecutor,
+  type GitHubContextServerRepository,
+  type GitHubContextServerRequest,
+  type GitHubContextServerResult,
 } from './githubContextAuth';
 export {
   CONTEXT_RECOVERY_ACTIONS,
