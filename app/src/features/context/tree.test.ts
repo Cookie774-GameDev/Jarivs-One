@@ -328,6 +328,117 @@ describe('generateProjectContextTree file safeguards', () => {
   it('explains the browser-preview limitation for an unavailable fs bridge', () => {
     expect(describeContextRootError('C:\\proj', { code: 'unavailable' })).toContain('desktop app');
   });
+
+  it('publishes a structural map before deep analysis and cancels without writing', async () => {
+    fsMocks.listDirectory.mockResolvedValue({
+      ok: true,
+      path: 'C:\\proj',
+      entries: [{ name: 'readme.md', path: 'C:\\proj\\readme.md', isDir: false, size: 16 }],
+    });
+    fsMocks.readTextFileSample.mockResolvedValue({
+      ok: true,
+      path: 'C:\\proj\\readme.md',
+      content: '# Project',
+    });
+    const controller = new AbortController();
+    const structural = vi.fn();
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(
+      async (_input, init) =>
+        await new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener(
+            'abort',
+            () => reject(new DOMException('Aborted', 'AbortError')),
+            { once: true },
+          );
+        }),
+    );
+    try {
+      const generation = generateProjectContextTree({
+        projectId: null,
+        rootDir: 'C:\\proj',
+        provider: 'openai',
+        apiKey: 'test-key',
+        signal: controller.signal,
+        yieldControl: async () => {},
+        onStructuralMap: structural,
+      });
+      await vi.waitFor(() => expect(structural).toHaveBeenCalledTimes(1));
+      expect(structural.mock.calls[0]?.[0]).toMatchObject({
+        fileCount: 1,
+        model: 'local-structural',
+      });
+      expect(fsMocks.writeTextFile).not.toHaveBeenCalled();
+
+      controller.abort('superseded');
+      await expect(generation).rejects.toThrow(/cancelled/i);
+      expect(fsMocks.writeTextFile).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('cooperatively yields during bounded scanning before returning the local map', async () => {
+    fsMocks.listDirectory.mockResolvedValue({
+      ok: true,
+      path: 'C:\\proj',
+      entries: [{ name: 'readme.md', path: 'C:\\proj\\readme.md', isDir: false, size: 16 }],
+    });
+    fsMocks.readTextFileSample.mockResolvedValue({
+      ok: true,
+      path: 'C:\\proj\\readme.md',
+      content: '# Project',
+    });
+    const yieldControl = vi.fn(async () => {});
+    const structural = vi.fn();
+    const tree = await generateProjectContextTree({
+      projectId: null,
+      rootDir: 'C:\\proj',
+      provider: 'local',
+      yieldControl,
+      onStructuralMap: structural,
+    });
+    expect(yieldControl).toHaveBeenCalled();
+    expect(structural).toHaveBeenCalledWith(
+      expect.objectContaining({
+        generatedAt: tree.generatedAt,
+        fileCount: tree.fileCount,
+        model: 'local-structural',
+      }),
+    );
+    expect(tree.model).toBe('local-fallback');
+  });
+
+  it('rejects cancellation that arrives during the final file write', async () => {
+    fsMocks.listDirectory.mockResolvedValue({
+      ok: true,
+      path: 'C:\\proj',
+      entries: [{ name: 'readme.md', path: 'C:\\proj\\readme.md', isDir: false, size: 16 }],
+    });
+    fsMocks.readTextFileSample.mockResolvedValue({
+      ok: true,
+      path: 'C:\\proj\\readme.md',
+      content: '# Project',
+    });
+    let finishWrite!: (result: { ok: true; path: string }) => void;
+    fsMocks.writeTextFile.mockImplementation(
+      async () =>
+        await new Promise<{ ok: true; path: string }>((resolve) => {
+          finishWrite = resolve;
+        }),
+    );
+    const controller = new AbortController();
+    const generation = generateProjectContextTree({
+      projectId: null,
+      rootDir: 'C:\\proj',
+      provider: 'local',
+      signal: controller.signal,
+      yieldControl: async () => {},
+    });
+    await vi.waitFor(() => expect(fsMocks.writeTextFile).toHaveBeenCalledTimes(1));
+    controller.abort('scope_changed');
+    finishWrite({ ok: true, path: 'C:\\proj\\.context-map.json' });
+    await expect(generation).rejects.toThrow(/cancelled/i);
+  });
 });
 
 describe('contextMapSlashOptions', () => {

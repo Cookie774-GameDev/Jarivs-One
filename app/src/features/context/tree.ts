@@ -117,6 +117,9 @@ export interface GenerateContextOptions {
   provider?: ContextGenerationProvider;
   apiKey?: string;
   onProgress?: (message: string) => void;
+  onStructuralMap?: (tree: ProjectContextTree) => void | Promise<void>;
+  signal?: AbortSignal;
+  yieldControl?: () => Promise<void>;
 }
 
 interface ScannedContextFile {
@@ -132,6 +135,8 @@ interface ScannedContextFile {
 
 const MAX_SCAN_FILES = 120;
 const MAX_SCAN_DEPTH = 6;
+const MAX_SCAN_DIRECTORIES = 500;
+const MAX_DIRECTORY_ENTRIES = 10_000;
 const MAX_FILE_SAMPLE_CHARS = 12_000;
 const MAX_FILE_SAMPLE_BYTES = 64 * 1024;
 const MAX_TOTAL_SAMPLE_CHARS = 260_000;
@@ -140,6 +145,22 @@ const MAX_PROMPT_CHARS = 280_000;
 const CONTEXT_OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 const CONTEXT_GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const CONTEXT_ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
+
+function assertGenerationActive(signal?: AbortSignal): void {
+  if (signal?.aborted) throw new Error('Context map generation cancelled.');
+}
+
+function generationWasAborted(error: unknown, signal?: AbortSignal): boolean {
+  return (
+    signal?.aborted === true ||
+    (error instanceof DOMException && error.name === 'AbortError') ||
+    (error instanceof Error && error.name === 'AbortError')
+  );
+}
+
+function defaultYieldControl(): Promise<void> {
+  return new Promise((resolve) => globalThis.setTimeout(resolve, 0));
+}
 
 const IGNORED_DIRS = new Set([
   '.git',
@@ -749,13 +770,22 @@ export function formatContextTreeForPrompt(tree: ProjectContextTree): string {
 export async function generateProjectContextTree(
   options: GenerateContextOptions,
 ): Promise<ProjectContextTree> {
+  assertGenerationActive(options.signal);
   const rootDir = options.rootDir.trim();
   if (!rootDir) throw new Error('Choose a project folder first.');
+  const yieldControl = options.yieldControl ?? defaultYieldControl;
   options.onProgress?.('Scanning project files...');
-  const files = await scanProjectFiles(rootDir, options.onProgress);
+  const files = await scanProjectFiles(rootDir, options.onProgress, options.signal, yieldControl);
+  assertGenerationActive(options.signal);
   if (files.length === 0) throw new Error('No readable text files found in this project folder.');
 
   const provider = options.provider ?? (options.apiKey ? 'google' : 'local');
+  const structuralTree = buildFallbackTree(options.projectId, rootDir, files, 'local-structural');
+  options.onProgress?.('Initial project structure ready.');
+  await options.onStructuralMap?.(structuralTree);
+  await yieldControl();
+  assertGenerationActive(options.signal);
+
   let tree: ProjectContextTree | null = null;
   if (provider !== 'local' && options.apiKey) {
     options.onProgress?.(
@@ -768,8 +798,12 @@ export async function generateProjectContextTree(
         projectId: options.projectId,
         rootDir,
         files,
+        signal: options.signal,
       });
-    } catch {
+    } catch (error) {
+      if (generationWasAborted(error, options.signal)) {
+        throw new Error('Context map generation cancelled.');
+      }
       tree = null;
       // Be explicit that the AI pass failed - otherwise users assume the
       // heuristic fallback summaries came from their selected model.
@@ -781,15 +815,12 @@ export async function generateProjectContextTree(
 
   if (!tree) {
     options.onProgress?.('Building deterministic local Context tree...');
-    tree = buildFallbackTree(
-      options.projectId,
-      rootDir,
-      files,
-      provider !== 'local' && options.apiKey
-        ? `local-fallback-after-${provider}`
-        : 'local-fallback',
-    );
+    tree =
+      provider === 'local'
+        ? { ...structuralTree, model: 'local-fallback' }
+        : buildFallbackTree(options.projectId, rootDir, files, `local-fallback-after-${provider}`);
   }
+  assertGenerationActive(options.signal);
   const mapPath = contextMapFilePath(rootDir);
   const fileWrite = await writeTextFile(
     mapPath,
@@ -806,6 +837,7 @@ export async function generateProjectContextTree(
     ),
     { root: rootDir },
   );
+  assertGenerationActive(options.signal);
   if (!fileWrite.ok) {
     throw new Error(
       `Could not write Context map file at ${mapPath}: ${fileWrite.error.raw ?? fileWrite.error.code}`,
@@ -839,14 +871,19 @@ export function describeContextRootError(_rootDir: string, error: FsReadError): 
 async function scanProjectFiles(
   rootDir: string,
   onProgress?: (message: string) => void,
+  signal?: AbortSignal,
+  yieldControl: () => Promise<void> = defaultYieldControl,
 ): Promise<ScannedContextFile[]> {
   const files: ScannedContextFile[] = [];
   let totalChars = 0;
   const seenDirs = new Set<string>();
 
   const walk = async (dir: string, depth: number): Promise<void> => {
+    assertGenerationActive(signal);
     if (files.length >= MAX_SCAN_FILES || totalChars >= MAX_TOTAL_SAMPLE_CHARS) return;
-    if (depth > MAX_SCAN_DEPTH || seenDirs.has(dir)) return;
+    if (depth > MAX_SCAN_DEPTH || seenDirs.has(dir) || seenDirs.size >= MAX_SCAN_DIRECTORIES) {
+      return;
+    }
     const directoryDecision = classifyJarvisSource({
       path: dir,
       root: depth === 0 ? undefined : rootDir,
@@ -863,6 +900,7 @@ async function scanProjectFiles(
       root: rootDir,
       strictProjectBoundary: true,
     });
+    assertGenerationActive(signal);
     if (!listed.ok) {
       // The ROOT must be readable - an invalid path, a non-folder path, or a
       // permission problem should tell the user exactly what happened
@@ -873,8 +911,14 @@ async function scanProjectFiles(
       return;
     }
 
-    const entries = prioritizeEntries(listed.entries);
-    for (const entry of entries) {
+    const entries = prioritizeEntries(listed.entries.slice(0, MAX_DIRECTORY_ENTRIES));
+    for (let entryIndex = 0; entryIndex < entries.length; entryIndex += 1) {
+      const entry = entries[entryIndex]!;
+      assertGenerationActive(signal);
+      if (entryIndex > 0 && entryIndex % 100 === 0) {
+        await yieldControl();
+        assertGenerationActive(signal);
+      }
       if (files.length >= MAX_SCAN_FILES || totalChars >= MAX_TOTAL_SAMPLE_CHARS) break;
       if (entry.isDir) {
         if (!IGNORED_DIRS.has(entry.name.toLowerCase())) await walk(entry.path, depth + 1);
@@ -895,6 +939,7 @@ async function scanProjectFiles(
           root: rootDir,
           strictProjectBoundary: true,
         });
+        assertGenerationActive(signal);
         if (!validation.ok) {
           classifyJarvisReadError(validation.error);
           continue;
@@ -918,6 +963,7 @@ async function scanProjectFiles(
         root: rootDir,
         strictProjectBoundary: true,
       });
+      assertGenerationActive(signal);
       if (!result.ok) continue;
       const contentDecision = classifyJarvisSource({
         path: entry.path,
@@ -946,6 +992,8 @@ async function scanProjectFiles(
           Boolean(entry.size && entry.size > MAX_FILE_SAMPLE_BYTES),
       });
       if (files.length % 20 === 0) onProgress?.(`Scanned ${files.length} project files...`);
+      await yieldControl();
+      assertGenerationActive(signal);
     }
   };
 
@@ -1019,6 +1067,7 @@ async function generateProviderTree(args: {
   projectId: string | null;
   rootDir: string;
   files: ScannedContextFile[];
+  signal?: AbortSignal;
 }): Promise<ProjectContextTree> {
   const prompt = buildProviderPrompt(args.rootDir, args.files);
   const model = CONTEXT_PROVIDER_OPTIONS[args.provider].model;
@@ -1029,7 +1078,7 @@ async function generateProviderTree(args: {
   } | null = null;
 
   if (args.provider === 'google') {
-    parsed = await requestGoogleJson(args.apiKey, model, prompt);
+    parsed = await requestGoogleJson(args.apiKey, model, prompt, args.signal);
   } else if (args.provider === 'groq') {
     parsed = await requestOpenAiCompatibleJson(
       CONTEXT_GROQ_URL,
@@ -1037,6 +1086,7 @@ async function generateProviderTree(args: {
       model,
       prompt,
       'Groq',
+      args.signal,
     );
   } else if (args.provider === 'openai') {
     parsed = await requestOpenAiCompatibleJson(
@@ -1045,9 +1095,10 @@ async function generateProviderTree(args: {
       model,
       prompt,
       'OpenAI',
+      args.signal,
     );
   } else {
-    parsed = await requestAnthropicJson(args.apiKey, model, prompt);
+    parsed = await requestAnthropicJson(args.apiKey, model, prompt, args.signal);
   }
 
   if (!parsed)
@@ -1080,6 +1131,7 @@ async function requestGoogleJson(
   apiKey: string,
   model: string,
   prompt: string,
+  signal?: AbortSignal,
 ): Promise<{ summary?: unknown; nodes?: unknown; recommendedEntryPoints?: unknown } | null> {
   const body = {
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
@@ -1095,6 +1147,7 @@ async function requestGoogleJson(
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
     body: JSON.stringify(body),
+    signal,
   });
   if (!res.ok) throw new Error(`Gemini ${res.status}: ${(await res.text()).slice(0, 200)}`);
   const data = (await res.json()) as {
@@ -1115,6 +1168,7 @@ async function requestOpenAiCompatibleJson(
   model: string,
   prompt: string,
   label: string,
+  signal?: AbortSignal,
 ): Promise<{ summary?: unknown; nodes?: unknown; recommendedEntryPoints?: unknown } | null> {
   const res = await fetch(url, {
     method: 'POST',
@@ -1135,6 +1189,7 @@ async function requestOpenAiCompatibleJson(
       max_tokens: 8192,
       response_format: { type: 'json_object' },
     }),
+    signal,
   });
   if (!res.ok) throw new Error(`${label} ${res.status}: ${(await res.text()).slice(0, 200)}`);
   const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
@@ -1149,6 +1204,7 @@ async function requestAnthropicJson(
   apiKey: string,
   model: string,
   prompt: string,
+  signal?: AbortSignal,
 ): Promise<{ summary?: unknown; nodes?: unknown; recommendedEntryPoints?: unknown } | null> {
   const res = await fetch(CONTEXT_ANTHROPIC_URL, {
     method: 'POST',
@@ -1165,6 +1221,7 @@ async function requestAnthropicJson(
       system: 'Return strict JSON only. No markdown. No prose outside the JSON object.',
       messages: [{ role: 'user', content: prompt }],
     }),
+    signal,
   });
   if (!res.ok) throw new Error(`Anthropic ${res.status}: ${(await res.text()).slice(0, 200)}`);
   const data = (await res.json()) as { content?: Array<{ text?: string }> };

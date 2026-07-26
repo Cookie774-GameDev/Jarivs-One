@@ -97,9 +97,11 @@ export function ContextPage() {
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [provider, setProvider] = React.useState<ContextGenerationProvider>('local');
   const [generating, setGenerating] = React.useState(false);
+  const [structuralPreview, setStructuralPreview] = React.useState<ProjectContextTree | null>(null);
   const [mapFlash, setMapFlash] = React.useState(false);
   const [status, setStatus] = React.useState('Ready.');
   const lastAppliedFileRef = React.useRef('');
+  const generationAbortRef = React.useRef<AbortController | null>(null);
 
   const applyPersistenceState = React.useCallback(
     (state: Awaited<ReturnType<typeof ensureContextPersistence>>) => {
@@ -129,11 +131,14 @@ export function ContextPage() {
   }, [defaultProvider, providerChoiceKey, providerChoices]);
 
   React.useEffect(() => {
+    generationAbortRef.current?.abort('context_scope_changed');
+    generationAbortRef.current = null;
     setRootDraft(getStoredProjectRoot(projectId));
     setMaps([]);
     setSelectedMapId(null);
     setSelectedId(null);
     setGenerating(false);
+    setStructuralPreview(null);
     lastAppliedFileRef.current = '';
     if (!accountId) return;
     let active = true;
@@ -153,6 +158,14 @@ export function ContextPage() {
       active = false;
     };
   }, [accountId, applyPersistenceState, projectId]);
+
+  React.useEffect(
+    () => () => {
+      generationAbortRef.current?.abort('context_unmounted');
+      generationAbortRef.current = null;
+    },
+    [],
+  );
 
   React.useEffect(() => {
     const onUpdated = (event: Event) => {
@@ -174,7 +187,7 @@ export function ContextPage() {
       null,
     [maps, selectedMapId],
   );
-  const tree = selectedMap?.tree ?? null;
+  const tree = structuralPreview ?? selectedMap?.tree ?? null;
   const activeMapCount = React.useMemo(
     () => maps.filter((map) => map.status === 'active').length,
     [maps],
@@ -393,6 +406,10 @@ export function ContextPage() {
       return;
     }
 
+    generationAbortRef.current?.abort('superseded');
+    const controller = new AbortController();
+    generationAbortRef.current = controller;
+    setStructuralPreview(null);
     setGenerating(true);
     setStatus('Starting Context map creation...');
     try {
@@ -403,9 +420,33 @@ export function ContextPage() {
         provider: activeProvider,
         apiKey,
         onProgress: setStatus,
+        signal: controller.signal,
+        onStructuralMap: (preview) => {
+          const auth = useAuthStore.getState();
+          if (
+            controller.signal.aborted ||
+            resolveAccountIdentity(auth)?.accountId !== accountId ||
+            (auth.projectId ?? null) !== (projectId ?? null)
+          ) {
+            return;
+          }
+          setStructuralPreview(preview);
+          setSelectedId(PROJECT_ROOT_NODE_ID);
+        },
       });
+      const persistenceAuth = useAuthStore.getState();
+      if (
+        controller.signal.aborted ||
+        generationAbortRef.current !== controller ||
+        resolveAccountIdentity(persistenceAuth)?.accountId !== accountId ||
+        (persistenceAuth.projectId ?? null) !== (projectId ?? null)
+      ) {
+        setStructuralPreview(null);
+        return;
+      }
       const persisted = await savePersistedContextTree(generated);
       if (!applyPersistenceState(persisted)) return;
+      setStructuralPreview(null);
       setSelectedId(PROJECT_ROOT_NODE_ID);
       setMapFlash(true);
       window.setTimeout(() => setMapFlash(false), 1250);
@@ -416,6 +457,14 @@ export function ContextPage() {
       }
       void notifyDone('contextMaps', 'Context map ready', contextBody);
     } catch (err) {
+      if (controller.signal.aborted) {
+        if (generationAbortRef.current === controller) {
+          setStructuralPreview(null);
+          setStatus('Generation cancelled.');
+        }
+        return;
+      }
+      setStructuralPreview(null);
       const auth = useAuthStore.getState();
       if (
         resolveAccountIdentity(auth)?.accountId !== accountId ||
@@ -431,9 +480,11 @@ export function ContextPage() {
     } finally {
       const auth = useAuthStore.getState();
       if (
+        generationAbortRef.current === controller &&
         resolveAccountIdentity(auth)?.accountId === accountId &&
         (auth.projectId ?? null) === (projectId ?? null)
       ) {
+        generationAbortRef.current = null;
         setGenerating(false);
       }
     }
