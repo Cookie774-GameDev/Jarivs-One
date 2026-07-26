@@ -7,6 +7,7 @@ import {
 } from '@/lib/fs';
 import { basename, extension, isPopularTextFile } from '@/features/files/projectFiles';
 import { classifyJarvisReadError, classifyJarvisSource } from '@/lib/jarvis/sourcePolicy';
+import { contextMapPickerOption } from './contextChatIntegration';
 
 export const CONTEXT_MIME = 'application/x-jarvis-context';
 export const CONTEXT_STORAGE_PREFIX = 'jarvis-context-tree-v1';
@@ -75,6 +76,15 @@ export interface ContextMapRecord {
   status: ContextMapStatus;
   createdAt: number;
   updatedAt: number;
+  sourceType?:
+    | 'local_folder'
+    | 'local_file'
+    | 'github_repository'
+    | 'linked_vibespace_content'
+    | 'portable_markdown_folder';
+  sourceLabel?: string;
+  branchRef?: string;
+  lastIndexedAt?: number;
   tree: ProjectContextTree;
 }
 
@@ -257,14 +267,16 @@ export function resolveContextMapRecord(
 export function contextMapSlashOptions(
   maps: ContextMapRecord[],
 ): Array<{ id: string; label: string; description?: string; metadata?: string }> {
+  const now = Date.now();
   return maps
     .filter((m) => m.status !== 'deleted')
-    .map((m) => ({
-      id: m.id,
-      label: m.name || 'Untitled',
-      description: `${(m.tree?.nodes ?? []).length} nodes`,
-      metadata: m.tree?.generatedAt ? new Date(m.tree.generatedAt).toLocaleDateString() : undefined,
-    }));
+    .flatMap((m) => {
+      try {
+        return [contextMapPickerOption(m, now)];
+      } catch {
+        return [];
+      }
+    });
 }
 
 export function loadSelectedContextMap(projectId: string | null): ContextMapRecord | null {
@@ -332,6 +344,10 @@ export function saveContextTree(
     status: 'active',
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
+    sourceType: existing?.sourceType ?? 'local_folder',
+    sourceLabel: existing?.sourceLabel ?? 'Local folder',
+    branchRef: existing?.branchRef ?? 'workspace',
+    lastIndexedAt: tree.generatedAt,
     tree,
   };
 
@@ -460,6 +476,30 @@ function normalizeContextMapRecord(
     status: record.status === 'deleted' ? 'deleted' : 'active',
     createdAt,
     updatedAt,
+    sourceType: [
+      'local_folder',
+      'local_file',
+      'github_repository',
+      'linked_vibespace_content',
+      'portable_markdown_folder',
+    ].includes(record.sourceType ?? '')
+      ? record.sourceType
+      : undefined,
+    sourceLabel:
+      typeof record.sourceLabel === 'string' && record.sourceLabel.trim()
+        ? record.sourceLabel.trim()
+        : undefined,
+    branchRef:
+      typeof record.branchRef === 'string' && record.branchRef.trim()
+        ? record.branchRef.trim()
+        : undefined,
+    lastIndexedAt:
+      typeof record.lastIndexedAt === 'number' &&
+      Number.isSafeInteger(record.lastIndexedAt) &&
+      record.lastIndexedAt >= 0 &&
+      record.lastIndexedAt <= 8_640_000_000_000_000
+        ? record.lastIndexedAt
+        : undefined,
     tree,
   };
 }

@@ -318,6 +318,24 @@ export {
   type DailyContextUserOperation,
 } from './dailyNotes';
 export {
+  CONTEXT_CHAT_ATTACHMENT_LEVELS,
+  buildContextChatAttachment,
+  buildMapSummaryChatAttachment,
+  contextAttachmentTokenView,
+  contextChatAttachmentKey,
+  contextChatAttachmentMatchesProject,
+  contextFreshness,
+  contextMapPickerOption,
+  normalizeContextChatAttachment,
+  type ContextAttachmentTokenView,
+  type ContextChatAttachment,
+  type ContextChatAttachmentInput,
+  type ContextChatAttachmentLevel,
+  type ContextChatFreshness,
+  type ContextChatSourceType,
+  type ContextMapPickerOption,
+} from './contextChatIntegration';
+export {
   CONTEXT_MIME,
   MAX_ACTIVE_CONTEXT_MAPS,
   activeContextMapCount,

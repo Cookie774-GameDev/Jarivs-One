@@ -89,15 +89,21 @@ import {
 } from '@/features/terminals/terminalScheduler';
 import { useTerminalTranscriptStore } from '@/features/terminals/transcriptStore';
 import {
-  CONTEXT_MIME,
   parseContextAttachment,
-  serializeContextAttachment,
   loadStoredContextMaps,
   contextMapSlashOptions,
   resolveContextMapRecord,
   type ContextAttachment,
   type ContextMapRecord,
 } from '@/features/context/tree';
+import {
+  buildMapSummaryChatAttachment,
+  contextAttachmentTokenView,
+  contextChatAttachmentKey,
+  contextChatAttachmentMatchesProject,
+  normalizeContextChatAttachment,
+  type ContextChatAttachment,
+} from '@/features/context/contextChatIntegration';
 import { MentionTypeahead } from './MentionTypeahead';
 import {
   SlashCommandTypeahead,
@@ -477,7 +483,7 @@ export function Composer({
   const [attachedImages, setAttachedImages] = useState<ChatImageAttachment[]>([]);
   const [attachedTerminals, setAttachedTerminals] = useState<TerminalRef[]>([]);
   const [attachedPlugins, setAttachedPlugins] = useState<string[]>([]);
-  const [attachedContexts, setAttachedContexts] = useState<ContextAttachment[]>([]);
+  const [attachedContexts, setAttachedContexts] = useState<ContextChatAttachment[]>([]);
   const [dragOver, setDragOver] = useState(false);
   // V2 — speech-to-text in the composer.
   const [sttListening, setSttListening] = useState(false);
@@ -1359,18 +1365,11 @@ export function Composer({
           await addSystem(`Context map '${matched.name}' has no nodes.`);
           return true;
         }
-        const attachment: ContextAttachment = {
-          projectId: matched.projectId,
-          rootDir: matched.rootDir,
-          generatedAt: matched.tree?.generatedAt ?? Date.now(),
-          nodeId: root.id ?? `map:${matched.name}`,
-          title: matched.name ?? 'Context Map',
-          summary: matched.tree?.summary ?? '',
-          path: '',
-          kind: 'root',
-        };
+        const attachment = buildMapSummaryChatAttachment(matched);
         setAttachedContexts((cur) =>
-          cur.some((item) => item.nodeId === attachment.nodeId)
+          cur.some(
+            (item) => contextChatAttachmentKey(item) === contextChatAttachmentKey(attachment),
+          )
             ? cur
             : [...cur, attachment].slice(0, 8),
         );
@@ -1705,18 +1704,10 @@ export function Composer({
         const maps = projectId ? loadStoredContextMaps(projectId) : [];
         const matched = resolveContextMapRecord(maps, confirmed.value);
         if (matched?.tree?.nodes?.[0]) {
-          const root = matched.tree.nodes[0];
-          const attachment: ContextAttachment = {
-            projectId: matched.projectId,
-            rootDir: matched.rootDir,
-            generatedAt: matched.tree?.generatedAt ?? Date.now(),
-            nodeId: root.id ?? `map:${matched.name}`,
-            title: matched.name ?? 'Context Map',
-            summary: matched.tree?.summary ?? '',
-            path: '',
-            kind: 'root',
-          };
-          nextAttachedContexts = nextAttachedContexts.some((c) => c.nodeId === attachment.nodeId)
+          const attachment = buildMapSummaryChatAttachment(matched);
+          nextAttachedContexts = nextAttachedContexts.some(
+            (context) => contextChatAttachmentKey(context) === contextChatAttachmentKey(attachment),
+          )
             ? nextAttachedContexts
             : [...nextAttachedContexts, attachment];
         }
@@ -1788,7 +1779,7 @@ export function Composer({
             kind: 'file_ref' as const,
             ref: {
               kind: 'memory' as const,
-              id: `context:${context.nodeId}`,
+              id: `context:${contextChatAttachmentKey(context)}`,
               excerpt: `Context: ${context.title}`,
             },
           })),
@@ -2168,15 +2159,33 @@ export function Composer({
     requestAnimationFrame(() => textareaRef.current?.focus());
   }, []);
 
-  const addDroppedContext = useCallback((raw: string | ContextAttachment) => {
-    const context = typeof raw === 'string' ? parseContextAttachment(raw) : raw;
-    if (!context) return;
-    setAttachedContexts((cur) =>
-      cur.some((item) => item.nodeId === context.nodeId) ? cur : [...cur, context].slice(0, 8),
-    );
-    setText((cur) => cur || `Please use the attached Context: ${context.title}`);
-    requestAnimationFrame(() => textareaRef.current?.focus());
-  }, []);
+  const addDroppedContext = useCallback(
+    (raw: string | ContextAttachment) => {
+      try {
+        const context = typeof raw === 'string' ? parseContextAttachment(raw) : raw;
+        if (!context) return;
+        const normalized = normalizeContextChatAttachment(context);
+        if (!contextChatAttachmentMatchesProject(normalized, projectId)) {
+          toast.error(
+            'Context attach rejected',
+            'The Context source belongs to a different project.',
+          );
+          return;
+        }
+        const key = contextChatAttachmentKey(normalized);
+        setAttachedContexts((cur) =>
+          cur.some((item) => contextChatAttachmentKey(item) === key)
+            ? cur
+            : [...cur, normalized].slice(0, 8),
+        );
+        setText((cur) => cur || `Please use the attached Context: ${normalized.title}`);
+        requestAnimationFrame(() => textareaRef.current?.focus());
+      } catch {
+        toast.error('Context attach rejected', 'The Context attachment is malformed.');
+      }
+    },
+    [projectId],
+  );
 
   useEffect(() => {
     const onAttachTerminal = (event: Event) => {
@@ -2880,18 +2889,23 @@ export function Composer({
               )}
               {attachedContexts.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 px-2 pb-1">
-                  {attachedContexts.map((context) => (
-                    <InputToken
-                      key={context.nodeId}
-                      type="contextmap"
-                      label={context.title}
-                      onRemove={() =>
-                        setAttachedContexts((cur) =>
-                          cur.filter((item) => item.nodeId !== context.nodeId),
-                        )
-                      }
-                    />
-                  ))}
+                  {attachedContexts.map((context) => {
+                    const token = contextAttachmentTokenView(context);
+                    const attachmentKey = contextChatAttachmentKey(context);
+                    return (
+                      <InputToken
+                        key={attachmentKey}
+                        type="contextmap"
+                        label={token.label}
+                        sublabel={token.sublabel}
+                        onRemove={() =>
+                          setAttachedContexts((cur) =>
+                            cur.filter((item) => contextChatAttachmentKey(item) !== attachmentKey),
+                          )
+                        }
+                      />
+                    );
+                  })}
                 </div>
               )}
               <QueuedMessagesBar
