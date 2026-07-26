@@ -28,9 +28,12 @@
 //!     not get copied wholesale into the WebView heap.
 
 use base64::Engine;
+use cap_fs_ext::{DirExt, FollowSymlinks, OpenOptionsFollowExt};
+use cap_std::fs::{Dir, OpenOptions};
 use serde::Serialize;
+use std::ffi::OsString;
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 /// Hard ceiling on a single file. Anything bigger is rejected with
 /// `too_large` so callers don't accidentally force a multi-GB read
@@ -67,6 +70,251 @@ fn require_absolute(path: &str) -> Result<PathBuf, String> {
         return Err("not_absolute".to_string());
     }
     Ok(p)
+}
+
+fn reject_lexical_traversal(path: &Path) -> Result<(), String> {
+    if path
+        .components()
+        .any(|component| matches!(component, Component::ParentDir))
+    {
+        return Err("outside_root".to_string());
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn path_is_contained_or_equal(path: &Path, root: &Path) -> bool {
+    let normalize = |value: &Path| {
+        value
+            .to_string_lossy()
+            .replace('/', "\\")
+            .trim_end_matches('\\')
+            .to_lowercase()
+    };
+    let path = normalize(path);
+    let root = normalize(root);
+    path == root || path.starts_with(&format!("{root}\\"))
+}
+
+#[cfg(not(windows))]
+fn path_is_contained_or_equal(path: &Path, root: &Path) -> bool {
+    path == root || path.starts_with(root)
+}
+
+fn enforce_user_boundary(path: &Path, profile: &Path) -> Result<(), String> {
+    let users_root = profile
+        .parent()
+        .ok_or_else(|| "other_user_folder".to_string())?;
+    if path_is_contained_or_equal(path, users_root) && !path_is_contained_or_equal(path, profile) {
+        return Err("other_user_folder".to_string());
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn current_user_profile() -> Result<PathBuf, String> {
+    use windows::Win32::System::Com::CoTaskMemFree;
+    use windows::Win32::UI::Shell::{FOLDERID_Profile, SHGetKnownFolderPath, KF_FLAG_DEFAULT};
+
+    let raw = unsafe { SHGetKnownFolderPath(&FOLDERID_Profile, KF_FLAG_DEFAULT, None) }
+        .map_err(|_| "other_user_folder".to_string())?;
+    let result = unsafe { raw.to_string() }
+        .map(PathBuf::from)
+        .map_err(|_| "other_user_folder".to_string());
+    unsafe {
+        CoTaskMemFree(Some(raw.0.cast()));
+    }
+    result.and_then(|path| {
+        if path.is_absolute() {
+            Ok(path)
+        } else {
+            Err("other_user_folder".to_string())
+        }
+    })
+}
+
+#[cfg(unix)]
+fn current_user_profile() -> Result<PathBuf, String> {
+    use users::os::unix::UserExt;
+
+    let user = users::get_user_by_uid(users::get_current_uid())
+        .ok_or_else(|| "other_user_folder".to_string())?;
+    let profile = user.home_dir().to_path_buf();
+    if profile.is_absolute() {
+        Ok(profile)
+    } else {
+        Err("other_user_folder".to_string())
+    }
+}
+
+fn validate_user_boundary(path: &Path) -> Result<(), String> {
+    enforce_user_boundary(path, &current_user_profile()?)
+}
+
+fn absolute_anchor_and_components(path: &Path) -> Result<(PathBuf, Vec<OsString>), String> {
+    require_absolute(&path.to_string_lossy())?;
+    reject_lexical_traversal(path)?;
+
+    let mut anchor = PathBuf::new();
+    let mut relative = Vec::new();
+    for component in path.components() {
+        match component {
+            Component::Prefix(prefix) => {
+                #[cfg(windows)]
+                if !matches!(prefix.kind(), std::path::Prefix::Disk(_)) {
+                    return Err("outside_root".to_string());
+                }
+                anchor.push(component.as_os_str());
+            }
+            Component::RootDir => anchor.push(component.as_os_str()),
+            Component::CurDir => {}
+            Component::ParentDir => return Err("outside_root".to_string()),
+            Component::Normal(value) => relative.push(value.to_os_string()),
+        }
+    }
+    if anchor.as_os_str().is_empty() {
+        return Err("not_absolute".to_string());
+    }
+    Ok((anchor, relative))
+}
+
+#[cfg(windows)]
+fn path_component_eq(left: &OsString, right: &OsString) -> bool {
+    left.to_string_lossy()
+        .eq_ignore_ascii_case(&right.to_string_lossy())
+}
+
+#[cfg(not(windows))]
+fn path_component_eq(left: &OsString, right: &OsString) -> bool {
+    left == right
+}
+
+fn strict_relative_path(path: &Path, root: &Path) -> Result<PathBuf, String> {
+    let (path_anchor, path_components) = absolute_anchor_and_components(path)?;
+    let (root_anchor, root_components) = absolute_anchor_and_components(root)?;
+    if !path_component_eq(
+        &path_anchor.as_os_str().to_os_string(),
+        &root_anchor.as_os_str().to_os_string(),
+    ) || path_components.len() < root_components.len()
+        || !path_components
+            .iter()
+            .zip(root_components.iter())
+            .all(|(left, right)| path_component_eq(left, right))
+    {
+        return Err("outside_root".to_string());
+    }
+    Ok(path_components[root_components.len()..].iter().collect())
+}
+
+fn cap_entry_is_link(dir: &Dir, path: &Path) -> bool {
+    dir.symlink_metadata(path)
+        .map(|metadata| metadata.is_symlink())
+        .unwrap_or(false)
+}
+
+fn map_cap_open_error(dir: &Dir, path: &Path, error: std::io::Error) -> String {
+    if cap_entry_is_link(dir, path) {
+        "symlink_blocked".to_string()
+    } else if error.kind() == std::io::ErrorKind::NotFound {
+        "not_found".to_string()
+    } else {
+        format!("io: {error}")
+    }
+}
+
+struct StrictProjectRoot {
+    dir: Dir,
+    lexical_root: PathBuf,
+}
+
+impl StrictProjectRoot {
+    fn open(root: Option<&str>) -> Result<Self, String> {
+        let root = root
+            .filter(|value| !value.trim().is_empty())
+            .ok_or_else(|| "outside_root".to_string())?;
+        let lexical_root = require_absolute(root)?;
+        reject_lexical_traversal(&lexical_root)?;
+        validate_user_boundary(&lexical_root)?;
+
+        let (anchor, components) = absolute_anchor_and_components(&lexical_root)?;
+        let mut dir = Dir::open_ambient_dir(anchor, cap_fs_ext::ambient_authority())
+            .map_err(|error| format!("io: {error}"))?;
+        for component in components {
+            let component_path = Path::new(&component);
+            match dir.symlink_metadata(component_path) {
+                Ok(metadata) if metadata.is_symlink() => {
+                    return Err("symlink_blocked".to_string());
+                }
+                Ok(metadata) if !metadata.is_dir() => return Err("root_not_dir".to_string()),
+                Ok(_) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    return Err("root_not_found".to_string());
+                }
+                Err(error) => return Err(format!("io: {error}")),
+            }
+            dir = dir.open_dir_nofollow(component_path).map_err(|error| {
+                if cap_entry_is_link(&dir, component_path) {
+                    "symlink_blocked".to_string()
+                } else if error.kind() == std::io::ErrorKind::NotFound {
+                    "root_not_found".to_string()
+                } else {
+                    format!("io: {error}")
+                }
+            })?;
+        }
+
+        #[cfg(unix)]
+        {
+            use cap_fs_ext::OsMetadataExt;
+            if dir
+                .dir_metadata()
+                .map_err(|error| format!("io: {error}"))?
+                .uid()
+                != users::get_current_uid()
+            {
+                return Err("other_user_folder".to_string());
+            }
+        }
+
+        Ok(Self { dir, lexical_root })
+    }
+
+    fn relative(&self, path: &str) -> Result<PathBuf, String> {
+        strict_relative_path(&require_absolute(path)?, &self.lexical_root)
+    }
+
+    fn open_dir(&self, relative: &Path) -> Result<Dir, String> {
+        let mut dir = Dir::reopen_dir(&self.dir).map_err(|error| format!("io: {error}"))?;
+        for component in relative.components() {
+            let Component::Normal(name) = component else {
+                return Err("outside_root".to_string());
+            };
+            let component_path = Path::new(name);
+            if cap_entry_is_link(&dir, component_path) {
+                return Err("symlink_blocked".to_string());
+            }
+            dir = dir
+                .open_dir_nofollow(component_path)
+                .map_err(|error| map_cap_open_error(&dir, component_path, error))?;
+        }
+        Ok(dir)
+    }
+
+    fn open_file(&self, relative: &Path) -> Result<cap_std::fs::File, String> {
+        let name = relative
+            .file_name()
+            .ok_or_else(|| "not_a_file".to_string())?;
+        let parent = relative.parent().unwrap_or_else(|| Path::new(""));
+        let dir = self.open_dir(parent)?;
+        let name_path = Path::new(name);
+        if cap_entry_is_link(&dir, name_path) {
+            return Err("symlink_blocked".to_string());
+        }
+        let mut options = OpenOptions::new();
+        options.read(true).follow(FollowSymlinks::No);
+        dir.open_with(name_path, &options)
+            .map_err(|error| map_cap_open_error(&dir, name_path, error))
+    }
 }
 
 fn canonical_root(root: Option<&str>) -> Result<Option<PathBuf>, String> {
@@ -163,7 +411,18 @@ pub fn fs_read_text_sample(
     path: String,
     max_bytes: Option<u64>,
     root: Option<String>,
+    strict_project_boundary: Option<bool>,
 ) -> Result<String, String> {
+    let limit = max_bytes
+        .unwrap_or(MAX_SAMPLE_BYTES)
+        .clamp(1, MAX_SAMPLE_BYTES);
+    if strict_project_boundary.unwrap_or(false) {
+        let strict_root = StrictProjectRoot::open(root.as_deref())?;
+        let relative = strict_root.relative(&path)?;
+        let file = strict_root.open_file(&relative)?;
+        return read_text_sample_from_open_file(file, limit);
+    }
+
     let p = existing_path(&path, root.as_deref())?;
     let meta = match std::fs::metadata(&p) {
         Ok(m) => m,
@@ -178,15 +437,31 @@ pub fn fs_read_text_sample(
     if meta.len() > MAX_FILE_BYTES {
         return Err("too_large".to_string());
     }
-    let limit = max_bytes
-        .unwrap_or(MAX_SAMPLE_BYTES)
-        .clamp(1, MAX_SAMPLE_BYTES);
     let mut file = std::fs::File::open(&p).map_err(|e| format!("io: {}", e))?;
     let mut bytes = Vec::with_capacity(limit as usize);
     file.by_ref()
         .take(limit)
         .read_to_end(&mut bytes)
         .map_err(|e| format!("io: {}", e))?;
+    Ok(String::from_utf8_lossy(&bytes).to_string())
+}
+
+fn read_text_sample_from_open_file(
+    mut file: cap_std::fs::File,
+    limit: u64,
+) -> Result<String, String> {
+    let metadata = file.metadata().map_err(|error| format!("io: {error}"))?;
+    if !metadata.is_file() {
+        return Err("not_a_file".to_string());
+    }
+    if metadata.len() > MAX_FILE_BYTES {
+        return Err("too_large".to_string());
+    }
+    let mut bytes = Vec::with_capacity(limit as usize);
+    file.by_ref()
+        .take(limit)
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("io: {error}"))?;
     Ok(String::from_utf8_lossy(&bytes).to_string())
 }
 
@@ -232,7 +507,19 @@ pub fn fs_read_image_base64(path: String, root: Option<String>) -> Result<FsImag
 }
 
 #[tauri::command]
-pub fn fs_list_dir(path: String, root: Option<String>) -> Result<Vec<FsEntry>, String> {
+pub fn fs_list_dir(
+    path: String,
+    root: Option<String>,
+    strict_project_boundary: Option<bool>,
+) -> Result<Vec<FsEntry>, String> {
+    let strict_project_boundary = strict_project_boundary.unwrap_or(false);
+    if strict_project_boundary {
+        let strict_root = StrictProjectRoot::open(root.as_deref())?;
+        let relative = strict_root.relative(&path)?;
+        let directory = strict_root.open_dir(&relative)?;
+        return list_open_directory(&directory, Path::new(&path), true);
+    }
+
     let p = existing_path(&path, root.as_deref())?;
     let meta = match std::fs::metadata(&p) {
         Ok(m) => m,
@@ -277,6 +564,80 @@ pub fn fs_list_dir(path: String, root: Option<String>) -> Result<Vec<FsEntry>, S
         b.is_dir
             .cmp(&a.is_dir)
             .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+    });
+    Ok(out)
+}
+
+fn list_open_directory(
+    directory: &Dir,
+    display_path: &Path,
+    reject_links: bool,
+) -> Result<Vec<FsEntry>, String> {
+    let mut out = Vec::new();
+    for entry in directory
+        .entries()
+        .map_err(|error| format!("io: {error}"))?
+    {
+        if out.len() >= MAX_DIR_ENTRIES {
+            break;
+        }
+        let entry = entry.map_err(|error| format!("io: {error}"))?;
+        let file_type = entry.file_type().ok();
+        if reject_links
+            && file_type
+                .as_ref()
+                .map(|kind| kind.is_symlink())
+                .unwrap_or(true)
+        {
+            continue;
+        }
+        let name = entry.file_name();
+        let name_path = Path::new(&name);
+        let metadata = if file_type
+            .as_ref()
+            .map(|kind| kind.is_dir())
+            .unwrap_or(false)
+        {
+            directory
+                .open_dir_nofollow(name_path)
+                .and_then(|opened| opened.dir_metadata())
+                .ok()
+        } else {
+            let mut options = OpenOptions::new();
+            options.read(true).follow(FollowSymlinks::No);
+            directory
+                .open_with(name_path, &options)
+                .and_then(|opened| opened.metadata())
+                .ok()
+        };
+        let Some(metadata) = metadata else {
+            continue;
+        };
+        let is_dir = metadata.is_dir();
+        let created_ms = metadata
+            .created()
+            .ok()
+            .and_then(|value| value.into_std().duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|duration| duration.as_millis());
+        let modified_ms = metadata
+            .modified()
+            .ok()
+            .and_then(|value| value.into_std().duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|duration| duration.as_millis());
+        out.push(FsEntry {
+            name: name.to_string_lossy().to_string(),
+            path: display_path.join(&name).to_string_lossy().to_string(),
+            is_dir,
+            size: metadata.is_file().then(|| metadata.len()),
+            created_ms,
+            modified_ms,
+        });
+    }
+    out.sort_by(|left, right| {
+        right
+            .is_dir
+            .cmp(&left.is_dir)
+            .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
     });
     Ok(out)
 }
@@ -381,6 +742,7 @@ mod tests {
                 file.to_string_lossy().to_string(),
                 Some(1),
                 Some(root.to_string_lossy().to_string()),
+                None,
             ),
             Err("outside_root".to_string())
         );
@@ -403,6 +765,7 @@ mod tests {
                 file.to_string_lossy().to_string(),
                 Some(1),
                 Some(root.to_string_lossy().to_string()),
+                None,
             ),
             Err("too_large".to_string())
         );
@@ -427,6 +790,7 @@ mod tests {
                 link.to_string_lossy().to_string(),
                 Some(1),
                 Some(root.to_string_lossy().to_string()),
+                None,
             ),
             Err("outside_root".to_string())
         );
@@ -452,12 +816,288 @@ mod tests {
                 link.join("secret.txt").to_string_lossy().to_string(),
                 Some(1),
                 Some(root.to_string_lossy().to_string()),
+                None,
             ),
             Err("outside_root".to_string())
         );
 
         std::fs::remove_dir_all(root).unwrap();
         std::fs::remove_dir_all(outside).unwrap();
+    }
+
+    #[test]
+    fn strict_sample_rejects_lexical_traversal_even_when_it_resolves_inside_root() {
+        let root = test_root("strict-traversal");
+        std::fs::create_dir_all(root.join("nested")).unwrap();
+        let file = root.join("readme.md");
+        std::fs::write(&file, b"safe").unwrap();
+        let traversing = root.join("nested").join("..").join("readme.md");
+
+        assert_eq!(
+            fs_read_text_sample(
+                traversing.to_string_lossy().to_string(),
+                Some(4),
+                Some(root.to_string_lossy().to_string()),
+                Some(true),
+            ),
+            Err("outside_root".to_string())
+        );
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn strict_sample_requires_an_explicit_root() {
+        let root = test_root("strict-root-required");
+        std::fs::create_dir_all(&root).unwrap();
+        let file = root.join("readme.md");
+        std::fs::write(&file, b"safe").unwrap();
+
+        assert_eq!(
+            fs_read_text_sample(
+                file.to_string_lossy().to_string(),
+                Some(4),
+                None,
+                Some(true),
+            ),
+            Err("outside_root".to_string())
+        );
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn strict_list_preserves_root_not_found_and_root_not_dir_errors() {
+        let missing = test_root("strict-missing-root");
+        assert_eq!(
+            fs_list_dir(
+                missing.to_string_lossy().to_string(),
+                Some(missing.to_string_lossy().to_string()),
+                Some(true),
+            )
+            .unwrap_err(),
+            "root_not_found"
+        );
+
+        let root_file = test_root("strict-root-file");
+        std::fs::write(&root_file, b"not a directory").unwrap();
+        assert_eq!(
+            fs_list_dir(
+                root_file.to_string_lossy().to_string(),
+                Some(root_file.to_string_lossy().to_string()),
+                Some(true),
+            )
+            .unwrap_err(),
+            "root_not_dir"
+        );
+        std::fs::remove_file(root_file).unwrap();
+    }
+
+    #[test]
+    fn strict_reads_remain_bound_to_the_open_root_handle_after_path_replacement() {
+        let root = test_root("strict-root-handle");
+        let moved = test_root("strict-root-handle-moved");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("readme.md"), b"original").unwrap();
+        let root_text = root.to_string_lossy().to_string();
+        let strict_root = StrictProjectRoot::open(Some(&root_text)).unwrap();
+
+        let root_replaced = match std::fs::rename(&root, &moved) {
+            Ok(()) => {
+                std::fs::create_dir_all(&root).unwrap();
+                std::fs::write(root.join("readme.md"), b"replacement").unwrap();
+                true
+            }
+            #[cfg(windows)]
+            Err(error) if error.raw_os_error() == Some(32) => false,
+            Err(error) => panic!("replace selected root: {error}"),
+        };
+
+        let relative = strict_root
+            .relative(&root.join("readme.md").to_string_lossy())
+            .unwrap();
+        let file = strict_root.open_file(&relative).unwrap();
+        assert_eq!(
+            read_text_sample_from_open_file(file, 64).unwrap(),
+            "original"
+        );
+        let listed = list_open_directory(&strict_root.dir, &root, true).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].name, "readme.md");
+
+        drop(strict_root);
+        std::fs::remove_dir_all(&root).unwrap();
+        if root_replaced {
+            std::fs::remove_dir_all(moved).unwrap();
+        }
+    }
+
+    #[test]
+    fn strict_sample_reads_metadata_and_bytes_from_the_same_open_file() {
+        let root = test_root("strict-file-handle");
+        std::fs::create_dir_all(&root).unwrap();
+        let file_path = root.join("readme.md");
+        let moved_path = root.join("original.md");
+        std::fs::write(&file_path, b"original").unwrap();
+        let root_text = root.to_string_lossy().to_string();
+        let strict_root = StrictProjectRoot::open(Some(&root_text)).unwrap();
+        let relative = strict_root.relative(&file_path.to_string_lossy()).unwrap();
+        let file = strict_root.open_file(&relative).unwrap();
+
+        std::fs::rename(&file_path, &moved_path).unwrap();
+        std::fs::write(&file_path, b"replacement").unwrap();
+
+        assert_eq!(
+            read_text_sample_from_open_file(file, 64).unwrap(),
+            "original"
+        );
+
+        drop(strict_root);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn strict_sample_rejects_a_symlink_that_stays_inside_the_root() {
+        let root = test_root("strict-symlink");
+        std::fs::create_dir_all(root.join("real")).unwrap();
+        let file = root.join("real").join("readme.md");
+        std::fs::write(&file, b"safe").unwrap();
+        let link = root.join("linked");
+        std::os::unix::fs::symlink(root.join("real"), &link).unwrap();
+
+        assert_eq!(
+            fs_read_text_sample(
+                link.join("readme.md").to_string_lossy().to_string(),
+                Some(4),
+                Some(root.to_string_lossy().to_string()),
+                Some(true),
+            ),
+            Err("symlink_blocked".to_string())
+        );
+        let listed = fs_list_dir(
+            root.to_string_lossy().to_string(),
+            Some(root.to_string_lossy().to_string()),
+            Some(true),
+        )
+        .unwrap();
+        assert!(!listed.iter().any(|entry| entry.name == "linked"));
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn strict_sample_rejects_a_reparse_directory_that_stays_inside_the_root() {
+        use std::os::windows::fs::symlink_dir;
+
+        let root = test_root("strict-reparse");
+        std::fs::create_dir_all(root.join("real")).unwrap();
+        let file = root.join("real").join("readme.md");
+        std::fs::write(&file, b"safe").unwrap();
+        let link = root.join("linked");
+        match symlink_dir(root.join("real"), &link) {
+            Ok(()) => {}
+            Err(error)
+                if error.kind() == std::io::ErrorKind::PermissionDenied
+                    || error.raw_os_error() == Some(1314) =>
+            {
+                std::fs::remove_dir_all(root).unwrap();
+                return;
+            }
+            Err(error) => panic!("create test reparse directory: {error}"),
+        }
+
+        assert_eq!(
+            fs_read_text_sample(
+                link.join("readme.md").to_string_lossy().to_string(),
+                Some(4),
+                Some(root.to_string_lossy().to_string()),
+                Some(true),
+            ),
+            Err("symlink_blocked".to_string())
+        );
+        let listed = fs_list_dir(
+            root.to_string_lossy().to_string(),
+            Some(root.to_string_lossy().to_string()),
+            Some(true),
+        )
+        .unwrap();
+        assert!(!listed.iter().any(|entry| entry.name == "linked"));
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn user_boundary_rejects_other_windows_profiles_case_insensitively() {
+        let profile = Path::new(r"C:\Users\Viper");
+        assert!(enforce_user_boundary(Path::new(r"c:\users\viper\Projects"), profile).is_ok());
+        assert_eq!(
+            enforce_user_boundary(Path::new(r"C:\Users\Other\Secrets"), profile),
+            Err("other_user_folder".to_string())
+        );
+        assert_eq!(
+            enforce_user_boundary(Path::new(r"C:\Users"), profile),
+            Err("other_user_folder".to_string())
+        );
+        assert!(enforce_user_boundary(Path::new(r"D:\Projects"), profile).is_ok());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn user_boundary_rejects_siblings_under_a_custom_profile_root() {
+        let profile = Path::new(r"D:\CompanyProfiles\Viper");
+        assert!(
+            enforce_user_boundary(Path::new(r"d:\companyprofiles\viper\Projects"), profile).is_ok()
+        );
+        assert_eq!(
+            enforce_user_boundary(Path::new(r"D:\CompanyProfiles\Other\Secrets"), profile),
+            Err("other_user_folder".to_string())
+        );
+        assert_eq!(
+            enforce_user_boundary(Path::new(r"D:\CompanyProfiles"), profile),
+            Err("other_user_folder".to_string())
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn strict_roots_reject_verbatim_device_and_unc_namespaces() {
+        for path in [
+            Path::new(r"\\?\C:\Users\Other"),
+            Path::new(r"\\.\C:\Users\Other"),
+            Path::new(r"\\server\share\project"),
+        ] {
+            assert_eq!(
+                absolute_anchor_and_components(path).unwrap_err(),
+                "outside_root"
+            );
+        }
+    }
+
+    #[test]
+    fn user_boundary_fails_closed_without_a_profile_parent() {
+        assert_eq!(
+            enforce_user_boundary(Path::new("/project"), Path::new("/")),
+            Err("other_user_folder".to_string())
+        );
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn user_boundary_rejects_other_unix_profiles() {
+        let profile = Path::new("/home/viper");
+        assert!(enforce_user_boundary(Path::new("/home/viper/projects"), profile).is_ok());
+        assert_eq!(
+            enforce_user_boundary(Path::new("/home/other/secrets"), profile),
+            Err("other_user_folder".to_string())
+        );
+        assert_eq!(
+            enforce_user_boundary(Path::new("/home"), profile),
+            Err("other_user_folder".to_string())
+        );
+        assert!(enforce_user_boundary(Path::new("/srv/projects"), profile).is_ok());
     }
 
     #[test]

@@ -227,6 +227,8 @@ describe('classifyJarvisSource content admission', () => {
 describe('classifyJarvisReadError', () => {
   it.each([
     ['outside_root', 'outside_allowed_root'],
+    ['symlink_blocked', 'outside_allowed_root'],
+    ['other_user_folder', 'outside_allowed_root'],
     ['too_large', 'too_large'],
     ['not_utf8', 'binary'],
     ['unsupported_type', 'unsupported'],

@@ -311,7 +311,9 @@ export function classifyJarvisReadError(
   error: FsReadError,
 ): Extract<JarvisSourceDecision, { allowed: false }> {
   const reason =
-    error.code === 'outside_root'
+    error.code === 'outside_root' ||
+    error.code === 'symlink_blocked' ||
+    error.code === 'other_user_folder'
       ? 'outside_allowed_root'
       : error.code === 'too_large'
         ? 'too_large'

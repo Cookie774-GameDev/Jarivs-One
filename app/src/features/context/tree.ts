@@ -825,6 +825,10 @@ export function describeContextRootError(_rootDir: string, error: FsReadError): 
       return 'The selected Context root is a file, not a folder. Choose a project folder.';
     case 'outside_root':
       return 'Access to the selected Context root was blocked. Choose a folder inside your project.';
+    case 'symlink_blocked':
+      return 'Context indexing does not follow symbolic links or junctions. Choose the real project folder.';
+    case 'other_user_folder':
+      return 'Context indexing cannot scan another user profile. Choose a folder owned by your account.';
     case 'unavailable':
       return 'File access needs the VibeSpace desktop app - the browser preview cannot scan folders.';
     default:
@@ -855,7 +859,10 @@ async function scanProjectFiles(
     }
     seenDirs.add(dir);
 
-    const listed = await listDirectory(dir, { root: rootDir });
+    const listed = await listDirectory(dir, {
+      root: rootDir,
+      strictProjectBoundary: true,
+    });
     if (!listed.ok) {
       // The ROOT must be readable - an invalid path, a non-folder path, or a
       // permission problem should tell the user exactly what happened
@@ -884,7 +891,10 @@ async function scanProjectFiles(
       });
       if (!pathDecision.allowed) continue;
       if (media) {
-        const validation = await readTextFileSample(entry.path, 1, { root: rootDir });
+        const validation = await readTextFileSample(entry.path, 1, {
+          root: rootDir,
+          strictProjectBoundary: true,
+        });
         if (!validation.ok) {
           classifyJarvisReadError(validation.error);
           continue;
@@ -904,7 +914,10 @@ async function scanProjectFiles(
         continue;
       }
 
-      const result = await readTextFileSample(entry.path, MAX_FILE_SAMPLE_BYTES, { root: rootDir });
+      const result = await readTextFileSample(entry.path, MAX_FILE_SAMPLE_BYTES, {
+        root: rootDir,
+        strictProjectBoundary: true,
+      });
       if (!result.ok) continue;
       const contentDecision = classifyJarvisSource({
         path: entry.path,

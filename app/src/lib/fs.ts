@@ -26,6 +26,8 @@ export type FsReadErrorCode =
   | 'already_exists'
   | 'unsupported_type'
   | 'outside_root'
+  | 'symlink_blocked'
+  | 'other_user_folder'
   | 'root_not_found'
   | 'root_not_dir'
   | 'unavailable'
@@ -65,6 +67,8 @@ export type FsImageReadResult =
 export interface FsAccessOptions {
   /** Selected project root. Native IPC rejects paths outside it when provided. */
   root?: string | null;
+  /** Context indexing only: reject traversal, links/reparse points, and other-user roots. */
+  strictProjectBoundary?: boolean;
 }
 
 /** Map a Rust-side error string onto a stable code we can branch on. */
@@ -83,6 +87,8 @@ function classifyError(raw: unknown): FsReadError {
     raw === 'already_exists' ||
     raw === 'unsupported_type' ||
     raw === 'outside_root' ||
+    raw === 'symlink_blocked' ||
+    raw === 'other_user_folder' ||
     raw === 'root_not_found' ||
     raw === 'root_not_dir'
   ) {
@@ -112,7 +118,10 @@ function classifyInvokeError(err: unknown): FsReadError {
  * preview, e2e harness without the shell), the call rejects and we
  * surface `unavailable` so the UI knows the feature is dark.
  */
-export async function readTextFile(path: string, options: FsAccessOptions = {}): Promise<FsReadResult> {
+export async function readTextFile(
+  path: string,
+  options: FsAccessOptions = {},
+): Promise<FsReadResult> {
   try {
     const content = await invoke<string>('fs_read_text', { path, root: options.root ?? undefined });
     return { ok: true, content, path };
@@ -124,18 +133,33 @@ export async function readTextFile(path: string, options: FsAccessOptions = {}):
   }
 }
 
-export async function readTextFileSample(path: string, maxBytes = 64 * 1024, options: FsAccessOptions = {}): Promise<FsReadResult> {
+export async function readTextFileSample(
+  path: string,
+  maxBytes = 64 * 1024,
+  options: FsAccessOptions = {},
+): Promise<FsReadResult> {
   try {
-    const content = await invoke<string>('fs_read_text_sample', { path, maxBytes, root: options.root ?? undefined });
+    const content = await invoke<string>('fs_read_text_sample', {
+      path,
+      maxBytes,
+      root: options.root ?? undefined,
+      strictProjectBoundary: options.strictProjectBoundary === true,
+    });
     return { ok: true, content, path };
   } catch (err) {
     return { ok: false, error: classifyInvokeError(err), path };
   }
 }
 
-export async function readImageFileBase64(path: string, options: FsAccessOptions = {}): Promise<FsImageReadResult> {
+export async function readImageFileBase64(
+  path: string,
+  options: FsAccessOptions = {},
+): Promise<FsImageReadResult> {
   try {
-    const result = await invoke<{ data: string; mimeType: string; size: number }>('fs_read_image_base64', { path, root: options.root ?? undefined });
+    const result = await invoke<{ data: string; mimeType: string; size: number }>(
+      'fs_read_image_base64',
+      { path, root: options.root ?? undefined },
+    );
     return { ok: true, path, data: result.data, mimeType: result.mimeType, size: result.size };
   } catch (err) {
     return { ok: false, error: classifyInvokeError(err), path };
@@ -150,10 +174,7 @@ export function normalizeFsEntry(raw: unknown): FsEntry | null {
   const entryPath = typeof r.path === 'string' ? r.path : '';
   if (!name || !entryPath) return null;
   const isDir = Boolean(
-    r.isDir === true ||
-      r.is_dir === true ||
-      r.isDirectory === true ||
-      r.is_directory === true,
+    r.isDir === true || r.is_dir === true || r.isDirectory === true || r.is_directory === true,
   );
   const sizeRaw = r.size ?? r.byteSize ?? r.byte_size;
   const size = coerceFiniteNumber(sizeRaw);
@@ -179,9 +200,16 @@ function coerceFiniteNumber(value: unknown): number | undefined {
   return undefined;
 }
 
-export async function listDirectory(path: string, options: FsAccessOptions = {}): Promise<FsListResult> {
+export async function listDirectory(
+  path: string,
+  options: FsAccessOptions = {},
+): Promise<FsListResult> {
   try {
-    const raw = await invoke<unknown[]>('fs_list_dir', { path, root: options.root ?? undefined });
+    const raw = await invoke<unknown[]>('fs_list_dir', {
+      path,
+      root: options.root ?? undefined,
+      strictProjectBoundary: options.strictProjectBoundary === true,
+    });
     const entries = (Array.isArray(raw) ? raw : [])
       .map(normalizeFsEntry)
       .filter((e): e is FsEntry => e != null);
@@ -191,7 +219,11 @@ export async function listDirectory(path: string, options: FsAccessOptions = {})
   }
 }
 
-export async function writeTextFile(path: string, content: string, options: FsAccessOptions = {}): Promise<FsWriteResult> {
+export async function writeTextFile(
+  path: string,
+  content: string,
+  options: FsAccessOptions = {},
+): Promise<FsWriteResult> {
   try {
     await invoke('fs_write_text', { path, content, root: options.root ?? undefined });
     return { ok: true, path };
@@ -200,7 +232,10 @@ export async function writeTextFile(path: string, content: string, options: FsAc
   }
 }
 
-export async function createTextFile(path: string, options: FsAccessOptions = {}): Promise<FsWriteResult> {
+export async function createTextFile(
+  path: string,
+  options: FsAccessOptions = {},
+): Promise<FsWriteResult> {
   try {
     await invoke('fs_create_text_file', { path, root: options.root ?? undefined });
     return { ok: true, path };
@@ -222,7 +257,10 @@ export async function createTextFileWithContent(
   }
 }
 
-export async function createDirectory(path: string, options: FsAccessOptions = {}): Promise<FsWriteResult> {
+export async function createDirectory(
+  path: string,
+  options: FsAccessOptions = {},
+): Promise<FsWriteResult> {
   try {
     await invoke('fs_create_dir_all', { path, root: options.root ?? undefined });
     return { ok: true, path };
@@ -274,6 +312,10 @@ export function describeFsError(err: FsReadError): string {
       return 'Unsupported image type.';
     case 'outside_root':
       return 'Path is outside the selected project folder.';
+    case 'symlink_blocked':
+      return 'Project indexing does not follow symbolic links or junctions.';
+    case 'other_user_folder':
+      return 'Project indexing cannot scan another user profile.';
     case 'root_not_found':
       return 'Project folder not found.';
     case 'root_not_dir':

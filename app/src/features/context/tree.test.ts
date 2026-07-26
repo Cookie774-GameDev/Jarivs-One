@@ -69,9 +69,15 @@ describe('generateProjectContextTree file safeguards', () => {
     expect(fsMocks.readTextFileSample).toHaveBeenCalledTimes(2);
     expect(fsMocks.readTextFileSample).toHaveBeenCalledWith('C:\\proj\\assets\\clip.mp4', 1, {
       root: 'C:\\proj',
+      strictProjectBoundary: true,
     });
     expect(fsMocks.readTextFileSample).toHaveBeenCalledWith('C:\\proj\\src\\large.ts', 64 * 1024, {
       root: 'C:\\proj',
+      strictProjectBoundary: true,
+    });
+    expect(fsMocks.listDirectory).toHaveBeenCalledWith('C:\\proj', {
+      root: 'C:\\proj',
+      strictProjectBoundary: true,
     });
     expect(localStorage.getItem(contextMapCollectionKey(null))).toBeNull();
     expect(localStorage.getItem(contextStorageKey(null))).toBeNull();
@@ -124,9 +130,11 @@ describe('generateProjectContextTree file safeguards', () => {
     expect(fsMocks.readTextFileSample).toHaveBeenCalledTimes(2);
     expect(fsMocks.readTextFileSample).toHaveBeenCalledWith('C:\\proj\\media\\hero.heic', 1, {
       root: 'C:\\proj',
+      strictProjectBoundary: true,
     });
     expect(fsMocks.readTextFileSample).toHaveBeenCalledWith('C:\\proj\\media\\walkthrough.mkv', 1, {
       root: 'C:\\proj',
+      strictProjectBoundary: true,
     });
   });
 
@@ -241,6 +249,7 @@ describe('generateProjectContextTree file safeguards', () => {
       expect(JSON.stringify(tree)).not.toContain('hero.png');
       expect(fsMocks.readTextFileSample).toHaveBeenCalledWith('C:\\proj\\hero.png', 1, {
         root: 'C:\\proj',
+        strictProjectBoundary: true,
       });
     },
   );
@@ -305,6 +314,8 @@ describe('generateProjectContextTree file safeguards', () => {
     for (const [error, category] of [
       [{ code: 'root_not_dir' as const, raw: 'C:\\private\\file.txt' }, /root is a file/i],
       [{ code: 'outside_root' as const, raw: 'C:\\private\\outside' }, /access.*blocked/i],
+      [{ code: 'symlink_blocked' as const, raw: 'C:\\private\\linked' }, /links or junctions/i],
+      [{ code: 'other_user_folder' as const, raw: 'C:\\Users\\Other' }, /another user profile/i],
       [{ code: 'unknown' as const, raw: 'Access is denied. (os error 5)' }, /could not read/i],
     ] as const) {
       const message = describeContextRootError('C:\\private\\root', error);
