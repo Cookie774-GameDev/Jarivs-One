@@ -1,5 +1,21 @@
 export { ContextPage } from './ContextPage';
 export {
+  GITHUB_CONTEXT_FLOW_STEPS,
+  GITHUB_CONTEXT_OPTIONAL_PERMISSIONS,
+  GITHUB_CONTEXT_REQUIRED_PERMISSIONS,
+  buildGitHubAppTokenPolicy,
+  buildGitHubContextMapAuthorization,
+  buildGitHubPatFallbackPolicy,
+  filterAccessibleGitHubRepositories,
+  type GitHubContextInstallation,
+  type GitHubContextInstallationAuthority,
+  type GitHubContextMapAuthorizationRequest,
+  type GitHubContextOptionalPermission,
+  type GitHubContextPermissionName,
+  type GitHubContextPermissions,
+  type GitHubContextRepositorySummary,
+} from './githubContextAuth';
+export {
   CONTEXT_RECOVERY_ACTIONS,
   appendContextRevision,
   buildContextRevision,
