@@ -36,7 +36,9 @@ import {
   STORES_V3,
   STORES_V4,
   STORES_V5,
+  STORES_V6,
   type ContextAssetRow,
+  type ContextEmbeddingRow,
   type ContextMigrationBackupRow,
   type ContextNoteRevisionRow,
   type ContextNoteRow,
@@ -115,6 +117,12 @@ const EXPECTED_STORES_V5 = {
     'id, accountId, mapId, noteId, &[noteId+sequence], [accountId+mapId], [accountId+noteId], createdAt',
   context_assets:
     'id, accountId, mapId, entityId, sourceId, kind, status, [accountId+mapId], [entityId+kind], [sourceId+kind], [mapId+status], [accountId+updatedAt]',
+} as const;
+
+const EXPECTED_STORES_V6 = {
+  ...EXPECTED_STORES_V5,
+  context_embeddings:
+    'id, accountId, mapId, documentId, sourceId, providerKind, providerId, modelId, embeddingVersion, [accountId+mapId], [accountId+mapId+documentId], [accountId+mapId+embeddingVersion], updatedAt',
 } as const;
 
 const EXPECTED_STORES_V1_SOURCE = `export const STORES_V1 = {
@@ -422,7 +430,7 @@ async function deleteTestDb(name: string): Promise<void> {
   await cleanup.delete();
 }
 
-async function createLegacyDb(name: string, version: 1 | 2 | 3 | 4): Promise<Dexie> {
+async function createLegacyDb(name: string, version: 1 | 2 | 3 | 4 | 5): Promise<Dexie> {
   const database = new Dexie(name, TEST_INDEXED_DB);
   openedDatabases.add(database);
   database.version(1).stores(STORES_V1);
@@ -435,6 +443,12 @@ async function createLegacyDb(name: string, version: 1 | 2 | 3 | 4): Promise<Dex
     database.version(2).stores(STORES_V2);
     database.version(3).stores(STORES_V3);
     database.version(4).stores(STORES_V4);
+  }
+  if (version === 5) {
+    database.version(2).stores(STORES_V2);
+    database.version(3).stores(STORES_V3);
+    database.version(4).stores(STORES_V4);
+    database.version(5).stores(STORES_V5);
   }
   await database.open();
   return database;
@@ -476,7 +490,7 @@ afterEach(async () => {
   createdNames.clear();
 });
 
-describe('Jarvis Dexie V5 additive migration', () => {
+describe('Jarvis Dexie V6 additive migration', () => {
   it('keeps the exact V1 through V4 declarations and advances only the active version', () => {
     const schemaSource = readFileSync(join(__dirname, 'schema.ts'), 'utf8');
     expect(STORES_V1).toEqual(EXPECTED_STORES_V1);
@@ -484,19 +498,20 @@ describe('Jarvis Dexie V5 additive migration', () => {
     expect(STORES_V3).toEqual(EXPECTED_STORES_V3);
     expect(STORES_V4).toEqual(EXPECTED_STORES_V4);
     expect(STORES_V5).toEqual(EXPECTED_STORES_V5);
+    expect(STORES_V6).toEqual(EXPECTED_STORES_V6);
     expect(frozenStoreBlock(schemaSource, 'STORES_V1')).toBe(EXPECTED_STORES_V1_SOURCE);
     expect(frozenStoreBlock(schemaSource, 'STORES_V2')).toBe(EXPECTED_STORES_V2_SOURCE);
     expect(frozenStoreBlock(schemaSource, 'STORES_V3')).toBe(EXPECTED_STORES_V3_SOURCE);
     expect(frozenStoreBlock(schemaSource, 'STORES_V4')).toBe(EXPECTED_STORES_V4_SOURCE);
-    expect(DB_VERSION).toBe(5);
+    expect(DB_VERSION).toBe(6);
   });
 
-  it('opens every legacy, kernel, and Context store on a fresh V5 database', async () => {
-    const database = createTestJarvisDb(testDbName('jarvis-v5-fresh'));
+  it('opens every legacy, kernel, and Context store on a fresh V6 database', async () => {
+    const database = createTestJarvisDb(testDbName('jarvis-v6-fresh'));
     await database.open();
 
     expect(database.tables.map((table) => table.name).sort()).toEqual(
-      Object.keys(STORES_V5).sort(),
+      Object.keys(STORES_V6).sort(),
     );
     expect(database.agents.name).toBe('agents');
     expect(database.settings.name).toBe('settings');
@@ -506,6 +521,7 @@ describe('Jarvis Dexie V5 additive migration', () => {
     expect(database.context_notes.name).toBe('context_notes');
     expect(database.context_note_revisions.name).toBe('context_note_revisions');
     expect(database.context_assets.name).toBe('context_assets');
+    expect(database.context_embeddings.name).toBe('context_embeddings');
 
     expectTypeOf<JarvisDexie['workspaces']>().toEqualTypeOf<EntityTable<Workspace, 'id'>>();
     expectTypeOf<JarvisDexie['projects']>().toEqualTypeOf<EntityTable<Project, 'id'>>();
@@ -579,6 +595,9 @@ describe('Jarvis Dexie V5 additive migration', () => {
     expectTypeOf<ContextNoteRow>().toEqualTypeOf<ContextNoteV2>();
     expectTypeOf<ContextNoteRevisionRow>().toEqualTypeOf<ContextNoteRevisionV2>();
     expectTypeOf<ContextAssetRow>().toEqualTypeOf<ContextAssetV2>();
+    expectTypeOf<JarvisDexie['context_embeddings']>().toEqualTypeOf<
+      EntityTable<ContextEmbeddingRow, 'id'>
+    >();
     expectTypeOf(createJarvisDb).toEqualTypeOf<
       (name?: string, dependencies?: JarvisDexieDependencies) => JarvisDexie
     >();
@@ -672,6 +691,43 @@ describe('Jarvis Dexie V5 additive migration', () => {
     reopened.close();
   });
 
+  it('preserves every inserted V1 through V5 row byte-for-byte when opening V6', async () => {
+    const name = testDbName('jarvis-v5-to-v6');
+    const legacy = await createLegacyDb(name, 5);
+    await legacy.table('context_notes').put({
+      version: 2,
+      id: 'note-v5-preserved',
+      accountId: 'account-v5',
+      mapId: 'map-v5',
+      entityId: 'entity-v5',
+      sourceId: 'source-v5',
+      kind: 'standard',
+      title: 'Preserved',
+      status: 'active',
+      storageMode: 'app_managed',
+      storageRootId: 'context-root',
+      relativePath: 'notes/preserved.md',
+      contentAssetId: 'asset-v5',
+      contentHash: 'd'.repeat(64),
+      currentRevisionId: 'revision-v5',
+      aliases: [],
+      tags: [],
+      blockIds: [],
+      createdAt: 40,
+      updatedAt: 41,
+    });
+    legacy.close();
+
+    const upgraded = createTestJarvisDb(name);
+    await upgraded.open();
+    await expect(upgraded.context_notes.get('note-v5-preserved')).resolves.toMatchObject({
+      id: 'note-v5-preserved',
+      contentHash: 'd'.repeat(64),
+    });
+    await expect(upgraded.context_embeddings.count()).resolves.toBe(0);
+    upgraded.close();
+  });
+
   it('enforces one note revision per note sequence while allowing the same sequence on another note', async () => {
     const database = createTestJarvisDb(testDbName('jarvis-v5-note-revisions'));
     await database.open();
@@ -740,7 +796,7 @@ describe('Jarvis Dexie V5 additive migration', () => {
     database.close();
   });
 
-  it('declares V5 additively without a destructive upgrade callback', () => {
+  it('declares V6 additively without a destructive upgrade callback', () => {
     const source = readFileSync(join(__dirname, 'index.ts'), 'utf8');
     expect(source).not.toContain('.upgrade(');
     expect(source).toContain('this.version(1).stores(STORES_V1)');
@@ -748,5 +804,6 @@ describe('Jarvis Dexie V5 additive migration', () => {
     expect(source).toContain('this.version(3).stores(STORES_V3)');
     expect(source).toContain('this.version(4).stores(STORES_V4)');
     expect(source).toContain('this.version(5).stores(STORES_V5)');
+    expect(source).toContain('this.version(6).stores(STORES_V6)');
   });
 });

@@ -26,6 +26,7 @@ import type {
   ContextNoteRevisionV2,
   ContextNoteV2,
 } from '@/features/context/contentContracts';
+import type { ContextEmbeddingRecordV1 } from '@/features/context/semanticSearch';
 import type {
   JarvisCanonicalResultEvidenceV1,
   JarvisDurableLiveEvidenceV1,
@@ -322,6 +323,7 @@ export type ContextProvenanceRow = ContextProvenanceV2;
 export type ContextNoteRow = ContextNoteV2;
 export type ContextNoteRevisionRow = ContextNoteRevisionV2;
 export type ContextAssetRow = ContextAssetV2;
+export type ContextEmbeddingRow = ContextEmbeddingRecordV1;
 
 export type ContextMigrationBackupRow = {
   version: 1;
@@ -364,8 +366,8 @@ export type ContextQuarantineRow = {
 };
 
 export const DB_NAME = 'jarvis-v1';
-/** Current schema version — bumped to 5 for additive Context content metadata stores. */
-export const DB_VERSION = 5;
+/** Current schema version — bumped to 6 for local Context embedding records. */
+export const DB_VERSION = 6;
 
 /**
  * Dexie store schema strings.
@@ -478,6 +480,14 @@ export const STORES_V5 = {
     'id, accountId, mapId, entityId, sourceId, kind, status, [accountId+mapId], [entityId+kind], [sourceId+kind], [mapId+status], [accountId+updatedAt]',
 } as const;
 
-export const STORES = STORES_V5;
+/** V6 schema = V5 + local-only Context embedding vectors and version/provenance metadata. */
+// prettier-ignore
+export const STORES_V6 = {
+  ...STORES_V5,
+  context_embeddings:
+    'id, accountId, mapId, documentId, sourceId, providerKind, providerId, modelId, embeddingVersion, [accountId+mapId], [accountId+mapId+documentId], [accountId+mapId+embeddingVersion], updatedAt',
+} as const;
+
+export const STORES = STORES_V6;
 
 export type StoreName = keyof typeof STORES;
