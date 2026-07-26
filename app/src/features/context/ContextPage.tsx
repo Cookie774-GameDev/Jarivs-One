@@ -37,8 +37,8 @@ import {
   createGraphLayoutCoordinator,
   hasMoreThanContextGraphNodes,
   hitTestContextGraph,
-  sampleContextGraphEdge,
   selectGraphRenderer,
+  writeContextGraphEdgePoints,
 } from './graphPerformance';
 import {
   CONTEXT_MIME,
@@ -1542,6 +1542,10 @@ interface ContextMapWebGlResources {
   sizeLocation: number;
   colorLocation: WebGLUniformLocation;
   pointsLocation: WebGLUniformLocation;
+  edgeVertices: Float32Array;
+  nodeVertices: Float32Array;
+  edgeWorldPoints: Float64Array;
+  selectedVertex: Float32Array;
 }
 
 const contextMapWebGlResources = new WeakMap<HTMLCanvasElement, ContextMapWebGlResources>();
@@ -1634,9 +1638,20 @@ function acquireContextMapWebGl(canvas: HTMLCanvasElement): ContextMapWebGlResou
     sizeLocation,
     colorLocation,
     pointsLocation,
+    edgeVertices: new Float32Array(0),
+    nodeVertices: new Float32Array(0),
+    edgeWorldPoints: new Float64Array(34),
+    selectedVertex: new Float32Array(3),
   };
   contextMapWebGlResources.set(canvas, resources);
   return resources;
+}
+
+function ensureContextMapFloatCapacity(current: Float32Array, required: number): Float32Array {
+  if (current.length >= required) return current;
+  let capacity = Math.max(256, current.length);
+  while (capacity < required) capacity *= 2;
+  return new Float32Array(capacity);
 }
 
 function drawContextMapWebGl(
@@ -1662,42 +1677,50 @@ function drawContextMapWebGl(
   gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 12, 0);
   gl.enableVertexAttribArray(sizeLocation);
   gl.vertexAttribPointer(sizeLocation, 1, gl.FLOAT, false, 12, 8);
-  const toClip = (x: number, y: number): [number, number] => [
-    ((x - view.x) / view.width) * 2 - 1,
-    1 - ((y - view.y) / view.height) * 2,
-  ];
-  const edgeVertices: number[] = [];
+  resources.edgeVertices = ensureContextMapFloatCapacity(
+    resources.edgeVertices,
+    edges.length * 16 * 6,
+  );
+  let edgeOffset = 0;
   for (const edge of edges) {
     const from = map.byId.get(edge.from);
     const to = map.byId.get(edge.to);
     if (!from || !to) continue;
-    const points = sampleContextGraphEdge(from, to);
-    for (let index = 1; index < points.length; index += 1) {
-      const [fromX, fromY] = toClip(points[index - 1]!.x, points[index - 1]!.y);
-      const [toX, toY] = toClip(points[index]!.x, points[index]!.y);
-      edgeVertices.push(fromX, fromY, 1, toX, toY, 1);
+    writeContextGraphEdgePoints(from, to, resources.edgeWorldPoints);
+    for (let pointOffset = 2; pointOffset < resources.edgeWorldPoints.length; pointOffset += 2) {
+      resources.edgeVertices[edgeOffset++] =
+        ((resources.edgeWorldPoints[pointOffset - 2]! - view.x) / view.width) * 2 - 1;
+      resources.edgeVertices[edgeOffset++] =
+        1 - ((resources.edgeWorldPoints[pointOffset - 1]! - view.y) / view.height) * 2;
+      resources.edgeVertices[edgeOffset++] = 1;
+      resources.edgeVertices[edgeOffset++] =
+        ((resources.edgeWorldPoints[pointOffset]! - view.x) / view.width) * 2 - 1;
+      resources.edgeVertices[edgeOffset++] =
+        1 - ((resources.edgeWorldPoints[pointOffset + 1]! - view.y) / view.height) * 2;
+      resources.edgeVertices[edgeOffset++] = 1;
     }
   }
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(edgeVertices), gl.DYNAMIC_DRAW);
+  gl.bufferData(gl.ARRAY_BUFFER, resources.edgeVertices.subarray(0, edgeOffset), gl.DYNAMIC_DRAW);
   gl.uniform4f(colorLocation, 0.62, 0.48, 0.38, 0.46);
   gl.uniform1i(pointsLocation, 0);
-  gl.drawArrays(gl.LINES, 0, edgeVertices.length / 3);
-  const nodeVertices = nodes.flatMap((node) => {
-    const [x, y] = toClip(node.x, node.y);
-    return [x, y, Math.max(3, (node.r * 2 * canvas.width) / view.width)];
-  });
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(nodeVertices), gl.DYNAMIC_DRAW);
+  gl.drawArrays(gl.LINES, 0, edgeOffset / 3);
+  resources.nodeVertices = ensureContextMapFloatCapacity(resources.nodeVertices, nodes.length * 3);
+  let nodeOffset = 0;
+  for (const node of nodes) {
+    resources.nodeVertices[nodeOffset++] = ((node.x - view.x) / view.width) * 2 - 1;
+    resources.nodeVertices[nodeOffset++] = 1 - ((node.y - view.y) / view.height) * 2;
+    resources.nodeVertices[nodeOffset++] = Math.max(3, (node.r * 2 * canvas.width) / view.width);
+  }
+  gl.bufferData(gl.ARRAY_BUFFER, resources.nodeVertices.subarray(0, nodeOffset), gl.DYNAMIC_DRAW);
   gl.uniform4f(colorLocation, 0.72, 0.42, 0.2, 0.88);
   gl.uniform1i(pointsLocation, 1);
-  gl.drawArrays(gl.POINTS, 0, nodeVertices.length / 3);
+  gl.drawArrays(gl.POINTS, 0, nodeOffset / 3);
   const selected = nodes.find((node) => node.id === selectedId);
   if (selected) {
-    const [x, y] = toClip(selected.x, selected.y);
-    gl.bufferData(
-      gl.ARRAY_BUFFER,
-      new Float32Array([x, y, Math.max(5, (selected.r * 2.2 * canvas.width) / view.width)]),
-      gl.DYNAMIC_DRAW,
-    );
+    resources.selectedVertex[0] = ((selected.x - view.x) / view.width) * 2 - 1;
+    resources.selectedVertex[1] = 1 - ((selected.y - view.y) / view.height) * 2;
+    resources.selectedVertex[2] = Math.max(5, (selected.r * 2.2 * canvas.width) / view.width);
+    gl.bufferData(gl.ARRAY_BUFFER, resources.selectedVertex, gl.DYNAMIC_DRAW);
     gl.uniform4f(colorLocation, 0.95, 0.65, 0.2, 1);
     gl.drawArrays(gl.POINTS, 0, 1);
   }

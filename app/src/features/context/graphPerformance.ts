@@ -436,11 +436,11 @@ export class ContextGraphPerformanceIndex {
             node.y + node.radius >= minY &&
             node.y - node.radius <= maxY
           ) {
-            nodes.push(node);
             if (nodes.length >= MAX_VISIBLE_NODES) {
               truncated = true;
               break collectCandidates;
             }
+            nodes.push(node);
           }
         }
       }
@@ -461,11 +461,11 @@ export class ContextGraphPerformanceIndex {
         }
         const edge = this.#edges.get(edgeId)!;
         if (visibleIds.has(edge.sourceId) && visibleIds.has(edge.targetId)) {
-          edges.push(edge);
           if (edges.length >= MAX_VISIBLE_EDGES) {
             truncated = true;
             break collectEdges;
           }
+          edges.push(edge);
         }
       }
     }
@@ -688,19 +688,23 @@ export type ContextGraphHit =
   | Readonly<{ kind: 'node'; id: string }>
   | Readonly<{ kind: 'edge'; id: string; targetId: string }>;
 
-export function sampleContextGraphEdge(
+export function writeContextGraphEdgePoints(
   source: Readonly<{ x: number; y: number }>,
   target: Readonly<{ x: number; y: number }>,
-  segments = 16,
-): readonly Readonly<{ x: number; y: number }>[] {
+  output: Float32Array | Float64Array,
+  offset = 0,
+): number {
+  const segments = 16;
+  const end = offset + (segments + 1) * 2;
   if (
     !finite(source.x) ||
     !finite(source.y) ||
     !finite(target.x) ||
     !finite(target.y) ||
-    !Number.isSafeInteger(segments) ||
-    segments < 1 ||
-    segments > 128
+    !(output instanceof Float32Array || output instanceof Float64Array) ||
+    !Number.isSafeInteger(offset) ||
+    offset < 0 ||
+    end > output.length
   ) {
     throw new ContextGraphPerformanceError('invalid_input', 'edge_geometry');
   }
@@ -708,24 +712,20 @@ export function sampleContextGraphEdge(
   const dy = target.y - source.y;
   const distance = Math.max(1, Math.hypot(dx, dy));
   const curve = Math.min(155, distance * 0.18);
-  const control = {
-    x: (source.x + target.x) / 2 - (dy / distance) * curve,
-    y: (source.y + target.y) / 2 + (dx / distance) * curve,
-  };
-  const points: Array<Readonly<{ x: number; y: number }>> = [Object.freeze({ ...source })];
-  for (let step = 1; step <= segments; step += 1) {
+  const controlX = (source.x + target.x) / 2 - (dy / distance) * curve;
+  const controlY = (source.y + target.y) / 2 + (dx / distance) * curve;
+  output[offset] = source.x;
+  output[offset + 1] = source.y;
+  let writeOffset = offset + 2;
+  for (let step = 1; step <= segments; step += 1, writeOffset += 2) {
     const ratio = step / segments;
     const inverse = 1 - ratio;
-    points.push(
-      Object.freeze({
-        x:
-          inverse * inverse * source.x + 2 * inverse * ratio * control.x + ratio * ratio * target.x,
-        y:
-          inverse * inverse * source.y + 2 * inverse * ratio * control.y + ratio * ratio * target.y,
-      }),
-    );
+    output[writeOffset] =
+      inverse * inverse * source.x + 2 * inverse * ratio * controlX + ratio * ratio * target.x;
+    output[writeOffset + 1] =
+      inverse * inverse * source.y + 2 * inverse * ratio * controlY + ratio * ratio * target.y;
   }
-  return Object.freeze(points);
+  return end;
 }
 
 export function hitTestContextGraph(
@@ -750,30 +750,40 @@ export function hitTestContextGraph(
     }
   }
   const distanceToSegment = (
-    start: Readonly<{ x: number; y: number }>,
-    end: Readonly<{ x: number; y: number }>,
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
   ): number => {
-    const dx = end.x - start.x;
-    const dy = end.y - start.y;
+    const dx = endX - startX;
+    const dy = endY - startY;
     const lengthSquared = dx * dx + dy * dy;
     const ratio =
       lengthSquared === 0
         ? 0
         : Math.max(
             0,
-            Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared),
+            Math.min(1, ((point.x - startX) * dx + (point.y - startY) * dy) / lengthSquared),
           );
-    return Math.hypot(point.x - (start.x + dx * ratio), point.y - (start.y + dy * ratio));
+    return Math.hypot(point.x - (startX + dx * ratio), point.y - (startY + dy * ratio));
   };
+  const edgePoints = new Float64Array(34);
   for (let index = edges.length - 1; index >= 0; index -= 1) {
     const edge = edges[index]!;
     const source = nodeById.get(edge.sourceId);
     const target = nodeById.get(edge.targetId);
     if (!source || !target) continue;
-    const points = sampleContextGraphEdge(source, target);
+    writeContextGraphEdgePoints(source, target, edgePoints);
     let hit = false;
-    for (let step = 1; step < points.length; step += 1) {
-      if (distanceToSegment(points[step - 1]!, points[step]!) <= edgeTolerance) {
+    for (let offset = 2; offset < edgePoints.length; offset += 2) {
+      if (
+        distanceToSegment(
+          edgePoints[offset - 2]!,
+          edgePoints[offset - 1]!,
+          edgePoints[offset]!,
+          edgePoints[offset + 1]!,
+        ) <= edgeTolerance
+      ) {
         hit = true;
         break;
       }
@@ -997,6 +1007,7 @@ async function parseLayoutResultCooperatively(
   value: unknown,
   request: Readonly<ContextGraphLayoutRequest>,
   yieldControl: () => Promise<void>,
+  isActive: () => boolean,
 ): Promise<Readonly<ContextGraphLayoutResult>> {
   const input = record(value);
   if (
@@ -1013,6 +1024,7 @@ async function parseLayoutResultCooperatively(
   const nodes: ContextGraphLayoutResultNode[] = [];
   const seen = new Set<string>();
   for (let offset = 0; offset < input.nodes.length; offset += 500) {
+    if (!isActive()) throw new ContextGraphPerformanceError('superseded');
     const end = Math.min(input.nodes.length, offset + 500);
     for (let index = offset; index < end; index += 1) {
       const descriptor = Object.getOwnPropertyDescriptor(input.nodes, String(index));
@@ -1042,6 +1054,7 @@ async function parseLayoutResultCooperatively(
       nodes.push(Object.freeze({ id: node.id, x: node.x, y: node.y }));
     }
     await yieldControl();
+    if (!isActive()) throw new ContextGraphPerformanceError('superseded');
   }
   return Object.freeze({
     version: 1,
@@ -1111,7 +1124,12 @@ export function createGraphLayoutCoordinator(
       try {
         const result =
           active.request.nodes.length > 1_000
-            ? await parseLayoutResultCooperatively(event.data, active.request, yieldControl)
+            ? await parseLayoutResultCooperatively(
+                event.data,
+                active.request,
+                yieldControl,
+                () => pending?.request.requestId === active.request.requestId && !disposed,
+              )
             : parseLayoutResult(event.data, active.request);
         if (pending?.request.requestId !== active.request.requestId) return;
         pending = undefined;

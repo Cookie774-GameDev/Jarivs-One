@@ -8,6 +8,7 @@ import {
   hitTestContextGraph,
   layoutGraph,
   selectGraphRenderer,
+  writeContextGraphEdgePoints,
   type ContextGraphLayoutRequest,
   type ContextGraphLayoutWorker,
   type ContextGraphPerformanceEdge,
@@ -196,6 +197,30 @@ describe('Context large-graph performance pipeline', () => {
     expect(index.query({ x: 0, y: 0, width: 30, height: 30 }, 0).edges).toEqual([visibleEdge]);
   });
 
+  it('does not report truncation when visible nodes and edges exactly equal the caps', () => {
+    const capNodes = Array.from({ length: 10_000 }, (_, index) => ({
+      id: `cap-${index.toString().padStart(5, '0')}`,
+      x: index % 100,
+      y: Math.floor(index / 100),
+      radius: 1,
+    }));
+    const capEdges = Array.from({ length: 20_000 }, (_, index) => ({
+      id: `cap-edge-${index.toString().padStart(5, '0')}`,
+      sourceId: capNodes[index % capNodes.length]!.id,
+      targetId: capNodes[(index + 1 + Math.floor(index / capNodes.length)) % capNodes.length]!.id,
+    }));
+    const index = new ContextGraphPerformanceIndex({
+      nodes: capNodes,
+      edges: capEdges,
+      cellSize: 100,
+    });
+
+    const result = index.query({ x: 0, y: 0, width: 200, height: 200 }, 0);
+    expect(result.nodes).toHaveLength(10_000);
+    expect(result.edges).toHaveLength(20_000);
+    expect(result.truncated).toBe(false);
+  });
+
   it('classifies map scale from bounded actual tree nodes instead of file metadata', () => {
     interface TreeNode {
       id: string;
@@ -267,6 +292,23 @@ describe('Context large-graph performance pipeline', () => {
       ),
     ).toEqual({ kind: 'edge', id: 'wide-edge', targetId: 'wide-target' });
     expect(hitTestContextGraph({ x: 30, y: 40 }, hitNodes, hitEdges, nodeById)).toBeNull();
+  });
+
+  it('writes quadratic edge geometry into a caller-owned reusable buffer', () => {
+    const output = new Float64Array(34);
+
+    expect(writeContextGraphEdgePoints({ x: 0, y: 0 }, { x: 1_000, y: 0 }, output)).toBe(34);
+    expect(output[0]).toBe(0);
+    expect(output[1]).toBe(0);
+    expect(output[16]).toBe(500);
+    expect(output[17]).toBe(77.5);
+    expect(output[32]).toBe(1_000);
+    expect(output[33]).toBe(0);
+
+    output.fill(0);
+    writeContextGraphEdgePoints({ x: 10, y: 10 }, { x: 50, y: 10 }, output);
+    expect(output[0]).toBe(10);
+    expect(output[32]).toBe(50);
   });
 
   it('chooses SVG, canvas, or WebGL from scale and verified capabilities', () => {
@@ -469,6 +511,70 @@ describe('Context large-graph performance pipeline', () => {
     listeners.get('error')?.(new Event('error'));
     await expect(failed).rejects.toMatchObject({ code: 'worker_failed' });
     coordinator.dispose();
+  });
+
+  it('cancels cooperative parsing when a large worker response is superseded', async () => {
+    const listeners = new Map<string, (event: Event) => void>();
+    const posted: ContextGraphLayoutRequest[] = [];
+    let releaseFirstYield: (() => void) | undefined;
+    const firstYield = new Promise<void>((resolve) => {
+      releaseFirstYield = resolve;
+    });
+    let yieldCalls = 0;
+    const coordinator = createGraphLayoutCoordinator(
+      () =>
+        ({
+          postMessage(message: ContextGraphLayoutRequest) {
+            posted.push(message);
+          },
+          addEventListener(type: string, next: (event: Event) => void) {
+            listeners.set(type, next);
+          },
+          removeEventListener(type: string) {
+            listeners.delete(type);
+          },
+          terminate() {},
+        }) as unknown as ContextGraphLayoutWorker,
+      {
+        yieldControl: async () => {
+          yieldCalls += 1;
+          if (yieldCalls === 1) await firstYield;
+        },
+      },
+    );
+    const largeNodes = Array.from({ length: 1_501 }, (_, index) => ({
+      id: `stale-${index}`,
+      parentId: index === 0 ? null : 'stale-0',
+      depth: index === 0 ? 0 : 1,
+      order: index,
+      radius: 5,
+    }));
+    const first = coordinator.layout({ width: 800, height: 600, nodes: largeNodes });
+    const firstRejected = expect(first).rejects.toMatchObject({ code: 'superseded' });
+    listeners.get('message')?.({
+      data: {
+        version: 1,
+        requestId: posted[0]!.requestId,
+        nodes: largeNodes.map((node, index) => ({ id: node.id, x: index, y: index })),
+      },
+    } as MessageEvent);
+    await vi.waitFor(() => expect(yieldCalls).toBe(1));
+
+    const second = coordinator.layout({
+      width: 800,
+      height: 600,
+      nodes: [{ id: 'replacement', parentId: null, depth: 0, order: 0, radius: 5 }],
+    });
+    const secondOutcome = second.then(
+      () => null,
+      (error: unknown) => error,
+    );
+    await firstRejected;
+    releaseFirstYield?.();
+    await new Promise<void>((resolve) => globalThis.setTimeout(resolve, 0));
+    expect(yieldCalls).toBe(1);
+    coordinator.dispose();
+    await expect(secondOutcome).resolves.toMatchObject({ code: 'disposed' });
   });
 
   it.each(['error', 'messageerror'] as const)(
