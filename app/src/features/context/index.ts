@@ -1,5 +1,18 @@
 export { ContextPage } from './ContextPage';
 export {
+  CODE_ENTRY_POINT_SIGNAL_KINDS,
+  buildCodeIntelligenceSummary,
+  planAffectedCodeSummaryRegeneration,
+  rankCodeEntryPoints,
+  type CodeEntryPointCandidate,
+  type CodeEntryPointSignal,
+  type CodeEntryPointSignalKind,
+  type CodeIntelligenceSummary,
+  type CodeIntelligenceSummaryInput,
+  type CodeSummaryRevisionAuthority,
+  type CodeSummarySourceRevision,
+} from './codeIntelligenceArtifacts';
+export {
   CODE_INTELLIGENCE_ENTITY_KINDS,
   CODE_INTELLIGENCE_RELATIONSHIP_KINDS,
   buildCodeIntelligenceGraph,
