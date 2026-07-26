@@ -1,5 +1,22 @@
 export { ContextPage } from './ContextPage';
 export {
+  CONTEXT_ATTACHMENT_KINDS,
+  buildContextAttachmentReference,
+  planContextAttachmentExtraction,
+  planContextAttachmentPreview,
+  planSafeContextWebOpen,
+  serializeContextAttachmentReference,
+  type ContextAttachmentExtractionPlan,
+  type ContextAttachmentExtractionRequest,
+  type ContextAttachmentInput,
+  type ContextAttachmentKind,
+  type ContextAttachmentPreviewKind,
+  type ContextAttachmentPreviewPlan,
+  type ContextAttachmentReference,
+  type ContextAttachmentTargetKind,
+  type SafeContextWebOpenPlan,
+} from './contextAttachments';
+export {
   CONTEXT_WORKSPACE_EXAMPLES,
   CONTEXT_WORKSPACE_GRAPH_MODES,
   CONTEXT_WORKSPACE_INSPECTOR_TABS,
