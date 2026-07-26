@@ -31,6 +31,16 @@ import {
 } from '@/features/files/projectFiles';
 import { startRightClickDrag } from '@/lib/rightClickDrag';
 import {
+  ContextGraphPerformanceIndex,
+  buildContextGraphPerformanceIndexCooperatively,
+  createContextGraphLayoutWorker,
+  createGraphLayoutCoordinator,
+  hasMoreThanContextGraphNodes,
+  hitTestContextGraph,
+  sampleContextGraphEdge,
+  selectGraphRenderer,
+} from './graphPerformance';
+import {
   CONTEXT_MIME,
   MAX_ACTIVE_CONTEXT_MAPS,
   CONTEXT_PROVIDER_OPTIONS,
@@ -65,6 +75,8 @@ const CLOUD_CONTEXT_PROVIDERS: Array<Exclude<ContextGenerationProvider, 'local'>
 const MAP_WIDTH = 6400;
 const MAP_HEIGHT = 4400;
 const MAP_CENTER = { x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2 };
+const MAX_CONTEXT_MAP_LAYOUT_NODES = 100_000;
+const MAX_CONTEXT_MAP_LAYOUT_EDGES = 500_000;
 const DEFAULT_VIEW = centeredView(3000, 2100);
 
 type ProviderKeys = Partial<Record<ProviderId, string>>;
@@ -75,9 +87,15 @@ export function ContextPage() {
   const defaultProvider = useAuthStore((s) => s.defaultProvider);
   const setRoute = useUIStore((s) => s.setRoute);
   const [rootDraft, setRootDraft] = React.useState(() => getStoredProjectRoot(projectId));
-  const [maps, setMaps] = React.useState<ContextMapRecord[]>(() => loadStoredContextMaps(projectId));
-  const [selectedMapId, setSelectedMapId] = React.useState<string | null>(() => loadSelectedContextMap(projectId)?.id ?? null);
-  const [selectedId, setSelectedId] = React.useState<string | null>(() => loadSelectedContextMap(projectId) ? PROJECT_ROOT_NODE_ID : null);
+  const [maps, setMaps] = React.useState<ContextMapRecord[]>(() =>
+    loadStoredContextMaps(projectId),
+  );
+  const [selectedMapId, setSelectedMapId] = React.useState<string | null>(
+    () => loadSelectedContextMap(projectId)?.id ?? null,
+  );
+  const [selectedId, setSelectedId] = React.useState<string | null>(() =>
+    loadSelectedContextMap(projectId) ? PROJECT_ROOT_NODE_ID : null,
+  );
   const [provider, setProvider] = React.useState<ContextGenerationProvider>('local');
   const [generating, setGenerating] = React.useState(false);
   const [mapFlash, setMapFlash] = React.useState(false);
@@ -104,48 +122,58 @@ export function ContextPage() {
 
   React.useEffect(() => {
     const onUpdated = (event: Event) => {
-      const detail = (event as CustomEvent<{ projectId?: string | null; mapId?: string | null }>).detail;
+      const detail = (event as CustomEvent<{ projectId?: string | null; mapId?: string | null }>)
+        .detail;
       if ((detail?.projectId ?? null) !== (projectId ?? null)) return;
       const nextMaps = loadStoredContextMaps(projectId);
       const nextSelected = detail?.mapId
-        ? nextMaps.find((map) => map.id === detail.mapId) ?? loadSelectedContextMap(projectId)
+        ? (nextMaps.find((map) => map.id === detail.mapId) ?? loadSelectedContextMap(projectId))
         : loadSelectedContextMap(projectId);
       setMaps(nextMaps);
       setSelectedMapId(nextSelected?.id ?? null);
       setSelectedId((cur) => cur ?? (nextSelected ? PROJECT_ROOT_NODE_ID : null));
     };
     window.addEventListener('jarvis:context-tree-updated', onUpdated as EventListener);
-    return () => window.removeEventListener('jarvis:context-tree-updated', onUpdated as EventListener);
+    return () =>
+      window.removeEventListener('jarvis:context-tree-updated', onUpdated as EventListener);
   }, [projectId]);
 
-  const selectedMap = React.useMemo(() => (
-    maps.find((map) => map.id === selectedMapId)
-    ?? maps.find((map) => map.status === 'active')
-    ?? maps[0]
-    ?? null
-  ), [maps, selectedMapId]);
+  const selectedMap = React.useMemo(
+    () =>
+      maps.find((map) => map.id === selectedMapId) ??
+      maps.find((map) => map.status === 'active') ??
+      maps[0] ??
+      null,
+    [maps, selectedMapId],
+  );
   const tree = selectedMap?.tree ?? null;
-  const activeMapCount = React.useMemo(() => maps.filter((map) => map.status === 'active').length, [maps]);
+  const activeMapCount = React.useMemo(
+    () => maps.filter((map) => map.status === 'active').length,
+    [maps],
+  );
   const lastAppliedFileRef = React.useRef('');
 
-  const selectFilePath = React.useCallback((path: string, notify = true): boolean => {
-    const clean = path.trim();
-    if (!clean) return false;
-    const targetMap = maps.find((map) => findContextFileNodeByPath(map.tree, clean));
-    const targetNode = targetMap ? findContextFileNodeByPath(targetMap.tree, clean) : null;
-    if (!targetMap || !targetNode) {
-      if (notify) toast.info('File not found in Context maps', clean);
-      return false;
-    }
-    if (targetMap.id !== selectedMapId) {
-      selectStoredContextMap(projectId, targetMap.id);
-      setMaps(loadStoredContextMaps(projectId));
-      setSelectedMapId(targetMap.id);
-    }
-    setSelectedId(targetNode.id);
-    setStatus(`Selected ${basename(clean)} in ${targetMap.name}.`);
-    return true;
-  }, [maps, projectId, selectedMapId]);
+  const selectFilePath = React.useCallback(
+    (path: string, notify = true): boolean => {
+      const clean = path.trim();
+      if (!clean) return false;
+      const targetMap = maps.find((map) => findContextFileNodeByPath(map.tree, clean));
+      const targetNode = targetMap ? findContextFileNodeByPath(targetMap.tree, clean) : null;
+      if (!targetMap || !targetNode) {
+        if (notify) toast.info('File not found in Context maps', clean);
+        return false;
+      }
+      if (targetMap.id !== selectedMapId) {
+        selectStoredContextMap(projectId, targetMap.id);
+        setMaps(loadStoredContextMaps(projectId));
+        setSelectedMapId(targetMap.id);
+      }
+      setSelectedId(targetNode.id);
+      setStatus(`Selected ${basename(clean)} in ${targetMap.name}.`);
+      return true;
+    },
+    [maps, projectId, selectedMapId],
+  );
 
   React.useEffect(() => {
     const stored = getStoredContextSelectedFile(projectId);
@@ -161,10 +189,11 @@ export function ContextPage() {
       if (selectFilePath(detail.path)) lastAppliedFileRef.current = detail.path;
     };
     window.addEventListener('jarvis:context:select-file', onSelectFile as EventListener);
-    return () => window.removeEventListener('jarvis:context:select-file', onSelectFile as EventListener);
+    return () =>
+      window.removeEventListener('jarvis:context:select-file', onSelectFile as EventListener);
   }, [projectId, selectFilePath]);
 
-  const rootNode = React.useMemo(() => tree ? makeProjectRootNode(tree) : null, [tree]);
+  const rootNode = React.useMemo(() => (tree ? makeProjectRootNode(tree) : null), [tree]);
   const flatNodes = React.useMemo(() => flattenContextNodes(tree?.nodes ?? []), [tree]);
   const selected = React.useMemo(() => {
     if (!tree || !selectedId) return null;
@@ -184,29 +213,39 @@ export function ContextPage() {
     });
   }, [tree]);
 
-  const selectedProvider = providerChoices.includes(provider) ? provider : providerChoices[0] ?? 'local';
+  const selectedProvider = providerChoices.includes(provider)
+    ? provider
+    : (providerChoices[0] ?? 'local');
   const selectedProviderMeta = CONTEXT_PROVIDER_OPTIONS[selectedProvider];
 
-  const selectMap = React.useCallback((mapId: string) => {
-    const record = selectStoredContextMap(projectId, mapId);
-    if (!record) return;
-    setMaps(loadStoredContextMaps(projectId));
-    setSelectedMapId(record.id);
-    setSelectedId(PROJECT_ROOT_NODE_ID);
-  }, [projectId]);
+  const selectMap = React.useCallback(
+    (mapId: string) => {
+      const record = selectStoredContextMap(projectId, mapId);
+      if (!record) return;
+      setMaps(loadStoredContextMaps(projectId));
+      setSelectedMapId(record.id);
+      setSelectedId(PROJECT_ROOT_NODE_ID);
+    },
+    [projectId],
+  );
 
-  const deleteMap = React.useCallback((mapId: string) => {
-    const record = maps.find((map) => map.id === mapId);
-    if (!record || record.status === 'deleted') return;
-    const confirmed = window.confirm(`Do you confirm to delete the context map '${record.name}'?`);
-    if (!confirmed) return;
-    const deleted = deleteStoredContextMap(projectId, mapId);
-    if (!deleted) return;
-    setMaps(loadStoredContextMaps(projectId));
-    setSelectedMapId(deleted.id);
-    setSelectedId(PROJECT_ROOT_NODE_ID);
-    toast.info('Context map tagged Deleted', deleted.name);
-  }, [maps, projectId]);
+  const deleteMap = React.useCallback(
+    (mapId: string) => {
+      const record = maps.find((map) => map.id === mapId);
+      if (!record || record.status === 'deleted') return;
+      const confirmed = window.confirm(
+        `Do you confirm to delete the context map '${record.name}'?`,
+      );
+      if (!confirmed) return;
+      const deleted = deleteStoredContextMap(projectId, mapId);
+      if (!deleted) return;
+      setMaps(loadStoredContextMaps(projectId));
+      setSelectedMapId(deleted.id);
+      setSelectedId(PROJECT_ROOT_NODE_ID);
+      toast.info('Context map tagged Deleted', deleted.name);
+    },
+    [maps, projectId],
+  );
 
   const openFolderPicker = async () => {
     const picked = await chooseProjectFolder({
@@ -233,14 +272,22 @@ export function ContextPage() {
       return;
     }
     if (activeMapCount >= MAX_ACTIVE_CONTEXT_MAPS) {
-      toast.warning('Active Context map limit reached', `Delete an active map first. Jarvis keeps up to ${MAX_ACTIVE_CONTEXT_MAPS} active maps per project.`);
+      toast.warning(
+        'Active Context map limit reached',
+        `Delete an active map first. Jarvis keeps up to ${MAX_ACTIVE_CONTEXT_MAPS} active maps per project.`,
+      );
       return;
     }
 
-    const activeProvider = providerChoices.includes(provider) ? provider : providerChoices[0] ?? 'local';
+    const activeProvider = providerChoices.includes(provider)
+      ? provider
+      : (providerChoices[0] ?? 'local');
     const apiKey = activeProvider === 'local' ? undefined : apiKeys[activeProvider]?.trim();
     if (activeProvider !== 'local' && !apiKey) {
-      toast.warning('Provider key missing', `Add a ${CONTEXT_PROVIDER_OPTIONS[activeProvider].label} key first.`);
+      toast.warning(
+        'Provider key missing',
+        `Add a ${CONTEXT_PROVIDER_OPTIONS[activeProvider].label} key first.`,
+      );
       return;
     }
 
@@ -269,7 +316,10 @@ export function ContextPage() {
       }
       void notifyDone('contextMaps', 'Context map ready', contextBody);
     } catch (err) {
-      toast.error('Context map creation failed', err instanceof Error ? err.message : 'Unknown error');
+      toast.error(
+        'Context map creation failed',
+        err instanceof Error ? err.message : 'Unknown error',
+      );
       setStatus('Generation failed.');
     } finally {
       setGenerating(false);
@@ -296,12 +346,19 @@ export function ContextPage() {
               <div className="inline-flex items-center gap-2 rounded-full border border-accent-copper/30 bg-accent-copper/10 px-2 py-1 text-metadata uppercase tracking-wide text-accent-copper">
                 <BrainCircuit className="h-3.5 w-3.5" /> Context
               </div>
-              <h1 className="mt-2 font-display text-2xl font-semibold text-foreground">Project Context Map</h1>
+              <h1 className="mt-2 font-display text-2xl font-semibold text-foreground">
+                Project Context Map
+              </h1>
               <p className="text-secondary text-muted-foreground">
                 Create a cozy draggable map for every AI chat and terminal.
               </p>
             </div>
-            <Button variant="ghost" size="icon-sm" onClick={() => setRoute('files')} aria-label="Open Files page">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => setRoute('files')}
+              aria-label="Open Files page"
+            >
               <FolderOpen className="h-4 w-4" />
             </Button>
           </div>
@@ -314,14 +371,20 @@ export function ContextPage() {
               <Input
                 value={rootDraft}
                 onChange={(e) => setRootDraft(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') rememberRoot(); }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') rememberRoot();
+                }}
                 placeholder="C:\\Users\\you\\project or /home/you/project"
                 className="font-mono text-metadata"
               />
-              <Button size="sm" variant="secondary" onClick={() => void openFolderPicker()}>Choose</Button>
+              <Button size="sm" variant="secondary" onClick={() => void openFolderPicker()}>
+                Choose
+              </Button>
             </div>
             <label className="block space-y-1">
-              <span className="text-metadata uppercase tracking-wide text-muted-foreground">Map model provider</span>
+              <span className="text-metadata uppercase tracking-wide text-muted-foreground">
+                Map model provider
+              </span>
               <select
                 value={selectedProvider}
                 onChange={(e) => setProvider(e.target.value as ContextGenerationProvider)}
@@ -329,7 +392,8 @@ export function ContextPage() {
               >
                 {providerChoices.map((choice) => (
                   <option key={choice} value={choice}>
-                    {CONTEXT_PROVIDER_OPTIONS[choice].label} - {CONTEXT_PROVIDER_OPTIONS[choice].model}
+                    {CONTEXT_PROVIDER_OPTIONS[choice].label} -{' '}
+                    {CONTEXT_PROVIDER_OPTIONS[choice].model}
                   </option>
                 ))}
               </select>
@@ -345,7 +409,11 @@ export function ContextPage() {
                 disabled={generating || !rootDraft.trim()}
                 className="ml-auto gap-1"
               >
-                {generating ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                {generating ? (
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="h-3.5 w-3.5" />
+                )}
                 Create Map
               </Button>
             </div>
@@ -359,7 +427,10 @@ export function ContextPage() {
           <div className="grid grid-cols-3 gap-2">
             <Stat label="Files" value={tree ? String(tree.fileCount) : '-'} />
             <Stat label="Nodes" value={tree ? String(flatNodes.length + 1) : '-'} />
-            <Stat label="Model" value={tree ? shortModel(tree.model) : selectedProviderMeta.shortLabel} />
+            <Stat
+              label="Model"
+              value={tree ? shortModel(tree.model) : selectedProviderMeta.shortLabel}
+            />
           </div>
           <ContextMapList
             maps={maps}
@@ -371,7 +442,11 @@ export function ContextPage() {
           <p className="min-h-4 text-metadata text-muted-foreground">{status}</p>
 
           {tree && selected ? (
-            <SelectedContextCard tree={tree} node={selected} onSelectRoot={() => setSelectedId(PROJECT_ROOT_NODE_ID)} />
+            <SelectedContextCard
+              tree={tree}
+              node={selected}
+              onSelectRoot={() => setSelectedId(PROJECT_ROOT_NODE_ID)}
+            />
           ) : null}
         </div>
 
@@ -394,7 +469,10 @@ export function ContextPage() {
 
       <main className="relative z-10 flex min-w-0 flex-1 flex-col p-4">
         {!tree || !rootNode || !selected ? (
-          <NoContextHero onGenerate={() => void makeSkillTree()} disabled={generating || !rootDraft.trim()} />
+          <NoContextHero
+            onGenerate={() => void makeSkillTree()}
+            disabled={generating || !rootDraft.trim()}
+          />
         ) : (
           <ContextMapWorkspace
             tree={tree}
@@ -474,7 +552,9 @@ function ContextMapList({
               }}
               className={cn(
                 'group flex w-full items-center gap-1 rounded-lg border transition-all',
-                selected ? 'border-accent-copper/45 bg-accent-copper/10 shadow-soft' : 'border-transparent hover:border-border hover:bg-paper',
+                selected
+                  ? 'border-accent-copper/45 bg-accent-copper/10 shadow-soft'
+                  : 'border-transparent hover:border-border hover:bg-paper',
                 deleted && 'opacity-70',
               )}
             >
@@ -484,17 +564,21 @@ function ContextMapList({
                 className="flex min-w-0 flex-1 items-center gap-2 px-2 py-2 text-left focus-visible:outline-none"
               >
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-secondary font-medium text-foreground">{map.name}</span>
+                  <span className="block truncate text-secondary font-medium text-foreground">
+                    {map.name}
+                  </span>
                   <span className="block truncate font-mono text-metadata text-muted-foreground">
                     {map.tree.fileCount} files - {mapFilePath}
                   </span>
                 </span>
-                <span className={cn(
-                  'rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
-                  deleted
-                    ? 'border-muted-foreground/25 bg-muted text-muted-foreground'
-                    : 'border-accent-copper/35 bg-accent-copper/10 text-accent-copper',
-                )}>
+                <span
+                  className={cn(
+                    'rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+                    deleted
+                      ? 'border-muted-foreground/25 bg-muted text-muted-foreground'
+                      : 'border-accent-copper/35 bg-accent-copper/10 text-accent-copper',
+                  )}
+                >
                   {deleted ? 'Deleted' : 'Active'}
                 </span>
               </button>
@@ -533,14 +617,22 @@ function NoContextHero({ onGenerate, disabled }: { onGenerate: () => void; disab
             </h2>
           </div>
           <p className="text-body text-muted-foreground">
-            Jarvis scans the project, uses your selected saved provider key when available, and builds a warm string map that every AI prompt can use before deciding which files matter.
+            Jarvis scans the project, uses your selected saved provider key when available, and
+            builds a warm string map that every AI prompt can use before deciding which files
+            matter.
           </p>
           <div className="grid gap-3 sm:grid-cols-3">
             <FeaturePill icon={<GitBranch className="h-4 w-4" />} text="String map" />
             <FeaturePill icon={<MousePointer2 className="h-4 w-4" />} text="Left-click inspect" />
             <FeaturePill icon={<Move className="h-4 w-4" />} text="Right-click pan" />
           </div>
-          <Button variant="accent" size="lg" onClick={onGenerate} disabled={disabled} className="gap-2">
+          <Button
+            variant="accent"
+            size="lg"
+            onClick={onGenerate}
+            disabled={disabled}
+            className="gap-2"
+          >
             <Sparkles className="h-4 w-4" /> Create Context Map
           </Button>
         </div>
@@ -585,7 +677,9 @@ function SelectedContextCard({
           <Zap className="h-4 w-4 text-accent-copper" />
           <span className="truncate">Drag Selected Context</span>
         </div>
-        <Button size="sm" variant="ghost" onClick={onSelectRoot}>Root</Button>
+        <Button size="sm" variant="ghost" onClick={onSelectRoot}>
+          Root
+        </Button>
       </div>
       <div className="truncate font-medium text-foreground">{node.title}</div>
       <p className="mt-1 line-clamp-3 text-metadata text-muted-foreground">{node.summary}</p>
@@ -653,21 +747,31 @@ function ContextTreeBranch({
           className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md py-1 text-left focus-visible:outline-none"
           title={node.summary}
         >
-          {node.kind === 'file' ? <FileText className="h-4 w-4 shrink-0 text-accent-honey" /> : <Network className="h-4 w-4 shrink-0 text-accent-copper" />}
-          <span className="min-w-0 flex-1 truncate text-secondary text-foreground">{node.title}</span>
-          {node.importance && <span className="text-metadata text-muted-foreground">{node.importance}</span>}
+          {node.kind === 'file' ? (
+            <FileText className="h-4 w-4 shrink-0 text-accent-honey" />
+          ) : (
+            <Network className="h-4 w-4 shrink-0 text-accent-copper" />
+          )}
+          <span className="min-w-0 flex-1 truncate text-secondary text-foreground">
+            {node.title}
+          </span>
+          {node.importance && (
+            <span className="text-metadata text-muted-foreground">{node.importance}</span>
+          )}
         </button>
       </div>
-      {open && hasChildren && node.children!.map((child) => (
-        <ContextTreeBranch
-          key={child.id}
-          tree={tree}
-          node={child}
-          depth={depth + 1}
-          selectedId={selectedId}
-          onSelect={onSelect}
-        />
-      ))}
+      {open &&
+        hasChildren &&
+        node.children!.map((child) => (
+          <ContextTreeBranch
+            key={child.id}
+            tree={tree}
+            node={child}
+            depth={depth + 1}
+            selectedId={selectedId}
+            onSelect={onSelect}
+          />
+        ))}
     </div>
   );
 }
@@ -701,7 +805,13 @@ function ContextMapWorkspace({
             <MousePointer2 className="h-3.5 w-3.5 text-accent-honey" /> Left-click nodes or strings
           </div>
         </div>
-        <ContextMapCanvas tree={tree} rootNode={rootNode} selectedId={selectedId} onSelect={onSelect} flash={flash} />
+        <ContextMapCanvas
+          tree={tree}
+          rootNode={rootNode}
+          selectedId={selectedId}
+          onSelect={onSelect}
+          flash={flash}
+        />
       </section>
       <ContextInspector tree={tree} node={selected} onSelect={onSelect} />
     </div>
@@ -721,10 +831,199 @@ function ContextMapCanvas({
   onSelect: (id: string) => void;
   flash: boolean;
 }) {
-  const map = React.useMemo(() => buildContextMap(rootNode), [rootNode]);
+  const largeMap = React.useMemo(() => hasMoreThanContextGraphNodes(rootNode, 1_000), [rootNode]);
+  const immediateMap = React.useMemo(
+    () => (largeMap ? buildContextMapRoot(rootNode) : buildContextMap(rootNode)),
+    [largeMap, rootNode],
+  );
+  const [baseMap, setBaseMap] = React.useState<ContextMapLayout>(immediateMap);
+  const [mapBuildError, setMapBuildError] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    setBaseMap(immediateMap);
+    setMapBuildError(null);
+    if (!largeMap) return;
+    const controller = new AbortController();
+    void buildContextMapCooperatively(rootNode, controller.signal)
+      .then((next) => {
+        if (!controller.signal.aborted) setBaseMap(next);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setMapBuildError(
+            'This Context map exceeds the safe interactive graph limit. The project root remains available.',
+          );
+        }
+      });
+    return () => controller.abort();
+  }, [immediateMap, largeMap, rootNode]);
+  const [workerMap, setWorkerMap] = React.useState<ContextMapLayout | null>(null);
+  const layoutCoordinator = React.useMemo(
+    () => createGraphLayoutCoordinator(createContextGraphLayoutWorker),
+    [],
+  );
+  React.useEffect(() => () => layoutCoordinator.dispose(), [layoutCoordinator]);
+  React.useEffect(() => {
+    setWorkerMap(null);
+    if (baseMap.nodes.length <= 1_000) return;
+    let active = true;
+    const yieldControl = () => new Promise<void>((resolve) => globalThis.setTimeout(resolve, 0));
+    void (async () => {
+      const parentByNode = new Map<string, string>();
+      for (let offset = 0; offset < baseMap.edges.length; offset += 500) {
+        if (!active) return;
+        for (const edge of baseMap.edges.slice(offset, offset + 500)) {
+          parentByNode.set(edge.to, edge.from);
+        }
+        await yieldControl();
+      }
+      const orderByDepth = new Map<number, number>();
+      const layoutNodes = [];
+      for (let offset = 0; offset < baseMap.nodes.length; offset += 500) {
+        if (!active) return;
+        for (const node of baseMap.nodes.slice(offset, offset + 500)) {
+          const order = orderByDepth.get(node.depth) ?? 0;
+          orderByDepth.set(node.depth, order + 1);
+          layoutNodes.push({
+            id: node.id,
+            parentId: node.depth === 0 ? null : (parentByNode.get(node.id) ?? null),
+            depth: node.depth,
+            order,
+            radius: node.r,
+          });
+        }
+        await yieldControl();
+      }
+      const result = await layoutCoordinator.layout({
+        width: MAP_WIDTH,
+        height: MAP_HEIGHT,
+        nodes: layoutNodes,
+      });
+      if (!active) return;
+      const positions = new Map<string, { x: number; y: number }>();
+      for (let offset = 0; offset < result.nodes.length; offset += 500) {
+        for (const node of result.nodes.slice(offset, offset + 500)) {
+          positions.set(node.id, node);
+        }
+        await yieldControl();
+        if (!active) return;
+      }
+      const nodes: PositionedContextNode[] = [];
+      const byId = new Map<string, PositionedContextNode>();
+      for (let offset = 0; offset < baseMap.nodes.length; offset += 500) {
+        for (const node of baseMap.nodes.slice(offset, offset + 500)) {
+          const position = positions.get(node.id);
+          const positioned = position ? { ...node, x: position.x, y: position.y } : node;
+          nodes.push(positioned);
+          byId.set(positioned.id, positioned);
+        }
+        await yieldControl();
+        if (!active) return;
+      }
+      if (active) {
+        setWorkerMap({
+          nodes,
+          edges: baseMap.edges,
+          byId,
+          edgeById: baseMap.edgeById,
+        });
+      }
+    })().catch(() => {
+      if (active) setWorkerMap(null);
+    });
+    return () => {
+      active = false;
+    };
+  }, [baseMap, layoutCoordinator]);
+  const map = workerMap ?? baseMap;
   const [view, setView] = React.useState(DEFAULT_VIEW);
   const [panning, setPanning] = React.useState(false);
-  const dragRef = React.useRef<{ pointerId: number; startX: number; startY: number; startView: MapView } | null>(null);
+  const dragRef = React.useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startView: MapView;
+  } | null>(null);
+  const [performanceIndex, setPerformanceIndex] = React.useState(
+    () =>
+      new ContextGraphPerformanceIndex({
+        nodes: immediateMap.nodes.map((node) => ({
+          id: node.id,
+          x: node.x,
+          y: node.y,
+          radius: node.r,
+        })),
+        edges: immediateMap.edges.map((edge) => ({
+          id: edge.id,
+          sourceId: edge.from,
+          targetId: edge.to,
+        })),
+        cellSize: 320,
+      }),
+  );
+  React.useEffect(() => {
+    const controller = new AbortController();
+    if (map.nodes.length <= 1_000) {
+      setPerformanceIndex(
+        new ContextGraphPerformanceIndex({
+          nodes: map.nodes.map((node) => ({
+            id: node.id,
+            x: node.x,
+            y: node.y,
+            radius: node.r,
+          })),
+          edges: map.edges.map((edge) => ({
+            id: edge.id,
+            sourceId: edge.from,
+            targetId: edge.to,
+          })),
+          cellSize: 320,
+        }),
+      );
+      return () => controller.abort();
+    }
+    void buildContextGraphPerformanceIndexCooperatively(
+      { nodes: map.nodes, edges: map.edges, cellSize: 320 },
+      {
+        signal: controller.signal,
+        mapNode: (node) => ({ id: node.id, x: node.x, y: node.y, radius: node.r }),
+        mapEdge: (edge) => ({ id: edge.id, sourceId: edge.from, targetId: edge.to }),
+      },
+    )
+      .then((next) => {
+        if (!controller.signal.aborted) setPerformanceIndex(next);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setMapBuildError(
+            'The large Context map could not be indexed safely. The last complete view remains available.',
+          );
+        }
+      });
+    return () => controller.abort();
+  }, [map]);
+  const visibleGraph = React.useMemo(
+    () => performanceIndex.query(view, 220),
+    [performanceIndex, view],
+  );
+  const visibleNodes = React.useMemo(
+    () => visibleGraph.nodes.map(({ id }) => map.byId.get(id)!).filter(Boolean),
+    [map, visibleGraph.nodes],
+  );
+  const visibleEdges = React.useMemo(
+    () => visibleGraph.edges.map(({ id }) => map.edgeById.get(id)!).filter(Boolean),
+    [map.edgeById, visibleGraph.edges],
+  );
+  const [webGlUnavailable, setWebGlUnavailable] = React.useState(false);
+  const handleWebGlFailure = React.useCallback(() => setWebGlUnavailable(true), []);
+  const renderer = React.useMemo(() => {
+    const capabilities = detectGraphRendererCapabilities();
+    return selectGraphRenderer({
+      totalNodes: map.nodes.length,
+      totalEdges: map.edges.length,
+      canvas2d: capabilities.canvas2d,
+      webgl2: capabilities.webgl2 && !webGlUnavailable,
+    });
+  }, [map.edges.length, map.nodes.length, webGlUnavailable]);
   const suppressContextMenu = React.useCallback((durationMs = 900) => {
     document.body.dataset.jarvisSuppressContextMenuUntil = String(Date.now() + durationMs);
   }, []);
@@ -762,11 +1061,13 @@ function ContextMapCanvas({
     const rect = event.currentTarget.getBoundingClientRect();
     const scaleX = drag.startView.width / Math.max(1, rect.width);
     const scaleY = drag.startView.height / Math.max(1, rect.height);
-    setView(clampView({
-      ...drag.startView,
-      x: drag.startView.x - (event.clientX - drag.startX) * scaleX,
-      y: drag.startView.y - (event.clientY - drag.startY) * scaleY,
-    }));
+    setView(
+      clampView({
+        ...drag.startView,
+        x: drag.startView.x - (event.clientX - drag.startX) * scaleX,
+        y: drag.startView.y - (event.clientY - drag.startY) * scaleY,
+      }),
+    );
   };
 
   const onPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -795,17 +1096,22 @@ function ContextMapCanvas({
     const py = (event.clientY - rect.top) / Math.max(1, rect.height);
     const worldX = view.x + px * view.width;
     const worldY = view.y + py * view.height;
-    setView(clampView({
-      x: worldX - px * nextWidth,
-      y: worldY - py * nextHeight,
-      width: nextWidth,
-      height: nextHeight,
-    }));
+    setView(
+      clampView({
+        x: worldX - px * nextWidth,
+        y: worldY - py * nextHeight,
+        width: nextWidth,
+        height: nextHeight,
+      }),
+    );
   };
 
   return (
     <div
-      className={cn('relative h-full w-full select-none overflow-hidden', panning ? 'cursor-grabbing' : 'cursor-default')}
+      className={cn(
+        'relative h-full w-full select-none overflow-hidden',
+        panning ? 'cursor-grabbing' : 'cursor-default',
+      )}
       data-jarvis-suppress-context-menu
       onContextMenu={(event) => event.preventDefault()}
       onPointerDown={onPointerDown}
@@ -821,84 +1127,581 @@ function ContextMapCanvas({
       >
         <LocateFixed className="h-4 w-4" /> Center Map
       </button>
-      <svg
-        className="h-full w-full"
-        viewBox={`${view.x} ${view.y} ${view.width} ${view.height}`}
-        role="img"
-        aria-label="Interactive Jarvis Context map"
-      >
-        <defs>
-          <filter id="context-node-glow" x="-40%" y="-40%" width="180%" height="180%">
-            <feDropShadow dx="0" dy="8" stdDeviation="10" floodColor="hsl(var(--accent-copper))" floodOpacity="0.18" />
-            <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="black" floodOpacity="0.24" />
-          </filter>
-          <radialGradient id="context-root-fill" cx="36%" cy="28%" r="74%">
-            <stop offset="0%" stopColor="hsl(var(--cream) / 0.26)" />
-            <stop offset="48%" stopColor="hsl(var(--accent-copper) / 0.28)" />
-            <stop offset="100%" stopColor="hsl(var(--paper-soft))" />
-          </radialGradient>
-          <radialGradient id="context-file-fill" cx="34%" cy="24%" r="78%">
-            <stop offset="0%" stopColor="hsl(var(--honey) / 0.28)" />
-            <stop offset="100%" stopColor="hsl(var(--paper-soft))" />
-          </radialGradient>
-          <pattern id="context-grid" width="90" height="90" patternUnits="userSpaceOnUse">
-            <path d="M 90 0 L 0 0 0 90" fill="none" stroke="hsl(var(--border) / 0.22)" strokeWidth="1" />
-          </pattern>
-        </defs>
-        <rect x="0" y="0" width={MAP_WIDTH} height={MAP_HEIGHT} fill="hsl(var(--background) / 0.74)" />
-        <rect x="0" y="0" width={MAP_WIDTH} height={MAP_HEIGHT} fill="url(#context-grid)" />
-        <circle cx={MAP_CENTER.x} cy={MAP_CENTER.y} r="1680" fill="hsl(var(--accent-copper) / 0.05)" />
-        <circle cx={MAP_CENTER.x} cy={MAP_CENTER.y} r="1160" fill="none" stroke="hsl(var(--accent-amber) / 0.16)" strokeDasharray="18 22" strokeWidth="3" />
-
-        {map.edges.map((edge) => {
-          const from = map.byId.get(edge.from);
-          const to = map.byId.get(edge.to);
-          if (!from || !to) return null;
-          const active = selectedId === edge.to;
-          const path = edgePath(from, to);
-          const labelPoint = edgeLabelPoint(from, to);
-          return (
-            <g key={edge.id}>
-              <path
-                d={path}
-                fill="none"
-                stroke={active ? 'hsl(var(--accent-amber) / 0.9)' : 'hsl(var(--muted-foreground) / 0.42)'}
-                strokeWidth={active ? 4 : 2.4}
-                strokeLinecap="round"
+      {mapBuildError ? (
+        <div
+          role="alert"
+          className="absolute left-4 top-20 z-20 max-w-md rounded-2xl border border-destructive/35 bg-paper/95 px-4 py-3 text-secondary text-destructive shadow-soft backdrop-blur"
+        >
+          {mapBuildError}
+        </div>
+      ) : null}
+      {visibleGraph.truncated && !mapBuildError ? (
+        <div
+          role="status"
+          className="absolute bottom-4 left-4 z-20 rounded-xl border border-border bg-paper/90 px-3 py-2 text-metadata text-muted-foreground shadow-soft backdrop-blur"
+        >
+          Showing a bounded visible subset. Zoom in to inspect more nodes and links.
+        </div>
+      ) : null}
+      {renderer === 'svg' ? (
+        <svg
+          className="h-full w-full"
+          viewBox={`${view.x} ${view.y} ${view.width} ${view.height}`}
+          role="img"
+          aria-label="Interactive Jarvis Context map"
+        >
+          <defs>
+            <filter id="context-node-glow" x="-40%" y="-40%" width="180%" height="180%">
+              <feDropShadow
+                dx="0"
+                dy="8"
+                stdDeviation="10"
+                floodColor="hsl(var(--accent-copper))"
+                floodOpacity="0.18"
               />
+              <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="black" floodOpacity="0.24" />
+            </filter>
+            <radialGradient id="context-root-fill" cx="36%" cy="28%" r="74%">
+              <stop offset="0%" stopColor="hsl(var(--cream) / 0.26)" />
+              <stop offset="48%" stopColor="hsl(var(--accent-copper) / 0.28)" />
+              <stop offset="100%" stopColor="hsl(var(--paper-soft))" />
+            </radialGradient>
+            <radialGradient id="context-file-fill" cx="34%" cy="24%" r="78%">
+              <stop offset="0%" stopColor="hsl(var(--honey) / 0.28)" />
+              <stop offset="100%" stopColor="hsl(var(--paper-soft))" />
+            </radialGradient>
+            <pattern id="context-grid" width="90" height="90" patternUnits="userSpaceOnUse">
               <path
-                d={path}
+                d="M 90 0 L 0 0 0 90"
                 fill="none"
-                stroke="transparent"
-                strokeWidth="24"
-                strokeLinecap="round"
-                className="cursor-pointer"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onSelect(edge.to);
-                }}
+                stroke="hsl(var(--border) / 0.22)"
+                strokeWidth="1"
               />
-              {edge.depth <= 1 ? (
-                <text
-                  x={labelPoint.x}
-                  y={labelPoint.y}
-                  textAnchor="middle"
-                  className="pointer-events-none fill-muted-foreground font-mono text-[22px]"
-                >
-                  {edge.label}
-                </text>
-              ) : null}
-            </g>
-          );
-        })}
+            </pattern>
+          </defs>
+          <rect
+            x="0"
+            y="0"
+            width={MAP_WIDTH}
+            height={MAP_HEIGHT}
+            fill="hsl(var(--background) / 0.74)"
+          />
+          <rect x="0" y="0" width={MAP_WIDTH} height={MAP_HEIGHT} fill="url(#context-grid)" />
+          <circle
+            cx={MAP_CENTER.x}
+            cy={MAP_CENTER.y}
+            r="1680"
+            fill="hsl(var(--accent-copper) / 0.05)"
+          />
+          <circle
+            cx={MAP_CENTER.x}
+            cy={MAP_CENTER.y}
+            r="1160"
+            fill="none"
+            stroke="hsl(var(--accent-amber) / 0.16)"
+            strokeDasharray="18 22"
+            strokeWidth="3"
+          />
 
-        {map.nodes.map((node) => (
-          <MapNodeView key={node.id} tree={tree} node={node} active={selectedId === node.id} onSelect={onSelect} />
-        ))}
-      </svg>
-      {flash ? <div className="context-map-birth pointer-events-none absolute inset-0 z-30" /> : null}
+          {visibleEdges.map((edge) => {
+            const from = map.byId.get(edge.from);
+            const to = map.byId.get(edge.to);
+            if (!from || !to) return null;
+            const active = selectedId === edge.to;
+            const path = edgePath(from, to);
+            const labelPoint = edgeLabelPoint(from, to);
+            return (
+              <g key={edge.id}>
+                <path
+                  d={path}
+                  fill="none"
+                  stroke={
+                    active
+                      ? 'hsl(var(--accent-amber) / 0.9)'
+                      : 'hsl(var(--muted-foreground) / 0.42)'
+                  }
+                  strokeWidth={active ? 4 : 2.4}
+                  strokeLinecap="round"
+                />
+                <path
+                  d={path}
+                  fill="none"
+                  stroke="transparent"
+                  strokeWidth="24"
+                  strokeLinecap="round"
+                  className="cursor-pointer"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onSelect(edge.to);
+                  }}
+                />
+                {edge.depth <= 1 ? (
+                  <text
+                    x={labelPoint.x}
+                    y={labelPoint.y}
+                    textAnchor="middle"
+                    className="pointer-events-none fill-muted-foreground font-mono text-[22px]"
+                  >
+                    {edge.label}
+                  </text>
+                ) : null}
+              </g>
+            );
+          })}
+
+          {visibleNodes.map((node) => (
+            <MapNodeView
+              key={node.id}
+              tree={tree}
+              node={node}
+              active={selectedId === node.id}
+              onSelect={onSelect}
+            />
+          ))}
+        </svg>
+      ) : (
+        <ContextMapRasterCanvas
+          key={renderer}
+          mode={renderer}
+          tree={tree}
+          map={map}
+          nodes={visibleNodes}
+          edges={visibleEdges}
+          view={view}
+          selectedId={selectedId}
+          onSelect={onSelect}
+          onWebGlFailure={handleWebGlFailure}
+        />
+      )}
+      {flash ? (
+        <div className="context-map-birth pointer-events-none absolute inset-0 z-30" />
+      ) : null}
     </div>
   );
+}
+
+let graphRendererCapabilitiesCache: { canvas2d: boolean; webgl2: boolean } | undefined;
+
+function detectGraphRendererCapabilities(): { canvas2d: boolean; webgl2: boolean } {
+  if (graphRendererCapabilitiesCache) return graphRendererCapabilitiesCache;
+  if (typeof document === 'undefined') return { canvas2d: false, webgl2: false };
+  try {
+    const webgl = document.createElement('canvas').getContext('webgl2');
+    graphRendererCapabilitiesCache = {
+      canvas2d: Boolean(document.createElement('canvas').getContext('2d')),
+      webgl2: Boolean(webgl),
+    };
+    webgl?.getExtension('WEBGL_lose_context')?.loseContext();
+    return graphRendererCapabilitiesCache;
+  } catch {
+    graphRendererCapabilitiesCache = { canvas2d: false, webgl2: false };
+    return graphRendererCapabilitiesCache;
+  }
+}
+
+function ContextMapRasterCanvas({
+  mode,
+  tree,
+  map,
+  nodes,
+  edges,
+  view,
+  selectedId,
+  onSelect,
+  onWebGlFailure,
+}: {
+  mode: 'canvas' | 'webgl';
+  tree: ProjectContextTree;
+  map: ContextMapLayout;
+  nodes: PositionedContextNode[];
+  edges: ContextMapEdge[];
+  view: MapView;
+  selectedId: string;
+  onSelect: (id: string) => void;
+  onWebGlFailure: () => void;
+}) {
+  const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
+  const announcementId = React.useId();
+  const [canvasSizeVersion, setCanvasSizeVersion] = React.useState(0);
+  const hitNodes = React.useMemo(
+    () => nodes.map((node) => ({ id: node.id, x: node.x, y: node.y, radius: node.r })),
+    [nodes],
+  );
+  const hitEdges = React.useMemo(
+    () => edges.map((edge) => ({ id: edge.id, sourceId: edge.from, targetId: edge.to })),
+    [edges],
+  );
+  const hitNodeById = React.useMemo(
+    () => new Map(hitNodes.map((node) => [node.id, node])),
+    [hitNodes],
+  );
+  const selectedVisibleNode = React.useMemo(
+    () => nodes.find((node) => node.id === selectedId) ?? null,
+    [nodes, selectedId],
+  );
+  const hitAtClientPoint = React.useCallback(
+    (clientX: number, clientY: number) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return null;
+      const rect = canvas.getBoundingClientRect();
+      const worldX = view.x + ((clientX - rect.left) / Math.max(1, rect.width)) * view.width;
+      const worldY = view.y + ((clientY - rect.top) / Math.max(1, rect.height)) * view.height;
+      return hitTestContextGraph({ x: worldX, y: worldY }, hitNodes, hitEdges, hitNodeById);
+    },
+    [hitEdges, hitNodeById, hitNodes, view],
+  );
+
+  React.useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || typeof ResizeObserver !== 'function') return;
+    const observer = new ResizeObserver(() => setCanvasSizeVersion((value) => value + 1));
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, []);
+
+  React.useEffect(() => {
+    const canvas = canvasRef.current;
+    return () => {
+      if (canvas) releaseContextMapWebGl(canvas);
+    };
+  }, []);
+
+  React.useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || mode !== 'webgl') return;
+    const onContextLost = (event: Event) => {
+      event.preventDefault();
+      releaseContextMapWebGl(canvas);
+      onWebGlFailure();
+    };
+    canvas.addEventListener('webglcontextlost', onContextLost);
+    return () => canvas.removeEventListener('webglcontextlost', onContextLost);
+  }, [mode, onWebGlFailure]);
+
+  React.useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const width = Math.max(1, Math.round(canvas.clientWidth * window.devicePixelRatio));
+    const height = Math.max(1, Math.round(canvas.clientHeight * window.devicePixelRatio));
+    if (canvas.width !== width) canvas.width = width;
+    if (canvas.height !== height) canvas.height = height;
+    if (mode === 'webgl') {
+      if (!drawContextMapWebGl(canvas, map, nodes, edges, view, selectedId)) {
+        onWebGlFailure();
+      }
+    } else {
+      drawContextMapCanvas2d(canvas, map, nodes, edges, view, selectedId);
+    }
+  }, [canvasSizeVersion, edges, map, mode, nodes, onWebGlFailure, selectedId, view]);
+
+  return (
+    <>
+      <canvas
+        ref={canvasRef}
+        className="h-full w-full"
+        role="application"
+        tabIndex={0}
+        aria-describedby={announcementId}
+        aria-label={`Interactive Jarvis Context map (${mode} renderer). Use arrow keys to move between visible nodes, Enter to select, or the adjacent Context inspector for the full tree.`}
+        data-context-graph-renderer={mode}
+        onClick={(event) => {
+          const hit = hitAtClientPoint(event.clientX, event.clientY);
+          if (hit?.kind === 'node') onSelect(hit.id);
+          if (hit?.kind === 'edge') onSelect(hit.targetId);
+        }}
+        onPointerDown={(event) => {
+          if (event.button !== 2) return;
+          const hit = hitAtClientPoint(event.clientX, event.clientY);
+          if (hit?.kind === 'node') {
+            event.stopPropagation();
+          }
+        }}
+        onMouseDown={(event) => {
+          if (event.button !== 2) return;
+          const hit = hitAtClientPoint(event.clientX, event.clientY);
+          if (hit?.kind !== 'node') return;
+          const contextNode =
+            findContextNode(tree, hit.id) ??
+            (hit.id === PROJECT_ROOT_NODE_ID ? makeProjectRootNode(tree) : null);
+          if (!contextNode) return;
+          event.preventDefault();
+          event.stopPropagation();
+          startRightClickDrag(event, 'context', { node: contextNode, tree });
+        }}
+        onKeyDown={(event) => {
+          if (nodes.length === 0) return;
+          const current = nodes.findIndex((node) => node.id === selectedId);
+          let next = current < 0 ? 0 : current;
+          if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+            next = (next + 1) % nodes.length;
+          } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+            next = (next - 1 + nodes.length) % nodes.length;
+          } else if (event.key === 'Home') {
+            next = 0;
+          } else if (event.key === 'End') {
+            next = nodes.length - 1;
+          } else if (event.key === 'Enter' || event.key === ' ') {
+            if (current >= 0) onSelect(nodes[current]!.id);
+            event.preventDefault();
+            return;
+          } else {
+            return;
+          }
+          event.preventDefault();
+          onSelect(nodes[next]!.id);
+        }}
+      />
+      <span id={announcementId} className="sr-only" aria-live="polite" aria-atomic="true">
+        {selectedVisibleNode
+          ? `Selected ${selectedVisibleNode.title}, ${selectedVisibleNode.kind} node. ${nodes.length.toLocaleString()} nodes are visible.`
+          : `No visible node selected. ${nodes.length.toLocaleString()} nodes are visible.`}
+      </span>
+    </>
+  );
+}
+
+function themeHsl(token: string, alpha: number): string {
+  const channels = getComputedStyle(document.documentElement).getPropertyValue(token).trim();
+  return channels ? `hsl(${channels} / ${alpha})` : `rgb(128 128 128 / ${alpha})`;
+}
+
+function drawContextMapCanvas2d(
+  canvas: HTMLCanvasElement,
+  map: ContextMapLayout,
+  nodes: PositionedContextNode[],
+  edges: ContextMapEdge[],
+  view: MapView,
+  selectedId: string,
+) {
+  const context = canvas.getContext('2d');
+  if (!context) return;
+  const scaleX = canvas.width / view.width;
+  const scaleY = canvas.height / view.height;
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = themeHsl('--background', 0.92);
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.setTransform(scaleX, 0, 0, scaleY, -view.x * scaleX, -view.y * scaleY);
+  context.lineCap = 'round';
+  for (const edge of edges) {
+    const from = map.byId.get(edge.from);
+    const to = map.byId.get(edge.to);
+    if (!from || !to) continue;
+    const active = selectedId === edge.to;
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const distance = Math.max(1, Math.hypot(dx, dy));
+    const curve = Math.min(155, distance * 0.18);
+    context.beginPath();
+    context.moveTo(from.x, from.y);
+    context.quadraticCurveTo(
+      (from.x + to.x) / 2 - (dy / distance) * curve,
+      (from.y + to.y) / 2 + (dx / distance) * curve,
+      to.x,
+      to.y,
+    );
+    context.strokeStyle = active
+      ? themeHsl('--accent-amber', 0.9)
+      : themeHsl('--muted-foreground', 0.42);
+    context.lineWidth = active ? 4 : 2.4;
+    context.stroke();
+  }
+  for (const node of nodes) {
+    const active = selectedId === node.id;
+    context.beginPath();
+    context.arc(node.x, node.y, node.r, 0, Math.PI * 2);
+    context.fillStyle =
+      node.kind === 'root'
+        ? themeHsl('--accent-copper', 0.34)
+        : node.kind === 'file'
+          ? themeHsl('--honey', 0.3)
+          : themeHsl('--paper-soft', 1);
+    context.fill();
+    context.strokeStyle = active
+      ? themeHsl('--accent-amber', 1)
+      : themeHsl('--accent-copper', 0.68);
+    context.lineWidth = active ? 5 : 2.5;
+    context.stroke();
+    if (nodes.length <= 250) {
+      context.fillStyle = themeHsl('--foreground', 0.92);
+      context.font = `${Math.max(16, Math.min(24, node.r * 0.28))}px sans-serif`;
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.fillText(node.title.slice(0, 24), node.x, node.y, node.r * 1.65);
+    }
+  }
+}
+
+interface ContextMapWebGlResources {
+  gl: WebGL2RenderingContext;
+  vertex: WebGLShader;
+  fragment: WebGLShader;
+  program: WebGLProgram;
+  buffer: WebGLBuffer;
+  positionLocation: number;
+  sizeLocation: number;
+  colorLocation: WebGLUniformLocation;
+  pointsLocation: WebGLUniformLocation;
+}
+
+const contextMapWebGlResources = new WeakMap<HTMLCanvasElement, ContextMapWebGlResources>();
+
+function releaseContextMapWebGl(canvas: HTMLCanvasElement): void {
+  const resources = contextMapWebGlResources.get(canvas);
+  if (!resources) return;
+  resources.gl.deleteBuffer(resources.buffer);
+  resources.gl.deleteProgram(resources.program);
+  resources.gl.deleteShader(resources.vertex);
+  resources.gl.deleteShader(resources.fragment);
+  contextMapWebGlResources.delete(canvas);
+}
+
+function acquireContextMapWebGl(canvas: HTMLCanvasElement): ContextMapWebGlResources | null {
+  const cached = contextMapWebGlResources.get(canvas);
+  if (cached && !cached.gl.isContextLost()) return cached;
+  if (cached) releaseContextMapWebGl(canvas);
+  const gl = canvas.getContext('webgl2', { alpha: true, antialias: true });
+  if (!gl) return null;
+  const vertex = gl.createShader(gl.VERTEX_SHADER);
+  const fragment = gl.createShader(gl.FRAGMENT_SHADER);
+  const program = gl.createProgram();
+  const buffer = gl.createBuffer();
+  const cleanup = () => {
+    if (buffer) gl.deleteBuffer(buffer);
+    if (program) gl.deleteProgram(program);
+    if (vertex) gl.deleteShader(vertex);
+    if (fragment) gl.deleteShader(fragment);
+  };
+  if (!vertex || !fragment || !program || !buffer) {
+    cleanup();
+    return null;
+  }
+  gl.shaderSource(
+    vertex,
+    `#version 300 es
+      in vec2 a_position;
+      in float a_size;
+      void main() {
+        gl_Position = vec4(a_position, 0.0, 1.0);
+        gl_PointSize = a_size;
+      }`,
+  );
+  gl.shaderSource(
+    fragment,
+    `#version 300 es
+      precision mediump float;
+      uniform vec4 u_color;
+      uniform bool u_points;
+      out vec4 outColor;
+      void main() {
+        if (u_points && distance(gl_PointCoord, vec2(0.5)) > 0.5) discard;
+        outColor = u_color;
+      }`,
+  );
+  gl.compileShader(vertex);
+  gl.compileShader(fragment);
+  if (
+    !gl.getShaderParameter(vertex, gl.COMPILE_STATUS) ||
+    !gl.getShaderParameter(fragment, gl.COMPILE_STATUS)
+  ) {
+    cleanup();
+    return null;
+  }
+  gl.attachShader(program, vertex);
+  gl.attachShader(program, fragment);
+  gl.linkProgram(program);
+  const positionLocation = gl.getAttribLocation(program, 'a_position');
+  const sizeLocation = gl.getAttribLocation(program, 'a_size');
+  const colorLocation = gl.getUniformLocation(program, 'u_color');
+  const pointsLocation = gl.getUniformLocation(program, 'u_points');
+  if (
+    !gl.getProgramParameter(program, gl.LINK_STATUS) ||
+    positionLocation < 0 ||
+    sizeLocation < 0 ||
+    !colorLocation ||
+    !pointsLocation
+  ) {
+    cleanup();
+    return null;
+  }
+  const resources = {
+    gl,
+    vertex,
+    fragment,
+    program,
+    buffer,
+    positionLocation,
+    sizeLocation,
+    colorLocation,
+    pointsLocation,
+  };
+  contextMapWebGlResources.set(canvas, resources);
+  return resources;
+}
+
+function drawContextMapWebGl(
+  canvas: HTMLCanvasElement,
+  map: ContextMapLayout,
+  nodes: PositionedContextNode[],
+  edges: ContextMapEdge[],
+  view: MapView,
+  selectedId: string,
+): boolean {
+  const resources = acquireContextMapWebGl(canvas);
+  if (!resources) return false;
+  const { gl, program, buffer, positionLocation, sizeLocation, colorLocation, pointsLocation } =
+    resources;
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.clearColor(0, 0, 0, 0);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  gl.useProgram(program);
+  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+  gl.enableVertexAttribArray(positionLocation);
+  gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 12, 0);
+  gl.enableVertexAttribArray(sizeLocation);
+  gl.vertexAttribPointer(sizeLocation, 1, gl.FLOAT, false, 12, 8);
+  const toClip = (x: number, y: number): [number, number] => [
+    ((x - view.x) / view.width) * 2 - 1,
+    1 - ((y - view.y) / view.height) * 2,
+  ];
+  const edgeVertices: number[] = [];
+  for (const edge of edges) {
+    const from = map.byId.get(edge.from);
+    const to = map.byId.get(edge.to);
+    if (!from || !to) continue;
+    const points = sampleContextGraphEdge(from, to);
+    for (let index = 1; index < points.length; index += 1) {
+      const [fromX, fromY] = toClip(points[index - 1]!.x, points[index - 1]!.y);
+      const [toX, toY] = toClip(points[index]!.x, points[index]!.y);
+      edgeVertices.push(fromX, fromY, 1, toX, toY, 1);
+    }
+  }
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(edgeVertices), gl.DYNAMIC_DRAW);
+  gl.uniform4f(colorLocation, 0.62, 0.48, 0.38, 0.46);
+  gl.uniform1i(pointsLocation, 0);
+  gl.drawArrays(gl.LINES, 0, edgeVertices.length / 3);
+  const nodeVertices = nodes.flatMap((node) => {
+    const [x, y] = toClip(node.x, node.y);
+    return [x, y, Math.max(3, (node.r * 2 * canvas.width) / view.width)];
+  });
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(nodeVertices), gl.DYNAMIC_DRAW);
+  gl.uniform4f(colorLocation, 0.72, 0.42, 0.2, 0.88);
+  gl.uniform1i(pointsLocation, 1);
+  gl.drawArrays(gl.POINTS, 0, nodeVertices.length / 3);
+  const selected = nodes.find((node) => node.id === selectedId);
+  if (selected) {
+    const [x, y] = toClip(selected.x, selected.y);
+    gl.bufferData(
+      gl.ARRAY_BUFFER,
+      new Float32Array([x, y, Math.max(5, (selected.r * 2.2 * canvas.width) / view.width)]),
+      gl.DYNAMIC_DRAW,
+    );
+    gl.uniform4f(colorLocation, 0.95, 0.65, 0.2, 1);
+    gl.drawArrays(gl.POINTS, 0, 1);
+  }
+  return true;
 }
 
 function MapNodeView({
@@ -913,8 +1716,17 @@ function MapNodeView({
   onSelect: (id: string) => void;
 }) {
   const lines = splitLabel(node.title, node.kind === 'file' ? 15 : 18);
-  const fill = node.kind === 'root' ? 'url(#context-root-fill)' : node.kind === 'file' ? 'url(#context-file-fill)' : 'hsl(var(--paper-soft))';
-  const stroke = active ? 'hsl(var(--accent-amber))' : node.kind === 'file' ? 'hsl(var(--accent-amber) / 0.68)' : 'hsl(var(--accent-copper) / 0.62)';
+  const fill =
+    node.kind === 'root'
+      ? 'url(#context-root-fill)'
+      : node.kind === 'file'
+        ? 'url(#context-file-fill)'
+        : 'hsl(var(--paper-soft))';
+  const stroke = active
+    ? 'hsl(var(--accent-amber))'
+    : node.kind === 'file'
+      ? 'hsl(var(--accent-amber) / 0.68)'
+      : 'hsl(var(--accent-copper) / 0.62)';
   return (
     <g
       transform={`translate(${node.x} ${node.y})`}
@@ -931,17 +1743,40 @@ function MapNodeView({
         }
       }}
     >
-      {active ? <circle r={node.r + 12} fill="none" stroke="hsl(var(--accent-amber) / 0.42)" strokeWidth="8" /> : null}
+      {active ? (
+        <circle
+          r={node.r + 12}
+          fill="none"
+          stroke="hsl(var(--accent-amber) / 0.42)"
+          strokeWidth="8"
+        />
+      ) : null}
       <circle r={node.r} fill={fill} stroke={stroke} strokeWidth={active ? 5 : 3} />
-      <circle cx={-node.r * 0.32} cy={-node.r * 0.32} r={Math.max(8, node.r * 0.12)} fill="hsl(var(--cream) / 0.22)" />
-      <text textAnchor="middle" className="pointer-events-none fill-foreground font-sans text-[24px] font-semibold">
+      <circle
+        cx={-node.r * 0.32}
+        cy={-node.r * 0.32}
+        r={Math.max(8, node.r * 0.12)}
+        fill="hsl(var(--cream) / 0.22)"
+      />
+      <text
+        textAnchor="middle"
+        className="pointer-events-none fill-foreground font-sans text-[24px] font-semibold"
+      >
         {lines.map((line, index) => (
-          <tspan key={line + index} x="0" dy={index === 0 ? (lines.length === 1 ? '0.32em' : '-0.08em') : '1.08em'}>
+          <tspan
+            key={line + index}
+            x="0"
+            dy={index === 0 ? (lines.length === 1 ? '0.32em' : '-0.08em') : '1.08em'}
+          >
             {line}
           </tspan>
         ))}
       </text>
-      <text y={node.r + 28} textAnchor="middle" className="pointer-events-none fill-muted-foreground font-mono text-[19px] uppercase tracking-[0.2em]">
+      <text
+        y={node.r + 28}
+        textAnchor="middle"
+        className="pointer-events-none fill-muted-foreground font-mono text-[19px] uppercase tracking-[0.2em]"
+      >
         {node.kind}
       </text>
     </g>
@@ -965,8 +1800,14 @@ function ContextInspector({
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="eyebrow">{node.kind} node</div>
-              <h2 className="mt-1 truncate font-display text-3xl font-semibold text-foreground">{node.title}</h2>
-              {node.path && <p className="mt-1 truncate font-mono text-metadata text-accent-copper">{node.path}</p>}
+              <h2 className="mt-1 truncate font-display text-3xl font-semibold text-foreground">
+                {node.title}
+              </h2>
+              {node.path && (
+                <p className="mt-1 truncate font-mono text-metadata text-accent-copper">
+                  {node.path}
+                </p>
+              )}
             </div>
             <button
               type="button"
@@ -990,7 +1831,9 @@ function ContextInspector({
             <div className="mb-2 flex items-center gap-2 text-ui-strong text-foreground">
               <Sparkles className="h-4 w-4 text-accent-copper" /> Summary
             </div>
-            <p className="whitespace-pre-wrap text-body leading-relaxed text-muted-foreground">{node.summary}</p>
+            <p className="whitespace-pre-wrap text-body leading-relaxed text-muted-foreground">
+              {node.summary}
+            </p>
           </section>
 
           <section className="mt-3 rounded-2xl border border-border bg-paper-soft p-4 shadow-soft">
@@ -1008,7 +1851,12 @@ function ContextInspector({
             {node.tags?.length ? (
               <div className="mt-4 flex flex-wrap gap-1.5">
                 {node.tags.map((tag) => (
-                  <span key={tag} className="rounded-full border border-border bg-paper px-2 py-0.5 text-metadata text-muted-foreground">{tag}</span>
+                  <span
+                    key={tag}
+                    className="rounded-full border border-border bg-paper px-2 py-0.5 text-metadata text-muted-foreground"
+                  >
+                    {tag}
+                  </span>
                 ))}
               </div>
             ) : null}
@@ -1028,11 +1876,21 @@ function ContextInspector({
                     className="w-full rounded-xl border border-border bg-paper-soft p-3 text-left transition-all hover:-translate-y-0.5 hover:border-accent-copper/40 hover:shadow-soft"
                   >
                     <div className="flex items-center gap-2">
-                      {child.kind === 'file' ? <FileText className="h-3.5 w-3.5 text-accent-honey" /> : <CircleDot className="h-3.5 w-3.5 text-accent-copper" />}
-                      <div className="min-w-0 flex-1 truncate text-secondary font-medium text-foreground">{child.title}</div>
-                      <div className="text-metadata text-muted-foreground">{formatBytes(child.sizeBytes)}</div>
+                      {child.kind === 'file' ? (
+                        <FileText className="h-3.5 w-3.5 text-accent-honey" />
+                      ) : (
+                        <CircleDot className="h-3.5 w-3.5 text-accent-copper" />
+                      )}
+                      <div className="min-w-0 flex-1 truncate text-secondary font-medium text-foreground">
+                        {child.title}
+                      </div>
+                      <div className="text-metadata text-muted-foreground">
+                        {formatBytes(child.sizeBytes)}
+                      </div>
                     </div>
-                    <p className="mt-1 line-clamp-2 text-metadata text-muted-foreground">{child.summary}</p>
+                    <p className="mt-1 line-clamp-2 text-metadata text-muted-foreground">
+                      {child.summary}
+                    </p>
                   </button>
                 ))}
               </div>
@@ -1048,24 +1906,30 @@ function MetaRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="grid grid-cols-[82px_1fr] gap-2">
       <dt className="text-muted-foreground">{label}</dt>
-      <dd className="min-w-0 truncate text-foreground" title={value}>{value}</dd>
+      <dd className="min-w-0 truncate text-foreground" title={value}>
+        {value}
+      </dd>
     </div>
   );
 }
 
 function useContextDrag(tree: ProjectContextTree, node: ContextTreeNode) {
-  return React.useCallback((e: React.DragEvent) => {
-    const attachment = nodeToAttachment(tree, node);
-    const filePath = contextNodeFilePath(tree, node) || (node.kind === 'root' ? attachment.path : undefined);
-    e.dataTransfer.effectAllowed = 'copy';
-    e.dataTransfer.setData(CONTEXT_MIME, serializeContextAttachment(attachment));
-    if (filePath) {
-      e.dataTransfer.setData('text/plain', filePath);
-      e.dataTransfer.setData('application/x-jarvis-file', filePath);
-    } else {
-      e.dataTransfer.setData('text/plain', formatContextAttachmentForTerminal(attachment));
-    }
-  }, [node, tree]);
+  return React.useCallback(
+    (e: React.DragEvent) => {
+      const attachment = nodeToAttachment(tree, node);
+      const filePath =
+        contextNodeFilePath(tree, node) || (node.kind === 'root' ? attachment.path : undefined);
+      e.dataTransfer.effectAllowed = 'copy';
+      e.dataTransfer.setData(CONTEXT_MIME, serializeContextAttachment(attachment));
+      if (filePath) {
+        e.dataTransfer.setData('text/plain', filePath);
+        e.dataTransfer.setData('application/x-jarvis-file', filePath);
+      } else {
+        e.dataTransfer.setData('text/plain', formatContextAttachmentForTerminal(attachment));
+      }
+    },
+    [node, tree],
+  );
 }
 
 interface PositionedContextNode {
@@ -1091,6 +1955,7 @@ interface ContextMapLayout {
   nodes: PositionedContextNode[];
   edges: ContextMapEdge[];
   byId: Map<string, PositionedContextNode>;
+  edgeById: Map<string, ContextMapEdge>;
 }
 
 interface MapView {
@@ -1100,11 +1965,142 @@ interface MapView {
   height: number;
 }
 
+function buildContextMapRoot(rootNode: ContextTreeNode): ContextMapLayout {
+  const node: PositionedContextNode = {
+    id: rootNode.id,
+    title: rootNode.title,
+    kind: rootNode.kind,
+    x: MAP_CENTER.x,
+    y: MAP_CENTER.y,
+    r: nodeRadius(rootNode, 0),
+    depth: 0,
+    path: rootNode.path,
+  };
+  return {
+    nodes: [node],
+    edges: [],
+    byId: new Map([[node.id, node]]),
+    edgeById: new Map(),
+  };
+}
+
+async function buildContextMapCooperatively(
+  rootNode: ContextTreeNode,
+  signal: AbortSignal,
+): Promise<ContextMapLayout> {
+  const initial = buildContextMapRoot(rootNode);
+  const nodes = [...initial.nodes];
+  const byId = new Map(initial.byId);
+  const edges: ContextMapEdge[] = [];
+  const edgeById = new Map<string, ContextMapEdge>();
+  interface ChildCursor {
+    parent: ContextTreeNode;
+    parentX: number;
+    parentY: number;
+    parentAngle: number;
+    depth: number;
+    index: number;
+  }
+  const queue: ChildCursor[] = rootNode.children?.length
+    ? [
+        {
+          parent: rootNode,
+          parentX: MAP_CENTER.x,
+          parentY: MAP_CENTER.y,
+          parentAngle: 0,
+          depth: 1,
+          index: 0,
+        },
+      ]
+    : [];
+  let cursor = 0;
+  let workSinceYield = 0;
+  while (cursor < queue.length) {
+    if (signal.aborted) throw new Error('context_map_layout_aborted');
+    const task = queue[cursor++]!;
+    const children = task.parent.children ?? [];
+    const child = children[task.index];
+    if (!child || task.depth > 4) continue;
+    if (
+      nodes.length >= MAX_CONTEXT_MAP_LAYOUT_NODES ||
+      edges.length >= MAX_CONTEXT_MAP_LAYOUT_EDGES
+    ) {
+      throw new Error('context_map_layout_limit');
+    }
+    let angle: number;
+    let radius: number;
+    if (task.depth === 1) {
+      angle = -Math.PI / 2 + (Math.PI * 2 * task.index) / Math.max(1, children.length);
+      radius = Math.max(960, Math.min(1680, 860 + children.length * 36));
+    } else {
+      const spread = task.depth === 2 ? Math.PI * 1.18 : Math.PI * 0.92;
+      const ring = Math.floor(task.index / 14);
+      const slot = task.index % 14;
+      const slots = Math.min(children.length - ring * 14, 14);
+      angle = task.parentAngle - spread / 2 + spread * ((slot + 0.5) / Math.max(1, slots));
+      radius =
+        Math.max(340, 610 - task.depth * 62) + Math.min(children.length, 24) * 9 + ring * 240;
+    }
+    const x = clampNumber(task.parentX + Math.cos(angle) * radius, 220, MAP_WIDTH - 220);
+    const y = clampNumber(task.parentY + Math.sin(angle) * radius, 220, MAP_HEIGHT - 220);
+    const positioned: PositionedContextNode = {
+      id: child.id,
+      title: child.title,
+      kind: child.kind,
+      x,
+      y,
+      r: nodeRadius(child, task.depth),
+      depth: task.depth,
+      path: child.path,
+    };
+    nodes.push(positioned);
+    byId.set(positioned.id, positioned);
+    const edge = {
+      id: `${task.parent.id}-${child.id}`,
+      from: task.parent.id,
+      to: child.id,
+      label: child.tags?.[0] ?? child.kind,
+      depth: task.depth - 1,
+    };
+    edges.push(edge);
+    edgeById.set(edge.id, edge);
+    if (task.index + 1 < children.length) {
+      queue.push({ ...task, index: task.index + 1 });
+    }
+    if (child.children?.length && task.depth < 4) {
+      queue.push({
+        parent: child,
+        parentX: x,
+        parentY: y,
+        parentAngle: angle,
+        depth: task.depth + 1,
+        index: 0,
+      });
+    }
+    workSinceYield += 1;
+    if (workSinceYield >= 300) {
+      workSinceYield = 0;
+      await new Promise<void>((resolve) => globalThis.setTimeout(resolve, 0));
+    }
+  }
+  if (signal.aborted) throw new Error('context_map_layout_aborted');
+  return { nodes, edges, byId, edgeById };
+}
+
 function buildContextMap(rootNode: ContextTreeNode): ContextMapLayout {
   const nodes: PositionedContextNode[] = [];
   const edges: ContextMapEdge[] = [];
   const pushNode = (node: ContextTreeNode, x: number, y: number, depth: number) => {
-    nodes.push({ id: node.id, title: node.title, kind: node.kind, x, y, r: nodeRadius(node, depth), depth, path: node.path });
+    nodes.push({
+      id: node.id,
+      title: node.title,
+      kind: node.kind,
+      x,
+      y,
+      r: nodeRadius(node, depth),
+      depth,
+      path: node.path,
+    });
   };
 
   pushNode(rootNode, MAP_CENTER.x, MAP_CENTER.y, 0);
@@ -1115,12 +2111,18 @@ function buildContextMap(rootNode: ContextTreeNode): ContextMapLayout {
     const x = MAP_CENTER.x + Math.cos(angle) * firstRadius;
     const y = MAP_CENTER.y + Math.sin(angle) * firstRadius;
     pushNode(node, x, y, 1);
-    edges.push({ id: `${rootNode.id}-${node.id}`, from: rootNode.id, to: node.id, label: node.tags?.[0] ?? node.kind, depth: 0 });
+    edges.push({
+      id: `${rootNode.id}-${node.id}`,
+      from: rootNode.id,
+      to: node.id,
+      label: node.tags?.[0] ?? node.kind,
+      depth: 0,
+    });
     placeChildren(node, x, y, angle, 2, pushNode, edges);
   });
 
   const byId = new Map(nodes.map((node) => [node.id, node]));
-  return { nodes, edges, byId };
+  return { nodes, edges, byId, edgeById: new Map(edges.map((edge) => [edge.id, edge])) };
 }
 
 function placeChildren(
@@ -1145,7 +2147,13 @@ function placeChildren(
     const x = clampNumber(parentX + Math.cos(angle) * radius, 220, MAP_WIDTH - 220);
     const y = clampNumber(parentY + Math.sin(angle) * radius, 220, MAP_HEIGHT - 220);
     pushNode(child, x, y, depth);
-    edges.push({ id: `${parent.id}-${child.id}`, from: parent.id, to: child.id, label: child.tags?.[0] ?? child.kind, depth: depth - 1 });
+    edges.push({
+      id: `${parent.id}-${child.id}`,
+      from: parent.id,
+      to: child.id,
+      label: child.tags?.[0] ?? child.kind,
+      depth: depth - 1,
+    });
     placeChildren(child, x, y, angle, depth + 1, pushNode, edges);
   });
 }
@@ -1167,7 +2175,10 @@ function edgePath(from: PositionedContextNode, to: PositionedContextNode): strin
   return `M ${from.x} ${from.y} Q ${cx} ${cy} ${to.x} ${to.y}`;
 }
 
-function edgeLabelPoint(from: PositionedContextNode, to: PositionedContextNode): { x: number; y: number } {
+function edgeLabelPoint(
+  from: PositionedContextNode,
+  to: PositionedContextNode,
+): { x: number; y: number } {
   return { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
 }
 
@@ -1192,8 +2203,12 @@ function getProviderChoices(apiKeys: ProviderKeys): ContextGenerationProvider[] 
   return ['local', ...configured];
 }
 
-function pickDefaultProvider(choices: ContextGenerationProvider[], defaultProvider: ProviderId): ContextGenerationProvider {
-  if (choices.includes(defaultProvider as ContextGenerationProvider)) return defaultProvider as ContextGenerationProvider;
+function pickDefaultProvider(
+  choices: ContextGenerationProvider[],
+  defaultProvider: ProviderId,
+): ContextGenerationProvider {
+  if (choices.includes(defaultProvider as ContextGenerationProvider))
+    return defaultProvider as ContextGenerationProvider;
   const firstCloud = choices.find((choice) => choice !== 'local');
   return firstCloud ?? 'local';
 }
@@ -1250,7 +2265,9 @@ function splitLabel(label: string, maxChars: number): string[] {
     if (lines.length === 2) break;
   }
   if (current && lines.length < 2) lines.push(current);
-  const out = lines.slice(0, 2).map((line) => line.length > maxChars ? `${line.slice(0, maxChars - 1)}...` : line);
+  const out = lines
+    .slice(0, 2)
+    .map((line) => (line.length > maxChars ? `${line.slice(0, maxChars - 1)}...` : line));
   return out.length ? out : [`${clean.slice(0, maxChars - 1)}...`];
 }
 
