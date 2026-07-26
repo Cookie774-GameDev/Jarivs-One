@@ -318,6 +318,23 @@ export {
   type DailyContextUserOperation,
 } from './dailyNotes';
 export {
+  authorizeContextProcessorCapability,
+  parsePassiveContextPackage,
+  reviewContextProcessorInstall,
+  setContextProcessorEnabled,
+  type ContextProcessorAuditEvent,
+  type ContextProcessorEngine,
+  type ContextProcessorIsolation,
+  type ContextProcessorManifest,
+  type ContextProcessorState,
+  type ContextProcessorTrustEvidence,
+  type ContextProcessorTrustVerificationInput,
+  type ContextProcessorTrustVerifier,
+  type ContextSkillCapability,
+  type ContextSkillCapabilityName,
+  type PassiveContextPackage,
+} from './contextProcessorSafety';
+export {
   createCanvasObjectContextReference,
   createCanvasRetrievalAttachments,
   createContextClusterCanvasTransfer,
