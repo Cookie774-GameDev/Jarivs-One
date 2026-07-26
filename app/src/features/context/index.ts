@@ -1,5 +1,22 @@
 export { ContextPage } from './ContextPage';
 export {
+  CONTEXT_RECOVERY_ACTIONS,
+  appendContextRevision,
+  buildContextRevision,
+  createContextHistoryLedger,
+  planContextRecovery,
+  type ContextHistoryLedger,
+  type ContextHistoryStoragePolicy,
+  type ContextRecoveryAction,
+  type ContextRecoveryAuthority,
+  type ContextRecoveryAvailability,
+  type ContextRecoveryEvidence,
+  type ContextRecoveryPlan,
+  type ContextRevision,
+  type ContextRevisionInput,
+  type ContextRevisionTargetKind,
+} from './contextHistory';
+export {
   CONTEXT_ATTACHMENT_KINDS,
   buildContextAttachmentReference,
   planContextAttachmentExtraction,
