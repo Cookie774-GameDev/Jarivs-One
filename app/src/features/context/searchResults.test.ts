@@ -302,5 +302,126 @@ describe('Context search result contracts', () => {
         limit: 1,
       }),
     ).toThrowError(ContextSearchResultError);
+
+    const symbolField = candidate();
+    Object.defineProperty(symbolField, Symbol('hidden-action'), {
+      enumerable: true,
+      value: 'must not be ignored',
+    });
+    expect(() =>
+      buildContextSearchResults({
+        accountId: 'account-1',
+        mapId: 'map-1',
+        candidates: [symbolField],
+        limit: 1,
+      }),
+    ).toThrowError(expect.objectContaining({ code: 'invalid_result' }));
+  });
+
+  it('rejects sparse, accessor-backed, and extended candidate arrays without invoking accessors', () => {
+    const sparse = [candidate(), , candidate({ id: 'result-3', entityId: 'entity-3' })];
+    expect(() =>
+      buildContextSearchResults({
+        accountId: 'account-1',
+        mapId: 'map-1',
+        candidates: sparse as ContextSearchResultCandidateV1[],
+        limit: 3,
+      }),
+    ).toThrowError(ContextSearchResultError);
+
+    let accessorCalls = 0;
+    const accessorBacked = [candidate()];
+    Object.defineProperty(accessorBacked, '0', {
+      enumerable: true,
+      configurable: true,
+      get() {
+        accessorCalls += 1;
+        return candidate();
+      },
+    });
+    expect(() =>
+      buildContextSearchResults({
+        accountId: 'account-1',
+        mapId: 'map-1',
+        candidates: accessorBacked,
+        limit: 1,
+      }),
+    ).toThrowError(ContextSearchResultError);
+    expect(accessorCalls).toBe(0);
+
+    const extended = [candidate()] as ContextSearchResultCandidateV1[] & {
+      hidden?: string;
+    };
+    extended.hidden = 'must not be ignored';
+    expect(() =>
+      buildContextSearchResults({
+        accountId: 'account-1',
+        mapId: 'map-1',
+        candidates: extended,
+        limit: 1,
+      }),
+    ).toThrowError(ContextSearchResultError);
+  });
+
+  it('rejects transparent proxies at root, candidate, and nested record boundaries', () => {
+    expect(() =>
+      buildContextSearchResults(
+        new Proxy(
+          {
+            accountId: 'account-1',
+            mapId: 'map-1',
+            candidates: [candidate()],
+            limit: 1,
+          },
+          {},
+        ),
+      ),
+    ).toThrowError(ContextSearchResultError);
+    expect(() =>
+      buildContextSearchResults({
+        accountId: 'account-1',
+        mapId: 'map-1',
+        candidates: [new Proxy(candidate(), {})],
+        limit: 1,
+      }),
+    ).toThrowError(ContextSearchResultError);
+    expect(() =>
+      buildContextSearchResults({
+        accountId: 'account-1',
+        mapId: 'map-1',
+        candidates: [
+          candidate({
+            matchReason: new Proxy(
+              {
+                kind: 'content' as const,
+                detail: 'Matched exact phrase',
+              },
+              {},
+            ),
+          }),
+        ],
+        limit: 1,
+      }),
+    ).toThrowError(ContextSearchResultError);
+  });
+
+  it('rejects C1, bidi, and single-line whitespace control text', () => {
+    const build = (entry: ContextSearchResultCandidateV1) =>
+      buildContextSearchResults({
+        accountId: 'account-1',
+        mapId: 'map-1',
+        candidates: [entry],
+        limit: 1,
+      });
+
+    expect(() => build(candidate({ title: 'Unsafe\u009btitle' }))).toThrowError(
+      ContextSearchResultError,
+    );
+    expect(() => build(candidate({ excerpt: 'Spoof\u202erelease' }))).toThrowError(
+      ContextSearchResultError,
+    );
+    expect(() => build(candidate({ path: 'notes/\tspoof.md' }))).toThrowError(
+      ContextSearchResultError,
+    );
   });
 });

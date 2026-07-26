@@ -16,7 +16,8 @@ const MAX_PROPERTY_PREVIEW_CHARS = 2_000;
 const MAX_TIMESTAMP = 8_640_000_000_000_000;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,199}$/;
 const SAFE_PROPERTY = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/;
-const CONTROLS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
+const UNSAFE_TEXT_CONTROLS =
+  /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u206f\ufeff]/u;
 
 const MATCH_REASONS = [
   'title',
@@ -140,6 +141,7 @@ function dataRecord(value: unknown): Record<string, unknown> | null {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
     const prototype = Object.getPrototypeOf(value);
     if (prototype !== Object.prototype && prototype !== null) return null;
+    if (Reflect.ownKeys(value).some((key) => typeof key !== 'string')) return null;
     const descriptors = Object.getOwnPropertyDescriptors(value);
     const record: Record<string, unknown> = Object.create(null);
     for (const [key, descriptor] of Object.entries(descriptors)) {
@@ -149,6 +151,43 @@ function dataRecord(value: unknown): Record<string, unknown> | null {
     return record;
   } catch {
     return null;
+  }
+}
+
+function dataArray(value: unknown): readonly unknown[] | null {
+  try {
+    if (!Array.isArray(value)) return null;
+    const ownKeys = Reflect.ownKeys(value);
+    if (ownKeys.some((key) => typeof key !== 'string')) return null;
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const lengthDescriptor = Object.getOwnPropertyDescriptor(value, 'length');
+    if (
+      !lengthDescriptor ||
+      !Object.hasOwn(lengthDescriptor, 'value') ||
+      !Number.isSafeInteger(lengthDescriptor.value) ||
+      (lengthDescriptor.value as number) < 0 ||
+      ownKeys.length !== (lengthDescriptor.value as number) + 1
+    ) {
+      return null;
+    }
+    const output: unknown[] = [];
+    for (let index = 0; index < (lengthDescriptor.value as number); index += 1) {
+      const descriptor = descriptors[String(index)];
+      if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value')) return null;
+      output.push(descriptor.value);
+    }
+    return Object.freeze(output);
+  } catch {
+    return null;
+  }
+}
+
+function assertStructuredData(value: unknown, code: ContextSearchResultErrorCode): void {
+  try {
+    if (typeof structuredClone !== 'function') throw new Error('structured_clone_unavailable');
+    structuredClone(value);
+  } catch {
+    throw new ContextSearchResultError(code, 'proxy_or_uncloneable_input');
   }
 }
 
@@ -173,8 +212,8 @@ function safeText(value: unknown, maximum: number, allowNewlines = false): value
     typeof value === 'string' &&
     value.length > 0 &&
     value.length <= maximum &&
-    !CONTROLS.test(value) &&
-    (allowNewlines || !/[\r\n]/.test(value))
+    !UNSAFE_TEXT_CONTROLS.test(value) &&
+    (allowNewlines || !/[\t\r\n]/.test(value))
   );
 }
 
@@ -545,15 +584,18 @@ export function buildContextSearchResults(input: {
     !onlyKeys(root, ['accountId', 'mapId', 'candidates', 'limit']) ||
     !id(root.accountId) ||
     !id(root.mapId) ||
-    !Array.isArray(root.candidates) ||
     !positiveInteger(root.limit, MAX_RESULTS)
   ) {
     throw new ContextSearchResultError('invalid_input');
   }
-  if (root.candidates.length > MAX_RESULTS) {
+  const candidates = dataArray(root.candidates);
+  if (!candidates) {
+    throw new ContextSearchResultError('invalid_input', 'candidate_array');
+  }
+  if (candidates.length > MAX_RESULTS) {
     throw new ContextSearchResultError('too_many_results');
   }
-  const results = root.candidates.map(parseCandidate);
+  const results = candidates.map(parseCandidate);
   if (
     results.some((result) => result.accountId !== root.accountId || result.mapId !== root.mapId)
   ) {
@@ -562,6 +604,7 @@ export function buildContextSearchResults(input: {
   if (new Set(results.map(({ id: resultId }) => resultId)).size !== results.length) {
     throw new ContextSearchResultError('duplicate_id');
   }
+  assertStructuredData(input, 'invalid_input');
   return Object.freeze(results.slice(0, root.limit as number));
 }
 
@@ -598,6 +641,7 @@ export function selectContextSearchResult(input: {
   if (result.accountId !== root.accountId || result.mapId !== root.mapId) {
     throw new ContextSearchResultError('scope_mismatch');
   }
+  assertStructuredData(input, 'invalid_input');
   const focus = Object.freeze({ path: result.path, ...result.location });
   return Object.freeze({
     version: 1,
