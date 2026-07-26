@@ -10,6 +10,7 @@ import type { ProviderConnection } from '@/lib/ai/adapters/types';
 import type { UsageSnapshot } from '@/lib/usage/usageTypes';
 import type { JarvisArtifactState, JarvisArtifactV1 } from '@/lib/jarvis/contracts/execution';
 import type { JarvisSourceKind, JarvisSourceRef } from '@/lib/jarvis/contracts/source';
+import type { ContextResponseInspector } from '@/features/context/contextResponseIntegration';
 
 export type Role = 'user' | 'assistant' | 'agent' | 'system' | 'tool';
 
@@ -105,6 +106,7 @@ export type Part =
   | { kind: 'file_ref'; ref: ContextRef }
   | { kind: 'jarvis_source_ref'; source: JarvisSourceMessageRef }
   | { kind: 'jarvis_artifact_ref'; artifact: JarvisArtifactMessageRef }
+  | { kind: 'context_inspector'; inspector: ContextResponseInspector }
   | { kind: 'usage_card'; snapshots: UsageSnapshot[]; scope: 'connection' | 'all' };
 
 /**

@@ -24,6 +24,7 @@ import {
 } from './chatActiveCommands';
 import { cn } from '@/lib/utils';
 import { UsageCard } from './UsageCard';
+import { ContextInspectorCard } from './ContextInspectorCard';
 
 function textForDisplay(text: string): string {
   if (!text.includes('```')) return text;
@@ -264,6 +265,10 @@ export function MessagePart({
 
     case 'usage_card': {
       return <UsageCard snapshots={part.snapshots} scope={part.scope} />;
+    }
+
+    case 'context_inspector': {
+      return <ContextInspectorCard inspector={part.inspector} />;
     }
 
     case 'stack_step': {

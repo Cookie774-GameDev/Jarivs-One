@@ -193,6 +193,46 @@ export function ContextPage() {
       window.removeEventListener('jarvis:context:select-file', onSelectFile as EventListener);
   }, [projectId, selectFilePath]);
 
+  React.useEffect(() => {
+    const onOpenCitation = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{
+          projectId: string | null;
+          mapId: string;
+          entityId: string;
+          path?: string;
+        }>
+      ).detail;
+      if (!detail || detail.projectId !== (projectId ?? null)) return;
+      const targetMap = maps.find((map) => map.id === detail.mapId && map.status === 'active');
+      if (!targetMap) {
+        toast.info('Context source is unavailable', 'Refresh the Context map and try again.');
+        return;
+      }
+      selectStoredContextMap(projectId, targetMap.id);
+      setSelectedMapId(targetMap.id);
+      const targetNode = findContextNode(targetMap.tree, detail.entityId);
+      if (targetNode) {
+        setSelectedId(targetNode.id);
+        setStatus(`Opened ${targetNode.title} from chat Context.`);
+        return;
+      }
+      const targetFile = detail.path
+        ? findContextFileNodeByPath(targetMap.tree, detail.path)
+        : null;
+      if (targetFile) {
+        setSelectedId(targetFile.id);
+        setStatus(`Opened ${targetFile.title} from chat Context.`);
+        return;
+      }
+      setSelectedId(PROJECT_ROOT_NODE_ID);
+      setStatus(`Opened ${targetMap.name} from chat Context.`);
+    };
+    window.addEventListener('jarvis:context:open-citation', onOpenCitation as EventListener);
+    return () =>
+      window.removeEventListener('jarvis:context:open-citation', onOpenCitation as EventListener);
+  }, [maps, projectId]);
+
   const rootNode = React.useMemo(() => (tree ? makeProjectRootNode(tree) : null), [tree]);
   const flatNodes = React.useMemo(() => flattenContextNodes(tree?.nodes ?? []), [tree]);
   const selected = React.useMemo(() => {

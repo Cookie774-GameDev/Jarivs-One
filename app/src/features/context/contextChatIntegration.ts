@@ -32,6 +32,9 @@ export interface ContextChatAttachment extends ContextAttachment {
   freshness: ContextChatFreshness;
   itemCount: number;
   lastIndexedAt?: number;
+  exactExcerpt?: string;
+  excerptLineStart?: number;
+  excerptLineEnd?: number;
 }
 
 export interface ContextChatAttachmentInput {
@@ -52,6 +55,9 @@ export interface ContextChatAttachmentInput {
   freshness: ContextChatFreshness;
   itemCount: number;
   lastIndexedAt?: number;
+  exactExcerpt?: string;
+  excerptLineStart?: number;
+  excerptLineEnd?: number;
   path?: string;
   tags?: string[];
   sizeBytes?: number;
@@ -85,10 +91,10 @@ function fail(detail: string): never {
   throw new Error(`Invalid chat Context attachment: ${detail}.`);
 }
 
-function text(value: unknown, detail: string, allowEmpty = false): string {
+function text(value: unknown, detail: string, allowEmpty = false, maximum = MAX_TEXT): string {
   if (
     typeof value !== 'string' ||
-    value.length > MAX_TEXT ||
+    value.length > maximum ||
     (!allowEmpty && value.trim().length === 0) ||
     /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/u.test(value)
   ) {
@@ -193,6 +199,9 @@ function parseInput(raw: ContextChatAttachmentInput): ContextChatAttachmentInput
       'freshness',
       'itemCount',
       'lastIndexedAt',
+      'exactExcerpt',
+      'excerptLineStart',
+      'excerptLineEnd',
       'path',
       'tags',
       'sizeBytes',
@@ -241,6 +250,25 @@ function parseInput(raw: ContextChatAttachmentInput): ContextChatAttachmentInput
       fail(name);
     }
   }
+  if (
+    input.excerptLineStart !== undefined &&
+    (!Number.isSafeInteger(input.excerptLineStart) || input.excerptLineStart < 1)
+  ) {
+    fail('excerpt line start');
+  }
+  if (
+    input.excerptLineEnd !== undefined &&
+    (!Number.isSafeInteger(input.excerptLineEnd) ||
+      input.excerptLineEnd < (input.excerptLineStart ?? 1))
+  ) {
+    fail('excerpt line end');
+  }
+  if (
+    (input.excerptLineStart !== undefined || input.excerptLineEnd !== undefined) &&
+    (input.exactExcerpt === undefined || !input.path)
+  ) {
+    fail('excerpt provenance');
+  }
   return {
     ...input,
     projectId: input.projectId === null ? null : id(input.projectId, 'project ID'),
@@ -258,6 +286,11 @@ function parseInput(raw: ContextChatAttachmentInput): ContextChatAttachmentInput
     ...(input.modifiedAt === undefined
       ? {}
       : { modifiedAt: timestamp(input.modifiedAt, 'modified time') }),
+    ...(input.exactExcerpt === undefined
+      ? {}
+      : { exactExcerpt: text(input.exactExcerpt, 'exact excerpt', false, 32_768) }),
+    ...(input.excerptLineStart === undefined ? {} : { excerptLineStart: input.excerptLineStart }),
+    ...(input.excerptLineEnd === undefined ? {} : { excerptLineEnd: input.excerptLineEnd }),
     source: {
       type: input.source.type,
       label: text(input.source.label, 'source label'),

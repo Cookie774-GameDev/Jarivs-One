@@ -101,7 +101,6 @@ import {
   getProjectContextBlock,
   getProjectContextTreeBlock,
   getConnectedFilesBlock,
-  getExplicitContextBlock,
   getExplicitFilesBlock,
   getExplicitTerminalBlock,
   getJarvisCoordinationContextBlock,
@@ -113,6 +112,13 @@ import {
 import { classifyJarvisIntent, formatJarvisIntentPolicy } from './intent';
 import type { TerminalRef } from '@/features/terminals/terminalRefs';
 import type { ContextAttachment } from '@/features/context/tree';
+import {
+  buildContextResponseInspector,
+  formatContextRetrievalForPrompt,
+  installPromptForgeContextRetrievalBridge,
+  retrieveContextForConsumer,
+  type SharedContextRetrievalResult,
+} from '@/features/context/contextResponseIntegration';
 import {
   formatLocalKnowledgeChunkForPrompt,
   localKnowledgeChunkSourceMetadata,
@@ -2224,6 +2230,7 @@ export function startRuntimeListener(
   const sendEventName = options.eventName ?? 'jarvis:send';
   const cancelEventName = options.cancelEventName ?? 'jarvis:cancel';
   const flushIntervalMs = options.flushIntervalMs ?? 120;
+  const stopPromptForgeContextBridge = installPromptForgeContextRetrievalBridge(window);
 
   const inFlight = new Map<MessageId, AbortController>();
   const activeControllers = new Set<AbortController>();
@@ -2615,6 +2622,7 @@ export function startRuntimeListener(
     let connectedFilesContext = '';
     let mentionedAgentContext = '';
     let explicitContext = '';
+    let retrievedResponseContext: SharedContextRetrievalResult | null = null;
     let explicitFilesContext = '';
     let explicitTerminalContext = '';
     let jarvisCoordinationContext = '';
@@ -2649,12 +2657,24 @@ export function startRuntimeListener(
       });
     }
     try {
-      explicitContext = getExplicitContextBlock(detail.contextNodes ?? []);
+      const attachedContext = detail.contextNodes ?? [];
+      if (attachedContext.length > 0) {
+        retrievedResponseContext = await retrieveContextForConsumer({
+          consumer: 'chat',
+          projectId: projectId ? String(projectId) : null,
+          chatId,
+          userText: text,
+          attachments: attachedContext,
+        });
+        explicitContext = formatContextRetrievalForPrompt(retrievedResponseContext);
+      }
     } catch (err) {
+      retrievedResponseContext = null;
+      explicitContext = '';
       devConsole.log({
         channel: 'ai',
         level: 'warn',
-        message: 'attached Context fetch failed',
+        message: 'shared attached Context retrieval rejected safely',
         detail: { error: err instanceof Error ? err.message : String(err) },
       });
     }
@@ -3353,6 +3373,33 @@ export function startRuntimeListener(
             `${agent.name} done`,
             deriveChatTitle(canonicalDisplayText) || 'The AI response is complete.',
           );
+          const canonicalInspector = retrievedResponseContext
+            ? buildContextResponseInspector(
+                projectId ? String(projectId) : null,
+                retrievedResponseContext,
+              )
+            : null;
+          if (canonicalInspector) {
+            try {
+              await bindings.appendMessage({
+                chat_id: chatId as ChatId,
+                role: 'system',
+                parts: [{ kind: 'context_inspector', inspector: canonicalInspector }],
+              });
+            } catch (inspectorError) {
+              devConsole.log({
+                channel: 'ai',
+                level: 'warn',
+                message: 'Context response inspector persistence failed safely',
+                detail: {
+                  error:
+                    inspectorError instanceof Error
+                      ? inspectorError.message
+                      : String(inspectorError),
+                },
+              });
+            }
+          }
           if (streamingVoice && canonicalSpokenText && canVoiceModuleSpeak()) {
             await streamingVoice.onComplete(canonicalSpokenText);
             registerActiveStreamingVoiceSession(null);
@@ -3486,7 +3533,18 @@ export function startRuntimeListener(
       const finalText = sanitizePromptLeaks(
         sanitizeUnsupportedActionMacros(sanitizeCredentialRequests(response.text || acc)),
       );
-      const finalParts = textToParts(finalText, text, interactionMode);
+      const responseInspector = retrievedResponseContext
+        ? buildContextResponseInspector(
+            projectId ? String(projectId) : null,
+            retrievedResponseContext,
+          )
+        : null;
+      const finalParts: Part[] = [
+        ...textToParts(finalText, text, interactionMode),
+        ...(responseInspector
+          ? ([{ kind: 'context_inspector', inspector: responseInspector }] as const)
+          : []),
+      ];
       await bindings.updateMessage(placeholder.id, {
         parts: finalParts,
         usage: {
@@ -3719,6 +3777,7 @@ export function startRuntimeListener(
   return () => {
     window.removeEventListener(sendEventName, handleSend as EventListener);
     window.removeEventListener(cancelEventName, handleCancel as EventListener);
+    stopPromptForgeContextBridge();
     abortAllTrackedRuns();
   };
 }

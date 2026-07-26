@@ -72,6 +72,10 @@ describe('Context chat integration', () => {
           title: attachmentLevel,
           kind: attachmentLevel === 'note' ? 'note' : 'symbol',
           summary: 'Scoped Context',
+          exactExcerpt: 'const verified = true;',
+          path: 'src/verified.ts',
+          excerptLineStart: 1,
+          excerptLineEnd: 1,
           attachmentLevel,
           source: {
             type: attachmentLevel === 'github_pull_request' ? 'github_repository' : 'local_folder',
@@ -168,6 +172,13 @@ describe('Context chat integration', () => {
         itemCount: 0,
       }),
     ).toThrow(/item count/i);
+    expect(() =>
+      buildContextChatAttachment({
+        ...buildMapSummaryChatAttachment(map, now),
+        exactExcerpt: 'unbound',
+        excerptLineStart: 1,
+      }),
+    ).toThrow(/excerpt provenance/i);
     expect(() =>
       buildContextChatAttachment({
         ...buildMapSummaryChatAttachment(map, now),

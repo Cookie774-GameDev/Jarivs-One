@@ -318,6 +318,22 @@ export {
   type DailyContextUserOperation,
 } from './dailyNotes';
 export {
+  CONTEXT_RETRIEVAL_CONSUMERS,
+  PROMPT_FORGE_CONTEXT_REQUEST_EVENT,
+  PROMPT_FORGE_CONTEXT_RESULT_EVENT,
+  buildContextResponseInspector,
+  formatContextRetrievalForPrompt,
+  installPromptForgeContextRetrievalBridge,
+  retrieveContextForConsumer,
+  retrievePromptForgeContext,
+  type ContextConsumerRetrievalInput,
+  type ContextInspectorOpenAction,
+  type ContextResponseInspector,
+  type ContextResponseInspectorItem,
+  type ContextRetrievalConsumer,
+  type SharedContextRetrievalResult,
+} from './contextResponseIntegration';
+export {
   CONTEXT_CHAT_ATTACHMENT_LEVELS,
   buildContextChatAttachment,
   buildMapSummaryChatAttachment,
