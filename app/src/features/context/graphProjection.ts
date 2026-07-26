@@ -16,7 +16,8 @@ const MAX_TEXT = 4_096;
 const MAX_TIMESTAMP = 8_640_000_000_000_000;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,199}$/;
 const SAFE_PROPERTY = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/;
-const CONTROLS = /[\u0000-\u001f\u007f]/;
+const UNSAFE_TEXT_CONTROLS =
+  /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u206f\ufeff]/u;
 
 const FRESHNESS = [
   'current',
@@ -164,6 +165,7 @@ function dataRecord(value: unknown): Record<string, unknown> | null {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
     const prototype = Object.getPrototypeOf(value);
     if (prototype !== Object.prototype && prototype !== null) return null;
+    if (Reflect.ownKeys(value).some((key) => typeof key !== 'string')) return null;
     const descriptors = Object.getOwnPropertyDescriptors(value);
     const record: Record<string, unknown> = Object.create(null);
     for (const [key, descriptor] of Object.entries(descriptors)) {
@@ -237,7 +239,7 @@ function safeText(value: unknown, maximum = MAX_TEXT): value is string {
     typeof value === 'string' &&
     value.length > 0 &&
     value.length <= maximum &&
-    !CONTROLS.test(value)
+    !UNSAFE_TEXT_CONTROLS.test(value)
   );
 }
 
@@ -883,7 +885,7 @@ function projectUnsafe(input: unknown) {
       filters.relationships.length === 0 || filters.relationships.includes(edge.relationship),
   );
   const incident = incidentRelationshipMap(nodes, relationshipFilteredEdges);
-  let projectedNodes = nodes.filter((node) => nodeMatches(node, { ...filters, relationships: [] }));
+  let projectedNodes = nodes.filter((node) => nodeMatches(node, filters, incident.get(node.id)));
   const selectedId = scope.kind === 'local' ? (scope.selectedId as string) : null;
   if (selectedId && !projectedNodes.some((node) => node.id === selectedId)) {
     projectedNodes.push(nodes.find((node) => node.id === selectedId)!);
@@ -926,6 +928,20 @@ function projectUnsafe(input: unknown) {
     (edge) =>
       projectedNodeIds.has(edge.sourceEntityId) && projectedNodeIds.has(edge.targetEntityId),
   );
+  if (scope.kind === 'local') {
+    const visibleLocalIds = localNodeIds(
+      scope.selectedId as string,
+      controls.connectionDepth,
+      projectedNodeIds,
+      projectedEdges,
+    );
+    projectedNodes = projectedNodes.filter((node) => visibleLocalIds.has(node.id));
+    projectedNodeIds = visibleLocalIds;
+    projectedEdges = projectedEdges.filter(
+      (edge) =>
+        projectedNodeIds.has(edge.sourceEntityId) && projectedNodeIds.has(edge.targetEntityId),
+    );
+  }
   projectedNodes.sort((left, right) => compareIds(left.id, right.id));
   projectedEdges.sort((left, right) => compareIds(left.id, right.id));
 
@@ -996,7 +1012,12 @@ export function projectContextGraph(
   input: ContextGraphProjectionInputV1,
 ): DeepReadonly<ReturnType<typeof projectUnsafe>> {
   try {
-    return detachedFreeze(projectUnsafe(input));
+    const projection = projectUnsafe(input);
+    if (typeof structuredClone !== 'function') {
+      throw new ContextGraphProjectionError('invalid_input', 'structured_clone_unavailable');
+    }
+    structuredClone(input);
+    return detachedFreeze(projection);
   } catch (error) {
     if (error instanceof ContextGraphProjectionError) throw error;
     throw new ContextGraphProjectionError('invalid_input', 'unreadable');

@@ -205,6 +205,31 @@ describe('Context graph projection', () => {
     expect(result.selectedNodeId).toBe('a');
   });
 
+  it('prunes local nodes disconnected when an invisible group removes their bridge', () => {
+    const result = projectContextGraph(
+      input({
+        scope: { kind: 'local', selectedId: 'a' },
+        nodes: [node('a'), node('b', { tags: ['hidden-bridge'] }), node('c')],
+        groups: [
+          {
+            version: 1,
+            id: 'hidden-bridge',
+            name: 'Hidden bridge',
+            query: { tags: ['hidden-bridge'] },
+            colorToken: 'muted',
+            priority: 100,
+            visible: false,
+          },
+        ],
+        controls: { ...input().controls, connectionDepth: 2 },
+      }),
+    );
+
+    expect(result.nodes.map(({ id }) => id)).toEqual(['a']);
+    expect(result.edges).toEqual([]);
+    expect(result.selectedNodeId).toBe('a');
+  });
+
   it('applies prioritized theme-aware query groups and hides the winning invisible group', () => {
     const result = projectContextGraph(
       input({
@@ -424,9 +449,9 @@ describe('Context graph projection', () => {
       enumerable: true,
       value: 'must not be ignored',
     });
-    expect(() =>
-      projectContextGraph(input({ nodes: [symbolNode], edges: [] })),
-    ).toThrowError(ContextGraphProjectionError);
+    expect(() => projectContextGraph(input({ nodes: [symbolNode], edges: [] }))).toThrowError(
+      ContextGraphProjectionError,
+    );
 
     expect(() => projectContextGraph(new Proxy(input(), {}))).toThrowError(
       ContextGraphProjectionError,
