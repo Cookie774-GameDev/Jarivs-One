@@ -1,5 +1,19 @@
 export { ContextPage } from './ContextPage';
 export {
+  CODE_INTELLIGENCE_ENTITY_KINDS,
+  CODE_INTELLIGENCE_RELATIONSHIP_KINDS,
+  buildCodeIntelligenceGraph,
+  type CodeIntelligenceEntity,
+  type CodeIntelligenceEntityKind,
+  type CodeIntelligenceFile,
+  type CodeIntelligenceGraphInput,
+  type CodeIntelligenceParserEvidence,
+  type CodeIntelligenceParserAuthority,
+  type CodeIntelligenceRelationship,
+  type CodeIntelligenceRelationshipEvidence,
+  type CodeIntelligenceRelationshipKind,
+} from './codeIntelligenceGraph';
+export {
   CODE_INTELLIGENCE_LANGUAGES,
   CODE_INTELLIGENCE_PARSER_REGISTRY,
   buildCodeIntelligenceParserPlan,
