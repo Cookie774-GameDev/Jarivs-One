@@ -1,5 +1,23 @@
 export { ContextPage } from './ContextPage';
 export {
+  BUILTIN_CONTEXT_TEMPLATES,
+  CONTEXT_TEMPLATE_DEFAULT_SLOTS,
+  CONTEXT_TEMPLATE_VARIABLES,
+  applyContextTemplateOperation,
+  createContextTemplateLibrary,
+  exportContextTemplate,
+  renderContextTemplate,
+  type BuiltinContextTemplate,
+  type ContextTemplateDefaultSlot,
+  type ContextTemplateLibrary,
+  type ContextTemplateOperation,
+  type ContextTemplateVariable,
+  type ContextTemplateVariables,
+  type ExportedContextTemplate,
+  type RenderedContextTemplate,
+  type UserContextTemplate,
+} from './contextTemplates';
+export {
   DAILY_CONTEXT_ACTIVITY_KINDS,
   DAILY_CONTEXT_AUTO_OPEN_MODES,
   DAILY_CONTEXT_DATE_FORMATS,
