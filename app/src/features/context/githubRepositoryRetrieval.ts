@@ -973,3 +973,595 @@ export function planGitHubLfsObject(
     executable: false as const,
   });
 }
+
+export interface GitHubIndexCheckpointV1 {
+  version: 1;
+  identity: GitHubRepositoryIdentity;
+  revision: number;
+  pending: readonly GitHubTreeRetrievalRequest[];
+  completedRequestKeys: readonly string[];
+  replanRequiredRequestKeys: readonly string[];
+  retryAt: string | null;
+}
+
+export interface GitHubConditionalRequestResult {
+  status: 200 | 304 | 403 | 429;
+  etag: string | null;
+  retryAfter: string | null;
+  body: GitHubTreeResponse | GitHubDirectoryPage | null;
+}
+
+export interface GitHubConditionalRequestTransport {
+  execute(
+    identity: Readonly<GitHubRepositoryIdentity>,
+    request: Readonly<GitHubTreeRetrievalRequest>,
+    headers: Readonly<Record<string, string>>,
+    signal?: AbortSignal,
+  ): Promise<Readonly<GitHubConditionalRequestResult>>;
+}
+
+export interface GitHubIndexResultApplier {
+  inspectCommitted(
+    identity: Readonly<GitHubRepositoryIdentity>,
+    requestKeys: readonly string[],
+  ): Promise<
+    readonly Readonly<{
+      requestKey: string;
+      requiresReplan: boolean;
+    }>[]
+  >;
+
+  /**
+   * Atomically upsert by the compound (identity, requestKey). Repeated calls for a committed
+   * key must not reapply side effects and must return `already_committed`. The same transaction
+   * must persist whether this response requires continuation planning for `inspectCommitted`.
+   */
+  applyOnce(
+    requestKey: string,
+    identity: Readonly<GitHubRepositoryIdentity>,
+    request: Readonly<GitHubTreeRetrievalRequest>,
+    response: Readonly<{
+      status: 200 | 304;
+      etag: string;
+      body: Readonly<GitHubTreeResponse | GitHubDirectoryPage> | null;
+    }>,
+  ): Promise<'committed' | 'already_committed' | 'unchanged' | 'missing_cache' | 'conflict'>;
+}
+
+const MAX_EXECUTION_CONCURRENCY = 8;
+const MAX_CHECKPOINT_REQUESTS = 10_000;
+const MAX_RETRY_DELAY_MS = 24 * 60 * 60 * 1_000;
+const MAX_CHECKPOINT_SERIALIZED_CHARS = 4_000_000;
+
+function validateExecutionRequest(raw: GitHubTreeRetrievalRequest): GitHubTreeRetrievalRequest {
+  const value = record(clone(raw, 'execution request'), 'execution request');
+  if (value.api === 'git_trees') {
+    exact(
+      value,
+      ['api', 'treeSha', 'path', 'recursive', 'ifNoneMatch'],
+      ['api', 'treeSha', 'path', 'recursive', 'ifNoneMatch'],
+      'execution request',
+    );
+    if (value.recursive !== false) fail('execution recursive');
+    return Object.freeze({
+      api: 'git_trees',
+      treeSha: sha(value.treeSha, 'execution tree SHA'),
+      path: path(value.path, 'execution path', true),
+      recursive: false,
+      ifNoneMatch:
+        value.ifNoneMatch === null ? null : text(value.ifNoneMatch, 'execution ETag', 500),
+    });
+  }
+  exact(
+    value,
+    ['api', 'treeSha', 'path', 'page', 'pageSize', 'ifNoneMatch'],
+    ['api', 'treeSha', 'path', 'page', 'pageSize', 'ifNoneMatch'],
+    'execution request',
+  );
+  if (
+    value.api !== 'repository_contents' ||
+    !Number.isSafeInteger(value.page) ||
+    (value.page as number) < 1 ||
+    (value.page as number) > 10_000 ||
+    value.pageSize !== 100
+  ) {
+    fail('execution page');
+  }
+  return Object.freeze({
+    api: 'repository_contents',
+    treeSha: sha(value.treeSha, 'execution tree SHA'),
+    path: path(value.path, 'execution path', true),
+    page: value.page as number,
+    pageSize: 100,
+    ifNoneMatch: value.ifNoneMatch === null ? null : text(value.ifNoneMatch, 'execution ETag', 500),
+  });
+}
+
+function executionRequestKey(request: Readonly<GitHubTreeRetrievalRequest>): string {
+  return JSON.stringify([
+    request.api,
+    request.treeSha,
+    request.path,
+    request.api === 'repository_contents' ? request.page : 0,
+    request.ifNoneMatch,
+  ]);
+}
+
+function validateCheckpoint(raw: GitHubIndexCheckpointV1): GitHubIndexCheckpointV1 {
+  const value = record(clone(raw, 'checkpoint'), 'checkpoint');
+  exact(
+    value,
+    [
+      'version',
+      'identity',
+      'revision',
+      'pending',
+      'completedRequestKeys',
+      'replanRequiredRequestKeys',
+      'retryAt',
+    ],
+    [
+      'version',
+      'identity',
+      'revision',
+      'pending',
+      'completedRequestKeys',
+      'replanRequiredRequestKeys',
+      'retryAt',
+    ],
+    'checkpoint',
+  );
+  if (
+    value.version !== 1 ||
+    !Number.isSafeInteger(value.revision) ||
+    (value.revision as number) < 0 ||
+    !Array.isArray(value.pending) ||
+    value.pending.length > MAX_CHECKPOINT_REQUESTS ||
+    !Array.isArray(value.completedRequestKeys) ||
+    value.completedRequestKeys.length > MAX_CHECKPOINT_REQUESTS ||
+    !Array.isArray(value.replanRequiredRequestKeys) ||
+    value.replanRequiredRequestKeys.length > MAX_CHECKPOINT_REQUESTS
+  ) {
+    fail('checkpoint');
+  }
+  const pending = Object.freeze(
+    value.pending.map((request) => validateExecutionRequest(request as GitHubTreeRetrievalRequest)),
+  );
+  const completedRequestKeys = Object.freeze(
+    value.completedRequestKeys.map((key) => text(key, 'checkpoint request key', 4_096)),
+  );
+  const replanRequiredRequestKeys = Object.freeze(
+    value.replanRequiredRequestKeys.map((key) => text(key, 'checkpoint replan request key', 4_096)),
+  );
+  if (
+    new Set(pending.map(executionRequestKey)).size !== pending.length ||
+    new Set(completedRequestKeys).size !== completedRequestKeys.length ||
+    new Set(replanRequiredRequestKeys).size !== replanRequiredRequestKeys.length ||
+    pending.some((request) => completedRequestKeys.includes(executionRequestKey(request))) ||
+    replanRequiredRequestKeys.some((key) => !completedRequestKeys.includes(key))
+  ) {
+    fail('checkpoint duplicates');
+  }
+  const retryAt = value.retryAt === null ? null : timestamp(value.retryAt, 'checkpoint retry');
+  const normalized = Object.freeze({
+    version: 1,
+    identity: validateIdentity(value.identity as GitHubRepositoryIdentity),
+    revision: value.revision as number,
+    pending,
+    completedRequestKeys,
+    replanRequiredRequestKeys,
+    retryAt,
+  });
+  if (JSON.stringify(normalized).length > MAX_CHECKPOINT_SERIALIZED_CHARS) {
+    fail('checkpoint serialization');
+  }
+  return normalized;
+}
+
+export function createGitHubIndexCheckpoint(
+  identity: GitHubRepositoryIdentity,
+  pending: readonly GitHubTreeRetrievalRequest[],
+): GitHubIndexCheckpointV1 {
+  return validateCheckpoint({
+    version: 1,
+    identity,
+    revision: 0,
+    pending,
+    completedRequestKeys: [],
+    replanRequiredRequestKeys: [],
+    retryAt: null,
+  });
+}
+
+export function serializeGitHubIndexCheckpoint(checkpoint: GitHubIndexCheckpointV1): string {
+  return JSON.stringify(validateCheckpoint(checkpoint));
+}
+
+export function parseGitHubIndexCheckpoint(serialized: string): GitHubIndexCheckpointV1 {
+  if (
+    typeof serialized !== 'string' ||
+    serialized.length < 2 ||
+    serialized.length > MAX_CHECKPOINT_SERIALIZED_CHARS
+  ) {
+    fail('checkpoint serialization');
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(serialized);
+  } catch {
+    return fail('checkpoint serialization');
+  }
+  return validateCheckpoint(value as GitHubIndexCheckpointV1);
+}
+
+function retryAt(retryAfter: string, now: number): string {
+  let target: number;
+  if (/^\d{1,9}$/u.test(retryAfter)) {
+    target = now + Number(retryAfter) * 1_000;
+  } else {
+    target = Date.parse(retryAfter);
+  }
+  if (!Number.isFinite(target) || target <= now || target - now > MAX_RETRY_DELAY_MS) {
+    fail('Retry-After');
+  }
+  return new Date(target).toISOString();
+}
+
+async function awaitIndexOperation<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) throw new Error('index operation aborted');
+  return await new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const settle = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener('abort', abort);
+      callback();
+    };
+    const abort = () => settle(() => reject(new Error('index operation aborted')));
+    signal.addEventListener('abort', abort, { once: true });
+    operation.then(
+      (value) => settle(() => resolve(value)),
+      (error: unknown) => settle(() => reject(error)),
+    );
+  });
+}
+
+export async function executeGitHubIndexCheckpoint(input: {
+  checkpoint: GitHubIndexCheckpointV1;
+  expectedIdentity: GitHubRepositoryIdentity;
+  trustedRequests: readonly GitHubTreeRetrievalRequest[];
+  transport: GitHubConditionalRequestTransport;
+  applier: GitHubIndexResultApplier;
+  concurrency: number;
+  now(): number;
+  signal?: AbortSignal;
+}): Promise<
+  Readonly<{
+    checkpoint: GitHubIndexCheckpointV1;
+    error:
+      | 'aborted'
+      | 'transport_failed'
+      | 'invalid_response'
+      | 'apply_failed'
+      | 'replan_required'
+      | null;
+    results: readonly Readonly<{
+      requestKey: string;
+      status: 200 | 304;
+      etag: string;
+    }>[];
+  }>
+> {
+  const restoredCheckpoint = validateCheckpoint(input.checkpoint);
+  const expectedIdentity = validateIdentity(input.expectedIdentity);
+  const rawTrustedRequests = clone(input.trustedRequests, 'trusted execution plan');
+  const trustedRequests = Array.isArray(rawTrustedRequests)
+    ? rawTrustedRequests.map(validateExecutionRequest)
+    : fail('trusted execution plan');
+  const trustedByKey = new Map(
+    trustedRequests.map((request) => [executionRequestKey(request), request] as const),
+  );
+  if (
+    JSON.stringify(restoredCheckpoint.identity) !== JSON.stringify(expectedIdentity) ||
+    trustedRequests.length > MAX_CHECKPOINT_REQUESTS ||
+    trustedByKey.size !== trustedRequests.length ||
+    restoredCheckpoint.pending.length + restoredCheckpoint.completedRequestKeys.length !==
+      trustedRequests.length ||
+    restoredCheckpoint.pending.some((request) => {
+      const trusted = trustedByKey.get(executionRequestKey(request));
+      return !trusted || JSON.stringify(trusted) !== JSON.stringify(request);
+    }) ||
+    restoredCheckpoint.completedRequestKeys.some((key) => !trustedByKey.has(key)) ||
+    !input.transport ||
+    typeof input.transport.execute !== 'function' ||
+    !input.applier ||
+    typeof input.applier.inspectCommitted !== 'function' ||
+    typeof input.applier.applyOnce !== 'function' ||
+    !Number.isSafeInteger(input.concurrency) ||
+    input.concurrency < 1 ||
+    input.concurrency > MAX_EXECUTION_CONCURRENCY ||
+    typeof input.now !== 'function'
+  ) {
+    fail('execution input');
+  }
+  const startedAt = input.now();
+  if (!Number.isSafeInteger(startedAt) || startedAt < 0) fail('execution time');
+  if (
+    restoredCheckpoint.retryAt !== null &&
+    Date.parse(restoredCheckpoint.retryAt) - startedAt > MAX_RETRY_DELAY_MS
+  ) {
+    fail('checkpoint retry');
+  }
+  const baselineCheckpoint = validateCheckpoint({
+    version: 1,
+    identity: restoredCheckpoint.identity,
+    revision: restoredCheckpoint.revision,
+    pending: trustedRequests,
+    completedRequestKeys: [],
+    replanRequiredRequestKeys: [],
+    retryAt: restoredCheckpoint.retryAt,
+  });
+  if (input.signal?.aborted) {
+    return Object.freeze({
+      checkpoint: baselineCheckpoint,
+      error: 'aborted',
+      results: Object.freeze([]),
+    });
+  }
+  const controller = new AbortController();
+  const abort = () => controller.abort(input.signal?.reason);
+  input.signal?.addEventListener('abort', abort, { once: true });
+  let committedStates: readonly Readonly<{ requestKey: string; requiresReplan: boolean }>[];
+  try {
+    const rawStates = clone(
+      await awaitIndexOperation(
+        input.applier.inspectCommitted(
+          restoredCheckpoint.identity,
+          Object.freeze([...trustedByKey.keys()]),
+        ),
+        controller.signal,
+      ),
+      'committed request states',
+    );
+    if (!Array.isArray(rawStates) || rawStates.length > trustedRequests.length) {
+      fail('committed request states');
+    }
+    const seen = new Set<string>();
+    committedStates = Object.freeze(
+      rawStates.map((rawState) => {
+        const state = record(rawState, 'committed request state');
+        exact(
+          state,
+          ['requestKey', 'requiresReplan'],
+          ['requestKey', 'requiresReplan'],
+          'committed request state',
+        );
+        const requestKey = text(state.requestKey, 'committed request key', 4_096);
+        if (
+          typeof state.requiresReplan !== 'boolean' ||
+          !trustedByKey.has(requestKey) ||
+          seen.has(requestKey)
+        ) {
+          fail('committed request state');
+        }
+        seen.add(requestKey);
+        return Object.freeze({ requestKey, requiresReplan: state.requiresReplan });
+      }),
+    );
+  } catch {
+    input.signal?.removeEventListener('abort', abort);
+    return Object.freeze({
+      checkpoint: baselineCheckpoint,
+      error: input.signal?.aborted ? 'aborted' : 'apply_failed',
+      results: Object.freeze([]),
+    });
+  }
+  const completed = new Set(committedStates.map((state) => state.requestKey));
+  const requiresReplan = new Set(
+    committedStates.filter((state) => state.requiresReplan).map((state) => state.requestKey),
+  );
+  const checkpoint = validateCheckpoint({
+    version: 1,
+    identity: restoredCheckpoint.identity,
+    revision: restoredCheckpoint.revision,
+    pending: trustedRequests.filter((request) => !completed.has(executionRequestKey(request))),
+    completedRequestKeys: [...completed].sort(),
+    replanRequiredRequestKeys: [...requiresReplan].sort(),
+    retryAt: restoredCheckpoint.retryAt,
+  });
+  if (checkpoint.retryAt !== null && Date.parse(checkpoint.retryAt) > startedAt) {
+    input.signal?.removeEventListener('abort', abort);
+    return Object.freeze({
+      checkpoint,
+      error: checkpoint.replanRequiredRequestKeys.length > 0 ? 'replan_required' : null,
+      results: Object.freeze([]),
+    });
+  }
+  let cursor = 0;
+  let scheduledRetryAt: string | null = null;
+  let stopped = false;
+  let terminalError: 'aborted' | 'transport_failed' | 'invalid_response' | 'apply_failed' | null =
+    null;
+  const results: Array<
+    Readonly<{
+      requestKey: string;
+      status: 200 | 304;
+      etag: string;
+    }>
+  > = [];
+  let rateAbortQueued = false;
+  const stopWith = (error: NonNullable<typeof terminalError>) => {
+    if (terminalError === null) terminalError = error;
+    stopped = true;
+    controller.abort(error);
+  };
+  const worker = async () => {
+    while (!stopped) {
+      if (input.signal?.aborted) {
+        stopWith('aborted');
+        return;
+      }
+      const index = cursor++;
+      const request = checkpoint.pending[index];
+      if (!request) return;
+      const headers: Record<string, string> = { Accept: 'application/vnd.github+json' };
+      if (request.ifNoneMatch !== null) headers['If-None-Match'] = request.ifNoneMatch;
+      let rawResponse: Readonly<GitHubConditionalRequestResult>;
+      try {
+        rawResponse = await awaitIndexOperation(
+          input.transport.execute(
+            checkpoint.identity,
+            request,
+            Object.freeze(headers),
+            controller.signal,
+          ),
+          controller.signal,
+        );
+      } catch {
+        if (stopped || input.signal?.aborted) {
+          if (input.signal?.aborted) stopWith('aborted');
+          return;
+        }
+        stopWith('transport_failed');
+        return;
+      }
+      let response: Readonly<GitHubConditionalRequestResult>;
+      try {
+        const value = record(clone(rawResponse, 'conditional response'), 'conditional response');
+        exact(
+          value,
+          ['status', 'etag', 'retryAfter', 'body'],
+          ['status', 'etag', 'retryAfter', 'body'],
+          'conditional response',
+        );
+        response = value as unknown as GitHubConditionalRequestResult;
+      } catch {
+        stopWith('invalid_response');
+        return;
+      }
+      if (response.status === 403 || response.status === 429) {
+        try {
+          if (
+            typeof response.retryAfter !== 'string' ||
+            response.etag !== null ||
+            response.body !== null
+          ) {
+            fail('Retry-After');
+          }
+          const candidate = retryAt(response.retryAfter, input.now());
+          if (scheduledRetryAt === null || Date.parse(candidate) > Date.parse(scheduledRetryAt)) {
+            scheduledRetryAt = candidate;
+          }
+        } catch {
+          stopWith('invalid_response');
+          return;
+        }
+        stopped = true;
+        if (!rateAbortQueued) {
+          rateAbortQueued = true;
+          queueMicrotask(() => controller.abort('rate_limited'));
+        }
+        return;
+      }
+      let body: Readonly<GitHubTreeResponse | GitHubDirectoryPage> | null;
+      try {
+        if (
+          (response.status !== 200 && response.status !== 304) ||
+          (response.status === 304 && (request.ifNoneMatch === null || response.body !== null)) ||
+          typeof response.etag !== 'string' ||
+          response.retryAfter !== null
+        ) {
+          fail('conditional response');
+        }
+        if (response.status === 304) {
+          body = null;
+        } else if (request.api === 'git_trees') {
+          const treeBody = validateTreeResponse(response.body as GitHubTreeResponse);
+          if (treeBody.treeSha !== request.treeSha || treeBody.recursive !== false) {
+            fail('response request binding');
+          }
+          body = treeBody;
+        } else {
+          const directoryBody = validateDirectoryPage(response.body as GitHubDirectoryPage);
+          if (
+            directoryBody.treeSha !== request.treeSha ||
+            directoryBody.path !== request.path ||
+            directoryBody.page !== request.page
+          ) {
+            fail('response request binding');
+          }
+          body = directoryBody;
+        }
+        if (body !== null && body.etag !== response.etag) fail('response ETag');
+      } catch {
+        stopWith('invalid_response');
+        return;
+      }
+      const etag = text(response.etag, 'response ETag', 500);
+      const requestKey = executionRequestKey(request);
+      const responseRequiresReplan =
+        body !== null &&
+        (('truncated' in body && body.truncated) || ('hasNext' in body && body.hasNext));
+      try {
+        const applied = await awaitIndexOperation(
+          input.applier.applyOnce(
+            requestKey,
+            checkpoint.identity,
+            request,
+            Object.freeze({
+              status: response.status,
+              etag,
+              body,
+            }),
+          ),
+          controller.signal,
+        );
+        if (
+          (response.status === 200 && applied !== 'committed' && applied !== 'already_committed') ||
+          (response.status === 304 && applied !== 'unchanged' && applied !== 'already_committed')
+        ) {
+          stopWith('apply_failed');
+          return;
+        }
+      } catch {
+        if (input.signal?.aborted) {
+          stopWith('aborted');
+          return;
+        }
+        if (stopped) return;
+        stopWith('apply_failed');
+        return;
+      }
+      completed.add(requestKey);
+      if (responseRequiresReplan) requiresReplan.add(requestKey);
+      results.push(Object.freeze({ requestKey, status: response.status, etag }));
+    }
+  };
+  try {
+    await Promise.all(
+      Array.from({ length: Math.min(input.concurrency, checkpoint.pending.length) }, () =>
+        worker(),
+      ),
+    );
+  } finally {
+    input.signal?.removeEventListener('abort', abort);
+  }
+  const pending = checkpoint.pending.filter(
+    (request) => !completed.has(executionRequestKey(request)),
+  );
+  return Object.freeze({
+    checkpoint: validateCheckpoint({
+      version: 1,
+      identity: checkpoint.identity,
+      revision: checkpoint.revision + 1,
+      pending,
+      completedRequestKeys: [...completed].sort(),
+      replanRequiredRequestKeys: [...requiresReplan].sort(),
+      retryAt: scheduledRetryAt,
+    }),
+    error: terminalError ?? (requiresReplan.size > 0 ? 'replan_required' : null),
+    results: Object.freeze(
+      results.sort((left, right) => left.requestKey.localeCompare(right.requestKey, 'en-US')),
+    ),
+  });
+}
