@@ -1,5 +1,13 @@
 export { ContextPage } from './ContextPage';
 export {
+  planGitHubLocalReconciliation,
+  type GitHubLocalChange,
+  type GitHubLocalChangeStatus,
+  type GitHubLocalReconciliationClaim,
+  type GitHubLocalRepositoryAuthority,
+  type GitHubLocalRepositorySnapshot,
+} from './githubLocalReconciliation';
+export {
   GITHUB_REFRESH_MODES,
   GITHUB_WEBHOOK_EVENT_KINDS,
   buildGitHubPrivateRepositoryPolicy,
