@@ -1,6 +1,7 @@
-import type { JarvisDexie } from '@/lib/db';
+import type { ContextMapRow, JarvisDexie } from '@/lib/db';
 import type { DeepReadonly } from './contracts';
 import {
+  MAX_CONTEXT_EMBEDDING_ITEMS,
   compareContextEmbeddingIds,
   isContextEmbeddingId,
   parseContextEmbeddingRecordV1,
@@ -8,7 +9,6 @@ import {
 } from './semanticSearch';
 
 const SCOPE_ID = /^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,199}$/;
-const MAX_UPDATE_ROWS = 1_000;
 
 export type ContextEmbeddingRepositoryErrorCode =
   | 'invalid_account'
@@ -17,6 +17,7 @@ export type ContextEmbeddingRepositoryErrorCode =
   | 'parent_not_found'
   | 'record_id_conflict'
   | 'delete_scope_mismatch'
+  | 'scope_too_large'
   | 'stored_record_invalid';
 
 export class ContextEmbeddingRepositoryError extends Error {
@@ -68,8 +69,8 @@ function parseUpdate(
     !Object.hasOwn(record, 'deleteIds') ||
     !Array.isArray(record.upserts) ||
     !Array.isArray(record.deleteIds) ||
-    record.upserts.length > MAX_UPDATE_ROWS ||
-    record.deleteIds.length > MAX_UPDATE_ROWS
+    record.upserts.length > MAX_CONTEXT_EMBEDDING_ITEMS ||
+    record.deleteIds.length > MAX_CONTEXT_EMBEDDING_ITEMS
   ) {
     throw new ContextEmbeddingRepositoryError('invalid_update', 'update_shape_invalid');
   }
@@ -98,13 +99,25 @@ function parseUpdate(
   return { upserts, deleteIds };
 }
 
+async function assertOwnedMap(
+  database: JarvisDexie,
+  accountId: string,
+  mapId: string,
+): Promise<ContextMapRow> {
+  const map = await database.context_maps.get(mapId);
+  if (!map || map.accountId !== accountId) {
+    throw new ContextEmbeddingRepositoryError('parent_not_found');
+  }
+  return map;
+}
+
 async function assertActiveMap(
   database: JarvisDexie,
   accountId: string,
   mapId: string,
 ): Promise<void> {
-  const map = await database.context_maps.get(mapId);
-  if (!map || map.accountId !== accountId || map.status !== 'active') {
+  const map = await assertOwnedMap(database, accountId, mapId);
+  if (map.status !== 'active') {
     throw new ContextEmbeddingRepositoryError('parent_not_found');
   }
 }
@@ -114,10 +127,11 @@ async function listValidated(
   accountId: string,
   mapId: string,
 ): Promise<readonly DeepReadonly<ContextEmbeddingRecordV1>[]> {
-  const stored = await database.context_embeddings
-    .where('[accountId+mapId]')
-    .equals([accountId, mapId])
-    .toArray();
+  const scoped = database.context_embeddings.where('[accountId+mapId]').equals([accountId, mapId]);
+  if ((await scoped.count()) > MAX_CONTEXT_EMBEDDING_ITEMS) {
+    throw new ContextEmbeddingRepositoryError('scope_too_large');
+  }
+  const stored = await scoped.toArray();
   const rows = stored.map(parseStored);
   if (rows.some((row) => row.accountId !== accountId || row.mapId !== mapId)) {
     throw new ContextEmbeddingRepositoryError('stored_record_invalid', 'scope_invalid');
@@ -188,6 +202,22 @@ export function createContextEmbeddingRepository(database: JarvisDexie) {
         async () => {
           await assertActiveMap(database, accountId, mapId);
           return listValidated(database, accountId, mapId);
+        },
+      );
+    },
+
+    async purge(accountId: string, mapId: string): Promise<number> {
+      assertScopeId(accountId, 'invalid_account');
+      assertScopeId(mapId, 'invalid_update');
+      return database.transaction(
+        'rw',
+        [database.context_maps, database.context_embeddings],
+        async () => {
+          await assertOwnedMap(database, accountId, mapId);
+          return database.context_embeddings
+            .where('[accountId+mapId]')
+            .equals([accountId, mapId])
+            .delete();
         },
       );
     },

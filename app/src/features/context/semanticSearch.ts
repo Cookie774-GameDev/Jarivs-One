@@ -2,7 +2,7 @@ import type { DeepReadonly } from './contracts';
 
 const MAX_VECTOR_DIMENSIONS = 4_096;
 const MAX_VECTOR_VALUE = 1_000_000;
-const MAX_ITEMS = 10_000;
+export const MAX_CONTEXT_EMBEDDING_ITEMS = 10_000;
 const MAX_RESULTS = 100;
 const MAX_TEXT_BYTES = 16 * 1024;
 const MAX_TIMESTAMP = 8_640_000_000_000_000;
@@ -581,7 +581,10 @@ export function planContextEmbeddingUpdates(input: {
   ) {
     throw new ContextSemanticSearchError('invalid_input', 'update_plan');
   }
-  if (root.chunks.length > MAX_ITEMS || root.existing.length > MAX_ITEMS) {
+  if (
+    root.chunks.length > MAX_CONTEXT_EMBEDDING_ITEMS ||
+    root.existing.length > MAX_CONTEXT_EMBEDDING_ITEMS
+  ) {
     throw new ContextSemanticSearchError('too_many_items');
   }
   const selection = selectedProvider(
@@ -706,7 +709,7 @@ export function scoreContextEmbeddings(input: {
     !id(root.modelId) ||
     !id(root.embeddingVersion) ||
     !Array.isArray(root.records) ||
-    root.records.length > MAX_ITEMS ||
+    root.records.length > MAX_CONTEXT_EMBEDDING_ITEMS ||
     !positiveInteger(root.limit, MAX_RESULTS)
   ) {
     throw new ContextSemanticSearchError('invalid_input', 'score');
@@ -750,7 +753,7 @@ interface RankedInput {
 }
 
 function ranks(value: unknown, label: string): RankedInput[] {
-  if (!Array.isArray(value) || value.length > MAX_ITEMS) {
+  if (!Array.isArray(value) || value.length > MAX_CONTEXT_EMBEDDING_ITEMS) {
     throw new ContextSemanticSearchError('invalid_input', label);
   }
   const seen = new Set<string>();

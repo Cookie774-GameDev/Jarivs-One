@@ -1,12 +1,12 @@
 import Dexie from 'dexie';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createJarvisDb, type JarvisDexie } from '@/lib/db';
 import { TEST_INDEXED_DB, uniqueTestDbName } from '@/test/indexedDb';
 import {
   ContextEmbeddingRepositoryError,
   createContextEmbeddingRepository,
 } from './embeddingRepository';
-import type { ContextEmbeddingRecordV1 } from './semanticSearch';
+import { MAX_CONTEXT_EMBEDDING_ITEMS, type ContextEmbeddingRecordV1 } from './semanticSearch';
 
 function mapFixture(accountId = 'account-1', mapId = 'map-1') {
   return {
@@ -191,5 +191,40 @@ describe('Context embedding repository', () => {
         deleteIds: [longestAcceptedId],
       }),
     ).resolves.toEqual([]);
+  });
+
+  it('purges account-owned embeddings after a map is archived without opening cross-account deletion', async () => {
+    const repository = createContextEmbeddingRepository(database);
+    await repository.applyUpdate('account-1', 'map-1', {
+      upserts: [record('chunk-1')],
+      deleteIds: [],
+    });
+    await database.context_maps.update('map-1', { status: 'archived' });
+
+    await expect(repository.purge('account-2', 'map-1')).rejects.toMatchObject({
+      code: 'parent_not_found',
+    });
+    await expect(database.context_embeddings.count()).resolves.toBe(1);
+    await expect(repository.purge('account-1', 'map-1')).resolves.toBe(1);
+    await expect(database.context_embeddings.count()).resolves.toBe(0);
+  });
+
+  it('fails closed before materializing a scoped corpus above the shared search bound', async () => {
+    const repository = createContextEmbeddingRepository(database);
+    const scoped = database.context_embeddings
+      .where('[accountId+mapId]')
+      .equals(['account-1', 'map-1']);
+    vi.spyOn(scoped, 'count').mockResolvedValue(MAX_CONTEXT_EMBEDDING_ITEMS + 1);
+    const materialize = vi
+      .spyOn(scoped, 'toArray')
+      .mockRejectedValue(new Error('scope_must_not_be_materialized'));
+    vi.spyOn(database.context_embeddings, 'where').mockReturnValue({
+      equals: () => scoped,
+    } as unknown as ReturnType<JarvisDexie['context_embeddings']['where']>);
+
+    await expect(repository.list('account-1', 'map-1')).rejects.toMatchObject({
+      code: 'scope_too_large',
+    });
+    expect(materialize).not.toHaveBeenCalled();
   });
 });

@@ -694,7 +694,7 @@ describe('Jarvis Dexie V6 additive migration', () => {
   it('preserves every inserted V1 through V5 row byte-for-byte when opening V6', async () => {
     const name = testDbName('jarvis-v5-to-v6');
     const legacy = await createLegacyDb(name, 5);
-    await legacy.table('context_notes').put({
+    const preservedNote: ContextNoteV2 = {
       version: 2,
       id: 'note-v5-preserved',
       accountId: 'account-v5',
@@ -715,15 +715,13 @@ describe('Jarvis Dexie V6 additive migration', () => {
       blockIds: [],
       createdAt: 40,
       updatedAt: 41,
-    });
+    };
+    await legacy.table('context_notes').put(preservedNote);
     legacy.close();
 
     const upgraded = createTestJarvisDb(name);
     await upgraded.open();
-    await expect(upgraded.context_notes.get('note-v5-preserved')).resolves.toMatchObject({
-      id: 'note-v5-preserved',
-      contentHash: 'd'.repeat(64),
-    });
+    await expect(upgraded.context_notes.get('note-v5-preserved')).resolves.toEqual(preservedNote);
     await expect(upgraded.context_embeddings.count()).resolves.toBe(0);
     upgraded.close();
   });
