@@ -1,5 +1,25 @@
 export { ContextPage } from './ContextPage';
 export {
+  GITHUB_METADATA_EDGE_KINDS,
+  GITHUB_METADATA_NODE_KINDS,
+  GITHUB_PR_CONTEXT_SECTIONS,
+  buildGitHubMetadataGraph,
+  buildGitHubPullRequestContext,
+  planGitHubPullRequestAction,
+  type GitHubMetadataEdge,
+  type GitHubMetadataEdgeKind,
+  type GitHubMetadataEndpoint,
+  type GitHubMetadataGraph,
+  type GitHubMetadataGraphInput,
+  type GitHubMetadataNode,
+  type GitHubMetadataNodeKind,
+  type GitHubPrContextSection,
+  type GitHubPullRequestActionApproval,
+  type GitHubPullRequestActionAuthority,
+  type GitHubPullRequestContext,
+  type GitHubPullRequestContextInput,
+} from './githubMetadataGraph';
+export {
   GITHUB_REPOSITORY_SCOPE_MODES,
   buildGitHubMonorepoPlan,
   buildGitHubRepositoryScope,
