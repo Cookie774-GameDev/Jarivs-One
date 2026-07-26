@@ -381,6 +381,17 @@ export {
   type ValidatedContextPackageImport,
 } from './contextPackageImport';
 export {
+  ContextSearchPipelineError,
+  createContextSearchPipeline,
+  createTauriContextLexicalSearchExecutor,
+  type ContextLexicalSearchExecutor,
+  type ContextLexicalSearchRequest,
+  type ContextProgressiveSearchResult,
+  type ContextProgressiveSearchStage,
+  type ContextProgressiveSearchUpdate,
+  type ContextSemanticSearchExecutor,
+} from './contextSearchPipeline';
+export {
   authorizeContextProcessorCapability,
   parsePassiveContextPackage,
   reviewContextProcessorInstall,
