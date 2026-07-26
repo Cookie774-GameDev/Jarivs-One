@@ -23,6 +23,12 @@ Primary references:
 - Tantivy tokenizers: <https://docs.rs/tantivy/0.22.1/tantivy/tokenizer/>
 - Tantivy license: <https://github.com/quickwit-oss/tantivy/blob/main/LICENSE>
 
+## Dependency review
+
+The resolved native graph was checked on 2026-07-25 with the checksum-verified official `cargo-audit 0.22.2` Windows release. It reported zero known vulnerabilities and informational warnings already present in the wider graph. The one warning introduced through Tantivy is `RUSTSEC-2026-0002` for `lru 0.12.5`: the affected API is `LruCache::iter_mut`, while Tantivy 0.22.1 uses the cache through `get`/`put` in its stored-field reader and contains no `LruCache::iter_mut` call. Upgrading to the advisory's patched `lru >=0.16.3` is outside Tantivy 0.22's semver range, so this non-reachable affected API is explicitly accepted for V1 and must be re-audited when the engine is upgraded.
+
+Resolved metadata covered 673 third-party packages: none lacked license metadata and none required a copyleft-only or source-available license. The new direct/exclusive dependencies are MIT or dual MIT/Apache-2.0.
+
 ## Ownership, confidentiality, and index path
 
 Indexes contain derivative, rebuildable local data below:
@@ -113,8 +119,8 @@ At most two verified, non-link quarantine directories are retained per scope; ol
 
 ## Performance boundary
 
-Tantivy performs inverted-index lookup and BM25-style relevance scoring rather than corpus scans. Index writes use one process-wide 50 MB writer budget and compressed stored fields. Valid read-only opens do not recursively walk the complete segment tree; tree permission hardening runs when files are created, committed, or quarantined. With two admitted workers and a 20-result cap, at most 40 one-MiB stored bodies can be deserialized/snippet-processed concurrently. Concurrent workers, live scopes, query clauses/tokens, stored output, mutation size, document size, property count, tag count, permission-walk entries, and result count are bounded before expensive work.
+Tantivy performs inverted-index lookup and BM25-style relevance scoring rather than corpus scans. Index writes use one process-wide 50 MB writer budget and compressed stored fields. Valid read-only opens do not recursively walk the complete segment tree; tree permission hardening runs when files are created, committed, or quarantined. Four admitted workers and the 100-result cap bound worst-case stored-body processing to 400 one-MiB documents across the process; each document is deserialized and discarded while its bounded excerpt is produced rather than retained as one 400 MiB response. Concurrent workers, live scopes, query clauses/tokens, stored output, mutation size, document size, property count, tag count, permission-walk entries, and result count are bounded before expensive work.
 
 Focused native tests cover Unicode quick and phrase search, Unicode-safe excerpts, incremental replacement, deletion, physical map isolation, literal query safety, persistent recovery signaling and acknowledgment, verified-error classification, marker and parent-sync failure safety, orphan-quarantine marker restoration, current-generation reopening, concurrent descendant/first-open creation, scope admission, process-wide writer memory serialization, bounded quarantine retention, descendant/scoped symlink or reparse rejection where the platform permits fixture creation, permission hardening on Unix, raw/nested-encoded traversal rejection, body-control rejection, atomic pre-write validation, and input/query/result ceilings.
 
-The reproducible ignored benchmark indexes 250 representative 16 KiB notes, records source/index size and indexing/query latency, requires a 20-result phrase query under two seconds, indexing under 30 seconds, and a derivative index under 64 MiB. A clean Rust 1.78 repository-wide resolution, Windows ACL verification, platform packaging, and long-running merge/rollback stress remain mandatory final-verification gates after all approved systems are implemented.
+The reproducible ignored benchmark indexes 250 representative 16 KiB notes, records source/index size and indexing/query latency, requires a 100-result phrase query under two seconds, indexing under 30 seconds, and a derivative index under 64 MiB. The latest Windows debug run indexed 4,488,750 source bytes in 1,546 ms, produced a 255,248-byte derivative index, and returned 100 phrase results in 417 ms. A clean Rust 1.78 repository-wide resolution, Windows ACL verification, platform packaging, and long-running merge/rollback stress remain mandatory final-verification gates after all approved systems are implemented.
