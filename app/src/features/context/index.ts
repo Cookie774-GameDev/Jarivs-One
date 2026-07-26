@@ -1,5 +1,25 @@
 export { ContextPage } from './ContextPage';
 export {
+  GITHUB_REFRESH_MODES,
+  GITHUB_WEBHOOK_EVENT_KINDS,
+  buildGitHubPrivateRepositoryPolicy,
+  buildGitHubRefreshPolicy,
+  planGitHubAccessRevocation,
+  planGitHubRefresh,
+  type GitHubAccessSnapshot,
+  type GitHubCloudModelApproval,
+  type GitHubCloudModelApprovalAuthority,
+  type GitHubPrivateRepositoryPolicyInput,
+  type GitHubRefreshAuthority,
+  type GitHubRefreshMode,
+  type GitHubRefreshPolicy,
+  type GitHubRefreshPolicyInput,
+  type GitHubRefreshTrigger,
+  type GitHubRetentionPolicy,
+  type GitHubWebhookEvent,
+  type GitHubWebhookEventKind,
+} from './githubRefreshPrivacy';
+export {
   GITHUB_METADATA_EDGE_KINDS,
   GITHUB_METADATA_NODE_KINDS,
   GITHUB_PR_CONTEXT_SECTIONS,
