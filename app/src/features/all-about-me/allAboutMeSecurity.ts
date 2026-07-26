@@ -1,14 +1,21 @@
-const SECRET_LINE_RE = /(?:api[-_ ]?key|password|access[-_ ]?token|refresh[-_ ]?token|token|private[-_ ]?key|signing[-_ ]?key|secret|credentials?)\s*(?:[:=]|\bis\b)\s*\S+/i;
-const TOKEN_VALUE_RE = /\b(?:gh[pousr]_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9_-]{20,}|AIza[A-Za-z0-9_-]{20,})\b/;
+import { detectSecrets, hasDetectedSecret } from '@/lib/security/secretDetector';
 
 export function containsAllAboutMeSecret(markdown: string): boolean {
-  return markdown.split(/\r?\n/).some((line) => SECRET_LINE_RE.test(line) || TOKEN_VALUE_RE.test(line));
+  return hasDetectedSecret(markdown);
 }
 
 export function sanitizeAllAboutMeMarkdown(markdown: string): string {
-  return markdown
-    .split(/\r?\n/)
-    .filter((line) => !SECRET_LINE_RE.test(line) && !TOKEN_VALUE_RE.test(line))
-    .join('\n')
-    .trim();
+  const findings = detectSecrets(markdown);
+  if (findings.length === 0) return markdown.trim();
+  const safeLines: string[] = [];
+  for (const match of markdown.matchAll(/[^\r\n]*(?:\r\n|\n|\r|$)/gu)) {
+    const segment = match[0];
+    if (segment.length === 0 || match.index === undefined) continue;
+    const lineEnd = match.index + segment.length;
+    if (findings.some((finding) => finding.start < lineEnd && finding.end > match.index)) {
+      continue;
+    }
+    safeLines.push(segment.replace(/(?:\r\n|\n|\r)$/u, ''));
+  }
+  return safeLines.join('\n').trim();
 }

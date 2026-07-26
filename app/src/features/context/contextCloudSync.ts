@@ -2,6 +2,7 @@ import { getActiveAccountIdentity } from '@/lib/accountIdentity';
 import { db, openDb, type SettingsRow } from '@/lib/db';
 import { runSignalBoundWrite } from '@/lib/db/signalBoundTransaction';
 import { getPlan } from '@/lib/entitlements';
+import { hasDetectedSecret } from '@/lib/security/secretDetector';
 import { enqueueMutation, SyncMutationCommitRejectedError, type CloudSyncRecord } from '@/lib/sync';
 import { useAuthStore } from '@/stores/auth';
 
@@ -155,8 +156,6 @@ const RESOLUTION_PREFIX = 'context-cloud-sync:v1:resolution:';
 const RESOLUTION_CLAIM_PREFIX = 'context-cloud-sync:v1:resolution-claim:';
 const PROTECTED_FIELD =
   /(?:^|_)(?:api_key|auth|authorization|token|access_token|refresh_token|provider_token|bearer_token|session|session_token|cookie|jwt|secret|password|credential|embedding|vector|terminal_transcript|raw_(?:repository_|repo_)?code|source_code|private_repo|full_text_index)(?:$|_)/u;
-const SECRET_CONTENT =
-  /(?:-----BEGIN [A-Z ]*PRIVATE KEY-----|sk-(?:[A-Za-z0-9_-]{20,})|gh[pousr]_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{10,}|(?:Bearer\s+)?eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,})/iu;
 const RAW_CODE_CONTENT =
   /(?:\b(?:export|import)\s+(?:const|let|var|class|function|\{|\*)|\bfunction\s+[A-Za-z_$][\w$]*\s*\(|\b(?:class|interface)\s+[A-Za-z_$][\w$]*\s*\{|\b(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*=|\b(?:def|fn|pub\s+fn)\s+[A-Za-z_][A-Za-z0-9_]*\s*[\(:]|#include\s*[<"]|<\/?[A-Za-z][^>]{0,120}>)/u;
 const CAPABILITIES = Object.freeze({ realTimeCollaboration: false as const });
@@ -205,6 +204,12 @@ function stableId(value: unknown): string {
   return value;
 }
 
+function protectedStableId(value: unknown): string {
+  const id = stableId(value);
+  if (hasDetectedSecret(id)) throw new ProtectedContextCloudContent();
+  return id;
+}
+
 function timestamp(value: unknown): number {
   if (!Number.isSafeInteger(value) || (value as number) < 0) {
     throw new InvalidContextCloudDocument();
@@ -231,15 +236,16 @@ function cloneJson(
     return value;
   }
   if (typeof value === 'string') {
+    const secretDetected = hasDetectedSecret(value);
     if (
       value.length > MAX_STRING_CHARS ||
-      SECRET_CONTENT.test(value) ||
+      secretDetected ||
       (normalizedFieldName !== 'markdown' &&
         normalizedFieldName !== 'body' &&
         RAW_CODE_CONTENT.test(value))
     ) {
       if (
-        SECRET_CONTENT.test(value) ||
+        secretDetected ||
         (normalizedFieldName !== 'markdown' &&
           normalizedFieldName !== 'body' &&
           RAW_CODE_CONTENT.test(value))
@@ -538,19 +544,19 @@ export function parseContextCloudDocument(raw: unknown): ContextCloudDocumentV1 
   if (typeof kind !== 'string' || !(CONTEXT_CLOUD_SYNC_KINDS as readonly string[]).includes(kind)) {
     throw new InvalidContextCloudDocument();
   }
-  const projectId = raw.projectId === null ? null : stableId(raw.projectId);
-  const baseRevisionId = raw.baseRevisionId === null ? null : stableId(raw.baseRevisionId);
+  const projectId = raw.projectId === null ? null : protectedStableId(raw.projectId);
+  const baseRevisionId = raw.baseRevisionId === null ? null : protectedStableId(raw.baseRevisionId);
   const deletedAt = raw.deletedAt === undefined ? undefined : timestamp(raw.deletedAt);
   const fields = parseFields(raw.fields);
   assertFieldsMatchKind(kind as ContextCloudSyncKind, fields, deletedAt !== undefined);
   assertContainerFields(kind as ContextCloudSyncKind, fields, deletedAt !== undefined);
   return {
     version: 1,
-    accountId: stableId(raw.accountId),
+    accountId: protectedStableId(raw.accountId),
     projectId,
     kind: kind as ContextCloudSyncKind,
-    id: stableId(raw.id),
-    revisionId: stableId(raw.revisionId),
+    id: protectedStableId(raw.id),
+    revisionId: protectedStableId(raw.revisionId),
     baseRevisionId,
     provenance: parseProvenance(raw.provenance, kind as ContextCloudSyncKind),
     updatedAt: timestamp(raw.updatedAt),

@@ -269,6 +269,54 @@ describe('verified artifact normalizer', () => {
   );
 
   it.each([
+    [
+      'title',
+      draft({
+        artifact: {
+          ...draft().artifact,
+          title: 'password=synthetic-secret-value',
+        },
+      }),
+    ],
+    [
+      'URI credentials',
+      draft({
+        backing: {
+          kind: 'uri',
+          uri: 'https://synthetic-user:synthetic-password@example.test/artifact',
+        },
+      }),
+    ],
+    [
+      'URI secret query',
+      draft({
+        backing: {
+          kind: 'uri',
+          uri: 'https://example.test/artifact?api_key=ghp_SyntheticCredentialValue1234567890',
+        },
+      }),
+    ],
+    [
+      'source label',
+      draft({
+        artifact: {
+          ...draft().artifact,
+          sourceRefs: [
+            {
+              ...draft().artifact.sourceRefs[0]!,
+              label: 'token=ghp_SyntheticCredentialValue1234567890',
+            },
+          ],
+        },
+      }),
+    ],
+  ] as const)('rejects secret-bearing artifact metadata in %s', async (_label, candidate) => {
+    await expect(
+      canonicalizeArtifactDraftInternal({ binding: binding(), draft: candidate }),
+    ).rejects.toThrow('artifact_secret_rejected');
+  });
+
+  it.each([
     ['Slack token summary', 'Completed with xoxp-111111111111-222222222222-syntheticTokenValue'],
     [
       'bearer JWT summary',

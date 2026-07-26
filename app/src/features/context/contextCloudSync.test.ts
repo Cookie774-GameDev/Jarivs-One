@@ -299,6 +299,7 @@ describe('Context optional cloud sync boundary', () => {
       { providerToken: 'ordinary-looking-value' },
       { markdown: '-----BEGIN PRIVATE KEY-----\nsecret' },
       { apiKey: 'sk-proj-secret-secret-secret-secret' },
+      { note: 'AbCdEfGhIjKlMnOpQrStUvWxYzAbCdEfGhIjKl+/' },
       { terminalTranscript: '$ printenv' },
       { embedding: [0.1, 0.2] },
       { rawRepositoryCode: 'export const privateSource = true;' },
@@ -364,6 +365,23 @@ describe('Context optional cloud sync boundary', () => {
         queueContextCloudDocument('account-1', protectedDocument, signal),
       ).resolves.toEqual({ queued: false, reason: 'protected_content' });
     }
+    expect(harness.enqueue).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['projectId', { projectId: 'ghp_SyntheticCredentialValue1234567890' }],
+    ['id', { id: 'ghp_SyntheticCredentialValue1234567890' }],
+    ['revisionId', { revisionId: 'ghp_SyntheticCredentialValue1234567890' }],
+    ['baseRevisionId', { baseRevisionId: 'ghp_SyntheticCredentialValue1234567890' }],
+  ] as const)('rejects a secret-bearing %s envelope identifier', async (_field, patch) => {
+    await setContextCloudSyncPreference('account-1', {
+      enabled: true,
+      derivedSummaries: false,
+    });
+
+    await expect(
+      queueContextCloudDocument('account-1', document(patch), new AbortController().signal),
+    ).resolves.toEqual({ queued: false, reason: 'protected_content' });
     expect(harness.enqueue).not.toHaveBeenCalled();
   });
 

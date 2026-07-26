@@ -1,6 +1,7 @@
 import type { JarvisArtifactDraft, JarvisArtifactV1 } from './contracts/execution';
 import { validateJarvisArtifact, validateJarvisSourceRef } from './contracts/validators';
 import type { ArtifactPreDigestBinding, VerifiedArtifactBinding } from './artifactReceipts';
+import { hasDetectedSecret } from '@/lib/security/secretDetector';
 
 const canonicalArtifactMaterialBrand: unique symbol = Symbol('jarvis.canonical-artifact-material');
 const MAX_TEXT_PREVIEW_BYTES = 16_384;
@@ -34,25 +35,6 @@ const ARTIFACT_STATES = new Set(['ready', 'partial', 'quarantined']);
 const LOCAL_REFERENCE_KINDS = new Set(['path', 'blob_key', 'message_part']);
 const FORBIDDEN_RESULT_REFS =
   /^(?:queued|planned(?:[-_:]|$)|capability(?:[-_:]|$)|source-only(?:[-_:]|$))/i;
-const ARTIFACT_SECRET_PATTERNS: readonly RegExp[] = [
-  /-----BEGIN(?: [A-Z0-9]+)* PRIVATE KEY-----/i,
-  /-----BEGIN PGP PRIVATE KEY BLOCK-----/i,
-  /\bxox[bp]-[A-Za-z0-9-]{20,}\b/i,
-  /\bgh[pousr]_[A-Za-z0-9_]{20,}\b/,
-  /\bgithub_pat_[A-Za-z0-9_]{20,}\b/i,
-  /\bAKIA[0-9A-Z]{16}\b/,
-  /(?:^|[^A-Za-z0-9+/=])(?=[A-Za-z0-9+/]{40}(?:$|[^A-Za-z0-9+/=]))(?=[A-Za-z0-9+/]{0,39}[A-Z])(?=[A-Za-z0-9+/]{0,39}[a-z])[A-Za-z0-9+/]{40}(?=$|[^A-Za-z0-9+/=])/,
-  /\bAIza[0-9A-Za-z_-]{20,}\b/,
-  /\b(?:gsk_|sb_secret_)[A-Za-z0-9_-]{16,}\b/i,
-  /\b(?:xai-|sk-ant-)[A-Za-z0-9_-]{16,}\b/i,
-  /\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9_]{8,}\b/i,
-  /\bwhsec_[A-Za-z0-9_]{8,}\b/i,
-  /\bsk-[A-Za-z0-9_-]{12,}\b/i,
-  /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/,
-  /\bBearer\s+[A-Za-z0-9._~+/-]{8,}={0,2}\b/i,
-  /\b(?:authorization|proxy[-_ ]?authorization|cookie|set[-_ ]?cookie|x[-_ ]?api[-_ ]?key|api[-_ ]?key|apikey|access[-_ ]?token|refresh[-_ ]?token|id[-_ ]?token|client[-_ ]?secret|private[-_ ]?key|signing[-_ ]?key|service[-_ ]?role|password|passwd|credential|secret)\b\s*(?:[:=]|\bis\b)\s*(?:"[^"\r\n]+"|'[^'\r\n]+'|[^\s,;}]+)/i,
-];
-
 /** @internal Imported only by artifactRuntimeInternals.ts and focused tests. */
 export type CanonicalArtifactMaterial = Readonly<{
   artifact: JarvisArtifactV1;
@@ -108,9 +90,36 @@ function validateBinding(binding: ArtifactPreDigestBinding): void {
 function assertArtifactSecretFree(value: string | Uint8Array | undefined): void {
   if (value === undefined) return;
   const text = typeof value === 'string' ? value : new TextDecoder().decode(value);
-  if (ARTIFACT_SECRET_PATTERNS.some((pattern) => pattern.test(text))) {
+  if (hasDetectedSecret(text)) {
     fail('artifact_secret_rejected');
   }
+}
+
+function assertArtifactMetadataSecretFree(value: unknown): void {
+  if (typeof value === 'string') {
+    assertArtifactSecretFree(value);
+    if (value.includes('://')) {
+      let parsed: URL | undefined;
+      try {
+        parsed = new URL(value);
+      } catch {
+        parsed = undefined;
+      }
+      if (parsed) {
+        if (parsed.username || parsed.password) fail('artifact_secret_rejected');
+        for (const [key, field] of parsed.searchParams) {
+          assertArtifactSecretFree(`${key}=${field}`);
+        }
+      }
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) assertArtifactMetadataSecretFree(item);
+    return;
+  }
+  if (!isPlainRecord(value)) return;
+  for (const item of Object.values(value)) assertArtifactMetadataSecretFree(item);
 }
 
 function copySourceRefs(value: JarvisArtifactDraft['artifact']['sourceRefs'], accountId: string) {
@@ -392,6 +401,7 @@ export async function canonicalizeArtifactDraftInternal(input: {
   }
 
   if (!validateJarvisArtifact(artifact).ok) fail('artifact_shape_invalid');
+  assertArtifactMetadataSecretFree(artifact);
 
   const detached = freezeArtifact(structuredClone(artifact));
   const artifactDigest = await sha256(new TextEncoder().encode(canonicalJson(detached)));
