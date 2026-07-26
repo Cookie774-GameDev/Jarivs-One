@@ -1,10 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import type { JarvisContextPack, JarvisSourceRef } from '@/lib/jarvis/contracts';
 import {
+  applyContextJarvisSourceRetry,
+  buildContextJarvisDelivery,
   ContextJarvisGraphActivityError,
   buildContextJarvisGraphActivity,
+  createContextJarvisRetryAuthority,
+  createContextJarvisVoiceCitationAuthority,
+  planContextJarvisSourceRetry,
   type ContextJarvisGraphActivityInputV1,
 } from './jarvisGraphActivity';
+import type {
+  ContextRetrievalRequest,
+  ContextRetrievalResult,
+  RetrievedContextItem,
+} from './contextRetrievalService';
 
 function source(id: string): JarvisSourceRef {
   return {
@@ -160,6 +170,32 @@ describe('truthful Context JARVIS graph activity', () => {
     expect(activity.activePathIds).toEqual(['path-a-b']);
     expect(activity.animateActivePaths).toBe(true);
     expect(activity.inspection.contextPack).toEqual(pack());
+    expect(activity.activityEvent).toEqual({
+      version: 1,
+      id: 'context-used:run-1',
+      kind: 'context_used',
+      accountId: 'account-1',
+      mapId: 'map-1',
+      runId: 'run-1',
+      occurredAt: 105,
+      sourceIds: ['source-a', 'source-b'],
+    });
+    expect(activity.inspection.sources).toEqual([
+      {
+        sourceId: 'source-a',
+        label: 'Context source source-a',
+        excerpt: 'Verified context A',
+        freshness: 'current',
+        removable: true,
+      },
+      {
+        sourceId: 'source-b',
+        label: 'Context source source-b',
+        excerpt: 'Verified context B',
+        freshness: 'current',
+        removable: true,
+      },
+    ]);
     expect(Object.isFrozen(activity)).toBe(true);
     expect(Object.isFrozen(activity.usedNodes[0]?.sourceReferences[0])).toBe(true);
     expect(Object.isFrozen(activity.inspection.contextPack.items[0]?.source)).toBe(true);
@@ -384,5 +420,254 @@ describe('truthful Context JARVIS graph activity', () => {
         }) as ContextJarvisGraphActivityInputV1,
       ),
     ).toThrowError(ContextJarvisGraphActivityError);
+  });
+});
+
+function retrievedItem(id: string, sourceId: string): RetrievedContextItem {
+  return {
+    id,
+    mapId: 'map-1',
+    sourceId,
+    sourceKind: 'local_file',
+    entity: {
+      entityId: `entity-${id}`,
+      kind: 'file',
+      label: `${id}.ts`,
+      sourceId,
+      path: `app/${id}.ts`,
+      lineStart: 4,
+      lineEnd: 8,
+    },
+    exactExcerpt: `export const ${id} = true;`,
+    summary: `${id} summary`,
+    freshness: 'current',
+    ranking: { score: 0.9, reasons: ['lexical_match'] },
+    citation: {
+      label: `${id}.ts lines 4–8`,
+      action: {
+        kind: 'highlight_entity',
+        sourceKind: 'local_file',
+        mapId: 'map-1',
+        entityId: `entity-${id}`,
+        path: `app/${id}.ts`,
+        lineStart: 4,
+        lineEnd: 8,
+      },
+    },
+    provenance: {
+      sourceRevision: `rev-${id}`,
+      indexedAt: 100,
+    },
+  };
+}
+
+const retrievalRequest: ContextRetrievalRequest = {
+  projectId: 'project-1',
+  userText: 'Fix the access flow',
+  maxTokens: 1_200,
+};
+
+function retrievalResult(): ContextRetrievalResult {
+  return {
+    queryId: 'query-1',
+    mapRevisions: { 'map-1': 7 },
+    items: [retrievedItem('keep', 'source-a'), retrievedItem('remove', 'source-b')],
+    relatedEntities: [],
+    omittedCount: 0,
+    staleItems: [],
+    warnings: [],
+    builtAt: 100,
+  };
+}
+
+describe('Context JARVIS retry and delivery experience', () => {
+  it('plans a user-selected source removal and applies it to the bounded retry set', () => {
+    const authority = createContextJarvisRetryAuthority();
+    const receipt = authority.recordRetrieval({
+      runId: 'run-1',
+      request: retrievalRequest,
+      result: retrievalResult(),
+    });
+    const removalGrant = authority.authorizeRemoval({
+      receipt,
+      removedItemId: 'remove',
+      requestedAt: 110,
+    });
+    const plan = planContextJarvisSourceRetry({
+      version: 1,
+      authority,
+      receipt,
+      removalGrant,
+    });
+
+    expect(plan).toEqual({
+      version: 1,
+      runId: 'run-1',
+      priorQueryId: 'query-1',
+      removedItemId: 'remove',
+      removedSourceId: 'source-b',
+      excludedItemIds: ['remove'],
+      excludedSourceIds: ['source-b'],
+      retainedItemIds: ['keep'],
+      retryReason: 'user_removed_context_source',
+      requestedAt: 110,
+      request: retrievalRequest,
+    });
+    expect(
+      applyContextJarvisSourceRetry(plan, [
+        { id: 'keep', sourceId: 'source-a', value: 1 },
+        { id: 'remove', sourceId: 'source-b', value: 2 },
+        { id: 'new-id-same-source', sourceId: 'source-b', value: 3 },
+        { id: 'new', sourceId: 'source-c', value: 4 },
+      ]),
+    ).toEqual([
+      { id: 'keep', sourceId: 'source-a', value: 1 },
+      { id: 'new', sourceId: 'source-c', value: 4 },
+    ]);
+    expect(Object.isFrozen(plan)).toBe(true);
+    expect(Object.isFrozen(plan.request)).toBe(true);
+  });
+
+  it('rejects removal outside the prior result or chronology', () => {
+    const authority = createContextJarvisRetryAuthority();
+    const receipt = authority.recordRetrieval({
+      runId: 'run-1',
+      request: retrievalRequest,
+      result: retrievalResult(),
+    });
+    expect(() =>
+      authority.authorizeRemoval({
+        receipt,
+        removedItemId: 'forged',
+        requestedAt: 110,
+      }),
+    ).toThrowError(expect.objectContaining({ code: 'invalid_input' }));
+    expect(() =>
+      authority.authorizeRemoval({
+        receipt,
+        removedItemId: 'remove',
+        requestedAt: 99,
+      }),
+    ).toThrowError(expect.objectContaining({ code: 'invalid_chronology' }));
+    expect(() =>
+      planContextJarvisSourceRetry({
+        version: 1,
+        authority,
+        receipt: Object.freeze({ version: 1, id: 'forged' }),
+        removalGrant: Object.freeze({ version: 1, id: 'forged' }),
+      } as never),
+    ).toThrowError(expect.objectContaining({ code: 'invalid_input' }));
+  });
+
+  it('keeps source chips visual while enforcing a concise citation-free voice reply', () => {
+    const items = retrievalResult().items;
+    const delivery = buildContextJarvisDelivery({
+      version: 1,
+      surface: 'voice',
+      visualText: 'The access flow is fixed. See the two verified sources below.',
+      spokenSentences: ['I found the access path and fixed the mismatch, sir.'],
+      items,
+    });
+
+    expect(delivery.spokenText).toBe('I found the access path and fixed the mismatch, sir.');
+    expect(delivery.visualTranscript.sourceChips).toEqual([
+      {
+        itemId: 'keep',
+        label: 'keep.ts lines 4–8',
+        freshness: 'current',
+        action: items[0]!.citation.action,
+      },
+      {
+        itemId: 'remove',
+        label: 'remove.ts lines 4–8',
+        freshness: 'current',
+        action: items[1]!.citation.action,
+      },
+    ]);
+    expect(delivery.spokenCitationLabels).toEqual([]);
+
+    const written = buildContextJarvisDelivery({
+      version: 1,
+      surface: 'written',
+      visualText: 'Written answer with the same source chips.',
+      items,
+    });
+    expect(written.spokenText).toBeNull();
+    expect(written.visualTranscript.sourceChips).toHaveLength(2);
+
+    const redirected = structuredClone(items);
+    redirected[0]!.citation.action.entityId = 'entity-other';
+    expect(() =>
+      buildContextJarvisDelivery({
+        version: 1,
+        surface: 'written',
+        visualText: 'Forged chip target.',
+        items: redirected,
+      }),
+    ).toThrowError(expect.objectContaining({ code: 'invalid_input' }));
+  });
+
+  it('rejects long voice replies and unrequested spoken paths or citations', () => {
+    const items = retrievalResult().items;
+    for (const spokenSentences of [
+      ['One.', 'Two.', 'Three.'],
+      ['One!Two!Three!'],
+      ['x'.repeat(281)],
+      ['Open app/keep.ts for details.'],
+      ['Open keep.ts for details.'],
+      ['Open app\\keep.ts for details.'],
+      ['See keep.ts lines 4–8.'],
+    ]) {
+      expect(() =>
+        buildContextJarvisDelivery({
+          version: 1,
+          surface: 'voice',
+          visualText: 'Visual answer with source chips.',
+          spokenSentences,
+          items,
+        }),
+      ).toThrowError(ContextJarvisGraphActivityError);
+    }
+    const ordinary = buildContextJarvisDelivery({
+      version: 1,
+      surface: 'voice',
+      visualText: 'Ordinary voice reply.',
+      spokenSentences: ['I applied the fix.'],
+      items,
+    });
+    expect(ordinary.spokenText).toBe('I applied the fix.');
+
+    const shortName = retrievedItem('short', 'source-short');
+    shortName.entity.label = 'go';
+    shortName.entity.path = 'cmd/go';
+    shortName.entity.lineStart = undefined;
+    shortName.entity.lineEnd = undefined;
+    shortName.citation.label = 'go';
+    shortName.citation.action.path = 'cmd/go';
+    shortName.citation.action.lineStart = undefined;
+    shortName.citation.action.lineEnd = undefined;
+    expect(() =>
+      buildContextJarvisDelivery({
+        version: 1,
+        surface: 'voice',
+        visualText: 'Short basename source.',
+        spokenSentences: ['Run go now.'],
+        items: [shortName],
+      }),
+    ).toThrowError(ContextJarvisGraphActivityError);
+
+    const voiceAuthority = createContextJarvisVoiceCitationAuthority();
+    const citationDetailGrant = voiceAuthority.authorizeCitationDetails({
+      itemIds: items.map(({ id }) => id),
+    });
+    const requested = buildContextJarvisDelivery({
+      version: 1,
+      surface: 'voice',
+      visualText: 'Visual answer with source chips.',
+      spokenSentences: ['See keep.ts lines 4–8.'],
+      citationDetailGrant,
+      items,
+    });
+    expect(requested.spokenCitationLabels).toEqual(['keep.ts lines 4–8', 'remove.ts lines 4–8']);
   });
 });

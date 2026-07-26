@@ -3,7 +3,13 @@ import {
   type JarvisContextPack,
   type JarvisSourceRef,
 } from '@/lib/jarvis/contracts';
-import type { DeepReadonly } from './contracts';
+import { CONTEXT_SOURCE_KINDS, type DeepReadonly } from './contracts';
+import type {
+  ContextRetrievalRequest,
+  ContextRetrievalResult,
+  RetrievedContextCitation,
+  RetrievedContextItem,
+} from './contextRetrievalService';
 
 const MAX_BINDINGS = 1_000;
 const MAX_GRAPH_NODES = 10_000;
@@ -20,6 +26,34 @@ const UNSAFE_TEXT_CONTROLS =
 
 const LIFECYCLES = ['retrieving', 'running', 'completed', 'cancelled', 'failed'] as const;
 const PATH_STATES = ['active', 'observed'] as const;
+const RETRY_PLAN_BRAND = new WeakSet<object>();
+const RETRY_AUTHORITIES = new WeakSet<object>();
+const RETRIEVAL_RECEIPTS = new WeakMap<
+  object,
+  {
+    authority: object;
+    runId: string;
+    request: ContextRetrievalRequest;
+    result: {
+      queryId: string;
+      builtAt: number;
+      itemRefs: Array<{ id: string; sourceId: string }>;
+    };
+  }
+>();
+const REMOVAL_GRANTS = new WeakMap<
+  object,
+  {
+    authority: object;
+    receipt: object;
+    removedItemId: string;
+    requestedAt: number;
+  }
+>();
+const VOICE_CITATION_AUTHORITIES = new WeakSet<object>();
+const VOICE_CITATION_GRANTS = new WeakMap<object, { authority: object; itemIds: string[] }>();
+const MAX_RETRY_ITEMS = 500;
+const MAX_VOICE_CHARS = 280;
 
 export type ContextJarvisGraphLifecycleV1 = (typeof LIFECYCLES)[number];
 export type ContextJarvisGraphPathStateV1 = (typeof PATH_STATES)[number];
@@ -200,6 +234,8 @@ function portablePath(value: unknown): value is string {
         segment.length > 0 &&
         segment !== '.' &&
         segment !== '..' &&
+        !segment.includes(':') &&
+        !/^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/iu.test(segment) &&
         !segment.endsWith('.') &&
         !segment.endsWith(' '),
     );
@@ -440,6 +476,16 @@ export function buildContextJarvisGraphActivity(
   mapId: string;
   runId: string;
   lifecycle: ContextJarvisGraphLifecycleV1;
+  activityEvent: {
+    version: 1;
+    id: string;
+    kind: 'context_used';
+    accountId: string;
+    mapId: string;
+    runId: string;
+    occurredAt: number;
+    sourceIds: string[];
+  };
   usedNodes: Array<{
     nodeId: string;
     badge: 'Used by JARVIS';
@@ -451,6 +497,13 @@ export function buildContextJarvisGraphActivity(
   inspection: {
     runId: string;
     contextPack: JarvisContextPack;
+    sources: Array<{
+      sourceId: string;
+      label: string;
+      excerpt: string;
+      freshness: 'current' | 'stale' | 'unknown';
+      removable: true;
+    }>;
   };
 }> {
   try {
@@ -611,6 +664,18 @@ export function buildContextJarvisGraphActivity(
       mapId: root.mapId,
       runId: root.runId,
       lifecycle: root.lifecycle,
+      activityEvent: {
+        version: 1 as const,
+        id: `context-used:${root.runId}`,
+        kind: 'context_used' as const,
+        accountId: root.accountId,
+        mapId: root.mapId,
+        runId: root.runId,
+        occurredAt: evidence.retrievedAt,
+        sourceIds: Array.from(new Set(contextPack.items.map(({ source }) => source.id))).sort(
+          compareIds,
+        ),
+      },
       usedNodes,
       activePathIds,
       animateActivePaths:
@@ -618,10 +683,583 @@ export function buildContextJarvisGraphActivity(
       inspection: {
         runId: root.runId,
         contextPack,
+        sources: contextPack.items
+          .map((item) => ({
+            sourceId: item.source.id,
+            label: item.source.label,
+            excerpt: item.excerpt,
+            freshness: item.freshness ?? 'unknown',
+            removable: true as const,
+          }))
+          .sort((left, right) => compareIds(left.sourceId, right.sourceId)),
       },
     });
   } catch (error) {
     if (error instanceof ContextJarvisGraphActivityError) throw error;
     throw new ContextJarvisGraphActivityError('invalid_input', 'unreadable');
   }
+}
+
+export interface ContextJarvisRetrievalReceiptV1 {
+  version: 1;
+  id: string;
+}
+
+export interface ContextJarvisRemovalGrantV1 {
+  version: 1;
+  id: string;
+}
+
+export interface ContextJarvisRetryAuthority {
+  recordRetrieval(input: {
+    runId: string;
+    request: ContextRetrievalRequest;
+    result: ContextRetrievalResult;
+  }): DeepReadonly<ContextJarvisRetrievalReceiptV1>;
+  authorizeRemoval(input: {
+    receipt: DeepReadonly<ContextJarvisRetrievalReceiptV1>;
+    removedItemId: string;
+    requestedAt: number;
+  }): DeepReadonly<ContextJarvisRemovalGrantV1>;
+}
+
+export interface ContextJarvisSourceRetryInputV1 {
+  version: 1;
+  authority: ContextJarvisRetryAuthority;
+  receipt: DeepReadonly<ContextJarvisRetrievalReceiptV1>;
+  removalGrant: DeepReadonly<ContextJarvisRemovalGrantV1>;
+}
+
+export interface ContextJarvisSourceRetryPlanV1 {
+  version: 1;
+  runId: string;
+  priorQueryId: string;
+  removedItemId: string;
+  removedSourceId: string;
+  excludedItemIds: string[];
+  excludedSourceIds: string[];
+  retainedItemIds: string[];
+  retryReason: 'user_removed_context_source';
+  requestedAt: number;
+  request: ContextRetrievalRequest;
+}
+
+function prose(value: unknown, maximum: number): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= maximum &&
+    !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u206f\ufeff]/u.test(
+      value,
+    )
+  );
+}
+
+function singleLineProse(value: unknown, maximum: number): value is string {
+  return prose(value, maximum) && !/[\r\n\u2028\u2029]/u.test(value);
+}
+
+function copiedIds(value: unknown, maximum: number): string[] | undefined {
+  if (value === undefined) return undefined;
+  const values = dataArray(value, maximum);
+  if (!values || values.some((entry) => !id(entry)) || new Set(values).size !== values.length) {
+    throw new ContextJarvisGraphActivityError('invalid_input', 'request_ids');
+  }
+  return values as string[];
+}
+
+function copyRetryRequest(value: unknown): ContextRetrievalRequest {
+  const record = dataRecord(value);
+  const allowed = [
+    'projectId',
+    'chatId',
+    'terminalSessionId',
+    'agentSlug',
+    'userText',
+    'explicitMapIds',
+    'explicitEntityIds',
+    'selectedSkillIds',
+    'preferredSourceKinds',
+    'maxTokens',
+    'requireFresh',
+  ];
+  if (
+    !record ||
+    Object.keys(record).some((key) => !allowed.includes(key)) ||
+    !Object.hasOwn(record, 'projectId') ||
+    !Object.hasOwn(record, 'userText') ||
+    !Object.hasOwn(record, 'maxTokens') ||
+    (record.projectId !== null && !id(record.projectId)) ||
+    !prose(record.userText, 32_768) ||
+    !Number.isSafeInteger(record.maxTokens) ||
+    (record.maxTokens as number) < 1 ||
+    (record.maxTokens as number) > 32_768 ||
+    (record.requireFresh !== undefined && typeof record.requireFresh !== 'boolean')
+  ) {
+    throw new ContextJarvisGraphActivityError('invalid_input', 'request');
+  }
+  for (const key of ['chatId', 'terminalSessionId', 'agentSlug'] as const) {
+    if (record[key] !== undefined && !id(record[key])) {
+      throw new ContextJarvisGraphActivityError('invalid_input', key);
+    }
+  }
+  const explicitMapIds = copiedIds(record.explicitMapIds, 200);
+  const explicitEntityIds = copiedIds(record.explicitEntityIds, 200);
+  const selectedSkillIds = copiedIds(record.selectedSkillIds, 200);
+  const preferredSourceKinds = copiedIds(record.preferredSourceKinds, 20);
+  return {
+    projectId: record.projectId as string | null,
+    ...(record.chatId === undefined ? {} : { chatId: record.chatId as string }),
+    ...(record.terminalSessionId === undefined
+      ? {}
+      : { terminalSessionId: record.terminalSessionId as string }),
+    ...(record.agentSlug === undefined ? {} : { agentSlug: record.agentSlug as string }),
+    userText: record.userText,
+    ...(explicitMapIds === undefined ? {} : { explicitMapIds }),
+    ...(explicitEntityIds === undefined ? {} : { explicitEntityIds }),
+    ...(selectedSkillIds === undefined ? {} : { selectedSkillIds }),
+    ...(preferredSourceKinds === undefined
+      ? {}
+      : {
+          preferredSourceKinds:
+            preferredSourceKinds as ContextRetrievalRequest['preferredSourceKinds'],
+        }),
+    maxTokens: record.maxTokens as number,
+    ...(record.requireFresh === undefined ? {} : { requireFresh: record.requireFresh as boolean }),
+  };
+}
+
+function validatedRetryResult(value: unknown): {
+  queryId: string;
+  builtAt: number;
+  itemRefs: Array<{ id: string; sourceId: string }>;
+} {
+  const result = dataRecord(value);
+  if (
+    !result ||
+    !exactKeys(result, [
+      'queryId',
+      'mapRevisions',
+      'items',
+      'relatedEntities',
+      'omittedCount',
+      'staleItems',
+      'warnings',
+      'builtAt',
+    ]) ||
+    !id(result.queryId) ||
+    !timestamp(result.builtAt)
+  ) {
+    throw new ContextJarvisGraphActivityError('invalid_input', 'retry_result');
+  }
+  const items = dataArray(result.items, MAX_RETRY_ITEMS);
+  if (!items) throw new ContextJarvisGraphActivityError('invalid_input', 'retry_items');
+  const itemRefs = items.map((value) => {
+    const item = dataRecord(value);
+    if (!item || !id(item.id) || !id(item.sourceId)) {
+      throw new ContextJarvisGraphActivityError('invalid_input', 'retry_item');
+    }
+    return { id: item.id, sourceId: item.sourceId };
+  });
+  if (new Set(itemRefs.map(({ id: itemId }) => itemId)).size !== itemRefs.length) {
+    throw new ContextJarvisGraphActivityError('duplicate_id', 'retry_item');
+  }
+  return { queryId: result.queryId, builtAt: result.builtAt, itemRefs };
+}
+
+/**
+ * Create a host-owned authority. Keep this object in the trusted UI controller
+ * and invoke authorizeRemoval only from a direct source-chip removal event.
+ */
+export function createContextJarvisRetryAuthority(): ContextJarvisRetryAuthority {
+  let ordinal = 0;
+  const authority: ContextJarvisRetryAuthority = Object.freeze({
+    recordRetrieval(input: Parameters<ContextJarvisRetryAuthority['recordRetrieval']>[0]) {
+      const root = dataRecord(input);
+      if (!root || !exactKeys(root, ['runId', 'request', 'result']) || !id(root.runId)) {
+        throw new ContextJarvisGraphActivityError('invalid_input', 'retrieval_receipt');
+      }
+      const receipt = Object.freeze({
+        version: 1 as const,
+        id: `retrieval-receipt-${++ordinal}`,
+      });
+      RETRIEVAL_RECEIPTS.set(receipt, {
+        authority: authority as object,
+        runId: root.runId,
+        request: detachedFreeze(copyRetryRequest(root.request)) as ContextRetrievalRequest,
+        result: validatedRetryResult(root.result),
+      });
+      return receipt;
+    },
+    authorizeRemoval(input: Parameters<ContextJarvisRetryAuthority['authorizeRemoval']>[0]) {
+      const root = dataRecord(input);
+      if (
+        !root ||
+        !exactKeys(root, ['receipt', 'removedItemId', 'requestedAt']) ||
+        !id(root.removedItemId) ||
+        !timestamp(root.requestedAt)
+      ) {
+        throw new ContextJarvisGraphActivityError('invalid_input', 'removal_grant');
+      }
+      const evidence =
+        root.receipt && typeof root.receipt === 'object'
+          ? RETRIEVAL_RECEIPTS.get(root.receipt as object)
+          : undefined;
+      if (!evidence || evidence.authority !== authority) {
+        throw new ContextJarvisGraphActivityError('invalid_input', 'retrieval_receipt');
+      }
+      if ((root.requestedAt as number) < evidence.result.builtAt) {
+        throw new ContextJarvisGraphActivityError('invalid_chronology', 'retry');
+      }
+      if (!evidence.result.itemRefs.some(({ id: itemId }) => itemId === root.removedItemId)) {
+        throw new ContextJarvisGraphActivityError('invalid_input', 'removed_item');
+      }
+      const grant = Object.freeze({
+        version: 1 as const,
+        id: `source-removal-${++ordinal}`,
+      });
+      REMOVAL_GRANTS.set(grant, {
+        authority: authority as object,
+        receipt: root.receipt as object,
+        removedItemId: root.removedItemId,
+        requestedAt: root.requestedAt,
+      });
+      return grant;
+    },
+  });
+  RETRY_AUTHORITIES.add(authority as object);
+  return authority;
+}
+
+export function planContextJarvisSourceRetry(
+  input: ContextJarvisSourceRetryInputV1,
+): DeepReadonly<ContextJarvisSourceRetryPlanV1> {
+  const root = dataRecord(input);
+  if (
+    !root ||
+    !exactKeys(root, ['version', 'authority', 'receipt', 'removalGrant']) ||
+    root.version !== 1
+  ) {
+    throw new ContextJarvisGraphActivityError('invalid_input', 'retry');
+  }
+  const authority =
+    root.authority && typeof root.authority === 'object'
+      ? (root.authority as ContextJarvisRetryAuthority)
+      : null;
+  const receiptEvidence =
+    root.receipt && typeof root.receipt === 'object'
+      ? RETRIEVAL_RECEIPTS.get(root.receipt as object)
+      : undefined;
+  const grant =
+    root.removalGrant && typeof root.removalGrant === 'object'
+      ? REMOVAL_GRANTS.get(root.removalGrant as object)
+      : undefined;
+  if (
+    !authority ||
+    !RETRY_AUTHORITIES.has(authority as object) ||
+    !receiptEvidence ||
+    receiptEvidence.authority !== authority ||
+    !grant ||
+    grant.authority !== authority ||
+    grant.receipt !== root.receipt
+  ) {
+    throw new ContextJarvisGraphActivityError('invalid_input', 'retry_authority');
+  }
+  const { itemRefs } = receiptEvidence.result;
+  const removed = itemRefs.find(({ id: itemId }) => itemId === grant.removedItemId);
+  if (!removed) throw new ContextJarvisGraphActivityError('invalid_input', 'removed_item');
+  const plan = detachedFreeze({
+    version: 1 as const,
+    runId: receiptEvidence.runId,
+    priorQueryId: receiptEvidence.result.queryId,
+    removedItemId: removed.id,
+    removedSourceId: removed.sourceId,
+    excludedItemIds: [removed.id],
+    excludedSourceIds: [removed.sourceId],
+    retainedItemIds: itemRefs
+      .filter(({ id: itemId }) => itemId !== removed.id)
+      .map(({ id: itemId }) => itemId)
+      .sort(compareIds),
+    retryReason: 'user_removed_context_source' as const,
+    requestedAt: grant.requestedAt,
+    request: receiptEvidence.request,
+  });
+  RETRY_PLAN_BRAND.add(plan as object);
+  return plan;
+}
+
+export function applyContextJarvisSourceRetry<T extends Readonly<{ id: string; sourceId: string }>>(
+  plan: DeepReadonly<ContextJarvisSourceRetryPlanV1>,
+  candidates: readonly T[],
+): readonly DeepReadonly<T>[] {
+  if (!plan || typeof plan !== 'object' || !RETRY_PLAN_BRAND.has(plan as object)) {
+    throw new ContextJarvisGraphActivityError('invalid_input', 'retry_plan');
+  }
+  const values = dataArray(candidates, MAX_RETRY_ITEMS);
+  if (!values) throw new ContextJarvisGraphActivityError('invalid_input', 'retry_candidates');
+  const excludedItems = new Set(plan.excludedItemIds);
+  const excludedSources = new Set(plan.excludedSourceIds);
+  const retained = values.map((value) => {
+    const record = dataRecord(value);
+    if (!record || !id(record.id) || !id(record.sourceId)) {
+      throw new ContextJarvisGraphActivityError('invalid_input', 'retry_candidate');
+    }
+    return value as T;
+  });
+  return detachedFreeze(
+    retained.filter(
+      ({ id: itemId, sourceId }) => !excludedItems.has(itemId) && !excludedSources.has(sourceId),
+    ),
+  );
+}
+
+export interface ContextJarvisDeliveryInputV1 {
+  version: 1;
+  surface: 'written' | 'voice';
+  visualText: string;
+  spokenSentences?: string[];
+  citationDetailGrant?: DeepReadonly<ContextJarvisVoiceCitationGrantV1>;
+  items: RetrievedContextItem[];
+}
+
+export interface ContextJarvisVoiceCitationGrantV1 {
+  version: 1;
+  id: string;
+}
+
+export interface ContextJarvisVoiceCitationAuthority {
+  authorizeCitationDetails(input: {
+    itemIds: string[];
+  }): DeepReadonly<ContextJarvisVoiceCitationGrantV1>;
+}
+
+export interface ContextJarvisSourceChipV1 {
+  itemId: string;
+  label: string;
+  freshness: 'current' | 'stale' | 'unknown';
+  action: RetrievedContextCitation['action'];
+}
+
+/**
+ * Host-owned direct-user authority. Do not expose it to models, tools, or
+ * provider output; only the transcript UI's explicit citation request uses it.
+ */
+export function createContextJarvisVoiceCitationAuthority(): ContextJarvisVoiceCitationAuthority {
+  let ordinal = 0;
+  const authority: ContextJarvisVoiceCitationAuthority = Object.freeze({
+    authorizeCitationDetails(
+      input: Parameters<ContextJarvisVoiceCitationAuthority['authorizeCitationDetails']>[0],
+    ) {
+      const root = dataRecord(input);
+      if (!root || !exactKeys(root, ['itemIds'])) {
+        throw new ContextJarvisGraphActivityError('invalid_input', 'voice_citation_grant');
+      }
+      const itemIds = copiedIds(root.itemIds, MAX_RETRY_ITEMS);
+      if (!itemIds || itemIds.length === 0) {
+        throw new ContextJarvisGraphActivityError('invalid_input', 'voice_citation_items');
+      }
+      const grant = Object.freeze({
+        version: 1 as const,
+        id: `voice-citation-${++ordinal}`,
+      });
+      VOICE_CITATION_GRANTS.set(grant, {
+        authority: authority as object,
+        itemIds: [...itemIds].sort(compareIds),
+      });
+      return grant;
+    },
+  });
+  VOICE_CITATION_AUTHORITIES.add(authority as object);
+  return authority;
+}
+
+function sourceChip(value: unknown): ContextJarvisSourceChipV1 {
+  const item = dataRecord(value);
+  const entity = item ? dataRecord(item.entity) : null;
+  const citation = item ? dataRecord(item.citation) : null;
+  const action = citation ? dataRecord(citation.action) : null;
+  const expectedLabel =
+    entity && typeof entity.label === 'string'
+      ? entity.lineStart === undefined
+        ? entity.label
+        : entity.lineEnd === undefined || entity.lineEnd === entity.lineStart
+          ? `${entity.label} line ${entity.lineStart}`
+          : `${entity.label} lines ${entity.lineStart}\u2013${entity.lineEnd}`
+      : null;
+  const expectedActionKind =
+    item?.sourceKind === 'github_repository' ? 'open_source' : 'highlight_entity';
+  if (
+    !item ||
+    !id(item.id) ||
+    !id(item.mapId) ||
+    !id(item.sourceId) ||
+    !oneOf(item.sourceKind, CONTEXT_SOURCE_KINDS) ||
+    !oneOf(item.freshness, ['current', 'stale', 'unknown'] as const) ||
+    !entity ||
+    !id(entity.entityId) ||
+    !id(entity.sourceId) ||
+    entity.sourceId !== item.sourceId ||
+    !singleLineProse(entity.label, 500) ||
+    (entity.path !== undefined && !portablePath(entity.path)) ||
+    ((entity.lineStart !== undefined || entity.lineEnd !== undefined) &&
+      entity.path === undefined) ||
+    (entity.lineEnd !== undefined && entity.lineStart === undefined) ||
+    (entity.lineStart !== undefined &&
+      (!Number.isSafeInteger(entity.lineStart) || (entity.lineStart as number) < 1)) ||
+    (entity.lineEnd !== undefined &&
+      (!Number.isSafeInteger(entity.lineEnd) ||
+        (entity.lineEnd as number) < ((entity.lineStart as number | undefined) ?? 1))) ||
+    !citation ||
+    !exactKeys(citation, ['label', 'action']) ||
+    !singleLineProse(citation.label, 500) ||
+    citation.label !== expectedLabel ||
+    !action ||
+    action.kind !== expectedActionKind ||
+    action.sourceKind !== item.sourceKind ||
+    action.mapId !== item.mapId ||
+    action.entityId !== entity.entityId ||
+    action.path !== entity.path ||
+    action.lineStart !== entity.lineStart ||
+    action.lineEnd !== entity.lineEnd
+  ) {
+    throw new ContextJarvisGraphActivityError('invalid_input', 'delivery_item');
+  }
+  return {
+    itemId: item.id,
+    label: citation.label,
+    freshness: item.freshness,
+    action: {
+      kind: action.kind as RetrievedContextCitation['action']['kind'],
+      sourceKind: action.sourceKind as RetrievedContextCitation['action']['sourceKind'],
+      mapId: action.mapId,
+      entityId: action.entityId,
+      ...(action.path === undefined ? {} : { path: action.path as string }),
+      ...(action.lineStart === undefined ? {} : { lineStart: action.lineStart as number }),
+      ...(action.lineEnd === undefined ? {} : { lineEnd: action.lineEnd as number }),
+    },
+  };
+}
+
+function normalizedLeakText(value: string): string {
+  return value.normalize('NFKC').replaceAll('\\', '/').toLocaleLowerCase('en-US');
+}
+
+function forbiddenCitationTokens(chip: ContextJarvisSourceChipV1): string[] {
+  const values = [chip.label, chip.action.path ?? ''];
+  if (chip.action.path) values.push(chip.action.path.split('/').at(-1) ?? '');
+  const labelHead = chip.label.replace(/\s+lines?\s+\d+(?:\u2013\d+)?$/u, '');
+  values.push(labelHead);
+  return Array.from(new Set(values.map(normalizedLeakText).filter((value) => value.length > 0)));
+}
+
+function escapedRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+}
+
+function containsBoundedCitation(value: string, citation: string): boolean {
+  return new RegExp(
+    `(?:^|[^\\p{L}\\p{N}_])${escapedRegex(citation)}(?=$|[^\\p{L}\\p{N}_])`,
+    'u',
+  ).test(value);
+}
+
+function conciseVoiceSentences(value: unknown): string[] {
+  const sentences = dataArray(value, 2);
+  if (!sentences || sentences.length === 0) {
+    throw new ContextJarvisGraphActivityError('invalid_input', 'voice_conciseness');
+  }
+  const output = sentences.map((sentence) => {
+    if (!prose(sentence, MAX_VOICE_CHARS) || /[\r\n]/u.test(sentence)) {
+      throw new ContextJarvisGraphActivityError('invalid_input', 'voice_conciseness');
+    }
+    const terminators = [...sentence.matchAll(/[!?\u3002\uff01\uff1f]|\.(?=$|\s|[A-Z])/gu)];
+    if (
+      terminators.length > 1 ||
+      (terminators.length === 1 && terminators[0]!.index !== sentence.length - 1)
+    ) {
+      throw new ContextJarvisGraphActivityError('invalid_input', 'voice_conciseness');
+    }
+    return sentence;
+  });
+  if (output.join(' ').length > MAX_VOICE_CHARS) {
+    throw new ContextJarvisGraphActivityError('invalid_input', 'voice_conciseness');
+  }
+  return output;
+}
+
+export function buildContextJarvisDelivery(input: ContextJarvisDeliveryInputV1): DeepReadonly<{
+  version: 1;
+  surface: 'written' | 'voice';
+  visualTranscript: {
+    text: string;
+    sourceChips: ContextJarvisSourceChipV1[];
+  };
+  spokenText: string | null;
+  spokenCitationLabels: string[];
+}> {
+  const root = dataRecord(input);
+  const deliveryKeys = [
+    'version',
+    'surface',
+    'visualText',
+    'spokenSentences',
+    'citationDetailGrant',
+    'items',
+  ];
+  if (
+    !root ||
+    Object.keys(root).some((key) => !deliveryKeys.includes(key)) ||
+    !['version', 'surface', 'visualText', 'items'].every((key) => Object.hasOwn(root, key)) ||
+    root.version !== 1 ||
+    !oneOf(root.surface, ['written', 'voice'] as const) ||
+    !prose(root.visualText, 64_000)
+  ) {
+    throw new ContextJarvisGraphActivityError('invalid_input', 'delivery');
+  }
+  const itemValues = dataArray(root.items, MAX_RETRY_ITEMS);
+  if (!itemValues) throw new ContextJarvisGraphActivityError('invalid_input', 'delivery_items');
+  const sourceChips = itemValues.map(sourceChip);
+  const itemIds = sourceChips.map(({ itemId }) => itemId).sort(compareIds);
+  const citationGrant =
+    root.citationDetailGrant && typeof root.citationDetailGrant === 'object'
+      ? VOICE_CITATION_GRANTS.get(root.citationDetailGrant as object)
+      : undefined;
+  if (
+    root.citationDetailGrant !== undefined &&
+    (!citationGrant ||
+      !VOICE_CITATION_AUTHORITIES.has(citationGrant.authority) ||
+      citationGrant.itemIds.length !== itemIds.length ||
+      citationGrant.itemIds.some((itemId, index) => itemId !== itemIds[index]))
+  ) {
+    throw new ContextJarvisGraphActivityError('invalid_input', 'voice_citation_grant');
+  }
+  let spokenText: string | null = null;
+  if (root.surface === 'voice') {
+    const sentences = conciseVoiceSentences(root.spokenSentences);
+    const normalizedSpoken = normalizedLeakText(sentences.join(' '));
+    if (
+      !citationGrant &&
+      sourceChips.some((chip) =>
+        forbiddenCitationTokens(chip).some((token) =>
+          containsBoundedCitation(normalizedSpoken, token),
+        ),
+      )
+    ) {
+      throw new ContextJarvisGraphActivityError('invalid_input', 'unrequested_spoken_citation');
+    }
+    spokenText = sentences.join(' ');
+  } else if (root.spokenSentences !== undefined || root.citationDetailGrant !== undefined) {
+    throw new ContextJarvisGraphActivityError('invalid_input', 'written_spoken_text');
+  }
+  return detachedFreeze({
+    version: 1 as const,
+    surface: root.surface,
+    visualTranscript: {
+      text: root.visualText,
+      sourceChips,
+    },
+    spokenText,
+    spokenCitationLabels:
+      root.surface === 'voice' && citationGrant ? sourceChips.map(({ label }) => label) : [],
+  });
 }
