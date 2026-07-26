@@ -39,6 +39,8 @@ function repositories(
     eventType?: string;
     eventCreatedAt?: number;
     eventSummary?: string;
+    eventTitle?: unknown;
+    omitEventTitle?: boolean;
   } = {},
 ): DailyContextActivityRepositories {
   return {
@@ -52,15 +54,19 @@ function repositories(
       })),
     },
     event: {
-      getBySeq: vi.fn(async (_accountId, runId, seq) => ({
-        runId,
-        seq,
-        idempotencyKey: `${runId}-${seq}`,
-        type: (overrides.eventType ?? 'artifact') as 'artifact',
-        title: `Authoritative change ${seq}`,
-        safeSummary: overrides.eventSummary ?? `Completed change ${seq}.`,
-        createdAt: overrides.eventCreatedAt ?? Date.parse(`2026-07-25T1${seq + 4}:00:00.000Z`),
-      })),
+      getBySeq: vi.fn(async (_accountId, runId, seq) => {
+        const event = {
+          runId,
+          seq,
+          idempotencyKey: `${runId}-${seq}`,
+          type: (overrides.eventType ?? 'artifact') as 'artifact',
+          title: overrides.eventTitle ?? `Authoritative change ${seq}`,
+          safeSummary: overrides.eventSummary ?? `Completed change ${seq}.`,
+          createdAt: overrides.eventCreatedAt ?? Date.parse(`2026-07-25T1${seq + 4}:00:00.000Z`),
+        };
+        if (overrides.omitEventTitle) delete (event as Partial<typeof event>).title;
+        return event as never;
+      }),
     },
   };
 }
@@ -177,6 +183,8 @@ describe('Daily Context Notes', () => {
       parseDailyContextTerminalCommand(`vibespace daily add "${'a'.repeat(24_100)}"`),
     ).toBeNull();
     expect(parseDailyContextTerminalCommand(' vibespace daily ')).toBeNull();
+    expect(parseDailyContextTerminalCommand('vibespace daily add  "Build passed"')).toBeNull();
+    expect(parseDailyContextTerminalCommand('vibespace daily add \t"Build passed"')).toBeNull();
   });
 
   it('offers equivalent slash operations without executable authority', () => {
@@ -290,6 +298,38 @@ describe('Daily Context Notes', () => {
         repositories({ eventSummary: 'Repeated result.' }),
       ),
     ).rejects.toThrow(/duplicate.*summary/i);
+    await expect(
+      planJarvisDailyContextChanges(
+        settings,
+        references,
+        request,
+        repositories({ omitEventTitle: true }),
+      ),
+    ).rejects.toThrow(/activity event|change title/i);
+    await expect(
+      planJarvisDailyContextChanges(
+        settings,
+        references,
+        request,
+        repositories({ eventTitle: 42 }),
+      ),
+    ).rejects.toThrow(/change title/i);
+    await expect(
+      planJarvisDailyContextChanges(
+        settings,
+        references,
+        request,
+        repositories({ eventTitle: 'bad\u0000title' }),
+      ),
+    ).rejects.toThrow(/change title/i);
+    await expect(
+      planJarvisDailyContextChanges(
+        settings,
+        references,
+        request,
+        repositories({ eventTitle: 'x'.repeat(4_001) }),
+      ),
+    ).rejects.toThrow(/change title/i);
   });
 
   it('rejects duplicate sources and non-dense or decorated reference arrays', async () => {

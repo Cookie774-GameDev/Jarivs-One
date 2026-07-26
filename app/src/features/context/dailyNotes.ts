@@ -264,6 +264,14 @@ function exactKeys(record: Record<string, unknown>, keys: readonly string[], rea
   if (Object.keys(record).some((key) => !allowed.has(key))) fail(reason);
 }
 
+function requireKeys(
+  record: Record<string, unknown>,
+  keys: readonly string[],
+  reason: string,
+): void {
+  if (keys.some((key) => !Object.prototype.hasOwnProperty.call(record, key))) fail(reason);
+}
+
 function safeText(value: unknown, reason: string, maximum: number): string {
   if (
     typeof value !== 'string' ||
@@ -484,6 +492,7 @@ export function parseDailyContextTerminalCommand(
   }
   if (!command.startsWith(TERMINAL_ADD_PREFIX)) return null;
   const encoded = command.slice(TERMINAL_ADD_PREFIX.length);
+  if (!encoded.startsWith('"') || !encoded.endsWith('"')) return null;
   try {
     const content = JSON.parse(encoded) as unknown;
     return addOperation('terminal', content);
@@ -561,6 +570,11 @@ async function resolveChanges(
         ['runId', 'seq', 'idempotencyKey', 'type', 'title', 'safeSummary', 'createdAt'],
         'activity event',
       );
+      requireKeys(
+        event,
+        ['runId', 'seq', 'idempotencyKey', 'type', 'title', 'createdAt'],
+        'activity event',
+      );
     }
     if (
       !run ||
@@ -576,6 +590,7 @@ async function resolveChanges(
     if (!event || event.runId !== runId || event.seq !== eventSeq) {
       fail('authoritative change evidence');
     }
+    safeText(event.title, 'change title', MAX_ENTRY_CHARS);
     const occurredAt = safeTimestamp(event.createdAt, 'change timestamp');
     if (occurredAt > completedAt) fail('authoritative change evidence');
     if (!DAILY_CONTEXT_EVENT_TYPES.has(event.type as DailyContextActivityEvent['type'])) {
