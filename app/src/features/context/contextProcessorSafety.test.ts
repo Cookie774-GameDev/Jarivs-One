@@ -253,7 +253,27 @@ describe('Context processor safety', () => {
       schemaVersion: 1,
       kind: 'context_package',
       executable: false,
-      documents: [{ id: 'note-1', markdown: '<script>globalThis.pwned = true</script>' }],
+      documents: [
+        {
+          id: 'note-1',
+          markdown: '<script>globalThis.pwned = true</script>',
+          renderPlan: {
+            schemaVersion: 1,
+            executable: false,
+            rawHtml: 'text_only',
+            svg: 'text_only',
+            importedExtensions: 'text_only',
+            blocks: [
+              {
+                kind: 'text',
+                text: '<script>globalThis.pwned = true</script>',
+              },
+            ],
+            links: [],
+            embeds: [],
+          },
+        },
+      ],
     });
     expect(() =>
       parsePassiveContextPackage({

@@ -1,3 +1,5 @@
+import { compileContextNoteRenderPlan, type ContextNoteRenderPlan } from './noteRendering';
+
 export interface ContextSkillCapability {
   canReadContext: boolean;
   canSuggestLinks: boolean;
@@ -73,6 +75,7 @@ export interface PassiveContextPackage {
   documents: readonly {
     id: string;
     markdown: string;
+    renderPlan: Readonly<ContextNoteRenderPlan>;
   }[];
 }
 
@@ -401,9 +404,11 @@ export function parsePassiveContextPackage(raw: unknown): Readonly<PassiveContex
     }
     allowedKeys(rawDocument, ['id', 'markdown'], 'document fields');
     const document = rawDocument as Record<string, unknown>;
+    const markdown = text(document.markdown, 'Markdown', true, MAX_TEXT);
     return Object.freeze({
       id: id(document.id, 'document ID'),
-      markdown: text(document.markdown, 'Markdown', true, MAX_TEXT),
+      markdown,
+      renderPlan: compileContextNoteRenderPlan(markdown),
     });
   });
   return Object.freeze({

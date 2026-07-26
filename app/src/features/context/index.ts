@@ -365,6 +365,13 @@ export {
   type DailyContextUserOperation,
 } from './dailyNotes';
 export {
+  compileContextNoteRenderPlan,
+  type ContextNoteRenderBlock,
+  type ContextNoteRenderEmbed,
+  type ContextNoteRenderLink,
+  type ContextNoteRenderPlan,
+} from './noteRendering';
+export {
   authorizeContextProcessorCapability,
   parsePassiveContextPackage,
   reviewContextProcessorInstall,
