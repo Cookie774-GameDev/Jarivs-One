@@ -2647,7 +2647,7 @@ export function startRuntimeListener(
       });
     }
     try {
-      projectContextTree = getProjectContextTreeBlock(projectId);
+      projectContextTree = await getProjectContextTreeBlock(projectId);
     } catch (err) {
       devConsole.log({
         channel: 'ai',

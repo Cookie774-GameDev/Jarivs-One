@@ -360,7 +360,7 @@ describe('Context Map v1 migration', () => {
     );
   });
 
-  it('namespaces only real cross-account id collisions and preserves both accounts', async () => {
+  it('claims retained legacy data once and rejects sequential cross-account disclosure', async () => {
     seedCollection(localStorage, [mapFixture('map-shared', 'active')]);
     await migrateContextV1ForAccount({
       database,
@@ -370,26 +370,46 @@ describe('Context Map v1 migration', () => {
       now: () => 5_000,
     });
 
-    const second = await migrateContextV1ForAccount({
-      database,
-      storage: localStorage,
-      accountId: 'account-2',
-      projectId: 'project-1',
-      now: () => 6_000,
-    });
-
-    expect(second.idRemaps).toHaveProperty('map-shared');
-    expect(second.idRemaps['map-shared']).not.toBe('map-shared');
-    await expect(database.context_maps.count()).resolves.toBe(2);
+    await expect(
+      migrateContextV1ForAccount({
+        database,
+        storage: localStorage,
+        accountId: 'account-2',
+        projectId: 'project-1',
+        now: () => 6_000,
+      }),
+    ).rejects.toThrow('context_migration_legacy_claimed_by_another_account');
+    await expect(database.context_maps.count()).resolves.toBe(1);
     await expect(database.context_maps.get('map-shared')).resolves.toMatchObject({
       accountId: 'account-1',
     });
-    await expect(database.context_maps.get(second.idRemaps['map-shared']!)).resolves.toMatchObject({
-      accountId: 'account-2',
-    });
   });
 
-  it('namespaces a different same-project graph instead of quarantining an id collision', async () => {
+  it('atomically rejects one of two concurrent accounts claiming the same legacy payload', async () => {
+    seedCollection(localStorage, [mapFixture('map-shared', 'active')]);
+    const results = await Promise.allSettled(
+      ['account-1', 'account-2'].map((accountId, index) =>
+        migrateContextV1ForAccount({
+          database,
+          storage: localStorage,
+          accountId,
+          projectId: 'project-1',
+          now: () => 5_000 + index,
+        }),
+      ),
+    );
+
+    expect(results.filter(({ status }) => status === 'fulfilled')).toHaveLength(1);
+    const rejected = results.find(({ status }) => status === 'rejected');
+    expect(rejected).toMatchObject({ status: 'rejected' });
+    if (rejected?.status === 'rejected') {
+      expect(String(rejected.reason)).toContain('context_migration_legacy_claimed_by_another_account');
+    }
+    await expect(database.context_maps.count()).resolves.toBe(1);
+    await expect(database.context_migration_backups.count()).resolves.toBe(1);
+  });
+
+  it('rejects changed retained legacy bytes instead of silently migrating them again', async () => {
     seedCollection(localStorage, [mapFixture('map-shared', 'active')]);
     await migrateContextV1ForAccount({
       database,
@@ -402,29 +422,18 @@ describe('Context Map v1 migration', () => {
       mapFixture('map-shared', 'active', 'C:\\Projects\\Different', 2_000),
     ]);
 
-    const second = await migrateContextV1ForAccount({
-      database,
-      storage: localStorage,
-      accountId: 'account-1',
-      projectId: 'project-1',
-      now: () => 6_000,
-    });
-
-    expect(second).toMatchObject({
-      state: 'migrated',
-      migratedMapCount: 1,
-      quarantinedCount: 0,
-    });
-    expect(second.idRemaps['map-shared']).toBeDefined();
-    expect(second.idRemaps['map-shared']).not.toBe('map-shared');
-    await expect(database.context_maps.count()).resolves.toBe(2);
+    await expect(
+      migrateContextV1ForAccount({
+        database,
+        storage: localStorage,
+        accountId: 'account-1',
+        projectId: 'project-1',
+        now: () => 6_000,
+      }),
+    ).rejects.toThrow('context_migration_legacy_payload_changed');
+    await expect(database.context_maps.count()).resolves.toBe(1);
     await expect(database.context_sources.get('map-shared:source')).resolves.toMatchObject({
       localRoot: 'C:\\Projects\\Example',
-    });
-    await expect(
-      database.context_sources.get(`${second.idRemaps['map-shared']}:source`),
-    ).resolves.toMatchObject({
-      localRoot: 'C:\\Projects\\Different',
     });
   });
 
@@ -445,6 +454,17 @@ describe('Context Map v1 migration', () => {
       });
       expect(result.quarantinedCount).toBe(0);
       expect(result.migratedMapCount).toBe(1);
+      const restarted = await migrateContextV1ForAccount({
+        database,
+        storage: localStorage,
+        accountId: 'account-1',
+        projectId,
+        now: () => 6_000 + index,
+      });
+      expect(restarted).toMatchObject({
+        state: 'already_migrated',
+        idRemaps: result.idRemaps,
+      });
     }
 
     const maps = await database.context_maps.where('accountId').equals('account-1').toArray();
@@ -473,6 +493,18 @@ describe('Context Map v1 migration', () => {
       state: 'migrated_with_quarantine',
       expectedMapCount: 1,
       migratedMapCount: 1,
+      quarantinedCount: 1,
+    });
+    await expect(
+      migrateContextV1ForAccount({
+        database,
+        storage: localStorage,
+        accountId: 'account-1',
+        projectId: 'project-1',
+        now: () => 6_000,
+      }),
+    ).resolves.toMatchObject({
+      state: 'already_migrated',
       quarantinedCount: 1,
     });
     await expect(database.context_maps.count()).resolves.toBe(1);

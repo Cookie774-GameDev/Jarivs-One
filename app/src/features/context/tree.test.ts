@@ -16,7 +16,9 @@ import {
   describeContextRootError,
   generateProjectContextTree,
   MAX_CONTEXT_FILE_BYTES,
+  contextMapCollectionKey,
   contextMapSlashOptions,
+  contextStorageKey,
   resolveContextMapRecord,
   type ContextMapRecord,
 } from './tree';
@@ -71,6 +73,8 @@ describe('generateProjectContextTree file safeguards', () => {
     expect(fsMocks.readTextFileSample).toHaveBeenCalledWith('C:\\proj\\src\\large.ts', 64 * 1024, {
       root: 'C:\\proj',
     });
+    expect(localStorage.getItem(contextMapCollectionKey(null))).toBeNull();
+    expect(localStorage.getItem(contextStorageKey(null))).toBeNull();
   });
 
   it('accepts image and video metadata up to 100 MB and rejects larger files', async () => {

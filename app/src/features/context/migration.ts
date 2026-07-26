@@ -8,6 +8,7 @@ import {
   type ContextGraphSnapshotV2,
   type ContextProvenanceV2,
   type ContextReferenceV2,
+  type ContextSourceStatus,
 } from './contracts';
 import { createContextGraphRepository, ContextGraphRepositoryError } from './repository';
 import {
@@ -22,6 +23,7 @@ import {
 
 export type ContextV1MigrationState =
   | 'no_legacy_data'
+  | 'foreign_legacy_ignored'
   | 'migrated'
   | 'migrated_with_quarantine'
   | 'already_migrated';
@@ -355,11 +357,19 @@ function referenceForEntry(
   };
 }
 
-function convertLegacyMap(
+export function convertContextMapRecordV1ToSnapshotV2(
   legacy: ContextMapRecord,
   accountId: string,
   mapId: string,
+  options: {
+    knowledgeRevision?: number;
+    sourceStatus?: ContextSourceStatus;
+    parser?: string;
+  } = {},
 ): ContextGraphSnapshotV2 {
+  const knowledgeRevision = options.knowledgeRevision ?? 1;
+  const sourceStatus = options.sourceStatus ?? 'stale';
+  const parser = options.parser ?? 'context-v1-tree-migration';
   const tree = legacy.tree;
   const createdAt = Math.min(legacy.createdAt, tree.generatedAt);
   const updatedAt = Math.max(legacy.updatedAt, tree.generatedAt, createdAt);
@@ -400,7 +410,7 @@ function convertLegacyMap(
       sourceKind: 'local_folder',
       ...(node.path ? { path: node.path } : {}),
       extractedAt: tree.generatedAt,
-      parser: 'context-v1-tree-migration',
+      parser,
       confidence: 1,
       sourceRevision,
     });
@@ -433,7 +443,7 @@ function convertLegacyMap(
         sourceKind: 'local_folder',
         ...(node.path ? { path: node.path } : {}),
         extractedAt: tree.generatedAt,
-        parser: 'context-v1-tree-migration',
+        parser,
         confidence: 1,
         sourceRevision,
       });
@@ -463,12 +473,12 @@ function convertLegacyMap(
         edgeCount: edges.length,
         noteCount: entities.filter(({ kind }) => kind === 'markdown_note').length,
         attachmentCount: entities.filter(({ kind }) => kind === 'attachment').length,
-        staleSourceCount: 1,
+        staleSourceCount: sourceStatus === 'stale' ? 1 : 0,
       },
       createdAt,
       updatedAt,
       lastIndexedAt: tree.generatedAt,
-      knowledgeRevision: 1,
+      knowledgeRevision,
     },
     sources: [
       {
@@ -478,11 +488,12 @@ function convertLegacyMap(
         mapId,
         kind: 'local_folder',
         label: legacy.name,
-        status: 'stale',
+        status: sourceStatus,
         localRoot: tree.rootDir,
         createdAt,
         updatedAt,
         lastIndexedAt: tree.generatedAt,
+        ...(sourceStatus === 'ready' ? { lastVerifiedAt: tree.generatedAt } : {}),
         sourceRevision,
         parserVersion: 1,
       },
@@ -527,6 +538,24 @@ async function backupId(
     '',
   );
   return `ctxmig_${hex}`;
+}
+
+async function legacyPayloadFingerprint(
+  projectId: string | null,
+  values: Record<string, string | null>,
+): Promise<string> {
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle) throw new Error('context_migration_sha256_unavailable');
+  const payload = new TextEncoder().encode(JSON.stringify({ projectId, values }));
+  const digest = await subtle.digest('SHA-256', payload);
+  const hex = Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, '0'),
+  ).join('');
+  return `ctxlegacy_${hex}`;
+}
+
+function legacyClaimSettingKey(projectId: string | null): string {
+  return `context-v1-legacy-claim:${encodeURIComponent(projectId ?? '__default__')}`;
 }
 
 function quarantineRow(
@@ -638,6 +667,45 @@ export async function migrateContextV1ForAccount(
     });
   }
 
+  const payloadFingerprint = await legacyPayloadFingerprint(input.projectId, legacyValues);
+  const claimKey = legacyClaimSettingKey(input.projectId);
+  await input.database.transaction('rw', input.database.settings, async () => {
+    const existing = await input.database.settings.get(claimKey);
+    if (existing) {
+      const claim = existing.value as {
+        version?: unknown;
+        accountId?: unknown;
+        projectId?: unknown;
+        payloadFingerprint?: unknown;
+      };
+      if (
+        claim.version !== 1 ||
+        claim.projectId !== input.projectId ||
+        typeof claim.accountId !== 'string' ||
+        typeof claim.payloadFingerprint !== 'string'
+      ) {
+        throw new Error('context_migration_legacy_claim_invalid');
+      }
+      if (claim.accountId !== input.accountId) {
+        throw new Error('context_migration_legacy_claimed_by_another_account');
+      }
+      if (claim.payloadFingerprint !== payloadFingerprint) {
+        throw new Error('context_migration_legacy_payload_changed');
+      }
+      return;
+    }
+    await input.database.settings.put({
+      key: claimKey,
+      value: {
+        version: 1,
+        accountId: input.accountId,
+        projectId: input.projectId,
+        payloadFingerprint,
+      },
+      updated_at: now,
+    });
+  });
+
   const id = await backupId(input.accountId, input.projectId, legacyValues);
   const existingBackup = await input.database.context_migration_backups.get(id);
   if (existingBackup?.status === 'verified') {
@@ -666,8 +734,8 @@ export async function migrateContextV1ForAccount(
         ...(typeof selection?.selectedMapId === 'string'
           ? { selectedMapId: selection.selectedMapId }
           : {}),
-        quarantinedCount: 0,
-        idRemaps: {},
+        quarantinedCount: existingBackup.quarantinedCount ?? 0,
+        idRemaps: existingBackup.idRemaps ?? {},
       });
     }
   }
@@ -800,7 +868,11 @@ export async function migrateContextV1ForAccount(
           input.projectId,
           unavailableMapIds,
         );
-        const candidateSnapshot = convertLegacyMap(legacy, input.accountId, candidate);
+        const candidateSnapshot = convertContextMapRecordV1ToSnapshotV2(
+          legacy,
+          input.accountId,
+          candidate,
+        );
         const collision = await input.database.context_maps.get(candidate);
         if (
           collision &&
@@ -936,6 +1008,8 @@ export async function migrateContextV1ForAccount(
     expectedMapCount: converted.length,
     migratedMapCount: verifiedMaps.length,
     migratedMapIds,
+    quarantinedCount: quarantined.length,
+    idRemaps,
     verifiedAt: now,
   };
   await input.database.context_migration_backups.put(verified);

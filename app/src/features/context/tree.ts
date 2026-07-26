@@ -250,7 +250,7 @@ export function loadStoredContextMaps(projectId: string | null): ContextMapRecor
 
 /** Resolve a context map from a slash-picker value (stable id) or legacy name match. */
 export function resolveContextMapRecord(
-  maps: ContextMapRecord[],
+  maps: readonly ContextMapRecord[],
   pickerValue: string,
 ): ContextMapRecord | undefined {
   if (!pickerValue) return undefined;
@@ -265,7 +265,7 @@ export function resolveContextMapRecord(
 
 /** Build slash-command picker rows; always keys by map id so duplicate names stay distinct. */
 export function contextMapSlashOptions(
-  maps: ContextMapRecord[],
+  maps: readonly ContextMapRecord[],
 ): Array<{ id: string; label: string; description?: string; metadata?: string }> {
   const now = Date.now();
   return maps
@@ -811,8 +811,6 @@ export async function generateProjectContextTree(
       `Could not write Context map file at ${mapPath}: ${fileWrite.error.raw ?? fileWrite.error.code}`,
     );
   }
-  saveContextTree(tree);
-
   return tree;
 }
 

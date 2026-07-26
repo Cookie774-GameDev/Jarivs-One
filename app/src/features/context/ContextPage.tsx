@@ -21,6 +21,7 @@ import { Button, Input, toast } from '@/components/ui';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import { cn } from '@/lib/utils';
+import { resolveAccountIdentity } from '@/lib/accountIdentity';
 import { notifyDone } from '@/lib/notifications';
 import type { ProviderId } from '@/types';
 import {
@@ -46,23 +47,26 @@ import {
   CONTEXT_PROVIDER_OPTIONS,
   contextMapFilePath,
   contextNodeFilePath,
-  deleteStoredContextMap,
   findContextFileNodeByPath,
   findContextNode,
   flattenContextNodes,
   formatContextAttachmentForTerminal,
   generateProjectContextTree,
-  getStoredContextSelectedFile,
-  loadSelectedContextMap,
-  loadStoredContextMaps,
   nodeToAttachment,
-  selectStoredContextMap,
   serializeContextAttachment,
   type ContextMapRecord,
   type ContextGenerationProvider,
   type ContextTreeNode,
   type ProjectContextTree,
 } from './tree';
+import {
+  deletePersistedContextMap,
+  ensureContextPersistence,
+  getActiveContextPersistenceState,
+  savePersistedContextTree,
+  selectPersistedContextFile,
+  selectPersistedContextMap,
+} from './contextPersistence';
 
 const PROJECT_ROOT_NODE_ID = '__jarvis-context-root__';
 const CLOUD_CONTEXT_PROVIDERS: Array<Exclude<ContextGenerationProvider, 'local'>> = [
@@ -83,23 +87,36 @@ type ProviderKeys = Partial<Record<ProviderId, string>>;
 
 export function ContextPage() {
   const projectId = useAuthStore((s) => s.projectId);
+  const accountId = useAuthStore((s) => resolveAccountIdentity(s)?.accountId ?? null);
   const apiKeys = useAuthStore((s) => s.apiKeys);
   const defaultProvider = useAuthStore((s) => s.defaultProvider);
   const setRoute = useUIStore((s) => s.setRoute);
   const [rootDraft, setRootDraft] = React.useState(() => getStoredProjectRoot(projectId));
-  const [maps, setMaps] = React.useState<ContextMapRecord[]>(() =>
-    loadStoredContextMaps(projectId),
-  );
-  const [selectedMapId, setSelectedMapId] = React.useState<string | null>(
-    () => loadSelectedContextMap(projectId)?.id ?? null,
-  );
-  const [selectedId, setSelectedId] = React.useState<string | null>(() =>
-    loadSelectedContextMap(projectId) ? PROJECT_ROOT_NODE_ID : null,
-  );
+  const [maps, setMaps] = React.useState<ContextMapRecord[]>([]);
+  const [selectedMapId, setSelectedMapId] = React.useState<string | null>(null);
+  const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [provider, setProvider] = React.useState<ContextGenerationProvider>('local');
   const [generating, setGenerating] = React.useState(false);
   const [mapFlash, setMapFlash] = React.useState(false);
   const [status, setStatus] = React.useState('Ready.');
+  const lastAppliedFileRef = React.useRef('');
+
+  const applyPersistenceState = React.useCallback(
+    (state: Awaited<ReturnType<typeof ensureContextPersistence>>) => {
+      const auth = useAuthStore.getState();
+      if (
+        resolveAccountIdentity(auth)?.accountId !== state.accountId ||
+        (auth.projectId ?? null) !== state.projectId
+      ) {
+        return false;
+      }
+      setMaps([...state.maps]);
+      setSelectedMapId(state.selectedMapId);
+      setSelectedId((current) => current ?? (state.selectedMapId ? PROJECT_ROOT_NODE_ID : null));
+      return true;
+    },
+    [],
+  );
 
   const providerChoices = React.useMemo(() => getProviderChoices(apiKeys), [apiKeys]);
   const providerChoiceKey = providerChoices.join('|');
@@ -113,36 +130,47 @@ export function ContextPage() {
 
   React.useEffect(() => {
     setRootDraft(getStoredProjectRoot(projectId));
-    const nextMaps = loadStoredContextMaps(projectId);
-    const nextSelected = loadSelectedContextMap(projectId);
-    setMaps(nextMaps);
-    setSelectedMapId(nextSelected?.id ?? null);
-    setSelectedId(nextSelected ? PROJECT_ROOT_NODE_ID : null);
-  }, [projectId]);
+    setMaps([]);
+    setSelectedMapId(null);
+    setSelectedId(null);
+    setGenerating(false);
+    lastAppliedFileRef.current = '';
+    if (!accountId) return;
+    let active = true;
+    void ensureContextPersistence(projectId)
+      .then((state) => {
+        if (active) applyPersistenceState(state);
+      })
+      .catch((error) => {
+        if (!active) return;
+        setStatus('Context storage recovery required.');
+        toast.error(
+          'Context storage unavailable',
+          error instanceof Error ? error.message : 'Unknown persistence error',
+        );
+      });
+    return () => {
+      active = false;
+    };
+  }, [accountId, applyPersistenceState, projectId]);
 
   React.useEffect(() => {
     const onUpdated = (event: Event) => {
       const detail = (event as CustomEvent<{ projectId?: string | null; mapId?: string | null }>)
         .detail;
       if ((detail?.projectId ?? null) !== (projectId ?? null)) return;
-      const nextMaps = loadStoredContextMaps(projectId);
-      const nextSelected = detail?.mapId
-        ? (nextMaps.find((map) => map.id === detail.mapId) ?? loadSelectedContextMap(projectId))
-        : loadSelectedContextMap(projectId);
-      setMaps(nextMaps);
-      setSelectedMapId(nextSelected?.id ?? null);
-      setSelectedId((cur) => cur ?? (nextSelected ? PROJECT_ROOT_NODE_ID : null));
+      const next = getActiveContextPersistenceState(projectId);
+      if (next) applyPersistenceState(next);
     };
     window.addEventListener('jarvis:context-tree-updated', onUpdated as EventListener);
     return () =>
       window.removeEventListener('jarvis:context-tree-updated', onUpdated as EventListener);
-  }, [projectId]);
+  }, [applyPersistenceState, projectId]);
 
   const selectedMap = React.useMemo(
     () =>
-      maps.find((map) => map.id === selectedMapId) ??
+      maps.find((map) => map.id === selectedMapId && map.status === 'active') ??
       maps.find((map) => map.status === 'active') ??
-      maps[0] ??
       null,
     [maps, selectedMapId],
   );
@@ -151,34 +179,47 @@ export function ContextPage() {
     () => maps.filter((map) => map.status === 'active').length,
     [maps],
   );
-  const lastAppliedFileRef = React.useRef('');
-
   const selectFilePath = React.useCallback(
-    (path: string, notify = true): boolean => {
+    async (path: string, notify = true, persist = true): Promise<boolean> => {
       const clean = path.trim();
       if (!clean) return false;
-      const targetMap = maps.find((map) => findContextFileNodeByPath(map.tree, clean));
+      const targetMap = maps.find(
+        (map) => map.status === 'active' && findContextFileNodeByPath(map.tree, clean),
+      );
       const targetNode = targetMap ? findContextFileNodeByPath(targetMap.tree, clean) : null;
       if (!targetMap || !targetNode) {
         if (notify) toast.info('File not found in Context maps', clean);
         return false;
       }
-      if (targetMap.id !== selectedMapId) {
-        selectStoredContextMap(projectId, targetMap.id);
-        setMaps(loadStoredContextMaps(projectId));
+      if (persist) {
+        try {
+          const state = await selectPersistedContextFile(projectId, clean);
+          if (!applyPersistenceState(state)) return false;
+        } catch (error) {
+          if (notify) {
+            toast.error(
+              'Could not save selected Context file',
+              error instanceof Error ? error.message : 'Unknown persistence error',
+            );
+          }
+          return false;
+        }
+      } else if (targetMap.id !== selectedMapId) {
         setSelectedMapId(targetMap.id);
       }
       setSelectedId(targetNode.id);
       setStatus(`Selected ${basename(clean)} in ${targetMap.name}.`);
       return true;
     },
-    [maps, projectId, selectedMapId],
+    [applyPersistenceState, maps, projectId, selectedMapId],
   );
 
   React.useEffect(() => {
-    const stored = getStoredContextSelectedFile(projectId);
+    const stored = getActiveContextPersistenceState(projectId)?.selectedFile ?? '';
     if (!stored || stored === lastAppliedFileRef.current) return;
-    if (selectFilePath(stored, false)) lastAppliedFileRef.current = stored;
+    void selectFilePath(stored, false, false).then((selected) => {
+      if (selected) lastAppliedFileRef.current = stored;
+    });
   }, [projectId, selectFilePath]);
 
   React.useEffect(() => {
@@ -186,7 +227,9 @@ export function ContextPage() {
       const detail = (event as CustomEvent<{ projectId?: string | null; path?: string }>).detail;
       if (!detail?.path) return;
       if ((detail.projectId ?? null) !== (projectId ?? null)) return;
-      if (selectFilePath(detail.path)) lastAppliedFileRef.current = detail.path;
+      void selectFilePath(detail.path).then((selected) => {
+        if (selected) lastAppliedFileRef.current = detail.path!;
+      });
     };
     window.addEventListener('jarvis:context:select-file', onSelectFile as EventListener);
     return () =>
@@ -209,29 +252,37 @@ export function ContextPage() {
         toast.info('Context source is unavailable', 'Refresh the Context map and try again.');
         return;
       }
-      selectStoredContextMap(projectId, targetMap.id);
-      setSelectedMapId(targetMap.id);
-      const targetNode = findContextNode(targetMap.tree, detail.entityId);
-      if (targetNode) {
-        setSelectedId(targetNode.id);
-        setStatus(`Opened ${targetNode.title} from chat Context.`);
-        return;
-      }
-      const targetFile = detail.path
-        ? findContextFileNodeByPath(targetMap.tree, detail.path)
-        : null;
-      if (targetFile) {
-        setSelectedId(targetFile.id);
-        setStatus(`Opened ${targetFile.title} from chat Context.`);
-        return;
-      }
-      setSelectedId(PROJECT_ROOT_NODE_ID);
-      setStatus(`Opened ${targetMap.name} from chat Context.`);
+      void selectPersistedContextMap(projectId, targetMap.id)
+        .then((state) => {
+          if (!applyPersistenceState(state)) return;
+          const targetNode = findContextNode(targetMap.tree, detail.entityId);
+          if (targetNode) {
+            setSelectedId(targetNode.id);
+            setStatus(`Opened ${targetNode.title} from chat Context.`);
+            return;
+          }
+          const targetFile = detail.path
+            ? findContextFileNodeByPath(targetMap.tree, detail.path)
+            : null;
+          if (targetFile) {
+            setSelectedId(targetFile.id);
+            setStatus(`Opened ${targetFile.title} from chat Context.`);
+            return;
+          }
+          setSelectedId(PROJECT_ROOT_NODE_ID);
+          setStatus(`Opened ${targetMap.name} from chat Context.`);
+        })
+        .catch((error) =>
+          toast.error(
+            'Could not save Context selection',
+            error instanceof Error ? error.message : 'Unknown persistence error',
+          ),
+        );
     };
     window.addEventListener('jarvis:context:open-citation', onOpenCitation as EventListener);
     return () =>
       window.removeEventListener('jarvis:context:open-citation', onOpenCitation as EventListener);
-  }, [maps, projectId]);
+  }, [applyPersistenceState, maps, projectId]);
 
   const rootNode = React.useMemo(() => (tree ? makeProjectRootNode(tree) : null), [tree]);
   const flatNodes = React.useMemo(() => flattenContextNodes(tree?.nodes ?? []), [tree]);
@@ -259,32 +310,43 @@ export function ContextPage() {
   const selectedProviderMeta = CONTEXT_PROVIDER_OPTIONS[selectedProvider];
 
   const selectMap = React.useCallback(
-    (mapId: string) => {
-      const record = selectStoredContextMap(projectId, mapId);
-      if (!record) return;
-      setMaps(loadStoredContextMaps(projectId));
-      setSelectedMapId(record.id);
+    async (mapId: string) => {
+      try {
+        const state = await selectPersistedContextMap(projectId, mapId);
+        if (!applyPersistenceState(state)) return;
+      } catch (error) {
+        toast.error(
+          'Could not select Context map',
+          error instanceof Error ? error.message : 'Unknown persistence error',
+        );
+        return;
+      }
       setSelectedId(PROJECT_ROOT_NODE_ID);
     },
-    [projectId],
+    [applyPersistenceState, projectId],
   );
 
   const deleteMap = React.useCallback(
-    (mapId: string) => {
+    async (mapId: string) => {
       const record = maps.find((map) => map.id === mapId);
       if (!record || record.status === 'deleted') return;
       const confirmed = window.confirm(
         `Do you confirm to delete the context map '${record.name}'?`,
       );
       if (!confirmed) return;
-      const deleted = deleteStoredContextMap(projectId, mapId);
-      if (!deleted) return;
-      setMaps(loadStoredContextMaps(projectId));
-      setSelectedMapId(deleted.id);
-      setSelectedId(PROJECT_ROOT_NODE_ID);
-      toast.info('Context map tagged Deleted', deleted.name);
+      try {
+        const state = await deletePersistedContextMap(projectId, mapId);
+        if (!applyPersistenceState(state)) return;
+        setSelectedId(state.selectedMapId ? PROJECT_ROOT_NODE_ID : null);
+        toast.info('Context map tagged Deleted', record.name);
+      } catch (error) {
+        toast.error(
+          'Could not delete Context map',
+          error instanceof Error ? error.message : 'Unknown persistence error',
+        );
+      }
     },
-    [maps, projectId],
+    [applyPersistenceState, maps, projectId],
   );
 
   const openFolderPicker = async () => {
@@ -342,10 +404,8 @@ export function ContextPage() {
         apiKey,
         onProgress: setStatus,
       });
-      const nextMaps = loadStoredContextMaps(projectId);
-      const nextSelected = loadSelectedContextMap(projectId);
-      setMaps(nextMaps);
-      setSelectedMapId(nextSelected?.id ?? null);
+      const persisted = await savePersistedContextTree(generated);
+      if (!applyPersistenceState(persisted)) return;
       setSelectedId(PROJECT_ROOT_NODE_ID);
       setMapFlash(true);
       window.setTimeout(() => setMapFlash(false), 1250);
@@ -356,15 +416,37 @@ export function ContextPage() {
       }
       void notifyDone('contextMaps', 'Context map ready', contextBody);
     } catch (err) {
+      const auth = useAuthStore.getState();
+      if (
+        resolveAccountIdentity(auth)?.accountId !== accountId ||
+        (auth.projectId ?? null) !== (projectId ?? null)
+      ) {
+        return;
+      }
       toast.error(
         'Context map creation failed',
         err instanceof Error ? err.message : 'Unknown error',
       );
       setStatus('Generation failed.');
     } finally {
-      setGenerating(false);
+      const auth = useAuthStore.getState();
+      if (
+        resolveAccountIdentity(auth)?.accountId === accountId &&
+        (auth.projectId ?? null) === (projectId ?? null)
+      ) {
+        setGenerating(false);
+      }
     }
-  }, [activeMapCount, apiKeys, projectId, provider, providerChoices, rootDraft]);
+  }, [
+    activeMapCount,
+    accountId,
+    apiKeys,
+    applyPersistenceState,
+    projectId,
+    provider,
+    providerChoices,
+    rootDraft,
+  ]);
 
   React.useEffect(() => {
     const onCreateMap = () => void makeSkillTree();

@@ -36,10 +36,11 @@ import {
 } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { toast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
-import { setStoredContextSelectedFile } from '@/features/context/tree';
+import { selectPersistedContextFile } from '@/features/context/contextPersistence';
 import { chooseProjectFiles } from '@/features/files/projectFiles';
 
 interface ConnectedFilesButtonProps {
@@ -142,7 +143,12 @@ export function ConnectedFilesButton({
   };
 
   const openInContext = (path: string) => {
-    setStoredContextSelectedFile(projectId, path);
+    void selectPersistedContextFile(projectId, path).catch((cause) => {
+      toast.error(
+        'Could not open file in Context',
+        cause instanceof Error ? cause.message : 'The selected file is not in an active map.',
+      );
+    });
     setRoute('context');
     setOpen(false);
   };

@@ -336,6 +336,8 @@ export type ContextMigrationBackupRow = {
   expectedMapCount: number;
   migratedMapCount: number;
   migratedMapIds: string[];
+  quarantinedCount?: number;
+  idRemaps?: Record<string, string>;
   rollbackAvailable: true;
   createdAt: number;
   verifiedAt?: number;

@@ -43,7 +43,11 @@
 import { readTextFile, writeTextFile } from '@/lib/fs';
 import { useAgentStore } from '@/stores/agents';
 import { composeSkillAddenda } from '@/lib/agents/skills';
-import { loadStoredContextTree, type ProjectContextTree } from '@/features/context/tree';
+import type { ProjectContextTree } from '@/features/context/tree';
+import {
+  contextTreeFromPersistenceState,
+  ensureContextPersistence,
+} from '@/features/context/contextPersistence';
 import { useTerminalTranscriptStore } from './transcriptStore';
 import { buildAgentPromptPayload } from './agentPromptPayload';
 import { getTerminalRoleBriefing } from './terminalRoleBriefings';
@@ -493,7 +497,8 @@ export async function deliverAgentTerminalContext(opts: {
     const projectContext = await loadProjectContext(opts.projectId);
     let contextMapSummary = '';
     try {
-      contextMapSummary = summarizeContextTree(loadStoredContextTree(opts.projectId ?? null));
+      const state = await ensureContextPersistence(opts.projectId ?? null);
+      contextMapSummary = summarizeContextTree(contextTreeFromPersistenceState(state));
     } catch {
       contextMapSummary = '';
     }

@@ -55,9 +55,12 @@ import {
 import {
   formatContextAttachmentForPrompt,
   formatContextTreeForPrompt,
-  loadStoredContextTree,
   type ContextAttachment,
 } from '@/features/context/tree';
+import {
+  contextTreeFromPersistenceState,
+  ensureContextPersistence,
+} from '@/features/context/contextPersistence';
 import { getJarvisProjectsDir, getStoredProjectRoot } from '@/features/files/projectFiles';
 import { loadCoordinationSummary } from '@/features/terminals/agentCoordinationClient';
 import {
@@ -344,8 +347,9 @@ export async function getProjectContextBlock(projectId: ProjectId | null): Promi
   ].join('\n');
 }
 
-export function getProjectContextTreeBlock(projectId: ProjectId | null): string {
-  const tree = loadStoredContextTree(projectId);
+export async function getProjectContextTreeBlock(projectId: ProjectId | null): Promise<string> {
+  const state = await ensureContextPersistence(projectId);
+  const tree = contextTreeFromPersistenceState(state);
   if (!tree) return '';
   return formatContextTreeForPrompt(tree);
 }

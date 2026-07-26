@@ -1,5 +1,21 @@
 export { ContextPage } from './ContextPage';
 export {
+  createContextPersistenceService,
+  contextSelectedFileFromPersistenceState,
+  contextTreeFromPersistenceState,
+  deletePersistedContextMap,
+  ensureContextPersistence,
+  getActiveContextPersistenceState,
+  getActivePersistedContextSelectedFile,
+  getActivePersistedContextTree,
+  loadPersistedContextMaps,
+  savePersistedContextTree,
+  selectPersistedContextFile,
+  selectPersistedContextMap,
+  type ContextPersistenceService,
+  type ContextPersistenceState,
+} from './contextPersistence';
+export {
   CONTEXT_JARVIS_ACTIONS,
   CONTEXT_PROACTIVE_INSIGHT_KINDS,
   ContextJarvisPolicyError,

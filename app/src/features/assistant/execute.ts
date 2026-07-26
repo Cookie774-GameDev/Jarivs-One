@@ -21,7 +21,11 @@ import {
   enqueueTerminalCommand,
 } from '@/features/terminals/terminalCommandQueue';
 import { fireOutboundCall, sendOutboundMessage } from '@/features/call/outbound';
-import { formatContextTreeForPrompt, loadStoredContextTree } from '@/features/context/tree';
+import { formatContextTreeForPrompt } from '@/features/context/tree';
+import {
+  contextTreeFromPersistenceState,
+  ensureContextPersistence,
+} from '@/features/context/contextPersistence';
 import { useToolStore, slugify } from '@/features/tools/toolStore';
 import { runAction } from '@/lib/actions';
 import { useWorkbenchStore } from '@/features/workbench/store';
@@ -296,7 +300,8 @@ export async function executeIntent(intent: AssistantIntent): Promise<AssistantR
           if (project?.system_prompt_context?.trim())
             contextParts.push(project.system_prompt_context.trim());
         }
-        const tree = loadStoredContextTree(projectId);
+        const state = await ensureContextPersistence(projectId);
+        const tree = contextTreeFromPersistenceState(state);
         if (tree) contextParts.push(formatContextTreeForPrompt(tree));
         const context =
           contextParts.join('\n\n') || 'Jarvis project context is active for this workspace.';

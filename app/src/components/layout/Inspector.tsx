@@ -56,6 +56,7 @@ import { useToolRunsStore } from '@/features/inspector/toolRunsStore';
 import { chatRepo, messageRepo, taskRepo, terminalSessionRepo, db } from '@/lib/db';
 import { toast } from '@/components/ui/toast';
 import { cn, formatClock, formatRelative } from '@/lib/utils';
+import { resolveAccountIdentity } from '@/lib/accountIdentity';
 import type { QuickLink } from '@/types/quick-link';
 import type { VibeSpaceTask } from '@/features/inspector/types';
 import type { Task, TaskPriority, TaskStatus } from '@/types/task';
@@ -68,15 +69,20 @@ import {
   contextNodeFilePath,
   flattenContextNodes,
   formatContextAttachmentForTerminal,
-  getStoredContextSelectedFile,
-  loadStoredContextTree,
   nodeToAttachment,
   serializeContextAttachment,
-  setStoredContextSelectedFile,
   type ContextAttachment,
   type ContextTreeNode,
   type ProjectContextTree,
 } from '@/features/context/tree';
+import {
+  ensureContextPersistence,
+  getActiveContextPersistenceState,
+  getActivePersistedContextSelectedFile,
+  getActivePersistedContextTree,
+  selectPersistedContextFile,
+  type ContextPersistenceState,
+} from '@/features/context/contextPersistence';
 import { getStoredProjectRoot } from '@/features/files/projectFiles';
 import { createJarvisCreatorChat } from '@/features/jarvis-creator/handoff';
 import {
@@ -98,6 +104,39 @@ interface InspectorCustomTool {
   steps?: unknown[];
   emoji?: string;
   updatedAt: number;
+}
+
+function useContextPersistenceState(
+  projectId: string | null,
+): ContextPersistenceState | null {
+  const accountId = useAuthStore((state) => resolveAccountIdentity(state)?.accountId ?? null);
+  const [state, setState] = React.useState<ContextPersistenceState | null>(null);
+
+  React.useEffect(() => {
+    if (!accountId) {
+      setState(null);
+      return;
+    }
+    let active = true;
+    const refresh = () => {
+      if (active) setState(getActiveContextPersistenceState(projectId));
+    };
+    refresh();
+    void ensureContextPersistence(projectId).then(refresh).catch(() => {
+      if (active) setState(null);
+    });
+    const onUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ projectId?: string | null }>).detail;
+      if ((detail?.projectId ?? null) === (projectId ?? null)) refresh();
+    };
+    window.addEventListener('jarvis:context-tree-updated', onUpdated as EventListener);
+    return () => {
+      active = false;
+      window.removeEventListener('jarvis:context-tree-updated', onUpdated as EventListener);
+    };
+  }, [accountId, projectId]);
+
+  return state;
 }
 
 interface InspectorTerminalRef {
@@ -548,7 +587,7 @@ function InspectorContextPanel({
   const setLauncherOpen = useUIStore((s) => s.setLauncherOpen);
   const pinFile = usePinnedStore((s) => s.pinFile);
   const pinMap = usePinnedStore((s) => s.pinMap);
-  const [tick, setTick] = React.useState(0);
+  const contextState = useContextPersistenceState(projectId);
   const [dragOver, setDragOver] = React.useState(false);
   const [contextMenu, setContextMenu] = React.useState<{
     x: number;
@@ -562,19 +601,16 @@ function InspectorContextPanel({
   } | null>(null);
 
   React.useEffect(() => {
-    const onUpdated = () => setTick((cur) => cur + 1);
-    window.addEventListener('jarvis:context-tree-updated', onUpdated);
-    return () => window.removeEventListener('jarvis:context-tree-updated', onUpdated);
-  }, []);
-
-  React.useEffect(() => {
     if (!contextMenu) return;
     const close = () => setContextMenu(null);
     window.addEventListener('click', close);
     return () => window.removeEventListener('click', close);
   }, [contextMenu]);
 
-  const tree = React.useMemo(() => loadStoredContextTree(projectId), [projectId, tick]);
+  const tree = React.useMemo(
+    () => getActivePersistedContextTree(projectId),
+    [contextState, projectId],
+  );
   const rows = React.useMemo(() => {
     if (!tree) return [] as ContextTreeNode[];
     return flattenContextNodes(tree.nodes).filter((node) => node.kind !== 'root').slice(0, 12);
@@ -683,7 +719,14 @@ function InspectorContextPanel({
                         onPreviewFile(filePath);
                         return;
                       }
-                      if (filePath) setStoredContextSelectedFile(projectId, filePath);
+                      if (filePath) {
+                        void selectPersistedContextFile(projectId, filePath).catch((error) =>
+                          toast.error(
+                            'Could not select Context file',
+                            error instanceof Error ? error.message : 'Unknown persistence error',
+                          ),
+                        );
+                      }
                       setRoute('context');
                     }}
                     onContextMenu={(e) => {
@@ -907,23 +950,16 @@ function normalizeInspectorTool(raw: unknown): InspectorCustomTool | null {
 function InspectorReferencesPanel({ workspaceId }: { workspaceId: WorkspaceId | null }) {
   const projectId = useAuthStore((s) => s.projectId);
   const setRoute = useUIStore((s) => s.setRoute);
-  const [tick, setTick] = React.useState(0);
-
-  React.useEffect(() => {
-    const onContextFile = () => setTick((cur) => cur + 1);
-    window.addEventListener('jarvis:context:select-file', onContextFile);
-    window.addEventListener('jarvis:context-tree-updated', onContextFile);
-    return () => {
-      window.removeEventListener('jarvis:context:select-file', onContextFile);
-      window.removeEventListener('jarvis:context-tree-updated', onContextFile);
-    };
-  }, []);
+  const contextState = useContextPersistenceState(projectId);
 
   const selectedContextFile = React.useMemo(
-    () => getStoredContextSelectedFile(projectId),
-    [projectId, tick],
+    () => getActivePersistedContextSelectedFile(projectId),
+    [contextState, projectId],
   );
-  const tree = React.useMemo(() => loadStoredContextTree(projectId), [projectId, tick]);
+  const tree = React.useMemo(
+    () => getActivePersistedContextTree(projectId),
+    [contextState, projectId],
+  );
   const sessions =
     useLiveQuery(
       async () => {
@@ -1885,15 +1921,11 @@ function StatusDot({ status }: { status: TaskStatus }) {
 
 function ContextContextPanel() {
   const projectId = useAuthStore((s) => s.projectId);
-  const [tick, setTick] = React.useState(0);
-
-  React.useEffect(() => {
-    const onUpdated = () => setTick((cur) => cur + 1);
-    window.addEventListener('jarvis:context-tree-updated', onUpdated);
-    return () => window.removeEventListener('jarvis:context-tree-updated', onUpdated);
-  }, []);
-
-  const tree = React.useMemo(() => loadStoredContextTree(projectId), [projectId, tick]);
+  const contextState = useContextPersistenceState(projectId);
+  const tree = React.useMemo(
+    () => getActivePersistedContextTree(projectId),
+    [contextState, projectId],
+  );
   if (!tree) {
     return (
       <PlaceholderCard

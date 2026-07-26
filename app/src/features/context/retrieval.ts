@@ -10,6 +10,9 @@ import {
   type ContextTreeNode,
 } from './tree';
 import { parseContextNoteSyntax } from './noteSyntax';
+import {
+  ensureContextPersistence,
+} from './contextPersistence';
 
 const MAX_PRIMARY_CANDIDATE_FILES = 8;
 const MAX_ALIAS_DISCOVERY_FILES = 64;
@@ -108,7 +111,9 @@ export interface LocalKnowledgeRetrievalInput {
 }
 
 export interface LocalKnowledgeRetrievalDependencies {
-  loadSelectedMap(projectId: string | null): ContextMapRecord | null;
+  loadSelectedMap(
+    projectId: string | null,
+  ): ContextMapRecord | null | Promise<ContextMapRecord | null>;
   readTextFileSample(
     path: string,
     maxBytes: number,
@@ -182,7 +187,12 @@ export function loadExplicitlySelectedContextMap(
 }
 
 const defaultDependencies: LocalKnowledgeRetrievalDependencies = {
-  loadSelectedMap: loadExplicitlySelectedContextMap,
+  async loadSelectedMap(projectId) {
+    const state = await ensureContextPersistence(projectId);
+    return (
+      state.maps.find((map) => map.id === state.selectedMapId && map.status === 'active') ?? null
+    );
+  },
   readTextFileSample,
   now: Date.now,
 };
@@ -703,7 +713,7 @@ export async function retrieveApprovedLocalKnowledge(
   const tokens = queryTokens(input.query);
   if (tokens.length === 0) return Object.freeze([]);
 
-  const map = dependencies.loadSelectedMap(input.projectId);
+  const map = await dependencies.loadSelectedMap(input.projectId);
   if (
     !map ||
     map.status !== 'active' ||

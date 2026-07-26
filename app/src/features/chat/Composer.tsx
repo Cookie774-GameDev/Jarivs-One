@@ -90,12 +90,15 @@ import {
 import { useTerminalTranscriptStore } from '@/features/terminals/transcriptStore';
 import {
   parseContextAttachment,
-  loadStoredContextMaps,
   contextMapSlashOptions,
   resolveContextMapRecord,
   type ContextAttachment,
   type ContextMapRecord,
 } from '@/features/context/tree';
+import {
+  ensureContextPersistence,
+  getActiveContextPersistenceState,
+} from '@/features/context/contextPersistence';
 import {
   buildMapSummaryChatAttachment,
   contextAttachmentTokenView,
@@ -614,6 +617,7 @@ export function Composer({
   const offlineMode = useAuthStore((s) => s.offlineMode);
   const plan = useAuthStore((s) => s.plan);
   const projectId = useAuthStore((s) => s.projectId);
+  const [contextMaps, setContextMaps] = useState<readonly ContextMapRecord[]>([]);
   const pluginAccountId = useAuthStore((s) => resolveAccountIdentity(s)?.accountId ?? '');
   const terminalPickerActive = normalizeSlashCmd(optionPickerCtx?.cmd.cmd ?? '') === 'terminals';
   const pluginPickerActive = optionPickerCtx?.cmd.cmd === 'plug';
@@ -632,6 +636,26 @@ export function Composer({
   const [projectFileOptions, setProjectFileOptions] = useState<SlashCommandOption[]>([]);
   const [projectFilesLoading, setProjectFilesLoading] = useState(false);
   const [projectFilesError, setProjectFilesError] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (!pluginAccountId) {
+      setContextMaps([]);
+      return;
+    }
+    let active = true;
+    const refresh = () => {
+      const state = getActiveContextPersistenceState(projectId);
+      if (active && state) setContextMaps(state.maps);
+    };
+    void ensureContextPersistence(projectId).then(refresh).catch(() => {
+      if (active) setContextMaps([]);
+    });
+    window.addEventListener('jarvis:context-tree-updated', refresh);
+    return () => {
+      active = false;
+      window.removeEventListener('jarvis:context-tree-updated', refresh);
+    };
+  }, [pluginAccountId, projectId]);
 
   const accessibleProviders = useMemo(
     () => getAccessibleProviders(apiKeys, offlineMode, plan),
@@ -686,7 +710,9 @@ export function Composer({
     }
 
     if (normalizeSlashCmd(cmd) === 'context') {
-      const maps = projectId ? loadStoredContextMaps(projectId) : [];
+      const maps = projectId
+        ? (getActiveContextPersistenceState(projectId)?.maps ?? contextMaps)
+        : [];
       return contextMapSlashOptions(maps);
     }
 
@@ -1351,7 +1377,9 @@ export function Composer({
     if (cmd === 'context') {
       if (rest) {
         const projectId = useAuthStore.getState().projectId;
-        const maps = projectId ? loadStoredContextMaps(projectId) : [];
+        const maps = projectId
+          ? (getActiveContextPersistenceState(projectId)?.maps ?? contextMaps)
+          : [];
         const target = rest.toLowerCase();
         const matched = maps.find((m: ContextMapRecord) =>
           (m.name ?? '').toLowerCase().includes(target),
@@ -1701,7 +1729,9 @@ export function Composer({
           ? nextAttachedPlugins
           : [...nextAttachedPlugins, confirmed.value!].slice(0, 8);
       } else if (normalizeSlashCmd(confirmed.cmd) === 'context' && confirmed.value) {
-        const maps = projectId ? loadStoredContextMaps(projectId) : [];
+        const maps = projectId
+          ? (getActiveContextPersistenceState(projectId)?.maps ?? contextMaps)
+          : [];
         const matched = resolveContextMapRecord(maps, confirmed.value);
         if (matched?.tree?.nodes?.[0]) {
           const attachment = buildMapSummaryChatAttachment(matched);

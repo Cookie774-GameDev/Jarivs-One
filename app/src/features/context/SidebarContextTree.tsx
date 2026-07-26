@@ -2,6 +2,7 @@ import * as React from 'react';
 import { ChevronRight, FileText, Layers3, Network, Sparkles, Zap } from 'lucide-react';
 import { toast } from '@/components/ui';
 import { cn } from '@/lib/utils';
+import { resolveAccountIdentity } from '@/lib/accountIdentity';
 import { useAuthStore } from '@/stores/auth';
 import { startRightClickDrag } from '@/lib/rightClickDrag';
 import {
@@ -9,18 +10,19 @@ import {
   MAX_ACTIVE_CONTEXT_MAPS,
   contextMapFilePath,
   contextNodeFilePath,
-  deleteStoredContextMap,
-  loadSelectedContextMap,
-  loadStoredContextMaps,
   nodeToAttachment,
-  selectStoredContextMap,
   serializeContextAttachment,
-  setStoredContextSelectedFile,
   formatContextAttachmentForTerminal,
   type ContextMapRecord,
   type ContextTreeNode,
   type ProjectContextTree,
 } from './tree';
+import {
+  ensureContextPersistence,
+  getActiveContextPersistenceState,
+  selectPersistedContextFile,
+  selectPersistedContextMap,
+} from './contextPersistence';
 
 interface SidebarContextTreeProps {
   navOpen: boolean;
@@ -29,36 +31,71 @@ interface SidebarContextTreeProps {
 
 export function SidebarContextTree({ navOpen, onOpenContext }: SidebarContextTreeProps) {
   const projectId = useAuthStore((s) => s.projectId);
-  const [maps, setMaps] = React.useState<ContextMapRecord[]>(() => loadStoredContextMaps(projectId));
-  const [selectedMapId, setSelectedMapId] = React.useState<string | null>(() => loadSelectedContextMap(projectId)?.id ?? null);
+  const accountId = useAuthStore((s) => resolveAccountIdentity(s)?.accountId ?? null);
+  const [maps, setMaps] = React.useState<ContextMapRecord[]>([]);
+  const [selectedMapId, setSelectedMapId] = React.useState<string | null>(null);
 
   const refreshMaps = React.useCallback(() => {
-    setMaps(loadStoredContextMaps(projectId));
-    setSelectedMapId(loadSelectedContextMap(projectId)?.id ?? null);
+    const state = getActiveContextPersistenceState(projectId);
+    setMaps(state ? [...state.maps] : []);
+    setSelectedMapId(state?.selectedMapId ?? null);
   }, [projectId]);
 
   React.useEffect(() => {
-    refreshMaps();
-  }, [refreshMaps]);
+    if (!accountId) {
+      setMaps([]);
+      setSelectedMapId(null);
+      return;
+    }
+    let active = true;
+    void ensureContextPersistence(projectId)
+      .then(() => {
+        if (active) refreshMaps();
+      })
+      .catch(() => {
+        if (active) {
+          setMaps([]);
+          setSelectedMapId(null);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [accountId, refreshMaps]);
 
   React.useEffect(() => {
     const onUpdated = (event: Event) => {
       const detail = (event as CustomEvent<{ projectId?: string | null; mapId?: string | null }>).detail;
       if ((detail?.projectId ?? null) !== (projectId ?? null)) return;
-      setMaps(loadStoredContextMaps(projectId));
-      setSelectedMapId(detail?.mapId ?? loadSelectedContextMap(projectId)?.id ?? null);
+      refreshMaps();
     };
     window.addEventListener('jarvis:context-tree-updated', onUpdated as EventListener);
     return () => window.removeEventListener('jarvis:context-tree-updated', onUpdated as EventListener);
-  }, [projectId]);
+  }, [projectId, refreshMaps]);
 
-  const selectMap = React.useCallback((mapId: string) => {
-    const record = selectStoredContextMap(projectId, mapId);
-    if (!record) return;
-    setMaps(loadStoredContextMaps(projectId));
-    setSelectedMapId(record.id);
-    onOpenContext();
-  }, [onOpenContext, projectId]);
+  const selectMap = React.useCallback(
+    (mapId: string) => {
+      void selectPersistedContextMap(projectId, mapId)
+        .then((state) => {
+          const auth = useAuthStore.getState();
+          if (
+            resolveAccountIdentity(auth)?.accountId !== state.accountId ||
+            (auth.projectId ?? null) !== state.projectId
+          ) {
+            return;
+          }
+          refreshMaps();
+          onOpenContext();
+        })
+        .catch((error) =>
+          toast.error(
+            'Could not select Context map',
+            error instanceof Error ? error.message : 'Unknown persistence error',
+          ),
+        );
+    },
+    [onOpenContext, projectId, refreshMaps],
+  );
 
   if (!navOpen) return null;
 
@@ -203,7 +240,14 @@ function SidebarContextNode({
   const hasChildren = (node.children?.length ?? 0) > 0;
   const openNode = () => {
     const filePath = contextNodeFilePath(tree, node);
-    if (filePath) setStoredContextSelectedFile(tree.projectId, filePath);
+    if (filePath) {
+      void selectPersistedContextFile(tree.projectId, filePath).catch((error) =>
+        toast.error(
+          'Could not save selected Context file',
+          error instanceof Error ? error.message : 'Unknown persistence error',
+        ),
+      );
+    }
     onOpenContext();
   };
   const onDragStart = (e: React.DragEvent) => {
