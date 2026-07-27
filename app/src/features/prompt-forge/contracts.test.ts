@@ -34,6 +34,8 @@ describe('Prompt Forge contracts', () => {
     expect(job.originalDraft).toBe('Do not remove "this exact quote".');
     expect(job.originalAttachments[0]?.label).toBe('SPEC.md');
     expect(job.revision).toBe(1);
+    expect(job.resolvedModel).toBeNull();
+    expect(job.usage).toBeNull();
     expect(Object.isFrozen(job)).toBe(true);
     expect(Object.isFrozen(job.originalAttachments)).toBe(true);
   });
@@ -157,7 +159,106 @@ describe('Prompt Forge contracts', () => {
       now: 100,
     });
     expect(parsePromptForgeJob(JSON.parse(JSON.stringify(job)))).toEqual(job);
+    const {
+      resolvedModel: _resolvedModel,
+      usage: _usage,
+      ...legacyPersistedJob
+    } = JSON.parse(JSON.stringify(job)) as typeof job;
+    expect(parsePromptForgeJob(legacyPersistedJob)).toEqual(job);
     expect(() => parsePromptForgeJob({ ...job, unexpected: true })).toThrow(/persisted job/i);
     expect(() => parsePromptForgeJob({ ...job, accountId: '../other' })).toThrow(/persisted job/i);
+  });
+
+  it('persists the exact resolved model and bounded provider usage through transitions', () => {
+    const initial = createPromptForgeJob({
+      id: 'forge-job-usage',
+      accountId: 'account-1',
+      chatId: 'chat-1',
+      projectId: null,
+      originalDraft: 'Upgrade this.',
+      originalAttachments: [],
+      modelSelection: { mode: 'current_chat_model' },
+      privacyMode: 'provider_allowed',
+      allowPublicResearch: false,
+      now: 100,
+    });
+    const collecting = transitionPromptForgeJob(initial, {
+      expectedRevision: 1,
+      status: 'collecting_context',
+      now: 110,
+    });
+    const generating = transitionPromptForgeJob(collecting, {
+      expectedRevision: 2,
+      status: 'generating',
+      resolvedModel: {
+        providerId: 'openai',
+        modelId: 'gpt-5.6-sol',
+        label: 'GPT-5.6 Sol',
+        connectionId: 'openai-codex',
+        connectionMode: 'external-cli',
+        local: false,
+        billingClass: 'subscription_connection',
+      },
+      now: 120,
+    });
+    const validating = transitionPromptForgeJob(generating, {
+      expectedRevision: 3,
+      status: 'validating',
+      generatedDraft: 'Upgraded prompt.',
+      usage: {
+        inputTokens: 120,
+        outputTokens: 80,
+        costUsd: 0,
+        finishReason: 'stop',
+        startedAt: 121,
+        completedAt: 130,
+      },
+      now: 130,
+    });
+
+    expect(parsePromptForgeJob(JSON.parse(JSON.stringify(validating)))).toMatchObject({
+      resolvedModel: {
+        providerId: 'openai',
+        modelId: 'gpt-5.6-sol',
+        connectionId: 'openai-codex',
+        billingClass: 'subscription_connection',
+      },
+      usage: {
+        inputTokens: 120,
+        outputTokens: 80,
+        costUsd: 0,
+        finishReason: 'stop',
+      },
+    });
+    expect(() =>
+      transitionPromptForgeJob(generating, {
+        expectedRevision: 3,
+        status: 'validating',
+        usage: {
+          inputTokens: -1,
+          outputTokens: 0,
+          costUsd: 0,
+          finishReason: null,
+          startedAt: 121,
+          completedAt: 130,
+        },
+        now: 130,
+      }),
+    ).toThrow(/usage/i);
+    expect(() =>
+      transitionPromptForgeJob(generating, {
+        expectedRevision: 3,
+        status: 'validating',
+        usage: {
+          inputTokens: 1_000_000_000_001,
+          outputTokens: 0,
+          costUsd: 1_000_001,
+          finishReason: null,
+          startedAt: 121,
+          completedAt: 130,
+        },
+        now: 130,
+      }),
+    ).toThrow(/usage/i);
   });
 });

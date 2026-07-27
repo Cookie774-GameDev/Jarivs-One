@@ -58,6 +58,25 @@ export type PromptForgeValidationSnapshot = Readonly<{
   checkedAt: number;
 }>;
 
+export type PromptForgeResolvedModelSnapshot = Readonly<{
+  providerId: ProviderId;
+  modelId: string;
+  label: string;
+  connectionId: string | null;
+  connectionMode: 'native-api' | 'external-cli' | 'local' | null;
+  local: boolean;
+  billingClass: 'local_free' | 'subscription_connection' | 'provider_billed';
+}>;
+
+export type PromptForgeUsageSnapshot = Readonly<{
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+  finishReason: string | null;
+  startedAt: number;
+  completedAt: number;
+}>;
+
 export type PromptForgeJob = Readonly<{
   schemaVersion: 1;
   id: string;
@@ -72,6 +91,8 @@ export type PromptForgeJob = Readonly<{
   allowPublicResearch: boolean;
   selectedSourceIds: readonly string[];
   retrievedSources: readonly PromptForgeSourceMetadata[];
+  resolvedModel: PromptForgeResolvedModelSnapshot | null;
+  usage: PromptForgeUsageSnapshot | null;
   status: PromptForgeStatus;
   generatedDraft: string | null;
   validation: PromptForgeValidationSnapshot | null;
@@ -88,6 +109,8 @@ const MAX_DRAFT_CHARS = 100_000;
 const MAX_GENERATED_CHARS = 200_000;
 const MAX_ATTACHMENTS = 64;
 const MAX_SOURCES = 128;
+const MAX_USAGE_TOKENS = 1_000_000_000_000;
+const MAX_USAGE_COST_USD = 1_000_000;
 const ATTACHMENT_KINDS = new Set<PromptForgeAttachmentKind>([
   'file',
   'image',
@@ -111,6 +134,12 @@ const PROVIDERS = new Set<ProviderId>([
   'local',
 ]);
 const STATUSES = new Set<PromptForgeStatus>(PROMPT_FORGE_STATUSES);
+const CONNECTION_MODES = new Set(['native-api', 'external-cli', 'local'] as const);
+const BILLING_CLASSES = new Set([
+  'local_free',
+  'subscription_connection',
+  'provider_billed',
+] as const);
 const JOB_KEYS = Object.freeze([
   'schemaVersion',
   'id',
@@ -125,6 +154,8 @@ const JOB_KEYS = Object.freeze([
   'allowPublicResearch',
   'selectedSourceIds',
   'retrievedSources',
+  'resolvedModel',
+  'usage',
   'status',
   'generatedDraft',
   'validation',
@@ -133,6 +164,7 @@ const JOB_KEYS = Object.freeze([
   'completedAt',
   'errorCode',
 ] as const);
+const LEGACY_JOB_KEYS = JOB_KEYS.filter((key) => key !== 'resolvedModel' && key !== 'usage');
 
 function fail(detail: string): never {
   throw new Error(`Invalid Prompt Forge ${detail}`);
@@ -261,6 +293,82 @@ function validationSnapshot(value: unknown): PromptForgeValidationSnapshot | nul
   });
 }
 
+function resolvedModelSnapshot(value: unknown): PromptForgeResolvedModelSnapshot | null {
+  if (value === null) return null;
+  const record = closedRecord(
+    value,
+    ['providerId', 'modelId', 'label', 'connectionId', 'connectionMode', 'local', 'billingClass'],
+    'resolved model',
+  );
+  if (
+    typeof record.providerId !== 'string' ||
+    !PROVIDERS.has(record.providerId as ProviderId) ||
+    (record.connectionMode !== null &&
+      !CONNECTION_MODES.has(record.connectionMode as 'native-api' | 'external-cli' | 'local')) ||
+    typeof record.local !== 'boolean' ||
+    typeof record.billingClass !== 'string' ||
+    !BILLING_CLASSES.has(
+      record.billingClass as 'local_free' | 'subscription_connection' | 'provider_billed',
+    )
+  ) {
+    return fail('resolved model');
+  }
+  if (
+    (record.local && record.billingClass !== 'local_free') ||
+    (!record.local && record.billingClass === 'local_free') ||
+    (record.billingClass === 'subscription_connection' && record.connectionMode !== 'external-cli')
+  ) {
+    return fail('resolved model');
+  }
+  return Object.freeze({
+    providerId: record.providerId as ProviderId,
+    modelId: text(record.modelId, 200, 'resolved model'),
+    label: text(record.label, 500, 'resolved model'),
+    connectionId: record.connectionId === null ? null : id(record.connectionId, 'resolved model'),
+    connectionMode: record.connectionMode as 'native-api' | 'external-cli' | 'local' | null,
+    local: record.local,
+    billingClass: record.billingClass as
+      | 'local_free'
+      | 'subscription_connection'
+      | 'provider_billed',
+  });
+}
+
+function usageSnapshot(value: unknown): PromptForgeUsageSnapshot | null {
+  if (value === null) return null;
+  const record = closedRecord(
+    value,
+    ['inputTokens', 'outputTokens', 'costUsd', 'finishReason', 'startedAt', 'completedAt'],
+    'usage',
+  );
+  if (
+    !Number.isSafeInteger(record.inputTokens) ||
+    (record.inputTokens as number) < 0 ||
+    (record.inputTokens as number) > MAX_USAGE_TOKENS ||
+    !Number.isSafeInteger(record.outputTokens) ||
+    (record.outputTokens as number) < 0 ||
+    (record.outputTokens as number) > MAX_USAGE_TOKENS ||
+    typeof record.costUsd !== 'number' ||
+    !Number.isFinite(record.costUsd) ||
+    record.costUsd < 0 ||
+    record.costUsd > MAX_USAGE_COST_USD
+  ) {
+    return fail('usage');
+  }
+  const startedAt = time(record.startedAt, 'usage');
+  const completedAt = time(record.completedAt, 'usage');
+  if (completedAt < startedAt) fail('usage');
+  return Object.freeze({
+    inputTokens: record.inputTokens as number,
+    outputTokens: record.outputTokens as number,
+    costUsd: record.costUsd,
+    finishReason:
+      record.finishReason === null ? null : text(record.finishReason, 200, 'usage finish reason'),
+    startedAt,
+    completedAt,
+  });
+}
+
 export function createPromptForgeJob(input: {
   id: string;
   accountId: string;
@@ -300,6 +408,8 @@ export function createPromptForgeJob(input: {
     allowPublicResearch: input.allowPublicResearch,
     selectedSourceIds: Object.freeze([]),
     retrievedSources: Object.freeze([]),
+    resolvedModel: null,
+    usage: null,
     status: 'idle',
     generatedDraft: null,
     validation: null,
@@ -312,7 +422,12 @@ export function createPromptForgeJob(input: {
 
 export function parsePromptForgeJob(value: unknown): PromptForgeJob {
   try {
-    const record = closedRecord(value, JOB_KEYS, 'persisted job');
+    const rawKeys =
+      typeof value === 'object' && value !== null && !Array.isArray(value)
+        ? Reflect.ownKeys(value)
+        : [];
+    const legacy = !rawKeys.includes('resolvedModel') && !rawKeys.includes('usage');
+    const record = closedRecord(value, legacy ? LEGACY_JOB_KEYS : JOB_KEYS, 'persisted job');
     if (record.schemaVersion !== 1) fail('persisted job');
     if (!Number.isSafeInteger(record.revision) || (record.revision as number) < 1) {
       fail('persisted job');
@@ -364,6 +479,8 @@ export function parsePromptForgeJob(value: unknown): PromptForgeJob {
       allowPublicResearch: record.allowPublicResearch,
       selectedSourceIds: Object.freeze(selectedSourceIds),
       retrievedSources: Object.freeze(record.retrievedSources.map(sourceMetadata)),
+      resolvedModel: legacy ? null : resolvedModelSnapshot(record.resolvedModel),
+      usage: legacy ? null : usageSnapshot(record.usage),
       status: record.status as PromptForgeStatus,
       generatedDraft:
         record.generatedDraft === null
@@ -411,6 +528,8 @@ export function transitionPromptForgeJob(
     status: PromptForgeStatus;
     selectedSourceIds?: readonly string[];
     retrievedSources?: readonly PromptForgeSourceMetadata[];
+    resolvedModel?: PromptForgeResolvedModelSnapshot | null;
+    usage?: PromptForgeUsageSnapshot | null;
     generatedDraft?: string | null;
     validation?: PromptForgeValidationSnapshot | null;
     errorCode?: string | null;
@@ -439,6 +558,11 @@ export function transitionPromptForgeJob(
     status: update.status,
     selectedSourceIds: Object.freeze(selectedSourceIds.map((value) => id(value, 'source ID'))),
     retrievedSources: Object.freeze(retrievedSources.map(sourceMetadata)),
+    resolvedModel:
+      update.resolvedModel === undefined
+        ? job.resolvedModel
+        : resolvedModelSnapshot(update.resolvedModel),
+    usage: update.usage === undefined ? job.usage : usageSnapshot(update.usage),
     generatedDraft,
     validation:
       update.validation === undefined ? job.validation : validationSnapshot(update.validation),
