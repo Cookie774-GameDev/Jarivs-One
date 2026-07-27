@@ -233,7 +233,8 @@ describe('defaultCoordinationDoc', () => {
     const doc = defaultCoordinationDoc('VibeSpace');
     expect(doc).toContain('VibeSpace');
     expect(doc).toContain('## Active claims');
-    expect(doc).toContain('| Agent | Task / files | Status | Updated |');
+    expect(doc).toContain('| Agent | Task / files | Context refs | Status | Updated |');
+    expect(doc).toContain('`context-map://<map-id>/<entity-id>`');
     expect(doc).toContain('never delete or rewrite another agent');
   });
 });

@@ -91,6 +91,7 @@ export const BASE_TERMINAL_AGENT_RULES = [
   '3. Stay inside this project directory unless the user explicitly directs you elsewhere.',
   "4. Prefer small, verifiable changes. Run the project's tests when you change code.",
   "5. Never delete or rewrite other agents' entries in the coordination document — append only.",
+  '6. When a task or note comes from Context, include its stable `context-map://<map-id>/<entity-id>` reference in the task/files field or Context refs column of your coordination claim.',
 ].join('\n');
 
 /* -------------------------------------------------------------------------- */
@@ -273,13 +274,14 @@ export function defaultCoordinationDoc(projectName?: string | null): string {
     '',
     '## How to use this board',
     '1. Before starting work, read the active claims below.',
-    '2. When you start a task, add a row claiming it (agent, task/files, status, timestamp).',
+    '2. When you start a task, add a row claiming it (agent, task/files, Context refs, status, timestamp).',
     "3. Update your row's status when you finish or hand off.",
+    '4. For Context tasks, notes, or entities, copy the stable `context-map://<map-id>/<entity-id>` reference from the terminal Context pack into the Context refs column.',
     '',
     '## Active claims',
     '',
-    '| Agent | Task / files | Status | Updated |',
-    '|---|---|---|---|',
+    '| Agent | Task / files | Context refs | Status | Updated |',
+    '|---|---|---|---|---|',
     '',
     '## Notes between agents',
     '',

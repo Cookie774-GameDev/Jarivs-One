@@ -174,6 +174,24 @@ export function buildTerminalContextPack(input: TerminalContextPackInput): Termi
 
   sections.push(
     [
+      '## Coordination references',
+      'Record these stable IDs in the shared `.jarvis-coordination.md` when claiming work derived from Context.',
+      ...(pinned.length
+        ? pinned.map(({ map, node }) => {
+            const label =
+              node.kind === 'note' || node.tags?.some((tag) => tag.toLowerCase() === 'task')
+                ? 'Context task/note'
+                : 'Context entity';
+            return `- ${label}: ${safeText(node.title, 300)} — ${code(
+              `context-map://${map.id}/${node.id}`,
+            )}`;
+          })
+        : ['- No selected Context references.']),
+    ].join('\n'),
+  );
+
+  sections.push(
+    [
       '## Active skills',
       ...(activeSkills.length
         ? activeSkills.map((skill) =>

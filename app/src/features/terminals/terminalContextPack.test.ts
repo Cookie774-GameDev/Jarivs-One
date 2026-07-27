@@ -75,6 +75,10 @@ describe('terminal Context pack', () => {
     expect(pack.markdown).toContain('map-a map');
     expect(pack.markdown).not.toContain('map-b map');
     expect(pack.markdown).toContain('context-map://map-a/entity-map-a');
+    expect(pack.markdown).toContain('## Coordination references');
+    expect(pack.markdown).toContain(
+      'Record these stable IDs in the shared `.jarvis-coordination.md`',
+    );
     expect(pack.markdown).toContain('## Active skills');
     expect(pack.markdown).toContain('Build');
     expect(pack.markdown).toContain('Run focused tests before claiming completion.');
@@ -119,5 +123,57 @@ describe('terminal Context pack', () => {
     expect(pack.markdown).toContain('One-turn Context');
     expect(pack.markdown.length).toBeLessThanOrEqual(24_000);
     expect(pack.warnings.length).toBeGreaterThan(0);
+  });
+
+  it('links selected Context tasks and notes to stable coordination references', () => {
+    const baseMap = contextMap('map-a', 'Planning map.');
+    const map: ContextMapRecord = {
+      ...baseMap,
+      tree: {
+        ...baseMap.tree,
+        nodes: [
+          {
+            id: 'task-release',
+            title: 'Ship release',
+            kind: 'note',
+            tags: ['task'],
+            summary: 'Complete the release checklist.',
+          },
+          {
+            id: 'note-decisions',
+            title: 'Architecture decisions',
+            kind: 'note',
+            path: 'notes/architecture.md',
+            summary: 'Accepted architecture decisions.',
+          },
+        ],
+      },
+    };
+    const session = createTerminalContextSession({
+      version: 1,
+      terminalSessionId: 'tty-a',
+      paneId: 'pane-a',
+      projectId: 'project-a',
+      activeMapIds: ['map-a'],
+      pinnedEntityIds: ['task-release', 'note-decisions'],
+      activeSkillIds: [],
+      agentSlug: null,
+      mode: 'persistent',
+      updatedAt: 10,
+      contextRevision: 6,
+    });
+
+    const pack = buildTerminalContextPack({
+      session,
+      projectName: 'VibeSpace',
+      maps: [map],
+      skills: [],
+      agent: null,
+    });
+
+    expect(pack.markdown).toContain('context-map://map-a/task-release');
+    expect(pack.markdown).toContain('context-map://map-a/note-decisions');
+    expect(pack.markdown).toContain('Context task/note: Ship release');
+    expect(pack.markdown).toContain('Context task/note: Architecture decisions');
   });
 });
