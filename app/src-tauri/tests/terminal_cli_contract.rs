@@ -1,10 +1,10 @@
 use jarvis_lib::terminal_cli::{
-    build_terminal_cli_request, parse_terminal_cli_args, read_terminal_cli_wire_line,
-    remove_managed_terminal_cli_aliases, render_terminal_cli_response,
+    build_scoped_terminal_cli_request, build_terminal_cli_request, parse_terminal_cli_args,
+    read_terminal_cli_wire_line, remove_managed_terminal_cli_aliases, render_terminal_cli_response,
     replace_managed_terminal_cli_aliases, replace_managed_terminal_cli_shim, run_terminal_cli,
-    terminal_cli_request_error_code, unix_terminal_cli_shim, validate_terminal_cli_request,
-    windows_terminal_cli_shim, TerminalCliConnectionLimiter, TerminalCliRequest,
-    TerminalCliResponse,
+    terminal_cli_request_error_code, terminal_cli_response_timeout, unix_terminal_cli_shim,
+    validate_terminal_cli_request, windows_terminal_cli_shim, TerminalCliConnectionLimiter,
+    TerminalCliRequest, TerminalCliRequestScope, TerminalCliResponse,
 };
 use serde_json::json;
 use std::fs;
@@ -40,6 +40,26 @@ fn parses_portable_commands_into_closed_authenticated_requests() {
     let mut forged = request;
     forged.nonce = "b".repeat(64);
     assert!(validate_terminal_cli_request(&forged, NONCE).is_err());
+}
+
+#[test]
+fn allows_bounded_long_running_context_source_operations_without_delaying_normal_commands() {
+    assert_eq!(
+        terminal_cli_response_timeout("context.create"),
+        std::time::Duration::from_secs(120)
+    );
+    assert_eq!(
+        terminal_cli_response_timeout("context.refresh"),
+        std::time::Duration::from_secs(120)
+    );
+    assert_eq!(
+        terminal_cli_response_timeout("context.search"),
+        std::time::Duration::from_secs(15)
+    );
+    assert_eq!(
+        terminal_cli_response_timeout("status"),
+        std::time::Duration::from_secs(15)
+    );
 }
 
 #[test]
@@ -105,6 +125,9 @@ fn validates_closed_method_specific_request_schemas() {
         protocol_version: 1,
         request_id: "request-closed".into(),
         nonce: NONCE.into(),
+        terminal_session_id: None,
+        pane_id: None,
+        project_id: None,
         method: "context.attach".into(),
         params: json!({ "entity": "entity-1", "mode": "one_turn" }),
     };
@@ -127,6 +150,9 @@ fn validates_closed_method_specific_request_schemas() {
         protocol_version: 1,
         request_id: "request-create".into(),
         nonce: NONCE.into(),
+        terminal_session_id: None,
+        pane_id: None,
+        project_id: None,
         method: "context.create".into(),
         params: json!({ "sourceKind": "folder", "source": "/safe", "ref": "main" }),
     };
@@ -139,6 +165,9 @@ fn distinguishes_authenticated_version_errors_from_authentication_and_schema_err
         protocol_version: 2,
         request_id: "request-version".into(),
         nonce: NONCE.into(),
+        terminal_session_id: None,
+        pane_id: None,
+        project_id: None,
         method: "status".into(),
         params: json!({}),
     };
@@ -160,6 +189,45 @@ fn distinguishes_authenticated_version_errors_from_authentication_and_schema_err
         protocol_version: 1,
         method: "status".into(),
         params: json!({ "unexpected": true }),
+        ..request
+    };
+    assert_eq!(
+        terminal_cli_request_error_code(&malformed, NONCE),
+        Some("invalid_request")
+    );
+}
+
+#[test]
+fn carries_bounded_terminal_scope_without_exposing_it_in_command_params() {
+    let invocation = parse_terminal_cli_args(&[
+        "--endpoint".into(),
+        "/tmp/vibespace-endpoint.json".into(),
+        "context".into(),
+        "current".into(),
+    ])
+    .expect("context current");
+    let request = build_scoped_terminal_cli_request(
+        &invocation,
+        NONCE,
+        "request-scoped",
+        TerminalCliRequestScope {
+            terminal_session_id: Some("tty-session-1".into()),
+            pane_id: Some("pane-1".into()),
+            project_id: Some("project-1".into()),
+        },
+    )
+    .expect("scoped request");
+    assert_eq!(
+        request.terminal_session_id.as_deref(),
+        Some("tty-session-1")
+    );
+    assert_eq!(request.pane_id.as_deref(), Some("pane-1"));
+    assert_eq!(request.project_id.as_deref(), Some("project-1"));
+    assert_eq!(request.params, json!({}));
+    assert!(validate_terminal_cli_request(&request, NONCE).is_ok());
+
+    let malformed = TerminalCliRequest {
+        terminal_session_id: Some("bad scope\n".into()),
         ..request
     };
     assert_eq!(

@@ -40,6 +40,7 @@ export {
   getActivePersistedContextSelectedFile,
   getActivePersistedContextTree,
   loadPersistedContextMaps,
+  reloadPersistedContextMaps,
   savePersistedContextTree,
   selectPersistedContextFile,
   selectPersistedContextMap,

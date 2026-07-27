@@ -299,4 +299,20 @@ describe('TerminalView canonical execution truth', () => {
     expect(source).toContain('onInstallCli={installTerminalCli}');
     expect(source).toContain('onUninstallCli={uninstallTerminalCli}');
   });
+
+  it('propagates trusted terminal scope to child CLI processes', () => {
+    const frontend = readFileSync(
+      resolve(process.cwd(), 'src/features/terminals/TerminalView.tsx'),
+      'utf8',
+    );
+    const backend = readFileSync(resolve(process.cwd(), 'src-tauri/src/terminal.rs'), 'utf8');
+    const sessionCreation = backend.indexOf('let session_id = format!("tty_{}"');
+    const childSpawn = backend.indexOf('.spawn_command(builder)');
+
+    expect(frontend).toContain('VIBESPACE_PANE_ID');
+    expect(backend).toContain('builder.env("VIBESPACE_TERMINAL_SESSION_ID", &session_id);');
+    expect(backend).toContain('builder.env("VIBESPACE_PROJECT_ID", project_id);');
+    expect(sessionCreation).toBeGreaterThan(0);
+    expect(childSpawn).toBeGreaterThan(sessionCreation);
+  });
 });

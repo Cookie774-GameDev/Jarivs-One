@@ -610,6 +610,16 @@ export async function loadPersistedContextMaps(
   return (await ensureContextPersistence(projectId)).maps;
 }
 
+export async function reloadPersistedContextMaps(
+  projectId: string | null,
+): Promise<readonly ContextMapRecord[]> {
+  const initialized = await ensureContextPersistence(projectId);
+  assertActiveIdentity(initialized.accountId);
+  const reloaded = await getProductionService().load(initialized.accountId, projectId);
+  assertActiveIdentity(initialized.accountId);
+  return reloaded.maps;
+}
+
 export async function savePersistedContextTree(
   tree: ProjectContextTree,
   options: { mapId?: string; name?: string } = {},

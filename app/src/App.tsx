@@ -109,6 +109,7 @@ import type { ChatId, MessageId } from '@/types/common';
 import { useHotkey, HOTKEYS } from '@/lib/hotkeys';
 import { DevConsoleHost } from '@/features/dev-console';
 import { initTerminalScheduler } from '@/features/terminals/terminalScheduler';
+import { TerminalCliRuntimeHost } from '@/features/terminals';
 import { startJarvisScheduleRunner } from '@/features/schedule/jarvisScheduleRunner';
 import { UpdateWarningHost } from '@/features/updates/UpdateWarningHost';
 import {
@@ -2159,6 +2160,7 @@ export function App() {
       <ThemeHost />
       {KERNEL_SMOKE_ENABLED ? <KernelSmokeBindingHost /> : null}
       <KernelBridgeBootstrap />
+      <TerminalCliRuntimeHost />
       <DevConsoleHost />
     </ErrorBoundary>
   );

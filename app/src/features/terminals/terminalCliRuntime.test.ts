@@ -1,0 +1,338 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { resetTerminalContextSessionsForTests } from './terminalContextSessionStore';
+import {
+  createTerminalCliRuntime,
+  parseTerminalCliFrontendRequest,
+  type TerminalCliRuntimeDependencies,
+} from './terminalCliRuntime';
+
+function request(method: string, params: Record<string, unknown> = {}) {
+  return {
+    protocolVersion: 1,
+    requestId: `request-${method.replaceAll('.', '-')}`,
+    terminalSessionId: 'tty-a',
+    paneId: 'pane-a',
+    projectId: 'project-a',
+    method,
+    params,
+  };
+}
+
+function dependencies(): TerminalCliRuntimeDependencies {
+  const maps = [
+    {
+      id: 'map-a',
+      name: 'VibeSpace Main',
+      status: 'active' as const,
+      sourceType: 'local_folder',
+      sourceLabel: 'C:\\VibeSpace',
+      updatedAt: 100,
+    },
+    {
+      id: 'map-b',
+      name: 'Documentation',
+      status: 'active' as const,
+      sourceType: 'github_repository',
+      sourceLabel: 'Cookie774-GameDev/VibeSpace',
+      updatedAt: 90,
+    },
+  ];
+  return {
+    now: () => 1_000,
+    currentProject: () => ({ id: 'project-a', name: 'VibeSpace', workspaceId: 'workspace-a' }),
+    resolveProject: vi.fn(async (projectId) =>
+      projectId === 'project-b'
+        ? { id: 'project-b', name: 'Docs', workspaceId: 'workspace-a' }
+        : projectId === 'project-a'
+          ? { id: 'project-a', name: 'VibeSpace', workspaceId: 'workspace-a' }
+          : null,
+    ),
+    switchProject: vi.fn(async (projectId) => ({
+      id: projectId,
+      name: projectId === 'project-b' ? 'Docs' : 'VibeSpace',
+      workspaceId: 'workspace-a',
+    })),
+    listContextMaps: vi.fn(async () => maps),
+    selectContextMap: vi.fn(async (_projectId, mapId) => {
+      const map = maps.find((candidate) => candidate.id === mapId);
+      if (!map) throw new Error('missing');
+      return map;
+    }),
+    searchContext: vi.fn(async (_projectId, mapIds, query) => [
+      { id: 'entity-a', label: `Match ${query}`, path: 'src/App.tsx', mapId: mapIds[0]! },
+    ]),
+    resolveContextEntity: vi.fn(async (_projectId, target) =>
+      target === 'missing'
+        ? null
+        : { id: 'entity-a', label: 'App', path: 'src/App.tsx', mapId: 'map-a' },
+    ),
+    openContextEntity: vi.fn(async () => undefined),
+    refreshContextMap: vi.fn(async (_projectId, mapId) => ({
+      id: mapId ?? 'map-a',
+      name: 'VibeSpace Main',
+      status: 'active' as const,
+      sourceType: 'local_folder',
+      sourceLabel: 'C:\\VibeSpace',
+      updatedAt: 1_000,
+    })),
+    createContextMap: vi.fn(async (_projectId, input) => ({
+      id: 'map-created',
+      name: input.source,
+      status: 'active' as const,
+      sourceType: input.sourceKind,
+      sourceLabel: input.source,
+      updatedAt: 1_000,
+    })),
+    listSkills: () => [
+      { id: 'build', name: 'Build', description: 'Build software.' },
+      { id: 'review', name: 'Review', description: 'Review changes.' },
+    ],
+    listAgents: () => [
+      { slug: 'builder', name: 'Builder', status: 'idle' },
+      { slug: 'reviewer', name: 'Reviewer', status: 'running' },
+    ],
+    createNote: vi.fn(async () => ({ id: 'note-1', name: 'Untitled' })),
+    openNote: vi.fn(async (_projectId, _mapId, name) => ({ id: 'note-1', name })),
+    linkNotes: vi.fn(async (_projectId, _mapId, source, target) => ({ source, target })),
+    openDailyNote: vi.fn(async () => ({ id: 'daily-1', name: '2026-07-26' })),
+    addDailyNoteText: vi.fn(async (_projectId, _mapId, text) => ({ id: 'daily-1', text })),
+  };
+}
+
+describe('terminal CLI frontend runtime', () => {
+  beforeEach(() => {
+    resetTerminalContextSessionsForTests();
+  });
+
+  it('parses a nonce-free closed native event without accepting bridge extras', () => {
+    expect(parseTerminalCliFrontendRequest(request('context.current'))).toMatchObject({
+      protocolVersion: 1,
+      requestId: 'request-context-current',
+      terminalSessionId: 'tty-a',
+      paneId: 'pane-a',
+      projectId: 'project-a',
+      method: 'context.current',
+      params: {},
+    });
+    expect(() =>
+      parseTerminalCliFrontendRequest({ ...request('context.current'), nonce: 'secret' }),
+    ).toThrow(/frontend request/i);
+    expect(() =>
+      parseTerminalCliFrontendRequest({ ...request('context.current'), protocolVersion: 2 }),
+    ).toThrow(/frontend request/i);
+  });
+
+  it('lists, selects, attaches, reports, and clears terminal-scoped context', async () => {
+    const deps = dependencies();
+    const runtime = createTerminalCliRuntime(deps);
+
+    const listed = await runtime.execute(parseTerminalCliFrontendRequest(request('context.list')));
+    expect(listed).toMatchObject({ ok: true, code: 'ok' });
+    expect(listed.data).toMatchObject({
+      maps: [
+        { id: 'map-a', name: 'VibeSpace Main' },
+        { id: 'map-b', name: 'Documentation' },
+      ],
+    });
+
+    const selected = await runtime.execute(
+      parseTerminalCliFrontendRequest(request('context.use', { map: 'VibeSpace Main' })),
+    );
+    expect(selected).toMatchObject({ ok: true, code: 'ok' });
+    expect(deps.selectContextMap).toHaveBeenCalledWith('project-a', 'map-a');
+
+    const attached = await runtime.execute(
+      parseTerminalCliFrontendRequest(
+        request('context.attach', { entity: 'src/App.tsx', mode: 'one_turn' }),
+      ),
+    );
+    expect(attached).toMatchObject({ ok: true, code: 'ok' });
+
+    const current = await runtime.execute(
+      parseTerminalCliFrontendRequest(request('context.current')),
+    );
+    expect(current.data).toMatchObject({
+      session: {
+        activeMapIds: ['map-a'],
+        pinnedEntityIds: ['entity-a'],
+        mode: 'one_turn',
+      },
+    });
+
+    const cleared = await runtime.execute(
+      parseTerminalCliFrontendRequest(request('context.clear')),
+    );
+    expect(cleared.data).toMatchObject({
+      session: { activeMapIds: [], pinnedEntityIds: [], mode: 'persistent' },
+    });
+  });
+
+  it('executes search, open, refresh, source inspection, and map creation services', async () => {
+    const deps = dependencies();
+    const runtime = createTerminalCliRuntime(deps);
+    await runtime.execute(
+      parseTerminalCliFrontendRequest(request('context.use', { map: 'map-a' })),
+    );
+
+    const search = await runtime.execute(
+      parseTerminalCliFrontendRequest(request('context.search', { query: 'bootstrap' })),
+    );
+    expect(search.data).toMatchObject({ results: [{ id: 'entity-a', mapId: 'map-a' }] });
+    expect(deps.searchContext).toHaveBeenCalledWith('project-a', ['map-a'], 'bootstrap');
+
+    await expect(
+      runtime.execute(
+        parseTerminalCliFrontendRequest(request('context.open', { target: 'src/App.tsx' })),
+      ),
+    ).resolves.toMatchObject({ ok: true });
+    expect(deps.openContextEntity).toHaveBeenCalled();
+
+    await expect(
+      runtime.execute(
+        parseTerminalCliFrontendRequest(request('context.refresh', { map: 'map-a' })),
+      ),
+    ).resolves.toMatchObject({ ok: true });
+    await expect(
+      runtime.execute(parseTerminalCliFrontendRequest(request('context.sources'))),
+    ).resolves.toMatchObject({ data: { sources: expect.any(Array) } });
+    await expect(
+      runtime.execute(
+        parseTerminalCliFrontendRequest(
+          request('context.create', {
+            sourceKind: 'folder',
+            source: 'C:\\VibeSpace',
+          }),
+        ),
+      ),
+    ).resolves.toMatchObject({ data: { map: { id: 'map-created' } } });
+  });
+
+  it('manages skills and agents only in the targeted terminal session', async () => {
+    const runtime = createTerminalCliRuntime(dependencies());
+
+    await runtime.execute(
+      parseTerminalCliFrontendRequest(request('skills.use', { skill: 'build' })),
+    );
+    await runtime.execute(
+      parseTerminalCliFrontendRequest(request('skills.add', { skill: 'review' })),
+    );
+    expect(
+      (await runtime.execute(parseTerminalCliFrontendRequest(request('skills.active')))).data,
+    ).toEqual({ skills: ['build', 'review'] });
+    await runtime.execute(
+      parseTerminalCliFrontendRequest(request('skills.remove', { skill: 'build' })),
+    );
+    await expect(
+      runtime.execute(
+        parseTerminalCliFrontendRequest(request('skills.inspect', { skill: 'review' })),
+      ),
+    ).resolves.toMatchObject({ data: { skill: { id: 'review' } } });
+
+    await runtime.execute(
+      parseTerminalCliFrontendRequest(request('agent.use', { slug: 'builder' })),
+    );
+    await expect(
+      runtime.execute(parseTerminalCliFrontendRequest(request('agent.current'))),
+    ).resolves.toMatchObject({ data: { agent: { slug: 'builder' } } });
+    await expect(
+      runtime.execute(parseTerminalCliFrontendRequest(request('agent.status'))),
+    ).resolves.toMatchObject({ data: { agent: { status: 'idle' } } });
+    await runtime.execute(parseTerminalCliFrontendRequest(request('agent.clear')));
+    await expect(
+      runtime.execute(parseTerminalCliFrontendRequest(request('agent.current'))),
+    ).resolves.toMatchObject({ data: { agent: null } });
+  });
+
+  it('runs note, daily-note, and workspace-authorized project commands', async () => {
+    const deps = dependencies();
+    const runtime = createTerminalCliRuntime(deps);
+    await runtime.execute(
+      parseTerminalCliFrontendRequest(request('context.use', { map: 'map-a' })),
+    );
+
+    await expect(
+      runtime.execute(parseTerminalCliFrontendRequest(request('note.new'))),
+    ).resolves.toMatchObject({ data: { note: { id: 'note-1' } } });
+    expect(deps.createNote).toHaveBeenCalledWith('project-a', 'map-a');
+    await expect(
+      runtime.execute(
+        parseTerminalCliFrontendRequest(request('note.open', { name: 'Architecture' })),
+      ),
+    ).resolves.toMatchObject({ data: { note: { name: 'Architecture' } } });
+    await runtime.execute(
+      parseTerminalCliFrontendRequest(
+        request('note.link', { source: 'Architecture', target: 'Security' }),
+      ),
+    );
+    await runtime.execute(parseTerminalCliFrontendRequest(request('daily.open')));
+    await runtime.execute(
+      parseTerminalCliFrontendRequest(request('daily.add', { text: 'Build passed.' })),
+    );
+    expect(deps.addDailyNoteText).toHaveBeenCalledWith('project-a', 'map-a', 'Build passed.');
+
+    await expect(
+      runtime.execute(parseTerminalCliFrontendRequest(request('project.current'))),
+    ).resolves.toMatchObject({ data: { project: { id: 'project-a' } } });
+    await expect(
+      runtime.execute(
+        parseTerminalCliFrontendRequest(request('project.switch', { projectId: 'project-b' })),
+      ),
+    ).resolves.toMatchObject({ data: { project: { id: 'project-b' } } });
+    expect(deps.switchProject).toHaveBeenCalledWith('project-b');
+  });
+
+  it('requires terminal-scoped Context before mutating notes', async () => {
+    const deps = dependencies();
+    const runtime = createTerminalCliRuntime(deps);
+
+    await expect(
+      runtime.execute(parseTerminalCliFrontendRequest(request('note.new'))),
+    ).resolves.toMatchObject({
+      ok: false,
+      code: 'conflict',
+      message: 'Select a Context Map before using Context Notes.',
+    });
+    expect(deps.createNote).not.toHaveBeenCalled();
+  });
+
+  it('returns bounded stable error codes without exposing thrown details', async () => {
+    const deps = dependencies();
+    deps.listContextMaps = vi.fn(async () => {
+      throw new Error('token=must-not-cross');
+    });
+    const runtime = createTerminalCliRuntime(deps);
+
+    const response = await runtime.execute(
+      parseTerminalCliFrontendRequest(request('context.list')),
+    );
+    expect(response).toEqual({
+      requestId: 'request-context-list',
+      ok: false,
+      code: 'internal_error',
+      message: 'The terminal CLI command could not be completed.',
+    });
+    expect(JSON.stringify(response)).not.toContain('must-not-cross');
+  });
+
+  it('awaits the production current-project authority before dispatching', async () => {
+    const deps = dependencies();
+    deps.currentProject = vi.fn(async () => ({
+      id: 'project-async',
+      name: 'Async Project',
+      workspaceId: 'workspace-a',
+    })) as TerminalCliRuntimeDependencies['currentProject'];
+    const runtime = createTerminalCliRuntime(deps);
+
+    const response = await runtime.execute(
+      parseTerminalCliFrontendRequest({
+        ...request('project.current'),
+        projectId: null,
+      }),
+    );
+
+    expect(response).toMatchObject({
+      ok: true,
+      data: { project: { id: 'project-async', name: 'Async Project' } },
+    });
+  });
+});

@@ -647,6 +647,7 @@ pub async fn terminal_spawn(
         })
         .map_err(|e| format!("terminal: open pty failed: {e}"))?;
 
+    let session_id = format!("tty_{}", nanoid::nanoid!(12));
     let mut builder = CommandBuilder::new(&cmd_str);
     for argument in &launch.arguments {
         builder.arg(argument);
@@ -663,6 +664,10 @@ pub async fn terminal_spawn(
         for (k, v) in env_map {
             builder.env(k, v);
         }
+    }
+    builder.env("VIBESPACE_TERMINAL_SESSION_ID", &session_id);
+    if let Some(project_id) = &project_id {
+        builder.env("VIBESPACE_PROJECT_ID", project_id);
     }
 
     let child = pair
@@ -684,7 +689,6 @@ pub async fn terminal_spawn(
         .map_err(|e| format!("terminal: writer take failed: {e}"))?;
     let killer = child.clone_killer();
 
-    let session_id = format!("tty_{}", nanoid::nanoid!(12));
     let response_cwd = resolved_cwd.clone();
     let info = TerminalInfo {
         session_id: session_id.clone(),

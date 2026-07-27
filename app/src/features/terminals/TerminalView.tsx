@@ -1347,6 +1347,18 @@ export function TerminalView({
           }
 
           setInitializationPhase('kernel_terminal_phase_native_spawn');
+          const spawnEnv = {
+            ...(slugAtSpawn
+              ? buildAgentSpawnEnv({
+                  agentSlug: slugAtSpawn,
+                  agentName: resolveAgentForSlug(slugAtSpawn).name,
+                  agentMode: modeAtSpawn,
+                  cwd: cwd ?? null,
+                  projectName: projectName ?? null,
+                })
+              : {}),
+            ...(paneId ? { VIBESPACE_PANE_ID: paneId } : {}),
+          };
           const result = await invoke<SpawnResult>('terminal_spawn', {
             command: spawnCommand,
             startupCommand: nativeStartupCommand,
@@ -1358,15 +1370,7 @@ export function TerminalView({
             cancellationToken: canonicalTerminalSpawnToken(executionId),
             // Make the assignment discoverable by any process in the pane,
             // not just AGENTS.md readers (env is inherited by child CLIs).
-            env: slugAtSpawn
-              ? buildAgentSpawnEnv({
-                  agentSlug: slugAtSpawn,
-                  agentName: resolveAgentForSlug(slugAtSpawn).name,
-                  agentMode: modeAtSpawn,
-                  cwd: cwd ?? null,
-                  projectName: projectName ?? null,
-                })
-              : undefined,
+            env: Object.keys(spawnEnv).length > 0 ? spawnEnv : undefined,
           });
           sid = result.sessionId;
           nativeStartupCommandConsumed = result.startupCommandConsumed;

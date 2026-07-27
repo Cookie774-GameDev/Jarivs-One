@@ -17,8 +17,12 @@ const PROTOCOL_VERSION: u8 = 1;
 const KEYRING_SERVICE: &str = "ai.jarvis.desktop";
 const KEYRING_ACCOUNT: &str = "terminal-cli-nonce";
 const MANAGED_MARKER: &str = "VIBESPACE_CLI_MANAGED_V1";
+const TERMINAL_SESSION_ENV: &str = "VIBESPACE_TERMINAL_SESSION_ID";
+const TERMINAL_PANE_ENV: &str = "VIBESPACE_PANE_ID";
+const TERMINAL_PROJECT_ENV: &str = "VIBESPACE_PROJECT_ID";
 const MAX_WIRE_BYTES: u64 = 65_536;
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(15);
+const LONG_RUNNING_RESPONSE_TIMEOUT: Duration = Duration::from_secs(120);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 const SAFE_NONCE_LENGTH: usize = 64;
 const MAX_PARAM_DEPTH: usize = 4;
@@ -30,6 +34,13 @@ const MAX_RESPONSE_KEYS: usize = 128;
 const MAX_RESPONSE_ARRAY: usize = 512;
 const MAX_RESPONSE_STRING: usize = 16_384;
 const MAX_ACTIVE_CONNECTIONS: usize = 8;
+
+pub fn terminal_cli_response_timeout(method: &str) -> Duration {
+    match method {
+        "context.create" | "context.refresh" => LONG_RUNNING_RESPONSE_TIMEOUT,
+        _ => RESPONSE_TIMEOUT,
+    }
+}
 
 const METHODS: &[&str] = &[
     "context.list",
@@ -93,8 +104,21 @@ pub struct TerminalCliRequest {
     pub protocol_version: u8,
     pub request_id: String,
     pub nonce: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terminal_session_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pane_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_id: Option<String>,
     pub method: String,
     pub params: Value,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TerminalCliRequestScope {
+    pub terminal_session_id: Option<String>,
+    pub pane_id: Option<String>,
+    pub project_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -127,6 +151,12 @@ struct TerminalCliEndpointError {
 struct TerminalCliFrontendRequest {
     protocol_version: u8,
     request_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    terminal_session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pane_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    project_id: Option<String>,
     method: String,
     params: Value,
 }
@@ -492,10 +522,48 @@ pub fn build_terminal_cli_request(
     nonce: &str,
     request_id: &str,
 ) -> Result<TerminalCliRequest, String> {
+    build_scoped_terminal_cli_request(
+        invocation,
+        nonce,
+        request_id,
+        terminal_cli_scope_from_environment()?,
+    )
+}
+
+fn optional_scope_environment(name: &str) -> Result<Option<String>, String> {
+    let Some(value) = std::env::var_os(name) else {
+        return Ok(None);
+    };
+    let value = value
+        .into_string()
+        .map_err(|_| format!("{name} is not valid UTF-8"))?;
+    if !safe_atom(&value) {
+        return Err(format!("{name} is invalid"));
+    }
+    Ok(Some(value))
+}
+
+fn terminal_cli_scope_from_environment() -> Result<TerminalCliRequestScope, String> {
+    Ok(TerminalCliRequestScope {
+        terminal_session_id: optional_scope_environment(TERMINAL_SESSION_ENV)?,
+        pane_id: optional_scope_environment(TERMINAL_PANE_ENV)?,
+        project_id: optional_scope_environment(TERMINAL_PROJECT_ENV)?,
+    })
+}
+
+pub fn build_scoped_terminal_cli_request(
+    invocation: &TerminalCliInvocation,
+    nonce: &str,
+    request_id: &str,
+    scope: TerminalCliRequestScope,
+) -> Result<TerminalCliRequest, String> {
     let request = TerminalCliRequest {
         protocol_version: PROTOCOL_VERSION,
         request_id: request_id.into(),
         nonce: nonce.into(),
+        terminal_session_id: scope.terminal_session_id,
+        pane_id: scope.pane_id,
+        project_id: scope.project_id,
         method: invocation.method.clone(),
         params: invocation.params.clone(),
     };
@@ -608,6 +676,18 @@ pub fn terminal_cli_request_error_code(
         return Some("unsupported_version");
     }
     if !safe_atom(&request.request_id)
+        || request
+            .terminal_session_id
+            .as_deref()
+            .is_some_and(|value| !safe_atom(value))
+        || request
+            .pane_id
+            .as_deref()
+            .is_some_and(|value| !safe_atom(value))
+        || request
+            .project_id
+            .as_deref()
+            .is_some_and(|value| !safe_atom(value))
         || !METHODS.contains(&request.method.as_str())
         || !valid_json(&request.params, 0)
         || !valid_method_params(&request.method, &request.params)
@@ -877,9 +957,13 @@ fn handle_connection(
         }
         map.insert(request.request_id.clone(), sender);
     }
+    let response_timeout = terminal_cli_response_timeout(&request.method);
     let event = TerminalCliFrontendRequest {
         protocol_version: request.protocol_version,
         request_id: request.request_id.clone(),
+        terminal_session_id: request.terminal_session_id,
+        pane_id: request.pane_id,
+        project_id: request.project_id,
         method: request.method,
         params: request.params,
     };
@@ -900,7 +984,7 @@ fn handle_connection(
             ),
         );
     }
-    let result = receiver.recv_timeout(RESPONSE_TIMEOUT).unwrap_or_else(|_| {
+    let result = receiver.recv_timeout(response_timeout).unwrap_or_else(|_| {
         response(
             &request.request_id,
             false,
@@ -1082,7 +1166,7 @@ fn send_terminal_cli_request(invocation: &TerminalCliInvocation) -> TerminalCliR
             )
         }
     };
-    let _ = stream.set_read_timeout(Some(RESPONSE_TIMEOUT));
+    let _ = stream.set_read_timeout(Some(terminal_cli_response_timeout(&request.method)));
     let _ = stream.set_write_timeout(Some(RESPONSE_TIMEOUT));
     let mut bytes = match serde_json::to_vec(&request) {
         Ok(bytes) => bytes,

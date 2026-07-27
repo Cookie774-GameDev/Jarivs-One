@@ -21,6 +21,7 @@ export {
   uninstallTerminalCli,
 } from './terminalCliInstall';
 export type { TerminalCliInstallStatus } from './terminalCliInstall';
+export { TerminalCliRuntimeHost } from './TerminalCliRuntimeHost';
 export {
   type PaneNode,
   type LeafBase,
