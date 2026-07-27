@@ -20,8 +20,10 @@ function candidate(
     explicit: false,
     projectScoped: true,
     trust: 'project',
+    exactMatch: false,
     lexicalScore: 0.5,
     semanticScore: null,
+    taskIntentScore: 0,
     observedAt: 100,
     whySelected: 'Matches the draft.',
     ...patch,
@@ -40,6 +42,73 @@ describe('Prompt Forge source ranking and pack', () => {
     );
     expect(ranked.map((source) => source.id)).toEqual(['explicit', 'semantic', 'weak']);
     expect(ranked[0]?.rankScore).toBeGreaterThan(ranked[1]?.rankScore ?? 0);
+  });
+
+  it('uses exact path/name and task-intent signals in deterministic Stage B ranking', () => {
+    const ranked = rankPromptForgeSources(
+      [
+        candidate('lexical', { lexicalScore: 0.8 }),
+        candidate('task', { lexicalScore: 0.1, taskIntentScore: 1 }),
+        candidate('exact', { exactMatch: true, lexicalScore: 0.1 }),
+      ],
+      1_000,
+    );
+
+    expect(ranked.map((source) => source.id)).toEqual(['exact', 'task', 'lexical']);
+  });
+
+  it('does not automatically pack unrelated implicit candidates', () => {
+    const pack = buildPromptForgeSourcePack({
+      candidates: [
+        candidate('unrelated', {
+          exactMatch: false,
+          lexicalScore: 0,
+          semanticScore: null,
+          taskIntentScore: 0,
+          explicit: false,
+        }),
+        candidate('explicit', {
+          exactMatch: false,
+          lexicalScore: 0,
+          semanticScore: null,
+          taskIntentScore: 0,
+          explicit: true,
+        }),
+      ],
+      budget: DEFAULT_PROMPT_FORGE_BUDGET,
+      offline: false,
+      publicResearchAllowed: false,
+      now: 1_000,
+    });
+
+    expect(pack.sources.map((source) => source.id)).toEqual(['explicit']);
+    expect(pack.warnings).toContain('Excluded an unrelated source candidate.');
+  });
+
+  it('accepts a related Canvas document as a first-class bounded source', () => {
+    const pack = buildPromptForgeSourcePack({
+      candidates: [
+        candidate('canvas-auth-flow', {
+          kind: 'canvas',
+          label: 'Authentication flow',
+          reference: 'canvas://document-1/object-7',
+          content: 'Sign in → verify entitlement → open workspace',
+          explicit: true,
+        }),
+      ],
+      budget: DEFAULT_PROMPT_FORGE_BUDGET,
+      offline: true,
+      publicResearchAllowed: false,
+      now: 1_000,
+    });
+
+    expect(pack.sources).toEqual([
+      expect.objectContaining({
+        id: 'canvas-auth-flow',
+        kind: 'canvas',
+        reference: 'canvas://document-1/object-7',
+      }),
+    ]);
   });
 
   it('builds a bounded injection-fenced pack, redacts secrets, and rejects unverified references', () => {
@@ -167,6 +236,15 @@ describe('Prompt Forge source ranking and pack', () => {
     expect(() =>
       rankPromptForgeSources([candidate('duplicate'), candidate('duplicate')], 1_000),
     ).toThrow(/candidate/i);
+    expect(() =>
+      rankPromptForgeSources(
+        [candidate('bad-exact', { exactMatch: 'yes' as unknown as boolean })],
+        1_000,
+      ),
+    ).toThrow(/candidate/i);
+    expect(() =>
+      rankPromptForgeSources([candidate('bad-task', { taskIntentScore: 2 })], 1_000),
+    ).toThrow(/task intent/i);
     expect(() =>
       buildPromptForgeSourcePack({
         candidates: null as unknown as readonly PromptForgeSourceCandidate[],

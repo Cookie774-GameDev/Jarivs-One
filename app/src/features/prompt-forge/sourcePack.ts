@@ -19,6 +19,7 @@ export type PromptForgeSourceKind =
   | 'tool'
   | 'task'
   | 'schedule'
+  | 'canvas'
   | 'public_web';
 
 export type PromptForgeSourceTrust = 'project' | 'official' | 'user' | 'external';
@@ -33,8 +34,10 @@ export type PromptForgeSourceCandidate = Readonly<{
   explicit: boolean;
   projectScoped: boolean;
   trust: PromptForgeSourceTrust;
+  exactMatch?: boolean;
   lexicalScore: number;
   semanticScore: number | null;
+  taskIntentScore?: number;
   observedAt: number;
   whySelected: string;
 }>;
@@ -102,6 +105,7 @@ const SOURCE_KINDS = new Set<PromptForgeSourceKind>([
   'tool',
   'task',
   'schedule',
+  'canvas',
   'public_web',
 ]);
 const SOURCE_TRUST = new Set<PromptForgeSourceTrust>(['project', 'official', 'user', 'external']);
@@ -114,6 +118,7 @@ const FILE_LIKE_KINDS = new Set<PromptForgeSourceKind>([
   'profile',
   'activity',
   'attachment',
+  'canvas',
   'skill',
   'plugin',
 ]);
@@ -124,6 +129,24 @@ const TRUST_SCORE: Readonly<Record<PromptForgeSourceTrust, number>> = Object.fre
   external: 0,
 });
 const KIND_SCORE: Readonly<Partial<Record<PromptForgeSourceKind, number>>> = Object.freeze({
+  project: 10,
+  project_symbol: 9,
+  project_file: 8,
+  context_map: 8,
+  canvas: 8,
+  terminal: 7,
+  attachment: 6,
+  chat: 5,
+  activity: 4,
+  skill: 4,
+  plugin: 4,
+  agent: 4,
+  mcp: 3,
+  action: 3,
+  tool: 3,
+  task: 3,
+  schedule: 3,
+  public_web: 2,
   profile: 30,
 });
 
@@ -164,12 +187,24 @@ function sourceScore(source: PromptForgeSourceCandidate, now: number): number {
   const freshness = Math.max(0, 2 - age / (1000 * 60 * 60 * 24 * 30));
   return (
     (source.explicit ? 100 : 0) +
+    (source.exactMatch === true ? 35 : 0) +
     (source.projectScoped ? 15 : 0) +
     (KIND_SCORE[source.kind] ?? 0) +
     TRUST_SCORE[source.trust] +
     normalizedScore(source.semanticScore, 'semantic score') * 20 +
     normalizedScore(source.lexicalScore, 'lexical score') * 8 +
+    normalizedScore(source.taskIntentScore ?? 0, 'task intent score') * 12 +
     freshness
+  );
+}
+
+function hasMeaningfulRelevance(source: RankedPromptForgeSource): boolean {
+  return (
+    source.explicit ||
+    source.exactMatch === true ||
+    source.lexicalScore > 0 ||
+    (source.semanticScore ?? 0) > 0 ||
+    (source.taskIntentScore ?? 0) > 0
   );
 }
 
@@ -194,6 +229,7 @@ export function rankPromptForgeSources(
       typeof source.verified !== 'boolean' ||
       typeof source.explicit !== 'boolean' ||
       typeof source.projectScoped !== 'boolean' ||
+      (source.exactMatch !== undefined && typeof source.exactMatch !== 'boolean') ||
       typeof source.label !== 'string' ||
       source.label.length === 0 ||
       source.label.length > 500 ||
@@ -325,6 +361,10 @@ export function buildPromptForgeSourcePack(
         warnings.add('Public research was not authorized for this upgrade.');
         continue;
       }
+    }
+    if (!hasMeaningfulRelevance(source)) {
+      warnings.add('Excluded an unrelated source candidate.');
+      continue;
     }
     eligible.push(source);
   }

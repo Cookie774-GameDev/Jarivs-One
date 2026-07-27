@@ -61,6 +61,7 @@ const SYMBOL_KINDS = new Set<ContextEntityKind>([
   'property',
 ]);
 const FILE_KINDS = new Set<ContextEntityKind>(['file', 'migration', 'test', 'dependency']);
+const CANVAS_KINDS = new Set<ContextEntityKind>(['canvas', 'canvas_object']);
 const ATTACHMENT_KINDS = new Set<ContextEntityKind>([
   'attachment',
   'image',
@@ -68,8 +69,6 @@ const ATTACHMENT_KINDS = new Set<ContextEntityKind>([
   'video',
   'pdf',
   'url',
-  'canvas',
-  'canvas_object',
 ]);
 
 function abortIfRequested(signal: AbortSignal): void {
@@ -91,10 +90,47 @@ function stableSourceId(namespace: string, value: string): string {
   return `${namespace}:${prefix}:${hashText(value)}`;
 }
 
+function normalizedReferenceText(value: string): string {
+  return value.normalize('NFKC').replaceAll('\\', '/').toLocaleLowerCase('en-US');
+}
+
+function containsWholeReference(query: string, reference: string): boolean {
+  if (reference.length < 3) return false;
+  let offset = 0;
+  while (offset <= query.length - reference.length) {
+    const index = query.indexOf(reference, offset);
+    if (index < 0) return false;
+    const before = index > 0 ? query[index - 1] : undefined;
+    const after = query[index + reference.length];
+    const isWord = (value: string | undefined) =>
+      value !== undefined && /[\p{L}\p{N}_-]/u.test(value);
+    if (!isWord(before) && !isWord(after)) return true;
+    offset = index + 1;
+  }
+  return false;
+}
+
+function exactContextReferenceMatch(
+  userText: string,
+  item: SharedContextRetrievalResult['items'][number],
+): boolean {
+  const query = normalizedReferenceText(userText);
+  if (!query.trim()) return false;
+  const path = item.entity.path ? normalizedReferenceText(item.entity.path) : null;
+  if (path && containsWholeReference(query, path)) return true;
+  const basename = path?.split('/').at(-1);
+  const label = normalizedReferenceText(item.entity.label);
+  return [basename, label].some(
+    (reference): reference is string =>
+      typeof reference === 'string' && containsWholeReference(query, reference),
+  );
+}
+
 function sourceKind(entityKind: ContextEntityKind): PromptForgeSourceKind {
   if (entityKind === 'terminal') return 'terminal';
   if (entityKind === 'skill') return 'skill';
   if (entityKind === 'chat' || entityKind === 'message') return 'chat';
+  if (CANVAS_KINDS.has(entityKind)) return 'canvas';
   if (ATTACHMENT_KINDS.has(entityKind)) return 'attachment';
   if (SYMBOL_KINDS.has(entityKind)) return 'project_symbol';
   if (FILE_KINDS.has(entityKind)) return 'project_file';
@@ -122,6 +158,7 @@ export function promptForgeSourcesFromContext(
   result: SharedContextRetrievalResult,
   projectId: string | null,
   now: number,
+  userText = '',
 ): readonly PromptForgeSourceCandidate[] {
   return deepFreezeJarvisCopy(
     result.items.map((item) => ({
@@ -134,8 +171,10 @@ export function promptForgeSourcesFromContext(
       explicit: item.ranking.reasons.includes('explicit_attachment'),
       projectScoped: projectId !== null,
       trust: sourceTrust(item.sourceKind),
-      lexicalScore: 0,
-      semanticScore: null,
+      exactMatch: exactContextReferenceMatch(userText, item),
+      lexicalScore: item.ranking.reasons.includes('lexical_match') ? 1 : 0,
+      semanticScore: item.ranking.reasons.includes('semantic_match') ? 1 : null,
+      taskIntentScore: item.ranking.reasons.includes('task_intent') ? 1 : 0,
       observedAt: Math.min(now, Math.max(0, item.provenance.indexedAt)),
       whySelected:
         item.ranking.reasons.length > 0
@@ -214,7 +253,12 @@ export function createPromptForgeContextPreparer(
     });
     abortIfRequested(signal);
 
-    const contextSources = promptForgeSourcesFromContext(context, job.projectId, builtAt);
+    const contextSources = promptForgeSourcesFromContext(
+      context,
+      job.projectId,
+      builtAt,
+      job.originalDraft,
+    );
     const collectedSources = collectAdditionalSources
       ? await collectAdditionalSources({ job, signal, now: builtAt })
       : [];

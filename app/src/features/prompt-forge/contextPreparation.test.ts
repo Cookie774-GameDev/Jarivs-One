@@ -7,6 +7,7 @@ import { createPromptForgeJob } from './contracts';
 import {
   createPromptForgeContextPreparer,
   promptForgeModelOptionsFromPicker,
+  promptForgeSourcesFromContext,
 } from './contextPreparation';
 import type { PromptForgeSourceCandidate } from './sourcePack';
 
@@ -138,6 +139,83 @@ function job(
 }
 
 describe('Prompt Forge context preparation', () => {
+  it('recognizes exact normalized Context paths without treating partial names as exact', () => {
+    expect(
+      promptForgeSourcesFromContext(
+        retrieval,
+        'project-1',
+        now,
+        'Update app\\src\\features\\chat\\Composer.tsx',
+      )[0],
+    ).toMatchObject({ exactMatch: true });
+    expect(
+      promptForgeSourcesFromContext(retrieval, 'project-1', now, 'Update Composition')[0],
+    ).toMatchObject({ exactMatch: false });
+  });
+
+  it('preserves related Canvas identity and shared retrieval ranking signals', () => {
+    const canvasResult: SharedContextRetrievalResult = Object.freeze({
+      ...retrieval,
+      items: Object.freeze([
+        Object.freeze({
+          ...retrieval.items[0]!,
+          id: 'canvas-object-1',
+          entity: Object.freeze({
+            ...retrieval.items[0]!.entity,
+            entityId: 'canvas-object-1',
+            kind: 'canvas_object' as const,
+            label: 'Authentication flow',
+            path: undefined,
+            lineStart: undefined,
+            lineEnd: undefined,
+          }),
+          exactExcerpt: 'Sign in → verify entitlement → open workspace',
+          summary: 'Selected authentication flow from the related Canvas document.',
+          ranking: Object.freeze({
+            score: 0.92,
+            reasons: Object.freeze([
+              'explicit_attachment',
+              'task_intent',
+              'lexical_match',
+              'semantic_match',
+            ] as const),
+          }),
+          citation: Object.freeze({
+            label: 'Authentication flow',
+            action: Object.freeze({
+              kind: 'open_source' as const,
+              sourceKind: 'local_folder' as const,
+              mapId: 'map-1',
+              entityId: 'canvas-object-1',
+            }),
+          }),
+        }),
+      ]),
+      evidenceKinds: Object.freeze({ 'canvas-object-1': 'exact_excerpt' as const }),
+    });
+
+    expect(
+      promptForgeSourcesFromContext(
+        canvasResult,
+        'project-1',
+        now,
+        'Update the Authentication flow',
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        kind: 'canvas',
+        label: 'Authentication flow',
+        explicit: true,
+        projectScoped: true,
+        exactMatch: true,
+        lexicalScore: 1,
+        semanticScore: 1,
+        taskIntentScore: 1,
+        content: 'Sign in → verify entitlement → open workspace',
+      }),
+    ]);
+  });
+
   it('uses the shared Context retrieval result to build a cited, injection-fenced source pack', async () => {
     const retrieveContext = vi.fn(async () => ({
       ...retrieval,
