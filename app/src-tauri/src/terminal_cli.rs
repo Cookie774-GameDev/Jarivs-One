@@ -17,6 +17,10 @@ const PROTOCOL_VERSION: u8 = 1;
 const KEYRING_SERVICE: &str = "ai.jarvis.desktop";
 const KEYRING_ACCOUNT: &str = "terminal-cli-nonce";
 const MANAGED_MARKER: &str = "VIBESPACE_CLI_MANAGED_V1";
+const SHELL_INTEGRATION_MARKER: &str = "VIBESPACE_SHELL_INTEGRATION_V1";
+const SHELL_INTEGRATION_START_PREFIX: &str = "# >>> VIBESPACE_SHELL_INTEGRATION_V1 ";
+const SHELL_INTEGRATION_END: &str = "# <<< VIBESPACE_SHELL_INTEGRATION_V1 <<<";
+const MAX_SHELL_PROFILE_BYTES: u64 = 1_048_576;
 const TERMINAL_SESSION_ENV: &str = "VIBESPACE_TERMINAL_SESSION_ID";
 const TERMINAL_PANE_ENV: &str = "VIBESPACE_PANE_ID";
 const TERMINAL_PROJECT_ENV: &str = "VIBESPACE_PROJECT_ID";
@@ -167,6 +171,57 @@ pub struct TerminalCliInstallStatus {
     installed: bool,
     bin_dir: String,
     command_names: [&'static str; 2],
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalShellProfileStatus {
+    shell: &'static str,
+    path: String,
+    installed: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalShellIntegrationStatus {
+    available: bool,
+    installed: bool,
+    profiles: Vec<TerminalShellProfileStatus>,
+}
+
+#[cfg_attr(target_os = "windows", allow(dead_code))]
+#[derive(Debug, Clone, Copy)]
+enum TerminalShellKind {
+    PowerShell,
+    Bash,
+    Zsh,
+    Fish,
+}
+
+impl TerminalShellKind {
+    fn label(self) -> &'static str {
+        match self {
+            Self::PowerShell => "powershell",
+            Self::Bash => "bash",
+            Self::Zsh => "zsh",
+            Self::Fish => "fish",
+        }
+    }
+
+    fn integration(self) -> &'static str {
+        match self {
+            Self::PowerShell => powershell_terminal_prompt_integration(),
+            Self::Bash => bash_terminal_prompt_integration(),
+            Self::Zsh => zsh_terminal_prompt_integration(),
+            Self::Fish => fish_terminal_prompt_integration(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct TerminalShellProfileTarget {
+    shell: TerminalShellKind,
+    path: PathBuf,
 }
 
 #[derive(Default)]
@@ -770,6 +825,342 @@ pub fn unix_terminal_cli_shim(executable: &Path, endpoint: &Path) -> Result<Stri
     ))
 }
 
+pub fn powershell_terminal_prompt_integration() -> &'static str {
+    r#"# VibeSpace emits prompt-boundary evidence only; it never records shell input here.
+if (-not (Test-Path variable:global:VibeSpaceOriginalPrompt)) {
+  $global:VibeSpaceOriginalPrompt = $function:prompt
+}
+function global:prompt {
+  [string]$vibespacePrompt = if ($global:VibeSpaceOriginalPrompt) {
+    (& $global:VibeSpaceOriginalPrompt)
+  } else {
+    "PS $($executionContext.SessionState.Path.CurrentLocation)> "
+  }
+  "`e]133;A`a${vibespacePrompt}`e]133;B`a"
+}"#
+}
+
+pub fn bash_terminal_prompt_integration() -> &'static str {
+    r#"# VibeSpace emits prompt-boundary evidence only; it never records shell input here.
+if [[ $- == *i* ]] && [[ ${PS1-} != *']133;A'* ]]; then
+  PS1='\[\e]133;A\a\]'"${PS1-}"'\[\e]133;B\a\]'
+fi"#
+}
+
+pub fn zsh_terminal_prompt_integration() -> &'static str {
+    r#"# VibeSpace emits prompt-boundary evidence only; it never records shell input here.
+if [[ -o interactive ]] && [[ ${PROMPT-} != *']133;A'* ]]; then
+  PROMPT=$'%{\e]133;A\a%}'"${PROMPT-}"$'%{\e]133;B\a%}'
+fi"#
+}
+
+pub fn fish_terminal_prompt_integration() -> &'static str {
+    r#"# VibeSpace emits prompt-boundary evidence only; it never records shell input here.
+if status is-interactive
+  if functions -q fish_prompt; and not functions -q __vibespace_original_fish_prompt
+    functions -c fish_prompt __vibespace_original_fish_prompt
+    function fish_prompt
+      printf '\e]133;A\a'
+      __vibespace_original_fish_prompt
+      printf '\e]133;B\a'
+    end
+  end
+end"#
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ManagedShellBlock {
+    start: usize,
+    end: usize,
+    prior_exists: bool,
+    prior_eol: bool,
+}
+
+fn line_end(content: &str, start: usize) -> usize {
+    content[start..]
+        .find('\n')
+        .map_or(content.len(), |offset| start + offset + 1)
+}
+
+fn line_without_ending(content: &str, start: usize, end: usize) -> &str {
+    let line = content[start..end]
+        .strip_suffix('\n')
+        .unwrap_or(&content[start..end]);
+    line.strip_suffix('\r').unwrap_or(line)
+}
+
+fn parse_managed_shell_block(content: &str) -> Result<Option<ManagedShellBlock>, String> {
+    let starts = content
+        .match_indices(SHELL_INTEGRATION_START_PREFIX)
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    let ends = content
+        .match_indices(SHELL_INTEGRATION_END)
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    if starts.is_empty() && ends.is_empty() {
+        if content.contains(SHELL_INTEGRATION_MARKER) {
+            return Err("The VibeSpace shell integration marker is damaged.".into());
+        }
+        return Ok(None);
+    }
+    if starts.len() != 1 || ends.len() != 1 || starts[0] >= ends[0] {
+        return Err("The VibeSpace shell integration markers are ambiguous.".into());
+    }
+
+    let start = starts[0];
+    let end_marker = ends[0];
+    if (start > 0 && content.as_bytes()[start - 1] != b'\n')
+        || (end_marker > 0 && content.as_bytes()[end_marker - 1] != b'\n')
+    {
+        return Err("The VibeSpace shell integration markers are not complete lines.".into());
+    }
+    let start_end = line_end(content, start);
+    let end = line_end(content, end_marker);
+    let start_line = line_without_ending(content, start, start_end);
+    let end_line = line_without_ending(content, end_marker, end);
+    if end_line != SHELL_INTEGRATION_END {
+        return Err("The VibeSpace shell integration end marker is damaged.".into());
+    }
+
+    let metadata = start_line
+        .strip_prefix(SHELL_INTEGRATION_START_PREFIX)
+        .and_then(|value| value.strip_suffix(" >>>"))
+        .ok_or_else(|| "The VibeSpace shell integration metadata is invalid.".to_string())?;
+    let mut parts = metadata.split(' ');
+    let prior_exists = match parts.next() {
+        Some("prior_exists=0") => false,
+        Some("prior_exists=1") => true,
+        _ => return Err("The VibeSpace shell integration metadata is invalid.".into()),
+    };
+    let prior_eol = match parts.next() {
+        Some("prior_eol=0") => false,
+        Some("prior_eol=1") => true,
+        _ => return Err("The VibeSpace shell integration metadata is invalid.".into()),
+    };
+    if parts.next().is_some() {
+        return Err("The VibeSpace shell integration metadata is invalid.".into());
+    }
+
+    Ok(Some(ManagedShellBlock {
+        start,
+        end,
+        prior_exists,
+        prior_eol,
+    }))
+}
+
+fn preferred_line_ending(content: &str) -> &'static str {
+    if content.contains("\r\n") {
+        "\r\n"
+    } else {
+        "\n"
+    }
+}
+
+fn terminal_shell_block(
+    integration: &str,
+    prior_exists: bool,
+    prior_eol: bool,
+    eol: &str,
+) -> Result<String, String> {
+    if integration.is_empty()
+        || integration.len() > 16_384
+        || integration.contains(SHELL_INTEGRATION_MARKER)
+        || integration
+            .chars()
+            .any(|character| character == '\0' || character == '\u{feff}')
+    {
+        return Err("The VibeSpace shell integration body is invalid.".into());
+    }
+    let body = integration
+        .replace("\r\n", "\n")
+        .trim_matches('\n')
+        .replace('\n', eol);
+    Ok(format!(
+        "{SHELL_INTEGRATION_START_PREFIX}prior_exists={} prior_eol={} >>>{eol}{body}{eol}{SHELL_INTEGRATION_END}{eol}",
+        u8::from(prior_exists),
+        u8::from(prior_eol)
+    ))
+}
+
+pub fn merge_managed_terminal_shell_profile(
+    existing: Option<&str>,
+    integration: &str,
+) -> Result<String, String> {
+    let content = existing.unwrap_or_default();
+    let current = parse_managed_shell_block(content)?;
+    let eol = preferred_line_ending(content);
+    let (prior_exists, prior_eol) = current.map_or_else(
+        || {
+            (
+                existing.is_some(),
+                content.is_empty() || content.ends_with('\n'),
+            )
+        },
+        |block| (block.prior_exists, block.prior_eol),
+    );
+    let block = terminal_shell_block(integration, prior_exists, prior_eol, eol)?;
+
+    if let Some(current) = current {
+        return Ok(format!(
+            "{}{}{}",
+            &content[..current.start],
+            block,
+            &content[current.end..]
+        ));
+    }
+
+    let separator = if content.is_empty() || prior_eol {
+        ""
+    } else {
+        eol
+    };
+    Ok(format!("{content}{separator}{block}"))
+}
+
+pub fn remove_managed_terminal_shell_profile(existing: &str) -> Result<Option<String>, String> {
+    let Some(block) = parse_managed_shell_block(existing)? else {
+        return Ok(Some(existing.to_string()));
+    };
+    let mut prefix = existing[..block.start].to_string();
+    if !block.prior_eol {
+        if prefix.ends_with("\r\n") {
+            prefix.truncate(prefix.len() - 2);
+        } else if prefix.ends_with('\n') {
+            prefix.truncate(prefix.len() - 1);
+        } else {
+            return Err("The VibeSpace shell integration separator is damaged.".into());
+        }
+    }
+    prefix.push_str(&existing[block.end..]);
+    if !block.prior_exists && prefix.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(prefix))
+    }
+}
+
+fn read_terminal_shell_profile(path: &Path) -> Result<Option<String>, String> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) => {
+            if metadata.file_type().is_symlink() {
+                return Err(format!(
+                    "Refusing to modify a symbolic-link shell profile: {}",
+                    path.display()
+                ));
+            }
+            if !metadata.is_file() {
+                return Err(format!(
+                    "The shell profile path is not a regular file: {}",
+                    path.display()
+                ));
+            }
+            if metadata.len() > MAX_SHELL_PROFILE_BYTES {
+                return Err("The shell profile is too large to modify safely.".into());
+            }
+            fs::read_to_string(path)
+                .map(Some)
+                .map_err(|error| format!("Shell profile read failed: {error}"))
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(format!("Shell profile metadata failed: {error}")),
+    }
+}
+
+fn write_terminal_shell_profile(path: &Path, content: Option<&str>) -> Result<(), String> {
+    let existing_metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => {
+            if metadata.file_type().is_symlink() {
+                return Err(format!(
+                    "Refusing to modify a symbolic-link shell profile: {}",
+                    path.display()
+                ));
+            }
+            if !metadata.is_file() {
+                return Err(format!(
+                    "The shell profile path is not a regular file: {}",
+                    path.display()
+                ));
+            }
+            Some(metadata)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => return Err(format!("Shell profile metadata failed: {error}")),
+    };
+
+    let Some(content) = content else {
+        return match fs::remove_file(path) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(format!("Shell profile removal failed: {error}")),
+        };
+    };
+    if content.len() as u64 > MAX_SHELL_PROFILE_BYTES || content.contains('\0') {
+        return Err("The shell profile content is invalid.".into());
+    }
+    let parent = path
+        .parent()
+        .ok_or_else(|| "The shell profile path has no parent.".to_string())?;
+    fs::create_dir_all(parent).map_err(|error| format!("Shell profile directory: {error}"))?;
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| "The shell profile path has no valid file name.".to_string())?;
+    let temporary = path.with_file_name(format!(
+        ".{file_name}.{}.{}.vibespace.tmp",
+        std::process::id(),
+        nanoid::nanoid!(12)
+    ));
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temporary)
+        .map_err(|error| format!("Shell profile temporary create failed: {error}"))?;
+    if let Err(error) = file.write_all(content.as_bytes()) {
+        drop(file);
+        let _ = fs::remove_file(&temporary);
+        return Err(format!("Shell profile write failed: {error}"));
+    }
+    if let Err(error) = file.sync_all() {
+        drop(file);
+        let _ = fs::remove_file(&temporary);
+        return Err(format!("Shell profile flush failed: {error}"));
+    }
+    drop(file);
+    if let Some(metadata) = existing_metadata {
+        if let Err(error) = fs::set_permissions(&temporary, metadata.permissions()) {
+            let _ = fs::remove_file(&temporary);
+            return Err(format!("Shell profile permissions failed: {error}"));
+        }
+    }
+    if let Err(error) = atomic_replace_file(&temporary, path) {
+        let _ = fs::remove_file(&temporary);
+        return Err(format!("Shell profile replace failed: {error}"));
+    }
+    Ok(())
+}
+
+pub fn install_managed_terminal_shell_profile(
+    path: &Path,
+    integration: &str,
+) -> Result<(), String> {
+    let existing = read_terminal_shell_profile(path)?;
+    let next = merge_managed_terminal_shell_profile(existing.as_deref(), integration)?;
+    write_terminal_shell_profile(path, Some(&next))
+}
+
+pub fn uninstall_managed_terminal_shell_profile(path: &Path) -> Result<(), String> {
+    let Some(existing) = read_terminal_shell_profile(path)? else {
+        return Ok(());
+    };
+    let next = remove_managed_terminal_shell_profile(&existing)?;
+    if next.as_deref() == Some(existing.as_str()) {
+        return Ok(());
+    }
+    write_terminal_shell_profile(path, next.as_deref())
+}
+
 fn keyring_entry() -> Result<Entry, String> {
     Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT)
         .map_err(|error| format!("terminal CLI credential store unavailable: {error}"))
@@ -1262,6 +1653,152 @@ fn terminal_cli_paths() -> Result<(PathBuf, [&'static str; 2]), String> {
     }
 }
 
+fn terminal_shell_profile_targets() -> Result<Vec<TerminalShellProfileTarget>, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let home = std::env::var_os("USERPROFILE")
+            .map(PathBuf::from)
+            .ok_or_else(|| "USERPROFILE is unavailable".to_string())?;
+        let default_documents = home.join("Documents");
+        let documents = std::env::var_os("OneDrive")
+            .map(PathBuf::from)
+            .map(|path| path.join("Documents"))
+            .filter(|path| path.is_dir())
+            .unwrap_or(default_documents);
+        return Ok(vec![
+            TerminalShellProfileTarget {
+                shell: TerminalShellKind::PowerShell,
+                path: documents
+                    .join("PowerShell")
+                    .join("Microsoft.PowerShell_profile.ps1"),
+            },
+            TerminalShellProfileTarget {
+                shell: TerminalShellKind::PowerShell,
+                path: documents
+                    .join("WindowsPowerShell")
+                    .join("Microsoft.PowerShell_profile.ps1"),
+            },
+        ]);
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let home = std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .ok_or_else(|| "HOME is unavailable".to_string())?;
+        let candidates = [
+            (TerminalShellKind::Bash, home.join(".bashrc")),
+            (TerminalShellKind::Zsh, home.join(".zshrc")),
+            (
+                TerminalShellKind::Fish,
+                home.join(".config").join("fish").join("config.fish"),
+            ),
+        ];
+        let mut targets = candidates
+            .iter()
+            .filter(|(_, path)| path.is_file())
+            .map(|(shell, path)| TerminalShellProfileTarget {
+                shell: *shell,
+                path: path.clone(),
+            })
+            .collect::<Vec<_>>();
+        if targets.is_empty() {
+            let shell = std::env::var_os("SHELL")
+                .and_then(|path| PathBuf::from(path).file_name().map(|name| name.to_owned()))
+                .and_then(|name| name.to_str().map(str::to_owned));
+            let target = match shell.as_deref() {
+                Some("bash") => Some((TerminalShellKind::Bash, home.join(".bashrc"))),
+                Some("zsh") => Some((TerminalShellKind::Zsh, home.join(".zshrc"))),
+                Some("fish") => Some((
+                    TerminalShellKind::Fish,
+                    home.join(".config").join("fish").join("config.fish"),
+                )),
+                _ => None,
+            };
+            if let Some((shell, path)) = target {
+                targets.push(TerminalShellProfileTarget { shell, path });
+            }
+        }
+        Ok(targets)
+    }
+}
+
+fn restore_terminal_shell_profiles(
+    originals: &[(TerminalShellProfileTarget, Option<String>)],
+) -> Result<(), String> {
+    let mut errors = Vec::new();
+    for (target, original) in originals.iter().rev() {
+        if let Err(error) = write_terminal_shell_profile(&target.path, original.as_deref()) {
+            errors.push(format!("{}: {error}", target.path.display()));
+        }
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "Shell profile rollback failed for {}",
+            errors.join(", ")
+        ))
+    }
+}
+
+fn mutate_terminal_shell_profiles(
+    targets: &[TerminalShellProfileTarget],
+    install: bool,
+) -> Result<(), String> {
+    if targets.is_empty() {
+        return Err("No supported shell profile is available.".into());
+    }
+    let originals = targets
+        .iter()
+        .map(|target| {
+            read_terminal_shell_profile(&target.path).map(|content| (target.clone(), content))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let mut applied = 0;
+    for target in targets {
+        let result = if install {
+            install_managed_terminal_shell_profile(&target.path, target.shell.integration())
+        } else {
+            uninstall_managed_terminal_shell_profile(&target.path)
+        };
+        if let Err(error) = result {
+            return match restore_terminal_shell_profiles(&originals[..applied]) {
+                Ok(()) => Err(error),
+                Err(rollback) => Err(format!("{error}; {rollback}")),
+            };
+        }
+        applied += 1;
+    }
+    Ok(())
+}
+
+fn terminal_shell_integration_status_impl() -> TerminalShellIntegrationStatus {
+    let targets = terminal_shell_profile_targets().unwrap_or_default();
+    let profiles = targets
+        .iter()
+        .map(|target| {
+            let installed = read_terminal_shell_profile(&target.path)
+                .ok()
+                .flatten()
+                .is_some_and(|content| {
+                    merge_managed_terminal_shell_profile(Some(&content), target.shell.integration())
+                        .is_ok_and(|expected| expected == content)
+                });
+            TerminalShellProfileStatus {
+                shell: target.shell.label(),
+                path: target.path.to_string_lossy().into_owned(),
+                installed,
+            }
+        })
+        .collect::<Vec<_>>();
+    TerminalShellIntegrationStatus {
+        available: !profiles.is_empty(),
+        installed: !profiles.is_empty() && profiles.iter().all(|profile| profile.installed),
+        profiles,
+    }
+}
+
 fn expected_shim(executable: &Path, endpoint: &Path) -> Result<String, String> {
     #[cfg(target_os = "windows")]
     {
@@ -1517,6 +2054,25 @@ pub fn terminal_cli_uninstall(
     let paths = names.map(|name| bin_dir.join(name));
     remove_managed_terminal_cli_aliases(&paths)?;
     cli_install_status(&state)
+}
+
+#[tauri::command]
+pub fn terminal_shell_integration_status() -> TerminalShellIntegrationStatus {
+    terminal_shell_integration_status_impl()
+}
+
+#[tauri::command]
+pub fn terminal_shell_integration_install() -> Result<TerminalShellIntegrationStatus, String> {
+    let targets = terminal_shell_profile_targets()?;
+    mutate_terminal_shell_profiles(&targets, true)?;
+    Ok(terminal_shell_integration_status_impl())
+}
+
+#[tauri::command]
+pub fn terminal_shell_integration_uninstall() -> Result<TerminalShellIntegrationStatus, String> {
+    let targets = terminal_shell_profile_targets()?;
+    mutate_terminal_shell_profiles(&targets, false)?;
+    Ok(terminal_shell_integration_status_impl())
 }
 
 #[tauri::command]

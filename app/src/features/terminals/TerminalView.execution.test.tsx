@@ -293,11 +293,12 @@ describe('TerminalView canonical execution truth', () => {
     expect(inputBlock).toContain("invoke('terminal_write', { sessionId: sid, data: forwardData })");
     expect(inputBlock).not.toContain("invoke('terminal_write', { sessionId: sid, data })");
     expect(source).toContain('<TerminalCommandPalette');
-    expect(source).toContain(
-      "import { installTerminalCli, uninstallTerminalCli } from './terminalCliInstall'",
-    );
+    expect(source).toContain('installTerminalShellIntegration,');
+    expect(source).toContain('uninstallTerminalShellIntegration,');
     expect(source).toContain('onInstallCli={installTerminalCli}');
     expect(source).toContain('onUninstallCli={uninstallTerminalCli}');
+    expect(source).toContain('onInstallShellIntegration={installTerminalShellIntegration}');
+    expect(source).toContain('onUninstallShellIntegration={uninstallTerminalShellIntegration}');
   });
 
   it('propagates trusted terminal scope to child CLI processes', () => {

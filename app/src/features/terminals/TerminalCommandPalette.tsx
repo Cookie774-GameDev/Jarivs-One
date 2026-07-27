@@ -16,7 +16,10 @@ import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Route } from '@/stores/ui';
 import type { TerminalPromptEvidence } from './terminalCommandFoundation';
-import type { TerminalCliInstallStatus } from './terminalCliInstall';
+import type {
+  TerminalCliInstallStatus,
+  TerminalShellIntegrationStatus,
+} from './terminalCliInstall';
 
 type PaletteItem = Readonly<{
   id: string;
@@ -110,6 +113,8 @@ export interface TerminalCommandPaletteProps {
   onNavigate: (route: Route) => void;
   onInstallCli?: () => Promise<TerminalCliInstallStatus>;
   onUninstallCli?: () => Promise<TerminalCliInstallStatus>;
+  onInstallShellIntegration?: () => Promise<TerminalShellIntegrationStatus>;
+  onUninstallShellIntegration?: () => Promise<TerminalShellIntegrationStatus>;
 }
 
 export function TerminalCommandPalette({
@@ -122,6 +127,8 @@ export function TerminalCommandPalette({
   onNavigate,
   onInstallCli,
   onUninstallCli,
+  onInstallShellIntegration,
+  onUninstallShellIntegration,
 }: TerminalCommandPaletteProps): JSX.Element | null {
   const [query, setQuery] = React.useState('');
   const [selectedIndex, setSelectedIndex] = React.useState(0);
@@ -166,9 +173,9 @@ export function TerminalCommandPalette({
     }
   };
 
-  const updateCliSetup = async (
-    action: (() => Promise<TerminalCliInstallStatus>) | undefined,
-    successMessage: (status: TerminalCliInstallStatus) => string,
+  const updateTerminalSetup = async <T,>(
+    action: (() => Promise<T>) | undefined,
+    successMessage: (status: T) => string,
   ) => {
     if (!action || cliSetupPending) return;
     setCliSetupPending(true);
@@ -273,14 +280,21 @@ export function TerminalCommandPalette({
             The real <code>vibespace</code> and <code>vs</code> CLI commands are separate from this
             in-pane overlay.
           </p>
-          {onInstallCli || onUninstallCli ? (
+          <p className="mt-2">
+            Shell prompt integration is optional. It adds only a marked, removable block to
+            supported shell profiles and preserves their existing content.
+          </p>
+          {onInstallCli ||
+          onUninstallCli ||
+          onInstallShellIntegration ||
+          onUninstallShellIntegration ? (
             <div className="mt-4 flex flex-wrap gap-2">
               {onInstallCli ? (
                 <button
                   type="button"
                   disabled={cliSetupPending}
                   onClick={() =>
-                    void updateCliSetup(
+                    void updateTerminalSetup(
                       onInstallCli,
                       (status) =>
                         `Installed vibespace and vs in ${status.binDir}. Open a new terminal if PATH has not refreshed.`,
@@ -296,7 +310,7 @@ export function TerminalCommandPalette({
                   type="button"
                   disabled={cliSetupPending}
                   onClick={() =>
-                    void updateCliSetup(
+                    void updateTerminalSetup(
                       onUninstallCli,
                       (status) => `Removed managed terminal commands from ${status.binDir}.`,
                     )
@@ -304,6 +318,38 @@ export function TerminalCommandPalette({
                   className="rounded-md border border-border px-3 py-2 text-secondary text-foreground disabled:cursor-wait disabled:opacity-60"
                 >
                   Remove terminal commands
+                </button>
+              ) : null}
+              {onInstallShellIntegration ? (
+                <button
+                  type="button"
+                  disabled={cliSetupPending}
+                  onClick={() =>
+                    void updateTerminalSetup(
+                      onInstallShellIntegration,
+                      (status) =>
+                        `Enabled managed prompt integration for ${status.profiles.length} shell profile(s). Open a new shell to apply it.`,
+                    )
+                  }
+                  className="rounded-md border border-accent-copper/60 bg-accent-copper/10 px-3 py-2 text-secondary text-accent-copper disabled:cursor-wait disabled:opacity-60"
+                >
+                  Enable shell prompt integration
+                </button>
+              ) : null}
+              {onUninstallShellIntegration ? (
+                <button
+                  type="button"
+                  disabled={cliSetupPending}
+                  onClick={() =>
+                    void updateTerminalSetup(
+                      onUninstallShellIntegration,
+                      () =>
+                        'Removed managed prompt integration. Open shells keep their current prompt until restarted.',
+                    )
+                  }
+                  className="rounded-md border border-border px-3 py-2 text-secondary text-foreground disabled:cursor-wait disabled:opacity-60"
+                >
+                  Remove shell prompt integration
                 </button>
               ) : null}
             </div>

@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import {
+  installTerminalShellIntegration,
   installTerminalCli,
+  readTerminalShellIntegrationStatus,
   readTerminalCliInstallStatus,
+  uninstallTerminalShellIntegration,
   uninstallTerminalCli,
 } from './terminalCliInstall';
 
@@ -53,5 +56,63 @@ describe('terminal CLI install controls', () => {
       token: 'must-not-cross-the-bridge',
     });
     await expect(readTerminalCliInstallStatus()).rejects.toThrow(/install status/i);
+  });
+
+  it('uses separate opt-in shell integration commands with a closed profile inventory', async () => {
+    const installed = {
+      available: true,
+      installed: true,
+      profiles: [
+        {
+          shell: 'powershell',
+          path: 'C:\\Users\\Test\\Documents\\PowerShell\\Microsoft.PowerShell_profile.ps1',
+          installed: true,
+        },
+      ],
+    };
+    const removed = {
+      ...installed,
+      installed: false,
+      profiles: installed.profiles.map((profile) => ({ ...profile, installed: false })),
+    };
+    vi.mocked(invoke)
+      .mockResolvedValueOnce(removed)
+      .mockResolvedValueOnce(installed)
+      .mockResolvedValueOnce(removed);
+
+    await expect(readTerminalShellIntegrationStatus()).resolves.toMatchObject({
+      available: true,
+      installed: false,
+    });
+    expect(invoke).toHaveBeenLastCalledWith('terminal_shell_integration_status');
+    await expect(installTerminalShellIntegration()).resolves.toEqual(installed);
+    expect(invoke).toHaveBeenLastCalledWith('terminal_shell_integration_install');
+    await expect(uninstallTerminalShellIntegration()).resolves.toMatchObject({
+      installed: false,
+    });
+    expect(invoke).toHaveBeenLastCalledWith('terminal_shell_integration_uninstall');
+  });
+
+  it('rejects shell integration profile data containing hidden fields or unsafe paths', async () => {
+    vi.mocked(invoke).mockResolvedValueOnce({
+      available: true,
+      installed: true,
+      profiles: [
+        {
+          shell: 'powershell',
+          path: 'C:\\Users\\Test\\profile.ps1',
+          installed: true,
+          nonce: 'must-not-cross',
+        },
+      ],
+    });
+    await expect(readTerminalShellIntegrationStatus()).rejects.toThrow(/shell integration status/i);
+
+    vi.mocked(invoke).mockResolvedValueOnce({
+      available: true,
+      installed: true,
+      profiles: [{ shell: 'powershell', path: 'unsafe\npath', installed: true }],
+    });
+    await expect(readTerminalShellIntegrationStatus()).rejects.toThrow(/shell integration status/i);
   });
 });

@@ -120,7 +120,12 @@ import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
 import { SIK_EVIDENCE } from '@/lib/jarvis/smoke/evidenceIds';
 import { formatJarvisVerifiedNarration } from '@/lib/jarvis/response/templates';
 import { TerminalCommandPalette } from './TerminalCommandPalette';
-import { installTerminalCli, uninstallTerminalCli } from './terminalCliInstall';
+import {
+  installTerminalCli,
+  installTerminalShellIntegration,
+  uninstallTerminalCli,
+  uninstallTerminalShellIntegration,
+} from './terminalCliInstall';
 import {
   createTerminalSlashIntegration,
   isSshSessionCommand,
@@ -2168,6 +2173,8 @@ export function TerminalView({
         onNavigate={(route) => useUIStore.getState().setRoute(route)}
         onInstallCli={installTerminalCli}
         onUninstallCli={uninstallTerminalCli}
+        onInstallShellIntegration={installTerminalShellIntegration}
+        onUninstallShellIntegration={uninstallTerminalShellIntegration}
       />
       <div
         ref={containerRef}

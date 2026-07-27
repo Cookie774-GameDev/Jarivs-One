@@ -110,6 +110,26 @@ describe('TerminalCommandPalette', () => {
       binDir: 'C:\\Users\\Test\\.jarvis\\bin',
       commandNames: ['vibespace', 'vs'],
     });
+    const installedShellIntegration = {
+      available: true,
+      installed: true,
+      profiles: [
+        {
+          shell: 'powershell' as const,
+          path: 'C:\\Users\\Test\\Documents\\PowerShell\\Microsoft.PowerShell_profile.ps1',
+          installed: true,
+        },
+      ],
+    };
+    const onInstallShellIntegration = vi.fn().mockResolvedValue(installedShellIntegration);
+    const onUninstallShellIntegration = vi.fn().mockResolvedValue({
+      ...installedShellIntegration,
+      installed: false,
+      profiles: installedShellIntegration.profiles.map((profile) => ({
+        ...profile,
+        installed: false,
+      })),
+    });
     render(
       <TerminalCommandPalette
         open
@@ -121,10 +141,13 @@ describe('TerminalCommandPalette', () => {
         onNavigate={vi.fn()}
         onInstallCli={onInstallCli}
         onUninstallCli={onUninstallCli}
+        onInstallShellIntegration={onInstallShellIntegration}
+        onUninstallShellIntegration={onUninstallShellIntegration}
       />,
     );
 
     fireEvent.click(screen.getByRole('option', { name: /Help/i }));
+    expect(screen.getByText(/optional.*marked, removable block/i)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Install terminal commands' }));
     expect(await screen.findByText(/Installed vibespace and vs/i)).toBeTruthy();
     expect(onInstallCli).toHaveBeenCalledOnce();
@@ -132,6 +155,16 @@ describe('TerminalCommandPalette', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Remove terminal commands' }));
     expect(await screen.findByText(/Removed managed terminal commands/i)).toBeTruthy();
     expect(onUninstallCli).toHaveBeenCalledOnce();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Enable shell prompt integration' }));
+    expect(
+      await screen.findByText(/Enabled managed prompt integration for 1 shell profile/i),
+    ).toBeTruthy();
+    expect(onInstallShellIntegration).toHaveBeenCalledOnce();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove shell prompt integration' }));
+    expect(await screen.findByText(/Removed managed prompt integration/i)).toBeTruthy();
+    expect(onUninstallShellIntegration).toHaveBeenCalledOnce();
     expect(screen.queryByText(/token|nonce/i)).toBeNull();
   });
 
@@ -145,12 +178,12 @@ describe('TerminalCommandPalette', () => {
         evidence={evidence}
         onClose={vi.fn()}
         onNavigate={vi.fn()}
-        onInstallCli={vi.fn().mockRejectedValue(new Error('token=must-not-render'))}
+        onInstallShellIntegration={vi.fn().mockRejectedValue(new Error('token=must-not-render'))}
       />,
     );
 
     fireEvent.click(screen.getByRole('option', { name: /Help/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'Install terminal commands' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Enable shell prompt integration' }));
     expect(await screen.findByText('Terminal command setup failed. Try again.')).toBeTruthy();
     expect(screen.queryByText(/must-not-render/i)).toBeNull();
   });

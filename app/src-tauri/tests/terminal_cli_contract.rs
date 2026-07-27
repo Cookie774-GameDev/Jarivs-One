@@ -1,10 +1,15 @@
 use jarvis_lib::terminal_cli::{
-    build_scoped_terminal_cli_request, build_terminal_cli_request, parse_terminal_cli_args,
-    read_terminal_cli_wire_line, remove_managed_terminal_cli_aliases, render_terminal_cli_response,
-    replace_managed_terminal_cli_aliases, replace_managed_terminal_cli_shim, run_terminal_cli,
-    terminal_cli_request_error_code, terminal_cli_response_timeout, unix_terminal_cli_shim,
-    validate_terminal_cli_request, windows_terminal_cli_shim, TerminalCliConnectionLimiter,
-    TerminalCliRequest, TerminalCliRequestScope, TerminalCliResponse,
+    bash_terminal_prompt_integration, build_scoped_terminal_cli_request,
+    build_terminal_cli_request, fish_terminal_prompt_integration,
+    install_managed_terminal_shell_profile, merge_managed_terminal_shell_profile,
+    parse_terminal_cli_args, powershell_terminal_prompt_integration, read_terminal_cli_wire_line,
+    remove_managed_terminal_cli_aliases, remove_managed_terminal_shell_profile,
+    render_terminal_cli_response, replace_managed_terminal_cli_aliases,
+    replace_managed_terminal_cli_shim, run_terminal_cli, terminal_cli_request_error_code,
+    terminal_cli_response_timeout, uninstall_managed_terminal_shell_profile,
+    unix_terminal_cli_shim, validate_terminal_cli_request, windows_terminal_cli_shim,
+    zsh_terminal_prompt_integration, TerminalCliConnectionLimiter, TerminalCliRequest,
+    TerminalCliRequestScope, TerminalCliResponse,
 };
 use serde_json::json;
 use std::fs;
@@ -351,6 +356,146 @@ fn creates_marked_reversible_shims_without_interpolating_shell_input() {
     assert!(unix.starts_with("#!/usr/bin/env sh\n# VIBESPACE_CLI_MANAGED_V1\n"));
     assert!(unix.contains("exec '/Applications/VibeSpace.app/Contents/MacOS/jarvis'"));
     assert!(unix.ends_with(" \"$@\"\n"));
+}
+
+#[test]
+fn builds_static_secret_free_prompt_protocol_integrations_for_supported_shells() {
+    let integrations = [
+        ("powershell", powershell_terminal_prompt_integration()),
+        ("bash", bash_terminal_prompt_integration()),
+        ("zsh", zsh_terminal_prompt_integration()),
+        ("fish", fish_terminal_prompt_integration()),
+    ];
+
+    for (shell, integration) in integrations {
+        assert!(
+            integration.contains("]133;A") && integration.contains("]133;B"),
+            "{shell} must emit bounded OSC 133 prompt markers"
+        );
+        assert!(!integration.to_ascii_lowercase().contains("nonce"));
+        assert!(!integration.to_ascii_lowercase().contains("token"));
+        assert!(!integration.to_ascii_lowercase().contains("endpoint"));
+    }
+    let powershell = powershell_terminal_prompt_integration();
+    assert!(powershell.contains("function global:prompt"));
+    assert!(
+        powershell.find("]133;A").expect("PowerShell prompt start")
+            < powershell
+                .find("${vibespacePrompt}")
+                .expect("PowerShell prompt body")
+    );
+    assert!(
+        powershell
+            .find("${vibespacePrompt}")
+            .expect("PowerShell prompt body")
+            < powershell.find("]133;B").expect("PowerShell prompt end")
+    );
+    assert!(bash_terminal_prompt_integration().contains("PS1="));
+    assert!(zsh_terminal_prompt_integration().contains("PROMPT="));
+    assert!(fish_terminal_prompt_integration().contains("function fish_prompt"));
+}
+
+#[test]
+fn managed_shell_profile_round_trip_preserves_user_content_exactly() {
+    for original in [
+        None,
+        Some("export USER_SETTING=1"),
+        Some("# user profile\nexport USER_SETTING=1\n"),
+        Some("# user profile\r\n$env:USER_SETTING = '1'\r\n"),
+    ] {
+        let installed = merge_managed_terminal_shell_profile(
+            original,
+            powershell_terminal_prompt_integration(),
+        )
+        .expect("install managed shell block");
+        assert!(installed.contains("VIBESPACE_SHELL_INTEGRATION_V1"));
+        assert_eq!(
+            remove_managed_terminal_shell_profile(&installed)
+                .expect("remove managed shell block")
+                .as_deref(),
+            original
+        );
+
+        let reinstalled = merge_managed_terminal_shell_profile(
+            Some(&installed),
+            bash_terminal_prompt_integration(),
+        )
+        .expect("replace managed shell block");
+        assert_eq!(
+            reinstalled
+                .matches("VIBESPACE_SHELL_INTEGRATION_V1")
+                .count(),
+            2
+        );
+        assert!(reinstalled.contains("PS1="));
+        assert_eq!(
+            remove_managed_terminal_shell_profile(&reinstalled)
+                .expect("remove replaced block")
+                .as_deref(),
+            original
+        );
+    }
+}
+
+#[test]
+fn managed_shell_profile_rejects_ambiguous_or_damaged_markers() {
+    let damaged = "# >>> VIBESPACE_SHELL_INTEGRATION_V1 prior_exists=1 prior_eol=1 >>>\nuser";
+    assert!(merge_managed_terminal_shell_profile(
+        Some(damaged),
+        bash_terminal_prompt_integration()
+    )
+    .is_err());
+    assert!(remove_managed_terminal_shell_profile(damaged).is_err());
+
+    let duplicated = format!(
+        "{}\n{}\n{}\n{}",
+        "# >>> VIBESPACE_SHELL_INTEGRATION_V1 prior_exists=1 prior_eol=1 >>>",
+        "# <<< VIBESPACE_SHELL_INTEGRATION_V1 <<<",
+        "# >>> VIBESPACE_SHELL_INTEGRATION_V1 prior_exists=1 prior_eol=1 >>>",
+        "# <<< VIBESPACE_SHELL_INTEGRATION_V1 <<<"
+    );
+    assert!(merge_managed_terminal_shell_profile(
+        Some(&duplicated),
+        zsh_terminal_prompt_integration()
+    )
+    .is_err());
+}
+
+#[test]
+fn atomically_installs_and_removes_only_the_managed_shell_profile_block() {
+    let suffix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "vibespace-terminal-shell-profile-{}-{suffix}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&root).expect("temporary shell profile directory");
+    let profile = root.join("profile.ps1");
+    let original = "# user-owned profile\n$env:USER_SETTING = 'preserve exactly'";
+    fs::write(&profile, original).expect("write user profile");
+
+    install_managed_terminal_shell_profile(&profile, powershell_terminal_prompt_integration())
+        .expect("install shell integration");
+    let installed = fs::read_to_string(&profile).expect("read installed profile");
+    assert!(installed.starts_with(original));
+    assert!(installed.contains("VIBESPACE_SHELL_INTEGRATION_V1"));
+    assert!(installed.contains("]133;B"));
+
+    uninstall_managed_terminal_shell_profile(&profile).expect("remove shell integration");
+    assert_eq!(
+        fs::read_to_string(&profile).expect("read restored profile"),
+        original
+    );
+
+    let new_profile = root.join("new-profile.ps1");
+    install_managed_terminal_shell_profile(&new_profile, powershell_terminal_prompt_integration())
+        .expect("create managed-only profile");
+    uninstall_managed_terminal_shell_profile(&new_profile).expect("remove managed-only profile");
+    assert!(!new_profile.exists());
+
+    fs::remove_dir_all(root).expect("remove temporary shell profile directory");
 }
 
 #[test]
