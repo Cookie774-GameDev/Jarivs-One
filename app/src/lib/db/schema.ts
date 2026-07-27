@@ -27,6 +27,7 @@ import type {
   ContextNoteV2,
 } from '@/features/context/contentContracts';
 import type { ContextEmbeddingRecordV1 } from '@/features/context/semanticSearch';
+import type { PromptForgeJob } from '@/features/prompt-forge/contracts';
 import type {
   JarvisCanonicalResultEvidenceV1,
   JarvisDurableLiveEvidenceV1,
@@ -324,6 +325,7 @@ export type ContextNoteRow = ContextNoteV2;
 export type ContextNoteRevisionRow = ContextNoteRevisionV2;
 export type ContextAssetRow = ContextAssetV2;
 export type ContextEmbeddingRow = ContextEmbeddingRecordV1;
+export type PromptForgeJobRow = PromptForgeJob;
 
 export type ContextMigrationBackupRow = {
   version: 1;
@@ -368,8 +370,8 @@ export type ContextQuarantineRow = {
 };
 
 export const DB_NAME = 'jarvis-v1';
-/** Current schema version — bumped to 6 for local Context embedding records. */
-export const DB_VERSION = 6;
+/** Current schema version — bumped to 7 for recoverable Prompt Forge jobs. */
+export const DB_VERSION = 7;
 
 /**
  * Dexie store schema strings.
@@ -490,6 +492,14 @@ export const STORES_V6 = {
     'id, accountId, mapId, documentId, sourceId, providerKind, providerId, modelId, embeddingVersion, [accountId+mapId], [accountId+mapId+documentId], [accountId+mapId+embeddingVersion], updatedAt',
 } as const;
 
-export const STORES = STORES_V6;
+/** V7 schema = V6 + local, account-scoped Prompt Forge recovery records. */
+// prettier-ignore
+export const STORES_V7 = {
+  ...STORES_V6,
+  prompt_forge_jobs:
+    'id, accountId, chatId, projectId, status, [accountId+updatedAt], [accountId+chatId], [accountId+status]',
+} as const;
+
+export const STORES = STORES_V7;
 
 export type StoreName = keyof typeof STORES;

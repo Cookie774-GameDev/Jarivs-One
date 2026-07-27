@@ -9,9 +9,9 @@
  * The db is opened lazily; calling `openDb()` is idempotent and safe to call
  * from multiple call sites (initial bootstrap, seed, sync loop).
  *
- * V1 → V6 migrations are purely additive. Dexie replays each version's store
+ * V1 → V7 migrations are purely additive. Dexie replays each version's store
  * list, creates the newer tables, and leaves every existing row untouched.
- * New installs open directly on V6.
+ * New installs open directly on V7.
  */
 
 import Dexie, { type EntityTable, type Table } from 'dexie';
@@ -36,6 +36,7 @@ import {
   STORES_V4,
   STORES_V5,
   STORES_V6,
+  STORES_V7,
   type ContextAssetRow,
   type ContextEmbeddingRow,
   type ContextEdgeRow,
@@ -54,6 +55,7 @@ import {
   type JarvisProfileRow,
   type JarvisRunRow,
   type Project,
+  type PromptForgeJobRow,
   type SettingsRow,
   type SyncQueueRow,
   type Workspace,
@@ -121,6 +123,9 @@ export class JarvisDexie extends Dexie {
   // V6 local Context semantic-search metadata (additive)
   context_embeddings!: EntityTable<ContextEmbeddingRow, 'id'>;
 
+  // V7 Prompt Forge recovery table (additive)
+  prompt_forge_jobs!: EntityTable<PromptForgeJobRow, 'id'>;
+
   constructor(name = DB_NAME, dependencies?: JarvisDexieDependencies) {
     super(name, dependencies);
     // Replay every additive schema version for existing installations.
@@ -130,6 +135,7 @@ export class JarvisDexie extends Dexie {
     this.version(4).stores(STORES_V4);
     this.version(5).stores(STORES_V5);
     this.version(6).stores(STORES_V6);
+    this.version(7).stores(STORES_V7);
   }
 }
 
@@ -189,6 +195,7 @@ export type {
   ContextNoteRevisionRow,
   ContextAssetRow,
   ContextEmbeddingRow,
+  PromptForgeJobRow,
 } from './schema';
 export * from './repositories';
 export { seedIfEmpty } from './seed';

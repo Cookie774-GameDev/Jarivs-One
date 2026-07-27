@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createPromptForgeJob,
   normalizePromptForgeModelSelection,
+  parsePromptForgeJob,
   transitionPromptForgeJob,
 } from './contracts';
 
@@ -9,7 +10,9 @@ describe('Prompt Forge contracts', () => {
   it('creates an immutable recoverable job without changing the original draft', () => {
     const job = createPromptForgeJob({
       id: 'forge-job-1',
+      accountId: 'account-1',
       chatId: 'chat-1',
+      projectId: 'project-1',
       originalDraft: 'Do not remove "this exact quote".',
       originalAttachments: [
         {
@@ -26,6 +29,8 @@ describe('Prompt Forge contracts', () => {
     });
 
     expect(job.status).toBe('idle');
+    expect(job.accountId).toBe('account-1');
+    expect(job.projectId).toBe('project-1');
     expect(job.originalDraft).toBe('Do not remove "this exact quote".');
     expect(job.originalAttachments[0]?.label).toBe('SPEC.md');
     expect(job.revision).toBe(1);
@@ -36,7 +41,9 @@ describe('Prompt Forge contracts', () => {
   it('advances only through legal idempotent transitions with optimistic revision authority', () => {
     const job = createPromptForgeJob({
       id: 'forge-job-1',
+      accountId: 'account-1',
       chatId: 'chat-1',
+      projectId: null,
       originalDraft: 'Upgrade this.',
       originalAttachments: [],
       modelSelection: { mode: 'current_chat_model' },
@@ -110,7 +117,9 @@ describe('Prompt Forge contracts', () => {
     expect(() =>
       createPromptForgeJob({
         id: 'forge-job-1',
+        accountId: 'account-1',
         chatId: 'chat-1',
+        projectId: null,
         originalDraft: 'Upgrade this.',
         originalAttachments: [],
         modelSelection: { mode: 'prefer_local' },
@@ -119,5 +128,23 @@ describe('Prompt Forge contracts', () => {
         now: 100,
       }),
     ).toThrow(/public research/i);
+  });
+
+  it('round-trips a persisted job through a strict closed parser', () => {
+    const job = createPromptForgeJob({
+      id: 'forge-job-1',
+      accountId: 'account-1',
+      chatId: 'chat-1',
+      projectId: null,
+      originalDraft: 'Upgrade this.',
+      originalAttachments: [],
+      modelSelection: { mode: 'prefer_local' },
+      privacyMode: 'local_only',
+      allowPublicResearch: false,
+      now: 100,
+    });
+    expect(parsePromptForgeJob(JSON.parse(JSON.stringify(job)))).toEqual(job);
+    expect(() => parsePromptForgeJob({ ...job, unexpected: true })).toThrow(/persisted job/i);
+    expect(() => parsePromptForgeJob({ ...job, accountId: '../other' })).toThrow(/persisted job/i);
   });
 });

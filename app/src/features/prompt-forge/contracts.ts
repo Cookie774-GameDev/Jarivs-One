@@ -57,7 +57,9 @@ export type PromptForgeJob = Readonly<{
   schemaVersion: 1;
   id: string;
   revision: number;
+  accountId: string;
   chatId: string;
+  projectId: string | null;
   originalDraft: string;
   originalAttachments: readonly PromptForgeAttachmentSnapshot[];
   modelSelection: PromptForgeModelSelection;
@@ -103,6 +105,29 @@ const PROVIDERS = new Set<ProviderId>([
   'ollama',
   'local',
 ]);
+const STATUSES = new Set<PromptForgeStatus>(PROMPT_FORGE_STATUSES);
+const JOB_KEYS = Object.freeze([
+  'schemaVersion',
+  'id',
+  'revision',
+  'accountId',
+  'chatId',
+  'projectId',
+  'originalDraft',
+  'originalAttachments',
+  'modelSelection',
+  'privacyMode',
+  'allowPublicResearch',
+  'selectedSourceIds',
+  'retrievedSources',
+  'status',
+  'generatedDraft',
+  'validation',
+  'createdAt',
+  'updatedAt',
+  'completedAt',
+  'errorCode',
+] as const);
 
 function fail(detail: string): never {
   throw new Error(`Invalid Prompt Forge ${detail}`);
@@ -130,21 +155,45 @@ function time(value: unknown, detail: string): number {
   return value as number;
 }
 
+function closedRecord(
+  value: unknown,
+  allowedKeys: readonly string[],
+  detail: string,
+): Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) fail(detail);
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) fail(detail);
+  const keys = Reflect.ownKeys(value);
+  if (
+    keys.length !== allowedKeys.length ||
+    keys.some((key) => typeof key !== 'string' || !allowedKeys.includes(key))
+  ) {
+    fail(detail);
+  }
+  const output: Record<string, unknown> = {};
+  for (const key of allowedKeys) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor || !descriptor.enumerable || !('value' in descriptor)) fail(detail);
+    output[key] = descriptor.value;
+  }
+  return output;
+}
+
 export function normalizePromptForgeModelSelection(value: unknown): PromptForgeModelSelection {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     return fail('model selection');
   }
-  const record = value as Record<string, unknown>;
   const keys = Reflect.ownKeys(value);
   if (keys.some((key) => typeof key !== 'string')) return fail('model selection');
-  if (record.mode === 'current_chat_model' || record.mode === 'prefer_local') {
-    if (keys.length !== 1) return fail('model selection');
-    return Object.freeze({ mode: record.mode });
+  const modeDescriptor = Object.getOwnPropertyDescriptor(value, 'mode');
+  if (!modeDescriptor || !('value' in modeDescriptor)) return fail('model selection');
+  if (modeDescriptor.value === 'current_chat_model' || modeDescriptor.value === 'prefer_local') {
+    closedRecord(value, ['mode'], 'model selection');
+    return Object.freeze({ mode: modeDescriptor.value });
   }
+  const record = closedRecord(value, ['mode', 'providerId', 'modelId'], 'model selection');
   if (
     record.mode !== 'single' ||
-    keys.length !== 3 ||
-    !keys.every((key) => ['mode', 'providerId', 'modelId'].includes(key as string)) ||
     typeof record.providerId !== 'string' ||
     !PROVIDERS.has(record.providerId as ProviderId)
   ) {
@@ -157,55 +206,55 @@ export function normalizePromptForgeModelSelection(value: unknown): PromptForgeM
   });
 }
 
-function attachment(value: PromptForgeAttachmentSnapshot): PromptForgeAttachmentSnapshot {
-  if (
-    typeof value !== 'object' ||
-    value === null ||
-    !ATTACHMENT_KINDS.has(value.kind) ||
-    Reflect.ownKeys(value).length !== 4
-  ) {
-    return fail('attachment');
-  }
+function attachment(value: unknown): PromptForgeAttachmentSnapshot {
+  const record = closedRecord(value, ['id', 'kind', 'label', 'reference'], 'attachment');
+  if (!ATTACHMENT_KINDS.has(record.kind as PromptForgeAttachmentKind)) fail('attachment');
   return Object.freeze({
-    id: id(value.id, 'attachment ID'),
-    kind: value.kind,
-    label: text(value.label, 500, 'attachment label'),
-    reference: text(value.reference, 2_048, 'attachment reference'),
+    id: id(record.id, 'attachment ID'),
+    kind: record.kind as PromptForgeAttachmentKind,
+    label: text(record.label, 500, 'attachment label'),
+    reference: text(record.reference, 2_048, 'attachment reference'),
   });
 }
 
-function sourceMetadata(value: PromptForgeSourceMetadata): PromptForgeSourceMetadata {
+function sourceMetadata(value: unknown): PromptForgeSourceMetadata {
+  const record = closedRecord(
+    value,
+    ['id', 'kind', 'label', 'reference', 'observedAt', 'whySelected'],
+    'source metadata',
+  );
   return Object.freeze({
-    id: id(value.id, 'source ID'),
-    kind: id(value.kind, 'source kind'),
-    label: text(value.label, 500, 'source label'),
-    reference: text(value.reference, 2_048, 'source reference'),
-    observedAt: time(value.observedAt, 'source observation time'),
-    whySelected: text(value.whySelected, 1_000, 'source reason'),
+    id: id(record.id, 'source ID'),
+    kind: id(record.kind, 'source kind'),
+    label: text(record.label, 500, 'source label'),
+    reference: text(record.reference, 2_048, 'source reference'),
+    observedAt: time(record.observedAt, 'source observation time'),
+    whySelected: text(record.whySelected, 1_000, 'source reason'),
   });
 }
 
-function validationSnapshot(
-  value: PromptForgeValidationSnapshot | null,
-): PromptForgeValidationSnapshot | null {
+function validationSnapshot(value: unknown): PromptForgeValidationSnapshot | null {
   if (value === null) return null;
+  const record = closedRecord(value, ['passed', 'missingCount', 'checkedAt'], 'validation');
   if (
-    typeof value.passed !== 'boolean' ||
-    !Number.isSafeInteger(value.missingCount) ||
-    value.missingCount < 0
+    typeof record.passed !== 'boolean' ||
+    !Number.isSafeInteger(record.missingCount) ||
+    (record.missingCount as number) < 0
   ) {
     return fail('validation');
   }
   return Object.freeze({
-    passed: value.passed,
-    missingCount: value.missingCount,
-    checkedAt: time(value.checkedAt, 'validation time'),
+    passed: record.passed,
+    missingCount: record.missingCount as number,
+    checkedAt: time(record.checkedAt, 'validation time'),
   });
 }
 
 export function createPromptForgeJob(input: {
   id: string;
+  accountId: string;
   chatId: string;
+  projectId: string | null;
   originalDraft: string;
   originalAttachments: readonly PromptForgeAttachmentSnapshot[];
   modelSelection: PromptForgeModelSelection;
@@ -230,7 +279,9 @@ export function createPromptForgeJob(input: {
     schemaVersion: 1,
     id: id(input.id, 'job ID'),
     revision: 1,
+    accountId: id(input.accountId, 'account ID'),
     chatId: id(input.chatId, 'chat ID'),
+    projectId: input.projectId === null ? null : id(input.projectId, 'project ID'),
     originalDraft: text(input.originalDraft, MAX_DRAFT_CHARS, 'draft'),
     originalAttachments: Object.freeze(input.originalAttachments.map(attachment)),
     modelSelection: normalizePromptForgeModelSelection(input.modelSelection),
@@ -246,6 +297,79 @@ export function createPromptForgeJob(input: {
     completedAt: null,
     errorCode: null,
   });
+}
+
+export function parsePromptForgeJob(value: unknown): PromptForgeJob {
+  try {
+    const record = closedRecord(value, JOB_KEYS, 'persisted job');
+    if (record.schemaVersion !== 1) fail('persisted job');
+    if (!Number.isSafeInteger(record.revision) || (record.revision as number) < 1) {
+      fail('persisted job');
+    }
+    if (
+      !Array.isArray(record.originalAttachments) ||
+      record.originalAttachments.length > MAX_ATTACHMENTS
+    ) {
+      fail('persisted job');
+    }
+    if (!Array.isArray(record.selectedSourceIds) || record.selectedSourceIds.length > MAX_SOURCES) {
+      fail('persisted job');
+    }
+    if (!Array.isArray(record.retrievedSources) || record.retrievedSources.length > MAX_SOURCES) {
+      fail('persisted job');
+    }
+    if (record.privacyMode !== 'local_only' && record.privacyMode !== 'provider_allowed') {
+      fail('persisted job');
+    }
+    if (
+      typeof record.allowPublicResearch !== 'boolean' ||
+      !STATUSES.has(record.status as PromptForgeStatus)
+    ) {
+      fail('persisted job');
+    }
+    const createdAt = time(record.createdAt, 'persisted job');
+    const updatedAt = time(record.updatedAt, 'persisted job');
+    if (updatedAt < createdAt) fail('persisted job');
+    const completedAt =
+      record.completedAt === null ? null : time(record.completedAt, 'persisted job');
+    if (completedAt !== null && completedAt < updatedAt) fail('persisted job');
+    const terminal = ['ready', 'cancelled', 'failed'].includes(record.status as string);
+    if (terminal !== (completedAt !== null)) fail('persisted job');
+    const selectedSourceIds = record.selectedSourceIds.map((sourceId) =>
+      id(sourceId, 'persisted job'),
+    );
+    if (new Set(selectedSourceIds).size !== selectedSourceIds.length) fail('persisted job');
+    return Object.freeze({
+      schemaVersion: 1,
+      id: id(record.id, 'persisted job'),
+      revision: record.revision as number,
+      accountId: id(record.accountId, 'persisted job'),
+      chatId: id(record.chatId, 'persisted job'),
+      projectId: record.projectId === null ? null : id(record.projectId, 'persisted job'),
+      originalDraft: text(record.originalDraft, MAX_DRAFT_CHARS, 'persisted job'),
+      originalAttachments: Object.freeze(record.originalAttachments.map(attachment)),
+      modelSelection: normalizePromptForgeModelSelection(record.modelSelection),
+      privacyMode: record.privacyMode,
+      allowPublicResearch: record.allowPublicResearch,
+      selectedSourceIds: Object.freeze(selectedSourceIds),
+      retrievedSources: Object.freeze(record.retrievedSources.map(sourceMetadata)),
+      status: record.status as PromptForgeStatus,
+      generatedDraft:
+        record.generatedDraft === null
+          ? null
+          : text(record.generatedDraft, MAX_GENERATED_CHARS, 'persisted job'),
+      validation: validationSnapshot(record.validation),
+      createdAt,
+      updatedAt,
+      completedAt,
+      errorCode: record.errorCode === null ? null : id(record.errorCode, 'persisted job'),
+    });
+  } catch (error) {
+    if (error instanceof Error && /Invalid Prompt Forge persisted job/u.test(error.message)) {
+      throw error;
+    }
+    throw new Error('Invalid Prompt Forge persisted job.', { cause: error });
+  }
 }
 
 const LEGAL_TRANSITIONS: Readonly<Record<PromptForgeStatus, readonly PromptForgeStatus[]>> =
