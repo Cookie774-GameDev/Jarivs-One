@@ -2,6 +2,57 @@ import { useAuthStore } from './auth';
 import { secureDeleteApiKey, secureGetApiKey } from '@/lib/security/secureApiKeys';
 import { DEFAULT_CUSTOM_STEPS } from '@/lib/ai/stacks/presets';
 
+describe('Prompt Forge model preference', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    useAuthStore.setState({
+      chatModelSelection: { mode: 'none' },
+      promptForgeModelSelection: { mode: 'prefer_local' },
+    });
+  });
+
+  it('defaults separately to Prefer local and never changes the chat model', () => {
+    expect(useAuthStore.getInitialState().promptForgeModelSelection).toEqual({
+      mode: 'prefer_local',
+    });
+    useAuthStore.getState().setPromptForgeModelSelection({
+      mode: 'single',
+      providerId: 'openai',
+      modelId: 'gpt-5.6-sol',
+      connectionId: 'openai-codex',
+    });
+    expect(useAuthStore.getState().chatModelSelection).toEqual({ mode: 'none' });
+    expect(useAuthStore.getState().promptForgeModelSelection).toMatchObject({
+      mode: 'single',
+      connectionId: 'openai-codex',
+    });
+    expect(window.localStorage.getItem('jarvis-auth')).toContain(
+      '"promptForgeModelSelection":{"mode":"single"',
+    );
+  });
+
+  it('migrates prior state to the safe local-first default', async () => {
+    useAuthStore.setState({
+      promptForgeModelSelection: { mode: 'current_chat_model' },
+    });
+    window.localStorage.setItem(
+      'jarvis-auth',
+      JSON.stringify({
+        state: {
+          apiKeys: {},
+          chatModelSelection: { mode: 'none' },
+          previousChatModelSelection: { mode: 'none' },
+        },
+        version: 13,
+      }),
+    );
+    await useAuthStore.persist.rehydrate();
+    expect(useAuthStore.getState().promptForgeModelSelection).toEqual({
+      mode: 'prefer_local',
+    });
+  });
+});
+
 describe('composer STT defaults', () => {
   it('defaults to system provider and small faster-whisper model', () => {
     expect(useAuthStore.getInitialState().composerSttProvider).toBe('system');

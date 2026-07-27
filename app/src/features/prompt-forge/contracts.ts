@@ -18,7 +18,12 @@ export type PromptForgeStatus = (typeof PROMPT_FORGE_STATUSES)[number];
 export type PromptForgeModelSelection =
   | Readonly<{ mode: 'current_chat_model' }>
   | Readonly<{ mode: 'prefer_local' }>
-  | Readonly<{ mode: 'single'; providerId: ProviderId; modelId: string }>;
+  | Readonly<{
+      mode: 'single';
+      providerId: ProviderId;
+      modelId: string;
+      connectionId?: string;
+    }>;
 
 export type PromptForgePrivacyMode = 'local_only' | 'provider_allowed';
 
@@ -191,7 +196,10 @@ export function normalizePromptForgeModelSelection(value: unknown): PromptForgeM
     closedRecord(value, ['mode'], 'model selection');
     return Object.freeze({ mode: modeDescriptor.value });
   }
-  const record = closedRecord(value, ['mode', 'providerId', 'modelId'], 'model selection');
+  const singleKeys = keys.includes('connectionId')
+    ? ['mode', 'providerId', 'modelId', 'connectionId']
+    : ['mode', 'providerId', 'modelId'];
+  const record = closedRecord(value, singleKeys, 'model selection');
   if (
     record.mode !== 'single' ||
     typeof record.providerId !== 'string' ||
@@ -203,6 +211,9 @@ export function normalizePromptForgeModelSelection(value: unknown): PromptForgeM
     mode: 'single',
     providerId: record.providerId as ProviderId,
     modelId: text(record.modelId, 200, 'model selection'),
+    ...(record.connectionId === undefined
+      ? {}
+      : { connectionId: id(record.connectionId, 'model selection') }),
   });
 }
 

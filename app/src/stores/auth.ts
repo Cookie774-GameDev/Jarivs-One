@@ -47,6 +47,11 @@ import {
   selectionFromOption,
   type ChatModelSelection,
 } from '@/lib/ai/modelSelection';
+import {
+  normalizePromptForgeModelSelection,
+  type PromptForgeModelSelection,
+} from '@/features/prompt-forge/contracts';
+import { DEFAULT_PROMPT_FORGE_MODEL_SELECTION } from '@/features/prompt-forge/modelSelection';
 
 interface AuthState {
   /** Local-only profile (no cloud account) */
@@ -145,6 +150,8 @@ interface AuthState {
   previousChatModelSelection: ChatModelSelection;
   /** Explicit opt-in for turn-local automatic model routing. */
   automaticModelRoutingEnabled: boolean;
+  /** Prompt Forge's independent default; changing it never changes the chat model. */
+  promptForgeModelSelection: PromptForgeModelSelection;
 
   /** Telemetry opt-in */
   telemetryOptIn: boolean;
@@ -184,6 +191,7 @@ interface AuthState {
   setStackPreset: (preset: StackPresetId) => void;
   setChatModelSelection: (selection: ChatModelSelection) => void;
   setAutomaticModelRoutingEnabled: (enabled: boolean) => void;
+  setPromptForgeModelSelection: (selection: PromptForgeModelSelection) => void;
   setStackCustomSteps: (steps: StackStepSpec[]) => void;
 }
 
@@ -272,6 +280,7 @@ export const useAuthStore = create<AuthState>()(
       chatModelSelection: EMPTY_CHAT_MODEL_SELECTION,
       previousChatModelSelection: EMPTY_CHAT_MODEL_SELECTION,
       automaticModelRoutingEnabled: false,
+      promptForgeModelSelection: DEFAULT_PROMPT_FORGE_MODEL_SELECTION,
       telemetryOptIn: false,
 
       setDisplayName: (n) => set({ displayName: n }),
@@ -379,6 +388,8 @@ export const useAuthStore = create<AuthState>()(
           };
         }),
       setAutomaticModelRoutingEnabled: (enabled) => set({ automaticModelRoutingEnabled: enabled }),
+      setPromptForgeModelSelection: (selection) =>
+        set({ promptForgeModelSelection: normalizePromptForgeModelSelection(selection) }),
       setStackCustomSteps: (steps) =>
         set((s) => ({
           stackCustomSteps: steps.slice(0, 5).map((step) => {
@@ -441,9 +452,10 @@ export const useAuthStore = create<AuthState>()(
         chatModelSelection: s.chatModelSelection,
         previousChatModelSelection: s.previousChatModelSelection,
         automaticModelRoutingEnabled: s.automaticModelRoutingEnabled,
+        promptForgeModelSelection: s.promptForgeModelSelection,
         telemetryOptIn: s.telemetryOptIn,
       }),
-      version: 13,
+      version: 14,
       migrate: (persisted, fromVersion) => {
         if (!persisted || typeof persisted !== 'object') return persisted;
         const state = persisted as Partial<AuthState>;
@@ -529,6 +541,17 @@ export const useAuthStore = create<AuthState>()(
         }
         if (fromVersion < 13) {
           state.automaticModelRoutingEnabled = false;
+        }
+        if (fromVersion < 14) {
+          state.promptForgeModelSelection = DEFAULT_PROMPT_FORGE_MODEL_SELECTION;
+        } else {
+          try {
+            state.promptForgeModelSelection = normalizePromptForgeModelSelection(
+              state.promptForgeModelSelection,
+            );
+          } catch {
+            state.promptForgeModelSelection = DEFAULT_PROMPT_FORGE_MODEL_SELECTION;
+          }
         }
         return state;
       },

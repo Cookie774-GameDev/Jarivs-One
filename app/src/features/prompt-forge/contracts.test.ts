@@ -103,6 +103,19 @@ describe('Prompt Forge contracts', () => {
         modelId: 'qwen3:8b',
       }),
     ).toEqual({ mode: 'single', providerId: 'ollama', modelId: 'qwen3:8b' });
+    expect(
+      normalizePromptForgeModelSelection({
+        mode: 'single',
+        providerId: 'openai',
+        modelId: 'gpt-5.6-sol',
+        connectionId: 'openai-codex',
+      }),
+    ).toEqual({
+      mode: 'single',
+      providerId: 'openai',
+      modelId: 'gpt-5.6-sol',
+      connectionId: 'openai-codex',
+    });
     expect(() =>
       normalizePromptForgeModelSelection({
         mode: 'single',
