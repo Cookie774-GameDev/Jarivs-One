@@ -1,4 +1,11 @@
 export { ContextPage } from './ContextPage';
+export { ContextRecoveryNotice } from './ContextRecoveryNotice';
+export {
+  loadContextRecoverySummary,
+  type ContextRecoveryOption,
+  type ContextRecoveryOptionId,
+  type ContextRecoverySummary,
+} from './contextRecovery';
 export {
   CONTEXT_CLOUD_SYNC_KINDS,
   CONTEXT_CLOUD_SYNC_TABLE,

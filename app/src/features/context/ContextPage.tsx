@@ -77,6 +77,8 @@ import {
   selectPersistedContextFile,
   selectPersistedContextMap,
 } from './contextPersistence';
+import type { ContextRecoverySummary } from './contextRecovery';
+import { ContextRecoveryNotice } from './ContextRecoveryNotice';
 import {
   CONTEXT_CENTER_MODES,
   CONTEXT_INSPECTOR_TABS,
@@ -120,6 +122,7 @@ export function ContextPage() {
   const setRoute = useUIStore((s) => s.setRoute);
   const [rootDraft, setRootDraft] = React.useState(() => getStoredProjectRoot(projectId));
   const [maps, setMaps] = React.useState<ContextMapRecord[]>([]);
+  const [recovery, setRecovery] = React.useState<ContextRecoverySummary | null>(null);
   const [selectedMapId, setSelectedMapId] = React.useState<string | null>(null);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [provider, setProvider] = React.useState<ContextGenerationProvider>('local');
@@ -145,6 +148,7 @@ export function ContextPage() {
         return false;
       }
       setMaps([...state.maps]);
+      setRecovery(state.recovery);
       setSelectedMapId(state.selectedMapId);
       setSelectedId((current) => current ?? (state.selectedMapId ? PROJECT_ROOT_NODE_ID : null));
       return true;
@@ -167,6 +171,7 @@ export function ContextPage() {
     generationAbortRef.current = null;
     setRootDraft(getStoredProjectRoot(projectId));
     setMaps([]);
+    setRecovery(null);
     setSelectedMapId(null);
     setSelectedId(null);
     setGenerating(false);
@@ -649,6 +654,7 @@ export function ContextPage() {
           </div>
 
           <ContextWorkspaceNavigation active={workspaceSection} onSelect={selectWorkspaceSection} />
+          <ContextRecoveryNotice recovery={recovery} />
 
           {workspaceSection === 'sources' ? (
             <ContextSourceCards

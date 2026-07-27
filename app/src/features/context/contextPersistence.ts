@@ -10,6 +10,7 @@ import {
 import { createContextGraphRepository } from './repository';
 import type { ContextEntityKind, ContextEntityV2, ContextGraphSnapshotV2 } from './contracts';
 import { queueContextCloudDocument, type ContextCloudDocumentV1 } from './contextCloudSync';
+import { loadContextRecoverySummary, type ContextRecoverySummary } from './contextRecovery';
 import {
   contextNodeFilePath,
   findContextFileNodeByPath,
@@ -26,6 +27,7 @@ export interface ContextPersistenceState {
   selectedMapId: string | null;
   selectedFile: string | null;
   migration: ContextV1MigrationResult;
+  recovery: ContextRecoverySummary | null;
 }
 
 export interface ContextPersistenceService {
@@ -279,24 +281,27 @@ export function createContextPersistenceService(
       findContextFileNodeByPath(selectedMap.tree, selection.selectedFile.relativePath)
         ? selection.selectedFile.relativePath
         : null;
+    const migration =
+      migrations.get(key(accountId, projectId)) ??
+      Object.freeze({
+        state: 'no_legacy_data',
+        accountId,
+        projectId,
+        expectedMapCount: 0,
+        migratedMapCount: 0,
+        quarantinedCount: 0,
+        legacyRetained: true,
+        idRemaps: Object.freeze({}),
+      });
+    const recovery = await loadContextRecoverySummary(database, accountId, projectId, migration);
     const state = freezeState({
       accountId,
       projectId,
       maps,
       selectedMapId,
       selectedFile,
-      migration:
-        migrations.get(key(accountId, projectId)) ??
-        Object.freeze({
-          state: 'no_legacy_data',
-          accountId,
-          projectId,
-          expectedMapCount: 0,
-          migratedMapCount: 0,
-          quarantinedCount: 0,
-          legacyRetained: true,
-          idRemaps: Object.freeze({}),
-        }),
+      migration,
+      recovery,
     });
     publish(state);
     return state;

@@ -123,6 +123,72 @@ describe('production Context persistence service', () => {
     await expect(database.context_migration_backups.count()).resolves.toBe(1);
   });
 
+  it('publishes scoped recovery choices when migration quarantines malformed legacy records', async () => {
+    const valid = legacyMap('map-valid');
+    localStorage.setItem(
+      contextMapCollectionKey('project-1'),
+      JSON.stringify({
+        version: 1,
+        projectId: 'project-1',
+        selectedMapId: valid.id,
+        maps: [
+          valid,
+          {
+            ...legacyMap('map-corrupt'),
+            tree: { version: 1, nodes: 'not-an-array' },
+          },
+        ],
+      }),
+    );
+    const service = createContextPersistenceService(database, localStorage);
+
+    const state = await service.initialize('account-1', 'project-1');
+
+    expect(state.recovery).toEqual({
+      issueCount: 1,
+      options: [
+        {
+          id: 'retry',
+          label: 'Retry recovery',
+          description: 'Validate the preserved source again and retry the migration.',
+        },
+        {
+          id: 'restore_backup',
+          label: 'Restore backup',
+          description: 'Restore the preserved pre-migration backup.',
+        },
+        {
+          id: 'export_then_discard',
+          label: 'Export then discard',
+          description: 'Export quarantined records before discarding their local copies.',
+        },
+      ],
+    });
+  });
+
+  it('shows runtime quarantine recovery only inside the owning project scope', async () => {
+    const service = createContextPersistenceService(database, localStorage);
+    await service.initialize('account-1', 'project-1');
+    await service.initialize('account-1', 'project-2');
+    const projectOne = await service.saveTree('account-1', treeFixture());
+    const projectTwo = await service.saveTree('account-1', {
+      ...treeFixture('C:\\Projects\\Other'),
+      projectId: 'project-2',
+    });
+    await database.context_maps.update(projectTwo.selectedMapId!, { name: '' });
+
+    const projectOneState = await service.load('account-1', 'project-1');
+    const projectTwoState = await service.load('account-1', 'project-2');
+
+    expect(projectOneState.recovery).toBeNull();
+    expect(projectOneState.maps.map(({ id }) => id)).toEqual([projectOne.selectedMapId]);
+    expect(projectTwoState.recovery).toMatchObject({
+      issueCount: 1,
+      options: [{ id: 'retry' }, { id: 'restore_backup' }, { id: 'export_then_discard' }],
+    });
+    expect(projectTwoState.maps).toEqual([]);
+  });
+
   it('saves a generated tree directly to Dexie without creating large localStorage records', async () => {
     const publish = vi.fn();
     const service = createContextPersistenceService(database, localStorage, publish);
