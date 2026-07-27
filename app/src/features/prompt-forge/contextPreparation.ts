@@ -31,6 +31,7 @@ export type PromptForgePublicResearchPort = (
     now: number;
   }>,
 ) => Promise<readonly PromptForgeSourceCandidate[]>;
+export type PromptForgeAdditionalSourceCollector = PromptForgePublicResearchPort;
 
 export interface PromptForgeContextPreparerOptions {
   contextAttachments: readonly (ContextAttachment | ContextChatAttachment)[];
@@ -39,6 +40,8 @@ export interface PromptForgeContextPreparerOptions {
   offlineMode: boolean;
   defaultLocalModel: string;
   additionalSources?: readonly PromptForgeSourceCandidate[];
+  collectAdditionalSources?: PromptForgeAdditionalSourceCollector;
+  excludedSourceIds?: readonly string[];
   budget?: PromptForgeSourceBudget;
   retrieveContext?: typeof retrievePromptForgeContext;
   researchPublicSources?: PromptForgePublicResearchPort;
@@ -183,9 +186,11 @@ export function createPromptForgeContextPreparer(
     offlineMode: rawOptions.offlineMode,
     defaultLocalModel: rawOptions.defaultLocalModel,
     additionalSources: rawOptions.additionalSources ?? [],
+    excludedSourceIds: rawOptions.excludedSourceIds ?? [],
     budget: rawOptions.budget ?? DEFAULT_PROMPT_FORGE_BUDGET,
   });
   const retrieveContext = rawOptions.retrieveContext ?? retrievePromptForgeContext;
+  const collectAdditionalSources = rawOptions.collectAdditionalSources;
   const researchPublicSources = rawOptions.researchPublicSources;
   const clock = rawOptions.now ?? Date.now;
 
@@ -210,6 +215,10 @@ export function createPromptForgeContextPreparer(
     abortIfRequested(signal);
 
     const contextSources = promptForgeSourcesFromContext(context, job.projectId, builtAt);
+    const collectedSources = collectAdditionalSources
+      ? await collectAdditionalSources({ job, signal, now: builtAt })
+      : [];
+    abortIfRequested(signal);
     let publicSources: readonly PromptForgeSourceCandidate[] = [];
     const publicResearchAllowed =
       job.allowPublicResearch && job.privacyMode === 'provider_allowed' && !options.offlineMode;
@@ -224,11 +233,16 @@ export function createPromptForgeContextPreparer(
 
     await stage('building_source_pack');
     abortIfRequested(signal);
-    const candidates = [
+    const excludedSourceIds = new Set(options.excludedSourceIds);
+    const allCandidates = [
       ...options.additionalSources,
+      ...collectedSources,
       ...contextSources,
       ...publicSources,
     ] as readonly PromptForgeSourceCandidate[];
+    const candidates = allCandidates.filter(
+      (source) => !excludedSourceIds.has(source.id),
+    ) as readonly PromptForgeSourceCandidate[];
     const packed = buildPromptForgeSourcePack({
       candidates,
       budget: options.budget,
@@ -257,7 +271,7 @@ export function createPromptForgeContextPreparer(
       resolvedModel,
       sourcePack,
       preservation,
-      sourcesConsidered: candidates.length + context.omittedCount,
+      sourcesConsidered: allCandidates.length + context.omittedCount,
     });
   };
 }

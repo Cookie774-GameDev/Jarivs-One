@@ -62,7 +62,11 @@ export function matchesHotkey(e: KeyboardEvent, hotkey: Hotkey): boolean {
   return eKey === key;
 }
 
-export function useHotkey(hotkey: Hotkey, handler: (e: KeyboardEvent) => void, opts: Options = {}): void {
+export function useHotkey(
+  hotkey: Hotkey,
+  handler: (e: KeyboardEvent) => void,
+  opts: Options = {},
+): void {
   useEffect(() => {
     if (opts.disabled) return;
     const onKey = (e: KeyboardEvent) => {
@@ -96,6 +100,7 @@ export const HOTKEYS = {
   TOGGLE_FULLSCREEN: 'Mod+Shift+F',
   AMBIENT_TOGGLE: 'Mod+Shift+.',
   COMPOSER_STT: 'Ctrl+CapsLock',
+  PROMPT_FORGE: 'Mod+Shift+U',
   /**
    * VibeSpace global dictation overlay. Registered as an OS-level Tauri
    * global shortcut (src-tauri/src/lib.rs), listed here for the Hotkeys

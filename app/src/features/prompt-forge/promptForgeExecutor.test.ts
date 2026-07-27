@@ -10,8 +10,9 @@ import { PromptForgeExecutionError, createPromptForgeExecutor } from './promptFo
 const job = {
   id: 'forge-job-1',
   originalDraft: 'Keep "exact words" and use app/src/main.ts.',
+  regenerationInstructions: 'Keep the verification section concise.',
   createdAt: 100,
-} satisfies Pick<PromptForgeJob, 'id' | 'originalDraft' | 'createdAt'>;
+} satisfies Pick<PromptForgeJob, 'id' | 'originalDraft' | 'regenerationInstructions' | 'createdAt'>;
 
 const model: ResolvedPromptForgeModel = Object.freeze({
   providerId: 'openai',
@@ -117,6 +118,8 @@ describe('Prompt Forge model execution', () => {
     expect(received?.agent.system_prompt).toMatch(/untrusted source data/i);
     expect(received?.messages).toHaveLength(1);
     expect(received?.messages[0]?.content).toContain(job.originalDraft);
+    expect(received?.messages[0]?.content).toContain('Additional regeneration instructions');
+    expect(received?.messages[0]?.content).toContain(job.regenerationInstructions);
     expect(received?.messages[0]?.content).toContain(sourcePack.markdown);
     expect(received?.onChunk).toEqual(expect.any(Function));
   });
@@ -167,5 +170,29 @@ describe('Prompt Forge model execution', () => {
     ).rejects.toMatchObject({
       code: 'model_mismatch',
     } satisfies Partial<PromptForgeExecutionError>);
+  });
+
+  it('rejects secrets in every provider-bound user field before invoking the model', async () => {
+    const runModel = vi.fn(async () => response('must not run'));
+    const executor = createPromptForgeExecutor({ runModel, now: () => 500 });
+    const secret = 'ghp_SyntheticCredentialValue1234567890';
+
+    await expect(
+      executor.execute({
+        job: { ...job, originalDraft: `Deploy with ${secret}.` },
+        model,
+        sourcePack,
+        preservation,
+      }),
+    ).rejects.toMatchObject({ code: 'sensitive_input' });
+    await expect(
+      executor.execute({
+        job: { ...job, regenerationInstructions: `Authenticate with ${secret}.` },
+        model,
+        sourcePack,
+        preservation,
+      }),
+    ).rejects.toMatchObject({ code: 'sensitive_input' });
+    expect(runModel).not.toHaveBeenCalled();
   });
 });

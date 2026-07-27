@@ -103,7 +103,20 @@ describe('Prompt Forge persistent job store', () => {
     await store.create(second);
     await store.create(cancelled);
 
-    await expect(store.listRecoverable('account-1', 10)).resolves.toEqual([second, first]);
+    const otherChat = createPromptForgeJob({
+      ...job('forge-job-other-chat'),
+      id: 'forge-job-other-chat',
+      chatId: 'chat-2',
+      now: 250,
+    });
+    await store.create(otherChat);
+
+    await expect(
+      store.listRecoverable(
+        { accountId: 'account-1', chatId: 'chat-1', projectId: 'project-1' },
+        10,
+      ),
+    ).resolves.toEqual([second, first]);
     await expect(store.remove('account-2', first.id)).resolves.toBe(false);
     await expect(store.remove('account-1', first.id)).resolves.toBe(true);
     await expect(store.get('account-1', first.id)).resolves.toBeNull();

@@ -85,6 +85,7 @@ export type PromptForgeJob = Readonly<{
   chatId: string;
   projectId: string | null;
   originalDraft: string;
+  regenerationInstructions: string | null;
   originalAttachments: readonly PromptForgeAttachmentSnapshot[];
   modelSelection: PromptForgeModelSelection;
   privacyMode: PromptForgePrivacyMode;
@@ -102,10 +103,17 @@ export type PromptForgeJob = Readonly<{
   errorCode: string | null;
 }>;
 
+export type PromptForgeJobScope = Readonly<{
+  accountId: string;
+  chatId: string;
+  projectId: string | null;
+}>;
+
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,199}$/u;
 const CONTROL_AND_BIDI =
   /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069\ufeff]/u;
 const MAX_DRAFT_CHARS = 100_000;
+const MAX_REGENERATION_INSTRUCTIONS_CHARS = 10_000;
 const MAX_GENERATED_CHARS = 200_000;
 const MAX_ATTACHMENTS = 64;
 const MAX_SOURCES = 128;
@@ -148,6 +156,7 @@ const JOB_KEYS = Object.freeze([
   'chatId',
   'projectId',
   'originalDraft',
+  'regenerationInstructions',
   'originalAttachments',
   'modelSelection',
   'privacyMode',
@@ -164,8 +173,6 @@ const JOB_KEYS = Object.freeze([
   'completedAt',
   'errorCode',
 ] as const);
-const LEGACY_JOB_KEYS = JOB_KEYS.filter((key) => key !== 'resolvedModel' && key !== 'usage');
-
 function fail(detail: string): never {
   throw new Error(`Invalid Prompt Forge ${detail}`);
 }
@@ -375,6 +382,7 @@ export function createPromptForgeJob(input: {
   chatId: string;
   projectId: string | null;
   originalDraft: string;
+  regenerationInstructions?: string | null;
   originalAttachments: readonly PromptForgeAttachmentSnapshot[];
   modelSelection: PromptForgeModelSelection;
   privacyMode: PromptForgePrivacyMode;
@@ -402,6 +410,14 @@ export function createPromptForgeJob(input: {
     chatId: id(input.chatId, 'chat ID'),
     projectId: input.projectId === null ? null : id(input.projectId, 'project ID'),
     originalDraft: text(input.originalDraft, MAX_DRAFT_CHARS, 'draft'),
+    regenerationInstructions:
+      input.regenerationInstructions === undefined || input.regenerationInstructions === null
+        ? null
+        : text(
+            input.regenerationInstructions,
+            MAX_REGENERATION_INSTRUCTIONS_CHARS,
+            'regeneration instructions',
+          ),
     originalAttachments: Object.freeze(input.originalAttachments.map(attachment)),
     modelSelection: normalizePromptForgeModelSelection(input.modelSelection),
     privacyMode: input.privacyMode,
@@ -426,8 +442,14 @@ export function parsePromptForgeJob(value: unknown): PromptForgeJob {
       typeof value === 'object' && value !== null && !Array.isArray(value)
         ? Reflect.ownKeys(value)
         : [];
-    const legacy = !rawKeys.includes('resolvedModel') && !rawKeys.includes('usage');
-    const record = closedRecord(value, legacy ? LEGACY_JOB_KEYS : JOB_KEYS, 'persisted job');
+    const legacyModelSnapshot = !rawKeys.includes('resolvedModel') && !rawKeys.includes('usage');
+    const legacyInstructions = !rawKeys.includes('regenerationInstructions');
+    const allowedKeys = JOB_KEYS.filter(
+      (key) =>
+        !(legacyModelSnapshot && (key === 'resolvedModel' || key === 'usage')) &&
+        !(legacyInstructions && key === 'regenerationInstructions'),
+    );
+    const record = closedRecord(value, allowedKeys, 'persisted job');
     if (record.schemaVersion !== 1) fail('persisted job');
     if (!Number.isSafeInteger(record.revision) || (record.revision as number) < 1) {
       fail('persisted job');
@@ -473,14 +495,22 @@ export function parsePromptForgeJob(value: unknown): PromptForgeJob {
       chatId: id(record.chatId, 'persisted job'),
       projectId: record.projectId === null ? null : id(record.projectId, 'persisted job'),
       originalDraft: text(record.originalDraft, MAX_DRAFT_CHARS, 'persisted job'),
+      regenerationInstructions:
+        legacyInstructions || record.regenerationInstructions === null
+          ? null
+          : text(
+              record.regenerationInstructions,
+              MAX_REGENERATION_INSTRUCTIONS_CHARS,
+              'persisted job',
+            ),
       originalAttachments: Object.freeze(record.originalAttachments.map(attachment)),
       modelSelection: normalizePromptForgeModelSelection(record.modelSelection),
       privacyMode: record.privacyMode,
       allowPublicResearch: record.allowPublicResearch,
       selectedSourceIds: Object.freeze(selectedSourceIds),
       retrievedSources: Object.freeze(record.retrievedSources.map(sourceMetadata)),
-      resolvedModel: legacy ? null : resolvedModelSnapshot(record.resolvedModel),
-      usage: legacy ? null : usageSnapshot(record.usage),
+      resolvedModel: legacyModelSnapshot ? null : resolvedModelSnapshot(record.resolvedModel),
+      usage: legacyModelSnapshot ? null : usageSnapshot(record.usage),
       status: record.status as PromptForgeStatus,
       generatedDraft:
         record.generatedDraft === null

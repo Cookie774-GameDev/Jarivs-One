@@ -1,5 +1,5 @@
 import type { JarvisDexie } from '@/lib/db';
-import { parsePromptForgeJob, type PromptForgeJob } from './contracts';
+import { parsePromptForgeJob, type PromptForgeJob, type PromptForgeJobScope } from './contracts';
 
 export type PromptForgeJobStoreErrorCode =
   | 'invalid_scope'
@@ -84,16 +84,26 @@ export function createPromptForgeJobStore(database: JarvisDexie) {
       return job.accountId === accountId ? job : null;
     },
 
-    async listRecoverable(accountId: string, limit = 25): Promise<readonly PromptForgeJob[]> {
-      assertScopeId(accountId);
+    async listRecoverable(
+      scope: PromptForgeJobScope,
+      limit = 25,
+    ): Promise<readonly PromptForgeJob[]> {
+      assertScopeId(scope.accountId);
+      assertScopeId(scope.chatId);
+      if (scope.projectId !== null) assertScopeId(scope.projectId);
       if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_RECOVERY_JOBS) {
         throw new PromptForgeJobStoreError('invalid_scope');
       }
       const raw = await database.prompt_forge_jobs
         .where('[accountId+updatedAt]')
-        .between([accountId, 0], [accountId, Number.MAX_SAFE_INTEGER], true, true)
+        .between([scope.accountId, 0], [scope.accountId, Number.MAX_SAFE_INTEGER], true, true)
         .reverse()
-        .filter((row) => row.status !== 'cancelled')
+        .filter(
+          (row) =>
+            row.chatId === scope.chatId &&
+            row.projectId === scope.projectId &&
+            row.status !== 'cancelled',
+        )
         .limit(limit)
         .toArray();
       return Object.freeze(raw.map(parseStored));

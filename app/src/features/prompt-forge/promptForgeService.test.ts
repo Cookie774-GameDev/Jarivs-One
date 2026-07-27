@@ -99,9 +99,13 @@ function memoryRepository(seed: readonly PromptForgeJob[] = []) {
       const job = rows.get(jobId);
       return job?.accountId === accountId ? job : null;
     },
-    async listRecoverable(accountId) {
+    async listRecoverable(scope) {
       return [...rows.values()].filter(
-        (job) => job.accountId === accountId && job.status !== 'cancelled',
+        (job) =>
+          job.accountId === scope.accountId &&
+          job.chatId === scope.chatId &&
+          job.projectId === scope.projectId &&
+          job.status !== 'cancelled',
       );
     },
     async remove(accountId, jobId) {
@@ -318,7 +322,11 @@ describe('Prompt Forge orchestration', () => {
       executor: { execute: async () => executionResult() },
     });
 
-    const recovered = await service.recoverInterrupted('account-1');
+    const recovered = await service.recoverInterrupted({
+      accountId: 'account-1',
+      chatId: 'chat-1',
+      projectId: 'project-1',
+    });
     expect(recovered).toHaveLength(1);
     expect(recovered[0]).toMatchObject({ status: 'failed', errorCode: 'interrupted' });
 
@@ -350,5 +358,50 @@ describe('Prompt Forge orchestration', () => {
     });
     release();
     await first;
+  });
+
+  it('does not recover a job that is active in another service instance', async () => {
+    const memory = memoryRepository();
+    let preparationStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      preparationStarted = resolve;
+    });
+    let releasePreparation!: () => void;
+    const blocked = new Promise<void>((resolve) => {
+      releasePreparation = resolve;
+    });
+    const activeService = createPromptForgeService({
+      repository: memory.repository,
+      now: clock(),
+      prepare: async () => {
+        preparationStarted();
+        await blocked;
+        return { resolvedModel, sourcePack, preservation, sourcesConsidered: 1 };
+      },
+      executor: { execute: async () => executionResult() },
+    });
+    const recoveryService = createPromptForgeService({
+      repository: memory.repository,
+      now: clock(300),
+      prepare: async () => ({
+        resolvedModel,
+        sourcePack,
+        preservation,
+        sourcesConsidered: 1,
+      }),
+      executor: { execute: async () => executionResult() },
+    });
+    const running = activeService.start(initialJob('forge-job-cross-service'));
+    await started;
+
+    const recovered = await recoveryService.recoverInterrupted({
+      accountId: 'account-1',
+      chatId: 'chat-1',
+      projectId: 'project-1',
+    });
+    releasePreparation();
+
+    expect(recovered[0]?.status).toBe('collecting_context');
+    await expect(running).resolves.toMatchObject({ status: 'ready' });
   });
 });

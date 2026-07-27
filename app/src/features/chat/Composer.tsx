@@ -27,7 +27,7 @@ import {
 import { chatRepo, messageRepo } from '@/lib/db';
 import { resolveAccountIdentity } from '@/lib/accountIdentity';
 import { cn, isTauri, renderHotkey } from '@/lib/utils';
-import { HOTKEYS } from '@/lib/hotkeys';
+import { HOTKEYS, matchesHotkey } from '@/lib/hotkeys';
 import {
   getAllUsage,
   getUsage,
@@ -166,7 +166,11 @@ import {
   getAccessibleProviders,
   useOllamaModelOptions,
 } from '@/lib/ai/models';
-import { useAccessibleChatModels } from '@/lib/ai/useAccessibleChatModels';
+import {
+  useAccessibleChatModels,
+  type ModelPickerGroup,
+  type ModelPickerOption,
+} from '@/lib/ai/useAccessibleChatModels';
 import { getProviderConnectionDescriptor, PROVIDER_CONNECTIONS } from '@/lib/ai/adapters/catalog';
 import { useAllAboutMeStore } from '@/features/all-about-me/store';
 import {
@@ -209,6 +213,16 @@ import {
   KERNEL_SMOKE_PROVIDER_ID,
 } from '@/lib/ai/providers/kernelSmoke';
 import type { StackStepSpec } from '@/lib/ai/stacks/types';
+import {
+  buildPromptForgeAttachmentSnapshots,
+  collectPromptForgeComposerSources,
+} from '@/features/prompt-forge/composerSources';
+import { promptForgeModelOptionsFromPicker } from '@/features/prompt-forge/contextPreparation';
+import { PromptForgeControl } from '@/features/prompt-forge/PromptForgeControl';
+import { PromptForgeRecovery } from '@/features/prompt-forge/PromptForgeRecovery';
+import { PromptForgeReview } from '@/features/prompt-forge/PromptForgeReview';
+import { usePromptForgeComposer } from '@/features/prompt-forge/usePromptForgeComposer';
+import type { PromptForgeComposerDescriptor } from '@/features/prompt-forge/composerSources';
 
 const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
   devBuild: import.meta.env.DEV,
@@ -216,6 +230,7 @@ const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
 });
 
 const KERNEL_SMOKE_HIVE_TEXT = KERNEL_SMOKE_SCENARIOS.hive_dispatch.safeTextFixture;
+const COMPOSER_EMPTY_PROMPT_FORGE_SOURCES = Object.freeze([]);
 const KERNEL_SMOKE_HIVE_STEPS: readonly StackStepSpec[] = Object.freeze([
   Object.freeze({
     id: 'kernel-smoke-hive-draft',
@@ -609,6 +624,8 @@ export function Composer({
   const selectedModels = useAuthStore((s) => s.selectedModels);
   const chatModelSelection = useAuthStore((s) => s.chatModelSelection);
   const setChatModelSelection = useAuthStore((s) => s.setChatModelSelection);
+  const promptForgeModelSelection = useAuthStore((s) => s.promptForgeModelSelection);
+  const setPromptForgeModelSelection = useAuthStore((s) => s.setPromptForgeModelSelection);
   const stackCustomSteps = useAuthStore((s) => s.stackCustomSteps);
   const setDefaultProvider = useAuthStore((s) => s.setDefaultProvider);
   const setSelectedModel = useAuthStore((s) => s.setSelectedModel);
@@ -633,6 +650,7 @@ export function Composer({
   const modelPickerRef = useRef<ModelPickerTypeaheadRef>(null);
   const setSettingsOpen = useUIStore((s) => s.setSettingsOpen);
   const ollamaOptions = useOllamaModelOptions();
+  const accessibleChatModels = useAccessibleChatModels();
   const [projectFileOptions, setProjectFileOptions] = useState<SlashCommandOption[]>([]);
   const [projectFilesLoading, setProjectFilesLoading] = useState(false);
   const [projectFilesError, setProjectFilesError] = useState<string | undefined>(undefined);
@@ -647,9 +665,11 @@ export function Composer({
       const state = getActiveContextPersistenceState(projectId);
       if (active && state) setContextMaps(state.maps);
     };
-    void ensureContextPersistence(projectId).then(refresh).catch(() => {
-      if (active) setContextMaps([]);
-    });
+    void ensureContextPersistence(projectId)
+      .then(refresh)
+      .catch(() => {
+        if (active) setContextMaps([]);
+      });
     window.addEventListener('jarvis:context-tree-updated', refresh);
     return () => {
       active = false;
@@ -2084,6 +2104,182 @@ export function Composer({
     }
   };
 
+  const promptForgePluginIds = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...attachedPlugins,
+          ...confirmedCommands
+            .filter((command) => command.cmd === 'plug' && command.value)
+            .map((command) => command.value as string),
+        ]),
+      ),
+    [attachedPlugins, confirmedCommands],
+  );
+  const promptForgeSkillIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          confirmedCommands
+            .filter((command) => command.cmd === 'skills' && command.value)
+            .map((command) => command.value as string),
+        ),
+      ),
+    [confirmedCommands],
+  );
+  const promptForgeAgents = useMemo(
+    () =>
+      confirmedAgentMentions
+        .map((mention) => agents[mention.id])
+        .filter((agent): agent is Agent => Boolean(agent)),
+    [agents, confirmedAgentMentions],
+  );
+  const promptForgeSkills = useMemo(() => {
+    const selected = new Set(promptForgeSkillIds);
+    return getAllCatalogSkills().filter((skill) => selected.has(skill.id));
+  }, [promptForgeSkillIds]);
+  const promptForgeModels = useMemo(
+    () => promptForgeModelOptionsFromPicker(accessibleChatModels.flatOptions),
+    [accessibleChatModels.flatOptions],
+  );
+  const promptForgeAttachmentSnapshots = useMemo(
+    () =>
+      buildPromptForgeAttachmentSnapshots({
+        files: attachedFiles,
+        images: attachedImages.map((image) => ({
+          id: image.id,
+          label: image.name,
+          reference: image.sourcePath ?? `image://${image.id}`,
+        })),
+        terminals: attachedTerminals,
+        plugins: promptForgePluginIds.map((id) => ({
+          id,
+          label: PLUGIN_CATALOG.find((plugin) => plugin.id === id)?.name ?? id,
+        })),
+        contexts: attachedContexts.map((context) => ({
+          id: contextChatAttachmentKey(context),
+          label: context.title,
+          reference: `context://${context.mapId}/${context.nodeId}`,
+        })),
+        skills: promptForgeSkills.map((skill) => ({ id: skill.id, label: skill.name })),
+        agents: promptForgeAgents.map((agent) => ({
+          id: String(agent.id),
+          label: agent.name,
+        })),
+      }),
+    [
+      attachedContexts,
+      attachedFiles,
+      attachedImages,
+      attachedTerminals,
+      promptForgeAgents,
+      promptForgePluginIds,
+      promptForgeSkills,
+    ],
+  );
+  const collectPromptForgeSources = useCallback(
+    async ({ signal, now }: { signal: AbortSignal; now: number }) => {
+      const messages = await messageRepo.listByChat(chatId as ChatId);
+      const connections = selectPluginConnectionsForAccount(
+        usePluginStore.getState(),
+        pluginAccountId,
+      );
+      const plugins: PromptForgeComposerDescriptor[] = promptForgePluginIds.map((id) => {
+        const plugin = PLUGIN_CATALOG.find((candidate) => candidate.id === id);
+        return {
+          id,
+          label: plugin?.name ?? id,
+          description: plugin
+            ? [
+                plugin.description,
+                ...plugin.tools.map((tool) => `${tool.name}: ${tool.description}`),
+              ].join('\n')
+            : 'Attached plugin metadata is unavailable.',
+          verified: Boolean(plugin) && (plugin?.authType === 'none' || Boolean(connections[id])),
+          reference: `plugin://${id}`,
+          observedAt: now,
+        };
+      });
+      return collectPromptForgeComposerSources(
+        {
+          projectId,
+          projectRoot: getStoredProjectRoot(projectId),
+          chatId: String(chatId),
+          files: attachedFiles,
+          terminals: attachedTerminals,
+          terminalSessions: useTerminalTranscriptStore.getState().sessions,
+          messages,
+          plugins,
+          skills: promptForgeSkills.map((skill) => ({
+            id: skill.id,
+            label: skill.name,
+            description: skill.description,
+            verified: true,
+            reference: `skill://${skill.id}`,
+            observedAt: now,
+          })),
+          agents: promptForgeAgents.map((agent) => ({
+            id: String(agent.id),
+            label: agent.name,
+            description: agent.description,
+            verified: true,
+            reference: `agent://${agent.slug}`,
+            observedAt: now,
+          })),
+          now,
+        },
+        signal,
+      );
+    },
+    [
+      attachedFiles,
+      attachedTerminals,
+      chatId,
+      pluginAccountId,
+      projectId,
+      promptForgeAgents,
+      promptForgePluginIds,
+      promptForgeSkills,
+    ],
+  );
+  const promptForge = usePromptForgeComposer({
+    accountId: pluginAccountId,
+    chatId: String(chatId),
+    projectId,
+    draft: text,
+    setDraft: setText,
+    originalAttachments: promptForgeAttachmentSnapshots,
+    contextAttachments: attachedContexts,
+    additionalSources: COMPOSER_EMPTY_PROMPT_FORGE_SOURCES,
+    collectAdditionalSources: collectPromptForgeSources,
+    modelSelection: promptForgeModelSelection,
+    modelOptions: promptForgeModels,
+    currentChatSelection: chatModelSelection,
+    offlineMode,
+    defaultLocalModel,
+    workingDirectory: getStoredProjectRoot(projectId) || undefined,
+  });
+  const returnPromptForgeFocus = useCallback(() => {
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }, []);
+
+  useEffect(() => {
+    const onPromptForgeHotkey = (event: KeyboardEvent) => {
+      if (
+        event.repeat ||
+        document.activeElement !== textareaRef.current ||
+        !matchesHotkey(event, HOTKEYS.PROMPT_FORGE) ||
+        promptForge.disabledReason
+      ) {
+        return;
+      }
+      event.preventDefault();
+      void promptForge.start();
+    };
+    window.addEventListener('keydown', onPromptForgeHotkey);
+    return () => window.removeEventListener('keydown', onPromptForgeHotkey);
+  }, [promptForge.disabledReason, promptForge.start]);
+
   const canSend =
     (text.trim().length > 0 ||
       attachedFiles.length > 0 ||
@@ -2727,6 +2923,21 @@ export function Composer({
         </div>
       )}
       <div className={cn('px-3 py-2.5', compact && 'px-3.5 py-3')}>
+        {promptForge.recoverableJob ? (
+          <PromptForgeRecovery
+            job={promptForge.recoverableJob}
+            loading={promptForge.recoveryLoading}
+            error={promptForge.recoveryError}
+            resumeDisabledReason={promptForge.recoveryDisabledReason}
+            needsContextConfirmation={promptForge.recoveryNeedsContextConfirmation}
+            compact={compact}
+            onRestore={promptForge.restoreRecoveryDraft}
+            onResume={promptForge.resumeRecovery}
+            onDiscard={promptForge.discardRecovery}
+            onConfirmContextChange={promptForge.confirmRecoveryContextChange}
+            onReturnFocus={returnPromptForgeFocus}
+          />
+        ) : null}
         <Popover
           open={mentionCtx !== null || slashCtx !== null || optionPickerCtx !== null}
           onOpenChange={(open) => {
@@ -2960,6 +3171,8 @@ export function Composer({
                   onOpenChange={setModelPickerOpen}
                   pickerRef={modelPickerRef}
                   compact={compact}
+                  groups={accessibleChatModels.groups}
+                  flatOptions={accessibleChatModels.flatOptions}
                   onSelect={(next) => {
                     setChatModelSelection(next);
                     if (next.mode === 'single' && next.connectionId) {
@@ -2995,6 +3208,25 @@ export function Composer({
                     );
                     setInteractionMode(chatId, nextMode);
                   }}
+                />
+                <PromptForgeControl
+                  status={promptForge.status}
+                  statusMessage={promptForge.statusMessage}
+                  isRunning={promptForge.isRunning}
+                  disabledReason={promptForge.disabledReason}
+                  error={promptForge.error}
+                  compact={compact}
+                  modelSelection={promptForgeModelSelection}
+                  modelOptions={promptForgeModels}
+                  onModelSelectionChange={setPromptForgeModelSelection}
+                  privacyMode={promptForge.privacyMode}
+                  onPrivacyModeChange={promptForge.setPrivacyMode}
+                  allowPublicResearch={promptForge.allowPublicResearch}
+                  onAllowPublicResearchChange={promptForge.setAllowPublicResearch}
+                  publicResearchAvailable={promptForge.publicResearchAvailable}
+                  offlineMode={offlineMode}
+                  onStart={promptForge.start}
+                  onCancel={promptForge.cancel}
                 />
                 {composerSttEnabled && (
                   <Hint
@@ -3130,6 +3362,35 @@ export function Composer({
           </PopoverContent>
         </Popover>
       </div>
+      {promptForge.job?.status === 'ready' && promptForge.job.generatedDraft !== null ? (
+        <PromptForgeReview
+          open={promptForge.reviewOpen}
+          job={promptForge.job}
+          upgradedDraft={promptForge.upgradedDraft}
+          onUpgradedDraftChange={promptForge.setUpgradedDraft}
+          excludedSourceIds={promptForge.excludedSourceIds}
+          onExcludeSource={promptForge.toggleSource}
+          onReplace={promptForge.replace}
+          onInsertBelow={promptForge.insertBelow}
+          onCopy={() => {
+            void promptForge
+              .copy()
+              .then(() => toast.success('Upgraded prompt copied'))
+              .catch(() =>
+                toast.error('Copy failed', 'Select the upgraded prompt and copy it manually.'),
+              );
+          }}
+          onRegenerate={() => void promptForge.regenerate()}
+          onRegenerateWithInstructions={(instructions) => void promptForge.regenerate(instructions)}
+          onReturnFocus={returnPromptForgeFocus}
+          onUndo={promptForge.undo}
+          canUndo={promptForge.canUndo}
+          onClose={() => {
+            promptForge.setReviewOpen(false);
+            returnPromptForgeFocus();
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -3142,6 +3403,8 @@ interface ModelPickerProps {
   onSelect: (selection: ChatModelSelection) => void;
   pickerRef: React.RefObject<ModelPickerTypeaheadRef | null>;
   compact?: boolean;
+  groups: ModelPickerGroup[];
+  flatOptions: ModelPickerOption[];
 }
 
 function ModelPicker({
@@ -3152,8 +3415,9 @@ function ModelPicker({
   onSelect,
   pickerRef,
   compact = false,
+  groups,
+  flatOptions,
 }: ModelPickerProps) {
-  const { groups, flatOptions } = useAccessibleChatModels();
   const automaticRoutingEnabled = useAuthStore((s) => s.automaticModelRoutingEnabled);
   const setAutomaticModelRoutingEnabled = useAuthStore((s) => s.setAutomaticModelRoutingEnabled);
   const [selectedId, setSelectedId] = useState('');

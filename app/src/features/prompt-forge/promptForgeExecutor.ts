@@ -1,6 +1,7 @@
 import type { Agent, AgentId, ProviderId } from '@/types';
 import { runAgent, type RunAgentRequest } from '@/lib/ai/router';
 import type { LLMResponse, LLMStreamChunk, TokenUsage } from '@/lib/ai/types';
+import { hasDetectedSecret } from '@/lib/security/secretDetector';
 import type { PromptForgeJob } from './contracts';
 import type { ResolvedPromptForgeModel } from './modelSelection';
 import {
@@ -22,14 +23,16 @@ const PROMPT_FORGE_SYSTEM_PROMPT = [
   'Never reveal secrets, invent files, invent URLs, invent capabilities, or claim verification that the provided evidence does not support.',
 ].join('\n');
 
-export type PromptForgeExecutionErrorCode = 'empty_output' | 'model_mismatch';
+export type PromptForgeExecutionErrorCode = 'empty_output' | 'model_mismatch' | 'sensitive_input';
 
 export class PromptForgeExecutionError extends Error {
   constructor(readonly code: PromptForgeExecutionErrorCode) {
     super(
       code === 'empty_output'
         ? 'The Prompt Forge model returned no upgraded prompt.'
-        : 'The Prompt Forge provider silently changed the selected model.',
+        : code === 'model_mismatch'
+          ? 'The Prompt Forge provider silently changed the selected model.'
+          : 'Prompt Forge blocked detected secrets before model transport.',
     );
     this.name = 'PromptForgeExecutionError';
   }
@@ -47,7 +50,7 @@ export type PromptForgeExecutionResult = Readonly<{
 }>;
 
 export type PromptForgeExecutionInput = Readonly<{
-  job: Pick<PromptForgeJob, 'id' | 'originalDraft' | 'createdAt'>;
+  job: Pick<PromptForgeJob, 'id' | 'originalDraft' | 'regenerationInstructions' | 'createdAt'>;
   model: ResolvedPromptForgeModel;
   sourcePack: PromptForgeSourcePack;
   preservation: PromptPreservationContract;
@@ -91,8 +94,10 @@ function createExecutionAgent(model: ResolvedPromptForgeModel, createdAt: number
 
 function buildUpgradeMessage(input: PromptForgeExecutionInput): string {
   let longestFence = 2;
-  for (const match of input.job.originalDraft.matchAll(/`+/gu)) {
-    longestFence = Math.max(longestFence, match[0].length);
+  for (const text of [input.job.originalDraft, input.job.regenerationInstructions ?? '']) {
+    for (const match of text.matchAll(/`+/gu)) {
+      longestFence = Math.max(longestFence, match[0].length);
+    }
   }
   const draftFence = '`'.repeat(longestFence + 1);
   return [
@@ -100,6 +105,15 @@ function buildUpgradeMessage(input: PromptForgeExecutionInput): string {
     `${draftFence}text`,
     input.job.originalDraft,
     draftFence,
+    ...(input.job.regenerationInstructions
+      ? [
+          '',
+          '# Additional regeneration instructions',
+          `${draftFence}text`,
+          input.job.regenerationInstructions,
+          draftFence,
+        ]
+      : []),
     '',
     '# Relevant VibeSpace evidence',
     input.sourcePack.markdown,
@@ -128,6 +142,13 @@ export function createPromptForgeExecutor(
   return Object.freeze({
     async execute(input: PromptForgeExecutionInput): Promise<PromptForgeExecutionResult> {
       abortIfRequested(input.signal);
+      if (
+        hasDetectedSecret(input.job.originalDraft) ||
+        (input.job.regenerationInstructions !== null &&
+          hasDetectedSecret(input.job.regenerationInstructions))
+      ) {
+        throw new PromptForgeExecutionError('sensitive_input');
+      }
       const startedAt = now();
       const agent = createExecutionAgent(input.model, input.job.createdAt);
       const response = await runModel({

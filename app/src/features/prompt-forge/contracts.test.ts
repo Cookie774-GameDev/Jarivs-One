@@ -25,6 +25,7 @@ describe('Prompt Forge contracts', () => {
       modelSelection: { mode: 'prefer_local' },
       privacyMode: 'local_only',
       allowPublicResearch: false,
+      regenerationInstructions: 'Keep the result concise.',
       now: 100,
     });
 
@@ -32,6 +33,7 @@ describe('Prompt Forge contracts', () => {
     expect(job.accountId).toBe('account-1');
     expect(job.projectId).toBe('project-1');
     expect(job.originalDraft).toBe('Do not remove "this exact quote".');
+    expect(job.regenerationInstructions).toBe('Keep the result concise.');
     expect(job.originalAttachments[0]?.label).toBe('SPEC.md');
     expect(job.revision).toBe(1);
     expect(job.resolvedModel).toBeNull();
@@ -159,12 +161,14 @@ describe('Prompt Forge contracts', () => {
       now: 100,
     });
     expect(parsePromptForgeJob(JSON.parse(JSON.stringify(job)))).toEqual(job);
-    const {
-      resolvedModel: _resolvedModel,
-      usage: _usage,
-      ...legacyPersistedJob
-    } = JSON.parse(JSON.stringify(job)) as typeof job;
-    expect(parsePromptForgeJob(legacyPersistedJob)).toEqual(job);
+    const legacyPersistedJob = JSON.parse(JSON.stringify(job)) as Record<string, unknown>;
+    delete legacyPersistedJob.resolvedModel;
+    delete legacyPersistedJob.usage;
+    delete legacyPersistedJob.regenerationInstructions;
+    expect(parsePromptForgeJob(legacyPersistedJob)).toEqual({
+      ...job,
+      regenerationInstructions: null,
+    });
     expect(() => parsePromptForgeJob({ ...job, unexpected: true })).toThrow(/persisted job/i);
     expect(() => parsePromptForgeJob({ ...job, accountId: '../other' })).toThrow(/persisted job/i);
   });

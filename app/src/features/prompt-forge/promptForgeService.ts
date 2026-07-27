@@ -2,6 +2,7 @@ import type { LLMStreamChunk } from '@/lib/ai/types';
 import {
   transitionPromptForgeJob,
   type PromptForgeJob,
+  type PromptForgeJobScope,
   type PromptForgeResolvedModelSnapshot,
   type PromptForgeSourceMetadata,
   type PromptForgeStatus,
@@ -30,7 +31,7 @@ export interface PromptForgeJobRepository {
   create(job: PromptForgeJob): Promise<PromptForgeJob>;
   save(job: PromptForgeJob, expectedRevision: number): Promise<PromptForgeJob>;
   get(accountId: string, jobId: string): Promise<PromptForgeJob | null>;
-  listRecoverable(accountId: string, limit?: number): Promise<readonly PromptForgeJob[]>;
+  listRecoverable(scope: PromptForgeJobScope, limit?: number): Promise<readonly PromptForgeJob[]>;
   remove(accountId: string, jobId: string): Promise<boolean>;
 }
 
@@ -96,6 +97,8 @@ function runKey(accountId: string, jobId: string): string {
   return `${accountId}\u0000${jobId}`;
 }
 
+const activeRuns = new Map<string, ActiveRun>();
+
 function isAbortError(error: unknown): boolean {
   return (
     (error instanceof DOMException && error.name === 'AbortError') ||
@@ -158,6 +161,7 @@ function safeFailureCode(error: unknown, phase: 'preparation' | 'execution'): st
         'offline_cloud_blocked',
         'empty_output',
         'model_mismatch',
+        'sensitive_input',
       ].includes(code)
     ) {
       return code;
@@ -177,8 +181,6 @@ export function createPromptForgeService(
 ) {
   const { repository, prepare, executor } = dependencies;
   const now = dependencies.now ?? Date.now;
-  const activeRuns = new Map<string, ActiveRun>();
-
   function emitActivity(
     job: PromptForgeJob,
     state: Readonly<{
@@ -455,8 +457,8 @@ export function createPromptForgeService(
       return true;
     },
 
-    async recoverInterrupted(accountId: string): Promise<readonly PromptForgeJob[]> {
-      const jobs = await repository.listRecoverable(accountId);
+    async recoverInterrupted(scope: PromptForgeJobScope): Promise<readonly PromptForgeJob[]> {
+      const jobs = await repository.listRecoverable(scope);
       const recovered: PromptForgeJob[] = [];
       for (const current of jobs) {
         if (

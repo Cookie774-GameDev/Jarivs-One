@@ -83,6 +83,7 @@ describe('Prompt Forge source ranking and pack', () => {
         candidate('file-b'),
         candidate('terminal-a', { kind: 'terminal', reference: 'terminal://pane-a' }),
         candidate('terminal-b', { kind: 'terminal', reference: 'terminal://pane-b' }),
+        candidate('agent-a', { kind: 'agent', reference: 'agent://jarvis' }),
         candidate('web-a', {
           kind: 'public_web',
           reference: 'https://example.com/docs',
@@ -102,6 +103,7 @@ describe('Prompt Forge source ranking and pack', () => {
 
     expect(pack.sources.filter((source) => source.kind === 'project_file')).toHaveLength(1);
     expect(pack.sources.filter((source) => source.kind === 'terminal')).toHaveLength(1);
+    expect(pack.sources.some((source) => source.kind === 'agent')).toBe(true);
     expect(pack.sources.some((source) => source.kind === 'public_web')).toBe(false);
     expect(pack.warnings).toContain('Public research is unavailable while offline.');
   });

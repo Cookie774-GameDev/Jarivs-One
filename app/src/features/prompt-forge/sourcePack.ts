@@ -10,6 +10,7 @@ export type PromptForgeSourceKind =
   | 'terminal'
   | 'skill'
   | 'plugin'
+  | 'agent'
   | 'public_web';
 
 export type PromptForgeSourceTrust = 'project' | 'official' | 'user' | 'external';
@@ -84,6 +85,7 @@ const SOURCE_KINDS = new Set<PromptForgeSourceKind>([
   'terminal',
   'skill',
   'plugin',
+  'agent',
   'public_web',
 ]);
 const SOURCE_TRUST = new Set<PromptForgeSourceTrust>(['project', 'official', 'user', 'external']);

@@ -144,6 +144,23 @@ describe('Prompt Forge context preparation', () => {
       omittedCount: 2,
       warnings: Object.freeze(['Context retrieval reached its token budget.']),
     }));
+    const collectAdditionalSources = vi.fn(async () => [
+      {
+        id: 'agent:jarvis',
+        kind: 'agent' as const,
+        label: 'Jarvis',
+        reference: 'agent://jarvis',
+        content: 'Primary VibeSpace assistant.',
+        verified: true,
+        explicit: true,
+        projectScoped: true,
+        trust: 'user' as const,
+        lexicalScore: 0,
+        semanticScore: null,
+        observedAt: now,
+        whySelected: 'Explicitly attached.',
+      },
+    ]);
     const stage = vi.fn(async () => undefined);
     const preparer = createPromptForgeContextPreparer({
       contextAttachments: [attachment],
@@ -152,6 +169,7 @@ describe('Prompt Forge context preparation', () => {
       offlineMode: false,
       defaultLocalModel: 'qwen3:8b',
       retrieveContext,
+      collectAdditionalSources,
       now: () => now,
     });
 
@@ -175,14 +193,17 @@ describe('Prompt Forge context preparation', () => {
       connectionId: 'ollama-local',
       local: true,
     });
-    expect(prepared.sourcePack.sources).toEqual([
-      expect.objectContaining({
-        kind: 'project_symbol',
-        label: 'Composer',
-        reference: 'app/src/features/chat/Composer.tsx#L1',
-        explicit: true,
-      }),
-    ]);
+    expect(prepared.sourcePack.sources).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'project_symbol',
+          label: 'Composer',
+          reference: 'app/src/features/chat/Composer.tsx#L1',
+          explicit: true,
+        }),
+        expect.objectContaining({ kind: 'agent', label: 'Jarvis' }),
+      ]),
+    );
     expect(prepared.sourcePack.markdown).toContain('UNTRUSTED SOURCE DATA');
     expect(prepared.sourcePack.markdown).toContain('export function Composer');
     expect(prepared.sourcePack.warnings).toEqual(
@@ -200,7 +221,7 @@ describe('Prompt Forge context preparation', () => {
         }),
       ]),
     );
-    expect(prepared.sourcesConsidered).toBe(3);
+    expect(prepared.sourcesConsidered).toBe(4);
   });
 
   it('maps connection-qualified picker options without losing runtime or availability identity', () => {
@@ -235,7 +256,10 @@ describe('Prompt Forge context preparation', () => {
       whySelected: 'Matches the request.',
     };
     const researchPublicSources = vi.fn(async () => [publicSource]);
-    const build = (privacyMode: 'local_only' | 'provider_allowed') =>
+    const build = (
+      privacyMode: 'local_only' | 'provider_allowed',
+      excludedSourceIds: readonly string[] = [],
+    ) =>
       createPromptForgeContextPreparer({
         contextAttachments: [],
         modelOptions: promptForgeModelOptionsFromPicker(pickerOptions),
@@ -244,6 +268,7 @@ describe('Prompt Forge context preparation', () => {
         defaultLocalModel: 'qwen3:8b',
         retrieveContext: async () => ({ ...retrieval, items: Object.freeze([]) }),
         researchPublicSources,
+        excludedSourceIds,
         now: () => now,
       });
 
@@ -272,6 +297,13 @@ describe('Prompt Forge context preparation', () => {
     expect(provider.sourcePack.sources).toEqual([
       expect.objectContaining({ id: 'web-docs', kind: 'public_web' }),
     ]);
+
+    const excluded = await build('provider_allowed', ['web-docs'])({
+      job: job({ privacyMode: 'provider_allowed', allowPublicResearch: true }),
+      signal: new AbortController().signal,
+      stage: vi.fn(async () => undefined),
+    });
+    expect(excluded.sourcePack.sources).toHaveLength(0);
   });
 
   it('stops after shared retrieval when cancellation is requested', async () => {
