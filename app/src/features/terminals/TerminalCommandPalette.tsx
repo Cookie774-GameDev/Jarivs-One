@@ -16,6 +16,7 @@ import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Route } from '@/stores/ui';
 import type { TerminalPromptEvidence } from './terminalCommandFoundation';
+import type { TerminalCliInstallStatus } from './terminalCliInstall';
 
 type PaletteItem = Readonly<{
   id: string;
@@ -107,6 +108,8 @@ export interface TerminalCommandPaletteProps {
   evidence: TerminalPromptEvidence;
   onClose: () => void;
   onNavigate: (route: Route) => void;
+  onInstallCli?: () => Promise<TerminalCliInstallStatus>;
+  onUninstallCli?: () => Promise<TerminalCliInstallStatus>;
 }
 
 export function TerminalCommandPalette({
@@ -117,10 +120,14 @@ export function TerminalCommandPalette({
   evidence,
   onClose,
   onNavigate,
+  onInstallCli,
+  onUninstallCli,
 }: TerminalCommandPaletteProps): JSX.Element | null {
   const [query, setQuery] = React.useState('');
   const [selectedIndex, setSelectedIndex] = React.useState(0);
   const [detail, setDetail] = React.useState<'status' | 'help' | null>(null);
+  const [cliSetupPending, setCliSetupPending] = React.useState(false);
+  const [cliSetupMessage, setCliSetupMessage] = React.useState<string | null>(null);
   const inputRef = React.useRef<HTMLInputElement | null>(null);
 
   const filtered = React.useMemo(() => {
@@ -136,6 +143,8 @@ export function TerminalCommandPalette({
     setQuery('');
     setSelectedIndex(0);
     setDetail(null);
+    setCliSetupPending(false);
+    setCliSetupMessage(null);
     requestAnimationFrame(() => inputRef.current?.focus());
   }, [open]);
 
@@ -154,6 +163,22 @@ export function TerminalCommandPalette({
     if (item.destination) {
       onNavigate(item.destination);
       onClose();
+    }
+  };
+
+  const updateCliSetup = async (
+    action: (() => Promise<TerminalCliInstallStatus>) | undefined,
+    successMessage: (status: TerminalCliInstallStatus) => string,
+  ) => {
+    if (!action || cliSetupPending) return;
+    setCliSetupPending(true);
+    setCliSetupMessage(null);
+    try {
+      setCliSetupMessage(successMessage(await action()));
+    } catch {
+      setCliSetupMessage('Terminal command setup failed. Try again.');
+    } finally {
+      setCliSetupPending(false);
     }
   };
 
@@ -248,6 +273,50 @@ export function TerminalCommandPalette({
             The real <code>vibespace</code> and <code>vs</code> CLI commands are separate from this
             in-pane overlay.
           </p>
+          {onInstallCli || onUninstallCli ? (
+            <div className="mt-4 flex flex-wrap gap-2">
+              {onInstallCli ? (
+                <button
+                  type="button"
+                  disabled={cliSetupPending}
+                  onClick={() =>
+                    void updateCliSetup(
+                      onInstallCli,
+                      (status) =>
+                        `Installed vibespace and vs in ${status.binDir}. Open a new terminal if PATH has not refreshed.`,
+                    )
+                  }
+                  className="rounded-md border border-accent-copper/60 bg-accent-copper/10 px-3 py-2 text-secondary text-accent-copper disabled:cursor-wait disabled:opacity-60"
+                >
+                  Install terminal commands
+                </button>
+              ) : null}
+              {onUninstallCli ? (
+                <button
+                  type="button"
+                  disabled={cliSetupPending}
+                  onClick={() =>
+                    void updateCliSetup(
+                      onUninstallCli,
+                      (status) => `Removed managed terminal commands from ${status.binDir}.`,
+                    )
+                  }
+                  className="rounded-md border border-border px-3 py-2 text-secondary text-foreground disabled:cursor-wait disabled:opacity-60"
+                >
+                  Remove terminal commands
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+          {cliSetupMessage ? (
+            <p
+              className="mt-3 text-secondary text-muted-foreground"
+              role="status"
+              aria-live="polite"
+            >
+              {cliSetupMessage}
+            </p>
+          ) : null}
           <button type="button" onClick={() => setDetail(null)} className="mt-4 text-accent-copper">
             Back
           </button>

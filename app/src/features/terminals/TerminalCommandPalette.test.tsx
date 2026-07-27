@@ -98,4 +98,60 @@ describe('TerminalCommandPalette', () => {
     );
     expect(container.innerHTML).toBe('');
   });
+
+  it('offers explicit reversible CLI setup without exposing native secrets', async () => {
+    const onInstallCli = vi.fn().mockResolvedValue({
+      installed: true,
+      binDir: 'C:\\Users\\Test\\.jarvis\\bin',
+      commandNames: ['vibespace', 'vs'],
+    });
+    const onUninstallCli = vi.fn().mockResolvedValue({
+      installed: false,
+      binDir: 'C:\\Users\\Test\\.jarvis\\bin',
+      commandNames: ['vibespace', 'vs'],
+    });
+    render(
+      <TerminalCommandPalette
+        open
+        paneId="pane-1"
+        sessionId="pty-1"
+        projectId="project-1"
+        evidence={evidence}
+        onClose={vi.fn()}
+        onNavigate={vi.fn()}
+        onInstallCli={onInstallCli}
+        onUninstallCli={onUninstallCli}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('option', { name: /Help/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Install terminal commands' }));
+    expect(await screen.findByText(/Installed vibespace and vs/i)).toBeTruthy();
+    expect(onInstallCli).toHaveBeenCalledOnce();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove terminal commands' }));
+    expect(await screen.findByText(/Removed managed terminal commands/i)).toBeTruthy();
+    expect(onUninstallCli).toHaveBeenCalledOnce();
+    expect(screen.queryByText(/token|nonce/i)).toBeNull();
+  });
+
+  it('fails closed without rendering native setup error details', async () => {
+    render(
+      <TerminalCommandPalette
+        open
+        paneId="pane-1"
+        sessionId="pty-1"
+        projectId="project-1"
+        evidence={evidence}
+        onClose={vi.fn()}
+        onNavigate={vi.fn()}
+        onInstallCli={vi.fn().mockRejectedValue(new Error('token=must-not-render'))}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('option', { name: /Help/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Install terminal commands' }));
+    expect(await screen.findByText('Terminal command setup failed. Try again.')).toBeTruthy();
+    expect(screen.queryByText(/must-not-render/i)).toBeNull();
+  });
 });

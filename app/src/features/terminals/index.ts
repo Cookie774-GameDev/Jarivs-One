@@ -16,6 +16,12 @@ export * from './terminalPromptProtocol';
 export * from './terminalSlashIntegration';
 export { TerminalCommandPalette } from './TerminalCommandPalette';
 export {
+  installTerminalCli,
+  readTerminalCliInstallStatus,
+  uninstallTerminalCli,
+} from './terminalCliInstall';
+export type { TerminalCliInstallStatus } from './terminalCliInstall';
+export {
   type PaneNode,
   type LeafBase,
   newLeaf,

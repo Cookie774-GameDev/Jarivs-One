@@ -293,5 +293,10 @@ describe('TerminalView canonical execution truth', () => {
     expect(inputBlock).toContain("invoke('terminal_write', { sessionId: sid, data: forwardData })");
     expect(inputBlock).not.toContain("invoke('terminal_write', { sessionId: sid, data })");
     expect(source).toContain('<TerminalCommandPalette');
+    expect(source).toContain(
+      "import { installTerminalCli, uninstallTerminalCli } from './terminalCliInstall'",
+    );
+    expect(source).toContain('onInstallCli={installTerminalCli}');
+    expect(source).toContain('onUninstallCli={uninstallTerminalCli}');
   });
 });

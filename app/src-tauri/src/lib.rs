@@ -64,6 +64,7 @@ mod preview;
 mod sik_smoke;
 mod static_server;
 mod terminal;
+pub mod terminal_cli;
 mod terminal_snapshot;
 mod wallpaper_master;
 
@@ -225,9 +226,16 @@ pub fn run() {
         .manage(cli_bridge::CliBridgeState::default())
         .manage(kernel_host::KernelHostState::default())
         .manage(terminal::TerminalState::default())
+        .manage(terminal_cli::TerminalCliState::default())
         .manage(pets::PetWindowState::default())
         .manage(terminal_snapshot::PersistenceFlushState::default())
         .setup(|app| {
+            if let Err(err) = terminal_cli::start_terminal_cli_server(
+                &app.handle(),
+                &app.state::<terminal_cli::TerminalCliState>(),
+            ) {
+                eprintln!("[terminal-cli] startup failed: {err}");
+            }
             // Restore pet window geometry from disk.
             {
                 let geo = pets::load_geometry(&app.handle());
@@ -381,6 +389,10 @@ pub fn run() {
             terminal::terminal_move,
             terminal::terminal_list,
             terminal::terminal_reconcile,
+            terminal_cli::terminal_cli_install_status,
+            terminal_cli::terminal_cli_install,
+            terminal_cli::terminal_cli_uninstall,
+            terminal_cli::terminal_cli_respond,
             terminal_snapshot::terminal_snapshot_save,
             terminal_snapshot::terminal_snapshot_load,
             terminal_snapshot::terminal_snapshot_delete,
