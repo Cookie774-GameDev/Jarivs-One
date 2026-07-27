@@ -122,6 +122,7 @@ function job(
   patch: Partial<{
     privacyMode: 'local_only' | 'provider_allowed';
     allowPublicResearch: boolean;
+    originalDraft: string;
   }> = {},
 ) {
   return createPromptForgeJob({
@@ -129,7 +130,7 @@ function job(
     accountId: 'account-1',
     chatId: 'chat-1',
     projectId: 'project-1',
-    originalDraft: 'Keep "draft" and the number 42.',
+    originalDraft: patch.originalDraft ?? 'Keep "draft" and the number 42.',
     originalAttachments: [],
     modelSelection: { mode: 'prefer_local' },
     privacyMode: patch.privacyMode ?? 'local_only',
@@ -328,6 +329,7 @@ describe('Prompt Forge context preparation', () => {
       explicit: false,
       projectScoped: false,
       trust: 'official',
+      publicSourceClass: 'official_documentation',
       lexicalScore: 1,
       semanticScore: null,
       observedAt: now,
@@ -382,6 +384,54 @@ describe('Prompt Forge context preparation', () => {
       stage: vi.fn(async () => undefined),
     });
     expect(excluded.sourcePack.sources).toHaveLength(0);
+  });
+
+  it('uses a smaller source budget for a simple request than for a large implementation goal', async () => {
+    const additionalSources = Array.from(
+      { length: 10 },
+      (_, index): PromptForgeSourceCandidate => ({
+        id: `file-${index}`,
+        kind: 'project_file',
+        label: `file-${index}.ts`,
+        reference: `src/file-${index}.ts`,
+        content: `export const value${index} = ${index};`,
+        verified: true,
+        explicit: false,
+        projectScoped: true,
+        trust: 'project',
+        lexicalScore: 1,
+        semanticScore: null,
+        observedAt: now,
+        whySelected: 'Matches the implementation request.',
+      }),
+    );
+    const preparer = createPromptForgeContextPreparer({
+      contextAttachments: [],
+      modelOptions: promptForgeModelOptionsFromPicker(pickerOptions),
+      currentChatSelection: { mode: 'none' },
+      offlineMode: false,
+      defaultLocalModel: 'qwen3:8b',
+      additionalSources,
+      retrieveContext: async () => ({ ...retrieval, items: Object.freeze([]) }),
+      now: () => now,
+    });
+
+    const simple = await preparer({
+      job: job({ originalDraft: 'Fix the button label.' }),
+      signal: new AbortController().signal,
+      stage: vi.fn(async () => undefined),
+    });
+    const large = await preparer({
+      job: job({
+        originalDraft: `Implement the complete system. ${'Detailed requirement. '.repeat(160)}`,
+      }),
+      signal: new AbortController().signal,
+      stage: vi.fn(async () => undefined),
+    });
+
+    expect(simple.sourcePack.sources).toHaveLength(6);
+    expect(large.sourcePack.sources).toHaveLength(10);
+    expect(simple.sourcePack.markdown.length).toBeLessThan(large.sourcePack.markdown.length);
   });
 
   it('stops after shared retrieval when cancellation is requested', async () => {

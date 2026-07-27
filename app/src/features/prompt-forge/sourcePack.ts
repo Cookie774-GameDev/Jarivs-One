@@ -23,6 +23,13 @@ export type PromptForgeSourceKind =
   | 'public_web';
 
 export type PromptForgeSourceTrust = 'project' | 'official' | 'user' | 'external';
+export type PromptForgePublicSourceClass =
+  | 'official_documentation'
+  | 'official_repository'
+  | 'primary_research'
+  | 'maintainer_authored'
+  | 'reputable_technical_reference'
+  | 'low_quality';
 
 export type PromptForgeSourceCandidate = Readonly<{
   id: string;
@@ -38,6 +45,7 @@ export type PromptForgeSourceCandidate = Readonly<{
   lexicalScore: number;
   semanticScore: number | null;
   taskIntentScore?: number;
+  publicSourceClass?: PromptForgePublicSourceClass;
   observedAt: number;
   whySelected: string;
 }>;
@@ -55,6 +63,7 @@ export type PromptForgePackedSource = Readonly<{
   observedAt: number;
   whySelected: string;
   rankScore: number;
+  publicSourceClass?: PromptForgePublicSourceClass;
 }>;
 
 export type PromptForgeSourceBudget = Readonly<{
@@ -62,6 +71,8 @@ export type PromptForgeSourceBudget = Readonly<{
   maxFileCount: number;
   maxTerminalExcerpts: number;
   maxPublicSources: number;
+  maxFileCharacters: number;
+  maxTerminalCharacters: number;
   maxSourceCharacters: number;
   maxPackCharacters: number;
 }>;
@@ -75,9 +86,11 @@ export type PromptForgeSourcePack = Readonly<{
 
 export const DEFAULT_PROMPT_FORGE_BUDGET: PromptForgeSourceBudget = Object.freeze({
   maxCandidateCount: 256,
-  maxFileCount: 16,
+  maxFileCount: 12,
   maxTerminalExcerpts: 4,
   maxPublicSources: 5,
+  maxFileCharacters: 4_000,
+  maxTerminalCharacters: 2_000,
   maxSourceCharacters: 12_000,
   maxPackCharacters: 64_000,
 });
@@ -109,6 +122,14 @@ const SOURCE_KINDS = new Set<PromptForgeSourceKind>([
   'public_web',
 ]);
 const SOURCE_TRUST = new Set<PromptForgeSourceTrust>(['project', 'official', 'user', 'external']);
+const PUBLIC_SOURCE_CLASSES = new Set<PromptForgePublicSourceClass>([
+  'official_documentation',
+  'official_repository',
+  'primary_research',
+  'maintainer_authored',
+  'reputable_technical_reference',
+  'low_quality',
+]);
 const FILE_LIKE_KINDS = new Set<PromptForgeSourceKind>([
   'project_file',
   'project_symbol',
@@ -149,6 +170,15 @@ const KIND_SCORE: Readonly<Partial<Record<PromptForgeSourceKind, number>>> = Obj
   public_web: 2,
   profile: 30,
 });
+const PUBLIC_SOURCE_CLASS_SCORE: Readonly<Record<PromptForgePublicSourceClass, number>> =
+  Object.freeze({
+    official_documentation: 50,
+    official_repository: 45,
+    primary_research: 40,
+    maintainer_authored: 30,
+    reputable_technical_reference: 20,
+    low_quality: 0,
+  });
 
 function fail(detail: string): never {
   throw new Error(`Invalid Prompt Forge source ${detail}.`);
@@ -194,6 +224,7 @@ function sourceScore(source: PromptForgeSourceCandidate, now: number): number {
     normalizedScore(source.semanticScore, 'semantic score') * 20 +
     normalizedScore(source.lexicalScore, 'lexical score') * 8 +
     normalizedScore(source.taskIntentScore ?? 0, 'task intent score') * 12 +
+    (source.publicSourceClass ? PUBLIC_SOURCE_CLASS_SCORE[source.publicSourceClass] : 0) +
     freshness
   );
 }
@@ -230,6 +261,8 @@ export function rankPromptForgeSources(
       typeof source.explicit !== 'boolean' ||
       typeof source.projectScoped !== 'boolean' ||
       (source.exactMatch !== undefined && typeof source.exactMatch !== 'boolean') ||
+      (source.publicSourceClass !== undefined &&
+        (!PUBLIC_SOURCE_CLASSES.has(source.publicSourceClass) || source.kind !== 'public_web')) ||
       typeof source.label !== 'string' ||
       source.label.length === 0 ||
       source.label.length > 500 ||
@@ -268,11 +301,18 @@ function sourceFence(content: string): string {
 
 function sourceSection(source: RankedPromptForgeSource, content: string): string {
   const fence = sourceFence(content);
+  const reference =
+    source.kind === 'public_web'
+      ? (safePublicUrl(source.reference) ?? fail('public reference'))
+      : source.reference;
   return [
-    `## ${safeText(source.label, 500, 'label')}`,
+    `### ${safeText(source.label, 500, 'label')}`,
     `- ID: ${JSON.stringify(source.id)}`,
     `- Kind: ${JSON.stringify(source.kind)}`,
-    `- Reference: ${JSON.stringify(safeText(source.reference, 2_048, 'reference'))}`,
+    `- Reference: ${JSON.stringify(safeText(reference, 2_048, 'reference'))}`,
+    ...(source.publicSourceClass
+      ? [`- Public source class: ${JSON.stringify(source.publicSourceClass)}`]
+      : []),
     `- Selected because: ${JSON.stringify(safeText(source.whySelected, 1_000, 'reason'))}`,
     '',
     `${fence}text`,
@@ -296,6 +336,7 @@ function packedSource(source: RankedPromptForgeSource): PromptForgePackedSource 
     observedAt: source.observedAt,
     whySelected: safeText(source.whySelected, 1_000, 'reason'),
     rankScore: source.rankScore,
+    ...(source.publicSourceClass ? { publicSourceClass: source.publicSourceClass } : {}),
   });
 }
 
@@ -310,6 +351,18 @@ function normalizedBudget(budget: PromptForgeSourceBudget): PromptForgeSourceBud
     maxFileCount: boundedInteger(budget.maxFileCount, 0, 256, 'file budget'),
     maxTerminalExcerpts: boundedInteger(budget.maxTerminalExcerpts, 0, 64, 'terminal budget'),
     maxPublicSources: boundedInteger(budget.maxPublicSources, 0, 64, 'public budget'),
+    maxFileCharacters: boundedInteger(
+      budget.maxFileCharacters,
+      256,
+      MAX_CANDIDATE_CHARS,
+      'file content budget',
+    ),
+    maxTerminalCharacters: boundedInteger(
+      budget.maxTerminalCharacters,
+      256,
+      MAX_CANDIDATE_CHARS,
+      'terminal content budget',
+    ),
     maxSourceCharacters: boundedInteger(
       budget.maxSourceCharacters,
       256,
@@ -361,6 +414,14 @@ export function buildPromptForgeSourcePack(
         warnings.add('Public research was not authorized for this upgrade.');
         continue;
       }
+      if (source.publicSourceClass === undefined) {
+        warnings.add('Excluded a public source without trusted quality classification.');
+        continue;
+      }
+      if (source.publicSourceClass === 'low_quality') {
+        warnings.add('Excluded a low-quality public source.');
+        continue;
+      }
     }
     if (!hasMeaningfulRelevance(source)) {
       warnings.add('Excluded an unrelated source candidate.');
@@ -403,13 +464,33 @@ export function buildPromptForgeSourcePack(
   const included: PromptForgePackedSource[] = [];
   let used = header.length + footer.length;
 
-  for (const source of selected) {
+  const grouped = [
+    ...selected.filter((source) => source.kind !== 'public_web'),
+    ...selected.filter((source) => source.kind === 'public_web'),
+  ];
+  let activeGroup: 'local' | 'public' | null = null;
+  for (const source of grouped) {
     const redacted = safeText(source.content, MAX_CANDIDATE_CHARS, 'content');
+    const sourceCharacterLimit =
+      source.kind === 'terminal'
+        ? Math.min(budget.maxSourceCharacters, budget.maxTerminalCharacters)
+        : FILE_LIKE_KINDS.has(source.kind)
+          ? Math.min(budget.maxSourceCharacters, budget.maxFileCharacters)
+          : budget.maxSourceCharacters;
     const content =
-      redacted.length <= budget.maxSourceCharacters
+      redacted.length <= sourceCharacterLimit
         ? redacted
-        : `${redacted.slice(0, budget.maxSourceCharacters - 31)}\n[truncated by VibeSpace]`;
-    let section = sourceSection(source, content);
+        : `${redacted.slice(0, sourceCharacterLimit - 31)}\n[truncated by VibeSpace]`;
+    const group = source.kind === 'public_web' ? 'public' : 'local';
+    const groupPrefix =
+      activeGroup === group
+        ? ''
+        : `${
+            group === 'public'
+              ? '## Authorized public web sources'
+              : '## Selected local and connected sources'
+          }\n\n`;
+    let section = `${groupPrefix}${sourceSection(source, content)}`;
     const separatorLength = sections.length === 0 ? 2 : 4;
     const remaining = budget.maxPackCharacters - used - separatorLength;
     if (remaining <= 200) {
@@ -417,20 +498,21 @@ export function buildPromptForgeSourcePack(
       break;
     }
     if (section.length > remaining) {
-      const fixedOverhead = sourceSection(source, '').length;
+      const fixedOverhead = groupPrefix.length + sourceSection(source, '').length;
       const availableContent = remaining - fixedOverhead;
       if (availableContent <= 64) {
         warnings.add('Additional ranked sources were excluded by the pack budget.');
         break;
       }
-      section = sourceSection(
+      section = `${groupPrefix}${sourceSection(
         source,
         `${content.slice(0, Math.max(0, availableContent - 31))}\n[truncated by VibeSpace]`,
-      );
+      )}`;
     }
     sections.push(section);
     included.push(packedSource(source));
     used += separatorLength + section.length;
+    activeGroup = group;
   }
 
   const markdown = `${header}${sections.length ? `\n\n${sections.join('\n\n')}` : ''}${footer}`;

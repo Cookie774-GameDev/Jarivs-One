@@ -31,6 +31,16 @@ function candidate(
 }
 
 describe('Prompt Forge source ranking and pack', () => {
+  it('uses bounded defaults for files, terminals, public sources, and excerpts', () => {
+    expect(DEFAULT_PROMPT_FORGE_BUDGET).toMatchObject({
+      maxFileCount: 12,
+      maxTerminalExcerpts: 4,
+      maxPublicSources: 5,
+      maxFileCharacters: 4_000,
+      maxTerminalCharacters: 2_000,
+    });
+  });
+
   it('prioritizes explicit, scoped, trusted, relevant sources deterministically', () => {
     const ranked = rankPromptForgeSources(
       [
@@ -143,6 +153,71 @@ describe('Prompt Forge source ranking and pack', () => {
     expect(pack.warnings).toContain('Excluded an unverified source reference.');
     expect(pack.warnings).toContain('Excluded an unsafe public source URL.');
     expect(pack.markdown.length).toBeLessThanOrEqual(DEFAULT_PROMPT_FORGE_BUDGET.maxPackCharacters);
+  });
+
+  it('prefers verified file references over whole-file pastes and keeps terminal excerpts concise', () => {
+    const pack = buildPromptForgeSourcePack({
+      candidates: [
+        candidate('large-file', {
+          explicit: true,
+          content: `FILE_START\n${'f'.repeat(20_000)}\nFILE_END`,
+        }),
+        candidate('large-terminal', {
+          kind: 'terminal',
+          reference: 'terminal://pane-1',
+          explicit: true,
+          content: `TERMINAL_START\n${'t'.repeat(20_000)}\nTERMINAL_END`,
+        }),
+      ],
+      budget: DEFAULT_PROMPT_FORGE_BUDGET,
+      offline: true,
+      publicResearchAllowed: false,
+      now: 1_000,
+    });
+
+    expect(pack.markdown).toContain('"src/large-file.ts"');
+    expect(pack.markdown).toContain('"terminal://pane-1"');
+    expect(pack.markdown).not.toContain('FILE_END');
+    expect(pack.markdown).not.toContain('TERMINAL_END');
+    expect(pack.markdown).toContain('[truncated by VibeSpace]');
+  });
+
+  it('normalizes, classifies, prioritizes, and clearly separates authorized public sources', () => {
+    const pack = buildPromptForgeSourcePack({
+      candidates: [
+        candidate('reputable', {
+          kind: 'public_web',
+          reference: 'https://example.com/reference',
+          trust: 'external',
+          publicSourceClass: 'reputable_technical_reference',
+        }),
+        candidate('official', {
+          kind: 'public_web',
+          reference: 'HTTPS://EXAMPLE.COM:443/docs/../guide?q=1#top',
+          trust: 'official',
+          publicSourceClass: 'official_documentation',
+        }),
+        candidate('spam', {
+          kind: 'public_web',
+          reference: 'https://spam.example/listicle',
+          trust: 'external',
+          publicSourceClass: 'low_quality',
+        }),
+      ],
+      budget: DEFAULT_PROMPT_FORGE_BUDGET,
+      offline: false,
+      publicResearchAllowed: true,
+      now: 1_000,
+    });
+
+    expect(pack.sources.map((source) => source.id)).toEqual(['official', 'reputable']);
+    expect(pack.sources[0]).toMatchObject({
+      reference: 'https://example.com/guide?q=1#top',
+      publicSourceClass: 'official_documentation',
+    });
+    expect(pack.markdown).toContain('## Authorized public web sources');
+    expect(pack.markdown).toContain('"https://example.com/guide?q=1#top"');
+    expect(pack.warnings).toContain('Excluded a low-quality public source.');
   });
 
   it('keeps public sources out of local/offline upgrades and enforces per-kind budgets', () => {

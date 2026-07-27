@@ -215,6 +215,22 @@ function validatePublicResearchSources(
   return sources;
 }
 
+function taskSensitiveBudget(
+  budget: PromptForgeSourceBudget,
+  draft: string,
+): PromptForgeSourceBudget {
+  const length = draft.trim().length;
+  if (length >= 2_000) return budget;
+  const medium = length >= 500;
+  return Object.freeze({
+    ...budget,
+    maxFileCount: Math.min(budget.maxFileCount, medium ? 8 : 6),
+    maxFileCharacters: Math.min(budget.maxFileCharacters, medium ? 4_000 : 3_000),
+    maxTerminalCharacters: Math.min(budget.maxTerminalCharacters, medium ? 2_000 : 1_500),
+    maxPackCharacters: Math.min(budget.maxPackCharacters, medium ? 32_000 : 16_000),
+  });
+}
+
 export function createPromptForgeContextPreparer(
   rawOptions: PromptForgeContextPreparerOptions,
 ): PromptForgePreparer {
@@ -289,7 +305,7 @@ export function createPromptForgeContextPreparer(
     ) as readonly PromptForgeSourceCandidate[];
     const packed = buildPromptForgeSourcePack({
       candidates,
-      budget: options.budget,
+      budget: taskSensitiveBudget(options.budget, job.originalDraft),
       offline: options.offlineMode || job.privacyMode === 'local_only',
       publicResearchAllowed,
       now: builtAt,
