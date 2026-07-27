@@ -18,6 +18,16 @@ import type { Agent, ProviderId } from '@/types';
  */
 export type LLMRole = 'system' | 'user' | 'assistant';
 
+/** Product surface requesting an AI call through the one shared provider router. */
+export type AiPurpose =
+  | 'chat'
+  | 'voice'
+  | 'prompt_forge'
+  | 'canvas_generate'
+  | 'canvas_rewrite'
+  | 'canvas_mind_map'
+  | 'canvas_presentation';
+
 /**
  * Typed content sent to the model. Text-only messages keep using a flat string
  * for compatibility; multimodal messages use ordered parts.
@@ -58,6 +68,8 @@ export function llmContentToText(content: LLMMessage['content']): string {
  * preferences; messages are the chat turns; the rest are per-call overrides.
  */
 export interface LLMRequest {
+  /** Defaults to chat at the public router boundary for existing callers. */
+  purpose?: AiPurpose;
   /** The agent making this call. Drives model + system prompt + temperature. */
   agent: Agent;
   /** Messages so far. System prompt is on the agent, not in this list. */

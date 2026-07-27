@@ -7,10 +7,11 @@ import { selectionFromOption } from './modelSelection';
 import { syncDiscoveredOllamaModels } from './models';
 import { JarvisProviderAttemptFailureError } from './providerAttemptEvidence';
 
-const { codexDetect, codexProbeAuth, codexSend, openaiRun } = vi.hoisted(() => ({
+const { codexDetect, codexProbeAuth, codexSend, ollamaRun, openaiRun } = vi.hoisted(() => ({
   codexDetect: vi.fn(),
   codexProbeAuth: vi.fn(),
   codexSend: vi.fn(),
+  ollamaRun: vi.fn(),
   openaiRun: vi.fn(),
 }));
 
@@ -23,6 +24,17 @@ vi.mock('./providers/openai', () => ({
     run: openaiRun,
   },
 }));
+
+vi.mock('./providers/ollama', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./providers/ollama')>();
+  return {
+    ...actual,
+    ollamaProvider: {
+      ...actual.ollamaProvider,
+      run: ollamaRun,
+    },
+  };
+});
 
 vi.mock('./adapters/codex', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./adapters/codex')>();
@@ -112,6 +124,13 @@ describe('AI provider routing', () => {
     );
     openaiRun.mockReset();
     openaiRun.mockResolvedValue(successfulResponse);
+    ollamaRun.mockReset();
+    ollamaRun.mockResolvedValue({
+      text: 'local result',
+      usage: { input_tokens: 3, output_tokens: 2, cost_usd: 0 },
+      provider: 'ollama',
+      model: 'qwen3:8b',
+    });
     try {
       localStorage.clear();
     } catch {
@@ -187,6 +206,37 @@ describe('AI provider routing', () => {
     expect(resolved.model).toBe('qwen3:4b');
   });
 
+  it('routes an exact local feature connection independently from the chat model', async () => {
+    syncDiscoveredOllamaModels(['qwen3:8b']);
+    useAuthStore.setState({
+      chatModelSelection: { mode: 'none' },
+      offlineMode: false,
+    });
+    const promptForgeAgent: Agent = {
+      ...jarvis,
+      id: 'agent_prompt_forge' as Agent['id'],
+      slug: 'prompt-forge',
+      model: { provider: 'ollama', model: 'qwen3:8b' },
+    };
+
+    const response = await runAgent({
+      agent: promptForgeAgent,
+      messages: [{ role: 'user', content: 'Upgrade this draft.' }],
+      connectionId: 'ollama-local',
+      purpose: 'prompt_forge',
+    });
+
+    expect(response.text).toBe('local result');
+    expect(ollamaRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        purpose: 'prompt_forge',
+        agent: expect.objectContaining({
+          model: { provider: 'ollama', model: 'qwen3:8b' },
+        }),
+      }),
+    );
+  });
+
   it('preserves exact protected native transport inputs and the caller signal', async () => {
     const controller = new AbortController();
     const messages = [
@@ -211,6 +261,7 @@ describe('AI provider routing', () => {
     expect(openaiRun).toHaveBeenCalledOnce();
     const request = openaiRun.mock.calls[0]![0];
     expect(request).toMatchObject({
+      purpose: 'chat',
       systemPrompt: compiledPrompt.systemText,
       messages,
       signal: controller.signal,

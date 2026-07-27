@@ -17,6 +17,7 @@ import { useAgentStore } from '@/stores/agents';
 import { toast } from '@/components/ui/toast';
 import { devConsole } from '@/features/dev-console';
 import type {
+  AiPurpose,
   LLMMessage,
   LLMProvider,
   LLMRequest,
@@ -373,20 +374,30 @@ export function resolveProviderAndModel(agent: Agent): { provider: LLMProvider; 
   throw new NoModelSelectedError();
 }
 
-/**
- * Public entry point used by the runtime and any caller that wants a one-shot
- * agent invocation. The agent object is treated as immutable input; the router
- * may construct a derived agent for the call but never mutates the original.
- */
-export async function runAgent(req: {
+function resolveExactConnectionProviderAndModel(
+  connection: ProviderConnection,
+  agent: Agent,
+): { provider: LLMProvider; model: string } {
+  if (useAuthStore.getState().offlineMode && connection.mode !== 'local') {
+    throw new NoModelSelectedError();
+  }
+  const providerId = (connection.mode === 'local' ? 'ollama' : connection.providerId) as ProviderId;
+  const provider = providers[providerId];
+  if (!provider?.isAvailable()) throw new NoModelSelectedError();
+  return { provider, model: agent.model.model };
+}
+
+export interface RunAgentRequest {
   agent: Agent;
   messages: LLMMessage[];
+  /** Product surface using the shared router. Existing callers default to chat. */
+  purpose?: AiPurpose;
   signal?: AbortSignal;
   onChunk?: (chunk: LLMStreamChunk) => void;
   temperature?: number;
   max_output_tokens?: number;
   provider_options?: Record<string, unknown>;
-  /** Exact local connection selected for this chat. Never inferred or substituted. */
+  /** Exact local connection selected for this call. Never inferred or substituted. */
   connectionId?: string;
   connectionRequirements?: ConnectionRequirements;
   workingDirectory?: string;
@@ -398,7 +409,14 @@ export async function runAgent(req: {
     requestId: string;
     attemptNumber: number;
   }>;
-}): Promise<LLMResponse> {
+}
+
+/**
+ * Public entry point used by the runtime and any caller that wants a one-shot
+ * agent invocation. The agent object is treated as immutable input; the router
+ * may construct a derived agent for the call but never mutates the original.
+ */
+export async function runAgent(req: RunAgentRequest): Promise<LLMResponse> {
   if (req.signal?.aborted) {
     throw new DOMException('The request was aborted.', 'AbortError');
   }
@@ -427,6 +445,13 @@ export async function runAgent(req: {
       !(connection.mode === 'local' && req.agent.model.provider === 'local')
     ) {
       throw new Error(`Selected model does not match provider connection: ${connectionId}`);
+    }
+    const exactModels = CONNECTION_MODEL_OPTIONS[connection.id];
+    if (
+      exactModels &&
+      !exactModels.some((modelOption) => modelOption.id === req.agent.model.model)
+    ) {
+      throw new Error(`${req.agent.model.model} is unavailable for ${connection.displayName}`);
     }
     if (protectedDispatch) {
       protectedTransport = buildProviderPromptTransport({
@@ -486,7 +511,10 @@ export async function runAgent(req: {
       return response;
     }
   }
-  const { provider, model } = resolveProviderAndModel(req.agent);
+  const { provider, model } =
+    selectedConnection === undefined
+      ? resolveProviderAndModel(req.agent)
+      : resolveExactConnectionProviderAndModel(selectedConnection, req.agent);
 
   if (protectedDispatch) {
     if (!selectedConnection || selectedConnection.mode === 'external-cli') {
@@ -514,6 +542,7 @@ export async function runAgent(req: {
     : undefined;
 
   const llmReq: LLMRequest = {
+    purpose: req.purpose ?? 'chat',
     agent: effectiveAgent,
     messages:
       protectedTransport?.strategy === 'native-system'
