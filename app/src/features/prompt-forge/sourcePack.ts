@@ -6,6 +6,9 @@ export type PromptForgeSourceKind =
   | 'project_symbol'
   | 'context_map'
   | 'chat'
+  | 'project'
+  | 'profile'
+  | 'activity'
   | 'attachment'
   | 'terminal'
   | 'skill'
@@ -81,6 +84,9 @@ const SOURCE_KINDS = new Set<PromptForgeSourceKind>([
   'project_symbol',
   'context_map',
   'chat',
+  'project',
+  'profile',
+  'activity',
   'attachment',
   'terminal',
   'skill',
@@ -94,6 +100,9 @@ const FILE_LIKE_KINDS = new Set<PromptForgeSourceKind>([
   'project_symbol',
   'context_map',
   'chat',
+  'project',
+  'profile',
+  'activity',
   'attachment',
   'skill',
   'plugin',
@@ -103,6 +112,9 @@ const TRUST_SCORE: Readonly<Record<PromptForgeSourceTrust, number>> = Object.fre
   official: 10,
   user: 8,
   external: 0,
+});
+const KIND_SCORE: Readonly<Partial<Record<PromptForgeSourceKind, number>>> = Object.freeze({
+  profile: 30,
 });
 
 function fail(detail: string): never {
@@ -143,6 +155,7 @@ function sourceScore(source: PromptForgeSourceCandidate, now: number): number {
   return (
     (source.explicit ? 100 : 0) +
     (source.projectScoped ? 15 : 0) +
+    (KIND_SCORE[source.kind] ?? 0) +
     TRUST_SCORE[source.trust] +
     normalizedScore(source.semanticScore, 'semantic score') * 20 +
     normalizedScore(source.lexicalScore, 'lexical score') * 8 +

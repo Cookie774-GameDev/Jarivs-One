@@ -108,6 +108,34 @@ describe('Prompt Forge source ranking and pack', () => {
     expect(pack.warnings).toContain('Public research is unavailable while offline.');
   });
 
+  it('keeps a directly relevant profile within a saturated context-source budget', () => {
+    const profile = candidate('profile', {
+      kind: 'profile',
+      label: 'Relevant All About Me preferences',
+      reference: 'profile://all-about-me/test',
+      content: 'Prefer concise answers.',
+      projectScoped: false,
+      trust: 'user',
+      lexicalScore: 1,
+    });
+    const context = Array.from({ length: 16 }, (_, index) =>
+      candidate(`context-${index}`, {
+        kind: index < 12 ? 'chat' : index === 12 ? 'project' : 'activity',
+        lexicalScore: 0.25,
+      }),
+    );
+    const pack = buildPromptForgeSourcePack({
+      candidates: [...context, profile],
+      budget: { ...DEFAULT_PROMPT_FORGE_BUDGET, maxFileCount: 16 },
+      offline: false,
+      publicResearchAllowed: false,
+      now: 1_000,
+    });
+
+    expect(pack.sources).toHaveLength(16);
+    expect(pack.sources.some((source) => source.id === 'profile')).toBe(true);
+  });
+
   it('rejects malformed candidates and duplicate source authority', () => {
     expect(() =>
       rankPromptForgeSources(

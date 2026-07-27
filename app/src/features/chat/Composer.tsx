@@ -24,7 +24,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui';
-import { chatRepo, messageRepo } from '@/lib/db';
+import { chatRepo, messageRepo, projectRepo, terminalSessionRepo } from '@/lib/db';
 import { resolveAccountIdentity } from '@/lib/accountIdentity';
 import { cn, isTauri, renderHotkey } from '@/lib/utils';
 import { HOTKEYS, matchesHotkey } from '@/lib/hotkeys';
@@ -76,7 +76,8 @@ import {
 } from '@/features/composer-stt/sttInterimEditor';
 import { JARVIS_COMMAND_CATALOG } from '@/features/assistant/commands';
 import { toast } from '@/components/ui/toast';
-import type { Agent, AgentId, ChatId, ProviderId } from '@/types';
+import type { Agent, AgentId, ChatId, ProjectId, ProviderId, TerminalSessionId } from '@/types';
+import { getChatActivityEvents } from './activity/activityStore';
 import {
   parseTerminalRef,
   terminalRefKey,
@@ -2178,8 +2179,51 @@ export function Composer({
     ],
   );
   const collectPromptForgeSources = useCallback(
-    async ({ signal, now }: { signal: AbortSignal; now: number }) => {
-      const messages = await messageRepo.listByChat(chatId as ChatId);
+    async ({
+      job,
+      signal,
+      now,
+    }: {
+      job: Readonly<{ originalDraft: string }>;
+      signal: AbortSignal;
+      now: number;
+    }) => {
+      const [messages, persistedChat, persistedProject] = await Promise.all([
+        messageRepo.listByChat(chatId as ChatId),
+        chatRepo.getById(chatId as ChatId).catch(() => undefined),
+        projectId
+          ? projectRepo.getById(projectId as ProjectId).catch(() => undefined)
+          : Promise.resolve(undefined),
+      ]);
+      const projectRoot = getStoredProjectRoot(projectId);
+      const terminalStates = (
+        await Promise.all(
+          attachedTerminals.slice(0, 8).map(async (ref) => {
+            if (!ref.sessionId) return undefined;
+            return terminalSessionRepo
+              .getById(ref.sessionId as TerminalSessionId)
+              .catch(() => undefined);
+          }),
+        )
+      )
+        .filter((session) => session !== undefined)
+        .map((session) => ({
+          sessionId: String(session.id),
+          projectId: session.project_id ? String(session.project_id) : null,
+          status: session.status,
+          exitCode: session.exit_code,
+          observedAt: session.last_active_at,
+        }));
+      const allAboutMeState = useAllAboutMeStore.getState();
+      const allAboutMe =
+        allAboutMeState.accountScope === pluginAccountId && allAboutMeState.markdown.trim()
+          ? {
+              accountId: allAboutMeState.accountScope,
+              markdown: allAboutMeState.markdown,
+              source: allAboutMeState.source,
+              observedAt: allAboutMeState.updatedAt ?? now,
+            }
+          : undefined;
       const connections = selectPluginConnectionsForAccount(
         usePluginStore.getState(),
         pluginAccountId,
@@ -2202,11 +2246,35 @@ export function Composer({
       });
       return collectPromptForgeComposerSources(
         {
+          accountId: pluginAccountId,
           projectId,
-          projectRoot: getStoredProjectRoot(projectId),
+          projectRoot,
           chatId: String(chatId),
+          draft: job.originalDraft,
+          chat: persistedChat
+            ? {
+                title: persistedChat.title,
+                mode: persistedChat.mode,
+                interactionMode,
+                observedAt: persistedChat.updated_at,
+              }
+            : undefined,
+          project:
+            persistedProject && String(persistedProject.id) === projectId
+              ? {
+                  id: String(persistedProject.id),
+                  name: persistedProject.name,
+                  root: projectRoot,
+                  systemPromptContext: persistedProject.system_prompt_context,
+                  noContextMode: persistedProject.no_context_mode,
+                  observedAt: persistedProject.updated_at,
+                }
+              : undefined,
+          profile: allAboutMe,
+          activity: getChatActivityEvents(chatId),
           files: attachedFiles,
           terminals: attachedTerminals,
+          terminalStates,
           terminalSessions: useTerminalTranscriptStore.getState().sessions,
           messages,
           plugins,
@@ -2235,6 +2303,7 @@ export function Composer({
       attachedFiles,
       attachedTerminals,
       chatId,
+      interactionMode,
       pluginAccountId,
       projectId,
       promptForgeAgents,

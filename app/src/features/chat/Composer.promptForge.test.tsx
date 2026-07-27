@@ -47,4 +47,20 @@ describe('Composer Prompt Forge integration', () => {
     );
     expect(source).toContain('onConfirmContextChange={promptForge.confirmRecoveryContextChange}');
   });
+
+  it('collects live account-scoped chat, project, profile, and recent activity context', () => {
+    expect(source).toContain('chatRepo.getById(chatId as ChatId)');
+    expect(source).toContain('projectRepo.getById(projectId');
+    expect(source).toContain('getChatActivityEvents(chatId)');
+    expect(source).toContain('useAllAboutMeStore.getState()');
+    expect(source).toContain('accountId: pluginAccountId');
+    expect(source).toContain('draft: job.originalDraft');
+    expect(source).toContain('chat: persistedChat');
+    expect(source).toContain('persistedProject && String(persistedProject.id) === projectId');
+    expect(source).toContain('profile: allAboutMe');
+    expect(source).toContain('activity: getChatActivityEvents(chatId)');
+    expect(source).toContain('terminalSessionRepo');
+    expect(source).toContain('.getById(ref.sessionId as TerminalSessionId)');
+    expect(source).toContain('terminalStates,');
+  });
 });
