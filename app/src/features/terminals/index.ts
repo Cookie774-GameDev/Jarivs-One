@@ -13,6 +13,8 @@ export { AgentRolePicker } from './AgentRolePicker';
 export type { TerminalViewProps } from './types';
 export * from './terminalCommandFoundation';
 export * from './terminalPromptProtocol';
+export * from './terminalSlashIntegration';
+export { TerminalCommandPalette } from './TerminalCommandPalette';
 export {
   type PaneNode,
   type LeafBase,

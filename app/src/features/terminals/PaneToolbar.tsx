@@ -13,7 +13,7 @@
  * `ChromeBtn` so hover treatment stays identical across modes.
  */
 import * as React from 'react';
-import { Maximize2, Minimize2, Type, Eraser, X } from 'lucide-react';
+import { Maximize2, Minimize2, Type, Eraser, Sparkles, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { clearTerminalSession } from './terminalClear';
 import {
@@ -21,6 +21,7 @@ import {
   createHoldToConfirmController,
   type HoldConfirmPhase,
 } from './holdToConfirm';
+import { openTerminalVibespacePalette } from './terminalSlashIntegration';
 
 /**
  * Font size cycle order. Expanded range from 10 to 20 to allow richer
@@ -70,9 +71,7 @@ interface PaneToolbarProps {
   onClose: () => void;
 }
 
-function useHoldToConfirm(
-  canBegin?: () => boolean,
-): {
+function useHoldToConfirm(canBegin?: () => boolean): {
   phase: HoldConfirmPhase;
   begin: (e: React.PointerEvent) => void;
   cancel: () => void;
@@ -147,6 +146,14 @@ export function PaneToolbar({
   return (
     <div className="flex shrink-0 items-center gap-0.5">
       <ChromeBtn
+        title="Open VibeSpace terminal palette (Ctrl/⌘+Shift+P)"
+        aria-label="Open VibeSpace terminal palette"
+        onClick={() => openTerminalVibespacePalette(paneId)}
+      >
+        <Sparkles className="h-3 w-3" />
+      </ChromeBtn>
+
+      <ChromeBtn
         title={`Font size · ${fontSize}px (cycle)`}
         onClick={onFontSizeCycle}
         aria-label={`Cycle font size (currently ${fontSize}px)`}
@@ -183,11 +190,7 @@ export function PaneToolbar({
           aria-label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen this pane'}
           aria-pressed={isFullscreen}
         >
-          {isFullscreen ? (
-            <Minimize2 className="h-3 w-3" />
-          ) : (
-            <Maximize2 className="h-3 w-3" />
-          )}
+          {isFullscreen ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
         </ChromeBtn>
       )}
 
@@ -257,8 +260,7 @@ function ConfirmChip({
  * splits renderer can use the same hover + disabled treatment for its
  * split-direction buttons (`SplitSquareHorizontal`, `SplitSquareVertical`).
  */
-export interface ChromeBtnProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+export interface ChromeBtnProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   children: React.ReactNode;
 }
 

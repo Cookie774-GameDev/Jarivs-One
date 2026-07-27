@@ -271,4 +271,27 @@ describe('TerminalView canonical execution truth', () => {
       reason: 'natural_exit',
     });
   });
+
+  it('wires exact prompt evidence through fail-closed slash capture before PTY persistence/write', () => {
+    const source = readFileSync(
+      resolve(process.cwd(), 'src/features/terminals/TerminalView.tsx'),
+      'utf8',
+    );
+    const outputStart = source.indexOf('const outputLatch = createTerminalOutputLatch');
+    const outputEnd = source.indexOf('const exitLatch = createTerminalExitLatch', outputStart);
+    const outputBlock = source.slice(outputStart, outputEnd);
+    expect(outputBlock).toContain('slashIntegration.observeOutput(payload.data)');
+
+    const inputStart = source.indexOf('term.onData((data: string) => {');
+    const inputEnd = source.indexOf('// Subscribe BEFORE spawning', inputStart);
+    const inputBlock = source.slice(inputStart, inputEnd);
+    expect(inputBlock.indexOf('slashIntegration.pushInput')).toBeGreaterThan(0);
+    expect(inputBlock.indexOf('slashIntegration.pushInput')).toBeLessThan(
+      inputBlock.indexOf('inputTracker.push(forwardData)'),
+    );
+    expect(inputBlock).toContain('if (capture.openPalette)');
+    expect(inputBlock).toContain("invoke('terminal_write', { sessionId: sid, data: forwardData })");
+    expect(inputBlock).not.toContain("invoke('terminal_write', { sessionId: sid, data })");
+    expect(source).toContain('<TerminalCommandPalette');
+  });
 });

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { buildFontSizeCycle, nextFontSize } from './PaneToolbar';
 
@@ -21,5 +23,14 @@ describe('nextFontSize', () => {
     }
     expect(seen).toEqual(new Set([13, 11, 12, 14, 16, 18, 20]));
     expect(size).toBe(13);
+  });
+
+  it('exposes a per-pane VibeSpace palette fallback button', () => {
+    const source = readFileSync(
+      resolve(process.cwd(), 'src/features/terminals/PaneToolbar.tsx'),
+      'utf8',
+    );
+    expect(source).toContain('title="Open VibeSpace terminal palette (Ctrl/⌘+Shift+P)"');
+    expect(source).toContain('openTerminalVibespacePalette(paneId)');
   });
 });

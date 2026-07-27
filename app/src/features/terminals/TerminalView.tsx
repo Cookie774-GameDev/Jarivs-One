@@ -113,6 +113,15 @@ import {
 import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
 import { SIK_EVIDENCE } from '@/lib/jarvis/smoke/evidenceIds';
 import { formatJarvisVerifiedNarration } from '@/lib/jarvis/response/templates';
+import { TerminalCommandPalette } from './TerminalCommandPalette';
+import {
+  createTerminalSlashIntegration,
+  isSshSessionCommand,
+  isSupportedLocalShellCommand,
+  terminalPaletteRequestTargetsPane,
+  TERMINAL_VIBESPACE_PALETTE_EVENT,
+} from './terminalSlashIntegration';
+import type { TerminalPromptEvidence } from './terminalCommandFoundation';
 
 const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
   devBuild: import.meta.env.DEV,
@@ -189,7 +198,8 @@ export function terminalSmokeFailureCode(error: string | null): string | undefin
   }
   if (error.includes('terminal: open pty failed')) return 'kernel_terminal_native_open_failed';
   if (error.includes('terminal: spawn failed')) return 'kernel_terminal_native_spawn_failed';
-  if (error.includes('terminal: reader clone failed')) return 'kernel_terminal_native_reader_failed';
+  if (error.includes('terminal: reader clone failed'))
+    return 'kernel_terminal_native_reader_failed';
   if (error.includes('terminal: writer take failed')) return 'kernel_terminal_native_writer_failed';
   return 'kernel_terminal_initialization_failed';
 }
@@ -216,9 +226,7 @@ export interface OutputPayload {
 const MAX_EARLY_TERMINAL_OUTPUT_CHUNKS = 32;
 const MAX_EARLY_TERMINAL_OUTPUT_CHARACTERS = 65_536;
 
-export function createTerminalOutputLatch(
-  onExactOutput: (payload: OutputPayload) => void,
-): {
+export function createTerminalOutputLatch(onExactOutput: (payload: OutputPayload) => void): {
   observe(payload: OutputPayload): void;
   bind(sessionId: string): boolean;
   readiness: Promise<boolean>;
@@ -248,9 +256,7 @@ export function createTerminalOutputLatch(
         deliver(payload);
         return;
       }
-      if (
-        payload.data.length > MAX_EARLY_TERMINAL_OUTPUT_CHARACTERS
-      ) {
+      if (payload.data.length > MAX_EARLY_TERMINAL_OUTPUT_CHARACTERS) {
         return;
       }
       while (
@@ -473,6 +479,21 @@ function commandToInput(command: string): string {
   return command.endsWith('\n') || command.endsWith('\r') ? command : `${command}\r`;
 }
 
+function sameTerminalPromptEvidence(
+  left: TerminalPromptEvidence,
+  right: TerminalPromptEvidence,
+): boolean {
+  return (
+    left.promptProtocol === right.promptProtocol &&
+    left.atPrompt === right.atPrompt &&
+    left.alternateScreen === right.alternateScreen &&
+    left.interactiveProgram === right.interactiveProgram &&
+    left.localShell === right.localShell &&
+    left.passwordPrompt === right.passwordPrompt &&
+    left.sshSession === right.sshSession
+  );
+}
+
 export function TerminalView({
   sessionId: existingSessionId,
   paneId,
@@ -521,13 +542,23 @@ export function TerminalView({
   const [activeSessionId, setActiveSessionId] = useState<string | null>(existingSessionId ?? null);
   const [isFocused, setIsFocused] = useState(false);
   const [dictating, setDictating] = useState(false);
+  const [terminalPaletteOpen, setTerminalPaletteOpen] = useState(false);
+  const [terminalPromptEvidence, setTerminalPromptEvidence] = useState<TerminalPromptEvidence>(() =>
+    Object.freeze({
+      promptProtocol: 'none',
+      atPrompt: false,
+      alternateScreen: false,
+      interactiveProgram: false,
+      localShell: isSupportedLocalShellCommand(command),
+      passwordPrompt: false,
+      sshSession: isSshSessionCommand(startupCommand),
+    }),
+  );
   const setComposerSttListening = useUIStore((s) => s.setComposerSttListening);
   const [dropKind, setDropKind] = useState<'file' | 'context' | null>(null);
   const [powerUpTitle, setPowerUpTitle] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [initializationPhase, setInitializationPhase] = useState(
-    'kernel_terminal_phase_mounted',
-  );
+  const [initializationPhase, setInitializationPhase] = useState('kernel_terminal_phase_mounted');
   const terminalExecutionStatus = useTerminalExecutionStore((state) =>
     executionId ? state.executions[executionId]?.status : undefined,
   );
@@ -571,6 +602,33 @@ export function TerminalView({
   useEffect(() => {
     onBlurRef.current = onBlur;
   }, [onBlur]);
+
+  useEffect(() => {
+    const openPalette = () => setTerminalPaletteOpen(true);
+    const onPaletteRequest = (event: Event) => {
+      if (!terminalPaletteRequestTargetsPane(event, paneId)) return;
+      openPalette();
+    };
+    const onPaletteHotkey = (event: KeyboardEvent) => {
+      if (
+        !focusedRef.current ||
+        !(event.ctrlKey || event.metaKey) ||
+        !event.shiftKey ||
+        event.key.toLowerCase() !== 'p'
+      ) {
+        return;
+      }
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      openPalette();
+    };
+    window.addEventListener(TERMINAL_VIBESPACE_PALETTE_EVENT, onPaletteRequest);
+    window.addEventListener('keydown', onPaletteHotkey, true);
+    return () => {
+      window.removeEventListener(TERMINAL_VIBESPACE_PALETTE_EVENT, onPaletteRequest);
+      window.removeEventListener('keydown', onPaletteHotkey, true);
+    };
+  }, [paneId]);
   useEffect(() => {
     const slug = agentSlug ?? null;
     agentSlugRef.current = slug;
@@ -719,9 +777,17 @@ export function TerminalView({
     let deferredRestartCommand: string | null = null;
     let restartConfirmationHandled = false;
     let startupRestoreMode = false;
+    let sshSession = isSshSessionCommand(startupCommand);
     const webglDispose = createWebglDisposeTracker();
     const inputTracker = createPersistedInputTracker(currentInputRef.current);
+    const slashIntegration = createTerminalSlashIntegration({ command });
+    const publishPromptEvidence = (next: TerminalPromptEvidence) => {
+      setTerminalPromptEvidence((current) =>
+        sameTerminalPromptEvidence(current, next) ? current : next,
+      );
+    };
     const outputLatch = createTerminalOutputLatch((payload) => {
+      publishPromptEvidence(slashIntegration.observeOutput(payload.data));
       if (Date.now() < suppressOutputUntilRef.current) return;
       enqueueTerminalChunks(payload.data);
     });
@@ -1083,11 +1149,30 @@ export function TerminalView({
         const sid = sessionRef.current;
         if (!sid) return;
 
-        // Track only printable draft input; terminal protocol and control
-        // sequences are never allowed into persisted state.
         const store = useTerminalTranscriptStore.getState();
         const currentSession = store.sessions[sid];
-        const inputUpdate = inputTracker.push(data);
+        const interactiveProgram = detectInteractiveAgentCli({
+          command: currentSession?.command ?? startupCommand ?? command,
+          startupCommand,
+          transcript: currentSession?.text ?? '',
+        });
+        const capture = slashIntegration.pushInput(data, {
+          draftEmpty: inputTracker.currentDraft().length === 0,
+          interactiveProgram,
+          passwordPrompt: false,
+          sshSession,
+        });
+        publishPromptEvidence(slashIntegration.snapshot());
+        if (capture.openPalette) {
+          setTerminalPaletteOpen(true);
+          return;
+        }
+        const forwardData = capture.forwardData;
+        if (!forwardData) return;
+
+        // Track only printable forwarded input; captured palette bytes,
+        // terminal protocol, and control sequences never enter persisted state.
+        const inputUpdate = inputTracker.push(forwardData);
         currentInputRef.current = inputUpdate.draft;
         if (inputUpdate.flushNow) {
           if (currentInputFlushTimerRef.current != null) {
@@ -1099,19 +1184,22 @@ export function TerminalView({
           scheduleCurrentInputFlush();
         }
 
-        if (
-          inputUpdate.submittedText &&
-          agentSlugRef.current &&
-          detectInteractiveAgentCli({
-            command: currentSession?.command ?? startupCommand ?? command,
-            startupCommand,
-            transcript: currentSession?.text ?? '',
-          })
-        ) {
+        if (inputUpdate.submittedText && agentSlugRef.current && interactiveProgram) {
           ensureAgentBriefingForSession(sid);
         }
+        if (inputUpdate.submittedText && isSshSessionCommand(inputUpdate.submittedText)) {
+          sshSession = true;
+          publishPromptEvidence(
+            slashIntegration.updateRuntime({
+              draftEmpty: true,
+              interactiveProgram,
+              passwordPrompt: false,
+              sshSession,
+            }),
+          );
+        }
 
-        invoke('terminal_write', { sessionId: sid, data }).catch(() => {
+        invoke('terminal_write', { sessionId: sid, data: forwardData }).catch(() => {
           /* ignore: backend probably gone */
         });
       });
@@ -1972,6 +2060,18 @@ export function TerminalView({
       {!hideChrome && (
         <StandaloneCloseChrome label={command || 'terminal'} onClose={() => void handleKill()} />
       )}
+      <TerminalCommandPalette
+        open={terminalPaletteOpen}
+        paneId={paneId}
+        sessionId={activeSessionId}
+        projectId={projectId ?? null}
+        evidence={terminalPromptEvidence}
+        onClose={() => {
+          setTerminalPaletteOpen(false);
+          requestAnimationFrame(() => termRef.current?.focus());
+        }}
+        onNavigate={(route) => useUIStore.getState().setRoute(route)}
+      />
       <div
         ref={containerRef}
         style={{ backgroundColor: pickTheme().background }}
