@@ -63,4 +63,25 @@ describe('Composer Prompt Forge integration', () => {
     expect(source).toContain('.getById(ref.sessionId as TerminalSessionId)');
     expect(source).toContain('terminalStates,');
   });
+
+  it('projects only observed active agents and account/project-scoped capability catalogs', () => {
+    expect(source).toMatch(
+      /useJarvisInteractionStore\s*\.getState\(\)\s*\.agentsForChat\(chatId\)/u,
+    );
+    expect(source).toContain('activeAgents:');
+    expect(source).toContain('selectPluginConnectionsForAccount(');
+    expect(source).toContain('isPromptForgePluginConnected(');
+    expect(source).toContain('connectedPlugins:');
+    expect(source).toMatch(/jarvisMcpServerManager\s*\.discover\(\)/u);
+    expect(source).toContain("status.kind === 'external_mcp'");
+    expect(source).toContain('DEFAULT_JARVIS_ACTION_REGISTRATIONS');
+    expect(source).toContain("registration.executor.kind === 'builtin'");
+    expect(source).toMatch(/useToolStore\s*\.getState\(\)\s*\.list\(\)/u);
+    expect(source).toMatch(/taskRepo\s*\.list\(/u);
+    expect(source).toContain('workspace_id: workspaceId');
+    expect(source).toContain('mcpTools:');
+    expect(source).toContain('appActions:');
+    expect(source).toContain('customTools:');
+    expect(source).toContain('tasks,');
+  });
 });

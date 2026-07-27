@@ -74,6 +74,20 @@ export type PromptForgeTerminalState = Readonly<{
   observedAt?: number;
 }>;
 
+export type PromptForgeTaskDescriptor = Readonly<{
+  id: string;
+  title: string;
+  notes?: string;
+  status: string;
+  priority: string;
+  projectId?: string | null;
+  contextTags?: readonly string[];
+  dueAt?: number;
+  scheduledFor?: number;
+  reminderCount?: number;
+  updatedAt: number;
+}>;
+
 export interface PromptForgeAttachmentSnapshotInput {
   files: readonly string[];
   images: readonly NamedReference[];
@@ -102,6 +116,12 @@ export interface PromptForgeComposerSourceInput {
   plugins: readonly PromptForgeComposerDescriptor[];
   skills: readonly PromptForgeComposerDescriptor[];
   agents: readonly PromptForgeComposerDescriptor[];
+  activeAgents?: readonly PromptForgeComposerDescriptor[];
+  connectedPlugins?: readonly PromptForgeComposerDescriptor[];
+  mcpTools?: readonly PromptForgeComposerDescriptor[];
+  appActions?: readonly PromptForgeComposerDescriptor[];
+  customTools?: readonly PromptForgeComposerDescriptor[];
+  tasks?: readonly PromptForgeTaskDescriptor[];
   now: number;
   readFile?: (path: string, maxBytes?: number, options?: FsAccessOptions) => Promise<FsReadResult>;
 }
@@ -250,6 +270,19 @@ const PROFILE_INTENT =
   /\b(?:all about me|about[- ]me profile|personal(?:ize|ized|ization)|my (?:[\p{L}\p{N}_-]+\s+){0,3}(?:preferences?|profile|style|tone|voice)|write (?:it |this )?(?:like|as) me)\b/iu;
 const GENERIC_ACTIVITY_INTENT =
   /\b(?:(?:recent|latest|last|current)\s+(?:(?:jarvis\s+)?(?:activity|agent work|tool runs?|run history)|jarvis changes made)|what (?:did|has) jarvis (?:do|done|change))\b/iu;
+const ACTIVE_AGENT_INTENT =
+  /\b(?:(?:active|current|running|working)\s+(?:agents?|subagents?)|(?:agents?|subagents?)\s+(?:active|running|working))\b/iu;
+const CONNECTED_PLUGIN_INTENT =
+  /\b(?:(?:connected|enabled|available)\s+plugins?|plugins?\s+(?:connected|enabled|available))\b/iu;
+const MCP_TOOL_INTENT =
+  /\b(?:(?:external\s+)?mcp(?:\s+(?:servers?|tools?))?|model context protocol(?:\s+(?:servers?|tools?))?)\b/iu;
+const APP_ACTION_INTENT =
+  /\b(?:(?:available|built[- ]?in|app)\s+(?:app\s+)?actions?|actions?\s+available in (?:the )?app)\b/iu;
+const CUSTOM_TOOL_INTENT = /\bcustom tools?\b/iu;
+const TASK_INTENT =
+  /\b(?:(?:current|existing|open|relevant)\s+(?:tasks?|to-?dos?)|(?:list|show|summarize|include|use)\s+(?:the\s+)?(?:(?:current|existing|open|relevant)\s+)?(?:tasks?|to-?dos?))\b/iu;
+const SCHEDULE_INTENT =
+  /\b(?:(?:current|existing|open|relevant)\s+(?:schedules?|deadlines?|reminders?)|(?:list|show|summarize|include|use)\s+(?:the\s+)?(?:(?:current|existing|open|relevant)\s+)?(?:schedules?|deadlines?|reminders?))\b/iu;
 const PROFILE_HEADING = /^#{2,4}\s+(.+?)\s*$/gmu;
 const PROFILE_STYLE_HEADING =
   /\b(?:communication|tone|writing|response|sound|pattern|voice|preference|directness|humor|proof|preferred name|nickname)\b|how[\p{L}\p{N}\s_-]{0,80}\baddress (?:me|you)\b/iu;
@@ -552,10 +585,19 @@ function findTerminalSession(
   return undefined;
 }
 
+type DescriptorSourceKind = 'plugin' | 'skill' | 'agent' | 'mcp' | 'action' | 'tool';
+
 function descriptorCandidate(
   input: PromptForgeComposerSourceInput,
-  kind: 'plugin' | 'skill' | 'agent',
+  kind: DescriptorSourceKind,
   descriptor: PromptForgeComposerDescriptor,
+  options: Readonly<{
+    explicit: boolean;
+    trust: PromptForgeSourceCandidate['trust'];
+    projectScoped?: boolean;
+    lexicalScore?: number;
+    whySelected?: string;
+  }>,
 ): PromptForgeSourceCandidate {
   return baseCandidate(input, {
     id: stableId(kind, descriptor.id),
@@ -564,10 +606,129 @@ function descriptorCandidate(
     reference: descriptor.reference ?? `${kind}://${descriptor.id}`,
     content: descriptor.description,
     verified: descriptor.verified,
-    explicit: true,
-    trust: 'user',
+    explicit: options.explicit,
+    trust: options.trust,
+    projectScoped: options.projectScoped,
+    lexicalScore: options.lexicalScore,
     observedAt: descriptor.observedAt,
+    whySelected: options.whySelected,
   });
+}
+
+function relevantDescriptorCandidates(
+  input: PromptForgeComposerSourceInput,
+  values: Readonly<{
+    kind: DescriptorSourceKind;
+    descriptors: readonly PromptForgeComposerDescriptor[];
+    genericIntent: boolean;
+    trust: PromptForgeSourceCandidate['trust'];
+    reason: string;
+    always?: boolean;
+    projectScoped?: boolean;
+  }>,
+  seen: Set<string>,
+): readonly PromptForgeSourceCandidate[] {
+  const query = relevanceTokens(input.draft?.trim() ?? '');
+  const selected: PromptForgeSourceCandidate[] = [];
+  for (const descriptor of values.descriptors.slice(0, 64)) {
+    const key = `${values.kind}:${descriptor.id}`;
+    if (seen.has(key)) continue;
+    const overlap = lexicalOverlap(
+      query,
+      `${descriptor.id}\n${descriptor.label}\n${descriptor.description}`,
+    );
+    if (!values.always && !values.genericIntent && overlap === 0) continue;
+    seen.add(key);
+    selected.push(
+      descriptorCandidate(input, values.kind, descriptor, {
+        explicit: false,
+        trust: values.trust,
+        projectScoped: values.projectScoped,
+        lexicalScore: values.always
+          ? Math.max(0.75, Math.min(1, overlap / 3))
+          : values.genericIntent
+            ? 0.5
+            : Math.min(1, overlap / 3),
+        whySelected: values.reason,
+      }),
+    );
+    if (selected.length >= 12) break;
+  }
+  return selected;
+}
+
+function relevantTaskCandidates(
+  input: PromptForgeComposerSourceInput,
+): readonly PromptForgeSourceCandidate[] {
+  const draft = input.draft?.trim() ?? '';
+  const query = relevanceTokens(draft);
+  const genericTaskIntent = TASK_INTENT.test(draft);
+  const genericScheduleIntent = SCHEDULE_INTENT.test(draft);
+  const selected: PromptForgeSourceCandidate[] = [];
+  for (const task of [...(input.tasks ?? [])]
+    .filter(
+      (candidate) =>
+        Number.isSafeInteger(candidate.updatedAt) &&
+        candidate.updatedAt >= 0 &&
+        candidate.updatedAt <= input.now &&
+        (candidate.projectId === undefined ||
+          candidate.projectId === null ||
+          (input.projectId !== null && candidate.projectId === input.projectId)),
+    )
+    .sort((left, right) => right.updatedAt - left.updatedAt)
+    .slice(0, 64)) {
+    const evidence = [
+      task.title,
+      task.notes,
+      task.status,
+      task.priority,
+      ...(task.contextTags ?? []),
+    ]
+      .filter((value): value is string => typeof value === 'string')
+      .join('\n');
+    const overlap = lexicalOverlap(query, evidence);
+    const scheduled =
+      Number.isSafeInteger(task.scheduledFor) ||
+      Number.isSafeInteger(task.dueAt) ||
+      (task.reminderCount ?? 0) > 0;
+    const genericIntent = genericTaskIntent || (scheduled && genericScheduleIntent);
+    if (!genericIntent && overlap === 0) continue;
+    const kind = scheduled ? 'schedule' : 'task';
+    const lines = [
+      `Status: ${safeText(task.status, 100, 'unknown')}`,
+      `Priority: ${safeText(task.priority, 100, 'normal')}`,
+      Number.isSafeInteger(task.dueAt) ? `Due at: ${task.dueAt}` : null,
+      Number.isSafeInteger(task.scheduledFor) ? `Scheduled for: ${task.scheduledFor}` : null,
+      (task.reminderCount ?? 0) > 0 ? `Active reminders: ${task.reminderCount}` : null,
+      task.contextTags?.length
+        ? `Context tags: ${task.contextTags
+            .slice(0, 16)
+            .map((tag) => safeText(tag, 100, 'tag'))
+            .join(', ')}`
+        : null,
+      task.notes ? `Notes: ${safeText(task.notes, 2_000, 'unavailable')}` : null,
+    ].filter((line): line is string => line !== null);
+    selected.push(
+      baseCandidate(input, {
+        id: stableId(kind, task.id),
+        kind,
+        label: task.title,
+        reference: `${kind}://${task.id}`,
+        content: lines.join('\n'),
+        verified: true,
+        explicit: false,
+        trust: 'project',
+        projectScoped: true,
+        lexicalScore: genericIntent ? 0.5 : Math.min(1, overlap / 3),
+        observedAt: task.updatedAt,
+        whySelected: genericIntent
+          ? 'The draft requested current task or schedule context.'
+          : 'The task or schedule matched the draft.',
+      }),
+    );
+    if (selected.length >= 12) break;
+  }
+  return selected;
 }
 
 export async function collectPromptForgeComposerSources(
@@ -658,10 +819,89 @@ export async function collectPromptForgeComposerSources(
     );
   }
 
+  const seenDescriptors = new Set<string>();
+  const addExplicitDescriptors = (
+    kind: Extract<DescriptorSourceKind, 'plugin' | 'skill' | 'agent'>,
+    descriptors: readonly PromptForgeComposerDescriptor[],
+  ) => {
+    for (const descriptor of descriptors.slice(0, 64)) {
+      const key = `${kind}:${descriptor.id}`;
+      if (seenDescriptors.has(key)) continue;
+      seenDescriptors.add(key);
+      sources.push(
+        descriptorCandidate(input, kind, descriptor, {
+          explicit: true,
+          trust: 'user',
+          whySelected: 'Explicitly selected for this Composer draft.',
+        }),
+      );
+    }
+  };
+  addExplicitDescriptors('plugin', input.plugins);
+  addExplicitDescriptors('skill', input.skills);
+  addExplicitDescriptors('agent', input.agents);
   sources.push(
-    ...input.plugins.map((item) => descriptorCandidate(input, 'plugin', item)),
-    ...input.skills.map((item) => descriptorCandidate(input, 'skill', item)),
-    ...input.agents.map((item) => descriptorCandidate(input, 'agent', item)),
+    ...relevantDescriptorCandidates(
+      input,
+      {
+        kind: 'agent',
+        descriptors: input.activeAgents ?? [],
+        genericIntent: ACTIVE_AGENT_INTENT.test(input.draft?.trim() ?? ''),
+        trust: 'user',
+        reason: 'A chat-scoped active agent matched the draft.',
+        projectScoped: true,
+      },
+      seenDescriptors,
+    ),
+    ...relevantDescriptorCandidates(
+      input,
+      {
+        kind: 'plugin',
+        descriptors: input.connectedPlugins ?? [],
+        genericIntent: CONNECTED_PLUGIN_INTENT.test(input.draft?.trim() ?? ''),
+        trust: 'user',
+        reason: 'A connected plugin matched the draft.',
+        projectScoped: true,
+      },
+      seenDescriptors,
+    ),
+    ...relevantDescriptorCandidates(
+      input,
+      {
+        kind: 'mcp',
+        descriptors: input.mcpTools ?? [],
+        genericIntent: MCP_TOOL_INTENT.test(input.draft?.trim() ?? ''),
+        trust: 'external',
+        reason: 'An observed healthy external MCP tool matched the draft.',
+        projectScoped: false,
+      },
+      seenDescriptors,
+    ),
+    ...relevantDescriptorCandidates(
+      input,
+      {
+        kind: 'action',
+        descriptors: input.appActions ?? [],
+        genericIntent: APP_ACTION_INTENT.test(input.draft?.trim() ?? ''),
+        trust: 'official',
+        reason: 'A registered built-in app action matched the draft.',
+        projectScoped: false,
+      },
+      seenDescriptors,
+    ),
+    ...relevantDescriptorCandidates(
+      input,
+      {
+        kind: 'tool',
+        descriptors: input.customTools ?? [],
+        genericIntent: CUSTOM_TOOL_INTENT.test(input.draft?.trim() ?? ''),
+        trust: 'user',
+        reason: 'An account-scoped custom tool matched the draft.',
+        projectScoped: false,
+      },
+      seenDescriptors,
+    ),
+    ...relevantTaskCandidates(input),
   );
   abortIfRequested(signal);
   return deepFreezeJarvisCopy(sources) as readonly PromptForgeSourceCandidate[];

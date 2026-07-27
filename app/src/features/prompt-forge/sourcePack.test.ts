@@ -108,6 +108,27 @@ describe('Prompt Forge source ranking and pack', () => {
     expect(pack.warnings).toContain('Public research is unavailable while offline.');
   });
 
+  it('accepts bounded agent, MCP, action, custom-tool, task, and schedule authority', () => {
+    const kinds = ['agent', 'mcp', 'action', 'tool', 'task', 'schedule'] as const;
+    const pack = buildPromptForgeSourcePack({
+      candidates: kinds.map((kind) =>
+        candidate(`source-${kind}`, {
+          kind,
+          label: kind,
+          reference: `${kind}://verified`,
+          content: `${kind} descriptor`,
+          trust: kind === 'mcp' ? 'external' : 'user',
+        }),
+      ),
+      budget: DEFAULT_PROMPT_FORGE_BUDGET,
+      offline: false,
+      publicResearchAllowed: false,
+      now: 1_000,
+    });
+
+    expect(new Set(pack.sources.map((source) => source.kind))).toEqual(new Set(kinds));
+  });
+
   it('keeps a directly relevant profile within a saturated context-source budget', () => {
     const profile = candidate('profile', {
       kind: 'profile',

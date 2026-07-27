@@ -14,6 +14,11 @@ export type PromptForgeSourceKind =
   | 'skill'
   | 'plugin'
   | 'agent'
+  | 'mcp'
+  | 'action'
+  | 'tool'
+  | 'task'
+  | 'schedule'
   | 'public_web';
 
 export type PromptForgeSourceTrust = 'project' | 'official' | 'user' | 'external';
@@ -92,6 +97,11 @@ const SOURCE_KINDS = new Set<PromptForgeSourceKind>([
   'skill',
   'plugin',
   'agent',
+  'mcp',
+  'action',
+  'tool',
+  'task',
+  'schedule',
   'public_web',
 ]);
 const SOURCE_TRUST = new Set<PromptForgeSourceTrust>(['project', 'official', 'user', 'external']);

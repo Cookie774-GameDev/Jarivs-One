@@ -24,8 +24,9 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui';
-import { chatRepo, messageRepo, projectRepo, terminalSessionRepo } from '@/lib/db';
+import { chatRepo, messageRepo, projectRepo, taskRepo, terminalSessionRepo } from '@/lib/db';
 import { resolveAccountIdentity } from '@/lib/accountIdentity';
+import { getCurrentSyncQueueAuthorityScope } from '@/lib/cloudSyncQueueOwner';
 import { cn, isTauri, renderHotkey } from '@/lib/utils';
 import { HOTKEYS, matchesHotkey } from '@/lib/hotkeys';
 import {
@@ -76,7 +77,15 @@ import {
 } from '@/features/composer-stt/sttInterimEditor';
 import { JARVIS_COMMAND_CATALOG } from '@/features/assistant/commands';
 import { toast } from '@/components/ui/toast';
-import type { Agent, AgentId, ChatId, ProjectId, ProviderId, TerminalSessionId } from '@/types';
+import type {
+  Agent,
+  AgentId,
+  ChatId,
+  ProjectId,
+  ProviderId,
+  TerminalSessionId,
+  WorkspaceId,
+} from '@/types';
 import { getChatActivityEvents } from './activity/activityStore';
 import {
   parseTerminalRef,
@@ -218,6 +227,10 @@ import {
   buildPromptForgeAttachmentSnapshots,
   collectPromptForgeComposerSources,
 } from '@/features/prompt-forge/composerSources';
+import {
+  isPromptForgePluginAvailable,
+  isPromptForgePluginConnected,
+} from '@/features/prompt-forge/composerPluginSources';
 import { promptForgeModelOptionsFromPicker } from '@/features/prompt-forge/contextPreparation';
 import { PromptForgeControl } from '@/features/prompt-forge/PromptForgeControl';
 import { PromptForgeRecovery } from '@/features/prompt-forge/PromptForgeRecovery';
@@ -634,6 +647,7 @@ export function Composer({
   const apiKeys = useAuthStore((s) => s.apiKeys);
   const offlineMode = useAuthStore((s) => s.offlineMode);
   const plan = useAuthStore((s) => s.plan);
+  const workspaceId = useAuthStore((s) => s.workspaceId);
   const projectId = useAuthStore((s) => s.projectId);
   const [contextMaps, setContextMaps] = useState<readonly ContextMapRecord[]>([]);
   const pluginAccountId = useAuthStore((s) => resolveAccountIdentity(s)?.accountId ?? '');
@@ -2188,12 +2202,34 @@ export function Composer({
       signal: AbortSignal;
       now: number;
     }) => {
-      const [messages, persistedChat, persistedProject] = await Promise.all([
+      const [
+        messages,
+        persistedChat,
+        persistedProject,
+        persistedTasks,
+        { jarvisMcpServerManager },
+        { createJarvisActionCatalog, DEFAULT_JARVIS_ACTION_REGISTRATIONS },
+        { getBuiltinAction },
+        { useToolStore },
+      ] = await Promise.all([
         messageRepo.listByChat(chatId as ChatId),
         chatRepo.getById(chatId as ChatId).catch(() => undefined),
         projectId
           ? projectRepo.getById(projectId as ProjectId).catch(() => undefined)
           : Promise.resolve(undefined),
+        workspaceId
+          ? taskRepo
+              .list({
+                workspace_id: workspaceId as WorkspaceId,
+                status: ['open', 'in_progress', 'blocked'],
+                limit: 64,
+              })
+              .catch(() => [])
+          : Promise.resolve([]),
+        import('@/lib/mcp/serverManager'),
+        import('@/lib/jarvis/actions/catalog'),
+        import('@/lib/actions/registry'),
+        import('@/features/tools/toolStore'),
       ]);
       const projectRoot = getStoredProjectRoot(projectId);
       const terminalStates = (
@@ -2228,6 +2264,21 @@ export function Composer({
         usePluginStore.getState(),
         pluginAccountId,
       );
+      const connectedPlugins: PromptForgeComposerDescriptor[] = PLUGIN_CATALOG.filter((plugin) => {
+        const connection = connections[plugin.id];
+        return isPromptForgePluginConnected(plugin, connection, projectId);
+      }).map((plugin) => ({
+        id: plugin.id,
+        label: plugin.name,
+        description: [
+          plugin.description,
+          ...plugin.tools.map((tool) => `${tool.name}: ${tool.description}`),
+          'Connection status: connected and enabled for the current project.',
+        ].join('\n'),
+        verified: true,
+        reference: `plugin://${plugin.id}`,
+        observedAt: connections[plugin.id]?.updatedAt ?? now,
+      }));
       const plugins: PromptForgeComposerDescriptor[] = promptForgePluginIds.map((id) => {
         const plugin = PLUGIN_CATALOG.find((candidate) => candidate.id === id);
         return {
@@ -2239,11 +2290,137 @@ export function Composer({
                 ...plugin.tools.map((tool) => `${tool.name}: ${tool.description}`),
               ].join('\n')
             : 'Attached plugin metadata is unavailable.',
-          verified: Boolean(plugin) && (plugin?.authType === 'none' || Boolean(connections[id])),
+          verified: isPromptForgePluginAvailable(plugin, connections[id], projectId),
           reference: `plugin://${id}`,
           observedAt: now,
         };
       });
+      const activeAgents: PromptForgeComposerDescriptor[] = useJarvisInteractionStore
+        .getState()
+        .agentsForChat(chatId)
+        .filter(
+          (agent) =>
+            String(agent.parentChatId) === String(chatId) &&
+            !['done', 'failed', 'cancelled'].includes(agent.status),
+        )
+        .slice(0, 64)
+        .map((agent) => {
+          const observedAt = Date.parse(agent.updatedAt);
+          return {
+            id: String(agent.agentId),
+            label: agent.name,
+            description: [
+              `Current task: ${agent.task}`,
+              `Status: ${agent.status}`,
+              agent.currentStep ? `Current step: ${agent.currentStep}` : null,
+              `Observed model: ${agent.modelLabel}`,
+            ].join('\n'),
+            verified: true,
+            reference: `agent://chat/${String(chatId)}/${String(agent.agentId)}`,
+            observedAt:
+              Number.isSafeInteger(observedAt) && observedAt >= 0 && observedAt <= now
+                ? observedAt
+                : undefined,
+          };
+        });
+      const mcpTools: PromptForgeComposerDescriptor[] = jarvisMcpServerManager
+        .discover()
+        .filter(
+          (status) =>
+            status.kind === 'external_mcp' &&
+            status.state === 'running' &&
+            status.healthy &&
+            status.exposedTools.length > 0,
+        )
+        .flatMap((status) =>
+          status.exposedTools.slice(0, 64).map((toolName) => ({
+            id: `${status.id}.${toolName}`,
+            label: toolName,
+            description: [
+              `External MCP server: ${status.id}`,
+              'Observed status: healthy and running.',
+              'Exposure status: explicitly allowed for JARVIS.',
+            ].join('\n'),
+            verified: true,
+            reference: `mcp://${status.id}/${toolName}`,
+            observedAt: status.toolsDiscoveredAt ?? status.lastUsedAt ?? now,
+          })),
+        )
+        .slice(0, 64);
+      const appActions: PromptForgeComposerDescriptor[] = createJarvisActionCatalog(
+        DEFAULT_JARVIS_ACTION_REGISTRATIONS,
+      )
+        .listExposed()
+        .filter(
+          (registration) =>
+            registration.executor.kind === 'builtin' &&
+            getBuiltinAction(registration.executor.registryActionId) !== undefined,
+        )
+        .map((registration) => ({
+          id: registration.id,
+          label: registration.title,
+          description: [
+            registration.description,
+            `Risk: ${registration.risk}.`,
+            `Approval policy: ${registration.approval}.`,
+            `Expected effect: ${registration.expectedEffect}`,
+            `Required capability: ${registration.requiredCapabilities[0]}.`,
+            registration.requiredEntitlements.length > 0
+              ? `Required entitlements: ${registration.requiredEntitlements.join(', ')}.`
+              : 'Required entitlements: none declared.',
+            'Registration is installed; execution still requires current capability, entitlement, and approval checks.',
+          ].join('\n'),
+          verified: true,
+          reference: `action://${registration.id}/v${registration.version}`,
+          observedAt: now,
+        }));
+      const accountIdentity = resolveAccountIdentity(useAuthStore.getState());
+      const toolScope = getCurrentSyncQueueAuthorityScope();
+      const toolScopeMatches =
+        accountIdentity?.source === 'supabase'
+          ? toolScope.state === 'cloud' && toolScope.userId === accountIdentity.accountId
+          : accountIdentity?.source === 'local' && toolScope.state === 'unbound';
+      const customTools: PromptForgeComposerDescriptor[] = toolScopeMatches
+        ? useToolStore
+            .getState()
+            .list()
+            .slice(0, 64)
+            .map((tool) => {
+              const actionIds =
+                tool.steps && tool.steps.length > 0
+                  ? tool.steps.map((step) => step.action)
+                  : [tool.baseAction];
+              const installed = actionIds.every((actionId) => Boolean(getBuiltinAction(actionId)));
+              return {
+                id: tool.slug,
+                label: tool.name,
+                description: [
+                  tool.description,
+                  `Saved action${actionIds.length === 1 ? '' : 's'}: ${actionIds.join(', ')}.`,
+                  `Availability: ${installed ? 'installed' : 'contains an unavailable action'}.`,
+                  'Preset parameter values are intentionally omitted.',
+                ].join('\n'),
+                verified: installed,
+                reference: `tool://custom/${tool.slug}`,
+                observedAt: tool.updatedAt,
+              };
+            })
+        : [];
+      const tasks = persistedTasks.map((task) => ({
+        id: String(task.id),
+        title: task.title,
+        notes: task.notes?.slice(0, 4_000),
+        status: task.status,
+        priority: task.priority,
+        projectId: task.project_id ? String(task.project_id) : null,
+        contextTags: task.context_tags.slice(0, 16),
+        dueAt: task.due_at,
+        scheduledFor: task.scheduled_for,
+        reminderCount: task.reminders.filter(
+          (reminder) => reminder.status === 'scheduled' || reminder.status === 'snoozed',
+        ).length,
+        updatedAt: task.updated_at,
+      }));
       return collectPromptForgeComposerSources(
         {
           accountId: pluginAccountId,
@@ -2278,6 +2455,7 @@ export function Composer({
           terminalSessions: useTerminalTranscriptStore.getState().sessions,
           messages,
           plugins,
+          connectedPlugins,
           skills: promptForgeSkills.map((skill) => ({
             id: skill.id,
             label: skill.name,
@@ -2294,6 +2472,11 @@ export function Composer({
             reference: `agent://${agent.slug}`,
             observedAt: now,
           })),
+          activeAgents,
+          mcpTools,
+          appActions,
+          customTools,
+          tasks,
           now,
         },
         signal,
@@ -2309,6 +2492,7 @@ export function Composer({
       promptForgeAgents,
       promptForgePluginIds,
       promptForgeSkills,
+      workspaceId,
     ],
   );
   const promptForge = usePromptForgeComposer({
