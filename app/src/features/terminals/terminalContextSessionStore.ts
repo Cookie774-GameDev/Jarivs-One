@@ -20,6 +20,32 @@ type TerminalContextUpdate = Readonly<
 >;
 
 const sessions = new Map<string, TerminalContextSession>();
+const listeners = new Set<(session: TerminalContextSession) => void>();
+
+function publish(session: TerminalContextSession): void {
+  for (const listener of [...listeners]) {
+    try {
+      listener(session);
+    } catch {
+      // A view subscriber cannot interrupt the terminal Context authority.
+    }
+  }
+}
+
+export function subscribeTerminalContextSessions(
+  listener: (session: TerminalContextSession) => void,
+): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+export function getTerminalContextSession(
+  terminalSessionId: string,
+): TerminalContextSession | null {
+  return sessions.get(terminalSessionId) ?? null;
+}
 
 function sessionIdForScope(scope: TerminalContextScope): string {
   return scope.terminalSessionId ?? `external:${scope.projectId ?? 'current'}`;
@@ -74,6 +100,7 @@ export function getOrCreateTerminalContextSession(
     contextRevision: 0,
   });
   sessions.set(created.terminalSessionId, created);
+  publish(created);
   return created;
 }
 
@@ -96,6 +123,7 @@ export function updateTerminalContextSession(
     contextRevision: current.contextRevision + 1,
   });
   sessions.set(next.terminalSessionId, next);
+  publish(next);
   return next;
 }
 
@@ -107,6 +135,7 @@ export function consumeTerminalContextSessionOnce(
   const consumed = consumeOneTurnTerminalContext(current, now);
   if (consumed.next !== current) {
     sessions.set(consumed.next.terminalSessionId, consumed.next);
+    publish(consumed.next);
   }
   return consumed;
 }
@@ -130,9 +159,11 @@ export function rebindTerminalContextSessionProject(
     contextRevision: current.contextRevision + 1,
   });
   sessions.set(next.terminalSessionId, next);
+  publish(next);
   return next;
 }
 
 export function resetTerminalContextSessionsForTests(): void {
   sessions.clear();
+  listeners.clear();
 }

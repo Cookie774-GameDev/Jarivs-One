@@ -59,6 +59,12 @@ import {
   resolveAgentForSlug,
 } from './agentPromptDelivery';
 import {
+  getOrCreateTerminalContextSession,
+  getTerminalContextSession,
+  subscribeTerminalContextSessions,
+  updateTerminalContextSession,
+} from './terminalContextSessionStore';
+import {
   createTerminalOutputBuffer,
   filterStartupTerminalOutput,
   findAltScreenEnter,
@@ -539,6 +545,7 @@ export function TerminalView({
   const userHasScrolledRef = useRef(false);
   const currentInputRef = useRef('');
   const currentInputFlushTimerRef = useRef<number | null>(null);
+  const contextDeliveryQueueRef = useRef<Promise<void>>(Promise.resolve());
 
   const [activeSessionId, setActiveSessionId] = useState<string | null>(existingSessionId ?? null);
   const [isFocused, setIsFocused] = useState(false);
@@ -688,6 +695,18 @@ export function TerminalView({
     deliveredModeRef.current = mode;
     const sessionCwd = cwdRef.current;
     if (!sessionCwd) return;
+    const terminalContextSession = getTerminalContextSession(sid);
+    if (terminalContextSession && terminalContextSession.agentSlug !== slug) {
+      updateTerminalContextSession(
+        {
+          terminalSessionId: sid,
+          paneId: terminalContextSession.paneId,
+          projectId: terminalContextSession.projectId,
+        },
+        { agentSlug: slug },
+      );
+      return;
+    }
     void (async () => {
       const coordinationSummary = await coordinationSummaryFor(mode, sessionCwd);
       const result = await deliverAgentTerminalContext({
@@ -699,6 +718,7 @@ export function TerminalView({
         projectName: projectName ?? null,
         excludeSessionId: sid,
         coordinationSummary,
+        terminalContextSession,
       });
       if (!result.ok && result.error) {
         console.warn('[Jarvis] agent briefing re-delivery failed:', result.error);
@@ -706,6 +726,73 @@ export function TerminalView({
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentSlug, resolvedAgentMode]);
+
+  useEffect(() => {
+    if (!activeSessionId) return;
+    let cancelled = false;
+
+    const regenerate = (session: ReturnType<typeof getOrCreateTerminalContextSession>): void => {
+      if (session.terminalSessionId !== activeSessionId) return;
+      const sessionCwd = cwdRef.current;
+      if (!sessionCwd) return;
+
+      const slug = session.agentSlug;
+      const mode = agentModeRef.current;
+      contextDeliveryQueueRef.current = contextDeliveryQueueRef.current
+        .catch(() => undefined)
+        .then(async () => {
+          if (cancelled) return;
+          const result = await deliverAgentTerminalContext({
+            cwd: sessionCwd,
+            agentSlug: slug,
+            agentMode: mode,
+            terminalId: activeSessionId,
+            projectId: session.projectId,
+            projectName: projectName ?? null,
+            excludeSessionId: activeSessionId,
+            coordinationSummary: await coordinationSummaryFor(mode, sessionCwd),
+            terminalContextSession: session,
+          });
+          if (cancelled) return;
+          if (result.ok) {
+            deliveredSlugRef.current = slug;
+            deliveredModeRef.current = mode;
+          } else if (result.error) {
+            console.warn('[Jarvis] Context briefing regeneration failed:', result.error);
+          }
+        });
+    };
+
+    let initialSession =
+      getTerminalContextSession(activeSessionId) ??
+      getOrCreateTerminalContextSession({
+        terminalSessionId: activeSessionId,
+        paneId: paneId ?? null,
+        projectId: projectId ?? null,
+      });
+    if (
+      initialSession.contextRevision === 0 &&
+      initialSession.agentSlug === null &&
+      agentSlugRef.current !== null
+    ) {
+      initialSession = updateTerminalContextSession(
+        {
+          terminalSessionId: activeSessionId,
+          paneId: initialSession.paneId,
+          projectId: initialSession.projectId,
+        },
+        { agentSlug: agentSlugRef.current },
+      );
+    }
+
+    const unsubscribe = subscribeTerminalContextSessions(regenerate);
+    regenerate(initialSession);
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSessionId, paneId, projectId, projectName]);
 
   useEffect(() => {
     const sid = activeSessionId;
@@ -828,6 +915,7 @@ export function TerminalView({
           projectName: projectName ?? null,
           excludeSessionId: sid,
           coordinationSummary: await coordinationSummaryFor(mode, sessionCwd),
+          terminalContextSession: getTerminalContextSession(sid),
         });
         if (result.ok) {
           deliveredSlugRef.current = slug;
@@ -1405,6 +1493,7 @@ export function TerminalView({
               projectName: projectName ?? null,
               excludeSessionId: sid,
               coordinationSummary: await coordinationSummaryFor(modeAtSpawn, sessionCwd),
+              terminalContextSession: getTerminalContextSession(sid),
             });
             briefingDelivered = delivery.ok;
             if (!delivery.ok && delivery.error) {
@@ -1444,6 +1533,7 @@ export function TerminalView({
               projectName: projectName ?? null,
               excludeSessionId: sid,
               coordinationSummary: await coordinationSummaryFor(modeAtSpawn, sessionCwd),
+              terminalContextSession: getTerminalContextSession(sid),
             });
             briefingDelivered = delivery.ok;
           }

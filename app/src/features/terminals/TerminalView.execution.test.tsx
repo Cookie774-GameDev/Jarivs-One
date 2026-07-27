@@ -315,4 +315,19 @@ describe('TerminalView canonical execution truth', () => {
     expect(sessionCreation).toBeGreaterThan(0);
     expect(childSpawn).toBeGreaterThan(sessionCreation);
   });
+
+  it('regenerates the managed briefing and Context pack from supervised session changes', () => {
+    const frontend = readFileSync(
+      resolve(process.cwd(), 'src/features/terminals/TerminalView.tsx'),
+      'utf8',
+    );
+
+    expect(frontend).toContain('subscribeTerminalContextSessions');
+    expect(frontend).toContain('terminalContextSession: session');
+    expect(frontend).toContain('session.terminalSessionId !== activeSessionId');
+    expect(frontend).toContain('contextDeliveryQueueRef');
+    expect(frontend).toContain('getOrCreateTerminalContextSession');
+    expect(frontend).toContain('initialSession.contextRevision === 0');
+    expect(frontend).toContain('updateTerminalContextSession');
+  });
 });

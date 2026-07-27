@@ -26,7 +26,8 @@ vi.mock('@/lib/fs', () => ({
   writeTextFile: fsMocks.writeTextFile,
 }));
 
-vi.mock('@/lib/db', () => ({
+vi.mock('@/lib/db', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/db')>()),
   projectRepo: {
     getById: vi.fn(async (id: string) =>
       id === 'proj_ctx'
@@ -58,6 +59,7 @@ import {
 import { useAgentStore } from '@/stores/agents';
 import { useTerminalTranscriptStore } from './transcriptStore';
 import type { ProjectContextTree } from '@/features/context/tree';
+import { createTerminalContextSession } from './terminalCommandFoundation';
 
 function makeAgent(slug: string, name: string, system_prompt: string): Agent {
   return {
@@ -252,9 +254,7 @@ describe('summarizeContextTree', () => {
       totalBytes: 1000,
       summary: 'Desktop AI workspace.',
       recommendedEntryPoints: ['app/src/App.tsx'],
-      nodes: [
-        { id: 'n1', title: 'Frontend', kind: 'area', summary: 'React UI', path: 'app/src' },
-      ],
+      nodes: [{ id: 'n1', title: 'Frontend', kind: 'area', summary: 'React UI', path: 'app/src' }],
     };
     const summary = summarizeContextTree(tree);
     expect(summary).toContain('Desktop AI workspace.');
@@ -318,9 +318,9 @@ describe('interactive CLI injection helpers', () => {
   });
 
   it('does not inline the agent briefing into an interactive CLI message', async () => {
-    useAgentStore.getState().registerAgent(
-      makeAgent('critic', 'Critic', 'You are the Critic. The code word is APPLE.'),
-    );
+    useAgentStore
+      .getState()
+      .registerAgent(makeAgent('critic', 'Critic', 'You are the Critic. The code word is APPLE.'));
 
     const message = await buildTerminalAgentInjectionMessage({
       agentSlug: 'critic',
@@ -357,7 +357,11 @@ describe('gatherSiblingAgentActivity', () => {
   it('lists same-project agent sessions, excluding the caller', () => {
     const store = useTerminalTranscriptStore.getState();
     store.registerSession('pty_self', { agentSlug: 'coder', projectId: 'p1' });
-    store.registerSession('pty_sib', { agentSlug: 'reviewer', command: 'opencode', projectId: 'p1' });
+    store.registerSession('pty_sib', {
+      agentSlug: 'reviewer',
+      command: 'opencode',
+      projectId: 'p1',
+    });
     store.registerSession('pty_other_proj', { agentSlug: 'writer', projectId: 'p2' });
     store.registerSession('pty_untagged', { agentSlug: null, projectId: 'p1' });
     store.appendOutput('pty_sib', 'checking tests\nreviewing diff now\n');
@@ -381,7 +385,11 @@ describe('deliverAgentTerminalContext', () => {
   const GEMINI = 'C:\\repo\\GEMINI.md';
   const COORD = 'C:\\repo\\.jarvis-coordination.md';
 
-  const notFound = (path: string) => ({ ok: false as const, error: { code: 'not_found' as const }, path });
+  const notFound = (path: string) => ({
+    ok: false as const,
+    error: { code: 'not_found' as const },
+    path,
+  });
   const okRead = (path: string, content: string) => ({ ok: true as const, content, path });
   const okWrite = (path: string) => ({ ok: true as const, path });
 
@@ -448,6 +456,50 @@ describe('deliverAgentTerminalContext', () => {
     expect(agentsMd).toContain('Gemini owns AgentRolePicker.tsx');
   });
 
+  it('writes a bounded app-data Context pack and points the managed briefing to it', async () => {
+    useAgentStore.getState().registerAgent(makeAgent('coder', 'Coder', 'Build carefully.'));
+    fsMocks.readTextFile.mockImplementation(async (path: string) => notFound(path));
+    fsMocks.writeTextFile.mockImplementation(async (path: string) => okWrite(path));
+    const writeContextPack = vi.fn(async () => 'C:\\AppData\\VibeSpace\\session-context\\tty-a.md');
+    const session = createTerminalContextSession({
+      version: 1,
+      terminalSessionId: 'tty-a',
+      paneId: 'pane-a',
+      projectId: 'proj_ctx',
+      activeMapIds: ['map-a'],
+      pinnedEntityIds: ['entity-a'],
+      activeSkillIds: ['build'],
+      agentSlug: 'coder',
+      mode: 'persistent',
+      updatedAt: 2,
+      contextRevision: 3,
+    });
+
+    const result = await deliverAgentTerminalContext({
+      cwd: CWD,
+      agentSlug: 'coder',
+      projectId: 'proj_ctx',
+      terminalId: 'tty-a',
+      terminalContextSession: session,
+      terminalContextPack: {
+        markdown:
+          '# VibeSpace terminal Context pack\n\n## Active Context Maps\n- Main\n\n## Active skills\n- Build\n',
+        warnings: [],
+      },
+      contextPackStorage: { write: writeContextPack },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(writeContextPack).toHaveBeenCalledWith(
+      'tty-a',
+      expect.stringContaining('## Active Context Maps'),
+    );
+    const agentsMd = writtenContent(AGENTS);
+    expect(agentsMd).toContain('## Terminal Context');
+    expect(agentsMd).toContain('session-context\\tty-a.md');
+    expect(agentsMd).toContain('## Active skills');
+  });
+
   it('does not inject instructions or coordination files for fresh no-context mode', async () => {
     useAgentStore.getState().registerAgent(makeAgent('coder', 'Coder', 'The code word is APPLE.'));
     fsMocks.readTextFile.mockImplementation(async (path: string) => notFound(path));
@@ -467,7 +519,9 @@ describe('deliverAgentTerminalContext', () => {
   it('clears stale managed blocks in no-context mode without touching the coordination doc', async () => {
     const existing = `# Keep me\n\n${wrapManagedBlock('stale APPLE briefing')}\n`;
     fsMocks.readTextFile.mockImplementation(async (path: string) =>
-      path === AGENTS || path === CLAUDE || path === GEMINI ? okRead(path, existing) : notFound(path),
+      path === AGENTS || path === CLAUDE || path === GEMINI
+        ? okRead(path, existing)
+        : notFound(path),
     );
     fsMocks.writeTextFile.mockImplementation(async (path: string) => okWrite(path));
 
@@ -539,7 +593,7 @@ describe('deliverAgentTerminalContext', () => {
           ? okRead(path, currentClaudeMd)
           : path === GEMINI
             ? okRead(path, currentGeminiMd)
-          : okRead(path, 'existing claims'),
+            : okRead(path, 'existing claims'),
     );
     fsMocks.writeTextFile.mockClear();
 
@@ -552,7 +606,9 @@ describe('deliverAgentTerminalContext', () => {
   it('removes the managed block from all instruction files when the agent is cleared', async () => {
     const existing = `# Keep me\n\n${wrapManagedBlock('stale briefing')}\n`;
     fsMocks.readTextFile.mockImplementation(async (path: string) =>
-      path === AGENTS || path === CLAUDE || path === GEMINI ? okRead(path, existing) : notFound(path),
+      path === AGENTS || path === CLAUDE || path === GEMINI
+        ? okRead(path, existing)
+        : notFound(path),
     );
     fsMocks.writeTextFile.mockImplementation(async (path: string) => okWrite(path));
 

@@ -1,8 +1,10 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   consumeTerminalContextSessionOnce,
   getOrCreateTerminalContextSession,
+  getTerminalContextSession,
   resetTerminalContextSessionsForTests,
+  subscribeTerminalContextSessions,
   updateTerminalContextSession,
 } from './terminalContextSessionStore';
 
@@ -42,6 +44,8 @@ describe('terminal context session authority', () => {
     });
     expect(second.terminalSessionId).toBe('tty-b');
     expect(second).not.toBe(first);
+    expect(getTerminalContextSession('tty-a')).toBe(first);
+    expect(getTerminalContextSession('missing')).toBeNull();
   });
 
   it('updates only the owned session and monotonically advances its revision', () => {
@@ -153,5 +157,25 @@ describe('terminal context session authority', () => {
     expect(first.terminalSessionId).toBe('external:project-a');
     expect(again).toBe(first);
     expect(other.terminalSessionId).toBe('external:project-b');
+  });
+
+  it('notifies supervised terminal consumers after each material session mutation', () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribeTerminalContextSessions(listener);
+    const scope = {
+      terminalSessionId: 'tty-a',
+      paneId: 'pane-a',
+      projectId: 'project-a',
+    } as const;
+
+    getOrCreateTerminalContextSession(scope, 100);
+    updateTerminalContextSession(scope, { activeMapIds: ['map-a'] }, 110);
+    updateTerminalContextSession(scope, { pinnedEntityIds: ['entity-a'], mode: 'one_turn' }, 120);
+    consumeTerminalContextSessionOnce(scope, 130);
+    unsubscribe();
+    updateTerminalContextSession(scope, { activeSkillIds: ['build'] }, 140);
+
+    expect(listener).toHaveBeenCalledTimes(4);
+    expect(listener.mock.calls.map(([session]) => session.contextRevision)).toEqual([0, 1, 2, 3]);
   });
 });

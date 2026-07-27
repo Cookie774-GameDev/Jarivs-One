@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { resetTerminalContextSessionsForTests } from './terminalContextSessionStore';
+import {
+  getTerminalContextSession,
+  resetTerminalContextSessionsForTests,
+} from './terminalContextSessionStore';
 import {
   createTerminalCliRuntime,
   parseTerminalCliFrontendRequest,
@@ -139,6 +142,7 @@ describe('terminal CLI frontend runtime', () => {
       parseTerminalCliFrontendRequest(request('context.use', { map: 'VibeSpace Main' })),
     );
     expect(selected).toMatchObject({ ok: true, code: 'ok' });
+    expect(selected.message).toMatch(/Restart the current agent session.*supported fresh turn/u);
     expect(deps.selectContextMap).toHaveBeenCalledWith('project-a', 'map-a');
 
     const attached = await runtime.execute(
@@ -147,6 +151,7 @@ describe('terminal CLI frontend runtime', () => {
       ),
     );
     expect(attached).toMatchObject({ ok: true, code: 'ok' });
+    expect(attached.message).toMatch(/Restart the current agent session.*supported fresh turn/u);
 
     const current = await runtime.execute(
       parseTerminalCliFrontendRequest(request('context.current')),
@@ -165,6 +170,7 @@ describe('terminal CLI frontend runtime', () => {
     expect(cleared.data).toMatchObject({
       session: { activeMapIds: [], pinnedEntityIds: [], mode: 'persistent' },
     });
+    expect(cleared.message).toMatch(/Restart the current agent session.*supported fresh turn/u);
   });
 
   it('executes search, open, refresh, source inspection, and map creation services', async () => {
@@ -173,6 +179,7 @@ describe('terminal CLI frontend runtime', () => {
     await runtime.execute(
       parseTerminalCliFrontendRequest(request('context.use', { map: 'map-a' })),
     );
+    const revisionBeforeRefresh = getTerminalContextSession('tty-a')?.contextRevision;
 
     const search = await runtime.execute(
       parseTerminalCliFrontendRequest(request('context.search', { query: 'bootstrap' })),
@@ -187,11 +194,14 @@ describe('terminal CLI frontend runtime', () => {
     ).resolves.toMatchObject({ ok: true });
     expect(deps.openContextEntity).toHaveBeenCalled();
 
-    await expect(
-      runtime.execute(
-        parseTerminalCliFrontendRequest(request('context.refresh', { map: 'map-a' })),
-      ),
-    ).resolves.toMatchObject({ ok: true });
+    const refreshed = await runtime.execute(
+      parseTerminalCliFrontendRequest(request('context.refresh', { map: 'map-a' })),
+    );
+    expect(refreshed).toMatchObject({ ok: true });
+    expect(refreshed.message).toMatch(/Restart the current agent session.*supported fresh turn/u);
+    expect(getTerminalContextSession('tty-a')?.contextRevision).toBe(
+      (revisionBeforeRefresh ?? 0) + 1,
+    );
     await expect(
       runtime.execute(parseTerminalCliFrontendRequest(request('context.sources'))),
     ).resolves.toMatchObject({ data: { sources: expect.any(Array) } });

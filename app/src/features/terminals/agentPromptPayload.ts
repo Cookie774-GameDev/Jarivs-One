@@ -10,6 +10,8 @@ export interface AgentPromptPayloadInput {
   projectName?: string | null;
   projectContext?: string | null;
   contextMapSummary?: string | null;
+  terminalContextPackPath?: string | null;
+  terminalContextSummary?: string | null;
   coordinationSummary?: string | null;
   coordinationFilePath?: string | null;
   otherAgents?: Array<{
@@ -30,20 +32,22 @@ export interface AgentPromptPayload {
   managedBlock: string | null;
 }
 
-const MANAGED_BLOCK_START = '<!-- VIBESPACE:AGENT-BRIEFING:START — managed by VibeSpace, do not edit between markers -->';
+const MANAGED_BLOCK_START =
+  '<!-- VIBESPACE:AGENT-BRIEFING:START — managed by VibeSpace, do not edit between markers -->';
 const MANAGED_BLOCK_END = '<!-- VIBESPACE:AGENT-BRIEFING:END -->';
 const MAX_AGENT_PROMPT_CHARS = 12_000;
 const MAX_PROJECT_CONTEXT_CHARS = 6_000;
 const MAX_CONTEXT_MAP_CHARS = 4_000;
+const MAX_TERMINAL_CONTEXT_CHARS = 8_000;
 const MAX_COORDINATION_SUMMARY_CHARS = 4_000;
 
 const BASE_RULES = [
-  'You are one of possibly several AI CLI agents working in this project inside VibeSpace, the user\'s multi-agent workspace. Each agent runs in its own terminal pane.',
+  "You are one of possibly several AI CLI agents working in this project inside VibeSpace, the user's multi-agent workspace. Each agent runs in its own terminal pane.",
   '',
   'Shared operating rules for every agent:',
   '1. Stay inside this project directory unless the user explicitly directs you elsewhere.',
-  '2. Prefer small, verifiable changes. Run the project\'s tests when you change code.',
-  '3. Never delete or rewrite another agent\'s coordination entries.',
+  "2. Prefer small, verifiable changes. Run the project's tests when you change code.",
+  "3. Never delete or rewrite another agent's coordination entries.",
 ].join('\n');
 
 const COORDINATED_RULES = [
@@ -107,7 +111,9 @@ export function buildAgentPromptPayload(input: AgentPromptPayloadInput): AgentPr
         `Terminal ID: \`${input.terminalId ?? 'unknown'}\``,
         `Mode: \`${mode}\``,
         input.cwd ? `Workspace: \`${input.cwd}\`` : null,
-      ].filter(Boolean).join('\n'),
+      ]
+        .filter(Boolean)
+        .join('\n'),
     );
   }
 
@@ -119,6 +125,22 @@ export function buildAgentPromptPayload(input: AgentPromptPayloadInput): AgentPr
 
   const contextMap = clip(input.contextMapSummary, MAX_CONTEXT_MAP_CHARS);
   if (contextMap) sections.push(`## Project context map\n${contextMap}`);
+
+  const terminalContext = clip(input.terminalContextSummary, MAX_TERMINAL_CONTEXT_CHARS);
+  const contextPackPath = clip(input.terminalContextPackPath, 1_000);
+  if (terminalContext || contextPackPath) {
+    sections.push(
+      [
+        '## Terminal Context',
+        contextPackPath
+          ? `Bounded Context pack: \`${contextPackPath.replaceAll('`', 'ˋ')}\``
+          : null,
+        terminalContext || null,
+      ]
+        .filter(Boolean)
+        .join('\n\n'),
+    );
+  }
 
   if (coordinated) {
     const coordinationSummary = clip(input.coordinationSummary, MAX_COORDINATION_SUMMARY_CHARS);

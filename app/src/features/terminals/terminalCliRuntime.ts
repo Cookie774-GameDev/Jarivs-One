@@ -293,6 +293,13 @@ function ok(
   });
 }
 
+const CONTEXT_RELOAD_NOTICE =
+  'Restart the current agent session or begin a supported fresh turn to guarantee the updated Context is loaded.';
+
+function contextChanged(message: string): string {
+  return `${message} ${CONTEXT_RELOAD_NOTICE}`;
+}
+
 function fail(
   request: TerminalCliFrontendRequest,
   code: Exclude<TerminalCliRuntimeCode, 'ok'>,
@@ -413,7 +420,7 @@ export function createTerminalCliRuntime(dependencies: TerminalCliRuntimeDepende
             { activeMapIds: [map.id], mode: 'persistent' },
             now,
           );
-          return ok(request, `Context Map: ${map.name}`, { map, session });
+          return ok(request, contextChanged(`Context Map: ${map.name}`), { map, session });
         }
         case 'context.clear': {
           exactParams(request, []);
@@ -422,7 +429,7 @@ export function createTerminalCliRuntime(dependencies: TerminalCliRuntimeDepende
             { activeMapIds: [], pinnedEntityIds: [], mode: 'persistent' },
             now,
           );
-          return ok(request, 'Terminal Context cleared.', { session });
+          return ok(request, contextChanged('Terminal Context cleared.'), { session });
         }
         case 'context.search': {
           const query = stringParam(request, 'query');
@@ -477,9 +484,11 @@ export function createTerminalCliRuntime(dependencies: TerminalCliRuntimeDepende
           );
           return ok(
             request,
-            params.mode === 'one_turn'
-              ? `Attached ${entity.label} for the next supported agent turn.`
-              : `Attached Context: ${entity.label}`,
+            contextChanged(
+              params.mode === 'one_turn'
+                ? `Attached ${entity.label} for the next supported agent turn.`
+                : `Attached Context: ${entity.label}`,
+            ),
             { entity, session },
           );
         }
@@ -498,7 +507,16 @@ export function createTerminalCliRuntime(dependencies: TerminalCliRuntimeDepende
             mapId = getOrCreateTerminalContextSession(scope, now).activeMapIds[0] ?? null;
           }
           const map = await dependencies.refreshContextMap(projectId, mapId);
-          return ok(request, `Refreshed Context Map: ${map.name}`, { map });
+          const current = getOrCreateTerminalContextSession(scope, now);
+          const isActive = current.activeMapIds.includes(map.id);
+          const session = isActive ? updateTerminalContextSession(scope, {}, now) : current;
+          return ok(
+            request,
+            isActive
+              ? contextChanged(`Refreshed Context Map: ${map.name}`)
+              : `Refreshed Context Map: ${map.name}`,
+            { map, session },
+          );
         }
         case 'context.sources': {
           exactParams(request, []);
