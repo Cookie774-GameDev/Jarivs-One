@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { LLMResponse } from '@/lib/ai/types';
 import type { RunAgentRequest } from '@/lib/ai/router';
+import type { ChatImageAttachment } from '@/lib/ai/vision';
 import type { PromptForgeJob } from './contracts';
 import type { ResolvedPromptForgeModel } from './modelSelection';
 import type { PromptPreservationContract } from './preservation';
@@ -22,6 +23,25 @@ const model: ResolvedPromptForgeModel = Object.freeze({
   connectionMode: 'external-cli',
   local: false,
   billingClass: 'subscription_connection',
+});
+
+const nativeVisionModel: ResolvedPromptForgeModel = Object.freeze({
+  providerId: 'openai',
+  modelId: 'gpt-4o',
+  label: 'GPT-4o',
+  connectionId: 'openai-api',
+  connectionMode: 'native-api',
+  local: false,
+  billingClass: 'provider_billed',
+});
+
+const image: ChatImageAttachment = Object.freeze({
+  id: 'image-1',
+  name: 'diagram.png',
+  mimeType: 'image/png',
+  data: 'iVBORw0KGgo=',
+  sourcePath: 'C:\\private\\diagram.png',
+  size: 8,
 });
 
 const sourcePack: PromptForgeSourcePack = Object.freeze({
@@ -141,6 +161,39 @@ describe('Prompt Forge model execution', () => {
       '"exact words"',
       'app/src/main.ts',
     ]);
+  });
+
+  it('sends current Composer images as ordered multimodal parts without persisting path data', async () => {
+    let received: RunAgentRequest | undefined;
+    const executor = createPromptForgeExecutor({
+      runModel: async (request) => {
+        received = request;
+        return { ...response('Keep "exact words" from app/src/main.ts.'), model: 'gpt-4o' };
+      },
+      now: () => 300,
+    });
+
+    await executor.execute({
+      job,
+      model: nativeVisionModel,
+      sourcePack,
+      preservation,
+      imageAttachments: [image],
+    });
+
+    const content = received?.messages[0]?.content;
+    expect(Array.isArray(content)).toBe(true);
+    expect(content).toEqual([
+      { type: 'text', text: expect.stringContaining(job.originalDraft) },
+      {
+        type: 'image',
+        data: 'iVBORw0KGgo=',
+        mimeType: 'image/png',
+        name: 'diagram.png',
+      },
+    ]);
+    expect(received).toMatchObject({ connectionRequirements: { images: true } });
+    expect(JSON.stringify(received)).not.toContain('C:\\');
   });
 
   it('propagates cancellation and rejects empty or silently substituted output', async () => {

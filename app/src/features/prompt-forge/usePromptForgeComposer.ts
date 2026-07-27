@@ -4,6 +4,7 @@ import type { SharedContextRetrievalResult } from '@/features/context/contextRes
 import type { ContextAttachment } from '@/features/context/tree';
 import { useChatActivityStore } from '@/features/chat/activity/activityStore';
 import { db } from '@/lib/db';
+import type { ChatImageAttachment } from '@/lib/ai/vision';
 import { hasDetectedSecret } from '@/lib/security/secretDetector';
 import {
   createPromptForgeJob,
@@ -33,6 +34,7 @@ import {
   type PromptForgeJobRepository,
 } from './promptForgeService';
 import type { PromptForgeSourceCandidate } from './sourcePack';
+import { promptForgeImageDisabledReason } from './promptForgeImages';
 
 const RUNNING_STATUSES = new Set<PromptForgeStatus>([
   'collecting_context',
@@ -131,6 +133,7 @@ export interface UsePromptForgeComposerOptions {
   draft: string;
   setDraft: (value: string) => void;
   originalAttachments: readonly PromptForgeAttachmentSnapshot[];
+  imageAttachments?: readonly ChatImageAttachment[];
   contextAttachments: readonly (ContextAttachment | ContextChatAttachment)[];
   additionalSources: readonly PromptForgeSourceCandidate[];
   collectAdditionalSources?: PromptForgeAdditionalSourceCollector;
@@ -195,6 +198,15 @@ function errorMessage(job: PromptForgeJob): string | null {
   if (job.errorCode === 'sensitive_input') {
     return 'Remove or replace detected secrets before running Prompt Forge.';
   }
+  if (job.errorCode === 'invalid_image') {
+    return 'Remove the invalid image attachment and attach it again.';
+  }
+  if (job.errorCode === 'image_transport_unsupported') {
+    return 'Choose a native vision-capable provider model for image attachments.';
+  }
+  if (job.errorCode === 'image_model_unsupported') {
+    return 'Choose a vision-capable Prompt Forge model for image attachments.';
+  }
   return 'Prompt Forge could not complete this upgrade. Your original draft is unchanged.';
 }
 
@@ -205,6 +217,7 @@ function modelDisabledReason(
   offlineMode: boolean,
   defaultLocalModel: string,
   privacyMode: PromptForgePrivacyMode,
+  imageAttachments: readonly ChatImageAttachment[],
 ): string | null {
   try {
     const model = resolvePromptForgeModelSelection(selection, {
@@ -216,7 +229,7 @@ function modelDisabledReason(
     if (privacyMode === 'local_only' && !model.local) {
       return 'Choose a local model or allow a provider connection for this run.';
     }
-    return null;
+    return promptForgeImageDisabledReason(imageAttachments, model);
   } catch (error) {
     if (!(error instanceof PromptForgeModelSelectionError)) {
       return 'Choose an available Prompt Forge model.';
@@ -300,6 +313,7 @@ export function usePromptForgeComposer(options: UsePromptForgeComposerOptions) {
         options.offlineMode,
         options.defaultLocalModel,
         privacyMode,
+        options.imageAttachments ?? [],
       ),
     [
       options.currentChatSelection,
@@ -307,6 +321,7 @@ export function usePromptForgeComposer(options: UsePromptForgeComposerOptions) {
       options.modelOptions,
       options.modelSelection,
       options.offlineMode,
+      options.imageAttachments,
       privacyMode,
     ],
   );
@@ -321,12 +336,14 @@ export function usePromptForgeComposer(options: UsePromptForgeComposerOptions) {
             options.offlineMode,
             options.defaultLocalModel,
             recoverableJob.privacyMode,
+            options.imageAttachments ?? [],
           ),
     [
       options.currentChatSelection,
       options.defaultLocalModel,
       options.modelOptions,
       options.offlineMode,
+      options.imageAttachments,
       recoverableJob,
     ],
   );
@@ -544,6 +561,9 @@ export function usePromptForgeComposer(options: UsePromptForgeComposerOptions) {
         activeService = service;
         serviceRef.current = service;
         const completed = await service.start(initial, {
+          ...(options.imageAttachments === undefined
+            ? {}
+            : { imageAttachments: options.imageAttachments }),
           ...(options.workingDirectory ? { workingDirectory: options.workingDirectory } : {}),
         });
         if (
@@ -590,6 +610,7 @@ export function usePromptForgeComposer(options: UsePromptForgeComposerOptions) {
       options.draft,
       options.modelSelection,
       options.originalAttachments,
+      options.imageAttachments,
       options.projectId,
       options.workingDirectory,
       privacyMode,
@@ -629,6 +650,9 @@ export function usePromptForgeComposer(options: UsePromptForgeComposerOptions) {
       activeService = service;
       serviceRef.current = service;
       const completed = await service.resume(recovered.accountId, recovered.id, {
+        ...(options.imageAttachments === undefined
+          ? {}
+          : { imageAttachments: options.imageAttachments }),
         ...(options.workingDirectory ? { workingDirectory: options.workingDirectory } : {}),
       });
       if (activeRunRef.current !== activeRun || currentScopeKeyRef.current !== activeRun.scopeKey) {
@@ -663,6 +687,7 @@ export function usePromptForgeComposer(options: UsePromptForgeComposerOptions) {
     currentScope,
     currentScopeKey,
     excludedSourceIds,
+    options.imageAttachments,
     options.workingDirectory,
     recoverableJob,
     recoveryDisabledReason,

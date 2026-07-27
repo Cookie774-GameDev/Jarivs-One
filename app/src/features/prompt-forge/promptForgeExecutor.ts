@@ -1,8 +1,10 @@
 import type { Agent, AgentId, ProviderId } from '@/types';
 import { runAgent, type RunAgentRequest } from '@/lib/ai/router';
 import type { LLMResponse, LLMStreamChunk, TokenUsage } from '@/lib/ai/types';
+import type { ChatImageAttachment } from '@/lib/ai/vision';
 import { hasDetectedSecret } from '@/lib/security/secretDetector';
 import type { PromptForgeJob } from './contracts';
+import { preparePromptForgeImageParts } from './promptForgeImages';
 import type { ResolvedPromptForgeModel } from './modelSelection';
 import {
   validatePromptPreservation,
@@ -54,6 +56,7 @@ export type PromptForgeExecutionInput = Readonly<{
   model: ResolvedPromptForgeModel;
   sourcePack: PromptForgeSourcePack;
   preservation: PromptPreservationContract;
+  imageAttachments?: readonly ChatImageAttachment[];
   signal?: AbortSignal;
   workingDirectory?: string;
   onChunk?: (chunk: LLMStreamChunk) => void;
@@ -151,13 +154,24 @@ export function createPromptForgeExecutor(
       }
       const startedAt = now();
       const agent = createExecutionAgent(input.model, input.job.createdAt);
+      const prompt = buildUpgradeMessage(input);
+      const imageParts = preparePromptForgeImageParts(input.imageAttachments ?? [], input.model);
       const response = await runModel({
         purpose: 'prompt_forge',
         agent,
-        messages: [{ role: 'user', content: buildUpgradeMessage(input) }],
+        messages: [
+          {
+            role: 'user',
+            content:
+              imageParts.length === 0
+                ? prompt
+                : [Object.freeze({ type: 'text' as const, text: prompt }), ...imageParts],
+          },
+        ],
         requestId: `prompt-forge:${input.job.id}`,
         temperature: 0.2,
         max_output_tokens: MAX_OUTPUT_TOKENS,
+        ...(imageParts.length === 0 ? {} : { connectionRequirements: { images: true } }),
         ...(input.model.connectionId === null ? {} : { connectionId: input.model.connectionId }),
         ...(input.signal === undefined ? {} : { signal: input.signal }),
         ...(input.workingDirectory === undefined

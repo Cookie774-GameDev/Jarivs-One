@@ -6,8 +6,15 @@ const source = readFileSync(resolve(process.cwd(), 'src/features/chat/Composer.t
 
 describe('Composer Prompt Forge integration', () => {
   it('uses the same typed-or-dictated draft and existing attachment state without auto-sending', () => {
-    expect(source).toContain('draft: text');
-    expect(source).toContain('contextAttachments: attachedContexts');
+    const hookStart = source.indexOf('const promptForge = usePromptForgeComposer({');
+    const hookEnd = source.indexOf('\n  });', hookStart);
+    const hookOptions = source.slice(hookStart, hookEnd);
+    expect(hookStart).toBeGreaterThan(0);
+    expect(hookEnd).toBeGreaterThan(hookStart);
+    expect(hookOptions).toContain('draft: text');
+    expect(hookOptions).toContain('contextAttachments: attachedContexts');
+    expect(hookOptions).toContain('imageAttachments: attachedImages');
+    expect(hookOptions).toContain('collectAdditionalSources: collectPromptForgeSources');
     expect(source).toContain('files: attachedFiles');
     expect(source).toContain('terminals: attachedTerminals');
     expect(source).toContain('PromptForgeControl');

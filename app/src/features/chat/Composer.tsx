@@ -2249,6 +2249,7 @@ export function Composer({
     draft: text,
     setDraft: setText,
     originalAttachments: promptForgeAttachmentSnapshots,
+    imageAttachments: attachedImages,
     contextAttachments: attachedContexts,
     additionalSources: COMPOSER_EMPTY_PROMPT_FORGE_SOURCES,
     collectAdditionalSources: collectPromptForgeSources,

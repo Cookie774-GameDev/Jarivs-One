@@ -1,5 +1,6 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import type { ChatImageAttachment } from '@/lib/ai/vision';
 import type { PromptForgeExecutionResult } from './promptForgeExecutor';
 import {
   createPromptForgeJob,
@@ -168,6 +169,124 @@ describe('usePromptForgeComposer', () => {
       usePromptForgeComposer({ ...common, accountId: '', draft: 'Upgrade me' }),
     );
     expect(signedOut.result.current.disabledReason).toMatch(/sign in/i);
+  });
+
+  it('blocks text-only transports and forwards current images to a native vision run', async () => {
+    const image: ChatImageAttachment = Object.freeze({
+      id: 'image-1',
+      name: 'diagram.png',
+      mimeType: 'image/png',
+      data: 'iVBORw0KGgo=',
+      size: 8,
+    });
+    const retrieveContext = async () => ({
+      queryId: 'query-image',
+      mapRevisions: {},
+      items: [],
+      relatedEntities: [],
+      omittedCount: 0,
+      staleItems: [],
+      warnings: [],
+      builtAt: 100,
+      sourceLabels: {},
+      evidenceKinds: {},
+    });
+    const textOnlyExecutor = { execute: vi.fn(async () => execution) };
+    const textOnly = renderHook(() =>
+      usePromptForgeComposer({
+        accountId: 'account-1',
+        chatId: 'chat-1',
+        projectId: null,
+        draft: 'Explain this diagram.',
+        setDraft: vi.fn(),
+        originalAttachments: [],
+        contextAttachments: [],
+        additionalSources: [],
+        imageAttachments: [image],
+        modelSelection: {
+          mode: 'single',
+          providerId: 'openai',
+          modelId: 'gpt-5.6-sol',
+          connectionId: 'openai-codex',
+        },
+        modelOptions: [
+          {
+            id: 'openai-codex:gpt-5.6-sol',
+            providerId: 'openai',
+            modelId: 'gpt-5.6-sol',
+            label: 'GPT-5.6 Sol',
+            connectionId: 'openai-codex',
+            connectionMode: 'external-cli',
+            localOnly: false,
+            available: true,
+          },
+        ],
+        currentChatSelection: { mode: 'none' },
+        offlineMode: false,
+        defaultLocalModel: 'qwen3:8b',
+        repository: memoryRepository().repository,
+        executor: textOnlyExecutor,
+        retrieveContext,
+        now: () => 100,
+      }),
+    );
+
+    act(() => textOnly.result.current.setPrivacyMode('provider_allowed'));
+    expect(textOnly.result.current.disabledReason).toMatch(/native.*provider/i);
+    await act(async () => {
+      await expect(textOnly.result.current.start()).resolves.toBeNull();
+    });
+    expect(textOnlyExecutor.execute).not.toHaveBeenCalled();
+
+    const nativeExecutor = { execute: vi.fn(async () => execution) };
+    const native = renderHook(() =>
+      usePromptForgeComposer({
+        accountId: 'account-1',
+        chatId: 'chat-1',
+        projectId: null,
+        draft: 'Explain this diagram.',
+        setDraft: vi.fn(),
+        originalAttachments: [],
+        contextAttachments: [],
+        additionalSources: [],
+        imageAttachments: [image],
+        modelSelection: {
+          mode: 'single',
+          providerId: 'openai',
+          modelId: 'gpt-4o',
+          connectionId: 'openai-api',
+        },
+        modelOptions: [
+          {
+            id: 'openai-api:gpt-4o',
+            providerId: 'openai',
+            modelId: 'gpt-4o',
+            label: 'GPT-4o',
+            connectionId: 'openai-api',
+            connectionMode: 'native-api',
+            localOnly: false,
+            available: true,
+          },
+        ],
+        currentChatSelection: { mode: 'none' },
+        offlineMode: false,
+        defaultLocalModel: 'qwen3:8b',
+        repository: memoryRepository().repository,
+        executor: nativeExecutor,
+        retrieveContext,
+        now: () => 100,
+        createJobId: () => 'forge-job-image',
+      }),
+    );
+
+    act(() => native.result.current.setPrivacyMode('provider_allowed'));
+    expect(native.result.current.disabledReason).toBeNull();
+    await act(async () => {
+      await native.result.current.start();
+    });
+    expect(nativeExecutor.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ imageAttachments: [image] }),
+    );
   });
 
   it('rejects a second start synchronously while the first upgrade is still running', async () => {

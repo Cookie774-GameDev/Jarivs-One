@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { ChatImageAttachment } from '@/lib/ai/vision';
 import { createPromptForgeJob, transitionPromptForgeJob, type PromptForgeJob } from './contracts';
-import type { PromptForgeExecutionResult } from './promptForgeExecutor';
+import type { PromptForgeExecutionInput, PromptForgeExecutionResult } from './promptForgeExecutor';
 import type { ResolvedPromptForgeModel } from './modelSelection';
 import type { PromptPreservationContract } from './preservation';
 import type { PromptForgeSourcePack } from './sourcePack';
@@ -172,6 +173,38 @@ describe('Prompt Forge orchestration', () => {
       sourcesUsed: 1,
     });
     expect(JSON.stringify(activity)).not.toContain(sourcePack.markdown);
+  });
+
+  it('forwards image bytes ephemerally without saving them in the recoverable job', async () => {
+    const memory = memoryRepository();
+    const image: ChatImageAttachment = Object.freeze({
+      id: 'image-1',
+      name: 'diagram.png',
+      mimeType: 'image/png',
+      data: 'iVBORw0KGgo=',
+      sourcePath: 'C:\\private\\diagram.png',
+      size: 8,
+    });
+    let executionInput: PromptForgeExecutionInput | null = null;
+    const service = createPromptForgeService({
+      repository: memory.repository,
+      now: clock(),
+      prepare: async () => ({ resolvedModel, sourcePack, preservation, sourcesConsidered: 1 }),
+      executor: {
+        execute: async (input) => {
+          executionInput = input;
+          return executionResult();
+        },
+      },
+    });
+
+    const ready = await service.start(initialJob('forge-job-image'), {
+      imageAttachments: [image],
+    });
+
+    expect(executionInput).toMatchObject({ imageAttachments: [image] });
+    expect(JSON.stringify(ready)).not.toContain(image.data);
+    expect(JSON.stringify(memory.rows.get('forge-job-image'))).not.toContain(image.data);
   });
 
   it('delivers cancellation to the active executor and never commits a later success', async () => {

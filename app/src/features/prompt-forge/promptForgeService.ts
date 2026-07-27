@@ -1,4 +1,5 @@
 import type { LLMStreamChunk } from '@/lib/ai/types';
+import type { ChatImageAttachment } from '@/lib/ai/vision';
 import {
   transitionPromptForgeJob,
   type PromptForgeJob,
@@ -69,6 +70,7 @@ export class PromptForgeServiceError extends Error {
 }
 
 export type PromptForgeRunOptions = Readonly<{
+  imageAttachments?: readonly ChatImageAttachment[];
   signal?: AbortSignal;
   workingDirectory?: string;
   onChunk?: (chunk: LLMStreamChunk) => void;
@@ -162,6 +164,9 @@ function safeFailureCode(error: unknown, phase: 'preparation' | 'execution'): st
         'empty_output',
         'model_mismatch',
         'sensitive_input',
+        'invalid_image',
+        'image_model_unsupported',
+        'image_transport_unsupported',
       ].includes(code)
     ) {
       return code;
@@ -330,6 +335,9 @@ export function createPromptForgeService(
         model: prepared.resolvedModel,
         sourcePack: prepared.sourcePack,
         preservation: prepared.preservation,
+        ...(options.imageAttachments === undefined
+          ? {}
+          : { imageAttachments: options.imageAttachments }),
         signal: controller.signal,
         ...(options.workingDirectory === undefined
           ? {}
