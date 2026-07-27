@@ -1,0 +1,547 @@
+import * as React from 'react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { CanvasPage } from './CanvasPage';
+import { createCanvasBlock, createCanvasDocument, withBlockAdded } from './contracts';
+import { encodeCanvasPackage } from './packageFormat';
+import type { CanvasPersistenceRepository, CanvasPersistenceScope } from './persistence';
+import type { CanvasRecoveryEntry } from './autosave';
+
+const PERSISTENCE_SCOPE: CanvasPersistenceScope = {
+  accountId: 'account-a',
+  projectId: 'project-a',
+  ownerId: 'account-a',
+};
+
+function persistenceRepository(
+  overrides: Partial<CanvasPersistenceRepository> = {},
+): CanvasPersistenceRepository {
+  return {
+    save: vi.fn(async (_scope, document) => ({ localRevision: document.localRevision }) as never),
+    load: vi.fn(async () => undefined),
+    loadLatest: vi.fn(async () => undefined),
+    writeRecovery: vi.fn(async () => undefined),
+    clearRecovery: vi.fn(async () => undefined),
+    listRecovery: vi.fn(async () => []),
+    listRevisions: vi.fn(async () => []),
+    ...overrides,
+  };
+}
+
+function persistedDocument(scope: CanvasPersistenceScope, id: string, title: string, now = 100) {
+  return createCanvasDocument({
+    id,
+    projectId: scope.projectId,
+    ownerId: scope.ownerId,
+    title,
+    now,
+  });
+}
+
+describe('CanvasPage', () => {
+  it('renders an accessible, truthful local-first Canvas workspace', () => {
+    render(<CanvasPage />);
+
+    expect(screen.getByRole('heading', { name: 'Infinite Idea Canvas' })).toBeTruthy();
+    expect(screen.getByRole('toolbar', { name: 'Canvas tools' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Canvas workspace' })).toBeTruthy();
+    expect(screen.getByText('Local draft')).toBeTruthy();
+    expect(screen.getByText('100%')).toBeTruthy();
+  });
+
+  it('does not touch persistence while account identity is unavailable', async () => {
+    const repository = persistenceRepository();
+    render(<CanvasPage persistence={{ repository, scope: null }} />);
+
+    expect(screen.getByText('Local draft')).toBeTruthy();
+    await act(async () => undefined);
+    expect(repository.loadLatest).not.toHaveBeenCalled();
+    expect(repository.listRecovery).not.toHaveBeenCalled();
+    expect(repository.save).not.toHaveBeenCalled();
+  });
+
+  it('hydrates the newest account-scoped document and autosaves the next edit', async () => {
+    const latest = persistedDocument(PERSISTENCE_SCOPE, 'persisted-canvas', 'Persisted ideas');
+    const repository = persistenceRepository({
+      loadLatest: vi.fn(async () => latest),
+    });
+    render(
+      <CanvasPage
+        persistence={{
+          repository,
+          scope: PERSISTENCE_SCOPE,
+          autosaveDelayMs: 0,
+          now: () => 500,
+        }}
+      />,
+    );
+
+    expect(await screen.findByDisplayValue('Persisted ideas')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+
+    await waitFor(() => expect(repository.save).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(repository.save).mock.calls[0]?.[0]).toEqual(PERSISTENCE_SCOPE);
+    expect(vi.mocked(repository.save).mock.calls[0]?.[1]).toMatchObject({
+      id: latest.id,
+      projectId: PERSISTENCE_SCOPE.projectId,
+      ownerId: PERSISTENCE_SCOPE.ownerId,
+    });
+    expect(screen.getByText('Saved locally')).toBeTruthy();
+  });
+
+  it('ignores a stale account load after the persistence scope changes', async () => {
+    let resolveFirst: ((value: ReturnType<typeof persistedDocument>) => void) | undefined;
+    const firstLoad = new Promise<ReturnType<typeof persistedDocument>>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const scopeB = {
+      accountId: 'account-b',
+      projectId: 'project-b',
+      ownerId: 'account-b',
+    };
+    const repository = persistenceRepository({
+      loadLatest: vi.fn(async (scope) =>
+        scope.accountId === PERSISTENCE_SCOPE.accountId
+          ? firstLoad
+          : persistedDocument(scopeB, 'canvas-b', 'Account B canvas', 200),
+      ),
+    });
+    const { rerender } = render(
+      <CanvasPage persistence={{ repository, scope: PERSISTENCE_SCOPE }} />,
+    );
+
+    rerender(<CanvasPage persistence={{ repository, scope: scopeB }} />);
+    expect(await screen.findByDisplayValue('Account B canvas')).toBeTruthy();
+    resolveFirst?.(persistedDocument(PERSISTENCE_SCOPE, 'canvas-a', 'Stale account A', 100));
+    await act(async () => {
+      await firstLoad;
+    });
+
+    expect(screen.queryByDisplayValue('Stale account A')).toBeNull();
+    expect(screen.getByDisplayValue('Account B canvas')).toBeTruthy();
+  });
+
+  it('offers validated recovery and restores it into autosave', async () => {
+    const recovered = persistedDocument(
+      PERSISTENCE_SCOPE,
+      'recovered-canvas',
+      'Recovered ideas',
+      300,
+    );
+    const entry: CanvasRecoveryEntry = {
+      schemaVersion: 1,
+      id: 'recovery-1',
+      documentId: recovered.id,
+      projectId: recovered.projectId,
+      ownerId: recovered.ownerId,
+      baseRevision: 0,
+      createdAt: 301,
+      document: recovered,
+    };
+    const repository = persistenceRepository({
+      listRecovery: vi.fn(async () => [entry]),
+    });
+    render(
+      <CanvasPage persistence={{ repository, scope: PERSISTENCE_SCOPE, autosaveDelayMs: 0 }} />,
+    );
+
+    expect(await screen.findByText('Unsaved canvas recovery is available.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Restore recovered canvas' }));
+
+    expect(await screen.findByDisplayValue('Recovered ideas')).toBeTruthy();
+    await waitFor(() => expect(repository.save).toHaveBeenCalledTimes(1));
+  });
+
+  it('discards a recovery entry without applying its document', async () => {
+    const recovered = persistedDocument(
+      PERSISTENCE_SCOPE,
+      'discarded-canvas',
+      'Should not appear',
+      300,
+    );
+    const entry: CanvasRecoveryEntry = {
+      schemaVersion: 1,
+      id: 'recovery-discard',
+      documentId: recovered.id,
+      projectId: recovered.projectId,
+      ownerId: recovered.ownerId,
+      baseRevision: 0,
+      createdAt: 301,
+      document: recovered,
+    };
+    const repository = persistenceRepository({
+      listRecovery: vi.fn(async () => [entry]),
+    });
+    render(<CanvasPage persistence={{ repository, scope: PERSISTENCE_SCOPE }} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard recovered canvas' }));
+    await waitFor(() =>
+      expect(repository.clearRecovery).toHaveBeenCalledWith(PERSISTENCE_SCOPE, entry.id),
+    );
+    expect(screen.queryByDisplayValue('Should not appear')).toBeNull();
+  });
+
+  it('flushes the newest debounced edit when the Canvas unmounts', async () => {
+    const latest = persistedDocument(PERSISTENCE_SCOPE, 'flush-canvas', 'Flush me');
+    const repository = persistenceRepository({
+      loadLatest: vi.fn(async () => latest),
+    });
+    const { unmount } = render(
+      <CanvasPage
+        persistence={{
+          repository,
+          scope: PERSISTENCE_SCOPE,
+          autosaveDelayMs: 60_000,
+        }}
+      />,
+    );
+
+    expect(await screen.findByDisplayValue('Flush me')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    expect(repository.save).not.toHaveBeenCalled();
+    unmount();
+
+    await waitFor(() => expect(repository.save).toHaveBeenCalledTimes(1));
+  });
+
+  it('adds one canonical content block and undoes and redoes the transaction', () => {
+    render(<CanvasPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    expect(screen.getByDisplayValue('New note 1')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(screen.queryByDisplayValue('New note 1')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Redo' }));
+    expect(screen.getByDisplayValue('New note 1')).toBeTruthy();
+  });
+
+  it('switches the same content between page and edgeless layouts', () => {
+    render(<CanvasPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edgeless layout' }));
+
+    expect(
+      screen.getByRole('button', { name: 'Edgeless layout' }).getAttribute('aria-pressed'),
+    ).toBe('true');
+    expect(screen.getByDisplayValue('New note 1')).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Canvas workspace' }).dataset.layout).toBe(
+      'edgeless',
+    );
+  });
+
+  it('supports keyboard undo and redo without hijacking editable targets', () => {
+    render(<CanvasPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+    expect(screen.queryByDisplayValue('New note 1')).toBeNull();
+
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true, shiftKey: true });
+    expect(screen.getByDisplayValue('New note 1')).toBeTruthy();
+
+    const title = screen.getByRole('textbox', { name: 'Canvas title' });
+    fireEvent.keyDown(title, { key: 'z', ctrlKey: true });
+    expect(screen.getByDisplayValue('New note 1')).toBeTruthy();
+  });
+
+  it('commits each user action once when React replays state updaters in StrictMode', () => {
+    render(
+      <React.StrictMode>
+        <CanvasPage />
+      </React.StrictMode>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+
+    expect(screen.queryByDisplayValue('New note 1')).toBeNull();
+    expect((screen.getByRole('button', { name: 'Undo' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('pans with the hand tool and zooms around the pointer wheel position', () => {
+    render(<CanvasPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Edgeless layout' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Hand tool' }));
+
+    const workspace = screen.getByRole('region', { name: 'Canvas workspace' });
+    fireEvent.pointerDown(workspace, { pointerId: 1, button: 0, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(workspace, { pointerId: 1, clientX: 140, clientY: 120 });
+    fireEvent.pointerUp(workspace, { pointerId: 1, clientX: 140, clientY: 120 });
+
+    expect(workspace.dataset.cameraX).toBe('-40');
+    expect(workspace.dataset.cameraY).toBe('-20');
+
+    fireEvent.wheel(workspace, { deltaY: -100, clientX: 600, clientY: 400 });
+    expect(screen.getByText('111%')).toBeTruthy();
+  });
+
+  it('offers an accessible minimap and returns to the previous meaningful location', () => {
+    render(<CanvasPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edgeless layout' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Hand tool' }));
+
+    const workspace = screen.getByRole('region', { name: 'Canvas workspace' });
+    fireEvent.pointerDown(workspace, { pointerId: 1, button: 0, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(workspace, { pointerId: 1, clientX: 140, clientY: 120 });
+    fireEvent.pointerUp(workspace, { pointerId: 1, clientX: 140, clientY: 120 });
+
+    expect(screen.getByRole('region', { name: 'Canvas minimap' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Focus .*note-1 from minimap/ })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reset view' }));
+    expect(workspace.dataset.cameraX).toBe('0');
+    fireEvent.click(screen.getByRole('button', { name: 'Back to previous canvas location' }));
+    expect(workspace.dataset.cameraX).toBe('-40');
+    expect(workspace.dataset.cameraY).toBe('-20');
+  });
+
+  it('supports two-pointer pinch zoom in edgeless mode', () => {
+    render(<CanvasPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Edgeless layout' }));
+    const workspace = screen.getByRole('region', { name: 'Canvas workspace' });
+
+    fireEvent.pointerDown(workspace, {
+      pointerId: 1,
+      pointerType: 'touch',
+      clientX: 100,
+      clientY: 100,
+    });
+    fireEvent.pointerDown(workspace, {
+      pointerId: 2,
+      pointerType: 'touch',
+      clientX: 200,
+      clientY: 100,
+    });
+    fireEvent.pointerMove(workspace, {
+      pointerId: 2,
+      pointerType: 'touch',
+      clientX: 300,
+      clientY: 100,
+    });
+
+    expect(screen.getByText('200%')).toBeTruthy();
+  });
+
+  it('supports click, additive, select-all, and delete selection without pointer-only controls', () => {
+    render(<CanvasPage />);
+    const addNote = screen.getByRole('button', { name: 'Add note' });
+    fireEvent.click(addNote);
+    fireEvent.click(addNote);
+    const notes = screen.getAllByLabelText('Canvas note');
+
+    fireEvent.click(notes[0]);
+    fireEvent.click(notes[1], { shiftKey: true });
+    expect(notes[0].dataset.selected).toBe('true');
+    expect(notes[1].dataset.selected).toBe('true');
+    expect(screen.getByText('2 canvas objects selected')).toBeTruthy();
+
+    fireEvent.keyDown(window, { key: 'Delete' });
+    expect(screen.queryAllByLabelText('Canvas note')).toHaveLength(0);
+  });
+
+  it('nudges selected edgeless objects with fine and coarse keyboard movement', () => {
+    render(<CanvasPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edgeless layout' }));
+    const note = screen.getByLabelText('Canvas note');
+    fireEvent.click(note);
+    const before = Number.parseFloat(note.style.left);
+
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+    fireEvent.keyDown(window, { key: 'ArrowDown', shiftKey: true });
+
+    expect(Number.parseFloat(note.style.left)).toBe(before + 1);
+    expect(Number.parseFloat(note.style.top)).toBe(10);
+  });
+
+  it('drags selected objects in world coordinates as one undoable action', () => {
+    render(<CanvasPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edgeless layout' }));
+    const note = screen.getByLabelText('Canvas note');
+    const beforeLeft = Number.parseFloat(note.style.left);
+    const beforeTop = Number.parseFloat(note.style.top);
+
+    fireEvent.pointerDown(note, { pointerId: 3, button: 0, clientX: 600, clientY: 400 });
+    fireEvent.pointerMove(note, { pointerId: 3, clientX: 630, clientY: 420 });
+    expect(Number.parseFloat(note.style.left)).toBe(beforeLeft);
+    expect(note.style.transform).toContain('translate');
+    fireEvent.pointerUp(note, { pointerId: 3, clientX: 630, clientY: 420 });
+
+    expect(Number.parseFloat(note.style.left)).toBe(beforeLeft + 30);
+    expect(Number.parseFloat(note.style.top)).toBe(beforeTop + 20);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(Number.parseFloat(note.style.left)).toBe(beforeLeft);
+    expect(Number.parseFloat(note.style.top)).toBe(beforeTop);
+  });
+
+  it('culls distant edgeless objects and reveals them after fitting the camera', () => {
+    render(<CanvasPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edgeless layout' }));
+    const note = screen.getByLabelText('Canvas note');
+
+    fireEvent.pointerDown(note, { pointerId: 4, button: 0, clientX: 600, clientY: 400 });
+    fireEvent.pointerMove(note, { pointerId: 4, clientX: 5600, clientY: 5400 });
+    fireEvent.pointerUp(note, { pointerId: 4, clientX: 5600, clientY: 5400 });
+
+    expect(screen.queryByDisplayValue('New note 1')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Fit content' }));
+    expect(screen.getByDisplayValue('New note 1')).toBeTruthy();
+  });
+
+  it('marquee-selects intersecting objects in edgeless world space', () => {
+    render(<CanvasPage />);
+    const addNote = screen.getByRole('button', { name: 'Add note' });
+    fireEvent.click(addNote);
+    fireEvent.click(addNote);
+    fireEvent.click(screen.getByRole('button', { name: 'Edgeless layout' }));
+    const workspace = screen.getByRole('region', { name: 'Canvas workspace' });
+
+    fireEvent.pointerDown(workspace, {
+      pointerId: 7,
+      button: 0,
+      clientX: 590,
+      clientY: 390,
+    });
+    fireEvent.pointerMove(workspace, { pointerId: 7, clientX: 890, clientY: 600 });
+    expect(workspace.querySelector('[data-selection-marquee]')).toBeTruthy();
+    fireEvent.pointerUp(workspace, { pointerId: 7, clientX: 890, clientY: 600 });
+
+    const notes = screen.getAllByLabelText('Canvas note');
+    expect(notes[0].dataset.selected).toBe('true');
+    expect(notes[1].dataset.selected).toBe('false');
+  });
+
+  it('opens the accessible outline and activates its canonical canvas object', () => {
+    render(<CanvasPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show canvas outline' }));
+
+    const outline = screen.getByRole('navigation', { name: 'Canvas object outline' });
+    expect(outline).toBeTruthy();
+    fireEvent.click(screen.getByRole('treeitem', { name: 'Note: New note 1' }));
+
+    expect(screen.getByLabelText('Canvas note').dataset.selected).toBe('true');
+  });
+
+  it('copies, pastes, duplicates, and cuts selected blocks with keyboard commands', () => {
+    render(<CanvasPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    fireEvent.click(screen.getByLabelText('Canvas note'));
+
+    fireEvent.keyDown(window, { key: 'c', ctrlKey: true });
+    fireEvent.keyDown(window, { key: 'v', ctrlKey: true });
+    expect(screen.getAllByDisplayValue('New note 1')).toHaveLength(2);
+
+    fireEvent.keyDown(window, { key: 'd', ctrlKey: true });
+    expect(screen.getAllByDisplayValue('New note 1')).toHaveLength(3);
+
+    fireEvent.keyDown(window, { key: 'x', ctrlKey: true });
+    expect(screen.getAllByDisplayValue('New note 1')).toHaveLength(2);
+  });
+
+  it('creates and edits shared text, heading, note, and code content across layouts', () => {
+    render(<CanvasPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add text' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add heading' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add code block' }));
+
+    const text = screen.getByRole('textbox', { name: 'Edit text block' });
+    fireEvent.change(text, { target: { value: 'Shared canvas content' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Edgeless layout' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Fit content' }));
+
+    expect(
+      (screen.getByRole('textbox', { name: 'Edit text block' }) as HTMLTextAreaElement).value,
+    ).toBe('Shared canvas content');
+    expect(screen.getByRole('textbox', { name: 'Edit heading block' })).toBeTruthy();
+    expect(screen.getByRole('textbox', { name: 'Edit note block' })).toBeTruthy();
+    expect(screen.getByRole('textbox', { name: 'Edit code block' })).toBeTruthy();
+  });
+
+  it('imports a validated canvas package as one undoable document replacement', async () => {
+    let imported = createCanvasDocument({
+      id: 'imported-canvas',
+      projectId: 'local-project',
+      ownerId: 'local-user',
+      title: 'Imported ideas',
+      now: 50,
+    });
+    imported = withBlockAdded(
+      imported,
+      createCanvasBlock({
+        id: 'imported-note',
+        content: { kind: 'note', text: 'Recovered portable idea' },
+        now: 50,
+      }),
+      50,
+    );
+    const text = encodeCanvasPackage(imported);
+    const file = new File([text], 'ideas.vibespace-canvas.json', {
+      type: 'application/json',
+    });
+    Object.defineProperty(file, 'text', { value: async () => text });
+
+    render(<CanvasPage />);
+    fireEvent.change(screen.getByLabelText('Import canvas package'), {
+      target: { files: [file] },
+    });
+
+    expect(await screen.findByDisplayValue('Recovered portable idea')).toBeTruthy();
+    expect((screen.getByRole('textbox', { name: 'Canvas title' }) as HTMLInputElement).value).toBe(
+      'Imported ideas',
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(screen.queryByDisplayValue('Recovered portable idea')).toBeNull();
+  });
+
+  it('rejects a malformed package without replacing the current canvas', async () => {
+    const text = '{"kind":"vibespace.canvas.package","packageVersion":999}';
+    const file = new File([text], 'hostile.json', { type: 'application/json' });
+    Object.defineProperty(file, 'text', { value: async () => text });
+
+    render(<CanvasPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    fireEvent.change(screen.getByLabelText('Import canvas package'), {
+      target: { files: [file] },
+    });
+
+    expect(await screen.findByText(/^Import failed:/)).toBeTruthy();
+    expect(screen.getByDisplayValue('New note 1')).toBeTruthy();
+  });
+
+  it('exports the current canonical canvas as a portable package download', () => {
+    const createObjectURL = vi.fn((_blob: Blob) => 'blob:canvas-package');
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: createObjectURL });
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: revokeObjectURL });
+    let downloadedAs = '';
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(function recordDownload(this: HTMLAnchorElement) {
+        downloadedAs = this.download;
+      });
+
+    render(<CanvasPage />);
+    fireEvent.change(screen.getByRole('textbox', { name: 'Canvas title' }), {
+      target: { value: 'Launch Plan' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Export canvas package' }));
+
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    expect(createObjectURL.mock.calls[0]?.[0]).toBeInstanceOf(Blob);
+    expect(downloadedAs).toBe('Launch-Plan.vibespace-canvas.json');
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:canvas-package');
+    expect(screen.getByText('Canvas package exported')).toBeTruthy();
+    click.mockRestore();
+  });
+});

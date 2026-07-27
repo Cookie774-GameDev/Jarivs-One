@@ -36,6 +36,17 @@ import type {
   JarvisScheduledRetrySnapshotV1,
   JarvisTransportAttemptV1,
 } from '@/lib/jarvis/contracts/execution';
+import type {
+  CanvasBackground,
+  CanvasBlockContent,
+  CanvasBlockId,
+  CanvasBlockKind,
+  CanvasDocumentId,
+  CanvasLayoutMode,
+  CanvasOwnerId,
+  CanvasProjectId,
+  CanvasTimestamp,
+} from '@/features/canvas/contracts';
 
 /**
  * A workspace is the top-level container in Jarvis. Multi-workspace support is
@@ -369,9 +380,201 @@ export type ContextQuarantineRow = {
   quarantinedAt: number;
 };
 
+// ---------------------------------------------------------------------------
+// Infinite Idea Canvas (V8) persistence rows
+//
+// Local-first, additive Dexie records for the Infinite Idea Canvas. These are
+// transaction-ready primitives only: they do NOT implement autosave or
+// repositories. Field shapes stay consistent with the Canvas domain contracts
+// in `@/features/canvas/contracts`. Large binaries live elsewhere (Tauri
+// filesystem or optimized browser storage); `canvas_assets` stores
+// metadata/reference rows only, never blob bytes.
+// ---------------------------------------------------------------------------
+
+/**
+ * A canvas document aggregate root. Content objects, spatial placements,
+ * camera view state, page order, revisions, tombstones, and recovery journal
+ * entries each live in their own tables (kept strictly separate), so this row
+ * carries only document-level metadata.
+ */
+export type CanvasDocumentRow = {
+  id: CanvasDocumentId;
+  accountId: string;
+  ownerId: CanvasOwnerId;
+  projectId: CanvasProjectId;
+  schemaVersion: number;
+  title: string;
+  icon: string | null;
+  thumbnail: string | null;
+  layoutMode: CanvasLayoutMode;
+  background: CanvasBackground;
+  localRevision: number;
+  syncRevision: number;
+  createdAt: CanvasTimestamp;
+  updatedAt: CanvasTimestamp;
+  archivedAt: CanvasTimestamp | null;
+  deletedAt: CanvasTimestamp | null;
+};
+
+/**
+ * One deterministic position in a document's page-mode order. The unique
+ * `[documentId+pageIndex]` index enforces exactly one block per page position
+ * per document; `presentationIndex` optionally orders presentation frames.
+ */
+export type CanvasPageRow = {
+  id: string;
+  accountId: string;
+  documentId: CanvasDocumentId;
+  pageIndex: number;
+  blockId: CanvasBlockId;
+  presentationIndex: number | null;
+  createdAt: CanvasTimestamp;
+  updatedAt: CanvasTimestamp;
+};
+
+/**
+ * A canvas content object (a Canvas block). Holds canonical content only;
+ * edgeless geometry lives separately in `canvas_spatial`.
+ */
+export type CanvasObjectRow = {
+  id: CanvasBlockId;
+  accountId: string;
+  documentId: CanvasDocumentId;
+  kind: CanvasBlockKind;
+  content: CanvasBlockContent;
+  createdAt: CanvasTimestamp;
+  updatedAt: CanvasTimestamp;
+};
+
+/**
+ * Edgeless spatial metadata, kept strictly separate from content. Mirrors the
+ * contract's CanvasSpatialPlacement geometry (a block reference plus geometry,
+ * no content payload). The unique `[documentId+blockId]` index enforces one
+ * placement per block per document.
+ */
+export type CanvasSpatialRow = {
+  id: string;
+  accountId: string;
+  documentId: CanvasDocumentId;
+  blockId: CanvasBlockId;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+  z: number;
+  updatedAt: CanvasTimestamp;
+};
+
+/**
+ * Per-document camera view state (world center plus zoom), stored separately
+ * from the document row so view updates are independently transactional. Keyed
+ * one camera per document.
+ */
+export type CanvasCameraRow = {
+  documentId: CanvasDocumentId;
+  accountId: string;
+  x: number;
+  y: number;
+  zoom: number;
+  updatedAt: CanvasTimestamp;
+};
+
+/**
+ * Metadata/reference row for a large canvas asset. Stores a stable id,
+ * checksum, size, and a storage reference (filesystem/browser/inline) but
+ * never the blob bytes themselves. `orphanedAt` supports orphan cleanup.
+ */
+export type CanvasAssetRow = {
+  id: string;
+  accountId: string;
+  ownerId: CanvasOwnerId;
+  projectId: CanvasProjectId;
+  documentId: CanvasDocumentId | null;
+  kind: 'image' | 'file' | 'thumbnail';
+  mimeType: string | null;
+  checksum: string | null;
+  sizeBytes: number | null;
+  storageKind: 'filesystem' | 'browser' | 'inline';
+  storageRef: string;
+  orphanedAt: CanvasTimestamp | null;
+  createdAt: CanvasTimestamp;
+  updatedAt: CanvasTimestamp;
+};
+
+/**
+ * A reusable canvas template. `snapshot` is an opaque, JSON-serialisable
+ * template payload typed at the call site (db-internal shape).
+ */
+export type CanvasTemplateRow = {
+  id: string;
+  accountId: string;
+  ownerId: CanvasOwnerId;
+  projectId: CanvasProjectId | null;
+  name: string;
+  layoutMode: CanvasLayoutMode;
+  background: CanvasBackground;
+  snapshot: unknown;
+  createdAt: CanvasTimestamp;
+  updatedAt: CanvasTimestamp;
+};
+
+/**
+ * A deterministic document revision marker. The unique `[documentId+sequence]`
+ * index enforces one revision per sequence per document (mirrors Context note
+ * revisions). `snapshotAssetId` optionally references a metadata-only asset
+ * holding the revision snapshot.
+ */
+export type CanvasRevisionRow = {
+  id: string;
+  accountId: string;
+  documentId: CanvasDocumentId;
+  sequence: number;
+  localRevision: number;
+  syncRevision: number;
+  changeKind: 'created' | 'updated' | 'recovered' | 'checkpoint';
+  snapshotAssetId: string | null;
+  contentHash: string | null;
+  createdAt: CanvasTimestamp;
+};
+
+/**
+ * A tombstone recording a deleted canvas entity so deletes can be synced and
+ * conflicts recovered. `entityId`/`entityKind` identify what was removed.
+ */
+export type CanvasTombstoneRow = {
+  id: string;
+  accountId: string;
+  documentId: CanvasDocumentId;
+  entityId: string;
+  entityKind: 'document' | 'object' | 'page' | 'asset' | 'placement';
+  deletedAt: CanvasTimestamp;
+  syncRevision: number;
+  createdAt: CanvasTimestamp;
+};
+
+/**
+ * A crash/conflict recovery journal entry for canvas, camera, unsaved
+ * text/strokes, or conflict state. `payload` is an opaque recoverable delta
+ * typed at the call site; `snapshotAssetId` optionally references a
+ * metadata-only asset.
+ */
+export type CanvasRecoveryRow = {
+  id: string;
+  accountId: string;
+  documentId: CanvasDocumentId;
+  kind: 'canvas' | 'camera' | 'text' | 'stroke' | 'conflict';
+  status: 'pending' | 'recovered' | 'discarded' | 'error';
+  snapshotAssetId: string | null;
+  payload: unknown;
+  contentHash: string | null;
+  createdAt: CanvasTimestamp;
+  recoveredAt: CanvasTimestamp | null;
+};
+
 export const DB_NAME = 'jarvis-v1';
-/** Current schema version — bumped to 7 for recoverable Prompt Forge jobs. */
-export const DB_VERSION = 7;
+/** Current schema version — bumped to 8 for the Infinite Idea Canvas tables. */
+export const DB_VERSION = 8;
 
 /**
  * Dexie store schema strings.
@@ -500,6 +703,29 @@ export const STORES_V7 = {
     'id, accountId, chatId, projectId, status, [accountId+updatedAt], [accountId+chatId], [accountId+status]',
 } as const;
 
-export const STORES = STORES_V7;
+/** V8 schema = V7 + Infinite Idea Canvas tables (additive). */
+// prettier-ignore
+export const STORES_V8 = {
+  ...STORES_V7,
+  canvas_documents:
+    'id, accountId, ownerId, projectId, [accountId+projectId], [accountId+ownerId], [accountId+updatedAt]',
+  canvas_pages:
+    'id, accountId, documentId, &[documentId+pageIndex], &[documentId+blockId], [accountId+documentId]',
+  canvas_objects: 'id, accountId, documentId, kind, [accountId+documentId], [documentId+kind]',
+  canvas_spatial: 'id, accountId, documentId, &[documentId+blockId], [accountId+documentId]',
+  canvas_cameras: 'documentId, accountId, updatedAt',
+  canvas_assets:
+    'id, accountId, ownerId, projectId, documentId, kind, [accountId+documentId], [accountId+projectId], [documentId+kind], orphanedAt',
+  canvas_templates:
+    'id, accountId, ownerId, projectId, [accountId+projectId], [accountId+ownerId], [accountId+updatedAt]',
+  canvas_revisions:
+    'id, accountId, documentId, &[documentId+sequence], [accountId+documentId], [documentId+localRevision], createdAt',
+  canvas_tombstones:
+    'id, accountId, documentId, entityId, entityKind, [accountId+documentId], [documentId+entityKind], deletedAt',
+  canvas_recovery:
+    'id, accountId, documentId, kind, status, [accountId+documentId], [documentId+status], [documentId+kind], createdAt',
+} as const;
+
+export const STORES = STORES_V8;
 
 export type StoreName = keyof typeof STORES;

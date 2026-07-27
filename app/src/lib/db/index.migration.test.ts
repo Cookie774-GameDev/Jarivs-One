@@ -27,6 +27,12 @@ import type {
   ContextProvenanceV2,
   ContextSourceV2,
 } from '@/features/context/contracts';
+import type {
+  CanvasBlockId,
+  CanvasDocumentId,
+  CanvasOwnerId,
+  CanvasProjectId,
+} from '@/features/canvas/contracts';
 import { TEST_INDEXED_DB, uniqueTestDbName } from '@/test/indexedDb';
 import { createJarvisDb, type JarvisDexie, type JarvisDexieDependencies } from './index';
 import {
@@ -38,6 +44,17 @@ import {
   STORES_V5,
   STORES_V6,
   STORES_V7,
+  STORES_V8,
+  type CanvasAssetRow,
+  type CanvasCameraRow,
+  type CanvasDocumentRow,
+  type CanvasObjectRow,
+  type CanvasPageRow,
+  type CanvasRecoveryRow,
+  type CanvasRevisionRow,
+  type CanvasSpatialRow,
+  type CanvasTemplateRow,
+  type CanvasTombstoneRow,
   type ContextAssetRow,
   type ContextEmbeddingRow,
   type ContextMigrationBackupRow,
@@ -131,6 +148,27 @@ const EXPECTED_STORES_V7 = {
   ...EXPECTED_STORES_V6,
   prompt_forge_jobs:
     'id, accountId, chatId, projectId, status, [accountId+updatedAt], [accountId+chatId], [accountId+status]',
+} as const;
+
+const EXPECTED_STORES_V8 = {
+  ...EXPECTED_STORES_V7,
+  canvas_documents:
+    'id, accountId, ownerId, projectId, [accountId+projectId], [accountId+ownerId], [accountId+updatedAt]',
+  canvas_pages:
+    'id, accountId, documentId, &[documentId+pageIndex], &[documentId+blockId], [accountId+documentId]',
+  canvas_objects: 'id, accountId, documentId, kind, [accountId+documentId], [documentId+kind]',
+  canvas_spatial: 'id, accountId, documentId, &[documentId+blockId], [accountId+documentId]',
+  canvas_cameras: 'documentId, accountId, updatedAt',
+  canvas_assets:
+    'id, accountId, ownerId, projectId, documentId, kind, [accountId+documentId], [accountId+projectId], [documentId+kind], orphanedAt',
+  canvas_templates:
+    'id, accountId, ownerId, projectId, [accountId+projectId], [accountId+ownerId], [accountId+updatedAt]',
+  canvas_revisions:
+    'id, accountId, documentId, &[documentId+sequence], [accountId+documentId], [documentId+localRevision], createdAt',
+  canvas_tombstones:
+    'id, accountId, documentId, entityId, entityKind, [accountId+documentId], [documentId+entityKind], deletedAt',
+  canvas_recovery:
+    'id, accountId, documentId, kind, status, [accountId+documentId], [documentId+status], [documentId+kind], createdAt',
 } as const;
 
 const EXPECTED_STORES_V1_SOURCE = `export const STORES_V1 = {
@@ -424,6 +462,43 @@ const V4_ROWS = {
   },
 } as const;
 
+const V7_ROWS = {
+  ...V4_ROWS,
+  context_notes: {
+    id: 'note-v7',
+    accountId: 'account-v7',
+    mapId: 'map-v7',
+    entityId: 'entity-v7',
+    sourceId: 'source-v7',
+    currentRevisionId: 'revision-v7',
+    status: 'active',
+    updatedAt: 50,
+    marker: 'context-note-marker',
+  },
+  context_embeddings: {
+    id: 'embedding-v7',
+    accountId: 'account-v7',
+    mapId: 'map-v7',
+    documentId: 'document-v7',
+    sourceId: 'source-v7',
+    providerKind: 'openai',
+    providerId: 'provider-v7',
+    modelId: 'model-v7',
+    embeddingVersion: 1,
+    updatedAt: 51,
+    marker: 'context-embedding-marker',
+  },
+  prompt_forge_jobs: {
+    id: 'forge-v7',
+    accountId: 'account-v7',
+    chatId: 'chat-v1',
+    projectId: 'project-v1',
+    status: 'pending',
+    updatedAt: 52,
+    marker: 'prompt-forge-marker',
+  },
+} as const;
+
 const createdNames = new Set<string>();
 const openedDatabases = new Set<Dexie>();
 
@@ -438,7 +513,7 @@ async function deleteTestDb(name: string): Promise<void> {
   await cleanup.delete();
 }
 
-async function createLegacyDb(name: string, version: 1 | 2 | 3 | 4 | 5): Promise<Dexie> {
+async function createLegacyDb(name: string, version: 1 | 2 | 3 | 4 | 5 | 6 | 7): Promise<Dexie> {
   const database = new Dexie(name, TEST_INDEXED_DB);
   openedDatabases.add(database);
   database.version(1).stores(STORES_V1);
@@ -457,6 +532,21 @@ async function createLegacyDb(name: string, version: 1 | 2 | 3 | 4 | 5): Promise
     database.version(3).stores(STORES_V3);
     database.version(4).stores(STORES_V4);
     database.version(5).stores(STORES_V5);
+  }
+  if (version === 6) {
+    database.version(2).stores(STORES_V2);
+    database.version(3).stores(STORES_V3);
+    database.version(4).stores(STORES_V4);
+    database.version(5).stores(STORES_V5);
+    database.version(6).stores(STORES_V6);
+  }
+  if (version === 7) {
+    database.version(2).stores(STORES_V2);
+    database.version(3).stores(STORES_V3);
+    database.version(4).stores(STORES_V4);
+    database.version(5).stores(STORES_V5);
+    database.version(6).stores(STORES_V6);
+    database.version(7).stores(STORES_V7);
   }
   await database.open();
   return database;
@@ -498,7 +588,7 @@ afterEach(async () => {
   createdNames.clear();
 });
 
-describe('Jarvis Dexie V7 additive migration', () => {
+describe('Jarvis Dexie V8 additive migration', () => {
   it('keeps the exact V1 through V4 declarations and advances only the active version', () => {
     const schemaSource = readFileSync(join(__dirname, 'schema.ts'), 'utf8');
     expect(STORES_V1).toEqual(EXPECTED_STORES_V1);
@@ -508,19 +598,20 @@ describe('Jarvis Dexie V7 additive migration', () => {
     expect(STORES_V5).toEqual(EXPECTED_STORES_V5);
     expect(STORES_V6).toEqual(EXPECTED_STORES_V6);
     expect(STORES_V7).toEqual(EXPECTED_STORES_V7);
+    expect(STORES_V8).toEqual(EXPECTED_STORES_V8);
     expect(frozenStoreBlock(schemaSource, 'STORES_V1')).toBe(EXPECTED_STORES_V1_SOURCE);
     expect(frozenStoreBlock(schemaSource, 'STORES_V2')).toBe(EXPECTED_STORES_V2_SOURCE);
     expect(frozenStoreBlock(schemaSource, 'STORES_V3')).toBe(EXPECTED_STORES_V3_SOURCE);
     expect(frozenStoreBlock(schemaSource, 'STORES_V4')).toBe(EXPECTED_STORES_V4_SOURCE);
-    expect(DB_VERSION).toBe(7);
+    expect(DB_VERSION).toBe(8);
   });
 
-  it('opens every legacy, kernel, Context, and Prompt Forge store on a fresh V7 database', async () => {
-    const database = createTestJarvisDb(testDbName('jarvis-v7-fresh'));
+  it('opens every legacy, kernel, Context, Prompt Forge, and Canvas store on a fresh V8 database', async () => {
+    const database = createTestJarvisDb(testDbName('jarvis-v8-fresh'));
     await database.open();
 
     expect(database.tables.map((table) => table.name).sort()).toEqual(
-      Object.keys(STORES_V7).sort(),
+      Object.keys(STORES_V8).sort(),
     );
     expect(database.agents.name).toBe('agents');
     expect(database.settings.name).toBe('settings');
@@ -532,6 +623,16 @@ describe('Jarvis Dexie V7 additive migration', () => {
     expect(database.context_assets.name).toBe('context_assets');
     expect(database.context_embeddings.name).toBe('context_embeddings');
     expect(database.prompt_forge_jobs.name).toBe('prompt_forge_jobs');
+    expect(database.canvas_documents.name).toBe('canvas_documents');
+    expect(database.canvas_pages.name).toBe('canvas_pages');
+    expect(database.canvas_objects.name).toBe('canvas_objects');
+    expect(database.canvas_spatial.name).toBe('canvas_spatial');
+    expect(database.canvas_cameras.name).toBe('canvas_cameras');
+    expect(database.canvas_assets.name).toBe('canvas_assets');
+    expect(database.canvas_templates.name).toBe('canvas_templates');
+    expect(database.canvas_revisions.name).toBe('canvas_revisions');
+    expect(database.canvas_tombstones.name).toBe('canvas_tombstones');
+    expect(database.canvas_recovery.name).toBe('canvas_recovery');
 
     expectTypeOf<JarvisDexie['workspaces']>().toEqualTypeOf<EntityTable<Workspace, 'id'>>();
     expectTypeOf<JarvisDexie['projects']>().toEqualTypeOf<EntityTable<Project, 'id'>>();
@@ -610,6 +711,32 @@ describe('Jarvis Dexie V7 additive migration', () => {
     >();
     expectTypeOf<JarvisDexie['prompt_forge_jobs']>().toEqualTypeOf<
       EntityTable<PromptForgeJobRow, 'id'>
+    >();
+    expectTypeOf<JarvisDexie['canvas_documents']>().toEqualTypeOf<
+      EntityTable<CanvasDocumentRow, 'id'>
+    >();
+    expectTypeOf<JarvisDexie['canvas_pages']>().toEqualTypeOf<EntityTable<CanvasPageRow, 'id'>>();
+    expectTypeOf<JarvisDexie['canvas_objects']>().toEqualTypeOf<
+      EntityTable<CanvasObjectRow, 'id'>
+    >();
+    expectTypeOf<JarvisDexie['canvas_spatial']>().toEqualTypeOf<
+      EntityTable<CanvasSpatialRow, 'id'>
+    >();
+    expectTypeOf<JarvisDexie['canvas_cameras']>().toEqualTypeOf<
+      EntityTable<CanvasCameraRow, 'documentId'>
+    >();
+    expectTypeOf<JarvisDexie['canvas_assets']>().toEqualTypeOf<EntityTable<CanvasAssetRow, 'id'>>();
+    expectTypeOf<JarvisDexie['canvas_templates']>().toEqualTypeOf<
+      EntityTable<CanvasTemplateRow, 'id'>
+    >();
+    expectTypeOf<JarvisDexie['canvas_revisions']>().toEqualTypeOf<
+      EntityTable<CanvasRevisionRow, 'id'>
+    >();
+    expectTypeOf<JarvisDexie['canvas_tombstones']>().toEqualTypeOf<
+      EntityTable<CanvasTombstoneRow, 'id'>
+    >();
+    expectTypeOf<JarvisDexie['canvas_recovery']>().toEqualTypeOf<
+      EntityTable<CanvasRecoveryRow, 'id'>
     >();
     expectTypeOf(createJarvisDb).toEqualTypeOf<
       (name?: string, dependencies?: JarvisDexieDependencies) => JarvisDexie
@@ -807,7 +934,287 @@ describe('Jarvis Dexie V7 additive migration', () => {
     database.close();
   });
 
-  it('declares V7 additively without a destructive upgrade callback', () => {
+  it('preserves every inserted V1 through V7 row byte-for-byte when opening V8 and adds empty Canvas stores', async () => {
+    const name = testDbName('jarvis-v7-to-v8');
+    const legacy = await createLegacyDb(name, 7);
+    await insertRows(legacy, V7_ROWS);
+    legacy.close();
+
+    const upgraded = createTestJarvisDb(name);
+    await upgraded.open();
+    await expectRows(upgraded, V7_ROWS);
+    await expect(upgraded.canvas_documents.count()).resolves.toBe(0);
+    await expect(upgraded.canvas_pages.count()).resolves.toBe(0);
+    await expect(upgraded.canvas_objects.count()).resolves.toBe(0);
+    await expect(upgraded.canvas_spatial.count()).resolves.toBe(0);
+    await expect(upgraded.canvas_cameras.count()).resolves.toBe(0);
+    await expect(upgraded.canvas_assets.count()).resolves.toBe(0);
+    await expect(upgraded.canvas_templates.count()).resolves.toBe(0);
+    await expect(upgraded.canvas_revisions.count()).resolves.toBe(0);
+    await expect(upgraded.canvas_tombstones.count()).resolves.toBe(0);
+    await expect(upgraded.canvas_recovery.count()).resolves.toBe(0);
+    upgraded.close();
+  });
+
+  it('round-trips Canvas rows and enforces deterministic page, revision, and placement uniqueness on a fresh V8 database', async () => {
+    const database = createTestJarvisDb(testDbName('jarvis-v8-canvas'));
+    await database.open();
+    const docId = 'doc-v8' as CanvasDocumentId;
+    const otherDocId = 'doc-v8-other' as CanvasDocumentId;
+    const ownerId = 'owner-v8' as CanvasOwnerId;
+    const projectId = 'project-v8' as CanvasProjectId;
+    const blockA = 'block-a' as CanvasBlockId;
+    const blockB = 'block-b' as CanvasBlockId;
+
+    await expect(
+      database.canvas_documents.add({
+        id: docId,
+        accountId: 'account-v8',
+        ownerId,
+        projectId,
+        schemaVersion: 1,
+        title: 'Canvas',
+        icon: null,
+        thumbnail: null,
+        layoutMode: 'edgeless',
+        background: { kind: 'grid', color: '#0f172a' },
+        localRevision: 1,
+        syncRevision: 0,
+        createdAt: 100,
+        updatedAt: 101,
+        archivedAt: null,
+        deletedAt: null,
+      }),
+    ).resolves.toBe(docId);
+    await expect(database.canvas_documents.get(docId)).resolves.toMatchObject({
+      id: docId,
+      title: 'Canvas',
+    });
+
+    await expect(
+      database.canvas_objects.add({
+        id: blockA,
+        accountId: 'account-v8',
+        documentId: docId,
+        kind: 'note',
+        content: { kind: 'note', text: 'hello' },
+        createdAt: 102,
+        updatedAt: 103,
+      }),
+    ).resolves.toBe(blockA);
+
+    await expect(
+      database.canvas_cameras.add({
+        documentId: docId,
+        accountId: 'account-v8',
+        x: 10,
+        y: 20,
+        zoom: 1.5,
+        updatedAt: 104,
+      }),
+    ).resolves.toBe(docId);
+
+    await expect(
+      database.canvas_pages.add({
+        id: 'page-0',
+        accountId: 'account-v8',
+        documentId: docId,
+        pageIndex: 0,
+        blockId: blockA,
+        presentationIndex: 0,
+        createdAt: 105,
+        updatedAt: 105,
+      }),
+    ).resolves.toBe('page-0');
+    await expect(
+      database.canvas_pages.add({
+        id: 'page-1',
+        accountId: 'account-v8',
+        documentId: docId,
+        pageIndex: 1,
+        blockId: blockB,
+        presentationIndex: null,
+        createdAt: 106,
+        updatedAt: 106,
+      }),
+    ).resolves.toBe('page-1');
+    await expect(
+      database.canvas_pages.add({
+        id: 'page-dup',
+        accountId: 'account-v8',
+        documentId: docId,
+        pageIndex: 0,
+        blockId: blockB,
+        presentationIndex: null,
+        createdAt: 107,
+        updatedAt: 107,
+      }),
+    ).rejects.toBeDefined();
+    await expect(
+      database.canvas_pages.add({
+        id: 'page-dup-block',
+        accountId: 'account-v8',
+        documentId: docId,
+        pageIndex: 2,
+        blockId: blockA,
+        presentationIndex: null,
+        createdAt: 107,
+        updatedAt: 107,
+      }),
+    ).rejects.toBeDefined();
+    await expect(
+      database.canvas_pages.add({
+        id: 'page-other-0',
+        accountId: 'account-v8',
+        documentId: otherDocId,
+        pageIndex: 0,
+        blockId: blockA,
+        presentationIndex: null,
+        createdAt: 108,
+        updatedAt: 108,
+      }),
+    ).resolves.toBe('page-other-0');
+
+    await expect(
+      database.canvas_spatial.add({
+        id: 'spatial-a',
+        accountId: 'account-v8',
+        documentId: docId,
+        blockId: blockA,
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 80,
+        rotation: 0,
+        z: 0,
+        updatedAt: 109,
+      }),
+    ).resolves.toBe('spatial-a');
+    await expect(
+      database.canvas_spatial.add({
+        id: 'spatial-dup',
+        accountId: 'account-v8',
+        documentId: docId,
+        blockId: blockA,
+        x: 5,
+        y: 5,
+        width: 10,
+        height: 10,
+        rotation: 0,
+        z: 1,
+        updatedAt: 110,
+      }),
+    ).rejects.toBeDefined();
+
+    await expect(
+      database.canvas_revisions.add({
+        id: 'rev-1',
+        accountId: 'account-v8',
+        documentId: docId,
+        sequence: 1,
+        localRevision: 1,
+        syncRevision: 0,
+        changeKind: 'created',
+        snapshotAssetId: null,
+        contentHash: null,
+        createdAt: 111,
+      }),
+    ).resolves.toBe('rev-1');
+    await expect(
+      database.canvas_revisions.add({
+        id: 'rev-dup',
+        accountId: 'account-v8',
+        documentId: docId,
+        sequence: 1,
+        localRevision: 1,
+        syncRevision: 0,
+        changeKind: 'updated',
+        snapshotAssetId: null,
+        contentHash: null,
+        createdAt: 112,
+      }),
+    ).rejects.toBeDefined();
+    await expect(
+      database.canvas_revisions.add({
+        id: 'rev-other-1',
+        accountId: 'account-v8',
+        documentId: otherDocId,
+        sequence: 1,
+        localRevision: 1,
+        syncRevision: 0,
+        changeKind: 'created',
+        snapshotAssetId: null,
+        contentHash: null,
+        createdAt: 113,
+      }),
+    ).resolves.toBe('rev-other-1');
+
+    await expect(
+      database.canvas_assets.add({
+        id: 'asset-v8',
+        accountId: 'account-v8',
+        ownerId,
+        projectId,
+        documentId: docId,
+        kind: 'image',
+        mimeType: 'image/png',
+        checksum: 'c'.repeat(64),
+        sizeBytes: 1234,
+        storageKind: 'filesystem',
+        storageRef: 'assets/doc-v8/asset-v8.png',
+        orphanedAt: null,
+        createdAt: 114,
+        updatedAt: 114,
+      }),
+    ).resolves.toBe('asset-v8');
+
+    await expect(
+      database.canvas_tombstones.add({
+        id: 'tomb-v8',
+        accountId: 'account-v8',
+        documentId: docId,
+        entityId: 'block-gone',
+        entityKind: 'object',
+        deletedAt: 115,
+        syncRevision: 1,
+        createdAt: 115,
+      }),
+    ).resolves.toBe('tomb-v8');
+
+    await expect(
+      database.canvas_recovery.add({
+        id: 'rec-v8',
+        accountId: 'account-v8',
+        documentId: docId,
+        kind: 'stroke',
+        status: 'pending',
+        snapshotAssetId: 'asset-v8',
+        payload: { strokes: ['unsaved'] },
+        contentHash: null,
+        createdAt: 116,
+        recoveredAt: null,
+      }),
+    ).resolves.toBe('rec-v8');
+
+    await expect(
+      database.canvas_templates.add({
+        id: 'tpl-v8',
+        accountId: 'account-v8',
+        ownerId,
+        projectId,
+        name: 'Blank',
+        layoutMode: 'page',
+        background: { kind: 'plain', color: '#ffffff' },
+        snapshot: { blocks: [] },
+        createdAt: 117,
+        updatedAt: 117,
+      }),
+    ).resolves.toBe('tpl-v8');
+
+    database.close();
+  });
+
+  it('declares V8 additively without a destructive upgrade callback', () => {
     const source = readFileSync(join(__dirname, 'index.ts'), 'utf8');
     expect(source).not.toContain('.upgrade(');
     expect(source).toContain('this.version(1).stores(STORES_V1)');
@@ -817,5 +1224,6 @@ describe('Jarvis Dexie V7 additive migration', () => {
     expect(source).toContain('this.version(5).stores(STORES_V5)');
     expect(source).toContain('this.version(6).stores(STORES_V6)');
     expect(source).toContain('this.version(7).stores(STORES_V7)');
+    expect(source).toContain('this.version(8).stores(STORES_V8)');
   });
 });

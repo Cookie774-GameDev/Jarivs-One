@@ -50,6 +50,7 @@ export type DoneNotificationSettings = Record<DoneNotificationKey, boolean>;
  */
 export type Route =
   | 'chat'
+  | 'canvas'
   | 'workbench'
   | 'preview'
   | 'browser'
@@ -72,8 +73,7 @@ export type Route =
  * by the detached Workbench window so it can boot directly into its surface.
  */
 export function resolveInitialRoute(search?: string): Route {
-  const value =
-    search ?? (typeof window !== 'undefined' ? window.location.search : '');
+  const value = search ?? (typeof window !== 'undefined' ? window.location.search : '');
   return new URLSearchParams(value).get('workbench') === '1' ? 'workbench' : 'chat';
 }
 

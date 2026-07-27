@@ -9,9 +9,9 @@
  * The db is opened lazily; calling `openDb()` is idempotent and safe to call
  * from multiple call sites (initial bootstrap, seed, sync loop).
  *
- * V1 → V7 migrations are purely additive. Dexie replays each version's store
+ * V1 → V8 migrations are purely additive. Dexie replays each version's store
  * list, creates the newer tables, and leaves every existing row untouched.
- * New installs open directly on V7.
+ * New installs open directly on V8.
  */
 
 import Dexie, { type EntityTable, type Table } from 'dexie';
@@ -37,6 +37,17 @@ import {
   STORES_V5,
   STORES_V6,
   STORES_V7,
+  STORES_V8,
+  type CanvasAssetRow,
+  type CanvasCameraRow,
+  type CanvasDocumentRow,
+  type CanvasObjectRow,
+  type CanvasPageRow,
+  type CanvasRecoveryRow,
+  type CanvasRevisionRow,
+  type CanvasSpatialRow,
+  type CanvasTemplateRow,
+  type CanvasTombstoneRow,
   type ContextAssetRow,
   type ContextEmbeddingRow,
   type ContextEdgeRow,
@@ -126,6 +137,18 @@ export class JarvisDexie extends Dexie {
   // V7 Prompt Forge recovery table (additive)
   prompt_forge_jobs!: EntityTable<PromptForgeJobRow, 'id'>;
 
+  // V8 Infinite Idea Canvas tables (additive)
+  canvas_documents!: EntityTable<CanvasDocumentRow, 'id'>;
+  canvas_pages!: EntityTable<CanvasPageRow, 'id'>;
+  canvas_objects!: EntityTable<CanvasObjectRow, 'id'>;
+  canvas_spatial!: EntityTable<CanvasSpatialRow, 'id'>;
+  canvas_cameras!: EntityTable<CanvasCameraRow, 'documentId'>;
+  canvas_assets!: EntityTable<CanvasAssetRow, 'id'>;
+  canvas_templates!: EntityTable<CanvasTemplateRow, 'id'>;
+  canvas_revisions!: EntityTable<CanvasRevisionRow, 'id'>;
+  canvas_tombstones!: EntityTable<CanvasTombstoneRow, 'id'>;
+  canvas_recovery!: EntityTable<CanvasRecoveryRow, 'id'>;
+
   constructor(name = DB_NAME, dependencies?: JarvisDexieDependencies) {
     super(name, dependencies);
     // Replay every additive schema version for existing installations.
@@ -136,6 +159,7 @@ export class JarvisDexie extends Dexie {
     this.version(5).stores(STORES_V5);
     this.version(6).stores(STORES_V6);
     this.version(7).stores(STORES_V7);
+    this.version(8).stores(STORES_V8);
   }
 }
 
@@ -196,6 +220,16 @@ export type {
   ContextAssetRow,
   ContextEmbeddingRow,
   PromptForgeJobRow,
+  CanvasDocumentRow,
+  CanvasPageRow,
+  CanvasObjectRow,
+  CanvasSpatialRow,
+  CanvasCameraRow,
+  CanvasAssetRow,
+  CanvasTemplateRow,
+  CanvasRevisionRow,
+  CanvasTombstoneRow,
+  CanvasRecoveryRow,
 } from './schema';
 export * from './repositories';
 export { seedIfEmpty } from './seed';

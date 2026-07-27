@@ -32,9 +32,7 @@ function PlaceholderPage({ title, hint }: PlaceholderPageProps) {
   return (
     <div className="flex h-full w-full items-center justify-center bg-paper-warm p-8">
       <div className="bg-paper rounded-lg shadow-soft p-12 text-center max-w-md">
-        <p className="text-metadata uppercase tracking-wider text-accent-copper mb-3">
-          {hint}
-        </p>
+        <p className="text-metadata uppercase tracking-wider text-accent-copper mb-3">{hint}</p>
         <h2 className="font-display text-hero text-foreground">{title}</h2>
         <p className="mt-3 text-secondary text-muted-foreground">
           This page will appear once its module is installed.
@@ -56,10 +54,7 @@ function PageLoading() {
         aria-label="Loading page"
         className="bg-paper rounded-lg shadow-soft px-5 py-3 flex items-center gap-3"
       >
-        <span
-          aria-hidden
-          className="h-2.5 w-2.5 rounded-full bg-accent-copper animate-breathe"
-        />
+        <span aria-hidden className="h-2.5 w-2.5 rounded-full bg-accent-copper animate-breathe" />
         <span className="text-secondary text-muted-foreground">Loading…</span>
       </div>
     </div>
@@ -84,9 +79,7 @@ const AgentDetailRoute = React.lazy(() =>
   import('@/features/agents')
     .then((m) => ({ default: m.AgentDetail }))
     .catch(() => ({
-      default: () => (
-        <PlaceholderPage title="Agent details" hint="Module not loaded" />
-      ),
+      default: () => <PlaceholderPage title="Agent details" hint="Module not loaded" />,
     })),
 );
 
@@ -94,9 +87,7 @@ const ProjectDetailRoute = React.lazy(() =>
   import('@/features/projects')
     .then((m) => ({ default: m.ProjectDetail }))
     .catch(() => ({
-      default: () => (
-        <PlaceholderPage title="Project details" hint="Module not loaded" />
-      ),
+      default: () => <PlaceholderPage title="Project details" hint="Module not loaded" />,
     })),
 );
 
@@ -104,9 +95,7 @@ const TerminalsPage = React.lazy(() =>
   import('@/features/terminals/TerminalsPage')
     .then((m) => ({ default: m.TerminalsPage }))
     .catch(() => ({
-      default: () => (
-        <PlaceholderPage title="Terminals" hint="Module not loaded" />
-      ),
+      default: () => <PlaceholderPage title="Terminals" hint="Module not loaded" />,
     })),
 );
 
@@ -116,6 +105,10 @@ const WorkbenchPage = React.lazy(() =>
     .catch(() => ({
       default: () => <PlaceholderPage title="Workbench" hint="Module not loaded" />,
     })),
+);
+
+const CanvasPage = React.lazy(() =>
+  import('@/features/canvas').then((module) => ({ default: module.CanvasPage })),
 );
 
 const PreviewStudioPage = React.lazy(() =>
@@ -170,9 +163,7 @@ const BenchmarksPage = React.lazy(() =>
   import('@/features/benchmarks')
     .then((m) => ({ default: m.BenchmarksPage }))
     .catch(() => ({
-      default: () => (
-        <PlaceholderPage title="Benchmarks" hint="Module not loaded" />
-      ),
+      default: () => <PlaceholderPage title="Benchmarks" hint="Module not loaded" />,
     })),
 );
 
@@ -180,9 +171,7 @@ const HistoryPage = React.lazy(() =>
   import('@/features/history')
     .then((m) => ({ default: m.HistoryPage }))
     .catch(() => ({
-      default: () => (
-        <PlaceholderPage title="History" hint="Module not loaded" />
-      ),
+      default: () => <PlaceholderPage title="History" hint="Module not loaded" />,
     })),
 );
 
@@ -190,9 +179,7 @@ const ToolsPage = React.lazy(() =>
   import('@/features/tools')
     .then((m) => ({ default: m.ToolsPage }))
     .catch(() => ({
-      default: () => (
-        <PlaceholderPage title="Custom tools" hint="Module not loaded" />
-      ),
+      default: () => <PlaceholderPage title="Custom tools" hint="Module not loaded" />,
     })),
 );
 
@@ -216,6 +203,7 @@ const AccountPage = React.lazy(() =>
 // `Route` union in `ui.ts`, TypeScript will flag this map as incomplete.
 const routeMap: Record<Route, React.LazyExoticComponent<React.ComponentType>> = {
   chat: ChatRoute,
+  canvas: CanvasPage,
   workbench: WorkbenchPage,
   preview: PreviewStudioPage,
   browser: BrowserPage,
@@ -239,6 +227,7 @@ export function PageRouter() {
   const visibleRoute = React.useDeferredValue(route);
   const Page = routeMap[visibleRoute] ?? ChatRoute;
   const [terminalMounted, setTerminalMounted] = React.useState(visibleRoute === 'terminal');
+  const [canvasMounted, setCanvasMounted] = React.useState(visibleRoute === 'canvas');
   const [previewMounted, setPreviewMounted] = React.useState(visibleRoute === 'preview');
   const [browserMounted, setBrowserMounted] = React.useState(visibleRoute === 'browser');
 
@@ -252,15 +241,20 @@ export function PageRouter() {
   }, [visibleRoute]);
 
   React.useEffect(() => {
+    if (visibleRoute === 'canvas') setCanvasMounted(true);
     if (visibleRoute === 'preview') setPreviewMounted(true);
     if (visibleRoute === 'browser') setBrowserMounted(true);
   }, [visibleRoute]);
 
   const shouldRenderTerminal = terminalMounted || visibleRoute === 'terminal';
+  const shouldRenderCanvas = canvasMounted || visibleRoute === 'canvas';
   const shouldRenderPreview = previewMounted || visibleRoute === 'preview';
   const shouldRenderBrowser = browserMounted || visibleRoute === 'browser';
   const isCachedSurface =
-    visibleRoute === 'terminal' || visibleRoute === 'preview' || visibleRoute === 'browser';
+    visibleRoute === 'terminal' ||
+    visibleRoute === 'canvas' ||
+    visibleRoute === 'preview' ||
+    visibleRoute === 'browser';
 
   return (
     <React.Suspense fallback={<PageLoading />}>
@@ -271,6 +265,15 @@ export function PageRouter() {
           className={visibleRoute === 'terminal' ? 'h-full w-full' : 'hidden'}
         >
           <TerminalsPage />
+        </div>
+      ) : null}
+      {shouldRenderCanvas ? (
+        <div
+          data-canvas-route-cache
+          aria-hidden={visibleRoute !== 'canvas'}
+          className={visibleRoute === 'canvas' ? 'h-full w-full' : 'hidden'}
+        >
+          <CanvasPage />
         </div>
       ) : null}
       {shouldRenderPreview ? (

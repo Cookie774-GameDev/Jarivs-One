@@ -152,6 +152,18 @@ const STATIC_ACTIONS: Action[] = [
     },
   },
   {
+    id: 'open-canvas',
+    label: 'Open Infinite Canvas',
+    description: 'Open the local-first page and edgeless idea workspace',
+    icon: LayoutGrid,
+    page: 'root',
+    keywords: ['infinite', 'idea', 'whiteboard', 'diagram', 'sketch', 'board'],
+    perform: ({ closePalette }) => {
+      useUIStore.getState().setRoute('canvas');
+      closePalette();
+    },
+  },
+  {
     id: 'open-preview-studio',
     label: 'Open Preview Studio',
     description: 'Responsive device previews for local servers and HTML',
@@ -399,13 +411,19 @@ const STATIC_ACTIONS: Action[] = [
       // do anything useful - fail with a clear message instead of dropping
       // the user into an empty grid.
       if (import.meta.env.VITE_ENABLE_COUNCIL === 'false') {
-        toast.warning('Council disabled', 'Set VITE_ENABLE_COUNCIL=true in your build environment to enable Council mode.');
+        toast.warning(
+          'Council disabled',
+          'Set VITE_ENABLE_COUNCIL=true in your build environment to enable Council mode.',
+        );
         closePalette();
         return;
       }
       const agentCount = Object.keys(useAgentStore.getState().agents).length;
       if (agentCount < 2) {
-        toast.warning('Council needs 2+ agents', 'Create at least two agents on the Agents page, then switch to Council.');
+        toast.warning(
+          'Council needs 2+ agents',
+          'Create at least two agents on the Agents page, then switch to Council.',
+        );
         closePalette();
         return;
       }

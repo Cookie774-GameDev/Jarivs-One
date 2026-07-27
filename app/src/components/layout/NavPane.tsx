@@ -117,14 +117,8 @@ export function NavPane() {
     [] as Chat[],
   );
 
-  const pinnedChats = React.useMemo(
-    () => (chats ?? []).filter((c) => isChatPinned(c)),
-    [chats],
-  );
-  const unpinnedChats = React.useMemo(
-    () => (chats ?? []).filter((c) => !isChatPinned(c)),
-    [chats],
-  );
+  const pinnedChats = React.useMemo(() => (chats ?? []).filter((c) => isChatPinned(c)), [chats]);
+  const unpinnedChats = React.useMemo(() => (chats ?? []).filter((c) => !isChatPinned(c)), [chats]);
 
   const onTogglePinChat = async (chat: Chat) => {
     const nextPinned = !isChatPinned(chat);
@@ -135,10 +129,7 @@ export function NavPane() {
         nextPinned ? 'It will stay at the top of the sidebar.' : 'Moved back to Chats.',
       );
     } catch (err) {
-      toast.error(
-        'Could not update pin',
-        err instanceof Error ? err.message : 'Try again.',
-      );
+      toast.error('Could not update pin', err instanceof Error ? err.message : 'Try again.');
     }
   };
 
@@ -300,12 +291,18 @@ export function NavPane() {
                 .catch((err: unknown) => {
                   toast.info(
                     'Workbench open',
-                    err instanceof Error
-                      ? err.message
-                      : 'Showing Workbench in this window.',
+                    err instanceof Error ? err.message : 'Showing Workbench in this window.',
                   );
                 });
             }}
+          />
+          <RouteItem
+            navOpen={navOpen}
+            label="Canvas"
+            icon={<LayoutGrid className="h-3.5 w-3.5 text-muted-foreground" />}
+            target="canvas"
+            route={route}
+            setRoute={setRoute}
           />
           <RouteItem
             navOpen={navOpen}
@@ -563,17 +560,17 @@ export function NavPane() {
           collapsed={!!navSectionsCollapsed['files']}
           onToggleCollapsed={() => toggleNavSection('files')}
         >
-          <SidebarFilesTree navOpen={navOpen} active={route === 'files'} onOpenFiles={() => setRoute('files')} />
+          <SidebarFilesTree
+            navOpen={navOpen}
+            active={route === 'files'}
+            onOpenFiles={() => setRoute('files')}
+          />
         </NavSection>
 
         {/* Tiny status footer so the user knows whose workspace they're in. */}
         {navOpen && (
           <div className="mt-auto px-3 py-2 text-metadata text-muted-foreground/70 border-t border-border/60">
-            {workspaceId ? (
-              <>Local · {localUserId?.slice(4, 8) ?? '----'}</>
-            ) : (
-              <>Initializing…</>
-            )}
+            {workspaceId ? <>Local · {localUserId?.slice(4, 8) ?? '----'}</> : <>Initializing…</>}
           </div>
         )}
       </div>
@@ -659,12 +656,7 @@ function NavSection({
           className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           aria-label={collapsed ? `Expand ${title}` : `Collapse ${title}`}
         >
-          <ChevronDown
-            className={cn(
-              'h-3 w-3 transition-transform',
-              collapsed && '-rotate-90',
-            )}
-          />
+          <ChevronDown className={cn('h-3 w-3 transition-transform', collapsed && '-rotate-90')} />
         </button>
         <span className="opacity-70 shrink-0">{icon}</span>
         {onTitleClick ? (

@@ -331,6 +331,7 @@ function readTerminalRefs(
 const NAVIGATION_ACTIONS: ActionDef[] = (
   [
     ['nav.chat', 'Open Chat', 'chat', MessageSquare],
+    ['nav.canvas', 'Open Canvas', 'canvas', Layers],
     ['nav.terminal', 'Open Terminals', 'terminal', TerminalIcon],
     ['nav.kanban', 'Open Kanban', 'kanban', KanbanSquare],
     ['nav.context', 'Open Context', 'context', Sparkles],

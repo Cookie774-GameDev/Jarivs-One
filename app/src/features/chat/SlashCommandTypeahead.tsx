@@ -222,13 +222,30 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
   },
 
   { cmd: 'kanban', description: 'Reference Kanban', icon: ListTodo, category: 'navigation' },
+  { cmd: 'canvas', description: 'Reference Canvas', icon: Network, category: 'navigation' },
   { cmd: 'history', description: 'Reference History', icon: History, category: 'navigation' },
   { cmd: 'tools', description: 'Reference Tools', icon: Wrench, category: 'navigation' },
-  { cmd: 'agents', description: 'Reference Agents page/editor', icon: Users, category: 'navigation' },
-  { cmd: 'schedule', description: 'Reference Schedule', icon: CalendarDays, category: 'navigation' },
+  {
+    cmd: 'agents',
+    description: 'Reference Agents page/editor',
+    icon: Users,
+    category: 'navigation',
+  },
+  {
+    cmd: 'schedule',
+    description: 'Reference Schedule',
+    icon: CalendarDays,
+    category: 'navigation',
+  },
   { cmd: 'chat', description: 'Reference Chat', icon: MessageSquare, category: 'navigation' },
 
-  { cmd: 'usage', description: 'Show truthful current-chat usage and quota availability', icon: BarChart3, category: 'utility', argPlaceholder: '[refresh|session|all]' },
+  {
+    cmd: 'usage',
+    description: 'Show truthful current-chat usage and quota availability',
+    icon: BarChart3,
+    category: 'utility',
+    argPlaceholder: '[refresh|session|all]',
+  },
   {
     cmd: 'theme',
     description: 'Switch Jarvis Core, VibeSpace, Default, or Light',
