@@ -89,6 +89,7 @@ export * from './markdown';
 export * from './mindmaps';
 export * from './packageFormat';
 export * from './paint';
+export * from './performance';
 export * from './persistence';
 export * from './presentation';
 export * from './search';
