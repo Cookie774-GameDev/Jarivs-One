@@ -64,7 +64,7 @@ import {
 } from './selection';
 import { createCanvasSpatialIndex } from './spatialIndex';
 import { CanvasOutline } from './CanvasOutline';
-import { branchToOutline } from './mindmaps';
+import { addMindMapChild, createMindMap, setMindMapBranchCollapsed } from './mindmaps';
 import {
   createCanvasAutosaveController,
   registerCanvasWorkspaceFlush,
@@ -879,6 +879,81 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
 
   const addNote = () => addBlock('note');
 
+  const addMindMap = () => {
+    let blockNumber: number;
+    let blockId: string;
+    do {
+      sequence.current += 1;
+      blockNumber = sequence.current;
+      blockId = `${documentRef.current.id}-mind-map-${blockNumber}`;
+    } while (blockById(documentRef.current, blockId));
+    commit('object-create', `Add mind map ${blockNumber}`, (current, now) =>
+      withBlockAdded(
+        current,
+        createCanvasBlock({
+          id: blockId,
+          content: {
+            kind: 'mind-map',
+            map: createMindMap({
+              id: `mind-map-${blockNumber}`,
+              rootId: `mind-map-root-${blockNumber}`,
+              label: `New mind map ${blockNumber}`,
+              now,
+            }),
+          },
+          now,
+        }),
+        now,
+      ),
+    );
+  };
+
+  const addMindMapChildToRoot = (blockId: string) => {
+    commit('block-change', 'Add mind-map branch', (current, now) => {
+      const block = blockById(current, blockId);
+      const content = block?.content;
+      if (!content || content.kind !== 'mind-map') return current;
+      const map = content.map;
+      const root = map.nodes.find((node) => node.id === map.rootId);
+      if (!root) return current;
+      const branchNumber = root.childIds.length + 1;
+      return withBlockContent(
+        current,
+        blockId,
+        {
+          kind: 'mind-map',
+          map: addMindMapChild(map, {
+            parentId: root.id,
+            nodeId: `${map.id}-branch-${branchNumber}`,
+            label: `New branch ${branchNumber}`,
+            now,
+          }),
+        },
+        now,
+      );
+    });
+  };
+
+  const toggleMindMapRootCollapsed = (blockId: string) => {
+    commit('block-change', 'Toggle mind-map branch', (current, now) => {
+      const block = blockById(current, blockId);
+      const content = block?.content;
+      if (!content || content.kind !== 'mind-map') return current;
+      const map = content.map;
+      const root = map.nodes.find((node) => node.id === map.rootId);
+      if (!root) return current;
+      return withBlockContent(
+        current,
+        blockId,
+        {
+          kind: 'mind-map',
+          map: setMindMapBranchCollapsed(map, root.id, !root.collapsed, now),
+        },
+        now,
+      );
+    });
+  };
+
   const updateBlockText = (blockId: string, text: string) => {
     commit(
       'text-change',
@@ -1043,12 +1118,39 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     const content = block.content;
     if (content.kind === 'mind-map') {
       const root = content.map.nodes.find((node) => node.id === content.map.rootId);
+      const rootChildren = content.map.nodes.filter((node) => node.parentId === root?.id);
       return (
         <section aria-label={`Mind map: ${root?.label ?? 'Untitled'}`} className="space-y-2">
           <p className="text-sm font-medium">{root?.label ?? 'Untitled'}</p>
-          <pre className="whitespace-pre-wrap text-xs text-muted-foreground">
-            {branchToOutline(content.map, content.map.rootId)}
-          </pre>
+          <button
+            type="button"
+            aria-label={`Add child to ${root?.label ?? 'Untitled'}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              addMindMapChildToRoot(block.id);
+            }}
+            className="rounded border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            Add child
+          </button>
+          <button
+            type="button"
+            aria-label={`${root?.collapsed ? 'Expand' : 'Collapse'} ${root?.label ?? 'Untitled'}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              toggleMindMapRootCollapsed(block.id);
+            }}
+            className="rounded border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            {root?.collapsed ? 'Expand' : 'Collapse'}
+          </button>
+          {root?.collapsed ? null : (
+            <ul className="space-y-1 text-xs text-muted-foreground">
+              {rootChildren.map((node) => (
+                <li key={node.id}>{node.label}</li>
+              ))}
+            </ul>
+          )}
         </section>
       );
     }
@@ -1228,6 +1330,14 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
             className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
           >
             <Code2 aria-hidden size={17} />
+          </button>
+          <button
+            type="button"
+            aria-label="Add mind map"
+            onClick={addMindMap}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <ListTree aria-hidden size={17} />
           </button>
         </aside>
 

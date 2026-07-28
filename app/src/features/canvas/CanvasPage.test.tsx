@@ -467,6 +467,22 @@ describe('CanvasPage', () => {
     expect(screen.getByRole('textbox', { name: 'Edit code block' })).toBeTruthy();
   });
 
+  it('creates, branches, collapses, and undoes a canonical mind map', () => {
+    render(<CanvasPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add mind map' }));
+    expect(screen.getByRole('region', { name: 'Mind map: New mind map 1' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add child to New mind map 1' }));
+    expect(screen.getByText('New branch 1')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse New mind map 1' }));
+    expect(screen.queryByText('New branch 1')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(screen.getByText('New branch 1')).toBeTruthy();
+  });
+
   it('creates a mind-map root and child as undoable canonical canvas content', () => {
     render(<CanvasPage />);
 
