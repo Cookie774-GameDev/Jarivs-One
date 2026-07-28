@@ -1638,6 +1638,42 @@ describe('CanvasPage', () => {
     click.mockRestore();
   });
 
+  it('exports only the selected persisted presentation frame', async () => {
+    const createObjectURL = vi.fn((_blob: Blob) => 'blob:canvas-frame-svg');
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: createObjectURL });
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() });
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => undefined);
+
+    render(<CanvasPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    fireEvent.click(screen.getAllByRole('article', { name: 'Canvas note' })[0]!);
+    fireEvent.click(screen.getByRole('button', { name: 'Show canvas properties' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add selected object to presentation' }));
+    fireEvent.click(screen.getByText('Visual exports'));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Canvas visual export format' }), {
+      target: { value: 'svg' },
+    });
+    expect(
+      (
+        screen.getByRole('option', {
+          name: 'Selected presentation frame',
+        }) as HTMLOptionElement
+      ).disabled,
+    ).toBe(false);
+    fireEvent.change(screen.getByRole('combobox', { name: 'Canvas export scope' }), {
+      target: { value: 'frame' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Download canvas export' }));
+
+    const svg = await readBlobText(createObjectURL.mock.calls[0]?.[0]!);
+    expect(svg).toContain('New note 1');
+    expect(svg).not.toContain('New note 2');
+    click.mockRestore();
+  });
+
   it.each([
     { format: 'png', mimeType: 'image/png', extension: '.png', signature: 'png' },
     { format: 'pdf', mimeType: 'application/pdf', extension: '.pdf', signature: 'pdf' },

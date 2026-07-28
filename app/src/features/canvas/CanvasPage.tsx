@@ -335,7 +335,7 @@ type CanvasVisualExportFormat = Extract<
   CanvasExportFormat,
   'png' | 'svg' | 'pdf' | 'presentation-pdf'
 >;
-type CanvasVisualExportScope = 'all' | 'selection';
+type CanvasVisualExportScope = 'all' | 'selection' | 'frame';
 
 const PERSISTENCE_LABELS: Readonly<Record<CanvasPersistenceUiStatus, string>> = Object.freeze({
   saved: 'Saved locally',
@@ -370,6 +370,16 @@ function safeExportTitle(title: string): string {
       .replace(/[^a-z0-9._-]+/gi, '-')
       .replace(/^-+|-+$/g, '') || 'canvas'
   );
+}
+
+function selectedPresentationFrameIds(
+  document: CanvasDocument,
+  selectedIds: readonly string[],
+): readonly string[] {
+  if (selectedIds.length !== 1) return [];
+  const selectedId = selectedIds[0];
+  const selectedFrameId = document.presentationOrder.find((frameId) => frameId === selectedId);
+  return selectedFrameId ? [selectedFrameId] : [];
 }
 
 interface ToolButtonProps {
@@ -2118,14 +2128,25 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
 
   const exportVisualDocument = (): void => {
     try {
+      const frameIds = selectedPresentationFrameIds(documentRef.current, selected.ids);
+      if (
+        visualExportFormat !== 'presentation-pdf' &&
+        visualExportScope === 'frame' &&
+        frameIds.length === 0
+      ) {
+        setPackageMessage('Select one presentation frame to export');
+        return;
+      }
       const artifact = exportCanvas(documentRef.current, {
         format: visualExportFormat,
         scope:
           visualExportFormat === 'presentation-pdf'
             ? { kind: 'presentation' }
-            : visualExportScope === 'selection'
-              ? { kind: 'objects', blockIds: selected.ids }
-              : { kind: 'all' },
+            : visualExportScope === 'frame'
+              ? { kind: 'frame', blockIds: frameIds }
+              : visualExportScope === 'selection'
+                ? { kind: 'objects', blockIds: selected.ids }
+                : { kind: 'all' },
         width: 1280,
         height: 720,
         scale: visualExportScale,
@@ -2641,6 +2662,9 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                 <option value="selection" disabled={selected.ids.length === 0}>
                   Selected objects
                 </option>
+                <option value="frame" disabled={!selectedBlockIsPresentationFrame}>
+                  Selected presentation frame
+                </option>
               </select>
             </label>
             <label className="block space-y-1 text-xs">
@@ -2669,7 +2693,10 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                   document.presentationOrder.length === 0) ||
                 (visualExportFormat !== 'presentation-pdf' &&
                   visualExportScope === 'selection' &&
-                  selected.ids.length === 0)
+                  selected.ids.length === 0) ||
+                (visualExportFormat !== 'presentation-pdf' &&
+                  visualExportScope === 'frame' &&
+                  !selectedBlockIsPresentationFrame)
               }
               onClick={exportVisualDocument}
               className="inline-flex w-full items-center justify-center gap-2 rounded bg-foreground px-3 py-2 text-xs font-medium text-background disabled:cursor-not-allowed disabled:opacity-40"
