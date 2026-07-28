@@ -604,6 +604,95 @@ describe('CanvasPage', () => {
     expect(Number.parseFloat(note.style.top)).toBe(10);
   });
 
+  it('aligns and distributes selected edgeless objects through undoable controls', async () => {
+    let canvas = createCanvasDocument({
+      id: 'geometry-canvas',
+      projectId: PERSISTENCE_SCOPE.projectId,
+      ownerId: PERSISTENCE_SCOPE.ownerId,
+      layoutMode: 'edgeless',
+      now: 100,
+    });
+    for (const [index, x, y] of [
+      [1, 0, 0],
+      [2, 220, 70],
+      [3, 480, 140],
+    ] as const) {
+      const block = createCanvasBlock({
+        id: `geometry-note-${index}`,
+        content: { kind: 'note', text: `Geometry note ${index}` },
+        now: 100,
+      });
+      canvas = withPlacement(
+        withBlockAdded(canvas, block, 100),
+        { blockId: block.id, x, y, width: 160, height: 100 },
+        100,
+      );
+    }
+    const repository = persistenceRepository({
+      loadLatest: vi.fn(async () => canvas),
+    });
+    render(<CanvasPage persistence={{ repository, scope: PERSISTENCE_SCOPE }} />);
+
+    expect(await screen.findByDisplayValue('Geometry note 1')).toBeTruthy();
+    fireEvent.keyDown(window, { key: 'a', ctrlKey: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Show canvas properties' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Align selected objects to top' }));
+
+    const notes = screen.getAllByLabelText('Canvas note');
+    expect(notes.map((note) => Number.parseFloat(note.style.top))).toEqual([0, 0, 0]);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(notes.map((note) => Number.parseFloat(note.style.top))).toEqual([0, 70, 140]);
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Distribute selected objects horizontally' }),
+    );
+    expect(notes.map((note) => Number.parseFloat(note.style.left))).toEqual([0, 240, 480]);
+  });
+
+  it('moves a selected edgeless object through the persisted z-order', async () => {
+    let canvas = createCanvasDocument({
+      id: 'z-order-canvas',
+      projectId: PERSISTENCE_SCOPE.projectId,
+      ownerId: PERSISTENCE_SCOPE.ownerId,
+      layoutMode: 'edgeless',
+      now: 100,
+    });
+    for (const [index, z] of [
+      [1, 0],
+      [2, 1],
+    ] as const) {
+      const block = createCanvasBlock({
+        id: `z-note-${index}`,
+        content: { kind: 'note', text: `Z note ${index}` },
+        now: 100,
+      });
+      canvas = withPlacement(
+        withBlockAdded(canvas, block, 100),
+        { blockId: block.id, x: index * 40, y: index * 40, width: 200, height: 120, z },
+        100,
+      );
+    }
+    const repository = persistenceRepository({
+      loadLatest: vi.fn(async () => canvas),
+    });
+    render(<CanvasPage persistence={{ repository, scope: PERSISTENCE_SCOPE }} />);
+
+    expect(await screen.findByDisplayValue('Z note 1')).toBeTruthy();
+    const notes = screen.getAllByLabelText('Canvas note');
+    fireEvent.click(notes[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Show canvas properties' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bring selected object to front' }));
+
+    expect(Number.parseInt(notes[0].style.zIndex, 10)).toBeGreaterThan(
+      Number.parseInt(notes[1].style.zIndex, 10),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(Number.parseInt(notes[0].style.zIndex, 10)).toBeLessThan(
+      Number.parseInt(notes[1].style.zIndex, 10),
+    );
+  });
+
   it('drags selected objects in world coordinates as one undoable action', () => {
     render(<CanvasPage />);
     fireEvent.click(screen.getByRole('button', { name: 'Add note' }));

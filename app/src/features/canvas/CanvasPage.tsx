@@ -45,6 +45,7 @@ import {
   type CanvasCamera,
   type CanvasDocument,
   type CanvasLayoutMode,
+  type CanvasSpatialPlacement,
 } from './contracts';
 import { db } from '@/lib/db';
 import { resolveAccountIdentity } from '@/lib/accountIdentity';
@@ -112,6 +113,14 @@ import {
   takePendingCanvasGlobalSearchNavigation,
   type CanvasGlobalSearchSelection,
 } from './globalSearch';
+import {
+  alignCanvasPlacements,
+  distributeCanvasPlacements,
+  reorderCanvasPlacement,
+  type CanvasAlignment,
+  type CanvasDistributionAxis,
+  type CanvasZOrderCommand,
+} from './geometry';
 
 type CanvasTool = 'select' | 'hand' | 'note';
 
@@ -135,6 +144,45 @@ const CANVAS_BACKGROUND_LABELS: Readonly<Record<CanvasBackgroundKind, string>> =
   grid: 'Square grid',
   lines: 'Lined paper',
 });
+
+const CANVAS_ALIGNMENT_LABELS: Readonly<Record<CanvasAlignment, string>> = Object.freeze({
+  left: 'Left',
+  'horizontal-center': 'Horizontal center',
+  right: 'Right',
+  top: 'Top',
+  'vertical-center': 'Vertical center',
+  bottom: 'Bottom',
+});
+
+const CANVAS_Z_ORDER_LABELS: Readonly<Record<CanvasZOrderCommand, string>> = Object.freeze({
+  forward: 'Bring forward',
+  backward: 'Send backward',
+  front: 'Bring to front',
+  back: 'Send to back',
+});
+
+const CANVAS_Z_ORDER_ARIA_LABELS: Readonly<Record<CanvasZOrderCommand, string>> = Object.freeze({
+  forward: 'Bring selected object forward',
+  backward: 'Send selected object backward',
+  front: 'Bring selected object to front',
+  back: 'Send selected object to back',
+});
+
+function sameCanvasPlacement(
+  left: CanvasSpatialPlacement | undefined,
+  right: CanvasSpatialPlacement,
+): boolean {
+  return (
+    left !== undefined &&
+    left.blockId === right.blockId &&
+    left.x === right.x &&
+    left.y === right.y &&
+    left.width === right.width &&
+    left.height === right.height &&
+    left.rotation === right.rotation &&
+    left.z === right.z
+  );
+}
 
 function canvasBackgroundStyle(background: CanvasBackground): React.CSSProperties {
   const lineColor = 'rgba(104, 86, 64, 0.22)';
@@ -607,6 +655,68 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
       );
     },
     [commit, document.layoutMode, selected.ids],
+  );
+
+  const commitPlacementTransformation = React.useCallback(
+    (
+      kind: CanvasHistoryActionKind,
+      label: string,
+      transform: (
+        placements: readonly CanvasSpatialPlacement[],
+      ) => readonly CanvasSpatialPlacement[],
+    ) => {
+      commit(kind, label, (current, now) => {
+        const placements = [...resolveEdgelessLayout(current).values()];
+        const previousById = new Map(
+          placements.map((placement) => [placement.blockId, placement] as const),
+        );
+        return transform(placements).reduce(
+          (next, placement) =>
+            sameCanvasPlacement(previousById.get(placement.blockId), placement)
+              ? next
+              : withPlacement(next, placement, now),
+          current,
+        );
+      });
+    },
+    [commit],
+  );
+
+  const alignSelected = React.useCallback(
+    (alignment: CanvasAlignment) => {
+      if (selected.ids.length < 2 || documentRef.current.layoutMode !== 'edgeless') return;
+      const ids = selected.ids;
+      commitPlacementTransformation(
+        'object-move',
+        `Align ${ids.length} canvas objects ${CANVAS_ALIGNMENT_LABELS[alignment].toLowerCase()}`,
+        (placements) => alignCanvasPlacements(placements, ids, alignment),
+      );
+    },
+    [commitPlacementTransformation, selected.ids],
+  );
+
+  const distributeSelected = React.useCallback(
+    (axis: CanvasDistributionAxis) => {
+      if (selected.ids.length < 3 || documentRef.current.layoutMode !== 'edgeless') return;
+      const ids = selected.ids;
+      commitPlacementTransformation(
+        'object-move',
+        `Distribute ${ids.length} canvas objects ${axis}ly`,
+        (placements) => distributeCanvasPlacements(placements, ids, axis),
+      );
+    },
+    [commitPlacementTransformation, selected.ids],
+  );
+
+  const reorderSelected = React.useCallback(
+    (command: CanvasZOrderCommand) => {
+      if (selected.ids.length !== 1 || documentRef.current.layoutMode !== 'edgeless') return;
+      const [id] = selected.ids;
+      commitPlacementTransformation('style-change', CANVAS_Z_ORDER_LABELS[command], (placements) =>
+        reorderCanvasPlacement(placements, id, command),
+      );
+    },
+    [commitPlacementTransformation, selected.ids],
   );
 
   const copySelected = React.useCallback(() => {
@@ -2084,6 +2194,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                       top: placement?.y ?? 0,
                       width: placement?.width ?? 280,
                       height: placement?.height ?? 180,
+                      zIndex: (placement?.z ?? 0) + 1_000_000,
                     }}
                   >
                     {renderBlockEditor(block)}
@@ -2357,6 +2468,26 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                       </output>
                     </div>
                   ) : null}
+                  {document.layoutMode === 'edgeless' ? (
+                    <section aria-label="Selected object order" className="space-y-2">
+                      <h3 className="text-xs font-medium text-muted-foreground">Object order</h3>
+                      <div className="grid grid-cols-2 gap-2">
+                        {(Object.keys(CANVAS_Z_ORDER_LABELS) as CanvasZOrderCommand[]).map(
+                          (command) => (
+                            <button
+                              key={command}
+                              type="button"
+                              aria-label={CANVAS_Z_ORDER_ARIA_LABELS[command]}
+                              onClick={() => reorderSelected(command)}
+                              className="rounded-md border border-border px-2 py-1.5 text-xs hover:bg-muted"
+                            >
+                              {CANVAS_Z_ORDER_LABELS[command]}
+                            </button>
+                          ),
+                        )}
+                      </div>
+                    </section>
+                  ) : null}
                   <button
                     type="button"
                     aria-label={
@@ -2386,6 +2517,55 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                   <p className="text-sm text-muted-foreground">
                     Shared actions apply to the complete selection.
                   </p>
+                  {document.layoutMode === 'edgeless' ? (
+                    <section aria-label="Selected object geometry" className="space-y-3">
+                      <div className="space-y-2">
+                        <h3 className="text-xs font-medium text-muted-foreground">Alignment</h3>
+                        <div className="grid grid-cols-2 gap-2">
+                          {(Object.keys(CANVAS_ALIGNMENT_LABELS) as CanvasAlignment[]).map(
+                            (alignment) => (
+                              <button
+                                key={alignment}
+                                type="button"
+                                aria-label={`Align selected objects to ${CANVAS_ALIGNMENT_LABELS[
+                                  alignment
+                                ].toLowerCase()}`}
+                                onClick={() => alignSelected(alignment)}
+                                className="rounded-md border border-border px-2 py-1.5 text-xs hover:bg-muted"
+                              >
+                                {CANVAS_ALIGNMENT_LABELS[alignment]}
+                              </button>
+                            ),
+                          )}
+                        </div>
+                      </div>
+                      {selectedBlocks.length >= 3 ? (
+                        <div className="space-y-2">
+                          <h3 className="text-xs font-medium text-muted-foreground">
+                            Distribution
+                          </h3>
+                          <div className="grid grid-cols-2 gap-2">
+                            <button
+                              type="button"
+                              aria-label="Distribute selected objects horizontally"
+                              onClick={() => distributeSelected('horizontal')}
+                              className="rounded-md border border-border px-2 py-1.5 text-xs hover:bg-muted"
+                            >
+                              Horizontal
+                            </button>
+                            <button
+                              type="button"
+                              aria-label="Distribute selected objects vertically"
+                              onClick={() => distributeSelected('vertical')}
+                              className="rounded-md border border-border px-2 py-1.5 text-xs hover:bg-muted"
+                            >
+                              Vertical
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+                    </section>
+                  ) : null}
                   <button
                     type="button"
                     aria-label="Delete selected objects"
