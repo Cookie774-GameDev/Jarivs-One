@@ -153,11 +153,11 @@ function pushBlock(blocks: CanvasBlockContent[], content: CanvasBlockContent): v
   if (blocks.length >= CANVAS_MARKDOWN_MAX_BLOCKS) {
     throw new CanvasValidationError('unsupported-value', 'source', 'too many blocks');
   }
-  if (content.kind === 'mind-map') {
+  if (content.kind === 'mind-map' || content.kind === 'shape') {
     throw new CanvasValidationError(
       'unsupported-value',
       'source',
-      'markdown cannot create a mind-map payload',
+      'markdown cannot create structured canvas payloads',
     );
   }
   if (content.text.length > CANVAS_MAX_TEXT_LENGTH) {

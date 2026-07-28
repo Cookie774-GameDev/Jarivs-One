@@ -20,6 +20,7 @@ import {
   adaptBridgeDocumentToDomain,
   projectDomainDocumentToBridge,
 } from './contextCanvasDomainAdapter';
+import { createCanvasShape } from '../canvas/shapes';
 
 const NOW = 1_000;
 
@@ -139,7 +140,7 @@ describe('Canvas domain <-> Context/Open JSON Canvas bridge adapter', () => {
       expect(Object.isFrozen(bridge.objects[0])).toBe(true);
     });
 
-    it('projects heading and code blocks as lossy text objects without altering canonical content', () => {
+    it('projects structured blocks as lossy text objects without altering canonical content', () => {
       let doc = createCanvasDocument({
         id: 'doc2',
         projectId: 'project1',
@@ -164,9 +165,31 @@ describe('Canvas domain <-> Context/Open JSON Canvas bridge adapter', () => {
         }),
         NOW,
       );
+      doc = withBlockAdded(
+        doc,
+        createCanvasBlock({
+          id: 'shape1',
+          content: {
+            kind: 'shape',
+            shape: createCanvasShape({
+              id: 'shape1',
+              kind: 'diamond',
+              fill: '#2f80ed',
+              text: 'Architecture decision',
+            }),
+          },
+          now: NOW,
+        }),
+        NOW,
+      );
       const bridge = projectDomainDocumentToBridge(doc);
       expect(bridge.objects[0]).toMatchObject({ id: 'h1', type: 'text', text: 'Section title' });
       expect(bridge.objects[1]).toMatchObject({ id: 'c1', type: 'text', text: 'const x = 1;' });
+      expect(bridge.objects[2]).toMatchObject({
+        id: 'shape1',
+        type: 'text',
+        text: 'Architecture decision',
+      });
       expect(blockById(doc, 'h1')?.content).toEqual({
         kind: 'heading',
         level: 2,

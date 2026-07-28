@@ -20,6 +20,7 @@ import {
   type CanvasDocument,
 } from './contracts';
 import type { CanvasAssetReference } from './assets';
+import { createCanvasShape } from './shapes';
 
 function documentFixture(): CanvasDocument {
   let document = createCanvasDocument({
@@ -162,6 +163,21 @@ describe('canvas accessibility descriptors', () => {
     expect(label.startsWith('Note: word word')).toBe(true);
     expect(label.endsWith('…')).toBe(true);
     expect(label.length).toBeLessThanOrEqual(96);
+
+    const shape = createCanvasBlock({
+      id: 'shape-a',
+      content: {
+        kind: 'shape',
+        shape: createCanvasShape({
+          id: 'shape-a',
+          kind: 'diamond',
+          fill: '#f2c94c',
+          text: 'Decision',
+        }),
+      },
+      now: 1,
+    });
+    expect(canvasBlockAccessibleLabel(shape)).toBe('Diamond shape: Decision');
 
     const outline = buildCanvasScreenReaderOutline(documentFixture(), {
       selectedIds: ['note-a'],

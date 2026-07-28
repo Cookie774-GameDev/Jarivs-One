@@ -258,6 +258,9 @@ function blockContent(block: CanvasBlock, maximum: number): string {
   if (block.content.kind === 'mind-map') {
     return modelText(JSON.stringify(block.content.map), maximum);
   }
+  if (block.content.kind === 'shape') {
+    return modelText(block.content.shape.text ?? block.content.shape.kind, maximum);
+  }
   return modelText(block.content.text, maximum);
 }
 

@@ -18,6 +18,7 @@ import {
   serializeClipboard,
   type CanvasClipboardPayload,
 } from './clipboard';
+import { createCanvasShape } from './shapes';
 
 const T0 = 1_750_000_000_000;
 const T1 = T0 + 60_000;
@@ -198,6 +199,38 @@ describe('pasteBlocks', () => {
     const pasted = result.blocks.find((b) => b.id === 'new-id-1');
     expect(pasted).toBeDefined();
     expect(pasted!.content).toEqual({ kind: 'text', text: 'alpha' });
+  });
+
+  it('remaps the canonical shape id together with its pasted block id', () => {
+    resetIdCounter();
+    let document = baseDoc();
+    document = withBlockAdded(
+      document,
+      createCanvasBlock({
+        id: 'shape-a',
+        content: {
+          kind: 'shape',
+          shape: createCanvasShape({
+            id: 'shape-a',
+            kind: 'diamond',
+            fill: '#2f80ed',
+            text: 'Decision',
+          }),
+        },
+        now: T0,
+      }),
+      T0,
+    );
+
+    const result = pasteBlocks(document, copyBlocks(document, ['shape-a']), {
+      generateId: fakeIdFactory,
+      now: T1,
+    });
+    const pasted = result.blocks.find((item) => item.id === 'new-id-1');
+    expect(pasted?.content).toMatchObject({
+      kind: 'shape',
+      shape: { id: 'new-id-1', kind: 'diamond', text: 'Decision' },
+    });
   });
 
   it('rejects duplicate source ids and orphaned placements in forged payloads', () => {

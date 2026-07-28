@@ -62,6 +62,11 @@ export function canvasBlockAccessibleLabel(block: CanvasBlock): string {
       label = `Mind map: ${root?.label ?? 'Untitled'}`;
       break;
     }
+    case 'shape': {
+      const kind = content.shape.kind.replaceAll('-', ' ');
+      label = `${kind.charAt(0).toUpperCase()}${kind.slice(1)} shape: ${content.shape.text ?? 'Unlabeled'}`;
+      break;
+    }
   }
   return boundedText(label);
 }
@@ -122,7 +127,8 @@ export type CanvasAccessibilityItemKind =
   | 'text'
   | 'note'
   | 'code'
-  | 'mind-map';
+  | 'mind-map'
+  | 'shape';
 
 export interface CanvasAccessibilityItem {
   readonly id: string;

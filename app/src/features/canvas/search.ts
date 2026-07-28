@@ -805,7 +805,9 @@ export function projectCanvasDocumentForSearch(
     const text =
       block.content.kind === 'mind-map'
         ? branchToOutline(block.content.map, block.content.map.rootId)
-        : block.content.text;
+        : block.content.kind === 'shape'
+          ? (block.content.shape.text ?? '')
+          : block.content.text;
     inputs.push({
       id: block.id,
       objectType: block.content.kind,

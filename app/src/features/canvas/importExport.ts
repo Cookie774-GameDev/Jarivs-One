@@ -1093,6 +1093,8 @@ function blockText(block: CanvasBlock): string {
       return block.content.text;
     case 'mind-map':
       return JSON.stringify(block.content.map);
+    case 'shape':
+      return block.content.shape.text ?? block.content.shape.kind;
   }
 }
 
@@ -1109,6 +1111,8 @@ function markdown(document: CanvasDocument): string {
           return `> ${block.content.text.replace(/\n/gu, '\n> ')}`;
         case 'mind-map':
           return `\`\`\`json\n${stableJson(block.content.map)}\n\`\`\``;
+        case 'shape':
+          return `[Shape: ${block.content.shape.kind}] ${block.content.shape.text ?? ''}`.trimEnd();
         default:
           return block.content.text;
       }
@@ -1125,6 +1129,48 @@ function escapeXml(text: string): string {
     .replace(/'/gu, '&apos;');
 }
 
+function svgShapeMarkup(block: CanvasBlock, y: number): readonly string[] {
+  if (block.content.kind !== 'shape') return [];
+  const shape = block.content.shape;
+  const x = 24;
+  const top = y - 20;
+  const width = 180;
+  const height = 48;
+  const fill = shape.fill?.color ?? shape.gradient?.stops[0]?.color ?? 'none';
+  const stroke = shape.borderColor ?? 'none';
+  const strokeWidth = shape.borderWidth;
+  const dash =
+    shape.dash === 'dashed'
+      ? ' stroke-dasharray="8 6"'
+      : shape.dash === 'dotted'
+        ? ' stroke-dasharray="2 5"'
+        : '';
+  const shared = `data-shape-kind="${shape.kind}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" opacity="${shape.opacity}"${dash}`;
+  let element: string;
+  switch (shape.kind) {
+    case 'ellipse':
+    case 'actor':
+      element = `<ellipse cx="${x + width / 2}" cy="${top + height / 2}" rx="${width / 2}" ry="${height / 2}" ${shared}/>`;
+      break;
+    case 'diamond':
+      element = `<polygon points="${x + width / 2},${top} ${x + width},${top + height / 2} ${x + width / 2},${top + height} ${x},${top + height / 2}" ${shared}/>`;
+      break;
+    case 'triangle':
+      element = `<polygon points="${x + width / 2},${top} ${x + width},${top + height} ${x},${top + height}" ${shared}/>`;
+      break;
+    case 'hexagon':
+      element = `<polygon points="${x + width * 0.25},${top} ${x + width * 0.75},${top} ${x + width},${top + height / 2} ${x + width * 0.75},${top + height} ${x + width * 0.25},${top + height} ${x},${top + height / 2}" ${shared}/>`;
+      break;
+    default:
+      element = `<rect x="${x}" y="${top}" width="${width}" height="${height}" rx="${Math.min(shape.cornerRadius, height / 2)}" ${shared}/>`;
+      break;
+  }
+  return [
+    element,
+    `<text x="${x + width / 2}" y="${top + height / 2 + 5}" text-anchor="middle" fill="#111111" font-family="sans-serif" font-size="14">${escapeXml(shape.text ?? 'Unlabeled shape')}</text>`,
+  ];
+}
+
 function svgDocument(
   document: CanvasDocument,
   width: number,
@@ -1139,6 +1185,11 @@ function svgDocument(
   let y = 36;
   for (const id of document.pageOrder) {
     const block = document.blocks.find((candidate) => candidate.id === id) as CanvasBlock;
+    if (block.content.kind === 'shape') {
+      lines.push(...svgShapeMarkup(block, y));
+      y += 64;
+      continue;
+    }
     lines.push(
       `<text x="24" y="${y}" fill="#111111" font-family="sans-serif" font-size="16">${escapeXml(blockText(block))}</text>`,
     );

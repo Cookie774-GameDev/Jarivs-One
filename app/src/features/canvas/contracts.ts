@@ -12,6 +12,7 @@
  */
 
 import { validateMindMap, type MindMap } from './mindmaps';
+import { parseCanvasShape, type CanvasShape } from './shapes';
 
 // ---------------------------------------------------------------------------
 // Validation errors
@@ -114,7 +115,7 @@ export interface CanvasBackground {
   readonly color: string;
 }
 
-export const CANVAS_BLOCK_KINDS = ['heading', 'text', 'note', 'code', 'mind-map'] as const;
+export const CANVAS_BLOCK_KINDS = ['heading', 'text', 'note', 'code', 'mind-map', 'shape'] as const;
 export type CanvasBlockKind = (typeof CANVAS_BLOCK_KINDS)[number];
 
 export type CanvasBlockContent =
@@ -122,7 +123,8 @@ export type CanvasBlockContent =
   | { readonly kind: 'text'; readonly text: string }
   | { readonly kind: 'note'; readonly text: string }
   | { readonly kind: 'code'; readonly language: string; readonly text: string }
-  | { readonly kind: 'mind-map'; readonly map: MindMap };
+  | { readonly kind: 'mind-map'; readonly map: MindMap }
+  | { readonly kind: 'shape'; readonly shape: CanvasShape };
 
 /** Canonical shared content object. Rendered identically by both layouts. */
 export interface CanvasBlock {
@@ -357,6 +359,7 @@ const CONTENT_KEYS_BY_KIND: Record<CanvasBlockKind, readonly string[]> = {
   note: ['kind', 'text'],
   code: ['kind', 'language', 'text'],
   'mind-map': ['kind', 'map'],
+  shape: ['kind', 'shape'],
 };
 
 function normalizeContent(input: unknown, path: string): CanvasBlockContent {
@@ -371,6 +374,9 @@ function normalizeContent(input: unknown, path: string): CanvasBlockContent {
   assertExactKeys(input, new Set(CONTENT_KEYS_BY_KIND[blockKind]), path);
   if (blockKind === 'mind-map') {
     return { kind: 'mind-map', map: validateMindMap(input.map) };
+  }
+  if (blockKind === 'shape') {
+    return { kind: 'shape', shape: parseCanvasShape(input.shape) };
   }
   const text = assertString(input.text, `${path}.text`);
   if (text.length > CANVAS_MAX_TEXT_LENGTH) {
@@ -406,6 +412,9 @@ function normalizeBlock(input: unknown, path: string): CanvasBlock {
   const updatedAt = assertTimestamp(input.updatedAt, `${path}.updatedAt`);
   if (updatedAt < createdAt) {
     fail('invalid-timestamp', `${path}.updatedAt`, 'updatedAt precedes createdAt');
+  }
+  if (content.kind === 'shape' && content.shape.id !== id) {
+    fail('invalid-reference', `${path}.content.shape.id`, 'shape id must match its block id');
   }
   return deepFreeze({ id, content, createdAt, updatedAt });
 }

@@ -19,6 +19,7 @@ import {
   RotateCcw,
   Search,
   Settings2,
+  Square,
   StickyNote,
   Type,
   Undo2,
@@ -156,6 +157,13 @@ import {
   type CanvasSnapBounds,
   type CanvasSnapGuide,
 } from './snapping';
+import {
+  CANVAS_SHAPE_KINDS,
+  parseCanvasShape,
+  createCanvasShape,
+  type CanvasShape,
+  type CanvasShapeKind,
+} from './shapes';
 
 type CanvasTool = 'select' | 'lasso' | 'hand' | 'note';
 type CanvasPlacementField = 'x' | 'y' | 'width' | 'height' | 'rotation';
@@ -173,6 +181,7 @@ const CANVAS_BLOCK_KIND_LABELS: Readonly<Record<CanvasBlockKind, string>> = Obje
   note: 'Note',
   code: 'Code',
   'mind-map': 'Mind map',
+  shape: 'Shape',
 });
 
 const CANVAS_BACKGROUND_LABELS: Readonly<Record<CanvasBackgroundKind, string>> = Object.freeze({
@@ -401,11 +410,53 @@ function presentationFrameLabel(block: CanvasBlock | undefined): string {
   const label =
     content.kind === 'mind-map'
       ? content.map.nodes.find((node) => node.id === content.map.rootId)?.label
-      : content.text;
+      : content.kind === 'shape'
+        ? content.shape.text
+        : content.text;
   const normalized = label?.trim().replace(/\s+/g, ' ');
   return normalized
     ? normalized.slice(0, 80)
     : `Untitled ${CANVAS_BLOCK_KIND_LABELS[block.content.kind]}`;
+}
+
+function shapeVisualStyle(shape: CanvasShape): React.CSSProperties {
+  const gradient = shape.gradient
+    ? shape.gradient.kind === 'linear'
+      ? `linear-gradient(${shape.gradient.angle}deg, ${shape.gradient.stops
+          .map((stop) => `${stop.color} ${stop.offset * 100}%`)
+          .join(', ')})`
+      : `radial-gradient(circle, ${shape.gradient.stops
+          .map((stop) => `${stop.color} ${stop.offset * 100}%`)
+          .join(', ')})`
+    : undefined;
+  const clipPathByKind: Partial<Record<CanvasShapeKind, string>> = {
+    diamond: 'polygon(50% 0, 100% 50%, 50% 100%, 0 50%)',
+    triangle: 'polygon(50% 0, 100% 100%, 0 100%)',
+    hexagon: 'polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%)',
+    'speech-bubble': 'polygon(0 0, 100% 0, 100% 78%, 62% 78%, 50% 100%, 42% 78%, 0 78%)',
+    callout: 'polygon(0 0, 100% 0, 100% 75%, 28% 75%, 12% 100%, 16% 75%, 0 75%)',
+  };
+  return {
+    background: gradient ?? shape.fill?.color ?? 'transparent',
+    borderColor: shape.borderColor ?? 'transparent',
+    borderWidth: shape.borderWidth,
+    borderStyle: shape.dash === 'solid' ? 'solid' : shape.dash,
+    borderRadius:
+      shape.kind === 'ellipse' || shape.kind === 'actor'
+        ? '9999px'
+        : shape.kind === 'cloud'
+          ? '45%'
+          : shape.kind === 'cylinder'
+            ? '50% / 12%'
+            : shape.kind === 'rounded-rectangle'
+              ? shape.cornerRadius
+              : shape.cornerRadius,
+    clipPath: clipPathByKind[shape.kind],
+    opacity: shape.opacity,
+    boxShadow: shape.shadow
+      ? `${shape.shadow.offsetX}px ${shape.shadow.offsetY}px ${shape.shadow.blur}px ${shape.shadow.color}`
+      : undefined,
+  };
 }
 
 function currentCanvasSearchResultLabel(result: CanvasSearchResult): string {
@@ -1845,7 +1896,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     commitDirectGeometry('object-rotate', 'Rotate canvas object', placement.blockId, next);
   };
 
-  const addBlock = (kind: Exclude<CanvasBlockKind, 'mind-map'>) => {
+  const addBlock = (kind: Exclude<CanvasBlockKind, 'mind-map' | 'shape'>) => {
     let blockNumber: number;
     let blockId: string;
     do {
@@ -1894,6 +1945,38 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
               rootId: `mind-map-root-${blockNumber}`,
               label: `New mind map ${blockNumber}`,
               now,
+            }),
+          },
+          now,
+        }),
+        now,
+      ),
+    );
+  };
+
+  const addShape = () => {
+    let blockNumber: number;
+    let blockId: string;
+    do {
+      sequence.current += 1;
+      blockNumber = sequence.current;
+      blockId = `${documentRef.current.id}-shape-${blockNumber}`;
+    } while (blockById(documentRef.current, blockId));
+    commit('object-create', `Add shape ${blockNumber}`, (current, now) =>
+      withBlockAdded(
+        current,
+        createCanvasBlock({
+          id: blockId,
+          content: {
+            kind: 'shape',
+            shape: createCanvasShape({
+              id: blockId,
+              kind: 'rectangle',
+              fill: '#f2c94c',
+              borderColor: '#8a6d1d',
+              borderWidth: 2,
+              cornerRadius: 16,
+              text: `New shape ${blockNumber}`,
             }),
           },
           now,
@@ -2077,10 +2160,37 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
       'Edit canvas block',
       (current, now) => {
         const block = blockById(current, blockId);
-        if (!block || block.content.kind === 'mind-map') return current;
+        if (!block || block.content.kind === 'mind-map' || block.content.kind === 'shape') {
+          return current;
+        }
         return withBlockContent(current, blockId, { ...block.content, text }, now);
       },
       `canvas-block:${blockId}`,
+    );
+  };
+
+  const updateShape = (
+    blockId: string,
+    update: Readonly<Partial<Pick<CanvasShape, 'kind' | 'fill' | 'text'>>>,
+  ) => {
+    if (selectionHasLockedPlacement(documentRef.current, [blockId])) return;
+    commit(
+      'block-change',
+      'Edit canvas shape',
+      (current, now) => {
+        const block = blockById(current, blockId);
+        if (!block || block.content.kind !== 'shape') return current;
+        return withBlockContent(
+          current,
+          blockId,
+          {
+            kind: 'shape',
+            shape: parseCanvasShape({ ...block.content.shape, ...update }),
+          },
+          now,
+        );
+      },
+      `canvas-shape:${blockId}`,
     );
   };
 
@@ -2700,6 +2810,20 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
         </section>
       );
     }
+    if (content.kind === 'shape') {
+      return (
+        <div
+          role="img"
+          aria-label={`Canvas shape: ${canvasBlockAccessibleLabel(block)}`}
+          data-shape-kind={content.shape.kind}
+          data-shape-fill={content.shape.fill?.color ?? ''}
+          className="flex h-full min-h-20 w-full items-center justify-center p-6 text-center text-sm font-medium"
+          style={shapeVisualStyle(content.shape)}
+        >
+          <span>{content.shape.text ?? 'Unlabeled shape'}</span>
+        </div>
+      );
+    }
     return (
       <textarea
         aria-label={`Edit ${content.kind} block`}
@@ -3245,6 +3369,17 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                       {activePresentationMindMap?.nodes.length ?? 0} mind-map nodes
                     </p>
                   </div>
+                ) : activePresentationBlock.content.kind === 'shape' ? (
+                  <div
+                    role="img"
+                    aria-label={`Canvas shape: ${canvasBlockAccessibleLabel(activePresentationBlock)}`}
+                    data-shape-kind={activePresentationBlock.content.shape.kind}
+                    data-shape-fill={activePresentationBlock.content.shape.fill?.color ?? ''}
+                    className="mx-auto flex min-h-80 w-full max-w-3xl items-center justify-center p-12 text-center text-3xl font-semibold"
+                    style={shapeVisualStyle(activePresentationBlock.content.shape)}
+                  >
+                    {activePresentationBlock.content.shape.text ?? 'Unlabeled shape'}
+                  </div>
                 ) : activePresentationBlock.content.kind === 'code' ? (
                   <div className="space-y-3">
                     <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -3362,6 +3497,14 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
             className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
           >
             <ListTree aria-hidden size={17} />
+          </button>
+          <button
+            type="button"
+            aria-label="Add shape"
+            onClick={addShape}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <Square aria-hidden size={17} />
           </button>
         </aside>
 
@@ -3859,6 +4002,57 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                     <p className="text-sm text-muted-foreground">
                       Mind-map direction, connector, and node controls are available on the object.
                     </p>
+                  ) : selectedBlock.content.kind === 'shape' ? (
+                    <div className="space-y-3">
+                      <label className="block space-y-1 text-xs text-muted-foreground">
+                        Shape
+                        <select
+                          aria-label="Shape kind"
+                          value={selectedBlock.content.shape.kind}
+                          disabled={selectedPlacement?.locked}
+                          onChange={(event) =>
+                            updateShape(selectedBlock.id, {
+                              kind: event.currentTarget.value as CanvasShapeKind,
+                            })
+                          }
+                          className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                        >
+                          {CANVAS_SHAPE_KINDS.map((kind) => (
+                            <option key={kind} value={kind}>
+                              {kind.replaceAll('-', ' ')}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="block space-y-1 text-xs text-muted-foreground">
+                        Label
+                        <textarea
+                          aria-label="Shape label"
+                          value={selectedBlock.content.shape.text ?? ''}
+                          rows={3}
+                          disabled={selectedPlacement?.locked}
+                          onChange={(event) =>
+                            updateShape(selectedBlock.id, { text: event.currentTarget.value })
+                          }
+                          className="w-full resize-y rounded-md border border-border bg-background p-2 text-sm text-foreground outline-none focus:border-ring"
+                        />
+                      </label>
+                      <label className="block space-y-1 text-xs text-muted-foreground">
+                        Fill
+                        <input
+                          aria-label="Shape fill color"
+                          type="color"
+                          value={selectedBlock.content.shape.fill?.color ?? '#f2c94c'}
+                          disabled={selectedPlacement?.locked}
+                          onChange={(event) =>
+                            updateShape(selectedBlock.id, {
+                              fill: { kind: 'solid', color: event.currentTarget.value },
+                            })
+                          }
+                          className="h-9 w-full cursor-pointer rounded-md border border-border bg-background p-1"
+                        />
+                      </label>
+                    </div>
                   ) : (
                     <label className="block space-y-1 text-xs text-muted-foreground">
                       Content

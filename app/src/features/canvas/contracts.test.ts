@@ -34,6 +34,7 @@ import {
   type CanvasDocument,
 } from './contracts';
 import { createMindMap } from './mindmaps';
+import { createCanvasShape } from './shapes';
 
 const T0 = 1_750_000_000_000;
 const T1 = T0 + 60_000;
@@ -212,6 +213,48 @@ describe('createCanvasBlock', () => {
 
     expect(created.content).toEqual({ kind: 'mind-map', map });
     expect(Object.isFrozen(created.content)).toBe(true);
+  });
+
+  it('stores a validated shape as canonical shared page and edgeless content', () => {
+    const shape = createCanvasShape({
+      id: 'shape-block-1',
+      kind: 'rectangle',
+      fill: '#f2c94c',
+      borderColor: '#111111',
+      borderWidth: 2,
+      text: 'System boundary',
+    });
+
+    const created = createCanvasBlock({
+      id: 'shape-block-1',
+      content: { kind: 'shape', shape },
+      now: T0,
+    });
+
+    expect(created.content).toEqual({ kind: 'shape', shape });
+    expect(Object.isFrozen(created.content)).toBe(true);
+    if (created.content.kind !== 'shape') throw new Error('expected shape content');
+    expect(Object.isFrozen(created.content.shape)).toBe(true);
+    const document = withBlockAdded(
+      createCanvasDocument({
+        id: 'shape-document',
+        projectId: 'project-shape',
+        ownerId: 'owner-shape',
+        title: 'Shape document',
+        now: T0,
+      }),
+      created,
+      T1,
+    );
+    const restored = parseCanvasDocument(JSON.parse(JSON.stringify(document)) as unknown);
+    expect(restored.blocks[0]?.content).toEqual({ kind: 'shape', shape });
+    expect(() =>
+      createCanvasBlock({
+        id: 'different-block',
+        content: { kind: 'shape', shape },
+        now: T0,
+      }),
+    ).toThrow(CanvasValidationError);
   });
 
   it('rejects unsupported content kinds and invalid fields', () => {

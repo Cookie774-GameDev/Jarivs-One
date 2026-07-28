@@ -11,6 +11,7 @@ import {
   type CanvasDocument,
 } from './contracts';
 import { CanvasCameraError, type CanvasViewport } from './camera';
+import { createCanvasShape } from './shapes';
 import {
   CANVAS_SEARCH_LIMITS,
   DEFAULT_RESULT_LIMIT,
@@ -400,8 +401,26 @@ describe('global canvas document search projection', () => {
       }),
       T0,
     );
+    doc = withBlockAdded(
+      doc,
+      createCanvasBlock({
+        id: 'shape-a',
+        content: {
+          kind: 'shape',
+          shape: createCanvasShape({
+            id: 'shape-a',
+            kind: 'diamond',
+            fill: '#f2c94c',
+            text: 'Architecture decision',
+          }),
+        },
+        now: T0,
+      }),
+      T0,
+    );
     doc = withPlacement(doc, { blockId: 'blk-a', x: 10, y: 20, width: 200, height: 100 }, T0);
     doc = withPlacement(doc, { blockId: 'blk-b', x: 300, y: 400, width: 200, height: 100 }, T0);
+    doc = withPlacement(doc, { blockId: 'shape-a', x: 600, y: 40, width: 180, height: 120 }, T0);
     return doc;
   }
 
@@ -409,11 +428,11 @@ describe('global canvas document search projection', () => {
     const projection = projectCanvasDocumentForSearch(projectionDoc());
     expect(projection.documentId).toBe('doc-1');
     expect(projection.title).toBe('Roadmap');
-    expect(projection.objects.length).toBe(3);
+    expect(projection.objects.length).toBe(4);
 
     const titleObject = projection.objects.find((item) => item.objectType === 'document');
     expect(titleObject?.text).toBe('Roadmap');
-    expect(titleObject?.focus).toEqual({ x: 10, y: 20, width: 490, height: 480 });
+    expect(titleObject?.focus).toEqual({ x: 10, y: 20, width: 770, height: 480 });
 
     const heading = projection.objects.find((item) => item.id === 'blk-a');
     expect(heading?.objectType).toBe('heading');
@@ -424,6 +443,11 @@ describe('global canvas document search projection', () => {
     expect(body?.objectType).toBe('text');
     expect(body?.text).toBe('Beta body text');
     expect(body?.focus).toEqual({ x: 300, y: 400, width: 200, height: 100 });
+
+    const shape = projection.objects.find((item) => item.id === 'shape-a');
+    expect(shape?.objectType).toBe('shape');
+    expect(shape?.text).toBe('Architecture decision');
+    expect(shape?.focus).toEqual({ x: 600, y: 40, width: 180, height: 120 });
   });
 
   it('projects persisted presentation membership as an exact frame filter', () => {

@@ -23,6 +23,7 @@ import {
   type CanvasDocument,
   type CanvasSpatialPlacement,
 } from './contracts';
+import { parseCanvasShape } from './shapes';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -189,9 +190,16 @@ export function pasteBlocks(
   for (let i = 0; i < normalizedPayload.blocks.length; i++) {
     const original = normalizedPayload.blocks[i];
     const newId = idMap.get(original.id as string)!;
+    const content =
+      original.content.kind === 'shape'
+        ? {
+            kind: 'shape' as const,
+            shape: parseCanvasShape({ ...original.content.shape, id: newId }),
+          }
+        : original.content;
     const newBlock = createCanvasBlock({
       id: newId,
-      content: original.content,
+      content,
       now,
     });
     const insertAt = baseIndex === undefined ? undefined : baseIndex + i;

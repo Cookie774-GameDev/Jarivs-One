@@ -1173,6 +1173,42 @@ describe('CanvasPage', () => {
     expect(screen.queryByRole('region', { name: 'Canvas properties panel' })).toBeNull();
   });
 
+  it('creates, edits, searches, and renders a real persisted shape in both layouts', () => {
+    render(<CanvasPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add shape' }));
+    expect(screen.getByLabelText('Canvas shape: Rectangle shape: New shape 1')).toBeTruthy();
+
+    fireEvent.click(screen.getByLabelText('Canvas shape'));
+    fireEvent.click(screen.getByRole('button', { name: 'Show canvas properties' }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Shape kind' }), {
+      target: { value: 'diamond' },
+    });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Shape label' }), {
+      target: { value: 'Architecture decision' },
+    });
+    fireEvent.change(screen.getByLabelText('Shape fill color'), {
+      target: { value: '#2f80ed' },
+    });
+
+    const shape = screen.getByLabelText('Canvas shape: Diamond shape: Architecture decision');
+    expect(shape.getAttribute('data-shape-kind')).toBe('diamond');
+    expect(shape.getAttribute('data-shape-fill')).toBe('#2f80ed');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edgeless layout' }));
+    expect(
+      screen.getByLabelText('Canvas shape: Diamond shape: Architecture decision'),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByLabelText('Search current canvas'));
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Canvas search text' }), {
+      target: { value: 'architecture decision' },
+    });
+    expect(
+      screen.getByRole('button', { name: 'Focus search result Architecture decision' }),
+    ).toBeTruthy();
+  });
+
   it('reports the current tool and summarizes multi-selection properties', () => {
     render(<CanvasPage />);
     fireEvent.click(screen.getByRole('button', { name: 'Hand tool' }));

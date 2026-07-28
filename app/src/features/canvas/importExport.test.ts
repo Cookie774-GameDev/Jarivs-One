@@ -15,6 +15,7 @@ import {
   importCanvas,
   type CanvasImportFile,
 } from './importExport';
+import { createCanvasShape } from './shapes';
 
 function documentFixture(): CanvasDocument {
   let document = createCanvasDocument({
@@ -161,6 +162,56 @@ describe('canvas import and export', () => {
 
     const presentation = exportCanvas(document, { format: 'presentation-pdf' });
     expect(new TextDecoder().decode(presentation.bytes)).toContain('/Count 2');
+  });
+
+  it('exports shape labels without dropping the real shape payload', () => {
+    let document = createCanvasDocument({
+      id: 'shape-export',
+      projectId: 'project-1',
+      ownerId: 'owner-1',
+      now: 1,
+      title: 'Shape export',
+    });
+    document = withBlockAdded(
+      document,
+      createCanvasBlock({
+        id: 'shape-1',
+        now: 2,
+        content: {
+          kind: 'shape',
+          shape: createCanvasShape({
+            id: 'shape-1',
+            kind: 'diamond',
+            fill: '#2f80ed',
+            text: 'Architecture decision',
+          }),
+        },
+      }),
+      2,
+    );
+    document = withPlacement(
+      document,
+      { blockId: 'shape-1', x: 10, y: 20, width: 180, height: 120 },
+      3,
+    );
+
+    expect(new TextDecoder().decode(exportCanvas(document, { format: 'markdown' }).bytes)).toBe(
+      '[Shape: diamond] Architecture decision',
+    );
+    const svg = new TextDecoder().decode(
+      exportCanvas(document, { format: 'svg', width: 640, height: 480 }).bytes,
+    );
+    expect(svg).toContain('Architecture decision');
+    expect(svg).toContain('<polygon');
+    expect(svg).toContain('data-shape-kind="diamond"');
+    expect(svg).toContain('fill="#2f80ed"');
+    const json = JSON.parse(
+      new TextDecoder().decode(exportCanvas(document, { format: 'json' }).bytes),
+    ) as CanvasDocument;
+    expect(json.blocks[0]?.content).toMatchObject({
+      kind: 'shape',
+      shape: { kind: 'diamond', fill: { color: '#2f80ed' } },
+    });
   });
 
   it('re-imports its PNG bytes with preserved dimensions', async () => {

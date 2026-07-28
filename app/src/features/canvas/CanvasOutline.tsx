@@ -28,6 +28,8 @@ export function blockOutlineLabel(block: CanvasBlock): string {
       const root = content.map.nodes.find((node) => node.id === content.map.rootId);
       return `Mind map: ${truncateText(root?.label ?? 'Untitled')}`;
     }
+    case 'shape':
+      return `Shape (${content.shape.kind}): ${truncateText(content.shape.text ?? 'Unlabeled')}`;
   }
 }
 
