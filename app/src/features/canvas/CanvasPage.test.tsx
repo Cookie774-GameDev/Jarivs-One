@@ -587,6 +587,52 @@ describe('CanvasPage', () => {
     expect(screen.getByLabelText('Canvas note').dataset.selected).toBe('true');
   });
 
+  it('offers a collapsible context-sensitive properties panel for the selected object', () => {
+    render(<CanvasPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add heading' }));
+    fireEvent.click(screen.getByLabelText('Canvas heading'));
+    fireEvent.click(screen.getByRole('button', { name: 'Show canvas properties' }));
+
+    const panel = screen.getByRole('region', { name: 'Canvas properties panel' });
+    expect(panel).toBeTruthy();
+    expect(screen.getByText('Heading properties')).toBeTruthy();
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Selected block text' }), {
+      target: { value: 'A better heading' },
+    });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Heading level' }), {
+      target: { value: '3' },
+    });
+
+    expect(
+      (screen.getByRole('textbox', { name: 'Edit heading block' }) as HTMLTextAreaElement).value,
+    ).toBe('A better heading');
+    expect(
+      (screen.getByRole('combobox', { name: 'Heading level' }) as HTMLSelectElement).value,
+    ).toBe('3');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hide canvas properties' }));
+    expect(screen.queryByRole('region', { name: 'Canvas properties panel' })).toBeNull();
+  });
+
+  it('reports the current tool and summarizes multi-selection properties', () => {
+    render(<CanvasPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Hand tool' }));
+    expect(screen.getByRole('status', { name: 'Current canvas tool' }).textContent).toBe('Hand');
+
+    const addNote = screen.getByRole('button', { name: 'Add note' });
+    fireEvent.click(addNote);
+    fireEvent.click(addNote);
+    const notes = screen.getAllByLabelText('Canvas note');
+    fireEvent.click(notes[0]);
+    fireEvent.click(notes[1], { shiftKey: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Show canvas properties' }));
+
+    expect(screen.getByText('2 objects selected')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Delete selected objects' }));
+    expect(screen.queryAllByLabelText('Canvas note')).toHaveLength(0);
+  });
+
   it('copies, pastes, duplicates, and cuts selected blocks with keyboard commands', () => {
     render(<CanvasPage />);
     fireEvent.click(screen.getByRole('button', { name: 'Add note' }));

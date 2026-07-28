@@ -13,6 +13,7 @@ import {
   Plus,
   Redo2,
   RotateCcw,
+  Settings2,
   StickyNote,
   Type,
   Undo2,
@@ -98,6 +99,20 @@ import {
 } from './globalSearch';
 
 type CanvasTool = 'select' | 'hand' | 'note';
+
+const CANVAS_TOOL_LABELS: Readonly<Record<CanvasTool, string>> = Object.freeze({
+  select: 'Select',
+  hand: 'Hand',
+  note: 'Note',
+});
+
+const CANVAS_BLOCK_KIND_LABELS: Readonly<Record<CanvasBlockKind, string>> = Object.freeze({
+  heading: 'Heading',
+  text: 'Text',
+  note: 'Note',
+  code: 'Code',
+  'mind-map': 'Mind map',
+});
 
 const INITIAL_DOCUMENT = createCanvasDocument({
   id: 'local-canvas-draft',
@@ -248,6 +263,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
   const [tool, setTool] = React.useState<CanvasTool>('select');
   const [selected, setSelected] = React.useState(createCanvasSelection);
   const [outlineOpen, setOutlineOpen] = React.useState(false);
+  const [propertiesOpen, setPropertiesOpen] = React.useState(false);
   const [packageMessage, setPackageMessage] = React.useState('');
   const [marqueeVisual, setMarqueeVisual] = React.useState<{
     start: { x: number; y: number };
@@ -1153,6 +1169,20 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     );
   };
 
+  const updateHeadingLevel = (blockId: string, level: number) => {
+    if (!Number.isInteger(level) || level < 1 || level > 6) return;
+    commit('block-change', 'Change heading level', (current, now) => {
+      const block = blockById(current, blockId);
+      if (!block || block.content.kind !== 'heading') return current;
+      return withBlockContent(
+        current,
+        blockId,
+        { ...block.content, level: level as 1 | 2 | 3 | 4 | 5 | 6 },
+        now,
+      );
+    });
+  };
+
   const importPackage = async (file: File) => {
     try {
       const imported = decodeCanvasPackage(await file.text()).document;
@@ -1254,6 +1284,11 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
   };
 
   const blocks = pageOrderedBlocks(document);
+  const selectedBlocks = selected.ids.flatMap((blockId) => {
+    const block = blockById(document, blockId);
+    return block ? [block] : [];
+  });
+  const selectedBlock = selectedBlocks.length === 1 ? selectedBlocks[0] : undefined;
   const placementById = resolveEdgelessLayout(document);
   const minimap = React.useMemo(() => {
     const placements = [...resolveEdgelessLayout(document).values()];
@@ -1532,10 +1567,26 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
           aria-label={outlineOpen ? 'Hide canvas outline' : 'Show canvas outline'}
           aria-expanded={outlineOpen}
           aria-controls="canvas-object-outline"
-          onClick={() => setOutlineOpen((current) => !current)}
+          onClick={() => {
+            setOutlineOpen((current) => !current);
+            setPropertiesOpen(false);
+          }}
           className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
         >
           <ListTree aria-hidden size={17} />
+        </button>
+        <button
+          type="button"
+          aria-label={propertiesOpen ? 'Hide canvas properties' : 'Show canvas properties'}
+          aria-expanded={propertiesOpen}
+          aria-controls="canvas-properties-panel"
+          onClick={() => {
+            setPropertiesOpen((current) => !current);
+            setOutlineOpen(false);
+          }}
+          className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          <Settings2 aria-hidden size={17} />
         </button>
       </header>
       {recoveryOffer ? (
@@ -1850,6 +1901,14 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
               <ChevronRight aria-hidden size={16} />
             </button>
             <span aria-hidden className="mx-1 h-5 w-px bg-border" />
+            <output
+              role="status"
+              aria-label="Current canvas tool"
+              className="min-w-12 px-1 text-center text-xs text-muted-foreground"
+            >
+              {CANVAS_TOOL_LABELS[tool]}
+            </output>
+            <span aria-hidden className="mx-1 h-5 w-px bg-border" />
             <output aria-live="polite" className="sr-only">
               {selected.ids.length === 0
                 ? 'No canvas objects selected'
@@ -1906,6 +1965,106 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
               selectedIds={selected.ids}
               onActivate={(blockId) => setSelected(selectCanvasBlock(selected, blockId))}
             />
+          </aside>
+        ) : null}
+        {propertiesOpen ? (
+          <aside
+            id="canvas-properties-panel"
+            role="region"
+            aria-label="Canvas properties panel"
+            className="w-72 shrink-0 overflow-auto border-l border-border bg-background"
+          >
+            <div className="border-b border-border px-3 py-2 text-xs font-medium text-muted-foreground">
+              Properties
+            </div>
+            <div className="space-y-4 p-3">
+              {selectedBlocks.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Select a canvas object to inspect its properties.
+                </p>
+              ) : selectedBlock ? (
+                <>
+                  <h2 className="text-sm font-medium">
+                    {CANVAS_BLOCK_KIND_LABELS[selectedBlock.content.kind]} properties
+                  </h2>
+                  {selectedBlock.content.kind === 'mind-map' ? (
+                    <p className="text-sm text-muted-foreground">
+                      Mind-map direction, connector, and node controls are available on the object.
+                    </p>
+                  ) : (
+                    <label className="block space-y-1 text-xs text-muted-foreground">
+                      Content
+                      <textarea
+                        aria-label="Selected block text"
+                        value={selectedBlock.content.text}
+                        rows={5}
+                        spellCheck={selectedBlock.content.kind !== 'code'}
+                        onChange={(event) =>
+                          updateBlockText(selectedBlock.id, event.currentTarget.value)
+                        }
+                        className="w-full resize-y rounded-md border border-border bg-background p-2 text-sm text-foreground outline-none focus:border-ring"
+                      />
+                    </label>
+                  )}
+                  {selectedBlock.content.kind === 'heading' ? (
+                    <label className="block space-y-1 text-xs text-muted-foreground">
+                      Heading level
+                      <select
+                        aria-label="Heading level"
+                        value={selectedBlock.content.level}
+                        onChange={(event) =>
+                          updateHeadingLevel(
+                            selectedBlock.id,
+                            Number.parseInt(event.currentTarget.value, 10),
+                          )
+                        }
+                        className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                      >
+                        {[1, 2, 3, 4, 5, 6].map((level) => (
+                          <option key={level} value={level}>
+                            Heading {level}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
+                  {selectedBlock.content.kind === 'code' ? (
+                    <div className="block space-y-1 text-xs text-muted-foreground">
+                      Language
+                      <output
+                        aria-label="Code language"
+                        className="block w-full rounded-md border border-border bg-muted/20 px-2 py-1.5 text-sm text-foreground"
+                      >
+                        {selectedBlock.content.language}
+                      </output>
+                    </div>
+                  ) : null}
+                  <button
+                    type="button"
+                    aria-label="Delete selected object"
+                    onClick={deleteSelected}
+                    className="w-full rounded-md border border-destructive/40 px-3 py-2 text-sm text-destructive hover:bg-destructive/10"
+                  >
+                    Delete object
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-medium">{selectedBlocks.length} objects selected</p>
+                  <p className="text-sm text-muted-foreground">
+                    Shared actions apply to the complete selection.
+                  </p>
+                  <button
+                    type="button"
+                    aria-label="Delete selected objects"
+                    onClick={deleteSelected}
+                    className="w-full rounded-md border border-destructive/40 px-3 py-2 text-sm text-destructive hover:bg-destructive/10"
+                  >
+                    Delete selected objects
+                  </button>
+                </>
+              )}
+            </div>
           </aside>
         ) : null}
       </div>
