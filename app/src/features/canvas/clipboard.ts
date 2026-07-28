@@ -14,6 +14,7 @@ import {
   createCanvasBlock,
   pageOrderedBlocks,
   parseCanvasBlockId,
+  resolveEdgelessLayout,
   withBlockAdded,
   withBlockRemoved,
   withPlacement,
@@ -117,7 +118,11 @@ export function copyBlocks(
 
   // Preserve document order
   const blocks = pageOrderedBlocks(doc).filter((b) => idSet.has(b.id));
-  const placements = doc.placements.filter((p) => idSet.has(p.blockId));
+  const resolvedPlacements = doc.layoutMode === 'edgeless' ? resolveEdgelessLayout(doc) : null;
+  const placements =
+    resolvedPlacements === null
+      ? doc.placements.filter((p) => idSet.has(p.blockId))
+      : blocks.map((block) => resolvedPlacements.get(block.id)!);
 
   return deepFreeze({
     schemaVersion: 1 as const,

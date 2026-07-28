@@ -404,6 +404,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
   const sequence = React.useRef(0);
   const clipboardSequence = React.useRef(0);
   const clipboard = React.useRef<CanvasClipboardPayload | null>(null);
+  const cursorScreenPoint = React.useRef<{ x: number; y: number } | null>(null);
   const clock = React.useRef(INITIAL_DOCUMENT.updatedAt);
   const spaceHeld = React.useRef(false);
   const panPointer = React.useRef<{ pointerId: number; x: number; y: number } | null>(null);
@@ -448,6 +449,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     sequence.current = 0;
     clipboardSequence.current = 0;
     clipboard.current = null;
+    cursorScreenPoint.current = null;
     cameraRef.current = next.camera;
     cameraNavigator.current = createCameraNavigator(next.camera);
     setCameraState(next.camera);
@@ -801,12 +803,23 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
   }, [selected.ids]);
 
   const pastePayload = React.useCallback(
-    (payload: CanvasClipboardPayload, label: string) => {
+    (
+      payload: CanvasClipboardPayload,
+      label: string,
+      destination?: { readonly x: number; readonly y: number },
+    ) => {
       const pastedIds: string[] = [];
+      const offset =
+        destination && payload.placements.length > 0
+          ? {
+              dx: destination.x - Math.min(...payload.placements.map((placement) => placement.x)),
+              dy: destination.y - Math.min(...payload.placements.map((placement) => placement.y)),
+            }
+          : { dx: 24, dy: 24 };
       commit('object-create', label, (current, now) =>
         pasteBlocks(current, payload, {
           now,
-          offset: { dx: 24, dy: 24 },
+          offset,
           generateId: () => {
             let id: string;
             do {
@@ -825,7 +838,11 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
 
   const pasteClipboard = React.useCallback(() => {
     if (clipboard.current) {
-      pastePayload(clipboard.current, 'Paste canvas objects');
+      const destination =
+        documentRef.current.layoutMode === 'edgeless' && cursorScreenPoint.current
+          ? screenToWorld(cameraRef.current, CAMERA_VIEWPORT, cursorScreenPoint.current)
+          : undefined;
+      pastePayload(clipboard.current, 'Paste canvas objects', destination);
     }
   }, [pastePayload]);
 
@@ -1012,6 +1029,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
   const onPointerDown = (event: React.PointerEvent<HTMLElement>) => {
     if (document.layoutMode !== 'edgeless') return;
     const point = pointerPoint(event);
+    cursorScreenPoint.current = point;
     activePointers.current.set(event.pointerId, point);
     event.currentTarget.setPointerCapture?.(event.pointerId);
 
@@ -1055,8 +1073,10 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
   };
 
   const onPointerMove = (event: React.PointerEvent<HTMLElement>) => {
-    if (document.layoutMode !== 'edgeless' || !activePointers.current.has(event.pointerId)) return;
+    if (document.layoutMode !== 'edgeless') return;
     const point = pointerPoint(event);
+    cursorScreenPoint.current = point;
+    if (!activePointers.current.has(event.pointerId)) return;
     activePointers.current.set(event.pointerId, point);
 
     const activeMarquee = marqueeGesture.current;

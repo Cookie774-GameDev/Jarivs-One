@@ -81,6 +81,29 @@ describe('copyBlocks', () => {
     expect(payload.placements).toHaveLength(0);
   });
 
+  it('materializes deterministic automatic placements when copying in edgeless mode', () => {
+    let doc = createCanvasDocument({
+      id: 'edgeless-copy',
+      projectId: 'project-1',
+      ownerId: 'owner-1',
+      layoutMode: 'edgeless',
+      now: T0,
+    });
+    doc = withBlockAdded(doc, block('auto-block'), T0);
+
+    expect(copyBlocks(doc, ['auto-block']).placements).toEqual([
+      {
+        blockId: 'auto-block',
+        x: 0,
+        y: 0,
+        width: 280,
+        height: 180,
+        rotation: 0,
+        z: 0,
+      },
+    ]);
+  });
+
   it('copies multiple blocks preserving document order', () => {
     const doc = docWithBlocksAndPlacements();
     // Request out of order; result should follow document order

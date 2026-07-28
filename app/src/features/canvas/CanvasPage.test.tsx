@@ -950,6 +950,26 @@ describe('CanvasPage', () => {
     expect(screen.getAllByDisplayValue('New note 1')).toHaveLength(2);
   });
 
+  it('pastes an edgeless selection at the current world-space cursor', () => {
+    render(<CanvasPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edgeless layout' }));
+    fireEvent.click(screen.getByLabelText('Canvas note'));
+
+    const workspace = screen.getByRole('region', { name: 'Canvas workspace' });
+    fireEvent.pointerMove(workspace, { pointerId: 9, clientX: 900, clientY: 600 });
+    fireEvent.keyDown(window, { key: 'c', ctrlKey: true });
+    fireEvent.keyDown(window, { key: 'v', ctrlKey: true });
+
+    const notes = screen.getAllByLabelText('Canvas note');
+    expect(notes).toHaveLength(2);
+    expect(Number.parseFloat(notes[1].style.left)).toBe(300);
+    expect(Number.parseFloat(notes[1].style.top)).toBe(200);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(screen.getAllByLabelText('Canvas note')).toHaveLength(1);
+  });
+
   it('creates and edits shared text, heading, note, and code content across layouts', () => {
     render(<CanvasPage />);
     fireEvent.click(screen.getByRole('button', { name: 'Add text' }));
