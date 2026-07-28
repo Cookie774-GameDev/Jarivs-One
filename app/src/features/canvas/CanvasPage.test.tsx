@@ -1110,6 +1110,41 @@ describe('CanvasPage', () => {
     expect(screen.getByLabelText('Canvas note').dataset.selected).toBe('true');
   });
 
+  it('searches the current canvas by text, object type, and presentation frame, then focuses it', () => {
+    render(<CanvasPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add heading' }));
+    fireEvent.click(screen.getByLabelText('Canvas note'));
+    fireEvent.click(screen.getByRole('button', { name: 'Show canvas properties' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add selected object to presentation' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edgeless layout' }));
+    fireEvent.click(screen.getByLabelText('Search current canvas'));
+
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Canvas search text' }), {
+      target: { value: 'New note 1' },
+    });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Canvas search object type' }), {
+      target: { value: 'note' },
+    });
+    const frameFilter = screen.getByRole('combobox', {
+      name: 'Canvas search presentation frame',
+    }) as HTMLSelectElement;
+    const noteFrame = [...frameFilter.options].find((option) => option.text === 'New note 1');
+    expect(noteFrame).toBeTruthy();
+    fireEvent.change(frameFilter, { target: { value: noteFrame!.value } });
+
+    const result = screen.getByRole('button', { name: 'Focus search result New note 1' });
+    expect(screen.getByLabelText('Current zoom').textContent).toBe('100%');
+    fireEvent.click(result);
+    expect(screen.getByLabelText('Current zoom').textContent).not.toBe('100%');
+    expect(screen.getByLabelText('Canvas note').dataset.selected).toBe('true');
+
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Canvas search text' }), {
+      target: { value: 'definitely missing' },
+    });
+    expect(screen.getByText('No matching canvas objects.')).toBeTruthy();
+  });
+
   it('offers a collapsible context-sensitive properties panel for the selected object', () => {
     render(<CanvasPage />);
     fireEvent.click(screen.getByRole('button', { name: 'Add heading' }));

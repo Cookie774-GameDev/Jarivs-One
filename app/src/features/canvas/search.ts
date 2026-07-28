@@ -812,7 +812,7 @@ export function projectCanvasDocumentForSearch(
       title: '',
       text,
       tags: [],
-      frameId: null,
+      frameId: doc.presentationOrder.includes(block.id) ? block.id : null,
       linkedSource: null,
       status: null,
       databaseFields: {},

@@ -7,6 +7,7 @@ import {
   createCanvasDocument,
   withBlockAdded,
   withPlacement,
+  withPresentationOrder,
   type CanvasDocument,
 } from './contracts';
 import { CanvasCameraError, type CanvasViewport } from './camera';
@@ -423,6 +424,14 @@ describe('global canvas document search projection', () => {
     expect(body?.objectType).toBe('text');
     expect(body?.text).toBe('Beta body text');
     expect(body?.focus).toEqual({ x: 300, y: 400, width: 200, height: 100 });
+  });
+
+  it('projects persisted presentation membership as an exact frame filter', () => {
+    const doc = withPresentationOrder(projectionDoc(), ['blk-b'], T0 + 1);
+    const index = createCanvasSearchIndex(projectCanvasDocumentForSearch(doc).objects);
+
+    expect(index.query({ frameId: 'blk-b' }).map((result) => result.object.id)).toEqual(['blk-b']);
+    expect(index.query({ frameId: 'blk-a' })).toEqual([]);
   });
 
   it('does not leak binary or private payloads', () => {

@@ -17,6 +17,7 @@ import {
   Plus,
   Redo2,
   RotateCcw,
+  Search,
   Settings2,
   StickyNote,
   Type,
@@ -127,6 +128,13 @@ import {
   takePendingCanvasGlobalSearchNavigation,
   type CanvasGlobalSearchSelection,
 } from './globalSearch';
+import {
+  CANVAS_SEARCH_LIMITS,
+  cameraForFocusTarget,
+  createCanvasSearchIndex,
+  projectCanvasDocumentForSearch,
+  type CanvasSearchResult,
+} from './search';
 import {
   alignCanvasPlacements,
   distributeCanvasPlacements,
@@ -400,6 +408,14 @@ function presentationFrameLabel(block: CanvasBlock | undefined): string {
     : `Untitled ${CANVAS_BLOCK_KIND_LABELS[block.content.kind]}`;
 }
 
+function currentCanvasSearchResultLabel(result: CanvasSearchResult): string {
+  const title = result.object.title.trim();
+  if (title) return title;
+  const firstLine = result.object.text.split(/\r?\n/u)[0]?.trim() ?? '';
+  if (firstLine) return firstLine.slice(0, 80);
+  return `Untitled ${result.object.objectType}`;
+}
+
 function presenterNotesForFrame(document: CanvasDocument, frameId: string): string {
   return document.presentationNotes.find((entry) => entry.frameId === frameId)?.text ?? '';
 }
@@ -530,6 +546,9 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
   const [selected, setSelected] = React.useState(createCanvasSelection);
   const [outlineOpen, setOutlineOpen] = React.useState(false);
   const [propertiesOpen, setPropertiesOpen] = React.useState(false);
+  const [canvasSearchText, setCanvasSearchText] = React.useState('');
+  const [canvasSearchObjectType, setCanvasSearchObjectType] = React.useState('');
+  const [canvasSearchFrameId, setCanvasSearchFrameId] = React.useState('');
   const [packageMessage, setPackageMessage] = React.useState('');
   const [visualExportFormat, setVisualExportFormat] =
     React.useState<CanvasVisualExportFormat>('png');
@@ -574,6 +593,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
   const directGeometryGesture = React.useRef<CanvasDirectGeometryGesture | null>(null);
   const blockElements = React.useRef(new Map<string, HTMLElement>());
   const workspaceRef = React.useRef<HTMLElement>(null);
+  const pendingSearchFocusBlockId = React.useRef<string | null>(null);
   const geometryOverlayRef = React.useRef<HTMLDivElement>(null);
   const suppressObjectClick = React.useRef(false);
   const marqueeGesture = React.useRef<{
@@ -587,6 +607,15 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     points: readonly { x: number; y: number }[];
     baseIds: readonly string[];
   } | null>(null);
+
+  React.useEffect(() => {
+    const blockId = pendingSearchFocusBlockId.current;
+    if (!blockId) return;
+    const element = blockElements.current.get(blockId);
+    if (!element) return;
+    pendingSearchFocusBlockId.current = null;
+    element.focus();
+  }, [camera, document, selected]);
 
   const detachAutosave = React.useCallback(() => {
     workspaceUnbindRef.current?.();
@@ -2351,6 +2380,50 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
   };
 
   const blocks = pageOrderedBlocks(document);
+  const currentCanvasSearch = React.useMemo(() => {
+    const projection = projectCanvasDocumentForSearch(document);
+    return {
+      index: createCanvasSearchIndex(projection.objects),
+      objectTypes: [...new Set(projection.objects.map((object) => object.objectType))].sort(),
+    };
+  }, [document]);
+  const canvasSearchActive =
+    canvasSearchText.trim().length > 0 ||
+    canvasSearchObjectType.length > 0 ||
+    canvasSearchFrameId.length > 0;
+  const canvasSearchResults = React.useMemo(
+    () =>
+      canvasSearchActive
+        ? currentCanvasSearch.index.query({
+            text: canvasSearchText.trim() || undefined,
+            objectType: canvasSearchObjectType || undefined,
+            frameId: canvasSearchFrameId || undefined,
+            limit: 20,
+          })
+        : [],
+    [
+      canvasSearchActive,
+      canvasSearchFrameId,
+      canvasSearchObjectType,
+      canvasSearchText,
+      currentCanvasSearch.index,
+    ],
+  );
+  const focusCurrentCanvasSearchResult = (result: CanvasSearchResult) => {
+    const current = documentRef.current;
+    const block = blockById(current, result.object.id);
+    if (block) {
+      pendingSearchFocusBlockId.current = block.id;
+      setSelected(createCanvasSelection([block.id]));
+    } else {
+      pendingSearchFocusBlockId.current = null;
+      setSelected(clearCanvasSelection);
+      workspaceRef.current?.focus();
+    }
+    if (current.layoutMode === 'edgeless') {
+      setCamera(cameraForFocusTarget(result.focus, CAMERA_VIEWPORT, 120));
+    }
+  };
   const selectedBlocks = selected.ids.flatMap((blockId) => {
     const block = blockById(document, blockId);
     return block ? [block] : [];
@@ -2688,6 +2761,97 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
             </button>
           ))}
         </div>
+        <details className="relative">
+          <summary
+            aria-label="Search current canvas"
+            className="inline-flex h-9 cursor-pointer list-none items-center gap-2 rounded-md border border-border px-3 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <Search aria-hidden size={15} />
+            Search
+          </summary>
+          <div
+            role="search"
+            aria-label="Current canvas search"
+            className="absolute right-0 top-11 z-50 w-96 space-y-3 rounded-lg border border-border bg-background p-3 shadow-lg"
+          >
+            <input
+              type="search"
+              aria-label="Canvas search text"
+              value={canvasSearchText}
+              maxLength={CANVAS_SEARCH_LIMITS.maxQueryTextLength}
+              onChange={(event) => setCanvasSearchText(event.currentTarget.value)}
+              placeholder="Search this canvas"
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-ring"
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <label className="space-y-1 text-xs text-muted-foreground">
+                Object type
+                <select
+                  aria-label="Canvas search object type"
+                  value={canvasSearchObjectType}
+                  onChange={(event) => setCanvasSearchObjectType(event.currentTarget.value)}
+                  className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                >
+                  <option value="">All object types</option>
+                  {currentCanvasSearch.objectTypes.map((objectType) => (
+                    <option key={objectType} value={objectType}>
+                      {objectType}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-1 text-xs text-muted-foreground">
+                Presentation frame
+                <select
+                  aria-label="Canvas search presentation frame"
+                  value={canvasSearchFrameId}
+                  onChange={(event) => setCanvasSearchFrameId(event.currentTarget.value)}
+                  className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                >
+                  <option value="">All frames</option>
+                  {document.presentationOrder.map((frameId) => (
+                    <option key={frameId} value={frameId}>
+                      {presentationFrameLabel(blockById(document, frameId))}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            {canvasSearchActive ? (
+              canvasSearchResults.length > 0 ? (
+                <ul
+                  aria-label="Current canvas search results"
+                  className="max-h-64 space-y-1 overflow-auto"
+                >
+                  {canvasSearchResults.map((result) => {
+                    const label = currentCanvasSearchResultLabel(result);
+                    return (
+                      <li key={result.object.id}>
+                        <button
+                          type="button"
+                          aria-label={`Focus search result ${label}`}
+                          onClick={() => focusCurrentCanvasSearchResult(result)}
+                          className="flex w-full items-center justify-between gap-3 rounded-md border border-transparent px-2 py-2 text-left text-sm hover:border-border hover:bg-muted"
+                        >
+                          <span className="min-w-0 truncate">{label}</span>
+                          <span className="shrink-0 text-xs capitalize text-muted-foreground">
+                            {result.object.objectType}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <p className="text-sm text-muted-foreground">No matching canvas objects.</p>
+              )
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Enter text or choose a filter to search this canvas.
+              </p>
+            )}
+          </div>
+        </details>
         <details className="relative">
           <summary className="inline-flex h-9 cursor-pointer list-none items-center rounded-md border border-border px-3 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground">
             Presentation order
@@ -3249,6 +3413,13 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
               {blocks.map((block) => (
                 <article
                   key={block.id}
+                  ref={(element) => {
+                    if (element) {
+                      blockElements.current.set(block.id, element);
+                    } else {
+                      blockElements.current.delete(block.id);
+                    }
+                  }}
                   aria-label={`Canvas ${block.content.kind}`}
                   aria-description={canvasBlockAccessibleLabel(block)}
                   aria-current={selectionHas(selected, block.id) ? 'true' : undefined}
