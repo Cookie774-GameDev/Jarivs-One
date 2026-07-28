@@ -24,6 +24,7 @@ import {
   type CanvasDocument,
 } from './contracts';
 import { fitWorldBounds, type CanvasViewport, type CanvasWorldBounds } from './camera';
+import { branchToOutline } from './mindmaps';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -801,11 +802,15 @@ export function projectCanvasDocumentForSearch(
             width: placement.width,
             height: placement.height,
           });
+    const text =
+      block.content.kind === 'mind-map'
+        ? branchToOutline(block.content.map, block.content.map.rootId)
+        : block.content.text;
     inputs.push({
       id: block.id,
       objectType: block.content.kind,
       title: '',
-      text: block.content.text,
+      text,
       tags: [],
       frameId: null,
       linkedSource: null,

@@ -32,6 +32,7 @@ import {
   type CanvasBlock,
   type CanvasDocument,
 } from './contracts';
+import { createMindMap } from './mindmaps';
 
 const T0 = 1_750_000_000_000;
 const T1 = T0 + 60_000;
@@ -191,6 +192,24 @@ describe('createCanvasBlock', () => {
       createCanvasBlock({ id: 'b3', content: { kind: 'code', language: 'ts', text: 'x' }, now: T0 })
         .content,
     ).toEqual({ kind: 'code', language: 'ts', text: 'x' });
+  });
+
+  it('stores a validated mind map as one canonical block payload', () => {
+    const map = createMindMap({
+      id: 'map-1',
+      rootId: 'map-root-1',
+      label: 'Launch plan',
+      now: T0,
+    });
+
+    const created = createCanvasBlock({
+      id: 'mind-map-block-1',
+      content: { kind: 'mind-map', map },
+      now: T0,
+    });
+
+    expect(created.content).toEqual({ kind: 'mind-map', map });
+    expect(Object.isFrozen(created.content)).toBe(true);
   });
 
   it('rejects unsupported content kinds and invalid fields', () => {

@@ -20,6 +20,7 @@ import {
   resolveEdgelessLayout,
   type CanvasDocument,
 } from '../canvas/contracts';
+import { branchToOutline } from '../canvas/mindmaps';
 import {
   exportOpenJsonCanvas,
   type OpenJsonCanvasNode,
@@ -90,7 +91,10 @@ export function projectDomainDocumentToBridge(
         'missing placement for block',
       );
     }
-    const text = block.content.text;
+    const text =
+      block.content.kind === 'mind-map'
+        ? branchToOutline(block.content.map, block.content.map.rootId)
+        : block.content.text;
     const object: VibeSpaceCanvasObject = Object.freeze({
       id: block.id,
       type: 'text' as const,

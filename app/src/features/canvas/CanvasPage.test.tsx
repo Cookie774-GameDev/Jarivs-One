@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest';
 import { CanvasPage } from './CanvasPage';
 import { createCanvasBlock, createCanvasDocument, withBlockAdded } from './contracts';
+import { createMindMap } from './mindmaps';
 import { encodeCanvasPackage } from './packageFormat';
 import type { CanvasPersistenceRepository, CanvasPersistenceScope } from './persistence';
 import type { CanvasRecoveryEntry } from './autosave';
@@ -466,6 +467,20 @@ describe('CanvasPage', () => {
     expect(screen.getByRole('textbox', { name: 'Edit code block' })).toBeTruthy();
   });
 
+  it('creates a mind-map root and child as undoable canonical canvas content', () => {
+    render(<CanvasPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add mind map' }));
+    expect(screen.getByRole('region', { name: 'Mind map: New mind map 1' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add child to New mind map 1' }));
+    expect(screen.getByText('New branch 1')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(screen.queryByText('New branch 1')).toBeNull();
+    expect(screen.getByRole('region', { name: 'Mind map: New mind map 1' })).toBeTruthy();
+  });
+
   it('imports a validated canvas package as one undoable document replacement', async () => {
     let imported = createCanvasDocument({
       id: 'imported-canvas',
@@ -501,6 +516,44 @@ describe('CanvasPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
     expect(screen.queryByDisplayValue('Recovered portable idea')).toBeNull();
+  });
+
+  it('renders an imported mind map from the canonical document payload', async () => {
+    let imported = createCanvasDocument({
+      id: 'mind-map-import',
+      projectId: 'local-project',
+      ownerId: 'local-user',
+      now: 50,
+    });
+    imported = withBlockAdded(
+      imported,
+      createCanvasBlock({
+        id: 'mind-map-block',
+        content: {
+          kind: 'mind-map',
+          map: createMindMap({
+            id: 'mind-map',
+            rootId: 'mind-map-root',
+            label: 'Launch plan',
+            now: 50,
+          }),
+        },
+        now: 50,
+      }),
+      50,
+    );
+    const text = encodeCanvasPackage(imported);
+    const file = new File([text], 'mind-map.vibespace-canvas.json', {
+      type: 'application/json',
+    });
+    Object.defineProperty(file, 'text', { value: async () => text });
+
+    render(<CanvasPage />);
+    fireEvent.change(screen.getByLabelText('Import canvas package'), {
+      target: { files: [file] },
+    });
+
+    expect(await screen.findByRole('region', { name: 'Mind map: Launch plan' })).toBeTruthy();
   });
 
   it('rejects a malformed package without replacing the current canvas', async () => {

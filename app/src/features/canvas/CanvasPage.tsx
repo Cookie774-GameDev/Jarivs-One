@@ -64,6 +64,7 @@ import {
 } from './selection';
 import { createCanvasSpatialIndex } from './spatialIndex';
 import { CanvasOutline } from './CanvasOutline';
+import { branchToOutline } from './mindmaps';
 import {
   createCanvasAutosaveController,
   registerCanvasWorkspaceFlush,
@@ -849,7 +850,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     objectDrag.current = null;
   };
 
-  const addBlock = (kind: CanvasBlockKind) => {
+  const addBlock = (kind: Exclude<CanvasBlockKind, 'mind-map'>) => {
     let blockNumber: number;
     let blockId: string;
     do {
@@ -884,7 +885,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
       'Edit canvas block',
       (current, now) => {
         const block = blockById(current, blockId);
-        if (!block) return current;
+        if (!block || block.content.kind === 'mind-map') return current;
         return withBlockContent(current, blockId, { ...block.content, text }, now);
       },
       `canvas-block:${blockId}`,
@@ -1038,22 +1039,36 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     );
   }, [camera, document]);
   const visibleEdgelessBlocks = blocks.filter((block) => visibleEdgelessBlockIds.has(block.id));
-  const renderBlockEditor = (block: CanvasBlock) => (
-    <textarea
-      aria-label={`Edit ${block.content.kind} block`}
-      value={block.content.text}
-      rows={block.content.kind === 'heading' ? 1 : block.content.kind === 'code' ? 6 : 3}
-      spellCheck={block.content.kind !== 'code'}
-      onPointerDown={(event) => event.stopPropagation()}
-      onClick={(event) => event.stopPropagation()}
-      onChange={(event) => updateBlockText(block.id, event.currentTarget.value)}
-      className={[
-        'h-full min-h-8 w-full resize-none bg-transparent text-sm outline-none',
-        block.content.kind === 'heading' ? 'text-lg font-semibold' : '',
-        block.content.kind === 'code' ? 'font-mono text-xs' : '',
-      ].join(' ')}
-    />
-  );
+  const renderBlockEditor = (block: CanvasBlock) => {
+    const content = block.content;
+    if (content.kind === 'mind-map') {
+      const root = content.map.nodes.find((node) => node.id === content.map.rootId);
+      return (
+        <section aria-label={`Mind map: ${root?.label ?? 'Untitled'}`} className="space-y-2">
+          <p className="text-sm font-medium">{root?.label ?? 'Untitled'}</p>
+          <pre className="whitespace-pre-wrap text-xs text-muted-foreground">
+            {branchToOutline(content.map, content.map.rootId)}
+          </pre>
+        </section>
+      );
+    }
+    return (
+      <textarea
+        aria-label={`Edit ${content.kind} block`}
+        value={content.text}
+        rows={content.kind === 'heading' ? 1 : content.kind === 'code' ? 6 : 3}
+        spellCheck={content.kind !== 'code'}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
+        onChange={(event) => updateBlockText(block.id, event.currentTarget.value)}
+        className={[
+          'h-full min-h-8 w-full resize-none bg-transparent text-sm outline-none',
+          content.kind === 'heading' ? 'text-lg font-semibold' : '',
+          content.kind === 'code' ? 'font-mono text-xs' : '',
+        ].join(' ')}
+      />
+    );
+  };
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col bg-background text-foreground">

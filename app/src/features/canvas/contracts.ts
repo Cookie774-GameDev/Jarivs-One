@@ -11,9 +11,10 @@
  * `CanvasValidationError`; all returned documents are deeply frozen.
  */
 
+import { validateMindMap, type MindMap } from './mindmaps';
+
 // ---------------------------------------------------------------------------
 // Validation errors
-// ---------------------------------------------------------------------------
 
 export type CanvasValidationErrorCode =
   | 'invalid-type'
@@ -113,14 +114,15 @@ export interface CanvasBackground {
   readonly color: string;
 }
 
-export const CANVAS_BLOCK_KINDS = ['heading', 'text', 'note', 'code'] as const;
+export const CANVAS_BLOCK_KINDS = ['heading', 'text', 'note', 'code', 'mind-map'] as const;
 export type CanvasBlockKind = (typeof CANVAS_BLOCK_KINDS)[number];
 
 export type CanvasBlockContent =
   | { readonly kind: 'heading'; readonly level: 1 | 2 | 3 | 4 | 5 | 6; readonly text: string }
   | { readonly kind: 'text'; readonly text: string }
   | { readonly kind: 'note'; readonly text: string }
-  | { readonly kind: 'code'; readonly language: string; readonly text: string };
+  | { readonly kind: 'code'; readonly language: string; readonly text: string }
+  | { readonly kind: 'mind-map'; readonly map: MindMap };
 
 /** Canonical shared content object. Rendered identically by both layouts. */
 export interface CanvasBlock {
@@ -343,6 +345,7 @@ const CONTENT_KEYS_BY_KIND: Record<CanvasBlockKind, readonly string[]> = {
   text: ['kind', 'text'],
   note: ['kind', 'text'],
   code: ['kind', 'language', 'text'],
+  'mind-map': ['kind', 'map'],
 };
 
 function normalizeContent(input: unknown, path: string): CanvasBlockContent {
@@ -355,6 +358,9 @@ function normalizeContent(input: unknown, path: string): CanvasBlockContent {
   }
   const blockKind = kind as CanvasBlockKind;
   assertExactKeys(input, new Set(CONTENT_KEYS_BY_KIND[blockKind]), path);
+  if (blockKind === 'mind-map') {
+    return { kind: 'mind-map', map: validateMindMap(input.map) };
+  }
   const text = assertString(input.text, `${path}.text`);
   if (text.length > CANVAS_MAX_TEXT_LENGTH) {
     fail('unsupported-value', `${path}.text`, `text exceeds ${CANVAS_MAX_TEXT_LENGTH} characters`);
