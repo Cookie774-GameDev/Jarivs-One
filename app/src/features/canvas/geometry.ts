@@ -12,6 +12,8 @@ export interface CanvasResizeGeometry {
   readonly height: number;
 }
 
+export type CanvasResizeHandle = 'northwest' | 'northeast' | 'southeast' | 'southwest';
+
 export type CanvasAlignment =
   | 'left'
   | 'horizontal-center'
@@ -103,6 +105,80 @@ export function rotateCanvasPlacement(
   const degrees = finite(degreesValue, 'rotation');
   const rotation = ((((degrees + 180) % 360) + 360) % 360) - 180;
   return placementWith(placement, { rotation });
+}
+
+export function resizeCanvasPlacementFromHandle(
+  placement: CanvasSpatialPlacement,
+  handle: CanvasResizeHandle,
+  worldDelta: CanvasGeometryDelta,
+  minimumSize = DEFAULT_MIN_SIZE,
+): CanvasSpatialPlacement {
+  const signs: Readonly<Record<CanvasResizeHandle, readonly [number, number]>> = {
+    northwest: [-1, -1],
+    northeast: [1, -1],
+    southeast: [1, 1],
+    southwest: [-1, 1],
+  };
+  const sign = signs[handle];
+  if (!sign) {
+    throw new Error('Unsupported Canvas resize handle');
+  }
+  const minimum = finite(minimumSize, 'minimum size');
+  if (minimum <= 0) {
+    throw new Error('Canvas geometry minimum size must be positive');
+  }
+  const worldX = finite(worldDelta.x, 'resize delta x');
+  const worldY = finite(worldDelta.y, 'resize delta y');
+  const radians = (placement.rotation * Math.PI) / 180;
+  const cosine = Math.cos(radians);
+  const sine = Math.sin(radians);
+  const localX = worldX * cosine + worldY * sine;
+  const localY = -worldX * sine + worldY * cosine;
+  const width = Math.max(minimum, placement.width + sign[0] * localX);
+  const height = Math.max(minimum, placement.height + sign[1] * localY);
+  const localCenterX = (sign[0] * (width - placement.width)) / 2;
+  const localCenterY = (sign[1] * (height - placement.height)) / 2;
+  const centerShiftX = localCenterX * cosine - localCenterY * sine;
+  const centerShiftY = localCenterX * sine + localCenterY * cosine;
+  const centerX = placement.x + placement.width / 2 + centerShiftX;
+  const centerY = placement.y + placement.height / 2 + centerShiftY;
+
+  return resizeCanvasPlacement(
+    placement,
+    {
+      x: centerX - width / 2,
+      y: centerY - height / 2,
+      width,
+      height,
+    },
+    minimum,
+  );
+}
+
+function pointerAngle(
+  center: Readonly<{ x: number; y: number }>,
+  pointer: Readonly<{ x: number; y: number }>,
+  path: string,
+): number {
+  const x = finite(pointer.x, `${path} x`) - finite(center.x, 'rotation center x');
+  const y = finite(pointer.y, `${path} y`) - finite(center.y, 'rotation center y');
+  if (Math.hypot(x, y) < 0.001) {
+    throw new Error(`Canvas geometry ${path} must differ from the rotation center`);
+  }
+  return (Math.atan2(y, x) * 180) / Math.PI;
+}
+
+export function rotateCanvasPlacementFromPointer(
+  placement: CanvasSpatialPlacement,
+  center: Readonly<{ x: number; y: number }>,
+  startPointer: Readonly<{ x: number; y: number }>,
+  currentPointer: Readonly<{ x: number; y: number }>,
+): CanvasSpatialPlacement {
+  const start = pointerAngle(center, startPointer, 'start pointer');
+  const current = pointerAngle(center, currentPointer, 'current pointer');
+  const rawDelta = current - start;
+  const shortestDelta = ((((rawDelta + 180) % 360) + 360) % 360) - 180;
+  return rotateCanvasPlacement(placement, placement.rotation + shortestDelta);
 }
 
 function selectedPlacements(

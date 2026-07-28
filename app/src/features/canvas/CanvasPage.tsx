@@ -120,9 +120,12 @@ import {
   distributeCanvasPlacements,
   reorderCanvasPlacement,
   resizeCanvasPlacement,
+  resizeCanvasPlacementFromHandle,
   rotateCanvasPlacement,
+  rotateCanvasPlacementFromPointer,
   type CanvasAlignment,
   type CanvasDistributionAxis,
+  type CanvasResizeHandle,
   type CanvasZOrderCommand,
 } from './geometry';
 import {
@@ -202,6 +205,43 @@ const CANVAS_PLACEMENT_ARIA_LABELS: Readonly<Record<CanvasPlacementField, string
 
 const CANVAS_POSITION_LIMIT = 1_000_000_000;
 const CANVAS_SIZE_LIMIT = 10_000_000;
+const CANVAS_RESIZE_HANDLES: readonly CanvasResizeHandle[] = [
+  'northwest',
+  'northeast',
+  'southeast',
+  'southwest',
+];
+
+const CANVAS_RESIZE_HANDLE_STYLES: Readonly<Record<CanvasResizeHandle, React.CSSProperties>> = {
+  northwest: { left: -6, top: -6, cursor: 'nwse-resize' },
+  northeast: { right: -6, top: -6, cursor: 'nesw-resize' },
+  southeast: { right: -6, bottom: -6, cursor: 'nwse-resize' },
+  southwest: { left: -6, bottom: -6, cursor: 'nesw-resize' },
+};
+
+type CanvasDirectGeometryGesture =
+  | {
+      readonly kind: 'resize';
+      readonly pointerId: number;
+      readonly blockId: string;
+      readonly handle: CanvasResizeHandle;
+      readonly startX: number;
+      readonly startY: number;
+      readonly zoom: number;
+      readonly before: CanvasSpatialPlacement;
+      readonly current: CanvasSpatialPlacement;
+      readonly moved: boolean;
+    }
+  | {
+      readonly kind: 'rotate';
+      readonly pointerId: number;
+      readonly blockId: string;
+      readonly center: Readonly<{ x: number; y: number }>;
+      readonly startPointer: Readonly<{ x: number; y: number }>;
+      readonly before: CanvasSpatialPlacement;
+      readonly current: CanvasSpatialPlacement;
+      readonly moved: boolean;
+    };
 
 function sameCanvasPlacement(
   left: CanvasSpatialPlacement | undefined,
@@ -452,7 +492,10 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     totalY: number;
     moved: boolean;
   } | null>(null);
+  const directGeometryGesture = React.useRef<CanvasDirectGeometryGesture | null>(null);
   const blockElements = React.useRef(new Map<string, HTMLElement>());
+  const workspaceRef = React.useRef<HTMLElement>(null);
+  const geometryOverlayRef = React.useRef<HTMLDivElement>(null);
   const suppressObjectClick = React.useRef(false);
   const marqueeGesture = React.useRef<{
     pointerId: number;
@@ -1415,6 +1458,196 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     objectDrag.current = null;
   };
 
+  const previewDirectGeometry = (placement: CanvasSpatialPlacement) => {
+    const apply = (element: HTMLElement | null | undefined) => {
+      if (!element) return;
+      element.style.left = `${placement.x}px`;
+      element.style.top = `${placement.y}px`;
+      element.style.width = `${placement.width}px`;
+      element.style.height = `${placement.height}px`;
+      element.style.transform = `rotate(${placement.rotation}deg)`;
+    };
+    apply(blockElements.current.get(placement.blockId));
+    apply(geometryOverlayRef.current);
+  };
+
+  const boundedDirectGeometry = (placement: CanvasSpatialPlacement) =>
+    resizeCanvasPlacement(placement, {
+      x: Math.max(-CANVAS_POSITION_LIMIT, Math.min(CANVAS_POSITION_LIMIT, placement.x)),
+      y: Math.max(-CANVAS_POSITION_LIMIT, Math.min(CANVAS_POSITION_LIMIT, placement.y)),
+      width: Math.min(CANVAS_SIZE_LIMIT, placement.width),
+      height: Math.min(CANVAS_SIZE_LIMIT, placement.height),
+    });
+
+  const commitDirectGeometry = (
+    kind: 'object-resize' | 'object-rotate',
+    label: string,
+    blockId: string,
+    finalPlacement: CanvasSpatialPlacement,
+  ) => {
+    commit(kind, label, (current, now) => {
+      const placement = resolveEdgelessLayout(current).get(parseCanvasBlockId(blockId));
+      return placement
+        ? withPlacement(
+            current,
+            {
+              ...placement,
+              x: finalPlacement.x,
+              y: finalPlacement.y,
+              width: finalPlacement.width,
+              height: finalPlacement.height,
+              rotation: finalPlacement.rotation,
+            },
+            now,
+          )
+        : current;
+    });
+  };
+
+  const beginDirectResize = (
+    event: React.PointerEvent<HTMLButtonElement>,
+    placement: CanvasSpatialPlacement,
+    handle: CanvasResizeHandle,
+  ) => {
+    if (event.button !== 0 || placement.locked || placement.hidden) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setSnapGuides([]);
+    directGeometryGesture.current = {
+      kind: 'resize',
+      pointerId: event.pointerId,
+      blockId: placement.blockId,
+      handle,
+      startX: event.clientX,
+      startY: event.clientY,
+      zoom: cameraRef.current.zoom,
+      before: placement,
+      current: placement,
+      moved: false,
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+
+  const beginDirectRotation = (
+    event: React.PointerEvent<HTMLButtonElement>,
+    placement: CanvasSpatialPlacement,
+  ) => {
+    if (event.button !== 0 || placement.locked || placement.hidden) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const workspaceBounds = workspaceRef.current?.getBoundingClientRect();
+    const currentCamera = cameraRef.current;
+    const centerWorld = {
+      x: placement.x + placement.width / 2,
+      y: placement.y + placement.height / 2,
+    };
+    const center = {
+      x:
+        (workspaceBounds?.left ?? 0) +
+        CAMERA_CENTER.x +
+        (centerWorld.x - currentCamera.x) * currentCamera.zoom,
+      y:
+        (workspaceBounds?.top ?? 0) +
+        CAMERA_CENTER.y +
+        (centerWorld.y - currentCamera.y) * currentCamera.zoom,
+    };
+    setSnapGuides([]);
+    directGeometryGesture.current = {
+      kind: 'rotate',
+      pointerId: event.pointerId,
+      blockId: placement.blockId,
+      center,
+      startPointer: { x: event.clientX, y: event.clientY },
+      before: placement,
+      current: placement,
+      moved: false,
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+
+  const onDirectGeometryPointerMove = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const gesture = directGeometryGesture.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (
+      gesture.kind === 'rotate' &&
+      Math.hypot(event.clientX - gesture.center.x, event.clientY - gesture.center.y) < 0.001
+    ) {
+      return;
+    }
+    const unbounded =
+      gesture.kind === 'resize'
+        ? resizeCanvasPlacementFromHandle(gesture.before, gesture.handle, {
+            x: (event.clientX - gesture.startX) / gesture.zoom,
+            y: (event.clientY - gesture.startY) / gesture.zoom,
+          })
+        : rotateCanvasPlacementFromPointer(gesture.before, gesture.center, gesture.startPointer, {
+            x: event.clientX,
+            y: event.clientY,
+          });
+    const current = boundedDirectGeometry(unbounded);
+    previewDirectGeometry(current);
+    directGeometryGesture.current = { ...gesture, current, moved: true };
+  };
+
+  const onDirectGeometryPointerEnd = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const gesture = directGeometryGesture.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture?.(event.pointerId);
+    }
+    if (!gesture.moved || event.type === 'pointercancel') {
+      previewDirectGeometry(gesture.before);
+    } else {
+      const finalPlacement = gesture.current;
+      commitDirectGeometry(
+        gesture.kind === 'resize' ? 'object-resize' : 'object-rotate',
+        gesture.kind === 'resize' ? 'Resize canvas object' : 'Rotate canvas object',
+        gesture.blockId,
+        finalPlacement,
+      );
+    }
+    directGeometryGesture.current = null;
+  };
+
+  const onResizeHandleKeyDown = (
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    placement: CanvasSpatialPlacement,
+    handle: CanvasResizeHandle,
+  ) => {
+    const amount = event.shiftKey ? 10 : 1;
+    const deltaByKey: Readonly<Record<string, Readonly<{ x: number; y: number }>>> = {
+      ArrowLeft: { x: -amount, y: 0 },
+      ArrowRight: { x: amount, y: 0 },
+      ArrowUp: { x: 0, y: -amount },
+      ArrowDown: { x: 0, y: amount },
+    };
+    const delta = deltaByKey[event.key];
+    if (!delta) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const next = boundedDirectGeometry(resizeCanvasPlacementFromHandle(placement, handle, delta));
+    commitDirectGeometry('object-resize', 'Resize canvas object', placement.blockId, next);
+  };
+
+  const onRotateHandleKeyDown = (
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    placement: CanvasSpatialPlacement,
+  ) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    event.stopPropagation();
+    const amount = event.shiftKey ? 15 : 1;
+    const next = rotateCanvasPlacement(
+      placement,
+      placement.rotation + (event.key === 'ArrowRight' ? amount : -amount),
+    );
+    commitDirectGeometry('object-rotate', 'Rotate canvas object', placement.blockId, next);
+  };
+
   const addBlock = (kind: Exclude<CanvasBlockKind, 'mind-map'>) => {
     let blockNumber: number;
     let blockId: string;
@@ -2348,6 +2581,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
         </aside>
 
         <main
+          ref={workspaceRef}
           role="region"
           aria-label="Canvas workspace"
           data-layout={document.layoutMode}
@@ -2489,6 +2723,54 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                   </article>
                 );
               })}
+              {selected.ids.length === 1 &&
+              selectedPlacement &&
+              !selectedPlacement.locked &&
+              !selectedPlacement.hidden ? (
+                <div
+                  ref={geometryOverlayRef}
+                  data-selection-geometry
+                  role="group"
+                  aria-label="Selected object resize and rotation handles"
+                  className="pointer-events-none absolute border border-ring"
+                  style={{
+                    left: selectedPlacement.x,
+                    top: selectedPlacement.y,
+                    width: selectedPlacement.width,
+                    height: selectedPlacement.height,
+                    transform: `rotate(${selectedPlacement.rotation}deg)`,
+                    zIndex: selectedPlacement.z + 1_500_000,
+                  }}
+                >
+                  {CANVAS_RESIZE_HANDLES.map((handle) => (
+                    <button
+                      key={handle}
+                      type="button"
+                      aria-label={`Resize selected object from ${handle}`}
+                      title={`Drag to resize from ${handle}`}
+                      onPointerDown={(event) => beginDirectResize(event, selectedPlacement, handle)}
+                      onPointerMove={onDirectGeometryPointerMove}
+                      onPointerUp={onDirectGeometryPointerEnd}
+                      onPointerCancel={onDirectGeometryPointerEnd}
+                      onKeyDown={(event) => onResizeHandleKeyDown(event, selectedPlacement, handle)}
+                      className="pointer-events-auto absolute h-3 w-3 rounded-sm border border-ring bg-background shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
+                      style={CANVAS_RESIZE_HANDLE_STYLES[handle]}
+                    />
+                  ))}
+                  <button
+                    type="button"
+                    aria-label="Rotate selected object"
+                    title="Drag to rotate"
+                    onPointerDown={(event) => beginDirectRotation(event, selectedPlacement)}
+                    onPointerMove={onDirectGeometryPointerMove}
+                    onPointerUp={onDirectGeometryPointerEnd}
+                    onPointerCancel={onDirectGeometryPointerEnd}
+                    onKeyDown={(event) => onRotateHandleKeyDown(event, selectedPlacement)}
+                    className="pointer-events-auto absolute -top-9 left-1/2 h-4 w-4 -translate-x-1/2 rounded-full border border-ring bg-background shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
+                    style={{ cursor: 'grab' }}
+                  />
+                </div>
+              ) : null}
               {snapGuides.map((guide, index) => (
                 <div
                   key={`${guide.axis}-${guide.position}-${guide.source}-${guide.targetId ?? 'grid'}-${index}`}

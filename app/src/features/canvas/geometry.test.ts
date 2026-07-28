@@ -4,7 +4,9 @@ import {
   distributeCanvasPlacements,
   reorderCanvasPlacement,
   resizeCanvasPlacement,
+  resizeCanvasPlacementFromHandle,
   rotateCanvasPlacement,
+  rotateCanvasPlacementFromPointer,
   translateCanvasPlacements,
 } from './geometry';
 import type { CanvasSpatialPlacement } from './contracts';
@@ -35,6 +37,40 @@ describe('canvas geometry operations', () => {
     ).toMatchObject({ x: 4, y: 5, width: 16, height: 200 });
     expect(rotateCanvasPlacement(placements[0], 450).rotation).toBe(90);
     expect(rotateCanvasPlacement(placements[0], -190).rotation).toBe(170);
+  });
+
+  it('resizes from corner handles in rotated local coordinates while preserving the opposite corner', () => {
+    const unrotated = resizeCanvasPlacementFromHandle(placements[0], 'northwest', {
+      x: 20,
+      y: 10,
+    });
+    expect(unrotated).toMatchObject({ x: 20, y: 10, width: 80, height: 30 });
+
+    const rotated = resizeCanvasPlacementFromHandle(
+      { ...placements[0], width: 100, height: 50, rotation: 90 },
+      'southeast',
+      { x: 20, y: 0 },
+    );
+    expect(rotated).toMatchObject({ x: 10, y: 10, width: 100, height: 30, rotation: 90 });
+  });
+
+  it('rotates from pointer angle deltas without jumping from the stored rotation', () => {
+    const rotated = rotateCanvasPlacementFromPointer(
+      { ...placements[0], rotation: 10 },
+      { x: 0, y: 0 },
+      { x: 0, y: -10 },
+      { x: 10, y: 0 },
+    );
+
+    expect(rotated.rotation).toBe(100);
+    expect(() =>
+      rotateCanvasPlacementFromPointer(
+        placements[0],
+        { x: 0, y: 0 },
+        { x: 0, y: 0 },
+        { x: 10, y: 0 },
+      ),
+    ).toThrow('pointer');
   });
 
   it('aligns selected objects without moving unselected objects', () => {

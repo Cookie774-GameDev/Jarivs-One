@@ -849,6 +849,56 @@ describe('CanvasPage', () => {
     expect(Number.parseFloat(note.style.top)).toBe(beforeTop);
   });
 
+  it('resizes a selected object from a direct handle as one undoable action', () => {
+    render(<CanvasPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edgeless layout' }));
+    const note = screen.getByLabelText('Canvas note');
+    fireEvent.click(note);
+    const handle = screen.getByRole('button', { name: 'Resize selected object from southeast' });
+
+    fireEvent.pointerDown(handle, { pointerId: 51, button: 0, clientX: 880, clientY: 580 });
+    fireEvent.pointerMove(handle, { pointerId: 51, clientX: 930, clientY: 610 });
+    expect(note.style.width).toBe('330px');
+    expect(note.style.height).toBe('210px');
+    fireEvent.pointerUp(handle, { pointerId: 51, clientX: 930, clientY: 610 });
+
+    expect(Number.parseFloat(note.style.width)).toBe(330);
+    expect(Number.parseFloat(note.style.height)).toBe(210);
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(Number.parseFloat(note.style.width)).toBe(280);
+    expect(Number.parseFloat(note.style.height)).toBe(180);
+
+    fireEvent.keyDown(
+      screen.getByRole('button', { name: 'Resize selected object from southeast' }),
+      { key: 'ArrowRight' },
+    );
+    expect(Number.parseFloat(note.style.width)).toBe(281);
+  });
+
+  it('rotates a selected object from a direct handle as one undoable action', () => {
+    render(<CanvasPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edgeless layout' }));
+    const note = screen.getByLabelText('Canvas note');
+    fireEvent.click(note);
+    const handle = screen.getByRole('button', { name: 'Rotate selected object' });
+
+    fireEvent.pointerDown(handle, { pointerId: 52, button: 0, clientX: 740, clientY: 390 });
+    fireEvent.pointerMove(handle, { pointerId: 52, clientX: 840, clientY: 490 });
+    fireEvent.pointerUp(handle, { pointerId: 52, clientX: 840, clientY: 490 });
+
+    expect(note.style.transform).toBe('rotate(90deg)');
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(note.style.transform).toBe('rotate(0deg)');
+
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Rotate selected object' }), {
+      key: 'ArrowRight',
+      shiftKey: true,
+    });
+    expect(note.style.transform).toBe('rotate(15deg)');
+  });
+
   it('snaps dragged objects to nearby anchors and shows transient smart guides', () => {
     render(<CanvasPage />);
     const addNote = screen.getByRole('button', { name: 'Add note' });
