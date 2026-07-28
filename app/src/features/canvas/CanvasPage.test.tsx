@@ -849,6 +849,49 @@ describe('CanvasPage', () => {
     expect(Number.parseFloat(note.style.top)).toBe(beforeTop);
   });
 
+  it('snaps dragged objects to nearby anchors and shows transient smart guides', () => {
+    render(<CanvasPage />);
+    const addNote = screen.getByRole('button', { name: 'Add note' });
+    fireEvent.click(addNote);
+    fireEvent.click(addNote);
+    fireEvent.click(screen.getByRole('button', { name: 'Edgeless layout' }));
+    const notes = screen.getAllByLabelText('Canvas note');
+
+    expect(
+      (screen.getByRole('button', { name: 'Object snapping' }) as HTMLButtonElement).getAttribute(
+        'aria-pressed',
+      ),
+    ).toBe('true');
+    fireEvent.pointerDown(notes[0], { pointerId: 41, button: 0, clientX: 600, clientY: 400 });
+    fireEvent.pointerMove(notes[0], { pointerId: 41, clientX: 645, clientY: 400 });
+
+    expect(notes[0].style.transform).toContain('translate(48px, 0px)');
+    expect(document.querySelector('[data-smart-guide-axis="x"]')).toBeTruthy();
+
+    fireEvent.pointerUp(notes[0], { pointerId: 41, clientX: 645, clientY: 400 });
+    expect(Number.parseFloat(notes[0].style.left)).toBe(48);
+    expect(document.querySelector('[data-smart-guide-axis="x"]')).toBeNull();
+  });
+
+  it('offers optional world-grid snapping without requiring an object target', () => {
+    render(<CanvasPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edgeless layout' }));
+    const note = screen.getByLabelText('Canvas note');
+
+    const gridSnapping = screen.getByRole('button', { name: 'Grid snapping' });
+    expect(gridSnapping.getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(gridSnapping);
+    expect(gridSnapping.getAttribute('aria-pressed')).toBe('true');
+
+    fireEvent.pointerDown(note, { pointerId: 42, button: 0, clientX: 600, clientY: 400 });
+    fireEvent.pointerMove(note, { pointerId: 42, clientX: 614, clientY: 414 });
+    fireEvent.pointerUp(note, { pointerId: 42, clientX: 614, clientY: 414 });
+
+    expect(Number.parseFloat(note.style.left)).toBe(24);
+    expect(Number.parseFloat(note.style.top)).toBe(24);
+  });
+
   it('culls distant edgeless objects and reveals them after fitting the camera', () => {
     render(<CanvasPage />);
     fireEvent.click(screen.getByRole('button', { name: 'Add note' }));

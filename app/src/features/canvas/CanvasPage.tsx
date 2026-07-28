@@ -125,6 +125,14 @@ import {
   type CanvasDistributionAxis,
   type CanvasZOrderCommand,
 } from './geometry';
+import {
+  CANVAS_GRID_SIZE,
+  CANVAS_SNAP_THRESHOLD_PX,
+  canvasSnapBounds,
+  snapCanvasDrag,
+  type CanvasSnapBounds,
+  type CanvasSnapGuide,
+} from './snapping';
 
 type CanvasTool = 'select' | 'lasso' | 'hand' | 'note';
 type CanvasPlacementField = 'x' | 'y' | 'width' | 'height' | 'rotation';
@@ -415,6 +423,9 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
   const [lassoVisual, setLassoVisual] = React.useState<readonly { x: number; y: number }[] | null>(
     null,
   );
+  const [objectSnapping, setObjectSnapping] = React.useState(true);
+  const [gridSnapping, setGridSnapping] = React.useState(false);
+  const [snapGuides, setSnapGuides] = React.useState<readonly CanvasSnapGuide[]>([]);
   const sequence = React.useRef(0);
   const clipboardSequence = React.useRef(0);
   const clipboard = React.useRef<CanvasClipboardPayload | null>(null);
@@ -433,6 +444,10 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     x: number;
     y: number;
     zoom: number;
+    movingBounds: CanvasSnapBounds;
+    targets: readonly CanvasSpatialPlacement[];
+    rawTotalX: number;
+    rawTotalY: number;
     totalX: number;
     totalY: number;
     moved: boolean;
@@ -1287,12 +1302,29 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     if (!selectionHas(selected, blockId)) {
       setSelected(selectCanvasBlock(selected, blockId));
     }
+    const placementById = resolveEdgelessLayout(documentRef.current);
+    const movingPlacements = ids.flatMap((id) => {
+      const placement = placementById.get(parseCanvasBlockId(id));
+      return placement ? [placement] : [];
+    });
+    if (movingPlacements.length !== ids.length) return;
+    const selectedIds = new Set(ids);
+    const targets = [...visibleEdgelessBlockIds].flatMap((id) => {
+      if (selectedIds.has(id)) return [];
+      const placement = placementById.get(parseCanvasBlockId(id));
+      return placement && !placement.hidden ? [placement] : [];
+    });
+    setSnapGuides([]);
     objectDrag.current = {
       pointerId: event.pointerId,
       ids,
       x: event.clientX,
       y: event.clientY,
       zoom: camera.zoom,
+      movingBounds: canvasSnapBounds(movingPlacements),
+      targets,
+      rawTotalX: 0,
+      rawTotalY: 0,
       totalX: 0,
       totalY: 0,
       moved: false,
@@ -1308,8 +1340,19 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     if (x === 0 && y === 0) return;
     event.preventDefault();
     event.stopPropagation();
-    const totalX = drag.totalX + x;
-    const totalY = drag.totalY + y;
+    const rawTotalX = drag.rawTotalX + x;
+    const rawTotalY = drag.rawTotalY + y;
+    const snappingDisabled = event.altKey;
+    const snapped = snapCanvasDrag({
+      movingBounds: drag.movingBounds,
+      delta: { x: rawTotalX, y: rawTotalY },
+      targets: objectSnapping && !snappingDisabled ? drag.targets : [],
+      threshold: CANVAS_SNAP_THRESHOLD_PX / drag.zoom,
+      gridSize: gridSnapping && !snappingDisabled ? CANVAS_GRID_SIZE : null,
+    });
+    const totalX = snapped.delta.x;
+    const totalY = snapped.delta.y;
+    setSnapGuides(snapped.guides);
     for (const id of drag.ids) {
       const element = blockElements.current.get(id);
       if (element) {
@@ -1323,6 +1366,8 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
       ...drag,
       x: event.clientX,
       y: event.clientY,
+      rawTotalX,
+      rawTotalY,
       totalX,
       totalY,
       moved: true,
@@ -1366,6 +1411,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
       );
     }
     suppressObjectClick.current = drag.moved;
+    setSnapGuides([]);
     objectDrag.current = null;
   };
 
@@ -2140,6 +2186,18 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
       >
         {zoomAnnouncement.message}
       </output>
+      <output
+        role="status"
+        aria-label="Canvas snapping status"
+        aria-live="polite"
+        className="sr-only"
+      >
+        {snapGuides.length === 0
+          ? ''
+          : snapGuides.some((guide) => guide.source === 'object')
+            ? 'Aligned to canvas object'
+            : 'Aligned to canvas grid'}
+      </output>
 
       {presentation.status === 'presenting' ? (
         <section
@@ -2431,6 +2489,32 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                   </article>
                 );
               })}
+              {snapGuides.map((guide, index) => (
+                <div
+                  key={`${guide.axis}-${guide.position}-${guide.source}-${guide.targetId ?? 'grid'}-${index}`}
+                  data-smart-guide-axis={guide.axis}
+                  data-smart-guide-source={guide.source}
+                  aria-hidden
+                  className="pointer-events-none absolute bg-sky-500"
+                  style={
+                    guide.axis === 'x'
+                      ? {
+                          left: guide.position,
+                          top: guide.start,
+                          width: 1 / camera.zoom,
+                          height: Math.max(1, guide.end - guide.start),
+                          zIndex: 2_000_000,
+                        }
+                      : {
+                          left: guide.start,
+                          top: guide.position,
+                          width: Math.max(1, guide.end - guide.start),
+                          height: 1 / camera.zoom,
+                          zIndex: 2_000_000,
+                        }
+                  }
+                />
+              ))}
             </div>
           )}
 
@@ -2498,6 +2582,41 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
           ) : null}
 
           <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-lg border border-border bg-background p-1 shadow-sm">
+            {document.layoutMode === 'edgeless' ? (
+              <>
+                <button
+                  type="button"
+                  aria-label="Object snapping"
+                  aria-pressed={objectSnapping}
+                  title="Snap dragged objects to nearby edges and centers"
+                  onClick={() => setObjectSnapping((current) => !current)}
+                  className={[
+                    'rounded px-2 py-1.5 text-xs font-medium',
+                    objectSnapping
+                      ? 'bg-foreground text-background'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                  ].join(' ')}
+                >
+                  Objects
+                </button>
+                <button
+                  type="button"
+                  aria-label="Grid snapping"
+                  aria-pressed={gridSnapping}
+                  title={`Snap dragged objects to the ${CANVAS_GRID_SIZE}-pixel world grid`}
+                  onClick={() => setGridSnapping((current) => !current)}
+                  className={[
+                    'rounded px-2 py-1.5 text-xs font-medium',
+                    gridSnapping
+                      ? 'bg-foreground text-background'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                  ].join(' ')}
+                >
+                  Grid
+                </button>
+                <span aria-hidden className="mx-1 h-5 w-px bg-border" />
+              </>
+            ) : null}
             <button
               type="button"
               aria-label="Undo"
