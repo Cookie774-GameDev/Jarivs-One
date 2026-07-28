@@ -1242,6 +1242,23 @@ describe('CanvasPage', () => {
     ]);
   });
 
+  it('zooms to a visible persisted presentation frame in edgeless mode', () => {
+    render(<CanvasPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Edgeless layout' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    fireEvent.click(screen.getByLabelText('Canvas note'));
+    fireEvent.click(screen.getByRole('button', { name: 'Show canvas properties' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add selected object to presentation' }));
+    fireEvent.click(screen.getByText('Presentation order'));
+
+    const workspace = screen.getByRole('region', { name: 'Canvas workspace' });
+    expect(workspace.getAttribute('data-camera-zoom')).toBe('1');
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom to New note 1' }));
+
+    expect(Number(workspace.getAttribute('data-camera-zoom'))).toBeGreaterThan(1);
+    expect(screen.getByLabelText('Canvas note').getAttribute('data-selected')).toBe('true');
+  });
+
   it('navigates presentation frames by controls and keyboard without editing content', () => {
     render(<CanvasPage />);
     const addNote = screen.getByRole('button', { name: 'Add note' });

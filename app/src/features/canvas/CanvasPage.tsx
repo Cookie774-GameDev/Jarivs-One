@@ -111,6 +111,7 @@ import {
 import {
   enterPresentMode,
   exitPresentMode,
+  frameZoomTarget,
   moveFrame,
   nextFrame,
   presentationFromDocument,
@@ -2338,6 +2339,25 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
       );
     });
   };
+  const zoomToPresentationFrame = (blockId: string) => {
+    const current = documentRef.current;
+    if (current.layoutMode !== 'edgeless') return;
+    const frameIndex = current.presentationOrder.findIndex((entry) => entry === blockId);
+    if (frameIndex < 0) return;
+    const visiblePlacements = [...resolveEdgelessLayout(current).values()].filter(
+      (placement) => !placement.hidden,
+    );
+    const target = frameZoomTarget(
+      presentationFromDocument(current),
+      frameIndex,
+      visiblePlacements,
+      CAMERA_VIEWPORT,
+      120,
+    );
+    if (!target) return;
+    setSelected(createCanvasSelection([blockId]));
+    setCamera(target);
+  };
   const placementById = resolveEdgelessLayout(document);
   const selectedPlacement = selectedBlock ? placementById.get(selectedBlock.id) : undefined;
   const selectedObjectsLocked = selectionHasLockedPlacement(document, selected.ids);
@@ -2609,6 +2629,8 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
               <ol aria-label="Canvas presentation order" className="space-y-2">
                 {document.presentationOrder.map((frameId, index) => {
                   const label = presentationFrameLabel(blockById(document, frameId));
+                  const placement = placementById.get(frameId);
+                  const canZoom = document.layoutMode === 'edgeless' && placement?.hidden === false;
                   return (
                     <li
                       key={frameId}
@@ -2642,6 +2664,15 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                       <span className="min-w-0 flex-1 truncate text-sm">
                         {index + 1}. {label}
                       </span>
+                      <button
+                        type="button"
+                        aria-label={`Zoom to ${label}`}
+                        disabled={!canZoom}
+                        onClick={() => zoomToPresentationFrame(frameId)}
+                        className="rounded border border-border px-2 py-1 text-xs disabled:opacity-40"
+                      >
+                        Focus
+                      </button>
                       <button
                         type="button"
                         aria-label={`Move ${label} earlier`}
