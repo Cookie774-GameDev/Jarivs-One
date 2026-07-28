@@ -8,6 +8,8 @@ import {
 } from './contracts';
 import {
   buildActiveCanvasChatAttachments,
+  canCaptureActiveCanvasSnapshot,
+  captureActiveCanvasSnapshot,
   clearActiveCanvasAiContextForTests,
   mergeActiveCanvasPromptForgeSources,
   publishActiveCanvasAiContextProvider,
@@ -279,5 +281,95 @@ describe('active Canvas AI context registry', () => {
       attachmentLevel: 'block',
       itemCount: 1,
     });
+  });
+
+  it('attaches a real selected presentation frame and captures detached PNG snapshot bytes', () => {
+    const pngBytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3]);
+    const captureSnapshot = vi.fn(() => ({
+      id: 'snapshot-1',
+      canvasId: 'canvas-1',
+      projectId: 'project-1',
+      capturedAt: 30,
+      filename: 'launch-canvas-snapshot.png',
+      mimeType: 'image/png' as const,
+      bytes: pngBytes,
+    }));
+    publishActiveCanvasAiContextProvider({
+      accountId: 'account-1',
+      ownerId: 'account-1',
+      projectId: 'project-1',
+      canvasId: 'canvas-1',
+      selectedFrameId: 'note-1',
+      getContext: () => context(),
+      captureSnapshot,
+    });
+
+    expect(
+      buildActiveCanvasChatAttachments(
+        { accountId: 'account-1', projectId: 'project-1' },
+        'frame',
+      )[0],
+    ).toMatchObject({
+      nodeId: 'canvas:canvas-1:frame:note-1',
+      title: 'Presentation frame: note block note-1',
+      summary: 'Ship the desktop beta.',
+      exactExcerpt: 'Ship the desktop beta.',
+      attachmentLevel: 'block',
+    });
+    expect(
+      canCaptureActiveCanvasSnapshot({
+        accountId: 'account-other',
+        projectId: 'project-1',
+      }),
+    ).toBe(false);
+    expect(
+      captureActiveCanvasSnapshot({
+        accountId: 'account-other',
+        projectId: 'project-1',
+      }),
+    ).toBeNull();
+    expect(captureSnapshot).not.toHaveBeenCalled();
+
+    const snapshot = captureActiveCanvasSnapshot({
+      accountId: 'account-1',
+      projectId: 'project-1',
+    });
+    expect(snapshot).toMatchObject({
+      id: 'snapshot-1',
+      canvasId: 'canvas-1',
+      projectId: 'project-1',
+      filename: 'launch-canvas-snapshot.png',
+      mimeType: 'image/png',
+    });
+    expect(snapshot?.bytes).not.toBe(pngBytes);
+    expect(snapshot?.bytes).toEqual(pngBytes);
+    snapshot!.bytes[0] = 0;
+    expect(pngBytes[0]).toBe(137);
+  });
+
+  it('rejects malformed or path-bearing snapshot output from the active provider', () => {
+    publishActiveCanvasAiContextProvider({
+      accountId: 'account-1',
+      ownerId: 'account-1',
+      projectId: 'project-1',
+      canvasId: 'canvas-1',
+      getContext: () => context(),
+      captureSnapshot: () => ({
+        id: 'snapshot-1',
+        canvasId: 'canvas-1',
+        projectId: 'project-1',
+        capturedAt: 30,
+        filename: '../canvas.png',
+        mimeType: 'image/png',
+        bytes: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]),
+      }),
+    });
+
+    expect(
+      captureActiveCanvasSnapshot({
+        accountId: 'account-1',
+        projectId: 'project-1',
+      }),
+    ).toBeNull();
   });
 });

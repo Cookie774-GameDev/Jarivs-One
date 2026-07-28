@@ -9,7 +9,12 @@ import {
   withPlacement,
 } from './contracts';
 import { createCanvasGlobalSearchIndex, requestCanvasGlobalSearchNavigation } from './globalSearch';
-import { clearActiveCanvasAiContextForTests, readActiveCanvasAiContext } from './aiContextRegistry';
+import {
+  buildActiveCanvasChatAttachments,
+  captureActiveCanvasSnapshot,
+  clearActiveCanvasAiContextForTests,
+  readActiveCanvasAiContext,
+} from './aiContextRegistry';
 import { CANVAS_MARKDOWN_MAX_SOURCE_LENGTH } from './markdown';
 import { createMindMap } from './mindmaps';
 import { encodeCanvasPackage } from './packageFormat';
@@ -167,6 +172,32 @@ describe('CanvasPage', () => {
         reference: 'canvas:persisted-canvas#persisted-canvas-note-1',
       },
     ]);
+    fireEvent.click(screen.getByRole('button', { name: 'Show canvas properties' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add selected object to presentation' }));
+    await waitFor(() =>
+      expect(
+        buildActiveCanvasChatAttachments(
+          {
+            accountId: PERSISTENCE_SCOPE.accountId,
+            projectId: PERSISTENCE_SCOPE.projectId,
+          },
+          'frame',
+        )[0],
+      ).toMatchObject({
+        nodeId: 'canvas:persisted-canvas:frame:persisted-canvas-note-1',
+        title: 'Presentation frame: note block persisted-canvas-note-1',
+      }),
+    );
+    const snapshot = captureActiveCanvasSnapshot({
+      accountId: PERSISTENCE_SCOPE.accountId,
+      projectId: PERSISTENCE_SCOPE.projectId,
+    });
+    expect(snapshot).toMatchObject({
+      canvasId: 'persisted-canvas',
+      projectId: PERSISTENCE_SCOPE.projectId,
+      mimeType: 'image/png',
+    });
+    expect(snapshot?.bytes.slice(0, 8)).toEqual(new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]));
     expect(
       readActiveCanvasAiContext({ accountId: 'account-other', projectId: 'project-a' }),
     ).toBeNull();

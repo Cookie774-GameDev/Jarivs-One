@@ -4,6 +4,7 @@ import type { AgentId } from '@/types/common';
 import {
   buildConfirmedAgentMention,
   buildSlashReferenceCommand,
+  canvasSnapshotToImageAttachment,
   extractAbsoluteFilePaths,
   getQueuedMessageNotice,
   mergeActiveCanvasSourcesForPromptForge,
@@ -121,6 +122,35 @@ describe('composer mention and slash confirmation helpers', () => {
       ),
     ).toEqual(['current']);
     expect(resolveCanvasAttachmentModesForSend([], 'Discuss /canvas later')).toEqual([]);
+    expect(
+      resolveCanvasAttachmentModesForSend(
+        [{ cmd: 'canvas', value: 'canvas:frame', label: '/canvas: Selected frame' }],
+        '',
+      ),
+    ).toEqual(['frame']);
+  });
+
+  it('turns a validated Canvas PNG snapshot into a vision attachment without retaining bytes', () => {
+    const bytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+    const image = canvasSnapshotToImageAttachment({
+      id: 'snapshot-1',
+      canvasId: 'canvas-1',
+      projectId: 'project-1',
+      capturedAt: 30,
+      filename: 'canvas-snapshot.png',
+      mimeType: 'image/png',
+      bytes,
+    });
+
+    expect(image).toEqual({
+      id: 'canvas_snapshot_snapshot-1',
+      name: 'canvas-snapshot.png',
+      mimeType: 'image/png',
+      data: 'iVBORw0KGgo=',
+      size: 8,
+    });
+    bytes[0] = 0;
+    expect(image.data).toBe('iVBORw0KGgo=');
   });
 });
 

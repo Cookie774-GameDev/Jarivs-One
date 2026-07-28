@@ -240,8 +240,11 @@ import type { PromptForgeComposerDescriptor } from '@/features/prompt-forge/comp
 import type { PromptForgeSourceCandidate } from '@/features/prompt-forge/sourcePack';
 import {
   buildActiveCanvasChatAttachments,
+  canCaptureActiveCanvasSnapshot,
+  captureActiveCanvasSnapshot,
   mergeActiveCanvasPromptForgeSources,
   readActiveCanvasAiContext,
+  type ActiveCanvasSnapshot,
   type CanvasChatAttachmentMode,
 } from '@/features/canvas/aiContextRegistry';
 
@@ -412,6 +415,7 @@ export function resolveCanvasAttachmentModesForSend(
   for (const command of commands) {
     if (normalizeSlashCmd(command.cmd) !== 'canvas') continue;
     if (command.value === 'canvas:selection') modes.add('selection');
+    if (command.value === 'canvas:frame') modes.add('frame');
     if (command.value === 'canvas:current' || command.value === 'reference:canvas') {
       modes.add('current');
     }
@@ -419,6 +423,23 @@ export function resolveCanvasAttachmentModesForSend(
   const leadingCommand = leadingText.trimStart().match(/^\/([^\s]+)/u)?.[1] ?? '';
   if (normalizeSlashCmd(leadingCommand) === 'canvas') modes.add('current');
   return Object.freeze([...modes]);
+}
+
+export function canvasSnapshotToImageAttachment(
+  snapshot: ActiveCanvasSnapshot,
+): ChatImageAttachment {
+  let binary = '';
+  const chunkSize = 32_768;
+  for (let offset = 0; offset < snapshot.bytes.byteLength; offset += chunkSize) {
+    binary += String.fromCharCode(...snapshot.bytes.subarray(offset, offset + chunkSize));
+  }
+  return {
+    id: `canvas_snapshot_${snapshot.id}`,
+    name: snapshot.filename,
+    mimeType: snapshot.mimeType,
+    data: globalThis.btoa(binary),
+    size: snapshot.bytes.byteLength,
+  };
 }
 
 const WINDOWS_FILE_PATH_RE =
@@ -791,6 +812,8 @@ export function Composer({
         projectId,
       });
       if (context === null) return [];
+      const scope = { accountId: pluginAccountId, projectId };
+      const selectedFrame = buildActiveCanvasChatAttachments(scope, 'frame')[0];
       return [
         {
           id: 'canvas:current',
@@ -808,6 +831,26 @@ export function Composer({
                   .slice(0, 3)
                   .join(', '),
                 metadata: `${context.selection.length} selected`,
+              },
+            ]
+          : []),
+        ...(selectedFrame === undefined
+          ? []
+          : [
+              {
+                id: 'canvas:frame',
+                label: 'Selected presentation frame',
+                description: selectedFrame.title,
+                metadata: 'structured context',
+              },
+            ]),
+        ...(canCaptureActiveCanvasSnapshot(scope)
+          ? [
+              {
+                id: 'canvas:snapshot',
+                label: 'Canvas snapshot',
+                description: 'Attach a current PNG for vision-capable models',
+                metadata: '1280 × 720',
               },
             ]
           : []),
@@ -1205,6 +1248,29 @@ export function Composer({
         // Drop any stale permissions chip from older builds.
         setConfirmedCommands((cur) => cur.filter((c) => c.cmd !== 'permissions'));
         // Quiet: mode chip already shows the active mode — no toast spam.
+      }
+      setOptionPickerCtx(null);
+      setSelectedOptionId('');
+      requestAnimationFrame(() => textareaRef.current?.focus());
+      return;
+    }
+
+    if (canonical === 'canvas' && option.id === 'canvas:snapshot') {
+      const currentAuth = useAuthStore.getState();
+      const snapshot = captureActiveCanvasSnapshot({
+        accountId: resolveAccountIdentity(currentAuth)?.accountId ?? '',
+        projectId: currentAuth.projectId,
+      });
+      if (snapshot === null) {
+        toast.warning(
+          'Canvas snapshot unavailable',
+          'Open the active Canvas for this project and try again.',
+        );
+      } else {
+        const image = canvasSnapshotToImageAttachment(snapshot);
+        setAttachedImages((current) =>
+          current.some(({ id }) => id === image.id) ? current : [...current, image].slice(0, 6),
+        );
       }
       setOptionPickerCtx(null);
       setSelectedOptionId('');

@@ -16,20 +16,37 @@ export interface ActiveCanvasAiContextProvider {
   readonly ownerId: string;
   readonly projectId: string;
   readonly canvasId: string;
+  readonly selectedFrameId?: string | null;
   readonly getContext: () => CanvasAiContext;
+  readonly captureSnapshot?: () => ActiveCanvasSnapshot;
 }
 
 interface ActivePublication extends ActiveCanvasAiContextProvider {
   readonly lease: number;
+  readonly selectedFrameId: string | null;
   cachedContext: CanvasAiContext | null;
 }
 
-export type CanvasChatAttachmentMode = 'current' | 'selection';
+export interface ActiveCanvasSnapshot {
+  readonly id: string;
+  readonly canvasId: string;
+  readonly projectId: string;
+  readonly capturedAt: number;
+  readonly filename: string;
+  readonly mimeType: 'image/png';
+  readonly bytes: Uint8Array;
+}
+
+export type CanvasChatAttachmentMode = 'current' | 'selection' | 'frame';
 
 let activePublication: ActivePublication | null = null;
 let leaseSequence = 0;
 const MAX_CANVAS_CHAT_ATTACHMENTS = 8;
 const MAX_CHAT_SUMMARY_CHARACTERS = 4_096;
+const MAX_CANVAS_SNAPSHOT_BYTES = 8 * 1024 * 1024;
+const PNG_SIGNATURE = Object.freeze([137, 80, 78, 71, 13, 10, 26, 10] as const);
+const SAFE_SNAPSHOT_ID = /^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,255}$/u;
+const SAFE_SNAPSHOT_FILENAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,255}\.png$/iu;
 
 function boundedIdentity(value: string, label: string): string {
   const normalized = value.trim();
@@ -59,7 +76,12 @@ export function publishActiveCanvasAiContextProvider(
     ownerId,
     projectId: boundedIdentity(input.projectId, 'Canvas project id'),
     canvasId: boundedIdentity(input.canvasId, 'Canvas id'),
+    selectedFrameId:
+      input.selectedFrameId === undefined || input.selectedFrameId === null
+        ? null
+        : boundedIdentity(input.selectedFrameId, 'Canvas frame id'),
     getContext: input.getContext,
+    ...(input.captureSnapshot === undefined ? {} : { captureSnapshot: input.captureSnapshot }),
     cachedContext: null,
     lease,
   };
@@ -70,7 +92,7 @@ export function publishActiveCanvasAiContextProvider(
   };
 }
 
-export function readActiveCanvasAiContext(scope: ActiveCanvasAiScope): CanvasAiContext | null {
+function matchingPublication(scope: ActiveCanvasAiScope): ActivePublication | null {
   const publication = activePublication;
   if (
     publication === null ||
@@ -80,6 +102,12 @@ export function readActiveCanvasAiContext(scope: ActiveCanvasAiScope): CanvasAiC
   ) {
     return null;
   }
+  return publication;
+}
+
+export function readActiveCanvasAiContext(scope: ActiveCanvasAiScope): CanvasAiContext | null {
+  const publication = matchingPublication(scope);
+  if (publication === null) return null;
   if (publication.cachedContext !== null) {
     return publication.cachedContext;
   }
@@ -154,6 +182,32 @@ export function buildActiveCanvasChatAttachments(
       ]);
     }
 
+    if (mode === 'frame') {
+      const frameId = matchingPublication(scope)?.selectedFrameId;
+      const block =
+        frameId === null ? undefined : context.selection.find(({ id }) => id === frameId);
+      if (block === undefined) return Object.freeze([]);
+      return Object.freeze([
+        buildContextChatAttachment({
+          projectId: context.canvas.projectId,
+          rootDir: '',
+          generatedAt: context.canvas.updatedAt,
+          nodeId: `canvas:${context.canvas.id}:frame:${block.id}`,
+          mapId: context.canvas.id,
+          title: `Presentation frame: ${block.label}`,
+          kind: 'note',
+          summary: boundedSummary(block.content, block.label),
+          attachmentLevel: 'block',
+          source,
+          freshness: 'current',
+          itemCount: 1,
+          lastIndexedAt: block.updatedAt,
+          modifiedAt: block.updatedAt,
+          ...(block.content.trim() ? { exactExcerpt: block.content } : {}),
+        }),
+      ]);
+    }
+
     return Object.freeze(
       context.selection.slice(0, MAX_CANVAS_CHAT_ATTACHMENTS).map((block) =>
         buildContextChatAttachment({
@@ -177,6 +231,48 @@ export function buildActiveCanvasChatAttachments(
     );
   } catch {
     return Object.freeze([]);
+  }
+}
+
+export function canCaptureActiveCanvasSnapshot(scope: ActiveCanvasAiScope): boolean {
+  return typeof matchingPublication(scope)?.captureSnapshot === 'function';
+}
+
+export function captureActiveCanvasSnapshot(
+  scope: ActiveCanvasAiScope,
+): ActiveCanvasSnapshot | null {
+  const publication = matchingPublication(scope);
+  if (publication?.captureSnapshot === undefined) return null;
+  try {
+    const snapshot = publication.captureSnapshot();
+    if (
+      snapshot.canvasId !== publication.canvasId ||
+      snapshot.projectId !== publication.projectId ||
+      !SAFE_SNAPSHOT_ID.test(snapshot.id) ||
+      !SAFE_SNAPSHOT_FILENAME.test(snapshot.filename) ||
+      snapshot.mimeType !== 'image/png' ||
+      !Number.isSafeInteger(snapshot.capturedAt) ||
+      snapshot.capturedAt < 0 ||
+      !(snapshot.bytes instanceof Uint8Array) ||
+      snapshot.bytes.byteLength < PNG_SIGNATURE.length ||
+      snapshot.bytes.byteLength > MAX_CANVAS_SNAPSHOT_BYTES ||
+      PNG_SIGNATURE.some((byte, index) => snapshot.bytes[index] !== byte)
+    ) {
+      return null;
+    }
+    const bytes = new Uint8Array(snapshot.bytes.byteLength);
+    bytes.set(snapshot.bytes);
+    return Object.freeze({
+      id: snapshot.id,
+      canvasId: snapshot.canvasId,
+      projectId: snapshot.projectId,
+      capturedAt: snapshot.capturedAt,
+      filename: snapshot.filename,
+      mimeType: 'image/png',
+      bytes,
+    });
+  } catch {
+    return null;
   }
 }
 

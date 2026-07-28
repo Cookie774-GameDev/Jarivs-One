@@ -718,16 +718,42 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     }
     const publishedDocument = document;
     const selectedBlockIds = [...selected.ids];
+    const selectedFrameId =
+      selectedBlockIds.find((candidate) =>
+        publishedDocument.presentationOrder.some((frameId) => frameId === candidate),
+      ) ?? null;
     return publishActiveCanvasAiContextProvider({
       accountId: activeScope.accountId,
       ownerId: activeScope.ownerId,
       projectId: activeScope.projectId,
       canvasId: publishedDocument.id,
+      selectedFrameId,
       getContext: () =>
         compileCanvasAiContext({
           document: publishedDocument,
           selectedBlockIds,
         }),
+      captureSnapshot: () => {
+        const capturedAt = Date.now();
+        const artifact = exportCanvas(publishedDocument, {
+          format: 'png',
+          scope: { kind: 'all' },
+          width: 1280,
+          height: 720,
+          scale: 1,
+          background: publishedDocument.background.color,
+          filename: `${safeExportTitle(publishedDocument.title)}-snapshot.png`,
+        });
+        return {
+          id: `canvas-snapshot-${publishedDocument.id}-${capturedAt}`,
+          canvasId: publishedDocument.id,
+          projectId: publishedDocument.projectId,
+          capturedAt,
+          filename: artifact.filename,
+          mimeType: 'image/png' as const,
+          bytes: artifact.bytes,
+        };
+      },
     });
   }, [
     activeScope,
