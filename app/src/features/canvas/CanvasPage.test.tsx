@@ -572,6 +572,26 @@ describe('CanvasPage', () => {
     expect(screen.queryAllByLabelText('Canvas note')).toHaveLength(0);
   });
 
+  it('selects objects enclosed by the accessible edgeless lasso tool', () => {
+    render(<CanvasPage />);
+    const addNote = screen.getByRole('button', { name: 'Add note' });
+    fireEvent.click(addNote);
+    fireEvent.click(addNote);
+    fireEvent.click(screen.getByRole('button', { name: 'Edgeless layout' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Lasso tool' }));
+
+    const workspace = screen.getByRole('region', { name: 'Canvas workspace' });
+    fireEvent.pointerDown(workspace, { pointerId: 10, button: 0, clientX: 580, clientY: 380 });
+    fireEvent.pointerMove(workspace, { pointerId: 10, clientX: 900, clientY: 380 });
+    fireEvent.pointerMove(workspace, { pointerId: 10, clientX: 900, clientY: 620 });
+    fireEvent.pointerMove(workspace, { pointerId: 10, clientX: 580, clientY: 620 });
+    fireEvent.pointerUp(workspace, { pointerId: 10, clientX: 580, clientY: 380 });
+
+    const notes = screen.getAllByLabelText('Canvas note');
+    expect(notes[0].dataset.selected).toBe('true');
+    expect(notes[1].dataset.selected).toBe('false');
+  });
+
   it('describes canvas objects, announces zoom, and clears selection with Escape', () => {
     render(<CanvasPage />);
     fireEvent.click(screen.getByRole('button', { name: 'Add note' }));

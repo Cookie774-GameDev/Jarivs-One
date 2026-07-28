@@ -6,6 +6,7 @@ import {
   Download,
   Hand,
   Heading,
+  LassoSelect,
   ListTree,
   Maximize2,
   Minus,
@@ -65,6 +66,7 @@ import { decodeCanvasPackage, encodeCanvasPackage } from './packageFormat';
 import {
   clearCanvasSelection,
   createCanvasSelection,
+  lassoSelect,
   marqueeSelect,
   selectAllCanvasBlocks,
   selectCanvasBlock,
@@ -124,11 +126,12 @@ import {
   type CanvasZOrderCommand,
 } from './geometry';
 
-type CanvasTool = 'select' | 'hand' | 'note';
+type CanvasTool = 'select' | 'lasso' | 'hand' | 'note';
 type CanvasPlacementField = 'x' | 'y' | 'width' | 'height' | 'rotation';
 
 const CANVAS_TOOL_LABELS: Readonly<Record<CanvasTool, string>> = Object.freeze({
   select: 'Select',
+  lasso: 'Lasso',
   hand: 'Hand',
   note: 'Note',
 });
@@ -401,6 +404,9 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     start: { x: number; y: number };
     end: { x: number; y: number };
   } | null>(null);
+  const [lassoVisual, setLassoVisual] = React.useState<readonly { x: number; y: number }[] | null>(
+    null,
+  );
   const sequence = React.useRef(0);
   const clipboardSequence = React.useRef(0);
   const clipboard = React.useRef<CanvasClipboardPayload | null>(null);
@@ -429,6 +435,11 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     pointerId: number;
     start: { x: number; y: number };
     end: { x: number; y: number };
+    baseIds: readonly string[];
+  } | null>(null);
+  const lassoGesture = React.useRef<{
+    pointerId: number;
+    points: readonly { x: number; y: number }[];
     baseIds: readonly string[];
   } | null>(null);
 
@@ -1036,6 +1047,27 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     if (
       activePointers.current.size === 1 &&
       event.target === event.currentTarget &&
+      tool === 'lasso' &&
+      event.button === 0 &&
+      event.pointerType !== 'touch'
+    ) {
+      event.preventDefault();
+      const gesture = {
+        pointerId: event.pointerId,
+        points: [point],
+        baseIds:
+          event.shiftKey || event.ctrlKey || event.metaKey
+            ? selected.ids
+            : ([] as readonly string[]),
+      };
+      lassoGesture.current = gesture;
+      setLassoVisual(gesture.points);
+      return;
+    }
+
+    if (
+      activePointers.current.size === 1 &&
+      event.target === event.currentTarget &&
       tool === 'select' &&
       event.button === 0 &&
       event.pointerType !== 'touch'
@@ -1079,6 +1111,18 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     if (!activePointers.current.has(event.pointerId)) return;
     activePointers.current.set(event.pointerId, point);
 
+    const activeLasso = lassoGesture.current;
+    if (activeLasso?.pointerId === event.pointerId) {
+      event.preventDefault();
+      const previous = activeLasso.points.at(-1);
+      if (!previous || Math.hypot(point.x - previous.x, point.y - previous.y) >= 2) {
+        const points = [...activeLasso.points, point];
+        lassoGesture.current = { ...activeLasso, points };
+        setLassoVisual(points);
+      }
+      return;
+    }
+
     const activeMarquee = marqueeGesture.current;
     if (activeMarquee?.pointerId === event.pointerId) {
       event.preventDefault();
@@ -1119,6 +1163,33 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
   };
 
   const onPointerEnd = (event: React.PointerEvent<HTMLElement>) => {
+    const activeLasso = lassoGesture.current;
+    if (activeLasso?.pointerId === event.pointerId) {
+      if (event.type === 'pointercancel') {
+        setSelected(createCanvasSelection(activeLasso.baseIds));
+      } else {
+        const end = pointerPoint(event);
+        const previous = activeLasso.points.at(-1);
+        const points =
+          previous && Math.hypot(end.x - previous.x, end.y - previous.y) < 2
+            ? activeLasso.points
+            : [...activeLasso.points, end];
+        if (points.length >= 3) {
+          const worldPoints = points.map((point) =>
+            screenToWorld(cameraRef.current, CAMERA_VIEWPORT, point),
+          );
+          const placements = [...resolveEdgelessLayout(documentRef.current).values()].map(
+            (placement) => ({ ...placement, id: placement.blockId }),
+          );
+          const inLasso = lassoSelect(placements, worldPoints);
+          setSelected(createCanvasSelection([...activeLasso.baseIds, ...inLasso.ids]));
+        } else {
+          setSelected(createCanvasSelection(activeLasso.baseIds));
+        }
+      }
+      lassoGesture.current = null;
+      setLassoVisual(null);
+    }
     const activeMarquee = marqueeGesture.current;
     if (activeMarquee?.pointerId === event.pointerId) {
       if (event.type === 'pointercancel') {
@@ -2116,6 +2187,13 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
             >
               <MousePointer2 aria-hidden size={17} />
             </ToolButton>
+            <ToolButton
+              active={tool === 'lasso'}
+              label="Lasso tool"
+              onClick={() => setTool('lasso')}
+            >
+              <LassoSelect aria-hidden size={17} />
+            </ToolButton>
             <ToolButton active={tool === 'hand'} label="Hand tool" onClick={() => setTool('hand')}>
               <Hand aria-hidden size={17} />
             </ToolButton>
@@ -2320,6 +2398,22 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                 height: Math.abs(marqueeVisual.end.y - marqueeVisual.start.y),
               }}
             />
+          ) : null}
+
+          {lassoVisual && lassoVisual.length > 1 ? (
+            <svg
+              data-selection-lasso
+              aria-hidden
+              className="pointer-events-none absolute inset-0 h-full w-full overflow-visible text-ring"
+            >
+              <polygon
+                points={lassoVisual.map((point) => `${point.x},${point.y}`).join(' ')}
+                fill="currentColor"
+                fillOpacity={0.1}
+                stroke="currentColor"
+                strokeWidth={1}
+              />
+            </svg>
           ) : null}
 
           {document.layoutMode === 'edgeless' ? (

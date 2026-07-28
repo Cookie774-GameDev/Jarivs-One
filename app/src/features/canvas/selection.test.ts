@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   createCanvasSelection,
+  lassoSelect,
   marqueeSelect,
   selectAllCanvasBlocks,
   selectCanvasBlock,
@@ -48,5 +49,19 @@ describe('canvas selection', () => {
     expect(() =>
       marqueeSelect(objects, { x: Number.NaN, y: 0 }, { x: 1, y: 1 }, 'intersect'),
     ).toThrow('finite');
+  });
+
+  it('selects object centers inside a freeform lasso in either winding direction', () => {
+    const polygon = [
+      { x: -10, y: -10 },
+      { x: 80, y: -10 },
+      { x: 80, y: 80 },
+      { x: -10, y: 80 },
+    ];
+
+    expect(lassoSelect(objects, polygon).ids).toEqual(['back']);
+    expect(lassoSelect(objects, [...polygon].reverse()).ids).toEqual(['back']);
+    expect(() => lassoSelect(objects, polygon.slice(0, 2))).toThrow('three points');
+    expect(() => lassoSelect(objects, [{ x: Number.NaN, y: 0 }, ...polygon])).toThrow('finite');
   });
 });

@@ -133,3 +133,62 @@ export function marqueeSelect(
   });
   return selection(selected.map((object) => object.id));
 }
+
+function pointOnSegment(
+  point: CanvasSelectionPoint,
+  start: CanvasSelectionPoint,
+  end: CanvasSelectionPoint,
+): boolean {
+  const cross = (point.y - start.y) * (end.x - start.x) - (point.x - start.x) * (end.y - start.y);
+  if (Math.abs(cross) > Number.EPSILON) return false;
+  return (
+    point.x >= Math.min(start.x, end.x) &&
+    point.x <= Math.max(start.x, end.x) &&
+    point.y >= Math.min(start.y, end.y) &&
+    point.y <= Math.max(start.y, end.y)
+  );
+}
+
+function pointInsidePolygon(
+  point: CanvasSelectionPoint,
+  polygon: readonly CanvasSelectionPoint[],
+): boolean {
+  let inside = false;
+  for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index++) {
+    const start = polygon[index];
+    const end = polygon[previous];
+    if (pointOnSegment(point, start, end)) return true;
+    if (
+      start.y > point.y !== end.y > point.y &&
+      point.x < ((end.x - start.x) * (point.y - start.y)) / (end.y - start.y) + start.x
+    ) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+export function lassoSelect(
+  objects: readonly CanvasSelectableBounds[],
+  points: readonly CanvasSelectionPoint[],
+): CanvasSelection {
+  if (points.length < 3) {
+    throw new Error('Canvas selection lasso requires at least three points');
+  }
+  const polygon = points.map((point, index) => ({
+    x: assertFinite(point.x, `lasso point ${index} x`),
+    y: assertFinite(point.y, `lasso point ${index} y`),
+  }));
+  const selected = objects.filter((object) => {
+    assertId(object.id);
+    const bounds = validatedBounds(object);
+    return pointInsidePolygon(
+      {
+        x: bounds.left + (bounds.right - bounds.left) / 2,
+        y: bounds.top + (bounds.bottom - bounds.top) / 2,
+      },
+      polygon,
+    );
+  });
+  return selection(selected.map((object) => object.id));
+}
