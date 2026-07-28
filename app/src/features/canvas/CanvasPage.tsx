@@ -20,6 +20,7 @@ import {
   Undo2,
   Upload,
 } from 'lucide-react';
+import { canvasBlockAccessibleLabel, canvasZoomAnnouncement } from './accessibility';
 import {
   blockById,
   createCanvasBlock,
@@ -639,6 +640,11 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
         }
       }
       if (isEditableTarget(event.target)) return;
+      if (event.key === 'Escape' && selected.ids.length > 0) {
+        event.preventDefault();
+        setSelected(clearCanvasSelection);
+        return;
+      }
       if (event.code === 'Space' && document.layoutMode === 'edgeless') {
         event.preventDefault();
         spaceHeld.current = true;
@@ -1366,6 +1372,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     (node) => node.id === activePresentationMindMap.rootId,
   );
   const activePresentationProgress = presentationProgress(presentation);
+  const zoomAnnouncement = canvasZoomAnnouncement(camera.zoom);
   const toggleSelectedPresentationFrame = () => {
     if (!selectedBlock) return;
     const blockId = selectedBlock.id;
@@ -1721,6 +1728,14 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
       <p className="sr-only" role="status" aria-live="polite">
         {packageMessage}
       </p>
+      <output
+        role="status"
+        aria-label="Canvas zoom announcement"
+        aria-live={zoomAnnouncement.politeness}
+        className="sr-only"
+      >
+        {zoomAnnouncement.message}
+      </output>
 
       {presentation.status === 'presenting' ? (
         <section
@@ -1909,6 +1924,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                 <article
                   key={block.id}
                   aria-label={`Canvas ${block.content.kind}`}
+                  aria-description={canvasBlockAccessibleLabel(block)}
                   aria-current={selectionHas(selected, block.id) ? 'true' : undefined}
                   data-selected={selectionHas(selected, block.id)}
                   tabIndex={0}
@@ -1958,6 +1974,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                       }
                     }}
                     aria-label={`Canvas ${block.content.kind}`}
+                    aria-description={canvasBlockAccessibleLabel(block)}
                     aria-current={selectionHas(selected, block.id) ? 'true' : undefined}
                     data-selected={selectionHas(selected, block.id)}
                     tabIndex={0}

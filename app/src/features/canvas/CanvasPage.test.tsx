@@ -500,6 +500,23 @@ describe('CanvasPage', () => {
     expect(screen.queryAllByLabelText('Canvas note')).toHaveLength(0);
   });
 
+  it('describes canvas objects, announces zoom, and clears selection with Escape', () => {
+    render(<CanvasPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    const note = screen.getByLabelText('Canvas note');
+    expect(note.getAttribute('aria-description')).toBe('Note: New note 1');
+
+    fireEvent.click(note);
+    expect(note.dataset.selected).toBe('true');
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(note.dataset.selected).toBe('false');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
+    expect(screen.getByRole('status', { name: 'Canvas zoom announcement' }).textContent).toBe(
+      'Canvas zoom 125 percent',
+    );
+  });
+
   it('nudges selected edgeless objects with fine and coarse keyboard movement', () => {
     render(<CanvasPage />);
     fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
