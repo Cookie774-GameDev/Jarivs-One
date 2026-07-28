@@ -21,7 +21,9 @@ export interface AccessHostValue {
 }
 
 interface AccessHostInternalValue extends AccessHostValue {
+  attempt: number;
   error: Error | null;
+  loader: AccessHostProps['loadAccess'];
 }
 
 interface LoadingFallbackProps {
@@ -75,6 +77,44 @@ export function useCanUseApp(): boolean {
   return (value.phase === 'disabled' || value.phase === 'ready') && value.snapshot?.usable === true;
 }
 
+/**
+ * Typed selector for the authoritative display state. Fails closed to
+ * 'unknown' until a snapshot resolves so consumers never scatter raw checks.
+ */
+export function useAccessDisplayState(): AccessDisplayState {
+  const value = useAccessHost();
+  return value.snapshot?.displayState ?? 'unknown';
+}
+
+/**
+ * Typed selector for mutation/edit capability. Requires an effective use grant
+ * and parallels the accepted access contract, where mutation tracks production
+ * use. Never derived from feature tier, app version, or extra caller fields.
+ */
+export function useCanEditApp(): boolean {
+  const value = useAccessHost();
+  if (value.phase !== 'disabled' && value.phase !== 'ready') return false;
+  const snapshot = value.snapshot;
+  if (!snapshot || snapshot.usable !== true) return false;
+  return true;
+}
+
+/**
+ * Typed selector for export/data-recovery capability. Authoritative policy
+ * permits export in every resolved state, so it stays available in blocked
+ * modes. Requires a resolved snapshot (disabled/ready/blocked); loading/error
+ * have no authority.
+ */
+export function useCanExportData(): boolean {
+  const value = useAccessHost();
+  const snapshot = value.snapshot;
+  if (!snapshot) return false;
+  if (value.phase !== 'disabled' && value.phase !== 'ready' && value.phase !== 'blocked') {
+    return false;
+  }
+  return true;
+}
+
 function toError(reason: unknown): Error {
   return reason instanceof Error ? reason : new Error('Unable to verify VibeSpace Access.');
 }
@@ -98,7 +138,8 @@ function isSnapshot(value: unknown): value is AccessHostSnapshot {
     candidate.featureTier.length > 0 &&
     typeof candidate.usable === 'boolean' &&
     typeof candidate.capturedAt === 'number' &&
-    Number.isFinite(candidate.capturedAt)
+    Number.isSafeInteger(candidate.capturedAt) &&
+    candidate.capturedAt >= 0
   );
 }
 
@@ -151,7 +192,9 @@ export function AccessHost({
 }: AccessHostProps) {
   const [attempt, setAttempt] = React.useState(0);
   const [value, setValue] = React.useState<AccessHostInternalValue>(() => ({
+    attempt: 0,
     error: null,
+    loader: loadAccess,
     phase: enabled ? 'loading' : 'disabled',
     snapshot: enabled ? null : DISABLED_SNAPSHOT,
     refresh: () => undefined,
@@ -162,13 +205,27 @@ export function AccessHost({
   React.useEffect(() => {
     if (!enabled) {
       requestGeneration.current += 1;
-      setValue({ error: null, phase: 'disabled', snapshot: DISABLED_SNAPSHOT, refresh });
+      setValue({
+        attempt,
+        error: null,
+        loader: loadAccess,
+        phase: 'disabled',
+        snapshot: DISABLED_SNAPSHOT,
+        refresh,
+      });
       return;
     }
 
     const generation = ++requestGeneration.current;
     const controller = new AbortController();
-    setValue({ error: null, phase: 'loading', snapshot: null, refresh });
+    setValue({
+      attempt,
+      error: null,
+      loader: loadAccess,
+      phase: 'loading',
+      snapshot: null,
+      refresh,
+    });
 
     void Promise.resolve()
       .then(() => loadAccess(controller.signal))
@@ -177,7 +234,9 @@ export function AccessHost({
           if (controller.signal.aborted || generation !== requestGeneration.current) return;
           if (!isSnapshot(snapshot)) {
             setValue({
+              attempt,
               error: new Error('The access service returned an invalid snapshot.'),
+              loader: loadAccess,
               phase: 'error',
               snapshot: null,
               refresh,
@@ -188,9 +247,16 @@ export function AccessHost({
           const impossibleGrant =
             snapshot.usable &&
             (snapshot.displayState === 'locked' || snapshot.displayState === 'unknown');
-          const stableSnapshot = Object.freeze({ ...snapshot });
+          const stableSnapshot: AccessHostSnapshot = Object.freeze({
+            capturedAt: snapshot.capturedAt,
+            displayState: snapshot.displayState,
+            featureTier: snapshot.featureTier,
+            usable: snapshot.usable,
+          });
           setValue({
+            attempt,
             error: null,
+            loader: loadAccess,
             phase: snapshot.usable && !impossibleGrant ? 'ready' : 'blocked',
             snapshot: stableSnapshot,
             refresh,
@@ -199,7 +265,9 @@ export function AccessHost({
         (reason: unknown) => {
           if (controller.signal.aborted || generation !== requestGeneration.current) return;
           setValue({
+            attempt,
             error: toError(reason),
+            loader: loadAccess,
             phase: 'error',
             snapshot: null,
             refresh,
@@ -211,7 +279,8 @@ export function AccessHost({
   }, [attempt, enabled, loadAccess, refresh]);
 
   const effectiveValue: AccessHostValue =
-    enabled && value.phase === 'disabled'
+    enabled &&
+    (value.phase === 'disabled' || value.attempt !== attempt || value.loader !== loadAccess)
       ? { phase: 'loading', refresh, snapshot: null }
       : !enabled && value.phase !== 'disabled'
         ? { phase: 'disabled', refresh, snapshot: DISABLED_SNAPSHOT }
