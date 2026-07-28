@@ -499,6 +499,22 @@ describe('CanvasPage', () => {
     ).toBe('both');
   });
 
+  it('navigates visible mind-map nodes with arrow keys', () => {
+    render(<CanvasPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add mind map' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add child to New mind map 1' }));
+    const root = screen.getByRole('button', { name: 'Mind map node: New mind map 1' });
+    const child = screen.getByRole('button', { name: 'Mind map node: New branch 1' });
+
+    root.focus();
+    fireEvent.keyDown(root, { key: 'ArrowRight' });
+    expect(document.activeElement).toBe(child);
+
+    fireEvent.keyDown(child, { key: 'ArrowLeft' });
+    expect(document.activeElement).toBe(root);
+  });
+
   it('imports a validated canvas package as one undoable document replacement', async () => {
     let imported = createCanvasDocument({
       id: 'imported-canvas',

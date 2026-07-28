@@ -68,6 +68,7 @@ import {
   addMindMapChild,
   addMindMapSibling as appendMindMapSibling,
   createMindMap,
+  navigateMindMap,
   setMindMapBranchCollapsed,
   setMindMapDirection,
   type MindMapDirection,
@@ -1004,6 +1005,21 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     });
   };
 
+  const navigateMindMapNode = (
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    map: Parameters<typeof navigateMindMap>[0],
+    nodeId: string,
+  ) => {
+    if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+    event.preventDefault();
+    const nextId = navigateMindMap(map, nodeId, event.key as Parameters<typeof navigateMindMap>[2]);
+    const container = event.currentTarget.closest<HTMLElement>('[data-mind-map-id]');
+    const next = [
+      ...(container?.querySelectorAll<HTMLButtonElement>('[data-mind-map-node-id]') ?? []),
+    ].find((element) => element.dataset.mindMapNodeId === nextId);
+    next?.focus();
+  };
+
   const updateBlockText = (blockId: string, text: string) => {
     commit(
       'text-change',
@@ -1170,8 +1186,24 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
       const root = content.map.nodes.find((node) => node.id === content.map.rootId);
       const rootChildren = content.map.nodes.filter((node) => node.parentId === root?.id);
       return (
-        <section aria-label={`Mind map: ${root?.label ?? 'Untitled'}`} className="space-y-2">
-          <p className="text-sm font-medium">{root?.label ?? 'Untitled'}</p>
+        <section
+          aria-label={`Mind map: ${root?.label ?? 'Untitled'}`}
+          data-mind-map-id={content.map.id}
+          className="space-y-2"
+        >
+          {root ? (
+            <button
+              type="button"
+              aria-label={`Mind map node: ${root.label}`}
+              data-mind-map-node-id={root.id}
+              onKeyDown={(event) => navigateMindMapNode(event, content.map, root.id)}
+              className="text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {root.label}
+            </button>
+          ) : (
+            <p className="text-sm font-medium">Untitled</p>
+          )}
           <button
             type="button"
             aria-label={`Add child to ${root?.label ?? 'Untitled'}`}
@@ -1213,7 +1245,15 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
             <ul className="space-y-1 text-xs text-muted-foreground">
               {rootChildren.map((node) => (
                 <li key={node.id} className="flex items-center gap-2">
-                  <span>{node.label}</span>
+                  <button
+                    type="button"
+                    aria-label={`Mind map node: ${node.label}`}
+                    data-mind-map-node-id={node.id}
+                    onKeyDown={(event) => navigateMindMapNode(event, content.map, node.id)}
+                    className="outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {node.label}
+                  </button>
                   <button
                     type="button"
                     aria-label={`Add sibling to ${node.label}`}
