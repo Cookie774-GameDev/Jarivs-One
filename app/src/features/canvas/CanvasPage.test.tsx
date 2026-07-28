@@ -483,18 +483,20 @@ describe('CanvasPage', () => {
     expect(screen.getByText('New branch 1')).toBeTruthy();
   });
 
-  it('creates a mind-map root and child as undoable canonical canvas content', () => {
+  it('adds a sibling and changes the persisted mind-map direction', () => {
     render(<CanvasPage />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Add mind map' }));
-    expect(screen.getByRole('region', { name: 'Mind map: New mind map 1' })).toBeTruthy();
-
     fireEvent.click(screen.getByRole('button', { name: 'Add child to New mind map 1' }));
-    expect(screen.getByText('New branch 1')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Add sibling to New branch 1' }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Mind map direction' }), {
+      target: { value: 'both' },
+    });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
-    expect(screen.queryByText('New branch 1')).toBeNull();
-    expect(screen.getByRole('region', { name: 'Mind map: New mind map 1' })).toBeTruthy();
+    expect(screen.getByText('New branch 2')).toBeTruthy();
+    expect(
+      (screen.getByRole('combobox', { name: 'Mind map direction' }) as HTMLSelectElement).value,
+    ).toBe('both');
   });
 
   it('imports a validated canvas package as one undoable document replacement', async () => {

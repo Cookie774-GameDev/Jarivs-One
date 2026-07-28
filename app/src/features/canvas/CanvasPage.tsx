@@ -64,7 +64,14 @@ import {
 } from './selection';
 import { createCanvasSpatialIndex } from './spatialIndex';
 import { CanvasOutline } from './CanvasOutline';
-import { addMindMapChild, createMindMap, setMindMapBranchCollapsed } from './mindmaps';
+import {
+  addMindMapChild,
+  addMindMapSibling as appendMindMapSibling,
+  createMindMap,
+  setMindMapBranchCollapsed,
+  setMindMapDirection,
+  type MindMapDirection,
+} from './mindmaps';
 import {
   createCanvasAutosaveController,
   registerCanvasWorkspaceFlush,
@@ -954,6 +961,49 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     });
   };
 
+  const addMindMapSibling = (blockId: string, siblingId: string) => {
+    commit('block-change', 'Add mind-map sibling', (current, now) => {
+      const block = blockById(current, blockId);
+      const content = block?.content;
+      if (!content || content.kind !== 'mind-map') return current;
+      const sibling = content.map.nodes.find((node) => node.id === siblingId);
+      if (!sibling || sibling.parentId === null) return current;
+      const parent = content.map.nodes.find((node) => node.id === sibling.parentId);
+      const branchNumber = (parent?.childIds.length ?? 0) + 1;
+      return withBlockContent(
+        current,
+        blockId,
+        {
+          kind: 'mind-map',
+          map: appendMindMapSibling(content.map, {
+            siblingId,
+            nodeId: `${content.map.id}-branch-${branchNumber}`,
+            label: `New branch ${branchNumber}`,
+            now,
+          }),
+        },
+        now,
+      );
+    });
+  };
+
+  const changeMindMapDirection = (blockId: string, value: string) => {
+    commit('block-change', 'Change mind-map direction', (current, now) => {
+      const block = blockById(current, blockId);
+      const content = block?.content;
+      if (!content || content.kind !== 'mind-map') return current;
+      return withBlockContent(
+        current,
+        blockId,
+        {
+          kind: 'mind-map',
+          map: setMindMapDirection(content.map, value as MindMapDirection, now),
+        },
+        now,
+      );
+    });
+  };
+
   const updateBlockText = (blockId: string, text: string) => {
     commit(
       'text-change',
@@ -1144,10 +1194,38 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
           >
             {root?.collapsed ? 'Expand' : 'Collapse'}
           </button>
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            Direction
+            <select
+              aria-label="Mind map direction"
+              value={content.map.direction}
+              onClick={(event) => event.stopPropagation()}
+              onChange={(event) => changeMindMapDirection(block.id, event.currentTarget.value)}
+              className="rounded border border-border bg-background px-2 py-1 text-foreground"
+            >
+              <option value="right">Right</option>
+              <option value="left">Left</option>
+              <option value="both">Both</option>
+              <option value="down">Down</option>
+            </select>
+          </label>
           {root?.collapsed ? null : (
             <ul className="space-y-1 text-xs text-muted-foreground">
               {rootChildren.map((node) => (
-                <li key={node.id}>{node.label}</li>
+                <li key={node.id} className="flex items-center gap-2">
+                  <span>{node.label}</span>
+                  <button
+                    type="button"
+                    aria-label={`Add sibling to ${node.label}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      addMindMapSibling(block.id, node.id);
+                    }}
+                    className="rounded border border-border px-2 py-1 text-xs"
+                  >
+                    Add sibling
+                  </button>
+                </li>
               ))}
             </ul>
           )}
