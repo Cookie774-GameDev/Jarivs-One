@@ -1,6 +1,7 @@
 export { CanvasPage } from './CanvasPage';
 export { CanvasOutline, blockOutlineLabel, type CanvasOutlineProps } from './CanvasOutline';
 export * from './assets';
+export * from './attachments';
 export * from './autosave';
 export * from './camera';
 export * from './clipboard';
@@ -75,8 +76,10 @@ export {
 export * from './geometry';
 export * from './groups';
 export * from './history';
+export * from './linkedContent';
 export * from './media';
 export * from './markdown';
+export * from './mindmaps';
 export * from './packageFormat';
 export * from './paint';
 export * from './persistence';
