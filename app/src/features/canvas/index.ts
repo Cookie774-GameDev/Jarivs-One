@@ -4,6 +4,7 @@ export * from './accessibility';
 export * from './aiActions';
 export * from './aiContext';
 export * from './assets';
+export * from './assetStorage';
 export * from './attachments';
 export * from './autosave';
 export * from './camera';
