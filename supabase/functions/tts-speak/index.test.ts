@@ -1,0 +1,82 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+
+const source = readFileSync(new URL('./index.ts', import.meta.url), 'utf8');
+
+function position(fragment: string): number {
+  const index = source.indexOf(fragment);
+  assert.notEqual(index, -1, `missing source fragment: ${fragment}`);
+  return index;
+}
+
+function stringSet(name: string): string[] {
+  const match = source.match(new RegExp(`const ${name} = new Set\\(\\[([\\s\\S]*?)\\]\\);`));
+  assert.ok(match, `missing string set: ${name}`);
+  return [...match[1].matchAll(/'([^']+)'/g)].map((item) => item[1]);
+}
+
+test('checks authoritative app access under the user JWT before billable work', () => {
+  assert.match(
+    source,
+    /createClient\(SUPABASE_URL, SUPABASE_ANON_KEY, \{[\s\S]*?Authorization: `Bearer \$\{jwt\}`/,
+  );
+  const auth = position('await userClient.auth.getUser(jwt)');
+  const access = position("await userClient.rpc('get_app_access'");
+  const admin = position("await admin.rpc('is_app_admin'");
+  const rate = position("await admin.rpc('voice_rate_limit_hit'");
+  const reserve = position(".rpc('reserve_call_budget'");
+  const provider = position('audio = await callOpenAI');
+
+  assert.ok(auth < access);
+  assert.ok(access < admin);
+  assert.ok(access < rate);
+  assert.ok(access < reserve);
+  assert.ok(access < provider);
+});
+
+test('uses only the server app version and fails closed on access ambiguity', () => {
+  assert.match(source, /const APP_VERSION = Deno\.env\.get\('APP_VERSION'\)/);
+  assert.match(source, /p_app_version:\s*APP_VERSION/);
+  assert.match(source, /function isUsableAppAccess/);
+  assert.match(source, /canUseApp\s*!==\s*true/);
+  assert.deepEqual(stringSet('USABLE_APP_ACCESS_STATUSES'), [
+    'prelaunch',
+    'trialing',
+    'active',
+    'cancel_at_period_end',
+    'past_due',
+    'grace',
+    'admin',
+    'internal',
+  ]);
+  assert.ok(!stringSet('USABLE_APP_ACCESS_STATUSES').includes('locked'));
+  assert.ok(!stringSet('USABLE_APP_ACCESS_STATUSES').includes('unknown'));
+  assert.doesNotMatch(source, /body\.(?:appVersion|app_version|canUseApp|accessStatus)/);
+});
+
+test('denied or unavailable app access returns safely before provider and billing effects', () => {
+  assert.match(
+    source,
+    /if \(accessError\)\s*return json\(\{ error: 'access_unavailable' \}, 503, origin\)/,
+  );
+  assert.match(
+    source,
+    /if \(!isUsableAppAccess\(accessData\)\)\s*return json\(\{ error: 'app_access_denied' \}, 403, origin\)/,
+  );
+  assert.doesNotMatch(source, /^const (?:OPENAI|DEEPGRAM|ELEVENLABS)_API_KEY/m);
+});
+
+test('bounds dependency failures and never turns post-provider bookkeeping into a retryable throw', () => {
+  assert.match(
+    source,
+    /try \{\s*const \{ data: appAdminFlag, error: appAdminError \} = await admin\.rpc\('is_app_admin'/,
+  );
+  assert.match(
+    source,
+    /if \(appAdminError\) return json\(\{ error: 'usage_unavailable' \}, 503, origin\)/,
+  );
+  assert.match(source, /catch \{\s*return json\(\{ error: 'usage_unavailable' \}, 503, origin\)/);
+  assert.match(source, /async function settleAndAudit/);
+  assert.match(source, /await settleAndAudit\([\s\S]*?\)\.catch\(\(\) => undefined\)/);
+});

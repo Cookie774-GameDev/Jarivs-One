@@ -5,12 +5,13 @@
 // Flow:
 //   1. Require Supabase JWT; reject anonymous.
 //   2. Validate body (text non-empty, <= MAX_TTS_CHARS, approved provider/preset).
-//   3. Rate-limit per user (sliding 60s window).
-//   4. Atomically reserve estimated seconds (reserve_voice_seconds RPC) — this
+//   3. Enforce authoritative app access under the caller's JWT.
+//   4. Rate-limit per user (sliding 60s window).
+//   5. Atomically reserve estimated seconds (reserve_voice_seconds RPC) — this
 //      is what prevents 20 parallel calls from bypassing quota.
-//   5. Call the selected provider with the hidden company key.
-//   6. Record a voice_event; settle reserved vs actual seconds.
-//   7. Return audio (base64) + metadata. On any failure return a safe error so
+//   6. Call the selected provider with the hidden company key.
+//   7. Record a voice_event; settle reserved vs actual seconds.
+//   8. Return audio (base64) + metadata. On any failure return a safe error so
 //      the client can fall back to local Kokoro.
 //
 // Company keys live ONLY in Supabase secrets. Never returned to the client.
@@ -29,13 +30,21 @@ import {
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY') ?? '';
-const DEEPGRAM_API_KEY = Deno.env.get('DEEPGRAM_API_KEY') ?? '';
-const ELEVENLABS_API_KEY = Deno.env.get('ELEVENLABS_API_KEY') ?? '';
+const APP_VERSION = Deno.env.get('APP_VERSION') ?? '';
 
 const CLOUD_TIMEOUT_MS = 20_000;
 const RATE_WINDOW_MS = 60_000;
 const RATE_MAX_REQUESTS = 20;
+const USABLE_APP_ACCESS_STATUSES = new Set([
+  'prelaunch',
+  'trialing',
+  'active',
+  'cancel_at_period_end',
+  'past_due',
+  'grace',
+  'admin',
+  'internal',
+]);
 
 const OPENAI_VOICE_INSTRUCTIONS: Record<string, string> = {
   jarvis:
@@ -52,6 +61,8 @@ const PRESET_VOICE: Record<string, Record<string, string>> = {
   elevenlabs_tts: { jarvis: 'pNInz6obpgDQGcFmaJgB', friday: 'EXAVITQu4vr4xnSDxMaL' },
 };
 
+type BillingSource = 'admin' | 'deepgram_promo' | 'call_budget';
+
 function timeoutSignal(ms: number): AbortSignal {
   const c = new AbortController();
   setTimeout(() => c.abort(), ms);
@@ -65,11 +76,19 @@ function bufToB64(buf: ArrayBuffer): string {
   return btoa(bin);
 }
 
+function isUsableAppAccess(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const access = value as { canUseApp?: unknown; status?: unknown };
+  if (access.canUseApp !== true || typeof access.status !== 'string') return false;
+  return USABLE_APP_ACCESS_STATUSES.has(access.status);
+}
+
 async function callOpenAI(text: string, preset: string): Promise<ArrayBuffer> {
-  if (!OPENAI_API_KEY) throw new Error('provider_unconfigured');
+  const apiKey = Deno.env.get('OPENAI_API_KEY') ?? '';
+  if (!apiKey) throw new Error('provider_unconfigured');
   const res = await fetch('https://api.openai.com/v1/audio/speech', {
     method: 'POST',
-    headers: { authorization: `Bearer ${OPENAI_API_KEY}`, 'content-type': 'application/json' },
+    headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
     body: JSON.stringify({
       model: 'gpt-4o-mini-tts',
       voice: PRESET_VOICE.openai_tts[preset],
@@ -84,11 +103,12 @@ async function callOpenAI(text: string, preset: string): Promise<ArrayBuffer> {
 }
 
 async function callDeepgram(text: string, preset: string): Promise<ArrayBuffer> {
-  if (!DEEPGRAM_API_KEY) throw new Error('provider_unconfigured');
+  const apiKey = Deno.env.get('DEEPGRAM_API_KEY') ?? '';
+  if (!apiKey) throw new Error('provider_unconfigured');
   const model = PRESET_VOICE.deepgram_tts[preset];
   const res = await fetch(`https://api.deepgram.com/v1/speak?model=${model}`, {
     method: 'POST',
-    headers: { authorization: `Token ${DEEPGRAM_API_KEY}`, 'content-type': 'application/json' },
+    headers: { authorization: `Token ${apiKey}`, 'content-type': 'application/json' },
     body: JSON.stringify({ text }),
     signal: timeoutSignal(CLOUD_TIMEOUT_MS),
   });
@@ -97,13 +117,14 @@ async function callDeepgram(text: string, preset: string): Promise<ArrayBuffer> 
 }
 
 async function callElevenLabs(text: string, preset: string): Promise<ArrayBuffer> {
-  if (!ELEVENLABS_API_KEY) throw new Error('provider_unconfigured');
+  const apiKey = Deno.env.get('ELEVENLABS_API_KEY') ?? '';
+  if (!apiKey) throw new Error('provider_unconfigured');
   const voiceId = PRESET_VOICE.elevenlabs_tts[preset];
   const res = await fetch(
     `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?optimize_streaming_latency=2`,
     {
       method: 'POST',
-      headers: { 'xi-api-key': ELEVENLABS_API_KEY, 'content-type': 'application/json' },
+      headers: { 'xi-api-key': apiKey, 'content-type': 'application/json' },
       body: JSON.stringify({ text, model_id: 'eleven_turbo_v2_5' }),
       signal: timeoutSignal(CLOUD_TIMEOUT_MS),
     },
@@ -112,16 +133,75 @@ async function callElevenLabs(text: string, preset: string): Promise<ArrayBuffer
   return await res.arrayBuffer();
 }
 
-Deno.serve(async (req: Request): Promise<Response> => {
+async function settleAndAudit(
+  admin: ReturnType<typeof createClient>,
+  input: {
+    appAdmin: boolean;
+    billingSource: BillingSource;
+    userId: string;
+    provider: string;
+    preset: string;
+    textChars: number;
+    estSecs: number;
+    estCostUsd: number;
+    estDeepgramUsd: number;
+    actualSecs: number;
+    actualCostUsd: number;
+    status: 'ok' | 'error';
+    errorCode?: string;
+  },
+): Promise<void> {
+  let failed = false;
+  if (!input.appAdmin) {
+    if (input.billingSource === 'deepgram_promo') {
+      const { error } = await admin.rpc('settle_deepgram_promo', {
+        p_user_id: input.userId,
+        p_reserved_seconds: input.estSecs,
+        p_reserved_usd: input.estDeepgramUsd,
+        p_actual_seconds: input.actualSecs,
+        p_actual_usd: input.actualCostUsd,
+      });
+      failed ||= Boolean(error);
+    } else {
+      const { error } = await admin.rpc('settle_call_budget', {
+        p_user_id: input.userId,
+        p_reserved: input.estCostUsd,
+        p_actual: input.actualCostUsd,
+        p_seconds: input.actualSecs,
+      });
+      failed ||= Boolean(error);
+    }
+  }
+
+  const { error: auditError } = await admin.from('voice_events').insert({
+    user_id: input.userId,
+    provider: input.provider,
+    voice_preset: input.preset,
+    text_chars: input.textChars,
+    estimated_seconds: input.estSecs,
+    actual_seconds: input.actualSecs,
+    estimated_cost_usd: input.appAdmin ? 0 : input.actualCostUsd,
+    status: input.status,
+    ...(input.errorCode ? { error_code: input.errorCode } : {}),
+  });
+  failed ||= Boolean(auditError);
+  if (failed) throw new Error('bookkeeping_failed');
+}
+
+async function handleRequest(req: Request): Promise<Response> {
   const origin = req.headers.get('origin');
-  if (req.method === 'OPTIONS') return new Response(null, { headers: { ...json({}, 200, origin).headers } });
+  if (req.method === 'OPTIONS')
+    return new Response(null, { headers: { ...json({}, 200, origin).headers } });
   if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405, origin);
 
   // 1. Auth
   const jwt = (req.headers.get('authorization') || '').match(/^Bearer\s+(.+)$/i)?.[1];
   if (!jwt) return json({ error: 'unauthorized' }, 401, origin);
 
-  const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    global: { headers: { Authorization: `Bearer ${jwt}` } },
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
   const { data: userData, error: userErr } = await userClient.auth.getUser(jwt);
   if (userErr || !userData?.user) return json({ error: 'unauthorized' }, 401, origin);
   const userId = userData.user.id;
@@ -137,21 +217,43 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const provider = String(body.provider ?? '');
   const preset = String(body.voicePreset ?? '');
   if (!text) return json({ error: 'empty_text' }, 400, origin);
-  if (text.length > MAX_TTS_CHARS) return json({ error: 'text_too_long', max: MAX_TTS_CHARS }, 413, origin);
+  if (text.length > MAX_TTS_CHARS)
+    return json({ error: 'text_too_long', max: MAX_TTS_CHARS }, 413, origin);
   if (!APPROVED_PROVIDERS.has(provider)) return json({ error: 'invalid_provider' }, 400, origin);
   if (!APPROVED_PRESETS.has(preset)) return json({ error: 'invalid_preset' }, 400, origin);
+
+  if (!APP_VERSION) return json({ error: 'access_unavailable' }, 503, origin);
+  let accessData: unknown;
+  let accessError: unknown;
+  try {
+    ({ data: accessData, error: accessError } = await userClient.rpc('get_app_access', {
+      p_app_version: APP_VERSION,
+    }));
+  } catch {
+    return json({ error: 'access_unavailable' }, 503, origin);
+  }
+  if (accessError) return json({ error: 'access_unavailable' }, 503, origin);
+  if (!isUsableAppAccess(accessData)) return json({ error: 'app_access_denied' }, 403, origin);
 
   const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  const { data: appAdminFlag } = await admin.rpc('is_app_admin', { p_user_id: userId });
-  const appAdmin = Boolean(appAdminFlag);
+  let appAdmin: boolean;
+  try {
+    const { data: appAdminFlag, error: appAdminError } = await admin.rpc('is_app_admin', {
+      p_user_id: userId,
+    });
+    if (appAdminError) return json({ error: 'usage_unavailable' }, 503, origin);
+    appAdmin = Boolean(appAdminFlag);
+  } catch {
+    return json({ error: 'usage_unavailable' }, 503, origin);
+  }
 
   const estSecs = estimateSeconds(text.length);
   const estCostUsd = estSecs * COST_PER_SECOND_USD;
   const estDeepgramUsd = deepgramCostUsd(estSecs);
-  let billingSource: 'admin' | 'deepgram_promo' | 'call_budget' = appAdmin ? 'admin' : 'call_budget';
+  let billingSource: BillingSource = appAdmin ? 'admin' : 'call_budget';
   let reserved: {
     ok: boolean;
     reason?: string;
@@ -180,11 +282,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
     let promoAttempted = false;
     if (provider === 'deepgram_tts') {
       promoAttempted = true;
-      const { data: promoReservation, error: promoErr } = await admin.rpc('reserve_deepgram_promo', {
-        p_user_id: userId,
-        p_estimate_seconds: estSecs,
-        p_estimate_usd: estDeepgramUsd,
-      });
+      const { data: promoReservation, error: promoErr } = await admin.rpc(
+        'reserve_deepgram_promo',
+        {
+          p_user_id: userId,
+          p_estimate_seconds: estSecs,
+          p_estimate_usd: estDeepgramUsd,
+        },
+      );
       if (promoErr) return json({ error: 'usage_unavailable' }, 503, origin);
       if ((promoReservation as { ok?: boolean } | null)?.ok) {
         billingSource = 'deepgram_promo';
@@ -204,8 +309,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
         const tier = String(profile?.tier ?? 'free');
         if (tier === 'free') {
           await admin.from('voice_events').insert({
-            user_id: userId, provider, voice_preset: preset, text_chars: text.length,
-            estimated_seconds: estSecs, status: 'blocked', error_code: 'promo_exhausted',
+            user_id: userId,
+            provider,
+            voice_preset: preset,
+            text_chars: text.length,
+            estimated_seconds: estSecs,
+            status: 'blocked',
+            error_code: 'promo_exhausted',
           });
           return json(
             { error: 'quota_exceeded', reason: 'promo_exhausted', fallback: 'kokoro_local' },
@@ -214,16 +324,31 @@ Deno.serve(async (req: Request): Promise<Response> => {
           );
         }
       }
-      const { data: reservation, error: reserveErr } = await admin
-        .rpc('reserve_call_budget', { p_user_id: userId, p_estimate_usd: estCostUsd });
+      const { data: reservation, error: reserveErr } = await admin.rpc('reserve_call_budget', {
+        p_user_id: userId,
+        p_estimate_usd: estCostUsd,
+      });
       if (reserveErr) return json({ error: 'usage_unavailable' }, 500, origin);
       reserved = reservation as typeof reserved;
       if (!reserved?.ok) {
         await admin.from('voice_events').insert({
-          user_id: userId, provider, voice_preset: preset, text_chars: text.length,
-          estimated_seconds: estSecs, status: 'blocked', error_code: reserved?.reason ?? 'budget',
+          user_id: userId,
+          provider,
+          voice_preset: preset,
+          text_chars: text.length,
+          estimated_seconds: estSecs,
+          status: 'blocked',
+          error_code: reserved?.reason ?? 'budget',
         });
-        return json({ error: 'quota_exceeded', reason: reserved?.reason ?? 'budget', fallback: 'kokoro_local' }, 402, origin);
+        return json(
+          {
+            error: 'quota_exceeded',
+            reason: reserved?.reason ?? 'budget',
+            fallback: 'kokoro_local',
+          },
+          402,
+          origin,
+        );
       }
       billingSource = 'call_budget';
     }
@@ -236,54 +361,47 @@ Deno.serve(async (req: Request): Promise<Response> => {
     else if (provider === 'deepgram_tts') audio = await callDeepgram(text, preset);
     else audio = await callElevenLabs(text, preset);
   } catch (e) {
-    if (!appAdmin) {
-      if (billingSource === 'deepgram_promo') {
-        await admin.rpc('settle_deepgram_promo', {
-          p_user_id: userId,
-          p_reserved_seconds: estSecs,
-          p_reserved_usd: estDeepgramUsd,
-          p_actual_seconds: 0,
-          p_actual_usd: 0,
-        });
-      } else {
-        await admin.rpc('settle_call_budget', {
-          p_user_id: userId, p_reserved: estCostUsd, p_actual: 0, p_seconds: 0,
-        });
-      }
-    }
-    const code = (e as Error).message?.startsWith('provider') ? (e as Error).message : 'provider_failed';
-    await admin.from('voice_events').insert({
-      user_id: userId, provider, voice_preset: preset, text_chars: text.length,
-      estimated_seconds: estSecs, actual_seconds: 0, status: 'error', error_code: code,
-    });
+    const code = (e as Error).message?.startsWith('provider')
+      ? (e as Error).message
+      : 'provider_failed';
+    await settleAndAudit(admin, {
+      appAdmin,
+      billingSource,
+      userId,
+      provider,
+      preset,
+      textChars: text.length,
+      estSecs,
+      estCostUsd,
+      estDeepgramUsd,
+      actualSecs: 0,
+      actualCostUsd: 0,
+      status: 'error',
+      errorCode: code,
+    }).catch(() => undefined);
     return json({ error: 'cloud_unavailable', fallback: 'kokoro_local' }, 502, origin);
   }
 
   // 6. Settle actual usage (dollars + seconds) and record the event.
   const actualSecs = estSecs;
-  const actualCostUsd = billingSource === 'deepgram_promo'
-    ? deepgramCostUsd(actualSecs)
-    : actualSecs * COST_PER_SECOND_USD;
-  if (!appAdmin) {
-    if (billingSource === 'deepgram_promo') {
-      await admin.rpc('settle_deepgram_promo', {
-        p_user_id: userId,
-        p_reserved_seconds: estSecs,
-        p_reserved_usd: estDeepgramUsd,
-        p_actual_seconds: actualSecs,
-        p_actual_usd: actualCostUsd,
-      });
-    } else {
-      await admin.rpc('settle_call_budget', {
-        p_user_id: userId, p_reserved: estCostUsd, p_actual: actualCostUsd, p_seconds: actualSecs,
-      });
-    }
-  }
-  await admin.from('voice_events').insert({
-    user_id: userId, provider, voice_preset: preset, text_chars: text.length,
-    estimated_seconds: estSecs, actual_seconds: actualSecs,
-    estimated_cost_usd: appAdmin ? 0 : actualCostUsd, status: 'ok',
-  });
+  const actualCostUsd =
+    billingSource === 'deepgram_promo'
+      ? deepgramCostUsd(actualSecs)
+      : actualSecs * COST_PER_SECOND_USD;
+  await settleAndAudit(admin, {
+    appAdmin,
+    billingSource,
+    userId,
+    provider,
+    preset,
+    textChars: text.length,
+    estSecs,
+    estCostUsd,
+    estDeepgramUsd,
+    actualSecs,
+    actualCostUsd,
+    status: 'ok',
+  }).catch(() => undefined);
 
   // 7. Return audio + remaining quota for the billing source used.
   const remainingSeconds = appAdmin
@@ -294,9 +412,24 @@ Deno.serve(async (req: Request): Promise<Response> => {
         ? Math.max(0, Math.floor(reserved.remaining_usd / COST_PER_SECOND_USD))
         : null;
   return json(
-    { audio: bufToB64(audio), mime: 'audio/mpeg', provider, preset, seconds: actualSecs,
-      remaining_seconds: remainingSeconds, billing_source: billingSource },
+    {
+      audio: bufToB64(audio),
+      mime: 'audio/mpeg',
+      provider,
+      preset,
+      seconds: actualSecs,
+      remaining_seconds: remainingSeconds,
+      billing_source: billingSource,
+    },
     200,
     origin,
   );
+}
+
+Deno.serve(async (req: Request): Promise<Response> => {
+  try {
+    return await handleRequest(req);
+  } catch {
+    return json({ error: 'usage_unavailable' }, 503, req.headers.get('origin'));
+  }
 });
