@@ -25,7 +25,17 @@ function placement(
   width: number,
   height: number,
 ): CanvasSpatialPlacement {
-  return { blockId: id as CanvasBlockId, x, y, width, height, rotation: 0, z: 0 };
+  return {
+    blockId: id as CanvasBlockId,
+    x,
+    y,
+    width,
+    height,
+    rotation: 0,
+    z: 0,
+    locked: false,
+    hidden: false,
+  };
 }
 
 function groupById(groups: readonly CanvasGroup[]): ReadonlyMap<string, CanvasGroup> {

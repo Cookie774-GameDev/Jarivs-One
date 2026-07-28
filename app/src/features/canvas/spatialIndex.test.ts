@@ -28,6 +28,8 @@ function placement(
     height: 100,
     rotation: 0,
     z: 0,
+    locked: false,
+    hidden: false,
     ...overrides,
   });
 }

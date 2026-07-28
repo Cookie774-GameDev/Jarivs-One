@@ -624,6 +624,58 @@ describe('CanvasPage', () => {
     expect(Number.parseFloat(note.style.top)).toBe(10);
   });
 
+  it('keeps locked edgeless objects selectable but prevents mutation until unlocked', () => {
+    render(<CanvasPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edgeless layout' }));
+    const note = screen.getByLabelText('Canvas note');
+    fireEvent.click(note);
+    fireEvent.click(screen.getByRole('button', { name: 'Show canvas properties' }));
+    const before = Number.parseFloat(note.style.left);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Lock selected object' }));
+
+    expect((screen.getByLabelText('Selected block text') as HTMLTextAreaElement).disabled).toBe(
+      true,
+    );
+    expect((screen.getByLabelText('Selected object X') as HTMLInputElement).disabled).toBe(true);
+    expect(
+      (screen.getByRole('button', { name: 'Delete selected object' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+    fireEvent.pointerDown(note, { pointerId: 31, button: 0, clientX: 600, clientY: 400 });
+    fireEvent.pointerMove(note, { pointerId: 31, clientX: 650, clientY: 400 });
+    fireEvent.pointerUp(note, { pointerId: 31, clientX: 650, clientY: 400 });
+    expect(Number.parseFloat(note.style.left)).toBe(before);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Unlock selected object' }));
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+    expect(Number.parseFloat(note.style.left)).toBe(before + 1);
+  });
+
+  it('hides an edgeless object without deleting it and restores visibility through undo', () => {
+    render(<CanvasPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edgeless layout' }));
+    fireEvent.click(screen.getByLabelText('Canvas note'));
+    fireEvent.click(screen.getByRole('button', { name: 'Show canvas properties' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hide selected object' }));
+
+    expect(screen.queryByLabelText('Canvas note')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Show selected object' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show canvas outline' }));
+    expect(screen.getByRole('treeitem', { name: 'Note: New note 1' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(screen.getByLabelText('Canvas note')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show canvas properties' }));
+    expect(screen.getByRole('button', { name: 'Hide selected object' })).toBeTruthy();
+  });
+
   it('aligns and distributes selected edgeless objects through undoable controls', async () => {
     let canvas = createCanvasDocument({
       id: 'geometry-canvas',

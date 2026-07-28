@@ -52,6 +52,8 @@ function placement(
     height,
     rotation: 0,
     z: 0,
+    locked: false,
+    hidden: false,
   });
 }
 

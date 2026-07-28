@@ -441,7 +441,7 @@ describe('shared page and edgeless content', () => {
     expect(serialized.match(/alpha/g)?.length).toBe(1);
     for (const placement of doc.placements) {
       expect(Object.keys(placement).sort()).toEqual(
-        ['blockId', 'height', 'rotation', 'width', 'x', 'y', 'z'].sort(),
+        ['blockId', 'height', 'hidden', 'locked', 'rotation', 'width', 'x', 'y', 'z'].sort(),
       );
     }
     expect(placementsByBlockId(doc).get(parseCanvasBlockId('blk-a'))).toEqual({
@@ -452,7 +452,31 @@ describe('shared page and edgeless content', () => {
       height: 50,
       rotation: 0,
       z: 0,
+      locked: false,
+      hidden: false,
     });
+  });
+
+  it('persists validated lock and visibility state on spatial objects', () => {
+    let doc = docWithBlocks();
+    doc = withPlacement(
+      doc,
+      {
+        blockId: 'blk-a',
+        x: 10,
+        y: 20,
+        width: 100,
+        height: 50,
+        locked: true,
+        hidden: true,
+      },
+      T1,
+    );
+
+    expect(doc.placements[0]).toMatchObject({ locked: true, hidden: true });
+    const raw = JSON.parse(JSON.stringify(doc));
+    raw.placements[0].locked = 'yes';
+    expect(() => parseCanvasDocument(raw)).toThrow(CanvasValidationError);
   });
 
   it('changes layout mode without duplicating or dropping content', () => {
@@ -522,6 +546,8 @@ describe('automatic edgeless layout', () => {
       height: 120,
       rotation: 0,
       z: 0,
+      locked: false,
+      hidden: false,
     });
     expect(resolved.size).toBe(3);
   });

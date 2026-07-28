@@ -207,8 +207,16 @@ function sameCanvasPlacement(
     left.width === right.width &&
     left.height === right.height &&
     left.rotation === right.rotation &&
-    left.z === right.z
+    left.z === right.z &&
+    left.locked === right.locked &&
+    left.hidden === right.hidden
   );
+}
+
+function selectionHasLockedPlacement(document: CanvasDocument, ids: readonly string[]): boolean {
+  if (document.layoutMode !== 'edgeless') return false;
+  const placements = resolveEdgelessLayout(document);
+  return ids.some((id) => placements.get(parseCanvasBlockId(id))?.locked === true);
 }
 
 function canvasBackgroundStyle(background: CanvasBackground): React.CSSProperties {
@@ -663,6 +671,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
   const deleteSelected = React.useCallback(() => {
     if (selected.ids.length === 0) return;
     const ids = selected.ids;
+    if (selectionHasLockedPlacement(documentRef.current, ids)) return;
     commit(
       'object-delete',
       `Delete ${ids.length} canvas object${ids.length === 1 ? '' : 's'}`,
@@ -675,6 +684,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     (x: number, y: number) => {
       if (selected.ids.length === 0 || document.layoutMode !== 'edgeless') return;
       const ids = selected.ids;
+      if (selectionHasLockedPlacement(documentRef.current, ids)) return;
       commit(
         'object-move',
         `Move ${ids.length} canvas object${ids.length === 1 ? '' : 's'}`,
@@ -729,6 +739,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     (alignment: CanvasAlignment) => {
       if (selected.ids.length < 2 || documentRef.current.layoutMode !== 'edgeless') return;
       const ids = selected.ids;
+      if (selectionHasLockedPlacement(documentRef.current, ids)) return;
       commitPlacementTransformation(
         'object-move',
         `Align ${ids.length} canvas objects ${CANVAS_ALIGNMENT_LABELS[alignment].toLowerCase()}`,
@@ -742,6 +753,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     (axis: CanvasDistributionAxis) => {
       if (selected.ids.length < 3 || documentRef.current.layoutMode !== 'edgeless') return;
       const ids = selected.ids;
+      if (selectionHasLockedPlacement(documentRef.current, ids)) return;
       commitPlacementTransformation(
         'object-move',
         `Distribute ${ids.length} canvas objects ${axis}ly`,
@@ -755,6 +767,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     (command: CanvasZOrderCommand) => {
       if (selected.ids.length !== 1 || documentRef.current.layoutMode !== 'edgeless') return;
       const [id] = selected.ids;
+      if (selectionHasLockedPlacement(documentRef.current, [id])) return;
       commitPlacementTransformation('style-change', CANVAS_Z_ORDER_LABELS[command], (placements) =>
         reorderCanvasPlacement(placements, id, command),
       );
@@ -774,6 +787,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
       const parsedValue = Number(rawValue);
       if (!Number.isFinite(parsedValue)) return;
       const [id] = selected.ids;
+      if (selectionHasLockedPlacement(documentRef.current, [id])) return;
       const value =
         field === 'x' || field === 'y'
           ? Math.max(-CANVAS_POSITION_LIMIT, Math.min(CANVAS_POSITION_LIMIT, parsedValue))
@@ -806,6 +820,27 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
       );
     },
     [commitPlacementTransformation, selected.ids],
+  );
+
+  const toggleSelectedPlacementState = React.useCallback(
+    (field: 'locked' | 'hidden') => {
+      if (selected.ids.length !== 1 || documentRef.current.layoutMode !== 'edgeless') return;
+      const [id] = selected.ids;
+      const currentPlacement = resolveEdgelessLayout(documentRef.current).get(
+        parseCanvasBlockId(id),
+      );
+      if (!currentPlacement) return;
+      const nextValue = !currentPlacement[field];
+      const verb =
+        field === 'locked' ? (nextValue ? 'Lock' : 'Unlock') : nextValue ? 'Hide' : 'Show';
+      commit('style-change', `${verb} canvas object`, (current, now) => {
+        const placement = resolveEdgelessLayout(current).get(parseCanvasBlockId(id));
+        return placement
+          ? withPlacement(current, { ...placement, [field]: nextValue }, now)
+          : current;
+      });
+    },
+    [commit, selected.ids],
   );
 
   const copySelected = React.useCallback(() => {
@@ -865,6 +900,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
   const cutSelected = React.useCallback(() => {
     if (selected.ids.length === 0) return;
     const ids = selected.ids;
+    if (selectionHasLockedPlacement(documentRef.current, ids)) return;
     clipboard.current = copyBlocks(documentRef.current, ids);
     commit(
       'object-delete',
@@ -1178,9 +1214,9 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
           const worldPoints = points.map((point) =>
             screenToWorld(cameraRef.current, CAMERA_VIEWPORT, point),
           );
-          const placements = [...resolveEdgelessLayout(documentRef.current).values()].map(
-            (placement) => ({ ...placement, id: placement.blockId }),
-          );
+          const placements = [...resolveEdgelessLayout(documentRef.current).values()]
+            .filter((placement) => !placement.hidden)
+            .map((placement) => ({ ...placement, id: placement.blockId }));
           const inLasso = lassoSelect(placements, worldPoints);
           setSelected(createCanvasSelection([...activeLasso.baseIds, ...inLasso.ids]));
         } else {
@@ -1198,9 +1234,9 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
         const end = pointerPoint(event);
         const startWorld = screenToWorld(camera, CAMERA_VIEWPORT, activeMarquee.start);
         const endWorld = screenToWorld(camera, CAMERA_VIEWPORT, end);
-        const placements = [...resolveEdgelessLayout(documentRef.current).values()].map(
-          (placement) => ({ ...placement, id: placement.blockId }),
-        );
+        const placements = [...resolveEdgelessLayout(documentRef.current).values()]
+          .filter((placement) => !placement.hidden)
+          .map((placement) => ({ ...placement, id: placement.blockId }));
         const inMarquee = marqueeSelect(placements, startWorld, endWorld);
         setSelected(createCanvasSelection([...activeMarquee.baseIds, ...inMarquee.ids]));
       }
@@ -1243,10 +1279,11 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     ) {
       return;
     }
+    const ids = selectionHas(selected, blockId) ? selected.ids : [blockId];
+    if (selectionHasLockedPlacement(documentRef.current, ids)) return;
     event.stopPropagation();
     if (event.button !== 0 || event.shiftKey || event.ctrlKey || event.metaKey) return;
     event.preventDefault();
-    const ids = selectionHas(selected, blockId) ? selected.ids : [blockId];
     if (!selectionHas(selected, blockId)) {
       setSelected(selectCanvasBlock(selected, blockId));
     }
@@ -1558,6 +1595,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
   };
 
   const updateBlockText = (blockId: string, text: string) => {
+    if (selectionHasLockedPlacement(documentRef.current, [blockId])) return;
     commit(
       'text-change',
       'Edit canvas block',
@@ -1572,6 +1610,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
 
   const updateHeadingLevel = (blockId: string, level: number) => {
     if (!Number.isInteger(level) || level < 1 || level > 6) return;
+    if (selectionHasLockedPlacement(documentRef.current, [blockId])) return;
     commit('block-change', 'Change heading level', (current, now) => {
       const block = blockById(current, blockId);
       if (!block || block.content.kind !== 'heading') return current;
@@ -1668,7 +1707,9 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
   };
 
   const fitContent = () => {
-    const placements = [...resolveEdgelessLayout(document).values()];
+    const placements = [...resolveEdgelessLayout(document).values()].filter(
+      (placement) => !placement.hidden,
+    );
     if (placements.length === 0) {
       setCamera(resetCamera());
       return;
@@ -1748,8 +1789,11 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
   };
   const placementById = resolveEdgelessLayout(document);
   const selectedPlacement = selectedBlock ? placementById.get(selectedBlock.id) : undefined;
+  const selectedObjectsLocked = selectionHasLockedPlacement(document, selected.ids);
   const minimap = React.useMemo(() => {
-    const placements = [...resolveEdgelessLayout(document).values()];
+    const placements = [...resolveEdgelessLayout(document).values()].filter(
+      (placement) => !placement.hidden,
+    );
     const viewportBounds = {
       x: camera.x - CAMERA_VIEWPORT.width / camera.zoom / 2,
       y: camera.y - CAMERA_VIEWPORT.height / camera.zoom / 2,
@@ -1786,6 +1830,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
   const visibleEdgelessBlockIds = React.useMemo(() => {
     const index = createCanvasSpatialIndex();
     for (const placement of resolveEdgelessLayout(document).values()) {
+      if (placement.hidden) continue;
       index.upsert(placement);
     }
     return new Set(
@@ -2345,6 +2390,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                     aria-description={canvasBlockAccessibleLabel(block)}
                     aria-current={selectionHas(selected, block.id) ? 'true' : undefined}
                     data-selected={selectionHas(selected, block.id)}
+                    data-locked={placement?.locked}
                     tabIndex={0}
                     onPointerDown={(event) => onObjectPointerDown(event, block.id)}
                     onPointerMove={onObjectPointerMove}
@@ -2379,7 +2425,9 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                       zIndex: (placement?.z ?? 0) + 1_000_000,
                     }}
                   >
-                    {renderBlockEditor(block)}
+                    <fieldset disabled={placement?.locked} className="contents">
+                      {renderBlockEditor(block)}
+                    </fieldset>
                   </article>
                 );
               })}
@@ -2625,6 +2673,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                         aria-label="Selected block text"
                         value={selectedBlock.content.text}
                         rows={5}
+                        disabled={selectedPlacement?.locked}
                         spellCheck={selectedBlock.content.kind !== 'code'}
                         onChange={(event) =>
                           updateBlockText(selectedBlock.id, event.currentTarget.value)
@@ -2639,6 +2688,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                       <select
                         aria-label="Heading level"
                         value={selectedBlock.content.level}
+                        disabled={selectedPlacement?.locked}
                         onChange={(event) =>
                           updateHeadingLevel(
                             selectedBlock.id,
@@ -2665,6 +2715,37 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                         {selectedBlock.content.language}
                       </output>
                     </div>
+                  ) : null}
+                  {document.layoutMode === 'edgeless' && selectedPlacement ? (
+                    <section
+                      aria-label="Selected object availability"
+                      className="grid grid-cols-2 gap-2"
+                    >
+                      <button
+                        type="button"
+                        aria-label={
+                          selectedPlacement.locked
+                            ? 'Unlock selected object'
+                            : 'Lock selected object'
+                        }
+                        aria-pressed={selectedPlacement.locked}
+                        onClick={() => toggleSelectedPlacementState('locked')}
+                        className="rounded-md border border-border px-2 py-1.5 text-xs hover:bg-muted"
+                      >
+                        {selectedPlacement.locked ? 'Unlock' : 'Lock'}
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={
+                          selectedPlacement.hidden ? 'Show selected object' : 'Hide selected object'
+                        }
+                        aria-pressed={selectedPlacement.hidden}
+                        onClick={() => toggleSelectedPlacementState('hidden')}
+                        className="rounded-md border border-border px-2 py-1.5 text-xs hover:bg-muted"
+                      >
+                        {selectedPlacement.hidden ? 'Show' : 'Hide'}
+                      </button>
+                    </section>
                   ) : null}
                   {document.layoutMode === 'edgeless' && selectedPlacement ? (
                     <section aria-label="Selected object transform" className="space-y-2">
@@ -2698,6 +2779,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                                     : CANVAS_POSITION_LIMIT
                               }
                               step={1}
+                              disabled={selectedPlacement.locked}
                               onChange={(event) =>
                                 updateSelectedPlacementField(field, event.currentTarget.value)
                               }
@@ -2718,6 +2800,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                               key={command}
                               type="button"
                               aria-label={CANVAS_Z_ORDER_ARIA_LABELS[command]}
+                              disabled={selectedPlacement?.locked}
                               onClick={() => reorderSelected(command)}
                               className="rounded-md border border-border px-2 py-1.5 text-xs hover:bg-muted"
                             >
@@ -2745,6 +2828,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                   <button
                     type="button"
                     aria-label="Delete selected object"
+                    disabled={selectedPlacement?.locked}
                     onClick={deleteSelected}
                     className="w-full rounded-md border border-destructive/40 px-3 py-2 text-sm text-destructive hover:bg-destructive/10"
                   >
@@ -2770,6 +2854,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                                 aria-label={`Align selected objects to ${CANVAS_ALIGNMENT_LABELS[
                                   alignment
                                 ].toLowerCase()}`}
+                                disabled={selectedObjectsLocked}
                                 onClick={() => alignSelected(alignment)}
                                 className="rounded-md border border-border px-2 py-1.5 text-xs hover:bg-muted"
                               >
@@ -2788,6 +2873,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                             <button
                               type="button"
                               aria-label="Distribute selected objects horizontally"
+                              disabled={selectedObjectsLocked}
                               onClick={() => distributeSelected('horizontal')}
                               className="rounded-md border border-border px-2 py-1.5 text-xs hover:bg-muted"
                             >
@@ -2796,6 +2882,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                             <button
                               type="button"
                               aria-label="Distribute selected objects vertically"
+                              disabled={selectedObjectsLocked}
                               onClick={() => distributeSelected('vertical')}
                               className="rounded-md border border-border px-2 py-1.5 text-xs hover:bg-muted"
                             >
@@ -2809,6 +2896,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                   <button
                     type="button"
                     aria-label="Delete selected objects"
+                    disabled={selectedObjectsLocked}
                     onClick={deleteSelected}
                     className="w-full rounded-md border border-destructive/40 px-3 py-2 text-sm text-destructive hover:bg-destructive/10"
                   >

@@ -144,6 +144,8 @@ export interface CanvasSpatialPlacement {
   readonly height: number;
   readonly rotation: number;
   readonly z: number;
+  readonly locked: boolean;
+  readonly hidden: boolean;
 }
 
 export interface CanvasSpatialPlacementInput {
@@ -154,6 +156,8 @@ export interface CanvasSpatialPlacementInput {
   readonly height: number;
   readonly rotation?: number;
   readonly z?: number;
+  readonly locked?: boolean;
+  readonly hidden?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -399,7 +403,17 @@ function normalizeBlock(input: unknown, path: string): CanvasBlock {
   return deepFreeze({ id, content, createdAt, updatedAt });
 }
 
-const PLACEMENT_KEYS = new Set(['blockId', 'x', 'y', 'width', 'height', 'rotation', 'z']);
+const PLACEMENT_KEYS = new Set([
+  'blockId',
+  'x',
+  'y',
+  'width',
+  'height',
+  'rotation',
+  'z',
+  'locked',
+  'hidden',
+]);
 
 function normalizePlacement(input: unknown, path: string): CanvasSpatialPlacement {
   if (!isPlainObject(input)) {
@@ -427,7 +441,15 @@ function normalizePlacement(input: unknown, path: string): CanvasSpatialPlacemen
           max: MAX_ROTATION,
         });
   const z = input.z === undefined ? 0 : assertSafeInteger(input.z, `${path}.z`);
-  return deepFreeze({ blockId, x, y, width, height, rotation, z });
+  const locked = input.locked === undefined ? false : input.locked;
+  if (typeof locked !== 'boolean') {
+    fail('invalid-type', `${path}.locked`, 'expected a boolean');
+  }
+  const hidden = input.hidden === undefined ? false : input.hidden;
+  if (typeof hidden !== 'boolean') {
+    fail('invalid-type', `${path}.hidden`, 'expected a boolean');
+  }
+  return deepFreeze({ blockId, x, y, width, height, rotation, z, locked, hidden });
 }
 
 function normalizeTitle(value: unknown, path: string): string {
@@ -962,6 +984,8 @@ export function computeAutomaticPlacements(doc: CanvasDocument): readonly Canvas
         height: blockHeight,
         rotation: 0,
         z: 0,
+        locked: false,
+        hidden: false,
       }),
     ),
   );

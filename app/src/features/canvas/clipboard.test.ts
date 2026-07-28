@@ -100,6 +100,8 @@ describe('copyBlocks', () => {
         height: 180,
         rotation: 0,
         z: 0,
+        locked: false,
+        hidden: false,
       },
     ]);
   });
@@ -272,6 +274,31 @@ describe('pasteBlocks', () => {
     expect(pasted).toBeDefined();
     expect(pasted!.rotation).toBe(45);
     expect(pasted!.z).toBe(2);
+  });
+
+  it('preserves locked and hidden state through copy and paste', () => {
+    resetIdCounter();
+    const doc = withPlacement(
+      docWithBlocksAndPlacements(),
+      {
+        blockId: 'blk-a',
+        x: 10,
+        y: 20,
+        width: 200,
+        height: 100,
+        locked: true,
+        hidden: true,
+      },
+      T1,
+    );
+
+    const payload = copyBlocks(doc, ['blk-a']);
+    const result = pasteBlocks(doc, payload, { generateId: fakeIdFactory, now: T2 });
+
+    expect(result.placements.find((placement) => placement.blockId === 'new-id-1')).toMatchObject({
+      locked: true,
+      hidden: true,
+    });
   });
 
   it('inserts at a specific index when atIndex is provided', () => {

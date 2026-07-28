@@ -211,6 +211,8 @@ export function pasteBlocks(
         height: placement.height,
         rotation: placement.rotation,
         z: placement.z,
+        locked: placement.locked,
+        hidden: placement.hidden,
       },
       now,
     );
@@ -255,7 +257,17 @@ const MAX_SIZE = 10_000_000;
 const MAX_ROTATION = 360;
 const PAYLOAD_KEYS = new Set(['schemaVersion', 'blocks', 'placements']);
 const BLOCK_KEYS = new Set(['id', 'content', 'createdAt', 'updatedAt']);
-const PLACEMENT_KEYS = new Set(['blockId', 'x', 'y', 'width', 'height', 'rotation', 'z']);
+const PLACEMENT_KEYS = new Set([
+  'blockId',
+  'x',
+  'y',
+  'width',
+  'height',
+  'rotation',
+  'z',
+  'locked',
+  'hidden',
+]);
 
 function plainRecord(value: unknown, path: string): Record<string, unknown> {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
@@ -340,6 +352,14 @@ function validatePlacement(
   if (!Number.isSafeInteger(z)) {
     fail('invalid-number', `${path}.z`, 'expected a safe integer');
   }
+  const locked = p.locked === undefined ? false : p.locked;
+  if (typeof locked !== 'boolean') {
+    fail('invalid-type', `${path}.locked`, 'expected a boolean');
+  }
+  const hidden = p.hidden === undefined ? false : p.hidden;
+  if (typeof hidden !== 'boolean') {
+    fail('invalid-type', `${path}.hidden`, 'expected a boolean');
+  }
 
   return Object.freeze({
     blockId: parseCanvasBlockId(blockId),
@@ -349,6 +369,8 @@ function validatePlacement(
     height,
     rotation,
     z,
+    locked,
+    hidden,
   });
 }
 
