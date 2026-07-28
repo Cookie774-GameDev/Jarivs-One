@@ -71,7 +71,11 @@ import {
   navigateMindMap,
   setMindMapBranchCollapsed,
   setMindMapDirection,
+  setMindMapConnectorStyle,
+  setMindMapNodeStyle,
+  type MindMapConnectorStyle,
   type MindMapDirection,
+  type MindMapNodeShape,
 } from './mindmaps';
 import {
   createCanvasAutosaveController,
@@ -1005,6 +1009,42 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     });
   };
 
+  const changeMindMapConnectorStyle = (blockId: string, value: string) => {
+    commit('block-change', 'Change mind-map connector style', (current, now) => {
+      const block = blockById(current, blockId);
+      const content = block?.content;
+      if (!content || content.kind !== 'mind-map') return current;
+      return withBlockContent(
+        current,
+        blockId,
+        {
+          kind: 'mind-map',
+          map: setMindMapConnectorStyle(content.map, value as MindMapConnectorStyle, now),
+        },
+        now,
+      );
+    });
+  };
+
+  const changeMindMapRootShape = (blockId: string, value: string) => {
+    commit('block-change', 'Change mind-map root shape', (current, now) => {
+      const block = blockById(current, blockId);
+      const content = block?.content;
+      if (!content || content.kind !== 'mind-map') return current;
+      const root = content.map.nodes.find((node) => node.id === content.map.rootId);
+      if (!root) return current;
+      return withBlockContent(
+        current,
+        blockId,
+        {
+          kind: 'mind-map',
+          map: setMindMapNodeStyle(content.map, root.id, { shape: value as MindMapNodeShape }, now),
+        },
+        now,
+      );
+    });
+  };
+
   const navigateMindMapNode = (
     event: React.KeyboardEvent<HTMLButtonElement>,
     map: Parameters<typeof navigateMindMap>[0],
@@ -1241,6 +1281,36 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
               <option value="down">Down</option>
             </select>
           </label>
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            Connector
+            <select
+              aria-label="Mind map connector style"
+              value={content.map.connectorStyle}
+              onClick={(event) => event.stopPropagation()}
+              onChange={(event) => changeMindMapConnectorStyle(block.id, event.currentTarget.value)}
+              className="rounded border border-border bg-background px-2 py-1 text-foreground"
+            >
+              <option value="curved">Curved</option>
+              <option value="elbow">Elbow</option>
+              <option value="straight">Straight</option>
+            </select>
+          </label>
+          {root ? (
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              Root shape
+              <select
+                aria-label="Mind map root shape"
+                value={root.style.shape}
+                onClick={(event) => event.stopPropagation()}
+                onChange={(event) => changeMindMapRootShape(block.id, event.currentTarget.value)}
+                className="rounded border border-border bg-background px-2 py-1 text-foreground"
+              >
+                <option value="rounded">Rounded</option>
+                <option value="pill">Pill</option>
+                <option value="card">Card</option>
+              </select>
+            </label>
+          ) : null}
           {root?.collapsed ? null : (
             <ul className="space-y-1 text-xs text-muted-foreground">
               {rootChildren.map((node) => (

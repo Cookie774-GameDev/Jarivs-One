@@ -515,6 +515,26 @@ describe('CanvasPage', () => {
     expect(document.activeElement).toBe(root);
   });
 
+  it('changes persisted connector and root node styles', () => {
+    render(<CanvasPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add mind map' }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Mind map connector style' }), {
+      target: { value: 'elbow' },
+    });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Mind map root shape' }), {
+      target: { value: 'pill' },
+    });
+
+    expect(
+      (screen.getByRole('combobox', { name: 'Mind map connector style' }) as HTMLSelectElement)
+        .value,
+    ).toBe('elbow');
+    expect(
+      (screen.getByRole('combobox', { name: 'Mind map root shape' }) as HTMLSelectElement).value,
+    ).toBe('pill');
+  });
+
   it('imports a validated canvas package as one undoable document replacement', async () => {
     let imported = createCanvasDocument({
       id: 'imported-canvas',
