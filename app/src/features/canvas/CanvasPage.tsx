@@ -64,11 +64,8 @@ import {
 } from './camera';
 import { copyBlocks, cutBlocks, pasteBlocks, type CanvasClipboardPayload } from './clipboard';
 import { createCanvasHistory, type CanvasHistory, type CanvasHistoryActionKind } from './history';
-import {
-  CANVAS_MARKDOWN_MAX_SOURCE_LENGTH,
-  exportCanvasDocumentToMarkdown,
-  parseMarkdownToBlockContents,
-} from './markdown';
+import { CANVAS_MARKDOWN_MAX_SOURCE_LENGTH, parseMarkdownToBlockContents } from './markdown';
+import { exportCanvas, type CanvasExportArtifact, type CanvasExportFormat } from './importExport';
 import { decodeCanvasPackage, encodeCanvasPackage } from './packageFormat';
 import {
   clearCanvasSelection,
@@ -331,6 +328,11 @@ export interface CanvasPageProps {
 }
 
 type CanvasPersistenceUiStatus = CanvasPersistenceStatus | 'loading';
+type CanvasVisualExportFormat = Extract<
+  CanvasExportFormat,
+  'png' | 'svg' | 'pdf' | 'presentation-pdf'
+>;
+type CanvasVisualExportScope = 'all' | 'selection';
 
 const PERSISTENCE_LABELS: Readonly<Record<CanvasPersistenceUiStatus, string>> = Object.freeze({
   saved: 'Saved locally',
@@ -341,6 +343,13 @@ const PERSISTENCE_LABELS: Readonly<Record<CanvasPersistenceUiStatus, string>> = 
   'sync-error': 'Save failed',
   'recovered-unsaved-work': 'Recovered unsaved work',
   loading: 'Loading local canvas…',
+});
+
+const VISUAL_EXPORT_LABELS: Readonly<Record<CanvasVisualExportFormat, string>> = Object.freeze({
+  png: 'PNG',
+  svg: 'SVG',
+  pdf: 'PDF',
+  'presentation-pdf': 'Presentation PDF',
 });
 
 function createDocumentId(): string {
@@ -472,6 +481,10 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
   const [outlineOpen, setOutlineOpen] = React.useState(false);
   const [propertiesOpen, setPropertiesOpen] = React.useState(false);
   const [packageMessage, setPackageMessage] = React.useState('');
+  const [visualExportFormat, setVisualExportFormat] =
+    React.useState<CanvasVisualExportFormat>('png');
+  const [visualExportScope, setVisualExportScope] = React.useState<CanvasVisualExportScope>('all');
+  const [visualExportScale, setVisualExportScale] = React.useState(1);
   const [marqueeVisual, setMarqueeVisual] = React.useState<{
     start: { x: number; y: number };
     end: { x: number; y: number };
@@ -2015,12 +2028,11 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     }
   };
 
-  const downloadDocument = (content: BlobPart, type: string, extension: string): void => {
-    const blob = new Blob([content], { type });
+  const downloadBlob = (blob: Blob, filename: string): void => {
     const url = URL.createObjectURL(blob);
     const anchor = window.document.createElement('a');
     anchor.href = url;
-    anchor.download = `${safeExportTitle(documentRef.current.title)}${extension}`;
+    anchor.download = filename;
     try {
       anchor.click();
     } finally {
@@ -2028,12 +2040,54 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     }
   };
 
+  const downloadDocument = (content: BlobPart, type: string, extension: string): void => {
+    downloadBlob(
+      new Blob([content], { type }),
+      `${safeExportTitle(documentRef.current.title)}${extension}`,
+    );
+  };
+
+  const downloadArtifact = (artifact: CanvasExportArtifact, mimeType = artifact.mimeType): void => {
+    const bytes = new Uint8Array(artifact.bytes.byteLength);
+    bytes.set(artifact.bytes);
+    downloadBlob(new Blob([bytes.buffer], { type: mimeType }), artifact.filename);
+  };
+
+  const exportVisualDocument = (): void => {
+    try {
+      const artifact = exportCanvas(documentRef.current, {
+        format: visualExportFormat,
+        scope:
+          visualExportFormat === 'presentation-pdf'
+            ? { kind: 'presentation' }
+            : visualExportScope === 'selection'
+              ? { kind: 'objects', blockIds: selected.ids }
+              : { kind: 'all' },
+        width: 1280,
+        height: 720,
+        scale: visualExportScale,
+        background: documentRef.current.background.color,
+      });
+      downloadArtifact(artifact);
+      setPackageMessage(`${VISUAL_EXPORT_LABELS[visualExportFormat]} export downloaded`);
+    } catch (error) {
+      setPackageMessage(
+        error instanceof Error
+          ? `Canvas export failed: ${error.message}`
+          : 'Canvas export failed: invalid document',
+      );
+    }
+  };
+
   const exportMarkdown = () => {
     try {
-      downloadDocument(
-        exportCanvasDocumentToMarkdown(documentRef.current),
+      downloadArtifact(
+        exportCanvas(documentRef.current, {
+          format: 'markdown',
+          scope: { kind: 'all' },
+          background: documentRef.current.background.color,
+        }),
         'text/markdown;charset=utf-8',
-        '.md',
       );
       setPackageMessage('Markdown document exported');
     } catch (error) {
@@ -2479,6 +2533,89 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
         >
           <FileDown aria-hidden size={17} />
         </button>
+        <details className="relative">
+          <summary className="inline-flex h-9 cursor-pointer list-none items-center gap-2 rounded-md border border-border px-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground">
+            <FileDown aria-hidden size={17} />
+            <span>Visual exports</span>
+          </summary>
+          <div
+            role="group"
+            aria-label="Visual export settings"
+            className="absolute right-0 top-11 z-50 w-64 space-y-3 rounded-lg border border-border bg-background p-3 shadow-lg"
+          >
+            <label className="block space-y-1 text-xs">
+              <span className="text-muted-foreground">Format</span>
+              <select
+                aria-label="Canvas visual export format"
+                value={visualExportFormat}
+                onChange={(event) => {
+                  const format = event.currentTarget.value as CanvasVisualExportFormat;
+                  setVisualExportFormat(format);
+                  if (format === 'presentation-pdf') setVisualExportScope('all');
+                }}
+                className="w-full rounded border border-border bg-background px-2 py-1"
+              >
+                <option value="png">PNG image</option>
+                <option value="svg">SVG document</option>
+                <option value="pdf">PDF document</option>
+                <option value="presentation-pdf" disabled={document.presentationOrder.length === 0}>
+                  Presentation PDF
+                </option>
+              </select>
+            </label>
+            <label className="block space-y-1 text-xs">
+              <span className="text-muted-foreground">Content</span>
+              <select
+                aria-label="Canvas export scope"
+                value={visualExportScope}
+                disabled={visualExportFormat === 'presentation-pdf'}
+                onChange={(event) =>
+                  setVisualExportScope(event.currentTarget.value as CanvasVisualExportScope)
+                }
+                className="w-full rounded border border-border bg-background px-2 py-1 disabled:opacity-50"
+              >
+                <option value="all">Whole canvas</option>
+                <option value="selection" disabled={selected.ids.length === 0}>
+                  Selected objects
+                </option>
+              </select>
+            </label>
+            <label className="block space-y-1 text-xs">
+              <span className="text-muted-foreground">Resolution</span>
+              <select
+                aria-label="Canvas export scale"
+                value={visualExportScale}
+                disabled={visualExportFormat === 'pdf' || visualExportFormat === 'presentation-pdf'}
+                onChange={(event) => setVisualExportScale(Number(event.currentTarget.value))}
+                className="w-full rounded border border-border bg-background px-2 py-1 disabled:opacity-50"
+              >
+                <option value={1}>1280 x 720 (1x)</option>
+                <option value={2}>2560 x 1440 (2x)</option>
+                <option value={3}>3840 x 2160 (3x)</option>
+                <option value={4}>5120 x 2880 (4x)</option>
+              </select>
+            </label>
+            <p className="text-xs text-muted-foreground">
+              Uses the current canvas background color.
+            </p>
+            <button
+              type="button"
+              aria-label="Download canvas export"
+              disabled={
+                (visualExportFormat === 'presentation-pdf' &&
+                  document.presentationOrder.length === 0) ||
+                (visualExportFormat !== 'presentation-pdf' &&
+                  visualExportScope === 'selection' &&
+                  selected.ids.length === 0)
+              }
+              onClick={exportVisualDocument}
+              className="inline-flex w-full items-center justify-center gap-2 rounded bg-foreground px-3 py-2 text-xs font-medium text-background disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Download aria-hidden size={15} />
+              Download {VISUAL_EXPORT_LABELS[visualExportFormat]}
+            </button>
+          </div>
+        </details>
         <button
           type="button"
           aria-label={outlineOpen ? 'Hide canvas outline' : 'Show canvas outline'}

@@ -56,6 +56,15 @@ function readBlobText(blob: Blob): Promise<string> {
   });
 }
 
+function readBlobBytes(blob: Blob): Promise<Uint8Array> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener('load', () => resolve(new Uint8Array(reader.result as ArrayBuffer)));
+    reader.addEventListener('error', () => reject(reader.error ?? new Error('Blob read failed')));
+    reader.readAsArrayBuffer(blob);
+  });
+}
+
 describe('CanvasPage', () => {
   it('renders an accessible, truthful local-first Canvas workspace', () => {
     render(<CanvasPage />);
@@ -1461,17 +1470,161 @@ describe('CanvasPage', () => {
     click.mockRestore();
   });
 
-  it('reports unsupported Markdown export content without claiming a download', () => {
-    const createObjectURL = vi.fn((_blob: Blob) => 'blob:must-not-download');
+  it('preserves mind-map content in a deterministic Markdown document export', async () => {
+    const createObjectURL = vi.fn((_blob: Blob) => 'blob:canvas-mind-map-markdown');
+    const revokeObjectURL = vi.fn();
     Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: createObjectURL });
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: revokeObjectURL });
+    let downloadedAs = '';
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(function recordDownload(this: HTMLAnchorElement) {
+        downloadedAs = this.download;
+      });
 
     render(<CanvasPage />);
     fireEvent.click(screen.getByRole('button', { name: 'Add mind map' }));
     fireEvent.click(screen.getByRole('button', { name: 'Export Markdown document' }));
 
-    expect(createObjectURL).not.toHaveBeenCalled();
-    expect(screen.getByText(/^Markdown export failed:/)).toBeTruthy();
-    expect(screen.queryByText('Markdown document exported')).toBeNull();
+    const blob = createObjectURL.mock.calls[0]?.[0];
+    expect(blob?.type).toBe('text/markdown;charset=utf-8');
+    const markdown = await readBlobText(blob!);
+    expect(markdown).toContain('```json');
+    expect(markdown).toContain('"rootId":"mind-map-root-1"');
+    expect(downloadedAs).toBe('Untitled-canvas.md');
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:canvas-mind-map-markdown');
+    expect(screen.getByText('Markdown document exported')).toBeTruthy();
+    click.mockRestore();
+  });
+
+  it('exports selected objects as scaled SVG through compact visual export options', async () => {
+    const createObjectURL = vi.fn((_blob: Blob) => 'blob:canvas-svg');
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: createObjectURL });
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: revokeObjectURL });
+    let downloadedAs = '';
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(function recordDownload(this: HTMLAnchorElement) {
+        downloadedAs = this.download;
+      });
+
+    render(<CanvasPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    fireEvent.click(screen.getAllByRole('article', { name: 'Canvas note' })[0]!);
+    fireEvent.click(screen.getByText('Visual exports'));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Canvas visual export format' }), {
+      target: { value: 'svg' },
+    });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Canvas export scope' }), {
+      target: { value: 'selection' },
+    });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Canvas export scale' }), {
+      target: { value: '2' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Download canvas export' }));
+
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    const blob = createObjectURL.mock.calls[0]?.[0];
+    expect(blob?.type).toBe('image/svg+xml');
+    const svg = await readBlobText(blob!);
+    expect(svg).toContain('width="2560"');
+    expect(svg).toContain('height="1440"');
+    expect(svg).toContain('New note 1');
+    expect(svg).not.toContain('New note 2');
+    expect(downloadedAs).toBe('Untitled-canvas.svg');
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:canvas-svg');
+    expect(screen.getByText('SVG export downloaded')).toBeTruthy();
+    click.mockRestore();
+  });
+
+  it.each([
+    { format: 'png', mimeType: 'image/png', extension: '.png', signature: 'png' },
+    { format: 'pdf', mimeType: 'application/pdf', extension: '.pdf', signature: 'pdf' },
+  ])('downloads a canonical $format export', async ({ format, mimeType, extension, signature }) => {
+    const createObjectURL = vi.fn((_blob: Blob) => `blob:canvas-${format}`);
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: createObjectURL });
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: revokeObjectURL });
+    let downloadedAs = '';
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(function recordDownload(this: HTMLAnchorElement) {
+        downloadedAs = this.download;
+      });
+
+    render(<CanvasPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add heading' }));
+    fireEvent.click(screen.getByText('Visual exports'));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Canvas visual export format' }), {
+      target: { value: format },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Download canvas export' }));
+
+    const blob = createObjectURL.mock.calls[0]?.[0];
+    expect(blob?.type).toBe(mimeType);
+    const bytes = await readBlobBytes(blob!);
+    if (signature === 'png') {
+      expect([...bytes.slice(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
+    } else {
+      expect(new TextDecoder().decode(bytes.slice(0, 8))).toBe('%PDF-1.7');
+    }
+    expect(downloadedAs).toBe(`Untitled-canvas${extension}`);
+    expect(revokeObjectURL).toHaveBeenCalledWith(`blob:canvas-${format}`);
+    click.mockRestore();
+  });
+
+  it('enables a real presentation PDF only after a presentation frame exists', async () => {
+    const createObjectURL = vi.fn((_blob: Blob) => 'blob:canvas-presentation');
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: createObjectURL });
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() });
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => undefined);
+
+    render(<CanvasPage />);
+    fireEvent.click(screen.getByText('Visual exports'));
+    expect(
+      (
+        screen.getByRole('option', {
+          name: 'Presentation PDF',
+        }) as HTMLOptionElement
+      ).disabled,
+    ).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    fireEvent.click(screen.getByRole('article', { name: 'Canvas note' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show canvas properties' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add selected object to presentation' }));
+    expect(
+      (
+        screen.getByRole('option', {
+          name: 'Presentation PDF',
+        }) as HTMLOptionElement
+      ).disabled,
+    ).toBe(false);
+    fireEvent.change(screen.getByRole('combobox', { name: 'Canvas export scope' }), {
+      target: { value: 'selection' },
+    });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Canvas visual export format' }), {
+      target: { value: 'presentation-pdf' },
+    });
+    expect(
+      (screen.getByRole('combobox', { name: 'Canvas export scope' }) as HTMLSelectElement).value,
+    ).toBe('all');
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(
+      (screen.getByRole('button', { name: 'Download canvas export' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Download canvas export' }));
+
+    const blob = createObjectURL.mock.calls[0]?.[0];
+    expect(blob?.type).toBe('application/pdf');
+    expect(new TextDecoder().decode((await readBlobBytes(blob!)).slice(0, 8))).toBe('%PDF-1.7');
+    expect(screen.getByText('Presentation PDF export downloaded')).toBeTruthy();
+    click.mockRestore();
   });
 
   it('exports the current canonical canvas as a portable package download', () => {
