@@ -70,7 +70,14 @@ export function normalizeSlashCmd(raw: string): string {
   return SLASH_CMD_ALIASES[cmd] ?? cmd;
 }
 
-export const CHAT_ATTACH_SLASH_CMDS = new Set(['context', 'plug', 'skills', 'allaboutme', 'file']);
+export const CHAT_ATTACH_SLASH_CMDS = new Set([
+  'context',
+  'plug',
+  'skills',
+  'allaboutme',
+  'file',
+  'canvas',
+]);
 
 export function isChatAttachSlashCmd(cmd: string): boolean {
   return CHAT_ATTACH_SLASH_CMDS.has(normalizeSlashCmd(cmd));
@@ -222,7 +229,13 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
   },
 
   { cmd: 'kanban', description: 'Reference Kanban', icon: ListTodo, category: 'navigation' },
-  { cmd: 'canvas', description: 'Reference Canvas', icon: Network, category: 'navigation' },
+  {
+    cmd: 'canvas',
+    description: 'Reference Canvas',
+    icon: Network,
+    category: 'navigation',
+    hasOptions: true,
+  },
   { cmd: 'history', description: 'Reference History', icon: History, category: 'navigation' },
   { cmd: 'tools', description: 'Reference Tools', icon: Wrench, category: 'navigation' },
   {

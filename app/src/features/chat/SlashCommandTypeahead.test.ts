@@ -64,6 +64,15 @@ describe('orderSlashCommandsForDisplay', () => {
     expect(isChatAttachSlashCmd('file')).toBe(true);
   });
 
+  it('marks /canvas as a structured Canvas attachment picker', () => {
+    expect(findSlashCommandDef('canvas')).toMatchObject({
+      category: 'navigation',
+      description: 'Reference Canvas',
+      hasOptions: true,
+    });
+    expect(isChatAttachSlashCmd('canvas')).toBe(true);
+  });
+
   it('matches alias queries to the canonical command', () => {
     const terminals = SLASH_COMMANDS.find((cmd) => cmd.cmd === 'terminals')!;
     expect(slashCmdMatchScore('terminal', terminals)).toBeGreaterThan(0);

@@ -7,6 +7,7 @@ import {
   extractAbsoluteFilePaths,
   getQueuedMessageNotice,
   mergeActiveCanvasSourcesForPromptForge,
+  resolveCanvasAttachmentModesForSend,
   resolveMentionedAgentIdsForSend,
 } from './Composer';
 import { findSlashCommandDef } from './SlashCommandTypeahead';
@@ -98,6 +99,28 @@ describe('composer mention and slash confirmation helpers', () => {
       label: '/hive: Hive Balanced',
       value: 'reference:hive',
     });
+  });
+
+  it('resolves explicit Canvas picker and slash references into bounded attachment modes', () => {
+    expect(
+      resolveCanvasAttachmentModesForSend(
+        [
+          { cmd: 'canvas', value: 'canvas:selection', label: '/canvas: Selected objects' },
+          { cmd: 'canvas', value: 'canvas:selection', label: '/canvas: Selected objects' },
+        ],
+        'Summarize these',
+      ),
+    ).toEqual(['selection']);
+    expect(resolveCanvasAttachmentModesForSend([], '/canvas summarize the active board')).toEqual([
+      'current',
+    ]);
+    expect(
+      resolveCanvasAttachmentModesForSend(
+        [{ cmd: 'canvas', value: 'reference:canvas', label: '/canvas: Active Canvas' }],
+        '',
+      ),
+    ).toEqual(['current']);
+    expect(resolveCanvasAttachmentModesForSend([], 'Discuss /canvas later')).toEqual([]);
   });
 });
 

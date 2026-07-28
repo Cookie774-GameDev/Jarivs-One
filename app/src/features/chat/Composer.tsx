@@ -238,7 +238,12 @@ import { PromptForgeReview } from '@/features/prompt-forge/PromptForgeReview';
 import { usePromptForgeComposer } from '@/features/prompt-forge/usePromptForgeComposer';
 import type { PromptForgeComposerDescriptor } from '@/features/prompt-forge/composerSources';
 import type { PromptForgeSourceCandidate } from '@/features/prompt-forge/sourcePack';
-import { mergeActiveCanvasPromptForgeSources } from '@/features/canvas/aiContextRegistry';
+import {
+  buildActiveCanvasChatAttachments,
+  mergeActiveCanvasPromptForgeSources,
+  readActiveCanvasAiContext,
+  type CanvasChatAttachmentMode,
+} from '@/features/canvas/aiContextRegistry';
 
 export function mergeActiveCanvasSourcesForPromptForge(
   sources: readonly PromptForgeSourceCandidate[],
@@ -347,6 +352,7 @@ const SLASH_REFERENCE_LABELS: Record<string, string> = {
   tools: 'Tools page',
   schedule: 'Schedule page',
   chat: 'Chat page',
+  canvas: 'Active Canvas',
 };
 
 export function buildConfirmedAgentMention(agent: Agent): ConfirmedAgentMention {
@@ -396,6 +402,23 @@ function confirmedCommandReferenceText(commands: ConfirmedCommand[]): string {
     });
   if (references.length === 0) return '';
   return `Context references: ${references.join('; ')}.`;
+}
+
+export function resolveCanvasAttachmentModesForSend(
+  commands: readonly ConfirmedCommand[],
+  leadingText: string,
+): readonly CanvasChatAttachmentMode[] {
+  const modes = new Set<CanvasChatAttachmentMode>();
+  for (const command of commands) {
+    if (normalizeSlashCmd(command.cmd) !== 'canvas') continue;
+    if (command.value === 'canvas:selection') modes.add('selection');
+    if (command.value === 'canvas:current' || command.value === 'reference:canvas') {
+      modes.add('current');
+    }
+  }
+  const leadingCommand = leadingText.trimStart().match(/^\/([^\s]+)/u)?.[1] ?? '';
+  if (normalizeSlashCmd(leadingCommand) === 'canvas') modes.add('current');
+  return Object.freeze([...modes]);
 }
 
 const WINDOWS_FILE_PATH_RE =
@@ -762,6 +785,35 @@ export function Composer({
       return contextMapSlashOptions(maps);
     }
 
+    if (normalizeSlashCmd(cmd) === 'canvas') {
+      const context = readActiveCanvasAiContext({
+        accountId: pluginAccountId,
+        projectId,
+      });
+      if (context === null) return [];
+      return [
+        {
+          id: 'canvas:current',
+          label: 'Current canvas',
+          description: context.canvas.title,
+          metadata: `${context.canvas.blockCount} objects`,
+        },
+        ...(context.selection.length > 0
+          ? [
+              {
+                id: 'canvas:selection',
+                label: 'Selected canvas objects',
+                description: context.selection
+                  .map(({ label }) => label)
+                  .slice(0, 3)
+                  .join(', '),
+                metadata: `${context.selection.length} selected`,
+              },
+            ]
+          : []),
+      ];
+    }
+
     if (cmd === 'plug') {
       return PLUGIN_CATALOG.filter((plugin) => {
         const connection = pluginConnections[plugin.id];
@@ -815,6 +867,7 @@ export function Composer({
     optionPickerCtx,
     terminalSessions,
     projectId,
+    pluginAccountId,
     pluginConnections,
     projectFileOptions,
     interactionMode,
@@ -1036,7 +1089,9 @@ export function Composer({
       return;
     }
 
-    const isReferenceCommand = canonicalCmd === 'terminals' || cmd.category === 'navigation';
+    const isReferenceCommand =
+      (canonicalCmd === 'terminals' || cmd.category === 'navigation') &&
+      !isChatAttachSlashCmd(canonicalCmd);
 
     if (isReferenceCommand) {
       setText(before + after);
@@ -1397,6 +1452,7 @@ export function Composer({
     }
     const routes: Record<string, string> = {
       kanban: 'kanban',
+      canvas: 'canvas',
       history: 'history',
       tools: 'tools',
       agents: 'agents',
@@ -1658,6 +1714,10 @@ export function Composer({
       if (handled === true) handledUtilityOnly = true;
     }
     const afterInline = inline.utilities.length > 0 ? inline.cleaned : trimmed;
+    const canvasAttachmentModes = resolveCanvasAttachmentModesForSend(
+      confirmedCommands,
+      afterInline,
+    );
 
     // Leading full-message slash (multitask, ask, plan, etc.)
     const slashResult = afterInline.startsWith('/') ? await handleSlashCommand(afterInline) : false;
@@ -1740,6 +1800,36 @@ export function Composer({
     let nextAttachedTerminals = attachedTerminals;
     let nextAttachedPlugins = attachedPlugins;
     let nextAttachedContexts = attachedContexts;
+    if (canvasAttachmentModes.length > 0) {
+      const currentAuth = useAuthStore.getState();
+      const accountId = resolveAccountIdentity(currentAuth)?.accountId ?? '';
+      const canvasAttachments: ContextChatAttachment[] = [];
+      for (const mode of canvasAttachmentModes) {
+        const resolved = buildActiveCanvasChatAttachments(
+          { accountId, projectId: currentAuth.projectId },
+          mode,
+        );
+        if (resolved.length === 0) {
+          toast.warning(
+            mode === 'selection' ? 'No Canvas selection attached' : 'No active Canvas attached',
+            mode === 'selection'
+              ? 'Select one or more objects on the active Canvas and try again.'
+              : 'Open the Canvas for this project and try again.',
+          );
+          return false;
+        }
+        canvasAttachments.push(...resolved);
+      }
+      for (const attachment of canvasAttachments) {
+        if (
+          !nextAttachedContexts.some(
+            (context) => contextChatAttachmentKey(context) === contextChatAttachmentKey(attachment),
+          )
+        ) {
+          nextAttachedContexts = [...nextAttachedContexts, attachment];
+        }
+      }
+    }
     for (const confirmed of confirmedCommands) {
       if (confirmed.value?.startsWith('reference:')) continue;
       if (confirmed.value?.startsWith('confirmed:')) continue;
