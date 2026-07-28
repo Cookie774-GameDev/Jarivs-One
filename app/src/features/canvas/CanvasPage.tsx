@@ -111,6 +111,7 @@ import {
 import {
   enterPresentMode,
   exitPresentMode,
+  moveFrame,
   nextFrame,
   presentationFromDocument,
   presentationProgress,
@@ -382,6 +383,19 @@ function selectedPresentationFrameIds(
   return selectedFrameId ? [selectedFrameId] : [];
 }
 
+function presentationFrameLabel(block: CanvasBlock | undefined): string {
+  if (!block) return 'Unavailable frame';
+  const content = block.content;
+  const label =
+    content.kind === 'mind-map'
+      ? content.map.nodes.find((node) => node.id === content.map.rootId)?.label
+      : content.text;
+  const normalized = label?.trim().replace(/\s+/g, ' ');
+  return normalized
+    ? normalized.slice(0, 80)
+    : `Untitled ${CANVAS_BLOCK_KIND_LABELS[block.content.kind]}`;
+}
+
 interface ToolButtonProps {
   readonly active: boolean;
   readonly label: string;
@@ -451,6 +465,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
   );
   const presentationTriggerRef = React.useRef<HTMLButtonElement>(null);
   const presentationRegionRef = React.useRef<HTMLElement>(null);
+  const presentationDragFrameRef = React.useRef<string | null>(null);
   const wasPresentingRef = React.useRef(false);
   const autosaveRef = React.useRef<CanvasAutosaveController | null>(null);
   const autosaveUnsubscribeRef = React.useRef<(() => void) | null>(null);
@@ -2303,6 +2318,26 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
       },
     );
   };
+  const reorderPresentationFrame = (blockId: string, toIndex: number) => {
+    commit('block-change', 'Reorder presentation frame', (current, now) => {
+      const fromIndex = current.presentationOrder.findIndex((entry) => entry === blockId);
+      if (
+        fromIndex < 0 ||
+        !Number.isInteger(toIndex) ||
+        toIndex < 0 ||
+        toIndex >= current.presentationOrder.length ||
+        fromIndex === toIndex
+      ) {
+        return current;
+      }
+      const reordered = moveFrame(presentationFromDocument(current), blockId, toIndex);
+      return withPresentationOrder(
+        current,
+        reordered.frames.map((frame) => frame.id),
+        now,
+      );
+    });
+  };
   const placementById = resolveEdgelessLayout(document);
   const selectedPlacement = selectedBlock ? placementById.get(selectedBlock.id) : undefined;
   const selectedObjectsLocked = selectionHasLockedPlacement(document, selected.ids);
@@ -2556,6 +2591,82 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
             </button>
           ))}
         </div>
+        <details className="relative">
+          <summary className="inline-flex h-9 cursor-pointer list-none items-center rounded-md border border-border px-3 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground">
+            Presentation order
+          </summary>
+          <div
+            role="group"
+            aria-label="Presentation organizer"
+            className="absolute right-0 top-11 z-50 w-80 space-y-2 rounded-lg border border-border bg-background p-3 shadow-lg"
+          >
+            <p className="text-xs text-muted-foreground">
+              Drag frames into position or use the move controls.
+            </p>
+            {document.presentationOrder.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No presentation frames yet.</p>
+            ) : (
+              <ol aria-label="Canvas presentation order" className="space-y-2">
+                {document.presentationOrder.map((frameId, index) => {
+                  const label = presentationFrameLabel(blockById(document, frameId));
+                  return (
+                    <li
+                      key={frameId}
+                      aria-label={`Presentation frame ${index + 1}: ${label}`}
+                      draggable
+                      onDragStart={(event) => {
+                        presentationDragFrameRef.current = frameId;
+                        if (event.dataTransfer) {
+                          event.dataTransfer.effectAllowed = 'move';
+                          event.dataTransfer.setData('text/plain', frameId);
+                        }
+                      }}
+                      onDragOver={(event) => {
+                        event.preventDefault();
+                        if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+                      }}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        const draggedId = presentationDragFrameRef.current;
+                        presentationDragFrameRef.current = null;
+                        if (draggedId) reorderPresentationFrame(draggedId, index);
+                      }}
+                      onDragEnd={() => {
+                        presentationDragFrameRef.current = null;
+                      }}
+                      className="flex items-center gap-2 rounded-md border border-border bg-muted/20 p-2"
+                    >
+                      <span aria-hidden className="cursor-grab text-muted-foreground">
+                        ⋮⋮
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-sm">
+                        {index + 1}. {label}
+                      </span>
+                      <button
+                        type="button"
+                        aria-label={`Move ${label} earlier`}
+                        disabled={index === 0}
+                        onClick={() => reorderPresentationFrame(frameId, index - 1)}
+                        className="rounded border border-border px-2 py-1 text-xs disabled:opacity-40"
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`Move ${label} later`}
+                        disabled={index === document.presentationOrder.length - 1}
+                        onClick={() => reorderPresentationFrame(frameId, index + 1)}
+                        className="rounded border border-border px-2 py-1 text-xs disabled:opacity-40"
+                      >
+                        ↓
+                      </button>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+          </div>
+        </details>
         <button
           ref={presentationTriggerRef}
           type="button"

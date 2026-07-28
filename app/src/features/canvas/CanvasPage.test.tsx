@@ -1193,6 +1193,55 @@ describe('CanvasPage', () => {
     ).toBe(true);
   });
 
+  it('reorders persisted presentation frames accessibly as one undoable action', () => {
+    render(<CanvasPage />);
+    const addNote = screen.getByRole('button', { name: 'Add note' });
+    fireEvent.click(addNote);
+    fireEvent.click(screen.getByLabelText('Canvas note'));
+    fireEvent.click(screen.getByRole('button', { name: 'Show canvas properties' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add selected object to presentation' }));
+    fireEvent.click(addNote);
+    fireEvent.click(screen.getAllByLabelText('Canvas note')[1]!);
+    fireEvent.click(screen.getByRole('button', { name: 'Add selected object to presentation' }));
+    fireEvent.click(screen.getByText('Presentation order'));
+
+    const frameItems = () =>
+      within(screen.getByRole('list', { name: 'Canvas presentation order' })).getAllByRole(
+        'listitem',
+      );
+    const frameNames = () => frameItems().map((item) => item.getAttribute('aria-label'));
+
+    expect(frameNames()).toEqual([
+      'Presentation frame 1: New note 1',
+      'Presentation frame 2: New note 2',
+    ]);
+    fireEvent.click(screen.getByRole('button', { name: 'Move New note 2 earlier' }));
+    expect(frameNames()).toEqual([
+      'Presentation frame 1: New note 2',
+      'Presentation frame 2: New note 1',
+    ]);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(frameNames()).toEqual([
+      'Presentation frame 1: New note 1',
+      'Presentation frame 2: New note 2',
+    ]);
+
+    const [firstFrame, secondFrame] = frameItems();
+    fireEvent.dragStart(firstFrame!);
+    fireEvent.dragOver(secondFrame!);
+    fireEvent.drop(secondFrame!);
+    expect(frameNames()).toEqual([
+      'Presentation frame 1: New note 2',
+      'Presentation frame 2: New note 1',
+    ]);
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(frameNames()).toEqual([
+      'Presentation frame 1: New note 1',
+      'Presentation frame 2: New note 2',
+    ]);
+  });
+
   it('navigates presentation frames by controls and keyboard without editing content', () => {
     render(<CanvasPage />);
     const addNote = screen.getByRole('button', { name: 'Add note' });
