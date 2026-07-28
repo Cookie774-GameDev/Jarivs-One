@@ -389,6 +389,78 @@ describe('CanvasPage', () => {
     );
   });
 
+  it('renders the persisted Canvas background through generated pattern styles', async () => {
+    const latest = createCanvasDocument({
+      id: 'surface-canvas',
+      projectId: PERSISTENCE_SCOPE.projectId,
+      ownerId: PERSISTENCE_SCOPE.ownerId,
+      title: 'Surface study',
+      background: { kind: 'dots', color: '#f4eddf' },
+      now: 100,
+    });
+    const repository = persistenceRepository({
+      loadLatest: vi.fn(async () => latest),
+    });
+
+    render(<CanvasPage persistence={{ repository, scope: PERSISTENCE_SCOPE }} />);
+
+    expect(await screen.findByDisplayValue('Surface study')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Show canvas properties' }));
+    expect(
+      (screen.getByRole('combobox', { name: 'Canvas background pattern' }) as HTMLSelectElement)
+        .value,
+    ).toBe('dots');
+    expect((screen.getByLabelText('Canvas background color') as HTMLInputElement).value).toBe(
+      '#f4eddf',
+    );
+    const workspace = screen.getByRole('region', { name: 'Canvas workspace' });
+    expect(workspace.dataset.backgroundKind).toBe('dots');
+    expect(workspace.style.backgroundImage).toContain('radial-gradient');
+  });
+
+  it('commits a Canvas background change as one undoable autosaved edit', async () => {
+    const latest = persistedDocument(PERSISTENCE_SCOPE, 'background-canvas', 'Background canvas');
+    const repository = persistenceRepository({
+      loadLatest: vi.fn(async () => latest),
+    });
+    render(
+      <CanvasPage
+        persistence={{
+          repository,
+          scope: PERSISTENCE_SCOPE,
+          autosaveDelayMs: 0,
+          now: () => 500,
+        }}
+      />,
+    );
+
+    expect(await screen.findByDisplayValue('Background canvas')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Show canvas properties' }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Canvas background pattern' }), {
+      target: { value: 'grid' },
+    });
+
+    const workspace = screen.getByRole('region', { name: 'Canvas workspace' });
+    expect(workspace.dataset.backgroundKind).toBe('grid');
+    await waitFor(() => expect(repository.save).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(repository.save).mock.calls[0]?.[1].background).toEqual({
+      kind: 'grid',
+      color: '#ffffff',
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(workspace.dataset.backgroundKind).toBe('plain');
+    await waitFor(() => expect(repository.save).toHaveBeenCalledTimes(2));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Redo' }));
+    expect(workspace.dataset.backgroundKind).toBe('grid');
+    await waitFor(() => expect(repository.save).toHaveBeenCalledTimes(3));
+    const savedRevisions = vi
+      .mocked(repository.save)
+      .mock.calls.map((call) => call[1].localRevision);
+    expect(savedRevisions).toEqual([1, 2, 3]);
+  });
+
   it('supports keyboard undo and redo without hijacking editable targets', () => {
     render(<CanvasPage />);
     fireEvent.click(screen.getByRole('button', { name: 'Add note' }));

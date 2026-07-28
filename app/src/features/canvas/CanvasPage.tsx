@@ -32,6 +32,7 @@ import {
   withBlockAdded,
   withBlockContent,
   withBlockRemoved,
+  withBackground,
   withCamera,
   withLayoutMode,
   withPlacement,
@@ -39,6 +40,8 @@ import {
   withTitle,
   type CanvasBlock,
   type CanvasBlockKind,
+  type CanvasBackground,
+  type CanvasBackgroundKind,
   type CanvasCamera,
   type CanvasDocument,
   type CanvasLayoutMode,
@@ -125,6 +128,45 @@ const CANVAS_BLOCK_KIND_LABELS: Readonly<Record<CanvasBlockKind, string>> = Obje
   code: 'Code',
   'mind-map': 'Mind map',
 });
+
+const CANVAS_BACKGROUND_LABELS: Readonly<Record<CanvasBackgroundKind, string>> = Object.freeze({
+  plain: 'Plain paper',
+  dots: 'Dot grid',
+  grid: 'Square grid',
+  lines: 'Lined paper',
+});
+
+function canvasBackgroundStyle(background: CanvasBackground): React.CSSProperties {
+  const lineColor = 'rgba(104, 86, 64, 0.22)';
+  switch (background.kind) {
+    case 'dots':
+      return {
+        backgroundColor: background.color,
+        backgroundImage: `radial-gradient(circle, ${lineColor} 1px, transparent 1px)`,
+        backgroundSize: '24px 24px',
+      };
+    case 'grid':
+      return {
+        backgroundColor: background.color,
+        backgroundImage: [
+          `linear-gradient(to right, ${lineColor} 1px, transparent 1px)`,
+          `linear-gradient(to bottom, ${lineColor} 1px, transparent 1px)`,
+        ].join(', '),
+        backgroundSize: '24px 24px',
+      };
+    case 'lines':
+      return {
+        backgroundColor: background.color,
+        backgroundImage: `repeating-linear-gradient(to bottom, transparent 0, transparent 27px, ${lineColor} 28px)`,
+        backgroundSize: '100% 28px',
+      };
+    case 'plain':
+      return {
+        backgroundColor: background.color,
+        backgroundImage: 'none',
+      };
+  }
+}
 
 const INITIAL_DOCUMENT = createCanvasDocument({
   id: 'local-canvas-draft',
@@ -503,19 +545,35 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     [],
   );
 
-  const undo = React.useCallback(() => {
-    const previous = historyRef.current.undo();
-    documentRef.current = previous;
-    setDocument(previous);
-    autosaveRef.current?.schedule(previous);
-  }, []);
-
-  const redo = React.useCallback(() => {
-    const next = historyRef.current.redo();
+  const applyHistorySnapshot = React.useCallback((snapshot: CanvasDocument) => {
+    const current = documentRef.current;
+    clock.current = Math.max(clock.current, current.updatedAt, snapshot.updatedAt) + 1;
+    const next = parseCanvasDocument({
+      ...snapshot,
+      id: current.id,
+      projectId: current.projectId,
+      ownerId: current.ownerId,
+      localRevision: current.localRevision + 1,
+      syncRevision: current.syncRevision,
+      createdAt: current.createdAt,
+      updatedAt: clock.current,
+    });
     documentRef.current = next;
+    cameraRef.current = next.camera;
+    setCameraState(next.camera);
     setDocument(next);
     autosaveRef.current?.schedule(next);
   }, []);
+
+  const undo = React.useCallback(() => {
+    if (!historyRef.current.canUndo()) return;
+    applyHistorySnapshot(historyRef.current.undo());
+  }, [applyHistorySnapshot]);
+
+  const redo = React.useCallback(() => {
+    if (!historyRef.current.canRedo()) return;
+    applyHistorySnapshot(historyRef.current.redo());
+  }, [applyHistorySnapshot]);
 
   const deleteSelected = React.useCallback(() => {
     if (selected.ids.length === 0) return;
@@ -1303,6 +1361,23 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     );
   };
 
+  const setBackgroundKind = (kind: CanvasBackgroundKind) => {
+    if (document.background.kind === kind) return;
+    commit('style-change', `Use ${CANVAS_BACKGROUND_LABELS[kind]}`, (current, now) =>
+      withBackground(current, { ...current.background, kind }, now),
+    );
+  };
+
+  const setBackgroundColor = (color: string) => {
+    if (document.background.color === color) return;
+    commit(
+      'style-change',
+      'Change canvas background color',
+      (current, now) => withBackground(current, { ...current.background, color }, now),
+      'canvas:background-color',
+    );
+  };
+
   const setZoom = (factor: number) => {
     setCamera((current) =>
       zoomCameraAtScreenPoint(current, CAMERA_VIEWPORT, CAMERA_CENTER, current.zoom * factor),
@@ -1885,6 +1960,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
           data-camera-x={camera.x}
           data-camera-y={camera.y}
           data-camera-zoom={camera.zoom}
+          data-background-kind={document.background.kind}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerEnd}
@@ -1897,6 +1973,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
           }}
           className="relative min-h-0 flex-1 overflow-auto bg-muted/20"
           style={{
+            ...canvasBackgroundStyle(document.background),
             cursor: document.layoutMode === 'edgeless' && tool === 'hand' ? 'grab' : undefined,
             touchAction: document.layoutMode === 'edgeless' ? 'none' : undefined,
           }}
@@ -2188,6 +2265,37 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
               Properties
             </div>
             <div className="space-y-4 p-3">
+              <section aria-label="Canvas background properties" className="space-y-3">
+                <h2 className="text-sm font-medium">Canvas background</h2>
+                <label className="block space-y-1 text-xs text-muted-foreground">
+                  Pattern
+                  <select
+                    aria-label="Canvas background pattern"
+                    value={document.background.kind}
+                    onChange={(event) =>
+                      setBackgroundKind(event.currentTarget.value as CanvasBackgroundKind)
+                    }
+                    className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                  >
+                    {Object.entries(CANVAS_BACKGROUND_LABELS).map(([kind, label]) => (
+                      <option key={kind} value={kind}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block space-y-1 text-xs text-muted-foreground">
+                  Color
+                  <input
+                    aria-label="Canvas background color"
+                    type="color"
+                    value={document.background.color}
+                    onChange={(event) => setBackgroundColor(event.currentTarget.value)}
+                    className="h-9 w-full cursor-pointer rounded-md border border-border bg-background p-1"
+                  />
+                </label>
+              </section>
+              <div className="h-px bg-border" />
               {selectedBlocks.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   Select a canvas object to inspect its properties.
