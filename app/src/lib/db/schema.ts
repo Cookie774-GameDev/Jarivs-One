@@ -419,7 +419,9 @@ export type CanvasDocumentRow = {
 /**
  * One deterministic position in a document's page-mode order. The unique
  * `[documentId+pageIndex]` index enforces exactly one block per page position
- * per document; `presentationIndex` optionally orders presentation frames.
+ * per document; `presentationIndex` optionally orders presentation frames and
+ * `presenterNotes` carries bounded per-frame notes without a second content
+ * copy. The optional field keeps pre-existing V8 rows backward compatible.
  */
 export type CanvasPageRow = {
   id: string;
@@ -428,6 +430,7 @@ export type CanvasPageRow = {
   pageIndex: number;
   blockId: CanvasBlockId;
   presentationIndex: number | null;
+  presenterNotes?: string | null;
   createdAt: CanvasTimestamp;
   updatedAt: CanvasTimestamp;
 };

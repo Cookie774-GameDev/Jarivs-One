@@ -267,6 +267,9 @@ function toObjectRows(scope: CanvasPersistenceScope, doc: CanvasDocument): Canva
 
 function toPageRows(scope: CanvasPersistenceScope, doc: CanvasDocument): CanvasPageRow[] {
   const presentationIndexByBlock = new Map<string, number>();
+  const presenterNotesByBlock = new Map(
+    doc.presentationNotes.map((entry) => [entry.frameId, entry.text]),
+  );
   doc.presentationOrder.forEach((blockId, index) => presentationIndexByBlock.set(blockId, index));
   return doc.pageOrder.map((blockId, pageIndex) => ({
     id: pageRowId(doc.id, pageIndex),
@@ -275,6 +278,7 @@ function toPageRows(scope: CanvasPersistenceScope, doc: CanvasDocument): CanvasP
     pageIndex,
     blockId,
     presentationIndex: presentationIndexByBlock.get(blockId) ?? null,
+    presenterNotes: presenterNotesByBlock.get(blockId) ?? null,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   }));
@@ -475,6 +479,15 @@ export function createCanvasPersistenceRepository(db: JarvisDexie): CanvasPersis
           )
           .sort((a, b) => a.presentationIndex - b.presentationIndex)
           .map((row) => row.blockId);
+        const presentationNotes = pageRows
+          .filter(
+            (row): row is CanvasPageRow & { presentationIndex: number; presenterNotes: string } =>
+              row.presentationIndex !== null &&
+              typeof row.presenterNotes === 'string' &&
+              row.presenterNotes.length > 0,
+          )
+          .sort((a, b) => a.presentationIndex - b.presentationIndex)
+          .map((row) => ({ frameId: row.blockId, text: row.presenterNotes }));
         const placements = spatialRows
           .map((row) => ({
             blockId: row.blockId,
@@ -505,6 +518,7 @@ export function createCanvasPersistenceRepository(db: JarvisDexie): CanvasPersis
           pageOrder,
           placements,
           presentationOrder,
+          presentationNotes,
           localRevision: docRow.localRevision,
           syncRevision: docRow.syncRevision,
           createdAt: docRow.createdAt,

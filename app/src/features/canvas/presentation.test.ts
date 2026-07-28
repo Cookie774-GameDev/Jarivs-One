@@ -591,12 +591,15 @@ describe('honest capabilities', () => {
 });
 
 describe('presentation from a canvas document', () => {
-  it('promotes the document presentation order to idle frames', () => {
-    const doc = { presentationOrder: ['a', 'b', 'c'] } as unknown as CanvasDocument;
+  it('promotes the document presentation order and persisted notes to idle frames', () => {
+    const doc = {
+      presentationOrder: ['a', 'b', 'c'],
+      presentationNotes: [{ frameId: 'b', text: 'Pause for questions' }],
+    } as unknown as CanvasDocument;
     const state = presentationFromDocument(doc);
     expect(state.status).toBe('idle');
     expect(frameIds(state)).toEqual(['a', 'b', 'c']);
     expect(state.currentIndex).toBe(-1);
-    expect(state.frames.every((frame) => frame.notes === '')).toBe(true);
+    expect(state.frames.map((frame) => frame.notes)).toEqual(['', 'Pause for questions', '']);
   });
 });

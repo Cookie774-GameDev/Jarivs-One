@@ -1259,6 +1259,35 @@ describe('CanvasPage', () => {
     expect(screen.getByLabelText('Canvas note').getAttribute('data-selected')).toBe('true');
   });
 
+  it('persists undoable presenter notes and reveals them only on request while presenting', () => {
+    render(<CanvasPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    fireEvent.click(screen.getByLabelText('Canvas note'));
+    fireEvent.click(screen.getByRole('button', { name: 'Show canvas properties' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add selected object to presentation' }));
+    fireEvent.click(screen.getByText('Presentation order'));
+
+    const notes = screen.getByRole('textbox', { name: 'Presenter notes for New note 1' });
+    fireEvent.change(notes, { target: { value: 'Pause and explain the tradeoff.' } });
+    fireEvent.blur(notes);
+    fireEvent.click(screen.getByRole('button', { name: 'Present canvas' }));
+
+    expect(screen.queryByRole('note', { name: 'Presenter notes' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Show presenter notes' }));
+    expect(screen.getByRole('note', { name: 'Presenter notes' }).textContent).toContain(
+      'Pause and explain the tradeoff.',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Exit presentation' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(
+      (
+        screen.getByRole('textbox', {
+          name: 'Presenter notes for New note 1',
+        }) as HTMLTextAreaElement
+      ).value,
+    ).toBe('');
+  });
+
   it('enters and exits real presentation fullscreen when the environment supports it', async () => {
     let fullscreenElement: Element | null = null;
     const requestFullscreenDescriptor = Object.getOwnPropertyDescriptor(

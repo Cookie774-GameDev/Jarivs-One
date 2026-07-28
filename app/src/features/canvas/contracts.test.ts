@@ -26,6 +26,7 @@ import {
   withLayoutMode,
   withPageOrder,
   withPlacement,
+  withPresentationNote,
   withPresentationOrder,
   withTitle,
   withoutPlacement,
@@ -112,6 +113,7 @@ describe('createCanvasDocument', () => {
     expect(doc.pageOrder).toEqual([]);
     expect(doc.placements).toEqual([]);
     expect(doc.presentationOrder).toEqual([]);
+    expect(doc.presentationNotes).toEqual([]);
     expect(doc.localRevision).toBe(0);
     expect(doc.syncRevision).toBe(0);
     expect(doc.createdAt).toBe(T0);
@@ -356,6 +358,17 @@ describe('parseCanvasDocument', () => {
     }
   });
 
+  it('rejects presenter notes for frames outside the presentation order', () => {
+    const raw = JSON.parse(JSON.stringify(docWithBlocks()));
+    expect(() =>
+      parseCanvasDocument({
+        ...raw,
+        presentationOrder: ['blk-a'],
+        presentationNotes: [{ frameId: 'blk-b', text: 'Not a slide' }],
+      }),
+    ).toThrow(CanvasValidationError);
+  });
+
   it('rejects non-finite spatial numbers and non-positive sizes', () => {
     const raw = JSON.parse(JSON.stringify(docWithBlocks()));
     const bad = [
@@ -577,12 +590,27 @@ describe('document mutations', () => {
     let doc = docWithBlocks();
     doc = withPlacement(doc, { blockId: 'blk-b', x: 5, y: 5, width: 20, height: 20 }, T1);
     doc = withPresentationOrder(doc, ['blk-b', 'blk-c'], T1);
+    doc = withPresentationNote(doc, 'blk-b', 'Introduce the decision', T1 + 1);
     const removed = withBlockRemoved(doc, 'blk-b', T1 + 1);
     expect(removed.blocks.map((b) => b.id)).toEqual(['blk-a', 'blk-c']);
     expect(removed.pageOrder).toEqual(['blk-a', 'blk-c']);
     expect(removed.placements).toEqual([]);
     expect(removed.presentationOrder).toEqual(['blk-c']);
+    expect(removed.presentationNotes).toEqual([]);
     expect(() => withBlockRemoved(doc, 'ghost', T1)).toThrow(CanvasValidationError);
+  });
+
+  it('persists bounded presenter notes and preserves them across frame reordering', () => {
+    let doc = withPresentationOrder(docWithBlocks(), ['blk-a', 'blk-b'], T1);
+    doc = withPresentationNote(doc, 'blk-b', 'Call out the tradeoff', T1 + 1);
+    expect(doc.presentationNotes).toEqual([{ frameId: 'blk-b', text: 'Call out the tradeoff' }]);
+
+    doc = withPresentationOrder(doc, ['blk-b', 'blk-a'], T1 + 2);
+    expect(doc.presentationNotes).toEqual([{ frameId: 'blk-b', text: 'Call out the tradeoff' }]);
+    expect(() => withPresentationNote(doc, 'blk-c', 'Not included', T1 + 3)).toThrow(
+      CanvasValidationError,
+    );
+    expect(withPresentationNote(doc, 'blk-b', '', T1 + 3).presentationNotes).toEqual([]);
   });
 
   it('upserts placements and removes them idempotently', () => {

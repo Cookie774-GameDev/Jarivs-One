@@ -216,12 +216,13 @@ export function createPresentation(
   return presentation('idle', [], -1, resolveCapabilities(DEFAULT_CAPABILITIES, capabilities));
 }
 
-/** Promotes a document's presentation order to idle frames with empty notes. */
+/** Promotes a document's presentation order and persisted notes to idle frames. */
 export function presentationFromDocument(
   doc: CanvasDocument,
   capabilities?: Partial<PresentationCapabilities>,
 ): PresentationState {
-  const frames = doc.presentationOrder.map((id) => makeFrame(id, ''));
+  const notesByFrame = new Map(doc.presentationNotes.map((entry) => [entry.frameId, entry.text]));
+  const frames = doc.presentationOrder.map((id) => makeFrame(id, notesByFrame.get(id) ?? ''));
   return presentation('idle', frames, -1, resolveCapabilities(DEFAULT_CAPABILITIES, capabilities));
 }
 

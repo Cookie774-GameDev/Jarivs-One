@@ -5,6 +5,7 @@ import {
   createCanvasDocument,
   withBlockAdded,
   withPlacement,
+  withPresentationNote,
   withPresentationOrder,
   type CanvasDocument,
 } from './contracts';
@@ -47,7 +48,9 @@ function documentFixture(): CanvasDocument {
     { blockId: 'heading-1', x: 10, y: 20, width: 320, height: 120 },
     4,
   );
-  return withPresentationOrder(document, ['heading-1', 'note-1'], 5);
+  document = withPresentationOrder(document, ['heading-1', 'note-1'], 5);
+  document = withPresentationNote(document, 'heading-1', 'Open with the launch goal', 6);
+  return withPresentationNote(document, 'note-1', 'Emphasize the safety checklist', 7);
 }
 
 function file(name: string, mimeType: string, data: string | Uint8Array): CanvasImportFile {

@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { canvasBlockAccessibleLabel, canvasZoomAnnouncement } from './accessibility';
 import {
+  CANVAS_MAX_TEXT_LENGTH,
   blockById,
   createCanvasBlock,
   createCanvasDocument,
@@ -39,6 +40,7 @@ import {
   withCamera,
   withLayoutMode,
   withPlacement,
+  withPresentationNote,
   withPresentationOrder,
   withTitle,
   type CanvasBlock,
@@ -398,6 +400,10 @@ function presentationFrameLabel(block: CanvasBlock | undefined): string {
     : `Untitled ${CANVAS_BLOCK_KIND_LABELS[block.content.kind]}`;
 }
 
+function presenterNotesForFrame(document: CanvasDocument, frameId: string): string {
+  return document.presentationNotes.find((entry) => entry.frameId === frameId)?.text ?? '';
+}
+
 function supportsPresentationFullscreen(): boolean {
   return (
     typeof document !== 'undefined' &&
@@ -477,6 +483,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
   );
   const [presentationFullscreen, setPresentationFullscreen] = React.useState(false);
   const [presentationFullscreenMessage, setPresentationFullscreenMessage] = React.useState('');
+  const [showPresenterNotes, setShowPresenterNotes] = React.useState(false);
   const presentationTriggerRef = React.useRef<HTMLButtonElement>(null);
   const presentationRegionRef = React.useRef<HTMLElement>(null);
   const presentationDragFrameRef = React.useRef<string | null>(null);
@@ -604,7 +611,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     setCameraState(next.camera);
     refreshCameraNavigation();
     setSelected(clearCanvasSelection);
-    setPresentation(presentationFromDocument(next));
+    setPresentation((current) => presentationFromDocument(next, current.capabilities));
     setDocument(next);
   }, []);
 
@@ -1110,6 +1117,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
         setPresentationFullscreenMessage('Could not exit presentation fullscreen');
       });
     }
+    setShowPresenterNotes(false);
     setPresentation((current) => exitPresentMode(current));
   }, []);
 
@@ -1119,7 +1127,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
         ? current
         : presentationFromDocument(document, current.capabilities),
     );
-  }, [document.presentationOrder]);
+  }, [document.presentationNotes, document.presentationOrder]);
 
   React.useEffect(() => {
     const syncFullscreenState = () => {
@@ -2402,6 +2410,12 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
       );
     });
   };
+  const updatePresentationNotes = (blockId: string, notes: string) => {
+    if (presenterNotesForFrame(documentRef.current, blockId) === notes) return;
+    commit('block-change', 'Edit presenter notes', (current, now) =>
+      withPresentationNote(current, blockId, notes, now),
+    );
+  };
   const zoomToPresentationFrame = (blockId: string) => {
     const current = documentRef.current;
     if (current.layoutMode !== 'edgeless') return;
@@ -2694,9 +2708,10 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                   const label = presentationFrameLabel(blockById(document, frameId));
                   const placement = placementById.get(frameId);
                   const canZoom = document.layoutMode === 'edgeless' && placement?.hidden === false;
+                  const notes = presenterNotesForFrame(document, frameId);
                   return (
                     <li
-                      key={frameId}
+                      key={`${frameId}:${notes}`}
                       aria-label={`Presentation frame ${index + 1}: ${label}`}
                       draggable
                       onDragStart={(event) => {
@@ -2719,7 +2734,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                       onDragEnd={() => {
                         presentationDragFrameRef.current = null;
                       }}
-                      className="flex items-center gap-2 rounded-md border border-border bg-muted/20 p-2"
+                      className="grid grid-cols-[auto_1fr_auto_auto_auto] items-center gap-2 rounded-md border border-border bg-muted/20 p-2"
                     >
                       <span aria-hidden className="cursor-grab text-muted-foreground">
                         ⋮⋮
@@ -2754,6 +2769,17 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                       >
                         ↓
                       </button>
+                      <textarea
+                        aria-label={`Presenter notes for ${label}`}
+                        defaultValue={notes}
+                        maxLength={CANVAS_MAX_TEXT_LENGTH}
+                        rows={2}
+                        onBlur={(event) =>
+                          updatePresentationNotes(frameId, event.currentTarget.value)
+                        }
+                        className="col-span-5 w-full resize-y rounded border border-border bg-background px-2 py-1 text-xs"
+                        placeholder="Presenter notes"
+                      />
                     </li>
                   );
                 })}
@@ -3005,6 +3031,17 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
               Slide {activePresentationProgress.current} of {activePresentationProgress.total}
             </output>
             <div className="flex items-center gap-2">
+              {activePresentationFrame?.notes ? (
+                <button
+                  type="button"
+                  aria-label={showPresenterNotes ? 'Hide presenter notes' : 'Show presenter notes'}
+                  aria-pressed={showPresenterNotes}
+                  onClick={() => setShowPresenterNotes((visible) => !visible)}
+                  className="rounded-md border border-background/30 px-3 py-2 text-sm hover:bg-background/10"
+                >
+                  Notes
+                </button>
+              ) : null}
               {canEnterFullscreen(presentation) ? (
                 <button
                   type="button"
@@ -3065,6 +3102,15 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
               )}
             </article>
           </div>
+          {showPresenterNotes && activePresentationFrame?.notes ? (
+            <aside
+              role="note"
+              aria-label="Presenter notes"
+              className="mx-auto mb-4 w-full max-w-5xl whitespace-pre-wrap rounded-lg border border-background/30 bg-background/10 p-4 text-sm text-background"
+            >
+              {activePresentationFrame.notes}
+            </aside>
+          ) : null}
           <footer className="flex items-center justify-center gap-3">
             <button
               type="button"

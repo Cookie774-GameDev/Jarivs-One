@@ -11,6 +11,7 @@ import {
   withCamera,
   withPageOrder,
   withPlacement,
+  withPresentationNote,
   withPresentationOrder,
   withTitle,
   withoutPlacement,
@@ -123,6 +124,7 @@ function canonical(doc: CanvasDocument) {
     background: doc.background,
     pageOrder: doc.pageOrder,
     presentationOrder: doc.presentationOrder,
+    presentationNotes: doc.presentationNotes,
     localRevision: doc.localRevision,
     syncRevision: doc.syncRevision,
     createdAt: doc.createdAt,
@@ -222,10 +224,17 @@ describe('canvas Dexie persistence repository', () => {
       let doc = buildDocument(scope, 'docOrder', 'block');
       doc = withPageOrder(doc, [...doc.pageOrder].reverse(), doc.updatedAt + 1);
       doc = withPresentationOrder(doc, [doc.pageOrder[1], doc.pageOrder[0]], doc.updatedAt + 1);
+      doc = withPresentationNote(
+        doc,
+        doc.presentationOrder[0],
+        'Explain why this frame comes first',
+        doc.updatedAt + 1,
+      );
       await repo.save(scope, doc);
       const loaded = await repo.load(scope, doc.id);
       expect(loaded!.pageOrder).toEqual(doc.pageOrder);
       expect(loaded!.presentationOrder).toEqual(doc.presentationOrder);
+      expect(loaded!.presentationNotes).toEqual(doc.presentationNotes);
       expect([...loaded!.blocks].map((b) => b.id).sort()).toEqual(
         [...doc.blocks].map((b) => b.id).sort(),
       );

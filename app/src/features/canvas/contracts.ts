@@ -160,6 +160,11 @@ export interface CanvasSpatialPlacementInput {
   readonly hidden?: boolean;
 }
 
+export interface CanvasPresentationNote {
+  readonly frameId: CanvasBlockId;
+  readonly text: string;
+}
+
 // ---------------------------------------------------------------------------
 // Document
 // ---------------------------------------------------------------------------
@@ -183,6 +188,8 @@ export interface CanvasDocument {
   readonly placements: readonly CanvasSpatialPlacement[];
   /** Presentation frame order; unique subset of block ids. */
   readonly presentationOrder: readonly CanvasBlockId[];
+  /** Bounded presenter-only notes, canonically ordered by presentationOrder. */
+  readonly presentationNotes: readonly CanvasPresentationNote[];
   readonly localRevision: number;
   readonly syncRevision: number;
   readonly createdAt: CanvasTimestamp;
@@ -492,6 +499,7 @@ const DOCUMENT_KEYS = new Set([
   'pageOrder',
   'placements',
   'presentationOrder',
+  'presentationNotes',
   'localRevision',
   'syncRevision',
   'createdAt',
@@ -499,6 +507,7 @@ const DOCUMENT_KEYS = new Set([
   'archivedAt',
   'deletedAt',
 ]);
+const PRESENTATION_NOTE_KEYS = new Set(['frameId', 'text']);
 
 /**
  * Strictly validates unknown input as a canvas document. Fails closed on
@@ -632,6 +641,43 @@ export function parseCanvasDocument(input: unknown): CanvasDocument {
     }
   }
 
+  const presentationNotesRaw = input.presentationNotes === undefined ? [] : input.presentationNotes;
+  if (!Array.isArray(presentationNotesRaw)) {
+    fail('invalid-type', 'document.presentationNotes', 'expected an array');
+  }
+  const presentationNotesByFrame = new Map<CanvasBlockId, string>();
+  for (const [index, entry] of presentationNotesRaw.entries()) {
+    const path = `document.presentationNotes[${index}]`;
+    if (!isPlainObject(entry)) {
+      fail('invalid-type', path, 'expected a plain object');
+    }
+    assertExactKeys(entry, PRESENTATION_NOTE_KEYS, path);
+    const frameId = assertId(entry.frameId, `${path}.frameId`) as CanvasBlockId;
+    if (!presentationSeen.has(frameId)) {
+      fail(
+        'invalid-reference',
+        `${path}.frameId`,
+        `references frame "${frameId}" outside presentationOrder`,
+      );
+    }
+    if (presentationNotesByFrame.has(frameId)) {
+      fail('duplicate-id', 'document.presentationNotes', `duplicate frame id "${frameId}"`);
+    }
+    const text = assertString(entry.text, `${path}.text`);
+    if (text.length > CANVAS_MAX_TEXT_LENGTH) {
+      fail(
+        'unsupported-value',
+        `${path}.text`,
+        `text exceeds ${CANVAS_MAX_TEXT_LENGTH} characters`,
+      );
+    }
+    presentationNotesByFrame.set(frameId, text);
+  }
+  const presentationNotes = presentationOrder.flatMap((frameId) => {
+    const text = presentationNotesByFrame.get(frameId);
+    return text ? [{ frameId, text }] : [];
+  });
+
   const localRevision = assertSafeInteger(
     input.localRevision === undefined ? 0 : input.localRevision,
     'document.localRevision',
@@ -673,6 +719,7 @@ export function parseCanvasDocument(input: unknown): CanvasDocument {
     pageOrder,
     placements,
     presentationOrder,
+    presentationNotes,
     localRevision,
     syncRevision,
     createdAt,
@@ -735,6 +782,7 @@ export function createCanvasDocument(input: CreateCanvasDocumentInput): CanvasDo
     pageOrder: [],
     placements: [],
     presentationOrder: [],
+    presentationNotes: [],
     localRevision: 0,
     syncRevision: 0,
     createdAt: input.now,
@@ -847,6 +895,7 @@ export function withBlockRemoved(
       pageOrder: doc.pageOrder.filter((entry) => entry !== id),
       placements: doc.placements.filter((placement) => placement.blockId !== id),
       presentationOrder: doc.presentationOrder.filter((entry) => entry !== id),
+      presentationNotes: doc.presentationNotes.filter((entry) => entry.frameId !== id),
     },
     now,
   );
@@ -865,7 +914,45 @@ export function withPresentationOrder(
   order: readonly string[],
   now: number,
 ): CanvasDocument {
-  return transition(doc, { presentationOrder: order }, now);
+  const retained = new Set(order.map((frameId) => parseCanvasBlockId(frameId)));
+  return transition(
+    doc,
+    {
+      presentationOrder: order,
+      presentationNotes: doc.presentationNotes.filter((entry) => retained.has(entry.frameId)),
+    },
+    now,
+  );
+}
+
+/** Adds, replaces, or clears bounded presenter notes for one included frame. */
+export function withPresentationNote(
+  doc: CanvasDocument,
+  frameId: string,
+  text: string,
+  now: number,
+): CanvasDocument {
+  const id = parseCanvasBlockId(frameId);
+  if (!doc.presentationOrder.includes(id)) {
+    fail(
+      'invalid-reference',
+      'presentationNotes.frameId',
+      `references frame "${id}" outside presentationOrder`,
+    );
+  }
+  const validatedText = assertString(text, 'presentationNotes.text');
+  if (validatedText.length > CANVAS_MAX_TEXT_LENGTH) {
+    fail(
+      'unsupported-value',
+      'presentationNotes.text',
+      `text exceeds ${CANVAS_MAX_TEXT_LENGTH} characters`,
+    );
+  }
+  const presentationNotes = [
+    ...doc.presentationNotes.filter((entry) => entry.frameId !== id),
+    ...(validatedText ? [{ frameId: id, text: validatedText }] : []),
+  ];
+  return transition(doc, { presentationNotes }, now);
 }
 
 /** Upserts edgeless spatial metadata for an existing block. */

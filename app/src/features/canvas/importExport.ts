@@ -1080,6 +1080,7 @@ function scopedDocument(
     pageOrder: orderedIds,
     placements: document.placements.filter((placement) => unique.has(placement.blockId)),
     presentationOrder: document.presentationOrder.filter((id) => unique.has(id)),
+    presentationNotes: document.presentationNotes.filter((entry) => unique.has(entry.frameId)),
   });
 }
 
