@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { CanvasPage } from './CanvasPage';
 import {
@@ -631,6 +631,67 @@ describe('CanvasPage', () => {
     expect(screen.getByText('2 objects selected')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Delete selected objects' }));
     expect(screen.queryAllByLabelText('Canvas note')).toHaveLength(0);
+  });
+
+  it('adds selected objects to a real presentation order and presents them', () => {
+    render(<CanvasPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    fireEvent.click(screen.getByLabelText('Canvas note'));
+    fireEvent.click(screen.getByRole('button', { name: 'Show canvas properties' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add selected object to presentation' }));
+
+    expect(screen.getByRole('status', { name: 'Presentation frame count' }).textContent).toBe(
+      '1 slide',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Present canvas' }));
+
+    const presentation = screen.getByRole('region', { name: 'Canvas presentation' });
+    expect(presentation).toBeTruthy();
+    expect(window.document.activeElement).toBe(presentation);
+    expect(within(presentation).getByText('New note 1')).toBeTruthy();
+    expect(screen.getByRole('status', { name: 'Presentation progress' }).textContent).toBe(
+      'Slide 1 of 1',
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Exit presentation' }));
+    expect(screen.queryByRole('region', { name: 'Canvas presentation' })).toBeNull();
+    expect(window.document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Present canvas' }),
+    );
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Remove selected object from presentation' }),
+    );
+    expect(screen.getByRole('status', { name: 'Presentation frame count' }).textContent).toBe(
+      '0 slides',
+    );
+    expect(
+      (screen.getByRole('button', { name: 'Present canvas' }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+  });
+
+  it('navigates presentation frames by controls and keyboard without editing content', () => {
+    render(<CanvasPage />);
+    const addNote = screen.getByRole('button', { name: 'Add note' });
+    fireEvent.click(addNote);
+    fireEvent.click(addNote);
+    const notes = screen.getAllByLabelText('Canvas note');
+
+    fireEvent.click(notes[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Show canvas properties' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add selected object to presentation' }));
+    fireEvent.click(notes[1]);
+    fireEvent.click(screen.getByRole('button', { name: 'Add selected object to presentation' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Present canvas' }));
+
+    const presentation = screen.getByRole('region', { name: 'Canvas presentation' });
+    expect(within(presentation).getByText('New note 1')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Next presentation frame' }));
+    expect(within(presentation).getByText('New note 2')).toBeTruthy();
+    fireEvent.keyDown(window, { key: 'ArrowLeft' });
+    expect(within(presentation).getByText('New note 1')).toBeTruthy();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('region', { name: 'Canvas presentation' })).toBeNull();
   });
 
   it('copies, pastes, duplicates, and cuts selected blocks with keyboard commands', () => {

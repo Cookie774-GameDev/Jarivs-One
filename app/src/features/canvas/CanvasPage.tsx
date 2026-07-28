@@ -10,6 +10,7 @@ import {
   Maximize2,
   Minus,
   MousePointer2,
+  Play,
   Plus,
   Redo2,
   RotateCcw,
@@ -33,6 +34,7 @@ import {
   withCamera,
   withLayoutMode,
   withPlacement,
+  withPresentationOrder,
   withTitle,
   type CanvasBlock,
   type CanvasBlockKind,
@@ -92,6 +94,15 @@ import {
   type CanvasPersistenceRepository,
   type CanvasPersistenceScope,
 } from './persistence';
+import {
+  enterPresentMode,
+  exitPresentMode,
+  nextFrame,
+  presentationFromDocument,
+  presentationProgress,
+  previousFrame,
+  type PresentationState,
+} from './presentation';
 import {
   subscribeCanvasGlobalSearchNavigation,
   takePendingCanvasGlobalSearchNavigation,
@@ -222,6 +233,12 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
   );
   const [document, setDocument] = React.useState(INITIAL_DOCUMENT);
   const documentRef = React.useRef<CanvasDocument>(INITIAL_DOCUMENT);
+  const [presentation, setPresentation] = React.useState<PresentationState>(() =>
+    presentationFromDocument(INITIAL_DOCUMENT),
+  );
+  const presentationTriggerRef = React.useRef<HTMLButtonElement>(null);
+  const presentationRegionRef = React.useRef<HTMLElement>(null);
+  const wasPresentingRef = React.useRef(false);
   const autosaveRef = React.useRef<CanvasAutosaveController | null>(null);
   const autosaveUnsubscribeRef = React.useRef<(() => void) | null>(null);
   const workspaceUnbindRef = React.useRef<(() => void) | null>(null);
@@ -321,6 +338,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     setCameraState(next.camera);
     refreshCameraNavigation();
     setSelected(clearCanvasSelection);
+    setPresentation(presentationFromDocument(next));
     setDocument(next);
   }, []);
 
@@ -584,7 +602,42 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
   }, [commit, selected.ids]);
 
   React.useEffect(() => {
+    setPresentation((current) =>
+      current.status === 'presenting' ? current : presentationFromDocument(document),
+    );
+  }, [document.presentationOrder]);
+
+  React.useEffect(() => {
+    if (presentation.status === 'presenting') {
+      wasPresentingRef.current = true;
+      presentationRegionRef.current?.focus();
+      return;
+    }
+    if (wasPresentingRef.current) {
+      wasPresentingRef.current = false;
+      presentationTriggerRef.current?.focus();
+    }
+  }, [presentation.status]);
+
+  React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (presentation.status === 'presenting') {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          setPresentation((current) => exitPresentMode(current));
+          return;
+        }
+        if (event.key === 'ArrowRight' || event.key === 'PageDown' || event.key === ' ') {
+          event.preventDefault();
+          setPresentation((current) => nextFrame(current));
+          return;
+        }
+        if (event.key === 'ArrowLeft' || event.key === 'PageUp') {
+          event.preventDefault();
+          setPresentation((current) => previousFrame(current));
+          return;
+        }
+      }
       if (isEditableTarget(event.target)) return;
       if (event.code === 'Space' && document.layoutMode === 'edgeless') {
         event.preventDefault();
@@ -681,6 +734,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     duplicateSelected,
     nudgeSelected,
     pasteClipboard,
+    presentation.status,
     redo,
     selected.ids.length,
     undo,
@@ -1183,6 +1237,11 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     });
   };
 
+  const startPresentation = () => {
+    if (document.presentationOrder.length === 0) return;
+    setPresentation(enterPresentMode(presentationFromDocument(documentRef.current)));
+  };
+
   const importPackage = async (file: File) => {
     try {
       const imported = decodeCanvasPackage(await file.text()).document;
@@ -1289,6 +1348,39 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     return block ? [block] : [];
   });
   const selectedBlock = selectedBlocks.length === 1 ? selectedBlocks[0] : undefined;
+  const selectedBlockIsPresentationFrame = selectedBlock
+    ? document.presentationOrder.includes(selectedBlock.id)
+    : false;
+  const activePresentationFrame =
+    presentation.status === 'presenting' && presentation.currentIndex >= 0
+      ? presentation.frames[presentation.currentIndex]
+      : undefined;
+  const activePresentationBlock = activePresentationFrame
+    ? blockById(document, activePresentationFrame.id)
+    : undefined;
+  const activePresentationMindMap =
+    activePresentationBlock?.content.kind === 'mind-map'
+      ? activePresentationBlock.content.map
+      : undefined;
+  const activePresentationMindMapRoot = activePresentationMindMap?.nodes.find(
+    (node) => node.id === activePresentationMindMap.rootId,
+  );
+  const activePresentationProgress = presentationProgress(presentation);
+  const toggleSelectedPresentationFrame = () => {
+    if (!selectedBlock) return;
+    const blockId = selectedBlock.id;
+    const alreadyIncluded = document.presentationOrder.includes(blockId);
+    commit(
+      'block-change',
+      alreadyIncluded ? 'Remove presentation frame' : 'Add presentation frame',
+      (current, now) => {
+        const nextOrder = current.presentationOrder.includes(blockId)
+          ? current.presentationOrder.filter((entry) => entry !== blockId)
+          : [...current.presentationOrder, blockId];
+        return withPresentationOrder(current, nextOrder, now);
+      },
+    );
+  };
   const placementById = resolveEdgelessLayout(document);
   const minimap = React.useMemo(() => {
     const placements = [...resolveEdgelessLayout(document).values()];
@@ -1537,6 +1629,17 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
             </button>
           ))}
         </div>
+        <button
+          ref={presentationTriggerRef}
+          type="button"
+          aria-label="Present canvas"
+          disabled={document.presentationOrder.length === 0}
+          onClick={startPresentation}
+          className="inline-flex h-9 items-center gap-2 rounded-md border border-border px-3 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <Play aria-hidden size={15} />
+          Present
+        </button>
         <label
           title="Import canvas package"
           className="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -1619,7 +1722,88 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
         {packageMessage}
       </p>
 
-      <div className="flex min-h-0 flex-1">
+      {presentation.status === 'presenting' ? (
+        <section
+          ref={presentationRegionRef}
+          role="region"
+          aria-label="Canvas presentation"
+          tabIndex={-1}
+          className="flex min-h-0 flex-1 flex-col bg-foreground p-6 text-background"
+        >
+          <header className="flex items-center justify-between gap-4">
+            <output
+              role="status"
+              aria-label="Presentation progress"
+              className="text-sm tabular-nums text-background/75"
+            >
+              Slide {activePresentationProgress.current} of {activePresentationProgress.total}
+            </output>
+            <button
+              type="button"
+              aria-label="Exit presentation"
+              onClick={() => setPresentation((current) => exitPresentMode(current))}
+              className="rounded-md border border-background/30 px-3 py-2 text-sm hover:bg-background/10"
+            >
+              Exit
+            </button>
+          </header>
+          <div className="flex min-h-0 flex-1 items-center justify-center py-8">
+            <article className="max-h-full w-full max-w-5xl overflow-auto rounded-2xl bg-background p-10 text-foreground shadow-2xl">
+              {activePresentationBlock ? (
+                activePresentationBlock.content.kind === 'mind-map' ? (
+                  <div className="space-y-4">
+                    <h2 className="text-3xl font-semibold">
+                      {activePresentationMindMapRoot?.label ?? 'Untitled mind map'}
+                    </h2>
+                    <p className="text-muted-foreground">
+                      {activePresentationMindMap?.nodes.length ?? 0} mind-map nodes
+                    </p>
+                  </div>
+                ) : activePresentationBlock.content.kind === 'code' ? (
+                  <div className="space-y-3">
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      {activePresentationBlock.content.language}
+                    </p>
+                    <pre className="whitespace-pre-wrap font-mono text-base">
+                      {activePresentationBlock.content.text}
+                    </pre>
+                  </div>
+                ) : activePresentationBlock.content.kind === 'heading' ? (
+                  <h2 className="text-4xl font-semibold">{activePresentationBlock.content.text}</h2>
+                ) : (
+                  <p className="whitespace-pre-wrap text-2xl leading-relaxed">
+                    {activePresentationBlock.content.text}
+                  </p>
+                )
+              ) : (
+                <p className="text-muted-foreground">Presentation frame unavailable.</p>
+              )}
+            </article>
+          </div>
+          <footer className="flex items-center justify-center gap-3">
+            <button
+              type="button"
+              aria-label="Previous presentation frame"
+              disabled={activePresentationProgress.isFirst}
+              onClick={() => setPresentation((current) => previousFrame(current))}
+              className="rounded-md border border-background/30 px-4 py-2 text-sm hover:bg-background/10 disabled:opacity-40"
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              aria-label="Next presentation frame"
+              disabled={activePresentationProgress.isLast}
+              onClick={() => setPresentation((current) => nextFrame(current))}
+              className="rounded-md border border-background/30 px-4 py-2 text-sm hover:bg-background/10 disabled:opacity-40"
+            >
+              Next
+            </button>
+          </footer>
+        </section>
+      ) : null}
+
+      <div hidden={presentation.status === 'presenting'} className="flex min-h-0 flex-1">
         <aside className="flex w-14 shrink-0 flex-col items-center gap-2 border-r border-border bg-background py-3">
           <div role="toolbar" aria-label="Canvas tools" className="flex flex-col gap-2">
             <ToolButton
@@ -1909,6 +2093,15 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
               {CANVAS_TOOL_LABELS[tool]}
             </output>
             <span aria-hidden className="mx-1 h-5 w-px bg-border" />
+            <output
+              role="status"
+              aria-label="Presentation frame count"
+              className="min-w-12 px-1 text-center text-xs text-muted-foreground"
+            >
+              {document.presentationOrder.length}{' '}
+              {document.presentationOrder.length === 1 ? 'slide' : 'slides'}
+            </output>
+            <span aria-hidden className="mx-1 h-5 w-px bg-border" />
             <output aria-live="polite" className="sr-only">
               {selected.ids.length === 0
                 ? 'No canvas objects selected'
@@ -2039,6 +2232,20 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                       </output>
                     </div>
                   ) : null}
+                  <button
+                    type="button"
+                    aria-label={
+                      selectedBlockIsPresentationFrame
+                        ? 'Remove selected object from presentation'
+                        : 'Add selected object to presentation'
+                    }
+                    onClick={toggleSelectedPresentationFrame}
+                    className="w-full rounded-md border border-border px-3 py-2 text-sm hover:bg-muted"
+                  >
+                    {selectedBlockIsPresentationFrame
+                      ? 'Remove from presentation'
+                      : 'Add to presentation'}
+                  </button>
                   <button
                     type="button"
                     aria-label="Delete selected object"
