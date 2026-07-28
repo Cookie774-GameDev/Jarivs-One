@@ -578,19 +578,25 @@ function validateResponse(response: unknown): ValidatedResponse {
   if (graceDaysRemaining === null && typedState === 'grace') {
     return fail('inconsistent_countdown', 'the "grace" state always carries "graceDaysRemaining".');
   }
-  // Checkout metadata is deterministic per state in the accepted authority.
-  const expectedCheckout =
-    typedState === 'trialing'
-      ? warning !== null
-      : typedState === 'cancel_at_period_end' ||
-        typedState === 'past_due' ||
-        typedState === 'grace' ||
-        typedState === 'locked';
-  if (checkoutNeeded !== expectedCheckout) {
+  // Local policy responses and server-authoritative responses intentionally
+  // differ for trialing, cancellation, and verification-locked states. The
+  // boolean remains authoritative at this projection boundary. States that
+  // can never checkout stay false; past-due and grace always require it.
+  const checkoutMustBeFalse =
+    typedState === 'prelaunch' ||
+    typedState === 'active' ||
+    typedState === 'admin' ||
+    typedState === 'internal' ||
+    typedState === 'unknown';
+  const checkoutMustBeTrue = typedState === 'past_due' || typedState === 'grace';
+  if ((checkoutMustBeFalse && checkoutNeeded) || (checkoutMustBeTrue && !checkoutNeeded)) {
     return fail(
       'inconsistent_checkout',
-      `"checkoutNeeded" must be ${String(expectedCheckout)} for the "${typedState}" state.`,
+      `"checkoutNeeded" is inconsistent with the "${typedState}" state.`,
     );
+  }
+  if (warning !== null && warning.action !== 'none' && !checkoutNeeded) {
+    return fail('inconsistent_checkout', 'an actionable access warning requires checkout.');
   }
   if (featurePlan.manageable !== true) {
     return fail('inconsistent_feature_plan', '"featurePlan.manageable" must always be true.');

@@ -589,11 +589,41 @@ describe('impossible and inconsistent grants', () => {
       'inconsistent_checkout',
     );
     expectCode(
-      () => createAccessViewModel({ ...responses.cancelFar, checkoutNeeded: false }),
+      () => createAccessViewModel({ ...responses.pastDueImmediate, checkoutNeeded: false }),
       'inconsistent_checkout',
     );
     expectCode(
-      () => createAccessViewModel({ ...responses.trialingNear, checkoutNeeded: false }),
+      () => createAccessViewModel({ ...responses.grace, checkoutNeeded: false }),
+      'inconsistent_checkout',
+    );
+  });
+
+  it('accepts authoritative server checkout variants without broadening access', () => {
+    const trialing = createAccessViewModel({
+      ...responses.trialingFar,
+      checkoutNeeded: true,
+      warning: null,
+    });
+    const cancellation = createAccessViewModel({
+      ...responses.cancelFar,
+      checkoutNeeded: false,
+      warning: null,
+    });
+    const verificationLock = createAccessViewModel({
+      ...responses.locked,
+      checkoutNeeded: false,
+      warning: null,
+    });
+
+    expect(trialing.checkoutNeeded).toBe(true);
+    expect(cancellation.checkoutNeeded).toBe(false);
+    expect(verificationLock.checkoutNeeded).toBe(false);
+    expect(verificationLock.usable).toBe(false);
+  });
+
+  it('requires checkout when an actionable warning is present', () => {
+    expectCode(
+      () => createAccessViewModel({ ...responses.cancelNear, checkoutNeeded: false }),
       'inconsistent_checkout',
     );
   });
