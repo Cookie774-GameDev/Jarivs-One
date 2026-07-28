@@ -117,12 +117,15 @@ import {
   alignCanvasPlacements,
   distributeCanvasPlacements,
   reorderCanvasPlacement,
+  resizeCanvasPlacement,
+  rotateCanvasPlacement,
   type CanvasAlignment,
   type CanvasDistributionAxis,
   type CanvasZOrderCommand,
 } from './geometry';
 
 type CanvasTool = 'select' | 'hand' | 'note';
+type CanvasPlacementField = 'x' | 'y' | 'width' | 'height' | 'rotation';
 
 const CANVAS_TOOL_LABELS: Readonly<Record<CanvasTool, string>> = Object.freeze({
   select: 'Select',
@@ -167,6 +170,27 @@ const CANVAS_Z_ORDER_ARIA_LABELS: Readonly<Record<CanvasZOrderCommand, string>> 
   front: 'Bring selected object to front',
   back: 'Send selected object to back',
 });
+
+const CANVAS_PLACEMENT_FIELD_LABELS: Readonly<Record<CanvasPlacementField, string>> = Object.freeze(
+  {
+    x: 'X',
+    y: 'Y',
+    width: 'Width',
+    height: 'Height',
+    rotation: 'Rotation',
+  },
+);
+
+const CANVAS_PLACEMENT_ARIA_LABELS: Readonly<Record<CanvasPlacementField, string>> = Object.freeze({
+  x: 'Selected object X',
+  y: 'Selected object Y',
+  width: 'Selected object width',
+  height: 'Selected object height',
+  rotation: 'Selected object rotation',
+});
+
+const CANVAS_POSITION_LIMIT = 1_000_000_000;
+const CANVAS_SIZE_LIMIT = 10_000_000;
 
 function sameCanvasPlacement(
   left: CanvasSpatialPlacement | undefined,
@@ -664,20 +688,26 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
       transform: (
         placements: readonly CanvasSpatialPlacement[],
       ) => readonly CanvasSpatialPlacement[],
+      coalesceKey?: string,
     ) => {
-      commit(kind, label, (current, now) => {
-        const placements = [...resolveEdgelessLayout(current).values()];
-        const previousById = new Map(
-          placements.map((placement) => [placement.blockId, placement] as const),
-        );
-        return transform(placements).reduce(
-          (next, placement) =>
-            sameCanvasPlacement(previousById.get(placement.blockId), placement)
-              ? next
-              : withPlacement(next, placement, now),
-          current,
-        );
-      });
+      commit(
+        kind,
+        label,
+        (current, now) => {
+          const placements = [...resolveEdgelessLayout(current).values()];
+          const previousById = new Map(
+            placements.map((placement) => [placement.blockId, placement] as const),
+          );
+          return transform(placements).reduce(
+            (next, placement) =>
+              sameCanvasPlacement(previousById.get(placement.blockId), placement)
+                ? next
+                : withPlacement(next, placement, now),
+            current,
+          );
+        },
+        coalesceKey,
+      );
     },
     [commit],
   );
@@ -714,6 +744,52 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
       const [id] = selected.ids;
       commitPlacementTransformation('style-change', CANVAS_Z_ORDER_LABELS[command], (placements) =>
         reorderCanvasPlacement(placements, id, command),
+      );
+    },
+    [commitPlacementTransformation, selected.ids],
+  );
+
+  const updateSelectedPlacementField = React.useCallback(
+    (field: CanvasPlacementField, rawValue: string) => {
+      if (
+        selected.ids.length !== 1 ||
+        documentRef.current.layoutMode !== 'edgeless' ||
+        rawValue.trim() === ''
+      ) {
+        return;
+      }
+      const parsedValue = Number(rawValue);
+      if (!Number.isFinite(parsedValue)) return;
+      const [id] = selected.ids;
+      const value =
+        field === 'x' || field === 'y'
+          ? Math.max(-CANVAS_POSITION_LIMIT, Math.min(CANVAS_POSITION_LIMIT, parsedValue))
+          : field === 'width' || field === 'height'
+            ? Math.min(CANVAS_SIZE_LIMIT, parsedValue)
+            : parsedValue;
+      const kind: CanvasHistoryActionKind =
+        field === 'rotation'
+          ? 'object-rotate'
+          : field === 'width' || field === 'height'
+            ? 'object-resize'
+            : 'object-move';
+      commitPlacementTransformation(
+        kind,
+        `Change canvas object ${field}`,
+        (placements) =>
+          placements.map((placement) => {
+            if (placement.blockId !== id) return placement;
+            if (field === 'rotation') {
+              return rotateCanvasPlacement(placement, value);
+            }
+            return resizeCanvasPlacement(placement, {
+              x: field === 'x' ? value : placement.x,
+              y: field === 'y' ? value : placement.y,
+              width: field === 'width' ? value : placement.width,
+              height: field === 'height' ? value : placement.height,
+            });
+          }),
+        `canvas-placement:${id}:${field}`,
       );
     },
     [commitPlacementTransformation, selected.ids],
@@ -1109,7 +1185,10 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     for (const id of drag.ids) {
       const element = blockElements.current.get(id);
       if (element) {
-        element.style.transform = `translate(${totalX}px, ${totalY}px)`;
+        const rotation = resolveEdgelessLayout(documentRef.current).get(
+          parseCanvasBlockId(id),
+        )?.rotation;
+        element.style.transform = `translate(${totalX}px, ${totalY}px) rotate(${rotation ?? 0}deg)`;
       }
     }
     objectDrag.current = {
@@ -1132,7 +1211,10 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     for (const id of drag.ids) {
       const element = blockElements.current.get(id);
       if (element) {
-        element.style.transform = '';
+        const rotation = resolveEdgelessLayout(documentRef.current).get(
+          parseCanvasBlockId(id),
+        )?.rotation;
+        element.style.transform = `rotate(${rotation ?? 0}deg)`;
       }
     }
     if (drag.moved && event.type !== 'pointercancel') {
@@ -1574,6 +1656,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     );
   };
   const placementById = resolveEdgelessLayout(document);
+  const selectedPlacement = selectedBlock ? placementById.get(selectedBlock.id) : undefined;
   const minimap = React.useMemo(() => {
     const placements = [...resolveEdgelessLayout(document).values()];
     const viewportBounds = {
@@ -2194,6 +2277,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                       top: placement?.y ?? 0,
                       width: placement?.width ?? 280,
                       height: placement?.height ?? 180,
+                      transform: `rotate(${placement?.rotation ?? 0}deg)`,
                       zIndex: (placement?.z ?? 0) + 1_000_000,
                     }}
                   >
@@ -2467,6 +2551,48 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                         {selectedBlock.content.language}
                       </output>
                     </div>
+                  ) : null}
+                  {document.layoutMode === 'edgeless' && selectedPlacement ? (
+                    <section aria-label="Selected object transform" className="space-y-2">
+                      <h3 className="text-xs font-medium text-muted-foreground">Transform</h3>
+                      <div className="grid grid-cols-2 gap-2">
+                        {(['x', 'y', 'width', 'height', 'rotation'] as const).map((field) => (
+                          <label
+                            key={field}
+                            className={[
+                              'space-y-1 text-xs text-muted-foreground',
+                              field === 'rotation' ? 'col-span-2' : '',
+                            ].join(' ')}
+                          >
+                            {CANVAS_PLACEMENT_FIELD_LABELS[field]}
+                            <input
+                              type="number"
+                              aria-label={CANVAS_PLACEMENT_ARIA_LABELS[field]}
+                              value={selectedPlacement[field]}
+                              min={
+                                field === 'width' || field === 'height'
+                                  ? 16
+                                  : field === 'rotation'
+                                    ? -360
+                                    : -CANVAS_POSITION_LIMIT
+                              }
+                              max={
+                                field === 'width' || field === 'height'
+                                  ? CANVAS_SIZE_LIMIT
+                                  : field === 'rotation'
+                                    ? 360
+                                    : CANVAS_POSITION_LIMIT
+                              }
+                              step={1}
+                              onChange={(event) =>
+                                updateSelectedPlacementField(field, event.currentTarget.value)
+                              }
+                              className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                            />
+                          </label>
+                        ))}
+                      </div>
+                    </section>
                   ) : null}
                   {document.layoutMode === 'edgeless' ? (
                     <section aria-label="Selected object order" className="space-y-2">

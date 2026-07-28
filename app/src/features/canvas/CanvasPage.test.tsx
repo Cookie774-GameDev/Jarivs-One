@@ -693,6 +693,68 @@ describe('CanvasPage', () => {
     );
   });
 
+  it('persists precise position, size, and rotation edits as undoable transforms', async () => {
+    const block = createCanvasBlock({
+      id: 'transform-note',
+      content: { kind: 'note', text: 'Transform me' },
+      now: 100,
+    });
+    const canvas = withPlacement(
+      withBlockAdded(
+        createCanvasDocument({
+          id: 'transform-canvas',
+          projectId: PERSISTENCE_SCOPE.projectId,
+          ownerId: PERSISTENCE_SCOPE.ownerId,
+          layoutMode: 'edgeless',
+          now: 100,
+        }),
+        block,
+        100,
+      ),
+      { blockId: block.id, x: 40, y: 60, width: 200, height: 120, rotation: 0 },
+      100,
+    );
+    const repository = persistenceRepository({
+      loadLatest: vi.fn(async () => canvas),
+    });
+    render(
+      <CanvasPage persistence={{ repository, scope: PERSISTENCE_SCOPE, autosaveDelayMs: 0 }} />,
+    );
+
+    expect(await screen.findByDisplayValue('Transform me')).toBeTruthy();
+    const note = screen.getByLabelText('Canvas note');
+    fireEvent.click(note);
+    fireEvent.click(screen.getByRole('button', { name: 'Show canvas properties' }));
+
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Selected object X' }), {
+      target: { value: '125' },
+    });
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Selected object width' }), {
+      target: { value: '8' },
+    });
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Selected object rotation' }), {
+      target: { value: '45' },
+    });
+
+    expect(Number.parseFloat(note.style.left)).toBe(125);
+    expect(Number.parseFloat(note.style.width)).toBe(16);
+    expect(note.style.transform).toBe('rotate(45deg)');
+    await waitFor(() => expect(repository.save).toHaveBeenCalled());
+    expect(vi.mocked(repository.save).mock.calls.at(-1)?.[1].placements[0]).toMatchObject({
+      blockId: block.id,
+      x: 125,
+      width: 16,
+      rotation: 45,
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(note.style.transform).toBe('rotate(0deg)');
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(Number.parseFloat(note.style.width)).toBe(200);
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(Number.parseFloat(note.style.left)).toBe(40);
+  });
+
   it('drags selected objects in world coordinates as one undoable action', () => {
     render(<CanvasPage />);
     fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
