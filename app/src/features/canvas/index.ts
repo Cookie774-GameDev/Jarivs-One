@@ -82,6 +82,7 @@ export * from './geometry';
 export * from './globalSearch';
 export * from './groups';
 export * from './history';
+export * from './importExport';
 export * from './linkedContent';
 export * from './media';
 export * from './markdown';
