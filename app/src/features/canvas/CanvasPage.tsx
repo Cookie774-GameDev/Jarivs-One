@@ -4,6 +4,8 @@ import {
   ChevronRight,
   Code2,
   Download,
+  FileDown,
+  FileUp,
   Hand,
   Heading,
   LassoSelect,
@@ -62,6 +64,11 @@ import {
 } from './camera';
 import { copyBlocks, cutBlocks, pasteBlocks, type CanvasClipboardPayload } from './clipboard';
 import { createCanvasHistory, type CanvasHistory, type CanvasHistoryActionKind } from './history';
+import {
+  CANVAS_MARKDOWN_MAX_SOURCE_LENGTH,
+  exportCanvasDocumentToMarkdown,
+  parseMarkdownToBlockContents,
+} from './markdown';
 import { decodeCanvasPackage, encodeCanvasPackage } from './packageFormat';
 import {
   clearCanvasSelection,
@@ -342,6 +349,15 @@ function createDocumentId(): string {
   }
   documentSequence += 1;
   return `canvas-${Date.now().toString(36)}-${documentSequence.toString(36)}`;
+}
+
+function safeExportTitle(title: string): string {
+  return (
+    title
+      .trim()
+      .replace(/[^a-z0-9._-]+/gi, '-')
+      .replace(/^-+|-+$/g, '') || 'canvas'
+  );
 }
 
 interface ToolButtonProps {
@@ -1937,21 +1953,104 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     }
   };
 
-  const exportPackage = () => {
-    const blob = new Blob([encodeCanvasPackage(documentRef.current)], {
-      type: 'application/json',
-    });
+  const importMarkdown = async (file: File) => {
+    try {
+      const target = documentRef.current;
+      const targetIdentity = {
+        id: target.id,
+        projectId: target.projectId,
+        ownerId: target.ownerId,
+      };
+      if (file.size > CANVAS_MARKDOWN_MAX_SOURCE_LENGTH) {
+        throw new Error(
+          `file exceeds the ${CANVAS_MARKDOWN_MAX_SOURCE_LENGTH.toLocaleString()} byte limit`,
+        );
+      }
+      const source = await file.text();
+      const active = documentRef.current;
+      if (
+        active.id !== targetIdentity.id ||
+        active.projectId !== targetIdentity.projectId ||
+        active.ownerId !== targetIdentity.ownerId
+      ) {
+        throw new Error('active canvas changed before the file finished loading');
+      }
+      const contents = parseMarkdownToBlockContents(source);
+      if (contents.length === 0) {
+        throw new Error('document contains no importable blocks');
+      }
+
+      commit(
+        'object-create',
+        `Import ${contents.length} Markdown ${contents.length === 1 ? 'block' : 'blocks'}`,
+        (current, now) => {
+          const knownIds = new Set<string>(current.blocks.map((block) => block.id));
+          const importedBlocks = contents.map((content) => {
+            let blockId: string;
+            do {
+              sequence.current += 1;
+              blockId = `canvas-markdown-${content.kind}-${sequence.current.toString(36)}`;
+            } while (knownIds.has(blockId));
+            knownIds.add(blockId);
+            return createCanvasBlock({ id: blockId, content, now });
+          });
+          return parseCanvasDocument({
+            ...current,
+            blocks: [...current.blocks, ...importedBlocks],
+            pageOrder: [...current.pageOrder, ...importedBlocks.map((block) => block.id)],
+            localRevision: current.localRevision + 1,
+            updatedAt: now,
+          });
+        },
+      );
+      setPackageMessage(
+        `Imported ${contents.length} Markdown ${contents.length === 1 ? 'block' : 'blocks'} from ${file.name || 'document.md'}`,
+      );
+    } catch (error) {
+      setPackageMessage(
+        error instanceof Error
+          ? `Markdown import failed: ${error.message}`
+          : 'Markdown import failed: invalid document',
+      );
+    }
+  };
+
+  const downloadDocument = (content: BlobPart, type: string, extension: string): void => {
+    const blob = new Blob([content], { type });
     const url = URL.createObjectURL(blob);
     const anchor = window.document.createElement('a');
-    const safeTitle =
-      documentRef.current.title
-        .trim()
-        .replace(/[^a-z0-9._-]+/gi, '-')
-        .replace(/^-+|-+$/g, '') || 'canvas';
     anchor.href = url;
-    anchor.download = `${safeTitle}.vibespace-canvas.json`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+    anchor.download = `${safeExportTitle(documentRef.current.title)}${extension}`;
+    try {
+      anchor.click();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  };
+
+  const exportMarkdown = () => {
+    try {
+      downloadDocument(
+        exportCanvasDocumentToMarkdown(documentRef.current),
+        'text/markdown;charset=utf-8',
+        '.md',
+      );
+      setPackageMessage('Markdown document exported');
+    } catch (error) {
+      setPackageMessage(
+        error instanceof Error
+          ? `Markdown export failed: ${error.message}`
+          : 'Markdown export failed: invalid document',
+      );
+    }
+  };
+
+  const exportPackage = () => {
+    downloadDocument(
+      encodeCanvasPackage(documentRef.current),
+      'application/json',
+      '.vibespace-canvas.json',
+    );
     setPackageMessage('Canvas package exported');
   };
 
@@ -2354,6 +2453,31 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
           className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
         >
           <Download aria-hidden size={17} />
+        </button>
+        <label
+          title="Import Markdown document"
+          className="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          <FileUp aria-hidden size={17} />
+          <input
+            aria-label="Import Markdown document"
+            type="file"
+            accept=".md,.markdown,text/markdown,text/plain"
+            className="sr-only"
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              event.currentTarget.value = '';
+              if (file) void importMarkdown(file);
+            }}
+          />
+        </label>
+        <button
+          type="button"
+          aria-label="Export Markdown document"
+          onClick={exportMarkdown}
+          className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          <FileDown aria-hidden size={17} />
         </button>
         <button
           type="button"

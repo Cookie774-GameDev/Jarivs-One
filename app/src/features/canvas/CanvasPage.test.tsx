@@ -9,6 +9,7 @@ import {
   withPlacement,
 } from './contracts';
 import { createCanvasGlobalSearchIndex, requestCanvasGlobalSearchNavigation } from './globalSearch';
+import { CANVAS_MARKDOWN_MAX_SOURCE_LENGTH } from './markdown';
 import { createMindMap } from './mindmaps';
 import { encodeCanvasPackage } from './packageFormat';
 import type { CanvasPersistenceRepository, CanvasPersistenceScope } from './persistence';
@@ -43,6 +44,15 @@ function persistedDocument(scope: CanvasPersistenceScope, id: string, title: str
     ownerId: scope.ownerId,
     title,
     now,
+  });
+}
+
+function readBlobText(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener('load', () => resolve(String(reader.result ?? '')));
+    reader.addEventListener('error', () => reject(reader.error ?? new Error('Blob read failed')));
+    reader.readAsText(blob);
   });
 }
 
@@ -1334,6 +1344,134 @@ describe('CanvasPage', () => {
 
     expect(await screen.findByText(/^Import failed:/)).toBeTruthy();
     expect(screen.getByDisplayValue('New note 1')).toBeTruthy();
+  });
+
+  it('appends imported Markdown blocks as one undoable transaction', async () => {
+    const markdown = [
+      '# Imported heading',
+      '',
+      'Imported paragraph',
+      '',
+      '```ts',
+      'const answer = 42;',
+      '```',
+    ].join('\n');
+    const file = new File([markdown], 'launch-notes.md', { type: 'text/markdown' });
+    Object.defineProperty(file, 'text', { value: async () => markdown });
+
+    render(<CanvasPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    fireEvent.change(screen.getByLabelText('Import Markdown document'), {
+      target: { files: [file] },
+    });
+
+    expect(await screen.findByDisplayValue('Imported heading')).toBeTruthy();
+    expect(screen.getByDisplayValue('Imported paragraph')).toBeTruthy();
+    expect(screen.getByDisplayValue('const answer = 42;')).toBeTruthy();
+    expect(screen.getByDisplayValue('New note 1')).toBeTruthy();
+    expect(screen.getByText('Imported 3 Markdown blocks from launch-notes.md')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+
+    expect(screen.queryByDisplayValue('Imported heading')).toBeNull();
+    expect(screen.queryByDisplayValue('Imported paragraph')).toBeNull();
+    expect(screen.queryByDisplayValue('const answer = 42;')).toBeNull();
+    expect(screen.getByDisplayValue('New note 1')).toBeTruthy();
+  });
+
+  it('rejects an oversized Markdown file before reading or mutating the canvas', async () => {
+    const file = new File(['x'.repeat(CANVAS_MARKDOWN_MAX_SOURCE_LENGTH + 1)], 'oversized.md', {
+      type: 'text/markdown',
+    });
+    const read = vi.fn(async () => 'must not be read');
+    Object.defineProperty(file, 'text', { value: read });
+
+    render(<CanvasPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    fireEvent.change(screen.getByLabelText('Import Markdown document'), {
+      target: { files: [file] },
+    });
+
+    expect(await screen.findByText(/^Markdown import failed:/)).toBeTruthy();
+    expect(read).not.toHaveBeenCalled();
+    expect(screen.getByDisplayValue('New note 1')).toBeTruthy();
+  });
+
+  it('does not import a Markdown file after the active persistence scope changes', async () => {
+    const otherScope: CanvasPersistenceScope = {
+      accountId: 'account-b',
+      projectId: 'project-b',
+      ownerId: 'account-b',
+    };
+    const repository = persistenceRepository({
+      loadLatest: vi.fn(async (scope) =>
+        persistedDocument(scope, `canvas-${scope.accountId}`, `Canvas for ${scope.accountId}`),
+      ),
+    });
+    let finishRead!: (source: string) => void;
+    const source = new Promise<string>((resolve) => {
+      finishRead = resolve;
+    });
+    const file = new File(['# Cross-scope idea'], 'scope-race.md', { type: 'text/markdown' });
+    Object.defineProperty(file, 'text', { value: () => source });
+    const { rerender } = render(
+      <CanvasPage persistence={{ repository, scope: PERSISTENCE_SCOPE }} />,
+    );
+
+    expect(await screen.findByDisplayValue('Canvas for account-a')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Import Markdown document'), {
+      target: { files: [file] },
+    });
+    rerender(<CanvasPage persistence={{ repository, scope: otherScope }} />);
+    expect(await screen.findByDisplayValue('Canvas for account-b')).toBeTruthy();
+    finishRead('# Cross-scope idea');
+
+    expect(await screen.findByText(/^Markdown import failed:/)).toBeTruthy();
+    expect(screen.queryByDisplayValue('Cross-scope idea')).toBeNull();
+    expect(screen.getByDisplayValue('Canvas for account-b')).toBeTruthy();
+  });
+
+  it('exports the current canonical canvas as a Markdown document download', async () => {
+    const createObjectURL = vi.fn((_blob: Blob) => 'blob:canvas-markdown');
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: createObjectURL });
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: revokeObjectURL });
+    let downloadedAs = '';
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(function recordDownload(this: HTMLAnchorElement) {
+        downloadedAs = this.download;
+      });
+
+    render(<CanvasPage />);
+    fireEvent.change(screen.getByRole('textbox', { name: 'Canvas title' }), {
+      target: { value: 'Launch Notes' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Export Markdown document' }));
+
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    const blob = createObjectURL.mock.calls[0]?.[0];
+    expect(blob).toBeInstanceOf(Blob);
+    expect(blob?.type).toBe('text/markdown;charset=utf-8');
+    expect(await readBlobText(blob!)).toBe('> New note 1');
+    expect(downloadedAs).toBe('Launch-Notes.md');
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:canvas-markdown');
+    expect(screen.getByText('Markdown document exported')).toBeTruthy();
+    click.mockRestore();
+  });
+
+  it('reports unsupported Markdown export content without claiming a download', () => {
+    const createObjectURL = vi.fn((_blob: Blob) => 'blob:must-not-download');
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: createObjectURL });
+
+    render(<CanvasPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add mind map' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Export Markdown document' }));
+
+    expect(createObjectURL).not.toHaveBeenCalled();
+    expect(screen.getByText(/^Markdown export failed:/)).toBeTruthy();
+    expect(screen.queryByText('Markdown document exported')).toBeNull();
   });
 
   it('exports the current canonical canvas as a portable package download', () => {
