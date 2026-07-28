@@ -69,6 +69,7 @@ import {
   addMindMapSibling as appendMindMapSibling,
   createMindMap,
   navigateMindMap,
+  reorderMindMapBranch,
   setMindMapBranchCollapsed,
   setMindMapDirection,
   setMindMapConnectorStyle,
@@ -992,6 +993,33 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     });
   };
 
+  const moveMindMapBranchEarlier = (blockId: string, nodeId: string) => {
+    commit('block-change', 'Reorder mind-map branch', (current, now) => {
+      const block = blockById(current, blockId);
+      const content = block?.content;
+      if (!content || content.kind !== 'mind-map') return current;
+      const node = content.map.nodes.find((entry) => entry.id === nodeId);
+      if (!node || node.parentId === null) return current;
+      const parent = content.map.nodes.find((entry) => entry.id === node.parentId);
+      const index = parent?.childIds.indexOf(node.id) ?? -1;
+      if (!parent || index <= 0) return current;
+      return withBlockContent(
+        current,
+        blockId,
+        {
+          kind: 'mind-map',
+          map: reorderMindMapBranch(content.map, {
+            parentId: parent.id,
+            nodeId: node.id,
+            index: index - 1,
+            now,
+          }),
+        },
+        now,
+      );
+    });
+  };
+
   const changeMindMapDirection = (blockId: string, value: string) => {
     commit('block-change', 'Change mind-map direction', (current, now) => {
       const block = blockById(current, blockId);
@@ -1224,7 +1252,13 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     const content = block.content;
     if (content.kind === 'mind-map') {
       const root = content.map.nodes.find((node) => node.id === content.map.rootId);
-      const rootChildren = content.map.nodes.filter((node) => node.parentId === root?.id);
+      const nodesById = new Map(content.map.nodes.map((node) => [node.id, node]));
+      const rootChildren = root
+        ? root.childIds.flatMap((nodeId) => {
+            const node = nodesById.get(nodeId);
+            return node ? [node] : [];
+          })
+        : [];
       return (
         <section
           aria-label={`Mind map: ${root?.label ?? 'Untitled'}`}
@@ -1313,7 +1347,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
           ) : null}
           {root?.collapsed ? null : (
             <ul className="space-y-1 text-xs text-muted-foreground">
-              {rootChildren.map((node) => (
+              {rootChildren.map((node, index) => (
                 <li key={node.id} className="flex items-center gap-2">
                   <button
                     type="button"
@@ -1335,6 +1369,19 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                   >
                     Add sibling
                   </button>
+                  {index > 0 ? (
+                    <button
+                      type="button"
+                      aria-label={`Move ${node.label} before ${rootChildren[index - 1]?.label ?? 'previous branch'}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        moveMindMapBranchEarlier(block.id, node.id);
+                      }}
+                      className="rounded border border-border px-2 py-1 text-xs"
+                    >
+                      Move up
+                    </button>
+                  ) : null}
                 </li>
               ))}
             </ul>

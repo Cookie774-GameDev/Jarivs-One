@@ -535,6 +535,29 @@ describe('CanvasPage', () => {
     ).toBe('pill');
   });
 
+  it('reorders sibling branches through one undoable canonical transaction', () => {
+    render(<CanvasPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add mind map' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add child to New mind map 1' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add sibling to New branch 1' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Move New branch 2 before New branch 1' }));
+
+    expect(
+      screen
+        .getAllByRole('button', { name: /Mind map node: New branch/ })
+        .map((button) => button.getAttribute('aria-label')),
+    ).toEqual(['Mind map node: New branch 2', 'Mind map node: New branch 1']);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+
+    expect(
+      screen
+        .getAllByRole('button', { name: /Mind map node: New branch/ })
+        .map((button) => button.getAttribute('aria-label')),
+    ).toEqual(['Mind map node: New branch 1', 'Mind map node: New branch 2']);
+  });
+
   it('imports a validated canvas package as one undoable document replacement', async () => {
     let imported = createCanvasDocument({
       id: 'imported-canvas',
