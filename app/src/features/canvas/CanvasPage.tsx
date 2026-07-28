@@ -109,6 +109,7 @@ import {
   type CanvasPersistenceScope,
 } from './persistence';
 import {
+  canEnterFullscreen,
   enterPresentMode,
   exitPresentMode,
   frameZoomTarget,
@@ -397,6 +398,15 @@ function presentationFrameLabel(block: CanvasBlock | undefined): string {
     : `Untitled ${CANVAS_BLOCK_KIND_LABELS[block.content.kind]}`;
 }
 
+function supportsPresentationFullscreen(): boolean {
+  return (
+    typeof document !== 'undefined' &&
+    typeof HTMLElement !== 'undefined' &&
+    typeof HTMLElement.prototype.requestFullscreen === 'function' &&
+    typeof document.exitFullscreen === 'function'
+  );
+}
+
 interface ToolButtonProps {
   readonly active: boolean;
   readonly label: string;
@@ -461,9 +471,12 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
   );
   const [document, setDocument] = React.useState(INITIAL_DOCUMENT);
   const documentRef = React.useRef<CanvasDocument>(INITIAL_DOCUMENT);
+  const fullscreenSupported = supportsPresentationFullscreen();
   const [presentation, setPresentation] = React.useState<PresentationState>(() =>
-    presentationFromDocument(INITIAL_DOCUMENT),
+    presentationFromDocument(INITIAL_DOCUMENT, { fullscreen: fullscreenSupported }),
   );
+  const [presentationFullscreen, setPresentationFullscreen] = React.useState(false);
+  const [presentationFullscreenMessage, setPresentationFullscreenMessage] = React.useState('');
   const presentationTriggerRef = React.useRef<HTMLButtonElement>(null);
   const presentationRegionRef = React.useRef<HTMLElement>(null);
   const presentationDragFrameRef = React.useRef<string | null>(null);
@@ -1086,11 +1099,39 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     setSelected(clearCanvasSelection);
   }, [commit, selected.ids]);
 
+  const exitPresentation = React.useCallback(() => {
+    const region = presentationRegionRef.current;
+    if (
+      region &&
+      typeof globalThis.document.exitFullscreen === 'function' &&
+      globalThis.document.fullscreenElement === region
+    ) {
+      void globalThis.document.exitFullscreen().catch(() => {
+        setPresentationFullscreenMessage('Could not exit presentation fullscreen');
+      });
+    }
+    setPresentation((current) => exitPresentMode(current));
+  }, []);
+
   React.useEffect(() => {
     setPresentation((current) =>
-      current.status === 'presenting' ? current : presentationFromDocument(document),
+      current.status === 'presenting'
+        ? current
+        : presentationFromDocument(document, current.capabilities),
     );
   }, [document.presentationOrder]);
+
+  React.useEffect(() => {
+    const syncFullscreenState = () => {
+      const region = presentationRegionRef.current;
+      setPresentationFullscreen(
+        region !== null && globalThis.document.fullscreenElement === region,
+      );
+    };
+    globalThis.document.addEventListener('fullscreenchange', syncFullscreenState);
+    syncFullscreenState();
+    return () => globalThis.document.removeEventListener('fullscreenchange', syncFullscreenState);
+  }, []);
 
   React.useEffect(() => {
     if (presentation.status === 'presenting') {
@@ -1109,7 +1150,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
       if (presentation.status === 'presenting') {
         if (event.key === 'Escape') {
           event.preventDefault();
-          setPresentation((current) => exitPresentMode(current));
+          exitPresentation();
           return;
         }
         if (event.key === 'ArrowRight' || event.key === 'PageDown' || event.key === ' ') {
@@ -1222,6 +1263,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     deleteSelected,
     document.layoutMode,
     duplicateSelected,
+    exitPresentation,
     nudgeSelected,
     pasteClipboard,
     presentation.status,
@@ -2022,7 +2064,28 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
 
   const startPresentation = () => {
     if (document.presentationOrder.length === 0) return;
-    setPresentation(enterPresentMode(presentationFromDocument(documentRef.current)));
+    setPresentation((current) =>
+      enterPresentMode(presentationFromDocument(documentRef.current, current.capabilities)),
+    );
+  };
+
+  const togglePresentationFullscreen = async () => {
+    const region = presentationRegionRef.current;
+    if (!region || !canEnterFullscreen(presentation)) return;
+    setPresentationFullscreenMessage('');
+    try {
+      if (globalThis.document.fullscreenElement === region) {
+        await globalThis.document.exitFullscreen();
+        return;
+      }
+      if (globalThis.document.fullscreenElement) {
+        setPresentationFullscreenMessage('Another view is already fullscreen');
+        return;
+      }
+      await region.requestFullscreen();
+    } catch {
+      setPresentationFullscreenMessage('Presentation fullscreen was rejected');
+    }
   };
 
   const importPackage = async (file: File) => {
@@ -2941,15 +3004,34 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
             >
               Slide {activePresentationProgress.current} of {activePresentationProgress.total}
             </output>
-            <button
-              type="button"
-              aria-label="Exit presentation"
-              onClick={() => setPresentation((current) => exitPresentMode(current))}
-              className="rounded-md border border-background/30 px-3 py-2 text-sm hover:bg-background/10"
-            >
-              Exit
-            </button>
+            <div className="flex items-center gap-2">
+              {canEnterFullscreen(presentation) ? (
+                <button
+                  type="button"
+                  aria-label={
+                    presentationFullscreen
+                      ? 'Exit presentation fullscreen'
+                      : 'Enter presentation fullscreen'
+                  }
+                  onClick={() => void togglePresentationFullscreen()}
+                  className="rounded-md border border-background/30 px-3 py-2 text-sm hover:bg-background/10"
+                >
+                  {presentationFullscreen ? 'Windowed' : 'Fullscreen'}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                aria-label="Exit presentation"
+                onClick={exitPresentation}
+                className="rounded-md border border-background/30 px-3 py-2 text-sm hover:bg-background/10"
+              >
+                Exit
+              </button>
+            </div>
           </header>
+          <output aria-live="polite" className="sr-only">
+            {presentationFullscreenMessage}
+          </output>
           <div className="flex min-h-0 flex-1 items-center justify-center py-8">
             <article className="max-h-full w-full max-w-5xl overflow-auto rounded-2xl bg-background p-10 text-foreground shadow-2xl">
               {activePresentationBlock ? (

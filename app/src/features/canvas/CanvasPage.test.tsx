@@ -1259,6 +1259,75 @@ describe('CanvasPage', () => {
     expect(screen.getByLabelText('Canvas note').getAttribute('data-selected')).toBe('true');
   });
 
+  it('enters and exits real presentation fullscreen when the environment supports it', async () => {
+    let fullscreenElement: Element | null = null;
+    const requestFullscreenDescriptor = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      'requestFullscreen',
+    );
+    const exitFullscreenDescriptor = Object.getOwnPropertyDescriptor(document, 'exitFullscreen');
+    const fullscreenElementDescriptor = Object.getOwnPropertyDescriptor(
+      document,
+      'fullscreenElement',
+    );
+    const requestFullscreen = vi.fn(async function (this: Element) {
+      fullscreenElement = this;
+      document.dispatchEvent(new Event('fullscreenchange'));
+    });
+    const exitFullscreen = vi.fn(async () => {
+      fullscreenElement = null;
+      document.dispatchEvent(new Event('fullscreenchange'));
+    });
+    Object.defineProperty(HTMLElement.prototype, 'requestFullscreen', {
+      configurable: true,
+      value: requestFullscreen,
+    });
+    Object.defineProperty(document, 'exitFullscreen', {
+      configurable: true,
+      value: exitFullscreen,
+    });
+    Object.defineProperty(document, 'fullscreenElement', {
+      configurable: true,
+      get: () => fullscreenElement,
+    });
+
+    try {
+      render(<CanvasPage />);
+      fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+      fireEvent.click(screen.getByLabelText('Canvas note'));
+      fireEvent.click(screen.getByRole('button', { name: 'Show canvas properties' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Add selected object to presentation' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Present canvas' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Enter presentation fullscreen' }));
+
+      await waitFor(() => expect(requestFullscreen).toHaveBeenCalledOnce());
+      expect(screen.getByRole('button', { name: 'Exit presentation fullscreen' })).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Exit presentation' }));
+      await waitFor(() => expect(exitFullscreen).toHaveBeenCalledOnce());
+      expect(screen.queryByRole('region', { name: 'Canvas presentation' })).toBeNull();
+    } finally {
+      if (requestFullscreenDescriptor) {
+        Object.defineProperty(
+          HTMLElement.prototype,
+          'requestFullscreen',
+          requestFullscreenDescriptor,
+        );
+      } else {
+        delete (HTMLElement.prototype as { requestFullscreen?: unknown }).requestFullscreen;
+      }
+      if (exitFullscreenDescriptor) {
+        Object.defineProperty(document, 'exitFullscreen', exitFullscreenDescriptor);
+      } else {
+        delete (document as { exitFullscreen?: unknown }).exitFullscreen;
+      }
+      if (fullscreenElementDescriptor) {
+        Object.defineProperty(document, 'fullscreenElement', fullscreenElementDescriptor);
+      } else {
+        delete (document as { fullscreenElement?: unknown }).fullscreenElement;
+      }
+    }
+  });
+
   it('navigates presentation frames by controls and keyboard without editing content', () => {
     render(<CanvasPage />);
     const addNote = screen.getByRole('button', { name: 'Add note' });
