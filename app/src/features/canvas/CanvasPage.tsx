@@ -53,6 +53,9 @@ import {
 import { db } from '@/lib/db';
 import { resolveAccountIdentity } from '@/lib/accountIdentity';
 import { useAuthStore } from '@/stores/auth';
+import { useUIStore } from '@/stores/ui';
+import { compileCanvasAiContext } from './aiContext';
+import { publishActiveCanvasAiContextProvider } from './aiContextRegistry';
 import {
   cameraZoomPercent,
   createCameraNavigator,
@@ -409,6 +412,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
   const cloudSession = useAuthStore((state) => state.cloudSession);
   const localUserId = useAuthStore((state) => state.localUserId);
   const projectId = useAuthStore((state) => state.projectId);
+  const canvasRouteActive = useUIStore((state) => state.route === 'canvas');
   const accountIdentity = resolveAccountIdentity({ cloudSession, localUserId });
   const defaultRepository = React.useMemo(() => createCanvasPersistenceRepository(db), []);
   const defaultScope = React.useMemo<CanvasPersistenceScope | null>(
@@ -699,6 +703,39 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     persistence?.now,
     persistenceScopeKey,
     replaceActiveDocument,
+  ]);
+
+  React.useEffect(() => {
+    if (
+      !canvasRouteActive ||
+      activeScope === null ||
+      activeScope.accountId !== activeScope.ownerId ||
+      persistenceStatus === 'loading' ||
+      document.projectId !== activeScope.projectId ||
+      document.ownerId !== activeScope.ownerId
+    ) {
+      return;
+    }
+    const publishedDocument = document;
+    const selectedBlockIds = [...selected.ids];
+    return publishActiveCanvasAiContextProvider({
+      accountId: activeScope.accountId,
+      ownerId: activeScope.ownerId,
+      projectId: activeScope.projectId,
+      canvasId: publishedDocument.id,
+      getContext: () =>
+        compileCanvasAiContext({
+          document: publishedDocument,
+          selectedBlockIds,
+        }),
+    });
+  }, [
+    activeScope,
+    canvasRouteActive,
+    document,
+    persistenceScopeKey,
+    persistenceStatus,
+    selected.ids,
   ]);
 
   const commit = React.useCallback(

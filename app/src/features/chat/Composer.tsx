@@ -237,6 +237,17 @@ import { PromptForgeRecovery } from '@/features/prompt-forge/PromptForgeRecovery
 import { PromptForgeReview } from '@/features/prompt-forge/PromptForgeReview';
 import { usePromptForgeComposer } from '@/features/prompt-forge/usePromptForgeComposer';
 import type { PromptForgeComposerDescriptor } from '@/features/prompt-forge/composerSources';
+import type { PromptForgeSourceCandidate } from '@/features/prompt-forge/sourcePack';
+import { mergeActiveCanvasPromptForgeSources } from '@/features/canvas/aiContextRegistry';
+
+export function mergeActiveCanvasSourcesForPromptForge(
+  sources: readonly PromptForgeSourceCandidate[],
+  accountId: string,
+  projectId: string | null,
+  canvasRouteActive: boolean,
+): readonly PromptForgeSourceCandidate[] {
+  return mergeActiveCanvasPromptForgeSources(sources, { accountId, projectId }, canvasRouteActive);
+}
 
 const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
   devBuild: import.meta.env.DEV,
@@ -2421,7 +2432,7 @@ export function Composer({
         ).length,
         updatedAt: task.updated_at,
       }));
-      return collectPromptForgeComposerSources(
+      const composerSources = await collectPromptForgeComposerSources(
         {
           accountId: pluginAccountId,
           projectId,
@@ -2480,6 +2491,12 @@ export function Composer({
           now,
         },
         signal,
+      );
+      return mergeActiveCanvasSourcesForPromptForge(
+        composerSources,
+        pluginAccountId,
+        projectId,
+        useUIStore.getState().route === 'canvas',
       );
     },
     [

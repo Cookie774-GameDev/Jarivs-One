@@ -6,9 +6,16 @@ import {
   buildSlashReferenceCommand,
   extractAbsoluteFilePaths,
   getQueuedMessageNotice,
+  mergeActiveCanvasSourcesForPromptForge,
   resolveMentionedAgentIdsForSend,
 } from './Composer';
 import { findSlashCommandDef } from './SlashCommandTypeahead';
+import { compileCanvasAiContext } from '@/features/canvas/aiContext';
+import {
+  clearActiveCanvasAiContextForTests,
+  publishActiveCanvasAiContextProvider,
+} from '@/features/canvas/aiContextRegistry';
+import { createCanvasDocument } from '@/features/canvas/contracts';
 
 function agent(id: string, slug: string): Agent {
   return {
@@ -91,5 +98,42 @@ describe('composer mention and slash confirmation helpers', () => {
       label: '/hive: Hive Balanced',
       value: 'reference:hive',
     });
+  });
+});
+
+describe('composer active Canvas source collection', () => {
+  it('adds the exact active account/project Canvas sources and rejects hidden-route context', () => {
+    clearActiveCanvasAiContextForTests();
+    const document = createCanvasDocument({
+      id: 'canvas-1',
+      projectId: 'project-1',
+      ownerId: 'account-1',
+      title: 'Architecture canvas',
+      now: 10,
+    });
+    publishActiveCanvasAiContextProvider({
+      accountId: 'account-1',
+      ownerId: 'account-1',
+      projectId: 'project-1',
+      canvasId: 'canvas-1',
+      getContext: () => compileCanvasAiContext({ document }),
+    });
+
+    expect(mergeActiveCanvasSourcesForPromptForge([], 'account-1', 'project-1', false)).toEqual([]);
+    expect(mergeActiveCanvasSourcesForPromptForge([], 'account-other', 'project-1', true)).toEqual(
+      [],
+    );
+    expect(
+      mergeActiveCanvasSourcesForPromptForge([], 'account-1', 'project-1', true).map(
+        ({ id, label, reference }) => ({ id, label, reference }),
+      ),
+    ).toEqual([
+      {
+        id: 'canvas:canvas-1',
+        label: 'Architecture canvas',
+        reference: 'canvas:canvas-1',
+      },
+    ]);
+    clearActiveCanvasAiContextForTests();
   });
 });

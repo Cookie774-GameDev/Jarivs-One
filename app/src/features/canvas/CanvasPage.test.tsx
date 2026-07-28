@@ -9,11 +9,13 @@ import {
   withPlacement,
 } from './contracts';
 import { createCanvasGlobalSearchIndex, requestCanvasGlobalSearchNavigation } from './globalSearch';
+import { clearActiveCanvasAiContextForTests, readActiveCanvasAiContext } from './aiContextRegistry';
 import { CANVAS_MARKDOWN_MAX_SOURCE_LENGTH } from './markdown';
 import { createMindMap } from './mindmaps';
 import { encodeCanvasPackage } from './packageFormat';
 import type { CanvasPersistenceRepository, CanvasPersistenceScope } from './persistence';
 import type { CanvasRecoveryEntry } from './autosave';
+import { useUIStore } from '@/stores/ui';
 
 const PERSISTENCE_SCOPE: CanvasPersistenceScope = {
   accountId: 'account-a',
@@ -114,6 +116,72 @@ describe('CanvasPage', () => {
       ownerId: PERSISTENCE_SCOPE.ownerId,
     });
     expect(screen.getByText('Saved locally')).toBeTruthy();
+  });
+
+  it('publishes exact scoped Canvas and selected-object context only while the route is active', async () => {
+    const latest = persistedDocument(PERSISTENCE_SCOPE, 'persisted-canvas', 'Launch canvas');
+    const repository = persistenceRepository({
+      loadLatest: vi.fn(async () => latest),
+    });
+    clearActiveCanvasAiContextForTests();
+    useUIStore.setState({ route: 'canvas' });
+
+    const view = render(
+      <CanvasPage
+        persistence={{
+          repository,
+          scope: PERSISTENCE_SCOPE,
+          autosaveDelayMs: 0,
+          now: () => 500,
+        }}
+      />,
+    );
+
+    expect(await screen.findByDisplayValue('Launch canvas')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    fireEvent.click(screen.getByRole('article', { name: 'Canvas note' }));
+
+    await waitFor(() =>
+      expect(
+        readActiveCanvasAiContext({
+          accountId: PERSISTENCE_SCOPE.accountId,
+          projectId: PERSISTENCE_SCOPE.projectId,
+        })?.selection.map(({ id }) => id),
+      ).toEqual(['persisted-canvas-note-1']),
+    );
+    const active = readActiveCanvasAiContext({
+      accountId: PERSISTENCE_SCOPE.accountId,
+      projectId: PERSISTENCE_SCOPE.projectId,
+    });
+    expect(
+      active?.promptForgeSources.map(({ id, label, reference }) => ({ id, label, reference })),
+    ).toEqual([
+      {
+        id: 'canvas:persisted-canvas',
+        label: 'Launch canvas',
+        reference: 'canvas:persisted-canvas',
+      },
+      {
+        id: 'canvas-block:persisted-canvas:persisted-canvas-note-1',
+        label: 'note block persisted-canvas-note-1',
+        reference: 'canvas:persisted-canvas#persisted-canvas-note-1',
+      },
+    ]);
+    expect(
+      readActiveCanvasAiContext({ accountId: 'account-other', projectId: 'project-a' }),
+    ).toBeNull();
+
+    act(() => useUIStore.setState({ route: 'chat' }));
+    await waitFor(() =>
+      expect(
+        readActiveCanvasAiContext({
+          accountId: PERSISTENCE_SCOPE.accountId,
+          projectId: PERSISTENCE_SCOPE.projectId,
+        }),
+      ).toBeNull(),
+    );
+    view.unmount();
+    clearActiveCanvasAiContextForTests();
   });
 
   it('loads a staged global-search document and applies its object camera', async () => {
