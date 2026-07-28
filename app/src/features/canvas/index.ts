@@ -1,10 +1,14 @@
 export { CanvasPage } from './CanvasPage';
 export { CanvasOutline, blockOutlineLabel, type CanvasOutlineProps } from './CanvasOutline';
+export * from './accessibility';
+export * from './aiActions';
+export * from './aiContext';
 export * from './assets';
 export * from './attachments';
 export * from './autosave';
 export * from './camera';
 export * from './clipboard';
+export * from './cloudSync';
 export {
   CANVAS_CONNECTOR_ANCHORS,
   CANVAS_CONNECTOR_ARROWS,
@@ -74,6 +78,7 @@ export {
   type CreateCanvasFrameInput,
 } from './frames';
 export * from './geometry';
+export * from './globalSearch';
 export * from './groups';
 export * from './history';
 export * from './linkedContent';
@@ -90,4 +95,5 @@ export * from './shapes';
 export * from './spatialIndex';
 export * from './strokes';
 export * from './surfaces';
+export * from './touchInput';
 export * from './webContent';

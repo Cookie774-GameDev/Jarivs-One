@@ -193,6 +193,30 @@ describe('canvas Dexie persistence repository', () => {
       await expect(repo.loadLatest(makeScope({ accountId: 'acct_beta' }))).resolves.toBeUndefined();
     });
 
+    it('lists only documents in the exact account, project, and owner scope', async () => {
+      const scope = makeScope();
+      const older = buildDocument(scope, 'docListOlder', 'list-older', NOW);
+      const newer = buildDocument(scope, 'docListNewer', 'list-newer', NOW + 100);
+      const otherProjectScope = makeScope({ projectId: 'proj_two' });
+      const otherOwnerScope = makeScope({ ownerId: 'owner_two' });
+      await repo.save(scope, older);
+      await repo.save(scope, newer);
+      await repo.save(
+        otherProjectScope,
+        buildDocument(otherProjectScope, 'docOtherProject', 'other-project', NOW + 200),
+      );
+      await repo.save(
+        otherOwnerScope,
+        buildDocument(otherOwnerScope, 'docOtherOwner', 'other-owner', NOW + 300),
+      );
+
+      const listed = await repo.list(scope);
+
+      expect(listed.map((document) => document.id)).toEqual([newer.id, older.id]);
+      expect(listed.every((document) => document.projectId === scope.projectId)).toBe(true);
+      expect(listed.every((document) => document.ownerId === scope.ownerId)).toBe(true);
+    });
+
     it('preserves page order and presentation order exactly across a reorder', async () => {
       const scope = makeScope();
       let doc = buildDocument(scope, 'docOrder', 'block');

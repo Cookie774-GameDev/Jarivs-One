@@ -2,7 +2,13 @@ import * as React from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { CanvasPage } from './CanvasPage';
-import { createCanvasBlock, createCanvasDocument, withBlockAdded } from './contracts';
+import {
+  createCanvasBlock,
+  createCanvasDocument,
+  withBlockAdded,
+  withPlacement,
+} from './contracts';
+import { createCanvasGlobalSearchIndex, requestCanvasGlobalSearchNavigation } from './globalSearch';
 import { createMindMap } from './mindmaps';
 import { encodeCanvasPackage } from './packageFormat';
 import type { CanvasPersistenceRepository, CanvasPersistenceScope } from './persistence';
@@ -20,6 +26,7 @@ function persistenceRepository(
   return {
     save: vi.fn(async (_scope, document) => ({ localRevision: document.localRevision }) as never),
     load: vi.fn(async () => undefined),
+    list: vi.fn(async () => []),
     loadLatest: vi.fn(async () => undefined),
     writeRecovery: vi.fn(async () => undefined),
     clearRecovery: vi.fn(async () => undefined),
@@ -88,6 +95,155 @@ describe('CanvasPage', () => {
       ownerId: PERSISTENCE_SCOPE.ownerId,
     });
     expect(screen.getByText('Saved locally')).toBeTruthy();
+  });
+
+  it('loads a staged global-search document and applies its object camera', async () => {
+    const base = persistedDocument(PERSISTENCE_SCOPE, 'searched-canvas', 'Search destination');
+    const withText = withBlockAdded(
+      base,
+      createCanvasBlock({
+        id: 'searched-note',
+        content: { kind: 'text', text: 'Zoom destination' },
+        now: base.updatedAt,
+      }),
+      base.updatedAt,
+    );
+    const target = withPlacement(
+      withText,
+      {
+        blockId: 'searched-note',
+        x: 700,
+        y: 450,
+        width: 300,
+        height: 120,
+      },
+      withText.updatedAt,
+    );
+    const [result] = createCanvasGlobalSearchIndex({
+      ownerId: PERSISTENCE_SCOPE.ownerId,
+      projectId: PERSISTENCE_SCOPE.projectId,
+      documents: [target],
+    }).query({ text: 'destination' });
+    const selection = requestCanvasGlobalSearchNavigation(
+      result,
+      {
+        ownerId: PERSISTENCE_SCOPE.ownerId,
+        projectId: PERSISTENCE_SCOPE.projectId,
+      },
+      { width: 1_200, height: 800 },
+    );
+    const repository = persistenceRepository({
+      load: vi.fn(async (_scope, documentId) => (documentId === target.id ? target : undefined)),
+    });
+
+    render(
+      <CanvasPage
+        persistence={{
+          repository,
+          scope: PERSISTENCE_SCOPE,
+          autosaveDelayMs: 0,
+          now: () => 500,
+        }}
+      />,
+    );
+
+    expect(await screen.findByDisplayValue('Search destination')).toBeTruthy();
+    expect(repository.load).toHaveBeenCalledWith(PERSISTENCE_SCOPE, target.id);
+    expect(repository.loadLatest).not.toHaveBeenCalled();
+    const workspace = screen.getByRole('region', { name: 'Canvas workspace' });
+    expect(workspace.dataset.cameraX).toBe(String(selection.camera.x));
+    expect(workspace.dataset.cameraY).toBe(String(selection.camera.y));
+    expect(workspace.dataset.cameraZoom).toBe(String(selection.camera.zoom));
+  });
+
+  it('falls back to the latest scoped canvas when a staged search result is stale', async () => {
+    const stale = persistedDocument(
+      PERSISTENCE_SCOPE,
+      'stale-search-canvas',
+      'Stale search canvas',
+    );
+    const [result] = createCanvasGlobalSearchIndex({
+      ownerId: PERSISTENCE_SCOPE.ownerId,
+      projectId: PERSISTENCE_SCOPE.projectId,
+      documents: [stale],
+    }).query({ objectType: 'document' });
+    requestCanvasGlobalSearchNavigation(
+      result,
+      {
+        ownerId: PERSISTENCE_SCOPE.ownerId,
+        projectId: PERSISTENCE_SCOPE.projectId,
+      },
+      { width: 1_200, height: 800 },
+    );
+    const latest = persistedDocument(
+      PERSISTENCE_SCOPE,
+      'latest-after-stale-search',
+      'Latest safe canvas',
+    );
+    const repository = persistenceRepository({
+      load: vi.fn(async () => undefined),
+      loadLatest: vi.fn(async () => latest),
+    });
+
+    render(<CanvasPage persistence={{ repository, scope: PERSISTENCE_SCOPE }} />);
+
+    expect(await screen.findByDisplayValue('Latest safe canvas')).toBeTruthy();
+    expect(repository.loadLatest).toHaveBeenCalledWith(PERSISTENCE_SCOPE);
+    expect(repository.save).not.toHaveBeenCalled();
+  });
+
+  it('switches an already-mounted canvas to a newly selected global-search result', async () => {
+    const initial = persistedDocument(PERSISTENCE_SCOPE, 'initial-canvas', 'Initial canvas');
+    const base = persistedDocument(PERSISTENCE_SCOPE, 'next-canvas', 'Next canvas');
+    const withText = withBlockAdded(
+      base,
+      createCanvasBlock({
+        id: 'next-note',
+        content: { kind: 'text', text: 'Find the next object' },
+        now: base.updatedAt,
+      }),
+      base.updatedAt,
+    );
+    const target = withPlacement(
+      withText,
+      { blockId: 'next-note', x: 900, y: 500, width: 240, height: 120 },
+      withText.updatedAt,
+    );
+    const repository = persistenceRepository({
+      loadLatest: vi.fn(async () => initial),
+      load: vi.fn(async (_scope, documentId) => (documentId === target.id ? target : undefined)),
+    });
+    render(
+      <CanvasPage
+        persistence={{
+          repository,
+          scope: PERSISTENCE_SCOPE,
+          autosaveDelayMs: 0,
+          now: () => 500,
+        }}
+      />,
+    );
+    expect(await screen.findByDisplayValue('Initial canvas')).toBeTruthy();
+    const [result] = createCanvasGlobalSearchIndex({
+      ownerId: PERSISTENCE_SCOPE.ownerId,
+      projectId: PERSISTENCE_SCOPE.projectId,
+      documents: [target],
+    }).query({ text: 'next object' });
+
+    await act(async () => {
+      requestCanvasGlobalSearchNavigation(
+        result,
+        {
+          ownerId: PERSISTENCE_SCOPE.ownerId,
+          projectId: PERSISTENCE_SCOPE.projectId,
+        },
+        { width: 1_200, height: 800 },
+      );
+    });
+
+    expect(await screen.findByDisplayValue('Next canvas')).toBeTruthy();
+    expect(repository.load).toHaveBeenCalledWith(PERSISTENCE_SCOPE, target.id);
+    await waitFor(() => expect(repository.save).toHaveBeenCalledTimes(1));
   });
 
   it('ignores a stale account load after the persistence scope changes', async () => {

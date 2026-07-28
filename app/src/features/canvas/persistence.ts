@@ -87,6 +87,7 @@ export type CanvasPersistenceRepository = {
     options?: CanvasSaveOptions,
   ): Promise<CanvasDocumentRow>;
   load(scope: CanvasPersistenceScope, documentId: string): Promise<CanvasDocument | undefined>;
+  list(scope: CanvasPersistenceScope): Promise<readonly CanvasDocument[]>;
   loadLatest(scope: CanvasPersistenceScope): Promise<CanvasDocument | undefined>;
   writeRecovery(scope: CanvasPersistenceScope, entry: CanvasRecoveryEntry): Promise<void>;
   clearRecovery(scope: CanvasPersistenceScope, recoveryId: string): Promise<void>;
@@ -515,6 +516,24 @@ export function createCanvasPersistenceRepository(db: JarvisDexie): CanvasPersis
     );
   };
 
+  const list: CanvasPersistenceRepository['list'] = async (scope) => {
+    assertScope(scope);
+    const candidates = await db.canvas_documents
+      .where('[accountId+projectId]')
+      .equals([scope.accountId, scope.projectId])
+      .toArray();
+    candidates.sort(
+      (left, right) =>
+        right.updatedAt - left.updatedAt || (left.id < right.id ? -1 : left.id > right.id ? 1 : 0),
+    );
+    const loaded = await Promise.all(
+      candidates.filter((row) => row.ownerId === scope.ownerId).map((row) => load(scope, row.id)),
+    );
+    return Object.freeze(
+      loaded.filter((document): document is CanvasDocument => document !== undefined),
+    );
+  };
+
   const loadLatest: CanvasPersistenceRepository['loadLatest'] = async (scope) => {
     assertScope(scope);
     const candidates = await db.canvas_documents
@@ -628,6 +647,7 @@ export function createCanvasPersistenceRepository(db: JarvisDexie): CanvasPersis
   return {
     save,
     load,
+    list,
     loadLatest,
     writeRecovery,
     clearRecovery,

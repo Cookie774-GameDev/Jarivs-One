@@ -91,6 +91,11 @@ import {
   type CanvasPersistenceRepository,
   type CanvasPersistenceScope,
 } from './persistence';
+import {
+  subscribeCanvasGlobalSearchNavigation,
+  takePendingCanvasGlobalSearchNavigation,
+  type CanvasGlobalSearchSelection,
+} from './globalSearch';
 
 type CanvasTool = 'select' | 'hand' | 'note';
 
@@ -345,16 +350,27 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     }
 
     const scope = activeScope;
+    const navigationScope = {
+      ownerId: scope.ownerId,
+      projectId: scope.projectId,
+    };
+    const pendingNavigation = takePendingCanvasGlobalSearchNavigation(navigationScope);
     setPersistenceStatus('loading');
-    void Promise.all([
-      activeRepository.loadLatest(scope),
-      activeRepository.listRecovery(scope),
-    ]).then(
-      ([latest, recovery]) => {
+    const requestedDocument = pendingNavigation
+      ? activeRepository.load(scope, pendingNavigation.documentId).then(async (loaded) => ({
+          loaded: loaded ?? (await activeRepository.loadLatest(scope)),
+          navigation: loaded ? pendingNavigation : undefined,
+        }))
+      : activeRepository.loadLatest(scope).then((loaded) => ({
+          loaded,
+          navigation: undefined as CanvasGlobalSearchSelection | undefined,
+        }));
+    void Promise.all([requestedDocument, activeRepository.listRecovery(scope)]).then(
+      ([request, recovery]) => {
         if (cancelled || hydrationGeneration.current !== generation) return;
         const now = persistence?.now?.() ?? Date.now();
-        const next =
-          latest ??
+        const base =
+          request.loaded ??
           createCanvasDocument({
             id: persistence?.createDocumentId?.() ?? createDocumentId(),
             projectId: scope.projectId,
@@ -362,8 +378,15 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
             title: 'Untitled canvas',
             now,
           });
+        const next = request.navigation ? withCamera(base, request.navigation.camera) : base;
         replaceActiveDocument(next);
-        attachAutosave(activeRepository, scope, next.localRevision);
+        const controller = attachAutosave(activeRepository, scope, base.localRevision);
+        if (request.navigation) {
+          controller.schedule(next);
+          if (next.blocks.some((block) => block.id === request.navigation?.objectId)) {
+            setSelected(createCanvasSelection([request.navigation.objectId]));
+          }
+        }
         setRecoveryOffer(recovery[0] ?? null);
       },
       () => {
@@ -373,8 +396,37 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
       },
     );
 
+    const openNavigation = async (selection: CanvasGlobalSearchSelection) => {
+      const currentController = autosaveRef.current;
+      await currentController?.flush();
+      if (cancelled || hydrationGeneration.current !== generation) return;
+      if (
+        currentController?.getState().status === 'sync-error' ||
+        currentController?.getState().status === 'recovered-unsaved-work'
+      ) {
+        setPersistenceStatus(currentController.getState().status);
+        return;
+      }
+      const loaded = await activeRepository.load(scope, selection.documentId);
+      if (!loaded || cancelled || hydrationGeneration.current !== generation) return;
+      const focused = withCamera(loaded, selection.camera);
+      replaceActiveDocument(focused);
+      const controller = attachAutosave(activeRepository, scope, loaded.localRevision);
+      controller.schedule(focused);
+      if (focused.blocks.some((block) => block.id === selection.objectId)) {
+        setSelected(createCanvasSelection([selection.objectId]));
+      }
+    };
+    const unsubscribeNavigation = subscribeCanvasGlobalSearchNavigation(
+      navigationScope,
+      (selection) => {
+        void openNavigation(selection);
+      },
+    );
+
     return () => {
       cancelled = true;
+      unsubscribeNavigation();
       if (hydrationGeneration.current === generation) {
         detachAutosave();
       }
@@ -1582,6 +1634,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
           data-layout={document.layoutMode}
           data-camera-x={camera.x}
           data-camera-y={camera.y}
+          data-camera-zoom={camera.zoom}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerEnd}
