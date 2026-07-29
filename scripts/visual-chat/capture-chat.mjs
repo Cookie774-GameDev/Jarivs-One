@@ -35,6 +35,8 @@ export const CHAT_READY_SELECTORS = Object.freeze({
   composer: 'textarea[aria-label="Message"]',
   thread: '[role="log"][data-tour="chat-thread"]',
 });
+export const HISTORICAL_CHAT_ROOT_SELECTOR =
+  '[data-terminal-drop="chat"][data-terminal-drop-chat-id]';
 
 function isContained(parent, candidate) {
   return candidate === parent || candidate.startsWith(`${parent}${sep}`);
@@ -85,12 +87,16 @@ export function assertChatCaptureOptions(
   if (options.baseUrl !== undefined && !isLocalBaseUrl(options.baseUrl)) {
     throw new Error('baseUrl must be a local HTTP URL.');
   }
+  if (options.historicalChatRoot !== undefined && typeof options.historicalChatRoot !== 'boolean') {
+    throw new TypeError('historicalChatRoot must be a boolean when supplied.');
+  }
   return {
     rootDirectory: root,
     distDirectory,
     outputPath,
     baseUrl: options.baseUrl,
     browserExecutable: options.browserExecutable,
+    historicalChatRoot: options.historicalChatRoot ?? false,
   };
 }
 
@@ -119,6 +125,36 @@ export async function assertRealChatRoot(page) {
     );
   }
   return root;
+}
+
+export async function prepareHistoricalChatRoot(page) {
+  const payload = {
+    historicalSelector: HISTORICAL_CHAT_ROOT_SELECTOR,
+    selectors: CHAT_READY_SELECTORS,
+  };
+  await page.waitForFunction(({ historicalSelector, selectors }) => {
+    const required = [selectors.session, selectors.composer, selectors.thread];
+    return (
+      [...document.querySelectorAll(historicalSelector)].filter((candidate) =>
+        required.every((selector) => candidate.querySelector(selector)),
+      ).length === 1
+    );
+  }, payload);
+  return page.evaluate(({ historicalSelector, selectors }) => {
+    const required = [selectors.session, selectors.composer, selectors.thread];
+    const roots = [...document.querySelectorAll(historicalSelector)].filter((candidate) =>
+      required.every((selector) => candidate.querySelector(selector)),
+    );
+    if (roots.length !== 1) {
+      throw new Error(
+        `Expected exactly one structural historical Chat root, received ${roots.length}.`,
+      );
+    }
+    const root = roots[0];
+    root.setAttribute('data-vibespace-page', 'chat');
+    root.setAttribute('data-origami-historical-root', 'true');
+    return { injected: true, selector: historicalSelector };
+  }, payload);
 }
 
 export async function waitForStableChatLayout(
@@ -512,6 +548,7 @@ export async function captureOrigamiChat(options) {
   let page;
   let browserSource;
   let ollamaFixture;
+  let historicalRoot;
   let primaryError;
   try {
     if (!validated.baseUrl) server = await startStaticServer(validated);
@@ -542,6 +579,9 @@ export async function captureOrigamiChat(options) {
     await waitForInitialLocalSeed(page, persistenceContract);
     const seedReceipt = await seedOrigamiIndexedDb(page, ORIGAMI_CHAT_FIXTURE, persistenceContract);
     await page.reload({ waitUntil: 'domcontentloaded' });
+    if (validated.historicalChatRoot) {
+      historicalRoot = await prepareHistoricalChatRoot(page);
+    }
     await waitForChatReady(page);
     const sessionMetrics = await waitForDeterministicSessionMetrics(
       page,
@@ -574,6 +614,7 @@ export async function captureOrigamiChat(options) {
       fixtureSchemaVersion: ORIGAMI_CHAT_FIXTURE.schemaVersion,
       persistence: persistenceReceipt,
       seed: seedReceipt,
+      historicalRoot: historicalRoot ?? { injected: false },
       sessionMetrics,
       jarvisModule,
       jarvisStateAtCapture,
@@ -597,6 +638,7 @@ function parseCliArguments(argumentsList) {
     else if (flag === '--output') values.outputPath = argumentsList[++index];
     else if (flag === '--base-url') values.baseUrl = argumentsList[++index];
     else if (flag === '--browser-executable') values.browserExecutable = argumentsList[++index];
+    else if (flag === '--historical-chat-root') values.historicalChatRoot = true;
     else throw new Error(`Unknown capture argument: ${flag}`);
   }
   return values;

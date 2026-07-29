@@ -6,10 +6,12 @@ import { fileURLToPath } from 'node:url';
 
 import {
   CHAT_READY_SELECTORS,
+  HISTORICAL_CHAT_ROOT_SELECTOR,
   ORIGAMI_VIEWPORT,
   assertChatCaptureOptions,
   assertRealChatRoot,
   loadThemePersistenceContract,
+  prepareHistoricalChatRoot,
   waitForStableChatLayout,
   withScreenshotFreeze,
 } from './capture-chat.mjs';
@@ -53,6 +55,30 @@ test('capture arguments require a built distribution and contained artifact path
     { rootDirectory: ROOT, checkFile: () => true },
   );
   assert.equal(accepted.outputPath, resolve(ROOT, '.artifacts/origami-chat/chat.png'));
+  assert.equal(accepted.historicalChatRoot, false);
+  assert.equal(
+    assertChatCaptureOptions(
+      {
+        distDirectory: resolve(ROOT, 'app/dist'),
+        outputPath: resolve(ROOT, '.artifacts/origami-chat/historical.png'),
+        historicalChatRoot: true,
+      },
+      { rootDirectory: ROOT, checkFile: () => true },
+    ).historicalChatRoot,
+    true,
+  );
+  assert.throws(
+    () =>
+      assertChatCaptureOptions(
+        {
+          distDirectory: resolve(ROOT, 'app/dist'),
+          outputPath: resolve(ROOT, '.artifacts/origami-chat/historical.png'),
+          historicalChatRoot: 'true',
+        },
+        { rootDirectory: ROOT, checkFile: () => true },
+      ),
+    /historicalChatRoot.*boolean/i,
+  );
   assert.throws(
     () =>
       assertChatCaptureOptions(
@@ -109,6 +135,45 @@ test('capture contract locks viewport and concrete real Chat seams', () => {
     composer: 'textarea[aria-label="Message"]',
     thread: '[role="log"][data-tour="chat-thread"]',
   });
+  assert.equal(
+    HISTORICAL_CHAT_ROOT_SELECTOR,
+    '[data-terminal-drop="chat"][data-terminal-drop-chat-id]',
+  );
+});
+
+test('historical mode marks exactly one structural Chat root without replacing real components', async () => {
+  const attributes = new Map();
+  const historicalRoot = {
+    querySelector: (selector) =>
+      [
+        CHAT_READY_SELECTORS.session,
+        CHAT_READY_SELECTORS.composer,
+        CHAT_READY_SELECTORS.thread,
+      ].includes(selector)
+        ? {}
+        : null,
+    setAttribute: (name, value) => attributes.set(name, value),
+  };
+  const composerRoot = {
+    querySelector: (selector) => (selector === CHAT_READY_SELECTORS.composer ? {} : null),
+  };
+  const document = {
+    querySelectorAll: (selector) =>
+      selector === HISTORICAL_CHAT_ROOT_SELECTOR ? [composerRoot, historicalRoot] : [],
+  };
+  const page = {
+    waitForFunction: async (callback, payload) =>
+      withBrowserGlobals({ document }, () => assert.equal(callback(payload), true)),
+    evaluate: async (callback, payload) =>
+      withBrowserGlobals({ document }, () => callback(payload)),
+  };
+
+  assert.deepEqual(await prepareHistoricalChatRoot(page), {
+    injected: true,
+    selector: HISTORICAL_CHAT_ROOT_SELECTOR,
+  });
+  assert.equal(attributes.get('data-vibespace-page'), 'chat');
+  assert.equal(attributes.get('data-origami-historical-root'), 'true');
 });
 
 test('browser launch attempts preserve configured, Edge, Chrome, managed order', () => {
