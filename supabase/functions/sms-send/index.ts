@@ -44,6 +44,7 @@
 
 import { json } from '../_shared/voice.ts';
 import { estimateSmsCostUsd, isE164, MAX_SMS_CHARS, smsSegments } from '../_shared/budget.ts';
+import { evaluateAppAccessGate } from '../_shared/appAccessGate.ts';
 
 const RATE_WINDOW_MS = 60_000;
 const RATE_MAX = 5; // SMS is expensive + annoying; keep the per-minute cap tight
@@ -51,24 +52,6 @@ const TWILIO_TIMEOUT_MS = 15_000;
 // CTIA STOP-compliance footer, appended to the first text of each cycle.
 export const STOP_FOOTER = ' Reply STOP to opt out.';
 
-// Exact status union returned by migration 0032. Unknown values are malformed,
-// never future-compatible grants. `prelaunch` may be granted only when the
-// authoritative response explicitly says canUseApp=true; locked/unknown and an
-// explicitly disabled launch gate always fail closed.
-const APP_ACCESS_STATUSES = new Set([
-  'prelaunch',
-  'trialing',
-  'active',
-  'cancel_at_period_end',
-  'past_due',
-  'grace',
-  'locked',
-  'admin',
-  'internal',
-  'unknown',
-]);
-const ACCESS_DENY_REASONS = new Set(['prelaunch', 'locked', 'unknown']);
-const ACCESS_ALWAYS_DENIED = new Set(['locked', 'unknown']);
 const BUDGET_DENY_REASONS = new Set([
   'budget_exceeded',
   'monthly_budget_exceeded',
@@ -135,23 +118,17 @@ export async function handleSmsSend(req: Request, deps: Record<string, any>): Pr
   if (access?.error || !accessData || typeof accessData !== 'object') {
     return json({ error: 'access_lookup_failed' }, 502, origin);
   }
-  if (
-    typeof accessData.canUseApp !== 'boolean' ||
-    typeof accessData.status !== 'string' ||
-    !APP_ACCESS_STATUSES.has(accessData.status)
-  ) {
+  const accessDecision = evaluateAppAccessGate(accessData);
+  if (accessDecision.kind === 'invalid' && accessDecision.status === undefined) {
     return json({ error: 'access_lookup_failed' }, 502, origin);
   }
-  const accessStatus = accessData.status;
-  if (
-    accessData.canUseApp !== true ||
-    accessData.enabled === false ||
-    ACCESS_ALWAYS_DENIED.has(accessStatus)
-  ) {
+
+  if (accessDecision.kind !== 'allow') {
+    const accessStatus = accessDecision.status;
     const reason =
-      accessData.enabled === false
+      accessDecision.kind === 'invalid' && accessData.enabled === false
         ? 'disabled'
-        : ACCESS_DENY_REASONS.has(accessStatus)
+        : accessStatus === 'prelaunch' || accessStatus === 'locked' || accessStatus === 'unknown'
           ? accessStatus
           : 'denied';
     return json({ error: 'access_denied', reason }, 403, origin);

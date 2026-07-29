@@ -260,6 +260,20 @@ describe('call-start handler', () => {
       assert.ok(!log.order.includes('reserveBudget'), 'inconsistent authority reserves no budget');
     });
 
+    it('fails closed when enabled contradicts the authoritative status', async () => {
+      for (const access of [
+        makeAccess({ status: 'active', enabled: false, canUseApp: true }),
+        makeAccess({ status: 'prelaunch', enabled: true, canUseApp: true }),
+      ]) {
+        const caseLog: CallLog = { order: [] };
+        const deps = makeDeps({ getAppAccess: async () => access }, caseLog);
+        const res = await handleCallStart(deps, postReq({ to: VALID_NUMBER }));
+        assert.equal(res.status, 503, `case: ${access.status}`);
+        assert.deepEqual(await json(res), { error: 'access_unavailable' });
+        assert.ok(!caseLog.order.includes('reserveBudget'), 'contradiction reserves no budget');
+      }
+    });
+
     it('allows every authoritative usable state with canUseApp=true', async () => {
       for (const status of [
         'trialing',

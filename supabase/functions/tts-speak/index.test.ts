@@ -10,12 +10,6 @@ function position(fragment: string): number {
   return index;
 }
 
-function stringSet(name: string): string[] {
-  const match = source.match(new RegExp(`const ${name} = new Set\\(\\[([\\s\\S]*?)\\]\\);`));
-  assert.ok(match, `missing string set: ${name}`);
-  return [...match[1].matchAll(/'([^']+)'/g)].map((item) => item[1]);
-}
-
 test('checks authoritative app access under the user JWT before billable work', () => {
   assert.match(
     source,
@@ -38,20 +32,14 @@ test('checks authoritative app access under the user JWT before billable work', 
 test('uses only the server app version and fails closed on access ambiguity', () => {
   assert.match(source, /const APP_VERSION = Deno\.env\.get\('APP_VERSION'\)/);
   assert.match(source, /p_app_version:\s*APP_VERSION/);
-  assert.match(source, /function isUsableAppAccess/);
-  assert.match(source, /canUseApp\s*!==\s*true/);
-  assert.deepEqual(stringSet('USABLE_APP_ACCESS_STATUSES'), [
-    'prelaunch',
-    'trialing',
-    'active',
-    'cancel_at_period_end',
-    'past_due',
-    'grace',
-    'admin',
-    'internal',
-  ]);
-  assert.ok(!stringSet('USABLE_APP_ACCESS_STATUSES').includes('locked'));
-  assert.ok(!stringSet('USABLE_APP_ACCESS_STATUSES').includes('unknown'));
+  assert.match(
+    source,
+    /import \{ evaluateAppAccessGate \} from '\.\.\/_shared\/appAccessGate\.ts'/,
+  );
+  assert.match(source, /const accessDecision = evaluateAppAccessGate\(accessData\)/);
+  assert.match(source, /accessDecision\.kind !== 'allow'/);
+  assert.doesNotMatch(source, /USABLE_APP_ACCESS_STATUSES/);
+  assert.doesNotMatch(source, /function isUsableAppAccess/);
   assert.doesNotMatch(source, /body\.(?:appVersion|app_version|canUseApp|accessStatus)/);
 });
 
@@ -62,7 +50,7 @@ test('denied or unavailable app access returns safely before provider and billin
   );
   assert.match(
     source,
-    /if \(!isUsableAppAccess\(accessData\)\)\s*return json\(\{ error: 'app_access_denied' \}, 403, origin\)/,
+    /if \(accessDecision\.kind !== 'allow'\)\s*return json\(\{ error: 'app_access_denied' \}, 403, origin\)/,
   );
   assert.doesNotMatch(source, /^const (?:OPENAI|DEEPGRAM|ELEVENLABS)_API_KEY/m);
 });

@@ -297,7 +297,7 @@ describe('message-complete handler', () => {
       assert.equal(b.access_status, 'unknown');
     });
 
-    it('rejects unknown status even when canUseApp is inconsistent and true', async () => {
+    it('treats unknown canUseApp=true as an invalid authoritative decision', async () => {
       const deps = makeDeps(
         {
           getAppAccess: async () => makeAccess({ status: 'unknown', canUseApp: true }),
@@ -325,16 +325,19 @@ describe('message-complete handler', () => {
       assert.ok(!log.order.includes('callProvider'));
     });
 
-    it('rejects disabled (canUseApp=false) with 403', async () => {
+    it('treats a disabled production grant as an invalid authoritative decision', async () => {
       const deps = makeDeps(
         {
           getAppAccess: async () =>
-            makeAccess({ status: 'active', canUseApp: false, enabled: false }),
+            makeAccess({ status: 'active', canUseApp: true, enabled: false }),
         },
         log,
       );
       const res = await handleMessageComplete(deps, postReq({ messages: [{ content: 'hi' }] }));
       assert.equal(res.status, 403);
+      const b = await json(res);
+      assert.equal(b.error, 'access_denied');
+      assert.ok(!log.order.includes('isProviderConfigured'));
     });
 
     it('fails closed on RPC error (null response)', async () => {

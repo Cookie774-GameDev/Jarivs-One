@@ -21,6 +21,8 @@
 // passing the access gate. Admin chat normally uses BYOK keys client-side and
 // never reaches this endpoint.
 
+import { evaluateAppAccessGate } from '../_shared/appAccessGate.ts';
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 /** Shape returned by the authoritative get_app_access RPC (0032 migration). */
@@ -99,29 +101,6 @@ export interface HandlerDeps {
 
 const ALLOWED_MODELS = new Set(['deepseek-chat']);
 const DEFAULT_MODEL = 'deepseek-chat';
-const RECOGNIZED_ACCESS_STATUSES = new Set([
-  'prelaunch',
-  'trialing',
-  'active',
-  'cancel_at_period_end',
-  'past_due',
-  'grace',
-  'locked',
-  'admin',
-  'internal',
-  'unknown',
-]);
-const HOSTED_ACCESS_STATUSES = new Set([
-  'prelaunch',
-  'trialing',
-  'active',
-  'cancel_at_period_end',
-  'past_due',
-  'grace',
-  'admin',
-  'internal',
-]);
-
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const ALLOWED_ORIGINS = new Set<string>([
@@ -206,20 +185,15 @@ export async function handleMessageComplete(deps: HandlerDeps, req: Request): Pr
     access = null;
   }
 
-  // Fail closed: RPC error or malformed response.
-  if (!access || typeof access.canUseApp !== 'boolean' || typeof access.status !== 'string') {
+  const accessDecision = evaluateAppAccessGate(access);
+  if (accessDecision.kind === 'invalid' && accessDecision.status === undefined) {
     return jsonResponse({ error: 'access_unavailable', fallback: 'byok_or_local' }, 503, origin);
   }
 
-  if (!RECOGNIZED_ACCESS_STATUSES.has(access.status)) {
-    return jsonResponse({ error: 'access_unavailable', fallback: 'byok_or_local' }, 503, origin);
-  }
-
-  // Both the exact status contract and canUseApp boolean must authorize hosted
-  // inference. In particular, unknown/locked never authorize even if a
-  // malformed or inconsistent upstream response says canUseApp=true.
-  if (!access.canUseApp || !HOSTED_ACCESS_STATUSES.has(access.status)) {
-    const status = access.status;
+  // Preserve this endpoint's stable recognized-denial response while the
+  // shared validator prevents contradictory tuples from granting access.
+  if (accessDecision.kind !== 'allow') {
+    const status = accessDecision.status;
     // Map status to a stable client-facing error code.
     const code =
       status === 'locked'
@@ -231,8 +205,8 @@ export async function handleMessageComplete(deps: HandlerDeps, req: Request): Pr
       {
         error: code,
         access_status: status,
-        requires_checkout: access.requiresCheckout ?? false,
-        checkout_reason: access.checkoutReason ?? null,
+        requires_checkout: access?.requiresCheckout ?? false,
+        checkout_reason: access?.checkoutReason ?? null,
         fallback: 'byok_or_local',
       },
       403,

@@ -286,7 +286,11 @@ test('proceeds for every recognized authoritative canUseApp=true state, includin
   ]) {
     const deps = makeDeps({
       getAppAccess: async () => ({
-        data: accessResponse({ status, canUseApp: true }),
+        data: accessResponse({
+          status,
+          enabled: status === 'prelaunch' ? false : true,
+          canUseApp: true,
+        }),
         error: null,
       }),
     });
@@ -315,7 +319,7 @@ test('rejects locked, unknown, and unrecognized statuses even when canUseApp=tru
   }
 });
 
-test('rejects an explicitly disabled launch gate even when canUseApp=true', async () => {
+test('allows the exact authoritative prelaunch enabled=false canUseApp=true tuple', async () => {
   const deps = makeDeps({
     getAppAccess: async () => ({
       data: accessResponse({ status: 'prelaunch', enabled: false, canUseApp: true }),
@@ -323,14 +327,13 @@ test('rejects an explicitly disabled launch gate even when canUseApp=true', asyn
     }),
   });
   const { res, json } = await callHandler(deps, { body: { message: 'hello' } });
-  assert.equal(res.status, 403);
-  assert.equal(json.error, 'access_denied');
-  assert.equal(json.reason, 'disabled');
-  assertNoDownstreamEffects(deps);
+  assert.equal(res.status, 200);
+  assert.equal(json.ok, true);
+  assert.ok(calledNames(deps).includes('sendSms'));
 });
 
-test('fails closed for locked/unknown/prelaunch with 403 access_denied and zero effects', async () => {
-  for (const status of ['locked', 'unknown', 'prelaunch']) {
+test('fails closed for exact locked/unknown denials with 403 and zero effects', async () => {
+  for (const status of ['locked', 'unknown']) {
     const deps = makeDeps({
       getAppAccess: async () => ({
         data: accessResponse({ status, canUseApp: false }),
@@ -345,18 +348,24 @@ test('fails closed for locked/unknown/prelaunch with 403 access_denied and zero 
   }
 });
 
-test('fails closed for a disabled launch gate (enabled=false) with reason disabled', async () => {
-  const deps = makeDeps({
-    getAppAccess: async () => ({
-      data: accessResponse({ status: 'prelaunch', enabled: false, canUseApp: false }),
-      error: null,
-    }),
-  });
-  const { res, json } = await callHandler(deps, { body: { message: 'hello' } });
-  assert.equal(res.status, 403);
-  assert.equal(json.error, 'access_denied');
-  assert.equal(json.reason, 'disabled');
-  assertNoDownstreamEffects(deps);
+test('fails closed on contradictory status tuples before all downstream effects', async () => {
+  for (const decision of [
+    { status: 'prelaunch', enabled: false, canUseApp: false },
+    { status: 'prelaunch', enabled: true, canUseApp: true },
+    { status: 'active', enabled: false, canUseApp: true },
+    { status: 'locked', enabled: true, canUseApp: true },
+  ]) {
+    const deps = makeDeps({
+      getAppAccess: async () => ({
+        data: accessResponse(decision),
+        error: null,
+      }),
+    });
+    const { res, json } = await callHandler(deps, { body: { message: 'hello' } });
+    assert.equal(res.status, 403, JSON.stringify(decision));
+    assert.equal(json.error, 'access_denied', JSON.stringify(decision));
+    assertNoDownstreamEffects(deps);
+  }
 });
 
 // --- Malformed / error access responses fail closed ------------------------
@@ -392,6 +401,7 @@ test('fails closed on malformed access data (null / non-object / non-boolean can
     { data: { status: 'active' }, error: null },
     { data: { status: 'active', canUseApp: 'yes' }, error: null },
     { data: { status: 'active', canUseApp: 1 }, error: null },
+    { data: { status: 'active', enabled: 'yes', canUseApp: true }, error: null },
   ];
   for (const result of malformed) {
     const deps = makeDeps({ getAppAccess: async () => result });

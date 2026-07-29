@@ -17,6 +17,7 @@
 // Company keys live ONLY in Supabase secrets. Never returned to the client.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.46.2';
+import { evaluateAppAccessGate } from '../_shared/appAccessGate.ts';
 import {
   APPROVED_PRESETS,
   APPROVED_PROVIDERS,
@@ -35,16 +36,6 @@ const APP_VERSION = Deno.env.get('APP_VERSION') ?? '';
 const CLOUD_TIMEOUT_MS = 20_000;
 const RATE_WINDOW_MS = 60_000;
 const RATE_MAX_REQUESTS = 20;
-const USABLE_APP_ACCESS_STATUSES = new Set([
-  'prelaunch',
-  'trialing',
-  'active',
-  'cancel_at_period_end',
-  'past_due',
-  'grace',
-  'admin',
-  'internal',
-]);
 
 const OPENAI_VOICE_INSTRUCTIONS: Record<string, string> = {
   jarvis:
@@ -74,13 +65,6 @@ function bufToB64(buf: ArrayBuffer): string {
   let bin = '';
   for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
   return btoa(bin);
-}
-
-function isUsableAppAccess(value: unknown): boolean {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const access = value as { canUseApp?: unknown; status?: unknown };
-  if (access.canUseApp !== true || typeof access.status !== 'string') return false;
-  return USABLE_APP_ACCESS_STATUSES.has(access.status);
 }
 
 async function callOpenAI(text: string, preset: string): Promise<ArrayBuffer> {
@@ -233,7 +217,8 @@ async function handleRequest(req: Request): Promise<Response> {
     return json({ error: 'access_unavailable' }, 503, origin);
   }
   if (accessError) return json({ error: 'access_unavailable' }, 503, origin);
-  if (!isUsableAppAccess(accessData)) return json({ error: 'app_access_denied' }, 403, origin);
+  const accessDecision = evaluateAppAccessGate(accessData);
+  if (accessDecision.kind !== 'allow') return json({ error: 'app_access_denied' }, 403, origin);
 
   const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },

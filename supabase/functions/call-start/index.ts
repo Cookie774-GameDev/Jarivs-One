@@ -21,6 +21,7 @@
 
 import { json } from '../_shared/voice.ts';
 import { estimateCallCostUsd, MAX_CALL_SECONDS } from '../_shared/budget.ts';
+import { evaluateAppAccessGate } from '../_shared/appAccessGate.ts';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -78,18 +79,6 @@ export interface HandlerDeps {
   /** Bounded installed-app version from server configuration (never client). */
   appVersion?: string;
 }
-
-const USABLE_ACCESS_STATES = new Set([
-  'prelaunch',
-  'trialing',
-  'active',
-  'cancel_at_period_end',
-  'past_due',
-  'grace',
-  'admin',
-  'internal',
-]);
-const DENIED_ACCESS_STATES = new Set(['locked', 'unknown']);
 
 // ─── Pure handler ────────────────────────────────────────────────────────────
 
@@ -153,18 +142,17 @@ export async function handleCallStart(deps: HandlerDeps, req: Request): Promise<
     return json({ error: 'access_unavailable' }, 503, origin);
   }
 
-  const stateIsUsable = USABLE_ACCESS_STATES.has(access.status);
-  const stateIsDenied = DENIED_ACCESS_STATES.has(access.status);
-  if ((!stateIsUsable && !stateIsDenied) || access.canUseApp !== stateIsUsable) {
+  const accessDecision = evaluateAppAccessGate(access);
+  if (accessDecision.kind === 'invalid') {
     return json({ error: 'access_unavailable' }, 503, origin);
   }
 
-  if (stateIsDenied) {
-    const code = access.status === 'locked' ? 'access_locked' : 'access_denied';
+  if (accessDecision.kind === 'deny') {
+    const code = accessDecision.status === 'locked' ? 'access_locked' : 'access_denied';
     return json(
       {
         error: code,
-        access_status: access.status,
+        access_status: accessDecision.status,
         requires_checkout: access.requiresCheckout ?? false,
       },
       403,
