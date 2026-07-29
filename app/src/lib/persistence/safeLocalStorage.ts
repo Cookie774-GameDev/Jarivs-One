@@ -1,17 +1,31 @@
 import type { StateStorage } from 'zustand/middleware';
+import {
+  THEME_STORAGE_KEY,
+  UI_STORE_VERSION,
+  normalizePersistedTheme,
+} from '@/features/appearance/themeContract';
 
 /**
  * Diagnostic utility to measure and print LocalStorage sizes.
  * Gated to debug mode or critical events (boot, migration, write failure).
  */
-export function measureStorageSizes(stage: 'boot' | 'migration' | 'quota_failure' | 'after_eviction', force = false): void {
+export function measureStorageSizes(
+  stage: 'boot' | 'migration' | 'quota_failure' | 'after_eviction',
+  force = false,
+): void {
   if (typeof window === 'undefined') return;
 
   const isDev = process.env.NODE_ENV === 'development';
   if (!isDev && !force) return;
 
   try {
-    const keys = ['jarvis-ui', 'jarvis-terminal-transcripts', 'jarvis-auth', 'jarvis-tools', 'jarvis-terminal-scheduler-v1'];
+    const keys = [
+      THEME_STORAGE_KEY,
+      'jarvis-terminal-transcripts',
+      'jarvis-auth',
+      'jarvis-tools',
+      'jarvis-terminal-scheduler-v1',
+    ];
     let totalSize = 0;
     const sizes: Record<string, string> = {};
 
@@ -36,7 +50,7 @@ export function measureStorageSizes(stage: 'boot' | 'migration' | 'quota_failure
 
     // Inspect jarvis-ui details on boot/migration/failure to spot potential bloat
     if (stage !== 'after_eviction') {
-      const uiVal = window.localStorage.getItem('jarvis-ui');
+      const uiVal = window.localStorage.getItem(THEME_STORAGE_KEY);
       if (uiVal) {
         try {
           const parsed = JSON.parse(uiVal);
@@ -77,7 +91,10 @@ export const safeLocalStorage: StateStorage = {
       JSON.parse(val);
       return val;
     } catch (e) {
-      console.error(`[safeLocalStorage] Malformed or corrupted storage found for key '${name}':`, e);
+      console.error(
+        `[safeLocalStorage] Malformed or corrupted storage found for key '${name}':`,
+        e,
+      );
       // Remove corrupted key to let Zustand recover with defaults
       try {
         window.localStorage.removeItem(name);
@@ -95,9 +112,13 @@ export const safeLocalStorage: StateStorage = {
     const sizeKb = value.length / 1024;
     // Enforce size warning boundaries
     if (sizeKb > 500) {
-      console.error(`[safeLocalStorage] Payload size warning for key '${name}' is extremely large (${sizeKb.toFixed(2)} KB).`);
+      console.error(
+        `[safeLocalStorage] Payload size warning for key '${name}' is extremely large (${sizeKb.toFixed(2)} KB).`,
+      );
     } else if (sizeKb > 250) {
-      console.warn(`[safeLocalStorage] Payload size warning for key '${name}' is large (${sizeKb.toFixed(2)} KB).`);
+      console.warn(
+        `[safeLocalStorage] Payload size warning for key '${name}' is large (${sizeKb.toFixed(2)} KB).`,
+      );
     }
 
     try {
@@ -105,7 +126,7 @@ export const safeLocalStorage: StateStorage = {
     } catch (error: any) {
       console.error(
         `[safeLocalStorage] QuotaExceededError on key '${name}' (size: ${sizeKb.toFixed(2)} KB). Initiating recovery...`,
-        error
+        error,
       );
 
       // Log current sizes before cleaning
@@ -123,12 +144,14 @@ export const safeLocalStorage: StateStorage = {
       // Retry write once
       try {
         window.localStorage.setItem(name, value);
-        console.info(`[safeLocalStorage] Recovery write successful for key '${name}' after eviction.`);
+        console.info(
+          `[safeLocalStorage] Recovery write successful for key '${name}' after eviction.`,
+        );
       } catch (retryError) {
         console.error(`[safeLocalStorage] Retry write failed for key '${name}':`, retryError);
 
         // Minimal safe fallback strategy for crucial UI state store
-        if (name === 'jarvis-ui') {
+        if (name === THEME_STORAGE_KEY) {
           try {
             const parsed = JSON.parse(value);
             if (parsed && typeof parsed === 'object') {
@@ -139,15 +162,20 @@ export const safeLocalStorage: StateStorage = {
                   activeProjectId: state.activeProjectId || state.projectId || null,
                   route: state.route || 'chat',
                   navOpen: state.navOpen !== false,
-                  theme: state.theme || 'dark',
+                  theme: normalizePersistedTheme(state.theme),
                 },
-                version: parsed.version || 1,
+                version: UI_STORE_VERSION,
               };
               window.localStorage.setItem(name, JSON.stringify(minimalPayload));
-              console.warn(`[safeLocalStorage] Fallback minimal payload successfully written for 'jarvis-ui'.`);
+              console.warn(
+                `[safeLocalStorage] Fallback minimal payload successfully written for 'jarvis-ui'.`,
+              );
             }
           } catch (fallbackError) {
-            console.error(`[safeLocalStorage] Failed to write minimal fallback for 'jarvis-ui':`, fallbackError);
+            console.error(
+              `[safeLocalStorage] Failed to write minimal fallback for 'jarvis-ui':`,
+              fallbackError,
+            );
           }
         }
         // Do not re-throw into React. Allow the application to remain functional.

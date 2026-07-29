@@ -7,11 +7,37 @@ describe('appearance theme registry', () => {
       'jarvis',
       'vibespace',
       'default',
-      'light',
+      'monochrome',
     ]);
   });
 
-  it('migrates legacy dark and system preferences without losing a valid choice', () => {
+  it('uses the accepted public labels and descriptions', () => {
+    expect(SELECTABLE_THEMES).toEqual([
+      {
+        id: 'jarvis',
+        label: 'Jarvis Core',
+        description: 'High-contrast command center.',
+      },
+      {
+        id: 'vibespace',
+        label: 'VibeSpace',
+        description: 'Pastel origami workspace.',
+      },
+      {
+        id: 'default',
+        label: 'Default',
+        description: 'Warm, focused dark workspace.',
+      },
+      {
+        id: 'monochrome',
+        label: 'MonoChrome',
+        description: 'Terminal-inspired developer console.',
+      },
+    ]);
+  });
+
+  it('migrates all legacy preferences through the canonical contract', () => {
+    expect(migrateThemePreference('light')).toBe('monochrome');
     expect(migrateThemePreference('dark')).toBe('default');
     expect(migrateThemePreference('system')).toBe('default');
     expect(migrateThemePreference('vibespace')).toBe('vibespace');
@@ -22,6 +48,8 @@ describe('appearance theme registry', () => {
     expect(parseThemeCommandArgument('VibeSpace')).toBe('vibespace');
     expect(parseThemeCommandArgument('jarvis core')).toBe('jarvis');
     expect(parseThemeCommandArgument('dark')).toBe('default');
+    expect(parseThemeCommandArgument('light')).toBe('monochrome');
+    expect(parseThemeCommandArgument('terminal')).toBe('monochrome');
     expect(parseThemeCommandArgument('nope')).toBeNull();
   });
 });

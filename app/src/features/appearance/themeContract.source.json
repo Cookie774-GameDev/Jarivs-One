@@ -1,0 +1,54 @@
+{
+  "storageKey": "jarvis-ui",
+  "storeVersion": 5,
+  "fallbackTheme": "default",
+  "selectableThemes": [
+    {
+      "id": "jarvis",
+      "label": "Jarvis Core",
+      "description": "High-contrast command center."
+    },
+    {
+      "id": "vibespace",
+      "label": "VibeSpace",
+      "description": "Pastel origami workspace."
+    },
+    {
+      "id": "default",
+      "label": "Default",
+      "description": "Warm, focused dark workspace."
+    },
+    {
+      "id": "monochrome",
+      "label": "MonoChrome",
+      "description": "Terminal-inspired developer console."
+    }
+  ],
+  "documentThemes": {
+    "jarvis": "jarvis",
+    "vibespace": "vibespace",
+    "default": "dark",
+    "monochrome": "monochrome"
+  },
+  "persistedLegacyThemes": {
+    "light": "monochrome",
+    "dark": "default",
+    "system": "default"
+  },
+  "syncLegacyThemes": {
+    "light": "monochrome"
+  },
+  "commandAliases": {
+    "jarvis": "jarvis",
+    "jarvis core": "jarvis",
+    "core": "jarvis",
+    "vibespace": "vibespace",
+    "vibe": "vibespace",
+    "default": "default",
+    "dark": "default",
+    "monochrome": "monochrome",
+    "mono": "monochrome",
+    "terminal": "monochrome",
+    "light": "monochrome"
+  }
+}
