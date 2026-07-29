@@ -203,6 +203,7 @@ export function TopBar() {
   return (
     <header
       aria-label="Application header"
+      data-monochrome-surface="top-bar"
       className={cn(
         'drag-region relative flex shrink-0 items-center gap-2 border-b bg-panel pr-2 text-secondary transition-[height,padding,colors] duration-150',
         compactChrome ? 'h-7 gap-1' : 'h-10 gap-2',

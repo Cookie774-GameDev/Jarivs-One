@@ -77,6 +77,10 @@ html[data-theme='monochrome'] {
   --duration-base: 120ms;
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
   --bloom-image: none;
+  --monochrome-top-bar-height: 36px;
+  --monochrome-tab-strip-height: 30px;
+  --monochrome-nav-expanded: 224px;
+  --monochrome-inspector-width: 304px;
 }
 
 html[data-theme='monochrome'] body {
@@ -165,6 +169,53 @@ html[data-theme='monochrome'] ::-webkit-scrollbar-thumb {
 
 html[data-theme='monochrome'] ::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--muted-foreground));
+}
+
+html[data-theme='monochrome'] [data-monochrome-surface='app-shell'] {
+  background: hsl(var(--background));
+}
+
+html[data-theme='monochrome'] [data-monochrome-surface='top-bar'] {
+  height: var(--monochrome-top-bar-height);
+  min-height: var(--monochrome-top-bar-height);
+  border-bottom: 1px solid hsl(var(--border));
+  background: hsl(var(--panel));
+  box-shadow: none;
+}
+
+html[data-theme='monochrome'] [data-monochrome-surface='navigation'] {
+  border-right: 1px solid hsl(var(--border));
+  background: hsl(var(--panel));
+}
+
+html[data-theme='monochrome'] [data-monochrome-surface='tab-strip'] {
+  height: var(--monochrome-tab-strip-height);
+  min-height: var(--monochrome-tab-strip-height);
+  border-bottom: 1px solid hsl(var(--border));
+  background: hsl(var(--panel));
+}
+
+html[data-theme='monochrome'] [data-monochrome-surface='inspector'] {
+  border-left: 1px solid hsl(var(--border));
+  background: hsl(var(--panel));
+}
+
+html[data-theme='monochrome'] [data-monochrome-surface='page-router'] {
+  background: hsl(var(--background));
+}
+
+html[data-theme='monochrome'] [data-monochrome-surface='context-menu'],
+html[data-theme='monochrome'] [role='menu'],
+html[data-theme='monochrome'] [role='dialog'],
+html[data-theme='monochrome'] [data-radix-popper-content-wrapper] {
+  border: 1px solid hsl(var(--border-mid));
+  border-radius: var(--radius);
+  background: hsl(var(--elevated));
+  box-shadow: 0 0 0 1px hsl(var(--background));
+}
+
+html[data-theme='monochrome'] [data-terminal-route-cache] {
+  background: hsl(var(--background));
 }
 
 @media (prefers-reduced-motion: reduce) {

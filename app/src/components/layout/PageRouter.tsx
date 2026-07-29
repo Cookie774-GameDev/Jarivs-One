@@ -258,43 +258,45 @@ export function PageRouter() {
 
   return (
     <React.Suspense fallback={<PageLoading />}>
-      {shouldRenderTerminal ? (
-        <div
-          data-terminal-route-cache
-          aria-hidden={visibleRoute !== 'terminal'}
-          className={visibleRoute === 'terminal' ? 'h-full w-full' : 'hidden'}
-        >
-          <TerminalsPage />
-        </div>
-      ) : null}
-      {shouldRenderCanvas ? (
-        <div
-          data-canvas-route-cache
-          aria-hidden={visibleRoute !== 'canvas'}
-          className={visibleRoute === 'canvas' ? 'h-full w-full' : 'hidden'}
-        >
-          <CanvasPage />
-        </div>
-      ) : null}
-      {shouldRenderPreview ? (
-        <div
-          data-preview-route-cache
-          aria-hidden={visibleRoute !== 'preview'}
-          className={visibleRoute === 'preview' ? 'h-full w-full' : 'hidden'}
-        >
-          <PreviewStudioPage />
-        </div>
-      ) : null}
-      {shouldRenderBrowser ? (
-        <div
-          data-browser-route-cache
-          aria-hidden={visibleRoute !== 'browser'}
-          className={visibleRoute === 'browser' ? 'h-full w-full' : 'hidden'}
-        >
-          <BrowserPage />
-        </div>
-      ) : null}
-      {!isCachedSurface ? <Page key={visibleRoute} /> : null}
+      <div className="h-full w-full" data-monochrome-surface="page-router">
+        {shouldRenderTerminal ? (
+          <div
+            data-terminal-route-cache
+            aria-hidden={visibleRoute !== 'terminal'}
+            className={visibleRoute === 'terminal' ? 'h-full w-full' : 'hidden'}
+          >
+            <TerminalsPage />
+          </div>
+        ) : null}
+        {shouldRenderCanvas ? (
+          <div
+            data-canvas-route-cache
+            aria-hidden={visibleRoute !== 'canvas'}
+            className={visibleRoute === 'canvas' ? 'h-full w-full' : 'hidden'}
+          >
+            <CanvasPage />
+          </div>
+        ) : null}
+        {shouldRenderPreview ? (
+          <div
+            data-preview-route-cache
+            aria-hidden={visibleRoute !== 'preview'}
+            className={visibleRoute === 'preview' ? 'h-full w-full' : 'hidden'}
+          >
+            <PreviewStudioPage />
+          </div>
+        ) : null}
+        {shouldRenderBrowser ? (
+          <div
+            data-browser-route-cache
+            aria-hidden={visibleRoute !== 'browser'}
+            className={visibleRoute === 'browser' ? 'h-full w-full' : 'hidden'}
+          >
+            <BrowserPage />
+          </div>
+        ) : null}
+        {!isCachedSurface ? <Page key={visibleRoute} /> : null}
+      </div>
     </React.Suspense>
   );
 }

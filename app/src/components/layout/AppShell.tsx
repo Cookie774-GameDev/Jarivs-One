@@ -51,6 +51,7 @@ export function AppShell({ children }: AppShellProps) {
         <TooltipProvider delayDuration={400}>
           <div
             className="flex h-full w-full flex-col bg-background text-foreground"
+            data-monochrome-surface="app-shell"
             data-workbench-fullscreen="true"
             data-workbench-detached={isWorkbenchDetachedSearch() ? 'true' : 'false'}
           >
@@ -64,12 +65,12 @@ export function AppShell({ children }: AppShellProps) {
   }
 
   return (
-    <MotionConfig
-      reducedMotion="user"
-      transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-    >
+    <MotionConfig reducedMotion="user" transition={{ type: 'spring', stiffness: 400, damping: 30 }}>
       <TooltipProvider delayDuration={400}>
-        <div className="flex h-full w-full flex-col bg-background text-foreground">
+        <div
+          className="flex h-full w-full flex-col bg-background text-foreground"
+          data-monochrome-surface="app-shell"
+        >
           <TopBar />
 
           <div className="flex min-h-0 flex-1">
@@ -77,10 +78,7 @@ export function AppShell({ children }: AppShellProps) {
 
             <div className="flex min-w-0 flex-1 flex-col">
               <TabStrip />
-              <main
-                aria-label="Workspace"
-                className="min-h-0 min-w-0 flex-1 overflow-auto"
-              >
+              <main aria-label="Workspace" className="min-h-0 min-w-0 flex-1 overflow-auto">
                 {children}
               </main>
               {chatMode === 'council' && <CouncilActivityStrip />}

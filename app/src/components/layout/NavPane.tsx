@@ -237,6 +237,7 @@ export function NavPane() {
   return (
     <motion.aside
       aria-label="Navigation"
+      data-monochrome-surface="navigation"
       data-nav-pane="true"
       className="shrink-0 overflow-hidden bg-panel border-r border-border"
       initial={false}

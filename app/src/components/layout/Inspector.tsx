@@ -27,7 +27,13 @@ import {
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Hint, Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
+import {
+  Hint,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+  TooltipProvider,
+} from '@/components/ui/tooltip';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import { useAgentStore } from '@/stores/agents';
@@ -106,9 +112,7 @@ interface InspectorCustomTool {
   updatedAt: number;
 }
 
-function useContextPersistenceState(
-  projectId: string | null,
-): ContextPersistenceState | null {
+function useContextPersistenceState(projectId: string | null): ContextPersistenceState | null {
   const accountId = useAuthStore((state) => resolveAccountIdentity(state)?.accountId ?? null);
   const [state, setState] = React.useState<ContextPersistenceState | null>(null);
 
@@ -122,9 +126,11 @@ function useContextPersistenceState(
       if (active) setState(getActiveContextPersistenceState(projectId));
     };
     refresh();
-    void ensureContextPersistence(projectId).then(refresh).catch(() => {
-      if (active) setState(null);
-    });
+    void ensureContextPersistence(projectId)
+      .then(refresh)
+      .catch(() => {
+        if (active) setState(null);
+      });
     const onUpdated = (event: Event) => {
       const detail = (event as CustomEvent<{ projectId?: string | null }>).detail;
       if ((detail?.projectId ?? null) === (projectId ?? null)) refresh();
@@ -240,7 +246,10 @@ export function Inspector() {
           setActiveTab('jarvis');
         })
         .catch((err) => {
-          toast.error('Could not start Jarvis creator', err instanceof Error ? err.message : 'Try again.');
+          toast.error(
+            'Could not start Jarvis creator',
+            err instanceof Error ? err.message : 'Try again.',
+          );
         });
     };
     window.addEventListener('jarvis:terminal:attach', handleAttach);
@@ -310,7 +319,7 @@ export function Inspector() {
         : allChats.filter((c) => !c.project_id);
       const existing = filtered.length;
       const title = `New chat ${existing + 1}`;
-      
+
       const chat = await chatRepo.create({
         workspace_id: workspaceId,
         project_id: projectId ?? undefined,
@@ -332,6 +341,7 @@ export function Inspector() {
   return (
     <motion.aside
       aria-label="Inspector"
+      data-monochrome-surface="inspector"
       className="shrink-0 overflow-hidden bg-panel border-l border-border"
       initial={{ width: 0 }}
       animate={{ width: inspectorWidth }}
@@ -341,7 +351,9 @@ export function Inspector() {
       <div className="flex h-full flex-col" style={{ width: inspectorWidth }}>
         {/* Header with Title and Close Button */}
         <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-panel-soft">
-          <span className="text-metadata font-medium uppercase tracking-wider text-muted-foreground">Inspector</span>
+          <span className="text-metadata font-medium uppercase tracking-wider text-muted-foreground">
+            Inspector
+          </span>
           <button
             type="button"
             onClick={toggleInspector}
@@ -352,7 +364,11 @@ export function Inspector() {
           </button>
         </div>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex h-full min-h-0 flex-col">
+        <Tabs
+          value={activeTab}
+          onValueChange={setActiveTab}
+          className="flex h-full min-h-0 flex-col"
+        >
           {/* NEW — route-context strip. Renders nothing for chat/agents. */}
           <RouteContextStrip workspaceId={workspaceId} />
 
@@ -375,117 +391,117 @@ export function Inspector() {
           >
             {activeTab === 'jarvis' ? (
               <>
-            <div className="flex items-center gap-1 border-b border-border bg-panel-soft px-2 py-1.5 shrink-0">
-              <Sparkles className="h-3.5 w-3.5 shrink-0 text-accent-copper" aria-hidden />
-              <Popover>
-                <PopoverTrigger asChild>
-                  <button
+                <div className="flex items-center gap-1 border-b border-border bg-panel-soft px-2 py-1.5 shrink-0">
+                  <Sparkles className="h-3.5 w-3.5 shrink-0 text-accent-copper" aria-hidden />
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button
+                        type="button"
+                        className={cn(
+                          'flex min-w-0 flex-1 items-center gap-1 rounded-md px-1.5 py-0.5 text-left transition-colors',
+                          'hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+                        )}
+                        aria-label="Switch Jarvis chat"
+                      >
+                        <span className="truncate text-metadata font-medium text-foreground">
+                          {activeInspectorChat?.title?.trim() || 'Jarvis Chat'}
+                        </span>
+                        <ChevronDown
+                          className="h-3 w-3 shrink-0 text-muted-foreground"
+                          aria-hidden
+                        />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent align="start" className="w-[288px] p-1.5">
+                      <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                        Project chats
+                      </p>
+                      {inspectorChats.length === 0 ? (
+                        <p className="px-2 py-2 text-secondary text-muted-foreground">
+                          No chats yet. Start one with +.
+                        </p>
+                      ) : (
+                        <ul className="max-h-56 overflow-y-auto scrollbar-hidden">
+                          {inspectorChats.map((chat) => {
+                            const active = chat.id === inspectorChatId;
+                            return (
+                              <li key={chat.id}>
+                                <button
+                                  type="button"
+                                  onClick={() => setInspectorChatId(chat.id)}
+                                  className={cn(
+                                    'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors',
+                                    'hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+                                    active && 'bg-muted ring-1 ring-accent-copper/35',
+                                  )}
+                                >
+                                  <MessageSquare
+                                    className={cn(
+                                      'h-3.5 w-3.5 shrink-0',
+                                      active ? 'text-accent-copper' : 'text-muted-foreground',
+                                    )}
+                                    aria-hidden
+                                  />
+                                  <span className="min-w-0 flex-1 truncate text-secondary text-foreground">
+                                    {chat.title?.trim() || 'Untitled chat'}
+                                  </span>
+                                  <span className="shrink-0 text-[10px] text-muted-foreground tabular-nums">
+                                    {formatRelative(chat.updated_at)}
+                                  </span>
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </PopoverContent>
+                  </Popover>
+                  <Hint label="New chat">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => void handleCreateChatInsideJarvisPanel()}
+                      aria-label="New chat"
+                      className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                    </Button>
+                  </Hint>
+                  <Button
                     type="button"
-                    className={cn(
-                      'flex min-w-0 flex-1 items-center gap-1 rounded-md px-1.5 py-0.5 text-left transition-colors',
-                      'hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-                    )}
-                    aria-label="Switch Jarvis chat"
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={toggleInspector}
+                    aria-label="Close Jarvis panel"
+                    className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
                   >
-                    <span className="truncate text-metadata font-medium text-foreground">
-                      {activeInspectorChat?.title?.trim() || 'Jarvis Chat'}
-                    </span>
-                    <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden />
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent align="start" className="w-[288px] p-1.5">
-                  <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                    Project chats
-                  </p>
-                  {inspectorChats.length === 0 ? (
-                    <p className="px-2 py-2 text-secondary text-muted-foreground">
-                      No chats yet. Start one with +.
-                    </p>
-                  ) : (
-                    <ul className="max-h-56 overflow-y-auto scrollbar-hidden">
-                      {inspectorChats.map((chat) => {
-                        const active = chat.id === inspectorChatId;
-                        return (
-                          <li key={chat.id}>
-                            <button
-                              type="button"
-                              onClick={() => setInspectorChatId(chat.id)}
-                              className={cn(
-                                'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors',
-                                'hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-                                active && 'bg-muted ring-1 ring-accent-copper/35',
-                              )}
-                            >
-                              <MessageSquare
-                                className={cn(
-                                  'h-3.5 w-3.5 shrink-0',
-                                  active ? 'text-accent-copper' : 'text-muted-foreground',
-                                )}
-                                aria-hidden
-                              />
-                              <span className="min-w-0 flex-1 truncate text-secondary text-foreground">
-                                {chat.title?.trim() || 'Untitled chat'}
-                              </span>
-                              <span className="shrink-0 text-[10px] text-muted-foreground tabular-nums">
-                                {formatRelative(chat.updated_at)}
-                              </span>
-                            </button>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-                </PopoverContent>
-              </Popover>
-              <Hint label="New chat">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => void handleCreateChatInsideJarvisPanel()}
-                  aria-label="New chat"
-                  className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                </Button>
-              </Hint>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                onClick={toggleInspector}
-                aria-label="Close Jarvis panel"
-                className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
-              >
-                <XCircle className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-            <TooltipProvider delayDuration={400}>
-              <div className="flex-1 min-h-0 flex flex-col bg-background overflow-x-hidden w-full min-w-0">
-                {inspectorChatId ? (
-                  <>
-                    <ChatThread chatId={inspectorChatId} compact />
-                    <Composer
-                      chatId={inspectorChatId}
-                      compact
-                      disableRouteSlashCommands
-                      placeholder="Ask Jarvis about this project..."
-                    />
-                  </>
-                ) : (
-                  <div className="flex-1 overflow-auto">
-                    <EmptyChat onNewChat={handleCreateChatInsideJarvisPanel} />
+                    <XCircle className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+                <TooltipProvider delayDuration={400}>
+                  <div className="flex-1 min-h-0 flex flex-col bg-background overflow-x-hidden w-full min-w-0">
+                    {inspectorChatId ? (
+                      <>
+                        <ChatThread chatId={inspectorChatId} compact />
+                        <Composer
+                          chatId={inspectorChatId}
+                          compact
+                          disableRouteSlashCommands
+                          placeholder="Ask Jarvis about this project..."
+                        />
+                      </>
+                    ) : (
+                      <div className="flex-1 overflow-auto">
+                        <EmptyChat onNewChat={handleCreateChatInsideJarvisPanel} />
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            </TooltipProvider>
+                </TooltipProvider>
               </>
             ) : null}
           </TabsContent>
-          <TabsContent
-            value="today"
-            className="m-0 flex-1 overflow-auto scrollbar-hidden"
-          >
+          <TabsContent value="today" className="m-0 flex-1 overflow-auto scrollbar-hidden">
             {activeTab === 'today' ? <TodayPanel /> : null}
           </TabsContent>
           <TabsContent
@@ -493,12 +509,12 @@ export function Inspector() {
             className="m-0 flex-1 overflow-auto px-4 py-3 scrollbar-hidden"
           >
             {activeTab === 'context' ? (
-            <InspectorContextPanel
-              inspectorOpen={inspectorOpen}
-              previewFilePath={previewFilePath}
-              projectRoot={projectRoot}
-              onPreviewFile={setPreviewFilePath}
-            />
+              <InspectorContextPanel
+                inspectorOpen={inspectorOpen}
+                previewFilePath={previewFilePath}
+                projectRoot={projectRoot}
+                onPreviewFile={setPreviewFilePath}
+              />
             ) : null}
           </TabsContent>
           <TabsContent
@@ -512,16 +528,11 @@ export function Inspector() {
             className="m-0 flex-1 overflow-auto px-4 py-3 scrollbar-hidden"
           >
             {activeTab === 'trace' ? (
-            <InspectorMilestonesPanel view={traceView} onViewChange={setTraceView} />
+              <InspectorMilestonesPanel view={traceView} onViewChange={setTraceView} />
             ) : null}
           </TabsContent>
-          <TabsContent
-            value="live"
-            className="m-0 flex-1 overflow-auto px-4 py-3 scrollbar-hidden"
-          >
-            {activeTab === 'live' ? (
-            <InspectorActiveWorkPanel workspaceId={workspaceId} />
-            ) : null}
+          <TabsContent value="live" className="m-0 flex-1 overflow-auto px-4 py-3 scrollbar-hidden">
+            {activeTab === 'live' ? <InspectorActiveWorkPanel workspaceId={workspaceId} /> : null}
           </TabsContent>
         </Tabs>
       </div>
@@ -613,7 +624,9 @@ function InspectorContextPanel({
   );
   const rows = React.useMemo(() => {
     if (!tree) return [] as ContextTreeNode[];
-    return flattenContextNodes(tree.nodes).filter((node) => node.kind !== 'root').slice(0, 12);
+    return flattenContextNodes(tree.nodes)
+      .filter((node) => node.kind !== 'root')
+      .slice(0, 12);
   }, [tree]);
 
   if (!tree) {
@@ -623,7 +636,12 @@ function InspectorContextPanel({
           title="Context"
           body="No active project map yet. Open Context to generate or select a project map."
         />
-        <Button variant="ghost" size="sm" onClick={() => setRoute('context')} className="justify-start">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setRoute('context')}
+          className="justify-start"
+        >
           <Boxes className="h-3.5 w-3.5" />
           Open Context
         </Button>
@@ -655,7 +673,11 @@ function InspectorContextPanel({
       }}
     >
       {inspectorOpen && previewFilePath ? (
-        <InspectorMiniEditor filePath={previewFilePath} rootDir={projectRoot} onClose={() => onPreviewFile(null)} />
+        <InspectorMiniEditor
+          filePath={previewFilePath}
+          rootDir={projectRoot}
+          onClose={() => onPreviewFile(null)}
+        />
       ) : null}
 
       <Section
@@ -683,11 +705,7 @@ function InspectorContextPanel({
               mapRoot: tree.rootDir,
             });
           }}
-          onPreview={
-            inspectorOpen && mapPath
-              ? () => onPreviewFile(mapPath)
-              : undefined
-          }
+          onPreview={inspectorOpen && mapPath ? () => onPreviewFile(mapPath) : undefined}
         />
       </Section>
 
@@ -710,9 +728,13 @@ function InspectorContextPanel({
                     filePath={filePath}
                     title={node.title}
                     subtitle={node.path ?? node.summary}
-                    icon={node.kind === 'file'
-                      ? <FileText className="h-3.5 w-3.5" />
-                      : <Boxes className="h-3.5 w-3.5" />}
+                    icon={
+                      node.kind === 'file' ? (
+                        <FileText className="h-3.5 w-3.5" />
+                      ) : (
+                        <Boxes className="h-3.5 w-3.5" />
+                      )
+                    }
                     meta={node.kind}
                     onOpen={() => {
                       if (inspectorOpen && filePath) {
@@ -738,7 +760,9 @@ function InspectorContextPanel({
                         filePath,
                       });
                     }}
-                    onPreview={inspectorOpen && filePath ? () => onPreviewFile(filePath) : undefined}
+                    onPreview={
+                      inspectorOpen && filePath ? () => onPreviewFile(filePath) : undefined
+                    }
                   />
                 </li>
               );
@@ -867,7 +891,12 @@ function InspectorToolsPanel() {
         {sortedTools.length === 0 ? (
           <div className="flex flex-col gap-2">
             <EmptyState text="No custom tools saved yet." />
-            <Button variant="ghost" size="sm" onClick={() => setRoute('tools')} className="justify-start">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setRoute('tools')}
+              className="justify-start"
+            >
               <Wrench className="h-3.5 w-3.5" />
               Open Tools
             </Button>
@@ -920,7 +949,11 @@ function loadStoredInspectorTools(): InspectorCustomTool[] {
   try {
     const parsed = JSON.parse(raw) as unknown;
     const state = isPlainRecord(parsed) ? parsed.state : null;
-    const candidate = isPlainRecord(state) ? state.tools : isPlainRecord(parsed) ? parsed.tools : null;
+    const candidate = isPlainRecord(state)
+      ? state.tools
+      : isPlainRecord(parsed)
+        ? parsed.tools
+        : null;
     if (!Array.isArray(candidate)) return [];
     return candidate
       .map(normalizeInspectorTool)
@@ -1167,9 +1200,12 @@ function CustomToolResourceRow({
     <ToolResourceRow
       title={`${tool.emoji ? `${tool.emoji} ` : ''}${tool.name}`}
       actionId={actionId}
-      description={tool.description || (stepCount > 0
-        ? `${stepCount} workflow step${stepCount === 1 ? '' : 's'}`
-        : `Runs ${tool.baseAction}`)}
+      description={
+        tool.description ||
+        (stepCount > 0
+          ? `${stepCount} workflow step${stepCount === 1 ? '' : 's'}`
+          : `Runs ${tool.baseAction}`)
+      }
       icon={<Wrench className="h-3.5 w-3.5" />}
       projectId={projectId}
       onOpen={onOpen}
@@ -1288,7 +1324,9 @@ function toolAttachment({
       `Action id: ${actionId}`,
       description,
       'Use this when the user asks Jarvis to run or configure this tool.',
-    ].filter(Boolean).join('\n'),
+    ]
+      .filter(Boolean)
+      .join('\n'),
     path: `jarvis://tools/${actionId}`,
     tags: ['tool', actionId],
   };
@@ -1302,7 +1340,10 @@ function setContextDragData(
   event.dataTransfer.effectAllowed = 'copy';
   event.dataTransfer.setData(CONTEXT_MIME, serializeContextAttachment(attachment));
   if (filePath) event.dataTransfer.setData('application/x-jarvis-file', filePath);
-  event.dataTransfer.setData('text/plain', filePath || formatContextAttachmentForTerminal(attachment));
+  event.dataTransfer.setData(
+    'text/plain',
+    filePath || formatContextAttachmentForTerminal(attachment),
+  );
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -1368,7 +1409,11 @@ function TodayPanel() {
         emptyHint={todayEvents.length === 0 ? 'Nothing today — showing upcoming.' : undefined}
         onOpenSchedule={() => setRoute('schedule')}
       />
-      <WorkspaceTasksSection tasks={workspaceTasks.slice(0, 8)} totalOpen={openCount} kanbanToday={kanbanToday.length} />
+      <WorkspaceTasksSection
+        tasks={workspaceTasks.slice(0, 8)}
+        totalOpen={openCount}
+        kanbanToday={kanbanToday.length}
+      />
       <QuickLinksSection links={launchLinks} onManage={() => setLauncherOpen(true)} />
     </div>
   );
@@ -1403,7 +1448,9 @@ function ScheduleSection({
         </div>
       ) : (
         <>
-          {emptyHint ? <p className="text-metadata text-muted-foreground px-0.5">{emptyHint}</p> : null}
+          {emptyHint ? (
+            <p className="text-metadata text-muted-foreground px-0.5">{emptyHint}</p>
+          ) : null}
           <ul className="flex flex-col gap-1.5">
             {events.map((inst) => (
               <li
@@ -1413,10 +1460,7 @@ function ScheduleSection({
                 <span className="text-metadata font-mono text-accent-copper tabular-nums shrink-0 w-14">
                   {inst.event.all_day ? 'All day' : formatClock(inst.instanceStartMs)}
                 </span>
-                <span
-                  className="text-secondary text-foreground truncate"
-                  title={inst.event.title}
-                >
+                <span className="text-secondary text-foreground truncate" title={inst.event.title}>
                   {inst.event.title}
                 </span>
               </li>
@@ -1470,7 +1514,9 @@ function WorkspaceTasksSection({
         </ul>
       )}
       {kanbanToday > 0 ? (
-        <p className="text-metadata text-muted-foreground px-0.5">{kanbanToday} kanban task(s) due today</p>
+        <p className="text-metadata text-muted-foreground px-0.5">
+          {kanbanToday} kanban task(s) due today
+        </p>
       ) : null}
     </Section>
   );
@@ -1492,10 +1538,7 @@ function PriorityDot({ priority }: { priority: TaskPriority }) {
 
 function QuickLinksSection({ links, onManage }: { links: QuickLink[]; onManage?: () => void }) {
   return (
-    <Section
-      label="Quick Launch"
-      icon={<Sparkles className="h-3 w-3" />}
-    >
+    <Section label="Quick Launch" icon={<Sparkles className="h-3 w-3" />}>
       {links.length === 0 ? (
         <EmptyState text="No quick launch items yet." />
       ) : (
@@ -1577,9 +1620,7 @@ function Section({ label, icon, hint, children }: SectionProps) {
           <span className="text-accent-copper">{icon}</span>
           {label}
         </span>
-        {hint && (
-          <span className="text-metadata text-muted-foreground tabular-nums">{hint}</span>
-        )}
+        {hint && <span className="text-metadata text-muted-foreground tabular-nums">{hint}</span>}
       </header>
       {children}
     </section>
@@ -1587,9 +1628,7 @@ function Section({ label, icon, hint, children }: SectionProps) {
 }
 
 function EmptyState({ text }: { text: string }) {
-  return (
-    <p className="text-secondary text-muted-foreground italic px-0.5">{text}</p>
-  );
+  return <p className="text-secondary text-muted-foreground italic px-0.5">{text}</p>;
 }
 
 // ============================================================
@@ -1609,7 +1648,7 @@ function useRoute(): Route {
  * Route-aware quick-info strip. Inserts above the existing tabs.
  *
  * Chat / Agents routes render nothing — the Today tab below is the
-  * primary surface for those. Every other route gets its own cozy
+ * primary surface for those. Every other route gets its own cozy
  * paper-card. Panels that depend on sibling slices use lazy imports
  * with `.catch` so a missing module gracefully falls back to a
  * `PlaceholderCard` instead of crashing the inspector.
@@ -1671,9 +1710,7 @@ function StripCard({
         <span className="text-metadata uppercase tracking-wide text-muted-foreground">
           {eyebrow}
         </span>
-        {hint && (
-          <span className="text-metadata text-accent-copper tabular-nums">{hint}</span>
-        )}
+        {hint && <span className="text-metadata text-accent-copper tabular-nums">{hint}</span>}
       </header>
       {children}
     </section>
@@ -1706,10 +1743,7 @@ function TerminalsContextPanel({ workspaceId }: { workspaceId: WorkspaceId | nul
 
   if (!isTauri) {
     return (
-      <PlaceholderCard
-        title="Active terminals"
-        body="Run the desktop build to manage terminals."
-      />
+      <PlaceholderCard title="Active terminals" body="Run the desktop build to manage terminals." />
     );
   }
 
@@ -1753,10 +1787,7 @@ function TerminalRow({ session }: { session: TerminalSession }) {
     <li className="flex items-start gap-2 rounded-md bg-paper-soft px-2 py-1.5">
       <div className="min-w-0 flex-1">
         <div className="text-secondary text-foreground truncate">{session.title}</div>
-        <div
-          className="text-metadata text-muted-foreground truncate"
-          title={session.cwd}
-        >
+        <div className="text-metadata text-muted-foreground truncate" title={session.cwd}>
           {session.cwd ?? '~'} · {formatRelative(session.created_at)}
         </div>
       </div>
@@ -1817,9 +1848,7 @@ function KanbanContextPanel(_props: { workspaceId: WorkspaceId | null }) {
               To-do
             </span>
             <span className="flex items-center gap-2">
-              <span className="text-metadata text-accent-copper tabular-nums">
-                {todos.length}
-              </span>
+              <span className="text-metadata text-accent-copper tabular-nums">{todos.length}</span>
               <ChevronDown className="h-3.5 w-3.5 text-muted-foreground transition-transform group-open:rotate-180" />
             </span>
           </summary>
@@ -1839,10 +1868,7 @@ function KanbanContextPanel(_props: { workspaceId: WorkspaceId | null }) {
                 >
                   <span className="sr-only">Complete</span>
                 </button>
-                <span
-                  className="text-secondary text-foreground truncate flex-1"
-                  title={item.title}
-                >
+                <span className="text-secondary text-foreground truncate flex-1" title={item.title}>
                   {item.title}
                 </span>
               </li>
@@ -1943,15 +1969,17 @@ function ContextContextPanel() {
       <ul className="flex flex-wrap gap-1">
         {tags.length === 0 ? (
           <li className="text-secondary text-muted-foreground italic">No tags yet.</li>
-        ) : tags.map((tag) => (
-          <li
-            key={tag}
-            className="inline-flex items-center gap-1 rounded-sm bg-paper-soft px-1.5 py-0.5 text-metadata text-foreground"
-          >
-            <Tag className="h-3 w-3 text-accent-copper" aria-hidden="true" />
-            <span>{tag}</span>
-          </li>
-        ))}
+        ) : (
+          tags.map((tag) => (
+            <li
+              key={tag}
+              className="inline-flex items-center gap-1 rounded-sm bg-paper-soft px-1.5 py-0.5 text-metadata text-foreground"
+            >
+              <Tag className="h-3 w-3 text-accent-copper" aria-hidden="true" />
+              <span>{tag}</span>
+            </li>
+          ))
+        )}
       </ul>
     </StripCard>
   );
@@ -1996,20 +2024,10 @@ function BenchmarksContextPanel() {
   }, []);
 
   if (!rows) {
-    return (
-      <PlaceholderCard
-        title="Top by Arena score"
-        body="Loading leaderboard…"
-      />
-    );
+    return <PlaceholderCard title="Top by Arena score" body="Loading leaderboard…" />;
   }
   if (rows.length === 0) {
-    return (
-      <PlaceholderCard
-        title="Top by Arena score"
-        body="No benchmark rows available yet."
-      />
-    );
+    return <PlaceholderCard title="Top by Arena score" body="No benchmark rows available yet." />;
   }
 
   return (
@@ -2023,10 +2041,7 @@ function BenchmarksContextPanel() {
             <span className="text-metadata text-muted-foreground tabular-nums shrink-0 w-4">
               {i + 1}
             </span>
-            <span
-              className="text-secondary text-foreground truncate flex-1"
-              title={r.model}
-            >
+            <span className="text-secondary text-foreground truncate flex-1" title={r.model}>
               {r.model}
             </span>
             <span className="text-metadata text-accent-copper tabular-nums shrink-0">
@@ -2060,12 +2075,7 @@ function HistoryContextPanel({ workspaceId }: { workspaceId: WorkspaceId | null 
     ) ?? [];
 
   if (chats.length === 0) {
-    return (
-      <PlaceholderCard
-        title="Last 5 chats"
-        body="Start a chat to see it here."
-      />
-    );
+    return <PlaceholderCard title="Last 5 chats" body="Start a chat to see it here." />;
   }
 
   const onJump = (chat: Chat) => {
@@ -2091,10 +2101,7 @@ function HistoryContextPanel({ workspaceId }: { workspaceId: WorkspaceId | null 
                 className="h-3 w-3 shrink-0 text-muted-foreground"
                 aria-hidden="true"
               />
-              <span
-                className="text-secondary text-foreground truncate flex-1"
-                title={c.title}
-              >
+              <span className="text-secondary text-foreground truncate flex-1" title={c.title}>
                 {c.title || 'Untitled chat'}
               </span>
               <span className="text-metadata text-muted-foreground tabular-nums shrink-0">
