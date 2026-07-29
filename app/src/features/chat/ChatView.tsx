@@ -9,6 +9,7 @@ import { ensureActiveChat } from './chatLifecycle';
 import { cn } from '@/lib/utils';
 import { getChatDragKind, getChatDropPayload, type ChatDropKind } from './dropPayload';
 import { usePetPresentationStore } from '@/features/pets/petPresentationStore';
+import { OrigamiChatDecor } from './OrigamiChatDecor';
 
 /**
  * Top-level chat surface. Move chats into the Pet panel via right-click on a tab
@@ -88,6 +89,7 @@ export function ChatView() {
           dropKind && 'ring-inset ring-2 ring-accent-copper/50',
         )}
       >
+        <OrigamiChatDecor />
         {dropKind && (
           <div className="pointer-events-none absolute right-4 top-4 z-10 rounded-md border border-accent-copper/50 bg-background/95 px-3 py-1 text-metadata text-accent-copper shadow-soft">
             Drop{' '}

@@ -1,39 +1,41 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import postcss, { type Rule } from 'postcss';
 import { describe, expect, it } from 'vitest';
 
 const LOCKED_HEX = [
-  '#fdf4e6',
-  '#faeee0',
-  '#fceacc',
-  '#fcd1a9',
-  '#e3885e',
-  '#d5663a',
-  '#d77b6b',
-  '#e7a57e',
-  '#eaa870',
-  '#cfa1c7',
-  '#a57aa0',
-  '#7b5479',
-  '#8fa08b',
-  '#798a6a',
-  '#6c7457',
-  '#8cbfd1',
-  '#b27c53',
-  '#865939',
-  '#622f12',
-  '#54362a',
+  '#f4d8be',
+  '#f7ddc6',
+  '#f9e1cb',
+  '#fff1df',
+  '#d3b296',
+  '#9d7970',
+  '#4b3120',
+  '#755842',
+  '#fbae8e',
+  '#f0a280',
+  '#c6785b',
+  '#c5b0d2',
+  '#8e6fa4',
+  '#758766',
+  '#a7b38d',
+  '#879eb7',
+  '#e6a04f',
+  '#9fb667',
+  '#ef7f25',
 ] as const;
 
 const CHAT_ROUTE_SCOPE =
   "html[data-theme='vibespace'] body:has(main[aria-label='workspace'] [data-vibespace-page='chat'])";
-const cssPath = resolve(__dirname, '../../styles/vibespace-theme.css');
+const cssPath = resolve(__dirname, '../../styles/origami-chat.css');
+const baseCssPath = resolve(__dirname, '../../styles/vibespace-theme.css');
+const assetRoot = resolve(__dirname, '../../../public/assets/origami-chat');
 const chatViewPath = resolve(__dirname, '../chat/ChatView.tsx');
 const schedulePagePath = resolve(__dirname, '../schedule/SchedulePage.tsx');
+const mainPath = resolve(__dirname, '../../main.tsx');
 
 function readCss(): string {
-  return readFileSync(cssPath, 'utf8').toLowerCase();
+  return existsSync(cssPath) ? readFileSync(cssPath, 'utf8').toLowerCase() : '';
 }
 
 function rules(css: string): Rule[] {
@@ -61,6 +63,25 @@ function exactRule(css: string, selector: string): Rule | undefined {
 }
 
 describe('VibeSpace Origami Chat palette contract', () => {
+  it('isolates every Origami selector beneath the exact VibeSpace Workspace Chat gate', () => {
+    const css = readCss();
+    const parsedRules = rules(css);
+
+    expect(parsedRules.length, 'missing dedicated Origami Chat stylesheet').toBeGreaterThan(0);
+    for (const rule of parsedRules) {
+      for (const selector of rule.selectors) {
+        expect(
+          normalizeSelector(selector),
+          `Origami selector escaped the exact Chat gate: ${selector}`,
+        ).toMatch(new RegExp(`^${CHAT_ROUTE_SCOPE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+      }
+    }
+    expect(readFileSync(baseCssPath, 'utf8').toLowerCase()).not.toContain(
+      "[data-vibespace-page='chat']",
+    );
+    expect(readFileSync(mainPath, 'utf8')).toContain("import './styles/origami-chat.css';");
+  });
+
   it('keeps the locked paper palette on the VibeSpace Chat branch', () => {
     const css = readCss();
     const chatRoot = exactRule(css, CHAT_ROUTE_SCOPE);
@@ -84,6 +105,98 @@ describe('VibeSpace Origami Chat palette contract', () => {
     expect(metrics?.toString()).toContain('box-shadow');
     expect(composer?.toString()).toContain('box-shadow');
     expect(css).toContain('clip-path: polygon');
+  });
+
+  it('keeps the high-contrast grain asset on one faint noninteractive texture layer', () => {
+    const css = readCss();
+    const grainLayer = exactRule(css, `${CHAT_ROUTE_SCOPE} [data-vibespace-page='chat']::before`);
+    const opaqueSurfaces = [
+      ruleFor(css, "header[aria-label='application header']"),
+      exactRule(css, `${CHAT_ROUTE_SCOPE} [data-nav-pane='true']`),
+      ruleFor(css, "aside[aria-label='inspector']"),
+      exactRule(css, `${CHAT_ROUTE_SCOPE} [data-vibespace-page='chat']`),
+    ];
+
+    expect(css.match(/paper-grain\.webp/gu)).toHaveLength(1);
+    expect(grainLayer?.toString()).toContain('/assets/origami-chat/paper-grain.webp');
+    expect(grainLayer?.toString()).toContain('opacity: 0.035');
+    expect(grainLayer?.toString()).toContain('pointer-events: none');
+    for (const surface of opaqueSurfaces) {
+      expect(surface?.toString()).not.toContain('paper-grain.webp');
+    }
+  });
+
+  it('uses only the frozen local material and decoration assets', () => {
+    const css = readCss();
+    const expectedAssets = [
+      'paper-base.webp',
+      'paper-grain.webp',
+      'panel-9slice.webp',
+      'sidebar-row-9slice.webp',
+      'sidebar-active-row-9slice.webp',
+      'jarvis-frame-9slice.webp',
+    ];
+
+    expect(css).not.toMatch(/url\((?:['"])?https?:/u);
+    expect(css).not.toContain('target-chat.png');
+    for (const asset of expectedAssets) {
+      expect(existsSync(resolve(assetRoot, asset)), asset).toBe(true);
+      expect(css, asset).toContain(`/assets/origami-chat/${asset}`);
+    }
+  });
+
+  it('locks the reference geometry before decorative detail', () => {
+    const css = readCss();
+    const header = ruleFor(css, "header[aria-label='application header']");
+    const expandedNav = ruleFor(css, "[data-nav-pane='true'][style*='width: 240px']");
+    const navButton = ruleFor(css, "[data-nav-pane='true'] button");
+    const tabs = ruleFor(css, "[role='tablist'][aria-label='open chats']");
+    const thread = ruleFor(css, "[data-tour='chat-thread']");
+    const threadContent = ruleFor(css, "[data-tour='chat-thread'] > div");
+    const assistantMessage = exactRule(
+      css,
+      `${CHAT_ROUTE_SCOPE} [data-tour='chat-thread'] .justify-start`,
+    );
+    const session = ruleFor(css, "[data-testid='jarvis-session-panel']");
+    const composer = ruleFor(css, "[data-tour='chat-composer']");
+    const jarvisPanel = ruleFor(css, '.jarvis-voice-panel');
+
+    expect(header?.toString()).toContain('height: 79px');
+    expect(expandedNav?.toString()).toContain('width: 334px');
+    expect(navButton?.toString()).toContain('min-height: 36px');
+    expect(tabs?.toString()).toContain('height: 64px');
+    expect(thread?.toString()).toContain('padding-inline');
+    expect(threadContent?.toString()).toContain('padding-top: 0');
+    expect(assistantMessage?.toString()).toContain('margin-top: 18px');
+    expect(session?.toString()).toContain('min-height: 196px');
+    expect(composer?.toString()).toContain('min-height: 152px');
+    expect(composer?.toString()).toContain('margin-right: 232px');
+    expect(composer?.toString()).toContain('margin-bottom: 20px');
+    expect(composer?.toString()).toContain('margin-left: 8px');
+    expect(jarvisPanel?.toString()).toContain('width: 420px');
+    expect(jarvisPanel?.toString()).toContain('min-height: 98px');
+  });
+
+  it('places extracted decorations in their locked full-viewport source coordinates', () => {
+    const css = readCss();
+    const expectedGeometry = [
+      ['.origami-chat-decor', ['position: fixed', 'inset: 0', 'z-index: 3']],
+      ['.origami-chat-decor__ribbon', ['top: 0', 'left: 85px', 'width: 1140px', 'height: 88px']],
+      ['.origami-chat-decor__crane', ['top: 96px', 'left: 14px', 'width: 90px', 'height: 84px']],
+      ['.origami-chat-decor__foliage', ['top: 230px', 'left: 0', 'width: 116px', 'height: 715px']],
+      ['.origami-chat-decor__mountains', ['right: 0', 'bottom: 0', 'left: 0', 'height: 80px']],
+      [
+        '.origami-chat-decor__flower',
+        ['top: 674px', 'left: 1378px', 'width: 298px', 'height: 271px'],
+      ],
+    ] as const;
+
+    for (const [selector, declarations] of expectedGeometry) {
+      const rule = exactRule(css, `${CHAT_ROUTE_SCOPE} ${selector}`);
+      for (const declaration of declarations) {
+        expect(rule?.toString(), `${selector} ${declaration}`).toContain(declaration);
+      }
+    }
   });
 
   it('maps the paper treatment to real Chat, message, session, composer, and Jarvis seams', () => {
