@@ -288,8 +288,8 @@ export async function handleAccessCheckout(req, deps) {
         mode: 'subscription',
         customer: customerId,
         line_items: [{ price: config.appAccessPriceId, quantity: 1 }],
-        success_url: appBaseUrl + '/billing/access/success',
-        cancel_url: appBaseUrl + '/billing/access/cancel',
+        success_url: appBaseUrl + '/billing/success',
+        cancel_url: appBaseUrl + '/billing/cancel',
         expires_at: Math.floor(Date.parse(attempt.expiresAt) / 1000),
         client_reference_id: user.id,
         metadata: {

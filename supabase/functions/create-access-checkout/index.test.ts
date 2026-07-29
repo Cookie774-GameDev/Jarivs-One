@@ -559,16 +559,8 @@ Deno.test('ignores client-supplied price/amount/customer/user/redirect (injectio
     [{ price: 'price_access_unit', quantity: 1 }],
     'server price only',
   );
-  assertEquals(
-    params.success_url,
-    'https://app.example.com/billing/access/success',
-    'server success url',
-  );
-  assertEquals(
-    params.cancel_url,
-    'https://app.example.com/billing/access/cancel',
-    'server cancel url',
-  );
+  assertEquals(params.success_url, 'https://app.example.com/billing/success', 'server success url');
+  assertEquals(params.cancel_url, 'https://app.example.com/billing/cancel', 'server cancel url');
   assertEquals(params.customer, 'cus_exist', 'customer from profile, not body');
   assertEquals(params.client_reference_id, 'user_1', 'user from JWT, not body');
   assertEquals(params.expires_at, 1785200400, 'server attempt expiry only');
