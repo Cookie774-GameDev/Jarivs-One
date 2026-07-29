@@ -8,12 +8,7 @@ import { cn, renderHotkey } from '@/lib/utils';
 import { useUIStore } from '@/stores/ui';
 import type { ActionContext } from './actions';
 import { PAGE_GROUP_CLASS, PageContent } from './pages';
-import {
-  PAGE_LABELS,
-  type PageId,
-  getCurrentPage,
-  usePaletteStore,
-} from './store';
+import { PAGE_LABELS, type PageId, getCurrentPage, usePaletteStore } from './store';
 
 /**
  * Per-page placeholder text for the search input.
@@ -70,13 +65,15 @@ function Breadcrumb({
         return (
           <React.Fragment key={`${seg.index}-${seg.label}`}>
             {i > 0 ? (
-              <ChevronRight
-                className="h-3 w-3 text-muted-foreground/60 shrink-0"
-                aria-hidden
-              />
+              <ChevronRight className="h-3 w-3 text-muted-foreground/60 shrink-0" aria-hidden />
             ) : null}
             {isLast ? (
-              <span className={cn('text-secondary', i === 0 ? 'text-muted-foreground' : 'text-foreground font-medium')}>
+              <span
+                className={cn(
+                  'text-secondary',
+                  i === 0 ? 'text-muted-foreground' : 'text-foreground font-medium',
+                )}
+              >
                 {seg.label}
               </span>
             ) : (
@@ -192,6 +189,7 @@ export function CommandPalette() {
         <DialogOverlay className="bg-black/60" />
         <DialogPrimitive.Content
           aria-label="Command palette"
+          data-monochrome-surface="command-palette"
           onEscapeKeyDown={(e) => {
             if (canPop) {
               // On a sub-page, Esc pops one level instead of closing.
@@ -203,7 +201,9 @@ export function CommandPalette() {
           className={cn(
             'fixed left-1/2 top-[15vh] z-50 w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2',
             'border border-border bg-elevated rounded-lg shadow-2xl',
+            '[[data-theme=monochrome]_&]:rounded-sm [[data-theme=monochrome]_&]:border-border-mid [[data-theme=monochrome]_&]:bg-background [[data-theme=monochrome]_&]:shadow-none',
             'data-[state=open]:animate-scale-in data-[state=closed]:animate-fade-out',
+            '[[data-theme=monochrome]_&]:data-[state=open]:!animate-none [[data-theme=monochrome]_&]:data-[state=closed]:!animate-none',
             'overflow-hidden flex flex-col',
           )}
         >
@@ -217,10 +217,7 @@ export function CommandPalette() {
             label="Command palette"
             shouldFilter
             onKeyDown={onKeyDown}
-            className={cn(
-              'flex flex-col w-full bg-transparent outline-none',
-              PAGE_GROUP_CLASS,
-            )}
+            className={cn('flex flex-col w-full bg-transparent outline-none', PAGE_GROUP_CLASS)}
           >
             <Breadcrumb pageStack={pageStack} onJump={popToIndex} />
 
@@ -238,7 +235,7 @@ export function CommandPalette() {
               />
             </div>
 
-            <Command.List className="max-h-[420px] overflow-y-auto p-1.5 [&_[cmdk-list-sizer]]:w-full">
+            <Command.List className="max-h-[420px] overflow-y-auto p-1.5 [[data-theme=monochrome]_&]:bg-background [&_[cmdk-list-sizer]]:w-full">
               <Command.Empty className="px-3 py-8 text-center text-secondary text-muted-foreground">
                 {emptyMessageForPage(currentPage)}
               </Command.Empty>

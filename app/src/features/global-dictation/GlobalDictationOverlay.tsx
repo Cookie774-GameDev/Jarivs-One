@@ -6,10 +6,7 @@ import { Mic, MicOff, RotateCcw, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Toaster } from '@/components/ui/toast';
 import { VoiceActivityWaveform } from '@/features/voice/VoiceActivityWaveform';
-import {
-  createGlobalDictationSession,
-  type GlobalDictationSession,
-} from './dictationSession';
+import { createGlobalDictationSession, type GlobalDictationSession } from './dictationSession';
 import {
   formatGlobalDictationEmptyFailure,
   formatGlobalDictationPasteFailure,
@@ -25,13 +22,7 @@ import {
  * transcript into the focused app. Never routes through OS dictation (Win+H).
  */
 
-type OverlayState =
-  | 'ready'
-  | 'starting'
-  | 'listening'
-  | 'transcribing'
-  | 'pasting'
-  | 'error';
+type OverlayState = 'ready' | 'starting' | 'listening' | 'transcribing' | 'pasting' | 'error';
 
 const STATE_HINT: Record<OverlayState, string> = {
   ready: 'Ctrl+Space · VibeSpace STT',
@@ -67,12 +58,15 @@ export function GlobalDictationOverlay() {
     session?.cancel();
   }, []);
 
-  const failVisible = React.useCallback((message: string) => {
-    teardownSession();
-    stateRef.current = 'error';
-    setState('error');
-    setErrorMessage(message);
-  }, [teardownSession]);
+  const failVisible = React.useCallback(
+    (message: string) => {
+      teardownSession();
+      stateRef.current = 'error';
+      setState('error');
+      setErrorMessage(message);
+    },
+    [teardownSession],
+  );
 
   const start = React.useCallback(async () => {
     if (sessionRef.current) return;
@@ -136,7 +130,9 @@ export function GlobalDictationOverlay() {
           .catch(async (err) => {
             // The overlay is hidden at this point - bring it back so the
             // failure is visible instead of vanishing into a hidden toast.
-            await getCurrentWindow().show().catch(() => undefined);
+            await getCurrentWindow()
+              .show()
+              .catch(() => undefined);
             failVisible(formatGlobalDictationPasteFailure(err));
           });
       }, 120);
@@ -208,9 +204,11 @@ export function GlobalDictationOverlay() {
     <div className="flex min-h-screen items-center justify-center bg-transparent p-2">
       <div
         data-tauri-drag-region
+        data-monochrome-surface="global-dictation"
         className={cn(
           'w-[228px] select-none rounded-2xl border border-accent-copper/45',
           'bg-background/94 px-3 py-2 text-foreground shadow-[0_18px_60px_rgba(0,0,0,0.45)] backdrop-blur-xl',
+          '[[data-theme=monochrome]_&]:rounded-sm [[data-theme=monochrome]_&]:border-border-mid [[data-theme=monochrome]_&]:bg-background [[data-theme=monochrome]_&]:shadow-none [[data-theme=monochrome]_&]:backdrop-blur-none',
         )}
       >
         <div data-tauri-drag-region className="flex items-center gap-2">
@@ -235,7 +233,12 @@ export function GlobalDictationOverlay() {
             <div className="truncate text-[11px] font-semibold uppercase tracking-[0.14em] text-accent-copper">
               VibeSpace Dictation
             </div>
-            <div className={cn('truncate text-[11px]', state === 'error' ? 'text-destructive' : 'text-muted-foreground')}>
+            <div
+              className={cn(
+                'truncate text-[11px]',
+                state === 'error' ? 'text-destructive' : 'text-muted-foreground',
+              )}
+            >
               {state === 'error' ? errorMessage || STATE_HINT.error : partial || STATE_HINT[state]}
             </div>
           </div>

@@ -266,11 +266,16 @@ export function JarvisCommandCenter({
     <section
       className={cn(
         'jarvis-command-center',
+        '[[data-theme=monochrome]_&]:!rounded-sm [[data-theme=monochrome]_&]:!bg-background [[data-theme=monochrome]_&]:!bg-none [[data-theme=monochrome]_&]:!shadow-none [[data-theme=monochrome]_&]:before:!hidden',
+        "[[data-theme=monochrome]_&]:[&_[class*='jarvis-live-systems'][class*='map-wrap']]:!bg-none",
+        "[[data-theme=monochrome]_&]:[&_[class*='jarvis-live-systems'][class*='edge']::after]:!hidden",
+        "[[data-theme=monochrome]_&]:[&_[class*='jarvis-live-systems'][class*='node--root']]:!bg-none [[data-theme=monochrome]_&]:[&_[class*='jarvis-live-systems'][class*='node--root']]:!shadow-none",
         !reducedMotion && 'jarvis-command-center--motion',
         compact && 'jarvis-command-center--compact',
         embedded && 'jarvis-command-center--embedded',
       )}
       aria-label={embedded ? 'Jarvis Command Center details' : 'Jarvis Command Center'}
+      data-monochrome-surface="jarvis-command-center"
       data-testid="jarvis-command-center"
       data-sik-evidence={KERNEL_SMOKE_ENABLED ? SIK_CONTROL.commandCenterSurface : undefined}
       data-motion-enabled={KERNEL_SMOKE_ENABLED ? String(!reducedMotion) : undefined}

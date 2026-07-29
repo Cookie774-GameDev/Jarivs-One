@@ -836,9 +836,16 @@ export function VoiceModal() {
         style={{ x: dragX, y: dragY }}
         className={cn(
           'jarvis-voice-panel fixed right-3 top-3 z-[90] max-h-[calc(100vh-1.5rem)] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-[0.5625rem] border border-border bg-elevated/95 text-foreground backdrop-blur-sm',
+          '[[data-theme=monochrome]_&]:rounded-sm [[data-theme=monochrome]_&]:border-border-mid [[data-theme=monochrome]_&]:bg-background [[data-theme=monochrome]_&]:shadow-none [[data-theme=monochrome]_&]:backdrop-blur-none',
+          '[[data-theme=monochrome]_&]:before:!hidden [[data-theme=monochrome]_&]:after:!hidden',
+          '[[data-theme=monochrome]_&]:[&_.jarvis-voice-drag-row::after]:!hidden',
+          '[[data-theme=monochrome]_&]:[&_.jarvis-voice-mic]:!bg-none [[data-theme=monochrome]_&]:[&_.jarvis-voice-mic]:!shadow-none',
+          '[[data-theme=monochrome]_&]:[&_.jarvis-voice-orb-button]:!bg-none [[data-theme=monochrome]_&]:[&_.jarvis-voice-orb-button]:!shadow-none',
+          '[[data-theme=monochrome]_&]:[&_.jarvis-voice-orb-shell::before]:!hidden',
           showCommandCenter ? 'w-[26.25rem]' : 'w-[17.875rem]',
         )}
         aria-label="Jarvis voice session"
+        data-monochrome-surface="voice"
         data-reduced-motion={reducedMotion ? 'true' : 'false'}
         data-sik-evidence={KERNEL_SMOKE_ENABLED ? SIK_EVIDENCE.voiceState : undefined}
         data-voice-state={KERNEL_SMOKE_ENABLED ? state : undefined}
@@ -865,7 +872,7 @@ export function VoiceModal() {
         />
 
         {KERNEL_SMOKE_ENABLED ? (
-          <div className="relative z-[1] flex gap-1 border-t border-white/[0.06] px-2 py-1">
+          <div className="relative z-[1] flex gap-1 border-t border-white/[0.06] px-2 py-1 [[data-theme=monochrome]_&]:border-border">
             <button
               type="button"
               data-sik-evidence={SIK_EVIDENCE.voiceTranscript}

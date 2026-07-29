@@ -47,6 +47,7 @@ export function ChatView() {
     <TooltipProvider delayDuration={400}>
       <div
         data-vibespace-page="chat"
+        data-monochrome-surface="chat"
         data-terminal-drop={activeChatId ? 'chat' : undefined}
         data-terminal-drop-chat-id={activeChatId ?? undefined}
         onDragOver={(e) => {
@@ -86,12 +87,13 @@ export function ChatView() {
         }}
         className={cn(
           'relative flex h-full w-full flex-col bg-background transition-shadow',
+          '[[data-theme=monochrome]_&]:bg-background [[data-theme=monochrome]_&]:shadow-none [[data-theme=monochrome]_&]:transition-none',
           dropKind && 'ring-inset ring-2 ring-accent-copper/50',
         )}
       >
         <OrigamiChatDecor />
         {dropKind && (
-          <div className="pointer-events-none absolute right-4 top-4 z-10 rounded-md border border-accent-copper/50 bg-background/95 px-3 py-1 text-metadata text-accent-copper shadow-soft">
+          <div className="pointer-events-none absolute right-4 top-4 z-10 rounded-md border border-accent-copper/50 bg-background/95 px-3 py-1 text-metadata text-accent-copper shadow-soft [[data-theme=monochrome]_&]:rounded-sm [[data-theme=monochrome]_&]:border-border-mid [[data-theme=monochrome]_&]:bg-background [[data-theme=monochrome]_&]:shadow-none">
             Drop{' '}
             {dropKind === 'context'
               ? 'Context'
@@ -104,7 +106,7 @@ export function ChatView() {
         {activeChatId ? (
           <>
             {isOnPet && (
-              <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-1.5 shrink-0 bg-muted/40">
+              <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-muted/40 px-3 py-1.5 [[data-theme=monochrome]_&]:bg-panel">
                 <span className="text-metadata text-muted-foreground">
                   This chat is open in the Pet panel (same thread — not copied).
                 </span>

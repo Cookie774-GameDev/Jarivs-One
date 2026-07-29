@@ -122,7 +122,10 @@ export function CallModal() {
         setOpen(v);
       }}
     >
-      <DialogContent className="sm:max-w-[520px] p-0 overflow-hidden">
+      <DialogContent
+        data-monochrome-surface="call"
+        className="overflow-hidden p-0 [[data-theme=monochrome]_&]:rounded-sm [[data-theme=monochrome]_&]:border-border-mid [[data-theme=monochrome]_&]:bg-background [[data-theme=monochrome]_&]:shadow-none sm:max-w-[520px]"
+      >
         <div className="px-6 pt-6 pb-4 flex flex-col items-center gap-3">
           <DialogTitle className="text-base font-semibold tracking-tight">
             {personaCfg.name}
@@ -169,7 +172,7 @@ export function CallModal() {
         {/* Transcript */}
         <div
           ref={transcriptRef}
-          className="px-6 py-3 max-h-[260px] min-h-[120px] overflow-y-auto bg-muted/40 border-y border-border/40 text-sm space-y-2"
+          className="max-h-[260px] min-h-[120px] space-y-2 overflow-y-auto border-y border-border/40 bg-muted/40 px-6 py-3 text-sm [[data-theme=monochrome]_&]:border-border [[data-theme=monochrome]_&]:bg-panel"
         >
           {transcript.length === 0 && status !== 'in-call' && (
             <p className="text-xs text-muted-foreground text-center py-6">
@@ -202,7 +205,7 @@ export function CallModal() {
 
         {/* Confirm banner */}
         {awaitingConfirm && (
-          <div className="px-6 py-3 bg-amber-500/10 border-b border-amber-500/30 text-xs flex items-center gap-2">
+          <div className="flex items-center gap-2 border-b border-amber-500/30 bg-amber-500/10 px-6 py-3 text-xs [[data-theme=monochrome]_&]:border-border [[data-theme=monochrome]_&]:bg-panel">
             <Lock className="h-3.5 w-3.5 text-amber-500" />
             <span>
               <strong>{awaitingConfirm.tool}</strong>: {awaitingConfirm.summary}. Say <em>yes</em>{' '}
