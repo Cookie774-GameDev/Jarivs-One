@@ -241,12 +241,24 @@ export function BrowserPage() {
   const showUrl = active?.url && active.url !== 'about:blank' ? active.url : '';
 
   return (
-    <div className="browser-shell" data-testid="vibe-browser">
-      <div className="browser-tabs" role="tablist" aria-label="Browser tabs">
+    <div
+      className="browser-shell [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:font-sans [html[data-theme=monochrome]_&]:text-foreground"
+      data-testid="vibe-browser"
+      data-vibespace-owned-chrome="browser"
+    >
+      <div
+        className="browser-tabs [html[data-theme=monochrome]_&]:gap-1 [html[data-theme=monochrome]_&]:border-border [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none"
+        role="tablist"
+        aria-label="Browser tabs"
+      >
         {tabs.map((tab) => (
           <div
             key={tab.id}
-            className={`browser-tab${tab.id === activeTabId ? ' is-active' : ''}`}
+            className={`browser-tab [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:font-mono [html[data-theme=monochrome]_&]:tracking-wide ${
+              tab.id === activeTabId
+                ? 'is-active [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:shadow-none'
+                : ''
+            }`}
             role="tab"
             aria-selected={tab.id === activeTabId}
             onClick={() => {
@@ -258,6 +270,7 @@ export function BrowserPage() {
             <span title={tab.url}>{tab.title || tab.url}</span>
             <button
               type="button"
+              className="[html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:hover:text-foreground [html[data-theme=monochrome]_&]:focus-visible:outline [html[data-theme=monochrome]_&]:focus-visible:outline-2 [html[data-theme=monochrome]_&]:focus-visible:outline-offset-2 [html[data-theme=monochrome]_&]:focus-visible:outline-ring"
               aria-label={`Close ${tab.title}`}
               onClick={(e) => {
                 e.stopPropagation();
@@ -279,7 +292,7 @@ export function BrowserPage() {
         </Button>
       </div>
 
-      <header className="browser-toolbar">
+      <header className="browser-toolbar [html[data-theme=monochrome]_&]:border-border [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:bg-none [html[data-theme=monochrome]_&]:shadow-none">
         <Button
           type="button"
           size="icon-sm"
@@ -315,17 +328,18 @@ export function BrowserPage() {
         </Button>
 
         <form
-          className="browser-url"
+          className="browser-url [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border [html[data-theme=monochrome]_&]:border-border [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:pl-2"
           onSubmit={(e) => {
             e.preventDefault();
             void go();
           }}
         >
           <Globe2
-            className="h-3.5 w-3.5"
+            className="h-3.5 w-3.5 [html[data-theme=monochrome]_&]:!text-muted-foreground"
             style={{ color: 'hsl(var(--accent-copper))', flex: '0 0 auto' }}
           />
           <input
+            className="[html[data-theme=monochrome]_&]:rounded-none [html[data-theme=monochrome]_&]:border-0 [html[data-theme=monochrome]_&]:border-l [html[data-theme=monochrome]_&]:border-border [html[data-theme=monochrome]_&]:bg-transparent [html[data-theme=monochrome]_&]:font-mono [html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&]:focus-visible:outline [html[data-theme=monochrome]_&]:focus-visible:outline-2 [html[data-theme=monochrome]_&]:focus-visible:outline-offset-2 [html[data-theme=monochrome]_&]:focus-visible:outline-ring"
             aria-label="Address bar"
             value={draftUrl === 'about:blank' ? '' : draftUrl}
             placeholder="localhost:5173 or https://…"
@@ -336,7 +350,13 @@ export function BrowserPage() {
           </Button>
         </form>
 
-        <span className={`browser-agent-pill${engine === 'agent' ? ' is-hot' : ''}`}>
+        <span
+          className={`browser-agent-pill [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border [html[data-theme=monochrome]_&]:bg-muted [html[data-theme=monochrome]_&]:font-mono [html[data-theme=monochrome]_&]:text-foreground ${
+            engine === 'agent'
+              ? 'is-hot [html[data-theme=monochrome]_&]:border-destructive [html[data-theme=monochrome]_&]:bg-destructive/10 [html[data-theme=monochrome]_&]:text-destructive'
+              : ''
+          }`}
+        >
           <Shield className="h-3 w-3" />
           {engine === 'agent' ? 'Agent engine' : 'Simple Browser'}
         </span>
@@ -405,8 +425,13 @@ export function BrowserPage() {
 
       <div className="browser-body">
         {sidebarOpen ? (
-          <aside className="browser-sidebar" aria-label="Browser sidebar">
-            <h3>Engine</h3>
+          <aside
+            className="browser-sidebar [html[data-theme=monochrome]_&]:border-border [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none"
+            aria-label="Browser sidebar"
+          >
+            <h3 className="[html[data-theme=monochrome]_&]:font-mono [html[data-theme=monochrome]_&]:tracking-[0.14em] [html[data-theme=monochrome]_&]:text-foreground">
+              Engine
+            </h3>
             <p>
               <strong style={{ color: 'hsl(var(--foreground))' }}>Simple Browser</strong> embeds
               pages in-app (same idea as VS Code / Canvas simple browser). Best for localhost and
@@ -416,15 +441,26 @@ export function BrowserPage() {
               <strong style={{ color: 'hsl(var(--foreground))' }}>Agent runtime</strong> launches an
               isolated Edge/Chrome profile with CDP for automation. Optional.
             </p>
-            <h3 style={{ marginTop: 14 }}>Profile</h3>
+            <h3
+              className="[html[data-theme=monochrome]_&]:font-mono [html[data-theme=monochrome]_&]:tracking-[0.14em] [html[data-theme=monochrome]_&]:text-foreground"
+              style={{ marginTop: 14 }}
+            >
+              Profile
+            </h3>
             <p>Isolated app-data profile — never your everyday browser.</p>
             <p style={{ marginTop: 8 }}>
               Status: {runtime?.running ? 'Agent running' : 'Simple mode'}
             </p>
             {runtime?.cdp_port ? <p>CDP: 127.0.0.1:{runtime.cdp_port}</p> : null}
             {runtime?.last_error ? <p className="err">{runtime.last_error}</p> : null}
-            <h3 style={{ marginTop: 14 }}>Control mode</h3>
+            <h3
+              className="[html[data-theme=monochrome]_&]:font-mono [html[data-theme=monochrome]_&]:tracking-[0.14em] [html[data-theme=monochrome]_&]:text-foreground"
+              style={{ marginTop: 14 }}
+            >
+              Control mode
+            </h3>
             <select
+              className="[html[data-theme=monochrome]_&]:min-h-8 [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border [html[data-theme=monochrome]_&]:border-border [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:font-mono [html[data-theme=monochrome]_&]:text-foreground [html[data-theme=monochrome]_&]:focus-visible:outline [html[data-theme=monochrome]_&]:focus-visible:outline-2 [html[data-theme=monochrome]_&]:focus-visible:outline-offset-2 [html[data-theme=monochrome]_&]:focus-visible:outline-ring"
               aria-label="Agent control mode"
               value={active?.controlMode ?? 'ask_every_action'}
               onChange={(e) =>
@@ -452,7 +488,10 @@ export function BrowserPage() {
           </aside>
         ) : null}
 
-        <div className="browser-viewport" data-testid="browser-viewport">
+        <div
+          className="browser-viewport [html[data-theme=monochrome]_&]:bg-background"
+          data-testid="browser-viewport"
+        >
           {engine === 'agent' && frameDataUrl ? (
             <img
               src={frameDataUrl}
@@ -477,8 +516,10 @@ export function BrowserPage() {
                 onError={() => setIframeBlocked(true)}
               />
               {iframeBlocked ? (
-                <div className="browser-iframe-block">
-                  <h3>Page blocked embedding</h3>
+                <div className="browser-iframe-block [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none">
+                  <h3 className="[html[data-theme=monochrome]_&]:font-sans [html[data-theme=monochrome]_&]:font-semibold [html[data-theme=monochrome]_&]:tracking-tight">
+                    Page blocked embedding
+                  </h3>
                   <p>
                     This site refuses to load in an in-app browser (X-Frame-Options / CSP), same
                     limitation as VS Code Simple Browser.
@@ -505,9 +546,13 @@ export function BrowserPage() {
               ) : null}
             </div>
           ) : (
-            <div className="browser-viewport-empty">
-              <p className="browser-kicker">Vibe Browser</p>
-              <h2>Browse inside the workspace</h2>
+            <div className="browser-viewport-empty [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none">
+              <p className="browser-kicker [html[data-theme=monochrome]_&]:!font-mono [html[data-theme=monochrome]_&]:!tracking-[0.14em] [html[data-theme=monochrome]_&]:!text-foreground">
+                Vibe Browser
+              </p>
+              <h2 className="[html[data-theme=monochrome]_&]:font-sans [html[data-theme=monochrome]_&]:font-semibold [html[data-theme=monochrome]_&]:tracking-tight">
+                Browse inside the workspace
+              </h2>
               <p>
                 Type a URL above (try <code>http://localhost:5173</code>) and press Go. Simple
                 Browser mode works immediately — no extra runtime required.
@@ -542,9 +587,23 @@ export function BrowserPage() {
       </div>
 
       {(consoleOpen || pending.length > 0 || reviewedOutcomes.length > 0) && (
-        <div className="browser-console" aria-label="Browser console and approvals">
+        <div
+          className="browser-console [html[data-theme=monochrome]_&]:border-border [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none"
+          aria-label="Browser console and approvals"
+        >
           {pending.map((action) => (
-            <div key={action.id} className="browser-approval">
+            <div
+              key={action.id}
+              className={`browser-approval [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:bg-muted/50 [html[data-theme=monochrome]_&]:shadow-none ${
+                action.risk === 'dangerous'
+                  ? '[html[data-theme=monochrome]_&]:border-l-destructive'
+                  : action.risk === 'safe'
+                    ? '[html[data-theme=monochrome]_&]:border-l-muted-foreground'
+                    : '[html[data-theme=monochrome]_&]:border-l-accent-cyan'
+              }`}
+              data-risk={action.risk}
+              data-status={action.status}
+            >
               <strong>
                 {action.risk.toUpperCase()} · {action.kind}
               </strong>
@@ -572,7 +631,24 @@ export function BrowserPage() {
             </div>
           ))}
           {reviewedOutcomes.map((action) => (
-            <div key={action.id} className="browser-approval" data-status={action.status}>
+            <div
+              key={action.id}
+              className={`browser-approval [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:bg-muted/50 [html[data-theme=monochrome]_&]:shadow-none ${
+                action.risk === 'dangerous'
+                  ? '[html[data-theme=monochrome]_&]:border-l-destructive'
+                  : action.risk === 'safe'
+                    ? '[html[data-theme=monochrome]_&]:border-l-muted-foreground'
+                    : '[html[data-theme=monochrome]_&]:border-l-accent-cyan'
+              } ${
+                action.status === 'denied' ||
+                action.status === 'expired' ||
+                action.status === 'unavailable'
+                  ? '[html[data-theme=monochrome]_&]:border-l-dashed [html[data-theme=monochrome]_&]:text-muted-foreground'
+                  : ''
+              }`}
+              data-risk={action.risk}
+              data-status={action.status}
+            >
               <strong>
                 {action.status.toUpperCase()} · {action.kind}
               </strong>
@@ -583,7 +659,13 @@ export function BrowserPage() {
             ? consoleEntries.slice(0, 40).map((e) => (
                 <div
                   key={e.id}
-                  className={e.level === 'error' ? 'err' : e.level === 'warn' ? 'warn' : undefined}
+                  className={
+                    e.level === 'error'
+                      ? 'err [html[data-theme=monochrome]_&]:text-destructive'
+                      : e.level === 'warn'
+                        ? 'warn [html[data-theme=monochrome]_&]:text-warning'
+                        : undefined
+                  }
                 >
                   [{e.level}] {e.text}
                 </div>
