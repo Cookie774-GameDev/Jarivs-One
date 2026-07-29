@@ -85,6 +85,18 @@ function credentialFreeHttpsUrl(value) {
   }
 }
 
+// Stripe Checkout currently returns hosted session URLs only from its dedicated
+// checkout host. Keep this stricter than the generic redirect-config parser so
+// an unexpected upstream value can never become a desktop navigation target.
+export function isSafeCheckoutUrl(value) {
+  const parsed = credentialFreeHttpsUrl(value);
+  return (
+    parsed !== null &&
+    (parsed.port === '' || parsed.port === '443') &&
+    parsed.hostname.toLowerCase() === 'checkout.stripe.com'
+  );
+}
+
 function resolveAppBaseUrl(value) {
   const parsed = credentialFreeHttpsUrl(value || 'https://vibespaceos.com');
   if (!parsed || parsed.pathname !== '/' || parsed.search || parsed.hash) return null;
@@ -197,7 +209,7 @@ export async function handleAccessCheckout(req, deps) {
     );
     if (
       !boundedConfigString(session && session.id, 255) ||
-      !credentialFreeHttpsUrl(session && session.url)
+      !isSafeCheckoutUrl(session && session.url)
     ) {
       throw new Error('invalid Stripe Checkout session');
     }

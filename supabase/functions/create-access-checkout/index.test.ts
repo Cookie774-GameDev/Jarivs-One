@@ -667,6 +667,8 @@ Deno.test('rejects a missing or unsafe Stripe Checkout URL', async () => {
     null,
     'http://checkout.stripe.com/session',
     'https://user:password@checkout.stripe.com/session',
+    'https://example.com/checkout/session',
+    'https://checkout.stripe.com.evil.example/session',
   ]) {
     const { deps } = makeDeps({ sessionUrl });
     const res = await handleAccessCheckout(

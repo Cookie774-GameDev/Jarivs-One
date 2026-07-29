@@ -108,9 +108,17 @@ function responseFor(status: AppAccessServerStatus): Record<string, unknown> {
 function makeTransport(overrides: Partial<AccessGatewayTransport> = {}): AccessGatewayTransport {
   return Object.freeze({
     rpc: vi.fn().mockResolvedValue({ data: ACTIVE_RESPONSE, error: null }),
-    invokeFunction: vi
-      .fn()
-      .mockResolvedValue({ data: { url: 'https://billing.example/stripe/session' }, error: null }),
+    invokeFunction: vi.fn().mockImplementation((functionName: string) =>
+      Promise.resolve({
+        data: {
+          url:
+            functionName === 'create-access-portal'
+              ? 'https://billing.stripe.com/p/session'
+              : 'https://checkout.stripe.com/c/pay/session',
+        },
+        error: null,
+      }),
+    ),
     ...overrides,
   });
 }
@@ -328,19 +336,22 @@ describe('transport errors and cancellation', () => {
 
 describe('billing URL functions', () => {
   it.each([
-    ['checkout', 'create-access-checkout'],
-    ['portal', 'create-access-portal'],
-  ])('invokes the %s function with an authority-free body', async (kind, functionName) => {
-    const { gateway, transport } = makeGateway();
-    const result =
-      kind === 'checkout' ? await gateway.createCheckoutUrl() : await gateway.createPortalUrl();
-    expect(transport.invokeFunction).toHaveBeenCalledWith(functionName, {
-      body: {},
-      signal: undefined,
-    });
-    expect(result).toEqual({ url: 'https://billing.example/stripe/session' });
-    expect(Object.isFrozen(result)).toBe(true);
-  });
+    ['checkout', 'create-access-checkout', 'https://checkout.stripe.com/c/pay/session'],
+    ['portal', 'create-access-portal', 'https://billing.stripe.com/p/session'],
+  ])(
+    'invokes the %s function with an authority-free body',
+    async (kind, functionName, expectedUrl) => {
+      const { gateway, transport } = makeGateway();
+      const result =
+        kind === 'checkout' ? await gateway.createCheckoutUrl() : await gateway.createPortalUrl();
+      expect(transport.invokeFunction).toHaveBeenCalledWith(functionName, {
+        body: {},
+        signal: undefined,
+      });
+      expect(result).toEqual({ url: expectedUrl });
+      expect(Object.isFrozen(result)).toBe(true);
+    },
+  );
 
   it.each([
     'http://billing.example/session',
@@ -353,6 +364,19 @@ describe('billing URL functions', () => {
       invokeFunction: vi.fn().mockResolvedValue({ data: { url }, error: null }),
     });
     await expect(gateway.createCheckoutUrl()).rejects.toMatchObject({ code: 'insecure_url' });
+  });
+
+  it.each([
+    ['checkout', 'https://billing.stripe.com/p/session'],
+    ['checkout', 'https://checkout.stripe.com.evil.example/session'],
+    ['portal', 'https://checkout.stripe.com/c/pay/session'],
+    ['portal', 'https://billing.stripe.com.evil.example/session'],
+  ])('rejects an unexpected %s host', async (kind, url) => {
+    const { gateway } = makeGateway({
+      invokeFunction: vi.fn().mockResolvedValue({ data: { url }, error: null }),
+    });
+    const request = kind === 'checkout' ? gateway.createCheckoutUrl() : gateway.createPortalUrl();
+    await expect(request).rejects.toMatchObject({ code: 'insecure_url' });
   });
 
   it('categorizes function failures and redacts secrets', async () => {

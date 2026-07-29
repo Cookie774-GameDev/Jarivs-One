@@ -324,7 +324,7 @@ function awaitWithAbort<T>(operation: Promise<T>, signal?: AbortSignal): Promise
   });
 }
 
-function validateUrlResponse(data: unknown): AccessUrlResult {
+function validateUrlResponse(data: unknown, expectedHostname: string): AccessUrlResult {
   if (!isRecord(data)) {
     throw new AccessGatewayError('insecure_url', 'Billing URL response must be an object.');
   }
@@ -341,16 +341,17 @@ function validateUrlResponse(data: unknown): AccessUrlResult {
     const parsed = new URL(url);
     if (
       parsed.protocol !== 'https:' ||
-      parsed.hostname === '' ||
+      parsed.hostname.toLowerCase() !== expectedHostname ||
       parsed.username !== '' ||
-      parsed.password !== ''
+      parsed.password !== '' ||
+      (parsed.port !== '' && parsed.port !== '443')
     ) {
       throw new Error('unsafe billing URL');
     }
   } catch {
     throw new AccessGatewayError(
       'insecure_url',
-      'Billing URL must be a credential-free HTTPS URL.',
+      'Billing URL must use the expected credential-free HTTPS provider host.',
     );
   }
   return Object.freeze({ url });
@@ -399,6 +400,7 @@ export function createAccessGateway(deps: AccessGatewayDeps): AccessGateway {
 
   async function invokeUrlFunction(
     functionName: string,
+    expectedHostname: string,
     signal?: AbortSignal,
   ): Promise<AccessUrlResult> {
     assertNotAborted(signal);
@@ -424,13 +426,14 @@ export function createAccessGateway(deps: AccessGatewayDeps): AccessGateway {
     if (result.error !== null && result.error !== undefined) {
       throw new AccessGatewayError('function_error', extractErrorMessage(result.error));
     }
-    return validateUrlResponse(result.data);
+    return validateUrlResponse(result.data, expectedHostname);
   }
 
   return Object.freeze({
     checkAccess,
     createCheckoutUrl: (signal?: AbortSignal) =>
-      invokeUrlFunction('create-access-checkout', signal),
-    createPortalUrl: (signal?: AbortSignal) => invokeUrlFunction('create-access-portal', signal),
+      invokeUrlFunction('create-access-checkout', 'checkout.stripe.com', signal),
+    createPortalUrl: (signal?: AbortSignal) =>
+      invokeUrlFunction('create-access-portal', 'billing.stripe.com', signal),
   });
 }
