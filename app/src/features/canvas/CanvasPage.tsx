@@ -525,11 +525,12 @@ function ToolButton({ active, label, onClick, children }: ToolButtonProps) {
       type="button"
       aria-label={label}
       aria-pressed={active}
+      data-monochrome-state={active ? 'selected' : 'idle'}
       onClick={onClick}
       className={[
-        'inline-flex h-9 w-9 items-center justify-center rounded-md border transition-colors',
+        'inline-flex h-9 w-9 items-center justify-center rounded-md border transition-colors [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:transition-none',
         active
-          ? 'border-foreground/20 bg-foreground text-background'
+          ? 'border-foreground/20 bg-foreground text-background [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-accent-cyan'
           : 'border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground',
       ].join(' ')}
     >
@@ -3151,8 +3152,14 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
   };
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col bg-background text-foreground">
-      <header className="flex min-h-14 items-center gap-3 border-b border-border bg-background px-4">
+    <div
+      data-monochrome-route="canvas"
+      className="mc7d-canvas flex h-full min-h-0 w-full flex-col bg-background text-foreground"
+    >
+      <header
+        data-monochrome-surface="canvas-header"
+        className="flex min-h-14 items-center gap-3 border-b border-border bg-background px-4 [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none"
+      >
         <div className="min-w-0 flex-1">
           <h1 className="sr-only">Infinite Idea Canvas</h1>
           <input
@@ -3174,18 +3181,23 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
           </p>
         </div>
 
-        <div className="inline-flex rounded-md border border-border p-1" aria-label="Canvas layout">
+        <div
+          data-monochrome-surface="canvas-layout-switcher"
+          className="inline-flex rounded-md border border-border p-1 [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:font-mono"
+          aria-label="Canvas layout"
+        >
           {(['page', 'edgeless'] as const).map((layout) => (
             <button
               key={layout}
               type="button"
               aria-label={`${layout === 'page' ? 'Page' : 'Edgeless'} layout`}
               aria-pressed={document.layoutMode === layout}
+              data-monochrome-state={document.layoutMode === layout ? 'selected' : 'idle'}
               onClick={() => setLayout(layout)}
               className={[
-                'rounded px-3 py-1 text-xs font-medium capitalize transition-colors',
+                'rounded px-3 py-1 text-xs font-medium capitalize transition-colors [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:transition-none',
                 document.layoutMode === layout
-                  ? 'bg-foreground text-background'
+                  ? 'bg-foreground text-background [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-accent-cyan'
                   : 'text-muted-foreground hover:text-foreground',
               ].join(' ')}
             >
@@ -3201,7 +3213,8 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
             role="group"
             aria-label="Canvas template manager"
             aria-busy={templatePersistenceBusy}
-            className="absolute right-0 top-11 z-50 max-h-[70vh] w-[32rem] space-y-4 overflow-auto rounded-lg border border-border bg-background p-4 shadow-lg"
+            data-monochrome-surface="canvas-templates"
+            className="absolute right-0 top-11 z-50 max-h-[70vh] w-[32rem] space-y-4 overflow-auto rounded-lg border border-border bg-background p-4 shadow-lg [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none"
           >
             <p role="status" aria-label="Custom template persistence status" className="sr-only">
               {templatePersistenceBusy ? 'Updating custom templates' : 'Custom templates ready'}
@@ -3402,7 +3415,8 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
           <div
             role="search"
             aria-label="Current canvas search"
-            className="absolute right-0 top-11 z-50 w-96 space-y-3 rounded-lg border border-border bg-background p-3 shadow-lg"
+            data-monochrome-surface="canvas-search"
+            className="absolute right-0 top-11 z-50 w-96 space-y-3 rounded-lg border border-border bg-background p-3 shadow-lg [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none"
           >
             <input
               type="search"
@@ -3489,7 +3503,8 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
           <div
             role="group"
             aria-label="Presentation organizer"
-            className="absolute right-0 top-11 z-50 w-80 space-y-2 rounded-lg border border-border bg-background p-3 shadow-lg"
+            data-monochrome-surface="canvas-frames"
+            className="absolute right-0 top-11 z-50 w-80 space-y-2 rounded-lg border border-border bg-background p-3 shadow-lg [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none"
           >
             <p className="text-xs text-muted-foreground">
               Drag frames into position or use the move controls.
@@ -3528,7 +3543,8 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                       onDragEnd={() => {
                         presentationDragFrameRef.current = null;
                       }}
-                      className="grid grid-cols-[auto_1fr_auto_auto_auto] items-center gap-2 rounded-md border border-border bg-muted/20 p-2"
+                      data-monochrome-surface="canvas-frame"
+                      className="grid grid-cols-[auto_1fr_auto_auto_auto] items-center gap-2 rounded-md border border-border bg-muted/20 p-2 [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:bg-background"
                     >
                       <span aria-hidden className="cursor-grab text-muted-foreground">
                         ⋮⋮
@@ -3650,7 +3666,8 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
           <div
             role="group"
             aria-label="Visual export settings"
-            className="absolute right-0 top-11 z-50 w-64 space-y-3 rounded-lg border border-border bg-background p-3 shadow-lg"
+            data-monochrome-surface="canvas-export"
+            className="absolute right-0 top-11 z-50 w-64 space-y-3 rounded-lg border border-border bg-background p-3 shadow-lg [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none"
           >
             <label className="block space-y-1 text-xs">
               <span className="text-muted-foreground">Format</span>
@@ -3814,6 +3831,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
           role="region"
           aria-label="Canvas presentation"
           tabIndex={-1}
+          data-monochrome-surface="canvas-presentation"
           className="flex min-h-0 flex-1 flex-col bg-foreground p-6 text-background"
         >
           <header className="flex items-center justify-between gap-4">
@@ -3940,8 +3958,16 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
       ) : null}
 
       <div hidden={presentation.status === 'presenting'} className="flex min-h-0 flex-1">
-        <aside className="flex w-14 shrink-0 flex-col items-center gap-2 border-r border-border bg-background py-3">
-          <div role="toolbar" aria-label="Canvas tools" className="flex flex-col gap-2">
+        <aside
+          data-monochrome-surface="canvas-tool-rail"
+          className="flex w-14 shrink-0 flex-col items-center gap-2 border-r border-border bg-background py-3 [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:font-mono [html[data-theme=monochrome]_&]:shadow-none"
+        >
+          <div
+            role="toolbar"
+            aria-label="Canvas tools"
+            className="flex flex-col gap-2"
+            data-monochrome-state={tool}
+          >
             <ToolButton
               active={tool === 'select'}
               label="Select tool"
@@ -4018,6 +4044,8 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
           ref={workspaceRef}
           role="region"
           aria-label="Canvas workspace"
+          data-monochrome-surface="canvas-workspace"
+          data-monochrome-state={`${document.layoutMode}:${selected.ids.length > 0 ? 'selected' : 'idle'}`}
           data-layout={document.layoutMode}
           data-camera-x={camera.x}
           data-camera-y={camera.y}
@@ -4033,7 +4061,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
               setSelected(clearCanvasSelection);
             }
           }}
-          className="relative min-h-0 flex-1 overflow-auto bg-muted/20"
+          className="relative min-h-0 flex-1 overflow-auto bg-muted/20 [html[data-theme=monochrome]_&]:border-y [html[data-theme=monochrome]_&]:border-border"
           style={{
             ...canvasBackgroundStyle(document.background),
             cursor: document.layoutMode === 'edgeless' && tool === 'hand' ? 'grab' : undefined,
@@ -4042,7 +4070,10 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
         >
           {blocks.length === 0 ? (
             <div className="absolute inset-0 flex items-center justify-center p-8">
-              <div className="max-w-sm rounded-xl border border-dashed border-border bg-background/90 p-8 text-center shadow-sm">
+              <div
+                data-monochrome-surface="canvas-empty-state"
+                className="max-w-sm rounded-xl border border-dashed border-border bg-background/90 p-8 text-center shadow-sm [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-solid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none"
+              >
                 <StickyNote aria-hidden className="mx-auto mb-3 text-muted-foreground" />
                 <h2 className="font-medium">Start with an idea</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
@@ -4173,7 +4204,8 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                   data-selection-geometry
                   role="group"
                   aria-label="Selected object resize and rotation handles"
-                  className="pointer-events-none absolute border border-ring"
+                  data-monochrome-surface="canvas-selection"
+                  className="pointer-events-none absolute border border-ring [html[data-theme=monochrome]_&]:border-2"
                   style={{
                     left: selectedPlacement.x,
                     top: selectedPlacement.y,
@@ -4194,7 +4226,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                       onPointerUp={onDirectGeometryPointerEnd}
                       onPointerCancel={onDirectGeometryPointerEnd}
                       onKeyDown={(event) => onResizeHandleKeyDown(event, selectedPlacement, handle)}
-                      className="pointer-events-auto absolute h-3 w-3 rounded-sm border border-ring bg-background shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
+                      className="pointer-events-auto absolute h-3 w-3 rounded-sm border border-ring bg-background shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring [html[data-theme=monochrome]_&]:rounded-none [html[data-theme=monochrome]_&]:shadow-none"
                       style={CANVAS_RESIZE_HANDLE_STYLES[handle]}
                     />
                   ))}
@@ -4207,7 +4239,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                     onPointerUp={onDirectGeometryPointerEnd}
                     onPointerCancel={onDirectGeometryPointerEnd}
                     onKeyDown={(event) => onRotateHandleKeyDown(event, selectedPlacement)}
-                    className="pointer-events-auto absolute -top-9 left-1/2 h-4 w-4 -translate-x-1/2 rounded-full border border-ring bg-background shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
+                    className="pointer-events-auto absolute -top-9 left-1/2 h-4 w-4 -translate-x-1/2 rounded-full border border-ring bg-background shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:shadow-none"
                     style={{ cursor: 'grab' }}
                   />
                 </div>
@@ -4275,9 +4307,10 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
             <section
               role="region"
               aria-label="Canvas minimap"
+              data-monochrome-surface="canvas-minimap"
               onPointerDown={(event) => event.stopPropagation()}
               onWheel={(event) => event.stopPropagation()}
-              className="absolute bottom-4 right-4 h-28 w-44 overflow-hidden rounded-lg border border-border bg-background/95 p-2 shadow-sm"
+              className="absolute bottom-4 right-4 h-28 w-44 overflow-hidden rounded-lg border border-border bg-background/95 p-2 shadow-sm [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none"
             >
               <div className="relative h-full w-full overflow-hidden rounded bg-muted/50">
                 {minimap.placements.map((item) => (
@@ -4304,7 +4337,10 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
             </section>
           ) : null}
 
-          <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-lg border border-border bg-background p-1 shadow-sm">
+          <div
+            data-monochrome-surface="canvas-control-dock"
+            className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-lg border border-border bg-background p-1 shadow-sm [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:font-mono [html[data-theme=monochrome]_&]:shadow-none"
+          >
             {document.layoutMode === 'edgeless' ? (
               <>
                 <button
@@ -4441,7 +4477,8 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
           <aside
             id="canvas-object-outline"
             aria-label="Canvas outline panel"
-            className="w-72 shrink-0 overflow-auto border-l border-border bg-background"
+            data-monochrome-surface="canvas-outline"
+            className="w-72 shrink-0 overflow-auto border-l border-border bg-background [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none"
           >
             <div className="border-b border-border px-3 py-2 text-xs font-medium text-muted-foreground">
               Canvas outline
@@ -4458,7 +4495,15 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
             id="canvas-properties-panel"
             role="region"
             aria-label="Canvas properties panel"
-            className="w-72 shrink-0 overflow-auto border-l border-border bg-background"
+            data-monochrome-surface="canvas-inspector"
+            data-monochrome-state={
+              selected.ids.length === 0
+                ? 'canvas'
+                : selected.ids.length === 1
+                  ? 'single'
+                  : 'multiple'
+            }
+            className="w-72 shrink-0 overflow-auto border-l border-border bg-background [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none"
           >
             <div className="border-b border-border px-3 py-2 text-xs font-medium text-muted-foreground">
               Properties

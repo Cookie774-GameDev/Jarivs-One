@@ -65,7 +65,11 @@ export function PromptForgeControl({
     : (error ?? disabledReason ?? 'Upgrade this prompt with project context');
 
   return (
-    <div className="flex items-center gap-0.5">
+    <div
+      data-monochrome-surface="prompt-forge"
+      data-monochrome-state={status}
+      className="mc7d-prompt-forge flex items-center gap-0.5 [html[data-theme=monochrome]_&]:font-mono"
+    >
       <Hint label={tooltip} hotkey={HOTKEYS.PROMPT_FORGE}>
         <Button
           type="button"
@@ -78,9 +82,14 @@ export function PromptForgeControl({
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => void (isRunning ? onCancel() : onStart())}
           className={cn(
-            'relative',
+            'relative [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border [html[data-theme=monochrome]_&]:border-transparent [html[data-theme=monochrome]_&]:shadow-none',
+            '[html[data-theme=monochrome]_&]:hover:border-border-mid [html[data-theme=monochrome]_&]:hover:bg-muted',
             isRunning && 'text-accent-cyan',
+            isRunning &&
+              '[html[data-theme=monochrome]_&]:border-accent-cyan/60 [html[data-theme=monochrome]_&]:bg-accent-cyan/10',
             status === 'ready' && 'text-success',
+            status === 'ready' &&
+              '[html[data-theme=monochrome]_&]:border-success/60 [html[data-theme=monochrome]_&]:bg-success/10',
           )}
         >
           {isRunning ? (
@@ -101,7 +110,11 @@ export function PromptForgeControl({
             size="icon-sm"
             variant="ghost"
             aria-label="Configure Prompt Forge"
-            className={cn('h-6 w-4 px-0', privacyMode === 'local_only' && 'text-success')}
+            data-monochrome-state={privacyMode}
+            className={cn(
+              'h-6 w-4 px-0 [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:shadow-none',
+              privacyMode === 'local_only' && 'text-success',
+            )}
           >
             {privacyMode === 'local_only' ? (
               <LockKeyhole className="!h-3 !w-3" />
@@ -114,7 +127,8 @@ export function PromptForgeControl({
           side="top"
           align={compact ? 'start' : 'center'}
           sideOffset={8}
-          className="w-[min(360px,92vw)] space-y-4 p-3"
+          data-monochrome-surface="prompt-forge-settings"
+          className="w-[min(360px,92vw)] space-y-4 p-3 [[data-theme=monochrome]_&]:rounded-sm [[data-theme=monochrome]_&]:border-border-mid [[data-theme=monochrome]_&]:bg-panel [[data-theme=monochrome]_&]:font-mono [[data-theme=monochrome]_&]:shadow-none"
         >
           <section>
             <div className="mb-2 flex items-center justify-between gap-2">
@@ -126,11 +140,15 @@ export function PromptForgeControl({
                 type="button"
                 role="radio"
                 aria-checked={modelSelection.mode === 'prefer_local'}
+                data-monochrome-state={modelSelection.mode === 'prefer_local' ? 'selected' : 'idle'}
                 onClick={() => onModelSelectionChange({ mode: 'prefer_local' })}
                 className={cn(
                   'flex w-full items-center justify-between rounded-md px-2.5 py-2 text-left text-secondary outline-none',
                   'hover:bg-muted focus-visible:ring-1 focus-visible:ring-ring',
                   modelSelection.mode === 'prefer_local' && 'bg-accent-cyan/10 text-foreground',
+                  '[html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border [html[data-theme=monochrome]_&]:border-transparent',
+                  modelSelection.mode === 'prefer_local' &&
+                    '[html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-accent-cyan [html[data-theme=monochrome]_&]:border-y-border [html[data-theme=monochrome]_&]:border-r-border',
                 )}
               >
                 <span>
@@ -145,12 +163,18 @@ export function PromptForgeControl({
                 type="button"
                 role="radio"
                 aria-checked={modelSelection.mode === 'current_chat_model'}
+                data-monochrome-state={
+                  modelSelection.mode === 'current_chat_model' ? 'selected' : 'idle'
+                }
                 onClick={() => onModelSelectionChange({ mode: 'current_chat_model' })}
                 className={cn(
                   'flex w-full items-center justify-between rounded-md px-2.5 py-2 text-left text-secondary outline-none',
                   'hover:bg-muted focus-visible:ring-1 focus-visible:ring-ring',
                   modelSelection.mode === 'current_chat_model' &&
                     'bg-accent-cyan/10 text-foreground',
+                  '[html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border [html[data-theme=monochrome]_&]:border-transparent',
+                  modelSelection.mode === 'current_chat_model' &&
+                    '[html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-accent-cyan [html[data-theme=monochrome]_&]:border-y-border [html[data-theme=monochrome]_&]:border-r-border',
                 )}
               >
                 <span>
@@ -166,6 +190,7 @@ export function PromptForgeControl({
                   type="button"
                   role="radio"
                   aria-checked={selected(modelSelection, option)}
+                  data-monochrome-state={selected(modelSelection, option) ? 'selected' : 'idle'}
                   disabled={!option.available}
                   onClick={() =>
                     onModelSelectionChange({
@@ -179,6 +204,9 @@ export function PromptForgeControl({
                     'flex w-full items-center justify-between rounded-md px-2.5 py-2 text-left text-secondary outline-none',
                     'hover:bg-muted focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-45',
                     selected(modelSelection, option) && 'bg-accent-cyan/10 text-foreground',
+                    '[html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border [html[data-theme=monochrome]_&]:border-transparent',
+                    selected(modelSelection, option) &&
+                      '[html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-accent-cyan [html[data-theme=monochrome]_&]:border-y-border [html[data-theme=monochrome]_&]:border-r-border',
                   )}
                 >
                   <span className="min-w-0">
@@ -214,11 +242,15 @@ export function PromptForgeControl({
                 type="button"
                 role="radio"
                 aria-checked={privacyMode === 'local_only'}
+                data-monochrome-state={privacyMode === 'local_only' ? 'selected' : 'idle'}
                 onClick={() => onPrivacyModeChange('local_only')}
                 className={cn(
                   'rounded-md border border-border px-2 py-2 text-secondary outline-none',
                   'focus-visible:ring-1 focus-visible:ring-ring',
                   privacyMode === 'local_only' && 'border-success/40 bg-success/10 text-success',
+                  '[html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:bg-background',
+                  privacyMode === 'local_only' &&
+                    '[html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-success',
                 )}
               >
                 Local only
@@ -227,6 +259,7 @@ export function PromptForgeControl({
                 type="button"
                 role="radio"
                 aria-checked={privacyMode === 'provider_allowed'}
+                data-monochrome-state={privacyMode === 'provider_allowed' ? 'selected' : 'idle'}
                 disabled={offlineMode}
                 onClick={() => onPrivacyModeChange('provider_allowed')}
                 className={cn(
@@ -234,6 +267,9 @@ export function PromptForgeControl({
                   'focus-visible:ring-1 focus-visible:ring-ring',
                   privacyMode === 'provider_allowed' &&
                     'border-accent-cyan/40 bg-accent-cyan/10 text-foreground',
+                  '[html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:bg-background',
+                  privacyMode === 'provider_allowed' &&
+                    '[html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-accent-cyan',
                 )}
               >
                 Provider allowed
