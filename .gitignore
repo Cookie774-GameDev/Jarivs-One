@@ -79,6 +79,7 @@ coverage/
 .superpowers/
 .artifacts/monochrome/
 .artifacts/origami-chat/
+.artifacts/origami-nonchat-scope/
 
 # Local databases
 *.db

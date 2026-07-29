@@ -12,6 +12,7 @@ import {
   assertRealChatRoot,
   loadThemePersistenceContract,
   prepareHistoricalChatRoot,
+  runPreparedPageAudit,
   waitForStableChatLayout,
   withScreenshotFreeze,
 } from './capture-chat.mjs';
@@ -47,15 +48,18 @@ async function withBrowserGlobals(globals, callback) {
 }
 
 test('capture arguments require a built distribution and contained artifact path', () => {
+  const pageAudit = async () => ({ ok: true });
   const accepted = assertChatCaptureOptions(
     {
       distDirectory: resolve(ROOT, 'app/dist'),
       outputPath: resolve(ROOT, '.artifacts/origami-chat/chat.png'),
+      pageAudit,
     },
     { rootDirectory: ROOT, checkFile: () => true },
   );
   assert.equal(accepted.outputPath, resolve(ROOT, '.artifacts/origami-chat/chat.png'));
   assert.equal(accepted.historicalChatRoot, false);
+  assert.equal(accepted.pageAudit, pageAudit);
   assert.equal(
     assertChatCaptureOptions(
       {
@@ -108,6 +112,68 @@ test('capture arguments require a built distribution and contained artifact path
         { rootDirectory: ROOT, checkFile: () => false },
       ),
     /index\.html/i,
+  );
+  assert.throws(
+    () =>
+      assertChatCaptureOptions(
+        {
+          distDirectory: resolve(ROOT, 'app/dist'),
+          outputPath: resolve(ROOT, '.artifacts/origami-chat/chat.png'),
+          pageAudit: 'interaction-audit',
+        },
+        { rootDirectory: ROOT, checkFile: () => true },
+      ),
+    /pageAudit.*function/i,
+  );
+});
+
+test('prepared-page audit receives the live page and returns a JSON-stable receipt', async () => {
+  const page = { marker: 'prepared-live-page' };
+  const calls = [];
+  const result = await runPreparedPageAudit(page, async (receivedPage) => {
+    calls.push(receivedPage);
+    return {
+      ok: true,
+      checks: ['composer', 'jarvis'],
+      nested: { reducedMotion: true },
+    };
+  });
+
+  assert.deepEqual(calls, [page]);
+  assert.deepEqual(result, {
+    executed: true,
+    receipt: {
+      ok: true,
+      checks: ['composer', 'jarvis'],
+      nested: { reducedMotion: true },
+    },
+  });
+});
+
+test('prepared-page audit is optional but fails closed on invalid or unserializable receipts', async () => {
+  assert.deepEqual(await runPreparedPageAudit({}, undefined), { executed: false });
+  await assert.rejects(() => runPreparedPageAudit({}, 'audit'), /pageAudit.*function/i);
+  await assert.rejects(
+    () => runPreparedPageAudit({}, async () => undefined),
+    /pageAudit.*JSON object/i,
+  );
+  await assert.rejects(
+    () => runPreparedPageAudit({}, async () => ({ unsupported: 1n })),
+    /pageAudit.*JSON-serializable/i,
+  );
+  await assert.rejects(
+    () =>
+      runPreparedPageAudit({}, async () => ({
+        silentlyDropped: undefined,
+      })),
+    /pageAudit.*losslessly JSON-serializable/i,
+  );
+  await assert.rejects(
+    () =>
+      runPreparedPageAudit({}, async () => ({
+        silentlyChanged: Number.NaN,
+      })),
+    /pageAudit.*losslessly JSON-serializable/i,
   );
 });
 

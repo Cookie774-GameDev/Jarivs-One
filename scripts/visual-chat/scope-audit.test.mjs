@@ -20,6 +20,7 @@ const DECOR_PATH = 'app/src/features/chat/OrigamiChatDecor.tsx';
 const ASSET_PATH = 'app/public/assets/origami-chat/crane.webp';
 const CHAT_STAGE_SELECTOR = `${REQUIRED_CHAT_SCOPE} [data-vibespace-page='chat']`;
 const CRANE_SELECTOR = `${REQUIRED_CHAT_SCOPE} .origami-chat-crane`;
+const CHAT_TERMINAL_DROP_SELECTOR = `${REQUIRED_CHAT_SCOPE} [data-tour='chat-composer'] [data-terminal-drop='chat']`;
 
 function createRepository() {
   const rootDirectory = mkdtempSync(join(tmpdir(), 'vibespace-scope-audit-'));
@@ -289,6 +290,62 @@ test('rejects Schedule and Terminal selector targeting beneath an otherwise vali
   }
 });
 
+test('accepts only the exact Chat-scoped terminal drop marker used by the composer', () => {
+  const source = `${CHAT_TERMINAL_DROP_SELECTOR} { color: #54362a; }`;
+  const result = audit({
+    allowlist: validAllowlist({
+      approvedPaths: [STYLE_PATH, DECOR_PATH],
+      approvedSelectors: [CHAT_TERMINAL_DROP_SELECTOR],
+      approvedAssets: [],
+    }),
+    changedFiles: [
+      {
+        path: STYLE_PATH,
+        status: 'modified',
+        beforeContent: '',
+        afterContent: source,
+      },
+    ],
+    repositoryFiles: { [STYLE_PATH]: source, [DECOR_PATH]: '' },
+  });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.changedSelectors, [CHAT_TERMINAL_DROP_SELECTOR]);
+});
+
+test('rejects terminal drop near-misses and terminal surfaces even beneath Chat scope', () => {
+  for (const forbiddenSelector of [
+    "[data-terminal-drop='chat']",
+    `${REQUIRED_CHAT_SCOPE} [data-terminal-drop='terminal']`,
+    `${REQUIRED_CHAT_SCOPE} [data-terminal-drop='Chat']`,
+    `${REQUIRED_CHAT_SCOPE} [data-terminal-drop="chat"]`,
+    `${REQUIRED_CHAT_SCOPE} [data-terminal-drop]`,
+    `${REQUIRED_CHAT_SCOPE} [data-terminal-drop='chat'] [data-terminal-drop='chat']`,
+    `${REQUIRED_CHAT_SCOPE} [data-terminal-source='chat']`,
+    `${REQUIRED_CHAT_SCOPE} .xterm [data-terminal-drop='chat']`,
+    `${REQUIRED_CHAT_SCOPE} .jarvis-terminal-surface [data-terminal-drop='chat']`,
+    `${REQUIRED_CHAT_SCOPE} .terminal-workbench [data-terminal-drop='chat']`,
+  ]) {
+    assert.throws(
+      () =>
+        validateScopeAllowlist(
+          validAllowlist({
+            approvedSelectors: [CHAT_STAGE_SELECTOR, CRANE_SELECTOR, forbiddenSelector],
+          }),
+          { rootDirectory: 'C:/synthetic/vibespace' },
+        ),
+      (error) => {
+        assert.ok(error instanceof ScopeAuditInputError);
+        assert.ok(
+          ['ALLOWLIST_SELECTOR_SCOPE', 'ALLOWLIST_FORBIDDEN_SELECTOR'].includes(error.code),
+          `${forbiddenSelector}: ${error.code}`,
+        );
+        return true;
+      },
+    );
+  }
+});
+
 test('rejects unrelated route imports from an approved Chat production path', () => {
   const source = "import { SchedulePage } from '@/features/schedule/SchedulePage';";
   const result = audit({
@@ -307,6 +364,87 @@ test('rejects unrelated route imports from an approved Chat production path', ()
   });
 
   assert.ok(codes(result).includes('FORBIDDEN_ROUTE_TARGET'));
+});
+
+test('keeps test and spec paths audited without scanning their negative assertion content', () => {
+  for (const path of [
+    'app/src/features/chat/OrigamiScope.test.tsx',
+    'app/src/features/chat/OrigamiScope.spec.ts',
+  ]) {
+    const source = `
+      const schedulePath = '../schedule/SchedulePage';
+      expect(css).not.toMatch(/\\.xterm|terminal-workbench/);
+    `;
+    const result = audit({
+      allowlist: validAllowlist({
+        approvedPaths: [...validAllowlist().approvedPaths, path],
+      }),
+      changedFiles: [{ path, status: 'added', afterContent: source }],
+    });
+
+    assert.equal(result.ok, true, path);
+    assert.deepEqual(result.auditedPaths, [path]);
+  }
+});
+
+test('does not treat formatting-only splits of existing Chat terminal behavior as new targets', () => {
+  const beforeContent = `
+    const event = new CustomEvent('jarvis:terminal:attach', { detail: payload });
+    return dropKind === 'terminal' ? 'terminal' : 'file';
+  `;
+  const afterContent = `
+    const event = new CustomEvent(
+      'jarvis:terminal:attach',
+      { detail: payload },
+    );
+    return dropKind === 'terminal'
+      ? 'terminal'
+      : 'file';
+  `;
+  const result = audit({
+    changedFiles: [
+      {
+        path: DECOR_PATH,
+        status: 'modified',
+        beforeContent,
+        afterContent,
+      },
+    ],
+    repositoryFiles: { [STYLE_PATH]: validCss(), [DECOR_PATH]: afterContent },
+  });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.violations, []);
+});
+
+test('rejects genuinely new non-CSS route, theme, terminal surface, and terminal attribute targets', () => {
+  for (const addition of [
+    "import { SchedulePage } from '../schedule/SchedulePage';",
+    '<div data-page="settings" />',
+    '<div data-page={route} />',
+    "<div data-theme='monochrome' />",
+    '<div className="xterm-screen" />',
+    '<div className="jarvis-terminal-surface" />',
+    '<div className="terminal-workbench" />',
+    '<div data-terminal-drop="terminal" />',
+    '<div data-terminal-source="chat" />',
+  ]) {
+    const beforeContent = "<div data-terminal-drop={activeChatId ? 'chat' : undefined}>Chat</div>";
+    const afterContent = `${beforeContent}\n${addition}`;
+    const result = audit({
+      changedFiles: [
+        {
+          path: DECOR_PATH,
+          status: 'modified',
+          beforeContent,
+          afterContent,
+        },
+      ],
+      repositoryFiles: { [STYLE_PATH]: validCss(), [DECOR_PATH]: afterContent },
+    });
+
+    assert.ok(codes(result).includes('FORBIDDEN_ROUTE_TARGET'), addition);
+  }
 });
 
 test('rejects relative unrelated-route imports from an approved Chat production path', () => {

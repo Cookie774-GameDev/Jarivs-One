@@ -1,13 +1,24 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import {
   appendPass,
   createPassLedger,
   validateFinalMetadata,
 } from '../../../scripts/visual-chat/pass-ledger.mjs';
+import { loadOrigamiReferenceContract } from '../../../scripts/visual-chat/reference-contract.mjs';
 
 const hash = (character) => character.repeat(64);
+const HERE = dirname(fileURLToPath(import.meta.url));
+const REPOSITORY_ROOT = resolve(HERE, '../../..');
+const PASS_LEDGER_PATH = resolve(REPOSITORY_ROOT, 'tests/visual/chat/pass-ledger.json');
+const FINAL_METADATA_PATH = resolve(REPOSITORY_ROOT, 'tests/visual/chat/final-metadata.json');
+const REFERENCE_ROOT = resolve(REPOSITORY_ROOT, 'tests/visual/chat/reference');
+const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
 
 const baselineEvidence = {
   screenshotSha256: hash('a'),
@@ -167,4 +178,43 @@ test('rejects score, evidence, count, region, viewport, and route claims not pro
       label,
     );
   }
+});
+
+test('tracked final metadata is deterministically bound to the twelve-pass ledger and reference', () => {
+  const ledgerBytes = readFileSync(PASS_LEDGER_PATH);
+  const actualLedger = JSON.parse(ledgerBytes.toString('utf8'));
+  const metadataBytes = readFileSync(FINAL_METADATA_PATH);
+  const actualMetadata = JSON.parse(metadataBytes.toString('utf8'));
+  const actualContract = loadOrigamiReferenceContract(REFERENCE_ROOT);
+  const targetBytes = readFileSync(actualContract.targetPath);
+
+  assert.equal(
+    validateFinalMetadata(actualMetadata, {
+      ledger: actualLedger,
+      contract: actualContract,
+    }),
+    actualMetadata,
+  );
+  assert.equal(actualMetadata.passLedgerSha256, sha256(ledgerBytes));
+  assert.equal(actualMetadata.referenceTargetSha256, sha256(targetBytes));
+  assert.equal(actualMetadata.passCount, 12);
+  assert.equal(actualMetadata.keptPassCount, 7);
+  assert.equal(actualMetadata.rejectedPassCount, 5);
+  assert.deepEqual(actualLedger.reassessments, [
+    {
+      afterPassId: 'pass-012',
+      revision: {
+        kind: 'working-tree',
+        value: 'working-tree:c7ee2b4-reassessment-001',
+      },
+      reason:
+        'The first twelve measured passes established the large layout gains; remaining error is concentrated in shared-shell controls and preserved product UI rather than the accepted paper stage.',
+      nextFocus:
+        'Verify worker-produced evidence utilities, then target the remaining sidebar, Jarvis, composer, and header seams without modifying the pet, terminal, or non-Chat surfaces.',
+    },
+  ]);
+  assert.equal(actualMetadata.baseline.fullDiff, actualLedger.baseline.fullDiff);
+  assert.equal(actualMetadata.final.fullDiff, actualLedger.passes.at(-1).fullDiff);
+  assert.equal(actualMetadata.final.weightedDiff, actualLedger.passes.at(-1).weightedDiff);
+  assert.deepEqual(actualMetadata.final.regions, actualLedger.passes.at(-1).regions);
 });

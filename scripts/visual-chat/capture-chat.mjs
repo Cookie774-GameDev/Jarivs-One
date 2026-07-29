@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, extname, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isDeepStrictEqual } from 'node:util';
 
 import {
   ORIGAMI_ASSISTANT_MESSAGE_TEXT,
@@ -90,6 +91,9 @@ export function assertChatCaptureOptions(
   if (options.historicalChatRoot !== undefined && typeof options.historicalChatRoot !== 'boolean') {
     throw new TypeError('historicalChatRoot must be a boolean when supplied.');
   }
+  if (options.pageAudit !== undefined && typeof options.pageAudit !== 'function') {
+    throw new TypeError('pageAudit must be a function when supplied.');
+  }
   return {
     rootDirectory: root,
     distDirectory,
@@ -97,7 +101,33 @@ export function assertChatCaptureOptions(
     baseUrl: options.baseUrl,
     browserExecutable: options.browserExecutable,
     historicalChatRoot: options.historicalChatRoot ?? false,
+    pageAudit: options.pageAudit,
   };
+}
+
+export async function runPreparedPageAudit(page, pageAudit) {
+  if (pageAudit === undefined) return { executed: false };
+  if (typeof pageAudit !== 'function') {
+    throw new TypeError('pageAudit must be a function when supplied.');
+  }
+
+  const receipt = await pageAudit(page);
+  if (!receipt || typeof receipt !== 'object' || Array.isArray(receipt)) {
+    throw new TypeError('pageAudit must return a JSON object receipt.');
+  }
+
+  let stableReceipt;
+  try {
+    stableReceipt = JSON.parse(JSON.stringify(receipt));
+  } catch (error) {
+    throw new TypeError('pageAudit must return a JSON-serializable object receipt.', {
+      cause: error,
+    });
+  }
+  if (!isDeepStrictEqual(receipt, stableReceipt)) {
+    throw new TypeError('pageAudit must return a losslessly JSON-serializable object receipt.');
+  }
+  return { executed: true, receipt: stableReceipt };
 }
 
 export function loadThemePersistenceContract(rootDirectory = DEFAULT_ROOT_DIRECTORY) {
@@ -587,10 +617,14 @@ export async function captureOrigamiChat(options) {
       page,
       ORIGAMI_CHAT_FIXTURE.sessionMetrics,
     );
-    const jarvisModule = await openRequiredJarvisModule(page);
-    const scroll = await establishDeterministicScroll(page);
+    await establishDeterministicScroll(page);
     await waitForStableChatLayout(page);
     assertNoUnexpectedPageErrors(pageErrors);
+    const pageAudit = await runPreparedPageAudit(page, validated.pageAudit);
+    assertNoUnexpectedPageErrors(pageErrors);
+    const scroll = await establishDeterministicScroll(page);
+    await waitForStableChatLayout(page);
+    const jarvisModule = await openRequiredJarvisModule(page);
     mkdirSync(dirname(validated.outputPath), { recursive: true });
     const jarvisStateAtCapture = await captureReadyJarvisScreenshot(page, {
       path: validated.outputPath,
@@ -616,6 +650,7 @@ export async function captureOrigamiChat(options) {
       seed: seedReceipt,
       historicalRoot: historicalRoot ?? { injected: false },
       sessionMetrics,
+      pageAudit,
       jarvisModule,
       jarvisStateAtCapture,
       jarvisModuleOpened: jarvisModule.opened,

@@ -70,8 +70,13 @@ const FORBIDDEN_ROUTE_SOURCE_PATTERN = new RegExp(
   `/(?:features|pages)/(?:${FORBIDDEN_ROUTE_NAMES.join('|')})(?:/|\\b)`,
   'iu',
 );
+const FORBIDDEN_ROUTE_SOURCE_GLOBAL_PATTERN = new RegExp(
+  `/(?:features|pages)/(?:${FORBIDDEN_ROUTE_NAMES.join('|')})(?:/|\\b)`,
+  'giu',
+);
 const FORBIDDEN_TERMINAL_PATTERN =
   /(?:\.xterm(?:\b|-)|jarvis-terminal-surface|data-terminal(?:\b|-)|terminal-workbench)/iu;
+const EXACT_CHAT_TERMINAL_DROP_MARKER = "[data-terminal-drop='chat']";
 const REMOTE_URL_PATTERN = /(?:https?:)?\/\/[a-z0-9.-]+(?::\d+)?(?:[/?#][^\s"'<>)]*)?/giu;
 const FULL_TARGET_PATTERN =
   /(?:^|[/\\])(?:target-chat|full-target|origami-chat-target)\.(?:avif|gif|jpe?g|png|webp)(?=[?#'")\s]|$)/iu;
@@ -115,14 +120,19 @@ function isChatScopedSelector(selector) {
   );
 }
 
-function forbiddenRouteTarget(value) {
+function forbiddenRouteTarget(value, { allowExactChatTerminalDrop = false } = {}) {
+  const exactChatDropCount = value.split(EXACT_CHAT_TERMINAL_DROP_MARKER).length - 1;
+  const inspectedValue =
+    allowExactChatTerminalDrop && exactChatDropCount === 1
+      ? value.replaceAll(EXACT_CHAT_TERMINAL_DROP_MARKER, '')
+      : value;
   return (
-    FORBIDDEN_ROUTE_ATTRIBUTE_PATTERN.test(value) ||
-    FORBIDDEN_SELECTOR_TOKEN_PATTERN.test(value) ||
-    FORBIDDEN_ROUTE_SOURCE_PATTERN.test(value) ||
-    moduleSpecifierTargetsForbiddenRoute(value) ||
-    FORBIDDEN_TERMINAL_PATTERN.test(value) ||
-    /\[data-theme\s*=\s*['"](?:default|dark|light|jarvis|monochrome)['"]\]/iu.test(value)
+    FORBIDDEN_ROUTE_ATTRIBUTE_PATTERN.test(inspectedValue) ||
+    FORBIDDEN_SELECTOR_TOKEN_PATTERN.test(inspectedValue) ||
+    FORBIDDEN_ROUTE_SOURCE_PATTERN.test(inspectedValue) ||
+    moduleSpecifierTargetsForbiddenRoute(inspectedValue) ||
+    FORBIDDEN_TERMINAL_PATTERN.test(inspectedValue) ||
+    /\[data-theme\s*=\s*['"](?:default|dark|light|jarvis|monochrome)['"]\]/iu.test(inspectedValue)
   );
 }
 
@@ -489,7 +499,11 @@ export function validateScopeAllowlist(allowlist, { rootDirectory = process.cwd(
           `Approved selector is not scoped to VibeSpace Workspace Chat: ${selector}`,
         );
       }
-      if (forbiddenRouteTarget(normalized)) {
+      if (
+        forbiddenRouteTarget(normalized, {
+          allowExactChatTerminalDrop: isChatScopedSelector(normalized),
+        })
+      ) {
         inputError(
           'ALLOWLIST_FORBIDDEN_SELECTOR',
           `Approved selector targets an unrelated route or theme: ${selector}`,
@@ -657,6 +671,71 @@ function sourceWithoutComments(source) {
     .replaceAll(/(^|[^:])\/\/[^\r\n]*/gmu, '$1');
 }
 
+function normalizedMarker(value) {
+  return value.replace(/\s+/gu, '').toLowerCase();
+}
+
+function collectForbiddenSourceMarkers(source) {
+  const activeSource = sourceWithoutComments(typeof source === 'string' ? source : '');
+  const markers = new Map();
+  const addMarker = (marker) => markers.set(marker, (markers.get(marker) ?? 0) + 1);
+  const addMatches = (pattern, prefix) => {
+    pattern.lastIndex = 0;
+    for (const match of activeSource.matchAll(pattern)) {
+      addMarker(`${prefix}:${normalizedMarker(match[0])}`);
+    }
+  };
+
+  addMatches(
+    new RegExp(
+      `(?:data-vibespace-page|data-route|data-page|aria-label)\\s*=\\s*['"][^'"]*(?:${FORBIDDEN_ROUTE_NAMES.join('|')})[^'"]*['"]`,
+      'giu',
+    ),
+    'route-attribute',
+  );
+  addMatches(
+    /(?:data-vibespace-page|data-route|data-page)\s*=\s*\{[^}\r\n]*\}/giu,
+    'dynamic-route-attribute',
+  );
+  addMatches(FORBIDDEN_ROUTE_SOURCE_GLOBAL_PATTERN, 'route-source');
+  addMatches(
+    /(?:(?:\.|\b)xterm(?:\b|-)[A-Za-z0-9_-]*|jarvis-terminal-surface|terminal-workbench)/giu,
+    'terminal-surface',
+  );
+  addMatches(
+    /data-terminal[A-Za-z0-9_-]*(?:\s*=\s*(?:\{[^}\r\n]*\}|['"][^'"]*['"]))?/giu,
+    'terminal-attribute',
+  );
+  addMatches(
+    /(?:\[\s*)?data-theme\s*=\s*['"](?:default|dark|light|jarvis|monochrome)['"](?:\s*\])?/giu,
+    'theme',
+  );
+
+  const syntax = scanActiveModuleSyntax(activeSource);
+  if (syntax.malformed) addMarker('module:malformed');
+  for (const argument of syntax.loaderArguments) {
+    const specifier = exactStaticLoaderSpecifier(argument);
+    if (specifier === undefined) {
+      addMarker(`module:dynamic:${normalizedMarker(argument)}`);
+    } else if (relativeSpecifierTargetsForbiddenRoute(specifier)) {
+      addMarker(`module:${specifier.toLowerCase()}`);
+    }
+  }
+  for (const specifier of syntax.staticSpecifiers) {
+    if (relativeSpecifierTargetsForbiddenRoute(specifier)) {
+      addMarker(`module:${specifier.toLowerCase()}`);
+    }
+  }
+  return markers;
+}
+
+function introducesForbiddenSourceTarget(beforeContent, afterContent) {
+  const before = collectForbiddenSourceMarkers(beforeContent);
+  return [...collectForbiddenSourceMarkers(afterContent)].some(
+    ([marker, count]) => count > (before.get(marker) ?? 0),
+  );
+}
+
 function collectAssetReferences(source) {
   const references = new Set();
   if (typeof source !== 'string') return references;
@@ -784,7 +863,7 @@ function isTextPath(path) {
 
 function isPresentationSourcePath(path) {
   return (
-    (path.startsWith('app/src/') && isTextPath(path)) ||
+    (path.startsWith('app/src/') && isTextPath(path) && !/\.(?:spec|test)\.[^/]+$/iu.test(path)) ||
     (path.startsWith('app/public/assets/origami-chat/') && extname(path).toLowerCase() === '.svg')
   );
 }
@@ -959,7 +1038,13 @@ export function auditScopeChanges({
         ),
       );
     }
-    if (forbiddenRouteTarget(activeAdditions)) {
+    const isCss = extname(path).toLowerCase() === '.css';
+    const containsForbiddenTarget = isCss
+      ? forbiddenRouteTarget(activeAdditions, {
+          allowExactChatTerminalDrop: true,
+        })
+      : introducesForbiddenSourceTarget(change.beforeContent, change.afterContent);
+    if (containsForbiddenTarget) {
       violations.push(
         violation(
           'FORBIDDEN_ROUTE_TARGET',
@@ -969,7 +1054,7 @@ export function auditScopeChanges({
       );
     }
 
-    if (extname(path).toLowerCase() !== '.css') {
+    if (!isCss) {
       if (/setProperty\s*\(\s*['"]--[A-Za-z0-9_-]+['"]/u.test(activeAdditions)) {
         violations.push(
           violation(
@@ -1027,7 +1112,11 @@ export function auditScopeChanges({
           ),
         );
       }
-      if (forbiddenRouteTarget(rule.selector)) {
+      if (
+        forbiddenRouteTarget(rule.selector, {
+          allowExactChatTerminalDrop: scoped,
+        })
+      ) {
         violations.push(
           violation(
             'FORBIDDEN_ROUTE_TARGET',
