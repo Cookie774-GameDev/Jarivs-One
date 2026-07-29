@@ -87,7 +87,12 @@ import {
   saveCanvasDocumentAsTemplate,
   type CanvasTemplate,
   type CanvasTemplatePreview,
+  type CustomCanvasTemplateStore,
 } from './templates';
+import {
+  createCanvasTemplatePersistenceRepository,
+  type CanvasTemplatePersistenceRepository,
+} from './templatePersistence';
 import {
   clearCanvasSelection,
   createCanvasSelection,
@@ -356,6 +361,7 @@ let documentSequence = 0;
 
 export interface CanvasPagePersistenceBinding {
   readonly repository: CanvasPersistenceRepository;
+  readonly templateRepository?: CanvasTemplatePersistenceRepository;
   readonly scope: CanvasPersistenceScope | null;
   readonly autosaveDelayMs?: number;
   readonly now?: () => number;
@@ -549,6 +555,10 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
   const canvasRouteActive = useUIStore((state) => state.route === 'canvas');
   const accountIdentity = resolveAccountIdentity({ cloudSession, localUserId });
   const defaultRepository = React.useMemo(() => createCanvasPersistenceRepository(db), []);
+  const defaultTemplateRepository = React.useMemo(
+    () => createCanvasTemplatePersistenceRepository(db),
+    [],
+  );
   const defaultScope = React.useMemo<CanvasPersistenceScope | null>(
     () =>
       accountIdentity
@@ -561,6 +571,10 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     [accountIdentity?.accountId, projectId],
   );
   const activeRepository = persistence?.repository ?? defaultRepository;
+  const activeTemplateRepository =
+    persistence === undefined
+      ? defaultTemplateRepository
+      : (persistence.templateRepository ?? null);
   const activeScope = persistence === undefined ? defaultScope : persistence.scope;
   const persistenceScopeKey = activeScope
     ? `${activeScope.accountId}\u0000${activeScope.projectId}\u0000${activeScope.ownerId}`
@@ -641,6 +655,8 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
   const [previewedTemplateId, setPreviewedTemplateId] = React.useState<string | null>(null);
   const templateSequence = React.useRef(0);
   const templateClock = React.useRef(0);
+  const templatePersistenceGeneration = React.useRef(0);
+  const [templatePersistenceBusy, setTemplatePersistenceBusy] = React.useState(false);
   const [visualExportFormat, setVisualExportFormat] =
     React.useState<CanvasVisualExportFormat>('png');
   const [visualExportScope, setVisualExportScope] = React.useState<CanvasVisualExportScope>('all');
@@ -698,6 +714,54 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     points: readonly { x: number; y: number }[];
     baseIds: readonly string[];
   } | null>(null);
+
+  React.useEffect(() => {
+    const generation = templatePersistenceGeneration.current + 1;
+    templatePersistenceGeneration.current = generation;
+    setCustomTemplateStore(createCustomCanvasTemplateStore());
+    setTemplateRenameDrafts({});
+    setPreviewedTemplateId(null);
+    if (!activeScope || !activeTemplateRepository) {
+      setTemplatePersistenceBusy(false);
+      return;
+    }
+
+    const scope = {
+      accountId: activeScope.accountId,
+      ownerId: activeScope.ownerId,
+      projectId: activeScope.projectId,
+    };
+    let cancelled = false;
+    setTemplatePersistenceBusy(true);
+    void activeTemplateRepository.load(scope).then(
+      (store) => {
+        if (cancelled || templatePersistenceGeneration.current !== generation) return;
+        setCustomTemplateStore(store);
+        setTemplateRenameDrafts(
+          Object.fromEntries(store.templates.map((template) => [template.id, template.title])),
+        );
+        setTemplatePersistenceBusy(false);
+      },
+      (error: unknown) => {
+        if (cancelled || templatePersistenceGeneration.current !== generation) return;
+        setTemplatePersistenceBusy(false);
+        setPackageMessage(
+          `Load templates failed: ${
+            error instanceof Error ? error.message : 'unknown template storage error'
+          }`,
+        );
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeScope?.accountId,
+    activeScope?.ownerId,
+    activeScope?.projectId,
+    activeTemplateRepository,
+    persistenceScopeKey,
+  ]);
 
   React.useEffect(() => {
     const blockId = pendingSearchFocusBlockId.current;
@@ -2569,7 +2633,40 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     }
   };
 
-  const saveCurrentCanvasTemplate = () => {
+  const persistCustomTemplateStore = async (
+    nextStore: CustomCanvasTemplateStore,
+    action: string,
+    onPersisted: () => void,
+  ): Promise<void> => {
+    const generation = templatePersistenceGeneration.current;
+    const repository = activeTemplateRepository;
+    const scope = activeScope
+      ? {
+          accountId: activeScope.accountId,
+          ownerId: activeScope.ownerId,
+          projectId: activeScope.projectId,
+        }
+      : null;
+    setTemplatePersistenceBusy(true);
+    try {
+      if (repository && scope) {
+        await repository.replace(scope, nextStore);
+      }
+      if (templatePersistenceGeneration.current !== generation) return;
+      setCustomTemplateStore(nextStore);
+      onPersisted();
+    } catch (error) {
+      if (templatePersistenceGeneration.current === generation) {
+        reportTemplateFailure(action, error);
+      }
+    } finally {
+      if (templatePersistenceGeneration.current === generation) {
+        setTemplatePersistenceBusy(false);
+      }
+    }
+  };
+
+  const saveCurrentCanvasTemplate = async () => {
     try {
       const result = saveCanvasDocumentAsTemplate(customTemplateStore, {
         source: documentRef.current,
@@ -2579,13 +2676,14 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
         title: customTemplateName.trim() || documentRef.current.title,
         now: nextTemplateTimestamp(),
       });
-      setCustomTemplateStore(result.store);
-      setTemplateRenameDrafts((current) => ({
-        ...current,
-        [result.template.id]: result.template.title,
-      }));
-      setCustomTemplateName('');
-      setPackageMessage(`Saved ${result.template.title} as a custom template`);
+      await persistCustomTemplateStore(result.store, 'Save template', () => {
+        setTemplateRenameDrafts((current) => ({
+          ...current,
+          [result.template.id]: result.template.title,
+        }));
+        setCustomTemplateName('');
+        setPackageMessage(`Saved ${result.template.title} as a custom template`);
+      });
     } catch (error) {
       reportTemplateFailure('Save template', error);
     }
@@ -2609,7 +2707,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     }
   };
 
-  const duplicateTemplate = (templateId: string, templateTitle: string) => {
+  const duplicateTemplate = async (templateId: string, templateTitle: string) => {
     try {
       const now = nextTemplateTimestamp();
       const duplicated = duplicateCustomTemplate(customTemplateStore, {
@@ -2626,18 +2724,19 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
         projectId: documentRef.current.projectId,
         now,
       });
-      setCustomTemplateStore(renamed.store);
-      setTemplateRenameDrafts((current) => ({
-        ...current,
-        [renamed.template.id]: renamed.template.title,
-      }));
-      setPackageMessage(`Duplicated ${templateTitle}`);
+      await persistCustomTemplateStore(renamed.store, 'Duplicate template', () => {
+        setTemplateRenameDrafts((current) => ({
+          ...current,
+          [renamed.template.id]: renamed.template.title,
+        }));
+        setPackageMessage(`Duplicated ${templateTitle}`);
+      });
     } catch (error) {
       reportTemplateFailure('Duplicate template', error);
     }
   };
 
-  const applyTemplateRename = (templateId: string, previousTitle: string) => {
+  const applyTemplateRename = async (templateId: string, previousTitle: string) => {
     try {
       const result = renameCustomTemplate(customTemplateStore, {
         templateId,
@@ -2646,18 +2745,19 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
         projectId: documentRef.current.projectId,
         now: nextTemplateTimestamp(),
       });
-      setCustomTemplateStore(result.store);
-      setTemplateRenameDrafts((current) => ({
-        ...current,
-        [templateId]: result.template.title,
-      }));
-      setPackageMessage(`Renamed template to ${result.template.title}`);
+      await persistCustomTemplateStore(result.store, 'Rename template', () => {
+        setTemplateRenameDrafts((current) => ({
+          ...current,
+          [templateId]: result.template.title,
+        }));
+        setPackageMessage(`Renamed template to ${result.template.title}`);
+      });
     } catch (error) {
       reportTemplateFailure('Rename template', error);
     }
   };
 
-  const removeCustomTemplate = (templateId: string, templateTitle: string) => {
+  const removeCustomTemplate = async (templateId: string, templateTitle: string) => {
     if (!window.confirm(`Delete the custom template ${templateTitle}?`)) return;
     try {
       const result = deleteCustomTemplate(customTemplateStore, {
@@ -2665,13 +2765,14 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
         ownerId: documentRef.current.ownerId,
         projectId: documentRef.current.projectId,
       });
-      setCustomTemplateStore(result.store);
-      setPreviewedTemplateId((current) => (current === templateId ? null : current));
-      setTemplateRenameDrafts((current) => {
-        const { [templateId]: _removed, ...remaining } = current;
-        return remaining;
+      await persistCustomTemplateStore(result.store, 'Delete template', () => {
+        setPreviewedTemplateId((current) => (current === templateId ? null : current));
+        setTemplateRenameDrafts((current) => {
+          const { [templateId]: _removed, ...remaining } = current;
+          return remaining;
+        });
+        setPackageMessage(`Deleted template ${templateTitle}`);
       });
-      setPackageMessage(`Deleted template ${templateTitle}`);
     } catch (error) {
       reportTemplateFailure('Delete template', error);
     }
@@ -3099,8 +3200,12 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
           <div
             role="group"
             aria-label="Canvas template manager"
+            aria-busy={templatePersistenceBusy}
             className="absolute right-0 top-11 z-50 max-h-[70vh] w-[32rem] space-y-4 overflow-auto rounded-lg border border-border bg-background p-4 shadow-lg"
           >
+            <p role="status" aria-label="Custom template persistence status" className="sr-only">
+              {templatePersistenceBusy ? 'Updating custom templates' : 'Custom templates ready'}
+            </p>
             <section aria-labelledby="built-in-template-heading" className="space-y-2">
               <h2 id="built-in-template-heading" className="text-sm font-semibold">
                 Built-in templates
@@ -3162,7 +3267,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                 className="flex items-end gap-2"
                 onSubmit={(event) => {
                   event.preventDefault();
-                  saveCurrentCanvasTemplate();
+                  void saveCurrentCanvasTemplate();
                 }}
               >
                 <label className="flex-1 space-y-1 text-xs text-muted-foreground">
@@ -3178,6 +3283,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                 <button
                   type="submit"
                   aria-label="Save current canvas as template"
+                  disabled={templatePersistenceBusy}
                   className="rounded-md border border-border px-3 py-2 text-xs font-medium hover:bg-muted"
                 >
                   Save current
@@ -3194,6 +3300,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                         <button
                           type="button"
                           aria-label={`Create canvas from ${template.title}`}
+                          disabled={templatePersistenceBusy}
                           onClick={() => createFromCustomTemplate(template.id, template.title)}
                           className="rounded border border-border px-2 py-1 text-xs hover:bg-muted"
                         >
@@ -3215,7 +3322,8 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                         <button
                           type="button"
                           aria-label={`Duplicate template ${template.title}`}
-                          onClick={() => duplicateTemplate(template.id, template.title)}
+                          disabled={templatePersistenceBusy}
+                          onClick={() => void duplicateTemplate(template.id, template.title)}
                           className="rounded border border-border px-2 py-1 text-xs hover:bg-muted"
                         >
                           Duplicate
@@ -3223,7 +3331,8 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                         <button
                           type="button"
                           aria-label={`Delete template ${template.title}`}
-                          onClick={() => removeCustomTemplate(template.id, template.title)}
+                          disabled={templatePersistenceBusy}
+                          onClick={() => void removeCustomTemplate(template.id, template.title)}
                           className="rounded border border-destructive/50 px-2 py-1 text-xs text-destructive hover:bg-destructive/10"
                         >
                           Delete
@@ -3245,7 +3354,8 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
                         <button
                           type="button"
                           aria-label={`Apply template name ${template.title}`}
-                          onClick={() => applyTemplateRename(template.id, template.title)}
+                          disabled={templatePersistenceBusy}
+                          onClick={() => void applyTemplateRename(template.id, template.title)}
                           className="rounded border border-border px-2 py-1 text-xs hover:bg-muted"
                         >
                           Rename

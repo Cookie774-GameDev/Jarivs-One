@@ -19,6 +19,15 @@ import { CANVAS_MARKDOWN_MAX_SOURCE_LENGTH } from './markdown';
 import { createMindMap } from './mindmaps';
 import { encodeCanvasPackage } from './packageFormat';
 import type { CanvasPersistenceRepository, CanvasPersistenceScope } from './persistence';
+import {
+  CanvasTemplatePersistenceError,
+  type CanvasTemplatePersistenceRepository,
+} from './templatePersistence';
+import {
+  createCustomCanvasTemplateStore,
+  saveCanvasDocumentAsTemplate,
+  type CustomCanvasTemplateStore,
+} from './templates';
 import type { CanvasRecoveryEntry } from './autosave';
 import { useUIStore } from '@/stores/ui';
 
@@ -52,6 +61,32 @@ function persistedDocument(scope: CanvasPersistenceScope, id: string, title: str
     title,
     now,
   });
+}
+
+function templateRepository(
+  overrides: Partial<CanvasTemplatePersistenceRepository> = {},
+): CanvasTemplatePersistenceRepository {
+  return {
+    load: vi.fn(async () => createCustomCanvasTemplateStore()),
+    replace: vi.fn(async () => undefined),
+    ...overrides,
+  };
+}
+
+function persistedTemplateStore(
+  scope: CanvasPersistenceScope,
+  templateId: string,
+  title: string,
+): CustomCanvasTemplateStore {
+  const source = persistedDocument(scope, `${templateId}-source`, title);
+  return saveCanvasDocumentAsTemplate(createCustomCanvasTemplateStore(), {
+    source,
+    templateId,
+    ownerId: scope.ownerId,
+    projectId: scope.projectId,
+    title,
+    now: 200,
+  }).store;
 }
 
 function readBlobText(blob: Blob): Promise<string> {
@@ -599,6 +634,175 @@ describe('CanvasPage', () => {
     expect(within(customTemplates).queryByText('Reusable team board')).toBeNull();
     expect(within(customTemplates).getByText('Team board copy')).toBeTruthy();
     confirm.mockRestore();
+  });
+
+  it('reloads durable custom templates after the Canvas remounts', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    let durableStore = createCustomCanvasTemplateStore();
+    const templates = templateRepository({
+      load: vi.fn(async () => durableStore),
+      replace: vi.fn(async (_scope, store) => {
+        durableStore = store;
+      }),
+    });
+    const repository = persistenceRepository({
+      loadLatest: vi.fn(async () =>
+        persistedDocument(PERSISTENCE_SCOPE, 'durable-source', 'Durable source'),
+      ),
+    });
+    const binding = {
+      repository,
+      templateRepository: templates,
+      scope: PERSISTENCE_SCOPE,
+    };
+    const first = render(<CanvasPage persistence={binding} />);
+    expect(await screen.findByDisplayValue('Durable source')).toBeTruthy();
+    fireEvent.click(screen.getByText('Templates'));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Custom template name' }), {
+      target: { value: 'Restart-safe board' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save current canvas as template' }));
+    await waitFor(() => expect(templates.replace).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText('Restart-safe board')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Duplicate template Restart-safe board' }));
+    await waitFor(() => expect(templates.replace).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText('Restart-safe board copy')).toBeTruthy();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Rename template Restart-safe board' }), {
+      target: { value: 'Durable renamed board' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply template name Restart-safe board' }));
+    await waitFor(() => expect(templates.replace).toHaveBeenCalledTimes(3));
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Delete template Durable renamed board' }),
+    );
+    await waitFor(() => expect(templates.replace).toHaveBeenCalledTimes(4));
+    expect(screen.queryByText('Durable renamed board')).toBeNull();
+    first.unmount();
+
+    render(<CanvasPage persistence={binding} />);
+    expect(await screen.findByDisplayValue('Durable source')).toBeTruthy();
+    fireEvent.click(screen.getByText('Templates'));
+    expect(await screen.findByText('Restart-safe board copy')).toBeTruthy();
+    expect(screen.queryByText('Durable renamed board')).toBeNull();
+    expect(templates.load).toHaveBeenCalledTimes(2);
+    confirm.mockRestore();
+  });
+
+  it('suppresses a stale template load after the account and project scope switch', async () => {
+    let resolveAccountA!: (store: CustomCanvasTemplateStore) => void;
+    const accountALoad = new Promise<CustomCanvasTemplateStore>((resolve) => {
+      resolveAccountA = resolve;
+    });
+    const scopeB: CanvasPersistenceScope = {
+      accountId: 'account-b',
+      ownerId: 'account-b',
+      projectId: 'project-b',
+    };
+    const templates = templateRepository({
+      load: vi.fn(async (scope) =>
+        scope.accountId === PERSISTENCE_SCOPE.accountId
+          ? accountALoad
+          : persistedTemplateStore(scopeB, 'template-b', 'Account B template'),
+      ),
+    });
+    const repository = persistenceRepository({
+      loadLatest: vi.fn(async (scope) =>
+        persistedDocument(scope, `canvas-${scope.accountId}`, `Canvas ${scope.accountId}`),
+      ),
+    });
+    const { rerender } = render(
+      <CanvasPage
+        persistence={{
+          repository,
+          templateRepository: templates,
+          scope: PERSISTENCE_SCOPE,
+        }}
+      />,
+    );
+    rerender(
+      <CanvasPage persistence={{ repository, templateRepository: templates, scope: scopeB }} />,
+    );
+    expect(await screen.findByDisplayValue('Canvas account-b')).toBeTruthy();
+    fireEvent.click(screen.getByText('Templates'));
+    expect(await screen.findByText('Account B template')).toBeTruthy();
+
+    resolveAccountA(
+      persistedTemplateStore(PERSISTENCE_SCOPE, 'template-a', 'Stale account A template'),
+    );
+    await act(async () => {
+      await accountALoad;
+    });
+    expect(screen.queryByText('Stale account A template')).toBeNull();
+    expect(screen.getByText('Account B template')).toBeTruthy();
+  });
+
+  it('keeps the prior durable store when a bounded template save fails', async () => {
+    const templates = templateRepository({
+      replace: vi.fn(async () => {
+        throw new CanvasTemplatePersistenceError(
+          'storage-failure',
+          'Templates could not be saved locally.',
+        );
+      }),
+    });
+    const repository = persistenceRepository({
+      loadLatest: vi.fn(async () =>
+        persistedDocument(PERSISTENCE_SCOPE, 'failed-save-source', 'Failed save source'),
+      ),
+    });
+    render(
+      <CanvasPage
+        persistence={{
+          repository,
+          templateRepository: templates,
+          scope: PERSISTENCE_SCOPE,
+        }}
+      />,
+    );
+    expect(await screen.findByDisplayValue('Failed save source')).toBeTruthy();
+    fireEvent.click(screen.getByText('Templates'));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Custom template name' }), {
+      target: { value: 'Must not appear' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save current canvas as template' }));
+
+    expect(
+      await screen.findByText('Save template failed: Templates could not be saved locally.'),
+    ).toBeTruthy();
+    expect(screen.queryByText('Must not appear')).toBeNull();
+  });
+
+  it('surfaces a bounded template load error without exposing persisted row data', async () => {
+    const templates = templateRepository({
+      load: vi.fn(async () => {
+        throw new CanvasTemplatePersistenceError(
+          'invalid-data',
+          'Saved templates could not be loaded safely.',
+        );
+      }),
+    });
+    const repository = persistenceRepository({
+      loadLatest: vi.fn(async () =>
+        persistedDocument(PERSISTENCE_SCOPE, 'failed-load-source', 'Failed load source'),
+      ),
+    });
+    render(
+      <CanvasPage
+        persistence={{
+          repository,
+          templateRepository: templates,
+          scope: PERSISTENCE_SCOPE,
+        }}
+      />,
+    );
+
+    expect(
+      await screen.findByText('Load templates failed: Saved templates could not be loaded safely.'),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByText('Templates'));
+    expect(screen.getByText('No custom templates yet.')).toBeTruthy();
+    expect(screen.queryByText('Secret malformed template')).toBeNull();
   });
 
   it('switches the same content between page and edgeless layouts', () => {
