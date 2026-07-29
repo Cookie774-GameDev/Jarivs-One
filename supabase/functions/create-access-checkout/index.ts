@@ -18,20 +18,19 @@
 //     never accepted. All billing inputs are server config.
 //   - Missing STRIPE_SECRET_KEY or STRIPE_APP_ACCESS_PRICE_ID -> 500.
 //   - Reuses profiles.stripe_customer_id; otherwise creates a customer with
-//     bounded metadata { supabase_user_id } and maps it back to the profile.
+//     bounded metadata { supabase_user_id } and an account-stable provider
+//     idempotency key, then maps it back to the profile.
 //   - Rejects a duplicate checkout (409) when the authoritative entitlement
 //     already has a non-terminal Stripe subscription. A local app trial has no
 //     subscription and remains eligible to convert.
-//   - Creates a real Stripe subscription Checkout Session using a server-derived
-//     Stripe idempotency key (access_checkout:<user_id>) so concurrent/repeated
-//     attempts yield a single session. Customer creation is independently
-//     idempotent via access_customer:<user_id>.
-//   - Records a minimal, idempotent app_access_events 'checkout_created' audit
-//     row ONLY after the session is created. The row uses the schema's columns
-//     and a namespaced per-session token in provider_event_id so the table's
-//     unique(provider_event_id) constraint dedupes concurrent inserts. A
-//     conflict/error on the audit row never blocks the created session and never
-//     grants access.
+//   - Reserves a durable, server-generated checkout attempt through service-role
+//     RPCs. Concurrent/logical retries reuse one attempt-scoped Stripe
+//     idempotency key; expired/abandoned attempts receive a new key and Session.
+//     Reused Sessions are retrieved server-side; completed Sessions fail closed
+//     pending a newer webhook-reconciled entitlement snapshot.
+//   - Completes the attempt and its minimal checkout_created audit atomically
+//     before returning the URL. Checkout never updates entitlement or feature
+//     tier state; webhook reconciliation remains the only activation authority.
 //   - Errors are generic codes; upstream Stripe/Supabase messages and secrets are
 //     never returned. CORS/content-type/status come from the shared json() helper.
 //
@@ -49,12 +48,10 @@
 //   * The duplicate-access rule follows provider identity, not the derived app
 //     status: trialing-without-subscription is the local trial conversion path;
 //     a non-terminal provider subscription blocks duplicate billing.
-//   * provider_event_id carries a namespaced per-session token
-//     ('access_checkout:<user_id>:<session_id>') for the server-generated
-//     checkout_created row, reusing the unique constraint for record-level
-//     idempotency. The 'access_checkout:' prefix cannot collide with Stripe
-//     webhook 'evt_...' ids. This is a narrow, documented extension of the
-//     column's "NULL for server events" convention.
+//   * Migration 0035 atomically records checkout_created with the namespaced
+//     token 'access_checkout_attempt:<attempt_id>:<session_id>'. Its random,
+//     server-generated attempt id cannot collide across accounts or with Stripe
+//     webhook 'evt_...' ids.
 //   * Launch gating (prelaunch) is enforced by the authoritative get_app_access()
 //     RPC/client; this handler enforces the duplicate-subscription guard.
 //
@@ -65,6 +62,8 @@
 import { json } from '../_shared/voice.ts';
 
 const TERMINAL_PROVIDER_STATUSES = new Set(['canceled', 'unpaid', 'incomplete_expired']);
+export const ACCESS_ENTITLEMENT_SELECT =
+  'status,cancel_at_period_end,stripe_subscription_id,provider_status,provider_status_updated_at';
 
 function boundedConfigString(value, max) {
   return (
@@ -103,12 +102,49 @@ function resolveAppBaseUrl(value) {
   return parsed.origin;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+
+function parseAttempt(value) {
+  if (!value || typeof value !== 'object') return null;
+  if (value.outcome === 'duplicate_access') return { outcome: 'duplicate_access' };
+  if (value.outcome === 'checkout_pending') return { outcome: 'checkout_pending' };
+  if (value.outcome !== 'reserved' && value.outcome !== 'session_created') return null;
+  if (!UUID_RE.test(value.attemptId)) return null;
+  const expectedKey = 'access_checkout_attempt:' + value.attemptId;
+  if (value.idempotencyKey !== expectedKey) return null;
+  if (!boundedConfigString(value.createdAt, 64) || !Number.isFinite(Date.parse(value.createdAt))) {
+    return null;
+  }
+  if (!boundedConfigString(value.expiresAt, 64) || !Number.isFinite(Date.parse(value.expiresAt))) {
+    return null;
+  }
+  if (value.outcome === 'session_created') {
+    if (!boundedConfigString(value.sessionId, 128) || !isSafeCheckoutUrl(value.url)) {
+      return null;
+    }
+  } else if (value.sessionId !== null || value.url !== null) {
+    return null;
+  }
+  return value;
+}
+
 // A local app trial has no Stripe subscription and must be allowed to convert.
 // Only a real, non-terminal Stripe subscription blocks a duplicate checkout.
 // Missing provider status fails safe when a subscription id is already present.
 export function hasBlockingAccess(entitlement) {
   if (!entitlement || !entitlement.stripe_subscription_id) return false;
   return !TERMINAL_PROVIDER_STATUSES.has(entitlement.provider_status);
+}
+
+function terminalSubscriptionSupersedesAttempt(entitlement, attempt) {
+  return Boolean(
+    entitlement &&
+    entitlement.stripe_subscription_id &&
+    TERMINAL_PROVIDER_STATUSES.has(entitlement.provider_status) &&
+    boundedConfigString(entitlement.provider_status_updated_at, 64) &&
+    Number.isFinite(Date.parse(entitlement.provider_status_updated_at)) &&
+    Date.parse(entitlement.provider_status_updated_at) >= Date.parse(attempt.createdAt),
+  );
 }
 
 // Dependency contract (all injected so tests are network-free):
@@ -118,14 +154,18 @@ export function hasBlockingAccess(entitlement) {
 //   deps.setProfileCustomer(userId, customerId) -> void   (maps customer only;
 //                                                          never touches tier)
 //   deps.getAccessEntitlement(userId) ->
-//     { status, stripe_subscription_id, provider_status } | null
-//   deps.recordCheckoutEvent(event) -> { ok } | { ok:false, reason }  (resolves;
-//     does not reject). `event` matches the app_access_events columns:
-//     { user_id, event_type, provider_event_id, stripe_subscription_id, status,
-//       reason, occurred_at }.
+//     { status, stripe_subscription_id, provider_status,
+//       provider_status_updated_at } | null
+//   deps.reserveCheckoutAttempt(userId) -> a service-role RPC reservation or
+//     reusable Session projection with a server-generated attempt/key/expiry.
+//   deps.completeCheckoutAttempt(userId, attemptId, session) -> atomically
+//     persists the verified Session and its idempotent checkout_created audit.
+//   deps.closeCheckoutAttempt(userId, attemptId, state) -> service-role-only
+//     terminal transition; never mutates entitlement.
 //   deps.stripe.customers.create(params) -> { id }
 //   deps.stripe.checkout.sessions.create(params, { idempotencyKey }) -> { id, url }
-//   deps.now() -> Date
+//   deps.stripe.checkout.sessions.retrieve(sessionId) -> server-authoritative
+//     { id, status } where status is open, complete, or expired.
 export async function handleAccessCheckout(req, deps) {
   const origin = req.headers.get('origin');
 
@@ -173,7 +213,55 @@ export async function handleAccessCheckout(req, deps) {
     return json({ error: 'duplicate_access' }, 409, origin);
   }
 
-  const stripeIdempotencyKey = 'access_checkout:' + user.id;
+  let attempt = null;
+  for (let pass = 0; pass < 2; pass += 1) {
+    try {
+      attempt = parseAttempt(await deps.reserveCheckoutAttempt(user.id));
+    } catch {
+      return json({ error: 'checkout_failed' }, 502, origin);
+    }
+    if (!attempt) return json({ error: 'checkout_failed' }, 502, origin);
+    if (attempt.outcome === 'duplicate_access') {
+      return json({ error: 'duplicate_access' }, 409, origin);
+    }
+    if (attempt.outcome === 'checkout_pending') {
+      return json({ error: 'checkout_pending' }, 409, origin);
+    }
+    if (attempt.outcome === 'reserved') break;
+
+    let existingSession;
+    try {
+      existingSession = await deps.stripe.checkout.sessions.retrieve(attempt.sessionId);
+      if (
+        !existingSession ||
+        existingSession.id !== attempt.sessionId ||
+        !['open', 'complete', 'expired'].includes(existingSession.status)
+      ) {
+        throw new Error('invalid Stripe Checkout session state');
+      }
+    } catch {
+      return json({ error: 'checkout_failed' }, 502, origin);
+    }
+    if (existingSession.status === 'open') {
+      return json({ url: attempt.url }, 200, origin);
+    }
+
+    const terminalState = existingSession.status === 'complete' ? 'completed' : 'expired';
+    try {
+      await deps.closeCheckoutAttempt(user.id, attempt.attemptId, terminalState);
+    } catch {
+      return json({ error: 'checkout_failed' }, 502, origin);
+    }
+    if (
+      existingSession.status === 'complete' &&
+      !terminalSubscriptionSupersedesAttempt(entitlement, attempt)
+    ) {
+      return json({ error: 'checkout_pending' }, 409, origin);
+    }
+  }
+  if (!attempt || attempt.outcome !== 'reserved') {
+    return json({ error: 'checkout_failed' }, 502, origin);
+  }
   const customerIdempotencyKey = 'access_customer:' + user.id;
 
   // Resolve the Stripe customer (reuse mapped, else create + map) and create the
@@ -202,13 +290,18 @@ export async function handleAccessCheckout(req, deps) {
         line_items: [{ price: config.appAccessPriceId, quantity: 1 }],
         success_url: appBaseUrl + '/billing/access/success',
         cancel_url: appBaseUrl + '/billing/access/cancel',
+        expires_at: Math.floor(Date.parse(attempt.expiresAt) / 1000),
         client_reference_id: user.id,
-        metadata: { supabase_user_id: user.id, access_product: 'vibespace_access' },
+        metadata: {
+          supabase_user_id: user.id,
+          access_product: 'vibespace_access',
+          checkout_attempt_id: attempt.attemptId,
+        },
       },
-      { idempotencyKey: stripeIdempotencyKey },
+      { idempotencyKey: attempt.idempotencyKey },
     );
     if (
-      !boundedConfigString(session && session.id, 255) ||
+      !boundedConfigString(session && session.id, 128) ||
       !isSafeCheckoutUrl(session && session.url)
     ) {
       throw new Error('invalid Stripe Checkout session');
@@ -217,28 +310,33 @@ export async function handleAccessCheckout(req, deps) {
     return json({ error: 'checkout_failed' }, 502, origin);
   }
 
-  // Minimal idempotent audit event, recorded ONLY after the session exists, using
-  // the app_access_events schema columns. The provider_event_id token is stable
-  // per session (concurrent attempts share the session via the Stripe idempotency
-  // key) so the unique constraint dedupes concurrent inserts; a new session later
-  // gets a fresh token. The audit is non-authoritative, so its result never
-  // blocks the created session and never grants access.
+  // The service-role RPC atomically stores the Session and its idempotent audit
+  // event. If this durable boundary is unavailable, fail closed: the reserved
+  // attempt remains reusable with the same Stripe key until its bounded lease
+  // expires, so a retry can recover without a duplicate Session and no account
+  // remains permanently wedged.
+  let completed;
   try {
-    await deps.recordCheckoutEvent({
-      user_id: user.id,
-      event_type: 'checkout_created',
-      provider_event_id: stripeIdempotencyKey + ':' + session.id,
-      stripe_subscription_id: null,
-      status: (entitlement && entitlement.status) || null,
-      reason: 'checkout_created',
-      occurred_at: deps.now().toISOString(),
-    });
+    completed = parseAttempt(
+      await deps.completeCheckoutAttempt(user.id, attempt.attemptId, {
+        id: session.id,
+        url: session.url,
+      }),
+    );
   } catch {
-    // The session already exists and the audit trail is non-authoritative.
-    // A transient audit write failure must not hide the usable checkout URL.
+    return json({ error: 'checkout_failed' }, 502, origin);
+  }
+  if (
+    !completed ||
+    completed.outcome !== 'session_created' ||
+    completed.attemptId !== attempt.attemptId ||
+    completed.sessionId !== session.id ||
+    completed.url !== session.url
+  ) {
+    return json({ error: 'checkout_failed' }, 502, origin);
   }
 
-  return json({ url: session.url }, 200, origin);
+  return json({ url: completed.url }, 200, origin);
 }
 
 // Production wiring (Supabase Edge Function entrypoint). Dynamic imports keep
@@ -295,21 +393,36 @@ if (import.meta.main) {
     async getAccessEntitlement(userId) {
       const { data, error } = await admin()
         .from('app_access_entitlements')
-        .select('status, cancel_at_period_end, stripe_subscription_id, provider_status')
+        .select(ACCESS_ENTITLEMENT_SELECT)
         .eq('user_id', userId)
         .maybeSingle();
       if (error) throw error;
       return data || null;
     },
-    async recordCheckoutEvent(event) {
-      const { error } = await admin().from('app_access_events').insert(event);
-      if (error) {
-        // 23505 = unique_violation on provider_event_id (expected concurrent dup).
-        return error.code === '23505'
-          ? { ok: false, reason: 'conflict' }
-          : { ok: false, reason: 'error' };
-      }
-      return { ok: true };
+    async reserveCheckoutAttempt(userId) {
+      const { data, error } = await admin().rpc('app_access_reserve_checkout_attempt', {
+        p_user_id: userId,
+      });
+      if (error) throw error;
+      return data;
+    },
+    async completeCheckoutAttempt(userId, attemptId, session) {
+      const { data, error } = await admin().rpc('app_access_complete_checkout_attempt', {
+        p_user_id: userId,
+        p_attempt_id: attemptId,
+        p_stripe_session_id: session.id,
+        p_stripe_session_url: session.url,
+      });
+      if (error) throw error;
+      return data;
+    },
+    async closeCheckoutAttempt(userId, attemptId, state) {
+      const { error } = await admin().rpc('app_access_close_checkout_attempt', {
+        p_user_id: userId,
+        p_attempt_id: attemptId,
+        p_state: state,
+      });
+      if (error) throw error;
     },
     stripe: new Stripe(STRIPE_SECRET_KEY, {
       apiVersion: '2024-12-18.acacia',

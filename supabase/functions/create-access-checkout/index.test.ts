@@ -16,7 +16,12 @@
 // The suite also runs under a Node >=23 type-stripping harness (no Deno needed)
 // because it imports only local modules and uses no URL imports.
 
-import { handleAccessCheckout } from './index.ts';
+import { test as nodeTest } from 'node:test';
+import { ACCESS_ENTITLEMENT_SELECT, handleAccessCheckout } from './index.ts';
+
+if (typeof globalThis.Deno === 'undefined') {
+  globalThis.Deno = { test: nodeTest };
+}
 
 // ---------------------------------------------------------------------------
 // Minimal assertion helpers (self-contained; no external test deps).
@@ -92,6 +97,10 @@ function makeDeps(opts) {
     getProfile: [],
     setProfileCustomer: [],
     getAccessEntitlement: [],
+    reserveCheckoutAttempt: [],
+    completeCheckoutAttempt: [],
+    closeCheckoutAttempt: [],
+    retrieveCheckoutSession: [],
     recordCheckoutEvent: [],
     customersCreate: [],
     customersCreateOptions: [],
@@ -113,8 +122,64 @@ function makeDeps(opts) {
   );
 
   const sessionsByIdemKey = new Map();
+  const sessionsById = new Map();
   const customersByIdemKey = new Map();
+  let checkoutAttempt = null;
+  let attemptCounter = 0;
   let sessionCounter = 0;
+
+  function attemptId(counter) {
+    return '10000000-0000-4000-8000-' + String(counter).padStart(12, '0');
+  }
+
+  function reserveAttempt(userId) {
+    const now = deps.now();
+    if (
+      checkoutAttempt &&
+      checkoutAttempt.state === 'reserved' &&
+      Date.parse(checkoutAttempt.leaseExpiresAt) <= now.getTime()
+    ) {
+      checkoutAttempt.state = 'abandoned';
+    }
+    if (
+      checkoutAttempt &&
+      checkoutAttempt.state === 'session_created' &&
+      Date.parse(checkoutAttempt.expiresAt) <= now.getTime()
+    ) {
+      checkoutAttempt.state = 'expired';
+    }
+    if (
+      checkoutAttempt &&
+      (checkoutAttempt.state === 'reserved' || checkoutAttempt.state === 'session_created')
+    ) {
+      return { ...checkoutAttempt };
+    }
+    if (checkoutAttempt && checkoutAttempt.state === 'completed') {
+      const entitlement = opts.entitlement;
+      const isAuthoritativeTerminal =
+        entitlement &&
+        entitlement.stripe_subscription_id &&
+        ['canceled', 'unpaid', 'incomplete_expired'].includes(entitlement.provider_status) &&
+        Number.isFinite(Date.parse(entitlement.provider_status_updated_at)) &&
+        Date.parse(entitlement.provider_status_updated_at) >= Date.parse(checkoutAttempt.createdAt);
+      if (!isAuthoritativeTerminal) return { outcome: 'checkout_pending' };
+    }
+    attemptCounter += 1;
+    const id = attemptId(attemptCounter);
+    checkoutAttempt = {
+      outcome: 'reserved',
+      state: 'reserved',
+      attemptId: id,
+      idempotencyKey: 'access_checkout_attempt:' + id,
+      leaseExpiresAt: new Date(now.getTime() + 5 * 60_000).toISOString(),
+      expiresAt: new Date(now.getTime() + 60 * 60_000).toISOString(),
+      createdAt: now.toISOString(),
+      sessionId: null,
+      url: null,
+      userId,
+    };
+    return { ...checkoutAttempt };
+  }
 
   const deps = {
     config,
@@ -142,6 +207,73 @@ function makeDeps(opts) {
       if (opts.entitlement !== undefined) return opts.entitlement;
       return null;
     },
+    async reserveCheckoutAttempt(userId) {
+      calls.reserveCheckoutAttempt.push(userId);
+      if (opts.throwReserveCheckoutAttempt) throw new Error('attempt reservation unavailable');
+      if (opts.reserveCheckoutAttempt) return opts.reserveCheckoutAttempt(userId);
+      return reserveAttempt(userId);
+    },
+    async completeCheckoutAttempt(userId, attemptIdValue, session) {
+      calls.completeCheckoutAttempt.push({ userId, attemptId: attemptIdValue, session });
+      if (opts.throwCompleteCheckoutAttempt) throw new Error('attempt completion unavailable');
+      if (
+        !checkoutAttempt ||
+        checkoutAttempt.userId !== userId ||
+        checkoutAttempt.attemptId !== attemptIdValue
+      ) {
+        throw new Error('attempt owner mismatch');
+      }
+      if (checkoutAttempt.state === 'session_created') {
+        if (checkoutAttempt.sessionId !== session.id || checkoutAttempt.url !== session.url) {
+          throw new Error('attempt completion conflict');
+        }
+        return { ...checkoutAttempt };
+      }
+      if (checkoutAttempt.state !== 'reserved') throw new Error('attempt is not open');
+      checkoutAttempt = {
+        ...checkoutAttempt,
+        outcome: 'session_created',
+        state: 'session_created',
+        sessionId: session.id,
+        url: session.url,
+      };
+      calls.order.push('attempt.complete');
+      const providerEventId = 'access_checkout_attempt:' + attemptIdValue + ':' + session.id;
+      if (!calls.recordedEvents.some((event) => event.provider_event_id === providerEventId)) {
+        calls.order.push('event.record');
+        calls.recordedEvents.push({
+          user_id: userId,
+          event_type: 'checkout_created',
+          provider_event_id: providerEventId,
+          stripe_subscription_id: null,
+          status: opts.entitlement ? opts.entitlement.status || null : null,
+          reason: 'checkout_created',
+          occurred_at: deps.now().toISOString(),
+        });
+      }
+      return { ...checkoutAttempt };
+    },
+    async closeCheckoutAttempt(userId, attemptIdValue, state) {
+      calls.closeCheckoutAttempt.push({ userId, attemptId: attemptIdValue, state });
+      if (
+        !checkoutAttempt ||
+        checkoutAttempt.userId !== userId ||
+        checkoutAttempt.attemptId !== attemptIdValue
+      ) {
+        throw new Error('attempt owner mismatch');
+      }
+      if (!['completed', 'expired', 'abandoned'].includes(state)) {
+        throw new Error('invalid terminal state');
+      }
+      if (checkoutAttempt.state === state) return;
+      if (
+        (checkoutAttempt.state === 'reserved' && state !== 'abandoned') ||
+        ['completed', 'expired', 'abandoned'].includes(checkoutAttempt.state)
+      ) {
+        throw new Error('invalid attempt transition');
+      }
+      checkoutAttempt = { ...checkoutAttempt, state, outcome: state };
+    },
     async recordCheckoutEvent(event) {
       calls.recordCheckoutEvent.push(event);
       calls.order.push('event.record');
@@ -168,10 +300,17 @@ function makeDeps(opts) {
       customers: {
         async create(params, options) {
           calls.customersCreateOptions.push(options || {});
-          if (opts.failCustomerCreate)
-            throw new Error('customer create failed secret=sk_live_LEAK');
           const key = options && options.idempotencyKey;
-          if (key && customersByIdemKey.has(key)) return customersByIdemKey.get(key);
+          if (key && customersByIdemKey.has(key)) {
+            const replay = customersByIdemKey.get(key);
+            if (replay instanceof Error) throw replay;
+            return replay;
+          }
+          if (opts.failCustomerCreate) {
+            const error = new Error('customer create failed secret=sk_live_LEAK');
+            if (key) customersByIdemKey.set(key, error);
+            throw error;
+          }
           const customer = { id: opts.newCustomerId || 'cus_new_1' };
           calls.customersCreate.push(params);
           if (key) customersByIdemKey.set(key, customer);
@@ -198,10 +337,22 @@ function makeDeps(opts) {
                 opts.sessionUrl === undefined
                   ? 'https://checkout.stripe.com/c/pay/cs_' + sessionCounter
                   : opts.sessionUrl,
+              status: 'open',
             };
             calls.sessionsCreate.push(params);
             if (key) sessionsByIdemKey.set(key, session);
+            sessionsById.set(session.id, session);
             return session;
+          },
+          async retrieve(sessionId) {
+            calls.retrieveCheckoutSession.push(sessionId);
+            if (opts.failSessionRetrieve) throw new Error('Stripe retrieve unavailable');
+            const session = sessionsById.get(sessionId);
+            if (!session) throw new Error('unknown Checkout Session');
+            return {
+              ...session,
+              status: opts.checkoutSessionStatus || session.status,
+            };
           },
         },
       },
@@ -211,7 +362,18 @@ function makeDeps(opts) {
     },
   };
 
-  return { deps, calls };
+  return {
+    deps,
+    calls,
+    attemptStore: {
+      abandonCurrent() {
+        if (checkoutAttempt) checkoutAttempt.state = 'abandoned';
+      },
+      current() {
+        return checkoutAttempt ? { ...checkoutAttempt } : null;
+      },
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -239,6 +401,20 @@ async function jsonOf(res) {
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
+Deno.test('production entitlement projection includes terminal-state ordering authority', () => {
+  assertEquals(
+    ACCESS_ENTITLEMENT_SELECT.split(','),
+    [
+      'status',
+      'cancel_at_period_end',
+      'stripe_subscription_id',
+      'provider_status',
+      'provider_status_updated_at',
+    ],
+    'production wiring must fetch the timestamp used to order terminal state against an attempt',
+  );
+});
+
 Deno.test('rejects non-POST methods with 405', async () => {
   const { deps } = makeDeps();
   const res = await handleAccessCheckout(makeReq('GET', { origin: ORIGIN, auth: AUTH }), deps);
@@ -364,6 +540,8 @@ Deno.test('ignores client-supplied price/amount/customer/user/redirect (injectio
     redirect_url: 'https://evil.example/x',
     success_url: 'https://evil.example/success',
     cancel_url: 'https://evil.example/cancel',
+    expires_at: 999,
+    idempotency_key: 'evil_key',
   };
   const res = await handleAccessCheckout(
     makeReq('POST', { origin: ORIGIN, auth: AUTH, body: evilBody }),
@@ -393,7 +571,13 @@ Deno.test('ignores client-supplied price/amount/customer/user/redirect (injectio
   );
   assertEquals(params.customer, 'cus_exist', 'customer from profile, not body');
   assertEquals(params.client_reference_id, 'user_1', 'user from JWT, not body');
+  assertEquals(params.expires_at, 1785200400, 'server attempt expiry only');
   assertEquals(params.metadata.supabase_user_id, 'user_1', 'metadata user from JWT');
+  assertStringIncludes(
+    params.metadata.checkout_attempt_id,
+    '10000000-0000-4000-8000-',
+    'server attempt metadata',
+  );
   assertNotIncludes(JSON.stringify(params), 'evil', 'no client-controlled value reaches Stripe');
 });
 
@@ -421,7 +605,7 @@ Deno.test('creates a new Stripe customer when absent and maps it to the profile'
   assertEquals(
     calls.customersCreateOptions[0].idempotencyKey,
     'access_customer:user_1',
-    'customer creation uses a server-derived idempotency key',
+    'customer creation uses a server-derived account-stable idempotency key',
   );
   assertEquals(
     calls.customersCreate[0].metadata,
@@ -454,6 +638,21 @@ Deno.test('rejects duplicate checkout when entitlement is active (409)', async (
   assertEquals(calls.sessionsCreate.length, 0, 'no Stripe session created');
   assertEquals(calls.customersCreate.length, 0, 'no Stripe customer created');
   assertEquals(calls.recordCheckoutEvent.length, 0, 'no audit event recorded');
+});
+
+Deno.test('honors the atomic duplicate guard at durable reservation time', async () => {
+  const { deps, calls } = makeDeps({
+    entitlement: null,
+    reserveCheckoutAttempt: () => ({ outcome: 'duplicate_access' }),
+  });
+  const res = await handleAccessCheckout(
+    makeReq('POST', { origin: ORIGIN, auth: AUTH, body: {} }),
+    deps,
+  );
+  assertEquals(res.status, 409, 'status');
+  assertEquals(await jsonOf(res), { error: 'duplicate_access' });
+  assertEquals(calls.customersCreate.length, 0, 'no customer after atomic duplicate guard');
+  assertEquals(calls.sessionsCreate.length, 0, 'no session after atomic duplicate guard');
 });
 
 Deno.test('allows checkout during the app trial when no Stripe subscription exists', async () => {
@@ -568,7 +767,7 @@ Deno.test(
 );
 
 Deno.test(
-  'is idempotent across repeated/concurrent attempts (stable key, one session, one event)',
+  'reuses one durable session across sequential retries with one session and one event',
   async () => {
     const { deps, calls } = makeDeps({ entitlement: null });
     const res1 = await handleAccessCheckout(
@@ -585,18 +784,317 @@ Deno.test(
     const b2 = await jsonOf(res2);
     assertEquals(b1.url, b2.url, 'same session url returned for the same idempotency key');
     assertEquals(calls.sessionsCreate.length, 1, 'only one underlying session creation');
-    assertEquals(
-      calls.sessionsCreateOptions.length,
-      2,
-      'handler passed an idempotency key both times',
+    assertEquals(calls.sessionsCreateOptions.length, 1, 'durable URL avoids a second Stripe call');
+    assertStringIncludes(
+      calls.sessionsCreateOptions[0].idempotencyKey,
+      'access_checkout_attempt:',
+      'attempt-scoped key',
     );
-    assertEquals(calls.sessionsCreateOptions[0].idempotencyKey, 'access_checkout:user_1');
-    assertEquals(calls.sessionsCreateOptions[1].idempotencyKey, 'access_checkout:user_1');
     assertEquals(
       calls.recordedEvents.length,
       1,
       'one audit row (unique per-session token dedupes)',
     );
+  },
+);
+
+Deno.test(
+  'dedupes one concurrent checkout wave with one durable attempt and one Stripe session',
+  async () => {
+    const { deps, calls } = makeDeps({ entitlement: null });
+    const [res1, res2] = await Promise.all([
+      handleAccessCheckout(makeReq('POST', { origin: ORIGIN, auth: AUTH, body: {} }), deps),
+      handleAccessCheckout(makeReq('POST', { origin: ORIGIN, auth: AUTH, body: {} }), deps),
+    ]);
+    assertEquals(res1.status, 200, 'first status');
+    assertEquals(res2.status, 200, 'second status');
+    assertEquals((await jsonOf(res1)).url, (await jsonOf(res2)).url, 'one logical checkout');
+    assertEquals(calls.reserveCheckoutAttempt.length, 2, 'both calls reserve server-side');
+    assertEquals(calls.sessionsCreate.length, 1, 'Stripe creates one underlying session');
+    assertEquals(calls.completeCheckoutAttempt.length, 2, 'completion is idempotent');
+    assertEquals(calls.recordedEvents.length, 1, 'atomic completion records one audit event');
+    const keys = calls.sessionsCreateOptions.map((options) => options.idempotencyKey);
+    assertEquals(keys.length, 2, 'each concurrent Stripe request carries the durable key');
+    assertEquals(keys[0], keys[1], 'the concurrent wave reuses one attempt key');
+    assertStringIncludes(keys[0], 'access_checkout_attempt:', 'attempt-scoped key');
+  },
+);
+
+Deno.test('reuses a durable open Checkout Session without another Stripe call', async () => {
+  const { deps, calls } = makeDeps({ entitlement: null });
+  const first = await handleAccessCheckout(
+    makeReq('POST', { origin: ORIGIN, auth: AUTH, body: {} }),
+    deps,
+  );
+  const second = await handleAccessCheckout(
+    makeReq('POST', { origin: ORIGIN, auth: AUTH, body: {} }),
+    deps,
+  );
+  assertEquals(first.status, 200, 'first status');
+  assertEquals(second.status, 200, 'second status');
+  assertEquals((await jsonOf(first)).url, (await jsonOf(second)).url, 'same open session');
+  assertEquals(calls.sessionsCreateOptions.length, 1, 'second call reuses the durable URL');
+  assertEquals(
+    calls.retrieveCheckoutSession,
+    ['cs_1'],
+    'Stripe confirms the Session is still open',
+  );
+});
+
+Deno.test(
+  'closes a remotely expired Session and creates a fresh attempt in one request',
+  async () => {
+    const options = { entitlement: null, checkoutSessionStatus: 'open' };
+    const { deps, calls } = makeDeps(options);
+    const first = await handleAccessCheckout(
+      makeReq('POST', { origin: ORIGIN, auth: AUTH, body: {} }),
+      deps,
+    );
+    options.checkoutSessionStatus = 'expired';
+    const second = await handleAccessCheckout(
+      makeReq('POST', { origin: ORIGIN, auth: AUTH, body: {} }),
+      deps,
+    );
+    assertEquals(first.status, 200, 'first status');
+    assertEquals(second.status, 200, 'expired Session is replaced without another click');
+    assert(
+      (await jsonOf(first)).url !== (await jsonOf(second)).url,
+      'replacement uses a fresh hosted Session',
+    );
+    assertEquals(calls.closeCheckoutAttempt.length, 1, 'expired attempt is durably closed');
+    assertEquals(calls.closeCheckoutAttempt[0].state, 'expired');
+    assertEquals(calls.sessionsCreate.length, 2, 'fresh attempt creates one replacement Session');
+    assert(
+      calls.sessionsCreateOptions[0].idempotencyKey !==
+        calls.sessionsCreateOptions[1].idempotencyKey,
+      'replacement has a new server-generated attempt key',
+    );
+  },
+);
+
+Deno.test('fails closed while a completed Session awaits webhook reconciliation', async () => {
+  const options = { entitlement: null, checkoutSessionStatus: 'open' };
+  const { deps, calls } = makeDeps(options);
+  const first = await handleAccessCheckout(
+    makeReq('POST', { origin: ORIGIN, auth: AUTH, body: {} }),
+    deps,
+  );
+  assertEquals(first.status, 200, 'first status');
+  options.checkoutSessionStatus = 'complete';
+  const pending = await handleAccessCheckout(
+    makeReq('POST', { origin: ORIGIN, auth: AUTH, body: {} }),
+    deps,
+  );
+  assertEquals(pending.status, 409, 'completed payment cannot create a duplicate subscription');
+  assertEquals(await jsonOf(pending), { error: 'checkout_pending' });
+  const stillPending = await handleAccessCheckout(
+    makeReq('POST', { origin: ORIGIN, auth: AUTH, body: {} }),
+    deps,
+  );
+  assertEquals(stillPending.status, 409, 'durable completed state remains fail closed');
+  assertEquals(await jsonOf(stillPending), { error: 'checkout_pending' });
+  assertEquals(calls.closeCheckoutAttempt.length, 1, 'completed attempt closes once');
+  assertEquals(calls.closeCheckoutAttempt[0].state, 'completed');
+  assertEquals(calls.sessionsCreate.length, 1, 'no duplicate Checkout Session');
+  assertEquals(calls.entitlementWrites, 0, 'checkout never grants access');
+});
+
+Deno.test(
+  'completed Session with an authoritative terminal old subscription starts fresh in one request',
+  async () => {
+    let now = new Date('2026-07-28T00:00:00.000Z');
+    const options = {
+      entitlement: null,
+      checkoutSessionStatus: 'open',
+      now: () => now,
+    };
+    const { deps, calls } = makeDeps(options);
+    const first = await handleAccessCheckout(
+      makeReq('POST', { origin: ORIGIN, auth: AUTH, body: {} }),
+      deps,
+    );
+    now = new Date('2026-07-28T00:10:00.000Z');
+    options.entitlement = {
+      status: 'locked',
+      stripe_subscription_id: 'sub_old_terminal',
+      provider_status: 'canceled',
+      provider_status_updated_at: '2026-07-28T00:05:00.000Z',
+    };
+    options.checkoutSessionStatus = 'complete';
+    const second = await handleAccessCheckout(
+      makeReq('POST', { origin: ORIGIN, auth: AUTH, body: {} }),
+      deps,
+    );
+    assertEquals(first.status, 200, 'first status');
+    assertEquals(second.status, 200, 'terminal old subscription permits immediate replacement');
+    assert(
+      (await jsonOf(first)).url !== (await jsonOf(second)).url,
+      'one request closes the old attempt and creates a fresh Session',
+    );
+    assertEquals(calls.closeCheckoutAttempt[0].state, 'completed');
+    assertEquals(calls.sessionsCreate.length, 2, 'replacement Session is created once');
+    assertEquals(calls.entitlementWrites, 0, 'handler does not modify authoritative entitlement');
+  },
+);
+
+Deno.test(
+  'completed new Session stays pending when the terminal subscription snapshot predates it',
+  async () => {
+    const options = {
+      entitlement: {
+        status: 'locked',
+        stripe_subscription_id: 'sub_old_terminal',
+        provider_status: 'canceled',
+        provider_status_updated_at: '2026-07-27T23:00:00.000Z',
+      },
+      checkoutSessionStatus: 'open',
+    };
+    const { deps, calls } = makeDeps(options);
+    const first = await handleAccessCheckout(
+      makeReq('POST', { origin: ORIGIN, auth: AUTH, body: {} }),
+      deps,
+    );
+    options.checkoutSessionStatus = 'complete';
+    const pending = await handleAccessCheckout(
+      makeReq('POST', { origin: ORIGIN, auth: AUTH, body: {} }),
+      deps,
+    );
+    assertEquals(first.status, 200, 'terminal old subscription initially permits checkout');
+    assertEquals(pending.status, 409, 'newly completed Session awaits a newer webhook state');
+    assertEquals(await jsonOf(pending), { error: 'checkout_pending' });
+    assertEquals(calls.sessionsCreate.length, 1, 'no duplicate Session is created');
+  },
+);
+
+Deno.test('creates a fresh Stripe Session after the prior attempt expires', async () => {
+  let now = new Date('2026-07-28T00:00:00.000Z');
+  const options = { entitlement: null, now: () => now };
+  const { deps, calls } = makeDeps(options);
+  const first = await handleAccessCheckout(
+    makeReq('POST', { origin: ORIGIN, auth: AUTH, body: {} }),
+    deps,
+  );
+  now = new Date('2026-07-28T01:01:00.000Z');
+  const second = await handleAccessCheckout(
+    makeReq('POST', { origin: ORIGIN, auth: AUTH, body: {} }),
+    deps,
+  );
+  assertEquals(first.status, 200, 'first status');
+  assertEquals(second.status, 200, 'second status');
+  assert(
+    (await jsonOf(first)).url !== (await jsonOf(second)).url,
+    'expired payment attempt gets a new hosted session',
+  );
+  assertEquals(calls.sessionsCreate.length, 2, 'two distinct Stripe sessions');
+  assert(
+    calls.sessionsCreateOptions[0].idempotencyKey !== calls.sessionsCreateOptions[1].idempotencyKey,
+    'later attempt has a fresh server-generated idempotency key',
+  );
+});
+
+Deno.test(
+  'creates a fresh Stripe Session after a trusted service abandons an attempt',
+  async () => {
+    const { deps, calls, attemptStore } = makeDeps({ entitlement: null });
+    const first = await handleAccessCheckout(
+      makeReq('POST', { origin: ORIGIN, auth: AUTH, body: {} }),
+      deps,
+    );
+    attemptStore.abandonCurrent();
+    const second = await handleAccessCheckout(
+      makeReq('POST', { origin: ORIGIN, auth: AUTH, body: {} }),
+      deps,
+    );
+    assertEquals(first.status, 200, 'first status');
+    assertEquals(second.status, 200, 'second status');
+    assert(
+      (await jsonOf(first)).url !== (await jsonOf(second)).url,
+      'abandoned payment attempt gets a new hosted session',
+    );
+    assertEquals(calls.sessionsCreate.length, 2, 'new attempt creates a new Stripe session');
+  },
+);
+
+Deno.test(
+  'recovers a Stripe-created session after durable completion fails without creating another',
+  async () => {
+    const options = { entitlement: null, throwCompleteCheckoutAttempt: true };
+    const { deps, calls } = makeDeps(options);
+    const first = await handleAccessCheckout(
+      makeReq('POST', { origin: ORIGIN, auth: AUTH, body: {} }),
+      deps,
+    );
+    assertEquals(first.status, 502, 'incomplete durable write fails closed');
+    options.throwCompleteCheckoutAttempt = false;
+    const second = await handleAccessCheckout(
+      makeReq('POST', { origin: ORIGIN, auth: AUTH, body: {} }),
+      deps,
+    );
+    assertEquals(second.status, 200, 'retry recovers');
+    assertEquals(calls.sessionsCreate.length, 1, 'Stripe session is replayed, not duplicated');
+    assertEquals(calls.sessionsCreateOptions.length, 2, 'retry uses Stripe idempotency');
+    assertEquals(
+      calls.sessionsCreateOptions[0].idempotencyKey,
+      calls.sessionsCreateOptions[1].idempotencyKey,
+      'retry keeps the reserved attempt key',
+    );
+  },
+);
+
+Deno.test('a failed Stripe call cannot wedge later checkout attempts forever', async () => {
+  let now = new Date('2026-07-28T00:00:00.000Z');
+  const options = { entitlement: null, failSessionCreate: true, now: () => now };
+  const { deps, calls } = makeDeps(options);
+  const first = await handleAccessCheckout(
+    makeReq('POST', { origin: ORIGIN, auth: AUTH, body: {} }),
+    deps,
+  );
+  assertEquals(first.status, 502, 'Stripe failure is generic');
+  options.failSessionCreate = false;
+  now = new Date('2026-07-28T00:06:00.000Z');
+  const second = await handleAccessCheckout(
+    makeReq('POST', { origin: ORIGIN, auth: AUTH, body: {} }),
+    deps,
+  );
+  assertEquals(second.status, 200, 'expired reservation permits recovery');
+  assertEquals(calls.sessionsCreate.length, 1, 'only the successful call created a session');
+  assert(
+    calls.sessionsCreateOptions[0].idempotencyKey !== calls.sessionsCreateOptions[1].idempotencyKey,
+    'recovery uses a fresh attempt key after the bounded lease',
+  );
+});
+
+Deno.test(
+  'a customer mapping failure recovers without duplicating the Stripe customer',
+  async () => {
+    let now = new Date('2026-07-28T00:00:00.000Z');
+    const options = {
+      entitlement: null,
+      existingCustomerId: null,
+      throwSetProfileCustomer: true,
+      now: () => now,
+    };
+    const { deps, calls } = makeDeps(options);
+    const first = await handleAccessCheckout(
+      makeReq('POST', { origin: ORIGIN, auth: AUTH, body: {} }),
+      deps,
+    );
+    assertEquals(first.status, 502, 'mapping failure is generic');
+    options.throwSetProfileCustomer = false;
+    now = new Date('2026-07-28T00:06:00.000Z');
+    const recovered = await handleAccessCheckout(
+      makeReq('POST', { origin: ORIGIN, auth: AUTH, body: {} }),
+      deps,
+    );
+    assertEquals(recovered.status, 200, 'later attempt remaps the replayed customer');
+    assertEquals(calls.customersCreate.length, 1, 'only one underlying customer is created');
+    assertEquals(calls.customersCreateOptions.length, 2, 'both calls use Stripe idempotency');
+    assertEquals(
+      calls.customersCreateOptions[0].idempotencyKey,
+      calls.customersCreateOptions[1].idempotencyKey,
+      'account-stable customer identity survives a fresh checkout attempt',
+    );
+    assertEquals(calls.setProfileCustomer.length, 2, 'the replayed customer is mapped on retry');
   },
 );
 
@@ -621,7 +1119,12 @@ Deno.test('derives the Stripe idempotency key server-side (ignores client key)',
     deps,
   );
   assertEquals(res.status, 200, 'status');
-  assertEquals(calls.sessionsCreateOptions[0].idempotencyKey, 'access_checkout:user_1');
+  assertStringIncludes(
+    calls.sessionsCreateOptions[0].idempotencyKey,
+    'access_checkout_attempt:',
+    'server attempt namespace',
+  );
+  assertNotIncludes(calls.sessionsCreateOptions[0].idempotencyKey, 'evil_key');
 });
 
 Deno.test('fails closed when authoritative entitlement lookup fails', async () => {
@@ -745,24 +1248,30 @@ Deno.test('records the checkout-created audit event only after session creation'
     deps,
   );
   assertEquals(res.status, 200, 'status');
-  assertEquals(calls.recordCheckoutEvent.length, 1, 'one audit event');
-  const ev = calls.recordCheckoutEvent[0];
+  assertEquals(calls.recordCheckoutEvent.length, 0, 'handler never writes audit separately');
+  assertEquals(calls.recordedEvents.length, 1, 'atomic completion records one audit event');
+  const ev = calls.recordedEvents[0];
   assertEquals(ev.event_type, 'checkout_created');
   assertEquals(ev.user_id, 'user_1');
   assertEquals(
     ev.provider_event_id,
-    'access_checkout:user_1:cs_1',
-    'stable per-session idempotency token',
+    'access_checkout_attempt:10000000-0000-4000-8000-000000000001:cs_1',
+    'stable per-attempt/session idempotency token',
   );
   assertEquals(ev.stripe_subscription_id, null, 'no subscription until checkout completes');
   assertEquals(ev.status, null, 'no entitlement status snapshot for a new user');
   assertEquals(ev.reason, 'checkout_created');
   assertEquals(ev.occurred_at, '2026-07-28T00:00:00.000Z');
   const sessionIdx = calls.order.indexOf('session.create');
+  const completionIdx = calls.order.indexOf('attempt.complete');
   const eventIdx = calls.order.indexOf('event.record');
   assert(
-    sessionIdx !== -1 && eventIdx !== -1 && sessionIdx < eventIdx,
-    'session created before audit event',
+    sessionIdx !== -1 &&
+      completionIdx !== -1 &&
+      eventIdx !== -1 &&
+      sessionIdx < completionIdx &&
+      completionIdx < eventIdx,
+    'session is created before atomic completion records the audit event',
   );
 });
 
@@ -777,8 +1286,8 @@ Deno.test(
       deps,
     );
     assertEquals(res.status, 200, 'grace allows checkout');
-    assertEquals(calls.recordCheckoutEvent.length, 1);
-    assertEquals(calls.recordCheckoutEvent[0].status, 'grace', 'status snapshot recorded');
+    assertEquals(calls.recordedEvents.length, 1);
+    assertEquals(calls.recordedEvents[0].status, 'grace', 'status snapshot recorded');
   },
 );
 
@@ -793,13 +1302,15 @@ Deno.test('an audit-event conflict (concurrent insert) does not break the respon
   assert(typeof body.url === 'string' && body.url.length > 0, 'still returns the checkout url');
 });
 
-Deno.test('an audit backend exception does not hide an already-created session', async () => {
-  const { deps } = makeDeps({ throwRecordCheckoutEvent: true });
-  const res = await handleAccessCheckout(
-    makeReq('POST', { origin: ORIGIN, auth: AUTH, body: {} }),
-    deps,
-  );
-  assertEquals(res.status, 200, 'status');
-  const body = await jsonOf(res);
-  assert(typeof body.url === 'string' && body.url.length > 0, 'still returns the checkout url');
-});
+Deno.test(
+  'a durable completion exception fails closed after Stripe creates a session',
+  async () => {
+    const { deps } = makeDeps({ throwCompleteCheckoutAttempt: true });
+    const res = await handleAccessCheckout(
+      makeReq('POST', { origin: ORIGIN, auth: AUTH, body: {} }),
+      deps,
+    );
+    assertEquals(res.status, 502, 'status');
+    assertEquals(await jsonOf(res), { error: 'checkout_failed' });
+  },
+);
