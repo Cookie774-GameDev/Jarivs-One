@@ -126,20 +126,30 @@ export function SkillsPage() {
   const showDetailMobile = !!selected;
 
   return (
-    <div className="h-full w-full flex bg-background overflow-hidden">
+    <div
+      data-monochrome-route="skills"
+      className="h-full w-full flex bg-background overflow-hidden"
+    >
       <aside
+        data-monochrome-surface="skill-registry"
         className={cn(
           'w-full flex-col border-border bg-panel/60',
           'md:w-80 md:shrink-0 md:border-r',
           showDetailMobile ? 'hidden md:flex' : 'flex',
+          '[html[data-theme=monochrome]_&]:bg-panel',
         )}
       >
-        <div className="px-4 pt-4 pb-2 shrink-0 flex items-center justify-between gap-2">
-          <div className="eyebrow">
+        <div className="px-4 pt-4 pb-2 shrink-0 flex items-center justify-between gap-2 [html[data-theme=monochrome]_&]:border-b [html[data-theme=monochrome]_&]:border-border">
+          <div className="eyebrow [html[data-theme=monochrome]_&]:font-mono [html[data-theme=monochrome]_&]:uppercase [html[data-theme=monochrome]_&]:tracking-wide [html[data-theme=monochrome]_&]:text-foreground">
             {counts.presets} presets · {counts.custom} custom
           </div>
           <div className="flex gap-1">
-            <Button variant="ghost" size="icon-sm" onClick={handleRestoreAllPresets} title="Restore all presets">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={handleRestoreAllPresets}
+              title="Restore all presets"
+            >
               <RotateCcw className="h-3.5 w-3.5" />
             </Button>
             <Button variant="accent" size="icon-sm" onClick={handleCreate} title="New custom skill">
@@ -148,7 +158,10 @@ export function SkillsPage() {
           </div>
         </div>
 
-        <div className="px-4 pb-2 shrink-0">
+        <div
+          data-monochrome-surface="skill-filters"
+          className="px-4 pb-2 shrink-0 [html[data-theme=monochrome]_&]:pt-2"
+        >
           <Tabs value={tab} onValueChange={(v) => setTab(v as FilterTab)}>
             <TabsList className="w-full">
               <TabsTrigger value="all" className="flex-1">
@@ -179,7 +192,10 @@ export function SkillsPage() {
 
         <Separator />
 
-        <div className="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-hidden">
+        <div
+          data-monochrome-state={loading ? 'loading' : filtered.length === 0 ? 'empty' : 'ready'}
+          className="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-hidden [html[data-theme=monochrome]_&]:space-y-1"
+        >
           {loading ? (
             <div className="text-secondary text-muted-foreground text-center py-8">Loading…</div>
           ) : filtered.length === 0 ? (
@@ -210,9 +226,11 @@ export function SkillsPage() {
       </aside>
 
       <section
+        data-monochrome-surface="skill-detail"
         className={cn(
           'flex-1 min-w-0 flex-col',
           showDetailMobile ? 'flex' : 'hidden md:flex',
+          '[html[data-theme=monochrome]_&]:bg-background',
         )}
       >
         {selected && (
@@ -232,17 +250,22 @@ export function SkillsPage() {
             onDeleted={() => setSelectedId(null)}
           />
         ) : (
-          <div className="flex-1 flex items-center justify-center p-10">
-            <div className="rounded-xl bg-paper border border-border shadow-soft p-8 max-w-md text-center space-y-3">
-              <div className="text-4xl">✦</div>
+          <div
+            data-monochrome-state="empty"
+            className="flex-1 flex items-center justify-center p-10"
+          >
+            <div className="rounded-xl bg-paper border border-border shadow-soft p-8 max-w-md text-center space-y-3 [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none">
+              <div className="text-4xl [html[data-theme=monochrome]_&]:font-mono [html[data-theme=monochrome]_&]:text-accent-cyan">
+                ✦
+              </div>
               <div className="eyebrow">5 focused presets + yours</div>
-              <h1 className="font-display text-3xl font-semibold text-foreground leading-tight tracking-tight">
+              <h1 className="font-display text-3xl font-semibold text-foreground leading-tight tracking-tight [html[data-theme=monochrome]_&]:font-mono [html[data-theme=monochrome]_&]:text-xl [html[data-theme=monochrome]_&]:uppercase [html[data-theme=monochrome]_&]:tracking-wide">
                 Skill library
               </h1>
               <p className="text-secondary text-muted-foreground leading-relaxed">
                 Pick a card to edit instructions inline, or press <strong>+</strong> to create a
-                custom skill. Skills selected via <code className="kbd">/skills</code> in chat inject
-                runtime instructions into the next message.
+                custom skill. Skills selected via <code className="kbd">/skills</code> in chat
+                inject runtime instructions into the next message.
               </p>
               <Button variant="accent" size="sm" onClick={handleCreate}>
                 <Plus className="h-3.5 w-3.5" />

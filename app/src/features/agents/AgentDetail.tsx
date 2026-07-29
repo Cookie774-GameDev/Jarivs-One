@@ -130,8 +130,12 @@ export function AgentDetail() {
   // blank page; lets the user pick another agent without clicking back.
   if (!agent) {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-paper-warm p-8">
-        <div className="bg-paper rounded-lg shadow-soft p-10 max-w-md text-center space-y-4">
+      <div
+        data-monochrome-route="agent-detail"
+        data-monochrome-state="empty"
+        className="flex h-full w-full items-center justify-center bg-paper-warm p-8 [html[data-theme=monochrome]_&]:bg-background"
+      >
+        <div className="bg-paper rounded-lg shadow-soft p-10 max-w-md text-center space-y-4 [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none">
           <Bot className="mx-auto h-10 w-10 text-muted-foreground/60" />
           <div className="text-page-title text-foreground">No agent selected</div>
           <p className="text-secondary text-muted-foreground">
@@ -165,14 +169,22 @@ export function AgentDetail() {
   const displayedPrompt = protectedJarvis ? protectedInstructions : agent.system_prompt;
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden bg-background">
+    <div
+      data-monochrome-route="agent-detail"
+      className="flex h-full w-full flex-col overflow-hidden bg-background"
+    >
       {/* Compact toolbar — back arrow + actions */}
-      <div className="shrink-0 flex items-center justify-between gap-3 px-3 py-1 border-b border-border bg-paper-soft">
+      <div
+        data-monochrome-surface="agent-toolbar"
+        className="shrink-0 flex items-center justify-between gap-3 px-3 py-1 border-b border-border bg-paper-soft [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none"
+      >
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="icon-sm" onClick={handleBack} aria-label="Back to agents">
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <span className="font-display text-foreground text-secondary tracking-tight">Agent</span>
+          <span className="font-display text-foreground text-secondary tracking-tight [html[data-theme=monochrome]_&]:font-mono [html[data-theme=monochrome]_&]:uppercase [html[data-theme=monochrome]_&]:tracking-wide">
+            Agent
+          </span>
           <span aria-hidden className="text-border-mid">
             ·
           </span>
@@ -192,9 +204,12 @@ export function AgentDetail() {
 
       {/* Body */}
       <div className="flex-1 min-h-0 overflow-y-auto">
-        <div className="mx-auto w-full max-w-3xl p-6 space-y-6">
+        <div className="mx-auto w-full max-w-3xl p-6 space-y-6 [html[data-theme=monochrome]_&]:space-y-3">
           {/* Header card */}
-          <div className="surface-panel rounded-lg p-5 flex items-start gap-4">
+          <div
+            data-monochrome-surface="agent-identity"
+            className="surface-panel rounded-lg p-5 flex items-start gap-4 [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border [html[data-theme=monochrome]_&]:border-border [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none"
+          >
             <AgentBadge agent={agent} showName={false} size="lg" />
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
@@ -218,7 +233,10 @@ export function AgentDetail() {
           </div>
 
           {/* Provider / model / temperature card */}
-          <div className="surface-panel rounded-lg p-5">
+          <div
+            data-monochrome-surface="agent-manifest"
+            className="surface-panel rounded-lg p-5 [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border [html[data-theme=monochrome]_&]:border-border [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none"
+          >
             <div className="grid gap-4 sm:grid-cols-3">
               <div>
                 <div className="text-metadata uppercase tracking-wider text-muted-foreground mb-1">
@@ -278,7 +296,11 @@ export function AgentDetail() {
           </div>
 
           {/* Prompt / protected profile instructions card */}
-          <div className="surface-panel rounded-lg p-5">
+          <div
+            data-monochrome-surface="agent-instructions"
+            data-monochrome-state={displayedPrompt === null ? 'loading' : 'ready'}
+            className="surface-panel rounded-lg p-5 [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border [html[data-theme=monochrome]_&]:border-border [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none"
+          >
             <div className="flex items-center justify-between mb-2">
               <div className="text-ui-strong text-foreground">{promptLabel}</div>
               <div className="text-metadata text-muted-foreground">
@@ -289,12 +311,12 @@ export function AgentDetail() {
             {displayedPrompt === null ? (
               <div
                 role="status"
-                className="font-mono text-secondary text-muted-foreground bg-paper-soft rounded-md p-4 border border-border"
+                className="font-mono text-secondary text-muted-foreground bg-paper-soft rounded-md p-4 border border-border [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-dashed [html[data-theme=monochrome]_&]:bg-background"
               >
                 Profile is still loading
               </div>
             ) : (
-              <pre className="whitespace-pre-wrap break-words font-mono text-secondary leading-relaxed text-foreground/90 bg-paper-soft rounded-md p-4 border border-border max-h-[420px] overflow-y-auto">
+              <pre className="whitespace-pre-wrap break-words font-mono text-secondary leading-relaxed text-foreground/90 bg-paper-soft rounded-md p-4 border border-border max-h-[420px] overflow-y-auto [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:bg-background">
                 {displayedPrompt}
               </pre>
             )}
