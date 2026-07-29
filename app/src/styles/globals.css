@@ -114,88 +114,8 @@
   }
 
   /* ============================================================
-     LIGHT THEME — cream paper, warm brown ink. AAA contrast.
-     ============================================================ */
-  [data-theme='light'] {
-    --background: 36 47% 93%; /* #f5efe6  warm cream paper */
-    --background-warm: 38 50% 88%; /* #ede4d3  warmer cream */
-    --panel: 38 50% 88%; /* #ede4d3  side panels (warmer than bg) */
-    --elevated: 41 100% 98%; /* #fffbf5  paper card */
-    --paper-soft: 41 67% 95%; /* #faf3e8  nested action box */
-    --paper-done: 41 50% 92%; /* #f6efe1  done state */
-
-    --border: 41 41% 85%; /* #e6dccb  default border */
-    --border-mid: 41 30% 75%; /* stronger divider */
-    --line-soft: 41 50% 89%; /* #f0e7d6  dashed / subtle */
-    --input: 41 41% 85%;
-    --ring: 14 64% 50%; /* terracotta focus, deeper for AA */
-
-    --foreground: 25 27% 18%; /* #3a2e22  warm brown-black ink */
-    --muted: 41 50% 89%;
-    --muted-foreground: 28 16% 36%; /* #6b5d4f  secondary */
-    --ink-faint: 32 11% 56%; /* #9d8f80  tertiary */
-
-    /* Brand accents — same hues, slightly deeper for paper contrast. */
-    --accent-cyan: 14 60% 50%; /* terracotta deepened */
-    --accent-violet: 36 50% 50%; /* honey deepened */
-    --accent: 14 60% 50%;
-    --accent-foreground: 41 100% 98%;
-
-    --rose: 8 47% 55%;
-    --terracotta: 14 60% 50%;
-    --honey: 36 50% 50%;
-    --sage: 105 14% 45%;
-    --sage-deep: 99 17% 35%;
-    --lavender: 280 14% 50%;
-    --cream: 41 67% 87%;
-
-    --accent-copper: 14 60% 50%;
-    --accent-amber: 36 50% 50%;
-    --accent-amber-soft: 36 50% 50% / 0.16;
-
-    --primary: 14 60% 50%;
-    --primary-foreground: 41 100% 98%;
-    --secondary: 41 50% 89%;
-    --secondary-foreground: 25 27% 18%;
-
-    --destructive: 7 47% 46%;
-    --destructive-foreground: 41 100% 98%;
-
-    --success: 105 14% 45%;
-    --warning: 37 49% 45%;
-    --info: 280 14% 50%;
-
-    /* Severity backgrounds become tinted creams in light mode. */
-    --crit: 7 47% 46%;
-    --crit-bg: 12 67% 91%;
-    --high: 19 56% 53%;
-    --high-bg: 24 67% 90%;
-    --med: 37 49% 49%;
-    --med-bg: 38 67% 87%;
-    --low: 117 12% 49%;
-    --low-bg: 111 22% 88%;
-    --info-sev: 268 13% 57%;
-    --info-bg: 290 22% 92%;
-
-    --shadow-soft: 0 1px 2px hsl(28 25% 30% / 0.06), 0 4px 12px hsl(28 25% 30% / 0.04);
-    --shadow-lift: 0 4px 8px hsl(28 25% 30% / 0.08), 0 12px 28px hsl(28 25% 30% / 0.08);
-    --shadow-cozy: 0 8px 28px -6px hsl(14 60% 40% / 0.18), 0 2px 6px hsl(28 25% 30% / 0.1);
-
-    --ambient-deep: 36 30% 92%;
-    --ambient-phase: 0;
-    --ink-soft: 25 27% 22%;
-    --surface-warm: 41 67% 91%;
-
-    --bloom-image:
-      radial-gradient(at 22% 14%, hsl(14 70% 70% / 0.18) 0px, transparent 48%),
-      radial-gradient(at 82% 78%, hsl(105 25% 60% / 0.14) 0px, transparent 50%),
-      radial-gradient(at 0% 100%, hsl(36 65% 60% / 0.12) 0px, transparent 50%),
-      radial-gradient(at 100% 0%, hsl(280 22% 65% / 0.1) 0px, transparent 50%);
-  }
-
-  /* ============================================================
      JARVIS CORE THEME - optional black/navy command-center skin.
-     Existing Dark, Light, and System themes remain available.
+     Default, VibeSpace, and MonoChrome themes remain available.
      ============================================================ */
   [data-theme='jarvis'] {
     --background: 220 38% 4%;
@@ -1186,16 +1106,6 @@
    * pronounced, reinforcing that the input is "live". */
   opacity: 0.78;
   filter: blur(12px);
-}
-
-[data-theme-preference='system'] [data-jarvis-rainbow='true']::before {
-  background: linear-gradient(
-    135deg,
-    hsl(var(--accent-copper) / 0.74),
-    hsl(var(--accent-amber) / 0.5),
-    hsl(var(--accent-copper) / 0.74)
-  );
-  animation: jarvis-rainbow-pulse 4.5s ease-in-out infinite;
 }
 
 [data-theme='jarvis'] [data-jarvis-rainbow='true']::before {

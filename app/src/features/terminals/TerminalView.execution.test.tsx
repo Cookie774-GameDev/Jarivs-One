@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import type { ITheme } from 'xterm';
 
 import {
   attachTerminalViewExecution,
@@ -10,11 +11,57 @@ import {
   createTerminalExitLatch,
   createTerminalOutputLatch,
   formatTerminalVoiceFailure,
+  observeTerminalDocumentTheme,
   settleTerminalInitializationFailure,
   terminalSmokeFailureCode,
 } from './TerminalView';
 
 describe('TerminalView canonical execution truth', () => {
+  it('wires initial and live xterm presentation through the canonical resolver', () => {
+    const source = readFileSync(
+      resolve(process.cwd(), 'src/features/terminals/TerminalView.tsx'),
+      'utf8',
+    );
+
+    expect(source).toMatch(
+      /import\s*\{[\s\S]*?applyTerminalTheme,[\s\S]*?resolveTerminalDocumentTheme,[\s\S]*?resolveTerminalTheme,[\s\S]*?\}\s*from '\.\/terminalTheme';/u,
+    );
+    expect(source).toContain('theme: currentTerminalTheme()');
+    expect(source).toContain('style={{ backgroundColor: currentTerminalTheme().background }}');
+    expect(source).toContain(
+      'mutationObserver = observeTerminalDocumentTheme(currentTerm, containerEl, null);',
+    );
+    expect(source).not.toContain('const LIGHT_THEME');
+    expect(source).not.toContain("t === 'light'");
+  });
+
+  it('behaviorally follows document theme mutations in xterm and its container without an override', async () => {
+    const previousTheme = document.documentElement.getAttribute('data-theme');
+    const target: { options: { theme?: ITheme } } = { options: {} };
+    const container = document.createElement('div');
+    document.documentElement.setAttribute('data-theme', 'dark');
+
+    const observer = observeTerminalDocumentTheme(target, container, null);
+    try {
+      expect(target.options.theme?.background).toBe('#2a2018');
+      expect(container.style.backgroundColor).toBe('rgb(42, 32, 24)');
+
+      document.documentElement.setAttribute('data-theme', 'monochrome');
+
+      await vi.waitFor(() => {
+        expect(target.options.theme?.background).toBe('#0b0d10');
+        expect(container.style.backgroundColor).toBe('rgb(11, 13, 16)');
+      });
+    } finally {
+      observer.disconnect();
+      if (previousTheme == null) {
+        document.documentElement.removeAttribute('data-theme');
+      } else {
+        document.documentElement.setAttribute('data-theme', previousTheme);
+      }
+    }
+  });
+
   it('formats terminal dictation startup failure without exposing thrown details', () => {
     const message = formatTerminalVoiceFailure('startup');
 

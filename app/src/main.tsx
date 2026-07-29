@@ -22,6 +22,7 @@ import '@fontsource/inter/700.css';
 import { App } from './App';
 import './styles/globals.css';
 import './styles/vibespace-theme.css';
+import './styles/monochrome-theme.css';
 import './features/workbench/registerCommandActions';
 import { applyThemeToDocument, useUIStore } from './stores/ui';
 import { startThemeSync } from './features/appearance/themeSync';

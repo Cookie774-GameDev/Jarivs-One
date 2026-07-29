@@ -35,7 +35,7 @@ import { useEffect, useRef, useState, type MouseEvent, type PointerEvent } from 
 import { Mic, X } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { Terminal } from 'xterm';
+import { Terminal, type ITheme } from 'xterm';
 import { isTauri } from '@/lib/utils';
 import { FitAddon } from 'xterm-addon-fit';
 import { WebLinksAddon } from 'xterm-addon-web-links';
@@ -134,6 +134,11 @@ import {
   TERMINAL_VIBESPACE_PALETTE_EVENT,
 } from './terminalSlashIntegration';
 import type { TerminalPromptEvidence } from './terminalCommandFoundation';
+import {
+  applyTerminalTheme,
+  resolveTerminalDocumentTheme,
+  resolveTerminalTheme,
+} from './terminalTheme';
 
 const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
   devBuild: import.meta.env.DEV,
@@ -395,96 +400,44 @@ export async function settleTerminalInitializationFailure(
   }
 }
 
-/* ---------- Cozy palette mapped to xterm ITheme ----------
- * Dark: warm-wood/coffee surface, cream ink, copper cursor, terracotta /
- *       honey / sage / lavender ANSI palette.
- * Light: cream paper surface, brown ink, deeper copper cursor with the
- *        same hue family, just dropped in luminance for AA contrast.
- */
-
-const DARK_THEME = {
-  foreground: '#f5e6c8',
-  background: '#2a2018',
-  cursor: '#d97757',
-  cursorAccent: '#2a2018',
-  selectionBackground: '#d97757',
-  selectionForeground: '#2a2018',
-  black: '#2a2018',
-  red: '#d97757', // terracotta
-  green: '#7c9870', // sage
-  yellow: '#d4a258', // honey
-  blue: '#9d8aa8', // lavender
-  magenta: '#c97b6e', // rose
-  cyan: '#7c9870',
-  white: '#f5e6c8',
-  brightBlack: '#5d4c3c',
-  brightRed: '#d97757',
-  brightGreen: '#7c9870',
-  brightYellow: '#d4a258',
-  brightBlue: '#9d8aa8',
-  brightMagenta: '#c97b6e',
-  brightCyan: '#7c9870',
-  brightWhite: '#fffbf5',
-};
-
-const LIGHT_THEME = {
-  foreground: '#3a2e22',
-  background: '#fffbf5',
-  cursor: '#c66442',
-  cursorAccent: '#fffbf5',
-  selectionBackground: '#c66442',
-  selectionForeground: '#fffbf5',
-  black: '#3a2e22',
-  red: '#c66442',
-  green: '#5d7855',
-  yellow: '#bf8d44',
-  blue: '#8c7796',
-  magenta: '#b96e62',
-  cyan: '#5d7855',
-  white: '#3a2e22',
-  brightBlack: '#6b5d4f',
-  brightRed: '#c66442',
-  brightGreen: '#5d7855',
-  brightYellow: '#bf8d44',
-  brightBlue: '#8c7796',
-  brightMagenta: '#b96e62',
-  brightCyan: '#5d7855',
-  brightWhite: '#3a2e22',
-};
-
-const JARVIS_THEME = {
-  foreground: '#eee4d7',
-  background: '#080a0f',
-  cursor: '#ff8500',
-  cursorAccent: '#080a0f',
-  selectionBackground: '#7a410f',
-  selectionForeground: '#fff5e8',
-  black: '#080a0f',
-  red: '#ff5d47',
-  green: '#47d45b',
-  yellow: '#ffb000',
-  blue: '#4ca8ff',
-  magenta: '#b37aff',
-  cyan: '#45d4d4',
-  white: '#eee4d7',
-  brightBlack: '#5f626b',
-  brightRed: '#ff7b68',
-  brightGreen: '#6ce17c',
-  brightYellow: '#ffc247',
-  brightBlue: '#7bc0ff',
-  brightMagenta: '#cb9cff',
-  brightCyan: '#7be3e3',
-  brightWhite: '#fff8ef',
-};
-
 const CURRENT_INPUT_FLUSH_MS = 160;
 
-function pickTheme() {
-  if (typeof document === 'undefined') return DARK_THEME;
-  const t = document.documentElement.getAttribute('data-theme');
-  if (t === 'light') return LIGHT_THEME;
-  if (t === 'jarvis') return JARVIS_THEME;
-  return DARK_THEME;
+function currentTerminalTheme() {
+  const documentTheme =
+    typeof document === 'undefined'
+      ? 'dark'
+      : resolveTerminalDocumentTheme(document.documentElement.getAttribute('data-theme'));
+  return resolveTerminalTheme({ documentTheme, explicitUserTheme: null });
+}
+
+export function observeTerminalDocumentTheme(
+  target: Parameters<typeof applyTerminalTheme>[0],
+  container: Pick<HTMLElement, 'style'>,
+  explicitUserTheme: Readonly<ITheme> | null,
+): MutationObserver {
+  const applyDocumentTheme = () => {
+    const theme = applyTerminalTheme(target, {
+      documentTheme: resolveTerminalDocumentTheme(
+        document.documentElement.getAttribute('data-theme'),
+      ),
+      explicitUserTheme,
+    });
+    if (theme.background) {
+      container.style.backgroundColor = theme.background;
+    }
+  };
+
+  applyDocumentTheme();
+  const observer = new MutationObserver((mutations) => {
+    if (mutations.some((mutation) => mutation.attributeName === 'data-theme')) {
+      applyDocumentTheme();
+    }
+  });
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['data-theme'],
+  });
+  return observer;
 }
 
 function commandToInput(command: string): string {
@@ -1024,14 +977,6 @@ export function TerminalView({
       });
     };
 
-    const applyThemeToTerm = () => {
-      const t = termRef.current;
-      if (!t) return;
-      // xterm v5 exposes Terminal.options as a mutable proxy; assigning
-      // a new theme triggers a redraw with the new palette.
-      t.options.theme = pickTheme();
-    };
-
     const flushTerminalSnapshot = async (): Promise<void> => {
       if (snapshotSaveInFlight) await snapshotSaveInFlight;
       const currentTerm = termRef.current;
@@ -1151,7 +1096,7 @@ export function TerminalView({
         cursorBlink: true,
         allowProposedApi: true,
         scrollback: 5000,
-        theme: pickTheme(),
+        theme: currentTerminalTheme(),
       });
       fit = new FitAddon();
       term.loadAddon(fit);
@@ -1721,19 +1666,11 @@ export function TerminalView({
       };
       window.addEventListener('jarvis:terminal:persist-now', onPersistNow);
 
-      // Theme follower -- re-skin xterm whenever the app toggles dark/light.
-      mutationObserver = new MutationObserver((muts) => {
-        for (const m of muts) {
-          if (m.attributeName === 'data-theme') {
-            applyThemeToTerm();
-            break;
-          }
-        }
-      });
-      mutationObserver.observe(document.documentElement, {
-        attributes: true,
-        attributeFilter: ['data-theme'],
-      });
+      // Theme follower -- re-skin xterm whenever the active document theme changes.
+      const currentTerm = termRef.current;
+      if (currentTerm) {
+        mutationObserver = observeTerminalDocumentTheme(currentTerm, containerEl, null);
+      }
 
       // Final fit now that we have the real session dims.
       dispatchResize();
@@ -2178,7 +2115,7 @@ export function TerminalView({
       />
       <div
         ref={containerRef}
-        style={{ backgroundColor: pickTheme().background }}
+        style={{ backgroundColor: currentTerminalTheme().background }}
         className="min-h-0 w-full flex-1 overflow-hidden pt-2 px-1.5 pb-1"
       />
     </div>
