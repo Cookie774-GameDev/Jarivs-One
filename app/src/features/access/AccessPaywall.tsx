@@ -288,10 +288,7 @@ export function AccessPaywall({
           </Button>
         )}
 
-        {(displayState === 'trialing' ||
-          displayState === 'cancel-at-period-end' ||
-          displayState === 'past-due' ||
-          displayState === 'grace') && (
+        {displayState === 'trialing' && (
           <Button
             type="button"
             variant="accent"
@@ -305,7 +302,7 @@ export function AccessPaywall({
             ) : (
               <CreditCard className="h-4 w-4" aria-hidden="true" />
             )}
-            {displayState === 'cancel-at-period-end' ? 'Reactivate Access' : 'Subscribe'}
+            Subscribe
           </Button>
         )}
 

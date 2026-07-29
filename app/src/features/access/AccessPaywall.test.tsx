@@ -112,20 +112,23 @@ describe('cancel-at-period-end state', () => {
     expect(screen.getByText(/Aug/)).toBeTruthy();
   });
 
-  it('still offers subscribe to re-activate', () => {
+  it('routes reactivation through the billing portal instead of duplicate checkout', () => {
     const onSubscribe = vi.fn();
+    const onManageBilling = vi.fn();
     render(
       <AccessPaywall
         {...baseProps({
           displayState: 'cancel-at-period-end',
           paidThroughDate: '2026-08-15',
           onSubscribe,
+          onManageBilling,
         })}
       />,
     );
-    const btn = screen.getByRole('button', { name: /reactivate/i });
-    fireEvent.click(btn);
-    expect(onSubscribe).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: /subscribe|reactivate/i })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /manage billing/i }));
+    expect(onManageBilling).toHaveBeenCalledTimes(1);
+    expect(onSubscribe).not.toHaveBeenCalled();
   });
 });
 
@@ -141,11 +144,16 @@ describe('past-due state', () => {
   });
 
   it('offers manage billing to fix payment', () => {
+    const onSubscribe = vi.fn();
     const onManageBilling = vi.fn();
-    render(<AccessPaywall {...baseProps({ displayState: 'past-due', onManageBilling })} />);
+    render(
+      <AccessPaywall {...baseProps({ displayState: 'past-due', onSubscribe, onManageBilling })} />,
+    );
+    expect(screen.queryByRole('button', { name: /subscribe/i })).toBeNull();
     const btn = screen.getByRole('button', { name: /manage billing/i });
     fireEvent.click(btn);
     expect(onManageBilling).toHaveBeenCalledTimes(1);
+    expect(onSubscribe).not.toHaveBeenCalled();
   });
 });
 
@@ -164,6 +172,25 @@ describe('grace state', () => {
       />,
     );
     expect(screen.getByText(/Jul/)).toBeTruthy();
+  });
+
+  it('routes payment recovery through billing instead of duplicate checkout', () => {
+    const onSubscribe = vi.fn();
+    const onManageBilling = vi.fn();
+    render(
+      <AccessPaywall
+        {...baseProps({
+          displayState: 'grace',
+          graceDaysRemaining: 2,
+          onSubscribe,
+          onManageBilling,
+        })}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: /subscribe/i })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /manage billing/i }));
+    expect(onManageBilling).toHaveBeenCalledTimes(1);
+    expect(onSubscribe).not.toHaveBeenCalled();
   });
 });
 
