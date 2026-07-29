@@ -540,8 +540,14 @@ export function TerminalsPage() {
   const atCap = count >= MAX_PANES;
 
   return (
-    <div className="flex h-full w-full flex-col bg-background">
-      <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 px-3 py-1 border-b border-border bg-paper-soft">
+    <div
+      data-monochrome-route="terminal"
+      className="flex h-full w-full flex-col bg-background [html[data-theme=monochrome]_&]:font-sans"
+    >
+      <div
+        data-monochrome-surface="terminal-toolbar"
+        className="shrink-0 flex flex-wrap items-center justify-between gap-3 px-3 py-1 border-b border-border bg-paper-soft [html[data-theme=monochrome]_&]:bg-panel"
+      >
         <div className="flex items-center gap-3 text-metadata text-muted-foreground">
           <span className="font-display text-foreground text-secondary tracking-tight">
             Terminals
@@ -588,7 +594,10 @@ export function TerminalsPage() {
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 p-2">
+      <div
+        data-monochrome-surface="terminal-grid"
+        className="flex-1 min-h-0 p-2 [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:p-1"
+      >
         <TileGrid
           tree={tree}
           onChange={handleChange}

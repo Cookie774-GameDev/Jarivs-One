@@ -422,8 +422,14 @@ export function FilesPage() {
   };
 
   return (
-    <div className="flex h-full min-h-0 w-full bg-background">
-      <aside className="flex w-[360px] shrink-0 flex-col border-r border-border bg-panel">
+    <div
+      data-monochrome-route="files"
+      className="flex h-full min-h-0 w-full bg-background [html[data-theme=monochrome]_&]:font-sans"
+    >
+      <aside
+        data-monochrome-surface="files-tree"
+        className="flex w-[360px] shrink-0 flex-col border-r border-border bg-panel [html[data-theme=monochrome]_&]:w-[304px]"
+      >
         <div className="border-b border-border p-3 space-y-2">
           <div className="flex items-center gap-2">
             <FolderOpen className="h-4 w-4 text-accent-copper" />
@@ -487,8 +493,11 @@ export function FilesPage() {
         </div>
       </aside>
 
-      <main className="flex min-w-0 flex-1 flex-col">
-        <div className="flex min-h-10 items-center justify-between gap-3 border-b border-border bg-paper-soft px-3 py-1.5">
+      <main
+        data-monochrome-surface="files-editor"
+        className="flex min-w-0 flex-1 flex-col [html[data-theme=monochrome]_&]:bg-background"
+      >
+        <div className="flex min-h-10 items-center justify-between gap-3 border-b border-border bg-paper-soft px-3 py-1.5 [html[data-theme=monochrome]_&]:bg-panel">
           <div className="min-w-0">
             <div className="truncate font-mono text-secondary text-foreground">{selectedPath ?? 'No file selected'}</div>
             <div className="text-metadata text-muted-foreground">
@@ -524,7 +533,8 @@ export function FilesPage() {
           {/* Compact selection toolbar — Files page only */}
           {selPopup && (
             <div
-              className="fixed z-50 flex items-center gap-0.5 rounded-full border border-accent-copper/40 bg-panel/95 px-1 py-0.5 shadow-lg backdrop-blur"
+              data-monochrome-surface="files-selection-tools"
+              className="fixed z-50 flex items-center gap-0.5 rounded-full border border-accent-copper/40 bg-panel/95 px-1 py-0.5 shadow-lg backdrop-blur [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&]:backdrop-blur-none"
               style={{ top: selPopup.top, left: selPopup.left }}
               onMouseDown={(e) => e.preventDefault()}
             >
@@ -551,7 +561,10 @@ export function FilesPage() {
           )}
 
           {/* Mini Files Jarvis panel — isolated from main Chat */}
-          <div className="flex max-h-[42%] min-h-[140px] shrink-0 flex-col rounded-lg border border-border bg-panel shadow-soft">
+          <div
+            data-monochrome-surface="files-jarvis"
+            className="flex max-h-[42%] min-h-[140px] shrink-0 flex-col rounded-lg border border-border bg-panel shadow-soft [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:shadow-none"
+          >
             <div className="flex items-center gap-2 border-b border-border px-2.5 py-1.5">
               <MessageSquare className="h-3.5 w-3.5 text-accent-copper" />
               <span className="text-metadata font-medium text-foreground">Ask Jarvis (this file)</span>

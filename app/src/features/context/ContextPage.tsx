@@ -623,13 +623,19 @@ export function ContextPage() {
   );
 
   return (
-    <div className="relative flex h-full min-h-0 w-full overflow-hidden bg-background">
-      <div className="pointer-events-none absolute inset-0 opacity-70">
+    <div
+      data-monochrome-route="context"
+      className="relative flex h-full min-h-0 w-full overflow-hidden bg-background [html[data-theme=monochrome]_&]:font-sans"
+    >
+      <div className="pointer-events-none absolute inset-0 opacity-70 [html[data-theme=monochrome]_&]:hidden">
         <div className="absolute left-[-12rem] top-[-12rem] h-[32rem] w-[32rem] rounded-full bg-accent-copper/10 blur-3xl" />
         <div className="absolute bottom-[-16rem] right-[-14rem] h-[34rem] w-[34rem] rounded-full bg-accent-honey/10 blur-3xl" />
       </div>
 
-      <aside className="relative z-10 flex w-[340px] shrink-0 flex-col border-r border-border bg-panel/85 backdrop-blur xl:w-[400px]">
+      <aside
+        data-monochrome-surface="context-tree"
+        className="relative z-10 flex w-[340px] shrink-0 flex-col border-r border-border bg-panel/85 backdrop-blur xl:w-[400px] [html[data-theme=monochrome]_&]:w-[304px] [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:backdrop-blur-none"
+      >
         <div className="space-y-3 border-b border-border p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -774,7 +780,10 @@ export function ContextPage() {
         </div>
       </aside>
 
-      <main className="relative z-10 flex min-w-0 flex-1 flex-col p-4">
+      <main
+        data-monochrome-surface="context-workspace"
+        className="relative z-10 flex min-w-0 flex-1 flex-col p-4 [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:p-2"
+      >
         {!tree || !rootNode || !selected ? (
           <NoContextHero
             onGenerate={() => void makeSkillTree()}
@@ -1332,8 +1341,11 @@ function ContextMapWorkspace({
 }) {
   const flatNodes = React.useMemo(() => flattenContextNodes(tree.nodes), [tree]);
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
-      <header className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-border bg-panel/90 p-2 shadow-soft backdrop-blur">
+    <div className="flex h-full min-h-0 flex-col gap-3 [html[data-theme=monochrome]_&]:gap-2">
+      <header
+        data-monochrome-surface="context-mode-bar"
+        className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-border bg-panel/90 p-2 shadow-soft backdrop-blur [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&]:backdrop-blur-none"
+      >
         <div className="flex flex-wrap gap-1" role="tablist" aria-label="Context center mode">
           {CONTEXT_CENTER_MODES.map((item) => (
             <button
@@ -1376,7 +1388,7 @@ function ContextMapWorkspace({
           id="context-center-panel"
           role="tabpanel"
           aria-labelledby={`context-center-tab-${mode}`}
-          className="relative min-h-0 overflow-hidden rounded-3xl border border-border bg-panel/80 shadow-soft backdrop-blur"
+          className="relative min-h-0 overflow-hidden rounded-3xl border border-border bg-panel/80 shadow-soft backdrop-blur [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&]:backdrop-blur-none"
           data-jarvis-suppress-context-menu={mode === 'graph' ? true : undefined}
         >
           {mode === 'graph' ? (
@@ -2951,7 +2963,10 @@ function ContextInspector({
   }
 
   return (
-    <aside className="min-h-0 overflow-hidden rounded-3xl border border-border bg-panel/90 shadow-soft backdrop-blur">
+    <aside
+      data-monochrome-surface="context-inspector"
+      className="min-h-0 overflow-hidden rounded-3xl border border-border bg-panel/90 shadow-soft backdrop-blur [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&]:backdrop-blur-none"
+    >
       <div className="flex h-full min-h-0 flex-col">
         <header className="border-b border-border p-4">
           <div className="flex items-start justify-between gap-3">

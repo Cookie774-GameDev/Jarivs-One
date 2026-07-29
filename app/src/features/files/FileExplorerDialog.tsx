@@ -487,14 +487,17 @@ function FileExplorerDialog({ session }: { session: FileExplorerSession }) {
       }}
     >
       <DialogContent
+        data-monochrome-route="file-explorer"
+        data-monochrome-surface="file-explorer-dialog"
         className={cn(
           'flex h-[min(760px,92vh)] w-[min(960px,97vw)] max-w-[960px] flex-col gap-0 overflow-hidden p-0',
           'border-accent-copper/30 bg-panel shadow-[0_28px_90px_-36px_hsl(var(--accent-copper)/0.6)]',
+          '[html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:font-sans [html[data-theme=monochrome]_&]:shadow-none',
         )}
         hideClose={false}
       >
-        <DialogHeader className="shrink-0 space-y-1 border-b border-border bg-paper-soft/90 px-5 py-3 pr-12">
-          <DialogTitle className="font-display text-lg text-foreground">{title}</DialogTitle>
+        <DialogHeader className="shrink-0 space-y-1 border-b border-border bg-paper-soft/90 px-5 py-3 pr-12 [html[data-theme=monochrome]_&]:space-y-0 [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:px-3 [html[data-theme=monochrome]_&]:py-2">
+          <DialogTitle className="font-display text-lg text-foreground [html[data-theme=monochrome]_&]:font-mono [html[data-theme=monochrome]_&]:text-sm [html[data-theme=monochrome]_&]:uppercase [html[data-theme=monochrome]_&]:tracking-wide">{title}</DialogTitle>
           <DialogDescription className="text-secondary text-muted-foreground">
             Places · files & folders · previews · mini Jarvis search
           </DialogDescription>
@@ -502,7 +505,10 @@ function FileExplorerDialog({ session }: { session: FileExplorerSession }) {
 
         <div className="flex min-h-0 flex-1">
           {/* Places sidebar */}
-          <aside className="flex w-[148px] shrink-0 flex-col border-r border-border bg-elevated/30 py-2">
+          <aside
+            data-monochrome-surface="file-places"
+            className="flex w-[148px] shrink-0 flex-col border-r border-border bg-elevated/30 py-2 [html[data-theme=monochrome]_&]:bg-panel"
+          >
             <div className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
               Places
             </div>
@@ -611,7 +617,10 @@ function FileExplorerDialog({ session }: { session: FileExplorerSession }) {
 
             <div className="flex min-h-0 flex-1">
               {/* Main list / grid */}
-              <div className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-background/40 px-1.5 py-1.5">
+              <div
+                data-monochrome-surface="file-list"
+                className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-background/40 px-1.5 py-1.5 [html[data-theme=monochrome]_&]:bg-background"
+              >
                 {loading ? (
                   <div className="flex h-full min-h-[200px] items-center justify-center gap-2 text-muted-foreground">
                     <Loader2 className="h-4 w-4 animate-spin" /> Loading…
@@ -771,7 +780,10 @@ function FileExplorerDialog({ session }: { session: FileExplorerSession }) {
               </div>
 
               {/* Preview pane */}
-              <div className="hidden w-[200px] shrink-0 flex-col border-l border-border bg-elevated/20 p-2 md:flex">
+              <div
+                data-monochrome-surface="file-preview"
+                className="hidden w-[200px] shrink-0 flex-col border-l border-border bg-elevated/20 p-2 md:flex [html[data-theme=monochrome]_&]:bg-panel"
+              >
                 <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                   Preview
                 </div>
@@ -845,7 +857,10 @@ function FileExplorerDialog({ session }: { session: FileExplorerSession }) {
             </div>
 
             {/* Mini Jarvis file search — fixed at bottom (where open-folder status used to sit) */}
-            <div className="shrink-0 border-t border-accent-copper/25 bg-paper-soft/95 px-3 py-2">
+            <div
+              data-monochrome-surface="file-search"
+              className="shrink-0 border-t border-accent-copper/25 bg-paper-soft/95 px-3 py-2 [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel"
+            >
               <div className="mb-1.5 flex items-center gap-2">
                 <Sparkles className="h-3.5 w-3.5 shrink-0 text-accent-copper" />
                 <span className="text-[11px] font-semibold text-foreground">Mini Jarvis file search</span>
