@@ -56,9 +56,21 @@ test('MonoChrome is a separately imported, root-scoped CSS layer with no Light r
   }
 
   const main = read(mainPath);
-  assert.match(
-    main,
-    /import '\.\/styles\/globals\.css';\s*import '\.\/styles\/vibespace-theme\.css';\s*import '\.\/styles\/monochrome-theme\.css';/u,
+  const orderedStyleImports = [
+    "import './styles/globals.css';",
+    "import './styles/vibespace-theme.css';",
+    "import './styles/origami-chat.css';",
+    "import './styles/monochrome-theme.css';",
+  ];
+  const styleImportOffsets = orderedStyleImports.map((statement) => main.indexOf(statement));
+  assert.ok(
+    styleImportOffsets.every((offset) => offset >= 0),
+    'expected every scoped theme stylesheet import',
+  );
+  assert.deepEqual(
+    [...styleImportOffsets].sort((left, right) => left - right),
+    styleImportOffsets,
+    'expected globals, preserved themes, and MonoChrome in cascade order',
   );
   const globals = read(globalsPath);
   assert.doesNotMatch(globals, /\[data-theme=['"]light['"]\]/u);
