@@ -1,0 +1,183 @@
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+
+const WORKBENCH_PATH = path.resolve(
+  process.cwd(),
+  'src/features/appearance/MonochromeWorkbench.tsx',
+);
+
+const EXPECTED_PRIMITIVES = [
+  'Avatar',
+  'Badge',
+  'Button',
+  'Card',
+  'Checkbox',
+  'Dialog',
+  'Input',
+  'Label',
+  'Popover',
+  'Separator',
+  'Skeleton',
+  'Switch',
+  'Tabs',
+  'Textarea',
+  'Toast',
+  'Tooltip',
+] as const;
+
+const EXPECTED_STATES = [
+  'default',
+  'hover',
+  'active',
+  'focus-visible',
+  'disabled',
+  'validation-error',
+  'checked',
+  'selected',
+  'open',
+  'loading',
+  'destructive',
+  'keyboard',
+  'screen-reader',
+] as const;
+
+async function loadWorkbench() {
+  return import('./MonochromeWorkbench');
+}
+
+describe('MonoChrome development workbench', () => {
+  it('exists as an owned workbench module', () => {
+    expect(existsSync(WORKBENCH_PATH)).toBe(true);
+  });
+
+  it('requires both a development build and the explicit query', async () => {
+    const { isMonochromeWorkbenchRequest, MonochromeWorkbench } = await loadWorkbench();
+
+    expect(
+      isMonochromeWorkbenchRequest({
+        devBuild: true,
+        search: '?monochrome-workbench=1',
+      }),
+    ).toBe(true);
+    expect(
+      isMonochromeWorkbenchRequest({
+        devBuild: false,
+        search: '?monochrome-workbench=1',
+      }),
+    ).toBe(false);
+    expect(isMonochromeWorkbenchRequest({ devBuild: true, search: '' })).toBe(false);
+    expect(
+      isMonochromeWorkbenchRequest({
+        devBuild: true,
+        search: '?monochrome-workbench=true',
+      }),
+    ).toBe(false);
+
+    const productionView = render(
+      <MonochromeWorkbench devBuild={false} search="?monochrome-workbench=1" />,
+    );
+    expect(productionView.container.childElementCount).toBe(0);
+  });
+
+  it('uses an exact development-only lazy entry without joining routes or navigation', () => {
+    const mainSource = readFileSync(path.resolve(process.cwd(), 'src/main.tsx'), 'utf8');
+    expect(mainSource).toMatch(/import\.meta\.env\.DEV/u);
+    expect(mainSource).toMatch(/monochrome-workbench/u);
+    expect(mainSource).toMatch(/import\(['"]\.\/features\/appearance\/MonochromeWorkbench['"]\)/u);
+    expect(mainSource).toMatch(/document\.documentElement\.dataset\.theme = ['"]monochrome['"]/u);
+
+    for (const relativePath of [
+      'src/App.tsx',
+      'src/components/layout/PageRouter.tsx',
+      'src/components/layout/NavPane.tsx',
+    ]) {
+      const source = readFileSync(path.resolve(process.cwd(), relativePath), 'utf8');
+      expect(source, relativePath).not.toMatch(/MonochromeWorkbench/u);
+      expect(source, relativePath).not.toMatch(/monochrome-workbench/u);
+    }
+  });
+
+  it('renders every frozen shared primitive and approved surface from fixtures', async () => {
+    const { MonochromeWorkbench } = await loadWorkbench();
+    const view = render(<MonochromeWorkbench devBuild search="?monochrome-workbench=1" />);
+
+    for (const primitive of EXPECTED_PRIMITIVES) {
+      expect(
+        view.container.querySelector(`[data-monochrome-primitive="${primitive}"]`),
+        primitive,
+      ).not.toBeNull();
+    }
+
+    const fixtureModule = await import('./monochromeWorkbenchFixtures');
+    for (const surface of fixtureModule.MONOCHROME_WORKBENCH_SURFACE_IDS) {
+      expect(
+        view.container.querySelector(`[data-workbench-surface="${surface}"]`),
+        surface,
+      ).not.toBeNull();
+    }
+  });
+
+  it('exposes the complete state vocabulary without removing native semantics', async () => {
+    const { MonochromeWorkbench } = await loadWorkbench();
+    const view = render(<MonochromeWorkbench devBuild search="?monochrome-workbench=1" />);
+
+    for (const state of EXPECTED_STATES) {
+      expect(
+        view.container.querySelector(`[data-workbench-state~="${state}"]`),
+        state,
+      ).not.toBeNull();
+    }
+
+    expect(screen.getByRole('heading', { name: 'MonoChrome primitive workbench' })).toBeTruthy();
+    expect(screen.getByRole('navigation', { name: 'Workbench sections' })).toBeTruthy();
+    expect(screen.getByRole('table', { name: 'Synthetic agent activity' })).toBeTruthy();
+    expect(screen.getByRole('progressbar', { name: 'Context budget' })).toBeTruthy();
+    expect(screen.getByRole('slider', { name: 'Response detail' })).toBeTruthy();
+    expect(screen.getByRole('radio', { name: 'Local runtime' })).toBeTruthy();
+  });
+
+  it('supports named keyboard-operable controls and visible interactive outcomes', async () => {
+    const { MonochromeWorkbench } = await loadWorkbench();
+    render(<MonochromeWorkbench devBuild search="?monochrome-workbench=1" />);
+
+    const checkbox = screen.getByRole('checkbox', { name: 'Include repository context' });
+    checkbox.focus();
+    fireEvent.keyDown(checkbox, { key: ' ' });
+    fireEvent.click(checkbox);
+    expect(checkbox.getAttribute('data-state')).toBe('checked');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open environment menu' }));
+    expect(screen.getByRole('menu', { name: 'Environment menu' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Staging cluster' }));
+    expect(screen.getByText('Environment: Staging cluster')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Review access policy' }));
+    const dialog = screen.getByRole('dialog', { name: 'Review access policy' });
+    expect(dialog).toBeTruthy();
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Publish fixture' }));
+    const alert = await screen.findByText('Fixture published');
+    expect(alert).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Terminal' }));
+    expect(screen.getByRole('tabpanel', { name: 'Terminal' })).toBeTruthy();
+  });
+
+  it('labels validation, disabled, loading, destructive, and empty states', async () => {
+    const { MonochromeWorkbench } = await loadWorkbench();
+    render(<MonochromeWorkbench devBuild search="?monochrome-workbench=1" />);
+
+    const form = screen.getByRole('form', { name: 'Prompt run configuration' });
+    expect(within(form).getByLabelText('Run name').getAttribute('aria-invalid')).toBe('true');
+    expect(within(form).getByText('Use at least three characters.')).toBeTruthy();
+    expect(
+      (screen.getByRole('button', { name: 'Syncing fixture' }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(screen.getByRole('button', { name: 'Delete synthetic run' })).toBeTruthy();
+    expect(screen.getByText('No pinned contexts')).toBeTruthy();
+    expect(screen.getByText('Synthetic fixtures only')).toBeTruthy();
+  });
+});

@@ -28,9 +28,25 @@ import './features/workbench/registerCommandActions';
 import { useUIStore } from './stores/ui';
 import { applyThemeSyncToApplication, startThemeSync } from './features/appearance/themeSync';
 
-startThemeSync((theme) => {
-  applyThemeSyncToApplication(theme, document, useUIStore);
-});
+const devMonochromeWorkbenchRequested =
+  import.meta.env.DEV &&
+  new URLSearchParams(window.location.search).get('monochrome-workbench') === '1';
+
+const DevMonochromeWorkbench = devMonochromeWorkbenchRequested
+  ? React.lazy(() =>
+      import('./features/appearance/MonochromeWorkbench').then(({ MonochromeWorkbench }) => ({
+        default: MonochromeWorkbench,
+      })),
+    )
+  : null;
+
+if (devMonochromeWorkbenchRequested) {
+  document.documentElement.dataset.theme = 'monochrome';
+} else {
+  startThemeSync((theme) => {
+    applyThemeSyncToApplication(theme, document, useUIStore);
+  });
+}
 
 const rootEl = document.getElementById('root');
 if (!rootEl) {
@@ -39,6 +55,12 @@ if (!rootEl) {
 
 ReactDOM.createRoot(rootEl).render(
   <React.StrictMode>
-    <App />
+    {DevMonochromeWorkbench ? (
+      <React.Suspense fallback={null}>
+        <DevMonochromeWorkbench />
+      </React.Suspense>
+    ) : (
+      <App />
+    )}
   </React.StrictMode>,
 );
