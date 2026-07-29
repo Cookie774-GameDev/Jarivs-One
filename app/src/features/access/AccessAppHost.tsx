@@ -1,6 +1,5 @@
 import * as React from 'react';
 import { Button } from '@/components/ui/button';
-import { flushWorkspacePersistence } from '@/lib/persistence/workspaceFlush';
 import { getSupabaseClient, type TypedSupabaseClient } from '@/lib/supabase/client';
 import { openExternal } from '@/lib/tauri';
 import { useAuthStore } from '@/stores/auth';
@@ -13,6 +12,7 @@ import {
 import { AccessHost } from './AccessHost';
 import { AccessPaywall, type PendingAction } from './AccessPaywall';
 import type { AccessViewModel } from './accessViewModel';
+import { backupCurrentAccountWorkspace } from './workspaceBackup';
 
 export interface AccessAppRuntime {
   loadViewModel(signal: AbortSignal): Promise<AccessViewModel>;
@@ -64,6 +64,7 @@ export function AccessAppHost({
   const [viewModel, setViewModel] = React.useState<AccessViewModel | null>(null);
   const [pendingAction, setPendingAction] = React.useState<PendingAction>(null);
   const [actionError, setActionError] = React.useState<string | null>(null);
+  const [actionNotice, setActionNotice] = React.useState<string | null>(null);
   const actionGeneration = React.useRef(0);
   const actionController = React.useRef<AbortController | null>(null);
 
@@ -93,6 +94,7 @@ export function AccessAppHost({
       operation: (signal: AbortSignal) => Promise<void>,
       errorMessage: string,
       refresh?: () => void,
+      successMessage?: string,
     ) => {
       actionController.current?.abort();
       const controller = new AbortController();
@@ -100,11 +102,16 @@ export function AccessAppHost({
       const generation = ++actionGeneration.current;
       setPendingAction(action);
       setActionError(null);
+      setActionNotice(null);
       try {
         await operation(controller.signal);
-        if (!controller.signal.aborted && generation === actionGeneration.current) refresh?.();
+        if (!controller.signal.aborted && generation === actionGeneration.current) {
+          if (successMessage) setActionNotice(successMessage);
+          refresh?.();
+        }
       } catch {
         if (!controller.signal.aborted && generation === actionGeneration.current) {
+          setActionNotice(null);
           setActionError(errorMessage);
         }
       } finally {
@@ -135,47 +142,65 @@ export function AccessAppHost({
     [runAction, runtime],
   );
 
+  const withActionNotice = (paywall: React.ReactNode) => (
+    <>
+      {actionNotice && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="mx-auto mt-4 w-full max-w-lg rounded-xl border border-success/30 bg-success/10 px-4 py-3 text-secondary text-success"
+        >
+          {actionNotice}
+        </div>
+      )}
+      {paywall}
+    </>
+  );
+
   if (!enabled) return <>{children}</>;
 
-  const recoveryPaywall = (refresh: () => void, error: string | null, loading: boolean) => (
-    <AccessPaywall
-      displayState="unknown"
-      featureTier={viewModel?.featureTier ?? 'unknown'}
-      loading={loading}
-      error={error}
-      pendingAction={pendingAction}
-      onContinue={noop}
-      onSubscribe={noop}
-      onManageBilling={() => {
-        void runAction(
-          'manage-billing',
-          async (signal) => {
-            const url = await runtime.createPortalUrl(signal);
-            await runtime.openExternalUrl(url);
-          },
-          'Billing could not be opened. Please try again.',
-        );
-      }}
-      onRestoreAccess={refresh}
-      onSignOut={() => {
-        void runAction(
-          'sign-out',
-          () => runtime.signOut(),
-          'Sign out could not be completed. Please try again.',
-          refresh,
-        );
-      }}
-      onExportData={() => {
-        void runAction(
-          'export',
-          () => runtime.backupLocalData(),
-          'Local data could not be backed up. Please try again.',
-        );
-      }}
-      onPrivacy={() => openLegal('privacy', privacyUrl)}
-      onTerms={() => openLegal('terms', termsUrl)}
-    />
-  );
+  const recoveryPaywall = (refresh: () => void, error: string | null, loading: boolean) =>
+    withActionNotice(
+      <AccessPaywall
+        displayState="unknown"
+        featureTier={viewModel?.featureTier ?? 'unknown'}
+        loading={loading}
+        error={error}
+        pendingAction={pendingAction}
+        onContinue={noop}
+        onSubscribe={noop}
+        onManageBilling={() => {
+          void runAction(
+            'manage-billing',
+            async (signal) => {
+              const url = await runtime.createPortalUrl(signal);
+              await runtime.openExternalUrl(url);
+            },
+            'Billing could not be opened. Please try again.',
+          );
+        }}
+        onRestoreAccess={refresh}
+        onSignOut={() => {
+          void runAction(
+            'sign-out',
+            () => runtime.signOut(),
+            'Sign out could not be completed. Please try again.',
+            refresh,
+          );
+        }}
+        onExportData={() => {
+          void runAction(
+            'export',
+            () => runtime.backupLocalData(),
+            'Local data could not be backed up. Please try again.',
+            undefined,
+            'Your backup file was created.',
+          );
+        }}
+        onPrivacy={() => openLegal('privacy', privacyUrl)}
+        onTerms={() => openLegal('terms', termsUrl)}
+      />,
+    );
 
   return (
     <AccessHost
@@ -226,6 +251,7 @@ export function AccessAppHost({
               actionGeneration.current += 1;
               setPendingAction(null);
               setActionError(null);
+              setActionNotice(null);
               refresh();
             }}
             onSignOut={() => {
@@ -241,6 +267,8 @@ export function AccessAppHost({
                 'export',
                 () => runtime.backupLocalData(),
                 'Local data could not be backed up. Please try again.',
+                undefined,
+                'Your backup file was created.',
               );
             }}
             onPrivacy={() => openLegal('privacy', privacyUrl)}
@@ -248,10 +276,12 @@ export function AccessAppHost({
           />
         );
 
-        if (!model?.checkoutNeeded || snapshot.displayState !== 'locked') return paywall;
+        if (!model?.checkoutNeeded || snapshot.displayState !== 'locked') {
+          return withActionNotice(paywall);
+        }
         return (
           <>
-            {paywall}
+            {withActionNotice(paywall)}
             <div className="mx-auto -mt-8 w-full max-w-lg px-4 pb-10">
               <Button
                 type="button"
@@ -342,15 +372,7 @@ function createInstalledRuntime(featureTier: string, appVersion: string): Access
       if (error) throw new Error('Sign out failed.');
     },
     async backupLocalData() {
-      const result = await flushWorkspacePersistence('access-backup');
-      if (
-        result.failed > 0 ||
-        result.timedOut ||
-        result.canvas.failed > 0 ||
-        result.canvas.timedOut
-      ) {
-        throw new Error('Local backup failed.');
-      }
+      await backupCurrentAccountWorkspace();
     },
   };
 }

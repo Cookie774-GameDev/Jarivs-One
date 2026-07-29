@@ -124,6 +124,59 @@ describe('AccessAppHost', () => {
     expect(hostRuntime.backupLocalData).toHaveBeenCalledTimes(1);
   });
 
+  it('reports a completed locked-mode backup without unlocking or hiding billing', async () => {
+    const hostRuntime = runtime({
+      loadViewModel: vi.fn(async () =>
+        viewModel({
+          state: 'locked',
+          displayState: 'locked',
+          usable: false,
+          locked: true,
+          checkoutNeeded: true,
+        }),
+      ),
+    });
+
+    renderHost(hostRuntime);
+    await screen.findByText(/access is locked/i);
+
+    fireEvent.click(screen.getByRole('button', { name: /export|backup/i }));
+
+    expect((await screen.findByRole('status')).textContent).toMatch(/backup file was created/i);
+    expect(screen.queryByText('Protected workspace')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /manage billing/i }));
+    await act(async () => undefined);
+    expect(hostRuntime.openExternalUrl).toHaveBeenCalledWith('https://billing.example.test/portal');
+    expect(hostRuntime.loadViewModel).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports backup artifact failure while keeping the locked recovery screen available', async () => {
+    const hostRuntime = runtime({
+      loadViewModel: vi.fn(async () =>
+        viewModel({
+          state: 'locked',
+          displayState: 'locked',
+          usable: false,
+          locked: true,
+        }),
+      ),
+      backupLocalData: vi.fn(async () => {
+        throw new Error('artifact unavailable');
+      }),
+    });
+
+    renderHost(hostRuntime);
+    fireEvent.click(await screen.findByRole('button', { name: /export|backup/i }));
+
+    expect((await screen.findByRole('alert')).textContent).toMatch(
+      /local data could not be backed up/i,
+    );
+    expect(screen.getByRole('button', { name: /manage billing/i })).toBeTruthy();
+    expect(screen.queryByText('artifact unavailable')).toBeNull();
+    expect(screen.queryByText('Protected workspace')).toBeNull();
+  });
+
   it('opens only the gateway-issued checkout and portal URLs', async () => {
     const hostRuntime = runtime({
       loadViewModel: vi.fn(async () =>
@@ -166,7 +219,10 @@ describe('AccessAppHost', () => {
       .mockResolvedValueOnce(viewModel());
 
     renderHost(hostRuntime);
-    fireEvent.click(await screen.findByRole('button', { name: /restore|check access/i }));
+    await screen.findByText(/access is locked/i);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /restore|check access/i }));
+    });
 
     expect(await screen.findByText('Protected workspace')).toBeTruthy();
     expect(hostRuntime.loadViewModel).toHaveBeenCalledTimes(2);
