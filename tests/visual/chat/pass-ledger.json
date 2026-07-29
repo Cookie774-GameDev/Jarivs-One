@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "maximumPassesBeforeReassessment": 12,
+  "baseline": {
+    "revision": {
+      "kind": "commit",
+      "value": "8bd1e58cdb1ed6661eebe8d9afc3f1b86ae75696"
+    },
+    "fullDiff": 0.3409084553234114,
+    "weightedDiff": 0.3837766819429744,
+    "regions": {
+      "assistant_message": 0.1764074844074844,
+      "composer": 0.33595553859364563,
+      "header_full": 0.4747076023391813,
+      "jarvis_module": 0.5083234244946492,
+      "lower_right_flower": 0.606341252861915,
+      "paper_closeup": 0.18854166666666666,
+      "session_panel": 0.1473036961668656,
+      "sidebar_full": 0.4662217567167162,
+      "top_ribbon": 0.5596790271132377,
+      "upper_left_crane": 0.745991847826087,
+      "user_bubble": 0.4390808823529412
+    },
+    "evidence": {
+      "screenshotSha256": "e4b9696d2ad87e552800673f8fafacf822dc21a372016d1b6ef3aa0e384da877",
+      "reportSha256": "6829814f494b704df0f85694defc4d4e1d979518cda1c18dc6398d69f7acc58f",
+      "diffSha256": "ab665e69a5f0b2f29eb91d87162fac9edd2b5282a4b32d32d4c89c456496d3ed",
+      "overlaySha256": "807e6894efc9303c422ce90c06b1672a0382361b4f977bd3d0ec540eb383ed25"
+    }
+  },
+  "passes": [],
+  "reassessments": []
+}
