@@ -41,11 +41,12 @@
     "downloadUrl":"https://github.com/Cookie774-GameDev/VibeSpace/releases/latest",
     "codeRepository":"https://github.com/Cookie774-GameDev/VibeSpace",
     "description":"Local-first desktop AI workspace with multi-model chat, agent councils, terminal swarms, Jarvis voice, AI calling, skills catalog, memory, tasks, and Inspector.",
-    "offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}
+    "offers":{"@type":"Offer","price":"20","priceCurrency":"USD","priceSpecification":{"@type":"UnitPriceSpecification","price":"20","priceCurrency":"USD","billingDuration":"P1M"}}
   }
   </script>
 </head>
 <body>
+  <a class="skip-link" href="#main-content">Skip to main content</a>
   <div class="bg-orbs">
     <div class="orb o1"></div><div class="orb o2"></div><div class="orb o3"></div><div class="orb o4"></div>
   </div>
@@ -62,6 +63,7 @@
         <a href="#calling">Calling</a>
         <a href="#hive">Hive</a>
         <a href="#pricing">Pricing</a>
+        <a href="/access/">Access</a>
         <a href="#download">Download</a>
         <a href="#faq">FAQ</a>
         <a class="nav-cta btn" href="#download">Install</a>
@@ -70,6 +72,7 @@
     </div>
   </header>
 
+  <main id="main-content">
   <!-- HERO -->
   <section class="hero" id="top">
     <div class="hero-grid">
@@ -853,13 +856,29 @@
   <!-- PRICING -->
   <section id="pricing">
     <div class="sec-head center reveal">
-      <div class="kicker">Simple &amp; honest</div>
-      <h2>Plans that scale with you</h2>
-      <p class="lead">Free forever for local + BYOK. Paid plans add one shared company credit pool for DeepSeek chat, AI phone, and SMS — plus in-app cloud voice promo and unlimited local Kokoro.</p>
+      <div class="kicker">Two separate ledgers</div>
+      <h2>Access first. Features when you want them.</h2>
+      <p class="lead">VibeSpace Access: $20/month after the introductory 30-day access trial. Optional AI/voice/cloud plans are billed separately.</p>
     </div>
-    <div class="grid price-grid reveal-stagger">
+    <div class="access-ledger reveal" aria-label="VibeSpace Access pricing">
+      <div class="access-ledger-label">Required application access</div>
+      <div>
+        <h3>VibeSpace Access</h3>
+        <p>Your introductory access trial starts on first use with a verified account and lasts 30 consecutive days. It collects no payment and does not auto-convert. Continued use after the trial requires you to deliberately start the $20 monthly subscription.</p>
+      </div>
+      <div class="access-ledger-price"><strong>$20</strong><span>USD / month<br />after 30 days</span></div>
+      <a class="btn primary" href="/access/">Review Access terms</a>
+    </div>
+    <div class="feature-ledger-head reveal">
+      <div>
+        <span class="access-ledger-label">Optional feature plans</span>
+        <h3>AI, voice, and cloud usage</h3>
+      </div>
+      <p>These plans do not replace VibeSpace Access. Choosing one may create a second, separate subscription.</p>
+    </div>
+    <div class="grid price-grid reveal-stagger" id="feature-plans">
       <div class="card plan">
-        <div class="pname">FREE</div>
+        <div class="pname">SPARK / BYOK</div>
         <div class="pprice">$0</div>
         <ul>
           <li>Unlimited local Kokoro voice</li>
@@ -868,7 +887,7 @@
           <li>Fully offline with Ollama</li>
           <li>Agent council + skills</li>
         </ul>
-        <a class="btn ghost" href="#download">Get started</a>
+        <a class="btn ghost" href="/access/#feature-plans">How feature plans work</a>
       </div>
       <div class="card plan">
         <div class="pname">STARTER</div>
@@ -879,7 +898,7 @@
           <li>~140+ min in-app cloud voice</li>
           <li>30 min Deepgram promo</li>
         </ul>
-        <a class="btn ghost" href="#download">Choose Starter</a>
+        <a class="btn ghost" href="/access/#feature-plans">Review optional plans</a>
       </div>
       <div class="card plan feat">
         <div class="pname">PRO</div>
@@ -890,7 +909,7 @@
           <li>~720+ min in-app cloud voice</li>
           <li>90 min Deepgram promo</li>
         </ul>
-        <a class="btn primary" href="#download">Choose Pro</a>
+        <a class="btn primary" href="/access/#feature-plans">Review optional plans</a>
       </div>
       <div class="card plan">
         <div class="pname">ULTRA</div>
@@ -901,10 +920,10 @@
           <li>~1,400+ min in-app cloud voice</li>
           <li>3 hr Deepgram promo</li>
         </ul>
-        <a class="btn ghost" href="#download">Choose Ultra</a>
+        <a class="btn ghost" href="/access/#feature-plans">Review optional plans</a>
       </div>
     </div>
-    <p style="text-align:center;color:var(--faint);font-size:13px;margin-top:22px" class="reveal">Company credits are internal units (not cash). Spend the shared pool on DeepSeek, phone, or SMS. Local voice is always free &amp; unlimited. Cloud features fall back to local when quota runs out.</p>
+    <p class="pricing-disclosure reveal"><strong>Two charges can apply:</strong> VibeSpace Access keeps the desktop application available after the trial. An optional feature plan pays for its listed AI, voice, or cloud usage. Company credits are internal units, not cash.</p>
   </section>
 
   <!-- HOTKEYS -->
@@ -966,6 +985,13 @@
         </ol>
       </div>
     </div>
+    <div class="onboarding-strip reveal" aria-label="VibeSpace onboarding steps">
+      <div><span>1</span><strong>Install the desktop app</strong><p>Use the release page or the installer for your operating system.</p></div>
+      <div><span>2</span><strong>Create or verify your account</strong><p>The desktop app uses your verified account to start and track the access trial.</p></div>
+      <div><span>3</span><strong>Review Access status</strong><p>Open Settings, then Billing &amp; Access. The website cannot confirm your entitlement.</p></div>
+      <div><span>4</span><strong>Add optional AI providers</strong><p>Bring your own keys or separately choose a paid AI/voice/cloud plan.</p></div>
+    </div>
+    <p class="decision-note reveal">VibeSpace Access: $20/month after the introductory 30-day access trial. Optional AI/voice/cloud plans are billed separately.</p>
     <p style="text-align:center;margin-top:24px" class="reveal"><a class="btn dark" href="https://github.com/Cookie774-GameDev/VibeSpace/releases/latest" target="_blank" rel="noopener">View all releases &rarr;</a></p>
   </section>
 
@@ -1023,9 +1049,13 @@
       <details><summary>Is Jarvis voice the same as a phone call?</summary><p>No. Jarvis voice is the in-app hands-free assistant (local Kokoro, free, unlimited). AI calling is a separate feature &mdash; PSTN phone calls via Twilio on paid tiers, or free in-app WebRTC via LiveKit.</p></details>
       <details><summary>What is new in v0.1.47?</summary><p>Unified skills catalog with SkillEditor and <code>/skills</code> picker, Inspector panel (Today, Quick Launch, Context, Tools Run, Trace milestones, Active Work), milestone-driven Kanban, terminal agent coordination with a Rust-backed ledger, and an Apex billing tier.</p></details>
       <details><summary>Can it run offline?</summary><p>Yes. Offline mode routes chat to Ollama. Local model support is live and keyless. Local Kokoro voice is always free and unlimited.</p></details>
+      <details><summary>What does VibeSpace Access cost?</summary><p>VibeSpace Access: $20/month after the introductory 30-day access trial. Optional AI/voice/cloud plans are billed separately. Access controls continued use of the desktop application; it does not include paid feature usage.</p></details>
+      <details><summary>Will the Access trial make paid AI or voice plans free?</summary><p>No. The 30-day trial applies only to VibeSpace Access. Optional AI, voice, and cloud plans remain separate and may create a second subscription.</p></details>
+      <details><summary>Where do I manage billing or cancel?</summary><p>Use the VibeSpace desktop app: open <strong>Settings</strong>, then <strong>Billing &amp; Access</strong>. This public website does not sign you in or display account status. <a href="/account/">Read the account guide.</a></p></details>
       <details><summary>What is the official website?</summary><p>The official home is <strong>vibespaceos.com</strong>. Downloads and one-line installers always resolve through the GitHub releases page, so both stay in sync.</p></details>
     </div>
   </section>
+  </main>
 
   <!-- FOOTER -->
   <footer>
@@ -1042,6 +1072,7 @@
         <a href="#calling">Calling</a>
         <a href="#hive">Hive</a>
         <a href="#download">Download</a>
+        <a href="/access/">VibeSpace Access</a>
       </div>
       <div class="foot-col">
         <strong>Open source</strong>
@@ -1056,6 +1087,9 @@
         <a href="#letter">Maker letter</a>
         <a href="#pricing">Pricing</a>
         <a href="#stack">Architecture</a>
+        <a href="/account/">Account &amp; billing</a>
+        <a href="/terms/">Terms</a>
+        <a href="/privacy/">Privacy</a>
       </div>
     </div>
     <div class="foot-bottom">
