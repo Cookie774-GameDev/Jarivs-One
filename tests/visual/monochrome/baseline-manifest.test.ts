@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
@@ -29,6 +30,11 @@ const EXPECTED_PATHS = [
 
 function sha256(path: string): string {
   return createHash('sha256').update(readFileSync(path)).digest('hex');
+}
+
+function sha256AtCommit(commit: string, path: string): string {
+  const archivedSource = execFileSync('git', ['show', `${commit}:${path}`]);
+  return createHash('sha256').update(archivedSource).digest('hex');
 }
 
 function shiftedOrigamiFixtureHash(): string {
@@ -83,7 +89,10 @@ test('B0 freezes exact source, harness, fixture, route, and environment authorit
 
 test('B0 authority hashes are re-derived from the exact frozen files and capture fixture', () => {
   const manifest = MONOCHROME_BASELINE_MANIFEST;
-  assert.equal(sha256('tests/visual/monochrome/route-manifest.ts'), manifest.routeManifestSha256);
+  assert.equal(
+    sha256AtCommit(manifest.harnessCommit, 'tests/visual/monochrome/route-manifest.ts'),
+    manifest.routeManifestSha256,
+  );
   assert.equal(sha256('tests/visual/monochrome/fixtures.ts'), manifest.fixtureSourceSha256);
   assert.equal(
     sha256('tests/visual/monochrome/fixture-manifest.ts'),
