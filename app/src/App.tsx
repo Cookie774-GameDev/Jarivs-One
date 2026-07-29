@@ -27,6 +27,7 @@ import { applyThemeToDocument, useUIStore } from '@/stores/ui';
 import { handleVoiceModuleClosed, syncVoiceModuleOpenState } from '@/features/voice/voiceRouter';
 import { useAgentStore } from '@/stores/agents';
 import { AuthGate } from '@/features/auth';
+import { InstalledAccessAppHost } from '@/features/access/AccessAppHost';
 import { AppShell } from '@/components/layout';
 import { JarvisContextMenu } from '@/components/layout/JarvisContextMenu';
 import { PageRouter } from '@/components/layout/PageRouter';
@@ -1581,7 +1582,11 @@ function KernelBridgeBootstrap() {
   return (
     <AuthGate>
       <PluginManagementCapabilityProvider value={pluginManagement}>
-        {ready ? <WorkspaceRoot /> : null}
+        {ready ? (
+          <InstalledAccessAppHost>
+            <WorkspaceRoot />
+          </InstalledAccessAppHost>
+        ) : null}
       </PluginManagementCapabilityProvider>
     </AuthGate>
   );
