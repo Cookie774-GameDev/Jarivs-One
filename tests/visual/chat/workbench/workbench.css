@@ -1,0 +1,210 @@
+:root {
+  color: #3d2b24;
+  background: #765879;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-synthesis: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-width: 1744px;
+  min-height: 100%;
+}
+
+body {
+  background:
+    linear-gradient(145deg, rgb(249 193 164 / 55%), transparent 42%),
+    linear-gradient(35deg, rgb(95 60 116 / 88%), rgb(179 130 171 / 82%));
+}
+
+.workbench {
+  width: 1744px;
+  min-height: 100vh;
+  padding: 32px 36px 56px;
+  background:
+    linear-gradient(rgb(255 246 229 / 72%), rgb(255 237 217 / 72%)),
+    url('/app/public/assets/origami-chat/paper-base.webp') repeat;
+}
+
+.workbench::before {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  content: '';
+  background: url('/app/public/assets/origami-chat/paper-grain.webp') repeat;
+  mix-blend-mode: multiply;
+  opacity: 0.08;
+}
+
+.workbench__heading,
+figure {
+  position: relative;
+  z-index: 1;
+}
+
+.workbench__heading {
+  margin-bottom: 28px;
+  padding: 18px 24px;
+  border: 1px solid rgb(104 66 55 / 22%);
+  background: rgb(255 242 222 / 76%);
+  box-shadow: 0 8px 20px rgb(74 42 38 / 12%);
+}
+
+.workbench__heading p,
+.workbench__heading h1 {
+  margin: 0;
+}
+
+.workbench__heading h1 {
+  margin-block: 4px;
+  font-size: 30px;
+  font-weight: 600;
+}
+
+.workbench__heading p {
+  color: #755449;
+  font:
+    600 13px/1.4 Arial,
+    sans-serif;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+figure {
+  margin: 0;
+}
+
+figcaption {
+  width: max-content;
+  margin-bottom: 8px;
+  padding: 5px 9px;
+  border-radius: 2px;
+  color: #fff8ec;
+  background: #604354;
+  font:
+    600 12px/1.2 Arial,
+    sans-serif;
+  letter-spacing: 0.02em;
+}
+
+.paper-stage {
+  display: flex;
+  align-items: flex-start;
+  gap: 28px;
+  margin-bottom: 28px;
+}
+
+.paper-base,
+.paper-grain {
+  outline: 1px solid rgb(86 55 43 / 24%);
+  box-shadow: 0 5px 14px rgb(78 48 42 / 14%);
+}
+
+.paper-base {
+  width: 320px;
+  height: 112px;
+  background: url('/app/public/assets/origami-chat/paper-base.webp') no-repeat;
+}
+
+.paper-grain {
+  width: 256px;
+  height: 96px;
+  background:
+    linear-gradient(rgb(255 240 218 / 70%), rgb(255 240 218 / 70%)),
+    url('/app/public/assets/origami-chat/paper-grain.webp') no-repeat;
+  background-blend-mode: soft-light;
+}
+
+.wide-stage {
+  display: grid;
+  gap: 20px;
+  margin-bottom: 28px;
+}
+
+.wide-stage img {
+  display: block;
+}
+
+.top-ribbon {
+  width: 1140px;
+  height: 88px;
+}
+
+.bottom-mountains {
+  width: 1672px;
+  height: 80px;
+}
+
+.material-grid {
+  display: grid;
+  grid-template-columns: 760px 460px 360px;
+  align-items: start;
+  gap: 26px;
+}
+
+.material-grid__wide {
+  grid-row: span 2;
+}
+
+.nine-slice {
+  background-color: #f7dec1;
+  background-clip: padding-box;
+}
+
+.panel-slice {
+  width: 720px;
+  height: 196px;
+  border: 28px solid transparent;
+  border-image: url('/app/public/assets/origami-chat/panel-9slice.webp') 24 fill stretch;
+}
+
+.sidebar-slice,
+.sidebar-active-slice {
+  width: 224px;
+  height: 43px;
+  border: 14px solid transparent;
+  border-image: url('/app/public/assets/origami-chat/sidebar-row-9slice.webp') 16 fill stretch;
+}
+
+.sidebar-active-slice {
+  border-image-source: url('/app/public/assets/origami-chat/sidebar-active-row-9slice.webp');
+}
+
+.jarvis-slice {
+  width: 435px;
+  height: 116px;
+  border: 20px solid transparent;
+  border-image: url('/app/public/assets/origami-chat/jarvis-frame-9slice.webp') 12 fill stretch;
+}
+
+.decoration img {
+  display: block;
+  object-fit: contain;
+}
+
+.decoration--crane {
+  min-height: 132px;
+}
+
+.decoration--foliage {
+  grid-column: 2;
+  grid-row: 3 / span 3;
+}
+
+.decoration--flower {
+  grid-column: 3;
+  grid-row: 2 / span 2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+  }
+}

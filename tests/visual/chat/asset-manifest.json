@@ -1,0 +1,327 @@
+{
+  "schema_version": "1.0",
+  "source": {
+    "target": "tests/visual/chat/reference/target-chat.png",
+    "target_sha256": "1f61e223d6db54d9f32de4c3de8c98ff3028556b579b1f6a69b5317d35e8fe27",
+    "viewport": {
+      "width": 1672,
+      "height": 941
+    }
+  },
+  "policy": {
+    "full_target_as_asset": false,
+    "live_text_and_icons_in_assets": false,
+    "remote_sources": false,
+    "workbench_only": true
+  },
+  "assets": {
+    "bottom-mountains.svg": {
+      "file": "app/public/assets/origami-chat/bottom-mountains.svg",
+      "kind": "svg",
+      "role": "segmented faceted lower-edge mountain material",
+      "dimensions": {
+        "width": 1672,
+        "height": 80
+      },
+      "intended_scale": {
+        "width": 1672,
+        "height": 80
+      },
+      "alpha": "native",
+      "transparent_edge_required": false,
+      "contains_text": false,
+      "contains_live_icon": false,
+      "sha256": "9eb04326d8cced64672416805d72c698aa2d1604f330b086670d22e93dc681be",
+      "source": {
+        "file": "tests/visual/chat/reference/target-chat.png",
+        "region": {
+          "x": 0,
+          "y": 900,
+          "width": 1672,
+          "height": 41
+        },
+        "method": "dense exact-color mosaic sampled from the locked lower-edge pixels; composer text and controls excluded"
+      }
+    },
+    "crane.webp": {
+      "file": "app/public/assets/origami-chat/crane.webp",
+      "kind": "raster",
+      "role": "upper-left detailed folded-paper crane cutout",
+      "dimensions": {
+        "width": 90,
+        "height": 84
+      },
+      "intended_scale": {
+        "width": 90,
+        "height": 84
+      },
+      "alpha": "required",
+      "transparent_edge_required": true,
+      "contains_text": false,
+      "contains_live_icon": false,
+      "sha256": "720c30d13f5cac1ef2a602e9d00f62be0afae1db3b58218fa5d3cf01b149e463",
+      "source": {
+        "file": "tests/visual/chat/reference/crops/upper_left_crane.png",
+        "region": {
+          "x": 14,
+          "y": 24,
+          "width": 86,
+          "height": 80
+        },
+        "method": "exact locked crop pixels with an image-generation segmentation guide, source-pixel silhouette mask, and two-pixel transparent safety edge"
+      }
+    },
+    "jarvis-frame-9slice.webp": {
+      "file": "app/public/assets/origami-chat/jarvis-frame-9slice.webp",
+      "kind": "raster",
+      "role": "nine-slice frame for the Jarvis voice and transcript module",
+      "dimensions": {
+        "width": 128,
+        "height": 96
+      },
+      "intended_scale": {
+        "width": 435,
+        "height": 116
+      },
+      "alpha": "forbidden",
+      "transparent_edge_required": false,
+      "contains_text": false,
+      "contains_live_icon": false,
+      "sha256": "97d436a77cdba973e920da20c981735a2c2cb107d4eb5bb68be514539b9e1d34",
+      "source": {
+        "file": "tests/visual/chat/reference/crops/jarvis_module.png",
+        "region": {
+          "x": 20,
+          "y": 8,
+          "width": 415,
+          "height": 101
+        },
+        "method": "corner and edge reconstruction over locked paper texture with one confirmed 3 × 2 live-content speck repaired from adjacent paper pixels; Jarvis text, waveform, microphone, and close icon excluded"
+      }
+    },
+    "left-foliage.webp": {
+      "file": "app/public/assets/origami-chat/left-foliage.webp",
+      "kind": "raster",
+      "role": "left-edge layered botanical origami foliage",
+      "dimensions": {
+        "width": 116,
+        "height": 715
+      },
+      "intended_scale": {
+        "width": 116,
+        "height": 715
+      },
+      "alpha": "required",
+      "transparent_edge_required": true,
+      "contains_text": false,
+      "contains_live_icon": false,
+      "sha256": "db4e7a930b222fe87107b4ae14da314ab128a105b129054fcd70fd16038fff38",
+      "source": {
+        "file": "tests/visual/chat/reference/target-chat.png",
+        "region": {
+          "x": 0,
+          "y": 230,
+          "width": 112,
+          "height": 711
+        },
+        "method": "exact locked target pixels selected by color-anchored individual leaf-facet masks and a two-pixel transparent safety edge"
+      }
+    },
+    "panel-9slice.webp": {
+      "file": "app/public/assets/origami-chat/panel-9slice.webp",
+      "kind": "raster",
+      "role": "nine-slice material for session, message, and composer panels",
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      },
+      "intended_scale": {
+        "width": 720,
+        "height": 196
+      },
+      "alpha": "forbidden",
+      "transparent_edge_required": false,
+      "contains_text": false,
+      "contains_live_icon": false,
+      "sha256": "f6d9b542b998c91310b2e90ccc1c0e0d8221ecaed6cd4607ef83272c273a996f",
+      "source": {
+        "file": "tests/visual/chat/reference/crops/session_panel.png",
+        "region": {
+          "x": 0,
+          "y": 0,
+          "width": 1043,
+          "height": 196
+        },
+        "method": "locked empty center paper with outer panel corners and edge strips; all live labels and values excluded"
+      }
+    },
+    "paper-base.webp": {
+      "file": "app/public/assets/origami-chat/paper-base.webp",
+      "kind": "raster",
+      "role": "low-frequency warm paper base tile",
+      "dimensions": {
+        "width": 320,
+        "height": 112
+      },
+      "intended_scale": {
+        "width": 320,
+        "height": 112
+      },
+      "alpha": "forbidden",
+      "transparent_edge_required": false,
+      "contains_text": false,
+      "contains_live_icon": false,
+      "sha256": "b84f66e1d2b41c32fb1e3c5d8473e186ef695819d19af808108252586112a744",
+      "source": {
+        "file": "tests/visual/chat/reference/crops/paper_closeup.png",
+        "region": {
+          "x": 0,
+          "y": 0,
+          "width": 320,
+          "height": 112
+        },
+        "method": "text-free upper paper field with a subtle low-frequency blur for tiling"
+      }
+    },
+    "paper-grain.webp": {
+      "file": "app/public/assets/origami-chat/paper-grain.webp",
+      "kind": "raster",
+      "role": "high-frequency fibrous paper grain overlay",
+      "dimensions": {
+        "width": 256,
+        "height": 96
+      },
+      "intended_scale": {
+        "width": 256,
+        "height": 96
+      },
+      "alpha": "forbidden",
+      "transparent_edge_required": false,
+      "contains_text": false,
+      "contains_live_icon": false,
+      "sha256": "e45f116c38b17d9d013328a47b62599124b6df07b47a0906c6dae11f81fdac0b",
+      "source": {
+        "file": "tests/visual/chat/reference/crops/paper_closeup.png",
+        "region": {
+          "x": 32,
+          "y": 8,
+          "width": 256,
+          "height": 96
+        },
+        "method": "normalized and sharpened high-frequency fibers from the text-free locked paper field"
+      }
+    },
+    "right-flower.webp": {
+      "file": "app/public/assets/origami-chat/right-flower.webp",
+      "kind": "raster",
+      "role": "lower-right layered origami flower and leaf cutout",
+      "dimensions": {
+        "width": 298,
+        "height": 271
+      },
+      "intended_scale": {
+        "width": 298,
+        "height": 271
+      },
+      "alpha": "required",
+      "transparent_edge_required": true,
+      "contains_text": false,
+      "contains_live_icon": false,
+      "sha256": "1eaa911257fb7ca229d9d42633a870b486609d0a326db7f013de1fe80e0e6856",
+      "source": {
+        "file": "tests/visual/chat/reference/crops/lower_right_flower.png",
+        "region": {
+          "x": 38,
+          "y": 54,
+          "width": 294,
+          "height": 267
+        },
+        "method": "exact locked flower pixels selected with an image-generation segmentation guide and chroma/facet mask; send-arrow region and paper islands excluded"
+      }
+    },
+    "sidebar-active-row-9slice.webp": {
+      "file": "app/public/assets/origami-chat/sidebar-active-row-9slice.webp",
+      "kind": "raster",
+      "role": "coral nine-slice material for the active Chat navigation row",
+      "dimensions": {
+        "width": 96,
+        "height": 64
+      },
+      "intended_scale": {
+        "width": 224,
+        "height": 43
+      },
+      "alpha": "forbidden",
+      "transparent_edge_required": false,
+      "contains_text": false,
+      "contains_live_icon": false,
+      "sha256": "012705e53175fa3db82902becec7c6d670f540570d7e614f4dca28233b241856",
+      "source": {
+        "file": "tests/visual/chat/reference/crops/sidebar_full.png",
+        "region": {
+          "x": 90,
+          "y": 58,
+          "width": 224,
+          "height": 43
+        },
+        "method": "active-row corners and right-side text-free edge strips over locked paper center"
+      }
+    },
+    "sidebar-row-9slice.webp": {
+      "file": "app/public/assets/origami-chat/sidebar-row-9slice.webp",
+      "kind": "raster",
+      "role": "neutral nine-slice material for sidebar navigation rows",
+      "dimensions": {
+        "width": 96,
+        "height": 64
+      },
+      "intended_scale": {
+        "width": 224,
+        "height": 43
+      },
+      "alpha": "forbidden",
+      "transparent_edge_required": false,
+      "contains_text": false,
+      "contains_live_icon": false,
+      "sha256": "f843923ff424bda83ff2e077e70379f6be7e2affb94251c6f233523c2f00498d",
+      "source": {
+        "file": "tests/visual/chat/reference/crops/sidebar_full.png",
+        "region": {
+          "x": 90,
+          "y": 102,
+          "width": 224,
+          "height": 43
+        },
+        "method": "neutral-row corners and right-side text-free edge strips over locked paper center"
+      }
+    },
+    "top-ribbon.svg": {
+      "file": "app/public/assets/origami-chat/top-ribbon.svg",
+      "kind": "svg",
+      "role": "layered faceted top ribbon material",
+      "dimensions": {
+        "width": 1140,
+        "height": 88
+      },
+      "intended_scale": {
+        "width": 1140,
+        "height": 88
+      },
+      "alpha": "native",
+      "transparent_edge_required": false,
+      "contains_text": false,
+      "contains_live_icon": false,
+      "sha256": "fb06b4ab248e2fcb7e1a3233002bac4cdd359ea9d8ceb0a6f9a2475a92bdc442",
+      "source": {
+        "file": "tests/visual/chat/reference/crops/top_ribbon.png",
+        "region": {
+          "x": 0,
+          "y": 0,
+          "width": 1140,
+          "height": 88
+        },
+        "method": "dense exact-color mosaic sampled from locked paper folds and colored ribbon facets only; workspace icon and breadcrumb text excluded"
+      }
+    }
+  }
+}
