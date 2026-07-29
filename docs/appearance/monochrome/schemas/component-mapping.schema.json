@@ -1,0 +1,93 @@
+{
+  "$id": "component-mapping.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "artifactId",
+    "status",
+    "evidenceCutoff",
+    "expectedFileName",
+    "sourceSha256",
+    "linkedArtifactIds",
+    "privacyDisposition",
+    "mappings",
+    "measurements"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "artifactId": { "const": "component-mapping" },
+    "status": { "enum": ["blocked_missing_source", "measured"] },
+    "evidenceCutoff": { "const": "2026-07-29T21:13:02.0844029Z" },
+    "expectedFileName": { "const": "Screen Recording 2026-07-16 220632(1).mp4" },
+    "sourceSha256": {},
+    "linkedArtifactIds": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "uniqueItems": true,
+      "items": { "type": "string" }
+    },
+    "privacyDisposition": { "const": "sanitized_no_private_source_data" },
+    "mappings": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "referenceMotifFrameIds",
+          "vibeSpaceRouteComponentPath",
+          "semanticTokenId",
+          "allowedScopedException",
+          "stateCoverage",
+          "testOwner",
+          "status"
+        ],
+        "properties": {
+          "id": { "type": "string", "pattern": "^mapping\\.[a-z0-9.-]+$" },
+          "referenceMotifFrameIds": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "type": "string" }
+          },
+          "vibeSpaceRouteComponentPath": {
+            "type": "string",
+            "pattern": "^app/src/.+\\.tsx$"
+          },
+          "semanticTokenId": { "type": "string", "minLength": 1 },
+          "allowedScopedException": { "type": "string", "minLength": 1 },
+          "stateCoverage": { "type": "string", "minLength": 1 },
+          "testOwner": { "type": "string", "minLength": 1 },
+          "status": { "enum": ["planned_unverified", "measured"] }
+        }
+      }
+    },
+    "measurements": {}
+  },
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "status": { "const": "blocked_missing_source" },
+        "evidenceCutoff": { "const": "2026-07-29T21:13:02.0844029Z" },
+        "sourceSha256": { "type": "null" },
+        "measurements": { "type": "null" }
+      }
+    },
+    {
+      "type": "object",
+      "properties": {
+        "status": { "const": "measured" },
+        "evidenceCutoff": { "const": "2026-07-29T21:13:02.0844029Z" },
+        "sourceSha256": {
+          "type": "string",
+          "pattern": "^[A-Fa-f0-9]{64}$"
+        },
+        "measurements": { "type": "object" }
+      }
+    }
+  ]
+}

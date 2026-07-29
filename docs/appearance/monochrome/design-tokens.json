@@ -1,0 +1,229 @@
+{
+  "schemaVersion": 1,
+  "artifactId": "design-tokens",
+  "status": "blocked_missing_source",
+  "evidenceCutoff": "2026-07-29T21:13:02.0844029Z",
+  "expectedFileName": "Screen Recording 2026-07-16 220632(1).mp4",
+  "sourceSha256": null,
+  "linkedArtifactIds": [
+    "component-mapping",
+    "design",
+    "frame-manifest",
+    "reference-analysis",
+    "reference-spec"
+  ],
+  "privacyDisposition": "sanitized_no_private_source_data",
+  "tokens": [
+    {
+      "id": "color.black",
+      "category": "color",
+      "seedValue": "#000000",
+      "measuredValue": null,
+      "finalValue": null,
+      "provenance": {
+        "seed": "master_goal_seed",
+        "measured": null,
+        "final": null
+      },
+      "frameRoiSamples": [],
+      "sampling": null
+    },
+    {
+      "id": "color.surface-1",
+      "category": "color",
+      "seedValue": "#050505",
+      "measuredValue": null,
+      "finalValue": null,
+      "provenance": {
+        "seed": "master_goal_seed",
+        "measured": null,
+        "final": null
+      },
+      "frameRoiSamples": [],
+      "sampling": null
+    },
+    {
+      "id": "color.surface-2",
+      "category": "color",
+      "seedValue": "#080808",
+      "measuredValue": null,
+      "finalValue": null,
+      "provenance": {
+        "seed": "master_goal_seed",
+        "measured": null,
+        "final": null
+      },
+      "frameRoiSamples": [],
+      "sampling": null
+    },
+    {
+      "id": "color.surface-3",
+      "category": "color",
+      "seedValue": "#0D0D0D",
+      "measuredValue": null,
+      "finalValue": null,
+      "provenance": {
+        "seed": "master_goal_seed",
+        "measured": null,
+        "final": null
+      },
+      "frameRoiSamples": [],
+      "sampling": null
+    },
+    {
+      "id": "color.active",
+      "category": "color",
+      "seedValue": "#171717",
+      "measuredValue": null,
+      "finalValue": null,
+      "provenance": {
+        "seed": "master_goal_seed",
+        "measured": null,
+        "final": null
+      },
+      "frameRoiSamples": [],
+      "sampling": null
+    },
+    {
+      "id": "color.border",
+      "category": "color",
+      "seedValue": "#1D1D1D",
+      "measuredValue": null,
+      "finalValue": null,
+      "provenance": {
+        "seed": "master_goal_seed",
+        "measured": null,
+        "final": null
+      },
+      "frameRoiSamples": [],
+      "sampling": null
+    },
+    {
+      "id": "color.border-strong",
+      "category": "color",
+      "seedValue": "#2A2A2A",
+      "measuredValue": null,
+      "finalValue": null,
+      "provenance": {
+        "seed": "master_goal_seed",
+        "measured": null,
+        "final": null
+      },
+      "frameRoiSamples": [],
+      "sampling": null
+    },
+    {
+      "id": "color.text",
+      "category": "color",
+      "seedValue": "#F5F5F5",
+      "measuredValue": null,
+      "finalValue": null,
+      "provenance": {
+        "seed": "master_goal_seed",
+        "measured": null,
+        "final": null
+      },
+      "frameRoiSamples": [],
+      "sampling": null
+    },
+    {
+      "id": "color.text-secondary",
+      "category": "color",
+      "seedValue": "#A3A3A3",
+      "measuredValue": null,
+      "finalValue": null,
+      "provenance": {
+        "seed": "master_goal_seed",
+        "measured": null,
+        "final": null
+      },
+      "frameRoiSamples": [],
+      "sampling": null
+    },
+    {
+      "id": "color.text-tertiary",
+      "category": "color",
+      "seedValue": "#686868",
+      "measuredValue": null,
+      "finalValue": null,
+      "provenance": {
+        "seed": "master_goal_seed",
+        "measured": null,
+        "final": null
+      },
+      "frameRoiSamples": [],
+      "sampling": null
+    },
+    {
+      "id": "color.purple",
+      "category": "color",
+      "seedValue": "#8B3DFF",
+      "measuredValue": null,
+      "finalValue": null,
+      "provenance": {
+        "seed": "master_goal_seed",
+        "measured": null,
+        "final": null
+      },
+      "frameRoiSamples": [],
+      "sampling": null
+    },
+    {
+      "id": "color.teal",
+      "category": "color",
+      "seedValue": "#0A777A",
+      "measuredValue": null,
+      "finalValue": null,
+      "provenance": {
+        "seed": "master_goal_seed",
+        "measured": null,
+        "final": null
+      },
+      "frameRoiSamples": [],
+      "sampling": null
+    },
+    {
+      "id": "color.amber",
+      "category": "color",
+      "seedValue": "#C88700",
+      "measuredValue": null,
+      "finalValue": null,
+      "provenance": {
+        "seed": "master_goal_seed",
+        "measured": null,
+        "final": null
+      },
+      "frameRoiSamples": [],
+      "sampling": null
+    },
+    {
+      "id": "color.green",
+      "category": "color",
+      "seedValue": "#5C8F6A",
+      "measuredValue": null,
+      "finalValue": null,
+      "provenance": {
+        "seed": "master_goal_seed",
+        "measured": null,
+        "final": null
+      },
+      "frameRoiSamples": [],
+      "sampling": null
+    },
+    {
+      "id": "color.red",
+      "category": "color",
+      "seedValue": "#C95757",
+      "measuredValue": null,
+      "finalValue": null,
+      "provenance": {
+        "seed": "master_goal_seed",
+        "measured": null,
+        "final": null
+      },
+      "frameRoiSamples": [],
+      "sampling": null
+    }
+  ],
+  "contrastPairs": []
+}

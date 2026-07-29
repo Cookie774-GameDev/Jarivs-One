@@ -1,0 +1,182 @@
+{
+  "$id": "design-tokens.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "artifactId",
+    "status",
+    "evidenceCutoff",
+    "expectedFileName",
+    "sourceSha256",
+    "linkedArtifactIds",
+    "privacyDisposition",
+    "tokens",
+    "contrastPairs"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "artifactId": { "const": "design-tokens" },
+    "status": { "enum": ["blocked_missing_source", "measured"] },
+    "evidenceCutoff": { "const": "2026-07-29T21:13:02.0844029Z" },
+    "expectedFileName": { "const": "Screen Recording 2026-07-16 220632(1).mp4" },
+    "sourceSha256": {},
+    "linkedArtifactIds": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "uniqueItems": true,
+      "items": { "type": "string" }
+    },
+    "privacyDisposition": { "const": "sanitized_no_private_source_data" },
+    "tokens": { "type": "array", "minItems": 1 },
+    "contrastPairs": { "type": "array" }
+  },
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "status": { "const": "blocked_missing_source" },
+        "evidenceCutoff": { "const": "2026-07-29T21:13:02.0844029Z" },
+        "sourceSha256": { "type": "null" },
+        "tokens": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "category",
+              "seedValue",
+              "measuredValue",
+              "finalValue",
+              "provenance",
+              "frameRoiSamples",
+              "sampling"
+            ],
+            "properties": {
+              "id": { "type": "string", "pattern": "^[a-z][a-z0-9.-]+$" },
+              "category": { "enum": ["color", "spacing", "radius"] },
+              "seedValue": { "type": "string", "minLength": 1 },
+              "measuredValue": { "type": "null" },
+              "finalValue": { "type": "null" },
+              "provenance": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["seed", "measured", "final"],
+                "properties": {
+                  "seed": { "const": "master_goal_seed" },
+                  "measured": { "type": "null" },
+                  "final": { "type": "null" }
+                }
+              },
+              "frameRoiSamples": { "type": "array", "maxItems": 0 },
+              "sampling": { "type": "null" }
+            }
+          }
+        },
+        "contrastPairs": { "type": "array", "maxItems": 0 }
+      }
+    },
+    {
+      "type": "object",
+      "properties": {
+        "status": { "const": "measured" },
+        "evidenceCutoff": { "const": "2026-07-29T21:13:02.0844029Z" },
+        "sourceSha256": {
+          "type": "string",
+          "pattern": "^[A-Fa-f0-9]{64}$"
+        },
+        "tokens": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "category",
+              "seedValue",
+              "measuredValue",
+              "finalValue",
+              "provenance",
+              "frameRoiSamples",
+              "sampling"
+            ],
+            "properties": {
+              "id": { "type": "string", "pattern": "^[a-z][a-z0-9.-]+$" },
+              "category": { "enum": ["color", "spacing", "radius"] },
+              "seedValue": { "type": "string", "minLength": 1 },
+              "measuredValue": { "type": "string", "minLength": 1 },
+              "finalValue": { "type": "string", "minLength": 1 },
+              "provenance": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["seed", "measured", "final"],
+                "properties": {
+                  "seed": { "const": "master_goal_seed" },
+                  "measured": { "const": "reference_measurement" },
+                  "final": {
+                    "enum": ["reference_measurement", "design_decision"]
+                  }
+                }
+              },
+              "frameRoiSamples": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["frameId", "roiId", "sampleValue"],
+                  "properties": {
+                    "frameId": { "type": "string", "minLength": 1 },
+                    "roiId": { "type": "string", "minLength": 1 },
+                    "sampleValue": { "type": "string", "minLength": 1 }
+                  }
+                }
+              },
+              "sampling": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["samplingMethod", "sampleCount", "dispersion"],
+                "properties": {
+                  "samplingMethod": { "type": "string", "minLength": 1 },
+                  "sampleCount": { "type": "integer", "minimum": 1 },
+                  "dispersion": { "type": "number", "minimum": 0 }
+                }
+              }
+            }
+          }
+        },
+        "contrastPairs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "foregroundTokenId",
+              "backgroundTokenId",
+              "ratio",
+              "testedFrameIds",
+              "passes"
+            ],
+            "properties": {
+              "foregroundTokenId": { "type": "string", "minLength": 1 },
+              "backgroundTokenId": { "type": "string", "minLength": 1 },
+              "ratio": { "type": "number", "minimum": 0 },
+              "testedFrameIds": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": { "type": "string" }
+              },
+              "passes": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

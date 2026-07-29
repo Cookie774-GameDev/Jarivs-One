@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "artifactId": "frame-manifest",
+  "status": "blocked_missing_source",
+  "evidenceCutoff": "2026-07-29T21:13:02.0844029Z",
+  "expectedFileName": "Screen Recording 2026-07-16 220632(1).mp4",
+  "sourceSha256": null,
+  "linkedArtifactIds": [
+    "component-mapping",
+    "design",
+    "design-tokens",
+    "reference-analysis",
+    "reference-spec"
+  ],
+  "privacyDisposition": "sanitized_no_private_source_data",
+  "source": {
+    "expectedFileName": "Screen Recording 2026-07-16 220632(1).mp4",
+    "sha256": null,
+    "durationMs": null,
+    "width": null,
+    "height": null,
+    "frameRate": null,
+    "codec": null,
+    "colorMetadata": null,
+    "contentCrop": null
+  },
+  "sampling": null,
+  "frames": []
+}

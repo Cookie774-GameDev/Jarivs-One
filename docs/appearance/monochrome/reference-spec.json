@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "artifactId": "reference-spec",
+  "status": "blocked_missing_source",
+  "evidenceCutoff": "2026-07-29T21:13:02.0844029Z",
+  "expectedFileName": "Screen Recording 2026-07-16 220632(1).mp4",
+  "sourceSha256": null,
+  "linkedArtifactIds": [
+    "component-mapping",
+    "design",
+    "design-tokens",
+    "frame-manifest",
+    "reference-analysis"
+  ],
+  "privacyDisposition": "sanitized_no_private_source_data",
+  "frameIds": [],
+  "rois": [],
+  "tokenIds": [
+    "color.black",
+    "color.surface-1",
+    "color.surface-2",
+    "color.surface-3",
+    "color.active",
+    "color.border",
+    "color.border-strong",
+    "color.text",
+    "color.text-secondary",
+    "color.text-tertiary",
+    "color.purple",
+    "color.teal",
+    "color.amber",
+    "color.green",
+    "color.red"
+  ],
+  "mappingIds": ["mapping.hive-page", "mapping.plans-page", "mapping.plugins-page"],
+  "motifs": [
+    {
+      "id": "motif.panel-silhouette",
+      "label": "panel silhouette",
+      "tolerance": null,
+      "status": "planned_unverified"
+    },
+    {
+      "id": "motif.pricing-form-structure",
+      "label": "pricing and form structure",
+      "tolerance": null,
+      "status": "planned_unverified"
+    },
+    {
+      "id": "motif.segmented-chart",
+      "label": "segmented chart",
+      "tolerance": null,
+      "status": "planned_unverified"
+    }
+  ],
+  "viewport": null,
+  "contentCrop": null,
+  "typography": {
+    "glyphFixture": "AaBbGgQqRr 0O1Il []{}() <> /\\\\ :;,.!? +-=_ #@% & | -> <- 0123456789",
+    "candidates": [],
+    "decision": null
+  },
+  "geometry": { "metrics": [] },
+  "motionSamples": [],
+  "accentRatio": null
+}
