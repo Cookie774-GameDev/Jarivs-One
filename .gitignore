@@ -77,6 +77,8 @@ coverage/
 .tmp-*
 .worktrees/
 .superpowers/
+.artifacts/monochrome/
+.artifacts/origami-chat/
 
 # Local databases
 *.db

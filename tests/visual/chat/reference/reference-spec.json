@@ -1,0 +1,138 @@
+{
+  "schema_version": "1.0",
+  "page_id": "vibespace-chat-origami",
+  "target_file": "references/target-chat.png",
+  "target_is_visual_source_of_truth": true,
+  "viewport": {
+    "width": 1672,
+    "height": 941,
+    "device_scale_factor": 1,
+    "browser_zoom_percent": 100
+  },
+  "url_resolution": {
+    "environment_variable": "VIBESPACE_URL",
+    "fallbacks": [
+      "http://127.0.0.1:5174",
+      "http://127.0.0.1:5173"
+    ],
+    "route": "DISCOVER_AND_RECORD_REAL_CHAT_ROUTE"
+  },
+  "full_page_policy": {
+    "authoritative": true,
+    "must_capture_after_every_kept_change": true,
+    "must_not_use_target_as_full_page_background": true
+  },
+  "crop_policy": {
+    "enabled": true,
+    "role": "diagnostic_only",
+    "independent_layout_targets": false,
+    "coordinates_are_anchored_to_full_page": true,
+    "must_recheck_full_page_after_each_crop_fix": true,
+    "note": "Crops identify mismatch regions. They may never replace full-page composition checks."
+  },
+  "regions": {
+    "full_page": {
+      "x": 0,
+      "y": 0,
+      "width": 1672,
+      "height": 941,
+      "weight": 1.0
+    },
+    "header_full": {
+      "x": 0,
+      "y": 0,
+      "width": 1672,
+      "height": 135,
+      "weight": 0.11
+    },
+    "top_ribbon": {
+      "x": 85,
+      "y": 0,
+      "width": 1140,
+      "height": 88,
+      "weight": 0.05
+    },
+    "sidebar_full": {
+      "x": 0,
+      "y": 72,
+      "width": 334,
+      "height": 869,
+      "weight": 0.15
+    },
+    "session_panel": {
+      "x": 390,
+      "y": 138,
+      "width": 1043,
+      "height": 196,
+      "weight": 0.15
+    },
+    "jarvis_module": {
+      "x": 1215,
+      "y": 0,
+      "width": 435,
+      "height": 116,
+      "weight": 0.1
+    },
+    "user_bubble": {
+      "x": 1130,
+      "y": 335,
+      "width": 320,
+      "height": 85,
+      "weight": 0.04
+    },
+    "assistant_message": {
+      "x": 470,
+      "y": 430,
+      "width": 925,
+      "height": 260,
+      "weight": 0.13
+    },
+    "composer": {
+      "x": 325,
+      "y": 742,
+      "width": 1115,
+      "height": 188,
+      "weight": 0.13
+    },
+    "lower_right_flower": {
+      "x": 1340,
+      "y": 620,
+      "width": 332,
+      "height": 321,
+      "weight": 0.08
+    },
+    "upper_left_crane": {
+      "x": 0,
+      "y": 72,
+      "width": 115,
+      "height": 128,
+      "weight": 0.03
+    },
+    "paper_closeup": {
+      "x": 760,
+      "y": 345,
+      "width": 320,
+      "height": 240,
+      "weight": 0.03
+    }
+  },
+  "dynamic_regions": {
+    "freeze_or_stabilize": [
+      "Jarvis waveform",
+      "caret",
+      "timestamps if live",
+      "animated status indicators",
+      "scrollbars if content changes"
+    ],
+    "playwright_screenshot_css_required": true
+  },
+  "acceptance": {
+    "maximum_passes_before_reassessment": 12,
+    "minimum_required": {
+      "full_page_diff_ratio": 0.16,
+      "layout_region_diff_ratio": 0.1,
+      "major_region_diff_ratio": 0.18
+    },
+    "goal": "Continue below these values when practical; thresholds are guardrails, not permission to stop at a visibly weak result."
+  }
+}

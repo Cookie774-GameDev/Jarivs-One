@@ -1,0 +1,55 @@
+{
+  "schema_version": "1.0",
+  "source": "Initial samples from references/target-chat.png; verify locally before finalizing.",
+  "colors": {
+    "paper_canvas": "#f4d8be",
+    "paper_panel": "#f7ddc6",
+    "paper_raised": "#f9e1cb",
+    "paper_highlight": "#fff1df",
+    "paper_edge": "#d3b296",
+    "paper_shadow": "#9d7970",
+    "ink_primary": "#4b3120",
+    "ink_muted": "#755842",
+    "coral_primary": "#fbae8e",
+    "coral_deep": "#f0a280",
+    "coral_shadow": "#c6785b",
+    "lavender_primary": "#c5b0d2",
+    "lavender_deep": "#8e6fa4",
+    "sage_primary": "#758766",
+    "sage_light": "#a7b38d",
+    "dusty_blue": "#879eb7",
+    "gold_primary": "#e6a04f",
+    "status_green": "#9fb667",
+    "waveform_orange": "#ef7f25"
+  },
+  "material": {
+    "grain_opacity_range": [
+      0.04,
+      0.12
+    ],
+    "crease_opacity_range": [
+      0.08,
+      0.24
+    ],
+    "highlight_edge_px": [
+      1,
+      2
+    ],
+    "contact_shadow": "0 2px 3px rgba(103,64,45,.20)",
+    "raised_shadow": "0 7px 13px rgba(103,64,45,.25)",
+    "floating_shadow": "0 11px 22px rgba(81,48,43,.28)"
+  },
+  "geometry": {
+    "primary_fold_depth_px": [
+      10,
+      18
+    ],
+    "small_fold_depth_px": [
+      5,
+      10
+    ],
+    "sidebar_reference_width_px": 334,
+    "header_reference_height_px": 79,
+    "composer_reference_height_px": 188
+  }
+}
