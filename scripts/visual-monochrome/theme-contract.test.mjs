@@ -15,6 +15,7 @@ const generatedPath = new URL(
   import.meta.url,
 );
 const prepaintPath = new URL('../../app/public/theme-prepaint.js', import.meta.url);
+const tauriConfigPath = new URL('../../app/src-tauri/tauri.conf.json', import.meta.url);
 const generatorPath = fileURLToPath(new URL('./generate-theme-contract.mjs', import.meta.url));
 
 test('source contract carries the complete accepted theme policy', () => {
@@ -66,6 +67,9 @@ test('generated prepaint normalizes storage without system media authority', () 
     ['system', 'default', 'dark'],
     ['monochrome', 'monochrome', 'monochrome'],
     ['unknown', 'default', 'dark'],
+    ['constructor', 'default', 'dark'],
+    ['toString', 'default', 'dark'],
+    ['__proto__', 'default', 'dark'],
   ];
 
   for (const [stored, preference, documentTheme] of cases) {
@@ -86,4 +90,65 @@ test('generated prepaint normalizes storage without system media authority', () 
     assert.equal(attributes.get('data-theme-preference'), preference);
     assert.equal(attributes.get('data-theme'), documentTheme);
   }
+});
+
+test('generated prepaint keeps the pet-overlay shell transparent before app startup', () => {
+  const prepaint = readFileSync(prepaintPath, 'utf8');
+  const attributes = new Map();
+  const style = {};
+
+  runInNewContext(prepaint, {
+    localStorage: { getItem: () => null },
+    window: { location: { search: '?view=pet-overlay' } },
+    document: {
+      documentElement: {
+        style,
+        setAttribute: (name, value) => attributes.set(name, value),
+      },
+    },
+    URLSearchParams,
+    Set,
+    JSON,
+  });
+
+  assert.equal(attributes.get('data-vibespace-view'), 'pet-overlay');
+  assert.deepEqual(style, {
+    background: 'transparent',
+    backgroundColor: 'transparent',
+    backgroundImage: 'none',
+  });
+});
+
+test('production index uses a CSP-safe self-hosted prepaint before the module bundle', () => {
+  if (process.platform === 'win32') {
+    execFileSync(
+      process.env.ComSpec || 'cmd.exe',
+      ['/d', '/s', '/c', 'npm --prefix app run build'],
+      {
+        cwd: repoRoot,
+        stdio: 'pipe',
+      },
+    );
+  } else {
+    execFileSync('npm', ['--prefix', 'app', 'run', 'build'], {
+      cwd: repoRoot,
+      stdio: 'pipe',
+    });
+  }
+
+  const distIndex = readFileSync(new URL('../../app/dist/index.html', import.meta.url), 'utf8');
+  const tauriConfig = JSON.parse(readFileSync(tauriConfigPath, 'utf8'));
+  const scriptPolicy = tauriConfig.app.security.csp
+    .split(';')
+    .map((directive) => directive.trim())
+    .find((directive) => directive.startsWith('script-src '));
+  const prepaintIndex = distIndex.indexOf('src="/theme-prepaint.js"');
+  const moduleIndex = distIndex.search(/<script[^>]+type="module"[^>]+src="\/assets\/[^"]+\.js"/);
+
+  assert.ok(prepaintIndex >= 0);
+  assert.ok(moduleIndex > prepaintIndex);
+  assert.equal(scriptPolicy, "script-src 'self' https://www.youtube.com");
+  assert.doesNotMatch(scriptPolicy, /'unsafe-inline'|'unsafe-eval'/);
+  assert.doesNotMatch(distIndex, /<script(?![^>]*\bsrc=)[^>]*>/);
+  assert.doesNotMatch(readFileSync(prepaintPath, 'utf8'), /\beval\s*\(|new Function|https?:\/\//);
 });

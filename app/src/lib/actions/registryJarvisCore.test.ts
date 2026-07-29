@@ -41,6 +41,19 @@ function action(
 }
 
 describe('Jarvis canonical core actions', () => {
+  it('routes canonical theme settings without exposing retired Light', async () => {
+    const resolvedIds: string[] = [];
+    const routed = createJarvisCoreActions((id) => {
+      resolvedIds.push(id);
+      return action(id);
+    }).find((item) => item.id === 'settings.update')!;
+    await routed.run({ setting: 'theme', value: 'monochrome' }, { source: 'ai' });
+    expect(resolvedIds).toContain('theme.monochrome');
+
+    const result = await routed.run({ setting: 'theme', value: 'light' }, { source: 'ai' });
+    expect(result.ok).toBe(false);
+  });
+
   it('registers every stable action id exactly once', () => {
     const actions = createJarvisCoreActions(() => undefined);
     expect(actions.map((item) => item.id)).toEqual(CORE_ACTION_IDS);

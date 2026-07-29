@@ -24,40 +24,16 @@ import './styles/globals.css';
 import './styles/vibespace-theme.css';
 import './styles/monochrome-theme.css';
 import './features/workbench/registerCommandActions';
-import { applyThemeToDocument, useUIStore } from './stores/ui';
-import { startThemeSync } from './features/appearance/themeSync';
+import { useUIStore } from './stores/ui';
+import { applyThemeSyncToApplication, startThemeSync } from './features/appearance/themeSync';
 
 startThemeSync((theme) => {
-  applyThemeToDocument(theme);
-  useUIStore.setState({ theme });
+  applyThemeSyncToApplication(theme, document, useUIStore);
 });
-
-// Mark pet-overlay BEFORE first paint so globals.css can suppress body bg.
-// Without this, body { @apply bg-background } paints an opaque rectangle
-// behind the transparent Pixi canvas in the pet-overlay WebView.
-const bootView = new URLSearchParams(window.location.search).get('view');
-if (bootView === 'pet-overlay') {
-  document.documentElement.dataset.vibespaceView = 'pet-overlay';
-  document.documentElement.style.background = 'transparent';
-  document.documentElement.style.backgroundColor = 'transparent';
-  document.body.style.background = 'transparent';
-  document.body.style.backgroundColor = 'transparent';
-  document.body.style.backgroundImage = 'none';
-  document.body.style.margin = '0';
-  document.body.style.padding = '0';
-  document.body.style.overflow = 'hidden';
-}
 
 const rootEl = document.getElementById('root');
 if (!rootEl) {
   throw new Error('#root element not found');
-}
-if (bootView === 'pet-overlay') {
-  rootEl.style.background = 'transparent';
-  rootEl.style.backgroundColor = 'transparent';
-  rootEl.style.margin = '0';
-  rootEl.style.padding = '0';
-  rootEl.style.overflow = 'hidden';
 }
 
 ReactDOM.createRoot(rootEl).render(

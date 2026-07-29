@@ -45,6 +45,10 @@ import { VoiceService } from '@/features/voice/VoiceService';
 import { MicWaveform } from './MicWaveform';
 import { formatComposerVoiceFailure } from './composerVoiceFailures';
 import { formatComposerSendFailure } from './composerSendFailures';
+
+export function getThemeCommandHelp(): string {
+  return `Available themes: ${SELECTABLE_THEMES.map((theme) => theme.label).join(', ')}. Use /theme <name>.`;
+}
 import {
   cleanupAudioRecorder,
   encodeWav,
@@ -1478,9 +1482,7 @@ export function Composer({
     if (cmd === 'theme') {
       const nextTheme = parseThemeCommandArgument(rest);
       if (!nextTheme) {
-        await addSystem(
-          `Available themes: ${SELECTABLE_THEMES.map((theme) => theme.label).join(', ')}. Use /theme <name>.`,
-        );
+        await addSystem(getThemeCommandHelp());
         return true;
       }
       useUIStore.getState().setTheme(nextTheme);

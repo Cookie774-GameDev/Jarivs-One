@@ -1278,8 +1278,15 @@ export function createJarvisCoreActions(resolveLegacy: LegacyResolver): ActionDe
       run: async (params, ctx) => {
         const setting = text(params, 'setting');
         const value = text(params, 'value').toLowerCase();
-        if (setting === 'theme' && ['dark', 'light', 'jarvis'].includes(value)) {
-          return runRequired(resolveLegacy, `theme.${value}`, {}, ctx);
+        const themeActionIds: Record<string, string> = {
+          jarvis: 'theme.jarvis',
+          vibespace: 'theme.vibespace',
+          default: 'theme.dark',
+          dark: 'theme.dark',
+          monochrome: 'theme.monochrome',
+        };
+        if (setting === 'theme' && themeActionIds[value]) {
+          return runRequired(resolveLegacy, themeActionIds[value], {}, ctx);
         }
         if (setting === 'chat_auto_approve' && ['true', 'false'].includes(value)) {
           return runRequired(

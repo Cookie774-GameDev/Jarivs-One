@@ -31,7 +31,6 @@ import {
   Cog,
   KeyRound,
   CreditCard,
-  Sun,
   Moon,
   RotateCw,
   Mic,
@@ -442,29 +441,29 @@ const THEME_ACTIONS: ActionDef[] = [
     },
   },
   {
-    id: 'theme.light',
+    id: 'theme.monochrome',
     category: 'theme',
-    label: 'Switch to Light theme',
-    description: 'Set the workspace to the cream paper (light) palette.',
-    icon: Sun,
+    label: 'Switch to MonoChrome theme',
+    description: 'Set the workspace to the terminal-inspired developer console palette.',
+    icon: TerminalIcon,
     params: [],
     run: async () => {
-      useUIStore.getState().setTheme('light');
-      return ok('Theme: Light.');
+      useUIStore.getState().setTheme('monochrome');
+      return ok('Theme: MonoChrome.');
     },
   },
   {
     id: 'theme.toggle',
     category: 'theme',
     label: 'Toggle theme',
-    description: 'Flip between Default and Light.',
+    description: 'Flip between Default and MonoChrome.',
     icon: RotateCw,
     params: [],
     run: async () => {
       const cur = useUIStore.getState().theme;
-      const next = cur === 'default' ? 'light' : 'default';
+      const next = cur === 'default' ? 'monochrome' : 'default';
       useUIStore.getState().setTheme(next);
-      return ok(`Theme: ${next === 'default' ? 'Default' : 'Light'}.`);
+      return ok(`Theme: ${next === 'default' ? 'Default' : 'MonoChrome'}.`);
     },
   },
 ];

@@ -1,7 +1,8 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="dark" data-theme-preference="default">
   <head>
     <meta charset="UTF-8" />
+    <script src="/theme-prepaint.js"></script>
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="128x128" href="/vibespace-icon.png" />
@@ -11,20 +12,7 @@
     <title>VibeSpace</title>
     <!-- Fonts are self-hosted via @fontsource imports in src/main.tsx; the
          remote Google Fonts stylesheet was blocked by the production CSP. -->
-    <!-- Pet overlay: mark transparent shell before any CSS/JS paint to avoid a black flash. -->
-    <script>
-      (function () {
-        try {
-          var view = new URLSearchParams(window.location.search).get('view');
-          if (view === 'pet-overlay') {
-            document.documentElement.dataset.vibespaceView = 'pet-overlay';
-            document.documentElement.style.background = 'transparent';
-            document.documentElement.style.backgroundColor = 'transparent';
-            document.documentElement.style.backgroundImage = 'none';
-          }
-        } catch (e) { /* ignore */ }
-      })();
-    </script>
+    <!-- Pet overlay transparency is marked by theme-prepaint.js before this scoped CSS applies. -->
     <style>
       html[data-vibespace-view='pet-overlay'],
       html[data-vibespace-view='pet-overlay'] body,

@@ -114,6 +114,9 @@ describe('orderSlashCommandsForDisplay', () => {
       cmd: 'theme',
       category: 'utility',
       takesArg: true,
+      description: 'Switch Jarvis Core, VibeSpace, Default, or MonoChrome',
+      argPlaceholder: 'jarvis | vibespace | default | monochrome',
     });
+    expect(JSON.stringify(findSlashCommandDef('theme'))).not.toMatch(/\blight\b/i);
   });
 });

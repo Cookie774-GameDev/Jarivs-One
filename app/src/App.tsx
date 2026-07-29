@@ -1874,12 +1874,6 @@ function ThemeHost() {
 
   React.useEffect(() => {
     applyThemeToDocument(theme);
-    if (theme !== 'system' || typeof window.matchMedia !== 'function') return;
-
-    const media = window.matchMedia('(prefers-color-scheme: dark)');
-    const update = () => applyThemeToDocument('system');
-    media.addEventListener?.('change', update);
-    return () => media.removeEventListener?.('change', update);
   }, [theme]);
 
   return null;

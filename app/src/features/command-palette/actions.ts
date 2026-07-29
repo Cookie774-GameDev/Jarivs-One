@@ -24,7 +24,7 @@ import {
   Settings,
   Smartphone,
   Globe2,
-  Sun,
+  Terminal,
   User,
   Users,
 } from 'lucide-react';
@@ -208,10 +208,10 @@ const STATIC_ACTIONS: Action[] = [
   {
     id: 'theme',
     label: 'Theme...',
-    description: 'Dark, light, or system',
+    description: 'Jarvis Core, VibeSpace, Default, or MonoChrome',
     icon: Palette,
     page: 'root',
-    keywords: ['dark', 'light', 'appearance', 'color'],
+    keywords: ['jarvis', 'vibespace', 'default', 'monochrome', 'appearance', 'color'],
     perform: ({ pushPage }) => pushPage('theme'),
   },
   {
@@ -367,13 +367,13 @@ const STATIC_ACTIONS: Action[] = [
     },
   },
   {
-    id: 'theme-light',
-    label: 'Light',
-    icon: Sun,
+    id: 'theme-monochrome',
+    label: 'MonoChrome',
+    icon: Terminal,
     page: 'theme',
-    keywords: ['day'],
+    keywords: ['terminal', 'console'],
     perform: ({ closePalette }) => {
-      useUIStore.getState().setTheme('light');
+      useUIStore.getState().setTheme('monochrome');
       closePalette();
     },
   },
