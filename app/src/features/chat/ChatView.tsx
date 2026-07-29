@@ -45,6 +45,7 @@ export function ChatView() {
   return (
     <TooltipProvider delayDuration={400}>
       <div
+        data-vibespace-page="chat"
         data-terminal-drop={activeChatId ? 'chat' : undefined}
         data-terminal-drop-chat-id={activeChatId ?? undefined}
         onDragOver={(e) => {
@@ -63,11 +64,23 @@ export function ChatView() {
           e.stopPropagation();
           setDropKind(null);
           if (payload.kind === 'context') {
-            window.dispatchEvent(new CustomEvent('jarvis:context:attach', { detail: { raw: payload.raw, chatId: activeChatId } }));
+            window.dispatchEvent(
+              new CustomEvent('jarvis:context:attach', {
+                detail: { raw: payload.raw, chatId: activeChatId },
+              }),
+            );
           } else if (payload.kind === 'terminal') {
-            window.dispatchEvent(new CustomEvent('jarvis:terminal:attach', { detail: { raw: payload.raw, chatId: activeChatId } }));
+            window.dispatchEvent(
+              new CustomEvent('jarvis:terminal:attach', {
+                detail: { raw: payload.raw, chatId: activeChatId },
+              }),
+            );
           } else {
-            window.dispatchEvent(new CustomEvent('jarvis:file:attach', { detail: { path: payload.path, chatId: activeChatId } }));
+            window.dispatchEvent(
+              new CustomEvent('jarvis:file:attach', {
+                detail: { path: payload.path, chatId: activeChatId },
+              }),
+            );
           }
         }}
         className={cn(
@@ -77,7 +90,13 @@ export function ChatView() {
       >
         {dropKind && (
           <div className="pointer-events-none absolute right-4 top-4 z-10 rounded-md border border-accent-copper/50 bg-background/95 px-3 py-1 text-metadata text-accent-copper shadow-soft">
-            Drop {dropKind === 'context' ? 'Context' : dropKind === 'terminal' ? 'terminal' : 'file path'} here to power up this chat
+            Drop{' '}
+            {dropKind === 'context'
+              ? 'Context'
+              : dropKind === 'terminal'
+                ? 'terminal'
+                : 'file path'}{' '}
+            here to power up this chat
           </div>
         )}
         {activeChatId ? (
