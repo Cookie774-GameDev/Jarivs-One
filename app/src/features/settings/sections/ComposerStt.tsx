@@ -25,11 +25,13 @@ export function ComposerStt() {
   const setProvider = useAuthStore((s) => s.setComposerSttProvider);
   const setModel = useAuthStore((s) => s.setFasterWhisperModel);
 
-  const [downloadState, setDownloadState] = useState<Record<FasterWhisperModelId, DownloadUiState>>({
-    tiny: 'idle',
-    small: 'idle',
-    'large-v3': 'idle',
-  });
+  const [downloadState, setDownloadState] = useState<Record<FasterWhisperModelId, DownloadUiState>>(
+    {
+      tiny: 'idle',
+      small: 'idle',
+      'large-v3': 'idle',
+    },
+  );
   const [downloadPercent, setDownloadPercent] = useState<Record<FasterWhisperModelId, number>>({
     tiny: 0,
     small: 0,
@@ -74,25 +76,31 @@ export function ComposerStt() {
       toast.success('Model ready', `${modelId} is installed for offline dictation.`);
     } else {
       setDownloadState((s) => ({ ...s, [modelId]: 'error' }));
-      toast.error('Download failed', `Could not download ${modelId}. Check your connection and try again.`);
+      toast.error(
+        'Download failed',
+        `Could not download ${modelId}. Check your connection and try again.`,
+      );
     }
   };
 
   const chooseProvider = (next: ComposerSttProvider) => {
     setProvider(next);
-    toast.success('Speech-to-text updated', next === 'system' ? 'Using free system dictation.' : 'Using local faster-whisper.');
+    toast.success(
+      'Speech-to-text updated',
+      next === 'system' ? 'Using free system dictation.' : 'Using local faster-whisper.',
+    );
   };
 
   return (
-    <div className="flex max-w-2xl flex-col gap-6">
+    <div className="mc7f-settings-composer-stt flex max-w-2xl flex-col gap-6 [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-foreground/20 [html[data-theme=monochrome]_&]:pl-4">
       <div>
         <h2 className="text-ui-strong text-foreground flex items-center gap-2">
           <Mic className="h-4 w-4 text-accent-cyan" />
           Speech to Text
         </h2>
         <p className="mt-1 text-secondary text-muted-foreground">
-          Configure the composer microphone button for chat dictation. This does not affect Jarvis voice,
-          wake word, or phone calls.
+          Configure the composer microphone button for chat dictation. This does not affect Jarvis
+          voice, wake word, or phone calls.
         </p>
       </div>
 
@@ -116,16 +124,24 @@ export function ComposerStt() {
         </div>
         {provider === 'system' ? (
           <p className="text-metadata text-muted-foreground">
-            Status: {isSystemSttAvailable() ? 'Web Speech available in this runtime ✓' : 'Web Speech unavailable — Groq Whisper is used when a Groq key is configured.'}
+            Status:{' '}
+            {isSystemSttAvailable()
+              ? 'Web Speech available in this runtime ✓'
+              : 'Web Speech unavailable — Groq Whisper is used when a Groq key is configured.'}
             {isTauri ? (
               <>
                 {' '}
                 <button
                   type="button"
                   className="text-accent-cyan underline-offset-4 hover:underline"
-                  onClick={() => void openSystemSpeechSettings().catch(() => {
-                    toast.info('Speech settings', 'Open Windows Settings → Time & language → Speech.');
-                  })}
+                  onClick={() =>
+                    void openSystemSpeechSettings().catch(() => {
+                      toast.info(
+                        'Speech settings',
+                        'Open Windows Settings → Time & language → Speech.',
+                      );
+                    })
+                  }
                 >
                   Open speech settings
                 </button>
@@ -172,15 +188,22 @@ export function ComposerStt() {
                       >
                         <div className="flex items-center gap-2">
                           <span className="text-ui-strong text-foreground">{entry.label}</span>
-                          <span className="text-metadata text-muted-foreground">{entry.sizeLabel}</span>
+                          <span className="text-metadata text-muted-foreground">
+                            {entry.sizeLabel}
+                          </span>
                           {entry.recommended ? (
-                            <Badge variant="outline" className="text-accent-cyan border-accent-cyan/40">
+                            <Badge
+                              variant="outline"
+                              className="text-accent-cyan border-accent-cyan/40"
+                            >
                               Recommended
                             </Badge>
                           ) : null}
                           {selected ? <Check className="h-3.5 w-3.5 text-accent-cyan" /> : null}
                         </div>
-                        <p className="mt-0.5 text-metadata text-muted-foreground">{entry.description}</p>
+                        <p className="mt-0.5 text-metadata text-muted-foreground">
+                          {entry.description}
+                        </p>
                       </button>
                       <Button
                         variant="secondary"
@@ -188,7 +211,9 @@ export function ComposerStt() {
                         disabled={!isTauri || state === 'downloading'}
                         onClick={() => void downloadModel(entry.id)}
                       >
-                        <Download className={cn('h-3.5 w-3.5', state === 'downloading' && 'animate-pulse')} />
+                        <Download
+                          className={cn('h-3.5 w-3.5', state === 'downloading' && 'animate-pulse')}
+                        />
                         {state === 'ready'
                           ? 'Re-download'
                           : state === 'downloading'
@@ -206,8 +231,8 @@ export function ComposerStt() {
               })}
             </div>
             <p className="text-metadata text-muted-foreground">
-              First transcription installs a small Python environment with faster-whisper (~1–2 min one-time).
-              If the model is missing, dictation falls back to system speech.
+              First transcription installs a small Python environment with faster-whisper (~1–2 min
+              one-time). If the model is missing, dictation falls back to system speech.
             </p>
           </section>
         </>

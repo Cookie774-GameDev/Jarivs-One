@@ -23,7 +23,7 @@ export function Notifications() {
   const setAiCompletionCue = useUIStore((s) => s.setAiCompletionCue);
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="mc7f-settings-notifications flex flex-col gap-6 [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-foreground/20 [html[data-theme=monochrome]_&]:pl-4">
       <header>
         <h2 className="text-page-title text-foreground">Notifications</h2>
         <p className="text-secondary text-muted-foreground mt-1">
@@ -35,7 +35,8 @@ export function Notifications() {
         <div>
           <Label htmlFor="notifications-master">Enable done notifications</Label>
           <p className="text-metadata text-muted-foreground mt-1">
-            Master switch for OS/browser notifications. In-app status still appears where the work happened.
+            Master switch for OS/browser notifications. In-app status still appears where the work
+            happened.
           </p>
         </div>
         <Switch
@@ -84,7 +85,8 @@ export function Notifications() {
         <div>
           <Label htmlFor="ai-completion-cue">AI completion cue</Label>
           <p className="text-metadata text-muted-foreground mt-1">
-            Adds a short system-prompt instruction that asks AI agents to clearly say when the task is done, or what remains blocked.
+            Adds a short system-prompt instruction that asks AI agents to clearly say when the task
+            is done, or what remains blocked.
           </p>
         </div>
         <Switch
@@ -98,12 +100,18 @@ export function Notifications() {
         <Bell className="h-4 w-4 text-accent-copper" />
         <div className="min-w-0 flex-1">
           <div className="text-ui-strong text-foreground">Test notification</div>
-          <p className="text-metadata text-muted-foreground">Sends a sample Jarvis done notification using the current settings.</p>
+          <p className="text-metadata text-muted-foreground">
+            Sends a sample Jarvis done notification using the current settings.
+          </p>
         </div>
         <Button
           size="sm"
           variant="secondary"
-          onClick={() => void notifyDone('jarvis', 'Jarvis done', 'Notification settings are working.', { allowFallbackToast: true })}
+          onClick={() =>
+            void notifyDone('jarvis', 'Jarvis done', 'Notification settings are working.', {
+              allowFallbackToast: true,
+            })
+          }
           disabled={!notificationMaster || !doneNotifications.jarvis}
         >
           Send Test

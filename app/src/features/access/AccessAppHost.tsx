@@ -148,7 +148,7 @@ export function AccessAppHost({
         <div
           role="status"
           aria-live="polite"
-          className="mx-auto mt-4 w-full max-w-lg rounded-xl border border-success/30 bg-success/10 px-4 py-3 text-secondary text-success"
+          className="mc7f-access-app-host mx-auto mt-4 w-full max-w-lg rounded-xl border border-success/30 bg-success/10 px-4 py-3 text-secondary text-success [html[data-theme=monochrome]_&]:rounded-none [html[data-theme=monochrome]_&]:border-success/50 [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:font-mono [html[data-theme=monochrome]_&]:shadow-none"
         >
           {actionNotice}
         </div>
@@ -282,7 +282,7 @@ export function AccessAppHost({
         return (
           <>
             {withActionNotice(paywall)}
-            <div className="mx-auto -mt-8 w-full max-w-lg px-4 pb-10">
+            <div className="mc7f-access-app-host mx-auto -mt-8 w-full max-w-lg px-4 pb-10">
               <Button
                 type="button"
                 variant="accent"

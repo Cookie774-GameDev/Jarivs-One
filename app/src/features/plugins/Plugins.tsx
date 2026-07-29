@@ -98,7 +98,7 @@ export function Plugins() {
   ).length;
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="mc7f-plugins flex flex-col gap-5 [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-foreground/20 [html[data-theme=monochrome]_&]:pl-4 [html[data-theme=monochrome]_&_*]:rounded-none [html[data-theme=monochrome]_&_*]:bg-none [html[data-theme=monochrome]_&_*]:shadow-none">
       <header className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-page-title text-foreground">Plugins</h2>
@@ -408,7 +408,7 @@ function PluginSetupDialog({
 
           {plugin.credentialUrl && (
             <div className="relative overflow-hidden rounded-2xl border border-accent-cyan/20 bg-gradient-to-br from-accent-cyan/10 via-elevated to-purple-500/10 p-4">
-              <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-accent-cyan/20 blur-3xl" />
+              <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-accent-cyan/20 blur-3xl [html[data-theme=monochrome]_&]:hidden" />
               <div className="relative flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-ui-strong text-foreground">

@@ -29,7 +29,7 @@ export function Hotkeys() {
   const rows = Object.entries(HOTKEYS) as [keyof typeof HOTKEYS, string][];
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="mc7f-settings-hotkeys flex flex-col gap-6 [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-foreground/20 [html[data-theme=monochrome]_&]:pl-4">
       <header>
         <h2 className="text-page-title text-foreground">Hotkeys</h2>
         <p className="text-secondary text-muted-foreground mt-1">

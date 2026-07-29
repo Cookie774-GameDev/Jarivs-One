@@ -206,7 +206,10 @@ export function SubscriptionCliBridge({
   };
 
   return (
-    <section className="space-y-4" aria-labelledby="ai-connections-title">
+    <section
+      className="mc7f-settings-subscription-cli space-y-4 [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-foreground/20 [html[data-theme=monochrome]_&]:pl-4"
+      aria-labelledby="ai-connections-title"
+    >
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 id="ai-connections-title" className="text-lg font-semibold text-foreground">

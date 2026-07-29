@@ -25,7 +25,7 @@ export function Admin() {
   const serverVerified = snapshot.source === 'server';
 
   return (
-    <div className="flex max-w-2xl flex-col gap-6">
+    <div className="mc7f-settings-admin flex max-w-2xl flex-col gap-6 [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-foreground/20 [html[data-theme=monochrome]_&]:pl-4">
       <div>
         <div className="flex items-center gap-2">
           <Shield className="h-5 w-5 text-accent-cyan" />

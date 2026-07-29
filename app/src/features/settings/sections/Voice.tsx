@@ -13,7 +13,10 @@ import {
 import { useAuthStore } from '@/stores/auth';
 import type { PersonaPreset, VoiceEngine, VoicePresetId } from '@/types/common';
 import { PERSONAS } from '@/features/onboarding/steps/personas-data';
-import { getInstalledSpeechVoices, isSpeechSynthesisSupported } from '@/features/voice/speechSynthesis';
+import {
+  getInstalledSpeechVoices,
+  isSpeechSynthesisSupported,
+} from '@/features/voice/speechSynthesis';
 import {
   cancelVoicePreview,
   previewVoiceWithSettings,
@@ -22,11 +25,7 @@ import {
 import { useAppAdmin } from '@/lib/admin';
 import { effectivePlan, planAllowsVoiceWithAdmin } from '@/lib/entitlements';
 import { getCombinedUsage } from '@/features/billing/planLimits';
-import {
-  getDeepgramVoiceKey,
-  getOpenAIVoiceKey,
-  setVoiceApiKey,
-} from '@/lib/security/voiceKeys';
+import { getDeepgramVoiceKey, getOpenAIVoiceKey, setVoiceApiKey } from '@/lib/security/voiceKeys';
 import { testDeepgramVoiceKey } from '@/features/voice/providers/deepgramSpeak';
 import { Input } from '@/components/ui/input';
 import { VOICE_PROFILES, type VoiceProfile } from '@/features/voice/voiceProfiles';
@@ -466,7 +465,7 @@ export function Voice({ active = true }: { active?: boolean } = {}) {
   }
 
   return (
-    <div className="flex flex-col gap-8 max-w-4xl">
+    <div className="mc7f-settings-voice flex max-w-4xl flex-col gap-8 [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-foreground/20 [html[data-theme=monochrome]_&]:pl-4">
       <header className="space-y-1">
         <h2 className="text-page-title text-foreground">Voice</h2>
         <p className="text-secondary text-muted-foreground">
@@ -503,8 +502,8 @@ export function Voice({ active = true }: { active?: boolean } = {}) {
           <div className="flex flex-col gap-1">
             <Label htmlFor="speak-replies-toggle">Speak Jarvis replies</Label>
             <p className="text-metadata text-muted-foreground">
-              Also read completed replies aloud when you send messages from the chat composer.
-              The voice panel always speaks replies while it is open.
+              Also read completed replies aloud when you send messages from the chat composer. The
+              voice panel always speaks replies while it is open.
             </p>
           </div>
           <Switch
@@ -590,31 +589,31 @@ export function Voice({ active = true }: { active?: boolean } = {}) {
             </div>
           ) : null}
           {!voiceAutoListenOnOpen || voiceEndTrigger === 'silence' ? (
-          <div className="rounded-md border border-border bg-panel p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <Label htmlFor="voice-silence-delay">Pause before Jarvis responds</Label>
-              <span className="text-metadata font-medium text-foreground">
-                {voiceSilenceDelayLabel(voiceSilenceDelayMs)}
-              </span>
+            <div className="rounded-md border border-border bg-panel p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <Label htmlFor="voice-silence-delay">Pause before Jarvis responds</Label>
+                <span className="text-metadata font-medium text-foreground">
+                  {voiceSilenceDelayLabel(voiceSilenceDelayMs)}
+                </span>
+              </div>
+              <p className="mt-1 text-metadata text-muted-foreground">
+                How long you stay quiet after speaking before Jarvis sends your message.
+              </p>
+              <input
+                id="voice-silence-delay"
+                type="range"
+                min={VOICE_SILENCE_DELAY_MS_MIN}
+                max={VOICE_SILENCE_DELAY_MS_MAX}
+                step={250}
+                value={voiceSilenceDelayMs}
+                onChange={(event) => setVoiceSilenceDelayMs(Number(event.target.value))}
+                className="mt-3 w-full accent-[hsl(var(--accent-cyan))]"
+              />
+              <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
+                <span>{voiceSilenceDelayLabel(VOICE_SILENCE_DELAY_MS_MIN)}</span>
+                <span>{voiceSilenceDelayLabel(VOICE_SILENCE_DELAY_MS_MAX)}</span>
+              </div>
             </div>
-            <p className="mt-1 text-metadata text-muted-foreground">
-              How long you stay quiet after speaking before Jarvis sends your message.
-            </p>
-            <input
-              id="voice-silence-delay"
-              type="range"
-              min={VOICE_SILENCE_DELAY_MS_MIN}
-              max={VOICE_SILENCE_DELAY_MS_MAX}
-              step={250}
-              value={voiceSilenceDelayMs}
-              onChange={(event) => setVoiceSilenceDelayMs(Number(event.target.value))}
-              className="mt-3 w-full accent-[hsl(var(--accent-cyan))]"
-            />
-            <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
-              <span>{voiceSilenceDelayLabel(VOICE_SILENCE_DELAY_MS_MIN)}</span>
-              <span>{voiceSilenceDelayLabel(VOICE_SILENCE_DELAY_MS_MAX)}</span>
-            </div>
-          </div>
           ) : null}
           {voiceAutoListenOnOpen ? (
             <div className="rounded-md border border-border bg-panel p-4">
@@ -648,7 +647,8 @@ export function Voice({ active = true }: { active?: boolean } = {}) {
             <div className="min-w-0">
               <Label htmlFor="voice-auto-approve-toggle">Auto-run Jarvis commands (voice)</Label>
               <p className="mt-1 text-metadata text-muted-foreground">
-                When on, voice requests like “open five terminals” run immediately without Approve cards.
+                When on, voice requests like “open five terminals” run immediately without Approve
+                cards.
               </p>
             </div>
             <Switch
@@ -661,7 +661,8 @@ export function Voice({ active = true }: { active?: boolean } = {}) {
             <div className="min-w-0">
               <Label htmlFor="chat-auto-approve-toggle">Auto-run Jarvis commands (chat)</Label>
               <p className="mt-1 text-metadata text-muted-foreground">
-                Same for typed chat. Toggle quickly with {renderHotkey(HOTKEYS.JARVIS_BUBBLE)} while chatting.
+                Same for typed chat. Toggle quickly with {renderHotkey(HOTKEYS.JARVIS_BUBBLE)} while
+                chatting.
               </p>
             </div>
             <Switch
@@ -742,7 +743,9 @@ export function Voice({ active = true }: { active?: boolean } = {}) {
               <Input
                 type="password"
                 className="font-mono w-full sm:min-w-[240px] sm:flex-1"
-                placeholder={systemOpenAIConfigured ? 'OpenAI key saved — paste to replace' : 'OpenAI API key'}
+                placeholder={
+                  systemOpenAIConfigured ? 'OpenAI key saved — paste to replace' : 'OpenAI API key'
+                }
                 value={systemOpenAIDraft}
                 onChange={(event) => setSystemOpenAIDraft(event.target.value)}
                 autoComplete="off"
@@ -755,7 +758,9 @@ export function Voice({ active = true }: { active?: boolean } = {}) {
               <Input
                 type="password"
                 className="font-mono w-full sm:min-w-[240px] sm:flex-1"
-                placeholder={deepgramConfigured ? 'Deepgram key saved — paste to replace' : 'Deepgram API key'}
+                placeholder={
+                  deepgramConfigured ? 'Deepgram key saved — paste to replace' : 'Deepgram API key'
+                }
                 value={systemDeepgramDraft}
                 onChange={(event) => setSystemDeepgramDraft(event.target.value)}
                 autoComplete="off"
@@ -766,7 +771,11 @@ export function Voice({ active = true }: { active?: boolean } = {}) {
                 disabled={deepgramTesting}
                 onClick={() => void saveSystemDeepgramKey()}
               >
-                {deepgramTesting ? 'Testing…' : deepgramConfigured ? 'Update & test' : 'Connect Deepgram'}
+                {deepgramTesting
+                  ? 'Testing…'
+                  : deepgramConfigured
+                    ? 'Update & test'
+                    : 'Connect Deepgram'}
               </Button>
             </div>
           </div>
@@ -899,7 +908,9 @@ export function Voice({ active = true }: { active?: boolean } = {}) {
                   onClick={() => void testKokoro()}
                   disabled={kokoroStatus === 'downloading' || kokoroStatus === 'testing'}
                 >
-                  <Play className={cn('h-3.5 w-3.5', kokoroStatus === 'testing' && 'animate-pulse')} />
+                  <Play
+                    className={cn('h-3.5 w-3.5', kokoroStatus === 'testing' && 'animate-pulse')}
+                  />
                   Test Kokoro voice
                 </Button>
               </div>
@@ -1021,10 +1032,7 @@ interface VoiceCardProps {
 function VoiceSpeakingBars() {
   const delays = ['0ms', '120ms', '240ms', '360ms'];
   return (
-    <span
-      className="inline-flex h-3 w-3.5 items-end justify-center gap-[1.5px]"
-      aria-hidden
-    >
+    <span className="inline-flex h-3 w-3.5 items-end justify-center gap-[1.5px]" aria-hidden>
       {delays.map((delay) => (
         <span
           key={delay}
@@ -1081,7 +1089,9 @@ function VoiceCard({ profile, selected, onSelect, onPreview, previewing }: Voice
           'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
           previewing && 'border-accent-cyan/50 text-accent-cyan',
         )}
-        aria-label={previewing ? `${profile.name} voice preview playing` : `Preview ${profile.name} voice`}
+        aria-label={
+          previewing ? `${profile.name} voice preview playing` : `Preview ${profile.name} voice`
+        }
       >
         {previewing ? <VoiceSpeakingBars /> : <Play className="h-3 w-3" />}
         {previewing ? 'Playing' : 'Preview'}

@@ -179,11 +179,11 @@ export function AccountPage() {
   const who = displayName?.trim() || cloudEmail || 'You';
 
   return (
-    <main className="h-full overflow-y-auto bg-background">
+    <main className="mc7f-account-page h-full overflow-y-auto bg-background [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&_*]:rounded-none [html[data-theme=monochrome]_&_*]:bg-none [html[data-theme=monochrome]_&_*]:shadow-none">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-0 px-4 pb-10 pt-5 sm:px-6">
         {/* Hero */}
-        <header className="relative overflow-hidden rounded-3xl border border-border bg-slate-950 p-5 shadow-2xl sm:p-6">
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(217,119,87,0.22),transparent_42%),radial-gradient(circle_at_bottom_left,rgba(6,182,212,0.14),transparent_40%)]" />
+        <header className="relative overflow-hidden rounded-3xl border border-border bg-slate-950 p-5 shadow-2xl sm:p-6 [html[data-theme=monochrome]_&]:rounded-none [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-foreground/60 [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:shadow-none">
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(217,119,87,0.22),transparent_42%),radial-gradient(circle_at_bottom_left,rgba(6,182,212,0.14),transparent_40%)] [html[data-theme=monochrome]_&]:hidden" />
           <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
               <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-accent-copper/40 bg-accent-copper/10 px-3 py-1 text-metadata font-semibold uppercase tracking-[0.18em] text-accent-copper">
@@ -222,7 +222,7 @@ export function AccountPage() {
             <TabsList
               className={cn(
                 'flex h-auto w-full min-w-max items-stretch gap-1 rounded-2xl border border-border/80',
-                'bg-panel/90 p-1.5 shadow-soft backdrop-blur-md',
+                'bg-panel/90 p-1.5 shadow-soft backdrop-blur-md [html[data-theme=monochrome]_&]:backdrop-blur-none',
               )}
             >
               {ACCOUNT_TABS.map((t) => (
@@ -681,7 +681,7 @@ function UnifiedUsageBar({
 
       {!notOnPlan && (
         <div
-          className="mt-3 h-3 overflow-hidden rounded-full bg-muted ring-1 ring-border/40"
+          className="mt-3 h-3 overflow-hidden rounded-full bg-muted ring-1 ring-border/40 [html[data-theme=monochrome]_&]:rounded-none [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:ring-foreground/30"
           role="progressbar"
           aria-valuenow={pct}
           aria-valuemin={0}
@@ -690,7 +690,7 @@ function UnifiedUsageBar({
         >
           <div
             className={cn(
-              'h-full rounded-full transition-all duration-300',
+              'h-full rounded-full transition-all duration-300 [html[data-theme=monochrome]_&]:rounded-none [html[data-theme=monochrome]_&]:transition-none',
               pct >= 90 ? 'bg-destructive/85' : pct >= 70 ? 'bg-amber-400/90' : 'bg-accent-cyan/85',
             )}
             style={{ width: `${Math.max(pct, 0)}%` }}

@@ -139,7 +139,7 @@ export function AccessBanner(props: AccessBannerProps) {
   return (
     <aside
       className={cn(
-        'flex flex-col gap-3 border-b px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between',
+        'mc7f-access-banner flex flex-col gap-3 border-b px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between [html[data-theme=monochrome]_&]:border-y [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-current [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:font-mono [html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&_*]:rounded-none [html[data-theme=monochrome]_&_*]:shadow-none',
         urgent
           ? 'border-destructive/30 bg-destructive/10 text-foreground'
           : 'border-warning/30 bg-warning/10 text-foreground',

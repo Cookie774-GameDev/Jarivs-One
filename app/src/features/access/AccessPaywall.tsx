@@ -199,7 +199,7 @@ export function AccessPaywall({
   return (
     <main
       className={cn(
-        'mx-auto flex min-h-screen w-full max-w-lg flex-col justify-center px-4 py-10',
+        'mc7f-access-paywall mx-auto flex min-h-screen w-full max-w-lg flex-col justify-center px-4 py-10 [html[data-theme=monochrome]_&]:max-w-xl [html[data-theme=monochrome]_&]:font-mono [html[data-theme=monochrome]_&_*]:rounded-none [html[data-theme=monochrome]_&_*]:shadow-none',
         'text-foreground',
       )}
     >

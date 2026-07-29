@@ -53,9 +53,7 @@ export function Hive() {
 
   const activate = () => {
     if (!hasHostedHive) {
-      window.dispatchEvent(
-        new CustomEvent('jarvis:settings:tab', { detail: { tab: 'plans' } }),
-      );
+      window.dispatchEvent(new CustomEvent('jarvis:settings:tab', { detail: { tab: 'plans' } }));
       return;
     }
     if (!isActive) {
@@ -66,21 +64,21 @@ export function Hive() {
   };
 
   return (
-    <div className="relative -m-4 overflow-hidden rounded-[28px] bg-[radial-gradient(circle_at_top_left,rgba(217,119,87,0.22),transparent_36%),radial-gradient(circle_at_bottom_right,rgba(59,130,246,0.16),transparent_40%),linear-gradient(180deg,rgba(15,23,42,0.45),transparent)] p-4">
-      <div className="pointer-events-none absolute inset-0 opacity-60 [background-image:linear-gradient(115deg,transparent,rgba(255,255,255,0.04),transparent)]" />
+    <div className="mc7f-settings-hive relative -m-4 overflow-hidden rounded-[28px] bg-[radial-gradient(circle_at_top_left,rgba(217,119,87,0.22),transparent_36%),radial-gradient(circle_at_bottom_right,rgba(59,130,246,0.16),transparent_40%),linear-gradient(180deg,rgba(15,23,42,0.45),transparent)] p-4 [html[data-theme=monochrome]_&]:m-0 [html[data-theme=monochrome]_&]:rounded-none [html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-foreground/20 [html[data-theme=monochrome]_&]:bg-none [html[data-theme=monochrome]_&]:pl-4 [html[data-theme=monochrome]_&_*]:rounded-none [html[data-theme=monochrome]_&_*]:bg-none [html[data-theme=monochrome]_&_*]:shadow-none">
+      <div className="pointer-events-none absolute inset-0 opacity-60 [background-image:linear-gradient(115deg,transparent,rgba(255,255,255,0.04),transparent)] [html[data-theme=monochrome]_&]:hidden" />
 
       {/* ── Hero ─────────────────────────────────────────────── */}
       <header className="relative overflow-hidden rounded-3xl border border-accent-copper/25 bg-slate-950 px-6 py-7 shadow-2xl">
-        <div className="absolute inset-0 bg-[linear-gradient(115deg,transparent,rgba(217,119,87,0.14),transparent)] animate-[plan-border-flow_9s_linear_infinite] bg-[length:220%_auto]" />
+        <div className="absolute inset-0 bg-[linear-gradient(115deg,transparent,rgba(217,119,87,0.14),transparent)] animate-[plan-border-flow_9s_linear_infinite] bg-[length:220%_auto] [html[data-theme=monochrome]_&]:hidden" />
         <motion.div
           aria-hidden
-          className="absolute -right-24 -top-24 h-60 w-60 rounded-full bg-orange-400/20 blur-3xl"
+          className="absolute -right-24 -top-24 h-60 w-60 rounded-full bg-orange-400/20 blur-3xl [html[data-theme=monochrome]_&]:hidden"
           animate={{ scale: [1, 1.12, 1], opacity: [0.5, 0.8, 0.5] }}
           transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut' }}
         />
         <motion.div
           aria-hidden
-          className="absolute -bottom-28 left-1/3 h-64 w-64 rounded-full bg-blue-500/15 blur-3xl"
+          className="absolute -bottom-28 left-1/3 h-64 w-64 rounded-full bg-blue-500/15 blur-3xl [html[data-theme=monochrome]_&]:hidden"
           animate={{ scale: [1.1, 1, 1.1], opacity: [0.4, 0.7, 0.4] }}
           transition={{ duration: 9, repeat: Infinity, ease: 'easeInOut' }}
         />
@@ -102,8 +100,8 @@ export function Hive() {
           </div>
           <p className="max-w-2xl text-secondary leading-relaxed text-slate-300">
             Hive sends your message through five top models in sequence — one drafts, the next
-            review and refine, and the last one polishes. You get a single, stronger answer than
-            any one model alone. It runs only in Jarvis chat.
+            review and refine, and the last one polishes. You get a single, stronger answer than any
+            one model alone. It runs only in Jarvis chat.
           </p>
         </div>
       </header>
@@ -149,7 +147,7 @@ export function Hive() {
               : 'border-border bg-panel/80 hover:border-accent-copper/50',
           )}
         >
-          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-amber-400 via-orange-400 to-amber-300 bg-[length:220%_auto] animate-[plan-border-flow_6s_linear_infinite]" />
+          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-amber-400 via-orange-400 to-amber-300 bg-[length:220%_auto] animate-[plan-border-flow_6s_linear_infinite] [html[data-theme=monochrome]_&]:hidden" />
           <div className="absolute inset-0 bg-gradient-to-br from-amber-400/10 to-orange-500/[0.06] opacity-70 transition-opacity group-hover:opacity-100" />
 
           <AnimatePresence>

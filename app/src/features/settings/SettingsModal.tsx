@@ -34,14 +34,13 @@ import { useUIStore } from '@/stores/ui';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { HiveModelTabIcon } from '@/components/brand';
-import {
-  prefetchSettingsTab,
-  type SettingsTab,
-} from './settingsPrefetch';
+import { prefetchSettingsTab, type SettingsTab } from './settingsPrefetch';
 import { rememberSettingsTab } from './settingsTabMemory';
 
 const Account = lazy(() => import('./sections/Account').then((m) => ({ default: m.Account })));
-const Providers = lazy(() => import('./sections/Providers').then((m) => ({ default: m.Providers })));
+const Providers = lazy(() =>
+  import('./sections/Providers').then((m) => ({ default: m.Providers })),
+);
 const SubscriptionCliBridge = lazy(() =>
   import('./sections/SubscriptionCliBridge').then((m) => ({ default: m.SubscriptionCliBridge })),
 );
@@ -53,9 +52,13 @@ const Hive = lazy(() => import('./sections/Hive').then((m) => ({ default: m.Hive
 const AllAboutMe = lazy(() =>
   import('./sections/AllAboutMe').then((m) => ({ default: m.AllAboutMe })),
 );
-const Appearance = lazy(() => import('./sections/Appearance').then((m) => ({ default: m.Appearance })));
+const Appearance = lazy(() =>
+  import('./sections/Appearance').then((m) => ({ default: m.Appearance })),
+);
 const Voice = lazy(() => import('./sections/Voice').then((m) => ({ default: m.Voice })));
-const PhoneVoice = lazy(() => import('./sections/PhoneVoice').then((m) => ({ default: m.PhoneVoice })));
+const PhoneVoice = lazy(() =>
+  import('./sections/PhoneVoice').then((m) => ({ default: m.PhoneVoice })),
+);
 const ComposerStt = lazy(() =>
   import('./sections/ComposerStt').then((m) => ({ default: m.ComposerStt })),
 );
@@ -75,7 +78,6 @@ const Admin = lazy(() => import('./sections/Admin').then((m) => ({ default: m.Ad
 const JarvisActions = lazy(() =>
   import('./sections/JarvisActions').then((m) => ({ default: m.JarvisActions })),
 );
-
 
 interface TabDef {
   id: SettingsTab;
@@ -136,7 +138,13 @@ function CachedTabPanel({
   );
 }
 
-function SettingsTabPanels({ tab, visited }: { tab: SettingsTab; visited: ReadonlySet<SettingsTab> }) {
+function SettingsTabPanels({
+  tab,
+  visited,
+}: {
+  tab: SettingsTab;
+  visited: ReadonlySet<SettingsTab>;
+}) {
   return (
     <Suspense fallback={null}>
       <CachedTabPanel id="account" active={tab === 'account'} visited={visited.has('account')}>
@@ -145,16 +153,28 @@ function SettingsTabPanels({ tab, visited }: { tab: SettingsTab; visited: Readon
       <CachedTabPanel id="plans" active={tab === 'plans'} visited={visited.has('plans')}>
         <Plans />
       </CachedTabPanel>
-      <CachedTabPanel id="providers" active={tab === 'providers'} visited={visited.has('providers')}>
+      <CachedTabPanel
+        id="providers"
+        active={tab === 'providers'}
+        visited={visited.has('providers')}
+      >
         <Providers />
       </CachedTabPanel>
-      <CachedTabPanel id="connections" active={tab === 'connections'} visited={visited.has('connections')}>
+      <CachedTabPanel
+        id="connections"
+        active={tab === 'connections'}
+        visited={visited.has('connections')}
+      >
         <SubscriptionCliBridge />
       </CachedTabPanel>
       <CachedTabPanel id="hive" active={tab === 'hive'} visited={visited.has('hive')}>
         <Hive />
       </CachedTabPanel>
-      <CachedTabPanel id="allaboutme" active={tab === 'allaboutme'} visited={visited.has('allaboutme')}>
+      <CachedTabPanel
+        id="allaboutme"
+        active={tab === 'allaboutme'}
+        visited={visited.has('allaboutme')}
+      >
         <AllAboutMe />
       </CachedTabPanel>
       <CachedTabPanel id="plugins" active={tab === 'plugins'} visited={visited.has('plugins')}>
@@ -167,7 +187,11 @@ function SettingsTabPanels({ tab, visited }: { tab: SettingsTab; visited: Readon
       >
         <LocalModels active={tab === 'localmodels'} />
       </CachedTabPanel>
-      <CachedTabPanel id="appearance" active={tab === 'appearance'} visited={visited.has('appearance')}>
+      <CachedTabPanel
+        id="appearance"
+        active={tab === 'appearance'}
+        visited={visited.has('appearance')}
+      >
         <Appearance />
       </CachedTabPanel>
       <CachedTabPanel id="voice" active={tab === 'voice'} visited={visited.has('voice')}>
@@ -291,7 +315,7 @@ export function SettingsModal({ initialTab = 'account' }: SettingsModalProps) {
         setOpen(v);
       }}
     >
-      <DialogContent className="max-w-6xl w-[min(1180px,94vw)] h-[min(760px,90vh)] p-0 flex flex-col overflow-hidden">
+      <DialogContent className="mc7f-settings-modal max-w-6xl w-[min(1180px,94vw)] h-[min(760px,90vh)] p-0 flex flex-col overflow-hidden [html[data-theme=monochrome]_&]:rounded-none [html[data-theme=monochrome]_&]:border-foreground/40 [html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&_*]:rounded-none [html[data-theme=monochrome]_&_*]:shadow-none">
         <DialogTitle className="sr-only">Settings</DialogTitle>
         <DialogDescription className="sr-only">
           Configure your account, providers, appearance, voice, hotkeys, and telemetry.
@@ -332,10 +356,7 @@ export function SettingsModal({ initialTab = 'account' }: SettingsModalProps) {
                   >
                     {BrandIcon ? (
                       <BrandIcon
-                        className={cn(
-                          'h-6 w-6 shrink-0',
-                          active ? 'opacity-100' : 'opacity-70',
-                        )}
+                        className={cn('h-6 w-6 shrink-0', active ? 'opacity-100' : 'opacity-70')}
                       />
                     ) : (
                       <Icon
