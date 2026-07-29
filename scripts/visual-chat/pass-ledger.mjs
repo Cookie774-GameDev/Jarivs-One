@@ -1,3 +1,5 @@
+import { isDeepStrictEqual } from 'node:util';
+
 function clone(value) {
   return structuredClone(value);
 }
@@ -207,4 +209,103 @@ export function recordReassessment(ledger, entry) {
   const next = clone(validatePassLedger(ledger));
   next.reassessments.push(clone(entry));
   return validatePassLedger(next);
+}
+
+function requireExactEvidence(actual, expected, label) {
+  requireEvidence(actual, label);
+  if (!isDeepStrictEqual(actual, expected)) {
+    throw new Error(`${label} does not match the accepted pass ledger evidence.`);
+  }
+}
+
+function requireContractRegions(regions, contract, label) {
+  requireRegions(regions, label);
+  const expected = contract.regions.map(({ name }) => name).sort();
+  const actual = Object.keys(regions).sort();
+  if (!isDeepStrictEqual(actual, expected)) {
+    throw new Error(`${label} does not match the reference contract regions.`);
+  }
+}
+
+function requireLocalRoute(value, label) {
+  const route = requireText(value, label);
+  try {
+    const url = new URL(route);
+    if (url.protocol !== 'http:' || !['127.0.0.1', 'localhost', '::1'].includes(url.hostname)) {
+      throw new Error('not local');
+    }
+  } catch {
+    throw new Error(`${label} must be a local HTTP URL.`);
+  }
+}
+
+function requireLedgerMeasurement(actual, expected, contract, label) {
+  requireObject(actual, label);
+  requireRevision(actual.revision, `${label}.revision`);
+  requireScore(actual.fullDiff, `${label}.fullDiff`);
+  requireScore(actual.weightedDiff, `${label}.weightedDiff`);
+  requireContractRegions(actual.regions, contract, `${label}.regions`);
+  requireExactEvidence(actual.evidence, expected.evidence, `${label}.evidence`);
+  if (!isDeepStrictEqual(actual.revision, expected.revision)) {
+    throw new Error(`${label}.revision does not match the accepted pass ledger.`);
+  }
+  if (actual.fullDiff !== expected.fullDiff) {
+    throw new Error(`${label}.fullDiff does not match the accepted pass ledger.`);
+  }
+  if (actual.weightedDiff !== expected.weightedDiff) {
+    throw new Error(`${label}.weightedDiff does not match the accepted pass ledger.`);
+  }
+  if (!isDeepStrictEqual(actual.regions, expected.regions)) {
+    throw new Error(`${label}.regions do not match the accepted pass ledger.`);
+  }
+}
+
+export function validateFinalMetadata(metadata, { ledger, contract } = {}) {
+  requireObject(metadata, 'final metadata');
+  validatePassLedger(ledger);
+  requireObject(contract, 'reference contract');
+  requireObject(contract.viewport, 'reference contract viewport');
+  if (!Array.isArray(contract.regions) || contract.regions.length === 0) {
+    throw new Error('Reference contract regions are required.');
+  }
+  if (metadata.schemaVersion !== 1) {
+    throw new Error(`Unsupported final metadata schema: ${String(metadata.schemaVersion)}.`);
+  }
+  if (!SHA256_PATTERN.test(metadata.referenceTargetSha256 ?? '')) {
+    throw new Error('referenceTargetSha256 must be a lowercase 64-character SHA-256 hash.');
+  }
+  if (!SHA256_PATTERN.test(metadata.passLedgerSha256 ?? '')) {
+    throw new Error('passLedgerSha256 must be a lowercase 64-character SHA-256 hash.');
+  }
+
+  const keptPasses = ledger.passes.filter(({ decision }) => decision === 'kept');
+  const rejectedPasses = ledger.passes.filter(({ decision }) => decision === 'rejected');
+  const expectedCounts = {
+    passCount: ledger.passes.length,
+    keptPassCount: keptPasses.length,
+    rejectedPassCount: rejectedPasses.length,
+  };
+  for (const [name, expected] of Object.entries(expectedCounts)) {
+    if (metadata[name] !== expected) {
+      throw new Error(`${name} does not match the accepted pass ledger.`);
+    }
+  }
+
+  requireLedgerMeasurement(metadata.baseline, ledger.baseline, contract, 'baseline');
+  const finalPass = keptPasses.at(-1) ?? ledger.baseline;
+  requireLedgerMeasurement(metadata.final, finalPass, contract, 'final');
+  requireLocalRoute(metadata.final.route, 'final.route');
+  if (!isDeepStrictEqual(metadata.final.viewport, contract.viewport)) {
+    throw new Error('final.viewport does not match the reference contract.');
+  }
+  if (
+    keptPasses.length > 0 &&
+    !(
+      metadata.final.fullDiff < metadata.baseline.fullDiff &&
+      metadata.final.weightedDiff < metadata.baseline.weightedDiff
+    )
+  ) {
+    throw new Error('Final metadata must improve both baseline scores.');
+  }
+  return metadata;
 }
