@@ -45,6 +45,9 @@
 -- All DDL is idempotent.
 -- =============================================================================
 
+set lock_timeout = '5s';
+set statement_timeout = '60s';
+
 create extension if not exists pgcrypto;
 
 -- =============================================================================
@@ -226,9 +229,14 @@ create policy app_access_events_owner_select on public.app_access_events
   for select to authenticated
   using ((select auth.uid()) = user_id);
 drop policy if exists app_access_events_service on public.app_access_events;
-create policy app_access_events_service on public.app_access_events
-  for all to service_role
-  using (true) with check (true);
+drop policy if exists app_access_events_service_select on public.app_access_events;
+drop policy if exists app_access_events_service_insert on public.app_access_events;
+create policy app_access_events_service_select on public.app_access_events
+  for select to service_role
+  using (true);
+create policy app_access_events_service_insert on public.app_access_events
+  for insert to service_role
+  with check (true);
 
 -- Explicit table grants (Supabase 2026 Data API change): SELECT only for
 -- authenticated; nothing for anon; no INSERT/UPDATE/DELETE for clients.
@@ -248,7 +256,8 @@ revoke all on table public.app_access_events from public;
 revoke all on table public.app_access_events from anon;
 revoke all on table public.app_access_events from authenticated;
 grant select on table public.app_access_events to authenticated;
-grant select, insert, update, delete on table public.app_access_events to service_role;
+revoke all on table public.app_access_events from service_role;
+grant select, insert on table public.app_access_events to service_role;
 
 -- =============================================================================
 -- 5. updated_at / revision triggers
@@ -853,6 +862,8 @@ revoke all on function public.start_app_access_trial(uuid) from public, anon, au
 grant execute on function public.start_app_access_trial(uuid) to service_role;
 
 -- =============================================================================
--- End of 0032_app_access. Rollback: drop the two RPC entrypoints, internal
--- helpers, triggers, tables, and grants in reverse order (not executed here).
+-- DATA-PRESERVING OPERATIONAL ROLLBACK: set the singleton launch gate to
+-- enabled=false and redeploy the last approved compatible Edge handlers.
+-- Retain entitlement and audit rows. Schema removal is a separate, explicitly
+-- approved reverse-order operation only after export and retention review.
 -- =============================================================================

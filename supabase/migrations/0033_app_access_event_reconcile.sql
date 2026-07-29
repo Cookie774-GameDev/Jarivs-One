@@ -14,6 +14,9 @@
 -- before this RPC; missing claims fail closed.
 -- =============================================================================
 
+set lock_timeout = '5s';
+set statement_timeout = '60s';
+
 create or replace function public.app_access_reconcile_event(
   p_event_id text,
   p_user_id uuid,
@@ -467,3 +470,8 @@ revoke all on function public.app_access_reconcile_event(
 grant execute on function public.app_access_reconcile_event(
   text, uuid, bigint, timestamptz, jsonb, jsonb
 ) to service_role;
+
+-- DATA-PRESERVING OPERATIONAL ROLLBACK: disable the app-access launch gate and
+-- redeploy the last approved compatible webhook before changing this RPC.
+-- Retain entitlement and audit rows; remove this function only after export and
+-- retention review approves a separate reverse-order schema rollback.

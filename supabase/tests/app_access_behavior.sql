@@ -894,13 +894,13 @@ begin
   raise notice 'OK: RPC EXECUTE grants/revokes match the intended roles';
 end $$;
 
--- -- 18. Explicit table grants: SELECT for authenticated, no DML, no anon -----
+-- -- 18. Explicit table grants: SELECT for authenticated, append-only events --
 do $$
 declare
   t text;
-  tables text[] := array['app_access_launch_config','app_access_entitlements','app_access_events'];
+  mutable_tables text[] := array['app_access_launch_config','app_access_entitlements'];
 begin
-  foreach t in array tables loop
+  foreach t in array array['app_access_launch_config','app_access_entitlements','app_access_events'] loop
     if not has_table_privilege('authenticated', 'public.' || t, 'SELECT') then
       raise exception 'authenticated must have explicit SELECT on public.%', t;
     end if;
@@ -912,6 +912,9 @@ begin
     if has_table_privilege('anon', 'public.' || t, 'SELECT') then
       raise exception 'anon must NOT have SELECT on public.%', t;
     end if;
+  end loop;
+
+  foreach t in array mutable_tables loop
     if not has_table_privilege('service_role', 'public.' || t, 'SELECT')
        or not has_table_privilege('service_role', 'public.' || t, 'INSERT')
        or not has_table_privilege('service_role', 'public.' || t, 'UPDATE')
@@ -919,7 +922,16 @@ begin
       raise exception 'service_role must retain the explicit server write path on public.%', t;
     end if;
   end loop;
-  raise notice 'OK: explicit table grants (SELECT only) for authenticated; none for anon';
+
+  if not has_table_privilege('service_role', 'public.app_access_events', 'SELECT')
+     or not has_table_privilege('service_role', 'public.app_access_events', 'INSERT') then
+    raise exception 'service_role must retain select/insert on append-only public.app_access_events';
+  end if;
+  if has_table_privilege('service_role', 'public.app_access_events', 'UPDATE')
+     or has_table_privilege('service_role', 'public.app_access_events', 'DELETE') then
+    raise exception 'service_role must not have update/delete on append-only public.app_access_events';
+  end if;
+  raise notice 'OK: explicit table grants preserve authenticated reads and append-only events';
 end $$;
 
 -- -- 19. RLS policy shape: owner self-read, no client write policy ------------
@@ -957,7 +969,31 @@ begin
   if v_client_write > 0 then
     raise exception 'app_access tables must not expose a client write policy (found %)', v_client_write;
   end if;
-  raise notice 'OK: owner self-read policies present; no client write policies';
+  if exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename = 'app_access_events'
+      and ('service_role' = any (roles))
+      and cmd in ('ALL', 'UPDATE', 'DELETE')
+  ) then
+    raise exception 'app_access_events must not expose mutable service-role policies';
+  end if;
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename = 'app_access_events'
+      and ('service_role' = any (roles))
+      and cmd = 'SELECT'
+  ) or not exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename = 'app_access_events'
+      and ('service_role' = any (roles))
+      and cmd = 'INSERT'
+  ) then
+    raise exception 'app_access_events missing append-only service-role policies';
+  end if;
+  raise notice 'OK: owner self-read policies present; no client or audit mutation policies';
 end $$;
 
 -- -- 20. Functional RLS: self-read, no self-write, cross-account isolation ----

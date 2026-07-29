@@ -4,6 +4,9 @@
 -- The row lock serializes this snapshot with webhook/service-role entitlement
 -- mutations. The caller cannot select another account: identity is auth.uid().
 
+set lock_timeout = '5s';
+set statement_timeout = '60s';
+
 create or replace function public.get_app_access_lease_snapshot(
   p_app_version text default null
 )
@@ -59,3 +62,7 @@ revoke all on function public.get_app_access_lease_snapshot(text) from anon;
 revoke all on function public.get_app_access_lease_snapshot(text) from authenticated;
 grant execute on function public.get_app_access_lease_snapshot(text) to authenticated;
 
+-- DATA-PRESERVING OPERATIONAL ROLLBACK: disable the app-access launch gate and
+-- redeploy the last approved compatible lease handler. Retain entitlement
+-- revisions and audit rows; remove this RPC only after export and retention
+-- review approves a separate reverse-order schema rollback.

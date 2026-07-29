@@ -14,6 +14,9 @@
 -- The verified Stripe webhook remains the sole activation authority.
 -- =============================================================================
 
+set lock_timeout = '5s';
+set statement_timeout = '60s';
+
 create table if not exists public.app_access_checkout_attempts (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users (id) on delete cascade,
@@ -473,5 +476,7 @@ revoke all on function public.app_access_close_checkout_attempt(uuid, uuid, text
 grant execute on function public.app_access_close_checkout_attempt(uuid, uuid, text)
   to service_role;
 
--- Rollback (not executed here): drop close/complete/reserve RPCs, trigger/touch
--- function, then public.app_access_checkout_attempts.
+-- DATA-PRESERVING OPERATIONAL ROLLBACK: disable the app-access launch gate and
+-- redeploy the last approved compatible checkout handler. Retain attempt rows
+-- for reconciliation/audit. Remove RPCs/table only after export and retention
+-- review approves a separate reverse-order schema rollback.
