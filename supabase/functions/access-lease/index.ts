@@ -17,10 +17,11 @@
 //     in a response, or exposed in errors.
 //   - Lease expiry is bounded by the authoritative entitlement/trial/grace/
 //     current-period end and by status-specific offline windows; it never
-//     extends entitlement. locked/unknown/prelaunch/disabled states are
-//     refused (no lease). Non-finite/invalid timestamps fail closed.
+//     extends entitlement. A locked state emits a short-lived signed denial so
+//     its newer revision can invalidate older granting leases; unknown and
+//     prelaunch states are refused. Non-finite/invalid timestamps fail closed.
 //   - The emitted payload is byte-compatible with the offlineLease.ts verifier:
-//     header { v:1, alg:'ES256', kid }, claims { sub, status, iat, exp, lst,
+//     header { v:1, alg:'ES256', kid }, claims { sub, status, iat, exp, lst, revision,
 //     trialEnd?, currentPeriodEnd?, graceEnd? }, base64url (unpadded) segments
 //     joined by '.', signature over utf8(`${headerB64}.${payloadB64}`).
 //   - No invasive device fingerprint fields are ever added.
@@ -58,6 +59,8 @@ export const ACTIVE_PAID_MAX_OFFLINE_MS = 7 * 24 * 60 * 60 * 1000;
 export const GRACE_MAX_OFFLINE_MS = 24 * 60 * 60 * 1000;
 // Past-due leases are honored offline for a shorter window.
 export const PAST_DUE_MAX_OFFLINE_MS = 24 * 60 * 60 * 1000;
+// Signed denials need only remain parseable long enough to advance freshness.
+export const DENIAL_MAX_OFFLINE_MS = 5 * 60 * 1000;
 // Maximum length of bounded string identifiers (user id, key id).
 const MAX_IDENTIFIER_LENGTH = 256;
 // Maximum serialized lease size in bytes; larger output is rejected.
@@ -99,8 +102,8 @@ function textToBase64Url(text) {
   return bytesToBase64Url(TEXT_ENCODER.encode(text));
 }
 // Map an authoritative server access state onto the narrow offline lease status
-// union used by offlineLease.ts. Non-usable states (locked, unknown, prelaunch,
-// canceled, none, or anything unrecognized) map to null and are refused.
+// union used by offlineLease.ts. Locked maps to a signed denial; unknown,
+// prelaunch, and anything unrecognized map to null and are refused.
 export function mapAuthoritativeStatus(state) {
   switch (state) {
     case 'active':
@@ -114,6 +117,8 @@ export function mapAuthoritativeStatus(state) {
       return 'past_due';
     case 'grace':
       return 'grace';
+    case 'locked':
+      return 'none';
     default:
       return null;
   }
@@ -166,12 +171,18 @@ export function mapAccessRpcSnapshot(data) {
   ) {
     throw new Error('access_lookup_failed');
   }
-  if (mapAuthoritativeStatus(state) !== null && data.canUseApp !== true) {
+  const offlineStatus = mapAuthoritativeStatus(state);
+  if (offlineStatus !== null && offlineStatus !== 'none' && data.canUseApp !== true) {
     throw new Error('access_lookup_failed');
   }
+  if (offlineStatus === 'none' && data.canUseApp !== false) {
+    throw new Error('access_lookup_failed');
+  }
+  if (!isSafeNonNegativeInteger(data.revision)) throw new Error('access_lookup_failed');
 
   const mapped = {
     state,
+    revision: data.revision,
     serverTimeMs: parseRpcTimestamp(data.serverTime, true),
     trialEndMs: parseRpcTimestamp(data.trialEndsAt, false),
     currentPeriodEndMs: parseRpcTimestamp(data.currentPeriodEndsAt, false),
@@ -219,6 +230,8 @@ export function computeIssuedExpiry(status, iat, bounds) {
       if (isSafeNonNegativeInteger(b.graceEndMs)) exp = Math.min(exp, b.graceEndMs);
       return exp;
     }
+    case 'none':
+      return iat + DENIAL_MAX_OFFLINE_MS;
     default:
       return null;
   }
@@ -227,9 +240,9 @@ export function computeIssuedExpiry(status, iat, bounds) {
 // Assemble the signed claims with EXACTLY the verifier-allowed keys. Optional
 // bounds are included only when present and only for the status that uses them,
 // keeping the payload compact and free of invasive/fingerprint fields.
-function buildLeaseClaims(userId, status, iat, exp, bounds) {
+function buildLeaseClaims(userId, status, iat, exp, revision, bounds) {
   const b = bounds || {};
-  const claims = { sub: userId, status, iat, exp, lst: iat };
+  const claims = { sub: userId, status, iat, exp, lst: iat, revision };
   if (status === 'active' && isSafeNonNegativeInteger(b.currentPeriodEndMs)) {
     claims.currentPeriodEnd = b.currentPeriodEndMs;
   }
@@ -269,6 +282,9 @@ export async function issueAccessLease({ userId, access, signingKey, keyId, cryp
   // Issued-at and last-trusted-server-time both come from authoritative time.
   const iat = access.serverTimeMs;
   if (!isSafeNonNegativeInteger(iat)) return { ok: false, code: 'invalid_time' };
+  if (!isSafeNonNegativeInteger(access.revision)) {
+    return { ok: false, code: 'invalid_access' };
+  }
 
   // Any supplied bound must be a safe non-negative integer; fail closed otherwise.
   const suppliedBounds = [access.trialEndMs, access.currentPeriodEndMs, access.graceEndMs];
@@ -288,12 +304,18 @@ export async function issueAccessLease({ userId, access, signingKey, keyId, cryp
     return { ok: false, code: 'no_access', state: access.state };
   }
 
-  const claims = buildLeaseClaims(userId, status, iat, exp, access);
-  const lease = await signLease(claims, signingKey, keyId, cryptoImpl);
+  const claims = buildLeaseClaims(userId, status, iat, exp, access.revision, access);
+  let lease;
+  try {
+    if (!cryptoImpl || typeof cryptoImpl.sign !== 'function') throw new Error('sign_unavailable');
+    lease = await signLease(claims, signingKey, keyId, cryptoImpl);
+  } catch (_err) {
+    return { ok: false, code: 'lease_failed' };
+  }
   if (TEXT_ENCODER.encode(lease).length > MAX_OFFLINE_LEASE_BYTES) {
     return { ok: false, code: 'oversized' };
   }
-  return { ok: true, lease, status, iat, exp, kid: keyId };
+  return { ok: true, lease, status, iat, exp, revision: access.revision, kid: keyId };
 }
 // Pure, dependency-injected HTTP handler. Identity comes only from the
 // server-validated JWT; the request body is never read. All failure modes
@@ -352,7 +374,10 @@ export async function handleAccessLease(req, deps) {
     if (result.code === 'lease_unconfigured')
       return json({ error: 'lease_unconfigured' }, 500, origin);
     if (result.code === 'invalid_user') return json({ error: 'unauthorized' }, 401, origin);
+    if (result.code === 'invalid_access')
+      return json({ error: 'access_lookup_failed' }, 502, origin);
     if (result.code === 'oversized') return json({ error: 'lease_failed' }, 500, origin);
+    if (result.code === 'lease_failed') return json({ error: 'lease_failed' }, 500, origin);
     // no_access / invalid_access: refuse issuance and report the server-derived
     // state so the client can fail closed and show the paywall. No lease issued.
     return json({ lease: null, status: result.state ?? 'none', reason: 'no_lease' }, 200, origin);
@@ -364,6 +389,7 @@ export async function handleAccessLease(req, deps) {
       status: result.status,
       iat: result.iat,
       exp: result.exp,
+      revision: result.revision,
       kid: result.kid,
     },
     200,
@@ -414,19 +440,19 @@ if (import.meta.main) {
       if (error || !data || !data.user) return null;
       return data.user.id;
     },
-    // Authoritative access via the SECURITY DEFINER get_app_access RPC
-    // (migration 0032_app_access), mapped to the narrow snapshot the issuer
-    // needs. INTEGRATION NOTE for the coordinator: get_app_access takes no user
-    // parameter and resolves auth.uid(), so this lookup MUST run in the
-    // authenticated user's context (thread the validated JWT into the client,
-    // or use a service-role variant that accepts user_id). No schema change is
-    // assumed here; timestamps are ISO-8601 UTC strings from the RPC.
+    // Authoritative access via the SECURITY DEFINER lease snapshot RPC
+    // (migration 0034_app_access_lease_freshness), mapped to the narrow snapshot the issuer
+    // needs. The RPC takes no user parameter and resolves auth.uid(), so this
+    // lookup MUST run in the authenticated user's context. Timestamps are
+    // ISO-8601 UTC strings from the RPC.
     async getAuthoritativeAccess(_userId, token) {
       const client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
         auth: { persistSession: false, autoRefreshToken: false },
         global: { headers: { Authorization: `Bearer ${token}` } },
       });
-      const { data, error } = await client.rpc('get_app_access', { p_app_version: APP_VERSION });
+      const { data, error } = await client.rpc('get_app_access_lease_snapshot', {
+        p_app_version: APP_VERSION,
+      });
       if (error || !data) throw new Error('access_lookup_failed');
       return mapAccessRpcSnapshot(data);
     },

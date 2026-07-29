@@ -22,6 +22,7 @@ import {
   PAST_DUE_MAX_OFFLINE_MS,
 } from './offlineLease';
 import type { OfflineLeaseClock, OfflineLeaseResult, OfflineLeaseVerifier } from './offlineLease';
+import type { OfflineLeaseFreshnessStore } from './offlineLeaseFreshness';
 
 const T0 = 1_700_000_000_000;
 const DAY = 24 * 60 * 60 * 1000;
@@ -79,6 +80,7 @@ function validClaims(overrides: Record<string, unknown> = {}): Record<string, un
     iat: T0,
     exp: T0 + DAY,
     lst: T0,
+    revision: 7,
     ...overrides,
   };
 }
@@ -135,6 +137,21 @@ interface VerifierOverrides {
   clock?: OfflineLeaseClock;
   rollbackToleranceMs?: number;
   expectedUserId?: string;
+  freshnessStore?: OfflineLeaseFreshnessStore;
+  requireRestartSafeFreshness?: boolean;
+}
+
+function makeFreshnessStore(initial: string | null = null): OfflineLeaseFreshnessStore {
+  let raw = initial;
+  return {
+    durability: 'restart_safe',
+    async read() {
+      return raw;
+    },
+    async write(_accountId, value) {
+      raw = value;
+    },
+  };
 }
 
 function makeVerifier(overrides: VerifierOverrides = {}): OfflineLeaseVerifier {
@@ -143,6 +160,8 @@ function makeVerifier(overrides: VerifierOverrides = {}): OfflineLeaseVerifier {
     trustedKeys: overrides.trustedKeys ?? { [KID]: publicKey },
     clock: overrides.clock ?? makeClock(T0).clock,
     rollbackToleranceMs: overrides.rollbackToleranceMs ?? 5_000,
+    freshnessStore: overrides.freshnessStore ?? makeFreshnessStore(),
+    requireRestartSafeFreshness: overrides.requireRestartSafeFreshness,
   });
 }
 
@@ -240,6 +259,21 @@ describe('offline lease envelope and schema validation', () => {
     expect((await makeVerifier().evaluate(fractional)).reason).toBe('invalid_claims');
     const wrongType = await signLeaseToken({ privateKey, claims: validClaims({ lst: 'now' }) });
     expect((await makeVerifier().evaluate(wrongType)).reason).toBe('invalid_claims');
+  });
+
+  it('requires a bounded nonnegative signed entitlement revision', async () => {
+    const { revision: _revision, ...missingRevision } = validClaims();
+    expect(
+      (await makeVerifier().evaluate(await signLeaseToken({ privateKey, claims: missingRevision })))
+        .reason,
+    ).toBe('invalid_claims');
+    for (const revision of [-1, 0.5, Number.MAX_SAFE_INTEGER + 1, '7', null]) {
+      const token = await signLeaseToken({
+        privateKey,
+        claims: validClaims({ revision }),
+      });
+      expect((await makeVerifier().evaluate(token)).reason).toBe('invalid_claims');
+    }
   });
 
   it('rejects invalid time ordering when expiry is not after issuance', async () => {
@@ -504,6 +538,96 @@ describe('offline lease user binding', () => {
 // --- Monotonic time and clock-rollback guard ----------------------------------
 
 describe('offline lease monotonic time and clock-rollback guard', () => {
+  it('persists a newer signed locked denial and rejects replay of an older active lease', async () => {
+    const freshnessStore = makeFreshnessStore();
+    const active = await signLeaseToken({
+      privateKey,
+      claims: validClaims({ revision: 7 }),
+    });
+    expect(
+      (
+        await makeVerifier({
+          freshnessStore,
+          clock: makeClock(T0).clock,
+        }).evaluate(active)
+      ).allowed,
+    ).toBe(true);
+
+    const locked = await signLeaseToken({
+      privateKey,
+      claims: validClaims({
+        status: 'none',
+        revision: 8,
+        iat: T0 + 1_000,
+        lst: T0 + 1_000,
+      }),
+    });
+    const denial = await makeVerifier({
+      freshnessStore,
+      clock: makeClock(T0 + 1_000).clock,
+    }).evaluate(locked);
+    expect(denial.allowed).toBe(false);
+    expect(denial.reason).toBe('no_access');
+
+    const replay = await makeVerifier({
+      freshnessStore,
+      clock: makeClock(T0 + 2_000).clock,
+    }).evaluate(active);
+    expect(replay.allowed).toBe(false);
+    expect(replay.reason).toBe('stale_revision');
+  });
+
+  it('rejects wall-clock rollback after verifier recreation', async () => {
+    const freshnessStore = makeFreshnessStore();
+    const token = await signLeaseToken({ privateKey, claims: validClaims() });
+    expect(
+      (
+        await makeVerifier({
+          freshnessStore,
+          clock: makeClock(T0).clock,
+        }).evaluate(token)
+      ).allowed,
+    ).toBe(true);
+    const rolledBack = await makeVerifier({
+      freshnessStore,
+      clock: makeClock(T0 - 60_000).clock,
+    }).evaluate(token);
+    expect(rolledBack.allowed).toBe(false);
+    expect(rolledBack.reason).toBe('rollback_detected');
+  });
+
+  it('fails closed for unavailable, corrupt, or cross-account durable state', async () => {
+    const token = await signLeaseToken({ privateKey, claims: validClaims() });
+    const unavailable: OfflineLeaseFreshnessStore = {
+      durability: 'restart_safe',
+      async read() {
+        throw new Error('keychain unavailable');
+      },
+      async write() {},
+    };
+    expect((await makeVerifier({ freshnessStore: unavailable }).evaluate(token)).reason).toBe(
+      'freshness_unavailable',
+    );
+    expect(
+      (await makeVerifier({ freshnessStore: makeFreshnessStore('{bad') }).evaluate(token)).reason,
+    ).toBe('freshness_corrupt');
+    expect(
+      (
+        await makeVerifier({
+          freshnessStore: makeFreshnessStore(
+            JSON.stringify({
+              schemaVersion: 1,
+              accountId: 'another-account',
+              revision: 7,
+              lastTrustedServerTime: T0,
+              wallClock: T0,
+            }),
+          ),
+        }).evaluate(token)
+      ).reason,
+    ).toBe('freshness_corrupt');
+  });
+
   it('detects a clock rolled behind signed trusted server time before startup', async () => {
     const verifier = makeVerifier({ clock: makeClock(T0 - 60 * 60 * 1000).clock });
     const token = await signLeaseToken({

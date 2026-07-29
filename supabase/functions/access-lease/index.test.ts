@@ -7,6 +7,7 @@
 // generated ephemeral ECDSA P-256 keys and an injected deterministic clock.
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
+import { existsSync, readFileSync } from 'node:fs';
 import {
   handleAccessLease,
   issueAccessLease,
@@ -44,6 +45,7 @@ before(async () => {
   otherPublicKey = other.publicKey;
 });
 function makeDeps(overrides = {}) {
+  const authoritativeOverride = overrides.getAuthoritativeAccess;
   return {
     signingKey: privateKey,
     keyId: KID,
@@ -52,9 +54,18 @@ function makeDeps(overrides = {}) {
     getAuthoritativeAccess: async () => ({
       state: 'active',
       serverTimeMs: T0,
+      revision: 7,
       currentPeriodEndMs: T0 + 30 * DAY,
     }),
     ...overrides,
+    ...(authoritativeOverride
+      ? {
+          getAuthoritativeAccess: async (...args) => ({
+            revision: 7,
+            ...(await authoritativeOverride(...args)),
+          }),
+        }
+      : {}),
   };
 }
 
@@ -80,11 +91,19 @@ async function callHandler(deps, opts = {}) {
 }
 
 function verifierAt(wallNow, expectedUserId = USER, trustedKeys = { [KID]: publicKey }) {
+  const vault = new Map();
   return createOfflineLeaseVerifier({
     expectedUserId,
     trustedKeys,
     clock: { now: () => wallNow, monotonicNow: () => 0 },
     rollbackToleranceMs: 5000,
+    freshnessStore: {
+      durability: 'restart_safe',
+      read: async (accountId) => vault.get(accountId) ?? null,
+      write: async (accountId, value) => {
+        vault.set(accountId, value);
+      },
+    },
   });
 }
 
@@ -228,6 +247,7 @@ test('maps valid RPC timestamps and rejects malformed authoritative dates', () =
       status: 'active',
       enabled: true,
       canUseApp: true,
+      revision: 7,
       serverTime: '2025-06-15T15:06:40.000Z',
       trialEndsAt: null,
       currentPeriodEndsAt: '2025-06-17T15:06:40.000Z',
@@ -236,11 +256,27 @@ test('maps valid RPC timestamps and rejects malformed authoritative dates', () =
     {
       state: 'active',
       serverTimeMs: T0,
+      revision: 7,
       trialEndMs: null,
       currentPeriodEndMs: T0 + 2 * DAY,
       graceEndMs: null,
     },
   );
+
+  for (const revision of [undefined, null, -1, 0.5, Number.MAX_SAFE_INTEGER + 1, '7']) {
+    assert.throws(
+      () =>
+        mapAccessRpcSnapshot({
+          status: 'active',
+          enabled: true,
+          canUseApp: true,
+          revision,
+          serverTime: '2025-06-15T15:06:40.000Z',
+          currentPeriodEndsAt: '2025-06-17T15:06:40.000Z',
+        }),
+      /access_lookup_failed/,
+    );
+  }
 
   for (const value of ['not-a-time', '2026-02-30T12:00:00Z', 42]) {
     assert.throws(
@@ -249,6 +285,7 @@ test('maps valid RPC timestamps and rejects malformed authoritative dates', () =
           status: 'active',
           enabled: true,
           canUseApp: true,
+          revision: 7,
           serverTime: '2025-06-15T15:06:40.000Z',
           currentPeriodEndsAt: value,
         }),
@@ -272,6 +309,7 @@ test('issues an active lease that verifies through the real offlineLease verifie
   assert.equal(r.verified.kid, KID);
   assert.equal(r.verified.v, 1);
   assert.equal(r.verified.alg, 'ES256');
+  assert.equal(r.verified.revision, 7);
 });
 
 test('caps active expiry at iat + 7 days when period end is far', async () => {
@@ -310,6 +348,7 @@ test('lease payload carries only allowed claim keys (no invasive fingerprint)', 
     'iat',
     'exp',
     'lst',
+    'revision',
     'trialEnd',
     'currentPeriodEnd',
     'graceEnd',
@@ -331,6 +370,25 @@ test('lease payload carries only allowed claim keys (no invasive fingerprint)', 
   ];
   for (const key of banned) assert.ok(!(key in payload), `banned claim ${key} present`);
   assert.equal(payload.sub, USER);
+  assert.equal(payload.revision, 7);
+});
+
+test('issues a signed locked denial carrying the newer authoritative revision', async () => {
+  const { json } = await callHandler(
+    makeDeps({
+      getAuthoritativeAccess: async () => ({
+        state: 'locked',
+        serverTimeMs: T0 + 1_000,
+        revision: 8,
+      }),
+    }),
+    {},
+  );
+  assert.ok(json.lease);
+  assert.equal(json.status, 'none');
+  const { payload } = decodeLease(json.lease);
+  assert.equal(payload.status, 'none');
+  assert.equal(payload.revision, 8);
 });
 
 test('lease stays within the 8192-byte bound', async () => {
@@ -446,7 +504,8 @@ test('mapAuthoritativeStatus maps the authoritative union correctly', () => {
   assert.equal(mapAuthoritativeStatus('trialing'), 'trialing');
   assert.equal(mapAuthoritativeStatus('past_due'), 'past_due');
   assert.equal(mapAuthoritativeStatus('grace'), 'grace');
-  for (const s of ['locked', 'unknown', 'prelaunch', 'canceled', 'none', undefined, 'x']) {
+  assert.equal(mapAuthoritativeStatus('locked'), 'none');
+  for (const s of ['unknown', 'prelaunch', 'canceled', 'none', undefined, 'x']) {
     assert.equal(mapAuthoritativeStatus(s), null, String(s));
   }
 });
@@ -475,7 +534,7 @@ test('computeIssuedExpiry caps per status and never extends entitlement', () => 
 // --- Refusal of non-usable / expired states --------------------------------
 
 test('refuses non-usable states with no lease', async () => {
-  for (const state of ['locked', 'unknown', 'prelaunch', 'canceled', 'none', 'bogus']) {
+  for (const state of ['unknown', 'prelaunch', 'canceled', 'none', 'bogus']) {
     const deps = makeDeps({ getAuthoritativeAccess: async () => ({ state, serverTimeMs: T0 }) });
     const { res, json } = await callHandler(deps, {});
     assert.equal(res.status, 200, state);
@@ -485,13 +544,14 @@ test('refuses non-usable states with no lease', async () => {
   }
 });
 
-test('refused locked reports the server-derived status, not client input', async () => {
+test('locked emits a server-derived signed denial, ignoring client input', async () => {
   const deps = makeDeps({
     getAuthoritativeAccess: async () => ({ state: 'locked', serverTimeMs: T0 }),
   });
   const { json } = await callHandler(deps, { body: { status: 'active' } });
-  assert.equal(json.lease, null);
-  assert.equal(json.status, 'locked');
+  assert.ok(json.lease);
+  assert.equal(json.status, 'none');
+  assert.equal(decodeLease(json.lease).payload.status, 'none');
 });
 
 test('refuses when the bounded window already elapsed (exp <= iat)', async () => {
@@ -540,6 +600,22 @@ test('rejects an invalid (fractional) bound fail-closed', async () => {
   const { res, json } = await callHandler(deps, {});
   assert.equal(res.status, 502);
   assert.equal(json.error, 'invalid_authoritative_time');
+});
+
+test('rejects a missing or invalid authoritative revision fail-closed', async () => {
+  for (const revision of [undefined, -1, 0.5, Number.MAX_SAFE_INTEGER + 1, '7']) {
+    const deps = makeDeps({
+      getAuthoritativeAccess: async () => ({
+        state: 'active',
+        serverTimeMs: T0,
+        revision,
+        currentPeriodEndMs: T0 + DAY,
+      }),
+    });
+    const { res, json } = await callHandler(deps, {});
+    assert.equal(res.status, 502, String(revision));
+    assert.equal(json.error, 'access_lookup_failed', String(revision));
+  }
 });
 // --- Cross-user / body injection -------------------------------------------
 
@@ -604,6 +680,11 @@ test('rollback: a rolled-back wall clock with advanced monotonic time is rejecte
     trustedKeys: { [KID]: publicKey },
     clock: sc.clock,
     rollbackToleranceMs: 5000,
+    freshnessStore: {
+      durability: 'restart_safe',
+      read: async () => null,
+      write: async () => {},
+    },
   });
   sc.advanceMono(10_000);
   sc.setWall(T0 - 60_000);
@@ -637,17 +718,17 @@ test('not_yet_valid: a lease evaluated well before iat is rejected', async () =>
 
 // --- issueAccessLease direct unit checks -----------------------------------
 
-test('issueAccessLease refuses locked, missing key, invalid user, and invalid time', async () => {
+test('issueAccessLease signs locked denial and rejects missing key, invalid user, and invalid time', async () => {
   const subtle = globalThis.crypto.subtle;
   const locked = await issueAccessLease({
     userId: USER,
-    access: { state: 'locked', serverTimeMs: T0 },
+    access: { state: 'locked', serverTimeMs: T0, revision: 7 },
     signingKey: privateKey,
     keyId: KID,
     crypto: subtle,
   });
-  assert.equal(locked.ok, false);
-  assert.equal(locked.code, 'no_access');
+  assert.equal(locked.ok, true);
+  assert.equal(locked.status, 'none');
   const noKey = await issueAccessLease({
     userId: USER,
     access: { state: 'active', serverTimeMs: T0 },
@@ -675,6 +756,33 @@ test('issueAccessLease refuses locked, missing key, invalid user, and invalid ti
   });
   assert.equal(badTime.ok, false);
   assert.equal(badTime.code, 'invalid_time');
+});
+
+test('bounds signing failures without leaking crypto details', async () => {
+  const { res, json } = await callHandler(
+    makeDeps({
+      crypto: {
+        sign: async () => {
+          throw new Error('private signing detail');
+        },
+      },
+    }),
+    {},
+  );
+  assert.equal(res.status, 500);
+  assert.deepEqual(json, { error: 'lease_failed' });
+});
+
+test('migration exposes an authenticated transactionally locked revision snapshot RPC', () => {
+  const migration = new URL('../../migrations/0034_app_access_lease_freshness.sql', import.meta.url);
+  assert.equal(existsSync(migration), true);
+  const sql = readFileSync(migration, 'utf8');
+  assert.match(sql, /create or replace function public\.get_app_access_lease_snapshot/iu);
+  assert.match(sql, /for update/iu);
+  assert.match(sql, /jsonb_build_object\('revision',\s*v_revision\)/iu);
+  assert.match(sql, /revoke all on function public\.get_app_access_lease_snapshot\(text\)/iu);
+  assert.match(sql, /grant execute on function public\.get_app_access_lease_snapshot\(text\) to authenticated/iu);
+  assert.doesNotMatch(sql, /grant execute[\s\S]*get_app_access_lease_snapshot[\s\S]*\bto anon\b/iu);
 });
 
 // --- Determinism of claims (signature may vary) ----------------------------

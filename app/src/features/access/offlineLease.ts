@@ -1,3 +1,8 @@
+// Node's native TypeScript loader requires the explicit extension in the
+// issuer's zero-build integration tests; the app bundler resolves it too.
+// @ts-expect-error TS5097: allowImportingTsExtensions is intentionally off.
+import { createOfflineLeaseFreshnessGuard, createOfflineLeaseFreshnessStore, type OfflineLeaseFreshnessStore } from './offlineLeaseFreshness.ts';
+
 /**
  * Cryptographically verified, time-limited offline access leases.
  *
@@ -95,7 +100,12 @@ export type OfflineLeaseReason =
   | 'unknown_status'
   | 'unknown_key'
   | 'invalid_time_ordering'
-  | 'invalid_claims';
+  | 'invalid_claims'
+  | 'stale_revision'
+  | 'trusted_time_rollback'
+  | 'freshness_corrupt'
+  | 'freshness_unavailable'
+  | 'freshness_not_restart_safe';
 
 /** Injectable time source so expiry and rollback logic is deterministic. */
 export interface OfflineLeaseClock {
@@ -117,6 +127,8 @@ export interface OfflineLeaseClaims {
   readonly exp: number;
   /** Last trusted server time, ms since the Unix epoch. */
   readonly lst: number;
+  /** Monotonic server-side entitlement revision. */
+  readonly revision: number;
   /** Optional trial end, ms since the Unix epoch. */
   readonly trialEnd?: number;
   /** Optional current billing period end, ms since the Unix epoch. */
@@ -135,6 +147,7 @@ export interface VerifiedOfflineLease {
   readonly iat: number;
   readonly exp: number;
   readonly lst: number;
+  readonly revision: number;
   readonly trialEnd: number | null;
   readonly currentPeriodEnd: number | null;
   readonly graceEnd: number | null;
@@ -166,6 +179,10 @@ export interface OfflineLeaseVerifierOptions {
   readonly crypto?: SubtleCrypto;
   /** Backward clock movement tolerated before declaring a rollback. */
   readonly rollbackToleranceMs?: number;
+  /** Durable high-water state used to reject stale leases across restarts. */
+  readonly freshnessStore?: OfflineLeaseFreshnessStore;
+  /** Require restart-safe storage; defaults to true. */
+  readonly requireRestartSafeFreshness?: boolean;
 }
 
 export interface OfflineLeaseVerifier {
@@ -184,11 +201,12 @@ const CLAIM_KEYS = [
   'iat',
   'exp',
   'lst',
+  'revision',
   'trialEnd',
   'currentPeriodEnd',
   'graceEnd',
 ] as const;
-const REQUIRED_CLAIM_KEYS = ['sub', 'status', 'iat', 'exp', 'lst'] as const;
+const REQUIRED_CLAIM_KEYS = ['sub', 'status', 'iat', 'exp', 'lst', 'revision'] as const;
 
 const defaultClock: OfflineLeaseClock = {
   now: () => Date.now(),
@@ -256,6 +274,19 @@ function isAccessStatus(value: unknown): value is OfflineAccessStatus {
   );
 }
 
+function requiresOnlineRefresh(reason: OfflineLeaseReason): boolean {
+  return (
+    reason === 'expired' ||
+    reason === 'rollback_detected' ||
+    reason === 'invalid_clock' ||
+    reason === 'stale_revision' ||
+    reason === 'trusted_time_rollback' ||
+    reason === 'freshness_corrupt' ||
+    reason === 'freshness_unavailable' ||
+    reason === 'freshness_not_restart_safe'
+  );
+}
+
 /** Build a fail-closed result for rejections that occur before trust. */
 function reject(reason: OfflineLeaseReason): OfflineLeaseResult {
   return Object.freeze({
@@ -263,8 +294,7 @@ function reject(reason: OfflineLeaseReason): OfflineLeaseResult {
     reason,
     status: null,
     verified: null,
-    requiresOnlineRefresh:
-      reason === 'expired' || reason === 'rollback_detected' || reason === 'invalid_clock',
+    requiresOnlineRefresh: requiresOnlineRefresh(reason),
   });
 }
 
@@ -279,8 +309,7 @@ function decide(
     reason,
     status: verified.status,
     verified,
-    requiresOnlineRefresh:
-      reason === 'expired' || reason === 'rollback_detected' || reason === 'invalid_clock',
+    requiresOnlineRefresh: requiresOnlineRefresh(reason),
   });
 }
 
@@ -348,7 +377,8 @@ function parseLease(rawLease: string): ParsedLease | OfflineLeaseReason {
   if (
     !isSafeNonNegativeInteger(claims.iat) ||
     !isSafeNonNegativeInteger(claims.exp) ||
-    !isSafeNonNegativeInteger(claims.lst)
+    !isSafeNonNegativeInteger(claims.lst) ||
+    !isSafeNonNegativeInteger(claims.revision)
   ) {
     return 'invalid_claims';
   }
@@ -374,6 +404,7 @@ function parseLease(rawLease: string): ParsedLease | OfflineLeaseReason {
       iat: claims.iat,
       exp: claims.exp,
       lst: claims.lst,
+      revision: claims.revision,
       trialEnd: claims.trialEnd,
       currentPeriodEnd: claims.currentPeriodEnd,
       graceEnd: claims.graceEnd,
@@ -404,6 +435,11 @@ export function createOfflineLeaseVerifier(
   }
   const trustedKeys = Object.freeze({ ...options.trustedKeys });
   const expectedUserId = options.expectedUserId;
+  const freshness = createOfflineLeaseFreshnessGuard({
+    accountId: expectedUserId,
+    store: options.freshnessStore ?? createOfflineLeaseFreshnessStore(),
+    requireRestartSafe: options.requireRestartSafeFreshness,
+  });
 
   const baseWall = clock.now();
   const baseMonotonic = clock.monotonicNow();
@@ -459,6 +495,7 @@ export function createOfflineLeaseVerifier(
       iat: parsed.claims.iat,
       exp: parsed.claims.exp,
       lst: parsed.claims.lst,
+      revision: parsed.claims.revision,
       trialEnd: parsed.claims.trialEnd ?? null,
       currentPeriodEnd: parsed.claims.currentPeriodEnd ?? null,
       graceEnd: parsed.claims.graceEnd ?? null,
@@ -466,7 +503,6 @@ export function createOfflineLeaseVerifier(
     });
 
     if (verified.sub !== expectedUserId) return decide(verified, 'wrong_user', false);
-    if (!ACCESS_GRANTING_STATUSES.has(verified.status)) return decide(verified, 'no_access', false);
 
     const currentMonotonic = clock.monotonicNow();
     const wallNow = clock.now();
@@ -481,11 +517,23 @@ export function createOfflineLeaseVerifier(
     }
     const monotonicElapsed = currentMonotonic - baseMonotonic;
     const monotonicWall = baseWall + monotonicElapsed;
-    // Effective time never goes backward even if the wall clock is rolled back.
-    const effectiveNow = Math.max(wallNow, monotonicWall);
     if (wallNow < monotonicWall - rollbackToleranceMs) {
       return decide(verified, 'rollback_detected', false);
     }
+
+    const freshnessResult = await freshness.observe({
+      revision: verified.revision,
+      lastTrustedServerTime: verified.lst,
+      wallClock: wallNow,
+      rollbackToleranceMs,
+    });
+    if (!freshnessResult.ok) return decide(verified, freshnessResult.reason, false);
+
+    // Effective time never goes backward, including across process restarts.
+    const effectiveNow = Math.max(wallNow, monotonicWall, freshnessResult.effectiveNow);
+    // Signed denials advance the durable high-water mark before access is denied,
+    // preventing replay of an older still-unexpired granting lease.
+    if (!ACCESS_GRANTING_STATUSES.has(verified.status)) return decide(verified, 'no_access', false);
     if (effectiveNow < verified.iat - CLOCK_SKEW_TOLERANCE_MS) {
       return decide(verified, 'not_yet_valid', false);
     }
