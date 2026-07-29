@@ -16,7 +16,12 @@
 // Run (Deno, if present):  deno test --allow-env supabase/functions/stripe-webhook/index.test.ts
 
 import { test as __nodeTest } from 'node:test';
-import { applyLegacyPlanToDb, claimSubscriptionEvent, handleStripeWebhook } from './index.ts';
+import {
+  applyLegacyPlanToDb,
+  claimSubscriptionEvent,
+  handleStripeWebhook,
+  reconcileAppAccessWithRpc,
+} from './index.ts';
 
 if (typeof globalThis.Deno === 'undefined') {
   globalThis.Deno = {
@@ -240,9 +245,9 @@ function makeDeps(opts) {
       if (opts.throwIsAppAccessEventProcessed) throw new Error('dedupe lookup unavailable');
       return opts.appEventProcessed === true;
     },
-    async applyAppAccess(command) {
+    async reconcileAppAccessAtomically(command) {
       calls.applyAppAccess.push(command);
-      calls.order.push('appaccess.apply');
+      calls.order.push('appaccess.atomic');
       if (opts.throwApplyAppAccess)
         throw new Error('app-access apply unavailable secret=sk_live_LEAK');
       if (opts.applyResult !== undefined) return opts.applyResult;
@@ -431,7 +436,11 @@ Deno.test('failed/unprocessed duplicate event ids are retried and can apply', as
   assertEquals(res.status, 200);
   assertEquals(await assertSafeBody(res), 'ok');
   assertEquals(calls.applyAppAccess.length, 1, 'retry reprocesses the app-access event');
-  assertEquals(calls.markEventProcessed[0], 'evt_checkout_1', 'processed marked after success');
+  assertEquals(
+    calls.markEventProcessed.length,
+    0,
+    'atomic app-access RPC completes the durable event claim',
+  );
 });
 
 // ===========================================================================
@@ -457,8 +466,9 @@ Deno.test(
     assertEquals(cmd.events[0].set.event_type, 'payment_succeeded');
     assertEquals(cmd.events[0].set.provider_event_id, 'evt_checkout_1');
     assertEquals(cmd.events[0].set.user_id, UID);
+    assertEquals(cmd.eventId, 'evt_checkout_1');
     assertEquals(calls.applyLegacyPlan.length, 0, 'app-access never writes feature tier');
-    assertEquals(calls.markEventProcessed[0], 'evt_checkout_1');
+    assertEquals(calls.markEventProcessed.length, 0, 'no separate completion write');
   },
 );
 
@@ -590,24 +600,20 @@ Deno.test('invoice.payment_succeeded recovers a past_due entitlement to active',
 // Duplicate / retry / ordering safety for app-access events
 // ===========================================================================
 Deno.test(
-  'provider_event_id dedupe treats a re-delivered app-access event as duplicate',
+  'provider_event_id replay is resolved by the atomic reconciliation boundary',
   async () => {
     const { deps, calls } = makeDeps({
       event: subscriptionEvent('customer.subscription.updated'),
       currentRow: currentRow(),
       claim: 'claimed',
-      appEventProcessed: true,
+      applyResult: { ok: true, reason: 'duplicate' },
     });
     const res = await handleStripeWebhook(makeReq('POST'), deps);
     assertEquals(res.status, 200);
     assertEquals(await assertSafeBody(res), 'ok');
-    assertEquals(
-      calls.isAppAccessEventProcessed[0],
-      'evt_sub_1',
-      'pre-checks provider_event_id dedupe',
-    );
-    assertEquals(calls.applyAppAccess.length, 0, 'duplicate does not re-apply');
-    assertEquals(calls.markEventProcessed[0], 'evt_sub_1', 'harmlessly marked processed');
+    assertEquals(calls.isAppAccessEventProcessed.length, 0, 'no separate dedupe read');
+    assertEquals(calls.applyAppAccess.length, 1, 'atomic RPC resolves replay under claim lock');
+    assertEquals(calls.markEventProcessed.length, 0, 'atomic RPC completes the durable claim');
   },
 );
 
@@ -625,6 +631,27 @@ Deno.test(
     assertEquals(calls.applyLegacyPlan.length, 0, 'stale event never touches feature tier');
   },
 );
+
+Deno.test('equal-time active update cannot broaden a locked entitlement', async () => {
+  const { deps, calls } = makeDeps({
+    event: subscriptionEvent('customer.subscription.updated'),
+    currentRow: currentRow({
+      status: 'locked',
+      provider_status: 'canceled',
+      provider_status_updated_at: iso(T0),
+      access_ended_at: iso(T0),
+      grace_started_at: iso(T0),
+      grace_ends_at: iso(T0),
+      locked_at: iso(T0),
+    }),
+  });
+  const res = await handleStripeWebhook(makeReq('POST'), deps);
+  assertEquals(res.status, 200);
+  assertEquals(await assertSafeBody(res), 'ok');
+  assertEquals(calls.applyAppAccess.length, 0, 'equal-time broadening never reaches atomic RPC');
+  assertEquals(calls.markEventProcessed[0], 'evt_sub_1', 'permanent stale event is completed');
+  assertEquals(calls.applyLegacyPlan.length, 0, 'app-access stale event remains isolated');
+});
 
 Deno.test('terminal entitlement cannot be resurrected by a later invoice delivery', async () => {
   const { deps, calls } = makeDeps({
@@ -923,12 +950,46 @@ Deno.test('a concurrent revision conflict refuses the write and requests a retry
   assertEquals(calls.applyLegacyPlan.length, 0, 'conflict never touches feature tier');
 });
 
-Deno.test('an app-access processed-mark failure returns 500 so Stripe retries', async () => {
+Deno.test('concurrent equal-time retry converges on the restrictive state', async () => {
+  const event = subscriptionEvent('customer.subscription.updated');
+  const first = makeDeps({
+    event,
+    currentRow: currentRow({
+      provider_status_updated_at: iso(T0),
+      current_period_end: iso(T0 + 30 * DAY),
+    }),
+    applyResult: { ok: false, reason: 'conflict' },
+  });
+  const firstResponse = await handleStripeWebhook(makeReq('POST'), first.deps);
+  assertEquals(firstResponse.status, 500, 'concurrent revision advance requests retry');
+  assertEquals(first.calls.applyAppAccess.length, 1);
+
+  const retry = makeDeps({
+    event,
+    claim: 'retry',
+    currentRow: currentRow({
+      status: 'past_due',
+      provider_status: 'past_due',
+      provider_status_updated_at: iso(T0),
+      current_period_end: iso(T0 + 30 * DAY),
+      last_payment_status: 'failed',
+      revision: 2,
+    }),
+  });
+  const retryResponse = await handleStripeWebhook(makeReq('POST'), retry.deps);
+  assertEquals(retryResponse.status, 200);
+  assertEquals(await assertSafeBody(retryResponse), 'ok');
+  assertEquals(retry.calls.applyAppAccess.length, 0, 'equal-time retry cannot restore active');
+  assertEquals(retry.calls.markEventProcessed[0], 'evt_sub_1', 'stale retry is completed');
+});
+
+Deno.test('app-access success does not depend on a separate processed-mark write', async () => {
   const { deps, calls } = makeDeps({ event: checkoutEvent(), throwMarkProcessed: true });
   const res = await handleStripeWebhook(makeReq('POST'), deps);
-  assertEquals(res.status, 500);
-  assertEquals(await assertSafeBody(res), 'handler_error');
-  assertEquals(calls.applyAppAccess.length, 1, 'authoritative apply completed before mark failed');
+  assertEquals(res.status, 200);
+  assertEquals(await assertSafeBody(res), 'ok');
+  assertEquals(calls.applyAppAccess.length, 1, 'one atomic reconciliation completed');
+  assertEquals(calls.markEventProcessed.length, 0, 'separate processed mark was never attempted');
 });
 
 Deno.test('a legacy processed-mark failure returns 500 so Stripe retries', async () => {
@@ -1051,6 +1112,59 @@ Deno.test('legacy database adapter checks profile update failures', async () => 
   );
 });
 
+Deno.test('production app-access adapter makes one bounded atomic RPC call', async () => {
+  const calls = [];
+  const db = {
+    async rpc(name, params) {
+      calls.push({ name, params });
+      return { data: 'applied', error: null };
+    },
+  };
+  const result = await reconcileAppAccessWithRpc(db, {
+    eventId: 'evt_atomic_adapter',
+    entitlement: {
+      key: { user_id: UID },
+      expected_revision: 7,
+      expected_provider_status_updated_at: iso(T0 - DAY),
+      set: { status: 'active' },
+    },
+    events: [{ set: { event_type: 'payment_succeeded' } }],
+  });
+  assertEquals(result, { ok: true, reason: 'applied' });
+  assertEquals(calls.length, 1, 'exactly one database RPC call');
+  assertEquals(calls[0].name, 'app_access_reconcile_event');
+  assertEquals(calls[0].params.p_event_id, 'evt_atomic_adapter');
+  assertEquals(calls[0].params.p_expected_revision, 7);
+  assertEquals(calls[0].params.p_entitlement, { status: 'active' });
+  assertEquals(calls[0].params.p_events, [{ event_type: 'payment_succeeded' }]);
+});
+
+Deno.test('production atomic RPC adapter maps conflict and errors to bounded results', async () => {
+  const command = {
+    eventId: 'evt_atomic_adapter',
+    entitlement: { key: { user_id: UID }, set: {} },
+    events: [],
+  };
+  const conflict = await reconcileAppAccessWithRpc(
+    {
+      async rpc() {
+        return { data: 'conflict', error: null };
+      },
+    },
+    command,
+  );
+  assertEquals(conflict, { ok: false, reason: 'conflict' });
+  const failed = await reconcileAppAccessWithRpc(
+    {
+      async rpc() {
+        return { data: null, error: { message: 'secret backend detail' } };
+      },
+    },
+    command,
+  );
+  assertEquals(failed, { ok: false, reason: 'error' });
+});
+
 Deno.test('an entitlement-read database error returns a bounded 500', async () => {
   const { deps, calls } = makeDeps({
     event: subscriptionEvent('customer.subscription.updated'),
@@ -1073,16 +1187,17 @@ Deno.test(
   },
 );
 
-Deno.test('a provider_event_id dedupe lookup failure returns a bounded 500', async () => {
+Deno.test('app-access handling does not depend on a separate provider-event lookup', async () => {
   const { deps, calls } = makeDeps({
     event: subscriptionEvent('customer.subscription.updated'),
     currentRow: currentRow(),
     throwIsAppAccessEventProcessed: true,
   });
   const res = await handleStripeWebhook(makeReq('POST'), deps);
-  assertEquals(res.status, 500);
-  assertEquals(await assertSafeBody(res), 'handler_error');
-  assertEquals(calls.applyAppAccess.length, 0);
+  assertEquals(res.status, 200);
+  assertEquals(await assertSafeBody(res), 'ok');
+  assertEquals(calls.isAppAccessEventProcessed.length, 0);
+  assertEquals(calls.applyAppAccess.length, 1);
 });
 
 Deno.test('verifies and claims before applying (durable ordering)', async () => {
@@ -1090,12 +1205,12 @@ Deno.test('verifies and claims before applying (durable ordering)', async () => 
   await handleStripeWebhook(makeReq('POST'), deps);
   const verify = calls.order.indexOf('verify');
   const claim = calls.order.indexOf('claim');
-  const apply = calls.order.indexOf('appaccess.apply');
+  const apply = calls.order.indexOf('appaccess.atomic');
   const mark = calls.order.indexOf('mark_processed');
-  assert(verify !== -1 && claim !== -1 && apply !== -1 && mark !== -1, 'all stages ran');
+  assert(verify !== -1 && claim !== -1 && apply !== -1, 'all required stages ran');
   assert(verify < claim, 'signature verified before durable claim');
-  assert(claim < apply, 'durable claim before app-access apply');
-  assert(apply < mark, 'apply before marking processed');
+  assert(claim < apply, 'durable claim before atomic app-access reconciliation');
+  assertEquals(mark, -1, 'atomic RPC includes processed completion');
 });
 
 Deno.test('makes no network calls: every provider interaction is injected', async () => {

@@ -1036,6 +1036,352 @@ begin
   raise notice 'OK: functional RLS proves self-read, no self-write, cross-account isolation';
 end $$;
 
+-- -- 21. Atomic webhook reconciliation RPC: grants and function security -------
+do $$
+declare
+  v_sig text :=
+    'public.app_access_reconcile_event(text, uuid, bigint, timestamptz, jsonb, jsonb)';
+  v_security_definer boolean;
+  v_config text;
+begin
+  if not has_function_privilege('service_role', v_sig, 'EXECUTE') then
+    raise exception 'service_role must execute app_access_reconcile_event';
+  end if;
+  if has_function_privilege('authenticated', v_sig, 'EXECUTE')
+     or has_function_privilege('anon', v_sig, 'EXECUTE') then
+    raise exception 'app_access_reconcile_event must not be client-executable';
+  end if;
+
+  select p.prosecdef, coalesce(array_to_string(p.proconfig, ','), '')
+    into v_security_definer, v_config
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public'
+     and p.proname = 'app_access_reconcile_event'
+     and pg_get_function_identity_arguments(p.oid) =
+       'p_event_id text, p_user_id uuid, p_expected_revision bigint, p_expected_provider_status_updated_at timestamp with time zone, p_entitlement jsonb, p_events jsonb';
+  if not found then
+    raise exception 'app_access_reconcile_event signature missing';
+  end if;
+  if v_security_definer then
+    raise exception 'app_access_reconcile_event must remain SECURITY INVOKER';
+  end if;
+  if v_config not like '%search_path=pg_catalog, public%' then
+    raise exception 'app_access_reconcile_event must pin pg_catalog before public';
+  end if;
+  raise notice 'OK: atomic webhook RPC is service-role-only, invoker security, pinned search_path';
+end $$;
+
+-- -- 22. Atomic webhook reconciliation: apply, duplicate, and stale conflict ---
+do $$
+declare
+  uid uuid := gen_random_uuid();
+  v_event text := 'evt_atomic_apply';
+  v_result text;
+  v_entitlement jsonb;
+  v_events jsonb;
+  v_revision bigint;
+begin
+  insert into auth.users (id, email, email_confirmed_at)
+  values (uid, 'aa-atomic@example.com', now());
+  insert into public.subscription_events (event_id, event_type, processed, payload)
+  values (v_event, 'checkout.session.completed', false, '{}'::jsonb);
+
+  v_entitlement := jsonb_build_object(
+    'status', 'active',
+    'provider_status', 'active',
+    'provider_status_updated_at', '2026-07-28T12:00:00Z',
+    'stripe_customer_id', 'cus_atomic_apply',
+    'stripe_subscription_id', 'sub_atomic_apply',
+    'stripe_price_id', 'price_atomic_apply',
+    'current_period_start', '2026-07-28T12:00:00Z',
+    'current_period_end', '2026-08-28T12:00:00Z',
+    'cancel_at_period_end', false,
+    'last_payment_status', 'succeeded',
+    'access_ended_at', null,
+    'trial_started_at', null,
+    'trial_ends_at', null,
+    'grace_started_at', null,
+    'grace_ends_at', null,
+    'locked_at', null
+  );
+  v_events := jsonb_build_array(
+    jsonb_build_object(
+      'user_id', uid,
+      'event_type', 'payment_succeeded',
+      'provider_event_id', v_event,
+      'stripe_subscription_id', 'sub_atomic_apply',
+      'status', 'active',
+      'reason', 'checkout_completed',
+      'occurred_at', '2026-07-28T12:00:00Z'
+    ),
+    jsonb_build_object(
+      'user_id', uid,
+      'event_type', 'checkout_created',
+      'provider_event_id', null,
+      'stripe_subscription_id', 'sub_atomic_apply',
+      'status', 'active',
+      'reason', 'bounded_secondary_audit',
+      'occurred_at', '2026-07-28T12:00:00Z'
+    )
+  );
+
+  v_result := public.app_access_reconcile_event(
+    v_event, uid, null, null, v_entitlement, v_events
+  );
+  if v_result <> 'applied' then
+    raise exception 'atomic apply returned %, expected applied', v_result;
+  end if;
+  if not exists (
+    select 1 from public.app_access_entitlements
+     where user_id = uid and status = 'active'
+       and provider_status_updated_at = '2026-07-28T12:00:00Z'::timestamptz
+  ) then
+    raise exception 'atomic apply did not write entitlement';
+  end if;
+  if not exists (
+    select 1 from public.app_access_events
+     where user_id = uid and provider_event_id = v_event
+       and event_type = 'payment_succeeded'
+  ) then
+    raise exception 'atomic apply did not write audit';
+  end if;
+  if not exists (
+    select 1 from public.subscription_events
+     where event_id = v_event and processed
+  ) then
+    raise exception 'atomic apply did not complete durable event';
+  end if;
+
+  select revision into v_revision
+    from public.app_access_entitlements where user_id = uid;
+  v_result := public.app_access_reconcile_event(
+    v_event, uid, null, null, v_entitlement, v_events
+  );
+  if v_result <> 'duplicate' then
+    raise exception 'processed replay returned %, expected duplicate', v_result;
+  end if;
+  if (select revision from public.app_access_entitlements where user_id = uid) <> v_revision
+     or (select count(*) from public.app_access_events where user_id = uid) <> 2 then
+    raise exception 'duplicate replay changed entitlement revision or audit count';
+  end if;
+
+  insert into public.subscription_events (event_id, event_type, processed, payload)
+  values ('evt_atomic_stale', 'customer.subscription.updated', false, '{}'::jsonb);
+  v_entitlement := v_entitlement ||
+    jsonb_build_object('provider_status_updated_at', '2026-07-27T12:00:00Z');
+  v_events := jsonb_build_array(jsonb_build_object(
+    'user_id', uid,
+    'event_type', 'payment_succeeded',
+    'provider_event_id', 'evt_atomic_stale',
+    'stripe_subscription_id', 'sub_atomic_apply',
+    'status', 'active',
+    'reason', 'subscription_updated',
+    'occurred_at', '2026-07-27T12:00:00Z'
+  ));
+  v_result := public.app_access_reconcile_event(
+    'evt_atomic_stale', uid, v_revision, '2026-07-28T12:00:00Z',
+    v_entitlement, v_events
+  );
+  if v_result <> 'conflict' then
+    raise exception 'out-of-order apply returned %, expected conflict', v_result;
+  end if;
+  if (select processed from public.subscription_events where event_id = 'evt_atomic_stale')
+     or exists (
+       select 1 from public.app_access_events where provider_event_id = 'evt_atomic_stale'
+     )
+     or (select revision from public.app_access_entitlements where user_id = uid) <> v_revision then
+    raise exception 'out-of-order conflict mutated claim, audit, or entitlement';
+  end if;
+
+  insert into public.subscription_events (event_id, event_type, processed, payload)
+  values ('evt_atomic_equal_restrict', 'invoice.payment_failed', false, '{}'::jsonb);
+  v_entitlement := v_entitlement || jsonb_build_object(
+    'status', 'past_due',
+    'provider_status', 'past_due',
+    'provider_status_updated_at', '2026-07-28T12:00:00Z',
+    'last_payment_status', 'failed'
+  );
+  v_events := jsonb_build_array(jsonb_build_object(
+    'user_id', uid,
+    'event_type', 'payment_failed',
+    'provider_event_id', 'evt_atomic_equal_restrict',
+    'stripe_subscription_id', 'sub_atomic_apply',
+    'status', 'past_due',
+    'reason', 'equal_time_restrictive',
+    'occurred_at', '2026-07-28T12:00:00Z'
+  ));
+  v_result := public.app_access_reconcile_event(
+    'evt_atomic_equal_restrict', uid, v_revision, '2026-07-28T12:00:00Z',
+    v_entitlement, v_events
+  );
+  if v_result <> 'applied'
+     or (select status from public.app_access_entitlements where user_id = uid) <> 'past_due'
+     or not (select processed from public.subscription_events
+              where event_id = 'evt_atomic_equal_restrict') then
+    raise exception 'equal-time restrictive transition must apply atomically';
+  end if;
+
+  update public.app_access_entitlements
+     set status = 'locked',
+         provider_status = 'canceled',
+         provider_status_updated_at = '2026-07-28T12:00:00Z',
+         access_ended_at = '2026-07-28T12:00:00Z',
+         grace_started_at = '2026-07-28T12:00:00Z',
+         grace_ends_at = '2026-07-28T12:00:00Z',
+         locked_at = '2026-07-28T12:00:00Z'
+   where user_id = uid;
+  select revision into v_revision
+    from public.app_access_entitlements where user_id = uid;
+  insert into public.subscription_events (event_id, event_type, processed, payload)
+  values ('evt_atomic_equal_broaden', 'customer.subscription.updated', false, '{}'::jsonb);
+  v_entitlement := v_entitlement || jsonb_build_object(
+    'provider_status_updated_at', '2026-07-28T12:00:00Z',
+    'access_ended_at', null,
+    'grace_started_at', null,
+    'grace_ends_at', null,
+    'locked_at', null
+  );
+  v_events := jsonb_build_array(jsonb_build_object(
+    'user_id', uid,
+    'event_type', 'access_restored',
+    'provider_event_id', 'evt_atomic_equal_broaden',
+    'stripe_subscription_id', 'sub_atomic_apply',
+    'status', 'active',
+    'reason', 'equal_time_restore',
+    'occurred_at', '2026-07-28T12:00:00Z'
+  ));
+  v_result := public.app_access_reconcile_event(
+    'evt_atomic_equal_broaden', uid, v_revision, '2026-07-28T12:00:00Z',
+    v_entitlement, v_events
+  );
+  if v_result <> 'conflict' then
+    raise exception 'equal-time broadening returned %, expected conflict', v_result;
+  end if;
+  if (select status from public.app_access_entitlements where user_id = uid) <> 'locked'
+     or (select processed from public.subscription_events
+          where event_id = 'evt_atomic_equal_broaden')
+     or exists (
+       select 1 from public.app_access_events
+        where provider_event_id = 'evt_atomic_equal_broaden'
+     ) then
+    raise exception 'equal-time broadening changed entitlement, audit, or claim';
+  end if;
+  raise notice 'OK: atomic apply, duplicate, older/equal-time conflicts are safe';
+end $$;
+
+-- -- 23. Atomic webhook reconciliation rolls back every write on completion ----
+create or replace function pg_temp.app_access_force_completion_failure()
+returns trigger
+language plpgsql
+set search_path = pg_catalog
+as $$
+begin
+  if new.event_id = 'evt_atomic_rollback' and new.processed then
+    raise exception 'forced completion failure';
+  end if;
+  return new;
+end;
+$$;
+
+create trigger app_access_force_completion_failure
+  before update on public.subscription_events
+  for each row
+  execute function pg_temp.app_access_force_completion_failure();
+
+do $$
+declare
+  uid uuid := gen_random_uuid();
+  v_failed boolean := false;
+begin
+  insert into auth.users (id, email, email_confirmed_at)
+  values (uid, 'aa-atomic-rollback@example.com', now());
+  insert into public.app_access_entitlements (
+    user_id, status, provider_status, provider_status_updated_at,
+    stripe_customer_id, stripe_subscription_id, stripe_price_id
+  ) values (
+    uid, 'active', 'active', '2026-07-28T12:00:00Z',
+    'cus_atomic_rollback', 'sub_atomic_rollback', 'price_atomic_rollback'
+  );
+  insert into public.subscription_events (event_id, event_type, processed, payload)
+  values ('evt_atomic_rollback', 'invoice.payment_failed', false, '{}'::jsonb);
+
+  begin
+    perform public.app_access_reconcile_event(
+      'evt_atomic_rollback',
+      uid,
+      0,
+      '2026-07-28T12:00:00Z',
+      jsonb_build_object(
+        'status', 'past_due',
+        'provider_status', 'past_due',
+        'provider_status_updated_at', '2026-07-29T12:00:00Z',
+        'stripe_customer_id', 'cus_atomic_rollback',
+        'stripe_subscription_id', 'sub_atomic_rollback',
+        'stripe_price_id', 'price_atomic_rollback',
+        'current_period_start', null,
+        'current_period_end', null,
+        'cancel_at_period_end', false,
+        'last_payment_status', 'failed',
+        'access_ended_at', null,
+        'trial_started_at', null,
+        'trial_ends_at', null,
+        'grace_started_at', null,
+        'grace_ends_at', null,
+        'locked_at', null
+      ),
+      jsonb_build_array(jsonb_build_object(
+        'user_id', uid,
+        'event_type', 'payment_failed',
+        'provider_event_id', 'evt_atomic_rollback',
+        'stripe_subscription_id', 'sub_atomic_rollback',
+        'status', 'past_due',
+        'reason', 'invoice_payment_failed',
+        'occurred_at', '2026-07-29T12:00:00Z'
+      ))
+    );
+  exception when others then
+    v_failed := true;
+  end;
+  if not v_failed then
+    raise exception 'forced completion failure did not propagate';
+  end if;
+  if (select status from public.app_access_entitlements where user_id = uid) <> 'active'
+     or (select revision from public.app_access_entitlements where user_id = uid) <> 0
+     or exists (
+       select 1 from public.app_access_events where provider_event_id = 'evt_atomic_rollback'
+     )
+     or (select processed from public.subscription_events where event_id = 'evt_atomic_rollback') then
+    raise exception 'failed atomic reconcile left partial entitlement, audit, or completion state';
+  end if;
+  raise notice 'OK: forced final-write failure rolls back entitlement and audit writes';
+end $$;
+
+drop trigger app_access_force_completion_failure on public.subscription_events;
+
+-- -- 24. Atomic webhook reconciliation requires a durable claim ----------------
+do $$
+declare
+  uid uuid := gen_random_uuid();
+  v_failed_closed boolean := false;
+begin
+  begin
+    perform public.app_access_reconcile_event(
+      'evt_atomic_missing_claim', uid, null, null, '{}'::jsonb, '[]'::jsonb
+    );
+  exception when others then
+    v_failed_closed := sqlerrm = 'app_access_claim_missing';
+  end;
+  if not v_failed_closed then
+    raise exception 'atomic reconcile must fail closed when durable claim is missing';
+  end if;
+  if exists (select 1 from public.app_access_entitlements where user_id = uid)
+     or exists (select 1 from public.app_access_events where user_id = uid) then
+    raise exception 'missing-claim rejection must not mutate app-access state';
+  end if;
+  raise notice 'OK: missing durable claim fails closed with no mutation';
+end $$;
+
 rollback; -- discard throwaway users, entitlements, events, and config changes
 
 \echo 'All VibeSpace Access behavior checks passed.'

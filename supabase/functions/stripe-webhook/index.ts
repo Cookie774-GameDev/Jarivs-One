@@ -108,6 +108,21 @@ export async function applyLegacyPlanToDb(db, customerId, plan, sub, updatedAt) 
   }
 }
 
+export async function reconcileAppAccessWithRpc(db, { eventId, entitlement, events }) {
+  const { data, error } = await db.rpc('app_access_reconcile_event', {
+    p_event_id: eventId,
+    p_user_id: entitlement.key.user_id,
+    p_expected_revision: entitlement.expected_revision ?? null,
+    p_expected_provider_status_updated_at: entitlement.expected_provider_status_updated_at ?? null,
+    p_entitlement: entitlement.set,
+    p_events: events.map((event) => event.set),
+  });
+  if (error) return { ok: false, reason: 'error' };
+  if (data === 'applied' || data === 'duplicate') return { ok: true, reason: data };
+  if (data === 'conflict') return { ok: false, reason: 'conflict' };
+  return { ok: false, reason: 'error' };
+}
+
 function customerOf(obj) {
   if (!obj || typeof obj !== 'object') return null;
   const c = obj.customer;
@@ -248,9 +263,8 @@ async function buildAppAccessProjection(event, metadata, deps, checkoutSubscript
   return projection;
 }
 
-// Marking processed is part of successful handling. If it fails, return 500 so
-// Stripe retries; app-access provider-event dedupe and idempotent legacy writes
-// make that retry safe.
+// Non-mutating app-access results and legacy writes complete the claim here.
+// Mutating app-access results complete it inside the transactional RPC.
 async function markProcessed(deps, eventId) {
   await deps.markEventProcessed(eventId);
 }
@@ -277,29 +291,27 @@ async function handleAppAccess(event, metadata, deps, checkoutSubscription = nul
     return new Response('handler_error', { status: 500 });
   }
 
-  let already = false;
-  try {
-    already = await deps.isAppAccessEventProcessed(event.id);
-  } catch (_err) {
-    return new Response('handler_error', { status: 500 });
-  }
-
   const result = reconcileAppAccessEvent({
     projection,
     current,
     config: deps.config.appAccess,
-    eventAlreadyProcessed: already,
+    // The transactional RPC owns provider-event replay detection under the
+    // durable claim lock. A separate pre-read would reintroduce a race.
+    eventAlreadyProcessed: false,
   });
 
   if (result.kind === 'apply') {
     let res;
     try {
-      res = await deps.applyAppAccess({ entitlement: result.entitlement, events: result.events });
+      res = await deps.reconcileAppAccessAtomically({
+        eventId: event.id,
+        entitlement: result.entitlement,
+        events: result.events,
+      });
     } catch (_err) {
       return new Response('handler_error', { status: 500 });
     }
     if (res && res.ok === true) {
-      await markProcessed(deps, event.id);
       return new Response('ok', { status: 200 });
     }
     if (res && res.reason === 'conflict') {
@@ -556,46 +568,8 @@ if (import.meta.main) {
       if (error) throw error;
       return data || null;
     },
-    async isAppAccessEventProcessed(providerEventId) {
-      const { data, error } = await admin()
-        .from('app_access_events')
-        .select('id')
-        .eq('provider_event_id', providerEventId)
-        .maybeSingle();
-      if (error) throw error;
-      return !!data;
-    },
-    async applyAppAccess({ entitlement, events }) {
-      const db = admin();
-      const set = { ...entitlement.set };
-      if (entitlement.expected_revision != null) {
-        // Optimistic concurrency: only apply when the row is still at the revision
-        // (and provider timestamp) the reconciler observed. A mismatch means a
-        // concurrent writer advanced the row, so refuse rather than regress.
-        let q = db
-          .from('app_access_entitlements')
-          .update(set)
-          .eq('user_id', entitlement.key.user_id)
-          .eq('revision', entitlement.expected_revision)
-          .select('user_id');
-        if (entitlement.expected_provider_status_updated_at != null) {
-          q = q.eq('provider_status_updated_at', entitlement.expected_provider_status_updated_at);
-        }
-        const { data, error } = await q;
-        if (error) return { ok: false, reason: 'error' };
-        if (!data || data.length === 0) return { ok: false, reason: 'conflict' };
-      } else {
-        const { error } = await db
-          .from('app_access_entitlements')
-          .upsert({ user_id: entitlement.key.user_id, ...set }, { onConflict: 'user_id' });
-        if (error) return { ok: false, reason: 'error' };
-      }
-      for (const ev of events) {
-        const { error } = await db.from('app_access_events').insert(ev.set);
-        // 23505 = unique_violation on provider_event_id (expected concurrent dup).
-        if (error && error.code !== '23505') return { ok: false, reason: 'error' };
-      }
-      return { ok: true };
+    async reconcileAppAccessAtomically({ eventId, entitlement, events }) {
+      return await reconcileAppAccessWithRpc(admin(), { eventId, entitlement, events });
     },
   };
 

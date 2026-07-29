@@ -742,6 +742,220 @@ Deno.test(
   },
 );
 
+Deno.test('equal-time active events cannot broaden restrictive entitlement states', () => {
+  const active = makeProjection({
+    eventId: 'evt_equal_active',
+    eventType: 'customer.subscription.updated',
+    eventCreated: T0,
+    userId: null,
+    metadata: null,
+    subscription: {
+      status: 'active',
+      cancelAtPeriodEnd: false,
+      currentPeriodStart: T0 - DAY,
+      currentPeriodEnd: T0 + 29 * DAY,
+      trialStart: null,
+      trialEnd: null,
+      endedAt: null,
+    },
+  });
+  for (const current of [
+    makeCurrent({
+      status: 'locked',
+      providerStatus: 'canceled',
+      providerStatusUpdatedAt: iso(T0),
+      accessEndedAt: iso(T0),
+      graceStartedAt: iso(T0),
+      graceEndsAt: iso(T0),
+      lockedAt: iso(T0),
+    }),
+    makeCurrent({
+      status: 'grace',
+      providerStatus: 'canceled',
+      providerStatusUpdatedAt: iso(T0),
+      accessEndedAt: iso(T0),
+      graceStartedAt: iso(T0),
+      graceEndsAt: iso(T0 + DAY),
+    }),
+    makeCurrent({
+      status: 'past_due',
+      providerStatus: 'past_due',
+      providerStatusUpdatedAt: iso(T0),
+      lastPaymentStatus: 'failed',
+    }),
+    makeCurrent({
+      status: 'cancel_at_period_end',
+      providerStatus: 'active',
+      providerStatusUpdatedAt: iso(T0),
+      cancelAtPeriodEnd: true,
+    }),
+    makeCurrent({
+      status: 'trialing',
+      providerStatus: 'trialing',
+      providerStatusUpdatedAt: iso(T0),
+      trialStartedAt: iso(T0 - DAY),
+      trialEndsAt: iso(T0 + 7 * DAY),
+    }),
+  ]) {
+    const result = rec({ projection: active, current, config: makeConfig() });
+    assertEquals(result.kind, 'stale');
+    assertEquals(result.reason, 'equal_time_access_broadening');
+    assert(result.entitlement === undefined, 'equal-time broadening carries no command');
+  }
+});
+
+Deno.test('equal-time same or more restrictive transitions remain valid', () => {
+  const activeCurrent = makeCurrent({
+    status: 'active',
+    providerStatus: 'active',
+    providerStatusUpdatedAt: iso(T0),
+    currentPeriodStart: iso(T0 - DAY),
+    currentPeriodEnd: iso(T0 + 29 * DAY),
+  });
+  const sameActive = makeProjection({
+    eventId: 'evt_equal_same',
+    eventType: 'customer.subscription.updated',
+    eventCreated: T0,
+    userId: null,
+    metadata: null,
+    subscription: {
+      status: 'active',
+      cancelAtPeriodEnd: false,
+      currentPeriodStart: T0 - DAY,
+      currentPeriodEnd: T0 + 29 * DAY,
+      trialStart: null,
+      trialEnd: null,
+      endedAt: null,
+    },
+  });
+  const sameResult = rec({
+    projection: sameActive,
+    current: activeCurrent,
+    config: makeConfig(),
+  });
+  assertEquals(sameResult.kind, 'apply');
+  assertEquals(sameResult.status, 'active');
+
+  const pastDue = makeProjection({
+    eventId: 'evt_equal_restrictive',
+    eventType: 'customer.subscription.updated',
+    eventCreated: T0,
+    userId: null,
+    metadata: null,
+    subscription: {
+      status: 'past_due',
+      cancelAtPeriodEnd: false,
+      currentPeriodStart: T0 - DAY,
+      currentPeriodEnd: T0 + 29 * DAY,
+      trialStart: null,
+      trialEnd: null,
+      endedAt: null,
+    },
+  });
+  const restrictiveResult = rec({
+    projection: pastDue,
+    current: activeCurrent,
+    config: makeConfig(),
+  });
+  assertEquals(restrictiveResult.kind, 'apply');
+  assertEquals(restrictiveResult.status, 'past_due');
+});
+
+Deno.test('equal-time period extension is rejected as access broadening', () => {
+  const current = makeCurrent({
+    status: 'active',
+    providerStatus: 'active',
+    providerStatusUpdatedAt: iso(T0),
+    currentPeriodStart: iso(T0 - DAY),
+    currentPeriodEnd: iso(T0 + 29 * DAY),
+  });
+  const projection = makeProjection({
+    eventId: 'evt_equal_extension',
+    eventType: 'customer.subscription.updated',
+    eventCreated: T0,
+    userId: null,
+    metadata: null,
+    subscription: {
+      status: 'active',
+      cancelAtPeriodEnd: false,
+      currentPeriodStart: T0 - DAY,
+      currentPeriodEnd: T0 + 30 * DAY,
+      trialStart: null,
+      trialEnd: null,
+      endedAt: null,
+    },
+  });
+  const result = rec({ projection, current, config: makeConfig() });
+  assertEquals(result.kind, 'stale');
+  assertEquals(result.reason, 'equal_time_access_broadening');
+});
+
+Deno.test('equal-time deletion wins regardless of delivery order', () => {
+  const activeCurrent = makeCurrent({
+    status: 'active',
+    providerStatus: 'active',
+    providerStatusUpdatedAt: iso(T0),
+  });
+  const deletion = makeProjection({
+    eventId: 'evt_equal_delete',
+    eventType: 'customer.subscription.deleted',
+    eventCreated: T0,
+    userId: null,
+    metadata: null,
+    subscription: {
+      status: 'canceled',
+      cancelAtPeriodEnd: false,
+      currentPeriodStart: T0 - 30 * DAY,
+      currentPeriodEnd: T0,
+      trialStart: null,
+      trialEnd: null,
+      endedAt: T0,
+    },
+  });
+  const restrictiveFirst = rec({
+    projection: deletion,
+    current: activeCurrent,
+    config: makeConfig({ graceDays: 0 }),
+  });
+  assertEquals(restrictiveFirst.kind, 'apply');
+  assertEquals(restrictiveFirst.status, 'locked');
+
+  const lockedCurrent = makeCurrent({
+    status: 'locked',
+    providerStatus: 'canceled',
+    providerStatusUpdatedAt: iso(T0),
+    currentPeriodStart: iso(T0 - 30 * DAY),
+    currentPeriodEnd: iso(T0),
+    accessEndedAt: iso(T0),
+    graceStartedAt: iso(T0),
+    graceEndsAt: iso(T0),
+    lockedAt: iso(T0),
+  });
+  const activeAfter = makeProjection({
+    eventId: 'evt_equal_active_after_delete',
+    eventType: 'customer.subscription.updated',
+    eventCreated: T0,
+    userId: null,
+    metadata: null,
+    subscription: {
+      status: 'active',
+      cancelAtPeriodEnd: false,
+      currentPeriodStart: T0 - DAY,
+      currentPeriodEnd: T0 + 29 * DAY,
+      trialStart: null,
+      trialEnd: null,
+      endedAt: null,
+    },
+  });
+  const broadeningSecond = rec({
+    projection: activeAfter,
+    current: lockedCurrent,
+    config: makeConfig({ graceDays: 0 }),
+  });
+  assertEquals(broadeningSecond.kind, 'stale');
+  assertEquals(broadeningSecond.reason, 'equal_time_access_broadening');
+});
+
 // --- guards: no profiles.tier, immutability, bounded audit ------------------
 Deno.test('cancellation commands never reference profiles or tier', () => {
   const ended = T0 + 5 * DAY;

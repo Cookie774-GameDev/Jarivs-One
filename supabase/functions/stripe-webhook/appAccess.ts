@@ -12,15 +12,16 @@
 //     and minimal app_access_events audit commands (provider event id dedupe,
 //     no raw payloads, no secrets).
 //   * Safe for duplicate and out-of-order delivery via provider created time vs
-//     the current entitlement's provider_status_updated_at; stale events are
-//     ignored without rolling state backward, while newer recovery restores.
+//     the current entitlement's provider_status_updated_at. Older events are
+//     stale; equal-second events may preserve/tighten but never broaden access;
+//     only a strictly newer authoritative event may restore.
 //   * Fail closed on invalid ids/statuses/timestamps; preserve account
 //     isolation; immutable inputs/outputs.
 //
 // Integration-ready pure module: it returns commands only and performs no I/O,
 // no network, and no Git/coordination mutation. A later coordinator change wires
-// it into index.ts (read the current entitlement, pre-check provider_event_id
-// dedupe, then apply the returned commands with the service role).
+// it into index.ts (read the current entitlement, then atomically apply the
+// returned commands, provider-event dedupe, and claim completion).
 
 // --- constants --------------------------------------------------------------
 const SUPPORTED_EVENTS = [
@@ -83,6 +84,50 @@ function unixFromIso(iso: unknown): number | null {
   if (typeof iso !== 'string' || iso === '') return null;
   const ms = Date.parse(iso);
   return Number.isFinite(ms) ? Math.floor(ms / 1000) : null;
+}
+function statusIsNoBroader(current: unknown, next: unknown): boolean {
+  if (current === next) return true;
+  if (current === 'active')
+    return ['cancel_at_period_end', 'past_due', 'grace', 'locked'].indexOf(next as string) !== -1;
+  if (current === 'trialing') return ['past_due', 'grace', 'locked'].indexOf(next as string) !== -1;
+  if (current === 'cancel_at_period_end')
+    return ['past_due', 'grace', 'locked'].indexOf(next as string) !== -1;
+  if (current === 'past_due') return ['grace', 'locked'].indexOf(next as string) !== -1;
+  if (current === 'grace') return next === 'locked';
+  // locked/prelaunch/unknown/admin/internal can only move to locked at equal
+  // provider time. Any access-bearing transition needs a strictly newer event.
+  return next === 'locked';
+}
+function providerStrength(status: unknown): number {
+  if (status === 'active') return 5;
+  if (status === 'trialing') return 4;
+  if (status === 'past_due' || status === 'paused') return 2;
+  if (status === 'incomplete') return 1;
+  return 0; // terminal / absent
+}
+// NULL is an unbounded end. At equal provider time, extending or removing a
+// previously known end is access-broadening and therefore loses the tie.
+function endBoundBroadens(current: unknown, next: unknown): boolean {
+  if (current == null) return false;
+  if (next == null) return true;
+  const currentMs = typeof current === 'string' ? Date.parse(current) : NaN;
+  const nextMs = typeof next === 'string' ? Date.parse(next) : NaN;
+  if (!Number.isFinite(currentMs) || !Number.isFinite(nextMs)) return true;
+  return nextMs > currentMs;
+}
+function equalTimeAccessBroadens(current: any, set: any): boolean {
+  if (!statusIsNoBroader(current.status, set.status)) return true;
+  if (providerStrength(set.provider_status) > providerStrength(current.providerStatus)) return true;
+  if (current.cancelAtPeriodEnd === true && set.cancel_at_period_end !== true) return true;
+  if (current.lastPaymentStatus === 'failed' && set.last_payment_status === 'succeeded')
+    return true;
+  return (
+    endBoundBroadens(current.currentPeriodEnd, set.current_period_end) ||
+    endBoundBroadens(current.trialEndsAt, set.trial_ends_at) ||
+    endBoundBroadens(current.graceEndsAt, set.grace_ends_at) ||
+    endBoundBroadens(current.accessEndedAt, set.access_ended_at) ||
+    endBoundBroadens(current.lockedAt, set.locked_at)
+  );
 }
 function deepFreeze(value: any): any {
   if (Array.isArray(value)) {
@@ -735,6 +780,7 @@ export function reconcileAppAccessEvent(input: any): any {
     }
   }
 
+  let equalProviderTime = false;
   if (
     current &&
     typeof current.providerStatusUpdatedAt === 'string' &&
@@ -744,6 +790,7 @@ export function reconcileAppAccessEvent(input: any): any {
     if (currentUnix !== null && eventCreated < currentUnix) {
       return deepFreeze({ kind: 'stale', reason: 'out_of_order', eventId: rawEventId });
     }
+    equalProviderTime = currentUnix !== null && eventCreated === currentUnix;
   }
 
   const isInvoice =
@@ -804,6 +851,13 @@ export function reconcileAppAccessEvent(input: any): any {
     return deepFreeze({ kind: 'invalid', reason: 'unsupported_event', eventId: rawEventId });
   if (built.invalid)
     return deepFreeze({ kind: 'invalid', reason: built.invalid, eventId: rawEventId });
+  if (equalProviderTime && current && equalTimeAccessBroadens(current, built.entitlement.set)) {
+    return deepFreeze({
+      kind: 'stale',
+      reason: 'equal_time_access_broadening',
+      eventId: rawEventId,
+    });
+  }
 
   // checkout/created audit type depends on the resulting status (trial vs paid).
   if (eventType === 'checkout.session.completed' || eventType === 'customer.subscription.created') {
