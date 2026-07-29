@@ -204,7 +204,10 @@ function MiniCalendar({
     });
 
   return (
-    <div className="w-72 p-3">
+    <div
+      data-monochrome-surface="schedule-calendar"
+      className="w-72 p-3 [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:font-sans [html[data-theme=monochrome]_&_*]:shadow-none"
+    >
       <div className="mb-2 flex items-center justify-between">
         <button
           type="button"
@@ -689,11 +692,17 @@ export function SchedulePage() {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-paper-warm">
-      <header className="relative overflow-hidden border-b border-border bg-gradient-to-r from-panel via-panel to-accent-copper/5 px-5 py-4">
+    <div
+      data-monochrome-route="schedule"
+      className="flex h-full min-h-0 flex-col bg-paper-warm [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:font-sans [html[data-theme=monochrome]_&_*]:shadow-none"
+    >
+      <header
+        data-monochrome-surface="schedule-header"
+        className="relative overflow-hidden border-b border-border bg-gradient-to-r from-panel via-panel to-accent-copper/5 px-5 py-4 [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:bg-none"
+      >
         <motion.div
           aria-hidden
-          className="pointer-events-none absolute -right-16 -top-20 h-48 w-48 rounded-full bg-accent-copper/10 blur-3xl"
+          className="pointer-events-none absolute -right-16 -top-20 h-48 w-48 rounded-full bg-accent-copper/10 blur-3xl [html[data-theme=monochrome]_&]:hidden"
           animate={{ scale: [1, 1.15, 1], opacity: [0.5, 0.8, 0.5] }}
           transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
         />
@@ -733,7 +742,10 @@ export function SchedulePage() {
       </header>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-auto p-4 xl:grid-cols-[minmax(0,1fr)_420px]">
-        <section className="min-h-[360px] overflow-hidden rounded-xl border border-border bg-background/80 shadow-soft">
+        <section
+          data-monochrome-surface="schedule-timeline"
+          className="min-h-[360px] overflow-hidden rounded-xl border border-border bg-background/80 shadow-soft [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:shadow-none"
+        >
           <div className="flex items-center justify-between gap-3 border-b border-border bg-panel/60 px-4 py-3">
             <div>
               <h2 className="font-display text-page-title text-foreground">
@@ -746,7 +758,7 @@ export function SchedulePage() {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <div className="flex gap-1 rounded-lg border border-border/80 bg-background/40 p-1">
+              <div className="flex gap-1 rounded-lg border border-border/80 bg-background/40 p-1 [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel">
                 <Button
                   type="button"
                   size="sm"
@@ -880,8 +892,11 @@ export function SchedulePage() {
           )}
         </section>
 
-        <aside className="rounded-xl border border-border bg-panel p-4 shadow-soft">
-          <div className="mb-4 rounded-lg border border-border/80 bg-background/60 p-3">
+        <aside
+          data-monochrome-surface="schedule-editor"
+          className="rounded-xl border border-border bg-panel p-4 shadow-soft [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:shadow-none"
+        >
+          <div className="mb-4 rounded-lg border border-border/80 bg-background/60 p-3 [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-background">
             <div className="flex items-start gap-2">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-accent-cyan/30 bg-accent-cyan/10">
                 <Sparkles className="h-4 w-4 text-accent-cyan" />
@@ -898,7 +913,7 @@ export function SchedulePage() {
           </div>
 
           <div className="flex flex-col gap-3">
-            <div className="grid grid-cols-2 gap-2 rounded-lg border border-border/80 bg-background/40 p-1">
+            <div className="grid grid-cols-2 gap-2 rounded-lg border border-border/80 bg-background/40 p-1 [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-background">
               <Button
                 type="button"
                 size="sm"
@@ -917,7 +932,7 @@ export function SchedulePage() {
               </Button>
             </div>
             {scheduleMode === 'jarvis' && (
-              <div className="rounded-lg border border-accent-violet/30 bg-accent-violet/10 p-3 text-secondary">
+              <div className="rounded-lg border border-accent-violet/30 bg-accent-violet/10 p-3 text-secondary [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-background">
                 <div className="font-display text-ui-strong text-foreground">Jarvis action</div>
                 <p className="mt-1 text-muted-foreground">
                   Title, system prompt, model, and run time are saved as a real Jarvis schedule.
@@ -1039,7 +1054,7 @@ export function SchedulePage() {
               />
             </div>
 
-            <div className="rounded-lg border border-border/80 bg-background/40 p-3">
+            <div className="rounded-lg border border-border/80 bg-background/40 p-3 [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-background">
               <div className="mb-2 flex items-center justify-between gap-2">
                 <Label className="flex items-center gap-1.5 text-foreground">
                   <Clock className="h-3.5 w-3.5 text-accent-copper" /> When
@@ -1198,7 +1213,12 @@ function EventTimelineRow({
   const accentColor = event.color_hue !== undefined ? `hsl(${event.color_hue} 70% 55%)` : undefined;
 
   return (
-    <div className={cn('flex gap-3 rounded-xl', jarvisSchedule && 'bg-accent-violet/5 py-2 pr-2')}>
+    <div
+      className={cn(
+        'flex gap-3 rounded-xl [html[data-theme=monochrome]_&]:rounded-sm',
+        jarvisSchedule && 'bg-accent-violet/5 py-2 pr-2 [html[data-theme=monochrome]_&]:bg-muted',
+      )}
+    >
       <div
         className={cn(
           'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border bg-panel shadow-soft',

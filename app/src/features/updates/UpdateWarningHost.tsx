@@ -70,7 +70,10 @@ export function UpdateWarningHost() {
     clearCountdown();
     setIsUpdating(true);
     flushWorkspacePersistence('update-warning-countdown');
-    toast.info('Installing update', 'Downloading and installing the signed update. Jarvis will relaunch shortly.');
+    toast.info(
+      'Installing update',
+      'Downloading and installing the signed update. Jarvis will relaunch shortly.',
+    );
     try {
       await checkForAppUpdate({ install: true });
     } catch (err) {
@@ -174,7 +177,8 @@ export function UpdateWarningHost() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const showModal = updateAvailable && timeLeft !== null && timeLeft <= 300 && timeLeft > 0 && !isUpdating;
+  const showModal =
+    updateAvailable && timeLeft !== null && timeLeft <= 300 && timeLeft > 0 && !isUpdating;
   const isOpen = showModal || isUpdating;
 
   const handleOpenChange = (open: boolean) => {
@@ -189,26 +193,37 @@ export function UpdateWarningHost() {
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       {isUpdating ? (
-        <DialogContent className="flex max-w-sm flex-col items-center justify-center rounded-xl border border-border bg-panel p-6 text-center shadow-lg">
+        <DialogContent
+          data-monochrome-surface="update-warning-host"
+          className="flex max-w-sm flex-col items-center justify-center rounded-xl border border-border bg-panel p-6 text-center shadow-lg [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:font-sans [html[data-theme=monochrome]_&]:shadow-none"
+        >
           <DialogTitle className="sr-only">Updating Jarvis</DialogTitle>
-          <DialogDescription className="sr-only">Installing update and relaunching.</DialogDescription>
-          <div className="mb-4 h-10 w-10 animate-spin rounded-full border-4 border-accent-cyan/30 border-t-accent-cyan" />
-          <h4 className="text-md text-ui-strong font-semibold text-foreground">Installing Update...</h4>
+          <DialogDescription className="sr-only">
+            Installing update and relaunching.
+          </DialogDescription>
+          <div className="mb-4 h-10 w-10 animate-spin rounded-full border-4 border-accent-cyan/30 border-t-accent-cyan [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border [html[data-theme=monochrome]_&]:border-t-foreground [html[data-theme=monochrome]_&]:animate-none" />
+          <h4 className="text-md text-ui-strong font-semibold text-foreground">
+            Installing Update...
+          </h4>
           <p className="mt-1.5 text-metadata text-muted-foreground">
             Applying version {targetVersion}. Jarvis will automatically relaunch in a few seconds.
           </p>
         </DialogContent>
       ) : (
-        <DialogContent className="max-w-md rounded-xl border border-border bg-panel p-6 shadow-lg">
+        <DialogContent
+          data-monochrome-surface="update-warning-host"
+          className="max-w-md rounded-xl border border-border bg-panel p-6 shadow-lg [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:font-sans [html[data-theme=monochrome]_&]:shadow-none"
+        >
           <DialogTitle className="flex items-center gap-2 text-lg text-ui-strong text-foreground">
-            <AlertTriangle className="h-5 w-5 animate-pulse text-accent-amber" />
+            <AlertTriangle className="h-5 w-5 animate-pulse text-accent-amber [html[data-theme=monochrome]_&]:animate-none" />
             Automatic update alert
           </DialogTitle>
           <DialogDescription className="mt-2 text-secondary leading-relaxed text-muted-foreground">
-            A signed update for VibeSpace v{targetVersion} is staged and ready. Jarvis will restart and apply it in:
+            A signed update for VibeSpace v{targetVersion} is staged and ready. Jarvis will restart
+            and apply it in:
           </DialogDescription>
 
-          <div className="my-6 flex flex-col items-center justify-center rounded-lg border border-border/60 bg-background/50 p-4">
+          <div className="my-6 flex flex-col items-center justify-center rounded-lg border border-border/60 bg-background/50 p-4 [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel">
             <span className="mb-1 flex items-center gap-1 text-metadata font-semibold uppercase tracking-wider text-accent-cyan">
               <Clock className="h-4 w-4" /> Time remaining
             </span>
@@ -218,8 +233,8 @@ export function UpdateWarningHost() {
           </div>
 
           <p className="mb-4 text-metadata text-muted-foreground">
-            Save terminal layouts, active scripts, and unsaved files before applying the update.
-            All terminal information may not be saved: pane layout, roles, and recent output are
+            Save terminal layouts, active scripts, and unsaved files before applying the update. All
+            terminal information may not be saved: pane layout, roles, and recent output are
             restored after the update, but running processes cannot survive the restart.
           </p>
 

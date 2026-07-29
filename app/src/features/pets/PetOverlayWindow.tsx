@@ -81,6 +81,7 @@ export function PetOverlayWindow() {
     <div
       data-pet-window="pet-overlay"
       data-testid="pet-overlay-root"
+      data-monochrome-surface="pet-overlay-window"
       className="pet-overlay-root"
       style={{
         width: 144,

@@ -107,7 +107,10 @@ export function KanbanPage() {
   };
 
   return (
-    <div className="flex h-full flex-col gap-6 overflow-y-auto p-6">
+    <div
+      data-monochrome-route="kanban"
+      className="flex h-full flex-col gap-6 overflow-y-auto p-6 [html[data-theme=monochrome]_&]:gap-4 [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:font-sans [html[data-theme=monochrome]_&]:p-4 [html[data-theme=monochrome]_&_.cozy-card]:rounded-sm [html[data-theme=monochrome]_&_.cozy-card]:border [html[data-theme=monochrome]_&_.cozy-card]:border-border-mid [html[data-theme=monochrome]_&_.cozy-card]:bg-panel [html[data-theme=monochrome]_&_.cozy-card]:shadow-none"
+    >
       <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="flex flex-col gap-1">
           <span className="eyebrow">Trace · daily focus & long-run goals</span>
@@ -211,7 +214,10 @@ interface ChecklistCardProps {
   celebrateId: string | null;
   reducedMotion: boolean;
   onCheck: (item: MilestoneItem) => void;
-  onUpdate: (id: string, patch: Partial<Pick<MilestoneItem, 'title' | 'description' | 'status' | 'deadlineAt'>>) => void;
+  onUpdate: (
+    id: string,
+    patch: Partial<Pick<MilestoneItem, 'title' | 'description' | 'status' | 'deadlineAt'>>,
+  ) => void;
   onRemove: (id: string) => void;
 }
 
@@ -239,7 +245,10 @@ function ChecklistCard({
   const accentBar = accent === 'copper' ? 'bg-accent-copper' : 'bg-accent-sage';
 
   return (
-    <section className="relative flex min-h-[360px] flex-col gap-3 overflow-hidden rounded-xl bg-paper-soft p-5 shadow-soft">
+    <section
+      data-monochrome-surface="kanban-column"
+      className="relative flex min-h-[360px] flex-col gap-3 overflow-hidden rounded-xl bg-paper-soft p-5 shadow-soft [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none"
+    >
       <div
         className={cn(
           'pointer-events-none absolute inset-x-0 top-0 h-px opacity-60',
@@ -262,12 +271,14 @@ function ChecklistCard({
       </header>
 
       {progress !== undefined ? (
-        <div className="h-1.5 w-full overflow-hidden rounded-full bg-border/60">
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-border/60 [html[data-theme=monochrome]_&]:h-px [html[data-theme=monochrome]_&]:rounded-none">
           <motion.div
             className={cn('h-full rounded-full', accentBar)}
             initial={false}
             animate={{ width: `${progress}%` }}
-            transition={reducedMotion ? { duration: 0 } : { type: 'spring', stiffness: 120, damping: 20 }}
+            transition={
+              reducedMotion ? { duration: 0 } : { type: 'spring', stiffness: 120, damping: 20 }
+            }
           />
         </div>
       ) : null}
@@ -292,7 +303,7 @@ function ChecklistCard({
 
       <div className="flex min-h-0 flex-1 flex-col gap-1.5">
         {items.length === 0 ? (
-          <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-border-mid/60 px-3 py-6 text-center text-secondary text-muted-foreground">
+          <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-border-mid/60 px-3 py-6 text-center text-secondary text-muted-foreground [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border-solid">
             {emptyHint}
           </div>
         ) : (
@@ -335,7 +346,9 @@ function ChecklistRow({
   accentRing: string;
   accentText: string;
   onCheck: () => void;
-  onUpdate: (patch: Partial<Pick<MilestoneItem, 'title' | 'description' | 'status' | 'deadlineAt'>>) => void;
+  onUpdate: (
+    patch: Partial<Pick<MilestoneItem, 'title' | 'description' | 'status' | 'deadlineAt'>>,
+  ) => void;
   onRemove: () => void;
 }) {
   const done = item.status === 'done';
@@ -344,7 +357,9 @@ function ChecklistRow({
       layout={!reducedMotion}
       initial={reducedMotion ? false : { opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={reducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97, transition: { duration: 0.2 } }}
+      exit={
+        reducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97, transition: { duration: 0.2 } }
+      }
       transition={{ type: 'spring', stiffness: 420, damping: 32 }}
       className={cn(
         'group relative flex items-start gap-2 rounded-lg border border-border bg-paper px-2.5 py-2 transition-colors',
@@ -384,7 +399,9 @@ function ChecklistRow({
           )}
         />
         <div className="mt-0.5 flex items-center gap-2">
-          <span className="text-metadata text-muted-foreground">{formatRelative(item.updatedAt)}</span>
+          <span className="text-metadata text-muted-foreground">
+            {formatRelative(item.updatedAt)}
+          </span>
           {item.deadlineAt ? (
             <span className="inline-flex items-center gap-1 text-metadata text-muted-foreground">
               <CalendarClock className="h-3 w-3" /> Target {formatDeadlineLabel(item.deadlineAt)}
@@ -482,27 +499,23 @@ function StatBlock({ label, value, hint }: { label: string; value: string; hint:
   );
 }
 
-function LiveActivitySection({
-  tasks,
-}: {
-  tasks: ReturnType<typeof useWorkspaceOpenTasks>;
-}) {
+function LiveActivitySection({ tasks }: { tasks: ReturnType<typeof useWorkspaceOpenTasks> }) {
   return (
-    <section className="rounded-xl bg-paper-soft p-4 shadow-soft">
+    <section className="rounded-xl bg-paper-soft p-4 shadow-soft [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none">
       <header className="mb-3 flex items-center gap-2">
         <Target className="h-4 w-4 text-accent-copper" />
         <h3 className="font-display text-ui-strong text-foreground">Live workspace activity</h3>
         <span className="eyebrow">{tasks.length}</span>
       </header>
       <p className="mb-3 text-secondary text-muted-foreground">
-        Read-only feed from terminals, chats, tools, and open Dexie tasks — same source as
-        Inspector → Today.
+        Read-only feed from terminals, chats, tools, and open Dexie tasks — same source as Inspector
+        → Today.
       </p>
       <ul className="grid gap-2 md:grid-cols-2">
         {tasks.slice(0, 8).map((t) => (
           <li
             key={t.id}
-            className="flex items-center gap-2 rounded-lg border border-border bg-paper px-3 py-2"
+            className="flex items-center gap-2 rounded-lg border border-border bg-paper px-3 py-2 [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:shadow-none"
           >
             <span className="eyebrow shrink-0">{t.source}</span>
             <span className="line-clamp-1 text-secondary text-foreground">{t.title}</span>

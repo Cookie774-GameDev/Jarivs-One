@@ -10,5 +10,12 @@ export function NewsHost() {
   const open = useUIStore((s) => s.newsPanelOpen);
   const setOpen = useUIStore((s) => s.setNewsPanelOpen);
 
-  return <NewsPanel open={open} onOpenChange={setOpen} />;
+  return (
+    <div
+      data-monochrome-surface="news-host"
+      className="contents [html[data-theme=monochrome]_&_*]:shadow-none"
+    >
+      <NewsPanel open={open} onOpenChange={setOpen} />
+    </div>
+  );
 }

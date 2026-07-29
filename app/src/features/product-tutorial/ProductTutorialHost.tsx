@@ -4,11 +4,7 @@
  */
 import * as React from 'react';
 import { useUIStore } from '@/stores/ui';
-import {
-  completeTutorial,
-  shouldOfferTutorial,
-  skipTutorial,
-} from './tutorialState';
+import { completeTutorial, shouldOfferTutorial, skipTutorial } from './tutorialState';
 import { ProductTutorialOffer } from './ProductTutorialOffer';
 import { ProductTutorialTour } from './ProductTutorialTour';
 
@@ -51,7 +47,21 @@ export function ProductTutorialHost() {
 
   if (phase === 'hidden') return null;
   if (phase === 'offer') {
-    return <ProductTutorialOffer onStart={handleStart} onSkip={handleSkip} />;
+    return (
+      <div
+        data-monochrome-surface="product-tutorial-host"
+        className="contents [html[data-theme=monochrome]_&_*]:shadow-none"
+      >
+        <ProductTutorialOffer onStart={handleStart} onSkip={handleSkip} />
+      </div>
+    );
   }
-  return <ProductTutorialTour onDone={handleDone} onSkip={handleSkip} />;
+  return (
+    <div
+      data-monochrome-surface="product-tutorial-host"
+      className="contents [html[data-theme=monochrome]_&_*]:shadow-none"
+    >
+      <ProductTutorialTour onDone={handleDone} onSkip={handleSkip} />
+    </div>
+  );
 }

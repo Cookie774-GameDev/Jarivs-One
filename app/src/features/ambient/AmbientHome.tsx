@@ -127,7 +127,8 @@ export function AmbientHome() {
 
   return (
     <div
-      className="ambient-root"
+      data-monochrome-surface="ambient-home"
+      className="ambient-root [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:font-sans [html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&_.ambient-orb-wrap]:hidden [html[data-theme=monochrome]_&_.ambient-grain]:hidden [html[data-theme=monochrome]_&_.ambient-dot]:hidden"
       data-state={exiting ? 'exiting' : 'active'}
       role="dialog"
       aria-label="Ambient mode. Press any key to wake."
@@ -146,15 +147,20 @@ export function AmbientHome() {
 
       {/* Center stack: clock, date, quote only — no schedule/task cards */}
       <div className="relative flex h-full flex-col items-center justify-center gap-8 px-8">
-        <div className="ambient-clock select-none" aria-live="polite">
+        <div
+          className="ambient-clock select-none [html[data-theme=monochrome]_&]:font-mono [html[data-theme=monochrome]_&]:tracking-tight"
+          aria-live="polite"
+        >
           {h}
           <span className="opacity-60">:</span>
           {m}
         </div>
 
-        <div className="text-sm uppercase tracking-[0.32em] text-foreground/60">{date}</div>
+        <div className="text-sm uppercase tracking-[0.32em] text-foreground/60 [html[data-theme=monochrome]_&]:font-mono [html[data-theme=monochrome]_&]:tracking-[0.14em]">
+          {date}
+        </div>
 
-        <div className="ambient-quote pt-8">
+        <div className="ambient-quote pt-8 [html[data-theme=monochrome]_&]:max-w-xl [html[data-theme=monochrome]_&]:border-t [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:font-sans">
           <span aria-hidden="true">{'\u201C'}</span>
           {quote.text}
           <span aria-hidden="true">{'\u201D'}</span>
@@ -164,7 +170,9 @@ export function AmbientHome() {
         </div>
       </div>
 
-      <div className="ambient-hint">Press any key to wake</div>
+      <div className="ambient-hint [html[data-theme=monochrome]_&]:font-mono [html[data-theme=monochrome]_&]:uppercase [html[data-theme=monochrome]_&]:tracking-[0.14em]">
+        Press any key to wake
+      </div>
     </div>
   );
 }

@@ -18,7 +18,10 @@ export function HistoryPage() {
   const [selectedChatId, setSelectedChatId] = React.useState<ChatId | null>(null);
 
   return (
-    <div className="flex h-full w-full overflow-hidden bg-background text-foreground">
+    <div
+      data-monochrome-route="history"
+      className="flex h-full w-full overflow-hidden bg-background text-foreground [html[data-theme=monochrome]_&]:font-sans [html[data-theme=monochrome]_&>div]:border-border-mid"
+    >
       <HistoryList selectedChatId={selectedChatId} onSelectChat={setSelectedChatId} />
       <div className="min-w-0 flex-1">
         <Replay chatId={selectedChatId} />

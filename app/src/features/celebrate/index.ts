@@ -54,5 +54,12 @@ export function CelebrationHost(): JSX.Element {
     return () => window.removeEventListener(CELEBRATE_EVENT, onCelebrate);
   }, []);
 
-  return React.createElement(Confetti);
+  return React.createElement(
+    'div',
+    {
+      'data-monochrome-surface': 'celebration-host',
+      className: 'contents [html[data-theme=monochrome]_&>canvas]:hidden',
+    },
+    React.createElement(Confetti),
+  );
 }

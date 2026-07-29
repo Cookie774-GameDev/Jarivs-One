@@ -303,7 +303,10 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedMotionProp
   const showInlineSprite = showStandalone && (!tauri || useInlineFallback);
 
   return (
-    <>
+    <div
+      data-monochrome-surface="pet-host"
+      className="contents [html[data-theme=monochrome]_&_*]:shadow-none"
+    >
       <div
         data-pet-host={tauri ? 'tauri' : 'browser'}
         data-pet-instance="1"
@@ -340,6 +343,6 @@ export function PetHost({ enabled: enabledProp, reducedMotion: reducedMotionProp
           resizable
         />
       )}
-    </>
+    </div>
   );
 }

@@ -45,10 +45,11 @@ export function WhatsNewHost() {
   }, [hasUpdate, onboardingComplete, productTutorialStatus, setOpen]);
 
   return (
-    <WhatsNewModal
-      open={open}
-      onOpenChange={setOpen}
-      onDismiss={markSeen}
-    />
+    <div
+      data-monochrome-surface="whats-new-host"
+      className="contents [html[data-theme=monochrome]_&_*]:shadow-none"
+    >
+      <WhatsNewModal open={open} onOpenChange={setOpen} onDismiss={markSeen} />
+    </div>
   );
 }

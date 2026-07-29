@@ -29,7 +29,8 @@ export function PetMiniPanelWindow() {
   return (
     <div
       data-pet-window="pet-mini-panel"
-      className="h-screen w-screen overflow-hidden bg-background"
+      data-monochrome-surface="pet-mini-panel-window"
+      className="h-screen w-screen overflow-hidden bg-background [html[data-theme=monochrome]_&]:font-sans [html[data-theme=monochrome]_&_*]:shadow-none"
     >
       <AuthGate>
         <PetMiniPanel

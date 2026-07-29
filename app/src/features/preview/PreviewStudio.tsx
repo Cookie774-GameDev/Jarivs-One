@@ -77,9 +77,22 @@ export function PreviewStudio() {
   const [historyIdx, setHistoryIdx] = React.useState(-1);
 
   const preset = getDevicePreset(deviceId);
-  const logical = orientSize(preset, orientation, customWidth, customHeight, hostSize.w - 48, hostSize.h - 48);
+  const logical = orientSize(
+    preset,
+    orientation,
+    customWidth,
+    customHeight,
+    hostSize.w - 48,
+    hostSize.h - 48,
+  );
   const displayZoom = fitToWorkspace
-    ? Math.min(1.25, Math.max(0.25, Math.min((hostSize.w - 80) / logical.width, (hostSize.h - 80) / logical.height)))
+    ? Math.min(
+        1.25,
+        Math.max(
+          0.25,
+          Math.min((hostSize.w - 80) / logical.width, (hostSize.h - 80) / logical.height),
+        ),
+      )
     : zoom;
   const frameW = Math.round(logical.width * displayZoom);
   const frameH = Math.round(logical.height * displayZoom);
@@ -165,7 +178,8 @@ export function PreviewStudio() {
         setLoading(false);
         setError({
           code: 'not_tauri',
-          message: 'Native Preview Studio runs in the VibeSpace desktop app (isolated child WebView).',
+          message:
+            'Native Preview Studio runs in the VibeSpace desktop app (isolated child WebView).',
           recoverable: true,
           url: norm.url,
         });
@@ -222,7 +236,11 @@ export function PreviewStudio() {
     // Uses dialog if available via dynamic import; falls back to toast.
     try {
       const { open: pick } = await import('@tauri-apps/plugin-dialog');
-      const selected = await pick({ directory: true, multiple: false, title: 'Select project folder' });
+      const selected = await pick({
+        directory: true,
+        multiple: false,
+        title: 'Select project folder',
+      });
       if (!selected || Array.isArray(selected)) return;
       const result = await startStaticServer(selected);
       if (!result.ok) {
@@ -258,26 +276,50 @@ export function PreviewStudio() {
   };
 
   return (
-    <div className="preview-shell" data-testid="preview-studio">
-      <header className="preview-toolbar">
+    <div
+      className="preview-shell [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:font-sans [html[data-theme=monochrome]_&_.preview-toolbar]:border-border-mid [html[data-theme=monochrome]_&_.preview-toolbar]:bg-panel [html[data-theme=monochrome]_&_.preview-toolbar]:shadow-none [html[data-theme=monochrome]_&_.preview-stage-wrap]:bg-background [html[data-theme=monochrome]_&_.preview-device-frame]:rounded-sm [html[data-theme=monochrome]_&_.preview-device-frame]:border-border-mid [html[data-theme=monochrome]_&_.preview-device-frame]:shadow-none [html[data-theme=monochrome]_&_.preview-empty-card]:rounded-sm [html[data-theme=monochrome]_&_.preview-empty-card]:border-border-mid [html[data-theme=monochrome]_&_.preview-empty-card]:bg-panel [html[data-theme=monochrome]_&_.preview-empty-card]:shadow-none [html[data-theme=monochrome]_&_.preview-error-card]:rounded-sm [html[data-theme=monochrome]_&_.preview-error-card]:shadow-none [html[data-theme=monochrome]_&_.preview-console]:border-border-mid [html[data-theme=monochrome]_&_.preview-console]:bg-panel [html[data-theme=monochrome]_&_.preview-console]:shadow-none"
+      data-testid="preview-studio"
+      data-monochrome-route="preview"
+    >
+      <header data-monochrome-surface="preview-toolbar" className="preview-toolbar">
         <span className="preview-toolbar-kicker">Preview Studio</span>
-        <Button type="button" size="icon-sm" variant="ghost" aria-label="Back" disabled={historyIdx <= 0} onClick={() => {
-          if (historyIdx <= 0) return;
-          const next = historyIdx - 1;
-          setHistoryIdx(next);
-          void navigateTo(history[next]!, false);
-        }}>
+        <Button
+          type="button"
+          size="icon-sm"
+          variant="ghost"
+          aria-label="Back"
+          disabled={historyIdx <= 0}
+          onClick={() => {
+            if (historyIdx <= 0) return;
+            const next = historyIdx - 1;
+            setHistoryIdx(next);
+            void navigateTo(history[next]!, false);
+          }}
+        >
           <ArrowLeft />
         </Button>
-        <Button type="button" size="icon-sm" variant="ghost" aria-label="Forward" disabled={historyIdx < 0 || historyIdx >= history.length - 1} onClick={() => {
-          if (historyIdx >= history.length - 1) return;
-          const next = historyIdx + 1;
-          setHistoryIdx(next);
-          void navigateTo(history[next]!, false);
-        }}>
+        <Button
+          type="button"
+          size="icon-sm"
+          variant="ghost"
+          aria-label="Forward"
+          disabled={historyIdx < 0 || historyIdx >= history.length - 1}
+          onClick={() => {
+            if (historyIdx >= history.length - 1) return;
+            const next = historyIdx + 1;
+            setHistoryIdx(next);
+            void navigateTo(history[next]!, false);
+          }}
+        >
           <ArrowRight />
         </Button>
-        <Button type="button" size="icon-sm" variant="ghost" aria-label="Reload" onClick={() => void previewReload(false)}>
+        <Button
+          type="button"
+          size="icon-sm"
+          variant="ghost"
+          aria-label="Reload"
+          onClick={() => void previewReload(false)}
+        >
           <RefreshCw />
         </Button>
         <form className="preview-url-form" onSubmit={onSubmit}>
@@ -291,9 +333,15 @@ export function PreviewStudio() {
             Go
           </Button>
         </form>
-        <select aria-label="Device preset" value={deviceId} onChange={(e) => setDeviceId(e.target.value)}>
+        <select
+          aria-label="Device preset"
+          value={deviceId}
+          onChange={(e) => setDeviceId(e.target.value)}
+        >
           {DEVICE_PRESETS.map((d) => (
-            <option key={d.id} value={d.id}>{d.name}</option>
+            <option key={d.id} value={d.id}>
+              {d.name}
+            </option>
           ))}
         </select>
         <Button
@@ -320,7 +368,9 @@ export function PreviewStudio() {
         >
           <option value="fit">Fit</option>
           {ZOOM_STEPS.map((z) => (
-            <option key={z} value={z}>{Math.round(z * 100)}%</option>
+            <option key={z} value={z}>
+              {Math.round(z * 100)}%
+            </option>
           ))}
         </select>
         {deviceId === 'custom' ? (
@@ -352,22 +402,48 @@ export function PreviewStudio() {
         <Button type="button" size="sm" variant="ghost" onClick={() => void openHtmlFolder()}>
           Open folder
         </Button>
-        <Button type="button" size="sm" variant="ghost" onClick={() => setShowDeviceFrame(!showDeviceFrame)}>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={() => setShowDeviceFrame(!showDeviceFrame)}
+        >
           {showDeviceFrame ? <Smartphone /> : <Monitor />} Frame
         </Button>
         <Button type="button" size="sm" variant="ghost" onClick={() => setShowRulers(!showRulers)}>
           Rulers
         </Button>
-        <Button type="button" size="sm" variant="ghost" onClick={() => setConsoleOpen(!consoleOpen)}>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={() => setConsoleOpen(!consoleOpen)}
+        >
           Console
         </Button>
-        <Button type="button" size="sm" variant="ghost" onClick={() => void openExternal()} disabled={!url}>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={() => void openExternal()}
+          disabled={!url}
+        >
           <ExternalLink /> External
         </Button>
         <Button type="button" size="sm" variant="accent" onClick={openInBrowser} disabled={!url}>
           <Globe2 /> Vibe Browser
         </Button>
-        <Button type="button" size="sm" variant="ghost" onClick={() => { clearPreviewData(); void previewDestroy(); setUrl(''); setDraftUrl(''); }}>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={() => {
+            clearPreviewData();
+            void previewDestroy();
+            setUrl('');
+            setDraftUrl('');
+          }}
+        >
           Clear
         </Button>
       </header>
@@ -375,35 +451,71 @@ export function PreviewStudio() {
       {(detectedServers.length > 0 || recentUrls.length > 0) && (
         <div className="preview-toolbar" style={{ paddingTop: 4, paddingBottom: 4 }}>
           {detectedServers.slice(0, 4).map((s) => (
-            <Button key={s.url} type="button" size="sm" variant="outline" onClick={() => { setDraftUrl(s.url); void navigateTo(s.url); }}>
+            <Button
+              key={s.url}
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setDraftUrl(s.url);
+                void navigateTo(s.url);
+              }}
+            >
               {s.url}
             </Button>
           ))}
           {recentUrls.slice(0, 4).map((u) => (
-            <Button key={`r-${u}`} type="button" size="sm" variant="ghost" onClick={() => { setDraftUrl(u); void navigateTo(u); }}>
+            <Button
+              key={`r-${u}`}
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setDraftUrl(u);
+                void navigateTo(u);
+              }}
+            >
               {u.replace(/^https?:\/\//, '').slice(0, 28)}
             </Button>
           ))}
         </div>
       )}
 
-      <div className="preview-stage-wrap" ref={hostRef}>
+      <div data-monochrome-surface="preview-workspace" className="preview-stage-wrap" ref={hostRef}>
         {!url && !error ? (
           <div className="preview-empty-card">
             <p className="preview-toolbar-kicker">Responsive emulation</p>
             <h2>Preview Studio</h2>
             <p>
-              Load a localhost dev server, an https site, or a local HTML project folder.
-              Device sizes are responsive emulation — not a claim of real Mobile Safari.
+              Load a localhost dev server, an https site, or a local HTML project folder. Device
+              sizes are responsive emulation — not a claim of real Mobile Safari.
             </p>
             <div className="preview-empty-actions">
-              <Button type="button" size="sm" variant="accent" onClick={() => { setDraftUrl('http://localhost:5173'); void navigateTo('http://localhost:5173'); }}>
+              <Button
+                type="button"
+                size="sm"
+                variant="accent"
+                onClick={() => {
+                  setDraftUrl('http://localhost:5173');
+                  void navigateTo('http://localhost:5173');
+                }}
+              >
                 localhost:5173
               </Button>
-              <Button type="button" size="sm" variant="outline" onClick={() => void detectServers()}>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => void detectServers()}
+              >
                 Detect local server
               </Button>
-              <Button type="button" size="sm" variant="outline" onClick={() => void openHtmlFolder()}>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => void openHtmlFolder()}
+              >
                 Open HTML project
               </Button>
             </div>
@@ -417,10 +529,20 @@ export function PreviewStudio() {
             <p>{error.message}</p>
             {error.url ? <code title={error.url}>{error.url}</code> : null}
             <div className="preview-error-actions">
-              <Button type="button" size="sm" variant="accent" onClick={() => void navigateTo(error.url || draftUrl || url)}>
+              <Button
+                type="button"
+                size="sm"
+                variant="accent"
+                onClick={() => void navigateTo(error.url || draftUrl || url)}
+              >
                 Retry
               </Button>
-              <Button type="button" size="sm" variant="outline" onClick={() => void detectServers()}>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => void detectServers()}
+              >
                 Detect local server
               </Button>
               <Button type="button" size="sm" variant="ghost" onClick={() => setError(null)}>
@@ -456,6 +578,7 @@ export function PreviewStudio() {
         {url ? (
           <div
             className="preview-device-frame"
+            data-monochrome-surface="preview-device"
             data-frame={showDeviceFrame ? 'true' : 'false'}
             style={{ width: frameW + (showDeviceFrame ? 20 : 0) }}
           >
@@ -486,8 +609,8 @@ export function PreviewStudio() {
                 <div className="preview-surface-fallback">
                   <strong>Desktop surface</strong>
                   <span>
-                    Isolated child WebView is available in the packaged / Tauri app.
-                    URL ready: {url}
+                    Isolated child WebView is available in the packaged / Tauri app. URL ready:{' '}
+                    {url}
                   </span>
                 </div>
               ) : loading ? (
@@ -507,9 +630,17 @@ export function PreviewStudio() {
       </div>
 
       {consoleOpen ? (
-        <aside className="preview-console" aria-label="Preview diagnostics">
+        <aside
+          data-monochrome-surface="preview-diagnostics"
+          className="preview-console"
+          aria-label="Preview diagnostics"
+        >
           <h3>Diagnostics</h3>
-          {diagnostics.length === 0 ? <div>No events yet.</div> : diagnostics.map((line) => <div key={line}>{line}</div>)}
+          {diagnostics.length === 0 ? (
+            <div>No events yet.</div>
+          ) : (
+            diagnostics.map((line) => <div key={line}>{line}</div>)
+          )}
         </aside>
       ) : null}
     </div>
