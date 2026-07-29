@@ -75,6 +75,20 @@ import { CANVAS_MARKDOWN_MAX_SOURCE_LENGTH, parseMarkdownToBlockContents } from 
 import { exportCanvas, type CanvasExportArtifact, type CanvasExportFormat } from './importExport';
 import { decodeCanvasPackage, encodeCanvasPackage } from './packageFormat';
 import {
+  createCustomCanvasTemplateStore,
+  deleteCustomTemplate,
+  duplicateCustomTemplate,
+  instantiateCanvasTemplate,
+  instantiateCustomTemplate,
+  listBuiltInCanvasTemplates,
+  listCustomTemplates,
+  previewCustomTemplate,
+  renameCustomTemplate,
+  saveCanvasDocumentAsTemplate,
+  type CanvasTemplate,
+  type CanvasTemplatePreview,
+} from './templates';
+import {
   clearCanvasSelection,
   createCanvasSelection,
   lassoSelect,
@@ -419,6 +433,18 @@ function presentationFrameLabel(block: CanvasBlock | undefined): string {
     : `Untitled ${CANVAS_BLOCK_KIND_LABELS[block.content.kind]}`;
 }
 
+function templateContentLabel(content: CanvasBlock['content']): string {
+  if (content.kind === 'mind-map') {
+    return (
+      content.map.nodes.find((node) => node.id === content.map.rootId)?.label ?? 'Untitled mind map'
+    );
+  }
+  if (content.kind === 'shape') {
+    return content.shape.text?.trim() || `Untitled ${content.shape.kind} shape`;
+  }
+  return content.text.trim() || `Untitled ${content.kind}`;
+}
+
 function shapeVisualStyle(shape: CanvasShape): React.CSSProperties {
   const gradient = shape.gradient
     ? shape.gradient.kind === 'linear'
@@ -601,6 +627,20 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
   const [canvasSearchObjectType, setCanvasSearchObjectType] = React.useState('');
   const [canvasSearchFrameId, setCanvasSearchFrameId] = React.useState('');
   const [packageMessage, setPackageMessage] = React.useState('');
+  const builtInTemplates = React.useMemo(listBuiltInCanvasTemplates, []);
+  const [selectedBuiltInTemplateId, setSelectedBuiltInTemplateId] = React.useState<string>(
+    builtInTemplates[0]?.id ?? 'blank',
+  );
+  const [customTemplateStore, setCustomTemplateStore] = React.useState(
+    createCustomCanvasTemplateStore,
+  );
+  const [customTemplateName, setCustomTemplateName] = React.useState('');
+  const [templateRenameDrafts, setTemplateRenameDrafts] = React.useState<
+    Readonly<Record<string, string>>
+  >({});
+  const [previewedTemplateId, setPreviewedTemplateId] = React.useState<string | null>(null);
+  const templateSequence = React.useRef(0);
+  const templateClock = React.useRef(0);
   const [visualExportFormat, setVisualExportFormat] =
     React.useState<CanvasVisualExportFormat>('png');
   const [visualExportScope, setVisualExportScope] = React.useState<CanvasVisualExportScope>('all');
@@ -2489,7 +2529,174 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
     }
   };
 
+  const nextTemplateId = () => {
+    templateSequence.current += 1;
+    return `template-${documentRef.current.id}-${templateSequence.current}`;
+  };
+
+  const nextTemplateTimestamp = () => {
+    const suppliedNow = persistence?.now?.() ?? Date.now();
+    templateClock.current = Math.max(templateClock.current + 1, suppliedNow);
+    return templateClock.current;
+  };
+
+  const reportTemplateFailure = (action: string, error: unknown) => {
+    setPackageMessage(
+      `${action} failed: ${error instanceof Error ? error.message : 'unknown template error'}`,
+    );
+  };
+
+  const activateTemplateDocument = (next: CanvasDocument, templateTitle: string) => {
+    replaceActiveDocument(next);
+    autosaveRef.current?.schedule(next);
+    setPackageMessage(`Created a new canvas from ${templateTitle}`);
+  };
+
+  const createFromBuiltInTemplate = (template: CanvasTemplate) => {
+    if (!window.confirm(`Replace the current canvas with a new ${template.title} canvas?`)) {
+      return;
+    }
+    try {
+      const next = instantiateCanvasTemplate(template, {
+        documentId: persistence?.createDocumentId?.() ?? createDocumentId(),
+        projectId: documentRef.current.projectId,
+        ownerId: documentRef.current.ownerId,
+        now: nextTemplateTimestamp(),
+      });
+      activateTemplateDocument(next, template.title);
+    } catch (error) {
+      reportTemplateFailure('Create canvas', error);
+    }
+  };
+
+  const saveCurrentCanvasTemplate = () => {
+    try {
+      const result = saveCanvasDocumentAsTemplate(customTemplateStore, {
+        source: documentRef.current,
+        templateId: nextTemplateId(),
+        ownerId: documentRef.current.ownerId,
+        projectId: documentRef.current.projectId,
+        title: customTemplateName.trim() || documentRef.current.title,
+        now: nextTemplateTimestamp(),
+      });
+      setCustomTemplateStore(result.store);
+      setTemplateRenameDrafts((current) => ({
+        ...current,
+        [result.template.id]: result.template.title,
+      }));
+      setCustomTemplateName('');
+      setPackageMessage(`Saved ${result.template.title} as a custom template`);
+    } catch (error) {
+      reportTemplateFailure('Save template', error);
+    }
+  };
+
+  const createFromCustomTemplate = (templateId: string, templateTitle: string) => {
+    if (!window.confirm(`Replace the current canvas with a new ${templateTitle} canvas?`)) {
+      return;
+    }
+    try {
+      const next = instantiateCustomTemplate(customTemplateStore, {
+        templateId,
+        documentId: persistence?.createDocumentId?.() ?? createDocumentId(),
+        ownerId: documentRef.current.ownerId,
+        projectId: documentRef.current.projectId,
+        now: nextTemplateTimestamp(),
+      });
+      activateTemplateDocument(next, templateTitle);
+    } catch (error) {
+      reportTemplateFailure('Create canvas', error);
+    }
+  };
+
+  const duplicateTemplate = (templateId: string, templateTitle: string) => {
+    try {
+      const now = nextTemplateTimestamp();
+      const duplicated = duplicateCustomTemplate(customTemplateStore, {
+        templateId,
+        newTemplateId: nextTemplateId(),
+        ownerId: documentRef.current.ownerId,
+        projectId: documentRef.current.projectId,
+        now,
+      });
+      const renamed = renameCustomTemplate(duplicated.store, {
+        templateId: duplicated.template.id,
+        title: `${templateTitle} copy`,
+        ownerId: documentRef.current.ownerId,
+        projectId: documentRef.current.projectId,
+        now,
+      });
+      setCustomTemplateStore(renamed.store);
+      setTemplateRenameDrafts((current) => ({
+        ...current,
+        [renamed.template.id]: renamed.template.title,
+      }));
+      setPackageMessage(`Duplicated ${templateTitle}`);
+    } catch (error) {
+      reportTemplateFailure('Duplicate template', error);
+    }
+  };
+
+  const applyTemplateRename = (templateId: string, previousTitle: string) => {
+    try {
+      const result = renameCustomTemplate(customTemplateStore, {
+        templateId,
+        title: templateRenameDrafts[templateId] ?? previousTitle,
+        ownerId: documentRef.current.ownerId,
+        projectId: documentRef.current.projectId,
+        now: nextTemplateTimestamp(),
+      });
+      setCustomTemplateStore(result.store);
+      setTemplateRenameDrafts((current) => ({
+        ...current,
+        [templateId]: result.template.title,
+      }));
+      setPackageMessage(`Renamed template to ${result.template.title}`);
+    } catch (error) {
+      reportTemplateFailure('Rename template', error);
+    }
+  };
+
+  const removeCustomTemplate = (templateId: string, templateTitle: string) => {
+    if (!window.confirm(`Delete the custom template ${templateTitle}?`)) return;
+    try {
+      const result = deleteCustomTemplate(customTemplateStore, {
+        templateId,
+        ownerId: documentRef.current.ownerId,
+        projectId: documentRef.current.projectId,
+      });
+      setCustomTemplateStore(result.store);
+      setPreviewedTemplateId((current) => (current === templateId ? null : current));
+      setTemplateRenameDrafts((current) => {
+        const { [templateId]: _removed, ...remaining } = current;
+        return remaining;
+      });
+      setPackageMessage(`Deleted template ${templateTitle}`);
+    } catch (error) {
+      reportTemplateFailure('Delete template', error);
+    }
+  };
+
   const blocks = pageOrderedBlocks(document);
+  const selectedBuiltInTemplate =
+    builtInTemplates.find((template) => template.id === selectedBuiltInTemplateId) ??
+    builtInTemplates[0]!;
+  const scopedCustomTemplates = listCustomTemplates(customTemplateStore, {
+    ownerId: document.ownerId,
+    projectId: document.projectId,
+  });
+  let customTemplatePreview: CanvasTemplatePreview | null = null;
+  if (previewedTemplateId) {
+    try {
+      customTemplatePreview = previewCustomTemplate(customTemplateStore, {
+        templateId: previewedTemplateId,
+        ownerId: document.ownerId,
+        projectId: document.projectId,
+      });
+    } catch {
+      customTemplatePreview = null;
+    }
+  }
   const currentCanvasSearch = React.useMemo(() => {
     const projection = projectCanvasDocumentForSearch(document);
     return {
@@ -2885,6 +3092,195 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
             </button>
           ))}
         </div>
+        <details className="relative">
+          <summary className="inline-flex h-9 cursor-pointer list-none items-center rounded-md border border-border px-3 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground">
+            Templates
+          </summary>
+          <div
+            role="group"
+            aria-label="Canvas template manager"
+            className="absolute right-0 top-11 z-50 max-h-[70vh] w-[32rem] space-y-4 overflow-auto rounded-lg border border-border bg-background p-4 shadow-lg"
+          >
+            <section aria-labelledby="built-in-template-heading" className="space-y-2">
+              <h2 id="built-in-template-heading" className="text-sm font-semibold">
+                Built-in templates
+              </h2>
+              <div className="flex items-end gap-2">
+                <label className="flex-1 space-y-1 text-xs text-muted-foreground">
+                  Template
+                  <select
+                    aria-label="Built-in canvas template"
+                    value={selectedBuiltInTemplate.id}
+                    onChange={(event) => setSelectedBuiltInTemplateId(event.currentTarget.value)}
+                    className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                  >
+                    {builtInTemplates.map((template) => (
+                      <option key={template.id} value={template.id}>
+                        {template.title}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  aria-label={`Create canvas from ${selectedBuiltInTemplate.title}`}
+                  onClick={() => createFromBuiltInTemplate(selectedBuiltInTemplate)}
+                  className="rounded-md bg-foreground px-3 py-2 text-xs font-medium text-background"
+                >
+                  Use template
+                </button>
+              </div>
+              <section
+                role="region"
+                aria-label="Built-in template preview"
+                className="rounded-md border border-border bg-muted/20 p-3"
+              >
+                <p className="text-sm font-medium">{selectedBuiltInTemplate.title}</p>
+                <p className="text-xs text-muted-foreground">
+                  {selectedBuiltInTemplate.layoutMode} · {selectedBuiltInTemplate.blocks.length}{' '}
+                  {selectedBuiltInTemplate.blocks.length === 1 ? 'object' : 'objects'}
+                </p>
+                {selectedBuiltInTemplate.blocks.length > 0 ? (
+                  <ul className="mt-2 list-inside list-disc text-xs text-muted-foreground">
+                    {selectedBuiltInTemplate.blocks.slice(0, 5).map((block, index) => (
+                      <li key={`${selectedBuiltInTemplate.id}:${index}`}>
+                        {block.mindMapLabel ?? templateContentLabel(block.content)}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-xs text-muted-foreground">Empty starting canvas</p>
+                )}
+              </section>
+            </section>
+
+            <section aria-labelledby="custom-template-heading" className="space-y-2">
+              <h2 id="custom-template-heading" className="text-sm font-semibold">
+                Custom templates
+              </h2>
+              <form
+                className="flex items-end gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  saveCurrentCanvasTemplate();
+                }}
+              >
+                <label className="flex-1 space-y-1 text-xs text-muted-foreground">
+                  Name
+                  <input
+                    aria-label="Custom template name"
+                    value={customTemplateName}
+                    onChange={(event) => setCustomTemplateName(event.currentTarget.value)}
+                    placeholder={document.title}
+                    className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                  />
+                </label>
+                <button
+                  type="submit"
+                  aria-label="Save current canvas as template"
+                  className="rounded-md border border-border px-3 py-2 text-xs font-medium hover:bg-muted"
+                >
+                  Save current
+                </button>
+              </form>
+              <ul aria-label="Custom canvas templates" className="space-y-3">
+                {scopedCustomTemplates.length === 0 ? (
+                  <li className="text-xs text-muted-foreground">No custom templates yet.</li>
+                ) : (
+                  scopedCustomTemplates.map((template) => (
+                    <li key={template.id} className="space-y-2 rounded-md border border-border p-3">
+                      <p className="text-sm font-medium">{template.title}</p>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          aria-label={`Create canvas from ${template.title}`}
+                          onClick={() => createFromCustomTemplate(template.id, template.title)}
+                          className="rounded border border-border px-2 py-1 text-xs hover:bg-muted"
+                        >
+                          Use
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Preview template ${template.title}`}
+                          aria-pressed={previewedTemplateId === template.id}
+                          onClick={() =>
+                            setPreviewedTemplateId((current) =>
+                              current === template.id ? null : template.id,
+                            )
+                          }
+                          className="rounded border border-border px-2 py-1 text-xs hover:bg-muted"
+                        >
+                          Preview
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Duplicate template ${template.title}`}
+                          onClick={() => duplicateTemplate(template.id, template.title)}
+                          className="rounded border border-border px-2 py-1 text-xs hover:bg-muted"
+                        >
+                          Duplicate
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Delete template ${template.title}`}
+                          onClick={() => removeCustomTemplate(template.id, template.title)}
+                          className="rounded border border-destructive/50 px-2 py-1 text-xs text-destructive hover:bg-destructive/10"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          aria-label={`Rename template ${template.title}`}
+                          value={templateRenameDrafts[template.id] ?? template.title}
+                          onChange={(event) => {
+                            const title = event.currentTarget.value;
+                            setTemplateRenameDrafts((current) => ({
+                              ...current,
+                              [template.id]: title,
+                            }));
+                          }}
+                          className="min-w-0 flex-1 rounded border border-border bg-background px-2 py-1 text-xs"
+                        />
+                        <button
+                          type="button"
+                          aria-label={`Apply template name ${template.title}`}
+                          onClick={() => applyTemplateRename(template.id, template.title)}
+                          className="rounded border border-border px-2 py-1 text-xs hover:bg-muted"
+                        >
+                          Rename
+                        </button>
+                      </div>
+                      {customTemplatePreview?.id === template.id ? (
+                        <section
+                          role="region"
+                          aria-label={`Template preview ${template.title}`}
+                          className="rounded border border-border bg-muted/20 p-2"
+                        >
+                          <p className="text-xs text-muted-foreground">
+                            {customTemplatePreview.layoutMode} · {customTemplatePreview.blockCount}{' '}
+                            {customTemplatePreview.blockCount === 1 ? 'object' : 'objects'}
+                          </p>
+                          {customTemplatePreview.blocks.length > 0 ? (
+                            <ul className="mt-1 list-inside list-disc text-xs">
+                              {customTemplatePreview.blocks.map((content, index) => (
+                                <li key={`${template.id}:preview:${index}`}>
+                                  {templateContentLabel(content)}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="mt-1 text-xs text-muted-foreground">Empty template</p>
+                          )}
+                        </section>
+                      ) : null}
+                    </li>
+                  ))
+                )}
+              </ul>
+            </section>
+          </div>
+        </details>
         <details className="relative">
           <summary
             aria-label="Search current canvas"

@@ -492,6 +492,115 @@ describe('CanvasPage', () => {
     expect(screen.getByDisplayValue('New note 1')).toBeTruthy();
   });
 
+  it('creates a new real canvas from a built-in template', () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    render(<CanvasPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    fireEvent.click(screen.getByText('Templates'));
+
+    const builtIn = screen.getByRole('combobox', { name: 'Built-in canvas template' });
+    fireEvent.change(builtIn, { target: { value: 'project-planner' } });
+    expect(screen.getByRole('region', { name: 'Built-in template preview' }).textContent).toContain(
+      'Project planner',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Create canvas from Project planner' }));
+
+    expect(confirm).toHaveBeenCalled();
+    expect((screen.getByRole('textbox', { name: 'Canvas title' }) as HTMLInputElement).value).toBe(
+      'Project planner',
+    );
+    expect(screen.queryByDisplayValue('New note 1')).toBeNull();
+    expect(screen.getAllByLabelText(/Canvas (heading|note)/).length).toBeGreaterThan(0);
+    expect(screen.getByText('Created a new canvas from Project planner')).toBeTruthy();
+    confirm.mockRestore();
+  });
+
+  it('autosaves a template-created canvas through the active scoped repository', async () => {
+    const latest = persistedDocument(PERSISTENCE_SCOPE, 'template-source', 'Template source');
+    const repository = persistenceRepository({
+      loadLatest: vi.fn(async () => latest),
+    });
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    render(
+      <CanvasPage
+        persistence={{
+          repository,
+          scope: PERSISTENCE_SCOPE,
+          autosaveDelayMs: 0,
+          createDocumentId: () => 'template-created-canvas',
+        }}
+      />,
+    );
+    expect(await screen.findByDisplayValue('Template source')).toBeTruthy();
+    fireEvent.click(screen.getByText('Templates'));
+    fireEvent.click(screen.getByRole('button', { name: 'Create canvas from Blank canvas' }));
+
+    await waitFor(() => expect(repository.save).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(repository.save).mock.calls[0]?.[0]).toEqual(PERSISTENCE_SCOPE);
+    expect(vi.mocked(repository.save).mock.calls[0]?.[1]).toMatchObject({
+      id: 'template-created-canvas',
+      projectId: PERSISTENCE_SCOPE.projectId,
+      ownerId: PERSISTENCE_SCOPE.ownerId,
+      title: 'Blank canvas',
+    });
+    confirm.mockRestore();
+  });
+
+  it('manages the scoped custom-template lifecycle with real canvas snapshots', () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    render(<CanvasPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    fireEvent.click(screen.getByText('Templates'));
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Custom template name' }), {
+      target: { value: 'Team board' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save current canvas as template' }));
+
+    const customTemplates = screen.getByRole('list', { name: 'Custom canvas templates' });
+    expect(within(customTemplates).getByText('Team board')).toBeTruthy();
+    fireEvent.click(
+      within(customTemplates).getByRole('button', { name: 'Preview template Team board' }),
+    );
+    expect(
+      screen.getByRole('region', { name: 'Template preview Team board' }).textContent,
+    ).toContain('New note 1');
+
+    fireEvent.click(
+      within(customTemplates).getByRole('button', { name: 'Duplicate template Team board' }),
+    );
+    expect(within(customTemplates).getByText('Team board copy')).toBeTruthy();
+
+    const rename = within(customTemplates).getByRole('textbox', {
+      name: 'Rename template Team board',
+    });
+    fireEvent.change(rename, { target: { value: 'Reusable team board' } });
+    fireEvent.click(
+      within(customTemplates).getByRole('button', { name: 'Apply template name Team board' }),
+    );
+    expect(within(customTemplates).getByText('Reusable team board')).toBeTruthy();
+
+    fireEvent.click(
+      within(customTemplates).getByRole('button', {
+        name: 'Create canvas from Reusable team board',
+      }),
+    );
+    expect((screen.getByRole('textbox', { name: 'Canvas title' }) as HTMLInputElement).value).toBe(
+      'Reusable team board',
+    );
+    expect(screen.getByDisplayValue('New note 1')).toBeTruthy();
+
+    fireEvent.click(
+      within(customTemplates).getByRole('button', {
+        name: 'Delete template Reusable team board',
+      }),
+    );
+    expect(confirm).toHaveBeenCalled();
+    expect(within(customTemplates).queryByText('Reusable team board')).toBeNull();
+    expect(within(customTemplates).getByText('Team board copy')).toBeTruthy();
+    confirm.mockRestore();
+  });
+
   it('switches the same content between page and edgeless layouts', () => {
     render(<CanvasPage />);
     fireEvent.click(screen.getByRole('button', { name: 'Add note' }));

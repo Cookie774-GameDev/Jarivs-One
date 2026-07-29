@@ -98,5 +98,6 @@ export * from './shapes';
 export * from './spatialIndex';
 export * from './strokes';
 export * from './surfaces';
+export * from './templates';
 export * from './touchInput';
 export * from './webContent';
