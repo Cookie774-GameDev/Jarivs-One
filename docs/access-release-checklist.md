@@ -34,7 +34,8 @@ Stop before deployment or activation if any condition below is true:
 - VibeSpace Access is not a separate $20 USD monthly product and price.
 - An optional AI/voice/cloud feature plan is merged with Access or given the Access trial.
 - Checkout accepts a client price, amount, customer, redirect, user, or idempotency authority.
-- Migrations `0032` through `0035` are missing, out of order, or show destructive drift.
+- The exact-scoped Access application set contains anything other than migrations `0032` through
+  `0035`, is out of order, or shows destructive drift.
 - Any migration, reset, rollback, or operator command would modify, drop, reset, truncate, rename,
   or replace a pre-existing AccessRevamp `ar_*` object.
 - `app_access_launch_config.enabled` is not `false` during prelaunch work.
@@ -154,13 +155,23 @@ Follow [the Stripe and Supabase runbook](stripe-setup.md).
       absent or match the reviewed release SHA; no project reference or object contents enter this
       repository.
 - [ ] Existing AccessRevamp `ar_*` objects are treated as protected exclusions, and the reviewed
-      dry run contains no operation against them.
-- [ ] Migration dry run reviewed; `0032`, `0033`, `0034`, and `0035` apply in order.
+      application plan contains no operation against them.
+- [ ] The two disposable local database proofs pass: the complete current chain and the runbook's
+      remote-shaped disposable proof in a temporary, unlinked local project.
+- [ ] The remote-shaped proof records the selected migration filenames and SHA-256 evidence, uses
+      only owner-approved remote equivalents through `0030`, and proves `0031_wallpapers.sql` is
+      absent before local start/reset and before `0032`–`0035`.
+- [ ] The database owner approved an exact-scoped executor that receives only one reviewed Access
+      migration name/body at a time; generic or full-directory `supabase db push` is prohibited.
+- [ ] The authorized test-target application plan contains exactly the four Access migrations,
+      sequentially and one at a time: `0032`, `0033`, `0034`, then `0035`.
 - [ ] Read-only reconciliation accounts for remote `0001`–`0019` plus later timestamped versions,
       local numeric `0020`–`0035`, and the missing local `0025`; no migration history was blindly
       repaired and no older numeric migration will be replayed.
-- [ ] No pending entry exists other than reviewed Access `0032`–`0035`; otherwise deployment is
-      aborted for a database-owner reconciliation plan.
+- [ ] `0031_wallpapers.sql` is confirmed absent/not deployed and remains a separate decision outside
+      Access; it is neither applied nor marked applied by this release.
+- [ ] After every authorized Access migration application, history and schema state are re-read
+      before the next step; exactly four new timestamped rows must appear in order.
 - [ ] Config singleton remains `enabled = false`, `trial_days = 30`, `grace_days = 3`,
       `monthly_price_usd = 20.00`, and `require_payment_method_for_trial = false`.
 - [ ] RLS behavior proves authenticated self-read, no authenticated writes, and service-role-only
@@ -358,18 +369,18 @@ During rollback:
 
 ## Evidence ledger
 
-| Evidence family                     | Current status in this authoring environment                   | Release requirement                       |
-| ----------------------------------- | -------------------------------------------------------------- | ----------------------------------------- |
-| Static docs/checker/candidate diff  | PASS — focused owned-artifact checks only                      | PASS on final candidate                   |
-| Repository-wide secret scan         | NOT RUN during authoring                                       | PASS on exact RC, diff, and history       |
-| Supabase read-only cloud preflight  | PARTIAL — target lacks new Access objects; `ar_*` is protected | Recheck exact target before dry run       |
-| Deno focused Edge tests             | NOT RUN — Deno unavailable                                     | PASS on release SHA                       |
-| Local Supabase SQL/RLS              | NOT RUN — Supabase CLI/`psql` unavailable                      | PASS in disposable DB                     |
-| Stripe product and price state      | NOT VERIFIED                                                   | Confirm read-only in selected mode        |
-| Stripe test Checkout/webhook/portal | NOT RUN during authoring                                       | PASS in selected test account             |
-| Stripe Test Clocks                  | NOT RUN during authoring                                       | PASS for purchased subscription scenarios |
-| Public route walk                   | NOT RUN during authoring                                       | PASS at final origin                      |
-| Production deployment/activation    | NOT RUN and not authorized by this document                    | Explicit approval plus all gates          |
+| Evidence family                     | Current status in this authoring environment                   | Release requirement                                       |
+| ----------------------------------- | -------------------------------------------------------------- | --------------------------------------------------------- |
+| Static docs/checker/candidate diff  | PASS — focused owned-artifact checks only                      | PASS on final candidate                                   |
+| Repository-wide secret scan         | NOT RUN during authoring                                       | PASS on exact RC, diff, and history                       |
+| Supabase read-only cloud preflight  | PARTIAL — target lacks new Access objects; `ar_*` is protected | Recheck exact target before the reviewed application plan |
+| Deno focused Edge tests             | NOT RUN — Deno unavailable                                     | PASS on release SHA                                       |
+| Local Supabase SQL/RLS              | NOT RUN — Supabase CLI/`psql` unavailable                      | PASS in disposable DB                                     |
+| Stripe product and price state      | NOT VERIFIED                                                   | Confirm read-only in selected mode                        |
+| Stripe test Checkout/webhook/portal | NOT RUN during authoring                                       | PASS in selected test account                             |
+| Stripe Test Clocks                  | NOT RUN during authoring                                       | PASS for purchased subscription scenarios                 |
+| Public route walk                   | NOT RUN during authoring                                       | PASS at final origin                                      |
+| Production deployment/activation    | NOT RUN and not authorized by this document                    | Explicit approval plus all gates                          |
 
 ## Final sign-off
 

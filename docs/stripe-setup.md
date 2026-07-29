@@ -122,38 +122,141 @@ The Access schema is additive and must be deployed in this exact order:
 4. `0035_app_access_checkout_attempts.sql` — service-role-only durable checkout-attempt lifecycle.
 
 These migrations may create or alter only their reviewed `app_access_*` objects and named Access
-RPCs. Existing AccessRevamp `ar_*` objects belong to another system. If the dry run or generated SQL
-would modify, drop, reset, truncate, rename, replace, or otherwise mutate any `ar_*` object, abort
-without applying anything.
+RPCs. Existing AccessRevamp `ar_*` objects belong to another system. If the reviewed application
+plan or generated SQL would modify, drop, reset, truncate, rename, replace, or otherwise mutate any
+`ar_*` object, abort without applying anything.
 
-On the authorized test project, preview before applying:
+On the authorized test project, inspect linked history read-only before applying:
 
 ```powershell
 supabase --version
 supabase link --project-ref <test-project-ref>
 supabase migration list --linked
-supabase db push --dry-run --linked
 ```
-
-The dry run must show only reviewed pending migrations, including `0032` through `0035` in order.
-If it shows a gap, unexpected migration, destructive statement, or a different project, abort.
 
 A verified read-only preflight found a mixed version namespace: the bound remote migration history
 records `0001` through `0019`, then timestamped versions for later changes. Local migration files
 use numeric `0020` through `0035` and intentionally skip `0025`. Reconcile the
 exact local filenames, checksums/content, remote version records, and already-present schema objects
-in a reviewed, read-only comparison before trusting dry-run output. If a pending entry other than
-the reviewed Access migrations `0032` through `0035` appears, abort without applying anything.
-Never repair migration history blindly, mark an unapplied migration as applied, replay older numeric
-migrations, or use `db push` to guess through the namespace mismatch. Escalate the evidence to the
-database owner for an explicit reconciliation plan outside this runbook.
+in a reviewed, read-only comparison before selecting any migration executor.
 
-After approval:
+That preflight also proved that `0031_wallpapers.sql` is absent from remote history and its
+wallpaper objects are not deployed. `0031` remains a separate product/deployment decision outside
+the four Access migrations. Do not mark it applied, silently bundle it with Access, or treat its
+absence as permission to replay the numeric directory.
+
+A generic or full-directory `supabase db push` is prohibited for this repository/project pairing,
+including using a linked dry run as release authority: Supabase compares migration timestamps, so
+the numeric local namespace cannot prove which timestamped remote migrations are equivalent. Never
+repair migration history blindly, mark an unapplied migration as applied, replay older numeric
+migrations, or use `db push` to guess through the namespace mismatch.
+
+### Disposable remote-shaped migration proof
+
+The second local proof must run in a dedicated disposable runner with Docker available and no other
+local Supabase stack using the configured ports. This remote-shaped disposable proof uses a
+**temporary, unlinked** local project; it never links to or contacts a cloud project. Before running
+it, the database owner must approve a read-only reconciliation ledger that maps each selected
+baseline filename and SHA-256 to its equivalent remote timestamped migration. Stop if any mapping
+or hash is missing or disputed. `0031_wallpapers.sql` must be absent before Supabase start or reset.
+
+Run the following from the release-candidate repository root. The source tree remains unchanged;
+all generated files and evidence stay under the newly created operating-system temporary
+directory:
 
 ```powershell
-supabase db push --linked
-supabase migration list --linked
+$RepoRoot = (Resolve-Path '.').Path
+$ProofRoot = Join-Path ([IO.Path]::GetTempPath()) (
+  'vibespace-access-remote-shaped-' + [guid]::NewGuid().ToString('N')
+)
+$ProofSupabase = Join-Path $ProofRoot 'supabase'
+$ProofMigrations = Join-Path $ProofSupabase 'migrations'
+New-Item -ItemType Directory -Path $ProofMigrations -Force | Out-Null
+
+$RemoteEquivalent = Get-ChildItem (Join-Path $RepoRoot 'supabase\migrations') -File |
+  Where-Object Name -Match '^(000[1-9]|001[0-9]|002[0-4]|002[6-9]|0030)_.*\.sql$' |
+  Sort-Object Name
+$AccessMigrations = @(
+  '0032_app_access.sql'
+  '0033_app_access_event_reconcile.sql'
+  '0034_app_access_lease_freshness.sql'
+  '0035_app_access_checkout_attempts.sql'
+)
+
+if ($RemoteEquivalent.Count -ne 29) {
+  throw "Expected 29 reviewed remote-equivalent migrations through 0030; found $($RemoteEquivalent.Count)"
+}
+if ($RemoteEquivalent.Name -contains '0031_wallpapers.sql') {
+  throw '0031_wallpapers.sql must be absent from the remote-shaped proof'
+}
+
+$SelectedMigrations = @($RemoteEquivalent.Name) + $AccessMigrations
+foreach ($Name in $SelectedMigrations) {
+  $Source = Join-Path $RepoRoot "supabase\migrations\$Name"
+  if (-not (Test-Path -LiteralPath $Source -PathType Leaf)) {
+    throw "Missing selected migration: $Name"
+  }
+  Copy-Item -LiteralPath $Source -Destination $ProofMigrations
+}
+
+Copy-Item -LiteralPath (Join-Path $RepoRoot 'supabase\config.toml') -Destination $ProofSupabase
+Copy-Item -LiteralPath (Join-Path $RepoRoot 'supabase\tests') -Destination $ProofSupabase -Recurse
+Copy-Item -LiteralPath (Join-Path $RepoRoot 'supabase\templates') -Destination $ProofSupabase -Recurse
+New-Item -ItemType File -Path (Join-Path $ProofSupabase 'seed.sql') | Out-Null
+
+$ProofConfig = Join-Path $ProofSupabase 'config.toml'
+(Get-Content -LiteralPath $ProofConfig -Raw).Replace(
+  'project_id = "VibeSpace"',
+  'project_id = "VibeSpaceAccessRemoteShape"'
+) | Set-Content -LiteralPath $ProofConfig
+
+$SelectedMigrations |
+  Set-Content -LiteralPath (Join-Path $ProofRoot 'selected-migration-filenames.txt')
+Get-FileHash (Get-ChildItem $ProofMigrations -File | Sort-Object Name) -Algorithm SHA256 |
+  Format-Table Hash, Path -AutoSize |
+  Out-File (Join-Path $ProofRoot 'selected-migration-sha256.txt')
+
+if (Test-Path -LiteralPath (Join-Path $ProofSupabase '.temp\project-ref')) {
+  throw 'Remote-shaped proof must be unlinked'
+}
+if (Test-Path -LiteralPath (Join-Path $ProofMigrations '0031_wallpapers.sql')) {
+  throw '0031_wallpapers.sql is present; abort before Supabase start or reset'
+}
+
+Push-Location $ProofRoot
+try {
+  supabase --version
+  supabase start
+  supabase db reset --local --no-seed
+  supabase test db --local
+} finally {
+  supabase stop --no-backup
+  Pop-Location
+}
 ```
+
+Retain the selected migration filenames, SHA-256 evidence, CLI version, reset output, and pgTAP
+result with the restricted release record. Confirm that the destination contains exactly the 29
+approved remote-equivalent migrations plus `0032`–`0035`, and no `0031_wallpapers.sql`, before
+starting the local stack. This proves only that the reviewed SQL chain is internally executable; it
+does not authorize a cloud deployment or a migration-history repair.
+
+After both disposable local database proofs pass and the database owner approves the exact
+mechanism, apply **only the four Access migrations**, sequentially and one at a time:
+
+Only four migrations are allowed, sequentially: `0032`, `0033`, `0034`, `0035`.
+
+1. `0032_app_access.sql`
+2. `0033_app_access_event_reconcile.sql`
+3. `0034_app_access_lease_freshness.sql`
+4. `0035_app_access_checkout_attempts.sql`
+
+The approved executor must receive only the reviewed SQL body and migration name for the current
+step; it must not scan the migration directory. After each step, stop and re-read migration history
+and schema state before continuing. Require exactly four new timestamped history rows in that order.
+Abort if the target differs, remote history changed unexpectedly, `0031` enters the application set,
+an Access object already exists unexpectedly, an `ar_*` reference appears, or the executor would
+apply anything besides these four reviewed bodies.
 
 Verify in the test database without selecting customer identifiers or user content:
 

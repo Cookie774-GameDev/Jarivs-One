@@ -33,6 +33,17 @@ const requireOrder = (label, text, tokens) => {
     cursor = next;
   }
 };
+const sectionFrom = (text, startPattern, endPattern) => {
+  const start = text.search(startPattern);
+  if (start === -1) return '';
+  const remainder = text.slice(start);
+  const end = remainder.slice(1).search(endPattern);
+  return end === -1 ? remainder : remainder.slice(0, end + 1);
+};
+const fencedCommandLines = (text) =>
+  [...text.matchAll(/```[^\r\n]*\r?\n([\s\S]*?)```/g)].flatMap((match) =>
+    match[1].split(/\r?\n/).map((line) => line.trim()),
+  );
 
 for (const path of [stripeGuidePath, checklistPath]) requireFile(path);
 
@@ -70,8 +81,13 @@ if (failures.length === 0) {
     /protected temporary file[\s\S]{0,200}(?:ACL|permissions)[\s\S]{0,200}(?:delete|cleanup)/i,
     /remote migration history[\s\S]{0,160}`0001`[\s\S]{0,160}`0019`[\s\S]{0,160}timestamped/i,
     /local migration files[\s\S]{0,160}`0020`[\s\S]{0,160}`0035`[\s\S]{0,160}(?:skip|missing) `0025`/i,
+    /`0031_wallpapers\.sql`[\s\S]{0,200}(?:absent|not present|not deployed)[\s\S]{0,200}(?:separate|outside)[\s\S]{0,120}Access/i,
     /(?:never|do not)[\s\S]{0,80}repair migration history/i,
-    /pending entry other than[\s\S]{0,120}`0032`[\s\S]{0,120}`0035`[\s\S]{0,80}abort/i,
+    /(?:generic|ordinary|full-directory)[\s\S]{0,120}`?supabase db push`?[\s\S]{0,120}(?:prohibited|must not|do not)/i,
+    /(?:exactly|only)[\s\S]{0,160}(?:four|4)[\s\S]{0,160}(?:sequential|one at a time)[\s\S]{0,200}`0032`[\s\S]{0,200}`0035`/i,
+    /remote-shaped disposable proof[\s\S]{0,240}(?:temporary|isolated)[\s\S]{0,240}(?:unlinked|not linked)/i,
+    /selected migration filenames[\s\S]{0,240}(?:record|evidence)/i,
+    /`0031_wallpapers\.sql`[\s\S]{0,160}(?:must be absent|is absent)[\s\S]{0,200}(?:before|prior to)[\s\S]{0,160}(?:reset|start)/i,
     /webhook-confirmed/i,
     /static evidence/i,
     /not run/i,
@@ -93,6 +109,22 @@ if (failures.length === 0) {
   }
 
   requireOrder(stripeGuidePath, stripeGuide, [
+    '0032_app_access.sql',
+    '0033_app_access_event_reconcile.sql',
+    '0034_app_access_lease_freshness.sql',
+    '0035_app_access_checkout_attempts.sql',
+  ]);
+  const applicationSection = sectionFrom(
+    stripeGuide,
+    /After both disposable local database proofs pass/i,
+    /\r?\n##\s+/,
+  );
+  requireMatch(
+    `${stripeGuidePath} authorized application section`,
+    applicationSection,
+    /0032_app_access\.sql[\s\S]*0033_app_access_event_reconcile\.sql[\s\S]*0034_app_access_lease_freshness\.sql[\s\S]*0035_app_access_checkout_attempts\.sql/i,
+  );
+  requireOrder(`${stripeGuidePath} authorized application section`, applicationSection, [
     '0032_app_access.sql',
     '0033_app_access_event_reconcile.sql',
     '0034_app_access_lease_freshness.sql',
@@ -120,6 +152,10 @@ if (failures.length === 0) {
     /(?:static checker|documentation checker)[\s\S]{0,160}(?:does not|cannot)[\s\S]{0,120}repository-wide/i,
     /untracked[\s\S]{0,160}(?:content|whitespace|candidate)/i,
     /secret scan/i,
+    /remote-shaped disposable proof[\s\S]{0,240}(?:temporary|isolated)[\s\S]{0,240}(?:unlinked|not linked)/i,
+    /selected migration filenames[\s\S]{0,240}(?:record|evidence)/i,
+    /reviewed\s+application\s+plan\s+contains\s+no\s+operation\s+against\s+them/i,
+    /recheck\s+exact\s+target\s+before\s+the\s+reviewed\s+application\s+plan/i,
   ];
   for (const pattern of requiredChecklistPatterns) {
     requireMatch(checklistPath, checklist, pattern);
@@ -182,8 +218,14 @@ if (failures.length === 0) {
     /no authority for external (?:calls|mutation)/i,
     /coordinator correcting route parity/i,
     /(?:modify|drop|reset|truncate|rename|replace)(?:s|d|ing)? (?:an? |any )?`ar_[^*]/i,
+    /supabase db push(?: --dry-run)? --linked/i,
   ];
   for (const pattern of forbidden) forbidMatch('owned release docs', docs, pattern);
+  for (const line of fencedCommandLines(docs)) {
+    if (/^(?:(?:PS>)|\$)?\s*supabase\s+db\s+push(?:\s|$)/i.test(line)) {
+      failures.push(`owned release docs: forbidden executable db push command: ${line}`);
+    }
+  }
 
   const sourceFiles = [
     'supabase/migrations/0032_app_access.sql',
