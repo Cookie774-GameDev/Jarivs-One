@@ -1,10 +1,12 @@
 # Sakura semantic token specification
 
-Status: production token layer active; later Sakura phases pending.
+Status: production token, scene, and material layers active; route, primitive, and final
+acceptance remain pending.
 
-`design-tokens.json` is the machine-readable authority now integrated by the gated SK0B
-stylesheet and shared theme contract. The scene, route, primitive, and final acceptance remain
-pending and must pass their own later gates.
+`design-tokens.json` is the machine-readable palette and contrast authority integrated by the
+shared theme contract. The exact-root-scoped stylesheet now applies those semantics to the
+production scene and bounded materials. Route-specific treatment, shared-primitive refinement,
+and final acceptance still require their later gates.
 
 ## Authoritative palette roles
 
@@ -33,6 +35,21 @@ Coral primary controls use dark Night text. Destructive controls use `#B33A55` w
 (5.43:1) plus persistent destructive label/icon. On Night2 and Indigo, the destructive fill
 edge alone fails 3:1, so a separate >=3:1 outline is required.
 
+## Active material authority
+
+- Main panels use 82% Night2 and strong elevated panels use 91% Indigo, with an opaque semantic
+  fill declared first and 16px backdrop blur added only through feature detection.
+- Soft cards use 7% Ivory mixed over Night2 when `color-mix()` exists; the preblended opaque
+  `#322F5C` fallback is the first declaration.
+- Decorative hairlines use 19% or 32% Ivory. Essential controls use at least 39%; destructive
+  boundaries use 52%.
+- Grain is a local CSS-gradient overlay at 6% opacity. There are no remote fonts, images, or
+  imports in the Sakura stylesheet.
+- Radius authority is 10–12px for compact controls, 16px for standard large surfaces, 23px for
+  feature surfaces, and 24px for shell-scale geometry.
+- Section labels are 10px, weight 700, with `0.12em` tracking. Hover lift is capped at 1px and
+  calm transitions are 180–220ms.
+
 ## Alpha and boundary rules
 
 - Secondary Ivory may be 0.64 on Night, Night2, and Indigo; on Periwinkle it must be at least
@@ -46,4 +63,5 @@ edge alone fails 3:1, so a separate >=3:1 outline is required.
 
 Declare an opaque passing fill before any `backdrop-filter`, alpha material, blend, or
 `color-mix()` enhancement. Forced-colors and reduced-motion behavior are independent modes,
-not optional polish. Exact gates are in `ACCESSIBILITY.md`.
+not optional polish. The 64% Pink selection wash with Night text measures 4.63:1 after
+compositing. Exact gates are in `ACCESSIBILITY.md`.

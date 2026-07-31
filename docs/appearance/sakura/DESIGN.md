@@ -34,15 +34,20 @@ must not acquire a new layout model.
    copy. Sakura is appearance, not a new information architecture.
 7. Render opaque fallbacks first. Transparency is optional enhancement.
 
-## Product registry (future/pending)
+## Product registry and current integration
 
-After the MonoChrome gate, the future theme order is `jarvis`, `vibespace`, `default`,
+The registered theme order is `jarvis`, `vibespace`, `default`,
 `monochrome`, `sakura`. Label: **Sakura**. ID: `sakura`. Description: **Cel-painted dusk
-workspace.** It is opt-in and does not alter legacy migrations.
+workspace.** Sakura is the fifth opt-in theme and does not alter legacy migrations.
 
-Future command aliases are `sakura`, `sakura dusk`, and `dusk`; `blossom` is optional.
-Autocomplete presents only Sakura. Commands and JARVIS actions must use the real validated
-theme setter and persistence/sync paths. None of that is implemented in Phase A.
+The accepted command aliases are exactly `sakura` and `sakura dusk`; autocomplete presents the
+canonical Sakura entry. Commands and JARVIS actions use the validated theme setter and existing
+persistence/sync paths.
+
+The local seven-layer scene, deterministic petals, performance fallback, and exact-root-scoped
+material layer are active. Opaque panel and card fills precede optional blur and `color-mix()`;
+restrained CSS grain and glow sit on the inert backdrop. Route-specific treatment,
+shared-primitive refinement, and final acceptance remain pending.
 
 ## Self-critique
 

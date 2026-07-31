@@ -255,7 +255,7 @@ test('Sakura freezes bounded material, geometry, typography, and motion tokens',
   }
 });
 
-test('Sakura authority truthfully records the active token layer and pending later phases', () => {
+test('Sakura authority truthfully records the active layers and pending later phases', () => {
   const tokens = JSON.parse(read(tokenPath));
   assert.equal(tokens.status, 'sk0b-production-token-layer-active-later-phases-pending');
 
@@ -263,19 +263,24 @@ test('Sakura authority truthfully records the active token layer and pending lat
   const normalizedDocumentation = documentation.replaceAll(/\s+/gu, ' ');
   assert.match(
     documentation,
-    /Status: production token layer active; later Sakura phases pending\./u,
+    /Status: production token, scene, and material layers active; route, primitive, and final\s+acceptance remain pending\./u,
   );
   assert.match(
     normalizedDocumentation,
-    /scene, route, primitive, and final acceptance remain pending/iu,
+    /route, primitive, and final acceptance remain pending/iu,
   );
   assert.doesNotMatch(documentation, /\bFuture Sakura CSS should\b/u);
 });
 
-test('Sakura is local, token-only, motion-safe, and forced-colors compatible', () => {
+test('Sakura is local, bounded, motion-safe, and forced-colors compatible', () => {
   const css = read(cssPath);
   const normalized = css.replaceAll(/\s+/gu, ' ');
-  assert.doesNotMatch(css, /\burl\s*\(|https?:|@import|@keyframes|!important/iu);
+  assert.doesNotMatch(css, /\burl\s*\(|https?:|@import|!important/iu);
+  assert.deepEqual(
+    [...css.matchAll(/@keyframes\s+([\w-]+)/gu)].map((match) => match[1]),
+    ['sakura-petal-drift'],
+    'only the accepted deterministic local petal animation may define keyframes',
+  );
   for (const selector of collectSelectors(css.replaceAll(/\/\*[\s\S]*?\*\//gu, ''))) {
     assert.doesNotMatch(selector, /\b(?:canvas|terminal|webview|iframe|provider)\b/iu);
   }
@@ -286,5 +291,8 @@ test('Sakura is local, token-only, motion-safe, and forced-colors compatible', (
   assert.match(css, /@media\s*\(forced-colors:\s*active\)/u);
   assert.match(normalized, /forced-color-adjust:\s*auto;/u);
   assert.match(normalized, /outline-color:\s*Highlight;/u);
-  assert.ok(Buffer.byteLength(css, 'utf8') <= 8_000, 'token layer must stay inexpensive');
+  assert.ok(
+    Buffer.byteLength(css, 'utf8') <= 16_384,
+    'the integrated Sakura token, scene, and material layer must stay within 16 KiB',
+  );
 });
