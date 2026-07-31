@@ -82,10 +82,22 @@ describe('MonoChrome development workbench', () => {
 
   it('uses an exact development-only lazy entry without joining routes or navigation', () => {
     const mainSource = readFileSync(path.resolve(process.cwd(), 'src/main.tsx'), 'utf8');
+    const developmentEntrySource = readFileSync(
+      path.resolve(process.cwd(), 'src/developmentEntry.tsx'),
+      'utf8',
+    );
+    const developmentSurfaceSource = readFileSync(
+      path.resolve(process.cwd(), 'src/developmentSurface.ts'),
+      'utf8',
+    );
     expect(mainSource).toMatch(/import\.meta\.env\.DEV/u);
-    expect(mainSource).toMatch(/monochrome-workbench/u);
-    expect(mainSource).toMatch(/import\(['"]\.\/features\/appearance\/MonochromeWorkbench['"]\)/u);
+    expect(developmentSurfaceSource).toMatch(/monochrome-workbench/u);
+    expect(mainSource).toMatch(/import\(['"]\.\/developmentEntry['"]\)/u);
+    expect(mainSource).not.toMatch(/MonochromeWorkbench|monochromeWorkbenchFixtures/u);
     expect(mainSource).toMatch(/document\.documentElement\.dataset\.theme = ['"]monochrome['"]/u);
+    expect(developmentEntrySource).toMatch(
+      /import\(['"]\.\/features\/appearance\/MonochromeWorkbench['"]\)/u,
+    );
 
     for (const relativePath of [
       'src/App.tsx',

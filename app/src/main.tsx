@@ -28,21 +28,19 @@ import './styles/sakura-theme.css';
 import './features/workbench/registerCommandActions';
 import { useUIStore } from './stores/ui';
 import { applyThemeSyncToApplication, startThemeSync } from './features/appearance/themeSync';
+import { resolveDevelopmentSurface } from './developmentSurface';
 
-const devMonochromeWorkbenchRequested =
-  import.meta.env.DEV &&
-  new URLSearchParams(window.location.search).get('monochrome-workbench') === '1';
+const devSurface = import.meta.env.DEV ? resolveDevelopmentSurface(window.location.search) : null;
 
-const DevMonochromeWorkbench = devMonochromeWorkbenchRequested
-  ? React.lazy(() =>
-      import('./features/appearance/MonochromeWorkbench').then(({ MonochromeWorkbench }) => ({
-        default: MonochromeWorkbench,
-      })),
-    )
-  : null;
+const DevelopmentEntry =
+  import.meta.env.DEV && devSurface !== null
+    ? React.lazy(() => import('./developmentEntry'))
+    : null;
 
-if (devMonochromeWorkbenchRequested) {
+if (devSurface === 'monochrome') {
   document.documentElement.dataset.theme = 'monochrome';
+} else if (devSurface === 'sakura') {
+  document.documentElement.dataset.theme = 'sakura';
 } else {
   startThemeSync((theme) => {
     applyThemeSyncToApplication(theme, document, useUIStore);
@@ -56,9 +54,9 @@ if (!rootEl) {
 
 ReactDOM.createRoot(rootEl).render(
   <React.StrictMode>
-    {DevMonochromeWorkbench ? (
+    {DevelopmentEntry && devSurface ? (
       <React.Suspense fallback={null}>
-        <DevMonochromeWorkbench />
+        <DevelopmentEntry surface={devSurface} />
       </React.Suspense>
     ) : (
       <App />
