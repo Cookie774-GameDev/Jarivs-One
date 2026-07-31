@@ -8,9 +8,25 @@ import { useAppAdmin } from '@/lib/admin';
 import { effectivePlan } from '@/lib/entitlements';
 import { selectionFromHive } from '@/lib/ai/modelSelection';
 import { cn } from '@/lib/utils';
+import { useThemeMotionTransition } from '@/features/appearance/themeMotion';
 
 /** Plans that may use hosted Hive Balance. Free + BYOK users must supply their own keys. */
 const HOSTED_HIVE_PLANS = new Set(['starter', 'pro', 'ultra', 'apex']);
+const LEGACY_HIVE_HIGHLIGHT_TRANSITION = Object.freeze({
+  type: 'spring',
+  stiffness: 200,
+  damping: 24,
+} as const);
+const LEGACY_HIVE_ACTIVE_TRANSITION = Object.freeze({
+  type: 'spring',
+  stiffness: 400,
+  damping: 18,
+} as const);
+const LEGACY_HIVE_PIPELINE_TRANSITION = Object.freeze({
+  type: 'spring',
+  stiffness: 220,
+  damping: 26,
+} as const);
 
 /** The public Hive Balance pipeline — names + role only. No keys, no routing internals. */
 const PIPELINE: ReadonlyArray<readonly [string, string]> = [
@@ -50,6 +66,10 @@ export function Hive() {
   const isActive = chatModelSelection.mode === 'hive';
 
   const [burst, setBurst] = React.useState(false);
+  const reducedMotion = useReducedMotion();
+  const highlightTransition = useThemeMotionTransition(LEGACY_HIVE_HIGHLIGHT_TRANSITION);
+  const activeTransition = useThemeMotionTransition(LEGACY_HIVE_ACTIVE_TRANSITION);
+  const pipelineTransition = useThemeMotionTransition(LEGACY_HIVE_PIPELINE_TRANSITION);
 
   const activate = () => {
     if (!hasHostedHive) {
@@ -111,9 +131,11 @@ export function Hive() {
         {HIGHLIGHTS.map((h, i) => (
           <motion.div
             key={h.label}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.05 * i, type: 'spring', stiffness: 200, damping: 24 }}
+            initial={reducedMotion ? false : { opacity: 0, y: 10 }}
+            animate={reducedMotion ? undefined : { opacity: 1, y: 0 }}
+            transition={
+              reducedMotion ? highlightTransition : { ...highlightTransition, delay: 0.05 * i }
+            }
             className="rounded-2xl border border-border bg-panel/80 p-4 shadow-soft"
           >
             <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-background/70">
@@ -188,9 +210,9 @@ export function Hive() {
             <span className="relative shrink-0">
               {isActive ? (
                 <motion.span
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  transition={{ type: 'spring', stiffness: 400, damping: 18 }}
+                  initial={reducedMotion ? false : { scale: 0 }}
+                  animate={reducedMotion ? undefined : { scale: 1 }}
+                  transition={activeTransition}
                   className="flex h-9 w-9 items-center justify-center rounded-full bg-accent-copper/20 text-accent-copper"
                 >
                   <Check className="h-4 w-4" />
@@ -219,9 +241,11 @@ export function Hive() {
           {PIPELINE.map(([model, role], i) => (
             <motion.li
               key={model}
-              initial={{ opacity: 0, x: -8 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.05 * i, type: 'spring', stiffness: 220, damping: 26 }}
+              initial={reducedMotion ? false : { opacity: 0, x: -8 }}
+              animate={reducedMotion ? undefined : { opacity: 1, x: 0 }}
+              transition={
+                reducedMotion ? pipelineTransition : { ...pipelineTransition, delay: 0.05 * i }
+              }
               className="flex items-center gap-3 rounded-xl border border-border/60 bg-panel/60 px-3 py-2"
             >
               <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent-copper/15 font-mono text-[11px] text-accent-copper">

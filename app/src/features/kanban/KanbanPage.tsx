@@ -21,6 +21,22 @@ import { cn, formatRelative } from '@/lib/utils';
 import type { MilestoneItem } from '@/features/inspector/types';
 import { isMilestoneKind } from '@/features/inspector/types';
 import { useKanbanMilestones } from './hooks';
+import {
+  useThemeLayoutTransition,
+  useThemeMotionLayout,
+  useThemeMotionTransition,
+} from '@/features/appearance/themeMotion';
+
+const LEGACY_KANBAN_PROGRESS_TRANSITION = Object.freeze({
+  type: 'spring',
+  stiffness: 120,
+  damping: 20,
+} as const);
+const LEGACY_KANBAN_ROW_TRANSITION = Object.freeze({
+  type: 'spring',
+  stiffness: 420,
+  damping: 32,
+} as const);
 
 function useReducedMotion(): boolean {
   const [reduced, setReduced] = useState<boolean>(() => {
@@ -240,6 +256,7 @@ function ChecklistCard({
   onUpdate,
   onRemove,
 }: ChecklistCardProps) {
+  const progressTransition = useThemeLayoutTransition(LEGACY_KANBAN_PROGRESS_TRANSITION);
   const accentRing = accent === 'copper' ? 'ring-accent-copper/60' : 'ring-accent-sage/60';
   const accentText = accent === 'copper' ? 'text-accent-copper' : 'text-accent-sage';
   const accentBar = accent === 'copper' ? 'bg-accent-copper' : 'bg-accent-sage';
@@ -276,9 +293,7 @@ function ChecklistCard({
             className={cn('h-full rounded-full', accentBar)}
             initial={false}
             animate={{ width: `${progress}%` }}
-            transition={
-              reducedMotion ? { duration: 0 } : { type: 'spring', stiffness: 120, damping: 20 }
-            }
+            transition={progressTransition}
           />
         </div>
       ) : null}
@@ -351,19 +366,20 @@ function ChecklistRow({
   ) => void;
   onRemove: () => void;
 }) {
+  const rowTransition = useThemeMotionTransition(LEGACY_KANBAN_ROW_TRANSITION);
+  const rowLayout = useThemeMotionLayout(true);
   const done = item.status === 'done';
   return (
     <motion.li
-      layout={!reducedMotion}
+      layout={rowLayout}
       initial={reducedMotion ? false : { opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={
-        reducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97, transition: { duration: 0.2 } }
-      }
-      transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+      exit={reducedMotion ? undefined : { opacity: 0, scale: 0.97, transition: { duration: 0.2 } }}
+      transition={rowTransition}
       className={cn(
         'group relative flex items-start gap-2 rounded-lg border border-border bg-paper px-2.5 py-2 transition-colors',
-        celebrating && `ring-2 ${accentRing} shadow-[0_0_24px_rgba(217,119,87,0.22)]`,
+        celebrating &&
+          `ring-2 ${accentRing} shadow-[0_0_24px_rgba(217,119,87,0.22)] [html[data-theme=monochrome]_&]:border-foreground [html[data-theme=monochrome]_&]:ring-0 [html[data-theme=monochrome]_&]:shadow-none`,
         done && 'opacity-75',
       )}
     >

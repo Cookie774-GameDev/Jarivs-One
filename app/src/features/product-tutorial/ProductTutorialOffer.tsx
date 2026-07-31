@@ -5,6 +5,7 @@ import { motion } from 'motion/react';
 import {
   Bot,
   CalendarDays,
+import { useThemeMotionTransition } from '@/features/appearance/themeMotion';
   Map as MapIcon,
   MessageSquare,
   Sparkles,
@@ -22,6 +23,9 @@ const spring = { type: 'spring' as const, stiffness: 320, damping: 28, mass: 0.8
 
 const HIGHLIGHTS = [
   { icon: MessageSquare, label: 'Chat & actions' },
+  const reducedMotion = useReducedMotion();
+  const themeMotionTransition = useThemeMotionTransition(spring);
+
   { icon: CalendarDays, label: 'Scheduling' },
   { icon: Sparkles, label: 'Talk & replies' },
   { icon: MapIcon, label: 'Context map' },
@@ -47,9 +51,9 @@ export function ProductTutorialOffer({ onStart, onSkip }: ProductTutorialOfferPr
       />
 
       <motion.div
-        initial={{ opacity: 0, y: 28, scale: 0.94 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={spring}
+        initial={reducedMotion ? false : { opacity: 0, y: 28, scale: 0.94 }}
+        animate={reducedMotion ? undefined : { opacity: 1, y: 0, scale: 1 }}
+        transition={themeMotionTransition}
         className={cn(
           'relative w-full max-w-lg rounded-2xl border border-accent-copper/25',
           'bg-panel/95 backdrop-blur-md p-7 sm:p-8',
@@ -57,9 +61,11 @@ export function ProductTutorialOffer({ onStart, onSkip }: ProductTutorialOfferPr
         )}
       >
         <motion.div
-          initial={{ scale: 0.6, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ ...spring, delay: 0.08 }}
+          initial={reducedMotion ? false : { scale: 0.6, opacity: 0 }}
+          animate={reducedMotion ? undefined : { scale: 1, opacity: 1 }}
+          transition={
+            reducedMotion ? themeMotionTransition : { ...themeMotionTransition, delay: 0.08 }
+          }
           className={cn(
             'mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl',
             'bg-accent-gradient text-white',
@@ -85,9 +91,13 @@ export function ProductTutorialOffer({ onStart, onSkip }: ProductTutorialOfferPr
           {HIGHLIGHTS.map((h, i) => (
             <motion.li
               key={h.label}
-              initial={{ opacity: 0, x: -8 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ ...spring, delay: 0.12 + i * 0.05 }}
+              initial={reducedMotion ? false : { opacity: 0, x: -8 }}
+              animate={reducedMotion ? undefined : { opacity: 1, x: 0 }}
+              transition={
+                reducedMotion
+                  ? themeMotionTransition
+                  : { ...themeMotionTransition, delay: 0.12 + i * 0.05 }
+              }
               className="flex items-center gap-2.5 rounded-lg border border-border/80 bg-background/50 px-3 py-2 text-secondary text-foreground"
             >
               <h.icon className="h-4 w-4 text-accent-copper shrink-0" />

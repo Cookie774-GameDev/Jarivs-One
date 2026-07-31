@@ -2,6 +2,7 @@ import * as React from 'react';
 import { motion } from 'motion/react';
 import { cn } from '@/lib/utils';
 import type { VoiceState } from './store';
+import { useThemeMotionTransition } from '@/features/appearance/themeMotion';
 
 /**
  * Pure-CSS ambient orb. ~200px (configurable). Layered gradient stack that
@@ -38,6 +39,18 @@ export interface OrbProps {
 
 interface StateStyle {
   scale: number;
+const LEGACY_ORB_STATE_TRANSITION = Object.freeze({
+  type: 'spring',
+  stiffness: 220,
+  damping: 22,
+  mass: 0.8,
+} as const);
+const LEGACY_ORB_HALO_TRANSITION = Object.freeze({
+  type: 'spring',
+  stiffness: 180,
+  damping: 24,
+} as const);
+
   brightness: number;
   haloScale: number;
   haloOpacity: number;
@@ -139,6 +152,8 @@ export function Orb({ state = 'idle', size = 200, className, ariaLabel }: OrbPro
       aria-label={ariaLabel ?? `Voice orb (${state})`}
       data-orb-motion={reducedMotion ? 'reduced' : active ? 'active' : 'idle'}
       className={cn('relative shrink-0 select-none pointer-events-none', className)}
+  const stateTransition = useThemeMotionTransition(LEGACY_ORB_STATE_TRANSITION);
+  const haloTransition = useThemeMotionTransition(LEGACY_ORB_HALO_TRANSITION);
       style={{
         width: size,
         height: size,
@@ -167,6 +182,7 @@ export function Orb({ state = 'idle', size = 200, className, ariaLabel }: OrbPro
           background:
             'radial-gradient(circle, hsl(var(--accent-amber) / 0.5) 0%, hsl(var(--accent-copper) / 0.3) 35%, transparent 70%)',
           filter: 'blur(34px)',
+      transition={stateTransition}
           willChange: 'transform, opacity',
         }}
         animate={
@@ -184,7 +200,7 @@ export function Orb({ state = 'idle', size = 200, className, ariaLabel }: OrbPro
             ? undefined
             : active
               ? { duration: style.pulseSeconds, repeat: Infinity, ease: 'easeInOut' }
-              : { type: 'spring', stiffness: 180, damping: 24 }
+              : haloTransition
         }
       />
 

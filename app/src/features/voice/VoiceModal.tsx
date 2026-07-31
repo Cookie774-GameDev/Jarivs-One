@@ -32,6 +32,11 @@ import { handleVoiceModuleClosed, stopCurrentVoiceResponse } from './voiceRouter
 import { resolveVoiceListenTimeoutMs } from './voiceConversation';
 import { createVoiceSessionBinding, newVoiceSessionId } from './voiceSessionBinding';
 import {
+  useThemeLayoutTransition,
+  useThemeMotionLayout,
+  useThemeMotionTransition,
+} from '@/features/appearance/themeMotion';
+import {
   formatChatModelSelectionLabel,
   modelSelectionContextFromAuth,
   validateSendModelAccess,
@@ -136,8 +141,21 @@ function usePrefersReducedMotion(): boolean {
   return reduced;
 }
 
+const LEGACY_VOICE_PANEL_TRANSITION = Object.freeze({
+  type: 'spring',
+  stiffness: 360,
+  damping: 30,
+} as const);
+const LEGACY_COMMAND_CENTER_TRANSITION = Object.freeze({
+  type: 'spring',
+  stiffness: 340,
+  damping: 32,
+  mass: 0.8,
+} as const);
+
 export function VoiceModal() {
   const open = useUIStore((state) => state.voiceModalOpen);
+  const theme = useUIStore((state) => state.theme);
   const setOpen = useUIStore((state) => state.setVoiceModalOpen);
   const localUserId = useAuthStore((state) => state.localUserId);
   const cloudAccountId = useAuthStore((state) => state.cloudSession?.user_id ?? null);
@@ -161,6 +179,9 @@ export function VoiceModal() {
   const persona = useVoiceStore((voice) => voice.persona);
   const errorMessage = useVoiceStore((voice) => voice.errorMessage);
   const reducedMotion = usePrefersReducedMotion();
+  const panelTransition = useThemeMotionTransition(LEGACY_VOICE_PANEL_TRANSITION);
+  const panelLayout = useThemeMotionLayout('size');
+  const commandCenterTransition = useThemeLayoutTransition(LEGACY_COMMAND_CENTER_TRANSITION);
   const levelRef = React.useRef(0);
   const pendingUtteranceRef = React.useRef('');
   const utteranceTimerRef = React.useRef<number | null>(null);
@@ -828,11 +849,11 @@ export function VoiceModal() {
     <AnimatePresence>
       <motion.aside
         ref={panelRef}
-        layout={reducedMotion ? false : 'size'}
+        layout={panelLayout}
         initial={reducedMotion ? false : { opacity: 0, x: 16, y: -6, scale: 0.96 }}
         animate={reducedMotion ? undefined : { opacity: 1, x: 0, y: 0, scale: 1 }}
         exit={reducedMotion ? undefined : { opacity: 0, x: 12, scale: 0.97 }}
-        transition={reducedMotion ? undefined : { type: 'spring', stiffness: 360, damping: 30 }}
+        transition={panelTransition}
         style={{ x: dragX, y: dragY }}
         className={cn(
           'jarvis-voice-panel fixed right-3 top-3 z-[90] max-h-[calc(100vh-1.5rem)] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-[0.5625rem] border border-border bg-elevated/95 text-foreground backdrop-blur-sm',
@@ -938,11 +959,7 @@ export function VoiceModal() {
               initial={reducedMotion ? false : { height: 0, opacity: 0 }}
               animate={reducedMotion ? undefined : { height: 'auto', opacity: 1 }}
               exit={reducedMotion ? undefined : { height: 0, opacity: 0 }}
-              transition={
-                reducedMotion
-                  ? undefined
-                  : { type: 'spring', stiffness: 340, damping: 32, mass: 0.8 }
-              }
+              transition={commandCenterTransition}
               className="overflow-hidden"
               onKeyDown={handleCommandCenterEscape}
               data-motion-kind={reducedMotion ? 'none' : 'spring'}

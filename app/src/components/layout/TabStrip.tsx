@@ -55,6 +55,7 @@ import { usePetSettingsStore } from '@/features/pets/petSettingsStore';
 import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
 import { SIK_CONTROL } from '@/lib/jarvis/smoke/evidenceIds';
 
+import { useThemeMotionLayout, useThemeMotionTransition } from '@/features/appearance/themeMotion';
 const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
   devBuild: import.meta.env.DEV,
   explicitFlag: import.meta.env.VITE_SIK_SMOKE,
@@ -69,6 +70,11 @@ interface TabModel {
 const ROOT_PROJECT_KEY = '__root__';
 const projectChatMemory = new Map<string, ChatId | null>();
 
+const LEGACY_TAB_TRANSITION = Object.freeze({
+  type: 'spring',
+  stiffness: 400,
+  damping: 30,
+} as const);
 function projectMemoryKey(projectId: ProjectId | null): string {
   return projectId ?? ROOT_PROJECT_KEY;
 }
@@ -382,6 +388,8 @@ function TabItem({ tab, active, onActivate, onClose, onRename, onSendToPetPanel 
   const [editing, setEditing] = React.useState(false);
   const [draft, setDraft] = React.useState(tab.title);
   const [menu, setMenu] = React.useState<{ x: number; y: number } | null>(null);
+  const themeMotionTransition = useThemeMotionTransition(LEGACY_TAB_TRANSITION);
+  const themeMotionLayout = useThemeMotionLayout(true);
   const inputRef = React.useRef<HTMLInputElement>(null);
 
   // Sync the draft when the underlying title changes (e.g. AI auto-name).
@@ -418,11 +426,11 @@ function TabItem({ tab, active, onActivate, onClose, onRename, onSendToPetPanel 
         role="tab"
         aria-selected={active}
         data-sik-evidence={KERNEL_SMOKE_ENABLED && active ? SIK_CONTROL.chatReturn : undefined}
-        layout
+        layout={themeMotionLayout}
         initial={{ opacity: 0, y: 4 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: 4 }}
-        transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+        transition={themeMotionTransition}
         onClick={() => {
           if (!editing) onActivate();
         }}

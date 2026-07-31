@@ -41,10 +41,17 @@ import { useWorkbenchStore } from '@/features/workbench/store';
 import { chatPinPatch, isChatPinned, sortChatsForDisplay } from '@/features/chat/chatPin';
 import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
 import { SIK_CONTROL, type SikControlId } from '@/lib/jarvis/smoke/evidenceIds';
+import { useThemeLayoutTransition } from '@/features/appearance/themeMotion';
 import {
   isKernelSmokeBindingActive,
   subscribeKernelSmokeBinding,
 } from '@/lib/ai/providers/kernelSmoke';
+
+const LEGACY_NAV_PANE_TRANSITION = Object.freeze({
+  type: 'spring',
+  stiffness: 400,
+  damping: 30,
+} as const);
 
 const TERMINAL_MIME = 'application/x-jarvis-terminal';
 const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
@@ -71,6 +78,7 @@ const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
  * of silently no-oping.
  */
 export function NavPane() {
+  const themeLayoutTransition = useThemeLayoutTransition(LEGACY_NAV_PANE_TRANSITION);
   const kernelSmokeBindingActive = React.useSyncExternalStore(
     subscribeKernelSmokeBinding,
     isKernelSmokeBindingActive,
@@ -242,7 +250,7 @@ export function NavPane() {
       className="shrink-0 overflow-hidden bg-panel border-r border-border"
       initial={false}
       animate={{ width: navOpen ? 240 : 56 }}
-      transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+      transition={themeLayoutTransition}
     >
       <div className="flex h-full w-full flex-col overflow-y-auto overflow-x-hidden scrollbar-hidden">
         <NavSection

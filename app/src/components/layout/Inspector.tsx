@@ -63,11 +63,18 @@ import { chatRepo, messageRepo, taskRepo, terminalSessionRepo, db } from '@/lib/
 import { toast } from '@/components/ui/toast';
 import { cn, formatClock, formatRelative } from '@/lib/utils';
 import { resolveAccountIdentity } from '@/lib/accountIdentity';
+import { useThemeLayoutTransition } from '@/features/appearance/themeMotion';
 import type { QuickLink } from '@/types/quick-link';
 import type { VibeSpaceTask } from '@/features/inspector/types';
 import type { Task, TaskPriority, TaskStatus } from '@/types/task';
 import type { Chat } from '@/types/chat';
 import type { TerminalSession } from '@/types/terminal';
+
+const LEGACY_INSPECTOR_TRANSITION = Object.freeze({
+  type: 'spring',
+  stiffness: 400,
+  damping: 30,
+} as const);
 import type { WorkspaceId } from '@/types/common';
 import {
   CONTEXT_MIME,
@@ -185,6 +192,7 @@ type Route =
  * instead of crashing the inspector.
  */
 export function Inspector() {
+  const themeLayoutTransition = useThemeLayoutTransition(LEGACY_INSPECTOR_TRANSITION);
   const workspaceId = useAuthStore((s) => s.workspaceId) as WorkspaceId | null;
   const projectId = useAuthStore((s) => s.projectId);
   const toggleInspector = useUIStore((s) => s.toggleInspector);
@@ -346,7 +354,7 @@ export function Inspector() {
       initial={{ width: 0 }}
       animate={{ width: inspectorWidth }}
       exit={{ width: 0 }}
-      transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+      transition={themeLayoutTransition}
     >
       <div className="flex h-full flex-col" style={{ width: inspectorWidth }}>
         {/* Header with Title and Close Button */}

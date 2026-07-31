@@ -3,6 +3,8 @@ import { motion } from 'motion/react';
 import { cn } from '@/lib/utils';
 import { Loader2, AlertCircle, Network, Terminal, Zap, type LucideIcon } from 'lucide-react';
 import { scrollPickerItemIntoView } from './pickerScroll';
+import { LEGACY_DROPDOWN_TRANSITION, resolveDropdownMotion } from './dropdownMotion';
+import { useThemeMotionTransition } from '@/features/appearance/themeMotion';
 
 export interface SlashCommandOption {
   id: string;
@@ -50,6 +52,9 @@ export const SlashCommandOptionPicker = forwardRef<
   ref,
 ) {
   const listRef = useRef<HTMLDivElement>(null);
+  const reducedMotion = useReducedMotion();
+  const dropdownTransition = useThemeMotionTransition(LEGACY_DROPDOWN_TRANSITION);
+  const dropdownMotion = resolveDropdownMotion(reducedMotion, dropdownTransition);
 
   const filteredOptions = query
     ? options.filter(
@@ -85,10 +90,7 @@ export const SlashCommandOptionPicker = forwardRef<
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 4, scale: 0.98 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: 4, scale: 0.98 }}
-      transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+      {...dropdownMotion}
       className={cn(
         'jarvis-slash-dropdown w-[338px] overflow-hidden rounded-[14px] border border-border-mid/80',
         'bg-elevated/95 text-foreground backdrop-blur-xl',

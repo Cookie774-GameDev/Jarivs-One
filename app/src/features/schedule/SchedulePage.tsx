@@ -26,6 +26,7 @@ import { eventRepo } from '@/lib/db';
 import { getActiveAccountIdentity } from '@/lib/accountIdentity';
 import { useAuthStore } from '@/stores/auth';
 import { flushUiStatePersistence, useUIStore } from '@/stores/ui';
+import { useThemeMotionTransition } from '@/features/appearance/themeMotion';
 import { useAgentStore } from '@/stores/agents';
 import { findProtectedJarvisAgent } from '@/lib/jarvis/identity';
 import {
@@ -34,6 +35,12 @@ import {
   selectionFromOption,
   selectionOptionId,
 } from '@/lib/ai/modelSelection';
+
+const LEGACY_SCHEDULE_TIMELINE_TRANSITION = Object.freeze({
+  type: 'spring',
+  stiffness: 240,
+  damping: 28,
+} as const);
 import { useAccessibleChatModels } from '@/lib/ai/useAccessibleChatModels';
 import { getProviderDisplayName } from '@/lib/ai/providerRegistry';
 import { cn } from '@/lib/utils';
@@ -288,6 +295,8 @@ function MiniCalendar({
 }
 
 export function SchedulePage() {
+  const reducedMotion = useReducedMotion();
+  const timelineTransition = useThemeMotionTransition(LEGACY_SCHEDULE_TIMELINE_TRANSITION);
   const kernelSmokeBindingActive = React.useSyncExternalStore(
     subscribeKernelSmokeBinding,
     isKernelSmokeBindingActive,
@@ -861,15 +870,17 @@ export function SchedulePage() {
                     {group.items.map((item, idx) => (
                       <motion.li
                         key={`${item.kind}-${item.id}`}
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{
-                          delay: Math.min(idx * 0.03, 0.3),
-                          type: 'spring',
-                          stiffness: 240,
-                          damping: 28,
-                        }}
-                        className="group border-b border-border/60 px-4 py-3.5 transition-colors last:border-b-0 hover:bg-muted/40"
+                        initial={reducedMotion ? false : { opacity: 0, y: 8 }}
+                        animate={reducedMotion ? undefined : { opacity: 1, y: 0 }}
+                        transition={
+                          reducedMotion
+                            ? timelineTransition
+                            : {
+                                ...timelineTransition,
+                                delay: Math.min(idx * 0.03, 0.3),
+                              }
+                        }
+                        className="group border-b border-border/60 px-4 py-3.5 transition-colors last:border-b-0 hover:bg-muted/40 motion-reduce:!transform-none motion-reduce:!opacity-100 [html[data-theme=monochrome]_&]:!transform-none [html[data-theme=monochrome]_&]:!opacity-100"
                       >
                         {item.kind === 'event' ? (
                           <EventTimelineRow

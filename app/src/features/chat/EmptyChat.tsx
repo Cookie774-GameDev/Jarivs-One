@@ -3,6 +3,7 @@ import { Mic, Plus } from 'lucide-react';
 import { Button } from '@/components/ui';
 import { renderHotkey } from '@/lib/utils';
 import { HOTKEYS } from '@/lib/hotkeys';
+import { useThemeMotionTransition } from '@/features/appearance/themeMotion';
 
 export interface EmptyChatProps {
   /** Override the default new-chat handler. */
@@ -16,6 +17,8 @@ const spring = { type: 'spring' as const, stiffness: 400, damping: 30, mass: 0.8
  * a single soft illustration, a calm headline, encouraging body, and one primary action.
  */
 export function EmptyChat({ onNewChat }: EmptyChatProps) {
+  const reducedMotion = useReducedMotion();
+  const themeMotionTransition = useThemeMotionTransition(spring);
   const handleNewChat = () => {
     if (onNewChat) {
       onNewChat();
@@ -53,16 +56,36 @@ export function EmptyChat({ onNewChat }: EmptyChatProps) {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button variant="accent" onClick={handleNewChat}>
-            <Plus />
-            New chat
-          </Button>
-          <span className="text-metadata text-muted-foreground">
-            <span className="kbd">{renderHotkey(HOTKEYS.NEW_CHAT)}</span>
-          </span>
-        </div>
-      </motion.div>
+      <div className="flex items-center gap-2">
+        <Button variant="accent" onClick={handleNewChat}>
+          <Plus />
+          New chat
+        </Button>
+        <span className="text-metadata text-muted-foreground">
+          <span className="kbd">{renderHotkey(HOTKEYS.NEW_CHAT)}</span>
+        </span>
+      </div>
+    </>
+  );
+  const contentClassName = 'flex flex-col items-center gap-5 text-center max-w-[44ch]';
+
+  return (
+    <div
+      data-vibespace-empty-chat="true"
+      className="flex h-full w-full items-center justify-center p-8"
+    >
+      {reducedMotion ? (
+        <div className={contentClassName}>{content}</div>
+      ) : (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={themeMotionTransition}
+          className={contentClassName}
+        >
+          {content}
+        </motion.div>
+      )}
     </div>
   );
 }

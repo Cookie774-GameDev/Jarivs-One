@@ -7,7 +7,9 @@ import { HiveModelIcon } from '@/components/brand';
 import type { ModelPickerGroup } from '@/lib/ai/useAccessibleChatModels';
 import type { ProviderConnection } from '@/lib/ai/adapters/types';
 import { scrollPickerItemIntoView } from './pickerScroll';
+import { LEGACY_DROPDOWN_TRANSITION, resolveDropdownMotion } from './dropdownMotion';
 import { SIK_CONTROL } from '@/lib/jarvis/smoke/evidenceIds';
+import { useThemeMotionTransition } from '@/features/appearance/themeMotion';
 
 /** Sentinel id for the pinned Hive entry (keyboard nav + selection state). */
 export const HIVE_OPTION_ID = 'hive:balanced';
@@ -64,6 +66,9 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
     ref,
   ) {
     const listRef = useRef<HTMLDivElement>(null);
+    const reducedMotion = useReducedMotion();
+    const dropdownTransition = useThemeMotionTransition(LEGACY_DROPDOWN_TRANSITION);
+    const dropdownMotion = resolveDropdownMotion(reducedMotion, dropdownTransition);
 
     const flatOptions = useMemo(() => groups.flatMap((group) => group.options), [groups]);
 
@@ -111,10 +116,7 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
 
     return (
       <motion.div
-        initial={{ opacity: 0, y: 4, scale: 0.98 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: 4, scale: 0.98 }}
-        transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+        {...dropdownMotion}
         className={cn(
           'jarvis-slash-dropdown w-[338px] overflow-hidden rounded-[14px] border border-border-mid/80',
           'bg-elevated/95 text-foreground backdrop-blur-xl',

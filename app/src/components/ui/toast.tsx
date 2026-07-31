@@ -4,6 +4,13 @@ import { nanoid } from 'nanoid';
 import { AnimatePresence, motion } from 'motion/react';
 import { Check, AlertTriangle, Info, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useThemeMotionLayout, useThemeMotionTransition } from '@/features/appearance/themeMotion';
+
+const LEGACY_TOAST_TRANSITION = Object.freeze({
+  type: 'spring',
+  stiffness: 400,
+  damping: 30,
+} as const);
 
 /**
  * Lightweight in-app toast system. Self-contained (no external lib).
@@ -70,17 +77,24 @@ export function Toaster() {
 
   return (
     <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none">
+  const reducedMotion = useReducedMotion();
+  const themeMotionTransition = useThemeMotionTransition(LEGACY_TOAST_TRANSITION);
+  const themeMotionLayout = useThemeMotionLayout(true);
       <AnimatePresence>
         {toasts.map((t) => {
           const style = variantStyles[t.variant];
           return (
             <motion.div
               key={t.id}
-              layout
-              initial={{ opacity: 0, x: 16, scale: 0.96 }}
-              animate={{ opacity: 1, x: 0, scale: 1 }}
-              exit={{ opacity: 0, x: 16, scale: 0.96 }}
-              transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+              role={t.variant === 'destructive' ? 'alert' : 'status'}
+              aria-live={t.variant === 'destructive' ? 'assertive' : 'polite'}
+              aria-atomic="true"
+              data-monochrome-surface="toaster"
+              layout={themeMotionLayout}
+              initial={reducedMotion ? false : { opacity: 0, x: 16, scale: 0.96 }}
+              animate={reducedMotion ? undefined : { opacity: 1, x: 0, scale: 1 }}
+              exit={reducedMotion ? undefined : { opacity: 0, x: 16, scale: 0.96 }}
+              transition={themeMotionTransition}
               className={cn(
                 'pointer-events-auto rounded-md border bg-elevated shadow-2xl px-3 py-2.5 min-w-[280px] max-w-[420px]',
                 'flex items-start gap-2.5',
