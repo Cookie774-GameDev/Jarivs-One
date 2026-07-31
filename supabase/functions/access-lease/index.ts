@@ -48,6 +48,7 @@
 // dynamic imports) so importing this module for tests performs no fetch.
 
 import { json } from '../_shared/voice.ts';
+import { evaluateAppAccessGate } from '../_shared/appAccessGate.ts';
 
 // The only supported envelope version (must match offlineLease.ts).
 export const OFFLINE_LEASE_VERSION = 1;
@@ -169,6 +170,9 @@ export function mapAccessRpcSnapshot(data) {
     typeof data.enabled !== 'boolean' ||
     typeof data.canUseApp !== 'boolean'
   ) {
+    throw new Error('access_lookup_failed');
+  }
+  if (evaluateAppAccessGate(data).kind === 'invalid') {
     throw new Error('access_lookup_failed');
   }
   const offlineStatus = mapAuthoritativeStatus(state);

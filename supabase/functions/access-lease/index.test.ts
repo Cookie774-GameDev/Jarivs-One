@@ -294,6 +294,26 @@ test('maps valid RPC timestamps and rejects malformed authoritative dates', () =
   }
 });
 
+test('rejects contradictory authoritative gate tuples before signing a lease', () => {
+  for (const decision of [
+    { status: 'active', enabled: false, canUseApp: true },
+    { status: 'active', enabled: true, canUseApp: false },
+    { status: 'locked', enabled: false, canUseApp: false },
+    { status: 'unknown', enabled: true, canUseApp: true },
+  ]) {
+    assert.throws(
+      () =>
+        mapAccessRpcSnapshot({
+          ...decision,
+          revision: 7,
+          serverTime: '2025-06-15T15:06:40.000Z',
+          currentPeriodEndsAt: '2025-06-17T15:06:40.000Z',
+        }),
+      /access_lookup_failed/,
+    );
+  }
+});
+
 // --- Active issuance verified through the real verifier --------------------
 
 test('issues an active lease that verifies through the real offlineLease verifier', async () => {
@@ -774,14 +794,20 @@ test('bounds signing failures without leaking crypto details', async () => {
 });
 
 test('migration exposes an authenticated transactionally locked revision snapshot RPC', () => {
-  const migration = new URL('../../migrations/0034_app_access_lease_freshness.sql', import.meta.url);
+  const migration = new URL(
+    '../../migrations/0034_app_access_lease_freshness.sql',
+    import.meta.url,
+  );
   assert.equal(existsSync(migration), true);
   const sql = readFileSync(migration, 'utf8');
   assert.match(sql, /create or replace function public\.get_app_access_lease_snapshot/iu);
   assert.match(sql, /for update/iu);
   assert.match(sql, /jsonb_build_object\('revision',\s*v_revision\)/iu);
   assert.match(sql, /revoke all on function public\.get_app_access_lease_snapshot\(text\)/iu);
-  assert.match(sql, /grant execute on function public\.get_app_access_lease_snapshot\(text\) to authenticated/iu);
+  assert.match(
+    sql,
+    /grant execute on function public\.get_app_access_lease_snapshot\(text\) to authenticated/iu,
+  );
   assert.doesNotMatch(sql, /grant execute[\s\S]*get_app_access_lease_snapshot[\s\S]*\bto anon\b/iu);
 });
 

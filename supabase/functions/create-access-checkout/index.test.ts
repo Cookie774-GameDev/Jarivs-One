@@ -407,6 +407,7 @@ Deno.test('production entitlement projection includes terminal-state ordering au
     [
       'status',
       'cancel_at_period_end',
+      'stripe_customer_id',
       'stripe_subscription_id',
       'provider_status',
       'provider_status_updated_at',
@@ -583,6 +584,55 @@ Deno.test('reuses an existing Stripe customer mapped on the profile', async () =
   assertEquals(calls.customersCreate.length, 0, 'no customer created');
   assertEquals(calls.setProfileCustomer.length, 0, 'profile customer unchanged');
   assertEquals(calls.sessionsCreate[0].customer, 'cus_exist');
+});
+
+Deno.test('fails closed when profile and entitlement customer identities conflict', async () => {
+  const { deps, calls } = makeDeps({
+    existingCustomerId: 'cus_profile_owner',
+    entitlement: {
+      status: 'locked',
+      cancel_at_period_end: false,
+      stripe_customer_id: 'cus_entitlement_owner',
+      stripe_subscription_id: 'sub_terminal',
+      provider_status: 'canceled',
+      provider_status_updated_at: '2025-06-15T15:06:40.000Z',
+    },
+  });
+  const res = await handleAccessCheckout(
+    makeReq('POST', { origin: ORIGIN, auth: AUTH, body: {} }),
+    deps,
+  );
+
+  assertEquals(res.status, 502);
+  assertEquals(await jsonOf(res), { error: 'checkout_failed' });
+  assertEquals(calls.customersCreate.length, 0, 'does not mint a third customer');
+  assertEquals(calls.setProfileCustomer.length, 0, 'does not rewrite either customer identity');
+  assertEquals(calls.sessionsCreate.length, 0, 'does not cross-bind a Checkout Session');
+});
+
+Deno.test('reuses and maps an entitlement-only customer without minting another', async () => {
+  const { deps, calls } = makeDeps({
+    existingCustomerId: null,
+    entitlement: {
+      status: 'locked',
+      cancel_at_period_end: false,
+      stripe_customer_id: 'cus_entitlement_owner',
+      stripe_subscription_id: 'sub_terminal',
+      provider_status: 'canceled',
+      provider_status_updated_at: '2025-06-15T15:06:40.000Z',
+    },
+  });
+  const res = await handleAccessCheckout(
+    makeReq('POST', { origin: ORIGIN, auth: AUTH, body: {} }),
+    deps,
+  );
+
+  assertEquals(res.status, 200);
+  assertEquals(calls.customersCreate.length, 0, 'does not mint another provider customer');
+  assertEquals(calls.setProfileCustomer, [
+    { userId: 'user_1', customerId: 'cus_entitlement_owner' },
+  ]);
+  assertEquals(calls.sessionsCreate[0].customer, 'cus_entitlement_owner');
 });
 
 Deno.test('creates a new Stripe customer when absent and maps it to the profile', async () => {

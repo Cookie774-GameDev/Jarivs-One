@@ -63,7 +63,7 @@ import { json } from '../_shared/voice.ts';
 
 const TERMINAL_PROVIDER_STATUSES = new Set(['canceled', 'unpaid', 'incomplete_expired']);
 export const ACCESS_ENTITLEMENT_SELECT =
-  'status,cancel_at_period_end,stripe_subscription_id,provider_status,provider_status_updated_at';
+  'status,cancel_at_period_end,stripe_customer_id,stripe_subscription_id,provider_status,provider_status_updated_at';
 
 function boundedConfigString(value, max) {
   return (
@@ -271,7 +271,17 @@ export async function handleAccessCheckout(req, deps) {
   let session;
   try {
     const profile = await deps.getProfile(user.id);
-    customerId = profile && profile.stripe_customer_id ? profile.stripe_customer_id : null;
+    const profileCustomerId =
+      profile && profile.stripe_customer_id ? profile.stripe_customer_id : null;
+    const entitlementCustomerId =
+      entitlement && entitlement.stripe_customer_id ? entitlement.stripe_customer_id : null;
+    if (profileCustomerId && entitlementCustomerId && profileCustomerId !== entitlementCustomerId) {
+      throw new Error('conflicting authoritative Stripe customer identities');
+    }
+    customerId = profileCustomerId || entitlementCustomerId;
+    if (!profileCustomerId && entitlementCustomerId) {
+      await deps.setProfileCustomer(user.id, entitlementCustomerId);
+    }
     if (!customerId) {
       const customer = await deps.stripe.customers.create(
         {
