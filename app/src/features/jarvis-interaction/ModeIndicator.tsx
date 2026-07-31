@@ -1,18 +1,8 @@
 import * as React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import {
-  Bot,
-  Check,
-  ChevronDown,
-  ClipboardList,
-  HelpCircle,
-  type LucideIcon,
-} from 'lucide-react';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui';
+import { Bot, Check, ChevronDown, ClipboardList, HelpCircle, type LucideIcon } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui';
+import { useThemeMotionTransition } from '@/features/appearance/themeMotion';
 import { cn } from '@/lib/utils';
 import {
   interactionModeDescription,
@@ -37,6 +27,8 @@ const MODE_ICONS: Record<JarvisInteractionMode, LucideIcon> = {
   plan: ClipboardList,
   ask: HelpCircle,
 };
+const SPRING = 'spring' as const;
+const OPTION_TRANSITION = { type: SPRING, stiffness: 420, damping: 28 };
 
 const ACCENT: Record<
   PermissionModeOption['accent'],
@@ -46,14 +38,16 @@ const ACCENT: Record<
     chip: 'border-accent-cyan/40 bg-accent-cyan/12 text-accent-cyan',
     icon: 'text-accent-cyan',
     ring: 'ring-accent-cyan/35',
-    active: 'border-accent-cyan/55 bg-accent-cyan/15 shadow-[0_0_18px_hsl(var(--accent-cyan)/0.18)]',
+    active:
+      'border-accent-cyan/55 bg-accent-cyan/15 shadow-[0_0_18px_hsl(var(--accent-cyan)/0.18)]',
     glow: 'from-cyan-400/20 via-sky-500/10 to-transparent',
   },
   copper: {
     chip: 'border-accent-copper/45 bg-accent-copper/12 text-accent-copper',
     icon: 'text-accent-copper',
     ring: 'ring-accent-copper/35',
-    active: 'border-accent-copper/60 bg-accent-copper/15 shadow-[0_0_18px_hsl(var(--accent-copper)/0.2)]',
+    active:
+      'border-accent-copper/60 bg-accent-copper/15 shadow-[0_0_18px_hsl(var(--accent-copper)/0.2)]',
     glow: 'from-orange-400/20 via-amber-500/10 to-transparent',
   },
   violet: {
@@ -72,6 +66,7 @@ export function ModeIndicator({
   onCycle,
 }: ModeIndicatorProps) {
   const [open, setOpen] = React.useState(false);
+  const optionTransition = useThemeMotionTransition(OPTION_TRANSITION);
   const current = permissionModeOption(mode);
   const Icon = MODE_ICONS[mode];
   const accent = ACCENT[current.accent];
@@ -106,10 +101,7 @@ export function ModeIndicator({
           <Icon className={cn('h-3 w-3 shrink-0', accent.icon)} />
           <span className="max-w-[7.5rem] truncate">{interactionModeLabel(mode)}</span>
           <ChevronDown
-            className={cn(
-              'h-3 w-3 shrink-0 opacity-70 transition-transform',
-              open && 'rotate-180',
-            )}
+            className={cn('h-3 w-3 shrink-0 opacity-70 transition-transform', open && 'rotate-180')}
           />
         </button>
       </PopoverTrigger>
@@ -141,11 +133,10 @@ export function ModeIndicator({
               <Icon className={cn('h-4 w-4', accent.icon)} />
             </span>
             <div className="min-w-0 flex-1">
-              <p className="text-[13px] font-semibold tracking-tight text-foreground">
-                Chat mode
-              </p>
+              <p className="text-[13px] font-semibold tracking-tight text-foreground">Chat mode</p>
               <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
-                Agent, Plan, or Ask for this chat. Also: <code className="text-foreground/80">/permissions</code>
+                Agent, Plan, or Ask for this chat. Also:{' '}
+                <code className="text-foreground/80">/permissions</code>
               </p>
             </div>
           </div>
@@ -165,14 +156,12 @@ export function ModeIndicator({
                   aria-selected={selected}
                   initial={{ opacity: 0, y: 4 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ type: 'spring', stiffness: 420, damping: 28 }}
+                  transition={optionTransition}
                   onClick={() => pick(option.id)}
                   className={cn(
                     'flex w-full items-start gap-2.5 rounded-xl border px-2.5 py-2 text-left transition-all',
                     'hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-                    selected
-                      ? optionAccent.active
-                      : 'border-transparent bg-transparent',
+                    selected ? optionAccent.active : 'border-transparent bg-transparent',
                   )}
                 >
                   <span

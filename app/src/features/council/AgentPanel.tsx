@@ -2,6 +2,7 @@ import { forwardRef, useMemo, type ReactElement } from 'react';
 import { motion } from 'motion/react';
 import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
+import { useThemeMotionLayout, useThemeMotionTransition } from '@/features/appearance/themeMotion';
 import { cn, formatCost, formatTokenCount, hueFromString } from '@/lib/utils';
 import { useAgentStore } from '@/stores/agents';
 import type { Agent, AgentRunState, Message, Part } from '@/types';
@@ -16,6 +17,9 @@ export interface AgentPanelProps {
 }
 
 const ACTIVE_RUN_STATES: ReadonlyArray<AgentRunState> = ['thinking', 'streaming', 'tool_calling'];
+const SPRING = 'spring' as const;
+const PANEL_TRANSITION = { type: SPRING, stiffness: 400, damping: 30, mass: 0.8 };
+const MESSAGE_TRANSITION = { type: SPRING, stiffness: 500, damping: 32, mass: 0.6 };
 
 /**
  * AgentPanel renders one agent's view inside the council grid.
@@ -34,6 +38,8 @@ export const AgentPanel = forwardRef<HTMLDivElement, AgentPanelProps>(
     const runState = useAgentStore((s) => s.runStates[agent.id]);
     const verb = useAgentStore((s) => s.verbs[agent.id]);
     const tokens = useAgentStore((s) => s.tokens[agent.id]);
+    const panelLayout = useThemeMotionLayout(true);
+    const panelTransition = useThemeMotionTransition(PANEL_TRANSITION);
 
     const isActive = runState !== undefined && ACTIVE_RUN_STATES.includes(runState);
 
@@ -52,11 +58,11 @@ export const AgentPanel = forwardRef<HTMLDivElement, AgentPanelProps>(
     return (
       <motion.div
         ref={ref}
-        layout
+        layout={panelLayout}
         initial={{ opacity: 0, scale: 0.97 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.97 }}
-        transition={{ type: 'spring', stiffness: 400, damping: 30, mass: 0.8 }}
+        transition={panelTransition}
         className={cn(
           'relative flex flex-col bg-panel rounded-md overflow-hidden min-h-0',
           isActive ? 'border-accent-gradient' : 'border border-border',
@@ -104,7 +110,14 @@ AgentPanel.displayName = 'AgentPanel';
 
 /* ------------------------------- helpers ------------------------------- */
 
-type PillVariant = 'default' | 'secondary' | 'accent' | 'outline' | 'success' | 'warning' | 'destructive';
+type PillVariant =
+  | 'default'
+  | 'secondary'
+  | 'accent'
+  | 'outline'
+  | 'success'
+  | 'warning'
+  | 'destructive';
 
 function variantForState(state: AgentRunState): PillVariant {
   if (state === 'error') return 'destructive';
@@ -114,7 +127,13 @@ function variantForState(state: AgentRunState): PillVariant {
   return 'secondary';
 }
 
-function RunStatePill({ state, verb }: { state?: AgentRunState; verb?: string }): ReactElement | null {
+function RunStatePill({
+  state,
+  verb,
+}: {
+  state?: AgentRunState;
+  verb?: string;
+}): ReactElement | null {
   if (!state || state === 'idle') return null;
   const label = verb ?? state.replace(/_/g, ' ');
   return (
@@ -160,21 +179,19 @@ function MessageItem({
   agentColor: string;
 }): ReactElement {
   const isUser = message.role === 'user';
+  const messageLayout = useThemeMotionLayout(true);
+  const messageTransition = useThemeMotionTransition(MESSAGE_TRANSITION);
   return (
     <motion.div
-      layout
+      layout={messageLayout}
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ type: 'spring', stiffness: 500, damping: 32, mass: 0.6 }}
+      transition={messageTransition}
       className={cn(
         'rounded-md px-2.5 py-1.5',
         isUser ? 'bg-elevated/60 border border-border/60' : 'bg-transparent',
       )}
-      style={
-        !isUser
-          ? { borderLeft: `2px solid ${agentColor}`, paddingLeft: 10 }
-          : undefined
-      }
+      style={!isUser ? { borderLeft: `2px solid ${agentColor}`, paddingLeft: 10 } : undefined}
     >
       <div className="text-metadata text-muted-foreground mb-0.5 uppercase tracking-wider">
         {isUser ? 'You' : message.role}

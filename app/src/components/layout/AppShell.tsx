@@ -1,8 +1,9 @@
 import * as React from 'react';
-import { AnimatePresence, MotionConfig } from 'motion/react';
+import { AnimatePresence, MotionConfig, type Transition } from 'motion/react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { resolveTheme, useUIStore } from '@/stores/ui';
 import { SakuraBackdrop } from '@/features/appearance/sakura';
+import { useThemeMotionTransition } from '@/features/appearance/themeMotion';
 import { TopBar } from './TopBar';
 import { NavPane } from './NavPane';
 import { Inspector } from './Inspector';
@@ -13,6 +14,12 @@ import { isWorkbenchDetachedSearch } from '@/features/workbench/window';
 interface AppShellProps {
   children: React.ReactNode;
 }
+
+const LEGACY_SHELL_TRANSITION = Object.freeze({
+  type: 'spring',
+  stiffness: 400,
+  damping: 30,
+} as const) satisfies Transition;
 
 /**
  * AppShell - the chrome of the entire desktop app.
@@ -43,14 +50,12 @@ export function AppShell({ children }: AppShellProps) {
   const theme = useUIStore((s) => s.theme);
   const sakuraActive = resolveTheme(theme) === 'sakura';
   const workbenchFullscreen = route === 'workbench' || isWorkbenchDetachedSearch();
+  const themeMotionTransition = useThemeMotionTransition(LEGACY_SHELL_TRANSITION);
 
   // Workbench owns the entire app chrome (full screen surface).
   if (workbenchFullscreen) {
     return (
-      <MotionConfig
-        reducedMotion="user"
-        transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-      >
+      <MotionConfig reducedMotion="user" transition={themeMotionTransition}>
         <TooltipProvider delayDuration={400}>
           <div
             className={`relative isolate flex h-full w-full flex-col overflow-hidden text-foreground ${
@@ -77,7 +82,7 @@ export function AppShell({ children }: AppShellProps) {
   }
 
   return (
-    <MotionConfig reducedMotion="user" transition={{ type: 'spring', stiffness: 400, damping: 30 }}>
+    <MotionConfig reducedMotion="user" transition={themeMotionTransition}>
       <TooltipProvider delayDuration={400}>
         <div
           className={`relative isolate flex h-full w-full flex-col overflow-hidden text-foreground ${

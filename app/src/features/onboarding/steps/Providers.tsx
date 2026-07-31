@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, motion, type Transition } from 'motion/react';
 import { Check, ChevronDown, ChevronRight, Eye, EyeOff, Plus, X } from 'lucide-react';
+import { useThemeMotionTransition } from '@/features/appearance/themeMotion';
 import { useAuthStore } from '@/stores/auth';
 import type { ProviderId } from '@/types/common';
 import { Badge } from '@/components/ui/badge';
@@ -47,19 +48,45 @@ const MAJOR_PROVIDERS: MajorProvider[] = [
 // adapter for V2 so persisting a key here is enough to use them in chat.
 const COMPAT_PROVIDERS: CompatProvider[] = [
   { id: 'xai', name: 'xAI', description: 'Grok family', placeholder: 'xai-...' },
-  { id: 'openrouter', name: 'OpenRouter', description: 'Multi-model gateway', placeholder: 'sk-or-...' },
+  {
+    id: 'openrouter',
+    name: 'OpenRouter',
+    description: 'Multi-model gateway',
+    placeholder: 'sk-or-...',
+  },
   { id: 'groq', name: 'Groq', description: 'Fast Llama / Mixtral', placeholder: 'gsk_...' },
   { id: 'deepseek', name: 'DeepSeek', description: 'DeepSeek V3 / Coder', placeholder: 'sk-...' },
-  { id: 'mistral', name: 'Mistral', description: 'Mistral Large / Nemo', placeholder: 'mistral-...' },
-  { id: 'together', name: 'Together AI', description: 'Llama / Qwen open weights', placeholder: 'tgp_...' },
-  { id: 'ollama', name: 'Ollama (local)', description: 'Local model server', placeholder: 'http://localhost:11434' },
+  {
+    id: 'mistral',
+    name: 'Mistral',
+    description: 'Mistral Large / Nemo',
+    placeholder: 'mistral-...',
+  },
+  {
+    id: 'together',
+    name: 'Together AI',
+    description: 'Llama / Qwen open weights',
+    placeholder: 'tgp_...',
+  },
+  {
+    id: 'ollama',
+    name: 'Ollama (local)',
+    description: 'Local model server',
+    placeholder: 'http://localhost:11434',
+  },
 ];
+const LEGACY_COMPAT_GRID_TRANSITION = Object.freeze({
+  type: 'spring',
+  stiffness: 380,
+  damping: 32,
+} as const) satisfies Transition;
 
 interface ProvidersStepProps {
   onSkip: () => void;
 }
 
 export function Providers({ onSkip }: ProvidersStepProps) {
+  const compatGridTransition = useThemeMotionTransition(LEGACY_COMPAT_GRID_TRANSITION);
   // Default-collapsed: keeps the step scannable for users who only want a
   // major key. Auto-expand if the user has already stored a compat key
   // (e.g. they're re-running onboarding from settings).
@@ -120,7 +147,7 @@ export function Providers({ onSkip }: ProvidersStepProps) {
               initial={{ opacity: 0, y: -4 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -4 }}
-              transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+              transition={compatGridTransition}
               className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2"
             >
               {COMPAT_PROVIDERS.map((p) => (
@@ -343,12 +370,7 @@ function CompatProviderCard({ row }: { row: CompatProvider }) {
               {revealed ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
           </div>
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            onClick={cancel}
-            aria-label="Cancel"
-          >
+          <Button size="icon-sm" variant="ghost" onClick={cancel} aria-label="Cancel">
             <X className="h-3.5 w-3.5" />
           </Button>
         </div>

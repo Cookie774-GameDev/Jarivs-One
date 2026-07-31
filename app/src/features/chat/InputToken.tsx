@@ -1,5 +1,17 @@
 import { motion, AnimatePresence } from 'motion/react';
-import { X, FileText, Network, Zap, Terminal, Image, Link, Folder, Plug, UserRound } from 'lucide-react';
+import {
+  X,
+  FileText,
+  Network,
+  Zap,
+  Terminal,
+  Image,
+  Link,
+  Folder,
+  Plug,
+  UserRound,
+} from 'lucide-react';
+import { useThemeMotionTransition } from '@/features/appearance/themeMotion';
 import { cn } from '@/lib/utils';
 
 export type TokenType =
@@ -62,17 +74,20 @@ const TOKEN_GLOW: Record<TokenType, string> = {
   agent: 'shadow-[0_0_12px_rgba(34,211,238,0.24)]',
   plugin: 'shadow-[0_0_10px_rgba(245,158,11,0.2)]',
 };
+const SPRING = 'spring' as const;
+const TOKEN_TRANSITION = { type: SPRING, stiffness: 520, damping: 26, mass: 0.7 };
 
 export function InputToken({ type, label, sublabel, icon, onRemove, className }: InputTokenProps) {
   const Icon = TOKEN_ICONS[type];
   const isCommand = type === 'command';
+  const tokenTransition = useThemeMotionTransition(TOKEN_TRANSITION);
 
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.72, y: 8, filter: 'blur(2px)' }}
       animate={{ opacity: 1, scale: 1, y: 0, filter: 'blur(0px)' }}
       exit={{ opacity: 0, scale: 0.85, y: -6, filter: 'blur(1px)' }}
-      transition={{ type: 'spring', stiffness: 520, damping: 26, mass: 0.7 }}
+      transition={tokenTransition}
       className={cn(
         'relative inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full',
         'bg-gradient-to-r border',
@@ -100,7 +115,11 @@ export function InputToken({ type, label, sublabel, icon, onRemove, className }:
         <Icon
           className={cn(
             'relative h-3 w-3 shrink-0',
-            isCommand ? 'text-amber-200 drop-shadow-[0_0_6px_rgba(251,191,36,0.8)]' : type === 'agent' ? 'text-cyan-300' : 'text-violet-400',
+            isCommand
+              ? 'text-amber-200 drop-shadow-[0_0_6px_rgba(251,191,36,0.8)]'
+              : type === 'agent'
+                ? 'text-cyan-300'
+                : 'text-violet-400',
           )}
         />
       )}
@@ -140,9 +159,7 @@ export interface TokenListProps {
 export function TokenList({ children, className }: TokenListProps) {
   return (
     <div className={cn('flex flex-wrap gap-1.5 items-center', className)}>
-      <AnimatePresence mode="popLayout">
-        {children}
-      </AnimatePresence>
+      <AnimatePresence mode="popLayout">{children}</AnimatePresence>
     </div>
   );
 }

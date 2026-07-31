@@ -12,6 +12,7 @@ vi.mock('./useAppForeground', () => ({
 
 vi.mock('motion/react', () => ({
   AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  useReducedMotion: () => window.matchMedia('(prefers-reduced-motion: reduce)').matches,
   motion: {
     div: ({
       children,

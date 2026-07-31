@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, motion, type Transition } from 'motion/react';
+import { useThemeMotionTransition } from '@/features/appearance/themeMotion';
 import { useUIStore } from '@/stores/ui';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -20,6 +21,12 @@ const STEP_LABELS: Record<(typeof STEPS)[number], string> = {
   permissions: 'Permissions',
   demo: 'Demo',
 };
+const LEGACY_STEP_TRANSITION = Object.freeze({
+  type: 'spring',
+  stiffness: 380,
+  damping: 32,
+  mass: 0.7,
+} as const) satisfies Transition;
 
 /**
  * Onboarding root.
@@ -33,6 +40,7 @@ const STEP_LABELS: Record<(typeof STEPS)[number], string> = {
  * On the last step, advancing calls `finishOnboarding()` from the UI store.
  */
 export function Onboarding() {
+  const stepTransition = useThemeMotionTransition(LEGACY_STEP_TRANSITION);
   const finishOnboarding = useUIStore((s) => s.finishOnboarding);
   const [step, setStep] = useState<number>(0);
 
@@ -89,9 +97,17 @@ export function Onboarding() {
   }, [step]);
 
   return (
-    <div className="fixed inset-0 z-50 bg-background flex flex-col" role="dialog" aria-label="Onboarding">
+    <div
+      className="fixed inset-0 z-50 bg-background flex flex-col"
+      role="dialog"
+      aria-label="Onboarding"
+    >
       <header className="flex items-center justify-center pt-6 pb-2 shrink-0">
-        <ProgressDots total={STEPS.length} current={step} onSelect={(i) => i <= step && setStep(i)} />
+        <ProgressDots
+          total={STEPS.length}
+          current={step}
+          onSelect={(i) => i <= step && setStep(i)}
+        />
       </header>
 
       <div className="flex-1 min-h-0 relative overflow-hidden">
@@ -101,7 +117,7 @@ export function Onboarding() {
             initial={{ opacity: 0, x: 24 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -24 }}
-            transition={{ type: 'spring', stiffness: 380, damping: 32, mass: 0.7 }}
+            transition={stepTransition}
             className="absolute inset-0"
           >
             {step === 0 && <Welcome onNext={goNext} />}
