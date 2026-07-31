@@ -1,6 +1,8 @@
 import { defineConfig } from '@playwright/test';
 import path from 'node:path';
 
+import { B0_R1_EDGE_LAUNCH_ARGS } from './tests/visual/monochrome/b0Environment.ts';
+
 /**
  * MonoChrome deterministic visual/accessibility/behavior/style-metrics harness.
  *
@@ -168,7 +170,11 @@ export default defineConfig({
     {
       name: 'monochrome-other-themes',
       testMatch: /monochrome\.other-themes\.spec\.ts/,
-      use: { channel: 'msedge', viewport: { width: 1672, height: 941 } },
+      use: {
+        channel: 'msedge',
+        launchOptions: { args: [...B0_R1_EDGE_LAUNCH_ARGS] },
+        viewport: { width: 1672, height: 941 },
+      },
     },
     {
       name: 'monochrome-a11y',
